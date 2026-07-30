@@ -1,0 +1,7 @@
+allowBuilds:
+  '@kmamal/gpu': set this to true or false
+  esbuild: true
+ignoredBuiltDependencies:
+  - '@kmamal/gpu'
+onlyBuiltDependencies:
+  - esbuild
