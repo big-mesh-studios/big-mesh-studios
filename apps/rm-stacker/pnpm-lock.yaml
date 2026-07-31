@@ -8,15 +8,21 @@ importers:
 
   .:
     dependencies:
+      '@fortawesome/fontawesome-free':
+        specifier: ^7.3.1
+        version: 7.3.1
+      '@random-mesh/rm-pan-scale':
+        specifier: 0.0.4
+        version: 0.0.4
       '@random-mesh/rmsl':
         specifier: 1.1.2
         version: 1.1.2
       '@solidjs/signals':
-        specifier: 2.0.0-beta.10
-        version: 2.0.0-beta.10
+        specifier: 2.0.0-beta.29
+        version: 2.0.0-beta.29
       '@solidjs/web':
-        specifier: 2.0.0-beta.18
-        version: 2.0.0-beta.18(solid-js@2.0.0-beta.10)
+        specifier: 2.0.0-beta.29
+        version: 2.0.0-beta.29(solid-js@2.0.0-beta.29)
       '@tailwindcss/vite':
         specifier: ^4.3.0
         version: 4.3.3(vite@7.3.6(jiti@2.7.0)(lightningcss@1.32.0))
@@ -27,11 +33,11 @@ importers:
         specifier: ^5.5.20
         version: 5.7.4
       solid-js:
-        specifier: 2.0.0-beta.10
-        version: 2.0.0-beta.10
+        specifier: 2.0.0-beta.29
+        version: 2.0.0-beta.29
       solid-three:
         specifier: https://pkg.pr.new/solid-three@dcd9e3d
-        version: https://pkg.pr.new/solid-three@dcd9e3d(@solidjs/signals@2.0.0-beta.10)(@solidjs/web@2.0.0-beta.18(solid-js@2.0.0-beta.10))(@types/three@0.183.1)(solid-js@2.0.0-beta.10)(three@0.183.2)
+        version: https://pkg.pr.new/solid-three@dcd9e3d(@solidjs/signals@2.0.0-beta.29)(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(@types/three@0.183.1)(solid-js@2.0.0-beta.29)(three@0.183.2)
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.3
@@ -53,7 +59,7 @@ importers:
         version: 7.3.6(jiti@2.7.0)(lightningcss@1.32.0)
       vite-plugin-solid:
         specifier: 3.0.0-next.5
-        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.18(solid-js@2.0.0-beta.10))(solid-js@2.0.0-beta.10)(vite@7.3.6(jiti@2.7.0)(lightningcss@1.32.0))
+        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)(vite@7.3.6(jiti@2.7.0)(lightningcss@1.32.0))
       vitest:
         specifier: ^4.1.3
         version: 4.1.10(vite@7.3.6(jiti@2.7.0)(lightningcss@1.32.0))
@@ -305,6 +311,10 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@fortawesome/fontawesome-free@7.3.1':
+    resolution: {integrity: sha512-wmglKKPDIkgV3aWlZzWECCPoGIkYCulzBwxG9+w7rc5BGapZ6cPMpoPOT8k36J0Ni7PPX6c/rsoMWfS4d1MUMg==}
+    engines: {node: '>=6'}
+
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
 
@@ -320,6 +330,9 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@random-mesh/rm-pan-scale@0.0.4':
+    resolution: {integrity: sha512-IObqCaGh3qOkQF7ZxKY06UsBW01VKr4bDhimPI2LnzOWxOPImoXKWzZTSYxUI7DYFO1CmY7dHJIqf+H3k58VZw==}
 
   '@random-mesh/rmsl@1.1.2':
     resolution: {integrity: sha512-7O5tiMq3pvp2s/dq16uFOW5EGEIHlpOeOKMqO7mFpE0fH31e/5Ory7cxUWDphslZFu4FJYqXkFw3BX5qfOOlwQ==}
@@ -462,13 +475,13 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@solidjs/signals@2.0.0-beta.10':
-    resolution: {integrity: sha512-McdmbLNiSlz616zcykS8Rb1t9QTOTKdNAoaWd4/OjXEbcAUrPqRX1CWgR+caiWUk4qn0a+LesTTV4jZhFFPaSg==}
+  '@solidjs/signals@2.0.0-beta.29':
+    resolution: {integrity: sha512-/W4goRwA/t9SqA0acIcD008pBJr2p5BMxVpzcdvWMYNswyE88se1ecJKQO/QTa6DjVRZvplOOtKEtDRHpEo3rQ==}
 
-  '@solidjs/web@2.0.0-beta.18':
-    resolution: {integrity: sha512-SSgm25ZoJTUzxPwMW/uEhXyq3xJhpgFGs63p/YXevjBTE9Dv6YWbujTXdDU7QI9mMAfDDsyK90jbO5TvDa1yag==}
+  '@solidjs/web@2.0.0-beta.29':
+    resolution: {integrity: sha512-Bsb1JP1n6OIuiCQiYlE1B3+cNY0UlDPyA1UUYC3trFudUMs0aDCxGmY/B5KXnmw4NNcRIUA2bW46h3FC9qhWXA==}
     peerDependencies:
-      solid-js: ^2.0.0-beta.18
+      solid-js: ^2.0.0-beta.29
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -911,8 +924,8 @@ packages:
   siginfo@2.0.0:
     resolution: {integrity: sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==}
 
-  solid-js@2.0.0-beta.10:
-    resolution: {integrity: sha512-EAfV6b1SC4c3wEBAoX4dMy063uTb4nfL5uXnN8yse4InH7RTw1LoB0I9HAy+pj3/GHqQE2tYZurlZtqU4pGyog==}
+  solid-js@2.0.0-beta.29:
+    resolution: {integrity: sha512-Jv0jRw7joECw63cRfeqo5lnEVNVhAcH1hWt1nSvyp5npTgk6eyCmP5UDLTNWm6ox5G5LmBJzFkBulm+hp9+vmA==}
 
   solid-refresh@0.8.0-next.7:
     resolution: {integrity: sha512-fqkPRAeiE0tqfo2ZljeQBIXwfYssU2w1FmaWFrXmnV33B/CfGfez7BjtOF0Y1/orUNRXI/DZcJlJThHllcCMsA==}
@@ -1294,6 +1307,8 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
+  '@fortawesome/fontawesome-free@7.3.1': {}
+
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
@@ -1312,6 +1327,8 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@random-mesh/rm-pan-scale@0.0.4': {}
 
   '@random-mesh/rmsl@1.1.2': {}
 
@@ -1390,13 +1407,13 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.62.3':
     optional: true
 
-  '@solidjs/signals@2.0.0-beta.10': {}
+  '@solidjs/signals@2.0.0-beta.29': {}
 
-  '@solidjs/web@2.0.0-beta.18(solid-js@2.0.0-beta.10)':
+  '@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29)':
     dependencies:
       seroval: 1.5.6
       seroval-plugins: 1.5.6(seroval@1.5.6)
-      solid-js: 2.0.0-beta.10
+      solid-js: 2.0.0-beta.29
 
   '@standard-schema/spec@1.1.0': {}
 
@@ -1559,12 +1576,12 @@ snapshots:
 
   assertion-error@2.0.1: {}
 
-  babel-preset-solid@2.0.0-beta.26(@babel/core@7.29.7)(solid-js@2.0.0-beta.10):
+  babel-preset-solid@2.0.0-beta.26(@babel/core@7.29.7)(solid-js@2.0.0-beta.29):
     dependencies:
       '@babel/core': 7.29.7
       '@dom-expressions/babel-plugin-jsx': 0.50.0-next.31(@babel/core@7.29.7)
     optionalDependencies:
-      solid-js: 2.0.0-beta.10
+      solid-js: 2.0.0-beta.29
 
   baseline-browser-mapping@2.11.4: {}
 
@@ -1797,26 +1814,26 @@ snapshots:
 
   siginfo@2.0.0: {}
 
-  solid-js@2.0.0-beta.10:
+  solid-js@2.0.0-beta.29:
     dependencies:
-      '@solidjs/signals': 2.0.0-beta.10
+      '@solidjs/signals': 2.0.0-beta.29
       csstype: 3.2.3
       seroval: 1.5.6
       seroval-plugins: 1.5.6(seroval@1.5.6)
 
-  solid-refresh@0.8.0-next.7(solid-js@2.0.0-beta.10):
+  solid-refresh@0.8.0-next.7(solid-js@2.0.0-beta.29):
     dependencies:
       '@babel/generator': 7.29.7
       '@babel/types': 7.29.7
-      solid-js: 2.0.0-beta.10
+      solid-js: 2.0.0-beta.29
 
-  solid-three@https://pkg.pr.new/solid-three@dcd9e3d(@solidjs/signals@2.0.0-beta.10)(@solidjs/web@2.0.0-beta.18(solid-js@2.0.0-beta.10))(@types/three@0.183.1)(solid-js@2.0.0-beta.10)(three@0.183.2):
+  solid-three@https://pkg.pr.new/solid-three@dcd9e3d(@solidjs/signals@2.0.0-beta.29)(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(@types/three@0.183.1)(solid-js@2.0.0-beta.29)(three@0.183.2):
     dependencies:
-      '@solidjs/signals': 2.0.0-beta.10
-      '@solidjs/web': 2.0.0-beta.18(solid-js@2.0.0-beta.10)
+      '@solidjs/signals': 2.0.0-beta.29
+      '@solidjs/web': 2.0.0-beta.29(solid-js@2.0.0-beta.29)
       '@types/three': 0.183.1
       debounce: 2.2.0
-      solid-js: 2.0.0-beta.10
+      solid-js: 2.0.0-beta.29
       three: 0.183.2
 
   source-map-js@1.2.1: {}
@@ -1856,15 +1873,15 @@ snapshots:
 
   validate-html-nesting@1.2.4: {}
 
-  vite-plugin-solid@3.0.0-next.5(@solidjs/web@2.0.0-beta.18(solid-js@2.0.0-beta.10))(solid-js@2.0.0-beta.10)(vite@7.3.6(jiti@2.7.0)(lightningcss@1.32.0)):
+  vite-plugin-solid@3.0.0-next.5(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)(vite@7.3.6(jiti@2.7.0)(lightningcss@1.32.0)):
     dependencies:
       '@babel/core': 7.29.7
-      '@solidjs/web': 2.0.0-beta.18(solid-js@2.0.0-beta.10)
+      '@solidjs/web': 2.0.0-beta.29(solid-js@2.0.0-beta.29)
       '@types/babel__core': 7.20.5
-      babel-preset-solid: 2.0.0-beta.26(@babel/core@7.29.7)(solid-js@2.0.0-beta.10)
+      babel-preset-solid: 2.0.0-beta.26(@babel/core@7.29.7)(solid-js@2.0.0-beta.29)
       merge-anything: 5.1.7
-      solid-js: 2.0.0-beta.10
-      solid-refresh: 0.8.0-next.7(solid-js@2.0.0-beta.10)
+      solid-js: 2.0.0-beta.29
+      solid-refresh: 0.8.0-next.7(solid-js@2.0.0-beta.29)
       vite: 7.3.6(jiti@2.7.0)(lightningcss@1.32.0)
       vitefu: 1.1.3(vite@7.3.6(jiti@2.7.0)(lightningcss@1.32.0))
     transitivePeerDependencies:

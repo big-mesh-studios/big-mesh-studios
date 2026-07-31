@@ -19,13 +19,15 @@
     "vitest": "^4.1.3"
   },
   "dependencies": {
+    "@fortawesome/fontawesome-free": "^7.3.1",
+    "@random-mesh/rm-pan-scale": "0.0.4",
     "@random-mesh/rmsl": "1.1.2",
-    "@solidjs/signals": "2.0.0-beta.10",
-    "@solidjs/web": "2.0.0-beta.18",
+    "@solidjs/signals": "2.0.0-beta.29",
+    "@solidjs/web": "2.0.0-beta.29",
     "@tailwindcss/vite": "^4.3.0",
     "browser-fs-access": "^0.38.0",
     "daisyui": "^5.5.20",
-    "solid-js": "2.0.0-beta.10",
+    "solid-js": "2.0.0-beta.29",
     "solid-three": "https://pkg.pr.new/solid-three@dcd9e3d",
     "tailwindcss": "^4.3.0",
     "three": "^0.183.2",

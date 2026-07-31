@@ -4,11 +4,11 @@ import PixelEditorView from "./PixelEditorView";
 const App: Component = () => {
   return (
     <div
+      class="flex-col md:flex-row"
       style={{
         "width": "100%",
         "height": "100%",
         "display": "flex",
-        "flex-direction": "row",
         "overflow": "hidden",
       }}
     >
