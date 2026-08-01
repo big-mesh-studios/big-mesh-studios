@@ -12,8 +12,8 @@ importers:
         specifier: ^7.3.1
         version: 7.3.1
       '@random-mesh/rm-pan-scale':
-        specifier: 0.0.4
-        version: 0.0.4
+        specifier: 0.0.5
+        version: 0.0.5
       '@random-mesh/rmsl':
         specifier: 1.1.2
         version: 1.1.2
@@ -331,8 +331,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@random-mesh/rm-pan-scale@0.0.4':
-    resolution: {integrity: sha512-IObqCaGh3qOkQF7ZxKY06UsBW01VKr4bDhimPI2LnzOWxOPImoXKWzZTSYxUI7DYFO1CmY7dHJIqf+H3k58VZw==}
+  '@random-mesh/rm-pan-scale@0.0.5':
+    resolution: {integrity: sha512-mm3gLnscMc50oHJV0veREHSVpjxjmcmJrGITfFupc2cH4JpmzMCuy4fw8T7DtJhr5mfxNaO9RwzH1zpuDFiuTQ==}
 
   '@random-mesh/rmsl@1.1.2':
     resolution: {integrity: sha512-7O5tiMq3pvp2s/dq16uFOW5EGEIHlpOeOKMqO7mFpE0fH31e/5Ory7cxUWDphslZFu4FJYqXkFw3BX5qfOOlwQ==}
@@ -1328,7 +1328,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@random-mesh/rm-pan-scale@0.0.4': {}
+  '@random-mesh/rm-pan-scale@0.0.5': {}
 
   '@random-mesh/rmsl@1.1.2': {}
 

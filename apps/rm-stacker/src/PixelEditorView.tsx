@@ -4,16 +4,21 @@ import { createPanScaleControl } from "@random-mesh/rm-pan-scale";
 import { Mode, ModeParams } from "./Mode";
 import { createIdleMode } from "./modes/IdleMode";
 import { createDrawMode } from "./modes/DrawMode";
+import { Effect } from "./Effect";
 
 const PixelEditorView: Component<{}> = (props) => {
   let imageData = new ImageData(32, 32);
   let [ state, setState, ] = createStore<{
+    mousePos: THREE.Vector2 | undefined,
+    pointerDownCount: number,
     mkMode: (modeParams: ModeParams) => Mode,
     images: {
       pos: THREE.Vector2,
       data: ImageData,
     }[],
   }>({
+    mousePos: undefined,
+    pointerDownCount: 0,
     mkMode: createIdleMode,
     images: [
       {
@@ -22,6 +27,7 @@ const PixelEditorView: Component<{}> = (props) => {
       },
     ],
   });
+  let pointersDownByIdSet = new Set<number>();
   let setMkMode = (mkMode: (modeParams: ModeParams) => Mode) => {
     setState((s) => {
       s.mkMode = mkMode;
@@ -46,16 +52,82 @@ const PixelEditorView: Component<{}> = (props) => {
     out.add(latest(pan));
     return out;
   };
+  let doEffect = (effect: Effect) => untrack(() => {
+    switch (effect.type) {
+      case "NoOperation": {
+        break;
+      }
+      case "WritePixel": {
+        let { x, y, colour, } = effect;
+        let colour2 = new THREE.Color(colour);
+        let r = Math.max(0, Math.min(255, Math.round(colour2.r * 255.0)));
+        let g = Math.max(0, Math.min(255, Math.round(colour2.g * 255.0)));
+        let b = Math.max(0, Math.min(255, Math.round(colour2.b * 255.0)));
+        for (let image of state.images) {
+          let pos = image.pos;
+          let width = image.data.width;
+          let height = image.data.height;
+          if (pos.x > x || pos.y > y || pos.x + width <= x || pos.y + height <= y) {
+            continue;
+          }
+          let localX = x - pos.x;
+          let localY = y - pos.y;
+          let offset = (localY * width + localX) << 2;
+          image.data.data[offset + 0] = r;
+          image.data.data[offset + 1] = g;
+          image.data.data[offset + 2] = b;
+          image.data.data[offset + 3] = 255;
+          render();
+          break;
+        }
+        break;
+      }
+      case "ErasePixel": {
+        let { x, y, } = effect;
+        for (let image of state.images) {
+          let pos = image.pos;
+          let width = image.data.width;
+          let height = image.data.height;
+          if (pos.x > x || pos.y > y || pos.x + width <= x || pos.y + height <= y) {
+            continue;
+          }
+          let localX = x - pos.x;
+          let localY = y - pos.y;
+          let offset = (localY * width + localX) << 2;
+          image.data.data[offset + 0] = 0;
+          image.data.data[offset + 1] = 0;
+          image.data.data[offset + 2] = 0;
+          image.data.data[offset + 3] = 0;
+          render();
+          break;
+        }
+        break;
+      }
+      default: {
+        let x: never = effect;
+        throw new Error(`Unreachable ${x}`);
+      }
+    }
+  });
+  let imageCanvasCache = new WeakMap<ImageData, {
+    canvas: HTMLCanvasElement,
+    ctx: CanvasRenderingContext2D,
+  }>();
   let modeParams: ModeParams = {
+    mousePos: () => state.mousePos,
+    pointerDownCount: () => state.pointerDownCount,
     screenPtToWorldPt,
     worldPtToScreenPt,
     images: () => state.images,
+    doEffect,
   };
   let mode = createMemo(() => {
     let mkMode = state.mkMode;
     return untrack(() => mkMode(modeParams));
   });
-  let activeModeButton = createMemo(() => mode().activeModeButton);
+  let activeModeButton = createMemo(() => mode().activeModeButton?.());
+  let overlayDrawing = createMemo(() => mode().overlayDrawing?.());
+  let disablePanZoom = createMemo(() => mode().disablePanZoom?.() ?? false);
   onSettled(() => {
     let canvas2 = canvas();
     if (canvas2 === undefined) {
@@ -82,13 +154,14 @@ const PixelEditorView: Component<{}> = (props) => {
       canvasSize(),
       pan(),
       scale(),
+      overlayDrawing(),
     ],
     () => {
       render();
     },
   );
 
-  let render = () => {
+  let render = () => untrack(() => {
     let ctx2 = ctx();
     if (ctx2 === undefined) {
       return;
@@ -99,6 +172,7 @@ const PixelEditorView: Component<{}> = (props) => {
     }
     let pan2 = pan();
     let scale2 = scale();
+    let overlayDrawing2 = overlayDrawing();
     ctx2.clearRect(0, 0, canvasSize2.x, canvasSize2.y);
     ctx2.save();
     ctx2.scale(scale2, scale2);
@@ -107,11 +181,27 @@ const PixelEditorView: Component<{}> = (props) => {
     ctx2.strokeStyle = "red";
     ctx2.lineWidth = 1 / scale2;
     for (let image of state.images) {
-      ctx2.putImageData(
-        image.data,
+      let imageCanvasCache2 = imageCanvasCache.get(image.data);
+      if (imageCanvasCache2 === undefined) {
+        let canvas3 = document.createElement("canvas");
+        canvas3.width = image.data.width;
+        canvas3.height = image.data.height;
+        let ctx3 = canvas3.getContext("2d")!;
+        imageCanvasCache2 = {
+          canvas: canvas3,
+          ctx: ctx3,
+        };
+        imageCanvasCache.set(image.data, imageCanvasCache2);
+      }
+      imageCanvasCache2.ctx.putImageData(image.data, 0, 0);
+      let lastImageSmoothingEnabled = ctx2.imageSmoothingEnabled;
+      ctx2.imageSmoothingEnabled = false;
+      ctx2.drawImage(
+        imageCanvasCache2.canvas,
         image.pos.x,
         image.pos.y,
       );
+      ctx2.imageSmoothingEnabled = lastImageSmoothingEnabled;
       ctx2.strokeRect(image.pos.x, image.pos.y, image.data.width, image.data.height);
       if (scale2 >= 5.0) {
         let a = Math.min(1.0, (scale2 - 5.0) / 10.0);
@@ -134,8 +224,11 @@ const PixelEditorView: Component<{}> = (props) => {
         ctx2.stroke();
       }
     }
+    if (overlayDrawing2) {
+      overlayDrawing2(ctx2);
+    }
     ctx2.restore();
-  };
+  });
 
   let panScaleControllerSetters = {
     setPanX: (value: number) => {
@@ -161,8 +254,62 @@ const PixelEditorView: Component<{}> = (props) => {
     scale,
     onUpdate: (fn) => {
       fn(panScaleControllerSetters);
-    }
+    },
+    disable: disablePanZoom,
   });
+
+  {
+    let onPointerDown2 = onPointerDown;
+    onPointerDown = (e: PointerEvent) => {
+      pointersDownByIdSet.add(e.pointerId);
+      setState((s) => {
+        s.pointerDownCount = pointersDownByIdSet.size;
+      });
+      onPointerDown2(e);
+    };
+  }
+  {
+    let onPointerUp2 = onPointerUp;
+    onPointerUp = (e: PointerEvent) => {
+      pointersDownByIdSet.delete(e.pointerId);
+      setState((s) => {
+        s.pointerDownCount = pointersDownByIdSet.size;
+      });
+      onPointerUp2(e);
+    };
+  }
+  {
+    let onPointerCancel2 = onPointerCancel;
+    onPointerCancel = (e: PointerEvent) => {
+      pointersDownByIdSet.delete(e.pointerId);
+      setState((s) => {
+        s.pointerDownCount = pointersDownByIdSet.size;
+      });
+      onPointerCancel2(e);
+    };
+  }
+  {
+    let onPointerMove2 = onPointerMove;
+    onPointerMove = (e: PointerEvent) => {
+      onPointerMove2(e);
+      let canvas2 = canvas();
+      if (canvas2 === undefined) {
+        return;
+      }
+      let rect = canvas2.getBoundingClientRect();
+      let x = e.clientX - rect.left;
+      let y = e.clientY - rect.top;
+      setState((s) => {
+        s.mousePos = new THREE.Vector2(x, y);
+      });
+    };
+  }
+
+  let onPointerOut = (_e: PointerEvent) => {
+    setState((s) => {
+      s.mousePos = undefined;
+    });
+  };
   
   return (
     <div
@@ -184,6 +331,7 @@ const PixelEditorView: Component<{}> = (props) => {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         onPointerMove={onPointerMove}
+        onPointerOut={onPointerOut}
         onWheel={onWheel}
       />
       <div
@@ -214,10 +362,22 @@ const PixelEditorView: Component<{}> = (props) => {
               "tab-active": activeModeButton() === "Draw"
             }}
             onClick={() => {
-              setMkMode(createDrawMode);
+              setMkMode((modeParams) => createDrawMode({ erase: false, modeParams, }));
             }}
           >
             <i class="fa-solid fa-pen"/>
+          </a>
+          <a
+            role="tab"
+            class={{
+              "tab": true,
+              "tab-active": activeModeButton() === "Erase"
+            }}
+            onClick={() => {
+              setMkMode((modeParams) => createDrawMode({ erase: true, modeParams, }));
+            }}
+          >
+            <i class="fa-solid fa-eraser"/>
           </a>
         </div>
       </div>
