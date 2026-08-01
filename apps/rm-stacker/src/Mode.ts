@@ -12,6 +12,7 @@ export interface ModeParams {
     data: ImageData,
   }[]>,
   doEffect: (effect: Effect) => void,
+  selectedColour: Accessor<string | undefined>,
 }
 
 export interface Mode {

@@ -1,4 +1,4 @@
-import { createEffect, createMemo } from "solid-js";
+import { createEffect, createMemo, untrack } from "solid-js";
 import { Mode, ModeParams } from "../Mode";
 import { Effect } from "../Effect";
 
@@ -35,7 +35,10 @@ export function createDrawMode(params: {
       if (params.erase) {
         modeParams.doEffect(Effect.erasePixel(pt.x, pt.y));
       } else {
-        modeParams.doEffect(Effect.writePixel(pt.x, pt.y, "blue"));
+        let selectedColour = untrack(modeParams.selectedColour);
+        if (selectedColour !== undefined) {
+          modeParams.doEffect(Effect.writePixel(pt.x, pt.y, selectedColour));
+        }
       }
     },
   );

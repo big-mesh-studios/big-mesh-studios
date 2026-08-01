@@ -1,10 +1,11 @@
-import { Component, createEffect, createMemo, createSignal, createStore, latest, onSettled, untrack } from "solid-js";
+import { Accessor, Component, createEffect, createMemo, createSignal, createStore, latest, onSettled, untrack } from "solid-js";
 import * as THREE from "three";
 import { createPanScaleControl } from "@random-mesh/rm-pan-scale";
 import { Mode, ModeParams } from "./Mode";
 import { createIdleMode } from "./modes/IdleMode";
 import { createDrawMode } from "./modes/DrawMode";
 import { Effect } from "./Effect";
+import Palette from "./Palette";
 
 const PixelEditorView: Component<{}> = (props) => {
   let frontViewImageData = new ImageData(32, 32);
@@ -22,6 +23,7 @@ const PixelEditorView: Component<{}> = (props) => {
       pos: THREE.Vector2,
       data: ImageData,
     }[],
+    selectedColourAccessor: Accessor<string> | undefined,
   }>({
     mousePos: undefined,
     pointerDownCount: 0,
@@ -58,6 +60,7 @@ const PixelEditorView: Component<{}> = (props) => {
         data: bottomViewImageData,
       },
     ],
+    selectedColourAccessor: undefined,
   });
   let pointersDownByIdSet = new Set<number>();
   let setMkMode = (mkMode: (modeParams: ModeParams) => Mode) => {
@@ -65,6 +68,7 @@ const PixelEditorView: Component<{}> = (props) => {
       s.mkMode = mkMode;
     });
   };
+  let selectedColour = createMemo(() => state.selectedColourAccessor?.());
   let [ canvas, setCanvas, ] = createSignal<HTMLCanvasElement>();
   let [ ctx, setCtx, ] = createSignal<CanvasRenderingContext2D>();
   let [ canvasSize, setCanvasSize, ] = createSignal<THREE.Vector2 | undefined>();
@@ -92,6 +96,7 @@ const PixelEditorView: Component<{}> = (props) => {
       case "WritePixel": {
         let { x, y, colour, } = effect;
         let colour2 = new THREE.Color(colour);
+        colour2.convertLinearToSRGB();
         let r = Math.max(0, Math.min(255, Math.round(colour2.r * 255.0)));
         let g = Math.max(0, Math.min(255, Math.round(colour2.g * 255.0)));
         let b = Math.max(0, Math.min(255, Math.round(colour2.b * 255.0)));
@@ -152,6 +157,7 @@ const PixelEditorView: Component<{}> = (props) => {
     worldPtToScreenPt,
     images: () => state.images,
     doEffect,
+    selectedColour,
   };
   let mode = createMemo(() => {
     let mkMode = state.mkMode;
@@ -359,6 +365,7 @@ const PixelEditorView: Component<{}> = (props) => {
         "position": "relative",
         "width": "100%",
         "height": "100%",
+        "overflow": "hidden",
       }}
     >
       <canvas
@@ -382,9 +389,14 @@ const PixelEditorView: Component<{}> = (props) => {
           "position": "absolute",
           "left": "0",
           "top": "0",
+          "bottom": "0",
+          "overflow": "hidden",
+          "display": "flex",
+          "flex-direction": "column",
+          "pointer-events": "none",
         }}
       >
-        <div role="tablist" class="tabs tabs-box">
+        <div role="tablist" class="tabs tabs-box" style="pointer-events: auto;">
           <a
             role="tab"
             class={{
@@ -421,6 +433,17 @@ const PixelEditorView: Component<{}> = (props) => {
           >
             <i class="fa-solid fa-eraser"/>
           </a>
+        </div>
+        <div style="flex-grow: 1; overflow: hidden;">
+          <div style="height: 100%; display: inline-block; pointer-events: auto;">
+            <Palette
+              ref={(ctx) => {
+                setState((s) => {
+                  s.selectedColourAccessor = ctx.selectedColour;
+                });
+              }}
+            />
+          </div>
         </div>
       </div>
     </div>
