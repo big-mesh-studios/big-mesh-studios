@@ -1,4 +1,4 @@
-import { Accessor, Component, createEffect, createMemo, createSignal, createStore, latest, onSettled, untrack } from "solid-js";
+import { Accessor, Component, createEffect, createMemo, createRenderEffect, createSignal, createStore, latest, onSettled, runWithOwner, untrack } from "solid-js";
 import * as THREE from "three";
 import { createPanScaleControl } from "@random-mesh/rm-pan-scale";
 import { Mode, ModeParams } from "./Mode";
@@ -7,13 +7,32 @@ import { createDrawMode } from "./modes/DrawMode";
 import { Effect } from "./Effect";
 import Palette from "./Palette";
 
-const PixelEditorView: Component<{}> = (props) => {
-  let frontViewImageData = new ImageData(32, 32);
-  let leftViewImageData = new ImageData(32, 32);
-  let rightViewImageData = new ImageData(32, 32);
-  let backViewImageData = new ImageData(32, 32);
-  let topViewImageData = new ImageData(32, 32);
-  let bottomViewImageData = new ImageData(32, 32);
+const createSquareViewImageData = (imageSize: number, squareSize: number): ImageData => {
+  let data = new ImageData(imageSize, imageSize);
+  let offsetPx = (imageSize - squareSize) / 2;
+  for (let y = 0; y < squareSize; y++) {
+    for (let x = 0; x < squareSize; x++) {
+      let i = ((offsetPx + y) * imageSize + (offsetPx + x)) << 2;
+      data.data[i + 0] = 0;
+      data.data[i + 1] = 0;
+      data.data[i + 2] = 255;
+      data.data[i + 3] = 255;
+    }
+  }
+  return data;
+};
+
+const PixelEditorView: Component<{
+  ref?: (ctx: {
+    getImages: () => ImageData[],
+  }) => void,
+}> = (props) => {
+  let frontViewImageData = createSquareViewImageData(32, 16);
+  let leftViewImageData = createSquareViewImageData(32, 16);
+  let rightViewImageData = createSquareViewImageData(32, 16);
+  let backViewImageData = createSquareViewImageData(32, 16);
+  let topViewImageData = createSquareViewImageData(32, 16);
+  let bottomViewImageData = createSquareViewImageData(32, 16);
   let [ state, setState, ] = createStore<{
     mousePos: THREE.Vector2 | undefined,
     pointerDownCount: number,
@@ -358,7 +377,31 @@ const PixelEditorView: Component<{}> = (props) => {
       s.mousePos = undefined;
     });
   };
-  
+
+  createRenderEffect(
+    () => props.ref,
+    (ref) => {
+      if (ref === undefined) {
+        return;
+      }
+      runWithOwner(null, () => {
+        ref({
+          getImages: () => {
+            let imagesByLabel = new Map(state.images.map((image) => [image.label, image.data]));
+            return [
+              imagesByLabel.get("Front")!,
+              imagesByLabel.get("Left")!,
+              imagesByLabel.get("Right")!,
+              imagesByLabel.get("Back")!,
+              imagesByLabel.get("Top")!,
+              imagesByLabel.get("Bottom")!,
+            ];
+          },
+        });
+      });
+    },
+  );
+
   return (
     <div
       style={{
