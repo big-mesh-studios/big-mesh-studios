@@ -7,12 +7,18 @@ import { createDrawMode } from "./modes/DrawMode";
 import { Effect } from "./Effect";
 
 const PixelEditorView: Component<{}> = (props) => {
-  let imageData = new ImageData(32, 32);
+  let frontViewImageData = new ImageData(32, 32);
+  let leftViewImageData = new ImageData(32, 32);
+  let rightViewImageData = new ImageData(32, 32);
+  let backViewImageData = new ImageData(32, 32);
+  let topViewImageData = new ImageData(32, 32);
+  let bottomViewImageData = new ImageData(32, 32);
   let [ state, setState, ] = createStore<{
     mousePos: THREE.Vector2 | undefined,
     pointerDownCount: number,
     mkMode: (modeParams: ModeParams) => Mode,
     images: {
+      label: "Front" | "Left" | "Right" | "Back" | "Top" | "Bottom",
       pos: THREE.Vector2,
       data: ImageData,
     }[],
@@ -22,8 +28,34 @@ const PixelEditorView: Component<{}> = (props) => {
     mkMode: createIdleMode,
     images: [
       {
+        label: "Front",
         pos: new THREE.Vector2(0.0, 0.0),
-        data: imageData,
+        data: frontViewImageData,
+      },
+      {
+        label: "Left",
+        pos: new THREE.Vector2(-40.0, 0.0),
+        data: leftViewImageData,
+      },
+      {
+        label: "Right",
+        pos: new THREE.Vector2(40.0, 0.0),
+        data: rightViewImageData,
+      },
+      {
+        label: "Back",
+        pos: new THREE.Vector2(80.0, 0.0),
+        data: backViewImageData,
+      },
+      {
+        label: "Top",
+        pos: new THREE.Vector2(0.0, -40.0),
+        data: topViewImageData,
+      },
+      {
+        label: "Bottom",
+        pos: new THREE.Vector2(0.0, 40.0),
+        data: bottomViewImageData,
       },
     ],
   });
@@ -205,6 +237,7 @@ const PixelEditorView: Component<{}> = (props) => {
       ctx2.strokeRect(image.pos.x, image.pos.y, image.data.width, image.data.height);
       if (scale2 >= 5.0) {
         let a = Math.min(1.0, (scale2 - 5.0) / 10.0);
+        ctx2.save();
         ctx2.strokeStyle = `rgba(255,0,0,${a})`;
         ctx2.beginPath();
         let y1 = image.pos.y;
@@ -222,7 +255,16 @@ const PixelEditorView: Component<{}> = (props) => {
           ctx2.lineTo(x2, y);
         }
         ctx2.stroke();
+        ctx2.restore();
       }
+      ctx2.font = "5px sans-serif";
+      ctx2.fillStyle = "grey";
+      let metrics = ctx2.measureText(image.label);
+      ctx2.fillText(
+        image.label,
+        image.pos.x + 0.5 * (image.data.width - metrics.width),
+        image.pos.y + image.data.height + metrics.actualBoundingBoxAscent + 1.0,
+      );
     }
     if (overlayDrawing2) {
       overlayDrawing2(ctx2);
