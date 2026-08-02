@@ -5,9 +5,11 @@ import { solveVoxels } from "./voxel-solver";
 
 const App: Component = () => {
   let editorRef: { getImages: () => ImageData[] } | undefined;
-  let previewRef: {
-    setVoxels: (out: Uint8Array, size: number) => void,
-  } | undefined;
+  let previewRef:
+    | {
+        setVoxels: (out: Uint8Array, size: number) => void;
+      }
+    | undefined;
 
   const updateVoxels = () => {
     if (editorRef === undefined || previewRef === undefined) {
@@ -28,16 +30,16 @@ const App: Component = () => {
     previewRef.setVoxels(out, size);
   };
 
-  createTrackedEffect(() => editorRef?.getImages() && updateVoxels())
+  createTrackedEffect(() => editorRef?.getImages() && updateVoxels());
 
   return (
     <div
       class="flex-col md:flex-row"
       style={{
-        "width": "100%",
-        "height": "100%",
-        "display": "flex",
-        "overflow": "hidden",
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        overflow: "hidden",
       }}
     >
       <div
@@ -46,14 +48,19 @@ const App: Component = () => {
           "flex-grow": "1",
           "flex-shrink": "1",
           "flex-basis": "0",
-          "overflow": "hidden",
+          overflow: "hidden",
         }}
       >
-        <PixelEditorView ref={(ctx) => { editorRef = ctx; }} onUpdate={updateVoxels} />
+        <PixelEditorView
+          ref={ctx => {
+            editorRef = ctx;
+          }}
+          onUpdate={updateVoxels}
+        />
       </div>
       <div
         style={{
-          "width": "5px",
+          width: "5px",
         }}
       />
       <div
@@ -61,13 +68,17 @@ const App: Component = () => {
           "flex-grow": "1",
           "flex-shrink": "1",
           "flex-basis": "0",
-          "overflow": "hidden",
-          "display": "flex",
+          overflow: "hidden",
+          display: "flex",
           "flex-direction": "column",
         }}
       >
         <div style="flex-grow: 1; overflow: hidden;">
-          <VoxelPreviewView ref={(ctx) => { previewRef = ctx; }}/>
+          <VoxelPreviewView
+            ref={ctx => {
+              previewRef = ctx;
+            }}
+          />
         </div>
       </div>
     </div>

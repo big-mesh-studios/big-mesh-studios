@@ -5,4 +5,3 @@ export function createIdleMode(_modeParams: ModeParams): Mode {
     activeModeButton: () => "Idle",
   };
 }
-
