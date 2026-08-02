@@ -13,6 +13,8 @@ interface SideImage {
   data: ImageData,
 }
 
+type ModeFactory = (params: ModeParams) => Mode
+
 const createSquareViewImageData = (imageSize: number, squareSize: number): ImageData => {
   let data = new ImageData(imageSize, imageSize);
   let offsetPx = (imageSize - squareSize) / 2;
@@ -50,13 +52,13 @@ const PixelEditorView: Component<{
   let [ state, setState, ] = createStore<{
     mousePos: THREE.Vector2 | undefined,
     pointerDownCount: number,
-    mkMode: (modeParams: ModeParams) => Mode,
+    modeFactory: ModeFactory,
     images: SideImage[],
     selectedColourAccessor: Accessor<string> | undefined,
   }>({
     mousePos: undefined,
     pointerDownCount: 0,
-    mkMode: createIdleMode,
+    modeFactory: createIdleMode,
     images: [
       {
         label: "Front",
@@ -92,9 +94,9 @@ const PixelEditorView: Component<{
     selectedColourAccessor: undefined,
   });
   let pointersDownByIdSet = new Set<number>();
-  let setMkMode = (mkMode: (modeParams: ModeParams) => Mode) => {
+  let setModeFactory = (modeFactory: ModeFactory) => {
     setState((s) => {
-      s.mkMode = mkMode;
+      s.modeFactory = modeFactory;
     });
   };
   let selectedColour = createMemo(() => state.selectedColourAccessor?.());
@@ -188,8 +190,8 @@ const PixelEditorView: Component<{
     onUpdate: () => props.onUpdate()
   };
   let mode = createMemo(() => {
-    let mkMode = state.mkMode;
-    return untrack(() => mkMode(modeParams));
+    let modeFactory = state.modeFactory;
+    return untrack(() => modeFactory(modeParams));
   });
   let activeModeButton = createMemo(() => mode().activeModeButton?.());
   let overlayDrawing = createMemo(() => mode().overlayDrawing?.());
@@ -456,7 +458,7 @@ const PixelEditorView: Component<{
               "tab-active": activeModeButton() === "Idle"
             }}
             onClick={() => {
-              setMkMode(createIdleMode);
+              setModeFactory(createIdleMode);
             }}
           >
             <i class="fa-solid fa-up-down-left-right"/>
@@ -468,7 +470,7 @@ const PixelEditorView: Component<{
               "tab-active": activeModeButton() === "Draw"
             }}
             onClick={() => {
-              setMkMode((modeParams) => createDrawMode({ erase: false, modeParams, }));
+              setModeFactory((modeParams) => createDrawMode({ erase: false, modeParams, }));
             }}
           >
             <i class="fa-solid fa-pen"/>
@@ -480,7 +482,7 @@ const PixelEditorView: Component<{
               "tab-active": activeModeButton() === "Erase"
             }}
             onClick={() => {
-              setMkMode((modeParams) => createDrawMode({ erase: true, modeParams, }));
+              setModeFactory((modeParams) => createDrawMode({ erase: true, modeParams, }));
             }}
           >
             <i class="fa-solid fa-eraser"/>
