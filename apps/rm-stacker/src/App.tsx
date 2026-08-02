@@ -1,4 +1,4 @@
-import { Component } from "solid-js";
+import { Component, createEffect, createTrackedEffect, onSettled, untrack } from "solid-js";
 import PixelEditorView from "./PixelEditorView";
 import VoxelPreviewView from "./VoxelPreviewView";
 import { solveVoxels } from "./voxel-solver";
@@ -28,6 +28,8 @@ const App: Component = () => {
     previewRef.setVoxels(out, size);
   };
 
+  createTrackedEffect(() => editorRef?.getImages() && updateVoxels())
+
   return (
     <div
       class="flex-col md:flex-row"
@@ -47,7 +49,7 @@ const App: Component = () => {
           "overflow": "hidden",
         }}
       >
-        <PixelEditorView ref={(ctx) => { editorRef = ctx; }}/>
+        <PixelEditorView ref={(ctx) => { editorRef = ctx; }} onUpdate={updateVoxels} />
       </div>
       <div
         style={{

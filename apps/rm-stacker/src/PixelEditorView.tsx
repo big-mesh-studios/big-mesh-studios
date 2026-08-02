@@ -26,6 +26,7 @@ const PixelEditorView: Component<{
   ref?: (ctx: {
     getImages: () => ImageData[],
   }) => void,
+  onUpdate():void
 }> = (props) => {
   let frontViewImageData = createSquareViewImageData(32, 16);
   let leftViewImageData = createSquareViewImageData(32, 16);
@@ -177,6 +178,7 @@ const PixelEditorView: Component<{
     images: () => state.images,
     doEffect,
     selectedColour,
+    onUpdate: () => props.onUpdate()
   };
   let mode = createMemo(() => {
     let mkMode = state.mkMode;
