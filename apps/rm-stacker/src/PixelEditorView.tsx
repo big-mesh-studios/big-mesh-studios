@@ -319,13 +319,8 @@ const PixelEditorView: Component<{
       setScale(value);
     },
   };
-  let {
-    onPointerDown,
-    onPointerUp,
-    onPointerCancel,
-    onPointerMove,
-    onWheel,
-  } = createPanScaleControl({
+
+  const panScaleControl = createPanScaleControl({
     target: canvas,
     panX: () => pan().x,
     panY: () => pan().y,
@@ -336,54 +331,46 @@ const PixelEditorView: Component<{
     disable: disablePanZoom,
   });
 
-  {
-    let onPointerDown2 = onPointerDown;
-    onPointerDown = (e: PointerEvent) => {
-      pointersDownByIdSet.add(e.pointerId);
-      setState((s) => {
-        s.pointerDownCount = pointersDownByIdSet.size;
-      });
-      onPointerDown2(e);
-    };
-  }
-  {
-    let onPointerUp2 = onPointerUp;
-    onPointerUp = (e: PointerEvent) => {
-      pointersDownByIdSet.delete(e.pointerId);
-      setState((s) => {
-        s.pointerDownCount = pointersDownByIdSet.size;
-      });
-      onPointerUp2(e);
-    };
-  }
-  {
-    let onPointerCancel2 = onPointerCancel;
-    onPointerCancel = (e: PointerEvent) => {
-      pointersDownByIdSet.delete(e.pointerId);
-      setState((s) => {
-        s.pointerDownCount = pointersDownByIdSet.size;
-      });
-      onPointerCancel2(e);
-    };
-  }
-  {
-    let onPointerMove2 = onPointerMove;
-    onPointerMove = (e: PointerEvent) => {
-      onPointerMove2(e);
-      let canvas2 = canvas();
-      if (canvas2 === undefined) {
-        return;
-      }
-      let rect = canvas2.getBoundingClientRect();
-      let x = e.clientX - rect.left;
-      let y = e.clientY - rect.top;
-      setState((s) => {
-        s.mousePos = new THREE.Vector2(x, y);
-      });
-    };
-  }
+  const onPointerDown = (e: PointerEvent) => {
+    pointersDownByIdSet.add(e.pointerId);
+    setState((s) => {
+      s.pointerDownCount = pointersDownByIdSet.size;
+    });
+    panScaleControl.onPointerDown(e);
+  };
+  
+  const onPointerUp = (e: PointerEvent) => {
+    pointersDownByIdSet.delete(e.pointerId);
+    setState((s) => {
+      s.pointerDownCount = pointersDownByIdSet.size;
+    });
+    panScaleControl.onPointerUp(e);
+  };
+  
+  const onPointerCancel = (e: PointerEvent) => {
+    pointersDownByIdSet.delete(e.pointerId);
+    setState((s) => {
+      s.pointerDownCount = pointersDownByIdSet.size;
+    });
+    panScaleControl.onPointerCancel(e);
+  };
 
-  let onPointerOut = (_e: PointerEvent) => {
+  const onPointerMove = (e: PointerEvent) => {
+    panScaleControl.onPointerMove(e);
+    let canvas2 = canvas();
+    if (canvas2 === undefined) {
+      return;
+    }
+    let rect = canvas2.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    setState((s) => {
+      s.mousePos = new THREE.Vector2(x, y);
+    });
+  };
+  
+
+  const onPointerOut = (_e: PointerEvent) => {
     setState((s) => {
       s.mousePos = undefined;
     });
@@ -435,7 +422,7 @@ const PixelEditorView: Component<{
         onPointerCancel={onPointerCancel}
         onPointerMove={onPointerMove}
         onPointerOut={onPointerOut}
-        onWheel={onWheel}
+        onWheel={panScaleControl.onWheel}
       />
       <div
         class="p-1"
