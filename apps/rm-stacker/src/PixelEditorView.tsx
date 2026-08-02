@@ -232,6 +232,19 @@ const PixelEditorView: Component<{
     },
   );
 
+  const  createImageCanvasCacheEntry = (image: SideImage) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = image.data.width;
+    canvas.height = image.data.height;
+    const ctx = canvas.getContext("2d")!;
+    const imageCanvasCacheData = {
+      canvas: canvas,
+      ctx: ctx,
+    };
+    imageCanvasCache.set(image.data, imageCanvasCacheData)
+    return imageCanvasCacheData
+  }
+
   const render = () => untrack(() => {
     const _ctx = ctx();
     if (_ctx === undefined) {
@@ -252,18 +265,7 @@ const PixelEditorView: Component<{
     _ctx.strokeStyle = "red";
     _ctx.lineWidth = 1 / _scale;
     for (const image of state.images) {
-      let imageCanvasCacheData = imageCanvasCache.get(image.data);
-      if (imageCanvasCacheData === undefined) {
-        const canvas = document.createElement("canvas");
-        canvas.width = image.data.width;
-        canvas.height = image.data.height;
-        const ctx = canvas.getContext("2d")!;
-        imageCanvasCacheData = {
-          canvas: canvas,
-          ctx: ctx,
-        };
-        imageCanvasCache.set(image.data, imageCanvasCacheData);
-      }
+      const imageCanvasCacheData = imageCanvasCache.get(image.data) ??  createImageCanvasCacheEntry(image)
       imageCanvasCacheData.ctx.putImageData(image.data, 0, 0);
       const lastImageSmoothingEnabled = _ctx.imageSmoothingEnabled;
       _ctx.imageSmoothingEnabled = false;
