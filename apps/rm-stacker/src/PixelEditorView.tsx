@@ -7,6 +7,12 @@ import { createDrawMode } from "./modes/DrawMode";
 import { Effect } from "./Effect";
 import Palette from "./Palette";
 
+interface SideImage {
+  label: "Front" | "Left" | "Right" | "Back" | "Top" | "Bottom",
+  pos: THREE.Vector2,
+  data: ImageData,
+}
+
 const createSquareViewImageData = (imageSize: number, squareSize: number): ImageData => {
   let data = new ImageData(imageSize, imageSize);
   let offsetPx = (imageSize - squareSize) / 2;
@@ -21,6 +27,13 @@ const createSquareViewImageData = (imageSize: number, squareSize: number): Image
   }
   return data;
 };
+
+
+const findCollidingSideImage = ({x, y}: {x: number, y: number}, images: SideImage[]) => {
+  return images.find(({pos, data: {height, width}}) => (
+    pos.x < x && pos.y < y && pos.x + width >= x && pos.y + height >= y
+  ))
+}
 
 const PixelEditorView: Component<{
   ref?: (ctx: {
@@ -38,11 +51,7 @@ const PixelEditorView: Component<{
     mousePos: THREE.Vector2 | undefined,
     pointerDownCount: number,
     mkMode: (modeParams: ModeParams) => Mode,
-    images: {
-      label: "Front" | "Left" | "Right" | "Back" | "Top" | "Bottom",
-      pos: THREE.Vector2,
-      data: ImageData,
-    }[],
+    images: SideImage[],
     selectedColourAccessor: Accessor<string> | undefined,
   }>({
     mousePos: undefined,
@@ -115,49 +124,47 @@ const PixelEditorView: Component<{
       }
       case "WritePixel": {
         let { x, y, colour, } = effect;
+
         let colour2 = new THREE.Color(colour);
         colour2.convertLinearToSRGB();
+
         let r = Math.max(0, Math.min(255, Math.round(colour2.r * 255.0)));
         let g = Math.max(0, Math.min(255, Math.round(colour2.g * 255.0)));
         let b = Math.max(0, Math.min(255, Math.round(colour2.b * 255.0)));
-        for (let image of state.images) {
-          let pos = image.pos;
-          let width = image.data.width;
-          let height = image.data.height;
-          if (pos.x > x || pos.y > y || pos.x + width <= x || pos.y + height <= y) {
-            continue;
-          }
-          let localX = x - pos.x;
-          let localY = y - pos.y;
-          let offset = (localY * width + localX) << 2;
-          image.data.data[offset + 0] = r;
-          image.data.data[offset + 1] = g;
-          image.data.data[offset + 2] = b;
-          image.data.data[offset + 3] = 255;
-          render();
+
+        const image = findCollidingSideImage(effect, state.images)
+        if(!image) {
           break;
         }
+
+        let localX = x - image.pos.x;
+        let localY = y - image.pos.y;
+        let offset = (localY * image.data.width + localX) << 2;
+        image.data.data[offset + 0] = r;
+        image.data.data[offset + 1] = g;
+        image.data.data[offset + 2] = b;
+        image.data.data[offset + 3] = 255;
+        render();
+
         break;
       }
       case "ErasePixel": {
         let { x, y, } = effect;
-        for (let image of state.images) {
-          let pos = image.pos;
-          let width = image.data.width;
-          let height = image.data.height;
-          if (pos.x > x || pos.y > y || pos.x + width <= x || pos.y + height <= y) {
-            continue;
-          }
-          let localX = x - pos.x;
-          let localY = y - pos.y;
-          let offset = (localY * width + localX) << 2;
-          image.data.data[offset + 0] = 0;
-          image.data.data[offset + 1] = 0;
-          image.data.data[offset + 2] = 0;
-          image.data.data[offset + 3] = 0;
-          render();
+
+        const image = findCollidingSideImage(effect, state.images)
+        if(!image) {
           break;
         }
+
+        let localX = x - image.pos.x;
+        let localY = y - image.pos.y;
+        let offset = (localY * image.data.width + localX) << 2;
+        image.data.data[offset + 0] = 0;
+        image.data.data[offset + 1] = 0;
+        image.data.data[offset + 2] = 0;
+        image.data.data[offset + 3] = 0;
+        render();
+
         break;
       }
       default: {
