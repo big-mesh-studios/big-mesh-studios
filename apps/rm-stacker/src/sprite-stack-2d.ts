@@ -141,7 +141,7 @@ export class SpriteStack2D {
       this.rasterShadow(frame, tw, th, fposmod(angle, 360), posY);
     }
 
-    const data = this.sliceData;
+    let data = this.sliceData;
     if (this.isBackHemisphere(angle) && this.src.dataBack) {
       data = this.src.dataBack;
     }
@@ -193,7 +193,7 @@ export class SpriteStack2D {
     const fw = Math.floor(img.width / 2);
     const fh = Math.floor(img.height / 2);
     if (fw <= 0 || fh <= 0) return frames;
-    const n = 4;
+    let n = 4;
     if (this.opts.sliceCount > 0) n = Math.min(this.opts.sliceCount, n);
     for (let i = 0; i < n; i++) {
       const ox = (i % 2) * fw, oy = Math.floor(i / 2) * fh;
