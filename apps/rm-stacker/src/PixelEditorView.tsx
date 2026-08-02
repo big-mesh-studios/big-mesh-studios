@@ -13,6 +13,11 @@ interface SideImage {
   data: ImageData,
 }
 
+interface ImageCanvasCacheData {
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+}
+
 type ModeFactory = (params: ModeParams) => Mode
 
 const createSquareViewImageData = (imageSize: number, squareSize: number): ImageData => {
@@ -175,10 +180,7 @@ const PixelEditorView: Component<{
       }
     }
   });
-  let imageCanvasCache = new WeakMap<ImageData, {
-    canvas: HTMLCanvasElement,
-    ctx: CanvasRenderingContext2D,
-  }>();
+  let imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
   let modeParams: ModeParams = {
     mousePos: () => state.mousePos,
     pointerDownCount: () => state.pointerDownCount,
@@ -249,23 +251,23 @@ const PixelEditorView: Component<{
     ctx2.strokeStyle = "red";
     ctx2.lineWidth = 1 / scale2;
     for (let image of state.images) {
-      let imageCanvasCache2 = imageCanvasCache.get(image.data);
-      if (imageCanvasCache2 === undefined) {
-        let canvas3 = document.createElement("canvas");
-        canvas3.width = image.data.width;
-        canvas3.height = image.data.height;
-        let ctx3 = canvas3.getContext("2d")!;
-        imageCanvasCache2 = {
-          canvas: canvas3,
-          ctx: ctx3,
+      let imageCanvasCacheData = imageCanvasCache.get(image.data);
+      if (imageCanvasCacheData === undefined) {
+        let canvas = document.createElement("canvas");
+        canvas.width = image.data.width;
+        canvas.height = image.data.height;
+        let ctx = canvas.getContext("2d")!;
+        imageCanvasCacheData = {
+          canvas: canvas,
+          ctx: ctx,
         };
-        imageCanvasCache.set(image.data, imageCanvasCache2);
+        imageCanvasCache.set(image.data, imageCanvasCacheData);
       }
-      imageCanvasCache2.ctx.putImageData(image.data, 0, 0);
+      imageCanvasCacheData.ctx.putImageData(image.data, 0, 0);
       let lastImageSmoothingEnabled = ctx2.imageSmoothingEnabled;
       ctx2.imageSmoothingEnabled = false;
       ctx2.drawImage(
-        imageCanvasCache2.canvas,
+        imageCanvasCacheData.canvas,
         image.pos.x,
         image.pos.y,
       );
