@@ -4,5 +4,4 @@ import "@fortawesome/fontawesome-free/css/all.css";
 import { render } from "@solidjs/web";
 import App from "./App";
 
-render(() => <App/>, document.getElementById("root")!);
-
+render(() => <App />, document.getElementById("root")!);

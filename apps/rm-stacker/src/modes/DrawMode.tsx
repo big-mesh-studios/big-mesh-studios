@@ -2,9 +2,12 @@ import { createEffect, createMemo, untrack } from "solid-js";
 import { Mode, ModeParams } from "../Mode";
 import { Effect } from "../Effect";
 
-export function createDrawMode({erase, modeParams: {mousePos, screenPtToWorldPt, pointerDownCount, doEffect, selectedColour, onUpdate}}: {
-  erase: boolean,
-  modeParams: ModeParams,
+export function createDrawMode({
+  erase,
+  modeParams: { mousePos, screenPtToWorldPt, pointerDownCount, doEffect, selectedColour, onUpdate },
+}: {
+  erase: boolean;
+  modeParams: ModeParams;
 }): Mode {
   const pixelPosUnderMouse = createMemo(() => {
     const _mousePos = mousePos();
@@ -20,11 +23,8 @@ export function createDrawMode({erase, modeParams: {mousePos, screenPtToWorldPt,
     return worldPos;
   });
   createEffect(
-    () => [
-      pixelPosUnderMouse(),
-      pointerDownCount(),
-    ] as const,
-    ([ pt, pointerDownCount, ]) => {
+    () => [pixelPosUnderMouse(), pointerDownCount()] as const,
+    ([pt, pointerDownCount]) => {
       if (pt === undefined) {
         return;
       }
@@ -39,7 +39,7 @@ export function createDrawMode({erase, modeParams: {mousePos, screenPtToWorldPt,
           doEffect(Effect.writePixel(pt.x, pt.y, _selectedColour));
         }
       }
-      untrack(onUpdate)
+      untrack(onUpdate);
     },
   );
   const overlayDrawing = createMemo(() => {
@@ -49,19 +49,13 @@ export function createDrawMode({erase, modeParams: {mousePos, screenPtToWorldPt,
     }
     return (ctx: CanvasRenderingContext2D) => {
       ctx.fillStyle = "green";
-      ctx.fillRect(
-        pt.x,
-        pt.y,
-        1.0,
-        1.0,
-      );
+      ctx.fillRect(pt.x, pt.y, 1.0, 1.0);
     };
   });
-  
+
   return {
-    activeModeButton: () => erase ? "Erase" : "Draw",
+    activeModeButton: () => (erase ? "Erase" : "Draw"),
     overlayDrawing: overlayDrawing,
     disablePanZoom: createMemo(() => pointerDownCount() === 1),
   };
 }
-

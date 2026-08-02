@@ -1,26 +1,33 @@
-
 type ViewSpec = {
-  img: ImageData,
-  axis: 0 | 1 | 2,
-  fixedCoords: (px: number, py: number) => [number, number, number],
-  nearestAscending: boolean,
+  img: ImageData;
+  axis: 0 | 1 | 2;
+  fixedCoords: (px: number, py: number) => [number, number, number];
+  nearestAscending: boolean;
 };
 
 export function solveVoxels(params: {
-  front: ImageData,
-  left: ImageData,
-  right: ImageData,
-  back: ImageData,
-  top: ImageData,
-  bottom: ImageData,
-  out: Uint8Array,
+  front: ImageData;
+  left: ImageData;
+  right: ImageData;
+  back: ImageData;
+  top: ImageData;
+  bottom: ImageData;
+  out: Uint8Array;
 }) {
   const { front, left, right, back, top, bottom, out } = params;
   const size = front.width;
   if (
-    front.height !== size || left.width !== size || left.height !== size || right.width !== size ||
-    right.height !== size || back.width !== size || back.height !== size || top.width !== size ||
-    top.height !== size || bottom.width !== size || bottom.height !== size
+    front.height !== size ||
+    left.width !== size ||
+    left.height !== size ||
+    right.width !== size ||
+    right.height !== size ||
+    back.width !== size ||
+    back.height !== size ||
+    top.width !== size ||
+    top.height !== size ||
+    bottom.width !== size ||
+    bottom.height !== size
   ) {
     throw new Error("All image faces are expected to be square and of same size");
   }

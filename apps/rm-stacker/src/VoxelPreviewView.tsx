@@ -1,10 +1,4 @@
-import {
-  Component,
-  createRenderEffect,
-  createSignal,
-  onSettled,
-  runWithOwner,
-} from "solid-js";
+import { Component, createRenderEffect, createSignal, onSettled, runWithOwner } from "solid-js";
 import {
   Fn,
   If,
@@ -45,11 +39,12 @@ const v3min = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
 const v3max = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
   a.add(b).add(a.sub(b).abs()).mult(float(0.5));
 
-const rotationY = (y: Node<"float">): Node<"mat3"> => mat3(
-  vec3(y.cos(), float(0), y.sin().negate()),
-  vec3(float(0), float(1), float(0)),
-  vec3(y.sin(), float(0), y.cos()),
-);
+const rotationY = (y: Node<"float">): Node<"mat3"> =>
+  mat3(
+    vec3(y.cos(), float(0), y.sin().negate()),
+    vec3(float(0), float(1), float(0)),
+    vec3(y.sin(), float(0), y.cos()),
+  );
 
 const vertexFn = Fn(() => {
   vUv.assign(positionAttr.mult(vec2(0.5)).add(vec2(0.5)));
@@ -64,11 +59,7 @@ const fragmentFn = Fn(() => {
   const uv = fragCoord.mult(float(2)).sub(uResolution).div(uResolution.y);
   const rot = rotationY(t);
   // rmsl has no vec3 * mat3, so rotate through the transpose (identical result)
-  const ro = rot.transpose().multVec(vec3(
-    float(0),
-    float(0),
-    float(-1.8),
-  ));
+  const ro = rot.transpose().multVec(vec3(float(0), float(0), float(-1.8)));
   const rd = rot.transpose().multVec(vec3(uv.x, uv.y, float(2)).normalize());
   const color = vec4(float(0), float(0), float(0), float(0)).toVar();
 
@@ -93,13 +84,15 @@ const fragmentFn = Fn(() => {
     const eps = float(0.015625);
     For(
       () => tnear.toVar(),
-      (tt) => tt.lessThan(tfar),
-      (tt) => {
+      tt => tt.lessThan(tfar),
+      tt => {
         tt.assign(tt.add(stepSize));
       },
-      (tt) => {
+      tt => {
         const p = ro.add(rd.mult(tt)).toVar();
-        const inside = p.greaterThan(vec3(float(-0.51))).all()
+        const inside = p
+          .greaterThan(vec3(float(-0.51)))
+          .all()
           .and(p.lessThan(vec3(float(0.51))).all());
         If(inside, () => {
           const pc = p.add(vec3(float(0.5))).toVar();
@@ -110,12 +103,21 @@ const fragmentFn = Fn(() => {
             // direction term is a fallback so a zero/weak gradient (e.g. on a
             // surface at the volume boundary) never produces a NaN normal.
             const grad = vec3(
-              ((uVoxels as any).texture(pc.sub(vec3(eps, float(0), float(0)))) as Node<"vec4">).a
-                .sub(((uVoxels as any).texture(pc.add(vec3(eps, float(0), float(0)))) as Node<"vec4">).a),
-              ((uVoxels as any).texture(pc.sub(vec3(float(0), eps, float(0)))) as Node<"vec4">).a
-                .sub(((uVoxels as any).texture(pc.add(vec3(float(0), eps, float(0)))) as Node<"vec4">).a),
-              ((uVoxels as any).texture(pc.sub(vec3(float(0), float(0), eps))) as Node<"vec4">).a
-                .sub(((uVoxels as any).texture(pc.add(vec3(float(0), float(0), eps))) as Node<"vec4">).a),
+              (
+                (uVoxels as any).texture(pc.sub(vec3(eps, float(0), float(0)))) as Node<"vec4">
+              ).a.sub(
+                ((uVoxels as any).texture(pc.add(vec3(eps, float(0), float(0)))) as Node<"vec4">).a,
+              ),
+              (
+                (uVoxels as any).texture(pc.sub(vec3(float(0), eps, float(0)))) as Node<"vec4">
+              ).a.sub(
+                ((uVoxels as any).texture(pc.add(vec3(float(0), eps, float(0)))) as Node<"vec4">).a,
+              ),
+              (
+                (uVoxels as any).texture(pc.sub(vec3(float(0), float(0), eps))) as Node<"vec4">
+              ).a.sub(
+                ((uVoxels as any).texture(pc.add(vec3(float(0), float(0), eps))) as Node<"vec4">).a,
+              ),
             );
             const n = grad.sub(rd.mult(float(0.001))).normalize();
             const diffuse = n.dot(uLightDir).max(float(0));
@@ -141,20 +143,23 @@ if (!fragmentGLSL.includes("uniform sampler2D uVoxels;")) {
 }
 fragmentGLSL = fragmentGLSL.replace("uniform sampler2D uVoxels;", "uniform sampler3D uVoxels;");
 // rmsl emits no default precision for samplers, so declare it for the patched sampler3D
-fragmentGLSL = fragmentGLSL.replace("precision highp float;", "precision highp float;\nprecision highp sampler3D;");
+fragmentGLSL = fragmentGLSL.replace(
+  "precision highp float;",
+  "precision highp float;\nprecision highp sampler3D;",
+);
 
 type WebGLState = {
-  gl: WebGL2RenderingContext,
-  program: WebGLProgram,
-  positionLocation: number,
-  uTimeLocation: WebGLUniformLocation | null,
-  uResolutionLocation: WebGLUniformLocation | null,
-  uVoxelsLocation: WebGLUniformLocation | null,
-  uLightDirLocation: WebGLUniformLocation | null,
-  uLightColourLocation: WebGLUniformLocation | null,
-  uAmbientColourLocation: WebGLUniformLocation | null,
-  texture: WebGLTexture,
-  buffer: WebGLBuffer,
+  gl: WebGL2RenderingContext;
+  program: WebGLProgram;
+  positionLocation: number;
+  uTimeLocation: WebGLUniformLocation | null;
+  uResolutionLocation: WebGLUniformLocation | null;
+  uVoxelsLocation: WebGLUniformLocation | null;
+  uLightDirLocation: WebGLUniformLocation | null;
+  uLightColourLocation: WebGLUniformLocation | null;
+  uAmbientColourLocation: WebGLUniformLocation | null;
+  texture: WebGLTexture;
+  buffer: WebGLBuffer;
 };
 
 const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
@@ -192,11 +197,7 @@ const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
     throw new Error("Failed to create buffer");
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(
-    gl.ARRAY_BUFFER,
-    new Float32Array([-1, -1, 3, -1, -1, 3]),
-    gl.STATIC_DRAW,
-  );
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
 
   const texture = gl.createTexture();
   if (texture === null) {
@@ -210,7 +211,15 @@ const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
   gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
   gl.texImage3D(
-    gl.TEXTURE_3D, 0, gl.RGBA8, 1, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+    gl.TEXTURE_3D,
+    0,
+    gl.RGBA8,
+    1,
+    1,
+    1,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
     new Uint8Array([0, 0, 0, 0]),
   );
 
@@ -239,13 +248,11 @@ const LIGHT_COLOUR = new Float32Array([1.0, 0.97, 0.9]);
 const AMBIENT_COLOUR = new Float32Array([0.35, 0.35, 0.4]);
 
 const VoxelPreviewView: Component<{
-  ref?: (ctx: {
-    setVoxels: (out: Uint8Array, size: number) => void,
-  }) => void,
-}> = (props) => {
-  const [ canvas, setCanvas, ] = createSignal<HTMLCanvasElement>();
-  const [ webgl, setWebgl, ] = createSignal<WebGLState>();
-  const [ glError, setGlError, ] = createSignal<string | undefined>();
+  ref?: (ctx: { setVoxels: (out: Uint8Array, size: number) => void }) => void;
+}> = props => {
+  const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
+  const [webgl, setWebgl] = createSignal<WebGLState>();
+  const [glError, setGlError] = createSignal<string | undefined>();
 
   const setVoxels = (out: Uint8Array, size: number) => {
     const _webgl = webgl();
@@ -254,9 +261,7 @@ const VoxelPreviewView: Component<{
     }
     const gl = _webgl.gl;
     gl.bindTexture(gl.TEXTURE_3D, _webgl.texture);
-    gl.texImage3D(
-      gl.TEXTURE_3D, 0, gl.RGBA8, size, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, out,
-    );
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, size, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, out);
   };
 
   const render = () => {
@@ -286,7 +291,7 @@ const VoxelPreviewView: Component<{
 
   createRenderEffect(
     () => props.ref,
-    (ref) => {
+    ref => {
       if (ref === undefined) {
         return;
       }
@@ -303,20 +308,23 @@ const VoxelPreviewView: Component<{
     if (_canvas === undefined) {
       return;
     }
-    const gl = _canvas.getContext("webgl2", { antialias: false, });
+    const gl = _canvas.getContext("webgl2", { antialias: false });
     if (gl === null) {
       setGlError("WebGL2 is not supported in this browser");
       return;
     }
 
-    const webglState = tryCatch(() => setupWebGL(gl), (e) => {
-      setGlError(e instanceof Error ? e.message : String(e))
-    })
+    const webglState = tryCatch(
+      () => setupWebGL(gl),
+      e => {
+        setGlError(e instanceof Error ? e.message : String(e));
+      },
+    );
 
-    if(!webglState){
-      return
+    if (!webglState) {
+      return;
     }
- 
+
     setWebgl(webglState);
 
     const resizeObserver = new ResizeObserver(() => {
@@ -341,29 +349,29 @@ const VoxelPreviewView: Component<{
   return (
     <div
       style={{
-        "position": "relative",
-        "width": "100%",
-        "height": "100%",
-        "overflow": "hidden",
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        overflow: "hidden",
       }}
     >
       {glError() === undefined ? (
         <canvas
           ref={setCanvas}
           style={{
-            "width": "100%",
-            "height": "100%",
-            "display": "block",
+            width: "100%",
+            height: "100%",
+            display: "block",
             "touch-action": "none",
           }}
         />
       ) : (
         <div
           style={{
-            "display": "flex",
+            display: "flex",
             "align-items": "center",
             "justify-content": "center",
-            "height": "100%",
+            height: "100%",
           }}
         >
           {glError()}
