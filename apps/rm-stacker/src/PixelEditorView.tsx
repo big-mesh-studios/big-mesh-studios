@@ -43,13 +43,13 @@ const PixelEditorView: Component<{
   }) => void,
   onUpdate():void
 }> = (props) => {
-  let frontViewImageData = createSquareViewImageData(32, 16);
-  let leftViewImageData = createSquareViewImageData(32, 16);
-  let rightViewImageData = createSquareViewImageData(32, 16);
-  let backViewImageData = createSquareViewImageData(32, 16);
-  let topViewImageData = createSquareViewImageData(32, 16);
-  let bottomViewImageData = createSquareViewImageData(32, 16);
-  let [ state, setState, ] = createStore<{
+  const frontViewImageData = createSquareViewImageData(32, 16);
+  const leftViewImageData = createSquareViewImageData(32, 16);
+  const rightViewImageData = createSquareViewImageData(32, 16);
+  const backViewImageData = createSquareViewImageData(32, 16);
+  const topViewImageData = createSquareViewImageData(32, 16);
+  const bottomViewImageData = createSquareViewImageData(32, 16);
+  const [ state, setState, ] = createStore<{
     mousePos: THREE.Vector2 | undefined,
     pointerDownCount: number,
     modeFactory: ModeFactory,
@@ -93,55 +93,55 @@ const PixelEditorView: Component<{
     ],
     selectedColourAccessor: undefined,
   });
-  let pointersDownByIdSet = new Set<number>();
-  let setModeFactory = (modeFactory: ModeFactory) => {
+  const pointersDownByIdSet = new Set<number>();
+  const setModeFactory = (modeFactory: ModeFactory) => {
     setState((s) => {
       s.modeFactory = modeFactory;
     });
   };
-  let selectedColour = createMemo(() => state.selectedColourAccessor?.());
-  let [ canvas, setCanvas, ] = createSignal<HTMLCanvasElement>();
-  let [ ctx, setCtx, ] = createSignal<CanvasRenderingContext2D>();
-  let [ canvasSize, setCanvasSize, ] = createSignal<THREE.Vector2 | undefined>();
-  let [ pan, setPan, ] = createSignal(new THREE.Vector2(-10.0, -10.0));
-  let [ scale, setScale, ] = createSignal(8);
-  let worldPtToScreenPt = (pt: THREE.Vector2, out?: THREE.Vector2): THREE.Vector2 => {
+  const selectedColour = createMemo(() => state.selectedColourAccessor?.());
+  const [ canvas, setCanvas, ] = createSignal<HTMLCanvasElement>();
+  const [ ctx, setCtx, ] = createSignal<CanvasRenderingContext2D>();
+  const [ canvasSize, setCanvasSize, ] = createSignal<THREE.Vector2 | undefined>();
+  const [ pan, setPan, ] = createSignal(new THREE.Vector2(-10.0, -10.0));
+  const [ scale, setScale, ] = createSignal(8);
+  const worldPtToScreenPt = (pt: THREE.Vector2, out?: THREE.Vector2): THREE.Vector2 => {
     out ??= new THREE.Vector2();
     out.copy(pt);
     out.sub(pan());
     out.multiplyScalar(scale());
     return out;
   };
-  let screenPtToWorldPt = (pt: THREE.Vector2, out?: THREE.Vector2): THREE.Vector2 => {
+  const screenPtToWorldPt = (pt: THREE.Vector2, out?: THREE.Vector2): THREE.Vector2 => {
     out ??= new THREE.Vector2();
     out.copy(pt);
     out.multiplyScalar(1.0 / latest(scale));
     out.add(latest(pan));
     return out;
   };
-  let doEffect = (effect: Effect) => untrack(() => {
+  const doEffect = (effect: Effect) => untrack(() => {
     switch (effect.type) {
       case "NoOperation": {
         break;
       }
       case "WritePixel": {
-        let { x, y, colour, } = effect;
+        const { x, y, colour, } = effect;
 
-        let colour2 = new THREE.Color(colour);
+        const colour2 = new THREE.Color(colour);
         colour2.convertLinearToSRGB();
 
-        let r = Math.max(0, Math.min(255, Math.round(colour2.r * 255.0)));
-        let g = Math.max(0, Math.min(255, Math.round(colour2.g * 255.0)));
-        let b = Math.max(0, Math.min(255, Math.round(colour2.b * 255.0)));
+        const r = Math.max(0, Math.min(255, Math.round(colour2.r * 255.0)));
+        const g = Math.max(0, Math.min(255, Math.round(colour2.g * 255.0)));
+        const b = Math.max(0, Math.min(255, Math.round(colour2.b * 255.0)));
 
         const image = findCollidingSideImage(effect, state.images)
         if(!image) {
           break;
         }
 
-        let localX = x - image.pos.x;
-        let localY = y - image.pos.y;
-        let offset = (localY * image.data.width + localX) << 2;
+        const localX = x - image.pos.x;
+        const localY = y - image.pos.y;
+        const offset = (localY * image.data.width + localX) << 2;
         image.data.data[offset + 0] = r;
         image.data.data[offset + 1] = g;
         image.data.data[offset + 2] = b;
