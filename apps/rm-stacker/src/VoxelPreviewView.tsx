@@ -247,39 +247,39 @@ const VoxelPreviewView: Component<{
   let [ glError, setGlError, ] = createSignal<string | undefined>();
 
   let setVoxels = (out: Uint8Array, size: number) => {
-    let w = webgl();
-    if (w === undefined) {
+    let _webgl = webgl();
+    if (_webgl === undefined) {
       return;
     }
-    let gl = w.gl;
-    gl.bindTexture(gl.TEXTURE_3D, w.texture);
+    let gl = _webgl.gl;
+    gl.bindTexture(gl.TEXTURE_3D, _webgl.texture);
     gl.texImage3D(
       gl.TEXTURE_3D, 0, gl.RGBA8, size, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, out,
     );
   };
 
   let render = () => {
-    let w = webgl();
-    let canvas2 = canvas();
-    if (w === undefined || canvas2 === undefined) {
+    let _webgl = webgl();
+    let _canvas = canvas();
+    if (_webgl === undefined || _canvas === undefined) {
       return;
     }
-    let gl = w.gl;
-    let width = canvas2.width;
-    let height = canvas2.height;
+    let gl = _webgl.gl;
+    let width = _canvas.width;
+    let height = _canvas.height;
     gl.viewport(0, 0, width, height);
-    gl.useProgram(w.program);
-    gl.uniform1f(w.uTimeLocation, performance.now() / 1000.0);
-    gl.uniform2f(w.uResolutionLocation, width, height);
+    gl.useProgram(_webgl.program);
+    gl.uniform1f(_webgl.uTimeLocation, performance.now() / 1000.0);
+    gl.uniform2f(_webgl.uResolutionLocation, width, height);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_3D, w.texture);
-    gl.uniform1i(w.uVoxelsLocation, 0);
-    gl.uniform3fv(w.uLightDirLocation, LIGHT_DIR);
-    gl.uniform3fv(w.uLightColourLocation, LIGHT_COLOUR);
-    gl.uniform3fv(w.uAmbientColourLocation, AMBIENT_COLOUR);
-    gl.bindBuffer(gl.ARRAY_BUFFER, w.buffer);
-    gl.enableVertexAttribArray(w.positionLocation);
-    gl.vertexAttribPointer(w.positionLocation, 2, gl.FLOAT, false, 0, 0);
+    gl.bindTexture(gl.TEXTURE_3D, _webgl.texture);
+    gl.uniform1i(_webgl.uVoxelsLocation, 0);
+    gl.uniform3fv(_webgl.uLightDirLocation, LIGHT_DIR);
+    gl.uniform3fv(_webgl.uLightColourLocation, LIGHT_COLOUR);
+    gl.uniform3fv(_webgl.uAmbientColourLocation, AMBIENT_COLOUR);
+    gl.bindBuffer(gl.ARRAY_BUFFER, _webgl.buffer);
+    gl.enableVertexAttribArray(_webgl.positionLocation);
+    gl.vertexAttribPointer(_webgl.positionLocation, 2, gl.FLOAT, false, 0, 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
 
@@ -298,11 +298,11 @@ const VoxelPreviewView: Component<{
   );
 
   onSettled(() => {
-    let canvas2 = canvas();
-    if (canvas2 === undefined) {
+    let _canvas = canvas();
+    if (_canvas === undefined) {
       return;
     }
-    let gl = canvas2.getContext("webgl2", { antialias: false, });
+    let gl = _canvas.getContext("webgl2", { antialias: false, });
     if (gl === null) {
       setGlError("WebGL2 is not supported in this browser");
       return;
@@ -316,12 +316,12 @@ const VoxelPreviewView: Component<{
     }
     setWebgl(w);
     let resizeObserver = new ResizeObserver(() => {
-      let rect = canvas2.getBoundingClientRect();
+      let rect = _canvas.getBoundingClientRect();
       let dpr = window.devicePixelRatio || 1;
-      canvas2.width = Math.max(1, Math.round(rect.width * dpr));
-      canvas2.height = Math.max(1, Math.round(rect.height * dpr));
+      _canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      _canvas.height = Math.max(1, Math.round(rect.height * dpr));
     });
-    resizeObserver.observe(canvas2);
+    resizeObserver.observe(_canvas);
     let rafId = requestAnimationFrame(function renderLoop() {
       render();
       rafId = requestAnimationFrame(renderLoop);

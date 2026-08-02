@@ -2,28 +2,27 @@ import { createEffect, createMemo, untrack } from "solid-js";
 import { Mode, ModeParams } from "../Mode";
 import { Effect } from "../Effect";
 
-export function createDrawMode(params: {
+export function createDrawMode({erase, modeParams: {mousePos, screenPtToWorldPt, pointerDownCount, doEffect, selectedColour, onUpdate}}: {
   erase: boolean,
   modeParams: ModeParams,
 }): Mode {
-  let modeParams = params.modeParams;
   let pixelPosUnderMouse = createMemo(() => {
-    let pt = modeParams.mousePos();
-    if (pt === undefined) {
+    let _mousePos = mousePos();
+    if (_mousePos === undefined) {
       return undefined;
     }
-    let pt2 = modeParams.screenPtToWorldPt(pt);
-    if (pt2 === undefined) {
+    let worldPos = screenPtToWorldPt(_mousePos);
+    if (worldPos === undefined) {
       return undefined;
     }
-    pt2.x = Math.round(pt2.x - 0.5);
-    pt2.y = Math.round(pt2.y - 0.5);
-    return pt2;
+    worldPos.x = Math.round(worldPos.x - 0.5);
+    worldPos.y = Math.round(worldPos.y - 0.5);
+    return worldPos;
   });
   createEffect(
     () => [
       pixelPosUnderMouse(),
-      modeParams.pointerDownCount(),
+      pointerDownCount(),
     ] as const,
     ([ pt, pointerDownCount, ]) => {
       if (pt === undefined) {
@@ -32,15 +31,15 @@ export function createDrawMode(params: {
       if (pointerDownCount !== 1) {
         return;
       }
-      if (params.erase) {
-        modeParams.doEffect(Effect.erasePixel(pt.x, pt.y));
+      if (erase) {
+        doEffect(Effect.erasePixel(pt.x, pt.y));
       } else {
-        let selectedColour = untrack(modeParams.selectedColour);
-        if (selectedColour !== undefined) {
-          modeParams.doEffect(Effect.writePixel(pt.x, pt.y, selectedColour));
+        let _selectedColour = untrack(selectedColour);
+        if (_selectedColour !== undefined) {
+          doEffect(Effect.writePixel(pt.x, pt.y, _selectedColour));
         }
       }
-      untrack(modeParams.onUpdate)
+      untrack(onUpdate)
     },
   );
   let overlayDrawing = createMemo(() => {
@@ -59,9 +58,9 @@ export function createDrawMode(params: {
     };
   });
   return {
-    activeModeButton: () => params.erase ? "Erase" : "Draw",
+    activeModeButton: () => erase ? "Erase" : "Draw",
     overlayDrawing: overlayDrawing,
-    disablePanZoom: createMemo(() => modeParams.pointerDownCount() === 1),
+    disablePanZoom: createMemo(() => pointerDownCount() === 1),
   };
 }
 

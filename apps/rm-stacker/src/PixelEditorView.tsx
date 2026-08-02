@@ -198,24 +198,25 @@ const PixelEditorView: Component<{
   let activeModeButton = createMemo(() => mode().activeModeButton?.());
   let overlayDrawing = createMemo(() => mode().overlayDrawing?.());
   let disablePanZoom = createMemo(() => mode().disablePanZoom?.() ?? false);
+
   onSettled(() => {
-    let canvas2 = canvas();
-    if (canvas2 === undefined) {
+    let _canvas = canvas();
+    if (_canvas === undefined) {
       return;
     }
-    setCtx(canvas2.getContext("2d") ?? undefined);
+    setCtx(_canvas.getContext("2d") ?? undefined);
     let resizeObserver = new ResizeObserver(() => {
-      let rect = canvas2.getBoundingClientRect();
-      canvas2.width = rect.width;
-      canvas2.height = rect.height;
+      let rect = _canvas.getBoundingClientRect();
+      _canvas.width = rect.width;
+      _canvas.height = rect.height;
       setCanvasSize(new THREE.Vector2(
         rect.width,
         rect.height,
       ));
     });
-    resizeObserver.observe(canvas2);
+    resizeObserver.observe(_canvas);
     return () => {
-      resizeObserver.unobserve(canvas2);
+      resizeObserver.unobserve(_canvas);
       resizeObserver.disconnect();
     };
   });
@@ -232,24 +233,24 @@ const PixelEditorView: Component<{
   );
 
   let render = () => untrack(() => {
-    let ctx2 = ctx();
-    if (ctx2 === undefined) {
+    let _ctx = ctx();
+    if (_ctx === undefined) {
       return;
     }
-    let canvasSize2 = canvasSize();
-    if (canvasSize2 === undefined) {
+    let _canvasSize = canvasSize();
+    if (_canvasSize === undefined) {
       return;
     }
-    let pan2 = pan();
-    let scale2 = scale();
-    let overlayDrawing2 = overlayDrawing();
-    ctx2.clearRect(0, 0, canvasSize2.x, canvasSize2.y);
-    ctx2.save();
-    ctx2.scale(scale2, scale2);
-    ctx2.translate(-pan2.x, -pan2.y);
-    ctx2.fillStyle = "red";
-    ctx2.strokeStyle = "red";
-    ctx2.lineWidth = 1 / scale2;
+    let _pan = pan();
+    let _scale = scale();
+    let _overlayDrawing = overlayDrawing();
+    _ctx.clearRect(0, 0, _canvasSize.x, _canvasSize.y);
+    _ctx.save();
+    _ctx.scale(_scale, _scale);
+    _ctx.translate(-_pan.x, -_pan.y);
+    _ctx.fillStyle = "red";
+    _ctx.strokeStyle = "red";
+    _ctx.lineWidth = 1 / _scale;
     for (let image of state.images) {
       let imageCanvasCacheData = imageCanvasCache.get(image.data);
       if (imageCanvasCacheData === undefined) {
@@ -264,50 +265,50 @@ const PixelEditorView: Component<{
         imageCanvasCache.set(image.data, imageCanvasCacheData);
       }
       imageCanvasCacheData.ctx.putImageData(image.data, 0, 0);
-      let lastImageSmoothingEnabled = ctx2.imageSmoothingEnabled;
-      ctx2.imageSmoothingEnabled = false;
-      ctx2.drawImage(
+      let lastImageSmoothingEnabled = _ctx.imageSmoothingEnabled;
+      _ctx.imageSmoothingEnabled = false;
+      _ctx.drawImage(
         imageCanvasCacheData.canvas,
         image.pos.x,
         image.pos.y,
       );
-      ctx2.imageSmoothingEnabled = lastImageSmoothingEnabled;
-      ctx2.strokeRect(image.pos.x, image.pos.y, image.data.width, image.data.height);
-      if (scale2 >= 5.0) {
-        let a = Math.min(1.0, (scale2 - 5.0) / 10.0);
-        ctx2.save();
-        ctx2.strokeStyle = `rgba(255,0,0,${a})`;
-        ctx2.beginPath();
+      _ctx.imageSmoothingEnabled = lastImageSmoothingEnabled;
+      _ctx.strokeRect(image.pos.x, image.pos.y, image.data.width, image.data.height);
+      if (_scale >= 5.0) {
+        let a = Math.min(1.0, (_scale - 5.0) / 10.0);
+        _ctx.save();
+        _ctx.strokeStyle = `rgba(255,0,0,${a})`;
+        _ctx.beginPath();
         let y1 = image.pos.y;
         let y2 = y1 + image.data.height;
         for (let i = 0; i < image.data.width; ++i) {
           let x = image.pos.x + i;
-          ctx2.moveTo(x, y1);
-          ctx2.lineTo(x, y2);
+          _ctx.moveTo(x, y1);
+          _ctx.lineTo(x, y2);
         }
         let x1 = image.pos.x;
         let x2 = image.pos.x + image.data.width;
         for (let i = 0; i < image.data.height; ++i) {
           let y = image.pos.y + i;
-          ctx2.moveTo(x1, y);
-          ctx2.lineTo(x2, y);
+          _ctx.moveTo(x1, y);
+          _ctx.lineTo(x2, y);
         }
-        ctx2.stroke();
-        ctx2.restore();
+        _ctx.stroke();
+        _ctx.restore();
       }
-      ctx2.font = "5px sans-serif";
-      ctx2.fillStyle = "grey";
-      let metrics = ctx2.measureText(image.label);
-      ctx2.fillText(
+      _ctx.font = "5px sans-serif";
+      _ctx.fillStyle = "grey";
+      let metrics = _ctx.measureText(image.label);
+      _ctx.fillText(
         image.label,
         image.pos.x + 0.5 * (image.data.width - metrics.width),
         image.pos.y + image.data.height + metrics.actualBoundingBoxAscent + 1.0,
       );
     }
-    if (overlayDrawing2) {
-      overlayDrawing2(ctx2);
+    if (_overlayDrawing) {
+      _overlayDrawing(_ctx);
     }
-    ctx2.restore();
+    _ctx.restore();
   });
 
   let panScaleControllerSetters = {
@@ -359,11 +360,11 @@ const PixelEditorView: Component<{
 
   const onPointerMove = (e: PointerEvent) => {
     panScaleControl.onPointerMove(e);
-    let canvas2 = canvas();
-    if (canvas2 === undefined) {
+    let _canvas = canvas();
+    if (_canvas === undefined) {
       return;
     }
-    let rect = canvas2.getBoundingClientRect();
+    let rect = _canvas.getBoundingClientRect();
     let x = e.clientX - rect.left;
     let y = e.clientY - rect.top;
     setState((s) => {
