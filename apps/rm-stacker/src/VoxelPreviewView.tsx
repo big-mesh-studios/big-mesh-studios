@@ -21,6 +21,7 @@ import {
   compileGLSL,
 } from "@random-mesh/rmsl";
 import type { Node } from "@random-mesh/rmsl";
+import { tryCatch } from "./utils";
 
 // Shared rmsl nodes. Created once so the generated slot names are the same in
 // both the vertex and fragment shaders.
@@ -307,14 +308,16 @@ const VoxelPreviewView: Component<{
       setGlError("WebGL2 is not supported in this browser");
       return;
     }
-    let w: WebGLState;
-    try {
-      w = setupWebGL(gl);
-    } catch (e) {
-      setGlError(e instanceof Error ? e.message : String(e));
-      return;
+    const webglState = tryCatch(() => setupWebGL(gl), (e) => {
+      setGlError(e instanceof Error ? e.message : String(e))
+    })
+
+    if(!webglState){
+      return
     }
-    setWebgl(w);
+ 
+    setWebgl(webglState);
+
     let resizeObserver = new ResizeObserver(() => {
       let rect = _canvas.getBoundingClientRect();
       let dpr = window.devicePixelRatio || 1;
