@@ -9,7 +9,8 @@
     "serve": "vite preview",
     "test": "vitest run",
     "check-types": "tsc --noEmit",
-    "format": "prettier"
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "license": "MIT",
   "devDependencies": {
