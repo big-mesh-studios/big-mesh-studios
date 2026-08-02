@@ -9,13 +9,13 @@ const App: Component = () => {
     setVoxels: (out: Uint8Array, size: number) => void,
   } | undefined;
 
-  let updateVoxels = () => {
+  const updateVoxels = () => {
     if (editorRef === undefined || previewRef === undefined) {
       return;
     }
-    let images = editorRef.getImages();
-    let size = images[0].width;
-    let out = new Uint8Array(size * size * size * 4);
+    const images = editorRef.getImages();
+    const size = images[0].width;
+    const out = new Uint8Array(size * size * size * 4);
     solveVoxels({
       front: images[0],
       left: images[1],

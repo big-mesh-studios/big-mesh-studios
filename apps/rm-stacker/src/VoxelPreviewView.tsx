@@ -25,72 +25,72 @@ import { tryCatch } from "./utils";
 
 // Shared rmsl nodes. Created once so the generated slot names are the same in
 // both the vertex and fragment shaders.
-let uVoxels = uniformRaw("uVoxels", "sampler2D");
-let uTime = uniformRaw("uTime", "float");
-let uResolution = uniformRaw("uResolution", "vec2");
-let uLightDir = uniformRaw("uLightDir", "vec3");
-let uLightColour = uniformRaw("uLightColour", "vec3");
-let uAmbientColour = uniformRaw("uAmbientColour", "vec3");
-let vUv = varying("vec2");
-let positionAttr = attribute("vec2");
+const uVoxels = uniformRaw("uVoxels", "sampler2D");
+const uTime = uniformRaw("uTime", "float");
+const uResolution = uniformRaw("uResolution", "vec2");
+const uLightDir = uniformRaw("uLightDir", "vec3");
+const uLightColour = uniformRaw("uLightColour", "vec3");
+const uAmbientColour = uniformRaw("uAmbientColour", "vec3");
+const vUv = varying("vec2");
+const positionAttr = attribute("vec2");
 
 // Componentwise min/max of two vectors, expressed with abs since rmsl only
 // types the scalar variants: (a + b +/- |a - b|) / 2
-let v2min = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
+const v2min = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
   a.add(b).sub(a.sub(b).abs()).mult(float(0.5));
-let v2max = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
+const v2max = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
   a.add(b).add(a.sub(b).abs()).mult(float(0.5));
-let v3min = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
+const v3min = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
   a.add(b).sub(a.sub(b).abs()).mult(float(0.5));
-let v3max = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
+const v3max = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
   a.add(b).add(a.sub(b).abs()).mult(float(0.5));
 
-let rotationY = (y: Node<"float">): Node<"mat3"> => mat3(
+const rotationY = (y: Node<"float">): Node<"mat3"> => mat3(
   vec3(y.cos(), float(0), y.sin().negate()),
   vec3(float(0), float(1), float(0)),
   vec3(y.sin(), float(0), y.cos()),
 );
 
-let vertexFn = Fn(() => {
+const vertexFn = Fn(() => {
   vUv.assign(positionAttr.mult(vec2(0.5)).add(vec2(0.5)));
   return vec4(positionAttr, float(0), float(1));
 });
 
 // Port of fragment-sample.txt: raymarch a voxel grid inside a box and
 // alpha-composite the samples.
-let fragmentFn = Fn(() => {
-  let t = uTime;
-  let fragCoord = vUv.mult(uResolution);
-  let uv = fragCoord.mult(float(2)).sub(uResolution).div(uResolution.y);
-  let rot = rotationY(t);
+const fragmentFn = Fn(() => {
+  const t = uTime;
+  const fragCoord = vUv.mult(uResolution);
+  const uv = fragCoord.mult(float(2)).sub(uResolution).div(uResolution.y);
+  const rot = rotationY(t);
   // rmsl has no vec3 * mat3, so rotate through the transpose (identical result)
-  let ro = rot.transpose().multVec(vec3(
+  const ro = rot.transpose().multVec(vec3(
     float(0),
     float(0),
     float(-1.8),
   ));
-  let rd = rot.transpose().multVec(vec3(uv.x, uv.y, float(2)).normalize());
-  let color = vec4(float(0), float(0), float(0), float(0)).toVar();
+  const rd = rot.transpose().multVec(vec3(uv.x, uv.y, float(2)).normalize());
+  const color = vec4(float(0), float(0), float(0), float(0)).toVar();
 
   // IntersectBox, inlined since rmsl has no user functions or out params
-  let boxMin = vec3(float(-0.5));
-  let boxMax = vec3(float(0.5));
+  const boxMin = vec3(float(-0.5));
+  const boxMax = vec3(float(0.5));
   // pow(rd, -1) is undefined in GLSL when a component is 0 (NaN at the screen
   // centre cross), so use the defined IEEE reciprocal instead
-  let invR = vec3(float(1)).div(rd);
-  let tbot = invR.mult(boxMin.sub(ro)).toVar();
-  let ttop = invR.mult(boxMax.sub(ro)).toVar();
-  let tmin = v3min(tbot, ttop).toVar();
-  let tmax = v3max(tbot, ttop).toVar();
-  let t0a = v2max(vec2(tmin.x, tmin.x), vec2(tmin.y, tmin.z)).toVar();
-  let tnear = t0a.x.max(t0a.y).toVar();
-  let t0b = v2min(vec2(tmax.x, tmax.x), vec2(tmax.y, tmax.z)).toVar();
-  let tfar = t0b.x.min(t0b.y).toVar();
+  const invR = vec3(float(1)).div(rd);
+  const tbot = invR.mult(boxMin.sub(ro)).toVar();
+  const ttop = invR.mult(boxMax.sub(ro)).toVar();
+  const tmin = v3min(tbot, ttop).toVar();
+  const tmax = v3max(tbot, ttop).toVar();
+  const t0a = v2max(vec2(tmin.x, tmin.x), vec2(tmin.y, tmin.z)).toVar();
+  const tnear = t0a.x.max(t0a.y).toVar();
+  const t0b = v2min(vec2(tmax.x, tmax.x), vec2(tmax.y, tmax.z)).toVar();
+  const tfar = t0b.x.min(t0b.y).toVar();
 
   If(tnear.lessThanEqual(tfar), () => {
-    let stepSize = float(0.01);
+    const stepSize = float(0.01);
     // half a voxel in world units, for the alpha-gradient normal
-    let eps = float(0.015625);
+    const eps = float(0.015625);
     For(
       () => tnear.toVar(),
       (tt) => tt.lessThan(tfar),
@@ -98,18 +98,18 @@ let fragmentFn = Fn(() => {
         tt.assign(tt.add(stepSize));
       },
       (tt) => {
-        let p = ro.add(rd.mult(tt)).toVar();
-        let inside = p.greaterThan(vec3(float(-0.51))).all()
+        const p = ro.add(rd.mult(tt)).toVar();
+        const inside = p.greaterThan(vec3(float(-0.51))).all()
           .and(p.lessThan(vec3(float(0.51))).all());
         If(inside, () => {
-          let pc = p.add(vec3(float(0.5))).toVar();
-          let s = ((uVoxels as any).texture(pc) as Node<"vec4">).toVar();
+          const pc = p.add(vec3(float(0.5))).toVar();
+          const s = ((uVoxels as any).texture(pc) as Node<"vec4">).toVar();
           If(s.a.greaterThan(float(0.5)), () => {
             // surface normal from the gradient of the alpha field (central
             // differences); negated so it points outward. The small view
             // direction term is a fallback so a zero/weak gradient (e.g. on a
             // surface at the volume boundary) never produces a NaN normal.
-            let grad = vec3(
+            const grad = vec3(
               ((uVoxels as any).texture(pc.sub(vec3(eps, float(0), float(0)))) as Node<"vec4">).a
                 .sub(((uVoxels as any).texture(pc.add(vec3(eps, float(0), float(0)))) as Node<"vec4">).a),
               ((uVoxels as any).texture(pc.sub(vec3(float(0), eps, float(0)))) as Node<"vec4">).a
@@ -117,8 +117,8 @@ let fragmentFn = Fn(() => {
               ((uVoxels as any).texture(pc.sub(vec3(float(0), float(0), eps))) as Node<"vec4">).a
                 .sub(((uVoxels as any).texture(pc.add(vec3(float(0), float(0), eps))) as Node<"vec4">).a),
             );
-            let n = grad.sub(rd.mult(float(0.001))).normalize();
-            let diffuse = n.dot(uLightDir).max(float(0));
+            const n = grad.sub(rd.mult(float(0.001))).normalize();
+            const diffuse = n.dot(uLightDir).max(float(0));
             color.rgb.assign(s.rgb.mult(uAmbientColour.add(uLightColour.mult(diffuse))));
             color.a.assign(float(1));
             break_();
@@ -157,24 +157,24 @@ type WebGLState = {
   buffer: WebGLBuffer,
 };
 
-let setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
-  let compileShader = (type: number, source: string): WebGLShader => {
-    let shader = gl.createShader(type);
+const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
+  const compileShader = (type: number, source: string): WebGLShader => {
+    const shader = gl.createShader(type);
     if (shader === null) {
       throw new Error("Failed to create shader");
     }
     gl.shaderSource(shader, source);
     gl.compileShader(shader);
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      let info = gl.getShaderInfoLog(shader);
+      const info = gl.getShaderInfoLog(shader);
       gl.deleteShader(shader);
       throw new Error(`Shader compile failed: ${info}`);
     }
     return shader;
   };
-  let vertexShader = compileShader(gl.VERTEX_SHADER, vertexGLSL);
-  let fragmentShader = compileShader(gl.FRAGMENT_SHADER, fragmentGLSL);
-  let program = gl.createProgram();
+  const vertexShader = compileShader(gl.VERTEX_SHADER, vertexGLSL);
+  const fragmentShader = compileShader(gl.FRAGMENT_SHADER, fragmentGLSL);
+  const program = gl.createProgram();
   if (program === null) {
     throw new Error("Failed to create program");
   }
@@ -187,7 +187,7 @@ let setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
   gl.deleteShader(vertexShader);
   gl.deleteShader(fragmentShader);
 
-  let buffer = gl.createBuffer();
+  const buffer = gl.createBuffer();
   if (buffer === null) {
     throw new Error("Failed to create buffer");
   }
@@ -198,7 +198,7 @@ let setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
     gl.STATIC_DRAW,
   );
 
-  let texture = gl.createTexture();
+  const texture = gl.createTexture();
   if (texture === null) {
     throw new Error("Failed to create texture");
   }
@@ -230,44 +230,44 @@ let setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
 };
 
 // Directional + ambient light for the voxel preview (fixed in world space)
-let LIGHT_DIR = (() => {
-  let d = [0.4, 0.7, 0.8];
-  let len = Math.hypot(d[0], d[1], d[2]);
+const LIGHT_DIR = (() => {
+  const d = [0.4, 0.7, 0.8];
+  const len = Math.hypot(d[0], d[1], d[2]);
   return new Float32Array([d[0] / len, d[1] / len, d[2] / len]);
 })();
-let LIGHT_COLOUR = new Float32Array([1.0, 0.97, 0.9]);
-let AMBIENT_COLOUR = new Float32Array([0.35, 0.35, 0.4]);
+const LIGHT_COLOUR = new Float32Array([1.0, 0.97, 0.9]);
+const AMBIENT_COLOUR = new Float32Array([0.35, 0.35, 0.4]);
 
 const VoxelPreviewView: Component<{
   ref?: (ctx: {
     setVoxels: (out: Uint8Array, size: number) => void,
   }) => void,
 }> = (props) => {
-  let [ canvas, setCanvas, ] = createSignal<HTMLCanvasElement>();
-  let [ webgl, setWebgl, ] = createSignal<WebGLState>();
-  let [ glError, setGlError, ] = createSignal<string | undefined>();
+  const [ canvas, setCanvas, ] = createSignal<HTMLCanvasElement>();
+  const [ webgl, setWebgl, ] = createSignal<WebGLState>();
+  const [ glError, setGlError, ] = createSignal<string | undefined>();
 
-  let setVoxels = (out: Uint8Array, size: number) => {
-    let _webgl = webgl();
+  const setVoxels = (out: Uint8Array, size: number) => {
+    const _webgl = webgl();
     if (_webgl === undefined) {
       return;
     }
-    let gl = _webgl.gl;
+    const gl = _webgl.gl;
     gl.bindTexture(gl.TEXTURE_3D, _webgl.texture);
     gl.texImage3D(
       gl.TEXTURE_3D, 0, gl.RGBA8, size, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, out,
     );
   };
 
-  let render = () => {
-    let _webgl = webgl();
-    let _canvas = canvas();
+  const render = () => {
+    const _webgl = webgl();
+    const _canvas = canvas();
     if (_webgl === undefined || _canvas === undefined) {
       return;
     }
-    let gl = _webgl.gl;
-    let width = _canvas.width;
-    let height = _canvas.height;
+    const gl = _webgl.gl;
+    const width = _canvas.width;
+    const height = _canvas.height;
     gl.viewport(0, 0, width, height);
     gl.useProgram(_webgl.program);
     gl.uniform1f(_webgl.uTimeLocation, performance.now() / 1000.0);
@@ -299,15 +299,16 @@ const VoxelPreviewView: Component<{
   );
 
   onSettled(() => {
-    let _canvas = canvas();
+    const _canvas = canvas();
     if (_canvas === undefined) {
       return;
     }
-    let gl = _canvas.getContext("webgl2", { antialias: false, });
+    const gl = _canvas.getContext("webgl2", { antialias: false, });
     if (gl === null) {
       setGlError("WebGL2 is not supported in this browser");
       return;
     }
+
     const webglState = tryCatch(() => setupWebGL(gl), (e) => {
       setGlError(e instanceof Error ? e.message : String(e))
     })
@@ -318,17 +319,19 @@ const VoxelPreviewView: Component<{
  
     setWebgl(webglState);
 
-    let resizeObserver = new ResizeObserver(() => {
-      let rect = _canvas.getBoundingClientRect();
-      let dpr = window.devicePixelRatio || 1;
+    const resizeObserver = new ResizeObserver(() => {
+      const rect = _canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
       _canvas.width = Math.max(1, Math.round(rect.width * dpr));
       _canvas.height = Math.max(1, Math.round(rect.height * dpr));
     });
     resizeObserver.observe(_canvas);
+
     let rafId = requestAnimationFrame(function renderLoop() {
       render();
       rafId = requestAnimationFrame(renderLoop);
     });
+
     return () => {
       cancelAnimationFrame(rafId);
       resizeObserver.disconnect();

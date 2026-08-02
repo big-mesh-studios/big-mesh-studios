@@ -6,12 +6,12 @@ export function createDrawMode({erase, modeParams: {mousePos, screenPtToWorldPt,
   erase: boolean,
   modeParams: ModeParams,
 }): Mode {
-  let pixelPosUnderMouse = createMemo(() => {
-    let _mousePos = mousePos();
+  const pixelPosUnderMouse = createMemo(() => {
+    const _mousePos = mousePos();
     if (_mousePos === undefined) {
       return undefined;
     }
-    let worldPos = screenPtToWorldPt(_mousePos);
+    const worldPos = screenPtToWorldPt(_mousePos);
     if (worldPos === undefined) {
       return undefined;
     }
@@ -34,7 +34,7 @@ export function createDrawMode({erase, modeParams: {mousePos, screenPtToWorldPt,
       if (erase) {
         doEffect(Effect.erasePixel(pt.x, pt.y));
       } else {
-        let _selectedColour = untrack(selectedColour);
+        const _selectedColour = untrack(selectedColour);
         if (_selectedColour !== undefined) {
           doEffect(Effect.writePixel(pt.x, pt.y, _selectedColour));
         }
@@ -42,8 +42,8 @@ export function createDrawMode({erase, modeParams: {mousePos, screenPtToWorldPt,
       untrack(onUpdate)
     },
   );
-  let overlayDrawing = createMemo(() => {
-    let pt = pixelPosUnderMouse();
+  const overlayDrawing = createMemo(() => {
+    const pt = pixelPosUnderMouse();
     if (pt === undefined) {
       return undefined;
     }
@@ -57,6 +57,7 @@ export function createDrawMode({erase, modeParams: {mousePos, screenPtToWorldPt,
       );
     };
   });
+  
   return {
     activeModeButton: () => erase ? "Erase" : "Draw",
     overlayDrawing: overlayDrawing,

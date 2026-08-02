@@ -7,13 +7,13 @@ import { createDrawMode } from "./modes/DrawMode";
 import { Effect } from "./Effect";
 import Palette from "./Palette";
 
-interface SideImage {
+type SideImage = {
   label: "Front" | "Left" | "Right" | "Back" | "Top" | "Bottom",
   pos: THREE.Vector2,
   data: ImageData,
 }
 
-interface ImageCanvasCacheData {
+type ImageCanvasCacheData = {
   canvas: HTMLCanvasElement,
   ctx: CanvasRenderingContext2D,
 }
@@ -21,11 +21,11 @@ interface ImageCanvasCacheData {
 type ModeFactory = (params: ModeParams) => Mode
 
 const createSquareViewImageData = (imageSize: number, squareSize: number): ImageData => {
-  let data = new ImageData(imageSize, imageSize);
-  let offsetPx = (imageSize - squareSize) / 2;
+  const data = new ImageData(imageSize, imageSize);
+  const offsetPx = (imageSize - squareSize) / 2;
   for (let y = 0; y < squareSize; y++) {
     for (let x = 0; x < squareSize; x++) {
-      let i = ((offsetPx + y) * imageSize + (offsetPx + x)) << 2;
+      const i = ((offsetPx + y) * imageSize + (offsetPx + x)) << 2;
       data.data[i + 0] = 0;
       data.data[i + 1] = 0;
       data.data[i + 2] = 255;
@@ -156,16 +156,16 @@ const PixelEditorView: Component<{
         break;
       }
       case "ErasePixel": {
-        let { x, y, } = effect;
+        const { x, y, } = effect;
 
         const image = findCollidingSideImage(effect, state.images)
         if(!image) {
           break;
         }
 
-        let localX = x - image.pos.x;
-        let localY = y - image.pos.y;
-        let offset = (localY * image.data.width + localX) << 2;
+        const localX = x - image.pos.x;
+        const localY = y - image.pos.y;
+        const offset = (localY * image.data.width + localX) << 2;
         image.data.data[offset + 0] = 0;
         image.data.data[offset + 1] = 0;
         image.data.data[offset + 2] = 0;
@@ -175,13 +175,13 @@ const PixelEditorView: Component<{
         break;
       }
       default: {
-        let x: never = effect;
+        const x: never = effect;
         throw new Error(`Unreachable ${x}`);
       }
     }
   });
-  let imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
-  let modeParams: ModeParams = {
+  const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
+  const modeParams: ModeParams = {
     mousePos: () => state.mousePos,
     pointerDownCount: () => state.pointerDownCount,
     screenPtToWorldPt,
@@ -191,22 +191,22 @@ const PixelEditorView: Component<{
     selectedColour,
     onUpdate: () => props.onUpdate()
   };
-  let mode = createMemo(() => {
-    let modeFactory = state.modeFactory;
+  const mode = createMemo(() => {
+    const modeFactory = state.modeFactory;
     return untrack(() => modeFactory(modeParams));
   });
-  let activeModeButton = createMemo(() => mode().activeModeButton?.());
-  let overlayDrawing = createMemo(() => mode().overlayDrawing?.());
-  let disablePanZoom = createMemo(() => mode().disablePanZoom?.() ?? false);
+  const activeModeButton = createMemo(() => mode().activeModeButton?.());
+  const overlayDrawing = createMemo(() => mode().overlayDrawing?.());
+  const disablePanZoom = createMemo(() => mode().disablePanZoom?.() ?? false);
 
   onSettled(() => {
-    let _canvas = canvas();
+    const _canvas = canvas();
     if (_canvas === undefined) {
       return;
     }
     setCtx(_canvas.getContext("2d") ?? undefined);
-    let resizeObserver = new ResizeObserver(() => {
-      let rect = _canvas.getBoundingClientRect();
+    const resizeObserver = new ResizeObserver(() => {
+      const rect = _canvas.getBoundingClientRect();
       _canvas.width = rect.width;
       _canvas.height = rect.height;
       setCanvasSize(new THREE.Vector2(
@@ -232,18 +232,18 @@ const PixelEditorView: Component<{
     },
   );
 
-  let render = () => untrack(() => {
-    let _ctx = ctx();
+  const render = () => untrack(() => {
+    const _ctx = ctx();
     if (_ctx === undefined) {
       return;
     }
-    let _canvasSize = canvasSize();
+    const _canvasSize = canvasSize();
     if (_canvasSize === undefined) {
       return;
     }
-    let _pan = pan();
-    let _scale = scale();
-    let _overlayDrawing = overlayDrawing();
+    const _pan = pan();
+    const _scale = scale();
+    const _overlayDrawing = overlayDrawing();
     _ctx.clearRect(0, 0, _canvasSize.x, _canvasSize.y);
     _ctx.save();
     _ctx.scale(_scale, _scale);
@@ -251,13 +251,13 @@ const PixelEditorView: Component<{
     _ctx.fillStyle = "red";
     _ctx.strokeStyle = "red";
     _ctx.lineWidth = 1 / _scale;
-    for (let image of state.images) {
+    for (const image of state.images) {
       let imageCanvasCacheData = imageCanvasCache.get(image.data);
       if (imageCanvasCacheData === undefined) {
-        let canvas = document.createElement("canvas");
+        const canvas = document.createElement("canvas");
         canvas.width = image.data.width;
         canvas.height = image.data.height;
-        let ctx = canvas.getContext("2d")!;
+        const ctx = canvas.getContext("2d")!;
         imageCanvasCacheData = {
           canvas: canvas,
           ctx: ctx,
@@ -265,7 +265,7 @@ const PixelEditorView: Component<{
         imageCanvasCache.set(image.data, imageCanvasCacheData);
       }
       imageCanvasCacheData.ctx.putImageData(image.data, 0, 0);
-      let lastImageSmoothingEnabled = _ctx.imageSmoothingEnabled;
+      const lastImageSmoothingEnabled = _ctx.imageSmoothingEnabled;
       _ctx.imageSmoothingEnabled = false;
       _ctx.drawImage(
         imageCanvasCacheData.canvas,
@@ -275,21 +275,21 @@ const PixelEditorView: Component<{
       _ctx.imageSmoothingEnabled = lastImageSmoothingEnabled;
       _ctx.strokeRect(image.pos.x, image.pos.y, image.data.width, image.data.height);
       if (_scale >= 5.0) {
-        let a = Math.min(1.0, (_scale - 5.0) / 10.0);
+        const a = Math.min(1.0, (_scale - 5.0) / 10.0);
         _ctx.save();
         _ctx.strokeStyle = `rgba(255,0,0,${a})`;
         _ctx.beginPath();
-        let y1 = image.pos.y;
-        let y2 = y1 + image.data.height;
+        const y1 = image.pos.y;
+        const y2 = y1 + image.data.height;
         for (let i = 0; i < image.data.width; ++i) {
-          let x = image.pos.x + i;
+          const x = image.pos.x + i;
           _ctx.moveTo(x, y1);
           _ctx.lineTo(x, y2);
         }
-        let x1 = image.pos.x;
-        let x2 = image.pos.x + image.data.width;
+        const x1 = image.pos.x;
+        const x2 = image.pos.x + image.data.width;
         for (let i = 0; i < image.data.height; ++i) {
-          let y = image.pos.y + i;
+          const y = image.pos.y + i;
           _ctx.moveTo(x1, y);
           _ctx.lineTo(x2, y);
         }
@@ -298,7 +298,7 @@ const PixelEditorView: Component<{
       }
       _ctx.font = "5px sans-serif";
       _ctx.fillStyle = "grey";
-      let metrics = _ctx.measureText(image.label);
+      const metrics = _ctx.measureText(image.label);
       _ctx.fillText(
         image.label,
         image.pos.x + 0.5 * (image.data.width - metrics.width),
@@ -311,7 +311,7 @@ const PixelEditorView: Component<{
     _ctx.restore();
   });
 
-  let panScaleControllerSetters = {
+  const panScaleControllerSetters = {
     setPanX: (value: number) => {
       setPan((p) => new THREE.Vector2(value, p.y));
     },
@@ -360,13 +360,13 @@ const PixelEditorView: Component<{
 
   const onPointerMove = (e: PointerEvent) => {
     panScaleControl.onPointerMove(e);
-    let _canvas = canvas();
+    const _canvas = canvas();
     if (_canvas === undefined) {
       return;
     }
-    let rect = _canvas.getBoundingClientRect();
-    let x = e.clientX - rect.left;
-    let y = e.clientY - rect.top;
+    const rect = _canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
     setState((s) => {
       s.mousePos = new THREE.Vector2(x, y);
     });
@@ -388,7 +388,7 @@ const PixelEditorView: Component<{
       runWithOwner(null, () => {
         ref({
           getImages: () => {
-            let imagesByLabel = new Map(state.images.map((image) => [image.label, image.data]));
+            const imagesByLabel = new Map(state.images.map((image) => [image.label, image.data]));
             return [
               imagesByLabel.get("Front")!,
               imagesByLabel.get("Left")!,

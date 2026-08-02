@@ -4,7 +4,7 @@ import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 const Palette: Component<{
   ref?: (ctx: { selectedColour: Accessor<string>, }) => void,
 }> = (props) => {
-  let [ state, setState, ] = createStore<{
+  const [ state, setState, ] = createStore<{
     selectedColour: string,
   }>({
     selectedColour: DAWNBRINGER_32_PALETTE[5],
