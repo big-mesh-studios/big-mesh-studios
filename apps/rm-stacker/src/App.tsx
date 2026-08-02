@@ -66,14 +66,6 @@ const App: Component = () => {
           "flex-direction": "column",
         }}
       >
-        <div style="padding: 8px;">
-          <button
-            class="btn btn-primary btn-sm"
-            onClick={updateVoxels}
-          >
-            Update
-          </button>
-        </div>
         <div style="flex-grow: 1; overflow: hidden;">
           <VoxelPreviewView ref={(ctx) => { previewRef = ctx; }}/>
         </div>
