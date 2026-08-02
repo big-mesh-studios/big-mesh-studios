@@ -7,13 +7,13 @@ import { createDrawMode } from "./modes/DrawMode";
 import { Effect } from "./Effect";
 import Palette from "./Palette";
 
-type SideImage = {
+interface SideImage {
   label: "Front" | "Left" | "Right" | "Back" | "Top" | "Bottom",
   pos: THREE.Vector2,
   data: ImageData,
 }
 
-type ImageCanvasCacheData = {
+interface ImageCanvasCacheData {
   canvas: HTMLCanvasElement,
   ctx: CanvasRenderingContext2D,
 }
