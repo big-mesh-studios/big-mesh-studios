@@ -13,6 +13,7 @@ export interface ModeParams {
   }[]>,
   doEffect: (effect: Effect) => void,
   selectedColour: Accessor<string | undefined>,
+  onUpdate(): void
 }
 
 export interface Mode {

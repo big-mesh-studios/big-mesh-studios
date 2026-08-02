@@ -40,6 +40,7 @@ export function createDrawMode(params: {
           modeParams.doEffect(Effect.writePixel(pt.x, pt.y, selectedColour));
         }
       }
+      untrack(modeParams.onUpdate)
     },
   );
   let overlayDrawing = createMemo(() => {
