@@ -43,7 +43,7 @@ const createInitialSides = (dimensions: Dimensions3D) => {
 };
 
 export function createStackerStore() {
-  const initialDimensions: Dimensions3D = { width: 32, height: 64, depth: 16 };
+  const initialDimensions: Dimensions3D = { width: 32, height: 32, depth: 32 };
   const initialSides: Sides = createInitialSides(initialDimensions);
 
   const [store, setStore] = createStore<StackerStore>({
