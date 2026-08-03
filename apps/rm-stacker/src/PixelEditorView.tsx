@@ -72,58 +72,14 @@ const findCollidingSide = (
 
 const PixelEditorView: Component = () => {
   const { store, setStore, updateVoxels } = useContext(StackerContext);
-  const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
-
-  const onLoad = async () => {
-    const file = await fileOpen<false>({
-      extensions: [".zip"],
-      description: "Sprite stack",
-      mimeTypes: ["application/zip"],
-    });
-    const sides = await load(file);
-    setStore(s => {
-      s.sides = sides;
-    });
-    updateVoxels();
-    setFileHandle((file as FileWithHandle).handle ?? null);
-    onSettled(() => {
-      render();
-    });
-  };
-
-  const onSave = async () => {
-    const blob = await save(store.sides);
-    setFileHandle(
-      await fileSave(
-        blob,
-        {
-          fileName: "sprite-stack.zip",
-          extensions: [".zip"],
-          description: "Sprite stack",
-        },
-        fileHandle(),
-      ),
-    );
-  };
-
-  const onSaveAs = async () => {
-    const blob = await save(store.sides);
-    setFileHandle(
-      await fileSave(blob, {
-        fileName: "sprite-stack.zip",
-        extensions: [".zip"],
-        description: "Sprite stack",
-      }),
-    );
-  };
-  const pointersDownByIdSet = new Set<number>();
   const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
 
+  const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
+  const [pointerids, setPointerids] = createSignal(new Set<number>(), { equals: false });
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [ctx, setCtx] = createSignal<CanvasRenderingContext2D>();
   const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
   const [mousePos, setMousePos] = createSignal<THREE.Vector2>();
-  const [pointerDownCount, setPointerDownCount] = createSignal<number>(0);
   const [modeFactory, setModeFactory] = createSignal<ModeFactory>(() => createIdleMode);
   const [pan, setPan] = createSignal(new THREE.Vector2(-10.0, -10.0));
   const [scale, setScale] = createSignal(8);
@@ -147,7 +103,7 @@ const PixelEditorView: Component = () => {
 
   const modeParams: ModeParams = {
     mousePos,
-    pointerDownCount,
+    pointerDownCount: () => pointerids().size,
     selectedColour,
     store,
     doEffect(effect: Effect) {
@@ -282,6 +238,49 @@ const PixelEditorView: Component = () => {
     },
   );
 
+  const onLoad = async () => {
+    const file = await fileOpen<false>({
+      extensions: [".zip"],
+      description: "Sprite stack",
+      mimeTypes: ["application/zip"],
+    });
+    const sides = await load(file);
+    setStore(s => {
+      s.sides = sides;
+    });
+    updateVoxels();
+    setFileHandle((file as FileWithHandle).handle ?? null);
+    onSettled(() => {
+      render();
+    });
+  };
+
+  const onSave = async () => {
+    const blob = await save(store.sides);
+    setFileHandle(
+      await fileSave(
+        blob,
+        {
+          fileName: "sprite-stack.zip",
+          extensions: [".zip"],
+          description: "Sprite stack",
+        },
+        fileHandle(),
+      ),
+    );
+  };
+
+  const onSaveAs = async () => {
+    const blob = await save(store.sides);
+    setFileHandle(
+      await fileSave(blob, {
+        fileName: "sprite-stack.zip",
+        extensions: [".zip"],
+        description: "Sprite stack",
+      }),
+    );
+  };
+
   const createImageCanvasCacheEntry = (image: ImageData) => {
     const canvas = document.createElement("canvas");
     canvas.width = image.width;
@@ -295,19 +294,22 @@ const PixelEditorView: Component = () => {
     return imageCanvasCacheData;
   };
 
-  const render = () =>
+  const render = () => {
     untrack(() => {
       const _ctx = ctx();
       if (_ctx === undefined) {
         return;
       }
+
       const _canvasSize = canvasSize();
       if (_canvasSize === undefined) {
         return;
       }
+
       const _pan = pan();
       const _scale = scale();
       const _overlayDrawing = overlayDrawing();
+
       _ctx.clearRect(0, 0, _canvasSize.x, _canvasSize.y);
       _ctx.save();
       _ctx.scale(_scale, _scale);
@@ -323,33 +325,41 @@ const PixelEditorView: Component = () => {
         const imageCanvasCacheData =
           imageCanvasCache.get(side) ?? createImageCanvasCacheEntry(side);
         imageCanvasCacheData.ctx.putImageData(side, 0, 0);
+
         const lastImageSmoothingEnabled = _ctx.imageSmoothingEnabled;
         _ctx.imageSmoothingEnabled = false;
         _ctx.drawImage(imageCanvasCacheData.canvas, coordinate.x, coordinate.y);
         _ctx.imageSmoothingEnabled = lastImageSmoothingEnabled;
         _ctx.strokeRect(coordinate.x, coordinate.y, side.width, side.height);
+
         if (_scale >= 5.0) {
+          const y1 = coordinate.y;
+          const y2 = y1 + side.height;
           const a = Math.min(1.0, (_scale - 5.0) / 10.0);
+
           _ctx.save();
           _ctx.strokeStyle = `rgba(255,0,0,${a})`;
           _ctx.beginPath();
-          const y1 = coordinate.y;
-          const y2 = y1 + side.height;
+
           for (let i = 0; i < side.width; ++i) {
             const x = coordinate.x + i;
             _ctx.moveTo(x, y1);
             _ctx.lineTo(x, y2);
           }
+
           const x1 = coordinate.x;
           const x2 = coordinate.x + side.width;
+
           for (let i = 0; i < side.height; ++i) {
             const y = coordinate.y + i;
             _ctx.moveTo(x1, y);
             _ctx.lineTo(x2, y);
           }
+
           _ctx.stroke();
           _ctx.restore();
         }
+
         _ctx.font = "5px sans-serif";
         _ctx.fillStyle = "grey";
         const metrics = _ctx.measureText(key);
@@ -359,11 +369,14 @@ const PixelEditorView: Component = () => {
           coordinate.y + side.height + metrics.actualBoundingBoxAscent + 1.0,
         );
       }
+
       if (_overlayDrawing) {
         _overlayDrawing(_ctx);
       }
+
       _ctx.restore();
     });
+  };
 
   const panScaleControllerSetters = {
     setPanX: (value: number) => {
@@ -376,7 +389,6 @@ const PixelEditorView: Component = () => {
       setScale(value);
     },
   };
-
   const panScaleControl = createPanScaleControl({
     target: canvas,
     panX: () => pan().x,
@@ -388,25 +400,24 @@ const PixelEditorView: Component = () => {
     disable: disablePanZoom,
   });
 
-  const updatePointerDownCount = () => {
-    setPointerDownCount(pointersDownByIdSet.size);
-  };
-
   const onPointerDown = (e: PointerEvent) => {
-    pointersDownByIdSet.add(e.pointerId);
-    updatePointerDownCount();
+    setPointerids(set => set.add(e.pointerId));
     panScaleControl.onPointerDown(e);
   };
 
   const onPointerUp = (e: PointerEvent) => {
-    pointersDownByIdSet.delete(e.pointerId);
-    updatePointerDownCount();
+    setPointerids(set => {
+      set.delete(e.pointerId);
+      return set;
+    });
     panScaleControl.onPointerUp(e);
   };
 
   const onPointerCancel = (e: PointerEvent) => {
-    pointersDownByIdSet.delete(e.pointerId);
-    updatePointerDownCount();
+    setPointerids(set => {
+      set.delete(e.pointerId);
+      return set;
+    });
     panScaleControl.onPointerCancel(e);
   };
 
