@@ -14,12 +14,15 @@ export function createDrawMode({
     if (_mousePos === undefined) {
       return undefined;
     }
+
     const worldPos = screenPtToWorldPt(_mousePos);
     if (worldPos === undefined) {
       return undefined;
     }
+
     worldPos.x = Math.round(worldPos.x - 0.5);
     worldPos.y = Math.round(worldPos.y - 0.5);
+
     return worldPos;
   });
 
@@ -29,9 +32,11 @@ export function createDrawMode({
       if (pt === undefined) {
         return;
       }
+
       if (pointerDownCount !== 1) {
         return;
       }
+
       if (erase) {
         doEffect(Effect.erasePixel(pt.x, pt.y));
       } else {
@@ -42,11 +47,14 @@ export function createDrawMode({
       }
     },
   );
+
   const overlayDrawing = createMemo(() => {
     const pt = pixelPosUnderMouse();
+
     if (pt === undefined) {
       return undefined;
     }
+
     return (ctx: CanvasRenderingContext2D) => {
       ctx.fillStyle = "green";
       ctx.fillRect(pt.x, pt.y, 1.0, 1.0);
@@ -54,7 +62,6 @@ export function createDrawMode({
   });
 
   return {
-    activeModeButton: () => (erase ? "Erase" : "Draw"),
     overlayDrawing: overlayDrawing,
     disablePanZoom: createMemo(() => pointerDownCount() === 1),
   };

@@ -11,7 +11,7 @@ import {
 } from "solid-js";
 import * as THREE from "three";
 import { createPanScaleControl } from "@random-mesh/rm-pan-scale";
-import { ModeFactory, ModeParams, SideKind } from "./types";
+import { ModeFactory, ModeKind, ModeParams, SideKind } from "./types";
 import { createIdleMode } from "./modes/IdleMode";
 import { createDrawMode } from "./modes/DrawMode";
 import { Effect } from "./Effect";
@@ -36,6 +36,12 @@ const OPPOSING_KINDS = {
   top: "bottom",
   bottom: "top",
 } as const;
+
+const MODE_FACTORIES: Record<ModeKind, ModeFactory> = {
+  Draw: (modeParams: ModeParams) => createDrawMode({ erase: false, modeParams }),
+  Erase: (modeParams: ModeParams) => createDrawMode({ erase: true, modeParams }),
+  Idle: createIdleMode,
+};
 
 const getOpposingOffset = (
   kind: SideKind,
@@ -80,7 +86,7 @@ const PixelEditorView: Component = () => {
   const [ctx, setCtx] = createSignal<CanvasRenderingContext2D>();
   const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
   const [mousePos, setMousePos] = createSignal<THREE.Vector2>();
-  const [modeFactory, setModeFactory] = createSignal<ModeFactory>(() => createIdleMode);
+  const [modeKind, setModeKind] = createSignal<ModeKind>("Idle");
   const [pan, setPan] = createSignal(new THREE.Vector2(-10.0, -10.0));
   const [scale, setScale] = createSignal(8);
   const [selectedColourAccessor, setSelectedColourAccessor] = createSignal<
@@ -204,11 +210,7 @@ const PixelEditorView: Component = () => {
       return out;
     },
   };
-  const mode = createMemo(() => {
-    const _modeFactory = modeFactory();
-    return untrack(() => _modeFactory(modeParams));
-  });
-  const activeModeButton = createMemo(() => mode().activeModeButton?.());
+  const mode = createMemo(() => MODE_FACTORIES[modeKind()](modeParams));
   const overlayDrawing = createMemo(() => mode().overlayDrawing?.());
   const disablePanZoom = createMemo(() => mode().disablePanZoom?.() ?? false);
 
@@ -479,11 +481,9 @@ const PixelEditorView: Component = () => {
             role="tab"
             class={{
               tab: true,
-              "tab-active": activeModeButton() === "Idle",
+              "tab-active": modeKind() === "Idle",
             }}
-            onClick={() => {
-              setModeFactory(() => createIdleMode);
-            }}
+            onClick={() => setModeKind("Idle")}
           >
             <i class="fa-solid fa-up-down-left-right" />
           </a>
@@ -491,13 +491,9 @@ const PixelEditorView: Component = () => {
             role="tab"
             class={{
               tab: true,
-              "tab-active": activeModeButton() === "Draw",
+              "tab-active": modeKind() === "Draw",
             }}
-            onClick={() => {
-              setModeFactory(
-                () => (modeParams: ModeParams) => createDrawMode({ erase: false, modeParams }),
-              );
-            }}
+            onClick={() => setModeKind("Draw")}
           >
             <i class="fa-solid fa-pen" />
           </a>
@@ -505,13 +501,9 @@ const PixelEditorView: Component = () => {
             role="tab"
             class={{
               tab: true,
-              "tab-active": activeModeButton() === "Erase",
+              "tab-active": modeKind() === "Erase",
             }}
-            onClick={() => {
-              setModeFactory(
-                () => (modeParams: ModeParams) => createDrawMode({ erase: true, modeParams }),
-              );
-            }}
+            onClick={() => setModeKind("Erase")}
           >
             <i class="fa-solid fa-eraser" />
           </a>
@@ -536,11 +528,7 @@ const PixelEditorView: Component = () => {
         </div>
         <div style="flex-grow: 1; overflow: hidden;">
           <div style="height: 100%; display: inline-block; pointer-events: auto;">
-            <Palette
-              ref={ctx => {
-                setSelectedColourAccessor(() => ctx.selectedColour);
-              }}
-            />
+            <Palette ref={ctx => setSelectedColourAccessor(() => ctx.selectedColour)} />
           </div>
         </div>
       </div>

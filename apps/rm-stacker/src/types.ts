@@ -31,6 +31,8 @@ export type Axis = "x" | "y" | "z";
 /*                                       Mode                                     */
 /**********************************************************************************/
 
+export type ModeKind = "Draw" | "Erase" | "Idle";
+
 export interface ModeParams {
   mousePos: Accessor<THREE.Vector2 | undefined>;
   pointerDownCount: Accessor<number>;
@@ -42,7 +44,6 @@ export interface ModeParams {
 }
 
 export interface Mode {
-  activeModeButton?: Accessor<"Idle" | "Draw" | "Erase" | undefined>;
   overlayDrawing?: Accessor<((ctx: CanvasRenderingContext2D) => void) | undefined>;
   disablePanZoom?: Accessor<boolean>;
 }
