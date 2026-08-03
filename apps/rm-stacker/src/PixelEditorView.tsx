@@ -28,25 +28,6 @@ interface ImageCanvasCacheData {
 
 type Coordinates = Record<keyof Sides, { x: number; y: number }>;
 
-const findCollidingSide = (
-  position: { x: number; y: number },
-  sides: Sides,
-  coordinates: Coordinates,
-) => {
-  for (const kind in sides) {
-    const coordinate = coordinates[kind as SideKind];
-    const side = sides[kind as SideKind];
-    if (
-      coordinate.x <= position.x &&
-      coordinate.y <= position.y &&
-      coordinate.x + side.width > position.x &&
-      coordinate.y + side.height > position.y
-    ) {
-      return { side, coordinate, kind: kind as SideKind };
-    }
-  }
-};
-
 const OPPOSING_KINDS = {
   front: "back",
   back: "front",
@@ -68,6 +49,25 @@ const getOpposingOffset = (
 
   const opposingX = side.width - coordinate.x - 1;
   return (coordinate.y * side.width + opposingX) << 2;
+};
+
+const findCollidingSide = (
+  position: { x: number; y: number },
+  sides: Sides,
+  coordinates: Coordinates,
+) => {
+  for (const kind in sides) {
+    const coordinate = coordinates[kind as SideKind];
+    const side = sides[kind as SideKind];
+    if (
+      coordinate.x <= position.x &&
+      coordinate.y <= position.y &&
+      coordinate.x + side.width > position.x &&
+      coordinate.y + side.height > position.y
+    ) {
+      return { side, coordinate, kind: kind as SideKind };
+    }
+  }
 };
 
 const PixelEditorView: Component = () => {
@@ -119,134 +119,134 @@ const PixelEditorView: Component = () => {
   const pointersDownByIdSet = new Set<number>();
   const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
 
-  const [mousePos, setMousePos] = createSignal<THREE.Vector2>();
-  const [pointerDownCount, setPointerDownCount] = createSignal<number>(0);
-  const [modeFactory, setModeFactory] = createSignal<ModeFactory>(() => createIdleMode);
-  const [coordinates, setCoordinates] = createSignal({
-    front: new THREE.Vector2(0.0, 0.0),
-    left: new THREE.Vector2(-40.0, 0.0),
-    right: new THREE.Vector2(40.0, 0.0),
-    back: new THREE.Vector2(80.0, 0.0),
-    top: new THREE.Vector2(0.0, -40.0),
-    bottom: new THREE.Vector2(0.0, 40.0),
-  });
-  const [selectedColourAccessor, setSelectedColourAccessor] = createSignal<
-    Accessor<string> | undefined
-  >();
-  const selectedColour = createMemo(() => selectedColourAccessor()?.());
-
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [ctx, setCtx] = createSignal<CanvasRenderingContext2D>();
   const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
-
+  const [mousePos, setMousePos] = createSignal<THREE.Vector2>();
+  const [pointerDownCount, setPointerDownCount] = createSignal<number>(0);
+  const [modeFactory, setModeFactory] = createSignal<ModeFactory>(() => createIdleMode);
   const [pan, setPan] = createSignal(new THREE.Vector2(-10.0, -10.0));
   const [scale, setScale] = createSignal(8);
-  const worldPtToScreenPt = (pt: THREE.Vector2, out?: THREE.Vector2): THREE.Vector2 => {
-    out ??= new THREE.Vector2();
-    out.copy(pt);
-    out.sub(pan());
-    out.multiplyScalar(scale());
-    return out;
-  };
-  const screenPtToWorldPt = (pt: THREE.Vector2, out?: THREE.Vector2): THREE.Vector2 => {
-    out ??= new THREE.Vector2();
-    out.copy(pt);
-    out.multiplyScalar(1.0 / latest(scale));
-    out.add(latest(pan));
-    return out;
-  };
+  const [selectedColourAccessor, setSelectedColourAccessor] = createSignal<
+    Accessor<string> | undefined
+  >();
 
-  const doEffect = (effect: Effect) =>
-    untrack(() => {
-      switch (effect.type) {
-        case "NoOperation": {
-          break;
-        }
-        case "WritePixel": {
-          const result = findCollidingSide(effect, store.sides, coordinates());
-          if (!result) {
-            break;
-          }
+  const selectedColour = createMemo(() => selectedColourAccessor()?.());
 
-          const { x, y, colour } = effect;
-          const { coordinate, side, kind } = result;
-
-          const colour2 = new THREE.Color(colour);
-          colour2.convertLinearToSRGB();
-
-          const r = Math.max(0, Math.min(255, Math.round(colour2.r * 255.0)));
-          const g = Math.max(0, Math.min(255, Math.round(colour2.g * 255.0)));
-          const b = Math.max(0, Math.min(255, Math.round(colour2.b * 255.0)));
-
-          const localX = x - coordinate.x;
-          const localY = y - coordinate.y;
-          const offset = (localY * side.width + localX) << 2;
-          side.data[offset + 0] = r;
-          side.data[offset + 1] = g;
-          side.data[offset + 2] = b;
-          side.data[offset + 3] = 255;
-
-          const opposingKind = OPPOSING_KINDS[kind];
-          const opposingOffset = getOpposingOffset(kind, { x: localX, y: localY }, side);
-
-          if (!store.sides[opposingKind].data[opposingOffset + 3]) {
-            store.sides[opposingKind].data[opposingOffset + 0] = r;
-            store.sides[opposingKind].data[opposingOffset + 1] = g;
-            store.sides[opposingKind].data[opposingOffset + 2] = b;
-            store.sides[opposingKind].data[opposingOffset + 3] = 255;
-          }
-
-          render();
-          updateVoxels();
-
-          break;
-        }
-        case "ErasePixel": {
-          const { x, y } = effect;
-
-          const result = findCollidingSide(effect, store.sides, coordinates());
-          if (!result) {
-            break;
-          }
-
-          const { coordinate, side, kind } = result;
-
-          const localX = x - coordinate.x;
-          const localY = y - coordinate.y;
-          const offset = (localY * side.width + localX) << 2;
-          side.data[offset + 0] = 0;
-          side.data[offset + 1] = 0;
-          side.data[offset + 2] = 0;
-          side.data[offset + 3] = 0;
-
-          const opposingKind = OPPOSING_KINDS[kind];
-          const opposingOffset = getOpposingOffset(kind, { x: localX, y: localY }, side);
-
-          store.sides[opposingKind].data[opposingOffset + 0] = 0;
-          store.sides[opposingKind].data[opposingOffset + 1] = 0;
-          store.sides[opposingKind].data[opposingOffset + 2] = 0;
-          store.sides[opposingKind].data[opposingOffset + 3] = 0;
-
-          render();
-          updateVoxels();
-
-          break;
-        }
-        default: {
-          const x: never = effect;
-          throw new Error(`Unreachable ${x}`);
-        }
-      }
-    });
+  const PADDING = 6;
+  const coordinates = createMemo(() => {
+    return {
+      front: new THREE.Vector2(0.0, 0.0),
+      left: new THREE.Vector2(-(store.dimensions.depth + PADDING), 0.0),
+      right: new THREE.Vector2(store.dimensions.width + PADDING, 0.0),
+      back: new THREE.Vector2(store.dimensions.width + store.dimensions.depth + PADDING * 2, 0.0),
+      top: new THREE.Vector2(0.0, -(store.dimensions.depth + PADDING)),
+      bottom: new THREE.Vector2(0.0, store.dimensions.height + PADDING),
+    };
+  });
 
   const modeParams: ModeParams = {
-    doEffect,
     mousePos,
     pointerDownCount,
-    screenPtToWorldPt,
-    selectedColour: selectedColour,
+    selectedColour,
     store,
-    worldPtToScreenPt,
+    doEffect(effect: Effect) {
+      return untrack(() => {
+        switch (effect.type) {
+          case "NoOperation": {
+            break;
+          }
+          case "WritePixel": {
+            const result = findCollidingSide(effect, store.sides, coordinates());
+            if (!result) {
+              break;
+            }
+
+            const { x, y, colour } = effect;
+            const { coordinate, side, kind } = result;
+
+            const colour2 = new THREE.Color(colour);
+            colour2.convertLinearToSRGB();
+
+            const r = Math.max(0, Math.min(255, Math.round(colour2.r * 255.0)));
+            const g = Math.max(0, Math.min(255, Math.round(colour2.g * 255.0)));
+            const b = Math.max(0, Math.min(255, Math.round(colour2.b * 255.0)));
+
+            const localX = x - coordinate.x;
+            const localY = y - coordinate.y;
+            const offset = (localY * side.width + localX) << 2;
+            side.data[offset + 0] = r;
+            side.data[offset + 1] = g;
+            side.data[offset + 2] = b;
+            side.data[offset + 3] = 255;
+
+            const opposingKind = OPPOSING_KINDS[kind];
+            const opposingOffset = getOpposingOffset(kind, { x: localX, y: localY }, side);
+
+            if (!store.sides[opposingKind].data[opposingOffset + 3]) {
+              store.sides[opposingKind].data[opposingOffset + 0] = r;
+              store.sides[opposingKind].data[opposingOffset + 1] = g;
+              store.sides[opposingKind].data[opposingOffset + 2] = b;
+              store.sides[opposingKind].data[opposingOffset + 3] = 255;
+            }
+
+            render();
+            updateVoxels();
+
+            break;
+          }
+          case "ErasePixel": {
+            const { x, y } = effect;
+
+            const result = findCollidingSide(effect, store.sides, coordinates());
+            if (!result) {
+              break;
+            }
+
+            const { coordinate, side, kind } = result;
+
+            const localX = x - coordinate.x;
+            const localY = y - coordinate.y;
+            const offset = (localY * side.width + localX) << 2;
+            side.data[offset + 0] = 0;
+            side.data[offset + 1] = 0;
+            side.data[offset + 2] = 0;
+            side.data[offset + 3] = 0;
+
+            const opposingKind = OPPOSING_KINDS[kind];
+            const opposingOffset = getOpposingOffset(kind, { x: localX, y: localY }, side);
+
+            store.sides[opposingKind].data[opposingOffset + 0] = 0;
+            store.sides[opposingKind].data[opposingOffset + 1] = 0;
+            store.sides[opposingKind].data[opposingOffset + 2] = 0;
+            store.sides[opposingKind].data[opposingOffset + 3] = 0;
+
+            render();
+            updateVoxels();
+
+            break;
+          }
+          default: {
+            const x: never = effect;
+            throw new Error(`Unreachable ${x}`);
+          }
+        }
+      });
+    },
+    screenPtToWorldPt(pt: THREE.Vector2, out?: THREE.Vector2): THREE.Vector2 {
+      out ??= new THREE.Vector2();
+      out.copy(pt);
+      out.multiplyScalar(1.0 / latest(scale));
+      out.add(latest(pan));
+      return out;
+    },
+    worldPtToScreenPt(pt: THREE.Vector2, out?: THREE.Vector2): THREE.Vector2 {
+      out ??= new THREE.Vector2();
+      out.copy(pt);
+      out.sub(pan());
+      out.multiplyScalar(scale());
+      return out;
+    },
   };
   const mode = createMemo(() => {
     const _modeFactory = modeFactory();
