@@ -31,22 +31,26 @@ const createInitialImageData = (
   return data;
 };
 
-export function createStackerStore() {
-  const initialSides: Sides = {
-    front: createInitialImageData(32, 4),
-    left: createInitialImageData(32, 4),
-    right: createInitialImageData(32, 4),
-    back: createInitialImageData(32, 4),
-    top: createInitialImageData(32, 4),
-    bottom: createInitialImageData(32, 4),
+const createInitialSides = (dimensions: Dimensions3D) => {
+  return {
+    front: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 4),
+    back: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 4),
+    left: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 4),
+    right: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 4),
+    top: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 4),
+    bottom: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 4),
   };
-  const initialDimensions: Dimensions3D = { width: 32, height: 32, depth: 32 };
+};
+
+export function createStackerStore() {
+  const initialDimensions: Dimensions3D = { width: 32, height: 64, depth: 16 };
+  const initialSides: Sides = createInitialSides(initialDimensions);
 
   const [store, setStore] = createStore<StackerStore>({
     dimensions: initialDimensions,
     sides: initialSides,
     voxels: solveVoxels(
-      initialSides,
+      { sides: initialSides, dimensions: initialDimensions },
       new Uint8Array(
         initialDimensions.width * initialDimensions.height * initialDimensions.depth * 4,
       ),
@@ -59,7 +63,7 @@ export function createStackerStore() {
     updateVoxels() {
       setStore(store => {
         store.voxels = solveVoxels(
-          store.sides,
+          store,
           new Uint8Array(
             store.dimensions.width * store.dimensions.height * store.dimensions.depth * 4,
           ),

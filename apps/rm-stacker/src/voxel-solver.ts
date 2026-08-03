@@ -1,98 +1,105 @@
-import { Sides } from "./types";
+import { StackerStore } from "./stacker-store";
+import { Axis, Dimensions3D, Sides, Vector3D } from "./types";
 
 type ViewSpec = {
-  img: ImageData;
-  axis: 0 | 1 | 2;
-  fixedCoords: (px: number, py: number) => [number, number, number];
+  side: ImageData;
+  axis: Axis;
+  fixedCoords: (px: number, py: number) => Vector3D;
   nearestAscending: boolean;
 };
 
-export function solveVoxels(sides: Sides, out: Uint8Array): Uint8Array {
-  const { front, left, right, back, top, bottom } = sides;
-  const size = front.width;
-  if (
-    front.height !== size ||
-    left.width !== size ||
-    left.height !== size ||
-    right.width !== size ||
-    right.height !== size ||
-    back.width !== size ||
-    back.height !== size ||
-    top.width !== size ||
-    top.height !== size ||
-    bottom.width !== size ||
-    bottom.height !== size
-  ) {
-    throw new Error("All image faces are expected to be square and of same size");
-  }
-  const outLength = size * size * size * 4;
+export function solveVoxels(
+  {
+    sides: { front, left, right, back, top, bottom },
+    dimensions: { height, width, depth },
+  }: Pick<StackerStore, "dimensions" | "sides">,
+  out: Uint8Array,
+): Uint8Array {
+  const outLength = width * height * depth * 4;
   if (out.length !== outLength) {
     throw new Error(`out.lenght expected to be ${outLength}`);
   }
-  const sizeSquared = size * size;
-  const calcTargetOffset = (x: number, y: number, z: number) => {
-    return (z * sizeSquared + y * size + x) << 2;
+
+  const calcTargetOffset = ({ x, y, z }: Vector3D) => {
+    return (z * width * height + y * width + x) << 2;
   };
-  const axisStride = (axis: number) => {
-    return axis === 0 ? 4 : axis === 1 ? size * 4 : sizeSquared * 4;
+
+  const axisStride = {
+    x: 4,
+    y: width * 4,
+    z: width * height * 4,
   };
+
+  const axisLength = {
+    x: width,
+    y: height,
+    z: depth,
+  };
+
   // Right-handed coordinate system: +x right, +y up, +z toward the viewer.
   // The front face is at z = size - 1 (nearest to the front camera) and the
   // back face is at z = 0. Each view fixes two coordinates and raymarches the
   // remaining axis; the fixed coordinate tuples put the axis coordinate at 0.
   const views: ViewSpec[] = [
     {
-      img: front,
-      axis: 2,
-      fixedCoords: (px, py) => [px, size - 1 - py, 0],
+      side: front,
+      axis: "z",
+      fixedCoords: (px, py) => ({ x: px, y: height - 1 - py, z: 0 }),
       nearestAscending: false,
     },
     {
-      img: back,
-      axis: 2,
-      fixedCoords: (px, py) => [size - 1 - px, size - 1 - py, 0],
+      side: back,
+      axis: "z",
+      fixedCoords: (px, py) => ({ x: width - 1 - px, y: height - 1 - py, z: 0 }),
       nearestAscending: true,
     },
     {
-      img: left,
-      axis: 0,
-      fixedCoords: (px, py) => [0, size - 1 - py, px],
+      side: left,
+      axis: "x",
+      fixedCoords: (px, py) => ({ x: 0, y: height - 1 - py, z: px }),
       nearestAscending: true,
     },
     {
-      img: right,
-      axis: 0,
-      fixedCoords: (px, py) => [0, size - 1 - py, size - 1 - px],
+      side: right,
+      axis: "x",
+      fixedCoords: (px, py) => ({ x: 0, y: height - 1 - py, z: depth - 1 - px }),
       nearestAscending: false,
     },
     {
-      img: top,
-      axis: 1,
-      fixedCoords: (px, py) => [px, 0, py],
+      side: top,
+      axis: "y",
+      fixedCoords: (px, py) => ({ x: px, y: 0, z: py }),
       nearestAscending: false,
     },
     {
-      img: bottom,
-      axis: 1,
-      fixedCoords: (px, py) => [px, 0, size - 1 - py],
+      side: bottom,
+      axis: "y",
+      fixedCoords: (px, py) => ({ x: px, y: 0, z: depth - 1 - py }),
       nearestAscending: true,
     },
   ];
-  // start off as white and erase the silhouettes
+
+  // start off as white
   out.fill(255);
-  for (const view of views) {
-    const data = view.img.data;
-    for (let py = 0; py < size; ++py) {
-      const rowOffset = py * size;
-      for (let px = 0; px < size; ++px) {
-        const sourceOffset = (rowOffset + px) << 2;
-        if (data[sourceOffset + 3] !== 0) {
+
+  // erase the silhouettes
+  for (const { side, fixedCoords, axis } of views) {
+    const length = axisLength[axis];
+    const stride = axisStride[axis];
+
+    for (let y = 0; y < side.height; ++y) {
+      const rowOffset = y * side.width;
+
+      for (let x = 0; x < side.width; ++x) {
+        const sourceOffset = (rowOffset + x) << 2;
+
+        if (side.data[sourceOffset + 3] !== 0) {
           continue;
         }
-        const [x, y, z] = view.fixedCoords(px, py);
-        let offset = calcTargetOffset(x, y, z);
-        const stride = axisStride(view.axis);
-        for (let i = 0; i < size; ++i) {
+
+        let offset = calcTargetOffset(fixedCoords(x, y));
+
+        for (let i = 0; i < length; ++i) {
           if (out[offset + 3] !== 0) {
             out[offset] = 0;
             out[offset + 1] = 0;
@@ -104,26 +111,35 @@ export function solveVoxels(sides: Sides, out: Uint8Array): Uint8Array {
       }
     }
   }
+
   // colour the remaining voxels by casting each opaque pixel ray to the
   // nearest surviving voxel; views processed first take priority on overlap
-  const painted = new Uint8Array(size * size * size);
+  const painted = new Uint8Array(width * height * depth);
   for (const view of views) {
-    const data = view.img.data;
-    for (let py = 0; py < size; ++py) {
-      const rowOffset = py * size;
-      for (let px = 0; px < size; ++px) {
+    const data = view.side.data;
+    const imgWidth = view.side.width;
+    const imgHeight = view.side.height;
+    const length = axisLength[view.axis];
+
+    for (let py = 0; py < imgHeight; ++py) {
+      const rowOffset = py * imgWidth;
+
+      for (let px = 0; px < imgWidth; ++px) {
         const sourceOffset = (rowOffset + px) << 2;
+
         if (data[sourceOffset + 3] === 0) {
           continue;
         }
-        const [x, y, z] = view.fixedCoords(px, py);
-        let offset = calcTargetOffset(x, y, z);
-        let stride = axisStride(view.axis);
+
+        let offset = calcTargetOffset(view.fixedCoords(px, py));
+        let stride = axisStride[view.axis];
+
         if (!view.nearestAscending) {
-          offset += (size - 1) * stride;
+          offset += (length - 1) * stride;
           stride = -stride;
         }
-        for (let i = 0; i < size; ++i) {
+
+        for (let i = 0; i < length; ++i) {
           if (out[offset + 3] !== 0) {
             if (painted[offset >> 2] === 0) {
               painted[offset >> 2] = 1;

@@ -128,10 +128,10 @@ const PixelEditorView: Component = () => {
   const coordinates = createMemo(() => {
     return {
       front: new THREE.Vector2(0.0, 0.0),
-      left: new THREE.Vector2(-(store.dimensions.width + PADDING), 0.0),
+      left: new THREE.Vector2(-(store.dimensions.depth + PADDING), 0.0),
       right: new THREE.Vector2(store.dimensions.width + PADDING, 0.0),
-      back: new THREE.Vector2((store.dimensions.width + PADDING) * 2, 0.0),
-      top: new THREE.Vector2(0.0, -(store.dimensions.height + PADDING)),
+      back: new THREE.Vector2(store.dimensions.width + store.dimensions.depth + PADDING * 2, 0.0),
+      top: new THREE.Vector2(0.0, -(store.dimensions.depth + PADDING)),
       bottom: new THREE.Vector2(0.0, store.dimensions.height + PADDING),
     };
   });
