@@ -20,16 +20,20 @@ export interface Mode {
 
 export type ModeFactory = (params: ModeParams) => Mode;
 
-export interface Sides {
-  front: ImageData;
-  left: ImageData;
-  right: ImageData;
-  back: ImageData;
-  top: ImageData;
-  bottom: ImageData;
-}
+export const sideKindSet = {
+  front: true,
+  left: true,
+  right: true,
+  back: true,
+  top: true,
+  bottom: true,
+} as const;
 
-export type SideKind = keyof Sides;
+export type SideKind = keyof typeof sideKindSet;
+
+export type Sides = {
+  [k in SideKind]: ImageData;
+};
 
 export interface ImageCanvasCacheData {
   canvas: HTMLCanvasElement;

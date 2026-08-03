@@ -30,6 +30,7 @@
     "@tailwindcss/vite": "^4.3.0",
     "browser-fs-access": "^0.38.0",
     "daisyui": "^5.5.20",
+    "jszip": "^3.10.1",
     "solid-js": "2.0.0-beta.29",
     "solid-three": "https://pkg.pr.new/solid-three@dcd9e3d",
     "tailwindcss": "^4.3.0",

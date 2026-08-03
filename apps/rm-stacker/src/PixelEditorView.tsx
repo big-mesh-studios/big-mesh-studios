@@ -18,6 +18,8 @@ import { Effect } from "./Effect";
 import Palette from "./Palette";
 import { StackerContext } from "./stacker-context";
 import { Sides } from "./types";
+import { load, save } from "./load-save";
+import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
 
 interface ImageCanvasCacheData {
   canvas: HTMLCanvasElement;
@@ -69,7 +71,51 @@ const getOpposingOffset = (
 };
 
 const PixelEditorView: Component = () => {
-  const { store, updateVoxels } = useContext(StackerContext);
+  const { store, setStore, updateVoxels } = useContext(StackerContext);
+  const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
+
+  const onLoad = async () => {
+    const file = await fileOpen<false>({
+      extensions: [".zip"],
+      description: "Sprite stack",
+      mimeTypes: ["application/zip"],
+    });
+    const sides = await load(file);
+    setStore(s => {
+      s.sides = sides;
+    });
+    updateVoxels();
+    setFileHandle((file as FileWithHandle).handle ?? null);
+    onSettled(() => {
+      render();
+    });
+  };
+
+  const onSave = async () => {
+    const blob = await save(store.sides);
+    setFileHandle(
+      await fileSave(
+        blob,
+        {
+          fileName: "sprite-stack.zip",
+          extensions: [".zip"],
+          description: "Sprite stack",
+        },
+        fileHandle(),
+      ),
+    );
+  };
+
+  const onSaveAs = async () => {
+    const blob = await save(store.sides);
+    setFileHandle(
+      await fileSave(blob, {
+        fileName: "sprite-stack.zip",
+        extensions: [".zip"],
+        description: "Sprite stack",
+      }),
+    );
+  };
   const pointersDownByIdSet = new Set<number>();
   const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
 
@@ -458,6 +504,24 @@ const PixelEditorView: Component = () => {
           >
             <i class="fa-solid fa-eraser" />
           </a>
+          <a role="button" class="tab" onClick={onSave}>
+            <i class="fa-solid fa-floppy-disk" />
+          </a>
+          <a role="button" class="tab" onClick={onSaveAs}>
+            <span class="relative" title="Save as">
+              <i class="fa-solid fa-floppy-disk" />
+              <i
+                class="fa-solid fa-pen absolute text-[0.6em]"
+                style="top: -0.15em; right: -0.3em;"
+              />
+            </span>
+          </a>
+          <a role="button" class="tab" onClick={onLoad}>
+            <i class="fa-solid fa-folder" />
+          </a>
+        </div>
+        <div class="badge badge-outline badge-sm mt-1" style="pointer-events: auto;">
+          {fileHandle()?.name ?? "Untitled"}
         </div>
         <div style="flex-grow: 1; overflow: hidden;">
           <div style="height: 100%; display: inline-block; pointer-events: auto;">
