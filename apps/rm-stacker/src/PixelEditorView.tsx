@@ -31,17 +31,34 @@ const findCollidingSide = (
   sides: Sides,
   coordinates: Coordinates,
 ) => {
-  for (const key in sides) {
-    const coordinate = coordinates[key as SideKind];
-    const side = sides[key as SideKind];
+  for (const kind in sides) {
+    const coordinate = coordinates[kind as SideKind];
+    const side = sides[kind as SideKind];
     if (
       coordinate.x < position.x &&
       coordinate.y < position.y &&
       coordinate.x + side.width >= position.x &&
       coordinate.y + side.height >= position.y
     ) {
-      return { side, coordinate };
+      return { side, coordinate, kind: kind as SideKind };
     }
+  }
+};
+
+const getOpposingKind = (kind: SideKind) => {
+  switch (kind) {
+    case "front":
+      return "back";
+    case "back":
+      return "front";
+    case "left":
+      return "right";
+    case "right":
+      return "left";
+    case "top":
+      return "bottom";
+    case "bottom":
+      return "top";
   }
 };
 
@@ -94,7 +111,13 @@ const PixelEditorView: Component = () => {
           break;
         }
         case "WritePixel": {
+          const result = findCollidingSide(effect, store.sides, coordinates());
+          if (!result) {
+            break;
+          }
+
           const { x, y, colour } = effect;
+          const { coordinate, side, kind } = result;
 
           const colour2 = new THREE.Color(colour);
           colour2.convertLinearToSRGB();
@@ -103,18 +126,24 @@ const PixelEditorView: Component = () => {
           const g = Math.max(0, Math.min(255, Math.round(colour2.g * 255.0)));
           const b = Math.max(0, Math.min(255, Math.round(colour2.b * 255.0)));
 
-          const result = findCollidingSide(effect, store.sides, coordinates());
-          if (!result) {
-            break;
-          }
+          const localX = x - coordinate.x;
+          const localY = y - coordinate.y;
+          const offset = (localY * side.width + localX) << 2;
+          side.data[offset + 0] = r;
+          side.data[offset + 1] = g;
+          side.data[offset + 2] = b;
+          side.data[offset + 3] = 255;
 
-          const localX = x - result.coordinate.x;
-          const localY = y - result.coordinate.y;
-          const offset = (localY * result.side.width + localX) << 2;
-          result.side.data[offset + 0] = r;
-          result.side.data[offset + 1] = g;
-          result.side.data[offset + 2] = b;
-          result.side.data[offset + 3] = 255;
+          const opposingKind = getOpposingKind(kind);
+          const opposingLocalX = side.width - localX - 1;
+          const opposingOffset = (localY * side.width + opposingLocalX) << 2;
+
+          if (!store.sides[opposingKind].data[opposingOffset + 3]) {
+            store.sides[opposingKind].data[opposingOffset + 0] = r;
+            store.sides[opposingKind].data[opposingOffset + 1] = g;
+            store.sides[opposingKind].data[opposingOffset + 2] = b;
+            store.sides[opposingKind].data[opposingOffset + 3] = 255;
+          }
 
           render();
           updateVoxels();
@@ -129,13 +158,15 @@ const PixelEditorView: Component = () => {
             break;
           }
 
-          const localX = x - result.coordinate.x;
-          const localY = y - result.coordinate.y;
-          const offset = (localY * result.side.width + localX) << 2;
-          result.side.data[offset + 0] = 0;
-          result.side.data[offset + 1] = 0;
-          result.side.data[offset + 2] = 0;
-          result.side.data[offset + 3] = 0;
+          const { coordinate, side } = result;
+
+          const localX = x - coordinate.x;
+          const localY = y - coordinate.y;
+          const offset = (localY * side.width + localX) << 2;
+          side.data[offset + 0] = 0;
+          side.data[offset + 1] = 0;
+          side.data[offset + 2] = 0;
+          side.data[offset + 3] = 0;
 
           render();
           updateVoxels();
