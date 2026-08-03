@@ -1,3 +1,5 @@
+import { Sides } from "./types";
+
 type ViewSpec = {
   img: ImageData;
   axis: 0 | 1 | 2;
@@ -5,16 +7,8 @@ type ViewSpec = {
   nearestAscending: boolean;
 };
 
-export function solveVoxels(params: {
-  front: ImageData;
-  left: ImageData;
-  right: ImageData;
-  back: ImageData;
-  top: ImageData;
-  bottom: ImageData;
-  out: Uint8Array;
-}) {
-  const { front, left, right, back, top, bottom, out } = params;
+export function solveVoxels(sides: Sides, out: Uint8Array): Uint8Array {
+  const { front, left, right, back, top, bottom } = sides;
   const size = front.width;
   if (
     front.height !== size ||
@@ -145,4 +139,6 @@ export function solveVoxels(params: {
       }
     }
   }
+
+  return out;
 }

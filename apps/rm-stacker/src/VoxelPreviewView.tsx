@@ -1,4 +1,13 @@
-import { Component, createRenderEffect, createSignal, onSettled, runWithOwner } from "solid-js";
+import {
+  Component,
+  createMemo,
+  createRenderEffect,
+  createSignal,
+  createTrackedEffect,
+  onSettled,
+  runWithOwner,
+  useContext,
+} from "solid-js";
 import {
   Fn,
   If,
@@ -16,6 +25,8 @@ import {
 } from "@random-mesh/rmsl";
 import type { Node } from "@random-mesh/rmsl";
 import { tryCatch } from "./utils";
+import { StackerContext } from "./stacker-context";
+import { solveVoxels } from "./voxel-solver";
 
 // Shared rmsl nodes. Created once so the generated slot names are the same in
 // both the vertex and fragment shaders.
@@ -247,22 +258,35 @@ const LIGHT_DIR = (() => {
 const LIGHT_COLOUR = new Float32Array([1.0, 0.97, 0.9]);
 const AMBIENT_COLOUR = new Float32Array([0.35, 0.35, 0.4]);
 
-const VoxelPreviewView: Component<{
-  ref?: (ctx: { setVoxels: (out: Uint8Array, size: number) => void }) => void;
-}> = props => {
+const VoxelPreviewView: Component = () => {
+  const { store } = useContext(StackerContext);
+
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [webgl, setWebgl] = createSignal<WebGLState>();
   const [glError, setGlError] = createSignal<string | undefined>();
 
-  const setVoxels = (out: Uint8Array, size: number) => {
+  const loadVoxelArrayToWebGL = () => {
     const _webgl = webgl();
     if (_webgl === undefined) {
       return;
     }
     const gl = _webgl.gl;
     gl.bindTexture(gl.TEXTURE_3D, _webgl.texture);
-    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, size, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, out);
+    gl.texImage3D(
+      gl.TEXTURE_3D,
+      0,
+      gl.RGBA8,
+      store.dimensions.x,
+      store.dimensions.y,
+      store.dimensions.z,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      store.voxels,
+    );
   };
+
+  createTrackedEffect(loadVoxelArrayToWebGL);
 
   const render = () => {
     const _webgl = webgl();
@@ -288,20 +312,6 @@ const VoxelPreviewView: Component<{
     gl.vertexAttribPointer(_webgl.positionLocation, 2, gl.FLOAT, false, 0, 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
-
-  createRenderEffect(
-    () => props.ref,
-    ref => {
-      if (ref === undefined) {
-        return;
-      }
-      runWithOwner(null, () => {
-        ref({
-          setVoxels,
-        });
-      });
-    },
-  );
 
   onSettled(() => {
     const _canvas = canvas();
