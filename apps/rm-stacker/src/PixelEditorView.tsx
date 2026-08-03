@@ -54,6 +54,20 @@ const OPPOSING_KINDS = {
   bottom: "top",
 } as const;
 
+const getOpposingOffset = (
+  kind: SideKind,
+  coordinate: { x: number; y: number },
+  side: ImageData,
+) => {
+  if (kind === "top" || kind === "bottom") {
+    const opposingY = side.height - coordinate.y - 1;
+    return (opposingY * side.width + coordinate.x) << 2;
+  }
+
+  const opposingX = side.width - coordinate.x - 1;
+  return (coordinate.y * side.width + opposingX) << 2;
+};
+
 const PixelEditorView: Component = () => {
   const { store, updateVoxels } = useContext(StackerContext);
   const pointersDownByIdSet = new Set<number>();
@@ -127,8 +141,7 @@ const PixelEditorView: Component = () => {
           side.data[offset + 3] = 255;
 
           const opposingKind = OPPOSING_KINDS[kind];
-          const opposingLocalX = side.width - localX - 1;
-          const opposingOffset = (localY * side.width + opposingLocalX) << 2;
+          const opposingOffset = getOpposingOffset(kind, { x: localX, y: localY }, side);
 
           if (!store.sides[opposingKind].data[opposingOffset + 3]) {
             store.sides[opposingKind].data[opposingOffset + 0] = r;
@@ -161,8 +174,7 @@ const PixelEditorView: Component = () => {
           side.data[offset + 3] = 0;
 
           const opposingKind = OPPOSING_KINDS[kind];
-          const opposingLocalX = side.width - localX - 1;
-          const opposingOffset = (localY * side.width + opposingLocalX) << 2;
+          const opposingOffset = getOpposingOffset(kind, { x: localX, y: localY }, side);
 
           store.sides[opposingKind].data[opposingOffset + 0] = 0;
           store.sides[opposingKind].data[opposingOffset + 1] = 0;
