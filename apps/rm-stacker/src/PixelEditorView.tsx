@@ -35,10 +35,10 @@ const findCollidingSide = (
     const coordinate = coordinates[kind as SideKind];
     const side = sides[kind as SideKind];
     if (
-      coordinate.x < position.x &&
-      coordinate.y < position.y &&
-      coordinate.x + side.width >= position.x &&
-      coordinate.y + side.height >= position.y
+      coordinate.x <= position.x &&
+      coordinate.y <= position.y &&
+      coordinate.x + side.width > position.x &&
+      coordinate.y + side.height > position.y
     ) {
       return { side, coordinate, kind: kind as SideKind };
     }
