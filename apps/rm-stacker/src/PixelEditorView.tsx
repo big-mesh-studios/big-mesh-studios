@@ -28,25 +28,6 @@ interface ImageCanvasCacheData {
 
 type Coordinates = Record<keyof Sides, { x: number; y: number }>;
 
-const findCollidingSide = (
-  position: { x: number; y: number },
-  sides: Sides,
-  coordinates: Coordinates,
-) => {
-  for (const kind in sides) {
-    const coordinate = coordinates[kind as SideKind];
-    const side = sides[kind as SideKind];
-    if (
-      coordinate.x <= position.x &&
-      coordinate.y <= position.y &&
-      coordinate.x + side.width > position.x &&
-      coordinate.y + side.height > position.y
-    ) {
-      return { side, coordinate, kind: kind as SideKind };
-    }
-  }
-};
-
 const OPPOSING_KINDS = {
   front: "back",
   back: "front",
@@ -68,6 +49,25 @@ const getOpposingOffset = (
 
   const opposingX = side.width - coordinate.x - 1;
   return (coordinate.y * side.width + opposingX) << 2;
+};
+
+const findCollidingSide = (
+  position: { x: number; y: number },
+  sides: Sides,
+  coordinates: Coordinates,
+) => {
+  for (const kind in sides) {
+    const coordinate = coordinates[kind as SideKind];
+    const side = sides[kind as SideKind];
+    if (
+      coordinate.x <= position.x &&
+      coordinate.y <= position.y &&
+      coordinate.x + side.width > position.x &&
+      coordinate.y + side.height > position.y
+    ) {
+      return { side, coordinate, kind: kind as SideKind };
+    }
+  }
 };
 
 const PixelEditorView: Component = () => {
@@ -122,14 +122,20 @@ const PixelEditorView: Component = () => {
   const [mousePos, setMousePos] = createSignal<THREE.Vector2>();
   const [pointerDownCount, setPointerDownCount] = createSignal<number>(0);
   const [modeFactory, setModeFactory] = createSignal<ModeFactory>(() => createIdleMode);
-  const [coordinates, setCoordinates] = createSignal({
-    front: new THREE.Vector2(0.0, 0.0),
-    left: new THREE.Vector2(-40.0, 0.0),
-    right: new THREE.Vector2(40.0, 0.0),
-    back: new THREE.Vector2(80.0, 0.0),
-    top: new THREE.Vector2(0.0, -40.0),
-    bottom: new THREE.Vector2(0.0, 40.0),
+
+  const PADDING = 6;
+
+  const coordinates = createMemo(() => {
+    return {
+      front: new THREE.Vector2(0.0, 0.0),
+      left: new THREE.Vector2(-(store.dimensions.width + PADDING), 0.0),
+      right: new THREE.Vector2(store.dimensions.width + PADDING, 0.0),
+      back: new THREE.Vector2((store.dimensions.width + PADDING) * 2, 0.0),
+      top: new THREE.Vector2(0.0, -(store.dimensions.height + PADDING)),
+      bottom: new THREE.Vector2(0.0, store.dimensions.height + PADDING),
+    };
   });
+
   const [selectedColourAccessor, setSelectedColourAccessor] = createSignal<
     Accessor<string> | undefined
   >();
