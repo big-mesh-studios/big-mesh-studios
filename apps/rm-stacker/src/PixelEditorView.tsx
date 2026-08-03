@@ -45,22 +45,14 @@ const findCollidingSide = (
   }
 };
 
-const getOpposingKind = (kind: SideKind) => {
-  switch (kind) {
-    case "front":
-      return "back";
-    case "back":
-      return "front";
-    case "left":
-      return "right";
-    case "right":
-      return "left";
-    case "top":
-      return "bottom";
-    case "bottom":
-      return "top";
-  }
-};
+const OPPOSING_KINDS = {
+  front: "back",
+  back: "front",
+  left: "right",
+  right: "left",
+  top: "bottom",
+  bottom: "top",
+} as const;
 
 const PixelEditorView: Component = () => {
   const { store, updateVoxels } = useContext(StackerContext);
@@ -134,7 +126,7 @@ const PixelEditorView: Component = () => {
           side.data[offset + 2] = b;
           side.data[offset + 3] = 255;
 
-          const opposingKind = getOpposingKind(kind);
+          const opposingKind = OPPOSING_KINDS[kind];
           const opposingLocalX = side.width - localX - 1;
           const opposingOffset = (localY * side.width + opposingLocalX) << 2;
 
@@ -168,7 +160,7 @@ const PixelEditorView: Component = () => {
           side.data[offset + 2] = 0;
           side.data[offset + 3] = 0;
 
-          const opposingKind = getOpposingKind(kind);
+          const opposingKind = OPPOSING_KINDS[kind];
           const opposingLocalX = side.width - localX - 1;
           const opposingOffset = (localY * side.width + opposingLocalX) << 2;
 
