@@ -1,6 +1,33 @@
 import * as THREE from "three";
 import { Accessor } from "solid-js";
 import { Effect } from "./Effect";
+import { StackerStore } from "./stacker-store";
+
+/**********************************************************************************/
+/*                                       Misc                                     */
+/**********************************************************************************/
+
+export interface Vector2D {
+  x: number;
+  y: number;
+}
+
+export interface Vector3D extends Vector2D {
+  z: number;
+}
+
+export interface Dimensions2D {
+  width: number;
+  height: number;
+}
+
+export interface Dimensions3D extends Dimensions2D {
+  depth: number;
+}
+
+/**********************************************************************************/
+/*                                       Mode                                     */
+/**********************************************************************************/
 
 export interface ModeParams {
   mousePos: Accessor<THREE.Vector2 | undefined>;
@@ -20,6 +47,10 @@ export interface Mode {
 
 export type ModeFactory = (params: ModeParams) => Mode;
 
+/**********************************************************************************/
+/*                                      Sides                                     */
+/**********************************************************************************/
+
 export interface Sides {
   front: ImageData;
   left: ImageData;
@@ -30,13 +61,3 @@ export interface Sides {
 }
 
 export type SideKind = keyof Sides;
-
-export interface ImageCanvasCacheData {
-  canvas: HTMLCanvasElement;
-  ctx: CanvasRenderingContext2D;
-}
-
-export interface StackerStore {
-  dimensions: { x: number; y: number; z: number };
-  sides: Sides;
-}
