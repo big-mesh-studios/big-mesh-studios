@@ -1,10 +1,10 @@
 import { createEffect, createMemo, untrack } from "solid-js";
-import { Mode, ModeParams } from "../Mode";
+import { Mode, ModeParams } from "../types";
 import { Effect } from "../Effect";
 
 export function createDrawMode({
   erase,
-  modeParams: { mousePos, screenPtToWorldPt, pointerDownCount, doEffect, selectedColour, onUpdate },
+  modeParams: { mousePos, screenPtToWorldPt, pointerDownCount, doEffect, selectedColour },
 }: {
   erase: boolean;
   modeParams: ModeParams;
@@ -22,6 +22,7 @@ export function createDrawMode({
     worldPos.y = Math.round(worldPos.y - 0.5);
     return worldPos;
   });
+
   createEffect(
     () => [pixelPosUnderMouse(), pointerDownCount()] as const,
     ([pt, pointerDownCount]) => {
@@ -39,7 +40,6 @@ export function createDrawMode({
           doEffect(Effect.writePixel(pt.x, pt.y, _selectedColour));
         }
       }
-      untrack(onUpdate);
     },
   );
   const overlayDrawing = createMemo(() => {
