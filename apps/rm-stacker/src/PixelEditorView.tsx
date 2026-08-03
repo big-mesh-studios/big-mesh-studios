@@ -35,31 +35,37 @@ const findCollidingSide = (
     const coordinate = coordinates[kind as SideKind];
     const side = sides[kind as SideKind];
     if (
-      coordinate.x < position.x &&
-      coordinate.y < position.y &&
-      coordinate.x + side.width >= position.x &&
-      coordinate.y + side.height >= position.y
+      coordinate.x <= position.x &&
+      coordinate.y <= position.y &&
+      coordinate.x + side.width > position.x &&
+      coordinate.y + side.height > position.y
     ) {
       return { side, coordinate, kind: kind as SideKind };
     }
   }
 };
 
-const getOpposingKind = (kind: SideKind) => {
-  switch (kind) {
-    case "front":
-      return "back";
-    case "back":
-      return "front";
-    case "left":
-      return "right";
-    case "right":
-      return "left";
-    case "top":
-      return "bottom";
-    case "bottom":
-      return "top";
+const OPPOSING_KINDS = {
+  front: "back",
+  back: "front",
+  left: "right",
+  right: "left",
+  top: "bottom",
+  bottom: "top",
+} as const;
+
+const getOpposingOffset = (
+  kind: SideKind,
+  coordinate: { x: number; y: number },
+  side: ImageData,
+) => {
+  if (kind === "top" || kind === "bottom") {
+    const opposingY = side.height - coordinate.y - 1;
+    return (opposingY * side.width + coordinate.x) << 2;
   }
+
+  const opposingX = side.width - coordinate.x - 1;
+  return (coordinate.y * side.width + opposingX) << 2;
 };
 
 const PixelEditorView: Component = () => {
@@ -134,9 +140,8 @@ const PixelEditorView: Component = () => {
           side.data[offset + 2] = b;
           side.data[offset + 3] = 255;
 
-          const opposingKind = getOpposingKind(kind);
-          const opposingLocalX = side.width - localX - 1;
-          const opposingOffset = (localY * side.width + opposingLocalX) << 2;
+          const opposingKind = OPPOSING_KINDS[kind];
+          const opposingOffset = getOpposingOffset(kind, { x: localX, y: localY }, side);
 
           if (!store.sides[opposingKind].data[opposingOffset + 3]) {
             store.sides[opposingKind].data[opposingOffset + 0] = r;
@@ -168,9 +173,8 @@ const PixelEditorView: Component = () => {
           side.data[offset + 2] = 0;
           side.data[offset + 3] = 0;
 
-          const opposingKind = getOpposingKind(kind);
-          const opposingLocalX = side.width - localX - 1;
-          const opposingOffset = (localY * side.width + opposingLocalX) << 2;
+          const opposingKind = OPPOSING_KINDS[kind];
+          const opposingOffset = getOpposingOffset(kind, { x: localX, y: localY }, side);
 
           store.sides[opposingKind].data[opposingOffset + 0] = 0;
           store.sides[opposingKind].data[opposingOffset + 1] = 0;
