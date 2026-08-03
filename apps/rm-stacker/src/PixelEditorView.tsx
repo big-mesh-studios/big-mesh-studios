@@ -158,7 +158,7 @@ const PixelEditorView: Component = () => {
             break;
           }
 
-          const { coordinate, side } = result;
+          const { coordinate, side, kind } = result;
 
           const localX = x - coordinate.x;
           const localY = y - coordinate.y;
@@ -167,6 +167,15 @@ const PixelEditorView: Component = () => {
           side.data[offset + 1] = 0;
           side.data[offset + 2] = 0;
           side.data[offset + 3] = 0;
+
+          const opposingKind = getOpposingKind(kind);
+          const opposingLocalX = side.width - localX - 1;
+          const opposingOffset = (localY * side.width + opposingLocalX) << 2;
+
+          store.sides[opposingKind].data[opposingOffset + 0] = 0;
+          store.sides[opposingKind].data[opposingOffset + 1] = 0;
+          store.sides[opposingKind].data[opposingOffset + 2] = 0;
+          store.sides[opposingKind].data[opposingOffset + 3] = 0;
 
           render();
           updateVoxels();
