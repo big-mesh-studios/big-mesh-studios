@@ -1,13 +1,4 @@
-import {
-  Component,
-  createMemo,
-  createRenderEffect,
-  createSignal,
-  createTrackedEffect,
-  onSettled,
-  runWithOwner,
-  useContext,
-} from "solid-js";
+import { Component, createSignal, createTrackedEffect, onSettled, useContext } from "solid-js";
 import {
   Fn,
   If,
@@ -26,7 +17,6 @@ import {
 import type { Node } from "@random-mesh/rmsl";
 import { tryCatch } from "./utils";
 import { StackerContext } from "./stacker-context";
-import { solveVoxels } from "./voxel-solver";
 
 // Shared rmsl nodes. Created once so the generated slot names are the same in
 // both the vertex and fragment shaders.

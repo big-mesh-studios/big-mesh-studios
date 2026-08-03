@@ -11,7 +11,7 @@ import {
 } from "solid-js";
 import * as THREE from "three";
 import { createPanScaleControl } from "@random-mesh/rm-pan-scale";
-import { Mode, ModeFactory, ModeParams, SideKind } from "./types";
+import { ModeFactory, ModeParams, SideKind } from "./types";
 import { createIdleMode } from "./modes/IdleMode";
 import { createDrawMode } from "./modes/DrawMode";
 import { Effect } from "./Effect";
