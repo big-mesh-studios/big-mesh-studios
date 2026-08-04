@@ -2,7 +2,7 @@ name: Check codebase for type-errors and auto-format
 
 on:
   push:
-    branches: ["**"]
+    branches-ignore: ["wip"]
   pull_request:
 
 jobs:
