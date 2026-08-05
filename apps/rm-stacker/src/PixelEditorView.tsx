@@ -14,7 +14,7 @@ import { createPanScaleControl } from "@random-mesh/rm-pan-scale";
 import { ModeFactory, ModeParams, SideKind } from "./types";
 import { createIdleMode } from "./modes/IdleMode";
 import { createDrawMode } from "./modes/DrawMode";
-import { Effect } from "./Effect";
+import { Command } from "./Command";
 import Palette from "./Palette";
 import { StackerContext } from "./stacker-context";
 import { Sides } from "./types";
@@ -26,52 +26,19 @@ interface ImageCanvasCacheData {
   ctx: CanvasRenderingContext2D;
 }
 
-type Coordinates = Record<keyof Sides, { x: number; y: number }>;
-
-const OPPOSING_KINDS = {
-  front: "back",
-  back: "front",
-  left: "right",
-  right: "left",
-  top: "bottom",
-  bottom: "top",
-} as const;
-
-const getOpposingOffset = (
-  kind: SideKind,
-  coordinate: { x: number; y: number },
-  side: ImageData,
-) => {
-  if (kind === "top" || kind === "bottom") {
-    const opposingY = side.height - coordinate.y - 1;
-    return (opposingY * side.width + coordinate.x) << 2;
-  }
-
-  const opposingX = side.width - coordinate.x - 1;
-  return (coordinate.y * side.width + opposingX) << 2;
-};
-
-const findCollidingSide = (
-  position: { x: number; y: number },
-  sides: Sides,
-  coordinates: Coordinates,
-) => {
-  for (const kind in sides) {
-    const coordinate = coordinates[kind as SideKind];
-    const side = sides[kind as SideKind];
-    if (
-      coordinate.x <= position.x &&
-      coordinate.y <= position.y &&
-      coordinate.x + side.width > position.x &&
-      coordinate.y + side.height > position.y
-    ) {
-      return { side, coordinate, kind: kind as SideKind };
-    }
-  }
-};
-
-const PixelEditorView: Component = () => {
-  const { store, setStore, updateVoxels } = useContext(StackerContext);
+const PixelEditorView: Component<{
+  coordinates: Accessor<{
+    front: THREE.Vector2;
+    left: THREE.Vector2;
+    right: THREE.Vector2;
+    back: THREE.Vector2;
+    top: THREE.Vector2;
+    bottom: THREE.Vector2;
+  }>;
+}> = props => {
+  let coordinates = props.coordinates;
+  const { store, setStore, undoRedoManager, doCommand, pushUndo, updateVoxels } =
+    useContext(StackerContext);
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
 
   const onLoad = async () => {
@@ -133,106 +100,13 @@ const PixelEditorView: Component = () => {
 
   const selectedColour = createMemo(() => selectedColourAccessor()?.());
 
-  const PADDING = 6;
-  const coordinates = createMemo(() => {
-    return {
-      front: new THREE.Vector2(0.0, 0.0),
-      left: new THREE.Vector2(-(store.dimensions.depth + PADDING), 0.0),
-      right: new THREE.Vector2(store.dimensions.width + PADDING, 0.0),
-      back: new THREE.Vector2(store.dimensions.width + store.dimensions.depth + PADDING * 2, 0.0),
-      top: new THREE.Vector2(0.0, -(store.dimensions.depth + PADDING)),
-      bottom: new THREE.Vector2(0.0, store.dimensions.height + PADDING),
-    };
-  });
-
   const modeParams: ModeParams = {
     mousePos,
     pointerDownCount,
     selectedColour,
     store,
-    doEffect(effect: Effect) {
-      return untrack(() => {
-        switch (effect.type) {
-          case "NoOperation": {
-            break;
-          }
-          case "WritePixel": {
-            const result = findCollidingSide(effect, store.sides, coordinates());
-            if (!result) {
-              break;
-            }
-
-            const { x, y, colour } = effect;
-            const { coordinate, side, kind } = result;
-
-            const colour2 = new THREE.Color(colour);
-            colour2.convertLinearToSRGB();
-
-            const r = Math.max(0, Math.min(255, Math.round(colour2.r * 255.0)));
-            const g = Math.max(0, Math.min(255, Math.round(colour2.g * 255.0)));
-            const b = Math.max(0, Math.min(255, Math.round(colour2.b * 255.0)));
-
-            const localX = x - coordinate.x;
-            const localY = y - coordinate.y;
-            const offset = (localY * side.width + localX) << 2;
-            side.data[offset + 0] = r;
-            side.data[offset + 1] = g;
-            side.data[offset + 2] = b;
-            side.data[offset + 3] = 255;
-
-            const opposingKind = OPPOSING_KINDS[kind];
-            const opposingOffset = getOpposingOffset(kind, { x: localX, y: localY }, side);
-
-            if (!store.sides[opposingKind].data[opposingOffset + 3]) {
-              store.sides[opposingKind].data[opposingOffset + 0] = r;
-              store.sides[opposingKind].data[opposingOffset + 1] = g;
-              store.sides[opposingKind].data[opposingOffset + 2] = b;
-              store.sides[opposingKind].data[opposingOffset + 3] = 255;
-            }
-
-            render();
-            updateVoxels();
-
-            break;
-          }
-          case "ErasePixel": {
-            const { x, y } = effect;
-
-            const result = findCollidingSide(effect, store.sides, coordinates());
-            if (!result) {
-              break;
-            }
-
-            const { coordinate, side, kind } = result;
-
-            const localX = x - coordinate.x;
-            const localY = y - coordinate.y;
-            const offset = (localY * side.width + localX) << 2;
-            side.data[offset + 0] = 0;
-            side.data[offset + 1] = 0;
-            side.data[offset + 2] = 0;
-            side.data[offset + 3] = 0;
-
-            const opposingKind = OPPOSING_KINDS[kind];
-            const opposingOffset = getOpposingOffset(kind, { x: localX, y: localY }, side);
-
-            store.sides[opposingKind].data[opposingOffset + 0] = 0;
-            store.sides[opposingKind].data[opposingOffset + 1] = 0;
-            store.sides[opposingKind].data[opposingOffset + 2] = 0;
-            store.sides[opposingKind].data[opposingOffset + 3] = 0;
-
-            render();
-            updateVoxels();
-
-            break;
-          }
-          default: {
-            const x: never = effect;
-            throw new Error(`Unreachable ${x}`);
-          }
-        }
-      });
-    },
+    doCommand,
+    pushUndo,
     screenPtToWorldPt(pt: THREE.Vector2, out?: THREE.Vector2): THREE.Vector2 {
       out ??= new THREE.Vector2();
       out.copy(pt);
@@ -247,6 +121,7 @@ const PixelEditorView: Component = () => {
       out.multiplyScalar(scale());
       return out;
     },
+    coordinates,
   };
   const mode = createMemo(() => {
     const _modeFactory = modeFactory();
@@ -364,6 +239,11 @@ const PixelEditorView: Component = () => {
       }
       _ctx.restore();
     });
+  queueMicrotask(() =>
+    setStore(s => {
+      s.render = render;
+    }),
+  );
 
   const panScaleControllerSetters = {
     setPanX: (value: number) => {
@@ -464,6 +344,28 @@ const PixelEditorView: Component = () => {
         }}
       >
         <div role="tablist" class="tabs tabs-box" style="pointer-events: auto;">
+          <button
+            role="button"
+            class="tab"
+            onClick={() => {
+              undoRedoManager.undo();
+              render();
+            }}
+            disabled={!undoRedoManager.hasUndo()}
+          >
+            <i class="fa-solid fa-arrow-rotate-left"></i>
+          </button>
+          <button
+            role="button"
+            class="tab"
+            onClick={() => {
+              undoRedoManager.redo();
+              render();
+            }}
+            disabled={!undoRedoManager.hasRedo()}
+          >
+            <i class="fa-solid fa-arrow-rotate-right"></i>
+          </button>
           <a
             role="tab"
             class={{

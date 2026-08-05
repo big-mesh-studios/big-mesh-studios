@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { Accessor } from "solid-js";
-import { Effect } from "./Effect";
+import { Command } from "./Command";
 import { StackerStore } from "./stacker-store";
 
 /**********************************************************************************/
@@ -31,13 +31,17 @@ export type Axis = "x" | "y" | "z";
 /*                                       Mode                                     */
 /**********************************************************************************/
 
+export type Coordinates = Record<keyof Sides, { x: number; y: number }>;
+
 export interface ModeParams {
   mousePos: Accessor<THREE.Vector2 | undefined>;
   pointerDownCount: Accessor<number>;
   screenPtToWorldPt: (pt: THREE.Vector2, out?: THREE.Vector2) => THREE.Vector2 | undefined;
   worldPtToScreenPt: (pt: THREE.Vector2, out?: THREE.Vector2) => THREE.Vector2 | undefined;
-  doEffect: (effect: Effect) => void;
+  doCommand: (effect: Command, pushUndo?: boolean, description?: string) => Command;
+  pushUndo: (reverseCommand: Command, description: string) => void;
   selectedColour: Accessor<string | undefined>;
+  coordinates: Accessor<Coordinates>;
   store: StackerStore;
 }
 
