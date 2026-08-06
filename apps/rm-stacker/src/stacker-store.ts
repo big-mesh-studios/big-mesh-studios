@@ -35,7 +35,7 @@ const createInitialImageData = (
   return data;
 };
 
-const createInitialSides = (dimensions: Dimensions3D) => {
+export const createInitialSides = (dimensions: Dimensions3D) => {
   return {
     front: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 4),
     back: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 4),

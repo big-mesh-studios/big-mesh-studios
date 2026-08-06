@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import { SideKind, sideKindSet, Sides } from "./types";
+import { Command } from "./Command";
 
 export async function load(blob: Blob): Promise<Sides> {
   let zip = await JSZip.loadAsync(blob);
@@ -70,4 +71,154 @@ export async function save(sides: Sides): Promise<Blob> {
     zip.file(`${side}.png`, blob);
   }
   return zip.generateAsync({ type: "blob" });
+}
+
+const DB_NAME = "rm-stacker";
+const DB_VERSION = 2;
+const STORE_NAME = "Store";
+
+const DB_KEYS = {
+  zipFileData: "zipFileData",
+  undoRedoData: "undoRedoData",
+} as const;
+
+export async function loadFromIndexedDB(): Promise<{
+  sides: Sides;
+  undoStack: { command: Command; description: string }[];
+  redoStack: { command: Command; description: string }[];
+} | null> {
+  let blob = await loadBlobFromDB(DB_KEYS.zipFileData);
+  if (blob === null) {
+    return null;
+  }
+  let sides = await load(blob);
+  let undoStack: { command: Command; description: string }[];
+  let redoStack: { command: Command; description: string }[];
+  let undoRedoJsonText = await loadTextFromDB(DB_KEYS.undoRedoData);
+  if (undoRedoJsonText === null) {
+    undoStack = [];
+    redoStack = [];
+  } else {
+    let undoRedoJson = JSON.parse(undoRedoJsonText);
+    undoStack = undoRedoJson.undoStack.map((x: any) => ({
+      command: Command.fromJSON(x.command),
+      description: x.description,
+    }));
+    redoStack = undoRedoJson.redoStack.map((x: any) => ({
+      command: Command.fromJSON(x.command),
+      description: x.description,
+    }));
+  }
+  return {
+    sides,
+    undoStack,
+    redoStack,
+  };
+}
+
+export async function saveToIndexedDB(params: {
+  sides: Sides;
+  undoStack: { command: Command; description: string }[];
+  redoStack: { command: Command; description: string }[];
+}): Promise<void> {
+  let { sides, undoStack, redoStack } = params;
+  let blob = await save(sides);
+  await saveBlobToDB(DB_KEYS.zipFileData, blob);
+  let undoRedoJson = {
+    undoStack: undoStack.map(x => ({
+      command: Command.toJSON(x.command),
+      description: x.description,
+    })),
+    redoStack: redoStack.map(x => ({
+      command: Command.toJSON(x.command),
+      description: x.description,
+    })),
+  };
+  let undoRedoJsonText = JSON.stringify(undoRedoJson);
+  await saveTextToDB(DB_KEYS.undoRedoData, undoRedoJsonText);
+}
+
+function openDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request: IDBOpenDBRequest = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = (event: Event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+    request.onsuccess = (event: Event) => {
+      resolve((event.target as IDBOpenDBRequest).result);
+    };
+    request.onerror = () => {
+      reject(request.error || new Error("Failed to open IndexedDB."));
+    };
+    request.onblocked = () => {
+      reject(new Error("IndexedDB upgrade was blocked."));
+    };
+  });
+}
+
+function loadBlobFromDB(key: IDBValidKey): Promise<Blob | null> {
+  return new Promise((resolve, reject) => {
+    openDB().then(db => {
+      const transaction: IDBTransaction = db.transaction(STORE_NAME, "readonly");
+      const store: IDBObjectStore = transaction.objectStore(STORE_NAME);
+      const getRequest: IDBRequest<unknown> = store.get(key);
+      getRequest.onsuccess = () => {
+        const record = getRequest.result;
+        if (record instanceof Blob) {
+          resolve(record);
+        } else {
+          resolve(null);
+        }
+      };
+      getRequest.onerror = () => {
+        reject(getRequest.error || new Error("Error retrieving data from store."));
+      };
+    }, reject);
+  });
+}
+
+function saveBlobToDB(key: IDBValidKey, blob: Blob): Promise<void> {
+  return new Promise((resolve, reject) => {
+    openDB().then(db => {
+      const transaction = db.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      const putRequest = store.put(blob, key);
+      putRequest.onsuccess = () => resolve();
+      putRequest.onerror = () => reject(putRequest.error);
+    }, reject);
+  });
+}
+
+function loadTextFromDB(key: IDBValidKey): Promise<string | null> {
+  return new Promise((resolve, reject) => {
+    openDB().then(db => {
+      const transaction: IDBTransaction = db.transaction(STORE_NAME, "readonly");
+      const store: IDBObjectStore = transaction.objectStore(STORE_NAME);
+      const getRequest: IDBRequest<unknown> = store.get(key);
+      getRequest.onsuccess = () => {
+        const result = getRequest.result;
+        if (typeof result === "string") {
+          resolve(result);
+        } else {
+          resolve(null);
+        }
+      };
+      getRequest.onerror = () => reject(getRequest.error || new Error("Failed to read text."));
+    }, reject);
+  });
+}
+
+function saveTextToDB(key: IDBValidKey, text: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    openDB().then(db => {
+      const transaction = db.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      const putRequest = store.put(text, key);
+      putRequest.onsuccess = () => resolve();
+      putRequest.onerror = () => reject(putRequest.error || new Error("Failed to write text."));
+    }, reject);
+  });
 }

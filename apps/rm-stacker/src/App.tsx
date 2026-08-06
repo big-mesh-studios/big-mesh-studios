@@ -1,4 +1,4 @@
-import { Component, createMemo, untrack } from "solid-js";
+import { Component, createMemo, onSettled, untrack } from "solid-js";
 import * as THREE from "three";
 import PixelEditorView from "./PixelEditorView";
 import VoxelPreviewView from "./VoxelPreviewView";
@@ -7,11 +7,65 @@ import { createStackerStore } from "./stacker-store";
 import { Coordinates, SideKind, Sides } from "./types";
 import { Command } from "./Command";
 import { byteTo2DigitHex, findCollidingSide } from "./utils";
+import { loadFromIndexedDB, saveToIndexedDB } from "./load-save";
 
 const App: Component = () => {
   const stackerStore = createStackerStore();
   let store = stackerStore.store;
   let setStore = stackerStore.setStore;
+
+  onSettled(() => {
+    (async () => {
+      let result = await loadFromIndexedDB();
+      if (result === null) {
+        return;
+      }
+      let { sides, undoStack, redoStack } = result;
+      setStore(s => {
+        s.sides = sides;
+      });
+      stackerStore.undoRedoManager.setStacks({
+        undoStack,
+        redoStack,
+      });
+      onSettled(() => {
+        stackerStore.updateVoxels();
+        store.render();
+      });
+    })();
+  });
+
+  let requestAutoSave = (() => {
+    let aboutToSave = false;
+    let saving = false;
+    let trySaveAgain = false;
+    return () => {
+      if (aboutToSave) {
+        return;
+      }
+      if (saving) {
+        trySaveAgain = true;
+        return;
+      }
+      aboutToSave = true;
+      setTimeout(() => {
+        aboutToSave = false;
+        saving = true;
+        (async () => {
+          do {
+            trySaveAgain = false;
+            let { undoStack, redoStack } = stackerStore.undoRedoManager.getStacks();
+            await saveToIndexedDB({
+              sides: store.sides,
+              undoStack,
+              redoStack,
+            });
+          } while (trySaveAgain);
+          saving = false;
+        })();
+      }, 1000);
+    };
+  })();
 
   const PADDING = 6;
   const coordinates = createMemo(() => {
@@ -26,6 +80,7 @@ const App: Component = () => {
   });
 
   const doEffect = (effect: Command): Command => {
+    queueMicrotask(() => requestAutoSave());
     return untrack(() => {
       switch (effect.type) {
         case "NoOperation": {

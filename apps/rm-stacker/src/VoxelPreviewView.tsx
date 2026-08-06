@@ -256,6 +256,8 @@ const VoxelPreviewView: Component = () => {
   const [glError, setGlError] = createSignal<string | undefined>();
 
   const loadVoxelArrayToWebGL = () => {
+    const dimensions = store.dimensions;
+    const voxels = store.voxels;
     const _webgl = webgl();
     if (_webgl === undefined) {
       return;
@@ -266,13 +268,13 @@ const VoxelPreviewView: Component = () => {
       gl.TEXTURE_3D,
       0,
       gl.RGBA8,
-      store.dimensions.width,
-      store.dimensions.height,
-      store.dimensions.depth,
+      dimensions.width,
+      dimensions.height,
+      dimensions.depth,
       0,
       gl.RGBA,
       gl.UNSIGNED_BYTE,
-      store.voxels,
+      voxels,
     );
   };
 

@@ -18,6 +18,7 @@ import { Command } from "./Command";
 import Palette from "./Palette";
 import { StackerContext } from "./stacker-context";
 import { Sides } from "./types";
+import { createInitialSides } from "./stacker-store";
 import { load, save } from "./load-save";
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
 
@@ -151,7 +152,7 @@ const PixelEditorView: Component<{
   });
 
   createEffect(
-    () => [canvasSize(), pan(), scale(), overlayDrawing()],
+    () => [canvasSize(), pan(), scale(), overlayDrawing(), store.sides],
     () => {
       render();
     },
@@ -344,6 +345,24 @@ const PixelEditorView: Component<{
         }}
       >
         <div role="tablist" class="tabs tabs-box" style="pointer-events: auto;">
+          <button
+            role="button"
+            class="tab"
+            title="New File"
+            onClick={() => {
+              if (!window.confirm("Start a new file? This will discard your current work.")) {
+                return;
+              }
+              undoRedoManager.clear();
+              setStore(s => {
+                s.sides = createInitialSides(store.dimensions);
+              });
+              updateVoxels();
+              render();
+            }}
+          >
+            <i class="fa-solid fa-file"></i>
+          </button>
           <button
             role="button"
             class="tab"

@@ -66,8 +66,8 @@ export class UndoRedoManager {
     this._redoStack.push({ command: command2, description: command.description });
     this._hasUndo[1](this._undoStack.length !== 0);
     this._hasRedo[1](this._redoStack.length !== 0);
-    this._undoDescription[1](this._undoStack?.[0].description);
-    this._redoDescription[1](this._redoStack?.[0].description);
+    this._undoDescription[1](this._undoStack?.[0]?.description);
+    this._redoDescription[1](this._redoStack?.[0]?.description);
   }
 
   redo() {
@@ -79,7 +79,29 @@ export class UndoRedoManager {
     this._undoStack.push({ command: command2, description: command.description });
     this._hasUndo[1](this._undoStack.length !== 0);
     this._hasRedo[1](this._redoStack.length !== 0);
-    this._undoDescription[1](this._undoStack?.[0].description);
-    this._redoDescription[1](this._redoStack?.[0].description);
+    this._undoDescription[1](this._undoStack?.[0]?.description);
+    this._redoDescription[1](this._redoStack?.[0]?.description);
+  }
+
+  getStacks(): {
+    undoStack: { command: Command; description: string }[];
+    redoStack: { command: Command; description: string }[];
+  } {
+    return {
+      undoStack: this._undoStack,
+      redoStack: this._redoStack,
+    };
+  }
+
+  setStacks(params: {
+    undoStack: { command: Command; description: string }[];
+    redoStack: { command: Command; description: string }[];
+  }) {
+    this._undoStack = params.undoStack;
+    this._redoStack = params.redoStack;
+    this._hasUndo[1](this._undoStack.length !== 0);
+    this._hasRedo[1](this._redoStack.length !== 0);
+    this._undoDescription[1](this._undoStack?.[0]?.description);
+    this._redoDescription[1](this._redoStack?.[0]?.description);
   }
 }
