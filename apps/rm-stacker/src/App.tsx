@@ -194,21 +194,23 @@ const App: Component = () => {
       }
     });
   };
-  const doCommand = (command: Command): Promise<Command> => {
-    return enqueue(() => {
-      requestRenderAndUpdateVoxels = false;
-      try {
-        return doCommand_(command).then(result => {
-          if (requestRenderAndUpdateVoxels) {
-            store.render();
-            stackerStore.updateVoxels();
-          }
-          return result;
-        });
-      } finally {
+  const doCommand = (command: Command): Command => {
+    return Command.async(
+      enqueue(() => {
         requestRenderAndUpdateVoxels = false;
-      }
-    });
+        try {
+          return doCommand_(command).then(result => {
+            if (requestRenderAndUpdateVoxels) {
+              store.render();
+              stackerStore.updateVoxels();
+            }
+            return result;
+          });
+        } finally {
+          requestRenderAndUpdateVoxels = false;
+        }
+      }),
+    );
   };
 
   queueMicrotask(() =>

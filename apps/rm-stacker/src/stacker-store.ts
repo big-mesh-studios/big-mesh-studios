@@ -10,7 +10,7 @@ export interface StackerStore {
   sides: Sides;
   voxels: Uint8Array;
   render: () => void;
-  doCommand: (command: Command) => Promise<Command>;
+  doCommand: (command: Command) => Command;
 }
 
 const createInitialImageData = (
@@ -61,7 +61,7 @@ export function createStackerStore() {
       ),
     ),
     render: () => {},
-    doCommand: _command => Promise.resolve(Command.noOperation()),
+    doCommand: _command => Command.noOperation(),
   });
   let undoRedoManager = new UndoRedoManager(command => store.doCommand(command));
 
@@ -79,12 +79,8 @@ export function createStackerStore() {
         );
       });
     },
-    doCommand: async (
-      command: Command,
-      pushUndo?: boolean,
-      description?: string,
-    ): Promise<Command> => {
-      let reverseCommand = await store.doCommand(command);
+    doCommand: (command: Command, pushUndo?: boolean, description?: string): Command => {
+      let reverseCommand = store.doCommand(command);
       if (pushUndo) {
         undoRedoManager.pushUndo({
           command: reverseCommand,

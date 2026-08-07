@@ -76,7 +76,7 @@ const createPixelEditorController = ({
   selectedColour: Accessor<string | undefined>;
   coordinates: Accessor<Coordinates>;
   pushUndo: (reverseCommand: Command, description: string) => void;
-  doCommand: (command: Command, pushUndo?: boolean, description?: string) => Promise<Command>;
+  doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
 }) => {
   const { store } = useContext(StackerContext);
 
@@ -133,9 +133,8 @@ const createPixelEditorController = ({
   });
 
   let undoCommandsReversed: Command[] = [];
-  let pendingStrokes: Promise<unknown>[] = [];
 
-  const applyPixelStroke = async (pos: { x: number; y: number }) => {
+  const applyPixelStroke = (pos: { x: number; y: number }) => {
     const result = findCollidingSide(pos, store.sides, coordinates());
     if (!result) {
       return;
@@ -185,26 +184,18 @@ const createPixelEditorController = ({
     }
 
     const command = commands.length === 1 ? commands[0] : Command.sequence(commands);
-    const stroke = doCommand(command).then(reverseCommand => {
-      undoCommandsReversed.push(reverseCommand);
-    });
-    pendingStrokes.push(stroke);
-    await stroke;
+    undoCommandsReversed.push(doCommand(command));
   };
 
   createEffect(
     () => pointerids().size,
     count => {
-      if (count !== 0 || (undoCommandsReversed.length === 0 && pendingStrokes.length === 0)) {
+      if (count !== 0 || undoCommandsReversed.length === 0) {
         return;
       }
-      const deferred = Promise.all(pendingStrokes).then(() => {
-        const undoCommands = undoCommandsReversed.reverse();
-        undoCommandsReversed = [];
-        pendingStrokes = [];
-        return undoCommands.length === 0 ? Command.noOperation() : Command.sequence(undoCommands);
-      });
-      pushUndo(Command.async(deferred), mode() === "Erase" ? "Erase Pixels" : "Draw Pixels");
+      const undoCommands = undoCommandsReversed.reverse();
+      undoCommandsReversed = [];
+      pushUndo(Command.sequence(undoCommands), mode() === "Erase" ? "Erase Pixels" : "Draw Pixels");
     },
   );
 
