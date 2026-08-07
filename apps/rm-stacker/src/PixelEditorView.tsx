@@ -101,7 +101,7 @@ const createPixelEditorController = ({
     panX: () => pan().x,
     panY: () => pan().y,
     onUpdate: fn => fn(panScaleControllerSetters),
-    disable: () => mode() !== "Idle",
+    disable: createMemo(() => mode() !== "Idle" && pointerids().size !== 0),
   });
 
   const screenToWorld = (pt: THREE.Vector2, out = new THREE.Vector2()): THREE.Vector2 => {
