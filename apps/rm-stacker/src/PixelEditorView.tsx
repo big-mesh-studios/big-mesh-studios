@@ -220,7 +220,7 @@ const createPixelEditorController = ({
     });
   };
 
-  createTrackedEffect(() => {
+  createMemo(() => {
     if (mode() === "Draw" || mode() === "Erase") {
       createEffect(
         () => [mouseWorldPos(), pointerids().size] as const,
