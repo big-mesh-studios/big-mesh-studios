@@ -13,21 +13,37 @@ export interface StackerStore {
   doCommand: (command: Command) => Command;
 }
 
-const createInitialImageData = (dimensions: Dimensions2D | number): ImageData => {
+const createInitialImageData = (
+  dimensions: Dimensions2D | number,
+  padding: Vector2D | number,
+): ImageData => {
   dimensions =
     typeof dimensions === "number" ? { width: dimensions, height: dimensions } : dimensions;
+  padding = typeof padding === "number" ? { x: padding, y: padding } : padding;
 
-  return new ImageData(dimensions.width, dimensions.height);
+  const data = new ImageData(dimensions.width, dimensions.height);
+
+  for (let y = 0; y < dimensions.height - padding.y * 2; y++) {
+    for (let x = 0; x < dimensions.width - padding.x * 2; x++) {
+      const i = ((padding.y + y) * dimensions.width + (padding.x + x)) << 2;
+
+      data.data[i + 0] = 0;
+      data.data[i + 1] = 0;
+      data.data[i + 2] = 255;
+      data.data[i + 3] = 255;
+    }
+  }
+  return data;
 };
 
 export const createInitialSides = (dimensions: Dimensions3D) => {
   return {
-    front: createInitialImageData({ width: dimensions.width, height: dimensions.height }),
-    back: createInitialImageData({ width: dimensions.width, height: dimensions.height }),
-    left: createInitialImageData({ width: dimensions.depth, height: dimensions.height }),
-    right: createInitialImageData({ width: dimensions.depth, height: dimensions.height }),
-    top: createInitialImageData({ width: dimensions.width, height: dimensions.depth }),
-    bottom: createInitialImageData({ width: dimensions.width, height: dimensions.depth }),
+    front: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 4),
+    back: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 4),
+    left: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 4),
+    right: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 4),
+    top: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 4),
+    bottom: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 4),
   };
 };
 
