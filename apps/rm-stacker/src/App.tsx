@@ -4,10 +4,9 @@ import PixelEditorView from "./PixelEditorView";
 import VoxelPreviewView from "./VoxelPreviewView";
 import { StackerContext } from "./stacker-context";
 import { createStackerStore } from "./stacker-store";
-import { Coordinates, SideKind, Sides } from "./types";
 import { Command } from "./Command";
 import { byteTo2DigitHex, findCollidingSide } from "./utils";
-import { loadFromIndexedDB, saveToIndexedDB } from "./load-save";
+import { load, loadFromIndexedDB, save, saveToIndexedDB } from "./load-save";
 
 const App: Component = () => {
   const stackerStore = createStackerStore();
@@ -79,9 +78,18 @@ const App: Component = () => {
     };
   });
 
-  const doEffect = (effect: Command): Command => {
+  let requestRenderAndUpdateVoxels = false;
+  const enqueue = (() => {
+    let queue: Promise<unknown> = Promise.resolve();
+    return (task: () => Promise<Command>): Promise<Command> => {
+      const result = queue.then(task);
+      queue = result;
+      return result;
+    };
+  })();
+  const doCommand_ = async (effect: Command): Promise<Command> => {
     queueMicrotask(() => requestAutoSave());
-    return untrack(() => {
+    return untrack(async () => {
       switch (effect.type) {
         case "NoOperation": {
           return Command.noOperation();
@@ -90,7 +98,7 @@ const App: Component = () => {
           let commands = effect.commands;
           let reverseCommands = Array(commands.length);
           for (let i = 0; i < commands.length; ++i) {
-            reverseCommands[reverseCommands.length - 1 - i] = doEffect(commands[i]);
+            reverseCommands[reverseCommands.length - 1 - i] = await doCommand_(commands[i]);
           }
           return Command.sequence(reverseCommands);
         }
@@ -122,8 +130,7 @@ const App: Component = () => {
           side.data[offset + 2] = b;
           side.data[offset + 3] = 255;
 
-          store.render();
-          stackerStore.updateVoxels();
+          requestRenderAndUpdateVoxels = true;
 
           if (oldA) {
             let oldColour: THREE.ColorRepresentation = `#${byteTo2DigitHex(oldR)}${byteTo2DigitHex(
@@ -158,13 +165,27 @@ const App: Component = () => {
           side.data[offset + 2] = 0;
           side.data[offset + 3] = 0;
 
-          store.render();
-          stackerStore.updateVoxels();
+          requestRenderAndUpdateVoxels = true;
 
           let oldColour: THREE.ColorRepresentation = `#${byteTo2DigitHex(oldR)}${byteTo2DigitHex(
             oldG,
           )}${byteTo2DigitHex(oldB)}`;
           return Command.writePixel(x, y, oldColour);
+        }
+        case "LoadData": {
+          let undoCommand = await stackerStore.snapshot();
+          let data = await effect.data;
+          let sides = await load(data);
+          setStore(s => {
+            s.sides = sides;
+          });
+          store.render();
+          stackerStore.updateVoxels();
+          return undoCommand;
+        }
+        case "Async": {
+          let command = await effect.command;
+          return doCommand_(command);
         }
         default: {
           const x: never = effect;
@@ -173,10 +194,26 @@ const App: Component = () => {
       }
     });
   };
+  const doCommand = (command: Command): Promise<Command> => {
+    return enqueue(() => {
+      requestRenderAndUpdateVoxels = false;
+      try {
+        return doCommand_(command).then(result => {
+          if (requestRenderAndUpdateVoxels) {
+            store.render();
+            stackerStore.updateVoxels();
+          }
+          return result;
+        });
+      } finally {
+        requestRenderAndUpdateVoxels = false;
+      }
+    });
+  };
 
   queueMicrotask(() =>
     setStore(s => {
-      s.doCommand = doEffect;
+      s.doCommand = doCommand;
     }),
   );
 

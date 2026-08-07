@@ -8,7 +8,7 @@ export class UndoRedoManager {
   private _hasRedo: Signal<boolean> = createSignal(false);
   private _undoDescription: Signal<string | undefined> = createSignal();
   private _redoDescription: Signal<string | undefined> = createSignal();
-  private _performCommand: (command: Command) => Command;
+  private _performCommand: (command: Command) => Promise<Command>;
 
   get hasUndo(): Accessor<boolean> {
     return this._hasUndo[0];
@@ -26,7 +26,7 @@ export class UndoRedoManager {
     return this._redoDescription[0];
   }
 
-  constructor(performCommand: (command: Command) => Command) {
+  constructor(performCommand: (command: Command) => Promise<Command>) {
     this._performCommand = performCommand;
   }
 
@@ -57,12 +57,12 @@ export class UndoRedoManager {
     this._redoDescription[1](redo.description);
   }
 
-  undo() {
+  async undo() {
     let command = this._undoStack.pop();
     if (command === undefined) {
       return;
     }
-    let command2 = this._performCommand(command.command);
+    let command2 = await this._performCommand(command.command);
     this._redoStack.push({ command: command2, description: command.description });
     this._hasUndo[1](this._undoStack.length !== 0);
     this._hasRedo[1](this._redoStack.length !== 0);
@@ -70,12 +70,12 @@ export class UndoRedoManager {
     this._redoDescription[1](this._redoStack?.[0]?.description);
   }
 
-  redo() {
+  async redo() {
     let command = this._redoStack.pop();
     if (command === undefined) {
       return;
     }
-    let command2 = this._performCommand(command.command);
+    let command2 = await this._performCommand(command.command);
     this._undoStack.push({ command: command2, description: command.description });
     this._hasUndo[1](this._undoStack.length !== 0);
     this._hasRedo[1](this._redoStack.length !== 0);

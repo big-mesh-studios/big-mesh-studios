@@ -124,15 +124,23 @@ export async function saveToIndexedDB(params: {
   let { sides, undoStack, redoStack } = params;
   let blob = await save(sides);
   await saveBlobToDB(DB_KEYS.zipFileData, blob);
+  let undoStackJson = [];
+  for (let { command, description, } of undoStack) {
+    undoStackJson.push({
+      command: await Command.toJSON(command),
+      description,
+    });
+  }
+  let redoStackJson = [];
+  for (let { command, description, } of redoStack) {
+    redoStackJson.push({
+      command: await Command.toJSON(command),
+      description,
+    });
+  }
   let undoRedoJson = {
-    undoStack: undoStack.map(x => ({
-      command: Command.toJSON(x.command),
-      description: x.description,
-    })),
-    redoStack: redoStack.map(x => ({
-      command: Command.toJSON(x.command),
-      description: x.description,
-    })),
+    undoStack: undoStackJson,
+    redoStack: redoStackJson,
   };
   let undoRedoJsonText = JSON.stringify(undoRedoJson);
   await saveTextToDB(DB_KEYS.undoRedoData, undoRedoJsonText);

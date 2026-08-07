@@ -41,7 +41,7 @@ export interface ModeParams {
   selectedColour: Accessor<string | undefined>;
   coordinates: Accessor<Coordinates>;
   store: StackerStore;
-  doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
+  doCommand: (command: Command, pushUndo?: boolean, description?: string) => Promise<Command>;
   pushUndo: (reverseCommand: Command, description: string) => void;
 }
 

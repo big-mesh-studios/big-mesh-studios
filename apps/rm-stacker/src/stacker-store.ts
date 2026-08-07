@@ -3,13 +3,14 @@ import { solveVoxels } from "./voxel-solver";
 import type { Dimensions2D, Dimensions3D, Sides, Vector2D } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { Command } from "./Command";
+import { save } from "./load-save";
 
 export interface StackerStore {
   dimensions: Dimensions3D;
   sides: Sides;
   voxels: Uint8Array;
   render: () => void;
-  doCommand: (command: Command) => Command;
+  doCommand: (command: Command) => Promise<Command>;
 }
 
 const createInitialImageData = (
@@ -60,7 +61,7 @@ export function createStackerStore() {
       ),
     ),
     render: () => {},
-    doCommand: _command => Command.noOperation(),
+    doCommand: _command => Promise.resolve(Command.noOperation()),
   });
   let undoRedoManager = new UndoRedoManager(command => store.doCommand(command));
 
@@ -78,8 +79,12 @@ export function createStackerStore() {
         );
       });
     },
-    doCommand: (command: Command, pushUndo?: boolean, description?: string): Command => {
-      let reverseCommand = store.doCommand(command);
+    doCommand: async (
+      command: Command,
+      pushUndo?: boolean,
+      description?: string,
+    ): Promise<Command> => {
+      let reverseCommand = await store.doCommand(command);
       if (pushUndo) {
         undoRedoManager.pushUndo({
           command: reverseCommand,
@@ -87,6 +92,17 @@ export function createStackerStore() {
         });
       }
       return reverseCommand;
+    },
+    /**
+     * Constructs an undo command via a snapshot that you can push via
+     * `pushUndo` at the end of your opperation.
+     */
+    snapshot: (): Command => {
+      let command = (async () => {
+        let data = await save(store.sides);
+        return Command.loadData(data);
+      })();
+      return Command.async(command);
     },
     pushUndo: (reverseCommand: Command, description: string) => {
       undoRedoManager.pushUndo({
