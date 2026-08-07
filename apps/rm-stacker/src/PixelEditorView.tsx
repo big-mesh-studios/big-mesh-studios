@@ -11,13 +11,10 @@ import {
 } from "solid-js";
 import * as THREE from "three";
 import { createPanScaleControl } from "@random-mesh/rm-pan-scale";
-import { ModeFactory, ModeParams, SideKind } from "./types";
-import { createIdleMode } from "./modes/IdleMode";
-import { createDrawMode } from "./modes/DrawMode";
+import { Coordinates, ModeKind, SideKind, Sides } from "./types";
 import { Command } from "./Command";
 import Palette from "./Palette";
 import { StackerContext } from "./stacker-context";
-import { Sides } from "./types";
 import { createInitialSides } from "./stacker-store";
 import { load, save } from "./load-save";
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
@@ -27,20 +24,279 @@ interface ImageCanvasCacheData {
   ctx: CanvasRenderingContext2D;
 }
 
-const PixelEditorView: Component<{
-  coordinates: Accessor<{
-    front: THREE.Vector2;
-    left: THREE.Vector2;
-    right: THREE.Vector2;
-    back: THREE.Vector2;
-    top: THREE.Vector2;
-    bottom: THREE.Vector2;
-  }>;
-}> = props => {
-  let coordinates = props.coordinates;
+const OPPOSING_KINDS = {
+  front: "back",
+  back: "front",
+  left: "right",
+  right: "left",
+  top: "bottom",
+  bottom: "top",
+} as const;
+
+const getOppositePixel = (
+  kind: SideKind,
+  position: { x: number; y: number },
+  side: ImageData,
+): { x: number; y: number } => {
+  if (kind === "top" || kind === "bottom") {
+    return { x: position.x, y: side.height - position.y - 1 };
+  }
+  return { x: side.width - position.x - 1, y: position.y };
+};
+
+const findCollidingSide = (
+  position: { x: number; y: number },
+  sides: Sides,
+  coordinates: Coordinates,
+) => {
+  for (const kind in sides) {
+    const coordinate = coordinates[kind as SideKind];
+    const side = sides[kind as SideKind];
+    if (
+      coordinate.x <= position.x &&
+      coordinate.y <= position.y &&
+      coordinate.x + side.width > position.x &&
+      coordinate.y + side.height > position.y
+    ) {
+      return { side, coordinate, kind: kind as SideKind };
+    }
+  }
+};
+
+const createPixelEditorController = ({
+  canvas,
+  mode,
+  selectedColour,
+  coordinates,
+  pushUndo,
+  doCommand,
+}: {
+  canvas: Accessor<HTMLCanvasElement | undefined>;
+  mode: Accessor<ModeKind>;
+  selectedColour: Accessor<string | undefined>;
+  coordinates: Accessor<Coordinates>;
+  pushUndo: (reverseCommand: Command, description: string) => void;
+  doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
+}) => {
+  const { store } = useContext(StackerContext);
+
+  const [pan, setPan] = createSignal(new THREE.Vector2(-10.0, -10.0));
+  const [scale, setScale] = createSignal(8);
+  const [pointerids, setPointerids] = createSignal(new Set<number>(), { equals: false });
+  const [mousePos, setMousePos] = createSignal<THREE.Vector2>();
+
+  const panScaleControllerSetters = {
+    setPanX: (value: number) => {
+      setPan(p => new THREE.Vector2(value, p.y));
+    },
+    setPanY: (value: number) => {
+      setPan(p => new THREE.Vector2(p.x, value));
+    },
+    setScale,
+  };
+
+  const panScaleControl = createPanScaleControl({
+    target: canvas,
+    scale,
+    panX: () => pan().x,
+    panY: () => pan().y,
+    onUpdate: fn => fn(panScaleControllerSetters),
+    disable: () => mode() !== "Idle",
+  });
+
+  const screenToWorld = (pt: THREE.Vector2, out = new THREE.Vector2()): THREE.Vector2 => {
+    out.copy(pt);
+    out.multiplyScalar(1.0 / latest(scale));
+    out.add(latest(pan));
+    return out;
+  };
+
+  const mouseWorldPos = createMemo<THREE.Vector2 | undefined>(previous => {
+    if (previous && mode() === "Idle") {
+      return previous;
+    }
+
+    const _mousePos = mousePos();
+    if (_mousePos === undefined) {
+      return undefined;
+    }
+
+    const worldPos = screenToWorld(_mousePos);
+    if (worldPos === undefined) {
+      return undefined;
+    }
+
+    worldPos.x = Math.round(worldPos.x - 0.5);
+    worldPos.y = Math.round(worldPos.y - 0.5);
+
+    return worldPos;
+  });
+
+  let undoCommandsReversed: Command[] = [];
+
+  const applyPixelStroke = (pos: { x: number; y: number }) => {
+    const result = findCollidingSide(pos, store.sides, coordinates());
+    if (!result) {
+      return;
+    }
+
+    const { coordinate, side, kind } = result;
+    const localX = pos.x - coordinate.x;
+    const localY = pos.y - coordinate.y;
+    const oppositePixel = getOppositePixel(kind, { x: localX, y: localY }, side);
+    const oppositeKind = OPPOSING_KINDS[kind];
+    const oppositeSide = store.sides[oppositeKind];
+    const oppositeOpacity =
+      store.sides[oppositeKind].data[
+        ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
+      ];
+    const oppositeOffset = coordinates()[oppositeKind];
+
+    let commands: Command[] = [];
+    if (mode() === "Erase") {
+      commands.push(Command.erasePixel(pos.x, pos.y));
+      if (oppositeOpacity) {
+        commands.push(
+          Command.erasePixel(
+            oppositeOffset.x + oppositePixel.x,
+            oppositeOffset.y + oppositePixel.y,
+          ),
+        );
+      }
+    } else {
+      const _selectedColour = untrack(selectedColour);
+      if (_selectedColour !== undefined) {
+        commands.push(Command.writePixel(pos.x, pos.y, _selectedColour));
+        if (!oppositeOpacity) {
+          commands.push(
+            Command.writePixel(
+              oppositeOffset.x + oppositePixel.x,
+              oppositeOffset.y + oppositePixel.y,
+              _selectedColour,
+            ),
+          );
+        }
+      }
+    }
+
+    if (commands.length === 0) {
+      return;
+    }
+
+    const command = commands.length === 1 ? commands[0] : Command.sequence(commands);
+    undoCommandsReversed.push(doCommand(command));
+  };
+
+  createEffect(
+    () => pointerids().size,
+    count => {
+      if (count !== 0 || undoCommandsReversed.length === 0) {
+        return;
+      }
+      const undoCommands = undoCommandsReversed.reverse();
+      undoCommandsReversed = [];
+      pushUndo(Command.sequence(undoCommands), mode() === "Erase" ? "Erase Pixels" : "Draw Pixels");
+    },
+  );
+
+  createEffect(
+    () => [mouseWorldPos(), pointerids().size, mode()] as const,
+    ([pos, pointerCount, _mode]) => {
+      if (_mode === "Idle") {
+        return;
+      }
+      if (pointerCount !== 1) {
+        return;
+      }
+      if (pos === undefined) {
+        return;
+      }
+      applyPixelStroke(pos);
+    },
+  );
+
+  return {
+    pan,
+    scale,
+    overlayDrawing() {
+      if (mode() === "Idle") {
+        return;
+      }
+
+      const pixelPos = mouseWorldPos();
+
+      if (!pixelPos) {
+        return;
+      }
+
+      return (ctx: CanvasRenderingContext2D) => {
+        ctx.fillStyle = "green";
+        ctx.fillRect(pixelPos.x, pixelPos.y, 1.0, 1.0);
+      };
+    },
+    onPointerDown(e: PointerEvent) {
+      setPointerids(set => set.add(e.pointerId));
+      panScaleControl.onPointerDown(e);
+    },
+    onPointerUp(e: PointerEvent) {
+      setPointerids(set => {
+        set.delete(e.pointerId);
+        return set;
+      });
+      panScaleControl.onPointerUp(e);
+    },
+    onPointerCancel(e: PointerEvent) {
+      setPointerids(set => {
+        set.delete(e.pointerId);
+        return set;
+      });
+      panScaleControl.onPointerCancel(e);
+    },
+    onPointerMove(e: PointerEvent) {
+      panScaleControl.onPointerMove(e);
+      const _canvas = canvas();
+      if (_canvas === undefined) {
+        return;
+      }
+      const rect = _canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setMousePos(new THREE.Vector2(x, y));
+    },
+    onPointerOut(_e: PointerEvent) {
+      setMousePos();
+    },
+    onWheel: panScaleControl.onWheel,
+  };
+};
+
+const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props => {
   const { store, setStore, undoRedoManager, doCommand, pushUndo, updateVoxels } =
     useContext(StackerContext);
+  const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
+
+  const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
+  const [mode, setModeKind] = createSignal<ModeKind>("Idle");
+
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
+  const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
+
+  const [selectedColourAccessor, setSelectedColourAccessor] = createSignal<
+    Accessor<string> | undefined
+  >();
+
+  const selectedColour = createMemo(() => selectedColourAccessor()?.());
+
+  const coordinates = props.coordinates;
+
+  const controller = createPixelEditorController({
+    coordinates,
+    mode,
+    canvas,
+    selectedColour,
+    pushUndo,
+    doCommand,
+  });
 
   const onLoad = async () => {
     const file = await fileOpen<false>({
@@ -84,79 +340,6 @@ const PixelEditorView: Component<{
       }),
     );
   };
-  const pointersDownByIdSet = new Set<number>();
-  const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
-
-  const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
-  const [ctx, setCtx] = createSignal<CanvasRenderingContext2D>();
-  const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
-  const [mousePos, setMousePos] = createSignal<THREE.Vector2>();
-  const [pointerDownCount, setPointerDownCount] = createSignal<number>(0);
-  const [modeFactory, setModeFactory] = createSignal<ModeFactory>(() => createIdleMode);
-  const [pan, setPan] = createSignal(new THREE.Vector2(-10.0, -10.0));
-  const [scale, setScale] = createSignal(8);
-  const [selectedColourAccessor, setSelectedColourAccessor] = createSignal<
-    Accessor<string> | undefined
-  >();
-
-  const selectedColour = createMemo(() => selectedColourAccessor()?.());
-
-  const modeParams: ModeParams = {
-    mousePos,
-    pointerDownCount,
-    selectedColour,
-    store,
-    doCommand,
-    pushUndo,
-    screenPtToWorldPt(pt: THREE.Vector2, out?: THREE.Vector2): THREE.Vector2 {
-      out ??= new THREE.Vector2();
-      out.copy(pt);
-      out.multiplyScalar(1.0 / latest(scale));
-      out.add(latest(pan));
-      return out;
-    },
-    worldPtToScreenPt(pt: THREE.Vector2, out?: THREE.Vector2): THREE.Vector2 {
-      out ??= new THREE.Vector2();
-      out.copy(pt);
-      out.sub(pan());
-      out.multiplyScalar(scale());
-      return out;
-    },
-    coordinates,
-  };
-  const mode = createMemo(() => {
-    const _modeFactory = modeFactory();
-    return untrack(() => _modeFactory(modeParams));
-  });
-  const activeModeButton = createMemo(() => mode().activeModeButton?.());
-  const overlayDrawing = createMemo(() => mode().overlayDrawing?.());
-  const disablePanZoom = createMemo(() => mode().disablePanZoom?.() ?? false);
-
-  onSettled(() => {
-    const _canvas = canvas();
-    if (_canvas === undefined) {
-      return;
-    }
-    setCtx(_canvas.getContext("2d") ?? undefined);
-    const resizeObserver = new ResizeObserver(() => {
-      const rect = _canvas.getBoundingClientRect();
-      _canvas.width = rect.width;
-      _canvas.height = rect.height;
-      setCanvasSize(new THREE.Vector2(rect.width, rect.height));
-    });
-    resizeObserver.observe(_canvas);
-    return () => {
-      resizeObserver.unobserve(_canvas);
-      resizeObserver.disconnect();
-    };
-  });
-
-  createEffect(
-    () => [canvasSize(), pan(), scale(), overlayDrawing(), store.sides],
-    () => {
-      render();
-    },
-  );
 
   const createImageCanvasCacheEntry = (image: ImageData) => {
     const canvas = document.createElement("canvas");
@@ -171,26 +354,31 @@ const PixelEditorView: Component<{
     return imageCanvasCacheData;
   };
 
-  const render = () =>
+  let ctx: CanvasRenderingContext2D | undefined | null;
+  const render = () => {
     untrack(() => {
-      const _ctx = ctx();
-      if (_ctx === undefined) {
+      ctx ??= canvas()?.getContext("2d");
+
+      if (!ctx) {
         return;
       }
+
       const _canvasSize = canvasSize();
       if (_canvasSize === undefined) {
         return;
       }
-      const _pan = pan();
-      const _scale = scale();
-      const _overlayDrawing = overlayDrawing();
-      _ctx.clearRect(0, 0, _canvasSize.x, _canvasSize.y);
-      _ctx.save();
-      _ctx.scale(_scale, _scale);
-      _ctx.translate(-_pan.x, -_pan.y);
-      _ctx.fillStyle = "red";
-      _ctx.strokeStyle = "red";
-      _ctx.lineWidth = 1 / _scale;
+
+      const _pan = controller.pan();
+      const _scale = controller.scale();
+      const _overlayDrawing = controller.overlayDrawing();
+
+      ctx.clearRect(0, 0, _canvasSize.x, _canvasSize.y);
+      ctx.save();
+      ctx.scale(_scale, _scale);
+      ctx.translate(-_pan.x, -_pan.y);
+      ctx.fillStyle = "red";
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 1 / _scale;
 
       for (const key of Object.keys(store.sides)) {
         const side = store.sides[key as keyof typeof store.sides];
@@ -199,113 +387,91 @@ const PixelEditorView: Component<{
         const imageCanvasCacheData =
           imageCanvasCache.get(side) ?? createImageCanvasCacheEntry(side);
         imageCanvasCacheData.ctx.putImageData(side, 0, 0);
-        const lastImageSmoothingEnabled = _ctx.imageSmoothingEnabled;
-        _ctx.imageSmoothingEnabled = false;
-        _ctx.drawImage(imageCanvasCacheData.canvas, coordinate.x, coordinate.y);
-        _ctx.imageSmoothingEnabled = lastImageSmoothingEnabled;
-        _ctx.strokeRect(coordinate.x, coordinate.y, side.width, side.height);
+
+        const lastImageSmoothingEnabled = ctx.imageSmoothingEnabled;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(imageCanvasCacheData.canvas, coordinate.x, coordinate.y);
+        ctx.imageSmoothingEnabled = lastImageSmoothingEnabled;
+
+        ctx.strokeRect(coordinate.x, coordinate.y, side.width, side.height);
+
         if (_scale >= 5.0) {
-          const a = Math.min(1.0, (_scale - 5.0) / 10.0);
-          _ctx.save();
-          _ctx.strokeStyle = `rgba(255,0,0,${a})`;
-          _ctx.beginPath();
           const y1 = coordinate.y;
           const y2 = y1 + side.height;
+          const a = Math.min(1.0, (_scale - 5.0) / 10.0);
+
+          ctx.save();
+          ctx.strokeStyle = `rgba(255,0,0,${a})`;
+          ctx.beginPath();
+
           for (let i = 0; i < side.width; ++i) {
             const x = coordinate.x + i;
-            _ctx.moveTo(x, y1);
-            _ctx.lineTo(x, y2);
+            ctx.moveTo(x, y1);
+            ctx.lineTo(x, y2);
           }
+
           const x1 = coordinate.x;
           const x2 = coordinate.x + side.width;
+
           for (let i = 0; i < side.height; ++i) {
             const y = coordinate.y + i;
-            _ctx.moveTo(x1, y);
-            _ctx.lineTo(x2, y);
+            ctx.moveTo(x1, y);
+            ctx.lineTo(x2, y);
           }
-          _ctx.stroke();
-          _ctx.restore();
+
+          ctx.stroke();
+          ctx.restore();
         }
-        _ctx.font = "5px sans-serif";
-        _ctx.fillStyle = "grey";
-        const metrics = _ctx.measureText(key);
-        _ctx.fillText(
+
+        ctx.font = "5px sans-serif";
+        ctx.fillStyle = "grey";
+        const metrics = ctx.measureText(key);
+        ctx.fillText(
           key,
           coordinate.x + 0.5 * (side.width - metrics.width),
           coordinate.y + side.height + metrics.actualBoundingBoxAscent + 1.0,
         );
       }
+
       if (_overlayDrawing) {
-        _overlayDrawing(_ctx);
+        _overlayDrawing(ctx);
       }
-      _ctx.restore();
+
+      ctx.restore();
     });
+  };
+
   queueMicrotask(() =>
     setStore(s => {
       s.render = render;
     }),
   );
 
-  const panScaleControllerSetters = {
-    setPanX: (value: number) => {
-      setPan(p => new THREE.Vector2(value, p.y));
-    },
-    setPanY: (value: number) => {
-      setPan(p => new THREE.Vector2(p.x, value));
-    },
-    setScale: (value: number) => {
-      setScale(value);
-    },
-  };
-
-  const panScaleControl = createPanScaleControl({
-    target: canvas,
-    panX: () => pan().x,
-    panY: () => pan().y,
-    scale,
-    onUpdate: fn => {
-      fn(panScaleControllerSetters);
-    },
-    disable: disablePanZoom,
-  });
-
-  const updatePointerDownCount = () => {
-    setPointerDownCount(pointersDownByIdSet.size);
-  };
-
-  const onPointerDown = (e: PointerEvent) => {
-    pointersDownByIdSet.add(e.pointerId);
-    updatePointerDownCount();
-    panScaleControl.onPointerDown(e);
-  };
-
-  const onPointerUp = (e: PointerEvent) => {
-    pointersDownByIdSet.delete(e.pointerId);
-    updatePointerDownCount();
-    panScaleControl.onPointerUp(e);
-  };
-
-  const onPointerCancel = (e: PointerEvent) => {
-    pointersDownByIdSet.delete(e.pointerId);
-    updatePointerDownCount();
-    panScaleControl.onPointerCancel(e);
-  };
-
-  const onPointerMove = (e: PointerEvent) => {
-    panScaleControl.onPointerMove(e);
+  onSettled(() => {
     const _canvas = canvas();
+
     if (_canvas === undefined) {
       return;
     }
-    const rect = _canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setMousePos(new THREE.Vector2(x, y));
-  };
 
-  const onPointerOut = (_e: PointerEvent) => {
-    setMousePos();
-  };
+    const resizeObserver = new ResizeObserver(() => {
+      const rect = _canvas.getBoundingClientRect();
+      _canvas.width = rect.width;
+      _canvas.height = rect.height;
+      setCanvasSize(new THREE.Vector2(rect.width, rect.height));
+    });
+    resizeObserver.observe(_canvas);
+
+    return () => {
+      resizeObserver.unobserve(_canvas);
+      resizeObserver.disconnect();
+    };
+  });
+
+  createEffect(
+    () => [canvasSize(), controller.pan(), controller.scale(), controller.overlayDrawing()],
+    () => render(),
+  );
 
   return (
     <div
@@ -324,12 +490,12 @@ const PixelEditorView: Component<{
           height: "100%",
           "touch-action": "none",
         }}
-        onPointerDown={onPointerDown}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        onPointerMove={onPointerMove}
-        onPointerOut={onPointerOut}
-        onWheel={panScaleControl.onWheel}
+        onPointerDown={controller.onPointerDown}
+        onPointerUp={controller.onPointerUp}
+        onPointerCancel={controller.onPointerCancel}
+        onPointerMove={controller.onPointerMove}
+        onPointerOut={controller.onPointerOut}
+        onWheel={controller.onWheel}
       />
       <div
         class="p-1"
@@ -368,7 +534,6 @@ const PixelEditorView: Component<{
             class="tab"
             onClick={() => {
               undoRedoManager.undo();
-              render();
             }}
             disabled={!undoRedoManager.hasUndo()}
           >
@@ -379,7 +544,6 @@ const PixelEditorView: Component<{
             class="tab"
             onClick={() => {
               undoRedoManager.redo();
-              render();
             }}
             disabled={!undoRedoManager.hasRedo()}
           >
@@ -389,11 +553,9 @@ const PixelEditorView: Component<{
             role="tab"
             class={{
               tab: true,
-              "tab-active": activeModeButton() === "Idle",
+              "tab-active": mode() === "Idle",
             }}
-            onClick={() => {
-              setModeFactory(() => createIdleMode);
-            }}
+            onClick={() => setModeKind("Idle")}
           >
             <i class="fa-solid fa-up-down-left-right" />
           </a>
@@ -401,13 +563,9 @@ const PixelEditorView: Component<{
             role="tab"
             class={{
               tab: true,
-              "tab-active": activeModeButton() === "Draw",
+              "tab-active": mode() === "Draw",
             }}
-            onClick={() => {
-              setModeFactory(
-                () => (modeParams: ModeParams) => createDrawMode({ erase: false, modeParams }),
-              );
-            }}
+            onClick={() => setModeKind("Draw")}
           >
             <i class="fa-solid fa-pen" />
           </a>
@@ -415,13 +573,9 @@ const PixelEditorView: Component<{
             role="tab"
             class={{
               tab: true,
-              "tab-active": activeModeButton() === "Erase",
+              "tab-active": mode() === "Erase",
             }}
-            onClick={() => {
-              setModeFactory(
-                () => (modeParams: ModeParams) => createDrawMode({ erase: true, modeParams }),
-              );
-            }}
+            onClick={() => setModeKind("Erase")}
           >
             <i class="fa-solid fa-eraser" />
           </a>
@@ -446,11 +600,7 @@ const PixelEditorView: Component<{
         </div>
         <div style="flex-grow: 1; overflow: hidden;">
           <div style="height: 100%; display: inline-block; pointer-events: auto;">
-            <Palette
-              ref={ctx => {
-                setSelectedColourAccessor(() => ctx.selectedColour);
-              }}
-            />
+            <Palette ref={ctx => setSelectedColourAccessor(() => ctx.selectedColour)} />
           </div>
         </div>
       </div>

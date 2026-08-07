@@ -31,27 +31,19 @@ export type Axis = "x" | "y" | "z";
 /*                                       Mode                                     */
 /**********************************************************************************/
 
+export type ModeKind = "Draw" | "Erase" | "Idle";
+
 export type Coordinates = Record<keyof Sides, { x: number; y: number }>;
 
 export interface ModeParams {
   mousePos: Accessor<THREE.Vector2 | undefined>;
   pointerDownCount: Accessor<number>;
-  screenPtToWorldPt: (pt: THREE.Vector2, out?: THREE.Vector2) => THREE.Vector2 | undefined;
-  worldPtToScreenPt: (pt: THREE.Vector2, out?: THREE.Vector2) => THREE.Vector2 | undefined;
-  doCommand: (effect: Command, pushUndo?: boolean, description?: string) => Command;
-  pushUndo: (reverseCommand: Command, description: string) => void;
   selectedColour: Accessor<string | undefined>;
   coordinates: Accessor<Coordinates>;
   store: StackerStore;
+  doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
+  pushUndo: (reverseCommand: Command, description: string) => void;
 }
-
-export interface Mode {
-  activeModeButton?: Accessor<"Idle" | "Draw" | "Erase" | undefined>;
-  overlayDrawing?: Accessor<((ctx: CanvasRenderingContext2D) => void) | undefined>;
-  disablePanZoom?: Accessor<boolean>;
-}
-
-export type ModeFactory = (params: ModeParams) => Mode;
 
 /**********************************************************************************/
 /*                                      Sides                                     */
