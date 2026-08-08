@@ -2,9 +2,9 @@ import { createMemo, createStore, untrack } from "solid-js";
 import * as THREE from "three";
 import { Command } from "./Command";
 import { load, save, saveToIndexedDB } from "./load-save";
-import type { Dimensions2D, Dimensions3D, Sides, Vector2D } from "./types";
+import type { Dimensions2D, Dimensions3D, RGBA, Sides, Vector2D } from "./types";
 import { UndoRedoManager } from "./undo-redo";
-import { byteTo2DigitHex, createEnqueue, findCollidingSide } from "./utils";
+import { areColoursEqual, createEnqueue, findCollidingSide } from "./utils";
 import { solveVoxels } from "./voxel-solver";
 
 export interface StackerStore {
@@ -12,7 +12,6 @@ export interface StackerStore {
   sides: Sides;
   voxels: Uint8Array;
   render: () => void;
-  // doCommand: (command: Command) => Command;
 }
 
 const createInitialImageData = (
@@ -130,6 +129,21 @@ export function createStackerStore() {
     return Command.async(command);
   }
 
+  const getOffset = (side: ImageData, origin: Vector2D, position: Vector2D) => {
+    const localX = position.x - origin.x;
+    const localY = position.y - origin.y;
+    const offset = (localY * side.width + localX) << 2;
+    return offset;
+  };
+
+  function getColor(side: ImageData, offset: number): RGBA {
+    const r = side.data[offset + 0];
+    const g = side.data[offset + 1];
+    const b = side.data[offset + 2];
+    const a = side.data[offset + 3];
+    return { r, g, b, a };
+  }
+
   const doCommandAndUpdate = (command: Command) => {
     return Command.async(
       enqueue(async () => {
@@ -161,6 +175,81 @@ export function createStackerStore() {
           }
           return Command.sequence(reverseCommands);
         }
+        case "FillPixel": {
+          const result = findCollidingSide(effect, store.sides, coordinates());
+
+          if (!result) {
+            return Command.noOperation();
+          }
+
+          const { x, y, colour } = effect;
+          const { coordinate: origin, side } = result;
+
+          const { r, g, b, a } = colour;
+          const offset = getOffset(side, origin, { x, y });
+          const oldColour = getColor(side, offset);
+
+          const queue = [{ x, y }];
+          const visited = new Set();
+
+          const undo = snapshot();
+
+          while (true) {
+            const coordinate = queue.shift();
+
+            if (!coordinate) {
+              break;
+            }
+
+            const { x, y } = coordinate;
+            const id = `${x},${y}`;
+
+            const offset = getOffset(side, origin, coordinate);
+            visited.add(id);
+
+            side.data[offset + 0] = r;
+            side.data[offset + 1] = g;
+            side.data[offset + 2] = b;
+            side.data[offset + 3] = a;
+
+            const neighbors = [
+              // top
+              { x, y: y - 1 },
+              // bottom
+              { x, y: y + 1 },
+              // left
+              { x: x - 1, y },
+              // right
+              { x: x + 1, y },
+            ];
+
+            for (let neighbor of neighbors) {
+              if (neighbor.x - origin.x < 0 || neighbor.x - origin.x > side.width) {
+                continue;
+              }
+
+              if (neighbor.y - origin.y < 0 || neighbor.y - origin.y > side.height) {
+                continue;
+              }
+
+              const neighborId = `${neighbor.x},${neighbor.y}`;
+
+              if (visited.has(neighborId)) {
+                continue;
+              }
+
+              const neighborOffset = getOffset(side, origin, neighbor);
+              const neighborColor = getColor(side, neighborOffset);
+              const match = areColoursEqual(neighborColor, oldColour);
+
+              if (match) {
+                queue.push(neighbor);
+              }
+            }
+          }
+
+          return undo;
+        }
         case "WritePixel": {
           const result = findCollidingSide(effect, store.sides, coordinates());
           if (!result) {
@@ -170,29 +259,16 @@ export function createStackerStore() {
           const { x, y, colour } = effect;
           const { coordinate, side } = result;
 
-          const colour2 = new THREE.Color(colour);
-          colour2.convertLinearToSRGB();
-
-          const r = Math.max(0, Math.min(255, Math.round(colour2.r * 255.0)));
-          const g = Math.max(0, Math.min(255, Math.round(colour2.g * 255.0)));
-          const b = Math.max(0, Math.min(255, Math.round(colour2.b * 255.0)));
-
           const localX = x - coordinate.x;
           const localY = y - coordinate.y;
           const offset = (localY * side.width + localX) << 2;
-          let oldR = side.data[offset + 0];
-          let oldG = side.data[offset + 1];
-          let oldB = side.data[offset + 2];
-          let oldA = side.data[offset + 3];
-          side.data[offset + 0] = r;
-          side.data[offset + 1] = g;
-          side.data[offset + 2] = b;
+          const oldColour = getColor(side, offset);
+          side.data[offset + 0] = colour.r;
+          side.data[offset + 1] = colour.g;
+          side.data[offset + 2] = colour.b;
           side.data[offset + 3] = 255;
 
-          if (oldA) {
-            let oldColour: THREE.ColorRepresentation = `#${byteTo2DigitHex(oldR)}${byteTo2DigitHex(
-              oldG,
-            )}${byteTo2DigitHex(oldB)}`;
+          if (oldColour.a) {
             return Command.writePixel(x, y, oldColour);
           } else {
             return Command.erasePixel(x, y);
@@ -214,22 +290,17 @@ export function createStackerStore() {
           if (side.data[offset + 3] === 0) {
             return Command.noOperation();
           }
-          let oldR = side.data[offset + 0];
-          let oldG = side.data[offset + 1];
-          let oldB = side.data[offset + 2];
+          const old = getColor(side, offset);
+
           side.data[offset + 0] = 0;
           side.data[offset + 1] = 0;
           side.data[offset + 2] = 0;
           side.data[offset + 3] = 0;
-
-          let oldColour: THREE.ColorRepresentation = `#${byteTo2DigitHex(oldR)}${byteTo2DigitHex(
-            oldG,
-          )}${byteTo2DigitHex(oldB)}`;
-          return Command.writePixel(x, y, oldColour);
+          return Command.writePixel(x, y, old);
         }
         case "LoadData": {
-          let undoCommand = await snapshot();
-          let data = await effect.data;
+          let undoCommand = snapshot();
+          let data = effect.data;
           let sides = await load(data);
           setStore(s => {
             s.sides = sides;

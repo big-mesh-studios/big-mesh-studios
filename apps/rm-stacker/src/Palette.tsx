@@ -1,14 +1,13 @@
-import { Accessor, Component, createRenderEffect, createStore, runWithOwner } from "solid-js";
+import { Accessor, Component, createRenderEffect, createSignal, runWithOwner } from "solid-js";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
+import { RGBA } from "./types";
+import { areColoursEqual, hexToRgba } from "./utils";
 
 const Palette: Component<{
-  ref?: (ctx: { selectedColour: Accessor<string> }) => void;
+  ref?: (ctx: { selectedColour: Accessor<RGBA> }) => void;
 }> = props => {
-  const [state, setState] = createStore<{
-    selectedColour: string;
-  }>({
-    selectedColour: DAWNBRINGER_32_PALETTE[5],
-  });
+  const [selectedColour, setSelectedColour] = createSignal(hexToRgba(DAWNBRINGER_32_PALETTE[5]));
+
   createRenderEffect(
     () => props.ref,
     ref => {
@@ -17,7 +16,7 @@ const Palette: Component<{
       }
       runWithOwner(null, () => {
         ref({
-          selectedColour: () => state.selectedColour,
+          selectedColour,
         });
       });
     },
@@ -27,8 +26,10 @@ const Palette: Component<{
       {DAWNBRINGER_32_PALETTE.map(colour => (
         <div
           style={{
-            border: colour === state.selectedColour ? "4px solid green" : undefined,
-            padding: colour !== state.selectedColour ? "4px" : undefined,
+            border: areColoursEqual(hexToRgba(colour), selectedColour())
+              ? "4px solid green"
+              : undefined,
+            padding: !areColoursEqual(hexToRgba(colour), selectedColour()) ? "4px" : undefined,
           }}
         >
           <div
@@ -37,9 +38,7 @@ const Palette: Component<{
               "background-color": colour,
             }}
             onClick={() => {
-              setState(s => {
-                s.selectedColour = colour;
-              });
+              setSelectedColour(hexToRgba(colour));
             }}
           />
         </div>

@@ -15,7 +15,7 @@ import { load, save } from "../load-save";
 import Palette from "../Palette";
 import { StackerContext } from "../stacker-context";
 import { createInitialSides } from "../stacker-store";
-import { ModeKind, SideKind, Vector2D } from "../types";
+import { ModeKind, RGBA, SideKind, Vector2D } from "../types";
 import { sideMaskToRgb } from "../utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
@@ -37,7 +37,7 @@ const PixelEditorView: Component = () => {
   const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
 
   const [selectedColourAccessor, setSelectedColourAccessor] = createSignal<
-    Accessor<string> | undefined
+    Accessor<RGBA> | undefined
   >();
 
   const selectedColour = createMemo(() => selectedColourAccessor()?.());
@@ -373,6 +373,16 @@ const PixelEditorView: Component = () => {
             onClick={() => setModeKind("Draw")}
           >
             <i class="fa-solid fa-pen" />
+          </a>
+          <a
+            role="tab"
+            class={{
+              tab: true,
+              "tab-active": mode() === "Fill",
+            }}
+            onClick={() => setModeKind("Fill")}
+          >
+            <i class="fa-solid fa-fill" />
           </a>
           <a
             role="tab"

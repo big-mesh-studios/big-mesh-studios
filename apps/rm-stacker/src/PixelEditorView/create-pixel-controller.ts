@@ -12,7 +12,7 @@ import * as THREE from "three";
 import { Command } from "../Command";
 import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../stacker-context";
-import { Coordinates, ModeKind, SideKind, Vector2D } from "../types";
+import { Coordinates, ModeKind, RGBA, SideKind, Vector2D } from "../types";
 import { findCollidingSide } from "../utils";
 
 const getOppositePixel = (kind: SideKind, position: Vector2D, side: ImageData): Vector2D => {
@@ -32,7 +32,7 @@ export const createPixelEditorController = ({
 }: {
   canvas: Accessor<HTMLCanvasElement | undefined>;
   mode: Accessor<ModeKind>;
-  selectedColour: Accessor<string | undefined>;
+  selectedColour: Accessor<RGBA | undefined>;
   coordinates: Accessor<Coordinates>;
   pushUndo: (reverseCommand: Command, description: string) => void;
   doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
@@ -112,29 +112,51 @@ export const createPixelEditorController = ({
     const oppositeOffset = coordinates()[oppositeKind];
 
     let commands: Command[] = [];
-    if (mode() === "Erase") {
-      commands.push(Command.erasePixel(pos.x, pos.y));
-      if (oppositeOpacity) {
-        commands.push(
-          Command.erasePixel(
-            oppositeOffset.x + oppositePixel.x,
-            oppositeOffset.y + oppositePixel.y,
-          ),
-        );
-      }
-    } else {
-      const _selectedColour = untrack(selectedColour);
-      if (_selectedColour !== undefined) {
-        commands.push(Command.writePixel(pos.x, pos.y, _selectedColour));
-        if (!oppositeOpacity) {
+
+    switch (mode()) {
+      case "Erase": {
+        commands.push(Command.erasePixel(pos.x, pos.y));
+        if (oppositeOpacity) {
           commands.push(
-            Command.writePixel(
+            Command.erasePixel(
               oppositeOffset.x + oppositePixel.x,
               oppositeOffset.y + oppositePixel.y,
-              _selectedColour,
             ),
           );
         }
+        break;
+      }
+      case "Draw": {
+        const _selectedColour = untrack(selectedColour);
+        if (_selectedColour !== undefined) {
+          commands.push(Command.writePixel(pos.x, pos.y, _selectedColour));
+          if (!oppositeOpacity) {
+            commands.push(
+              Command.writePixel(
+                oppositeOffset.x + oppositePixel.x,
+                oppositeOffset.y + oppositePixel.y,
+                _selectedColour,
+              ),
+            );
+          }
+        }
+        break;
+      }
+      case "Fill": {
+        const _selectedColour = untrack(selectedColour);
+        if (_selectedColour !== undefined) {
+          commands.push(Command.fillPixel(pos.x, pos.y, _selectedColour));
+          if (!oppositeOpacity) {
+            commands.push(
+              Command.fillPixel(
+                oppositeOffset.x + oppositePixel.x,
+                oppositeOffset.y + oppositePixel.y,
+                _selectedColour,
+              ),
+            );
+          }
+        }
+        break;
       }
     }
 

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { RGBA } from "./types";
 import { base64ToUint8Array, uint8ArrayToBase64 } from "./utils";
 
 export type Command =
@@ -13,7 +14,13 @@ export type Command =
       type: "WritePixel";
       x: number;
       y: number;
-      colour: THREE.ColorRepresentation;
+      colour: RGBA;
+    }
+  | {
+      type: "FillPixel";
+      x: number;
+      y: number;
+      colour: RGBA;
     }
   | {
       type: "ErasePixel";
@@ -38,8 +45,12 @@ export namespace Command {
     return { type: "Sequence", commands };
   }
 
-  export function writePixel(x: number, y: number, colour: THREE.ColorRepresentation): Command {
+  export function writePixel(x: number, y: number, colour: RGBA): Command {
     return { type: "WritePixel", x, y, colour };
+  }
+
+  export function fillPixel(x: number, y: number, colour: RGBA): Command {
+    return { type: "FillPixel", x, y, colour };
   }
 
   export function erasePixel(x: number, y: number): Command {

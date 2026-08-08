@@ -1,5 +1,5 @@
 import { SIDE_MASK } from "./constants";
-import { Coordinates, SideKind, Sides } from "./types";
+import { Coordinates, RGBA, SideKind, Sides } from "./types";
 
 export function tryCatch<T, U>(fn: () => T, onError: (error: unknown) => U) {
   try {
@@ -61,6 +61,28 @@ export function sideMaskToRgb(mask: number, intensity = 1) {
   return `rgba(${r}, ${g}, ${b}, 1)`;
 }
 
+export function hexToRgba(hex: string, alpha = 1): RGBA {
+  const digits = hex.replace("#", "");
+
+  // Expand shorthand notation: #rgb and #rgba.
+  const expanded =
+    digits.length > 4
+      ? digits
+      : digits
+          .split("")
+          .map(digit => digit + digit)
+          .join("");
+
+  const r = parseInt(expanded.slice(0, 2), 16);
+  const g = parseInt(expanded.slice(2, 4), 16);
+  const b = parseInt(expanded.slice(4, 6), 16);
+  const a = expanded.length === 8 ? parseInt(expanded.slice(6, 8), 16) : 255;
+
+  const rgba = { r, g, b, a };
+
+  return rgba;
+}
+
 export function createEnqueue<T>() {
   let queue: Promise<unknown> = Promise.resolve();
   return function (task: () => Promise<T>): Promise<T> {
@@ -68,4 +90,8 @@ export function createEnqueue<T>() {
     queue = result;
     return result;
   };
+}
+
+export function areColoursEqual(a: RGBA, b: RGBA) {
+  return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
 }

@@ -1,5 +1,5 @@
-import * as THREE from "three";
 import { Accessor } from "solid-js";
+import * as THREE from "three";
 import { Command } from "./Command";
 import { StackerStore } from "./stacker-store";
 
@@ -25,13 +25,20 @@ export interface Dimensions3D extends Dimensions2D {
   depth: number;
 }
 
+export interface RGBA {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+}
+
 export type Axis = "x" | "y" | "z";
 
 /**********************************************************************************/
 /*                                       Mode                                     */
 /**********************************************************************************/
 
-export type ModeKind = "Draw" | "Erase" | "Idle";
+export type ModeKind = "Draw" | "Erase" | "Fill" | "Idle";
 
 export type Coordinates = Record<keyof Sides, { x: number; y: number }>;
 
