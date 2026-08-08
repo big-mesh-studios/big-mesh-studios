@@ -1,21 +1,6 @@
-import { SIDE_MASK } from "./constants";
+import { OPPOSING_SIDE, SIDE_MASK } from "./constants";
 import { StackerStore } from "./stacker-store";
-import { Axis, SideKind, Sides, Vector3D } from "./types";
-
-const SIDE_AXIS_MAPPING = {
-  front: {
-    y: "left",
-    x: "top",
-  },
-  left: {
-    y: "front",
-    x: "top",
-  },
-  top: {
-    x: "front",
-    y: "left",
-  },
-} as const;
+import { Axis, Dimensions3D, Sides, Vector3D } from "./types";
 
 export type ViewSpec = {
   kind: keyof Sides;
@@ -189,26 +174,6 @@ export function solveVoxels(
   return out;
 }
 
-function isColumnEmpty(side: ImageData, index: number) {
-  for (let i = 0; i < side.width; i++) {
-    const offset = (i * side.width + index) * 4 + 3;
-    if (side.data[offset] !== 0) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function isRowEmpty(side: ImageData, index: number) {
-  for (let i = 0; i < side.height; i++) {
-    const offset = (index * side.width + i) * 4 + 3;
-    if (side.data[offset] !== 0) {
-      return false;
-    }
-  }
-  return true;
-}
-
 /**
  * For each side, computes a mask (1 = needed) of the pixels whose rays pass
  * through at least one voxel that survives carving by every other *drawn* view.
@@ -220,40 +185,103 @@ function isRowEmpty(side: ImageData, index: number) {
 export function computeGuideMasks(
   store: Pick<StackerStore, "dimensions" | "sides">,
 ): Record<keyof Sides, Uint8Array> {
-  const mainKinds = ["front", "top", "left"] satisfies Array<SideKind>;
+  const {
+    dimensions: { height, width, depth },
+  } = store;
+  const views = createViews(store);
+  const axisStride = {
+    x: 1,
+    y: width,
+    z: width * height,
+  };
+  const axisLength = {
+    x: width,
+    y: height,
+    z: depth,
+  };
+  const voxelCount = width * height * depth;
+  const calcTargetIndex = ({ x, y, z }: Vector3D) => {
+    return z * width * height + y * width + x;
+  };
 
   const guides = {} as Record<keyof Sides, Uint8Array>;
 
-  for (const kind of mainKinds) {
-    const side = store.sides[kind as SideKind];
-    const guide = new Uint8Array(side.width * side.height);
+  for (const target of views) {
+    // Track which voxels survive carving by every other drawn view.
+    const survives = new Uint8Array(voxelCount);
+    survives.fill(0);
+    let constrained = false;
 
-    for (let x = 0; x < side.width; x++) {
-      const otherSide = SIDE_AXIS_MAPPING[kind].x;
+    for (const other of views) {
+      if (other === target || other.kind === OPPOSING_SIDE[target.kind]) {
+        continue;
+      }
 
-      const emptyAxis = isColumnEmpty(store.sides[otherSide], x);
+      if (!sideHasOpaquePixels(other.side)) {
+        continue;
+      }
 
-      if (!emptyAxis) {
-        for (let y = 0; y < side.height; y++) {
-          guide[x + y * side.width] |= SIDE_MASK[otherSide];
+      constrained = true;
+      const length = axisLength[other.axis];
+      const stride = axisStride[other.axis];
+      const data = other.side.data;
+
+      for (let py = 0; py < other.side.height; ++py) {
+        const rowOffset = py * other.side.width;
+
+        for (let px = 0; px < other.side.width; ++px) {
+          const sourceOffset = (rowOffset + px) << 2;
+
+          if (data[sourceOffset + 3] === 0) {
+            continue;
+          }
+
+          let index = calcTargetIndex(other.fixedCoords(px, py));
+
+          for (let i = 0; i < length; ++i) {
+            survives[index] = survives[index] | SIDE_MASK[other.kind];
+            index += stride;
+          }
         }
       }
     }
 
-    for (let y = 0; y < side.height; y++) {
-      const otherSide = SIDE_AXIS_MAPPING[kind].y;
+    // Project the surviving voxels onto the target face.
+    const mask = new Uint8Array(target.side.width * target.side.height);
 
-      const emptyAxis = isRowEmpty(store.sides[otherSide], y);
+    if (constrained) {
+      const length = axisLength[target.axis];
+      const stride = axisStride[target.axis];
 
-      if (!emptyAxis) {
-        for (let x = 0; x < side.width; x++) {
-          guide[x + y * side.width] |= SIDE_MASK[otherSide];
+      for (let py = 0; py < target.side.height; ++py) {
+        for (let px = 0; px < target.side.width; ++px) {
+          let index = calcTargetIndex(target.fixedCoords(px, py));
+          let needed = false;
+
+          for (let i = 0; i < length && !needed; ++i) {
+            if (survives[index] !== 0) {
+              needed = true;
+            }
+            index += stride;
+          }
+
+          mask[py * target.side.width + px] = needed ? survives[index] : 0;
         }
       }
     }
 
-    guides[kind] = guide;
+    guides[target.kind] = mask;
   }
 
   return guides;
 }
+
+const sideHasOpaquePixels = (side: ImageData): boolean => {
+  const data = side.data;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] !== 0) {
+      return true;
+    }
+  }
+  return false;
+};
