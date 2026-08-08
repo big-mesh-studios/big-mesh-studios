@@ -60,3 +60,12 @@ export function sideMaskToRgb(mask: number, intensity = 1) {
   const b = SIDE_MASK.top & mask ? 255 * intensity : 0;
   return `rgba(${r}, ${g}, ${b}, 1)`;
 }
+
+export function createEnqueue<T>() {
+  let queue: Promise<unknown> = Promise.resolve();
+  return function (task: () => Promise<T>): Promise<T> {
+    const result = queue.then(task);
+    queue = result;
+    return result;
+  };
+}

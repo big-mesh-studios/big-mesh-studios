@@ -15,7 +15,7 @@ import { load, save } from "../load-save";
 import Palette from "../Palette";
 import { StackerContext } from "../stacker-context";
 import { createInitialSides } from "../stacker-store";
-import { Coordinates, ModeKind, SideKind, Vector2D } from "../types";
+import { ModeKind, SideKind, Vector2D } from "../types";
 import { sideMaskToRgb } from "../utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
@@ -25,8 +25,8 @@ interface ImageCanvasCacheData {
   ctx: CanvasRenderingContext2D;
 }
 
-const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props => {
-  const { store, setStore, undoRedoManager, doCommand, pushUndo, updateVoxels } =
+const PixelEditorView: Component = () => {
+  const { store, setStore, undoRedoManager, doCommand, pushUndo, updateVoxels, coordinates } =
     useContext(StackerContext);
   const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
 
@@ -41,8 +41,6 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
   >();
 
   const selectedColour = createMemo(() => selectedColourAccessor()?.());
-
-  const coordinates = props.coordinates;
 
   const controller = createPixelEditorController({
     coordinates,
