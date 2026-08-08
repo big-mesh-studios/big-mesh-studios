@@ -1,6 +1,30 @@
-import { OPPOSING_SIDE, SIDE_MASK } from "./constants";
+import { SIDE_MASK } from "./constants";
 import { StackerStore } from "./stacker-store";
-import { Axis, Dimensions3D, Sides, Vector3D } from "./types";
+import { Axis, Dimensions2D, SideKind, Sides, Vector3D } from "./types";
+
+/**
+ * For each primary face and each of its two axes: the perpendicular face whose
+ * silhouette bounds that axis, which line of it to read, and whether the index
+ * has to be counted from the other end.
+ *
+ * The mirrored entries are the ones that translate a z index between two faces
+ * that walk z in opposite directions: `right` pixel x sits at z = depth - 1 - x,
+ * while `top` pixel y sits at z = y.
+ */
+const SIDE_AXIS_MAPPING = {
+  front: {
+    x: { side: "top", axis: "column", mirror: false },
+    y: { side: "right", axis: "row", mirror: false },
+  },
+  right: {
+    x: { side: "top", axis: "row", mirror: true },
+    y: { side: "front", axis: "row", mirror: false },
+  },
+  top: {
+    x: { side: "front", axis: "column", mirror: false },
+    y: { side: "right", axis: "column", mirror: true },
+  },
+} as const;
 
 export type ViewSpec = {
   kind: keyof Sides;
@@ -174,114 +198,96 @@ export function solveVoxels(
   return out;
 }
 
-/**
- * For each side, computes a mask (1 = needed) of the pixels whose rays pass
- * through at least one voxel that survives carving by every other *drawn* view.
- * Each face is auto-mirrored to its opposite by the editor, so the opposite face
- * is excluded (it is never an independent constraint). Faces with no opaque
- * pixels are treated as "not yet drawn" and don't constrain, so the guides
- * appear progressively as you draw more views.
- */
+function isColumnEmpty(side: ImageData, index: number, mirror = false) {
+  const _index = mirror ? side.width - 1 - index : index;
+  for (let y = 0; y < side.height; y++) {
+    const offset = ((y * side.width + _index) << 2) + 3;
+    if (side.data[offset] !== 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isRowEmpty(side: ImageData, index: number, mirror = false) {
+  const _index = mirror ? side.height - 1 - index : index;
+  for (let x = 0; x < side.width; x++) {
+    const offset = ((_index * side.width + x) << 2) + 3;
+    if (side.data[offset] !== 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isLineEmpty(side: ImageData, line: "row" | "column", index: number, mirror: boolean) {
+  return line === "column" ? isColumnEmpty(side, index, mirror) : isRowEmpty(side, index, mirror);
+}
+
+function mirrorX(source: Uint8Array, dimensions: Dimensions2D) {
+  const array = new Uint8Array(source.length);
+
+  for (let x = 0; x < dimensions.width; x++) {
+    for (let y = 0; y < dimensions.height; y++) {
+      array[y * dimensions.width + x] = source[y * dimensions.width + (dimensions.width - x - 1)];
+    }
+  }
+
+  return array;
+}
+
+function mirrorY(source: Uint8Array, dimensions: Dimensions2D) {
+  const array = new Uint8Array(source.length);
+
+  for (let x = 0; x < dimensions.width; x++) {
+    for (let y = 0; y < dimensions.height; y++) {
+      array[y * dimensions.width + x] = source[(dimensions.height - y - 1) * dimensions.width + x];
+    }
+  }
+
+  return array;
+}
+
 export function computeGuideMasks(
   store: Pick<StackerStore, "dimensions" | "sides">,
 ): Record<keyof Sides, Uint8Array> {
-  const {
-    dimensions: { height, width, depth },
-  } = store;
-  const views = createViews(store);
-  const axisStride = {
-    x: 1,
-    y: width,
-    z: width * height,
-  };
-  const axisLength = {
-    x: width,
-    y: height,
-    z: depth,
-  };
-  const voxelCount = width * height * depth;
-  const calcTargetIndex = ({ x, y, z }: Vector3D) => {
-    return z * width * height + y * width + x;
-  };
+  const primaryKinds = ["front", "top", "right"] satisfies Array<SideKind>;
 
   const guides = {} as Record<keyof Sides, Uint8Array>;
 
-  for (const target of views) {
-    // Track which voxels survive carving by every other drawn view.
-    const survives = new Uint8Array(voxelCount);
-    survives.fill(0);
-    let constrained = false;
+  for (const kind of primaryKinds) {
+    const side = store.sides[kind as SideKind];
+    const guide = new Uint8Array(side.width * side.height);
 
-    for (const other of views) {
-      if (other === target || other.kind === OPPOSING_SIDE[target.kind]) {
+    const { side: xSide, axis: xLine, mirror: xMirror } = SIDE_AXIS_MAPPING[kind].x;
+    const { side: ySide, axis: yLine, mirror: yMirror } = SIDE_AXIS_MAPPING[kind].y;
+
+    for (let x = 0; x < side.width; x++) {
+      if (isLineEmpty(store.sides[xSide], xLine, x, xMirror)) {
         continue;
       }
 
-      if (!sideHasOpaquePixels(other.side)) {
+      for (let y = 0; y < side.height; y++) {
+        guide[x + y * side.width] |= SIDE_MASK[xSide];
+      }
+    }
+
+    for (let y = 0; y < side.height; y++) {
+      if (isLineEmpty(store.sides[ySide], yLine, y, yMirror)) {
         continue;
       }
 
-      constrained = true;
-      const length = axisLength[other.axis];
-      const stride = axisStride[other.axis];
-      const data = other.side.data;
-
-      for (let py = 0; py < other.side.height; ++py) {
-        const rowOffset = py * other.side.width;
-
-        for (let px = 0; px < other.side.width; ++px) {
-          const sourceOffset = (rowOffset + px) << 2;
-
-          if (data[sourceOffset + 3] === 0) {
-            continue;
-          }
-
-          let index = calcTargetIndex(other.fixedCoords(px, py));
-
-          for (let i = 0; i < length; ++i) {
-            survives[index] = survives[index] | SIDE_MASK[other.kind];
-            index += stride;
-          }
-        }
+      for (let x = 0; x < side.width; x++) {
+        guide[x + y * side.width] |= SIDE_MASK[ySide];
       }
     }
 
-    // Project the surviving voxels onto the target face.
-    const mask = new Uint8Array(target.side.width * target.side.height);
-
-    if (constrained) {
-      const length = axisLength[target.axis];
-      const stride = axisStride[target.axis];
-
-      for (let py = 0; py < target.side.height; ++py) {
-        for (let px = 0; px < target.side.width; ++px) {
-          let index = calcTargetIndex(target.fixedCoords(px, py));
-          let needed = false;
-
-          for (let i = 0; i < length && !needed; ++i) {
-            if (survives[index] !== 0) {
-              needed = true;
-            }
-            index += stride;
-          }
-
-          mask[py * target.side.width + px] = needed ? survives[index] : 0;
-        }
-      }
-    }
-
-    guides[target.kind] = mask;
+    guides[kind] = guide;
   }
+
+  guides.left = mirrorX(guides.right, store.sides.left);
+  guides.bottom = mirrorY(guides.top, store.sides.bottom);
+  guides.back = mirrorX(guides.front, store.sides.back);
 
   return guides;
 }
-
-const sideHasOpaquePixels = (side: ImageData): boolean => {
-  const data = side.data;
-  for (let i = 3; i < data.length; i += 4) {
-    if (data[i] !== 0) {
-      return true;
-    }
-  }
-  return false;
-};
