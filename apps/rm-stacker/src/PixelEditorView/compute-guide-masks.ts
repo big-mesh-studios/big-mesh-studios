@@ -84,7 +84,7 @@ export function computeGuideMasks(
   const guides = {} as Record<keyof Sides, Uint8Array>;
 
   for (const kind of primaryKinds) {
-    const side = store.sides[kind as SideKind];
+    const side = store.sides[kind];
     const guide = new Uint8Array(side.width * side.height);
 
     const { side: xSide, axis: xLine, mirror: xMirror } = SIDE_AXIS_MAPPING[kind].x;

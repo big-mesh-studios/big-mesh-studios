@@ -15,8 +15,8 @@ import { load, save } from "../load-save";
 import Palette from "../Palette";
 import { StackerContext } from "../stacker-context";
 import { createInitialSides } from "../stacker-store";
-import { ModeKind, RGBA, SideKind, Vector2D } from "../types";
-import { sideMaskToRgb } from "../utils";
+import { ModeKind, RGBA, Vector2D } from "../types";
+import { keysOf, sideMaskToRgb } from "../utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
 
@@ -174,9 +174,9 @@ const PixelEditorView: Component = () => {
       ctx.fillStyle = "red";
       ctx.strokeStyle = "red";
 
-      for (const sideKind of Object.keys(store.sides)) {
-        const side = store.sides[sideKind as keyof typeof store.sides];
-        const coordinate = coordinates()[sideKind as keyof typeof store.sides];
+      for (const sideKind of keysOf(store.sides)) {
+        const side = store.sides[sideKind];
+        const coordinate = coordinates()[sideKind];
 
         const imageCanvasCacheData =
           imageCanvasCache.get(side) ?? createImageCanvasCacheEntry(side);
@@ -217,7 +217,7 @@ const PixelEditorView: Component = () => {
           ctx.restore();
         }
 
-        const guide = guides[sideKind as keyof typeof guides];
+        const guide = guides[sideKind];
 
         if (guide !== undefined) {
           renderGuide({ ctx, side, guide, coordinate, kind: "outer", scale: _scale });
@@ -225,7 +225,7 @@ const PixelEditorView: Component = () => {
         }
 
         ctx.lineWidth = 2 / _scale;
-        ctx.strokeStyle = sideMaskToRgb(SIDE_MASK[sideKind as SideKind]);
+        ctx.strokeStyle = sideMaskToRgb(SIDE_MASK[sideKind]);
         ctx.strokeRect(coordinate.x, coordinate.y, side.width, side.height);
 
         ctx.font = "5px sans-serif";
