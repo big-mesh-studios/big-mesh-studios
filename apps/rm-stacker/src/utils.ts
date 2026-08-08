@@ -95,3 +95,7 @@ export function createEnqueue<T>() {
 export function areColoursEqual(a: RGBA, b: RGBA) {
   return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
 }
+
+export function keysOf<T extends Record<string, any>>(object: T): Array<keyof T> {
+  return Object.keys(object);
+}

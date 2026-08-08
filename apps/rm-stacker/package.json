@@ -15,6 +15,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/three": "^0.183.1",
+    "fast-png": "^8.0.0",
     "prettier": "^3.9.6",
     "typescript": "^5.7.2",
     "vite": "^7.1.4",

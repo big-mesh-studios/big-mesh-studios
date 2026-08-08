@@ -184,8 +184,8 @@ export function createStackerStore() {
 
           const { x, y, colour } = effect;
           const { coordinate: origin, side } = result;
-
           const { r, g, b, a } = colour;
+
           const offset = getOffset(side, origin, { x, y });
           const oldColour = getColor(side, offset);
 
@@ -252,6 +252,7 @@ export function createStackerStore() {
         }
         case "WritePixel": {
           const result = findCollidingSide(effect, store.sides, coordinates());
+
           if (!result) {
             return Command.noOperation();
           }
