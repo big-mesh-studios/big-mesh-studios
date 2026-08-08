@@ -105,15 +105,17 @@ export const createPixelEditorController = ({
     const oppositePixel = getOppositePixel(kind, { x: localX, y: localY }, side);
     const oppositeKind = OPPOSING_SIDE[kind];
     const oppositeSide = store.sides[oppositeKind];
-    const oppositeOpacity =
-      store.sides[oppositeKind].data[
-        ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
-      ];
-    const oppositeOffset = coordinates()[oppositeKind];
+    const oppositeOpacity = untrack(
+      () =>
+        store.sides[oppositeKind].data[
+          ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
+        ],
+    );
+    const oppositeOffset = untrack(coordinates)[oppositeKind];
 
     let commands: Command[] = [];
 
-    switch (mode()) {
+    switch (untrack(mode)) {
       case "Erase": {
         commands.push(Command.erasePixel(pos.x, pos.y));
         if (oppositeOpacity) {
@@ -176,7 +178,10 @@ export const createPixelEditorController = ({
       }
       const undoCommands = undoCommandsReversed.reverse();
       undoCommandsReversed = [];
-      pushUndo(Command.sequence(undoCommands), mode() === "Erase" ? "Erase Pixels" : "Draw Pixels");
+      pushUndo(
+        Command.sequence(undoCommands),
+        untrack(mode) === "Erase" ? "Erase Pixels" : "Draw Pixels",
+      );
     },
   );
 
