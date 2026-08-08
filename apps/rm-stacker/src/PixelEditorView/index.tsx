@@ -1,14 +1,5 @@
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
-import {
-  Accessor,
-  Component,
-  createEffect,
-  createMemo,
-  createSignal,
-  onSettled,
-  untrack,
-  useContext,
-} from "solid-js";
+import { Component, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
 import * as THREE from "three";
 import { SIDE_MASK } from "../constants";
 import { load, save } from "../load-save";
@@ -32,15 +23,9 @@ const PixelEditorView: Component = () => {
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [mode, setModeKind] = createSignal<ModeKind>("Idle");
-
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
   const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
-
-  const [selectedColourAccessor, setSelectedColourAccessor] = createSignal<
-    Accessor<RGBA> | undefined
-  >();
-
-  const selectedColour = createMemo(() => selectedColourAccessor()?.());
+  const [selectedColour, setSelectedColour] = createSignal<RGBA | undefined>();
 
   const controller = createPixelEditorController({
     coordinates,
@@ -415,7 +400,7 @@ const PixelEditorView: Component = () => {
         </div>
         <div style="flex-grow: 1; overflow: hidden;">
           <div style="height: 100%; display: inline-block; pointer-events: auto;">
-            <Palette ref={ctx => setSelectedColourAccessor(() => ctx.selectedColour)} />
+            <Palette onSelect={setSelectedColour} />
           </div>
         </div>
       </div>

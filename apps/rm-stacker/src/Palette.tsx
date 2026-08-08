@@ -1,26 +1,17 @@
-import { Accessor, Component, createRenderEffect, createSignal, runWithOwner } from "solid-js";
+import { Component, createEffect, createSignal } from "solid-js";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 import { RGBA } from "./types";
 import { areRGBAsEqual, hexToRgba } from "./utils";
 
 const Palette: Component<{
-  ref?: (ctx: { selectedColour: Accessor<RGBA> }) => void;
+  onSelect: (colour: RGBA) => void;
 }> = props => {
   const [selectedColour, setSelectedColour] = createSignal(hexToRgba(DAWNBRINGER_32_PALETTE[5]));
 
-  createRenderEffect(
-    () => props.ref,
-    ref => {
-      if (ref === undefined) {
-        return;
-      }
-      runWithOwner(null, () => {
-        ref({
-          selectedColour,
-        });
-      });
-    },
-  );
+  createEffect(selectedColour, colour => {
+    props.onSelect(colour);
+  });
+
   return (
     <div style="height: 100%; overflow-y: scroll;">
       {DAWNBRINGER_32_PALETTE.map(colour => (
