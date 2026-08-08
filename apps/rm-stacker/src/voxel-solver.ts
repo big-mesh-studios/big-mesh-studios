@@ -1,14 +1,6 @@
+import { OPPOSING_SIDE, SIDE_MASK } from "./constants";
 import { StackerStore } from "./stacker-store";
 import { Axis, Dimensions3D, Sides, Vector3D } from "./types";
-
-const OPPOSING_KINDS: Record<keyof Sides, keyof Sides> = {
-  front: "back",
-  back: "front",
-  left: "right",
-  right: "left",
-  top: "bottom",
-  bottom: "top",
-};
 
 export type ViewSpec = {
   kind: keyof Sides;
@@ -212,35 +204,42 @@ export function computeGuideMasks(
     return z * width * height + y * width + x;
   };
 
-  const guides: Record<keyof Sides, Uint8Array> = {} as Record<keyof Sides, Uint8Array>;
+  const guides = {} as Record<keyof Sides, Uint8Array>;
 
   for (const target of views) {
     // Track which voxels survive carving by every other drawn view.
     const survives = new Uint8Array(voxelCount);
-    survives.fill(1);
+    survives.fill(0);
     let constrained = false;
 
     for (const other of views) {
-      if (other === target || other.kind === OPPOSING_KINDS[target.kind]) {
+      if (other === target || other.kind === OPPOSING_SIDE[target.kind]) {
         continue;
       }
+
       if (!sideHasOpaquePixels(other.side)) {
         continue;
       }
+
       constrained = true;
       const length = axisLength[other.axis];
       const stride = axisStride[other.axis];
       const data = other.side.data;
+
       for (let py = 0; py < other.side.height; ++py) {
         const rowOffset = py * other.side.width;
+
         for (let px = 0; px < other.side.width; ++px) {
           const sourceOffset = (rowOffset + px) << 2;
-          if (data[sourceOffset + 3] !== 0) {
+
+          if (data[sourceOffset + 3] === 0) {
             continue;
           }
+
           let index = calcTargetIndex(other.fixedCoords(px, py));
+
           for (let i = 0; i < length; ++i) {
-            survives[index] = 0;
+            survives[index] = survives[index] | SIDE_MASK[other.kind];
             index += stride;
           }
         }
@@ -249,23 +248,28 @@ export function computeGuideMasks(
 
     // Project the surviving voxels onto the target face.
     const mask = new Uint8Array(target.side.width * target.side.height);
+
     if (constrained) {
       const length = axisLength[target.axis];
       const stride = axisStride[target.axis];
+
       for (let py = 0; py < target.side.height; ++py) {
         for (let px = 0; px < target.side.width; ++px) {
           let index = calcTargetIndex(target.fixedCoords(px, py));
           let needed = false;
+
           for (let i = 0; i < length && !needed; ++i) {
             if (survives[index] !== 0) {
               needed = true;
             }
             index += stride;
           }
-          mask[py * target.side.width + px] = needed ? 1 : 0;
+
+          mask[py * target.side.width + px] = needed ? survives[index] : 0;
         }
       }
     }
+
     guides[target.kind] = mask;
   }
 

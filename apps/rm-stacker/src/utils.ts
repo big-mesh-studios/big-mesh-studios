@@ -1,4 +1,6 @@
+import { Side } from "three";
 import { Coordinates, SideKind, Sides } from "./types";
+import { SIDE_MASK } from "./constants";
 
 export function tryCatch<T, U>(fn: () => T, onError: (error: unknown) => U) {
   try {
@@ -51,4 +53,11 @@ export function base64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes;
+}
+
+export function sideMaskToRgb(mask: number, intensity = 1) {
+  const r = SIDE_MASK.front & mask ? 255 * intensity : 0;
+  const g = SIDE_MASK.left & mask ? 255 * intensity : 0;
+  const b = SIDE_MASK.top & mask ? 255 * intensity : 0;
+  return `rgba(${r}, ${g}, ${b}, 1)`;
 }

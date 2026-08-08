@@ -11,7 +11,7 @@ import {
 } from "solid-js";
 import * as THREE from "three";
 import { createPanScaleControl } from "@random-mesh/rm-pan-scale";
-import { Coordinates, ModeKind, SideKind, Sides } from "./types";
+import { Coordinates, ModeKind, SideKind, Sides, Vector2D } from "./types";
 import { Command } from "./Command";
 import Palette from "./Palette";
 import { StackerContext } from "./stacker-context";
@@ -19,20 +19,13 @@ import { createInitialSides } from "./stacker-store";
 import { computeGuideMasks } from "./voxel-solver";
 import { load, save } from "./load-save";
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
+import { OPPOSING_SIDE, SIDE_MASK } from "./constants";
+import { sideMaskToRgb } from "./utils";
 
 interface ImageCanvasCacheData {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
 }
-
-const OPPOSING_KINDS = {
-  front: "back",
-  back: "front",
-  left: "right",
-  right: "left",
-  top: "bottom",
-  bottom: "top",
-} as const;
 
 const getOppositePixel = (
   kind: SideKind,
@@ -145,7 +138,7 @@ const createPixelEditorController = ({
     const localX = pos.x - coordinate.x;
     const localY = pos.y - coordinate.y;
     const oppositePixel = getOppositePixel(kind, { x: localX, y: localY }, side);
-    const oppositeKind = OPPOSING_KINDS[kind];
+    const oppositeKind = OPPOSING_SIDE[kind];
     const oppositeSide = store.sides[oppositeKind];
     const oppositeOpacity =
       store.sides[oppositeKind].data[
@@ -355,6 +348,38 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
     return imageCanvasCacheData;
   };
 
+  const renderGuide = (
+    ctx: CanvasRenderingContext2D,
+    side: ImageData,
+    guide: Uint8Array,
+    coordinate: Vector2D,
+    kind: "inner" | "outer",
+  ) => {
+    for (let gy = 0; gy < side.height; ++gy) {
+      for (let gx = 0; gx < side.width; ++gx) {
+        const index = gy * side.width + gx;
+        const sideMask = guide[index];
+
+        if (sideMask === 0) {
+          continue;
+        }
+
+        if (
+          sideMask === 0b001 || sideMask === 0b010 || sideMask === 0b100
+            ? kind === "outer"
+            : kind === "inner"
+        ) {
+          const alpha = side.data[(index << 2) + 3];
+
+          if (!alpha) {
+            ctx.strokeStyle = sideMaskToRgb(sideMask, 0.5);
+            ctx.strokeRect(coordinate.x + gx, coordinate.y + gy, 1.0, 1.0);
+          }
+        }
+      }
+    }
+  };
+
   let ctx: CanvasRenderingContext2D | undefined | null;
   const render = () => {
     untrack(() => {
@@ -372,6 +397,7 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
       const _pan = controller.pan();
       const _scale = controller.scale();
       const _overlayDrawing = controller.overlayDrawing();
+      const guides = computeGuideMasks(store);
 
       ctx.clearRect(0, 0, _canvasSize.x, _canvasSize.y);
       ctx.save();
@@ -381,11 +407,9 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
       ctx.strokeStyle = "red";
       ctx.lineWidth = 1 / _scale;
 
-      const guides = computeGuideMasks(store);
-
-      for (const key of Object.keys(store.sides)) {
-        const side = store.sides[key as keyof typeof store.sides];
-        const coordinate = coordinates()[key as keyof typeof store.sides];
+      for (const sideKind of Object.keys(store.sides)) {
+        const side = store.sides[sideKind as keyof typeof store.sides];
+        const coordinate = coordinates()[sideKind as keyof typeof store.sides];
 
         const imageCanvasCacheData =
           imageCanvasCache.get(side) ?? createImageCanvasCacheEntry(side);
@@ -396,32 +420,13 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
         ctx.drawImage(imageCanvasCacheData.canvas, coordinate.x, coordinate.y);
         ctx.imageSmoothingEnabled = lastImageSmoothingEnabled;
 
-        // Transparent red guide: pixels the other views imply must be drawn
-        // but which aren't filled yet. Painted pixels fade the overlay out.
-        const guide = guides[key as keyof typeof guides];
-        if (guide !== undefined) {
-          ctx.fillStyle = "rgba(255,0,0,0.3)";
-          for (let gy = 0; gy < side.height; ++gy) {
-            for (let gx = 0; gx < side.width; ++gx) {
-              if (guide[gy * side.width + gx] !== 0) {
-                const alpha = side.data[((gy * side.width + gx) << 2) + 3];
-                if (alpha === 0) {
-                  ctx.fillRect(coordinate.x + gx, coordinate.y + gy, 1.0, 1.0);
-                }
-              }
-            }
-          }
-        }
-
-        ctx.strokeRect(coordinate.x, coordinate.y, side.width, side.height);
+        ctx.strokeStyle = `rgba(255, 255, 255, 0.3)`;
 
         if (_scale >= 5.0) {
           const y1 = coordinate.y;
           const y2 = y1 + side.height;
-          const a = Math.min(1.0, (_scale - 5.0) / 10.0);
 
           ctx.save();
-          ctx.strokeStyle = `rgba(255,0,0,${a})`;
           ctx.beginPath();
 
           for (let i = 0; i < side.width; ++i) {
@@ -431,6 +436,7 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
           }
 
           const x1 = coordinate.x;
+
           const x2 = coordinate.x + side.width;
 
           for (let i = 0; i < side.height; ++i) {
@@ -443,11 +449,20 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
           ctx.restore();
         }
 
+        const guide = guides[sideKind as keyof typeof guides];
+        if (guide !== undefined) {
+          renderGuide(ctx, side, guide, coordinate, "outer");
+          renderGuide(ctx, side, guide, coordinate, "inner");
+        }
+
+        ctx.strokeStyle = sideMaskToRgb(SIDE_MASK[sideKind as SideKind]);
+        ctx.strokeRect(coordinate.x, coordinate.y, side.width, side.height);
+
         ctx.font = "5px sans-serif";
         ctx.fillStyle = "grey";
-        const metrics = ctx.measureText(key);
+        const metrics = ctx.measureText(sideKind);
         ctx.fillText(
-          key,
+          sideKind,
           coordinate.x + 0.5 * (side.width - metrics.width),
           coordinate.y + side.height + metrics.actualBoundingBoxAscent + 1.0,
         );
