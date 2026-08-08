@@ -16,6 +16,7 @@ import { Command } from "./Command";
 import Palette from "./Palette";
 import { StackerContext } from "./stacker-context";
 import { createInitialSides } from "./stacker-store";
+import { computeGuideMasks } from "./voxel-solver";
 import { load, save } from "./load-save";
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
 
@@ -380,6 +381,8 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
       ctx.strokeStyle = "red";
       ctx.lineWidth = 1 / _scale;
 
+      const guides = computeGuideMasks(store);
+
       for (const key of Object.keys(store.sides)) {
         const side = store.sides[key as keyof typeof store.sides];
         const coordinate = coordinates()[key as keyof typeof store.sides];
@@ -392,6 +395,23 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(imageCanvasCacheData.canvas, coordinate.x, coordinate.y);
         ctx.imageSmoothingEnabled = lastImageSmoothingEnabled;
+
+        // Transparent red guide: pixels the other views imply must be drawn
+        // but which aren't filled yet. Painted pixels fade the overlay out.
+        const guide = guides[key as keyof typeof guides];
+        if (guide !== undefined) {
+          ctx.fillStyle = "rgba(255,0,0,0.3)";
+          for (let gy = 0; gy < side.height; ++gy) {
+            for (let gx = 0; gx < side.width; ++gx) {
+              if (guide[gy * side.width + gx] !== 0) {
+                const alpha = side.data[((gy * side.width + gx) << 2) + 3];
+                if (alpha === 0) {
+                  ctx.fillRect(coordinate.x + gx, coordinate.y + gy, 1.0, 1.0);
+                }
+              }
+            }
+          }
+        }
 
         ctx.strokeRect(coordinate.x, coordinate.y, side.width, side.height);
 

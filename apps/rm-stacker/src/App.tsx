@@ -78,7 +78,6 @@ const App: Component = () => {
     };
   });
 
-  let requestRenderAndUpdateVoxels = false;
   const enqueue = (() => {
     let queue: Promise<unknown> = Promise.resolve();
     return (task: () => Promise<Command>): Promise<Command> => {
@@ -130,8 +129,6 @@ const App: Component = () => {
           side.data[offset + 2] = b;
           side.data[offset + 3] = 255;
 
-          requestRenderAndUpdateVoxels = true;
-
           if (oldA) {
             let oldColour: THREE.ColorRepresentation = `#${byteTo2DigitHex(oldR)}${byteTo2DigitHex(
               oldG,
@@ -165,8 +162,6 @@ const App: Component = () => {
           side.data[offset + 2] = 0;
           side.data[offset + 3] = 0;
 
-          requestRenderAndUpdateVoxels = true;
-
           let oldColour: THREE.ColorRepresentation = `#${byteTo2DigitHex(oldR)}${byteTo2DigitHex(
             oldG,
           )}${byteTo2DigitHex(oldB)}`;
@@ -196,19 +191,13 @@ const App: Component = () => {
   };
   const doCommand = (command: Command): Command => {
     return Command.async(
-      enqueue(() => {
-        requestRenderAndUpdateVoxels = false;
-        try {
-          return doCommand_(command).then(result => {
-            if (requestRenderAndUpdateVoxels) {
-              store.render();
-              stackerStore.updateVoxels();
-            }
-            return result;
-          });
-        } finally {
-          requestRenderAndUpdateVoxels = false;
+      enqueue(async () => {
+        const result = await doCommand_(command);
+        if (result.type !== "NoOperation") {
+          store.render();
+          stackerStore.updateVoxels();
         }
+        return result;
       }),
     );
   };

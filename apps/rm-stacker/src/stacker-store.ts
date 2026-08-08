@@ -38,12 +38,12 @@ const createInitialImageData = (
 
 export const createInitialSides = (dimensions: Dimensions3D) => {
   return {
-    front: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 4),
-    back: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 4),
-    left: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 4),
-    right: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 4),
-    top: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 4),
-    bottom: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 4),
+    front: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 12),
+    back: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 12),
+    left: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 12),
+    right: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 12),
+    top: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 12),
+    bottom: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 12),
   };
 };
 
