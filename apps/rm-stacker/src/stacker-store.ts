@@ -1,9 +1,9 @@
 import { createStore } from "solid-js";
-import { solveVoxels } from "./voxel-solver";
-import type { Dimensions2D, Dimensions3D, Sides, Vector2D } from "./types";
-import { UndoRedoManager } from "./undo-redo";
 import { Command } from "./Command";
 import { save } from "./load-save";
+import type { Dimensions2D, Dimensions3D, Sides, Vector2D } from "./types";
+import { UndoRedoManager } from "./undo-redo";
+import { solveVoxels } from "./voxel-solver";
 
 export interface StackerStore {
   dimensions: Dimensions3D;
@@ -38,17 +38,17 @@ const createInitialImageData = (
 
 export const createInitialSides = (dimensions: Dimensions3D) => {
   return {
-    front: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 12),
-    back: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 12),
-    left: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 12),
-    right: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 12),
-    top: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 12),
-    bottom: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 12),
+    front: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 1),
+    back: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 1),
+    left: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 1),
+    right: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 1),
+    top: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 1),
+    bottom: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 1),
   };
 };
 
 export function createStackerStore() {
-  const initialDimensions: Dimensions3D = { width: 32, height: 32, depth: 32 };
+  const initialDimensions: Dimensions3D = { width: 3, height: 5, depth: 4 };
   const initialSides: Sides = createInitialSides(initialDimensions);
 
   const [store, setStore] = createStore<StackerStore>({

@@ -1,6 +1,5 @@
-import { Side } from "three";
-import { Coordinates, SideKind, Sides } from "./types";
 import { SIDE_MASK } from "./constants";
+import { Coordinates, SideKind, Sides } from "./types";
 
 export function tryCatch<T, U>(fn: () => T, onError: (error: unknown) => U) {
   try {
