@@ -1,7 +1,7 @@
 import { Accessor, Component, createRenderEffect, createSignal, runWithOwner } from "solid-js";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 import { RGBA } from "./types";
-import { areColoursEqual, hexToRgba } from "./utils";
+import { areRGBAsEqual, hexToRgba } from "./utils";
 
 const Palette: Component<{
   ref?: (ctx: { selectedColour: Accessor<RGBA> }) => void;
@@ -26,10 +26,10 @@ const Palette: Component<{
       {DAWNBRINGER_32_PALETTE.map(colour => (
         <div
           style={{
-            border: areColoursEqual(hexToRgba(colour), selectedColour())
+            border: areRGBAsEqual(hexToRgba(colour), selectedColour())
               ? "4px solid green"
               : undefined,
-            padding: !areColoursEqual(hexToRgba(colour), selectedColour()) ? "4px" : undefined,
+            padding: !areRGBAsEqual(hexToRgba(colour), selectedColour()) ? "4px" : undefined,
           }}
         >
           <div

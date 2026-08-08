@@ -4,7 +4,7 @@ import { Command } from "./Command";
 import { load, save, saveToIndexedDB } from "./load-save";
 import type { Dimensions2D, Dimensions3D, RGBA, Sides, Vector2D } from "./types";
 import { UndoRedoManager } from "./undo-redo";
-import { areColoursEqual, createEnqueue, findCollidingSide } from "./utils";
+import { areRGBAsEqual, createEnqueue, findCollidingSide } from "./utils";
 import { solveVoxels } from "./voxel-solver";
 
 export interface StackerStore {
@@ -240,7 +240,7 @@ export function createStackerStore() {
 
               const neighborOffset = getOffset(side, origin, neighbor);
               const neighborColor = getColor(side, neighborOffset);
-              const match = areColoursEqual(neighborColor, oldColour);
+              const match = areRGBAsEqual(neighborColor, oldColour);
 
               if (match) {
                 queue.push(neighbor);

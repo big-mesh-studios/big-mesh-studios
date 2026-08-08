@@ -16,7 +16,7 @@ import Palette from "../Palette";
 import { StackerContext } from "../stacker-context";
 import { createInitialSides } from "../stacker-store";
 import { ModeKind, RGBA, Vector2D } from "../types";
-import { keysOf, sideMaskToRgb } from "../utils";
+import { keysOf, sideMaskToRGBA } from "../utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
 
@@ -139,7 +139,7 @@ const PixelEditorView: Component = () => {
           const alpha = side.data[(index << 2) + 3];
 
           if (!alpha) {
-            ctx.strokeStyle = sideMaskToRgb(sideMask, 0.5);
+            ctx.strokeStyle = sideMaskToRGBA(sideMask, 0.5);
             ctx.lineWidth = 2 / scale;
             ctx.strokeRect(coordinate.x + gx, coordinate.y + gy, 1.0, 1.0);
           }
@@ -225,7 +225,7 @@ const PixelEditorView: Component = () => {
         }
 
         ctx.lineWidth = 2 / _scale;
-        ctx.strokeStyle = sideMaskToRgb(SIDE_MASK[sideKind]);
+        ctx.strokeStyle = sideMaskToRGBA(SIDE_MASK[sideKind]);
         ctx.strokeRect(coordinate.x, coordinate.y, side.width, side.height);
 
         ctx.font = "5px sans-serif";

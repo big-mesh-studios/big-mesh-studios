@@ -9,24 +9,18 @@ export function tryCatch<T, U>(fn: () => T, onError: (error: unknown) => U) {
   }
 }
 
-export const findCollidingSide = (
-  position: { x: number; y: number },
-  sides: Sides,
-  coordinates: Coordinates,
-) => {
-  for (const kind of keysOf(sides)) {
-    const coordinate = coordinates[kind];
-    const side = sides[kind];
-    if (
-      coordinate.x <= position.x &&
-      coordinate.y <= position.y &&
-      coordinate.x + side.width > position.x &&
-      coordinate.y + side.height > position.y
-    ) {
-      return { side, coordinate, kind };
-    }
-  }
-};
+export function keysOf<T extends Record<string, any>>(object: T): Array<keyof T> {
+  return Object.keys(object);
+}
+
+export function createEnqueue<T>() {
+  let queue: Promise<unknown> = Promise.resolve();
+  return function (task: () => Promise<T>): Promise<T> {
+    const result = queue.then(task);
+    queue = result;
+    return result;
+  };
+}
 
 export function byteTo2DigitHex(byte: number): string {
   let hex = byte.toString(16);
@@ -54,13 +48,6 @@ export function base64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-export function sideMaskToRgb(mask: number, intensity = 1) {
-  const r = SIDE_MASK.front & mask ? 255 * intensity : 0;
-  const g = SIDE_MASK.left & mask ? 255 * intensity : 0;
-  const b = SIDE_MASK.top & mask ? 255 * intensity : 0;
-  return `rgba(${r}, ${g}, ${b}, 1)`;
-}
-
 export function hexToRgba(hex: string, alpha = 1): RGBA {
   const digits = hex.replace("#", "");
 
@@ -83,19 +70,32 @@ export function hexToRgba(hex: string, alpha = 1): RGBA {
   return rgba;
 }
 
-export function createEnqueue<T>() {
-  let queue: Promise<unknown> = Promise.resolve();
-  return function (task: () => Promise<T>): Promise<T> {
-    const result = queue.then(task);
-    queue = result;
-    return result;
-  };
-}
-
-export function areColoursEqual(a: RGBA, b: RGBA) {
+export function areRGBAsEqual(a: RGBA, b: RGBA) {
   return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
 }
 
-export function keysOf<T extends Record<string, any>>(object: T): Array<keyof T> {
-  return Object.keys(object);
+export function sideMaskToRGBA(mask: number, intensity = 1) {
+  const r = SIDE_MASK.front & mask ? 255 * intensity : 0;
+  const g = SIDE_MASK.left & mask ? 255 * intensity : 0;
+  const b = SIDE_MASK.top & mask ? 255 * intensity : 0;
+  return `rgba(${r}, ${g}, ${b}, 1)`;
 }
+
+export const findCollidingSide = (
+  position: { x: number; y: number },
+  sides: Sides,
+  coordinates: Coordinates,
+) => {
+  for (const kind of keysOf(sides)) {
+    const coordinate = coordinates[kind];
+    const side = sides[kind];
+    if (
+      coordinate.x <= position.x &&
+      coordinate.y <= position.y &&
+      coordinate.x + side.width > position.x &&
+      coordinate.y + side.height > position.y
+    ) {
+      return { side, coordinate, kind };
+    }
+  }
+};
