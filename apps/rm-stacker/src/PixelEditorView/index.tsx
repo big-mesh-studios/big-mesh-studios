@@ -115,12 +115,14 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
     guide,
     coordinate,
     kind,
+    scale,
   }: {
     ctx: CanvasRenderingContext2D;
     side: ImageData;
     guide: Uint8Array;
     coordinate: Vector2D;
     kind: "inner" | "outer";
+    scale: number;
   }) => {
     for (let gy = 0; gy < side.height; ++gy) {
       for (let gx = 0; gx < side.width; ++gx) {
@@ -139,8 +141,9 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
           const alpha = side.data[(index << 2) + 3];
 
           if (!alpha) {
-            ctx.fillStyle = sideMaskToRgb(sideMask, 0.25);
-            ctx.fillRect(coordinate.x + gx, coordinate.y + gy, 1.0, 1.0);
+            ctx.strokeStyle = sideMaskToRgb(sideMask, 0.5);
+            ctx.lineWidth = 2 / scale;
+            ctx.strokeRect(coordinate.x + gx, coordinate.y + gy, 1.0, 1.0);
           }
         }
       }
@@ -172,7 +175,6 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
       ctx.translate(-_pan.x, -_pan.y);
       ctx.fillStyle = "red";
       ctx.strokeStyle = "red";
-      ctx.lineWidth = 1 / _scale;
 
       for (const sideKind of Object.keys(store.sides)) {
         const side = store.sides[sideKind as keyof typeof store.sides];
@@ -188,6 +190,7 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
         ctx.imageSmoothingEnabled = lastImageSmoothingEnabled;
 
         ctx.strokeStyle = `rgba(255, 255, 255, 0.3)`;
+        ctx.lineWidth = 1 / _scale;
 
         if (_scale >= 5.0) {
           const y1 = coordinate.y;
@@ -219,10 +222,11 @@ const PixelEditorView: Component<{ coordinates: Accessor<Coordinates> }> = props
         const guide = guides[sideKind as keyof typeof guides];
 
         if (guide !== undefined) {
-          renderGuide({ ctx, side, guide, coordinate, kind: "outer" });
-          renderGuide({ ctx, side, guide, coordinate, kind: "inner" });
+          renderGuide({ ctx, side, guide, coordinate, kind: "outer", scale: _scale });
+          renderGuide({ ctx, side, guide, coordinate, kind: "inner", scale: _scale });
         }
 
+        ctx.lineWidth = 2 / _scale;
         ctx.strokeStyle = sideMaskToRgb(SIDE_MASK[sideKind as SideKind]);
         ctx.strokeRect(coordinate.x, coordinate.y, side.width, side.height);
 
