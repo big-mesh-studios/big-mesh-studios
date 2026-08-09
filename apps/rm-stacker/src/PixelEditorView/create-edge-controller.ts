@@ -162,7 +162,22 @@ export function createEdgeController({
 
   return {
     active: () => !!activeEdge(),
-    onPointerEnd: () => setActiveEdge(undefined),
+    onPointerEnd: () => {
+      const _activeEdge = activeEdge();
+      if (!_activeEdge) {
+        return;
+      }
+
+      if (
+        _activeEdge.initialDimensions.width !== store.dimensions.width ||
+        _activeEdge.initialDimensions.height !== store.dimensions.height ||
+        _activeEdge.initialDimensions.depth !== store.dimensions.depth
+      ) {
+        pushUndo(snapshot(_activeEdge.initialSides), "Resize");
+      }
+
+      setActiveEdge(undefined);
+    },
     onPointerDown(event: PointerEvent) {
       const _mouseWorldPos = mouseWorldPos();
 
