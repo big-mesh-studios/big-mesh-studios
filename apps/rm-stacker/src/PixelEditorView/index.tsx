@@ -1,12 +1,11 @@
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
 import { Component, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
-import * as THREE from "three";
 import { SIDE_MASK } from "../constants";
 import { load, save } from "../load-save";
 import Palette from "../Palette";
 import { StackerContext } from "../stacker-context";
 import { createInitialSides } from "../stacker-store";
-import { ModeKind, RGBA, Vector2D } from "../types";
+import { Dimensions2D, ModeKind, RGBA, Vector2D } from "../types";
 import { keysOf, sideMaskToRGBA } from "../utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
@@ -32,7 +31,7 @@ const PixelEditorView: Component = () => {
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [mode, setModeKind] = createSignal<ModeKind>("Idle");
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
-  const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
+  const [canvasSize, setCanvasSize] = createSignal<Dimensions2D | undefined>();
   const [selectedColour, setSelectedColour] = createSignal<RGBA | undefined>();
 
   const controller = createPixelEditorController({
@@ -158,7 +157,7 @@ const PixelEditorView: Component = () => {
       const _overlayDrawing = controller.overlayDrawing();
       const guides = computeGuideMasks(store);
 
-      ctx.clearRect(0, 0, _canvasSize.x, _canvasSize.y);
+      ctx.clearRect(0, 0, _canvasSize.width, _canvasSize.height);
       ctx.save();
       ctx.scale(_scale, _scale);
       ctx.translate(-_pan.x, -_pan.y);
@@ -250,7 +249,7 @@ const PixelEditorView: Component = () => {
       const rect = _canvas.getBoundingClientRect();
       _canvas.width = rect.width;
       _canvas.height = rect.height;
-      setCanvasSize(new THREE.Vector2(rect.width, rect.height));
+      setCanvasSize(rect);
     });
     resizeObserver.observe(_canvas);
 

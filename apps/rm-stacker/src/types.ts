@@ -1,5 +1,4 @@
 import { Accessor } from "solid-js";
-import * as THREE from "three";
 import { Command } from "./Command";
 import { StackerStore } from "./stacker-store";
 
@@ -51,7 +50,7 @@ export type ModeKind = "Draw" | "Erase" | "Fill" | "Idle";
 export type Coordinates = Record<keyof Sides, { x: number; y: number }>;
 
 export interface ModeParams {
-  mousePos: Accessor<THREE.Vector2 | undefined>;
+  mousePos: Accessor<Vector2D | undefined>;
   pointerDownCount: Accessor<number>;
   selectedColour: Accessor<string | undefined>;
   coordinates: Accessor<Coordinates>;

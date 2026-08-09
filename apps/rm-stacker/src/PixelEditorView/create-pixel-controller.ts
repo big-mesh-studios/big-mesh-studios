@@ -8,12 +8,11 @@ import {
   untrack,
   useContext,
 } from "solid-js";
-import * as THREE from "three";
 import { Command } from "../Command";
 import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../stacker-context";
 import { Coordinates, ModeKind, RGBA, SideKind, Vector2D } from "../types";
-import { findCollidingSide, roundVector2D } from "../utils";
+import { addVector2D, findCollidingSide, multiplyVector2D, roundVector2D } from "../utils";
 import { createEdgeController } from "./create-edge-controller";
 
 const getOppositePixel = (kind: SideKind, position: Vector2D, side: ImageData): Vector2D => {
@@ -44,14 +43,14 @@ export const createPixelEditorController = ({
   const [cursor, setCursor] = createSignal<string>();
   const [scale, setScale] = createSignal(8);
   const [pointerids, setPointerids] = createSignal(new Set<number>(), { equals: false });
-  const [mousePos, setMousePos] = createSignal<THREE.Vector2>();
+  const [mousePos, setMousePos] = createSignal<Vector2D>();
 
   const panScaleControllerSetters = {
-    setPanX: (value: number) => {
-      setPan(p => new THREE.Vector2(value, p.y));
+    setPanX: (x: number) => {
+      setPan(p => ({ x, y: p.y }));
     },
-    setPanY: (value: number) => {
-      setPan(p => new THREE.Vector2(p.x, value));
+    setPanY: (y: number) => {
+      setPan(p => ({ x: p.x, y }));
     },
     setScale,
   };
@@ -65,14 +64,13 @@ export const createPixelEditorController = ({
     disable: createMemo(() => mode() !== "Idle" && pointerids().size !== 0),
   });
 
-  const screenToWorld = (pt: THREE.Vector2, out = new THREE.Vector2()): THREE.Vector2 => {
-    out.copy(pt);
-    out.multiplyScalar(1.0 / latest(scale));
-    out.add(latest(pan));
-    return out;
+  const screenToWorld = (pt: Vector2D, out = { x: 0, y: 0 }) => {
+    out = { ...pt };
+    multiplyVector2D(out, 1.0 / latest(scale));
+    return addVector2D(out, latest(pan));
   };
 
-  const mouseWorldPos = createMemo<THREE.Vector2 | undefined>(() => {
+  const mouseWorldPos = createMemo<Vector2D | undefined>(() => {
     const _mousePos = mousePos();
     if (_mousePos === undefined) {
       return undefined;
@@ -275,7 +273,7 @@ export const createPixelEditorController = ({
       const rect = _canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      setMousePos(new THREE.Vector2(x, y));
+      setMousePos({ x, y });
     },
     onPointerOut(_e: PointerEvent) {
       setMousePos();

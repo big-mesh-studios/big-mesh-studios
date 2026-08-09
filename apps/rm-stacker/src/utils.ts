@@ -108,3 +108,13 @@ export const roundVector2D = (vector: Vector2D) => ({
   x: Math.round(vector.x - 0.5),
   y: Math.round(vector.y - 0.5),
 });
+
+export const multiplyVector2D = (vector: Vector2D, scalar: number) => ({
+  x: vector.x * scalar,
+  y: vector.y * scalar,
+});
+
+export const addVector2D = (a: Vector2D, b: Vector2D) => ({
+  x: a.x + b.x,
+  y: a.y + b.y,
+});
