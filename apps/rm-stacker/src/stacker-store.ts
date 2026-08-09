@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, untrack } from "solid-js";
+import { createEffect, createMemo, createSignal, flush, untrack } from "solid-js";
 import { Command } from "./Command";
 import { load, save, saveToIndexedDB } from "./load-save";
 import { resizeSides } from "./resize-sides";
@@ -154,6 +154,7 @@ export function createStacker() {
   })();
 
   function updateVoxels() {
+    flush();
     setVoxels(solveVoxels(store));
   }
 
@@ -171,8 +172,8 @@ export function createStacker() {
         const result = await doCommand(command);
 
         if (result.type !== "NoOperation") {
-          requestRender();
           updateVoxels();
+          requestRender();
         }
 
         return result;
@@ -305,6 +306,7 @@ export function createStacker() {
           const localY = y - coordinate.y;
           const offset = (localY * side.width + localX) << 2;
           const oldColour = getColourFromOffset({ side, offset });
+
           side.data[offset + 0] = colour.r;
           side.data[offset + 1] = colour.g;
           side.data[offset + 2] = colour.b;
@@ -342,15 +344,18 @@ export function createStacker() {
           side.data[offset + 1] = 0;
           side.data[offset + 2] = 0;
           side.data[offset + 3] = 0;
+
           return Command.writePixel(x, y, old);
         }
         case "LoadData": {
           let undoCommand = snapshot();
           let data = effect.data;
           let sides = await load(data);
+
           setSides(sides);
-          requestRender();
           updateVoxels();
+          requestRender();
+
           return undoCommand;
         }
         case "Async": {
@@ -388,7 +393,8 @@ export function createStacker() {
       from = { sides: store.sides, dimensions: store.dimensions },
     }: ResizeOptions) {
       setSides(resizeSides(from.sides, from.dimensions, nextDimensions, growEnds));
-      requestAnimationFrame(updateVoxels);
+      updateVoxels();
+      requestRender();
     },
     doCommand(command: Command, pushUndo?: boolean, description?: string): Command {
       let reverseCommand = doCommandAndUpdate(command);

@@ -170,3 +170,12 @@ export function roundVector2D(vector: Vector2D) {
     y: Math.round(vector.y - 0.5),
   };
 }
+
+export function normalizeDimensions(dimensions: Dimensions3D) {
+  const max = Math.max(dimensions.width, dimensions.height, dimensions.depth);
+  return {
+    width: dimensions.width / max,
+    height: dimensions.height / max,
+    depth: dimensions.depth / max,
+  };
+}

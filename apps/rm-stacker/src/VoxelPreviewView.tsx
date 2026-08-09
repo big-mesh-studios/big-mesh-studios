@@ -14,15 +14,24 @@ import {
   vec3,
   vec4,
 } from "@random-mesh/rmsl";
-import { Component, createSignal, createTrackedEffect, onSettled, useContext } from "solid-js";
+import {
+  Component,
+  createMemo,
+  createSignal,
+  createTrackedEffect,
+  flush,
+  onSettled,
+  useContext,
+} from "solid-js";
 import { StackerContext } from "./stacker-context";
-import { tryCatch } from "./utils";
+import { normalizeDimensions, tryCatch } from "./utils";
 
 // Shared rmsl nodes. Created once so the generated slot names are the same in
 // both the vertex and fragment shaders.
 const uVoxels = uniformRaw("uVoxels", "sampler2D");
 const uTime = uniformRaw("uTime", "float");
 const uResolution = uniformRaw("uResolution", "vec2");
+const uDimensions = uniformRaw("uDimensions", "vec3");
 const uLightDir = uniformRaw("uLightDir", "vec3");
 const uLightColour = uniformRaw("uLightColour", "vec3");
 const uAmbientColour = uniformRaw("uAmbientColour", "vec3");
@@ -52,11 +61,6 @@ const rotationY = (angle: Node<"float">): Node<"mat3"> =>
 const sampleVoxels = (coordinate: Node<"vec3">): Node<"vec4"> =>
   (uVoxels as any).texture(coordinate) as Node<"vec4">;
 
-// Nothing 3D is uploaded to the GPU: this triangle is the only geometry, and
-// it exists purely so that every pixel of the canvas runs the fragment shader.
-// Clip space is -1..1, so the corners (-1,-1) (3,-1) (-1,3) make a triangle
-// large enough to hang off two edges of the screen and cover every pixel once.
-// vUv hands the fragment shader the same position rescaled to 0..1.
 const vertexFn = Fn(() => {
   vUv.assign(positionAttr.mult(vec2(0.5)).add(vec2(0.5)));
   return vec4(positionAttr, float(0), float(1));
@@ -92,6 +96,7 @@ const fragmentFn = Fn(() => {
   // of view. normalize() makes the direction exactly 1 unit long, so distances
   // along the ray are plain world units.
   const cameraRotation = rotationY(time);
+
   // rmsl has no vec3 * mat3, so rotate through the transpose (identical result)
   const rayOrigin = cameraRotation.transpose().multVec(vec3(float(0), float(0), float(-1.8)));
   const rayDirection = cameraRotation
@@ -103,15 +108,21 @@ const fragmentFn = Fn(() => {
 
   // --- 2. Where does the ray enter and leave the voxel box? ---
 
-  // The voxels fill the unit cube centred on the origin. Walking the whole ray
-  // would spend most of its steps in empty space, so first trim it to the part
-  // that is actually inside the cube, using the standard "slab" test: treat the
-  // cube as three pairs of parallel planes (one pair per axis) and find how far
+  // The voxels fill a box centred on the origin. Walking the whole ray would
+  // spend most of its steps in empty space, so first trim it to the part that
+  // is actually inside the box, using the standard "slab" test: treat the box
+  // as three pairs of parallel planes (one pair per axis) and find how far
   // along the ray each of the six planes is crossed.
   //
+  // The grid is rarely a cube, so the box is sized per axis by uDimensions:
+  // the voxel counts divided by the largest of them, i.e. the longest axis
+  // spans 1 unit and the others shrink in proportion. That keeps the model's
+  // aspect ratio instead of stretching it to fill a cube, and it makes every
+  // voxel an exact cube of side 1/maxCount in world space.
+  //
   // IntersectBox, inlined since rmsl has no user functions or out params
-  const boxMin = vec3(float(-0.5));
-  const boxMax = vec3(float(0.5));
+  const boxMin = uDimensions.mult(float(-0.5)).toVar();
+  const boxMax = uDimensions.mult(float(0.5)).toVar();
 
   // Crossing an axis-aligned plane happens at (plane - rayOrigin) / rayDirection,
   // so precompute the division once as a reciprocal to multiply by below.
@@ -152,8 +163,13 @@ const fragmentFn = Fn(() => {
     // How far to advance per step, in world units. Smaller catches thinner
     // details but costs a texture lookup per step, for every pixel, every frame.
     const stepSize = float(0.01);
-    // half a voxel in world units, for the alpha-gradient normal
-    const gradientStep = float(0.015625);
+    // How far to step aside when measuring the alpha-gradient normal below.
+    // The step is a world-space distance, but the sampling happens in texture
+    // space, where each axis is stretched to 0..1 regardless of how many
+    // voxels it holds, so divide it per axis to undo that stretch. Without
+    // this the gradient is measured over different distances per axis and the
+    // normals of a non-cubic model come out tilted.
+    const gradientStep = vec3(float(0.015625)).div(uDimensions).toVar();
     // rmsl's For mirrors a C for loop: start at the entry point, keep going
     // while still inside the box, advance one step, and run the body each time.
     For(
@@ -167,17 +183,20 @@ const fragmentFn = Fn(() => {
         const worldPosition = rayOrigin.add(rayDirection.mult(rayDistance)).toVar();
         // Guard against sampling outside the volume: the texture is set to
         // CLAMP_TO_EDGE, so a lookup past the edge keeps returning the outer
-        // voxels and smears them into space. The bound is the cube plus a hair
+        // voxels and smears them into space. The bound is the box plus a hair
         // of slack, so rounding error on a grazing ray cannot reject a point
         // that genuinely is on the surface.
         const inside = worldPosition
-          .greaterThan(vec3(float(-0.51)))
+          .greaterThan(boxMin.sub(vec3(float(0.01))))
           .all()
-          .and(worldPosition.lessThan(vec3(float(0.51))).all());
+          .and(worldPosition.lessThan(boxMax.add(vec3(float(0.01)))).all());
 
         If(inside, () => {
-          // the box spans -0.5..0.5, the texture 0..1
-          const voxelCoord = worldPosition.add(vec3(float(0.5))).toVar();
+          // the box spans -uDimensions/2..uDimensions/2, the texture 0..1
+          const voxelCoord = worldPosition
+            .div(uDimensions)
+            .add(vec3(float(0.5)))
+            .toVar();
 
           const voxel = sampleVoxels(voxelCoord).toVar();
 
@@ -194,31 +213,36 @@ const fragmentFn = Fn(() => {
             // the difference (central differences), before minus after so the
             // result points from solid out into empty space.
             const alphaGradient = vec3(
-              sampleVoxels(voxelCoord.sub(vec3(gradientStep, float(0), float(0)))).a.sub(
-                sampleVoxels(voxelCoord.add(vec3(gradientStep, float(0), float(0)))).a,
+              sampleVoxels(voxelCoord.sub(vec3(gradientStep.x, float(0), float(0)))).a.sub(
+                sampleVoxels(voxelCoord.add(vec3(gradientStep.x, float(0), float(0)))).a,
               ),
-              sampleVoxels(voxelCoord.sub(vec3(float(0), gradientStep, float(0)))).a.sub(
-                sampleVoxels(voxelCoord.add(vec3(float(0), gradientStep, float(0)))).a,
+              sampleVoxels(voxelCoord.sub(vec3(float(0), gradientStep.y, float(0)))).a.sub(
+                sampleVoxels(voxelCoord.add(vec3(float(0), gradientStep.y, float(0)))).a,
               ),
-              sampleVoxels(voxelCoord.sub(vec3(float(0), float(0), gradientStep))).a.sub(
-                sampleVoxels(voxelCoord.add(vec3(float(0), float(0), gradientStep))).a,
+              sampleVoxels(voxelCoord.sub(vec3(float(0), float(0), gradientStep.z))).a.sub(
+                sampleVoxels(voxelCoord.add(vec3(float(0), float(0), gradientStep.z))).a,
               ),
             );
+
             // The tiny view-direction term is a safety net: where the gradient
             // is zero or very weak (e.g. a surface sitting on the very edge of
             // the volume) normalize() would divide by zero and give a NaN
             // normal, so nudge it towards the camera to keep it valid.
             const normal = alphaGradient.sub(rayDirection.mult(float(0.001))).normalize();
+
             // Diffuse (Lambert) shading: a surface is brightest when it faces
             // the light head-on and fades to nothing as it turns away, which is
             // what the dot product of the two directions gives. Clamped at 0 so
             // surfaces facing away are simply unlit rather than negative.
             const diffuse = normal.dot(uLightDir).max(float(0));
+
             // The voxel's own colour, dimmed by how much light reaches it. The
             // ambient term is the floor: light bouncing around the scene, so
             // unlit sides read as shadowed rather than pure black.
             colour.rgb.assign(voxel.rgb.mult(uAmbientColour.add(uLightColour.mult(diffuse))));
+
             colour.a.assign(float(1));
+
             // First hit wins: stop walking, everything behind it is hidden.
             break_();
           });
@@ -257,6 +281,7 @@ type WebGLState = {
   uLightDirLocation: WebGLUniformLocation | null;
   uLightColourLocation: WebGLUniformLocation | null;
   uAmbientColourLocation: WebGLUniformLocation | null;
+  uDimensions: WebGLUniformLocation | null;
   texture: WebGLTexture;
   buffer: WebGLBuffer;
 };
@@ -332,6 +357,7 @@ const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
     uLightDirLocation: gl.getUniformLocation(program, uLightDir.name),
     uLightColourLocation: gl.getUniformLocation(program, uLightColour.name),
     uAmbientColourLocation: gl.getUniformLocation(program, uAmbientColour.name),
+    uDimensions: gl.getUniformLocation(program, uDimensions.name),
     texture,
     buffer,
   };
@@ -352,6 +378,8 @@ const VoxelPreviewView: Component = () => {
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [webgl, setWebgl] = createSignal<WebGLState>();
   const [glError, setGlError] = createSignal<string | undefined>();
+
+  const normalizedDimensions = createMemo(() => normalizeDimensions(store.dimensions));
 
   const loadVoxelArrayToWebGL = () => {
     const dimensions = store.dimensions;
@@ -397,9 +425,18 @@ const VoxelPreviewView: Component = () => {
     gl.uniform3fv(_webgl.uLightDirLocation, LIGHT_DIR);
     gl.uniform3fv(_webgl.uLightColourLocation, LIGHT_COLOUR);
     gl.uniform3fv(_webgl.uAmbientColourLocation, AMBIENT_COLOUR);
+    gl.uniform3f(
+      _webgl.uDimensions,
+      normalizedDimensions().width,
+      normalizedDimensions().height,
+      normalizedDimensions().depth,
+    );
     gl.bindBuffer(gl.ARRAY_BUFFER, _webgl.buffer);
     gl.enableVertexAttribArray(_webgl.positionLocation);
     gl.vertexAttribPointer(_webgl.positionLocation, 2, gl.FLOAT, false, 0, 0);
+    flush();
+    loadVoxelArrayToWebGL();
+    gl.flush();
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
 
