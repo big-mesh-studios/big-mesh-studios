@@ -1,4 +1,3 @@
-import * as THREE from "three";
 import { RGBA } from "./types";
 import { base64ToUint8Array, uint8ArrayToBase64 } from "./utils";
 
@@ -81,9 +80,6 @@ export namespace Command {
       }
       case "WritePixel": {
         let colour = command.colour;
-        if (colour instanceof THREE.Color) {
-          colour = colour.convertLinearToSRGB().getHex();
-        }
         return { type: "WritePixel", x: command.x, y: command.y, colour };
       }
       case "ErasePixel": {
