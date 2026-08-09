@@ -90,8 +90,13 @@ export function createStacker() {
   const enqueue = createEnqueue<Command>();
   const renderSet = new Set<() => void>();
 
-  const [dimensions, setDimensions] = createSignal<Dimensions3D>(INITIAL_DIMENSIONS);
   const [sides, setSides] = createSignal<Sides>(createInitialSides(INITIAL_DIMENSIONS));
+  const dimensions = createMemo<Dimensions3D>(() => ({
+    width: sides().front.width,
+    height: sides().front.height,
+    depth: sides().left.width,
+  }));
+
   const [voxels, setVoxels] = createSignal(
     solveVoxels({ sides: sides(), dimensions: dimensions() }),
   );
@@ -357,7 +362,6 @@ export function createStacker() {
     undoRedoManager,
     updateVoxels,
     coordinates,
-    setDimensions,
     setSides,
     /**
      * Re-frames the model to new dimensions, carrying the drawing over rather
@@ -369,7 +373,6 @@ export function createStacker() {
       from = { sides: store.sides, dimensions: store.dimensions },
     }: ResizeOptions) {
       setSides(resizeSides(from.sides, from.dimensions, nextDimensions, growEnds));
-      setDimensions(nextDimensions);
       requestAnimationFrame(updateVoxels);
     },
     doCommand(command: Command, pushUndo?: boolean, description?: string): Command {
@@ -402,7 +405,6 @@ export function createStacker() {
     },
     reset() {
       setSides(createInitialSides(INITIAL_DIMENSIONS));
-      setDimensions(INITIAL_DIMENSIONS);
       updateVoxels();
     },
   };
