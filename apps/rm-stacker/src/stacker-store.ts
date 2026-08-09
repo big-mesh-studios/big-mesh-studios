@@ -255,11 +255,11 @@ export function createStacker() {
             ];
 
             for (let neighbor of neighbors) {
-              if (neighbor.x - origin.x < 0 || neighbor.x - origin.x > side.width) {
+              if (neighbor.x - origin.x < 0 || neighbor.x - origin.x >= side.width) {
                 continue;
               }
 
-              if (neighbor.y - origin.y < 0 || neighbor.y - origin.y > side.height) {
+              if (neighbor.y - origin.y < 0 || neighbor.y - origin.y >= side.height) {
                 continue;
               }
 
