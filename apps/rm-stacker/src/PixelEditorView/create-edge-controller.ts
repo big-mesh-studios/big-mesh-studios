@@ -111,7 +111,11 @@ export function createEdgeController({
       return false;
     }
 
-    const collidingSide = findCollidingSide(position, store.sides, coordinates());
+    const collidingSide = findCollidingSide({
+      position,
+      sides: store.sides,
+      coordinates: coordinates(),
+    });
 
     if (!collidingSide) {
       return false;

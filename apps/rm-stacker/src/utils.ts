@@ -85,26 +85,88 @@ export function sideMaskToRGBA(mask: number, intensity = 1) {
   return `rgba(${r}, ${g}, ${b}, 1)`;
 }
 
-export const findCollidingSide = (
-  position: { x: number; y: number },
-  sides: Sides,
-  coordinates: Coordinates,
-) => {
+export function findRelativePosition(position: { x: number; y: number }, coordinate: Vector2D) {
+  return {
+    x: position.x - coordinate.x,
+    y: position.y - coordinate.y,
+  };
+}
+
+export function findCollidingSide({
+  coordinates,
+  position,
+  sides,
+}: {
+  coordinates: Coordinates;
+  position: Vector2D;
+  sides: Sides;
+}) {
   for (const kind of keysOf(sides)) {
     const coordinate = coordinates[kind];
     const side = sides[kind];
+    const relativePosition = findRelativePosition(position, coordinate);
+
     if (
-      coordinate.x <= position.x &&
-      coordinate.y <= position.y &&
-      coordinate.x + side.width > position.x &&
-      coordinate.y + side.height > position.y
+      relativePosition.x >= 0 &&
+      relativePosition.y >= 0 &&
+      relativePosition.x < side.width &&
+      relativePosition.y < side.height
     ) {
-      return { side, coordinate, kind };
+      return { side, coordinate, kind, relativePosition };
     }
   }
-};
+}
 
-export const roundVector2D = (vector: Vector2D) => ({
-  x: Math.round(vector.x - 0.5),
-  y: Math.round(vector.y - 0.5),
-});
+export function getOffset({
+  side,
+  origin,
+  position,
+}: {
+  side: ImageData;
+  origin: Vector2D;
+  position: Vector2D;
+}) {
+  const localPosition = {
+    x: position.x - origin.x,
+    y: position.y - origin.y,
+  };
+  const offset = (localPosition.y * side.width + localPosition.x) << 2;
+  return offset;
+}
+
+export function getColourFromOffset({ side, offset }: { side: ImageData; offset: number }): RGBA {
+  const r = side.data[offset + 0];
+  const g = side.data[offset + 1];
+  const b = side.data[offset + 2];
+  const a = side.data[offset + 3];
+  return { r, g, b, a };
+}
+
+export function findColour({
+  coordinates,
+  position,
+  sides,
+}: {
+  position: Vector2D;
+  sides: Sides;
+  coordinates: Coordinates;
+}) {
+  const result = findCollidingSide({ position, sides, coordinates });
+
+  if (!result) {
+    return false;
+  }
+
+  const { coordinate: origin, side } = result;
+
+  const offset = getOffset({ side, origin, position: position });
+
+  return getColourFromOffset({ side, offset });
+}
+
+export function roundVector2D(vector: Vector2D) {
+  return {
+    x: Math.round(vector.x - 0.5),
+    y: Math.round(vector.y - 0.5),
+  };
+}

@@ -7,12 +7,18 @@ import type {
   DimensionEnds,
   Dimensions2D,
   Dimensions3D,
-  RGBA,
   Sides,
   Vector2D,
 } from "./types";
 import { UndoRedoManager } from "./undo-redo";
-import { areRGBAsEqual, createEnqueue, findCollidingSide } from "./utils";
+import {
+  areRGBAsEqual,
+  createEnqueue,
+  findCollidingSide,
+  findColour,
+  getColourFromOffset,
+  getOffset,
+} from "./utils";
 import { solveVoxels } from "./voxel-solver";
 
 const INITIAL_DIMENSIONS = { width: 3, height: 5, depth: 4 };
@@ -159,21 +165,6 @@ export function createStacker() {
     return Command.async(command);
   }
 
-  const getOffset = (side: ImageData, origin: Vector2D, position: Vector2D) => {
-    const localX = position.x - origin.x;
-    const localY = position.y - origin.y;
-    const offset = (localY * side.width + localX) << 2;
-    return offset;
-  };
-
-  function getColor(side: ImageData, offset: number): RGBA {
-    const r = side.data[offset + 0];
-    const g = side.data[offset + 1];
-    const b = side.data[offset + 2];
-    const a = side.data[offset + 3];
-    return { r, g, b, a };
-  }
-
   const doCommandAndUpdate = (command: Command) => {
     return Command.async(
       enqueue(async () => {
@@ -206,7 +197,11 @@ export function createStacker() {
           return Command.sequence(reverseCommands);
         }
         case "FillPixel": {
-          const result = findCollidingSide(effect, store.sides, coordinates());
+          const result = findCollidingSide({
+            position: effect,
+            sides: store.sides,
+            coordinates: coordinates(),
+          });
 
           if (!result) {
             return Command.noOperation();
@@ -216,10 +211,14 @@ export function createStacker() {
           const { coordinate: origin, side } = result;
           const { r, g, b, a } = colour;
 
-          const offset = getOffset(side, origin, { x, y });
-          const oldColour = getColor(side, offset);
+          const offset = getOffset({ side, origin, position: { x, y } });
+          const oldColour = findColour({
+            position: { x, y },
+            sides: store.sides,
+            coordinates: coordinates(),
+          });
 
-          if (areRGBAsEqual(colour, oldColour)) {
+          if (!oldColour || areRGBAsEqual(colour, oldColour)) {
             return Command.noOperation();
           }
 
@@ -272,8 +271,8 @@ export function createStacker() {
                 continue;
               }
 
-              let neighborOffset = getOffset(side, origin, neighbor);
-              let neighborColour = getColor(side, neighborOffset);
+              let neighborOffset = getOffset({ side, origin, position: neighbor });
+              let neighborColour = getColourFromOffset({ side, offset: neighborOffset });
               let match = areRGBAsEqual(neighborColour, oldColour);
               if (match) {
                 side.data[neighborOffset + 0] = r;
@@ -289,7 +288,11 @@ export function createStacker() {
           return undo;
         }
         case "WritePixel": {
-          const result = findCollidingSide(effect, store.sides, coordinates());
+          const result = findCollidingSide({
+            position: effect,
+            sides: store.sides,
+            coordinates: coordinates(),
+          });
 
           if (!result) {
             return Command.noOperation();
@@ -301,7 +304,7 @@ export function createStacker() {
           const localX = x - coordinate.x;
           const localY = y - coordinate.y;
           const offset = (localY * side.width + localX) << 2;
-          const oldColour = getColor(side, offset);
+          const oldColour = getColourFromOffset({ side, offset });
           side.data[offset + 0] = colour.r;
           side.data[offset + 1] = colour.g;
           side.data[offset + 2] = colour.b;
@@ -316,7 +319,11 @@ export function createStacker() {
         case "ErasePixel": {
           const { x, y } = effect;
 
-          const result = findCollidingSide(effect, store.sides, coordinates());
+          const result = findCollidingSide({
+            position: effect,
+            sides: store.sides,
+            coordinates: coordinates(),
+          });
           if (!result) {
             return Command.noOperation();
           }
@@ -329,7 +336,7 @@ export function createStacker() {
           if (side.data[offset + 3] === 0) {
             return Command.noOperation();
           }
-          const old = getColor(side, offset);
+          const old = getColourFromOffset({ side, offset });
 
           side.data[offset + 0] = 0;
           side.data[offset + 1] = 0;

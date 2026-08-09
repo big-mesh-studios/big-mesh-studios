@@ -2,6 +2,8 @@
 // DAWNBRINGER 32 (DB32) COLOUR PALETTE
 // ==========================================
 
+import { hexToRgba } from "./utils";
+
 // Monochromes & Dark Neutrals
 export const COLOUR_PURE_BLACK = "#000000" as const;
 export const COLOUR_DARK_PURPLE_BLACK = "#222034" as const;
@@ -53,7 +55,7 @@ export type HexColour = `#${string}`;
 /**
  * Strongly typed array containing the entire 32-Colour collection.
  */
-export const DAWNBRINGER_32_PALETTE: readonly HexColour[] = [
+export const DAWNBRINGER_32_PALETTE = [
   COLOUR_PURE_BLACK,
   COLOUR_DARK_PURPLE_BLACK,
   COLOUR_DEEP_MAROON_BROWN,
@@ -86,7 +88,7 @@ export const DAWNBRINGER_32_PALETTE: readonly HexColour[] = [
   COLOUR_CLASSIC_GRASS_GRN,
   COLOUR_NEUTRAL_MID_GRAY,
   COLOUR_DARK_WARM_GRAY,
-];
+].map(hexToRgba);
 
 /**
  * Categorised record map for scenarios where you need to reference

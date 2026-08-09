@@ -1,35 +1,34 @@
-import { Component, createEffect, createSignal } from "solid-js";
-import { DAWNBRINGER_32_PALETTE } from "./default_palette";
+import { Component } from "solid-js";
 import { RGBA } from "./types";
-import { areRGBAsEqual, hexToRgba } from "./utils";
+import { areRGBAsEqual } from "./utils";
 
 const Palette: Component<{
+  palette: Array<RGBA>;
   onSelect: (colour: RGBA) => void;
+  selectedColour: RGBA | undefined;
 }> = props => {
-  const [selectedColour, setSelectedColour] = createSignal(hexToRgba(DAWNBRINGER_32_PALETTE[5]));
-
-  createEffect(selectedColour, colour => {
-    props.onSelect(colour);
-  });
-
   return (
     <div style="height: 100%; overflow-y: scroll;">
-      {DAWNBRINGER_32_PALETTE.map(colour => (
+      {props.palette.map(colour => (
         <div
           style={{
-            border: areRGBAsEqual(hexToRgba(colour), selectedColour())
-              ? "4px solid green"
-              : undefined,
-            padding: !areRGBAsEqual(hexToRgba(colour), selectedColour()) ? "4px" : undefined,
+            border:
+              props.selectedColour && areRGBAsEqual(colour, props.selectedColour)
+                ? "4px solid green"
+                : undefined,
+            padding:
+              props.selectedColour === undefined || !areRGBAsEqual(colour, props.selectedColour)
+                ? "4px"
+                : undefined,
           }}
         >
           <div
             class="size-[32px]"
             style={{
-              "background-color": colour,
+              "background-color": `rgba(${colour.r}, ${colour.g}, ${colour.b}, ${colour.a})`,
             }}
             onClick={() => {
-              setSelectedColour(hexToRgba(colour));
+              props.onSelect(colour);
             }}
           />
         </div>

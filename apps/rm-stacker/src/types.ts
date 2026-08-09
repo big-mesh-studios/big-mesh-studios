@@ -46,7 +46,7 @@ export type Axis = "x" | "y" | "z";
 /*                                       Mode                                     */
 /**********************************************************************************/
 
-export type ModeKind = "Draw" | "Erase" | "Fill" | "Idle";
+export type ModeKind = "Draw" | "Erase" | "Fill" | "Idle" | "Eyedrop";
 
 export type Coordinates = Record<keyof Sides, { x: number; y: number }>;
 

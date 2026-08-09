@@ -1,4 +1,5 @@
 import { createPanScaleControl } from "@random-mesh/rm-pan-scale";
+import { Setter } from "@solidjs/signals";
 import {
   Accessor,
   createEffect,
@@ -13,7 +14,7 @@ import { Command } from "../Command";
 import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../stacker-context";
 import { Coordinates, ModeKind, RGBA, SideKind, Vector2D } from "../types";
-import { findCollidingSide, roundVector2D } from "../utils";
+import { findCollidingSide, findColour, roundVector2D } from "../utils";
 import { createEdgeController } from "./create-edge-controller";
 
 const getOppositePixel = (kind: SideKind, position: Vector2D, side: ImageData): Vector2D => {
@@ -23,10 +24,13 @@ const getOppositePixel = (kind: SideKind, position: Vector2D, side: ImageData): 
   return { x: side.width - position.x - 1, y: position.y };
 };
 
+const PannableModes = new Set(["Idle", "Eyedrop"]);
+
 export const createPixelEditorController = ({
   canvas,
   mode,
   selectedColour,
+  setSelectedColour,
   coordinates,
   pushUndo,
   doCommand,
@@ -34,6 +38,7 @@ export const createPixelEditorController = ({
   canvas: Accessor<HTMLCanvasElement | undefined>;
   mode: Accessor<ModeKind>;
   selectedColour: Accessor<RGBA | undefined>;
+  setSelectedColour: Setter<RGBA | undefined>;
   coordinates: Accessor<Coordinates>;
   pushUndo: (reverseCommand: Command, description: string) => void;
   doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
@@ -56,13 +61,17 @@ export const createPixelEditorController = ({
     setScale,
   };
 
+  const shouldDisablePanScaleControl = createMemo(
+    () => !PannableModes.has(mode()) && pointerids().size !== 0,
+  );
+
   const panScaleControl = createPanScaleControl({
     target: canvas,
     scale,
     panX: () => pan().x,
     panY: () => pan().y,
     onUpdate: fn => fn(panScaleControllerSetters),
-    disable: createMemo(() => mode() !== "Idle" && pointerids().size !== 0),
+    disable: shouldDisablePanScaleControl,
   });
 
   const screenToWorld = (pt: THREE.Vector2, out = new THREE.Vector2()): THREE.Vector2 => {
@@ -108,82 +117,88 @@ export const createPixelEditorController = ({
 
   let undoCommandsReversed: Command[] = [];
 
-  const applyPixelStroke = (pos: { x: number; y: number }) => {
-    const result = findCollidingSide(pos, store.sides, coordinates());
-    if (!result) {
-      return;
-    }
+  const applyPixelStroke = (position: Vector2D) =>
+    untrack(() => {
+      const result = findCollidingSide({
+        position,
+        sides: store.sides,
+        coordinates: coordinates(),
+      });
 
-    const { coordinate, side, kind } = result;
-    const localX = pos.x - coordinate.x;
-    const localY = pos.y - coordinate.y;
-    const oppositePixel = getOppositePixel(kind, { x: localX, y: localY }, side);
-    const oppositeKind = OPPOSING_SIDE[kind];
-    const oppositeSide = store.sides[oppositeKind];
-    const oppositeOpacity = untrack(
-      () =>
-        store.sides[oppositeKind].data[
-          ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
-        ],
-    );
-    const oppositeOffset = untrack(coordinates)[oppositeKind];
-
-    let commands: Command[] = [];
-
-    switch (untrack(mode)) {
-      case "Erase": {
-        commands.push(Command.erasePixel(pos.x, pos.y));
-        if (oppositeOpacity) {
-          commands.push(
-            Command.erasePixel(
-              oppositeOffset.x + oppositePixel.x,
-              oppositeOffset.y + oppositePixel.y,
-            ),
-          );
-        }
-        break;
+      if (!result) {
+        return;
       }
-      case "Draw": {
-        const _selectedColour = untrack(selectedColour);
-        if (_selectedColour !== undefined) {
-          commands.push(Command.writePixel(pos.x, pos.y, _selectedColour));
-          if (!oppositeOpacity) {
+
+      const { coordinate, side, kind } = result;
+      const localX = position.x - coordinate.x;
+      const localY = position.y - coordinate.y;
+      const oppositePixel = getOppositePixel(kind, { x: localX, y: localY }, side);
+      const oppositeKind = OPPOSING_SIDE[kind];
+      const oppositeSide = store.sides[oppositeKind];
+      const oppositeOpacity = untrack(
+        () =>
+          store.sides[oppositeKind].data[
+            ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
+          ],
+      );
+      const oppositeOffset = untrack(coordinates)[oppositeKind];
+
+      let commands: Command[] = [];
+
+      switch (untrack(mode)) {
+        case "Erase": {
+          commands.push(Command.erasePixel(position.x, position.y));
+          if (oppositeOpacity) {
             commands.push(
-              Command.writePixel(
+              Command.erasePixel(
                 oppositeOffset.x + oppositePixel.x,
                 oppositeOffset.y + oppositePixel.y,
-                _selectedColour,
               ),
             );
           }
+          break;
         }
-        break;
-      }
-      case "Fill": {
-        const _selectedColour = untrack(selectedColour);
-        if (_selectedColour !== undefined) {
-          commands.push(Command.fillPixel(pos.x, pos.y, _selectedColour));
-          if (!oppositeOpacity) {
-            commands.push(
-              Command.fillPixel(
-                oppositeOffset.x + oppositePixel.x,
-                oppositeOffset.y + oppositePixel.y,
-                _selectedColour,
-              ),
-            );
+        case "Draw": {
+          const _selectedColour = untrack(selectedColour);
+          if (_selectedColour !== undefined) {
+            commands.push(Command.writePixel(position.x, position.y, _selectedColour));
+            if (!oppositeOpacity) {
+              commands.push(
+                Command.writePixel(
+                  oppositeOffset.x + oppositePixel.x,
+                  oppositeOffset.y + oppositePixel.y,
+                  _selectedColour,
+                ),
+              );
+            }
           }
+          break;
         }
-        break;
+        case "Fill": {
+          const _selectedColour = untrack(selectedColour);
+          if (_selectedColour !== undefined) {
+            commands.push(Command.fillPixel(position.x, position.y, _selectedColour));
+            if (!oppositeOpacity) {
+              commands.push(
+                Command.fillPixel(
+                  oppositeOffset.x + oppositePixel.x,
+                  oppositeOffset.y + oppositePixel.y,
+                  _selectedColour,
+                ),
+              );
+            }
+          }
+          break;
+        }
       }
-    }
 
-    if (commands.length === 0) {
-      return;
-    }
+      if (commands.length === 0) {
+        return;
+      }
 
-    const command = commands.length === 1 ? commands[0] : Command.sequence(commands);
-    undoCommandsReversed.push(doCommand(command));
-  };
+      const command = commands.length === 1 ? commands[0] : Command.sequence(commands);
+      undoCommandsReversed.push(doCommand(command));
+    });
 
   createEffect(
     () => pointerids().size,
@@ -239,8 +254,25 @@ export const createPixelEditorController = ({
     onPointerDown(e: PointerEvent) {
       setPointerids(set => set.add(e.pointerId));
 
-      if (mode() === "Idle" && edgeController.onPointerDown(e)) {
-        return;
+      switch (mode()) {
+        case "Eyedrop": {
+          const position = roundedMouseWorldPos();
+          if (position) {
+            const colour = findColour({ position, sides: store.sides, coordinates: coordinates() });
+
+            if (colour) {
+              setSelectedColour(colour);
+            }
+          }
+          break;
+        }
+        case "Idle": {
+          const edgeCollision = edgeController.onPointerDown(e);
+          if (edgeCollision) {
+            return;
+          }
+          break;
+        }
       }
 
       panScaleControl.onPointerDown(e);
@@ -264,8 +296,9 @@ export const createPixelEditorController = ({
     onPointerMove(e: PointerEvent) {
       if (mode() === "Idle") {
         edgeController.onPointerMove(e);
-        panScaleControl.onPointerMove(e);
       }
+
+      panScaleControl.onPointerMove(e);
 
       const _canvas = canvas();
       if (_canvas === undefined) {

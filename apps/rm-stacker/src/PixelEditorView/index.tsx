@@ -2,6 +2,7 @@ import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
 import { Component, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
 import * as THREE from "three";
 import { SIDE_MASK } from "../constants";
+import { DAWNBRINGER_32_PALETTE } from "../default_palette";
 import { load, save } from "../load-save";
 import Palette from "../Palette";
 import { StackerContext } from "../stacker-context";
@@ -34,14 +35,16 @@ const PixelEditorView: Component = () => {
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
   const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
   const [selectedColour, setSelectedColour] = createSignal<RGBA | undefined>();
+  const [palette, setPalette] = createSignal<RGBA[]>(DAWNBRINGER_32_PALETTE);
 
   const controller = createPixelEditorController({
-    coordinates,
-    mode,
     canvas,
-    selectedColour,
-    pushUndo,
+    coordinates,
     doCommand,
+    mode,
+    pushUndo,
+    selectedColour,
+    setSelectedColour,
   });
 
   const onLoad = async () => {
@@ -381,6 +384,16 @@ const PixelEditorView: Component = () => {
           >
             <i class="fa-solid fa-eraser" />
           </a>
+          <a
+            role="tab"
+            class={{
+              tab: true,
+              "tab-active": mode() === "Eyedrop",
+            }}
+            onClick={() => setModeKind("Eyedrop")}
+          >
+            <i class="fa-solid fa-eye-dropper" />
+          </a>
           <a role="button" class="tab" onClick={onSave}>
             <i class="fa-solid fa-floppy-disk" />
           </a>
@@ -402,7 +415,11 @@ const PixelEditorView: Component = () => {
         </div>
         <div style="flex-grow: 1; overflow: hidden;">
           <div style="height: 100%; display: inline-block; pointer-events: auto;">
-            <Palette onSelect={setSelectedColour} />
+            <Palette
+              onSelect={setSelectedColour}
+              palette={palette()}
+              selectedColour={selectedColour()}
+            />
           </div>
         </div>
       </div>
