@@ -1,5 +1,5 @@
 import { SIDE_MASK } from "./constants";
-import { Coordinates, RGBA, Sides, Vector2D } from "./types";
+import { Coordinates, Dimensions3D, RGBA, Sides, Vector2D } from "./types";
 
 export function tryCatch<T, U>(fn: () => T, onError: (error: unknown) => U) {
   try {
@@ -72,6 +72,10 @@ export function hexToRgba(hex: string, alpha = 1): RGBA {
 
 export function areRGBAsEqual(a: RGBA, b: RGBA) {
   return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
+}
+
+export function areDimensions3DEqual(a: Dimensions3D, b: Dimensions3D) {
+  return a.width === b.width && a.height === b.height && a.depth === b.depth;
 }
 
 export function sideMaskToRGBA(mask: number, intensity = 1) {

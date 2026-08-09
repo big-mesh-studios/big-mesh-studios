@@ -38,7 +38,7 @@ export const createPixelEditorController = ({
   pushUndo: (reverseCommand: Command, description: string) => void;
   doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
 }) => {
-  const { store, setDimensions } = useContext(StackerContext);
+  const { store, resize } = useContext(StackerContext);
 
   const [pan, setPan] = createSignal({ x: -10.0, y: -10.0 });
   const [cursor, setCursor] = createSignal<string>();
@@ -101,7 +101,7 @@ export const createPixelEditorController = ({
     coordinates,
     scale,
     pan,
-    setDimensions,
+    resize,
     setPan,
     setCursor,
   });

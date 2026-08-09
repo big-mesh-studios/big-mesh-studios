@@ -1,7 +1,16 @@
 import { createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { Command } from "./Command";
 import { load, save, saveToIndexedDB } from "./load-save";
-import type { Coordinates, Dimensions2D, Dimensions3D, RGBA, Sides, Vector2D } from "./types";
+import { resizeSides } from "./resize-sides";
+import type {
+  Coordinates,
+  DimensionEnds,
+  Dimensions2D,
+  Dimensions3D,
+  RGBA,
+  Sides,
+  Vector2D,
+} from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { areRGBAsEqual, createEnqueue, findCollidingSide } from "./utils";
 import { solveVoxels } from "./voxel-solver";
@@ -29,6 +38,17 @@ export interface StackerStore {
   sides: Sides;
   voxels: Uint8Array;
   render: () => void;
+}
+
+export interface ResizeOptions {
+  dimensions: Dimensions3D;
+  growEnds: DimensionEnds;
+  /**
+   * The state the new panels are derived from, defaulting to the current model.
+   * A drag passes the state it started with so that every step re-derives from
+   * the same pixels instead of stacking crop on top of crop.
+   */
+  from?: { sides: Sides; dimensions: Dimensions3D };
 }
 
 const createInitialImageData = (
@@ -66,15 +86,15 @@ export const createInitialSides = (dimensions: Dimensions3D) => {
 };
 
 export function createStacker() {
-  const [dimensions, setDimensions] = createSignal<Dimensions3D>(INITIAL_DIMENSIONS);
-  const [sides, setSides] = createSignal(() => createInitialSides(dimensions()));
-  const [voxels, setVoxels] = createSignal(() =>
-    solveVoxels({ sides: sides(), dimensions: dimensions() }),
-  );
   const undoRedoManager = new UndoRedoManager(command => doCommandAndUpdate(command));
   const enqueue = createEnqueue<Command>();
-
   const renderSet = new Set<() => void>();
+
+  const [dimensions, setDimensions] = createSignal<Dimensions3D>(INITIAL_DIMENSIONS);
+  const [sides, setSides] = createSignal<Sides>(createInitialSides(INITIAL_DIMENSIONS));
+  const [voxels, setVoxels] = createSignal(
+    solveVoxels({ sides: sides(), dimensions: dimensions() }),
+  );
 
   const store = {
     get dimensions() {
@@ -339,6 +359,19 @@ export function createStacker() {
     coordinates,
     setDimensions,
     setSides,
+    /**
+     * Re-frames the model to new dimensions, carrying the drawing over rather
+     * than starting the panels afresh.
+     */
+    resize({
+      dimensions: nextDimensions,
+      growEnds,
+      from = { sides: store.sides, dimensions: store.dimensions },
+    }: ResizeOptions) {
+      setSides(resizeSides(from.sides, from.dimensions, nextDimensions, growEnds));
+      setDimensions(nextDimensions);
+      requestAnimationFrame(updateVoxels);
+    },
     doCommand(command: Command, pushUndo?: boolean, description?: string): Command {
       let reverseCommand = doCommandAndUpdate(command);
 
@@ -368,7 +401,9 @@ export function createStacker() {
       return () => renderSet.delete(callback);
     },
     reset() {
+      setSides(createInitialSides(INITIAL_DIMENSIONS));
       setDimensions(INITIAL_DIMENSIONS);
+      updateVoxels();
     },
   };
 }

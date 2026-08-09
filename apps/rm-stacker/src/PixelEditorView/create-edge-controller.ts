@@ -1,9 +1,18 @@
 import { Setter } from "@solidjs/signals";
 import { Accessor, createSignal, useContext } from "solid-js";
+import { SIDE_AXES } from "../constants";
 import { StackerContext } from "../stacker-context";
-import { computeCoordinates } from "../stacker-store";
-import type { Coordinates, Dimensions3D, SideKind, Vector2D } from "../types";
-import { findCollidingSide } from "../utils";
+import { computeCoordinates, ResizeOptions } from "../stacker-store";
+import type {
+  Coordinates,
+  DimensionEnd,
+  DimensionEnds,
+  Dimensions3D,
+  SideKind,
+  Sides,
+  Vector2D,
+} from "../types";
+import { areDimensions3DEqual, findCollidingSide } from "../utils";
 
 type EdgeKind = "top" | "bottom" | "left" | "right";
 
@@ -31,20 +40,24 @@ const EDGE_TO_SIGN = {
   bottom: 1,
 } as const satisfies Record<EdgeKind, number>;
 
-/** The dimension that gives each panel its size along each canvas axis. */
-const SIDE_TO_DIMENSIONS = {
-  front: { x: "width", y: "height" },
-  back: { x: "width", y: "height" },
-  left: { x: "depth", y: "height" },
-  right: { x: "depth", y: "height" },
-  top: { x: "width", y: "depth" },
-  bottom: { x: "width", y: "depth" },
-} as const satisfies Record<SideKind, Record<keyof Vector2D, keyof Dimensions3D>>;
-
 const MIN_DIMENSION = 1;
 
+/** The model axis a dragged edge resizes, and how the panel is oriented on it. */
+const getSideAxis = (sideKind: SideKind, edgeKind: EdgeKind) =>
+  SIDE_AXES[sideKind][EDGE_TO_AXIS[edgeKind]];
+
 const getDimensionKind = (sideKind: SideKind, edgeKind: EdgeKind) =>
-  SIDE_TO_DIMENSIONS[sideKind][EDGE_TO_AXIS[edgeKind]];
+  getSideAxis(sideKind, edgeKind).dimension;
+
+/**
+ * Which end of the model axis a dragged edge moves. An edge on the low side of
+ * its image sits at the axis' minimum, unless the panel looks at that axis from
+ * the opposite direction, which swaps the two.
+ */
+const getDimensionEnd = (sideKind: SideKind, edgeKind: EdgeKind): DimensionEnd => {
+  const atImageStart = edgeKind === "left" || edgeKind === "top";
+  return atImageStart !== getSideAxis(sideKind, edgeKind).flipped ? "min" : "max";
+};
 
 /**
  * Where an edge sits on the canvas for a given set of dimensions. Left and top
@@ -61,7 +74,7 @@ const getEdgePosition = (
   const origin = computeCoordinates(dimensions)[sideKind][axis];
   return edgeKind === "left" || edgeKind === "top"
     ? origin
-    : origin + dimensions[SIDE_TO_DIMENSIONS[sideKind][axis]];
+    : origin + dimensions[SIDE_AXES[sideKind][axis].dimension];
 };
 
 export function createEdgeController({
@@ -69,7 +82,7 @@ export function createEdgeController({
   coordinates,
   scale,
   pan,
-  setDimensions,
+  resize,
   setPan,
   setCursor,
 }: {
@@ -77,7 +90,7 @@ export function createEdgeController({
   coordinates: Accessor<Coordinates>;
   scale: Accessor<number>;
   pan: Accessor<Vector2D>;
-  setDimensions: Setter<Dimensions3D>;
+  resize: (options: ResizeOptions) => void;
   setPan: Setter<Vector2D>;
   setCursor: Setter<string | undefined>;
 }) {
@@ -86,6 +99,7 @@ export function createEdgeController({
     edge: ActiveSideEdge;
     initialPosition: Vector2D;
     initialDimensions: Dimensions3D;
+    initialSides: Sides;
     initialPan: Vector2D;
   }>();
 
@@ -171,6 +185,10 @@ export function createEdgeController({
           edge: collidingEdge,
           initialPosition: { x: event.clientX, y: event.clientY },
           initialDimensions: { ...store.dimensions },
+          // Every step of the drag re-frames these rather than the panels of the
+          // step before, so pulling an edge back out restores what shrinking it
+          // pushed out of the box.
+          initialSides: store.sides,
           initialPan: pan(),
         });
 
@@ -192,6 +210,7 @@ export function createEdgeController({
         initialPosition,
         edge: { sideKind, edgeKinds },
         initialDimensions,
+        initialSides,
         initialPan,
       } = _activeEdge;
 
@@ -201,6 +220,7 @@ export function createEdgeController({
       };
 
       const newDimensions = { ...initialDimensions };
+      const growEnds: DimensionEnds = {};
 
       for (const edgeKind of edgeKinds) {
         const dimensionKind = getDimensionKind(sideKind, edgeKind);
@@ -209,6 +229,13 @@ export function createEdgeController({
           MIN_DIMENSION,
           newDimensions[dimensionKind] + delta[EDGE_TO_AXIS[edgeKind]] * EDGE_TO_SIGN[edgeKind],
         );
+        growEnds[dimensionKind] = getDimensionEnd(sideKind, edgeKind);
+      }
+
+      // Both the panels and the pan follow whole pixels, so most moves land on
+      // the dimensions we already have and there is nothing to re-frame.
+      if (areDimensions3DEqual(newDimensions, store.dimensions)) {
+        return;
       }
 
       // Keep the dragged edge under the pointer. Resizing already moves an edge
@@ -228,7 +255,11 @@ export function createEdgeController({
         newPan[EDGE_TO_AXIS[edgeKind]] += moved - dragged;
       }
 
-      setDimensions(newDimensions);
+      resize({
+        dimensions: newDimensions,
+        growEnds,
+        from: { sides: initialSides, dimensions: initialDimensions },
+      });
       setPan(newPan);
     },
   };

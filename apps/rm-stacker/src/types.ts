@@ -25,6 +25,14 @@ export interface Dimensions3D extends Dimensions2D {
   depth: number;
 }
 
+export type DimensionKind = keyof Dimensions3D;
+
+/** One end of a model axis: `min` is its low-coordinate end, `max` its high one. */
+export type DimensionEnd = "min" | "max";
+
+/** Which end of each axis a resize is applied at. */
+export type DimensionEnds = Partial<Record<DimensionKind, DimensionEnd>>;
+
 export interface RGBA {
   r: number;
   g: number;
@@ -70,3 +78,15 @@ export type SideKind = keyof typeof sideKindSet;
 export type Sides = {
   [k in SideKind]: ImageData;
 };
+
+/**
+ * How one of a panel's image axes maps onto a model axis. `flipped` marks an
+ * image axis that runs against its dimension, because that panel looks at the
+ * model from the opposite direction.
+ */
+export interface SideAxis {
+  dimension: DimensionKind;
+  flipped: boolean;
+}
+
+export type SideAxes = Record<SideKind, Record<keyof Vector2D, SideAxis>>;
