@@ -220,7 +220,10 @@ export function createStacker() {
           const oldColour = getColor(side, offset);
 
           const queue = [{ x, y }];
-          const visited = new Set();
+          // A pixel is marked the moment it is queued, not when it is reached.
+          // Marking it on the way out would let every neighbour queue it again
+          // while it waits its turn, once per route leading to it.
+          const visited = new Set([`${x},${y}`]);
 
           const undo = snapshot();
 
@@ -232,10 +235,8 @@ export function createStacker() {
             }
 
             const { x, y } = coordinate;
-            const id = `${x},${y}`;
 
             const offset = getOffset(side, origin, coordinate);
-            visited.add(id);
 
             side.data[offset + 0] = r;
             side.data[offset + 1] = g;
@@ -273,6 +274,7 @@ export function createStacker() {
               const match = areRGBAsEqual(neighborColor, oldColour);
 
               if (match) {
+                visited.add(neighborId);
                 queue.push(neighbor);
               }
             }
