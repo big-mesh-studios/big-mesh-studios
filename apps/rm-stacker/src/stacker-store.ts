@@ -1,15 +1,8 @@
 import { createEffect, createMemo, createSignal, flush, untrack } from "solid-js";
 import { Command } from "./Command";
 import { load, save, saveToIndexedDB } from "./load-save";
-import { resizeSides } from "./resize-sides";
-import type {
-  Coordinates,
-  DimensionEnds,
-  Dimensions2D,
-  Dimensions3D,
-  Sides,
-  Vector2D,
-} from "./types";
+import { ResizeOptions, resizeSides } from "./resize-sides";
+import type { Coordinates, Dimensions2D, Dimensions3D, Sides, Vector2D } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import {
   areRGBAsEqual,
@@ -44,17 +37,6 @@ export interface StackerStore {
   sides: Sides;
   voxels: Uint8Array;
   render: () => void;
-}
-
-export interface ResizeOptions {
-  dimensions: Dimensions3D;
-  growEnds: DimensionEnds;
-  /**
-   * The state the new panels are derived from, defaulting to the current model.
-   * A drag passes the state it started with so that every step re-derives from
-   * the same pixels instead of stacking crop on top of crop.
-   */
-  from?: { sides: Sides; dimensions: Dimensions3D };
 }
 
 const createInitialImageData = (
@@ -158,30 +140,11 @@ export function createStacker() {
     setVoxels(solveVoxels(store));
   }
 
-  function snapshot(): Command {
-    let command = (async () => {
-      let data = await save(store.sides);
-      return Command.loadData(data);
-    })();
-    return Command.async(command);
+  function snapshot(sides = store.sides): Command {
+    return Command.async(save(sides).then(Command.loadData));
   }
 
-  const doCommandAndUpdate = (command: Command) => {
-    return Command.async(
-      enqueue(async () => {
-        const result = await doCommand(command);
-
-        if (result.type !== "NoOperation") {
-          updateVoxels();
-          requestRender();
-        }
-
-        return result;
-      }),
-    );
-  };
-
-  const doCommand = async (effect: Command): Promise<Command> => {
+  async function doCommand(effect: Command): Promise<Command> {
     queueMicrotask(() => requestAutoSave());
 
     return untrack(async () => {
@@ -369,7 +332,35 @@ export function createStacker() {
         }
       }
     });
-  };
+  }
+
+  function doCommandAndUpdate(command: Command) {
+    return Command.async(
+      enqueue(async () => {
+        const result = await doCommand(command);
+
+        if (result.type !== "NoOperation") {
+          updateVoxels();
+          requestRender();
+        }
+
+        return result;
+      }),
+    );
+  }
+
+  function doCommandAndUndo(command: Command, pushUndo?: boolean, description?: string): Command {
+    let reverseCommand = doCommandAndUpdate(command);
+
+    if (pushUndo) {
+      undoRedoManager.pushUndo({
+        command: reverseCommand,
+        description: description ?? "",
+      });
+    }
+
+    return reverseCommand;
+  }
 
   function requestRender() {
     renderSet.forEach(render => render());
@@ -387,28 +378,13 @@ export function createStacker() {
      * Re-frames the model to new dimensions, carrying the drawing over rather
      * than starting the panels afresh.
      */
-    resize({
-      dimensions: nextDimensions,
-      growEnds,
-      from = { sides: store.sides, dimensions: store.dimensions },
-    }: ResizeOptions) {
-      setSides(resizeSides(from.sides, from.dimensions, nextDimensions, growEnds));
+    resize(options: ResizeOptions) {
+      setSides(resizeSides(options));
       updateVoxels();
       requestRender();
       requestAutoSave();
     },
-    doCommand(command: Command, pushUndo?: boolean, description?: string): Command {
-      let reverseCommand = doCommandAndUpdate(command);
-
-      if (pushUndo) {
-        undoRedoManager.pushUndo({
-          command: reverseCommand,
-          description: description ?? "",
-        });
-      }
-
-      return reverseCommand;
-    },
+    doCommand: doCommandAndUndo,
     /**
      * Constructs an undo command via a snapshot that you can push via
      * `pushUndo` at the end of your opperation.

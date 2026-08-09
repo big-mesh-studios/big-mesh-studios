@@ -2,16 +2,8 @@ import { Setter } from "@solidjs/signals";
 import { Accessor, createSignal, useContext } from "solid-js";
 import { SIDE_AXES } from "../constants";
 import { StackerContext } from "../stacker-context";
-import { computeCoordinates, ResizeOptions } from "../stacker-store";
-import type {
-  Coordinates,
-  DimensionEnd,
-  DimensionEnds,
-  Dimensions3D,
-  SideKind,
-  Sides,
-  Vector2D,
-} from "../types";
+import { computeCoordinates } from "../stacker-store";
+import type { Alignment3D, DimensionEnd, Dimensions3D, SideKind, Sides, Vector2D } from "../types";
 import { areDimensions3DEqual, findCollidingSide } from "../utils";
 
 type EdgeKind = "top" | "bottom" | "left" | "right";
@@ -79,22 +71,18 @@ const getEdgePosition = (
 
 export function createEdgeController({
   mouseWorldPos,
-  coordinates,
-  scale,
   pan,
-  resize,
-  setPan,
+  scale,
   setCursor,
+  setPan,
 }: {
   mouseWorldPos: Accessor<Vector2D | undefined>;
-  coordinates: Accessor<Coordinates>;
-  scale: Accessor<number>;
   pan: Accessor<Vector2D>;
-  resize: (options: ResizeOptions) => void;
-  setPan: Setter<Vector2D>;
+  scale: Accessor<number>;
   setCursor: Setter<string | undefined>;
+  setPan: Setter<Vector2D>;
 }) {
-  const { store } = useContext(StackerContext);
+  const { store, resize, coordinates, pushUndo, snapshot } = useContext(StackerContext);
   const [activeEdge, setActiveEdge] = createSignal<{
     edge: ActiveSideEdge;
     initialPosition: Vector2D;
@@ -224,7 +212,7 @@ export function createEdgeController({
       };
 
       const newDimensions = { ...initialDimensions };
-      const growEnds: DimensionEnds = {};
+      const alignment: Alignment3D = {};
 
       for (const edgeKind of edgeKinds) {
         const dimensionKind = getDimensionKind(sideKind, edgeKind);
@@ -233,7 +221,7 @@ export function createEdgeController({
           MIN_DIMENSION,
           newDimensions[dimensionKind] + delta[EDGE_TO_AXIS[edgeKind]] * EDGE_TO_SIGN[edgeKind],
         );
-        growEnds[dimensionKind] = getDimensionEnd(sideKind, edgeKind);
+        alignment[dimensionKind] = getDimensionEnd(sideKind, edgeKind);
       }
 
       // Both the panels and the pan follow whole pixels, so most moves land on
@@ -260,10 +248,16 @@ export function createEdgeController({
       }
 
       resize({
-        dimensions: newDimensions,
-        growEnds,
-        from: { sides: initialSides, dimensions: initialDimensions },
+        from: {
+          sides: initialSides,
+          dimensions: initialDimensions,
+        },
+        to: {
+          dimensions: newDimensions,
+          alignment,
+        },
       });
+
       setPan(newPan);
     },
   };

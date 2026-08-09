@@ -1,5 +1,16 @@
 import { SIDE_AXES } from "./constants";
-import type { DimensionEnds, Dimensions3D, SideAxis, SideKind, Sides } from "./types";
+import type { Alignment3D, Dimensions3D, SideAxis, SideKind, Sides } from "./types";
+
+export interface ResizeOptions {
+  from: {
+    sides: Sides;
+    dimensions: Dimensions3D;
+  };
+  to: {
+    dimensions: Dimensions3D;
+    alignment: Alignment3D;
+  };
+}
 
 /**
  * Re-frames every side for `toDimensions`, keeping the pixels that still fall
@@ -11,21 +22,16 @@ import type { DimensionEnds, Dimensions3D, SideAxis, SideKind, Sides } from "./t
  * other direction take the change at the mirrored end of their image, which is
  * what keeps the six panels describing the same box.
  */
-export const resizeSides = (
-  sides: Sides,
-  fromDimensions: Dimensions3D,
-  toDimensions: Dimensions3D,
-  growEnds: DimensionEnds,
-): Sides => {
+export const resizeSides = ({ from, to }: ResizeOptions): Sides => {
   const computeOffset = ({ dimension, flipped }: SideAxis) => {
-    const growsAtImageStart = (growEnds[dimension] === "min") !== flipped;
-    return growsAtImageStart ? toDimensions[dimension] - fromDimensions[dimension] : 0;
+    const growsAtImageStart = (to.alignment[dimension] === "min") !== flipped;
+    return growsAtImageStart ? to.dimensions[dimension] - from.dimensions[dimension] : 0;
   };
 
   const resizeSide = (kind: SideKind): ImageData => {
     const axes = SIDE_AXES[kind];
-    const source = sides[kind];
-    const target = new ImageData(toDimensions[axes.x.dimension], toDimensions[axes.y.dimension]);
+    const source = from.sides[kind];
+    const target = new ImageData(to.dimensions[axes.x.dimension], to.dimensions[axes.y.dimension]);
 
     const offset = { x: computeOffset(axes.x), y: computeOffset(axes.y) };
 

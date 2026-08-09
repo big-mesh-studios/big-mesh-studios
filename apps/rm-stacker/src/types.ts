@@ -31,7 +31,7 @@ export type DimensionKind = keyof Dimensions3D;
 export type DimensionEnd = "min" | "max";
 
 /** Which end of each axis a resize is applied at. */
-export type DimensionEnds = Partial<Record<DimensionKind, DimensionEnd>>;
+export type Alignment3D = Partial<Record<DimensionKind, DimensionEnd>>;
 
 export interface RGBA {
   r: number;
