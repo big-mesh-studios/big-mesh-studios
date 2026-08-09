@@ -1,5 +1,7 @@
 import { SideAxes, SideKind } from "./types";
 
+export const INITIAL_DIMENSIONS = { width: 32, height: 32, depth: 32 };
+
 export const OPPOSING_SIDE = {
   front: "back",
   back: "front",

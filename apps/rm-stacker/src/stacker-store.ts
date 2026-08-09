@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { Command } from "./Command";
+import { INITIAL_DIMENSIONS } from "./constants";
 import { load, save, saveToIndexedDB } from "./load-save";
 import { resizeSides } from "./resize-sides";
 import type {
@@ -14,8 +15,6 @@ import type {
 import { UndoRedoManager } from "./undo-redo";
 import { areRGBAsEqual, createEnqueue, findCollidingSide } from "./utils";
 import { solveVoxels } from "./voxel-solver";
-
-const INITIAL_DIMENSIONS = { width: 3, height: 5, depth: 4 };
 
 const PADDING = 6;
 
