@@ -31,21 +31,26 @@ const positionAttr = attribute("vec2");
 
 // Componentwise min/max of two vectors, expressed with abs since rmsl only
 // types the scalar variants: (a + b +/- |a - b|) / 2
-const v2min = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
+const minVec2 = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
   a.add(b).sub(a.sub(b).abs()).mult(float(0.5));
-const v2max = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
+const maxVec2 = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
   a.add(b).add(a.sub(b).abs()).mult(float(0.5));
-const v3min = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
+const minVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
   a.add(b).sub(a.sub(b).abs()).mult(float(0.5));
-const v3max = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
+const maxVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
   a.add(b).add(a.sub(b).abs()).mult(float(0.5));
 
-const rotationY = (y: Node<"float">): Node<"mat3"> =>
+const rotationY = (angle: Node<"float">): Node<"mat3"> =>
   mat3(
-    vec3(y.cos(), float(0), y.sin().negate()),
+    vec3(angle.cos(), float(0), angle.sin().negate()),
     vec3(float(0), float(1), float(0)),
-    vec3(y.sin(), float(0), y.cos()),
+    vec3(angle.sin(), float(0), angle.cos()),
   );
+
+// rmsl has no sampler3D type, so the texture() call is untyped here; the
+// generated sampler2D declaration is patched to sampler3D after compiling.
+const sampleVoxels = (coordinate: Node<"vec3">): Node<"vec4"> =>
+  (uVoxels as any).texture(coordinate) as Node<"vec4">;
 
 const vertexFn = Fn(() => {
   vUv.assign(positionAttr.mult(vec2(0.5)).add(vec2(0.5)));
@@ -55,82 +60,90 @@ const vertexFn = Fn(() => {
 // Port of fragment-sample.txt: raymarch a voxel grid inside a box and
 // alpha-composite the samples.
 const fragmentFn = Fn(() => {
-  const t = uTime;
-  const fragCoord = vUv.mult(uResolution);
-  const uv = fragCoord.mult(float(2)).sub(uResolution).div(uResolution.y);
-  const rot = rotationY(t);
+  const time = uTime;
+  const fragmentCoord = vUv.mult(uResolution);
+  // pixel position as centred, aspect-corrected screen coordinates
+  const screenPosition = fragmentCoord.mult(float(2)).sub(uResolution).div(uResolution.y);
+  const cameraRotation = rotationY(time);
   // rmsl has no vec3 * mat3, so rotate through the transpose (identical result)
-  const ro = rot.transpose().multVec(vec3(float(0), float(0), float(-1.8)));
-  const rd = rot.transpose().multVec(vec3(uv.x, uv.y, float(2)).normalize());
-  const color = vec4(float(0), float(0), float(0), float(0)).toVar();
+  const rayOrigin = cameraRotation.transpose().multVec(vec3(float(0), float(0), float(-1.8)));
+  const rayDirection = cameraRotation
+    .transpose()
+    .multVec(vec3(screenPosition.x, screenPosition.y, float(2)).normalize());
+  const colour = vec4(float(0), float(0), float(0), float(0)).toVar();
 
   // IntersectBox, inlined since rmsl has no user functions or out params
   const boxMin = vec3(float(-0.5));
   const boxMax = vec3(float(0.5));
-  // pow(rd, -1) is undefined in GLSL when a component is 0 (NaN at the screen
-  // centre cross), so use the defined IEEE reciprocal instead
-  const invR = vec3(float(1)).div(rd);
-  const tbot = invR.mult(boxMin.sub(ro)).toVar();
-  const ttop = invR.mult(boxMax.sub(ro)).toVar();
-  const tmin = v3min(tbot, ttop).toVar();
-  const tmax = v3max(tbot, ttop).toVar();
-  const t0a = v2max(vec2(tmin.x, tmin.x), vec2(tmin.y, tmin.z)).toVar();
-  const tnear = t0a.x.max(t0a.y).toVar();
-  const t0b = v2min(vec2(tmax.x, tmax.x), vec2(tmax.y, tmax.z)).toVar();
-  const tfar = t0b.x.min(t0b.y).toVar();
+  // pow(rayDirection, -1) is undefined in GLSL when a component is 0 (NaN at
+  // the screen centre cross), so use the defined IEEE reciprocal instead
+  const inverseRayDirection = vec3(float(1)).div(rayDirection);
+  // ray distance at which each of the six box planes is crossed
+  const distanceToMinPlanes = inverseRayDirection.mult(boxMin.sub(rayOrigin)).toVar();
+  const distanceToMaxPlanes = inverseRayDirection.mult(boxMax.sub(rayOrigin)).toVar();
+  // per axis: which of the two planes the ray meets first, and which last
+  const nearPlaneDistances = minVec3(distanceToMinPlanes, distanceToMaxPlanes).toVar();
+  const farPlaneDistances = maxVec3(distanceToMinPlanes, distanceToMaxPlanes).toVar();
+  // the box is entered at the last of the three near crossings, left at the
+  // first of the three far crossings (pairwise so two calls cover three axes)
+  const nearPair = maxVec2(
+    vec2(nearPlaneDistances.x, nearPlaneDistances.x),
+    vec2(nearPlaneDistances.y, nearPlaneDistances.z),
+  ).toVar();
+  const entryDistance = nearPair.x.max(nearPair.y).toVar();
+  const farPair = minVec2(
+    vec2(farPlaneDistances.x, farPlaneDistances.x),
+    vec2(farPlaneDistances.y, farPlaneDistances.z),
+  ).toVar();
+  const exitDistance = farPair.x.min(farPair.y).toVar();
 
-  If(tnear.lessThanEqual(tfar), () => {
+  If(entryDistance.lessThanEqual(exitDistance), () => {
     const stepSize = float(0.01);
     // half a voxel in world units, for the alpha-gradient normal
-    const eps = float(0.015625);
+    const gradientStep = float(0.015625);
     For(
-      () => tnear.toVar(),
-      tt => tt.lessThan(tfar),
-      tt => {
-        tt.assign(tt.add(stepSize));
+      () => entryDistance.toVar(),
+      rayDistance => rayDistance.lessThan(exitDistance),
+      rayDistance => {
+        rayDistance.assign(rayDistance.add(stepSize));
       },
-      tt => {
-        const p = ro.add(rd.mult(tt)).toVar();
-        const inside = p
+      rayDistance => {
+        const worldPosition = rayOrigin.add(rayDirection.mult(rayDistance)).toVar();
+        const inside = worldPosition
           .greaterThan(vec3(float(-0.51)))
           .all()
-          .and(p.lessThan(vec3(float(0.51))).all());
+          .and(worldPosition.lessThan(vec3(float(0.51))).all());
         If(inside, () => {
-          const pc = p.add(vec3(float(0.5))).toVar();
-          const s = ((uVoxels as any).texture(pc) as Node<"vec4">).toVar();
-          If(s.a.greaterThan(float(0.5)), () => {
+          // the box spans -0.5..0.5, the texture 0..1
+          const voxelCoord = worldPosition.add(vec3(float(0.5))).toVar();
+          const voxel = sampleVoxels(voxelCoord).toVar();
+          If(voxel.a.greaterThan(float(0.5)), () => {
             // surface normal from the gradient of the alpha field (central
             // differences); negated so it points outward. The small view
             // direction term is a fallback so a zero/weak gradient (e.g. on a
             // surface at the volume boundary) never produces a NaN normal.
-            const grad = vec3(
-              (
-                (uVoxels as any).texture(pc.sub(vec3(eps, float(0), float(0)))) as Node<"vec4">
-              ).a.sub(
-                ((uVoxels as any).texture(pc.add(vec3(eps, float(0), float(0)))) as Node<"vec4">).a,
+            const alphaGradient = vec3(
+              sampleVoxels(voxelCoord.sub(vec3(gradientStep, float(0), float(0)))).a.sub(
+                sampleVoxels(voxelCoord.add(vec3(gradientStep, float(0), float(0)))).a,
               ),
-              (
-                (uVoxels as any).texture(pc.sub(vec3(float(0), eps, float(0)))) as Node<"vec4">
-              ).a.sub(
-                ((uVoxels as any).texture(pc.add(vec3(float(0), eps, float(0)))) as Node<"vec4">).a,
+              sampleVoxels(voxelCoord.sub(vec3(float(0), gradientStep, float(0)))).a.sub(
+                sampleVoxels(voxelCoord.add(vec3(float(0), gradientStep, float(0)))).a,
               ),
-              (
-                (uVoxels as any).texture(pc.sub(vec3(float(0), float(0), eps))) as Node<"vec4">
-              ).a.sub(
-                ((uVoxels as any).texture(pc.add(vec3(float(0), float(0), eps))) as Node<"vec4">).a,
+              sampleVoxels(voxelCoord.sub(vec3(float(0), float(0), gradientStep))).a.sub(
+                sampleVoxels(voxelCoord.add(vec3(float(0), float(0), gradientStep))).a,
               ),
             );
-            const n = grad.sub(rd.mult(float(0.001))).normalize();
-            const diffuse = n.dot(uLightDir).max(float(0));
-            color.rgb.assign(s.rgb.mult(uAmbientColour.add(uLightColour.mult(diffuse))));
-            color.a.assign(float(1));
+            const normal = alphaGradient.sub(rayDirection.mult(float(0.001))).normalize();
+            const diffuse = normal.dot(uLightDir).max(float(0));
+            colour.rgb.assign(voxel.rgb.mult(uAmbientColour.add(uLightColour.mult(diffuse))));
+            colour.a.assign(float(1));
             break_();
           });
         });
       },
     );
   });
-  return vec4(color.rgb, float(1));
+  return vec4(colour.rgb, float(1));
 });
 
 let vertexGLSL = compileGLSL.vertex(vertexFn());
