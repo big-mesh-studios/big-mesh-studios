@@ -81,9 +81,6 @@ export namespace Command {
       }
       case "WritePixel": {
         let colour = command.colour;
-        if (colour instanceof THREE.Color) {
-          colour = colour.convertLinearToSRGB().getHex();
-        }
         return { type: "WritePixel", x: command.x, y: command.y, colour };
       }
       case "ErasePixel": {
