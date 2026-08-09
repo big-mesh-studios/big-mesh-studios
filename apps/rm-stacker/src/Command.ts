@@ -1,4 +1,3 @@
-import * as THREE from "three";
 import { RGBA } from "./types";
 import { base64ToUint8Array, uint8ArrayToBase64 } from "./utils";
 

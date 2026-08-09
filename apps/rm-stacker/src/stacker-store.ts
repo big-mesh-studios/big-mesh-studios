@@ -107,6 +107,8 @@ export function createStacker() {
     solveVoxels({ sides: sides(), dimensions: dimensions() }),
   );
 
+  const coordinates = createMemo(() => computeCoordinates(dimensions()));
+
   const store = {
     get dimensions() {
       return dimensions();
@@ -118,8 +120,6 @@ export function createStacker() {
       return voxels();
     },
   };
-
-  const coordinates = createMemo(() => computeCoordinates(store.dimensions));
 
   const requestAutoSave = (() => {
     let aboutToSave = false;

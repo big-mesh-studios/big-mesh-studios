@@ -141,11 +141,11 @@ export const createPixelEditorController = ({
             ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
           ],
       );
-      const oppositeOffset = untrack(coordinates)[oppositeKind];
+      const oppositeOffset = coordinates()[oppositeKind];
 
       let commands: Command[] = [];
 
-      switch (untrack(mode)) {
+      switch (mode()) {
         case "Erase": {
           commands.push(Command.erasePixel(position.x, position.y));
           if (oppositeOpacity) {
@@ -159,7 +159,7 @@ export const createPixelEditorController = ({
           break;
         }
         case "Draw": {
-          const _selectedColour = untrack(selectedColour);
+          const _selectedColour = selectedColour();
           if (_selectedColour !== undefined) {
             commands.push(Command.writePixel(position.x, position.y, _selectedColour));
             if (!oppositeOpacity) {
@@ -175,7 +175,7 @@ export const createPixelEditorController = ({
           break;
         }
         case "Fill": {
-          const _selectedColour = untrack(selectedColour);
+          const _selectedColour = selectedColour();
           if (_selectedColour !== undefined) {
             commands.push(Command.fillPixel(position.x, position.y, _selectedColour));
             if (!oppositeOpacity) {
