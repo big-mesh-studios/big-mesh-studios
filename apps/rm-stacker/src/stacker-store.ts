@@ -395,6 +395,7 @@ export function createStacker() {
       setSides(resizeSides(from.sides, from.dimensions, nextDimensions, growEnds));
       updateVoxels();
       requestRender();
+      requestAutoSave();
     },
     doCommand(command: Command, pushUndo?: boolean, description?: string): Command {
       let reverseCommand = doCommandAndUpdate(command);
