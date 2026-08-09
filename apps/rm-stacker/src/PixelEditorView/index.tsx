@@ -17,8 +17,16 @@ interface ImageCanvasCacheData {
 }
 
 const PixelEditorView: Component = () => {
-  const { store, setStore, undoRedoManager, doCommand, pushUndo, updateVoxels, coordinates } =
-    useContext(StackerContext);
+  const {
+    store,
+    setSides,
+    undoRedoManager,
+    doCommand,
+    pushUndo,
+    updateVoxels,
+    coordinates,
+    onRender,
+  } = useContext(StackerContext);
   const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
@@ -43,9 +51,7 @@ const PixelEditorView: Component = () => {
       mimeTypes: ["application/zip"],
     });
     const sides = await load(file);
-    setStore(s => {
-      s.sides = sides;
-    });
+    setSides(sides);
     updateVoxels();
     setFileHandle((file as FileWithHandle).handle ?? null);
     onSettled(() => {
@@ -209,7 +215,7 @@ const PixelEditorView: Component = () => {
           renderGuide({ ctx, side, guide, coordinate, kind: "inner", scale: _scale });
         }
 
-        ctx.lineWidth = 2 / _scale;
+        ctx.lineWidth = 4 / _scale;
         ctx.strokeStyle = sideMaskToRGBA(SIDE_MASK[sideKind]);
         ctx.strokeRect(coordinate.x, coordinate.y, side.width, side.height);
 
@@ -231,11 +237,7 @@ const PixelEditorView: Component = () => {
     });
   };
 
-  queueMicrotask(() =>
-    setStore(s => {
-      s.render = render;
-    }),
-  );
+  queueMicrotask(() => onRender(render));
 
   onSettled(() => {
     const _canvas = canvas();
@@ -279,6 +281,7 @@ const PixelEditorView: Component = () => {
           width: "100%",
           height: "100%",
           "touch-action": "none",
+          cursor: controller.cursor(),
         }}
         onPointerDown={controller.onPointerDown}
         onPointerUp={controller.onPointerUp}
@@ -310,9 +313,8 @@ const PixelEditorView: Component = () => {
                 return;
               }
               undoRedoManager.clear();
-              setStore(s => {
-                s.sides = createInitialSides(store.dimensions);
-              });
+              setSides(createInitialSides(store.dimensions));
+
               updateVoxels();
               render();
             }}

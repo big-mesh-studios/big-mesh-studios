@@ -65,7 +65,9 @@ const createViews = ({
 
 export function solveVoxels(
   store: Pick<StackerStore, "dimensions" | "sides">,
-  out: Uint8Array,
+  out: Uint8Array = new Uint8Array(
+    store.dimensions.width * store.dimensions.height * store.dimensions.depth * 4,
+  ),
 ): Uint8Array {
   const {
     dimensions: { height, width, depth },

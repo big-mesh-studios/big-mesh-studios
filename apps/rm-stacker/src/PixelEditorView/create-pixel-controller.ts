@@ -13,7 +13,8 @@ import { Command } from "../Command";
 import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../stacker-context";
 import { Coordinates, ModeKind, RGBA, SideKind, Vector2D } from "../types";
-import { findCollidingSide } from "../utils";
+import { findCollidingSide, roundVector2D } from "../utils";
+import { createEdgeController } from "./create-edge-controller";
 
 const getOppositePixel = (kind: SideKind, position: Vector2D, side: ImageData): Vector2D => {
   if (kind === "top" || kind === "bottom") {
@@ -37,9 +38,10 @@ export const createPixelEditorController = ({
   pushUndo: (reverseCommand: Command, description: string) => void;
   doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
 }) => {
-  const { store } = useContext(StackerContext);
+  const { store, setDimensions } = useContext(StackerContext);
 
-  const [pan, setPan] = createSignal(new THREE.Vector2(-10.0, -10.0));
+  const [pan, setPan] = createSignal({ x: -10.0, y: -10.0 });
+  const [cursor, setCursor] = createSignal<string>();
   const [scale, setScale] = createSignal(8);
   const [pointerids, setPointerids] = createSignal(new Set<number>(), { equals: false });
   const [mousePos, setMousePos] = createSignal<THREE.Vector2>();
@@ -70,11 +72,7 @@ export const createPixelEditorController = ({
     return out;
   };
 
-  const mouseWorldPos = createMemo<THREE.Vector2 | undefined>(previous => {
-    if (previous && mode() === "Idle") {
-      return previous;
-    }
-
+  const mouseWorldPos = createMemo<THREE.Vector2 | undefined>(() => {
     const _mousePos = mousePos();
     if (_mousePos === undefined) {
       return undefined;
@@ -85,10 +83,27 @@ export const createPixelEditorController = ({
       return undefined;
     }
 
-    worldPos.x = Math.round(worldPos.x - 0.5);
-    worldPos.y = Math.round(worldPos.y - 0.5);
-
     return worldPos;
+  });
+
+  const roundedMouseWorldPos = createMemo<Vector2D | undefined>(() => {
+    const _mouseWorldPos = mouseWorldPos();
+
+    if (_mouseWorldPos === undefined) {
+      return undefined;
+    }
+
+    return roundVector2D(_mouseWorldPos);
+  });
+
+  const edgeController = createEdgeController({
+    mouseWorldPos,
+    coordinates,
+    scale,
+    pan,
+    setDimensions,
+    setPan,
+    setCursor,
   });
 
   let undoCommandsReversed: Command[] = [];
@@ -186,7 +201,7 @@ export const createPixelEditorController = ({
   );
 
   createEffect(
-    () => [mouseWorldPos(), pointerids().size, mode()] as const,
+    () => [roundedMouseWorldPos(), pointerids().size, mode()] as const,
     ([pos, pointerCount, _mode]) => {
       if (_mode === "Idle") {
         return;
@@ -204,12 +219,13 @@ export const createPixelEditorController = ({
   return {
     pan,
     scale,
+    cursor,
     overlayDrawing() {
       if (mode() === "Idle") {
         return;
       }
 
-      const pixelPos = mouseWorldPos();
+      const pixelPos = roundedMouseWorldPos();
 
       if (!pixelPos) {
         return;
@@ -222,6 +238,11 @@ export const createPixelEditorController = ({
     },
     onPointerDown(e: PointerEvent) {
       setPointerids(set => set.add(e.pointerId));
+
+      if (mode() === "Idle" && edgeController.onPointerDown(e)) {
+        return;
+      }
+
       panScaleControl.onPointerDown(e);
     },
     onPointerUp(e: PointerEvent) {
@@ -230,6 +251,7 @@ export const createPixelEditorController = ({
         return set;
       });
       panScaleControl.onPointerUp(e);
+      edgeController.onPointerEnd();
     },
     onPointerCancel(e: PointerEvent) {
       setPointerids(set => {
@@ -237,13 +259,19 @@ export const createPixelEditorController = ({
         return set;
       });
       panScaleControl.onPointerCancel(e);
+      edgeController.onPointerEnd();
     },
     onPointerMove(e: PointerEvent) {
-      panScaleControl.onPointerMove(e);
+      if (mode() === "Idle") {
+        edgeController.onPointerMove(e);
+        panScaleControl.onPointerMove(e);
+      }
+
       const _canvas = canvas();
       if (_canvas === undefined) {
         return;
       }
+
       const rect = _canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;

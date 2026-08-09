@@ -1,11 +1,28 @@
-import { createMemo, createStore, untrack } from "solid-js";
-import * as THREE from "three";
+import { createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { Command } from "./Command";
 import { load, save, saveToIndexedDB } from "./load-save";
-import type { Dimensions2D, Dimensions3D, RGBA, Sides, Vector2D } from "./types";
+import type { Coordinates, Dimensions2D, Dimensions3D, RGBA, Sides, Vector2D } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { areRGBAsEqual, createEnqueue, findCollidingSide } from "./utils";
 import { solveVoxels } from "./voxel-solver";
+
+const INITIAL_DIMENSIONS = { width: 3, height: 5, depth: 4 };
+
+const PADDING = 6;
+
+/**
+ * Where each panel sits on the editor canvas: the four side panels form a
+ * horizontal band around the front panel, with top and bottom above and below
+ * it. Pure in its dimensions so a resize can ask where a panel would end up.
+ */
+export const computeCoordinates = ({ width, height, depth }: Dimensions3D): Coordinates => ({
+  front: { x: 0, y: 0 },
+  left: { x: -(depth + PADDING), y: 0 },
+  right: { x: width + PADDING, y: 0 },
+  back: { x: width + depth + PADDING * 2, y: 0 },
+  top: { x: 0, y: -(depth + PADDING) },
+  bottom: { x: 0, y: height + PADDING },
+});
 
 export interface StackerStore {
   dimensions: Dimensions3D;
@@ -48,35 +65,30 @@ export const createInitialSides = (dimensions: Dimensions3D) => {
   };
 };
 
-export function createStackerStore() {
-  const initialDimensions: Dimensions3D = { width: 3, height: 5, depth: 4 };
-  const initialSides: Sides = createInitialSides(initialDimensions);
+export function createStacker() {
+  const [dimensions, setDimensions] = createSignal<Dimensions3D>(INITIAL_DIMENSIONS);
+  const [sides, setSides] = createSignal(() => createInitialSides(dimensions()));
+  const [voxels, setVoxels] = createSignal(() =>
+    solveVoxels({ sides: sides(), dimensions: dimensions() }),
+  );
   const undoRedoManager = new UndoRedoManager(command => doCommandAndUpdate(command));
   const enqueue = createEnqueue<Command>();
 
-  const [store, setStore] = createStore<StackerStore>({
-    dimensions: initialDimensions,
-    sides: initialSides,
-    voxels: solveVoxels(
-      { sides: initialSides, dimensions: initialDimensions },
-      new Uint8Array(
-        initialDimensions.width * initialDimensions.height * initialDimensions.depth * 4,
-      ),
-    ),
-    render: () => {},
-  });
+  const renderSet = new Set<() => void>();
 
-  const PADDING = 6;
-  const coordinates = createMemo(() => {
-    return {
-      front: new THREE.Vector2(0.0, 0.0),
-      left: new THREE.Vector2(-(store.dimensions.depth + PADDING), 0.0),
-      right: new THREE.Vector2(store.dimensions.width + PADDING, 0.0),
-      back: new THREE.Vector2(store.dimensions.width + store.dimensions.depth + PADDING * 2, 0.0),
-      top: new THREE.Vector2(0.0, -(store.dimensions.depth + PADDING)),
-      bottom: new THREE.Vector2(0.0, store.dimensions.height + PADDING),
-    };
-  });
+  const store = {
+    get dimensions() {
+      return dimensions();
+    },
+    get sides() {
+      return sides();
+    },
+    get voxels() {
+      return voxels();
+    },
+  };
+
+  const coordinates = createMemo(() => computeCoordinates(store.dimensions));
 
   const requestAutoSave = (() => {
     let aboutToSave = false;
@@ -111,14 +123,7 @@ export function createStackerStore() {
   })();
 
   function updateVoxels() {
-    setStore(store => {
-      store.voxels = solveVoxels(
-        store,
-        new Uint8Array(
-          store.dimensions.width * store.dimensions.height * store.dimensions.depth * 4,
-        ),
-      );
-    });
+    setVoxels(solveVoxels(store));
   }
 
   function snapshot(): Command {
@@ -150,7 +155,7 @@ export function createStackerStore() {
         const result = await doCommand(command);
 
         if (result.type !== "NoOperation") {
-          store.render();
+          requestRender();
           updateVoxels();
         }
 
@@ -303,10 +308,8 @@ export function createStackerStore() {
           let undoCommand = snapshot();
           let data = effect.data;
           let sides = await load(data);
-          setStore(s => {
-            s.sides = sides;
-          });
-          store.render();
+          setSides(sides);
+          requestRender();
           updateVoxels();
           return undoCommand;
         }
@@ -323,12 +326,19 @@ export function createStackerStore() {
     });
   };
 
+  function requestRender() {
+    renderSet.forEach(render => render());
+  }
+
+  createEffect(sides, requestRender);
+
   return {
     store,
-    setStore,
     undoRedoManager,
     updateVoxels,
     coordinates,
+    setDimensions,
+    setSides,
     doCommand(command: Command, pushUndo?: boolean, description?: string): Command {
       let reverseCommand = doCommandAndUpdate(command);
 
@@ -351,6 +361,14 @@ export function createStackerStore() {
         command: reverseCommand,
         description: description ?? "",
       });
+    },
+    requestRender,
+    onRender(callback: () => void) {
+      renderSet.add(callback);
+      return () => renderSet.delete(callback);
+    },
+    reset() {
+      setDimensions(INITIAL_DIMENSIONS);
     },
   };
 }

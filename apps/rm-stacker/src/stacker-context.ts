@@ -1,4 +1,4 @@
 import { createContext } from "solid-js";
-import { createStackerStore } from "./stacker-store";
+import { createStacker } from "./stacker-store";
 
-export const StackerContext = createContext<ReturnType<typeof createStackerStore>>();
+export const StackerContext = createContext<ReturnType<typeof createStacker>>();

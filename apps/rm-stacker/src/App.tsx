@@ -1,38 +1,36 @@
-import { Component, onSettled } from "solid-js";
+import { Component, createEffect, createMemo, onSettled } from "solid-js";
 import PixelEditorView from "./PixelEditorView";
 import VoxelPreviewView from "./VoxelPreviewView";
 import { loadFromIndexedDB } from "./load-save";
 import { StackerContext } from "./stacker-context";
-import { createStackerStore } from "./stacker-store";
+import { createStacker } from "./stacker-store";
 
 const App: Component = () => {
-  const stackerStore = createStackerStore();
-  let store = stackerStore.store;
-  let setStore = stackerStore.setStore;
+  const stacker = createStacker();
 
-  onSettled(() => {
-    (async () => {
-      let result = await loadFromIndexedDB();
-      if (result === null) {
-        return;
-      }
-      let { sides, undoStack, redoStack } = result;
-      setStore(s => {
-        s.sides = sides;
-      });
-      stackerStore.undoRedoManager.setStacks({
-        undoStack,
-        redoStack,
-      });
-      onSettled(() => {
-        stackerStore.updateVoxels();
-        store.render();
-      });
-    })();
+  const saveState = createMemo(loadFromIndexedDB);
+
+  createEffect(saveState, result => {
+    if (!result) {
+      return;
+    }
+
+    const { sides, undoStack, redoStack } = result;
+
+    stacker.setSides(sides);
+    stacker.undoRedoManager.setStacks({
+      undoStack,
+      redoStack,
+    });
+
+    onSettled(() => {
+      stacker.updateVoxels();
+      stacker.requestRender();
+    });
   });
 
   return (
-    <StackerContext value={stackerStore}>
+    <StackerContext value={stacker}>
       <div
         class="flex-col md:flex-row"
         style={{

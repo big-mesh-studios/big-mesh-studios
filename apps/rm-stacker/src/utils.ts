@@ -1,5 +1,5 @@
 import { SIDE_MASK } from "./constants";
-import { Coordinates, RGBA, Sides } from "./types";
+import { Coordinates, RGBA, Sides, Vector2D } from "./types";
 
 export function tryCatch<T, U>(fn: () => T, onError: (error: unknown) => U) {
   try {
@@ -99,3 +99,8 @@ export const findCollidingSide = (
     }
   }
 };
+
+export const roundVector2D = (vector: Vector2D) => ({
+  x: Math.round(vector.x - 0.5),
+  y: Math.round(vector.y - 0.5),
+});
