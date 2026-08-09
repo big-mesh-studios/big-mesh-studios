@@ -219,61 +219,64 @@ export function createStacker() {
           const offset = getOffset(side, origin, { x, y });
           const oldColour = getColor(side, offset);
 
-          const queue = [{ x, y }];
-          const visited = new Set();
+          if (areRGBAsEqual(colour, oldColour)) {
+            return Command.noOperation();
+          }
+
+          const stack: number[] = [];
+          stack.push(y);
+          stack.push(x);
 
           const undo = snapshot();
 
-          while (true) {
-            const coordinate = queue.shift();
+          // preallocated to lower GC-pressue
+          let neighbors: { x: number; y: number }[] = [
+            { x: 0, y: 0 },
+            { x: 0, y: 0 },
+            { x: 0, y: 0 },
+            { x: 0, y: 0 },
+          ];
 
-            if (!coordinate) {
+          while (true) {
+            const x = stack.pop();
+            const y = stack.pop();
+
+            if (x === undefined || y === undefined) {
               break;
             }
 
-            const { x, y } = coordinate;
-            const id = `${x},${y}`;
-
-            const offset = getOffset(side, origin, coordinate);
-            visited.add(id);
-
-            side.data[offset + 0] = r;
-            side.data[offset + 1] = g;
-            side.data[offset + 2] = b;
-            side.data[offset + 3] = a;
-
-            const neighbors = [
-              // top
-              { x, y: y - 1 },
-              // bottom
-              { x, y: y + 1 },
-              // left
-              { x: x - 1, y },
-              // right
-              { x: x + 1, y },
-            ];
+            // top
+            neighbors[0].x = x;
+            neighbors[0].y = y - 1;
+            // bottom
+            neighbors[1].x = x;
+            neighbors[1].y = y + 1;
+            // left
+            neighbors[2].x = x - 1;
+            neighbors[2].y = y;
+            // right
+            neighbors[3].x = x + 1;
+            neighbors[3].y = y;
 
             for (let neighbor of neighbors) {
-              if (neighbor.x - origin.x < 0 || neighbor.x - origin.x > side.width) {
+              if (neighbor.x - origin.x < 0 || neighbor.x - origin.x >= side.width) {
                 continue;
               }
 
-              if (neighbor.y - origin.y < 0 || neighbor.y - origin.y > side.height) {
+              if (neighbor.y - origin.y < 0 || neighbor.y - origin.y >= side.height) {
                 continue;
               }
 
-              const neighborId = `${neighbor.x},${neighbor.y}`;
-
-              if (visited.has(neighborId)) {
-                continue;
-              }
-
-              const neighborOffset = getOffset(side, origin, neighbor);
-              const neighborColor = getColor(side, neighborOffset);
-              const match = areRGBAsEqual(neighborColor, oldColour);
-
+              let neighborOffset = getOffset(side, origin, neighbor);
+              let neighborColour = getColor(side, neighborOffset);
+              let match = areRGBAsEqual(neighborColour, oldColour);
               if (match) {
-                queue.push(neighbor);
+                side.data[neighborOffset + 0] = r;
+                side.data[neighborOffset + 1] = g;
+                side.data[neighborOffset + 2] = b;
+                side.data[neighborOffset + 3] = a;
+                stack.push(neighbor.y);
+                stack.push(neighbor.x);
               }
             }
           }
