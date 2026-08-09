@@ -428,6 +428,7 @@ export function createStacker() {
     reset() {
       setSides(createInitialSides(INITIAL_DIMENSIONS));
       updateVoxels();
+      requestAutoSave();
     },
   };
 }
