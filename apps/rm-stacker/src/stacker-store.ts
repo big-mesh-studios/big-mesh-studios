@@ -223,6 +223,11 @@ export function createStacker() {
             return Command.noOperation();
           }
 
+          side.data[offset + 0] = r;
+          side.data[offset + 1] = g;
+          side.data[offset + 2] = b;
+          side.data[offset + 3] = a;
+
           const stack: number[] = [];
           stack.push(y);
           stack.push(x);
