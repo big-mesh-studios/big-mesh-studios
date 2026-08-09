@@ -405,6 +405,7 @@ export function createStacker() {
       return () => renderSet.delete(callback);
     },
     reset() {
+      undoRedoManager.clear();
       setSides(createInitialSides(INITIAL_DIMENSIONS));
       updateVoxels();
     },

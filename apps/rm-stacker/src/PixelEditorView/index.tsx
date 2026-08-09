@@ -5,7 +5,6 @@ import { SIDE_MASK } from "../constants";
 import { load, save } from "../load-save";
 import Palette from "../Palette";
 import { StackerContext } from "../stacker-context";
-import { createInitialSides } from "../stacker-store";
 import { ModeKind, RGBA, Vector2D } from "../types";
 import { keysOf, sideMaskToRGBA } from "../utils";
 import { computeGuideMasks } from "./compute-guide-masks";
@@ -26,6 +25,7 @@ const PixelEditorView: Component = () => {
     updateVoxels,
     coordinates,
     onRender,
+    reset,
   } = useContext(StackerContext);
   const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
 
@@ -312,10 +312,7 @@ const PixelEditorView: Component = () => {
               if (!window.confirm("Start a new file? This will discard your current work.")) {
                 return;
               }
-              undoRedoManager.clear();
-              setSides(createInitialSides(store.dimensions));
-
-              updateVoxels();
+              reset();
               render();
             }}
           >
