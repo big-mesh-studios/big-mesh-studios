@@ -38,7 +38,7 @@ export const createPixelEditorController = ({
   canvas: Accessor<HTMLCanvasElement | undefined>;
   mode: Accessor<ModeKind>;
   selectedColour: Accessor<RGBA | undefined>;
-  setSelectedColour: Setter<RGBA | undefined>;
+  setSelectedColour: Setter<RGBA>;
   coordinates: Accessor<Coordinates>;
   pushUndo: (reverseCommand: Command, description: string) => void;
   doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;

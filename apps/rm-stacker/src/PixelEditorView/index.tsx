@@ -34,7 +34,7 @@ const PixelEditorView: Component = () => {
   const [mode, setModeKind] = createSignal<ModeKind>("Idle");
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
   const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
-  const [selectedColour, setSelectedColour] = createSignal<RGBA | undefined>();
+  const [selectedColour, setSelectedColour] = createSignal<RGBA>(DAWNBRINGER_32_PALETTE[5]);
   const [palette, setPalette] = createSignal<RGBA[]>(DAWNBRINGER_32_PALETTE);
 
   const controller = createPixelEditorController({
