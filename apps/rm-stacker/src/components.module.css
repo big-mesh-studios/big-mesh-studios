@@ -1,0 +1,54 @@
+.tab {
+  padding: var(--margin);
+  color: var(--grey);
+
+  &[aria-selected="true"],
+  &:hover {
+    color: var(--front);
+  }
+}
+
+.button {
+  padding: var(--margin);
+  color: var(--front);
+
+  &:not(:hover)[disabled] {
+    color: var(--grey);
+  }
+}
+
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--margin);
+  background-color: var(--back);
+  border: 1px solid var(--grey);
+  border-radius: var(--margin);
+  align-items: start;
+  justify-self: start;
+  pointer-events: all;
+  align-self: start;
+}
+
+.icon {
+  width: var(--size);
+  height: var(--size);
+  align-content: center;
+}
+
+.iconButton {
+  --color: var(--light-grey);
+
+  display: flex;
+  align-items: center;
+  gap: var(--margin);
+
+  &:hover {
+    --color: var(--front);
+  }
+
+  & > span {
+    padding-right: var(--margin);
+    color: var(--color);
+  }
+}

@@ -2,3 +2,18 @@
 @plugin "daisyui" {
   themes: dark --default;
 }
+
+html {
+  --margin: 5px;
+  --size: 32px;
+  --front: white;
+  --back: var(--color-base-200);
+  --grey: #707070;
+  --light-grey: #a9a9a9;
+}
+
+* {
+  scrollbar-color: var(--grey) transparent;
+  scrollbar-width: thin;
+  overscroll-behavior: none;
+}

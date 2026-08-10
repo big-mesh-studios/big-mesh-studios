@@ -94,6 +94,10 @@ export function sideMaskToRGBA(mask: number, intensity = 1) {
   return `rgba(${r}, ${g}, ${b}, 1)`;
 }
 
+export function rgbaToCSS({ r, g, b, a = 1 }: RGBA): `rgba(${string})` {
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
 /**********************************************************************************/
 /*                                  Intersection                                  */
 /**********************************************************************************/

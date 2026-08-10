@@ -1,14 +1,17 @@
 import { Component, createEffect, createMemo, createRoot, For } from "solid-js";
+import { Tab } from "./components";
+import styles from "./Palette.module.css";
 import { RGBA } from "./types";
-import { areRGBAsEqual } from "./utils";
+import { areRGBAsEqual, rgbaToCSS } from "./utils";
 
 const Palette: Component<{
   palette: Array<RGBA>;
   onSelect: (colour: RGBA) => void;
   selectedColour: RGBA | undefined;
+  class?: string;
 }> = props => {
   return (
-    <div style="height: 100%; overflow-y: scroll;">
+    <div class={[styles.palette, props.class]}>
       <For each={props.palette}>
         {colour => {
           const isActive = createMemo(
@@ -16,7 +19,7 @@ const Palette: Component<{
           );
 
           return (
-            <div
+            <Tab
               ref={element =>
                 createRoot(() => {
                   createEffect(isActive, active => {
@@ -24,28 +27,28 @@ const Palette: Component<{
                       return;
                     }
                     element.scrollIntoView({
-                      block: "start",
-                      inline: "start",
+                      block: "center",
+                      inline: "center",
                       behavior: "instant",
                     });
                   });
                 })
               }
-              style={{
-                border: isActive() ? "4px solid green" : undefined,
-                padding: !isActive() ? "4px" : undefined,
+              selected={isActive()}
+              class={styles.item}
+              onClick={() => {
+                props.onSelect(colour);
               }}
             >
               <div
-                class="size-[32px]"
                 style={{
-                  "background-color": `rgba(${colour.r}, ${colour.g}, ${colour.b}, ${colour.a})`,
+                  "background-color": rgbaToCSS(colour),
                 }}
                 onClick={() => {
                   props.onSelect(colour);
                 }}
               />
-            </div>
+            </Tab>
           );
         }}
       </For>

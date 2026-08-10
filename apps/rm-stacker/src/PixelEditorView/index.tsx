@@ -1,6 +1,15 @@
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
-import { Component, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
+import {
+  Component,
+  createEffect,
+  createSignal,
+  onSettled,
+  Show,
+  untrack,
+  useContext,
+} from "solid-js";
 import * as THREE from "three";
+import { Bar, DropDown, IconButton, IconTab } from "../components";
 import { SIDE_MASK } from "../constants";
 import { DAWNBRINGER_32_PALETTE } from "../default_palette";
 import { load, save } from "../load-save";
@@ -12,6 +21,7 @@ import { ModeKind, RGBA } from "../types";
 import { keysOf, sideMaskToRGBA } from "../utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
+import styles from "./index.module.css";
 
 interface ImageCanvasCacheData {
   canvas: HTMLCanvasElement;
@@ -37,6 +47,7 @@ const PixelEditorView: Component = () => {
   const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
   const [selectedColour, setSelectedColour] = createSignal<RGBA>(DAWNBRINGER_32_PALETTE[5]);
   const [palette, setPalette] = createSignal<RGBA[]>(DAWNBRINGER_32_PALETTE);
+  const [isMenuOpen, setIsMenuOpen] = createSignal(false);
 
   const controller = createPixelEditorController({
     canvas,
@@ -270,23 +281,11 @@ const PixelEditorView: Component = () => {
   );
 
   return (
-    <div
-      style={{
-        position: "relative",
-        width: "100%",
-        height: "100%",
-        overflow: "hidden",
-      }}
-    >
+    <div class={styles.container}>
       <canvas
-        class="bg-base-200"
+        class={styles.canvas}
         ref={setCanvas}
-        style={{
-          width: "100%",
-          height: "100%",
-          "touch-action": "none",
-          cursor: controller.cursor(),
-        }}
+        style={{ cursor: controller.cursor() }}
         onPointerDown={controller.onPointerDown}
         onPointerUp={controller.onPointerUp}
         onPointerCancel={controller.onPointerCancel}
@@ -294,134 +293,89 @@ const PixelEditorView: Component = () => {
         onPointerOut={controller.onPointerOut}
         onWheel={controller.onWheel}
       />
-      <div
-        class="p-1"
-        style={{
-          position: "absolute",
-          left: "0",
-          top: "0",
-          bottom: "0",
-          overflow: "hidden",
-          display: "flex",
-          "flex-direction": "column",
-          "pointer-events": "none",
-        }}
-      >
-        <div role="tablist" class="tabs tabs-box" style="pointer-events: auto;">
-          <button
-            role="button"
-            class="tab"
-            title="New File"
-            onClick={() => {
-              if (!window.confirm("Start a new file? This will discard your current work.")) {
-                return;
-              }
-              undoRedoManager.clear();
-              setSides(createInitialSides(store.dimensions));
-
-              updateVoxels();
-              render();
-            }}
-          >
-            <i class="fa-solid fa-file"></i>
-          </button>
-          <button
-            role="button"
-            class="tab"
-            onClick={() => {
-              undoRedoManager.undo();
-            }}
-            disabled={!undoRedoManager.hasUndo()}
-          >
-            <i class="fa-solid fa-arrow-rotate-left"></i>
-          </button>
-          <button
-            role="button"
-            class="tab"
-            onClick={() => {
-              undoRedoManager.redo();
-            }}
-            disabled={!undoRedoManager.hasRedo()}
-          >
-            <i class="fa-solid fa-arrow-rotate-right"></i>
-          </button>
-          <a
-            role="tab"
-            class={{
-              tab: true,
-              "tab-active": mode() === "Idle",
-            }}
-            onClick={() => setModeKind("Idle")}
-          >
-            <i class="fa-solid fa-up-down-left-right" />
-          </a>
-          <a
-            role="tab"
-            class={{
-              tab: true,
-              "tab-active": mode() === "Draw",
-            }}
-            onClick={() => setModeKind("Draw")}
-          >
-            <i class="fa-solid fa-pen" />
-          </a>
-          <a
-            role="tab"
-            class={{
-              tab: true,
-              "tab-active": mode() === "Fill",
-            }}
-            onClick={() => setModeKind("Fill")}
-          >
-            <i class="fa-solid fa-fill" />
-          </a>
-          <a
-            role="tab"
-            class={{
-              tab: true,
-              "tab-active": mode() === "Erase",
-            }}
-            onClick={() => setModeKind("Erase")}
-          >
-            <i class="fa-solid fa-eraser" />
-          </a>
-          <a
-            role="tab"
-            class={{
-              tab: true,
-              "tab-active": mode() === "Eyedrop",
-            }}
-            onClick={() => setModeKind("Eyedrop")}
-          >
-            <i class="fa-solid fa-eye-dropper" />
-          </a>
-          <a role="button" class="tab" onClick={onSave}>
-            <i class="fa-solid fa-floppy-disk" />
-          </a>
-          <a role="button" class="tab" onClick={onSaveAs}>
-            <span class="relative" title="Save as">
-              <i class="fa-solid fa-floppy-disk" />
-              <i
-                class="fa-solid fa-pen absolute text-[0.6em]"
-                style="top: -0.15em; right: -0.3em;"
-              />
-            </span>
-          </a>
-          <a role="button" class="tab" onClick={onLoad}>
-            <i class="fa-solid fa-folder" />
-          </a>
-        </div>
-        <div class="badge badge-outline badge-sm mt-1" style="pointer-events: auto;">
-          {fileHandle()?.name ?? "Untitled"}
-        </div>
-        <div style="flex-grow: 1; overflow: hidden;">
-          <div style="height: 100%; display: inline-block; pointer-events: auto;">
-            <Palette
-              onSelect={setSelectedColour}
-              palette={palette()}
-              selectedColour={selectedColour()}
+      <div class={styles.hud}>
+        <div class={styles.side}>
+          <Bar>
+            <IconTab
+              kind="bars"
+              selected={isMenuOpen()}
+              onClick={() => setIsMenuOpen(bool => !bool)}
             />
+          </Bar>
+          <div class={styles.bottom}>
+            <Bar>
+              <IconButton
+                onClick={() => {
+                  undoRedoManager.undo();
+                }}
+                disabled={!undoRedoManager.hasUndo()}
+                kind="arrow-rotate-left"
+              />
+              <IconButton
+                onClick={() => {
+                  undoRedoManager.redo();
+                }}
+                disabled={!undoRedoManager.hasRedo()}
+                kind="arrow-rotate-right"
+              />
+            </Bar>
+            <Bar>
+              <IconTab
+                kind="up-down-left-right"
+                onClick={() => setModeKind("Idle")}
+                selected={mode() === "Idle"}
+              />
+              <IconTab
+                kind="pen"
+                onClick={() => setModeKind("Draw")}
+                selected={mode() === "Draw"}
+              />
+              <IconTab
+                kind="fill"
+                onClick={() => setModeKind("Fill")}
+                selected={mode() === "Fill"}
+              />
+              <IconTab
+                kind="eraser"
+                onClick={() => setModeKind("Erase")}
+                selected={mode() === "Erase"}
+              />
+              <IconTab
+                kind="eye-dropper"
+                onClick={() => setModeKind("Eyedrop")}
+                selected={mode() === "Eyedrop"}
+              />
+            </Bar>
           </div>
+        </div>
+        <div class={styles.main}>
+          <Show when={isMenuOpen()}>
+            <DropDown onClose={() => setIsMenuOpen(false)}>
+              <IconButton
+                kind="file"
+                label="New File"
+                onClick={() => {
+                  if (!window.confirm("Start a new file? This will discard your current work.")) {
+                    return;
+                  }
+                  undoRedoManager.clear();
+                  setSides(createInitialSides(store.dimensions));
+
+                  updateVoxels();
+                  render();
+                }}
+              />
+              <IconButton kind="floppy-disk" label="Save File" onClick={onSave} />
+              <IconButton kind="floppy-disk" label="Save As" onClick={onSaveAs} />
+              <IconButton onClick={onLoad} kind="folder" label="Load" />
+            </DropDown>
+          </Show>
+          <Palette
+            onSelect={setSelectedColour}
+            palette={palette()}
+            selectedColour={selectedColour()}
+            class={styles.palette}
+          />
         </div>
       </div>
     </div>

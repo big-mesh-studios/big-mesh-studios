@@ -1,0 +1,28 @@
+.palette {
+  display: flex;
+  flex-direction: row;
+  pointer-events: auto;
+  padding: var(--margin);
+  border-radius: var(--margin);
+  overflow-x: auto;
+  overflow-y: hidden;
+  box-sizing: border-box;
+  background-color: var(--color-base-200);
+  border: 1px solid var(--grey);
+  border-radius: var(--margin);
+}
+
+.item {
+  box-sizing: border-box;
+  border: 4px solid transparent;
+  padding: 0px;
+
+  &[aria-selected="true"] {
+    border-color: green;
+  }
+
+  & > div {
+    width: var(--size);
+    height: var(--size);
+  }
+}
