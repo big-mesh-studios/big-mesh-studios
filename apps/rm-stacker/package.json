@@ -15,6 +15,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/three": "^0.183.1",
+    "esbuild": "^0.28.1",
     "fast-png": "^8.0.0",
     "prettier": "^3.9.6",
     "typescript": "^5.7.2",
@@ -25,7 +26,7 @@
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.3.1",
     "@random-mesh/rm-pan-scale": "0.0.5",
-    "@random-mesh/rmsl": "1.1.2",
+    "@random-mesh/rmsl": "1.1.3",
     "@solidjs/signals": "2.0.0-beta.29",
     "@solidjs/web": "2.0.0-beta.29",
     "@tailwindcss/vite": "^4.3.0",

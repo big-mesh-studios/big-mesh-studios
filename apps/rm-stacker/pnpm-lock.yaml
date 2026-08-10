@@ -15,8 +15,8 @@ importers:
         specifier: 0.0.5
         version: 0.0.5
       '@random-mesh/rmsl':
-        specifier: 1.1.2
-        version: 1.1.2
+        specifier: 1.1.3
+        version: 1.1.3
       '@solidjs/signals':
         specifier: 2.0.0-beta.29
         version: 2.0.0-beta.29
@@ -48,6 +48,9 @@ importers:
       '@types/three':
         specifier: ^0.183.1
         version: 0.183.1
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.1
       fast-png:
         specifier: ^8.0.0
         version: 8.0.0
@@ -337,8 +340,8 @@ packages:
   '@random-mesh/rm-pan-scale@0.0.5':
     resolution: {integrity: sha512-mm3gLnscMc50oHJV0veREHSVpjxjmcmJrGITfFupc2cH4JpmzMCuy4fw8T7DtJhr5mfxNaO9RwzH1zpuDFiuTQ==}
 
-  '@random-mesh/rmsl@1.1.2':
-    resolution: {integrity: sha512-7O5tiMq3pvp2s/dq16uFOW5EGEIHlpOeOKMqO7mFpE0fH31e/5Ory7cxUWDphslZFu4FJYqXkFw3BX5qfOOlwQ==}
+  '@random-mesh/rmsl@1.1.3':
+    resolution: {integrity: sha512-QFwgGeU2Ng/HVJ/Awn2HQ/PH9dT6J8EyUR3kwzp/99rsykZRI/NEE82kN4iS4WiIj62FXNNrzQ76DJFmZCicOw==}
 
   '@rollup/rollup-android-arm-eabi@4.62.3':
     resolution: {integrity: sha512-c0wdcekXtQvvn5Tsrk/+op/gUArrbWaFduBnTLP2l1cKLSQs4diMWjJw3m6A0DdzT8dAAX95KpkJ3qynCePbmw==}
@@ -1364,7 +1367,7 @@ snapshots:
 
   '@random-mesh/rm-pan-scale@0.0.5': {}
 
-  '@random-mesh/rmsl@1.1.2': {}
+  '@random-mesh/rmsl@1.1.3': {}
 
   '@rollup/rollup-android-arm-eabi@4.62.3':
     optional: true
