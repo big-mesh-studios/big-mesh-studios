@@ -5,7 +5,7 @@ import { Dimensions3D, Vector2D } from "../maths";
 import { StackerContext } from "../stacker-context";
 import { computeOrigins } from "../stacker-store";
 import type { Alignment3D, DimensionEnd, SideKind, Sides } from "../types";
-import { findCollidingSide } from "../utils";
+import { intersectSides } from "../utils";
 
 type EdgeKind = "top" | "bottom" | "left" | "right";
 
@@ -100,7 +100,7 @@ export function createEdgeController({
       return false;
     }
 
-    const collidingSide = findCollidingSide({
+    const collidingSide = intersectSides({
       position,
       sides: store.sides,
       origins: coordinates(),

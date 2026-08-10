@@ -15,7 +15,7 @@ import { OPPOSING_SIDE } from "../constants";
 import { Vector2D } from "../maths";
 import { StackerContext } from "../stacker-context";
 import { ModeKind, Origins, RGBA, SideKind } from "../types";
-import { findCollidingSide, findColour } from "../utils";
+import { intersectSides } from "../utils";
 import { createEdgeController } from "./create-edge-controller";
 
 const getOppositePixel = (kind: SideKind, position: Vector2D, side: ImageData): Vector2D => {
@@ -118,20 +118,19 @@ export const createPixelEditorController = ({
 
   const applyPixelStroke = (position: Vector2D) =>
     untrack(() => {
-      const result = findCollidingSide({
+      const intersection = intersectSides({
         position,
         sides: store.sides,
         origins: origins(),
       });
 
-      if (!result) {
+      if (!intersection) {
         return;
       }
 
-      const { origin, side, kind } = result;
-      const localX = position.x - origin.x;
-      const localY = position.y - origin.y;
-      const oppositePixel = getOppositePixel(kind, { x: localX, y: localY }, side);
+      const { side, kind, relativePosition } = intersection;
+
+      const oppositePixel = getOppositePixel(kind, relativePosition, side);
       const oppositeKind = OPPOSING_SIDE[kind];
       const oppositeSide = store.sides[oppositeKind];
       const oppositeOpacity = untrack(
@@ -256,13 +255,21 @@ export const createPixelEditorController = ({
       switch (mode()) {
         case "Eyedrop": {
           const position = roundedMouseWorldPos();
-          if (position) {
-            const colour = findColour({ position, sides: store.sides, origins: origins() });
-
-            if (colour) {
-              setSelectedColour(colour);
-            }
+          if (!position) {
+            return;
           }
+
+          const intersection = intersectSides({
+            origins: origins(),
+            sides: store.sides,
+            position,
+          });
+          if (!intersection) {
+            return;
+          }
+
+          setSelectedColour(intersection.colour);
+
           break;
         }
         case "Idle": {

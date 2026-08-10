@@ -82,7 +82,52 @@ export function sideMaskToRGBA(mask: number, intensity = 1) {
   return `rgba(${r}, ${g}, ${b}, 1)`;
 }
 
-export function findCollidingSide({
+/**********************************************************************************/
+/*                                  Intersection                                  */
+/**********************************************************************************/
+
+function getOffset(side: ImageData, position: Vector2D) {
+  return (position.y * side.width + position.x) << 2;
+}
+
+function getColourFromOffset(side: ImageData, offset: number): RGBA {
+  const r = side.data[offset + 0];
+  const g = side.data[offset + 1];
+  const b = side.data[offset + 2];
+  const a = side.data[offset + 3];
+  return { r, g, b, a };
+}
+
+export function intersectSide({
+  origin,
+  position,
+  side,
+}: {
+  origin: Vector2D;
+  position: Vector2D;
+  side: ImageData;
+}) {
+  const relativePosition = Vector2D.sub(position, origin);
+  if (
+    relativePosition.x >= 0 &&
+    relativePosition.y >= 0 &&
+    relativePosition.x < side.width &&
+    relativePosition.y < side.height
+  ) {
+    const offset = getOffset(side, relativePosition);
+    const colour = getColourFromOffset(side, offset);
+
+    return {
+      origin,
+      relativePosition,
+      side,
+      offset,
+      colour,
+    };
+  }
+}
+
+export function intersectSides({
   origins,
   position,
   sides,
@@ -102,51 +147,17 @@ export function findCollidingSide({
       relativePosition.x < side.width &&
       relativePosition.y < side.height
     ) {
-      return { side, origin, kind, relativePosition };
+      const offset = getOffset(side, relativePosition);
+      const colour = getColourFromOffset(side, offset);
+
+      return {
+        kind,
+        origin,
+        relativePosition,
+        side,
+        offset,
+        colour,
+      };
     }
   }
-}
-
-export function getOffset({
-  side,
-  origin,
-  position,
-}: {
-  side: ImageData;
-  origin: Vector2D;
-  position: Vector2D;
-}) {
-  const localPosition = Vector2D.sub(position, origin);
-  const offset = (localPosition.y * side.width + localPosition.x) << 2;
-  return offset;
-}
-
-export function getColourFromOffset({ side, offset }: { side: ImageData; offset: number }): RGBA {
-  const r = side.data[offset + 0];
-  const g = side.data[offset + 1];
-  const b = side.data[offset + 2];
-  const a = side.data[offset + 3];
-  return { r, g, b, a };
-}
-
-export function findColour({
-  origins,
-  position,
-  sides,
-}: {
-  position: Vector2D;
-  sides: Sides;
-  origins: Origins;
-}) {
-  const result = findCollidingSide({ position, sides, origins });
-
-  if (!result) {
-    return false;
-  }
-
-  const { origin, side } = result;
-
-  const offset = getOffset({ side, origin, position: position });
-
-  return getColourFromOffset({ side, offset });
 }

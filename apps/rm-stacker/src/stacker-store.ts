@@ -5,14 +5,7 @@ import { Dimensions3D, Vector2D } from "./maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
 import type { Dimensions2D, Origins, Sides } from "./types";
 import { UndoRedoManager } from "./undo-redo";
-import {
-  areRGBAsEqual,
-  createEnqueue,
-  findCollidingSide,
-  findColour,
-  getColourFromOffset,
-  getOffset,
-} from "./utils";
+import { areRGBAsEqual, createEnqueue, intersectSide, intersectSides } from "./utils";
 import { solveVoxels } from "./voxel-solver";
 
 const INITIAL_DIMENSIONS = { width: 3, height: 5, depth: 4 };
@@ -162,35 +155,27 @@ export function createStacker() {
           return Command.sequence(reverseCommands);
         }
         case "FillPixel": {
-          const result = findCollidingSide({
+          const intersection = intersectSides({
             position: effect,
             sides: store.sides,
             origins: origins(),
           });
 
-          if (!result) {
+          if (!intersection) {
             return Command.noOperation();
           }
 
           const { x, y, colour } = effect;
-          const { origin, side } = result;
-          const { r, g, b, a } = colour;
-
-          const offset = getOffset({ side, origin, position: { x, y } });
-          const oldColour = findColour({
-            position: { x, y },
-            sides: store.sides,
-            origins: origins(),
-          });
+          const { origin, side, colour: oldColour, offset } = intersection;
 
           if (!oldColour || areRGBAsEqual(colour, oldColour)) {
             return Command.noOperation();
           }
 
-          side.data[offset + 0] = r;
-          side.data[offset + 1] = g;
-          side.data[offset + 2] = b;
-          side.data[offset + 3] = a;
+          side.data[offset + 0] = colour.r;
+          side.data[offset + 1] = colour.g;
+          side.data[offset + 2] = colour.b;
+          side.data[offset + 3] = colour.a;
 
           const stack: number[] = [];
           stack.push(y);
@@ -227,23 +212,26 @@ export function createStacker() {
             neighbors[3].x = x + 1;
             neighbors[3].y = y;
 
-            for (let neighbor of neighbors) {
-              if (neighbor.x - origin.x < 0 || neighbor.x - origin.x >= side.width) {
+            for (const neighbor of neighbors) {
+              const intersection = intersectSide({
+                origin,
+                position: neighbor,
+                side,
+              });
+
+              // Neighbour lies outside this side: skip it, the rest of the region still fills.
+              if (!intersection) {
                 continue;
               }
 
-              if (neighbor.y - origin.y < 0 || neighbor.y - origin.y >= side.height) {
-                continue;
-              }
+              const match = areRGBAsEqual(intersection.colour, oldColour);
 
-              let neighborOffset = getOffset({ side, origin, position: neighbor });
-              let neighborColour = getColourFromOffset({ side, offset: neighborOffset });
-              let match = areRGBAsEqual(neighborColour, oldColour);
               if (match) {
-                side.data[neighborOffset + 0] = r;
-                side.data[neighborOffset + 1] = g;
-                side.data[neighborOffset + 2] = b;
-                side.data[neighborOffset + 3] = a;
+                side.data[intersection.offset + 0] = colour.r;
+                side.data[intersection.offset + 1] = colour.g;
+                side.data[intersection.offset + 2] = colour.b;
+                side.data[intersection.offset + 3] = colour.a;
+                // `neighbors` is reused every iteration, so push the coordinates, not the object.
                 stack.push(neighbor.y);
                 stack.push(neighbor.x);
               }
@@ -253,23 +241,18 @@ export function createStacker() {
           return undo;
         }
         case "WritePixel": {
-          const result = findCollidingSide({
+          const intersection = intersectSides({
             position: effect,
             sides: store.sides,
             origins: origins(),
           });
 
-          if (!result) {
+          if (!intersection) {
             return Command.noOperation();
           }
 
           const { x, y, colour } = effect;
-          const { origin, side } = result;
-
-          const localX = x - origin.x;
-          const localY = y - origin.y;
-          const offset = (localY * side.width + localX) << 2;
-          const oldColour = getColourFromOffset({ side, offset });
+          const { side, colour: oldColour, offset } = intersection;
 
           side.data[offset + 0] = colour.r;
           side.data[offset + 1] = colour.g;
@@ -285,31 +268,28 @@ export function createStacker() {
         case "ErasePixel": {
           const { x, y } = effect;
 
-          const result = findCollidingSide({
+          const intersection = intersectSides({
             position: effect,
             sides: store.sides,
             origins: origins(),
           });
-          if (!result) {
+
+          if (!intersection) {
             return Command.noOperation();
           }
 
-          const { origin, side } = result;
+          const { side, offset } = intersection;
 
-          const localX = x - origin.x;
-          const localY = y - origin.y;
-          const offset = (localY * side.width + localX) << 2;
           if (side.data[offset + 3] === 0) {
             return Command.noOperation();
           }
-          const old = getColourFromOffset({ side, offset });
 
           side.data[offset + 0] = 0;
           side.data[offset + 1] = 0;
           side.data[offset + 2] = 0;
           side.data[offset + 3] = 0;
 
-          return Command.writePixel(x, y, old);
+          return Command.writePixel(x, y, intersection.colour);
         }
         case "LoadData": {
           let undoCommand = snapshot();
