@@ -28,36 +28,18 @@ interface ImageCanvasCacheData {
   ctx: CanvasRenderingContext2D;
 }
 
-const PixelEditorView: Component = () => {
-  const {
-    store,
-    setSides,
-    undoRedoManager,
-    doCommand,
-    pushUndo,
-    updateVoxels,
-    sidePositions,
-    onRender,
-  } = useContext(StackerContext);
-  const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
+function Hud(props: {
+  mode: ModeKind;
+  setMode(kind: ModeKind): void;
+  selectedColour: RGBA;
+  onSelectColour(colour: RGBA): void;
+  render(): void;
+}) {
+  const { store, setSides, undoRedoManager, updateVoxels } = useContext(StackerContext);
 
-  const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
-  const [mode, setModeKind] = createSignal<ModeKind>("Idle");
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
-  const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
-  const [selectedColour, setSelectedColour] = createSignal<RGBA>(DAWNBRINGER_32_PALETTE[5]);
   const [palette, setPalette] = createSignal<RGBA[]>(DAWNBRINGER_32_PALETTE);
   const [isMenuOpen, setIsMenuOpen] = createSignal(false);
-
-  const controller = createPixelEditorController({
-    canvas,
-    sidePositions: sidePositions,
-    doCommand,
-    mode,
-    pushUndo,
-    selectedColour,
-    setSelectedColour,
-  });
 
   const onLoad = async () => {
     const file = await fileOpen<false>({
@@ -70,7 +52,7 @@ const PixelEditorView: Component = () => {
     updateVoxels();
     setFileHandle((file as FileWithHandle).handle ?? null);
     onSettled(() => {
-      render();
+      props.render();
     });
   };
 
@@ -99,6 +81,114 @@ const PixelEditorView: Component = () => {
       }),
     );
   };
+
+  return (
+    <div class={styles.hud}>
+      <div class={styles.side}>
+        <Bar>
+          <IconTab
+            kind="bars"
+            selected={isMenuOpen()}
+            onClick={() => setIsMenuOpen(bool => !bool)}
+          />
+        </Bar>
+        <div class={styles.bottom}>
+          <Bar>
+            <IconButton
+              onClick={() => {
+                undoRedoManager.undo();
+              }}
+              disabled={!undoRedoManager.hasUndo()}
+              kind="arrow-rotate-left"
+            />
+            <IconButton
+              onClick={() => {
+                undoRedoManager.redo();
+              }}
+              disabled={!undoRedoManager.hasRedo()}
+              kind="arrow-rotate-right"
+            />
+          </Bar>
+          <Bar>
+            <IconTab
+              kind="up-down-left-right"
+              onClick={() => props.setMode("Idle")}
+              selected={props.mode === "Idle"}
+            />
+            <IconTab
+              kind="pen"
+              onClick={() => props.setMode("Draw")}
+              selected={props.mode === "Draw"}
+            />
+            <IconTab
+              kind="fill"
+              onClick={() => props.setMode("Fill")}
+              selected={props.mode === "Fill"}
+            />
+            <IconTab
+              kind="eraser"
+              onClick={() => props.setMode("Erase")}
+              selected={props.mode === "Erase"}
+            />
+            <IconTab
+              kind="eye-dropper"
+              onClick={() => props.setMode("Eyedrop")}
+              selected={props.mode === "Eyedrop"}
+            />
+          </Bar>
+        </div>
+      </div>
+      <div class={styles.main}>
+        <Show when={isMenuOpen()}>
+          <DropDown onClose={() => setIsMenuOpen(false)}>
+            <IconButton
+              kind="file"
+              label="New File"
+              onClick={() => {
+                if (!window.confirm("Start a new file? This will discard your current work.")) {
+                  return;
+                }
+                undoRedoManager.clear();
+                setSides(createInitialSides(store.dimensions));
+
+                updateVoxels();
+                props.render();
+              }}
+            />
+            <IconButton kind="floppy-disk" label="Save File" onClick={onSave} />
+            <IconButton kind="floppy-disk" label="Save As" onClick={onSaveAs} />
+            <IconButton onClick={onLoad} kind="folder" label="Load" />
+          </DropDown>
+        </Show>
+        <Palette
+          onSelect={props.onSelectColour}
+          palette={palette()}
+          selectedColour={props.selectedColour}
+          class={styles.palette}
+        />
+      </div>
+    </div>
+  );
+}
+
+const PixelEditorView: Component = () => {
+  const { store, doCommand, pushUndo, sidePositions, onRender } = useContext(StackerContext);
+  const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
+
+  const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
+  const [mode, setMode] = createSignal<ModeKind>("Idle");
+  const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
+  const [selectedColour, setSelectedColour] = createSignal<RGBA>(DAWNBRINGER_32_PALETTE[5]);
+
+  const controller = createPixelEditorController({
+    canvas,
+    sidePositions: sidePositions,
+    doCommand,
+    mode,
+    pushUndo,
+    selectedColour,
+    setSelectedColour,
+  });
 
   const createImageCanvasCacheEntry = (image: ImageData) => {
     const canvas = document.createElement("canvas");
@@ -293,91 +383,13 @@ const PixelEditorView: Component = () => {
         onPointerOut={controller.onPointerOut}
         onWheel={controller.onWheel}
       />
-      <div class={styles.hud}>
-        <div class={styles.side}>
-          <Bar>
-            <IconTab
-              kind="bars"
-              selected={isMenuOpen()}
-              onClick={() => setIsMenuOpen(bool => !bool)}
-            />
-          </Bar>
-          <div class={styles.bottom}>
-            <Bar>
-              <IconButton
-                onClick={() => {
-                  undoRedoManager.undo();
-                }}
-                disabled={!undoRedoManager.hasUndo()}
-                kind="arrow-rotate-left"
-              />
-              <IconButton
-                onClick={() => {
-                  undoRedoManager.redo();
-                }}
-                disabled={!undoRedoManager.hasRedo()}
-                kind="arrow-rotate-right"
-              />
-            </Bar>
-            <Bar>
-              <IconTab
-                kind="up-down-left-right"
-                onClick={() => setModeKind("Idle")}
-                selected={mode() === "Idle"}
-              />
-              <IconTab
-                kind="pen"
-                onClick={() => setModeKind("Draw")}
-                selected={mode() === "Draw"}
-              />
-              <IconTab
-                kind="fill"
-                onClick={() => setModeKind("Fill")}
-                selected={mode() === "Fill"}
-              />
-              <IconTab
-                kind="eraser"
-                onClick={() => setModeKind("Erase")}
-                selected={mode() === "Erase"}
-              />
-              <IconTab
-                kind="eye-dropper"
-                onClick={() => setModeKind("Eyedrop")}
-                selected={mode() === "Eyedrop"}
-              />
-            </Bar>
-          </div>
-        </div>
-        <div class={styles.main}>
-          <Show when={isMenuOpen()}>
-            <DropDown onClose={() => setIsMenuOpen(false)}>
-              <IconButton
-                kind="file"
-                label="New File"
-                onClick={() => {
-                  if (!window.confirm("Start a new file? This will discard your current work.")) {
-                    return;
-                  }
-                  undoRedoManager.clear();
-                  setSides(createInitialSides(store.dimensions));
-
-                  updateVoxels();
-                  render();
-                }}
-              />
-              <IconButton kind="floppy-disk" label="Save File" onClick={onSave} />
-              <IconButton kind="floppy-disk" label="Save As" onClick={onSaveAs} />
-              <IconButton onClick={onLoad} kind="folder" label="Load" />
-            </DropDown>
-          </Show>
-          <Palette
-            onSelect={setSelectedColour}
-            palette={palette()}
-            selectedColour={selectedColour()}
-            class={styles.palette}
-          />
-        </div>
-      </div>
+      <Hud
+        selectedColour={selectedColour()}
+        onSelectColour={setSelectedColour}
+        render={render}
+        mode={mode()}
+        setMode={setMode}
+      />
     </div>
   );
 };
