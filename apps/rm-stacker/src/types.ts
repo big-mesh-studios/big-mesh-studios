@@ -40,13 +40,13 @@ export type Axis = "x" | "y" | "z";
 
 export type ModeKind = "Draw" | "Erase" | "Fill" | "Idle" | "Eyedrop";
 
-export type Coordinates = Record<keyof Sides, { x: number; y: number }>;
+export type Origins = Record<keyof Sides, { x: number; y: number }>;
 
 export interface ModeParams {
   mousePos: Accessor<THREE.Vector2 | undefined>;
   pointerDownCount: Accessor<number>;
   selectedColour: Accessor<string | undefined>;
-  coordinates: Accessor<Coordinates>;
+  coordinates: Accessor<Origins>;
   store: StackerStore;
   doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
   pushUndo: (reverseCommand: Command, description: string) => void;

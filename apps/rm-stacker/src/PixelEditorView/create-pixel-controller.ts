@@ -12,9 +12,9 @@ import {
 import * as THREE from "three";
 import { Command } from "../Command";
 import { OPPOSING_SIDE } from "../constants";
-import { StackerContext } from "../stacker-context";
 import { Vector2D } from "../maths";
-import { Coordinates, ModeKind, RGBA, SideKind } from "../types";
+import { StackerContext } from "../stacker-context";
+import { ModeKind, Origins, RGBA, SideKind } from "../types";
 import { findCollidingSide, findColour } from "../utils";
 import { createEdgeController } from "./create-edge-controller";
 
@@ -32,7 +32,7 @@ export const createPixelEditorController = ({
   mode,
   selectedColour,
   setSelectedColour,
-  coordinates,
+  coordinates: origins,
   pushUndo,
   doCommand,
 }: {
@@ -40,7 +40,7 @@ export const createPixelEditorController = ({
   mode: Accessor<ModeKind>;
   selectedColour: Accessor<RGBA | undefined>;
   setSelectedColour: Setter<RGBA>;
-  coordinates: Accessor<Coordinates>;
+  coordinates: Accessor<Origins>;
   pushUndo: (reverseCommand: Command, description: string) => void;
   doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
 }) => {
@@ -121,16 +121,16 @@ export const createPixelEditorController = ({
       const result = findCollidingSide({
         position,
         sides: store.sides,
-        coordinates: coordinates(),
+        origins: origins(),
       });
 
       if (!result) {
         return;
       }
 
-      const { coordinate, side, kind } = result;
-      const localX = position.x - coordinate.x;
-      const localY = position.y - coordinate.y;
+      const { origin, side, kind } = result;
+      const localX = position.x - origin.x;
+      const localY = position.y - origin.y;
       const oppositePixel = getOppositePixel(kind, { x: localX, y: localY }, side);
       const oppositeKind = OPPOSING_SIDE[kind];
       const oppositeSide = store.sides[oppositeKind];
@@ -140,7 +140,7 @@ export const createPixelEditorController = ({
             ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
           ],
       );
-      const oppositeOffset = coordinates()[oppositeKind];
+      const oppositeOffset = origins()[oppositeKind];
 
       let commands: Command[] = [];
 
@@ -257,7 +257,7 @@ export const createPixelEditorController = ({
         case "Eyedrop": {
           const position = roundedMouseWorldPos();
           if (position) {
-            const colour = findColour({ position, sides: store.sides, coordinates: coordinates() });
+            const colour = findColour({ position, sides: store.sides, origins: origins() });
 
             if (colour) {
               setSelectedColour(colour);

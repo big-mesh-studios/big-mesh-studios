@@ -1,9 +1,9 @@
 import { Setter } from "@solidjs/signals";
 import { Accessor, createSignal, useContext } from "solid-js";
 import { SIDE_AXES } from "../constants";
-import { StackerContext } from "../stacker-context";
-import { computeCoordinates } from "../stacker-store";
 import { Dimensions3D, Vector2D } from "../maths";
+import { StackerContext } from "../stacker-context";
+import { computeOrigins } from "../stacker-store";
 import type { Alignment3D, DimensionEnd, SideKind, Sides } from "../types";
 import { findCollidingSide } from "../utils";
 
@@ -64,7 +64,7 @@ const getEdgePosition = (
   dimensions: Dimensions3D,
 ): number => {
   const axis = EDGE_TO_AXIS[edgeKind];
-  const origin = computeCoordinates(dimensions)[sideKind][axis];
+  const origin = computeOrigins(dimensions)[sideKind][axis];
   return edgeKind === "left" || edgeKind === "top"
     ? origin
     : origin + dimensions[SIDE_AXES[sideKind][axis].dimension];
@@ -103,14 +103,14 @@ export function createEdgeController({
     const collidingSide = findCollidingSide({
       position,
       sides: store.sides,
-      coordinates: coordinates(),
+      origins: coordinates(),
     });
 
     if (!collidingSide) {
       return false;
     }
 
-    const { coordinate, side, kind } = collidingSide;
+    const { origin: coordinate, side, kind } = collidingSide;
 
     const distances = {
       left: Math.abs(coordinate.x - position.x),

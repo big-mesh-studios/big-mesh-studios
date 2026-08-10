@@ -1,6 +1,6 @@
 import { SIDE_MASK } from "./constants";
 import { Vector2D } from "./maths";
-import { Coordinates, RGBA, Sides } from "./types";
+import { Origins, RGBA, Sides } from "./types";
 
 export function tryCatch<T, U>(fn: () => T, onError: (error: unknown) => U) {
   try {
@@ -83,18 +83,18 @@ export function sideMaskToRGBA(mask: number, intensity = 1) {
 }
 
 export function findCollidingSide({
-  coordinates,
+  origins,
   position,
   sides,
 }: {
-  coordinates: Coordinates;
+  origins: Origins;
   position: Vector2D;
   sides: Sides;
 }) {
   for (const kind of keysOf(sides)) {
-    const coordinate = coordinates[kind];
+    const origin = origins[kind];
     const side = sides[kind];
-    const relativePosition = Vector2D.sub(position, coordinate);
+    const relativePosition = Vector2D.sub(position, origin);
 
     if (
       relativePosition.x >= 0 &&
@@ -102,7 +102,7 @@ export function findCollidingSide({
       relativePosition.x < side.width &&
       relativePosition.y < side.height
     ) {
-      return { side, coordinate, kind, relativePosition };
+      return { side, origin, kind, relativePosition };
     }
   }
 }
@@ -130,21 +130,21 @@ export function getColourFromOffset({ side, offset }: { side: ImageData; offset:
 }
 
 export function findColour({
-  coordinates,
+  origins,
   position,
   sides,
 }: {
   position: Vector2D;
   sides: Sides;
-  coordinates: Coordinates;
+  origins: Origins;
 }) {
-  const result = findCollidingSide({ position, sides, coordinates });
+  const result = findCollidingSide({ position, sides, origins });
 
   if (!result) {
     return false;
   }
 
-  const { coordinate: origin, side } = result;
+  const { origin, side } = result;
 
   const offset = getOffset({ side, origin, position: position });
 

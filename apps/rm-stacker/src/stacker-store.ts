@@ -3,7 +3,7 @@ import { Command } from "./Command";
 import { load, save, saveToIndexedDB } from "./load-save";
 import { Dimensions3D, Vector2D } from "./maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
-import type { Coordinates, Dimensions2D, Sides } from "./types";
+import type { Dimensions2D, Origins, Sides } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import {
   areRGBAsEqual,
@@ -24,7 +24,7 @@ const PADDING = 6;
  * horizontal band around the front panel, with top and bottom above and below
  * it. Pure in its dimensions so a resize can ask where a panel would end up.
  */
-export const computeCoordinates = ({ width, height, depth }: Dimensions3D): Coordinates => ({
+export const computeOrigins = ({ width, height, depth }: Dimensions3D): Origins => ({
   front: { x: 0, y: 0 },
   left: { x: -(depth + PADDING), y: 0 },
   right: { x: width + PADDING, y: 0 },
@@ -90,7 +90,7 @@ export function createStacker() {
     solveVoxels({ sides: sides(), dimensions: dimensions() }),
   );
 
-  const coordinates = createMemo(() => computeCoordinates(dimensions()));
+  const origins = createMemo(() => computeOrigins(dimensions()));
 
   const store = {
     get dimensions() {
@@ -165,7 +165,7 @@ export function createStacker() {
           const result = findCollidingSide({
             position: effect,
             sides: store.sides,
-            coordinates: coordinates(),
+            origins: origins(),
           });
 
           if (!result) {
@@ -173,14 +173,14 @@ export function createStacker() {
           }
 
           const { x, y, colour } = effect;
-          const { coordinate: origin, side } = result;
+          const { origin, side } = result;
           const { r, g, b, a } = colour;
 
           const offset = getOffset({ side, origin, position: { x, y } });
           const oldColour = findColour({
             position: { x, y },
             sides: store.sides,
-            coordinates: coordinates(),
+            origins: origins(),
           });
 
           if (!oldColour || areRGBAsEqual(colour, oldColour)) {
@@ -256,7 +256,7 @@ export function createStacker() {
           const result = findCollidingSide({
             position: effect,
             sides: store.sides,
-            coordinates: coordinates(),
+            origins: origins(),
           });
 
           if (!result) {
@@ -264,10 +264,10 @@ export function createStacker() {
           }
 
           const { x, y, colour } = effect;
-          const { coordinate, side } = result;
+          const { origin, side } = result;
 
-          const localX = x - coordinate.x;
-          const localY = y - coordinate.y;
+          const localX = x - origin.x;
+          const localY = y - origin.y;
           const offset = (localY * side.width + localX) << 2;
           const oldColour = getColourFromOffset({ side, offset });
 
@@ -288,16 +288,16 @@ export function createStacker() {
           const result = findCollidingSide({
             position: effect,
             sides: store.sides,
-            coordinates: coordinates(),
+            origins: origins(),
           });
           if (!result) {
             return Command.noOperation();
           }
 
-          const { coordinate, side } = result;
+          const { origin, side } = result;
 
-          const localX = x - coordinate.x;
-          const localY = y - coordinate.y;
+          const localX = x - origin.x;
+          const localY = y - origin.y;
           const offset = (localY * side.width + localX) << 2;
           if (side.data[offset + 3] === 0) {
             return Command.noOperation();
@@ -373,7 +373,7 @@ export function createStacker() {
     store,
     undoRedoManager,
     updateVoxels,
-    coordinates,
+    coordinates: origins,
     setSides,
     /**
      * Re-frames the model to new dimensions, carrying the drawing over rather
