@@ -3,7 +3,7 @@ import { Accessor, createSignal, useContext } from "solid-js";
 import { SIDE_AXES } from "../constants";
 import { Dimensions3D, Vector2D } from "../maths";
 import { StackerContext } from "../stacker-context";
-import { computeOrigins } from "../stacker-store";
+import { computeSidePositions } from "../stacker-store";
 import { Alignment3D, DimensionEnd, SideKind, Sides } from "../types";
 import { intersectSides } from "../utils";
 
@@ -64,10 +64,10 @@ const getEdgePosition = (
   dimensions: Dimensions3D,
 ): number => {
   const axis = EDGE_TO_AXIS[edgeKind];
-  const origin = computeOrigins(dimensions)[sideKind][axis];
+  const sidePosition = computeSidePositions(dimensions)[sideKind][axis];
   return edgeKind === "left" || edgeKind === "top"
-    ? origin
-    : origin + dimensions[SIDE_AXES[sideKind][axis].dimension];
+    ? sidePosition
+    : sidePosition + dimensions[SIDE_AXES[sideKind][axis].dimension];
 };
 
 export function createEdgeController({
@@ -83,7 +83,7 @@ export function createEdgeController({
   setCursorStyle: Setter<string | undefined>;
   setPan: Setter<Vector2D>;
 }) {
-  const { store, resize, coordinates, pushUndo, snapshot } = useContext(StackerContext);
+  const { store, resize, sidePositions, pushUndo, snapshot } = useContext(StackerContext);
   const [activeEdge, setActiveEdge] = createSignal<{
     edge: ActiveSideEdge;
     initialPosition: Vector2D;
@@ -103,14 +103,14 @@ export function createEdgeController({
     const collidingSide = intersectSides({
       position,
       sides: store.sides,
-      origins: coordinates(),
+      sidePositions: sidePositions(),
     });
 
     if (!collidingSide) {
       return false;
     }
 
-    const { origin: coordinate, side, kind } = collidingSide;
+    const { sidePosition: coordinate, side, kind } = collidingSide;
 
     const distances = {
       left: Math.abs(coordinate.x - position.x),

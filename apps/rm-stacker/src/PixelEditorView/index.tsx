@@ -26,7 +26,7 @@ const PixelEditorView: Component = () => {
     doCommand,
     pushUndo,
     updateVoxels,
-    coordinates,
+    sidePositions,
     onRender,
   } = useContext(StackerContext);
   const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
@@ -40,7 +40,7 @@ const PixelEditorView: Component = () => {
 
   const controller = createPixelEditorController({
     canvas,
-    coordinates,
+    sidePositions: sidePositions,
     doCommand,
     mode,
     pushUndo,
@@ -171,7 +171,7 @@ const PixelEditorView: Component = () => {
 
       for (const sideKind of keysOf(store.sides)) {
         const side = store.sides[sideKind];
-        const coordinate = coordinates()[sideKind];
+        const coordinate = sidePositions()[sideKind];
 
         const imageCanvasCacheData =
           imageCanvasCache.get(side) ?? createImageCanvasCacheEntry(side);

@@ -3,7 +3,7 @@ import { Command } from "./Command";
 import { load, save, saveToIndexedDB } from "./load-save";
 import { Dimensions3D, Vector2D } from "./maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
-import type { Dimensions2D, Origins, Sides } from "./types";
+import type { Dimensions2D, SidePositions, Sides } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { areRGBAsEqual, createEnqueue, intersectSide, intersectSides } from "./utils";
 import { solveVoxels } from "./voxel-solver";
@@ -17,7 +17,7 @@ const PADDING = 6;
  * horizontal band around the front panel, with top and bottom above and below
  * it. Pure in its dimensions so a resize can ask where a panel would end up.
  */
-export const computeOrigins = ({ width, height, depth }: Dimensions3D): Origins => ({
+export const computeSidePositions = ({ width, height, depth }: Dimensions3D): SidePositions => ({
   front: { x: 0, y: 0 },
   left: { x: -(depth + PADDING), y: 0 },
   right: { x: width + PADDING, y: 0 },
@@ -83,7 +83,7 @@ export function createStacker() {
     solveVoxels({ sides: sides(), dimensions: dimensions() }),
   );
 
-  const origins = createMemo(() => computeOrigins(dimensions()));
+  const sidePositions = createMemo(() => computeSidePositions(dimensions()));
 
   const store = {
     get dimensions() {
@@ -160,7 +160,7 @@ export function createStacker() {
           const intersection = intersectSides({
             position: effect.position,
             sides: store.sides,
-            origins: origins(),
+            sidePositions: sidePositions(),
           });
 
           if (!intersection) {
@@ -168,7 +168,7 @@ export function createStacker() {
           }
 
           const { position, colour } = effect;
-          const { origin, side, colour: oldColour, offset } = intersection;
+          const { sidePosition: sidePosition, side, colour: oldColour, offset } = intersection;
 
           if (!oldColour || areRGBAsEqual(colour, oldColour)) {
             return Command.noOperation();
@@ -216,7 +216,7 @@ export function createStacker() {
 
             for (const neighbor of neighbors) {
               const intersection = intersectSide({
-                origin,
+                sidePosition,
                 position: neighbor,
                 side,
               });
@@ -246,7 +246,7 @@ export function createStacker() {
           const intersection = intersectSides({
             position: effect.position,
             sides: store.sides,
-            origins: origins(),
+            sidePositions: sidePositions(),
           });
 
           if (!intersection) {
@@ -273,7 +273,7 @@ export function createStacker() {
           const intersection = intersectSides({
             position,
             sides: store.sides,
-            origins: origins(),
+            sidePositions: sidePositions(),
           });
 
           if (!intersection) {
@@ -355,7 +355,7 @@ export function createStacker() {
     store,
     undoRedoManager,
     updateVoxels,
-    coordinates: origins,
+    sidePositions: sidePositions,
     setSides,
     /**
      * Re-frames the model to new dimensions, carrying the drawing over rather

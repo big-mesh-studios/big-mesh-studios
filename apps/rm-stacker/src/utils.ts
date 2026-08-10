@@ -1,6 +1,6 @@
 import { SIDE_MASK } from "./constants";
 import { Vector2D } from "./maths";
-import { Origins, RGBA, Sides } from "./types";
+import { RGBA, SidePositions, Sides } from "./types";
 
 /**********************************************************************************/
 /*                                      Misc                                      */
@@ -114,15 +114,15 @@ function getColourFromOffset(side: ImageData, offset: number): RGBA {
 }
 
 export function intersectSide({
-  origin,
+  sidePosition,
   position,
   side,
 }: {
-  origin: Vector2D;
+  sidePosition: Vector2D;
   position: Vector2D;
   side: ImageData;
 }) {
-  const relativePosition = Vector2D.sub(position, origin);
+  const relativePosition = Vector2D.sub(position, sidePosition);
   if (
     relativePosition.x >= 0 &&
     relativePosition.y >= 0 &&
@@ -133,7 +133,6 @@ export function intersectSide({
     const colour = getColourFromOffset(side, offset);
 
     return {
-      origin,
       relativePosition,
       side,
       offset,
@@ -143,18 +142,18 @@ export function intersectSide({
 }
 
 export function intersectSides({
-  origins,
+  sidePositions,
   position,
   sides,
 }: {
-  origins: Origins;
+  sidePositions: SidePositions;
   position: Vector2D;
   sides: Sides;
 }) {
   for (const kind of keysOf(sides)) {
-    const origin = origins[kind];
+    const sidePosition = sidePositions[kind];
     const side = sides[kind];
-    const relativePosition = Vector2D.sub(position, origin);
+    const relativePosition = Vector2D.sub(position, sidePosition);
 
     if (
       relativePosition.x >= 0 &&
@@ -167,7 +166,7 @@ export function intersectSides({
 
       return {
         kind,
-        origin,
+        sidePosition,
         relativePosition,
         side,
         offset,

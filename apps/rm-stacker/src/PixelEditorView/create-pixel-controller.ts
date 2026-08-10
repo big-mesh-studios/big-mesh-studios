@@ -14,7 +14,7 @@ import { Command } from "../Command";
 import { OPPOSING_SIDE } from "../constants";
 import { Vector2D } from "../maths";
 import { StackerContext } from "../stacker-context";
-import { ModeKind, Origins, RGBA, SideKind } from "../types";
+import { ModeKind, RGBA, SideKind, SidePositions } from "../types";
 import { intersectSides } from "../utils";
 import { createEdgeController } from "./create-edge-controller";
 
@@ -32,7 +32,7 @@ export const createPixelEditorController = ({
   mode,
   selectedColour,
   setSelectedColour,
-  coordinates: origins,
+  sidePositions,
   pushUndo,
   doCommand,
 }: {
@@ -40,7 +40,7 @@ export const createPixelEditorController = ({
   mode: Accessor<ModeKind>;
   selectedColour: Accessor<RGBA | undefined>;
   setSelectedColour: Setter<RGBA>;
-  coordinates: Accessor<Origins>;
+  sidePositions: Accessor<SidePositions>;
   pushUndo: (reverseCommand: Command, description: string) => void;
   doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
 }) => {
@@ -121,7 +121,7 @@ export const createPixelEditorController = ({
       const intersection = intersectSides({
         position,
         sides: store.sides,
-        origins: origins(),
+        sidePositions: sidePositions(),
       });
 
       if (!intersection) {
@@ -139,7 +139,7 @@ export const createPixelEditorController = ({
             ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
           ],
       );
-      const oppositeOffset = origins()[oppositeKind];
+      const oppositeOffset = sidePositions()[oppositeKind];
 
       const commands: Command[] = [];
 
@@ -254,7 +254,7 @@ export const createPixelEditorController = ({
           }
 
           const intersection = intersectSides({
-            origins: origins(),
+            sidePositions: sidePositions(),
             sides: store.sides,
             position,
           });
