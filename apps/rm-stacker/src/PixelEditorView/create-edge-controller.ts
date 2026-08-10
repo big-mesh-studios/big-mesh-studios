@@ -100,23 +100,23 @@ export function createEdgeController({
       return false;
     }
 
-    const collidingSide = intersectSides({
+    const intersection = intersectSides({
       position,
       sides: store.sides,
       sidePositions: sidePositions(),
     });
 
-    if (!collidingSide) {
+    if (!intersection) {
       return false;
     }
 
-    const { sidePosition: coordinate, side, kind } = collidingSide;
+    const { sidePosition, side, kind } = intersection;
 
     const distances = {
-      left: Math.abs(coordinate.x - position.x),
-      right: Math.abs(coordinate.x + side.width - position.x),
-      top: Math.abs(coordinate.y - position.y),
-      bottom: Math.abs(coordinate.y + side.height - position.y),
+      left: Math.abs(sidePosition.x - position.x),
+      right: Math.abs(sidePosition.x + side.width - position.x),
+      top: Math.abs(sidePosition.y - position.y),
+      bottom: Math.abs(sidePosition.y + side.height - position.y),
     };
 
     // On a panel that is narrower than the threshold both of an axis' edges are

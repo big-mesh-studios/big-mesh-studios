@@ -106,14 +106,14 @@ const PixelEditorView: Component = () => {
     ctx,
     side,
     guide,
-    coordinate,
+    sidePosition,
     kind,
     scale,
   }: {
     ctx: CanvasRenderingContext2D;
     side: ImageData;
     guide: Uint8Array;
-    coordinate: Vector2D;
+    sidePosition: Vector2D;
     kind: "inner" | "outer";
     scale: number;
   }) => {
@@ -136,7 +136,7 @@ const PixelEditorView: Component = () => {
           if (!alpha) {
             ctx.strokeStyle = sideMaskToRGBA(sideMask, 0.5);
             ctx.lineWidth = 2 / scale;
-            ctx.strokeRect(coordinate.x + gx, coordinate.y + gy, 1.0, 1.0);
+            ctx.strokeRect(sidePosition.x + gx, sidePosition.y + gy, 1.0, 1.0);
           }
         }
       }
@@ -171,7 +171,7 @@ const PixelEditorView: Component = () => {
 
       for (const sideKind of keysOf(store.sides)) {
         const side = store.sides[sideKind];
-        const coordinate = sidePositions()[sideKind];
+        const sidePosition = sidePositions()[sideKind];
 
         const imageCanvasCacheData =
           imageCanvasCache.get(side) ?? createImageCanvasCacheEntry(side);
@@ -179,31 +179,31 @@ const PixelEditorView: Component = () => {
 
         const lastImageSmoothingEnabled = ctx.imageSmoothingEnabled;
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(imageCanvasCacheData.canvas, coordinate.x, coordinate.y);
+        ctx.drawImage(imageCanvasCacheData.canvas, sidePosition.x, sidePosition.y);
         ctx.imageSmoothingEnabled = lastImageSmoothingEnabled;
 
         ctx.strokeStyle = `rgba(255, 255, 255, 0.3)`;
         ctx.lineWidth = 1 / _scale;
 
         if (_scale >= 5.0) {
-          const y1 = coordinate.y;
+          const y1 = sidePosition.y;
           const y2 = y1 + side.height;
 
           ctx.save();
           ctx.beginPath();
 
           for (let i = 0; i < side.width; ++i) {
-            const x = coordinate.x + i;
+            const x = sidePosition.x + i;
             ctx.moveTo(x, y1);
             ctx.lineTo(x, y2);
           }
 
-          const x1 = coordinate.x;
+          const x1 = sidePosition.x;
 
-          const x2 = coordinate.x + side.width;
+          const x2 = sidePosition.x + side.width;
 
           for (let i = 0; i < side.height; ++i) {
-            const y = coordinate.y + i;
+            const y = sidePosition.y + i;
             ctx.moveTo(x1, y);
             ctx.lineTo(x2, y);
           }
@@ -215,21 +215,21 @@ const PixelEditorView: Component = () => {
         const guide = guides[sideKind];
 
         if (guide !== undefined) {
-          renderGuide({ ctx, side, guide, coordinate, kind: "outer", scale: _scale });
-          renderGuide({ ctx, side, guide, coordinate, kind: "inner", scale: _scale });
+          renderGuide({ ctx, side, guide, sidePosition, kind: "outer", scale: _scale });
+          renderGuide({ ctx, side, guide, sidePosition, kind: "inner", scale: _scale });
         }
 
         ctx.lineWidth = 4 / _scale;
         ctx.strokeStyle = sideMaskToRGBA(SIDE_MASK[sideKind]);
-        ctx.strokeRect(coordinate.x, coordinate.y, side.width, side.height);
+        ctx.strokeRect(sidePosition.x, sidePosition.y, side.width, side.height);
 
         ctx.font = "5px sans-serif";
         ctx.fillStyle = "grey";
         const metrics = ctx.measureText(sideKind);
         ctx.fillText(
           sideKind,
-          coordinate.x + 0.5 * (side.width - metrics.width),
-          coordinate.y + side.height + metrics.actualBoundingBoxAscent + 1.0,
+          sidePosition.x + 0.5 * (side.width - metrics.width),
+          sidePosition.y + side.height + metrics.actualBoundingBoxAscent + 1.0,
         );
       }
 
