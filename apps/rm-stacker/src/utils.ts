@@ -2,6 +2,10 @@ import { SIDE_MASK } from "./constants";
 import { Vector2D } from "./maths";
 import { Origins, RGBA, Sides } from "./types";
 
+/**********************************************************************************/
+/*                                      Misc                                      */
+/**********************************************************************************/
+
 export function tryCatch<T, U>(fn: () => T, onError: (error: unknown) => U) {
   try {
     return fn();
@@ -23,6 +27,10 @@ export function createEnqueue<T>() {
   };
 }
 
+/**********************************************************************************/
+/*                                    Convert                                     */
+/**********************************************************************************/
+
 export function byteTo2DigitHex(byte: number): string {
   let hex = byte.toString(16);
   if (hex.length === 1) {
@@ -33,17 +41,17 @@ export function byteTo2DigitHex(byte: number): string {
 
 export function uint8ArrayToBase64(bytes: Uint8Array): string {
   var binary = "";
-  var len = bytes.byteLength;
-  for (var i = 0; i < len; i++) {
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
   return window.btoa(binary);
 }
 
 export function base64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
-  var binary = atob(base64);
-  var bytes = new Uint8Array(binary.length);
-  for (var i = 0; i < binary.length; i++) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes;
@@ -70,6 +78,10 @@ export function hexToRgba(hex: string, alpha = 1): RGBA {
 
   return rgba;
 }
+
+/**********************************************************************************/
+/*                                      RGBA                                      */
+/**********************************************************************************/
 
 export function areRGBAsEqual(a: RGBA, b: RGBA) {
   return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;

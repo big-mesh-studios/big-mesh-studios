@@ -4,7 +4,7 @@ import { SIDE_AXES } from "../constants";
 import { Dimensions3D, Vector2D } from "../maths";
 import { StackerContext } from "../stacker-context";
 import { computeOrigins } from "../stacker-store";
-import type { Alignment3D, DimensionEnd, SideKind, Sides } from "../types";
+import { Alignment3D, DimensionEnd, SideKind, Sides } from "../types";
 import { intersectSides } from "../utils";
 
 type EdgeKind = "top" | "bottom" | "left" | "right";
@@ -71,16 +71,16 @@ const getEdgePosition = (
 };
 
 export function createEdgeController({
-  mouseWorldPos,
+  mouseWorldPosition,
   pan,
   scale,
-  setCursor,
+  setCursorStyle,
   setPan,
 }: {
-  mouseWorldPos: Accessor<Vector2D | undefined>;
+  mouseWorldPosition: Accessor<Vector2D | undefined>;
   pan: Accessor<Vector2D>;
   scale: Accessor<number>;
-  setCursor: Setter<string | undefined>;
+  setCursorStyle: Setter<string | undefined>;
   setPan: Setter<Vector2D>;
 }) {
   const { store, resize, coordinates, pushUndo, snapshot } = useContext(StackerContext);
@@ -94,7 +94,7 @@ export function createEdgeController({
 
   const EDGE_TRESHOLD = 10;
   const findColidingEdge = (): ActiveSideEdge | false => {
-    const position = mouseWorldPos();
+    const position = mouseWorldPosition();
 
     if (!position) {
       return false;
@@ -148,16 +148,16 @@ export function createEdgeController({
       const e = collidingEdge.edgeKinds.includes("left");
       const w = collidingEdge.edgeKinds.includes("right");
       if ((n && e) || (s && w)) {
-        setCursor("nesw-resize");
+        setCursorStyle("nesw-resize");
       } else if ((n && w) || (s && e)) {
-        setCursor("nwse-resize");
+        setCursorStyle("nwse-resize");
       } else if (n || s) {
-        setCursor("row-resize");
+        setCursorStyle("row-resize");
       } else if (e || w) {
-        setCursor("col-resize");
+        setCursorStyle("col-resize");
       }
     } else {
-      setCursor(undefined);
+      setCursorStyle(undefined);
     }
   }
 
@@ -180,7 +180,7 @@ export function createEdgeController({
       setActiveEdge(undefined);
     },
     onPointerDown(event: PointerEvent) {
-      const _mouseWorldPos = mouseWorldPos();
+      const _mouseWorldPos = mouseWorldPosition();
 
       if (!_mouseWorldPos) {
         return false;

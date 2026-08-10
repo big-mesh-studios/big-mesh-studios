@@ -149,9 +149,11 @@ export function createStacker() {
         case "Sequence": {
           let commands = effect.commands;
           let reverseCommands = Array(commands.length);
+
           for (let i = 0; i < commands.length; ++i) {
             reverseCommands[reverseCommands.length - 1 - i] = await doCommand(commands[i]);
           }
+
           return Command.sequence(reverseCommands);
         }
         case "FillPixel": {
@@ -269,7 +271,7 @@ export function createStacker() {
           const { position } = effect;
 
           const intersection = intersectSides({
-            position: effect.position,
+            position,
             sides: store.sides,
             origins: origins(),
           });
