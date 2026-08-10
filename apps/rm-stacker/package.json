@@ -8,12 +8,14 @@
     "build": "vite build",
     "serve": "vite preview",
     "test": "vitest run",
+    "generate:icon-kinds": "node scripts/generate-icon-kinds.ts",
     "check-types": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^26.2.0",
     "@types/three": "^0.183.1",
     "esbuild": "^0.28.1",
     "fast-png": "^8.0.0",
