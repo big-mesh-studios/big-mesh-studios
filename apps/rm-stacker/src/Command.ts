@@ -1,3 +1,4 @@
+import { Vector2D } from "./maths";
 import { RGBA } from "./types";
 import { base64ToUint8Array, uint8ArrayToBase64 } from "./utils";
 
@@ -11,20 +12,17 @@ export type Command =
     }
   | {
       type: "WritePixel";
-      x: number;
-      y: number;
+      position: Vector2D;
       colour: RGBA;
     }
   | {
       type: "FillPixel";
-      x: number;
-      y: number;
+      position: Vector2D;
       colour: RGBA;
     }
   | {
       type: "ErasePixel";
-      x: number;
-      y: number;
+      position: Vector2D;
     }
   | {
       type: "LoadData";
@@ -44,16 +42,16 @@ export namespace Command {
     return { type: "Sequence", commands };
   }
 
-  export function writePixel(x: number, y: number, colour: RGBA): Command {
-    return { type: "WritePixel", x, y, colour };
+  export function writePixel(position: Vector2D, colour: RGBA): Command {
+    return { type: "WritePixel", position, colour };
   }
 
-  export function fillPixel(x: number, y: number, colour: RGBA): Command {
-    return { type: "FillPixel", x, y, colour };
+  export function fillPixel(position: Vector2D, colour: RGBA): Command {
+    return { type: "FillPixel", position, colour };
   }
 
-  export function erasePixel(x: number, y: number): Command {
-    return { type: "ErasePixel", x, y };
+  export function erasePixel(position: Vector2D): Command {
+    return { type: "ErasePixel", position };
   }
 
   export function loadData(data: Blob): Command {
@@ -80,10 +78,10 @@ export namespace Command {
       }
       case "WritePixel": {
         let colour = command.colour;
-        return { type: "WritePixel", x: command.x, y: command.y, colour };
+        return { type: "WritePixel", x: command.position.x, y: command.position.y, colour };
       }
       case "ErasePixel": {
-        return command;
+        return { type: "ErasePixel", x: command.position.x, y: command.position.y };
       }
       case "LoadData": {
         let data = await command.data.arrayBuffer();
@@ -108,10 +106,10 @@ export namespace Command {
       case "Sequence":
         return Command.sequence(command.commands.map((c: any) => Command.fromJSON(c)));
       case "WritePixel": {
-        return Command.writePixel(command.x, command.y, command.colour);
+        return Command.writePixel({ x: command.x, y: command.y }, command.colour);
       }
       case "ErasePixel": {
-        return Command.erasePixel(command.x, command.y);
+        return Command.erasePixel({ x: command.x, y: command.y });
       }
       case "LoadData": {
         let data = command.data;

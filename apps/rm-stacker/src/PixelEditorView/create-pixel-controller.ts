@@ -145,28 +145,19 @@ export const createPixelEditorController = ({
 
       switch (mode()) {
         case "Erase": {
-          commands.push(Command.erasePixel(position.x, position.y));
+          commands.push(Command.erasePixel(position));
           if (oppositeOpacity) {
-            commands.push(
-              Command.erasePixel(
-                oppositeOffset.x + oppositePixel.x,
-                oppositeOffset.y + oppositePixel.y,
-              ),
-            );
+            commands.push(Command.erasePixel(Vector2D.add(oppositeOffset, oppositePixel)));
           }
           break;
         }
         case "Draw": {
           const _selectedColour = selectedColour();
           if (_selectedColour !== undefined) {
-            commands.push(Command.writePixel(position.x, position.y, _selectedColour));
+            commands.push(Command.writePixel(position, _selectedColour));
             if (!oppositeOpacity) {
               commands.push(
-                Command.writePixel(
-                  oppositeOffset.x + oppositePixel.x,
-                  oppositeOffset.y + oppositePixel.y,
-                  _selectedColour,
-                ),
+                Command.writePixel(Vector2D.add(oppositeOffset, oppositePixel), _selectedColour),
               );
             }
           }
@@ -175,14 +166,10 @@ export const createPixelEditorController = ({
         case "Fill": {
           const _selectedColour = selectedColour();
           if (_selectedColour !== undefined) {
-            commands.push(Command.fillPixel(position.x, position.y, _selectedColour));
+            commands.push(Command.fillPixel(position, _selectedColour));
             if (!oppositeOpacity) {
               commands.push(
-                Command.fillPixel(
-                  oppositeOffset.x + oppositePixel.x,
-                  oppositeOffset.y + oppositePixel.y,
-                  _selectedColour,
-                ),
+                Command.fillPixel(Vector2D.add(oppositeOffset, oppositePixel), _selectedColour),
               );
             }
           }

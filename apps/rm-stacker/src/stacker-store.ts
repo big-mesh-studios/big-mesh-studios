@@ -156,7 +156,7 @@ export function createStacker() {
         }
         case "FillPixel": {
           const intersection = intersectSides({
-            position: effect,
+            position: effect.position,
             sides: store.sides,
             origins: origins(),
           });
@@ -165,7 +165,7 @@ export function createStacker() {
             return Command.noOperation();
           }
 
-          const { x, y, colour } = effect;
+          const { position, colour } = effect;
           const { origin, side, colour: oldColour, offset } = intersection;
 
           if (!oldColour || areRGBAsEqual(colour, oldColour)) {
@@ -178,8 +178,8 @@ export function createStacker() {
           side.data[offset + 3] = colour.a;
 
           const stack: number[] = [];
-          stack.push(y);
-          stack.push(x);
+          stack.push(position.y);
+          stack.push(position.x);
 
           const undo = snapshot();
 
@@ -242,7 +242,7 @@ export function createStacker() {
         }
         case "WritePixel": {
           const intersection = intersectSides({
-            position: effect,
+            position: effect.position,
             sides: store.sides,
             origins: origins(),
           });
@@ -251,7 +251,7 @@ export function createStacker() {
             return Command.noOperation();
           }
 
-          const { x, y, colour } = effect;
+          const { position, colour } = effect;
           const { side, colour: oldColour, offset } = intersection;
 
           side.data[offset + 0] = colour.r;
@@ -260,16 +260,16 @@ export function createStacker() {
           side.data[offset + 3] = 255;
 
           if (oldColour.a) {
-            return Command.writePixel(x, y, oldColour);
+            return Command.writePixel(position, oldColour);
           } else {
-            return Command.erasePixel(x, y);
+            return Command.erasePixel(position);
           }
         }
         case "ErasePixel": {
-          const { x, y } = effect;
+          const { position } = effect;
 
           const intersection = intersectSides({
-            position: effect,
+            position: effect.position,
             sides: store.sides,
             origins: origins(),
           });
@@ -289,7 +289,7 @@ export function createStacker() {
           side.data[offset + 2] = 0;
           side.data[offset + 3] = 0;
 
-          return Command.writePixel(x, y, intersection.colour);
+          return Command.writePixel(position, intersection.colour);
         }
         case "LoadData": {
           let undoCommand = snapshot();
