@@ -8,9 +8,9 @@ import {
   useContext,
 } from "solid-js";
 import { Dimensions3D } from "./maths";
+import shaders from "./shaders";
 import { StackerContext } from "./stacker-context";
 import { tryCatch } from "./utils";
-import shaders from "./shaders";
 
 type WebGLState = {
   gl: WebGL2RenderingContext;
@@ -210,6 +210,7 @@ const VoxelPreviewView: Component = () => {
       const dpr = window.devicePixelRatio || 1;
       _canvas.width = Math.max(1, Math.round(rect.width * dpr));
       _canvas.height = Math.max(1, Math.round(rect.height * dpr));
+      render();
     });
     resizeObserver.observe(_canvas);
 
