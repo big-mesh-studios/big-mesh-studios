@@ -1,8 +1,8 @@
 import { Component, createEffect, createMemo, createRoot, For } from "solid-js";
-import { Tab } from "./components";
+import { ColourTab } from "./components";
 import styles from "./Palette.module.css";
 import { RGBA } from "./types";
-import { areRGBAsEqual, rgbaToCSS } from "./utils";
+import { areRGBAsEqual } from "./utils";
 
 const Palette: Component<{
   palette: Array<RGBA>;
@@ -19,7 +19,7 @@ const Palette: Component<{
           );
 
           return (
-            <Tab
+            <ColourTab
               ref={element =>
                 createRoot(() => {
                   createEffect(isActive, active => {
@@ -39,16 +39,8 @@ const Palette: Component<{
               onClick={() => {
                 props.onSelect(colour);
               }}
-            >
-              <div
-                style={{
-                  "background-color": rgbaToCSS(colour),
-                }}
-                onClick={() => {
-                  props.onSelect(colour);
-                }}
-              />
-            </Tab>
+              colour={colour}
+            />
           );
         }}
       </For>

@@ -2,6 +2,8 @@ import type { JSX } from "@solidjs/web/jsx-runtime";
 import { createRoot, omit, onSettled, ParentProps, Ref, Show } from "solid-js";
 import styles from "./components.module.css";
 import type { IconKind } from "./icon-kinds";
+import { RGBA } from "./types";
+import { rgbaToCSS } from "./utils";
 
 interface ButtonProps extends ParentProps {
   onClick?: JSX.EventHandler<HTMLButtonElement, MouseEvent>;
@@ -35,6 +37,23 @@ export function Tab(props: TabProps) {
   );
 }
 
+export function ColourTab(props: TabProps & { colour: RGBA }) {
+  return (
+    <Tab
+      selected={props.selected}
+      disabled={props.disabled}
+      class={[styles.colour, props.class]}
+      onClick={props.onClick}
+    >
+      <div
+        style={{
+          "background-color": rgbaToCSS(props.colour),
+        }}
+      />
+    </Tab>
+  );
+}
+
 interface IconProps {
   kind: IconKind;
 }
@@ -47,6 +66,7 @@ export function IconTab(props: TabProps & IconProps) {
   return (
     <Tab
       ref={props.ref}
+      class={[styles.icon, props.class]}
       selected={props.selected}
       onClick={props.onClick}
       disabled={props.disabled}
@@ -64,7 +84,7 @@ export interface IconButtonProps extends ButtonProps, IconProps {
 export function IconButton(props: IconButtonProps) {
   const buttonProps = omit(props, "children", "class");
   return (
-    <Button class={[props.class, styles.iconButton]} {...buttonProps}>
+    <Button class={[props.class, styles.icon]} {...buttonProps}>
       <Icon kind={props.kind} />
       <Show when={props.label}>
         <span>{props.label}</span>

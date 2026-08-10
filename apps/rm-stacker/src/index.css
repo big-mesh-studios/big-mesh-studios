@@ -5,7 +5,7 @@
 
 html {
   --margin: 5px;
-  --size: 32px;
+  --size: 36px;
   --front: white;
   --back: var(--color-base-200);
   --grey: #707070;

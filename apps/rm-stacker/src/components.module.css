@@ -1,19 +1,51 @@
 .tab {
   padding: var(--margin);
   color: var(--grey);
+  box-sizing: border-box;
+  min-width: var(--size);
+  min-height: var(--size);
+  display: grid;
+  cursor: pointer;
 
   &[aria-selected="true"],
   &:hover {
     color: var(--front);
+  }
+
+  &.icon {
+    justify-content: center;
+    align-items: center;
+    gap: var(--margin);
   }
 }
 
 .button {
   padding: var(--margin);
   color: var(--front);
+  min-width: var(--size);
+  min-height: var(--size);
+  cursor: pointer;
 
   &:not(:hover)[disabled] {
     color: var(--grey);
+  }
+
+  &.icon {
+    --color: var(--light-grey);
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--margin);
+
+    &:hover {
+      --color: var(--front);
+    }
+
+    & > span {
+      padding-right: var(--margin);
+      color: var(--color);
+    }
   }
 }
 
@@ -31,24 +63,11 @@
 }
 
 .icon {
-  width: var(--size);
-  height: var(--size);
   align-content: center;
 }
 
-.iconButton {
-  --color: var(--light-grey);
-
-  display: flex;
-  align-items: center;
-  gap: var(--margin);
-
-  &:hover {
-    --color: var(--front);
-  }
-
-  & > span {
-    padding-right: var(--margin);
-    color: var(--color);
+.colour {
+  & > * {
+    border-radius: calc(var(--margin) / 2);
   }
 }

@@ -1,11 +1,3 @@
-.container {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  display: grid;
-}
-
 .side {
   display: grid;
   grid-template-rows: auto 1fr;
@@ -43,9 +35,4 @@
   display: grid;
   grid-template-rows: 1fr min;
   pointer-events: none;
-}
-.canvas {
-  width: 100%;
-  height: 100%;
-  touch-action: none;
 }
