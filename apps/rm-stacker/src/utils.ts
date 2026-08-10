@@ -87,7 +87,10 @@ export function sideMaskToRGBA(mask: number, intensity = 1) {
 /**********************************************************************************/
 
 function getOffset(side: ImageData, position: Vector2D) {
-  return (position.y * side.width + position.x) << 2;
+  // Round each axis down on its own. Rounding only the finished sum would let a
+  // fraction on the vertical axis, multiplied by the width, spill into the
+  // horizontal one and pick a pixel further along the same row.
+  return (Math.floor(position.y) * side.width + Math.floor(position.x)) << 2;
 }
 
 function getColourFromOffset(side: ImageData, offset: number): RGBA {

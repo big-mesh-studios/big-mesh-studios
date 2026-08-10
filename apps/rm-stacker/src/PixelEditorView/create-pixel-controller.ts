@@ -254,7 +254,7 @@ export const createPixelEditorController = ({
 
       switch (mode()) {
         case "Eyedrop": {
-          const position = roundedMouseWorldPos();
+          const position = mouseWorldPos();
           if (!position) {
             return;
           }
