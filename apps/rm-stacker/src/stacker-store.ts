@@ -1,8 +1,9 @@
 import { createEffect, createMemo, createSignal, flush, untrack } from "solid-js";
 import { Command } from "./Command";
 import { load, save, saveToIndexedDB } from "./load-save";
+import { Dimensions3D, Vector2D } from "./maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
-import type { Coordinates, Dimensions2D, Dimensions3D, Sides, Vector2D } from "./types";
+import type { Coordinates, Dimensions2D, Sides } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import {
   areRGBAsEqual,

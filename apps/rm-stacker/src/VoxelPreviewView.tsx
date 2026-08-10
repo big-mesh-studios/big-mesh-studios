@@ -23,8 +23,9 @@ import {
   onSettled,
   useContext,
 } from "solid-js";
+import { Dimensions3D } from "./maths";
 import { StackerContext } from "./stacker-context";
-import { normalizeDimensions, tryCatch } from "./utils";
+import { tryCatch } from "./utils";
 
 // Shared rmsl nodes. Created once so the generated slot names are the same in
 // both the vertex and fragment shaders.
@@ -379,7 +380,7 @@ const VoxelPreviewView: Component = () => {
   const [webgl, setWebgl] = createSignal<WebGLState>();
   const [glError, setGlError] = createSignal<string | undefined>();
 
-  const normalizedDimensions = createMemo(() => normalizeDimensions(store.dimensions));
+  const normalizedDimensions = createMemo(() => Dimensions3D.normalize(store.dimensions));
 
   const loadVoxelArrayToWebGL = () => {
     const dimensions = store.dimensions;

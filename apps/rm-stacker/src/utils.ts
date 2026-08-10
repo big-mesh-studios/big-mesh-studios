@@ -1,5 +1,6 @@
 import { SIDE_MASK } from "./constants";
-import { Coordinates, Dimensions3D, RGBA, Sides, Vector2D } from "./types";
+import { Vector2D } from "./maths";
+import { Coordinates, RGBA, Sides } from "./types";
 
 export function tryCatch<T, U>(fn: () => T, onError: (error: unknown) => U) {
   try {
@@ -74,22 +75,11 @@ export function areRGBAsEqual(a: RGBA, b: RGBA) {
   return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
 }
 
-export function areDimensions3DEqual(a: Dimensions3D, b: Dimensions3D) {
-  return a.width === b.width && a.height === b.height && a.depth === b.depth;
-}
-
 export function sideMaskToRGBA(mask: number, intensity = 1) {
   const r = SIDE_MASK.front & mask ? 255 * intensity : 0;
   const g = SIDE_MASK.left & mask ? 255 * intensity : 0;
   const b = SIDE_MASK.top & mask ? 255 * intensity : 0;
   return `rgba(${r}, ${g}, ${b}, 1)`;
-}
-
-export function findRelativePosition(position: { x: number; y: number }, coordinate: Vector2D) {
-  return {
-    x: position.x - coordinate.x,
-    y: position.y - coordinate.y,
-  };
 }
 
 export function findCollidingSide({
@@ -104,7 +94,7 @@ export function findCollidingSide({
   for (const kind of keysOf(sides)) {
     const coordinate = coordinates[kind];
     const side = sides[kind];
-    const relativePosition = findRelativePosition(position, coordinate);
+    const relativePosition = Vector2D.sub(position, coordinate);
 
     if (
       relativePosition.x >= 0 &&
@@ -126,10 +116,7 @@ export function getOffset({
   origin: Vector2D;
   position: Vector2D;
 }) {
-  const localPosition = {
-    x: position.x - origin.x,
-    y: position.y - origin.y,
-  };
+  const localPosition = Vector2D.sub(position, origin);
   const offset = (localPosition.y * side.width + localPosition.x) << 2;
   return offset;
 }
@@ -162,20 +149,4 @@ export function findColour({
   const offset = getOffset({ side, origin, position: position });
 
   return getColourFromOffset({ side, offset });
-}
-
-export function roundVector2D(vector: Vector2D) {
-  return {
-    x: Math.round(vector.x - 0.5),
-    y: Math.round(vector.y - 0.5),
-  };
-}
-
-export function normalizeDimensions(dimensions: Dimensions3D) {
-  const max = Math.max(dimensions.width, dimensions.height, dimensions.depth);
-  return {
-    width: dimensions.width / max,
-    height: dimensions.height / max,
-    depth: dimensions.depth / max,
-  };
 }

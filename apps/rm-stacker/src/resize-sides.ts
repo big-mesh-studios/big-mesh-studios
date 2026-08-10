@@ -1,5 +1,6 @@
 import { SIDE_AXES } from "./constants";
-import type { Alignment3D, Dimensions3D, SideAxis, SideKind, Sides } from "./types";
+import { Dimensions3D } from "./maths";
+import type { Alignment3D, SideAxis, SideKind, Sides } from "./types";
 
 export interface ResizeOptions {
   from: {

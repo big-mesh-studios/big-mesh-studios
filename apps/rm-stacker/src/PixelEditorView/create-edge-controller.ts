@@ -3,8 +3,9 @@ import { Accessor, createSignal, useContext } from "solid-js";
 import { SIDE_AXES } from "../constants";
 import { StackerContext } from "../stacker-context";
 import { computeCoordinates } from "../stacker-store";
-import type { Alignment3D, DimensionEnd, Dimensions3D, SideKind, Sides, Vector2D } from "../types";
-import { areDimensions3DEqual, findCollidingSide } from "../utils";
+import { Dimensions3D, Vector2D } from "../maths";
+import type { Alignment3D, DimensionEnd, SideKind, Sides } from "../types";
+import { findCollidingSide } from "../utils";
 
 type EdgeKind = "top" | "bottom" | "left" | "right";
 
@@ -241,7 +242,7 @@ export function createEdgeController({
 
       // Both the panels and the pan follow whole pixels, so most moves land on
       // the dimensions we already have and there is nothing to re-frame.
-      if (areDimensions3DEqual(newDimensions, store.dimensions)) {
+      if (Dimensions3D.equals(newDimensions, store.dimensions)) {
         return;
       }
 

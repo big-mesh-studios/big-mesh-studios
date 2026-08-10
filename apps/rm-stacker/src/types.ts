@@ -1,16 +1,12 @@
 import { Accessor } from "solid-js";
 import * as THREE from "three";
 import { Command } from "./Command";
+import { Dimensions3D, Vector2D } from "./maths";
 import { StackerStore } from "./stacker-store";
 
 /**********************************************************************************/
 /*                                       Misc                                     */
 /**********************************************************************************/
-
-export interface Vector2D {
-  x: number;
-  y: number;
-}
 
 export interface Vector3D extends Vector2D {
   z: number;
@@ -19,10 +15,6 @@ export interface Vector3D extends Vector2D {
 export interface Dimensions2D {
   width: number;
   height: number;
-}
-
-export interface Dimensions3D extends Dimensions2D {
-  depth: number;
 }
 
 export type DimensionKind = keyof Dimensions3D;

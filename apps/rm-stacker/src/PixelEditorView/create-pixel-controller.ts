@@ -13,8 +13,9 @@ import * as THREE from "three";
 import { Command } from "../Command";
 import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../stacker-context";
-import { Coordinates, ModeKind, RGBA, SideKind, Vector2D } from "../types";
-import { findCollidingSide, findColour, roundVector2D } from "../utils";
+import { Vector2D } from "../maths";
+import { Coordinates, ModeKind, RGBA, SideKind } from "../types";
+import { findCollidingSide, findColour } from "../utils";
 import { createEdgeController } from "./create-edge-controller";
 
 const getOppositePixel = (kind: SideKind, position: Vector2D, side: ImageData): Vector2D => {
@@ -102,7 +103,7 @@ export const createPixelEditorController = ({
       return undefined;
     }
 
-    return roundVector2D(_mouseWorldPos);
+    return Vector2D.round(_mouseWorldPos);
   });
 
   const edgeController = createEdgeController({
