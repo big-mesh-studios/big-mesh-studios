@@ -20,10 +20,10 @@ export interface Dimensions2D {
 export type DimensionKind = keyof Dimensions3D;
 
 /** One end of a model axis: `min` is its low-coordinate end, `max` its high one. */
-export type DimensionEnd = "min" | "max";
+export type AlignmentKind = "min" | "max";
 
 /** Which end of each axis a resize is applied at. */
-export type Alignment3D = Partial<Record<DimensionKind, DimensionEnd>>;
+export type Alignment3D = Partial<Record<DimensionKind, AlignmentKind>>;
 
 export interface RGBA {
   r: number;

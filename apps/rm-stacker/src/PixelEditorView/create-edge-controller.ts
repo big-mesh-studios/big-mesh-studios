@@ -4,7 +4,7 @@ import { SIDE_AXES } from "../constants";
 import { Dimensions3D, Vector2D } from "../maths";
 import { StackerContext } from "../stacker-context";
 import { computeSidePositions } from "../stacker-store";
-import { Alignment3D, DimensionEnd, SideKind, Sides } from "../types";
+import { Alignment3D, AlignmentKind, SideKind, Sides } from "../types";
 import { intersectSides } from "../utils";
 
 type EdgeKind = "top" | "bottom" | "left" | "right";
@@ -47,7 +47,7 @@ const getDimensionKind = (sideKind: SideKind, edgeKind: EdgeKind) =>
  * its image sits at the axis' minimum, unless the panel looks at that axis from
  * the opposite direction, which swaps the two.
  */
-const getDimensionEnd = (sideKind: SideKind, edgeKind: EdgeKind): DimensionEnd => {
+const getDimensionEnd = (sideKind: SideKind, edgeKind: EdgeKind): AlignmentKind => {
   const atImageStart = edgeKind === "left" || edgeKind === "top";
   return atImageStart !== getSideAxis(sideKind, edgeKind).flipped ? "min" : "max";
 };

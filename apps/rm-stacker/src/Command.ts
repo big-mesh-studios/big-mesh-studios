@@ -106,10 +106,10 @@ export namespace Command {
       case "Sequence":
         return Command.sequence(command.commands.map((c: any) => Command.fromJSON(c)));
       case "WritePixel": {
-        return Command.writePixel({ x: command.x, y: command.y }, command.colour);
+        return Command.writePixel(command, command.colour);
       }
       case "ErasePixel": {
-        return Command.erasePixel({ x: command.x, y: command.y });
+        return Command.erasePixel(command);
       }
       case "LoadData": {
         let data = command.data;

@@ -26,15 +26,6 @@ export namespace Vector2D {
       y: a.y + b.y,
     };
   }
-
-  export function intersects(position: Vector2D, origin: Vector2D, dimensions: Dimensions2D) {
-    return (
-      position.x >= origin.x &&
-      position.x < origin.x + dimensions.width &&
-      position.y >= origin.y &&
-      position.y < origin.y + dimensions.height
-    );
-  }
 }
 
 /**********************************************************************************/
