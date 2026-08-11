@@ -27,6 +27,31 @@ export function createEnqueue<T>() {
   };
 }
 
+export function inertExceptFor(exempt: HTMLElement) {
+  const queue: Array<Element> = [document.body];
+
+  const inerted = new Set<HTMLElement>();
+
+  let current;
+  while ((current = queue.shift())) {
+    if (current === exempt) {
+      continue;
+    }
+
+    if (current instanceof HTMLElement && !current.contains(exempt) && !current.inert) {
+      current.inert = true;
+      inerted.add(current);
+    }
+
+    queue.push(...current.children);
+  }
+
+  return () =>
+    inerted.forEach(element => {
+      element.inert = false;
+    });
+}
+
 /**********************************************************************************/
 /*                                    Convert                                     */
 /**********************************************************************************/

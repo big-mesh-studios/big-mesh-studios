@@ -1,9 +1,9 @@
 import type { JSX } from "@solidjs/web/jsx-runtime";
-import { createRoot, omit, onSettled, ParentProps, Ref, Show } from "solid-js";
+import { omit, onSettled, ParentProps, Ref, Show } from "solid-js";
 import styles from "./components.module.css";
 import type { IconKind } from "./icon-kinds";
 import { RGBA } from "./types";
-import { rgbaToCSS } from "./utils";
+import { inertExceptFor, rgbaToCSS } from "./utils";
 
 interface ButtonProps extends ParentProps {
   onClick?: JSX.EventHandler<HTMLButtonElement, MouseEvent>;
@@ -102,20 +102,22 @@ export interface DropDownProps extends ParentProps {
 }
 
 export function DropDown(props: DropDownProps) {
+  let element: HTMLDivElement = null!;
+
+  onSettled(() => {
+    const selectable = element.querySelector(
+      'input, select, button, [tabindex]:not([tabindex="-1"]',
+    );
+    if (selectable instanceof HTMLElement) {
+      selectable.focus();
+    }
+
+    return inertExceptFor(element);
+  });
+
   return (
     <div
-      ref={element =>
-        createRoot(() => {
-          onSettled(() => {
-            const selectable = element.querySelector(
-              'input, select, button, [tabindex]:not([tabindex="-1"]',
-            );
-            if (selectable instanceof HTMLElement) {
-              selectable.focus();
-            }
-          });
-        })
-      }
+      ref={element}
       onFocusOut={event => {
         if (
           !(event.relatedTarget instanceof Node) ||
