@@ -12,8 +12,8 @@ import {
 import * as THREE from "three";
 import { Command } from "../Command";
 import { OPPOSING_SIDE } from "../constants";
+import { StackerContext } from "../context";
 import { Vector2D } from "../maths";
-import { StackerContext } from "../stacker-context";
 import { ModeKind, RGBA, SideKind, SidePositions } from "../types";
 import { intersectSides } from "../utils";
 import { createEdgeController } from "./create-edge-controller";

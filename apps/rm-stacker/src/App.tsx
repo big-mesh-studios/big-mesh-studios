@@ -1,13 +1,17 @@
 import { Component, createEffect, createMemo, onSettled } from "solid-js";
 import styles from "./App.module.css";
-import PixelEditorView from "./PixelEditorView";
+import PixelEditorView from "./PixelEditorView/PixelEditorView";
 import VoxelPreviewView from "./VoxelPreviewView";
+import { Split } from "./components/SplitPane";
+import { LayoutContext, StackerContext } from "./context";
 import { loadFromIndexedDB } from "./load-save";
-import { StackerContext } from "./stacker-context";
 import { createStacker } from "./stacker-store";
+import { createMediaQuery } from "./utils";
 
 const App: Component = () => {
   const stacker = createStacker();
+  const query = createMediaQuery("(max-width: 500px)");
+  const layout = createMemo(() => (query() ? "row" : "column"));
 
   const saveState = createMemo(loadFromIndexedDB);
 
@@ -31,16 +35,27 @@ const App: Component = () => {
   });
 
   return (
-    <StackerContext value={stacker}>
-      <div class={styles.shell}>
-        <PixelEditorView />
-        <div class={styles.previewPane}>
-          <div style="flex-grow: 1; overflow: hidden;">
-            <VoxelPreviewView />
-          </div>
+    <LayoutContext value={layout}>
+      <StackerContext value={stacker}>
+        <div class={styles.shell}>
+          <Split direction={layout()}>
+            <Split.Pane size="50%" max="245px">
+              <PixelEditorView />
+            </Split.Pane>
+            <Split.Handle
+              size="10px"
+              style={{ cursor: layout() === "column" ? "ew-resize" : "ns-resize" }}
+              class={styles.handle}
+            />
+            <Split.Pane style={{ display: "grid" }} size="50%" max="245px">
+              <div style="flex-grow: 1; overflow: hidden;">
+                <VoxelPreviewView />
+              </div>
+            </Split.Pane>
+          </Split>
         </div>
-      </div>
-    </StackerContext>
+      </StackerContext>
+    </LayoutContext>
   );
 };
 

@@ -1,9 +1,9 @@
 import type { JSX } from "@solidjs/web/jsx-runtime";
 import { omit, onSettled, ParentProps, Ref, Show } from "solid-js";
+import type { IconKind } from "../icon-kinds";
+import { RGBA } from "../types";
+import { inertExceptFor, rgbaToCSS } from "../utils";
 import styles from "./components.module.css";
-import type { IconKind } from "./icon-kinds";
-import { RGBA } from "./types";
-import { inertExceptFor, rgbaToCSS } from "./utils";
 
 interface ButtonProps extends ParentProps {
   onClick?: JSX.EventHandler<HTMLButtonElement, MouseEvent>;

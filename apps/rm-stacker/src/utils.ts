@@ -7,11 +7,13 @@ import { RGBA, SidePositions, Sides } from "./types";
 /*                                      Misc                                      */
 /**********************************************************************************/
 
-export function tryCatch<T, U>(fn: () => T, onError: (error: unknown) => U) {
+export function tryCatch<T, U>(fn: () => T): T | undefined;
+export function tryCatch<T, U>(fn: () => T, onError: (error: unknown) => U): T | U;
+export function tryCatch<T, U>(fn: () => T, onError?: (error: unknown) => U): T | U | undefined {
   try {
     return fn();
   } catch (error) {
-    return onError(error);
+    return onError?.(error);
   }
 }
 
@@ -54,12 +56,11 @@ export function inertExceptFor(exempt: HTMLElement) {
 }
 
 export function createMediaQuery(query: string) {
-  // 1. Define the media query you want to watch
   const mediaQuery = window.matchMedia(query);
+  const controller = new AbortController();
 
   const [bool, setBool] = createSignal(handleDeviceChange(mediaQuery));
 
-  // 2. Define the callback function to run on change
   function handleDeviceChange(event: MediaQueryList | MediaQueryListEvent) {
     if (event.matches) {
       return true;
@@ -68,9 +69,6 @@ export function createMediaQuery(query: string) {
     }
   }
 
-  const controller = new AbortController();
-
-  // 3. Register the listener for future changes
   mediaQuery.addEventListener("change", event => setBool(handleDeviceChange(event)), {
     signal: controller.signal,
   });

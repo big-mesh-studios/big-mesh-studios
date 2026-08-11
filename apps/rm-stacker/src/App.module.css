@@ -4,29 +4,21 @@
   height: 100%;
   overflow: hidden;
   background-color: var(--back);
-
-  @media (max-aspect-ratio: 2/3) {
-    grid-template-rows: 1fr 1fr;
-  }
 }
 
 .previewPane {
   position: relative;
   display: flex;
   overflow: hidden;
+}
 
-  @media (min-aspect-ratio: 2/3) {
-    display: flex;
-    overflow: hidden;
-    direction: rtl;
-    position: absolute;
-    right: 0px;
-    top: 0px;
-    width: 350px;
-    height: 350px;
-    margin: var(--margin);
-    border-radius: var(--margin);
-    border: 1px solid var(--grey);
-    resize: both;
+.handle {
+  background: var(--light-grey);
+
+  [data-direction="column"] & {
+    cursor: ew-resize;
+  }
+  [data-direction="row"] & {
+    cursor: ns-resize;
   }
 }

@@ -1,8 +1,8 @@
 import { Setter } from "@solidjs/signals";
 import { Accessor, createSignal, useContext } from "solid-js";
 import { SIDE_AXES } from "../constants";
+import { StackerContext } from "../context";
 import { Dimensions3D, Vector2D } from "../maths";
-import { StackerContext } from "../stacker-context";
 import { computeSidePositions } from "../stacker-store";
 import { Alignment3D, AlignmentKind, SideKind, Sides } from "../types";
 import { intersectSides } from "../utils";

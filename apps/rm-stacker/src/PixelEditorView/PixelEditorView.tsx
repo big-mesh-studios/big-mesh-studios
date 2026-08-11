@@ -1,15 +1,15 @@
 import { Component, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
 import * as THREE from "three";
 import { SIDE_MASK } from "../constants";
+import { StackerContext } from "../context";
 import { DAWNBRINGER_32_PALETTE } from "../default_palette";
 import { Vector2D } from "../maths";
-import { StackerContext } from "../stacker-context";
 import { ModeKind, RGBA } from "../types";
 import { keysOf, sideMaskToCSS } from "../utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
 import { Hud } from "./Hud";
-import styles from "./index.module.css";
+import styles from "./PixelEditorView.module.css";
 
 interface ImageCanvasCacheData {
   canvas: HTMLCanvasElement;

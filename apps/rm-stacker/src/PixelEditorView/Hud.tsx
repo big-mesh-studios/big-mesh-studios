@@ -1,13 +1,12 @@
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
 import { createSignal, onSettled, Show, useContext } from "solid-js";
-import { Bar, ColourTab, DropDown, IconButton, IconTab } from "../components";
+import { Bar, ColourTab, DropDown, IconButton, IconTab } from "../components/components";
+import { LayoutContext, StackerContext } from "../context";
 import { DAWNBRINGER_32_PALETTE } from "../default_palette";
 import { load, save } from "../load-save";
 import Palette from "../Palette";
-import { StackerContext } from "../stacker-context";
 import { createInitialSides } from "../stacker-store";
 import { ModeKind, RGBA } from "../types";
-import { createMediaQuery } from "../utils";
 import styles from "./Hud.module.css";
 
 export function Hud(props: {
@@ -19,7 +18,7 @@ export function Hud(props: {
 }) {
   const { store, setSides, undoRedoManager, updateVoxels } = useContext(StackerContext);
 
-  const $min = createMediaQuery("(min-aspect-ratio: 2/3)");
+  const layout = useContext(LayoutContext);
 
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
   const [palette, setPalette] = createSignal<RGBA[]>(DAWNBRINGER_32_PALETTE);
@@ -94,7 +93,7 @@ export function Hud(props: {
               kind="arrow-rotate-right"
             />
           </Bar>
-          <Show when={$min()}>
+          <Show when={layout() === "column"}>
             <Bar>
               <IconTab
                 kind="up-down-left-right"
@@ -162,7 +161,7 @@ export function Hud(props: {
           />
         </Show>
       </div>
-      <Show when={!$min()}>
+      <Show when={layout() === "row"}>
         <Bar>
           <IconTab
             kind="up-down-left-right"

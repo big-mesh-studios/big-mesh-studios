@@ -1,5 +1,5 @@
 import { Component, createEffect, createMemo, createRoot, For } from "solid-js";
-import { ColourTab } from "./components";
+import { ColourTab } from "./components/components";
 import styles from "./Palette.module.css";
 import { RGBA } from "./types";
 import { areRGBAsEqual } from "./utils";

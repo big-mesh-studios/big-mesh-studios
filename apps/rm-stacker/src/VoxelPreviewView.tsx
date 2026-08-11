@@ -7,9 +7,9 @@ import {
   onSettled,
   useContext,
 } from "solid-js";
+import { StackerContext } from "./context";
 import { Dimensions3D } from "./maths";
 import shaders from "./shaders";
-import { StackerContext } from "./stacker-context";
 import { tryCatch } from "./utils";
 import styles from "./VoxelPreviewView.module.css";
 
