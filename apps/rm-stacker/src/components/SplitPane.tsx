@@ -11,11 +11,10 @@ import {
   useContext,
 } from "solid-js";
 import { cursor, tryCatch } from "../utils";
+import styles from "./SplitPane.module.css";
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                      Types                                     */
-/*                                                                                */
 /**********************************************************************************/
 
 type FractionValue = `${string}fr`;
@@ -43,9 +42,7 @@ type OptionalSizeProps = OptionalFrProps | PixelProps | PercentageProps;
 type SizeProps = FractionProps | PixelProps | PercentageProps;
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                     Globals                                    */
-/*                                                                                */
 /**********************************************************************************/
 
 const propsMap = new WeakMap<Element, SizeProps>();
@@ -54,9 +51,7 @@ const handleSet = new WeakSet<Element>();
 const NO_OVERFLOW = Symbol("no-overflow");
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                      Utils                                     */
-/*                                                                                */
 /**********************************************************************************/
 
 const isPercentageSize = (value: string): value is PercentageValue => value.endsWith("%");
@@ -82,9 +77,7 @@ function resolveNode<T>(value: Nested<T>): T {
 }
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                      Logic                                     */
-/*                                                                                */
 /**********************************************************************************/
 
 function getNeigboringPanes(panes: Element[], handle: Element) {
@@ -119,9 +112,7 @@ function getNeigboringPanes(panes: Element[], handle: Element) {
 }
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                      Base                                      */
-/*                                                                                */
 /**********************************************************************************/
 
 type BaseProps = Omit<ElementProps<HTMLSpanElement>, "style"> & {
@@ -137,8 +128,8 @@ function Base(props: BaseProps) {
   const rest = omit(
     props,
     "size",
-    "style",
     "ref",
+    "class",
     // @ts-expect-error TODO: props don't have min-prop when using fraction units
     "min",
     "max",
@@ -148,7 +139,7 @@ function Base(props: BaseProps) {
   const pane = (
     <span
       ref={[props.ref, _ref => (ref = _ref)]}
-      style={{ overflow: "hidden", ...props.style }}
+      class={[props.class, styles.base]}
       {...rest}
       data-active-pane={context?.isActivePane(ref!) || undefined}
     >
@@ -162,9 +153,7 @@ function Base(props: BaseProps) {
 }
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                      Split                                     */
-/*                                                                                */
 /**********************************************************************************/
 
 type ElementProps<T extends HTMLElement> = JSX.HTMLAttributes<T> & JSX.Properties<T>;
@@ -174,7 +163,7 @@ type SplitContext = {
   dragHandleStart: (handle: Element) => readonly [Element, Element] | undefined;
   dragHandleEnd: () => void;
   isActivePane: (element: Element) => boolean;
-  type: "column" | "row";
+  direction: "column" | "row";
 };
 
 const SplitContext = createContext<SplitContext>();
@@ -217,8 +206,8 @@ type SplitProps = Omit<ElementProps<HTMLSpanElement>, "style"> &
  * @warning All elements that are not `Grid`, `Grid.Handle` or `Grid.Pane` are filtered from the children.
  */
 export function Split(props: SplitProps) {
-  const config = merge({ type: "column" as const }, props);
-  const rest = omit(props, "type", "style", "ref");
+  const config = merge({ direction: "column" as const }, props);
+  const rest = omit(props, "direction", "style", "ref");
   const [domRect, setDomRect] = createSignal<DOMRect>();
   const [activePanels, setActivePanels] = createSignal<readonly [Element, Element] | undefined>(
     undefined,
@@ -229,163 +218,9 @@ export function Split(props: SplitProps) {
   });
   const [splitRef, setSplitRef] = createSignal<HTMLSpanElement>();
 
-  const containerSize = () =>
-    (config.direction === "column" ? domRect()?.width : domRect()?.height) || 0;
-
-  function offset(element: Element, delta: number) {
-    setOffsets(map => {
-      map.set(element, (map.get(element) || 0) - delta);
-      return map;
-    });
-  }
-
-  function getNonFractionPixels(value: PixelValue | PercentageValue, offset = 0) {
-    return isPercentageSize(value)
-      ? ((parseFloat(value) - offset) / 100) * containerSize()
-      : parseFloat(value) - offset;
-  }
-
-  function getNonFractionPanePixels(element: Element) {
-    const props = getProps(element);
-    const offset = getOffset(element);
-    if (!props) return 0;
-    if (isFractionProps(props)) return 0;
-    return getNonFractionPixels(props.size, offset);
-  }
-
-  function getPixelsPerFraction() {
-    const sumOfFractionPanePixelSizes = getSumOfFractionPanePixels();
-    const totalFrUnits = getFractionPanes().reduce(
-      (total, pane) => total + parseFloat(getProps(pane)!.size),
-      0,
-    );
-
-    if (totalFrUnits === 0) {
-      // If there are no fraction units, return 0 to avoid division by zero
-      return 0;
-    } else if (totalFrUnits < 1) {
-      // When total fraction units are less than 1, the remaining space should be distributed
-      const remainingSpace =
-        sumOfFractionPanePixelSizes - sumOfFractionPanePixelSizes * totalFrUnits;
-      return (
-        sumOfFractionPanePixelSizes / (totalFrUnits + remainingSpace / sumOfFractionPanePixelSizes)
-      );
-    } else {
-      // Normal case where totalFrUnits >= 1
-      return sumOfFractionPanePixelSizes / totalFrUnits;
-    }
-  }
-
-  function getPixelSizeOfFractionPane(element: Element) {
-    const props = getProps(element);
-    const offset = getOffset(element);
-    if (!props || !isFractionProps(props)) return 0;
-    return (parseFloat(props.size) - offset) * getPixelsPerFraction();
-  }
-
-  function getOffset(element: Element) {
-    return offsets().get(element) || 0;
-  }
-
-  function getSumOfNonFractionPanePixels() {
-    return getNonFractionPanes().reduce((total, pane) => total + getNonFractionPanePixels(pane), 0);
-  }
-
-  function getSumOfFractionPanePixels() {
-    return containerSize() - getSumOfNonFractionPanePixels();
-  }
-
-  function offsetFractionAndNonFractionPane(
-    fractionPane: Element,
-    nonFractionPane: Element,
-    deltaPx: number,
-  ) {
-    // Collect all fraction-panes
-    const fractionPanes = getFractionPanes();
-    const fractionPaneIndex = fractionPanes.indexOf(fractionPane);
-
-    // Gather pixel size of all fraction-panes (before offset)
-    const fractionPanesPixelSizes = fractionPanes.map(getPixelSizeOfFractionPane);
-
-    let nonPaneOffset = isPixelProps(getProps(nonFractionPane)!)
-      ? deltaPx
-      : (deltaPx / containerSize()) * 100;
-
-    // Offset neighboring non-fraction pane
-    offset(nonFractionPane, nonPaneOffset);
-
-    // Offset pixel size of neighboring fraction-pane with deltaPx
-    const fractionPanePixels = (fractionPanesPixelSizes[fractionPaneIndex] -= deltaPx);
-
-    if (fractionPanePixels < 0) {
-      offset(nonFractionPane, -nonPaneOffset);
-
-      // Offset neighboring non-fraction pane
-      fractionPanesPixelSizes[fractionPaneIndex] = 0;
-    }
-
-    const total = fractionPanesPixelSizes.reduce((a, b) => a + b, 0);
-    const totalFrUnits = fractionPanes.map(getProps).reduce((a, b) => a + parseFloat(b!.size), 0);
-
-    // calculate the new fractions
-    const newFractions = fractionPanesPixelSizes.map(size => (size * totalFrUnits) / total);
-    // // calculate the new offsets
-    const newOffsets = newFractions.map((newFraction, index) => {
-      const oldFraction = parseFloat(getProps(fractionPanes[index]!)!.size);
-      return oldFraction - newFraction;
-    });
-
-    // Set newly calculated offsets
-    setOffsets(map => {
-      newOffsets.forEach((offset, index) => {
-        map.set(fractionPanes[index]!, offset);
-      });
-      return map;
-    });
-  }
-
-  function getFractionOverflow(element: Element, deltaFr: number): number {
-    const props = getProps(element)!;
-    const offset = getOffset(element);
-    if (!isFractionProps(props)) {
-      console.error("tried to get fraction overflow of non-fraction pane", element);
-      return 0;
-    }
-    const overflow = parseFloat(props.size) - offset + deltaFr;
-    return overflow < 0 ? overflow : 0;
-  }
-
-  function getNonFractionOverflow(element: Element, deltaPx: number): number {
-    const props = getProps(element)!;
-    const offset = getOffset(element);
-
-    if (isFractionProps(props)) {
-      console.error("tried to get non-fraction overflow of fraction pane", element);
-      return 0;
-    }
-
-    const realSize = getNonFractionPixels(props.size, offset);
-    const newSize = realSize + deltaPx;
-
-    if (props.max) {
-      const realMaxSize = getNonFractionPixels(props.max);
-      if (newSize < realMaxSize) {
-        return newSize - realMaxSize;
-      }
-    }
-    if (props.min) {
-      const realMinSize = getNonFractionPixels(props.min);
-      if (newSize > realMinSize) {
-        return newSize - realMinSize;
-      }
-    }
-
-    return newSize > 0 ? 0 : newSize;
-  }
-
   const context: SplitContext = {
     isActivePane: (element: Element) => isNotHandle(element) && !!activePanels()?.includes(element),
-    get type() {
+    get direction() {
       return config.direction;
     },
     dragHandleStart(handle) {
@@ -453,13 +288,9 @@ export function Split(props: SplitProps) {
   };
 
   const offspring = children(() => <SplitContext value={context}>{props.children}</SplitContext>);
-
   const panes = createMemo(
     () => offspring.toArray().filter(value => propsMap.has(value as Element)) as Element[],
   );
-  const getFractionPanes = () => panes().filter(pane => isFractionProps(getProps(pane)!));
-  const getNonFractionPanes = () => panes().filter(pane => !isFractionProps(getProps(pane)!));
-
   const template = createMemo(() =>
     panes()
       .map(pane => {
@@ -484,6 +315,163 @@ export function Split(props: SplitProps) {
       })
       .join(" "),
   );
+
+  const fractionPanes = () => panes().filter(pane => isFractionProps(getProps(pane)!));
+  const nonFractionPanes = () => panes().filter(pane => !isFractionProps(getProps(pane)!));
+
+  const containerSize = () =>
+    (config.direction === "column" ? domRect()?.width : domRect()?.height) || 0;
+
+  function offset(element: Element, delta: number) {
+    setOffsets(map => {
+      map.set(element, (map.get(element) || 0) - delta);
+      return map;
+    });
+  }
+
+  function getNonFractionPixels(value: PixelValue | PercentageValue, offset = 0) {
+    return isPercentageSize(value)
+      ? ((parseFloat(value) - offset) / 100) * containerSize()
+      : parseFloat(value) - offset;
+  }
+
+  function getNonFractionPanePixels(element: Element) {
+    const props = getProps(element);
+    const offset = getOffset(element);
+    if (!props) return 0;
+    if (isFractionProps(props)) return 0;
+    return getNonFractionPixels(props.size, offset);
+  }
+
+  function getPixelsPerFraction() {
+    const sumOfFractionPanePixelSizes = getSumOfFractionPanePixels();
+    const totalFrUnits = fractionPanes().reduce(
+      (total, pane) => total + parseFloat(getProps(pane)!.size),
+      0,
+    );
+
+    if (totalFrUnits === 0) {
+      // If there are no fraction units, return 0 to avoid division by zero
+      return 0;
+    } else if (totalFrUnits < 1) {
+      // When total fraction units are less than 1, the remaining space should be distributed
+      const remainingSpace =
+        sumOfFractionPanePixelSizes - sumOfFractionPanePixelSizes * totalFrUnits;
+      return (
+        sumOfFractionPanePixelSizes / (totalFrUnits + remainingSpace / sumOfFractionPanePixelSizes)
+      );
+    } else {
+      // Normal case where totalFrUnits >= 1
+      return sumOfFractionPanePixelSizes / totalFrUnits;
+    }
+  }
+
+  function getPixelSizeOfFractionPane(element: Element) {
+    const props = getProps(element);
+    const offset = getOffset(element);
+    if (!props || !isFractionProps(props)) return 0;
+    return (parseFloat(props.size) - offset) * getPixelsPerFraction();
+  }
+
+  function getOffset(element: Element) {
+    return offsets().get(element) || 0;
+  }
+
+  function getSumOfNonFractionPanePixels() {
+    return nonFractionPanes().reduce((total, pane) => total + getNonFractionPanePixels(pane), 0);
+  }
+
+  function getSumOfFractionPanePixels() {
+    return containerSize() - getSumOfNonFractionPanePixels();
+  }
+
+  function offsetFractionAndNonFractionPane(
+    fractionPane: Element,
+    nonFractionPane: Element,
+    deltaPx: number,
+  ) {
+    // Collect all fraction-panes
+    const _fractionPanes = fractionPanes();
+    const fractionPaneIndex = _fractionPanes.indexOf(fractionPane);
+
+    // Gather pixel size of all fraction-panes (before offset)
+    const fractionPanesPixelSizes = _fractionPanes.map(getPixelSizeOfFractionPane);
+
+    let nonPaneOffset = isPixelProps(getProps(nonFractionPane)!)
+      ? deltaPx
+      : (deltaPx / containerSize()) * 100;
+
+    // Offset neighboring non-fraction pane
+    offset(nonFractionPane, nonPaneOffset);
+
+    // Offset pixel size of neighboring fraction-pane with deltaPx
+    const fractionPanePixels = (fractionPanesPixelSizes[fractionPaneIndex] -= deltaPx);
+
+    if (fractionPanePixels < 0) {
+      offset(nonFractionPane, -nonPaneOffset);
+
+      // Offset neighboring non-fraction pane
+      fractionPanesPixelSizes[fractionPaneIndex] = 0;
+    }
+
+    const total = fractionPanesPixelSizes.reduce((a, b) => a + b, 0);
+    const totalFrUnits = _fractionPanes.map(getProps).reduce((a, b) => a + parseFloat(b!.size), 0);
+
+    // calculate the new fractions
+    const newFractions = fractionPanesPixelSizes.map(size => (size * totalFrUnits) / total);
+    // // calculate the new offsets
+    const newOffsets = newFractions.map((newFraction, index) => {
+      const oldFraction = parseFloat(getProps(_fractionPanes[index]!)!.size);
+      return oldFraction - newFraction;
+    });
+
+    // Set newly calculated offsets
+    setOffsets(map => {
+      newOffsets.forEach((offset, index) => {
+        map.set(_fractionPanes[index]!, offset);
+      });
+      return map;
+    });
+  }
+
+  function getFractionOverflow(element: Element, deltaFr: number): number {
+    const props = getProps(element)!;
+    const offset = getOffset(element);
+    if (!isFractionProps(props)) {
+      console.error("tried to get fraction overflow of non-fraction pane", element);
+      return 0;
+    }
+    const overflow = parseFloat(props.size) - offset + deltaFr;
+    return overflow < 0 ? overflow : 0;
+  }
+
+  function getNonFractionOverflow(element: Element, deltaPx: number): number {
+    const props = getProps(element)!;
+    const offset = getOffset(element);
+
+    if (isFractionProps(props)) {
+      console.error("tried to get non-fraction overflow of fraction pane", element);
+      return 0;
+    }
+
+    const realSize = getNonFractionPixels(props.size, offset);
+    const newSize = realSize + deltaPx;
+
+    if (props.max) {
+      const realMaxSize = getNonFractionPixels(props.max);
+      if (newSize < realMaxSize) {
+        return newSize - realMaxSize;
+      }
+    }
+    if (props.min) {
+      const realMinSize = getNonFractionPixels(props.min);
+      if (newSize > realMinSize) {
+        return newSize - realMinSize;
+      }
+    }
+
+    return newSize > 0 ? 0 : newSize;
+  }
 
   createEffect(splitRef, ref => {
     if (!ref) {
@@ -522,12 +510,9 @@ export function Split(props: SplitProps) {
     <Base
       data-direction={config.direction}
       ref={[setSplitRef, props.ref]}
-      style={{
-        display: "grid",
-        ...props.style,
-        [`grid-template-${config.direction}s`]: template(),
-      }}
+      style={{ ...props.style, [`grid-template-${config.direction}s`]: template() }}
       {...rest}
+      class={styles.split}
     >
       {panes()}
     </Base>
@@ -535,9 +520,7 @@ export function Split(props: SplitProps) {
 }
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                       Pane                                     */
-/*                                                                                */
 /**********************************************************************************/
 
 function Pane(props: BaseProps) {
@@ -546,9 +529,7 @@ function Pane(props: BaseProps) {
 }
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                      Handle                                    */
-/*                                                                                */
 /**********************************************************************************/
 
 /**
@@ -589,7 +570,7 @@ function Handle(props: BaseProps) {
         await cursor(e, ({ delta }) => {
           const overflow = context.dragHandle(
             neighbors,
-            context.type === "column" ? delta.x + totalOverflow.x : delta.y + totalOverflow.y,
+            context.direction === "column" ? delta.x + totalOverflow.x : delta.y + totalOverflow.y,
           );
 
           if (overflow === NO_OVERFLOW) {
@@ -599,8 +580,8 @@ function Handle(props: BaseProps) {
               y: 0,
             };
           } else {
-            totalOverflow.x += context.type === "column" ? delta.x : overflow;
-            totalOverflow.y += context.type !== "column" ? delta.y : overflow;
+            totalOverflow.x += context.direction === "column" ? delta.x : overflow;
+            totalOverflow.y += context.direction !== "column" ? delta.y : overflow;
           }
         });
 
