@@ -10,8 +10,7 @@ import {
   omit,
   useContext,
 } from "solid-js";
-import { tryCatch } from "../utils";
-import { cursor } from "./cursor";
+import { cursor, tryCatch } from "../utils";
 
 /**********************************************************************************/
 /*                                                                                */

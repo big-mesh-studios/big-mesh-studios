@@ -78,6 +78,75 @@ export function createMediaQuery(query: string) {
   return bool;
 }
 
+interface CursorEvent {
+  delta: Vector2D;
+  event: PointerEvent;
+  timespan: number;
+}
+
+/**
+ * Follows a pointer from the event that started a drag until the drag ends.
+ *
+ * The element the initial event came from captures the pointer, so its moves keep
+ * arriving while the pointer is outside that element.
+ *
+ * @param initialEvent the pointerdown event that started the drag
+ * @param callback called on every pointermove, and once more when the drag ends
+ * @returns Promise resolved on pointerup, or on pointercancel when the browser
+ * takes the pointer over for a gesture of its own
+ */
+export function cursor(
+  initialEvent: PointerEvent & { currentTarget: HTMLElement },
+  callback: (event: CursorEvent) => void,
+): Promise<CursorEvent> {
+  const { promise, resolve } = Promise.withResolvers<CursorEvent>();
+
+  let previous = {
+    x: initialEvent.clientX,
+    y: initialEvent.clientY,
+  };
+  const startTime = performance.now();
+  const controller = new AbortController();
+  const pointerId = initialEvent.pointerId;
+  const element = initialEvent.currentTarget;
+  element.setPointerCapture(pointerId);
+
+  function handleEvent(event: PointerEvent) {
+    const now = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+    const delta = {
+      x: now.x - previous.x,
+      y: now.y - previous.y,
+    };
+    previous = now;
+    return {
+      delta,
+      event,
+      timespan: performance.now() - startTime,
+    };
+  }
+
+  function handleFinalEvent(event: PointerEvent) {
+    const result = handleEvent(event);
+    element.releasePointerCapture(pointerId);
+    callback(result);
+    resolve(result);
+    controller.abort();
+  }
+
+  element.addEventListener(
+    "pointermove",
+    (event: PointerEvent) => callback(handleEvent(event)),
+    controller,
+  );
+  element.addEventListener("pointercancel", handleFinalEvent, controller);
+  element.addEventListener("pointerup", handleFinalEvent, controller);
+
+  return promise;
+}
+
 /**********************************************************************************/
 /*                                    Convert                                     */
 /**********************************************************************************/
