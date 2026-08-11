@@ -70,14 +70,14 @@ const getEdgePosition = (
 };
 
 export function createEdgeController({
-  mouseWorldPosition,
+  worldPointer,
   pan,
   scale,
   setCursorStyle,
   setPan,
   sidePositions,
 }: {
-  mouseWorldPosition: Accessor<Vector2D | undefined>;
+  worldPointer: Accessor<Vector2D | undefined>;
   pan: Accessor<Vector2D>;
   scale: Accessor<number>;
   setCursorStyle: Setter<string | undefined>;
@@ -95,29 +95,29 @@ export function createEdgeController({
 
   const EDGE_TRESHOLD = 10;
   const findColidingEdge = (): ActiveSideEdge | false => {
-    const position = mouseWorldPosition();
+    const _worldPointer = worldPointer();
 
-    if (!position) {
+    if (!_worldPointer) {
       return false;
     }
 
-    const collidingSide = intersectSides({
-      position,
+    const intersection = intersectSides({
+      worldPosition: _worldPointer,
       sides: store.sides,
       sidePositions: sidePositions(),
     });
 
-    if (!collidingSide) {
+    if (!intersection) {
       return false;
     }
 
-    const { sidePosition: coordinate, side, kind } = collidingSide;
+    const { side, kind, position } = intersection;
 
     const distances = {
-      left: Math.abs(coordinate.x - position.x),
-      right: Math.abs(coordinate.x + side.width - position.x),
-      top: Math.abs(coordinate.y - position.y),
-      bottom: Math.abs(coordinate.y + side.height - position.y),
+      left: Math.abs(position.x),
+      right: Math.abs(side.width - position.x),
+      top: Math.abs(position.y),
+      bottom: Math.abs(side.height - position.y),
     };
 
     // On a panel that is narrower than the threshold both of an axis' edges are
@@ -181,7 +181,7 @@ export function createEdgeController({
       setActiveEdge(undefined);
     },
     onPointerDown(event: PointerEvent) {
-      const _mouseWorldPos = mouseWorldPosition();
+      const _mouseWorldPos = worldPointer();
 
       if (!_mouseWorldPos) {
         return false;

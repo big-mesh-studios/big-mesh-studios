@@ -24,22 +24,22 @@ export const computeSidePositions = ({ width, height, depth }: Dimensions3D): Si
 /** Resolves a canvas-space position to whichever side's panel it falls on. */
 export function intersectSides({
   sidePositions,
-  position: worldPosition,
+  worldPosition,
   sides,
 }: {
   sidePositions: SidePositions;
-  position: Vector2D;
+  worldPosition: Vector2D;
   sides: Sides;
 }) {
   for (const kind of keysOf(sides)) {
     const sidePosition = sidePositions[kind];
     const side = sides[kind];
-    const position = Vector2D.sub(worldPosition, sidePosition);
+    const relativePosition = Vector2D.sub(worldPosition, sidePosition);
 
-    const intersection = intersectSide({ position, side });
+    const intersection = intersectSide({ position: relativePosition, side });
 
     if (intersection) {
-      return { kind, sidePosition, ...intersection };
+      return { kind, ...intersection };
     }
   }
 }

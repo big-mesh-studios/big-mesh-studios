@@ -102,7 +102,7 @@ export const createPixelEditorController = ({
   });
 
   const edgeController = createEdgeController({
-    mouseWorldPosition: worldPointer,
+    worldPointer: worldPointer,
     pan,
     scale,
     setCursorStyle,
@@ -140,7 +140,7 @@ export const createPixelEditorController = ({
       }
 
       const intersection = intersectSides({
-        position: worldPointer,
+        worldPosition: worldPointer,
         sides: store.sides,
         sidePositions: untrack(sidePositions),
       });
@@ -243,7 +243,7 @@ export const createPixelEditorController = ({
           const intersection = intersectSides({
             sidePositions: sidePositions(),
             sides: store.sides,
-            position,
+            worldPosition: position,
           });
 
           if (!intersection) {

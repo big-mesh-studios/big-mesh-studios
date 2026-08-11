@@ -241,15 +241,17 @@ function getColourFromOffset(side: ImageData, offset: number): RGBA {
 }
 
 export function intersectSide({ position, side }: { position: Vector2D; side: ImageData }) {
-  if (position.x >= 0 && position.y >= 0 && position.x < side.width && position.y < side.height) {
-    const offset = getOffset(side, position);
-    const colour = getColourFromOffset(side, offset);
-
-    return {
-      position,
-      side,
-      offset,
-      colour,
-    };
+  if (position.x < 0 || position.y < 0 || position.x >= side.width || position.y >= side.height) {
+    return;
   }
+
+  const offset = getOffset(side, position);
+  const colour = getColourFromOffset(side, offset);
+
+  return {
+    position,
+    side,
+    offset,
+    colour,
+  };
 }
