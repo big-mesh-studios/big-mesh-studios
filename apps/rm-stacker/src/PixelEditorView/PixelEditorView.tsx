@@ -18,7 +18,7 @@ import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
 import { Hud } from "./Hud";
 import styles from "./PixelEditorView.module.css";
-import { computeSidePositions, intersectSides } from "./side-layout";
+import { computeSidePositions } from "./side-layout";
 
 interface ImageCanvasCacheData {
   canvas: HTMLCanvasElement;
@@ -39,8 +39,6 @@ const PixelEditorView: Component = () => {
   const controller = createPixelEditorController({
     canvas,
     sidePositions,
-    intersectSides: position =>
-      intersectSides({ position, sides: store.sides, sidePositions: sidePositions() }),
     doCommand,
     mode,
     pushUndo,
