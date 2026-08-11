@@ -1,38 +1,37 @@
-import { Setter } from "@solidjs/signals";
+import { Accessor, Setter } from "@solidjs/signals";
 import { untrack } from "solid-js";
 import { load, save } from "../load-save";
-import { StackerStore } from "../stacker-store";
 import { Sides } from "../types";
 import { areRGBAsEqual, intersectSide } from "../utils";
 import { Command } from "./Command";
 
 export function createCommander({
-  store,
+  sides,
   setSides,
   updateVoxels,
   requestRender,
   requestAutoSave,
 }: {
-  store: StackerStore;
+  sides: Accessor<Sides>;
   setSides: Setter<Sides>;
   updateVoxels(): void;
   requestRender(): void;
   requestAutoSave(): void;
 }) {
-  function snapshot(sides = store.sides): Command {
-    return Command.async(save(sides).then(Command.loadData));
+  function snapshot(_sides = sides()): Command {
+    return Command.async(save(_sides).then(Command.loadData));
   }
 
-  return async function doCommand(effect: Command): Promise<Command> {
+  return async function doCommand(command: Command): Promise<Command> {
     queueMicrotask(() => requestAutoSave());
 
     return untrack(async () => {
-      switch (effect.type) {
+      switch (command.type) {
         case "NoOperation": {
           return Command.noOperation();
         }
         case "Sequence": {
-          let commands = effect.commands;
+          let commands = command.commands;
           let reverseCommands = Array(commands.length);
 
           for (let i = 0; i < commands.length; ++i) {
@@ -42,8 +41,8 @@ export function createCommander({
           return Command.sequence(reverseCommands);
         }
         case "FillPixel": {
-          const { side: kind, position, colour: newColour } = effect;
-          const side = store.sides[kind];
+          const { side: kind, position, colour: newColour } = command;
+          const side = sides()[kind];
 
           const intersection = intersectSide({ position, side });
 
@@ -122,8 +121,8 @@ export function createCommander({
           return undo;
         }
         case "WritePixel": {
-          const { side: kind, position, colour } = effect;
-          const side = store.sides[kind];
+          const { side: kind, position, colour } = command;
+          const side = sides()[kind];
 
           const intersection = intersectSide({ position, side });
 
@@ -145,8 +144,8 @@ export function createCommander({
           }
         }
         case "ErasePixel": {
-          const { side: kind, position } = effect;
-          const side = store.sides[kind];
+          const { side: kind, position } = command;
+          const side = sides()[kind];
 
           const intersection = intersectSide({ position, side });
 
@@ -169,7 +168,7 @@ export function createCommander({
         }
         case "LoadData": {
           let undoCommand = snapshot();
-          let data = effect.data;
+          let data = command.data;
           let sides = await load(data);
 
           setSides(sides);
@@ -179,12 +178,12 @@ export function createCommander({
           return undoCommand;
         }
         case "Async": {
-          let command = await effect.command;
-          return doCommand(command);
+          const _command = await command.command;
+          return doCommand(_command);
         }
 
         default: {
-          const x: never = effect;
+          const x: never = command;
           throw new Error(`Unreachable ${x}`);
         }
       }

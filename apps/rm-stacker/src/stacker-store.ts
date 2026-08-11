@@ -121,7 +121,7 @@ export function createStacker() {
   }
 
   const doCommand = createCommander({
-    store,
+    sides,
     setSides,
     updateVoxels,
     requestRender,
