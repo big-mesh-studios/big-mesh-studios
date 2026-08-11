@@ -5,7 +5,7 @@ import { DAWNBRINGER_32_PALETTE } from "../default_palette";
 import { Vector2D } from "../maths";
 import { StackerContext } from "../stacker-context";
 import { ModeKind, RGBA } from "../types";
-import { keysOf, sideMaskToRGBA } from "../utils";
+import { keysOf, sideMaskToCSS } from "../utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
 import { Hud } from "./Hud";
@@ -80,7 +80,7 @@ const PixelEditorView: Component = () => {
           const alpha = side.data[(index << 2) + 3];
 
           if (!alpha) {
-            ctx.strokeStyle = sideMaskToRGBA(sideMask, 1.5);
+            ctx.strokeStyle = sideMaskToCSS(sideMask);
             ctx.lineWidth = 0.25 / scale;
             ctx.strokeRect(coordinate.x + gx, coordinate.y + gy, 1.0, 1.0);
           }
@@ -162,17 +162,22 @@ const PixelEditorView: Component = () => {
           renderGuide({ ctx, side, guide, coordinate, kind: "inner", scale: _scale });
         }
 
-        ctx.lineWidth = 4 / _scale;
-        ctx.strokeStyle = sideMaskToRGBA(SIDE_MASK[sideKind], 0.75);
+        ctx.lineWidth = 1 / _scale;
+        ctx.strokeStyle = sideMaskToCSS(SIDE_MASK[sideKind]);
         ctx.strokeRect(coordinate.x, coordinate.y, side.width, side.height);
 
-        ctx.font = "5px sans-serif";
-        ctx.fillStyle = "grey";
+        ctx.fillStyle = sideMaskToCSS(SIDE_MASK[sideKind]);
+
+        ctx.fillRect(coordinate.x, coordinate.y + side.height, side.width, 3);
+        ctx.strokeRect(coordinate.x, coordinate.y + side.height, side.width, 3);
+
+        ctx.font = "2.2px sans-serif";
+        ctx.fillStyle = "oklch(23.26% .014 253.1)";
         const metrics = ctx.measureText(sideKind);
         ctx.fillText(
           sideKind,
           coordinate.x + 0.5 * (side.width - metrics.width),
-          coordinate.y + side.height + metrics.actualBoundingBoxAscent + 1.0,
+          coordinate.y + side.height + metrics.actualBoundingBoxAscent + 0.5,
         );
       }
 

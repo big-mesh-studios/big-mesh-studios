@@ -112,11 +112,14 @@ export function areRGBAsEqual(a: RGBA, b: RGBA) {
   return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
 }
 
-export function sideMaskToRGBA(mask: number, intensity = 1) {
-  const r = SIDE_MASK.front & mask ? 255 * intensity : 0;
-  const g = SIDE_MASK.left & mask ? 255 * intensity : 0;
-  const b = SIDE_MASK.top & mask ? 255 * intensity : 0;
-  return `rgba(${r}, ${g}, ${b}, 1)`;
+const PASTEL = 150;
+const INTENSITY = 0.75;
+
+export function sideMaskToCSS(mask: number) {
+  const r = (SIDE_MASK.front & mask ? 255 : PASTEL) * INTENSITY;
+  const g = (SIDE_MASK.left & mask ? 255 : PASTEL) * INTENSITY;
+  const b = (SIDE_MASK.top & mask ? 255 : PASTEL) * INTENSITY;
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 export function rgbaToCSS({ r, g, b, a = 1 }: RGBA): `rgba(${string})` {
