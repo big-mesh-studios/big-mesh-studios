@@ -41,12 +41,12 @@ const PixelEditorView: Component = () => {
   const { store, doCommand, pushUndo, onRender } = useContext(StackerContext);
   const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
 
-  const sidePositions = createMemo(() => computeSidePositions(store.dimensions));
-
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [mode, setMode] = createSignal<ModeKind>("Idle");
   const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
   const [selectedColour, setSelectedColour] = createSignal<RGBA>(DAWNBRINGER_32_PALETTE[5]);
+
+  const sidePositions = createMemo(() => computeSidePositions(store.dimensions));
 
   const controller = createPixelEditorController({
     canvas,
@@ -75,14 +75,14 @@ const PixelEditorView: Component = () => {
     ctx,
     side,
     guide,
-    coordinate,
+    sidePosition,
     kind,
     scale,
   }: {
     ctx: CanvasRenderingContext2D;
     side: ImageData;
     guide: Uint8Array;
-    coordinate: Vector2D;
+    sidePosition: Vector2D;
     kind: "inner" | "outer";
     scale: number;
   }) => {
@@ -105,7 +105,7 @@ const PixelEditorView: Component = () => {
           if (!alpha) {
             ctx.strokeStyle = sideMaskToCSS(sideMask);
             ctx.lineWidth = 0.25 / scale;
-            ctx.strokeRect(coordinate.x + gx, coordinate.y + gy, 1.0, 1.0);
+            ctx.strokeRect(sidePosition.x + gx, sidePosition.y + gy, 1.0, 1.0);
           }
         }
       }
@@ -181,8 +181,8 @@ const PixelEditorView: Component = () => {
         const guide = guides[sideKind];
 
         if (guide !== undefined) {
-          renderGuide({ ctx, side, guide, coordinate: sidePosition, kind: "outer", scale: _scale });
-          renderGuide({ ctx, side, guide, coordinate: sidePosition, kind: "inner", scale: _scale });
+          renderGuide({ ctx, side, guide, sidePosition, kind: "outer", scale: _scale });
+          renderGuide({ ctx, side, guide, sidePosition, kind: "inner", scale: _scale });
         }
 
         const sideColor = sideMaskToCSS(SIDE_MASK[sideKind]);

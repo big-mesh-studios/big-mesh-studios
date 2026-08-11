@@ -235,15 +235,15 @@ export const createPixelEditorController = ({
 
       switch (mode()) {
         case "Eyedrop": {
-          const position = worldPointer();
-          if (!position) {
+          const _worldPointer = worldPointer();
+          if (!_worldPointer) {
             return;
           }
 
           const intersection = intersectSides({
             sidePositions: sidePositions(),
             sides: store.sides,
-            worldPosition: position,
+            worldPosition: _worldPointer,
           });
 
           if (!intersection) {
