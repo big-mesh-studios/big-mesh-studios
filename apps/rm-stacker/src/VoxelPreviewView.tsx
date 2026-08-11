@@ -5,10 +5,12 @@ import {
   createTrackedEffect,
   flush,
   onSettled,
+  untrack,
   useContext,
 } from "solid-js";
 import { StackerContext } from "./context";
 import { Dimensions3D } from "./maths";
+import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 import shaders from "./shaders";
 import { tryCatch } from "./utils";
 import styles from "./VoxelPreviewView.module.css";
@@ -24,7 +26,10 @@ type WebGLState = {
   uLightColourLocation: WebGLUniformLocation | null;
   uAmbientColourLocation: WebGLUniformLocation | null;
   uDimensions: WebGLUniformLocation | null;
+  uVoxelCount: WebGLUniformLocation | null;
+  uPaletteLocation: WebGLUniformLocation | null;
   texture: WebGLTexture;
+  paletteTexture: WebGLTexture;
   buffer: WebGLBuffer;
 };
 
@@ -79,14 +84,46 @@ const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
   gl.texImage3D(
     gl.TEXTURE_3D,
     0,
-    gl.RGBA8,
+    gl.RGBA8UI,
     1,
     1,
     1,
     0,
-    gl.RGBA,
+    gl.RGBA_INTEGER,
     gl.UNSIGNED_BYTE,
     new Uint8Array([0, 0, 0, 0]),
+  );
+
+  // One row of 32 texels, one per palette colour. The shader looks a colour
+  // index up at its texel's centre, so the texel must span exactly 1/32 of the
+  // texture.
+  const paletteTexture = gl.createTexture();
+  if (paletteTexture === null) {
+    throw new Error("Failed to create palette texture");
+  }
+  gl.bindTexture(gl.TEXTURE_2D, paletteTexture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const paletteData = new Uint8Array(DAWNBRINGER_32_PALETTE.length * 4);
+  DAWNBRINGER_32_PALETTE.forEach(({ r, g, b, a }, i) => {
+    const offset = i << 2;
+    paletteData[offset] = r;
+    paletteData[offset + 1] = g;
+    paletteData[offset + 2] = b;
+    paletteData[offset + 3] = a;
+  });
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA8,
+    DAWNBRINGER_32_PALETTE.length,
+    1,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    paletteData,
   );
 
   return {
@@ -100,7 +137,10 @@ const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
     uLightColourLocation: gl.getUniformLocation(program, shaders.uLightColour),
     uAmbientColourLocation: gl.getUniformLocation(program, shaders.uAmbientColour),
     uDimensions: gl.getUniformLocation(program, shaders.uDimensions),
+    uVoxelCount: gl.getUniformLocation(program, shaders.uVoxelCount),
+    uPaletteLocation: gl.getUniformLocation(program, shaders.uPalette),
     texture,
+    paletteTexture,
     buffer,
   };
 };
@@ -135,12 +175,12 @@ const VoxelPreviewView: Component = () => {
     gl.texImage3D(
       gl.TEXTURE_3D,
       0,
-      gl.RGBA8,
+      gl.RGBA8UI,
       _dimensions.width,
       _dimensions.height,
       _dimensions.depth,
       0,
-      gl.RGBA,
+      gl.RGBA_INTEGER,
       gl.UNSIGNED_BYTE,
       _voxels,
     );
@@ -149,8 +189,9 @@ const VoxelPreviewView: Component = () => {
   createTrackedEffect(loadVoxelArrayToWebGL);
 
   const render = () => {
-    const _webgl = webgl();
-    const _canvas = canvas();
+    const _dimensions = untrack(dimensions);
+    const _webgl = untrack(webgl);
+    const _canvas = untrack(canvas);
     if (_webgl === undefined || _canvas === undefined) {
       return;
     }
@@ -173,11 +214,20 @@ const VoxelPreviewView: Component = () => {
       normalizedDimensions().height,
       normalizedDimensions().depth,
     );
+    gl.uniform3f(
+      _webgl.uVoxelCount,
+      _dimensions.width,
+      _dimensions.height,
+      _dimensions.depth,
+    );
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, _webgl.paletteTexture);
+    gl.uniform1i(_webgl.uPaletteLocation, 1);
     gl.bindBuffer(gl.ARRAY_BUFFER, _webgl.buffer);
     gl.enableVertexAttribArray(_webgl.positionLocation);
     gl.vertexAttribPointer(_webgl.positionLocation, 2, gl.FLOAT, false, 0, 0);
     flush();
-    loadVoxelArrayToWebGL();
+    untrack(loadVoxelArrayToWebGL);
     gl.flush();
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };

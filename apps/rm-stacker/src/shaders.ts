@@ -4,10 +4,12 @@ import {
   For,
   If,
   attribute,
+  boolean,
   break_,
   compileGLSL,
   float,
   mat3,
+  uint,
   uniformRaw,
   varying,
   vec2,
@@ -21,10 +23,12 @@ import {
 export default (() => {
   // Shared rmsl nodes. Created once so the generated slot names are the same in
   // both the vertex and fragment shaders.
-  const uVoxels = uniformRaw("uVoxels", "sampler3D");
+  const uPalette = uniformRaw("uPalette", "sampler2D");
+  const uVoxels = uniformRaw("uVoxels", "usampler3D");
   const uTime = uniformRaw("uTime", "float");
   const uResolution = uniformRaw("uResolution", "vec2");
   const uDimensions = uniformRaw("uDimensions", "vec3");
+  const uVoxelCount = uniformRaw("uVoxelCount", "vec3");
   const uLightDir = uniformRaw("uLightDir", "vec3");
   const uLightColour = uniformRaw("uLightColour", "vec3");
   const uAmbientColour = uniformRaw("uAmbientColour", "vec3");
@@ -49,10 +53,49 @@ export default (() => {
       vec3(angle.sin(), float(0), angle.cos()),
     );
 
-  // rmsl has no sampler3D type, so the texture() call is untyped here; the
-  // generated sampler2D declaration is patched to sampler3D after compiling.
-  const sampleVoxels = (coordinate: Node<"vec3">): Node<"vec4"> =>
-    (uVoxels as any).texture(coordinate) as Node<"vec4">;
+  // The voxel texture is an integer (usampler3D) so rmsl compiles the lookup
+  // to texelFetch, which takes integer texel coordinates. The callers pass a
+  // normalized [0,1] position, so scale it by the texel count per axis and
+  // clamp, keeping the fetch on the last texel instead of running off the edge
+  // when the point sits exactly on the far boundary of the volume.
+  const sampleVoxels = (coordinate: Node<"vec3">): Node<"uvec4"> =>
+    uVoxels.texture(
+      coordinate.mult(uVoxelCount).clamp(vec3(float(0)), uVoxelCount.sub(vec3(float(1)))),
+    );
+
+  const readFront = (voxel: Node<"uvec4">): Node<"uint"> => {
+    return voxel.r.bitAnd(0b00011111);
+  };
+  const readBack = (voxel: Node<"uvec4">): Node<"uint"> => {
+    return voxel.r.bitAnd(0b11100000)
+      .shiftRight(5)
+      .bitOr(voxel.g.bitAnd(0b00000011).shiftLeft(3));
+  };
+  const readLeft = (voxel: Node<"uvec4">): Node<"uint"> => {
+    return voxel.g.bitAnd(0b01111100).shiftRight(2);
+  };
+  const readRight = (voxel: Node<"uvec4">): Node<"uint"> => {
+    return voxel.g.bitAnd(0b10000000).shiftRight(7)
+      .bitOr(voxel.b.bitAnd(0b00001111).shiftLeft(1));
+  };
+  const readTop = (voxel: Node<"uvec4">): Node<"uint"> => {
+    return voxel.b.bitAnd(0b11110000).shiftRight(4)
+      .bitOr(voxel.a.bitAnd(0b00000001).shiftLeft(4));
+  };
+  const readBottom = (voxel: Node<"uvec4">): Node<"uint"> => {
+    return voxel.a.bitAnd(0b00111110).shiftRight(1);
+  };
+  const isSolid = (voxel: Node<"uvec4">): Node<"bool"> => {
+    return voxel.a.bitAnd(0b11000000).notEqual(0);
+  };
+
+  const colourIndexToColour = (colourIndex: Node<"uint">): Node<"vec4"> => {
+    // Sample the texel's centre: the palette is one row of 32 texels, so the
+    // centre of texel i sits at (i + 0.5)/32.
+    return uPalette.texture(
+      vec2(colourIndex.toFloat().div(32.0).add(float(1.0 / 64.0)), float(0.5)),
+    );
+  };
 
   const vertexFn = Fn(() => {
     vUv.assign(positionAttr.mult(vec2(0.5)).add(vec2(0.5)));
@@ -90,11 +133,17 @@ export default (() => {
     // along the ray are plain world units.
     const cameraRotation = rotationY(time);
 
-    // rmsl has no vec3 * mat3, so rotate through the transpose (identical result)
-    const rayOrigin = cameraRotation.transpose().multVec(vec3(float(0), float(0), float(-1.8)));
-    const rayDirection = cameraRotation
-      .transpose()
-      .multVec(vec3(screenPosition.x, screenPosition.y, float(2)).normalize());
+    // rmsl has no vec3 * mat3, so rotate through the transpose (identical result).
+    // Each of these is hoisted into a variable so the rotation matrix (and the
+    // ray itself, used many times by the face test below) is built once instead
+    // of being inlined at every use.
+    const inverseCameraRotation = cameraRotation.transpose().toVar();
+    const rayOrigin = inverseCameraRotation
+      .multVec(vec3(float(0), float(0), float(-1.8)))
+      .toVar();
+    const rayDirection = inverseCameraRotation
+      .multVec(vec3(screenPosition.x, screenPosition.y, float(2)).normalize())
+      .toVar();
 
     // this pixel's output, black until something is hit
     const colour = vec4(float(0), float(0), float(0), float(0)).toVar();
@@ -156,13 +205,13 @@ export default (() => {
       // How far to advance per step, in world units. Smaller catches thinner
       // details but costs a texture lookup per step, for every pixel, every frame.
       const stepSize = float(0.01);
-      // How far to step aside when measuring the alpha-gradient normal below.
-      // The step is a world-space distance, but the sampling happens in texture
-      // space, where each axis is stretched to 0..1 regardless of how many
-      // voxels it holds, so divide it per axis to undo that stretch. Without
-      // this the gradient is measured over different distances per axis and the
-      // normals of a non-cubic model come out tilted.
-      const gradientStep = vec3(float(0.015625)).div(uDimensions).toVar();
+      // The cell the ray occupied on the previous step, in whole voxel indices.
+      // Comparing it with the cell at the current step tells us which face the
+      // ray crossed to get here — the face is the boundary between the two
+      // cells.  A sentinel far outside the volume guarantees the first solid
+      // step inside always differs from it.  (voxel indices stay small, so a
+      // large sentinel can never be mistaken for a real cell.)
+      const prevCell = vec3(float(-1e9)).toVar();
       // rmsl's For mirrors a C for loop: start at the entry point, keep going
       // while still inside the box, advance one step, and run the body each time.
       For(
@@ -195,50 +244,280 @@ export default (() => {
 
             // alpha is 1 in a filled voxel and 0 in empty space, so anything past
             // the halfway mark counts as solid: this step hit the model.
-            If(voxel.a.greaterThan(float(0.5)), () => {
+            const voxelSolid = isSolid(voxel);
+
+            // The whole-voxel cell this sample falls in, in voxel indices.
+            // worldPosition is measured from the box centre, so a voxel's cell
+            // edges run from -uDimensions/2 upward in steps of one voxel side;
+            // dividing the offset-by-half-box position by the cell side gives a
+            // coordinate in whole voxels.
+            const cellSize = uDimensions.div(uVoxelCount).toVar();
+            const curCell = worldPosition
+              .add(uDimensions.mult(float(0.5)))
+              .div(cellSize)
+              .floor()
+              .toVar();
+
+            // Did the ray step into a new cell this step?  Face detection is
+            // only meaningful at the moment of entry: it tells us which face
+            // the ray crossed to get into the cell it is now in.  Marching
+            // through the middle of a cell the ray is already inside, the face
+            // to render was decided when it entered; re-evaluating it here
+            // would pick a random near face and wrongly cull the surface.  The
+            // sentinel prevCell (huge) differs from any real cell, so the first
+            // solid step always counts as an entry.
+            const moved = curCell.sub(prevCell);
+            const enteredNewCell = moved.x
+              .notEqual(float(0))
+              .or(moved.y.notEqual(float(0)))
+              .or(moved.z.notEqual(float(0)));
+
+            If(voxelSolid.and(enteredNewCell), () => {
               // --- 4. Shade the hit ---
 
-              // Lighting needs to know which way the surface faces, but a voxel
-              // grid stores no normals. Since alpha is 1 inside the model and 0
-              // outside, it falls off sharply exactly at the surface, and the
-              // direction of that fall-off is the direction the surface faces.
-              // Measure it per axis by sampling a little to each side and taking
-              // the difference (central differences), before minus after so the
-              // result points from solid out into empty space.
-              const alphaGradient = vec3(
-                sampleVoxels(voxelCoord.sub(vec3(gradientStep.x, float(0), float(0)))).a.sub(
-                  sampleVoxels(voxelCoord.add(vec3(gradientStep.x, float(0), float(0)))).a,
-                ),
-                sampleVoxels(voxelCoord.sub(vec3(float(0), gradientStep.y, float(0)))).a.sub(
-                  sampleVoxels(voxelCoord.add(vec3(float(0), gradientStep.y, float(0)))).a,
-                ),
-                sampleVoxels(voxelCoord.sub(vec3(float(0), float(0), gradientStep.z))).a.sub(
-                  sampleVoxels(voxelCoord.add(vec3(float(0), float(0), gradientStep.z))).a,
-                ),
-              );
+              // Which face did the ray cross? It is the boundary between the
+              // cell the ray was in on the previous step and the cell it is in
+              // now: the ray stepped across exactly one face to get here.
+              // Which face depends on which axis the two cells differ on and in
+              // which direction the ray moved along it.  Determining the face
+              // this way is unambiguous even when the hit point sits right on a
+              // voxel corner, where a fraction-based nearest-face test is not.
 
-              // The tiny view-direction term is a safety net: where the gradient
-              // is zero or very weak (e.g. a surface sitting on the very edge of
-              // the volume) normalize() would divide by zero and give a NaN
-              // normal, so nudge it towards the camera to keep it valid.
-              const normal = alphaGradient.sub(rayDirection.mult(float(0.001))).normalize();
+              const faceColourIndex = uint(0).toVar();
+              const oneOverVoxelCount = vec3(float(1)).div(uVoxelCount).toVar();
+              // Whether the chosen face is exterior (the voxel beyond it is
+              // empty).  The moved-axis tests below already know this from the
+              // adjXm/adjXp/… samples, so they set it directly; only the
+              // nearest-face fallback has to check the neighbour itself.
+              const shouldRender = boolean(false).toVar();
 
-              // Diffuse (Lambert) shading: a surface is brightest when it faces
-              // the light head-on and fades to nothing as it turns away, which is
-              // what the dot product of the two directions gives. Clamped at 0 so
-              // surfaces facing away are simply unlit rather than negative.
-              const diffuse = normal.dot(uLightDir).max(float(0));
+              // The ray moved +a to get here, so it entered through the cell's
+              // min face (left / bottom / back); moved -a, through the max face
+              // (right / top / front).  A step can cross two boundaries at once
+              // (a diagonal step into a cell's corner), so several axes may
+              // have moved — pick the face whose neighbour beyond it is empty,
+              // i.e. the exterior surface of the model.  If every moved face
+              // has a solid neighbour the ray crossed an interior face, and the
+              // step is culled below.  On the first solid step there is no
+              // previous cell (the sentinel differs on every axis by a huge
+              // amount), so fall back to the nearest face behind the ray.
+              const movedX = curCell.x.sub(prevCell.x);
+              const movedY = curCell.y.sub(prevCell.y);
+              const movedZ = curCell.z.sub(prevCell.z);
+              const movedInX = movedX.abs().lessThan(float(2)).and(movedX.abs().greaterThan(float(0)));
+              const movedInY = movedY.abs().lessThan(float(2)).and(movedY.abs().greaterThan(float(0)));
+              const movedInZ = movedZ.abs().lessThan(float(2)).and(movedZ.abs().greaterThan(float(0)));
 
-              // The voxel's own colour, dimmed by how much light reaches it. The
-              // ambient term is the floor: light bouncing around the scene, so
-              // unlit sides read as shadowed rather than pure black.
-              colour.rgb.assign(voxel.rgb.mult(uAmbientColour.add(uLightColour.mult(diffuse))));
+              // A face is exterior when the voxel beyond it is empty.  Only the
+              // axes the ray actually moved on can be the one it crossed, so
+              // each axis block samples its own neighbour and nothing else; the
+              // first exterior face found (in X, Y, Z order, as before) is the
+              // surface the ray came through.  If none is exterior the ray
+              // crossed an interior face and the step is culled below.  On the
+              // first solid step there is no previous cell (the sentinel differs
+              // on every axis by a huge amount), so no axis counts as moved and
+              // the nearest-face fallback below runs.
+              const found = boolean(false).toVar();
+              If(movedInX, () => {
+                If(movedX.greaterThan(float(0)), () => {
+                  If(
+                    isSolid(sampleVoxels(voxelCoord.sub(vec3(oneOverVoxelCount.x, float(0), float(0))))).not(),
+                    () => {
+                      faceColourIndex.assign(readLeft(voxel));
+                      found.assign(boolean(true));
+                      shouldRender.assign(boolean(true));
+                    },
+                  );
+                }).else_(() => {
+                  If(
+                    isSolid(sampleVoxels(voxelCoord.add(vec3(oneOverVoxelCount.x, float(0), float(0))))).not(),
+                    () => {
+                      faceColourIndex.assign(readRight(voxel));
+                      found.assign(boolean(true));
+                      shouldRender.assign(boolean(true));
+                    },
+                  );
+                });
+              });
+              If(movedInY.and(found.not()), () => {
+                If(movedY.greaterThan(float(0)), () => {
+                  If(
+                    isSolid(sampleVoxels(voxelCoord.sub(vec3(float(0), oneOverVoxelCount.y, float(0))))).not(),
+                    () => {
+                      faceColourIndex.assign(readBottom(voxel));
+                      found.assign(boolean(true));
+                      shouldRender.assign(boolean(true));
+                    },
+                  );
+                }).else_(() => {
+                  If(
+                    isSolid(sampleVoxels(voxelCoord.add(vec3(float(0), oneOverVoxelCount.y, float(0))))).not(),
+                    () => {
+                      faceColourIndex.assign(readTop(voxel));
+                      found.assign(boolean(true));
+                      shouldRender.assign(boolean(true));
+                    },
+                  );
+                });
+              });
+              If(movedInZ.and(found.not()), () => {
+                If(movedZ.greaterThan(float(0)), () => {
+                  If(
+                    isSolid(sampleVoxels(voxelCoord.sub(vec3(float(0), float(0), oneOverVoxelCount.z)))).not(),
+                    () => {
+                      faceColourIndex.assign(readBack(voxel));
+                      found.assign(boolean(true));
+                      shouldRender.assign(boolean(true));
+                    },
+                  );
+                }).else_(() => {
+                  If(
+                    isSolid(sampleVoxels(voxelCoord.add(vec3(float(0), float(0), oneOverVoxelCount.z)))).not(),
+                    () => {
+                      faceColourIndex.assign(readFront(voxel));
+                      found.assign(boolean(true));
+                      shouldRender.assign(boolean(true));
+                    },
+                  );
+                });
+              });
+              If(found.not(), () => {
+                // No moved face has an empty neighbour: either the ray crossed
+                // an interior face or this is the first solid step with no
+                // previous cell.  For the first entry, the face is the nearest
+                // one behind the ray: the cell's fraction is how far we sit from
+                // its min faces, and the ray moving +a entered through the min
+                // face, -a through the max face.  The neighbour beyond that face
+                // must be checked here (unlike the moved-axis branches, which
+                // already sampled it): if it is solid the face is interior and
+                // the step is culled.
+                const fraction = curCell.fract().toVar();
+                const isNearMinX = rayDirection.x.greaterThan(float(0));
+                const isNearMinY = rayDirection.y.greaterThan(float(0));
+                const isNearMinZ = rayDirection.z.greaterThan(float(0));
+                const tX = float(1)
+                  .sub(fraction.x)
+                  .mix(fraction.x, isNearMinX.toFloat())
+                  .mult(cellSize.x)
+                  .div(rayDirection.x.abs().max(float(0.000001)));
+                const tY = float(1)
+                  .sub(fraction.y)
+                  .mix(fraction.y, isNearMinY.toFloat())
+                  .mult(cellSize.y)
+                  .div(rayDirection.y.abs().max(float(0.000001)));
+                const tZ = float(1)
+                  .sub(fraction.z)
+                  .mix(fraction.z, isNearMinZ.toFloat())
+                  .mult(cellSize.z)
+                  .div(rayDirection.z.abs().max(float(0.000001)));
+                If(tX.lessThanEqual(tY).and(tX.lessThanEqual(tZ)), () => {
+                  If(isNearMinX, () => {
+                    faceColourIndex.assign(readLeft(voxel));
+                  }).else_(() => {
+                    faceColourIndex.assign(readRight(voxel));
+                  });
+                }).elseIf(tY.lessThanEqual(tZ), () => {
+                  If(isNearMinY, () => {
+                    faceColourIndex.assign(readBottom(voxel));
+                  }).else_(() => {
+                    faceColourIndex.assign(readTop(voxel));
+                  });
+                }).else_(() => {
+                  If(isNearMinZ, () => {
+                    faceColourIndex.assign(readBack(voxel));
+                  }).else_(() => {
+                    faceColourIndex.assign(readFront(voxel));
+                  });
+                });
 
-              colour.a.assign(float(1));
+                // The chosen face is the one opposite the ray's movement on the
+                // axis it crossed; sample its neighbour to learn whether it is
+                // exterior.  At the volume edge the sample clamps to the border
+                // voxel, so guard the bounds to avoid a false interior result.
+                const isNearMin = vec3(
+                  isNearMinX.toFloat(),
+                  isNearMinY.toFloat(),
+                  isNearMinZ.toFloat(),
+                );
+                const stepSign = isNearMin.mult(float(2)).sub(vec3(float(1)));
+                const fallbackAdjacent = voxelCoord.sub(stepSign.mult(oneOverVoxelCount));
+                const fallbackInBounds = fallbackAdjacent
+                  .greaterThanEqual(vec3(float(0)))
+                  .all()
+                  .and(fallbackAdjacent.lessThanEqual(vec3(float(1))).all());
+                shouldRender.assign(
+                  fallbackInBounds.and(
+                    isSolid(sampleVoxels(fallbackAdjacent)).not(),
+                  ),
+                );
+              });
 
-              // First hit wins: stop walking, everything behind it is hidden.
-              break_();
+              If(shouldRender, () => {
+                // A gradient normal from neighbouring voxels — central
+                // differences on their solidity — so adjacent voxels of the
+                // same colour blend into one surface instead of showing sharp
+                // seams.
+                const gXm = isSolid(
+                  sampleVoxels(
+                    voxelCoord.sub(vec3(oneOverVoxelCount.x, float(0), float(0))),
+                  ),
+                ).toFloat();
+                const gXp = isSolid(
+                  sampleVoxels(
+                    voxelCoord.add(vec3(oneOverVoxelCount.x, float(0), float(0))),
+                  ),
+                ).toFloat();
+                const gYm = isSolid(
+                  sampleVoxels(
+                    voxelCoord.sub(vec3(float(0), oneOverVoxelCount.y, float(0))),
+                  ),
+                ).toFloat();
+                const gYp = isSolid(
+                  sampleVoxels(
+                    voxelCoord.add(vec3(float(0), oneOverVoxelCount.y, float(0))),
+                  ),
+                ).toFloat();
+                const gZm = isSolid(
+                  sampleVoxels(
+                    voxelCoord.sub(vec3(float(0), float(0), oneOverVoxelCount.z)),
+                  ),
+                ).toFloat();
+                const gZp = isSolid(
+                  sampleVoxels(
+                    voxelCoord.add(vec3(float(0), float(0), oneOverVoxelCount.z)),
+                  ),
+                ).toFloat();
+                const normal = vec3(
+                  gXm.sub(gXp),
+                  gYm.sub(gYp),
+                  gZm.sub(gZp),
+                ).sub(rayDirection.mult(float(0.001))).normalize();
+
+                // Diffuse (Lambert) shading: a surface is brightest when it faces
+                // the light head-on and fades to nothing as it turns away, which is
+                // what the dot product of the two directions gives. Clamped at 0 so
+                // surfaces facing away are simply unlit rather than negative.
+                const diffuse = normal.dot(uLightDir).max(float(0));
+
+                // The face's own colour, dimmed by how much light reaches it. The
+                // ambient term is the floor: light bouncing around the scene, so
+                // unlit sides read as shadowed rather than pure black.
+                colour.rgb.assign(
+                  colourIndexToColour(faceColourIndex).rgb.mult(
+                    uAmbientColour.add(uLightColour.mult(diffuse)),
+                  ),
+                );
+
+                colour.a.assign(float(1));
+
+                // First hit wins: stop walking, everything behind it is hidden.
+                break_();
+              });
             });
+
+            // Remember which cell this step was in, so the next step can tell
+            // which face it crossed by comparing cells.
+            prevCell.assign(curCell);
           });
         },
       );
@@ -253,9 +532,11 @@ export default (() => {
     uTime: uTime.name,
     uResolution: uResolution.name,
     uDimensions: uDimensions.name,
+    uVoxelCount: uVoxelCount.name,
     uLightDir: uLightDir.name,
     uLightColour: uLightColour.name,
     uAmbientColour: uAmbientColour.name,
+    uPalette: uPalette.name,
     vUv: vUv.name,
     positionAttr: positionAttr.name,
     vertexGLSL: compileGLSL.vertex(vertexFn()),
