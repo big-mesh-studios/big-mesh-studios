@@ -91,15 +91,18 @@ export const createPixelEditorController = ({
     return out;
   };
 
-  const roundedWorldPointer = createMemo<Vector2D | undefined>(previous => {
-    const _worldPointer = worldPointer();
+  const roundedWorldPointer = createMemo<Vector2D | undefined>(
+    previous => {
+      const _worldPointer = worldPointer();
 
-    if (_worldPointer === undefined) {
-      return undefined;
-    }
+      if (_worldPointer === undefined) {
+        return undefined;
+      }
 
-    return Vector2D.round(_worldPointer, previous);
-  });
+      return Vector2D.round(_worldPointer, previous);
+    },
+    { equals: false },
+  );
 
   const edgeController = createEdgeController({
     worldPointer: worldPointer,
@@ -128,87 +131,88 @@ export const createPixelEditorController = ({
 
   createEffect(
     () => [roundedWorldPointer(), pointerids().size, mode()] as const,
-    ([worldPointer, pointerCount, _mode]) => {
-      if (_mode === "Idle") {
-        return;
-      }
-      if (pointerCount !== 1) {
-        return;
-      }
-      if (worldPointer === undefined) {
-        return;
-      }
-
-      const intersection = intersectSides({
-        worldPosition: worldPointer,
-        sides: store.sides,
-        sidePositions: untrack(sidePositions),
-      });
-
-      if (!intersection) {
-        return;
-      }
-
-      const { side, kind, position } = intersection;
-
-      const oppositePixel = getOppositePixel(kind, position, side);
-      const oppositeKind = OPPOSING_SIDE[kind];
-
-      const sides = untrack(() => store.sides);
-
-      const oppositeSide = sides[oppositeKind];
-      const oppositeOpacity =
-        sides[oppositeKind].data[
-          ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
-        ];
-
-      const commands: Command[] = [];
-
-      switch (mode()) {
-        case "Erase": {
-          commands.push(Command.erasePixel(kind, position));
-
-          if (oppositeOpacity) {
-            commands.push(Command.erasePixel(oppositeKind, oppositePixel));
-          }
-
-          break;
+    ([worldPointer, pointerCount, _mode]) =>
+      untrack(() => {
+        if (_mode === "Idle") {
+          return;
         }
-        case "Draw": {
-          const _selectedColour = untrack(selectedColour);
+        if (pointerCount !== 1) {
+          return;
+        }
+        if (worldPointer === undefined) {
+          return;
+        }
 
-          if (_selectedColour !== undefined) {
-            commands.push(Command.writePixel(kind, position, _selectedColour));
+        const intersection = intersectSides({
+          worldPosition: worldPointer,
+          sides: store.sides,
+          sidePositions: sidePositions(),
+        });
 
-            if (!oppositeOpacity) {
-              commands.push(Command.writePixel(oppositeKind, oppositePixel, _selectedColour));
+        if (!intersection) {
+          return;
+        }
+
+        const { side, kind, position } = intersection;
+
+        const oppositePixel = getOppositePixel(kind, position, side);
+        const oppositeKind = OPPOSING_SIDE[kind];
+
+        const sides = store.sides;
+
+        const oppositeSide = sides[oppositeKind];
+        const oppositeOpacity =
+          sides[oppositeKind].data[
+            ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
+          ];
+
+        const commands: Command[] = [];
+
+        switch (mode()) {
+          case "Erase": {
+            commands.push(Command.erasePixel(kind, position));
+
+            if (oppositeOpacity) {
+              commands.push(Command.erasePixel(oppositeKind, oppositePixel));
             }
+
+            break;
           }
+          case "Draw": {
+            const _selectedColour = selectedColour();
 
-          break;
-        }
-        case "Fill": {
-          const _selectedColour = untrack(selectedColour);
+            if (_selectedColour !== undefined) {
+              commands.push(Command.writePixel(kind, position, _selectedColour));
 
-          if (_selectedColour !== undefined) {
-            commands.push(Command.fillPixel(kind, position, _selectedColour));
-
-            if (!oppositeOpacity) {
-              commands.push(Command.fillPixel(oppositeKind, oppositePixel, _selectedColour));
+              if (!oppositeOpacity) {
+                commands.push(Command.writePixel(oppositeKind, oppositePixel, _selectedColour));
+              }
             }
+
+            break;
           }
+          case "Fill": {
+            const _selectedColour = selectedColour();
 
-          break;
+            if (_selectedColour !== undefined) {
+              commands.push(Command.fillPixel(kind, position, _selectedColour));
+
+              if (!oppositeOpacity) {
+                commands.push(Command.fillPixel(oppositeKind, oppositePixel, _selectedColour));
+              }
+            }
+
+            break;
+          }
         }
-      }
 
-      if (commands.length === 0) {
-        return;
-      }
+        if (commands.length === 0) {
+          return;
+        }
 
-      const command = commands.length === 1 ? commands[0] : Command.sequence(commands);
-      undoCommandsReversed.push(doCommand(command));
-    },
+        const command = commands.length === 1 ? commands[0] : Command.sequence(commands);
+        undoCommandsReversed.push(doCommand(command));
+      }),
   );
 
   return {
@@ -233,7 +237,7 @@ export const createPixelEditorController = ({
     onPointerDown(e: PointerEvent) {
       setPointerids(set => set.add(e.pointerId));
 
-      switch (mode()) {
+      switch (untrack(mode)) {
         case "Eyedrop": {
           const _worldPointer = worldPointer();
           if (!_worldPointer) {
