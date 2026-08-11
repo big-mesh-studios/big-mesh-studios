@@ -18,6 +18,7 @@
   grid-template-rows: auto 1fr;
   justify-content: space-between;
   gap: var(--margin);
+  pointer-events: none;
 
   .bottom {
     display: grid;
