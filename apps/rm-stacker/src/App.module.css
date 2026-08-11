@@ -14,6 +14,7 @@
 
 .handle {
   background: var(--dark-grey);
+  z-index: 2;
 
   &:hover {
     background: var(--light-grey);

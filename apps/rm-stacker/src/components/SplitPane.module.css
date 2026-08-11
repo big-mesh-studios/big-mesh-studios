@@ -1,5 +1,6 @@
 .base {
   overflow: hidden;
+  position: relative;
 }
 .split {
   display: grid;

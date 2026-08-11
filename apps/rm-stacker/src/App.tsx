@@ -40,7 +40,9 @@ const App: Component = () => {
         <div class={styles.shell}>
           <Split direction={layout()}>
             <Split.Pane size="50%" max="245px">
-              <PixelEditorView />
+              <div style={{ "overflow-x": "auto", position: "absolute", inset: 0 }}>
+                <PixelEditorView />
+              </div>
             </Split.Pane>
             <Split.Handle
               size="5px"

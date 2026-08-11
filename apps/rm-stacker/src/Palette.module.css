@@ -6,6 +6,7 @@
   background-color: var(--back);
   align-self: start;
   justify-self: start;
+  max-width: calc(100vw - (var(--margin) * 3 + var(--size)) * 2);
 }
 
 .item {
