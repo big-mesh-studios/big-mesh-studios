@@ -33,10 +33,7 @@ const App: Component = () => {
   return (
     <StackerContext value={stacker}>
       <div class={styles.shell}>
-        <div class={styles.editorPane}>
-          <PixelEditorView />
-        </div>
-        <div class={styles.divider} />
+        <PixelEditorView />
         <div class={styles.previewPane}>
           <div style="flex-grow: 1; overflow: hidden;">
             <VoxelPreviewView />
