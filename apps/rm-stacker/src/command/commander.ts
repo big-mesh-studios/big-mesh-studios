@@ -1,27 +1,18 @@
 import { Setter } from "@solidjs/signals";
 import { untrack } from "solid-js";
+import { load, save } from "../load-save";
+import { StackerStore } from "../stacker-store";
+import { Sides } from "../types";
+import { areRGBAsEqual, intersectSide } from "../utils";
 import { Command } from "./Command";
-import { load, save } from "./load-save";
-import { Vector2D } from "./maths";
-import { StackerStore } from "./stacker-store";
-import { RGBA, SideKind, Sides } from "./types";
-import { areRGBAsEqual } from "./utils";
 
 export function createCommander({
-  intersectSides,
-  intersectSide,
   store,
   setSides,
   updateVoxels,
   requestRender,
   requestAutoSave,
 }: {
-  intersectSides(
-    position: Vector2D,
-  ):
-    | undefined
-    | { kind: SideKind; side: ImageData; colour: RGBA; offset: number; position: Vector2D };
-  intersectSide(side: SideKind, position: Vector2D): { colour: RGBA; offset: number } | undefined;
   store: StackerStore;
   setSides: Setter<Sides>;
   updateVoxels(): void;
@@ -51,14 +42,16 @@ export function createCommander({
           return Command.sequence(reverseCommands);
         }
         case "FillPixel": {
-          const intersection = intersectSides(effect.position);
+          const { side: kind, position, colour: newColour } = effect;
+          const side = store.sides[kind];
+
+          const intersection = intersectSide({ position, side });
 
           if (!intersection) {
             return Command.noOperation();
           }
 
-          const { colour: newColour } = effect;
-          const { side, kind, colour: oldColour, offset, position } = intersection;
+          const { colour: oldColour, offset } = intersection;
 
           if (!oldColour || areRGBAsEqual(newColour, oldColour)) {
             return Command.noOperation();
@@ -105,7 +98,7 @@ export function createCommander({
             neighbors[3].y = y;
 
             for (const neighbor of neighbors) {
-              const intersection = intersectSide(kind, neighbor);
+              const intersection = intersectSide({ position: neighbor, side });
 
               // Neighbour lies outside this side: skip it, the rest of the region still fills.
               if (!intersection) {
@@ -129,14 +122,16 @@ export function createCommander({
           return undo;
         }
         case "WritePixel": {
-          const intersection = intersectSides(effect.position);
+          const { side: kind, position, colour } = effect;
+          const side = store.sides[kind];
+
+          const intersection = intersectSide({ position, side });
 
           if (!intersection) {
             return Command.noOperation();
           }
 
-          const { colour } = effect;
-          const { side, colour: oldColour, offset, position } = intersection;
+          const { colour: oldColour, offset } = intersection;
 
           side.data[offset + 0] = colour.r;
           side.data[offset + 1] = colour.g;
@@ -144,19 +139,22 @@ export function createCommander({
           side.data[offset + 3] = 255;
 
           if (oldColour.a) {
-            return Command.writePixel(effect.position, oldColour);
+            return Command.writePixel(kind, position, oldColour);
           } else {
-            return Command.erasePixel(effect.position);
+            return Command.erasePixel(kind, position);
           }
         }
         case "ErasePixel": {
-          const intersection = intersectSides(effect.position);
+          const { side: kind, position } = effect;
+          const side = store.sides[kind];
+
+          const intersection = intersectSide({ position, side });
 
           if (!intersection) {
             return Command.noOperation();
           }
 
-          const { side, offset, position } = intersection;
+          const { colour: oldColour, offset } = intersection;
 
           if (side.data[offset + 3] === 0) {
             return Command.noOperation();
@@ -167,7 +165,7 @@ export function createCommander({
           side.data[offset + 2] = 0;
           side.data[offset + 3] = 0;
 
-          return Command.writePixel(position, intersection.colour);
+          return Command.writePixel(kind, position, oldColour);
         }
         case "LoadData": {
           let undoCommand = snapshot();

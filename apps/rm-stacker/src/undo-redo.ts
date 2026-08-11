@@ -1,5 +1,5 @@
 import { Accessor, createSignal, Signal } from "solid-js";
-import { Command } from "./Command";
+import { Command } from "./command/Command";
 
 export class UndoRedoManager {
   private _undoStack: { command: Command; description: string }[] = [];

@@ -1,6 +1,6 @@
 import { decode, encode } from "fast-png";
 import JSZip from "jszip";
-import { Command } from "./Command";
+import { Command } from "./command/Command";
 import { SideKind, sideKindSet, Sides } from "./types";
 import { keysOf } from "./utils";
 

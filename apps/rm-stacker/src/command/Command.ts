@@ -1,6 +1,6 @@
-import { Vector2D } from "./maths";
-import { RGBA } from "./types";
-import { base64ToUint8Array, uint8ArrayToBase64 } from "./utils";
+import { Vector2D } from "../maths";
+import { RGBA, SideKind } from "../types";
+import { base64ToUint8Array, uint8ArrayToBase64 } from "../utils";
 
 export type Command =
   | {
@@ -12,16 +12,19 @@ export type Command =
     }
   | {
       type: "WritePixel";
+      side: SideKind;
       position: Vector2D;
       colour: RGBA;
     }
   | {
       type: "FillPixel";
+      side: SideKind;
       position: Vector2D;
       colour: RGBA;
     }
   | {
       type: "ErasePixel";
+      side: SideKind;
       position: Vector2D;
     }
   | {
@@ -42,16 +45,16 @@ export namespace Command {
     return { type: "Sequence", commands };
   }
 
-  export function writePixel(position: Vector2D, colour: RGBA): Command {
-    return { type: "WritePixel", position, colour };
+  export function writePixel(side: SideKind, position: Vector2D, colour: RGBA): Command {
+    return { type: "WritePixel", side, position, colour };
   }
 
-  export function fillPixel(position: Vector2D, colour: RGBA): Command {
-    return { type: "FillPixel", position, colour };
+  export function fillPixel(side: SideKind, position: Vector2D, colour: RGBA): Command {
+    return { type: "FillPixel", side, position, colour };
   }
 
-  export function erasePixel(position: Vector2D): Command {
-    return { type: "ErasePixel", position };
+  export function erasePixel(side: SideKind, position: Vector2D): Command {
+    return { type: "ErasePixel", side, position };
   }
 
   export function loadData(data: Blob): Command {
@@ -77,11 +80,16 @@ export namespace Command {
         };
       }
       case "WritePixel": {
-        let colour = command.colour;
-        return { type: "WritePixel", x: command.position.x, y: command.position.y, colour };
+        let { side, position, colour } = command;
+        return { type: "WritePixel", side, x: position.x, y: position.y, colour };
+      }
+      case "FillPixel": {
+        let { side, position, colour } = command;
+        return { type: "FillPixel", side, x: position.x, y: position.y, colour };
       }
       case "ErasePixel": {
-        return { type: "ErasePixel", x: command.position.x, y: command.position.y };
+        let { side, position } = command;
+        return { type: "ErasePixel", side, x: position.x, y: position.y };
       }
       case "LoadData": {
         let data = await command.data.arrayBuffer();
@@ -99,18 +107,24 @@ export namespace Command {
     }
   }
 
+  /**
+   * Rebuilds a command from its JSON form. Returns a no-op for anything that
+   * doesn't match a known, current command shape (e.g. history persisted
+   * before a command shape change) so one stale entry can't take down the
+   * rest of a loaded undo/redo stack.
+   */
   export function fromJSON(command: any): Command {
-    switch (command.type) {
+    switch (command?.type) {
       case "NoOperation":
         return Command.noOperation();
       case "Sequence":
         return Command.sequence(command.commands.map((c: any) => Command.fromJSON(c)));
-      case "WritePixel": {
-        return Command.writePixel(command, command.colour);
-      }
-      case "ErasePixel": {
-        return Command.erasePixel(command);
-      }
+      case "WritePixel":
+        return Command.writePixel(command.side, { x: command.x, y: command.y }, command.colour);
+      case "FillPixel":
+        return Command.fillPixel(command.side, { x: command.x, y: command.y }, command.colour);
+      case "ErasePixel":
+        return Command.erasePixel(command.side, { x: command.x, y: command.y });
       case "LoadData": {
         let data = command.data;
         let data2 = base64ToUint8Array(data);
@@ -122,7 +136,7 @@ export namespace Command {
         return { type: "Async", command: Promise.resolve(Command.fromJSON(command.command)) };
       }
       default:
-        throw new Error("Unknown Command");
+        return Command.noOperation();
     }
   }
 }

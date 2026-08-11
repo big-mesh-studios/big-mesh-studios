@@ -1,4 +1,12 @@
-import { Component, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
+import {
+  Component,
+  createEffect,
+  createMemo,
+  createSignal,
+  onSettled,
+  untrack,
+  useContext,
+} from "solid-js";
 import * as THREE from "three";
 import { SIDE_MASK } from "../constants";
 import { StackerContext } from "../context";
@@ -10,6 +18,7 @@ import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
 import { Hud } from "./Hud";
 import styles from "./PixelEditorView.module.css";
+import { computeSidePositions } from "./side-layout";
 
 interface ImageCanvasCacheData {
   canvas: HTMLCanvasElement;
@@ -17,8 +26,10 @@ interface ImageCanvasCacheData {
 }
 
 const PixelEditorView: Component = () => {
-  const { store, doCommand, pushUndo, sidePositions, onRender } = useContext(StackerContext);
+  const { store, doCommand, pushUndo, onRender } = useContext(StackerContext);
   const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
+
+  const sidePositions = createMemo(() => computeSidePositions(store.dimensions));
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [mode, setMode] = createSignal<ModeKind>("Idle");
