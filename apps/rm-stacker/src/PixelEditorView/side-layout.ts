@@ -3,6 +3,7 @@ import { SideKind, Sides } from "../types";
 import { intersectSide, keysOf } from "../utils";
 
 const PADDING = 6;
+export const LABEL_HEIGHT = 3;
 
 export type SidePositions = Record<SideKind, Vector2D>;
 
@@ -16,8 +17,8 @@ export const computeSidePositions = ({ width, height, depth }: Dimensions3D): Si
   left: { x: -(depth + PADDING), y: 0 },
   right: { x: width + PADDING, y: 0 },
   back: { x: width + depth + PADDING * 2, y: 0 },
-  top: { x: 0, y: -(depth + PADDING) },
-  bottom: { x: 0, y: height + PADDING },
+  top: { x: 0, y: -(depth + PADDING + LABEL_HEIGHT) },
+  bottom: { x: 0, y: height + PADDING + LABEL_HEIGHT },
 });
 
 /** Resolves a canvas-space position to whichever side's panel it falls on. */

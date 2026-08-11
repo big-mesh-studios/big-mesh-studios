@@ -18,7 +18,7 @@ import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
 import { Hud } from "./Hud";
 import styles from "./PixelEditorView.module.css";
-import { computeSidePositions } from "./side-layout";
+import { computeSidePositions, LABEL_HEIGHT } from "./side-layout";
 
 interface ImageCanvasCacheData {
   canvas: HTMLCanvasElement;
@@ -179,12 +179,26 @@ const PixelEditorView: Component = () => {
 
         ctx.fillStyle = sideMaskToCSS(SIDE_MASK[sideKind]);
 
-        ctx.fillRect(sidePosition.x, sidePosition.y + side.height, side.width, 3);
-        ctx.strokeRect(sidePosition.x, sidePosition.y + side.height, side.width, 3);
-
         ctx.font = "2.2px sans-serif";
-        ctx.fillStyle = "oklch(23.26% .014 253.1)";
         const metrics = ctx.measureText(sideKind);
+
+        const overflow = Math.max(Math.ceil(metrics.width) + 2 - side.width, 0);
+
+        ctx.fillRect(
+          sidePosition.x - overflow / 2,
+          sidePosition.y + side.height,
+          side.width + overflow,
+          LABEL_HEIGHT,
+        );
+        ctx.strokeRect(
+          sidePosition.x - overflow / 2,
+          sidePosition.y + side.height,
+          side.width + overflow,
+          LABEL_HEIGHT,
+        );
+
+        ctx.fillStyle = "oklch(23.26% .014 253.1)";
+
         ctx.fillText(
           sideKind,
           sidePosition.x + 0.5 * (side.width - metrics.width),
