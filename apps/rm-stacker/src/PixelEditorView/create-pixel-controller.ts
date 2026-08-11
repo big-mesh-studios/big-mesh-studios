@@ -116,10 +116,10 @@ export const createPixelEditorController = ({
 
   let undoCommandsReversed: Command[] = [];
 
-  const applyPixelStroke = (position: Vector2D) =>
+  const applyPixelStroke = (initialPosition: Vector2D) =>
     untrack(() => {
       const intersection = intersectSides({
-        position,
+        position: initialPosition,
         sides: store.sides,
         sidePositions: sidePositions(),
       });
@@ -128,9 +128,9 @@ export const createPixelEditorController = ({
         return;
       }
 
-      const { side, kind, relativePosition } = intersection;
+      const { side, kind, position } = intersection;
 
-      const oppositePixel = getOppositePixel(kind, relativePosition, side);
+      const oppositePixel = getOppositePixel(kind, position, side);
       const oppositeKind = OPPOSING_SIDE[kind];
       const oppositeSide = store.sides[oppositeKind];
       const oppositeOpacity = untrack(
@@ -145,7 +145,7 @@ export const createPixelEditorController = ({
 
       switch (mode()) {
         case "Erase": {
-          commands.push(Command.erasePixel(position));
+          commands.push(Command.erasePixel(initialPosition));
 
           if (oppositeOpacity) {
             commands.push(Command.erasePixel(Vector2D.add(oppositeOffset, oppositePixel)));
@@ -157,7 +157,7 @@ export const createPixelEditorController = ({
           const _selectedColour = selectedColour();
 
           if (_selectedColour !== undefined) {
-            commands.push(Command.writePixel(position, _selectedColour));
+            commands.push(Command.writePixel(initialPosition, _selectedColour));
 
             if (!oppositeOpacity) {
               commands.push(
@@ -172,7 +172,7 @@ export const createPixelEditorController = ({
           const _selectedColour = selectedColour();
 
           if (_selectedColour !== undefined) {
-            commands.push(Command.fillPixel(position, _selectedColour));
+            commands.push(Command.fillPixel(initialPosition, _selectedColour));
 
             if (!oppositeOpacity) {
               commands.push(

@@ -1,11 +1,12 @@
-import { createEffect, createMemo, createSignal, flush, untrack } from "solid-js";
+import { createEffect, createMemo, createSignal, flush } from "solid-js";
 import { Command } from "./Command";
-import { load, save, saveToIndexedDB } from "./load-save";
+import { createCommander } from "./commander";
+import { save, saveToIndexedDB } from "./load-save";
 import { Dimensions3D, Vector2D } from "./maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
 import type { Dimensions2D, SidePositions, Sides } from "./types";
 import { UndoRedoManager } from "./undo-redo";
-import { areRGBAsEqual, createEnqueue, intersectSide, intersectSides } from "./utils";
+import { createEnqueue, intersectSide, intersectSides } from "./utils";
 import { solveVoxels } from "./voxel-solver";
 
 const INITIAL_DIMENSIONS = { width: 3, height: 5, depth: 4 };
@@ -30,7 +31,6 @@ export interface StackerStore {
   dimensions: Dimensions3D;
   sides: Sides;
   voxels: Uint8Array;
-  render: () => void;
 }
 
 const createInitialImageData = (
@@ -85,7 +85,7 @@ export function createStacker() {
 
   const sidePositions = createMemo(() => computeSidePositions(dimensions()));
 
-  const store = {
+  const store: StackerStore = {
     get dimensions() {
       return dimensions();
     },
@@ -138,184 +138,22 @@ export function createStacker() {
     return Command.async(save(sides).then(Command.loadData));
   }
 
-  async function doCommand(effect: Command): Promise<Command> {
-    queueMicrotask(() => requestAutoSave());
-
-    return untrack(async () => {
-      switch (effect.type) {
-        case "NoOperation": {
-          return Command.noOperation();
-        }
-        case "Sequence": {
-          let commands = effect.commands;
-          let reverseCommands = Array(commands.length);
-
-          for (let i = 0; i < commands.length; ++i) {
-            reverseCommands[reverseCommands.length - 1 - i] = await doCommand(commands[i]);
-          }
-
-          return Command.sequence(reverseCommands);
-        }
-        case "FillPixel": {
-          const intersection = intersectSides({
-            position: effect.position,
-            sides: store.sides,
-            sidePositions: sidePositions(),
-          });
-
-          if (!intersection) {
-            return Command.noOperation();
-          }
-
-          const { position, colour } = effect;
-          const { sidePosition: sidePosition, side, colour: oldColour, offset } = intersection;
-
-          if (!oldColour || areRGBAsEqual(colour, oldColour)) {
-            return Command.noOperation();
-          }
-
-          side.data[offset + 0] = colour.r;
-          side.data[offset + 1] = colour.g;
-          side.data[offset + 2] = colour.b;
-          side.data[offset + 3] = colour.a;
-
-          const stack: number[] = [];
-          stack.push(position.y);
-          stack.push(position.x);
-
-          const undo = snapshot();
-
-          // preallocated to lower GC-pressue
-          let neighbors: { x: number; y: number }[] = [
-            { x: 0, y: 0 },
-            { x: 0, y: 0 },
-            { x: 0, y: 0 },
-            { x: 0, y: 0 },
-          ];
-
-          while (true) {
-            const x = stack.pop();
-            const y = stack.pop();
-
-            if (x === undefined || y === undefined) {
-              break;
-            }
-
-            // top
-            neighbors[0].x = x;
-            neighbors[0].y = y - 1;
-            // bottom
-            neighbors[1].x = x;
-            neighbors[1].y = y + 1;
-            // left
-            neighbors[2].x = x - 1;
-            neighbors[2].y = y;
-            // right
-            neighbors[3].x = x + 1;
-            neighbors[3].y = y;
-
-            for (const neighbor of neighbors) {
-              const intersection = intersectSide({
-                sidePosition,
-                position: neighbor,
-                side,
-              });
-
-              // Neighbour lies outside this side: skip it, the rest of the region still fills.
-              if (!intersection) {
-                continue;
-              }
-
-              const match = areRGBAsEqual(intersection.colour, oldColour);
-
-              if (match) {
-                side.data[intersection.offset + 0] = colour.r;
-                side.data[intersection.offset + 1] = colour.g;
-                side.data[intersection.offset + 2] = colour.b;
-                side.data[intersection.offset + 3] = colour.a;
-                // `neighbors` is reused every iteration, so push the coordinates, not the object.
-                stack.push(neighbor.y);
-                stack.push(neighbor.x);
-              }
-            }
-          }
-
-          return undo;
-        }
-        case "WritePixel": {
-          const intersection = intersectSides({
-            position: effect.position,
-            sides: store.sides,
-            sidePositions: sidePositions(),
-          });
-
-          if (!intersection) {
-            return Command.noOperation();
-          }
-
-          const { position, colour } = effect;
-          const { side, colour: oldColour, offset } = intersection;
-
-          side.data[offset + 0] = colour.r;
-          side.data[offset + 1] = colour.g;
-          side.data[offset + 2] = colour.b;
-          side.data[offset + 3] = 255;
-
-          if (oldColour.a) {
-            return Command.writePixel(position, oldColour);
-          } else {
-            return Command.erasePixel(position);
-          }
-        }
-        case "ErasePixel": {
-          const { position } = effect;
-
-          const intersection = intersectSides({
-            position,
-            sides: store.sides,
-            sidePositions: sidePositions(),
-          });
-
-          if (!intersection) {
-            return Command.noOperation();
-          }
-
-          const { side, offset } = intersection;
-
-          if (side.data[offset + 3] === 0) {
-            return Command.noOperation();
-          }
-
-          side.data[offset + 0] = 0;
-          side.data[offset + 1] = 0;
-          side.data[offset + 2] = 0;
-          side.data[offset + 3] = 0;
-
-          return Command.writePixel(position, intersection.colour);
-        }
-        case "LoadData": {
-          let undoCommand = snapshot();
-          let data = effect.data;
-          let sides = await load(data);
-
-          setSides(sides);
-          updateVoxels();
-          requestRender();
-
-          return undoCommand;
-        }
-        case "Async": {
-          let command = await effect.command;
-          return doCommand(command);
-        }
-
-        default: {
-          const x: never = effect;
-          throw new Error(`Unreachable ${x}`);
-        }
-      }
-    });
-  }
+  const doCommand = createCommander({
+    intersectSides(position) {
+      return intersectSides({ sidePositions: sidePositions(), position, sides: sides() });
+    },
+    intersectSide(kind, position) {
+      return intersectSide({
+        side: sides()[kind],
+        position,
+      });
+    },
+    store,
+    setSides,
+    updateVoxels,
+    requestRender,
+    requestAutoSave,
+  });
 
   function doCommandAndUpdate(command: Command) {
     return Command.async(
