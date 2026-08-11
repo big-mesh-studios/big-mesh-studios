@@ -16,7 +16,18 @@ import { StackerContext } from "../context";
 import { Vector2D } from "../maths";
 import { ModeKind, RGBA, SideKind } from "../types";
 import { createEdgeController } from "./create-edge-controller";
-import { intersectSides, SidePositions } from "./side-layout";
+import { SidePositions } from "./side-layout";
+
+type IntersectSides = (position: Vector2D) =>
+  | undefined
+  | {
+      kind: SideKind;
+      sidePosition: Vector2D;
+      position: Vector2D;
+      side: ImageData;
+      offset: number;
+      colour: RGBA;
+    };
 
 const getOppositePixel = (kind: SideKind, position: Vector2D, side: ImageData): Vector2D => {
   if (kind === "top" || kind === "bottom") {
@@ -33,6 +44,7 @@ export const createPixelEditorController = ({
   selectedColour,
   setSelectedColour,
   sidePositions,
+  intersectSides,
   pushUndo,
   doCommand,
 }: {
@@ -41,6 +53,7 @@ export const createPixelEditorController = ({
   selectedColour: Accessor<RGBA | undefined>;
   setSelectedColour: Setter<RGBA>;
   sidePositions: Accessor<SidePositions>;
+  intersectSides: IntersectSides;
   pushUndo: (reverseCommand: Command, description: string) => void;
   doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
 }) => {
@@ -119,11 +132,7 @@ export const createPixelEditorController = ({
 
   const applyPixelStroke = (initialPosition: Vector2D) =>
     untrack(() => {
-      const intersection = intersectSides({
-        position: initialPosition,
-        sides: store.sides,
-        sidePositions: sidePositions(),
-      });
+      const intersection = intersectSides(initialPosition);
 
       if (!intersection) {
         return;
@@ -249,11 +258,7 @@ export const createPixelEditorController = ({
             return;
           }
 
-          const intersection = intersectSides({
-            sidePositions: sidePositions(),
-            sides: store.sides,
-            position,
-          });
+          const intersection = intersectSides(position);
           if (!intersection) {
             return;
           }

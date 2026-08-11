@@ -6,7 +6,7 @@ import { Dimensions3D, Vector2D } from "./maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
 import type { Dimensions2D, Sides } from "./types";
 import { UndoRedoManager } from "./undo-redo";
-import { createEnqueue, intersectSide } from "./utils";
+import { createEnqueue } from "./utils";
 import { solveVoxels } from "./voxel-solver";
 
 const INITIAL_DIMENSIONS = { width: 3, height: 5, depth: 4 };
@@ -121,12 +121,6 @@ export function createStacker() {
   }
 
   const doCommand = createCommander({
-    intersectSide(kind, position) {
-      return intersectSide({
-        side: sides()[kind],
-        position,
-      });
-    },
     store,
     setSides,
     updateVoxels,

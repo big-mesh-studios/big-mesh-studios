@@ -1,21 +1,18 @@
 import { Setter } from "@solidjs/signals";
 import { untrack } from "solid-js";
 import { load, save } from "../load-save";
-import { Vector2D } from "../maths";
 import { StackerStore } from "../stacker-store";
-import { RGBA, SideKind, Sides } from "../types";
-import { areRGBAsEqual } from "../utils";
+import { Sides } from "../types";
+import { areRGBAsEqual, intersectSide } from "../utils";
 import { Command } from "./Command";
 
 export function createCommander({
-  intersectSide,
   store,
   setSides,
   updateVoxels,
   requestRender,
   requestAutoSave,
 }: {
-  intersectSide(side: SideKind, position: Vector2D): { colour: RGBA; offset: number } | undefined;
   store: StackerStore;
   setSides: Setter<Sides>;
   updateVoxels(): void;
@@ -48,7 +45,7 @@ export function createCommander({
           const { side: kind, position, colour: newColour } = effect;
           const side = store.sides[kind];
 
-          const intersection = intersectSide(kind, position);
+          const intersection = intersectSide({ position, side });
 
           if (!intersection) {
             return Command.noOperation();
@@ -101,7 +98,7 @@ export function createCommander({
             neighbors[3].y = y;
 
             for (const neighbor of neighbors) {
-              const intersection = intersectSide(kind, neighbor);
+              const intersection = intersectSide({ position: neighbor, side });
 
               // Neighbour lies outside this side: skip it, the rest of the region still fills.
               if (!intersection) {
@@ -128,7 +125,7 @@ export function createCommander({
           const { side: kind, position, colour } = effect;
           const side = store.sides[kind];
 
-          const intersection = intersectSide(kind, position);
+          const intersection = intersectSide({ position, side });
 
           if (!intersection) {
             return Command.noOperation();
@@ -151,7 +148,7 @@ export function createCommander({
           const { side: kind, position } = effect;
           const side = store.sides[kind];
 
-          const intersection = intersectSide(kind, position);
+          const intersection = intersectSide({ position, side });
 
           if (!intersection) {
             return Command.noOperation();
