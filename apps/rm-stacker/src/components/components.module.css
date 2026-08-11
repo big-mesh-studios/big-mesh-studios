@@ -65,6 +65,7 @@
     justify-content: center;
     align-items: center;
     gap: var(--margin);
+    color: var(--color);
 
     &:hover {
       --color: var(--front);
@@ -77,7 +78,6 @@
 
     & > span {
       padding-right: var(--margin);
-      color: var(--color);
     }
   }
 }

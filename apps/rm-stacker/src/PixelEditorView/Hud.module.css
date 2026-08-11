@@ -38,20 +38,19 @@
   pointer-events: none;
 }
 
-.menuPopover:popover-open {
-  margin: 0;
+.menuPopover,
+.palettePopover {
   inset: unset;
   position: absolute;
-  top: calc(anchor(top));
-  left: calc(anchor(right) + var(--margin));
   pointer-events: auto;
 }
 
+.menuPopover:popover-open {
+  top: calc(anchor(top));
+  left: calc(anchor(right) + var(--margin));
+}
+
 .palettePopover:popover-open {
-  margin: 0;
-  inset: unset;
-  position: absolute;
   bottom: calc(anchor(bottom));
   left: calc(anchor(right) + var(--margin));
-  pointer-events: auto;
 }

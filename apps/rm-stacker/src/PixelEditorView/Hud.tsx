@@ -33,7 +33,6 @@ export function Hud(props: {
 
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
   const [palette, setPalette] = createSignal<RGBA[]>(DAWNBRINGER_32_PALETTE);
-  const [isMenuOpen, setIsMenuOpen] = createSignal(false);
 
   const onLoad = async () => {
     const file = await fileOpen<false>({
