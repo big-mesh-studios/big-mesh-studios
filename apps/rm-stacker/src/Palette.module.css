@@ -4,8 +4,6 @@
   pointer-events: auto;
   box-sizing: border-box;
   background-color: var(--back);
-  border: 1px solid var(--grey);
-  border-radius: var(--margin);
   align-self: start;
   justify-self: start;
 }

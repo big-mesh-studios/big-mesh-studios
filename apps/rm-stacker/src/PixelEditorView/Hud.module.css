@@ -36,3 +36,27 @@
   grid-template-rows: 1fr min;
   pointer-events: none;
 }
+
+.menuPopover:popover-open {
+  margin: 0;
+  inset: unset;
+  position: absolute;
+  top: calc(anchor(top));
+  left: calc(anchor(right) + var(--margin));
+  pointer-events: auto;
+
+  /* SMART FALLBACK: If panel is clipping on screen edges, flip it automatically */
+  position-try-fallbacks: flip-block;
+}
+
+.palettePopover:popover-open {
+  margin: 0;
+  inset: unset;
+  position: absolute;
+  bottom: calc(anchor(bottom));
+  left: calc(anchor(right) + var(--margin));
+  pointer-events: auto;
+
+  /* SMART FALLBACK: If panel is clipping on screen edges, flip it automatically */
+  position-try-fallbacks: flip-block;
+}

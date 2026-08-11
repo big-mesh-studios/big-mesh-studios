@@ -1,6 +1,6 @@
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
 import { createSignal, onSettled, Show, useContext } from "solid-js";
-import { Bar, ColourTab, DropDown, IconButton, IconTab } from "../components/components";
+import { Bar, ColourTab, createPopOver, IconButton, IconTab } from "../components/components";
 import { LayoutContext, StackerContext } from "../context";
 import { DAWNBRINGER_32_PALETTE } from "../default_palette";
 import { load, save } from "../load-save";
@@ -66,130 +66,135 @@ export function Hud(props: {
     );
   };
 
+  const Menu = createPopOver();
+  const Colour = createPopOver();
+
   return (
-    <div class={styles.hud}>
-      <div class={styles.side}>
-        <Bar>
-          <IconTab
-            kind="bars"
-            selected={isMenuOpen()}
-            onClick={() => setIsMenuOpen(bool => !bool)}
-          />
-        </Bar>
-        <div class={styles.bottom}>
+    <>
+      <div class={styles.hud}>
+        <div class={styles.side}>
           <Bar>
-            <IconButton
-              onClick={() => {
-                undoRedoManager.undo();
-              }}
-              disabled={!undoRedoManager.hasUndo()}
-              kind="arrow-rotate-left"
+            <Menu.Trigger
+              as={IconTab}
+              kind="bars"
+              selected={isMenuOpen()}
+              onClick={() => setIsMenuOpen(bool => !bool)}
+              class={styles.menuTrigger}
             />
-            <IconButton
-              onClick={() => {
-                undoRedoManager.redo();
-              }}
-              disabled={!undoRedoManager.hasRedo()}
-              kind="arrow-rotate-right"
-            />
+            <Menu.PopOver class={styles.menuPopover}>
+              <IconButton
+                kind="file"
+                label="New File"
+                onClick={() => {
+                  if (!window.confirm("Start a new file? This will discard your current work.")) {
+                    return;
+                  }
+                  undoRedoManager.clear();
+                  setSides(createInitialSides(store.dimensions));
+
+                  updateVoxels();
+                  props.render();
+                }}
+              />
+              <IconButton kind="floppy-disk" label="Save File" onClick={onSave} />
+              <IconButton kind="floppy-disk" label="Save As" onClick={onSaveAs} />
+              <IconButton onClick={onLoad} kind="folder" label="Load" />
+            </Menu.PopOver>
           </Bar>
-          <Show when={layout() === "column"}>
+          <div class={styles.bottom}>
             <Bar>
-              <IconTab
-                kind="up-down-left-right"
-                onClick={() => props.setMode("Idle")}
-                selected={props.mode === "Idle"}
+              <IconButton
+                onClick={() => {
+                  undoRedoManager.undo();
+                }}
+                disabled={!undoRedoManager.hasUndo()}
+                kind="arrow-rotate-left"
               />
-              <IconTab
-                kind="pen"
-                onClick={() => props.setMode("Draw")}
-                selected={props.mode === "Draw"}
-              />
-              <IconTab
-                kind="fill"
-                onClick={() => props.setMode("Fill")}
-                selected={props.mode === "Fill"}
-              />
-              <IconTab
-                kind="eraser"
-                onClick={() => props.setMode("Erase")}
-                selected={props.mode === "Erase"}
-              />
-              <IconTab
-                kind="eye-dropper"
-                onClick={() => props.setMode("Eyedrop")}
-                selected={props.mode === "Eyedrop"}
+              <IconButton
+                onClick={() => {
+                  undoRedoManager.redo();
+                }}
+                disabled={!undoRedoManager.hasRedo()}
+                kind="arrow-rotate-right"
               />
             </Bar>
-          </Show>
+            <Show when={layout() === "column"}>
+              <Bar>
+                <IconTab
+                  kind="up-down-left-right"
+                  onClick={() => props.setMode("Idle")}
+                  selected={props.mode === "Idle"}
+                />
+                <IconTab
+                  kind="pen"
+                  onClick={() => props.setMode("Draw")}
+                  selected={props.mode === "Draw"}
+                />
+                <IconTab
+                  kind="fill"
+                  onClick={() => props.setMode("Fill")}
+                  selected={props.mode === "Fill"}
+                />
+                <IconTab
+                  kind="eraser"
+                  onClick={() => props.setMode("Erase")}
+                  selected={props.mode === "Erase"}
+                />
+                <IconTab
+                  kind="eye-dropper"
+                  onClick={() => props.setMode("Eyedrop")}
+                  selected={props.mode === "Eyedrop"}
+                />
+              </Bar>
+            </Show>
+            <Bar>
+              <Colour.Trigger
+                as={ColourTab}
+                colour={props.selectedColour}
+                class={styles.paletteTrigger}
+                onClick={() => setIsPaletteOpen(bool => !bool)}
+              />
+              <Colour.PopOver class={styles.palettePopover} popover="manual">
+                <Palette
+                  onSelect={props.onSelectColour}
+                  palette={palette()}
+                  selectedColour={props.selectedColour}
+                />
+              </Colour.PopOver>
+            </Bar>
+          </div>
+        </div>
+        <div class={styles.main}></div>
+        <Show when={layout() === "row"}>
           <Bar>
-            <ColourTab
-              colour={props.selectedColour}
-              onClick={() => setIsPaletteOpen(bool => !bool)}
+            <IconTab
+              kind="up-down-left-right"
+              onClick={() => props.setMode("Idle")}
+              selected={props.mode === "Idle"}
+            />
+            <IconTab
+              kind="pen"
+              onClick={() => props.setMode("Draw")}
+              selected={props.mode === "Draw"}
+            />
+            <IconTab
+              kind="fill"
+              onClick={() => props.setMode("Fill")}
+              selected={props.mode === "Fill"}
+            />
+            <IconTab
+              kind="eraser"
+              onClick={() => props.setMode("Erase")}
+              selected={props.mode === "Erase"}
+            />
+            <IconTab
+              kind="eye-dropper"
+              onClick={() => props.setMode("Eyedrop")}
+              selected={props.mode === "Eyedrop"}
             />
           </Bar>
-        </div>
-      </div>
-      <div class={styles.main}>
-        <Show when={isMenuOpen()}>
-          <DropDown onClose={() => setIsMenuOpen(false)}>
-            <IconButton
-              kind="file"
-              label="New File"
-              onClick={() => {
-                if (!window.confirm("Start a new file? This will discard your current work.")) {
-                  return;
-                }
-                undoRedoManager.clear();
-                setSides(createInitialSides(store.dimensions));
-
-                updateVoxels();
-                props.render();
-              }}
-            />
-            <IconButton kind="floppy-disk" label="Save File" onClick={onSave} />
-            <IconButton kind="floppy-disk" label="Save As" onClick={onSaveAs} />
-            <IconButton onClick={onLoad} kind="folder" label="Load" />
-          </DropDown>
-        </Show>
-        <Show when={isPaletteOpen()}>
-          <Palette
-            onSelect={props.onSelectColour}
-            palette={palette()}
-            selectedColour={props.selectedColour}
-            class={styles.palette}
-          />
         </Show>
       </div>
-      <Show when={layout() === "row"}>
-        <Bar>
-          <IconTab
-            kind="up-down-left-right"
-            onClick={() => props.setMode("Idle")}
-            selected={props.mode === "Idle"}
-          />
-          <IconTab
-            kind="pen"
-            onClick={() => props.setMode("Draw")}
-            selected={props.mode === "Draw"}
-          />
-          <IconTab
-            kind="fill"
-            onClick={() => props.setMode("Fill")}
-            selected={props.mode === "Fill"}
-          />
-          <IconTab
-            kind="eraser"
-            onClick={() => props.setMode("Erase")}
-            selected={props.mode === "Erase"}
-          />
-          <IconTab
-            kind="eye-dropper"
-            onClick={() => props.setMode("Eyedrop")}
-            selected={props.mode === "Eyedrop"}
-          />
-        </Bar>
-      </Show>
-    </div>
+    </>
   );
 }

@@ -1,8 +1,9 @@
+import { Dynamic, Portal } from "@solidjs/web";
 import type { JSX } from "@solidjs/web/jsx-runtime";
-import { omit, onSettled, ParentProps, Ref, Show } from "solid-js";
+import { ComponentProps, omit, ParentProps, Ref, Show, ValidComponent } from "solid-js";
 import type { IconKind } from "../icon-kinds";
 import { RGBA } from "../types";
-import { inertExceptFor, rgbaToCSS } from "../utils";
+import { rgbaToCSS } from "../utils";
 import styles from "./components.module.css";
 
 interface ButtonProps extends ParentProps {
@@ -24,13 +25,10 @@ interface TabProps extends ButtonProps {
 export function Tab(props: TabProps) {
   return (
     <button
-      ref={props.ref}
+      {...props}
       role="tab"
       aria-selected={props.selected ? "true" : "false"}
       class={[props.class, styles.tab]}
-      onClick={props.onClick}
-      disabled={props.disabled}
-      title={props.title}
     >
       {props.children}
     </button>
@@ -39,12 +37,7 @@ export function Tab(props: TabProps) {
 
 export function ColourTab(props: TabProps & { colour: RGBA }) {
   return (
-    <Tab
-      selected={props.selected}
-      disabled={props.disabled}
-      class={[styles.colour, props.class]}
-      onClick={props.onClick}
-    >
+    <Tab {...props} class={[styles.colour, props.class]}>
       <div
         style={{
           "background-color": rgbaToCSS(props.colour),
@@ -63,15 +56,9 @@ export function Icon(props: IconProps) {
 }
 
 export function IconTab(props: TabProps & IconProps) {
+  const tabProps = omit(props, "kind");
   return (
-    <Tab
-      ref={props.ref}
-      class={[styles.icon, props.class]}
-      selected={props.selected}
-      onClick={props.onClick}
-      disabled={props.disabled}
-      title={props.title}
-    >
+    <Tab {...tabProps} class={[props.class, styles.iconTab]}>
       <Icon kind={props.kind} />
     </Tab>
   );
@@ -84,7 +71,7 @@ export interface IconButtonProps extends ButtonProps, IconProps {
 export function IconButton(props: IconButtonProps) {
   const buttonProps = omit(props, "children", "class");
   return (
-    <Button class={[props.class, styles.icon]} {...buttonProps}>
+    <Button class={[props.class, styles.iconButton]} {...buttonProps}>
       <Icon kind={props.kind} />
       <Show when={props.label}>
         <span>{props.label}</span>
@@ -97,39 +84,48 @@ export function Bar(props: ParentProps) {
   return <div class={styles.bar}>{props.children}</div>;
 }
 
-export interface DropDownProps extends ParentProps {
-  onClose(): void;
-}
+export type PopOverProps<T extends ValidComponent> = ComponentProps<T> & {
+  class?: string;
+  as?: T;
+};
 
-export function DropDown(props: DropDownProps) {
+let counter = 0;
+export function createPopOver() {
   let element: HTMLDivElement = null!;
+  const id = `popover-${counter++}`;
 
-  onSettled(() => {
-    const selectable = element.querySelector(
-      'input, select, button, [tabindex]:not([tabindex="-1"]',
-    );
-
-    if (selectable instanceof HTMLElement) {
-      selectable.focus();
-    }
-
-    return inertExceptFor(element);
-  });
-
-  return (
-    <div
-      ref={element}
-      onFocusOut={event => {
-        if (
-          !(event.relatedTarget instanceof Node) ||
-          !event.currentTarget.contains(event.relatedTarget)
-        ) {
-          props.onClose();
-        }
-      }}
-      class={styles.bar}
-    >
-      {props.children}
-    </div>
-  );
+  return {
+    Trigger<T extends ValidComponent>(
+      props: { as?: T } & Omit<ComponentProps<T>, "popovertarget" | "id">,
+    ) {
+      return (
+        <Dynamic
+          style={{
+            "anchor-name": `--${id}`,
+          }}
+          component={props.as ?? "button"}
+          {...omit(props, "as")}
+          popovertarget={id}
+        />
+      );
+    },
+    PopOver<T extends ValidComponent>(props: PopOverProps<T>) {
+      return (
+        <Portal>
+          <Dynamic
+            style={{
+              "position-anchor": `--${id}`,
+            }}
+            component={props.as ?? "div"}
+            id={id}
+            ref={element}
+            popover={props.popover ?? "auto"}
+            class={[props.class, styles.popover]}
+          >
+            {props.children}
+          </Dynamic>
+        </Portal>
+      );
+    },
+  };
 }

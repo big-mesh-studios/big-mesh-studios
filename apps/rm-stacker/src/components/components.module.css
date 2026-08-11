@@ -1,18 +1,46 @@
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--margin);
+  background-color: var(--back);
+  border: 1px solid var(--grey);
+  border-radius: var(--margin);
+  align-items: start;
+  justify-self: start;
+  pointer-events: all;
+  align-self: start;
+}
+
+.popover {
+  flex-direction: column;
+  gap: var(--margin);
+  background-color: var(--back);
+  border: 1px solid var(--grey);
+  border-radius: var(--margin);
+  align-items: start;
+  justify-self: start;
+  pointer-events: all;
+  align-self: start;
+
+  &:popover-open {
+    display: flex;
+  }
+}
+
 .tab {
-  padding: var(--margin);
   color: var(--grey);
   box-sizing: border-box;
-  min-width: var(--size);
-  min-height: var(--size);
   display: grid;
   cursor: pointer;
+  min-width: var(--size);
+  min-height: var(--size);
 
   &[aria-selected="true"],
   &:hover {
     color: var(--front);
   }
 
-  &.icon {
+  &.iconTab {
     justify-content: center;
     align-items: center;
     gap: var(--margin);
@@ -30,7 +58,7 @@
     color: var(--grey);
   }
 
-  &.icon {
+  &.iconButton {
     --color: var(--light-grey);
 
     display: flex;
@@ -42,6 +70,11 @@
       --color: var(--front);
     }
 
+    & > .icon {
+      min-width: calc(var(--size) - var(--margin) * 2);
+      min-height: calc(var(--size) - var(--margin) * 2);
+    }
+
     & > span {
       padding-right: var(--margin);
       color: var(--color);
@@ -49,24 +82,12 @@
   }
 }
 
-.bar {
-  display: flex;
-  flex-direction: column;
-  gap: var(--margin);
-  background-color: var(--back);
-  border: 1px solid var(--grey);
-  border-radius: var(--margin);
-  align-items: start;
-  justify-self: start;
-  pointer-events: all;
-  align-self: start;
-}
-
 .icon {
   align-content: center;
 }
 
 .colour {
+  padding: var(--margin);
   & > * {
     border-radius: calc(var(--margin) / 2);
   }
