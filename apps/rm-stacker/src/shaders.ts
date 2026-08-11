@@ -67,20 +67,16 @@ export default (() => {
     return voxel.r.bitAnd(0b00011111);
   };
   const readBack = (voxel: Node<"uvec4">): Node<"uint"> => {
-    return voxel.r.bitAnd(0b11100000)
-      .shiftRight(5)
-      .bitOr(voxel.g.bitAnd(0b00000011).shiftLeft(3));
+    return voxel.r.bitAnd(0b11100000).shiftRight(5).bitOr(voxel.g.bitAnd(0b00000011).shiftLeft(3));
   };
   const readLeft = (voxel: Node<"uvec4">): Node<"uint"> => {
     return voxel.g.bitAnd(0b01111100).shiftRight(2);
   };
   const readRight = (voxel: Node<"uvec4">): Node<"uint"> => {
-    return voxel.g.bitAnd(0b10000000).shiftRight(7)
-      .bitOr(voxel.b.bitAnd(0b00001111).shiftLeft(1));
+    return voxel.g.bitAnd(0b10000000).shiftRight(7).bitOr(voxel.b.bitAnd(0b00001111).shiftLeft(1));
   };
   const readTop = (voxel: Node<"uvec4">): Node<"uint"> => {
-    return voxel.b.bitAnd(0b11110000).shiftRight(4)
-      .bitOr(voxel.a.bitAnd(0b00000001).shiftLeft(4));
+    return voxel.b.bitAnd(0b11110000).shiftRight(4).bitOr(voxel.a.bitAnd(0b00000001).shiftLeft(4));
   };
   const readBottom = (voxel: Node<"uvec4">): Node<"uint"> => {
     return voxel.a.bitAnd(0b00111110).shiftRight(1);
@@ -93,7 +89,13 @@ export default (() => {
     // Sample the texel's centre: the palette is one row of 32 texels, so the
     // centre of texel i sits at (i + 0.5)/32.
     return uPalette.texture(
-      vec2(colourIndex.toFloat().div(32.0).add(float(1.0 / 64.0)), float(0.5)),
+      vec2(
+        colourIndex
+          .toFloat()
+          .div(32.0)
+          .add(float(1.0 / 64.0)),
+        float(0.5),
+      ),
     );
   };
 
@@ -138,9 +140,7 @@ export default (() => {
     // ray itself, used many times by the face test below) is built once instead
     // of being inlined at every use.
     const inverseCameraRotation = cameraRotation.transpose().toVar();
-    const rayOrigin = inverseCameraRotation
-      .multVec(vec3(float(0), float(0), float(-1.8)))
-      .toVar();
+    const rayOrigin = inverseCameraRotation.multVec(vec3(float(0), float(0), float(-1.8))).toVar();
     const rayDirection = inverseCameraRotation
       .multVec(vec3(screenPosition.x, screenPosition.y, float(2)).normalize())
       .toVar();
@@ -304,9 +304,18 @@ export default (() => {
               const movedX = curCell.x.sub(prevCell.x);
               const movedY = curCell.y.sub(prevCell.y);
               const movedZ = curCell.z.sub(prevCell.z);
-              const movedInX = movedX.abs().lessThan(float(2)).and(movedX.abs().greaterThan(float(0)));
-              const movedInY = movedY.abs().lessThan(float(2)).and(movedY.abs().greaterThan(float(0)));
-              const movedInZ = movedZ.abs().lessThan(float(2)).and(movedZ.abs().greaterThan(float(0)));
+              const movedInX = movedX
+                .abs()
+                .lessThan(float(2))
+                .and(movedX.abs().greaterThan(float(0)));
+              const movedInY = movedY
+                .abs()
+                .lessThan(float(2))
+                .and(movedY.abs().greaterThan(float(0)));
+              const movedInZ = movedZ
+                .abs()
+                .lessThan(float(2))
+                .and(movedZ.abs().greaterThan(float(0)));
 
               // A face is exterior when the voxel beyond it is empty.  Only the
               // axes the ray actually moved on can be the one it crossed, so
@@ -321,7 +330,9 @@ export default (() => {
               If(movedInX, () => {
                 If(movedX.greaterThan(float(0)), () => {
                   If(
-                    isSolid(sampleVoxels(voxelCoord.sub(vec3(oneOverVoxelCount.x, float(0), float(0))))).not(),
+                    isSolid(
+                      sampleVoxels(voxelCoord.sub(vec3(oneOverVoxelCount.x, float(0), float(0)))),
+                    ).not(),
                     () => {
                       faceColourIndex.assign(readLeft(voxel));
                       found.assign(boolean(true));
@@ -330,7 +341,9 @@ export default (() => {
                   );
                 }).else_(() => {
                   If(
-                    isSolid(sampleVoxels(voxelCoord.add(vec3(oneOverVoxelCount.x, float(0), float(0))))).not(),
+                    isSolid(
+                      sampleVoxels(voxelCoord.add(vec3(oneOverVoxelCount.x, float(0), float(0)))),
+                    ).not(),
                     () => {
                       faceColourIndex.assign(readRight(voxel));
                       found.assign(boolean(true));
@@ -342,7 +355,9 @@ export default (() => {
               If(movedInY.and(found.not()), () => {
                 If(movedY.greaterThan(float(0)), () => {
                   If(
-                    isSolid(sampleVoxels(voxelCoord.sub(vec3(float(0), oneOverVoxelCount.y, float(0))))).not(),
+                    isSolid(
+                      sampleVoxels(voxelCoord.sub(vec3(float(0), oneOverVoxelCount.y, float(0)))),
+                    ).not(),
                     () => {
                       faceColourIndex.assign(readBottom(voxel));
                       found.assign(boolean(true));
@@ -351,7 +366,9 @@ export default (() => {
                   );
                 }).else_(() => {
                   If(
-                    isSolid(sampleVoxels(voxelCoord.add(vec3(float(0), oneOverVoxelCount.y, float(0))))).not(),
+                    isSolid(
+                      sampleVoxels(voxelCoord.add(vec3(float(0), oneOverVoxelCount.y, float(0)))),
+                    ).not(),
                     () => {
                       faceColourIndex.assign(readTop(voxel));
                       found.assign(boolean(true));
@@ -363,7 +380,9 @@ export default (() => {
               If(movedInZ.and(found.not()), () => {
                 If(movedZ.greaterThan(float(0)), () => {
                   If(
-                    isSolid(sampleVoxels(voxelCoord.sub(vec3(float(0), float(0), oneOverVoxelCount.z)))).not(),
+                    isSolid(
+                      sampleVoxels(voxelCoord.sub(vec3(float(0), float(0), oneOverVoxelCount.z))),
+                    ).not(),
                     () => {
                       faceColourIndex.assign(readBack(voxel));
                       found.assign(boolean(true));
@@ -372,7 +391,9 @@ export default (() => {
                   );
                 }).else_(() => {
                   If(
-                    isSolid(sampleVoxels(voxelCoord.add(vec3(float(0), float(0), oneOverVoxelCount.z)))).not(),
+                    isSolid(
+                      sampleVoxels(voxelCoord.add(vec3(float(0), float(0), oneOverVoxelCount.z))),
+                    ).not(),
                     () => {
                       faceColourIndex.assign(readFront(voxel));
                       found.assign(boolean(true));
@@ -416,19 +437,21 @@ export default (() => {
                   }).else_(() => {
                     faceColourIndex.assign(readRight(voxel));
                   });
-                }).elseIf(tY.lessThanEqual(tZ), () => {
-                  If(isNearMinY, () => {
-                    faceColourIndex.assign(readBottom(voxel));
-                  }).else_(() => {
-                    faceColourIndex.assign(readTop(voxel));
+                })
+                  .elseIf(tY.lessThanEqual(tZ), () => {
+                    If(isNearMinY, () => {
+                      faceColourIndex.assign(readBottom(voxel));
+                    }).else_(() => {
+                      faceColourIndex.assign(readTop(voxel));
+                    });
+                  })
+                  .else_(() => {
+                    If(isNearMinZ, () => {
+                      faceColourIndex.assign(readBack(voxel));
+                    }).else_(() => {
+                      faceColourIndex.assign(readFront(voxel));
+                    });
                   });
-                }).else_(() => {
-                  If(isNearMinZ, () => {
-                    faceColourIndex.assign(readBack(voxel));
-                  }).else_(() => {
-                    faceColourIndex.assign(readFront(voxel));
-                  });
-                });
 
                 // The chosen face is the one opposite the ray's movement on the
                 // axis it crossed; sample its neighbour to learn whether it is
@@ -446,9 +469,7 @@ export default (() => {
                   .all()
                   .and(fallbackAdjacent.lessThanEqual(vec3(float(1))).all());
                 shouldRender.assign(
-                  fallbackInBounds.and(
-                    isSolid(sampleVoxels(fallbackAdjacent)).not(),
-                  ),
+                  fallbackInBounds.and(isSolid(sampleVoxels(fallbackAdjacent)).not()),
                 );
               });
 
@@ -458,40 +479,26 @@ export default (() => {
                 // same colour blend into one surface instead of showing sharp
                 // seams.
                 const gXm = isSolid(
-                  sampleVoxels(
-                    voxelCoord.sub(vec3(oneOverVoxelCount.x, float(0), float(0))),
-                  ),
+                  sampleVoxels(voxelCoord.sub(vec3(oneOverVoxelCount.x, float(0), float(0)))),
                 ).toFloat();
                 const gXp = isSolid(
-                  sampleVoxels(
-                    voxelCoord.add(vec3(oneOverVoxelCount.x, float(0), float(0))),
-                  ),
+                  sampleVoxels(voxelCoord.add(vec3(oneOverVoxelCount.x, float(0), float(0)))),
                 ).toFloat();
                 const gYm = isSolid(
-                  sampleVoxels(
-                    voxelCoord.sub(vec3(float(0), oneOverVoxelCount.y, float(0))),
-                  ),
+                  sampleVoxels(voxelCoord.sub(vec3(float(0), oneOverVoxelCount.y, float(0)))),
                 ).toFloat();
                 const gYp = isSolid(
-                  sampleVoxels(
-                    voxelCoord.add(vec3(float(0), oneOverVoxelCount.y, float(0))),
-                  ),
+                  sampleVoxels(voxelCoord.add(vec3(float(0), oneOverVoxelCount.y, float(0)))),
                 ).toFloat();
                 const gZm = isSolid(
-                  sampleVoxels(
-                    voxelCoord.sub(vec3(float(0), float(0), oneOverVoxelCount.z)),
-                  ),
+                  sampleVoxels(voxelCoord.sub(vec3(float(0), float(0), oneOverVoxelCount.z))),
                 ).toFloat();
                 const gZp = isSolid(
-                  sampleVoxels(
-                    voxelCoord.add(vec3(float(0), float(0), oneOverVoxelCount.z)),
-                  ),
+                  sampleVoxels(voxelCoord.add(vec3(float(0), float(0), oneOverVoxelCount.z))),
                 ).toFloat();
-                const normal = vec3(
-                  gXm.sub(gXp),
-                  gYm.sub(gYp),
-                  gZm.sub(gZp),
-                ).sub(rayDirection.mult(float(0.001))).normalize();
+                const normal = vec3(gXm.sub(gXp), gYm.sub(gYp), gZm.sub(gZp))
+                  .sub(rayDirection.mult(float(0.001)))
+                  .normalize();
 
                 // Diffuse (Lambert) shading: a surface is brightest when it faces
                 // the light head-on and fades to nothing as it turns away, which is
