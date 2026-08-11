@@ -25,6 +25,18 @@ interface ImageCanvasCacheData {
   ctx: CanvasRenderingContext2D;
 }
 
+function fillPath(ctx: CanvasRenderingContext2D, [start, ...path]: Vector2D[]) {
+  ctx.beginPath();
+
+  ctx.moveTo(start.x, start.y);
+
+  for (const vector of path) {
+    ctx.lineTo(vector.x, vector.y);
+  }
+
+  ctx.fill();
+}
+
 const PixelEditorView: Component = () => {
   const { store, doCommand, pushUndo, onRender } = useContext(StackerContext);
   const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
@@ -173,13 +185,15 @@ const PixelEditorView: Component = () => {
           renderGuide({ ctx, side, guide, coordinate: sidePosition, kind: "inner", scale: _scale });
         }
 
+        const sideColor = sideMaskToCSS(SIDE_MASK[sideKind]);
+
         ctx.lineWidth = 1 / _scale;
-        ctx.strokeStyle = sideMaskToCSS(SIDE_MASK[sideKind]);
+        ctx.strokeStyle = sideColor;
         ctx.strokeRect(sidePosition.x, sidePosition.y, side.width, side.height);
 
-        ctx.fillStyle = sideMaskToCSS(SIDE_MASK[sideKind]);
+        ctx.fillStyle = sideColor;
 
-        ctx.font = "2.2px sans-serif";
+        ctx.font = "1.75px sans-serif";
         const metrics = ctx.measureText(sideKind);
 
         const overflow = Math.max(Math.ceil(metrics.width) + 2 - side.width, 0);
@@ -202,8 +216,36 @@ const PixelEditorView: Component = () => {
         ctx.fillText(
           sideKind,
           sidePosition.x + 0.5 * (side.width - metrics.width),
-          sidePosition.y + side.height + metrics.actualBoundingBoxAscent + 0.5,
+          sidePosition.y + side.height + metrics.actualBoundingBoxAscent / 2 + LABEL_HEIGHT / 2,
         );
+
+        if (mode() === "Idle") {
+          ctx.fillStyle = sideColor;
+
+          fillPath(ctx, [
+            sidePosition,
+            { x: sidePosition.x + 1, y: sidePosition.y },
+            { x: sidePosition.x, y: sidePosition.y + 1 },
+          ]);
+
+          fillPath(ctx, [
+            { x: sidePosition.x + side.width, y: sidePosition.y },
+            { x: sidePosition.x + side.width - 1, y: sidePosition.y },
+            { x: sidePosition.x + side.width, y: sidePosition.y + 1 },
+          ]);
+
+          fillPath(ctx, [
+            { x: sidePosition.x, y: sidePosition.y + side.height },
+            { x: sidePosition.x + 1, y: sidePosition.y + side.height },
+            { x: sidePosition.x, y: sidePosition.y + side.height - 1 },
+          ]);
+
+          fillPath(ctx, [
+            { x: sidePosition.x + side.width, y: sidePosition.y + side.height },
+            { x: sidePosition.x + side.width - 1, y: sidePosition.y + side.height },
+            { x: sidePosition.x + side.width, y: sidePosition.y + side.height - 1 },
+          ]);
+        }
       }
 
       if (_overlayDrawing) {
