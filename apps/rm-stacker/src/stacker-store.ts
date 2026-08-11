@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, flush } from "solid-js";
 import { Command } from "./command/Command";
 import { createCommander } from "./command/commander";
-import { save, saveToIndexedDB } from "./load-save";
+import { saveToIndexedDB } from "./load-save";
 import { Dimensions3D, Vector2D } from "./maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
 import type { Dimensions2D, Sides } from "./types";
@@ -62,7 +62,6 @@ export function createStacker() {
     height: sides().front.height,
     depth: sides().left.width,
   }));
-
   const [voxels, setVoxels] = createSignal(
     solveVoxels({ sides: sides(), dimensions: dimensions() }),
   );
@@ -116,11 +115,7 @@ export function createStacker() {
     setVoxels(solveVoxels(store));
   }
 
-  function snapshot(sides = store.sides): Command {
-    return Command.async(save(sides).then(Command.loadData));
-  }
-
-  const doCommand = createCommander({
+  const { snapshot, doCommand } = createCommander({
     sides,
     setSides,
     updateVoxels,

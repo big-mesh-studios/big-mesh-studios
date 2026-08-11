@@ -22,7 +22,7 @@ export function createCommander({
     return Command.async(save(_sides).then(Command.loadData));
   }
 
-  return async function doCommand(command: Command): Promise<Command> {
+  async function doCommand(command: Command): Promise<Command> {
     queueMicrotask(() => requestAutoSave());
 
     return untrack(async () => {
@@ -188,5 +188,10 @@ export function createCommander({
         }
       }
     });
+  }
+
+  return {
+    snapshot,
+    doCommand,
   };
 }
