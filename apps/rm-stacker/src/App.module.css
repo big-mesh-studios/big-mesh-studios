@@ -13,11 +13,20 @@
 }
 
 .handle {
-  background: var(--light-grey);
+  background: var(--dark-grey);
+
+  &:hover {
+    background: var(--light-grey);
+  }
+
+  &[data-active-handle] {
+    background: var(--front);
+  }
 
   [data-direction="column"] & {
     cursor: ew-resize;
   }
+
   [data-direction="row"] & {
     cursor: ns-resize;
   }

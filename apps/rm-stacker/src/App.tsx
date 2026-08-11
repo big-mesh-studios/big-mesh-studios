@@ -43,7 +43,7 @@ const App: Component = () => {
               <PixelEditorView />
             </Split.Pane>
             <Split.Handle
-              size="10px"
+              size="5px"
               style={{ cursor: layout() === "column" ? "ew-resize" : "ns-resize" }}
               class={styles.handle}
             />
