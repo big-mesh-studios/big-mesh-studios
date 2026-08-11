@@ -11,6 +11,7 @@ import { Dimensions3D } from "./maths";
 import shaders from "./shaders";
 import { StackerContext } from "./stacker-context";
 import { tryCatch } from "./utils";
+import styles from "./VoxelPreviewView.module.css";
 
 type WebGLState = {
   gl: WebGL2RenderingContext;
@@ -226,35 +227,11 @@ const VoxelPreviewView: Component = () => {
   });
 
   return (
-    <div
-      style={{
-        position: "relative",
-        width: "100%",
-        height: "100%",
-        overflow: "hidden",
-      }}
-    >
+    <div class={styles.container}>
       {glError() === undefined ? (
-        <canvas
-          ref={setCanvas}
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "block",
-            "touch-action": "none",
-          }}
-        />
+        <canvas ref={setCanvas} class={styles.canvas} />
       ) : (
-        <div
-          style={{
-            display: "flex",
-            "align-items": "center",
-            "justify-content": "center",
-            height: "100%",
-          }}
-        >
-          {glError()}
-        </div>
+        <div class={styles.error}>{glError()}</div>
       )}
     </div>
   );
