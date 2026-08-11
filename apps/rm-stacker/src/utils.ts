@@ -95,7 +95,7 @@ interface CursorEvent {
  * @returns Promise resolved on pointerup, or on pointercancel when the browser
  * takes the pointer over for a gesture of its own
  */
-export function cursor(
+export function pointer(
   initialEvent: PointerEvent & { currentTarget: HTMLElement },
   callback: (event: CursorEvent) => void,
 ): Promise<CursorEvent> {

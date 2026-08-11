@@ -10,7 +10,7 @@ import {
   omit,
   useContext,
 } from "solid-js";
-import { cursor, tryCatch } from "../utils";
+import { pointer, tryCatch } from "../utils";
 import styles from "./SplitPane.module.css";
 
 /**********************************************************************************/
@@ -567,7 +567,7 @@ function Handle(props: BaseProps) {
           return;
         }
 
-        await cursor(e, ({ delta }) => {
+        await pointer(e, ({ delta }) => {
           const overflow = context.dragHandle(
             neighbors,
             context.direction === "column" ? delta.x + totalOverflow.x : delta.y + totalOverflow.y,
