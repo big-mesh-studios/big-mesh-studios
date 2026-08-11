@@ -80,8 +80,8 @@ const PixelEditorView: Component = () => {
           const alpha = side.data[(index << 2) + 3];
 
           if (!alpha) {
-            ctx.strokeStyle = sideMaskToRGBA(sideMask, 0.5);
-            ctx.lineWidth = 2 / scale;
+            ctx.strokeStyle = sideMaskToRGBA(sideMask, 1.5);
+            ctx.lineWidth = 0.25 / scale;
             ctx.strokeRect(coordinate.x + gx, coordinate.y + gy, 1.0, 1.0);
           }
         }
@@ -112,8 +112,6 @@ const PixelEditorView: Component = () => {
       ctx.save();
       ctx.scale(_scale, _scale);
       ctx.translate(-_pan.x, -_pan.y);
-      ctx.fillStyle = "red";
-      ctx.strokeStyle = "red";
 
       for (const sideKind of keysOf(store.sides)) {
         const side = store.sides[sideKind];
@@ -165,7 +163,7 @@ const PixelEditorView: Component = () => {
         }
 
         ctx.lineWidth = 4 / _scale;
-        ctx.strokeStyle = sideMaskToRGBA(SIDE_MASK[sideKind]);
+        ctx.strokeStyle = sideMaskToRGBA(SIDE_MASK[sideKind], 0.75);
         ctx.strokeRect(coordinate.x, coordinate.y, side.width, side.height);
 
         ctx.font = "5px sans-serif";
