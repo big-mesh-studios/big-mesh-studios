@@ -1,31 +1,15 @@
 import { createEffect, createMemo, createSignal, flush } from "solid-js";
-import { Command } from "./Command";
-import { createCommander } from "./commander";
+import { Command } from "./command/Command";
+import { createCommander } from "./command/commander";
 import { save, saveToIndexedDB } from "./load-save";
 import { Dimensions3D, Vector2D } from "./maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
-import type { Dimensions2D, SidePositions, Sides } from "./types";
+import type { Dimensions2D, Sides } from "./types";
 import { UndoRedoManager } from "./undo-redo";
-import { createEnqueue, intersectSide, intersectSides } from "./utils";
+import { createEnqueue, intersectSide } from "./utils";
 import { solveVoxels } from "./voxel-solver";
 
 const INITIAL_DIMENSIONS = { width: 3, height: 5, depth: 4 };
-
-const PADDING = 6;
-
-/**
- * Where each panel sits on the editor canvas: the four side panels form a
- * horizontal band around the front panel, with top and bottom above and below
- * it. Pure in its dimensions so a resize can ask where a panel would end up.
- */
-export const computeSidePositions = ({ width, height, depth }: Dimensions3D): SidePositions => ({
-  front: { x: 0, y: 0 },
-  left: { x: -(depth + PADDING), y: 0 },
-  right: { x: width + PADDING, y: 0 },
-  back: { x: width + depth + PADDING * 2, y: 0 },
-  top: { x: 0, y: -(depth + PADDING) },
-  bottom: { x: 0, y: height + PADDING },
-});
 
 export interface StackerStore {
   dimensions: Dimensions3D;
@@ -83,8 +67,6 @@ export function createStacker() {
     solveVoxels({ sides: sides(), dimensions: dimensions() }),
   );
 
-  const sidePositions = createMemo(() => computeSidePositions(dimensions()));
-
   const store: StackerStore = {
     get dimensions() {
       return dimensions();
@@ -139,9 +121,6 @@ export function createStacker() {
   }
 
   const doCommand = createCommander({
-    intersectSides(position) {
-      return intersectSides({ sidePositions: sidePositions(), position, sides: sides() });
-    },
     intersectSide(kind, position) {
       return intersectSide({
         side: sides()[kind],
@@ -193,7 +172,6 @@ export function createStacker() {
     store,
     undoRedoManager,
     updateVoxels,
-    sidePositions: sidePositions,
     setSides,
     /**
      * Re-frames the model to new dimensions, carrying the drawing over rather

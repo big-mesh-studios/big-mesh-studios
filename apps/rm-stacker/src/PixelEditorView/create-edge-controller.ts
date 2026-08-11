@@ -3,9 +3,8 @@ import { Accessor, createSignal, useContext } from "solid-js";
 import { SIDE_AXES } from "../constants";
 import { StackerContext } from "../context";
 import { Dimensions3D, Vector2D } from "../maths";
-import { computeSidePositions } from "../stacker-store";
 import { Alignment3D, AlignmentKind, SideKind, Sides } from "../types";
-import { intersectSides } from "../utils";
+import { computeSidePositions, intersectSides, SidePositions } from "./side-layout";
 
 type EdgeKind = "top" | "bottom" | "left" | "right";
 
@@ -76,14 +75,16 @@ export function createEdgeController({
   scale,
   setCursorStyle,
   setPan,
+  sidePositions,
 }: {
   mouseWorldPosition: Accessor<Vector2D | undefined>;
   pan: Accessor<Vector2D>;
   scale: Accessor<number>;
   setCursorStyle: Setter<string | undefined>;
   setPan: Setter<Vector2D>;
+  sidePositions: Accessor<SidePositions>;
 }) {
-  const { store, resize, sidePositions, pushUndo, snapshot } = useContext(StackerContext);
+  const { store, resize, pushUndo, snapshot } = useContext(StackerContext);
   const [activeEdge, setActiveEdge] = createSignal<{
     edge: ActiveSideEdge;
     initialPosition: Vector2D;

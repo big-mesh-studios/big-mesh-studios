@@ -1,7 +1,7 @@
 import { createSignal, onCleanup } from "solid-js";
 import { SIDE_MASK } from "./constants";
 import { Vector2D } from "./maths";
-import { RGBA, SidePositions, Sides } from "./types";
+import { RGBA } from "./types";
 
 /**********************************************************************************/
 /*                                      Misc                                      */
@@ -251,35 +251,5 @@ export function intersectSide({ position, side }: { position: Vector2D; side: Im
       offset,
       colour,
     };
-  }
-}
-
-export function intersectSides({
-  sidePositions,
-  position: worldPosition,
-  sides,
-}: {
-  sidePositions: SidePositions;
-  position: Vector2D;
-  sides: Sides;
-}) {
-  for (const kind of keysOf(sides)) {
-    const sidePosition = sidePositions[kind];
-    const side = sides[kind];
-    const position = Vector2D.sub(worldPosition, sidePosition);
-
-    if (position.x >= 0 && position.y >= 0 && position.x < side.width && position.y < side.height) {
-      const offset = getOffset(side, position);
-      const colour = getColourFromOffset(side, offset);
-
-      return {
-        kind,
-        sidePosition,
-        position,
-        side,
-        offset,
-        colour,
-      };
-    }
   }
 }

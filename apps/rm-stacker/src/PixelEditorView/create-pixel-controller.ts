@@ -10,13 +10,13 @@ import {
   useContext,
 } from "solid-js";
 import * as THREE from "three";
-import { Command } from "../Command";
+import { Command } from "../command/Command";
 import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../context";
 import { Vector2D } from "../maths";
-import { ModeKind, RGBA, SideKind, SidePositions } from "../types";
-import { intersectSides } from "../utils";
+import { ModeKind, RGBA, SideKind } from "../types";
 import { createEdgeController } from "./create-edge-controller";
+import { intersectSides, SidePositions } from "./side-layout";
 
 const getOppositePixel = (kind: SideKind, position: Vector2D, side: ImageData): Vector2D => {
   if (kind === "top" || kind === "bottom") {
@@ -112,6 +112,7 @@ export const createPixelEditorController = ({
     scale,
     setCursorStyle,
     setPan,
+    sidePositions,
   });
 
   let undoCommandsReversed: Command[] = [];
@@ -139,16 +140,15 @@ export const createPixelEditorController = ({
             ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
           ],
       );
-      const oppositeOffset = sidePositions()[oppositeKind];
 
       const commands: Command[] = [];
 
       switch (mode()) {
         case "Erase": {
-          commands.push(Command.erasePixel(initialPosition));
+          commands.push(Command.erasePixel(kind, position));
 
           if (oppositeOpacity) {
-            commands.push(Command.erasePixel(Vector2D.add(oppositeOffset, oppositePixel)));
+            commands.push(Command.erasePixel(oppositeKind, oppositePixel));
           }
 
           break;
@@ -157,12 +157,10 @@ export const createPixelEditorController = ({
           const _selectedColour = selectedColour();
 
           if (_selectedColour !== undefined) {
-            commands.push(Command.writePixel(initialPosition, _selectedColour));
+            commands.push(Command.writePixel(kind, position, _selectedColour));
 
             if (!oppositeOpacity) {
-              commands.push(
-                Command.writePixel(Vector2D.add(oppositeOffset, oppositePixel), _selectedColour),
-              );
+              commands.push(Command.writePixel(oppositeKind, oppositePixel, _selectedColour));
             }
           }
 
@@ -172,12 +170,10 @@ export const createPixelEditorController = ({
           const _selectedColour = selectedColour();
 
           if (_selectedColour !== undefined) {
-            commands.push(Command.fillPixel(initialPosition, _selectedColour));
+            commands.push(Command.fillPixel(kind, position, _selectedColour));
 
             if (!oppositeOpacity) {
-              commands.push(
-                Command.fillPixel(Vector2D.add(oppositeOffset, oppositePixel), _selectedColour),
-              );
+              commands.push(Command.fillPixel(oppositeKind, oppositePixel, _selectedColour));
             }
           }
 
