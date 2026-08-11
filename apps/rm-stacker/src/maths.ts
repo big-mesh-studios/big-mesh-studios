@@ -6,25 +6,34 @@ export interface Vector2D {
 }
 
 export namespace Vector2D {
-  export function round(vector: Vector2D) {
-    return {
-      x: Math.round(vector.x - 0.5),
-      y: Math.round(vector.y - 0.5),
-    };
+  export function round(a: Vector2D, out = { x: 0, y: 0 }) {
+    out.x = Math.round(a.x - 0.5);
+    out.y = Math.round(a.y - 0.5);
+    return out;
   }
 
-  export function sub(a: Vector2D, b: Vector2D) {
-    return {
-      x: a.x - b.x,
-      y: a.y - b.y,
-    };
+  export function sub(a: Vector2D, b: Vector2D, out = { x: 0, y: 0 }) {
+    out.x = a.x - b.x;
+    out.y = a.y - b.y;
+    return out;
   }
 
-  export function add(a: Vector2D, b: Vector2D) {
-    return {
-      x: a.x + b.x,
-      y: a.y + b.y,
-    };
+  export function add(a: Vector2D, b: Vector2D, out = { x: 0, y: 0 }) {
+    out.x = a.x + b.x;
+    out.y = a.y + b.y;
+    return out;
+  }
+
+  export function multiply(a: Vector2D, b: Vector2D, out = { x: 0, y: 0 }) {
+    out.x = a.x * b.x;
+    out.y = a.y * b.y;
+    return out;
+  }
+
+  export function multiplyScalar(a: Vector2D, scalar: number, out = { x: 0, y: 0 }) {
+    out.x = a.x * scalar;
+    out.y = a.y * scalar;
+    return out;
   }
 }
 
@@ -37,13 +46,12 @@ export interface Dimensions3D extends Dimensions2D {
 }
 
 export namespace Dimensions3D {
-  export function normalize(dimensions: Dimensions3D) {
+  export function normalize(dimensions: Dimensions3D, out = { width: 0, height: 0, depth: 0 }) {
     const max = Math.max(dimensions.width, dimensions.height, dimensions.depth);
-    return {
-      width: dimensions.width / max,
-      height: dimensions.height / max,
-      depth: dimensions.depth / max,
-    };
+    out.width = dimensions.width / max;
+    out.height = dimensions.height / max;
+    out.depth = dimensions.depth / max;
+    return out;
   }
 
   export function equals(a: Dimensions3D, b: Dimensions3D) {
