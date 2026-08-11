@@ -86,12 +86,13 @@
   align-content: center;
 }
 
-.colour {
+.colourTab {
   padding: var(--margin);
   & > * {
     border-radius: calc(var(--margin) / 2);
   }
 }
+
 .column {
   display: flex;
   gap: var(--margin);

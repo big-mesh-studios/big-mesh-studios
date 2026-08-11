@@ -1,10 +1,14 @@
-import { Dynamic, Portal } from "@solidjs/web";
+import { Portal } from "@solidjs/web";
 import type { JSX } from "@solidjs/web/jsx-runtime";
-import { ComponentProps, omit, ParentProps, Ref, Show, ValidComponent } from "solid-js";
+import { createSignal, omit, ParentProps, Ref, Show } from "solid-js";
 import type { IconKind } from "../icon-kinds";
 import { RGBA } from "../types";
 import { rgbaToCSS } from "../utils";
 import styles from "./components.module.css";
+
+/**********************************************************************************/
+/*                                      Button                                    */
+/**********************************************************************************/
 
 interface ButtonProps extends ParentProps {
   onClick?: JSX.EventHandler<HTMLButtonElement, MouseEvent>;
@@ -13,15 +17,21 @@ interface ButtonProps extends ParentProps {
   class?: JSX.ClassValue;
 }
 
+export const buttonStyle = styles.button;
 export function Button(props: ButtonProps) {
   return <button {...props} class={[props.class, styles.button]} />;
 }
+
+/**********************************************************************************/
+/*                                        Tab                                     */
+/**********************************************************************************/
 
 interface TabProps extends ButtonProps {
   selected?: boolean;
   ref?: Ref<HTMLButtonElement>;
 }
 
+export const tabStyle = styles.tab;
 export function Tab(props: TabProps) {
   return (
     <button
@@ -35,26 +45,51 @@ export function Tab(props: TabProps) {
   );
 }
 
-export function ColourTab(props: TabProps & { colour: RGBA }) {
+/**********************************************************************************/
+/*                                      Colour                                    */
+/**********************************************************************************/
+
+export function Colour(props: { colour: RGBA }) {
   return (
-    <Tab {...props} class={[styles.colour, props.class]}>
-      <div
-        style={{
-          "background-color": rgbaToCSS(props.colour),
-        }}
-      />
-    </Tab>
+    <div
+      style={{
+        "background-color": rgbaToCSS(props.colour),
+      }}
+    />
   );
 }
+
+/**********************************************************************************/
+/*                                       Icon                                     */
+/**********************************************************************************/
 
 interface IconProps {
   kind: IconKind;
 }
 
+export const iconStyle = styles.icon;
 export function Icon(props: IconProps) {
   return <i class={[styles.icon, `fa-solid fa-${props.kind}`]} />;
 }
 
+/**********************************************************************************/
+/*                                    Colour Tab                                  */
+/**********************************************************************************/
+
+export const colourTabStyle = styles.colourTab;
+export function ColourTab(props: TabProps & { colour: RGBA }) {
+  return (
+    <Tab {...props} class={[styles.colour, props.class]}>
+      <Colour colour={props.colour} />
+    </Tab>
+  );
+}
+
+/**********************************************************************************/
+/*                                     IconTab                                    */
+/**********************************************************************************/
+
+export const iconTabStyle = styles.iconTab;
 export function IconTab(props: TabProps & IconProps) {
   const tabProps = omit(props, "kind");
   return (
@@ -68,6 +103,11 @@ export interface IconButtonProps extends ButtonProps, IconProps {
   label?: string;
 }
 
+/**********************************************************************************/
+/*                                   IconButton                                   */
+/**********************************************************************************/
+
+export const iconButtonStyle = styles.iconButton;
 export function IconButton(props: IconButtonProps) {
   const buttonProps = omit(props, "children", "class");
   return (
@@ -80,54 +120,75 @@ export function IconButton(props: IconButtonProps) {
   );
 }
 
+/**********************************************************************************/
+/*                                       Bar                                      */
+/**********************************************************************************/
+
+export const barStyle = styles.bar;
 export function Bar(props: ParentProps) {
   return <div class={styles.bar}>{props.children}</div>;
 }
 
+/**********************************************************************************/
+/*                                     Column                                     */
+/**********************************************************************************/
+
+export const columnStyle = styles.column;
 export function Column(props: ParentProps) {
   return <div class={styles.column}>{props.children}</div>;
 }
 
-export type PopOverProps<T extends ValidComponent> = ComponentProps<T> & {
-  class?: string;
-  as?: T;
-};
+/**********************************************************************************/
+/*                                 Create Popover                                 */
+/**********************************************************************************/
+
+export interface PopoverTriggerProps extends ParentProps {
+  class?: string | string[];
+}
+
+export interface PopoverProps extends ParentProps {
+  class?: string | string[];
+  popover?: "auto" | "manual";
+}
 
 let counter = 0;
-export function createPopOver() {
+export function createPopover() {
   let element: HTMLDivElement = null!;
   const id = `popover-${counter++}`;
+  const [isOpen, setIsOpen] = createSignal(false);
 
   return {
-    Trigger<T extends ValidComponent>(
-      props: { as?: T } & Omit<ComponentProps<T>, "popovertarget" | "id">,
-    ) {
+    Trigger(props: PopoverTriggerProps) {
       return (
-        <Dynamic
+        <button
+          aria-selected={isOpen() ? "true" : "false"}
           style={{
             "anchor-name": `--${id}`,
           }}
-          component={props.as ?? "button"}
-          {...omit(props, "as")}
           popovertarget={id}
-        />
+          class={props.class}
+        >
+          {props.children}
+        </button>
       );
     },
-    PopOver<T extends ValidComponent>(props: PopOverProps<T>) {
+    PopOver(props: PopoverProps) {
       return (
         <Portal>
-          <Dynamic
+          <div
             style={{
               "position-anchor": `--${id}`,
             }}
-            component={props.as ?? "div"}
             id={id}
             ref={element}
             popover={props.popover ?? "auto"}
             class={[props.class, styles.popover]}
+            onToggle={event => {
+              setIsOpen(event.newState === "open");
+            }}
           >
             {props.children}
-          </Dynamic>
+          </div>
         </Portal>
       );
     },

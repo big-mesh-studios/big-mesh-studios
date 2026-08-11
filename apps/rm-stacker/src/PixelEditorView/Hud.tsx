@@ -2,11 +2,15 @@ import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
 import { createSignal, onSettled, Show, useContext } from "solid-js";
 import {
   Bar,
-  ColourTab,
+  Colour,
+  colourTabStyle,
   Column,
-  createPopOver,
+  createPopover,
+  Icon,
   IconButton,
   IconTab,
+  iconTabStyle,
+  tabStyle,
 } from "../components/components";
 import { LayoutContext, StackerContext } from "../context";
 import { DAWNBRINGER_32_PALETTE } from "../default_palette";
@@ -30,7 +34,6 @@ export function Hud(props: {
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
   const [palette, setPalette] = createSignal<RGBA[]>(DAWNBRINGER_32_PALETTE);
   const [isMenuOpen, setIsMenuOpen] = createSignal(false);
-  const [isPaletteOpen, setIsPaletteOpen] = createSignal(false);
 
   const onLoad = async () => {
     const file = await fileOpen<false>({
@@ -73,22 +76,18 @@ export function Hud(props: {
     );
   };
 
-  const Menu = createPopOver();
-  const Colour = createPopOver();
+  const MenuPopover = createPopover();
+  const PalettePopover = createPopover();
 
   return (
     <>
       <div class={styles.hud}>
         <div class={styles.side}>
           <Bar>
-            <Menu.Trigger
-              as={IconTab}
-              kind="bars"
-              selected={isMenuOpen()}
-              onClick={() => setIsMenuOpen(bool => !bool)}
-              class={styles.menuTrigger}
-            />
-            <Menu.PopOver class={styles.menuPopover}>
+            <MenuPopover.Trigger class={[tabStyle, iconTabStyle]}>
+              <Icon kind="bars" />
+            </MenuPopover.Trigger>
+            <MenuPopover.PopOver class={styles.menuPopover}>
               <IconButton
                 kind="file"
                 label="New File"
@@ -106,7 +105,7 @@ export function Hud(props: {
               <IconButton kind="floppy-disk" label="Save File" onClick={onSave} />
               <IconButton kind="floppy-disk" label="Save As" onClick={onSaveAs} />
               <IconButton onClick={onLoad} kind="folder" label="Load" />
-            </Menu.PopOver>
+            </MenuPopover.PopOver>
           </Bar>
           <div class={styles.bottom}>
             <Bar>
@@ -157,19 +156,16 @@ export function Hud(props: {
               </Column>
             </Show>
             <Bar>
-              <Colour.Trigger
-                as={ColourTab}
-                colour={props.selectedColour}
-                class={styles.paletteTrigger}
-                onClick={() => setIsPaletteOpen(bool => !bool)}
-              />
-              <Colour.PopOver class={styles.palettePopover} popover="manual">
+              <PalettePopover.Trigger class={[tabStyle, colourTabStyle]}>
+                <Colour colour={props.selectedColour} />
+              </PalettePopover.Trigger>
+              <PalettePopover.PopOver class={styles.palettePopover} popover="manual">
                 <Palette
                   onSelect={props.onSelectColour}
                   palette={palette()}
                   selectedColour={props.selectedColour}
                 />
-              </Colour.PopOver>
+              </PalettePopover.PopOver>
             </Bar>
           </div>
         </div>
