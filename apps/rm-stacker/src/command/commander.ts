@@ -1,8 +1,9 @@
 import { Accessor, Setter } from "@solidjs/signals";
 import { untrack } from "solid-js";
 import { load, save } from "../load-save";
+import { RGBA } from "../maths";
 import { Sides } from "../types";
-import { areRGBAsEqual, intersectSide } from "../utils";
+import { intersectSide } from "../utils";
 import { Command } from "./Command";
 
 export function createCommander({
@@ -52,7 +53,7 @@ export function createCommander({
 
           const { colour: oldColour, offset } = intersection;
 
-          if (!oldColour || areRGBAsEqual(newColour, oldColour)) {
+          if (!oldColour || RGBA.equals(newColour, oldColour)) {
             return Command.noOperation();
           }
 
@@ -104,7 +105,7 @@ export function createCommander({
                 continue;
               }
 
-              const match = areRGBAsEqual(intersection.colour, oldColour);
+              const match = RGBA.equals(intersection.colour, oldColour);
 
               if (match) {
                 side.data[intersection.offset + 0] = newColour.r;

@@ -1,7 +1,6 @@
 import { createSignal, onCleanup } from "solid-js";
 import { SIDE_MASK } from "./constants";
-import { Vector2D } from "./maths";
-import { RGBA } from "./types";
+import { RGBA, Vector2D } from "./maths";
 
 /**********************************************************************************/
 /*                                      Misc                                      */
@@ -177,10 +176,6 @@ export function hexToRgba(hex: string, alpha = 1): RGBA {
 /**********************************************************************************/
 /*                                      RGBA                                      */
 /**********************************************************************************/
-
-export function areRGBAsEqual(a: RGBA, b: RGBA) {
-  return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
-}
 
 const PASTEL = 150;
 const INTENSITY = 0.75;

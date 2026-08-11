@@ -32,3 +32,13 @@
     cursor: ns-resize;
   }
 }
+
+.colourPicker {
+  position: absolute;
+  height: 250px;
+  width: 250px;
+  z-index: 2;
+  background: var(--back);
+  padding: var(--margin);
+  border-radius: var(--margin);
+}

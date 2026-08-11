@@ -1,25 +1,54 @@
-import { Component, createEffect, createMemo, createRoot, For } from "solid-js";
-import { ColourTab } from "./components/components";
+import { Setter } from "@solidjs/signals";
+import { Component, createEffect, createMemo, createRoot, createSignal, For } from "solid-js";
+import { ColourPicker } from "./ColorPicker";
+import { ColourTab, createPopover } from "./components/components";
+import { RGBA } from "./maths";
 import styles from "./Palette.module.css";
-import { RGBA } from "./types";
-import { areRGBAsEqual } from "./utils";
 
 const Palette: Component<{
   palette: Array<RGBA>;
   onSelect: (colour: RGBA) => void;
+  setPalette: Setter<Array<RGBA>>;
   selectedColour: RGBA | undefined;
   class?: string;
 }> = props => {
+  const ColourPickerPopover = createPopover();
+  const [activeColour, setActiveColour] = createSignal<number | undefined>();
+
   return (
     <div class={[styles.palette, props.class]}>
+      <ColourPickerPopover.PopOver
+        class={styles.colourPickerPopover}
+        style={{ "position-anchor": `--colour-${activeColour()}` }}
+      >
+        <ColourPicker
+          colour={activeColour() ? props.palette[activeColour()!] : undefined}
+          onColour={colour => {
+            console.log("on colour!");
+
+            const _activeColour = activeColour();
+            if (!_activeColour) {
+              return;
+            }
+            console.log(colour, props.palette);
+            props.setPalette(palette => {
+              palette[_activeColour] = colour;
+              return [...palette];
+            });
+          }}
+        />
+      </ColourPickerPopover.PopOver>
       <For each={props.palette}>
-        {colour => {
+        {(colour, index) => {
           const isActive = createMemo(
-            () => props.selectedColour && areRGBAsEqual(colour, props.selectedColour),
+            () => props.selectedColour && RGBA.equals(colour, props.selectedColour),
           );
 
           return (
             <ColourTab
+              style={{
+                "anchor-name": `--colour-${index()}`,
+              }}
               ref={element =>
                 createRoot(() => {
                   createEffect(isActive, active => {
@@ -37,7 +66,13 @@ const Palette: Component<{
               selected={isActive()}
               class={styles.item}
               onClick={() => {
-                props.onSelect(colour);
+                console.log("set active colour", index(), activeColour());
+                if (index() === activeColour()) {
+                  setActiveColour(undefined);
+                  return;
+                }
+                setActiveColour(index());
+                ColourPickerPopover.show();
               }}
               colour={colour}
             />

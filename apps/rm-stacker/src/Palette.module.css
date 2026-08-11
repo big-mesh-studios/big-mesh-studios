@@ -18,3 +18,14 @@
     padding: var(--margin);
   }
 }
+
+.colourPickerPopover {
+  inset: unset;
+  position: absolute;
+  pointer-events: auto;
+
+  &:popover-open {
+    bottom: calc(anchor(top) + var(--margin));
+    left: calc(anchor(left));
+  }
+}

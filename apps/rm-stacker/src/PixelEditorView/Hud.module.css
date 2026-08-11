@@ -53,4 +53,5 @@
 .palettePopover:popover-open {
   bottom: calc(anchor(bottom));
   left: calc(anchor(right) + var(--margin));
+  pointer-events: auto;
 }

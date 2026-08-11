@@ -21,13 +21,6 @@ export type AlignmentKind = "min" | "max";
 /** Which end of each axis a resize is applied at. */
 export type Alignment3D = Partial<Record<DimensionKind, AlignmentKind>>;
 
-export interface RGBA {
-  r: number;
-  g: number;
-  b: number;
-  a: number;
-}
-
 export type Axis = "x" | "y" | "z";
 
 /**********************************************************************************/

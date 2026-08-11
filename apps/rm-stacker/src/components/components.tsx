@@ -2,8 +2,7 @@ import { Portal } from "@solidjs/web";
 import type { JSX } from "@solidjs/web/jsx-runtime";
 import { createSignal, omit, ParentProps, Ref, Show } from "solid-js";
 import type { IconKind } from "../icon-kinds";
-import { RGBA } from "../types";
-import { rgbaToCSS } from "../utils";
+import { RGBA } from "../maths";
 import styles from "./components.module.css";
 
 /**********************************************************************************/
@@ -53,7 +52,7 @@ export function Colour(props: { colour: RGBA }) {
   return (
     <div
       style={{
-        "background-color": rgbaToCSS(props.colour),
+        "background-color": RGBA.toCSS(props.colour),
       }}
     />
   );
@@ -77,7 +76,7 @@ export function Icon(props: IconProps) {
 /**********************************************************************************/
 
 export const colourTabStyle = styles.colourTab;
-export function ColourTab(props: TabProps & { colour: RGBA }) {
+export function ColourTab(props: TabProps & { colour: RGBA; style: JSX.CSSProperties }) {
   return (
     <Tab {...props} class={[styles.colour, props.class]}>
       <Colour colour={props.colour} />
@@ -149,6 +148,7 @@ export interface PopoverTriggerProps extends ParentProps {
 export interface PopoverProps extends ParentProps {
   class?: string | string[];
   popover?: "auto" | "manual";
+  style?: JSX.CSSProperties;
 }
 
 let counter = 0;
@@ -158,6 +158,12 @@ export function createPopover() {
   const [isOpen, setIsOpen] = createSignal(false);
 
   return {
+    show() {
+      element.showPopover();
+    },
+    hide() {
+      element.hidePopover();
+    },
     Trigger(props: PopoverTriggerProps) {
       return (
         <button
@@ -178,6 +184,7 @@ export function createPopover() {
           <div
             style={{
               "position-anchor": `--${id}`,
+              ...props.style,
             }}
             id={id}
             ref={element}

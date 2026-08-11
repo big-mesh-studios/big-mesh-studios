@@ -160,8 +160,9 @@ export function Hud(props: {
               </PalettePopover.Trigger>
               <PalettePopover.PopOver class={styles.palettePopover} popover="manual">
                 <Palette
-                  onSelect={props.onSelectColour}
                   palette={palette()}
+                  setPalette={setPalette}
+                  onSelect={props.onSelectColour}
                   selectedColour={props.selectedColour}
                 />
               </PalettePopover.PopOver>
