@@ -1,6 +1,13 @@
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
 import { createSignal, onSettled, Show, useContext } from "solid-js";
-import { Bar, ColourTab, createPopOver, IconButton, IconTab } from "../components/components";
+import {
+  Bar,
+  ColourTab,
+  Column,
+  createPopOver,
+  IconButton,
+  IconTab,
+} from "../components/components";
 import { LayoutContext, StackerContext } from "../context";
 import { DAWNBRINGER_32_PALETTE } from "../default_palette";
 import { load, save } from "../load-save";
@@ -119,33 +126,35 @@ export function Hud(props: {
               />
             </Bar>
             <Show when={layout() === "column"}>
-              <Bar>
-                <IconTab
-                  kind="up-down-left-right"
-                  onClick={() => props.setMode("Idle")}
-                  selected={props.mode === "Idle"}
-                />
-                <IconTab
-                  kind="pen"
-                  onClick={() => props.setMode("Draw")}
-                  selected={props.mode === "Draw"}
-                />
-                <IconTab
-                  kind="fill"
-                  onClick={() => props.setMode("Fill")}
-                  selected={props.mode === "Fill"}
-                />
-                <IconTab
-                  kind="eraser"
-                  onClick={() => props.setMode("Erase")}
-                  selected={props.mode === "Erase"}
-                />
-                <IconTab
-                  kind="eye-dropper"
-                  onClick={() => props.setMode("Eyedrop")}
-                  selected={props.mode === "Eyedrop"}
-                />
-              </Bar>
+              <Column>
+                <Bar>
+                  <IconTab
+                    kind="up-down-left-right"
+                    onClick={() => props.setMode("Idle")}
+                    selected={props.mode === "Idle"}
+                  />
+                  <IconTab
+                    kind="pen"
+                    onClick={() => props.setMode("Draw")}
+                    selected={props.mode === "Draw"}
+                  />
+                  <IconTab
+                    kind="fill"
+                    onClick={() => props.setMode("Fill")}
+                    selected={props.mode === "Fill"}
+                  />
+                  <IconTab
+                    kind="eraser"
+                    onClick={() => props.setMode("Erase")}
+                    selected={props.mode === "Erase"}
+                  />
+                  <IconTab
+                    kind="eye-dropper"
+                    onClick={() => props.setMode("Eyedrop")}
+                    selected={props.mode === "Eyedrop"}
+                  />
+                </Bar>
+              </Column>
             </Show>
             <Bar>
               <Colour.Trigger
@@ -166,33 +175,35 @@ export function Hud(props: {
         </div>
         <div class={styles.main}></div>
         <Show when={layout() === "row"}>
-          <Bar>
-            <IconTab
-              kind="up-down-left-right"
-              onClick={() => props.setMode("Idle")}
-              selected={props.mode === "Idle"}
-            />
-            <IconTab
-              kind="pen"
-              onClick={() => props.setMode("Draw")}
-              selected={props.mode === "Draw"}
-            />
-            <IconTab
-              kind="fill"
-              onClick={() => props.setMode("Fill")}
-              selected={props.mode === "Fill"}
-            />
-            <IconTab
-              kind="eraser"
-              onClick={() => props.setMode("Erase")}
-              selected={props.mode === "Erase"}
-            />
-            <IconTab
-              kind="eye-dropper"
-              onClick={() => props.setMode("Eyedrop")}
-              selected={props.mode === "Eyedrop"}
-            />
-          </Bar>
+          <Column>
+            <Bar>
+              <IconTab
+                kind="up-down-left-right"
+                onClick={() => props.setMode("Idle")}
+                selected={props.mode === "Idle"}
+              />
+              <IconTab
+                kind="pen"
+                onClick={() => props.setMode("Draw")}
+                selected={props.mode === "Draw"}
+              />
+              <IconTab
+                kind="fill"
+                onClick={() => props.setMode("Fill")}
+                selected={props.mode === "Fill"}
+              />
+              <IconTab
+                kind="eraser"
+                onClick={() => props.setMode("Erase")}
+                selected={props.mode === "Erase"}
+              />
+              <IconTab
+                kind="eye-dropper"
+                onClick={() => props.setMode("Eyedrop")}
+                selected={props.mode === "Eyedrop"}
+              />
+            </Bar>
+          </Column>
         </Show>
       </div>
     </>

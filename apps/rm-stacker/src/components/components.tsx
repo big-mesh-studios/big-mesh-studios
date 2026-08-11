@@ -84,6 +84,10 @@ export function Bar(props: ParentProps) {
   return <div class={styles.bar}>{props.children}</div>;
 }
 
+export function Column(props: ParentProps) {
+  return <div class={styles.column}>{props.children}</div>;
+}
+
 export type PopOverProps<T extends ValidComponent> = ComponentProps<T> & {
   class?: string;
   as?: T;

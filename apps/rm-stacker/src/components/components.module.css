@@ -92,3 +92,8 @@
     border-radius: calc(var(--margin) / 2);
   }
 }
+.column {
+  display: flex;
+  gap: var(--margin);
+  flex-direction: column;
+}
