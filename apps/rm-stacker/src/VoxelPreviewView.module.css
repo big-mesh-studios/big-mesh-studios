@@ -10,6 +10,7 @@
   height: 100%;
   display: block;
   touch-action: none;
+  background: radial-gradient(var(--dark-grey), var(--back));
 }
 
 .error {

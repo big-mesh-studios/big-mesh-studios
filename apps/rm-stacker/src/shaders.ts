@@ -243,9 +243,10 @@ export default (() => {
         },
       );
     });
-    // Rays that hit nothing leave colour at its initial black, which is the
-    // background. Alpha is forced to 1 since the canvas itself is opaque.
-    return vec4(colour.rgb, float(1));
+    // Rays that hit nothing leave colour at its initial transparent black, so
+    // whatever is painted behind the canvas shows through there. Only rays that
+    // land on a voxel set alpha to 1.
+    return colour;
   });
   return {
     uVoxels: uVoxels.name,

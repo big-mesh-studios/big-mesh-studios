@@ -187,7 +187,7 @@ const VoxelPreviewView: Component = () => {
     if (_canvas === undefined) {
       return;
     }
-    const gl = _canvas.getContext("webgl2", { antialias: false });
+    const gl = _canvas.getContext("webgl2", { antialias: false, alpha: true });
     if (gl === null) {
       setGlError("WebGL2 is not supported in this browser");
       return;
