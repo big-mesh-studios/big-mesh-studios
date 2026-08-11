@@ -9,7 +9,6 @@ import {
   untrack,
   useContext,
 } from "solid-js";
-import * as THREE from "three";
 import { Command } from "../command/Command";
 import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../context";
@@ -50,28 +49,24 @@ export const createPixelEditorController = ({
   const [cursorStyle, setCursorStyle] = createSignal<string>();
   const [scale, setScale] = createSignal(8);
   const [pointerids, setPointerids] = createSignal(new Set<number>(), { equals: false });
-  const [mousePosition, setMousePosition] = createSignal<THREE.Vector2>();
+  const [screenPointer, setCursorScreenPosition] = createSignal<Vector2D>();
 
-  const mouseWorldPosition = createMemo<THREE.Vector2 | undefined>(() => {
-    const _mousePos = mousePosition();
-    if (_mousePos === undefined) {
+  const worldPointer = createMemo<Vector2D | undefined>(() => {
+    const _screenPointer = screenPointer();
+
+    if (_screenPointer === undefined) {
       return undefined;
     }
 
-    const worldPos = screenToWorld(_mousePos);
-    if (worldPos === undefined) {
-      return undefined;
-    }
-
-    return worldPos;
+    return screenToWorld(_screenPointer);
   });
 
   const panScaleControllerSetters = {
     setPanX: (value: number) => {
-      setPan(p => new THREE.Vector2(value, p.y));
+      setPan(p => ({ x: value, y: p.y }));
     },
     setPanY: (value: number) => {
-      setPan(p => new THREE.Vector2(p.x, value));
+      setPan(p => ({ x: p.x, y: value }));
     },
     setScale,
   };
@@ -89,25 +84,25 @@ export const createPixelEditorController = ({
     disable: shouldDisablePanScaleControl,
   });
 
-  const screenToWorld = (pt: THREE.Vector2, out = new THREE.Vector2()): THREE.Vector2 => {
-    out.copy(pt);
-    out.multiplyScalar(1.0 / latest(scale));
-    out.add(latest(pan));
+  const screenToWorld = (pt: Vector2D): Vector2D => {
+    const out = { ...pt };
+    Vector2D.multiplyScalar(pt, 1.0 / latest(scale), out);
+    Vector2D.add(out, latest(pan), out);
     return out;
   };
 
-  const roundedMouseWorldPosition = createMemo<Vector2D | undefined>(() => {
-    const _mouseWorldPosition = mouseWorldPosition();
+  const roundedWorldPointer = createMemo<Vector2D | undefined>(previous => {
+    const _worldPointer = worldPointer();
 
-    if (_mouseWorldPosition === undefined) {
+    if (_worldPointer === undefined) {
       return undefined;
     }
 
-    return Vector2D.round(_mouseWorldPosition);
+    return Vector2D.round(_worldPointer, previous);
   });
 
   const edgeController = createEdgeController({
-    mouseWorldPosition,
+    mouseWorldPosition: worldPointer,
     pan,
     scale,
     setCursorStyle,
@@ -116,13 +111,38 @@ export const createPixelEditorController = ({
   });
 
   let undoCommandsReversed: Command[] = [];
+  createEffect(
+    () => pointerids().size,
+    count => {
+      if (count !== 0 || undoCommandsReversed.length === 0) {
+        return;
+      }
+      const undoCommands = undoCommandsReversed.reverse();
+      undoCommandsReversed = [];
+      pushUndo(
+        Command.sequence(undoCommands),
+        untrack(mode) === "Erase" ? "Erase Pixels" : "Draw Pixels",
+      );
+    },
+  );
 
-  const applyPixelStroke = (initialPosition: Vector2D) =>
-    untrack(() => {
+  createEffect(
+    () => [roundedWorldPointer(), pointerids().size, mode()] as const,
+    ([worldPointer, pointerCount, _mode]) => {
+      if (_mode === "Idle") {
+        return;
+      }
+      if (pointerCount !== 1) {
+        return;
+      }
+      if (worldPointer === undefined) {
+        return;
+      }
+
       const intersection = intersectSides({
-        position: initialPosition,
+        position: worldPointer,
         sides: store.sides,
-        sidePositions: sidePositions(),
+        sidePositions: untrack(sidePositions),
       });
 
       if (!intersection) {
@@ -133,13 +153,14 @@ export const createPixelEditorController = ({
 
       const oppositePixel = getOppositePixel(kind, position, side);
       const oppositeKind = OPPOSING_SIDE[kind];
-      const oppositeSide = store.sides[oppositeKind];
-      const oppositeOpacity = untrack(
-        () =>
-          store.sides[oppositeKind].data[
-            ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
-          ],
-      );
+
+      const sides = untrack(() => store.sides);
+
+      const oppositeSide = sides[oppositeKind];
+      const oppositeOpacity =
+        sides[oppositeKind].data[
+          ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
+        ];
 
       const commands: Command[] = [];
 
@@ -154,7 +175,7 @@ export const createPixelEditorController = ({
           break;
         }
         case "Draw": {
-          const _selectedColour = selectedColour();
+          const _selectedColour = untrack(selectedColour);
 
           if (_selectedColour !== undefined) {
             commands.push(Command.writePixel(kind, position, _selectedColour));
@@ -167,7 +188,7 @@ export const createPixelEditorController = ({
           break;
         }
         case "Fill": {
-          const _selectedColour = selectedColour();
+          const _selectedColour = untrack(selectedColour);
 
           if (_selectedColour !== undefined) {
             commands.push(Command.fillPixel(kind, position, _selectedColour));
@@ -187,36 +208,6 @@ export const createPixelEditorController = ({
 
       const command = commands.length === 1 ? commands[0] : Command.sequence(commands);
       undoCommandsReversed.push(doCommand(command));
-    });
-
-  createEffect(
-    () => pointerids().size,
-    count => {
-      if (count !== 0 || undoCommandsReversed.length === 0) {
-        return;
-      }
-      const undoCommands = undoCommandsReversed.reverse();
-      undoCommandsReversed = [];
-      pushUndo(
-        Command.sequence(undoCommands),
-        untrack(mode) === "Erase" ? "Erase Pixels" : "Draw Pixels",
-      );
-    },
-  );
-
-  createEffect(
-    () => [roundedMouseWorldPosition(), pointerids().size, mode()] as const,
-    ([pos, pointerCount, _mode]) => {
-      if (_mode === "Idle") {
-        return;
-      }
-      if (pointerCount !== 1) {
-        return;
-      }
-      if (pos === undefined) {
-        return;
-      }
-      applyPixelStroke(pos);
     },
   );
 
@@ -229,7 +220,7 @@ export const createPixelEditorController = ({
         return;
       }
 
-      const position = roundedMouseWorldPosition();
+      const position = roundedWorldPointer();
       if (!position) {
         return;
       }
@@ -244,7 +235,7 @@ export const createPixelEditorController = ({
 
       switch (mode()) {
         case "Eyedrop": {
-          const position = mouseWorldPosition();
+          const position = worldPointer();
           if (!position) {
             return;
           }
@@ -254,6 +245,7 @@ export const createPixelEditorController = ({
             sides: store.sides,
             position,
           });
+
           if (!intersection) {
             return;
           }
@@ -305,10 +297,10 @@ export const createPixelEditorController = ({
       const rect = _canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      setMousePosition(new THREE.Vector2(x, y));
+      setCursorScreenPosition({ x, y });
     },
     onPointerOut(_e: PointerEvent) {
-      setMousePosition();
+      setCursorScreenPosition();
     },
     onWheel: panScaleControl.onWheel,
   };
