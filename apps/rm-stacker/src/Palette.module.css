@@ -1,16 +1,11 @@
 .palette {
   display: grid;
   grid-template-columns: repeat(8, var(--size));
-  flex-direction: row;
   pointer-events: auto;
-  border-radius: var(--margin);
-  overflow-x: auto;
-  overflow-y: hidden;
   box-sizing: border-box;
   background-color: var(--color-base-200);
   border: 1px solid var(--grey);
   border-radius: var(--margin);
-  scrollbar-width: none;
   align-self: start;
   justify-self: start;
 }
