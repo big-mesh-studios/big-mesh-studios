@@ -3,7 +3,7 @@
   grid-template-columns: repeat(8, var(--size));
   pointer-events: auto;
   box-sizing: border-box;
-  background-color: var(--color-base-200);
+  background-color: var(--back);
   border: 1px solid var(--grey);
   border-radius: var(--margin);
   align-self: start;

@@ -108,6 +108,7 @@ export function DropDown(props: DropDownProps) {
     const selectable = element.querySelector(
       'input, select, button, [tabindex]:not([tabindex="-1"]',
     );
+
     if (selectable instanceof HTMLElement) {
       selectable.focus();
     }
