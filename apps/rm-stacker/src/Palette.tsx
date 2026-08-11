@@ -24,13 +24,10 @@ const Palette: Component<{
         <ColourPicker
           colour={activeColour() ? props.palette[activeColour()!] : undefined}
           onColour={colour => {
-            console.log("on colour!");
-
             const _activeColour = activeColour();
             if (!_activeColour) {
               return;
             }
-            console.log(colour, props.palette);
             props.setPalette(palette => {
               palette[_activeColour] = colour;
               return [...palette];

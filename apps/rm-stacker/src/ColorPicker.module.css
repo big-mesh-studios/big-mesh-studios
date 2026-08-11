@@ -1,31 +1,65 @@
 .colourPicker {
-  flex-grow: 1;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 25px 25px;
+  grid-template-rows: 200px auto;
+  grid-template-areas:
+    "chart  brightness alpha "
+    "fields output     output";
+  gap: var(--margin) calc(var(--margin) * 2);
   padding: var(--margin);
 }
 
-.brightness {
+/* Hue across x, saturation down y, darkened by value.
+   Layers are listed topmost first: a flat black veil over white over hue. */
+.hueSaturation {
+  grid-area: chart;
   position: relative;
-  display: flex;
-  flex-direction: row;
-  width: 25px;
-  margin-left: 15px;
+  min-width: 200px;
+  overflow: hidden;
+  touch-action: none;
+  background-image:
+    linear-gradient(rgb(0 0 0 / var(--darken)), rgb(0 0 0 / var(--darken))),
+    linear-gradient(to bottom, rgb(255 255 255 / 0), rgb(255 255 255 / 1)),
+    linear-gradient(
+      to right,
+      #f00 0%,
+      #ff0 16.667%,
+      #0f0 33.333%,
+      #0ff 50%,
+      #00f 66.667%,
+      #f0f 83.333%,
+      #f00 100%
+    );
+}
+
+.slider {
+  position: relative;
   overflow: hidden;
   touch-action: none;
 }
 
-.output {
-  display: grid;
-  width: 75px;
-  height: 75px;
+.brightness {
+  composes: slider;
+  grid-area: brightness;
+  background-image: linear-gradient(to top, #000, var(--full-value-colour));
+}
+
+/* `--overlay` is the only layer that differs between the alpha slider and the
+   output swatch, so both share one background stack. */
+.checkered {
   background-image:
-    linear-gradient(45deg, #808080 25%, transparent 25%),
+    var(--overlay), linear-gradient(45deg, #808080 25%, transparent 25%),
     linear-gradient(-45deg, #808080 25%, transparent 25%),
     linear-gradient(45deg, transparent 75%, #808080 75%),
     linear-gradient(-45deg, transparent 75%, #808080 75%);
-  background-size: 20px 20px;
+  background-size:
+    auto,
+    20px 20px,
+    20px 20px,
+    20px 20px,
+    20px 20px;
   background-position:
+    0 0,
     0 0,
     0 10px,
     10px -10px,
@@ -33,34 +67,72 @@
 }
 
 .alpha {
-  position: relative;
-  display: flex;
-  flex-direction: row;
-  width: 25px;
-  margin-left: 15px;
-  overflow: hidden;
-  touch-action: none;
+  composes: slider;
+  composes: checkered;
+  grid-area: alpha;
+  --overlay: linear-gradient(to top, transparent, var(--opaque-colour));
 }
 
-.hueSaturation {
-  position: relative;
-  flex-grow: 1;
-  display: flex;
-  flex-direction: column;
-  touch-action: none;
+.output {
+  composes: checkered;
+  grid-area: output;
+  aspect-ratio: 1;
+  align-self: end;
+  --overlay: linear-gradient(var(--colour), var(--colour));
 }
 
-.brightnessHandle {
-  position: absolute;
-  left: 0;
-  top: 0;
-  right: 0;
-  bottom: 0;
+.fields {
+  grid-area: fields;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  justify-content: space-between;
+  align-items: space-between;
+  gap: calc(var(--margin) / 2) var(--margin);
+  margin-inline: var(--margin);
 }
-.alphaHandle {
+
+.inputContainer {
+  & input {
+    color: var(--light-grey);
+    &:focus {
+      color: var(--front);
+    }
+  }
+
+  &:has(input:focus) .label {
+    color: var(--front);
+  }
+}
+
+.label {
+  justify-self: end;
+  align-self: center;
+  color: var(--light-grey);
+  & + input {
+    color: var(--light-grey);
+    &:focus {
+      color: var(--front);
+      outline: none;
+    }
+  }
+}
+
+.chartHandle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #000;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.sliderHandle {
   position: absolute;
   left: 0;
-  top: 0;
   right: 0;
-  bottom: 0;
+  height: 10px;
+  border: 2px solid #000;
+  transform: translateY(50%);
+  pointer-events: none;
 }
