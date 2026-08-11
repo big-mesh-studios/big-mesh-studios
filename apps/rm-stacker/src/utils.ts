@@ -240,27 +240,13 @@ function getColourFromOffset(side: ImageData, offset: number): RGBA {
   return { r, g, b, a };
 }
 
-export function intersectSide({
-  sidePosition,
-  position,
-  side,
-}: {
-  sidePosition: Vector2D;
-  position: Vector2D;
-  side: ImageData;
-}) {
-  const relativePosition = Vector2D.sub(position, sidePosition);
-  if (
-    relativePosition.x >= 0 &&
-    relativePosition.y >= 0 &&
-    relativePosition.x < side.width &&
-    relativePosition.y < side.height
-  ) {
-    const offset = getOffset(side, relativePosition);
+export function intersectSide({ position, side }: { position: Vector2D; side: ImageData }) {
+  if (position.x >= 0 && position.y >= 0 && position.x < side.width && position.y < side.height) {
+    const offset = getOffset(side, position);
     const colour = getColourFromOffset(side, offset);
 
     return {
-      relativePosition,
+      position,
       side,
       offset,
       colour,
@@ -270,7 +256,7 @@ export function intersectSide({
 
 export function intersectSides({
   sidePositions,
-  position,
+  position: worldPosition,
   sides,
 }: {
   sidePositions: SidePositions;
@@ -280,21 +266,16 @@ export function intersectSides({
   for (const kind of keysOf(sides)) {
     const sidePosition = sidePositions[kind];
     const side = sides[kind];
-    const relativePosition = Vector2D.sub(position, sidePosition);
+    const position = Vector2D.sub(worldPosition, sidePosition);
 
-    if (
-      relativePosition.x >= 0 &&
-      relativePosition.y >= 0 &&
-      relativePosition.x < side.width &&
-      relativePosition.y < side.height
-    ) {
-      const offset = getOffset(side, relativePosition);
+    if (position.x >= 0 && position.y >= 0 && position.x < side.width && position.y < side.height) {
+      const offset = getOffset(side, position);
       const colour = getColourFromOffset(side, offset);
 
       return {
         kind,
         sidePosition,
-        relativePosition,
+        position,
         side,
         offset,
         colour,
