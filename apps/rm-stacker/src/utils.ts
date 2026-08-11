@@ -1,3 +1,4 @@
+import { createSignal, onCleanup } from "solid-js";
 import { SIDE_MASK } from "./constants";
 import { Vector2D } from "./maths";
 import { RGBA, SidePositions, Sides } from "./types";
@@ -50,6 +51,33 @@ export function inertExceptFor(exempt: HTMLElement) {
     inerted.forEach(element => {
       element.inert = false;
     });
+}
+
+export function createMediaQuery(query: string) {
+  // 1. Define the media query you want to watch
+  const mediaQuery = window.matchMedia(query);
+
+  const [bool, setBool] = createSignal(handleDeviceChange(mediaQuery));
+
+  // 2. Define the callback function to run on change
+  function handleDeviceChange(event: MediaQueryList | MediaQueryListEvent) {
+    if (event.matches) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  const controller = new AbortController();
+
+  // 3. Register the listener for future changes
+  mediaQuery.addEventListener("change", event => setBool(handleDeviceChange(event)), {
+    signal: controller.signal,
+  });
+
+  onCleanup(() => controller.abort());
+
+  return bool;
 }
 
 /**********************************************************************************/

@@ -1,3 +1,18 @@
+.hud {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  margin: var(--margin);
+  gap: var(--margin);
+
+  & > * {
+    pointer-events: auto;
+  }
+}
+
 .side {
   display: grid;
   grid-template-rows: auto 1fr;
@@ -9,21 +24,6 @@
     gap: var(--margin);
     align-items: end;
     align-content: end;
-  }
-}
-
-.hud {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  margin: var(--margin);
-  gap: var(--margin);
-
-  & > * {
-    pointer-events: auto;
   }
 }
 

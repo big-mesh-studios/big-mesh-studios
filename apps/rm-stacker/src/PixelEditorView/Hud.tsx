@@ -7,6 +7,7 @@ import Palette from "../Palette";
 import { StackerContext } from "../stacker-context";
 import { createInitialSides } from "../stacker-store";
 import { ModeKind, RGBA } from "../types";
+import { createMediaQuery } from "../utils";
 import styles from "./Hud.module.css";
 
 export function Hud(props: {
@@ -17,6 +18,8 @@ export function Hud(props: {
   render(): void;
 }) {
   const { store, setSides, undoRedoManager, updateVoxels } = useContext(StackerContext);
+
+  const $min = createMediaQuery("(min-aspect-ratio: 2/3)");
 
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
   const [palette, setPalette] = createSignal<RGBA[]>(DAWNBRINGER_32_PALETTE);
@@ -91,33 +94,35 @@ export function Hud(props: {
               kind="arrow-rotate-right"
             />
           </Bar>
-          <Bar>
-            <IconTab
-              kind="up-down-left-right"
-              onClick={() => props.setMode("Idle")}
-              selected={props.mode === "Idle"}
-            />
-            <IconTab
-              kind="pen"
-              onClick={() => props.setMode("Draw")}
-              selected={props.mode === "Draw"}
-            />
-            <IconTab
-              kind="fill"
-              onClick={() => props.setMode("Fill")}
-              selected={props.mode === "Fill"}
-            />
-            <IconTab
-              kind="eraser"
-              onClick={() => props.setMode("Erase")}
-              selected={props.mode === "Erase"}
-            />
-            <IconTab
-              kind="eye-dropper"
-              onClick={() => props.setMode("Eyedrop")}
-              selected={props.mode === "Eyedrop"}
-            />
-          </Bar>
+          <Show when={$min()}>
+            <Bar>
+              <IconTab
+                kind="up-down-left-right"
+                onClick={() => props.setMode("Idle")}
+                selected={props.mode === "Idle"}
+              />
+              <IconTab
+                kind="pen"
+                onClick={() => props.setMode("Draw")}
+                selected={props.mode === "Draw"}
+              />
+              <IconTab
+                kind="fill"
+                onClick={() => props.setMode("Fill")}
+                selected={props.mode === "Fill"}
+              />
+              <IconTab
+                kind="eraser"
+                onClick={() => props.setMode("Erase")}
+                selected={props.mode === "Erase"}
+              />
+              <IconTab
+                kind="eye-dropper"
+                onClick={() => props.setMode("Eyedrop")}
+                selected={props.mode === "Eyedrop"}
+              />
+            </Bar>
+          </Show>
           <Bar>
             <ColourTab
               colour={props.selectedColour}
@@ -157,6 +162,35 @@ export function Hud(props: {
           />
         </Show>
       </div>
+      <Show when={!$min()}>
+        <Bar>
+          <IconTab
+            kind="up-down-left-right"
+            onClick={() => props.setMode("Idle")}
+            selected={props.mode === "Idle"}
+          />
+          <IconTab
+            kind="pen"
+            onClick={() => props.setMode("Draw")}
+            selected={props.mode === "Draw"}
+          />
+          <IconTab
+            kind="fill"
+            onClick={() => props.setMode("Fill")}
+            selected={props.mode === "Fill"}
+          />
+          <IconTab
+            kind="eraser"
+            onClick={() => props.setMode("Erase")}
+            selected={props.mode === "Erase"}
+          />
+          <IconTab
+            kind="eye-dropper"
+            onClick={() => props.setMode("Eyedrop")}
+            selected={props.mode === "Eyedrop"}
+          />
+        </Bar>
+      </Show>
     </div>
   );
 }
