@@ -17,7 +17,10 @@ import {
 
 // This module is compiled once at build time by vite-precompile-shaders and
 // replaced with JSON, so the rmsl graph is never built (and rmsl is never
-// shipped) in the browser.
+// shipped) in the browser. The uniform nodes below survive that round trip:
+// JSON.stringify keeps their plain data (name, _t, type) and drops their
+// operator methods, which is exactly what rmsl/webgl's set() needs and all
+// it needs — so the nodes are exported directly rather than just .name.
 export default (() => {
   // Shared rmsl nodes. Created once so the generated slot names are the same in
   // both the vertex and fragment shaders.
@@ -249,13 +252,13 @@ export default (() => {
     return colour;
   });
   return {
-    uVoxels: uVoxels.name,
-    uTime: uTime.name,
-    uResolution: uResolution.name,
-    uDimensions: uDimensions.name,
-    uLightDir: uLightDir.name,
-    uLightColour: uLightColour.name,
-    uAmbientColour: uAmbientColour.name,
+    uVoxels,
+    uTime,
+    uResolution,
+    uDimensions,
+    uLightDir,
+    uLightColour,
+    uAmbientColour,
     vUv: vUv.name,
     positionAttr: positionAttr.name,
     vertexGLSL: compileGLSL.vertex(vertexFn()),

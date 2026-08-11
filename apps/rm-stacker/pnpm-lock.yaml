@@ -15,8 +15,8 @@ importers:
         specifier: 0.0.5
         version: 0.0.5
       '@random-mesh/rmsl':
-        specifier: 1.1.3
-        version: 1.1.3
+        specifier: link:../../../rmsl/.claude/worktrees/rmsl-webgl-bindings
+        version: link:../../../rmsl/.claude/worktrees/rmsl-webgl-bindings
       '@solidjs/signals':
         specifier: 2.0.0-beta.29
         version: 2.0.0-beta.29
@@ -342,9 +342,6 @@ packages:
 
   '@random-mesh/rm-pan-scale@0.0.5':
     resolution: {integrity: sha512-mm3gLnscMc50oHJV0veREHSVpjxjmcmJrGITfFupc2cH4JpmzMCuy4fw8T7DtJhr5mfxNaO9RwzH1zpuDFiuTQ==}
-
-  '@random-mesh/rmsl@1.1.3':
-    resolution: {integrity: sha512-QFwgGeU2Ng/HVJ/Awn2HQ/PH9dT6J8EyUR3kwzp/99rsykZRI/NEE82kN4iS4WiIj62FXNNrzQ76DJFmZCicOw==}
 
   '@rollup/rollup-android-arm-eabi@4.62.3':
     resolution: {integrity: sha512-c0wdcekXtQvvn5Tsrk/+op/gUArrbWaFduBnTLP2l1cKLSQs4diMWjJw3m6A0DdzT8dAAX95KpkJ3qynCePbmw==}
@@ -1375,8 +1372,6 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@random-mesh/rm-pan-scale@0.0.5': {}
-
-  '@random-mesh/rmsl@1.1.3': {}
 
   '@rollup/rollup-android-arm-eabi@4.62.3':
     optional: true

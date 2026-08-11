@@ -7,6 +7,8 @@ import {
   onSettled,
   useContext,
 } from "solid-js";
+import type { Setter as UniformSetter } from "@random-mesh/rmsl/webgl";
+import { createUniformSetter, reflectUniforms } from "@random-mesh/rmsl/webgl";
 import { StackerContext } from "./context";
 import { Dimensions3D } from "./maths";
 import shaders from "./shaders";
@@ -17,13 +19,7 @@ type WebGLState = {
   gl: WebGL2RenderingContext;
   program: WebGLProgram;
   positionLocation: number;
-  uTimeLocation: WebGLUniformLocation | null;
-  uResolutionLocation: WebGLUniformLocation | null;
-  uVoxelsLocation: WebGLUniformLocation | null;
-  uLightDirLocation: WebGLUniformLocation | null;
-  uLightColourLocation: WebGLUniformLocation | null;
-  uAmbientColourLocation: WebGLUniformLocation | null;
-  uDimensions: WebGLUniformLocation | null;
+  set: UniformSetter;
   texture: WebGLTexture;
   buffer: WebGLBuffer;
 };
@@ -93,26 +89,20 @@ const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
     gl,
     program,
     positionLocation: gl.getAttribLocation(program, shaders.positionAttr),
-    uTimeLocation: gl.getUniformLocation(program, shaders.uTime),
-    uResolutionLocation: gl.getUniformLocation(program, shaders.uResolution),
-    uVoxelsLocation: gl.getUniformLocation(program, shaders.uVoxels),
-    uLightDirLocation: gl.getUniformLocation(program, shaders.uLightDir),
-    uLightColourLocation: gl.getUniformLocation(program, shaders.uLightColour),
-    uAmbientColourLocation: gl.getUniformLocation(program, shaders.uAmbientColour),
-    uDimensions: gl.getUniformLocation(program, shaders.uDimensions),
+    set: createUniformSetter(gl, reflectUniforms(gl, program)),
     texture,
     buffer,
   };
 };
 
 // Directional + ambient light for the voxel preview (fixed in world space)
-const LIGHT_DIR = (() => {
-  const d = [0.4, 0.7, 0.8];
-  const len = Math.hypot(d[0], d[1], d[2]);
-  return new Float32Array([d[0] / len, d[1] / len, d[2] / len]);
+const LIGHT_DIR: readonly [number, number, number] = (() => {
+  const [x, y, z] = [0.4, 0.7, 0.8];
+  const len = Math.hypot(x, y, z);
+  return [x / len, y / len, z / len];
 })();
-const LIGHT_COLOUR = new Float32Array([1.0, 0.97, 0.9]);
-const AMBIENT_COLOUR = new Float32Array([0.35, 0.35, 0.4]);
+const LIGHT_COLOUR: readonly [number, number, number] = [1.0, 0.97, 0.9];
+const AMBIENT_COLOUR: readonly [number, number, number] = [0.35, 0.35, 0.4];
 
 const VoxelPreviewView: Component = () => {
   const { store } = useContext(StackerContext);
@@ -159,16 +149,16 @@ const VoxelPreviewView: Component = () => {
     const height = _canvas.height;
     gl.viewport(0, 0, width, height);
     gl.useProgram(_webgl.program);
-    gl.uniform1f(_webgl.uTimeLocation, performance.now() / 1000.0);
-    gl.uniform2f(_webgl.uResolutionLocation, width, height);
+    _webgl.set(shaders.uTime, performance.now() / 1000.0);
+    _webgl.set(shaders.uResolution, width, height);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_3D, _webgl.texture);
-    gl.uniform1i(_webgl.uVoxelsLocation, 0);
-    gl.uniform3fv(_webgl.uLightDirLocation, LIGHT_DIR);
-    gl.uniform3fv(_webgl.uLightColourLocation, LIGHT_COLOUR);
-    gl.uniform3fv(_webgl.uAmbientColourLocation, AMBIENT_COLOUR);
-    gl.uniform3f(
-      _webgl.uDimensions,
+    _webgl.set(shaders.uVoxels, 0);
+    _webgl.set(shaders.uLightDir, ...LIGHT_DIR);
+    _webgl.set(shaders.uLightColour, ...LIGHT_COLOUR);
+    _webgl.set(shaders.uAmbientColour, ...AMBIENT_COLOUR);
+    _webgl.set(
+      shaders.uDimensions,
       normalizedDimensions().width,
       normalizedDimensions().height,
       normalizedDimensions().depth,
