@@ -11,9 +11,6 @@ importers:
       '@fortawesome/fontawesome-free':
         specifier: ^7.3.1
         version: 7.3.1
-      '@random-mesh/rm-pan-scale':
-        specifier: 0.0.5
-        version: 0.0.5
       '@random-mesh/rmsl':
         specifier: 1.2.1
         version: 1.2.1
@@ -339,9 +336,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
-
-  '@random-mesh/rm-pan-scale@0.0.5':
-    resolution: {integrity: sha512-mm3gLnscMc50oHJV0veREHSVpjxjmcmJrGITfFupc2cH4JpmzMCuy4fw8T7DtJhr5mfxNaO9RwzH1zpuDFiuTQ==}
 
   '@random-mesh/rmsl@1.2.1':
     resolution: {integrity: sha512-9psvTuwTQHXGgyz9LviKN0GbOLiAK5laBABfpSRIRiKg5UE2BDjH3WrWdSz1lKzM5hs7IUijRE6a740QUfnNUw==}
@@ -1373,8 +1367,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
-
-  '@random-mesh/rm-pan-scale@0.0.5': {}
 
   '@random-mesh/rmsl@1.2.1': {}
 
