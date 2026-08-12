@@ -1,4 +1,4 @@
-import { Component, createEffect, createMemo, onSettled } from "solid-js";
+import { Component, createEffect, createMemo, onSettled, Show } from "solid-js";
 import styles from "./App.module.css";
 import PixelEditorView from "./PixelEditorView/PixelEditorView";
 import VoxelPreviewView from "./VoxelPreviewView";
@@ -39,21 +39,45 @@ const App: Component = () => {
       <StackerContext value={stacker}>
         <div class={styles.shell}>
           <Split direction={layout()}>
-            <Split.Pane size="50%" max="245px">
-              <div style={{ "overflow-x": "auto", position: "absolute", inset: 0 }}>
-                <PixelEditorView />
-              </div>
-            </Split.Pane>
-            <Split.Handle
-              size="5px"
-              style={{ cursor: layout() === "column" ? "ew-resize" : "ns-resize" }}
-              class={styles.handle}
-            />
-            <Split.Pane style={{ display: "grid" }} size="50%" max="245px">
-              <div style="flex-grow: 1; overflow: hidden;">
-                <VoxelPreviewView />
-              </div>
-            </Split.Pane>
+            {(() => {
+              const pixelEditorPane = (
+                <Split.Pane size="50%" max="245px">
+                  <div style={{ "overflow-x": "auto", position: "absolute", inset: 0 }}>
+                    <PixelEditorView />
+                  </div>
+                </Split.Pane>
+              );
+              const voxelPreviewPane = (
+                <Split.Pane style={{ display: "grid" }} size="50%" max="245px">
+                  <div style="flex-grow: 1; overflow: hidden;">
+                    <VoxelPreviewView />
+                  </div>
+                </Split.Pane>
+              );
+              const handle = (
+                <Split.Handle
+                  size="5px"
+                  style={{ cursor: layout() === "column" ? "ew-resize" : "ns-resize" }}
+                  class={styles.handle}
+                />
+              );
+              return (
+                <Show
+                  when={layout() === "row"}
+                  fallback={
+                    <>
+                      {pixelEditorPane}
+                      {handle}
+                      {voxelPreviewPane}
+                    </>
+                  }
+                >
+                  {voxelPreviewPane}
+                  {handle}
+                  {pixelEditorPane}
+                </Show>
+              );
+            })()}
           </Split>
         </div>
       </StackerContext>
