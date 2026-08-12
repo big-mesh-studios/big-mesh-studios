@@ -1,8 +1,9 @@
 import { Portal } from "@solidjs/web";
 import type { JSX } from "@solidjs/web/jsx-runtime";
-import { createSignal, omit, ParentProps, Ref, Show } from "solid-js";
+import { createSignal, omit, ParentProps, Show } from "solid-js";
 import type { IconKind } from "../icon-kinds";
 import { RGBA } from "../maths";
+import { combineRefs } from "../utils";
 import styles from "./components.module.css";
 
 /**********************************************************************************/
@@ -27,7 +28,7 @@ export function Button(props: ButtonProps) {
 
 interface TabProps extends ButtonProps {
   selected?: boolean;
-  ref?: Ref<HTMLButtonElement>;
+  ref?: JSX.Ref<HTMLButtonElement>;
 }
 
 export const tabStyle = styles.tab;
@@ -153,7 +154,7 @@ export interface PopoverProps extends ParentProps {
   class?: string | string[];
   popover?: "auto" | "manual";
   style?: JSX.CSSProperties;
-  ref?: Ref<HTMLDivElement>;
+  ref?: JSX.Ref<HTMLDivElement>;
 }
 
 let counter = 0;
@@ -192,7 +193,7 @@ export function createPopover() {
               "position-anchor": `--${id}`,
               ...props.style,
             }}
-            ref={[props.ref, _element => (element = _element)]}
+            ref={combineRefs(props.ref, _element => (element = _element))}
             id={id}
             popover={props.popover ?? "auto"}
             class={[props.class, styles.popover]}

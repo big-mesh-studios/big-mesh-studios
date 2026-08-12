@@ -10,7 +10,7 @@ import {
   omit,
   useContext,
 } from "solid-js";
-import { pointer, tryCatch } from "../utils";
+import { combineRefs, pointer, tryCatch } from "../utils";
 import styles from "./SplitPane.module.css";
 
 /**********************************************************************************/
@@ -138,7 +138,7 @@ function Base(props: BaseProps) {
 
   const pane = (
     <span
-      ref={[props.ref, _ref => (ref = _ref)]}
+      ref={combineRefs(props.ref, _ref => (ref = _ref))}
       class={[props.class, styles.base]}
       {...rest}
       data-active-pane={context?.isActivePane(ref!) || undefined}
@@ -509,7 +509,7 @@ export function Split(props: SplitProps) {
   return (
     <Base
       data-direction={config.direction}
-      ref={[setSplitRef, props.ref]}
+      ref={combineRefs(setSplitRef, props.ref)}
       style={{ ...props.style, [`grid-template-${config.direction}s`]: template() }}
       {...rest}
       class={styles.split}
