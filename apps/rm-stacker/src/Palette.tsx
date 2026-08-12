@@ -8,7 +8,8 @@ import styles from "./Palette.module.css";
 import { pointer } from "./utils";
 
 function Palette(props: { class?: string }) {
-  const { palette, setPalette, selectedColour, selectPaletteIndex } = useContext(StackerContext);
+  const { palette, setPalette, selectedColour, selectPaletteIndex, narrow } =
+    useContext(StackerContext);
   const ColourPickerPopover = createPopover();
   let popover: HTMLDivElement = null!;
 
@@ -47,7 +48,7 @@ function Palette(props: { class?: string }) {
   });
 
   return (
-    <div class={[styles.palette, props.class]}>
+    <div class={[styles.palette, narrow() && styles.narrow, props.class]}>
       <ColourPickerPopover.PopOver
         class={styles.colourPickerPopover}
         style={{ "position-anchor": `--colour-${openedColour()}` }}
