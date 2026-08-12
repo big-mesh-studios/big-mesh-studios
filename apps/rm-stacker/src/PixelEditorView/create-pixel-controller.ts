@@ -79,8 +79,6 @@ export const createPixelEditorController = ({
     return Vector2D.round(screenToWorld(screenPointer, pan(), scale()));
   };
 
-  let lastEvent: (PointerEvent & { currentTarget: HTMLElement }) | undefined;
-
   return {
     pan,
     scale,
@@ -108,10 +106,6 @@ export const createPixelEditorController = ({
 
       switch (untrack(mode)) {
         case "Eyedrop": {
-          if (!roundedWorldPosition) {
-            return;
-          }
-
           const intersection = intersectSides({
             sidePositions: sidePositions(),
             sides: sides(),

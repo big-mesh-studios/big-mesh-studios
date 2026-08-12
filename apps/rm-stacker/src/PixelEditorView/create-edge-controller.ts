@@ -71,14 +71,12 @@ const getEdgePosition = (
 };
 
 export function createEdgeController({
-  // worldPointer,
   pan,
   scale,
   setCursorStyle,
   setPan,
   sidePositions,
 }: {
-  // worldPointer: Accessor<Vector2D | undefined>;
   pan: Accessor<Vector2D>;
   scale: Accessor<number>;
   setCursorStyle: Setter<string | undefined>;
