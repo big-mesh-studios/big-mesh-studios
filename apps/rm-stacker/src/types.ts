@@ -1,4 +1,4 @@
-import { Dimensions3D, Vector2D } from "./maths";
+import { Bitmap, Dimensions3D, Vector2D } from "./maths";
 
 /**********************************************************************************/
 /*                                       Misc                                     */
@@ -45,7 +45,7 @@ export const sideKindSet = {
 export type SideKind = keyof typeof sideKindSet;
 
 export type Sides = {
-  [k in SideKind]: ImageData;
+  [k in SideKind]: Bitmap;
 };
 
 /**

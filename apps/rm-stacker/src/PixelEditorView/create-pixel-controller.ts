@@ -2,7 +2,7 @@ import { Accessor, createSignal, untrack, useContext } from "solid-js";
 import { Command } from "../command/Command";
 import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../context";
-import { RGBA, Vector2D } from "../maths";
+import { Bitmap, RGBA, Vector2D } from "../maths";
 import { SideKind } from "../types";
 import { pointer, screenToWorld } from "../utils";
 import { createEdgeController } from "./create-edge-controller";
@@ -22,7 +22,8 @@ export const createPixelEditorController = ({
   pushUndo: (reverseCommand: Command, description: string) => void;
   doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
 }) => {
-  const { sides, selectedColour, selectPaletteIndex, palette, mode } = useContext(StackerContext);
+  const { sides, selectedColour, selectPaletteIndex, selectedPaletteIndex, palette, mode } =
+    useContext(StackerContext);
 
   const [pan, setPan] = createSignal({ x: -10.0, y: -10.0 });
   const [scale, setScale] = createSignal(8);
@@ -64,12 +65,9 @@ export const createPixelEditorController = ({
   function getOppositePixel(kind: SideKind, position: Vector2D) {
     const oppositePosition = getOppositePosition(kind, position);
     const oppositeKind = OPPOSING_SIDE[kind];
-    const oppositeSide = sides()[oppositeKind];
-    const oppositeOpacity =
-      oppositeSide.data[((oppositePosition.y * oppositeSide.width + oppositePosition.x) << 2) + 3];
     return {
       kind: oppositeKind,
-      opacity: oppositeOpacity,
+      index: Bitmap.get(sides()[oppositeKind], oppositePosition.x, oppositePosition.y),
       position: oppositePosition,
     };
   }
@@ -121,19 +119,11 @@ export const createPixelEditorController = ({
           worldPosition: _roundedWorldPosition,
         });
 
-        if (!intersection) {
+        if (!intersection || intersection.index === Bitmap.EMPTY) {
           return;
         }
 
-        const index = palette().findIndex(colour => RGBA.equals(colour, intersection.colour));
-
-        // The picked pixel can hold a colour that is not in the palette, in
-        // which case there is nothing to select.
-        if (index === -1) {
-          break;
-        }
-
-        selectPaletteIndex(index);
+        selectPaletteIndex(intersection.index);
 
         break;
       }
@@ -157,7 +147,7 @@ export const createPixelEditorController = ({
       }
 
       case "Fill": {
-        const _selectedColour = selectedColour();
+        const _selectedPaletteIndex = selectedPaletteIndex();
         const commands: Command[] = [];
 
         const intersection = intersectSides({
@@ -173,11 +163,13 @@ export const createPixelEditorController = ({
         const { kind, position } = intersection;
         const opposite = getOppositePixel(kind, position);
 
-        if (_selectedColour !== undefined) {
-          commands.push(Command.fillPixel(kind, position, _selectedColour));
+        if (_selectedPaletteIndex !== undefined) {
+          commands.push(Command.fillPixel(kind, position, _selectedPaletteIndex));
 
-          if (!opposite.opacity) {
-            commands.push(Command.fillPixel(opposite.kind, opposite.position, _selectedColour));
+          if (opposite.index === Bitmap.EMPTY) {
+            commands.push(
+              Command.fillPixel(opposite.kind, opposite.position, _selectedPaletteIndex),
+            );
           }
         }
 
@@ -218,21 +210,23 @@ export const createPixelEditorController = ({
             case "Erase": {
               commands.push(Command.erasePixel(kind, position));
 
-              if (opposite.opacity) {
+              if (opposite.index !== Bitmap.EMPTY) {
                 commands.push(Command.erasePixel(opposite.kind, opposite.position));
               }
 
               break;
             }
             case "Draw": {
-              const _selectedColour = selectedColour();
+              const _selectedPaletteIndex = selectedPaletteIndex();
 
-              if (_selectedColour !== undefined) {
-                commands.push(Command.writePixel(kind, position, _selectedColour));
+              if (_selectedPaletteIndex !== undefined) {
+                commands.push(Command.writePixel(kind, position, _selectedPaletteIndex));
 
-                if (!opposite.opacity) {
+                // Only carry the colour to the far side where nothing is drawn,
+                // so drawing on one panel does not paint over the other.
+                if (opposite.index === Bitmap.EMPTY) {
                   commands.push(
-                    Command.writePixel(opposite.kind, opposite.position, _selectedColour),
+                    Command.writePixel(opposite.kind, opposite.position, _selectedPaletteIndex),
                   );
                 }
               }

@@ -8,8 +8,15 @@ import styles from "./Palette.module.css";
 import { pointer } from "./utils";
 
 function Palette(props: { class?: string }) {
-  const { palette, setPalette, selectedColour, selectPaletteIndex, narrow } =
-    useContext(StackerContext);
+  const {
+    palette,
+    setPalette,
+    selectedColour,
+    selectPaletteIndex,
+    narrow,
+    requestRender,
+    requestAutoSave,
+  } = useContext(StackerContext);
   const ColourPickerPopover = createPopover();
   let popover: HTMLDivElement = null!;
 
@@ -66,6 +73,8 @@ function Palette(props: { class?: string }) {
               palette[_openedColour] = colour;
               return [...palette];
             });
+            requestRender();
+            requestAutoSave();
           }}
         />
       </ColourPickerPopover.PopOver>

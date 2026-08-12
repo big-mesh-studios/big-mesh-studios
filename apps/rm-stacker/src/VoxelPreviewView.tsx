@@ -1,5 +1,6 @@
 import {
   Component,
+  createEffect,
   createMemo,
   createSignal,
   createTrackedEffect,
@@ -9,8 +10,7 @@ import {
   useContext,
 } from "solid-js";
 import { StackerContext } from "./context";
-import { Dimensions3D } from "./maths";
-import { DAWNBRINGER_32_PALETTE } from "./default_palette";
+import { Dimensions3D, RGBA } from "./maths";
 import shaders from "./shaders";
 import { tryCatch } from "./utils";
 import styles from "./VoxelPreviewView.module.css";
@@ -31,9 +31,10 @@ type WebGLState = {
   texture: WebGLTexture;
   paletteTexture: WebGLTexture;
   buffer: WebGLBuffer;
+  uploadPalette(palette: RGBA[]): void;
 };
 
-const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
+const setupWebGL = (gl: WebGL2RenderingContext, palette: RGBA[]): WebGLState => {
   const compileShader = (type: number, source: string): WebGLShader => {
     const shader = gl.createShader(type);
     if (shader === null) {
@@ -106,8 +107,8 @@ const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  const paletteData = new Uint8Array(DAWNBRINGER_32_PALETTE.length * 4);
-  DAWNBRINGER_32_PALETTE.forEach(({ r, g, b, a }, i) => {
+  const paletteData = new Uint8Array(palette.length * 4);
+  palette.forEach(({ r, g, b, a }, i) => {
     const offset = i << 2;
     paletteData[offset] = r;
     paletteData[offset + 1] = g;
@@ -118,13 +119,40 @@ const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
     gl.TEXTURE_2D,
     0,
     gl.RGBA8,
-    DAWNBRINGER_32_PALETTE.length,
+    palette.length,
     1,
     0,
     gl.RGBA,
     gl.UNSIGNED_BYTE,
     paletteData,
   );
+
+  const uploadPalette = (palette: RGBA[]) => {
+    const paletteData = new Uint8Array(palette.length * 4);
+
+    palette.forEach(({ r, g, b, a }, i) => {
+      const offset = i << 2;
+      paletteData[offset] = r;
+      paletteData[offset + 1] = g;
+      paletteData[offset + 2] = b;
+      paletteData[offset + 3] = a;
+    });
+
+    gl.bindTexture(gl.TEXTURE_2D, paletteTexture);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA8,
+      palette.length,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      paletteData,
+    );
+  };
+
+  uploadPalette(palette);
 
   return {
     gl,
@@ -142,6 +170,7 @@ const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
     texture,
     paletteTexture,
     buffer,
+    uploadPalette,
   };
 };
 
@@ -155,7 +184,7 @@ const LIGHT_COLOUR = new Float32Array([1.0, 0.97, 0.9]);
 const AMBIENT_COLOUR = new Float32Array([0.35, 0.35, 0.4]);
 
 const VoxelPreviewView: Component = () => {
-  const { dimensions, voxels } = useContext(StackerContext);
+  const { dimensions, voxels, palette, requestRender } = useContext(StackerContext);
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [webgl, setWebgl] = createSignal<WebGLState>();
@@ -227,6 +256,17 @@ const VoxelPreviewView: Component = () => {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
 
+  createEffect(
+    () => [palette(), webgl()] as const,
+    ([palette, webgl]) => {
+      if (webgl === undefined) {
+        return;
+      }
+      webgl.uploadPalette(palette);
+      requestRender();
+    },
+  );
+
   onSettled(() => {
     const _canvas = canvas();
     if (_canvas === undefined) {
@@ -239,7 +279,7 @@ const VoxelPreviewView: Component = () => {
     }
 
     const webglState = tryCatch(
-      () => setupWebGL(gl),
+      () => setupWebGL(gl, palette()),
       e => {
         setGlError(e instanceof Error ? e.message : String(e));
       },

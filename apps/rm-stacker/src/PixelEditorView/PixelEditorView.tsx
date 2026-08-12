@@ -10,7 +10,7 @@ import {
 import * as THREE from "three";
 import { SIDE_MASK } from "../constants";
 import { StackerContext } from "../context";
-import { Vector2D } from "../maths";
+import { Bitmap, Vector2D } from "../maths";
 import { keysOf, sideMaskToCSS } from "../utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
@@ -20,6 +20,7 @@ import { computeSidePositions, LABEL_HEIGHT } from "./side-layout";
 interface ImageCanvasCacheData {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
+  image: ImageData;
 }
 
 function fillPath(ctx: CanvasRenderingContext2D, [start, ...path]: Vector2D[]) {
@@ -35,8 +36,9 @@ function fillPath(ctx: CanvasRenderingContext2D, [start, ...path]: Vector2D[]) {
 }
 
 const PixelEditorView: Component = () => {
-  const { sides, doCommand, pushUndo, onRender, dimensions, mode } = useContext(StackerContext);
-  const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
+  const { sides, doCommand, pushUndo, onRender, dimensions, mode, palette } =
+    useContext(StackerContext);
+  const imageCanvasCache = new WeakMap<Bitmap, ImageCanvasCacheData>();
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
@@ -50,16 +52,17 @@ const PixelEditorView: Component = () => {
     pushUndo,
   });
 
-  const createImageCanvasCacheEntry = (image: ImageData) => {
+  const createImageCanvasCacheEntry = (bitmap: Bitmap) => {
     const canvas = document.createElement("canvas");
-    canvas.width = image.width;
-    canvas.height = image.height;
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
     const ctx = canvas.getContext("2d")!;
     const imageCanvasCacheData = {
-      canvas: canvas,
-      ctx: ctx,
+      canvas,
+      ctx,
+      image: new ImageData(bitmap.width, bitmap.height),
     };
-    imageCanvasCache.set(image, imageCanvasCacheData);
+    imageCanvasCache.set(bitmap, imageCanvasCacheData);
     return imageCanvasCacheData;
   };
 
@@ -72,7 +75,7 @@ const PixelEditorView: Component = () => {
     scale,
   }: {
     ctx: CanvasRenderingContext2D;
-    side: ImageData;
+    side: Bitmap;
     guide: Uint8Array;
     sidePosition: Vector2D;
     kind: "inner" | "outer";
@@ -92,9 +95,7 @@ const PixelEditorView: Component = () => {
             ? kind === "outer"
             : kind === "inner"
         ) {
-          const alpha = side.data[(index << 2) + 3];
-
-          if (!alpha) {
+          if (Bitmap.isEmpty(side, gx, gy)) {
             ctx.strokeStyle = sideMaskToCSS(sideMask);
             ctx.lineWidth = 0.25 / scale;
             ctx.strokeRect(sidePosition.x + gx, sidePosition.y + gy, 1.0, 1.0);
@@ -134,7 +135,8 @@ const PixelEditorView: Component = () => {
 
         const imageCanvasCacheData =
           imageCanvasCache.get(side) ?? createImageCanvasCacheEntry(side);
-        imageCanvasCacheData.ctx.putImageData(side, 0, 0);
+        Bitmap.toImageData(side, palette(), imageCanvasCacheData.image);
+        imageCanvasCacheData.ctx.putImageData(imageCanvasCacheData.image, 0, 0);
 
         const lastImageSmoothingEnabled = ctx.imageSmoothingEnabled;
         ctx.imageSmoothingEnabled = false;

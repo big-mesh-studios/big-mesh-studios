@@ -1,4 +1,4 @@
-import { Component, createEffect, createMemo, onSettled, Show } from "solid-js";
+import { Component, createEffect, createMemo, onSettled, Show, untrack } from "solid-js";
 import styles from "./App.module.css";
 import { Hud } from "./Hud";
 import PixelEditorView from "./PixelEditorView/PixelEditorView";
@@ -11,15 +11,16 @@ import { createStacker } from "./stacker-store";
 const App: Component = () => {
   const stacker = createStacker();
 
-  const saveState = createMemo(loadFromIndexedDB);
+  const saveState = createMemo(() => loadFromIndexedDB(untrack(stacker.palette)));
 
   createEffect(saveState, result => {
     if (!result) {
       return;
     }
 
-    const { sides, undoStack, redoStack } = result;
+    const { sides, palette, undoStack, redoStack } = result;
 
+    stacker.setPalette(palette);
     stacker.setSides(sides);
     stacker.undoRedoManager.setStacks({
       undoStack,

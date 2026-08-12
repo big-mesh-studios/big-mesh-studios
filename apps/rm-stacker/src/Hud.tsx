@@ -28,6 +28,8 @@ export function Hud() {
     mode,
     setMode,
     reset,
+    palette,
+    setPalette,
   } = useContext(StackerContext);
 
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
@@ -38,8 +40,9 @@ export function Hud() {
       description: "Sprite stack",
       mimeTypes: ["application/zip"],
     });
-    const sides = await load(file);
-    setSides(sides);
+    const result = await load(file, palette());
+    setSides(result.sides);
+    setPalette(result.palette);
     updateVoxels();
     setFileHandle((file as FileWithHandle).handle ?? null);
     onSettled(() => {
@@ -48,7 +51,7 @@ export function Hud() {
   };
 
   const onSave = async () => {
-    const blob = await save(sides());
+    const blob = await save(sides(), palette());
     setFileHandle(
       await fileSave(
         blob,
@@ -63,7 +66,7 @@ export function Hud() {
   };
 
   const onSaveAs = async () => {
-    const blob = await save(sides());
+    const blob = await save(sides(), palette());
     setFileHandle(
       await fileSave(blob, {
         fileName: "sprite-stack.zip",

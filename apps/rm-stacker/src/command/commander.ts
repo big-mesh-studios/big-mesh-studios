@@ -1,7 +1,7 @@
 import { Accessor, Setter } from "@solidjs/signals";
 import { untrack } from "solid-js";
 import { load, save } from "../load-save";
-import { RGBA } from "../maths";
+import { Bitmap, RGBA } from "../maths";
 import { Sides } from "../types";
 import { intersectSide } from "../utils";
 import { Command } from "./Command";
@@ -12,15 +12,19 @@ export function createCommander({
   updateVoxels,
   requestRender,
   requestAutoSave,
+  palette,
+  setPalette,
 }: {
   sides: Accessor<Sides>;
   setSides: Setter<Sides>;
+  setPalette: Setter<RGBA[]>;
   updateVoxels(): void;
   requestRender(): void;
   requestAutoSave(): void;
+  palette: Accessor<RGBA[]>;
 }) {
   function snapshot(_sides = sides()): Command {
-    return Command.async(save(_sides).then(Command.loadData));
+    return Command.async(save(_sides, palette()).then(Command.loadData));
   }
 
   async function doCommand(command: Command): Promise<Command> {
@@ -42,7 +46,7 @@ export function createCommander({
           return Command.sequence(reverseCommands);
         }
         case "FillPixel": {
-          const { side: kind, position, colour: newColour } = command;
+          const { side: kind, position, paletteIndex } = command;
           const side = sides()[kind];
 
           const intersection = intersectSide({ position, side });
@@ -51,16 +55,13 @@ export function createCommander({
             return Command.noOperation();
           }
 
-          const { colour: oldColour, offset } = intersection;
+          const { index: oldIndex, offset } = intersection;
 
-          if (!oldColour || RGBA.equals(newColour, oldColour)) {
+          if (oldIndex === paletteIndex) {
             return Command.noOperation();
           }
 
-          side.data[offset + 0] = newColour.r;
-          side.data[offset + 1] = newColour.g;
-          side.data[offset + 2] = newColour.b;
-          side.data[offset + 3] = newColour.a;
+          side.data[offset] = paletteIndex;
 
           const stack: number[] = [];
           stack.push(position.y);
@@ -105,13 +106,8 @@ export function createCommander({
                 continue;
               }
 
-              const match = RGBA.equals(intersection.colour, oldColour);
-
-              if (match) {
-                side.data[intersection.offset + 0] = newColour.r;
-                side.data[intersection.offset + 1] = newColour.g;
-                side.data[intersection.offset + 2] = newColour.b;
-                side.data[intersection.offset + 3] = newColour.a;
+              if (intersection.index === oldIndex) {
+                side.data[intersection.offset] = paletteIndex;
                 // `neighbors` is reused every iteration, so push the coordinates, not the object.
                 stack.push(neighbor.y);
                 stack.push(neighbor.x);
@@ -122,7 +118,7 @@ export function createCommander({
           return undo;
         }
         case "WritePixel": {
-          const { side: kind, position, colour } = command;
+          const { side: kind, position, paletteIndex } = command;
           const side = sides()[kind];
 
           const intersection = intersectSide({ position, side });
@@ -131,19 +127,15 @@ export function createCommander({
             return Command.noOperation();
           }
 
-          const { colour: oldColour, offset } = intersection;
+          const { index: oldIndex, offset } = intersection;
 
-          side.data[offset + 0] = colour.r;
-          side.data[offset + 1] = colour.g;
-          side.data[offset + 2] = colour.b;
-          side.data[offset + 3] = 255;
+          side.data[offset] = paletteIndex;
 
-          if (oldColour.a) {
-            return Command.writePixel(kind, position, oldColour);
-          } else {
-            return Command.erasePixel(kind, position);
-          }
+          return oldIndex === Bitmap.EMPTY
+            ? Command.erasePixel(kind, position)
+            : Command.writePixel(kind, position, oldIndex);
         }
+
         case "ErasePixel": {
           const { side: kind, position } = command;
           const side = sides()[kind];
@@ -154,25 +146,22 @@ export function createCommander({
             return Command.noOperation();
           }
 
-          const { colour: oldColour, offset } = intersection;
+          const { index: oldIndex, offset } = intersection;
 
-          if (side.data[offset + 3] === 0) {
+          if (oldIndex === Bitmap.EMPTY) {
             return Command.noOperation();
           }
 
-          side.data[offset + 0] = 0;
-          side.data[offset + 1] = 0;
-          side.data[offset + 2] = 0;
-          side.data[offset + 3] = 0;
+          side.data[offset] = Bitmap.EMPTY;
 
-          return Command.writePixel(kind, position, oldColour);
+          return Command.writePixel(kind, position, oldIndex);
         }
         case "LoadData": {
-          let undoCommand = snapshot();
-          let data = command.data;
-          let sides = await load(data);
+          const undoCommand = snapshot();
+          const loaded = await load(command.data, palette());
 
-          setSides(sides);
+          setPalette(loaded.palette);
+          setSides(loaded.sides);
           updateVoxels();
           requestRender();
 

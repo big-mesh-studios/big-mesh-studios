@@ -1,10 +1,9 @@
-import { Dimensions3D } from "./maths";
-import { DAWNBRINGER_32_PALETTE } from "./default_palette";
+import { Bitmap, Dimensions3D } from "./maths";
 import { Axis, Sides, Vector3D } from "./types";
 
 export type ViewSpec = {
   kind: keyof Sides;
-  side: ImageData;
+  side: Bitmap;
   axis: Axis;
   fixedCoords: (px: number, py: number) => Vector3D;
   nearestAscending: boolean;
@@ -105,9 +104,7 @@ export function solveVoxels(
       const rowOffset = y * side.width;
 
       for (let x = 0; x < side.width; ++x) {
-        const sourceOffset = (rowOffset + x) << 2;
-
-        if (side.data[sourceOffset + 3] !== 0) {
+        if (side.data[rowOffset + x] !== Bitmap.EMPTY) {
           continue;
         }
 
@@ -139,9 +136,9 @@ export function solveVoxels(
       const rowOffset = py * imgWidth;
 
       for (let px = 0; px < imgWidth; ++px) {
-        const sourceOffset = (rowOffset + px) << 2;
+        const sourceOffset = rowOffset + px;
 
-        if (data[sourceOffset + 3] === 0) {
+        if (data[sourceOffset] === Bitmap.EMPTY) {
           continue;
         }
 
@@ -158,8 +155,8 @@ export function solveVoxels(
             if (painted[offset >> 2] === 0) {
               painted[offset >> 2] = 1;
               out[offset] = data[sourceOffset];
-              out[offset + 1] = data[sourceOffset + 1];
-              out[offset + 2] = data[sourceOffset + 2];
+              out[offset + 1] = data[sourceOffset];
+              out[offset + 2] = data[sourceOffset];
               out[offset + 3] = 255;
             }
             break;
@@ -214,32 +211,12 @@ export function solveVoxels(
 }
 
 /**
- * The index of the palette colour closest to the side pixel at (px, py). The
- * packed format holds five bits per face, so every colour must be one of the
- * 32 palette entries; this is the quantisation step.
+ * The palette index of the side cell at (px, py), which the packed format holds
+ * in five bits. A solid voxel can still have an empty cell facing it, on a face
+ * no panel has drawn on; those take index zero, the palette's black, which is
+ * what the nearest-colour search this replaces also settled on.
  */
 const faceColourIndex = (view: ViewSpec, px: number, py: number): number => {
-  const data = view.side.data;
-  const offset = (py * view.side.width + px) << 2;
-  return nearestPaletteIndex(data[offset], data[offset + 1], data[offset + 2]);
-};
-
-const nearestPaletteIndex = (r: number, g: number, b: number): number => {
-  let best = 0;
-  let bestDistance = Infinity;
-
-  for (let i = 0; i < DAWNBRINGER_32_PALETTE.length; i++) {
-    const colour = DAWNBRINGER_32_PALETTE[i];
-    const dr = colour.r - r;
-    const dg = colour.g - g;
-    const db = colour.b - b;
-    const distance = dr * dr + dg * dg + db * db;
-
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = i;
-    }
-  }
-
-  return best;
+  const index = view.side.data[py * view.side.width + px];
+  return index === Bitmap.EMPTY ? 0 : index;
 };
