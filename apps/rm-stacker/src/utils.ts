@@ -73,9 +73,9 @@ export function screenToWorld(
   return out;
 }
 
-interface CursorEvent {
+interface CustomPointerEvent<T extends HTMLElement> {
   delta: Vector2D;
-  event: PointerEvent;
+  event: PointerEvent & { currentTarget: T };
   timespan: number;
 }
 
@@ -91,12 +91,12 @@ interface CursorEvent {
  * takes the pointer over for a gesture of its own
  */
 
-export function pointer(
-  initialEvent: PointerEvent & { currentTarget: HTMLElement },
-  callback?: (event: CursorEvent) => void,
+export function pointer<T extends HTMLElement>(
+  initialEvent: PointerEvent & { currentTarget: T },
+  callback?: (event: CustomPointerEvent<T>) => void,
   options?: { signal: AbortSignal },
-): Promise<CursorEvent> {
-  const { promise, resolve } = Promise.withResolvers<CursorEvent>();
+): Promise<CustomPointerEvent<T>> {
+  const { promise, resolve } = Promise.withResolvers<CustomPointerEvent<T>>();
 
   let previous = {
     x: initialEvent.clientX,
@@ -122,7 +122,7 @@ export function pointer(
     previous = now;
     return {
       delta,
-      event,
+      event: event as PointerEvent & { currentTarget: T },
       timespan: performance.now() - startTime,
     };
   }

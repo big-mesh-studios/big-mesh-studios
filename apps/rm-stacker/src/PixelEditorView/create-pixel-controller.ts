@@ -4,7 +4,7 @@ import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../context";
 import { RGBA, Vector2D } from "../maths";
 import { SideKind } from "../types";
-import { screenToWorld } from "../utils";
+import { pointer, screenToWorld } from "../utils";
 import { createEdgeController } from "./create-edge-controller";
 import { createPanScaleControl } from "./pan-scale";
 import { intersectSides, SidePositions } from "./side-layout";
@@ -34,33 +34,10 @@ export const createPixelEditorController = ({
   const [pan, setPan] = createSignal({ x: -10.0, y: -10.0 });
   const [cursorStyle, setCursorStyle] = createSignal<string>();
   const [scale, setScale] = createSignal(8);
-  const [pointerids, setPointerids] = createSignal(new Set<number>(), { equals: false });
-  const [screenPointer, setCursorScreenPosition] = createSignal<Vector2D>();
 
-  const worldPointer = createMemo<Vector2D | undefined>(
-    previous => {
-      const _screenPointer = screenPointer();
+  const [roundedWorldPosition, setRoundedWorldPosition] = createSignal<Vector2D>();
 
-      if (_screenPointer === undefined) {
-        return undefined;
-      }
-
-      return screenToWorld(_screenPointer, pan(), scale(), previous);
-    },
-    { equals: false },
-  );
-  const roundedWorldPointer = createMemo<Vector2D | undefined>(
-    previous => {
-      const _worldPointer = worldPointer();
-
-      if (_worldPointer === undefined) {
-        return undefined;
-      }
-
-      return Vector2D.round(_worldPointer, previous);
-    },
-    { equals: false },
-  );
+  const pointerIds = new Set<number>();
 
   const panScaleControl = createPanScaleControl({
     target: canvas,
@@ -70,11 +47,10 @@ export const createPixelEditorController = ({
       setPan(pan);
       setScale(scale);
     },
-    disable: createMemo(() => !PannableModes.has(mode()) && pointerids().size !== 0),
+    disable: createMemo(() => !PannableModes.has(mode()) && pointerIds.size !== 0),
   });
 
   const edgeController = createEdgeController({
-    worldPointer,
     pan,
     scale,
     setCursorStyle,
@@ -84,7 +60,7 @@ export const createPixelEditorController = ({
 
   let undoCommandsReversed: Command[] = [];
   createEffect(
-    () => pointerids().size,
+    () => pointerIds.size,
     count => {
       if (count !== 0 || undoCommandsReversed.length === 0) {
         return;
@@ -98,102 +74,24 @@ export const createPixelEditorController = ({
     },
   );
 
-  createEffect(
-    () => [roundedWorldPointer(), pointerids().size, mode()] as const,
-    ([worldPointer, pointerCount, _mode]) =>
-      untrack(() => {
-        if (_mode === "Idle") {
-          return;
-        }
-        if (pointerCount !== 1) {
-          return;
-        }
-        if (worldPointer === undefined) {
-          return;
-        }
+  const eventToRoundedWorldPosition = (event: PointerEvent & { currentTarget: HTMLElement }) => {
+    const screenPointer = { x: event.layerX, y: event.layerY };
+    return Vector2D.round(screenToWorld(screenPointer, pan(), scale()));
+  };
 
-        const intersection = intersectSides({
-          worldPosition: worldPointer,
-          sides: sides(),
-          sidePositions: sidePositions(),
-        });
-
-        if (!intersection) {
-          return;
-        }
-
-        const { side, kind, position } = intersection;
-
-        const oppositePixel = getOppositePixel(kind, position, side);
-        const oppositeKind = OPPOSING_SIDE[kind];
-
-        const _sides = sides();
-
-        const oppositeSide = _sides[oppositeKind];
-        const oppositeOpacity =
-          _sides[oppositeKind].data[
-            ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
-          ];
-
-        const commands: Command[] = [];
-
-        switch (mode()) {
-          case "Erase": {
-            commands.push(Command.erasePixel(kind, position));
-
-            if (oppositeOpacity) {
-              commands.push(Command.erasePixel(oppositeKind, oppositePixel));
-            }
-
-            break;
-          }
-          case "Draw": {
-            const _selectedColour = selectedColour();
-
-            if (_selectedColour !== undefined) {
-              commands.push(Command.writePixel(kind, position, _selectedColour));
-
-              if (!oppositeOpacity) {
-                commands.push(Command.writePixel(oppositeKind, oppositePixel, _selectedColour));
-              }
-            }
-
-            break;
-          }
-          case "Fill": {
-            const _selectedColour = selectedColour();
-
-            if (_selectedColour !== undefined) {
-              commands.push(Command.fillPixel(kind, position, _selectedColour));
-
-              if (!oppositeOpacity) {
-                commands.push(Command.fillPixel(oppositeKind, oppositePixel, _selectedColour));
-              }
-            }
-
-            break;
-          }
-        }
-
-        if (commands.length === 0) {
-          return;
-        }
-
-        const command = commands.length === 1 ? commands[0] : Command.sequence(commands);
-        undoCommandsReversed.push(doCommand(command));
-      }),
-  );
+  let lastEvent: (PointerEvent & { currentTarget: HTMLElement }) | undefined;
 
   return {
     pan,
     scale,
     cursor: cursorStyle,
     overlayDrawing() {
+      const position = roundedWorldPosition();
+
       if (mode() === "Idle") {
         return;
       }
 
-      const position = roundedWorldPointer();
       if (!position) {
         return;
       }
@@ -204,20 +102,20 @@ export const createPixelEditorController = ({
       };
     },
     onPointerDown(event: PointerEvent & { currentTarget: HTMLElement }) {
-      setPointerids(set => set.add(event.pointerId));
-      setCursorScreenPosition({ x: event.clientX, y: event.clientY });
+      pointerIds.add(event.pointerId);
+
+      const roundedWorldPosition = eventToRoundedWorldPosition(event);
 
       switch (untrack(mode)) {
         case "Eyedrop": {
-          const _worldPointer = worldPointer();
-          if (!_worldPointer) {
+          if (!roundedWorldPosition) {
             return;
           }
 
           const intersection = intersectSides({
             sidePositions: sidePositions(),
             sides: sides(),
-            worldPosition: _worldPointer,
+            worldPosition: roundedWorldPosition,
           });
 
           if (!intersection) {
@@ -240,43 +138,98 @@ export const createPixelEditorController = ({
           if (edgeController.onPointerDown(event)) {
             return;
           }
-
+          panScaleControl.onPointerDown(event);
           break;
         }
+
+        default: {
+          if (pointerIds.size !== 1) {
+            return;
+          }
+
+          pointer(event, ({ event }) => {
+            const worldPointer = eventToRoundedWorldPosition(event);
+
+            const intersection = intersectSides({
+              worldPosition: worldPointer,
+              sides: sides(),
+              sidePositions: sidePositions(),
+            });
+
+            if (!intersection) {
+              return;
+            }
+
+            const { side, kind, position } = intersection;
+
+            const oppositePixel = getOppositePixel(kind, position, side);
+            const oppositeKind = OPPOSING_SIDE[kind];
+
+            const _sides = sides();
+
+            const oppositeSide = _sides[oppositeKind];
+            const oppositeOpacity =
+              _sides[oppositeKind].data[
+                ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
+              ];
+
+            const commands: Command[] = [];
+
+            switch (mode()) {
+              case "Erase": {
+                commands.push(Command.erasePixel(kind, position));
+
+                if (oppositeOpacity) {
+                  commands.push(Command.erasePixel(oppositeKind, oppositePixel));
+                }
+
+                break;
+              }
+              case "Draw": {
+                const _selectedColour = selectedColour();
+
+                if (_selectedColour !== undefined) {
+                  commands.push(Command.writePixel(kind, position, _selectedColour));
+
+                  if (!oppositeOpacity) {
+                    commands.push(Command.writePixel(oppositeKind, oppositePixel, _selectedColour));
+                  }
+                }
+
+                break;
+              }
+              case "Fill": {
+                const _selectedColour = selectedColour();
+
+                if (_selectedColour !== undefined) {
+                  commands.push(Command.fillPixel(kind, position, _selectedColour));
+
+                  if (!oppositeOpacity) {
+                    commands.push(Command.fillPixel(oppositeKind, oppositePixel, _selectedColour));
+                  }
+                }
+
+                break;
+              }
+            }
+
+            if (commands.length === 0) {
+              return;
+            }
+
+            const command = commands.length === 1 ? commands[0] : Command.sequence(commands);
+            undoCommandsReversed.push(doCommand(command));
+          }).then(() => pointerIds.delete(event.pointerId));
+        }
       }
-
-      panScaleControl.onPointerDown(event);
     },
-    onPointerUp(e: PointerEvent) {
-      setPointerids(set => {
-        set.delete(e.pointerId);
-        return set;
-      });
-    },
-    onPointerCancel(e: PointerEvent) {
-      setPointerids(set => {
-        set.delete(e.pointerId);
-        return set;
-      });
-    },
-    onPointerMove(e: PointerEvent) {
-      const _canvas = canvas();
-      if (_canvas === undefined) {
-        return;
+    onPointerMove(event: PointerEvent & { currentTarget: HTMLElement }) {
+      setRoundedWorldPosition(eventToRoundedWorldPosition(event));
+      switch (mode()) {
+        case "Idle": {
+          edgeController.onPointerMove(event);
+        }
       }
-
-      const rect = _canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      setCursorScreenPosition({ x, y });
-
-      if (mode() === "Idle") {
-        edgeController.onPointerMove();
-      }
-    },
-    onPointerOut(_e: PointerEvent) {
-      setCursorScreenPosition();
     },
     onWheel: panScaleControl.onWheel,
   };

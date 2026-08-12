@@ -71,14 +71,14 @@ const getEdgePosition = (
 };
 
 export function createEdgeController({
-  worldPointer,
+  // worldPointer,
   pan,
   scale,
   setCursorStyle,
   setPan,
   sidePositions,
 }: {
-  worldPointer: Accessor<Vector2D | undefined>;
+  // worldPointer: Accessor<Vector2D | undefined>;
   pan: Accessor<Vector2D>;
   scale: Accessor<number>;
   setCursorStyle: Setter<string | undefined>;
@@ -128,9 +128,12 @@ export function createEdgeController({
   };
 
   return {
-    onPointerMove() {
-      const _worldPointer = worldPointer();
-      const collidingEdge = _worldPointer && findColidingEdge(_worldPointer);
+    onPointerMove(event: PointerEvent & { currentTarget: HTMLElement }) {
+      const screenPosition = { x: event.layerX, y: event.layerY };
+      const worldPosition = screenToWorld(screenPosition, pan(), scale());
+      const roundedWorldPosition = Vector2D.round(worldPosition);
+
+      const collidingEdge = findColidingEdge(roundedWorldPosition);
 
       if (!collidingEdge) {
         setCursorStyle(undefined);
