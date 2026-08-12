@@ -115,17 +115,17 @@ const LIGHT_COLOUR = new Float32Array([1.0, 0.97, 0.9]);
 const AMBIENT_COLOUR = new Float32Array([0.35, 0.35, 0.4]);
 
 const VoxelPreviewView: Component = () => {
-  const { store } = useContext(StackerContext);
+  const { dimensions, voxels } = useContext(StackerContext);
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [webgl, setWebgl] = createSignal<WebGLState>();
   const [glError, setGlError] = createSignal<string | undefined>();
 
-  const normalizedDimensions = createMemo(() => Dimensions3D.normalize(store.dimensions));
+  const normalizedDimensions = createMemo(() => Dimensions3D.normalize(dimensions()));
 
   const loadVoxelArrayToWebGL = () => {
-    const dimensions = store.dimensions;
-    const voxels = store.voxels;
+    const _dimensions = dimensions();
+    const _voxels = voxels();
     const _webgl = webgl();
     if (_webgl === undefined) {
       return;
@@ -136,13 +136,13 @@ const VoxelPreviewView: Component = () => {
       gl.TEXTURE_3D,
       0,
       gl.RGBA8,
-      dimensions.width,
-      dimensions.height,
-      dimensions.depth,
+      _dimensions.width,
+      _dimensions.height,
+      _dimensions.depth,
       0,
       gl.RGBA,
       gl.UNSIGNED_BYTE,
-      voxels,
+      _voxels,
     );
   };
 

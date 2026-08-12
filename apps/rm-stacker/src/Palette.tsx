@@ -1,22 +1,18 @@
-import { createEffect, Setter } from "@solidjs/signals";
-import { createMemo, createSignal, For } from "solid-js";
+import { createEffect } from "@solidjs/signals";
+import { createMemo, createSignal, For, useContext } from "solid-js";
 import { ColourPicker } from "./components/ColorPicker";
 import { colourTabStyle, createPopover, tabStyle } from "./components/components";
+import { StackerContext } from "./context";
 import { RGBA } from "./maths";
 import styles from "./Palette.module.css";
 import { pointer } from "./utils";
 
-function Palette(props: {
-  palette: Array<RGBA>;
-  onSelect: (colour: RGBA) => void;
-  setPalette: Setter<Array<RGBA>>;
-  selectedColour: RGBA | undefined;
-  class?: string;
-}) {
+function Palette(props: { class?: string }) {
+  const { palette, setPalette, selectedColour, selectPaletteIndex } = useContext(StackerContext);
   const ColourPickerPopover = createPopover();
-  const [openedColour, setOpenedColour] = createSignal<number | undefined>();
-
   let popover: HTMLDivElement = null!;
+
+  const [openedColour, setOpenedColour] = createSignal<number | undefined>();
 
   createEffect(openedColour, openedColour => {
     if (!openedColour) {
@@ -59,23 +55,23 @@ function Palette(props: {
         ref={popover!}
       >
         <ColourPicker
-          colour={openedColour() ? props.palette[openedColour()!] : undefined}
+          colour={openedColour() ? palette()[openedColour()!] : undefined}
           onColour={colour => {
             const _activeColour = openedColour();
             if (!_activeColour) {
               return;
             }
-            props.setPalette(palette => {
+            setPalette(palette => {
               palette[_activeColour] = colour;
               return [...palette];
             });
           }}
         />
       </ColourPickerPopover.PopOver>
-      <For each={props.palette}>
+      <For each={palette()}>
         {(colour, index) => {
           const isSelected = createMemo(
-            () => props.selectedColour && RGBA.equals(colour, props.selectedColour),
+            () => selectedColour() && RGBA.equals(colour, selectedColour()),
           );
 
           async function onPointerDown(event: PointerEvent & { currentTarget?: HTMLElement }) {
@@ -91,8 +87,7 @@ function Palette(props: {
             let longpress = false;
 
             const id = setTimeout(() => {
-              const _index = index();
-              setOpenedColour(_index);
+              setOpenedColour(index());
               longpress = true;
             }, 250);
 
@@ -107,7 +102,7 @@ function Palette(props: {
             // close colour picker
             setOpenedColour(undefined);
             // update with new colour
-            props.onSelect(props.palette[index()]);
+            selectPaletteIndex(index());
           }
 
           return (
@@ -119,6 +114,7 @@ function Palette(props: {
               aria-selected={isSelected() ? "true" : "false"}
               aria-opened={openedColour() === index() ? "true" : "false"}
               onPointerDown={onPointerDown}
+              onTouchStart={event => event.preventDefault()}
             >
               <div style={{ background: RGBA.toCSS(colour) }} />
             </button>

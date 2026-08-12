@@ -1,5 +1,6 @@
 import { Component, createEffect, createMemo, onSettled, Show } from "solid-js";
 import styles from "./App.module.css";
+import { Hud } from "./Hud";
 import PixelEditorView from "./PixelEditorView/PixelEditorView";
 import VoxelPreviewView from "./VoxelPreviewView";
 import { Split } from "./components/SplitPane";
@@ -80,6 +81,7 @@ const App: Component = () => {
             })()}
           </Split>
         </div>
+        <Hud />
       </StackerContext>
     </LayoutContext>
   );

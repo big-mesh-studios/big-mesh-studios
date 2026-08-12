@@ -1,5 +1,5 @@
-import { Vector2D } from "../maths";
-import { RGBA, SideKind } from "../types";
+import { RGBA, Vector2D } from "../maths";
+import { SideKind } from "../types";
 import { base64ToUint8Array, uint8ArrayToBase64 } from "../utils";
 
 export type Command =

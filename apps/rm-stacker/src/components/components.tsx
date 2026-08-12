@@ -133,8 +133,12 @@ export function Bar(props: ParentProps) {
 /**********************************************************************************/
 
 export const columnStyle = styles.column;
-export function Column(props: ParentProps) {
-  return <div class={styles.column}>{props.children}</div>;
+export function Column(props: ParentProps<{ style?: JSX.CSSProperties }>) {
+  return (
+    <div style={props.style} class={styles.column}>
+      {props.children}
+    </div>
+  );
 }
 
 /**********************************************************************************/
@@ -161,10 +165,10 @@ export function createPopover() {
   return {
     isOpen,
     open() {
-      element.showPopover();
+      element?.showPopover();
     },
     close() {
-      element.hidePopover();
+      element?.hidePopover();
     },
     Trigger(props: PopoverTriggerProps) {
       return (
@@ -188,9 +192,8 @@ export function createPopover() {
               "position-anchor": `--${id}`,
               ...props.style,
             }}
-            ref={props.ref}
+            ref={[props.ref, _element => (element = _element)]}
             id={id}
-            ref={element}
             popover={props.popover ?? "auto"}
             class={[props.class, styles.popover]}
             onToggle={event => {

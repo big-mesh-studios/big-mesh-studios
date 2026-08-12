@@ -1,4 +1,4 @@
-import { StackerStore } from "./stacker-store";
+import { Dimensions3D } from "./maths";
 import { Axis, Sides, Vector3D } from "./types";
 
 export type ViewSpec = {
@@ -13,10 +13,10 @@ export type ViewSpec = {
 // The front face is at z = size - 1 (nearest to the front camera) and the
 // back face is at z = 0. Each view fixes two coordinates and raymarches the
 // remaining axis; the fixed coordinate tuples put the axis coordinate at 0.
-const createViews = ({
-  sides: { front, left, right, back, top, bottom },
-  dimensions: { height, width, depth },
-}: Pick<StackerStore, "dimensions" | "sides">): ViewSpec[] => {
+const createViews = (
+  { height, width, depth }: Dimensions3D,
+  { front, left, right, back, top, bottom }: Sides,
+): ViewSpec[] => {
   return [
     {
       kind: "front",
@@ -64,14 +64,11 @@ const createViews = ({
 };
 
 export function solveVoxels(
-  store: Pick<StackerStore, "dimensions" | "sides">,
-  out: Uint8Array = new Uint8Array(
-    store.dimensions.width * store.dimensions.height * store.dimensions.depth * 4,
-  ),
+  dimensions: Dimensions3D,
+  sides: Sides,
+  out: Uint8Array = new Uint8Array(dimensions.width * dimensions.height * dimensions.depth * 4),
 ): Uint8Array {
-  const {
-    dimensions: { height, width, depth },
-  } = store;
+  const { height, width, depth } = dimensions;
   const outLength = width * height * depth * 4;
   if (out.length !== outLength) {
     throw new Error(`out.lenght expected to be ${outLength}`);
@@ -93,7 +90,7 @@ export function solveVoxels(
     z: depth,
   };
 
-  const views = createViews(store);
+  const views = createViews(dimensions, sides);
 
   // start off as white
   out.fill(255);

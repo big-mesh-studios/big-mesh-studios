@@ -1,5 +1,4 @@
 import { createPanScaleControl } from "@random-mesh/rm-pan-scale";
-import { Setter } from "@solidjs/signals";
 import {
   Accessor,
   createEffect,
@@ -12,8 +11,8 @@ import {
 import { Command } from "../command/Command";
 import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../context";
-import { Vector2D } from "../maths";
-import { ModeKind, RGBA, SideKind } from "../types";
+import { RGBA, Vector2D } from "../maths";
+import { SideKind } from "../types";
 import { createEdgeController } from "./create-edge-controller";
 import { intersectSides, SidePositions } from "./side-layout";
 
@@ -28,22 +27,16 @@ const PannableModes = new Set(["Idle", "Eyedrop"]);
 
 export const createPixelEditorController = ({
   canvas,
-  mode,
-  selectedColour,
-  setSelectedColour,
   sidePositions,
   pushUndo,
   doCommand,
 }: {
   canvas: Accessor<HTMLCanvasElement | undefined>;
-  mode: Accessor<ModeKind>;
-  selectedColour: Accessor<RGBA | undefined>;
-  setSelectedColour: Setter<RGBA>;
   sidePositions: Accessor<SidePositions>;
   pushUndo: (reverseCommand: Command, description: string) => void;
   doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
 }) => {
-  const { store } = useContext(StackerContext);
+  const { sides, selectedColour, selectPaletteIndex, palette, mode } = useContext(StackerContext);
 
   const [pan, setPan] = createSignal({ x: -10.0, y: -10.0 });
   const [cursorStyle, setCursorStyle] = createSignal<string>();
@@ -145,7 +138,7 @@ export const createPixelEditorController = ({
 
         const intersection = intersectSides({
           worldPosition: worldPointer,
-          sides: store.sides,
+          sides: sides(),
           sidePositions: sidePositions(),
         });
 
@@ -158,11 +151,11 @@ export const createPixelEditorController = ({
         const oppositePixel = getOppositePixel(kind, position, side);
         const oppositeKind = OPPOSING_SIDE[kind];
 
-        const sides = store.sides;
+        const _sides = sides();
 
-        const oppositeSide = sides[oppositeKind];
+        const oppositeSide = _sides[oppositeKind];
         const oppositeOpacity =
-          sides[oppositeKind].data[
+          _sides[oppositeKind].data[
             ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
           ];
 
@@ -246,7 +239,7 @@ export const createPixelEditorController = ({
 
           const intersection = intersectSides({
             sidePositions: sidePositions(),
-            sides: store.sides,
+            sides: sides(),
             worldPosition: _worldPointer,
           });
 
@@ -254,7 +247,15 @@ export const createPixelEditorController = ({
             return;
           }
 
-          setSelectedColour(intersection.colour);
+          const index = palette().findIndex(colour => RGBA.equals(colour, intersection.colour));
+
+          // The picked pixel can hold a colour that is not in the palette, in
+          // which case there is nothing to select.
+          if (index === -1) {
+            break;
+          }
+
+          selectPaletteIndex(index);
 
           break;
         }

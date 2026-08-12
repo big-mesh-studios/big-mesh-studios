@@ -52,7 +52,7 @@ const getDimensionEnd = (sideKind: SideKind, edgeKind: EdgeKind): AlignmentKind 
 };
 
 /**
- * Where an edge sits on the canvas for a given set of dimensions. Left and top
+ * Where an edge sits on the canvas for a given set of dimensions(). Left and top
  * edges sit on their panel's origin, right and bottom edges a whole panel
  * further along. Both the origin and the size follow the dimensions, which is
  * why a resize can move an edge without the pointer having moved it there.
@@ -84,7 +84,7 @@ export function createEdgeController({
   setPan: Setter<Vector2D>;
   sidePositions: Accessor<SidePositions>;
 }) {
-  const { store, resize, pushUndo, snapshot } = useContext(StackerContext);
+  const { sides, resize, pushUndo, snapshot, dimensions } = useContext(StackerContext);
   const [activeEdge, setActiveEdge] = createSignal<{
     edge: ActiveSideEdge;
     initialPosition: Vector2D;
@@ -103,7 +103,7 @@ export function createEdgeController({
 
     const intersection = intersectSides({
       worldPosition: _worldPointer,
-      sides: store.sides,
+      sides: sides(),
       sidePositions: sidePositions(),
     });
 
@@ -171,9 +171,9 @@ export function createEdgeController({
       }
 
       if (
-        _activeEdge.initialDimensions.width !== store.dimensions.width ||
-        _activeEdge.initialDimensions.height !== store.dimensions.height ||
-        _activeEdge.initialDimensions.depth !== store.dimensions.depth
+        _activeEdge.initialDimensions.width !== dimensions().width ||
+        _activeEdge.initialDimensions.height !== dimensions().height ||
+        _activeEdge.initialDimensions.depth !== dimensions().depth
       ) {
         pushUndo(snapshot(_activeEdge.initialSides), "Resize");
       }
@@ -193,11 +193,11 @@ export function createEdgeController({
         setActiveEdge({
           edge: collidingEdge,
           initialPosition: { x: event.clientX, y: event.clientY },
-          initialDimensions: { ...store.dimensions },
+          initialDimensions: { ...dimensions() },
           // Every step of the drag re-frames these rather than the panels of the
           // step before, so pulling an edge back out restores what shrinking it
           // pushed out of the box.
-          initialSides: store.sides,
+          initialSides: sides(),
           initialPan: pan(),
         });
 
@@ -243,7 +243,7 @@ export function createEdgeController({
 
       // Both the panels and the pan follow whole pixels, so most moves land on
       // the dimensions we already have and there is nothing to re-frame.
-      if (Dimensions3D.equals(newDimensions, store.dimensions)) {
+      if (Dimensions3D.equals(newDimensions, dimensions())) {
         return;
       }
 

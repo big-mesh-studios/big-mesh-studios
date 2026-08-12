@@ -1,5 +1,4 @@
 import { SIDE_MASK } from "../constants";
-import { StackerStore } from "../stacker-store";
 import { Dimensions2D, SideKind, Sides } from "../types";
 
 /**
@@ -76,22 +75,20 @@ function mirrorY(source: Uint8Array, dimensions: Dimensions2D) {
   return array;
 }
 
-export function computeGuideMasks(
-  store: Pick<StackerStore, "dimensions" | "sides">,
-): Record<keyof Sides, Uint8Array> {
+export function computeGuideMasks(sides: Sides): Record<keyof Sides, Uint8Array> {
   const primaryKinds = ["front", "top", "right"] satisfies Array<SideKind>;
 
   const guides = {} as Record<keyof Sides, Uint8Array>;
 
   for (const kind of primaryKinds) {
-    const side = store.sides[kind];
+    const side = sides[kind];
     const guide = new Uint8Array(side.width * side.height);
 
     const { side: xSide, axis: xLine, mirror: xMirror } = SIDE_AXIS_MAPPING[kind].x;
     const { side: ySide, axis: yLine, mirror: yMirror } = SIDE_AXIS_MAPPING[kind].y;
 
     for (let x = 0; x < side.width; x++) {
-      if (isLineEmpty(store.sides[xSide], xLine, x, xMirror)) {
+      if (isLineEmpty(sides[xSide], xLine, x, xMirror)) {
         continue;
       }
 
@@ -101,7 +98,7 @@ export function computeGuideMasks(
     }
 
     for (let y = 0; y < side.height; y++) {
-      if (isLineEmpty(store.sides[ySide], yLine, y, yMirror)) {
+      if (isLineEmpty(sides[ySide], yLine, y, yMirror)) {
         continue;
       }
 
@@ -113,9 +110,9 @@ export function computeGuideMasks(
     guides[kind] = guide;
   }
 
-  guides.left = mirrorX(guides.right, store.sides.left);
-  guides.bottom = mirrorY(guides.top, store.sides.bottom);
-  guides.back = mirrorX(guides.front, store.sides.back);
+  guides.left = mirrorX(guides.right, sides.left);
+  guides.bottom = mirrorY(guides.top, sides.bottom);
+  guides.back = mirrorX(guides.front, sides.back);
 
   return guides;
 }

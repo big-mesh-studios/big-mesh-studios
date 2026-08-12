@@ -10,13 +10,10 @@ import {
 import * as THREE from "three";
 import { SIDE_MASK } from "../constants";
 import { StackerContext } from "../context";
-import { DAWNBRINGER_32_PALETTE } from "../default_palette";
-import { RGBA, Vector2D } from "../maths";
-import { ModeKind } from "../types";
+import { Vector2D } from "../maths";
 import { keysOf, sideMaskToCSS } from "../utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
-import { Hud } from "./Hud";
 import styles from "./PixelEditorView.module.css";
 import { computeSidePositions, LABEL_HEIGHT } from "./side-layout";
 
@@ -38,24 +35,19 @@ function fillPath(ctx: CanvasRenderingContext2D, [start, ...path]: Vector2D[]) {
 }
 
 const PixelEditorView: Component = () => {
-  const { store, doCommand, pushUndo, onRender } = useContext(StackerContext);
+  const { sides, doCommand, pushUndo, onRender, dimensions, mode } = useContext(StackerContext);
   const imageCanvasCache = new WeakMap<ImageData, ImageCanvasCacheData>();
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
-  const [mode, setMode] = createSignal<ModeKind>("Idle");
   const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
-  const [selectedColour, setSelectedColour] = createSignal<RGBA>(DAWNBRINGER_32_PALETTE[5]);
 
-  const sidePositions = createMemo(() => computeSidePositions(store.dimensions));
+  const sidePositions = createMemo(() => computeSidePositions(dimensions()));
 
   const controller = createPixelEditorController({
     canvas,
     sidePositions,
     doCommand,
-    mode,
     pushUndo,
-    selectedColour,
-    setSelectedColour,
   });
 
   const createImageCanvasCacheEntry = (image: ImageData) => {
@@ -129,15 +121,15 @@ const PixelEditorView: Component = () => {
       const _pan = controller.pan();
       const _scale = controller.scale();
       const _overlayDrawing = controller.overlayDrawing();
-      const guides = computeGuideMasks(store);
+      const guides = computeGuideMasks(sides());
 
       ctx.clearRect(0, 0, _canvasSize.x, _canvasSize.y);
       ctx.save();
       ctx.scale(_scale, _scale);
       ctx.translate(-_pan.x, -_pan.y);
 
-      for (const sideKind of keysOf(store.sides)) {
-        const side = store.sides[sideKind];
+      for (const sideKind of keysOf(sides())) {
+        const side = sides()[sideKind];
         const sidePosition = sidePositions()[sideKind];
 
         const imageCanvasCacheData =
@@ -280,7 +272,15 @@ const PixelEditorView: Component = () => {
   });
 
   createEffect(
-    () => [canvasSize(), controller.pan(), controller.scale(), controller.overlayDrawing()],
+    () => [
+      canvasSize(),
+      controller.pan(),
+      controller.scale(),
+      controller.overlayDrawing(),
+      // The corner markers are only drawn while idle, so a mode switch changes
+      // the picture.
+      mode(),
+    ],
     () => render(),
   );
 
@@ -295,14 +295,8 @@ const PixelEditorView: Component = () => {
         onPointerCancel={controller.onPointerCancel}
         onPointerMove={controller.onPointerMove}
         onPointerOut={controller.onPointerOut}
+        onTouchStart={event => event.preventDefault()}
         onWheel={controller.onWheel}
-      />
-      <Hud
-        selectedColour={selectedColour()}
-        onSelectColour={setSelectedColour}
-        render={render}
-        mode={mode()}
-        setMode={setMode}
       />
     </div>
   );

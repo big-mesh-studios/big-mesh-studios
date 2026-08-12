@@ -553,6 +553,7 @@ function Handle(props: BaseProps) {
   const handle = (
     <Base
       {...props}
+      onTouchStart={event => event.preventDefault()}
       data-active-handle={active() || undefined}
       onPointerDown={async e => {
         let totalOverflow = {

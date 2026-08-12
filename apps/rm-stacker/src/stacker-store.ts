@@ -1,21 +1,16 @@
 import { createEffect, createMemo, createSignal, flush } from "solid-js";
 import { Command } from "./command/Command";
 import { createCommander } from "./command/commander";
+import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 import { saveToIndexedDB } from "./load-save";
-import { Dimensions3D, Vector2D } from "./maths";
+import { Dimensions3D, RGBA, Vector2D } from "./maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
-import type { Dimensions2D, Sides } from "./types";
+import { ModeKind, type Dimensions2D, type Sides } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { createEnqueue } from "./utils";
 import { solveVoxels } from "./voxel-solver";
 
 const INITIAL_DIMENSIONS = { width: 3, height: 5, depth: 4 };
-
-export interface StackerStore {
-  dimensions: Dimensions3D;
-  sides: Sides;
-  voxels: Uint8Array;
-}
 
 const createInitialImageData = (
   dimensions: Dimensions2D | number,
@@ -56,27 +51,18 @@ export function createStacker() {
   const enqueue = createEnqueue<Command>();
   const renderSet = new Set<() => void>();
 
+  const [mode, setMode] = createSignal<ModeKind>("Idle");
+  const [selectedPaletteIndex, selectPaletteIndex] = createSignal(5);
+  const [palette, setPalette] = createSignal<RGBA[]>(DAWNBRINGER_32_PALETTE);
   const [sides, setSides] = createSignal<Sides>(createInitialSides(INITIAL_DIMENSIONS));
   const dimensions = createMemo<Dimensions3D>(() => ({
     width: sides().front.width,
     height: sides().front.height,
     depth: sides().left.width,
   }));
-  const [voxels, setVoxels] = createSignal(
-    solveVoxels({ sides: sides(), dimensions: dimensions() }),
-  );
+  const [voxels, setVoxels] = createSignal(solveVoxels(dimensions(), sides()));
 
-  const store: StackerStore = {
-    get dimensions() {
-      return dimensions();
-    },
-    get sides() {
-      return sides();
-    },
-    get voxels() {
-      return voxels();
-    },
-  };
+  const selectedColour = createMemo(() => palette()[selectedPaletteIndex()]);
 
   const requestAutoSave = (() => {
     let aboutToSave = false;
@@ -99,7 +85,7 @@ export function createStacker() {
             trySaveAgain = false;
             let { undoStack, redoStack } = undoRedoManager.getStacks();
             await saveToIndexedDB({
-              sides: store.sides,
+              sides: sides(),
               undoStack,
               redoStack,
             });
@@ -112,7 +98,7 @@ export function createStacker() {
 
   function updateVoxels() {
     flush();
-    setVoxels(solveVoxels(store));
+    setVoxels(solveVoxels(dimensions(), sides()));
   }
 
   const { snapshot, doCommand } = createCommander({
@@ -158,10 +144,21 @@ export function createStacker() {
   createEffect(sides, requestRender);
 
   return {
-    store,
     undoRedoManager,
-    updateVoxels,
+    dimensions,
+    sides,
     setSides,
+    voxels,
+    updateVoxels,
+    // Palette
+    palette,
+    setPalette,
+    selectedPaletteIndex,
+    selectPaletteIndex,
+    selectedColour,
+    // mode
+    mode,
+    setMode,
     /**
      * Re-frames the model to new dimensions, carrying the drawing over rather
      * than starting the panels afresh.

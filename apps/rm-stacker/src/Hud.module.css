@@ -7,6 +7,7 @@
   grid-template-columns: auto 1fr auto;
   margin: var(--margin);
   gap: var(--margin);
+  z-index: 2;
 
   & > * {
     pointer-events: auto;
