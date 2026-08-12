@@ -81,6 +81,16 @@ export const createPixelEditorController = ({
     return Vector2D.round(screenToWorld(screenPointer, pan(), scale()));
   };
 
+  const endPointer = (event: PointerEvent) => {
+    pointerIds.delete(event.pointerId);
+
+    // The last finger to leave is the one that finishes the stroke, since a
+    // stroke drawn with more than one is still a single thing to take back.
+    if (pointerIds.size === 0) {
+      pushStrokeUndo();
+    }
+  };
+
   return {
     pan,
     scale,
@@ -102,17 +112,11 @@ export const createPixelEditorController = ({
       };
     },
     onPointerDown(event: PointerEvent & { currentTarget: HTMLElement }) {
+      // Everything this pointer raises from here on lands on the canvas even
+      // once it has been taken off it, so however the gesture below ends, the
+      // end is heard and the pointer can be dropped from the set again.
+      event.currentTarget.setPointerCapture(event.pointerId);
       pointerIds.add(event.pointerId);
-
-      // Whatever the mode below goes on to do with this pointer, the set has to
-      // lose it again when it ends, and the last one to leave closes the stroke.
-      pointer(event).then(() => {
-        pointerIds.delete(event.pointerId);
-
-        if (pointerIds.size === 0) {
-          pushStrokeUndo();
-        }
-      });
 
       const roundedWorldPosition = eventToRoundedWorldPosition(event);
 
@@ -247,14 +251,18 @@ export const createPixelEditorController = ({
         }
       }
     },
-    // The pixel under the pointer is painted on the canvas, so it has to stop
-    // being painted once the pointer is no longer over it. Leaving raises the
-    // first of these, and a gesture the browser takes over raises the second
-    // without the pointer ever leaving.
-    onPointerOut() {
+    onPointerUp(event: PointerEvent) {
+      endPointer(event);
+    },
+    onPointerCancel(event: PointerEvent) {
+      endPointer(event);
       setRoundedWorldPosition(undefined);
     },
-    onPointerCancel() {
+    // The pixel under the pointer is painted on the canvas, so it has to stop
+    // being painted once the pointer is no longer over it. Leaving raises this,
+    // and a gesture the browser takes over raises the cancel above without the
+    // pointer ever leaving.
+    onPointerOut() {
       setRoundedWorldPosition(undefined);
     },
     onWheel: panScaleControl.onWheel,

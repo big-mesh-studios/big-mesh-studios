@@ -284,8 +284,9 @@ const PixelEditorView: Component = () => {
         style={{ cursor: controller.cursor() }}
         onPointerDown={controller.onPointerDown}
         onPointerMove={controller.onPointerMove}
-        onPointerOut={controller.onPointerOut}
+        onPointerUp={controller.onPointerUp}
         onPointerCancel={controller.onPointerCancel}
+        onPointerOut={controller.onPointerOut}
         onTouchStart={event => event.preventDefault()}
         onWheel={controller.onWheel}
       />
