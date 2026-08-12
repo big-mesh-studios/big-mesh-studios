@@ -7,7 +7,7 @@ import { Dimensions3D, RGBA, Vector2D } from "./maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
 import { ModeKind, type Dimensions2D, type Sides } from "./types";
 import { UndoRedoManager } from "./undo-redo";
-import { createEnqueue } from "./utils";
+import { createEnqueue, createMediaQuery } from "./utils";
 import { solveVoxels } from "./voxel-solver";
 
 const INITIAL_DIMENSIONS = { width: 3, height: 5, depth: 4 };
@@ -61,6 +61,7 @@ export function createStacker() {
     depth: sides().left.width,
   }));
   const [voxels, setVoxels] = createSignal(solveVoxels(dimensions(), sides()));
+  const narrow = createMediaQuery("(max-width: 500px)");
 
   const selectedColour = createMemo(() => palette()[selectedPaletteIndex()]);
 
@@ -145,9 +146,12 @@ export function createStacker() {
 
   return {
     undoRedoManager,
+    // dimensions
     dimensions,
+    // sides
     sides,
     setSides,
+    // voxels
     voxels,
     updateVoxels,
     // Palette
@@ -159,6 +163,8 @@ export function createStacker() {
     // mode
     mode,
     setMode,
+    // layout
+    narrow,
     /**
      * Re-frames the model to new dimensions, carrying the drawing over rather
      * than starting the panels afresh.

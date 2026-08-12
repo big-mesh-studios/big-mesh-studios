@@ -4,15 +4,12 @@ import { Hud } from "./Hud";
 import PixelEditorView from "./PixelEditorView/PixelEditorView";
 import VoxelPreviewView from "./VoxelPreviewView";
 import { Split } from "./components/SplitPane";
-import { LayoutContext, StackerContext } from "./context";
+import { StackerContext } from "./context";
 import { loadFromIndexedDB } from "./load-save";
 import { createStacker } from "./stacker-store";
-import { createMediaQuery } from "./utils";
 
 const App: Component = () => {
   const stacker = createStacker();
-  const query = createMediaQuery("(max-width: 500px)");
-  const layout = createMemo(() => (query() ? "row" : "column"));
 
   const saveState = createMemo(loadFromIndexedDB);
 
@@ -36,54 +33,52 @@ const App: Component = () => {
   });
 
   return (
-    <LayoutContext value={layout}>
-      <StackerContext value={stacker}>
-        <div class={styles.shell}>
-          <Split direction={layout()}>
-            {(() => {
-              const pixelEditorPane = (
-                <Split.Pane size="50%" max="245px">
-                  <div style={{ "overflow-x": "auto", position: "absolute", inset: 0 }}>
-                    <PixelEditorView />
-                  </div>
-                </Split.Pane>
-              );
-              const voxelPreviewPane = (
-                <Split.Pane style={{ display: "grid" }} size="50%" max="245px">
-                  <div style="flex-grow: 1; overflow: hidden;">
-                    <VoxelPreviewView />
-                  </div>
-                </Split.Pane>
-              );
-              const handle = (
-                <Split.Handle
-                  size="5px"
-                  style={{ cursor: layout() === "column" ? "ew-resize" : "ns-resize" }}
-                  class={styles.handle}
-                />
-              );
-              return (
-                <Show
-                  when={layout() === "row"}
-                  fallback={
-                    <>
-                      {pixelEditorPane}
-                      {handle}
-                      {voxelPreviewPane}
-                    </>
-                  }
-                >
-                  {voxelPreviewPane}
-                  {handle}
-                  {pixelEditorPane}
-                </Show>
-              );
-            })()}
-          </Split>
-        </div>
-        <Hud />
-      </StackerContext>
-    </LayoutContext>
+    <StackerContext value={stacker}>
+      <div class={styles.shell}>
+        <Split direction={stacker.narrow() ? "row" : "column"}>
+          {(() => {
+            const pixelEditorPane = (
+              <Split.Pane size="50%" max="245px">
+                <div style={{ "overflow-x": "auto", position: "absolute", inset: 0 }}>
+                  <PixelEditorView />
+                </div>
+              </Split.Pane>
+            );
+            const voxelPreviewPane = (
+              <Split.Pane style={{ display: "grid" }} size="50%" max="245px">
+                <div style="flex-grow: 1; overflow: hidden;">
+                  <VoxelPreviewView />
+                </div>
+              </Split.Pane>
+            );
+            const handle = (
+              <Split.Handle
+                size="5px"
+                style={{ cursor: stacker.narrow() ? "ns-resize" : "ew-resize" }}
+                class={styles.handle}
+              />
+            );
+            return (
+              <Show
+                when={stacker.narrow()}
+                fallback={
+                  <>
+                    {pixelEditorPane}
+                    {handle}
+                    {voxelPreviewPane}
+                  </>
+                }
+              >
+                {voxelPreviewPane}
+                {handle}
+                {pixelEditorPane}
+              </Show>
+            );
+          })()}
+        </Split>
+      </div>
+      <Hud />
+    </StackerContext>
   );
 };
 
