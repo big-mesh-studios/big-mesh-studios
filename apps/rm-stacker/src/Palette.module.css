@@ -9,7 +9,7 @@
   max-width: calc(100vw - (var(--margin) * 3 + var(--size)) * 2);
 }
 
-.item {
+.tab {
   box-sizing: border-box;
   padding: 8px;
 
@@ -17,12 +17,25 @@
   &:hover {
     padding: var(--margin);
   }
+
+  &[aria-opened="true"] {
+    border: 1px solid var(--light-grey);
+    border-radius: var(--margin);
+  }
+
+  & > div {
+    pointer-events: none;
+  }
 }
 
 .colourPickerPopover {
   inset: unset;
   position: absolute;
   pointer-events: auto;
+  position-try-fallbacks:
+    flip-block,
+    flip-inline,
+    flip-block flip-inline;
 
   &:popover-open {
     bottom: calc(anchor(top) + var(--margin));

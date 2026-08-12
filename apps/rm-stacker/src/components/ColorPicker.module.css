@@ -82,6 +82,7 @@
 }
 
 .fields {
+  font-size: 10pt;
   grid-area: fields;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr 1fr;

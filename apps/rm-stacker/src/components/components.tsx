@@ -149,6 +149,7 @@ export interface PopoverProps extends ParentProps {
   class?: string | string[];
   popover?: "auto" | "manual";
   style?: JSX.CSSProperties;
+  ref?: Ref<HTMLDivElement>;
 }
 
 let counter = 0;
@@ -158,10 +159,11 @@ export function createPopover() {
   const [isOpen, setIsOpen] = createSignal(false);
 
   return {
-    show() {
+    isOpen,
+    open() {
       element.showPopover();
     },
-    hide() {
+    close() {
       element.hidePopover();
     },
     Trigger(props: PopoverTriggerProps) {
@@ -186,6 +188,7 @@ export function createPopover() {
               "position-anchor": `--${id}`,
               ...props.style,
             }}
+            ref={props.ref}
             id={id}
             ref={element}
             popover={props.popover ?? "auto"}

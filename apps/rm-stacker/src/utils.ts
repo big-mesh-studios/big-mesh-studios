@@ -69,9 +69,11 @@ interface CursorEvent {
  * @returns Promise resolved on pointerup, or on pointercancel when the browser
  * takes the pointer over for a gesture of its own
  */
+
 export function pointer(
   initialEvent: PointerEvent & { currentTarget: HTMLElement },
-  callback: (event: CursorEvent) => void,
+  callback?: (event: CursorEvent) => void,
+  options?: { signal: AbortSignal },
 ): Promise<CursorEvent> {
   const { promise, resolve } = Promise.withResolvers<CursorEvent>();
 
@@ -84,6 +86,8 @@ export function pointer(
   const pointerId = initialEvent.pointerId;
   const element = initialEvent.currentTarget;
   element.setPointerCapture(pointerId);
+
+  options?.signal.addEventListener("abort", () => controller.abort());
 
   function handleEvent(event: PointerEvent) {
     const now = {
@@ -105,16 +109,18 @@ export function pointer(
   function handleFinalEvent(event: PointerEvent) {
     const result = handleEvent(event);
     element.releasePointerCapture(pointerId);
-    callback(result);
+    callback?.(result);
     resolve(result);
     controller.abort();
   }
 
-  element.addEventListener(
-    "pointermove",
-    (event: PointerEvent) => callback(handleEvent(event)),
-    controller,
-  );
+  if (callback) {
+    element.addEventListener(
+      "pointermove",
+      (event: PointerEvent) => callback(handleEvent(event)),
+      controller,
+    );
+  }
   element.addEventListener("pointercancel", handleFinalEvent, controller);
   element.addEventListener("pointerup", handleFinalEvent, controller);
 

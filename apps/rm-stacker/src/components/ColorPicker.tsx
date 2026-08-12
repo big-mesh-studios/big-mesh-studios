@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, For } from "solid-js";
+import { HSVA, RGBA } from "../maths";
+import { pointer } from "../utils";
 import styles from "./ColorPicker.module.css";
-import { HSVA, RGBA } from "./maths";
-import { pointer } from "./utils";
 
 const DEFAULT_HSVA: HSVA = { h: 0, s: 1, v: 1, a: 1 };
 const CHANNELS = ["r", "g", "b", "a"] as const satisfies ReadonlyArray<keyof RGBA>;
