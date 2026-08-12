@@ -1,107 +1,117 @@
-import { Accessor, createSignal, Signal } from "solid-js";
+import { Accessor, createMemo, createSignal, Signal } from "solid-js";
 import { Command } from "./command/Command";
 
+export interface CommandEntry {
+  command: Command;
+  description: string;
+}
+
 export class UndoRedoManager {
-  private _undoStack: { command: Command; description: string }[] = [];
-  private _redoStack: { command: Command; description: string }[] = [];
-  private _hasUndo: Signal<boolean> = createSignal(false);
-  private _hasRedo: Signal<boolean> = createSignal(false);
-  private _undoDescription: Signal<string | undefined> = createSignal();
-  private _redoDescription: Signal<string | undefined> = createSignal();
+  private _undoStack: Signal<CommandEntry[]>;
+  private _redoStack: Signal<CommandEntry[]>;
+  private _hasUndo: Accessor<boolean>;
+  private _hasRedo: Accessor<boolean>;
+  private _undoDescription: Accessor<string | undefined>;
+  private _redoDescription: Accessor<string | undefined>;
   private _performCommand: (command: Command) => Command;
 
   get hasUndo(): Accessor<boolean> {
-    return this._hasUndo[0];
+    return this._hasUndo;
   }
 
   get hasRedo(): Accessor<boolean> {
-    return this._hasRedo[0];
+    return this._hasRedo;
   }
 
   get undoDescription(): Accessor<string | undefined> {
-    return this._undoDescription[0];
+    return this._undoDescription;
   }
 
   get redoDescription(): Accessor<string | undefined> {
-    return this._redoDescription[0];
+    return this._redoDescription;
   }
 
-  constructor(performCommand: (command: Command) => Command) {
+  /**
+   * @param restoredUndoStack the history the model was saved with, and likewise
+   * `restoredRedoStack`. They are read rather than given outright because the
+   * model they belong to is read from a database and so arrives later than this
+   * does. A stack works its first value out from one of these and can still be
+   * set afterwards, which is how a history both starts where it was left and
+   * goes on growing.
+   */
+  constructor(
+    performCommand: (command: Command) => Command,
+    restoredUndoStack: Accessor<CommandEntry[]> = () => [],
+    restoredRedoStack: Accessor<CommandEntry[]> = () => [],
+  ) {
     this._performCommand = performCommand;
+    this._undoStack = createSignal(restoredUndoStack);
+    this._redoStack = createSignal(restoredRedoStack);
+
+    // What can be undone, and what it is called, follow from the stacks rather
+    // than being kept in step with them by hand. The next thing to be undone is
+    // the last one pushed, which is the end of the stack.
+    this._hasUndo = createMemo(() => this._undoStack[0]().length !== 0);
+    this._hasRedo = createMemo(() => this._redoStack[0]().length !== 0);
+    this._undoDescription = createMemo(() => this._undoStack[0]().at(-1)?.description);
+    this._redoDescription = createMemo(() => this._redoStack[0]().at(-1)?.description);
   }
 
   clear() {
-    this._undoStack.length = 0;
-    this._redoStack.length = 0;
-    this._hasUndo[1](false);
-    this._hasRedo[1](false);
-    this._undoDescription[1](undefined);
-    this._redoDescription[1](undefined);
+    this._undoStack[1]([]);
+    this._redoStack[1]([]);
   }
 
   clearRedo() {
-    this._redoStack.splice(0, this._redoStack.length);
-    this._hasRedo[1](false);
-    this._redoDescription[1](undefined);
+    this._redoStack[1]([]);
   }
 
-  pushUndo(undo: { command: Command; description: string }) {
-    this._undoStack.push(undo);
-    this._hasUndo[1](this._undoStack.length !== 0);
-    this._undoDescription[1](undo.description);
+  pushUndo(undo: CommandEntry) {
+    this._undoStack[1](stack => [...stack, undo]);
   }
 
-  pushRedo(redo: { command: Command; description: string }) {
-    this._redoStack.push(redo);
-    this._hasRedo[1](this._redoStack.length !== 0);
-    this._redoDescription[1](redo.description);
+  pushRedo(redo: CommandEntry) {
+    this._redoStack[1](stack => [...stack, redo]);
   }
 
   undo() {
-    let command = this._undoStack.pop();
-    if (command === undefined) {
+    const stack = this._undoStack[0]();
+    const entry = stack.at(-1);
+
+    if (entry === undefined) {
       return;
     }
-    let command2 = this._performCommand(command.command);
-    this._redoStack.push({ command: command2, description: command.description });
-    this._hasUndo[1](this._undoStack.length !== 0);
-    this._hasRedo[1](this._redoStack.length !== 0);
-    this._undoDescription[1](this._undoStack?.[0]?.description);
-    this._redoDescription[1](this._redoStack?.[0]?.description);
+
+    const reverseCommand = this._performCommand(entry.command);
+
+    this._undoStack[1](stack.slice(0, -1));
+    this._redoStack[1](redoStack => [
+      ...redoStack,
+      { command: reverseCommand, description: entry.description },
+    ]);
   }
 
   redo() {
-    let command = this._redoStack.pop();
-    if (command === undefined) {
+    const stack = this._redoStack[0]();
+    const entry = stack.at(-1);
+
+    if (entry === undefined) {
       return;
     }
-    let command2 = this._performCommand(command.command);
-    this._undoStack.push({ command: command2, description: command.description });
-    this._hasUndo[1](this._undoStack.length !== 0);
-    this._hasRedo[1](this._redoStack.length !== 0);
-    this._undoDescription[1](this._undoStack?.[0]?.description);
-    this._redoDescription[1](this._redoStack?.[0]?.description);
+
+    const reverseCommand = this._performCommand(entry.command);
+
+    this._redoStack[1](stack.slice(0, -1));
+    this._undoStack[1](undoStack => [
+      ...undoStack,
+      { command: reverseCommand, description: entry.description },
+    ]);
   }
 
-  getStacks(): {
-    undoStack: { command: Command; description: string }[];
-    redoStack: { command: Command; description: string }[];
-  } {
+  getStacks(): { undoStack: CommandEntry[]; redoStack: CommandEntry[] } {
     return {
-      undoStack: this._undoStack,
-      redoStack: this._redoStack,
+      undoStack: this._undoStack[0](),
+      redoStack: this._redoStack[0](),
     };
-  }
-
-  setStacks(params: {
-    undoStack: { command: Command; description: string }[];
-    redoStack: { command: Command; description: string }[];
-  }) {
-    this._undoStack = params.undoStack;
-    this._redoStack = params.redoStack;
-    this._hasUndo[1](this._undoStack.length !== 0);
-    this._hasRedo[1](this._redoStack.length !== 0);
-    this._undoDescription[1](this._undoStack?.[0]?.description);
-    this._redoDescription[1](this._redoStack?.[0]?.description);
   }
 }

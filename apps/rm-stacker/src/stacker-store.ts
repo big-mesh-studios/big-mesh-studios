@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, flush } from "solid-js";
 import { Command } from "./command/Command";
 import { createCommander } from "./command/commander";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
-import { saveToIndexedDB } from "./load-save";
+import { loadFromIndexedDB, saveToIndexedDB } from "./load-save";
 import { Bitmap, Dimensions3D, RGBA, Vector2D } from "./maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
 import { ModeKind, type Dimensions2D, type Sides } from "./types";
@@ -44,20 +44,35 @@ export const createInitialSides = (dimensions: Dimensions3D) => {
 };
 
 export function createStacker() {
-  const undoRedoManager = new UndoRedoManager(command => doCommandAndUpdate(command));
   const enqueue = createEnqueue<Command>();
   const renderSet = new Set<() => void>();
 
+  const saved = createMemo(() =>
+    loadFromIndexedDB(DAWNBRINGER_32_PALETTE).catch(error => {
+      console.error("The saved model could not be read", error);
+      return null;
+    }),
+  );
+
   const [mode, setMode] = createSignal<ModeKind>("Idle");
   const [selectedPaletteIndex, selectPaletteIndex] = createSignal(5);
-  const [palette, setPalette] = createSignal<RGBA[]>(DAWNBRINGER_32_PALETTE);
-  const [sides, setSides] = createSignal<Sides>(createInitialSides(INITIAL_DIMENSIONS));
+  const [palette, setPalette] = createSignal<RGBA[]>(
+    () => saved()?.palette ?? DAWNBRINGER_32_PALETTE,
+  );
+  const [sides, setSides] = createSignal<Sides>(
+    () => saved()?.sides ?? createInitialSides(INITIAL_DIMENSIONS),
+  );
+  const undoRedoManager = new UndoRedoManager(
+    command => doCommandAndUpdate(command),
+    () => saved()?.undoStack ?? [],
+    () => saved()?.redoStack ?? [],
+  );
   const dimensions = createMemo<Dimensions3D>(() => ({
     width: sides().front.width,
     height: sides().front.height,
     depth: sides().left.width,
   }));
-  const [voxels, setVoxels] = createSignal(solveVoxels(dimensions(), sides()));
+  const [voxels, setVoxels] = createSignal(() => solveVoxels(dimensions(), sides()));
   const narrow = createMediaQuery("(max-width: 500px)");
 
   const selectedColour = createMemo(() => palette()[selectedPaletteIndex()]);
