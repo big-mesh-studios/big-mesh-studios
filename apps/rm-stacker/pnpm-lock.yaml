@@ -15,8 +15,8 @@ importers:
         specifier: 0.0.5
         version: 0.0.5
       '@random-mesh/rmsl':
-        specifier: 1.1.3
-        version: 1.1.3
+        specifier: 1.2.1
+        version: 1.2.1
       '@solidjs/signals':
         specifier: 2.0.0-beta.29
         version: 2.0.0-beta.29
@@ -343,8 +343,8 @@ packages:
   '@random-mesh/rm-pan-scale@0.0.5':
     resolution: {integrity: sha512-mm3gLnscMc50oHJV0veREHSVpjxjmcmJrGITfFupc2cH4JpmzMCuy4fw8T7DtJhr5mfxNaO9RwzH1zpuDFiuTQ==}
 
-  '@random-mesh/rmsl@1.1.3':
-    resolution: {integrity: sha512-QFwgGeU2Ng/HVJ/Awn2HQ/PH9dT6J8EyUR3kwzp/99rsykZRI/NEE82kN4iS4WiIj62FXNNrzQ76DJFmZCicOw==}
+  '@random-mesh/rmsl@1.2.1':
+    resolution: {integrity: sha512-9psvTuwTQHXGgyz9LviKN0GbOLiAK5laBABfpSRIRiKg5UE2BDjH3WrWdSz1lKzM5hs7IUijRE6a740QUfnNUw==}
 
   '@rollup/rollup-android-arm-eabi@4.62.3':
     resolution: {integrity: sha512-c0wdcekXtQvvn5Tsrk/+op/gUArrbWaFduBnTLP2l1cKLSQs4diMWjJw3m6A0DdzT8dAAX95KpkJ3qynCePbmw==}
@@ -1376,7 +1376,7 @@ snapshots:
 
   '@random-mesh/rm-pan-scale@0.0.5': {}
 
-  '@random-mesh/rmsl@1.1.3': {}
+  '@random-mesh/rmsl@1.2.1': {}
 
   '@rollup/rollup-android-arm-eabi@4.62.3':
     optional: true

@@ -1,4 +1,5 @@
 import { Dimensions3D } from "./maths";
+import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 import { Axis, Sides, Vector3D } from "./types";
 
 export type ViewSpec = {
@@ -169,5 +170,76 @@ export function solveVoxels(
     }
   }
 
+  // Pack each solid voxel into the shader's 30-bit face-colour format: six
+  // faces, five bits per colour index, with the top two alpha bits marking the
+  // voxel solid. Which side paints which face follows the view raymarches above.
+  const sideByKind = new Map(views.map(view => [view.kind, view]));
+
+  for (let z = 0; z < depth; z++) {
+    for (let y = 0; y < height; y++) {
+      const py = height - 1 - y;
+
+      for (let x = 0; x < width; x++) {
+        const offset = (z * width * height + y * width + x) << 2;
+
+        if (out[offset + 3] === 0) {
+          continue;
+        }
+
+        const front = sideByKind.get("front")!;
+        const back = sideByKind.get("back")!;
+        const left = sideByKind.get("left")!;
+        const right = sideByKind.get("right")!;
+        const top = sideByKind.get("top")!;
+        const bottom = sideByKind.get("bottom")!;
+
+        // front: (x, py), back: (width-1-x, py), left: (z, py),
+        // right: (depth-1-z, py), top: (x, z), bottom: (x, depth-1-z)
+        const f = faceColourIndex(front, x, py);
+        const b = faceColourIndex(back, width - 1 - x, py);
+        const l = faceColourIndex(left, z, py);
+        const r = faceColourIndex(right, depth - 1 - z, py);
+        const t = faceColourIndex(top, x, z);
+        const bo = faceColourIndex(bottom, x, depth - 1 - z);
+
+        out[offset + 0] = f | ((b & 0b111) << 5);
+        out[offset + 1] = ((b >> 3) & 0b11) | ((l & 0b11111) << 2) | ((r & 0b1) << 7);
+        out[offset + 2] = ((r >> 1) & 0b1111) | ((t & 0b1111) << 4);
+        out[offset + 3] = ((t >> 4) & 0b1) | ((bo & 0b11111) << 1) | 0b11000000;
+      }
+    }
+  }
+
   return out;
 }
+
+/**
+ * The index of the palette colour closest to the side pixel at (px, py). The
+ * packed format holds five bits per face, so every colour must be one of the
+ * 32 palette entries; this is the quantisation step.
+ */
+const faceColourIndex = (view: ViewSpec, px: number, py: number): number => {
+  const data = view.side.data;
+  const offset = (py * view.side.width + px) << 2;
+  return nearestPaletteIndex(data[offset], data[offset + 1], data[offset + 2]);
+};
+
+const nearestPaletteIndex = (r: number, g: number, b: number): number => {
+  let best = 0;
+  let bestDistance = Infinity;
+
+  for (let i = 0; i < DAWNBRINGER_32_PALETTE.length; i++) {
+    const colour = DAWNBRINGER_32_PALETTE[i];
+    const dr = colour.r - r;
+    const dg = colour.g - g;
+    const db = colour.b - b;
+    const distance = dr * dr + dg * dg + db * db;
+
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = i;
+    }
+  }
+
+  return best;
+};
