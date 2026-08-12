@@ -214,12 +214,7 @@ const VoxelPreviewView: Component = () => {
       normalizedDimensions().height,
       normalizedDimensions().depth,
     );
-    gl.uniform3f(
-      _webgl.uVoxelCount,
-      _dimensions.width,
-      _dimensions.height,
-      _dimensions.depth,
-    );
+    gl.uniform3f(_webgl.uVoxelCount, _dimensions.width, _dimensions.height, _dimensions.depth);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, _webgl.paletteTexture);
     gl.uniform1i(_webgl.uPaletteLocation, 1);
