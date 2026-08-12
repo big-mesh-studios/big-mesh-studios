@@ -9,6 +9,7 @@ import { createStacker } from "./stacker-store";
 
 const App: Component = () => {
   const stacker = createStacker();
+  const initiallyNarrow = stacker.narrow();
 
   return (
     <StackerContext value={stacker}>
@@ -21,14 +22,18 @@ const App: Component = () => {
           <Split direction={stacker.narrow() ? "row" : "column"}>
             {(() => {
               const pixelEditorPane = (
-                <Split.Pane size="75%" max="245px">
+                <Split.Pane size={initiallyNarrow ? "75%" : "50%"} max="245px">
                   <div style={{ "overflow-x": "auto", position: "absolute", inset: 0 }}>
                     <PixelEditorView />
                   </div>
                 </Split.Pane>
               );
               const voxelPreviewPane = (
-                <Split.Pane style={{ display: "grid" }} size="25%" max="245px">
+                <Split.Pane
+                  style={{ display: "grid" }}
+                  size={initiallyNarrow ? "25%" : "50%"}
+                  max="245px"
+                >
                   <div style="flex-grow: 1; overflow: hidden;">
                     <VoxelPreviewView />
                   </div>
