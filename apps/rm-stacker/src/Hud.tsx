@@ -16,7 +16,6 @@ import { StackerContext } from "./context";
 import styles from "./Hud.module.css";
 import { load, save } from "./load-save";
 import Palette from "./Palette";
-import { createInitialSides } from "./stacker-store";
 
 export function Hud() {
   const {
@@ -28,7 +27,7 @@ export function Hud() {
     requestRender,
     mode,
     setMode,
-    dimensions,
+    reset,
   } = useContext(StackerContext);
 
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
@@ -94,10 +93,8 @@ export function Hud() {
                     return;
                   }
                   undoRedoManager.clear();
-                  setSides(createInitialSides(dimensions()));
-
-                  updateVoxels();
-                  requestRender();
+                  reset();
+                  MenuPopover.close();
                 }}
               />
               <IconButton kind="floppy-disk" label="Save File" onClick={onSave} />
