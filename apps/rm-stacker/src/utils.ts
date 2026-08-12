@@ -129,7 +129,11 @@ export function pointer<T extends HTMLElement>(
 
   function handleFinalEvent(event: PointerEvent) {
     const result = handleEvent(event);
-    element.releasePointerCapture(pointerId);
+    // The same pointer can be followed by more than one caller at a time, and
+    // the first of them to finish is the one that gives the capture back.
+    if (element.hasPointerCapture(pointerId)) {
+      element.releasePointerCapture(pointerId);
+    }
     callback?.(result);
     resolve(result);
     controller.abort();

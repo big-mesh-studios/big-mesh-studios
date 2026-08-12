@@ -1,4 +1,4 @@
-import { Accessor, createEffect, createMemo, createSignal, untrack, useContext } from "solid-js";
+import { Accessor, createSignal, untrack, useContext } from "solid-js";
 import { Command } from "../command/Command";
 import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../context";
@@ -47,7 +47,10 @@ export const createPixelEditorController = ({
       setPan(pan);
       setScale(scale);
     },
-    disable: createMemo(() => !PannableModes.has(mode()) && pointerIds.size !== 0),
+    // Only ever asked at the moment a gesture starts, so it reads the mode and
+    // the pointers that are down as they are right then. A memo here would
+    // never see the set change, since a plain set is nothing to track.
+    disable: () => !PannableModes.has(mode()) && pointerIds.size !== 0,
   });
 
   const edgeController = createEdgeController({
@@ -58,21 +61,20 @@ export const createPixelEditorController = ({
     sidePositions,
   });
 
+  // Every pixel a stroke has changed so far, so that the whole stroke can be
+  // taken back in one step rather than a pixel at a time.
   let undoCommandsReversed: Command[] = [];
-  createEffect(
-    () => pointerIds.size,
-    count => {
-      if (count !== 0 || undoCommandsReversed.length === 0) {
-        return;
-      }
-      const undoCommands = undoCommandsReversed.reverse();
-      undoCommandsReversed = [];
-      pushUndo(
-        Command.sequence(undoCommands),
-        untrack(mode) === "Erase" ? "Erase Pixels" : "Draw Pixels",
-      );
-    },
-  );
+  const pushStrokeUndo = () => {
+    if (undoCommandsReversed.length === 0) {
+      return;
+    }
+    const undoCommands = undoCommandsReversed.reverse();
+    undoCommandsReversed = [];
+    pushUndo(
+      Command.sequence(undoCommands),
+      untrack(mode) === "Erase" ? "Erase Pixels" : "Draw Pixels",
+    );
+  };
 
   const eventToRoundedWorldPosition = (event: PointerEvent & { currentTarget: HTMLElement }) => {
     const screenPointer = { x: event.layerX, y: event.layerY };
@@ -101,6 +103,16 @@ export const createPixelEditorController = ({
     },
     onPointerDown(event: PointerEvent & { currentTarget: HTMLElement }) {
       pointerIds.add(event.pointerId);
+
+      // Whatever the mode below goes on to do with this pointer, the set has to
+      // lose it again when it ends, and the last one to leave closes the stroke.
+      pointer(event).then(() => {
+        pointerIds.delete(event.pointerId);
+
+        if (pointerIds.size === 0) {
+          pushStrokeUndo();
+        }
+      });
 
       const roundedWorldPosition = eventToRoundedWorldPosition(event);
 
@@ -213,7 +225,7 @@ export const createPixelEditorController = ({
 
             const command = commands.length === 1 ? commands[0] : Command.sequence(commands);
             undoCommandsReversed.push(doCommand(command));
-          }).then(() => pointerIds.delete(event.pointerId));
+          });
         }
       }
     },
@@ -224,6 +236,16 @@ export const createPixelEditorController = ({
           edgeController.onPointerMove(event);
         }
       }
+    },
+    // The pixel under the pointer is painted on the canvas, so it has to stop
+    // being painted once the pointer is no longer over it. Leaving raises the
+    // first of these, and a gesture the browser takes over raises the second
+    // without the pointer ever leaving.
+    onPointerOut() {
+      setRoundedWorldPosition(undefined);
+    },
+    onPointerCancel() {
+      setRoundedWorldPosition(undefined);
     },
     onWheel: panScaleControl.onWheel,
   };
