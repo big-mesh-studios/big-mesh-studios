@@ -257,19 +257,22 @@ export const createPixelEditorController = ({
     scale,
     cursor: cursorStyle,
     overlayDrawing() {
-      const position = roundedWorldPosition();
-
       if (mode() === "Idle") {
         return;
       }
+
+      const position = roundedWorldPosition();
 
       if (!position) {
         return;
       }
 
       return (ctx: CanvasRenderingContext2D) => {
-        ctx.fillStyle = "green";
+        ctx.fillStyle = RGBA.toCSS(selectedColour());
         ctx.fillRect(position.x, position.y, 1.0, 1.0);
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 1 / scale();
+        ctx.strokeRect(position.x, position.y, 1.0, 1.0);
       };
     },
     onPointerDown,
