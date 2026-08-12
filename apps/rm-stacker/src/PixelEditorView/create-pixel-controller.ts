@@ -138,15 +138,16 @@ export const createPixelEditorController = ({
         break;
       }
       case "Idle": {
-        // A gesture that is already running claims the fingers that join it.
-        // A resize is the work of the one finger that started it, so later
-        // ones have nothing to do; a drag takes them so that a second finger
-        // turns it into a pinch rather than grabbing an edge it happens to
-        // have landed on.
+        // A resize is the work of the one finger that started it. There is
+        // nothing for a later finger to join, and letting it through would
+        // either grab a second edge or start a drag underneath the resize.
         if (edgeController.active()) {
           break;
         }
 
+        // A drag does take the fingers that arrive while it runs, so that a
+        // second one turns it into a pinch instead of grabbing an edge it
+        // happens to have landed on.
         if (!panScaleControl.active() && edgeController.onPointerDown(event)) {
           return;
         }
