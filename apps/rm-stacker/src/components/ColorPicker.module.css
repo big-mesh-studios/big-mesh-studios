@@ -30,6 +30,7 @@
       #f0f 83.333%,
       #f00 100%
     );
+  border-radius: 1px;
 }
 
 .slider {
@@ -42,6 +43,7 @@
   composes: slider;
   grid-area: brightness;
   background-image: linear-gradient(to top, #000, var(--full-value-colour));
+  border-radius: 1px;
 }
 
 /* `--overlay` is the only layer that differs between the alpha slider and the
@@ -70,6 +72,7 @@
   composes: slider;
   composes: checkered;
   grid-area: alpha;
+  border-radius: 1px;
   --overlay: linear-gradient(to top, transparent, var(--opaque-colour));
 }
 
@@ -78,6 +81,7 @@
   grid-area: output;
   aspect-ratio: 1;
   align-self: end;
+  border-radius: 1px;
   --overlay: linear-gradient(var(--colour), var(--colour));
 }
 
