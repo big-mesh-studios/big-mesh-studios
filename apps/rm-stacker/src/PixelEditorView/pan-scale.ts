@@ -39,6 +39,8 @@ export interface PanScaleControlParams {
 }
 
 export interface PanScaleControl {
+  /** Whether a finger is already dragging, so later fingers join what it started. */
+  active(): boolean;
   onPointerDown(e: PointerEvent & { currentTarget: HTMLElement }): boolean;
   onWheel(e: WheelEvent): void;
 }
@@ -70,6 +72,7 @@ export function createPanScaleControl({
   };
 
   return {
+    active: () => activePointers.size > 0,
     onPointerDown(event: PointerEvent & { currentTarget: HTMLElement }) {
       if (disable?.()) {
         return false;

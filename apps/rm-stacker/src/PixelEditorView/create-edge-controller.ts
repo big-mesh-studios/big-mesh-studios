@@ -125,7 +125,12 @@ export function createEdgeController({
     return { sideKind: kind, edgeKinds };
   };
 
+  // A resize belongs to the one finger that started it, so the caller can tell
+  // that a second finger has nothing to start here.
+  let resizing = false;
+
   return {
+    active: () => resizing,
     onPointerMove(event: PointerEvent & { currentTarget: HTMLElement }) {
       const screenPosition = { x: event.layerX, y: event.layerY };
       const worldPosition = screenToWorld(screenPosition, pan(), scale());
@@ -167,6 +172,8 @@ export function createEdgeController({
       const initialDimensions = { ...dimensions() };
       const initialSides = { ...sides() };
       const initialPan = { ...pan() };
+
+      resizing = true;
 
       event.currentTarget.setPointerCapture(event.pointerId);
 
@@ -232,6 +239,8 @@ export function createEdgeController({
         ) {
           pushUndo(snapshot(initialSides), "Resize");
         }
+
+        resizing = false;
       });
 
       return true;
