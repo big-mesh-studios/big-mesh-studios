@@ -49,6 +49,7 @@
 .menuPopover:popover-open {
   top: calc(anchor(top));
   left: calc(anchor(right) + var(--margin));
+  font-size: 11pt;
 }
 
 .palettePopover:popover-open {
