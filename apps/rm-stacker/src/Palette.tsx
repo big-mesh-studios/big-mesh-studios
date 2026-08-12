@@ -16,7 +16,7 @@ function Palette(props: { class?: string }) {
   const [openedColour, setOpenedColour] = createSignal<number | undefined>();
 
   createEffect(openedColour, openedColour => {
-    if (!openedColour) {
+    if (openedColour === undefined) {
       ColourPickerPopover.close();
       return;
     }
@@ -56,14 +56,14 @@ function Palette(props: { class?: string }) {
         ref={popover!}
       >
         <ColourPicker
-          colour={openedColour() ? palette()[openedColour()!] : undefined}
+          colour={openedColour() !== undefined ? palette()[openedColour()!] : undefined}
           onColour={colour => {
-            const _activeColour = openedColour();
-            if (!_activeColour) {
+            const _openedColour = openedColour();
+            if (_openedColour === undefined) {
               return;
             }
             setPalette(palette => {
-              palette[_activeColour] = colour;
+              palette[_openedColour] = colour;
               return [...palette];
             });
           }}
