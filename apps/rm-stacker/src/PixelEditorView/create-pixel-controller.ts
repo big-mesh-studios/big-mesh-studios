@@ -3,17 +3,33 @@ import { Command } from "../command/Command";
 import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../context";
 import { RGBA, Vector2D } from "../maths";
-import { SideKind } from "../types";
+import { Dimensions2D, SideKind, Sides } from "../types";
 import { pointer, screenToWorld } from "../utils";
 import { createEdgeController } from "./create-edge-controller";
 import { createPanScaleControl } from "./pan-scale";
 import { intersectSides, SidePositions } from "./side-layout";
 
-const getOppositePixel = (kind: SideKind, position: Vector2D, side: ImageData): Vector2D => {
+const getOppositePosition = (kind: SideKind, position: Vector2D, side: Dimensions2D): Vector2D => {
   if (kind === "top" || kind === "bottom") {
     return { x: position.x, y: side.height - position.y - 1 };
   }
   return { x: side.width - position.x - 1, y: position.y };
+};
+
+const getOppositePixel = (kind: SideKind, position: Vector2D, sides: Sides) => {
+  const oppositePosition = getOppositePosition(kind, position, sides[kind]);
+  const oppositeKind = OPPOSING_SIDE[kind];
+  const oppositeSide = sides[oppositeKind];
+  const oppositeOpacity =
+    sides[oppositeKind].data[
+      ((oppositePosition.y * oppositeSide.width + oppositePosition.x) << 2) + 3
+    ];
+  return {
+    kind: oppositeKind,
+    side: oppositeSide,
+    opacity: oppositeOpacity,
+    position: oppositePosition,
+  };
 };
 
 const PannableModes = new Set(["Idle", "Eyedrop"]);
@@ -32,9 +48,8 @@ export const createPixelEditorController = ({
   const { sides, selectedColour, selectPaletteIndex, palette, mode } = useContext(StackerContext);
 
   const [pan, setPan] = createSignal({ x: -10.0, y: -10.0 });
-  const [cursorStyle, setCursorStyle] = createSignal<string>();
   const [scale, setScale] = createSignal(8);
-
+  const [cursorStyle, setCursorStyle] = createSignal<string>();
   const [roundedWorldPosition, setRoundedWorldPosition] = createSignal<Vector2D>();
 
   const pointerIds = new Set<number>();
@@ -162,6 +177,43 @@ export const createPixelEditorController = ({
           break;
         }
 
+        case "Fill": {
+          const _selectedColour = selectedColour();
+          const commands: Command[] = [];
+
+          const worldPointer = eventToRoundedWorldPosition(event);
+
+          const intersection = intersectSides({
+            worldPosition: worldPointer,
+            sides: sides(),
+            sidePositions: sidePositions(),
+          });
+
+          if (!intersection) {
+            return;
+          }
+
+          const { kind, position } = intersection;
+          const opposite = getOppositePixel(kind, position, sides());
+
+          if (_selectedColour !== undefined) {
+            commands.push(Command.fillPixel(kind, position, _selectedColour));
+
+            if (!opposite.opacity) {
+              commands.push(Command.fillPixel(opposite.kind, opposite.position, _selectedColour));
+            }
+          }
+
+          if (commands.length === 0) {
+            return;
+          }
+
+          const command = commands.length === 1 ? commands[0] : Command.sequence(commands);
+          undoCommandsReversed.push(doCommand(command));
+
+          return;
+        }
+
         default: {
           if (pointerIds.size !== 1) {
             return;
@@ -180,18 +232,8 @@ export const createPixelEditorController = ({
               return;
             }
 
-            const { side, kind, position } = intersection;
-
-            const oppositePixel = getOppositePixel(kind, position, side);
-            const oppositeKind = OPPOSING_SIDE[kind];
-
-            const _sides = sides();
-
-            const oppositeSide = _sides[oppositeKind];
-            const oppositeOpacity =
-              _sides[oppositeKind].data[
-                ((oppositePixel.y * oppositeSide.width + oppositePixel.x) << 2) + 3
-              ];
+            const { kind, position } = intersection;
+            const opposite = getOppositePixel(kind, position, sides());
 
             const commands: Command[] = [];
 
@@ -199,8 +241,8 @@ export const createPixelEditorController = ({
               case "Erase": {
                 commands.push(Command.erasePixel(kind, position));
 
-                if (oppositeOpacity) {
-                  commands.push(Command.erasePixel(oppositeKind, oppositePixel));
+                if (opposite.opacity) {
+                  commands.push(Command.erasePixel(opposite.kind, opposite.position));
                 }
 
                 break;
@@ -211,8 +253,10 @@ export const createPixelEditorController = ({
                 if (_selectedColour !== undefined) {
                   commands.push(Command.writePixel(kind, position, _selectedColour));
 
-                  if (!oppositeOpacity) {
-                    commands.push(Command.writePixel(oppositeKind, oppositePixel, _selectedColour));
+                  if (!opposite.opacity) {
+                    commands.push(
+                      Command.writePixel(opposite.kind, opposite.position, _selectedColour),
+                    );
                   }
                 }
 
@@ -224,8 +268,10 @@ export const createPixelEditorController = ({
                 if (_selectedColour !== undefined) {
                   commands.push(Command.fillPixel(kind, position, _selectedColour));
 
-                  if (!oppositeOpacity) {
-                    commands.push(Command.fillPixel(oppositeKind, oppositePixel, _selectedColour));
+                  if (!opposite.opacity) {
+                    commands.push(
+                      Command.fillPixel(opposite.kind, opposite.position, _selectedColour),
+                    );
                   }
                 }
 
