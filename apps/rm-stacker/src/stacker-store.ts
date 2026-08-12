@@ -13,6 +13,7 @@ import { solveVoxels } from "./voxel-solver";
 const INITIAL_DIMENSIONS = { width: 15, height: 15, depth: 15 };
 
 const createInitialImageData = (
+  palette: RGBA[],
   dimensions: Dimensions2D | number,
   padding: Vector2D | number,
 ): ImageData => {
@@ -26,23 +27,23 @@ const createInitialImageData = (
     for (let x = 0; x < dimensions.width - padding.x * 2; x++) {
       const i = ((padding.y + y) * dimensions.width + (padding.x + x)) << 2;
 
-      data.data[i + 0] = 0;
-      data.data[i + 1] = 0;
-      data.data[i + 2] = 255;
+      data.data[i + 0] = palette[5].r;
+      data.data[i + 1] = palette[5].g;
+      data.data[i + 2] = palette[5].b;
       data.data[i + 3] = 255;
     }
   }
   return data;
 };
 
-export const createInitialSides = (dimensions: Dimensions3D) => {
+export const createInitialSides = (palette: RGBA[], dimensions: Dimensions3D) => {
   return {
-    front: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 1),
-    back: createInitialImageData({ width: dimensions.width, height: dimensions.height }, 1),
-    left: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 1),
-    right: createInitialImageData({ width: dimensions.depth, height: dimensions.height }, 1),
-    top: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 1),
-    bottom: createInitialImageData({ width: dimensions.width, height: dimensions.depth }, 1),
+    front: createInitialImageData(palette, dimensions, 1),
+    back: createInitialImageData(palette, dimensions, 1),
+    left: createInitialImageData(palette, dimensions, 1),
+    right: createInitialImageData(palette, dimensions, 1),
+    top: createInitialImageData(palette, dimensions, 1),
+    bottom: createInitialImageData(palette, dimensions, 1),
   };
 };
 
@@ -54,7 +55,7 @@ export function createStacker() {
   const [mode, setMode] = createSignal<ModeKind>("Idle");
   const [selectedPaletteIndex, selectPaletteIndex] = createSignal(5);
   const [palette, setPalette] = createSignal<RGBA[]>(DAWNBRINGER_32_PALETTE);
-  const [sides, setSides] = createSignal<Sides>(createInitialSides(INITIAL_DIMENSIONS));
+  const [sides, setSides] = createSignal<Sides>(createInitialSides(palette(), INITIAL_DIMENSIONS));
   const dimensions = createMemo<Dimensions3D>(() => ({
     width: sides().front.width,
     height: sides().front.height,
@@ -193,7 +194,7 @@ export function createStacker() {
       return () => renderSet.delete(callback);
     },
     reset() {
-      setSides(createInitialSides(INITIAL_DIMENSIONS));
+      setSides(createInitialSides(palette(), INITIAL_DIMENSIONS));
       updateVoxels();
       requestAutoSave();
     },
