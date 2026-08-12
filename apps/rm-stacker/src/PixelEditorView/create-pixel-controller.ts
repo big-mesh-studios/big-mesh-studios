@@ -268,7 +268,11 @@ export const createPixelEditorController = ({
       }
 
       return (ctx: CanvasRenderingContext2D) => {
-        ctx.fillStyle = RGBA.toCSS(selectedColour());
+        ctx.fillStyle =
+          mode() === "Erase"
+            ? // var(--back)
+              "oklch(23.26% .014 253.1)"
+            : RGBA.toCSS(selectedColour());
         ctx.fillRect(position.x, position.y, 1.0, 1.0);
         ctx.strokeStyle = "white";
         ctx.lineWidth = 1 / scale();
