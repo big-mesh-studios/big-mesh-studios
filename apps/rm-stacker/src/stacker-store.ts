@@ -10,7 +10,7 @@ import { UndoRedoManager } from "./undo-redo";
 import { createEnqueue, createMediaQuery } from "./utils";
 import { solveVoxels } from "./voxel-solver";
 
-const INITIAL_DIMENSIONS = { width: 3, height: 5, depth: 4 };
+const INITIAL_DIMENSIONS = { width: 15, height: 15, depth: 15 };
 
 const createInitialImageData = (
   dimensions: Dimensions2D | number,
