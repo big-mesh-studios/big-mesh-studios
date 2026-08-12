@@ -21,12 +21,13 @@ export async function load(blob: Blob): Promise<Sides> {
         const rawDecoded = decode(new Uint8Array(arrayBuffer));
         const clampedData = new Uint8ClampedArray(rawDecoded.data.buffer as ArrayBuffer);
         result[side] = new ImageData(clampedData, rawDecoded.width, rawDecoded.height);
+        seenSize ??= rawDecoded.width;
       }
     }
   }
-  if (seenSize == undefined) {
-    seenSize = 32;
-  }
+  // Only reached by a file that carries no side at all, since any side that did
+  // arrive has already set this to a size the rest of the model agrees with.
+  seenSize ??= 32;
   for (let side of keysOf(sideKindSet)) {
     if (result[side] === undefined) {
       result[side] = new ImageData(seenSize, seenSize);
