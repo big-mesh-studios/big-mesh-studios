@@ -53,6 +53,22 @@ export function createPanScaleControl({
 }: PanScaleControlParams): PanScaleControl {
   const activePointers = new Map<number, Vector2D>();
 
+  // A pinch is measured from one frame to the next, so how far apart the fingers
+  // were and where their midpoint sat belong to the gesture rather than to
+  // either finger, and both fingers read and write them.
+  let previousSpan: { distance: number; center: Vector2D } | undefined;
+
+  const measureSpan = () => {
+    const [first, second] = Array.from(activePointers.values());
+    return {
+      distance: Math.hypot(second.x - first.x, second.y - first.y),
+      center: {
+        x: 0.5 * (first.x + second.x),
+        y: 0.5 * (first.y + second.y),
+      },
+    };
+  };
+
   return {
     onPointerDown(event: PointerEvent & { currentTarget: HTMLElement }) {
       if (disable?.()) {
@@ -60,67 +76,69 @@ export function createPanScaleControl({
       }
 
       const initialScreenPosition = { x: event.layerX, y: event.layerY };
-      const initialWorldPosition = screenToWorld(initialScreenPosition, pan(), scale());
       activePointers.set(event.pointerId, initialScreenPosition);
 
-      if (activePointers.size > 1) {
-        pointer(event).then(() => activePointers.delete(event.pointerId));
-        return true;
-      }
-
-      let previousDistance: number;
-      let previousCenter: Vector2D;
+      // Where the world sat under this finger when the gesture it is currently
+      // part of began. A finger joining or leaving changes what the gesture
+      // measures, so this is taken again whenever that happens.
+      let anchorWorldPosition = screenToWorld(initialScreenPosition, pan(), scale());
+      let anchoredPointerCount = activePointers.size;
+      previousSpan = undefined;
 
       pointer(event, ({ event }) => {
         const screenPosition = { x: event.layerX, y: event.layerY };
-        const worldPosition = screenToWorld(screenPosition, pan(), scale());
+
+        // Keep this finger's position current, so a pinch measures the span
+        // between where both fingers are now rather than where they went down.
+        activePointers.set(event.pointerId, screenPosition);
+
+        if (activePointers.size !== anchoredPointerCount) {
+          anchorWorldPosition = screenToWorld(screenPosition, pan(), scale());
+          anchoredPointerCount = activePointers.size;
+          previousSpan = undefined;
+        }
 
         if (activePointers.size === 1) {
-          // Single finger drag / pan
+          // One finger drags the world along under itself.
           onUpdate(
             {
-              x: initialWorldPosition.x - screenPosition.x / scale(),
-              y: initialWorldPosition.y - screenPosition.y / scale(),
+              x: anchorWorldPosition.x - screenPosition.x / scale(),
+              y: anchorWorldPosition.y - screenPosition.y / scale(),
             },
             scale(),
           );
-        } else if (activePointers.size === 2) {
-          // Two finger pinch-zoom & pan
-          const pointers = Array.from(activePointers.values());
-          const deltaX = pointers[1].x - pointers[0].x;
-          const deltaY = pointers[1].y - pointers[0].y;
-          const currentDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-          const currentCenter = {
-            x: 0.5 * (pointers[0].x + pointers[1].x),
-            y: 0.5 * (pointers[0].y + pointers[1].y),
-          };
-
-          if (!previousDistance || !previousCenter) {
-            const pointers = Array.from(activePointers.values());
-            const deltaX = pointers[1].x - pointers[0].x;
-            const deltaY = pointers[1].y - pointers[0].y;
-            previousDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-            previousCenter = {
-              x: 0.5 * (pointers[0].x + pointers[1].x),
-              y: 0.5 * (pointers[0].y + pointers[1].y),
-            };
-          } else if (previousDistance > 0) {
-            const oldScale = scale();
-            const newScale = Math.max(minScale, oldScale * (currentDistance / previousDistance));
-
-            // Keep that world point under the current midpoint (zoom + pan)
-            const newPan = {
-              x: worldPosition.x - currentCenter.x / newScale,
-              y: worldPosition.y - currentCenter.y / newScale,
-            };
-
-            onUpdate(newPan, newScale);
-          }
-
-          previousDistance = currentDistance;
-          previousCenter = currentCenter;
+          return;
         }
-      }).then(() => activePointers.delete(event.pointerId));
+
+        if (activePointers.size !== 2) {
+          return;
+        }
+
+        // Two fingers zoom by however much the span between them grew and pan by
+        // however far their midpoint travelled.
+        const span = measureSpan();
+
+        if (previousSpan !== undefined && previousSpan.distance > 0) {
+          const newScale = Math.max(minScale, scale() * (span.distance / previousSpan.distance));
+
+          // Whatever sat under the midpoint a frame ago should still sit under
+          // the midpoint now, at the scale the pinch has just asked for.
+          const anchor = screenToWorld(previousSpan.center, pan(), scale());
+
+          onUpdate(
+            {
+              x: anchor.x - span.center.x / newScale,
+              y: anchor.y - span.center.y / newScale,
+            },
+            newScale,
+          );
+        }
+
+        previousSpan = span;
+      }).then(() => {
+        activePointers.delete(event.pointerId);
+        previousSpan = undefined;
+      });
 
       return true;
     },

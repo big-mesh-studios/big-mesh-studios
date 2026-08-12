@@ -139,15 +139,26 @@ export function pointer<T extends HTMLElement>(
     controller.abort();
   }
 
+  // A second finger on the same element raises its own events here. They belong
+  // to whichever call is following that pointer, so anything that is not this
+  // one has to be passed over rather than mistaken for this drag moving or
+  // ending.
+  const forThisPointer = (handle: (event: PointerEvent) => void) => (event: PointerEvent) => {
+    if (event.pointerId !== pointerId) {
+      return;
+    }
+    handle(event);
+  };
+
   if (callback) {
     element.addEventListener(
       "pointermove",
-      (event: PointerEvent) => callback(handleEvent(event)),
+      forThisPointer(event => callback(handleEvent(event))),
       controller,
     );
   }
-  element.addEventListener("pointercancel", handleFinalEvent, controller);
-  element.addEventListener("pointerup", handleFinalEvent, controller);
+  element.addEventListener("pointercancel", forThisPointer(handleFinalEvent), controller);
+  element.addEventListener("pointerup", forThisPointer(handleFinalEvent), controller);
 
   return promise;
 }
