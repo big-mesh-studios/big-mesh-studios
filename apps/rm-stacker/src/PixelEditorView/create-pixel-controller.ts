@@ -1,19 +1,12 @@
-import { createPanScaleControl } from "@random-mesh/rm-pan-scale";
-import {
-  Accessor,
-  createEffect,
-  createMemo,
-  createSignal,
-  latest,
-  untrack,
-  useContext,
-} from "solid-js";
+import { Accessor, createEffect, createMemo, createSignal, untrack, useContext } from "solid-js";
 import { Command } from "../command/Command";
 import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../context";
 import { RGBA, Vector2D } from "../maths";
 import { SideKind } from "../types";
+import { screenToWorld } from "../utils";
 import { createEdgeController } from "./create-edge-controller";
+import { createPanScaleControl } from "./pan-scale";
 import { intersectSides, SidePositions } from "./side-layout";
 
 const getOppositePixel = (kind: SideKind, position: Vector2D, side: ImageData): Vector2D => {
@@ -44,46 +37,18 @@ export const createPixelEditorController = ({
   const [pointerids, setPointerids] = createSignal(new Set<number>(), { equals: false });
   const [screenPointer, setCursorScreenPosition] = createSignal<Vector2D>();
 
-  const worldPointer = createMemo<Vector2D | undefined>(() => {
-    const _screenPointer = screenPointer();
+  const worldPointer = createMemo<Vector2D | undefined>(
+    previous => {
+      const _screenPointer = screenPointer();
 
-    if (_screenPointer === undefined) {
-      return undefined;
-    }
+      if (_screenPointer === undefined) {
+        return undefined;
+      }
 
-    return screenToWorld(_screenPointer);
-  });
-
-  const panScaleControllerSetters = {
-    setPanX: (value: number) => {
-      setPan(p => ({ x: value, y: p.y }));
+      return screenToWorld(_screenPointer, pan(), scale(), previous);
     },
-    setPanY: (value: number) => {
-      setPan(p => ({ x: p.x, y: value }));
-    },
-    setScale,
-  };
-
-  const shouldDisablePanScaleControl = createMemo(
-    () => !PannableModes.has(mode()) && pointerids().size !== 0,
+    { equals: false },
   );
-
-  const panScaleControl = createPanScaleControl({
-    target: canvas,
-    scale,
-    panX: () => pan().x,
-    panY: () => pan().y,
-    onUpdate: fn => fn(panScaleControllerSetters),
-    disable: shouldDisablePanScaleControl,
-  });
-
-  const screenToWorld = (pt: Vector2D): Vector2D => {
-    const out = { ...pt };
-    Vector2D.multiplyScalar(pt, 1.0 / latest(scale), out);
-    Vector2D.add(out, latest(pan), out);
-    return out;
-  };
-
   const roundedWorldPointer = createMemo<Vector2D | undefined>(
     previous => {
       const _worldPointer = worldPointer();
@@ -97,8 +62,19 @@ export const createPixelEditorController = ({
     { equals: false },
   );
 
+  const panScaleControl = createPanScaleControl({
+    target: canvas,
+    scale,
+    pan,
+    onUpdate(pan, scale) {
+      setPan(pan);
+      setScale(scale);
+    },
+    disable: createMemo(() => !PannableModes.has(mode()) && pointerids().size !== 0),
+  });
+
   const edgeController = createEdgeController({
-    worldPointer: worldPointer,
+    worldPointer,
     pan,
     scale,
     setCursorStyle,
@@ -227,8 +203,9 @@ export const createPixelEditorController = ({
         ctx.fillRect(position.x, position.y, 1.0, 1.0);
       };
     },
-    onPointerDown(e: PointerEvent) {
-      setPointerids(set => set.add(e.pointerId));
+    onPointerDown(event: PointerEvent & { currentTarget: HTMLElement }) {
+      setPointerids(set => set.add(event.pointerId));
+      setCursorScreenPosition({ x: event.clientX, y: event.clientY });
 
       switch (untrack(mode)) {
         case "Eyedrop": {
@@ -260,8 +237,7 @@ export const createPixelEditorController = ({
           break;
         }
         case "Idle": {
-          const edgeCollision = edgeController.onPointerDown(e);
-          if (edgeCollision) {
+          if (edgeController.onPointerDown(event)) {
             return;
           }
 
@@ -269,31 +245,21 @@ export const createPixelEditorController = ({
         }
       }
 
-      panScaleControl.onPointerDown(e);
+      panScaleControl.onPointerDown(event);
     },
     onPointerUp(e: PointerEvent) {
       setPointerids(set => {
         set.delete(e.pointerId);
         return set;
       });
-      panScaleControl.onPointerUp(e);
-      edgeController.onPointerEnd();
     },
     onPointerCancel(e: PointerEvent) {
       setPointerids(set => {
         set.delete(e.pointerId);
         return set;
       });
-      panScaleControl.onPointerCancel(e);
-      edgeController.onPointerEnd();
     },
     onPointerMove(e: PointerEvent) {
-      if (mode() === "Idle") {
-        edgeController.onPointerMove(e);
-      }
-
-      panScaleControl.onPointerMove(e);
-
       const _canvas = canvas();
       if (_canvas === undefined) {
         return;
@@ -302,7 +268,12 @@ export const createPixelEditorController = ({
       const rect = _canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
+
       setCursorScreenPosition({ x, y });
+
+      if (mode() === "Idle") {
+        edgeController.onPointerMove();
+      }
     },
     onPointerOut(_e: PointerEvent) {
       setCursorScreenPosition();

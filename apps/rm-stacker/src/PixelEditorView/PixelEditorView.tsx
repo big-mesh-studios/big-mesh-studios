@@ -272,15 +272,7 @@ const PixelEditorView: Component = () => {
   });
 
   createEffect(
-    () => [
-      canvasSize(),
-      controller.pan(),
-      controller.scale(),
-      controller.overlayDrawing(),
-      // The corner markers are only drawn while idle, so a mode switch changes
-      // the picture.
-      mode(),
-    ],
+    () => [canvasSize(), controller.pan(), controller.scale(), controller.overlayDrawing(), mode()],
     () => render(),
   );
 

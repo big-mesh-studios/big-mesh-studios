@@ -1,9 +1,10 @@
 import { Setter } from "@solidjs/signals";
-import { Accessor, createSignal, useContext } from "solid-js";
+import { Accessor, useContext } from "solid-js";
 import { SIDE_AXES } from "../constants";
 import { StackerContext } from "../context";
 import { Dimensions3D, Vector2D } from "../maths";
-import { Alignment3D, AlignmentKind, SideKind, Sides } from "../types";
+import { Alignment3D, AlignmentKind, SideKind } from "../types";
+import { pointer, screenToWorld } from "../utils";
 import { computeSidePositions, intersectSides, SidePositions } from "./side-layout";
 
 type EdgeKind = "top" | "bottom" | "left" | "right";
@@ -85,22 +86,9 @@ export function createEdgeController({
   sidePositions: Accessor<SidePositions>;
 }) {
   const { sides, resize, pushUndo, snapshot, dimensions } = useContext(StackerContext);
-  const [activeEdge, setActiveEdge] = createSignal<{
-    edge: ActiveSideEdge;
-    initialPosition: Vector2D;
-    initialDimensions: Dimensions3D;
-    initialSides: Sides;
-    initialPan: Vector2D;
-  }>();
 
   const EDGE_TRESHOLD = 10;
-  const findColidingEdge = (): ActiveSideEdge | false => {
-    const _worldPointer = worldPointer();
-
-    if (!_worldPointer) {
-      return false;
-    }
-
+  const findColidingEdge = (_worldPointer: Vector2D): ActiveSideEdge | false => {
     const intersection = intersectSides({
       worldPosition: _worldPointer,
       sides: sides(),
@@ -139,15 +127,21 @@ export function createEdgeController({
     return { sideKind: kind, edgeKinds };
   };
 
-  function updateCursor() {
-    const collidingEdge = findColidingEdge();
+  return {
+    onPointerMove() {
+      const _worldPointer = worldPointer();
+      const collidingEdge = _worldPointer && findColidingEdge(_worldPointer);
 
-    // Update cursor
-    if (collidingEdge) {
+      if (!collidingEdge) {
+        setCursorStyle(undefined);
+        return;
+      }
+
       const n = collidingEdge.edgeKinds.includes("bottom");
       const s = collidingEdge.edgeKinds.includes("top");
       const e = collidingEdge.edgeKinds.includes("left");
       const w = collidingEdge.edgeKinds.includes("right");
+
       if ((n && e) || (s && w)) {
         setCursorStyle("nesw-resize");
       } else if ((n && w) || (s && e)) {
@@ -157,125 +151,89 @@ export function createEdgeController({
       } else if (e || w) {
         setCursorStyle("col-resize");
       }
-    } else {
-      setCursorStyle(undefined);
-    }
-  }
-
-  return {
-    active: () => !!activeEdge(),
-    onPointerEnd: () => {
-      const _activeEdge = activeEdge();
-      if (!_activeEdge) {
-        return;
-      }
-
-      if (
-        _activeEdge.initialDimensions.width !== dimensions().width ||
-        _activeEdge.initialDimensions.height !== dimensions().height ||
-        _activeEdge.initialDimensions.depth !== dimensions().depth
-      ) {
-        pushUndo(snapshot(_activeEdge.initialSides), "Resize");
-      }
-
-      setActiveEdge(undefined);
     },
-    onPointerDown(event: PointerEvent) {
-      const _mouseWorldPos = worldPointer();
+    onPointerDown(event: PointerEvent & { currentTarget: HTMLElement }) {
+      const screenPosition = { x: event.layerX, y: event.layerY };
+      const worldPosition = screenToWorld(screenPosition, pan(), scale());
 
-      if (!_mouseWorldPos) {
+      const collidingEdge = findColidingEdge(worldPosition);
+
+      if (!collidingEdge) {
         return false;
       }
 
-      const collidingEdge = findColidingEdge();
+      const { edgeKinds, sideKind } = collidingEdge;
+      const initialDimensions = { ...dimensions() };
+      const initialSides = { ...sides() };
+      const initialPan = { ...pan() };
 
-      if (collidingEdge) {
-        setActiveEdge({
-          edge: collidingEdge,
-          initialPosition: { x: event.clientX, y: event.clientY },
-          initialDimensions: { ...dimensions() },
-          // Every step of the drag re-frames these rather than the panels of the
-          // step before, so pulling an edge back out restores what shrinking it
-          // pushed out of the box.
-          initialSides: sides(),
-          initialPan: pan(),
+      event.currentTarget.setPointerCapture(event.pointerId);
+
+      pointer(event, ({ event }) => {
+        const delta = {
+          x: Math.round((event.layerX - screenPosition.x) / scale()),
+          y: Math.round((event.layerY - screenPosition.y) / scale()),
+        };
+
+        const newDimensions = { ...initialDimensions };
+        const alignment: Alignment3D = {};
+
+        for (const edgeKind of edgeKinds) {
+          const dimensionKind = getDimensionKind(sideKind, edgeKind);
+
+          newDimensions[dimensionKind] = Math.max(
+            MIN_DIMENSION,
+            newDimensions[dimensionKind] + delta[EDGE_TO_AXIS[edgeKind]] * EDGE_TO_SIGN[edgeKind],
+          );
+          alignment[dimensionKind] = getDimensionEnd(sideKind, edgeKind);
+        }
+
+        // Both the panels and the pan follow whole pixels, so most moves land on
+        // the dimensions we already have and there is nothing to re-frame.
+        if (Dimensions3D.equals(newDimensions, dimensions())) {
+          return;
+        }
+
+        // Keep the dragged edge under the pointer. Resizing already moves an edge
+        // by however much its own panel grew and shifted, so only the difference
+        // between that and the distance dragged is left for the pan to cover.
+        const newPan = { ...initialPan };
+
+        for (const edgeKind of edgeKinds) {
+          const dimensionKind = getDimensionKind(sideKind, edgeKind);
+          const dragged =
+            (newDimensions[dimensionKind] - initialDimensions[dimensionKind]) *
+            EDGE_TO_SIGN[edgeKind];
+          const moved =
+            getEdgePosition(sideKind, edgeKind, newDimensions) -
+            getEdgePosition(sideKind, edgeKind, initialDimensions);
+
+          newPan[EDGE_TO_AXIS[edgeKind]] += moved - dragged;
+        }
+
+        resize({
+          from: {
+            sides: initialSides,
+            dimensions: initialDimensions,
+          },
+          to: {
+            dimensions: newDimensions,
+            alignment,
+          },
         });
 
-        return true;
-      }
-
-      return false;
-    },
-    onPointerMove(event: PointerEvent) {
-      updateCursor();
-
-      const _activeEdge = activeEdge();
-
-      if (!_activeEdge) {
-        return;
-      }
-
-      const {
-        initialPosition,
-        edge: { sideKind, edgeKinds },
-        initialDimensions,
-        initialSides,
-        initialPan,
-      } = _activeEdge;
-
-      const delta = {
-        x: Math.round((event.clientX - initialPosition.x) / scale()),
-        y: Math.round((event.clientY - initialPosition.y) / scale()),
-      };
-
-      const newDimensions = { ...initialDimensions };
-      const alignment: Alignment3D = {};
-
-      for (const edgeKind of edgeKinds) {
-        const dimensionKind = getDimensionKind(sideKind, edgeKind);
-
-        newDimensions[dimensionKind] = Math.max(
-          MIN_DIMENSION,
-          newDimensions[dimensionKind] + delta[EDGE_TO_AXIS[edgeKind]] * EDGE_TO_SIGN[edgeKind],
-        );
-        alignment[dimensionKind] = getDimensionEnd(sideKind, edgeKind);
-      }
-
-      // Both the panels and the pan follow whole pixels, so most moves land on
-      // the dimensions we already have and there is nothing to re-frame.
-      if (Dimensions3D.equals(newDimensions, dimensions())) {
-        return;
-      }
-
-      // Keep the dragged edge under the pointer. Resizing already moves an edge
-      // by however much its own panel grew and shifted, so only the difference
-      // between that and the distance dragged is left for the pan to cover.
-      const newPan = { ...initialPan };
-
-      for (const edgeKind of edgeKinds) {
-        const dimensionKind = getDimensionKind(sideKind, edgeKind);
-        const dragged =
-          (newDimensions[dimensionKind] - initialDimensions[dimensionKind]) *
-          EDGE_TO_SIGN[edgeKind];
-        const moved =
-          getEdgePosition(sideKind, edgeKind, newDimensions) -
-          getEdgePosition(sideKind, edgeKind, initialDimensions);
-
-        newPan[EDGE_TO_AXIS[edgeKind]] += moved - dragged;
-      }
-
-      resize({
-        from: {
-          sides: initialSides,
-          dimensions: initialDimensions,
-        },
-        to: {
-          dimensions: newDimensions,
-          alignment,
-        },
+        setPan(newPan);
+      }).then(() => {
+        if (
+          initialDimensions.width !== dimensions().width ||
+          initialDimensions.height !== dimensions().height ||
+          initialDimensions.depth !== dimensions().depth
+        ) {
+          pushUndo(snapshot(initialSides), "Resize");
+        }
       });
 
-      setPan(newPan);
+      return true;
     },
   };
 }

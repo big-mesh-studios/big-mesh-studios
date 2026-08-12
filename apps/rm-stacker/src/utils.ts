@@ -62,6 +62,17 @@ export function createMediaQuery(query: string) {
   return bool;
 }
 
+export function screenToWorld(
+  screenPosition: Vector2D,
+  pan: Vector2D,
+  scale: number,
+  out = { ...screenPosition },
+): Vector2D {
+  Vector2D.multiplyScalar(screenPosition, 1.0 / scale, out);
+  Vector2D.add(out, pan, out);
+  return out;
+}
+
 interface CursorEvent {
   delta: Vector2D;
   event: PointerEvent;
