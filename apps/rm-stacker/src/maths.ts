@@ -6,7 +6,7 @@ export interface Vector2D {
 }
 
 export namespace Vector2D {
-  export const EMPTY = create();
+  export const EMPTY = Object.freeze(create());
 
   export function create(x = 0, y = 0) {
     return {
