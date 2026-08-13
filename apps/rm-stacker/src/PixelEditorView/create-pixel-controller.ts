@@ -206,7 +206,7 @@ export const createPixelEditorController = ({
             sidePositions()[start.kind],
           );
 
-          const min = Vector2D.max(Vector2D.min(start.position, current), Vector2D.create());
+          const min = Vector2D.max(Vector2D.min(start.position, current), Vector2D.EMPTY);
           const max = Vector2D.min(Vector2D.max(start.position, current), {
             x: side.width - 1,
             y: side.height - 1,
@@ -227,7 +227,7 @@ export const createPixelEditorController = ({
           sidePositions()[start.kind],
         );
 
-        const min = Vector2D.max(Vector2D.min(start.position, end), Vector2D.create());
+        const min = Vector2D.max(Vector2D.min(start.position, end), Vector2D.EMPTY);
         const max = Vector2D.min(Vector2D.max(start.position, end), {
           x: side.width - 1,
           y: side.height - 1,
@@ -236,6 +236,14 @@ export const createPixelEditorController = ({
         undoCommandsReversed.push(
           doCommand(Command.fillRectangle(start.kind, min, max, selectedPaletteIndex())),
         );
+
+        // The pointer going up is what both ends this gesture and closes the
+        // stroke, and the close runs first, while there is still nothing to
+        // take back. So the rectangle closes its own stroke here, rather than
+        // waiting in the list until some later stroke carries it along.
+        pushStrokeUndo();
+
+        return;
       }
 
       default: {

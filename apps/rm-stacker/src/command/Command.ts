@@ -62,7 +62,7 @@ export namespace Command {
     max: Vector2D,
     paletteIndex: number,
   ): Command {
-    return { type: "FillRectangle", side, min: min, max: max, paletteIndex };
+    return { type: "FillRectangle", side, min, max, paletteIndex };
   }
 
   export function fillPixel(side: SideKind, position: Vector2D, paletteIndex: number): Command {
@@ -102,6 +102,18 @@ export namespace Command {
       case "FillPixel": {
         let { side, position, paletteIndex } = command;
         return { type: "FillPixel", side, x: position.x, y: position.y, paletteIndex };
+      }
+      case "FillRectangle": {
+        let { side, min, max, paletteIndex } = command;
+        return {
+          type: "FillRectangle",
+          side,
+          minX: min.x,
+          minY: min.y,
+          maxX: max.x,
+          maxY: max.y,
+          paletteIndex,
+        };
       }
       case "ErasePixel": {
         let { side, position } = command;
@@ -144,8 +156,8 @@ export namespace Command {
       case "FillRectangle":
         return Command.fillRectangle(
           command.side,
-          command.start,
-          command.end,
+          { x: command.minX, y: command.minY },
+          { x: command.maxX, y: command.maxY },
           command.paletteIndex,
         );
       case "FillPixel":
