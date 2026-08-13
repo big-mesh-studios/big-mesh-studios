@@ -75,8 +75,8 @@ export function createStacker() {
   const [voxels, setVoxels] = createSignal(() => solveVoxels(dimensions(), sides()));
   const narrow = createMediaQuery("(max-width: 500px)");
 
-  const [unlit, setUnlit] = createSignal(false);
-  const [autorotate, setAutorotate] = createSignal(true);
+  const [unlit, setUnlit] = createSignal(() => saved()?.preview?.unlit ?? true);
+  const [autorotate, setAutorotate] = createSignal(() => saved()?.preview?.autorotate ?? true);
 
   const preview = {
     unlit,
@@ -112,6 +112,8 @@ export function createStacker() {
               palette: palette(),
               undoStack,
               redoStack,
+              unlit: unlit(),
+              autorotate: autorotate(),
             });
           } while (trySaveAgain);
           saving = false;

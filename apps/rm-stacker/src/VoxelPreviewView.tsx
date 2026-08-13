@@ -213,7 +213,7 @@ const VoxelPreviewView: Component = () => {
 
   let timeOffset = 0;
   let spinOffset = 0;
-  let spin: number;
+  let spin = 0;
 
   createEffect(preview.autorotate, autoRotate => {
     if (autoRotate) {

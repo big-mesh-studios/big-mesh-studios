@@ -1,5 +1,5 @@
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
-import { createSignal, onSettled, useContext } from "solid-js";
+import { createSignal, flush, onSettled, useContext } from "solid-js";
 import {
   Bar,
   Colour,
@@ -31,6 +31,7 @@ export function Hud() {
     palette,
     setPalette,
     preview,
+    requestAutoSave,
   } = useContext(StackerContext);
 
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
@@ -167,12 +168,20 @@ export function Hud() {
         <div class={styles.bottom}>
           <Bar>
             <IconTab
-              onClick={() => preview.setAutorotate(rotate => !rotate)}
+              onClick={() => {
+                preview.setAutorotate(rotate => !rotate);
+                flush();
+                requestAutoSave();
+              }}
               selected={preview.autorotate()}
               kind="rotate"
             />
             <IconTab
-              onClick={() => preview.setUnlit(unlit => !unlit)}
+              onClick={() => {
+                preview.setUnlit(unlit => !unlit);
+                flush();
+                requestAutoSave();
+              }}
               selected={!preview.unlit()}
               kind="lightbulb"
             />

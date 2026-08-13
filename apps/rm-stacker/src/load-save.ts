@@ -2,7 +2,7 @@ import { decode, encode } from "fast-png";
 import JSZip from "jszip";
 import { Command } from "./command/Command";
 import { Bitmap, RGBA } from "./maths";
-import { SideKind, sideKindSet, Sides } from "./types";
+import { PreviewState, SideKind, sideKindSet, Sides } from "./types";
 import { keysOf } from "./utils";
 
 const PALETTE_FILE = "palette.png";
@@ -13,6 +13,7 @@ const STORE_NAME = "Store";
 const DB_KEYS = {
   zipFileData: "zipFileData",
   undoRedoData: "undoRedoData",
+  preview: "preview",
 } as const;
 
 /** The palette as the preview wants it: one row of texels, RGBA, in order. */
@@ -281,12 +282,20 @@ export async function loadFromIndexedDB(fallbackPalette: RGBA[]): Promise<{
   undoStack: { command: Command; description: string }[];
   redoStack: { command: Command; description: string }[];
   palette: RGBA[];
+  preview: PreviewState;
 } | null> {
   let blob = await loadBlobFromDB(DB_KEYS.zipFileData);
   if (blob === null) {
     return null;
   }
   const { sides, palette, migrated } = await load(blob, fallbackPalette);
+
+  const previewText = await loadTextFromDB(DB_KEYS.preview);
+
+  const preview =
+    previewText === null
+      ? { unlit: false, autorotate: true }
+      : (JSON.parse(previewText) as PreviewState);
 
   let undoStack: CommandStack;
   let redoStack: CommandStack;
@@ -315,6 +324,7 @@ export async function loadFromIndexedDB(fallbackPalette: RGBA[]): Promise<{
     undoStack,
     redoStack,
     palette,
+    preview,
   };
 }
 
@@ -323,11 +333,15 @@ export async function saveToIndexedDB({
   undoStack,
   redoStack,
   palette,
+  unlit,
+  autorotate,
 }: {
   sides: Sides;
   undoStack: { command: Command; description: string }[];
   redoStack: { command: Command; description: string }[];
   palette: RGBA[];
+  unlit: boolean;
+  autorotate: boolean;
 }): Promise<void> {
   const blob = await save(sides, palette);
   await saveBlobToDB(DB_KEYS.zipFileData, blob);
@@ -351,6 +365,7 @@ export async function saveToIndexedDB({
   };
   const undoRedoJsonText = JSON.stringify(undoRedoJson);
   await saveTextToDB(DB_KEYS.undoRedoData, undoRedoJsonText);
+  await saveTextToDB(DB_KEYS.preview, JSON.stringify({ unlit, autorotate }));
 }
 
 function openDB(): Promise<IDBDatabase> {

@@ -25,6 +25,11 @@ export type Axis = "x" | "y" | "z";
 
 export type ModeKind = "Draw" | "Erase" | "Fill" | "Idle" | "Eyedrop" | "Rectangle";
 
+export type PreviewState = {
+  unlit: boolean;
+  autorotate: boolean;
+};
+
 /**********************************************************************************/
 /*                                      Sides                                     */
 /**********************************************************************************/
