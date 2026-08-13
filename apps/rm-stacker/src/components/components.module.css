@@ -35,8 +35,11 @@
   min-width: var(--size);
   min-height: var(--size);
 
-  &[aria-selected="true"],
   &:hover {
+    color: var(--light-grey);
+  }
+
+  &[aria-selected="true"] {
     color: var(--front);
   }
 
@@ -68,7 +71,7 @@
     color: var(--color);
 
     &:hover {
-      --color: var(--front);
+      --color: var(--light-grey);
     }
 
     & > .icon {

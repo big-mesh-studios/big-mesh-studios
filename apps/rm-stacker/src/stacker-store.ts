@@ -75,6 +75,16 @@ export function createStacker() {
   const [voxels, setVoxels] = createSignal(() => solveVoxels(dimensions(), sides()));
   const narrow = createMediaQuery("(max-width: 500px)");
 
+  const [unlit, setUnlit] = createSignal(false);
+  const [autorotate, setAutorotate] = createSignal(true);
+
+  const preview = {
+    unlit,
+    setUnlit,
+    autorotate,
+    setAutorotate,
+  };
+
   const selectedColour = createMemo(() => palette()[selectedPaletteIndex()]);
 
   const requestAutoSave = (() => {
@@ -185,6 +195,8 @@ export function createStacker() {
     doCommand: doCommandAndUndo,
     requestAutoSave,
     requestRender,
+    // scene state
+    preview,
     /**
      * Constructs an undo command via a snapshot that you can push via
      * `pushUndo` at the end of your opperation.

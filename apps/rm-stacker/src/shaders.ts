@@ -37,6 +37,7 @@ export default (() => {
   const positionAttr = attribute("vec2");
   const uCameraPosition = uniformRaw("uCameraPosition", "vec3");
   const uWorldToModel = uniformRaw("uWorldToModel", "mat3");
+  const uUnlit = uniformRaw("uUlit", "bool");
 
   // Componentwise min/max of two vectors, expressed with abs since rmsl only
   // types the scalar variants: (a + b +/- |a - b|) / 2
@@ -235,13 +236,17 @@ export default (() => {
             });
           });
 
-        const normal = mask.mult(rayStep.toVec3()).negate().toVar();
-        const diffuse = normal.dot(uLightDir).max(float(0));
-        colour.rgb.assign(
-          colourIndexToColour(faceColourIndex).rgb.mult(
-            uAmbientColour.add(uLightColour.mult(diffuse)),
-          ),
-        );
+        if_(uUnlit.toVar(), () => {
+          colour.rgb.assign(colourIndexToColour(faceColourIndex).rgb);
+        }).else_(() => {
+          const normal = mask.mult(rayStep.toVec3()).negate().toVar();
+          const diffuse = normal.dot(uLightDir).max(float(0));
+          colour.rgb.assign(
+            colourIndexToColour(faceColourIndex).rgb.mult(
+              uAmbientColour.add(uLightColour.mult(diffuse)),
+            ),
+          );
+        });
         colour.a.assign(float(1));
       });
     });
@@ -263,6 +268,7 @@ export default (() => {
     uPalette: uPalette.name,
     vUv: vUv.name,
     positionAttr: positionAttr.name,
+    uUnlit: uUnlit.name,
     vertexGLSL: compileGLSL.vertex(vertexFn()),
     fragmentGLSL: compileGLSL.fragment(fragmentFn()),
   };

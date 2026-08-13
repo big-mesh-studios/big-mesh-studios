@@ -36,6 +36,7 @@ type WebGLState = {
   uLightDirLocation: WebGLUniformLocation | null;
   uLightColourLocation: WebGLUniformLocation | null;
   uAmbientColourLocation: WebGLUniformLocation | null;
+  uUnlitLocation: WebGLUniformLocation | null;
   uDimensions: WebGLUniformLocation | null;
   uVoxelCount: WebGLUniformLocation | null;
   uPaletteLocation: WebGLUniformLocation | null;
@@ -176,6 +177,7 @@ const setupWebGL = (gl: WebGL2RenderingContext, palette: RGBA[]): WebGLState => 
     uLightDirLocation: gl.getUniformLocation(program, shaders.uLightDir),
     uLightColourLocation: gl.getUniformLocation(program, shaders.uLightColour),
     uAmbientColourLocation: gl.getUniformLocation(program, shaders.uAmbientColour),
+    uUnlitLocation: gl.getUniformLocation(program, shaders.uUnlit),
     uDimensions: gl.getUniformLocation(program, shaders.uDimensions),
     uVoxelCount: gl.getUniformLocation(program, shaders.uVoxelCount),
     uPaletteLocation: gl.getUniformLocation(program, shaders.uPalette),
@@ -189,7 +191,7 @@ const setupWebGL = (gl: WebGL2RenderingContext, palette: RGBA[]): WebGLState => 
 };
 
 const VoxelPreviewView: Component = () => {
-  const { dimensions, voxels, palette, requestRender } = useContext(StackerContext);
+  const { dimensions, voxels, palette, requestRender, preview } = useContext(StackerContext);
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [webgl, setWebgl] = createSignal<WebGLState>();
@@ -209,10 +211,24 @@ const VoxelPreviewView: Component = () => {
   const worldToModel = Matrix3x3.create();
   const modelSpaceLightDirection = Vector3D.create();
 
+  let timeOffset = 0;
+  let spinOffset = 0;
+  let spin: number;
+
+  createEffect(preview.autorotate, autoRotate => {
+    if (autoRotate) {
+      timeOffset = performance.now();
+    } else {
+      spinOffset = spin;
+    }
+  });
+
   const getWorldToModel = () => {
-    const spin = (performance.now() / 1000) * TURNTABLE_RADIANS_PER_SECOND;
-    Matrix3x3.rotationY(-(yaw + spin), yawMatrix);
     Matrix3x3.rotationX(-pitch, pitchMatrix);
+    if (untrack(preview.autorotate)) {
+      spin = ((performance.now() - timeOffset) / 1000) * TURNTABLE_RADIANS_PER_SECOND + spinOffset;
+    }
+    Matrix3x3.rotationY(-(yaw + spin), yawMatrix);
     return Matrix3x3.multiply(yawMatrix, pitchMatrix, worldToModel);
   };
 
@@ -266,6 +282,11 @@ const VoxelPreviewView: Component = () => {
       modelSpaceLightDirection.z,
     );
     gl.uniform3fv(_webgl.uLightColourLocation, LIGHT_COLOUR);
+    if (untrack(preview.unlit)) {
+      gl.uniform1i(_webgl.uUnlitLocation, 1);
+    } else {
+      gl.uniform1i(_webgl.uUnlitLocation, 0);
+    }
     gl.uniform3fv(_webgl.uAmbientColourLocation, AMBIENT_COLOUR);
     gl.uniform3f(
       _webgl.uDimensions,

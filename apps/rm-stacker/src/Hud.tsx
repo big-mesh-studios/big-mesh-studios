@@ -30,6 +30,7 @@ export function Hud() {
     reset,
     palette,
     setPalette,
+    preview,
   } = useContext(StackerContext);
 
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
@@ -163,6 +164,20 @@ export function Hud() {
           </div>
         </div>
         <div class={styles.main}></div>
+        <div class={styles.bottom}>
+          <Bar>
+            <IconTab
+              onClick={() => preview.setAutorotate(rotate => !rotate)}
+              selected={preview.autorotate()}
+              kind="rotate"
+            />
+            <IconTab
+              onClick={() => preview.setUnlit(unlit => !unlit)}
+              selected={!preview.unlit()}
+              kind="lightbulb"
+            />
+          </Bar>
+        </div>
       </div>
     </>
   );
