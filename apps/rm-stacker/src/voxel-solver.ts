@@ -10,9 +10,9 @@ export type ViewSpec = {
   nearestAscending: boolean;
 };
 
-// Right-handed coordinate system: +x right, +y up, +z toward the viewer.
-// The front face is at z = size - 1 (nearest to the front camera) and the
-// back face is at z = 0. Each view fixes two coordinates and raymarches the
+// Right-handed coordinate system: +x right, +y up, +z into the model. The
+// front face is at z = 0 (facing the initial camera at -z) and the back face
+// is at z = size - 1. Each view fixes two coordinates and raymarches the
 // remaining axis; the fixed coordinate tuples put the axis coordinate at 0.
 const createViews = (
   { height, width, depth }: Dimensions3D,
@@ -24,41 +24,41 @@ const createViews = (
       side: front,
       axis: "z",
       fixedCoords: (px, py) => ({ x: px, y: height - 1 - py, z: 0 }),
-      nearestAscending: false,
+      nearestAscending: true,
     },
     {
       kind: "back",
       side: back,
       axis: "z",
       fixedCoords: (px, py) => ({ x: width - 1 - px, y: height - 1 - py, z: 0 }),
-      nearestAscending: true,
+      nearestAscending: false,
     },
     {
       kind: "left",
       side: left,
       axis: "x",
-      fixedCoords: (px, py) => ({ x: 0, y: height - 1 - py, z: px }),
+      fixedCoords: (px, py) => ({ x: 0, y: height - 1 - py, z: depth - 1 - px }),
       nearestAscending: true,
     },
     {
       kind: "right",
       side: right,
       axis: "x",
-      fixedCoords: (px, py) => ({ x: 0, y: height - 1 - py, z: depth - 1 - px }),
+      fixedCoords: (px, py) => ({ x: 0, y: height - 1 - py, z: px }),
       nearestAscending: false,
     },
     {
       kind: "top",
       side: top,
       axis: "y",
-      fixedCoords: (px, py) => ({ x: px, y: 0, z: py }),
+      fixedCoords: (px, py) => ({ x: px, y: 0, z: depth - 1 - py }),
       nearestAscending: false,
     },
     {
       kind: "bottom",
       side: bottom,
       axis: "y",
-      fixedCoords: (px, py) => ({ x: px, y: 0, z: depth - 1 - py }),
+      fixedCoords: (px, py) => ({ x: px, y: 0, z: py }),
       nearestAscending: true,
     },
   ];
@@ -193,14 +193,14 @@ export function solveVoxels(
         const top = sideByKind.get("top")!;
         const bottom = sideByKind.get("bottom")!;
 
-        // front: (x, py), back: (width-1-x, py), left: (z, py),
-        // right: (depth-1-z, py), top: (x, z), bottom: (x, depth-1-z)
+        // front: (x, py), back: (width-1-x, py), left: (depth-1-z, py),
+        // right: (z, py), top: (x, depth-1-z), bottom: (x, z)
         const f = faceColourIndex(front, x, py);
         const b = faceColourIndex(back, width - 1 - x, py);
-        const l = faceColourIndex(left, z, py);
-        const r = faceColourIndex(right, depth - 1 - z, py);
-        const t = faceColourIndex(top, x, z);
-        const bo = faceColourIndex(bottom, x, depth - 1 - z);
+        const l = faceColourIndex(left, depth - 1 - z, py);
+        const r = faceColourIndex(right, z, py);
+        const t = faceColourIndex(top, x, depth - 1 - z);
+        const bo = faceColourIndex(bottom, x, z);
 
         out[offset + 0] = f | ((b & 0b111) << 5);
         out[offset + 1] = ((b >> 3) & 0b11) | ((l & 0b11111) << 2) | ((r & 0b1) << 7);

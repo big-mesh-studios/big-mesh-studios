@@ -240,9 +240,9 @@ export default (() => {
           })
           .else_(() => {
             if_(rayStep.z.greaterThan(0), () => {
-              faceColourIndex.assign(readBack(voxel));
-            }).else_(() => {
               faceColourIndex.assign(readFront(voxel));
+            }).else_(() => {
+              faceColourIndex.assign(readBack(voxel));
             });
           });
 
