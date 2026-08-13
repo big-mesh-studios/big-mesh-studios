@@ -34,6 +34,9 @@ export function Hud() {
 
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
 
+  const MenuPopover = createPopover();
+  const PalettePopover = createPopover();
+
   const onLoad = async () => {
     const file = await fileOpen<false>({
       extensions: [".zip"],
@@ -75,9 +78,6 @@ export function Hud() {
       }),
     );
   };
-
-  const MenuPopover = createPopover();
-  const PalettePopover = createPopover();
 
   return (
     <>
@@ -147,7 +147,11 @@ export function Hud() {
               <PalettePopover.Trigger class={[tabStyle, colourTabStyle]}>
                 <Colour colour={selectedColour()} />
               </PalettePopover.Trigger>
-              <PalettePopover.PopOver class={styles.palettePopover} popover="manual">
+              <PalettePopover.PopOver
+                class={styles.palettePopover}
+                popover="manual"
+                style={{ "anchor-name": "--palette-popover" }}
+              >
                 <Palette />
               </PalettePopover.PopOver>
             </Bar>
