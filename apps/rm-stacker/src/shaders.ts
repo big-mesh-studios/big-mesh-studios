@@ -57,10 +57,10 @@ export default (() => {
 
   // The voxel texture is an integer (usampler3D) so rmsl compiles the lookup
   // to texelFetch, which takes integer texel coordinates — one texel per voxel.
-  // rmsl's .texture() call takes those texel coordinates as floats, not a
-  // normalized [0,1] position, so a caller that already works in whole voxel
-  // indices fetches by them directly.
-  const sampleCell = (cell: Node<"ivec3">): Node<"uvec4"> => uVoxels.texture(cell.toVec3());
+  // rmsl's .texture() call takes those integer texel coordinates directly, not
+  // a normalized [0,1] position, so a caller that already works in whole voxel
+  // indices fetches by them.
+  const sampleCell = (cell: Node<"ivec3">): Node<"uvec4"> => uVoxels.texture(cell.toUVec3());
 
   // The volume fills the whole grid (one texel per voxel), so a cell is inside
   // the volume exactly when every index lies in [0, uVoxelCount).

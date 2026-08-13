@@ -12,8 +12,8 @@ importers:
         specifier: ^7.3.1
         version: 7.3.1
       '@random-mesh/rmsl':
-        specifier: 1.2.1
-        version: 1.2.1
+        specifier: 1.2.2
+        version: 1.2.2
       '@solidjs/signals':
         specifier: 2.0.0-beta.29
         version: 2.0.0-beta.29
@@ -337,8 +337,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@random-mesh/rmsl@1.2.1':
-    resolution: {integrity: sha512-9psvTuwTQHXGgyz9LviKN0GbOLiAK5laBABfpSRIRiKg5UE2BDjH3WrWdSz1lKzM5hs7IUijRE6a740QUfnNUw==}
+  '@random-mesh/rmsl@1.2.2':
+    resolution: {integrity: sha512-wuzmLAau1NxAMUeMT7/bSK9dQ7oBKL8rbzwzw9CaEK1dXFsUKpDgzgoeGk4ioOAaOtwxNAub2Z4rKum1o3MkPQ==}
 
   '@rollup/rollup-android-arm-eabi@4.62.3':
     resolution: {integrity: sha512-c0wdcekXtQvvn5Tsrk/+op/gUArrbWaFduBnTLP2l1cKLSQs4diMWjJw3m6A0DdzT8dAAX95KpkJ3qynCePbmw==}
@@ -1368,7 +1368,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@random-mesh/rmsl@1.2.1': {}
+  '@random-mesh/rmsl@1.2.2': {}
 
   '@rollup/rollup-android-arm-eabi@4.62.3':
     optional: true
