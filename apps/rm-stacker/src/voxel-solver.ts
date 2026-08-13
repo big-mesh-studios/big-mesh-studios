@@ -1,5 +1,5 @@
-import { Bitmap, Dimensions3D } from "./maths";
-import { Axis, Sides, Vector3D } from "./types";
+import { Bitmap, Dimensions3D, Vector3D } from "./maths";
+import { Axis, Sides } from "./types";
 
 export type ViewSpec = {
   kind: keyof Sides;
@@ -21,37 +21,37 @@ const createViews = (
       kind: "front",
       side: front,
       axis: "z",
-      fixedCoords: (px, py) => ({ x: px, y: height - 1 - py, z: 0 }),
+      fixedCoords: (px, py) => Vector3D.create(px, height - 1 - py, 0),
     },
     {
       kind: "back",
       side: back,
       axis: "z",
-      fixedCoords: (px, py) => ({ x: width - 1 - px, y: height - 1 - py, z: 0 }),
+      fixedCoords: (px, py) => Vector3D.create(width - 1 - px, height - 1 - py, 0),
     },
     {
       kind: "left",
       side: left,
       axis: "x",
-      fixedCoords: (px, py) => ({ x: 0, y: height - 1 - py, z: px }),
+      fixedCoords: (px, py) => Vector3D.create(0, height - 1 - py, px),
     },
     {
       kind: "right",
       side: right,
       axis: "x",
-      fixedCoords: (px, py) => ({ x: 0, y: height - 1 - py, z: depth - 1 - px }),
+      fixedCoords: (px, py) => Vector3D.create(0, height - 1 - py, depth - 1 - px),
     },
     {
       kind: "top",
       side: top,
       axis: "y",
-      fixedCoords: (px, py) => ({ x: px, y: 0, z: py }),
+      fixedCoords: (px, py) => Vector3D.create(px, 0, py),
     },
     {
       kind: "bottom",
       side: bottom,
       axis: "y",
-      fixedCoords: (px, py) => ({ x: px, y: 0, z: depth - 1 - py }),
+      fixedCoords: (px, py) => Vector3D.create(px, 0, depth - 1 - py),
     },
   ];
 };

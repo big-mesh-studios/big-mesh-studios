@@ -4,10 +4,6 @@ import { Bitmap, Dimensions3D, Vector2D } from "./maths";
 /*                                       Misc                                     */
 /**********************************************************************************/
 
-export interface Vector3D extends Vector2D {
-  z: number;
-}
-
 export interface Dimensions2D {
   width: number;
   height: number;
