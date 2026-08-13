@@ -23,6 +23,13 @@ export type Command =
       paletteIndex: number;
     }
   | {
+      type: "FillRectangle";
+      side: SideKind;
+      min: Vector2D;
+      max: Vector2D;
+      paletteIndex: number;
+    }
+  | {
       type: "ErasePixel";
       side: SideKind;
       position: Vector2D;
@@ -47,6 +54,15 @@ export namespace Command {
 
   export function writePixel(side: SideKind, position: Vector2D, paletteIndex: number): Command {
     return { type: "WritePixel", side, position, paletteIndex };
+  }
+
+  export function fillRectangle(
+    side: SideKind,
+    min: Vector2D,
+    max: Vector2D,
+    paletteIndex: number,
+  ): Command {
+    return { type: "FillRectangle", side, min: min, max: max, paletteIndex };
   }
 
   export function fillPixel(side: SideKind, position: Vector2D, paletteIndex: number): Command {
@@ -123,6 +139,13 @@ export namespace Command {
         return Command.writePixel(
           command.side,
           { x: command.x, y: command.y },
+          command.paletteIndex,
+        );
+      case "FillRectangle":
+        return Command.fillRectangle(
+          command.side,
+          command.start,
+          command.end,
           command.paletteIndex,
         );
       case "FillPixel":

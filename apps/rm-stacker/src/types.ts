@@ -27,7 +27,7 @@ export type Axis = "x" | "y" | "z";
 /*                                       Mode                                     */
 /**********************************************************************************/
 
-export type ModeKind = "Draw" | "Erase" | "Fill" | "Idle" | "Eyedrop";
+export type ModeKind = "Draw" | "Erase" | "Fill" | "Idle" | "Eyedrop" | "Rectangle";
 
 /**********************************************************************************/
 /*                                      Sides                                     */

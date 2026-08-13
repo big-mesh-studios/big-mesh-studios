@@ -137,6 +137,11 @@ export function Hud() {
                   selected={mode() === "Erase"}
                 />
                 <IconTab
+                  kind="square"
+                  onClick={() => setMode("Rectangle")}
+                  selected={mode() === "Rectangle"}
+                />
+                <IconTab
                   kind="eye-dropper"
                   onClick={() => setMode("Eyedrop")}
                   selected={mode() === "Eyedrop"}

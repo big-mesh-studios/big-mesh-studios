@@ -6,33 +6,60 @@ export interface Vector2D {
 }
 
 export namespace Vector2D {
-  export function round(a: Vector2D, out = { x: 0, y: 0 }) {
+  export const EMPTY = create();
+
+  export function create(x = 0, y = 0) {
+    return {
+      x,
+      y,
+    };
+  }
+
+  export function round(a: Vector2D, out = Vector2D.create()) {
     out.x = Math.round(a.x - 0.5);
     out.y = Math.round(a.y - 0.5);
     return out;
   }
 
-  export function sub(a: Vector2D, b: Vector2D, out = { x: 0, y: 0 }) {
+  export function sub(a: Vector2D, b: Vector2D, out = Vector2D.create()) {
     out.x = a.x - b.x;
     out.y = a.y - b.y;
     return out;
   }
 
-  export function add(a: Vector2D, b: Vector2D, out = { x: 0, y: 0 }) {
+  export function add(a: Vector2D, b: Vector2D, out = Vector2D.create()) {
     out.x = a.x + b.x;
     out.y = a.y + b.y;
     return out;
   }
 
-  export function multiply(a: Vector2D, b: Vector2D, out = { x: 0, y: 0 }) {
+  export function multiply(a: Vector2D, b: Vector2D, out = Vector2D.create()) {
     out.x = a.x * b.x;
     out.y = a.y * b.y;
     return out;
   }
 
-  export function multiplyScalar(a: Vector2D, scalar: number, out = { x: 0, y: 0 }) {
+  export function multiplyScalar(a: Vector2D, scalar: number, out = Vector2D.create()) {
     out.x = a.x * scalar;
     out.y = a.y * scalar;
+    return out;
+  }
+
+  export function max(a: Vector2D, b: Vector2D, out = Vector2D.create()) {
+    out.x = Math.max(a.x, b.x);
+    out.y = Math.max(a.y, b.y);
+    return out;
+  }
+
+  export function min(a: Vector2D, b: Vector2D, out = Vector2D.create()) {
+    out.x = Math.min(a.x, b.x);
+    out.y = Math.min(a.y, b.y);
+    return out;
+  }
+
+  export function clamp(a: Vector2D, min: Vector2D, max: Vector2D, out = Vector2D.create()) {
+    out.x = Math.max(Math.min(a.x, max.x), min.x);
+    out.y = Math.max(Math.min(a.y, max.y), min.y);
     return out;
   }
 }
@@ -202,6 +229,13 @@ export namespace Bitmap {
     const data = new Uint8Array(width * height);
     data.fill(EMPTY);
     return { width, height, data };
+  }
+
+  export function clone(bitmap: Bitmap): Bitmap {
+    return {
+      ...bitmap,
+      data: new Uint8Array(bitmap.data),
+    };
   }
 
   export function offset(bitmap: Bitmap, x: number, y: number): number {

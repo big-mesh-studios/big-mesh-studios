@@ -22,7 +22,7 @@ export const createPixelEditorController = ({
   pushUndo: (reverseCommand: Command, description: string) => void;
   doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
 }) => {
-  const { sides, selectedColour, selectPaletteIndex, selectedPaletteIndex, palette, mode } =
+  const { sides, selectedColour, selectPaletteIndex, selectedPaletteIndex, requestRender, mode } =
     useContext(StackerContext);
 
   const [pan, setPan] = createSignal({ x: -10.0, y: -10.0 });
@@ -102,7 +102,7 @@ export const createPixelEditorController = ({
     }
   }
 
-  function onPointerDown(event: PointerEvent & { currentTarget: HTMLElement }) {
+  async function onPointerDown(event: PointerEvent & { currentTarget: HTMLElement }) {
     // Everything this pointer raises from here on lands on the canvas even
     // once it has been taken off it, so however the gesture below ends, the
     // end is heard and the pointer can be dropped from the set again.
@@ -181,6 +181,61 @@ export const createPixelEditorController = ({
         undoCommandsReversed.push(doCommand(command));
 
         return;
+      }
+
+      case "Rectangle": {
+        const start = intersectSides({
+          sidePositions: sidePositions(),
+          worldPosition: eventToRoundedWorldPosition(event),
+          sides: sides(),
+        });
+
+        if (!start) {
+          return;
+        }
+
+        const side = sides()[start.kind];
+        const original = sides()[start.kind];
+
+        const { event: finalEvent } = await pointer(event, ({ event }) => {
+          const copy = Bitmap.clone(original);
+          sides()[start.kind] = copy;
+
+          const current = Vector2D.sub(
+            eventToRoundedWorldPosition(event),
+            sidePositions()[start.kind],
+          );
+
+          const min = Vector2D.max(Vector2D.min(start.position, current), Vector2D.create());
+          const max = Vector2D.min(Vector2D.max(start.position, current), {
+            x: side.width - 1,
+            y: side.height - 1,
+          });
+
+          for (let x = min.x; x <= max.x; x++) {
+            for (let y = min.y; y <= max.y; y++) {
+              Bitmap.set(copy, x, y, selectedPaletteIndex());
+            }
+          }
+          requestRender();
+        });
+
+        sides()[start.kind] = original;
+
+        const end = Vector2D.sub(
+          eventToRoundedWorldPosition(finalEvent),
+          sidePositions()[start.kind],
+        );
+
+        const min = Vector2D.max(Vector2D.min(start.position, end), Vector2D.create());
+        const max = Vector2D.min(Vector2D.max(start.position, end), {
+          x: side.width - 1,
+          y: side.height - 1,
+        });
+
+        undoCommandsReversed.push(
+          doCommand(Command.fillRectangle(start.kind, min, max, selectedPaletteIndex())),
+        );
       }
 
       default: {

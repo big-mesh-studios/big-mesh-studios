@@ -117,6 +117,20 @@ export function createCommander({
 
           return undo;
         }
+        case "FillRectangle": {
+          const { side: kind, min, max, paletteIndex } = command;
+          const side = sides()[kind];
+
+          const _snapshot = snapshot(sides());
+
+          for (let x = min.x; x <= max.x; x++) {
+            for (let y = min.y; y <= max.y; y++) {
+              Bitmap.set(side, x, y, paletteIndex);
+            }
+          }
+
+          return _snapshot;
+        }
         case "WritePixel": {
           const { side: kind, position, paletteIndex } = command;
           const side = sides()[kind];
