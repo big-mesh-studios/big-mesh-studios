@@ -67,6 +67,19 @@ export default (() => {
       .and(c.lessThan(uVoxelCount).all());
   };
 
+  // The ray is intersected with a box padded by one voxel on each side, so its
+  // start and exit land safely outside the volume instead of exactly on a wall
+  // face, where float error could put them on the wrong side. The DDA therefore
+  // walks from up to a cell or two outside, sampling only cells that are in the
+  // volume and stopping once it leaves the padded range.
+  const paddedInBounds = (cell: Node<"ivec3">): Node<"bool"> => {
+    const c = cell.toVec3();
+    return c
+      .greaterThanEqual(vec3(float(-2)))
+      .all()
+      .and(c.lessThan(uVoxelCount.add(vec3(float(2)))).all());
+  };
+
   const readFront = (voxel: Node<"uvec4">): Node<"uint"> => {
     return voxel.r.bitAnd(0b00011111);
   };
@@ -119,8 +132,9 @@ export default (() => {
 
     const colour = vec4(float(0), float(0), float(0), float(0)).toVar();
 
-    const boxMin = uDimensions.mult(float(-0.5)).toVar();
-    const boxMax = uDimensions.mult(float(0.5)).toVar();
+    const cellSize = uDimensions.div(uVoxelCount).toVar();
+    const boxMin = uDimensions.mult(float(-0.5)).sub(cellSize).toVar();
+    const boxMax = uDimensions.mult(float(0.5)).add(cellSize).toVar();
     const inverseRayDirection = vec3(float(1)).div(rayDirection);
 
     const distanceToMinPlanes = inverseRayDirection.mult(boxMin.sub(rayOrigin)).toVar();
@@ -142,7 +156,6 @@ export default (() => {
     const exitDistance = farPair.x.min(farPair.y).toVar();
 
     if_(entryDistance.lessThanEqual(exitDistance), () => {
-      const cellSize = uDimensions.div(uVoxelCount).toVar();
       const cellDir = rayDirection.div(cellSize).toVar();
 
       const entryPoint = rayOrigin.add(rayDirection.mult(entryDistance)).toVar();
@@ -189,12 +202,14 @@ export default (() => {
         i => i.lessThan(maxSteps),
         i => i.assign(i.add(1)),
         () => {
-          if_(inBounds(mapPos).not(), () => {
+          if_(paddedInBounds(mapPos).not(), () => {
             break_();
           });
-          if_(isSolid(sampleCell(mapPos)), () => {
-            hit.assign(boolean(true));
-            break_();
+          if_(inBounds(mapPos), () => {
+            if_(isSolid(sampleCell(mapPos)), () => {
+              hit.assign(boolean(true));
+              break_();
+            });
           });
           mask.assign(
             sideDist
