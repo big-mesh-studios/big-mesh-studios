@@ -8,10 +8,11 @@ export type ViewSpec = {
   fixedCoords: (px: number, py: number) => Vector3D;
 };
 
-// Right-handed coordinate system: +x right, +y up, +z into the model. The
-// front face is at z = 0 (facing the initial camera at -z) and the back face
-// is at z = size - 1. Each view fixes two coordinates and raymarches the
-// remaining axis; the fixed coordinate tuples put the axis coordinate at 0.
+// Right-handed coordinate system: +x right, +y up, +z out of the front face
+// toward the viewer. The front face is at z = depth - 1 (facing the camera at
+// +z) and the back face is at z = 0. Each view fixes two coordinates and
+// raymarches the remaining axis; the fixed coordinate tuples put the axis
+// coordinate at 0.
 const createViews = (
   { height, width, depth }: Dimensions3D,
   { front, left, right, back, top, bottom }: Sides,
@@ -33,25 +34,25 @@ const createViews = (
       kind: "left",
       side: left,
       axis: "x",
-      fixedCoords: (px, py) => Vector3D.create(0, height - 1 - py, depth - 1 - px),
+      fixedCoords: (px, py) => Vector3D.create(0, height - 1 - py, px),
     },
     {
       kind: "right",
       side: right,
       axis: "x",
-      fixedCoords: (px, py) => Vector3D.create(0, height - 1 - py, px),
+      fixedCoords: (px, py) => Vector3D.create(0, height - 1 - py, depth - 1 - px),
     },
     {
       kind: "top",
       side: top,
       axis: "y",
-      fixedCoords: (px, py) => Vector3D.create(px, 0, depth - 1 - py),
+      fixedCoords: (px, py) => Vector3D.create(px, 0, py),
     },
     {
       kind: "bottom",
       side: bottom,
       axis: "y",
-      fixedCoords: (px, py) => Vector3D.create(px, 0, py),
+      fixedCoords: (px, py) => Vector3D.create(px, 0, 1 - depth - py),
     },
   ];
 };
@@ -141,14 +142,14 @@ export function solveVoxels(
         const top = sideByKind.get("top")!;
         const bottom = sideByKind.get("bottom")!;
 
-        // front: (x, py), back: (width-1-x, py), left: (depth-1-z, py),
-        // right: (z, py), top: (x, depth-1-z), bottom: (x, z)
+        // front: (x, py), back: (width-1-x, py), left: (z, py),
+        // right: (depth-1-z, py), top: (x, z), bottom: (x, depth-1-z)
         const f = faceColourIndex(front, x, py);
         const b = faceColourIndex(back, width - 1 - x, py);
-        const l = faceColourIndex(left, depth - 1 - z, py);
-        const r = faceColourIndex(right, z, py);
-        const t = faceColourIndex(top, x, depth - 1 - z);
-        const bo = faceColourIndex(bottom, x, z);
+        const l = faceColourIndex(left, z, py);
+        const r = faceColourIndex(right, depth - 1 - z, py);
+        const t = faceColourIndex(top, x, z);
+        const bo = faceColourIndex(bottom, x, depth - 1 - z);
 
         out[offset + 0] = f | ((b & 0b111) << 5);
         out[offset + 1] = ((b >> 3) & 0b11) | ((l & 0b11111) << 2) | ((r & 0b1) << 7);
