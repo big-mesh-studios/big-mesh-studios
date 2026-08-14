@@ -1,39 +1,54 @@
 import {
   Component,
+  createEffect,
   createMemo,
   createSignal,
   createTrackedEffect,
-  flush,
   onSettled,
   untrack,
   useContext,
 } from "solid-js";
 import { StackerContext } from "./context";
-import { Dimensions3D } from "./maths";
-import { DAWNBRINGER_32_PALETTE } from "./default_palette";
+import { Dimensions3D, Matrix3x3, RGBA, Vector3D } from "./maths";
 import shaders from "./shaders";
-import { tryCatch } from "./utils";
+import { pointer, tryCatch } from "./utils";
 import styles from "./VoxelPreviewView.module.css";
+
+const MIN_RADIUS = 2;
+const MAX_RADIUS = 20;
+
+// Directional + ambient light for the voxel preview. The direction is fixed in
+// world space and the model turns beneath it, so it is rotated into the model's
+// space before it is uploaded rather than being sent as it stands.
+const LIGHT_DIR = Object.freeze(Vector3D.normalize(Vector3D.create(0.4, 0.7, 0.8)));
+const LIGHT_COLOUR = new Float32Array([1.0, 0.97, 0.9]);
+const AMBIENT_COLOUR = new Float32Array([0.35, 0.35, 0.4]);
+
+const TURNTABLE_SECONDS_PER_REVOLUTION = 20;
+const TURNTABLE_RADIANS_PER_SECOND = -(2 * Math.PI) / TURNTABLE_SECONDS_PER_REVOLUTION;
 
 type WebGLState = {
   gl: WebGL2RenderingContext;
   program: WebGLProgram;
   positionLocation: number;
-  uTimeLocation: WebGLUniformLocation | null;
   uResolutionLocation: WebGLUniformLocation | null;
   uVoxelsLocation: WebGLUniformLocation | null;
   uLightDirLocation: WebGLUniformLocation | null;
   uLightColourLocation: WebGLUniformLocation | null;
   uAmbientColourLocation: WebGLUniformLocation | null;
+  uUnlitLocation: WebGLUniformLocation | null;
   uDimensions: WebGLUniformLocation | null;
   uVoxelCount: WebGLUniformLocation | null;
   uPaletteLocation: WebGLUniformLocation | null;
+  uCameraPositionLocation: WebGLUniformLocation | null;
+  uWorldToModelLocation: WebGLUniformLocation | null;
   texture: WebGLTexture;
   paletteTexture: WebGLTexture;
   buffer: WebGLBuffer;
+  uploadPalette(palette: RGBA[]): void;
 };
 
-const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
+const setupWebGL = (gl: WebGL2RenderingContext, palette: RGBA[]): WebGLState => {
   const compileShader = (type: number, source: string): WebGLShader => {
     const shader = gl.createShader(type);
     if (shader === null) {
@@ -106,8 +121,8 @@ const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  const paletteData = new Uint8Array(DAWNBRINGER_32_PALETTE.length * 4);
-  DAWNBRINGER_32_PALETTE.forEach(({ r, g, b, a }, i) => {
+  const paletteData = new Uint8Array(palette.length * 4);
+  palette.forEach(({ r, g, b, a }, i) => {
     const offset = i << 2;
     paletteData[offset] = r;
     paletteData[offset + 1] = g;
@@ -118,7 +133,7 @@ const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
     gl.TEXTURE_2D,
     0,
     gl.RGBA8,
-    DAWNBRINGER_32_PALETTE.length,
+    palette.length,
     1,
     0,
     gl.RGBA,
@@ -126,42 +141,96 @@ const setupWebGL = (gl: WebGL2RenderingContext): WebGLState => {
     paletteData,
   );
 
+  const uploadPalette = (palette: RGBA[]) => {
+    const paletteData = new Uint8Array(palette.length * 4);
+
+    palette.forEach(({ r, g, b, a }, i) => {
+      const offset = i << 2;
+      paletteData[offset] = r;
+      paletteData[offset + 1] = g;
+      paletteData[offset + 2] = b;
+      paletteData[offset + 3] = a;
+    });
+
+    gl.bindTexture(gl.TEXTURE_2D, paletteTexture);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA8,
+      palette.length,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      paletteData,
+    );
+  };
+
+  uploadPalette(palette);
+
   return {
     gl,
     program,
     positionLocation: gl.getAttribLocation(program, shaders.positionAttr),
-    uTimeLocation: gl.getUniformLocation(program, shaders.uTime),
     uResolutionLocation: gl.getUniformLocation(program, shaders.uResolution),
     uVoxelsLocation: gl.getUniformLocation(program, shaders.uVoxels),
     uLightDirLocation: gl.getUniformLocation(program, shaders.uLightDir),
     uLightColourLocation: gl.getUniformLocation(program, shaders.uLightColour),
     uAmbientColourLocation: gl.getUniformLocation(program, shaders.uAmbientColour),
+    uUnlitLocation: gl.getUniformLocation(program, shaders.uUnlit),
     uDimensions: gl.getUniformLocation(program, shaders.uDimensions),
     uVoxelCount: gl.getUniformLocation(program, shaders.uVoxelCount),
     uPaletteLocation: gl.getUniformLocation(program, shaders.uPalette),
+    uCameraPositionLocation: gl.getUniformLocation(program, shaders.uCameraPosition),
+    uWorldToModelLocation: gl.getUniformLocation(program, shaders.uWorldToModel),
     texture,
     paletteTexture,
     buffer,
+    uploadPalette,
   };
 };
 
-// Directional + ambient light for the voxel preview (fixed in world space)
-const LIGHT_DIR = (() => {
-  const d = [0.4, 0.7, 0.8];
-  const len = Math.hypot(d[0], d[1], d[2]);
-  return new Float32Array([d[0] / len, d[1] / len, d[2] / len]);
-})();
-const LIGHT_COLOUR = new Float32Array([1.0, 0.97, 0.9]);
-const AMBIENT_COLOUR = new Float32Array([0.35, 0.35, 0.4]);
-
 const VoxelPreviewView: Component = () => {
-  const { dimensions, voxels } = useContext(StackerContext);
+  const { dimensions, voxels, palette, requestRender, preview } = useContext(StackerContext);
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [webgl, setWebgl] = createSignal<WebGLState>();
   const [glError, setGlError] = createSignal<string | undefined>();
 
   const normalizedDimensions = createMemo(() => Dimensions3D.normalize(dimensions()));
+
+  let yaw = 0;
+  let pitch = 0;
+  let radius = 3;
+
+  const RADIANS_PER_PIXEL = 0.005;
+  const PITCH_LIMIT = Math.PI / 2 - 0.01;
+
+  const yawMatrix = Matrix3x3.create();
+  const pitchMatrix = Matrix3x3.create();
+  const worldToModel = Matrix3x3.create();
+  const modelSpaceLightDirection = Vector3D.create();
+
+  let timeOffset = 0;
+  let spinOffset = 0;
+  let spin = 0;
+
+  createEffect(preview.autorotate, autoRotate => {
+    if (autoRotate) {
+      timeOffset = performance.now();
+    } else {
+      spinOffset = spin;
+    }
+  });
+
+  const getWorldToModel = () => {
+    Matrix3x3.rotationX(-pitch, pitchMatrix);
+    if (untrack(preview.autorotate)) {
+      spin = ((performance.now() - timeOffset) / 1000) * TURNTABLE_RADIANS_PER_SECOND + spinOffset;
+    }
+    Matrix3x3.rotationY(-(yaw + spin), yawMatrix);
+    return Matrix3x3.multiply(yawMatrix, pitchMatrix, worldToModel);
+  };
 
   const loadVoxelArrayToWebGL = () => {
     const _dimensions = dimensions();
@@ -198,15 +267,26 @@ const VoxelPreviewView: Component = () => {
     const gl = _webgl.gl;
     const width = _canvas.width;
     const height = _canvas.height;
+    Matrix3x3.transform(getWorldToModel(), LIGHT_DIR, modelSpaceLightDirection);
+
     gl.viewport(0, 0, width, height);
     gl.useProgram(_webgl.program);
-    gl.uniform1f(_webgl.uTimeLocation, performance.now() / 1000.0);
     gl.uniform2f(_webgl.uResolutionLocation, width, height);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_3D, _webgl.texture);
     gl.uniform1i(_webgl.uVoxelsLocation, 0);
-    gl.uniform3fv(_webgl.uLightDirLocation, LIGHT_DIR);
+    gl.uniform3f(
+      _webgl.uLightDirLocation,
+      modelSpaceLightDirection.x,
+      modelSpaceLightDirection.y,
+      modelSpaceLightDirection.z,
+    );
     gl.uniform3fv(_webgl.uLightColourLocation, LIGHT_COLOUR);
+    if (untrack(preview.unlit)) {
+      gl.uniform1i(_webgl.uUnlitLocation, 1);
+    } else {
+      gl.uniform1i(_webgl.uUnlitLocation, 0);
+    }
     gl.uniform3fv(_webgl.uAmbientColourLocation, AMBIENT_COLOUR);
     gl.uniform3f(
       _webgl.uDimensions,
@@ -215,17 +295,29 @@ const VoxelPreviewView: Component = () => {
       normalizedDimensions().depth,
     );
     gl.uniform3f(_webgl.uVoxelCount, _dimensions.width, _dimensions.height, _dimensions.depth);
+    gl.uniform3f(_webgl.uCameraPositionLocation, 0, 0, radius);
+    gl.uniformMatrix3fv(_webgl.uWorldToModelLocation, false, worldToModel);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, _webgl.paletteTexture);
     gl.uniform1i(_webgl.uPaletteLocation, 1);
     gl.bindBuffer(gl.ARRAY_BUFFER, _webgl.buffer);
     gl.enableVertexAttribArray(_webgl.positionLocation);
     gl.vertexAttribPointer(_webgl.positionLocation, 2, gl.FLOAT, false, 0, 0);
-    flush();
     untrack(loadVoxelArrayToWebGL);
     gl.flush();
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
+
+  createEffect(
+    () => [palette(), webgl()] as const,
+    ([palette, webgl]) => {
+      if (webgl === undefined) {
+        return;
+      }
+      webgl.uploadPalette(palette);
+      requestRender();
+    },
+  );
 
   onSettled(() => {
     const _canvas = canvas();
@@ -239,7 +331,7 @@ const VoxelPreviewView: Component = () => {
     }
 
     const webglState = tryCatch(
-      () => setupWebGL(gl),
+      () => setupWebGL(gl, palette()),
       e => {
         setGlError(e instanceof Error ? e.message : String(e));
       },
@@ -274,7 +366,23 @@ const VoxelPreviewView: Component = () => {
   return (
     <div class={styles.container}>
       {glError() === undefined ? (
-        <canvas ref={setCanvas} class={styles.canvas} />
+        <canvas
+          ref={setCanvas}
+          class={styles.canvas}
+          onPointerDown={event => {
+            pointer(event, ({ delta }) => {
+              yaw += delta.x * RADIANS_PER_PIXEL;
+              pitch = Math.max(
+                -PITCH_LIMIT,
+                Math.min(PITCH_LIMIT, pitch + delta.y * RADIANS_PER_PIXEL),
+              );
+            });
+          }}
+          onWheel={event => {
+            const sign = Math.sign(event.deltaY);
+            radius = Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, radius * Math.pow(1.1, sign)));
+          }}
+        />
       ) : (
         <div class={styles.error}>{glError()}</div>
       )}

@@ -160,7 +160,7 @@ export function createPanScaleControl({
         return;
       }
 
-      const signY = event.deltaY > 0 ? -1 : 1;
+      const signY = -Math.sign(event.deltaY);
       const oldScale = scale();
       const next = zoomAboutPoint(
         { pan: pan(), scale: oldScale },

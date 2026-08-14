@@ -1,4 +1,4 @@
-import { RGBA, Vector2D } from "../maths";
+import { Vector2D } from "../maths";
 import { SideKind } from "../types";
 import { base64ToUint8Array, uint8ArrayToBase64 } from "../utils";
 
@@ -14,13 +14,20 @@ export type Command =
       type: "WritePixel";
       side: SideKind;
       position: Vector2D;
-      colour: RGBA;
+      paletteIndex: number;
     }
   | {
       type: "FillPixel";
       side: SideKind;
       position: Vector2D;
-      colour: RGBA;
+      paletteIndex: number;
+    }
+  | {
+      type: "FillRectangle";
+      side: SideKind;
+      min: Vector2D;
+      max: Vector2D;
+      paletteIndex: number;
     }
   | {
       type: "ErasePixel";
@@ -45,12 +52,21 @@ export namespace Command {
     return { type: "Sequence", commands };
   }
 
-  export function writePixel(side: SideKind, position: Vector2D, colour: RGBA): Command {
-    return { type: "WritePixel", side, position, colour };
+  export function writePixel(side: SideKind, position: Vector2D, paletteIndex: number): Command {
+    return { type: "WritePixel", side, position, paletteIndex };
   }
 
-  export function fillPixel(side: SideKind, position: Vector2D, colour: RGBA): Command {
-    return { type: "FillPixel", side, position, colour };
+  export function fillRectangle(
+    side: SideKind,
+    min: Vector2D,
+    max: Vector2D,
+    paletteIndex: number,
+  ): Command {
+    return { type: "FillRectangle", side, min, max, paletteIndex };
+  }
+
+  export function fillPixel(side: SideKind, position: Vector2D, paletteIndex: number): Command {
+    return { type: "FillPixel", side, position, paletteIndex };
   }
 
   export function erasePixel(side: SideKind, position: Vector2D): Command {
@@ -80,12 +96,24 @@ export namespace Command {
         };
       }
       case "WritePixel": {
-        let { side, position, colour } = command;
-        return { type: "WritePixel", side, x: position.x, y: position.y, colour };
+        let { side, position, paletteIndex } = command;
+        return { type: "WritePixel", side, x: position.x, y: position.y, paletteIndex };
       }
       case "FillPixel": {
-        let { side, position, colour } = command;
-        return { type: "FillPixel", side, x: position.x, y: position.y, colour };
+        let { side, position, paletteIndex } = command;
+        return { type: "FillPixel", side, x: position.x, y: position.y, paletteIndex };
+      }
+      case "FillRectangle": {
+        let { side, min, max, paletteIndex } = command;
+        return {
+          type: "FillRectangle",
+          side,
+          minX: min.x,
+          minY: min.y,
+          maxX: max.x,
+          maxY: max.y,
+          paletteIndex,
+        };
       }
       case "ErasePixel": {
         let { side, position } = command;
@@ -120,9 +148,24 @@ export namespace Command {
       case "Sequence":
         return Command.sequence(command.commands.map((c: any) => Command.fromJSON(c)));
       case "WritePixel":
-        return Command.writePixel(command.side, { x: command.x, y: command.y }, command.colour);
+        return Command.writePixel(
+          command.side,
+          { x: command.x, y: command.y },
+          command.paletteIndex,
+        );
+      case "FillRectangle":
+        return Command.fillRectangle(
+          command.side,
+          { x: command.minX, y: command.minY },
+          { x: command.maxX, y: command.maxY },
+          command.paletteIndex,
+        );
       case "FillPixel":
-        return Command.fillPixel(command.side, { x: command.x, y: command.y }, command.colour);
+        return Command.fillPixel(
+          command.side,
+          { x: command.x, y: command.y },
+          command.paletteIndex,
+        );
       case "ErasePixel":
         return Command.erasePixel(command.side, { x: command.x, y: command.y });
       case "LoadData": {

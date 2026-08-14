@@ -1,12 +1,8 @@
-import { Dimensions3D, Vector2D } from "./maths";
+import { Bitmap, Dimensions3D, Vector2D } from "./maths";
 
 /**********************************************************************************/
 /*                                       Misc                                     */
 /**********************************************************************************/
-
-export interface Vector3D extends Vector2D {
-  z: number;
-}
 
 export interface Dimensions2D {
   width: number;
@@ -27,7 +23,12 @@ export type Axis = "x" | "y" | "z";
 /*                                       Mode                                     */
 /**********************************************************************************/
 
-export type ModeKind = "Draw" | "Erase" | "Fill" | "Idle" | "Eyedrop";
+export type ModeKind = "Draw" | "Erase" | "Fill" | "Idle" | "Eyedrop" | "Rectangle";
+
+export type PreviewState = {
+  unlit: boolean;
+  autorotate: boolean;
+};
 
 /**********************************************************************************/
 /*                                      Sides                                     */
@@ -45,7 +46,7 @@ export const sideKindSet = {
 export type SideKind = keyof typeof sideKindSet;
 
 export type Sides = {
-  [k in SideKind]: ImageData;
+  [k in SideKind]: Bitmap;
 };
 
 /**

@@ -1,7 +1,7 @@
 import type { JSX } from "@solidjs/web/jsx-runtime";
 import { createSignal, onCleanup } from "solid-js";
 import { SIDE_MASK } from "./constants";
-import { RGBA, Vector2D } from "./maths";
+import { Bitmap, RGBA, Vector2D } from "./maths";
 
 /**********************************************************************************/
 /*                                      Misc                                      */
@@ -237,33 +237,23 @@ export function rgbaToCSS({ r, g, b, a = 1 }: RGBA): `rgba(${string})` {
 /*                                  Intersection                                  */
 /**********************************************************************************/
 
-function getOffset(side: ImageData, position: Vector2D) {
+export function intersectSide({ position, side }: { position: Vector2D; side: Bitmap }) {
   // Round each axis down on its own. Rounding only the finished sum would let a
   // fraction on the vertical axis, multiplied by the width, spill into the
-  // horizontal one and pick a pixel further along the same row.
-  return (Math.floor(position.y) * side.width + Math.floor(position.x)) << 2;
-}
+  // horizontal one and pick a cell further along the same row.
+  const x = Math.floor(position.x);
+  const y = Math.floor(position.y);
 
-function getColourFromOffset(side: ImageData, offset: number): RGBA {
-  const r = side.data[offset + 0];
-  const g = side.data[offset + 1];
-  const b = side.data[offset + 2];
-  const a = side.data[offset + 3];
-  return { r, g, b, a };
-}
-
-export function intersectSide({ position, side }: { position: Vector2D; side: ImageData }) {
-  if (position.x < 0 || position.y < 0 || position.x >= side.width || position.y >= side.height) {
+  if (!Bitmap.contains(side, x, y)) {
     return;
   }
 
-  const offset = getOffset(side, position);
-  const colour = getColourFromOffset(side, offset);
+  const offset = Bitmap.offset(side, x, y);
 
   return {
     position,
     side,
     offset,
-    colour,
+    index: side.data[offset],
   };
 }

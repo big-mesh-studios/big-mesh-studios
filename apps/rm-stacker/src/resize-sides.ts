@@ -1,5 +1,5 @@
 import { SIDE_AXES } from "./constants";
-import { Dimensions3D } from "./maths";
+import { Bitmap, Dimensions3D } from "./maths";
 import type { Alignment3D, SideAxis, SideKind, Sides } from "./types";
 
 export interface ResizeOptions {
@@ -29,26 +29,26 @@ export const resizeSides = ({ from, to }: ResizeOptions): Sides => {
     return growsAtImageStart ? to.dimensions[dimension] - from.dimensions[dimension] : 0;
   };
 
-  const resizeSide = (kind: SideKind): ImageData => {
+  const resizeSide = (kind: SideKind): Bitmap => {
     const axes = SIDE_AXES[kind];
     const source = from.sides[kind];
-    const target = new ImageData(to.dimensions[axes.x.dimension], to.dimensions[axes.y.dimension]);
+    const target = Bitmap.create(to.dimensions[axes.x.dimension], to.dimensions[axes.y.dimension]);
 
     const offset = { x: computeOffset(axes.x), y: computeOffset(axes.y) };
 
-    // The overlap between the old image and the new one, in new-image pixels.
+    // The overlap between the old bitmap and the new one, in new-bitmap cells.
     const start = { x: Math.max(0, offset.x), y: Math.max(0, offset.y) };
     const end = {
       x: Math.min(target.width, offset.x + source.width),
       y: Math.min(target.height, offset.y + source.height),
     };
-    const rowLength = Math.max(0, end.x - start.x) << 2;
+    const rowLength = Math.max(0, end.x - start.x);
 
     for (let y = start.y; y < end.y; y++) {
-      const sourceOffset = ((y - offset.y) * source.width + (start.x - offset.x)) << 2;
+      const sourceOffset = (y - offset.y) * source.width + (start.x - offset.x);
       target.data.set(
         source.data.subarray(sourceOffset, sourceOffset + rowLength),
-        (y * target.width + start.x) << 2,
+        y * target.width + start.x,
       );
     }
 

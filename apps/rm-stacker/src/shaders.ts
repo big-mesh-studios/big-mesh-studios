@@ -9,8 +9,6 @@ import {
   for_,
   if_,
   int,
-  ivec3,
-  mat3,
   uint,
   uniformRaw,
   varying,
@@ -18,6 +16,8 @@ import {
   vec3,
   vec4,
 } from "@random-mesh/rmsl";
+
+const FOCAL_LENGTH = 2;
 
 // This module is compiled once at build time by vite-precompile-shaders and
 // replaced with JSON, so the rmsl graph is never built (and rmsl is never
@@ -27,7 +27,6 @@ export default (() => {
   // both the vertex and fragment shaders.
   const uPalette = uniformRaw("uPalette", "sampler2D");
   const uVoxels = uniformRaw("uVoxels", "usampler3D");
-  const uTime = uniformRaw("uTime", "float");
   const uResolution = uniformRaw("uResolution", "vec2");
   const uDimensions = uniformRaw("uDimensions", "vec3");
   const uVoxelCount = uniformRaw("uVoxelCount", "vec3");
@@ -36,6 +35,9 @@ export default (() => {
   const uAmbientColour = uniformRaw("uAmbientColour", "vec3");
   const vUv = varying("vec2");
   const positionAttr = attribute("vec2");
+  const uCameraPosition = uniformRaw("uCameraPosition", "vec3");
+  const uWorldToModel = uniformRaw("uWorldToModel", "mat3");
+  const uUnlit = uniformRaw("uUlit", "bool");
 
   // Componentwise min/max of two vectors, expressed with abs since rmsl only
   // types the scalar variants: (a + b +/- |a - b|) / 2
@@ -47,13 +49,6 @@ export default (() => {
     a.add(b).sub(a.sub(b).abs()).mult(float(0.5));
   const maxVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
     a.add(b).add(a.sub(b).abs()).mult(float(0.5));
-
-  const rotationY = (angle: Node<"float">): Node<"mat3"> =>
-    mat3(
-      vec3(angle.cos(), float(0), angle.sin().negate()),
-      vec3(float(0), float(1), float(0)),
-      vec3(angle.sin(), float(0), angle.cos()),
-    );
 
   // The voxel texture is an integer (usampler3D) so rmsl compiles the lookup
   // to texelFetch, which takes integer texel coordinates — one texel per voxel.
@@ -114,17 +109,12 @@ export default (() => {
   });
 
   const fragmentFn = Fn(() => {
-    const time = uTime;
-
     const fragmentCoord = vUv.mult(uResolution);
     const screenPosition = fragmentCoord.mult(float(2)).sub(uResolution).div(uResolution.y);
 
-    const cameraRotation = rotationY(time);
-
-    const inverseCameraRotation = cameraRotation.transpose().toVar();
-    const rayOrigin = inverseCameraRotation.multVec(vec3(float(0), float(0), float(-1.8))).toVar();
-    const rayDirection = inverseCameraRotation
-      .multVec(vec3(screenPosition.x, screenPosition.y, float(2)).normalize())
+    const rayOrigin = uWorldToModel.multVec(uCameraPosition).toVar();
+    const rayDirection = uWorldToModel
+      .multVec(vec3(screenPosition.x, screenPosition.y, float(-FOCAL_LENGTH)).normalize())
       .toVar();
 
     const colour = vec4(float(0), float(0), float(0), float(0)).toVar();
@@ -246,13 +236,17 @@ export default (() => {
             });
           });
 
-        const normal = mask.mult(rayStep.toVec3()).negate().toVar();
-        const diffuse = normal.dot(uLightDir).max(float(0));
-        colour.rgb.assign(
-          colourIndexToColour(faceColourIndex).rgb.mult(
-            uAmbientColour.add(uLightColour.mult(diffuse)),
-          ),
-        );
+        if_(uUnlit.toVar(), () => {
+          colour.rgb.assign(colourIndexToColour(faceColourIndex).rgb);
+        }).else_(() => {
+          const normal = mask.mult(rayStep.toVec3()).negate().toVar();
+          const diffuse = normal.dot(uLightDir).max(float(0));
+          colour.rgb.assign(
+            colourIndexToColour(faceColourIndex).rgb.mult(
+              uAmbientColour.add(uLightColour.mult(diffuse)),
+            ),
+          );
+        });
         colour.a.assign(float(1));
       });
     });
@@ -263,16 +257,18 @@ export default (() => {
   });
   return {
     uVoxels: uVoxels.name,
-    uTime: uTime.name,
     uResolution: uResolution.name,
     uDimensions: uDimensions.name,
     uVoxelCount: uVoxelCount.name,
     uLightDir: uLightDir.name,
     uLightColour: uLightColour.name,
     uAmbientColour: uAmbientColour.name,
+    uCameraPosition: uCameraPosition.name,
+    uWorldToModel: uWorldToModel.name,
     uPalette: uPalette.name,
     vUv: vUv.name,
     positionAttr: positionAttr.name,
+    uUnlit: uUnlit.name,
     vertexGLSL: compileGLSL.vertex(vertexFn()),
     fragmentGLSL: compileGLSL.fragment(fragmentFn()),
   };

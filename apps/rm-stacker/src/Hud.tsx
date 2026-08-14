@@ -1,5 +1,5 @@
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
-import { createSignal, onSettled, useContext } from "solid-js";
+import { createSignal, flush, onSettled, useContext } from "solid-js";
 import {
   Bar,
   Colour,
@@ -28,9 +28,16 @@ export function Hud() {
     mode,
     setMode,
     reset,
+    palette,
+    setPalette,
+    preview,
+    requestAutoSave,
   } = useContext(StackerContext);
 
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
+
+  const MenuPopover = createPopover();
+  const PalettePopover = createPopover();
 
   const onLoad = async () => {
     const file = await fileOpen<false>({
@@ -38,8 +45,9 @@ export function Hud() {
       description: "Sprite stack",
       mimeTypes: ["application/zip"],
     });
-    const sides = await load(file);
-    setSides(sides);
+    const result = await load(file, palette());
+    setSides(result.sides);
+    setPalette(result.palette);
     updateVoxels();
     setFileHandle((file as FileWithHandle).handle ?? null);
     onSettled(() => {
@@ -48,7 +56,7 @@ export function Hud() {
   };
 
   const onSave = async () => {
-    const blob = await save(sides());
+    const blob = await save(sides(), palette());
     setFileHandle(
       await fileSave(
         blob,
@@ -63,7 +71,7 @@ export function Hud() {
   };
 
   const onSaveAs = async () => {
-    const blob = await save(sides());
+    const blob = await save(sides(), palette());
     setFileHandle(
       await fileSave(blob, {
         fileName: "sprite-stack.zip",
@@ -72,9 +80,6 @@ export function Hud() {
       }),
     );
   };
-
-  const MenuPopover = createPopover();
-  const PalettePopover = createPopover();
 
   return (
     <>
@@ -134,6 +139,11 @@ export function Hud() {
                   selected={mode() === "Erase"}
                 />
                 <IconTab
+                  kind="square"
+                  onClick={() => setMode("Rectangle")}
+                  selected={mode() === "Rectangle"}
+                />
+                <IconTab
                   kind="eye-dropper"
                   onClick={() => setMode("Eyedrop")}
                   selected={mode() === "Eyedrop"}
@@ -144,13 +154,39 @@ export function Hud() {
               <PalettePopover.Trigger class={[tabStyle, colourTabStyle]}>
                 <Colour colour={selectedColour()} />
               </PalettePopover.Trigger>
-              <PalettePopover.PopOver class={styles.palettePopover} popover="manual">
+              <PalettePopover.PopOver
+                class={styles.palettePopover}
+                popover="manual"
+                style={{ "anchor-name": "--palette-popover" }}
+              >
                 <Palette />
               </PalettePopover.PopOver>
             </Bar>
           </div>
         </div>
         <div class={styles.main}></div>
+        <div class={styles.bottom}>
+          <Bar>
+            <IconTab
+              onClick={() => {
+                preview.setAutorotate(rotate => !rotate);
+                flush();
+                requestAutoSave();
+              }}
+              selected={preview.autorotate()}
+              kind="rotate"
+            />
+            <IconTab
+              onClick={() => {
+                preview.setUnlit(unlit => !unlit);
+                flush();
+                requestAutoSave();
+              }}
+              selected={!preview.unlit()}
+              kind="lightbulb"
+            />
+          </Bar>
+        </div>
       </div>
     </>
   );

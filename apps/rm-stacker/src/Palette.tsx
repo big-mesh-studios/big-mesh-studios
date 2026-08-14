@@ -8,8 +8,15 @@ import styles from "./Palette.module.css";
 import { pointer } from "./utils";
 
 function Palette(props: { class?: string }) {
-  const { palette, setPalette, selectedColour, selectPaletteIndex, narrow } =
-    useContext(StackerContext);
+  const {
+    palette,
+    setPalette,
+    selectedColour,
+    selectPaletteIndex,
+    narrow,
+    requestRender,
+    requestAutoSave,
+  } = useContext(StackerContext);
   const ColourPickerPopover = createPopover();
   let popover: HTMLDivElement = null!;
 
@@ -48,10 +55,12 @@ function Palette(props: { class?: string }) {
   });
 
   return (
-    <div class={[styles.palette, narrow() && styles.narrow, props.class]}>
+    <>
       <ColourPickerPopover.PopOver
         class={styles.colourPickerPopover}
-        style={{ "position-anchor": `--colour-${openedColour()}` }}
+        style={{
+          "position-anchor": narrow() ? "--palette-popover" : `--colour-${openedColour()}`,
+        }}
         popover="manual"
         ref={popover!}
       >
@@ -66,63 +75,67 @@ function Palette(props: { class?: string }) {
               palette[_openedColour] = colour;
               return [...palette];
             });
+            requestRender();
+            requestAutoSave();
           }}
         />
       </ColourPickerPopover.PopOver>
-      <For each={palette()}>
-        {(colour, index) => {
-          const isSelected = createMemo(
-            () => selectedColour() && RGBA.equals(colour, selectedColour()),
-          );
+      <div class={[styles.palette, narrow() && styles.narrow, props.class]}>
+        <For each={palette()}>
+          {(colour, index) => {
+            const isSelected = createMemo(
+              () => selectedColour() && RGBA.equals(colour, selectedColour()),
+            );
 
-          async function onPointerDown(event: PointerEvent & { currentTarget?: HTMLElement }) {
-            // If colour picker is already open
-            if (ColourPickerPopover.isOpen()) {
-              // close it if you click on the one currently active
-              // else switch the colour picker to the other colour
-              setOpenedColour(openedColour => (openedColour === index() ? undefined : index()));
-              return;
+            async function onPointerDown(event: PointerEvent & { currentTarget?: HTMLElement }) {
+              // If colour picker is already open
+              if (ColourPickerPopover.isOpen()) {
+                // close it if you click on the one currently active
+                // else switch the colour picker to the other colour
+                setOpenedColour(openedColour => (openedColour === index() ? undefined : index()));
+                return;
+              }
+
+              // if colour picker is not open we check for a longpress
+              let longpress = false;
+
+              const id = setTimeout(() => {
+                setOpenedColour(index());
+                longpress = true;
+              }, 250);
+
+              await pointer(event, undefined);
+
+              if (longpress) {
+                return;
+              }
+
+              clearTimeout(id);
+
+              // close colour picker
+              setOpenedColour(undefined);
+              // update with new colour
+              selectPaletteIndex(index());
             }
 
-            // if colour picker is not open we check for a longpress
-            let longpress = false;
-
-            const id = setTimeout(() => {
-              setOpenedColour(index());
-              longpress = true;
-            }, 250);
-
-            await pointer(event, undefined);
-
-            if (longpress) {
-              return;
-            }
-
-            clearTimeout(id);
-
-            // close colour picker
-            setOpenedColour(undefined);
-            // update with new colour
-            selectPaletteIndex(index());
-          }
-
-          return (
-            <button
-              class={[colourTabStyle, tabStyle, styles.tab]}
-              style={{
-                "anchor-name": `--colour-${index()}`,
-              }}
-              aria-selected={isSelected() ? "true" : "false"}
-              aria-opened={openedColour() === index() ? "true" : "false"}
-              onPointerDown={onPointerDown}
-              onTouchStart={event => event.preventDefault()}
-            >
-              <div style={{ background: RGBA.toCSS(colour) }} />
-            </button>
-          );
-        }}
-      </For>
-    </div>
+            return (
+              <button
+                class={[colourTabStyle, tabStyle, styles.tab]}
+                style={{
+                  "anchor-name": `--colour-${index()}`,
+                }}
+                aria-selected={isSelected() ? "true" : "false"}
+                aria-opened={openedColour() === index() ? "true" : "false"}
+                onPointerDown={onPointerDown}
+                onTouchStart={event => event.preventDefault()}
+              >
+                <div style={{ background: RGBA.toCSS(colour) }} />
+              </button>
+            );
+          }}
+        </For>
+      </div>
+    </>
   );
 }
 

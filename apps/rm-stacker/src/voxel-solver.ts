@@ -1,13 +1,11 @@
-import { Dimensions3D } from "./maths";
-import { DAWNBRINGER_32_PALETTE } from "./default_palette";
-import { Axis, Sides, Vector3D } from "./types";
+import { Bitmap, Dimensions3D, Vector3D } from "./maths";
+import { Axis, Sides } from "./types";
 
 export type ViewSpec = {
   kind: keyof Sides;
-  side: ImageData;
+  side: Bitmap;
   axis: Axis;
   fixedCoords: (px: number, py: number) => Vector3D;
-  nearestAscending: boolean;
 };
 
 // Right-handed coordinate system: +x right, +y up, +z into the model. The
@@ -23,43 +21,37 @@ const createViews = (
       kind: "front",
       side: front,
       axis: "z",
-      fixedCoords: (px, py) => ({ x: px, y: height - 1 - py, z: 0 }),
-      nearestAscending: true,
+      fixedCoords: (px, py) => Vector3D.create(px, height - 1 - py, 0),
     },
     {
       kind: "back",
       side: back,
       axis: "z",
-      fixedCoords: (px, py) => ({ x: width - 1 - px, y: height - 1 - py, z: 0 }),
-      nearestAscending: false,
+      fixedCoords: (px, py) => Vector3D.create(width - 1 - px, height - 1 - py, 0),
     },
     {
       kind: "left",
       side: left,
       axis: "x",
-      fixedCoords: (px, py) => ({ x: 0, y: height - 1 - py, z: depth - 1 - px }),
-      nearestAscending: true,
+      fixedCoords: (px, py) => Vector3D.create(0, height - 1 - py, depth - 1 - px),
     },
     {
       kind: "right",
       side: right,
       axis: "x",
-      fixedCoords: (px, py) => ({ x: 0, y: height - 1 - py, z: px }),
-      nearestAscending: false,
+      fixedCoords: (px, py) => Vector3D.create(0, height - 1 - py, px),
     },
     {
       kind: "top",
       side: top,
       axis: "y",
-      fixedCoords: (px, py) => ({ x: px, y: 0, z: depth - 1 - py }),
-      nearestAscending: false,
+      fixedCoords: (px, py) => Vector3D.create(px, 0, depth - 1 - py),
     },
     {
       kind: "bottom",
       side: bottom,
       axis: "y",
-      fixedCoords: (px, py) => ({ x: px, y: 0, z: py }),
-      nearestAscending: true,
+      fixedCoords: (px, py) => Vector3D.create(px, 0, py),
     },
   ];
 };
@@ -93,7 +85,8 @@ export function solveVoxels(
 
   const views = createViews(dimensions, sides);
 
-  // start off as white
+  // Start off with every voxel solid, for the silhouettes to carve away. Only
+  // the alpha byte is read until the packing below, which writes all four.
   out.fill(255);
 
   // erase the silhouettes
@@ -105,9 +98,7 @@ export function solveVoxels(
       const rowOffset = y * side.width;
 
       for (let x = 0; x < side.width; ++x) {
-        const sourceOffset = (rowOffset + x) << 2;
-
-        if (side.data[sourceOffset + 3] !== 0) {
+        if (side.data[rowOffset + x] !== Bitmap.EMPTY) {
           continue;
         }
 
@@ -126,53 +117,10 @@ export function solveVoxels(
     }
   }
 
-  // colour the remaining voxels by casting each opaque pixel ray to the
-  // nearest surviving voxel; views processed first take priority on overlap
-  const painted = new Uint8Array(width * height * depth);
-  for (const view of views) {
-    const data = view.side.data;
-    const imgWidth = view.side.width;
-    const imgHeight = view.side.height;
-    const length = axisLength[view.axis];
-
-    for (let py = 0; py < imgHeight; ++py) {
-      const rowOffset = py * imgWidth;
-
-      for (let px = 0; px < imgWidth; ++px) {
-        const sourceOffset = (rowOffset + px) << 2;
-
-        if (data[sourceOffset + 3] === 0) {
-          continue;
-        }
-
-        let offset = calcTargetOffset(view.fixedCoords(px, py));
-        let stride = axisStride[view.axis];
-
-        if (!view.nearestAscending) {
-          offset += (length - 1) * stride;
-          stride = -stride;
-        }
-
-        for (let i = 0; i < length; ++i) {
-          if (out[offset + 3] !== 0) {
-            if (painted[offset >> 2] === 0) {
-              painted[offset >> 2] = 1;
-              out[offset] = data[sourceOffset];
-              out[offset + 1] = data[sourceOffset + 1];
-              out[offset + 2] = data[sourceOffset + 2];
-              out[offset + 3] = 255;
-            }
-            break;
-          }
-          offset += stride;
-        }
-      }
-    }
-  }
-
-  // Pack each solid voxel into the shader's 30-bit face-colour format: six
+  // Pack each surviving voxel into the shader's 30-bit face-colour format: six
   // faces, five bits per colour index, with the top two alpha bits marking the
-  // voxel solid. Which side paints which face follows the view raymarches above.
+  // voxel solid. Each face takes its colour from the panel that looks at it,
+  // read at the position the coordinates below work out.
   const sideByKind = new Map(views.map(view => [view.kind, view]));
 
   for (let z = 0; z < depth; z++) {
@@ -214,32 +162,12 @@ export function solveVoxels(
 }
 
 /**
- * The index of the palette colour closest to the side pixel at (px, py). The
- * packed format holds five bits per face, so every colour must be one of the
- * 32 palette entries; this is the quantisation step.
+ * The palette index of the side cell at (px, py), which the packed format holds
+ * in five bits. A solid voxel can still have an empty cell facing it, on a face
+ * no panel has drawn on; those take index zero, the palette's black, which is
+ * what the nearest-colour search this replaces also settled on.
  */
 const faceColourIndex = (view: ViewSpec, px: number, py: number): number => {
-  const data = view.side.data;
-  const offset = (py * view.side.width + px) << 2;
-  return nearestPaletteIndex(data[offset], data[offset + 1], data[offset + 2]);
-};
-
-const nearestPaletteIndex = (r: number, g: number, b: number): number => {
-  let best = 0;
-  let bestDistance = Infinity;
-
-  for (let i = 0; i < DAWNBRINGER_32_PALETTE.length; i++) {
-    const colour = DAWNBRINGER_32_PALETTE[i];
-    const dr = colour.r - r;
-    const dg = colour.g - g;
-    const db = colour.b - b;
-    const distance = dr * dr + dg * dg + db * db;
-
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = i;
-    }
-  }
-
-  return best;
+  const index = view.side.data[py * view.side.width + px];
+  return index === Bitmap.EMPTY ? 0 : index;
 };

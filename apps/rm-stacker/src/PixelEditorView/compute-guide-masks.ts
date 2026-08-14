@@ -1,4 +1,5 @@
 import { SIDE_MASK } from "../constants";
+import { Bitmap } from "../maths";
 import { Dimensions2D, SideKind, Sides } from "../types";
 
 /**
@@ -25,29 +26,27 @@ const SIDE_AXIS_MAPPING = {
   },
 } as const;
 
-function isColumnEmpty(side: ImageData, index: number, mirror = false) {
+function isColumnEmpty(side: Bitmap, index: number, mirror = false) {
   const _index = mirror ? side.width - 1 - index : index;
   for (let y = 0; y < side.height; y++) {
-    const offset = ((y * side.width + _index) << 2) + 3;
-    if (side.data[offset] !== 0) {
+    if (!Bitmap.isEmpty(side, _index, y)) {
       return false;
     }
   }
   return true;
 }
 
-function isRowEmpty(side: ImageData, index: number, mirror = false) {
+function isRowEmpty(side: Bitmap, index: number, mirror = false) {
   const _index = mirror ? side.height - 1 - index : index;
   for (let x = 0; x < side.width; x++) {
-    const offset = ((_index * side.width + x) << 2) + 3;
-    if (side.data[offset] !== 0) {
+    if (!Bitmap.isEmpty(side, x, _index)) {
       return false;
     }
   }
   return true;
 }
 
-function isLineEmpty(side: ImageData, line: "row" | "column", index: number, mirror: boolean) {
+function isLineEmpty(side: Bitmap, line: "row" | "column", index: number, mirror: boolean) {
   return line === "column" ? isColumnEmpty(side, index, mirror) : isRowEmpty(side, index, mirror);
 }
 
