@@ -199,8 +199,8 @@ const VoxelPreviewView: Component = () => {
 
   const normalizedDimensions = createMemo(() => Dimensions3D.normalize(dimensions()));
 
-  let yaw = 0;
-  let pitch = 0;
+  let yaw = Math.PI / 4;
+  let pitch = Math.PI / 6;
   let radius = 3;
 
   const RADIANS_PER_PIXEL = 0.005;
