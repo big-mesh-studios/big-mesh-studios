@@ -2,12 +2,11 @@ import type { Node } from "@random-mesh/rmsl";
 import {
   Fn,
   attribute,
-  boolean,
-  break_,
+  Break,
   compileGLSL,
   float,
-  for_,
-  if_,
+  For,
+  If,
   int,
   uint,
   uniformRaw,
@@ -15,6 +14,7 @@ import {
   vec2,
   vec3,
   vec4,
+  bool,
 } from "@random-mesh/rmsl";
 
 const FOCAL_LENGTH = 2;
@@ -42,13 +42,13 @@ export default (() => {
   // Componentwise min/max of two vectors, expressed with abs since rmsl only
   // types the scalar variants: (a + b +/- |a - b|) / 2
   const minVec2 = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
-    a.add(b).sub(a.sub(b).abs()).mult(float(0.5));
+    a.add(b).sub(a.sub(b).abs()).mul(float(0.5));
   const maxVec2 = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
-    a.add(b).add(a.sub(b).abs()).mult(float(0.5));
+    a.add(b).add(a.sub(b).abs()).mul(float(0.5));
   const minVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
-    a.add(b).sub(a.sub(b).abs()).mult(float(0.5));
+    a.add(b).sub(a.sub(b).abs()).mul(float(0.5));
   const maxVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
-    a.add(b).add(a.sub(b).abs()).mult(float(0.5));
+    a.add(b).add(a.sub(b).abs()).mul(float(0.5));
 
   // The voxel texture is an integer (usampler3D) so rmsl compiles the lookup
   // to texelFetch, which takes integer texel coordinates — one texel per voxel.
@@ -117,28 +117,28 @@ export default (() => {
   };
 
   const vertexFn = Fn(() => {
-    vUv.assign(positionAttr.mult(vec2(0.5)).add(vec2(0.5)));
+    vUv.assign(positionAttr.mul(vec2(0.5)).add(vec2(0.5)));
     return vec4(positionAttr, float(0), float(1));
   });
 
   const fragmentFn = Fn(() => {
-    const fragmentCoord = vUv.mult(uResolution);
-    const screenPosition = fragmentCoord.mult(float(2)).sub(uResolution).div(uResolution.y);
+    const fragmentCoord = vUv.mul(uResolution);
+    const screenPosition = fragmentCoord.mul(float(2)).sub(uResolution).div(uResolution.y);
 
-    const rayOrigin = uWorldToModel.multVec(uCameraPosition).toVar();
+    const rayOrigin = uWorldToModel.mul(uCameraPosition).toVar();
     const rayDirection = uWorldToModel
-      .multVec(vec3(screenPosition.x, screenPosition.y, float(-FOCAL_LENGTH)).normalize())
+      .mul(vec3(screenPosition.x, screenPosition.y, float(-FOCAL_LENGTH)).normalize())
       .toVar();
 
     const colour = vec4(float(0), float(0), float(0), float(0)).toVar();
 
     const cellSize = uDimensions.div(uVoxelCount).toVar();
-    const boxMin = uDimensions.mult(float(-0.5)).sub(cellSize).toVar();
-    const boxMax = uDimensions.mult(float(0.5)).add(cellSize).toVar();
+    const boxMin = uDimensions.mul(float(-0.5)).sub(cellSize).toVar();
+    const boxMax = uDimensions.mul(float(0.5)).add(cellSize).toVar();
     const inverseRayDirection = vec3(float(1)).div(rayDirection);
 
-    const distanceToMinPlanes = inverseRayDirection.mult(boxMin.sub(rayOrigin)).toVar();
-    const distanceToMaxPlanes = inverseRayDirection.mult(boxMax.sub(rayOrigin)).toVar();
+    const distanceToMinPlanes = inverseRayDirection.mul(boxMin.sub(rayOrigin)).toVar();
+    const distanceToMaxPlanes = inverseRayDirection.mul(boxMax.sub(rayOrigin)).toVar();
 
     const nearPlaneDistances = minVec3(distanceToMinPlanes, distanceToMaxPlanes).toVar();
     const farPlaneDistances = maxVec3(distanceToMinPlanes, distanceToMaxPlanes).toVar();
@@ -155,14 +155,14 @@ export default (() => {
     ).toVar();
     const exitDistance = farPair.x.min(farPair.y).toVar();
 
-    if_(entryDistance.lessThanEqual(exitDistance), () => {
+    If(entryDistance.lessThanEqual(exitDistance), () => {
       const cellDir = rayDirection.div(cellSize).toVar();
 
-      const entryPoint = rayOrigin.add(rayDirection.mult(entryDistance)).toVar();
+      const entryPoint = rayOrigin.add(rayDirection.mul(entryDistance)).toVar();
       const cellOrigin = entryPoint
-        .add(uDimensions.mult(float(0.5)))
+        .add(uDimensions.mul(float(0.5)))
         .div(cellSize)
-        .add(cellDir.mult(float(0.001)))
+        .add(cellDir.mul(float(0.001)))
         .toVar();
 
       const mapPos = cellOrigin.floor().toIVec3().toVar();
@@ -172,43 +172,43 @@ export default (() => {
         .toVar();
       const sideDist = rayStep
         .toVec3()
-        .mult(mapPos.toVec3().sub(cellOrigin))
-        .add(rayStep.toVec3().mult(float(0.5)).add(float(0.5)))
-        .mult(deltaDist)
+        .mul(mapPos.toVec3().sub(cellOrigin))
+        .add(rayStep.toVec3().mul(float(0.5)).add(float(0.5)))
+        .mul(deltaDist)
         .toVar();
 
       const mask = vec3(float(0)).toVar();
 
-      if_(nearPlaneDistances.x.equal(entryDistance), () => {
+      If(nearPlaneDistances.x.equal(entryDistance), () => {
         mask.assign(vec3(float(1), float(0), float(0)));
       })
-        .elseIf(nearPlaneDistances.y.equal(entryDistance), () => {
+        .ElseIf(nearPlaneDistances.y.equal(entryDistance), () => {
           mask.assign(vec3(float(0), float(1), float(0)));
         })
-        .else_(() => {
+        .Else(() => {
           mask.assign(vec3(float(0), float(0), float(1)));
         });
 
       const maxSteps = uVoxelCount.x
         .max(uVoxelCount.y)
         .max(uVoxelCount.z)
-        .mult(float(3))
+        .mul(float(3))
         .add(float(8))
         .toInt();
 
-      const hit = boolean(false).toVar();
-      for_(
+      const hit = bool(false).toVar();
+      For(
         () => int(0).toVar(),
         i => i.lessThan(maxSteps),
         i => i.assign(i.add(1)),
         () => {
-          if_(paddedInBounds(mapPos).not(), () => {
-            break_();
+          If(paddedInBounds(mapPos).not(), () => {
+            Break();
           });
-          if_(inBounds(mapPos), () => {
-            if_(isSolid(sampleCell(mapPos)), () => {
-              hit.assign(boolean(true));
-              break_();
+          If(inBounds(mapPos), () => {
+            If(isSolid(sampleCell(mapPos)), () => {
+              hit.assign(bool(true));
+              Break();
             });
           });
           mask.assign(
@@ -222,43 +222,43 @@ export default (() => {
               )
               .toVec3(),
           );
-          sideDist.assign(sideDist.add(mask.mult(deltaDist)));
-          mapPos.assign(mapPos.add(mask.toIVec3().mult(rayStep)));
+          sideDist.assign(sideDist.add(mask.mul(deltaDist)));
+          mapPos.assign(mapPos.add(mask.toIVec3().mul(rayStep)));
         },
       );
-      if_(hit, () => {
+      If(hit, () => {
         const voxel = sampleCell(mapPos);
         const faceColourIndex = uint(0).toVar();
-        if_(mask.x.notEqual(float(0)), () => {
-          if_(rayStep.x.greaterThan(0), () => {
+        If(mask.x.notEqual(float(0)), () => {
+          If(rayStep.x.greaterThan(0), () => {
             faceColourIndex.assign(readLeft(voxel));
-          }).else_(() => {
+          }).Else(() => {
             faceColourIndex.assign(readRight(voxel));
           });
         })
-          .elseIf(mask.y.notEqual(float(0)), () => {
-            if_(rayStep.y.greaterThan(0), () => {
+          .ElseIf(mask.y.notEqual(float(0)), () => {
+            If(rayStep.y.greaterThan(0), () => {
               faceColourIndex.assign(readBottom(voxel));
-            }).else_(() => {
+            }).Else(() => {
               faceColourIndex.assign(readTop(voxel));
             });
           })
-          .else_(() => {
-            if_(rayStep.z.greaterThan(0), () => {
+          .Else(() => {
+            If(rayStep.z.greaterThan(0), () => {
               faceColourIndex.assign(readBack(voxel));
-            }).else_(() => {
+            }).Else(() => {
               faceColourIndex.assign(readFront(voxel));
             });
           });
 
-        if_(uUnlit.toVar(), () => {
+        If(uUnlit.toVar(), () => {
           colour.rgb.assign(colourIndexToColour(faceColourIndex).rgb);
-        }).else_(() => {
-          const normal = mask.mult(rayStep.toVec3()).negate().toVar();
+        }).Else(() => {
+          const normal = mask.mul(rayStep.toVec3()).negate().toVar();
           const diffuse = normal.dot(uLightDir).max(float(0));
           colour.rgb.assign(
-            colourIndexToColour(faceColourIndex).rgb.mult(
-              uAmbientColour.add(uLightColour.mult(diffuse)),
+            colourIndexToColour(faceColourIndex).rgb.mul(
+              uAmbientColour.add(uLightColour.mul(diffuse)),
             ),
           );
         });
