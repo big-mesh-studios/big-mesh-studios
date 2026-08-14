@@ -9,7 +9,7 @@ import { Command } from "./Command";
 export function createCommander({
   sides,
   setSides,
-  updateVoxels,
+  invalidateSides,
   requestRender,
   requestAutoSave,
   palette,
@@ -18,7 +18,7 @@ export function createCommander({
   sides: Accessor<Sides>;
   setSides: Setter<Sides>;
   setPalette: Setter<RGBA[]>;
-  updateVoxels(): void;
+  invalidateSides(): void;
   requestRender(): void;
   requestAutoSave(): void;
   palette: Accessor<RGBA[]>;
@@ -176,7 +176,7 @@ export function createCommander({
 
           setPalette(loaded.palette);
           setSides(loaded.sides);
-          updateVoxels();
+          invalidateSides();
           requestRender();
 
           return undoCommand;

@@ -22,7 +22,7 @@ export function Hud() {
     sides,
     setSides,
     undoRedoManager,
-    updateVoxels,
+    invalidateSides,
     selectedColour,
     requestRender,
     mode,
@@ -48,7 +48,7 @@ export function Hud() {
     const result = await load(file, palette());
     setSides(result.sides);
     setPalette(result.palette);
-    updateVoxels();
+    invalidateSides();
     setFileHandle((file as FileWithHandle).handle ?? null);
     onSettled(() => {
       requestRender();

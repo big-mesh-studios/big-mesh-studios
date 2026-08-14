@@ -9,6 +9,7 @@ import {
   for_,
   if_,
   int,
+  ivec2,
   uint,
   uniformRaw,
   varying,
@@ -19,6 +20,11 @@ import {
 
 const FOCAL_LENGTH = 2;
 
+// The value a panel's cell holds where nothing has been drawn, matching
+// `Bitmap.EMPTY`. Panels upload as single-channel integer textures of palette
+// indices, so this travels to the shader as-is.
+const EMPTY_CELL = 255;
+
 // This module is compiled once at build time by vite-precompile-shaders and
 // replaced with JSON, so the rmsl graph is never built (and rmsl is never
 // shipped) in the browser.
@@ -26,10 +32,19 @@ export default (() => {
   // Shared rmsl nodes. Created once so the generated slot names are the same in
   // both the vertex and fragment shaders.
   const uPalette = uniformRaw("uPalette", "sampler2D");
-  const uVoxels = uniformRaw("uVoxels", "usampler3D");
+  const uFront = uniformRaw("uFront", "usampler2D");
+  const uBack = uniformRaw("uBack", "usampler2D");
+  const uLeft = uniformRaw("uLeft", "usampler2D");
+  const uRight = uniformRaw("uRight", "usampler2D");
+  const uTop = uniformRaw("uTop", "usampler2D");
+  const uBottom = uniformRaw("uBottom", "usampler2D");
   const uResolution = uniformRaw("uResolution", "vec2");
   const uDimensions = uniformRaw("uDimensions", "vec3");
   const uVoxelCount = uniformRaw("uVoxelCount", "vec3");
+  // The same voxel count the ray marching arithmetic uses, in whole numbers, so
+  // that the panel lookups below can index texels without converting on every
+  // fetch.
+  const uVoxelCountI = uniformRaw("uVoxelCountI", "ivec3");
   const uLightDir = uniformRaw("uLightDir", "vec3");
   const uLightColour = uniformRaw("uLightColour", "vec3");
   const uAmbientColour = uniformRaw("uAmbientColour", "vec3");
@@ -50,12 +65,47 @@ export default (() => {
   const maxVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
     a.add(b).add(a.sub(b).abs()).mult(float(0.5));
 
-  // The voxel texture is an integer (usampler3D) so rmsl compiles the lookup
-  // to texelFetch, which takes integer texel coordinates — one texel per voxel.
-  // rmsl's .texture() call takes those integer texel coordinates directly, not
-  // a normalized [0,1] position, so a caller that already works in whole voxel
-  // indices fetches by them.
-  const sampleCell = (cell: Node<"ivec3">): Node<"uvec4"> => uVoxels.texture(cell.toUVec3());
+  // Where each panel looks when asked about a voxel. A panel sees the model
+  // along one axis, so it fixes the other two coordinates, and the panels that
+  // face each other read their shared axis from opposite ends. These six
+  // mappings are the whole relationship between the drawing and the model.
+  //
+  // The panels are integer textures (usampler2D), so rmsl compiles the lookup
+  // to texelFetch, which takes whole texel coordinates — one texel per cell —
+  // rather than a normalized [0,1] position. Every caller below is already
+  // working in whole voxel indices, so it fetches by them directly.
+  const width = () => uVoxelCountI.x;
+  const height = () => uVoxelCountI.y;
+  const depth = () => uVoxelCountI.z;
+
+  const cellFront = (cell: Node<"ivec3">): Node<"uint"> =>
+    uFront.texture(ivec2(cell.x, height().sub(1).sub(cell.y)).toUVec2()).r;
+  const cellBack = (cell: Node<"ivec3">): Node<"uint"> =>
+    uBack.texture(ivec2(width().sub(1).sub(cell.x), height().sub(1).sub(cell.y)).toUVec2()).r;
+  const cellLeft = (cell: Node<"ivec3">): Node<"uint"> =>
+    uLeft.texture(ivec2(cell.z, height().sub(1).sub(cell.y)).toUVec2()).r;
+  const cellRight = (cell: Node<"ivec3">): Node<"uint"> =>
+    uRight.texture(ivec2(depth().sub(1).sub(cell.z), height().sub(1).sub(cell.y)).toUVec2()).r;
+  const cellTop = (cell: Node<"ivec3">): Node<"uint"> =>
+    uTop.texture(ivec2(cell.x, cell.z).toUVec2()).r;
+  const cellBottom = (cell: Node<"ivec3">): Node<"uint"> =>
+    uBottom.texture(ivec2(cell.x, depth().sub(1).sub(cell.z)).toUVec2()).r;
+
+  const isDrawn = (colourIndex: Node<"uint">): Node<"bool"> =>
+    colourIndex.notEqual(uint(EMPTY_CELL));
+
+  // A voxel survives exactly when every panel has drawn on the cell facing it:
+  // each panel erases the whole run of voxels behind a cell it left empty, so
+  // one empty cell anywhere is enough to carve this voxel away. Nothing here
+  // depends on neighbouring voxels, which is why the model needs no solving
+  // pass ahead of the ray march.
+  const isSolid = (cell: Node<"ivec3">): Node<"bool"> =>
+    isDrawn(cellFront(cell))
+      .and(isDrawn(cellBack(cell)))
+      .and(isDrawn(cellLeft(cell)))
+      .and(isDrawn(cellRight(cell)))
+      .and(isDrawn(cellTop(cell)))
+      .and(isDrawn(cellBottom(cell)));
 
   // The volume fills the whole grid (one texel per voxel), so a cell is inside
   // the volume exactly when every index lies in [0, uVoxelCount).
@@ -78,28 +128,6 @@ export default (() => {
       .greaterThanEqual(vec3(float(-2)))
       .all()
       .and(c.lessThan(uVoxelCount.add(vec3(float(2)))).all());
-  };
-
-  const readFront = (voxel: Node<"uvec4">): Node<"uint"> => {
-    return voxel.r.bitAnd(0b00011111);
-  };
-  const readBack = (voxel: Node<"uvec4">): Node<"uint"> => {
-    return voxel.r.bitAnd(0b11100000).shiftRight(5).bitOr(voxel.g.bitAnd(0b00000011).shiftLeft(3));
-  };
-  const readLeft = (voxel: Node<"uvec4">): Node<"uint"> => {
-    return voxel.g.bitAnd(0b01111100).shiftRight(2);
-  };
-  const readRight = (voxel: Node<"uvec4">): Node<"uint"> => {
-    return voxel.g.bitAnd(0b10000000).shiftRight(7).bitOr(voxel.b.bitAnd(0b00001111).shiftLeft(1));
-  };
-  const readTop = (voxel: Node<"uvec4">): Node<"uint"> => {
-    return voxel.b.bitAnd(0b11110000).shiftRight(4).bitOr(voxel.a.bitAnd(0b00000001).shiftLeft(4));
-  };
-  const readBottom = (voxel: Node<"uvec4">): Node<"uint"> => {
-    return voxel.a.bitAnd(0b00111110).shiftRight(1);
-  };
-  const isSolid = (voxel: Node<"uvec4">): Node<"bool"> => {
-    return voxel.a.bitAnd(0b11000000).notEqual(0);
   };
 
   const colourIndexToColour = (colourIndex: Node<"uint">): Node<"vec4"> => {
@@ -206,7 +234,7 @@ export default (() => {
             break_();
           });
           if_(inBounds(mapPos), () => {
-            if_(isSolid(sampleCell(mapPos)), () => {
+            if_(isSolid(mapPos), () => {
               hit.assign(boolean(true));
               break_();
             });
@@ -227,27 +255,30 @@ export default (() => {
         },
       );
       if_(hit, () => {
-        const voxel = sampleCell(mapPos);
+        // The face the ray came in through takes its colour from the panel
+        // looking at it. That cell is always drawn on, since an empty one would
+        // have carved this voxel away, so there is no undrawn case to fall back
+        // from.
         const faceColourIndex = uint(0).toVar();
         if_(mask.x.notEqual(float(0)), () => {
           if_(rayStep.x.greaterThan(0), () => {
-            faceColourIndex.assign(readLeft(voxel));
+            faceColourIndex.assign(cellLeft(mapPos));
           }).else_(() => {
-            faceColourIndex.assign(readRight(voxel));
+            faceColourIndex.assign(cellRight(mapPos));
           });
         })
           .elseIf(mask.y.notEqual(float(0)), () => {
             if_(rayStep.y.greaterThan(0), () => {
-              faceColourIndex.assign(readBottom(voxel));
+              faceColourIndex.assign(cellBottom(mapPos));
             }).else_(() => {
-              faceColourIndex.assign(readTop(voxel));
+              faceColourIndex.assign(cellTop(mapPos));
             });
           })
           .else_(() => {
             if_(rayStep.z.greaterThan(0), () => {
-              faceColourIndex.assign(readBack(voxel));
+              faceColourIndex.assign(cellBack(mapPos));
             }).else_(() => {
-              faceColourIndex.assign(readFront(voxel));
+              faceColourIndex.assign(cellFront(mapPos));
             });
           });
 
@@ -271,10 +302,16 @@ export default (() => {
     return colour;
   });
   return {
-    uVoxels: uVoxels.name,
+    uFront: uFront.name,
+    uBack: uBack.name,
+    uLeft: uLeft.name,
+    uRight: uRight.name,
+    uTop: uTop.name,
+    uBottom: uBottom.name,
     uResolution: uResolution.name,
     uDimensions: uDimensions.name,
     uVoxelCount: uVoxelCount.name,
+    uVoxelCountI: uVoxelCountI.name,
     uLightDir: uLightDir.name,
     uLightColour: uLightColour.name,
     uAmbientColour: uAmbientColour.name,

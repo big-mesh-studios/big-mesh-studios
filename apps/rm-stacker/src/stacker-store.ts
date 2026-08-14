@@ -8,7 +8,6 @@ import { ResizeOptions, resizeSides } from "./resize-sides";
 import { ModeKind, type Dimensions2D, type Sides } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { createEnqueue, createMediaQuery } from "./utils";
-import { solveVoxels } from "./voxel-solver";
 
 const INITIAL_DIMENSIONS = { width: 15, height: 15, depth: 15 };
 const INITIAL_PALETTE_INDEX = 5;
@@ -72,7 +71,10 @@ export function createStacker() {
     height: sides().front.height,
     depth: sides().left.width,
   }));
-  const [voxels, setVoxels] = createSignal(() => solveVoxels(dimensions(), sides()));
+  // Commands draw straight into the panels, so `sides` keeps the same value
+  // across an edit and cannot be tracked on its own. This counts the edits, for
+  // anything derived from the drawing to follow.
+  const [sidesVersion, setSidesVersion] = createSignal(0);
   const narrow = createMediaQuery("(max-width: 500px)");
 
   const [unlit, setUnlit] = createSignal(() => saved()?.preview?.unlit ?? true);
@@ -122,15 +124,15 @@ export function createStacker() {
     };
   })();
 
-  function updateVoxels() {
+  function invalidateSides() {
     flush();
-    setVoxels(solveVoxels(dimensions(), sides()));
+    setSidesVersion(version => version + 1);
   }
 
   const { snapshot, doCommand } = createCommander({
     sides,
     setSides,
-    updateVoxels,
+    invalidateSides,
     requestRender,
     requestAutoSave,
     palette,
@@ -143,7 +145,7 @@ export function createStacker() {
         const result = await doCommand(command);
 
         if (result.type !== "NoOperation") {
-          updateVoxels();
+          invalidateSides();
           requestRender();
         }
 
@@ -179,9 +181,9 @@ export function createStacker() {
     // sides
     sides,
     setSides,
-    // voxels
-    voxels,
-    updateVoxels,
+    // sides version
+    sidesVersion,
+    invalidateSides,
     // Palette
     palette,
     setPalette,
@@ -210,7 +212,7 @@ export function createStacker() {
      */
     resize(options: ResizeOptions) {
       setSides(resizeSides(options));
-      updateVoxels();
+      invalidateSides();
       requestRender();
       requestAutoSave();
     },
@@ -226,7 +228,7 @@ export function createStacker() {
     },
     reset() {
       setSides(createInitialSides(INITIAL_DIMENSIONS));
-      updateVoxels();
+      invalidateSides();
       requestAutoSave();
     },
   };

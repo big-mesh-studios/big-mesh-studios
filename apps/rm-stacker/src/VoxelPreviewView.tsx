@@ -9,9 +9,10 @@ import {
   useContext,
 } from "solid-js";
 import { StackerContext } from "./context";
-import { Dimensions3D, Matrix3x3, RGBA, Vector3D } from "./maths";
+import { Bitmap, Dimensions3D, Matrix3x3, RGBA, Vector3D } from "./maths";
 import shaders from "./shaders";
-import { pointer, tryCatch } from "./utils";
+import { sideKindSet, type SideKind, type Sides } from "./types";
+import { keysOf, pointer, tryCatch } from "./utils";
 import styles from "./VoxelPreviewView.module.css";
 
 const MIN_RADIUS = 2;
@@ -27,25 +28,42 @@ const AMBIENT_COLOUR = new Float32Array([0.35, 0.35, 0.4]);
 const TURNTABLE_SECONDS_PER_REVOLUTION = 20;
 const TURNTABLE_RADIANS_PER_SECOND = -(2 * Math.PI) / TURNTABLE_SECONDS_PER_REVOLUTION;
 
+// The shader reads the model straight off the six panels, so each one is bound
+// to its own texture unit. The palette follows them, on the unit after the last
+// panel. WebGL2 guarantees at least sixteen units in a fragment shader.
+const SIDE_UNIFORM_NAME = {
+  front: shaders.uFront,
+  back: shaders.uBack,
+  left: shaders.uLeft,
+  right: shaders.uRight,
+  top: shaders.uTop,
+  bottom: shaders.uBottom,
+} satisfies Record<SideKind, string>;
+
+const SIDE_KINDS = keysOf(sideKindSet);
+const PALETTE_TEXTURE_UNIT = SIDE_KINDS.length;
+
 type WebGLState = {
   gl: WebGL2RenderingContext;
   program: WebGLProgram;
   positionLocation: number;
   uResolutionLocation: WebGLUniformLocation | null;
-  uVoxelsLocation: WebGLUniformLocation | null;
+  uSideLocations: Record<SideKind, WebGLUniformLocation | null>;
   uLightDirLocation: WebGLUniformLocation | null;
   uLightColourLocation: WebGLUniformLocation | null;
   uAmbientColourLocation: WebGLUniformLocation | null;
   uUnlitLocation: WebGLUniformLocation | null;
   uDimensions: WebGLUniformLocation | null;
   uVoxelCount: WebGLUniformLocation | null;
+  uVoxelCountI: WebGLUniformLocation | null;
   uPaletteLocation: WebGLUniformLocation | null;
   uCameraPositionLocation: WebGLUniformLocation | null;
   uWorldToModelLocation: WebGLUniformLocation | null;
-  texture: WebGLTexture;
+  sideTextures: Record<SideKind, WebGLTexture>;
   paletteTexture: WebGLTexture;
   buffer: WebGLBuffer;
   uploadPalette(palette: RGBA[]): void;
+  uploadSides(sides: Sides): void;
 };
 
 const setupWebGL = (gl: WebGL2RenderingContext, palette: RGBA[]): WebGLState => {
@@ -85,29 +103,56 @@ const setupWebGL = (gl: WebGL2RenderingContext, palette: RGBA[]): WebGLState => 
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
 
-  const texture = gl.createTexture();
-  if (texture === null) {
-    throw new Error("Failed to create texture");
-  }
-  gl.bindTexture(gl.TEXTURE_3D, texture);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+  // One single-channel integer texture per panel, holding its palette indices
+  // exactly as the panel stores them. Integer textures cannot be filtered, and
+  // the shader fetches whole texels anyway, so nearest sampling throughout.
+  // Each starts as a single empty cell until the first upload.
   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-  gl.texImage3D(
-    gl.TEXTURE_3D,
-    0,
-    gl.RGBA8UI,
-    1,
-    1,
-    1,
-    0,
-    gl.RGBA_INTEGER,
-    gl.UNSIGNED_BYTE,
-    new Uint8Array([0, 0, 0, 0]),
-  );
+  const createSideTexture = (): WebGLTexture => {
+    const texture = gl.createTexture();
+    if (texture === null) {
+      throw new Error("Failed to create side texture");
+    }
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.R8UI,
+      1,
+      1,
+      0,
+      gl.RED_INTEGER,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([Bitmap.EMPTY]),
+    );
+    return texture;
+  };
+
+  const sideTextures = Object.fromEntries(
+    SIDE_KINDS.map(kind => [kind, createSideTexture()]),
+  ) as Record<SideKind, WebGLTexture>;
+
+  const uploadSides = (sides: Sides) => {
+    SIDE_KINDS.forEach(kind => {
+      const side = sides[kind];
+      gl.bindTexture(gl.TEXTURE_2D, sideTextures[kind]);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.R8UI,
+        side.width,
+        side.height,
+        0,
+        gl.RED_INTEGER,
+        gl.UNSIGNED_BYTE,
+        side.data,
+      );
+    });
+  };
 
   // One row of 32 texels, one per palette colour. The shader looks a colour
   // index up at its texel's centre, so the texel must span exactly 1/32 of the
@@ -173,25 +218,30 @@ const setupWebGL = (gl: WebGL2RenderingContext, palette: RGBA[]): WebGLState => 
     program,
     positionLocation: gl.getAttribLocation(program, shaders.positionAttr),
     uResolutionLocation: gl.getUniformLocation(program, shaders.uResolution),
-    uVoxelsLocation: gl.getUniformLocation(program, shaders.uVoxels),
+    uSideLocations: Object.fromEntries(
+      SIDE_KINDS.map(kind => [kind, gl.getUniformLocation(program, SIDE_UNIFORM_NAME[kind])]),
+    ) as Record<SideKind, WebGLUniformLocation | null>,
     uLightDirLocation: gl.getUniformLocation(program, shaders.uLightDir),
     uLightColourLocation: gl.getUniformLocation(program, shaders.uLightColour),
     uAmbientColourLocation: gl.getUniformLocation(program, shaders.uAmbientColour),
     uUnlitLocation: gl.getUniformLocation(program, shaders.uUnlit),
     uDimensions: gl.getUniformLocation(program, shaders.uDimensions),
     uVoxelCount: gl.getUniformLocation(program, shaders.uVoxelCount),
+    uVoxelCountI: gl.getUniformLocation(program, shaders.uVoxelCountI),
     uPaletteLocation: gl.getUniformLocation(program, shaders.uPalette),
     uCameraPositionLocation: gl.getUniformLocation(program, shaders.uCameraPosition),
     uWorldToModelLocation: gl.getUniformLocation(program, shaders.uWorldToModel),
-    texture,
+    sideTextures,
     paletteTexture,
     buffer,
     uploadPalette,
+    uploadSides,
   };
 };
 
 const VoxelPreviewView: Component = () => {
-  const { dimensions, voxels, palette, requestRender, preview } = useContext(StackerContext);
+  const { dimensions, sides, sidesVersion, palette, requestRender, preview } =
+    useContext(StackerContext);
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [webgl, setWebgl] = createSignal<WebGLState>();
@@ -232,30 +282,18 @@ const VoxelPreviewView: Component = () => {
     return Matrix3x3.multiply(yawMatrix, pitchMatrix, worldToModel);
   };
 
-  const loadVoxelArrayToWebGL = () => {
-    const _dimensions = dimensions();
-    const _voxels = voxels();
+  // The panels are only re-uploaded when one of them is drawn on, rather than
+  // once a frame: `sidesVersion` counts the edits, since commands write into
+  // the panels in place and so leave `sides()` itself unchanged.
+  createTrackedEffect(() => {
+    sidesVersion();
+    const _sides = sides();
     const _webgl = webgl();
     if (_webgl === undefined) {
       return;
     }
-    const gl = _webgl.gl;
-    gl.bindTexture(gl.TEXTURE_3D, _webgl.texture);
-    gl.texImage3D(
-      gl.TEXTURE_3D,
-      0,
-      gl.RGBA8UI,
-      _dimensions.width,
-      _dimensions.height,
-      _dimensions.depth,
-      0,
-      gl.RGBA_INTEGER,
-      gl.UNSIGNED_BYTE,
-      _voxels,
-    );
-  };
-
-  createTrackedEffect(loadVoxelArrayToWebGL);
+    _webgl.uploadSides(_sides);
+  });
 
   const render = () => {
     const _dimensions = untrack(dimensions);
@@ -272,9 +310,11 @@ const VoxelPreviewView: Component = () => {
     gl.viewport(0, 0, width, height);
     gl.useProgram(_webgl.program);
     gl.uniform2f(_webgl.uResolutionLocation, width, height);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_3D, _webgl.texture);
-    gl.uniform1i(_webgl.uVoxelsLocation, 0);
+    SIDE_KINDS.forEach((kind, unit) => {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, _webgl.sideTextures[kind]);
+      gl.uniform1i(_webgl.uSideLocations[kind], unit);
+    });
     gl.uniform3f(
       _webgl.uLightDirLocation,
       modelSpaceLightDirection.x,
@@ -295,15 +335,15 @@ const VoxelPreviewView: Component = () => {
       normalizedDimensions().depth,
     );
     gl.uniform3f(_webgl.uVoxelCount, _dimensions.width, _dimensions.height, _dimensions.depth);
+    gl.uniform3i(_webgl.uVoxelCountI, _dimensions.width, _dimensions.height, _dimensions.depth);
     gl.uniform3f(_webgl.uCameraPositionLocation, 0, 0, radius);
     gl.uniformMatrix3fv(_webgl.uWorldToModelLocation, false, worldToModel);
-    gl.activeTexture(gl.TEXTURE1);
+    gl.activeTexture(gl.TEXTURE0 + PALETTE_TEXTURE_UNIT);
     gl.bindTexture(gl.TEXTURE_2D, _webgl.paletteTexture);
-    gl.uniform1i(_webgl.uPaletteLocation, 1);
+    gl.uniform1i(_webgl.uPaletteLocation, PALETTE_TEXTURE_UNIT);
     gl.bindBuffer(gl.ARRAY_BUFFER, _webgl.buffer);
     gl.enableVertexAttribArray(_webgl.positionLocation);
     gl.vertexAttribPointer(_webgl.positionLocation, 2, gl.FLOAT, false, 0, 0);
-    untrack(loadVoxelArrayToWebGL);
     gl.flush();
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
