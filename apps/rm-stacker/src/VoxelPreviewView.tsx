@@ -20,11 +20,13 @@ import { bloom } from "@random-mesh/rmsl/effects";
 import { StackerContext } from "./context";
 import { BloomExecutor, createRenderTarget, GlowPass, type RenderTarget } from "./bloom-executor";
 import { Dimensions3D, Matrix3x3, Vector3D } from "./maths";
+import { PANEL_UNIFORM_NAME, toPanelTextures } from "./panel-textures";
 import shaders from "./shaders";
 import { VoxelPreviewMaterial } from "./voxel-preview-material";
 import { voxelPicker } from "./voxel-picker";
 import { boxSize, FOV, NEAR, FAR, rotateMesh } from "./voxel-preview-scene";
-import { tryCatch } from "./utils";
+import { sideKindSet } from "./types";
+import { keysOf, tryCatch } from "./utils";
 import styles from "./VoxelPreviewView.module.css";
 
 const MIN_RADIUS = 2;
@@ -47,6 +49,8 @@ const BLOOM_RADIUS = 0.4;
 const BLOOM_THRESHOLD = 0;
 const BLOOM_SMOOTH_WIDTH = 0.01;
 
+const SIDE_KINDS = keysOf(sideKindSet);
+
 type PreviewScene = {
   renderer: WebGLRenderer;
   scene: Scene;
@@ -59,7 +63,7 @@ type PreviewScene = {
 };
 
 const VoxelPreviewView: Component = () => {
-  const { dimensions, voxels, palette, preview } = useContext(StackerContext);
+  const { dimensions, sides, sidesVersion, palette, preview } = useContext(StackerContext);
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [previewScene, setPreviewScene] = createSignal<PreviewScene>();
@@ -67,6 +71,15 @@ const VoxelPreviewView: Component = () => {
   const [pickedVoxel, setPickedVoxel] = createSignal<[number, number, number] | undefined>();
 
   const normalizedDimensions = createMemo(() => Dimensions3D.normalize(dimensions()));
+
+  // The panels the marcher reads the model from, laid out for it. They are
+  // rebuilt only when one of them is drawn on: `sidesVersion` counts the edits,
+  // since commands write into the panels in place and so leave `sides()` itself
+  // unchanged. Both the GPU upload and the CPU picker read the same six.
+  const panelTextures = createMemo(() => {
+    sidesVersion();
+    return toPanelTextures(sides());
+  });
 
   let yaw = Math.PI / 4;
   let pitch = Math.PI / 6;
@@ -108,9 +121,8 @@ const VoxelPreviewView: Component = () => {
   const pickAt = (clientX: number, clientY: number) => {
     const _canvas = canvas();
     const _dimensions = dimensions();
-    const _voxels = voxels();
     const _palette = palette();
-    if (_canvas === undefined || _voxels.length === 0) {
+    if (_canvas === undefined) {
       return;
     }
     const rect = _canvas.getBoundingClientRect();
@@ -157,12 +169,9 @@ const VoxelPreviewView: Component = () => {
       },
       varying: { vUv: [x / rect.width, 1 - y / rect.height] },
       textures: {
-        [shaders.uVoxels]: {
-          data: _voxels,
-          width: _dimensions.width,
-          height: _dimensions.height,
-          depth: _dimensions.depth,
-        },
+        ...Object.fromEntries(
+          SIDE_KINDS.map(kind => [PANEL_UNIFORM_NAME[kind], panelTextures()[kind]]),
+        ),
         [shaders.uPalette]: { data: paletteData, width: _palette.length, height: 1 },
       },
     });
@@ -239,7 +248,7 @@ const VoxelPreviewView: Component = () => {
   createTrackedEffect(() => {
     const _previewScene = previewScene();
     const _dimensions = dimensions();
-    if (_previewScene === undefined || untrack(voxels).length === 0) {
+    if (_previewScene === undefined) {
       return;
     }
     // The box that bounds the volume: the same one the marcher intersects,
@@ -251,17 +260,18 @@ const VoxelPreviewView: Component = () => {
 
   createTrackedEffect(() => {
     const _previewScene = previewScene();
-    const _dimensions = dimensions();
-    const _voxels = voxels();
-    if (_previewScene === undefined || _voxels.length === 0) {
+    const _panels = panelTextures();
+    if (_previewScene === undefined) {
       return;
     }
-    const texture = _previewScene.material.voxelTexture;
-    texture.image = _voxels;
-    texture.width = _dimensions.width;
-    texture.height = _dimensions.height;
-    texture.depth = _dimensions.depth;
-    texture.needsUpdate = true;
+    SIDE_KINDS.forEach(kind => {
+      const panel = _panels[kind];
+      const texture = _previewScene.material.panelTextures[kind];
+      texture.image = panel.data;
+      texture.width = panel.width;
+      texture.height = panel.height;
+      texture.needsUpdate = true;
+    });
   });
 
   createTrackedEffect(() => {
@@ -293,10 +303,6 @@ const VoxelPreviewView: Component = () => {
     }
     const { renderer, scene, camera, mesh, material } = _previewScene;
     const _dimensions = untrack(dimensions);
-    const _voxels = untrack(voxels);
-    if (_voxels.length === 0) {
-      return;
-    }
     const n = untrack(normalizedDimensions);
 
     // The model is turned to the orientation getWorldToModel describes, so the

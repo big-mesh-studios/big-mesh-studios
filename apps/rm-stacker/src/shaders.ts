@@ -1,14 +1,19 @@
 import {
   uAmbientColour,
+  uBack,
+  uBottom,
   uCameraPosition,
   uDimensions,
+  uFront,
+  uLeft,
   uLightColour,
   uLightDir,
   uPalette,
   uResolution,
+  uRight,
+  uTop,
   uUnlit,
   uVoxelCount,
-  uVoxels,
   uWorldToModel,
   vUv,
 } from "./shaders-shared";
@@ -18,7 +23,12 @@ import {
 // same source at runtime, while the CPU voxel picker is precompiled at build
 // time — this module bridges the two by name.
 export default {
-  uVoxels: uVoxels.name,
+  uFront: uFront.name,
+  uBack: uBack.name,
+  uLeft: uLeft.name,
+  uRight: uRight.name,
+  uTop: uTop.name,
+  uBottom: uBottom.name,
   uResolution: uResolution.name,
   uDimensions: uDimensions.name,
   uVoxelCount: uVoxelCount.name,

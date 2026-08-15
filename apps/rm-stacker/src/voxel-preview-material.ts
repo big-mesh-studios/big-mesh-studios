@@ -2,7 +2,14 @@ import type { Node, UniformNode } from "@random-mesh/rmsl";
 import { float, If, vec4 } from "@random-mesh/rmsl";
 import type { Builder } from "@random-mesh/rmsl/scene";
 import { DataTexture, NodeMaterial, Scene } from "@random-mesh/rmsl/scene";
+import type { Panels } from "./shaders-shared";
 import { marchVolume } from "./shaders-shared";
+import { type SideKind } from "./types";
+
+// A panel before its first upload: one empty cell. The renderer uploads every
+// integer texture as RGBA8UI, so a cell is four bytes with its palette index in
+// the red channel.
+const emptyPanelTexture = () => new DataTexture(new Uint8Array(4), 1, 1);
 
 /**
  * The ray-marched voxel material. It draws a box bounding the volume (one
@@ -17,7 +24,7 @@ import { marchVolume } from "./shaders-shared";
  * the selective bloom glows in the same colour as the voxel itself.
  */
 export class VoxelPreviewMaterial extends NodeMaterial {
-  voxelTexture: DataTexture;
+  panelTextures: Record<SideKind, DataTexture>;
   paletteTexture: DataTexture;
   dimensions: [number, number, number] = [0, 0, 0];
   voxelCount: [number, number, number] = [1, 1, 1];
@@ -28,7 +35,7 @@ export class VoxelPreviewMaterial extends NodeMaterial {
   maskMode = false;
   pickedVoxel: [number, number, number] = [-1, -1, -1];
 
-  private voxelsUniform?: UniformNode<"usampler3D">;
+  private panelUniforms?: Panels;
   private paletteUniform?: UniformNode<"sampler2D">;
   private dimensionsUniform?: UniformNode<"vec3">;
   private voxelCountUniform?: UniformNode<"vec3">;
@@ -41,12 +48,29 @@ export class VoxelPreviewMaterial extends NodeMaterial {
 
   constructor() {
     super();
-    this.voxelTexture = new DataTexture(new Uint8Array(4), 1, 1, 1);
+    this.panelTextures = {
+      front: emptyPanelTexture(),
+      back: emptyPanelTexture(),
+      left: emptyPanelTexture(),
+      right: emptyPanelTexture(),
+      top: emptyPanelTexture(),
+      bottom: emptyPanelTexture(),
+    };
     this.paletteTexture = new DataTexture(new Uint8Array(4), 1, 1);
   }
 
   protected setup(b: Builder, _scene: Scene): void {
-    this.voxelsUniform = b.sampler("uVoxels", "usampler3D", () => this.voxelTexture);
+    // One sampler per panel, named after the direction the panel looks from.
+    const panel = (name: string, kind: SideKind) =>
+      b.sampler(name, "usampler2D", () => this.panelTextures[kind]);
+    this.panelUniforms = {
+      front: panel("uFront", "front"),
+      back: panel("uBack", "back"),
+      left: panel("uLeft", "left"),
+      right: panel("uRight", "right"),
+      top: panel("uTop", "top"),
+      bottom: panel("uBottom", "bottom"),
+    };
     this.paletteUniform = b.sampler("uPalette", "sampler2D", () => this.paletteTexture);
     this.dimensionsUniform = b.materialUniform("uDimensions", "vec3", () => this.dimensions);
     this.voxelCountUniform = b.materialUniform("uVoxelCount", "vec3", () => this.voxelCount);
@@ -79,7 +103,7 @@ export class VoxelPreviewMaterial extends NodeMaterial {
     const { colour, voxelPos } = marchVolume({
       rayOrigin,
       rayDirection,
-      voxels: this.voxelsUniform!,
+      panels: this.panelUniforms!,
       palette: this.paletteUniform!,
       dimensions: this.dimensionsUniform!,
       voxelCount: this.voxelCountUniform!,
