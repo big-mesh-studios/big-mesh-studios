@@ -34,16 +34,15 @@ export const uCameraPosition = uniformRaw("uCameraPosition", "vec3");
 export const uWorldToModel = uniformRaw("uWorldToModel", "mat3");
 export const uUnlit = uniformRaw("uUnlit", "bool");
 
-// Componentwise min/max of two vectors, expressed with abs since rmsl only
-// types the scalar variants: (a + b +/- |a - b|) / 2
-const minVec2 = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
-  a.add(b).sub(a.sub(b).abs()).mul(float(0.5));
-const maxVec2 = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
-  a.add(b).add(a.sub(b).abs()).mul(float(0.5));
+// Componentwise min/max of two vectors, one component at a time since rmsl only
+// types the scalar variants. A ray aimed straight down an axis divides by zero
+// on that axis, giving a plane distance of +/- infinity, so the components are
+// compared rather than averaged: the shorthand (a + b +/- |a - b|) / 2 turns
+// those infinities into NaN and loses the hit.
 const minVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
-  a.add(b).sub(a.sub(b).abs()).mul(float(0.5));
+  vec3(a.x.min(b.x), a.y.min(b.y), a.z.min(b.z));
 const maxVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
-  a.add(b).add(a.sub(b).abs()).mul(float(0.5));
+  vec3(a.x.max(b.x), a.y.max(b.y), a.z.max(b.z));
 
 // The voxel texture is an integer (usampler3D) so the lookup compiles to
 // texelFetch, which takes integer texel coordinates — one texel per voxel.
@@ -174,17 +173,16 @@ export const marchVolume = (
   const nearPlaneDistances = minVec3(distanceToMinPlanes, distanceToMaxPlanes).toVar();
   const farPlaneDistances = maxVec3(distanceToMinPlanes, distanceToMaxPlanes).toVar();
 
-  const nearPair = maxVec2(
-    vec2(nearPlaneDistances.x, nearPlaneDistances.x),
-    vec2(nearPlaneDistances.y, nearPlaneDistances.z),
-  ).toVar();
-  const entryDistance = nearPair.x.max(nearPair.y).toVar();
-
-  const farPair = minVec2(
-    vec2(farPlaneDistances.x, farPlaneDistances.x),
-    vec2(farPlaneDistances.y, farPlaneDistances.z),
-  ).toVar();
-  const exitDistance = farPair.x.min(farPair.y).toVar();
+  // The ray is inside the box between the furthest of the three near planes and
+  // the nearest of the three far planes.
+  const entryDistance = nearPlaneDistances.x
+    .max(nearPlaneDistances.y)
+    .max(nearPlaneDistances.z)
+    .toVar();
+  const exitDistance = farPlaneDistances.x
+    .min(farPlaneDistances.y)
+    .min(farPlaneDistances.z)
+    .toVar();
 
   If(entryDistance.lessThanEqual(exitDistance), () => {
     const cellDir = rayDirection.div(cellSize).toVar();
