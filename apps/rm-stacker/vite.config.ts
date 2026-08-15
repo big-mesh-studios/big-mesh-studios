@@ -1,12 +1,22 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
-import precompileShaders from "./vite-precompile-shaders";
+import { precompileJS } from "@random-mesh/rmsl/vite";
 import tailwindcss from "@tailwindcss/vite";
 import solid from "vite-plugin-solid";
 
 export default defineConfig({
   base: "./",
-  plugins: [precompileShaders(), tailwindcss(), solid({ ssr: false })],
+  plugins: [
+    precompileJS({ include: "src/voxel-picker-cpu.ts" }),
+    tailwindcss(),
+    solid({ ssr: false }),
+  ],
   optimizeDeps: {
     include: ["@solidjs/signals"],
+  },
+  test: {
+    // The solid plugin prefers jsdom, which is not installed; the test suite
+    // is pure maths and runs in Node.
+    environment: "node",
   },
 });
