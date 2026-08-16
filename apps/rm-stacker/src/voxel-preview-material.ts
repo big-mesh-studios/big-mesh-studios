@@ -2,8 +2,8 @@ import type { Node, UniformNode } from "@random-mesh/rmsl";
 import { float, If, vec4 } from "@random-mesh/rmsl";
 import type { Builder } from "@random-mesh/rmsl/scene";
 import { DataTexture, NodeMaterial, Scene } from "@random-mesh/rmsl/scene";
-import type { Panels } from "./shaders-shared";
-import { marchVolume } from "./shaders-shared";
+import type { CellSource, Panels } from "./shaders-shared";
+import { marchVolume, panelCellSource } from "./shaders-shared";
 import { type SideKind } from "./types";
 
 // A panel before its first upload: one empty cell. The renderer uploads every
@@ -35,7 +35,14 @@ export class VoxelPreviewMaterial extends NodeMaterial {
   maskMode = false;
   pickedVoxel: [number, number, number] = [-1, -1, -1];
 
+  /** How a cell is looked up; the six panels unless a subclass says otherwise. */
+  protected buildCellSource(_b: Builder, panels: Panels): CellSource {
+    return panelCellSource(panels);
+  }
+
   private panelUniforms?: Panels;
+  private cells?: CellSource;
+  protected panelTexturesFor = (kind: SideKind) => this.panelTextures[kind];
   private paletteUniform?: UniformNode<"sampler2D">;
   private dimensionsUniform?: UniformNode<"vec3">;
   private voxelCountUniform?: UniformNode<"vec3">;
@@ -71,6 +78,7 @@ export class VoxelPreviewMaterial extends NodeMaterial {
       top: panel("uTop", "top"),
       bottom: panel("uBottom", "bottom"),
     };
+    this.cells = this.buildCellSource(b, this.panelUniforms);
     this.paletteUniform = b.sampler("uPalette", "sampler2D", () => this.paletteTexture);
     this.dimensionsUniform = b.materialUniform("uDimensions", "vec3", () => this.dimensions);
     this.voxelCountUniform = b.materialUniform("uVoxelCount", "vec3", () => this.voxelCount);
@@ -103,7 +111,7 @@ export class VoxelPreviewMaterial extends NodeMaterial {
     const { colour, voxelPos } = marchVolume({
       rayOrigin,
       rayDirection,
-      panels: this.panelUniforms!,
+      cells: this.cells!,
       palette: this.paletteUniform!,
       dimensions: this.dimensionsUniform!,
       voxelCount: this.voxelCountUniform!,
