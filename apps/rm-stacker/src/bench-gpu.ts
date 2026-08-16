@@ -25,6 +25,7 @@ import {
   legacyVolumeCellSource,
   mirroredPanelCellSource,
   packedPairCellSource,
+  packedPairHoistedCellSource,
   panelCellSource,
   volumeCellSource,
   type CellSource,
@@ -182,6 +183,17 @@ class ColumnMaterial extends VoxelPreviewMaterial {
   }
 }
 
+/** The packed pairs again, reading each pair's texel once instead of twice. */
+class PackedHoistedMaterial extends PackedMaterial {
+  protected buildCellSource(b: Builder, _panels: Panels): CellSource {
+    return packedPairHoistedCellSource({
+      frontBack: b.sampler("uFrontBack", "usampler2D", () => this.pairTextures.frontBack),
+      leftRight: b.sampler("uLeftRight", "usampler2D", () => this.pairTextures.leftRight),
+      topBottom: b.sampler("uTopBottom", "usampler2D", () => this.pairTextures.topBottom),
+    });
+  }
+}
+
 class AtlasMaterial extends VoxelPreviewMaterial {
   atlasTexture = new DataTexture(new Uint8Array(4), 1, 1);
   tilesPerRow = 1;
@@ -212,6 +224,7 @@ const materials = {
   panels: new VoxelPreviewMaterial(),
   mirrored: new MirroredMaterial(),
   packed: new PackedMaterial(),
+  packedHoisted: new PackedHoistedMaterial(),
   atlas: new AtlasMaterial(),
   column: new ColumnMaterial(),
   columnDiv: new AtlasMaterial(),
@@ -299,12 +312,14 @@ const uploadPanels = () => {
     }
   }
   const pairs = packPairs(sides, dimensions);
-  for (const [name, packed] of Object.entries(pairs)) {
-    const texture = materials.packed.pairTextures[name as keyof typeof pairs];
-    texture.image = packed.data;
-    texture.width = packed.width;
-    texture.height = packed.height;
-    texture.needsUpdate = true;
+  for (const material of [materials.packed, materials.packedHoisted]) {
+    for (const [name, packed] of Object.entries(pairs)) {
+      const texture = material.pairTextures[name as keyof typeof pairs];
+      texture.image = packed.data;
+      texture.width = packed.width;
+      texture.height = packed.height;
+      texture.needsUpdate = true;
+    }
   }
 };
 

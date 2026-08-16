@@ -46,6 +46,29 @@ fresh one each time measured the same, so the cost is the per-voxel packing loop
 rather than allocation. The volume was uploaded per edit as well: 13 KiB, 128 KiB
 and 1024 KiB against the 6 × 3.5 KiB, 6 × 16 KiB and 6 × 64 KiB the panels cost.
 
+## Reading each pair's texel once
+
+The node graph is written out as a tree rather than shared, so reading `.r` and
+`.g` off one pair expands to two `texelFetch` calls at identical coordinates. The
+solidity test therefore issues six fetches per march step in the generated
+shader, not the three the packing was meant to buy. Hoisting each pair into a
+variable first (`packedHoisted`) brings it down to three, which can be confirmed
+by capturing the shader source before it is compiled.
+
+It does not pay. Measured over three runs on a machine noisier than the one the
+table above came from — so read these against each other, not against it:
+
+| minimum of three runs | 15³ | 32³ | 64³ |
+| --- | --- | --- | --- |
+| `packed` — six fetches, short-circuiting | 0.580 | 0.646 | 0.639 |
+| `packedHoisted` — three fetches, always issued | 0.602 | 0.657 | 0.669 |
+
+`packed` came out ahead in eight of the nine paired measurements. The chain of
+`&&` short-circuits, so a cell whose first panel is empty never reaches the
+later fetches, and a ray crossing empty space meets a great many of those.
+Skipping fetches turns out to be worth more than issuing fewer of them, so the
+duplication in the generated shader is not worth removing.
+
 ## What the numbers say
 
 **The port cost about 12% of a frame and saved 11 ms of an edit.** `legacy` draws

@@ -207,6 +207,40 @@ export const packedPairCellSource = (pairs: PanelPairs): CellSource => {
 };
 
 /**
+ * The same three pairs, but with each pair's texel read into a variable before
+ * the six channels are tested, so the generated shader issues three texture
+ * fetches rather than six.
+ *
+ * Reading `.r` and `.g` off the node twice expands to two identical fetches,
+ * because the node graph is written out as a tree rather than shared. Against
+ * that, the chain of `&&` short-circuits: a cell whose first panel is empty
+ * never reaches the later fetches, and a ray crossing empty space meets a lot of
+ * those. Hoisting trades that saving for issuing all three fetches at once,
+ * which is worth measuring rather than assuming either way.
+ */
+export const packedPairHoistedCellSource = (pairs: PanelPairs): CellSource => {
+  const source = packedPairCellSource(pairs);
+  return {
+    isSolid: (counts, cell) => {
+      const frontBack = pairs.frontBack
+        .texture(ivec2(cell.x, counts.height.sub(1).sub(cell.y)).toUVec2())
+        .toVar();
+      const leftRight = pairs.leftRight
+        .texture(ivec2(cell.z, counts.height.sub(1).sub(cell.y)).toUVec2())
+        .toVar();
+      const topBottom = pairs.topBottom.texture(ivec2(cell.x, cell.z).toUVec2()).toVar();
+      return isDrawn(frontBack.r)
+        .and(isDrawn(frontBack.g))
+        .and(isDrawn(leftRight.r))
+        .and(isDrawn(leftRight.g))
+        .and(isDrawn(topBottom.r))
+        .and(isDrawn(topBottom.g));
+    },
+    faceColourIndex: source.faceColourIndex,
+  };
+};
+
+/**
  * Reads whether a voxel is there from a volume solved ahead of the march and
  * held in a 3D texture, one texel per voxel. Face colours still come from the
  * panels, which the solved volume does not carry.
