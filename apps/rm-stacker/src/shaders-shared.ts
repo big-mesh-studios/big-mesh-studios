@@ -142,6 +142,7 @@ export const marchVolume = (
   colour: Node<"vec4">;
   voxelPos: Node<"ivec3">;
   normal: Node<"vec3">;
+  hitPoint: Node<"vec3">;
 } => {
   const {
     rayOrigin: rayOriginIn,
@@ -162,6 +163,7 @@ export const marchVolume = (
   const colour = vec4(float(0), float(0), float(0), float(0)).toVar();
   const voxelPos = ivec3(0, 0, 0).toVar();
   const normal = vec3(0, 0, 0).toVar();
+  const hitPoint = vec3(0, 0, 0).toVar();
 
   const cellSize = dimensions.div(voxelCount).toVar();
   const boxMin = dimensions.mul(float(-0.5)).sub(cellSize).toVar();
@@ -283,6 +285,53 @@ export const marchVolume = (
           });
         });
 
+      // The point where the ray crosses into the hit cell: the boundary plane
+      // of the face it entered. Used by the GPU material to write an accurate
+      // per-pixel fragment depth (so a line drawn on the voxel's surface is
+      // neither hidden behind the box front face nor z-fighting it). The CPU
+      // picker ignores it.
+      const hitDistance = float(0).toVar();
+      If(mask.x.notEqual(float(0)), () => {
+        hitDistance.assign(
+          entryDistance.add(
+            rayStep.x
+              .greaterThan(0)
+              .select(mapPos.x, mapPos.x.add(1))
+              .toFloat()
+              .sub(cellOrigin.x)
+              .mul(rayStep.x.toFloat())
+              .mul(deltaDist.x),
+          ),
+        );
+      })
+        .ElseIf(mask.y.notEqual(float(0)), () => {
+          hitDistance.assign(
+            entryDistance.add(
+              rayStep.y
+                .greaterThan(0)
+                .select(mapPos.y, mapPos.y.add(1))
+                .toFloat()
+                .sub(cellOrigin.y)
+                .mul(rayStep.y.toFloat())
+                .mul(deltaDist.y),
+            ),
+          );
+        })
+        .Else(() => {
+          hitDistance.assign(
+            entryDistance.add(
+              rayStep.z
+                .greaterThan(0)
+                .select(mapPos.z, mapPos.z.add(1))
+                .toFloat()
+                .sub(cellOrigin.z)
+                .mul(rayStep.z.toFloat())
+                .mul(deltaDist.z),
+            ),
+          );
+        });
+      hitPoint.assign(rayOrigin.add(rayDirection.mul(hitDistance)));
+
       If(unlit.toVar(), () => {
         colour.rgb.assign(colourIndexToColour(palette, faceColourIndex).rgb);
       }).Else(() => {
@@ -300,7 +349,7 @@ export const marchVolume = (
   // Rays that hit nothing leave colour at its initial transparent black, so
   // whatever is painted behind the canvas shows through there. Only rays that
   // land on a voxel set alpha to 1.
-  return { colour, voxelPos, normal };
+  return { colour, voxelPos, normal, hitPoint };
 };
 
 /**

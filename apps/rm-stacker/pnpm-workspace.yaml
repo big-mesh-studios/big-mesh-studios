@@ -8,6 +8,6 @@ minimumReleaseAgeExclude:
   - "@solidjs/signals@2.0.0-beta.29"
   - "@solidjs/web@2.0.0-beta.29"
   - solid-js@2.0.0-beta.29
-  - "@random-mesh/rmsl@1.1.3 || 1.2.1 || 1.2.2 || 1.4.0 || 1.6.0 || 1.6.1"
+  - '@random-mesh/rmsl@1.1.3 || 1.2.1 || 1.2.2 || 1.4.0 || 1.6.0 || 1.6.1 || 1.6.3'
 onlyBuiltDependencies:
   - esbuild

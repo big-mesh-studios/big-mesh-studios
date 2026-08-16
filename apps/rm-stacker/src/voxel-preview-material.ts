@@ -1,8 +1,16 @@
 import type { Node, UniformNode } from "@random-mesh/rmsl";
-import { float, If, vec4 } from "@random-mesh/rmsl";
+import { builtinFragDepth, float, If, vec4 } from "@random-mesh/rmsl";
 import type { Builder } from "@random-mesh/rmsl/scene";
 import { DataTexture, NodeMaterial, Scene } from "@random-mesh/rmsl/scene";
 import { marchVolume } from "./shaders-shared";
+
+// The picked voxel's outline (a LineSegments2 drawn on its surface) must pass
+// the depth test, so the voxel surface is pushed this far away in window-depth
+// units. A constant NDC bias is what keeps the shader simple; the volume sits
+// in a shallow slice of the depth range (the far plane is far away), so this
+// is only a fraction of a voxel and is not visible — but it needs to exceed
+// the depth span of the line's screen-space ribbon or the outline shimmers.
+const DEPTH_BIAS = 0.0001;
 
 /**
  * The ray-marched voxel material. It draws a box bounding the volume (one
@@ -12,9 +20,11 @@ import { marchVolume } from "./shaders-shared";
  * marching itself is `marchVolume` from shaders-shared — the same code the
  * CPU voxel picker runs — so rendering and picking can never drift.
  *
- * In `maskMode` the material instead outputs just the picked voxel's colour
- * where the ray's front-most hit is `pickedVoxel` (transparent elsewhere), so
- * the selective bloom glows in the same colour as the voxel itself.
+ * Each fragment writes `gl_FragDepth` from the ray's actual hit point (with
+ * the small bias above), so a line drawn on a voxel's surface is neither
+ * hidden behind the box's front face nor z-fighting it. Fragments that hit no
+ * voxel write the farthest depth, so the transparent pixels of the bounding
+ * box never occlude the outline.
  */
 export class VoxelPreviewMaterial extends NodeMaterial {
   voxelTexture: DataTexture;
@@ -25,8 +35,6 @@ export class VoxelPreviewMaterial extends NodeMaterial {
   lightColour: [number, number, number] = [1, 1, 1];
   ambientColour: [number, number, number] = [0, 0, 0];
   unlit = false;
-  maskMode = false;
-  pickedVoxel: [number, number, number] = [-1, -1, -1];
 
   private voxelsUniform?: UniformNode<"usampler3D">;
   private paletteUniform?: UniformNode<"sampler2D">;
@@ -36,8 +44,6 @@ export class VoxelPreviewMaterial extends NodeMaterial {
   private lightColourUniform?: UniformNode<"vec3">;
   private ambientColourUniform?: UniformNode<"vec3">;
   private unlitUniform?: UniformNode<"bool">;
-  private maskModeUniform?: UniformNode<"bool">;
-  private pickedVoxelUniform?: UniformNode<"vec3">;
 
   constructor() {
     super();
@@ -58,8 +64,6 @@ export class VoxelPreviewMaterial extends NodeMaterial {
       () => this.ambientColour,
     );
     this.unlitUniform = b.materialUniform("uUnlit", "bool", () => (this.unlit ? 1 : 0));
-    this.maskModeUniform = b.materialUniform("uMaskMode", "bool", () => (this.maskMode ? 1 : 0));
-    this.pickedVoxelUniform = b.materialUniform("uPickedVoxel", "vec3", () => this.pickedVoxel);
   }
 
   protected buildVertexBody(b: Builder): Node<"vec4"> {
@@ -76,7 +80,7 @@ export class VoxelPreviewMaterial extends NodeMaterial {
     // puts the camera in model space, where the volume lives.
     const rayOrigin = b.normalMatrix.mul(b.cameraPosition);
     const rayDirection = b.varying("vModelPos", "vec3").sub(rayOrigin).normalize();
-    const { colour, voxelPos } = marchVolume({
+    const { colour, hitPoint } = marchVolume({
       rayOrigin,
       rayDirection,
       voxels: this.voxelsUniform!,
@@ -89,29 +93,24 @@ export class VoxelPreviewMaterial extends NodeMaterial {
       unlit: this.unlitUniform!,
     });
 
-    // The picked voxel is an integer cell but uploaded as a float vec3 (the
-    // scene renderer uploads integer uniforms as floats), so the comparison
-    // is exact for the small indices voxels have.
-    const position = voxelPos.toVec3();
-    const isPicked = position.x
-      .equal(this.pickedVoxelUniform!.x)
-      .and(position.y.equal(this.pickedVoxelUniform!.y))
-      .and(position.z.equal(this.pickedVoxelUniform!.z));
-
-    // In mask mode only the picked voxel keeps its colour (transparent
-    // elsewhere), brightened to full strength in the same hue, so the bloom
-    // glows vividly in the voxel's colour.
-    const out = colour.toVar();
-    If(this.maskModeUniform!.toVar(), () => {
-      If(isPicked, () => {
-        // Scale the colour so its brightest channel is 1, keeping the hue.
-        const brightest = colour.r.max(colour.g).max(colour.b).max(float(0.001));
-        out.rgb.assign(colour.rgb.div(brightest));
-        out.a.assign(float(1));
-      }).Else(() => {
-        out.assign(vec4(float(0), float(0), float(0), float(0)));
-      });
+    // The depth written by default would be the bounding box's front face,
+    // which hides any line drawn on a voxel deeper in the volume and z-fights
+    // one drawn on the front face. Project the hit point into clip space
+    // instead, so each fragment's depth is where the ray actually landed, and
+    // nudge it slightly away from the camera so the outline wins the test.
+    const fragDepth = builtinFragDepth();
+    If(colour.a.greaterThan(float(0.5)), () => {
+      const clip = b.projectionMatrix.mul(
+        b.viewMatrix.mul(b.modelMatrix.mul(vec4(hitPoint, float(1)))),
+      );
+      fragDepth.assign(clip.z.div(clip.w).mul(float(0.5)).add(float(0.5)).add(float(DEPTH_BIAS)));
+    }).Else(() => {
+      // A fragment that hits no voxel is transparent; push it to the far plane
+      // so it never occludes the outline (the line's ribbon bleeds a pixel or
+      // two past the voxel's silhouette into such pixels).
+      fragDepth.assign(float(1));
     });
-    return out;
+
+    return colour;
   }
 }

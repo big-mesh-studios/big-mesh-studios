@@ -12,8 +12,8 @@ importers:
         specifier: ^7.3.1
         version: 7.3.1
       '@random-mesh/rmsl':
-        specifier: 1.6.1
-        version: 1.6.1(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))
+        specifier: 1.6.3
+        version: 1.6.3(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))
       '@solidjs/signals':
         specifier: 2.0.0-beta.29
         version: 2.0.0-beta.29
@@ -337,8 +337,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@random-mesh/rmsl@1.6.1':
-    resolution: {integrity: sha512-OS+FXfZGB2Czzw3UCcYr8s/T+wGMFVLme86fL5ip73cgT6GA8oRyXvPcRI51C+1eLTGIbdn+1eqWKPAMjn+B8Q==}
+  '@random-mesh/rmsl@1.6.3':
+    resolution: {integrity: sha512-e4hI2wBPEl5bYfT0ePv6pZJnH4xTmFl00HmceJaxk4+mrFWbp/jTbZWn0Mx8W/LrmrcvQUctZFNQb+aTj5ZSAg==}
     peerDependencies:
       vite: '>=5.0.0'
     peerDependenciesMeta:
@@ -1373,7 +1373,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@random-mesh/rmsl@1.6.1(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))':
+  '@random-mesh/rmsl@1.6.3(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))':
     dependencies:
       '@webgpu/types': 0.1.71
       esbuild: 0.28.1

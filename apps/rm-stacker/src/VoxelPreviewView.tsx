@@ -10,20 +10,20 @@ import {
 } from "solid-js";
 import {
   BoxGeometry,
+  Line2NodeMaterial,
+  LineSegments2,
+  LineSegmentsGeometry,
   Mesh,
   PerspectiveCamera,
   Scene,
   WebGLRenderer,
 } from "@random-mesh/rmsl/scene";
-import { uniform } from "@random-mesh/rmsl";
-import { bloom } from "@random-mesh/rmsl/effects";
 import { StackerContext } from "./context";
-import { BloomExecutor, createRenderTarget, GlowPass, type RenderTarget } from "./bloom-executor";
 import { Dimensions3D, Matrix3x3, Vector3D } from "./maths";
 import shaders from "./shaders";
 import { VoxelPreviewMaterial } from "./voxel-preview-material";
 import { voxelPicker } from "./voxel-picker";
-import { boxSize, FOV, NEAR, FAR, rotateMesh } from "./voxel-preview-scene";
+import { boxSize, FOV, NEAR, FAR, rotateMesh, voxelCellEdges } from "./voxel-preview-scene";
 import { tryCatch } from "./utils";
 import styles from "./VoxelPreviewView.module.css";
 
@@ -40,12 +40,11 @@ const AMBIENT_COLOUR = new Float32Array([0.35, 0.35, 0.4]);
 const TURNTABLE_SECONDS_PER_REVOLUTION = 20;
 const TURNTABLE_RADIANS_PER_SECOND = -(2 * Math.PI) / TURNTABLE_SECONDS_PER_REVOLUTION;
 
-// The bloom source is the picked voxel's own colour, so the threshold only
-// needs to clear zero — everything else in the mask is transparent.
-const BLOOM_STRENGTH = 1;
-const BLOOM_RADIUS = 0.4;
-const BLOOM_THRESHOLD = 0;
-const BLOOM_SMOOTH_WIDTH = 0.01;
+// The picked voxel's outline: a crisp white wireframe, a couple of device
+// pixels wide. The material's fragDepth bias (see voxel-preview-material) keeps
+// it in front of the voxel face it sits on.
+const OUTLINE_COLOUR = 0xffffff;
+const OUTLINE_LINE_WIDTH = 2;
 
 type PreviewScene = {
   renderer: WebGLRenderer;
@@ -53,9 +52,7 @@ type PreviewScene = {
   camera: PerspectiveCamera;
   mesh: Mesh;
   material: VoxelPreviewMaterial;
-  bloom: BloomExecutor;
-  glow: GlowPass;
-  maskTarget: RenderTarget | null;
+  outline: LineSegments2;
 };
 
 const VoxelPreviewView: Component = () => {
@@ -285,6 +282,30 @@ const VoxelPreviewView: Component = () => {
     texture.needsUpdate = true;
   });
 
+  // The outline follows the pick: trace the picked voxel's cell (in model
+  // space, from the same dimensions the marcher sizes its box by) and hide it
+  // when the pick is empty.
+  createTrackedEffect(() => {
+    const _previewScene = previewScene();
+    const _dimensions = dimensions();
+    const _picked = pickedVoxel();
+    if (_previewScene === undefined) {
+      return;
+    }
+    if (_picked !== undefined && _picked[0] >= 0) {
+      const geometry = _previewScene.outline.geometry;
+      geometry.setPositions(voxelCellEdges(_dimensions, _picked));
+      // setPositions swaps in fresh instance attributes whose needsUpdate flag
+      // is false, so the renderer would keep drawing the previous pick's edges.
+      // Flag them so the next frame uploads the new cell.
+      geometry.attributes.instanceStart.needsUpdate = true;
+      geometry.attributes.instanceEnd.needsUpdate = true;
+      _previewScene.outline.visible = true;
+    } else {
+      _previewScene.outline.visible = false;
+    }
+  });
+
   const render = () => {
     const _previewScene = untrack(previewScene);
     const _canvas = untrack(canvas);
@@ -322,40 +343,10 @@ const VoxelPreviewView: Component = () => {
 
     camera.position.set(0, 0, radius);
 
-    const gl = renderer.gl;
-    const maskTarget = _previewScene.maskTarget;
-    if (maskTarget === null) {
-      return;
-    }
-
-    // The scene (all voxels) is drawn straight to the canvas, exactly as the
-    // preview did before the bloom pipeline. The bloom and glow passes bind
-    // their own quad VAOs, so the scene renderer (which uses plain attribute
-    // pointers) must be put back on the default VAO or it would overwrite the
-    // quad VAO and the glow would draw with the box's vertices.
-    gl.bindVertexArray(null);
+    // The voxel mesh renders before its outline child, so the outline depth
+    // tests against the marcher's per-pixel depths and an occluded pick shows
+    // no line poking through the volume.
     renderer.render(scene, camera);
-
-    // The picked voxel, alone and bright, is the bloom source. The marcher
-    // only lights it when it is the front-most hit, so an occluded pick shows
-    // no glow.
-    const _picked = pickedVoxel();
-    if (_picked !== undefined && _picked[0] >= 0) {
-      material.maskMode = true;
-      material.pickedVoxel = _picked;
-      gl.bindFramebuffer(gl.FRAMEBUFFER, maskTarget.fbo);
-      gl.bindVertexArray(null);
-      renderer.render(scene, camera);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      material.maskMode = false;
-
-      const bloomResult = _previewScene.bloom.run({
-        scene: maskTarget.texture,
-        sceneWidth: maskTarget.width,
-        sceneHeight: maskTarget.height,
-      });
-      _previewScene.glow.draw(bloomResult.tex, maskTarget.width, maskTarget.height);
-    }
   };
 
   onSettled(() => {
@@ -370,7 +361,6 @@ const VoxelPreviewView: Component = () => {
         // Clear to transparent so the background painted behind the canvas
         // shows through the pixels no voxel ray lands on.
         renderer.setClearColor(0x000000, 0);
-        const gl = renderer.gl;
         const scene = new Scene();
         const camera = new PerspectiveCamera(FOV, 1, NEAR, FAR);
         camera.position.set(0, 0, radius);
@@ -379,18 +369,15 @@ const VoxelPreviewView: Component = () => {
         const mesh = new Mesh(undefined, material);
         scene.add(mesh);
 
-        // Selective bloom: the picked voxel's mask is bloomed and added over
-        // the scene. strength/radius/threshold are fixed constants, folded
-        // straight into the pass shaders.
-        const maskSampler = uniform("sampler2D");
-        const bloomGraph = bloom(maskSampler, {
-          strength: BLOOM_STRENGTH,
-          radius: BLOOM_RADIUS,
-          threshold: BLOOM_THRESHOLD,
-          smoothWidth: BLOOM_SMOOTH_WIDTH,
-        });
-        const bloomExecutor = new BloomExecutor(gl, bloomGraph);
-        const glow = new GlowPass(gl);
+        // The picked voxel's outline. Its geometry is in model space (the same
+        // cell layout the marcher walks), so making it a child of the voxel box
+        // lets it inherit the model's rotation; it is hidden until a pick lands.
+        const outline = new LineSegments2(
+          new LineSegmentsGeometry(),
+          new Line2NodeMaterial({ color: OUTLINE_COLOUR, linewidth: OUTLINE_LINE_WIDTH }),
+        );
+        outline.visible = false;
+        mesh.add(outline);
 
         return {
           renderer,
@@ -398,9 +385,7 @@ const VoxelPreviewView: Component = () => {
           camera,
           mesh,
           material,
-          bloom: bloomExecutor,
-          glow,
-          maskTarget: null,
+          outline,
         };
       },
       e => {
@@ -415,23 +400,6 @@ const VoxelPreviewView: Component = () => {
     setPreviewScene(_previewScene);
 
     const { renderer, camera } = _previewScene;
-    const gl = renderer.gl;
-
-    // The mask render target is sized to the drawing buffer and carries a
-    // depth buffer because the box is rendered with depth.
-    const ensureTarget = (current: RenderTarget | null, width: number, height: number) => {
-      if (current !== null && current.width === width && current.height === height) {
-        return current;
-      }
-      if (current !== null) {
-        gl.deleteFramebuffer(current.fbo);
-        gl.deleteTexture(current.texture);
-        if (current.depth !== null) {
-          gl.deleteRenderbuffer(current.depth);
-        }
-      }
-      return createRenderTarget(gl, width, height, true);
-    };
 
     const sizeToCanvas = () => {
       const rect = _canvas.getBoundingClientRect();
@@ -441,7 +409,6 @@ const VoxelPreviewView: Component = () => {
       renderer.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      _previewScene.maskTarget = ensureTarget(_previewScene.maskTarget, width, height);
     };
     sizeToCanvas();
 
@@ -456,16 +423,6 @@ const VoxelPreviewView: Component = () => {
     return () => {
       cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
-      const maskTarget = _previewScene.maskTarget;
-      if (maskTarget !== null) {
-        gl.deleteFramebuffer(maskTarget.fbo);
-        gl.deleteTexture(maskTarget.texture);
-        if (maskTarget.depth !== null) {
-          gl.deleteRenderbuffer(maskTarget.depth);
-        }
-      }
-      _previewScene.bloom.dispose();
-      _previewScene.glow.dispose();
       renderer.dispose();
       setPreviewScene(undefined);
     };
