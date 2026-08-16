@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { Bitmap, Dimensions3D, Matrix3x3 } from "./maths";
-import { PANEL_UNIFORM_NAME, toPanelTextures } from "./panel-textures";
+import {
+  PANEL_PAIR_KINDS,
+  PANEL_PAIR_UNIFORM_NAME,
+  toPanelPairTextures,
+} from "./panel-textures";
 import shaders from "./shaders";
-import { sideKindSet, type Sides } from "./types";
-import { keysOf } from "./utils";
+import { type Sides } from "./types";
 import { voxelPicker } from "./voxel-picker";
 
 // A cube small enough to reason about cell by cell, with an odd count on each
@@ -40,7 +43,7 @@ const erase = (panel: Bitmap, x: number, y: number) => {
  */
 const pickAt = (sides: Sides, u: number, v: number) => {
   const normalized = Dimensions3D.normalize(DIMENSIONS);
-  const panels = toPanelTextures(sides);
+  const pairs = toPanelPairTextures(sides);
   const picked = voxelPicker({
     uniforms: {
       [shaders.uResolution]: [100, 100],
@@ -56,7 +59,7 @@ const pickAt = (sides: Sides, u: number, v: number) => {
     varying: { vUv: [u, v] },
     textures: {
       ...Object.fromEntries(
-        keysOf(sideKindSet).map(kind => [PANEL_UNIFORM_NAME[kind], panels[kind]]),
+        PANEL_PAIR_KINDS.map(kind => [PANEL_PAIR_UNIFORM_NAME[kind], pairs[kind]]),
       ),
       // Picking never reads a colour, but the marcher looks one up for every
       // hit, so the palette has to be there to be sampled.
@@ -84,6 +87,34 @@ describe("voxel picker", () => {
     // The top panel reads (x, z), so this erases the column of voxels above and
     // below the front-most cell of the middle column, and nothing behind it.
     erase(sides.top, 2, 4);
+    expect(pickAt(sides, 0.5, 0.5)).toEqual([2, 2, 3]);
+  });
+
+  // The far panel of each pair is stored flipped onto the near panel's
+  // coordinates, so these cover the three flips the packing performs. Erasing
+  // through a far panel has to carve exactly the run its own coordinates name,
+  // not the one its partner would.
+  it("finds nothing where the back panel has erased the whole run behind it", () => {
+    const sides = solidSides(DIMENSIONS);
+    // The back panel counts x from the other end, so its cell (2, 2) faces the
+    // same middle column of the block as the front panel's does.
+    erase(sides.back, 2, 2);
+    expect(pickAt(sides, 0.5, 0.5)).toEqual([-1, -1, -1]);
+  });
+
+  it("picks through the layer the bottom panel has carved away", () => {
+    const sides = solidSides(DIMENSIONS);
+    // The bottom panel reads (x, depth - 1 - z), so its row 0 faces the
+    // front-most layer: this takes the column of voxels at x = 2, z = 4.
+    erase(sides.bottom, 2, 0);
+    expect(pickAt(sides, 0.5, 0.5)).toEqual([2, 2, 3]);
+  });
+
+  it("picks through the layer the right panel has carved away", () => {
+    const sides = solidSides(DIMENSIONS);
+    // The right panel counts z from the other end, so its cell (0, 2) faces the
+    // front-most layer at the middle height, taking that row of voxels away.
+    erase(sides.right, 0, 2);
     expect(pickAt(sides, 0.5, 0.5)).toEqual([2, 2, 3]);
   });
 

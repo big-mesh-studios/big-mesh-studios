@@ -20,13 +20,16 @@ import { bloom } from "@random-mesh/rmsl/effects";
 import { StackerContext } from "./context";
 import { BloomExecutor, createRenderTarget, GlowPass, type RenderTarget } from "./bloom-executor";
 import { Dimensions3D, Matrix3x3, Vector3D } from "./maths";
-import { PANEL_UNIFORM_NAME, toPanelTextures } from "./panel-textures";
+import {
+  PANEL_PAIR_KINDS,
+  PANEL_PAIR_UNIFORM_NAME,
+  toPanelPairTextures,
+} from "./panel-textures";
 import shaders from "./shaders";
 import { VoxelPreviewMaterial } from "./voxel-preview-material";
 import { voxelPicker } from "./voxel-picker";
 import { boxSize, FOV, NEAR, FAR, rotateMesh } from "./voxel-preview-scene";
-import { sideKindSet } from "./types";
-import { keysOf, tryCatch } from "./utils";
+import { tryCatch } from "./utils";
 import styles from "./VoxelPreviewView.module.css";
 
 const MIN_RADIUS = 2;
@@ -49,8 +52,6 @@ const BLOOM_RADIUS = 0.4;
 const BLOOM_THRESHOLD = 0;
 const BLOOM_SMOOTH_WIDTH = 0.01;
 
-const SIDE_KINDS = keysOf(sideKindSet);
-
 type PreviewScene = {
   renderer: WebGLRenderer;
   scene: Scene;
@@ -72,13 +73,14 @@ const VoxelPreviewView: Component = () => {
 
   const normalizedDimensions = createMemo(() => Dimensions3D.normalize(dimensions()));
 
-  // The panels the marcher reads the model from, laid out for it. They are
-  // rebuilt only when one of them is drawn on: `sidesVersion` counts the edits,
-  // since commands write into the panels in place and so leave `sides()` itself
-  // unchanged. Both the GPU upload and the CPU picker read the same six.
-  const panelTextures = createMemo(() => {
+  // The panels the marcher reads the model from, packed a facing pair to a
+  // texture. They are rebuilt only when one of them is drawn on: `sidesVersion`
+  // counts the edits, since commands write into the panels in place and so leave
+  // `sides()` itself unchanged. Both the GPU upload and the CPU picker read the
+  // same three.
+  const panelPairTextures = createMemo(() => {
     sidesVersion();
-    return toPanelTextures(sides());
+    return toPanelPairTextures(sides());
   });
 
   let yaw = Math.PI / 4;
@@ -170,7 +172,7 @@ const VoxelPreviewView: Component = () => {
       varying: { vUv: [x / rect.width, 1 - y / rect.height] },
       textures: {
         ...Object.fromEntries(
-          SIDE_KINDS.map(kind => [PANEL_UNIFORM_NAME[kind], panelTextures()[kind]]),
+          PANEL_PAIR_KINDS.map(kind => [PANEL_PAIR_UNIFORM_NAME[kind], panelPairTextures()[kind]]),
         ),
         [shaders.uPalette]: { data: paletteData, width: _palette.length, height: 1 },
       },
@@ -260,16 +262,16 @@ const VoxelPreviewView: Component = () => {
 
   createTrackedEffect(() => {
     const _previewScene = previewScene();
-    const _panels = panelTextures();
+    const _pairs = panelPairTextures();
     if (_previewScene === undefined) {
       return;
     }
-    SIDE_KINDS.forEach(kind => {
-      const panel = _panels[kind];
-      const texture = _previewScene.material.panelTextures[kind];
-      texture.image = panel.data;
-      texture.width = panel.width;
-      texture.height = panel.height;
+    PANEL_PAIR_KINDS.forEach(kind => {
+      const pair = _pairs[kind];
+      const texture = _previewScene.material.panelPairTextures[kind];
+      texture.image = pair.data;
+      texture.width = pair.width;
+      texture.height = pair.height;
       texture.needsUpdate = true;
     });
   });
