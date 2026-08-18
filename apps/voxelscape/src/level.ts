@@ -4,24 +4,104 @@ import { Builder, DataTexture, NodeMaterial, Scene, Vector3 } from "@random-mesh
 export class Level {
   // r === 0 -> empty space; r === 1 -> non-empty space
   broadData: Uint8Array;
+  broadTexture: DataTexture;
   broadDim: number;
   // the size of each of the chunks in a broad cell
   chunkDim: number;
   // the size of the storage
   storageDim: number;
+  storageCount: number;
   data: Uint8Array;
+  texture: DataTexture;
+  //
+  nextStorageXIdx: number = 0;
+  nextStorageYIdx: number = 0;
+  nextStorageZIdx: number = 0;
+  freeSpots: {
+    storageXIdx: number,
+    storageYIdx: number,
+    storageZIdx: number,
+  }[] = [];
+
+  allocChunk(out: { x: number, y: number, z: number, }) {
+    {
+      let freeSpot = this.freeSpots.pop();
+      if (freeSpot !== undefined) {
+        out.x = freeSpot.storageXIdx;
+        out.y = freeSpot.storageYIdx;
+        out.z = freeSpot.storageZIdx;
+        return;
+      }
+    }
+    out.x = this.nextStorageXIdx;
+    out.y = this.nextStorageYIdx;
+    out.z = this.nextStorageZIdx;
+    this.nextStorageXIdx++;
+    if (this.nextStorageXIdx === this.storageCount) {
+      this.nextStorageXIdx = 0;
+      this.nextStorageYIdx++;
+      if (this.nextStorageYIdx === this.storageCount) {
+        this.nextStorageYIdx = 0;
+        this.nextStorageZIdx++;
+      }
+    }
+  }
+
+  _set_chunk: { x: number, y: number, z: number, } = { x: 0, y: 0, z: 0, };
+  set(x: number, y: number, z: number, val: number) {
+    let broadXIdx = Math.floor(x / this.chunkDim);
+    let broadYIdx = Math.floor(y / this.chunkDim);
+    let broadZIdx = Math.floor(z / this.chunkDim);
+    let broadIdx = (
+        broadZIdx * this.broadDim * this.broadDim
+        + broadYIdx * this.broadDim
+        + broadXIdx
+      ) << 2;
+    let broadCell = this.broadData[broadIdx];
+    let chunkXIdx: number;
+    let chunkYIdx: number;
+    let chunkZIdx: number;
+    if (broadCell === 0) {
+      this.allocChunk(this._set_chunk);
+      chunkXIdx = this._set_chunk.x;
+      chunkYIdx = this._set_chunk.y;
+      chunkZIdx = this._set_chunk.z;
+    } else {
+      chunkXIdx = this.broadData[broadIdx + 1];
+      chunkYIdx = this.broadData[broadIdx + 2];
+      chunkZIdx = this.broadData[broadIdx + 3];
+    }
+    let localX = x - broadXIdx * this.chunkDim;
+    let localY = y - broadYIdx * this.chunkDim;
+    let localZ = z - broadZIdx * this.chunkDim;
+    let fineXIdx = chunkXIdx * this.chunkDim + localX;
+    let fineYIdx = chunkYIdx * this.chunkDim + localY;
+    let fineZIdx = chunkZIdx * this.chunkDim + localZ;
+    let idx = (
+        fineZIdx * this.storageDim * this.storageDim
+        + fineYIdx * this.storageDim
+        + fineXIdx
+      ) << 2;
+    this.data[idx] = val;
+  }
 
   constructor(params: {
-    broadDim: number,
-    chunkDim: number,
-    storageDim: number,
+    broadDim?: number,
+    chunkDim?: number,
+    storageDim?: number,
   }) {
     let { broadDim, chunkDim, storageDim, } = params;
+    broadDim ??= 64;
+    chunkDim ??= 16;
+    storageDim ??= 256;
     this.broadData = new Uint8Array(broadDim * broadDim * broadDim * 4);
+    this.broadTexture = new DataTexture(this.broadData, broadDim, broadDim, broadDim);
     this.broadDim = broadDim;
     this.chunkDim = chunkDim;
     this.storageDim = storageDim;
+    this.storageCount = Math.floor(storageDim / chunkDim);
     this.data = new Uint8Array(storageDim * storageDim * storageDim * 4);
+    this.texture = new DataTexture(this.data, storageDim, storageDim, storageDim);
   }
 }
 
@@ -83,7 +163,8 @@ const paddedInBounds = (voxelCount: Node<"vec3">, cell: Node<"ivec3">): Node<"bo
     .and(c.lessThan(voxelCount.add(vec3(float(2)))).all());
 };
 
-
+let rayMarch = (rayOrigin: Node<"vec3">, rayDirection: Node<"vec3">) => {
+};
 
 export class LevelChunkMaterial extends NodeMaterial {
   voxelTexture: DataTexture;
