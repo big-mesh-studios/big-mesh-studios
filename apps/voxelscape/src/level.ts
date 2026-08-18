@@ -1,6 +1,30 @@
 import { bool, Break, Discard, float, Fn, For, If, int, ivec3, Node, UniformNode, vec2, vec3, vec4 } from "@random-mesh/rmsl";
 import { Builder, DataTexture, NodeMaterial, Scene, Vector3 } from "@random-mesh/rmsl/scene";
 
+export class Level {
+  // r === 0 -> empty space; r === 1 -> non-empty space
+  broadData: Uint8Array;
+  broadDim: number;
+  // the size of each of the chunks in a broad cell
+  chunkDim: number;
+  // the size of the storage
+  storageDim: number;
+  data: Uint8Array;
+
+  constructor(params: {
+    broadDim: number,
+    chunkDim: number,
+    storageDim: number,
+  }) {
+    let { broadDim, chunkDim, storageDim, } = params;
+    this.broadData = new Uint8Array(broadDim * broadDim * broadDim * 4);
+    this.broadDim = broadDim;
+    this.chunkDim = chunkDim;
+    this.storageDim = storageDim;
+    this.data = new Uint8Array(storageDim * storageDim * storageDim * 4);
+  }
+}
+
 export type LevelChunk = {
   data: Uint8Array;
   lenX: number;
