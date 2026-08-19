@@ -9,7 +9,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from "@random-mesh/rmsl/scene";
-import { LevelChunkMaterial, makeLevelChunk } from "./level";
+import { LevelChunkMaterial, makeLevel } from "./level";
 
 const App: Component<{}> = () => {
   let [ state, setState, ] = createStore<{
@@ -28,7 +28,7 @@ const App: Component<{}> = () => {
   {
     let geometry = new BoxGeometry(1, 1, 1);
     let material = new LevelChunkMaterial();
-    material.setLevelChunk(makeLevelChunk(64, 64, 64));
+    material.setLevel(makeLevel());
     let mesh = new Mesh(geometry, material);
     scene.add(mesh);
   }
