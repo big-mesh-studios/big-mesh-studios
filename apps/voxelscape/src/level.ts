@@ -1,4 +1,4 @@
-import { bool, Break, Discard, float, Fn, For, If, int, ivec3, Node, UniformNode, vec2, vec3, vec4 } from "@random-mesh/rmsl";
+import { bool, Break, Discard, float, Fn, For, If, int, ivec3, Node, UniformNode, uvec4, vec2, vec3, vec4 } from "@random-mesh/rmsl";
 import { Builder, DataTexture, NodeMaterial, Scene, Vector3 } from "@random-mesh/rmsl/scene";
 
 export class Level {
@@ -163,7 +163,189 @@ const paddedInBounds = (voxelCount: Node<"vec3">, cell: Node<"ivec3">): Node<"bo
     .and(c.lessThan(voxelCount.add(vec3(float(2)))).all());
 };
 
-let rayMarch = (rayOrigin: Node<"vec3">, rayDirection: Node<"vec3">) => {
+let rayMarch = (params: {
+  rayOrigin: Node<"vec3">,
+  rayDirection: Node<"vec3">,
+  dimensions: Node<"vec3">,
+  voxelCount: Node<"vec3">,
+  uVoxels: Node<"usampler3D">,
+}): {
+  hit: Node<"bool">,
+  voxel: Node<"uvec4">,
+  voxelPos: Node<"ivec3">,
+  normal: Node<"vec3">,
+  hitPoint: Node<"vec3">,
+} => {
+  let { rayOrigin, rayDirection, dimensions, voxelCount, uVoxels } = params;
+
+  const cellSize = dimensions.div(voxelCount).toVar();
+  const boxMin = dimensions.mul(-0.5).sub(cellSize).toVar();
+  const boxMax = dimensions.mul(0.5).sub(cellSize).toVar();
+  const inverseRayDirection = vec3(1.0).div(rayDirection).toVar();
+
+  const hit = bool(false).toVar();
+  const colour = vec4(0).toVar();
+  const voxel = uvec4().toVar();
+  const voxelPos = ivec3(0).toVar();
+  const normal = vec3(0).toVar();
+  const hitPoint = vec3(0).toVar();
+
+  const ambientColour = vec3(0.2).toVar();
+  const lightColour = vec3(1.0).toVar();
+  const lightDir = vec3(1.0, 2.0, 1.0).normalize().toVar();
+
+  const distanceToMinPlanes = inverseRayDirection.mul(boxMin.sub(rayOrigin)).toVar();
+  const distanceToMaxPlanes = inverseRayDirection.mul(boxMax.sub(rayOrigin)).toVar();
+
+  const nearPlaneDistances = minVec3(distanceToMinPlanes, distanceToMaxPlanes);
+  const farPlaneDistances = maxVec3(distanceToMinPlanes, distanceToMaxPlanes);
+
+  const nearPair = maxVec2(
+    vec2(nearPlaneDistances.x, nearPlaneDistances.x),
+    nearPlaneDistances.yz,
+  ).toVar();
+  const entryDistance = nearPair.x.max(nearPair.y).toVar();
+
+  const farPair = minVec2(
+    vec2(farPlaneDistances.x, farPlaneDistances.x),
+    farPlaneDistances.yz,
+  ).toVar();
+  const exitDistance = farPair.x.min(farPair.y).toVar();
+
+  If(entryDistance.lessThanEqual(exitDistance), () => {
+    const cellDir = rayDirection.div(cellSize).toVar();
+
+    const entryPoint = rayOrigin.add(rayDirection.mul(entryDistance)).toVar();
+    const cellOrigin = entryPoint
+      .add(dimensions.mul(0.5))
+      .div(cellSize)
+      .add(cellDir.mul(0.001))
+      .toVar();
+
+    const mapPos = cellOrigin.floor().toIVec3().toVar();
+    const rayStep = rayDirection.sign().toIVec3().toVar();
+    const deltaDist = vec3(1.0)
+      .div(cellDir.abs().max(1e-6))
+      .toVar();
+    const sideDist = rayStep
+      .toVec3()
+      .mul(mapPos.toVec3().sub(cellOrigin))
+      .add(rayStep.toVec3().mul(0.5).add(0.5))
+      .mul(deltaDist)
+      .toVar();
+
+    const mask = vec3(float(0)).toVar();
+
+    If(nearPlaneDistances.x.equal(entryDistance), () => {
+      mask.assign(vec3(float(1), float(0), float(0)));
+    })
+      .ElseIf(nearPlaneDistances.y.equal(entryDistance), () => {
+        mask.assign(vec3(float(0), float(1), float(0)));
+      })
+      .Else(() => {
+        mask.assign(vec3(float(0), float(0), float(1)));
+      });
+
+    const maxSteps = voxelCount.x
+      .max(voxelCount.y)
+      .max(voxelCount.z)
+      .mul(float(3))
+      .add(float(8))
+      .toInt();
+
+    For(
+      () => int(0).toVar(),
+      i => i.lessThan(maxSteps),
+      i => i.assign(i.add(1)),
+      () => {
+        If(paddedInBounds(voxelCount, mapPos).not(), () => {
+          Break();
+        });
+        If(inBounds(voxelCount, mapPos), () => {
+          If(uVoxels.texture(mapPos.toUVec3()).r.notEqual(0), () => {
+            hit.assign(bool(true));
+            Break();
+          });
+        });
+        mask.assign(
+          sideDist
+            .lessThanEqual(
+              vec3(
+                sideDist.y.min(sideDist.z),
+                sideDist.z.min(sideDist.x),
+                sideDist.x.min(sideDist.y),
+              ),
+            )
+            .toVec3(),
+        );
+        sideDist.assign(sideDist.add(mask.mul(deltaDist)));
+        mapPos.assign(mapPos.add(mask.toIVec3().mul(rayStep)));
+      },
+    );
+    If(hit, () => {
+      voxelPos.assign(mapPos);
+      voxel.assign(uVoxels.texture(mapPos.toUVec3()));
+      normal.assign(mask.mul(rayStep.toVec3()).negate());
+      const diffuse = normal.dot(lightDir).max(float(0));
+      colour.rgb.assign(
+        vec3(0.0, 0.0, 1.0).mul(
+          ambientColour.add(lightColour.mul(diffuse)),
+        ),
+      );
+      //
+      const hitDistance = float(0).toVar();
+      If(mask.x.notEqual(float(0)), () => {
+        hitDistance.assign(
+          entryDistance.add(
+            rayStep.x
+              .greaterThan(0)
+              .select(mapPos.x, mapPos.x.add(1))
+              .toFloat()
+              .sub(cellOrigin.x)
+              .mul(rayStep.x.toFloat())
+              .mul(deltaDist.x),
+          ),
+        );
+      })
+        .ElseIf(mask.y.notEqual(float(0)), () => {
+          hitDistance.assign(
+            entryDistance.add(
+              rayStep.y
+                .greaterThan(0)
+                .select(mapPos.y, mapPos.y.add(1))
+                .toFloat()
+                .sub(cellOrigin.y)
+                .mul(rayStep.y.toFloat())
+                .mul(deltaDist.y),
+            ),
+          );
+        })
+        .Else(() => {
+          hitDistance.assign(
+            entryDistance.add(
+              rayStep.z
+                .greaterThan(0)
+                .select(mapPos.z, mapPos.z.add(1))
+                .toFloat()
+                .sub(cellOrigin.z)
+                .mul(rayStep.z.toFloat())
+                .mul(deltaDist.z),
+            ),
+          );
+        });
+      hitPoint.assign(rayOrigin.add(rayDirection.mul(hitDistance)));
+      //
+      colour.a.assign(float(1));
+    });
+  });
+
+  return {
+    hit,
+    voxel,
+    voxelPos,
+    normal,
+    hitPoint,
+  };
 };
 
 export class LevelChunkMaterial extends NodeMaterial {
