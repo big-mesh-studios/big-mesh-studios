@@ -1,5 +1,7 @@
-import { bool, Break, Discard, float, Fn, For, If, int, ivec3, Node, UniformNode, uvec3, uvec4, vec2, vec3, vec4 } from "@random-mesh/rmsl";
+import { bool, Break, builtinFragDepth, float, For, If, int, ivec3, max, min, uvec3, uvec4, vec2, vec3, vec4 } from "@random-mesh/rmsl";
+import type { Node } from "@random-mesh/rmsl";
 import { Builder, DataTexture, NodeMaterial, Scene, Vector3 } from "@random-mesh/rmsl/scene";
+import type { UniformNode } from "@random-mesh/rmsl";
 
 export class Level {
   // r === 0 -> empty space; r === 1 -> non-empty space
@@ -112,110 +114,71 @@ export function makeLevel(): Level {
   let level = new Level();
   for (let z = 0; z < 1024; ++z) {
     for (let x = 0; x < 1024; ++x) {
-      level.set(x, 0, z, 1);
+      level.set(x, Math.floor(500 + 50 * Math.cos(x * 0.01) * Math.cos(z * 0.01)), z, 1);
     }
   }
   return level;
 }
 
-// Componentwise min/max of two vectors, expressed with abs since rmsl only
-// types the scalar variants: (a + b +/- |a - b|) / 2
-const minVec2 = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
-  a.add(b).sub(a.sub(b).abs()).mul(float(0.5));
-const maxVec2 = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> =>
-  a.add(b).add(a.sub(b).abs()).mul(float(0.5));
-const minVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
-  a.add(b).sub(a.sub(b).abs()).mul(float(0.5));
-const maxVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
-  a.add(b).add(a.sub(b).abs()).mul(float(0.5));
+const minVec2 = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> => min(a, b);
+const maxVec2 = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> => max(a, b);
+const minVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> => min(a, b);
+const maxVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> => max(a, b);
 
-// The volume fills the whole grid (one texel per voxel), so a cell is inside
-// the volume exactly when every index lies in [0, uVoxelCount).
-const inBounds = (voxelCount: Node<"vec3">, cell: Node<"ivec3">): Node<"bool"> => {
+const inRegion = (minIdx: Node<"uvec3">, maxIdx: Node<"uvec3">, cell: Node<"ivec3">): Node<"bool"> => {
   const c = cell.toVec3();
   return c
-    .greaterThanEqual(vec3(float(0)))
+    .greaterThanEqual(minIdx.toVec3())
     .all()
-    .and(c.lessThan(voxelCount).all());
+    .and(c.lessThanEqual(maxIdx.toVec3()).all());
 };
 
-// The ray is intersected with a box padded by one voxel on each side, so its
-// start and exit land safely outside the volume instead of exactly on a wall
-// face, where float error could put them on the wrong side. The DDA therefore
-// walks from up to a cell or two outside, sampling only cells that are in the
-// volume and stopping once it leaves the padded range.
-const paddedInBounds = (voxelCount: Node<"vec3">, cell: Node<"ivec3">): Node<"bool"> => {
+const inPaddedRegion = (minIdx: Node<"uvec3">, maxIdx: Node<"uvec3">, cell: Node<"ivec3">): Node<"bool"> => {
   const c = cell.toVec3();
   return c
-    .greaterThanEqual(vec3(float(-2)))
+    .greaterThanEqual(minIdx.toVec3().sub(vec3(1)))
     .all()
-    .and(c.lessThan(voxelCount.add(vec3(float(2)))).all());
+    .and(c.lessThanEqual(maxIdx.toVec3().add(vec3(1))).all());
 };
 
-let rayMarchLevel = (params: {
+const intersectBox = (params: {
   rayOrigin: Node<"vec3">,
   rayDirection: Node<"vec3">,
-  dimension: Node<"float">,
-  broadVoxels: Node<"usampler3D">,
-  broadDim: Node<"uint">,
-  chunkDim: Node<"uint">,
-  fineVoxels: Node<"usampler3D">,
-}) => {
-  const ambientColour = vec3(0.2).toVar();
-  const lightColour = vec3(1.0).toVar();
-  const lightDir = vec3(1.0, 2.0, 1.0).normalize().toVar();
-  let { rayOrigin, rayDirection, dimension, broadVoxels, broadDim, chunkDim, fineVoxels } = params;
-  let virtualDim = broadDim.mul(chunkDim);
-  let cellSize = params.dimension.div(virtualDim.toFloat());
-  // broad ray march
-  let {
-    hit: broadHit,
-    voxel: broadVoxel,
-  } = rayMarch({
-    rayOrigin,
-    rayDirection,
-    dimensions: vec3(dimension),
-    voxelCount: vec3(broadDim.toFloat()),
-    uVoxels: broadVoxels,
-  });
-  If(broadHit.not(), () => Discard());
-  const chunkIdxChords = broadVoxel.yzw.toVar();
-  const chunkChords = chunkIdxChords.mul(chunkDim);
-  const chunkCentrePt = chunkChords.toFloat().add(chunkDim.toFloat().mul(0.5)).mul(cellSize);
-  const chunkRayOrigin = rayOrigin.add(chunkCentrePt);
-  const fineMinIdx = chunkChords;
-  const fineMaxIdx = fineMinIdx.add(uvec3(chunkDim.sub(1)));
-  // fine ray march
-  let {
-    hit: fineHit,
-    voxel: fineVoxel,
-    normal,
-    hitPoint,
-  } = rayMarch({
-    rayOrigin: chunkRayOrigin,
-    rayDirection,
-    dimensions: vec3(dimension),
-    voxelCount: vec3(virtualDim.toFloat()),
-    uVoxels: fineVoxels,
-    minVoxelIdx: fineMinIdx,
-    maxVoxelIdx: fineMaxIdx,
-  });
-  If(fineHit.not(), () => Discard());
-  const diffuse = normal.dot(lightDir).max(float(0));
-  let colour = vec3(0.0, 0.0, 1.0).mul(
-    ambientColour.add(lightColour.mul(diffuse)),
-  );
-  return vec4(colour, 1.0);
+  boxMin: Node<"vec3">,
+  boxMax: Node<"vec3">,
+}): {
+  entryDistance: Node<"float">,
+  exitDistance: Node<"float">,
+  nearPlaneDistances: Node<"vec3">,
+} => {
+  let { rayOrigin, rayDirection, boxMin, boxMax } = params;
+  const inverseRayDirection = vec3(1.0).div(rayDirection).toVar();
+  const distanceToMinPlanes = inverseRayDirection.mul(boxMin.sub(rayOrigin)).toVar();
+  const distanceToMaxPlanes = inverseRayDirection.mul(boxMax.sub(rayOrigin)).toVar();
+  const nearPlaneDistances = minVec3(distanceToMinPlanes, distanceToMaxPlanes);
+  const farPlaneDistances = maxVec3(distanceToMinPlanes, distanceToMaxPlanes);
+  const nearPair = maxVec2(
+    vec2(nearPlaneDistances.x, nearPlaneDistances.x),
+    nearPlaneDistances.yz,
+  ).toVar();
+  const entryDistance = nearPair.x.max(nearPair.y).toVar();
+  const farPair = minVec2(
+    vec2(farPlaneDistances.x, farPlaneDistances.x),
+    farPlaneDistances.yz,
+  ).toVar();
+  const exitDistance = farPair.x.min(farPair.y).toVar();
+  return { entryDistance, exitDistance, nearPlaneDistances };
 };
 
-let rayMarch = (params: {
+export let rayMarch = (params: {
   rayOrigin: Node<"vec3">,
   rayDirection: Node<"vec3">,
   dimensions: Node<"vec3">,
   voxelCount: Node<"vec3">,
   uVoxels: Node<"usampler3D">,
-  minVoxelIdx?: Node<"uvec3">,
-  maxVoxelIdx?: Node<"uvec3">,
+  marchMin?: Node<"uvec3">,
+  marchMax?: Node<"uvec3">,
+  texelOffset?: Node<"vec3">,
 }): {
   hit: Node<"bool">,
   voxel: Node<"uvec4">,
@@ -223,50 +186,47 @@ let rayMarch = (params: {
   normal: Node<"vec3">,
   hitPoint: Node<"vec3">,
 } => {
-  let { rayOrigin, rayDirection, dimensions, voxelCount, uVoxels, minVoxelIdx, maxVoxelIdx, } = params;
+  let { rayOrigin, rayDirection, dimensions, voxelCount, uVoxels, marchMin, marchMax, texelOffset } = params;
+
+  const texelShift = (texelOffset ?? vec3(0)).toVar();
+  const fetchCell = (cell: Node<"ivec3">): Node<"uvec4"> =>
+    uVoxels.texture(cell.toVec3().add(texelShift).toUVec3());
 
   const cellSize = dimensions.div(voxelCount).toVar();
-  const boxMin = dimensions.mul(-0.5).sub(cellSize).toVar();
-  const boxMax = dimensions.mul(0.5).sub(cellSize).toVar();
-  const inverseRayDirection = vec3(1.0).div(rayDirection).toVar();
+  const minIdx = (marchMin ?? uvec3(0)).toVar();
+  const maxIdx = (marchMax ?? voxelCount.sub(vec3(float(1))).toUVec3()).toVar();
+  const boxMin = dimensions
+    .mul(float(-0.5))
+    .add(minIdx.toVec3().mul(cellSize))
+    .sub(cellSize)
+    .toVar();
+  const boxMax = dimensions
+    .mul(float(-0.5))
+    .add(maxIdx.toVec3().add(vec3(1)).mul(cellSize))
+    .add(cellSize)
+    .toVar();
 
   const hit = bool(false).toVar();
-  const colour = vec4(0).toVar();
   const voxel = uvec4().toVar();
   const voxelPos = ivec3(0).toVar();
   const normal = vec3(0).toVar();
   const hitPoint = vec3(0).toVar();
 
-  const ambientColour = vec3(0.2).toVar();
-  const lightColour = vec3(1.0).toVar();
-  const lightDir = vec3(1.0, 2.0, 1.0).normalize().toVar();
-
-  const distanceToMinPlanes = inverseRayDirection.mul(boxMin.sub(rayOrigin)).toVar();
-  const distanceToMaxPlanes = inverseRayDirection.mul(boxMax.sub(rayOrigin)).toVar();
-
-  const nearPlaneDistances = minVec3(distanceToMinPlanes, distanceToMaxPlanes);
-  const farPlaneDistances = maxVec3(distanceToMinPlanes, distanceToMaxPlanes);
-
-  const nearPair = maxVec2(
-    vec2(nearPlaneDistances.x, nearPlaneDistances.x),
-    nearPlaneDistances.yz,
-  ).toVar();
-  const entryDistance = nearPair.x.max(nearPair.y).toVar();
-
-  const farPair = minVec2(
-    vec2(farPlaneDistances.x, farPlaneDistances.x),
-    farPlaneDistances.yz,
-  ).toVar();
-  const exitDistance = farPair.x.min(farPair.y).toVar();
+  let { entryDistance, exitDistance, nearPlaneDistances } = intersectBox({
+    rayOrigin,
+    rayDirection,
+    boxMin,
+    boxMax,
+  });
 
   If(entryDistance.lessThanEqual(exitDistance), () => {
     const cellDir = rayDirection.div(cellSize).toVar();
 
     const entryPoint = rayOrigin.add(rayDirection.mul(entryDistance)).toVar();
     const cellOrigin = entryPoint
-      .add(dimensions.mul(0.5))
+      .add(dimensions.mul(float(0.5)))
       .div(cellSize)
-      .add(cellDir.mul(0.001))
+      .add(cellDir.mul(float(0.001)))
       .toVar();
 
     const mapPos = cellOrigin.floor().toIVec3().toVar();
@@ -277,7 +237,7 @@ let rayMarch = (params: {
     const sideDist = rayStep
       .toVec3()
       .mul(mapPos.toVec3().sub(cellOrigin))
-      .add(rayStep.toVec3().mul(0.5).add(0.5))
+      .add(rayStep.toVec3().mul(float(0.5)).add(float(0.5)))
       .mul(deltaDist)
       .toVar();
 
@@ -305,27 +265,14 @@ let rayMarch = (params: {
       i => i.lessThan(maxSteps),
       i => i.assign(i.add(1)),
       () => {
-        If(paddedInBounds(voxelCount, mapPos).not(), () => {
+        If(inPaddedRegion(minIdx, maxIdx, mapPos).not(), () => {
           Break();
         });
-        If(inBounds(voxelCount, mapPos), () => {
-          let k = () => {
-            If(uVoxels.texture(mapPos.toUVec3()).r.notEqual(0), () => {
-              hit.assign(bool(true));
-              Break();
-            });
-          };
-          if (minVoxelIdx !== undefined && maxVoxelIdx !== undefined) {
-            let ptIdx = mapPos.toUVec3().toVar();
-            If(
-              minVoxelIdx.x.lessThanEqual(ptIdx.x).and(ptIdx.x.lessThanEqual(maxVoxelIdx.x)
-              .and(minVoxelIdx.y.lessThanEqual(ptIdx.y).and(ptIdx.y.lessThanEqual(maxVoxelIdx.y)))
-              .and(minVoxelIdx.z.lessThanEqual(ptIdx.z).and(ptIdx.z.lessThanEqual(maxVoxelIdx.z)))),
-              k
-            );
-          } else {
-            k();
-          }
+        If(inRegion(minIdx, maxIdx, mapPos), () => {
+          If(fetchCell(mapPos).r.notEqual(0), () => {
+            hit.assign(bool(true));
+            Break();
+          });
         });
         mask.assign(
           sideDist
@@ -344,15 +291,9 @@ let rayMarch = (params: {
     );
     If(hit, () => {
       voxelPos.assign(mapPos);
-      voxel.assign(uVoxels.texture(mapPos.toUVec3()));
+      voxel.assign(fetchCell(mapPos));
       normal.assign(mask.mul(rayStep.toVec3()).negate());
-      const diffuse = normal.dot(lightDir).max(float(0));
-      colour.rgb.assign(
-        vec3(0.0, 0.0, 1.0).mul(
-          ambientColour.add(lightColour.mul(diffuse)),
-        ),
-      );
-      //
+
       const hitDistance = float(0).toVar();
       If(mask.x.notEqual(float(0)), () => {
         hitDistance.assign(
@@ -394,8 +335,6 @@ let rayMarch = (params: {
           );
         });
       hitPoint.assign(rayOrigin.add(rayDirection.mul(hitDistance)));
-      //
-      colour.a.assign(float(1));
     });
   });
 
@@ -408,13 +347,173 @@ let rayMarch = (params: {
   };
 };
 
+export let rayMarchLevel = (params: {
+  rayOrigin: Node<"vec3">,
+  rayDirection: Node<"vec3">,
+  dimension: Node<"float">,
+  broadVoxels: Node<"usampler3D">,
+  broadDim: Node<"float">,
+  chunkDim: Node<"float">,
+  fineVoxels: Node<"usampler3D">,
+  outColour: Node<"vec4">,
+  outHitPoint: Node<"vec3">,
+}): void => {
+  const ambientColour = vec3(0.2).toVar();
+  const lightColour = vec3(1.0).toVar();
+  const lightDir = vec3(1.0, 2.0, 1.0).normalize().toVar();
+  let {
+    rayOrigin,
+    rayDirection,
+    dimension,
+    broadVoxels,
+    broadDim,
+    chunkDim,
+    fineVoxels,
+    outColour,
+    outHitPoint,
+  } = params;
+
+  const dimensions = vec3(dimension).toVar();
+  const virtualDim = broadDim.mul(chunkDim).toVar();
+  const cellSizeBroad = dimension.div(broadDim).toVar();
+
+  const broadDimU = broadDim.toUint();
+  const chunkDimU = chunkDim.toUint();
+
+  const hit = bool(false).toVar();
+  const normal = vec3(0).toVar();
+
+  const boxMin = dimensions.mul(float(-0.5)).sub(cellSizeBroad).toVar();
+  const boxMax = dimensions.mul(float(0.5)).add(cellSizeBroad).toVar();
+  let { entryDistance, exitDistance, nearPlaneDistances } = intersectBox({
+    rayOrigin,
+    rayDirection,
+    boxMin,
+    boxMax,
+  });
+
+  If(entryDistance.lessThanEqual(exitDistance), () => {
+    const cellDir = rayDirection.div(cellSizeBroad).toVar();
+
+    const entryPoint = rayOrigin.add(rayDirection.mul(entryDistance)).toVar();
+    const cellOrigin = entryPoint
+      .add(dimensions.mul(float(0.5)))
+      .div(cellSizeBroad)
+      .add(cellDir.mul(float(0.001)))
+      .toVar();
+
+    const mapPos = cellOrigin.floor().toIVec3().toVar();
+    const rayStep = rayDirection.sign().toIVec3().toVar();
+    const deltaDist = vec3(1.0)
+      .div(cellDir.abs().max(1e-6))
+      .toVar();
+    const sideDist = rayStep
+      .toVec3()
+      .mul(mapPos.toVec3().sub(cellOrigin))
+      .add(rayStep.toVec3().mul(float(0.5)).add(float(0.5)))
+      .mul(deltaDist)
+      .toVar();
+
+    const mask = vec3(float(0)).toVar();
+
+    If(nearPlaneDistances.x.equal(entryDistance), () => {
+      mask.assign(vec3(float(1), float(0), float(0)));
+    })
+      .ElseIf(nearPlaneDistances.y.equal(entryDistance), () => {
+        mask.assign(vec3(float(0), float(1), float(0)));
+      })
+      .Else(() => {
+        mask.assign(vec3(float(0), float(0), float(1)));
+      });
+
+    const maxSteps = broadDim
+      .mul(float(3))
+      .add(float(8))
+      .toInt();
+    const broadCount = vec3(broadDim).toVar();
+
+    For(
+      () => int(0).toVar(),
+      i => i.lessThan(maxSteps),
+      i => i.assign(i.add(1)),
+      () => {
+        If(
+          mapPos
+            .toVec3()
+            .greaterThanEqual(vec3(float(-2)))
+            .all()
+            .and(mapPos.toVec3().lessThan(broadCount.add(vec3(float(2)))).all())
+            .not(),
+          () => {
+            Break();
+          },
+        );
+        If(
+          mapPos
+            .toVec3()
+            .greaterThanEqual(vec3(float(0)))
+            .all()
+            .and(mapPos.toVec3().lessThan(broadCount).all()),
+          () => {
+            const broadCell = broadVoxels.texture(mapPos.toUVec3()).toVar();
+            If(broadCell.r.notEqual(0), () => {
+              const virtualChunkMin = mapPos.toUVec3().mul(chunkDimU);
+              const storageChunkMin = broadCell.yzw.mul(chunkDimU);
+              const texelOffset = storageChunkMin.toVec3().sub(virtualChunkMin.toVec3());
+              const fine = rayMarch({
+                rayOrigin,
+                rayDirection,
+                dimensions,
+                voxelCount: vec3(virtualDim),
+                uVoxels: fineVoxels,
+                marchMin: virtualChunkMin,
+                marchMax: virtualChunkMin.add(uvec3(chunkDimU.sub(1))),
+                texelOffset,
+              });
+              If(fine.hit, () => {
+                hit.assign(bool(true));
+                normal.assign(fine.normal);
+                outHitPoint.assign(fine.hitPoint);
+                Break();
+              });
+            });
+          },
+        );
+        mask.assign(
+          sideDist
+            .lessThanEqual(
+              vec3(
+                sideDist.y.min(sideDist.z),
+                sideDist.z.min(sideDist.x),
+                sideDist.x.min(sideDist.y),
+              ),
+            )
+            .toVec3(),
+        );
+        sideDist.assign(sideDist.add(mask.mul(deltaDist)));
+        mapPos.assign(mapPos.add(mask.toIVec3().mul(rayStep)));
+      },
+    );
+  });
+
+  If(hit, () => {
+    const diffuse = normal.dot(lightDir).max(float(0));
+    outColour.rgb.assign(
+      vec3(0.0, 0.0, 1.0).mul(
+        ambientColour.add(lightColour.mul(diffuse)),
+      ),
+    );
+    outColour.a.assign(float(1));
+  });
+};
+
 export class LevelChunkMaterial extends NodeMaterial {
   level?: Level;
 
   private dimension?: UniformNode<"float">;
   private broadVoxels?: UniformNode<"usampler3D">;
-  private broadDim?: UniformNode<"uint">;
-  private chunkDim?: UniformNode<"uint">;
+  private broadDim?: UniformNode<"float">;
+  private chunkDim?: UniformNode<"float">;
   private fineVoxels?: UniformNode<"usampler3D">;
 
   constructor() {
@@ -432,8 +531,8 @@ export class LevelChunkMaterial extends NodeMaterial {
     let level = this.level;
     this.dimension = b.materialUniform("dimension", "float", () => 1024.0);
     this.broadVoxels = b.sampler("broadVoxels", "usampler3D", () => level.broadTexture);
-    this.broadDim = b.materialUniform("broadDim", "uint", () => 64);
-    this.chunkDim = b.materialUniform("chunkDim", "uint", () => 16);
+    this.broadDim = b.materialUniform("broadDim", "float", () => 64);
+    this.chunkDim = b.materialUniform("chunkDim", "float", () => 16);
     this.fineVoxels = b.sampler("fineVoxels", "usampler3D", () => level.texture);
   }
 
@@ -451,26 +550,34 @@ export class LevelChunkMaterial extends NodeMaterial {
     const rayOrigin = b.normalMatrix.mul(b.cameraPosition);
     const rayDirection = vModelPos.sub(rayOrigin).normalize();
 
-    const dimension = this.dimension!;
-    const broadVoxels = this.broadVoxels!;
-    const broadDim = this.broadDim!;
-    const chunkDim = this.chunkDim!;
-    const fineVoxels = this.fineVoxels!;
+    const colour = vec4(0).toVar();
+    const hitPoint = vec3(0).toVar();
 
-    const fragmentShader = Fn(() => {
-      let res = rayMarchLevel({
-        rayOrigin,
-        rayDirection,
-        dimension,
-        broadVoxels,
-        broadDim,
-        chunkDim,
-        fineVoxels,
-      });
-      return res;
+    rayMarchLevel({
+      rayOrigin,
+      rayDirection,
+      dimension: this.dimension!,
+      broadVoxels: this.broadVoxels!,
+      broadDim: this.broadDim!,
+      chunkDim: this.chunkDim!,
+      fineVoxels: this.fineVoxels!,
+      outColour: colour,
+      outHitPoint: hitPoint,
     });
 
-    return fragmentShader();
+    const fragDepth = builtinFragDepth();
+    If(colour.a.greaterThan(float(0.5)), () => {
+      const clip = b.projectionMatrix.mul(
+        b.viewMatrix.mul(b.modelMatrix.mul(vec4(hitPoint, float(1)))),
+      );
+      const ndcZ = clip.z.div(clip.w);
+      const depth = ndcZ.mul(float(0.5)).add(float(0.5));
+      fragDepth.assign(depth.max(float(0.0)).min(float(0.9999)));
+    }).Else(() => {
+      fragDepth.assign(float(1));
+    });
+
+    return colour;
   }
 }
 

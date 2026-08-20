@@ -26,15 +26,28 @@ const App: Component<{}> = () => {
     scene.add(sun);
   }
   {
-    let geometry = new BoxGeometry(1, 1, 1);
+    // The volume is 1024 world units on a side (matching the material's
+    // "dimension" uniform), centered at the origin, so the bounding box that
+    // feeds a ray to every fragment must span it (plus one cell of padding,
+    // matching the box the marcher intersects).
+    let geometry = new BoxGeometry(1026, 1026, 1026);
     let material = new LevelChunkMaterial();
+    material.transparent = true;
+    material.depthWrite = true;
     material.setLevel(makeLevel());
     let mesh = new Mesh(geometry, material);
     scene.add(mesh);
   }
-  const camera = new PerspectiveCamera(50, 1.0, 0.1, 1000.0);
-  camera.position.set(3, 3, 3);
+  const camera = new PerspectiveCamera(50, 1.0, 0.1, 20000.0);
+  camera.position.set(150*5, 130*3, 150*5);
   camera.lookAt(new Vector3(0, 0, 0));
+  let animate = (t: number) => {
+    let ca = Math.cos(t*0.0005);
+    let sa = Math.sin(t*0.0005);
+    camera.position.set(150*5*ca, 130*3, 150*5*sa);
+    camera.lookAt(new Vector3(0, 0, 0));
+    render();
+  };
   createEffect(
     () => state.canvas,
     (canvas) => {
@@ -45,16 +58,23 @@ const App: Component<{}> = () => {
       setState((s) => { s.renderer = renderer; });
       let resizeObserver = new ResizeObserver(() => {
         let rect = canvas.getBoundingClientRect();
+        let aspect = rect.width / rect.height;
+        if (!Number.isFinite(aspect) || aspect <= 0) {
+          return;
+        }
         canvas.width = rect.width * window.devicePixelRatio;
         canvas.height = rect.height * window.devicePixelRatio;
-        camera.aspect = rect.width / rect.height;
+        camera.aspect = aspect;
         camera.updateProjectionMatrix();
-        render();
       });
       resizeObserver.observe(canvas);
+      renderer.setAnimationLoop((t) => {
+        animate(t);
+      });
       return () => {
         resizeObserver.unobserve(canvas);
         resizeObserver.disconnect();
+        renderer.setAnimationLoop(null);
       };
     },
   );
