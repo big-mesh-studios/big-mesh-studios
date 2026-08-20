@@ -1,6 +1,6 @@
 import { bool, Break, builtinFragDepth, float, For, If, int, ivec3, max, min, uvec3, uvec4, vec2, vec3, vec4 } from "@random-mesh/rmsl";
 import type { Node } from "@random-mesh/rmsl";
-import { Builder, DataTexture, NodeMaterial, Scene, Vector3 } from "@random-mesh/rmsl/scene";
+import { Builder, DataTexture, NodeMaterial, RedIntegerFormat, Scene, UnsignedByteType, Vector3 } from "@random-mesh/rmsl/scene";
 import type { UniformNode } from "@random-mesh/rmsl";
 
 export const BROAD_DIM = 32;
@@ -92,7 +92,7 @@ export class Level {
         fineZIdx * this.storageDim * this.storageDim
         + fineYIdx * this.storageDim
         + fineXIdx
-      ) << 2;
+      );
     this.data[idx] = val;
   }
 
@@ -111,8 +111,8 @@ export class Level {
     this.chunkDim = chunkDim;
     this.storageDim = storageDim;
     this.storageCount = Math.floor(storageDim / chunkDim);
-    this.data = new Uint8Array(storageDim * storageDim * storageDim * 4);
-    this.texture = new DataTexture(this.data, storageDim, storageDim, storageDim);
+    this.data = new Uint8Array(storageDim * storageDim * storageDim);
+    this.texture = new DataTexture(this.data, storageDim, storageDim, storageDim, RedIntegerFormat, UnsignedByteType);
   }
 }
 export function makeLevel(): Level {
