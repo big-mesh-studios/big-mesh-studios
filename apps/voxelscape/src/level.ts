@@ -3,6 +3,11 @@ import type { Node } from "@random-mesh/rmsl";
 import { Builder, DataTexture, NodeMaterial, Scene, Vector3 } from "@random-mesh/rmsl/scene";
 import type { UniformNode } from "@random-mesh/rmsl";
 
+export const BROAD_DIM = 64;
+export const CHUNK_DIM = 16;
+export const VIRTUAL_DIM = BROAD_DIM * CHUNK_DIM;
+export const STORAGE_DIM = 256;
+
 export class Level {
   // r === 0 -> empty space; r === 1 -> non-empty space
   broadData: Uint8Array;
@@ -97,9 +102,9 @@ export class Level {
     storageDim?: number,
   }) {
     let { broadDim, chunkDim, storageDim, } = params ?? {};
-    broadDim ??= 64;
-    chunkDim ??= 16;
-    storageDim ??= 256;
+    broadDim ??= BROAD_DIM;
+    chunkDim ??= CHUNK_DIM;
+    storageDim ??= STORAGE_DIM;
     this.broadData = new Uint8Array(broadDim * broadDim * broadDim * 4);
     this.broadTexture = new DataTexture(this.broadData, broadDim, broadDim, broadDim);
     this.broadDim = broadDim;
@@ -112,9 +117,9 @@ export class Level {
 }
 export function makeLevel(): Level {
   let level = new Level();
-  for (let z = 0; z < 1024; ++z) {
-    for (let x = 0; x < 1024; ++x) {
-      level.set(x, Math.floor(500 + 50 * Math.cos(x * 0.01) * Math.cos(z * 0.01)), z, 1);
+  for (let z = 0; z < VIRTUAL_DIM; ++z) {
+    for (let x = 0; x < VIRTUAL_DIM; ++x) {
+      level.set(x, Math.floor(0.5 * VIRTUAL_DIM + 50 * Math.cos(x * 0.01) * Math.cos(z * 0.01)), z, 1);
     }
   }
   return level;
@@ -529,10 +534,10 @@ export class LevelChunkMaterial extends NodeMaterial {
       return;
     }
     let level = this.level;
-    this.dimension = b.materialUniform("dimension", "float", () => 1024.0);
+    this.dimension = b.materialUniform("dimension", "float", () => level.broadDim * level.chunkDim);
     this.broadVoxels = b.sampler("broadVoxels", "usampler3D", () => level.broadTexture);
-    this.broadDim = b.materialUniform("broadDim", "float", () => 64);
-    this.chunkDim = b.materialUniform("chunkDim", "float", () => 16);
+    this.broadDim = b.materialUniform("broadDim", "float", () => level.broadDim);
+    this.chunkDim = b.materialUniform("chunkDim", "float", () => level.chunkDim);
     this.fineVoxels = b.sampler("fineVoxels", "usampler3D", () => level.texture);
   }
 

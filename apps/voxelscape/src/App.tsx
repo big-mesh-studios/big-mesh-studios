@@ -9,7 +9,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from "@random-mesh/rmsl/scene";
-import { LevelChunkMaterial, makeLevel } from "./level";
+import { LevelChunkMaterial, makeLevel, VIRTUAL_DIM } from "./level";
 
 const App: Component<{}> = () => {
   let [ state, setState, ] = createStore<{
@@ -30,7 +30,11 @@ const App: Component<{}> = () => {
     // "dimension" uniform), centered at the origin, so the bounding box that
     // feeds a ray to every fragment must span it (plus one cell of padding,
     // matching the box the marcher intersects).
-    let geometry = new BoxGeometry(1026, 1026, 1026);
+    let geometry = new BoxGeometry(
+      VIRTUAL_DIM + 2.0,
+      VIRTUAL_DIM + 2.0,
+      VIRTUAL_DIM + 2.0,
+    );
     let material = new LevelChunkMaterial();
     material.transparent = true;
     material.depthWrite = true;
