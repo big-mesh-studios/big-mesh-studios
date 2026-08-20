@@ -3,10 +3,10 @@ import type { Node } from "@random-mesh/rmsl";
 import { Builder, DataTexture, NodeMaterial, Scene, Vector3 } from "@random-mesh/rmsl/scene";
 import type { UniformNode } from "@random-mesh/rmsl";
 
-export const BROAD_DIM = 64;
-export const CHUNK_DIM = 16;
+export const BROAD_DIM = 32;
+export const CHUNK_DIM = 32;
 export const VIRTUAL_DIM = BROAD_DIM * CHUNK_DIM;
-export const STORAGE_DIM = 256;
+export const STORAGE_DIM = 512;
 
 export class Level {
   // r === 0 -> empty space; r === 1 -> non-empty space
