@@ -34,9 +34,13 @@ const App: Component<{}> = () => {
   const debugPerf =
     typeof window !== "undefined" && window.location.hash.includes("perf");
   const BLOCKS = 5;
-  // Distance from the ring's center to its outer edge: rays march at most this
-  // far and fog is fully opaque here, so the world fades seamlessly into sky.
-  const MAX_RENDER_DISTANCE = (BLOCKS / 2) * BLOCK_WORLD[0];
+  // Ring half-extent: farthest the ring's outer edge can be from the player.
+  const RING_RADIUS = (BLOCKS / 2) * BLOCK_WORLD[0];
+  // "Completely seamless" fog: the ring edge can be as close as (BLOCKS/2 - 0.5)
+  // blocks (384) when the player hugs the far edge of their center block, so
+  // fog must be fully opaque by then and rays stop marching there.
+  const FOG_DISTANCE = (BLOCKS / 2 - 0.5) * BLOCK_WORLD[0];
+  const FOG_START = 0.4 * FOG_DISTANCE;
   // Sky blue; matches the material's default fogColor so the horizon blends.
   const SKY_BLUE = 0x87ceeb;
   const SPAWN: Dim3 = [0, 0, 0];
@@ -94,7 +98,8 @@ const App: Component<{}> = () => {
         material.depthWrite = true;
         material.debugFetchCount = debugPerf;
         material.side = Side.DoubleSide;
-        material.maxDistance = MAX_RENDER_DISTANCE;
+        material.maxDistance = FOG_DISTANCE;
+        material.fogStart = FOG_START;
         material.setBlocks([block]);
         const mesh = new Mesh(geometry, material);
         mesh.position.set(center[0], center[1], center[2]);
@@ -213,9 +218,9 @@ const App: Component<{}> = () => {
       }
     })();
   }
-  // Far plane a touch past the march distance so box geometry is never clipped
-  // (fog + early ray termination hide the actual cutoff).
-  const camera = new PerspectiveCamera(50, 1.0, 0.1, MAX_RENDER_DISTANCE + 200);
+  // Far plane beyond the ring's physical extent so box geometry is never
+  // clipped (fog + early ray termination hide the actual cutoff).
+  const camera = new PerspectiveCamera(50, 1.0, 0.1, RING_RADIUS + 200);
   const player = createPlayer(
     SPAWN[0],
     getWorldHeight(blocks, SPAWN[0], SPAWN[2]) + PLAYER_CFG.halfSize + 0.1,
