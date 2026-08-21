@@ -31,10 +31,12 @@ import type { VoxelTileConfig } from "./atlas";
 export type Dim3 = [number, number, number];
 
 // A block is a rectangular-prism volume of voxels. A full-res block is
-// 512 x 256 x 512 world units at 1-unit voxels; each LOD level doubles the
-// voxel size (halves the voxel count per axis).
+// 512 x 256 x 512 world units at VOXEL_SIZE-unit voxels (2 at LOD0); each LOD
+// level doubles the voxel size (halves the voxel count per axis).
 export const CHUNK_DIM = 16;
 export const BLOCK_WORLD: Dim3 = [512, 256, 512];
+// world units per voxel at LOD0 (2 => voxels render twice as large)
+export const VOXEL_SIZE = 2;
 
 // per-LOD chunk slots in storage: LOD0 [16,8,16] = 2048 slots, etc.
 const LOD_STORAGE_SLOTS: Dim3[] = [
@@ -51,12 +53,13 @@ export const blockConfig = (
   chunkDim: Dim3;
   storageDim: Dim3;
   dimensions: Dim3;
+  voxelSize: number;
 } => {
-  const scale = 1 << lod;
+  const voxelSize = VOXEL_SIZE * (1 << lod);
   const voxels: Dim3 = [
-    BLOCK_WORLD[0] / scale,
-    BLOCK_WORLD[1] / scale,
-    BLOCK_WORLD[2] / scale,
+    BLOCK_WORLD[0] / voxelSize,
+    BLOCK_WORLD[1] / voxelSize,
+    BLOCK_WORLD[2] / voxelSize,
   ];
   const broadDim: Dim3 = [
     voxels[0] / CHUNK_DIM,
@@ -70,7 +73,14 @@ export const blockConfig = (
     slots[2] * CHUNK_DIM,
   ];
   const chunkDim: Dim3 = [CHUNK_DIM, CHUNK_DIM, CHUNK_DIM];
-  return { voxels, broadDim, chunkDim, storageDim, dimensions: BLOCK_WORLD };
+  return {
+    voxels,
+    broadDim,
+    chunkDim,
+    storageDim,
+    dimensions: BLOCK_WORLD,
+    voxelSize,
+  };
 };
 
 export class Level {
@@ -97,7 +107,7 @@ export class Level {
   }[] = [];
   // world-unit extents of the volume; a rectangular prism, not necessarily a cube
   dimensions: Dim3;
-  // voxel size in world units: 1 at LOD0, 2 at LOD1, etc. (matches `blockConfig`)
+  // voxel size in world units: VOXEL_SIZE at LOD0, double each LOD (matches `blockConfig`)
   scale: number = 1;
 
   allocChunk(out: { x: number; y: number; z: number }) {
@@ -224,25 +234,24 @@ export class Level {
 }
 
 // Builds one block of the shared height field, sampled at the block's absolute
-// world xz (so neighbouring blocks meet seamlessly) at `1 << lod` resolution.
+// world xz (so neighbouring blocks meet seamlessly) at `voxelSize` resolution.
 export const buildBlock = (params: { center: Dim3; lod?: number }): Level => {
   const lod = params.lod ?? 0;
-  const scale = 1 << lod;
-  const { voxels, broadDim, chunkDim, storageDim, dimensions } =
+  const { voxels, broadDim, chunkDim, storageDim, dimensions, voxelSize } =
     blockConfig(lod);
   const level = new Level({
     broadDim,
     chunkDim,
     storageDim,
     dimensions,
-    scale,
+    scale: voxelSize,
   });
   for (let vz = 0; vz < voxels[2]; ++vz) {
     for (let vx = 0; vx < voxels[0]; ++vx) {
-      const worldX = params.center[0] + (vx + 0.5 - voxels[0] / 2) * scale;
-      const worldZ = params.center[2] + (vz + 0.5 - voxels[2] / 2) * scale;
+      const worldX = params.center[0] + (vx + 0.5 - voxels[0] / 2) * voxelSize;
+      const worldZ = params.center[2] + (vz + 0.5 - voxels[2] / 2) * voxelSize;
       const height = 50 * Math.cos(worldX * 0.01) * Math.cos(worldZ * 0.01);
-      let vy = Math.round(voxels[1] / 2 + height / scale);
+      let vy = Math.round(voxels[1] / 2 + height / voxelSize);
       vy = Math.max(0, Math.min(voxels[1] - 1, vy));
       level.set(vx, vy, vz, 1);
     }
@@ -883,7 +892,7 @@ export const getWorldHeight = (
   );
   for (let vy = voxels[1] - 1; vy >= 0; --vy) {
     if (level.get(vx, vy, vz) !== 0) {
-      return best.center[1] + (vy + 0.5 - voxels[1] / 2) * scale;
+      return best.center[1] + (vy + 1 - voxels[1] / 2) * scale;
     }
   }
   return -Infinity;
