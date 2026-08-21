@@ -349,6 +349,7 @@ export let rayMarch = (params: {
   texelOffset?: Node<"vec3">;
   fetchCount?: Node<"int">;
   skipSolidStart?: Node<"bool">;
+  maxDistance?: Node<"float">;
 }): {
   hit: Node<"bool">;
   voxel: Node<"uvec4">;
@@ -368,6 +369,7 @@ export let rayMarch = (params: {
     texelOffset,
     fetchCount,
     skipSolidStart,
+    maxDistance,
   } = params;
 
   const texelShift = (texelOffset ?? vec3(0)).toVar();
@@ -379,6 +381,9 @@ export let rayMarch = (params: {
       fetchCount.assign(fetchCount.add(1));
     }
   };
+  // Ray length budget relative to the chunk entry (see `marchBlock`): the DDA
+  // stops early so no work is spent beyond the max render distance.
+  const maxBudget = (maxDistance ?? float(1e30)).toVar();
 
   const cellSize = dimensions.div(voxelCount).toVar();
   const minIdx = (marchMin ?? uvec3(0)).toVar();
@@ -453,12 +458,18 @@ export let rayMarch = (params: {
       .mul(float(3))
       .add(float(8))
       .toInt();
+    // camera distance at the start of the current cell; the first cell begins
+    // at the box entry. Updated each step from the boundary t we cross.
+    const cellStart = entryClamped.toVar();
 
     For(
       () => int(0).toVar(),
       (i) => i.lessThan(maxSteps),
       (i) => i.assign(i.add(1)),
       () => {
+        If(cellStart.greaterThan(maxBudget), () => {
+          Break();
+        });
         If(inPaddedRegion(minIdx, maxIdx, mapPos).not(), () => {
           Break();
         });
@@ -484,6 +495,11 @@ export let rayMarch = (params: {
               ),
             )
             .toVec3(),
+        );
+        // the boundary being crossed this step is where the next cell starts;
+        // read it before `sideDist` advances
+        cellStart.assign(
+          entryClamped.add(sideDist.x.min(sideDist.y).min(sideDist.z)),
         );
         sideDist.assign(sideDist.add(mask.mul(deltaDist)));
         mapPos.assign(mapPos.add(mask.toIVec3().mul(rayStep)));
@@ -561,6 +577,7 @@ export let marchBlock = (params: {
   chunkDim: Node<"vec3">;
   fineVoxels: Node<"usampler3D">;
   fetchCount?: Node<"int">;
+  maxDistance?: Node<"float">;
 }): {
   hit: Node<"bool">;
   normal: Node<"vec3">;
@@ -577,6 +594,7 @@ export let marchBlock = (params: {
     chunkDim,
     fineVoxels,
     fetchCount,
+    maxDistance,
   } = params;
 
   const volumeDimensions = dimensions.toVar();
@@ -631,6 +649,10 @@ export let marchBlock = (params: {
     boxMin,
     boxMax,
   });
+  // Camera-relative render-distance budget. `rayMarch` receives the same
+  // block-local `rayOrigin` (the camera), so its own `cellStart` (entry distance
+  // + DDA boundary t) is already measured from the camera and gets the budget.
+  const maxBudget = (maxDistance ?? float(1e30)).toVar();
 
   If(entryDistance.lessThanEqual(exitDistance), () => {
     // Clamp the march start to the camera when it is inside the volume, so the
@@ -674,12 +696,18 @@ export let marchBlock = (params: {
       .add(float(8))
       .toInt();
     const broadCount = broadDim.toVar();
+    // camera distance at the start of the current broad cell; the first cell
+    // begins at the block-box entry. Updated from the boundary t we cross.
+    const cellStart = entryClamped.toVar();
 
     For(
       () => int(0).toVar(),
       (i) => i.lessThan(maxSteps),
       (i) => i.assign(i.add(1)),
       () => {
+        If(cellStart.greaterThan(maxBudget), () => {
+          Break();
+        });
         If(
           mapPos
             .toVec3()
@@ -721,6 +749,7 @@ export let marchBlock = (params: {
                 texelOffset,
                 fetchCount,
                 skipSolidStart: skipSolid,
+                maxDistance: maxBudget,
               });
               skipSolid.assign(fine.skipSolid);
               If(fine.hit, () => {
@@ -743,6 +772,11 @@ export let marchBlock = (params: {
               ),
             )
             .toVec3(),
+        );
+        // the boundary being crossed this step is where the next cell starts;
+        // read it before `sideDist` advances
+        cellStart.assign(
+          entryClamped.add(sideDist.x.min(sideDist.y).min(sideDist.z)),
         );
         sideDist.assign(sideDist.add(mask.mul(deltaDist)));
         mapPos.assign(mapPos.add(mask.toIVec3().mul(rayStep)));
@@ -782,6 +816,9 @@ export let rayMarchWorld = (params: {
   tiles?: Node<"sampler2D">;
   tileRects?: TileFaceUniform[];
   fetchCount?: Node<"int">;
+  maxDistance?: Node<"float">;
+  fogStart?: Node<"float">;
+  fogColor?: Node<"vec3">;
 }): void => {
   const ambientColour = vec3(0.2).toVar();
   const lightColour = vec3(1.0).toVar();
@@ -795,8 +832,18 @@ export let rayMarchWorld = (params: {
     tiles,
     tileRects,
     fetchCount,
+    maxDistance,
+    fogStart,
+    fogColor,
   } = params;
   const N = blocks.length;
+  // Hard render-distance cutoff: blocks entered beyond it are skipped and hits
+  // past it are rejected, so nothing renders past the fog end.
+  const maxDist = (maxDistance ?? float(1e30)).toVar();
+  // distance-based fog: full opacity by maxDist (defaults keep the horizon a
+  // flat sky blue when the material hasn't been configured).
+  const fogColour = (fogColor ?? vec3(0.53, 0.81, 0.92)).toVar();
+  const fogNear = (fogStart ?? maxDist.mul(float(0.4))).toVar();
 
   const hit = bool(false).toVar();
   const normal = vec3(0).toVar();
@@ -825,31 +872,38 @@ export let rayMarchWorld = (params: {
   }
 
   for (let i = 0; i < N; i++) {
-    If(entries[i].lessThanEqual(exits[i]), () => {
-      const center = blocks[i].center;
-      const localOrigin = rayOrigin.sub(center).toVar();
-      const r = marchBlock({
-        rayOrigin: localOrigin,
-        rayDirection,
-        dimensions: blocks[i].dimensions,
-        broadVoxels: blocks[i].broadVoxels,
-        broadDim: blocks[i].broadDim,
-        chunkDim: blocks[i].chunkDim,
-        fineVoxels: blocks[i].fineVoxels,
-        fetchCount,
-      });
-      const dist = r.hitPoint.sub(localOrigin).length().toVar();
-      If(r.hit.and(dist.lessThan(bestDist)), () => {
-        bestDist.assign(dist);
-        hit.assign(bool(true));
-        normal.assign(r.normal);
-        hitPoint.assign(r.hitPoint.add(center));
-        voxel.assign(r.voxel);
-        localHit.assign(r.hitPoint);
-        cellSize.assign(r.cellSize);
-        dimensions.assign(blocks[i].dimensions);
-      });
-    });
+    If(
+      entries[i].lessThanEqual(exits[i]).and(entries[i].lessThanEqual(maxDist)),
+      () => {
+        const center = blocks[i].center;
+        const localOrigin = rayOrigin.sub(center).toVar();
+        const r = marchBlock({
+          rayOrigin: localOrigin,
+          rayDirection,
+          dimensions: blocks[i].dimensions,
+          broadVoxels: blocks[i].broadVoxels,
+          broadDim: blocks[i].broadDim,
+          chunkDim: blocks[i].chunkDim,
+          fineVoxels: blocks[i].fineVoxels,
+          fetchCount,
+          maxDistance: maxDist,
+        });
+        const dist = r.hitPoint.sub(localOrigin).length().toVar();
+        If(
+          r.hit.and(dist.lessThanEqual(maxDist)).and(dist.lessThan(bestDist)),
+          () => {
+            bestDist.assign(dist);
+            hit.assign(bool(true));
+            normal.assign(r.normal);
+            hitPoint.assign(r.hitPoint.add(center));
+            voxel.assign(r.voxel);
+            localHit.assign(r.hitPoint);
+            cellSize.assign(r.cellSize);
+            dimensions.assign(blocks[i].dimensions);
+          },
+        );
+      },
+    );
   }
 
   If(hit, () => {
@@ -899,6 +953,11 @@ export let rayMarchWorld = (params: {
     } else {
       outColour.rgb.assign(vec3(0.0, 0.0, 1.0).mul(lighting));
     }
+    // distance fog toward the sky colour; fully opaque at the render distance,
+    // so distant terrain blends seamlessly into the sky clear colour.
+    outColour.rgb.assign(
+      outColour.rgb.mix(fogColour, bestDist.smoothstep(fogNear, maxDist)),
+    );
     outColour.a.assign(float(1));
     outHitPoint.assign(hitPoint);
   });
@@ -971,10 +1030,18 @@ export class LevelWorldMaterial extends NodeMaterial {
   tilesTexture: Texture | null = null;
   // Per-voxel-id face tiles (normalized atlas rects); drives the rect uniforms.
   voxelTiles: VoxelTileConfig[] = [];
+  // Distance-fog / render-distance tuning (world units). `maxDistance` both
+  // caps how far rays march and the distance at which fog is fully opaque.
+  maxDistance: number = 480;
+  fogStart: number = 200;
+  fogColor: [number, number, number] = [0.53, 0.81, 0.92];
 
   private blockUniforms: WorldBlockShader[] = [];
   private tileUniforms: TileFaceUniform[] = [];
   private tilesSampler: UniformNode<"sampler2D"> | undefined;
+  private maxDistanceUniform: UniformNode<"float"> | undefined;
+  private fogStartUniform: UniformNode<"float"> | undefined;
+  private fogColorUniform: UniformNode<"vec3"> | undefined;
 
   constructor() {
     super();
@@ -996,6 +1063,21 @@ export class LevelWorldMaterial extends NodeMaterial {
       side: b.materialUniform(`v${v.id}_side`, "vec4", () => v.side),
       bottom: b.materialUniform(`v${v.id}_bottom`, "vec4", () => v.bottom),
     }));
+    this.maxDistanceUniform = b.materialUniform(
+      "maxDistance",
+      "float",
+      () => this.maxDistance,
+    );
+    this.fogStartUniform = b.materialUniform(
+      "fogStart",
+      "float",
+      () => this.fogStart,
+    );
+    this.fogColorUniform = b.materialUniform(
+      "fogColor",
+      "vec3",
+      () => this.fogColor,
+    );
     if (this.tilesTexture !== null) {
       this.tilesSampler = b.sampler(
         "tilesAtlas",
@@ -1076,6 +1158,9 @@ export class LevelWorldMaterial extends NodeMaterial {
       tiles: this.tilesSampler,
       tileRects: this.tileUniforms,
       fetchCount,
+      maxDistance: this.maxDistanceUniform,
+      fogStart: this.fogStartUniform,
+      fogColor: this.fogColorUniform,
     });
 
     if (this.debugFetchCount && fetchCount !== undefined) {

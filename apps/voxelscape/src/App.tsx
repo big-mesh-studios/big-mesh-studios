@@ -34,6 +34,11 @@ const App: Component<{}> = () => {
   const debugPerf =
     typeof window !== "undefined" && window.location.hash.includes("perf");
   const BLOCKS = 5;
+  // Distance from the ring's center to its outer edge: rays march at most this
+  // far and fog is fully opaque here, so the world fades seamlessly into sky.
+  const MAX_RENDER_DISTANCE = (BLOCKS / 2) * BLOCK_WORLD[0];
+  // Sky blue; matches the material's default fogColor so the horizon blends.
+  const SKY_BLUE = 0x87ceeb;
   const SPAWN: Dim3 = [0, 0, 0];
   // Roughly the previous walkable extent; with the infinite ring the player is
   // effectively unbounded, but clamp to guard against float drift far out.
@@ -89,6 +94,7 @@ const App: Component<{}> = () => {
         material.depthWrite = true;
         material.debugFetchCount = debugPerf;
         material.side = Side.DoubleSide;
+        material.maxDistance = MAX_RENDER_DISTANCE;
         material.setBlocks([block]);
         const mesh = new Mesh(geometry, material);
         mesh.position.set(center[0], center[1], center[2]);
@@ -207,7 +213,9 @@ const App: Component<{}> = () => {
       }
     })();
   }
-  const camera = new PerspectiveCamera(50, 1.0, 0.1, 20000.0);
+  // Far plane a touch past the march distance so box geometry is never clipped
+  // (fog + early ray termination hide the actual cutoff).
+  const camera = new PerspectiveCamera(50, 1.0, 0.1, MAX_RENDER_DISTANCE + 200);
   const player = createPlayer(
     SPAWN[0],
     getWorldHeight(blocks, SPAWN[0], SPAWN[2]) + PLAYER_CFG.halfSize + 0.1,
@@ -343,6 +351,7 @@ const App: Component<{}> = () => {
         return;
       }
       let renderer = new WebGLRenderer(canvas);
+      renderer.setClearColor(SKY_BLUE, 1);
       if (debugPerf) {
         timer = new GpuTimer(renderer.gl);
       }
