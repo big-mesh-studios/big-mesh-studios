@@ -1,59 +1,45 @@
-import { Component, createSignal } from "solid-js";
+import {
+  Component,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+} from "solid-js";
+import * as THREE from "three";
 import { queueJump, setTouchMove } from "./input";
-
-type Axis = "up" | "down" | "left" | "right";
-
-const AXES: Record<Axis, [number, number]> = {
-  up: [0, 1],
-  down: [0, -1],
-  left: [-1, 0],
-  right: [1, 0],
-};
+import { Joystick } from "./Joystick";
 
 const BTN_CLS =
   "pointer-events-auto flex items-center justify-center rounded-xl border border-white/40 " +
   "bg-white/15 text-white select-none touch-none active:bg-white/30";
 
 const Controls: Component = () => {
-  const [held, setHeld] = createSignal<Set<Axis>>(new Set());
-
-  const recompute = (next: Set<Axis>): void => {
-    setHeld(next);
-    let x = 0;
-    let y = 0;
-    next.forEach((axis) => {
-      const [dx, dy] = AXES[axis];
-      x += dx;
-      y += dy;
-    });
-    setTouchMove(x, y);
+  const HIT = 150;
+  const [viewSize, setViewSize] = createSignal<THREE.Vector2>(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+  );
+  const onResize = (): void => {
+    setViewSize(new THREE.Vector2(window.innerWidth, window.innerHeight));
   };
+  window.addEventListener("resize", onResize);
+  onCleanup(() => window.removeEventListener("resize", onResize));
 
-  const press = (axis: Axis) => (e: PointerEvent) => {
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    const next = new Set(held());
-    next.add(axis);
-    recompute(next);
-  };
+  const joystick = Joystick({
+    position: createMemo(
+      () => new THREE.Vector2(24, viewSize().y - 24 - HIT),
+    ),
+    hitAreaSize: HIT,
+    outerRingSize: () => 0.8 * HIT,
+    knobSize: () => 70,
+  });
 
-  const release = (axis: Axis) => () => {
-    const next = new Set(held());
-    next.delete(axis);
-    recompute(next);
-  };
-
-  const dpad = (axis: Axis, glyph: string) => (
-    <button
-      type="button"
-      class={`${BTN_CLS} h-16 w-16 text-2xl font-bold`}
-      onPointerDown={press(axis)}
-      onPointerUp={release(axis)}
-      onPointerCancel={release(axis)}
-      onPointerLeave={release(axis)}
-    >
-      {glyph}
-    </button>
+  // joystick value is -0.5..0.5 in screen axes (+y = down); convert to the
+  // -1..1 input snapshot axes (+y = forward).
+  createEffect(
+    joystick.value,
+    (value) => {
+      setTouchMove(value.x * 2, -value.y * 2);
+    },
   );
 
   return (
@@ -62,16 +48,8 @@ const Controls: Component = () => {
       style={{ "-webkit-tap-highlight-color": "transparent" }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div class="absolute bottom-6 left-6 grid grid-cols-3 grid-rows-3 gap-1">
-        <div class="h-16 w-16" />
-        {dpad("up", "▲")}
-        <div class="h-16 w-16" />
-        {dpad("left", "◀")}
-        <div class="h-16 w-16" />
-        {dpad("right", "▶")}
-        <div class="h-16 w-16" />
-        {dpad("down", "▼")}
-        <div class="h-16 w-16" />
+      <div class="pointer-events-auto">
+        <joystick.UI />
       </div>
 
       <button
