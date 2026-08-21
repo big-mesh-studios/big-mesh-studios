@@ -25,6 +25,7 @@ export interface VoxelTiles {
 // textured. Future voxel ids just add an entry here.
 export const VOXEL_TILES: Record<number, VoxelTiles> = {
   1: { top: "grass_top", side: "dirt_grass", bottom: "dirt" },
+  2: { top: "dirt", side: "dirt", bottom: "dirt" },
 };
 
 export const parseTileAtlasXml = (xmlText: string): Map<string, SubTexture> => {

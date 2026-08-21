@@ -14,11 +14,13 @@ import {
   LevelWorldMaterial,
   BLOCK_WORLD,
   buildBlock,
-  fillBlock,
+  syncLevelFromStore,
   getWorldHeight,
   type Dim3,
   type WorldBlock,
 } from "./level";
+import { fillStore } from "./voxel-store";
+import { DEFAULT_TERRAIN, type TerrainConfig } from "./noise";
 import {
   buildVoxelTileConfig,
   loadTileTexture,
@@ -48,6 +50,11 @@ const App: Component<{}> = () => {
   // Roughly the previous walkable extent; with the infinite ring the player is
   // effectively unbounded, but clamp to guard against float drift far out.
   const SAFE_EXTENT = 1e6;
+  // Terrain noise + GPU chunk derivation settings shared by every block in the
+  // ring. `surfaceOnly` writes only surface voxels into the GPU chunks; flip it
+  // to `false` to upload the full solid volume (see `syncLevelFromStore`).
+  const TERRAIN: TerrainConfig = DEFAULT_TERRAIN;
+  const SURFACE_ONLY = true;
   // Each mesh is one padded box so adjacent meshes share a thin overlap shell.
   const PAD = 2.0;
   let [state, setState] = createStore<{
@@ -93,7 +100,11 @@ const App: Component<{}> = () => {
           0,
           grid.z * BLOCK_WORLD[2],
         ];
-        const block: WorldBlock = { level: buildBlock({ center }), center };
+        const block: WorldBlock = buildBlock({
+          center,
+          terrain: TERRAIN,
+          surfaceOnly: SURFACE_ONLY,
+        });
         const material = new LevelWorldMaterial();
         material.transparent = true;
         material.depthWrite = true;
@@ -164,7 +175,10 @@ const App: Component<{}> = () => {
         0,
         worldGrid[i].z * BLOCK_WORLD[2],
       ];
-      fillBlock(blocks[i].level, center);
+      fillStore(blocks[i].store, center, TERRAIN);
+      syncLevelFromStore(blocks[i].level, blocks[i].store, {
+        surfaceOnly: SURFACE_ONLY,
+      });
       blocks[i].center = center;
       meshes[i].position.set(center[0], center[1], center[2]);
     }

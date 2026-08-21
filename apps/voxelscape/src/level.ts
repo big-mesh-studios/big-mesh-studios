@@ -27,6 +27,8 @@ import {
 } from "@random-mesh/rmsl/scene";
 import type { UniformNode } from "@random-mesh/rmsl";
 import type { VoxelTileConfig } from "./atlas";
+import { DEFAULT_TERRAIN, type TerrainConfig } from "./noise";
+import { VoxelStore, fillStore, sweepSurface } from "./voxel-store";
 
 export type Dim3 = [number, number, number];
 
@@ -229,41 +231,64 @@ export class Level {
   }
 }
 
-// Fills an existing `level` with the shared height field sampled at the block's
-// absolute world xz (so neighbouring blocks meet seamlessly), at the level's own
-// voxel resolution. Resets the chunk allocator first so the level can be
-// recycled in place (textures are marked dirty and re-uploaded by the renderer).
-export const fillBlock = (level: Level, center: Dim3): void => {
+// Clears an existing `level` back to empty space and resets the chunk
+// allocator, so it can be recycled in place by a subsequent `syncLevelFromStore`
+// (textures are re-uploaded when the sync marks them dirty).
+export const resetLevel = (level: Level): void => {
   level.broadData.fill(0);
   level.data.fill(0);
   level.nextStorage = [0, 0, 0];
   level.allocCount = 0;
   level.freeSpots = [];
   level.warnedStorageOverflow = false;
-  const voxelSize = level.scale;
-  const voxels: Dim3 = [
-    level.dimensions[0] / voxelSize,
-    level.dimensions[1] / voxelSize,
-    level.dimensions[2] / voxelSize,
-  ];
-  for (let vz = 0; vz < voxels[2]; ++vz) {
-    for (let vx = 0; vx < voxels[0]; ++vx) {
-      const worldX = center[0] + (vx + 0.5 - voxels[0] / 2) * voxelSize;
-      const worldZ = center[2] + (vz + 0.5 - voxels[2] / 2) * voxelSize;
-      const height = 50 * Math.cos(worldX * 0.01) * Math.cos(worldZ * 0.01);
-      let vy = Math.round(voxels[1] / 2 + height / voxelSize);
-      vy = Math.max(0, Math.min(voxels[1] - 1, vy));
-      level.set(vx, vy, vz, 1);
+};
+
+// Derives the GPU chunk data (broad grid + fine chunks) of `level` from the
+// CPU-side `store`. With `surfaceOnly` (default), only surface voxels — solid
+// voxels touching air — are written, so chunks that hold nothing but interior
+// rock are never allocated and the raymarcher skips them. Use `surfaceOnly:
+// false` to upload the full solid volume (needed if a camera can sit inside
+// solid terrain; the origin-inside `skipSolid` escape relies on interior
+// voxels being present).
+export const syncLevelFromStore = (
+  level: Level,
+  store: VoxelStore,
+  opts?: { surfaceOnly?: boolean },
+): void => {
+  const surfaceOnly = opts?.surfaceOnly ?? true;
+  resetLevel(level);
+  if (surfaceOnly) {
+    sweepSurface(store, (x, y, z, id) => {
+      level.set(x, y, z, id);
+    });
+  } else {
+    const [vxN, vyN, vzN] = store.voxels;
+    for (let vz = 0; vz < vzN; ++vz) {
+      for (let vy = 0; vy < vyN; ++vy) {
+        for (let vx = 0; vx < vxN; ++vx) {
+          const id = store.get(vx, vy, vz);
+          if (id !== 0) {
+            level.set(vx, vy, vz, id);
+          }
+        }
+      }
     }
   }
   level.broadTexture.needsUpdate = true;
   level.texture.needsUpdate = true;
 };
 
-// Builds a fresh block of the shared height field for `center`.
-export const buildBlock = (params: { center: Dim3; lod?: number }): Level => {
+// Builds a fresh block of the shared noise-terrain height field for `center`:
+// a dense CPU `VoxelStore` (the editable source of truth) plus its derived GPU
+// `Level`.
+export const buildBlock = (params: {
+  center: Dim3;
+  lod?: number;
+  terrain?: TerrainConfig;
+  surfaceOnly?: boolean;
+}): WorldBlock => {
   const lod = params.lod ?? 0;
-  const { broadDim, chunkDim, storageDim, dimensions, voxelSize } =
+  const { broadDim, chunkDim, storageDim, dimensions, voxels, voxelSize } =
     blockConfig(lod);
   const level = new Level({
     broadDim,
@@ -272,8 +297,21 @@ export const buildBlock = (params: { center: Dim3; lod?: number }): Level => {
     dimensions,
     scale: voxelSize,
   });
-  fillBlock(level, params.center);
-  return level;
+  const store = new VoxelStore({
+    dims: dimensions,
+    voxels,
+    scale: voxelSize,
+  });
+  const block: WorldBlock = {
+    level,
+    center: params.center,
+    store,
+  };
+  fillStore(store, params.center, params.terrain ?? DEFAULT_TERRAIN);
+  syncLevelFromStore(level, store, {
+    surfaceOnly: params.surfaceOnly ?? true,
+  });
+  return block;
 };
 
 const minVec2 = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> => min(a, b);
@@ -966,12 +1004,16 @@ export let rayMarchWorld = (params: {
 export interface WorldBlock {
   level: Level;
   center: Dim3;
+  // CPU-side source of truth the `level`'s chunk data is derived from; future
+  // runtime voxel edits mutate this then re-run `syncLevelFromStore`.
+  store: VoxelStore;
 }
 
 // CPU ground-height sampler: finds the voxel surface at (worldX, worldZ) by
-// scanning the containing block's fine voxels top-down. Mirrors the shader's
-// world -> local -> voxel mapping, so it respects each block's LOD scale.
-// Returns -Infinity when the point is outside every block or over empty space.
+// scanning the containing block's CPU store top-down (so it stays correct once
+// the store is edited at runtime). Mirrors the shader's world -> local -> voxel
+// mapping, so it respects each block's LOD scale. Returns -Infinity when the
+// point is outside every block or over empty space.
 export const getWorldHeight = (
   blocks: WorldBlock[],
   worldX: number,
@@ -996,26 +1038,22 @@ export const getWorldHeight = (
   if (best === undefined) {
     return -Infinity;
   }
-  const level = best.level;
-  const scale = level.scale;
-  const voxels: Dim3 = [
-    level.dimensions[0] / scale,
-    level.dimensions[1] / scale,
-    level.dimensions[2] / scale,
-  ];
+  const store = best.store;
+  const scale = store.scale;
+  const [vxN, vyN, vzN] = store.voxels;
   const clampAxis = (v: number, n: number): number =>
     Math.max(0, Math.min(n - 1, v));
   const vx = clampAxis(
-    Math.floor((worldX - best.center[0]) / scale + voxels[0] / 2),
-    voxels[0],
+    Math.floor((worldX - best.center[0]) / scale + vxN / 2),
+    vxN,
   );
   const vz = clampAxis(
-    Math.floor((worldZ - best.center[2]) / scale + voxels[2] / 2),
-    voxels[2],
+    Math.floor((worldZ - best.center[2]) / scale + vzN / 2),
+    vzN,
   );
-  for (let vy = voxels[1] - 1; vy >= 0; --vy) {
-    if (level.get(vx, vy, vz) !== 0) {
-      return best.center[1] + (vy + 1 - voxels[1] / 2) * scale;
+  for (let vy = vyN - 1; vy >= 0; --vy) {
+    if (store.get(vx, vy, vz) !== 0) {
+      return best.center[1] + (vy + 1 - vyN / 2) * scale;
     }
   }
   return -Infinity;
