@@ -263,6 +263,10 @@ const App: Component<{}> = () => {
     if (w !== canvas.width || h !== canvas.height) {
       canvas.width = w;
       canvas.height = h;
+      // Resizing the canvas clears its drawing buffer to transparent, which
+      // would flash the page background until the next RAF frame. Draw the new
+      // resolution immediately so the compositor never shows the cleared buffer.
+      render();
     }
   };
 
