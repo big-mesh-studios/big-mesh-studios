@@ -31,19 +31,13 @@ import type { VoxelTileConfig } from "./atlas";
 export type Dim3 = [number, number, number];
 
 // A block is a rectangular-prism volume of voxels. A full-res block is
-// 512 x 256 x 512 world units at VOXEL_SIZE-unit voxels (2 at LOD0); each LOD
-// level doubles the voxel size (halves the voxel count per axis).
+// 192 x 256 x 192 world units at VOXEL_SIZE-unit voxels (2 at LOD0); each LOD
+// level doubles the voxel size (halves the voxel count per axis). Small blocks
+// keep the scroll-recycle fill cheap and the render distance tight (~480u).
 export const CHUNK_DIM = 16;
-export const BLOCK_WORLD: Dim3 = [512, 256, 512];
+export const BLOCK_WORLD: Dim3 = [192, 256, 192];
 // world units per voxel at LOD0 (2 => voxels render twice as large)
 export const VOXEL_SIZE = 2;
-
-// per-LOD chunk slots in storage: LOD0 [16,8,16] = 2048 slots, etc.
-const LOD_STORAGE_SLOTS: Dim3[] = [
-  [16, 8, 16],
-  [10, 5, 10],
-  [6, 3, 6],
-];
 
 export const blockConfig = (
   lod: number,
@@ -66,11 +60,13 @@ export const blockConfig = (
     voxels[1] / CHUNK_DIM,
     voxels[2] / CHUNK_DIM,
   ];
-  const slots = LOD_STORAGE_SLOTS[Math.min(lod, LOD_STORAGE_SLOTS.length - 1)];
+  // Storage holds exactly one chunk slot per broad cell (each cell owns at most
+  // one allocated chunk), so sizing it from the broad grid keeps the fine
+  // texture small — important across many recycled blocks.
   const storageDim: Dim3 = [
-    slots[0] * CHUNK_DIM,
-    slots[1] * CHUNK_DIM,
-    slots[2] * CHUNK_DIM,
+    broadDim[0] * CHUNK_DIM,
+    broadDim[1] * CHUNK_DIM,
+    broadDim[2] * CHUNK_DIM,
   ];
   const chunkDim: Dim3 = [CHUNK_DIM, CHUNK_DIM, CHUNK_DIM];
   return {
@@ -233,11 +229,41 @@ export class Level {
   }
 }
 
-// Builds one block of the shared height field, sampled at the block's absolute
-// world xz (so neighbouring blocks meet seamlessly) at `voxelSize` resolution.
+// Fills an existing `level` with the shared height field sampled at the block's
+// absolute world xz (so neighbouring blocks meet seamlessly), at the level's own
+// voxel resolution. Resets the chunk allocator first so the level can be
+// recycled in place (textures are marked dirty and re-uploaded by the renderer).
+export const fillBlock = (level: Level, center: Dim3): void => {
+  level.broadData.fill(0);
+  level.data.fill(0);
+  level.nextStorage = [0, 0, 0];
+  level.allocCount = 0;
+  level.freeSpots = [];
+  level.warnedStorageOverflow = false;
+  const voxelSize = level.scale;
+  const voxels: Dim3 = [
+    level.dimensions[0] / voxelSize,
+    level.dimensions[1] / voxelSize,
+    level.dimensions[2] / voxelSize,
+  ];
+  for (let vz = 0; vz < voxels[2]; ++vz) {
+    for (let vx = 0; vx < voxels[0]; ++vx) {
+      const worldX = center[0] + (vx + 0.5 - voxels[0] / 2) * voxelSize;
+      const worldZ = center[2] + (vz + 0.5 - voxels[2] / 2) * voxelSize;
+      const height = 50 * Math.cos(worldX * 0.01) * Math.cos(worldZ * 0.01);
+      let vy = Math.round(voxels[1] / 2 + height / voxelSize);
+      vy = Math.max(0, Math.min(voxels[1] - 1, vy));
+      level.set(vx, vy, vz, 1);
+    }
+  }
+  level.broadTexture.needsUpdate = true;
+  level.texture.needsUpdate = true;
+};
+
+// Builds a fresh block of the shared height field for `center`.
 export const buildBlock = (params: { center: Dim3; lod?: number }): Level => {
   const lod = params.lod ?? 0;
-  const { voxels, broadDim, chunkDim, storageDim, dimensions, voxelSize } =
+  const { broadDim, chunkDim, storageDim, dimensions, voxelSize } =
     blockConfig(lod);
   const level = new Level({
     broadDim,
@@ -246,16 +272,7 @@ export const buildBlock = (params: { center: Dim3; lod?: number }): Level => {
     dimensions,
     scale: voxelSize,
   });
-  for (let vz = 0; vz < voxels[2]; ++vz) {
-    for (let vx = 0; vx < voxels[0]; ++vx) {
-      const worldX = params.center[0] + (vx + 0.5 - voxels[0] / 2) * voxelSize;
-      const worldZ = params.center[2] + (vz + 0.5 - voxels[2] / 2) * voxelSize;
-      const height = 50 * Math.cos(worldX * 0.01) * Math.cos(worldZ * 0.01);
-      let vy = Math.round(voxels[1] / 2 + height / voxelSize);
-      vy = Math.max(0, Math.min(voxels[1] - 1, vy));
-      level.set(vx, vy, vz, 1);
-    }
-  }
+  fillBlock(level, params.center);
   return level;
 };
 
@@ -1026,7 +1043,10 @@ export class LevelWorldMaterial extends NodeMaterial {
 
   protected buildVertexBody(b: Builder): Node<"vec4"> {
     const position = b.position;
-    b.varying("vModelPos", "vec3").assign(position);
+    // Meshes sit at their block's world center, so the varying must carry the
+    // world-space position (ray marching happens in world space).
+    const worldPos = b.modelMatrix.mul(vec4(position, 1.0)).xyz;
+    b.varying("vModelPos", "vec3").assign(worldPos);
     return b.projectionMatrix.mul(
       b.viewMatrix.mul(b.modelMatrix.mul(vec4(position, 1.0))),
     );
@@ -1068,8 +1088,10 @@ export class LevelWorldMaterial extends NodeMaterial {
 
     const fragDepth = builtinFragDepth();
     If(colour.a.greaterThan(float(0.5)), () => {
+      // `hitPoint` is already in world space, so skip the model matrix (the
+      // mesh is translated to its block center and would double-shift it).
       const clip = b.projectionMatrix.mul(
-        b.viewMatrix.mul(b.modelMatrix.mul(vec4(hitPoint, float(1)))),
+        b.viewMatrix.mul(vec4(hitPoint, float(1))),
       );
       const ndcZ = clip.z.div(clip.w);
       const depth = ndcZ.mul(float(0.5)).add(float(0.5));

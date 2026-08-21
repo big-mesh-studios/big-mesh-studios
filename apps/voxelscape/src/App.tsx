@@ -14,8 +14,10 @@ import {
   LevelWorldMaterial,
   BLOCK_WORLD,
   buildBlock,
+  fillBlock,
   getWorldHeight,
   type Dim3,
+  type WorldBlock,
 } from "./level";
 import {
   buildVoxelTileConfig,
@@ -31,12 +33,13 @@ const App: Component<{}> = () => {
   // append `#perf` to the URL to enable the debug HUD (GPU timer + fetches/ray)
   const debugPerf =
     typeof window !== "undefined" && window.location.hash.includes("perf");
-  // append `#lod` to build the block farthest from the camera at LOD1
-  const mixedLod =
-    typeof window !== "undefined" && window.location.hash.includes("lod");
-  const GRID = 2;
+  const BLOCKS = 5;
   const SPAWN: Dim3 = [0, 0, 0];
-  const HALF_EXTENT = (GRID * BLOCK_WORLD[0]) / 2;
+  // Roughly the previous walkable extent; with the infinite ring the player is
+  // effectively unbounded, but clamp to guard against float drift far out.
+  const SAFE_EXTENT = 1e6;
+  // Each mesh is one padded box so adjacent meshes share a thin overlap shell.
+  const PAD = 2.0;
   let [state, setState] = createStore<{
     canvas: HTMLCanvasElement | undefined;
     renderer: WebGLRenderer | undefined;
@@ -53,85 +56,156 @@ const App: Component<{}> = () => {
   {
     scene.add(new AmbientLight(0xffffff, 0.6));
   }
-  // Stack 2x2 blocks in the xz plane, each a 512x256x512 rectangular prism.
-  // The whole world is drawn as one union box + one material so every
-  // fragment casts a single near-to-far ray across all blocks.
-  const centers: Dim3[] = [];
-  for (let i = 0; i < GRID; i++) {
-    for (let j = 0; j < GRID; j++) {
-      centers.push([
-        (i - (GRID - 1) / 2) * BLOCK_WORLD[0],
-        0,
-        (j - (GRID - 1) / 2) * BLOCK_WORLD[2],
-      ]);
-    }
-  }
-  let nearestIdx = 0;
-  let nearestDistSq = Infinity;
-  for (let k = 0; k < centers.length; k++) {
-    const dx = centers[k][0] - SPAWN[0];
-    const dz = centers[k][2] - SPAWN[2];
-    const d = dx * dx + dz * dz;
-    if (d < nearestDistSq) {
-      nearestDistSq = d;
-      nearestIdx = k;
-    }
-  }
-  const blocks = centers.map((center, k) => ({
-    level: buildBlock({ center, lod: mixedLod && k !== nearestIdx ? 1 : 0 }),
-    center,
-  }));
+  // The infinite-scroll ring: a BLOCKS x BLOCKS window of 192x256x192 blocks,
+  // each rendered by its own raymarching mesh. The window stays centred on the
+  // player's block; when the player crosses a block boundary the trailing block
+  // teleports to the leading edge and refills its voxel data at the new
+  // absolute world coords (see `stepRing`).
+  const blocks: WorldBlock[] = [];
+  const meshes: Mesh[] = [];
+  const materials: LevelWorldMaterial[] = [];
+  // Per-slot integer grid coordinate of the world block currently displayed.
+  const worldGrid: { x: number; z: number }[] = [];
   {
-    const unionDims: Dim3 = [
-      GRID * BLOCK_WORLD[0],
-      BLOCK_WORLD[1],
-      GRID * BLOCK_WORLD[2],
-    ];
-    let geometry = new BoxGeometry(
-      unionDims[0] + 2.0,
-      unionDims[1] + 2.0,
-      unionDims[2] + 2.0,
+    const geometry = new BoxGeometry(
+      BLOCK_WORLD[0] + PAD,
+      BLOCK_WORLD[1] + PAD,
+      BLOCK_WORLD[2] + PAD,
     );
-    let material = new LevelWorldMaterial();
-    material.transparent = true;
-    material.depthWrite = true;
-    material.debugFetchCount = debugPerf;
-    material.side = Side.DoubleSide;
-    material.setBlocks(blocks);
-    let mesh = new Mesh(geometry, material);
-    scene.add(mesh);
-    {
-      // Load the tile spritesheet (one 2D GPU texture) plus its atlas XML, and
-      // tell the material which tile each voxel face uses. Set after the first
-      // build, so mark needsUpdate to force a rebuild with the sampler + rect
-      // uniforms registered.
-      const tileUrl = "./spritesheets/spritesheet_tiles.png";
-      const xmlUrl = "./spritesheets/spritesheet_tiles.xml";
-      (async () => {
-        try {
-          const [loaded, xmlRes] = await Promise.all([
-            loadTileTexture(tileUrl),
-            fetch(xmlUrl),
-          ]);
-          if (!xmlRes.ok) {
-            throw new Error(`failed to load "${xmlUrl}": ${xmlRes.status}`);
-          }
-          const atlas = parseTileAtlasXml(await xmlRes.text());
-          material.tilesTexture = loaded.texture;
-          material.voxelTiles = buildVoxelTileConfig(
-            atlas,
-            loaded.width,
-            loaded.height,
-          );
-          material.needsUpdate = true;
-        } catch (err) {
-          console.warn(
-            "[atlas] spritesheet not applied; voxels stay flat blue.",
-            err,
-          );
-        }
-      })();
+    for (let i = 0; i < BLOCKS; i++) {
+      for (let j = 0; j < BLOCKS; j++) {
+        const grid = {
+          x: i - (BLOCKS - 1) / 2,
+          z: j - (BLOCKS - 1) / 2,
+        };
+        const center: Dim3 = [
+          grid.x * BLOCK_WORLD[0],
+          0,
+          grid.z * BLOCK_WORLD[2],
+        ];
+        const block: WorldBlock = { level: buildBlock({ center }), center };
+        const material = new LevelWorldMaterial();
+        material.transparent = true;
+        material.depthWrite = true;
+        material.debugFetchCount = debugPerf;
+        material.side = Side.DoubleSide;
+        material.setBlocks([block]);
+        const mesh = new Mesh(geometry, material);
+        mesh.position.set(center[0], center[1], center[2]);
+        scene.add(mesh);
+        blocks.push(block);
+        meshes.push(mesh);
+        materials.push(material);
+        worldGrid.push(grid);
+      }
     }
+  }
+  // Moves the ring window one block step in the given direction: the whole
+  // trailing column/row (5 blocks) teleports to the leading edge and each is
+  // refilled at its new center. Stepping only one block would let the window
+  // drift off-centre when walking along a single axis.
+  const stepRing = (dx: number, dz: number): void => {
+    const changed = new Set<number>();
+    if (dx !== 0) {
+      let min = Infinity;
+      let max = -Infinity;
+      for (const g of worldGrid) {
+        if (g.x < min) {
+          min = g.x;
+        }
+        if (g.x > max) {
+          max = g.x;
+        }
+      }
+      const from = dx > 0 ? min : max;
+      const to = dx > 0 ? max + 1 : min - 1;
+      for (let i = 0; i < worldGrid.length; i++) {
+        if (worldGrid[i].x === from) {
+          worldGrid[i].x = to;
+          changed.add(i);
+        }
+      }
+    }
+    if (dz !== 0) {
+      let min = Infinity;
+      let max = -Infinity;
+      for (const g of worldGrid) {
+        if (g.z < min) {
+          min = g.z;
+        }
+        if (g.z > max) {
+          max = g.z;
+        }
+      }
+      const from = dz > 0 ? min : max;
+      const to = dz > 0 ? max + 1 : min - 1;
+      for (let i = 0; i < worldGrid.length; i++) {
+        if (worldGrid[i].z === from) {
+          worldGrid[i].z = to;
+          changed.add(i);
+        }
+      }
+    }
+    for (const i of changed) {
+      const center: Dim3 = [
+        worldGrid[i].x * BLOCK_WORLD[0],
+        0,
+        worldGrid[i].z * BLOCK_WORLD[2],
+      ];
+      fillBlock(blocks[i].level, center);
+      blocks[i].center = center;
+      meshes[i].position.set(center[0], center[1], center[2]);
+    }
+  };
+  // Keeps the ring window centred on the player's block.
+  let centerBlockX = 0;
+  let centerBlockZ = 0;
+  const scrollToPlayer = (playerX: number, playerZ: number): void => {
+    const blockX = Math.floor(playerX / BLOCK_WORLD[0]);
+    const blockZ = Math.floor(playerZ / BLOCK_WORLD[2]);
+    while (centerBlockX !== blockX) {
+      stepRing(Math.sign(blockX - centerBlockX), 0);
+      centerBlockX += Math.sign(blockX - centerBlockX);
+    }
+    while (centerBlockZ !== blockZ) {
+      stepRing(0, Math.sign(blockZ - centerBlockZ));
+      centerBlockZ += Math.sign(blockZ - centerBlockZ);
+    }
+  };
+  {
+    // Load the tile spritesheet (one 2D GPU texture) plus its atlas XML, and
+    // tell every block material which tile each voxel face uses. Set after the
+    // first build, so mark needsUpdate to force a rebuild with the sampler +
+    // rect uniforms registered.
+    const tileUrl = "./spritesheets/spritesheet_tiles.png";
+    const xmlUrl = "./spritesheets/spritesheet_tiles.xml";
+    (async () => {
+      try {
+        const [loaded, xmlRes] = await Promise.all([
+          loadTileTexture(tileUrl),
+          fetch(xmlUrl),
+        ]);
+        if (!xmlRes.ok) {
+          throw new Error(`failed to load "${xmlUrl}": ${xmlRes.status}`);
+        }
+        const atlas = parseTileAtlasXml(await xmlRes.text());
+        const voxelTiles = buildVoxelTileConfig(
+          atlas,
+          loaded.width,
+          loaded.height,
+        );
+        for (const material of materials) {
+          material.tilesTexture = loaded.texture;
+          material.voxelTiles = voxelTiles;
+          material.needsUpdate = true;
+        }
+      } catch (err) {
+        console.warn(
+          "[atlas] spritesheet not applied; voxels stay flat blue.",
+          err,
+        );
+      }
+    })();
   }
   const camera = new PerspectiveCamera(50, 1.0, 0.1, 20000.0);
   const player = createPlayer(
@@ -251,8 +325,10 @@ const App: Component<{}> = () => {
       dt,
       consumeInput(),
       (x, z) => getWorldHeight(blocks, x, z),
-      HALF_EXTENT,
+      SAFE_EXTENT,
     );
+    // scroll the terrain ring so the player's block stays centred
+    scrollToPlayer(player.position.x, player.position.z);
     playerCube.position.copy(player.position);
     // the cube's local +Z faces the heading; a Y rotation by `yaw` aligns it
     playerCube.rotation.y = player.yaw;
