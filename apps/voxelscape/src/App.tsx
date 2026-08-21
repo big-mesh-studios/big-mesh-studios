@@ -2,10 +2,13 @@ import { Component, createEffect, createStore } from "solid-js";
 import {
   AmbientLight,
   BoxGeometry,
+  Color,
   DirectionalLight,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   PerspectiveCamera,
+  PlaneGeometry,
   Scene,
   Side,
   WebGLRenderer,
@@ -31,7 +34,9 @@ import { GpuTimer, sampleFetchCount } from "./perf";
 import { AdaptiveResolution } from "./adaptive";
 import { installKeyboardControls, addLookDelta, consumeInput } from "./input";
 import { createPlayer, updatePlayer, placeCamera, PLAYER_CFG } from "./player";
+import { dayNightState, phaseAt, VISIBLE_ELEVATION } from "./day-night";
 import Controls from "./Controls";
+import { Console } from "./Console";
 
 const App: Component<{}> = () => {
   // append `#perf` to the URL to enable the debug HUD (GPU timer + fetches/ray)
@@ -47,6 +52,12 @@ const App: Component<{}> = () => {
   const FOG_START = 0.4 * FOG_DISTANCE;
   // Sky blue; matches the material's default fogColor so the horizon blends.
   const SKY_BLUE = 0x87ceeb;
+  // Day-night: the sun/moon squares orbit the camera at this distance (inside
+  // the camera far plane) so the raymarched terrain occludes them at the
+  // horizon, and hide once they dip a few degrees below it.
+  const SKY_DISTANCE = 600;
+  const SUN_SIZE = 48;
+  const MOON_SIZE = 32;
   const SPAWN: Dim3 = [0, 0, 0];
   // Roughly the previous walkable extent; with the infinite ring the player is
   // effectively unbounded, but clamp to guard against float drift far out.
@@ -66,14 +77,27 @@ const App: Component<{}> = () => {
     renderer: undefined,
   });
   const scene = new Scene();
-  {
-    let sun = new DirectionalLight();
-    sun.position.set(2, 1, 1);
-    scene.add(sun);
-  }
-  {
-    scene.add(new AmbientLight(0xffffff, 0.6));
-  }
+  // Lights for the standard materials (the player cube). Position/direction,
+  // colour and intensity are re-derived from the day-night clock each frame
+  // (`applyDayNight`), since the raymarched terrain lights itself in-shader.
+  const sun = new DirectionalLight();
+  sun.position.set(2, 1, 1);
+  scene.add(sun);
+  const ambient = new AmbientLight(0xffffff, 0.6);
+  scene.add(ambient);
+  // Square sun/moon billboards, drawn before the terrain so the raymarcher
+  // overdraws them wherever solid ground lies (occluding the horizon).
+  const sunMaterial = new MeshBasicMaterial({ color: 0xfff2a0 });
+  sunMaterial.depthWrite = false;
+  const sunMesh = new Mesh(new PlaneGeometry(SUN_SIZE, SUN_SIZE), sunMaterial);
+  scene.add(sunMesh);
+  const moonMaterial = new MeshBasicMaterial({ color: 0xcfd6e6 });
+  moonMaterial.depthWrite = false;
+  const moonMesh = new Mesh(
+    new PlaneGeometry(MOON_SIZE, MOON_SIZE),
+    moonMaterial,
+  );
+  scene.add(moonMesh);
   // The infinite-scroll ring: a BLOCKS x BLOCKS window of 192x256x192 blocks,
   // each rendered by its own raymarching mesh. The window stays centred on the
   // player's block; when the player crosses a block boundary the trailing block
@@ -344,6 +368,123 @@ const App: Component<{}> = () => {
         : `frame: ${ms.toFixed(2)} ms | ${res} | fetches/ray: ${sample.fetchesPerRay.toFixed(1)} (${sample.rays} rays)`;
   };
   let lastFrameT = 0;
+  // day-night clock: accumulates real time so the 20-minute cycle runs live.
+  // Debug console commands can pin `timeOverride` (freezing the cycle at a
+  // chosen moment) and scale the speed for fast-forwarding.
+  let elapsed = 0;
+  let timeOverride: number | null = null;
+  let timeSpeed = 1;
+  // Debug console: parses "/command" lines and mutates the day-night clock.
+  const runConsoleCommand = (line: string): string => {
+    const [name, ...rest] = line.trim().toLowerCase().split(/\s+/);
+    const shownTime = (): number => timeOverride ?? elapsed;
+    switch (name) {
+      case "/help":
+        return [
+          "/day       jump to noon (t=300s)",
+          "/sunset    jump to dusk (t=645s)",
+          "/night     jump to midnight (t=900s)",
+          "/sunrise   jump to dawn (t=1120s)",
+          "/time <s>  jump to a second of the 20-min cycle",
+          "/normal    resume the live clock",
+          "/speed <n> run the clock n× fast (0 pauses)",
+          "/now       show the current clock state",
+        ].join("\n");
+      case "/day":
+        timeOverride = 300;
+        return "jumped to noon (t=300s)";
+      case "/sunset":
+        timeOverride = 645;
+        return "jumped to dusk (t=645s)";
+      case "/night":
+        timeOverride = 900;
+        return "jumped to midnight (t=900s)";
+      case "/sunrise":
+        timeOverride = 1120;
+        return "jumped to dawn (t=1120s)";
+      case "/time": {
+        const t = Number(rest[0]);
+        if (!Number.isFinite(t) || t < 0) {
+          return "usage: /time <seconds>  (0..1200, wraps)";
+        }
+        timeOverride = t;
+        return `time set to ${t}s`;
+      }
+      case "/normal":
+        timeOverride = null;
+        return "resumed the live clock";
+      case "/speed": {
+        const n = Number(rest[0]);
+        if (!Number.isFinite(n) || n < 0) {
+          return "usage: /speed <multiplier>  (0 pauses, 1 = real time)";
+        }
+        timeSpeed = n;
+        return `clock speed set to ${n}×`;
+      }
+      case "/now":
+        return `phase: ${phaseAt(shownTime())} | t=${shownTime().toFixed(1)}s | speed=${timeSpeed}× | live=${timeOverride === null}`;
+      default:
+        return `unknown command "${line}" — try /help`;
+    }
+  };
+  // reusable colour so per-frame sky updates don't allocate
+  const skyColor = new Color(SKY_BLUE);
+  // Re-derives every light + the sun/moon billboards from the day-night clock.
+  // The terrain/water materials expose uniforms read each draw, so only their
+  // public fields need updating here.
+  const applyDayNight = (dayNight: ReturnType<typeof dayNightState>): void => {
+    const renderer = state.renderer;
+    skyColor.set(
+      dayNight.skyColor[0],
+      dayNight.skyColor[1],
+      dayNight.skyColor[2],
+    );
+    renderer?.setClearColor(skyColor, 1);
+    for (const material of materials) {
+      material.fogColor = dayNight.skyColor;
+      material.sunDirection = dayNight.sunDir;
+      material.sunLightColor = dayNight.sunLight;
+      material.moonDirection = dayNight.moonDir;
+      material.moonLightColor = dayNight.moonLight;
+      material.ambientColor = dayNight.ambient;
+    }
+    for (const waterMaterial of waterMaterials) {
+      waterMaterial.fogColor = dayNight.skyColor;
+    }
+    // The player cube is a standard material; point the directional light at
+    // the sun and tint the fill light to match the phase.
+    sun.color.set(
+      dayNight.sunLight[0],
+      dayNight.sunLight[1],
+      dayNight.sunLight[2],
+    );
+    sun.position.set(
+      dayNight.sunDir[0],
+      dayNight.sunDir[1],
+      dayNight.sunDir[2],
+    );
+    ambient.color.set(
+      dayNight.ambient[0],
+      dayNight.ambient[1],
+      dayNight.ambient[2],
+    );
+    ambient.intensity = 1;
+    const cam = camera.position;
+    sunMesh.position.set(
+      cam.x + dayNight.sunDir[0] * SKY_DISTANCE,
+      cam.y + dayNight.sunDir[1] * SKY_DISTANCE,
+      cam.z + dayNight.sunDir[2] * SKY_DISTANCE,
+    );
+    sunMesh.lookAt(cam.x, cam.y, cam.z);
+    sunMesh.visible = dayNight.sunElevation > VISIBLE_ELEVATION;
+    moonMesh.position.set(
+      cam.x + dayNight.moonDir[0] * SKY_DISTANCE,
+      cam.y + dayNight.moonDir[1] * SKY_DISTANCE,
+      cam.z + dayNight.moonDir[2] * SKY_DISTANCE,
+    );
+    moonMesh.lookAt(cam.x, cam.y, cam.z);
+    moonMesh.visible = dayNight.moonElevation > VISIBLE_ELEVATION;
+  };
   let animate = (t: number) => {
     const dt =
       lastFrameT > 0 ? Math.min(0.05, (t - lastFrameT) / 1000) : 1 / 60;
@@ -367,6 +508,11 @@ const App: Component<{}> = () => {
     // the cube's local +Z faces the heading; a Y rotation by `yaw` aligns it
     playerCube.rotation.y = player.yaw;
     placeCamera(camera, player);
+    // advance the day-night clock and re-derive the scene lighting. A command
+    // override pins the shown time; otherwise the real clock (scaled by speed)
+    // drives the cycle.
+    elapsed += dt * timeSpeed;
+    applyDayNight(dayNightState(timeOverride ?? elapsed));
     render();
     adaptResolution(t);
   };
@@ -489,6 +635,7 @@ const App: Component<{}> = () => {
         }}
       />
       <Controls />
+      <Console onCommand={runConsoleCommand} />
       {debugPerf && (
         <div
           ref={(el) => {

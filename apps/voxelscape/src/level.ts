@@ -1202,10 +1202,13 @@ export let rayMarchWorld = (params: {
   maxDistance?: Node<"float">;
   fogStart?: Node<"float">;
   fogColor?: Node<"vec3">;
+  // time-of-day lighting; defaults match the pre-day-night look
+  sunDirection?: Node<"vec3">;
+  sunLightColor?: Node<"vec3">;
+  moonDirection?: Node<"vec3">;
+  moonLightColor?: Node<"vec3">;
+  ambientColor?: Node<"vec3">;
 }): void => {
-  const ambientColour = vec3(0.2).toVar();
-  const lightColour = vec3(1.0).toVar();
-  const lightDir = vec3(1.0, 2.0, 1.0).normalize().toVar();
   let {
     rayOrigin,
     rayDirection,
@@ -1218,7 +1221,17 @@ export let rayMarchWorld = (params: {
     maxDistance,
     fogStart,
     fogColor,
+    sunDirection,
+    sunLightColor,
+    moonDirection,
+    moonLightColor,
+    ambientColor,
   } = params;
+  const ambientColour = (ambientColor ?? vec3(0.2)).toVar();
+  const lightColour = (sunLightColor ?? vec3(1.0)).toVar();
+  const lightDir = (sunDirection ?? vec3(1.0, 2.0, 1.0).normalize()).toVar();
+  const moonLightColour = (moonLightColor ?? vec3(0)).toVar();
+  const moonDir = (moonDirection ?? vec3(-1.0, -2.0, -1.0).normalize()).toVar();
   const N = blocks.length;
   // Hard render-distance cutoff: blocks entered beyond it are skipped and hits
   // past it are rejected, so nothing renders past the fog end.
@@ -1291,7 +1304,10 @@ export let rayMarchWorld = (params: {
 
   If(hit, () => {
     const diffuse = normal.dot(lightDir).max(float(0));
-    const lighting = ambientColour.add(lightColour.mul(diffuse));
+    const moonDiffuse = normal.dot(moonDir).max(float(0));
+    const lighting = ambientColour
+      .add(lightColour.mul(diffuse))
+      .add(moonLightColour.mul(moonDiffuse));
     if (
       tiles !== undefined &&
       tileRects !== undefined &&
@@ -1420,6 +1436,22 @@ export class LevelWorldMaterial extends NodeMaterial {
   maxDistance: number = 480;
   fogStart: number = 200;
   fogColor: [number, number, number] = [0.53, 0.81, 0.92];
+  // time-of-day lighting. `sunDirection` is the unit vector toward the sun;
+  // its diffuse contribution dims to zero once the sun dips below the horizon,
+  // and `moonLightColor` picks up with the moon (see `dayNightState`).
+  sunDirection: [number, number, number] = [
+    1 / Math.sqrt(6),
+    2 / Math.sqrt(6),
+    1 / Math.sqrt(6),
+  ];
+  sunLightColor: [number, number, number] = [1, 1, 1];
+  moonDirection: [number, number, number] = [
+    -1 / Math.sqrt(6),
+    -2 / Math.sqrt(6),
+    -1 / Math.sqrt(6),
+  ];
+  moonLightColor: [number, number, number] = [0, 0, 0];
+  ambientColor: [number, number, number] = [0.2, 0.2, 0.2];
 
   private blockUniforms: WorldBlockShader[] = [];
   private tileUniforms: TileFaceUniform[] = [];
@@ -1427,6 +1459,11 @@ export class LevelWorldMaterial extends NodeMaterial {
   private maxDistanceUniform: UniformNode<"float"> | undefined;
   private fogStartUniform: UniformNode<"float"> | undefined;
   private fogColorUniform: UniformNode<"vec3"> | undefined;
+  private sunDirectionUniform: UniformNode<"vec3"> | undefined;
+  private sunLightColorUniform: UniformNode<"vec3"> | undefined;
+  private moonDirectionUniform: UniformNode<"vec3"> | undefined;
+  private moonLightColorUniform: UniformNode<"vec3"> | undefined;
+  private ambientColorUniform: UniformNode<"vec3"> | undefined;
 
   constructor() {
     super();
@@ -1462,6 +1499,31 @@ export class LevelWorldMaterial extends NodeMaterial {
       "fogColor",
       "vec3",
       () => this.fogColor,
+    );
+    this.sunDirectionUniform = b.materialUniform(
+      "sunDirection",
+      "vec3",
+      () => this.sunDirection,
+    );
+    this.sunLightColorUniform = b.materialUniform(
+      "sunLightColor",
+      "vec3",
+      () => this.sunLightColor,
+    );
+    this.moonDirectionUniform = b.materialUniform(
+      "moonDirection",
+      "vec3",
+      () => this.moonDirection,
+    );
+    this.moonLightColorUniform = b.materialUniform(
+      "moonLightColor",
+      "vec3",
+      () => this.moonLightColor,
+    );
+    this.ambientColorUniform = b.materialUniform(
+      "ambientColor",
+      "vec3",
+      () => this.ambientColor,
     );
     if (this.tilesTexture !== null) {
       this.tilesSampler = b.sampler(
@@ -1546,6 +1608,11 @@ export class LevelWorldMaterial extends NodeMaterial {
       maxDistance: this.maxDistanceUniform,
       fogStart: this.fogStartUniform,
       fogColor: this.fogColorUniform,
+      sunDirection: this.sunDirectionUniform,
+      sunLightColor: this.sunLightColorUniform,
+      moonDirection: this.moonDirectionUniform,
+      moonLightColor: this.moonLightColorUniform,
+      ambientColor: this.ambientColorUniform,
     });
 
     if (this.debugFetchCount && fetchCount !== undefined) {
