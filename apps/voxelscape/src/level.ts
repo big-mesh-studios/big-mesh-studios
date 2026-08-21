@@ -331,12 +331,14 @@ export let rayMarch = (params: {
   marchMax?: Node<"uvec3">;
   texelOffset?: Node<"vec3">;
   fetchCount?: Node<"int">;
+  skipSolidStart?: Node<"bool">;
 }): {
   hit: Node<"bool">;
   voxel: Node<"uvec4">;
   voxelPos: Node<"ivec3">;
   normal: Node<"vec3">;
   hitPoint: Node<"vec3">;
+  skipSolid: Node<"bool">;
 } => {
   let {
     rayOrigin,
@@ -348,6 +350,7 @@ export let rayMarch = (params: {
     marchMax,
     texelOffset,
     fetchCount,
+    skipSolidStart,
   } = params;
 
   const texelShift = (texelOffset ?? vec3(0)).toVar();
@@ -379,6 +382,10 @@ export let rayMarch = (params: {
   const voxelPos = ivec3(0).toVar();
   const normal = vec3(0).toVar();
   const hitPoint = vec3(0).toVar();
+  // When the ray origin is inside a solid voxel, keep skipping solid cells
+  // until the ray first reaches empty space (then resume normal hits). The
+  // flag is seeded by the caller and carried back out across chunk marches.
+  const skipSolid = (skipSolidStart ?? bool(false)).toVar();
 
   let { entryDistance, exitDistance, nearPlaneDistances } = intersectBox({
     rayOrigin,
@@ -442,8 +449,12 @@ export let rayMarch = (params: {
           countFetch();
           const cellValue = fetchCell(mapPos).toVar();
           If(cellValue.r.notEqual(0), () => {
-            hit.assign(bool(true));
-            Break();
+            If(skipSolid.not(), () => {
+              hit.assign(bool(true));
+              Break();
+            });
+          }).Else(() => {
+            skipSolid.assign(bool(false));
           });
         });
         mask.assign(
@@ -517,6 +528,7 @@ export let rayMarch = (params: {
     voxelPos,
     normal,
     hitPoint,
+    skipSolid,
   };
 };
 
@@ -560,6 +572,39 @@ export let marchBlock = (params: {
   const hitPoint = vec3(0).toVar();
   const voxel = uvec4().toVar();
   const cellSize = volumeDimensions.div(virtualDim).toVar();
+
+  // Whether the ray origin sits inside a solid fine voxel. When it does, the
+  // fine march skips solid cells until the ray first reaches empty space, so a
+  // camera buried in the terrain sees the surface beyond instead of the voxel
+  // enclosing it.
+  const originSolid = bool(false).toVar();
+  const originCell = rayOrigin
+    .add(volumeDimensions.mul(float(0.5)))
+    .div(cellSize)
+    .floor()
+    .toIVec3()
+    .toVar();
+  If(
+    originCell
+      .toVec3()
+      .greaterThanEqual(vec3(float(0)))
+      .all()
+      .and(originCell.toVec3().lessThan(virtualDim).all()),
+    () => {
+      const originBroadCell = originCell.div(chunkDimU.toIVec3()).toVar();
+      const broadValue = broadVoxels.texture(originBroadCell.toUVec3()).toVar();
+      If(broadValue.r.notEqual(0), () => {
+        const storageChunkMin = broadValue.yzw.mul(chunkDimU).toIVec3();
+        const virtualChunkMin = originBroadCell.mul(chunkDimU.toIVec3());
+        const texelOffset = storageChunkMin.sub(virtualChunkMin);
+        const fineValue = fineVoxels
+          .texture(originCell.add(texelOffset).toUVec3())
+          .toVar();
+        originSolid.assign(fineValue.r.notEqual(0));
+      });
+    },
+  );
+  const skipSolid = originSolid.toVar();
 
   const boxMin = volumeDimensions.mul(float(-0.5)).sub(cellSizeBroad).toVar();
   const boxMax = volumeDimensions.mul(float(0.5)).add(cellSizeBroad).toVar();
@@ -658,7 +703,9 @@ export let marchBlock = (params: {
                 marchMax: virtualChunkMin.add(chunkDimU).sub(uvec3(1)),
                 texelOffset,
                 fetchCount,
+                skipSolidStart: skipSolid,
               });
+              skipSolid.assign(fine.skipSolid);
               If(fine.hit, () => {
                 hit.assign(bool(true));
                 normal.assign(fine.normal);
