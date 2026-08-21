@@ -25,6 +25,7 @@ import {
   parseTileAtlasXml,
 } from "./atlas";
 import { GpuTimer, sampleFetchCount } from "./perf";
+import { AdaptiveResolution } from "./adaptive";
 import { installKeyboardControls, addLookDelta, consumeInput } from "./input";
 import { createPlayer, updatePlayer, placeCamera, PLAYER_CFG } from "./player";
 import Controls from "./Controls";
@@ -244,26 +245,15 @@ const App: Component<{}> = () => {
   const SAMPLE_EVERY = 24;
 
   // --- adaptive render resolution -------------------------------------
-  // Tunables live here so a settings page can drive them later.
-  const RES = {
-    budgetMs: 16.7, // frame budget for the 60fps target
-    downFactor: 1.25, // ema above budget * this => consider downscaling
-    upFactor: 0.6, // ema below budget * this => consider upscaling
-    downFrames: 30, // sustained slow frames before stepping down
-    upFrames: 60, // sustained fast frames before stepping up
-    minScale: 0.25, // lowest render scale (1 -> 0.5 -> 0.25)
-  };
-  let resolutionScale = 1;
+  // Pure scaler (see `adaptive.ts`) fed this frame's render time; it steps the
+  // scale by ~1.25x so marginal devices converge instead of thrashing between
+  // 1x and 0.5x. Tunables (budget, steps) live in `adaptive.ts`.
+  const adaptive = new AdaptiveResolution();
   let baseW = 0;
   let baseH = 0;
-  let emaMs = RES.budgetMs;
-  let slowFrames = 0;
-  let fastFrames = 0;
-  let lastT = 0;
-  let settleFrames = 0;
+  let lastAdaptT = 0;
 
   const applyResolution = (scale: number) => {
-    resolutionScale = scale;
     const canvas = state.canvas;
     if (canvas === undefined || baseW <= 0 || baseH <= 0) {
       return;
@@ -273,46 +263,22 @@ const App: Component<{}> = () => {
     if (w !== canvas.width || h !== canvas.height) {
       canvas.width = w;
       canvas.height = h;
-      settleFrames = 10;
     }
   };
 
+  // Called once per frame after `render()`: feed the frame time (ms) into the
+  // scaler and apply whatever scale it settles on. Readback frames are skipped
+  // from the decision (they stall the GPU) but still update the EMA.
   const adaptResolution = (t: number) => {
-    if (lastT > 0) {
-      const dt = t - lastT;
-      emaMs = emaMs * 0.9 + dt * 0.1;
+    if (lastAdaptT > 0) {
+      const dt = t - lastAdaptT;
+      const next =
+        debugPerf && sampleCounter % SAMPLE_EVERY === 0
+          ? adaptive.frame(dt)
+          : adaptive.update(dt);
+      applyResolution(next);
     }
-    lastT = t;
-    if (settleFrames > 0) {
-      settleFrames--;
-      return;
-    }
-    // skip on frames that do the debug readback (they stall the GPU)
-    if (debugPerf && sampleCounter % SAMPLE_EVERY === 0) {
-      return;
-    }
-    const downMs = RES.budgetMs * RES.downFactor;
-    const upMs = RES.budgetMs * RES.upFactor;
-    if (emaMs > downMs) {
-      slowFrames++;
-      fastFrames = 0;
-      if (slowFrames >= RES.downFrames && resolutionScale > RES.minScale) {
-        applyResolution(Math.max(RES.minScale, resolutionScale / 2));
-        slowFrames = 0;
-        fastFrames = 0;
-      }
-    } else if (emaMs < upMs) {
-      fastFrames++;
-      slowFrames = 0;
-      if (fastFrames >= RES.upFrames && resolutionScale < 1) {
-        applyResolution(Math.min(1, resolutionScale * 2));
-        slowFrames = 0;
-        fastFrames = 0;
-      }
-    } else {
-      slowFrames = 0;
-      fastFrames = 0;
-    }
+    lastAdaptT = t;
   };
 
   const updateHud = (
@@ -322,7 +288,7 @@ const App: Component<{}> = () => {
     if (hud === undefined) {
       return;
     }
-    const res = `res: ${resolutionScale}x`;
+    const res = `res: ${adaptive.scale}x`;
     hud.textContent =
       sample === undefined
         ? `frame: ${ms.toFixed(2)} ms | ${res}`
@@ -373,7 +339,10 @@ const App: Component<{}> = () => {
         baseH = rect.height * window.devicePixelRatio;
         camera.aspect = aspect;
         camera.updateProjectionMatrix();
-        applyResolution(resolutionScale);
+        // a layout change changes the render cost, so hold adaptation while
+        // the new base resolution settles
+        adaptive.hold();
+        applyResolution(adaptive.scale);
       });
       resizeObserver.observe(canvas);
       renderer.setAnimationLoop((t) => {
