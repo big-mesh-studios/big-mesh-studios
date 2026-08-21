@@ -2,6 +2,7 @@ import {
   bool,
   Break,
   builtinFragDepth,
+  exp,
   float,
   For,
   If,
@@ -9,6 +10,7 @@ import {
   ivec3,
   max,
   min,
+  pow,
   uvec3,
   uvec4,
   vec2,
@@ -28,7 +30,16 @@ import {
 import type { UniformNode } from "@random-mesh/rmsl";
 import type { VoxelTileConfig } from "./atlas";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./noise";
-import { VoxelStore, fillStore, sweepSurface } from "./voxel-store";
+import {
+  VOXEL_WATER,
+  VoxelStore,
+  fillStore,
+  sweepSurface,
+  sweepWaterSurface,
+} from "./voxel-store";
+
+// Shorthand for the water voxel id used in the raymarching shader comparisons.
+const WATER = VOXEL_WATER;
 
 export type Dim3 = [number, number, number];
 
@@ -259,6 +270,11 @@ export const syncLevelFromStore = (
   resetLevel(level);
   if (surfaceOnly) {
     sweepSurface(store, (x, y, z, id) => {
+      level.set(x, y, z, id);
+    });
+    // only the water surface layer is stored: the water pass shades at the
+    // surface, so the body below doesn't need to occupy GPU chunk space
+    sweepWaterSurface(store, (x, y, z, id) => {
       level.set(x, y, z, id);
     });
   } else {
@@ -514,14 +530,21 @@ export let rayMarch = (params: {
         If(inRegion(minIdx, maxIdx, mapPos), () => {
           countFetch();
           const cellValue = fetchCell(mapPos).toVar();
-          If(cellValue.r.notEqual(0), () => {
-            If(skipSolid.not(), () => {
-              hit.assign(bool(true));
-              Break();
-            });
-          }).Else(() => {
+          // Water is passable for the terrain march: rays travel straight
+          // through it to the lakebed, and a separate water pass tints the
+          // result (see `marchWater` / `LevelWaterMaterial`).
+          If(cellValue.r.equal(WATER), () => {
             skipSolid.assign(bool(false));
-          });
+          })
+            .ElseIf(cellValue.r.notEqual(0), () => {
+              If(skipSolid.not(), () => {
+                hit.assign(bool(true));
+                Break();
+              });
+            })
+            .Else(() => {
+              skipSolid.assign(bool(false));
+            });
         });
         mask.assign(
           sideDist
@@ -673,7 +696,9 @@ export let marchBlock = (params: {
         const fineValue = fineVoxels
           .texture(originCell.add(texelOffset).toUVec3())
           .toVar();
-        originSolid.assign(fineValue.r.notEqual(0));
+        originSolid.assign(
+          fineValue.r.notEqual(0).and(fineValue.r.notEqual(WATER)),
+        );
       });
     },
   );
@@ -823,6 +848,326 @@ export let marchBlock = (params: {
   });
 
   return { hit, normal, hitPoint, voxel, cellSize };
+};
+
+// Fine-grain DDA over one chunk's voxels looking only for water. Stops at the
+// first water voxel (the stored surface layer), recording its camera-space
+// `surfaceDistance`. Sets `done` when it either finds the surface or hits solid
+// terrain first, so `marchWater` can stop early.
+export let rayMarchWater = (params: {
+  rayOrigin: Node<"vec3">;
+  rayDirection: Node<"vec3">;
+  dimensions: Node<"vec3">;
+  voxelCount: Node<"vec3">;
+  uVoxels: Node<"usampler3D">;
+  marchMin?: Node<"uvec3">;
+  marchMax?: Node<"uvec3">;
+  texelOffset?: Node<"vec3">;
+  maxDistance?: Node<"float">;
+}): {
+  enteredWater: Node<"bool">;
+  surfaceDistance: Node<"float">;
+  done: Node<"bool">;
+} => {
+  let {
+    rayOrigin,
+    rayDirection,
+    dimensions,
+    voxelCount,
+    uVoxels,
+    marchMin,
+    marchMax,
+    texelOffset,
+    maxDistance,
+  } = params;
+
+  const texelShift = (texelOffset ?? vec3(0)).toVar();
+  const fetchCell = (cell: Node<"ivec3">): Node<"uvec4"> =>
+    uVoxels.texture(cell.toVec3().add(texelShift).toUVec3());
+  const maxBudget = (maxDistance ?? float(1e30)).toVar();
+
+  const cellSize = dimensions.div(voxelCount).toVar();
+  const minIdx = (marchMin ?? uvec3(0)).toVar();
+  const maxIdx = (marchMax ?? voxelCount.sub(vec3(float(1))).toUVec3()).toVar();
+  const boxMin = dimensions
+    .mul(float(-0.5))
+    .add(minIdx.toVec3().mul(cellSize))
+    .sub(cellSize)
+    .toVar();
+  const boxMax = dimensions
+    .mul(float(-0.5))
+    .add(maxIdx.toVec3().add(vec3(1)).mul(cellSize))
+    .add(cellSize)
+    .toVar();
+
+  const enteredWater = bool(false).toVar();
+  const surfaceDistance = float(0).toVar();
+  const done = bool(false).toVar();
+
+  let { entryDistance, exitDistance, nearPlaneDistances } = intersectBox({
+    rayOrigin,
+    rayDirection,
+    boxMin,
+    boxMax,
+  });
+
+  If(entryDistance.lessThanEqual(exitDistance), () => {
+    const entryClamped = entryDistance.max(float(0)).toVar();
+    const cellDir = rayDirection.div(cellSize).toVar();
+
+    const entryPoint = rayOrigin.add(rayDirection.mul(entryClamped)).toVar();
+    const cellOrigin = entryPoint
+      .add(dimensions.mul(float(0.5)))
+      .div(cellSize)
+      .add(cellDir.mul(float(0.001)))
+      .toVar();
+
+    const mapPos = cellOrigin.floor().toIVec3().toVar();
+    const rayStep = rayDirection.sign().toIVec3().toVar();
+    const deltaDist = vec3(1.0).div(cellDir.abs().max(1e-6)).toVar();
+    const sideDist = rayStep
+      .toVec3()
+      .mul(mapPos.toVec3().sub(cellOrigin))
+      .add(rayStep.toVec3().mul(float(0.5)).add(float(0.5)))
+      .mul(deltaDist)
+      .toVar();
+
+    const mask = vec3(float(0)).toVar();
+
+    If(nearPlaneDistances.x.equal(entryDistance), () => {
+      mask.assign(vec3(float(1), float(0), float(0)));
+    })
+      .ElseIf(nearPlaneDistances.y.equal(entryDistance), () => {
+        mask.assign(vec3(float(0), float(1), float(0)));
+      })
+      .Else(() => {
+        mask.assign(vec3(float(0), float(0), float(1)));
+      });
+
+    const maxSteps = voxelCount.x
+      .max(voxelCount.y)
+      .max(voxelCount.z)
+      .mul(float(3))
+      .add(float(8))
+      .toInt();
+    const cellStart = entryClamped.toVar();
+
+    For(
+      () => int(0).toVar(),
+      (i) => i.lessThan(maxSteps),
+      (i) => i.assign(i.add(1)),
+      () => {
+        If(cellStart.greaterThan(maxBudget), () => {
+          Break();
+        });
+        If(inPaddedRegion(minIdx, maxIdx, mapPos).not(), () => {
+          Break();
+        });
+        If(inRegion(minIdx, maxIdx, mapPos), () => {
+          const cellValue = fetchCell(mapPos).toVar();
+          If(cellValue.r.equal(WATER), () => {
+            // first water cell along the ray is the surface layer
+            surfaceDistance.assign(cellStart);
+            enteredWater.assign(bool(true));
+            done.assign(bool(true));
+            Break();
+          }).ElseIf(cellValue.r.notEqual(0), () => {
+            // solid terrain before any water: nothing to shade on this ray
+            done.assign(bool(true));
+            Break();
+          });
+          // air: keep marching toward the surface
+        });
+        mask.assign(
+          sideDist
+            .lessThanEqual(
+              vec3(
+                sideDist.y.min(sideDist.z),
+                sideDist.z.min(sideDist.x),
+                sideDist.x.min(sideDist.y),
+              ),
+            )
+            .toVec3(),
+        );
+        cellStart.assign(
+          entryClamped.add(sideDist.x.min(sideDist.y).min(sideDist.z)),
+        );
+        sideDist.assign(sideDist.add(mask.mul(deltaDist)));
+        mapPos.assign(mapPos.add(mask.toIVec3().mul(rayStep)));
+      },
+    );
+  });
+
+  return { enteredWater, surfaceDistance, done };
+};
+
+// Marches one block's volume looking only for water (broad grid then fine
+// chunks) and returns where the ray first crosses the water surface.
+// `surfaceDistance` is camera-space; add the block centre for a world point.
+export let marchWater = (params: {
+  rayOrigin: Node<"vec3">;
+  rayDirection: Node<"vec3">;
+  dimensions: Node<"vec3">;
+  broadVoxels: Node<"usampler3D">;
+  broadDim: Node<"vec3">;
+  chunkDim: Node<"vec3">;
+  fineVoxels: Node<"usampler3D">;
+  maxDistance?: Node<"float">;
+}): {
+  enteredWater: Node<"bool">;
+  surfaceDistance: Node<"float">;
+} => {
+  let {
+    rayOrigin,
+    rayDirection,
+    dimensions,
+    broadVoxels,
+    broadDim,
+    chunkDim,
+    fineVoxels,
+    maxDistance,
+  } = params;
+
+  const volumeDimensions = dimensions.toVar();
+  const virtualDim = broadDim.mul(chunkDim).toVar();
+  const cellSizeBroad = volumeDimensions.div(broadDim).toVar();
+  const chunkDimU = chunkDim.toUint();
+
+  const enteredWater = bool(false).toVar();
+  const surfaceDistance = float(0).toVar();
+
+  const boxMin = volumeDimensions.mul(float(-0.5)).sub(cellSizeBroad).toVar();
+  const boxMax = volumeDimensions.mul(float(0.5)).add(cellSizeBroad).toVar();
+  let { entryDistance, exitDistance, nearPlaneDistances } = intersectBox({
+    rayOrigin,
+    rayDirection,
+    boxMin,
+    boxMax,
+  });
+  const maxBudget = (maxDistance ?? float(1e30)).toVar();
+
+  If(entryDistance.lessThanEqual(exitDistance), () => {
+    const entryClamped = entryDistance.max(float(0)).toVar();
+    const cellDir = rayDirection.div(cellSizeBroad).toVar();
+
+    const entryPoint = rayOrigin.add(rayDirection.mul(entryClamped)).toVar();
+    const cellOrigin = entryPoint
+      .add(volumeDimensions.mul(float(0.5)))
+      .div(cellSizeBroad)
+      .add(cellDir.mul(float(0.001)))
+      .toVar();
+
+    const mapPos = cellOrigin.floor().toIVec3().toVar();
+    const rayStep = rayDirection.sign().toIVec3().toVar();
+    const deltaDist = vec3(1.0).div(cellDir.abs().max(1e-6)).toVar();
+    const sideDist = rayStep
+      .toVec3()
+      .mul(mapPos.toVec3().sub(cellOrigin))
+      .add(rayStep.toVec3().mul(float(0.5)).add(float(0.5)))
+      .mul(deltaDist)
+      .toVar();
+
+    const mask = vec3(float(0)).toVar();
+
+    If(nearPlaneDistances.x.equal(entryDistance), () => {
+      mask.assign(vec3(float(1), float(0), float(0)));
+    })
+      .ElseIf(nearPlaneDistances.y.equal(entryDistance), () => {
+        mask.assign(vec3(float(0), float(1), float(0)));
+      })
+      .Else(() => {
+        mask.assign(vec3(float(0), float(0), float(1)));
+      });
+
+    const maxSteps = broadDim.x
+      .max(broadDim.y)
+      .max(broadDim.z)
+      .mul(float(3))
+      .add(float(8))
+      .toInt();
+    const broadCount = broadDim.toVar();
+    const cellStart = entryClamped.toVar();
+
+    For(
+      () => int(0).toVar(),
+      (i) => i.lessThan(maxSteps),
+      (i) => i.assign(i.add(1)),
+      () => {
+        If(cellStart.greaterThan(maxBudget), () => {
+          Break();
+        });
+        If(
+          mapPos
+            .toVec3()
+            .greaterThanEqual(vec3(float(-2)))
+            .all()
+            .and(
+              mapPos
+                .toVec3()
+                .lessThan(broadCount.add(vec3(float(2))))
+                .all(),
+            )
+            .not(),
+          () => {
+            Break();
+          },
+        );
+        If(
+          mapPos
+            .toVec3()
+            .greaterThanEqual(vec3(float(0)))
+            .all()
+            .and(mapPos.toVec3().lessThan(broadCount).all()),
+          () => {
+            const broadCell = broadVoxels.texture(mapPos.toUVec3()).toVar();
+            If(broadCell.r.notEqual(0), () => {
+              const virtualChunkMin = mapPos.toUVec3().mul(chunkDimU);
+              const storageChunkMin = broadCell.yzw.mul(chunkDimU);
+              const texelOffset = storageChunkMin
+                .toVec3()
+                .sub(virtualChunkMin.toVec3());
+              const fine = rayMarchWater({
+                rayOrigin,
+                rayDirection,
+                dimensions,
+                voxelCount: virtualDim,
+                uVoxels: fineVoxels,
+                marchMin: virtualChunkMin,
+                marchMax: virtualChunkMin.add(chunkDimU).sub(uvec3(1)),
+                texelOffset,
+                maxDistance: maxBudget,
+              });
+              If(fine.enteredWater, () => {
+                surfaceDistance.assign(fine.surfaceDistance);
+                enteredWater.assign(bool(true));
+              });
+              If(fine.done, () => {
+                Break();
+              });
+            });
+          },
+        );
+        mask.assign(
+          sideDist
+            .lessThanEqual(
+              vec3(
+                sideDist.y.min(sideDist.z),
+                sideDist.z.min(sideDist.x),
+                sideDist.x.min(sideDist.y),
+              ),
+            )
+            .toVec3(),
+        );
+        cellStart.assign(
+          entryClamped.add(sideDist.x.min(sideDist.y).min(sideDist.z)),
+        );
+        sideDist.assign(sideDist.add(mask.mul(deltaDist)));
+        mapPos.assign(mapPos.add(mask.toIVec3().mul(rayStep)));
+      },
+    );
+  });
+
+  return { enteredWater, surfaceDistance };
 };
 
 export interface WorldBlockShader {
@@ -1052,7 +1397,9 @@ export const getWorldHeight = (
     vzN,
   );
   for (let vy = vyN - 1; vy >= 0; --vy) {
-    if (store.get(vx, vy, vz) !== 0) {
+    const id = store.get(vx, vy, vz);
+    // skip water so the player stands on the lakebed (or shore) under water
+    if (id !== 0 && id !== VOXEL_WATER) {
       return best.center[1] + (vy + 1 - vyN / 2) * scale;
     }
   }
@@ -1221,6 +1568,255 @@ export class LevelWorldMaterial extends NodeMaterial {
       fragDepth.assign(depth.max(float(0.0)).min(float(0.9999)));
     }).Else(() => {
       fragDepth.assign(float(1));
+    });
+
+    return colour;
+  }
+}
+
+// Renders the water as a separate translucent pass. It raymarches the same
+// block voxels looking only for the stored water surface (`marchWater`) and
+// alpha-blends over the already-rendered opaque scene (terrain + meshes), so
+// anything behind the water — including the player cube — is correctly tinted
+// and occluded by the surface. The shading happens at the surface only; a
+// camera below `seaLevel` gets a uniform underwater tint instead.
+export class LevelWaterMaterial extends NodeMaterial {
+  blocks: WorldBlock[] = [];
+  // matches the terrain material's fog so the reflected sky blends seamlessly
+  maxDistance: number = 480;
+  fogColor: [number, number, number] = [0.53, 0.81, 0.92];
+  waterColor: [number, number, number] = [0.1, 0.35, 0.55];
+  // surface transparency when looking straight down (0..1; grazing angles get
+  // more opaque as the Fresnel reflection takes over)
+  waterOpacity: number = 0.5;
+  // world y of the water surface; used to tint the view when the camera is under
+  seaLevel: number = 0;
+  // per-world-unit absorption for the underwater tint; larger = more opaque
+  waterExtinction: number = 0.12;
+
+  private blockUniforms: WorldBlockShader[] = [];
+  private maxDistanceUniform: UniformNode<"float"> | undefined;
+  private fogColorUniform: UniformNode<"vec3"> | undefined;
+  private waterColorUniform: UniformNode<"vec3"> | undefined;
+  private waterOpacityUniform: UniformNode<"float"> | undefined;
+  private seaLevelUniform: UniformNode<"float"> | undefined;
+  private waterExtinctionUniform: UniformNode<"float"> | undefined;
+
+  constructor() {
+    super();
+  }
+
+  setBlocks(blocks: WorldBlock[]): void {
+    this.blocks = blocks;
+    this.blockUniforms = [];
+  }
+
+  protected setup(b: Builder, _scene: Scene): void {
+    if (this.blocks.length === 0) {
+      return;
+    }
+    this.blockUniforms = [];
+    this.maxDistanceUniform = b.materialUniform(
+      "maxDistance",
+      "float",
+      () => this.maxDistance,
+    );
+    this.fogColorUniform = b.materialUniform(
+      "fogColor",
+      "vec3",
+      () => this.fogColor,
+    );
+    this.waterColorUniform = b.materialUniform(
+      "waterColor",
+      "vec3",
+      () => this.waterColor,
+    );
+    this.waterOpacityUniform = b.materialUniform(
+      "waterOpacity",
+      "float",
+      () => this.waterOpacity,
+    );
+    this.seaLevelUniform = b.materialUniform(
+      "seaLevel",
+      "float",
+      () => this.seaLevel,
+    );
+    this.waterExtinctionUniform = b.materialUniform(
+      "waterExtinction",
+      "float",
+      () => this.waterExtinction,
+    );
+    for (let i = 0; i < this.blocks.length; i++) {
+      const level = this.blocks[i].level;
+      const prefix = `b${i}_`;
+      this.blockUniforms.push({
+        center: b.materialUniform(
+          prefix + "center",
+          "vec3",
+          () => this.blocks[i].center,
+        ),
+        dimensions: b.materialUniform(
+          prefix + "dimensions",
+          "vec3",
+          () => level.dimensions,
+        ),
+        broadVoxels: b.sampler(
+          prefix + "broadVoxels",
+          "usampler3D",
+          () => level.broadTexture,
+        ),
+        broadDim: b.materialUniform(
+          prefix + "broadDim",
+          "vec3",
+          () => level.broadDim,
+        ),
+        chunkDim: b.materialUniform(
+          prefix + "chunkDim",
+          "vec3",
+          () => level.chunkDim,
+        ),
+        fineVoxels: b.sampler(
+          prefix + "fineVoxels",
+          "usampler3D",
+          () => level.texture,
+        ),
+      });
+    }
+  }
+
+  protected buildVertexBody(b: Builder): Node<"vec4"> {
+    const position = b.position;
+    const worldPos = b.modelMatrix.mul(vec4(position, 1.0)).xyz;
+    b.varying("vModelPos", "vec3").assign(worldPos);
+    return b.projectionMatrix.mul(
+      b.viewMatrix.mul(b.modelMatrix.mul(vec4(position, 1.0))),
+    );
+  }
+
+  protected buildFragmentBody(b: Builder): Node<"vec4"> {
+    if (
+      this.blocks.length === 0 ||
+      this.blockUniforms.length !== this.blocks.length
+    ) {
+      return vec4(0.0);
+    }
+    const vModelPos = b.varying("vModelPos", "vec3");
+    const rayOrigin = b.normalMatrix.mul(b.cameraPosition);
+    const rayDirection = vModelPos.sub(rayOrigin).normalize();
+
+    const maxDist = this.maxDistanceUniform ?? float(1e30);
+    const skyColour = this.fogColorUniform ?? vec3(0.53, 0.81, 0.92);
+    const waterColour = this.waterColorUniform ?? vec3(0.1, 0.35, 0.55);
+    const waterOpacity = this.waterOpacityUniform ?? float(0.5);
+    const seaLevel = this.seaLevelUniform ?? float(0);
+    const extinction = this.waterExtinctionUniform ?? float(0.12);
+
+    const enteredWater = bool(false).toVar();
+    const surfaceDistance = float(1e30).toVar();
+    const cameraInBlock = bool(false).toVar();
+    // the camera is underwater when it sits below the (global) water level;
+    // the whole view then gets a uniform tint instead of a surface shade
+    const underwater = rayOrigin.y.lessThan(seaLevel).toVar();
+
+    const N = this.blockUniforms.length;
+    const entries: Node<"float">[] = [];
+    const exits: Node<"float">[] = [];
+    for (let i = 0; i < N; i++) {
+      const half = this.blockUniforms[i].dimensions.mul(float(0.5));
+      const pad = this.blockUniforms[i].dimensions.div(
+        this.blockUniforms[i].broadDim,
+      );
+      const boxMin = this.blockUniforms[i].center.sub(half).sub(pad);
+      const boxMax = this.blockUniforms[i].center.add(half).add(pad);
+      const { entryDistance, exitDistance } = intersectBox({
+        rayOrigin,
+        rayDirection,
+        boxMin,
+        boxMax,
+      });
+      entries.push(entryDistance);
+      exits.push(exitDistance);
+    }
+
+    for (let i = 0; i < N; i++) {
+      If(
+        entries[i]
+          .lessThanEqual(exits[i])
+          .and(entries[i].lessThanEqual(maxDist)),
+        () => {
+          // only the block containing the camera may emit the fullscreen
+          // underwater tint (several blocks overlap the screen, but one camera)
+          const half = this.blockUniforms[i].dimensions.mul(float(0.5));
+          const pad = this.blockUniforms[i].dimensions.div(
+            this.blockUniforms[i].broadDim,
+          );
+          const blockMin = this.blockUniforms[i].center.sub(half).sub(pad);
+          const blockMax = this.blockUniforms[i].center.add(half).add(pad);
+          If(
+            rayOrigin
+              .greaterThanEqual(blockMin)
+              .all()
+              .and(rayOrigin.lessThanEqual(blockMax).all()),
+            () => {
+              cameraInBlock.assign(bool(true));
+            },
+          );
+          const localOrigin = rayOrigin
+            .sub(this.blockUniforms[i].center)
+            .toVar();
+          const r = marchWater({
+            rayOrigin: localOrigin,
+            rayDirection,
+            dimensions: this.blockUniforms[i].dimensions,
+            broadVoxels: this.blockUniforms[i].broadVoxels,
+            broadDim: this.blockUniforms[i].broadDim,
+            chunkDim: this.blockUniforms[i].chunkDim,
+            fineVoxels: this.blockUniforms[i].fineVoxels,
+            maxDistance: maxDist,
+          });
+          If(
+            r.enteredWater.and(r.surfaceDistance.lessThan(surfaceDistance)),
+            () => {
+              surfaceDistance.assign(r.surfaceDistance);
+              enteredWater.assign(bool(true));
+            },
+          );
+        },
+      );
+    }
+
+    const colour = vec4(0).toVar();
+    If(enteredWater.and(underwater.not()), () => {
+      // water surface seen from above: Fresnel sky reflection + base
+      // transparency (deeper water looks the same; the lakebed shows through)
+      const fresnel = float(0.05)
+        .add(float(0.95).mul(pow(float(1).sub(rayDirection.y.abs()), float(3))))
+        .toVar();
+      const rgb = waterColour.mix(skyColour, fresnel).toVar();
+      const alpha = fresnel.add(waterOpacity).min(float(1)).toVar();
+      colour.assign(vec4(rgb, alpha));
+
+      // depth of the water surface so it occludes / is occluded correctly by
+      // nearer opaque geometry (terrain in front, player, etc.)
+      const surfacePoint = rayOrigin
+        .add(rayDirection.mul(surfaceDistance))
+        .toVar();
+      const clip = b.projectionMatrix.mul(
+        b.viewMatrix.mul(vec4(surfacePoint, float(1))),
+      );
+      const ndcZ = clip.z.div(clip.w);
+      const depth = ndcZ.mul(float(0.5)).add(float(0.5));
+      builtinFragDepth().assign(depth.max(float(0.0)).min(float(0.9999)));
+    }).ElseIf(underwater.and(cameraInBlock), () => {
+      // camera under water: uniform tint over the whole view, more opaque the
+      // deeper the camera is below the surface
+      const cameraDepth = seaLevel.sub(rayOrigin.y).max(float(0)).toVar();
+      const alpha = float(1)
+        .sub(exp(extinction.mul(float(-1)).mul(cameraDepth)))
+        .min(float(1))
+        .toVar();
+      colour.assign(vec4(waterColour, alpha));
+      builtinFragDepth().assign(float(0.0001));
     });
 
     return colour;

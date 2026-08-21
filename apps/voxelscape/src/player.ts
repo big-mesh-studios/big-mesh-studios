@@ -16,6 +16,7 @@ export const PLAYER_CFG = {
   speed: 45, // units/s
   gravity: 45, // units/s^2
   jumpSpeed: 14, // initial upward velocity (~2 unit jump)
+  swimSpeed: 10, // upward velocity while holding jump underwater
   lookSensitivity: 0.005, // rad per pixel
   maxPitch: 1.35,
   followBack: 9, // chase-cam distance behind the cube centre
@@ -35,6 +36,7 @@ export const updatePlayer = (
   dt: number,
   input: InputSnapshot,
   groundHeightAt: (x: number, z: number) => number,
+  waterSurfaceAt: (x: number, z: number) => number,
   halfExtent: number,
 ): void => {
   // drag-to-look
@@ -69,9 +71,22 @@ export const updatePlayer = (
     dz = (forwardZ * ny + rightZ * nx) * speed;
   }
 
-  // gravity + jump
-  player.vy -= PLAYER_CFG.gravity * dt;
-  if (player.onGround && input.jump) {
+  // gravity + jump; underwater the gravity is weak and holding jump swims up
+  const waterY = waterSurfaceAt(player.position.x, player.position.z);
+  const inWater = waterY > player.position.y - PLAYER_CFG.halfSize;
+  if (inWater) {
+    player.vy -= PLAYER_CFG.gravity * 0.15 * dt;
+    if (input.jumpHeld) {
+      player.vy = PLAYER_CFG.swimSpeed;
+    } else {
+      // gentle drag so an idle player sinks slowly instead of dropping like a
+      // stone; holding jump (swim) overrides it
+      player.vy *= Math.max(0, 1 - 3 * dt);
+    }
+  } else {
+    player.vy -= PLAYER_CFG.gravity * dt;
+  }
+  if (!inWater && player.onGround && input.jump) {
     player.vy = PLAYER_CFG.jumpSpeed;
   }
 

@@ -108,6 +108,9 @@ export interface TerrainConfig {
   // optional second, coarse noise that flattens patches of the terrain into
   // smooth plateaus; omitted to get pure mountains
   plains?: PlainsConfig;
+  // optional global water level (world units): columns that dip below it get
+  // filled with water up to this height. Omitted for a fully dry world.
+  seaLevel?: number;
 }
 
 export const DEFAULT_TERRAIN: TerrainConfig = {
@@ -124,6 +127,7 @@ export const DEFAULT_TERRAIN: TerrainConfig = {
     plateauFrequency: 0.0005,
     plateauOctaves: 2,
   },
+  seaLevel: 56,
 };
 
 // One height sampler per seed, so repeated `heightAt` calls during a fill don't

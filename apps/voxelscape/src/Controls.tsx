@@ -6,7 +6,7 @@ import {
   onCleanup,
 } from "solid-js";
 import * as THREE from "three";
-import { queueJump, setTouchMove } from "./input";
+import { queueJump, setTouchJump, setTouchMove } from "./input";
 import { Joystick } from "./Joystick";
 import { ActionButton } from "./ActionButton";
 
@@ -24,7 +24,9 @@ const Controls: Component = () => {
   onCleanup(() => window.removeEventListener("resize", onResize));
 
   const joystick = Joystick({
-    position: createMemo(() => new THREE.Vector2(MARGIN, viewSize().y - MARGIN - HIT)),
+    position: createMemo(
+      () => new THREE.Vector2(MARGIN, viewSize().y - MARGIN - HIT),
+    ),
     hitAreaSize: HIT,
     outerRingSize: () => 0.8 * HIT,
     knobSize: () => 70,
@@ -32,29 +34,28 @@ const Controls: Component = () => {
 
   const actionButton = ActionButton({
     position: createMemo(
-      () => new THREE.Vector2(viewSize().x - MARGIN - BUTTON, viewSize().y - MARGIN - BUTTON),
+      () =>
+        new THREE.Vector2(
+          viewSize().x - MARGIN - BUTTON,
+          viewSize().y - MARGIN - BUTTON,
+        ),
     ),
     size: () => BUTTON,
   });
 
   // joystick value is -0.5..0.5 in screen axes (+y = down); convert to the
   // -1..1 input snapshot axes (+y = forward).
-  createEffect(
-    joystick.value,
-    (value) => {
-      setTouchMove(value.x * 2, -value.y * 2);
-    },
-  );
+  createEffect(joystick.value, (value) => {
+    setTouchMove(value.x * 2, -value.y * 2);
+  });
 
-  // edge-triggered jump on each press of the touch button
-  createEffect(
-    actionButton.pressed,
-    (pressed) => {
-      if (pressed) {
-        queueJump();
-      }
-    },
-  );
+  // jump: edge-triggered on press, and held state for swimming
+  createEffect(actionButton.pressed, (pressed) => {
+    setTouchJump(pressed);
+    if (pressed) {
+      queueJump();
+    }
+  });
 
   return (
     <div

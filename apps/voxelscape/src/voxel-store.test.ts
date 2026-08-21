@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { Level, syncLevelFromStore } from "./level";
+import { Level, getWorldHeight, syncLevelFromStore } from "./level";
 import {
   VOXEL_AIR,
   VOXEL_DIRT,
   VOXEL_GRASS,
+  VOXEL_WATER,
   VoxelStore,
   fillStore,
   sweepSurface,
@@ -74,6 +75,47 @@ describe("fillStore", () => {
       }
     }
   });
+
+  it("fills air below sea level with water", () => {
+    const store = smallStore();
+    // constant terrain height 0 => grass at row 2; sea level 6 world units
+    // => water fills from row 3 up (clamped to the block top)
+    const config = {
+      seed: 1,
+      frequency: 1,
+      amplitude: 0,
+      octaves: 1,
+      base: 0,
+      seaLevel: 6,
+    };
+    fillStore(store, [0, 0, 0], config);
+    for (let x = 0; x < 4; x++) {
+      for (let z = 0; z < 4; z++) {
+        expect(store.get(x, 2, z)).toBe(VOXEL_GRASS);
+        expect(store.get(x, 3, z)).toBe(VOXEL_WATER);
+      }
+    }
+  });
+
+  it("leaves columns above sea level dry", () => {
+    const store = smallStore();
+    // terrain height 8 => top clamped to row 3, which is at/above sea level
+    const config = {
+      seed: 1,
+      frequency: 1,
+      amplitude: 0,
+      octaves: 1,
+      base: 8,
+      seaLevel: 6,
+    };
+    fillStore(store, [0, 0, 0], config);
+    for (let x = 0; x < 4; x++) {
+      for (let z = 0; z < 4; z++) {
+        expect(store.get(x, 3, z)).toBe(VOXEL_GRASS);
+        expect(store.get(x, 3, z)).not.toBe(VOXEL_WATER);
+      }
+    }
+  });
 });
 
 describe("sweepSurface", () => {
@@ -114,6 +156,17 @@ describe("sweepSurface", () => {
     expect(m.has("1,0,1")).toBe(false);
     // the top layer is open air -> surfaced
     expect(m.has("1,3,1")).toBe(true);
+  });
+
+  it("surfaces terrain that touches water", () => {
+    const store = smallStore();
+    store.set(1, 1, 1, VOXEL_DIRT);
+    store.set(1, 2, 1, VOXEL_DIRT);
+    store.set(1, 3, 1, VOXEL_WATER);
+    const m = surfaced(store);
+    // the top terrain voxel is exposed by the water above it, so it stays
+    // stored for the terrain march to hit through the water pass
+    expect(m.has("1,2,1")).toBe(true);
   });
 });
 
@@ -162,5 +215,60 @@ describe("syncLevelFromStore", () => {
     syncLevelFromStore(level, store, { surfaceOnly: false });
     expect(level.get(1, 1, 1)).toBe(VOXEL_DIRT); // interior now stored
     expect(level.get(1, 2, 1)).toBe(VOXEL_DIRT);
+  });
+
+  it("surfaceOnly stores the water surface layer and keeps terrain under water", () => {
+    const store = smallStore();
+    // solid columns to row 1, water at rows 2..3
+    for (let z = 0; z < 4; z++) {
+      for (let y = 0; y <= 1; y++) {
+        for (let x = 0; x < 4; x++) {
+          store.set(x, y, z, VOXEL_DIRT);
+        }
+      }
+      for (let y = 2; y <= 3; y++) {
+        for (let x = 0; x < 4; x++) {
+          store.set(x, y, z, VOXEL_WATER);
+        }
+      }
+    }
+    const level = makeLevel();
+    syncLevelFromStore(level, store, { surfaceOnly: true });
+    // only the top water layer is stored (the surface the water pass shades)
+    expect(level.get(1, 3, 1)).toBe(VOXEL_WATER);
+    expect(level.get(1, 2, 1)).toBe(VOXEL_AIR); // interior water dropped
+    // terrain directly under water is stored so rays reach the lakebed
+    expect(level.get(1, 1, 1)).toBe(VOXEL_DIRT);
+    // pure terrain interior stays unallocated
+    expect(level.get(1, 0, 1)).toBe(VOXEL_AIR);
+  });
+});
+
+describe("getWorldHeight", () => {
+  it("skips water and returns the lakebed", () => {
+    const store = smallStore();
+    for (let z = 0; z < 4; z++) {
+      for (let y = 0; y <= 2; y++) {
+        for (let x = 0; x < 4; x++) {
+          store.set(x, y, z, VOXEL_DIRT);
+        }
+      }
+      for (let x = 0; x < 4; x++) {
+        store.set(x, 3, z, VOXEL_WATER);
+      }
+    }
+    const level = new Level({
+      broadDim: [1, 1, 1],
+      chunkDim: [4, 4, 4],
+      storageDim: [4, 4, 4],
+      dimensions: [8, 8, 8],
+      scale: 2,
+    });
+    const blocks = [
+      { level, center: [0, 0, 0] as [number, number, number], store },
+    ];
+    // voxel (1, vy, 1) has world xz = -1; the water row 3 would be world y 4,
+    // the lakebed row 2 is world y 2 -> must return the lakebed
+    expect(getWorldHeight(blocks, -1, -1)).toBe(2);
   });
 });

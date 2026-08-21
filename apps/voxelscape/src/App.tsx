@@ -12,6 +12,7 @@ import {
 } from "@random-mesh/rmsl/scene";
 import {
   LevelWorldMaterial,
+  LevelWaterMaterial,
   BLOCK_WORLD,
   buildBlock,
   syncLevelFromStore,
@@ -81,6 +82,10 @@ const App: Component<{}> = () => {
   const blocks: WorldBlock[] = [];
   const meshes: Mesh[] = [];
   const materials: LevelWorldMaterial[] = [];
+  // Water is rendered by a second transparent mesh per block, blending over the
+  // opaque scene (terrain + player) after it. Same block voxels, water-only march.
+  const waterMeshes: Mesh[] = [];
+  const waterMaterials: LevelWaterMaterial[] = [];
   // Per-slot integer grid coordinate of the world block currently displayed.
   const worldGrid: { x: number; z: number }[] = [];
   {
@@ -120,6 +125,26 @@ const App: Component<{}> = () => {
         meshes.push(mesh);
         materials.push(material);
         worldGrid.push(grid);
+
+        // translucent water pass: blends over the opaque scene, never writes
+        // depth, and depth-tests so mountains/player in front hide it. The mesh
+        // is added to the scene *after* the player cube (see below) because the
+        // renderer draws meshes in scene-graph order.
+        const waterMaterial = new LevelWaterMaterial();
+        waterMaterial.transparent = true;
+        waterMaterial.depthWrite = false;
+        waterMaterial.side = Side.DoubleSide;
+        waterMaterial.maxDistance = FOG_DISTANCE;
+        waterMaterial.fogColor = [0.53, 0.81, 0.92];
+        waterMaterial.waterColor = [0.1, 0.35, 0.55];
+        waterMaterial.waterOpacity = 0.5;
+        waterMaterial.waterExtinction = 0.12;
+        waterMaterial.seaLevel = TERRAIN.seaLevel ?? 0;
+        waterMaterial.setBlocks([block]);
+        const waterMesh = new Mesh(geometry, waterMaterial);
+        waterMesh.position.set(center[0], center[1], center[2]);
+        waterMeshes.push(waterMesh);
+        waterMaterials.push(waterMaterial);
       }
     }
   }
@@ -181,6 +206,7 @@ const App: Component<{}> = () => {
       });
       blocks[i].center = center;
       meshes[i].position.set(center[0], center[1], center[2]);
+      waterMeshes[i].position.set(center[0], center[1], center[2]);
     }
   };
   // Keeps the ring window centred on the player's block.
@@ -251,6 +277,11 @@ const App: Component<{}> = () => {
   );
   playerCube.position.copy(player.position);
   scene.add(playerCube);
+  // Draw the water after the player so it blends over it (the renderer has no
+  // transparent pass; it draws meshes in scene-graph order).
+  for (const waterMesh of waterMeshes) {
+    scene.add(waterMesh);
+  }
   installKeyboardControls();
   placeCamera(camera, player);
   let timer: GpuTimer | undefined;
@@ -322,6 +353,12 @@ const App: Component<{}> = () => {
       dt,
       consumeInput(),
       (x, z) => getWorldHeight(blocks, x, z),
+      // water surface height: sea level where the ground dips below it, else none
+      (x, z) => {
+        const ground = getWorldHeight(blocks, x, z);
+        const sea = TERRAIN.seaLevel;
+        return sea !== undefined && ground < sea ? sea : -Infinity;
+      },
       SAFE_EXTENT,
     );
     // scroll the terrain ring so the player's block stays centred

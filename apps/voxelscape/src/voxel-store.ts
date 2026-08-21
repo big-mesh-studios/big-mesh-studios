@@ -8,6 +8,7 @@ import { heightAt, type TerrainConfig } from "./noise";
 export const VOXEL_AIR = 0;
 export const VOXEL_GRASS = 1;
 export const VOXEL_DIRT = 2;
+export const VOXEL_WATER = 3;
 
 export class VoxelStore {
   // world-unit extents of the volume
@@ -60,7 +61,9 @@ export class VoxelStore {
 // Fills an existing `store` with solid terrain columns derived from the shared
 // noise height field sampled at the block's absolute world xz (so neighbouring
 // blocks meet seamlessly). Each column is solid from the block floor up to the
-// noise height; the top voxel is grass and everything below is dirt.
+// noise height; the top voxel is grass and everything below is dirt. When
+// `config.seaLevel` is set, the air above columns that dip below it is filled
+// with water up to sea level.
 export const fillStore = (
   store: VoxelStore,
   center: Dim3,
@@ -69,6 +72,10 @@ export const fillStore = (
   store.reset();
   const voxelSize = store.scale;
   const [vxN, vyN, vzN] = store.voxels;
+  const seaLevelVoxel =
+    config.seaLevel === undefined
+      ? undefined
+      : Math.round(vyN / 2 + config.seaLevel / voxelSize);
   for (let vz = 0; vz < vzN; ++vz) {
     for (let vx = 0; vx < vxN; ++vx) {
       const worldX = center[0] + (vx + 0.5 - vxN / 2) * voxelSize;
@@ -81,14 +88,26 @@ export const fillStore = (
       for (let vy = 0; vy <= top; ++vy) {
         store.set(vx, vy, vz, vy === top ? VOXEL_GRASS : VOXEL_DIRT);
       }
+      if (seaLevelVoxel !== undefined) {
+        const waterTop = top + 1;
+        const waterBottom = Math.min(seaLevelVoxel, vyN - 1);
+        for (let vy = waterTop; vy <= waterBottom; ++vy) {
+          store.set(vx, vy, vz, VOXEL_WATER);
+        }
+      }
     }
   }
 };
 
+// Whether a neighbouring voxel exposes a solid voxel to the surface: it's
+// empty air (so the terrain side is visible) or water (so the ray reaches the
+// lakebed through the water pass and the terrain under water must be stored).
+const exposes = (id: number): boolean => id === VOXEL_AIR || id === VOXEL_WATER;
+
 // Calls `cb(x, y, z, id)` once per surface voxel: a solid voxel with at least
-// one of its 6 neighbours empty. Out-of-bounds neighbours count as air, except
-// below the block floor (treated as solid) so the world's underside never
-// surfaces. Returns the number of surface voxels found.
+// one of its 6 neighbours empty (or water). Out-of-bounds neighbours count as
+// air, except below the block floor (treated as solid) so the world's underside
+// never surfaces. Returns the number of surface voxels found.
 export const sweepSurface = (
   store: VoxelStore,
   cb: (x: number, y: number, z: number, id: number) => void,
@@ -102,43 +121,106 @@ export const sweepSurface = (
     for (let y = 0; y < ny; ++y) {
       for (let x = 0; x < nx; ++x, ++idx) {
         const id = data[idx];
-        if (id === VOXEL_AIR) {
+        if (id === VOXEL_AIR || id === VOXEL_WATER) {
           continue;
         }
         const below = y === 0 ? 1 : data[idx - nx];
-        if (below === VOXEL_AIR) {
+        if (exposes(below)) {
           cb(x, y, z, id);
           count++;
           continue;
         }
         const above = y === ny - 1 ? 0 : data[idx + nx];
-        if (above === VOXEL_AIR) {
+        if (exposes(above)) {
           cb(x, y, z, id);
           count++;
           continue;
         }
         const left = x === 0 ? 0 : data[idx - 1];
-        if (left === VOXEL_AIR) {
+        if (exposes(left)) {
           cb(x, y, z, id);
           count++;
           continue;
         }
         const right = x === nx - 1 ? 0 : data[idx + 1];
-        if (right === VOXEL_AIR) {
+        if (exposes(right)) {
           cb(x, y, z, id);
           count++;
           continue;
         }
         const front = z === 0 ? 0 : data[idx - plane];
-        if (front === VOXEL_AIR) {
+        if (exposes(front)) {
           cb(x, y, z, id);
           count++;
           continue;
         }
         const back = z === nz - 1 ? 0 : data[idx + plane];
-        if (back === VOXEL_AIR) {
+        if (exposes(back)) {
           cb(x, y, z, id);
           count++;
+        }
+      }
+    }
+  }
+  return count;
+};
+
+// Calls `cb(x, y, z, VOXEL_WATER)` once per water surface voxel: a water voxel
+// with at least one empty 6-neighbour. Only this top layer of the water body is
+// stored, so the water march finds the surface in a single step and the GPU
+// chunks stay thin (the lakebed behind it is the terrain surface). Out-of-bounds
+// neighbours count as air, except below the floor (treated as solid). Returns
+// the number of surface voxels found.
+export const sweepWaterSurface = (
+  store: VoxelStore,
+  cb: (x: number, y: number, z: number, id: number) => void,
+): number => {
+  const [nx, ny, nz] = store.voxels;
+  const data = store.data;
+  const plane = nx * ny;
+  let count = 0;
+  const emit = (idx: number): void => {
+    const z = Math.floor(idx / plane);
+    const y = Math.floor((idx % plane) / nx);
+    const x = idx % nx;
+    cb(x, y, z, VOXEL_WATER);
+    count++;
+  };
+  for (let z = 0; z < nz; ++z) {
+    for (let y = 0; y < ny; ++y) {
+      for (let x = 0; x < nx; ++x) {
+        const idx = (z * ny + y) * nx + x;
+        if (data[idx] !== VOXEL_WATER) {
+          continue;
+        }
+        const above = y === ny - 1 ? 0 : data[idx + nx];
+        if (above === VOXEL_AIR) {
+          emit(idx);
+          continue;
+        }
+        const below = y === 0 ? 1 : data[idx - nx];
+        if (below === VOXEL_AIR) {
+          emit(idx);
+          continue;
+        }
+        const left = x === 0 ? 0 : data[idx - 1];
+        if (left === VOXEL_AIR) {
+          emit(idx);
+          continue;
+        }
+        const right = x === nx - 1 ? 0 : data[idx + 1];
+        if (right === VOXEL_AIR) {
+          emit(idx);
+          continue;
+        }
+        const front = z === 0 ? 0 : data[idx - plane];
+        if (front === VOXEL_AIR) {
+          emit(idx);
+          continue;
+        }
+        const back = z === nz - 1 ? 0 : data[idx + plane];
+        if (back === VOXEL_AIR) {
+          emit(idx);
         }
       }
     }
