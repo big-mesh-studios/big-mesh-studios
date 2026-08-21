@@ -8,13 +8,12 @@ import {
 import * as THREE from "three";
 import { queueJump, setTouchMove } from "./input";
 import { Joystick } from "./Joystick";
-
-const BTN_CLS =
-  "pointer-events-auto flex items-center justify-center rounded-xl border border-white/40 " +
-  "bg-white/15 text-white select-none touch-none active:bg-white/30";
+import { ActionButton } from "./ActionButton";
 
 const Controls: Component = () => {
   const HIT = 150;
+  const BUTTON = 100;
+  const MARGIN = 24;
   const [viewSize, setViewSize] = createSignal<THREE.Vector2>(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
   );
@@ -25,12 +24,17 @@ const Controls: Component = () => {
   onCleanup(() => window.removeEventListener("resize", onResize));
 
   const joystick = Joystick({
-    position: createMemo(
-      () => new THREE.Vector2(24, viewSize().y - 24 - HIT),
-    ),
+    position: createMemo(() => new THREE.Vector2(MARGIN, viewSize().y - MARGIN - HIT)),
     hitAreaSize: HIT,
     outerRingSize: () => 0.8 * HIT,
     knobSize: () => 70,
+  });
+
+  const actionButton = ActionButton({
+    position: createMemo(
+      () => new THREE.Vector2(viewSize().x - MARGIN - BUTTON, viewSize().y - MARGIN - BUTTON),
+    ),
+    size: () => BUTTON,
   });
 
   // joystick value is -0.5..0.5 in screen axes (+y = down); convert to the
@@ -39,6 +43,16 @@ const Controls: Component = () => {
     joystick.value,
     (value) => {
       setTouchMove(value.x * 2, -value.y * 2);
+    },
+  );
+
+  // edge-triggered jump on each press of the touch button
+  createEffect(
+    actionButton.pressed,
+    (pressed) => {
+      if (pressed) {
+        queueJump();
+      }
     },
   );
 
@@ -52,16 +66,9 @@ const Controls: Component = () => {
         <joystick.UI />
       </div>
 
-      <button
-        type="button"
-        class={`${BTN_CLS} absolute bottom-10 right-8 h-20 w-20 rounded-full text-lg font-bold`}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          queueJump();
-        }}
-      >
-        JUMP
-      </button>
+      <div class="pointer-events-auto">
+        <actionButton.UI />
+      </div>
     </div>
   );
 };
