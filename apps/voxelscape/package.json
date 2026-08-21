@@ -21,6 +21,7 @@
     "@types/three": "^0.183.1",
     "esbuild": "^0.28.1",
     "fast-png": "^8.0.0",
+    "playwright": "^1.62.1",
     "prettier": "^3.9.6",
     "typescript": "^5.7.2",
     "vite": "^7.1.4",
@@ -40,4 +41,4 @@
     "tailwindcss": "^4.3.0",
     "three": "^0.183.2"
   }
- }
+}

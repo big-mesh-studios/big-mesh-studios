@@ -1,6 +1,29 @@
-import { bool, Break, builtinFragDepth, float, For, If, int, ivec3, max, min, uvec3, uvec4, vec2, vec3, vec4 } from "@random-mesh/rmsl";
+import {
+  bool,
+  Break,
+  builtinFragDepth,
+  float,
+  For,
+  If,
+  int,
+  ivec3,
+  max,
+  min,
+  uvec3,
+  uvec4,
+  vec2,
+  vec3,
+  vec4,
+} from "@random-mesh/rmsl";
 import type { Node } from "@random-mesh/rmsl";
-import { Builder, DataTexture, NodeMaterial, RedIntegerFormat, Scene, UnsignedByteType } from "@random-mesh/rmsl/scene";
+import {
+  Builder,
+  DataTexture,
+  NodeMaterial,
+  RedIntegerFormat,
+  Scene,
+  UnsignedByteType,
+} from "@random-mesh/rmsl/scene";
 import type { UniformNode } from "@random-mesh/rmsl";
 
 export type Dim3 = [number, number, number];
@@ -18,18 +41,32 @@ const LOD_STORAGE_SLOTS: Dim3[] = [
   [6, 3, 6],
 ];
 
-export const blockConfig = (lod: number): {
-  voxels: Dim3,
-  broadDim: Dim3,
-  chunkDim: Dim3,
-  storageDim: Dim3,
-  dimensions: Dim3,
+export const blockConfig = (
+  lod: number,
+): {
+  voxels: Dim3;
+  broadDim: Dim3;
+  chunkDim: Dim3;
+  storageDim: Dim3;
+  dimensions: Dim3;
 } => {
   const scale = 1 << lod;
-  const voxels: Dim3 = [BLOCK_WORLD[0] / scale, BLOCK_WORLD[1] / scale, BLOCK_WORLD[2] / scale];
-  const broadDim: Dim3 = [voxels[0] / CHUNK_DIM, voxels[1] / CHUNK_DIM, voxels[2] / CHUNK_DIM];
+  const voxels: Dim3 = [
+    BLOCK_WORLD[0] / scale,
+    BLOCK_WORLD[1] / scale,
+    BLOCK_WORLD[2] / scale,
+  ];
+  const broadDim: Dim3 = [
+    voxels[0] / CHUNK_DIM,
+    voxels[1] / CHUNK_DIM,
+    voxels[2] / CHUNK_DIM,
+  ];
   const slots = LOD_STORAGE_SLOTS[Math.min(lod, LOD_STORAGE_SLOTS.length - 1)];
-  const storageDim: Dim3 = [slots[0] * CHUNK_DIM, slots[1] * CHUNK_DIM, slots[2] * CHUNK_DIM];
+  const storageDim: Dim3 = [
+    slots[0] * CHUNK_DIM,
+    slots[1] * CHUNK_DIM,
+    slots[2] * CHUNK_DIM,
+  ];
   const chunkDim: Dim3 = [CHUNK_DIM, CHUNK_DIM, CHUNK_DIM];
   return { voxels, broadDim, chunkDim, storageDim, dimensions: BLOCK_WORLD };
 };
@@ -52,14 +89,16 @@ export class Level {
   allocCount: number = 0;
   warnedStorageOverflow: boolean = false;
   freeSpots: {
-    storageXIdx: number,
-    storageYIdx: number,
-    storageZIdx: number,
+    storageXIdx: number;
+    storageYIdx: number;
+    storageZIdx: number;
   }[] = [];
   // world-unit extents of the volume; a rectangular prism, not necessarily a cube
   dimensions: Dim3;
+  // voxel size in world units: 1 at LOD0, 2 at LOD1, etc. (matches `blockConfig`)
+  scale: number = 1;
 
-  allocChunk(out: { x: number, y: number, z: number, }) {
+  allocChunk(out: { x: number; y: number; z: number }) {
     {
       let freeSpot = this.freeSpots.pop();
       if (freeSpot !== undefined) {
@@ -70,7 +109,8 @@ export class Level {
       }
     }
     this.allocCount++;
-    const capacity = this.storageCount[0] * this.storageCount[1] * this.storageCount[2];
+    const capacity =
+      this.storageCount[0] * this.storageCount[1] * this.storageCount[2];
     if (this.allocCount > capacity && !this.warnedStorageOverflow) {
       this.warnedStorageOverflow = true;
       console.warn(
@@ -91,56 +131,65 @@ export class Level {
     }
   }
 
-  _set_chunk: { x: number, y: number, z: number, } = { x: 0, y: 0, z: 0, };
-  set(x: number, y: number, z: number, val: number) {
+  _set_chunk: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
+  // Resolves the voxel coordinate to an index into `data` (mirrors the shader's
+  // broad -> chunk -> fine lookup). Returns -1 when the broad cell is empty.
+  private dataIndexFor(x: number, y: number, z: number): number {
     const bd = this.broadDim;
     const cd = this.chunkDim;
     const sd = this.storageDim;
-    let broadXIdx = Math.floor(x / cd[0]);
-    let broadYIdx = Math.floor(y / cd[1]);
-    let broadZIdx = Math.floor(z / cd[2]);
-    let broadIdx = (
-        broadZIdx * bd[1] * bd[0]
-        + broadYIdx * bd[0]
-        + broadXIdx
-      ) << 2;
-    let broadCell = this.broadData[broadIdx];
-    let chunkXIdx: number;
-    let chunkYIdx: number;
-    let chunkZIdx: number;
-    if (broadCell === 0) {
-      this.allocChunk(this._set_chunk);
-      chunkXIdx = this._set_chunk.x;
-      chunkYIdx = this._set_chunk.y;
-      chunkZIdx = this._set_chunk.z;
-      this.broadData[broadIdx + 0] = 1;
-      this.broadData[broadIdx + 1] = chunkXIdx;
-      this.broadData[broadIdx + 2] = chunkYIdx;
-      this.broadData[broadIdx + 3] = chunkZIdx;
-    } else {
-      chunkXIdx = this.broadData[broadIdx + 1];
-      chunkYIdx = this.broadData[broadIdx + 2];
-      chunkZIdx = this.broadData[broadIdx + 3];
+    const broadXIdx = Math.floor(x / cd[0]);
+    const broadYIdx = Math.floor(y / cd[1]);
+    const broadZIdx = Math.floor(z / cd[2]);
+    const broadIdx =
+      (broadZIdx * bd[1] * bd[0] + broadYIdx * bd[0] + broadXIdx) << 2;
+    if (this.broadData[broadIdx] === 0) {
+      return -1;
     }
-    let fineXIdx = chunkXIdx * cd[0] + (x - broadXIdx * cd[0]);
-    let fineYIdx = chunkYIdx * cd[1] + (y - broadYIdx * cd[1]);
-    let fineZIdx = chunkZIdx * cd[2] + (z - broadZIdx * cd[2]);
-    let idx = (
-        fineZIdx * sd[1] * sd[0]
-        + fineYIdx * sd[0]
-        + fineXIdx
-      );
-    this.data[idx] = val;
+    const chunkXIdx = this.broadData[broadIdx + 1];
+    const chunkYIdx = this.broadData[broadIdx + 2];
+    const chunkZIdx = this.broadData[broadIdx + 3];
+    const fineXIdx = chunkXIdx * cd[0] + (x - broadXIdx * cd[0]);
+    const fineYIdx = chunkYIdx * cd[1] + (y - broadYIdx * cd[1]);
+    const fineZIdx = chunkZIdx * cd[2] + (z - broadZIdx * cd[2]);
+    return fineZIdx * sd[1] * sd[0] + fineYIdx * sd[0] + fineXIdx;
+  }
+
+  set(x: number, y: number, z: number, val: number) {
+    const bd = this.broadDim;
+    const cd = this.chunkDim;
+    const broadXIdx = Math.floor(x / cd[0]);
+    const broadYIdx = Math.floor(y / cd[1]);
+    const broadZIdx = Math.floor(z / cd[2]);
+    const broadIdx =
+      (broadZIdx * bd[1] * bd[0] + broadYIdx * bd[0] + broadXIdx) << 2;
+    if (this.broadData[broadIdx] === 0) {
+      this.allocChunk(this._set_chunk);
+      this.broadData[broadIdx + 0] = 1;
+      this.broadData[broadIdx + 1] = this._set_chunk.x;
+      this.broadData[broadIdx + 2] = this._set_chunk.y;
+      this.broadData[broadIdx + 3] = this._set_chunk.z;
+    }
+    const idx = this.dataIndexFor(x, y, z);
+    if (idx >= 0) {
+      this.data[idx] = val;
+    }
+  }
+
+  get(x: number, y: number, z: number): number {
+    const idx = this.dataIndexFor(x, y, z);
+    return idx >= 0 ? this.data[idx] : 0;
   }
 
   constructor(params?: {
-    broadDim?: Dim3,
-    chunkDim?: Dim3,
-    storageDim?: Dim3,
-    dimensions?: Dim3,
+    broadDim?: Dim3;
+    chunkDim?: Dim3;
+    storageDim?: Dim3;
+    dimensions?: Dim3;
+    scale?: number;
   }) {
     const def = blockConfig(0);
-    const { broadDim, chunkDim, storageDim, dimensions } = params ?? {};
+    const { broadDim, chunkDim, storageDim, dimensions, scale } = params ?? {};
     const bd = broadDim ?? def.broadDim;
     const cd = chunkDim ?? def.chunkDim;
     const sd = storageDim ?? def.storageDim;
@@ -152,24 +201,40 @@ export class Level {
       Math.floor(sd[1] / cd[1]),
       Math.floor(sd[2] / cd[2]),
     ];
-    this.dimensions = dimensions ?? [bd[0] * cd[0], bd[1] * cd[1], bd[2] * cd[2]];
+    this.dimensions = dimensions ?? [
+      bd[0] * cd[0],
+      bd[1] * cd[1],
+      bd[2] * cd[2],
+    ];
+    this.scale = scale ?? 1;
     this.broadData = new Uint8Array(bd[0] * bd[1] * bd[2] * 4);
     this.broadTexture = new DataTexture(this.broadData, bd[0], bd[1], bd[2]);
     this.data = new Uint8Array(sd[0] * sd[1] * sd[2]);
-    this.texture = new DataTexture(this.data, sd[0], sd[1], sd[2], RedIntegerFormat, UnsignedByteType);
+    this.texture = new DataTexture(
+      this.data,
+      sd[0],
+      sd[1],
+      sd[2],
+      RedIntegerFormat,
+      UnsignedByteType,
+    );
   }
 }
 
 // Builds one block of the shared height field, sampled at the block's absolute
 // world xz (so neighbouring blocks meet seamlessly) at `1 << lod` resolution.
-export const buildBlock = (params: {
-  center: Dim3,
-  lod?: number,
-}): Level => {
+export const buildBlock = (params: { center: Dim3; lod?: number }): Level => {
   const lod = params.lod ?? 0;
   const scale = 1 << lod;
-  const { voxels, broadDim, chunkDim, storageDim, dimensions } = blockConfig(lod);
-  const level = new Level({ broadDim, chunkDim, storageDim, dimensions });
+  const { voxels, broadDim, chunkDim, storageDim, dimensions } =
+    blockConfig(lod);
+  const level = new Level({
+    broadDim,
+    chunkDim,
+    storageDim,
+    dimensions,
+    scale,
+  });
   for (let vz = 0; vz < voxels[2]; ++vz) {
     for (let vx = 0; vx < voxels[0]; ++vx) {
       const worldX = params.center[0] + (vx + 0.5 - voxels[0] / 2) * scale;
@@ -188,7 +253,11 @@ const maxVec2 = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> => max(a, b);
 const minVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> => min(a, b);
 const maxVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> => max(a, b);
 
-const inRegion = (minIdx: Node<"uvec3">, maxIdx: Node<"uvec3">, cell: Node<"ivec3">): Node<"bool"> => {
+const inRegion = (
+  minIdx: Node<"uvec3">,
+  maxIdx: Node<"uvec3">,
+  cell: Node<"ivec3">,
+): Node<"bool"> => {
   const c = cell.toVec3();
   return c
     .greaterThanEqual(minIdx.toVec3())
@@ -196,7 +265,11 @@ const inRegion = (minIdx: Node<"uvec3">, maxIdx: Node<"uvec3">, cell: Node<"ivec
     .and(c.lessThanEqual(maxIdx.toVec3()).all());
 };
 
-const inPaddedRegion = (minIdx: Node<"uvec3">, maxIdx: Node<"uvec3">, cell: Node<"ivec3">): Node<"bool"> => {
+const inPaddedRegion = (
+  minIdx: Node<"uvec3">,
+  maxIdx: Node<"uvec3">,
+  cell: Node<"ivec3">,
+): Node<"bool"> => {
   const c = cell.toVec3();
   return c
     .greaterThanEqual(minIdx.toVec3().sub(vec3(1)))
@@ -205,19 +278,23 @@ const inPaddedRegion = (minIdx: Node<"uvec3">, maxIdx: Node<"uvec3">, cell: Node
 };
 
 const intersectBox = (params: {
-  rayOrigin: Node<"vec3">,
-  rayDirection: Node<"vec3">,
-  boxMin: Node<"vec3">,
-  boxMax: Node<"vec3">,
+  rayOrigin: Node<"vec3">;
+  rayDirection: Node<"vec3">;
+  boxMin: Node<"vec3">;
+  boxMax: Node<"vec3">;
 }): {
-  entryDistance: Node<"float">,
-  exitDistance: Node<"float">,
-  nearPlaneDistances: Node<"vec3">,
+  entryDistance: Node<"float">;
+  exitDistance: Node<"float">;
+  nearPlaneDistances: Node<"vec3">;
 } => {
   let { rayOrigin, rayDirection, boxMin, boxMax } = params;
   const inverseRayDirection = vec3(1.0).div(rayDirection).toVar();
-  const distanceToMinPlanes = inverseRayDirection.mul(boxMin.sub(rayOrigin)).toVar();
-  const distanceToMaxPlanes = inverseRayDirection.mul(boxMax.sub(rayOrigin)).toVar();
+  const distanceToMinPlanes = inverseRayDirection
+    .mul(boxMin.sub(rayOrigin))
+    .toVar();
+  const distanceToMaxPlanes = inverseRayDirection
+    .mul(boxMax.sub(rayOrigin))
+    .toVar();
   const nearPlaneDistances = minVec3(distanceToMinPlanes, distanceToMaxPlanes);
   const farPlaneDistances = maxVec3(distanceToMinPlanes, distanceToMaxPlanes);
   const nearPair = maxVec2(
@@ -234,23 +311,33 @@ const intersectBox = (params: {
 };
 
 export let rayMarch = (params: {
-  rayOrigin: Node<"vec3">,
-  rayDirection: Node<"vec3">,
-  dimensions: Node<"vec3">,
-  voxelCount: Node<"vec3">,
-  uVoxels: Node<"usampler3D">,
-  marchMin?: Node<"uvec3">,
-  marchMax?: Node<"uvec3">,
-  texelOffset?: Node<"vec3">,
-  fetchCount?: Node<"int">,
+  rayOrigin: Node<"vec3">;
+  rayDirection: Node<"vec3">;
+  dimensions: Node<"vec3">;
+  voxelCount: Node<"vec3">;
+  uVoxels: Node<"usampler3D">;
+  marchMin?: Node<"uvec3">;
+  marchMax?: Node<"uvec3">;
+  texelOffset?: Node<"vec3">;
+  fetchCount?: Node<"int">;
 }): {
-  hit: Node<"bool">,
-  voxel: Node<"uvec4">,
-  voxelPos: Node<"ivec3">,
-  normal: Node<"vec3">,
-  hitPoint: Node<"vec3">,
+  hit: Node<"bool">;
+  voxel: Node<"uvec4">;
+  voxelPos: Node<"ivec3">;
+  normal: Node<"vec3">;
+  hitPoint: Node<"vec3">;
 } => {
-  let { rayOrigin, rayDirection, dimensions, voxelCount, uVoxels, marchMin, marchMax, texelOffset, fetchCount } = params;
+  let {
+    rayOrigin,
+    rayDirection,
+    dimensions,
+    voxelCount,
+    uVoxels,
+    marchMin,
+    marchMax,
+    texelOffset,
+    fetchCount,
+  } = params;
 
   const texelShift = (texelOffset ?? vec3(0)).toVar();
   const fetchCell = (cell: Node<"ivec3">): Node<"uvec4"> =>
@@ -290,9 +377,13 @@ export let rayMarch = (params: {
   });
 
   If(entryDistance.lessThanEqual(exitDistance), () => {
+    // When the ray origin is inside the box, `entryDistance` is negative (the
+    // entry point lies behind the camera). Clamp the march start to the camera
+    // so it never samples geometry behind the near plane.
+    const entryClamped = entryDistance.max(float(0)).toVar();
     const cellDir = rayDirection.div(cellSize).toVar();
 
-    const entryPoint = rayOrigin.add(rayDirection.mul(entryDistance)).toVar();
+    const entryPoint = rayOrigin.add(rayDirection.mul(entryClamped)).toVar();
     const cellOrigin = entryPoint
       .add(dimensions.mul(float(0.5)))
       .div(cellSize)
@@ -301,9 +392,7 @@ export let rayMarch = (params: {
 
     const mapPos = cellOrigin.floor().toIVec3().toVar();
     const rayStep = rayDirection.sign().toIVec3().toVar();
-    const deltaDist = vec3(1.0)
-      .div(cellDir.abs().max(1e-6))
-      .toVar();
+    const deltaDist = vec3(1.0).div(cellDir.abs().max(1e-6)).toVar();
     const sideDist = rayStep
       .toVec3()
       .mul(mapPos.toVec3().sub(cellOrigin))
@@ -332,8 +421,8 @@ export let rayMarch = (params: {
 
     For(
       () => int(0).toVar(),
-      i => i.lessThan(maxSteps),
-      i => i.assign(i.add(1)),
+      (i) => i.lessThan(maxSteps),
+      (i) => i.assign(i.add(1)),
       () => {
         If(inPaddedRegion(minIdx, maxIdx, mapPos).not(), () => {
           Break();
@@ -370,7 +459,7 @@ export let rayMarch = (params: {
       const hitDistance = float(0).toVar();
       If(mask.x.notEqual(float(0)), () => {
         hitDistance.assign(
-          entryDistance.add(
+          entryClamped.add(
             rayStep.x
               .greaterThan(0)
               .select(mapPos.x, mapPos.x.add(1))
@@ -383,7 +472,7 @@ export let rayMarch = (params: {
       })
         .ElseIf(mask.y.notEqual(float(0)), () => {
           hitDistance.assign(
-            entryDistance.add(
+            entryClamped.add(
               rayStep.y
                 .greaterThan(0)
                 .select(mapPos.y, mapPos.y.add(1))
@@ -396,7 +485,7 @@ export let rayMarch = (params: {
         })
         .Else(() => {
           hitDistance.assign(
-            entryDistance.add(
+            entryClamped.add(
               rayStep.z
                 .greaterThan(0)
                 .select(mapPos.z, mapPos.z.add(1))
@@ -424,20 +513,29 @@ export let rayMarch = (params: {
 // the block's local space, where the volume is centered at the origin. Returns
 // results without shading; `hitPoint` is local (add the block center for world).
 export let marchBlock = (params: {
-  rayOrigin: Node<"vec3">,
-  rayDirection: Node<"vec3">,
-  dimensions: Node<"vec3">,
-  broadVoxels: Node<"usampler3D">,
-  broadDim: Node<"vec3">,
-  chunkDim: Node<"vec3">,
-  fineVoxels: Node<"usampler3D">,
-  fetchCount?: Node<"int">,
+  rayOrigin: Node<"vec3">;
+  rayDirection: Node<"vec3">;
+  dimensions: Node<"vec3">;
+  broadVoxels: Node<"usampler3D">;
+  broadDim: Node<"vec3">;
+  chunkDim: Node<"vec3">;
+  fineVoxels: Node<"usampler3D">;
+  fetchCount?: Node<"int">;
 }): {
-  hit: Node<"bool">,
-  normal: Node<"vec3">,
-  hitPoint: Node<"vec3">,
+  hit: Node<"bool">;
+  normal: Node<"vec3">;
+  hitPoint: Node<"vec3">;
 } => {
-  let { rayOrigin, rayDirection, dimensions, broadVoxels, broadDim, chunkDim, fineVoxels, fetchCount } = params;
+  let {
+    rayOrigin,
+    rayDirection,
+    dimensions,
+    broadVoxels,
+    broadDim,
+    chunkDim,
+    fineVoxels,
+    fetchCount,
+  } = params;
 
   const volumeDimensions = dimensions.toVar();
   const virtualDim = broadDim.mul(chunkDim).toVar();
@@ -458,9 +556,12 @@ export let marchBlock = (params: {
   });
 
   If(entryDistance.lessThanEqual(exitDistance), () => {
+    // Clamp the march start to the camera when it is inside the volume, so the
+    // DDA never samples voxels behind the camera.
+    const entryClamped = entryDistance.max(float(0)).toVar();
     const cellDir = rayDirection.div(cellSizeBroad).toVar();
 
-    const entryPoint = rayOrigin.add(rayDirection.mul(entryDistance)).toVar();
+    const entryPoint = rayOrigin.add(rayDirection.mul(entryClamped)).toVar();
     const cellOrigin = entryPoint
       .add(volumeDimensions.mul(float(0.5)))
       .div(cellSizeBroad)
@@ -469,9 +570,7 @@ export let marchBlock = (params: {
 
     const mapPos = cellOrigin.floor().toIVec3().toVar();
     const rayStep = rayDirection.sign().toIVec3().toVar();
-    const deltaDist = vec3(1.0)
-      .div(cellDir.abs().max(1e-6))
-      .toVar();
+    const deltaDist = vec3(1.0).div(cellDir.abs().max(1e-6)).toVar();
     const sideDist = rayStep
       .toVec3()
       .mul(mapPos.toVec3().sub(cellOrigin))
@@ -501,15 +600,20 @@ export let marchBlock = (params: {
 
     For(
       () => int(0).toVar(),
-      i => i.lessThan(maxSteps),
-      i => i.assign(i.add(1)),
+      (i) => i.lessThan(maxSteps),
+      (i) => i.assign(i.add(1)),
       () => {
         If(
           mapPos
             .toVec3()
             .greaterThanEqual(vec3(float(-2)))
             .all()
-            .and(mapPos.toVec3().lessThan(broadCount.add(vec3(float(2)))).all())
+            .and(
+              mapPos
+                .toVec3()
+                .lessThan(broadCount.add(vec3(float(2))))
+                .all(),
+            )
             .not(),
           () => {
             Break();
@@ -526,7 +630,9 @@ export let marchBlock = (params: {
             If(broadCell.r.notEqual(0), () => {
               const virtualChunkMin = mapPos.toUVec3().mul(chunkDimU);
               const storageChunkMin = broadCell.yzw.mul(chunkDimU);
-              const texelOffset = storageChunkMin.toVec3().sub(virtualChunkMin.toVec3());
+              const texelOffset = storageChunkMin
+                .toVec3()
+                .sub(virtualChunkMin.toVec3());
               const fine = rayMarch({
                 rayOrigin,
                 rayDirection,
@@ -568,29 +674,30 @@ export let marchBlock = (params: {
 };
 
 export interface WorldBlockShader {
-  center: Node<"vec3">,
-  dimensions: Node<"vec3">,
-  broadVoxels: Node<"usampler3D">,
-  broadDim: Node<"vec3">,
-  chunkDim: Node<"vec3">,
-  fineVoxels: Node<"usampler3D">,
+  center: Node<"vec3">;
+  dimensions: Node<"vec3">;
+  broadVoxels: Node<"usampler3D">;
+  broadDim: Node<"vec3">;
+  chunkDim: Node<"vec3">;
+  fineVoxels: Node<"usampler3D">;
 }
 
 // Marches a world of stacked blocks: AABB-test every block, run the fine march
 // on each one the ray enters (cheap, since block broad grids skip empty space)
 // and keep the nearest hit. Shading is applied once at the end.
 export let rayMarchWorld = (params: {
-  rayOrigin: Node<"vec3">,
-  rayDirection: Node<"vec3">,
-  blocks: WorldBlockShader[],
-  outColour: Node<"vec4">,
-  outHitPoint: Node<"vec3">,
-  fetchCount?: Node<"int">,
+  rayOrigin: Node<"vec3">;
+  rayDirection: Node<"vec3">;
+  blocks: WorldBlockShader[];
+  outColour: Node<"vec4">;
+  outHitPoint: Node<"vec3">;
+  fetchCount?: Node<"int">;
 }): void => {
   const ambientColour = vec3(0.2).toVar();
   const lightColour = vec3(1.0).toVar();
   const lightDir = vec3(1.0, 2.0, 1.0).normalize().toVar();
-  let { rayOrigin, rayDirection, blocks, outColour, outHitPoint, fetchCount } = params;
+  let { rayOrigin, rayDirection, blocks, outColour, outHitPoint, fetchCount } =
+    params;
   const N = blocks.length;
 
   const hit = bool(false).toVar();
@@ -642,9 +749,7 @@ export let rayMarchWorld = (params: {
   If(hit, () => {
     const diffuse = normal.dot(lightDir).max(float(0));
     outColour.rgb.assign(
-      vec3(0.0, 0.0, 1.0).mul(
-        ambientColour.add(lightColour.mul(diffuse)),
-      ),
+      vec3(0.0, 0.0, 1.0).mul(ambientColour.add(lightColour.mul(diffuse))),
     );
     outColour.a.assign(float(1));
     outHitPoint.assign(hitPoint);
@@ -652,9 +757,62 @@ export let rayMarchWorld = (params: {
 };
 
 export interface WorldBlock {
-  level: Level,
-  center: Dim3,
+  level: Level;
+  center: Dim3;
 }
+
+// CPU ground-height sampler: finds the voxel surface at (worldX, worldZ) by
+// scanning the containing block's fine voxels top-down. Mirrors the shader's
+// world -> local -> voxel mapping, so it respects each block's LOD scale.
+// Returns -Infinity when the point is outside every block or over empty space.
+export const getWorldHeight = (
+  blocks: WorldBlock[],
+  worldX: number,
+  worldZ: number,
+): number => {
+  let best: WorldBlock | undefined;
+  let bestDistSq = Infinity;
+  for (const block of blocks) {
+    const dx = worldX - block.center[0];
+    const dz = worldZ - block.center[2];
+    const hx = block.level.dimensions[0] / 2;
+    const hz = block.level.dimensions[2] / 2;
+    if (Math.abs(dx) > hx || Math.abs(dz) > hz) {
+      continue;
+    }
+    const d = dx * dx + dz * dz;
+    if (d < bestDistSq) {
+      bestDistSq = d;
+      best = block;
+    }
+  }
+  if (best === undefined) {
+    return -Infinity;
+  }
+  const level = best.level;
+  const scale = level.scale;
+  const voxels: Dim3 = [
+    level.dimensions[0] / scale,
+    level.dimensions[1] / scale,
+    level.dimensions[2] / scale,
+  ];
+  const clampAxis = (v: number, n: number): number =>
+    Math.max(0, Math.min(n - 1, v));
+  const vx = clampAxis(
+    Math.floor((worldX - best.center[0]) / scale + voxels[0] / 2),
+    voxels[0],
+  );
+  const vz = clampAxis(
+    Math.floor((worldZ - best.center[2]) / scale + voxels[2] / 2),
+    voxels[2],
+  );
+  for (let vy = voxels[1] - 1; vy >= 0; --vy) {
+    if (level.get(vx, vy, vz) !== 0) {
+      return best.center[1] + (vy + 0.5 - voxels[1] / 2) * scale;
+    }
+  }
+  return -Infinity;
+};
 
 export class LevelWorldMaterial extends NodeMaterial {
   blocks: WorldBlock[] = [];
@@ -681,12 +839,36 @@ export class LevelWorldMaterial extends NodeMaterial {
       const level = this.blocks[i].level;
       const prefix = `b${i}_`;
       this.blockUniforms.push({
-        center: b.materialUniform(prefix + "center", "vec3", () => this.blocks[i].center),
-        dimensions: b.materialUniform(prefix + "dimensions", "vec3", () => level.dimensions),
-        broadVoxels: b.sampler(prefix + "broadVoxels", "usampler3D", () => level.broadTexture),
-        broadDim: b.materialUniform(prefix + "broadDim", "vec3", () => level.broadDim),
-        chunkDim: b.materialUniform(prefix + "chunkDim", "vec3", () => level.chunkDim),
-        fineVoxels: b.sampler(prefix + "fineVoxels", "usampler3D", () => level.texture),
+        center: b.materialUniform(
+          prefix + "center",
+          "vec3",
+          () => this.blocks[i].center,
+        ),
+        dimensions: b.materialUniform(
+          prefix + "dimensions",
+          "vec3",
+          () => level.dimensions,
+        ),
+        broadVoxels: b.sampler(
+          prefix + "broadVoxels",
+          "usampler3D",
+          () => level.broadTexture,
+        ),
+        broadDim: b.materialUniform(
+          prefix + "broadDim",
+          "vec3",
+          () => level.broadDim,
+        ),
+        chunkDim: b.materialUniform(
+          prefix + "chunkDim",
+          "vec3",
+          () => level.chunkDim,
+        ),
+        fineVoxels: b.sampler(
+          prefix + "fineVoxels",
+          "usampler3D",
+          () => level.texture,
+        ),
       });
     }
   }
@@ -694,11 +876,16 @@ export class LevelWorldMaterial extends NodeMaterial {
   protected buildVertexBody(b: Builder): Node<"vec4"> {
     const position = b.position;
     b.varying("vModelPos", "vec3").assign(position);
-    return b.projectionMatrix.mul(b.viewMatrix.mul(b.modelMatrix.mul(vec4(position, 1.0))));
+    return b.projectionMatrix.mul(
+      b.viewMatrix.mul(b.modelMatrix.mul(vec4(position, 1.0))),
+    );
   }
 
   protected buildFragmentBody(b: Builder): Node<"vec4"> {
-    if (this.blocks.length === 0 || this.blockUniforms.length !== this.blocks.length) {
+    if (
+      this.blocks.length === 0 ||
+      this.blockUniforms.length !== this.blocks.length
+    ) {
       return vec4(0.0);
     }
     const vModelPos = b.varying("vModelPos", "vec3");
@@ -721,11 +908,7 @@ export class LevelWorldMaterial extends NodeMaterial {
     if (this.debugFetchCount && fetchCount !== undefined) {
       const hasFetches = fetchCount.greaterThan(0);
       colour.rgb.assign(
-        vec3(
-          float(fetchCount.mod(256)),
-          float(fetchCount.div(256)),
-          float(0),
-        ),
+        vec3(float(fetchCount.mod(256)), float(fetchCount.div(256)), float(0)),
       );
       colour.a.assign(hasFetches.select(float(1), float(0)));
     }
