@@ -22,9 +22,11 @@ import {
   NodeMaterial,
   RedIntegerFormat,
   Scene,
+  Texture,
   UnsignedByteType,
 } from "@random-mesh/rmsl/scene";
 import type { UniformNode } from "@random-mesh/rmsl";
+import type { VoxelTileConfig } from "./atlas";
 
 export type Dim3 = [number, number, number];
 
@@ -525,6 +527,8 @@ export let marchBlock = (params: {
   hit: Node<"bool">;
   normal: Node<"vec3">;
   hitPoint: Node<"vec3">;
+  voxel: Node<"uvec4">;
+  cellSize: Node<"vec3">;
 } => {
   let {
     rayOrigin,
@@ -545,6 +549,8 @@ export let marchBlock = (params: {
   const hit = bool(false).toVar();
   const normal = vec3(0).toVar();
   const hitPoint = vec3(0).toVar();
+  const voxel = uvec4().toVar();
+  const cellSize = volumeDimensions.div(virtualDim).toVar();
 
   const boxMin = volumeDimensions.mul(float(-0.5)).sub(cellSizeBroad).toVar();
   const boxMax = volumeDimensions.mul(float(0.5)).add(cellSizeBroad).toVar();
@@ -648,6 +654,7 @@ export let marchBlock = (params: {
                 hit.assign(bool(true));
                 normal.assign(fine.normal);
                 hitPoint.assign(fine.hitPoint);
+                voxel.assign(fine.voxel);
                 Break();
               });
             });
@@ -670,7 +677,7 @@ export let marchBlock = (params: {
     );
   });
 
-  return { hit, normal, hitPoint };
+  return { hit, normal, hitPoint, voxel, cellSize };
 };
 
 export interface WorldBlockShader {
@@ -682,6 +689,14 @@ export interface WorldBlockShader {
   fineVoxels: Node<"usampler3D">;
 }
 
+// A per-face atlas rect for one voxel id, backed by a vec4 material uniform.
+export interface TileFaceUniform {
+  id: number;
+  top: Node<"vec4">;
+  side: Node<"vec4">;
+  bottom: Node<"vec4">;
+}
+
 // Marches a world of stacked blocks: AABB-test every block, run the fine march
 // on each one the ray enters (cheap, since block broad grids skip empty space)
 // and keep the nearest hit. Shading is applied once at the end.
@@ -691,18 +706,32 @@ export let rayMarchWorld = (params: {
   blocks: WorldBlockShader[];
   outColour: Node<"vec4">;
   outHitPoint: Node<"vec3">;
+  tiles?: Node<"sampler2D">;
+  tileRects?: TileFaceUniform[];
   fetchCount?: Node<"int">;
 }): void => {
   const ambientColour = vec3(0.2).toVar();
   const lightColour = vec3(1.0).toVar();
   const lightDir = vec3(1.0, 2.0, 1.0).normalize().toVar();
-  let { rayOrigin, rayDirection, blocks, outColour, outHitPoint, fetchCount } =
-    params;
+  let {
+    rayOrigin,
+    rayDirection,
+    blocks,
+    outColour,
+    outHitPoint,
+    tiles,
+    tileRects,
+    fetchCount,
+  } = params;
   const N = blocks.length;
 
   const hit = bool(false).toVar();
   const normal = vec3(0).toVar();
   const hitPoint = vec3(0).toVar();
+  const voxel = uvec4().toVar();
+  const localHit = vec3(0).toVar();
+  const cellSize = vec3(0).toVar();
+  const dimensions = vec3(0).toVar();
   const bestDist = float(1e30).toVar();
 
   const entries: Node<"float">[] = [];
@@ -742,15 +771,61 @@ export let rayMarchWorld = (params: {
         hit.assign(bool(true));
         normal.assign(r.normal);
         hitPoint.assign(r.hitPoint.add(center));
+        voxel.assign(r.voxel);
+        localHit.assign(r.hitPoint);
+        cellSize.assign(r.cellSize);
+        dimensions.assign(blocks[i].dimensions);
       });
     });
   }
 
   If(hit, () => {
     const diffuse = normal.dot(lightDir).max(float(0));
-    outColour.rgb.assign(
-      vec3(0.0, 0.0, 1.0).mul(ambientColour.add(lightColour.mul(diffuse))),
-    );
+    const lighting = ambientColour.add(lightColour.mul(diffuse));
+    if (
+      tiles !== undefined &&
+      tileRects !== undefined &&
+      tileRects.length > 0
+    ) {
+      // cell-local coordinate of the hit; the two in-plane components sit at an
+      // integer boundary, so nudge the sample point into the voxel first.
+      const cellCoord = localHit
+        .add(dimensions.mul(float(0.5)))
+        .div(cellSize)
+        .toVar();
+      const p = cellCoord.add(normal.mul(vec3(0.5))).toVar();
+      // The world-up axis maps to v=0 (the top of the source tile, where the
+      // grass lives on side tiles), so the vertical component is flipped.
+      const faceUv = vec2(0).toVar();
+      If(normal.y.abs().greaterThan(0.5), () => {
+        faceUv.assign(vec2(p.x.fract(), p.z.fract()));
+      })
+        .ElseIf(normal.x.abs().greaterThan(0.5), () => {
+          faceUv.assign(vec2(p.z.fract(), p.y.fract().oneMinus()));
+        })
+        .Else(() => {
+          faceUv.assign(vec2(p.x.fract(), p.y.fract().oneMinus()));
+        });
+
+      const albedo = vec3(0).toVar();
+      for (const t of tileRects) {
+        If(voxel.r.equal(t.id), () => {
+          const rect = vec4(0).toVar();
+          rect.assign(t.top);
+          If(normal.y.lessThan(0), () => {
+            rect.assign(t.bottom);
+          });
+          If(normal.y.abs().lessThan(0.5), () => {
+            rect.assign(t.side);
+          });
+          const atlasUv = rect.xy.add(faceUv.mul(rect.zw.sub(rect.xy))).toVar();
+          albedo.assign(tiles.texture(atlasUv).rgb);
+        });
+      }
+      outColour.rgb.assign(albedo.mul(lighting));
+    } else {
+      outColour.rgb.assign(vec3(0.0, 0.0, 1.0).mul(lighting));
+    }
     outColour.a.assign(float(1));
     outHitPoint.assign(hitPoint);
   });
@@ -819,8 +894,14 @@ export class LevelWorldMaterial extends NodeMaterial {
   // debug: output a fetch-count heatmap (RG = 16-bit fine-texel fetches,
   // A = 1 when the ray entered at least one chunk) instead of the shaded scene.
   debugFetchCount: boolean = false;
+  // The spritesheet uploaded as one 2D texture; set asynchronously once loaded.
+  tilesTexture: Texture | null = null;
+  // Per-voxel-id face tiles (normalized atlas rects); drives the rect uniforms.
+  voxelTiles: VoxelTileConfig[] = [];
 
   private blockUniforms: WorldBlockShader[] = [];
+  private tileUniforms: TileFaceUniform[] = [];
+  private tilesSampler: UniformNode<"sampler2D"> | undefined;
 
   constructor() {
     super();
@@ -834,6 +915,20 @@ export class LevelWorldMaterial extends NodeMaterial {
   protected setup(b: Builder, _scene: Scene): void {
     if (this.blocks.length === 0) {
       return;
+    }
+    this.blockUniforms = [];
+    this.tileUniforms = this.voxelTiles.map((v) => ({
+      id: v.id,
+      top: b.materialUniform(`v${v.id}_top`, "vec4", () => v.top),
+      side: b.materialUniform(`v${v.id}_side`, "vec4", () => v.side),
+      bottom: b.materialUniform(`v${v.id}_bottom`, "vec4", () => v.bottom),
+    }));
+    if (this.tilesTexture !== null) {
+      this.tilesSampler = b.sampler(
+        "tilesAtlas",
+        "sampler2D",
+        () => this.tilesTexture,
+      );
     }
     for (let i = 0; i < this.blocks.length; i++) {
       const level = this.blocks[i].level;
@@ -902,6 +997,8 @@ export class LevelWorldMaterial extends NodeMaterial {
       blocks: this.blockUniforms,
       outColour: colour,
       outHitPoint: hitPoint,
+      tiles: this.tilesSampler,
+      tileRects: this.tileUniforms,
       fetchCount,
     });
 

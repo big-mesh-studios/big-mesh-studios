@@ -17,6 +17,11 @@ import {
   getWorldHeight,
   type Dim3,
 } from "./level";
+import {
+  buildVoxelTileConfig,
+  loadTileTexture,
+  parseTileAtlasXml,
+} from "./atlas";
 import { GpuTimer, sampleFetchCount } from "./perf";
 import { installKeyboardControls, addLookDelta, consumeInput } from "./input";
 import { createPlayer, updatePlayer, placeCamera, PLAYER_CFG } from "./player";
@@ -95,6 +100,38 @@ const App: Component<{}> = () => {
     material.setBlocks(blocks);
     let mesh = new Mesh(geometry, material);
     scene.add(mesh);
+    {
+      // Load the tile spritesheet (one 2D GPU texture) plus its atlas XML, and
+      // tell the material which tile each voxel face uses. Set after the first
+      // build, so mark needsUpdate to force a rebuild with the sampler + rect
+      // uniforms registered.
+      const tileUrl = "./spritesheets/spritesheet_tiles.png";
+      const xmlUrl = "./spritesheets/spritesheet_tiles.xml";
+      (async () => {
+        try {
+          const [loaded, xmlRes] = await Promise.all([
+            loadTileTexture(tileUrl),
+            fetch(xmlUrl),
+          ]);
+          if (!xmlRes.ok) {
+            throw new Error(`failed to load "${xmlUrl}": ${xmlRes.status}`);
+          }
+          const atlas = parseTileAtlasXml(await xmlRes.text());
+          material.tilesTexture = loaded.texture;
+          material.voxelTiles = buildVoxelTileConfig(
+            atlas,
+            loaded.width,
+            loaded.height,
+          );
+          material.needsUpdate = true;
+        } catch (err) {
+          console.warn(
+            "[atlas] spritesheet not applied; voxels stay flat blue.",
+            err,
+          );
+        }
+      })();
+    }
   }
   const camera = new PerspectiveCamera(50, 1.0, 0.1, 20000.0);
   const player = createPlayer(
