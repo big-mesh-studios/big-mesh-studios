@@ -51,8 +51,27 @@ const MOVE_KEYS: Record<string, [number, number]> = {
   KeyD: [1, 0],
 };
 
+// Skip when typing into an editable element (e.g. the debug console), so the
+// global handlers don't `preventDefault` those keys or start moving the player.
+const isEditableTarget = (e: KeyboardEvent): boolean => {
+  const el = e.target as HTMLElement | null;
+  if (el === null) {
+    return false;
+  }
+  const tag = el.tagName;
+  return (
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    tag === "SELECT" ||
+    el.isContentEditable
+  );
+};
+
 export const installKeyboardControls = (): void => {
   const onDown = (e: KeyboardEvent): void => {
+    if (isEditableTarget(e)) {
+      return;
+    }
     if (e.code === "Space") {
       e.preventDefault();
       state.jumpQueued = true;
@@ -68,6 +87,9 @@ export const installKeyboardControls = (): void => {
     state.keyMoveY += move[1];
   };
   const onUp = (e: KeyboardEvent): void => {
+    if (isEditableTarget(e)) {
+      return;
+    }
     if (e.code === "Space") {
       state.jumpHeld = false;
       return;
