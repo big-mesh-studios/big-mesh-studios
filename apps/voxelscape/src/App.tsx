@@ -17,17 +17,17 @@ import {
   buildVoxelTileConfig,
   loadTileTexture,
   parseTileAtlasXml,
-} from "./atlas";
-import { Console } from "./Console";
-import Controls from "./Controls";
+} from "./renderers/atlas";
+import { Console } from "./ui/Console";
+import Controls from "./ui/Controls";
 import { dayNightState, phaseAt, VISIBLE_ELEVATION } from "./day-night";
 import { addLookDelta, consumeInput, installKeyboardControls } from "./input";
-import { BLOCK_WORLD, getWorldHeight, type Dim3 } from "./level-data";
-import { DEFAULT_TERRAIN, type TerrainConfig } from "./noise";
+import { BLOCK_WORLD, getWorldHeight, type Dim3 } from "./world/level-data";
+import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
 import { GpuTimer, sampleFetchCount } from "./perf";
 import { createPlayer, placeCamera, PLAYER_CFG, updatePlayer } from "./player";
 import { RendererSwitch } from "./renderers/renderer-switch";
-import { WorldRing } from "./world-ring";
+import { WorldRing } from "./world/world-ring";
 
 const App: Component<{}> = () => {
   // append `#perf` to the URL to enable the debug HUD (GPU timer + fetches/ray)

@@ -19,8 +19,8 @@ import {
   Texture,
 } from "@random-mesh/rmsl/scene";
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
-import type { VoxelTileConfig } from "../atlas";
-import type { Dim3, WorldBlock } from "../level-data";
+import type { VoxelTileConfig } from "./atlas";
+import type { Dim3, WorldBlock } from "../world/level-data";
 import {
   buildBlockMesh,
   buildWaterMesh,
@@ -31,7 +31,7 @@ import {
   type MeshArrays,
   type MeshBuildRequest,
   type MeshBuildResult,
-} from "../mesh";
+} from "./mesh";
 import type { BlockRenderer, DayNight } from "./block-renderer";
 
 // Opaque terrain surface. One shared instance across every block's mesh; the
@@ -312,7 +312,7 @@ export class TriangleRenderer implements BlockRenderer {
   private setupMeshWorker(): void {
     try {
       this.meshWorker = new Worker(
-        new URL("../mesh-worker.ts", import.meta.url),
+        new URL("./mesh-worker.ts", import.meta.url),
         { type: "module" },
       );
       this.meshWorker.onmessage = (ev) => {

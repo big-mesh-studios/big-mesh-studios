@@ -6,7 +6,7 @@ import {
   onCleanup,
 } from "solid-js";
 import * as THREE from "three";
-import { queueJump, setTouchJump, setTouchMove } from "./input";
+import { queueJump, setTouchJump, setTouchMove } from "../input";
 import { Joystick } from "./Joystick";
 import { ActionButton } from "./ActionButton";
 

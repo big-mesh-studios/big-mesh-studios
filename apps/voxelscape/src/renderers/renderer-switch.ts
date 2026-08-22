@@ -4,9 +4,9 @@
 // mode toggles); `tick` only runs on the active one. See
 // docs/adr/0001-renderer-seam.md for why this exists.
 import type { PerspectiveCamera, Scene, Texture } from "@random-mesh/rmsl/scene";
-import type { VoxelTileConfig } from "../atlas";
-import type { Dim3, WorldBlock } from "../level-data";
-import type { BlockGridLookup } from "../mesh";
+import type { VoxelTileConfig } from "./atlas";
+import type { Dim3, WorldBlock } from "../world/level-data";
+import type { BlockGridLookup } from "./mesh";
 import type { DayNight } from "./block-renderer";
 import { RaymarchRenderer } from "./raymarch-renderer";
 import { TriangleRenderer } from "./triangle-renderer";

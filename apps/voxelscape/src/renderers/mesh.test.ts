@@ -18,7 +18,7 @@ import {
   VOXEL_GRASS,
   VOXEL_WATER,
   VoxelStore,
-} from "./voxel-store";
+} from "../world/voxel-store";
 
 const smallStore = (): VoxelStore =>
   new VoxelStore({ dims: [8, 8, 8], voxels: [4, 4, 4], scale: 2 });

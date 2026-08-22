@@ -4,7 +4,7 @@
 // transferable typed arrays, so no geometry work ever stalls the UI.
 import type { MeshArrays, MeshBuildRequest, MeshBuildResult } from "./mesh";
 import { buildBlockMesh, buildWaterMesh, makeShellResolver } from "./mesh";
-import { VoxelStore } from "./voxel-store";
+import { VoxelStore } from "../world/voxel-store";
 
 // The DOM lib types `self` as `Window`, whose `postMessage` needs a target
 // origin; in a dedicated worker the global is a `DedicatedWorkerGlobalScope`.

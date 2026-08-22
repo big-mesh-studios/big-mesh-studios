@@ -28,11 +28,11 @@ import {
   Texture,
 } from "@random-mesh/rmsl/scene";
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
-import type { VoxelTileConfig } from "../atlas";
+import type { VoxelTileConfig } from "./atlas";
 import type { DayNight } from "./block-renderer";
 import type { BlockRenderer } from "./block-renderer";
-import type { Dim3, WorldBlock } from "../level-data";
-import { VOXEL_WATER } from "../voxel-store";
+import type { Dim3, WorldBlock } from "../world/level-data";
+import { VOXEL_WATER } from "../world/voxel-store";
 
 // Shorthand for the water voxel id used in the raymarching shader comparisons.
 const WATER = VOXEL_WATER;

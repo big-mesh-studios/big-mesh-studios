@@ -4,9 +4,9 @@
 // frame regardless of which is active, so the hidden one is already correct
 // the instant the mode toggles; `tick` is only called on the active one.
 import type { PerspectiveCamera, Texture } from "@random-mesh/rmsl/scene";
-import type { VoxelTileConfig } from "../atlas";
+import type { VoxelTileConfig } from "./atlas";
 import type { dayNightState } from "../day-night";
-import type { Dim3 } from "../level-data";
+import type { Dim3 } from "../world/level-data";
 
 export type DayNight = ReturnType<typeof dayNightState>;
 

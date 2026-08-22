@@ -6,7 +6,7 @@
 // triangle renderer looks pixel-identical to the raymarched terrain.
 import { BufferAttribute, BufferGeometry } from "@random-mesh/rmsl/scene";
 import type { TileRect, VoxelTileConfig } from "./atlas";
-import { VOXEL_AIR, VOXEL_WATER, type VoxelStore } from "./voxel-store";
+import { VOXEL_AIR, VOXEL_WATER, type VoxelStore } from "../world/voxel-store";
 
 // Vertex arrays for one mesh. The CPU builders produce plain arrays; the web
 // worker converts them to typed arrays so they can be transferred back without

@@ -20,7 +20,7 @@ import {
   type FillBatchResult,
   type FillConfig,
 } from "./fill-worker";
-import type { BlockGridLookup } from "./mesh";
+import type { BlockGridLookup } from "../renderers/mesh";
 import type { TerrainConfig } from "./noise";
 import { fillStore, type VoxelStore } from "./voxel-store";
 
