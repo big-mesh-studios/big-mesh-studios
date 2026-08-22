@@ -239,7 +239,7 @@ export const buildWaterMesh = (
   ): void => {
     const h = scale / 2;
     const base = positions.length / 3;
-    for (const [xo, yo, zo] of FACE_CORNERS[axis]) {
+    for (const [xo, yo, zo, u, v] of FACE_CORNERS[axis]) {
       positions.push(
         axis === 0 ? wx + sign * h : wx + (xo - 0.5) * 2 * h,
         axis === 1 ? wy + sign * h : wy + (yo - 0.5) * 2 * h,
@@ -249,6 +249,10 @@ export const buildWaterMesh = (
         axis === 0 ? sign : 0,
         axis === 1 ? sign : 0,
         axis === 2 ? sign : 0,
+      );
+      uvs.push(
+        u,
+        v,
       );
     }
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
