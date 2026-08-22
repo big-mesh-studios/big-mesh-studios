@@ -2,6 +2,7 @@ import { Component, createEffect, createStore } from "solid-js";
 import {
   AmbientLight,
   BoxGeometry,
+  BufferGeometry,
   Color,
   DirectionalLight,
   Mesh,
@@ -23,13 +24,28 @@ import {
   type Dim3,
   type WorldBlock,
 } from "./level";
-import { fillStore } from "./voxel-store";
+import { fillStore, type VoxelStore } from "./voxel-store";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./noise";
 import {
   buildVoxelTileConfig,
   loadTileTexture,
   parseTileAtlasXml,
+  type VoxelTileConfig,
 } from "./atlas";
+import {
+  buildBlockMesh,
+  buildWaterMesh,
+  extractBlockShells,
+  makeBlockResolver,
+  setGeometryData,
+  type MeshArrays,
+  type MeshBuildRequest,
+  type MeshBuildResult,
+} from "./mesh";
+import {
+  LevelTriangleMaterial,
+  LevelTriangleWaterMaterial,
+} from "./mesh-material";
 import { GpuTimer, sampleFetchCount } from "./perf";
 import { AdaptiveResolution } from "./adaptive";
 import { installKeyboardControls, addLookDelta, consumeInput } from "./input";
@@ -69,6 +85,9 @@ const App: Component<{}> = () => {
   const SURFACE_ONLY = true;
   // Each mesh is one padded box so adjacent meshes share a thin overlap shell.
   const PAD = 2.0;
+  // Water absorption used by the raymarch water pass; the triangle renderer's
+  // underwater tint uses the same value.
+  const WATER_EXTINCTION = 0.12;
   let [state, setState] = createStore<{
     canvas: HTMLCanvasElement | undefined;
     renderer: WebGLRenderer | undefined;
@@ -172,6 +191,215 @@ const App: Component<{}> = () => {
       }
     }
   }
+  // --- triangle (surface-mesh) renderer ------------------------------------
+  // A parallel set of meshes that rasterize each block's surface voxels as
+  // triangles instead of raymarching them. `/renderer tri` hides the raymarch
+  // meshes above and shows these; both stay in the scene so the toggle is
+  // instant and the hidden set costs nothing (the renderer skips invisible
+  // objects). The voxel tiles load async, so meshes are rebuilt once the atlas
+  // arrives (see the atlas block below).
+  const triMaterial = new LevelTriangleMaterial();
+  const triWaterMaterial = new LevelTriangleWaterMaterial();
+  const triMeshes: Mesh[] = [];
+  const triWaterMeshes: Mesh[] = [];
+  for (let i = 0; i < BLOCKS * BLOCKS; i++) {
+    const center = blocks[i].center;
+    const triMesh = new Mesh(new BufferGeometry(), triMaterial);
+    triMesh.position.set(center[0], center[1], center[2]);
+    triMesh.visible = false;
+    scene.add(triMesh);
+    triMeshes.push(triMesh);
+    const triWaterMesh = new Mesh(new BufferGeometry(), triWaterMaterial);
+    triWaterMesh.position.set(center[0], center[1], center[2]);
+    triWaterMesh.visible = false;
+    // added to the scene after the player cube, below, so the transparent
+    // water blends over it like the raymarch water pass does
+    triWaterMeshes.push(triWaterMesh);
+  }
+  let rendererMode: "ray" | "tri" = "ray";
+  let totalTriangles = 0;
+  // Per-voxel-id face tile rects, populated once the atlas loads; the mesh UVs
+  // are baked from these, so changing them requires a mesh rebuild.
+  const tilesById = new Map<number, VoxelTileConfig>();
+  const lookupBlock = (gx: number, gz: number): VoxelStore | undefined => {
+    for (let i = 0; i < worldGrid.length; i++) {
+      if (worldGrid[i].x === gx && worldGrid[i].z === gz) {
+        return blocks[i].store;
+      }
+    }
+    return undefined;
+  };
+  const updateTriCount = (): void => {
+    let tris = 0;
+    for (const mesh of triMeshes) {
+      tris += mesh.geometry.drawCount / 3;
+    }
+    for (const mesh of triWaterMeshes) {
+      tris += mesh.geometry.drawCount / 3;
+    }
+    totalTriangles = Math.round(tris);
+  };
+  // Meshes are built in a web worker so a block rebuild never stalls the UI;
+  // the worker gets the block's voxel data plus its neighbours' boundary shells
+  // and hands back transferable arrays. `pendingBuilds` holds blocks whose mesh
+  // is stale, drained a few per frame while in tri mode. `meshGen` is bumped
+  // whenever a block's data or the tiles change, so a slow worker result for
+  // stale data is dropped. If the worker is unavailable (no Worker, build error)
+  // the synchronous `buildBlockMeshesSync` path is used instead.
+  const meshGen: number[] = [];
+  const pendingBuilds = new Set<number>();
+  const inflight = new Map<number, number>();
+  // Shared empty mesh for clearing a block's geometry on scroll: the geometry
+  // object is reused so the renderer never orphans a GPU buffer.
+  const EMPTY_MESH: MeshArrays = {
+    positions: [],
+    normals: [],
+    uvs: [],
+    indices: [],
+  };
+  for (let i = 0; i < blocks.length; i++) {
+    meshGen.push(0);
+    pendingBuilds.add(i);
+  }
+  let meshWorker: Worker | undefined;
+  let workerAvailable = true;
+  const buildBlockMeshesSync = (indices: number[]): void => {
+    const tileList = [...tilesById.values()];
+    for (const i of indices) {
+      const resolver = makeBlockResolver(
+        blocks[i].store,
+        worldGrid[i].x,
+        worldGrid[i].z,
+        lookupBlock,
+      );
+      setGeometryData(
+        triMeshes[i].geometry,
+        buildBlockMesh(blocks[i].store, resolver, tileList),
+      );
+      setGeometryData(
+        triWaterMeshes[i].geometry,
+        buildWaterMesh(blocks[i].store, resolver),
+      );
+    }
+    updateTriCount();
+  };
+  try {
+    meshWorker = new Worker(new URL("./mesh-worker.ts", import.meta.url), {
+      type: "module",
+    });
+    meshWorker.onmessage = (ev) => {
+      const msg = ev.data as MeshBuildResult;
+      const gen = inflight.get(msg.id);
+      if (gen === undefined) {
+        return;
+      }
+      inflight.delete(msg.id);
+      if (gen !== meshGen[msg.id]) {
+        return; // the block changed after this request was sent
+      }
+      // update the persistent geometry in place so the renderer re-uploads
+      // into its existing GPU buffers instead of leaking new ones
+      setGeometryData(triMeshes[msg.id].geometry, msg.terrain);
+      setGeometryData(triWaterMeshes[msg.id].geometry, msg.water);
+      updateTriCount();
+    };
+    meshWorker.onerror = () => {
+      // fall back to building synchronously; requeue whatever was in flight
+      workerAvailable = false;
+      console.warn(
+        "[tri renderer] mesh worker errored; falling back to synchronous builds",
+      );
+      for (const i of inflight.keys()) {
+        pendingBuilds.add(i);
+      }
+      inflight.clear();
+    };
+  } catch {
+    workerAvailable = false;
+  }
+  const requestBlockBuild = (i: number): void => {
+    meshGen[i]++;
+    inflight.set(i, meshGen[i]);
+    const store = blocks[i].store;
+    const req: MeshBuildRequest = {
+      id: i,
+      voxels: store.voxels,
+      scale: store.scale,
+      data: store.data.slice(),
+      shells: extractBlockShells(
+        store,
+        worldGrid[i].x,
+        worldGrid[i].z,
+        lookupBlock,
+      ),
+      tileRects: [...tilesById.values()],
+    };
+    const transfers: Transferable[] = [req.data.buffer];
+    for (const shell of Object.values(req.shells)) {
+      if (shell !== null) {
+        transfers.push(shell.buffer);
+      }
+    }
+    meshWorker?.postMessage(req, transfers);
+  };
+  // How many block meshes to kick off per frame while draining the queue; the
+  // worker does the heavy lifting so the main thread just wraps the results.
+  const MAX_BUILDS_PER_FRAME = 6;
+  const drainMeshBuilds = (): void => {
+    if (meshWorker !== undefined && workerAvailable) {
+      let sent = 0;
+      for (const i of pendingBuilds) {
+        if (inflight.has(i)) {
+          continue;
+        }
+        requestBlockBuild(i);
+        pendingBuilds.delete(i);
+        if (++sent >= MAX_BUILDS_PER_FRAME) {
+          break;
+        }
+      }
+    } else {
+      buildBlockMeshesSync([...pendingBuilds]);
+      pendingBuilds.clear();
+    }
+  };
+  const markAllMeshesDirty = (): void => {
+    for (let i = 0; i < blocks.length; i++) {
+      meshGen[i]++;
+      pendingBuilds.add(i);
+    }
+  };
+  // Fullscreen underwater tint for the triangle renderer (the raymarch water
+  // pass tints the view in-shader instead). Drawn last with depth-testing off
+  // so it washes the whole view when the camera dips below the sea.
+  const tintMaterial = new MeshBasicMaterial({
+    color: 0x1a598c,
+    transparent: true,
+    opacity: 0,
+  });
+  tintMaterial.depthTest = false;
+  tintMaterial.depthWrite = false;
+  const tintMesh = new Mesh(new BoxGeometry(4000, 4000, 4000), tintMaterial);
+  tintMesh.visible = false;
+  const applyRendererMode = (mode: "ray" | "tri"): string => {
+    rendererMode = mode;
+    const rayOn = mode === "ray";
+    for (const mesh of meshes) {
+      mesh.visible = rayOn;
+    }
+    for (const mesh of waterMeshes) {
+      mesh.visible = rayOn;
+    }
+    for (const mesh of triMeshes) {
+      mesh.visible = !rayOn;
+    }
+    for (const mesh of triWaterMeshes) {
+      mesh.visible = !rayOn;
+    }
+    return mode === "ray"
+      ? "renderer: ray (raymarch)"
+      : "renderer: tri (surface triangles)";
+  };
   // Moves the ring window one block step in the given direction: the whole
   // trailing column/row (5 blocks) teleports to the leading edge and each is
   // refilled at its new center. Stepping only one block would let the window
@@ -231,7 +459,20 @@ const App: Component<{}> = () => {
       blocks[i].center = center;
       meshes[i].position.set(center[0], center[1], center[2]);
       waterMeshes[i].position.set(center[0], center[1], center[2]);
+      // the triangle meshes sit at their block's world center, so they must
+      // follow the slot's new position too; clear their geometry until the
+      // worker rebuilds it for the new terrain (avoid a flash of the old
+      // block's surface at the new location, without leaking the old buffers)
+      triMeshes[i].position.set(center[0], center[1], center[2]);
+      triWaterMeshes[i].position.set(center[0], center[1], center[2]);
+      setGeometryData(triMeshes[i].geometry, EMPTY_MESH);
+      setGeometryData(triWaterMeshes[i].geometry, EMPTY_MESH);
+      // the block's voxel data changed: invalidate any in-flight triangle mesh
+      // build and queue a fresh one (drained while tri mode is active)
+      meshGen[i]++;
+      pendingBuilds.add(i);
     }
+    updateTriCount();
   };
   // Keeps the ring window centred on the player's block.
   let centerBlockX = 0;
@@ -275,6 +516,15 @@ const App: Component<{}> = () => {
           material.voxelTiles = voxelTiles;
           material.needsUpdate = true;
         }
+        // The triangle renderer bakes the atlas rects into its geometry UVs, so
+        // give it the texture and re-extract every block mesh with real tiles.
+        triMaterial.tilesTexture = loaded.texture;
+        triMaterial.needsUpdate = true;
+        tilesById.clear();
+        for (const v of voxelTiles) {
+          tilesById.set(v.id, v);
+        }
+        markAllMeshesDirty();
       } catch (err) {
         console.warn(
           "[atlas] spritesheet not applied; voxels stay flat blue.",
@@ -306,6 +556,14 @@ const App: Component<{}> = () => {
   for (const waterMesh of waterMeshes) {
     scene.add(waterMesh);
   }
+  // The triangle renderer's translucent water pass is added here too, after the
+  // player cube, so it blends over it the same way.
+  for (const waterMesh of triWaterMeshes) {
+    scene.add(waterMesh);
+  }
+  // The triangle renderer's underwater tint draws over everything, so it is
+  // added to the scene last.
+  scene.add(tintMesh);
   installKeyboardControls();
   placeCamera(camera, player);
   let timer: GpuTimer | undefined;
@@ -362,10 +620,15 @@ const App: Component<{}> = () => {
       return;
     }
     const res = `res: ${adaptive.scale}x`;
+    const mode = rendererMode === "ray" ? "ray" : "tri";
+    const triLabel =
+      rendererMode === "tri"
+        ? ` | tris: ${totalTriangles.toLocaleString()}`
+        : "";
     hud.textContent =
       sample === undefined
-        ? `frame: ${ms.toFixed(2)} ms | ${res}`
-        : `frame: ${ms.toFixed(2)} ms | ${res} | fetches/ray: ${sample.fetchesPerRay.toFixed(1)} (${sample.rays} rays)`;
+        ? `frame: ${ms.toFixed(2)} ms | ${res} | ${mode}${triLabel}`
+        : `frame: ${ms.toFixed(2)} ms | ${res} | ${mode}${triLabel} | fetches/ray: ${sample.fetchesPerRay.toFixed(1)} (${sample.rays} rays)`;
   };
   let lastFrameT = 0;
   // day-night clock: accumulates real time so the 20-minute cycle runs live.
@@ -389,6 +652,8 @@ const App: Component<{}> = () => {
           "/normal    resume the live clock",
           "/speed <n> run the clock n× fast (0 pauses)",
           "/now       show the current clock state",
+          "/renderer ray|tri   switch renderer (raymarch | surface triangles)",
+          "/tris      show the current triangle count",
         ].join("\n");
       case "/day":
         timeOverride = 300;
@@ -423,6 +688,18 @@ const App: Component<{}> = () => {
       }
       case "/now":
         return `phase: ${phaseAt(shownTime())} | t=${shownTime().toFixed(1)}s | speed=${timeSpeed}× | live=${timeOverride === null}`;
+      case "/renderer": {
+        const arg = rest[0];
+        if (arg === "ray") {
+          return applyRendererMode("ray");
+        }
+        if (arg === "tri" || arg === "mesh" || arg === "triangles") {
+          return applyRendererMode("tri");
+        }
+        return `renderer: ${rendererMode} — usage: /renderer ray|tri`;
+      }
+      case "/tris":
+        return `triangles: ${totalTriangles.toLocaleString()} (${rendererMode} mode)`;
       default:
         return `unknown command "${line}" — try /help`;
     }
@@ -451,6 +728,13 @@ const App: Component<{}> = () => {
     for (const waterMaterial of waterMaterials) {
       waterMaterial.fogColor = dayNight.skyColor;
     }
+    triMaterial.fogColor = dayNight.skyColor;
+    triMaterial.sunDirection = dayNight.sunDir;
+    triMaterial.sunLightColor = dayNight.sunLight;
+    triMaterial.moonDirection = dayNight.moonDir;
+    triMaterial.moonLightColor = dayNight.moonLight;
+    triMaterial.ambientColor = dayNight.ambient;
+    triWaterMaterial.fogColor = dayNight.skyColor;
     // The player cube is a standard material; point the directional light at
     // the sun and tint the fill light to match the phase.
     sun.color.set(
@@ -504,6 +788,11 @@ const App: Component<{}> = () => {
     );
     // scroll the terrain ring so the player's block stays centred
     scrollToPlayer(player.position.x, player.position.z);
+    // while tri mode is active, keep draining the mesh-build queue a few blocks
+    // per frame (the worker does the heavy lifting off the main thread)
+    if (rendererMode === "tri") {
+      drainMeshBuilds();
+    }
     playerCube.position.copy(player.position);
     // the cube's local +Z faces the heading; a Y rotation by `yaw` aligns it
     playerCube.rotation.y = player.yaw;
@@ -513,6 +802,23 @@ const App: Component<{}> = () => {
     // drives the cycle.
     elapsed += dt * timeSpeed;
     applyDayNight(dayNightState(timeOverride ?? elapsed));
+    // triangle renderer: fullscreen underwater tint when the camera dips below
+    // the sea (the raymarch water pass tints the view in-shader instead)
+    if (rendererMode === "tri" && TERRAIN.seaLevel !== undefined) {
+      const depth = TERRAIN.seaLevel - camera.position.y;
+      if (depth > 0) {
+        tintMesh.visible = true;
+        tintMesh.position.copy(camera.position);
+        tintMaterial.opacity = Math.min(
+          1,
+          1 - Math.exp(-WATER_EXTINCTION * depth),
+        );
+      } else {
+        tintMesh.visible = false;
+      }
+    } else {
+      tintMesh.visible = false;
+    }
     render();
     adaptResolution(t);
   };
@@ -553,6 +859,8 @@ const App: Component<{}> = () => {
         resizeObserver.unobserve(canvas);
         resizeObserver.disconnect();
         renderer.setAnimationLoop(null);
+        // release the renderer's GPU programs, buffers and textures
+        renderer.dispose();
       };
     },
   );
@@ -568,7 +876,10 @@ const App: Component<{}> = () => {
     if (timer !== undefined) {
       timer.end();
       timer.poll();
-      if (++sampleCounter % SAMPLE_EVERY === 0) {
+      sampleCounter++;
+      // the fetch-count heatmap only exists in raymarch mode; the triangle
+      // renderer's HUD shows the triangle count instead
+      if (rendererMode === "ray" && sampleCounter % SAMPLE_EVERY === 0) {
         const sample = sampleFetchCount(
           renderer.gl,
           renderer.canvas.width,
