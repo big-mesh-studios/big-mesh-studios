@@ -21,27 +21,13 @@ import {
 import { Console } from "./Console";
 import Controls from "./Controls";
 import { dayNightState, phaseAt, VISIBLE_ELEVATION } from "./day-night";
-import {
-  type FillBatchRequest,
-  type FillBatchResult,
-  type FillConfig,
-} from "./fill-worker";
 import { addLookDelta, consumeInput, installKeyboardControls } from "./input";
-import {
-  applyLevelData,
-  BLOCK_WORLD,
-  buildBlock,
-  getWorldHeight,
-  resetLevel,
-  syncLevelFromStore,
-  type Dim3,
-  type WorldBlock,
-} from "./level-data";
+import { BLOCK_WORLD, getWorldHeight, type Dim3 } from "./level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./noise";
 import { GpuTimer, sampleFetchCount } from "./perf";
 import { createPlayer, placeCamera, PLAYER_CFG, updatePlayer } from "./player";
-import { fillStore, type VoxelStore } from "./voxel-store";
 import { RendererSwitch } from "./renderers/renderer-switch";
+import { WorldRing } from "./world-ring";
 
 const App: Component<{}> = () => {
   // append `#perf` to the URL to enable the debug HUD (GPU timer + fetches/ray)
@@ -106,51 +92,28 @@ const App: Component<{}> = () => {
     moonMaterial,
   );
   scene.add(moonMesh);
-  // The infinite-scroll ring: a BLOCKS x BLOCKS window of 192x256x192 blocks.
-  // The window stays centred on the player's block; when the player crosses a
-  // block boundary the trailing block teleports to the leading edge and
-  // refills its voxel data at the new absolute world coords (see `stepRing`).
-  // Both renderers (see `RendererSwitch`) render every block in this window;
-  // only one is visible at a time.
-  const blocks: WorldBlock[] = [];
-  // Per-slot integer grid coordinate of the world block currently displayed.
-  const worldGrid: { x: number; z: number }[] = [];
-  for (let i = 0; i < BLOCKS; i++) {
-    for (let j = 0; j < BLOCKS; j++) {
-      const grid = {
-        x: i - (BLOCKS - 1) / 2,
-        z: j - (BLOCKS - 1) / 2,
-      };
-      const center: Dim3 = [
-        grid.x * BLOCK_WORLD[0],
-        0,
-        grid.z * BLOCK_WORLD[2],
-      ];
-      const block: WorldBlock = buildBlock({
-        center,
-        terrain: TERRAIN,
-        surfaceOnly: SURFACE_ONLY,
-      });
-      blocks.push(block);
-      worldGrid.push(grid);
-    }
-  }
-  const lookupBlock = (gx: number, gz: number): VoxelStore | undefined => {
-    for (let i = 0; i < worldGrid.length; i++) {
-      if (worldGrid[i].x === gx && worldGrid[i].z === gz) {
-        return blocks[i].store;
-      }
-    }
-    return undefined;
-  };
+  // The world ring: a BLOCKS x BLOCKS window of WorldBlocks kept centred on
+  // the player, streamed in off the main thread as it scrolls. See
+  // `src/world-ring.ts` and docs/adr/0002-world-ring-seam.md. `rendererSwitch`
+  // is constructed just below and assigned before any callback can fire (both
+  // the fill worker's response and any ring scroll happen later, from the
+  // animate loop), so this forward reference is safe.
+  let rendererSwitch: RendererSwitch;
+  const worldRing = new WorldRing({
+    blocksPerSide: BLOCKS,
+    terrain: TERRAIN,
+    surfaceOnly: SURFACE_ONLY,
+    onBlockChanged: (i) => rendererSwitch.onBlockChanged(i),
+    onBlockReposition: (i, center) => rendererSwitch.repositionBlock(i, center),
+  });
   // Builds both rendering strategies' meshes for every block above and owns
   // switching between them (`/renderer ray|tri`). See
   // `src/renderers/renderer-switch.ts` and docs/adr/0001-renderer-seam.md.
-  const rendererSwitch = new RendererSwitch({
+  rendererSwitch = new RendererSwitch({
     scene,
-    blocks,
-    worldGrid,
-    lookupBlock,
+    blocks: worldRing.blocks,
+    gridCoordAt: (i) => worldRing.gridCoordAt(i),
+    lookupBlock: worldRing.lookupBlock,
     padding: PAD,
     blockWorld: BLOCK_WORLD,
     fogDistance: FOG_DISTANCE,
@@ -159,170 +122,6 @@ const App: Component<{}> = () => {
     waterExtinction: WATER_EXTINCTION,
     seaLevel: TERRAIN.seaLevel,
   });
-  // --- fill worker ----------------------------------------------------------
-  // Procedural voxel data (noise fill) + the derived GPU level layout (surface
-  // sweep) are generated off the main thread: `stepRing` sends a batch of the
-  // changed blocks' centres and the worker posts each block's store data, broad
-  // grid and fine chunks back transferred (moved, not copied). The response
-  // adopts them zero-copy into the store + level textures, which is how BOTH
-  // renderers get fresh terrain — the raymarch reads the swapped level, and the
-  // triangle path queues a mesh build from the adopted store. Per-slot `fillGen`
-  // drops a stale response if the slot scrolls again before it lands.
-  const fillGen: number[] = [];
-  const fillInflight = new Map<number, number>();
-  for (let i = 0; i < blocks.length; i++) {
-    fillGen.push(0);
-  }
-  let fillWorker: Worker | undefined;
-  let fillAvailable = true;
-  const syncFillBlock = (i: number): void => {
-    fillStore(blocks[i].store, blocks[i].center, TERRAIN);
-    syncLevelFromStore(blocks[i].level, blocks[i].store, {
-      surfaceOnly: SURFACE_ONLY,
-    });
-    rendererSwitch.onBlockChanged(i);
-  };
-  const sendFillBatch = (indices: number[], centers: Dim3[]): void => {
-    const req: FillBatchRequest = { type: "fill", indices, centers };
-    for (const i of indices) {
-      fillGen[i]++;
-      fillInflight.set(i, fillGen[i]);
-    }
-    fillWorker?.postMessage(req);
-  };
-  try {
-    fillWorker = new Worker(new URL("./fill-worker.ts", import.meta.url), {
-      type: "module",
-    });
-    const fillConfig: FillConfig = {
-      terrain: TERRAIN,
-      surfaceOnly: SURFACE_ONLY,
-    };
-    fillWorker.postMessage({ type: "config", config: fillConfig });
-    fillWorker.onmessage = (ev) => {
-      const msg = ev.data as FillBatchResult;
-      for (let j = 0; j < msg.indices.length; j++) {
-        const i = msg.indices[j];
-        const gen = fillInflight.get(i);
-        if (gen === undefined) {
-          continue;
-        }
-        fillInflight.delete(i);
-        if (gen !== fillGen[i]) {
-          continue; // the slot scrolled again; a newer batch will fill it
-        }
-        applyLevelData(blocks[i], {
-          storeData: msg.storeData[j],
-          broadData: msg.broadData[j],
-          fineData: msg.fineData[j],
-        });
-        rendererSwitch.onBlockChanged(i);
-      }
-    };
-    fillWorker.onerror = () => {
-      // fall back to filling synchronously; don't leave anything stranded
-      fillAvailable = false;
-      console.warn("[fill] worker errored; falling back to synchronous fills");
-      for (const i of fillInflight.keys()) {
-        syncFillBlock(i);
-      }
-      fillInflight.clear();
-    };
-  } catch {
-    fillAvailable = false;
-  }
-  // Moves the ring window one block step in the given direction: the whole
-  // trailing column/row (5 blocks) teleports to the leading edge and each is
-  // refilled at its new center. Stepping only one block would let the window
-  // drift off-centre when walking along a single axis.
-  const stepRing = (dx: number, dz: number): void => {
-    const changed = new Set<number>();
-    if (dx !== 0) {
-      let min = Infinity;
-      let max = -Infinity;
-      for (const g of worldGrid) {
-        if (g.x < min) {
-          min = g.x;
-        }
-        if (g.x > max) {
-          max = g.x;
-        }
-      }
-      const from = dx > 0 ? min : max;
-      const to = dx > 0 ? max + 1 : min - 1;
-      for (let i = 0; i < worldGrid.length; i++) {
-        if (worldGrid[i].x === from) {
-          worldGrid[i].x = to;
-          changed.add(i);
-        }
-      }
-    }
-    if (dz !== 0) {
-      let min = Infinity;
-      let max = -Infinity;
-      for (const g of worldGrid) {
-        if (g.z < min) {
-          min = g.z;
-        }
-        if (g.z > max) {
-          max = g.z;
-        }
-      }
-      const from = dz > 0 ? min : max;
-      const to = dz > 0 ? max + 1 : min - 1;
-      for (let i = 0; i < worldGrid.length; i++) {
-        if (worldGrid[i].z === from) {
-          worldGrid[i].z = to;
-          changed.add(i);
-        }
-      }
-    }
-    const changedIndices: number[] = [];
-    const changedCenters: Dim3[] = [];
-    for (const i of changed) {
-      const center: Dim3 = [
-        worldGrid[i].x * BLOCK_WORLD[0],
-        0,
-        worldGrid[i].z * BLOCK_WORLD[2],
-      ];
-      blocks[i].center = center;
-      // reposition both renderers' meshes for this slot; the triangle side
-      // also clears its geometry to avoid flashing the old block's surface at
-      // the new location (see `TriangleRenderer.repositionBlock`)
-      rendererSwitch.repositionBlock(i, center);
-      // clear the raymarch level so no stale terrain renders at the new spot
-      // while the fill worker regenerates it (the block is at the fogged ring
-      // edge, so the brief empty window is hidden)
-      resetLevel(blocks[i].level);
-      blocks[i].level.broadTexture.needsUpdate = true;
-      blocks[i].level.texture.needsUpdate = true;
-      changedIndices.push(i);
-      changedCenters.push(center);
-    }
-    if (fillWorker !== undefined && fillAvailable) {
-      sendFillBatch(changedIndices, changedCenters);
-    } else {
-      // synchronous fallback: fill + sweep the changed blocks here
-      for (const i of changedIndices) {
-        syncFillBlock(i);
-      }
-    }
-  };
-  // Keeps the ring window centred on the player's block.
-  let centerBlockX = 0;
-  let centerBlockZ = 0;
-  const scrollToPlayer = (playerX: number, playerZ: number): void => {
-    const blockX = Math.floor(playerX / BLOCK_WORLD[0]);
-    const blockZ = Math.floor(playerZ / BLOCK_WORLD[2]);
-    while (centerBlockX !== blockX) {
-      stepRing(Math.sign(blockX - centerBlockX), 0);
-      centerBlockX += Math.sign(blockX - centerBlockX);
-    }
-    while (centerBlockZ !== blockZ) {
-      stepRing(0, Math.sign(blockZ - centerBlockZ));
-      centerBlockZ += Math.sign(blockZ - centerBlockZ);
-    }
-  };
   {
     // Load the tile spritesheet (one 2D GPU texture) plus its atlas XML, and
     // tell every block material which tile each voxel face uses. Set after the
@@ -359,7 +158,9 @@ const App: Component<{}> = () => {
   const camera = new PerspectiveCamera(50, 1.0, 0.1, RING_RADIUS + 200);
   const player = createPlayer(
     SPAWN[0],
-    getWorldHeight(blocks, SPAWN[0], SPAWN[2]) + PLAYER_CFG.halfSize + 0.1,
+    getWorldHeight(worldRing.blocks, SPAWN[0], SPAWN[2]) +
+      PLAYER_CFG.halfSize +
+      0.1,
     SPAWN[2],
   );
   const playerCube = new Mesh(
@@ -572,17 +373,17 @@ const App: Component<{}> = () => {
       player,
       dt,
       consumeInput(),
-      (x, z) => getWorldHeight(blocks, x, z),
+      (x, z) => getWorldHeight(worldRing.blocks, x, z),
       // water surface height: sea level where the ground dips below it, else none
       (x, z) => {
-        const ground = getWorldHeight(blocks, x, z);
+        const ground = getWorldHeight(worldRing.blocks, x, z);
         const sea = TERRAIN.seaLevel;
         return sea !== undefined && ground < sea ? sea : -Infinity;
       },
       SAFE_EXTENT,
     );
     // scroll the terrain ring so the player's block stays centred
-    scrollToPlayer(player.position.x, player.position.z);
+    worldRing.scrollToPlayer(player.position.x, player.position.z);
     playerCube.position.copy(player.position);
     // the cube's local +Z faces the heading; a Y rotation by `yaw` aligns it
     playerCube.rotation.y = player.yaw;
@@ -637,6 +438,8 @@ const App: Component<{}> = () => {
         renderer.setAnimationLoop(null);
         // release the renderer's GPU programs, buffers and textures
         renderer.dispose();
+        // stop the fill worker so it doesn't keep running after unmount
+        worldRing.dispose();
       };
     },
   );

@@ -16,7 +16,7 @@ export type RendererMode = "ray" | "tri";
 export interface RendererSwitchParams {
   scene: Scene;
   blocks: WorldBlock[];
-  worldGrid: { x: number; z: number }[];
+  gridCoordAt: (index: number) => { x: number; z: number };
   lookupBlock: BlockGridLookup;
   padding: number;
   blockWorld: Dim3;
@@ -37,7 +37,7 @@ export class RendererSwitch {
     const {
       scene,
       blocks,
-      worldGrid,
+      gridCoordAt,
       lookupBlock,
       padding,
       blockWorld,
@@ -62,7 +62,7 @@ export class RendererSwitch {
     this.triangle = new TriangleRenderer({
       scene,
       blocks,
-      worldGrid,
+      gridCoordAt,
       lookupBlock,
       waterExtinction,
       seaLevel,

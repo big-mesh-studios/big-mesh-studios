@@ -215,7 +215,9 @@ export class TriangleWaterMaterial extends NodeMaterial {
 export interface TriangleRendererParams {
   scene: Scene;
   blocks: WorldBlock[];
-  worldGrid: { x: number; z: number }[];
+  // This slot's own ring grid coordinate, needed to resolve its neighbours
+  // via `lookupBlock`.
+  gridCoordAt: (index: number) => { x: number; z: number };
   lookupBlock: BlockGridLookup;
   waterExtinction: number;
   seaLevel: number | undefined;
@@ -239,7 +241,7 @@ export class TriangleRenderer implements BlockRenderer {
   readonly triWaterMeshes: Mesh[] = [];
 
   private readonly blocks: WorldBlock[];
-  private readonly worldGrid: { x: number; z: number }[];
+  private readonly gridCoordAt: (index: number) => { x: number; z: number };
   private readonly lookupBlock: BlockGridLookup;
   private readonly waterExtinction: number;
   private readonly seaLevel: number | undefined;
@@ -268,10 +270,10 @@ export class TriangleRenderer implements BlockRenderer {
   private readonly tintMesh: Mesh;
 
   constructor(params: TriangleRendererParams) {
-    const { scene, blocks, worldGrid, lookupBlock, waterExtinction, seaLevel } =
+    const { scene, blocks, gridCoordAt, lookupBlock, waterExtinction, seaLevel } =
       params;
     this.blocks = blocks;
-    this.worldGrid = worldGrid;
+    this.gridCoordAt = gridCoordAt;
     this.lookupBlock = lookupBlock;
     this.waterExtinction = waterExtinction;
     this.seaLevel = seaLevel;
@@ -348,10 +350,11 @@ export class TriangleRenderer implements BlockRenderer {
   private buildBlockMeshesSync(indices: number[]): void {
     const tileList = [...this.tilesById.values()];
     for (const i of indices) {
+      const grid = this.gridCoordAt(i);
       const resolver = makeBlockResolver(
         this.blocks[i].store,
-        this.worldGrid[i].x,
-        this.worldGrid[i].z,
+        grid.x,
+        grid.z,
         this.lookupBlock,
       );
       setGeometryData(
@@ -377,8 +380,8 @@ export class TriangleRenderer implements BlockRenderer {
       data: store.data.slice(),
       shells: extractBlockShells(
         store,
-        this.worldGrid[i].x,
-        this.worldGrid[i].z,
+        this.gridCoordAt(i).x,
+        this.gridCoordAt(i).z,
         this.lookupBlock,
       ),
       tileRects: [...this.tilesById.values()],

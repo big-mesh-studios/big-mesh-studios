@@ -9,8 +9,12 @@ One chunk of the world — a fixed-size voxel volume (192x256x192 voxels) with i
 _Avoid_: Chunk, block (ambiguous with voxel), region
 
 **Ring**:
-The `BLOCKS x BLOCKS` (5x5) window of `WorldBlock`s kept centred on the player. When the player crosses a block boundary, the trailing row/column of the ring teleports to the leading edge and refills its `WorldBlock` in place (same slot, new data) rather than allocating a new one.
-_Avoid_: Chunk grid, world grid (the code also uses `worldGrid` for the ring's per-slot integer coordinates — don't confuse with **Ring** itself)
+The `BLOCKS x BLOCKS` (5x5) window of `WorldBlock`s kept centred on the player. When the player crosses a block boundary, the trailing row/column of the ring teleports to the leading edge and refills its `WorldBlock` in place (same slot, new data) rather than allocating a new one. Owned and managed by **WorldRing**.
+_Avoid_: Chunk grid, world grid (the ring's per-slot integer coordinates are an internal `WorldRing` implementation detail — never exposed as a raw array, only through `lookupBlock`/`gridCoordAt` — don't confuse with **Ring** itself)
+
+**WorldRing**:
+The class that owns the **Ring**: populates it at startup (synchronously, on the main thread), keeps it centred on the player (`scrollToPlayer`, `stepRing`), and gets fresh terrain data into each `WorldBlock` as it scrolls — synchronously at startup, but off the main thread via a fill worker for every scroll after that (mirrors the sync-vs-async split documented for **RaymarchRenderer** vs **TriangleRenderer**). Knows nothing about rendering: it reports block changes and repositions via injected callbacks rather than holding a reference to `RendererSwitch`, the same one-directional dependency `RendererSwitch` already has on ring data. Exposes exactly three things: `blocks` (all current `WorldBlock`s), `lookupBlock(gx, gz)` (the block at a grid coordinate, if any), and `gridCoordAt(index)` (a slot's own grid coordinate — needed by `TriangleRenderer` to resolve its neighbours for cross-block face culling).
+_Avoid_: Terrain streamer, chunk manager
 
 **BlockRenderer**:
 The interface both rendering strategies implement: given the ring's `WorldBlock`s, draw them. Exposes lifecycle hooks for visibility, per-block data changes, per-frame lighting (always applied, even when inactive, so the hidden renderer is ready for an instant toggle), and per-frame active-only work (e.g. draining a mesh-build queue).
@@ -33,6 +37,7 @@ _Avoid_: rendererMode (that's the mode value it holds, not the coordinator itsel
 - A **Ring** holds a fixed-size window of **WorldBlock**s, indexed by ring slot.
 - A **WorldBlock** is rendered by both a **RaymarchRenderer** and a **TriangleRenderer** at all times; only one is visible, chosen by the **RendererSwitch**.
 - The **RendererSwitch** calls `applyLighting` on both renderers every frame regardless of which is active, but calls `tick` only on the active one.
+- **WorldRing** owns the **Ring** and reports changes to it (via callbacks); **RendererSwitch** is one such callback consumer, not something **WorldRing** depends on directly.
 
 ## Example dialogue
 
