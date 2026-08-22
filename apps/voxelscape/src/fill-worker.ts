@@ -1,0 +1,110 @@
+// Web worker that generates a block's procedural voxel data (noise fill) and
+// its derived GPU level layout (surface sweep) off the main thread. The main
+// thread sends a config once, then batch `fill` requests with the centres of a
+// ring step's changed blocks; each block's three arrays (store data, broad grid,
+// fine chunks) are posted back transferred (moved, not copied) and adopted
+// zero-copy into the block's store + level.
+import { buildBlockData, type Dim3, type TerrainConfig } from "./level-data";
+
+export interface FillConfig {
+  terrain: TerrainConfig;
+  surfaceOnly: boolean;
+}
+
+export interface FillBatchRequest {
+  type: "fill";
+  indices: number[];
+  centers: Dim3[];
+}
+
+export interface FillBatchResult {
+  indices: number[];
+  storeData: Uint8Array[];
+  broadData: Uint8Array[];
+  fineData: Uint8Array[];
+}
+
+export type FillWorkerMessage =
+  { type: "config"; config: FillConfig } | FillBatchRequest;
+
+// Builds the batch result for a fill request (pure, so it can be unit-tested
+// without a worker context).
+export const buildFillResult = (
+  req: FillBatchRequest,
+  cfg: FillConfig,
+): FillBatchResult => {
+  const storeData: Uint8Array[] = [];
+  const broadData: Uint8Array[] = [];
+  const fineData: Uint8Array[] = [];
+  for (const center of req.centers) {
+    const data = buildBlockData({
+      center,
+      terrain: cfg.terrain,
+      surfaceOnly: cfg.surfaceOnly,
+    });
+    storeData.push(data.storeData);
+    broadData.push(data.broadData);
+    fineData.push(data.fineData);
+  }
+  return { indices: req.indices, storeData, broadData, fineData };
+};
+
+// The buffers to move along with a result (everything the result owns).
+export const fillResultTransfers = (
+  result: FillBatchResult,
+): Transferable[] => {
+  const transfer: Transferable[] = [];
+  for (let i = 0; i < result.storeData.length; i++) {
+    transfer.push(
+      result.storeData[i].buffer,
+      result.broadData[i].buffer,
+      result.fineData[i].buffer,
+    );
+  }
+  return transfer;
+};
+
+// Pure message handler: returns a new config for a `config` message, a result
+// for a `fill` message, or nothing for anything else (unknown / pre-config).
+export const handleFillMessage = (
+  msg: FillWorkerMessage,
+  config: FillConfig | undefined,
+): { result?: FillBatchResult; config?: FillConfig } => {
+  if (msg.type === "config") {
+    return { config: msg.config };
+  }
+  if (msg.type !== "fill" || config === undefined) {
+    return {};
+  }
+  return { result: buildFillResult(msg, config) };
+};
+
+// The DOM lib types `self` as `Window`, whose `postMessage` needs a target
+// origin; in a dedicated worker the global is a `DedicatedWorkerGlobalScope`.
+// Guarded so importing this module in node (for the protocol tests) doesn't
+// eval `self`.
+const workerSelf =
+  typeof self !== "undefined"
+    ? (self as unknown as {
+        onmessage: ((ev: MessageEvent) => void) | null;
+        postMessage: (
+          message: FillBatchResult,
+          transfer: Transferable[],
+        ) => void;
+      })
+    : undefined;
+
+let config: FillConfig | undefined;
+
+if (workerSelf !== undefined) {
+  workerSelf.onmessage = (ev) => {
+    const out = handleFillMessage(ev.data as FillWorkerMessage, config);
+    if (out.config !== undefined) {
+      config = out.config;
+      return;
+    }
+    if (out.result !== undefined) {
+      workerSelf.postMessage(out.result, fillResultTransfers(out.result));
+    }
+  };
+}

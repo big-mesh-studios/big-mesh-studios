@@ -18,13 +18,20 @@ import {
   LevelWorldMaterial,
   LevelWaterMaterial,
   BLOCK_WORLD,
+  applyLevelData,
   buildBlock,
+  resetLevel,
   syncLevelFromStore,
   getWorldHeight,
   type Dim3,
   type WorldBlock,
 } from "./level";
 import { fillStore, type VoxelStore } from "./voxel-store";
+import {
+  type FillBatchRequest,
+  type FillBatchResult,
+  type FillConfig,
+} from "./fill-worker";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./noise";
 import {
   buildVoxelTileConfig,
@@ -369,6 +376,80 @@ const App: Component<{}> = () => {
       pendingBuilds.add(i);
     }
   };
+  // --- fill worker ----------------------------------------------------------
+  // Procedural voxel data (noise fill) + the derived GPU level layout (surface
+  // sweep) are generated off the main thread: `stepRing` sends a batch of the
+  // changed blocks' centres and the worker posts each block's store data, broad
+  // grid and fine chunks back transferred (moved, not copied). The response
+  // adopts them zero-copy into the store + level textures, which is how BOTH
+  // renderers get fresh terrain — the raymarch reads the swapped level, and the
+  // triangle path queues a mesh build from the adopted store. Per-slot `fillGen`
+  // drops a stale response if the slot scrolls again before it lands.
+  const fillGen: number[] = [];
+  const fillInflight = new Map<number, number>();
+  for (let i = 0; i < blocks.length; i++) {
+    fillGen.push(0);
+  }
+  let fillWorker: Worker | undefined;
+  let fillAvailable = true;
+  const syncFillBlock = (i: number): void => {
+    fillStore(blocks[i].store, blocks[i].center, TERRAIN);
+    syncLevelFromStore(blocks[i].level, blocks[i].store, {
+      surfaceOnly: SURFACE_ONLY,
+    });
+    meshGen[i]++;
+    pendingBuilds.add(i);
+  };
+  const sendFillBatch = (indices: number[], centers: Dim3[]): void => {
+    const req: FillBatchRequest = { type: "fill", indices, centers };
+    for (const i of indices) {
+      fillGen[i]++;
+      fillInflight.set(i, fillGen[i]);
+    }
+    fillWorker?.postMessage(req);
+  };
+  try {
+    fillWorker = new Worker(new URL("./fill-worker.ts", import.meta.url), {
+      type: "module",
+    });
+    const fillConfig: FillConfig = {
+      terrain: TERRAIN,
+      surfaceOnly: SURFACE_ONLY,
+    };
+    fillWorker.postMessage({ type: "config", config: fillConfig });
+    fillWorker.onmessage = (ev) => {
+      const msg = ev.data as FillBatchResult;
+      for (let j = 0; j < msg.indices.length; j++) {
+        const i = msg.indices[j];
+        const gen = fillInflight.get(i);
+        if (gen === undefined) {
+          continue;
+        }
+        fillInflight.delete(i);
+        if (gen !== fillGen[i]) {
+          continue; // the slot scrolled again; a newer batch will fill it
+        }
+        applyLevelData(blocks[i], {
+          storeData: msg.storeData[j],
+          broadData: msg.broadData[j],
+          fineData: msg.fineData[j],
+        });
+        meshGen[i]++;
+        pendingBuilds.add(i);
+      }
+    };
+    fillWorker.onerror = () => {
+      // fall back to filling synchronously; don't leave anything stranded
+      fillAvailable = false;
+      console.warn("[fill] worker errored; falling back to synchronous fills");
+      for (const i of fillInflight.keys()) {
+        syncFillBlock(i);
+      }
+      fillInflight.clear();
+    };
+  } catch {
+    fillAvailable = false;
+  }
   // Fullscreen underwater tint for the triangle renderer (the raymarch water
   // pass tints the view in-shader instead). Drawn last with depth-testing off
   // so it washes the whole view when the camera dips below the sea.
@@ -446,16 +527,14 @@ const App: Component<{}> = () => {
         }
       }
     }
+    const changedIndices: number[] = [];
+    const changedCenters: Dim3[] = [];
     for (const i of changed) {
       const center: Dim3 = [
         worldGrid[i].x * BLOCK_WORLD[0],
         0,
         worldGrid[i].z * BLOCK_WORLD[2],
       ];
-      fillStore(blocks[i].store, center, TERRAIN);
-      syncLevelFromStore(blocks[i].level, blocks[i].store, {
-        surfaceOnly: SURFACE_ONLY,
-      });
       blocks[i].center = center;
       meshes[i].position.set(center[0], center[1], center[2]);
       waterMeshes[i].position.set(center[0], center[1], center[2]);
@@ -467,12 +546,27 @@ const App: Component<{}> = () => {
       triWaterMeshes[i].position.set(center[0], center[1], center[2]);
       setGeometryData(triMeshes[i].geometry, EMPTY_MESH);
       setGeometryData(triWaterMeshes[i].geometry, EMPTY_MESH);
-      // the block's voxel data changed: invalidate any in-flight triangle mesh
-      // build and queue a fresh one (drained while tri mode is active)
+      // clear the raymarch level so no stale terrain renders at the new spot
+      // while the fill worker regenerates it (the block is at the fogged ring
+      // edge, so the brief empty window is hidden)
+      resetLevel(blocks[i].level);
+      blocks[i].level.broadTexture.needsUpdate = true;
+      blocks[i].level.texture.needsUpdate = true;
+      // the block's voxel data is about to change: invalidate any in-flight
+      // triangle mesh build for the old data (the fill response requeues it)
       meshGen[i]++;
-      pendingBuilds.add(i);
+      changedIndices.push(i);
+      changedCenters.push(center);
     }
     updateTriCount();
+    if (fillWorker !== undefined && fillAvailable) {
+      sendFillBatch(changedIndices, changedCenters);
+    } else {
+      // synchronous fallback: fill + sweep the changed blocks here
+      for (const i of changedIndices) {
+        syncFillBlock(i);
+      }
+    }
   };
   // Keeps the ring window centred on the player's block.
   let centerBlockX = 0;

@@ -2,7 +2,7 @@
 // textures. The renderer's `Level` is derived from this store by `syncLevel`,
 // which sweeps it for surface voxels. Mutating the store is the hook future
 // runtime add/remove-voxel editing will build on.
-import type { Dim3 } from "./level";
+import type { Dim3 } from "./level-data";
 import { heightAt, type TerrainConfig } from "./noise";
 
 export const VOXEL_AIR = 0;
