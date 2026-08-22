@@ -1,18 +1,16 @@
 import {
-  AmbientLight,
   BoxGeometry,
   Color,
-  DirectionalLight,
   Mesh,
-  MeshBasicMaterial,
   MeshStandardMaterial,
   PerspectiveCamera,
-  PlaneGeometry,
   Scene,
   WebGLRenderer,
 } from "@random-mesh/rmsl/scene";
 import { Component, createEffect, createStore } from "solid-js";
 import { AdaptiveResolution } from "./adaptive";
+import { Commander } from "./commander";
+import { DayNightController } from "./day-night-controller";
 import {
   buildVoxelTileConfig,
   loadTileTexture,
@@ -20,7 +18,6 @@ import {
 } from "./renderers/atlas";
 import { Console } from "./ui/Console";
 import Controls from "./ui/Controls";
-import { dayNightState, phaseAt, VISIBLE_ELEVATION } from "./day-night";
 import { addLookDelta, consumeInput, installKeyboardControls } from "./input";
 import { BLOCK_WORLD, getWorldHeight, type Dim3 } from "./world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
@@ -43,12 +40,6 @@ const App: Component<{}> = () => {
   const FOG_START = 0.4 * FOG_DISTANCE;
   // Sky blue; matches the material's default fogColor so the horizon blends.
   const SKY_BLUE = 0x87ceeb;
-  // Day-night: the sun/moon squares orbit the camera at this distance (inside
-  // the camera far plane) so the raymarched terrain occludes them at the
-  // horizon, and hide once they dip a few degrees below it.
-  const SKY_DISTANCE = 600;
-  const SUN_SIZE = 48;
-  const MOON_SIZE = 32;
   const SPAWN: Dim3 = [0, 0, 0];
   // Roughly the previous walkable extent; with the infinite ring the player is
   // effectively unbounded, but clamp to guard against float drift far out.
@@ -71,27 +62,11 @@ const App: Component<{}> = () => {
     renderer: undefined,
   });
   const scene = new Scene();
-  // Lights for the standard materials (the player cube). Position/direction,
-  // colour and intensity are re-derived from the day-night clock each frame
-  // (`applyDayNight`), since the raymarched terrain lights itself in-shader.
-  const sun = new DirectionalLight();
-  sun.position.set(2, 1, 1);
-  scene.add(sun);
-  const ambient = new AmbientLight(0xffffff, 0.6);
-  scene.add(ambient);
-  // Square sun/moon billboards, drawn before the terrain so the raymarcher
-  // overdraws them wherever solid ground lies (occluding the horizon).
-  const sunMaterial = new MeshBasicMaterial({ color: 0xfff2a0 });
-  sunMaterial.depthWrite = false;
-  const sunMesh = new Mesh(new PlaneGeometry(SUN_SIZE, SUN_SIZE), sunMaterial);
-  scene.add(sunMesh);
-  const moonMaterial = new MeshBasicMaterial({ color: 0xcfd6e6 });
-  moonMaterial.depthWrite = false;
-  const moonMesh = new Mesh(
-    new PlaneGeometry(MOON_SIZE, MOON_SIZE),
-    moonMaterial,
-  );
-  scene.add(moonMesh);
+  // Owns the sun/ambient lights, the sun/moon billboards, and the day-night
+  // clock; `tick` (called from `animate`) returns the computed state for
+  // `rendererSwitch.applyLighting` and the clear colour below. See
+  // `src/day-night-controller.ts` and docs/adr/0003-day-night-controller.md.
+  const dayNight = new DayNightController({ scene });
   // The world ring: a BLOCKS x BLOCKS window of WorldBlocks kept centred on
   // the player, streamed in off the main thread as it scrolls. See
   // `src/world-ring.ts` and docs/adr/0002-world-ring-seam.md. `rendererSwitch`
@@ -121,6 +96,89 @@ const App: Component<{}> = () => {
     debugPerf,
     waterExtinction: WATER_EXTINCTION,
     seaLevel: TERRAIN.seaLevel,
+  });
+  // Every debug console command, in one place. See `src/commander.ts` and
+  // docs/adr/0004-commander.md for why this is a single object literal.
+  const commands = new Commander({
+    "/day": {
+      help: "/day       jump to noon (t=300s)",
+      run: () => {
+        dayNight.jumpTo(300);
+        return "jumped to noon (t=300s)";
+      },
+    },
+    "/sunset": {
+      help: "/sunset    jump to dusk (t=645s)",
+      run: () => {
+        dayNight.jumpTo(645);
+        return "jumped to dusk (t=645s)";
+      },
+    },
+    "/night": {
+      help: "/night     jump to midnight (t=900s)",
+      run: () => {
+        dayNight.jumpTo(900);
+        return "jumped to midnight (t=900s)";
+      },
+    },
+    "/sunrise": {
+      help: "/sunrise   jump to dawn (t=1120s)",
+      run: () => {
+        dayNight.jumpTo(1120);
+        return "jumped to dawn (t=1120s)";
+      },
+    },
+    "/time": {
+      help: "/time <s>  jump to a second of the 20-min cycle",
+      run: (rest) => {
+        const t = Number(rest[0]);
+        if (!Number.isFinite(t) || t < 0) {
+          return "usage: /time <seconds>  (0..1200, wraps)";
+        }
+        dayNight.jumpTo(t);
+        return `time set to ${t}s`;
+      },
+    },
+    "/normal": {
+      help: "/normal    resume the live clock",
+      run: () => {
+        dayNight.clearOverride();
+        return "resumed the live clock";
+      },
+    },
+    "/speed": {
+      help: "/speed <n> run the clock n× fast (0 pauses)",
+      run: (rest) => {
+        const n = Number(rest[0]);
+        if (!Number.isFinite(n) || n < 0) {
+          return "usage: /speed <multiplier>  (0 pauses, 1 = real time)";
+        }
+        dayNight.setSpeed(n);
+        return `clock speed set to ${n}×`;
+      },
+    },
+    "/now": {
+      help: "/now       show the current clock state",
+      run: () => dayNight.describe(),
+    },
+    "/renderer": {
+      help: "/renderer ray|tri   switch renderer (raymarch | surface triangles)",
+      run: (rest) => {
+        const arg = rest[0];
+        if (arg === "ray") {
+          return rendererSwitch.setMode("ray");
+        }
+        if (arg === "tri" || arg === "mesh" || arg === "triangles") {
+          return rendererSwitch.setMode("tri");
+        }
+        return `renderer: ${rendererSwitch.mode} — usage: /renderer ray|tri`;
+      },
+    },
+    "/tris": {
+      help: "/tris      show the current triangle count",
+      run: () =>
+        `triangles: ${rendererSwitch.triangleCount.toLocaleString()} (${rendererSwitch.mode} mode)`,
+    },
   });
   {
     // Load the tile spritesheet (one 2D GPU texture) plus its atlas XML, and
@@ -244,127 +302,8 @@ const App: Component<{}> = () => {
         : `frame: ${ms.toFixed(2)} ms | ${res} | ${mode}${triLabel} | fetches/ray: ${sample.fetchesPerRay.toFixed(1)} (${sample.rays} rays)`;
   };
   let lastFrameT = 0;
-  // day-night clock: accumulates real time so the 20-minute cycle runs live.
-  // Debug console commands can pin `timeOverride` (freezing the cycle at a
-  // chosen moment) and scale the speed for fast-forwarding.
-  let elapsed = 0;
-  let timeOverride: number | null = null;
-  let timeSpeed = 1;
-  // Debug console: parses "/command" lines and mutates the day-night clock.
-  const runConsoleCommand = (line: string): string => {
-    const [name, ...rest] = line.trim().toLowerCase().split(/\s+/);
-    const shownTime = (): number => timeOverride ?? elapsed;
-    switch (name) {
-      case "/help":
-        return [
-          "/day       jump to noon (t=300s)",
-          "/sunset    jump to dusk (t=645s)",
-          "/night     jump to midnight (t=900s)",
-          "/sunrise   jump to dawn (t=1120s)",
-          "/time <s>  jump to a second of the 20-min cycle",
-          "/normal    resume the live clock",
-          "/speed <n> run the clock n× fast (0 pauses)",
-          "/now       show the current clock state",
-          "/renderer ray|tri   switch renderer (raymarch | surface triangles)",
-          "/tris      show the current triangle count",
-        ].join("\n");
-      case "/day":
-        timeOverride = 300;
-        return "jumped to noon (t=300s)";
-      case "/sunset":
-        timeOverride = 645;
-        return "jumped to dusk (t=645s)";
-      case "/night":
-        timeOverride = 900;
-        return "jumped to midnight (t=900s)";
-      case "/sunrise":
-        timeOverride = 1120;
-        return "jumped to dawn (t=1120s)";
-      case "/time": {
-        const t = Number(rest[0]);
-        if (!Number.isFinite(t) || t < 0) {
-          return "usage: /time <seconds>  (0..1200, wraps)";
-        }
-        timeOverride = t;
-        return `time set to ${t}s`;
-      }
-      case "/normal":
-        timeOverride = null;
-        return "resumed the live clock";
-      case "/speed": {
-        const n = Number(rest[0]);
-        if (!Number.isFinite(n) || n < 0) {
-          return "usage: /speed <multiplier>  (0 pauses, 1 = real time)";
-        }
-        timeSpeed = n;
-        return `clock speed set to ${n}×`;
-      }
-      case "/now":
-        return `phase: ${phaseAt(shownTime())} | t=${shownTime().toFixed(1)}s | speed=${timeSpeed}× | live=${timeOverride === null}`;
-      case "/renderer": {
-        const arg = rest[0];
-        if (arg === "ray") {
-          return rendererSwitch.setMode("ray");
-        }
-        if (arg === "tri" || arg === "mesh" || arg === "triangles") {
-          return rendererSwitch.setMode("tri");
-        }
-        return `renderer: ${rendererSwitch.mode} — usage: /renderer ray|tri`;
-      }
-      case "/tris":
-        return `triangles: ${rendererSwitch.triangleCount.toLocaleString()} (${rendererSwitch.mode} mode)`;
-      default:
-        return `unknown command "${line}" — try /help`;
-    }
-  };
   // reusable colour so per-frame sky updates don't allocate
   const skyColor = new Color(SKY_BLUE);
-  // Re-derives every light + the sun/moon billboards from the day-night clock.
-  // The terrain/water materials expose uniforms read each draw, so only their
-  // public fields need updating here.
-  const applyDayNight = (dayNight: ReturnType<typeof dayNightState>): void => {
-    const renderer = state.renderer;
-    skyColor.set(
-      dayNight.skyColor[0],
-      dayNight.skyColor[1],
-      dayNight.skyColor[2],
-    );
-    renderer?.setClearColor(skyColor, 1);
-    rendererSwitch.applyLighting(dayNight);
-    // The player cube is a standard material; point the directional light at
-    // the sun and tint the fill light to match the phase.
-    sun.color.set(
-      dayNight.sunLight[0],
-      dayNight.sunLight[1],
-      dayNight.sunLight[2],
-    );
-    sun.position.set(
-      dayNight.sunDir[0],
-      dayNight.sunDir[1],
-      dayNight.sunDir[2],
-    );
-    ambient.color.set(
-      dayNight.ambient[0],
-      dayNight.ambient[1],
-      dayNight.ambient[2],
-    );
-    ambient.intensity = 1;
-    const cam = camera.position;
-    sunMesh.position.set(
-      cam.x + dayNight.sunDir[0] * SKY_DISTANCE,
-      cam.y + dayNight.sunDir[1] * SKY_DISTANCE,
-      cam.z + dayNight.sunDir[2] * SKY_DISTANCE,
-    );
-    sunMesh.lookAt(cam.x, cam.y, cam.z);
-    sunMesh.visible = dayNight.sunElevation > VISIBLE_ELEVATION;
-    moonMesh.position.set(
-      cam.x + dayNight.moonDir[0] * SKY_DISTANCE,
-      cam.y + dayNight.moonDir[1] * SKY_DISTANCE,
-      cam.z + dayNight.moonDir[2] * SKY_DISTANCE,
-    );
-    moonMesh.lookAt(cam.x, cam.y, cam.z);
-    moonMesh.visible = dayNight.moonElevation > VISIBLE_ELEVATION;
-  };
   let animate = (t: number) => {
     const dt =
       lastFrameT > 0 ? Math.min(0.05, (t - lastFrameT) / 1000) : 1 / 60;
@@ -391,8 +330,10 @@ const App: Component<{}> = () => {
     // advance the day-night clock and re-derive the scene lighting. A command
     // override pins the shown time; otherwise the real clock (scaled by speed)
     // drives the cycle.
-    elapsed += dt * timeSpeed;
-    applyDayNight(dayNightState(timeOverride ?? elapsed));
+    const dn = dayNight.tick(dt, camera);
+    skyColor.set(dn.skyColor[0], dn.skyColor[1], dn.skyColor[2]);
+    state.renderer?.setClearColor(skyColor, 1);
+    rendererSwitch.applyLighting(dn);
     // per-frame work specific to whichever renderer is active (mesh-build
     // draining for the triangle renderer, underwater tint, etc.)
     rendererSwitch.tick(dt, camera);
@@ -525,7 +466,7 @@ const App: Component<{}> = () => {
         }}
       />
       <Controls />
-      <Console onCommand={runConsoleCommand} />
+      <Console onCommand={(line) => commands.run(line)} />
       {debugPerf && (
         <div
           ref={(el) => {
