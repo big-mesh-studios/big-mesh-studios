@@ -17,15 +17,22 @@ import {
   vec3,
   vec4,
 } from "@random-mesh/rmsl";
-import type { Node } from "@random-mesh/rmsl";
-import { Builder, NodeMaterial, Scene, Texture } from "@random-mesh/rmsl/scene";
-import type { UniformNode } from "@random-mesh/rmsl";
-import type { VoxelTileConfig } from "./atlas";
-import { VOXEL_WATER } from "./voxel-store";
-// The CPU-side block data (store + level layout) lives in `level-data` so a
-// worker can generate blocks without pulling in the shader code below.
-import type { WorldBlock } from "./level-data";
-export * from "./level-data";
+import type { Node, UniformNode } from "@random-mesh/rmsl";
+import {
+  BoxGeometry,
+  Builder,
+  Mesh,
+  NodeMaterial,
+  Scene,
+  Side,
+  Texture,
+} from "@random-mesh/rmsl/scene";
+import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
+import type { VoxelTileConfig } from "../atlas";
+import type { DayNight } from "./block-renderer";
+import type { BlockRenderer } from "./block-renderer";
+import type { Dim3, WorldBlock } from "../level-data";
+import { VOXEL_WATER } from "../voxel-store";
 
 // Shorthand for the water voxel id used in the raymarching shader comparisons.
 const WATER = VOXEL_WATER;
@@ -232,7 +239,7 @@ export let rayMarch = (params: {
           const cellValue = fetchCell(mapPos).toVar();
           // Water is passable for the terrain march: rays travel straight
           // through it to the lakebed, and a separate water pass tints the
-          // result (see `marchWater` / `LevelWaterMaterial`).
+          // result (see `marchWater` / `RaymarchWaterMaterial`).
           If(cellValue.r.equal(WATER), () => {
             skipSolid.assign(bool(false));
           })
@@ -1062,7 +1069,7 @@ export let rayMarchWorld = (params: {
   });
 };
 
-export class LevelWorldMaterial extends NodeMaterial {
+export class RaymarchMaterial extends NodeMaterial {
   blocks: WorldBlock[] = [];
   // debug: output a fetch-count heatmap (RG = 16-bit fine-texel fetches,
   // A = 1 when the ray entered at least one chunk) instead of the shaded scene.
@@ -1287,7 +1294,7 @@ export class LevelWorldMaterial extends NodeMaterial {
 // anything behind the water — including the player cube — is correctly tinted
 // and occluded by the surface. The shading happens at the surface only; a
 // camera below `seaLevel` gets a uniform underwater tint instead.
-export class LevelWaterMaterial extends NodeMaterial {
+export class RaymarchWaterMaterial extends NodeMaterial {
   blocks: WorldBlock[] = [];
   // matches the terrain material's fog so the reflected sky blends seamlessly
   maxDistance: number = 480;
@@ -1528,4 +1535,143 @@ export class LevelWaterMaterial extends NodeMaterial {
 
     return colour;
   }
+}
+
+export interface RaymarchRendererParams {
+  scene: Scene;
+  blocks: WorldBlock[];
+  padding: number;
+  blockWorld: Dim3;
+  fogDistance: number;
+  fogStart: number;
+  debugPerf: boolean;
+  waterExtinction: number;
+  seaLevel: number;
+}
+
+// Fragment-shader voxel raymarcher: one padded bounding-box mesh per
+// `WorldBlock`, ray-marched against that block's GPU voxel texture in-shader.
+// Owns its own terrain + water meshes/materials; the texture data itself lives
+// directly on the shared `WorldBlock` (`block.level`), so there is nothing to
+// re-sync here when a block's data changes — `syncLevelFromStore`/
+// `applyLevelData` (data layer, called by whoever refills the block) already
+// mark the GPU texture dirty, and this material reads it live every frame.
+export class RaymarchRenderer implements BlockRenderer {
+  readonly meshes: Mesh[] = [];
+  readonly materials: RaymarchMaterial[] = [];
+  readonly waterMeshes: Mesh[] = [];
+  readonly waterMaterials: RaymarchWaterMaterial[] = [];
+
+  constructor(params: RaymarchRendererParams) {
+    const {
+      scene,
+      blocks,
+      padding,
+      blockWorld,
+      fogDistance,
+      fogStart,
+      debugPerf,
+      waterExtinction,
+      seaLevel,
+    } = params;
+    const geometry = new BoxGeometry(
+      blockWorld[0] + padding,
+      blockWorld[1] + padding,
+      blockWorld[2] + padding,
+    );
+    for (const block of blocks) {
+      const material = new RaymarchMaterial();
+      material.transparent = true;
+      material.depthWrite = true;
+      material.debugFetchCount = debugPerf;
+      material.side = Side.DoubleSide;
+      material.maxDistance = fogDistance;
+      material.fogStart = fogStart;
+      material.setBlocks([block]);
+      const mesh = new Mesh(geometry, material);
+      mesh.position.set(block.center[0], block.center[1], block.center[2]);
+      scene.add(mesh);
+      this.meshes.push(mesh);
+      this.materials.push(material);
+
+      // translucent water pass: blends over the opaque scene, never writes
+      // depth, and depth-tests so mountains/player in front hide it. Added to
+      // the scene later (see `addWaterToScene`), after the player cube, since
+      // the renderer draws meshes in scene-graph order.
+      const waterMaterial = new RaymarchWaterMaterial();
+      waterMaterial.transparent = true;
+      waterMaterial.depthWrite = false;
+      waterMaterial.side = Side.DoubleSide;
+      waterMaterial.maxDistance = fogDistance;
+      waterMaterial.fogColor = [0.53, 0.81, 0.92];
+      waterMaterial.waterColor = [0.1, 0.35, 0.55];
+      waterMaterial.waterOpacity = 0.5;
+      waterMaterial.waterExtinction = waterExtinction;
+      waterMaterial.seaLevel = seaLevel;
+      waterMaterial.setBlocks([block]);
+      const waterMesh = new Mesh(geometry, waterMaterial);
+      waterMesh.position.set(block.center[0], block.center[1], block.center[2]);
+      this.waterMeshes.push(waterMesh);
+      this.waterMaterials.push(waterMaterial);
+    }
+  }
+
+  // Must be called once, after the player cube is added to the scene, so the
+  // translucent water pass blends over it (see the ADR/CONTEXT for why scene-
+  // graph order matters here: there is no depth-sorted transparency pass).
+  addWaterToScene(scene: Scene): void {
+    for (const mesh of this.waterMeshes) {
+      scene.add(mesh);
+    }
+  }
+
+  setVisible(visible: boolean): void {
+    for (const mesh of this.meshes) {
+      mesh.visible = visible;
+    }
+    for (const mesh of this.waterMeshes) {
+      mesh.visible = visible;
+    }
+  }
+
+  repositionBlock(index: number, center: Dim3): void {
+    this.meshes[index].position.set(center[0], center[1], center[2]);
+    this.waterMeshes[index].position.set(center[0], center[1], center[2]);
+  }
+
+  // No-op: the level texture lives on the shared `WorldBlock` and is already
+  // marked dirty by the data layer before this is called.
+  onBlockChanged(_index: number): void {}
+
+  setTiles(voxelTiles: VoxelTileConfig[], texture: Texture): void {
+    for (const material of this.materials) {
+      material.tilesTexture = texture;
+      material.voxelTiles = voxelTiles;
+      material.needsUpdate = true;
+    }
+  }
+
+  applyLighting(dayNight: DayNight): void {
+    for (const material of this.materials) {
+      material.fogColor = dayNight.skyColor;
+      material.sunDirection = dayNight.sunDir;
+      material.sunLightColor = dayNight.sunLight;
+      material.moonDirection = dayNight.moonDir;
+      material.moonLightColor = dayNight.moonLight;
+      material.ambientColor = dayNight.ambient;
+    }
+    for (const waterMaterial of this.waterMaterials) {
+      waterMaterial.fogColor = dayNight.skyColor;
+    }
+  }
+
+  // Nothing to drain per-frame; the raymarch texture sync is unconditional and
+  // handled by the data layer, not gated on this renderer being active.
+  tick(_dt: number, _camera: PerspectiveCamera): void {}
+
+  // No-op: rmsl's geometries/materials don't expose disposal, and nothing
+  // disposed these per-block resources before this refactor either (only the
+  // top-level `WebGLRenderer` is released, in `App.tsx`). Present for
+  // `BlockRenderer` interface symmetry should that change.
+  dispose(): void {}
 }

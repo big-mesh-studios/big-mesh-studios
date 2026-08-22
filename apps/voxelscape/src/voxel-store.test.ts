@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { Level, getWorldHeight, syncLevelFromStore } from "./level";
+import { Level, getWorldHeight, syncLevelFromStore } from "./level-data";
 import {
   VOXEL_AIR,
   VOXEL_DIRT,
