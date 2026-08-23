@@ -14,7 +14,7 @@ import {
 } from "./components/components";
 import { StackerContext } from "./context";
 import styles from "./Hud.module.css";
-import { load, save } from "./load-save";
+import { load, save } from "./store/load-save";
 import Palette from "./Palette";
 
 export function Hud() {
@@ -184,6 +184,15 @@ export function Hud() {
               }}
               selected={!preview.unlit()}
               kind="lightbulb"
+            />
+            <IconTab
+              onClick={() => {
+                preview.setRenderer(renderer => (renderer === "gpu" ? "cpu" : "gpu"));
+                flush();
+                requestAutoSave();
+              }}
+              selected={preview.renderer() === "gpu"}
+              kind="microchip"
             />
           </Bar>
         </div>

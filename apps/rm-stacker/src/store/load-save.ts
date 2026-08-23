@@ -1,9 +1,9 @@
 import { decode, encode } from "fast-png";
 import JSZip from "jszip";
-import { Command } from "./command/Command";
-import { Bitmap, RGBA } from "./maths";
-import { PreviewState, SideKind, sideKindSet, Sides } from "./types";
-import { keysOf } from "./utils";
+import { Command } from "../command/Command";
+import { Bitmap, RGBA } from "../maths";
+import { PreviewState, RendererKind, SideKind, sideKindSet, Sides } from "../types";
+import { keysOf } from "../utils";
 
 const PALETTE_FILE = "palette.png";
 const DB_NAME = "rm-stacker";
@@ -292,10 +292,13 @@ export async function loadFromIndexedDB(fallbackPalette: RGBA[]): Promise<{
 
   const previewText = await loadTextFromDB(DB_KEYS.preview);
 
-  const preview =
-    previewText === null
-      ? { unlit: false, autorotate: true }
-      : (JSON.parse(previewText) as PreviewState);
+  const parsedPreview =
+    previewText === null ? null : (JSON.parse(previewText) as Partial<PreviewState>);
+  const preview: PreviewState = {
+    unlit: parsedPreview?.unlit ?? false,
+    autorotate: parsedPreview?.autorotate ?? true,
+    renderer: parsedPreview?.renderer ?? "gpu",
+  };
 
   let undoStack: CommandStack;
   let redoStack: CommandStack;
@@ -335,6 +338,7 @@ export async function saveToIndexedDB({
   palette,
   unlit,
   autorotate,
+  renderer,
 }: {
   sides: Sides;
   undoStack: { command: Command; description: string }[];
@@ -342,6 +346,7 @@ export async function saveToIndexedDB({
   palette: RGBA[];
   unlit: boolean;
   autorotate: boolean;
+  renderer: RendererKind;
 }): Promise<void> {
   const blob = await save(sides, palette);
   await saveBlobToDB(DB_KEYS.zipFileData, blob);
@@ -365,7 +370,7 @@ export async function saveToIndexedDB({
   };
   const undoRedoJsonText = JSON.stringify(undoRedoJson);
   await saveTextToDB(DB_KEYS.undoRedoData, undoRedoJsonText);
-  await saveTextToDB(DB_KEYS.preview, JSON.stringify({ unlit, autorotate }));
+  await saveTextToDB(DB_KEYS.preview, JSON.stringify({ unlit, autorotate, renderer }));
 }
 
 function openDB(): Promise<IDBDatabase> {

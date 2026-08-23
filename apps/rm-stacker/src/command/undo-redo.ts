@@ -1,5 +1,5 @@
 import { Accessor, createMemo, createSignal, Signal } from "solid-js";
-import { Command } from "./command/Command";
+import { Command } from "./Command";
 
 export interface CommandEntry {
   command: Command;

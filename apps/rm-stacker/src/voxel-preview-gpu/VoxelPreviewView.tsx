@@ -1,6 +1,5 @@
 import {
   Component,
-  createEffect,
   createMemo,
   createSignal,
   createTrackedEffect,
@@ -17,9 +16,9 @@ import {
 } from "@random-mesh/rmsl/scene";
 import { uniform } from "@random-mesh/rmsl";
 import { bloom } from "@random-mesh/rmsl/effects";
-import { StackerContext } from "./context";
+import { StackerContext } from "../context";
 import { BloomExecutor, createRenderTarget, GlowPass, type RenderTarget } from "./bloom-executor";
-import { Dimensions3D, Matrix3x3, Vector3D } from "./maths";
+import { Dimensions3D, Matrix3x3, Vector3D } from "../maths";
 import {
   PANEL_PAIR_KINDS,
   PANEL_PAIR_UNIFORM_NAME,
@@ -29,11 +28,15 @@ import shaders from "./shaders";
 import { VoxelPreviewMaterial } from "./voxel-preview-material";
 import { voxelPicker } from "./voxel-picker";
 import { boxSize, FOV, NEAR, FAR, rotateMesh } from "./voxel-preview-scene";
-import { tryCatch } from "./utils";
+import { tryCatch } from "../utils";
+import {
+  getWorldToModel as computeWorldToModel,
+  orbitBy,
+  type OrbitCameraState,
+  zoomBy,
+  zoomTo,
+} from "../voxel-preview-camera";
 import styles from "./VoxelPreviewView.module.css";
-
-const MIN_RADIUS = 2;
-const MAX_RADIUS = 20;
 
 // Directional + ambient light for the voxel preview. The direction is fixed in
 // world space and the model turns beneath it, so it is rotated into the model's
@@ -41,9 +44,6 @@ const MAX_RADIUS = 20;
 const LIGHT_DIR = Object.freeze(Vector3D.normalize(Vector3D.create(0.4, 0.7, 0.8)));
 const LIGHT_COLOUR = new Float32Array([1.0, 0.97, 0.9]);
 const AMBIENT_COLOUR = new Float32Array([0.35, 0.35, 0.4]);
-
-const TURNTABLE_SECONDS_PER_REVOLUTION = 20;
-const TURNTABLE_RADIANS_PER_SECOND = -(2 * Math.PI) / TURNTABLE_SECONDS_PER_REVOLUTION;
 
 // The bloom source is the picked voxel's own colour, so the threshold only
 // needs to clear zero — everything else in the mask is transparent.
@@ -63,7 +63,7 @@ type PreviewScene = {
   maskTarget: RenderTarget | null;
 };
 
-const VoxelPreviewView: Component = () => {
+const VoxelPreviewView: Component<{ orbit: OrbitCameraState }> = props => {
   const { dimensions, sides, sidesVersion, palette, preview } = useContext(StackerContext);
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
@@ -83,38 +83,15 @@ const VoxelPreviewView: Component = () => {
     return toPanelPairTextures(sides());
   });
 
-  let yaw = Math.PI / 4;
-  let pitch = Math.PI / 6;
-  let radius = 3;
-
-  const RADIANS_PER_PIXEL = 0.005;
-  const PITCH_LIMIT = Math.PI / 2 - 0.01;
+  const orbit = props.orbit;
 
   const yawMatrix = Matrix3x3.create();
   const pitchMatrix = Matrix3x3.create();
   const worldToModel = Matrix3x3.create();
   const modelSpaceLightDirection = Vector3D.create();
 
-  let timeOffset = 0;
-  let spinOffset = 0;
-  let spin = 0;
-
-  createEffect(preview.autorotate, autoRotate => {
-    if (autoRotate) {
-      timeOffset = performance.now();
-    } else {
-      spinOffset = spin;
-    }
-  });
-
-  const getWorldToModel = () => {
-    Matrix3x3.rotationX(-pitch, pitchMatrix);
-    if (untrack(preview.autorotate)) {
-      spin = ((performance.now() - timeOffset) / 1000) * TURNTABLE_RADIANS_PER_SECOND + spinOffset;
-    }
-    Matrix3x3.rotationY(-(yaw + spin), yawMatrix);
-    return Matrix3x3.multiply(yawMatrix, pitchMatrix, worldToModel);
-  };
+  const getWorldToModel = () =>
+    computeWorldToModel(orbit, untrack(preview.autorotate), pitchMatrix, yawMatrix, worldToModel);
 
   // CPU voxel picking: ray-march the same volume the fragment shader renders,
   // from the click position in UV space, and return the voxel index under it
@@ -165,7 +142,7 @@ const VoxelPreviewView: Component = () => {
         ],
         [shaders.uLightColour]: Array.from(LIGHT_COLOUR),
         [shaders.uAmbientColour]: Array.from(AMBIENT_COLOUR),
-        [shaders.uCameraPosition]: [0, 0, radius],
+        [shaders.uCameraPosition]: [0, 0, orbit.radius],
         [shaders.uWorldToModel]: Array.from(worldToModel),
         [shaders.uUnlit]: untrack(preview.unlit),
       },
@@ -227,7 +204,7 @@ const VoxelPreviewView: Component = () => {
       if (pinchDistance > 0) {
         // Spreading the fingers (distance grows) zooms in, i.e. pulls the
         // camera closer, so the radius scales by the inverse ratio.
-        radius = Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, radius * (pinchDistance / distance)));
+        zoomTo(orbit, pinchDistance / distance);
       }
       pinchDistance = distance;
       return;
@@ -236,8 +213,7 @@ const VoxelPreviewView: Component = () => {
     // Keep the readout in step with the cursor — including while orbiting,
     // where the model turns beneath the pointer.
     pickAt(event.clientX, event.clientY);
-    yaw += delta.x * RADIANS_PER_PIXEL;
-    pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch + delta.y * RADIANS_PER_PIXEL));
+    orbitBy(orbit, delta.x, delta.y);
   };
 
   const handlePointerEnd = (event: PointerEvent) => {
@@ -313,7 +289,7 @@ const VoxelPreviewView: Component = () => {
     // the CPU picker follows its ray along — keeping the pick under the pointer
     // aligned with what is drawn.
     getWorldToModel();
-    rotateMesh(mesh, yaw, pitch, spin);
+    rotateMesh(mesh, orbit.yaw, orbit.pitch, orbit.spin);
 
     Matrix3x3.transform(worldToModel, LIGHT_DIR, modelSpaceLightDirection);
 
@@ -328,7 +304,7 @@ const VoxelPreviewView: Component = () => {
     material.ambientColour = [AMBIENT_COLOUR[0], AMBIENT_COLOUR[1], AMBIENT_COLOUR[2]];
     material.unlit = untrack(preview.unlit);
 
-    camera.position.set(0, 0, radius);
+    camera.position.set(0, 0, orbit.radius);
 
     const gl = renderer.gl;
     const maskTarget = _previewScene.maskTarget;
@@ -381,7 +357,7 @@ const VoxelPreviewView: Component = () => {
         const gl = renderer.gl;
         const scene = new Scene();
         const camera = new PerspectiveCamera(FOV, 1, NEAR, FAR);
-        camera.position.set(0, 0, radius);
+        camera.position.set(0, 0, orbit.radius);
         camera.lookAt(0, 0, 0);
         const material = new VoxelPreviewMaterial();
         const mesh = new Mesh(undefined, material);
@@ -491,8 +467,7 @@ const VoxelPreviewView: Component = () => {
             onPointerUp={handlePointerEnd}
             onPointerCancel={handlePointerEnd}
             onWheel={event => {
-              const sign = Math.sign(event.deltaY);
-              radius = Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, radius * Math.pow(1.1, sign)));
+              zoomBy(orbit, Math.sign(event.deltaY));
             }}
           />
           {pickedVoxel() !== undefined && (

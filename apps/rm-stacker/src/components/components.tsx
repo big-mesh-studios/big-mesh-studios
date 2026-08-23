@@ -1,7 +1,7 @@
 import { Portal } from "@solidjs/web";
 import type { JSX } from "@solidjs/web/jsx-runtime";
 import { createSignal, omit, ParentProps, Show } from "solid-js";
-import type { IconKind } from "../icon-kinds";
+import type { IconKind } from "../store/icon-kinds";
 import { RGBA } from "../maths";
 import { combineRefs } from "../utils";
 import styles from "./components.module.css";

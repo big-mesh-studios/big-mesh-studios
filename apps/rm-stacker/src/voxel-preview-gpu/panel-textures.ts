@@ -1,6 +1,6 @@
-import { Bitmap } from "./maths";
+import { Bitmap } from "../maths";
 import shaders from "./shaders";
-import type { Sides } from "./types";
+import type { Sides } from "../types";
 
 /** The three pairs of panels that face each other, named near-then-far. */
 export type PanelPairKind = "frontBack" | "leftRight" | "topBottom";

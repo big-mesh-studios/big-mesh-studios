@@ -1,5 +1,5 @@
 /**
- * Regenerates src/icon-kinds.ts from the Font Awesome metadata in node_modules.
+ * Regenerates src/store/icon-kinds.ts from the Font Awesome metadata in node_modules.
  *
  * Only the icons that the free license ships in the classic/solid style are
  * emitted, since <Icon/> always renders `fa-solid fa-${kind}`. Aliases are
@@ -26,7 +26,7 @@ interface IconMetadata {
 // Anchored to the repository root so the script runs from any working directory.
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGE = join(ROOT, "node_modules/@fortawesome/fontawesome-free");
-const OUTPUT = join(ROOT, "src/icon-kinds.ts");
+const OUTPUT = join(ROOT, "src/store/icon-kinds.ts");
 
 const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, "utf8"));
 

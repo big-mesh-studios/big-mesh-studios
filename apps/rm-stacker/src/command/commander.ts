@@ -1,6 +1,6 @@
 import { Accessor, Setter } from "@solidjs/signals";
 import { untrack } from "solid-js";
-import { load, save } from "../load-save";
+import { load, save } from "../store/load-save";
 import { Bitmap, RGBA } from "../maths";
 import { Sides } from "../types";
 import { intersectSide } from "../utils";

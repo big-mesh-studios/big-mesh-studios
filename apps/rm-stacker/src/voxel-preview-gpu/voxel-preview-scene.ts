@@ -1,5 +1,5 @@
 import { Mesh, Quaternion, Vector3 } from "@random-mesh/rmsl/scene";
-import { Dimensions3D } from "./maths";
+import { Dimensions3D } from "../maths";
 
 // The CPU voxel picker builds its ray with a pinhole camera whose focal length
 // is 2 (see rayMarcher in shaders-shared). A perspective camera with this

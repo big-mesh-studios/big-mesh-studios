@@ -2,7 +2,7 @@
 // DAWNBRINGER 32 (DB32) COLOUR PALETTE
 // ==========================================
 
-import { hexToRgba } from "./utils";
+import { hexToRgba } from "../utils";
 
 // Monochromes & Dark Neutrals
 export const COLOUR_PURE_BLACK = "#000000" as const;

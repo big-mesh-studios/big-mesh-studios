@@ -1,13 +1,14 @@
-import { createEffect, createMemo, createSignal, flush } from "solid-js";
-import { Command } from "./command/Command";
-import { createCommander } from "./command/commander";
+import { createEffect, createMemo, createSignal, flush, untrack } from "solid-js";
+import { Command } from "../command/Command";
+import { createCommander } from "../command/commander";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 import { loadFromIndexedDB, saveToIndexedDB } from "./load-save";
-import { Bitmap, Dimensions3D, RGBA, Vector2D } from "./maths";
+import { Bitmap, Dimensions3D, RGBA, Vector2D } from "../maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
-import { ModeKind, type Dimensions2D, type Sides } from "./types";
-import { UndoRedoManager } from "./undo-redo";
-import { createEnqueue, createMediaQuery } from "./utils";
+import { ModeKind, type Dimensions2D, type Sides } from "../types";
+import { UndoRedoManager } from "../command/undo-redo";
+import { createEnqueue, createMediaQuery } from "../utils";
+import { solveVoxels } from "../voxel-preview-cpu/voxel-solver";
 
 const INITIAL_DIMENSIONS = { width: 15, height: 15, depth: 15 };
 const INITIAL_PALETTE_INDEX = 5;
@@ -77,14 +78,24 @@ export function createStacker() {
   const [sidesVersion, setSidesVersion] = createSignal(0);
   const narrow = createMediaQuery("(max-width: 500px)");
 
+  // Only the CPU renderer reads this, so it stays unevaluated (and the solve
+  // never runs) whenever the GPU renderer is the one mounted.
+  const voxels = createMemo(() => {
+    sidesVersion();
+    return solveVoxels(dimensions(), untrack(sides));
+  });
+
   const [unlit, setUnlit] = createSignal(() => saved()?.preview?.unlit ?? true);
   const [autorotate, setAutorotate] = createSignal(() => saved()?.preview?.autorotate ?? true);
+  const [renderer, setRenderer] = createSignal(() => saved()?.preview?.renderer ?? "gpu");
 
   const preview = {
     unlit,
     setUnlit,
     autorotate,
     setAutorotate,
+    renderer,
+    setRenderer,
   };
 
   const selectedColour = createMemo(() => palette()[selectedPaletteIndex()]);
@@ -116,6 +127,7 @@ export function createStacker() {
               redoStack,
               unlit: unlit(),
               autorotate: autorotate(),
+              renderer: renderer(),
             });
           } while (trySaveAgain);
           saving = false;
@@ -184,6 +196,8 @@ export function createStacker() {
     // sides version
     sidesVersion,
     invalidateSides,
+    // voxels (solved volume, for the CPU renderer)
+    voxels,
     // Palette
     palette,
     setPalette,
