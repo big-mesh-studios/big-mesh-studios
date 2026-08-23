@@ -26,39 +26,40 @@ import { BLOCK_WORLD, getWorldHeight, type Dim3 } from "./world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
 import { WorldRing } from "./world/world-ring";
 
+const BLOCKS = 5;
+/** Ring half-extent: the farthest the ring's outer edge can be from the player. */
+const RING_RADIUS = (BLOCKS / 2) * BLOCK_WORLD[0];
+/**
+ * Distance at which fog becomes fully opaque and rays stop marching. Set
+ * to the ring edge's closest possible approach to the player — `(BLOCKS/2
+ * - 0.5)` blocks (384) — the distance when the player hugs the far edge
+ * of their center block, so fog always hides the ring boundary before it
+ * can become visible.
+ */
+const FOG_DISTANCE = (BLOCKS / 2 - 0.5) * BLOCK_WORLD[0];
+const FOG_START = 0.4 * FOG_DISTANCE;
+/** Sky blue, matching the material's default fog color so the horizon blends. */
+const SKY_BLUE = 0x87ceeb;
+const SPAWN: Dim3 = [0, 0, 0];
+/**
+ * Distance from the origin beyond which player movement is clamped. The
+ * ring is effectively unbounded, so this exists only to guard against
+ * floating-point drift far outside it.
+ */
+const SAFE_EXTENT = 1e6;
+/** Terrain noise settings shared by every block in the ring. */
+const TERRAIN: TerrainConfig = DEFAULT_TERRAIN;
+/** When true, only surface voxels are written into each block's GPU chunks instead of the full solid volume. */
+const SURFACE_ONLY = true;
+/** Padding added to each mesh's box so adjacent meshes share a thin overlap shell. */
+const PAD = 2.0;
+/** Water absorption used by the raymarch water pass and, at the same value, the triangle renderer's underwater tint. */
+const WATER_EXTINCTION = 0.12;
+
 const App: Component<{}> = () => {
   /** True when the URL hash includes `perf`, enabling the debug HUD (GPU timer and fetches-per-ray). */
   const debugPerf =
     typeof window !== "undefined" && window.location.hash.includes("perf");
-  const BLOCKS = 5;
-  /** Ring half-extent: the farthest the ring's outer edge can be from the player. */
-  const RING_RADIUS = (BLOCKS / 2) * BLOCK_WORLD[0];
-  /**
-   * Distance at which fog becomes fully opaque and rays stop marching. Set
-   * to the ring edge's closest possible approach to the player — `(BLOCKS/2
-   * - 0.5)` blocks (384) — the distance when the player hugs the far edge
-   * of their center block, so fog always hides the ring boundary before it
-   * can become visible.
-   */
-  const FOG_DISTANCE = (BLOCKS / 2 - 0.5) * BLOCK_WORLD[0];
-  const FOG_START = 0.4 * FOG_DISTANCE;
-  /** Sky blue, matching the material's default fog color so the horizon blends. */
-  const SKY_BLUE = 0x87ceeb;
-  const SPAWN: Dim3 = [0, 0, 0];
-  /**
-   * Distance from the origin beyond which player movement is clamped. The
-   * ring is effectively unbounded, so this exists only to guard against
-   * floating-point drift far outside it.
-   */
-  const SAFE_EXTENT = 1e6;
-  /** Terrain noise settings shared by every block in the ring. */
-  const TERRAIN: TerrainConfig = DEFAULT_TERRAIN;
-  /** When true, only surface voxels are written into each block's GPU chunks instead of the full solid volume. */
-  const SURFACE_ONLY = true;
-  /** Padding added to each mesh's box so adjacent meshes share a thin overlap shell. */
-  const PAD = 2.0;
-  /** Water absorption used by the raymarch water pass and, at the same value, the triangle renderer's underwater tint. */
-  const WATER_EXTINCTION = 0.12;
   let [state, setState] = createStore<{
     canvas: HTMLCanvasElement | undefined;
     renderer: WebGLRenderer | undefined;
