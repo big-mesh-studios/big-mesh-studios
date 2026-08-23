@@ -109,11 +109,7 @@ const App: Component<{}> = () => {
     seaLevel: TERRAIN.seaLevel,
   });
 
-  /**
-   * Every debug console command, declared as a single object literal keyed
-   * by command name. A duplicate key is a compile error, so a command-name
-   * collision is caught by the type checker rather than at runtime.
-   */
+  /** Every debug console command, declared as a single object literal keyed by command name. */
   const commands = new Commander({
     "/day": {
       help: "/day       jump to noon (t=300s)",

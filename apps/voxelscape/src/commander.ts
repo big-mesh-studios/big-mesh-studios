@@ -4,10 +4,7 @@
  * exists. Each entry's `run` closure does its own raw-argument parsing,
  * validation, and aliasing, then calls a plain typed method on the owning
  * object — the owning objects themselves expose no command-shaped API and
- * have no idea a console exists. Using a plain object literal, rather than
- * a `register()`-call registry or a runtime-checked array, means a
- * duplicate command name is a TypeScript compile error instead of a
- * runtime one.
+ * have no idea a console exists.
  */
 export interface CommandEntry {
   help: string;

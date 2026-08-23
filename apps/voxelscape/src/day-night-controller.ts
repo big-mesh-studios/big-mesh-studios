@@ -29,10 +29,7 @@ export interface DayNightControllerParams {
 /**
  * Applies the day-night cycle (`./day-night`) to the scene: the sun and
  * ambient lights, the sun/moon billboards, and the clock itself (elapsed
- * time, an optional override, and a speed multiplier). Does not know about
- * rendering; `tick` returns the computed `DayNightState` for the caller to
- * feed into the renderer as well, rather than holding a reference to the
- * renderer itself.
+ * time, an optional override, and a speed multiplier).
  */
 export class DayNightController {
   private readonly sun: DirectionalLight;

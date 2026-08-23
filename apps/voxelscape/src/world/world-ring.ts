@@ -29,9 +29,7 @@ export interface WorldRingParams {
  * A `blocksPerSide x blocksPerSide` window of `WorldBlock`s kept centred on
  * the player. The initial ring is built synchronously in the constructor;
  * every scroll after that requests the newly revealed slots' voxel data from
- * a `FillClient`. This class knows nothing about rendering — block changes
- * and repositions are reported through injected callbacks, not a direct
- * reference to a renderer.
+ * a `FillClient`.
  */
 export class WorldRing {
   readonly blocks: WorldBlock[] = [];
