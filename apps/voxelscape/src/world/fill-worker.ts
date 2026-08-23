@@ -5,10 +5,12 @@
 // data, broad grid, fine chunks) are posted back transferred (moved, not
 // copied) and adopted zero-copy into the block's store and level.
 import { buildBlockData, type Dim3, type TerrainConfig } from "./level-data";
+import type { FillStoreFn } from "./voxel-store";
 
 export interface FillConfig {
   terrain: TerrainConfig;
   surfaceOnly: boolean;
+  customFillStoreUrl?: string;
 }
 
 export interface FillBatchRequest {
@@ -27,22 +29,35 @@ export interface FillBatchResult {
 export type FillWorkerMessage =
   { type: "config"; config: FillConfig } | FillBatchRequest;
 
+let cachedCustomFillStore: FillStoreFn | undefined = undefined;
+
 /**
  * Builds the batch result for a fill request. Pure, so it can be
  * unit-tested without a worker context.
  */
-export const buildFillResult = (
+export const buildFillResult = async (
   req: FillBatchRequest,
   cfg: FillConfig,
-): FillBatchResult => {
+): Promise<FillBatchResult> => {
   const storeData: Uint8Array[] = [];
   const broadData: Uint8Array[] = [];
   const fineData: Uint8Array[] = [];
+
+  if (cfg.customFillStoreUrl && !cachedCustomFillStore) {
+    try {
+      const module = await import(/* @vite-ignore */ cfg.customFillStoreUrl);
+      cachedCustomFillStore = module.fillStore || module.default;
+    } catch (err) {
+      console.error("[fill-worker] failed to import customFillStoreUrl:", err);
+    }
+  }
+
   for (const center of req.centers) {
     const data = buildBlockData({
       center,
       terrain: cfg.terrain,
       surfaceOnly: cfg.surfaceOnly,
+      customFillStore: cachedCustomFillStore,
     });
     storeData.push(data.storeData);
     broadData.push(data.broadData);
@@ -71,17 +86,18 @@ export const fillResultTransfers = (
  * a result for a `fill` message, or nothing for anything else (an unknown
  * message, or a `fill` message received before a configuration).
  */
-export const handleFillMessage = (
+export const handleFillMessage = async (
   msg: FillWorkerMessage,
   config: FillConfig | undefined,
-): { result?: FillBatchResult; config?: FillConfig } => {
+): Promise<{ result?: FillBatchResult; config?: FillConfig }> => {
   if (msg.type === "config") {
+    cachedCustomFillStore = undefined;
     return { config: msg.config };
   }
   if (msg.type !== "fill" || config === undefined) {
     return {};
   }
-  return { result: buildFillResult(msg, config) };
+  return { result: await buildFillResult(msg, config) };
 };
 
 /**
@@ -104,8 +120,8 @@ const workerSelf =
 let config: FillConfig | undefined;
 
 if (workerSelf !== undefined) {
-  workerSelf.onmessage = (ev) => {
-    const out = handleFillMessage(ev.data as FillWorkerMessage, config);
+  workerSelf.onmessage = async (ev) => {
+    const out = await handleFillMessage(ev.data as FillWorkerMessage, config);
     if (out.config !== undefined) {
       config = out.config;
       return;

@@ -1,12 +1,28 @@
 {
-  "name": "bms-voxelscape",
+  "name": "@big-mesh-studios/bms-voxelscape",
   "version": "0.1.0",
   "description": "",
-  "main": "index.js",
+  "main": "./dist-lib/lib.umd.js",
+  "module": "./dist-lib/lib.es.js",
+  "types": "./dist-lib/lib.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist-lib/lib.d.ts",
+      "import": "./dist-lib/lib.es.js",
+      "require": "./dist-lib/lib.umd.js"
+    }
+  },
+  "files": [
+    "dist-lib"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build-lib": "vite build --config vite.config.lib.ts && tsc -p tsconfig.lib.json",
     "serve": "vite preview",
     "test": "vitest run",
     "check-types": "tsc --noEmit",
@@ -21,6 +37,7 @@
     "@types/three": "^0.183.1",
     "esbuild": "^0.28.1",
     "fast-png": "^8.0.0",
+    "jsdom": "^30.0.1",
     "playwright": "^1.62.1",
     "prettier": "^3.9.6",
     "typescript": "^5.7.2",

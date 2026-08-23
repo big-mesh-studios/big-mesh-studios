@@ -14,6 +14,7 @@ import {
   fillStore,
   sweepSurface,
   sweepWaterSurface,
+  type FillStoreFn,
 } from "./voxel-store";
 
 export type { TerrainConfig };
@@ -322,6 +323,7 @@ export const buildBlock = (params: {
   lod?: number;
   terrain?: TerrainConfig;
   surfaceOnly?: boolean;
+  customFillStore?: FillStoreFn;
 }): WorldBlock => {
   const lod = params.lod ?? 0;
   const { broadDim, chunkDim, storageDim, dimensions, voxels, voxelSize } =
@@ -343,7 +345,8 @@ export const buildBlock = (params: {
     center: params.center,
     store,
   };
-  fillStore(store, params.center, params.terrain ?? DEFAULT_TERRAIN);
+  const fill = params.customFillStore ?? fillStore;
+  fill(store, params.center, params.terrain ?? DEFAULT_TERRAIN);
   syncLevelFromStore(level, store, {
     surfaceOnly: params.surfaceOnly ?? true,
   });
@@ -432,6 +435,7 @@ export const buildBlockData = (params: {
   center: Dim3;
   terrain?: TerrainConfig;
   surfaceOnly?: boolean;
+  customFillStore?: FillStoreFn;
 }): BlockData => {
   const block = buildBlock(params);
   return {

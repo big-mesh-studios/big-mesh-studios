@@ -60,6 +60,12 @@ export class VoxelStore {
   }
 }
 
+export type FillStoreFn = (
+  store: VoxelStore,
+  center: Dim3,
+  config: TerrainConfig,
+) => void;
+
 /**
  * Fills an existing `store` with solid terrain columns derived from the
  * shared noise height field sampled at the block's absolute world xz (so

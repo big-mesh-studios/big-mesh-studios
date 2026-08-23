@@ -80,10 +80,12 @@ export const buildVoxelTileConfig = (
   atlas: Map<string, SubTexture>,
   atlasW: number,
   atlasH: number,
+  customVoxelTiles?: Record<number, VoxelTiles>,
 ): VoxelTileConfig[] => {
   const config: VoxelTileConfig[] = [];
-  for (const id of Object.keys(VOXEL_TILES)) {
-    const v = VOXEL_TILES[Number(id)];
+  const mergedTiles = { ...VOXEL_TILES, ...customVoxelTiles };
+  for (const id of Object.keys(mergedTiles)) {
+    const v = mergedTiles[Number(id)];
     const resolve = (name: string): SubTexture => {
       const sub = atlas.get(name);
       if (sub === undefined) {

@@ -21,29 +21,29 @@ const config: FillConfig = {
 };
 
 describe("fill worker protocol", () => {
-  it("stores the config from a config message", () => {
-    const out = handleFillMessage({ type: "config", config }, undefined);
+  it("stores the config from a config message", async () => {
+    const out = await handleFillMessage({ type: "config", config }, undefined);
     expect(out.config).toBe(config);
     expect(out.result).toBeUndefined();
   });
 
-  it("ignores a fill request before a config arrives", () => {
-    const out = handleFillMessage(
+  it("ignores a fill request before a config arrives", async () => {
+    const out = await handleFillMessage(
       { type: "fill", indices: [0], centers: [[0, 0, 0]] },
       undefined,
     );
     expect(out.result).toBeUndefined();
   });
 
-  it("ignores a message that is neither config nor fill", () => {
-    const out = handleFillMessage(
+  it("ignores a message that is neither config nor fill", async () => {
+    const out = await handleFillMessage(
       { indices: [0], centers: [[0, 0, 0]] } as unknown as FillBatchRequest,
       config,
     );
     expect(out.result).toBeUndefined();
   });
 
-  it("builds a batch result after config, matching the sync build", () => {
+  it("builds a batch result after config, matching the sync build", async () => {
     const req: FillBatchRequest = {
       type: "fill",
       indices: [3, 7],
@@ -52,7 +52,7 @@ describe("fill worker protocol", () => {
         [192, 0, 0],
       ],
     };
-    const out = handleFillMessage(req, config);
+    const out = await handleFillMessage(req, config);
     expect(out.result).toBeDefined();
     const result = out.result!;
     expect(result.indices).toEqual([3, 7]);
@@ -70,8 +70,8 @@ describe("fill worker protocol", () => {
     expect(result.fineData[0].length).toBe(sync.fineData.length);
   });
 
-  it("produces one transferable buffer per array", () => {
-    const result = buildFillResult(
+  it("produces one transferable buffer per array", async () => {
+    const result = await buildFillResult(
       { type: "fill", indices: [0], centers: [[0, 0, 0]] },
       config,
     );

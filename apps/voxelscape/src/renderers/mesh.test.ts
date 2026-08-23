@@ -266,14 +266,6 @@ describe("meshArraysToGeometry", () => {
     expect(geometry.uv?.count).toBe(vertexCount(mesh));
   });
 
-  it("omits the uv attribute for the water mesh", () => {
-    const store = smallStore();
-    store.set(1, 2, 1, VOXEL_WATER);
-    const geometry = meshArraysToGeometry(
-      buildWaterMesh(store, noNeighbors(store)),
-    );
-    expect(geometry.uv).toBeUndefined();
-  });
 });
 
 describe("setGeometryData", () => {

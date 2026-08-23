@@ -5,12 +5,13 @@ import {
   type WorldBlock,
 } from "./level-data";
 import type { TerrainConfig } from "./noise";
-import type { VoxelStore } from "./voxel-store";
+import { type VoxelStore, type FillStoreFn } from "./voxel-store";
 
 export interface BlockGridParams {
   blocksPerSide: number;
   terrain: TerrainConfig;
   surfaceOnly: boolean;
+  customFillStore?: FillStoreFn;
 }
 
 /**
@@ -47,6 +48,7 @@ export class BlockGrid {
           center,
           terrain: params.terrain,
           surfaceOnly: params.surfaceOnly,
+          customFillStore: params.customFillStore,
         });
         this.blocks.push(block);
         this.worldGrid.push(grid);

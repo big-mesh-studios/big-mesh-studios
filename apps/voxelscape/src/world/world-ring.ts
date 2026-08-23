@@ -7,6 +7,7 @@ import {
 import { FillClient } from "./fill-client";
 import type { BlockGrid } from "./block-grid";
 import type { TerrainConfig } from "./noise";
+import type { FillStoreFn } from "./voxel-store";
 
 export interface WorldRingParams {
   blockGrid: BlockGrid;
@@ -22,6 +23,8 @@ export interface WorldRingParams {
    * position, before its new data has arrived.
    */
   onBlockReposition: (index: number, center: Dim3) => void;
+  customFillStore?: FillStoreFn;
+  customFillStoreUrl?: string;
 }
 
 /**
@@ -48,6 +51,8 @@ export class WorldRing {
       surfaceOnly: params.surfaceOnly,
       blocks: this.blocks,
       onBlockChanged: params.onBlockChanged,
+      customFillStore: params.customFillStore,
+      customFillStoreUrl: params.customFillStoreUrl,
     });
   }
 

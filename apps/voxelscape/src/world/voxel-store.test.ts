@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { Level, getWorldHeight, syncLevelFromStore } from "./level-data";
+import { buildBlock, Level, getWorldHeight, syncLevelFromStore } from "./level-data";
 import {
   VOXEL_AIR,
   VOXEL_DIRT,
@@ -270,5 +270,21 @@ describe("getWorldHeight", () => {
     // voxel (1, vy, 1) has world xz = -1; the water row 3 would be world y 4,
     // the lakebed row 2 is world y 2 -> must return the lakebed
     expect(getWorldHeight(blocks, -1, -1)).toBe(2);
+  });
+});
+
+describe("customFillStore", () => {
+  it("uses custom fill function to generate voxel data", () => {
+    const customFill = (store: any, center: any, config: any) => {
+      store.set(0, 0, 0, VOXEL_GRASS);
+      store.set(1, 1, 1, VOXEL_DIRT);
+    };
+    const block = buildBlock({
+      center: [0, 0, 0],
+      customFillStore: customFill,
+    });
+    expect(block.store.get(0, 0, 0)).toBe(VOXEL_GRASS);
+    expect(block.store.get(1, 1, 1)).toBe(VOXEL_DIRT);
+    expect(block.store.get(2, 2, 2)).toBe(VOXEL_AIR);
   });
 });

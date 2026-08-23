@@ -10,7 +10,7 @@ import {
   type FillConfig,
 } from "./fill-worker";
 import type { TerrainConfig } from "./noise";
-import { fillStore } from "./voxel-store";
+import { fillStore, type FillStoreFn } from "./voxel-store";
 
 export interface FillClientParams {
   terrain: TerrainConfig;
@@ -23,6 +23,8 @@ export interface FillClientParams {
   blocks: WorldBlock[];
   /** Called with a slot's index once its voxel data has been generated and applied. */
   onBlockChanged: (index: number) => void;
+  customFillStore?: FillStoreFn;
+  customFillStoreUrl?: string;
 }
 
 /**
@@ -41,6 +43,8 @@ export class FillClient {
   private readonly terrain: TerrainConfig;
   private readonly surfaceOnly: boolean;
   private readonly onBlockChanged: (index: number) => void;
+  private readonly customFillStore?: FillStoreFn;
+  private readonly customFillStoreUrl?: string;
   private worker: Worker | undefined;
   private workerAvailable = true;
 
@@ -49,6 +53,8 @@ export class FillClient {
     this.surfaceOnly = params.surfaceOnly;
     this.blocks = params.blocks;
     this.onBlockChanged = params.onBlockChanged;
+    this.customFillStore = params.customFillStore;
+    this.customFillStoreUrl = params.customFillStoreUrl;
     this.fillGen = new Array(params.blocks.length).fill(0);
 
     try {
@@ -58,6 +64,7 @@ export class FillClient {
       const fillConfig: FillConfig = {
         terrain: this.terrain,
         surfaceOnly: this.surfaceOnly,
+        customFillStoreUrl: this.customFillStoreUrl,
       };
       this.worker.postMessage({ type: "config", config: fillConfig });
       this.worker.onmessage = (ev) => {
@@ -111,8 +118,10 @@ export class FillClient {
   }
 
   private syncFillBlock(i: number): void {
-    fillStore(this.blocks[i].store, this.blocks[i].center, this.terrain);
-    syncLevelFromStore(this.blocks[i].level, this.blocks[i].store, {
+    const block = this.blocks[i];
+    const fill = this.customFillStore ?? fillStore;
+    fill(block.store, block.center, this.terrain);
+    syncLevelFromStore(block.level, block.store, {
       surfaceOnly: this.surfaceOnly,
     });
     this.onBlockChanged(i);
