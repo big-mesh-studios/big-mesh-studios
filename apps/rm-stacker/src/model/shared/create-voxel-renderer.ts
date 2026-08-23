@@ -116,8 +116,31 @@ export function createVoxelRenderer<M extends NodeMaterial & VoxelMaterial>(
     },
 
     dispose() {
+      // Deliberately does not force-lose the WebGL context (via
+      // WEBGL_lose_context): the canvas is reused across a renderer swap
+      // (toggling the cpu/gpu backend keeps the same <canvas> element), and
+      // a canvas's context, once created, is permanent for that canvas's
+      // lifetime — losing it here would leave the next renderer's
+      // getContext() call handed back the same, now-dead context, and every
+      // shader it tries to compile would fail. renderer.dispose() already
+      // frees the GL resources (programs, buffers, textures) this renderer
+      // owns without invalidating the context itself.
       renderer.dispose();
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
+
+      // rmsl's WebGLRenderer never binds a non-default vertex array object —
+      // every mesh's attributes are enabled directly on the one shared
+      // default VAO and never explicitly disabled again. Deleting this
+      // renderer's buffers above leaves any attribute location it last
+      // enabled still marked enabled, now pointing at a deleted buffer; the
+      // next renderer sharing this canvas's context only rebinds the
+      // locations its own geometry uses, so a stale one left over here
+      // would fail WebGL's "no buffer bound to enabled attribute" check on
+      // its very next draw call. Disabling every attribute slot leaves the
+      // context clean for whichever renderer reuses it.
+      const maxAttribs = gl.getParameter(gl.MAX_VERTEX_ATTRIBS) as number;
+      for (let i = 0; i < maxAttribs; i++) {
+        gl.disableVertexAttribArray(i);
+      }
     },
   };
 }
