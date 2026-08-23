@@ -22,6 +22,7 @@ import {
 import { RendererSwitch } from "./renderers/renderer-switch";
 import { Console } from "./ui/Console";
 import Controls from "./ui/Controls";
+import { BlockGrid } from "./world/block-grid";
 import { BLOCK_WORLD, getWorldHeight, type Dim3 } from "./world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
 import { WorldRing } from "./world/world-ring";
@@ -76,31 +77,22 @@ const App: Component<{}> = () => {
    */
   const dayNight = new DayNightController({ scene });
 
-  /**
-   * The world ring: a BLOCKS x BLOCKS window of WorldBlocks kept centred on
-   * the player, streamed in off the main thread as it scrolls.
-   * `rendererSwitch` is constructed just below and assigned before any
-   * callback can fire (both the fill worker's response and any ring scroll
-   * happen later, from the animate loop), so this forward reference is safe.
-   */
-  let rendererSwitch: RendererSwitch;
-  const worldRing = new WorldRing({
+  /** A BLOCKS x BLOCKS window of WorldBlocks, tagged with their grid coordinates. */
+  const blockGrid = new BlockGrid({
     blocksPerSide: BLOCKS,
     terrain: TERRAIN,
     surfaceOnly: SURFACE_ONLY,
-    onBlockChanged: (i) => rendererSwitch.onBlockChanged(i),
-    onBlockReposition: (i, center) => rendererSwitch.repositionBlock(i, center),
   });
 
   /**
    * Builds both rendering strategies' meshes for every block above and owns
    * switching between them (`/renderer ray|tri`).
    */
-  rendererSwitch = new RendererSwitch({
+  const rendererSwitch = new RendererSwitch({
     scene,
-    blocks: worldRing.blocks,
-    gridCoordAt: (i) => worldRing.gridCoordAt(i),
-    lookupBlock: worldRing.lookupBlock,
+    blocks: blockGrid.blocks,
+    gridCoordAt: (i) => blockGrid.gridCoordAt(i),
+    lookupBlock: blockGrid.lookupBlock,
     padding: PAD,
     blockWorld: BLOCK_WORLD,
     fogDistance: FOG_DISTANCE,
@@ -108,6 +100,18 @@ const App: Component<{}> = () => {
     debugPerf,
     waterExtinction: WATER_EXTINCTION,
     seaLevel: TERRAIN.seaLevel,
+  });
+
+  /**
+   * Keeps `blockGrid`'s window centred on the player, streamed in off the
+   * main thread as it scrolls.
+   */
+  const worldRing = new WorldRing({
+    blockGrid,
+    terrain: TERRAIN,
+    surfaceOnly: SURFACE_ONLY,
+    onBlockChanged: (i) => rendererSwitch.onBlockChanged(i),
+    onBlockReposition: (i, center) => rendererSwitch.repositionBlock(i, center),
   });
 
   /** Every debug console command, declared as a single object literal keyed by command name. */
@@ -231,7 +235,7 @@ const App: Component<{}> = () => {
   const camera = new PerspectiveCamera(50, 1.0, 0.1, RING_RADIUS + 200);
   const player = createPlayer(
     SPAWN[0],
-    getWorldHeight(worldRing.blocks, SPAWN[0], SPAWN[2]) +
+    getWorldHeight(blockGrid.blocks, SPAWN[0], SPAWN[2]) +
       PLAYER_CFG.halfSize +
       0.1,
     SPAWN[2],
@@ -332,10 +336,10 @@ const App: Component<{}> = () => {
       player,
       dt,
       consumeInput(),
-      (x, z) => getWorldHeight(worldRing.blocks, x, z),
+      (x, z) => getWorldHeight(blockGrid.blocks, x, z),
       // water surface height: sea level where the ground dips below it, else none
       (x, z) => {
-        const ground = getWorldHeight(worldRing.blocks, x, z);
+        const ground = getWorldHeight(blockGrid.blocks, x, z);
         const sea = TERRAIN.seaLevel;
         return sea !== undefined && ground < sea ? sea : -Infinity;
       },

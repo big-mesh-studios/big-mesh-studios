@@ -1,16 +1,10 @@
-import {
-  BLOCK_WORLD,
-  buildBlock,
-  resetLevel,
-  type Dim3,
-  type WorldBlock,
-} from "./level-data";
+import { BLOCK_WORLD, resetLevel, type Dim3, type WorldBlock } from "./level-data";
 import { FillClient } from "./fill-client";
-import type { BlockGridLookup } from "../renderers/mesh";
+import type { BlockGrid } from "./block-grid";
 import type { TerrainConfig } from "./noise";
 
 export interface WorldRingParams {
-  blocksPerSide: number;
+  blockGrid: BlockGrid;
   terrain: TerrainConfig;
   surfaceOnly: boolean;
   /**
@@ -26,22 +20,12 @@ export interface WorldRingParams {
 }
 
 /**
- * A `blocksPerSide x blocksPerSide` window of `WorldBlock`s kept centred on
- * the player. The initial ring is built synchronously in the constructor;
- * every scroll after that requests the newly revealed slots' voxel data from
- * a `FillClient`.
+ * Keeps a `BlockGrid`'s window centred on the player, requesting the newly
+ * revealed slots' voxel data from a `FillClient` as it scrolls.
  */
 export class WorldRing {
-  readonly blocks: WorldBlock[] = [];
-  /**
-   * Per-slot integer grid coordinate of the world block currently displayed.
-   * A single slot's coordinate is available via `gridCoordAt`, and its block
-   * via `lookupBlock`.
-   */
-  private readonly worldGrid: { x: number; z: number }[] = [];
-  private readonly terrain: TerrainConfig;
-  private readonly surfaceOnly: boolean;
-  private readonly onBlockChanged: (index: number) => void;
+  private readonly blocks: WorldBlock[];
+  private readonly worldGrid: { x: number; z: number }[];
   private readonly onBlockReposition: (index: number, center: Dim3) => void;
   private readonly fillClient: FillClient;
 
@@ -50,58 +34,17 @@ export class WorldRing {
   private centerBlockZ = 0;
 
   constructor(params: WorldRingParams) {
-    this.terrain = params.terrain;
-    this.surfaceOnly = params.surfaceOnly;
-    this.onBlockChanged = params.onBlockChanged;
+    this.blocks = params.blockGrid.blocks;
+    this.worldGrid = params.blockGrid.worldGrid;
     this.onBlockReposition = params.onBlockReposition;
 
-    const n = params.blocksPerSide;
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        const grid = {
-          x: i - (n - 1) / 2,
-          z: j - (n - 1) / 2,
-        };
-        const center: Dim3 = [
-          grid.x * BLOCK_WORLD[0],
-          0,
-          grid.z * BLOCK_WORLD[2],
-        ];
-        const block: WorldBlock = buildBlock({
-          center,
-          terrain: this.terrain,
-          surfaceOnly: this.surfaceOnly,
-        });
-        this.blocks.push(block);
-        this.worldGrid.push(grid);
-      }
-    }
-
     this.fillClient = new FillClient({
-      terrain: this.terrain,
-      surfaceOnly: this.surfaceOnly,
+      terrain: params.terrain,
+      surfaceOnly: params.surfaceOnly,
       blocks: this.blocks,
-      onBlockChanged: this.onBlockChanged,
+      onBlockChanged: params.onBlockChanged,
     });
   }
-
-  /**
-   * The grid coordinate of the block currently at this slot. Needed by the
-   * triangle renderer to resolve its neighbours via `lookupBlock`.
-   */
-  gridCoordAt(index: number): { x: number; z: number } {
-    const g = this.worldGrid[index];
-    return { x: g.x, z: g.z };
-  }
-
-  lookupBlock: BlockGridLookup = (gx, gz) => {
-    for (let i = 0; i < this.worldGrid.length; i++) {
-      if (this.worldGrid[i].x === gx && this.worldGrid[i].z === gz) {
-        return this.blocks[i].store;
-      }
-    }
-    return undefined;
-  };
 
   /**
    * Moves the ring window one block step in the given direction: the whole
