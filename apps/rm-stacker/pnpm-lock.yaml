@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  '@random-mesh/rmsl@1.6.1': c446d96362af58321209fdd588c1c97364b8386bba2150cc878cfa8c37055c6b
-
 importers:
 
   .:
@@ -15,8 +12,8 @@ importers:
         specifier: ^7.3.1
         version: 7.3.1
       '@random-mesh/rmsl':
-        specifier: 1.6.1
-        version: 1.6.1(patch_hash=c446d96362af58321209fdd588c1c97364b8386bba2150cc878cfa8c37055c6b)(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))
+        specifier: 1.8.0
+        version: 1.8.0(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))
       '@solidjs/signals':
         specifier: 2.0.0-beta.29
         version: 2.0.0-beta.29
@@ -340,8 +337,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@random-mesh/rmsl@1.6.1':
-    resolution: {integrity: sha512-OS+FXfZGB2Czzw3UCcYr8s/T+wGMFVLme86fL5ip73cgT6GA8oRyXvPcRI51C+1eLTGIbdn+1eqWKPAMjn+B8Q==}
+  '@random-mesh/rmsl@1.8.0':
+    resolution: {integrity: sha512-ZRLL2aXb9TMmfoExel9YGrGKYEI31kCmWI5x4zKRAsYoaDWxtVoAjp7kzXGEDmbzDFOEsHX0duk/pbF3llgZOw==}
     peerDependencies:
       vite: '>=5.0.0'
     peerDependenciesMeta:
@@ -1376,7 +1373,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@random-mesh/rmsl@1.6.1(patch_hash=c446d96362af58321209fdd588c1c97364b8386bba2150cc878cfa8c37055c6b)(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))':
+  '@random-mesh/rmsl@1.8.0(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))':
     dependencies:
       '@webgpu/types': 0.1.71
       esbuild: 0.28.1
