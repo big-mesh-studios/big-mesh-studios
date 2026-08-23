@@ -1,6 +1,6 @@
-import type { ModelRenderer } from "../model-renderer";
 import { createVoxelRenderer } from "../shared/create-voxel-renderer";
 import { PANEL_PAIR_KINDS, toPanelPairTextures } from "../shared/panel-textures";
+import type { ModelRenderer } from "../types";
 import { PanelPairVoxelMaterial } from "./material";
 
 /**

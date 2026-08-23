@@ -1,3 +1,4 @@
+import type { DataTexture } from "@random-mesh/rmsl/scene";
 import type { Dimensions3D, Matrix3x3, RGBA } from "../maths";
 import type { Sides } from "../types";
 import type { OrbitCameraState } from "./model-camera";
@@ -23,3 +24,18 @@ export interface ModelRenderer {
 }
 
 export type ModelRendererFactory = (canvas: HTMLCanvasElement) => ModelRenderer;
+
+/**
+ * The material surface `create-voxel-renderer.ts` drives, common to both
+ * backends' standalone materials — each implements this shape however it
+ * likes internally, there is no shared base class to keep in step.
+ */
+export interface VoxelMaterial {
+  paletteTexture: DataTexture;
+  dimensions: [number, number, number];
+  voxelCount: [number, number, number];
+  lightDir: [number, number, number];
+  lightColour: [number, number, number];
+  ambientColour: [number, number, number];
+  unlit: boolean;
+}

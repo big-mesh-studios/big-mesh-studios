@@ -1,10 +1,10 @@
 import { Component, Loading, Show } from "solid-js";
 import styles from "./App.module.css";
-import { Hud } from "./Hud";
-import PixelEditorView from "./pixel-editor/PixelEditorView";
-import StackerModelRenderer from "./model/StackerModelRenderer";
 import { Split } from "./components/SplitPane";
 import { StackerContext } from "./context";
+import { Hud } from "./Hud";
+import ModelView from "./model/ModelView";
+import PixelEditorView from "./pixel-editor/PixelEditorView";
 import { createStacker } from "./store/stacker-store";
 
 const App: Component = () => {
@@ -35,7 +35,7 @@ const App: Component = () => {
                   max="245px"
                 >
                   <div style="flex-grow: 1; overflow: hidden;">
-                    <StackerModelRenderer />
+                    <ModelView />
                   </div>
                 </Split.Pane>
               );

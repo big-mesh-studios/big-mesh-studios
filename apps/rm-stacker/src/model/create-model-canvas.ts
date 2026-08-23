@@ -2,6 +2,8 @@ import { Accessor, createEffect, createRoot, createSignal, untrack } from "solid
 import { Dimensions3D, Matrix3x3, RGBA, Vector3D } from "../maths";
 import type { RendererKind, Sides } from "../types";
 import { tryCatch } from "../utils";
+import { createCpuModelRenderer } from "./cpu/renderer";
+import { createGpuModelRenderer } from "./gpu/renderer";
 import {
   createOrbitCameraState,
   getWorldToModel,
@@ -10,9 +12,6 @@ import {
   zoomBy,
   zoomTo,
 } from "./model-camera";
-import { createCpuModelRenderer } from "./cpu/renderer";
-import { createGpuModelRenderer } from "./gpu/renderer";
-import type { ModelRendererFactory } from "./model-renderer";
 import { AMBIENT_COLOUR, LIGHT_COLOUR, modelSpaceLightDirection } from "./shared/lighting";
 import { paletteToBytes } from "./shared/palette-texture";
 import {
@@ -22,6 +21,7 @@ import {
 } from "./shared/panel-textures";
 import shaders from "./shared/shaders";
 import { voxelPicker } from "./shared/voxel-picker";
+import type { ModelRendererFactory } from "./types";
 
 const RENDERER_FACTORIES: Record<RendererKind, ModelRendererFactory> = {
   gpu: createGpuModelRenderer,
@@ -121,7 +121,11 @@ export function createModelCanvas(params: ModelCanvasParams) {
         ...Object.fromEntries(
           PANEL_PAIR_KINDS.map(kind => [PANEL_PAIR_UNIFORM_NAME[kind], pairTextures[kind]]),
         ),
-        [shaders.uPalette]: { data: paletteBytes, width: untrack(params.palette).length, height: 1 },
+        [shaders.uPalette]: {
+          data: paletteBytes,
+          width: untrack(params.palette).length,
+          height: 1,
+        },
       },
     });
 

@@ -1,14 +1,20 @@
-import { BoxGeometry, Mesh, PerspectiveCamera, Scene, WebGLRenderer } from "@random-mesh/rmsl/scene";
+import {
+  BoxGeometry,
+  Mesh,
+  NodeMaterial,
+  PerspectiveCamera,
+  Scene,
+  WebGLRenderer,
+} from "@random-mesh/rmsl/scene";
 import { Dimensions3D, Vector3D } from "../../maths";
 import type { Sides } from "../../types";
-import type { ModelRenderer } from "../model-renderer";
-import { boxSize, FAR, FOV, NEAR, rotateMesh } from "./scene";
-import { createOutline } from "./outline";
+import type { ModelRenderer, VoxelMaterial } from "../types";
 import { AMBIENT_COLOUR, LIGHT_COLOUR, modelSpaceLightDirection } from "./lighting";
+import { createOutline } from "./outline";
 import { paletteToBytes } from "./palette-texture";
-import type { VoxelMaterialBase } from "./material";
+import { boxSize, FAR, FOV, NEAR, rotateMesh } from "./scene";
 
-export type UploadModel<M extends VoxelMaterialBase> = (
+export type UploadModel<M extends VoxelMaterial> = (
   material: M,
   dimensions: Dimensions3D,
   sides: Sides,
@@ -19,9 +25,11 @@ export type UploadModel<M extends VoxelMaterialBase> = (
  * (renderer, camera, box mesh, picked-voxel outline), resizing, the
  * per-frame camera/light/material-field pushes, and disposal. A backend
  * supplies only its material instance and how it uploads a model into it —
- * everything else about drawing a ray-marched voxel box is identical.
+ * everything else about drawing a ray-marched voxel box is identical. Each
+ * material is a standalone `NodeMaterial` (see gpu/material.ts,
+ * cpu/material.ts) — this only needs the `VoxelMaterial` field surface.
  */
-export function createVoxelRenderer<M extends VoxelMaterialBase>(
+export function createVoxelRenderer<M extends NodeMaterial & VoxelMaterial>(
   canvas: HTMLCanvasElement,
   material: M,
   uploadModel: UploadModel<M>,

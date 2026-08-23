@@ -1,5 +1,5 @@
-import type { ModelRenderer } from "../model-renderer";
 import { createVoxelRenderer } from "../shared/create-voxel-renderer";
+import type { ModelRenderer } from "../types";
 import { SolvedVolumeVoxelMaterial } from "./material";
 import { solveVoxels } from "./voxel-solver";
 
