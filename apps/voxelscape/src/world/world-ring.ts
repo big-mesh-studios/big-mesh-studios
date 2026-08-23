@@ -1,20 +1,13 @@
 import {
-  applyLevelData,
   BLOCK_WORLD,
   buildBlock,
   resetLevel,
-  syncLevelFromStore,
   type Dim3,
   type WorldBlock,
 } from "./level-data";
-import {
-  type FillBatchRequest,
-  type FillBatchResult,
-  type FillConfig,
-} from "./fill-worker";
+import { FillClient } from "./fill-client";
 import type { BlockGridLookup } from "../renderers/mesh";
 import type { TerrainConfig } from "./noise";
-import { fillStore, type VoxelStore } from "./voxel-store";
 
 export interface WorldRingParams {
   blocksPerSide: number;
@@ -33,40 +26,26 @@ export interface WorldRingParams {
 }
 
 /**
- * A `blocksPerSide x blocksPerSide` window of `WorldBlock`s kept centred on the
- * player. The initial ring is built synchronously in the constructor; every
- * scroll after that refills the newly revealed slots off the main thread via a
- * fill worker, falling back to a synchronous fill if the worker is unavailable
- * or errors. This class knows nothing about rendering — block changes and
- * repositions are reported through injected callbacks, not a direct reference
- * to a renderer.
+ * A `blocksPerSide x blocksPerSide` window of `WorldBlock`s kept centred on
+ * the player. The initial ring is built synchronously in the constructor;
+ * every scroll after that requests the newly revealed slots' voxel data from
+ * a `FillClient`. This class knows nothing about rendering — block changes
+ * and repositions are reported through injected callbacks, not a direct
+ * reference to a renderer.
  */
 export class WorldRing {
   readonly blocks: WorldBlock[] = [];
   /**
    * Per-slot integer grid coordinate of the world block currently displayed.
-   * Kept private: nothing outside this class needs raw grid coordinates, only
-   * "the block at these coordinates" (`lookupBlock`), "this slot's own
-   * coordinates" (`gridCoordAt`, needed by the triangle renderer to resolve
-   * its neighbours), or "all current blocks" (`blocks`).
+   * A single slot's coordinate is available via `gridCoordAt`, and its block
+   * via `lookupBlock`.
    */
   private readonly worldGrid: { x: number; z: number }[] = [];
   private readonly terrain: TerrainConfig;
   private readonly surfaceOnly: boolean;
   private readonly onBlockChanged: (index: number) => void;
   private readonly onBlockReposition: (index: number, center: Dim3) => void;
-
-  // --- fill worker ----------------------------------------------------------
-  // Procedural voxel data (noise fill) + the derived GPU level layout (surface
-  // sweep) are generated off the main thread: `stepRing` sends a batch of the
-  // changed blocks' centres and the worker posts each block's store data, broad
-  // grid and fine chunks back transferred (moved, not copied). The response
-  // adopts them zero-copy into the store + level textures. Per-slot `fillGen`
-  // drops a stale response if the slot scrolls again before it lands.
-  private readonly fillGen: number[] = [];
-  private readonly fillInflight = new Map<number, number>();
-  private fillWorker: Worker | undefined;
-  private fillAvailable = true;
+  private readonly fillClient: FillClient;
 
   // Keeps the ring window centred on the player's block.
   private centerBlockX = 0;
@@ -97,56 +76,15 @@ export class WorldRing {
         });
         this.blocks.push(block);
         this.worldGrid.push(grid);
-        this.fillGen.push(0);
       }
     }
 
-    try {
-      this.fillWorker = new Worker(
-        new URL("./fill-worker.ts", import.meta.url),
-        {
-          type: "module",
-        },
-      );
-      const fillConfig: FillConfig = {
-        terrain: this.terrain,
-        surfaceOnly: this.surfaceOnly,
-      };
-      this.fillWorker.postMessage({ type: "config", config: fillConfig });
-      this.fillWorker.onmessage = (ev) => {
-        const msg = ev.data as FillBatchResult;
-        for (let j = 0; j < msg.indices.length; j++) {
-          const i = msg.indices[j];
-          const gen = this.fillInflight.get(i);
-          if (gen === undefined) {
-            continue;
-          }
-          this.fillInflight.delete(i);
-          if (gen !== this.fillGen[i]) {
-            continue; // the slot scrolled again; a newer batch will fill it
-          }
-          applyLevelData(this.blocks[i], {
-            storeData: msg.storeData[j],
-            broadData: msg.broadData[j],
-            fineData: msg.fineData[j],
-          });
-          this.onBlockChanged(i);
-        }
-      };
-      this.fillWorker.onerror = () => {
-        // fall back to filling synchronously; don't leave anything stranded
-        this.fillAvailable = false;
-        console.warn(
-          "[fill] worker errored; falling back to synchronous fills",
-        );
-        for (const i of this.fillInflight.keys()) {
-          this.syncFillBlock(i);
-        }
-        this.fillInflight.clear();
-      };
-    } catch {
-      this.fillAvailable = false;
-    }
+    this.fillClient = new FillClient({
+      terrain: this.terrain,
+      surfaceOnly: this.surfaceOnly,
+      blocks: this.blocks,
+      onBlockChanged: this.onBlockChanged,
+    });
   }
 
   /**
@@ -166,23 +104,6 @@ export class WorldRing {
     }
     return undefined;
   };
-
-  private syncFillBlock(i: number): void {
-    fillStore(this.blocks[i].store, this.blocks[i].center, this.terrain);
-    syncLevelFromStore(this.blocks[i].level, this.blocks[i].store, {
-      surfaceOnly: this.surfaceOnly,
-    });
-    this.onBlockChanged(i);
-  }
-
-  private sendFillBatch(indices: number[], centers: Dim3[]): void {
-    const req: FillBatchRequest = { type: "fill", indices, centers };
-    for (const i of indices) {
-      this.fillGen[i]++;
-      this.fillInflight.set(i, this.fillGen[i]);
-    }
-    this.fillWorker?.postMessage(req);
-  }
 
   /**
    * Moves the ring window one block step in the given direction: the whole
@@ -254,14 +175,7 @@ export class WorldRing {
       changedIndices.push(i);
       changedCenters.push(center);
     }
-    if (this.fillWorker !== undefined && this.fillAvailable) {
-      this.sendFillBatch(changedIndices, changedCenters);
-    } else {
-      // synchronous fallback: fill + sweep the changed blocks here
-      for (const i of changedIndices) {
-        this.syncFillBlock(i);
-      }
-    }
+    this.fillClient.requestFill(changedIndices, changedCenters);
   }
 
   scrollToPlayer(playerX: number, playerZ: number): void {
@@ -278,6 +192,6 @@ export class WorldRing {
   }
 
   dispose(): void {
-    this.fillWorker?.terminate();
+    this.fillClient.dispose();
   }
 }
