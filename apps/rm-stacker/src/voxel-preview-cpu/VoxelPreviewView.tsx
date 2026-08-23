@@ -18,6 +18,7 @@ import {
   type OrbitCameraState,
   zoomBy,
 } from "../voxel-preview-camera";
+import { solveVoxels } from "./voxel-solver";
 import styles from "./VoxelPreviewView.module.css";
 
 // Directional + ambient light for the voxel preview. The direction is fixed in
@@ -191,13 +192,24 @@ const setupWebGL = (gl: WebGL2RenderingContext, palette: RGBA[]): WebGLState => 
 };
 
 const VoxelPreviewView: Component<{ orbit: OrbitCameraState }> = props => {
-  const { dimensions, voxels, palette, requestRender, preview } = useContext(StackerContext);
+  const { dimensions, sides, sidesVersion, palette, requestRender, preview } =
+    useContext(StackerContext);
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [webgl, setWebgl] = createSignal<WebGLState>();
   const [glError, setGlError] = createSignal<string | undefined>();
 
   const normalizedDimensions = createMemo(() => Dimensions3D.normalize(dimensions()));
+
+  // This renderer is the only consumer of the solved volume, so the solve is
+  // kept local rather than in the shared store — it never runs unless this
+  // component is actually mounted. `sidesVersion` counts the edits, since
+  // commands draw straight into the panels and leave `sides()` itself
+  // unchanged.
+  const voxels = createMemo(() => {
+    sidesVersion();
+    return solveVoxels(dimensions(), untrack(sides));
+  });
 
   const orbit = props.orbit;
 

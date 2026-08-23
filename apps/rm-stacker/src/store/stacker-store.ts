@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, flush, untrack } from "solid-js";
+import { createEffect, createMemo, createSignal, flush } from "solid-js";
 import { Command } from "../command/Command";
 import { createCommander } from "../command/commander";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
@@ -8,7 +8,6 @@ import { ResizeOptions, resizeSides } from "./resize-sides";
 import { ModeKind, type Dimensions2D, type Sides } from "../types";
 import { UndoRedoManager } from "../command/undo-redo";
 import { createEnqueue, createMediaQuery } from "../utils";
-import { solveVoxels } from "../voxel-preview-cpu/voxel-solver";
 
 const INITIAL_DIMENSIONS = { width: 15, height: 15, depth: 15 };
 const INITIAL_PALETTE_INDEX = 5;
@@ -77,13 +76,6 @@ export function createStacker() {
   // anything derived from the drawing to follow.
   const [sidesVersion, setSidesVersion] = createSignal(0);
   const narrow = createMediaQuery("(max-width: 500px)");
-
-  // Only the CPU renderer reads this, so it stays unevaluated (and the solve
-  // never runs) whenever the GPU renderer is the one mounted.
-  const voxels = createMemo(() => {
-    sidesVersion();
-    return solveVoxels(dimensions(), untrack(sides));
-  });
 
   const [unlit, setUnlit] = createSignal(() => saved()?.preview?.unlit ?? true);
   const [autorotate, setAutorotate] = createSignal(() => saved()?.preview?.autorotate ?? true);
@@ -196,8 +188,6 @@ export function createStacker() {
     // sides version
     sidesVersion,
     invalidateSides,
-    // voxels (solved volume, for the CPU renderer)
-    voxels,
     // Palette
     palette,
     setPalette,
