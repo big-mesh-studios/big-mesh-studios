@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Matrix3, Mesh } from "@random-mesh/rmsl/scene";
 import { Dimensions3D, Matrix3x3 } from "../maths";
-import { boxSize, rotateMesh } from "./voxel-preview-scene";
+import { boxSize, rotateMesh } from "./scene";
 
 // The world-to-model rotation the CPU voxel picker follows its ray along,
 // replicated from VoxelPreviewView.getWorldToModel: turn the world down to the

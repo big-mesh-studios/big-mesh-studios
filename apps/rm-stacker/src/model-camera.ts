@@ -1,4 +1,3 @@
-import { Accessor, createEffect } from "solid-js";
 import { Matrix3x3 } from "./maths";
 
 export const MIN_RADIUS = 2;
@@ -9,9 +8,10 @@ export const PITCH_LIMIT = Math.PI / 2 - 0.01;
 const TURNTABLE_SECONDS_PER_REVOLUTION = 20;
 const TURNTABLE_RADIANS_PER_SECOND = -(2 * Math.PI) / TURNTABLE_SECONDS_PER_REVOLUTION;
 
-// The orbit yaw/pitch/radius and autorotate spin are shared across renderers,
-// not owned by either, so switching which one is mounted carries the current
-// framing forward instead of snapping back to the initial view.
+/**
+ * Orbit yaw/pitch/radius and autorotate spin for the model camera, passed to
+ * a renderer's `render` call each frame.
+ */
 export type OrbitCameraState = {
   yaw: number;
   pitch: number;
@@ -51,21 +51,23 @@ export function zoomTo(camera: OrbitCameraState, scale: number) {
   camera.radius = Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, camera.radius * scale));
 }
 
-// Keeps the autorotate spin continuous across play/pause: pausing freezes it
-// at its current angle, resuming measures onward from the moment it resumes
-// rather than from when autorotate first turned on.
-export function trackAutorotate(camera: OrbitCameraState, autorotate: Accessor<boolean>) {
-  createEffect(autorotate, rotating => {
-    if (rotating) {
-      camera.timeOffset = performance.now();
-    } else {
-      camera.spinOffset = camera.spin;
-    }
-  });
+/**
+ * Freezes `camera.spin` at its current angle when `rotating` is false, and
+ * marks the moment it resumes measuring from when `rotating` is true, so the
+ * spin stays continuous across a pause rather than jumping.
+ */
+export function setAutorotating(camera: OrbitCameraState, rotating: boolean) {
+  if (rotating) {
+    camera.timeOffset = performance.now();
+  } else {
+    camera.spinOffset = camera.spin;
+  }
 }
 
-// Advances `camera.spin` (when autorotate is on) and returns the model's
-// world-to-model rotation matrix for this frame.
+/**
+ * Advances `camera.spin` when `autoRotating` is true, then returns the
+ * world-to-model rotation matrix for the camera's current orientation.
+ */
 export function getWorldToModel(
   camera: OrbitCameraState,
   autoRotating: boolean,

@@ -2,7 +2,7 @@ import { Component, Loading, Show } from "solid-js";
 import styles from "./App.module.css";
 import { Hud } from "./Hud";
 import PixelEditorView from "./pixel-editor/PixelEditorView";
-import VoxelPreview from "./VoxelPreview";
+import StackerModelRenderer from "./StackerModelRenderer";
 import { Split } from "./components/SplitPane";
 import { StackerContext } from "./context";
 import { createStacker } from "./store/stacker-store";
@@ -35,7 +35,7 @@ const App: Component = () => {
                   max="245px"
                 >
                   <div style="flex-grow: 1; overflow: hidden;">
-                    <VoxelPreview />
+                    <StackerModelRenderer />
                   </div>
                 </Split.Pane>
               );
