@@ -5,6 +5,7 @@ import type {
 } from "@random-mesh/rmsl/scene";
 import type { VoxelTileConfig } from "./atlas";
 import type { Dim3, WorldBlock } from "../world/level-data";
+import { sampleFetchCount } from "../perf";
 import type { BlockGridLookup } from "./mesh";
 import type { DayNight } from "./block-renderer";
 import { RaymarchRenderer } from "./raymarch-renderer";
@@ -84,6 +85,28 @@ export class RendererSwitch {
 
   get triangleCount(): number {
     return this.triangle.triangleCount;
+  }
+
+  /**
+   * The debug-perf HUD line for whichever renderer is active. In triangle
+   * mode this is free and always current; in raymarch mode the fetches-per-ray
+   * figure comes from a GPU readback, so it's only computed when `sample` is
+   * true — the caller decides how often that's affordable.
+   */
+  describeDebugStats(
+    gl: WebGL2RenderingContext,
+    width: number,
+    height: number,
+    sample: boolean,
+  ): string {
+    if (this.mode_ === "tri") {
+      return `tri | tris: ${this.triangleCount.toLocaleString()}`;
+    }
+    if (!sample) {
+      return "ray";
+    }
+    const s = sampleFetchCount(gl, width, height);
+    return `ray | fetches/ray: ${s.fetchesPerRay.toFixed(1)} (${s.rays} rays)`;
   }
 
   /**

@@ -16,7 +16,7 @@ import {
   createLookDragHandlers,
   installKeyboardControls,
 } from "./input";
-import { GpuTimer, sampleFetchCount } from "./perf";
+import { GpuTimer } from "./perf";
 import { createPlayer, placeCamera, PLAYER_CFG, updatePlayer } from "./player";
 import { RendererSwitch } from "./renderers/renderer-switch";
 import { loadVoxelTiles } from "./renderers/tile-loader";
@@ -56,6 +56,8 @@ const SURFACE_ONLY = true;
 const PAD = 2.0;
 /** Water absorption used by the raymarch water pass and, at the same value, the triangle renderer's underwater tint. */
 const WATER_EXTINCTION = 0.12;
+/** How many frames between each debug-perf HUD sample (a GPU readback, so throttled). */
+const SAMPLE_EVERY = 24;
 
 const App: Component<{}> = () => {
   /** True when the URL hash includes `perf`, enabling the debug HUD (GPU timer and fetches-per-ray). */
@@ -92,7 +94,7 @@ const App: Component<{}> = () => {
     scene,
     blocks: blockGrid.blocks,
     gridCoordAt: (i) => blockGrid.gridCoordAt(i),
-    lookupBlock: blockGrid.lookupBlock,
+    lookupBlock: (gx, gz) => blockGrid.lookupBlock(gx, gz),
     padding: PAD,
     blockWorld: BLOCK_WORLD,
     fogDistance: FOG_DISTANCE,
@@ -150,7 +152,6 @@ const App: Component<{}> = () => {
   let timer: GpuTimer | undefined;
   let hud: HTMLDivElement | undefined;
   let sampleCounter = 0;
-  const SAMPLE_EVERY = 24;
 
   // --- adaptive render resolution -------------------------------------
   /**
@@ -198,23 +199,11 @@ const App: Component<{}> = () => {
     lastAdaptT = t;
   };
 
-  const updateHud = (
-    ms: number,
-    sample: ReturnType<typeof sampleFetchCount> | undefined,
-  ) => {
+  const updateHud = (ms: number, stats: string) => {
     if (hud === undefined) {
       return;
     }
-    const res = `res: ${adaptive.scale}x`;
-    const mode = rendererSwitch.mode === "ray" ? "ray" : "tri";
-    const triLabel =
-      rendererSwitch.mode === "tri"
-        ? ` | tris: ${rendererSwitch.triangleCount.toLocaleString()}`
-        : "";
-    hud.textContent =
-      sample === undefined
-        ? `frame: ${ms.toFixed(2)} ms | ${res} | ${mode}${triLabel}`
-        : `frame: ${ms.toFixed(2)} ms | ${res} | ${mode}${triLabel} | fetches/ray: ${sample.fetchesPerRay.toFixed(1)} (${sample.rays} rays)`;
+    hud.textContent = `frame: ${ms.toFixed(2)} ms | res: ${adaptive.scale}x | ${stats}`;
   };
   let lastFrameT = 0;
   /** Reusable color object, updated in place each frame so sky updates don't allocate. */
@@ -312,18 +301,16 @@ const App: Component<{}> = () => {
       timer.end();
       timer.poll();
       sampleCounter++;
-      // the fetch-count heatmap only exists in raymarch mode; the triangle
-      // renderer's HUD shows the triangle count instead
-      if (rendererSwitch.mode === "ray" && sampleCounter % SAMPLE_EVERY === 0) {
-        const sample = sampleFetchCount(
+      const sample = sampleCounter % SAMPLE_EVERY === 0;
+      updateHud(
+        timer.ms,
+        rendererSwitch.describeDebugStats(
           renderer.gl,
           renderer.canvas.width,
           renderer.canvas.height,
-        );
-        updateHud(timer.ms, sample);
-      } else {
-        updateHud(timer.ms, undefined);
-      }
+          sample,
+        ),
+      );
     }
   };
   const lookDrag = createLookDragHandlers();
