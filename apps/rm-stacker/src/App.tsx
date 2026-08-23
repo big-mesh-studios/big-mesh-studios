@@ -2,7 +2,7 @@ import { Component, Loading, Show } from "solid-js";
 import styles from "./App.module.css";
 import { Hud } from "./Hud";
 import PixelEditorView from "./pixel-editor/PixelEditorView";
-import StackerModelRenderer from "./StackerModelRenderer";
+import StackerModelRenderer from "./model/StackerModelRenderer";
 import { Split } from "./components/SplitPane";
 import { StackerContext } from "./context";
 import { createStacker } from "./store/stacker-store";

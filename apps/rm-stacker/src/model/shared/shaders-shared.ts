@@ -139,6 +139,44 @@ export const packedPairCellSource = (pairs: PanelPairs): CellSource => {
   };
 };
 
+// The voxel texture is an integer (usampler3D) so rmsl compiles the lookup to
+// texelFetch, which takes integer texel coordinates — one texel per voxel.
+const sampleVoxel = (voxels: Node<"usampler3D">, cell: Node<"ivec3">): Node<"uvec4"> =>
+  voxels.texture(cell.toUVec3());
+
+// Unpacks a solved voxel's 30-bit face-colour format (see voxel-solver.ts):
+// six faces, five bits per colour index, packed across the four RGBA8UI
+// bytes, with the top two alpha bits marking the voxel solid.
+const readFront = (voxel: Node<"uvec4">): Node<"uint"> => voxel.r.bitAnd(0b00011111);
+const readBack = (voxel: Node<"uvec4">): Node<"uint"> =>
+  voxel.r.bitAnd(0b11100000).shiftRight(5).bitOr(voxel.g.bitAnd(0b00000011).shiftLeft(3));
+const readLeft = (voxel: Node<"uvec4">): Node<"uint"> =>
+  voxel.g.bitAnd(0b01111100).shiftRight(2);
+const readRight = (voxel: Node<"uvec4">): Node<"uint"> =>
+  voxel.g.bitAnd(0b10000000).shiftRight(7).bitOr(voxel.b.bitAnd(0b00001111).shiftLeft(1));
+const readTop = (voxel: Node<"uvec4">): Node<"uint"> =>
+  voxel.b.bitAnd(0b11110000).shiftRight(4).bitOr(voxel.a.bitAnd(0b00000001).shiftLeft(4));
+const readBottom = (voxel: Node<"uvec4">): Node<"uint"> =>
+  voxel.a.bitAnd(0b00111110).shiftRight(1);
+const isSolidVoxel = (voxel: Node<"uvec4">): Node<"bool"> => voxel.a.bitAnd(0b11000000).notEqual(0);
+
+/** Reads the model off a volume already solved (and packed) on the CPU. */
+export const solvedVolumeCellSource = (voxels: Node<"usampler3D">): CellSource => {
+  const readFace = {
+    front: readFront,
+    back: readBack,
+    left: readLeft,
+    right: readRight,
+    top: readTop,
+    bottom: readBottom,
+  } satisfies Record<Face, (voxel: Node<"uvec4">) => Node<"uint">>;
+
+  return {
+    isSolid: (_counts, cell) => isSolidVoxel(sampleVoxel(voxels, cell)),
+    faceColourIndex: (_counts, cell, face) => readFace[face](sampleVoxel(voxels, cell)),
+  };
+};
+
 // The volume fills the whole grid (one texel per voxel), so a cell is inside
 // the volume exactly when every index lies in [0, uVoxelCount).
 const inBounds = (voxelCount: Node<"vec3">, cell: Node<"ivec3">): Node<"bool"> => {
@@ -206,6 +244,7 @@ export const marchVolume = (
   colour: Node<"vec4">;
   voxelPos: Node<"ivec3">;
   normal: Node<"vec3">;
+  hitPoint: Node<"vec3">;
 } => {
   const {
     rayOrigin: rayOriginIn,
@@ -226,6 +265,7 @@ export const marchVolume = (
   const colour = vec4(float(0), float(0), float(0), float(0)).toVar();
   const voxelPos = ivec3(0, 0, 0).toVar();
   const normal = vec3(0, 0, 0).toVar();
+  const hitPoint = vec3(float(0), float(0), float(0)).toVar();
 
   // The same voxel count the marching arithmetic uses, in whole numbers, so the
   // cell lookups can index texels without converting on every fetch.
@@ -358,6 +398,53 @@ export const marchVolume = (
           });
         });
 
+      // The point where the ray crosses into the hit cell: the boundary plane
+      // of the face it entered. Used by the material to write an accurate
+      // per-pixel fragment depth (so a line drawn on the voxel's surface is
+      // neither hidden behind the box's front face nor z-fighting it). The
+      // CPU picker ignores it.
+      const hitDistance = float(0).toVar();
+      If(mask.x.notEqual(float(0)), () => {
+        hitDistance.assign(
+          entryDistance.add(
+            rayStep.x
+              .greaterThan(0)
+              .select(mapPos.x, mapPos.x.add(1))
+              .toFloat()
+              .sub(cellOrigin.x)
+              .mul(rayStep.x.toFloat())
+              .mul(deltaDist.x),
+          ),
+        );
+      })
+        .ElseIf(mask.y.notEqual(float(0)), () => {
+          hitDistance.assign(
+            entryDistance.add(
+              rayStep.y
+                .greaterThan(0)
+                .select(mapPos.y, mapPos.y.add(1))
+                .toFloat()
+                .sub(cellOrigin.y)
+                .mul(rayStep.y.toFloat())
+                .mul(deltaDist.y),
+            ),
+          );
+        })
+        .Else(() => {
+          hitDistance.assign(
+            entryDistance.add(
+              rayStep.z
+                .greaterThan(0)
+                .select(mapPos.z, mapPos.z.add(1))
+                .toFloat()
+                .sub(cellOrigin.z)
+                .mul(rayStep.z.toFloat())
+                .mul(deltaDist.z),
+            ),
+          );
+        });
+      hitPoint.assign(rayOrigin.add(rayDirection.mul(hitDistance)));
+
       If(unlit.toVar(), () => {
         colour.rgb.assign(colourIndexToColour(palette, faceColourIndex).rgb);
       }).Else(() => {
@@ -375,7 +462,7 @@ export const marchVolume = (
   // Rays that hit nothing leave colour at its initial transparent black, so
   // whatever is painted behind the canvas shows through there. Only rays that
   // land on a voxel set alpha to 1.
-  return { colour, voxelPos, normal };
+  return { colour, voxelPos, normal, hitPoint };
 };
 
 /**

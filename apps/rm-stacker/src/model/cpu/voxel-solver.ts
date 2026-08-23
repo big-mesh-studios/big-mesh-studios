@@ -1,5 +1,5 @@
-import { Bitmap, Dimensions3D, Vector3D } from "../maths";
-import { Axis, Sides } from "../types";
+import { Bitmap, Dimensions3D, Vector3D } from "../../maths";
+import { Axis, Sides } from "../../types";
 
 export type ViewSpec = {
   kind: keyof Sides;

@@ -1,7 +1,7 @@
 import { Accessor, createEffect, createRoot, createSignal, untrack } from "solid-js";
-import { Dimensions3D, Matrix3x3, RGBA } from "./maths";
-import type { RendererKind, Sides } from "./types";
-import { tryCatch } from "./utils";
+import { Dimensions3D, Matrix3x3, RGBA, Vector3D } from "../maths";
+import type { RendererKind, Sides } from "../types";
+import { tryCatch } from "../utils";
 import {
   createOrbitCameraState,
   getWorldToModel,
@@ -10,9 +10,18 @@ import {
   zoomBy,
   zoomTo,
 } from "./model-camera";
-import { createCpuModelRenderer } from "./model-cpu/renderer";
-import { createGpuModelRenderer } from "./model-gpu/renderer";
+import { createCpuModelRenderer } from "./cpu/renderer";
+import { createGpuModelRenderer } from "./gpu/renderer";
 import type { ModelRendererFactory } from "./model-renderer";
+import { AMBIENT_COLOUR, LIGHT_COLOUR, modelSpaceLightDirection } from "./shared/lighting";
+import { paletteToBytes } from "./shared/palette-texture";
+import {
+  PANEL_PAIR_KINDS,
+  PANEL_PAIR_UNIFORM_NAME,
+  toPanelPairTextures,
+} from "./shared/panel-textures";
+import shaders from "./shared/shaders";
+import { voxelPicker } from "./shared/voxel-picker";
 
 const RENDERER_FACTORIES: Record<RendererKind, ModelRendererFactory> = {
   gpu: createGpuModelRenderer,
@@ -33,11 +42,17 @@ export type ModelCanvasParams = {
 /**
  * Owns everything a model renderer needs around it but has no business
  * knowing about itself: sizing the canvas to its drawing buffer, driving a
- * frame loop, turning pointer and wheel input into orbit and zoom, and
- * constructing the renderer named by `rendererKind` (tearing down and
- * replacing it whenever that changes). The orbit camera is created once, so
- * the current framing carries over across a renderer swap instead of
- * resetting.
+ * frame loop, turning pointer and wheel input into orbit and zoom,
+ * resolving a screen point to a voxel, and constructing the renderer named
+ * by `rendererKind` (tearing down and replacing it whenever that changes).
+ * The orbit camera is created once, so the current framing carries over
+ * across a renderer swap instead of resetting.
+ *
+ * Picking is backend-agnostic: the panels a model is drawn from are always
+ * available regardless of which renderer is mounted, so this always picks
+ * the same way (the same march the GPU renderer draws with) rather than
+ * asking the current renderer to resolve it — which also means the picked
+ * voxel survives a renderer swap.
  */
 export function createModelCanvas(params: ModelCanvasParams) {
   const orbit = createOrbitCameraState();
@@ -51,12 +66,74 @@ export function createModelCanvas(params: ModelCanvasParams) {
   const pitchMatrix = Matrix3x3.create();
   const yawMatrix = Matrix3x3.create();
   const worldToModel = Matrix3x3.create();
+  const modelSpaceLightDirectionVec = Vector3D.create();
+
+  // Picking data, cached from the store and rebuilt only when it changes —
+  // not on every pointer move or frame.
+  let pairTextures = toPanelPairTextures(untrack(params.sides));
+  let paletteBytes = paletteToBytes(untrack(params.palette));
+
+  createEffect(
+    () => [params.sides(), params.sidesVersion()] as const,
+    ([sides]) => {
+      pairTextures = toPanelPairTextures(sides);
+    },
+  );
+  createEffect(params.palette, palette => {
+    paletteBytes = paletteToBytes(palette);
+  });
+
+  const pickAt = (canvas: HTMLCanvasElement, clientX: number, clientY: number) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) {
+      return;
+    }
+
+    const dimensions = untrack(params.dimensions);
+    const normalizedDimensions = Dimensions3D.normalize(dimensions);
+    getWorldToModel(orbit, untrack(params.autorotate), pitchMatrix, yawMatrix, worldToModel);
+    modelSpaceLightDirection(worldToModel, modelSpaceLightDirectionVec);
+
+    const picked = voxelPicker({
+      uniforms: {
+        [shaders.uResolution]: [canvas.width, canvas.height],
+        [shaders.uDimensions]: [
+          normalizedDimensions.width,
+          normalizedDimensions.height,
+          normalizedDimensions.depth,
+        ],
+        [shaders.uVoxelCount]: [dimensions.width, dimensions.height, dimensions.depth],
+        [shaders.uLightDir]: [
+          modelSpaceLightDirectionVec.x,
+          modelSpaceLightDirectionVec.y,
+          modelSpaceLightDirectionVec.z,
+        ],
+        [shaders.uLightColour]: Array.from(LIGHT_COLOUR),
+        [shaders.uAmbientColour]: Array.from(AMBIENT_COLOUR),
+        [shaders.uCameraPosition]: [0, 0, orbit.radius],
+        [shaders.uWorldToModel]: Array.from(worldToModel),
+        [shaders.uUnlit]: untrack(params.unlit),
+      },
+      varying: { vUv: [x / rect.width, 1 - y / rect.height] },
+      textures: {
+        ...Object.fromEntries(
+          PANEL_PAIR_KINDS.map(kind => [PANEL_PAIR_UNIFORM_NAME[kind], pairTextures[kind]]),
+        ),
+        [shaders.uPalette]: { data: paletteBytes, width: untrack(params.palette).length, height: 1 },
+      },
+    });
+
+    // The picker is not reentrant: it returns a shared scratch array that it
+    // mutates in place on every call, so it is copied before it is kept.
+    setPickedVoxel(picked.slice() as [number, number, number]);
+  };
 
   createEffect(
     () => [params.canvas(), params.rendererKind()] as const,
     ([canvas, rendererKind]) => {
       setGlError(undefined);
-      setPickedVoxel(undefined);
       if (canvas === undefined) {
         return;
       }
@@ -100,22 +177,6 @@ export function createModelCanvas(params: ModelCanvasParams) {
         return dispose;
       });
 
-      const pickAt = (clientX: number, clientY: number) => {
-        if (renderer.pick === undefined) {
-          return;
-        }
-        const rect = canvas.getBoundingClientRect();
-        const x = clientX - rect.left;
-        const y = clientY - rect.top;
-        if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) {
-          return;
-        }
-        getWorldToModel(orbit, untrack(params.autorotate), pitchMatrix, yawMatrix, worldToModel);
-        const uv: [number, number] = [x / rect.width, 1 - y / rect.height];
-        const picked = renderer.pick(uv, orbit, worldToModel);
-        setPickedVoxel(picked?.slice() as [number, number, number] | undefined);
-      };
-
       // One finger orbits, two fingers pinch to zoom. Every pointer is
       // tracked so the pinch can be measured from both of them regardless of
       // which raised the move; while pinching, the drag (and the pick
@@ -136,7 +197,7 @@ export function createModelCanvas(params: ModelCanvasParams) {
         if (first) {
           // Pick immediately, so a tap (which produces no pointermove) still
           // selects the voxel under the finger.
-          pickAt(event.clientX, event.clientY);
+          pickAt(canvas, event.clientX, event.clientY);
         } else if (activePointers.size === 2) {
           pinchDistance = pinchSpan();
         }
@@ -163,7 +224,7 @@ export function createModelCanvas(params: ModelCanvasParams) {
 
         // Keep the readout in step with the cursor — including while
         // orbiting, where the model turns beneath the pointer.
-        pickAt(event.clientX, event.clientY);
+        pickAt(canvas, event.clientX, event.clientY);
         orbitBy(orbit, delta.x, delta.y);
       };
       const handlePointerEnd = (event: PointerEvent) => {
@@ -184,7 +245,7 @@ export function createModelCanvas(params: ModelCanvasParams) {
 
       let rafId = requestAnimationFrame(function loop() {
         getWorldToModel(orbit, untrack(params.autorotate), pitchMatrix, yawMatrix, worldToModel);
-        renderer.render(orbit, worldToModel);
+        renderer.render(orbit, worldToModel, pickedVoxel());
         rafId = requestAnimationFrame(loop);
       });
 

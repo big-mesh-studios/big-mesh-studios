@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { Bitmap, Dimensions3D, Matrix3x3 } from "../maths";
+import { Bitmap, Dimensions3D, Matrix3x3 } from "../../maths";
 import {
   PANEL_PAIR_KINDS,
   PANEL_PAIR_UNIFORM_NAME,
   toPanelPairTextures,
 } from "./panel-textures";
 import shaders from "./shaders";
-import { type Sides } from "../types";
+import { type Sides } from "../../types";
 import { voxelPicker } from "./voxel-picker";
 
 // A cube small enough to reason about cell by cell, with an odd count on each

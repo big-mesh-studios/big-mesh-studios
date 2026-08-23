@@ -1,4 +1,4 @@
-import { Matrix3x3 } from "./maths";
+import { Matrix3x3 } from "../maths";
 
 export const MIN_RADIUS = 2;
 export const MAX_RADIUS = 20;

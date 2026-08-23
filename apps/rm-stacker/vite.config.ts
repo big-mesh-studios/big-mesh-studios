@@ -7,7 +7,7 @@ import solid from "vite-plugin-solid";
 export default defineConfig({
   base: "./",
   plugins: [
-    precompileJS({ include: "src/model-gpu/voxel-picker-cpu.ts" }),
+    precompileJS({ include: "src/model/shared/voxel-picker-cpu.ts" }),
     tailwindcss(),
     solid({ ssr: false }),
   ],

@@ -1,5 +1,5 @@
 import { Component, createSignal, useContext } from "solid-js";
-import { StackerContext } from "./context";
+import { StackerContext } from "../context";
 import { createModelCanvas } from "./model-canvas";
 import styles from "./StackerModelRenderer.module.css";
 
