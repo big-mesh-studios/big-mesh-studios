@@ -1,4 +1,9 @@
-import { BLOCK_WORLD, resetLevel, type Dim3, type WorldBlock } from "./level-data";
+import {
+  BLOCK_WORLD,
+  resetLevel,
+  type Dim3,
+  type WorldBlock,
+} from "./level-data";
 import { FillClient } from "./fill-client";
 import type { BlockGrid } from "./block-grid";
 import type { TerrainConfig } from "./noise";

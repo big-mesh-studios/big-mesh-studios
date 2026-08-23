@@ -1,4 +1,9 @@
-import { BLOCK_WORLD, buildBlock, type Dim3, type WorldBlock } from "./level-data";
+import {
+  BLOCK_WORLD,
+  buildBlock,
+  type Dim3,
+  type WorldBlock,
+} from "./level-data";
 import type { BlockGridLookup } from "../renderers/mesh";
 import type { TerrainConfig } from "./noise";
 

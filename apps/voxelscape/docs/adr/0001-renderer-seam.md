@@ -31,7 +31,7 @@ flat until a broader reorganization.
 
 ## Consequences
 
-- `applyLighting` must be called on *both* renderers every frame regardless of which is
+- `applyLighting` must be called on _both_ renderers every frame regardless of which is
   active, so the hidden one is already correct the instant the mode toggles — this is
   not a symmetric `tick()`, and future renderers must preserve that split.
 - `TriangleRenderer`'s mesh-build queue is only drained while it's active by design

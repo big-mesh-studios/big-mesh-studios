@@ -7,7 +7,7 @@ That reasoning held while the orchestration was three private fields and two
 private methods. It stopped holding once a documentation pass tried to write
 down what those fields were: `fillGen`, `fillInflight`, `fillWorker`, and
 `fillAvailable` could only be explained together, in one paragraph, because
-they *are* one thing — a client for the fill worker, with its own state
+they _are_ one thing — a client for the fill worker, with its own state
 machine (idle, in flight, degraded-to-synchronous) — and a paragraph
 documenting four fields at once is a sign the fields belong to an object that
 doesn't exist yet, independent of whether that object would ever get a second
