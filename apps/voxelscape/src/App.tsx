@@ -9,17 +9,17 @@ import {
 } from "@random-mesh/rmsl/scene";
 import { Component, createEffect, createStore } from "solid-js";
 import { AdaptiveResolution } from "./adaptive";
-import { Commander } from "./commander";
 import { DayNightController } from "./day-night-controller";
-import { addLookDelta, consumeInput, installKeyboardControls } from "./input";
+import { createDebugCommands } from "./debug-commands";
+import {
+  consumeInput,
+  createLookDragHandlers,
+  installKeyboardControls,
+} from "./input";
 import { GpuTimer, sampleFetchCount } from "./perf";
 import { createPlayer, placeCamera, PLAYER_CFG, updatePlayer } from "./player";
-import {
-  buildVoxelTileConfig,
-  loadTileTexture,
-  parseTileAtlasXml,
-} from "./renderers/atlas";
 import { RendererSwitch } from "./renderers/renderer-switch";
+import { loadVoxelTiles } from "./renderers/tile-loader";
 import { Console } from "./ui/Console";
 import Controls from "./ui/Controls";
 import { BlockGrid } from "./world/block-grid";
@@ -114,119 +114,10 @@ const App: Component<{}> = () => {
     onBlockReposition: (i, center) => rendererSwitch.repositionBlock(i, center),
   });
 
-  /** Every debug console command, declared as a single object literal keyed by command name. */
-  const commands = new Commander({
-    "/day": {
-      help: "/day       jump to noon (t=300s)",
-      run: () => {
-        dayNight.jumpTo(300);
-        return "jumped to noon (t=300s)";
-      },
-    },
-    "/sunset": {
-      help: "/sunset    jump to dusk (t=645s)",
-      run: () => {
-        dayNight.jumpTo(645);
-        return "jumped to dusk (t=645s)";
-      },
-    },
-    "/night": {
-      help: "/night     jump to midnight (t=900s)",
-      run: () => {
-        dayNight.jumpTo(900);
-        return "jumped to midnight (t=900s)";
-      },
-    },
-    "/sunrise": {
-      help: "/sunrise   jump to dawn (t=1120s)",
-      run: () => {
-        dayNight.jumpTo(1120);
-        return "jumped to dawn (t=1120s)";
-      },
-    },
-    "/time": {
-      help: "/time <s>  jump to a second of the 20-min cycle",
-      run: (rest) => {
-        const t = Number(rest[0]);
-        if (!Number.isFinite(t) || t < 0) {
-          return "usage: /time <seconds>  (0..1200, wraps)";
-        }
-        dayNight.jumpTo(t);
-        return `time set to ${t}s`;
-      },
-    },
-    "/normal": {
-      help: "/normal    resume the live clock",
-      run: () => {
-        dayNight.clearOverride();
-        return "resumed the live clock";
-      },
-    },
-    "/speed": {
-      help: "/speed <n> run the clock n× fast (0 pauses)",
-      run: (rest) => {
-        const n = Number(rest[0]);
-        if (!Number.isFinite(n) || n < 0) {
-          return "usage: /speed <multiplier>  (0 pauses, 1 = real time)";
-        }
-        dayNight.setSpeed(n);
-        return `clock speed set to ${n}×`;
-      },
-    },
-    "/now": {
-      help: "/now       show the current clock state",
-      run: () => dayNight.describe(),
-    },
-    "/renderer": {
-      help: "/renderer ray|tri   switch renderer (raymarch | surface triangles)",
-      run: (rest) => {
-        const arg = rest[0];
-        if (arg === "ray") {
-          return rendererSwitch.setMode("ray");
-        }
-        if (arg === "tri" || arg === "mesh" || arg === "triangles") {
-          return rendererSwitch.setMode("tri");
-        }
-        return `renderer: ${rendererSwitch.mode} — usage: /renderer ray|tri`;
-      },
-    },
-    "/tris": {
-      help: "/tris      show the current triangle count",
-      run: () =>
-        `triangles: ${rendererSwitch.triangleCount.toLocaleString()} (${rendererSwitch.mode} mode)`,
-    },
-  });
-  {
-    // Load the tile spritesheet (one 2D GPU texture) plus its atlas XML, and
-    // tell every block material which tile each voxel face uses. Set after the
-    // first build, so mark needsUpdate to force a rebuild with the sampler +
-    // rect uniforms registered.
-    const tileUrl = "./spritesheets/spritesheet_tiles.png";
-    const xmlUrl = "./spritesheets/spritesheet_tiles.xml";
-    (async () => {
-      try {
-        const [loaded, xmlRes] = await Promise.all([
-          loadTileTexture(tileUrl),
-          fetch(xmlUrl),
-        ]);
-        if (!xmlRes.ok) {
-          throw new Error(`failed to load "${xmlUrl}": ${xmlRes.status}`);
-        }
-        const atlas = parseTileAtlasXml(await xmlRes.text());
-        const voxelTiles = buildVoxelTileConfig(
-          atlas,
-          loaded.width,
-          loaded.height,
-        );
-        rendererSwitch.setTiles(voxelTiles, loaded.texture);
-      } catch (err) {
-        console.warn(
-          "[atlas] spritesheet not applied; voxels stay flat blue.",
-          err,
-        );
-      }
-    })();
-  }
+  const commands = createDebugCommands({ dayNight, rendererSwitch });
+  // Tell every block material which tile each voxel face uses once the
+  // spritesheet loads. Fire-and-forget: voxels stay flat blue until it lands.
+  loadVoxelTiles(rendererSwitch);
   /**
    * Camera with a far plane beyond the ring's physical extent, so box
    * geometry is never clipped (fog and early ray termination hide the
@@ -435,9 +326,7 @@ const App: Component<{}> = () => {
       }
     }
   };
-  let lookPointerId: number | null = null;
-  let lastLookX = 0;
-  let lastLookY = 0;
+  const lookDrag = createLookDragHandlers();
   return (
     <div
       style={{
@@ -460,34 +349,10 @@ const App: Component<{}> = () => {
           height: "100%",
           "touch-action": "none",
         }}
-        onPointerDown={(e) => {
-          if (lookPointerId === null) {
-            lookPointerId = e.pointerId;
-            lastLookX = e.clientX;
-            lastLookY = e.clientY;
-            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-          }
-        }}
-        onPointerMove={(e) => {
-          if (e.pointerId !== lookPointerId) {
-            return;
-          }
-          const dx = e.clientX - lastLookX;
-          const dy = e.clientY - lastLookY;
-          lastLookX = e.clientX;
-          lastLookY = e.clientY;
-          addLookDelta(dx, dy);
-        }}
-        onPointerUp={(e) => {
-          if (e.pointerId === lookPointerId) {
-            lookPointerId = null;
-          }
-        }}
-        onPointerCancel={(e) => {
-          if (e.pointerId === lookPointerId) {
-            lookPointerId = null;
-          }
-        }}
+        onPointerDown={lookDrag.onPointerDown}
+        onPointerMove={lookDrag.onPointerMove}
+        onPointerUp={lookDrag.onPointerUp}
+        onPointerCancel={lookDrag.onPointerCancel}
       />
       <Controls />
       <Console onCommand={(line) => commands.run(line)} />

@@ -136,6 +136,54 @@ export const addLookDelta = (dx: number, dy: number): void => {
   state.lookDy += dy;
 };
 
+export interface LookDragHandlers {
+  onPointerDown: (e: PointerEvent) => void;
+  onPointerMove: (e: PointerEvent) => void;
+  onPointerUp: (e: PointerEvent) => void;
+  onPointerCancel: (e: PointerEvent) => void;
+}
+
+/**
+ * Tracks a single active pointer drag and feeds its movement into
+ * `addLookDelta`. Pointer events from any other pointer are ignored, so a
+ * second finger touching down mid-drag doesn't steal or reset tracking.
+ */
+export const createLookDragHandlers = (): LookDragHandlers => {
+  let pointerId: number | null = null;
+  let lastX = 0;
+  let lastY = 0;
+  return {
+    onPointerDown: (e) => {
+      if (pointerId === null) {
+        pointerId = e.pointerId;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }
+    },
+    onPointerMove: (e) => {
+      if (e.pointerId !== pointerId) {
+        return;
+      }
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      addLookDelta(dx, dy);
+    },
+    onPointerUp: (e) => {
+      if (e.pointerId === pointerId) {
+        pointerId = null;
+      }
+    },
+    onPointerCancel: (e) => {
+      if (e.pointerId === pointerId) {
+        pointerId = null;
+      }
+    },
+  };
+};
+
 /** Called once per frame: returns the latest input and clears per-frame state. */
 export const consumeInput = (): InputSnapshot => {
   const snap: InputSnapshot = {
