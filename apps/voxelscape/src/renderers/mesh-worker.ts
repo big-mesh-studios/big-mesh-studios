@@ -6,8 +6,10 @@ import type { MeshArrays, MeshBuildRequest, MeshBuildResult } from "./mesh";
 import { buildBlockMesh, buildWaterMesh, makeShellResolver } from "./mesh";
 import { VoxelStore } from "../world/voxel-store";
 
-// The DOM lib types `self` as `Window`, whose `postMessage` needs a target
-// origin; in a dedicated worker the global is a `DedicatedWorkerGlobalScope`.
+/**
+ * The DOM lib types `self` as `Window`, whose `postMessage` needs a target
+ * origin; in a dedicated worker the global is a `DedicatedWorkerGlobalScope`.
+ */
 const workerSelf = self as unknown as {
   onmessage: ((ev: MessageEvent<MeshBuildRequest>) => void) | null;
   postMessage: (message: MeshBuildResult, transfer: Transferable[]) => void;

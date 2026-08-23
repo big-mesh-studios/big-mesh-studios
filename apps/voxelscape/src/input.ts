@@ -1,17 +1,20 @@
-// Unified keyboard + touch input for the player. A single mutable snapshot is
-// fed by `installKeyboardControls` (desktop) and the touch UI (`Controls.tsx`),
-// then drained once per frame by `consumeInput`.
-
+/**
+ * Unified keyboard and touch input for the player. A single mutable
+ * snapshot is fed by `installKeyboardControls` (desktop) and the touch UI
+ * (`Controls.tsx`), then drained once per frame by `consumeInput`.
+ */
 export interface InputSnapshot {
-  // -1..1 strafe (negative = left) / forward-back (positive = forward)
+  /** Strafe input, from -1 (left) to 1 (right). */
   moveX: number;
+  /** Forward/back input, from -1 (backward) to 1 (forward). */
   moveY: number;
-  // edge-triggered: true only on the frame the jump was pressed
+  /** Edge-triggered: true only on the frame the jump was pressed. */
   jump: boolean;
-  // held: true while jump is held down (used to swim up underwater)
+  /** True while the jump input is held down; used to swim up underwater. */
   jumpHeld: boolean;
-  // pointer-move deltas accumulated since the last frame (drag-to-look)
+  /** Horizontal pointer-move delta accumulated since the last frame (drag-to-look). */
   lookDx: number;
+  /** Vertical pointer-move delta accumulated since the last frame (drag-to-look). */
   lookDy: number;
 }
 
@@ -39,7 +42,7 @@ const state: InputState = {
 
 const clamp = (v: number): number => Math.max(-1, Math.min(1, v));
 
-// code -> [strafe, forward]
+/** Maps a `KeyboardEvent` code to its [strafe, forward] contribution. */
 const MOVE_KEYS: Record<string, [number, number]> = {
   ArrowUp: [0, 1],
   ArrowDown: [0, -1],
@@ -51,8 +54,14 @@ const MOVE_KEYS: Record<string, [number, number]> = {
   KeyD: [1, 0],
 };
 
-// Skip when typing into an editable element (e.g. the debug console), so the
-// global handlers don't `preventDefault` those keys or start moving the player.
+/**
+ * Reports whether the event's target is an editable element — for example,
+ * the debug console input — so the global key handlers can skip it instead
+ * of calling `preventDefault` on those keys or moving the player.
+ *
+ * @param e - The keyboard event to check.
+ * @returns True if the event originated from an editable element.
+ */
 const isEditableTarget = (e: KeyboardEvent): boolean => {
   const el = e.target as HTMLElement | null;
   if (el === null) {

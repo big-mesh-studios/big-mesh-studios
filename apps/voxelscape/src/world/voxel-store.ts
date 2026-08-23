@@ -1,7 +1,3 @@
-// CPU-side source of truth for one block's voxels, independent of the GPU chunk
-// textures. The renderer's `Level` is derived from this store by `syncLevel`,
-// which sweeps it for surface voxels. Mutating the store is the hook future
-// runtime add/remove-voxel editing will build on.
 import type { Dim3 } from "./level-data";
 import { heightAt, type TerrainConfig } from "./noise";
 
@@ -10,12 +6,18 @@ export const VOXEL_GRASS = 1;
 export const VOXEL_DIRT = 2;
 export const VOXEL_WATER = 3;
 
+/**
+ * CPU-side source of truth for one block's voxels, independent of the GPU
+ * chunk textures. The renderer's `Level` is derived from this store by
+ * `syncLevelFromStore`, which sweeps it for surface voxels. Mutating the
+ * store is the hook that future runtime voxel add/remove editing builds on.
+ */
 export class VoxelStore {
-  // world-unit extents of the volume
+  /** World-unit extents of the volume. */
   dims: Dim3;
-  // world units per voxel (matches the block's LOD scale)
+  /** World units per voxel; matches the block's level-of-detail scale. */
   scale: number;
-  // voxel counts per axis
+  /** Voxel counts per axis. */
   voxels: Dim3;
   data: Uint8Array;
 
@@ -58,12 +60,14 @@ export class VoxelStore {
   }
 }
 
-// Fills an existing `store` with solid terrain columns derived from the shared
-// noise height field sampled at the block's absolute world xz (so neighbouring
-// blocks meet seamlessly). Each column is solid from the block floor up to the
-// noise height; the top voxel is grass and everything below is dirt. When
-// `config.seaLevel` is set, the air above columns that dip below it is filled
-// with water up to sea level.
+/**
+ * Fills an existing `store` with solid terrain columns derived from the
+ * shared noise height field sampled at the block's absolute world xz (so
+ * neighbouring blocks meet seamlessly). Each column is solid from the block
+ * floor up to the noise height; the top voxel is grass and everything below
+ * is dirt. When `config.seaLevel` is set, the air above columns that dip
+ * below it is filled with water up to sea level.
+ */
 export const fillStore = (
   store: VoxelStore,
   center: Dim3,
@@ -99,15 +103,21 @@ export const fillStore = (
   }
 };
 
-// Whether a neighbouring voxel exposes a solid voxel to the surface: it's
-// empty air (so the terrain side is visible) or water (so the ray reaches the
-// lakebed through the water pass and the terrain under water must be stored).
+/**
+ * Whether a neighbouring voxel exposes a solid voxel to the surface: it's
+ * empty air (so the terrain side is visible) or water (so the ray reaches
+ * the lakebed through the water pass and the terrain under the water must be
+ * stored).
+ */
 const exposes = (id: number): boolean => id === VOXEL_AIR || id === VOXEL_WATER;
 
-// Calls `cb(x, y, z, id)` once per surface voxel: a solid voxel with at least
-// one of its 6 neighbours empty (or water). Out-of-bounds neighbours count as
-// air, except below the block floor (treated as solid) so the world's underside
-// never surfaces. Returns the number of surface voxels found.
+/**
+ * Calls `cb(x, y, z, id)` once per surface voxel: a solid voxel with at
+ * least one of its six neighbours empty (or water). Out-of-bounds
+ * neighbours count as air, except below the block floor, which is treated
+ * as solid so the world's underside never surfaces. Returns the number of
+ * surface voxels found.
+ */
 export const sweepSurface = (
   store: VoxelStore,
   cb: (x: number, y: number, z: number, id: number) => void,
@@ -165,12 +175,15 @@ export const sweepSurface = (
   return count;
 };
 
-// Calls `cb(x, y, z, VOXEL_WATER)` once per water surface voxel: a water voxel
-// with at least one empty 6-neighbour. Only this top layer of the water body is
-// stored, so the water march finds the surface in a single step and the GPU
-// chunks stay thin (the lakebed behind it is the terrain surface). Out-of-bounds
-// neighbours count as air, except below the floor (treated as solid). Returns
-// the number of surface voxels found.
+/**
+ * Calls `cb(x, y, z, VOXEL_WATER)` once per water surface voxel: a water
+ * voxel with at least one empty neighbour among its six neighbours. Only
+ * this top layer of the water body is stored, so the water march finds the
+ * surface in a single step and the GPU chunks stay thin (the lakebed behind
+ * it is the terrain surface). Out-of-bounds neighbours count as air, except
+ * below the floor, which is treated as solid. Returns the number of surface
+ * voxels found.
+ */
 export const sweepWaterSurface = (
   store: VoxelStore,
   cb: (x: number, y: number, z: number, id: number) => void,

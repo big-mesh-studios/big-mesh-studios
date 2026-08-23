@@ -1,23 +1,32 @@
-import { createSignal, createMemo, type Accessor, type Component, type Signal, onCleanup, untrack, createRenderEffect } from "solid-js";
+import {
+  createSignal,
+  createMemo,
+  type Accessor,
+  type Component,
+  type Signal,
+  onCleanup,
+  untrack,
+  createRenderEffect,
+} from "solid-js";
 import { JSX } from "@solidjs/web";
 import * as THREE from "three";
 
 const MAX_HOLD_TIME = 1.0;
 
 export function ActionButton(params: {
-  position: Accessor<THREE.Vector2>,
-  size: Accessor<number>,
-  externalPressed?: Accessor<boolean>,
-  colour?: Accessor<THREE.ColorRepresentation | undefined>,
-  specialSlidePress?: Accessor<boolean>,
+  position: Accessor<THREE.Vector2>;
+  size: Accessor<number>;
+  externalPressed?: Accessor<boolean>;
+  colour?: Accessor<THREE.ColorRepresentation | undefined>;
+  specialSlidePress?: Accessor<boolean>;
 }): {
-  position: Accessor<THREE.Vector2>,
-  size: Accessor<number>,
-  pressed: Accessor<boolean>,
-  power: Accessor<number>,
-  justReleased: Accessor<boolean>,
-  justReleasedExternal: Accessor<boolean>,
-  UI: Component,
+  position: Accessor<THREE.Vector2>;
+  size: Accessor<number>;
+  pressed: Accessor<boolean>;
+  power: Accessor<number>;
+  justReleased: Accessor<boolean>;
+  justReleasedExternal: Accessor<boolean>;
+  UI: Component;
 } {
   const colour = createMemo(() => {
     let colour2 = params.colour?.();
@@ -32,7 +41,7 @@ export function ActionButton(params: {
     };
   });
 
-  const [ divElement, setDivElement, ] = createSignal<HTMLDivElement>();
+  const [divElement, setDivElement] = createSignal<HTMLDivElement>();
 
   const [pressed, setPressed] = createSignal(false);
   const [pressStartTime, setPressStartTime] = createSignal(0);
@@ -48,7 +57,7 @@ export function ActionButton(params: {
   const startTracking = () => {
     if (intervalId) return;
     intervalId = window.setInterval(() => {
-      setTick(t => t + 1);
+      setTick((t) => t + 1);
     }, 50);
   };
 
@@ -87,20 +96,26 @@ export function ActionButton(params: {
     return Math.min(holdTime / MAX_HOLD_TIME, 1.0);
   });
 
-  const handlePointerDown: JSX.EventHandler<HTMLDivElement, PointerEvent> = (e) => {
+  const handlePointerDown: JSX.EventHandler<HTMLDivElement, PointerEvent> = (
+    e,
+  ) => {
     e.currentTarget.setPointerCapture(e.pointerId);
     setPressed(true);
     setPressStartTime(performance.now());
     startTracking();
   };
 
-  const handlePointerUp: JSX.EventHandler<HTMLDivElement, PointerEvent> = (e) => {
+  const handlePointerUp: JSX.EventHandler<HTMLDivElement, PointerEvent> = (
+    e,
+  ) => {
     setPressed(false);
     stopTracking();
     setWasPressed(true);
   };
 
-  const handlePointerLeave: JSX.EventHandler<HTMLDivElement, PointerEvent> = (e) => {
+  const handlePointerLeave: JSX.EventHandler<HTMLDivElement, PointerEvent> = (
+    e,
+  ) => {
     if (pressed()) {
       setPressed(false);
       stopTracking();
@@ -122,7 +137,8 @@ export function ActionButton(params: {
         }
         let clientX = e.clientX;
         let clientY = e.clientY;
-        let overButton = document.elementFromPoint(clientX, clientY) === divElement2;
+        let overButton =
+          document.elementFromPoint(clientX, clientY) === divElement2;
         if (overButton) {
           if (!pressed()) {
             setPressed(true);
@@ -139,9 +155,8 @@ export function ActionButton(params: {
       onCleanup(() => {
         document.removeEventListener("pointermove", handleSpecialPointerMove);
       });
-      //
     },
-  )
+  );
 
   const UI: Component = () => {
     return (

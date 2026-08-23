@@ -1,8 +1,13 @@
-// Debug-only performance instrumentation (raw WebGL2; RMSL doesn't expose
-// render targets or timer queries). Enabled by appending `#perf` to the URL.
+/**
+ * Debug-only performance instrumentation, implemented directly against raw
+ * WebGL2 since RMSL doesn't expose render targets or timer queries. Enabled
+ * by appending `#perf` to the URL.
+ */
 
-// Minimal typing for EXT_disjoint_timer_query_webgl2 (missing from the TS dom
-// lib used here).
+/**
+ * Minimal typing for the `EXT_disjoint_timer_query_webgl2` WebGL extension,
+ * which is missing from the TypeScript DOM library used here.
+ */
 interface ExtTimerQuery {
   readonly TIME_ELAPSED_EXT: GLenum;
   readonly QUERY_RESULT_AVAILABLE: GLenum;
@@ -23,11 +28,11 @@ export class GpuTimer {
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
-    this.ext = gl.getExtension("EXT_disjoint_timer_query_webgl2") as ExtTimerQuery | null;
+    this.ext = gl.getExtension(
+      "EXT_disjoint_timer_query_webgl2",
+    ) as ExtTimerQuery | null;
     this.supported = this.ext !== null;
-    this.queries = this.supported
-      ? [gl.createQuery(), gl.createQuery()]
-      : [];
+    this.queries = this.supported ? [gl.createQuery(), gl.createQuery()] : [];
   }
 
   /** Call right before `renderer.render(...)`. */
@@ -76,8 +81,9 @@ export function sampleFetchCount(
   height: number,
   stride: number = 8,
 ): FetchCountSample {
-  // Sample a bounded central region so the readback stays cheap on high-DPR
-  // mobile screens; the orbit camera keeps the volume near the screen centre.
+  // Sample a bounded central region so the readback stays cheap on
+  // high-device-pixel-ratio mobile screens; the orbit camera keeps the
+  // volume near the screen centre.
   const rw = Math.min(Math.floor(width / 2), 1280);
   const rh = Math.min(Math.floor(height / 2), 720);
   const x0 = Math.floor((width - rw) / 2);

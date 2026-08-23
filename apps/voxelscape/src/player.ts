@@ -2,9 +2,9 @@ import { PerspectiveCamera, Vector3 } from "@random-mesh/rmsl/scene";
 import type { InputSnapshot } from "./input";
 
 export interface Player {
-  // cube centre, world units
+  /** Cube centre, in world units. */
   position: Vector3;
-  // heading, radians; 0 faces +Z
+  /** Heading, in radians; 0 faces +Z. */
   yaw: number;
   pitch: number;
   vy: number;
@@ -12,15 +12,23 @@ export interface Player {
 }
 
 export const PLAYER_CFG = {
-  halfSize: 1, // player cube is 2x2x2
-  speed: 45, // units/s
-  gravity: 45, // units/s^2
-  jumpSpeed: 14, // initial upward velocity (~2 unit jump)
-  swimSpeed: 10, // upward velocity while holding jump underwater
-  lookSensitivity: 0.005, // rad per pixel
+  /** Player cube half-size, in world units (a 2x2x2 cube). */
+  halfSize: 1,
+  /** Movement speed, in units per second. */
+  speed: 45,
+  /** Gravitational acceleration, in units per second squared. */
+  gravity: 45,
+  /** Initial upward velocity on jumping, in units per second (about a 2-unit-high jump). */
+  jumpSpeed: 14,
+  /** Upward velocity while holding jump underwater, in units per second. */
+  swimSpeed: 10,
+  /** Look sensitivity, in radians per pixel of pointer movement. */
+  lookSensitivity: 0.005,
   maxPitch: 1.35,
-  followBack: 9, // chase-cam distance behind the cube centre
-  followUp: 2.5, // chase-cam height above the cube centre
+  /** Chase-camera distance behind the cube centre, in world units. */
+  followBack: 9,
+  /** Chase-camera height above the cube centre, in world units. */
+  followUp: 2.5,
 };
 
 export const createPlayer = (x: number, y: number, z: number): Player => ({
@@ -117,7 +125,7 @@ export const updatePlayer = (
   }
 };
 
-/** Chase cam hovering just behind and above the player cube, looking at it. */
+/** Chase camera hovering just behind and above the player cube, looking at it. */
 export const placeCamera = (
   camera: PerspectiveCamera,
   player: Player,

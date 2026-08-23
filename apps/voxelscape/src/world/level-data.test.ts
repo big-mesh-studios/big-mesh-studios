@@ -8,7 +8,7 @@ import {
   type Dim3,
 } from "./level-data";
 
-// A fast, deterministic constant-height terrain for the byte-for-byte tests.
+/** A fast, deterministic constant-height terrain for the byte-for-byte tests. */
 const flatConfig = {
   seed: 1,
   frequency: 1,
@@ -18,7 +18,7 @@ const flatConfig = {
   seaLevel: 6,
 };
 
-// Real noise terrain so different centres produce different data.
+/** Real noise terrain so different centres produce different data. */
 const noiseConfig = {
   seed: 54321,
   frequency: 0.008,
@@ -27,8 +27,10 @@ const noiseConfig = {
   base: 64,
 };
 
-// A zero-copy Buffer view so comparisons use native memcmp instead of per-byte
-// JS iteration (these arrays are ~1.2MB each).
+/**
+ * A zero-copy `Buffer` view so comparisons use native memcmp instead of
+ * per-byte JavaScript iteration; these arrays are about 1.2MB each.
+ */
 const buf = (u: Uint8Array): Buffer =>
   Buffer.from(u.buffer, u.byteOffset, u.length);
 

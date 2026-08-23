@@ -1,11 +1,3 @@
-// Owns the world ring: a `blocksPerSide x blocksPerSide` window of `WorldBlock`s
-// kept centred on the player. Builds the initial ring synchronously (main
-// thread, at construction); every scroll after that refills the newly
-// revealed slots off the main thread via a fill worker, falling back to a
-// synchronous fill if the worker is unavailable or errors. Knows nothing
-// about rendering — block changes and repositions are reported through
-// injected callbacks, not a direct reference to a renderer. See
-// docs/adr/0002-world-ring-seam.md.
 import {
   applyLevelData,
   BLOCK_WORLD,
@@ -28,21 +20,36 @@ export interface WorldRingParams {
   blocksPerSide: number;
   terrain: TerrainConfig;
   surfaceOnly: boolean;
-  // Called whenever a slot's voxel data is ready to be reflected on screen
-  // (initial fill, or a ring-scroll refill landing).
+  /**
+   * Called whenever a slot's voxel data is ready to be reflected on screen —
+   * during the initial fill, or when a ring-scroll refill lands.
+   */
   onBlockChanged: (index: number) => void;
-  // Called when the ring steps and a slot now represents a different world
-  // position, before its new data has arrived.
+  /**
+   * Called when the ring steps and a slot now represents a different world
+   * position, before its new data has arrived.
+   */
   onBlockReposition: (index: number, center: Dim3) => void;
 }
 
+/**
+ * A `blocksPerSide x blocksPerSide` window of `WorldBlock`s kept centred on the
+ * player. The initial ring is built synchronously in the constructor; every
+ * scroll after that refills the newly revealed slots off the main thread via a
+ * fill worker, falling back to a synchronous fill if the worker is unavailable
+ * or errors. This class knows nothing about rendering — block changes and
+ * repositions are reported through injected callbacks, not a direct reference
+ * to a renderer.
+ */
 export class WorldRing {
   readonly blocks: WorldBlock[] = [];
-  // Per-slot integer grid coordinate of the world block currently displayed.
-  // Kept private: nothing outside this class needs raw grid coordinates,
-  // only "the block at these coordinates" (`lookupBlock`), "this slot's own
-  // coordinates" (`gridCoordAt`, needed by the triangle renderer to resolve
-  // its neighbours), or "all current blocks" (`blocks`).
+  /**
+   * Per-slot integer grid coordinate of the world block currently displayed.
+   * Kept private: nothing outside this class needs raw grid coordinates, only
+   * "the block at these coordinates" (`lookupBlock`), "this slot's own
+   * coordinates" (`gridCoordAt`, needed by the triangle renderer to resolve
+   * its neighbours), or "all current blocks" (`blocks`).
+   */
   private readonly worldGrid: { x: number; z: number }[] = [];
   private readonly terrain: TerrainConfig;
   private readonly surfaceOnly: boolean;
@@ -95,9 +102,12 @@ export class WorldRing {
     }
 
     try {
-      this.fillWorker = new Worker(new URL("./fill-worker.ts", import.meta.url), {
-        type: "module",
-      });
+      this.fillWorker = new Worker(
+        new URL("./fill-worker.ts", import.meta.url),
+        {
+          type: "module",
+        },
+      );
       const fillConfig: FillConfig = {
         terrain: this.terrain,
         surfaceOnly: this.surfaceOnly,
@@ -126,7 +136,9 @@ export class WorldRing {
       this.fillWorker.onerror = () => {
         // fall back to filling synchronously; don't leave anything stranded
         this.fillAvailable = false;
-        console.warn("[fill] worker errored; falling back to synchronous fills");
+        console.warn(
+          "[fill] worker errored; falling back to synchronous fills",
+        );
         for (const i of this.fillInflight.keys()) {
           this.syncFillBlock(i);
         }
@@ -137,8 +149,10 @@ export class WorldRing {
     }
   }
 
-  // The grid coordinate of the block currently at this slot. Needed by the
-  // triangle renderer to resolve its neighbours via `lookupBlock`.
+  /**
+   * The grid coordinate of the block currently at this slot. Needed by the
+   * triangle renderer to resolve its neighbours via `lookupBlock`.
+   */
   gridCoordAt(index: number): { x: number; z: number } {
     const g = this.worldGrid[index];
     return { x: g.x, z: g.z };
@@ -170,10 +184,12 @@ export class WorldRing {
     this.fillWorker?.postMessage(req);
   }
 
-  // Moves the ring window one block step in the given direction: the whole
-  // trailing column/row teleports to the leading edge and each is refilled at
-  // its new center. Stepping only one block would let the window drift
-  // off-centre when walking along a single axis.
+  /**
+   * Moves the ring window one block step in the given direction: the whole
+   * trailing column or row teleports to the leading edge and each is refilled
+   * at its new center. Stepping only one block would let the window drift
+   * off-centre when walking along a single axis.
+   */
   private stepRing(dx: number, dz: number): void {
     const changed = new Set<number>();
     if (dx !== 0) {
@@ -225,9 +241,9 @@ export class WorldRing {
         this.worldGrid[i].z * BLOCK_WORLD[2],
       ];
       this.blocks[i].center = center;
-      // reposition both renderers' meshes for this slot; the triangle side
-      // also clears its geometry to avoid flashing the old block's surface at
-      // the new location (see `TriangleRenderer.repositionBlock`)
+      // reposition both renderers' meshes for this slot; the triangle
+      // renderer also clears its geometry there to avoid flashing the old
+      // block's surface at the new location
       this.onBlockReposition(i, center);
       // clear the raymarch level so no stale terrain renders at the new spot
       // while the fill worker regenerates it (the block is at the fogged ring

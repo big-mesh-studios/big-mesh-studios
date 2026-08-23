@@ -23,15 +23,18 @@ import {
 const smallStore = (): VoxelStore =>
   new VoxelStore({ dims: [8, 8, 8], voxels: [4, 4, 4], scale: 2 });
 
-// No neighbouring blocks: horizontal out-of-bounds resolves to air, the floor
-// below y=0 is solid and the ceiling above is air (same rules as `sweepSurface`).
+/**
+ * No neighbouring blocks: horizontal out-of-bounds resolves to air, the
+ * floor below y=0 is solid and the ceiling above is air (same rules as
+ * `sweepSurface`).
+ */
 const noNeighbors = (store: VoxelStore): BlockGridResolver =>
   makeBlockResolver(store, 0, 0, () => undefined);
 
 const faceCount = (mesh: MeshArrays): number => mesh.indices.length / 6;
 const vertexCount = (mesh: MeshArrays): number => mesh.positions.length / 3;
 
-// Collects each vertex's normal, keyed to its uv.
+/** Collects each vertex's normal, keyed to its uv. */
 const facesByNormal = (
   mesh: MeshArrays,
 ): Map<string, Array<[number, number]>> => {

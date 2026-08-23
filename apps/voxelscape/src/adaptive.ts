@@ -1,23 +1,26 @@
-// Adaptive render-resolution scaler. Pure logic (no DOM/canvas/RAF), so the
-// convergence behaviour can be unit-tested by feeding synthetic frame times.
+/**
+ * Adaptive render-resolution scaler. Pure logic with no DOM, canvas, or
+ * `requestAnimationFrame` dependency, so the convergence behaviour can be
+ * unit-tested by feeding it synthetic frame times.
+ */
 export interface ResConfig {
-  // 60fps frame budget in ms
+  /** Frame time budget for 60fps, in milliseconds. */
   budgetMs: number;
-  // ema above budget * this => consider downscaling
+  /** Downscale once the exponential moving average exceeds budget times this factor. */
   downFactor: number;
-  // ema below budget * this => consider upscaling
+  /** Upscale once the exponential moving average falls below budget times this factor. */
   upFactor: number;
-  // sustained slow frames before stepping down
+  /** Number of sustained slow frames required before stepping down. */
   downFrames: number;
-  // sustained fast frames before stepping up
+  /** Number of sustained fast frames required before stepping up. */
   upFrames: number;
-  // scale multiplier when stepping down (0.5 == the old halving step)
+  /** Scale multiplier applied each time the controller steps down. */
   downStep: number;
-  // scale multiplier when stepping up (2 == the old doubling step)
+  /** Scale multiplier applied each time the controller steps up. */
   upStep: number;
-  // lowest render scale
+  /** Lowest allowed render scale. */
   minScale: number;
-  // frames to hold still after a change (let the resize settle)
+  /** Frames to hold still after a change, letting the resize settle. */
   settleFrames: number;
 }
 
@@ -55,7 +58,7 @@ export class AdaptiveResolution {
     return this._scale;
   }
 
-  /** Feed one frame's delta time (ms) and run the adaptation decision. */
+  /** Feed one frame's delta time, in milliseconds, and run the adaptation decision. */
   update(dtMs: number): number {
     this.emaMs = this.emaMs * 0.9 + dtMs * 0.1;
     if (this.settle > 0) {
@@ -67,15 +70,16 @@ export class AdaptiveResolution {
   }
 
   /**
-   * Feed one frame's delta time (ms) without deciding (e.g. debug readback
-   * frames stall the GPU, so their timing is not representative).
+   * Feed one frame's delta time, in milliseconds, without deciding — debug
+   * readback frames, for example, stall the GPU, so their timing isn't
+   * representative.
    */
   frame(dtMs: number): number {
     this.emaMs = this.emaMs * 0.9 + dtMs * 0.1;
     return this._scale;
   }
 
-  /** Hold adaptation for a while (e.g. after an external canvas resize). */
+  /** Hold adaptation for a while — for example, after an external canvas resize. */
   hold(frames: number = this.cfg.settleFrames): void {
     this.settle = Math.max(this.settle, frames);
   }

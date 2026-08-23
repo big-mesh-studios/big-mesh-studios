@@ -1,9 +1,8 @@
-// Coordinator owning one `RaymarchRenderer` and one `TriangleRenderer`, and
-// which of the two is currently visible. `applyLighting` fans out to both
-// renderers every frame (so the hidden one is already correct the instant the
-// mode toggles); `tick` only runs on the active one. See
-// docs/adr/0001-renderer-seam.md for why this exists.
-import type { PerspectiveCamera, Scene, Texture } from "@random-mesh/rmsl/scene";
+import type {
+  PerspectiveCamera,
+  Scene,
+  Texture,
+} from "@random-mesh/rmsl/scene";
 import type { VoxelTileConfig } from "./atlas";
 import type { Dim3, WorldBlock } from "../world/level-data";
 import type { BlockGridLookup } from "./mesh";
@@ -28,6 +27,12 @@ export interface RendererSwitchParams {
   initialMode?: RendererMode;
 }
 
+/**
+ * Coordinator owning one `RaymarchRenderer` and one `TriangleRenderer`, and
+ * which of the two is currently visible. `applyLighting` fans out to both
+ * renderers every frame, so the hidden one is already correct the instant
+ * the mode toggles; `tick` only runs on the active one.
+ */
 export class RendererSwitch {
   readonly raymarch: RaymarchRenderer;
   readonly triangle: TriangleRenderer;
@@ -81,10 +86,12 @@ export class RendererSwitch {
     return this.triangle.triangleCount;
   }
 
-  // Must be called once, after the player cube is added to the scene: the
-  // translucent water passes (raymarch, then triangle) and the triangle
-  // renderer's underwater tint all rely on scene-graph draw order to blend
-  // over what's already been drawn.
+  /**
+   * Must be called once, after the player cube is added to the scene: the
+   * translucent water passes (raymarch, then triangle) and the triangle
+   * renderer's underwater tint all rely on scene-graph draw order to blend
+   * over what's already been drawn.
+   */
   addTranslucentPassesToScene(scene: Scene): void {
     this.raymarch.addWaterToScene(scene);
     this.triangle.addWaterToScene(scene);

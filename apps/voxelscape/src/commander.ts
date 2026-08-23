@@ -1,12 +1,14 @@
-// The single place every debug console command is declared: one object
-// literal, keyed by command name, built once after every command-owning
-// object already exists (see App.tsx). Each entry's `run` closure does its
-// own raw-argument parsing/validation/aliasing and calls a plain typed
-// method on the owning object — the owning objects themselves expose no
-// command-shaped API and have no idea a console exists. See
-// docs/adr/0004-commander.md for why this is an object literal (TypeScript
-// rejects a duplicate key at compile time) rather than a `register()`-call
-// registry or a runtime-checked array.
+/**
+ * Declares every debug console command as a single object literal, keyed by
+ * command name, built once after every command-owning object already
+ * exists. Each entry's `run` closure does its own raw-argument parsing,
+ * validation, and aliasing, then calls a plain typed method on the owning
+ * object — the owning objects themselves expose no command-shaped API and
+ * have no idea a console exists. Using a plain object literal, rather than
+ * a `register()`-call registry or a runtime-checked array, means a
+ * duplicate command name is a TypeScript compile error instead of a
+ * runtime one.
+ */
 export interface CommandEntry {
   help: string;
   run: (rest: string[]) => string;

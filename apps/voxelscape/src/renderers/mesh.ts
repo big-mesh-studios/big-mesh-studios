@@ -8,9 +8,11 @@ import { BufferAttribute, BufferGeometry } from "@random-mesh/rmsl/scene";
 import type { TileRect, VoxelTileConfig } from "./atlas";
 import { VOXEL_AIR, VOXEL_WATER, type VoxelStore } from "../world/voxel-store";
 
-// Vertex arrays for one mesh. The CPU builders produce plain arrays; the web
-// worker converts them to typed arrays so they can be transferred back without
-// a copy. `meshArraysToGeometry` consumes either.
+/**
+ * Vertex arrays for one mesh. The CPU builders produce plain arrays; the
+ * web worker converts them to typed arrays so they can be transferred back
+ * without a copy. `meshArraysToGeometry` consumes either.
+ */
 export interface MeshArrays {
   positions: number[] | Float32Array;
   normals: number[] | Float32Array;
@@ -18,19 +20,24 @@ export interface MeshArrays {
   indices: number[] | Uint32Array;
 }
 
-// Looks up a neighbouring block's store by its ring grid coordinate. Returns
-// undefined when the ring has no block there (the world's outer edge), which
-// the resolver treats as empty air.
+/**
+ * Looks up a neighbouring block's store by its ring grid coordinate.
+ * Returns undefined when the ring has no block there (the world's outer
+ * edge), which the resolver treats as empty air.
+ */
 export type BlockGridLookup = (
   gridX: number,
   gridZ: number,
 ) => VoxelStore | undefined;
 
-// Resolves a voxel id at block-local voxel coords (x, y, z), handling the
-// block volume's boundaries: below the floor is solid, above the ceiling is
-// air, and horizontal out-of-bounds coords look into the neighbouring block's
-// store so coincident seam faces are never double-emitted. Voxel coordinates
-// tile across blocks, so block (gx, gz) covers worldVoxel in [gx*nx, (gx+1)*nx).
+/**
+ * Resolves a voxel id at block-local voxel coordinates (x, y, z), handling
+ * the block volume's boundaries: below the floor is solid, above the
+ * ceiling is air, and horizontal out-of-bounds coordinates look into the
+ * neighbouring block's store so coincident seam faces are never
+ * double-emitted. Voxel coordinates tile across blocks, so block (gx, gz)
+ * covers worldVoxel in [gx*nx, (gx+1)*nx).
+ */
 export interface BlockGridResolver {
   at(x: number, y: number, z: number): number;
 }
@@ -70,10 +77,13 @@ export const makeBlockResolver = (
   };
 };
 
-// One quad's four corners as [xOff, yOff, zOff, u, v] cell offsets: the two
-// tangent axes sweep 0..1 while the face axis stays 0, and (u, v) are the
-// in-plane local UVs from the raymarch's face mapping. Side faces flip v so the
-// world-up axis maps to the top of the source tile (grass sits on top).
+/**
+ * One quad's four corners as [xOffset, yOffset, zOffset, u, v] cell
+ * offsets: the two tangent axes sweep 0..1 while the face axis stays 0,
+ * and (u, v) are the in-plane local UVs from the raymarch renderer's face
+ * mapping. Side faces flip v so the world-up axis maps to the top of the
+ * source tile (grass sits on top).
+ */
 const FACE_CORNERS: Array<Array<[number, number, number, number, number]>> = [
   // +X/-X faces: u along +Z, v up along +Y (flipped)
   [
@@ -98,13 +108,18 @@ const FACE_CORNERS: Array<Array<[number, number, number, number, number]>> = [
   ],
 ];
 
-// Used until the atlas loads (or for voxel ids with no tile config): a full
-// texel rect so faces still map to something sane.
+/**
+ * Used until the atlas loads (or for voxel ids with no tile config): a
+ * full texel rect so faces still map to something sane.
+ */
 const DEFAULT_RECT: TileRect = [0, 0, 1, 1];
 
-// Emits the terrain quads for every exposed face of `store`'s solid voxels.
-// `voxelTiles` maps each solid id to its top/side/bottom atlas rects; when a
-// config is missing (atlas not loaded yet) faces fall back to `DEFAULT_RECT`.
+/**
+ * Emits the terrain quads for every exposed face of `store`'s solid
+ * voxels. `voxelTiles` maps each solid id to its top/side/bottom atlas
+ * rects; when a config is missing (atlas not loaded yet) faces fall back
+ * to `DEFAULT_RECT`.
+ */
 export const buildBlockMesh = (
   store: VoxelStore,
   resolver: BlockGridResolver,
@@ -153,10 +168,12 @@ export const buildBlockMesh = (
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   };
 
-  // Resolves an out-of-bounds neighbour id; `data` covers the in-bounds case
-  // directly in the loop below, so this runs only on the block's boundary
-  // columns. Below the floor is solid and above the ceiling is air (the same
-  // rules as `sweepSurface`).
+  /**
+   * Resolves an out-of-bounds neighbour id; `data` covers the in-bounds
+   * case directly in the loop below, so this runs only on the block's
+   * boundary columns. Below the floor is solid and above the ceiling is
+   * air (the same rules as `sweepSurface`).
+   */
   const resolverAt = (x: number, y: number, z: number): number => {
     if (y < 0) return 1;
     if (y >= ny) return 0;
@@ -213,9 +230,12 @@ export const buildBlockMesh = (
   return { positions, normals, uvs, indices };
 };
 
-// Emits the water surface quads: every face of a water voxel that borders air
-// (the top surface plus cliff-side banks). Same positioning as the terrain mesh
-// so the two tile up seamlessly. UVs are unused by the water material.
+/**
+ * Emits the water surface quads: every face of a water voxel that borders
+ * air (the top surface plus cliff-side banks). Uses the same positioning
+ * as the terrain mesh so the two tile up seamlessly. UVs are unused by the
+ * water material.
+ */
 export const buildWaterMesh = (
   store: VoxelStore,
   resolver: BlockGridResolver,
@@ -250,10 +270,7 @@ export const buildWaterMesh = (
         axis === 1 ? sign : 0,
         axis === 2 ? sign : 0,
       );
-      uvs.push(
-        u,
-        v,
-      );
+      uvs.push(u, v);
     }
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   };
@@ -309,13 +326,16 @@ export const buildWaterMesh = (
   return { positions, normals, uvs, indices };
 };
 
-// Applies `mesh`'s arrays to an existing geometry *in place*, replacing its
-// attributes while keeping the geometry object identity stable. The renderer
-// keys its GPU-buffer cache by geometry object, so re-uploading into the same
-// geometry reuses the buffers it already allocated (the new attributes carry
-// `needsUpdate`, which makes the next draw refresh their data). Replacing
-// `mesh.geometry` with a fresh geometry instead would orphan the old entry in
-// that cache and leak its GPU buffers on every rebuild.
+/**
+ * Applies `mesh`'s arrays to an existing geometry *in place*, replacing
+ * its attributes while keeping the geometry object identity stable. The
+ * renderer keys its GPU-buffer cache by geometry object, so re-uploading
+ * into the same geometry reuses the buffers it already allocated (the new
+ * attributes carry `needsUpdate`, which makes the next draw refresh their
+ * data). Replacing `mesh.geometry` with a fresh geometry instead would
+ * orphan the old entry in that cache and leak its GPU buffers on every
+ * rebuild.
+ */
 export const setGeometryData = (
   geometry: BufferGeometry,
   mesh: MeshArrays,
@@ -347,22 +367,28 @@ export const setGeometryData = (
   geometry.setIndex(new BufferAttribute(idx, 1));
 };
 
-// Wraps extracted arrays into a fresh rmsl geometry (for tests and one-off
-// geometry); runtime block meshes should reuse a persistent geometry via
-// `setGeometryData` instead.
+/**
+ * Wraps extracted arrays into a fresh rmsl geometry (for tests and one-off
+ * geometry); runtime block meshes should reuse a persistent geometry via
+ * `setGeometryData` instead.
+ */
 export const meshArraysToGeometry = (mesh: MeshArrays): BufferGeometry => {
   const geometry = new BufferGeometry();
   setGeometryData(geometry, mesh);
   return geometry;
 };
 
-// The neighbour boundary data a worker needs to resolve block-seam faces: for
-// each of the 8 neighbouring blocks, only the boundary slab that touches this
-// block. Layouts are dense so the worker indexes them with plain arithmetic:
-//   east/west  (neighbour +x/-x):  [lz * ny + ly]      (1 x ny x nz)
-//   north/south (neighbour +z/-z): [ly * nx + lx]      (nx x ny x 1)
-//   corner columns (ne +/-x +/-z): [ly]                (1 x ny x 1)
-// `null` means that block does not exist (the world's outer edge → air).
+/**
+ * The neighbour boundary data a worker needs to resolve block-seam faces:
+ * for each of the 8 neighbouring blocks, only the boundary slab that
+ * touches this block. Layouts are dense so the worker indexes them with
+ * plain arithmetic:
+ *   east/west  (neighbour +x/-x):  [lz * ny + ly]      (1 x ny x nz)
+ *   north/south (neighbour +z/-z): [ly * nx + lx]      (nx x ny x 1)
+ *   corner columns (ne +/-x +/-z): [ly]                (1 x ny x 1)
+ * `null` means that block does not exist (the world's outer edge, which
+ * resolves to air).
+ */
 export interface BlockShells {
   east: Uint8Array | null;
   west: Uint8Array | null;
@@ -385,9 +411,11 @@ export const EMPTY_SHELLS: BlockShells = {
   sw: null,
 };
 
-// Extracts the 8 neighbour boundary shells for a block, so its mesh can be
-// built off-thread (where the ring's full stores aren't available) with the
-// same seam resolution as `makeBlockResolver`.
+/**
+ * Extracts the 8 neighbour boundary shells for a block, so its mesh can
+ * be built off-thread (where the ring's full stores aren't available)
+ * with the same seam resolution as `makeBlockResolver`.
+ */
 export const extractBlockShells = (
   store: VoxelStore,
   gridX: number,
@@ -458,10 +486,13 @@ export const extractBlockShells = (
   };
 };
 
-// Resolves a voxel id at block-local coords from a block's own data plus its
-// neighbour shells (what a worker uses instead of `makeBlockResolver`). Same
-// boundary rules: below the floor is solid, above is air, horizontal OOB looks
-// into the shelled neighbour (or air when the shell is null).
+/**
+ * Resolves a voxel id at block-local coordinates from a block's own data
+ * plus its neighbour shells (what a worker uses instead of
+ * `makeBlockResolver`). Same boundary rules: below the floor is solid,
+ * above is air, horizontal out-of-bounds coordinates look into the
+ * shelled neighbour (or air when the shell is null).
+ */
 export const makeShellResolver = (
   store: VoxelStore,
   shells: BlockShells,
@@ -489,9 +520,12 @@ export const makeShellResolver = (
   };
 };
 
-// The main↔worker mesh-build protocol. `data` is the block's voxel data (a
-// transferable copy), `shells` its neighbour boundary data, `tileRects` the
-// per-voxel-id atlas rects; the worker returns both meshes' arrays back.
+/**
+ * The main-thread-to-worker mesh-build protocol. `data` is the block's
+ * voxel data (a transferable copy), `shells` its neighbour boundary data,
+ * `tileRects` the per-voxel-id atlas rects; the worker returns both
+ * meshes' arrays back.
+ */
 export interface MeshBuildRequest {
   id: number;
   voxels: [number, number, number];

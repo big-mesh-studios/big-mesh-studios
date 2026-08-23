@@ -5,8 +5,8 @@ import { AdaptiveResolution, DEFAULT_RES, type ResConfig } from "./adaptive";
 /**
  * Drives the scaler with a device model where frame time scales with the
  * rendered pixel count (render cost ~ scale^2) plus nothing else, exactly like
- * the raymarcher: `dt = costAtOne * scale^2`. `costAtOne` is the frame time in
- * ms at full resolution.
+ * the raymarcher: `dt = costAtOne * scale^2`. `costAtOne` is the frame time,
+ * in milliseconds, at full resolution.
  */
 const simulate = (
   costAtOne: number,
@@ -33,10 +33,11 @@ const simulate = (
 };
 
 describe("AdaptiveResolution", () => {
-  // Regression: with 2x steps (downStep 0.5 / upStep 2) a marginal device whose
-  // full-res frame is ~20-40ms oscillates forever: 1x is too slow (downscale),
-  // 0.5x is too fast (upscale). This was reported as the app "failing" on fast
-  // devices that sit in that marginal band.
+  // Guards against oscillation on a marginal device: with a 2x step size
+  // (downStep 0.5, upStep 2), a device whose full-resolution frame time is
+  // roughly 20-40 milliseconds oscillates forever between 1x (too slow) and
+  // 0.5x (too fast). The smaller step size configured in `DEFAULT_RES`
+  // converges instead.
   it("converges to a stable scale instead of oscillating on a marginal device", () => {
     const { changes } = simulate(30);
     expect(changes.length).toBeGreaterThan(0); // it did adapt at least once

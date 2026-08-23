@@ -1,7 +1,10 @@
-// A 20-minute day-night cycle. The sun/moon travel a piecewise path across the
-// sky while the scene's lighting (sun/moon/ambient/sky colour) smoothly
-// transitions between day, sunset, night and sunrise palettes. All functions
-// are pure, so the cycle is testable and the App can query it each frame.
+/**
+ * A 20-minute day-night cycle. The sun and moon travel a piecewise path
+ * across the sky while the scene's lighting (sun, moon, ambient, and sky
+ * colour) smoothly transitions between day, sunset, night, and sunrise
+ * palettes. All functions are pure, so the cycle is unit-testable and the
+ * caller can query it every frame.
+ */
 
 export const DAY_SECONDS = 600;
 export const SUNSET_SECONDS = 90;
@@ -10,8 +13,10 @@ export const SUNRISE_SECONDS = 90;
 export const CYCLE_SECONDS =
   DAY_SECONDS + SUNSET_SECONDS + NIGHT_SECONDS + SUNRISE_SECONDS;
 
-// Hide a sun/moon square once it dips a few degrees below the horizon, so it
-// doesn't linger at the fog line.
+/**
+ * Elevation, in degrees, below which a sun/moon square is hidden — a few
+ * degrees under the horizon, so it doesn't linger at the fog line.
+ */
 export const VISIBLE_ELEVATION = -8;
 
 export type Phase = "day" | "sunset" | "night" | "sunrise";
@@ -20,18 +25,21 @@ export type Vec3 = [number, number, number];
 
 export interface DayNightState {
   phase: Phase;
-  // unit direction from the world origin toward the sun / moon
+  /** Unit direction from the world origin toward the sun. */
   sunDir: Vec3;
+  /** Unit direction from the world origin toward the moon. */
   moonDir: Vec3;
-  // diffuse light colour contributed by each body (moonLight is 0 by day)
+  /** Diffuse light colour contributed by the sun. */
   sunLight: Vec3;
+  /** Diffuse light colour contributed by the moon; zero during the day. */
   moonLight: Vec3;
-  // flat, non-directional fill light
+  /** Flat, non-directional fill light. */
   ambient: Vec3;
-  // horizon / sky colour (drives the clear colour and the terrain fog)
+  /** Horizon and sky colour, driving the clear colour and the terrain fog. */
   skyColor: Vec3;
-  // elevation above the horizon in degrees (negative = below it)
+  /** Sun elevation above the horizon, in degrees; negative when below it. */
   sunElevation: number;
+  /** Moon elevation above the horizon, in degrees; negative when below it. */
   moonElevation: number;
   sunVisible: boolean;
   moonVisible: boolean;
@@ -73,8 +81,16 @@ const mix = (a: Vec3, b: Vec3, t: number): Vec3 => [
   lerp(a[2], b[2], t),
 ];
 
-// Walks from `from` through the `mid` palette to `to` as `s` goes 0..1, so a
-// sunset/sunrise glows warm at its midpoint instead of fading straight through.
+/**
+ * Walks from `from` through the `mid` palette to `to` as `s` goes from 0 to
+ * 1, so a sunset or sunrise glows warm at its midpoint instead of fading
+ * straight through.
+ *
+ * @param from - Palette value at s = 0.
+ * @param mid - Palette value at the midpoint, s = 0.5.
+ * @param to - Palette value at s = 1.
+ * @param s - Progress through the transition, from 0 to 1.
+ */
 const tween = (from: Vec3, mid: Vec3, to: Vec3, s: number): Vec3 =>
   s < 0.5 ? mix(from, mid, s * 2) : mix(mid, to, (s - 0.5) * 2);
 
@@ -103,9 +119,14 @@ export const phaseAt = (elapsed: number): Phase => {
   return "sunrise";
 };
 
-// Sun elevation above the horizon in degrees. Rises to a noon high in the
-// middle of the day, sets below the horizon during the sunset transition,
-// stays down for the night, then climbs back through sunrise.
+/**
+ * Sun elevation above the horizon, in degrees. Rises to a noon high in the
+ * middle of the day, sets below the horizon during the sunset transition,
+ * stays down for the night, then climbs back up through sunrise.
+ *
+ * @param elapsed - Wall-clock time, in seconds, since the cycle began.
+ * @returns The sun's elevation, in degrees; negative when below the horizon.
+ */
 export const sunElevationDeg = (elapsed: number): number => {
   const t = cycleTime(elapsed);
   if (t < 300) {
@@ -123,9 +144,15 @@ export const sunElevationDeg = (elapsed: number): number => {
   return lerpSeg(t, 1110, -25, 1200, 35);
 };
 
-// Compass angle of the sun in the XZ plane, measured from +X toward +Z. The
-// sun sweeps east-to-west across the day and into sunset; below the horizon it
-// keeps rotating so the moon (180 degrees opposite) travels the night sky.
+/**
+ * Compass angle of the sun in the XZ plane, measured from +X toward +Z. The
+ * sun sweeps east to west across the day and into sunset; below the horizon
+ * it keeps rotating so the moon, 180 degrees opposite, travels the night
+ * sky.
+ *
+ * @param elapsed - Wall-clock time, in seconds, since the cycle began.
+ * @returns The sun's compass angle, in degrees.
+ */
 export const sunAzimuthDeg = (elapsed: number): number => {
   const t = cycleTime(elapsed);
   if (t < 600) {
@@ -174,8 +201,13 @@ const dirFromElevationAzimuth = (elevation: number, azimuth: number): Vec3 => {
   return [Math.cos(e) * Math.cos(a), Math.sin(e), Math.cos(e) * Math.sin(a)];
 };
 
-// Derives the full scene-lighting state for `elapsed` seconds of wall-clock
-// time. The result repeats every `CYCLE_SECONDS`.
+/**
+ * Derives the full scene-lighting state for `elapsed` seconds of wall-clock
+ * time. The result repeats every `CYCLE_SECONDS`.
+ *
+ * @param elapsed - Wall-clock time, in seconds, since the cycle began.
+ * @returns The complete day-night state at that moment.
+ */
 export const dayNightState = (elapsed: number): DayNightState => {
   const t = cycleTime(elapsed);
   const palette = paletteAt(t);

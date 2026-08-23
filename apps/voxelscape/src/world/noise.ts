@@ -1,6 +1,5 @@
-// Seeded 2D Perlin noise + fractal-brownian-motion height sampling. Ported from
-// melty-karts' `Track.ts` height field so both projects generate the same
-// style of rolling terrain.
+// Seeded 2D Perlin noise and fractal Brownian motion (fBm) height sampling
+// for generating rolling terrain.
 
 export class PerlinNoise2D {
   private perm: number[] = [];
@@ -78,38 +77,54 @@ export class PerlinNoise2D {
 }
 
 export interface PlainsConfig {
-  // seed for the second (flatness) noise
+  /** Seed for the second, flatness-mask noise. */
   seed: number;
-  // world units per plain cell; plateaus are ~one cell across (multiple of the
-  // voxel size for clean edges)
+  /**
+   * World units per plain cell; plateaus are roughly one cell across. Should
+   * be a multiple of the voxel size for clean edges.
+   */
   cell: number;
-  // cell flatness above this becomes flat land
+  /** Cell flatness values above this threshold become flat land. */
   threshold: number;
-  // width of the smoothstep band around `threshold` where mountains and plains
-  // blend; larger => softer transitions, smaller => sharper coastlines
+  /**
+   * Width of the smoothstep band around `threshold` where mountains and
+   * plains blend. Larger values give softer transitions; smaller values
+   * give sharper coastlines.
+   */
   edge: number;
-  // plateau elevation is sampled from a *much lower* frequency noise than the
-  // mountain field, so flat regions are nearly level across long spans. Default
-  // 0.0005 keeps flats within a few units of level over a cell; raise it for
-  // more rolling "prairie" flats.
+  /**
+   * Frequency of the noise the plateau elevation is sampled from, much
+   * lower than the mountain field's frequency so flat regions stay nearly
+   * level across long spans. Defaults to 0.0005, which keeps flats within a
+   * few units of level over a cell; raise it for more rolling, prairie-like
+   * flats.
+   */
   plateauFrequency?: number;
   plateauOctaves?: number;
 }
 
 export interface TerrainConfig {
   seed: number;
-  // noise space frequency; smaller => larger hills
+  /** Noise-space frequency; smaller values produce larger hills. */
   frequency: number;
-  // fbm output is ~[-1, 1], scaled by this to get world-unit height range
+  /**
+   * Scales the fBm output — roughly in the range [-1, 1] — to a world-unit
+   * height range.
+   */
   amplitude: number;
   octaves: number;
-  // base height added to the fbm output (world units)
+  /** Base height added to the fBm output, in world units. */
   base: number;
-  // optional second, coarse noise that flattens patches of the terrain into
-  // smooth plateaus; omitted to get pure mountains
+  /**
+   * Optional second, coarse noise that flattens patches of the terrain into
+   * smooth plateaus. Omit it to get pure mountains.
+   */
   plains?: PlainsConfig;
-  // optional global water level (world units): columns that dip below it get
-  // filled with water up to this height. Omitted for a fully dry world.
+  /**
+   * Optional global water level, in world units: columns that dip below
+   * this height are filled with water up to it. Omit it for a fully dry
+   * world.
+   */
   seaLevel?: number;
 }
 
@@ -130,8 +145,10 @@ export const DEFAULT_TERRAIN: TerrainConfig = {
   seaLevel: 56,
 };
 
-// One height sampler per seed, so repeated `heightAt` calls during a fill don't
-// rebuild the permutation table every column.
+/**
+ * One height sampler per seed, so repeated `heightAt` calls during a fill
+ * don't rebuild the permutation table for every column.
+ */
 const samplerCache = new Map<number, PerlinNoise2D>();
 
 const samplerFor = (seed: number): PerlinNoise2D => {
@@ -150,9 +167,16 @@ const smoothstep = (a: number, b: number, x: number): number => {
 
 const lerp = (a: number, b: number, t: number): number => a + t * (b - a);
 
-// Bilinear interpolation of the four values surrounding a point in cell space
-// (cell index + fractional offset), sampled from `atCell(cx, cz)` at each of
-// the four neighbouring cell centres.
+/**
+ * Bilinear interpolation of the four values surrounding a point in cell
+ * space (a cell index plus a fractional offset), sampled from
+ * `atCell(cx, cz)` at each of the four neighbouring cell centres.
+ *
+ * @param fx - Fractional cell-space X coordinate.
+ * @param fz - Fractional cell-space Z coordinate.
+ * @param atCell - Samples the field's value at an integer cell coordinate.
+ * @returns The bilinearly interpolated value at (`fx`, `fz`).
+ */
 const bilinearCellField = (
   fx: number,
   fz: number,
@@ -169,8 +193,16 @@ const bilinearCellField = (
   return lerp(lerp(c00, c10, tx), lerp(c01, c11, tx), tz);
 };
 
-// The pure mountain field: no plateau flattening applied. Exposed separately
-// so `heightAt` can sample plateau elevations from it and tests can compare.
+/**
+ * The pure mountain field, with no plateau flattening applied. Exposed
+ * separately so `heightAt` can sample plateau elevations from it and tests
+ * can compare against it.
+ *
+ * @param worldX - World-space X coordinate.
+ * @param worldZ - World-space Z coordinate.
+ * @param config - Terrain configuration to sample from.
+ * @returns The mountain-field height, in world units, at (`worldX`, `worldZ`).
+ */
 export const mountainHeightAt = (
   worldX: number,
   worldZ: number,
@@ -188,8 +220,11 @@ export const mountainHeightAt = (
   );
 };
 
-// One flatness mask value per plain cell, cached by (seed, cx, cz) because a
-// block fill calls `heightAt` per column and adjacent columns share cells.
+/**
+ * One flatness-mask value per plain cell, cached by (seed, cx, cz) because a
+ * block fill calls `heightAt` once per column and adjacent columns share
+ * cells.
+ */
 const flatnessCellCache = new Map<string, number>();
 const flatnessCell = (plains: PlainsConfig, cx: number, cz: number): number => {
   const key = `${plains.seed}|${cx}|${cz}`;
@@ -203,10 +238,13 @@ const flatnessCell = (plains: PlainsConfig, cx: number, cz: number): number => {
   return v;
 };
 
-// One plateau elevation per plain cell, cached alongside the flatness mask. The
-// elevation is sampled from the mountain sampler at a *much lower* frequency
-// (`plateauFrequency`), so adjacent cells differ only slightly and flat regions
-// read as nearly level land rather than as the local mountain height.
+/**
+ * One plateau elevation per plain cell, cached alongside the flatness mask.
+ * The elevation is sampled from the mountain sampler at a much lower
+ * frequency (`plateauFrequency`), so adjacent cells differ only slightly and
+ * flat regions read as nearly level land rather than as the local mountain
+ * height.
+ */
 const flatHeightCellCache = new Map<string, number>();
 const flatHeightCell = (
   config: TerrainConfig,
@@ -233,8 +271,15 @@ const flatHeightCell = (
   return v;
 };
 
-// The plateau elevation (world units) of the plain cell (cx, cz). Exposed so
-// tests can verify the bilinear plateau field against it.
+/**
+ * The plateau elevation, in world units, of the plain cell (`cx`, `cz`).
+ * Exposed so tests can verify the bilinear plateau field against it.
+ *
+ * @param cx - Plain-cell X index.
+ * @param cz - Plain-cell Z index.
+ * @param config - Terrain configuration to sample from.
+ * @returns The plateau elevation, in world units.
+ */
 export const plateauHeightAt = (
   cx: number,
   cz: number,
@@ -246,11 +291,19 @@ export const plateauHeightAt = (
   return flatHeightCell(config, config.plains, cx, cz);
 };
 
-// Analytic terrain height in world units at absolute (worldX, worldZ). Uses
-// absolute coordinates so neighbouring blocks tile seamlessly. Mirrors the
-// height field `fillStore` bakes into a `VoxelStore`. With `config.plains` set,
-// a coarse second noise flattens patches of the mountain field into smooth
-// rolling plateaus, blending through a smoothstep band around the threshold.
+/**
+ * Analytic terrain height, in world units, at absolute (`worldX`, `worldZ`).
+ * Uses absolute coordinates so neighbouring blocks tile seamlessly, and
+ * mirrors the height field `fillStore` bakes into a `VoxelStore`. With
+ * `config.plains` set, a coarse second noise flattens patches of the
+ * mountain field into smooth rolling plateaus, blending through a
+ * smoothstep band around the threshold.
+ *
+ * @param worldX - Absolute world-space X coordinate.
+ * @param worldZ - Absolute world-space Z coordinate.
+ * @param config - Terrain configuration to sample from; defaults to `DEFAULT_TERRAIN`.
+ * @returns Terrain height, in world units, at (`worldX`, `worldZ`).
+ */
 export const heightAt = (
   worldX: number,
   worldZ: number,

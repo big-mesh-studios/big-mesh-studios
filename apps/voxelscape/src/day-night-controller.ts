@@ -1,10 +1,3 @@
-// Owns applying the pure day-night cycle (`./day-night`) to the scene: the
-// sun/ambient lights, the sun/moon billboards, and the clock itself
-// (elapsed/override/speed). Knows nothing about rendering — `tick` returns
-// the computed `DayNightState` for the caller to also feed into
-// `RendererSwitch.applyLighting`, rather than holding a reference to it, the
-// same one-directional dependency `WorldRing` already has. See
-// docs/adr/0003-day-night-controller.md.
 import {
   AmbientLight,
   DirectionalLight,
@@ -23,14 +16,24 @@ import {
 
 export interface DayNightControllerParams {
   scene: Scene;
-  // Sun/moon squares orbit the camera at this distance (inside the camera far
-  // plane) so the raymarched terrain occludes them at the horizon, and hide
-  // once they dip a few degrees below it.
+  /**
+   * Distance from the camera at which the sun/moon squares orbit, inside
+   * the camera's far plane, so the raymarched terrain occludes them at the
+   * horizon and they hide once they dip a few degrees below it.
+   */
   skyDistance?: number;
   sunSize?: number;
   moonSize?: number;
 }
 
+/**
+ * Applies the day-night cycle (`./day-night`) to the scene: the sun and
+ * ambient lights, the sun/moon billboards, and the clock itself (elapsed
+ * time, an optional override, and a speed multiplier). Does not know about
+ * rendering; `tick` returns the computed `DayNightState` for the caller to
+ * feed into the renderer as well, rather than holding a reference to the
+ * renderer itself.
+ */
 export class DayNightController {
   private readonly sun: DirectionalLight;
   private readonly ambient: AmbientLight;
@@ -75,9 +78,15 @@ export class DayNightController {
     return this.timeOverride ?? this.elapsed;
   }
 
-  // Advances the clock, re-derives every light + the sun/moon billboards, and
-  // returns the computed state for the caller to also feed into
-  // `RendererSwitch.applyLighting` and the renderer's clear colour.
+  /**
+   * Advances the clock, re-derives every light and the sun/moon billboards,
+   * and returns the computed state.
+   *
+   * @param dt - Time elapsed since the last tick, in seconds.
+   * @param camera - The camera the sun/moon billboards face and orbit.
+   * @returns The day-night state, for the caller to also feed into the
+   * renderer's lighting and clear colour.
+   */
   tick(dt: number, camera: PerspectiveCamera): DayNightState {
     this.elapsed += dt * this.timeSpeed;
     const dayNight = dayNightState(this.timeOverride ?? this.elapsed);

@@ -1,9 +1,9 @@
 // Web worker that generates a block's procedural voxel data (noise fill) and
 // its derived GPU level layout (surface sweep) off the main thread. The main
-// thread sends a config once, then batch `fill` requests with the centres of a
-// ring step's changed blocks; each block's three arrays (store data, broad grid,
-// fine chunks) are posted back transferred (moved, not copied) and adopted
-// zero-copy into the block's store + level.
+// thread sends a configuration once, then batch `fill` requests with the
+// centres of a ring step's changed blocks; each block's three arrays (store
+// data, broad grid, fine chunks) are posted back transferred (moved, not
+// copied) and adopted zero-copy into the block's store and level.
 import { buildBlockData, type Dim3, type TerrainConfig } from "./level-data";
 
 export interface FillConfig {
@@ -27,8 +27,10 @@ export interface FillBatchResult {
 export type FillWorkerMessage =
   { type: "config"; config: FillConfig } | FillBatchRequest;
 
-// Builds the batch result for a fill request (pure, so it can be unit-tested
-// without a worker context).
+/**
+ * Builds the batch result for a fill request. Pure, so it can be
+ * unit-tested without a worker context.
+ */
 export const buildFillResult = (
   req: FillBatchRequest,
   cfg: FillConfig,
@@ -49,7 +51,7 @@ export const buildFillResult = (
   return { indices: req.indices, storeData, broadData, fineData };
 };
 
-// The buffers to move along with a result (everything the result owns).
+/** The buffers to move along with a result: everything the result owns. */
 export const fillResultTransfers = (
   result: FillBatchResult,
 ): Transferable[] => {
@@ -64,8 +66,11 @@ export const fillResultTransfers = (
   return transfer;
 };
 
-// Pure message handler: returns a new config for a `config` message, a result
-// for a `fill` message, or nothing for anything else (unknown / pre-config).
+/**
+ * Pure message handler: returns a new configuration for a `config` message,
+ * a result for a `fill` message, or nothing for anything else (an unknown
+ * message, or a `fill` message received before a configuration).
+ */
 export const handleFillMessage = (
   msg: FillWorkerMessage,
   config: FillConfig | undefined,
@@ -79,10 +84,12 @@ export const handleFillMessage = (
   return { result: buildFillResult(msg, config) };
 };
 
-// The DOM lib types `self` as `Window`, whose `postMessage` needs a target
-// origin; in a dedicated worker the global is a `DedicatedWorkerGlobalScope`.
-// Guarded so importing this module in node (for the protocol tests) doesn't
-// eval `self`.
+/**
+ * The TypeScript DOM types define `self` as `Window`, whose `postMessage`
+ * needs a target origin; in a dedicated worker the global is a
+ * `DedicatedWorkerGlobalScope`. Guarded so importing this module in Node.js
+ * (for the protocol tests) doesn't evaluate `self`.
+ */
 const workerSelf =
   typeof self !== "undefined"
     ? (self as unknown as {

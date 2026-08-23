@@ -34,11 +34,16 @@ import {
 } from "./mesh";
 import type { BlockRenderer, DayNight } from "./block-renderer";
 
-// Opaque terrain surface. One shared instance across every block's mesh; the
-// per-face look lives in the geometry (positions/normals/baked atlas UVs).
+/**
+ * Opaque terrain surface material. One shared instance across every block's
+ * mesh; the per-face look lives in the geometry (positions, normals, baked
+ * atlas texture coordinates).
+ */
 export class TriangleMaterial extends NodeMaterial {
-  // The spritesheet uploaded as one 2D texture; set asynchronously once loaded
-  // (mirrors `RaymarchMaterial.tilesTexture`).
+  /**
+   * The spritesheet uploaded as one 2D texture, set asynchronously once
+   * loaded (mirrors `RaymarchMaterial.tilesTexture`).
+   */
   tilesTexture: Texture | null = null;
   maxDistance: number = 480;
   fogStart: number = 200;
@@ -158,10 +163,13 @@ export class TriangleMaterial extends NodeMaterial {
   }
 }
 
-// Translucent water surface pass, drawn after the opaque terrain in scene-graph
-// order. Shades each fragment with the same Fresnel sky reflection + base
-// transparency as the raymarch water pass; the geometry is the water surface
-// mesh, so depth-testing occludes correctly against terrain and the player.
+/**
+ * Translucent water surface material, drawn after the opaque terrain in
+ * scene-graph order. Shades each fragment with the same Fresnel sky
+ * reflection and base transparency as the raymarch water pass; the geometry
+ * is the water surface mesh, so depth-testing occludes correctly against
+ * terrain and the player.
+ */
 export class TriangleWaterMaterial extends NodeMaterial {
   fogColor: [number, number, number] = [0.53, 0.81, 0.92];
   waterColor: [number, number, number] = [0.1, 0.35, 0.55];
@@ -215,8 +223,10 @@ export class TriangleWaterMaterial extends NodeMaterial {
 export interface TriangleRendererParams {
   scene: Scene;
   blocks: WorldBlock[];
-  // This slot's own ring grid coordinate, needed to resolve its neighbours
-  // via `lookupBlock`.
+  /**
+   * This slot's own ring grid coordinate, needed to resolve its neighbours
+   * via `lookupBlock`.
+   */
   gridCoordAt: (index: number) => { x: number; z: number };
   lookupBlock: BlockGridLookup;
   waterExtinction: number;
@@ -230,8 +240,10 @@ const EMPTY_MESH: MeshArrays = {
   indices: [],
 };
 
-// How many block meshes to kick off per frame while draining the queue; the
-// worker does the heavy lifting so the main thread just wraps the results.
+/**
+ * How many block meshes to kick off per frame while draining the queue; the
+ * worker does the heavy lifting so the main thread just wraps the results.
+ */
 const MAX_BUILDS_PER_FRAME = 6;
 
 export class TriangleRenderer implements BlockRenderer {
@@ -247,8 +259,11 @@ export class TriangleRenderer implements BlockRenderer {
   private readonly seaLevel: number | undefined;
 
   private totalTriangles: number = 0;
-  // Per-voxel-id face tile rects, populated once the atlas loads; the mesh UVs
-  // are baked from these, so changing them requires a mesh rebuild.
+  /**
+   * Per-voxel-id face tile rects, populated once the atlas loads; the mesh
+   * texture coordinates are baked from these, so changing them requires a
+   * mesh rebuild.
+   */
   private readonly tilesById = new Map<number, VoxelTileConfig>();
   // Meshes are built in a web worker so a block rebuild never stalls the UI;
   // the worker gets the block's voxel data plus its neighbours' boundary shells
@@ -270,8 +285,14 @@ export class TriangleRenderer implements BlockRenderer {
   private readonly tintMesh: Mesh;
 
   constructor(params: TriangleRendererParams) {
-    const { scene, blocks, gridCoordAt, lookupBlock, waterExtinction, seaLevel } =
-      params;
+    const {
+      scene,
+      blocks,
+      gridCoordAt,
+      lookupBlock,
+      waterExtinction,
+      seaLevel,
+    } = params;
     this.blocks = blocks;
     this.gridCoordAt = gridCoordAt;
     this.lookupBlock = lookupBlock;
@@ -285,10 +306,13 @@ export class TriangleRenderer implements BlockRenderer {
       triMesh.visible = false;
       scene.add(triMesh);
       this.triMeshes.push(triMesh);
-      const triWaterMesh = new Mesh(new BufferGeometry(), this.triWaterMaterial);
+      const triWaterMesh = new Mesh(
+        new BufferGeometry(),
+        this.triWaterMaterial,
+      );
       triWaterMesh.position.set(center[0], center[1], center[2]);
       triWaterMesh.visible = false;
-      // added to the scene later (see `addWaterToScene`), after the player
+      // added to the scene later, via `addWaterToScene`, after the player
       // cube, so the transparent water blends over it like the raymarch water
       // pass does
       this.triWaterMeshes.push(triWaterMesh);
@@ -305,7 +329,10 @@ export class TriangleRenderer implements BlockRenderer {
     });
     this.tintMaterial.depthTest = false;
     this.tintMaterial.depthWrite = false;
-    this.tintMesh = new Mesh(new BoxGeometry(4000, 4000, 4000), this.tintMaterial);
+    this.tintMesh = new Mesh(
+      new BoxGeometry(4000, 4000, 4000),
+      this.tintMaterial,
+    );
     this.tintMesh.visible = false;
   }
 
@@ -429,16 +456,20 @@ export class TriangleRenderer implements BlockRenderer {
     return this.totalTriangles;
   }
 
-  // Must be called once, after the player cube is added to the scene, so the
-  // translucent water pass blends over it.
+  /**
+   * Must be called once, after the player cube is added to the scene, so the
+   * translucent water pass blends over it.
+   */
   addWaterToScene(scene: Scene): void {
     for (const mesh of this.triWaterMeshes) {
       scene.add(mesh);
     }
   }
 
-  // Must be called once, after `addWaterToScene` on both renderers, so the
-  // underwater tint draws over everything.
+  /**
+   * Must be called once, after `addWaterToScene` on both renderers, so the
+   * underwater tint draws over everything.
+   */
   addTintToScene(scene: Scene): void {
     scene.add(this.tintMesh);
   }
@@ -518,9 +549,10 @@ export class TriangleRenderer implements BlockRenderer {
     }
   }
 
-  // Terminates the mesh worker; geometries/materials aren't disposed — rmsl
-  // doesn't expose that, matching the original code (see the identical note
-  // on `RaymarchRenderer.dispose`).
+  /**
+   * Terminates the mesh worker. Geometries and materials are not disposed —
+   * rmsl does not expose a disposal API for them.
+   */
   dispose(): void {
     this.meshWorker?.terminate();
   }

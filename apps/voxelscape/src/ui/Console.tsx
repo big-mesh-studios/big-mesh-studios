@@ -1,12 +1,15 @@
 import { createEffect, createSignal, type Component } from "solid-js";
 
-// A collapsible command-line overlay for debugging. The `>`_ button sits at the
-// top-right; pressing it reveals a small terminal where commands typed in the
-// input are handed to `onCommand`, whose return value is echoed as output.
 export interface ConsoleProps {
   onCommand: (line: string) => string;
 }
 
+/**
+ * A collapsible command-line overlay for debugging. The `>_` button sits at
+ * the top-right; pressing it reveals a small terminal where commands typed
+ * in the input are handed to `onCommand`, whose return value is echoed as
+ * output.
+ */
 export const Console: Component<ConsoleProps> = (props) => {
   const [open, setOpen] = createSignal(false);
   const [lines, setLines] = createSignal<string[]>([]);

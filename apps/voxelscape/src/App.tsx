@@ -27,32 +27,37 @@ import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
 import { WorldRing } from "./world/world-ring";
 
 const App: Component<{}> = () => {
-  // append `#perf` to the URL to enable the debug HUD (GPU timer + fetches/ray)
+  /** True when the URL hash includes `perf`, enabling the debug HUD (GPU timer and fetches-per-ray). */
   const debugPerf =
     typeof window !== "undefined" && window.location.hash.includes("perf");
   const BLOCKS = 5;
-  // Ring half-extent: farthest the ring's outer edge can be from the player.
+  /** Ring half-extent: the farthest the ring's outer edge can be from the player. */
   const RING_RADIUS = (BLOCKS / 2) * BLOCK_WORLD[0];
-  // "Completely seamless" fog: the ring edge can be as close as (BLOCKS/2 - 0.5)
-  // blocks (384) when the player hugs the far edge of their center block, so
-  // fog must be fully opaque by then and rays stop marching there.
+  /**
+   * Distance at which fog becomes fully opaque and rays stop marching. Set
+   * to the ring edge's closest possible approach to the player — `(BLOCKS/2
+   * - 0.5)` blocks (384) — the distance when the player hugs the far edge
+   * of their center block, so fog always hides the ring boundary before it
+   * can become visible.
+   */
   const FOG_DISTANCE = (BLOCKS / 2 - 0.5) * BLOCK_WORLD[0];
   const FOG_START = 0.4 * FOG_DISTANCE;
-  // Sky blue; matches the material's default fogColor so the horizon blends.
+  /** Sky blue, matching the material's default fog color so the horizon blends. */
   const SKY_BLUE = 0x87ceeb;
   const SPAWN: Dim3 = [0, 0, 0];
-  // Roughly the previous walkable extent; with the infinite ring the player is
-  // effectively unbounded, but clamp to guard against float drift far out.
+  /**
+   * Distance from the origin beyond which player movement is clamped. The
+   * ring is effectively unbounded, so this exists only to guard against
+   * floating-point drift far outside it.
+   */
   const SAFE_EXTENT = 1e6;
-  // Terrain noise + GPU chunk derivation settings shared by every block in the
-  // ring. `surfaceOnly` writes only surface voxels into the GPU chunks; flip it
-  // to `false` to upload the full solid volume (see `syncLevelFromStore`).
+  /** Terrain noise settings shared by every block in the ring. */
   const TERRAIN: TerrainConfig = DEFAULT_TERRAIN;
+  /** When true, only surface voxels are written into each block's GPU chunks instead of the full solid volume. */
   const SURFACE_ONLY = true;
-  // Each mesh is one padded box so adjacent meshes share a thin overlap shell.
+  /** Padding added to each mesh's box so adjacent meshes share a thin overlap shell. */
   const PAD = 2.0;
-  // Water absorption used by the raymarch water pass; the triangle renderer's
-  // underwater tint uses the same value.
+  /** Water absorption used by the raymarch water pass and, at the same value, the triangle renderer's underwater tint. */
   const WATER_EXTINCTION = 0.12;
   let [state, setState] = createStore<{
     canvas: HTMLCanvasElement | undefined;
@@ -62,17 +67,21 @@ const App: Component<{}> = () => {
     renderer: undefined,
   });
   const scene = new Scene();
-  // Owns the sun/ambient lights, the sun/moon billboards, and the day-night
-  // clock; `tick` (called from `animate`) returns the computed state for
-  // `rendererSwitch.applyLighting` and the clear colour below. See
-  // `src/day-night-controller.ts` and docs/adr/0003-day-night-controller.md.
+  /**
+   * Owns the sun/ambient lights, the sun/moon billboards, and the day-night
+   * clock. `tick` (called from `animate`) returns the computed day-night
+   * state, which feeds both `rendererSwitch.applyLighting` and the clear
+   * colour below.
+   */
   const dayNight = new DayNightController({ scene });
-  // The world ring: a BLOCKS x BLOCKS window of WorldBlocks kept centred on
-  // the player, streamed in off the main thread as it scrolls. See
-  // `src/world-ring.ts` and docs/adr/0002-world-ring-seam.md. `rendererSwitch`
-  // is constructed just below and assigned before any callback can fire (both
-  // the fill worker's response and any ring scroll happen later, from the
-  // animate loop), so this forward reference is safe.
+
+  /**
+   * The world ring: a BLOCKS x BLOCKS window of WorldBlocks kept centred on
+   * the player, streamed in off the main thread as it scrolls.
+   * `rendererSwitch` is constructed just below and assigned before any
+   * callback can fire (both the fill worker's response and any ring scroll
+   * happen later, from the animate loop), so this forward reference is safe.
+   */
   let rendererSwitch: RendererSwitch;
   const worldRing = new WorldRing({
     blocksPerSide: BLOCKS,
@@ -81,9 +90,11 @@ const App: Component<{}> = () => {
     onBlockChanged: (i) => rendererSwitch.onBlockChanged(i),
     onBlockReposition: (i, center) => rendererSwitch.repositionBlock(i, center),
   });
-  // Builds both rendering strategies' meshes for every block above and owns
-  // switching between them (`/renderer ray|tri`). See
-  // `src/renderers/renderer-switch.ts` and docs/adr/0001-renderer-seam.md.
+
+  /**
+   * Builds both rendering strategies' meshes for every block above and owns
+   * switching between them (`/renderer ray|tri`).
+   */
   rendererSwitch = new RendererSwitch({
     scene,
     blocks: worldRing.blocks,
@@ -97,8 +108,12 @@ const App: Component<{}> = () => {
     waterExtinction: WATER_EXTINCTION,
     seaLevel: TERRAIN.seaLevel,
   });
-  // Every debug console command, in one place. See `src/commander.ts` and
-  // docs/adr/0004-commander.md for why this is a single object literal.
+
+  /**
+   * Every debug console command, declared as a single object literal keyed
+   * by command name. A duplicate key is a compile error, so a command-name
+   * collision is caught by the type checker rather than at runtime.
+   */
   const commands = new Commander({
     "/day": {
       help: "/day       jump to noon (t=300s)",
@@ -211,8 +226,11 @@ const App: Component<{}> = () => {
       }
     })();
   }
-  // Far plane beyond the ring's physical extent so box geometry is never
-  // clipped (fog + early ray termination hide the actual cutoff).
+  /**
+   * Camera with a far plane beyond the ring's physical extent, so box
+   * geometry is never clipped (fog and early ray termination hide the
+   * actual cutoff).
+   */
   const camera = new PerspectiveCamera(50, 1.0, 0.1, RING_RADIUS + 200);
   const player = createPlayer(
     SPAWN[0],
@@ -233,7 +251,7 @@ const App: Component<{}> = () => {
   scene.add(playerCube);
   // Both renderers' translucent water passes (and the triangle renderer's
   // underwater tint) blend over the opaque scene; scene-graph draw order
-  // means they must be added after the player cube (see the method's doc).
+  // means they must be added after the player cube.
   rendererSwitch.addTranslucentPassesToScene(scene);
   installKeyboardControls();
   placeCamera(camera, player);
@@ -243,9 +261,11 @@ const App: Component<{}> = () => {
   const SAMPLE_EVERY = 24;
 
   // --- adaptive render resolution -------------------------------------
-  // Pure scaler (see `adaptive.ts`) fed this frame's render time; it steps the
-  // scale by ~1.25x so marginal devices converge instead of thrashing between
-  // 1x and 0.5x. Tunables (budget, steps) live in `adaptive.ts`.
+  /**
+   * A pure scaler fed this frame's render time. It steps the render
+   * resolution scale by roughly 1.25x per adjustment, so marginal devices
+   * converge on a stable scale instead of thrashing between 1x and 0.5x.
+   */
   const adaptive = new AdaptiveResolution();
   let baseW = 0;
   let baseH = 0;
@@ -268,9 +288,12 @@ const App: Component<{}> = () => {
     }
   };
 
-  // Called once per frame after `render()`: feed the frame time (ms) into the
-  // scaler and apply whatever scale it settles on. Readback frames are skipped
-  // from the decision (they stall the GPU) but still update the EMA.
+  /**
+   * Called once per frame after `render()`: feeds the frame time (in
+   * milliseconds) into the scaler and applies whatever scale it settles on.
+   * Readback frames are skipped from the decision (they stall the GPU) but
+   * still update the exponential moving average.
+   */
   const adaptResolution = (t: number) => {
     if (lastAdaptT > 0) {
       const dt = t - lastAdaptT;
@@ -302,7 +325,7 @@ const App: Component<{}> = () => {
         : `frame: ${ms.toFixed(2)} ms | ${res} | ${mode}${triLabel} | fetches/ray: ${sample.fetchesPerRay.toFixed(1)} (${sample.rays} rays)`;
   };
   let lastFrameT = 0;
-  // reusable colour so per-frame sky updates don't allocate
+  /** Reusable color object, updated in place each frame so sky updates don't allocate. */
   const skyColor = new Color(SKY_BLUE);
   let animate = (t: number) => {
     const dt =

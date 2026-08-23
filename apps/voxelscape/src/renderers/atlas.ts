@@ -1,7 +1,9 @@
 import { Texture } from "@random-mesh/rmsl/scene";
 
-// Subtexture rectangles read from a TexturePacker-style atlas XML file. All
-// coordinates are in pixels from the top-left of the atlas image.
+/**
+ * Subtexture rectangle read from a TexturePacker-style atlas XML file. All
+ * coordinates are in pixels from the top-left of the atlas image.
+ */
 export interface SubTexture {
   x: number;
   y: number;
@@ -9,10 +11,13 @@ export interface SubTexture {
   h: number;
 }
 
-// A normalized [u0, v0, u1, v1] rect inside the atlas, inset by half a texel so
-// the renderer's linear filtering never blends a neighbouring tile's pixels in.
-// v0 is the top of the source tile (smallest pixel y); the shader flips the
-// world-up axis when building face UVs, so grass sits on top of side faces.
+/**
+ * A normalized [u0, v0, u1, v1] rectangle inside the atlas, inset by half a
+ * texel so the renderer's linear filtering never blends a neighbouring
+ * tile's pixels in. v0 is the top of the source tile (smallest pixel y);
+ * the shader flips the world-up axis when building face UVs, so grass sits
+ * on top of side faces.
+ */
 export type TileRect = [number, number, number, number];
 
 export interface VoxelTiles {
@@ -21,8 +26,10 @@ export interface VoxelTiles {
   bottom: string;
 }
 
-// Which tile faces each voxel id uses. Voxel 0 is empty air and is never
-// textured. Future voxel ids just add an entry here.
+/**
+ * Which tile faces each voxel id uses. Voxel 0 is empty air and is never
+ * textured. Adding a new voxel id requires an entry here.
+ */
 export const VOXEL_TILES: Record<number, VoxelTiles> = {
   1: { top: "grass_top", side: "dirt_grass", bottom: "dirt" },
   2: { top: "dirt", side: "dirt", bottom: "dirt" },

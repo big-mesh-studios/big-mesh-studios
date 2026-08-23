@@ -34,7 +34,7 @@ import type { BlockRenderer } from "./block-renderer";
 import type { Dim3, WorldBlock } from "../world/level-data";
 import { VOXEL_WATER } from "../world/voxel-store";
 
-// Shorthand for the water voxel id used in the raymarching shader comparisons.
+/** Voxel identifier for water, used in raymarching shader comparisons. */
 const WATER = VOXEL_WATER;
 
 const minVec2 = (a: Node<"vec2">, b: Node<"vec2">): Node<"vec2"> => min(a, b);
@@ -136,14 +136,16 @@ export let rayMarch = (params: {
   const texelShift = (texelOffset ?? vec3(0)).toVar();
   const fetchCell = (cell: Node<"ivec3">): Node<"uvec4"> =>
     uVoxels.texture(cell.toVec3().add(texelShift).toUVec3());
-  // debug-only: count every fine-texel fetch (build-time no-op when unused)
+  // Counts each fine-texel fetch; only active when fetch-count debugging is
+  // enabled, and compiles away entirely otherwise.
   const countFetch = (): void => {
     if (fetchCount !== undefined) {
       fetchCount.assign(fetchCount.add(1));
     }
   };
-  // Ray length budget relative to the chunk entry (see `marchBlock`): the DDA
-  // stops early so no work is spent beyond the max render distance.
+  // Ray-length budget relative to the chunk entry point; the voxel-stepping
+  // loop below stops early once it's exceeded, so no work is spent beyond the
+  // maximum render distance.
   const maxBudget = (maxDistance ?? float(1e30)).toVar();
 
   const cellSize = dimensions.div(voxelCount).toVar();
@@ -238,8 +240,8 @@ export let rayMarch = (params: {
           countFetch();
           const cellValue = fetchCell(mapPos).toVar();
           // Water is passable for the terrain march: rays travel straight
-          // through it to the lakebed, and a separate water pass tints the
-          // result (see `marchWater` / `RaymarchWaterMaterial`).
+          // through it to the lakebed. A separate translucent pass shades the
+          // water surface itself afterward.
           If(cellValue.r.equal(WATER), () => {
             skipSolid.assign(bool(false));
           })
@@ -264,8 +266,8 @@ export let rayMarch = (params: {
             )
             .toVec3(),
         );
-        // the boundary being crossed this step is where the next cell starts;
-        // read it before `sideDist` advances
+        // The boundary crossed this step is where the next cell starts; it is
+        // read before `sideDist` advances.
         cellStart.assign(
           entryClamped.add(sideDist.x.min(sideDist.y).min(sideDist.z)),
         );
@@ -333,9 +335,12 @@ export let rayMarch = (params: {
   };
 };
 
-// Marches one block's volume (broad grid then fine chunks). The ray is given in
-// the block's local space, where the volume is centered at the origin. Returns
-// results without shading; `hitPoint` is local (add the block center for world).
+/**
+ * Marches one block's volume, testing the broad grid first and then the fine
+ * chunks within it. The ray is given in the block's local space, where the
+ * volume is centered at the origin. Returns results without shading;
+ * `hitPoint` is local space (add the block center to get a world position).
+ */
 export let marchBlock = (params: {
   rayOrigin: Node<"vec3">;
   rayDirection: Node<"vec3">;
@@ -420,13 +425,14 @@ export let marchBlock = (params: {
     boxMax,
   });
   // Camera-relative render-distance budget. `rayMarch` receives the same
-  // block-local `rayOrigin` (the camera), so its own `cellStart` (entry distance
-  // + DDA boundary t) is already measured from the camera and gets the budget.
+  // block-local `rayOrigin` (the camera), so its own `cellStart` (entry
+  // distance plus the stepping loop's boundary distance) is already measured
+  // from the camera and respects this budget directly.
   const maxBudget = (maxDistance ?? float(1e30)).toVar();
 
   If(entryDistance.lessThanEqual(exitDistance), () => {
-    // Clamp the march start to the camera when it is inside the volume, so the
-    // DDA never samples voxels behind the camera.
+    // Clamp the march start to the camera when it is inside the volume, so
+    // the voxel-stepping loop never samples voxels behind the camera.
     const entryClamped = entryDistance.max(float(0)).toVar();
     const cellDir = rayDirection.div(cellSizeBroad).toVar();
 
@@ -543,8 +549,8 @@ export let marchBlock = (params: {
             )
             .toVec3(),
         );
-        // the boundary being crossed this step is where the next cell starts;
-        // read it before `sideDist` advances
+        // The boundary crossed this step is where the next cell starts; it is
+        // read before `sideDist` advances.
         cellStart.assign(
           entryClamped.add(sideDist.x.min(sideDist.y).min(sideDist.z)),
         );
@@ -557,10 +563,12 @@ export let marchBlock = (params: {
   return { hit, normal, hitPoint, voxel, cellSize };
 };
 
-// Fine-grain DDA over one chunk's voxels looking only for water. Stops at the
-// first water voxel (the stored surface layer), recording its camera-space
-// `surfaceDistance`. Sets `done` when it either finds the surface or hits solid
-// terrain first, so `marchWater` can stop early.
+/**
+ * Steps through one chunk's voxels looking only for water. Stops at the first
+ * water voxel (the stored surface layer), recording its camera-space
+ * `surfaceDistance`. Sets `done` when it either finds the surface or hits
+ * solid terrain first, letting the caller stop marching further chunks early.
+ */
 export let rayMarchWater = (params: {
   rayOrigin: Node<"vec3">;
   rayDirection: Node<"vec3">;
@@ -708,9 +716,12 @@ export let rayMarchWater = (params: {
   return { enteredWater, surfaceDistance, done };
 };
 
-// Marches one block's volume looking only for water (broad grid then fine
-// chunks) and returns where the ray first crosses the water surface.
-// `surfaceDistance` is camera-space; add the block centre for a world point.
+/**
+ * Marches one block's volume looking only for water, testing the broad grid
+ * first and then the fine chunks within it, and returns where the ray first
+ * crosses the water surface. `surfaceDistance` is in camera space; add the
+ * block center to get a world position.
+ */
 export let marchWater = (params: {
   rayOrigin: Node<"vec3">;
   rayDirection: Node<"vec3">;
@@ -886,7 +897,7 @@ export interface WorldBlockShader {
   fineVoxels: Node<"usampler3D">;
 }
 
-// A per-face atlas rect for one voxel id, backed by a vec4 material uniform.
+/** A per-face atlas rectangle for one voxel identifier, backed by a vec4 material uniform. */
 export interface TileFaceUniform {
   id: number;
   top: Node<"vec4">;
@@ -894,9 +905,12 @@ export interface TileFaceUniform {
   bottom: Node<"vec4">;
 }
 
-// Marches a world of stacked blocks: AABB-test every block, run the fine march
-// on each one the ray enters (cheap, since block broad grids skip empty space)
-// and keep the nearest hit. Shading is applied once at the end.
+/**
+ * Marches a world of stacked blocks: tests every block's axis-aligned
+ * bounding box, runs the fine march on each one the ray enters (cheap, since
+ * block broad grids skip empty space), and keeps the nearest hit. Shading is
+ * applied once at the end.
+ */
 export let rayMarchWorld = (params: {
   rayOrigin: Node<"vec3">;
   rayDirection: Node<"vec3">;
@@ -909,7 +923,7 @@ export let rayMarchWorld = (params: {
   maxDistance?: Node<"float">;
   fogStart?: Node<"float">;
   fogColor?: Node<"vec3">;
-  // time-of-day lighting; defaults match the pre-day-night look
+  /** Time-of-day lighting inputs; when omitted, default values produce a fixed directional light. */
   sunDirection?: Node<"vec3">;
   sunLightColor?: Node<"vec3">;
   moonDirection?: Node<"vec3">;
@@ -1071,21 +1085,26 @@ export let rayMarchWorld = (params: {
 
 export class RaymarchMaterial extends NodeMaterial {
   blocks: WorldBlock[] = [];
-  // debug: output a fetch-count heatmap (RG = 16-bit fine-texel fetches,
-  // A = 1 when the ray entered at least one chunk) instead of the shaded scene.
+  /**
+   * When true, outputs a fetch-count heatmap instead of the shaded scene: the
+   * red and green channels encode the 16-bit count of fine-texel fetches, and
+   * the alpha channel is 1 when the ray entered at least one chunk.
+   */
   debugFetchCount: boolean = false;
-  // The spritesheet uploaded as one 2D texture; set asynchronously once loaded.
+  /** The tile spritesheet uploaded as one 2D texture; set asynchronously once loaded. */
   tilesTexture: Texture | null = null;
-  // Per-voxel-id face tiles (normalized atlas rects); drives the rect uniforms.
+  /** Per-voxel-identifier face tiles (normalized atlas rectangles) that drive the rect uniforms. */
   voxelTiles: VoxelTileConfig[] = [];
-  // Distance-fog / render-distance tuning (world units). `maxDistance` both
-  // caps how far rays march and the distance at which fog is fully opaque.
+  /** World-space distance at which rays stop marching and fog becomes fully opaque. */
   maxDistance: number = 480;
+  /** World-space distance from the camera where distance fog begins fading in. */
   fogStart: number = 200;
   fogColor: [number, number, number] = [0.53, 0.81, 0.92];
-  // time-of-day lighting. `sunDirection` is the unit vector toward the sun;
-  // its diffuse contribution dims to zero once the sun dips below the horizon,
-  // and `moonLightColor` picks up with the moon (see `dayNightState`).
+  /**
+   * Unit vector pointing toward the sun; its diffuse light contribution dims
+   * to zero once the sun dips below the horizon, at which point
+   * `moonLightColor` takes over.
+   */
   sunDirection: [number, number, number] = [
     1 / Math.sqrt(6),
     2 / Math.sqrt(6),
@@ -1288,24 +1307,29 @@ export class RaymarchMaterial extends NodeMaterial {
   }
 }
 
-// Renders the water as a separate translucent pass. It raymarches the same
-// block voxels looking only for the stored water surface (`marchWater`) and
-// alpha-blends over the already-rendered opaque scene (terrain + meshes), so
-// anything behind the water — including the player cube — is correctly tinted
-// and occluded by the surface. The shading happens at the surface only; a
-// camera below `seaLevel` gets a uniform underwater tint instead.
+/**
+ * Renders the water as a separate translucent pass. It marches the same
+ * block voxels looking only for the stored water surface and alpha-blends
+ * over the already-rendered opaque scene (terrain and meshes), so anything
+ * behind the water — including the player cube — is correctly tinted and
+ * occluded by the surface. Shading happens at the surface only; a camera
+ * below `seaLevel` gets a uniform underwater tint instead.
+ */
 export class RaymarchWaterMaterial extends NodeMaterial {
   blocks: WorldBlock[] = [];
-  // matches the terrain material's fog so the reflected sky blends seamlessly
+  /** Maximum ray-march distance for the water pass, matching the terrain material's setting. */
   maxDistance: number = 480;
+  /** Fog color, matching the terrain material's so the reflected sky blends seamlessly. */
   fogColor: [number, number, number] = [0.53, 0.81, 0.92];
   waterColor: [number, number, number] = [0.1, 0.35, 0.55];
-  // surface transparency when looking straight down (0..1; grazing angles get
-  // more opaque as the Fresnel reflection takes over)
+  /**
+   * Surface transparency when looking straight down, in the range 0 to 1;
+   * grazing angles become more opaque as the Fresnel reflection takes over.
+   */
   waterOpacity: number = 0.5;
-  // world y of the water surface; used to tint the view when the camera is under
+  /** World-space Y coordinate of the water surface, used to tint the view when the camera is below it. */
   seaLevel: number = 0;
-  // per-world-unit absorption for the underwater tint; larger = more opaque
+  /** Per-world-unit light absorption for the underwater tint; larger values are more opaque. */
   waterExtinction: number = 0.12;
 
   private blockUniforms: WorldBlockShader[] = [];
@@ -1510,8 +1534,8 @@ export class RaymarchWaterMaterial extends NodeMaterial {
       const alpha = fresnel.add(waterOpacity).min(float(1)).toVar();
       colour.assign(vec4(rgb, alpha));
 
-      // depth of the water surface so it occludes / is occluded correctly by
-      // nearer opaque geometry (terrain in front, player, etc.)
+      // Depth of the water surface, so it occludes and is occluded correctly
+      // by nearer opaque geometry such as terrain or the player.
       const surfacePoint = rayOrigin
         .add(rayDirection.mul(surfaceDistance))
         .toVar();
@@ -1549,13 +1573,15 @@ export interface RaymarchRendererParams {
   seaLevel: number;
 }
 
-// Fragment-shader voxel raymarcher: one padded bounding-box mesh per
-// `WorldBlock`, ray-marched against that block's GPU voxel texture in-shader.
-// Owns its own terrain + water meshes/materials; the texture data itself lives
-// directly on the shared `WorldBlock` (`block.level`), so there is nothing to
-// re-sync here when a block's data changes — `syncLevelFromStore`/
-// `applyLevelData` (data layer, called by whoever refills the block) already
-// mark the GPU texture dirty, and this material reads it live every frame.
+/**
+ * Fragment-shader voxel raymarcher: one padded bounding-box mesh per
+ * `WorldBlock`, ray-marched against that block's GPU voxel texture in the
+ * shader. Owns its own terrain and water meshes/materials. The texture data
+ * itself lives directly on the shared `WorldBlock` (`block.level`), so there
+ * is nothing to re-sync here when a block's data changes — whoever refills
+ * the block's data already marks the GPU texture dirty, and this material
+ * reads it live every frame.
+ */
 export class RaymarchRenderer implements BlockRenderer {
   readonly meshes: Mesh[] = [];
   readonly materials: RaymarchMaterial[] = [];
@@ -1594,10 +1620,10 @@ export class RaymarchRenderer implements BlockRenderer {
       this.meshes.push(mesh);
       this.materials.push(material);
 
-      // translucent water pass: blends over the opaque scene, never writes
-      // depth, and depth-tests so mountains/player in front hide it. Added to
-      // the scene later (see `addWaterToScene`), after the player cube, since
-      // the renderer draws meshes in scene-graph order.
+      // Translucent water pass: blends over the opaque scene, never writes
+      // depth, and depth-tests so terrain or the player in front hide it.
+      // Added to the scene later, after the player cube, since the renderer
+      // draws meshes in scene-graph order.
       const waterMaterial = new RaymarchWaterMaterial();
       waterMaterial.transparent = true;
       waterMaterial.depthWrite = false;
@@ -1616,9 +1642,11 @@ export class RaymarchRenderer implements BlockRenderer {
     }
   }
 
-  // Must be called once, after the player cube is added to the scene, so the
-  // translucent water pass blends over it (see the ADR/CONTEXT for why scene-
-  // graph order matters here: there is no depth-sorted transparency pass).
+  /**
+   * Must be called once, after the player cube is added to the scene, so the
+   * translucent water pass blends over it. Scene-graph order determines
+   * blending order here, since there is no depth-sorted transparency pass.
+   */
   addWaterToScene(scene: Scene): void {
     for (const mesh of this.waterMeshes) {
       scene.add(mesh);
@@ -1639,8 +1667,7 @@ export class RaymarchRenderer implements BlockRenderer {
     this.waterMeshes[index].position.set(center[0], center[1], center[2]);
   }
 
-  // No-op: the level texture lives on the shared `WorldBlock` and is already
-  // marked dirty by the data layer before this is called.
+  /** No-op: the level texture lives on the shared `WorldBlock` and is already marked dirty by the data layer before this is called. */
   onBlockChanged(_index: number): void {}
 
   setTiles(voxelTiles: VoxelTileConfig[], texture: Texture): void {
@@ -1665,13 +1692,13 @@ export class RaymarchRenderer implements BlockRenderer {
     }
   }
 
-  // Nothing to drain per-frame; the raymarch texture sync is unconditional and
-  // handled by the data layer, not gated on this renderer being active.
+  /** No-op: the raymarch texture sync is unconditional and handled by the data layer, not gated on this renderer being active. */
   tick(_dt: number, _camera: PerspectiveCamera): void {}
 
-  // No-op: rmsl's geometries/materials don't expose disposal, and nothing
-  // disposed these per-block resources before this refactor either (only the
-  // top-level `WebGLRenderer` is released, in `App.tsx`). Present for
-  // `BlockRenderer` interface symmetry should that change.
+  /**
+   * No-op: rmsl's geometries and materials don't expose a disposal API for
+   * these per-block resources. Present for `BlockRenderer` interface
+   * symmetry should that change.
+   */
   dispose(): void {}
 }
