@@ -13,8 +13,12 @@ The `BLOCKS x BLOCKS` (5x5) window of `WorldBlock`s kept centred on the player. 
 _Avoid_: Chunk grid, world grid (the ring's per-slot integer coordinates are an internal `WorldRing` implementation detail — never exposed as a raw array, only through `lookupBlock`/`gridCoordAt` — don't confuse with **Ring** itself)
 
 **WorldRing**:
-The class that owns the **Ring**: populates it at startup (synchronously, on the main thread), keeps it centred on the player (`scrollToPlayer`, `stepRing`), and gets fresh terrain data into each `WorldBlock` as it scrolls — synchronously at startup, but off the main thread via a fill worker for every scroll after that (mirrors the sync-vs-async split documented for **RaymarchRenderer** vs **TriangleRenderer**). Knows nothing about rendering: it reports block changes and repositions via injected callbacks rather than holding a reference to `RendererSwitch`, the same one-directional dependency `RendererSwitch` already has on ring data. Exposes exactly three things: `blocks` (all current `WorldBlock`s), `lookupBlock(gx, gz)` (the block at a grid coordinate, if any), and `gridCoordAt(index)` (a slot's own grid coordinate — needed by `TriangleRenderer` to resolve its neighbours for cross-block face culling).
+The class that owns the **Ring**: builds it synchronously at startup (each `WorldBlock` built directly, on the main thread), keeps it centred on the player (`scrollToPlayer`, `stepRing`), and requests fresh terrain data for each block a scroll reveals from a **FillClient** (mirrors the sync-vs-async split documented for **RaymarchRenderer** vs **TriangleRenderer**). Exposes exactly three things: `blocks` (all current `WorldBlock`s), `lookupBlock(gx, gz)` (the block at a grid coordinate, if any), and `gridCoordAt(index)` (a slot's own grid coordinate — needed by `TriangleRenderer` to resolve its neighbours for cross-block face culling).
 _Avoid_: Terrain streamer, chunk manager
+
+**FillClient**:
+Generates a `WorldBlock`'s procedural voxel data and derived GPU level layout on request, using a Web Worker when available and falling back to generating it synchronously (on the caller's thread) when the worker is unavailable or errors. Tags each request with a per-slot generation counter, so a result that arrives after its slot has been requested again is dropped rather than overwriting newer data. Owned by **WorldRing**, which is its only caller.
+_Avoid_: Fill worker (that's the underlying Web Worker `FillClient` wraps, not `FillClient` itself)
 
 **BlockRenderer**:
 The interface both rendering strategies implement: given the ring's `WorldBlock`s, draw them. Exposes lifecycle hooks for visibility, per-block data changes, per-frame lighting (always applied, even when inactive, so the hidden renderer is ready for an instant toggle), and per-frame active-only work (e.g. draining a mesh-build queue).
@@ -46,6 +50,7 @@ _Avoid_: CommandRegistry, command registry (implies the rejected `register()`-ca
 - A **WorldBlock** is rendered by both a **RaymarchRenderer** and a **TriangleRenderer** at all times; only one is visible, chosen by the **RendererSwitch**.
 - The **RendererSwitch** calls `applyLighting` on both renderers every frame regardless of which is active, but calls `tick` only on the active one.
 - **WorldRing** owns the **Ring** and reports changes to it (via callbacks); **RendererSwitch** is one such callback consumer, not something **WorldRing** depends on directly.
+- **WorldRing** is **FillClient**'s only caller; **FillClient** doesn't know a **Ring** or **WorldRing** exists, only the blocks and indices it's asked to fill.
 - **DayNightController** and **RendererSwitch** each expose plain domain methods and know nothing about the console; **Commander** is the only thing that knows console command names, aliases, or help text exist.
 
 ## Example dialogue
