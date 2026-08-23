@@ -11,19 +11,19 @@ import { Component, createEffect, createStore } from "solid-js";
 import { AdaptiveResolution } from "./adaptive";
 import { Commander } from "./commander";
 import { DayNightController } from "./day-night-controller";
+import { addLookDelta, consumeInput, installKeyboardControls } from "./input";
+import { GpuTimer, sampleFetchCount } from "./perf";
+import { createPlayer, placeCamera, PLAYER_CFG, updatePlayer } from "./player";
 import {
   buildVoxelTileConfig,
   loadTileTexture,
   parseTileAtlasXml,
 } from "./renderers/atlas";
+import { RendererSwitch } from "./renderers/renderer-switch";
 import { Console } from "./ui/Console";
 import Controls from "./ui/Controls";
-import { addLookDelta, consumeInput, installKeyboardControls } from "./input";
 import { BLOCK_WORLD, getWorldHeight, type Dim3 } from "./world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
-import { GpuTimer, sampleFetchCount } from "./perf";
-import { createPlayer, placeCamera, PLAYER_CFG, updatePlayer } from "./player";
-import { RendererSwitch } from "./renderers/renderer-switch";
 import { WorldRing } from "./world/world-ring";
 
 const App: Component<{}> = () => {
