@@ -1,6 +1,6 @@
 {
   "name": "@big-mesh-studios/bms-voxelscape",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "",
   "main": "./dist-lib/lib.umd.js",
   "module": "./dist-lib/lib.es.js",
