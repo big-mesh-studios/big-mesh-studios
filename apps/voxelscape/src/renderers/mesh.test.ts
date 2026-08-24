@@ -4,12 +4,8 @@ import type { VoxelTileConfig } from "./atlas";
 import {
   buildBlockMesh,
   buildWaterMesh,
-  extractBlockShells,
-  makeBlockResolver,
-  makeShellResolver,
   meshArraysToGeometry,
   setGeometryData,
-  type BlockGridResolver,
   type MeshArrays,
 } from "./mesh";
 import {
@@ -18,18 +14,33 @@ import {
   VOXEL_GRASS,
   VOXEL_WATER,
   VoxelStore,
+  fillStore,
 } from "../world/voxel-store";
 
 const smallStore = (): VoxelStore =>
   new VoxelStore({ dims: [8, 8, 8], voxels: [4, 4, 4], scale: 2 });
 
 /**
- * No neighbouring blocks: horizontal out-of-bounds resolves to air, the
- * floor below y=0 is solid and the ceiling above is air (same rules as
- * `sweepSurface`).
+ * Constant high terrain (amplitude 0): every column is solid to the block
+ * top, so only top-surface faces are emitted and every seam face is culled.
  */
-const noNeighbors = (store: VoxelStore): BlockGridResolver =>
-  makeBlockResolver(store, 0, 0, () => undefined);
+const solidTerrain = {
+  seed: 1,
+  frequency: 1,
+  amplitude: 0,
+  octaves: 1,
+  base: 64,
+};
+
+/** Flat sea at the block top: water everywhere on row y=3. */
+const seaTerrain = {
+  seed: 1,
+  frequency: 1,
+  amplitude: 0,
+  octaves: 1,
+  base: 0,
+  seaLevel: 6,
+};
 
 const faceCount = (mesh: MeshArrays): number => mesh.indices.length / 6;
 const vertexCount = (mesh: MeshArrays): number => mesh.positions.length / 3;
@@ -73,7 +84,7 @@ describe("buildBlockMesh", () => {
   it("emits all six faces of an isolated voxel", () => {
     const store = smallStore();
     store.set(1, 1, 1, VOXEL_GRASS);
-    const mesh = buildBlockMesh(store, noNeighbors(store), []);
+    const mesh = buildBlockMesh(store, []);
     expect(faceCount(mesh)).toBe(6);
     expect(vertexCount(mesh)).toBe(24);
     for (const normal of [
@@ -97,7 +108,7 @@ describe("buildBlockMesh", () => {
         }
       }
     }
-    const mesh = buildBlockMesh(store, noNeighbors(store), []);
+    const mesh = buildBlockMesh(store, []);
     // 3x3x3 cube: 6 faces x 9 unit faces
     expect(faceCount(mesh)).toBe(54);
     expect(vertexCount(mesh)).toBe(54 * 4);
@@ -120,7 +131,7 @@ describe("buildBlockMesh", () => {
         }
       }
     }
-    const mesh = buildBlockMesh(store, noNeighbors(store), []);
+    const mesh = buildBlockMesh(store, []);
     expect(hasNormal(mesh, 0, -1, 0)).toBe(false);
     // every column's top voxel exposes its top face (16 quads x 4 verts)
     const faces = facesByNormal(mesh);
@@ -132,64 +143,78 @@ describe("buildBlockMesh", () => {
     store.set(1, 1, 1, VOXEL_DIRT);
     store.set(1, 2, 1, VOXEL_DIRT);
     store.set(1, 3, 1, VOXEL_WATER);
-    const mesh = buildBlockMesh(store, noNeighbors(store), []);
+    const mesh = buildBlockMesh(store, []);
     // the top terrain voxel is exposed by the water above it
     expect(hasNormal(mesh, 0, 1, 0)).toBe(true);
   });
 
-  it("does not double-emit the face shared with a neighbouring block", () => {
+  it("culls the seam face shared with a neighbouring block", () => {
     const a = smallStore();
     const b = smallStore();
-    a.set(3, 1, 1, VOXEL_DIRT);
-    b.set(0, 1, 1, VOXEL_DIRT);
-    const lookup = (gx: number, gz: number): VoxelStore | undefined => {
-      if (gx === 0 && gz === 0) return a;
-      if (gx === 1 && gz === 0) return b;
-      return undefined;
-    };
-    const meshA = buildBlockMesh(a, makeBlockResolver(a, 0, 0, lookup), []);
-    const meshB = buildBlockMesh(b, makeBlockResolver(b, 1, 0, lookup), []);
-    // each block loses exactly the face touching the other: 5 faces each
-    expect(faceCount(meshA)).toBe(5);
-    expect(faceCount(meshB)).toBe(5);
+    fillStore(a, [0, 0, 0], solidTerrain);
+    fillStore(b, [8, 0, 0], solidTerrain);
+    const meshA = buildBlockMesh(a, []);
+    const meshB = buildBlockMesh(b, []);
+    // 4x4 top surfaces; no +X/-X seam face between the two blocks
+    expect(faceCount(meshA)).toBe(16);
+    expect(faceCount(meshB)).toBe(16);
     expect(hasNormal(meshA, 1, 0, 0)).toBe(false); // no +X seam face
     expect(hasNormal(meshB, -1, 0, 0)).toBe(false); // no -X seam face
+    expect(hasNormal(meshA, 0, 1, 0)).toBe(true);
   });
 
-  it("resolves seams identically via neighbour shells (worker path)", () => {
+  it("emits no vertical water face across a chunk seam", () => {
     const a = smallStore();
     const b = smallStore();
-    a.set(3, 1, 1, VOXEL_DIRT);
-    b.set(0, 1, 1, VOXEL_DIRT);
-    const lookup = (gx: number, gz: number): VoxelStore | undefined => {
-      if (gx === 0 && gz === 0) return a;
-      if (gx === 1 && gz === 0) return b;
-      return undefined;
-    };
-    // direct lookup, as the synchronous path uses
-    const direct = buildBlockMesh(a, makeBlockResolver(a, 0, 0, lookup), []);
-    // shell resolver, as the web worker uses
-    const shellsA = extractBlockShells(a, 0, 0, lookup);
-    const viaShells = buildBlockMesh(a, makeShellResolver(a, shellsA), []);
-    expect(faceCount(viaShells)).toBe(faceCount(direct));
-    expect(hasNormal(viaShells, 1, 0, 0)).toBe(false);
-    expect(hasNormal(viaShells, -1, 0, 0)).toBe(true);
+    fillStore(a, [0, 0, 0], seaTerrain);
+    fillStore(b, [8, 0, 0], seaTerrain);
+    const meshA = buildWaterMesh(a);
+    const meshB = buildWaterMesh(b);
+    // water surfaces only: a top face per column, never a cliff-side wall
+    expect(faceCount(meshA)).toBe(16);
+    expect(faceCount(meshB)).toBe(16);
+    for (const normal of [
+      [1, 0, 0],
+      [-1, 0, 0],
+      [0, 0, 1],
+      [0, 0, -1],
+    ]) {
+      expect(hasNormal(meshA, normal[0], normal[1], normal[2])).toBe(false);
+    }
+    expect(hasNormal(meshA, 0, 1, 0)).toBe(true);
   });
 
-  it("treats missing neighbour shells as air (world edge)", () => {
+  it("generates a border matching the neighbouring block's boundary column", () => {
+    const a = smallStore();
+    const b = smallStore();
+    // rolling terrain so adjacent columns genuinely differ
+    const rolling = {
+      seed: 11,
+      frequency: 0.1,
+      amplitude: 40,
+      octaves: 2,
+      base: 20,
+      seaLevel: 30,
+    };
+    fillStore(a, [0, 0, 0], rolling);
+    fillStore(b, [8, 0, 0], rolling);
+    // a's east border overlaps b's first column; b's west border overlaps a's last
+    for (let y = 0; y < 4; y++) {
+      for (let z = 0; z < 4; z++) {
+        expect(a.atPadded(4, y, z)).toBe(b.get(0, y, z));
+        expect(b.atPadded(-1, y, z)).toBe(a.get(3, y, z));
+      }
+    }
+  });
+
+  it("culls the block's outer edge faces against generated padding", () => {
     const store = smallStore();
-    store.set(3, 1, 1, VOXEL_DIRT);
-    const noNeighbors = makeBlockResolver(store, 0, 0, () => undefined);
-    const shells = extractBlockShells(store, 0, 0, () => undefined);
-    const direct = buildBlockMesh(store, noNeighbors, []);
-    const viaShells = buildBlockMesh(
-      store,
-      makeShellResolver(store, shells),
-      [],
-    );
-    expect(faceCount(viaShells)).toBe(faceCount(direct));
-    // the +X face is exposed (neighbour beyond the world is air)
-    expect(hasNormal(viaShells, 1, 0, 0)).toBe(true);
+    fillStore(store, [0, 0, 0], solidTerrain);
+    const mesh = buildBlockMesh(store, []);
+    // the border is generated terrain, not air, so even a lone block's
+    // outermost faces cull against it
+    expect(hasNormal(mesh, 1, 0, 0)).toBe(false);
+    expect(hasNormal(mesh, -1, 0, 0)).toBe(false);
   });
 
   it("bakes the atlas rects into per-face UVs", () => {
@@ -203,7 +228,7 @@ describe("buildBlockMesh", () => {
         bottom: [0.25, 0.25, 0.75, 0.75],
       },
     ];
-    const mesh = buildBlockMesh(store, noNeighbors(store), tiles);
+    const mesh = buildBlockMesh(store, tiles);
     const byNormal = facesByNormal(mesh);
     const within = (uvs: Array<[number, number]>, rect: number[]): boolean =>
       uvs.every(
@@ -231,7 +256,7 @@ describe("buildWaterMesh", () => {
     store.set(1, 0, 1, VOXEL_DIRT);
     store.set(1, 1, 1, VOXEL_DIRT);
     store.set(1, 2, 1, VOXEL_WATER);
-    const mesh = buildWaterMesh(store, noNeighbors(store));
+    const mesh = buildWaterMesh(store);
     // top + four sides border air; the bottom rests on terrain
     expect(faceCount(mesh)).toBe(5);
     expect(hasNormal(mesh, 0, 1, 0)).toBe(true);
@@ -247,7 +272,7 @@ describe("buildWaterMesh", () => {
         }
       }
     }
-    const mesh = buildWaterMesh(store, noNeighbors(store));
+    const mesh = buildWaterMesh(store);
     // 3x3x3 water cube: exactly the 6 surface faces x 9 unit faces, never the
     // centre voxel
     expect(faceCount(mesh)).toBe(54);
@@ -258,29 +283,26 @@ describe("meshArraysToGeometry", () => {
   it("builds an indexed geometry from the arrays", () => {
     const store = smallStore();
     store.set(1, 1, 1, VOXEL_GRASS);
-    const mesh = buildBlockMesh(store, noNeighbors(store), []);
+    const mesh = buildBlockMesh(store, []);
     const geometry = meshArraysToGeometry(mesh);
     expect(geometry.drawCount).toBe(mesh.indices.length);
     expect(geometry.position?.count).toBe(vertexCount(mesh));
     expect(geometry.normal?.count).toBe(vertexCount(mesh));
     expect(geometry.uv?.count).toBe(vertexCount(mesh));
   });
-
 });
 
 describe("setGeometryData", () => {
   it("updates a geometry in place without replacing it", () => {
     const store = smallStore();
     store.set(1, 1, 1, VOXEL_GRASS);
-    const geometry = meshArraysToGeometry(
-      buildBlockMesh(store, noNeighbors(store), []),
-    );
+    const geometry = meshArraysToGeometry(buildBlockMesh(store, []));
     const geometryRef = geometry;
     const firstCount = geometry.drawCount;
 
     // grow the mesh: a second voxel adds faces
     store.set(2, 1, 1, VOXEL_DIRT);
-    const grown = buildBlockMesh(store, noNeighbors(store), []);
+    const grown = buildBlockMesh(store, []);
     setGeometryData(geometry, grown);
 
     // same geometry object (so the renderer's buffer-cache entry is reused)
@@ -296,9 +318,7 @@ describe("setGeometryData", () => {
   it("clears a geometry with empty arrays", () => {
     const store = smallStore();
     store.set(1, 1, 1, VOXEL_GRASS);
-    const geometry = meshArraysToGeometry(
-      buildBlockMesh(store, noNeighbors(store), []),
-    );
+    const geometry = meshArraysToGeometry(buildBlockMesh(store, []));
     expect(geometry.drawCount).toBeGreaterThan(0);
     setGeometryData(geometry, {
       positions: [],

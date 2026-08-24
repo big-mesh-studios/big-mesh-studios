@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { buildBlock, Level, getWorldHeight, syncLevelFromStore } from "./level-data";
+import {
+  buildBlock,
+  Level,
+  getWorldHeight,
+  syncLevelFromStore,
+} from "./level-data";
 import {
   VOXEL_AIR,
   VOXEL_DIRT,
@@ -51,6 +56,21 @@ describe("VoxelStore", () => {
         }
       }
     }
+  });
+
+  it("reset clears the meshing border too", () => {
+    const store = smallStore();
+    store.set(1, 1, 1, VOXEL_GRASS);
+    store.reset();
+    expect(store.atPadded(-1, 1, 1)).toBe(VOXEL_AIR);
+    expect(store.atPadded(4, 1, 1)).toBe(VOXEL_AIR);
+    expect(store.atPadded(1, 1, -1)).toBe(VOXEL_AIR);
+    expect(store.atPadded(1, 1, 4)).toBe(VOXEL_AIR);
+  });
+
+  it("sizes data with the meshing border included", () => {
+    const store = smallStore();
+    expect(store.data.length).toBe(6 * 4 * 6);
   });
 });
 
@@ -113,6 +133,29 @@ describe("fillStore", () => {
       for (let z = 0; z < 4; z++) {
         expect(store.get(x, 3, z)).toBe(VOXEL_GRASS);
         expect(store.get(x, 3, z)).not.toBe(VOXEL_WATER);
+      }
+    }
+  });
+
+  it("fills the meshing border to match a neighbouring block", () => {
+    const a = smallStore();
+    const b = smallStore();
+    // rolling terrain so adjacent columns genuinely differ
+    const rolling = {
+      seed: 11,
+      frequency: 0.1,
+      amplitude: 40,
+      octaves: 2,
+      base: 20,
+      seaLevel: 30,
+    };
+    fillStore(a, [0, 0, 0], rolling);
+    fillStore(b, [8, 0, 0], rolling);
+    // a's east border overlaps b's first column; b's west border overlaps a's last
+    for (let y = 0; y < 4; y++) {
+      for (let z = 0; z < 4; z++) {
+        expect(a.atPadded(4, y, z)).toBe(b.get(0, y, z));
+        expect(b.atPadded(-1, y, z)).toBe(a.get(3, y, z));
       }
     }
   });

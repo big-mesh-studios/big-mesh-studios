@@ -4,6 +4,12 @@
 // matching the mesh placement used by the raymarch meshes). UVs are baked into
 // the atlas using exactly the same face→tile mapping as `rayMarchWorld`, so the
 // triangle renderer looks pixel-identical to the raymarched terrain.
+//
+// Seam faces between neighbouring blocks are culled by reading the block's own
+// 1-voxel meshing border (`VoxelStore.padding`), which `fillStore` generates
+// from the same world-coordinate terrain function as the interior. The border
+// always matches what the neighbour will contain, so no worker needs a
+// neighbour's live store to resolve a seam.
 import { BufferAttribute, BufferGeometry } from "@random-mesh/rmsl/scene";
 import type { TileRect, VoxelTileConfig } from "./atlas";
 import { VOXEL_AIR, VOXEL_WATER, type VoxelStore } from "../world/voxel-store";
@@ -19,63 +25,6 @@ export interface MeshArrays {
   uvs: number[] | Float32Array;
   indices: number[] | Uint32Array;
 }
-
-/**
- * Looks up a neighbouring block's store by its ring grid coordinate.
- * Returns undefined when the ring has no block there (the world's outer
- * edge), which the resolver treats as empty air.
- */
-export type BlockGridLookup = (
-  gridX: number,
-  gridZ: number,
-) => VoxelStore | undefined;
-
-/**
- * Resolves a voxel id at block-local voxel coordinates (x, y, z), handling
- * the block volume's boundaries: below the floor is solid, above the
- * ceiling is air, and horizontal out-of-bounds coordinates look into the
- * neighbouring block's store so coincident seam faces are never
- * double-emitted. Voxel coordinates tile across blocks, so block (gx, gz)
- * covers worldVoxel in [gx*nx, (gx+1)*nx).
- */
-export interface BlockGridResolver {
-  at(x: number, y: number, z: number): number;
-}
-
-export const makeBlockResolver = (
-  store: VoxelStore,
-  gridX: number,
-  gridZ: number,
-  lookup: BlockGridLookup,
-): BlockGridResolver => {
-  const [nx, ny, nz] = store.voxels;
-  return {
-    at(x, y, z) {
-      if (y < 0) return 1; // the world's underside never surfaces
-      if (y >= ny) return 0;
-      let gx = gridX;
-      let gz = gridZ;
-      let lx = x;
-      let lz = z;
-      if (x < 0) {
-        gx -= 1;
-        lx += nx;
-      } else if (x >= nx) {
-        gx += 1;
-        lx -= nx;
-      }
-      if (z < 0) {
-        gz -= 1;
-        lz += nz;
-      } else if (z >= nz) {
-        gz += 1;
-        lz -= nz;
-      }
-      const neighbor = lookup(gx, gz);
-      return neighbor === undefined ? VOXEL_AIR : neighbor.get(lx, y, lz);
-    },
-  };
-};
 
 /**
  * One quad's four corners as [xOffset, yOffset, zOffset, u, v] cell
@@ -119,15 +68,17 @@ const DEFAULT_RECT: TileRect = [0, 0, 1, 1];
  * voxels. `voxelTiles` maps each solid id to its top/side/bottom atlas
  * rects; when a config is missing (atlas not loaded yet) faces fall back
  * to `DEFAULT_RECT`.
+ *
+ * Neighbours are read from `store`'s 1-voxel meshing border (`atPadded`),
+ * so seam faces against the adjacent block's matching voxels are culled
+ * without a resolver. Below the floor is solid and above the ceiling is
+ * air (the same rules as `sweepSurface`).
  */
 export const buildBlockMesh = (
   store: VoxelStore,
-  resolver: BlockGridResolver,
   voxelTiles: VoxelTileConfig[],
 ): MeshArrays => {
   const [nx, ny, nz] = store.voxels;
-  const data = store.data;
-  const plane = nx * ny;
   const scale = store.scale;
   const tiles = new Map<number, VoxelTileConfig>();
   for (const t of voxelTiles) {
@@ -138,6 +89,9 @@ export const buildBlockMesh = (
   const normals: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
+
+  const at = (x: number, y: number, z: number): number =>
+    store.atPadded(x, y, z);
 
   const emit = (
     wx: number,
@@ -168,32 +122,19 @@ export const buildBlockMesh = (
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   };
 
-  /**
-   * Resolves an out-of-bounds neighbour id; `data` covers the in-bounds
-   * case directly in the loop below, so this runs only on the block's
-   * boundary columns. Below the floor is solid and above the ceiling is
-   * air (the same rules as `sweepSurface`).
-   */
-  const resolverAt = (x: number, y: number, z: number): number => {
-    if (y < 0) return 1;
-    if (y >= ny) return 0;
-    return resolver.at(x, y, z);
-  };
-
-  let idx = 0;
   for (let z = 0; z < nz; ++z) {
     for (let y = 0; y < ny; ++y) {
-      for (let x = 0; x < nx; ++x, ++idx) {
-        const id = data[idx];
+      for (let x = 0; x < nx; ++x) {
+        const id = at(x, y, z);
         if (id === VOXEL_AIR || id === VOXEL_WATER) {
           continue;
         }
-        const below = y === 0 ? 1 : data[idx - nx];
-        const above = y === ny - 1 ? 0 : data[idx + nx];
-        const left = x === 0 ? resolverAt(x - 1, y, z) : data[idx - 1];
-        const right = x === nx - 1 ? resolverAt(x + 1, y, z) : data[idx + 1];
-        const front = z === 0 ? resolverAt(x, y, z - 1) : data[idx - plane];
-        const back = z === nz - 1 ? resolverAt(x, y, z + 1) : data[idx + plane];
+        const below = y === 0 ? 1 : at(x, y - 1, z);
+        const above = y === ny - 1 ? 0 : at(x, y + 1, z);
+        const left = at(x - 1, y, z);
+        const right = at(x + 1, y, z);
+        const front = at(x, y, z - 1);
+        const back = at(x, y, z + 1);
         const exposedTop = above === VOXEL_AIR || above === VOXEL_WATER;
         const exposedBottom = below === VOXEL_AIR || below === VOXEL_WATER;
         const exposedLeft = left === VOXEL_AIR || left === VOXEL_WATER;
@@ -234,21 +175,20 @@ export const buildBlockMesh = (
  * Emits the water surface quads: every face of a water voxel that borders
  * air (the top surface plus cliff-side banks). Uses the same positioning
  * as the terrain mesh so the two tile up seamlessly. UVs are unused by the
- * water material.
+ * water material. Seam faces against adjacent blocks' water are culled by
+ * the same generated `VoxelStore` border as the terrain mesh.
  */
-export const buildWaterMesh = (
-  store: VoxelStore,
-  resolver: BlockGridResolver,
-): MeshArrays => {
+export const buildWaterMesh = (store: VoxelStore): MeshArrays => {
   const [nx, ny, nz] = store.voxels;
-  const data = store.data;
-  const plane = nx * ny;
   const scale = store.scale;
 
   const positions: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
+
+  const at = (x: number, y: number, z: number): number =>
+    store.atPadded(x, y, z);
 
   const emit = (
     wx: number,
@@ -275,25 +215,18 @@ export const buildWaterMesh = (
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   };
 
-  const resolverAt = (x: number, y: number, z: number): number => {
-    if (y < 0) return 1;
-    if (y >= ny) return 0;
-    return resolver.at(x, y, z);
-  };
-
-  let idx = 0;
   for (let z = 0; z < nz; ++z) {
     for (let y = 0; y < ny; ++y) {
-      for (let x = 0; x < nx; ++x, ++idx) {
-        if (data[idx] !== VOXEL_WATER) {
+      for (let x = 0; x < nx; ++x) {
+        if (at(x, y, z) !== VOXEL_WATER) {
           continue;
         }
-        const below = y === 0 ? 1 : data[idx - nx];
-        const above = y === ny - 1 ? 0 : data[idx + nx];
-        const left = x === 0 ? resolverAt(x - 1, y, z) : data[idx - 1];
-        const right = x === nx - 1 ? resolverAt(x + 1, y, z) : data[idx + 1];
-        const front = z === 0 ? resolverAt(x, y, z - 1) : data[idx - plane];
-        const back = z === nz - 1 ? resolverAt(x, y, z + 1) : data[idx + plane];
+        const below = y === 0 ? 1 : at(x, y - 1, z);
+        const above = y === ny - 1 ? 0 : at(x, y + 1, z);
+        const left = at(x - 1, y, z);
+        const right = at(x + 1, y, z);
+        const front = at(x, y, z - 1);
+        const back = at(x, y, z + 1);
         const exposedTop = above === VOXEL_AIR;
         const exposedBottom = below === VOXEL_AIR;
         const exposedLeft = left === VOXEL_AIR;
@@ -379,159 +312,16 @@ export const meshArraysToGeometry = (mesh: MeshArrays): BufferGeometry => {
 };
 
 /**
- * The neighbour boundary data a worker needs to resolve block-seam faces:
- * for each of the 8 neighbouring blocks, only the boundary slab that
- * touches this block. Layouts are dense so the worker indexes them with
- * plain arithmetic:
- *   east/west  (neighbour +x/-x):  [lz * ny + ly]      (1 x ny x nz)
- *   north/south (neighbour +z/-z): [ly * nx + lx]      (nx x ny x 1)
- *   corner columns (ne +/-x +/-z): [ly]                (1 x ny x 1)
- * `null` means that block does not exist (the world's outer edge, which
- * resolves to air).
- */
-export interface BlockShells {
-  east: Uint8Array | null;
-  west: Uint8Array | null;
-  north: Uint8Array | null;
-  south: Uint8Array | null;
-  ne: Uint8Array | null;
-  nw: Uint8Array | null;
-  se: Uint8Array | null;
-  sw: Uint8Array | null;
-}
-
-export const EMPTY_SHELLS: BlockShells = {
-  east: null,
-  west: null,
-  north: null,
-  south: null,
-  ne: null,
-  nw: null,
-  se: null,
-  sw: null,
-};
-
-/**
- * Extracts the 8 neighbour boundary shells for a block, so its mesh can
- * be built off-thread (where the ring's full stores aren't available)
- * with the same seam resolution as `makeBlockResolver`.
- */
-export const extractBlockShells = (
-  store: VoxelStore,
-  gridX: number,
-  gridZ: number,
-  lookup: BlockGridLookup,
-): BlockShells => {
-  const [nx, ny, nz] = store.voxels;
-  const east = lookup(gridX + 1, gridZ);
-  const west = lookup(gridX - 1, gridZ);
-  const north = lookup(gridX, gridZ + 1);
-  const south = lookup(gridX, gridZ - 1);
-  const ne = lookup(gridX + 1, gridZ + 1);
-  const nw = lookup(gridX - 1, gridZ + 1);
-  const se = lookup(gridX + 1, gridZ - 1);
-  const sw = lookup(gridX - 1, gridZ - 1);
-
-  const sideSlab = (
-    s: VoxelStore | undefined,
-    xOfs: number,
-  ): Uint8Array | null => {
-    if (s === undefined) return null;
-    const out = new Uint8Array(ny * nz);
-    const d = s.data;
-    for (let lz = 0; lz < nz; ++lz) {
-      for (let ly = 0; ly < ny; ++ly) {
-        out[lz * ny + ly] = d[(lz * ny + ly) * nx + xOfs];
-      }
-    }
-    return out;
-  };
-  const faceSlab = (
-    s: VoxelStore | undefined,
-    zOfs: number,
-  ): Uint8Array | null => {
-    if (s === undefined) return null;
-    const out = new Uint8Array(ny * nx);
-    const d = s.data;
-    for (let ly = 0; ly < ny; ++ly) {
-      for (let lx = 0; lx < nx; ++lx) {
-        out[ly * nx + lx] = d[(zOfs * ny + ly) * nx + lx];
-      }
-    }
-    return out;
-  };
-  const cornerColumn = (
-    s: VoxelStore | undefined,
-    xOfs: number,
-    zOfs: number,
-  ): Uint8Array | null => {
-    if (s === undefined) return null;
-    const out = new Uint8Array(ny);
-    const d = s.data;
-    for (let ly = 0; ly < ny; ++ly) {
-      out[ly] = d[(zOfs * ny + ly) * nx + xOfs];
-    }
-    return out;
-  };
-
-  return {
-    east: sideSlab(east, 0),
-    west: sideSlab(west, nx - 1),
-    north: faceSlab(north, 0),
-    south: faceSlab(south, nz - 1),
-    ne: cornerColumn(ne, 0, 0),
-    nw: cornerColumn(nw, nx - 1, 0),
-    se: cornerColumn(se, 0, nz - 1),
-    sw: cornerColumn(sw, nx - 1, nz - 1),
-  };
-};
-
-/**
- * Resolves a voxel id at block-local coordinates from a block's own data
- * plus its neighbour shells (what a worker uses instead of
- * `makeBlockResolver`). Same boundary rules: below the floor is solid,
- * above is air, horizontal out-of-bounds coordinates look into the
- * shelled neighbour (or air when the shell is null).
- */
-export const makeShellResolver = (
-  store: VoxelStore,
-  shells: BlockShells,
-): BlockGridResolver => {
-  const [nx, ny, nz] = store.voxels;
-  const data = store.data;
-  return {
-    at(x, y, z) {
-      if (y < 0) return 1;
-      if (y >= ny) return 0;
-      if (x >= nx) {
-        if (z < 0) return shells.se?.[y] ?? 0;
-        if (z >= nz) return shells.ne?.[y] ?? 0;
-        return shells.east?.[z * ny + y] ?? 0;
-      }
-      if (x < 0) {
-        if (z < 0) return shells.sw?.[y] ?? 0;
-        if (z >= nz) return shells.nw?.[y] ?? 0;
-        return shells.west?.[z * ny + y] ?? 0;
-      }
-      if (z >= nz) return shells.north?.[y * nx + x] ?? 0;
-      if (z < 0) return shells.south?.[y * nx + x] ?? 0;
-      return data[(z * ny + y) * nx + x];
-    },
-  };
-};
-
-/**
- * The main-thread-to-worker mesh-build protocol. `data` is the block's
- * voxel data (a transferable copy), `shells` its neighbour boundary data,
- * `tileRects` the per-voxel-id atlas rects; the worker returns both
- * meshes' arrays back.
+ * The main-thread-to-worker mesh-build protocol. `data` is the block's voxel
+ * data including its 1-voxel meshing border (a transferable copy), so the
+ * worker can cull seam faces against the surrounding world without any
+ * neighbour data of its own; the worker returns both meshes' arrays back.
  */
 export interface MeshBuildRequest {
   id: number;
   voxels: [number, number, number];
   scale: number;
   data: Uint8Array;
-  shells: BlockShells;
   tileRects: VoxelTileConfig[];
 }
 

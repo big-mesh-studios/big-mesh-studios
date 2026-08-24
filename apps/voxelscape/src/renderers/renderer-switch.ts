@@ -6,7 +6,6 @@ import type {
 import type { VoxelTileConfig } from "./atlas";
 import type { Dim3, WorldBlock } from "../world/level-data";
 import { sampleFetchCount } from "../perf";
-import type { BlockGridLookup } from "./mesh";
 import type { DayNight } from "./block-renderer";
 import { RaymarchRenderer } from "./raymarch-renderer";
 import { TriangleRenderer } from "./triangle-renderer";
@@ -16,8 +15,6 @@ export type RendererMode = "ray" | "tri";
 export interface RendererSwitchParams {
   scene: Scene;
   blocks: WorldBlock[];
-  gridCoordAt: (index: number) => { x: number; z: number };
-  lookupBlock: BlockGridLookup;
   padding: number;
   blockWorld: Dim3;
   fogDistance: number;
@@ -43,8 +40,6 @@ export class RendererSwitch {
     const {
       scene,
       blocks,
-      gridCoordAt,
-      lookupBlock,
       padding,
       blockWorld,
       fogDistance,
@@ -68,8 +63,6 @@ export class RendererSwitch {
     this.triangle = new TriangleRenderer({
       scene,
       blocks,
-      gridCoordAt,
-      lookupBlock,
       waterExtinction,
       seaLevel,
     });

@@ -5,7 +5,7 @@ import {
   type WorldBlock,
 } from "./level-data";
 import type { TerrainConfig } from "./noise";
-import { type VoxelStore, type FillStoreFn } from "./voxel-store";
+import type { FillStoreFn } from "./voxel-store";
 
 export interface BlockGridParams {
   blocksPerSide: number;
@@ -20,12 +20,7 @@ export interface BlockGridParams {
  * `WorldRing` owns moving the window and refilling slots as it scrolls;
  * `blocks`/`worldGrid` stay the same array references across that scrolling,
  * so anything holding onto them (e.g. `RendererSwitch`) sees updates in place.
- *
- * `gridCoordAt` and `lookupBlock` are ordinary methods, not auto-bound arrow
- * fields — callers that hand them to another object (as `RendererSwitch`
- * does) must wrap them in a closure (`(gx, gz) => blockGrid.lookupBlock(gx,
- * gz)`) rather than pass the bare method value, or a later `this`-based call
- * elsewhere would silently rebind `this` away from this instance.
+ * `worldGrid` is `WorldRing`'s windowing state, kept private from everyone else.
  */
 export class BlockGrid {
   readonly blocks: WorldBlock[] = [];
@@ -54,19 +49,5 @@ export class BlockGrid {
         this.worldGrid.push(grid);
       }
     }
-  }
-
-  gridCoordAt(index: number): { x: number; z: number } {
-    const g = this.worldGrid[index];
-    return { x: g.x, z: g.z };
-  }
-
-  lookupBlock(gx: number, gz: number): VoxelStore | undefined {
-    for (let i = 0; i < this.worldGrid.length; i++) {
-      if (this.worldGrid[i].x === gx && this.worldGrid[i].z === gz) {
-        return this.blocks[i].store;
-      }
-    }
-    return undefined;
   }
 }

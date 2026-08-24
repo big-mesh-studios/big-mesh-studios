@@ -24,10 +24,7 @@ import type { Dim3, WorldBlock } from "../world/level-data";
 import {
   buildBlockMesh,
   buildWaterMesh,
-  extractBlockShells,
-  makeBlockResolver,
   setGeometryData,
-  type BlockGridLookup,
   type MeshArrays,
   type MeshBuildRequest,
   type MeshBuildResult,
@@ -223,12 +220,6 @@ export class TriangleWaterMaterial extends NodeMaterial {
 export interface TriangleRendererParams {
   scene: Scene;
   blocks: WorldBlock[];
-  /**
-   * This slot's own ring grid coordinate, needed to resolve its neighbours
-   * via `lookupBlock`.
-   */
-  gridCoordAt: (index: number) => { x: number; z: number };
-  lookupBlock: BlockGridLookup;
   waterExtinction: number;
   seaLevel: number | undefined;
 }
@@ -253,8 +244,6 @@ export class TriangleRenderer implements BlockRenderer {
   readonly triWaterMeshes: Mesh[] = [];
 
   private readonly blocks: WorldBlock[];
-  private readonly gridCoordAt: (index: number) => { x: number; z: number };
-  private readonly lookupBlock: BlockGridLookup;
   private readonly waterExtinction: number;
   private readonly seaLevel: number | undefined;
 
@@ -266,12 +255,14 @@ export class TriangleRenderer implements BlockRenderer {
    */
   private readonly tilesById = new Map<number, VoxelTileConfig>();
   // Meshes are built in a web worker so a block rebuild never stalls the UI;
-  // the worker gets the block's voxel data plus its neighbours' boundary shells
-  // and hands back transferable arrays. `pendingBuilds` holds blocks whose mesh
-  // is stale, drained a few per frame while this renderer is active. `meshGen`
-  // is bumped whenever a block's data or the tiles change, so a slow worker
-  // result for stale data is dropped. If the worker is unavailable (no Worker,
-  // build error) the synchronous `buildBlockMeshesSync` path is used instead.
+  // the worker gets the block's voxel data (including its 1-voxel meshing
+  // border, so seam faces are culled against the surrounding world without
+  // any neighbour data) and hands back transferable arrays. `pendingBuilds`
+  // holds blocks whose mesh is stale, drained a few per frame while this
+  // renderer is active. `meshGen` is bumped whenever a block's data or the
+  // tiles change, so a slow worker result for stale data is dropped. If the
+  // worker is unavailable (no Worker, build error) the synchronous
+  // `buildBlockMeshesSync` path is used instead.
   private readonly meshGen: number[] = [];
   private readonly pendingBuilds = new Set<number>();
   private readonly inflight = new Map<number, number>();
@@ -285,17 +276,8 @@ export class TriangleRenderer implements BlockRenderer {
   private readonly tintMesh: Mesh;
 
   constructor(params: TriangleRendererParams) {
-    const {
-      scene,
-      blocks,
-      gridCoordAt,
-      lookupBlock,
-      waterExtinction,
-      seaLevel,
-    } = params;
+    const { scene, blocks, waterExtinction, seaLevel } = params;
     this.blocks = blocks;
-    this.gridCoordAt = gridCoordAt;
-    this.lookupBlock = lookupBlock;
     this.waterExtinction = waterExtinction;
     this.seaLevel = seaLevel;
 
@@ -377,20 +359,13 @@ export class TriangleRenderer implements BlockRenderer {
   private buildBlockMeshesSync(indices: number[]): void {
     const tileList = [...this.tilesById.values()];
     for (const i of indices) {
-      const grid = this.gridCoordAt(i);
-      const resolver = makeBlockResolver(
-        this.blocks[i].store,
-        grid.x,
-        grid.z,
-        this.lookupBlock,
-      );
       setGeometryData(
         this.triMeshes[i].geometry,
-        buildBlockMesh(this.blocks[i].store, resolver, tileList),
+        buildBlockMesh(this.blocks[i].store, tileList),
       );
       setGeometryData(
         this.triWaterMeshes[i].geometry,
-        buildWaterMesh(this.blocks[i].store, resolver),
+        buildWaterMesh(this.blocks[i].store),
       );
     }
     this.updateTriCount();
@@ -405,20 +380,9 @@ export class TriangleRenderer implements BlockRenderer {
       voxels: store.voxels,
       scale: store.scale,
       data: store.data.slice(),
-      shells: extractBlockShells(
-        store,
-        this.gridCoordAt(i).x,
-        this.gridCoordAt(i).z,
-        this.lookupBlock,
-      ),
       tileRects: [...this.tilesById.values()],
     };
     const transfers: Transferable[] = [req.data.buffer];
-    for (const shell of Object.values(req.shells)) {
-      if (shell !== null) {
-        transfers.push(shell.buffer);
-      }
-    }
     this.meshWorker?.postMessage(req, transfers);
   }
 

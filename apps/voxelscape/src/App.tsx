@@ -93,8 +93,6 @@ const App: Component<{}> = () => {
   const rendererSwitch = new RendererSwitch({
     scene,
     blocks: blockGrid.blocks,
-    gridCoordAt: (i) => blockGrid.gridCoordAt(i),
-    lookupBlock: (gx, gz) => blockGrid.lookupBlock(gx, gz),
     padding: PAD,
     blockWorld: BLOCK_WORLD,
     fogDistance: FOG_DISTANCE,

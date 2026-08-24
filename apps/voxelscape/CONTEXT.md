@@ -8,12 +8,16 @@ A browser voxel-world renderer/game: an infinite scrolling grid of procedurally 
 One chunk of the world — a fixed-size voxel volume (192x256x192 voxels) with its own voxel data (`VoxelStore`) and GPU texture (`Level`). Shared by both renderers; owned by neither. Defined in `src/level-data.ts`.
 _Avoid_: Chunk, block (ambiguous with voxel), region
 
+**VoxelStore**:
+The `WorldBlock`'s CPU voxel data (`store.data`), laid out with a 1-voxel meshing border on each horizontal side (`VOXEL_PADDING`): the interior is the volume, and the border carries the voxels the neighbouring `WorldBlock`s will contain, generated deterministically from the same world-coordinate terrain function during the fill. `get`/`set`/`sweepSurface` address the interior only; the border is consumed solely by **TriangleRenderer**'s mesh builders (`atPadded` with `x`/`z` from `-1..nx`/`-1..nz`) so seam faces are culled without ever reading another block's store — no stale-neighbour races and no worker shells.
+_Avoid_: Chunk data, padded store (the border lives in the same `data` array, not a separate buffer)
+
 **Ring**:
 The `BLOCKS x BLOCKS` (5x5) window of `WorldBlock`s kept centred on the player. When the player crosses a block boundary, the trailing row/column of the ring teleports to the leading edge and refills its `WorldBlock` in place (same slot, new data) rather than allocating a new one. Owned and managed by **WorldRing**.
-_Avoid_: Chunk grid, world grid (the ring's per-slot integer coordinates are an internal `WorldRing` implementation detail — never exposed as a raw array, only through `lookupBlock`/`gridCoordAt` — don't confuse with **Ring** itself)
+_Avoid_: Chunk grid, world grid (the ring's per-slot integer coordinates are an internal `WorldRing` implementation detail — don't confuse with **Ring** itself)
 
 **WorldRing**:
-The class that owns the **Ring**: builds it synchronously at startup (each `WorldBlock` built directly, on the main thread), keeps it centred on the player (`scrollToPlayer`, `stepRing`), and requests fresh terrain data for each block a scroll reveals from a **FillClient** (mirrors the sync-vs-async split documented for **RaymarchRenderer** vs **TriangleRenderer**). Exposes exactly three things: `blocks` (all current `WorldBlock`s), `lookupBlock(gx, gz)` (the block at a grid coordinate, if any), and `gridCoordAt(index)` (a slot's own grid coordinate — needed by `TriangleRenderer` to resolve its neighbours for cross-block face culling).
+The class that owns the **Ring**: builds it synchronously at startup (each `WorldBlock` built directly, on the main thread), keeps it centred on the player (`scrollToPlayer`, `stepRing`), and requests fresh terrain data for each block a scroll reveals from a **FillClient** (mirrors the sync-vs-async split documented for **RaymarchRenderer** vs **TriangleRenderer**). The grid coordinates are its private windowing state (`BlockGrid.worldGrid`); nothing else needs them, because seam culling uses each block's own generated **VoxelStore** border rather than reading neighbours.
 _Avoid_: Terrain streamer, chunk manager
 
 **FillClient**:
@@ -29,7 +33,7 @@ A `BlockRenderer` that ray-marches a DDA voxel traversal per-fragment against ea
 _Avoid_: Raytracer (it's a voxel raymarcher, not a general raytracer), ray renderer
 
 **TriangleRenderer**:
-A `BlockRenderer` that meshes each `WorldBlock`'s visible voxel faces into real triangle geometry (culled-face meshing, built off the main thread by a worker) and rasterizes it normally. Expensive to keep in sync — mesh rebuilds are queued and only drained while this renderer is active, so switching into it after a while away shows a brief catch-up pop-in by design.
+A `BlockRenderer` that meshes each `WorldBlock`'s visible voxel faces into real triangle geometry (culled-face meshing, built off the main thread by a worker) and rasterizes it normally. Expensive to keep in sync — mesh rebuilds are queued and only drained while this renderer is active, so switching into it after a while away shows a brief catch-up pop-in by design. Seam faces are culled against the block's own generated **VoxelStore** border, so the worker never reads a neighbour's data.
 _Avoid_: Mesh renderer, tri renderer
 
 **RendererSwitch**:
@@ -51,6 +55,7 @@ _Avoid_: CommandRegistry, command registry (implies the rejected `register()`-ca
 - The **RendererSwitch** calls `applyLighting` on both renderers every frame regardless of which is active, but calls `tick` only on the active one.
 - **WorldRing** owns the **Ring** and reports changes to it (via callbacks); **RendererSwitch** is one such callback consumer, not something **WorldRing** depends on directly.
 - **WorldRing** is **FillClient**'s only caller; **FillClient** doesn't know a **Ring** or **WorldRing** exists, only the blocks and indices it's asked to fill.
+- Block seam faces are culled against each block's own generated **VoxelStore** border, so the **TriangleRenderer**'s mesh worker never reads another block's store (and no block needs re-meshing when a neighbour's data later changes).
 - **DayNightController** and **RendererSwitch** each expose plain domain methods and know nothing about the console; **Commander** is the only thing that knows console command names, aliases, or help text exist.
 
 ## Example dialogue
