@@ -25,6 +25,12 @@ export type Vec3 = [number, number, number];
 
 export interface DayNightState {
   phase: Phase;
+  /**
+   * Raw clock seconds the state was derived from (unwrapped), so dependent
+   * systems such as the weather schedule can key off the same time the sun
+   * and moon use.
+   */
+  elapsed: number;
   /** Unit direction from the world origin toward the sun. */
   sunDir: Vec3;
   /** Unit direction from the world origin toward the moon. */
@@ -217,6 +223,7 @@ export const dayNightState = (elapsed: number): DayNightState => {
   const moonDir: Vec3 = [-sunDir[0], -sunDir[1], -sunDir[2]];
   return {
     phase: phaseAt(t),
+    elapsed,
     sunDir,
     moonDir,
     sunLight: palette.sunLight,

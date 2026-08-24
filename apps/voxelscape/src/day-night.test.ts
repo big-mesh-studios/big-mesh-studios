@@ -124,6 +124,10 @@ describe("day-night cycle", () => {
     const end = dayNightState(CYCLE_SECONDS);
     const expectSame = (a: DayNightState, b: DayNightState): void => {
       expect(a.phase).toBe(b.phase);
+      expect(a.elapsed % CYCLE_SECONDS).toBeCloseTo(
+        b.elapsed % CYCLE_SECONDS,
+        6,
+      );
       expect(a.sunDir).toEqual(b.sunDir);
       expect(a.moonDir).toEqual(b.moonDir);
       expect(a.sunLight).toEqual(b.sunLight);

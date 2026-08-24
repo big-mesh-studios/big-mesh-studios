@@ -48,6 +48,14 @@ _Avoid_: SkyController (undersells that it also owns the clock, not just lights/
 The single place every console command is declared: one object literal, keyed by command name, built once in `App.tsx` after every command-owning object (`DayNightController`, `RendererSwitch`) already exists. Each entry's `run` closure does its own raw-argument parsing/validation/aliasing (e.g. `/renderer`'s `"mesh"`/`"triangles"` aliases for `"tri"`) and calls a plain typed method on the owning object — the owning objects themselves stay ignorant that a console exists. Chosen over a `register()`-call-per-owner pattern specifically because TypeScript rejects a duplicate key in an object literal as a compile error, catching a command-name collision at typecheck time; a `register()` pattern (or a plain object literal decided at runtime some other way) only catches it — if at all — when the colliding code actually executes.
 _Avoid_: CommandRegistry, command registry (implies the rejected `register()`-call pattern)
 
+**Weather**:
+A rare-storm state machine over `"clear" | "rain" | "thunder" | "snow"`, keyed to the day-night clock's shown seconds (not wall-clock), so `/speed` advances weather at the same rate as the sun and `/day` pins it. Storms are rare (mean gap of five day-night cycles), rain being the common kind; thunder adds lightning strikes to the rain. The pure functions (`weatherAt`, `applyWeather`, `weatherLighting`) are unit-tested in `weather.ts`; `WeatherController` is what applies them to the scene.
+_Avoid_: WeatherSystem, climate (overbroad), storm tracker
+
+**WeatherController**:
+Owns the weather's scene objects — the rain and snow particle systems (billboard quads whose per-particle attributes are baked once; all motion happens in the vertex shader via a time uniform, no per-frame vertex reallocation), the thunder `Line2` lightning bolts, and the strike flash — plus the intensity ramp. `tick(dt, camera, clockSeconds)` advances everything and returns `{ weather, intensity }`; like `DayNightController` it holds no `RendererSwitch` reference, and `App.tsx` composes its result into the day-night state via `applyWeather`. Exposes plain typed methods (`setWeather`, `describe`); has no idea a console exists.
+_Avoid_: SkyController (that's `DayNightController`'s job), particle manager
+
 ## Relationships
 
 - A **Ring** holds a fixed-size window of **WorldBlock**s, indexed by ring slot.
@@ -57,6 +65,7 @@ _Avoid_: CommandRegistry, command registry (implies the rejected `register()`-ca
 - **WorldRing** is **FillClient**'s only caller; **FillClient** doesn't know a **Ring** or **WorldRing** exists, only the blocks and indices it's asked to fill.
 - Block seam faces are culled against each block's own generated **VoxelStore** border, so the **TriangleRenderer**'s mesh worker never reads another block's store (and no block needs re-meshing when a neighbour's data later changes).
 - **DayNightController** and **RendererSwitch** each expose plain domain methods and know nothing about the console; **Commander** is the only thing that knows console command names, aliases, or help text exist.
+- **WeatherController** is keyed to the day-night clock's shown seconds, which `DayNightController.tick` returns via `DayNightState.elapsed`; **App.tsx** composes the weather's `{ weather, intensity }` into the day-night state (`applyWeather`) before feeding it to `RendererSwitch.applyLighting` — the same one-directional wiring `DayNightController` already has.
 
 ## Example dialogue
 

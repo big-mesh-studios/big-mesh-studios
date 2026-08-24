@@ -20,12 +20,12 @@ export default defineConfig({
         "@solidjs/signals",
         "three",
         "@random-mesh/rmsl",
-        "@random-mesh/rmsl/scene"
+        "@random-mesh/rmsl/scene",
       ],
       output: {
         globals: {
           "solid-js": "Solid",
-          "three": "THREE",
+          three: "THREE",
           "@random-mesh/rmsl": "rmsl",
           "@random-mesh/rmsl/scene": "scene",
         },

@@ -22,6 +22,8 @@ import { RendererSwitch } from "./renderers/renderer-switch";
 import { loadVoxelTiles } from "./renderers/tile-loader";
 import { Console } from "./ui/Console";
 import Controls from "./ui/Controls";
+import { applyWeather } from "./weather";
+import { WeatherController } from "./weather-controller";
 import { BlockGrid } from "./world/block-grid";
 import { BLOCK_WORLD, getWorldHeight, type Dim3 } from "./world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
@@ -114,7 +116,6 @@ const App: Component<{}> = () => {
     onBlockReposition: (i, center) => rendererSwitch.repositionBlock(i, center),
   });
 
-  const commands = createDebugCommands({ dayNight, rendererSwitch });
   // Tell every block material which tile each voxel face uses once the
   // spritesheet loads. Fire-and-forget: voxels stay flat blue until it lands.
   loadVoxelTiles(rendererSwitch);
@@ -145,6 +146,18 @@ const App: Component<{}> = () => {
   // underwater tint) blend over the opaque scene; scene-graph draw order
   // means they must be added after the player cube.
   rendererSwitch.addTranslucentPassesToScene(scene);
+  /**
+   * Owns the rain/snow particle systems, the thunder lightning bolts, and the
+   * strike flash. Added to the scene after the translucent passes so the
+   * weather draws over terrain and water; `tick` returns the current weather
+   * so `applyWeather` can tint the day-night state before it reaches the
+   * renderers and the clear colour.
+   */
+  const weather = new WeatherController({
+    scene,
+    groundHeight: (x, z) => getWorldHeight(blockGrid.blocks, x, z),
+  });
+  const commands = createDebugCommands({ dayNight, rendererSwitch, weather });
   installKeyboardControls();
   placeCamera(camera, player);
   let timer: GpuTimer | undefined;
@@ -231,11 +244,15 @@ const App: Component<{}> = () => {
     placeCamera(camera, player);
     // advance the day-night clock and re-derive the scene lighting. A command
     // override pins the shown time; otherwise the real clock (scaled by speed)
-    // drives the cycle.
+    // drives the cycle. The weather schedule keys off the same shown clock
+    // seconds, and its intensity then tints the day-night state before it
+    // reaches the renderers and the clear colour.
     const dn = dayNight.tick(dt, camera);
-    skyColor.set(dn.skyColor[0], dn.skyColor[1], dn.skyColor[2]);
+    const weatherView = weather.tick(dt, camera, dn.elapsed);
+    const env = applyWeather(dn, weatherView.weather, weatherView.intensity);
+    skyColor.set(env.skyColor[0], env.skyColor[1], env.skyColor[2]);
     state.renderer?.setClearColor(skyColor, 1);
-    rendererSwitch.applyLighting(dn);
+    rendererSwitch.applyLighting(env);
     // per-frame work specific to whichever renderer is active (mesh-build
     // draining for the triangle renderer, underwater tint, etc.)
     rendererSwitch.tick(dt, camera);

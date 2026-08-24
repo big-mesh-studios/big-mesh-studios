@@ -1,15 +1,17 @@
 import { Commander } from "./commander";
 import type { DayNightController } from "./day-night-controller";
 import type { RendererSwitch } from "./renderers/renderer-switch";
+import type { WeatherController } from "./weather-controller";
 
 export interface DebugCommandsParams {
   dayNight: DayNightController;
   rendererSwitch: RendererSwitch;
+  weather: WeatherController;
 }
 
 /** Every debug console command, declared as a single object literal keyed by command name. */
 export const createDebugCommands = (params: DebugCommandsParams): Commander => {
-  const { dayNight, rendererSwitch } = params;
+  const { dayNight, rendererSwitch, weather } = params;
   return new Commander({
     "/day": {
       help: "/day       jump to noon (t=300s)",
@@ -89,6 +91,23 @@ export const createDebugCommands = (params: DebugCommandsParams): Commander => {
       help: "/tris      show the current triangle count",
       run: () =>
         `triangles: ${rendererSwitch.triangleCount.toLocaleString()} (${rendererSwitch.mode} mode)`,
+    },
+    "/weather": {
+      help: "/weather clear|rain|thunder|snow|auto   set or resume the weather",
+      run: (rest) => {
+        const arg = rest[0];
+        if (
+          arg === "clear" ||
+          arg === "rain" ||
+          arg === "thunder" ||
+          arg === "snow" ||
+          arg === "auto"
+        ) {
+          weather.setWeather(arg);
+          return `weather set to ${arg}`;
+        }
+        return weather.describe();
+      },
     },
   });
 };
