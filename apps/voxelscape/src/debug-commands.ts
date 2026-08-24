@@ -1,4 +1,5 @@
 import { Commander } from "./commander";
+import type { AtprotoController } from "./atproto/atproto-controller";
 import type { DayNightController } from "./day-night-controller";
 import type { RendererSwitch } from "./renderers/renderer-switch";
 import type { SoundController } from "./sound-controller";
@@ -9,11 +10,24 @@ export interface DebugCommandsParams {
   rendererSwitch: RendererSwitch;
   weather: WeatherController;
   sound: SoundController;
+  atproto: AtprotoController;
+  /** Switches the camera between first and third person views. */
+  setView: (mode: "first" | "third") => string;
+  /** Shows or hides the player cube (hidden in first person). */
+  setPlayerVisible: (visible: boolean) => string;
 }
 
 /** Every debug console command, declared as a single object literal keyed by command name. */
 export const createDebugCommands = (params: DebugCommandsParams): Commander => {
-  const { dayNight, rendererSwitch, weather, sound } = params;
+  const {
+    dayNight,
+    rendererSwitch,
+    weather,
+    sound,
+    atproto,
+    setView,
+    setPlayerVisible,
+  } = params;
   return new Commander({
     "/day": {
       help: "/day       jump to noon (t=300s)",
@@ -124,6 +138,45 @@ export const createDebugCommands = (params: DebugCommandsParams): Commander => {
     "/sound": {
       help: "/sound     show the sound state",
       run: () => sound.describe(),
+    },
+    "/connect": {
+      help: "/connect [handle]   sign in to atproto via Bluesky OAuth (popup)",
+      run: async (rest) => atproto.connect(rest[0]),
+    },
+    "/sync": {
+      help: "/sync      upload new edits and fetch+merge remote edit chunks",
+      run: async () => atproto.sync(),
+    },
+    "/atproto": {
+      help: "/atproto   show the atproto connection state",
+      run: () => atproto.describe(),
+    },
+    "/logout": {
+      help: "/logout    revoke the atproto session and sign out",
+      run: async () => atproto.signOut(),
+    },
+    "/view": {
+      help: "/view first|third   switch the camera between first and third person",
+      run: (rest) => {
+        const arg = rest[0];
+        if (arg === "first" || arg === "third") {
+          return setView(arg);
+        }
+        return "usage: /view first|third";
+      },
+    },
+    "/player": {
+      help: "/player show|hide   show or hide the player cube",
+      run: (rest) => {
+        const arg = rest[0];
+        if (arg === "show") {
+          return setPlayerVisible(true);
+        }
+        if (arg === "hide") {
+          return setPlayerVisible(false);
+        }
+        return "usage: /player show|hide";
+      },
     },
   });
 };

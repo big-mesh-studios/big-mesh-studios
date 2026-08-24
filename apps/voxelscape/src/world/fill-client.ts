@@ -4,6 +4,7 @@ import {
   type Dim3,
   type WorldBlock,
 } from "./level-data";
+import type { EditLayer } from "./edit-layer";
 import {
   type FillBatchRequest,
   type FillBatchResult,
@@ -23,6 +24,12 @@ export interface FillClientParams {
   blocks: WorldBlock[];
   /** Called with a slot's index once its voxel data has been generated and applied. */
   onBlockChanged: (index: number) => void;
+  /**
+   * The world-coordinate edit overlay. After a block's terrain is generated
+   * it is re-applied, so edits survive the ring re-filling a slot when the
+   * player scrolls away and back.
+   */
+  editLayer?: EditLayer;
   customFillStore?: FillStoreFn;
   customFillStoreUrl?: string;
 }
@@ -45,6 +52,7 @@ export class FillClient {
   private readonly onBlockChanged: (index: number) => void;
   private readonly customFillStore?: FillStoreFn;
   private readonly customFillStoreUrl?: string;
+  private readonly editLayer?: EditLayer;
   private worker: Worker | undefined;
   private workerAvailable = true;
 
@@ -55,6 +63,7 @@ export class FillClient {
     this.onBlockChanged = params.onBlockChanged;
     this.customFillStore = params.customFillStore;
     this.customFillStoreUrl = params.customFillStoreUrl;
+    this.editLayer = params.editLayer;
     this.fillGen = new Array(params.blocks.length).fill(0);
 
     try {
@@ -84,6 +93,7 @@ export class FillClient {
             broadData: msg.broadData[j],
             fineData: msg.fineData[j],
           });
+          this.applyEdits(i);
           this.onBlockChanged(i);
         }
       };
@@ -124,7 +134,25 @@ export class FillClient {
     syncLevelFromStore(block.level, block.store, {
       surfaceOnly: this.surfaceOnly,
     });
+    this.applyEdits(i);
     this.onBlockChanged(i);
+  }
+
+  /**
+   * Re-applies the edit overlay to a block's slot and re-derives its GPU
+   * level when any edit intersects it, so a refilled slot reflects edits
+   * recorded since its last fill.
+   */
+  private applyEdits(i: number): void {
+    const layer = this.editLayer;
+    if (layer === undefined) {
+      return;
+    }
+    if (layer.applyToBlock(this.blocks[i]) > 0) {
+      syncLevelFromStore(this.blocks[i].level, this.blocks[i].store, {
+        surfaceOnly: this.surfaceOnly,
+      });
+    }
   }
 
   private sendFillBatch(indices: number[], centers: Dim3[]): void {

@@ -16,6 +16,12 @@ export interface InputSnapshot {
   lookDx: number;
   /** Vertical pointer-move delta accumulated since the last frame (drag-to-look). */
   lookDy: number;
+  /** Edge-triggered: true only on the frame the break (dig) action fired. */
+  break: boolean;
+  /** Edge-triggered: true only on the frame the place action fired. */
+  place: boolean;
+  /** Edge-triggered: the selected hotbar slot changed this frame, or null. */
+  select: number | null;
 }
 
 interface InputState {
@@ -27,6 +33,9 @@ interface InputState {
   jumpHeld: boolean;
   lookDx: number;
   lookDy: number;
+  breakQueued: boolean;
+  placeQueued: boolean;
+  selectQueued: number | null;
 }
 
 const state: InputState = {
@@ -38,6 +47,9 @@ const state: InputState = {
   jumpHeld: false,
   lookDx: 0,
   lookDy: 0,
+  breakQueued: false,
+  placeQueued: false,
+  selectQueued: null,
 };
 
 const clamp = (v: number): number => Math.max(-1, Math.min(1, v));
@@ -62,7 +74,7 @@ const MOVE_KEYS: Record<string, [number, number]> = {
  * @param e - The keyboard event to check.
  * @returns True if the event originated from an editable element.
  */
-const isEditableTarget = (e: KeyboardEvent): boolean => {
+const isEditableTarget = (e: Event): boolean => {
   const el = e.target as HTMLElement | null;
   if (el === null) {
     return false;
@@ -107,11 +119,65 @@ export const installKeyboardControls = (): void => {
     if (move === undefined) {
       return;
     }
+    e.preventDefault();
     state.keyMoveX -= move[0];
     state.keyMoveY -= move[1];
   };
   window.addEventListener("keydown", onDown);
   window.addEventListener("keyup", onUp);
+};
+
+/**
+ * Binds the block-editing controls: left mouse button digs, right mouse button
+ * places, and the top-row number keys select the matching hotbar slot. Edits
+ * are edge-triggered per press, so holding a button doesn't dig repeatedly.
+ */
+export const installEditControls = (): void => {
+  const onDown = (e: MouseEvent): void => {
+    if (isEditableTarget(e)) {
+      return;
+    }
+    // Only dig/place when the press lands on the world canvas itself, not on
+    // the touch UI (joystick, buttons, console). Touch taps on the world also
+    // reach here as emulated mouse events with the canvas as the target.
+    if (!(e.target instanceof HTMLCanvasElement)) {
+      return;
+    }
+    if (e.button === 0) {
+      state.breakQueued = true;
+    } else if (e.button === 2) {
+      state.placeQueued = true;
+    }
+  };
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (isEditableTarget(e)) {
+      return;
+    }
+    if (e.code.startsWith("Digit")) {
+      const idx = Number(e.code.slice(5));
+      if (idx >= 1 && idx <= 2) {
+        state.selectQueued = idx - 1;
+      }
+    }
+  };
+  window.addEventListener("mousedown", onDown);
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("contextmenu", (e) => e.preventDefault());
+};
+
+/** Edge-triggered break (dig) request, normally from the left mouse button. */
+export const queueBreak = (): void => {
+  state.breakQueued = true;
+};
+
+/** Edge-triggered place request, normally from the right mouse button. */
+export const queuePlace = (): void => {
+  state.placeQueued = true;
+};
+
+/** Selects a hotbar slot by index (0-based) on the next frame. */
+export const queueSelect = (slot: number): void => {
+  state.selectQueued = slot;
 };
 
 /** Set the combined touch d-pad direction (call with 0,0 when released). */
@@ -193,9 +259,15 @@ export const consumeInput = (): InputSnapshot => {
     jumpHeld: state.jumpHeld,
     lookDx: state.lookDx,
     lookDy: state.lookDy,
+    break: state.breakQueued,
+    place: state.placeQueued,
+    select: state.selectQueued,
   };
   state.jumpQueued = false;
   state.lookDx = 0;
   state.lookDy = 0;
+  state.breakQueued = false;
+  state.placeQueued = false;
+  state.selectQueued = null;
   return snap;
 };

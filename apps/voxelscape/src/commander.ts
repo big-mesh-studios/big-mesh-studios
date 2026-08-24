@@ -8,7 +8,7 @@
  */
 export interface CommandEntry {
   help: string;
-  run: (rest: string[]) => string;
+  run: (rest: string[]) => string | Promise<string>;
 }
 
 export class Commander {
@@ -18,7 +18,7 @@ export class Commander {
     this.commands = commands;
   }
 
-  run(line: string): string {
+  run(line: string): string | Promise<string> {
     const [name, ...rest] = line.trim().toLowerCase().split(/\s+/);
     if (name === "/help") {
       return this.helpText();

@@ -60,6 +60,22 @@ _Avoid_: SkyController (that's `DayNightController`'s job), particle manager
 Synthesizes the weather's audio from the Web Audio API: a CC0 rain recording (`public/audio/rain.ogg`) and a CC0 thunder clap (`public/audio/thunder.ogg`), each falling back to procedural synthesis until/unless it loads, a looping wind layer that ramps with the storm intensity, and per-strike thunder delayed and attenuated by the strike's distance (`thunderTiming`). The context is created lazily on the first pointer/key gesture (`unlock`), because browsers suspend audio until then; every method guards on it. Holds no renderer or console references — `WeatherController` reports strikes through its plain `onStrike(x, z)` callback, and `App.tsx` wires that to `sound.thunderStrike`. Exposes plain typed methods (`unlock`, `tick`, `thunderStrike`, `setVolume`, `describe`, `dispose`).
 _Avoid_: AudioManager, SFXPlayer (it's weather-specific procedural synthesis, not a general audio system)
 
+**EditLayer**:
+The sparse, world-coordinate store of every voxel edit, keyed by absolute LOD-0 voxel coordinate and holding the new id plus an `updatedAt` timestamp. Terrain is noise-generated, so an edit makes sense only as a delta against that base — kept here (not in any `VoxelStore`) because `WorldRing` refills slots from noise and would erase a build the moment the player scrolls away. `FillClient` re-applies it to every freshly filled slot (`applyToBlock`), `EditingController` records into it, and `App.tsx` backs it with IndexedDB (`createEditPersistence`) and strands it to atproto. `snapshot()` is the single source fed to both persistences.
+_Avoid_: EditStore, diff map (each entry is the new id + timestamp, not a before/after pair)
+
+**EditingController**:
+Turns crosshair actions into voxel edits: consumes a CPU DDA voxel pick (`pickVoxel`) computed from the camera look direction, breaks a reachable collectable voxel (adding it to the **Inventory**) or places the selected block into the adjacent cell (dirt placed with open air above grows grass on top), and pushes the result through the shared **EditLayer** into the containing block's store + GPU level, notifying `RendererSwitch.onBlockChanged` for the slot. Refuses to break the world floor or place inside the player. A plain domain object exposing `breakBlock`, `placeBlock`, `pick`; has no idea a console or network exists.
+_Avoid_: VoxelEditor, block tool (undersells that it also owns inventory handoff, not just voxel mutation)
+
+**Inventory**:
+How many Dirt blocks the player holds (grass and dirt both break into a single dirt item; water isn't collectable), plus which block is selected for placement. A tiny plain class with an `onChange` callback the hotbar HUD (`EditHud`) subscribes to; `EditingController.breakBlock` adds and `placeBlock` consumes.
+_Avoid_: ItemStackSystem (it's a flat per-id count, not stack slots)
+
+**AtprotoController**:
+Owns the atproto/Bluesky connection and the edit-chunk sync. Builds a `BrowserOAuthClient` (loopback client for localhost dev, hosted `client-metadata.json` for prod), drives the OAuth popup (`connect`), restores/revokes the session, and on `sync` uploads the **EditLayer**'s recent edits as `app.bms.voxelscape.edit` records (32³ chunks, `src/atproto/edits.ts`) then fetches the whole collection and merges it back with per-voxel last-write-wins. Exposes plain typed methods (`init`, `connect`, `sync`, `signOut`, `describe`); wired to the shared `EditLayer` in `App.tsx`, no renderer or console knowledge.
+_Avoid_: PDSClient, BlueskyConnector (it's specifically the edit-sync + OAuth owner, not a general atproto client)
+
 ## Relationships
 
 - A **Ring** holds a fixed-size window of **WorldBlock**s, indexed by ring slot.
@@ -71,6 +87,9 @@ _Avoid_: AudioManager, SFXPlayer (it's weather-specific procedural synthesis, no
 - **DayNightController** and **RendererSwitch** each expose plain domain methods and know nothing about the console; **Commander** is the only thing that knows console command names, aliases, or help text exist.
 - **WeatherController** is keyed to the day-night clock's shown seconds, which `DayNightController.tick` returns via `DayNightState.elapsed`; **App.tsx** composes the weather's `{ weather, intensity }` into the day-night state (`applyWeather`) before feeding it to `RendererSwitch.applyLighting` — the same one-directional wiring `DayNightController` already has.
 - **WeatherController** reports lightning strikes through its plain `onStrike(x, z)` callback; **SoundController** is one such consumer (wired in `App.tsx` to `sound.thunderStrike`), not something **WeatherController** depends on.
+- **EditLayer** is the single source of truth for voxel edits, keyed by world voxel (not slot); **FillClient**, **EditingController**, **AtprotoController**, and IndexedDB persistence all read or write it.
+- **EditingController** is wired to the renderers in `App.tsx` (its `onBlockEdited` calls `RendererSwitch.onBlockChanged`); it holds no renderer reference itself.
+- **EditingController** is how blocks move between the world and the **Inventory**: breaking adds, placing consumes, selection drives `placeBlock`.
 
 ## Example dialogue
 

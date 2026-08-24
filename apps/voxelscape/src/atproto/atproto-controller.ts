@@ -1,0 +1,295 @@
+// atproto / Bluesky connection and edit-chunk sync. Owns the OAuth session
+// (popup flow via `@atproto/oauth-client-browser`), the `AtpAgent` built on
+// that session, and the upload/fetch of `app.bms.voxelscape.edit` records —
+// see `edits.ts` for the pure record logic. A plain domain object: it knows
+// about the network and the edit overlay, not about renderers or a console.
+import { Agent } from "@atproto/api";
+import {
+  BrowserOAuthClient,
+  buildLoopbackClientId,
+} from "@atproto/oauth-client-browser";
+import type { OAuthClientMetadataInput } from "@atproto/oauth-client-browser";
+import {
+  EDIT_COLLECTION,
+  groupEditsByChunk,
+  makeRkey,
+  mergeIntoLayer,
+  recordsToEntries,
+  type EditChunkRecord,
+} from "./edits";
+import type { EditLayer } from "../world/edit-layer";
+
+export interface AtpControllerOptions {
+  /** Display name in the OAuth prompt; defaults to "bms-voxelscape". */
+  name?: string;
+  /**
+   * When set, client metadata is loaded from this hosted `client-metadata.json`
+   * URL (production). When absent, a loopback client is built for the current
+   * origin, which works for localhost development without a server.
+   */
+  clientId?: string;
+}
+
+export type AtpStatus =
+  | "pending" // init not run yet
+  | "anonymous"
+  | "connecting"
+  | "connected"
+  | "error";
+
+const loopbackMetadata = (
+  origin: string,
+  name: string,
+): OAuthClientMetadataInput => ({
+  client_id: buildLoopbackClientId(window.location) as string,
+  redirect_uris: [`${origin}/oauth/callback`],
+  client_name: name,
+  scope: "atproto transition:generic",
+  grant_types: ["authorization_code", "refresh_token"],
+  response_types: ["code"],
+  token_endpoint_auth_method: "none",
+  application_type: "web",
+  dpop_bound_access_tokens: true,
+});
+
+/**
+ * The atproto public API endpoint used to resolve a sign-in handle to its DID
+ * and PDS. The OAuth client requires either this or a custom identity
+ * resolver; public.api.bsky.app resolves handles for the whole network.
+ */
+const HANDLE_RESOLVER = "https://public.api.bsky.app";
+
+/**
+ * Wraps the edit-chunk sync onto a player's atproto repo. A single shared
+ * overlay is both the source for uploads and the destination for merges, so a
+ * `/sync` round-trip ends with the local world reflecting everyone's edits.
+ */
+export class AtprotoController {
+  private readonly layer: EditLayer;
+  private readonly seed: number | null;
+  private readonly options: AtpControllerOptions;
+  private oauth: BrowserOAuthClient | undefined;
+  private agent: Agent | undefined;
+  private did_: string | null = null;
+  private status_: AtpStatus = "pending";
+  private lastError: string | null = null;
+  private lastUploadAt = 0;
+  private readonly handleInput: () => string;
+
+  constructor(params: {
+    layer: EditLayer;
+    seed: number | null;
+    options: AtpControllerOptions;
+    /** Supplies the login handle when `/connect` has no argument. */
+    getHandle: () => string;
+  }) {
+    this.layer = params.layer;
+    this.seed = params.seed;
+    this.options = params.options;
+    this.handleInput = params.getHandle;
+    try {
+      const saved = Number(localStorage.getItem("bms.atproto.lastUploadAt"));
+      if (Number.isFinite(saved)) {
+        this.lastUploadAt = saved;
+      }
+    } catch {
+      this.lastUploadAt = 0;
+    }
+  }
+
+  get status(): AtpStatus {
+    return this.status_;
+  }
+
+  /** The authenticated account's DID, or null when signed out. */
+  get did(): string | null {
+    return this.did_;
+  }
+
+  /** Whether a signed-in, ready-to-sync agent is available. */
+  get ready(): boolean {
+    return this.agent !== undefined;
+  }
+
+  /**
+   * Restores any stored session, or completes a popup login callback if the
+   * current URL carries OAuth parameters. Safe to call once at startup.
+   */
+  async init(): Promise<string> {
+    try {
+      this.status_ = "connecting";
+      this.oauth = await this.buildClient();
+      const result = await this.oauth.init();
+      if (result === undefined) {
+        this.status_ = "anonymous";
+        return "not signed in";
+      }
+      // A popup is finished the moment its session is established; the parent
+      // window carries on from its own `init`.
+      if (typeof window !== "undefined" && window.opener) {
+        window.close();
+      }
+      this.adoptSession(result.session);
+      return `restored session for ${this.did_ ?? result.session.sub}`;
+    } catch (err) {
+      return this.fail(err);
+    }
+  }
+
+  /**
+   * Starts the OAuth popup login for `handle`. `handle` may be undefined, in
+   * which case the configured handle getter supplies it.
+   */
+  async connect(handle?: string): Promise<string> {
+    const target = handle ?? this.handleInput();
+    if (target.trim() === "") {
+      return "provide a Bluesky handle (e.g. /connect @you.bsky.social)";
+    }
+    try {
+      this.status_ = "connecting";
+      this.oauth ??= await this.buildClient();
+      const session = await this.oauth.signInPopup(target.trim());
+      this.adoptSession(session);
+      return `connected to atproto as ${this.did_}`;
+    } catch (err) {
+      return this.fail(err);
+    }
+  }
+
+  /**
+   * Uploads edits newer than the last sync as one record per 32³ chunk, then
+   * fetches every edit record in the repo and merges it into the overlay
+   * (last-write-wins by record timestamp).
+   */
+  async sync(): Promise<string> {
+    if (this.agent === undefined) {
+      return "not connected — use /connect first";
+    }
+    const messages: string[] = [];
+
+    const groups = groupEditsByChunk(
+      this.layer
+        .snapshot()
+        .filter(({ edit }) => edit.updatedAt > this.lastUploadAt),
+      this.seed,
+      new Date().toISOString(),
+    );
+    for (const record of groups.values()) {
+      try {
+        await this.agent!.com.atproto.repo.putRecord({
+          repo: this.did_!,
+          collection: EDIT_COLLECTION,
+          rkey: makeRkey(record.chunk),
+          record: record as unknown as { [_ in string]: unknown },
+        });
+      } catch (err) {
+        return this.fail(err);
+      }
+    }
+    if (groups.size > 0) {
+      this.lastUploadAt = Date.now();
+      try {
+        localStorage.setItem(
+          "bms.atproto.lastUploadAt",
+          String(this.lastUploadAt),
+        );
+      } catch {
+        // persistence is best-effort; a resync only re-uploads records
+      }
+      messages.push(`uploaded ${groups.size} edit chunk(s)`);
+    }
+
+    const fetched = await this.fetchAllRecords();
+    const changed = mergeIntoLayer(this.layer, recordsToEntries(fetched));
+    messages.push(
+      `fetched ${fetched.length} remote record(s), ${changed} voxel(s) updated`,
+    );
+    return messages.join(", ");
+  }
+
+  async signOut(): Promise<string> {
+    try {
+      if (this.oauth !== undefined && this.did_ !== null) {
+        await this.oauth.revoke(this.did_);
+      }
+    } catch {
+      // ignore — a failed revoke still drops the local session below
+    }
+    this.agent = undefined;
+    this.did_ = null;
+    this.status_ = "anonymous";
+    return "signed out";
+  }
+
+  describe(): string {
+    return `atproto: ${this.status_}${this.did_ !== null ? ` as ${this.did_}` : ""}${
+      this.status_ === "error" ? ` — ${this.lastError ?? "unknown error"}` : ""
+    }`;
+  }
+
+  dispose(): void {
+    void this.oauth?.dispose();
+    this.oauth = undefined;
+  }
+
+  private async buildClient(): Promise<BrowserOAuthClient> {
+    if (this.options.clientId !== undefined) {
+      return BrowserOAuthClient.load({
+        clientId: this.options.clientId,
+        handleResolver: HANDLE_RESOLVER,
+      });
+    }
+    return new BrowserOAuthClient({
+      clientMetadata: loopbackMetadata(
+        window.location.origin,
+        this.options.name ?? "bms-voxelscape",
+      ),
+      handleResolver: HANDLE_RESOLVER,
+    });
+  }
+
+  private adoptSession(session: {
+    fetchHandler: (pathname: string, init: RequestInit) => Promise<Response>;
+    sub: string;
+  }): void {
+    this.agent = new Agent({
+      fetchHandler: (url: string, init: RequestInit) =>
+        session.fetchHandler(url, init),
+    });
+    this.did_ = session.sub;
+    this.status_ = "connected";
+    this.lastError = null;
+  }
+
+  private async fetchAllRecords(): Promise<EditChunkRecord[]> {
+    const agent = this.agent;
+    if (agent === undefined || this.did_ === null) {
+      return [];
+    }
+    const repo = this.did_;
+    const out: EditChunkRecord[] = [];
+    let cursor: string | undefined;
+    do {
+      const res = await agent.com.atproto.repo.listRecords({
+        repo,
+        collection: EDIT_COLLECTION,
+        cursor,
+        limit: 100,
+      });
+      cursor = res.data.cursor;
+      for (const rec of res.data.records) {
+        const value = rec.value as unknown as EditChunkRecord;
+        if (value?.$type === EDIT_COLLECTION) {
+          out.push(value);
+        }
+      }
+    } while (cursor !== undefined);
+    return out;
+  }
+
+  private fail(err: unknown): string {
+    this.status_ = "error";
+    this.lastError = err instanceof Error ? err.message : String(err);
+    return `atproto error: ${this.lastError}`;
+  }
+}

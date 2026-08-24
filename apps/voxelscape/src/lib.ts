@@ -36,8 +36,23 @@ export {
   Level,
   BLOCK_WORLD,
   getWorldHeight,
+  syncLevelFromStore,
   type Dim3,
 } from "./world/level-data";
+export {
+  EditLayer,
+  editLayerFromSnapshot,
+  localToWorldVoxel,
+  worldVoxelToLocal,
+  blockWorldVoxelRange,
+  type WorldVoxel,
+  type VoxelEdit,
+} from "./world/edit-layer";
+export {
+  createEditPersistence,
+  type EditPersistence,
+} from "./world/edit-persistence";
+export { pickVoxel, DEFAULT_REACH, type VoxelPick } from "./world/picker";
 export {
   VoxelStore,
   fillStore,
@@ -48,6 +63,40 @@ export {
   VOXEL_WATER,
 } from "./world/voxel-store";
 export { DEFAULT_TERRAIN, type TerrainConfig, heightAt } from "./world/noise";
+
+// Editing & Inventory
+export {
+  Inventory,
+  COLLECTABLE,
+  BREAKABLE,
+  BREAK_YIELD,
+  type InventoryItem,
+} from "./inventory";
+export {
+  EditingController,
+  type EditingControllerParams,
+} from "./editing-controller";
+
+// atproto / Bluesky
+export {
+  AtprotoController,
+  type AtpControllerOptions,
+  type AtpStatus,
+} from "./atproto/atproto-controller";
+export {
+  EDIT_CHUNK_DIM,
+  EDIT_COLLECTION,
+  groupEditsByChunk,
+  makeRkey,
+  recordVoxel,
+  recordsToEntries,
+  mergeIntoLayer,
+  chunkOf,
+  chunkKey,
+  parseChunkKey,
+  type EditChunkCoord,
+  type EditChunkRecord,
+} from "./atproto/edits";
 
 // Day/Night & Environment
 export { DayNightController } from "./day-night-controller";

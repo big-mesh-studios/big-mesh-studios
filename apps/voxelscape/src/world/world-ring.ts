@@ -6,6 +6,7 @@ import {
 } from "./level-data";
 import { FillClient } from "./fill-client";
 import type { BlockGrid } from "./block-grid";
+import type { EditLayer } from "./edit-layer";
 import type { TerrainConfig } from "./noise";
 import type { FillStoreFn } from "./voxel-store";
 
@@ -25,6 +26,8 @@ export interface WorldRingParams {
   onBlockReposition: (index: number, center: Dim3) => void;
   customFillStore?: FillStoreFn;
   customFillStoreUrl?: string;
+  /** Applied to each block after its terrain is generated (see `FillClient`). */
+  editLayer?: EditLayer;
 }
 
 /**
@@ -51,6 +54,7 @@ export class WorldRing {
       surfaceOnly: params.surfaceOnly,
       blocks: this.blocks,
       onBlockChanged: params.onBlockChanged,
+      editLayer: params.editLayer,
       customFillStore: params.customFillStore,
       customFillStoreUrl: params.customFillStoreUrl,
     });

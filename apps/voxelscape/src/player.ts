@@ -27,8 +27,10 @@ export const PLAYER_CFG = {
   maxPitch: 1.35,
   /** Chase-camera distance behind the cube centre, in world units. */
   followBack: 9,
-  /** Chase-camera height above the cube centre, in world units. */
+  /** Chase-camera height above the cube centre when not in first person. */
   followUp: 2.5,
+  /** Eye height above the player's feet for the first-person camera. */
+  eyeHeight: 0.9,
 };
 
 export const createPlayer = (x: number, y: number, z: number): Player => ({
@@ -125,11 +127,41 @@ export const updatePlayer = (
   }
 };
 
-/** Chase camera hovering just behind and above the player cube, looking at it. */
+/** The look direction of the player's view from yaw/pitch, as a unit vector. */
+export const lookDirection = (player: Player): [number, number, number] => {
+  const cp = Math.cos(player.pitch);
+  return [
+    cp * Math.sin(player.yaw),
+    Math.sin(player.pitch),
+    cp * Math.cos(player.yaw),
+  ];
+};
+
+/**
+ * Places the camera. In first person (the default) it sits at the player's
+ * eye looking along the player's yaw/pitch, so the crosshair lines up with
+ * where the player aims (and where voxel editing picks). In third person it
+ * hovers behind and above the cube, looking at it.
+ */
 export const placeCamera = (
   camera: PerspectiveCamera,
   player: Player,
+  firstPerson: boolean = true,
 ): void => {
+  if (firstPerson) {
+    camera.position.set(
+      player.position.x,
+      player.position.y + PLAYER_CFG.eyeHeight,
+      player.position.z,
+    );
+    const [dx, dy, dz] = lookDirection(player);
+    camera.lookAt(
+      camera.position.x + dx,
+      camera.position.y + dy,
+      camera.position.z + dz,
+    );
+    return;
+  }
   const sinYaw = Math.sin(player.yaw);
   const cosYaw = Math.cos(player.yaw);
   camera.position.set(

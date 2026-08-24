@@ -1,7 +1,7 @@
 import { createEffect, createSignal, type Component } from "solid-js";
 
 export interface ConsoleProps {
-  onCommand: (line: string) => string;
+  onCommand: (line: string) => string | Promise<string>;
 }
 
 /**
@@ -23,9 +23,26 @@ export const Console: Component<ConsoleProps> = (props) => {
       return;
     }
     const output = props.onCommand(line);
-    const echoed =
-      output === "" ? [`> ${line}`] : [`> ${line}`, ...output.split("\n")];
-    setLines((prev) => [...prev, ...echoed]);
+    const emit = (text: string): void => {
+      const echoed =
+        text === "" ? [`> ${line}`] : [`> ${line}`, ...text.split("\n")];
+      setLines((prev) => [...prev, ...echoed]);
+    };
+    if (typeof output === "string") {
+      emit(output);
+    } else {
+      setLines((prev) => [...prev, `> ${line}`, "…"]);
+      void output
+        .then((text) => {
+          setLines((prev) => [
+            ...prev,
+            ...(text === "" ? [] : text.split("\n")),
+          ]);
+        })
+        .catch((err) => {
+          setLines((prev) => [...prev, `command failed: ${String(err)}`]);
+        });
+    }
     setValue("");
   };
 

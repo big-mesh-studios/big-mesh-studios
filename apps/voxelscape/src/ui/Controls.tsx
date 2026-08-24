@@ -6,13 +6,14 @@ import {
   onCleanup,
 } from "solid-js";
 import * as THREE from "three";
-import { queueJump, setTouchJump, setTouchMove } from "../input";
+import { queueJump, queuePlace, setTouchJump, setTouchMove } from "../input";
 import { Joystick } from "./Joystick";
 import { ActionButton } from "./ActionButton";
 
 const Controls: Component = () => {
   const HIT = 150;
   const BUTTON = 100;
+  const EDIT = 84;
   const MARGIN = 24;
   const [viewSize, setViewSize] = createSignal<THREE.Vector2>(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
@@ -43,6 +44,20 @@ const Controls: Component = () => {
     size: () => BUTTON,
   });
 
+  // single "place" touch button sits left of the jump button; digging is a tap
+  // on the world canvas itself
+  const placeButton = ActionButton({
+    position: createMemo(
+      () =>
+        new THREE.Vector2(
+          viewSize().x - MARGIN - BUTTON - EDIT - 12,
+          viewSize().y - MARGIN - BUTTON + (BUTTON - EDIT) / 2,
+        ),
+    ),
+    size: () => EDIT,
+    colour: () => 0x35b06b,
+  });
+
   // joystick value is -0.5..0.5 in screen axes (+y = down); convert to the
   // -1..1 input snapshot axes (+y = forward).
   createEffect(joystick.value, (value) => {
@@ -69,6 +84,20 @@ const Controls: Component = () => {
 
       <div class="pointer-events-auto">
         <actionButton.UI />
+      </div>
+
+      {/* place fires once on the last pointer that lifts off the button; a
+          direct handler keeps it independent of Solid's reactive effect
+          semantics */}
+      <div
+        class="pointer-events-auto"
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => {
+          e.stopPropagation();
+          queuePlace();
+        }}
+      >
+        <placeButton.UI />
       </div>
     </div>
   );

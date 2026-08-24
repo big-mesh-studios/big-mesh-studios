@@ -7,26 +7,45 @@ import {
   Scene,
   WebGLRenderer,
 } from "@random-mesh/rmsl/scene";
-import { Component, createEffect, createStore } from "solid-js";
+import { Component, createEffect, createSignal, createStore } from "solid-js";
 import { AdaptiveResolution } from "./adaptive";
+import { AtprotoController } from "./atproto/atproto-controller";
 import { DayNightController } from "./day-night-controller";
 import { createDebugCommands } from "./debug-commands";
+import { EditingController } from "./editing-controller";
 import {
   consumeInput,
   createLookDragHandlers,
+  installEditControls,
   installKeyboardControls,
 } from "./input";
+import { COLLECTABLE, Inventory } from "./inventory";
 import { GpuTimer } from "./perf";
-import { createPlayer, placeCamera, PLAYER_CFG, updatePlayer } from "./player";
+import {
+  createPlayer,
+  lookDirection,
+  placeCamera,
+  PLAYER_CFG,
+  updatePlayer,
+} from "./player";
 import { RendererSwitch } from "./renderers/renderer-switch";
 import { loadVoxelTiles } from "./renderers/tile-loader";
 import { SoundController } from "./sound-controller";
 import { Console } from "./ui/Console";
 import Controls from "./ui/Controls";
+import { EditHud } from "./ui/EditHud";
 import { applyWeather } from "./weather";
 import { WeatherController } from "./weather-controller";
 import { BlockGrid } from "./world/block-grid";
-import { BLOCK_WORLD, getWorldHeight, type Dim3 } from "./world/level-data";
+import { EditLayer, type WorldVoxel } from "./world/edit-layer";
+import { createEditPersistence } from "./world/edit-persistence";
+import {
+  BLOCK_WORLD,
+  getWorldHeight,
+  syncLevelFromStore,
+  VOXEL_SIZE,
+  type Dim3,
+} from "./world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
 import { WorldRing } from "./world/world-ring";
 
@@ -61,6 +80,9 @@ const PAD = 2.0;
 const WATER_EXTINCTION = 0.12;
 /** How many frames between each debug-perf HUD sample (a GPU readback, so throttled). */
 const SAMPLE_EVERY = 24;
+/** First person by default: the camera is the player's eye, and the cube is hidden. */
+let firstPerson = true;
+let showPlayerCube = false;
 
 const App: Component<{}> = () => {
   /** True when the URL hash includes `perf`, enabling the debug HUD (GPU timer and fetches-per-ray). */
@@ -73,6 +95,8 @@ const App: Component<{}> = () => {
     canvas: undefined,
     renderer: undefined,
   });
+  /** Last break/place result, shown by the HUD so silent failures are visible. */
+  const [editStatus, setEditStatus] = createSignal("");
   const scene = new Scene();
   /**
    * Owns the sun/ambient lights, the sun/moon billboards, and the day-night
@@ -106,6 +130,14 @@ const App: Component<{}> = () => {
   });
 
   /**
+   * The world-coordinate edit overlay: every player break/place, keyed by
+   * absolute voxel, so builds survive ring refills and sync to atproto.
+   * Persisted to IndexedDB and re-applied to freshly filled blocks.
+   */
+  const editLayer = new EditLayer();
+  const editPersistence = createEditPersistence(editLayer);
+
+  /**
    * Keeps `blockGrid`'s window centred on the player, streamed in off the
    * main thread as it scrolls.
    */
@@ -115,6 +147,7 @@ const App: Component<{}> = () => {
     surfaceOnly: SURFACE_ONLY,
     onBlockChanged: (i) => rendererSwitch.onBlockChanged(i),
     onBlockReposition: (i, center) => rendererSwitch.repositionBlock(i, center),
+    editLayer,
   });
 
   // Tell every block material which tile each voxel face uses once the
@@ -142,7 +175,69 @@ const App: Component<{}> = () => {
     new MeshStandardMaterial({ color: 0xff7043, roughness: 0.8 }),
   );
   playerCube.position.copy(player.position);
+  playerCube.visible = showPlayerCube;
   scene.add(playerCube);
+
+  /**
+   * Inventory (collected blocks + selected slot) and the edit controller that
+   * turns crosshair actions into voxel edits. The camera look direction is
+   * derived from the same look target `placeCamera` uses, so picking matches
+   * where the player is aiming.
+   */
+  const inventory = new Inventory();
+  const playerVoxels = (): WorldVoxel[] => {
+    const h = PLAYER_CFG.halfSize;
+    const bounds = (c: number): [number, number] => [
+      Math.floor((c - h) / VOXEL_SIZE),
+      Math.floor((c + h) / VOXEL_SIZE),
+    ];
+    const [x0, x1] = bounds(player.position.x);
+    const [y0, y1] = bounds(player.position.y);
+    const [z0, z1] = bounds(player.position.z);
+    const out: WorldVoxel[] = [];
+    for (let x = x0; x <= x1; x++) {
+      for (let y = y0; y <= y1; y++) {
+        for (let z = z0; z <= z1; z++) {
+          out.push([x, y, z]);
+        }
+      }
+    }
+    return out;
+  };
+  const editing = new EditingController({
+    blocks: blockGrid.blocks,
+    layer: editLayer,
+    inventory,
+    surfaceOnly: SURFACE_ONLY,
+    onBlockEdited: (i) => rendererSwitch.onBlockChanged(i),
+    onEditRecorded: () => editPersistence.scheduleSave(),
+    getLook: () => {
+      const p = camera.position;
+      const [dx, dy, dz] = lookDirection(player);
+      return {
+        origin: [p.x, p.y, p.z],
+        direction: [dx, dy, dz],
+      };
+    },
+    getPlayerVoxels: playerVoxels,
+  });
+
+  // Re-apply any previously persisted edits to the freshly built initial
+  // blocks, now that the overlay has loaded.
+  void editPersistence.load().then(() => {
+    for (const block of blockGrid.blocks) {
+      if (editLayer.applyToBlock(block) > 0) {
+        syncLevelFromStore(block.level, block.store, {
+          surfaceOnly: SURFACE_ONLY,
+        });
+      }
+    }
+    for (let i = 0; i < blockGrid.blocks.length; i++) {
+      rendererSwitch.onBlockChanged(i);
+    }
+  });
+
+  installEditControls();
   // Both renderers' translucent water passes (and the triangle renderer's
   // underwater tint) blend over the opaque scene; scene-graph draw order
   // means they must be added after the player cube.
@@ -173,14 +268,35 @@ const App: Component<{}> = () => {
     groundHeight: (x, z) => getWorldHeight(blockGrid.blocks, x, z),
     onStrike: (x, z) => sound.thunderStrike(x, z),
   });
+  /**
+   * Owns the atproto/Bluesky connection and the edit-chunk sync (see
+   * `src/atproto`). Restores any stored session at startup; `/sync` uploads
+   * fresh edits and merges remote ones into `editLayer`.
+   */
+  const atproto = new AtprotoController({
+    layer: editLayer,
+    seed: TERRAIN.seed,
+    options: {},
+    getHandle: () => "",
+  });
+  void atproto.init();
   const commands = createDebugCommands({
     dayNight,
     rendererSwitch,
     weather,
     sound,
+    atproto,
+    setView: (mode) => {
+      firstPerson = mode === "first";
+      return `camera: ${mode}-person view`;
+    },
+    setPlayerVisible: (visible) => {
+      showPlayerCube = visible;
+      return visible ? "player cube shown" : "player cube hidden";
+    },
   });
   installKeyboardControls();
-  placeCamera(camera, player);
+  placeCamera(camera, player, firstPerson);
   let timer: GpuTimer | undefined;
   let hud: HTMLDivElement | undefined;
   let sampleCounter = 0;
@@ -244,10 +360,11 @@ const App: Component<{}> = () => {
     const dt =
       lastFrameT > 0 ? Math.min(0.05, (t - lastFrameT) / 1000) : 1 / 60;
     lastFrameT = t;
+    const input = consumeInput();
     updatePlayer(
       player,
       dt,
-      consumeInput(),
+      input,
       (x, z) => getWorldHeight(blockGrid.blocks, x, z),
       // water surface height: sea level where the ground dips below it, else none
       (x, z) => {
@@ -257,12 +374,26 @@ const App: Component<{}> = () => {
       },
       SAFE_EXTENT,
     );
+    // handle block editing input (edge-triggered dig/place + hotbar select)
+    if (input.break) {
+      const result = editing.breakBlock();
+      if (result !== null) {
+        setEditStatus(result);
+      }
+    }
+    if (input.place) {
+      setEditStatus(editing.placeBlock());
+    }
+    if (input.select !== null) {
+      inventory.setSelected(Object.keys(COLLECTABLE).map(Number)[input.select]);
+    }
     // scroll the terrain ring so the player's block stays centred
     worldRing.scrollToPlayer(player.position.x, player.position.z);
     playerCube.position.copy(player.position);
     // the cube's local +Z faces the heading; a Y rotation by `yaw` aligns it
     playerCube.rotation.y = player.yaw;
-    placeCamera(camera, player);
+    playerCube.visible = showPlayerCube;
+    placeCamera(camera, player, firstPerson);
     // advance the day-night clock and re-derive the scene lighting. A command
     // override pins the shown time; otherwise the real clock (scaled by speed)
     // drives the cycle. The weather schedule keys off the same shown clock
@@ -322,6 +453,10 @@ const App: Component<{}> = () => {
         renderer.dispose();
         // stop the fill worker so it doesn't keep running after unmount
         worldRing.dispose();
+        // store the edit overlay before the render loop stops
+        void editPersistence.saveNow();
+        // release the atproto OAuth state
+        atproto.dispose();
         // release the audio hardware
         sound.dispose();
         window.removeEventListener("pointerdown", unlockSound);
@@ -383,6 +518,7 @@ const App: Component<{}> = () => {
         onPointerCancel={lookDrag.onPointerCancel}
       />
       <Controls />
+      <EditHud inventory={inventory} status={editStatus} />
       <Console onCommand={(line) => commands.run(line)} />
       {debugPerf && (
         <div
