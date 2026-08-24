@@ -34,8 +34,8 @@ export interface WeatherView {
 }
 
 const WEATHER_SEED = 0x5eed;
-const RAIN_COUNT = 1500;
-const SNOW_COUNT = 1000;
+const RAIN_COUNT = 5000;
+const SNOW_COUNT = 4000;
 /** Seconds for storm lighting and particles to ramp in or out on a weather change. */
 const RAMP_SECONDS = 5;
 /** Mean seconds between lightning strikes while a thunderstorm is active. */
@@ -54,6 +54,11 @@ interface ParticleOpts {
   count: number;
   spreadX: number;
   spreadZ: number;
+  /**
+   * World-unit grid size the particle field snaps to in x/z (see
+   * `ParticleSystem.tileSize`). Independent of the spread.
+   */
+  tileSize: number;
   minY: number;
   maxY: number;
   fallSpeed: number;
@@ -67,8 +72,9 @@ interface ParticleOpts {
 
 const RAIN_OPTS: ParticleOpts = {
   count: RAIN_COUNT,
-  spreadX: 220,
-  spreadZ: 220,
+  spreadX: 100,
+  spreadZ: 100,
+  tileSize: 200,
   minY: -80,
   maxY: 220,
   fallSpeed: 90,
@@ -82,15 +88,16 @@ const RAIN_OPTS: ParticleOpts = {
 
 const SNOW_OPTS: ParticleOpts = {
   count: SNOW_COUNT,
-  spreadX: 260,
-  spreadZ: 260,
+  spreadX: 120,
+  spreadZ: 120,
+  tileSize: 240,
   minY: -80,
   maxY: 240,
-  fallSpeed: 12,
+  fallSpeed: 6,
   windX: 2,
   windZ: 0.5,
-  sizeMin: [0.5, 0.5],
-  sizeMax: [1.4, 1.4],
+  sizeMin: [0.1, 0.1],
+  sizeMax: [0.2, 0.2],
   lifeMin: 6,
   lifeMax: 10,
 };
@@ -210,6 +217,13 @@ const makeParticleGeometry = (opts: ParticleOpts): BufferGeometry => {
  * along its baked `drift` displacement plus a `sin` sway. The quad is
  * billboarded in view space (fixed world-unit size), so the perspective
  * projection shrinks distant particles naturally.
+ *
+ * The horizontal (x/z) position is wrapped by `tileSize` against the camera
+ * (`camPos`): the baked positions span one full tile, so wrapping keeps each
+ * drop anchored to the same world cell yet always within `tileSize/2` of the
+ * camera. As the camera crosses a cell boundary the pattern wraps invisibly
+ * (uniform distribution), so the field reads as infinite terrain-fixed rain
+ * instead of a box dragged along with the player.
  */
 export class ParticleMaterial extends NodeMaterial {
   /** Shader-clock seconds; advances the per-particle lifetime mod loops. */
@@ -222,11 +236,17 @@ export class ParticleMaterial extends NodeMaterial {
   sway = 0;
   /** When true the fragment is a soft disc (snow); otherwise a soft rectangle (rain streak). */
   disc = false;
+  /** World-unit wrap period for the x/z anchoring. */
+  tileSize = 200;
+  /** Camera world position; the x/z field wraps around it. */
+  camPos: [number, number, number] = [0, 0, 0];
 
   private timeUniform: UniformNode<"float"> | undefined;
   private intensityUniform: UniformNode<"float"> | undefined;
   private tintUniform: UniformNode<"vec3"> | undefined;
   private swayUniform: UniformNode<"float"> | undefined;
+  private camPosUniform: UniformNode<"vec3"> | undefined;
+  private tileUniform: UniformNode<"float"> | undefined;
 
   constructor() {
     super();
@@ -244,11 +264,19 @@ export class ParticleMaterial extends NodeMaterial {
     );
     this.tintUniform = b.materialUniform("tint", "vec3", () => this.tint);
     this.swayUniform = b.materialUniform("sway", "float", () => this.sway);
+    this.camPosUniform = b.materialUniform("camPos", "vec3", () => this.camPos);
+    this.tileUniform = b.materialUniform(
+      "tileSize",
+      "float",
+      () => this.tileSize,
+    );
   }
 
   protected buildVertexBody(b: Builder): Node<"vec4"> {
     const time = this.timeUniform ?? float(0);
     const sway = this.swayUniform ?? float(0);
+    const cam = this.camPosUniform ?? vec3(0);
+    const tile = this.tileUniform ?? float(200);
     const pos = b.attribute("particlePos", "vec3");
     const corner = b.attribute("corner", "vec2");
     const drift = b.attribute("drift", "vec3");
@@ -278,10 +306,20 @@ export class ParticleMaterial extends NodeMaterial {
       ),
     ).toVar();
 
+    // wrap the animated local x/z into [-tile/2, tile/2) around the camera so
+    // the field is world-anchored yet always surrounds the player; y is kept
+    // as-is so the vertical box follows the camera.
+    const half = tile.mul(float(0.5));
+    const wrapX = mod(anim.x.sub(cam.x).add(half), tile).sub(half).toVar();
+    const wrapZ = mod(anim.z.sub(cam.z).add(half), tile).sub(half).toVar();
+    const world = vec3(
+      cam.x.add(wrapX),
+      cam.y.add(anim.y),
+      cam.z.add(wrapZ),
+    ).toVar();
+
     // billboard in view space: the quad expands along the camera-right/up axes
-    const mvPos = b.viewMatrix
-      .mul(b.modelMatrix.mul(vec4(anim, float(1))))
-      .toVar();
+    const mvPos = b.viewMatrix.mul(vec4(world, float(1))).toVar();
     const offsetPx = corner.mul(size.mul(fade)).toVar();
     const billboard = mvPos.xyz
       .add(vec3(offsetPx.x, offsetPx.y, float(0)))
@@ -343,6 +381,11 @@ class ParticleSystem {
 
   follow(camera: PerspectiveCamera, time: number): void {
     this.material.time = time;
+    this.material.camPos = [
+      camera.position.x,
+      camera.position.y,
+      camera.position.z,
+    ];
     this.mesh.position.copy(camera.position);
   }
 }
@@ -463,6 +506,7 @@ export class WeatherController {
       makeParticleGeometry(RAIN_OPTS),
       this.rampSeconds,
     );
+    this.rain.material.tileSize = RAIN_OPTS.tileSize;
     this.rain.material.tint = [0.75, 0.8, 0.9];
     this.rain.material.sway = 0.4;
     scene.add(this.rain.mesh);
@@ -472,6 +516,7 @@ export class WeatherController {
       makeParticleGeometry(SNOW_OPTS),
       this.rampSeconds,
     );
+    this.snow.material.tileSize = SNOW_OPTS.tileSize;
     this.snow.material.tint = [0.95, 0.97, 1];
     this.snow.material.sway = 1.6;
     this.snow.material.disc = true;
