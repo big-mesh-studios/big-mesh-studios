@@ -41,7 +41,7 @@ const RAMP_SECONDS = 5;
 /** Mean seconds between lightning strikes while a thunderstorm is active. */
 const STRIKE_MEAN_SECONDS = 3.5;
 /** Horizontal half-extent of the box lightning strikes target around the camera. */
-const STRIKE_RADIUS = 200;
+const STRIKE_RADIUS = 150;
 /** Seconds a bolt is fully lit (re-jittered every frame for flicker). */
 const BOLT_ACTIVE_SECONDS = 0.18;
 /** Seconds a bolt takes to fade out after its active window. */
@@ -404,6 +404,12 @@ export interface WeatherControllerParams {
   scene: Scene;
   /** Ground-height lookup at an absolute world XZ, for lightning targets. */
   groundHeight: (x: number, z: number) => number;
+  /**
+   * Called whenever a lightning strike spawns, with the strike's target world
+   * position. A plain event — the weather controller has no idea what
+   * consumes it (e.g. a sound controller playing thunder).
+   */
+  onStrike?: (x: number, z: number) => void;
   seed?: number;
   rampSeconds?: number;
   strikeInterval?: number;
@@ -419,6 +425,7 @@ export interface WeatherControllerParams {
  */
 export class WeatherController {
   private readonly groundHeight: (x: number, z: number) => number;
+  private readonly onStrike: ((x: number, z: number) => void) | undefined;
   private readonly seed: number;
   private readonly rampSeconds: number;
   private readonly strikeMean: number;
@@ -443,8 +450,10 @@ export class WeatherController {
   private tintWeather: Weather = "clear";
 
   constructor(params: WeatherControllerParams) {
-    const { scene, groundHeight, seed, rampSeconds, strikeInterval } = params;
+    const { scene, groundHeight, onStrike, seed, rampSeconds, strikeInterval } =
+      params;
     this.groundHeight = groundHeight;
+    this.onStrike = onStrike;
     this.seed = seed ?? WEATHER_SEED;
     this.rampSeconds = rampSeconds ?? RAMP_SECONDS;
     this.strikeMean = strikeInterval ?? STRIKE_MEAN_SECONDS;
@@ -518,6 +527,7 @@ export class WeatherController {
     if (!Number.isFinite(groundY)) {
       return;
     }
+    this.onStrike?.(x, z);
     this.strike = {
       main: this.bolts[0],
       branch: this.bolts[1],

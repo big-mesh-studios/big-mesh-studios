@@ -20,6 +20,7 @@ import { GpuTimer } from "./perf";
 import { createPlayer, placeCamera, PLAYER_CFG, updatePlayer } from "./player";
 import { RendererSwitch } from "./renderers/renderer-switch";
 import { loadVoxelTiles } from "./renderers/tile-loader";
+import { SoundController } from "./sound-controller";
 import { Console } from "./ui/Console";
 import Controls from "./ui/Controls";
 import { applyWeather } from "./weather";
@@ -147,17 +148,37 @@ const App: Component<{}> = () => {
   // means they must be added after the player cube.
   rendererSwitch.addTranslucentPassesToScene(scene);
   /**
+   * Synthesizes the weather's sound (rain, wind, thunder) from the Web Audio
+   * API. Browsers suspend audio until the first user gesture, so `unlock` is
+   * bound to the first pointer/key event below.
+   */
+  const sound = new SoundController();
+  const unlockSound = (): void => {
+    sound.unlock();
+    window.removeEventListener("pointerdown", unlockSound);
+    window.removeEventListener("keydown", unlockSound);
+  };
+  window.addEventListener("pointerdown", unlockSound);
+  window.addEventListener("keydown", unlockSound);
+  /**
    * Owns the rain/snow particle systems, the thunder lightning bolts, and the
    * strike flash. Added to the scene after the translucent passes so the
    * weather draws over terrain and water; `tick` returns the current weather
    * so `applyWeather` can tint the day-night state before it reaches the
-   * renderers and the clear colour.
+   * renderers and the clear colour. Lightning strikes are reported to the
+   * sound controller so thunder can follow the flashes.
    */
   const weather = new WeatherController({
     scene,
     groundHeight: (x, z) => getWorldHeight(blockGrid.blocks, x, z),
+    onStrike: (x, z) => sound.thunderStrike(x, z),
   });
-  const commands = createDebugCommands({ dayNight, rendererSwitch, weather });
+  const commands = createDebugCommands({
+    dayNight,
+    rendererSwitch,
+    weather,
+    sound,
+  });
   installKeyboardControls();
   placeCamera(camera, player);
   let timer: GpuTimer | undefined;
@@ -249,6 +270,7 @@ const App: Component<{}> = () => {
     // reaches the renderers and the clear colour.
     const dn = dayNight.tick(dt, camera);
     const weatherView = weather.tick(dt, camera, dn.elapsed);
+    sound.tick(dt, camera, weatherView);
     const env = applyWeather(dn, weatherView.weather, weatherView.intensity);
     skyColor.set(env.skyColor[0], env.skyColor[1], env.skyColor[2]);
     state.renderer?.setClearColor(skyColor, 1);
@@ -300,6 +322,10 @@ const App: Component<{}> = () => {
         renderer.dispose();
         // stop the fill worker so it doesn't keep running after unmount
         worldRing.dispose();
+        // release the audio hardware
+        sound.dispose();
+        window.removeEventListener("pointerdown", unlockSound);
+        window.removeEventListener("keydown", unlockSound);
       };
     },
   );

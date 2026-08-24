@@ -1,17 +1,19 @@
 import { Commander } from "./commander";
 import type { DayNightController } from "./day-night-controller";
 import type { RendererSwitch } from "./renderers/renderer-switch";
+import type { SoundController } from "./sound-controller";
 import type { WeatherController } from "./weather-controller";
 
 export interface DebugCommandsParams {
   dayNight: DayNightController;
   rendererSwitch: RendererSwitch;
   weather: WeatherController;
+  sound: SoundController;
 }
 
 /** Every debug console command, declared as a single object literal keyed by command name. */
 export const createDebugCommands = (params: DebugCommandsParams): Commander => {
-  const { dayNight, rendererSwitch, weather } = params;
+  const { dayNight, rendererSwitch, weather, sound } = params;
   return new Commander({
     "/day": {
       help: "/day       jump to noon (t=300s)",
@@ -108,6 +110,20 @@ export const createDebugCommands = (params: DebugCommandsParams): Commander => {
         }
         return weather.describe();
       },
+    },
+    "/volume": {
+      help: "/volume <0..1>  set the sound volume (0 mutes)",
+      run: (rest) => {
+        const v = Number(rest[0]);
+        if (!Number.isFinite(v)) {
+          return sound.describe();
+        }
+        return sound.setVolume(v);
+      },
+    },
+    "/sound": {
+      help: "/sound     show the sound state",
+      run: () => sound.describe(),
     },
   });
 };

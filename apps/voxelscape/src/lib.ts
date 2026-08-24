@@ -52,7 +52,11 @@ export { DEFAULT_TERRAIN, type TerrainConfig, heightAt } from "./world/noise";
 // Day/Night & Environment
 export { DayNightController } from "./day-night-controller";
 export { dayNightState } from "./day-night";
-export { WeatherController } from "./weather-controller";
+export {
+  WeatherController,
+  type WeatherControllerParams,
+  type WeatherView,
+} from "./weather-controller";
 export {
   type Weather,
   type WeatherState,
@@ -61,3 +65,4 @@ export {
   weatherLighting,
   applyWeather,
 } from "./weather";
+export { SoundController, thunderTiming } from "./sound-controller";

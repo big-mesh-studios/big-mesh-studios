@@ -56,6 +56,10 @@ _Avoid_: WeatherSystem, climate (overbroad), storm tracker
 Owns the weather's scene objects — the rain and snow particle systems (billboard quads whose per-particle attributes are baked once; all motion happens in the vertex shader via a time uniform, no per-frame vertex reallocation), the thunder `Line2` lightning bolts, and the strike flash — plus the intensity ramp. `tick(dt, camera, clockSeconds)` advances everything and returns `{ weather, intensity }`; like `DayNightController` it holds no `RendererSwitch` reference, and `App.tsx` composes its result into the day-night state via `applyWeather`. Exposes plain typed methods (`setWeather`, `describe`); has no idea a console exists.
 _Avoid_: SkyController (that's `DayNightController`'s job), particle manager
 
+**SoundController**:
+Synthesizes the weather's audio from the Web Audio API: a CC0 rain recording (`public/audio/rain.ogg`) and a CC0 thunder clap (`public/audio/thunder.ogg`), each falling back to procedural synthesis until/unless it loads, a looping wind layer that ramps with the storm intensity, and per-strike thunder delayed and attenuated by the strike's distance (`thunderTiming`). The context is created lazily on the first pointer/key gesture (`unlock`), because browsers suspend audio until then; every method guards on it. Holds no renderer or console references — `WeatherController` reports strikes through its plain `onStrike(x, z)` callback, and `App.tsx` wires that to `sound.thunderStrike`. Exposes plain typed methods (`unlock`, `tick`, `thunderStrike`, `setVolume`, `describe`, `dispose`).
+_Avoid_: AudioManager, SFXPlayer (it's weather-specific procedural synthesis, not a general audio system)
+
 ## Relationships
 
 - A **Ring** holds a fixed-size window of **WorldBlock**s, indexed by ring slot.
@@ -66,6 +70,7 @@ _Avoid_: SkyController (that's `DayNightController`'s job), particle manager
 - Block seam faces are culled against each block's own generated **VoxelStore** border, so the **TriangleRenderer**'s mesh worker never reads another block's store (and no block needs re-meshing when a neighbour's data later changes).
 - **DayNightController** and **RendererSwitch** each expose plain domain methods and know nothing about the console; **Commander** is the only thing that knows console command names, aliases, or help text exist.
 - **WeatherController** is keyed to the day-night clock's shown seconds, which `DayNightController.tick` returns via `DayNightState.elapsed`; **App.tsx** composes the weather's `{ weather, intensity }` into the day-night state (`applyWeather`) before feeding it to `RendererSwitch.applyLighting` — the same one-directional wiring `DayNightController` already has.
+- **WeatherController** reports lightning strikes through its plain `onStrike(x, z)` callback; **SoundController** is one such consumer (wired in `App.tsx` to `sound.thunderStrike`), not something **WeatherController** depends on.
 
 ## Example dialogue
 
