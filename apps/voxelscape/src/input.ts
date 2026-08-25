@@ -127,12 +127,41 @@ export const installKeyboardControls = (): void => {
   window.addEventListener("keyup", onUp);
 };
 
+/** Pointer movement, in client pixels, beyond which a press counts as a look-drag rather than a click. */
+const EDIT_CLICK_DRAG_THRESHOLD = 5;
+
+/** Gap, in ms, within which a second click on the same button counts as a double-click. */
+const DOUBLE_CLICK_WINDOW_MS = 300;
+
 /**
- * Binds the block-editing controls: left mouse button digs, right mouse button
- * places, and the top-row number keys select the matching hotbar slot. Edits
- * are edge-triggered per press, so holding a button doesn't dig repeatedly.
+ * Binds the block-editing controls: left mouse button (or Enter) digs, right
+ * mouse button places, and the top-row number keys select the matching
+ * hotbar slot. Edits are edge-triggered per press, so holding a button (or
+ * key) doesn't dig repeatedly.
+ *
+ * A click's action fires only on release, and only if the pointer stayed
+ * within `EDIT_CLICK_DRAG_THRESHOLD` of where it went down, so a press-and-
+ * drag used to look around (see `createLookDragHandlers`) doesn't also dig
+ * or place. The action is then held for `DOUBLE_CLICK_WINDOW_MS`: if a
+ * second click on the same button lands within that window, it's a
+ * double-click and neither click's action fires.
  */
 export const installEditControls = (): void => {
+  let pendingButton: number | null = null;
+  let downX = 0;
+  let downY = 0;
+  let dragged = false;
+  const pendingTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  const lastClickAt = new Map<number, number>();
+
+  const fireAction = (button: number): void => {
+    if (button === 0) {
+      state.breakQueued = true;
+    } else if (button === 2) {
+      state.placeQueued = true;
+    }
+  };
+
   const onDown = (e: MouseEvent): void => {
     if (isEditableTarget(e)) {
       return;
@@ -143,14 +172,61 @@ export const installEditControls = (): void => {
     if (!(e.target instanceof HTMLCanvasElement)) {
       return;
     }
-    if (e.button === 0) {
-      state.breakQueued = true;
-    } else if (e.button === 2) {
-      state.placeQueued = true;
+    if (e.button !== 0 && e.button !== 2) {
+      return;
     }
+    pendingButton = e.button;
+    downX = e.clientX;
+    downY = e.clientY;
+    dragged = false;
+  };
+  const onMove = (e: MouseEvent): void => {
+    if (pendingButton === null) {
+      return;
+    }
+    const dx = e.clientX - downX;
+    const dy = e.clientY - downY;
+    if (dx * dx + dy * dy > EDIT_CLICK_DRAG_THRESHOLD * EDIT_CLICK_DRAG_THRESHOLD) {
+      dragged = true;
+    }
+  };
+  const onUp = (e: MouseEvent): void => {
+    if (pendingButton !== e.button) {
+      return;
+    }
+    const button = pendingButton;
+    pendingButton = null;
+    if (dragged) {
+      return;
+    }
+    const now = Date.now();
+    const last = lastClickAt.get(button) ?? -Infinity;
+    lastClickAt.set(button, now);
+    if (now - last < DOUBLE_CLICK_WINDOW_MS) {
+      // Second click of a double-click: cancel the first click's pending
+      // action and skip this one too — double-clicking does nothing.
+      const timer = pendingTimers.get(button);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        pendingTimers.delete(button);
+      }
+      lastClickAt.delete(button);
+      return;
+    }
+    const timer = setTimeout(() => {
+      pendingTimers.delete(button);
+      fireAction(button);
+    }, DOUBLE_CLICK_WINDOW_MS);
+    pendingTimers.set(button, timer);
   };
   const onKeyDown = (e: KeyboardEvent): void => {
     if (isEditableTarget(e)) {
+      return;
+    }
+    if (e.key === "Enter") {
+      if (!e.repeat) {
+        fireAction(0);
+      }
       return;
     }
     if (e.code.startsWith("Digit")) {
@@ -161,6 +237,8 @@ export const installEditControls = (): void => {
     }
   };
   window.addEventListener("mousedown", onDown);
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", onUp);
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("contextmenu", (e) => e.preventDefault());
 };

@@ -146,7 +146,7 @@ export const Console: Component<ConsoleProps> = (props) => {
               value={value()}
               onInput={(e) => setValue(e.currentTarget.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (e.key === "Enter" && !e.repeat) {
                   submit();
                 }
               }}
