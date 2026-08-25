@@ -66,11 +66,15 @@ const HANDLE_RESOLVER = "https://public.api.bsky.app";
  * Wraps the edit-chunk sync onto a player's atproto repo. A single shared
  * overlay is both the source for uploads and the destination for merges, so a
  * `/sync` round-trip ends with the local world reflecting everyone's edits.
+ * Remote edits land in the overlay only; the caller (wired via `onMerged` in
+ * `App.tsx`) is what re-applies them to the ring's blocks and rebuilds their
+ * mesh, keeping this object ignorant of renderers.
  */
 export class AtprotoController {
   private readonly layer: EditLayer;
   private readonly seed: number | null;
   private readonly options: AtpControllerOptions;
+  private readonly onMerged: (changed: number) => void;
   private oauth: BrowserOAuthClient | undefined;
   private agent: Agent | undefined;
   private did_: string | null = null;
@@ -85,11 +89,18 @@ export class AtprotoController {
     options: AtpControllerOptions;
     /** Supplies the login handle when `/connect` has no argument. */
     getHandle: () => string;
+    /**
+     * Called with the number of voxels whose id changed once a `/sync` merge
+     * has updated the overlay, so the caller can re-apply it to live blocks
+     * and rebuild the affected meshes.
+     */
+    onMerged?: (changed: number) => void;
   }) {
     this.layer = params.layer;
     this.seed = params.seed;
     this.options = params.options;
     this.handleInput = params.getHandle;
+    this.onMerged = params.onMerged ?? (() => {});
     try {
       const saved = Number(localStorage.getItem("bms.atproto.lastUploadAt"));
       if (Number.isFinite(saved)) {
@@ -204,6 +215,7 @@ export class AtprotoController {
 
     const fetched = await this.fetchAllRecords();
     const changed = mergeIntoLayer(this.layer, recordsToEntries(fetched));
+    this.onMerged(changed);
     messages.push(
       `fetched ${fetched.length} remote record(s), ${changed} voxel(s) updated`,
     );
