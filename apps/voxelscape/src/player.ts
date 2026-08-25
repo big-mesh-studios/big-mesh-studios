@@ -15,7 +15,7 @@ export const PLAYER_CFG = {
   /** Player cube half-size, in world units (a 2x2x2 cube). */
   halfSize: 1,
   /** Movement speed, in units per second. */
-  speed: 45,
+  speed: 22.5,
   /** Gravitational acceleration, in units per second squared. */
   gravity: 45,
   /** Initial upward velocity on jumping, in units per second (about a 2-unit-high jump). */
