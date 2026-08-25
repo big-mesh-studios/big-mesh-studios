@@ -1,9 +1,90 @@
-import { createEffect, createSignal, type Component } from "solid-js";
+import {
+  createEffect,
+  createSignal,
+  For,
+  Show,
+  type Component,
+} from "solid-js";
 import styles from "./Console.module.css";
 
 export interface ConsoleProps {
   onCommand: (line: string) => string | Promise<string>;
 }
+
+const ConsoleInput = (props: {
+  onCommand(command: string): void;
+  isOpen: boolean;
+}) => {
+  let inputRef: HTMLInputElement = null!;
+
+  const history: string[] = [];
+
+  const [historyIndex, setHistoryIndex] = createSignal(-1);
+  const [value, setValue] = createSignal(() => history[historyIndex()]);
+
+  const submit = (value: string): void => {
+    const line = value.trim();
+
+    if (line === "") {
+      return;
+    }
+
+    props.onCommand(line);
+    history.push(line);
+
+    setValue("");
+  };
+
+  // focus the input whenever the panel opens
+  createEffect(
+    () => props.isOpen,
+    (isOpen) => {
+      if (!isOpen) {
+        return;
+      }
+      inputRef.focus();
+    },
+  );
+
+  return (
+    <input
+      ref={inputRef}
+      value={value()}
+      onInput={(e) => {
+        setHistoryIndex(-1);
+        setValue(e.currentTarget.value);
+      }}
+      onKeyDown={(e) => {
+        switch (e.key) {
+          case "Enter": {
+            submit(e.currentTarget.value);
+            return;
+          }
+          case "ArrowUp": {
+            setHistoryIndex((index) => {
+              if (index === -1) {
+                return history.length - 1;
+              }
+              return index - 1;
+            });
+            return;
+          }
+          case "ArrowDown": {
+            setHistoryIndex((index) => {
+              if (index === history.length - 1) {
+                return -1;
+              }
+              return index + 1;
+            });
+            return;
+          }
+        }
+      }}
+      placeholder="type a command (/help)"
+      class={styles.input}
+    />
+  );
+};
 
 /**
  * A collapsible command-line overlay for debugging. The `>_` button sits at
@@ -12,40 +93,10 @@ export interface ConsoleProps {
  * output.
  */
 export const Console: Component<ConsoleProps> = (props) => {
-  const [open, setOpen] = createSignal(false);
+  const [isOpen, setIsOpen] = createSignal(false);
   const [lines, setLines] = createSignal<string[]>([]);
-  const [value, setValue] = createSignal("");
-  let inputRef: HTMLInputElement | undefined;
-  let outputRef: HTMLOutputElement | undefined;
 
-  const submit = (): void => {
-    const line = value().trim();
-    if (line === "") {
-      return;
-    }
-    const output = props.onCommand(line);
-    const emit = (text: string): void => {
-      const echoed =
-        text === "" ? [`> ${line}`] : [`> ${line}`, ...text.split("\n")];
-      setLines((prev) => [...prev, ...echoed]);
-    };
-    if (typeof output === "string") {
-      emit(output);
-    } else {
-      setLines((prev) => [...prev, `> ${line}`, "…"]);
-      void output
-        .then((text) => {
-          setLines((prev) => [
-            ...prev,
-            ...(text === "" ? [] : text.split("\n")),
-          ]);
-        })
-        .catch((err) => {
-          setLines((prev) => [...prev, `command failed: ${String(err)}`]);
-        });
-    }
-    setValue("");
-  };
+  let outputRef: HTMLOutputElement | undefined;
 
   // keep the output scrolled to the newest line
   createEffect(
@@ -60,61 +111,46 @@ export const Console: Component<ConsoleProps> = (props) => {
     },
   );
 
-  // focus the input whenever the panel opens
-  createEffect(
-    () => open(),
-    (isOpen) => {
-      if (isOpen) {
-        inputRef?.focus();
+  async function onCommand(command: string) {
+    const result = props.onCommand(command);
+
+    if (typeof result === "string") {
+      setLines((prev) => [...prev, `> ${command}`, ...result.split("\n")]);
+    } else {
+      setLines((prev) => [...prev, `> ${command}`, "…"]);
+
+      try {
+        const text = await result;
+        setLines((prev) => [...prev, ...text.split("\n")]);
+      } catch (error) {
+        setLines((prev) => [...prev, `command failed: ${String(error)}`]);
       }
-    },
-  );
+    }
+  }
 
   return (
     <div class={styles.underlay}>
       <div
         onPointerDown={(e) => {
           e.preventDefault();
-          setOpen((o) => !o);
+          setIsOpen((o) => !o);
         }}
         onContextMenu={(e) => e.preventDefault()}
         class={styles.anchor}
       >
         {">_"}
       </div>
-      {open() && (
+      <Show when={isOpen()}>
         <div class={styles.console}>
           <output ref={outputRef} class={styles.output}>
-            {lines().map((l) => (
-              <div>{l}</div>
-            ))}
+            <For each={lines()}>{(line) => <div>{line}</div>}</For>
           </output>
           <div class={styles["input-container"]}>
             <span class={styles.prefix}>{">"}</span>
-            <input
-              ref={inputRef}
-              value={value()}
-              onInput={(e) => setValue(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  submit();
-                }
-              }}
-              placeholder="type a command (/help)"
-              style={{
-                flex: "1",
-                background: "transparent",
-                border: "none",
-                outline: "none",
-                color: "#fff",
-                font: "12px monospace",
-                padding: "6px 8px 6px 0",
-                "min-width": "0",
-              }}
-            />
+            <ConsoleInput onCommand={onCommand} isOpen={isOpen()} />
           </div>
         </div>
-      )}
+      </Show>
     </div>
   );
 };
