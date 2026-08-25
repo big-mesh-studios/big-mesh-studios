@@ -61,6 +61,63 @@ const moveTowards = (
   return current + Math.sign(diff) * maxDelta;
 };
 
+/**
+ * Horizontal offsets from the player's centre, sampled around a small
+ * inset "core" footprint rather than the full collision cube — the same
+ * spirit as Minecraft's slightly-shrunk collision box, so a tap on a corner
+ * of solid ground next door doesn't affect the sample.
+ */
+const FOOTPRINT_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [0, 0],
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+/**
+ * Samples the ground surface across a small footprint around the player
+ * instead of a single point, and returns whichever candidate is closest to
+ * the player's current height — not simply the highest or the centre one.
+ *
+ * There's no horizontal wall collision in this game at all (a player can
+ * already walk through walls), so the only defense against a tunnel's own
+ * wall or ceiling is this: in a passage only one voxel wide, the exact
+ * centre point can drift onto the wall/ceiling's column instead of the
+ * tunnel's own open one, and picking up that reading uncritically would
+ * catapult the player onto a completely different, often much higher,
+ * surface the instant one sample point clips a wall. Preferring the
+ * reading closest to where the player already stands favors the tunnel
+ * floor they're walking along over a stray wall/ceiling reading, without
+ * needing true per-axis box collision.
+ */
+const sampleGroundHeight = (
+  groundHeightAt: (x: number, y: number, z: number) => number,
+  x: number,
+  y: number,
+  z: number,
+  footprintRadius: number,
+): number => {
+  let best = -Infinity;
+  let bestDist = Infinity;
+  for (const [ox, oz] of FOOTPRINT_OFFSETS) {
+    const h = groundHeightAt(
+      x + ox * footprintRadius,
+      y,
+      z + oz * footprintRadius,
+    );
+    if (!Number.isFinite(h)) {
+      continue;
+    }
+    const dist = Math.abs(h - y);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = h;
+    }
+  }
+  return best;
+};
+
 export const updatePlayer = (
   player: Player,
   dt: number,
@@ -138,10 +195,12 @@ export const updatePlayer = (
   player.position.y += player.vy * dt;
 
   // snap to the terrain surface
-  const ground = groundHeightAt(
+  const ground = sampleGroundHeight(
+    groundHeightAt,
     player.position.x,
     player.position.y,
     player.position.z,
+    PLAYER_CFG.halfSize * 0.4,
   );
   const minY =
     (Number.isFinite(ground) ? ground : player.position.y) +

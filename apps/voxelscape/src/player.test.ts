@@ -73,3 +73,45 @@ describe("updatePlayer horizontal speed ramp", () => {
     expect(Math.hypot(player.vx, player.vz)).toBeCloseTo(0, 5);
   });
 });
+
+describe("updatePlayer ground sampling near a narrow tunnel wall", () => {
+  // A tunnel one unit either side of x=0 (floor height 0); everywhere else
+  // is a much taller wall (height 50) — standing right at the tunnel's edge
+  // means the exact centre point sits close to the wall's own column.
+  const TUNNEL_HALF_WIDTH = 1;
+  const tunnelGround = (x: number): number =>
+    Math.abs(x) < TUNNEL_HALF_WIDTH ? 0 : 50;
+
+  it("stays on the tunnel floor instead of catapulting onto the wall beside it", () => {
+    // the exact centre point has drifted just past the tunnel's boundary —
+    // a single-point sample here would land on the wall, not the tunnel
+    const edgeX = TUNNEL_HALF_WIDTH + 0.05;
+    const player = createPlayer(edgeX, PLAYER_CFG.halfSize, 0);
+    updatePlayer(
+      player,
+      1 / 60,
+      NO_INPUT,
+      (x) => tunnelGround(x),
+      NO_WATER,
+      1e9,
+    );
+    expect(player.position.y).toBeCloseTo(PLAYER_CFG.halfSize, 5);
+  });
+
+  it("still finds the wall's own top when standing well away from the tunnel", () => {
+    const player = createPlayer(
+      TUNNEL_HALF_WIDTH + 5,
+      50 + PLAYER_CFG.halfSize,
+      0,
+    );
+    updatePlayer(
+      player,
+      1 / 60,
+      NO_INPUT,
+      (x) => tunnelGround(x),
+      NO_WATER,
+      1e9,
+    );
+    expect(player.position.y).toBeCloseTo(50 + PLAYER_CFG.halfSize, 5);
+  });
+});
