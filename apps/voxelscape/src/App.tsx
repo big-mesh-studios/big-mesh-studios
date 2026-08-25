@@ -97,6 +97,8 @@ const App: Component<{}> = () => {
   });
   /** Last break/place result, shown by the HUD so silent failures are visible. */
   const [editStatus, setEditStatus] = createSignal("");
+  /** Whether the crosshair is currently pointing at something within reach. */
+  const [inReach, setInReach] = createSignal(false);
   const scene = new Scene();
   /**
    * Owns the sun/ambient lights, the sun/moon billboards, and the day-night
@@ -374,6 +376,9 @@ const App: Component<{}> = () => {
       },
       SAFE_EXTENT,
     );
+    // crosshair reach feedback: recompute every frame so it tracks look, not
+    // just edit attempts
+    setInReach(editing.pick().target !== null);
     // handle block editing input (edge-triggered dig/place + hotbar select)
     if (input.break) {
       const result = editing.breakBlock();
@@ -518,7 +523,7 @@ const App: Component<{}> = () => {
         onPointerCancel={lookDrag.onPointerCancel}
       />
       <Controls />
-      <EditHud inventory={inventory} status={editStatus} />
+      <EditHud inventory={inventory} status={editStatus} inReach={inReach} />
       <Console onCommand={(line) => commands.run(line)} />
       {debugPerf && (
         <div
