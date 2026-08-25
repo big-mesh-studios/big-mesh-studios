@@ -7,6 +7,9 @@ export interface Player {
   /** Heading, in radians; 0 faces +Z. */
   yaw: number;
   pitch: number;
+  /** Horizontal velocity, in world units per second, ramped toward the input's target each frame. */
+  vx: number;
+  vz: number;
   vy: number;
   onGround: boolean;
 }
@@ -16,6 +19,8 @@ export const PLAYER_CFG = {
   halfSize: 1,
   /** Movement speed, in units per second. */
   speed: 22.5,
+  /** Horizontal acceleration/deceleration, in units per second squared — how fast move speed ramps up to (or down from) `speed`. */
+  acceleration: 150,
   /** Gravitational acceleration, in units per second squared. */
   gravity: 45,
   /** Initial upward velocity on jumping, in units per second (about a 2-unit-high jump). */
@@ -37,9 +42,24 @@ export const createPlayer = (x: number, y: number, z: number): Player => ({
   position: new Vector3(x, y, z),
   yaw: 0,
   pitch: 0,
+  vx: 0,
+  vz: 0,
   vy: 0,
   onGround: false,
 });
+
+/** Steps `current` toward `target` by at most `maxDelta`. */
+const moveTowards = (
+  current: number,
+  target: number,
+  maxDelta: number,
+): number => {
+  const diff = target - current;
+  if (Math.abs(diff) <= maxDelta) {
+    return target;
+  }
+  return current + Math.sign(diff) * maxDelta;
+};
 
 export const updatePlayer = (
   player: Player,
@@ -68,18 +88,24 @@ export const updatePlayer = (
   const rightX = -cosYaw;
   const rightZ = sinYaw;
 
-  let dx = 0;
-  let dz = 0;
+  // ramp horizontal velocity toward the input's target speed each frame,
+  // rather than snapping to it, so starting and stopping isn't instantaneous
   const mx = input.moveX;
   const my = input.moveY;
+  let targetVx = 0;
+  let targetVz = 0;
   if (mx !== 0 || my !== 0) {
     const len = Math.hypot(mx, my);
     const nx = mx / len;
     const ny = my / len;
-    const speed = PLAYER_CFG.speed * dt;
-    dx = (forwardX * ny + rightX * nx) * speed;
-    dz = (forwardZ * ny + rightZ * nx) * speed;
+    targetVx = (forwardX * ny + rightX * nx) * PLAYER_CFG.speed;
+    targetVz = (forwardZ * ny + rightZ * nx) * PLAYER_CFG.speed;
   }
+  const maxDelta = PLAYER_CFG.acceleration * dt;
+  player.vx = moveTowards(player.vx, targetVx, maxDelta);
+  player.vz = moveTowards(player.vz, targetVz, maxDelta);
+  const dx = player.vx * dt;
+  const dz = player.vz * dt;
 
   // gravity + jump; underwater the gravity is weak and holding jump swims up
   const waterY = waterSurfaceAt(player.position.x, player.position.z);
