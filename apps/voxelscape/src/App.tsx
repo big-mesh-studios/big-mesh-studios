@@ -97,7 +97,7 @@ let firstPerson = true;
 let showPlayerCube = false;
 
 const App: Component<{}> = () => {
-  const coarsePointer = createMediaQuery("pointer: coarse");
+  const coarsePointer = createMediaQuery("(any-pointer: coarse)");
 
   /** True when the URL hash includes `perf`, enabling the debug HUD (GPU timer and fetches-per-ray). */
   const debugPerf =
