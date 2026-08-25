@@ -77,6 +77,10 @@ export namespace Vector2D {
     return out;
   }
 
+  export function clone(a: Vector2D) {
+    return Vector2D.create(a.x, a.y);
+  }
+
   export const EMPTY = Object.freeze(create());
 }
 

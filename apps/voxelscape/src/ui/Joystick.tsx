@@ -1,5 +1,6 @@
-import { createEffect, createSignal } from "solid-js";
+import { createSignal } from "solid-js";
 import { Vector2D } from "../utils/maths";
+import { pointer } from "../utils/pointer";
 import styles from "./Joystick.module.css";
 
 export function Joystick(props: {
@@ -11,80 +12,39 @@ export function Joystick(props: {
   onValue: (value: Vector2D) => void;
 }) {
   const [dragOffset, setDragOffset] = createSignal<Vector2D | undefined>();
-
-  createEffect(
-    () => {
-      const _dragOffset = dragOffset();
-      if (_dragOffset == undefined) {
-        return Vector2D.create();
-      }
-      return Vector2D.multiplyScalar(_dragOffset, 1.0 / props.outerRingSize);
-    },
-    (value) => props.onValue(value),
-  );
-
   const [startPos, setStartPos] = createSignal<Vector2D>();
-  const [hitDiv, setHitDiv] = createSignal<HTMLDivElement>();
-  let dragPointerId: number | undefined = undefined;
 
-  const onPointerDown = (e: PointerEvent) => {
-    let _hitDiv = hitDiv();
-    if (_hitDiv == undefined) {
-      return;
-    }
-    dragPointerId = e.pointerId;
-    _hitDiv.setPointerCapture(dragPointerId);
-    const rect = _hitDiv.getBoundingClientRect();
+  async function onPointerDown(
+    e: PointerEvent & { currentTarget: HTMLElement },
+  ) {
+    const rect = e.currentTarget.getBoundingClientRect();
     setStartPos(Vector2D.create(e.clientX - rect.left, e.clientY - rect.top));
-    setDragOffset(Vector2D.create());
-  };
 
-  const onPointerMove = (e: PointerEvent) => {
-    const _hitDiv = hitDiv();
-    const _startPos = startPos();
+    await pointer(e, ({ totalDelta }) => {
+      const dragOffset = Vector2D.clone(totalDelta);
+      const length = Vector2D.length(dragOffset);
 
-    if (_hitDiv === undefined || _startPos === undefined) {
-      return;
-    }
+      if (length > 0.5 * props.outerRingSize) {
+        Vector2D.multiplyScalar(
+          dragOffset,
+          (0.5 * props.outerRingSize) / length,
+          dragOffset,
+        );
+      }
 
-    _hitDiv.setPointerCapture(e.pointerId);
-
-    const rect = _hitDiv.getBoundingClientRect();
-    const offset = Vector2D.create(
-      e.clientX - rect.left - _startPos.x,
-      e.clientY - rect.top - _startPos.y,
-    );
-    const len = Vector2D.length(offset);
-
-    if (len > 0.5 * props.outerRingSize) {
-      Vector2D.multiplyScalar(
-        offset,
-        (0.5 * props.outerRingSize) / len,
-        offset,
+      setDragOffset(dragOffset);
+      props.onValue(
+        Vector2D.multiplyScalar(dragOffset, 1.0 / props.outerRingSize),
       );
-    }
+    });
 
-    setDragOffset(offset);
-  };
-
-  const onPointerUp = (e: PointerEvent) => {
-    const _hitDiv = hitDiv();
-
-    if (_hitDiv == undefined) {
-      return;
-    }
-
-    if (dragPointerId == undefined) {
-      return;
-    }
-
-    setStartPos(undefined);
     setDragOffset(undefined);
-  };
+    setStartPos(undefined);
+    props.onValue({ x: 0, y: 0 });
+  }
 
   return (
     <div
-      ref={setHitDiv}
       style={{
         left: `${props.left}px`,
         top: `${props.top}px`,
@@ -92,8 +52,6 @@ export function Joystick(props: {
         height: `${props.hitAreaSize}px`,
       }}
       onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
       onContextMenu={(e) => e.preventDefault()}
       class={styles.underlay}
     >
