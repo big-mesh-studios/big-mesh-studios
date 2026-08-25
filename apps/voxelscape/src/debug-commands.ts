@@ -1,5 +1,5 @@
-import { Commander } from "./commander";
 import type { AtprotoController } from "./atproto/atproto-controller";
+import { Commander } from "./commander";
 import type { DayNightController } from "./day-night-controller";
 import type { RendererSwitch } from "./renderers/renderer-switch";
 import type { SoundController } from "./sound-controller";
@@ -204,6 +204,31 @@ export const createDebugCommands = (params: DebugCommandsParams): Commander => {
             ? undefined
             : n,
         );
+      },
+    },
+    "/fullscreen": {
+      help: "/fullscreen true|false   toggle fullscreen",
+      run: async ([fullscreen]) => {
+        const shouldRequest =
+          Boolean(fullscreen) ||
+          (fullscreen === undefined &&
+            document.fullscreenElement !== document.body);
+
+        if (shouldRequest) {
+          try {
+            await document.body.requestFullscreen();
+            return `full screen request succeeded.`;
+          } catch (error) {
+            return `full screen request failed.`;
+          }
+        }
+
+        try {
+          document.exitFullscreen();
+          return `exit screen request succeeded.`;
+        } catch {
+          return "exit fullscreen failed.";
+        }
       },
     },
   });
