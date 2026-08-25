@@ -1,3 +1,4 @@
+import styles from "./EditHud.module.css";
 // Block-editing HUD: a crosshair at the screen centre (the pick target,
 // dimmed when nothing is within reach) and a bottom hotbar listing the
 // collected blocks, the selected one highlighted. Driven by the shared
@@ -40,87 +41,23 @@ export const EditHud: Component<{
   });
 
   return (
-    <div style={{ position: "absolute", inset: "0", "pointer-events": "none" }}>
+    <div class={styles.hud}>
       {/* crosshair */}
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          transform: "translate(-50%, -50%)",
-          width: "14px",
-          height: "14px",
-          display: "flex",
-          "flex-direction": "column",
-          "align-items": "center",
-          "justify-content": "center",
-        }}
-      >
-        <div
-          style={{
-            width: "2px",
-            height: "14px",
-            background: props.inReach() ? "rgba(0,0,0,0.85)" : "rgba(0,0,0,0.3)",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            width: "14px",
-            height: "2px",
-            background: props.inReach() ? "rgba(0,0,0,0.85)" : "rgba(0,0,0,0.3)",
-          }}
-        />
+      <div class={[styles.crosshair, props.inReach() && styles.active]}>
+        <div class={styles["vertical-stroke"]} />
+        <div class={styles["horizontal-stroke"]} />
       </div>
       {/* hotbar */}
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          bottom: "18px",
-          transform: "translateX(-50%)",
-          display: "flex",
-          gap: "8px",
-        }}
-      >
+      <div class={styles.hotbar}>
         <For each={items()}>
           {(item) => (
-            <div
-              style={{
-                width: "52px",
-                height: "52px",
-                border: `2px solid ${
-                  item.id === selected() ? "#ffd35c" : "rgba(255,255,255,0.4)"
-                }`,
-                background: "rgba(0,0,0,0.55)",
-                "border-radius": "6px",
-                color: "#fff",
-                display: "flex",
-                "flex-direction": "column",
-                "align-items": "center",
-                "justify-content": "center",
-                font: "11px monospace",
-              }}
-            >
-              <span style={{ "font-size": "16px" }}>{item.name[0]}</span>
-              <span style={{ color: "#9be36b" }}>{item.count}</span>
+            <div class={[styles.item, item.id === selected() && styles.active]}>
+              <span class={styles.name}>{item.name[0]}</span>
+              <span class={styles.count}>{item.count}</span>
             </div>
           )}
         </For>
-        <div
-          style={{
-            position: "absolute",
-            bottom: "82px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            color: "rgba(255,255,255,0.9)",
-            background: "rgba(0,0,0,0.45)",
-            padding: "3px 8px",
-            "border-radius": "4px",
-            font: "11px monospace",
-            "white-space": "pre",
-          }}
-        >
+        <div class={styles.status}>
           {props.status() || "tap world to dig  •  button to place"}
         </div>
       </div>
