@@ -20,7 +20,7 @@
     "access": "public"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "build-lib": "vite build --config vite.config.lib.ts && tsc -p tsconfig.lib.json",
     "serve": "vite preview",
