@@ -6,9 +6,10 @@ import {
   buildBlockData,
   getGroundHeightBelow,
   getWorldHeight,
+  isSolidAt,
   type Dim3,
 } from "./level-data";
-import { VOXEL_DIRT } from "./voxel-store";
+import { VOXEL_DIRT, VOXEL_WATER } from "./voxel-store";
 
 /** A fast, deterministic constant-height terrain for the byte-for-byte tests. */
 const flatConfig = {
@@ -107,6 +108,59 @@ describe("getGroundHeightBelow", () => {
     });
     const belowHillY = (50 - 64) * 2;
     expect(getGroundHeightBelow([block], 0, belowHillY, 0)).toBe(-Infinity);
+  });
+
+  it("reports the floor, not the hill above, from just under the hill", () => {
+    const block = tunnelBlock();
+    // inside voxel 70: the last of the air gap, directly under the hill's
+    // underside. Scanning from the voxel above would find the hill instead
+    // and report a surface over the sample's own head.
+    const underHillY = (70 - 64) * 2 + 1;
+    expect(getGroundHeightBelow([block], 0, underHillY, 0)).toBe(
+      (40 + 1 - 64) * 2,
+    );
+  });
+
+  it("reports the top of the voxel a buried sample sits in, one voxel up at most", () => {
+    const block = tunnelBlock();
+    // inside voxel 20, well down inside the solid floor
+    const buriedY = (20 - 64) * 2 + 1;
+    expect(getGroundHeightBelow([block], 0, buriedY, 0)).toBe((21 - 64) * 2);
+  });
+});
+
+describe("isSolidAt", () => {
+  // Voxel (48, vy, 48) is the column at world x/z 0..2; world Y for voxel vy
+  // spans (vy - 64) * 2 to (vy - 63) * 2.
+  const block = () =>
+    buildBlock({
+      center: [0, 0, 0],
+      customFillStore: (store) => {
+        for (let vy = 0; vy <= 40; vy++) store.set(48, vy, 48, VOXEL_DIRT);
+        store.set(48, 50, 48, VOXEL_WATER);
+      },
+    });
+
+  it("reads solid inside the floor and air above it", () => {
+    const b = block();
+    expect(isSolidAt([b], 1, (20 - 64) * 2 + 1, 1)).toBe(true);
+    expect(isSolidAt([b], 1, (45 - 64) * 2 + 1, 1)).toBe(false);
+  });
+
+  it("does not count water as solid, so the player can swim through it", () => {
+    expect(isSolidAt([block()], 1, (50 - 64) * 2 + 1, 1)).toBe(false);
+  });
+
+  it("reads air outside the loaded blocks rather than walling the player in", () => {
+    expect(isSolidAt([block()], 10000, 0, 10000)).toBe(false);
+    expect(isSolidAt([], 0, 0, 0)).toBe(false);
+  });
+
+  it("reads air past the top and bottom of a block instead of smearing its edge voxels", () => {
+    const b = block();
+    // the floor's own column, but far below and far above the block's extent
+    expect(isSolidAt([b], 1, -1000, 1)).toBe(false);
+    expect(isSolidAt([b], 1, 1000, 1)).toBe(false);
   });
 });
 

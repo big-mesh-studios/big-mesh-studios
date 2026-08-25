@@ -9,6 +9,7 @@ import {
 } from "@random-mesh/rmsl/scene";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./noise";
 import {
+  VOXEL_AIR,
   VOXEL_WATER,
   VoxelStore,
   fillStore,
@@ -430,16 +431,22 @@ export const getWorldHeight = (
 
 /**
  * CPU ground-height sampler for player collision: like `getWorldHeight`,
- * but scans downward starting at (or just above) `worldY` instead of from
- * the top of the world, so it finds the solid surface directly beneath the
- * player rather than the topmost one in the whole column. Without this, a
- * tunnel dug under a hill would report the hill's roof as the ground, since
- * a top-down scan finds that solid voxel first — ejecting the player up
- * onto the hilltop the moment they walked into the tunnel.
+ * but scans downward starting at the voxel containing `worldY` instead of
+ * from the top of the world, so it finds the solid surface directly beneath
+ * the sample rather than the topmost one in the whole column. Without this,
+ * a tunnel dug under a hill would report the hill's roof as the ground,
+ * since a top-down scan finds that solid voxel first — ejecting the player
+ * up onto the hilltop the moment they walked into the tunnel.
+ *
+ * Starting inside `worldY`'s own voxel rather than above it bounds how far
+ * up the answer can ever be: a sample taken at the player's feet reports a
+ * surface above them only when their feet are inside solid material, and
+ * then by at most the one voxel they're buried in. Callers rely on that to
+ * tell a step up from a wall.
  *
  * @param blocks - The candidate blocks to search.
  * @param worldX - World-space X coordinate to sample.
- * @param worldY - World-space Y coordinate to scan downward from (the player's own height).
+ * @param worldY - World-space Y coordinate to scan downward from (the player's feet).
  * @param worldZ - World-space Z coordinate to sample.
  * @returns The world-space Y height of the nearest solid surface at or
  * below `worldY`, or `-Infinity` when there isn't one (open air/void below).
@@ -468,7 +475,7 @@ export const getGroundHeightBelow = (
     vzN,
   );
   const startVy = clampAxis(
-    Math.ceil((worldY - best.center[1]) / scale + vyN / 2),
+    Math.floor((worldY - best.center[1]) / scale + vyN / 2),
     vyN,
   );
   for (let vy = startVy; vy >= 0; --vy) {
@@ -479,6 +486,36 @@ export const getGroundHeightBelow = (
     }
   }
   return -Infinity;
+};
+
+/**
+ * Whether the voxel containing a world-space point is solid — the point
+ * query player collision resolves against. Water isn't solid (the player
+ * swims through it), and anywhere outside the loaded blocks reads as air, so
+ * an unfilled neighbour never walls the player in while it streams.
+ */
+export const isSolidAt = (
+  blocks: WorldBlock[],
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+): boolean => {
+  const best = findContainingBlock(blocks, worldX, worldZ);
+  if (best === undefined) {
+    return false;
+  }
+  const store = best.store;
+  const scale = store.scale;
+  const [vxN, vyN, vzN] = store.voxels;
+  // `store.get` reads out-of-range cells as air, so unlike the height
+  // samplers this deliberately doesn't clamp: clamping would smear the
+  // block's edge voxels outward into phantom walls.
+  const id = store.get(
+    Math.floor((worldX - best.center[0]) / scale + vxN / 2),
+    Math.floor((worldY - best.center[1]) / scale + vyN / 2),
+    Math.floor((worldZ - best.center[2]) / scale + vzN / 2),
+  );
+  return id !== VOXEL_AIR && id !== VOXEL_WATER;
 };
 
 /**

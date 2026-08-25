@@ -28,6 +28,7 @@ import {
   placeCamera,
   PLAYER_CFG,
   updatePlayer,
+  type PlayerWorld,
 } from "./player";
 import { RendererSwitch } from "./renderers/renderer-switch";
 import { loadVoxelTiles } from "./renderers/tile-loader";
@@ -44,6 +45,7 @@ import {
   BLOCK_WORLD,
   getGroundHeightBelow,
   getWorldHeight,
+  isSolidAt,
   syncLevelFromStore,
   VOXEL_SIZE,
   type Dim3,
@@ -391,6 +393,18 @@ const App: Component<{}> = () => {
     }
     hud.textContent = `frame: ${ms.toFixed(2)} ms | res: ${adaptive.scale}x | ${stats}`;
   };
+  /** Built once rather than per frame; the samplers read the live blocks. */
+  const playerWorld: PlayerWorld = {
+    groundHeightAt: (x, y, z) => getGroundHeightBelow(blockGrid.blocks, x, y, z),
+    // water surface height: sea level where the ground dips below it, else none
+    waterSurfaceAt: (x, z) => {
+      const ground = getWorldHeight(blockGrid.blocks, x, z);
+      const sea = TERRAIN.seaLevel;
+      return sea !== undefined && ground < sea ? sea : -Infinity;
+    },
+    solidAt: (x, y, z) => isSolidAt(blockGrid.blocks, x, y, z),
+    halfExtent: SAFE_EXTENT,
+  };
   let lastFrameT = 0;
   /** Reusable color object, updated in place each frame so sky updates don't allocate. */
   const skyColor = new Color(SKY_BLUE);
@@ -399,19 +413,7 @@ const App: Component<{}> = () => {
       lastFrameT > 0 ? Math.min(0.05, (t - lastFrameT) / 1000) : 1 / 60;
     lastFrameT = t;
     const input = consumeInput();
-    updatePlayer(
-      player,
-      dt,
-      input,
-      (x, y, z) => getGroundHeightBelow(blockGrid.blocks, x, y, z),
-      // water surface height: sea level where the ground dips below it, else none
-      (x, z) => {
-        const ground = getWorldHeight(blockGrid.blocks, x, z);
-        const sea = TERRAIN.seaLevel;
-        return sea !== undefined && ground < sea ? sea : -Infinity;
-      },
-      SAFE_EXTENT,
-    );
+    updatePlayer(player, dt, input, playerWorld);
     // crosshair reach feedback: recompute every frame so it tracks look, not
     // just edit attempts
     setInReach(editing.pick().target !== null);
