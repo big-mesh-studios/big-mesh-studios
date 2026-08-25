@@ -1,0 +1,5 @@
+.action-button {
+  position: absolute;
+  user-select: none;
+  touch-action: none;
+}
