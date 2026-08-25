@@ -353,23 +353,12 @@ export const buildBlock = (params: {
   return block;
 };
 
-/**
- * CPU ground-height sampler: finds the voxel surface at (`worldX`, `worldZ`)
- * by scanning the containing block's CPU store top-down, so it stays correct
- * even after the store is edited at runtime. Mirrors the shader's world to
- * local to voxel mapping, so it respects each block's level-of-detail scale.
- *
- * @param blocks - The candidate blocks to search.
- * @param worldX - World-space X coordinate to sample.
- * @param worldZ - World-space Z coordinate to sample.
- * @returns The world-space Y height of the ground surface, or `-Infinity`
- * when the point is outside every block or over empty space.
- */
-export const getWorldHeight = (
+/** Finds the block whose footprint contains (`worldX`, `worldZ`), closest to that point if more than one does. */
+const findContainingBlock = (
   blocks: WorldBlock[],
   worldX: number,
   worldZ: number,
-): number => {
+): WorldBlock | undefined => {
   let best: WorldBlock | undefined;
   let bestDistSq = Infinity;
   for (const block of blocks) {
@@ -386,6 +375,33 @@ export const getWorldHeight = (
       best = block;
     }
   }
+  return best;
+};
+
+/**
+ * CPU ground-height sampler: finds the voxel surface at (`worldX`, `worldZ`)
+ * by scanning the containing block's CPU store top-down, so it stays correct
+ * even after the store is edited at runtime. Mirrors the shader's world to
+ * local to voxel mapping, so it respects each block's level-of-detail scale.
+ *
+ * Always finds the topmost solid surface in the column, which is exactly
+ * what spawn placement and sea-level checks want — but it isn't player
+ * collision: a tunnel's ceiling would report as "the ground" here, since
+ * it's above whatever solid floor the tunnel itself has. For that, use
+ * `getGroundHeightBelow`.
+ *
+ * @param blocks - The candidate blocks to search.
+ * @param worldX - World-space X coordinate to sample.
+ * @param worldZ - World-space Z coordinate to sample.
+ * @returns The world-space Y height of the ground surface, or `-Infinity`
+ * when the point is outside every block or over empty space.
+ */
+export const getWorldHeight = (
+  blocks: WorldBlock[],
+  worldX: number,
+  worldZ: number,
+): number => {
+  const best = findContainingBlock(blocks, worldX, worldZ);
   if (best === undefined) {
     return -Infinity;
   }
@@ -403,6 +419,59 @@ export const getWorldHeight = (
     vzN,
   );
   for (let vy = vyN - 1; vy >= 0; --vy) {
+    const id = store.get(vx, vy, vz);
+    // skip water so the player stands on the lakebed (or shore) under water
+    if (id !== 0 && id !== VOXEL_WATER) {
+      return best.center[1] + (vy + 1 - vyN / 2) * scale;
+    }
+  }
+  return -Infinity;
+};
+
+/**
+ * CPU ground-height sampler for player collision: like `getWorldHeight`,
+ * but scans downward starting at (or just above) `worldY` instead of from
+ * the top of the world, so it finds the solid surface directly beneath the
+ * player rather than the topmost one in the whole column. Without this, a
+ * tunnel dug under a hill would report the hill's roof as the ground, since
+ * a top-down scan finds that solid voxel first — ejecting the player up
+ * onto the hilltop the moment they walked into the tunnel.
+ *
+ * @param blocks - The candidate blocks to search.
+ * @param worldX - World-space X coordinate to sample.
+ * @param worldY - World-space Y coordinate to scan downward from (the player's own height).
+ * @param worldZ - World-space Z coordinate to sample.
+ * @returns The world-space Y height of the nearest solid surface at or
+ * below `worldY`, or `-Infinity` when there isn't one (open air/void below).
+ */
+export const getGroundHeightBelow = (
+  blocks: WorldBlock[],
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+): number => {
+  const best = findContainingBlock(blocks, worldX, worldZ);
+  if (best === undefined) {
+    return -Infinity;
+  }
+  const store = best.store;
+  const scale = store.scale;
+  const [vxN, vyN, vzN] = store.voxels;
+  const clampAxis = (v: number, n: number): number =>
+    Math.max(0, Math.min(n - 1, v));
+  const vx = clampAxis(
+    Math.floor((worldX - best.center[0]) / scale + vxN / 2),
+    vxN,
+  );
+  const vz = clampAxis(
+    Math.floor((worldZ - best.center[2]) / scale + vzN / 2),
+    vzN,
+  );
+  const startVy = clampAxis(
+    Math.ceil((worldY - best.center[1]) / scale + vyN / 2),
+    vyN,
+  );
+  for (let vy = startVy; vy >= 0; --vy) {
     const id = store.get(vx, vy, vz);
     // skip water so the player stands on the lakebed (or shore) under water
     if (id !== 0 && id !== VOXEL_WATER) {

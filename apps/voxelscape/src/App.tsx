@@ -42,6 +42,7 @@ import { EditLayer, type WorldVoxel } from "./world/edit-layer";
 import { createEditPersistence } from "./world/edit-persistence";
 import {
   BLOCK_WORLD,
+  getGroundHeightBelow,
   getWorldHeight,
   syncLevelFromStore,
   VOXEL_SIZE,
@@ -402,7 +403,7 @@ const App: Component<{}> = () => {
       player,
       dt,
       input,
-      (x, z) => getWorldHeight(blockGrid.blocks, x, z),
+      (x, y, z) => getGroundHeightBelow(blockGrid.blocks, x, y, z),
       // water surface height: sea level where the ground dips below it, else none
       (x, z) => {
         const ground = getWorldHeight(blockGrid.blocks, x, z);

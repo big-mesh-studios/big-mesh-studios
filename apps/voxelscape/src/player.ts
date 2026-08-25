@@ -65,7 +65,7 @@ export const updatePlayer = (
   player: Player,
   dt: number,
   input: InputSnapshot,
-  groundHeightAt: (x: number, z: number) => number,
+  groundHeightAt: (x: number, y: number, z: number) => number,
   waterSurfaceAt: (x: number, z: number) => number,
   halfExtent: number,
 ): void => {
@@ -138,7 +138,11 @@ export const updatePlayer = (
   player.position.y += player.vy * dt;
 
   // snap to the terrain surface
-  const ground = groundHeightAt(player.position.x, player.position.z);
+  const ground = groundHeightAt(
+    player.position.x,
+    player.position.y,
+    player.position.z,
+  );
   const minY =
     (Number.isFinite(ground) ? ground : player.position.y) +
     PLAYER_CFG.halfSize;

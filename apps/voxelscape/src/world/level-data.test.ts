@@ -4,9 +4,11 @@ import {
   applyLevelData,
   buildBlock,
   buildBlockData,
+  getGroundHeightBelow,
   getWorldHeight,
   type Dim3,
 } from "./level-data";
+import { VOXEL_DIRT } from "./voxel-store";
 
 /** A fast, deterministic constant-height terrain for the byte-for-byte tests. */
 const flatConfig = {
@@ -53,6 +55,58 @@ describe("buildBlockData", () => {
     const b = buildBlockData({ center: [1000, 0, 1000], terrain: noiseConfig });
     expect(a.fineData.length).toBe(b.fineData.length);
     expect(buf(a.fineData).equals(buf(b.fineData))).toBe(false);
+  });
+});
+
+describe("getGroundHeightBelow", () => {
+  // A hand-built column at the block's centre (world x=0, z=0): solid floor
+  // (voxel y 0..40), an air tunnel above it (41..70), solid hill (71..90),
+  // then open sky. World Y = center[1] + (vy - vyN/2) * scale, scale = 2.
+  const tunnelBlock = () =>
+    buildBlock({
+      center: [0, 0, 0],
+      customFillStore: (store) => {
+        for (let vy = 0; vy <= 40; vy++) store.set(48, vy, 48, VOXEL_DIRT);
+        for (let vy = 71; vy <= 90; vy++) store.set(48, vy, 48, VOXEL_DIRT);
+      },
+    });
+
+  it("finds the tunnel's own floor when queried from inside the tunnel", () => {
+    const block = tunnelBlock();
+    // world Y for vy=55, squarely inside the air gap between floor and hill
+    const insideTunnelY = (55 - 64) * 2;
+    expect(getGroundHeightBelow([block], 0, insideTunnelY, 0)).toBe(
+      (40 + 1 - 64) * 2,
+    );
+  });
+
+  it("differs from getWorldHeight, which reports the hill's roof instead", () => {
+    const block = tunnelBlock();
+    const insideTunnelY = (55 - 64) * 2;
+    const topSurface = getWorldHeight([block], 0, 0);
+    const belowPlayer = getGroundHeightBelow([block], 0, insideTunnelY, 0);
+    expect(topSurface).toBe((90 + 1 - 64) * 2);
+    expect(belowPlayer).toBeLessThan(topSurface);
+  });
+
+  it("still finds the hilltop when queried from above it, same as getWorldHeight", () => {
+    const block = tunnelBlock();
+    const aboveHillY = (95 - 64) * 2;
+    expect(getGroundHeightBelow([block], 0, aboveHillY, 0)).toBe(
+      getWorldHeight([block], 0, 0),
+    );
+  });
+
+  it("returns -Infinity when there's nothing solid below the query point", () => {
+    // a floating hill with open air (and empty void) beneath it all the way down
+    const block = buildBlock({
+      center: [0, 0, 0],
+      customFillStore: (store) => {
+        for (let vy = 71; vy <= 90; vy++) store.set(48, vy, 48, VOXEL_DIRT);
+      },
+    });
+    const belowHillY = (50 - 64) * 2;
+    expect(getGroundHeightBelow([block], 0, belowHillY, 0)).toBe(-Infinity);
   });
 });
 
