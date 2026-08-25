@@ -37,11 +37,16 @@ const terrainOf = (heightAt: (x: number, z: number) => number): PlayerWorld => (
 const FLAT = terrainOf(() => 0);
 const FAR_GROUND = terrainOf(() => -1000);
 
-/** Walks the player forward for `frames`, facing +X. */
-const walkEast = (player: Player, world: PlayerWorld, frames: number): void => {
+/** Walks the player forward for `frames`, facing +X, optionally holding jump. */
+const walkEast = (
+  player: Player,
+  world: PlayerWorld,
+  frames: number,
+  jumpHeld: boolean = false,
+): void => {
   player.yaw = Math.PI / 2;
   for (let i = 0; i < frames; i++) {
-    updatePlayer(player, 1 / 60, { ...NO_INPUT, moveY: 1 }, world);
+    updatePlayer(player, 1 / 60, { ...NO_INPUT, moveY: 1, jumpHeld }, world);
   }
 };
 
@@ -130,6 +135,41 @@ describe("updatePlayer walking into terrain it can't climb", () => {
     // back on the floor under the slab, not floating against its underside
     expect(player.position.y).toBeCloseTo(PLAYER_CFG.halfSize, 5);
     expect(player.onGround).toBe(true);
+  });
+});
+
+describe("updatePlayer climbing out of a shaft", () => {
+  // a shaft dug straight down: floor at 0 within a voxel either side of
+  // x=0, with the ground it was dug out of standing 6 units above that
+  const SHAFT_DEPTH = 6;
+  const SHAFT = terrainOf((x) => (Math.abs(x) < 1 ? 0 : SHAFT_DEPTH));
+
+  it("climbs the wall and gets out when jump is held", () => {
+    const player = createPlayer(0, PLAYER_CFG.halfSize, 0);
+    walkEast(player, SHAFT, 240, true);
+    expect(player.position.y).toBeCloseTo(
+      SHAFT_DEPTH + PLAYER_CFG.halfSize,
+      5,
+    );
+    expect(player.position.x).toBeGreaterThan(1);
+    expect(player.onGround).toBe(true);
+  });
+
+  it("stays at the bottom when jump isn't held, so walls still stop the player", () => {
+    const player = createPlayer(0, PLAYER_CFG.halfSize, 0);
+    walkEast(player, SHAFT, 240);
+    expect(player.position.y).toBeCloseTo(PLAYER_CFG.halfSize, 5);
+    expect(player.position.x).toBeLessThan(1);
+  });
+
+  it("falls back down when jump is released partway up", () => {
+    const player = createPlayer(0, PLAYER_CFG.halfSize, 0);
+    walkEast(player, SHAFT, 12, true);
+    const partway = player.position.y;
+    expect(partway).toBeGreaterThan(PLAYER_CFG.halfSize);
+    expect(partway).toBeLessThan(SHAFT_DEPTH);
+    walkEast(player, SHAFT, 120);
+    expect(player.position.y).toBeCloseTo(PLAYER_CFG.halfSize, 5);
   });
 });
 

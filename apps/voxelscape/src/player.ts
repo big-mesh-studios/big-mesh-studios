@@ -44,6 +44,12 @@ export const PLAYER_CFG = {
   jumpSpeed: 14,
   /** Upward velocity while holding jump underwater, in units per second. */
   swimSpeed: 10,
+  /**
+   * Upward velocity while holding jump against a wall, in units per second.
+   * Without it a shaft dug straight down is a trap: its walls are vertical,
+   * and a step up only ever clears one voxel.
+   */
+  climbSpeed: 10,
   /** Look sensitivity, in radians per pixel of pointer movement. */
   lookSensitivity: 0.0025,
   maxPitch: 1.35,
@@ -240,15 +246,17 @@ const boxHitsSolid = (
  * both report a surface within a step of the feet, and only re-testing the
  * whole box at the raised height tells them apart — the cliff still has
  * material where the player's body would go, a step doesn't.
+ *
+ * @returns Whether a wall stopped the player, who is now up against it.
  */
 const moveHorizontally = (
   player: Player,
   world: PlayerWorld,
   axis: "x" | "z",
   delta: number,
-): void => {
+): boolean => {
   if (delta === 0) {
-    return;
+    return false;
   }
   const from = player.position[axis];
   player.position[axis] = Math.max(
@@ -257,7 +265,7 @@ const moveHorizontally = (
   );
   const { x, y, z } = player.position;
   if (!boxHitsSolid(world.solidAt, x, y, z)) {
-    return;
+    return false;
   }
   const surface = highestStandableSurface(
     world.groundHeightAt,
@@ -272,7 +280,7 @@ const moveHorizontally = (
     !boxHitsSolid(world.solidAt, x, stepped, z)
   ) {
     player.position.y = stepped;
-    return;
+    return false;
   }
   // Neither passable nor climbable, so give back the move — but not all of
   // it, or the player would come to rest up to a frame's travel short of the
@@ -290,6 +298,7 @@ const moveHorizontally = (
     }
   }
   player.position[axis] = clear;
+  return true;
 };
 
 export const updatePlayer = (
@@ -357,8 +366,17 @@ export const updatePlayer = (
 
   // one axis at a time, so a wall that stops one of them still lets the
   // player slide along it with the other
-  moveHorizontally(player, world, "x", dx);
-  moveHorizontally(player, world, "z", dz);
+  const blockedX = moveHorizontally(player, world, "x", dx);
+  const blockedZ = moveHorizontally(player, world, "z", dz);
+  const stoppedByWall = blockedX || blockedZ;
+
+  // Holding jump while walking into a wall climbs it, which is how a player
+  // gets back out of a shaft they dug straight down. Never lower than the
+  // velocity already there, so climbing away from a jump doesn't cut it
+  // short. Underwater, swimming already covers this.
+  if (stoppedByWall && input.jumpHeld && !inWater) {
+    player.vy = Math.max(player.vy, PLAYER_CFG.climbSpeed);
+  }
 
   // The height the ground is judged from is the one the player enters this
   // frame's fall at (after any step up), not where the fall ends: scanning

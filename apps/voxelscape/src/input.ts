@@ -10,7 +10,10 @@ export interface InputSnapshot {
   moveY: number;
   /** Edge-triggered: true only on the frame the jump was pressed. */
   jump: boolean;
-  /** True while the jump input is held down; used to swim up underwater. */
+  /**
+   * True while the jump input is held down; swims up underwater, and climbs
+   * a wall the player is walking into.
+   */
   jumpHeld: boolean;
   /** Horizontal pointer-move delta accumulated since the last frame (drag-to-look). */
   lookDx: number;
@@ -208,7 +211,7 @@ export const queueJump = (): void => {
   state.jumpQueued = true;
 };
 
-/** Touch button held state (drives swim-up underwater). */
+/** Touch button held state (drives swimming up and wall climbing). */
 export const setTouchJump = (held: boolean): void => {
   state.jumpHeld = held;
 };
