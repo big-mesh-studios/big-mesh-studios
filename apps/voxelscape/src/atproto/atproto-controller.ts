@@ -239,11 +239,18 @@ export class AtprotoController {
         handleResolver: HANDLE_RESOLVER,
       });
     }
-    return new BrowserOAuthClient({
-      clientMetadata: loopbackMetadata(
-        window.location.origin,
-        this.options.name ?? "bms-voxelscape",
-      ),
+    if (isLoopbackEnvironment()) {
+      return new BrowserOAuthClient({
+        clientMetadata: loopbackMetadata(
+          window.location.origin,
+          this.options.name ?? "bms-voxelscape"
+        ),
+        handleResolver: HANDLE_RESOLVER,
+      });
+    }
+    const metadataUrl = new URL("client-metadata.json", window.location.href).href;
+    return BrowserOAuthClient.load({
+      clientId: metadataUrl,
       handleResolver: HANDLE_RESOLVER,
     });
   }
@@ -292,4 +299,10 @@ export class AtprotoController {
     this.lastError = err instanceof Error ? err.message : String(err);
     return `atproto error: ${this.lastError}`;
   }
+}
+
+function isLoopbackEnvironment(): boolean {
+  if (typeof window === "undefined") return false;
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
 }
