@@ -18,6 +18,7 @@ import {
   createLookDragHandlers,
   installEditControls,
   installKeyboardControls,
+  installPointerLockLook,
 } from "./input";
 import { COLLECTABLE, Inventory } from "./inventory";
 import { GpuTimer } from "./perf";
@@ -240,6 +241,7 @@ const App: Component<{}> = () => {
   });
 
   installEditControls();
+  installPointerLockLook();
   // Both renderers' translucent water passes (and the triangle renderer's
   // underwater tint) blend over the opaque scene; scene-graph draw order
   // means they must be added after the player cube.

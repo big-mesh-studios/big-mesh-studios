@@ -131,6 +131,12 @@ export const installKeyboardControls = (): void => {
  * Binds the block-editing controls: left mouse button digs, right mouse button
  * places, and the top-row number keys select the matching hotbar slot. Edits
  * are edge-triggered per press, so holding a button doesn't dig repeatedly.
+ *
+ * The first click on the canvas only acquires the pointer lock (see
+ * `installPointerLockLook`) — it doesn't also dig or place. Once locked,
+ * looking around no longer involves dragging a visible cursor, so there's
+ * nothing left to disambiguate: mousedown fires the action right away, same
+ * as holding the button to keep mining while you turn in Minecraft.
  */
 export const installEditControls = (): void => {
   const onDown = (e: MouseEvent): void => {
@@ -141,6 +147,10 @@ export const installEditControls = (): void => {
     // the touch UI (joystick, buttons, console). Touch taps on the world also
     // reach here as emulated mouse events with the canvas as the target.
     if (!(e.target instanceof HTMLCanvasElement)) {
+      return;
+    }
+    if (document.pointerLockElement !== e.target) {
+      e.target.requestPointerLock();
       return;
     }
     if (e.button === 0) {
@@ -213,6 +223,9 @@ export interface LookDragHandlers {
  * Tracks a single active pointer drag and feeds its movement into
  * `addLookDelta`. Pointer events from any other pointer are ignored, so a
  * second finger touching down mid-drag doesn't steal or reset tracking.
+ *
+ * Mouse pointers are ignored here — on desktop, looking around is driven by
+ * `installPointerLockLook` instead, so this is left for touch/pen drags.
  */
 export const createLookDragHandlers = (): LookDragHandlers => {
   let pointerId: number | null = null;
@@ -220,7 +233,7 @@ export const createLookDragHandlers = (): LookDragHandlers => {
   let lastY = 0;
   return {
     onPointerDown: (e) => {
-      if (pointerId === null) {
+      if (pointerId === null && e.pointerType !== "mouse") {
         pointerId = e.pointerId;
         lastX = e.clientX;
         lastY = e.clientY;
@@ -248,6 +261,24 @@ export const createLookDragHandlers = (): LookDragHandlers => {
       }
     },
   };
+};
+
+/**
+ * Feeds the desktop look-around input while the pointer is locked to the
+ * canvas (see `installEditControls`, which requests the lock on the first
+ * click). While locked, the OS hides and re-centers the cursor each frame,
+ * so `movementX`/`movementY` — not `clientX`/`clientY` — carry the raw
+ * mouse delta; outside of lock, mouse movement over the canvas does nothing,
+ * matching the click-to-play convention of desktop FPS games.
+ */
+export const installPointerLockLook = (): void => {
+  const onMove = (e: MouseEvent): void => {
+    if (document.pointerLockElement === null) {
+      return;
+    }
+    addLookDelta(e.movementX, e.movementY);
+  };
+  document.addEventListener("mousemove", onMove);
 };
 
 /** Called once per frame: returns the latest input and clears per-frame state. */
