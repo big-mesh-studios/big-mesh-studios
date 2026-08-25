@@ -7,6 +7,7 @@ import {
   getGroundHeightBelow,
   getWorldHeight,
   isSolidAt,
+  isWaterAt,
   type Dim3,
 } from "./level-data";
 import { VOXEL_DIRT, VOXEL_WATER } from "./voxel-store";
@@ -129,7 +130,7 @@ describe("getGroundHeightBelow", () => {
   });
 });
 
-describe("isSolidAt", () => {
+describe("isSolidAt and isWaterAt", () => {
   // Voxel (48, vy, 48) is the column at world x/z 0..2; world Y for voxel vy
   // spans (vy - 64) * 2 to (vy - 63) * 2.
   const block = () =>
@@ -154,6 +155,30 @@ describe("isSolidAt", () => {
   it("reads air outside the loaded blocks rather than walling the player in", () => {
     expect(isSolidAt([block()], 10000, 0, 10000)).toBe(false);
     expect(isSolidAt([], 0, 0, 0)).toBe(false);
+  });
+
+  it("does not call a shaft dug below sea level water", () => {
+    // Real terrain with a sea level, mined straight down past it — the case
+    // that made the player swim in slow motion down their own dry shaft
+    // back when being in water was inferred from the column's surface
+    // height rather than read off the voxel.
+    const sea = flatConfig.seaLevel;
+    const b = buildBlock({ center: [0, 0, 0], terrain: flatConfig });
+    const [, vyN] = b.store.voxels;
+    const column = 48;
+    const surface = getWorldHeight([b], 1, 1);
+    expect(surface).toBeGreaterThan(sea);
+    for (let worldY = surface; worldY > sea - 6; worldY -= 2) {
+      b.store.set(column, Math.floor(worldY / 2 + vyN / 2), column, 0);
+    }
+    expect(getWorldHeight([b], 1, 1)).toBeLessThan(sea);
+    expect(isWaterAt([b], 1, sea - 2, 1)).toBe(false);
+  });
+
+  it("reads the water a lake is actually made of", () => {
+    const b = block();
+    expect(isWaterAt([b], 1, (50 - 64) * 2 + 1, 1)).toBe(true);
+    expect(isWaterAt([b], 1, (45 - 64) * 2 + 1, 1)).toBe(false);
   });
 
   it("reads air past the top and bottom of a block instead of smearing its edge voxels", () => {

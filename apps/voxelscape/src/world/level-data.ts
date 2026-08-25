@@ -489,10 +489,38 @@ export const getGroundHeightBelow = (
 };
 
 /**
- * Whether the voxel containing a world-space point is solid — the point
- * query player collision resolves against. Water isn't solid (the player
- * swims through it), and anywhere outside the loaded blocks reads as air, so
- * an unfilled neighbour never walls the player in while it streams.
+ * The voxel that contains a world-space point, read from the live store so
+ * it reflects every edit made to it. Anywhere outside the loaded blocks
+ * reads as air.
+ */
+const voxelIdAt = (
+  blocks: WorldBlock[],
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+): number => {
+  const best = findContainingBlock(blocks, worldX, worldZ);
+  if (best === undefined) {
+    return VOXEL_AIR;
+  }
+  const store = best.store;
+  const scale = store.scale;
+  const [vxN, vyN, vzN] = store.voxels;
+  // `store.get` reads out-of-range cells as air, so unlike the height
+  // samplers this deliberately doesn't clamp: clamping would smear the
+  // block's edge voxels outward across everything beyond them.
+  return store.get(
+    Math.floor((worldX - best.center[0]) / scale + vxN / 2),
+    Math.floor((worldY - best.center[1]) / scale + vyN / 2),
+    Math.floor((worldZ - best.center[2]) / scale + vzN / 2),
+  );
+};
+
+/**
+ * Whether the voxel containing a world-space point blocks movement — the
+ * query player collision resolves against. Water doesn't block (the player
+ * swims through it), and air outside the loaded blocks means an unfilled
+ * neighbour never walls the player in while it streams.
  */
 export const isSolidAt = (
   blocks: WorldBlock[],
@@ -500,23 +528,25 @@ export const isSolidAt = (
   worldY: number,
   worldZ: number,
 ): boolean => {
-  const best = findContainingBlock(blocks, worldX, worldZ);
-  if (best === undefined) {
-    return false;
-  }
-  const store = best.store;
-  const scale = store.scale;
-  const [vxN, vyN, vzN] = store.voxels;
-  // `store.get` reads out-of-range cells as air, so unlike the height
-  // samplers this deliberately doesn't clamp: clamping would smear the
-  // block's edge voxels outward into phantom walls.
-  const id = store.get(
-    Math.floor((worldX - best.center[0]) / scale + vxN / 2),
-    Math.floor((worldY - best.center[1]) / scale + vyN / 2),
-    Math.floor((worldZ - best.center[2]) / scale + vzN / 2),
-  );
+  const id = voxelIdAt(blocks, worldX, worldY, worldZ);
   return id !== VOXEL_AIR && id !== VOXEL_WATER;
 };
+
+/**
+ * Whether a world-space point is inside water.
+ *
+ * This asks the voxel itself rather than comparing the column's surface
+ * against sea level, because the two stop agreeing the moment anyone digs.
+ * Mining a shaft below sea level drops that column's topmost solid voxel
+ * below sea level, and a sea-level comparison then calls the dry shaft
+ * flooded and has the player swimming down it in slow motion.
+ */
+export const isWaterAt = (
+  blocks: WorldBlock[],
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+): boolean => voxelIdAt(blocks, worldX, worldY, worldZ) === VOXEL_WATER;
 
 /**
  * The worker-facing output of one block generation: the voxel store data

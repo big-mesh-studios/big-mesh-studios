@@ -46,6 +46,7 @@ import {
   getGroundHeightBelow,
   getWorldHeight,
   isSolidAt,
+  isWaterAt,
   syncLevelFromStore,
   VOXEL_SIZE,
   type Dim3,
@@ -396,12 +397,7 @@ const App: Component<{}> = () => {
   /** Built once rather than per frame; the samplers read the live blocks. */
   const playerWorld: PlayerWorld = {
     groundHeightAt: (x, y, z) => getGroundHeightBelow(blockGrid.blocks, x, y, z),
-    // water surface height: sea level where the ground dips below it, else none
-    waterSurfaceAt: (x, z) => {
-      const ground = getWorldHeight(blockGrid.blocks, x, z);
-      const sea = TERRAIN.seaLevel;
-      return sea !== undefined && ground < sea ? sea : -Infinity;
-    },
+    inWaterAt: (x, y, z) => isWaterAt(blockGrid.blocks, x, y, z),
     solidAt: (x, y, z) => isSolidAt(blockGrid.blocks, x, y, z),
     halfExtent: SAFE_EXTENT,
   };

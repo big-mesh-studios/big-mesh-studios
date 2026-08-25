@@ -23,8 +23,8 @@ export interface PlayerWorld {
    * above them.
    */
   groundHeightAt: (x: number, y: number, z: number) => number;
-  /** The water surface above (`x`, `z`), or `-Infinity` where there is no water. */
-  waterSurfaceAt: (x: number, z: number) => number;
+  /** Whether (`x`, `y`, `z`) is inside water; asked at the player's feet. */
+  inWaterAt: (x: number, y: number, z: number) => boolean;
   /** Whether the voxel containing (`x`, `y`, `z`) blocks movement; water doesn't. */
   solidAt: (x: number, y: number, z: number) => boolean;
   /** Half the playable extent, in world units; horizontal movement clamps to it. */
@@ -346,8 +346,11 @@ export const updatePlayer = (
   const dz = player.vz * dt;
 
   // gravity + jump; underwater the gravity is weak and holding jump swims up
-  const waterY = world.waterSurfaceAt(player.position.x, player.position.z);
-  const inWater = waterY > player.position.y - PLAYER_CFG.halfSize;
+  const inWater = world.inWaterAt(
+    player.position.x,
+    player.position.y - PLAYER_CFG.halfSize + SKIN,
+    player.position.z,
+  );
   if (inWater) {
     player.vy -= PLAYER_CFG.gravity * 0.15 * dt;
     if (input.jumpHeld) {

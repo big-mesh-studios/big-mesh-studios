@@ -21,7 +21,7 @@ const NO_INPUT: InputSnapshot = {
   select: null,
 };
 
-const NO_WATER = () => -Infinity;
+const NO_WATER = () => false;
 
 /**
  * A world shaped like a heightmap: solid everywhere below the surface the
@@ -29,7 +29,7 @@ const NO_WATER = () => -Infinity;
  */
 const terrainOf = (heightAt: (x: number, z: number) => number): PlayerWorld => ({
   groundHeightAt: (x, _y, z) => heightAt(x, z),
-  waterSurfaceAt: NO_WATER,
+  inWaterAt: NO_WATER,
   solidAt: (x, y, z) => y < heightAt(x, z),
   halfExtent: 1e9,
 });
@@ -105,7 +105,7 @@ describe("updatePlayer walking into terrain it can't climb", () => {
     // a floor at 0 everywhere, with a slab of rock hanging over x >= 0
     const overhang: PlayerWorld = {
       groundHeightAt: (x, y) => (x >= 0 && y >= SLAB_BOTTOM ? ROOF : 0),
-      waterSurfaceAt: NO_WATER,
+      inWaterAt: NO_WATER,
       solidAt: (x, y) => y < 0 || (x >= 0 && y >= SLAB_BOTTOM && y < ROOF),
       halfExtent: 1e9,
     };
@@ -120,7 +120,7 @@ describe("updatePlayer walking into terrain it can't climb", () => {
     const SLAB_BOTTOM = 3;
     const lowTunnel: PlayerWorld = {
       groundHeightAt: (_x, y) => (y >= SLAB_BOTTOM ? ROOF : 0),
-      waterSurfaceAt: NO_WATER,
+      inWaterAt: NO_WATER,
       solidAt: (_x, y) => y < 0 || (y >= SLAB_BOTTOM && y < ROOF),
       halfExtent: 1e9,
     };
@@ -202,6 +202,41 @@ describe("updatePlayer stepping and falling", () => {
     }
     expect(player.position.y).toBeCloseTo(PLAYER_CFG.halfSize, 5);
     expect(player.onGround).toBe(true);
+  });
+});
+
+describe("updatePlayer falling through water and air", () => {
+  const fallFor = (world: PlayerWorld, frames: number): number => {
+    const player = createPlayer(0, 50, 0);
+    for (let i = 0; i < frames; i++) {
+      updatePlayer(player, 1 / 60, NO_INPUT, world);
+    }
+    return 50 - player.position.y;
+  };
+
+  it("sinks slowly in water and falls at full gravity out of it", () => {
+    const submerged: PlayerWorld = { ...FLAT, inWaterAt: () => true };
+    const dropped = fallFor(FLAT, 30);
+    expect(dropped).toBeGreaterThan(fallFor(submerged, 30) * 4);
+  });
+
+  it("falls normally down a dry shaft, however deep it was dug", () => {
+    // The player's own mining is what used to break this: whether they were
+    // in water was inferred from how the terrain generator would have filled
+    // the column, so a shaft dug below sea level counted as flooded.
+    const SHAFT_FLOOR = -40;
+    const shaft = terrainOf((x) => (Math.abs(x) < 1 ? SHAFT_FLOOR : 0));
+    const player = createPlayer(0, PLAYER_CFG.halfSize, 0);
+    for (let i = 0; i < 60; i++) {
+      updatePlayer(player, 1 / 60, NO_INPUT, shaft);
+    }
+    // one second of free fall: full gravity as the speed, and half of
+    // gravity times the second squared as the distance
+    expect(player.vy).toBeCloseTo(-PLAYER_CFG.gravity, 0);
+    expect(PLAYER_CFG.halfSize - player.position.y).toBeCloseTo(
+      PLAYER_CFG.gravity / 2,
+      0,
+    );
   });
 });
 
