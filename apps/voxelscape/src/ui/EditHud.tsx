@@ -1,7 +1,8 @@
-// Block-editing HUD: a crosshair at the screen centre (the pick target) and a
-// bottom hotbar listing the collected blocks, the selected one highlighted.
-// Driven by the shared `Inventory`'s `onChange` callback so counts and the
-// selection refresh without wiring a per-block signal through the domain.
+// Block-editing HUD: a crosshair at the screen centre (the pick target,
+// dimmed when nothing is within reach) and a bottom hotbar listing the
+// collected blocks, the selected one highlighted. Driven by the shared
+// `Inventory`'s `onChange` callback so counts and the selection refresh
+// without wiring a per-block signal through the domain.
 import {
   Component,
   createSignal,
@@ -15,6 +16,8 @@ export const EditHud: Component<{
   inventory: Inventory;
   /** Latest break/place message, shown above the hotbar. */
   status: Accessor<string>;
+  /** Whether the crosshair currently points at something within reach. */
+  inReach: Accessor<boolean>;
 }> = (props) => {
   const inv = props.inventory;
   const order = Object.keys(COLLECTABLE).map(Number);
@@ -57,7 +60,7 @@ export const EditHud: Component<{
           style={{
             width: "2px",
             height: "14px",
-            background: "rgba(0,0,0,0.7)",
+            background: props.inReach() ? "rgba(0,0,0,0.85)" : "rgba(0,0,0,0.3)",
           }}
         />
         <div
@@ -65,7 +68,7 @@ export const EditHud: Component<{
             position: "absolute",
             width: "14px",
             height: "2px",
-            background: "rgba(0,0,0,0.7)",
+            background: props.inReach() ? "rgba(0,0,0,0.85)" : "rgba(0,0,0,0.3)",
           }}
         />
       </div>
