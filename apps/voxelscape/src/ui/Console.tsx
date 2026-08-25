@@ -1,4 +1,5 @@
 import { createEffect, createSignal, type Component } from "solid-js";
+import styles from "./Console.module.css";
 
 export interface ConsoleProps {
   onCommand: (line: string) => string | Promise<string>;
@@ -15,7 +16,7 @@ export const Console: Component<ConsoleProps> = (props) => {
   const [lines, setLines] = createSignal<string[]>([]);
   const [value, setValue] = createSignal("");
   let inputRef: HTMLInputElement | undefined;
-  let outputRef: HTMLDivElement | undefined;
+  let outputRef: HTMLOutputElement | undefined;
 
   const submit = (): void => {
     const line = value().trim();
@@ -70,77 +71,26 @@ export const Console: Component<ConsoleProps> = (props) => {
   );
 
   return (
-    <div style={{ position: "absolute", inset: "0", "pointer-events": "none" }}>
+    <div class={styles.underlay}>
       <div
-        style={{
-          position: "absolute",
-          right: "12px",
-          top: "12px",
-          width: "44px",
-          height: "44px",
-          "border-radius": "22px",
-          background: "rgba(0,0,0,0.5)",
-          color: "#fff",
-          font: "bold 16px monospace",
-          display: "flex",
-          "align-items": "center",
-          "justify-content": "center",
-          "user-select": "none",
-          "touch-action": "none",
-          cursor: "pointer",
-          "pointer-events": "auto",
-        }}
         onPointerDown={(e) => {
           e.preventDefault();
           setOpen((o) => !o);
         }}
         onContextMenu={(e) => e.preventDefault()}
+        class={styles.anchor}
       >
         {">_"}
       </div>
       {open() && (
-        <div
-          style={{
-            position: "absolute",
-            right: "12px",
-            top: "64px",
-            width: "min(360px, calc(100vw - 24px))",
-            height: "260px",
-            background: "rgba(0,0,0,0.78)",
-            border: "1px solid rgba(255,255,255,0.25)",
-            "border-radius": "8px",
-            display: "flex",
-            "flex-direction": "column",
-            font: "12px monospace",
-            color: "#c8d6e5",
-            "pointer-events": "auto",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            ref={outputRef}
-            style={{
-              flex: "1",
-              overflow: "auto",
-              padding: "8px",
-              "white-space": "pre-wrap",
-              "word-break": "break-all",
-            }}
-          >
+        <div class={styles.console}>
+          <output ref={outputRef} class={styles.output}>
             {lines().map((l) => (
               <div>{l}</div>
             ))}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              "align-items": "center",
-              "border-top": "1px solid rgba(255,255,255,0.15)",
-            }}
-          >
-            <span style={{ padding: "6px 4px 6px 8px", color: "#6fcf97" }}>
-              {">"}
-            </span>
+          </output>
+          <div class={styles["input-container"]}>
+            <span class={styles.prefix}>{">"}</span>
             <input
               ref={inputRef}
               value={value()}

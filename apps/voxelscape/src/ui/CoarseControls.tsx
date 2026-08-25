@@ -8,9 +8,9 @@ import {
 import * as THREE from "three";
 import { queueJump, queuePlace, setTouchJump, setTouchMove } from "../input";
 import { createActionButton } from "./createActionButton";
-import { Joystick } from "./Joystick";
+import { createJoystick } from "./createJoystick";
 
-const Controls: Component = () => {
+const CoarseControls: Component = () => {
   const HIT = 150;
   const BUTTON = 100;
   const EDIT = 84;
@@ -24,11 +24,11 @@ const Controls: Component = () => {
   window.addEventListener("resize", onResize);
   onCleanup(() => window.removeEventListener("resize", onResize));
 
-  const joystick = Joystick({
+  const joystick = createJoystick({
     position: createMemo(
       () => new THREE.Vector2(MARGIN, viewSize().y - MARGIN - HIT),
     ),
-    hitAreaSize: HIT,
+    hitAreaSize: () => HIT,
     outerRingSize: () => 0.8 * HIT,
     knobSize: () => 70,
   });
@@ -103,4 +103,4 @@ const Controls: Component = () => {
   );
 };
 
-export default Controls;
+export default CoarseControls;

@@ -7,7 +7,13 @@ import {
   Scene,
   WebGLRenderer,
 } from "@random-mesh/rmsl/scene";
-import { Component, createEffect, createSignal, createStore } from "solid-js";
+import {
+  Component,
+  createEffect,
+  createSignal,
+  createStore,
+  Show,
+} from "solid-js";
 import { AdaptiveResolution } from "./adaptive";
 import { AtprotoController } from "./atproto/atproto-controller";
 import { DayNightController } from "./day-night-controller";
@@ -33,9 +39,10 @@ import {
 import { RendererSwitch } from "./renderers/renderer-switch";
 import { loadVoxelTiles } from "./renderers/tile-loader";
 import { SoundController } from "./sound-controller";
+import CoarseControls from "./ui/CoarseControls";
 import { Console } from "./ui/Console";
-import Controls from "./ui/Controls";
 import { EditHud } from "./ui/EditHud";
+import { createMediaQuery } from "./utils/create-media-query";
 import { applyWeather } from "./weather";
 import { WeatherController } from "./weather-controller";
 import { BlockGrid } from "./world/block-grid";
@@ -90,6 +97,8 @@ let firstPerson = true;
 let showPlayerCube = false;
 
 const App: Component<{}> = () => {
+  const coarsePointer = createMediaQuery("pointer: coarse");
+
   /** True when the URL hash includes `perf`, enabling the debug HUD (GPU timer and fetches-per-ray). */
   const debugPerf =
     typeof window !== "undefined" && window.location.hash.includes("perf");
@@ -394,17 +403,20 @@ const App: Component<{}> = () => {
     }
     hud.textContent = `frame: ${ms.toFixed(2)} ms | res: ${adaptive.scale}x | ${stats}`;
   };
+
   /** Built once rather than per frame; the samplers read the live blocks. */
   const playerWorld: PlayerWorld = {
-    groundHeightAt: (x, y, z) => getGroundHeightBelow(blockGrid.blocks, x, y, z),
+    groundHeightAt: (x, y, z) =>
+      getGroundHeightBelow(blockGrid.blocks, x, y, z),
     inWaterAt: (x, y, z) => isWaterAt(blockGrid.blocks, x, y, z),
     solidAt: (x, y, z) => isSolidAt(blockGrid.blocks, x, y, z),
     halfExtent: SAFE_EXTENT,
   };
+
   let lastFrameT = 0;
   /** Reusable color object, updated in place each frame so sky updates don't allocate. */
   const skyColor = new Color(SKY_BLUE);
-  let animate = (t: number) => {
+  const animate = (t: number) => {
     const dt =
       lastFrameT > 0 ? Math.min(0.05, (t - lastFrameT) / 1000) : 1 / 60;
     lastFrameT = t;
@@ -451,6 +463,7 @@ const App: Component<{}> = () => {
     render();
     adaptResolution(t);
   };
+
   createEffect(
     () => state.canvas,
     (canvas) => {
@@ -503,6 +516,7 @@ const App: Component<{}> = () => {
       };
     },
   );
+
   const render = () => {
     let renderer = state.renderer;
     if (renderer === undefined) {
@@ -529,6 +543,7 @@ const App: Component<{}> = () => {
     }
   };
   const lookDrag = createLookDragHandlers();
+
   return (
     <div
       style={{
@@ -556,7 +571,9 @@ const App: Component<{}> = () => {
         onPointerUp={lookDrag.onPointerUp}
         onPointerCancel={lookDrag.onPointerCancel}
       />
-      <Controls />
+      <Show when={coarsePointer()}>
+        <CoarseControls />
+      </Show>
       <EditHud inventory={inventory} status={editStatus} inReach={inReach} />
       <Console onCommand={(line) => commands.run(line)} />
       {debugPerf && (

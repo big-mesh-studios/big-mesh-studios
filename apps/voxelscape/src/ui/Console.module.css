@@ -1,0 +1,56 @@
+.underlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.anchor {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font: bold 16px monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  touch-action: none;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.console {
+  position: absolute;
+  right: 12px;
+  top: 64px;
+  width: min(360px, calc(100vw - 24px));
+  height: 260px;
+  background: rgba(0, 0, 0, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  font: 12px monospace;
+  color: #c8d6e5;
+  pointer-events: auto;
+  overflow: hidden;
+}
+.output {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.input-container {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+.prefix {
+  padding: 6px 4px 6px 8px;
+  color: #6fcf97;
+}

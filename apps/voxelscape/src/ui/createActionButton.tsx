@@ -11,7 +11,13 @@ import * as THREE from "three";
 
 const MAX_HOLD_TIME = 1.0;
 
-export function createActionButton(params: {
+export function createActionButton({
+  position,
+  size,
+  externalPressed,
+  colour: colourParam,
+  specialSlidePress,
+}: {
   position: Accessor<THREE.Vector2>;
   size: Accessor<number>;
   externalPressed?: Accessor<boolean>;
@@ -26,19 +32,6 @@ export function createActionButton(params: {
   justReleasedExternal: Accessor<boolean>;
   UI: Component;
 } {
-  const colour = createMemo(() => {
-    let colour2 = params.colour?.();
-    if (colour2 == undefined) {
-      return { r: 255, g: 255, b: 255 };
-    }
-    let colour3 = new THREE.Color(colour2);
-    return {
-      r: Math.max(0, Math.min(255, Math.round(colour3.r * 255.0))),
-      g: Math.max(0, Math.min(255, Math.round(colour3.g * 255.0))),
-      b: Math.max(0, Math.min(255, Math.round(colour3.b * 255.0))),
-    };
-  });
-
   const [divElement, setDivElement] = createSignal<HTMLDivElement>();
 
   const [pressed, setPressed] = createSignal(false);
@@ -47,7 +40,18 @@ export function createActionButton(params: {
   const [tick, setTick] = createSignal(0);
   const [externalWasPressed, setExternalWasPressed] = createSignal(false);
 
-  const externalPressed = params.externalPressed || (() => false);
+  const colour = createMemo(() => {
+    let _colour = colourParam?.();
+    if (_colour == undefined) {
+      return { r: 255, g: 255, b: 255 };
+    }
+    let threeColour = new THREE.Color(_colour);
+    return {
+      r: Math.max(0, Math.min(255, Math.round(threeColour.r * 255.0))),
+      g: Math.max(0, Math.min(255, Math.round(threeColour.g * 255.0))),
+      b: Math.max(0, Math.min(255, Math.round(threeColour.b * 255.0))),
+    };
+  });
 
   let intervalId: number | undefined;
   let lastExternalPressed = false;
@@ -68,7 +72,7 @@ export function createActionButton(params: {
 
   onCleanup(() => stopTracking());
 
-  if (params.externalPressed != undefined) {
+  if (externalPressed != undefined) {
     requestAnimationFrame(function checkExternal() {
       const ext = externalPressed();
       if (ext && !lastExternalPressed) {
@@ -83,7 +87,9 @@ export function createActionButton(params: {
     });
   }
 
-  const isPressed = () => pressed() || externalPressed();
+  // either way of holding the button counts, so this is an or rather than a
+  // fallback: an unheld button reads false, which a fallback would settle for
+  const isPressed = () => pressed() || (externalPressed?.() ?? false);
 
   const power = createMemo(() => {
     tick();
@@ -122,7 +128,7 @@ export function createActionButton(params: {
   };
 
   createRenderEffect(
-    () => params.specialSlidePress?.() ?? false,
+    () => specialSlidePress?.(),
     (specialSlidePress) => {
       if (!specialSlidePress) {
         return;
@@ -162,11 +168,11 @@ export function createActionButton(params: {
         ref={setDivElement}
         style={{
           position: "absolute",
-          left: `${params.position().x}px`,
-          top: `${params.position().y}px`,
-          width: `${params.size()}px`,
-          height: `${params.size()}px`,
-          "border-radius": `${0.5 * params.size()}px`,
+          left: `${position().x}px`,
+          top: `${position().y}px`,
+          width: `${size()}px`,
+          height: `${size()}px`,
+          "border-radius": `${0.5 * size()}px`,
           "background-color": `rgba(${colour().r},${colour().g},${colour().b},${isPressed() ? "0.8" : "0.5"})`,
           "user-select": "none",
           "touch-action": "none",
@@ -180,8 +186,8 @@ export function createActionButton(params: {
   };
 
   return {
-    position: params.position,
-    size: params.size,
+    position: position,
+    size: size,
     pressed: isPressed,
     power,
     justReleased: () => {
