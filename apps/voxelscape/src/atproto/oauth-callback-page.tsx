@@ -9,6 +9,7 @@
 // the code that closes it.
 import { createSignal, type Component } from "solid-js";
 import { buildOAuthClient } from "./atproto-controller";
+import { dumpOAuthDatabase } from "./oauth-debug";
 
 export const OAuthCallbackPage: Component = () => {
   const [status, setStatus] = createSignal("finishing sign-in…");
@@ -17,6 +18,19 @@ export const OAuthCallbackPage: Component = () => {
   // `void atproto.init()` — there's no reactive dependency to key an effect
   // off, so no onMount-equivalent is needed
   void (async () => {
+    // Captured immediately, before oauth.init() runs: the library strips
+    // these from the URL via history.replaceState() as one of its first
+    // steps, well before the (slower, async) state lookup that can fail —
+    // reading them any later, e.g. from a catch block, sees an already-
+    // cleared URL and not the real params.
+    const rawParams =
+      location.hash.length > 1
+        ? new URLSearchParams(location.hash.slice(1))
+        : new URLSearchParams(location.search);
+    const urlState = rawParams.get("state");
+    const dumpBefore = await dumpOAuthDatabase().catch(
+      (dumpErr) => `(failed to dump db: ${String(dumpErr)})`,
+    );
     try {
       const oauth = await buildOAuthClient({});
       const result = await oauth.init();
@@ -34,8 +48,24 @@ export const OAuthCallbackPage: Component = () => {
         );
       }
     } catch (err) {
+      // Debugging a callback failure: show this window's own storage
+      // connection both before and after the failed lookup, alongside the
+      // state key the URL actually carried — directly comparable against
+      // the parent window's /oauthdb output to check whether this window
+      // even sees what the parent wrote, and whether the lookup that just
+      // failed changed anything.
+      const dumpAfter = await dumpOAuthDatabase().catch(
+        (dumpErr) => `(failed to dump db: ${String(dumpErr)})`,
+      );
       setStatus(
-        `sign-in failed: ${err instanceof Error ? err.message : String(err)}`,
+        [
+          `sign-in failed: ${err instanceof Error ? err.message : String(err)}`,
+          `callback url state param: ${urlState}`,
+          `this window's own IndexedDB view BEFORE the lookup:`,
+          dumpBefore,
+          `this window's own IndexedDB view AFTER the lookup:`,
+          dumpAfter,
+        ].join("\n\n"),
       );
     }
   })();
@@ -45,14 +75,13 @@ export const OAuthCallbackPage: Component = () => {
       style={{
         position: "absolute",
         inset: "0",
-        display: "flex",
-        "align-items": "center",
-        "justify-content": "center",
         background: "#111",
         color: "#ddd",
-        font: "14px monospace",
+        font: "12px monospace",
         padding: "24px",
-        "text-align": "center",
+        "white-space": "pre-wrap",
+        "word-break": "break-all",
+        overflow: "auto",
       }}
     >
       {status()}
