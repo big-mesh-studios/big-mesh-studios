@@ -143,7 +143,7 @@ export class AtprotoController {
   async connect(handle?: string): Promise<string> {
     const target = handle ?? this.handleInput();
     if (target.trim() === "") {
-      return "provide a Bluesky handle (e.g. /connect @you.bsky.social)";
+      return "provide a Bluesky handle (e.g. /connect you.bsky.social)";
     }
     try {
       this.status_ = "connecting";
