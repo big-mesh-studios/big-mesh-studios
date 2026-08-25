@@ -298,6 +298,18 @@ const App: Component<{}> = () => {
       showPlayerCube = visible;
       return visible ? "player cube shown" : "player cube hidden";
     },
+    setMoveSpeed: (n) => {
+      if (n !== undefined) {
+        PLAYER_CFG.speed = n;
+      }
+      return `move speed: ${PLAYER_CFG.speed} units/sec`;
+    },
+    setLookSensitivity: (n) => {
+      if (n !== undefined) {
+        PLAYER_CFG.lookSensitivity = n;
+      }
+      return `look sensitivity: ${PLAYER_CFG.lookSensitivity} rad/px`;
+    },
   });
   installKeyboardControls();
   placeCamera(camera, player, firstPerson);

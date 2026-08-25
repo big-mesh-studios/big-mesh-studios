@@ -23,7 +23,7 @@ export const PLAYER_CFG = {
   /** Upward velocity while holding jump underwater, in units per second. */
   swimSpeed: 10,
   /** Look sensitivity, in radians per pixel of pointer movement. */
-  lookSensitivity: 0.005,
+  lookSensitivity: 0.0025,
   maxPitch: 1.35,
   /** Chase-camera distance behind the cube centre, in world units. */
   followBack: 9,

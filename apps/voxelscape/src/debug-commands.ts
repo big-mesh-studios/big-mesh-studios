@@ -15,6 +15,10 @@ export interface DebugCommandsParams {
   setView: (mode: "first" | "third") => string;
   /** Shows or hides the player cube (hidden in first person). */
   setPlayerVisible: (visible: boolean) => string;
+  /** Sets the player's move speed (units/sec), or reports it if `n` is omitted. */
+  setMoveSpeed: (n?: number) => string;
+  /** Sets the look sensitivity (radians/pixel), or reports it if `n` is omitted. */
+  setLookSensitivity: (n?: number) => string;
 }
 
 /** Every debug console command, declared as a single object literal keyed by command name. */
@@ -27,6 +31,8 @@ export const createDebugCommands = (params: DebugCommandsParams): Commander => {
     atproto,
     setView,
     setPlayerVisible,
+    setMoveSpeed,
+    setLookSensitivity,
   } = params;
   return new Commander({
     "/day": {
@@ -176,6 +182,28 @@ export const createDebugCommands = (params: DebugCommandsParams): Commander => {
           return setPlayerVisible(false);
         }
         return "usage: /player show|hide";
+      },
+    },
+    "/movespeed": {
+      help: "/movespeed [n]   set (or show) the player's move speed, in units/sec",
+      run: (rest) => {
+        const n = Number(rest[0]);
+        return setMoveSpeed(
+          rest[0] === undefined || !Number.isFinite(n) || n <= 0
+            ? undefined
+            : n,
+        );
+      },
+    },
+    "/sensitivity": {
+      help: "/sensitivity [n]   set (or show) the look sensitivity, in radians/pixel",
+      run: (rest) => {
+        const n = Number(rest[0]);
+        return setLookSensitivity(
+          rest[0] === undefined || !Number.isFinite(n) || n <= 0
+            ? undefined
+            : n,
+        );
       },
     },
   });
