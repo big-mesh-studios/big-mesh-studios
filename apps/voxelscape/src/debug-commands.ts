@@ -231,5 +231,9 @@ export const createDebugCommands = (params: DebugCommandsParams): Commander => {
         }
       },
     },
+    "/clear": {
+      help: "/clear   clear terminal",
+      run: () => "",
+    },
   });
 };

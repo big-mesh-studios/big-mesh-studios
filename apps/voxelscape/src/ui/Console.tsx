@@ -112,6 +112,11 @@ export const Console: Component<ConsoleProps> = (props) => {
   );
 
   async function onCommand(command: string) {
+    if (command === "/clear") {
+      setLines([]);
+      return;
+    }
+
     const result = props.onCommand(command);
 
     if (typeof result === "string") {
