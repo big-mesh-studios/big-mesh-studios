@@ -63,6 +63,37 @@ const buildLoopbackClientId = (): string => {
 const HANDLE_RESOLVER = "https://public.api.bsky.app";
 
 /**
+ * Builds (loads) the OAuth client for the given options: a hosted
+ * `client-metadata.json` when `clientId` is set, a loopback client for local
+ * development, or the current origin's own `client-metadata.json` otherwise.
+ * Standalone (not a method) so the minimal `/oauth/callback` page can
+ * complete a popup login without constructing an `AtprotoController` — or
+ * the rest of the app — at all.
+ */
+export const buildOAuthClient = async (
+  options: AtpControllerOptions,
+): Promise<BrowserOAuthClient> => {
+  if (options.clientId !== undefined) {
+    return BrowserOAuthClient.load({
+      clientId: options.clientId,
+      handleResolver: HANDLE_RESOLVER,
+    });
+  }
+  if (isLoopbackEnvironment()) {
+    return BrowserOAuthClient.load({
+      clientId: buildLoopbackClientId(),
+      handleResolver: HANDLE_RESOLVER,
+    });
+  }
+  const metadataUrl = new URL("client-metadata.json", window.location.href)
+    .href;
+  return BrowserOAuthClient.load({
+    clientId: metadataUrl,
+    handleResolver: HANDLE_RESOLVER,
+  });
+};
+
+/**
  * Wraps the edit-chunk sync onto a player's atproto repo. A single shared
  * overlay is both the source for uploads and the destination for merges, so a
  * `/sync` round-trip ends with the local world reflecting everyone's edits.
@@ -236,24 +267,7 @@ export class AtprotoController {
   }
 
   private async buildClient(): Promise<BrowserOAuthClient> {
-    if (this.options.clientId !== undefined) {
-      return BrowserOAuthClient.load({
-        clientId: this.options.clientId,
-        handleResolver: HANDLE_RESOLVER,
-      });
-    }
-    if (isLoopbackEnvironment()) {
-      return BrowserOAuthClient.load({
-        clientId: buildLoopbackClientId(),
-        handleResolver: HANDLE_RESOLVER,
-      });
-    }
-    const metadataUrl = new URL("client-metadata.json", window.location.href)
-      .href;
-    return BrowserOAuthClient.load({
-      clientId: metadataUrl,
-      handleResolver: HANDLE_RESOLVER,
-    });
+    return buildOAuthClient(this.options);
   }
 
   private adoptSession(session: {
