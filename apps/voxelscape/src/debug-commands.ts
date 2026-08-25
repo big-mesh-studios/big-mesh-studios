@@ -1,6 +1,5 @@
 import { Commander } from "./commander";
 import type { AtprotoController } from "./atproto/atproto-controller";
-import { dumpOAuthDatabase } from "./atproto/oauth-debug";
 import type { DayNightController } from "./day-night-controller";
 import type { RendererSwitch } from "./renderers/renderer-switch";
 import type { SoundController } from "./sound-controller";
@@ -161,10 +160,6 @@ export const createDebugCommands = (params: DebugCommandsParams): Commander => {
     "/logout": {
       help: "/logout    revoke the atproto session and sign out",
       run: async () => atproto.signOut(),
-    },
-    "/oauthdb": {
-      help: "/oauthdb   dump the atproto OAuth client's IndexedDB state (debugging)",
-      run: async () => dumpOAuthDatabase(),
     },
     "/view": {
       help: "/view first|third   switch the camera between first and third person",
