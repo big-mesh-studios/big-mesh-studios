@@ -139,6 +139,29 @@ const App: Component<{}> = () => {
    */
   const editLayer = new EditLayer();
   const editPersistence = createEditPersistence(editLayer);
+  /**
+   * Re-applies the edit overlay to every ring block: re-derives the GPU level
+   * of each block an edit intersects and notifies the renderer switch (a
+   * texture re-upload for the raymarch renderer, a queued mesh rebuild for the
+   * triangle renderer). Shared by the IndexedDB load and the post-`/sync`
+   * remote-edit merge, both of which change the overlay after blocks already
+   * hold generated terrain.
+   */
+  const applyLayerToBlocks = (): void => {
+    const affected: number[] = [];
+    for (let i = 0; i < blockGrid.blocks.length; i++) {
+      const block = blockGrid.blocks[i];
+      if (editLayer.applyToBlock(block) > 0) {
+        syncLevelFromStore(block.level, block.store, {
+          surfaceOnly: SURFACE_ONLY,
+        });
+        affected.push(i);
+      }
+    }
+    for (const i of affected) {
+      rendererSwitch.onBlockChanged(i);
+    }
+  };
 
   /**
    * Keeps `blockGrid`'s window centred on the player, streamed in off the
@@ -227,18 +250,7 @@ const App: Component<{}> = () => {
 
   // Re-apply any previously persisted edits to the freshly built initial
   // blocks, now that the overlay has loaded.
-  void editPersistence.load().then(() => {
-    for (const block of blockGrid.blocks) {
-      if (editLayer.applyToBlock(block) > 0) {
-        syncLevelFromStore(block.level, block.store, {
-          surfaceOnly: SURFACE_ONLY,
-        });
-      }
-    }
-    for (let i = 0; i < blockGrid.blocks.length; i++) {
-      rendererSwitch.onBlockChanged(i);
-    }
-  });
+  void editPersistence.load().then(applyLayerToBlocks);
 
   installEditControls();
   installPointerLockLook();
@@ -282,6 +294,15 @@ const App: Component<{}> = () => {
     seed: TERRAIN.seed,
     options: {},
     getHandle: () => "",
+    onMerged: (changed) => {
+      if (changed > 0) {
+        // Remote edits just landed in the overlay; push them into the ring's
+        // blocks (store + GPU level + mesh) and persist them locally so a
+        // reload doesn't drop the merged world until the next `/sync`.
+        applyLayerToBlocks();
+        editPersistence.scheduleSave();
+      }
+    },
   });
   void atproto.init();
   const commands = createDebugCommands({
