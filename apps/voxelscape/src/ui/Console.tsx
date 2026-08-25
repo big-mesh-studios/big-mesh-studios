@@ -1,86 +1,92 @@
-import {
-  createEffect,
-  createSignal,
-  For,
-  Show,
-  type Component,
-} from "solid-js";
+import { createEffect, createSignal, For, type Component } from "solid-js";
+import { createPopover } from "../utils/create-popover";
 import styles from "./Console.module.css";
 
-export interface ConsoleProps {
-  onCommand: (line: string) => string | Promise<string>;
-}
-
-const ConsoleInput = (props: {
+const ConsoleInput: Component<{
   onCommand(command: string): void;
-  isOpen: boolean;
-}) => {
-  let inputRef: HTMLInputElement = null!;
+}> = (props) => {
+  let element: HTMLInputElement = null!;
 
   const history: string[] = [];
 
   const [historyIndex, setHistoryIndex] = createSignal(-1);
   const [value, setValue] = createSignal(() => history[historyIndex()]);
 
-  // focus the input whenever the panel opens
-  createEffect(
-    () => props.isOpen,
-    (isOpen) => {
-      if (!isOpen) {
+  const onKeyDown = (
+    event: KeyboardEvent & { currentTarget: HTMLInputElement },
+  ) => {
+    switch (event.key) {
+      case "Enter": {
+        const line = event.currentTarget.value.trim();
+
+        if (line === "") {
+          return;
+        }
+
+        props.onCommand(line);
+        history.push(line);
+        setValue("");
+
         return;
       }
-      inputRef.focus();
-    },
-  );
+      case "ArrowUp": {
+        setHistoryIndex((index) => {
+          if (index === -1) {
+            return history.length - 1;
+          }
+          return index - 1;
+        });
+        return;
+      }
+      case "ArrowDown": {
+        setHistoryIndex((index) => {
+          if (index === history.length - 1) {
+            return -1;
+          }
+          return index + 1;
+        });
+        return;
+      }
+    }
+  };
 
   return (
     <input
-      ref={inputRef}
+      ref={element}
       value={value()}
+      autofocus
       onInput={(e) => {
         setHistoryIndex(-1);
         setValue(e.currentTarget.value);
       }}
-      onKeyDown={(e) => {
-        switch (e.key) {
-          case "Enter": {
-            const line = e.currentTarget.value.trim();
-
-            if (line === "") {
-              return;
-            }
-
-            props.onCommand(line);
-            history.push(line);
-            setValue("");
-
-            return;
-          }
-          case "ArrowUp": {
-            setHistoryIndex((index) => {
-              if (index === -1) {
-                return history.length - 1;
-              }
-              return index - 1;
-            });
-            return;
-          }
-          case "ArrowDown": {
-            setHistoryIndex((index) => {
-              if (index === history.length - 1) {
-                return -1;
-              }
-              return index + 1;
-            });
-            return;
-          }
-        }
-      }}
+      onKeyDown={onKeyDown}
       placeholder="type a command (/help)"
       class={styles.input}
     />
   );
 };
+
+const ConsoleOutput: Component<{ lines: string[] }> = (props) => {
+  let element: HTMLOutputElement = null!;
+
+  // keep the output scrolled to the newest line
+  createEffect(
+    () => props.lines,
+    () => {
+      element.scrollTop = element.scrollHeight;
+    },
+  );
+
+  return (
+    <output ref={element} class={styles.output}>
+      <For each={props.lines}>{(line) => <div>{line}</div>}</For>
+    </output>
+  );
+};
+
+export interface ConsoleProps {
+  onCommand: (line: string) => string | Promise<string>;
+}
 
 /**
  * A collapsible command-line overlay for debugging. The `>_` button sits at
@@ -89,23 +95,9 @@ const ConsoleInput = (props: {
  * output.
  */
 export const Console: Component<ConsoleProps> = (props) => {
-  const [isOpen, setIsOpen] = createSignal(false);
   const [lines, setLines] = createSignal<string[]>([]);
 
-  let outputRef: HTMLOutputElement | undefined;
-
-  // keep the output scrolled to the newest line
-  createEffect(
-    () => {
-      lines();
-      return outputRef;
-    },
-    (el) => {
-      if (el !== undefined) {
-        el.scrollTop = el.scrollHeight;
-      }
-    },
-  );
+  const Popover = createPopover();
 
   async function onCommand(command: string) {
     if (command === "/clear") {
@@ -131,27 +123,14 @@ export const Console: Component<ConsoleProps> = (props) => {
 
   return (
     <div class={styles.underlay}>
-      <div
-        onPointerDown={(e) => {
-          e.preventDefault();
-          setIsOpen((o) => !o);
-        }}
-        onContextMenu={(e) => e.preventDefault()}
-        class={styles.anchor}
-      >
-        {">_"}
-      </div>
-      <Show when={isOpen()}>
-        <div class={styles.console}>
-          <output ref={outputRef} class={styles.output}>
-            <For each={lines()}>{(line) => <div>{line}</div>}</For>
-          </output>
-          <div class={styles["input-container"]}>
-            <span class={styles.prefix}>{">"}</span>
-            <ConsoleInput onCommand={onCommand} isOpen={isOpen()} />
-          </div>
+      <Popover.Trigger class={styles.anchor}>{">_"}</Popover.Trigger>
+      <Popover.PopOver class={styles.console}>
+        <ConsoleOutput lines={lines()} />
+        <div class={styles["input-container"]}>
+          <span class={styles.prefix}>{">"}</span>
+          <ConsoleInput onCommand={onCommand} />
         </div>
-      </Show>
+      </Popover.PopOver>
     </div>
   );
 };

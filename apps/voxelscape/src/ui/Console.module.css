@@ -21,22 +21,28 @@
   touch-action: none;
   cursor: pointer;
   pointer-events: auto;
+  anchor-name: --console;
 }
 .console {
   position: absolute;
-  right: 12px;
-  top: 64px;
   width: min(360px, calc(100vw - 24px));
   height: 260px;
   background: rgba(0, 0, 0, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 8px;
-  display: flex;
   flex-direction: column;
   font: 12px monospace;
   color: #c8d6e5;
   pointer-events: auto;
   overflow: hidden;
+  position-anchor: --console;
+  top: anchor(bottom);
+  right: anchor(inside);
+  left: auto;
+
+  &:popover-open {
+    display: flex;
+  }
 }
 .output {
   flex: 1;
