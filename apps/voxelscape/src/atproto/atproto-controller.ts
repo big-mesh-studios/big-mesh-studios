@@ -1,14 +1,11 @@
-// atproto / Bluesky connection and edit-chunk sync. Owns the OAuth session
+// atproto connection and edit-chunk sync. Owns the OAuth session
 // (popup flow via `@atproto/oauth-client-browser`), the `AtpAgent` built on
 // that session, and the upload/fetch of `app.bms.voxelscape.edit` records —
 // see `edits.ts` for the pure record logic. A plain domain object: it knows
 // about the network and the edit overlay, not about renderers or a console.
 import { Agent } from "@atproto/api";
-import {
-  BrowserOAuthClient,
-  buildLoopbackClientId,
-} from "@atproto/oauth-client-browser";
-import type { OAuthClientMetadataInput } from "@atproto/oauth-client-browser";
+import { BrowserOAuthClient } from "@atproto/oauth-client-browser";
+import type { EditLayer } from "../world/edit-layer";
 import {
   EDIT_COLLECTION,
   groupEditsByChunk,
@@ -17,11 +14,8 @@ import {
   recordsToEntries,
   type EditChunkRecord,
 } from "./edits";
-import type { EditLayer } from "../world/edit-layer";
 
 export interface AtpControllerOptions {
-  /** Display name in the OAuth prompt; defaults to "bms-voxelscape". */
-  name?: string;
   /**
    * When set, client metadata is loaded from this hosted `client-metadata.json`
    * URL (production). When absent, a loopback client is built for the current
@@ -37,20 +31,29 @@ export type AtpStatus =
   | "connected"
   | "error";
 
-const loopbackMetadata = (
-  origin: string,
-  name: string,
-): OAuthClientMetadataInput => ({
-  client_id: buildLoopbackClientId(window.location) as string,
-  redirect_uris: [`${origin}/oauth/callback`],
-  client_name: name,
-  scope: "atproto transition:generic",
-  grant_types: ["authorization_code", "refresh_token"],
-  response_types: ["code"],
-  token_endpoint_auth_method: "none",
-  application_type: "web",
-  dpop_bound_access_tokens: true,
-});
+const LOOPBACK_SCOPE = "atproto transition:generic";
+
+/**
+ * A loopback client_id is self-describing: the auth server derives the
+ * client's declared scope and redirect_uri from this URL's own query string
+ * (see `@atproto/oauth-types`'s `parseAtprotoLoopbackClientId`), not from any
+ * hosted or in-page metadata object. Encoding both here and loading via
+ * `BrowserOAuthClient.load()` (which re-derives its metadata from this same
+ * string) keeps client and server in agreement — building a separate
+ * `clientMetadata` object by hand let the two drift apart. The redirect_uri's
+ * host must be the loopback IP, not "localhost" (RFC 8252 disallows
+ * "localhost" as a redirect_uri host); the dev server binds
+ * `--host 127.0.0.1` so this matches regardless of how the page was loaded.
+ */
+const buildLoopbackClientId = (): string => {
+  const port = window.location.port || "5173";
+  const redirectUri = `http://127.0.0.1:${port}/oauth/callback`;
+  const params = new URLSearchParams({
+    redirect_uri: redirectUri,
+    scope: LOOPBACK_SCOPE,
+  });
+  return `http://localhost?${params.toString()}`;
+};
 
 /**
  * The atproto public API endpoint used to resolve a sign-in handle to its DID
@@ -143,7 +146,7 @@ export class AtprotoController {
   async connect(handle?: string): Promise<string> {
     const target = handle ?? this.handleInput();
     if (target.trim() === "") {
-      return "provide a Bluesky handle (e.g. /connect you.bsky.social)";
+      return "provide an atproto handle (e.g. /connect you.bsky.social)";
     }
     try {
       this.status_ = "connecting";
@@ -240,15 +243,13 @@ export class AtprotoController {
       });
     }
     if (isLoopbackEnvironment()) {
-      return new BrowserOAuthClient({
-        clientMetadata: loopbackMetadata(
-          window.location.origin,
-          this.options.name ?? "bms-voxelscape"
-        ),
+      return BrowserOAuthClient.load({
+        clientId: buildLoopbackClientId(),
         handleResolver: HANDLE_RESOLVER,
       });
     }
-    const metadataUrl = new URL("client-metadata.json", window.location.href).href;
+    const metadataUrl = new URL("client-metadata.json", window.location.href)
+      .href;
     return BrowserOAuthClient.load({
       clientId: metadataUrl,
       handleResolver: HANDLE_RESOLVER,
