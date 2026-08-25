@@ -132,14 +132,17 @@ export const installKeyboardControls = (): void => {
  * places, and the top-row number keys select the matching hotbar slot. Edits
  * are edge-triggered per press, so holding a button doesn't dig repeatedly.
  *
- * The first click on the canvas only acquires the pointer lock (see
+ * The first mouse click on the canvas only acquires the pointer lock (see
  * `installPointerLockLook`) — it doesn't also dig or place. Once locked,
  * looking around no longer involves dragging a visible cursor, so there's
  * nothing left to disambiguate: mousedown fires the action right away, same
- * as holding the button to keep mining while you turn in Minecraft.
+ * as holding the button to keep mining while you turn in Minecraft. Touch
+ * (and pen) presses skip the lock gate entirely and always fire right away —
+ * pointer lock isn't a touch concept, and Controls.tsx already routes
+ * digging through a tap on the canvas.
  */
 export const installEditControls = (): void => {
-  const onDown = (e: MouseEvent): void => {
+  const onDown = (e: PointerEvent): void => {
     if (isEditableTarget(e)) {
       return;
     }
@@ -149,7 +152,11 @@ export const installEditControls = (): void => {
     if (!(e.target instanceof HTMLCanvasElement)) {
       return;
     }
-    if (document.pointerLockElement !== e.target) {
+    // Pointer lock is a mouse-only concept — iOS Safari doesn't implement it
+    // at all, and it isn't how touch input works anyway. A touch (or pen) tap
+    // fires the action immediately, same as it always has; only a mouse press
+    // is gated behind acquiring the lock first.
+    if (e.pointerType === "mouse" && document.pointerLockElement !== e.target) {
       e.target.requestPointerLock();
       return;
     }
@@ -170,7 +177,7 @@ export const installEditControls = (): void => {
       }
     }
   };
-  window.addEventListener("mousedown", onDown);
+  window.addEventListener("pointerdown", onDown);
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("contextmenu", (e) => e.preventDefault());
 };
