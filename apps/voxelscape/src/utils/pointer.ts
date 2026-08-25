@@ -2,6 +2,7 @@ import { Vector2D } from "./maths";
 
 interface CustomPointerEvent<T extends HTMLElement> {
   delta: Vector2D;
+  totalDelta: Vector2D;
   event: PointerEvent & { currentTarget: T };
   timespan: number;
 }
@@ -24,7 +25,10 @@ export function pointer<T extends HTMLElement>(
   options?: { signal: AbortSignal },
 ): Promise<CustomPointerEvent<T>> {
   const { promise, resolve } = Promise.withResolvers<CustomPointerEvent<T>>();
-
+  let totalDelta = {
+    x: 0,
+    y: 0,
+  };
   let previous = {
     x: initialEvent.clientX,
     y: initialEvent.clientY,
@@ -38,17 +42,13 @@ export function pointer<T extends HTMLElement>(
   options?.signal.addEventListener("abort", () => controller.abort());
 
   function handleEvent(event: PointerEvent) {
-    const now = {
-      x: event.clientX,
-      y: event.clientY,
-    };
-    const delta = {
-      x: now.x - previous.x,
-      y: now.y - previous.y,
-    };
+    const now = Vector2D.create(event.clientX, event.clientY);
+    const delta = Vector2D.sub(now, previous);
     previous = now;
+    totalDelta = Vector2D.add(totalDelta, delta);
     return {
       delta,
+      totalDelta,
       event: event as PointerEvent & { currentTarget: T },
       timespan: performance.now() - startTime,
     };
