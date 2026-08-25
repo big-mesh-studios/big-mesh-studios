@@ -7,8 +7,8 @@ import {
 } from "solid-js";
 import * as THREE from "three";
 import { queueJump, queuePlace, setTouchJump, setTouchMove } from "../input";
+import { createActionButton } from "./createActionButton";
 import { Joystick } from "./Joystick";
-import { ActionButton } from "./ActionButton";
 
 const Controls: Component = () => {
   const HIT = 150;
@@ -33,7 +33,7 @@ const Controls: Component = () => {
     knobSize: () => 70,
   });
 
-  const actionButton = ActionButton({
+  const actionButton = createActionButton({
     position: createMemo(
       () =>
         new THREE.Vector2(
@@ -46,7 +46,7 @@ const Controls: Component = () => {
 
   // single "place" touch button sits left of the jump button; digging is a tap
   // on the world canvas itself
-  const placeButton = ActionButton({
+  const placeButton = createActionButton({
     position: createMemo(
       () =>
         new THREE.Vector2(

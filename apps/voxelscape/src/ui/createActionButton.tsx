@@ -1,19 +1,17 @@
+import { JSX } from "@solidjs/web";
 import {
-  createSignal,
   createMemo,
+  createRenderEffect,
+  createSignal,
+  onCleanup,
   type Accessor,
   type Component,
-  type Signal,
-  onCleanup,
-  untrack,
-  createRenderEffect,
 } from "solid-js";
-import { JSX } from "@solidjs/web";
 import * as THREE from "three";
 
 const MAX_HOLD_TIME = 1.0;
 
-export function ActionButton(params: {
+export function createActionButton(params: {
   position: Accessor<THREE.Vector2>;
   size: Accessor<number>;
   externalPressed?: Accessor<boolean>;
