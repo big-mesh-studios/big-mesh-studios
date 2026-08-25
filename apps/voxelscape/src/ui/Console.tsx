@@ -22,19 +22,6 @@ const ConsoleInput = (props: {
   const [historyIndex, setHistoryIndex] = createSignal(-1);
   const [value, setValue] = createSignal(() => history[historyIndex()]);
 
-  const submit = (value: string): void => {
-    const line = value.trim();
-
-    if (line === "") {
-      return;
-    }
-
-    props.onCommand(line);
-    history.push(line);
-
-    setValue("");
-  };
-
   // focus the input whenever the panel opens
   createEffect(
     () => props.isOpen,
@@ -57,7 +44,16 @@ const ConsoleInput = (props: {
       onKeyDown={(e) => {
         switch (e.key) {
           case "Enter": {
-            submit(e.currentTarget.value);
+            const line = e.currentTarget.value.trim();
+
+            if (line === "") {
+              return;
+            }
+
+            props.onCommand(line);
+            history.push(line);
+            setValue("");
+
             return;
           }
           case "ArrowUp": {
