@@ -147,15 +147,15 @@ export const createVoxelWorld = (config: VoxelWorldConfig): VoxelWorld => {
   const blockGrid = new BlockGrid({ blocksPerSide });
   /** Slots whose terrain has been generated. Fills up once, during the initial fill. */
   const filled = new Set<number>();
-  /** The slot the player spawns in, once the initial fill has been asked for. */
-  let spawnIndex: number | undefined;
+  /** Slots that have been both generated and drawn at least once. */
+  const drawn = new Set<number>();
+  /** The slot the player spawns in, or -1 until the initial fill has been asked for. */
+  let spawnIndex = -1;
   const drawProgress = (): InitialDrawProgress => ({
     drawn: drawn.size,
     total: blockGrid.blocks.length,
-    spawnDrawn: spawnIndex !== undefined && drawn.has(spawnIndex),
+    spawnDrawn: drawn.has(spawnIndex),
   });
-  /** Slots that have been both generated and drawn at least once. */
-  const drawn = new Set<number>();
   const renderers = new RendererSwitch({
     scene,
     blocks: blockGrid.blocks,
@@ -167,11 +167,10 @@ export const createVoxelWorld = (config: VoxelWorldConfig): VoxelWorld => {
     waterExtinction: WATER_EXTINCTION,
     seaLevel: terrain.seaLevel,
     onBlockDrawable: (i) => {
-      // The triangle renderer meshes every slot once at construction, when
-      // they are all still air; that pass says nothing about whether there is
-      // terrain to see, so only a draw of a slot already holding terrain
-      // counts. A mesh built before its slot's fill is dropped as stale, so
-      // anything arriving after the fill was built from it.
+      // The spritesheet landing invalidates every slot's mesh at once, so
+      // slots still waiting for their terrain are drawn too, as the nothing
+      // they currently hold. Only a draw of a slot that already has terrain
+      // says anything about there being something to see.
       if (!filled.has(i) || drawn.has(i)) {
         return;
       }
@@ -257,14 +256,10 @@ export const createVoxelWorld = (config: VoxelWorldConfig): VoxelWorld => {
     return changed;
   };
 
-  /**
-   * The slot the player spawns in, whose terrain is generated before this
-   * line returns. The rest of the window is generated off the main thread
-   * from here on, so the page paints and the loading state runs while it
-   * arrives.
-   */
-  const spawnBlock = worldRing.fillFrom(spawn[0], spawn[2]);
-  spawnIndex = spawnBlock;
+  // The spawn block's terrain is generated before this returns; the rest of
+  // the window follows off the main thread, so the page paints and the
+  // loading state runs while it arrives.
+  spawnIndex = worldRing.fillFrom(spawn[0], spawn[2]);
 
   // Tell every block material which tile each voxel face uses once the
   // spritesheet loads, then draw the spawn block. A mesh bakes each face's
@@ -273,7 +268,7 @@ export const createVoxelWorld = (config: VoxelWorldConfig): VoxelWorld => {
   // — and this is the block the player is shown first. The spritesheet is one
   // local asset, and waiting for it costs a fraction of what the block itself
   // cost. If it never arrives, the block is drawn flat blue instead.
-  void loadVoxelTiles(renderers).then(() => renderers.drawBlockNow(spawnBlock));
+  void loadVoxelTiles(renderers).then(() => renderers.drawBlockNow(spawnIndex));
   // Re-apply any previously persisted edits to the freshly built initial
   // blocks, once the overlay has loaded.
   void editPersistence.load().then(reapplyEdits);

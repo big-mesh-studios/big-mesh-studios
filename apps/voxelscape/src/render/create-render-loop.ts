@@ -25,7 +25,7 @@ export interface RenderLoopConfig {
   /**
    * The scaler deciding this canvas's render resolution, shared with whatever
    * else reads or sets it and outliving any one mounted canvas. A loop given
-   * none keeps a scaler of its own.
+   * none keeps a scaler of its own for as long as it runs.
    */
   resolution?: AdaptiveResolution;
   /** Advances the world by `dt` seconds. Called once per frame, before drawing. */
@@ -69,11 +69,6 @@ export const createRenderLoop = ({
   renderer.setClearColor(clearColor(), 1);
   const timer = debugPerf ? new GpuTimer(renderer.gl) : undefined;
 
-  /**
-   * The scaler this loop reports each frame's gap to and takes the render
-   * scale from. Its own when the caller supplied none, in which case it lives
-   * and dies with this loop.
-   */
   const adaptive = resolution ?? new AdaptiveResolution();
   /** The canvas's layout size in device pixels; the scale is applied on top of it. */
   let baseWidth = 0;

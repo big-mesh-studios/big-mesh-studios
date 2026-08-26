@@ -260,22 +260,30 @@ export class TriangleRenderer implements BlockRenderer {
    * mesh rebuild.
    */
   private readonly tilesById = new Map<number, VoxelTileConfig>();
-  // Meshes are built in a web worker so a block rebuild never stalls the UI;
-  // the worker gets the block's voxel data (including its 1-voxel meshing
-  // border, so seam faces are culled against the surrounding world without
-  // any neighbour data) and hands back transferable arrays. `pendingBuilds`
-  // holds blocks whose mesh is stale, drained a few per frame while this
-  // renderer is active, in the order they went stale — which is the order
-  // their data arrived, so the block the player is standing in is meshed
-  // before the ones fogged out at the ring's edge. `meshGen` is bumped
-  // whenever a block's data or the
-  // tiles change, so a slow worker result for stale data is dropped. If the
-  // worker is unavailable (no Worker, build error) the synchronous
-  // `buildBlockMeshesSync` path is used instead.
+  /**
+   * How many times each block's mesh has been invalidated. Bumped whenever a
+   * block's data or the tiles change, so a result for data that has since
+   * been replaced is recognised and dropped rather than drawn.
+   */
   private readonly meshGen: number[] = [];
+  /**
+   * Blocks whose mesh no longer matches their data, drained a few per frame
+   * while this renderer is active.
+   */
   private readonly pendingBuilds = new Set<number>();
+  /** The generation each block's outstanding build was requested at. */
   private readonly inflight = new Map<number, number>();
+  /**
+   * Builds meshes off the main thread, so a rebuild never stalls the frame
+   * loop. It is sent a block's voxel data including the one-voxel meshing
+   * border, which is what lets seam faces be culled against the surrounding
+   * world without any neighbour's data, and hands back transferable arrays.
+   */
   private meshWorker: Worker | undefined;
+  /**
+   * False once the worker fails to start or errors, from which point meshes
+   * are built on the main thread by `buildBlockMeshesSync`.
+   */
   private workerAvailable = true;
   private readonly onBlockMeshed?: (index: number) => void;
 
