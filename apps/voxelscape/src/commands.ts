@@ -3,6 +3,7 @@ import type { DayNightController } from "./environment/day-night-controller";
 import type { SoundController } from "./environment/sound-controller";
 import type { WeatherController } from "./environment/weather-controller";
 import type { MultiplayerController } from "./multiplayer/multiplayer-controller";
+import type { AdaptiveResolution } from "./render/adaptive";
 import type { RendererSwitch } from "./renderers/renderer-switch";
 
 /**
@@ -51,6 +52,7 @@ export interface CommandsParams {
   sound: SoundController;
   atproto: AtprotoController;
   multiplayer: MultiplayerController;
+  resolution: AdaptiveResolution;
   /** Switches the camera between first and third person views. */
   setView: (mode: "first" | "third") => string;
   /** Shows or hides the player cube (hidden in first person). */
@@ -69,6 +71,7 @@ export const createCommands = ({
   sound,
   atproto,
   multiplayer,
+  resolution,
   setView,
   setPlayerVisible,
   setMoveSpeed,
@@ -147,6 +150,25 @@ export const createCommands = ({
           return rendererSwitch.setMode("tri");
         }
         return `renderer: ${rendererSwitch.mode} — usage: /renderer ray|tri`;
+      },
+    },
+    "/resolution": {
+      help: "/resolution auto|<0.1..1>   adapt the render resolution, or pin it",
+      run: (rest) => {
+        const argument = rest[0];
+        if (argument === undefined) {
+          return resolution.describe();
+        }
+        if (argument === "auto") {
+          resolution.setAuto();
+          return resolution.describe();
+        }
+        const scale = Number(argument);
+        if (Number.isFinite(scale) && scale > 0 && scale <= 1) {
+          resolution.setFixed(scale);
+          return resolution.describe();
+        }
+        return "usage: /resolution auto|<0.1..1>  (1 renders every display pixel)";
       },
     },
     "/tris": {

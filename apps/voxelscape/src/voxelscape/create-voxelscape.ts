@@ -12,6 +12,7 @@ import { createPlayerAvatar } from "../player/create-player-avatar";
 import { EditingController } from "../player/editing-controller";
 import { Inventory } from "../player/inventory";
 import type { Player, PlayerConfig } from "../player/player";
+import { AdaptiveResolution } from "../render/adaptive";
 import { createRenderLoop } from "../render/create-render-loop";
 import { createVoxelWorld } from "../world/create-voxel-world";
 import { type Dim3 } from "../world/level-data";
@@ -234,6 +235,13 @@ export const createVoxelscape = ({
   // restored session from a dropped one short of running `/atproto`.
   void atproto.init().then((line) => onNotice?.(line));
 
+  /**
+   * Outlives any one canvas: `mount` can run again after an unmount, and the
+   * scale this converged on is worth more than the seconds of measurement a
+   * fresh one would spend rediscovering it.
+   */
+  const resolution = new AdaptiveResolution();
+
   const commands = createCommands({
     dayNight: environment.dayNight,
     rendererSwitch: world.renderers,
@@ -241,6 +249,7 @@ export const createVoxelscape = ({
     sound: environment.sound,
     atproto,
     multiplayer,
+    resolution,
     setView: (mode) => {
       avatar.setFirstPerson(mode === "first");
       return `camera: ${mode}-person view`;
@@ -314,6 +323,7 @@ export const createVoxelscape = ({
       scene,
       camera,
       debugPerf,
+      resolution,
       onDebugStats,
       onFrame: advance,
       clearColor: () => skyColor,

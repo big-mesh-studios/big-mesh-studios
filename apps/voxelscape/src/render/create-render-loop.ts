@@ -19,6 +19,12 @@ export interface RenderLoopConfig {
   clearColor: () => Color;
   /** Enables the GPU timer and the statistics line. */
   debugPerf: boolean;
+  /**
+   * The scaler deciding this canvas's render resolution. Supplied by the
+   * caller rather than created here so the console can reach it and so a
+   * remount doesn't discard the scale it converged on.
+   */
+  resolution?: AdaptiveResolution;
   /** Advances the world by `dt` seconds. Called once per frame, before drawing. */
   onFrame: (dt: number) => void;
   /**
@@ -41,15 +47,16 @@ export interface RenderLoop {
 }
 
 /**
- * Drives one canvas: a renderer, the frame loop, and the resolution scaler
- * that keeps the frame time near budget. Knows nothing about what it draws
- * beyond the scene and camera handed to it.
+ * Drives one canvas: a renderer, the frame loop, and the resolution scaler it
+ * feeds each frame's gap to. Knows nothing about what it draws beyond the
+ * scene and camera handed to it.
  */
 export const createRenderLoop = ({
   canvas,
   scene,
   camera,
   debugPerf,
+  resolution,
   onFrame,
   clearColor,
   describeStats,
@@ -59,12 +66,7 @@ export const createRenderLoop = ({
   renderer.setClearColor(clearColor(), 1);
   const timer = debugPerf ? new GpuTimer(renderer.gl) : undefined;
 
-  /**
-   * A pure scaler fed this frame's render time. It steps the render
-   * resolution scale by roughly 1.25x per adjustment, so marginal devices
-   * converge on a stable scale instead of thrashing between 1x and 0.5x.
-   */
-  const adaptive = new AdaptiveResolution();
+  const adaptive = resolution ?? new AdaptiveResolution();
   /** The canvas's layout size in device pixels; the scale is applied on top of it. */
   let baseWidth = 0;
   let baseHeight = 0;
@@ -97,7 +99,7 @@ export const createRenderLoop = ({
       sample,
     );
     onDebugStats?.(
-      `frame: ${timer.ms.toFixed(2)} ms | res: ${adaptive.scale}x | ${stats ?? ""}`,
+      `frame: ${timer.ms.toFixed(2)} ms | resolution: ${adaptive.scale.toFixed(3)}x | ${stats ?? ""}`,
     );
     return sample;
   };
@@ -136,6 +138,20 @@ export const createRenderLoop = ({
     lastAdaptTime = time;
   };
 
+  const onVisibilityChange = (): void => {
+    if (document.visibilityState !== "visible") {
+      return;
+    }
+    // `requestAnimationFrame` doesn't fire while the page is hidden, so the
+    // first frame back would otherwise report the entire time away as one
+    // frame's gap. Forget the timestamp from before the page was hidden so
+    // that frame is measured against nothing at all.
+    lastAdaptTime = 0;
+    lastFrameTime = 0;
+    adaptive.hold();
+  };
+  document.addEventListener("visibilitychange", onVisibilityChange);
+
   const resizeObserver = new ResizeObserver(() => {
     const rect = canvas.getBoundingClientRect();
     const aspect = rect.width / rect.height;
@@ -156,6 +172,7 @@ export const createRenderLoop = ({
 
   return {
     dispose() {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       resizeObserver.disconnect();
       renderer.setAnimationLoop(null);
       // release the renderer's GPU programs, buffers and textures
