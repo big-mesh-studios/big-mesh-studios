@@ -34,8 +34,14 @@ const POPUP_CHANNEL = "bms.voxelscape.oauth";
 
 const POPUP_FEATURES = "popup=1,width=600,height=720";
 
-/** How often the opener checks whether the popup was dismissed by hand. */
-const POPUP_CLOSE_POLL_MS = 500;
+/**
+ * How long the opener waits for the popup before giving up on the sign-in.
+ * There is no way to notice a popup being dismissed by hand — see
+ * `awaitSignIn` — so this timeout is the only thing that ends an abandoned
+ * attempt. It stays under the ten minutes atcute keeps the pending
+ * authorization for, so a sign-in that outlives it would have failed anyway.
+ */
+const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
 
 /** What the popup reports back to whichever window opened it. */
 export type SignInResult = { did: Did } | { error: string };
@@ -175,16 +181,22 @@ const publishSignIn = (result: SignInResult): void => {
 };
 
 /**
- * Resolves once the popup reports a DID, and rejects if it reports an error or
- * is closed without reporting anything at all. There is no event for "popup
- * gone", hence the poll.
+ * Resolves once the popup reports a DID over the shared channel, and rejects
+ * if it reports a failure or nothing at all before the timeout.
+ *
+ * The popup handle is deliberately not watched. Authorization servers send
+ * `Cross-Origin-Opener-Policy`, which moves the popup into its own
+ * browsing-context group the moment it navigates: from here `popup.closed`
+ * then reads `true` for a window that is alive and showing the login form, and
+ * treating that as an abort cancelled every sign-in a second after it started.
+ * The channel is the only link that survives, so it is the only one used.
  */
-const awaitSignIn = (popup: Window): Promise<Did> =>
+const awaitSignIn = (): Promise<Did> =>
   new Promise((resolve, reject) => {
     const channel = new BroadcastChannel(POPUP_CHANNEL);
-    let poll: ReturnType<typeof setInterval> | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     const settle = (finish: () => void) => {
-      clearInterval(poll);
+      clearTimeout(timeout);
       channel.close();
       finish();
     };
@@ -196,11 +208,9 @@ const awaitSignIn = (popup: Window): Promise<Did> =>
         settle(() => reject(new Error(result.error)));
       }
     };
-    poll = setInterval(() => {
-      if (popup.closed) {
-        settle(() => reject(new Error("sign-in window was closed")));
-      }
-    }, POPUP_CLOSE_POLL_MS);
+    timeout = setTimeout(() => {
+      settle(() => reject(new Error("sign-in was not completed in time")));
+    }, SIGN_IN_TIMEOUT_MS);
   });
 
 /**
@@ -226,10 +236,12 @@ export const signInPopup = async (params: {
     });
     // Listening starts before the popup navigates, so a fast authorization
     // server cannot answer into a window that has nobody watching yet.
-    const signedIn = awaitSignIn(popup);
+    const signedIn = awaitSignIn();
     popup.location.href = url.href;
     return await signedIn;
   } catch (err) {
+    // Only reachable before the popup has navigated anywhere, which is also
+    // the only time closing it from here still works.
     popup.close();
     throw err;
   }

@@ -9,6 +9,9 @@
 import { createSignal, type Component } from "solid-js";
 import { completeSignIn } from "./oauth";
 
+/** How long to let `window.close()` take effect before admitting it failed. */
+const CLOSE_GRACE_MS = 500;
+
 export const OAuthCallbackPage: Component = () => {
   const [status, setStatus] = createSignal("finishing sign-in…");
 
@@ -18,13 +21,18 @@ export const OAuthCallbackPage: Component = () => {
   void (async () => {
     try {
       const did = await completeSignIn();
-      if (window.opener) {
-        setStatus("signed in — closing…");
-        window.close();
-      } else {
-        // opened directly, not as a popup (e.g. a stale/reloaded tab)
-        setStatus(`signed in as ${did} — you can close this window`);
-      }
+      setStatus("signed in — closing…");
+      // Closed unconditionally rather than only when `window.opener` is set:
+      // the authorization server's Cross-Origin-Opener-Policy nulls the opener
+      // on the way here, so that test rejects the very popups this page exists
+      // to close.
+      window.close();
+      // Anything the browser refuses to close — a tab opened by hand, say —
+      // would otherwise sit on "closing…" for good.
+      setTimeout(
+        () => setStatus(`signed in as ${did} — you can close this window`),
+        CLOSE_GRACE_MS,
+      );
     } catch (err) {
       setStatus(
         `sign-in failed: ${err instanceof Error ? err.message : String(err)}`,
