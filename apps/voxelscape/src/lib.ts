@@ -28,6 +28,18 @@ export * from "./ui/Console";
 import Controls_ from "./ui/CoarseControls";
 export const Controls = Controls_;
 
+// The assembled world, and the context its UI components read it from
+export {
+  createVoxelscape,
+  type Voxelscape,
+  type VoxelscapeConfig,
+} from "./create-voxelscape";
+export { EditHud } from "./ui/EditHud";
+export {
+  useVoxelscape,
+  VoxelscapeContext as VoxelscapeProvider,
+} from "./voxelscape-context";
+
 // World Management
 export { BlockGrid } from "./world/block-grid";
 export {

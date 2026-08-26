@@ -1,6 +1,6 @@
 import { Component, createSignal, onCleanup } from "solid-js";
 import * as THREE from "three";
-import type { InputController } from "../create-input";
+import { useVoxelscape } from "../voxelscape-context";
 import { ActionButton } from "./ActionButton";
 import { Joystick } from "./Joystick";
 
@@ -9,7 +9,8 @@ const BUTTON = 100;
 const EDIT = 84;
 const MARGIN = 24;
 
-const CoarseControls: Component<{ input: InputController }> = (props) => {
+const CoarseControls: Component = () => {
+  const { input } = useVoxelscape();
   const [viewSize, setViewSize] = createSignal<THREE.Vector2>(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
   );
@@ -37,9 +38,7 @@ const CoarseControls: Component<{ input: InputController }> = (props) => {
           knobSize={70}
           // joystick value is -0.5..0.5 in screen axes (+y = down); convert to the
           // -1..1 input snapshot axes (+y = forward).
-          onValue={(value) =>
-            props.input.setTouchMove(value.x * 2, -value.y * 2)
-          }
+          onValue={(value) => input.setTouchMove(value.x * 2, -value.y * 2)}
         />
       </div>
 
@@ -49,9 +48,9 @@ const CoarseControls: Component<{ input: InputController }> = (props) => {
           top={viewSize().y - MARGIN - BUTTON}
           size={BUTTON}
           onPressed={(pressed) => {
-            props.input.setTouchJump(pressed);
+            input.setTouchJump(pressed);
             if (pressed) {
-              props.input.queueJump();
+              input.queueJump();
             }
           }}
         />
@@ -65,7 +64,7 @@ const CoarseControls: Component<{ input: InputController }> = (props) => {
         onPointerDown={(e) => e.stopPropagation()}
         onPointerUp={(e) => {
           e.stopPropagation();
-          props.input.queuePlace();
+          input.queuePlace();
         }}
       >
         <ActionButton

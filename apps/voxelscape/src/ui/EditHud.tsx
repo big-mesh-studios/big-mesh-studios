@@ -4,46 +4,43 @@ import styles from "./EditHud.module.css";
 // collected blocks, the selected one highlighted. Driven by the shared
 // `Inventory`'s `onChange` callback so counts and the selection refresh
 // without wiring a per-block signal through the domain.
-import {
-  Component,
-  createSignal,
-  For,
-  onCleanup,
-  type Accessor,
-} from "solid-js";
-import { COLLECTABLE, type Inventory } from "../inventory";
+import { Component, createSignal, For, onCleanup } from "solid-js";
+import { COLLECTABLE } from "../inventory";
+import { useVoxelscape } from "../voxelscape-context";
 
-export const EditHud: Component<{
-  inventory: Inventory;
-  /** Latest break/place message, shown above the hotbar. */
-  status: Accessor<string>;
-  /** Whether the crosshair currently points at something within reach. */
-  inReach: Accessor<boolean>;
-}> = (props) => {
-  const inv = props.inventory;
+export const EditHud: Component = () => {
+  const { inventory, editStatus, inReach } = useVoxelscape();
   const order = Object.keys(COLLECTABLE).map(Number);
   const [items, setItems] = createSignal(
-    order.map((id) => ({ id, name: COLLECTABLE[id], count: inv.count(id) })),
+    order.map((id) => ({
+      id,
+      name: COLLECTABLE[id],
+      count: inventory.count(id),
+    })),
   );
-  const [selected, setSelected] = createSignal(inv.selectedId);
+  const [selected, setSelected] = createSignal(inventory.selectedId);
 
   const refresh = (): void => {
     setItems(
-      order.map((id) => ({ id, name: COLLECTABLE[id], count: inv.count(id) })),
+      order.map((id) => ({
+        id,
+        name: COLLECTABLE[id],
+        count: inventory.count(id),
+      })),
     );
-    setSelected(inv.selectedId);
+    setSelected(inventory.selectedId);
   };
-  inv.onChange = refresh;
+  inventory.onChange = refresh;
   onCleanup(() => {
-    if (inv.onChange === refresh) {
-      inv.onChange = null;
+    if (inventory.onChange === refresh) {
+      inventory.onChange = null;
     }
   });
 
   return (
     <div class={styles.hud}>
       {/* crosshair */}
-      <div class={[styles.crosshair, props.inReach() && styles.active]}>
+      <div class={[styles.crosshair, inReach() && styles.active]}>
         <div class={styles["vertical-stroke"]} />
         <div class={styles["horizontal-stroke"]} />
       </div>
@@ -58,7 +55,7 @@ export const EditHud: Component<{
           )}
         </For>
         <div class={styles.status}>
-          {props.status() || "tap world to dig  •  button to place"}
+          {editStatus() || "tap world to dig  •  button to place"}
         </div>
       </div>
     </div>
