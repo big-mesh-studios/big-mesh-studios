@@ -21,14 +21,8 @@ import {
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import type { VoxelTileConfig } from "./atlas";
 import type { Dim3, WorldBlock } from "../world/level-data";
-import {
-  buildBlockMesh,
-  buildWaterMesh,
-  setGeometryData,
-  type MeshArrays,
-  type MeshBuildRequest,
-  type MeshBuildResult,
-} from "./mesh";
+import { setGeometryData, type MeshArrays } from "./mesh";
+import { MeshClient } from "./mesh-client";
 import type { BlockRenderer, DayNight } from "./block-renderer";
 
 /**
@@ -237,54 +231,23 @@ const EMPTY_MESH: MeshArrays = {
   indices: [],
 };
 
-/**
- * How many block meshes to kick off per frame while draining the queue; the
- * worker does the heavy lifting so the main thread just wraps the results.
- */
-const MAX_BUILDS_PER_FRAME = 6;
-
 export class TriangleRenderer implements BlockRenderer {
   readonly triMaterial = new TriangleMaterial();
   readonly triWaterMaterial = new TriangleWaterMaterial();
   readonly triMeshes: Mesh[] = [];
   readonly triWaterMeshes: Mesh[] = [];
 
-  private readonly blocks: WorldBlock[];
   private readonly waterExtinction: number;
   private readonly seaLevel: number | undefined;
 
   private totalTriangles: number = 0;
   /**
-   * Per-voxel-id face tile rects, populated once the atlas loads; the mesh
-   * texture coordinates are baked from these, so changing them requires a
-   * mesh rebuild.
+   * Turns blocks' voxel data into the geometry these meshes draw. It is sent
+   * a block's data including the one-voxel meshing border, which is what lets
+   * seam faces be culled against the surrounding world without reading any
+   * neighbour.
    */
-  private readonly tilesById = new Map<number, VoxelTileConfig>();
-  /**
-   * How many times each block's mesh has been invalidated. Bumped whenever a
-   * block's data or the tiles change, so a result for data that has since
-   * been replaced is recognised and dropped rather than drawn.
-   */
-  private readonly meshGen: number[] = [];
-  /**
-   * Blocks whose mesh no longer matches their data, drained a few per frame
-   * while this renderer is active.
-   */
-  private readonly pendingBuilds = new Set<number>();
-  /** The generation each block's outstanding build was requested at. */
-  private readonly inflight = new Map<number, number>();
-  /**
-   * Builds meshes off the main thread, so a rebuild never stalls the frame
-   * loop. It is sent a block's voxel data including the one-voxel meshing
-   * border, which is what lets seam faces be culled against the surrounding
-   * world without any neighbour's data, and hands back transferable arrays.
-   */
-  private meshWorker: Worker | undefined;
-  /**
-   * False once the worker fails to start or errors, from which point meshes
-   * are built on the main thread by `buildBlockMeshesSync`.
-   */
-  private workerAvailable = true;
+  private readonly meshes: MeshClient;
   private readonly onBlockMeshed?: (index: number) => void;
 
   // Fullscreen underwater tint (the raymarch water pass tints the view
@@ -295,7 +258,6 @@ export class TriangleRenderer implements BlockRenderer {
 
   constructor(params: TriangleRendererParams) {
     const { scene, blocks, waterExtinction, seaLevel, onBlockMeshed } = params;
-    this.blocks = blocks;
     this.waterExtinction = waterExtinction;
     this.seaLevel = seaLevel;
     this.onBlockMeshed = onBlockMeshed;
@@ -317,10 +279,19 @@ export class TriangleRenderer implements BlockRenderer {
       // cube, so the transparent water blends over it like the raymarch water
       // pass does
       this.triWaterMeshes.push(triWaterMesh);
-      this.meshGen.push(0);
     }
 
-    this.setupMeshWorker();
+    this.meshes = new MeshClient({
+      blocks,
+      onMeshBuilt: (index, terrain, water) => {
+        // Update the persistent geometry in place so the renderer re-uploads
+        // into its existing GPU buffers instead of leaking new ones.
+        setGeometryData(this.triMeshes[index].geometry, terrain);
+        setGeometryData(this.triWaterMeshes[index].geometry, water);
+        this.updateTriCount();
+        this.onBlockMeshed?.(index);
+      },
+    });
 
     this.tintMaterial = new MeshBasicMaterial({
       color: 0x1a598c,
@@ -336,105 +307,13 @@ export class TriangleRenderer implements BlockRenderer {
     this.tintMesh.visible = false;
   }
 
-  private setupMeshWorker(): void {
-    try {
-      this.meshWorker = new Worker(
-        new URL("./mesh-worker.ts", import.meta.url),
-        { type: "module" },
-      );
-      this.meshWorker.onmessage = (ev) => {
-        const msg = ev.data as MeshBuildResult;
-        const gen = this.inflight.get(msg.id);
-        if (gen === undefined) {
-          return;
-        }
-        this.inflight.delete(msg.id);
-        if (gen !== this.meshGen[msg.id]) {
-          return; // the block changed after this request was sent
-        }
-        // update the persistent geometry in place so the renderer re-uploads
-        // into its existing GPU buffers instead of leaking new ones
-        setGeometryData(this.triMeshes[msg.id].geometry, msg.terrain);
-        setGeometryData(this.triWaterMeshes[msg.id].geometry, msg.water);
-        this.updateTriCount();
-        this.onBlockMeshed?.(msg.id);
-      };
-      this.meshWorker.onerror = () => {
-        // fall back to building synchronously; requeue whatever was in flight
-        this.workerAvailable = false;
-        console.warn(
-          "[tri renderer] mesh worker errored; falling back to synchronous builds",
-        );
-        for (const i of this.inflight.keys()) {
-          this.pendingBuilds.add(i);
-        }
-        this.inflight.clear();
-      };
-    } catch {
-      this.workerAvailable = false;
-    }
-  }
-
   /**
-   * Builds one block's mesh on the calling thread, before returning, and takes
-   * it off the queue. For the block that has to be on screen before the player
-   * is let in: starting the mesh worker and loading its modules costs several
-   * times what meshing a single block costs, so a mesh waiting on that start
-   * arrives seconds after one simply built here.
+   * Builds one block's mesh on the calling thread, before returning. For the
+   * block that has to be on screen before the player is let in, which cannot
+   * afford to wait for the mesh worker to start.
    */
   meshNow(index: number): void {
-    this.pendingBuilds.delete(index);
-    this.buildBlockMeshesSync([index]);
-  }
-
-  private buildBlockMeshesSync(indices: number[]): void {
-    const tileList = [...this.tilesById.values()];
-    for (const i of indices) {
-      setGeometryData(
-        this.triMeshes[i].geometry,
-        buildBlockMesh(this.blocks[i].store, tileList),
-      );
-      setGeometryData(
-        this.triWaterMeshes[i].geometry,
-        buildWaterMesh(this.blocks[i].store),
-      );
-      this.onBlockMeshed?.(i);
-    }
-    this.updateTriCount();
-  }
-
-  private requestBlockBuild(i: number): void {
-    this.meshGen[i]++;
-    this.inflight.set(i, this.meshGen[i]);
-    const store = this.blocks[i].store;
-    const req: MeshBuildRequest = {
-      id: i,
-      voxels: store.voxels,
-      scale: store.scale,
-      data: store.data.slice(),
-      tileRects: [...this.tilesById.values()],
-    };
-    const transfers: Transferable[] = [req.data.buffer];
-    this.meshWorker?.postMessage(req, transfers);
-  }
-
-  private drainMeshBuilds(): void {
-    if (this.meshWorker !== undefined && this.workerAvailable) {
-      let sent = 0;
-      for (const i of this.pendingBuilds) {
-        if (this.inflight.has(i)) {
-          continue;
-        }
-        this.requestBlockBuild(i);
-        this.pendingBuilds.delete(i);
-        if (++sent >= MAX_BUILDS_PER_FRAME) {
-          break;
-        }
-      }
-    } else {
-      this.buildBlockMeshesSync([...this.pendingBuilds]);
-      this.pendingBuilds.clear();
-    }
+    this.meshes.buildNow(index);
   }
 
   private updateTriCount(): void {
@@ -492,25 +371,18 @@ export class TriangleRenderer implements BlockRenderer {
     // new data actually arrives
     setGeometryData(this.triMeshes[index].geometry, EMPTY_MESH);
     setGeometryData(this.triWaterMeshes[index].geometry, EMPTY_MESH);
-    this.meshGen[index]++;
+    this.meshes.invalidate(index);
     this.updateTriCount();
   }
 
   onBlockChanged(index: number): void {
-    this.meshGen[index]++;
-    this.pendingBuilds.add(index);
+    this.meshes.requestBuild(index);
   }
 
   setTiles(voxelTiles: VoxelTileConfig[], texture: Texture): void {
     this.triMaterial.tilesTexture = texture;
     this.triMaterial.needsUpdate = true;
-    this.tilesById.clear();
-    for (const v of voxelTiles) {
-      this.tilesById.set(v.id, v);
-    }
-    for (let i = 0; i < this.blocks.length; i++) {
-      this.onBlockChanged(i);
-    }
+    this.meshes.setTiles(voxelTiles);
   }
 
   applyLighting(dayNight: DayNight): void {
@@ -526,7 +398,7 @@ export class TriangleRenderer implements BlockRenderer {
   tick(_dt: number, camera: PerspectiveCamera): void {
     // keep draining the mesh-build queue a few blocks per frame (the worker
     // does the heavy lifting off the main thread)
-    this.drainMeshBuilds();
+    this.meshes.drain();
     // fullscreen underwater tint when the camera dips below the sea
     if (this.seaLevel !== undefined) {
       const depth = this.seaLevel - camera.position.y;
@@ -550,6 +422,6 @@ export class TriangleRenderer implements BlockRenderer {
    * rmsl does not expose a disposal API for them.
    */
   dispose(): void {
-    this.meshWorker?.terminate();
+    this.meshes.dispose();
   }
 }
