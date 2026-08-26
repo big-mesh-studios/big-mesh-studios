@@ -23,6 +23,7 @@
   pointer-events: auto;
   anchor-name: --console;
 }
+
 .console {
   position: absolute;
   width: min(360px, calc(100vw - 24px));
@@ -39,11 +40,13 @@
   top: anchor(bottom);
   right: anchor(inside);
   left: auto;
+  margin-top: var(--margin);
 
   &:popover-open {
     display: flex;
   }
 }
+
 .output {
   flex: 1;
   overflow: auto;
@@ -51,15 +54,18 @@
   white-space: pre-wrap;
   word-break: break-all;
 }
+
 .input-container {
   display: flex;
   align-items: center;
   border-top: 1px solid rgba(255, 255, 255, 0.15);
 }
+
 .prefix {
   padding: 6px 4px 6px 8px;
   color: #6fcf97;
 }
+
 .input {
   flex: 1;
   background: transparent;

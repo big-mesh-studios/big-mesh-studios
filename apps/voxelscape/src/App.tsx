@@ -9,6 +9,9 @@ import { createMediaQuery } from "./utils/create-media-query";
 import { createVoxelscape } from "./voxelscape/create-voxelscape";
 import { VoxelscapeContext } from "./voxelscape/voxelscape-context";
 
+/** How long a line the world reports on its own is left on screen. */
+const NOTICE_SECONDS = 6;
+
 const App: Component<{}> = () => {
   let hud: HTMLDivElement | undefined;
 
@@ -22,7 +25,12 @@ const App: Component<{}> = () => {
         hud.textContent = line;
       }
     },
-    onNotice: setNotice,
+    onNotice: (line) => {
+      setNotice(line);
+      // Nobody has the console open when the world reports its atproto state,
+      // so the same line is put where it can be read without opening it.
+      toasts.show(() => line, NOTICE_SECONDS * 1000);
+    },
   });
 
   onCleanup(voxelscape.dispose);
