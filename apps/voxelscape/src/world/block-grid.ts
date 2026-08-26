@@ -1,23 +1,19 @@
 import {
   BLOCK_WORLD,
-  buildBlock,
+  buildBlockShell,
   type Dim3,
   type WorldBlock,
 } from "./level-data";
-import type { TerrainConfig } from "./noise";
-import type { FillStoreFn } from "./voxel-store";
 
 export interface BlockGridParams {
   blocksPerSide: number;
-  terrain: TerrainConfig;
-  surfaceOnly: boolean;
-  customFillStore?: FillStoreFn;
 }
 
 /**
  * A `blocksPerSide x blocksPerSide` window of `WorldBlock`s, each tagged with
- * its integer grid coordinate, built synchronously in the constructor.
- * `WorldRing` owns moving the window and refilling slots as it scrolls;
+ * its integer grid coordinate. The constructor only allocates them — every
+ * block starts as air, and `WorldRing` is what asks for their terrain, both
+ * for the initial fill and for the slots a scroll reveals.
  * `blocks`/`worldGrid` stay the same array references across that scrolling,
  * so anything holding onto them (e.g. `RendererSwitch`) sees updates in place.
  * `worldGrid` is `WorldRing`'s windowing state, kept private from everyone else.
@@ -39,13 +35,7 @@ export class BlockGrid {
           0,
           grid.z * BLOCK_WORLD[2],
         ];
-        const block: WorldBlock = buildBlock({
-          center,
-          terrain: params.terrain,
-          surfaceOnly: params.surfaceOnly,
-          customFillStore: params.customFillStore,
-        });
-        this.blocks.push(block);
+        this.blocks.push(buildBlockShell({ center }));
         this.worldGrid.push(grid);
       }
     }

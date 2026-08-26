@@ -23,6 +23,13 @@ export interface RendererSwitchParams {
   waterExtinction: number;
   seaLevel: number | undefined;
   initialMode?: RendererMode;
+  /**
+   * Called with a block's index once the active renderer can actually show
+   * it. The raymarcher draws from the block's texture, so that is the moment
+   * its voxel data lands; the triangle renderer needs geometry built from
+   * that data first, which takes a trip through its mesh worker.
+   */
+  onBlockDrawable?: (index: number) => void;
 }
 
 /**
@@ -35,6 +42,7 @@ export class RendererSwitch {
   readonly raymarch: RaymarchRenderer;
   readonly triangle: TriangleRenderer;
   private mode_: RendererMode;
+  private readonly onBlockDrawable?: (index: number) => void;
 
   constructor(params: RendererSwitchParams) {
     const {
@@ -48,7 +56,9 @@ export class RendererSwitch {
       waterExtinction,
       seaLevel,
       initialMode,
+      onBlockDrawable,
     } = params;
+    this.onBlockDrawable = onBlockDrawable;
     this.raymarch = new RaymarchRenderer({
       scene,
       blocks,
@@ -65,6 +75,11 @@ export class RendererSwitch {
       blocks,
       waterExtinction,
       seaLevel,
+      onBlockMeshed: (index) => {
+        if (this.mode_ === "tri") {
+          this.onBlockDrawable?.(index);
+        }
+      },
     });
     this.mode_ = initialMode ?? "tri";
     const rayOn = this.mode_ === "ray";
@@ -129,9 +144,24 @@ export class RendererSwitch {
     this.triangle.repositionBlock(index, center);
   }
 
+  /**
+   * Builds what the active renderer needs to show a block, before returning,
+   * rather than leaving it to the worker that would otherwise do it. The
+   * raymarcher already has everything it needs from the block's data, so this
+   * only concerns the triangle renderer's geometry.
+   */
+  drawBlockNow(index: number): void {
+    if (this.mode_ === "tri") {
+      this.triangle.meshNow(index);
+    }
+  }
+
   onBlockChanged(index: number): void {
     this.raymarch.onBlockChanged(index);
     this.triangle.onBlockChanged(index);
+    if (this.mode_ === "ray") {
+      this.onBlockDrawable?.(index);
+    }
   }
 
   setTiles(voxelTiles: VoxelTileConfig[], texture: Texture): void {

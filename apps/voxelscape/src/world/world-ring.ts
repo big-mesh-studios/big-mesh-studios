@@ -31,8 +31,9 @@ export interface WorldRingParams {
 }
 
 /**
- * Keeps a `BlockGrid`'s window centred on the player, requesting the newly
- * revealed slots' voxel data from a `FillClient` as it scrolls.
+ * Requests a `BlockGrid`'s voxel data from a `FillClient` — every slot at
+ * startup through `fillFrom`, then the slots each scroll reveals — and keeps
+ * the window centred on the player.
  */
 export class WorldRing {
   private readonly blocks: WorldBlock[];
@@ -58,6 +59,36 @@ export class WorldRing {
       customFillStore: params.customFillStore,
       customFillStoreUrl: params.customFillStoreUrl,
     });
+  }
+
+  /**
+   * Requests terrain for every slot in the window, nearest (`x`, `z`) first,
+   * so the ring fills outward from under the player's feet. Results land one
+   * block at a time through `onBlockChanged`.
+   *
+   * @returns The slot containing (`x`, `z`) — the one asked for first.
+   */
+  fillFrom(x: number, z: number): number {
+    const indices = this.blocks.map((_, index) => index);
+    indices.sort(
+      (a, b) => this.distanceSquared(a, x, z) - this.distanceSquared(b, x, z),
+    );
+    const [nearest, ...rest] = indices;
+    // The nearest block is generated here, on the calling thread, and only the
+    // rest are handed to the worker. Nothing can be drawn and the player
+    // cannot be let in until this one block exists, and waiting for a worker
+    // to start costs several times more than the block does.
+    this.fillClient.fillNow(nearest);
+    this.fillClient.requestFill(
+      rest,
+      rest.map((index) => this.blocks[index].center),
+    );
+    return nearest;
+  }
+
+  private distanceSquared(index: number, x: number, z: number): number {
+    const center = this.blocks[index].center;
+    return (center[0] - x) ** 2 + (center[2] - z) ** 2;
   }
 
   /**

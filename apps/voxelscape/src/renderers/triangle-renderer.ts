@@ -222,6 +222,12 @@ export interface TriangleRendererParams {
   blocks: WorldBlock[];
   waterExtinction: number;
   seaLevel: number | undefined;
+  /**
+   * Called with a block's index once its geometry has been built and handed
+   * to the mesh. Until then the block draws as nothing, however much voxel
+   * data it holds.
+   */
+  onBlockMeshed?: (index: number) => void;
 }
 
 const EMPTY_MESH: MeshArrays = {
@@ -259,7 +265,10 @@ export class TriangleRenderer implements BlockRenderer {
   // border, so seam faces are culled against the surrounding world without
   // any neighbour data) and hands back transferable arrays. `pendingBuilds`
   // holds blocks whose mesh is stale, drained a few per frame while this
-  // renderer is active. `meshGen` is bumped whenever a block's data or the
+  // renderer is active, in the order they went stale — which is the order
+  // their data arrived, so the block the player is standing in is meshed
+  // before the ones fogged out at the ring's edge. `meshGen` is bumped
+  // whenever a block's data or the
   // tiles change, so a slow worker result for stale data is dropped. If the
   // worker is unavailable (no Worker, build error) the synchronous
   // `buildBlockMeshesSync` path is used instead.
@@ -268,6 +277,7 @@ export class TriangleRenderer implements BlockRenderer {
   private readonly inflight = new Map<number, number>();
   private meshWorker: Worker | undefined;
   private workerAvailable = true;
+  private readonly onBlockMeshed?: (index: number) => void;
 
   // Fullscreen underwater tint (the raymarch water pass tints the view
   // in-shader instead). Drawn last with depth-testing off so it washes the
@@ -276,10 +286,11 @@ export class TriangleRenderer implements BlockRenderer {
   private readonly tintMesh: Mesh;
 
   constructor(params: TriangleRendererParams) {
-    const { scene, blocks, waterExtinction, seaLevel } = params;
+    const { scene, blocks, waterExtinction, seaLevel, onBlockMeshed } = params;
     this.blocks = blocks;
     this.waterExtinction = waterExtinction;
     this.seaLevel = seaLevel;
+    this.onBlockMeshed = onBlockMeshed;
 
     for (let i = 0; i < blocks.length; i++) {
       const center = blocks[i].center;
@@ -299,7 +310,6 @@ export class TriangleRenderer implements BlockRenderer {
       // pass does
       this.triWaterMeshes.push(triWaterMesh);
       this.meshGen.push(0);
-      this.pendingBuilds.add(i);
     }
 
     this.setupMeshWorker();
@@ -339,6 +349,7 @@ export class TriangleRenderer implements BlockRenderer {
         setGeometryData(this.triMeshes[msg.id].geometry, msg.terrain);
         setGeometryData(this.triWaterMeshes[msg.id].geometry, msg.water);
         this.updateTriCount();
+        this.onBlockMeshed?.(msg.id);
       };
       this.meshWorker.onerror = () => {
         // fall back to building synchronously; requeue whatever was in flight
@@ -356,6 +367,18 @@ export class TriangleRenderer implements BlockRenderer {
     }
   }
 
+  /**
+   * Builds one block's mesh on the calling thread, before returning, and takes
+   * it off the queue. For the block that has to be on screen before the player
+   * is let in: starting the mesh worker and loading its modules costs several
+   * times what meshing a single block costs, so a mesh waiting on that start
+   * arrives seconds after one simply built here.
+   */
+  meshNow(index: number): void {
+    this.pendingBuilds.delete(index);
+    this.buildBlockMeshesSync([index]);
+  }
+
   private buildBlockMeshesSync(indices: number[]): void {
     const tileList = [...this.tilesById.values()];
     for (const i of indices) {
@@ -367,6 +390,7 @@ export class TriangleRenderer implements BlockRenderer {
         this.triWaterMeshes[i].geometry,
         buildWaterMesh(this.blocks[i].store),
       );
+      this.onBlockMeshed?.(i);
     }
     this.updateTriCount();
   }

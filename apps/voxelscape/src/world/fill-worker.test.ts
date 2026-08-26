@@ -1,13 +1,24 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
-  buildFillResult,
+  buildFillResults,
   fillResultTransfers,
   handleFillMessage,
   type FillBatchRequest,
+  type FillBatchResult,
   type FillConfig,
 } from "./fill-worker";
 import { buildBlockData } from "./level-data";
+
+const collect = async (
+  results: AsyncGenerator<FillBatchResult> | undefined,
+): Promise<FillBatchResult[]> => {
+  const collected: FillBatchResult[] = [];
+  for await (const result of results ?? []) {
+    collected.push(result);
+  }
+  return collected;
+};
 
 const config: FillConfig = {
   terrain: {
@@ -21,29 +32,29 @@ const config: FillConfig = {
 };
 
 describe("fill worker protocol", () => {
-  it("stores the config from a config message", async () => {
-    const out = await handleFillMessage({ type: "config", config }, undefined);
+  it("stores the config from a config message", () => {
+    const out = handleFillMessage({ type: "config", config }, undefined);
     expect(out.config).toBe(config);
-    expect(out.result).toBeUndefined();
+    expect(out.results).toBeUndefined();
   });
 
-  it("ignores a fill request before a config arrives", async () => {
-    const out = await handleFillMessage(
+  it("ignores a fill request before a config arrives", () => {
+    const out = handleFillMessage(
       { type: "fill", indices: [0], centers: [[0, 0, 0]] },
       undefined,
     );
-    expect(out.result).toBeUndefined();
+    expect(out.results).toBeUndefined();
   });
 
-  it("ignores a message that is neither config nor fill", async () => {
-    const out = await handleFillMessage(
+  it("ignores a message that is neither config nor fill", () => {
+    const out = handleFillMessage(
       { indices: [0], centers: [[0, 0, 0]] } as unknown as FillBatchRequest,
       config,
     );
-    expect(out.result).toBeUndefined();
+    expect(out.results).toBeUndefined();
   });
 
-  it("builds a batch result after config, matching the sync build", async () => {
+  it("yields one result per block, in the order requested", async () => {
     const req: FillBatchRequest = {
       type: "fill",
       indices: [3, 7],
@@ -52,28 +63,27 @@ describe("fill worker protocol", () => {
         [192, 0, 0],
       ],
     };
-    const out = await handleFillMessage(req, config);
-    expect(out.result).toBeDefined();
-    const result = out.result!;
-    expect(result.indices).toEqual([3, 7]);
-    expect(result.storeData.length).toBe(2);
-    expect(result.broadData.length).toBe(2);
-    expect(result.fineData.length).toBe(2);
+    const results = await collect(handleFillMessage(req, config).results);
+    // Each block on its own, so the caller can draw it without waiting for
+    // the rest of the request.
+    expect(results.map((result) => result.indices)).toEqual([[3], [7]]);
     // per-block data matches the synchronous path
     const sync = buildBlockData({
       center: [0, 0, 0],
       terrain: config.terrain,
       surfaceOnly: true,
     });
-    expect(result.storeData[0].length).toBe(sync.storeData.length);
-    expect(result.broadData[0].length).toBe(sync.broadData.length);
-    expect(result.fineData[0].length).toBe(sync.fineData.length);
+    expect(results[0].storeData[0].length).toBe(sync.storeData.length);
+    expect(results[0].broadData[0].length).toBe(sync.broadData.length);
+    expect(results[0].fineData[0].length).toBe(sync.fineData.length);
   });
 
   it("produces one transferable buffer per array", async () => {
-    const result = await buildFillResult(
-      { type: "fill", indices: [0], centers: [[0, 0, 0]] },
-      config,
+    const [result] = await collect(
+      buildFillResults(
+        { type: "fill", indices: [0], centers: [[0, 0, 0]] },
+        config,
+      ),
     );
     const transfers = fillResultTransfers(result);
     expect(transfers).toHaveLength(3);

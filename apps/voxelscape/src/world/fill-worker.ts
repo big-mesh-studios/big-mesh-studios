@@ -1,9 +1,11 @@
 // Web worker that generates a block's procedural voxel data (noise fill) and
 // its derived GPU level layout (surface sweep) off the main thread. The main
-// thread sends a configuration once, then batch `fill` requests with the
-// centres of a ring step's changed blocks; each block's three arrays (store
-// data, broad grid, fine chunks) are posted back transferred (moved, not
-// copied) and adopted zero-copy into the block's store and level.
+// thread sends a configuration once, then `fill` requests carrying the centres
+// of the blocks it wants — the whole window at startup, the changed slots of a
+// ring step afterwards. Each block is posted back on its own as it is
+// generated, its three arrays (store data, broad grid, fine chunks)
+// transferred (moved, not copied) and adopted zero-copy into the block's store
+// and level.
 import { buildBlockData, type Dim3, type TerrainConfig } from "./level-data";
 import type { FillStoreFn } from "./voxel-store";
 
@@ -32,17 +34,19 @@ export type FillWorkerMessage =
 let cachedCustomFillStore: FillStoreFn | undefined = undefined;
 
 /**
- * Builds the batch result for a fill request. Pure, so it can be
- * unit-tested without a worker context.
+ * Builds one result per block in a fill request, in the order the request
+ * lists them. Pure, so it can be unit-tested without a worker context.
+ *
+ * A block is its own result rather than the whole request being one, so the
+ * main thread can draw each block as it lands: generating a block takes long
+ * enough that holding a batch of them back until the last one is done is the
+ * difference between terrain appearing around the player straight away and
+ * appearing all at once, seconds later.
  */
-export const buildFillResult = async (
+export async function* buildFillResults(
   req: FillBatchRequest,
   cfg: FillConfig,
-): Promise<FillBatchResult> => {
-  const storeData: Uint8Array[] = [];
-  const broadData: Uint8Array[] = [];
-  const fineData: Uint8Array[] = [];
-
+): AsyncGenerator<FillBatchResult> {
   if (cfg.customFillStoreUrl && !cachedCustomFillStore) {
     try {
       const module = await import(/* @vite-ignore */ cfg.customFillStoreUrl);
@@ -52,19 +56,21 @@ export const buildFillResult = async (
     }
   }
 
-  for (const center of req.centers) {
+  for (let i = 0; i < req.centers.length; i++) {
     const data = buildBlockData({
-      center,
+      center: req.centers[i],
       terrain: cfg.terrain,
       surfaceOnly: cfg.surfaceOnly,
       customFillStore: cachedCustomFillStore,
     });
-    storeData.push(data.storeData);
-    broadData.push(data.broadData);
-    fineData.push(data.fineData);
+    yield {
+      indices: [req.indices[i]],
+      storeData: [data.storeData],
+      broadData: [data.broadData],
+      fineData: [data.fineData],
+    };
   }
-  return { indices: req.indices, storeData, broadData, fineData };
-};
+}
 
 /** The buffers to move along with a result: everything the result owns. */
 export const fillResultTransfers = (
@@ -82,14 +88,17 @@ export const fillResultTransfers = (
 };
 
 /**
- * Pure message handler: returns a new configuration for a `config` message,
- * a result for a `fill` message, or nothing for anything else (an unknown
- * message, or a `fill` message received before a configuration).
+ * Pure message handler: returns a new configuration for a `config` message, a
+ * result per block for a `fill` message, or neither for anything else (an
+ * unknown message, or a `fill` message received before a configuration).
  */
-export const handleFillMessage = async (
+export const handleFillMessage = (
   msg: FillWorkerMessage,
   config: FillConfig | undefined,
-): Promise<{ result?: FillBatchResult; config?: FillConfig }> => {
+): {
+  results?: AsyncGenerator<FillBatchResult>;
+  config?: FillConfig;
+} => {
   if (msg.type === "config") {
     cachedCustomFillStore = undefined;
     return { config: msg.config };
@@ -97,7 +106,7 @@ export const handleFillMessage = async (
   if (msg.type !== "fill" || config === undefined) {
     return {};
   }
-  return { result: await buildFillResult(msg, config) };
+  return { results: buildFillResults(msg, config) };
 };
 
 /**
@@ -121,13 +130,15 @@ let config: FillConfig | undefined;
 
 if (workerSelf !== undefined) {
   workerSelf.onmessage = async (ev) => {
-    const out = await handleFillMessage(ev.data as FillWorkerMessage, config);
+    const out = handleFillMessage(ev.data as FillWorkerMessage, config);
     if (out.config !== undefined) {
       config = out.config;
       return;
     }
-    if (out.result !== undefined) {
-      workerSelf.postMessage(out.result, fillResultTransfers(out.result));
+    if (out.results !== undefined) {
+      for await (const result of out.results) {
+        workerSelf.postMessage(result, fillResultTransfers(result));
+      }
     }
   };
 }

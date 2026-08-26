@@ -310,6 +310,35 @@ export interface WorldBlock {
 }
 
 /**
+ * Allocates an empty block centered at `params.center`: a dense CPU
+ * `VoxelStore` (the editable source of truth) and its derived GPU `Level`,
+ * both sized for the level of detail but holding no terrain. Every voxel
+ * reads as air until something fills it — `buildBlock` here, or a fill
+ * result adopted through `applyLevelData`.
+ *
+ * @param params.center - World-space center of the block.
+ * @param params.lod - Level of detail to build at; defaults to 0.
+ */
+export const buildBlockShell = (params: {
+  center: Dim3;
+  lod?: number;
+}): WorldBlock => {
+  const { broadDim, chunkDim, storageDim, dimensions, voxels, voxelSize } =
+    blockConfig(params.lod ?? 0);
+  return {
+    level: new Level({
+      broadDim,
+      chunkDim,
+      storageDim,
+      dimensions,
+      scale: voxelSize,
+    }),
+    center: params.center,
+    store: new VoxelStore({ dims: dimensions, voxels, scale: voxelSize }),
+  };
+};
+
+/**
  * Builds a fresh block of the shared noise-terrain height field centered at
  * `params.center`: a dense CPU `VoxelStore` (the editable source of truth)
  * plus its derived GPU `Level`.
@@ -326,29 +355,10 @@ export const buildBlock = (params: {
   surfaceOnly?: boolean;
   customFillStore?: FillStoreFn;
 }): WorldBlock => {
-  const lod = params.lod ?? 0;
-  const { broadDim, chunkDim, storageDim, dimensions, voxels, voxelSize } =
-    blockConfig(lod);
-  const level = new Level({
-    broadDim,
-    chunkDim,
-    storageDim,
-    dimensions,
-    scale: voxelSize,
-  });
-  const store = new VoxelStore({
-    dims: dimensions,
-    voxels,
-    scale: voxelSize,
-  });
-  const block: WorldBlock = {
-    level,
-    center: params.center,
-    store,
-  };
+  const block = buildBlockShell(params);
   const fill = params.customFillStore ?? fillStore;
-  fill(store, params.center, params.terrain ?? DEFAULT_TERRAIN);
-  syncLevelFromStore(level, store, {
+  fill(block.store, params.center, params.terrain ?? DEFAULT_TERRAIN);
+  syncLevelFromStore(block.level, block.store, {
     surfaceOnly: params.surfaceOnly ?? true,
   });
   return block;

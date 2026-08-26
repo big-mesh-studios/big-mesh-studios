@@ -14,7 +14,10 @@ import { Inventory } from "../player/inventory";
 import type { Player, PlayerConfig } from "../player/player";
 import { AdaptiveResolution } from "../render/adaptive";
 import { createRenderLoop } from "../render/create-render-loop";
-import { createVoxelWorld } from "../world/create-voxel-world";
+import {
+  createVoxelWorld,
+  type InitialDrawProgress,
+} from "../world/create-voxel-world";
 import { type Dim3 } from "../world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "../world/noise";
 
@@ -47,6 +50,19 @@ export interface VoxelscapeConfig {
   onNotice?: (line: string) => void;
 }
 
+/** How much of the world exists yet, for whatever the player is shown while it doesn't. */
+export interface LoadingState {
+  /** Blocks of the window that have been generated and drawn. */
+  blocksDrawn: number;
+  blocksTotal: number;
+  /**
+   * Whether the block the player spawns in is on screen. The rest of the
+   * window is still arriving when this first turns true — it means there is
+   * somewhere to stand and something to see, not that the world is finished.
+   */
+  ready: boolean;
+}
+
 export interface Voxelscape {
   scene: Scene;
   camera: PerspectiveCamera;
@@ -60,6 +76,8 @@ export interface Voxelscape {
   editStatus: Accessor<string>;
   /** Whether the crosshair is currently pointing at something within reach. */
   inReach: Accessor<boolean>;
+  /** How much of the world's terrain exists, for a loading screen to show and dismiss on. */
+  loading: Accessor<LoadingState>;
   /**
    * Attaches a renderer to `canvas` and starts the frame loop. Returns a
    * function that stops the loop and releases the renderer, leaving the world
@@ -107,13 +125,43 @@ export const createVoxelscape = ({
     groundHeightAt: (x, z) => world.heightAt(x, z),
   });
 
+  /**
+   * Publishes a progress report once there is a signal to publish it to.
+   * The block the player spawns in is generated and meshed while the world is
+   * still being built, which is inside this component's body, and Solid
+   * refuses a write from there — so the reports made during construction are
+   * dropped here and read back off the finished world instead.
+   */
+  let publishProgress: ((progress: InitialDrawProgress) => void) | undefined;
+
   const world = createVoxelWorld({
     scene,
     blocksPerSide,
     terrain,
     surfaceOnly,
     debugPerf,
+    spawn,
+    onInitialDraw: (progress) => publishProgress?.(progress),
   });
+
+  const toLoadingState = ({
+    drawn,
+    total,
+    spawnDrawn,
+  }: InitialDrawProgress): LoadingState => ({
+    blocksDrawn: drawn,
+    blocksTotal: total,
+    // The player is held back only until their own block is on screen; the
+    // rest of the window keeps arriving behind the fog while they walk around.
+    ready: spawnDrawn,
+  });
+
+  const [loading, setLoading] = createSignal<LoadingState>(
+    toLoadingState(world.drawProgress()),
+  );
+  // Every report from here on comes from a worker handing back a block, which
+  // is nowhere near a component body.
+  publishProgress = (progress) => setLoading(toLoadingState(progress));
 
   /**
    * Camera with a far plane beyond the ring's physical extent, so box
@@ -279,32 +327,47 @@ export const createVoxelscape = ({
 
   /** Advances everything by `dt` seconds, leaving the scene ready to draw. */
   const advance = (dt: number): void => {
-    const snapshot = input.consume();
-    avatar.move(dt, snapshot);
-    // Editing runs before the camera catches up, so this frame's picks are
-    // taken from where the eye was last frame along where the player now
-    // looks. crosshair reach feedback: recompute every frame so it tracks
-    // look, not just edit attempts
-    setInReach(editing.pick().target !== null);
-    // handle block editing input (edge-triggered dig/place + hotbar select)
-    if (snapshot.break) {
-      const result = editing.breakBlock();
-      if (result !== null) {
-        setEditStatus(result);
+    const progress = loading();
+    if (progress.blocksDrawn < progress.blocksTotal) {
+      // Frames while the window is still being generated and meshed cost what
+      // that work costs, not what drawing the finished world costs. Judging
+      // them would drop the resolution to fit a load that is about to end.
+      resolution.hold();
+    }
+    // The player waits for ground to stand on; the world does not wait for the
+    // player. Nothing below this block may be skipped while the world is still
+    // arriving, because arriving is something the renderers do here — the
+    // triangle renderer builds a block's geometry from its `tick`, and it is
+    // that geometry the player is being held back for.
+    if (progress.ready) {
+      const snapshot = input.consume();
+      avatar.move(dt, snapshot);
+      // Editing runs before the camera catches up, so this frame's picks are
+      // taken from where the eye was last frame along where the player now
+      // looks. crosshair reach feedback: recompute every frame so it tracks
+      // look, not just edit attempts
+      setInReach(editing.pick().target !== null);
+      // handle block editing input (edge-triggered dig/place + hotbar select)
+      if (snapshot.break) {
+        const result = editing.breakBlock();
+        if (result !== null) {
+          setEditStatus(result);
+        }
       }
+      if (snapshot.place) {
+        setEditStatus(editing.placeBlock());
+      }
+      if (snapshot.select !== null) {
+        inventory.selectSlot(snapshot.select);
+      }
+      // scroll the terrain ring so the player's block stays centred
+      world.scrollTo(avatar.player.position.x, avatar.player.position.z);
+      avatar.place();
+      // republish this player's coarse presence when they move, broadcast
+      // their pose to linked peers, and ease the remote avatars toward their
+      // latest
+      multiplayer.tick(dt, currentPose());
     }
-    if (snapshot.place) {
-      setEditStatus(editing.placeBlock());
-    }
-    if (snapshot.select !== null) {
-      inventory.selectSlot(snapshot.select);
-    }
-    // scroll the terrain ring so the player's block stays centred
-    world.scrollTo(avatar.player.position.x, avatar.player.position.z);
-    avatar.place();
-    // republish this player's coarse presence when they move, broadcast their
-    // pose to linked peers, and ease the remote avatars toward their latest
-    multiplayer.tick(dt, currentPose());
     const lighting = environment.tick(dt, camera);
     skyColor.set(
       lighting.skyColor[0],
@@ -349,6 +412,7 @@ export const createVoxelscape = ({
     debugPerf,
     editStatus,
     inReach,
+    loading,
     mount,
 
     dispose() {

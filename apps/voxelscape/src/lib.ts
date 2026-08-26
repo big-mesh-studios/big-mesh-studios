@@ -1,6 +1,7 @@
 // The assembled world, and the context its UI components read it from
 export {
   createVoxelscape,
+  type LoadingState,
   type Voxelscape,
   type VoxelscapeConfig,
 } from "./voxelscape/create-voxelscape";
@@ -216,5 +217,6 @@ export {
 } from "./commands";
 export * from "./ui/Console";
 export { EditHud } from "./ui/EditHud";
+export { LoadingScreen } from "./ui/LoadingScreen";
 import Controls_ from "./ui/CoarseControls";
 export const Controls = Controls_;

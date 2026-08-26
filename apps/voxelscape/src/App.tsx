@@ -3,6 +3,7 @@ import styles from "./App.module.css";
 import CoarseControls from "./ui/CoarseControls";
 import { Console } from "./ui/Console";
 import { EditHud } from "./ui/EditHud";
+import { LoadingScreen } from "./ui/LoadingScreen";
 import { createMediaQuery } from "./utils/create-media-query";
 import { createVoxelscape } from "./voxelscape/create-voxelscape";
 import { VoxelscapeContext } from "./voxelscape/voxelscape-context";
@@ -35,6 +36,7 @@ const App: Component<{}> = () => {
           <CoarseControls />
         </Show>
         <EditHud />
+        <LoadingScreen />
         <Console
           onCommand={(line) => voxelscape.commands.run(line)}
           notice={notice()}
