@@ -91,8 +91,10 @@ const ConsoleInput: Component<{
         return;
       }
       case "ArrowUp": {
+        // While a completion is standing behind the caret the arrows belong to
+        // it, even when there is only the one and they have nowhere to go.
         const count = candidates().length;
-        if (count > 1) {
+        if (count > 0) {
           event.preventDefault();
           setCandidateIndex((index) => (index + count - 1) % count);
           return;
@@ -107,7 +109,7 @@ const ConsoleInput: Component<{
       }
       case "ArrowDown": {
         const count = candidates().length;
-        if (count > 1) {
+        if (count > 0) {
           event.preventDefault();
           setCandidateIndex((index) => (index + 1) % count);
           return;
