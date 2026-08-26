@@ -58,7 +58,7 @@ export function createPopover() {
             onToggle={(event) => {
               const toggle = event.newState === "open";
               setIsOpen(toggle);
-              props.onToggle(toggle);
+              props.onToggle?.(toggle);
             }}
           >
             {props.children}
