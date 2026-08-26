@@ -329,11 +329,12 @@ export class MultiplayerController {
    * player's pose to open peers at a deliberately low rate, and eases the
    * remote avatars toward their received poses.
    */
-  tick(dt: number, pose: Pose): void {
+  tick(dt: number): void {
     if (!this.running) {
       return;
     }
     const now = Date.now();
+    const pose = this.getPose();
 
     const presenceMoved =
       (pose.x - this.lastPresenceX) ** 2 + (pose.z - this.lastPresenceZ) ** 2;

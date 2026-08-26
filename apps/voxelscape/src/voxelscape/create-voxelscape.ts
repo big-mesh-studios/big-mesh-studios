@@ -6,7 +6,6 @@ import { createCommands } from "../commands";
 import { createEnvironment } from "../environment/create-environment";
 import { MultiplayerController } from "../multiplayer/multiplayer-controller";
 import { createPeerJSSignaling } from "../multiplayer/peerjs-transport";
-import type { Pose } from "../multiplayer/pose";
 import { createInput, type InputController } from "../player/create-input";
 import { createPlayerAvatar } from "../player/create-player-avatar";
 import { EditingController } from "../player/editing-controller";
@@ -167,15 +166,6 @@ export const createVoxelscape = ({
     getPlayerVoxels: () => avatar.occupiedVoxels(),
   });
 
-  /** This player's network-relevant state: where they are and where they look. */
-  const currentPose = (): Pose => ({
-    x: avatar.player.position.x,
-    y: avatar.player.position.y,
-    z: avatar.player.position.z,
-    yaw: avatar.player.yaw,
-    pitch: avatar.player.pitch,
-  });
-
   // Built before `atproto`, because signing in is what starts the mesh. Its
   // getters read `atproto` before that variable is assigned, which holds
   // because they only run once the mesh is online and both exist by then.
@@ -183,7 +173,13 @@ export const createVoxelscape = ({
     getRepoClient: () => atproto.repoClient,
     getDid: () => atproto.did,
     seed: terrain.seed,
-    getPose: currentPose,
+    getPose: () => ({
+      x: avatar.player.position.x,
+      y: avatar.player.position.y,
+      z: avatar.player.position.z,
+      yaw: avatar.player.yaw,
+      pitch: avatar.player.pitch,
+    }),
     resolveHandle: (did) => atproto.resolveHandle(did),
     resolvePicture: (did) => atproto.resolvePicture(did),
     createSignaling: createPeerJSSignaling,
@@ -346,7 +342,7 @@ export const createVoxelscape = ({
       // republish this player's coarse presence when they move, broadcast
       // their pose to linked peers, and ease the remote avatars toward their
       // latest
-      multiplayer.tick(dt, currentPose());
+      multiplayer.tick(dt);
     }
     const lighting = environment.tick(dt, camera);
     skyColor.set(

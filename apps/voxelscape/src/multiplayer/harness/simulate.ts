@@ -75,7 +75,7 @@ export const createSimulator = (options: SimulatorOptions): Simulator => {
 
   const step = async (ms = 150): Promise<void> => {
     for (const player of players) {
-      player.controller.tick(1 / 60, player.pose);
+      player.controller.tick(1 / 60);
     }
     await vi.advanceTimersByTimeAsync(ms);
     // drain any microtasks queued by transport/atproto callbacks
