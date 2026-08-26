@@ -45,7 +45,7 @@ const App: Component<{}> = () => {
           notice={notice()}
         />
         <toasts.Stack>
-          <Show when={voxelscape.debugPerf}>
+          <Show when={voxelscape.debugPerf()}>
             <Toast>
               <div
                 ref={(el) => {

@@ -20,8 +20,11 @@ export interface RenderLoopConfig {
   camera: PerspectiveCamera;
   /** The colour to clear to, read once per frame after `onFrame` has run. */
   clearColor: () => Color;
-  /** Enables the GPU timer and the statistics line. */
-  debugPerf: boolean;
+  /**
+   * Whether to time the frame on the GPU and assemble the statistics line.
+   * Read once a frame, so it can be turned on and off while the loop runs.
+   */
+  debugPerf: () => boolean;
   /**
    * The scaler deciding this canvas's render resolution, shared with whatever
    * else reads or sets it and outliving any one mounted canvas. A loop given
@@ -67,7 +70,8 @@ export const createRenderLoop = ({
 }: RenderLoopConfig): RenderLoop => {
   const renderer = new WebGLRenderer(canvas);
   renderer.setClearColor(clearColor(), 1);
-  const timer = debugPerf ? new GpuTimer(renderer.gl) : undefined;
+  /** Built the first frame the statistics are asked for, and kept from then on. */
+  let timer: GpuTimer | undefined;
 
   const adaptive = resolution ?? new AdaptiveResolution();
   /** The canvas's layout size in device pixels; the scale is applied on top of it. */
@@ -85,10 +89,11 @@ export const createRenderLoop = ({
    * the resolution.
    */
   const render = (): boolean => {
-    if (timer === undefined) {
+    if (!debugPerf()) {
       renderer.render(scene, camera);
       return false;
     }
+    timer ??= new GpuTimer(renderer.gl);
     timer.begin();
     renderer.render(scene, camera);
     timer.end();

@@ -15,6 +15,11 @@ export interface RendererSwitchParams {
   blockWorld: Dim3;
   fogDistance: number;
   fogStart: number;
+  /**
+   * Compiles the raymarch materials to write a fetch-count heatmap instead of
+   * the shaded scene, which is what makes the fetches-per-ray figure readable.
+   * The shaders are built once, so this is fixed for the world's lifetime.
+   */
   debugPerf: boolean;
   waterExtinction: number;
   seaLevel: number | undefined;
@@ -44,6 +49,8 @@ export class RendererSwitch {
   /** The triangle renderer's underwater tint; the raymarcher tints in-shader instead. */
   readonly underwaterTint: Group;
   private mode_: RendererMode;
+  /** Whether the raymarch materials draw the heatmap `sampleFetchCount` reads. */
+  private readonly countsFetches: boolean;
   private readonly onBlockDrawable?: (index: number) => void;
 
   constructor(params: RendererSwitchParams) {
@@ -60,6 +67,7 @@ export class RendererSwitch {
       onBlockDrawable,
     } = params;
     this.onBlockDrawable = onBlockDrawable;
+    this.countsFetches = debugPerf;
     this.raymarch = new RaymarchRenderer({
       blocks,
       padding,
@@ -101,7 +109,8 @@ export class RendererSwitch {
    * The debug-perf HUD line for whichever renderer is active. In triangle
    * mode this is free and always current; in raymarch mode the fetches-per-ray
    * figure comes from a GPU readback, so it's only computed when `sample` is
-   * true — the caller decides how often that's affordable.
+   * true — the caller decides how often that's affordable — and only when the
+   * materials were built to draw the heatmap it reads.
    */
   describeDebugStats(
     gl: WebGL2RenderingContext,
@@ -112,7 +121,7 @@ export class RendererSwitch {
     if (this.mode_ === "tri") {
       return `tri | tris: ${this.triangleCount.toLocaleString()}`;
     }
-    if (!sample) {
+    if (!sample || !this.countsFetches) {
       return "ray";
     }
     const s = sampleFetchCount(gl, width, height);

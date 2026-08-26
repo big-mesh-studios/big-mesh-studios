@@ -35,8 +35,11 @@ export interface VoxelscapeConfig {
   /** Movement settings for this world's player; anything omitted takes its default. */
   player?: Partial<PlayerConfig>;
   /**
-   * Enables the GPU timer and the per-frame statistics passed to
-   * `onDebugStats`. Defaults to whether the page URL's hash contains `perf`.
+   * Starts the world with the GPU timer and the per-frame statistics passed to
+   * `onDebugStats` turned on, which `/perf` then toggles. Defaults to whether
+   * the page URL's hash contains `perf`. Starting it on also compiles the
+   * raymarch materials to draw the fetch-count heatmap the raymarch statistics
+   * are read from, which no later toggle can add.
    */
   debugPerf?: boolean;
   /** Receives the statistics line once per frame while `debugPerf` is on. */
@@ -56,8 +59,8 @@ export interface Voxelscape {
   input: InputController;
   inventory: Inventory;
   commands: Commander;
-  /** Whether `onDebugStats` will be called. */
-  debugPerf: boolean;
+  /** Whether `onDebugStats` is being called, which `/perf` toggles. */
+  debugPerf: Accessor<boolean>;
   /** Last break/place result, so the HUD can show silent failures. */
   editStatus: Accessor<string>;
   /** Whether the crosshair is currently pointing at something within reach. */
@@ -84,7 +87,7 @@ export const createVoxelscape = ({
   terrain = DEFAULT_TERRAIN,
   surfaceOnly = true,
   spawn = [0, 0, 0],
-  debugPerf = typeof window !== "undefined" &&
+  debugPerf: initialDebugPerf = typeof window !== "undefined" &&
     window.location.hash.includes("perf"),
   onDebugStats,
   onNotice,
@@ -92,6 +95,7 @@ export const createVoxelscape = ({
 }: VoxelscapeConfig = {}): Voxelscape => {
   const [editStatus, setEditStatus] = createSignal("");
   const [inReach, setInReach] = createSignal(false);
+  const [debugPerf, setDebugPerf] = createSignal(initialDebugPerf);
 
   const input = createInput();
   const environment = createEnvironment({
@@ -108,7 +112,7 @@ export const createVoxelscape = ({
     blocksPerSide,
     terrain,
     surfaceOnly,
-    debugPerf,
+    debugPerf: initialDebugPerf,
     spawn,
     onInitialDraw: setLoading,
   });
@@ -250,6 +254,16 @@ export const createVoxelscape = ({
         avatar.player.config.lookSensitivity = n;
       }
       return `look sensitivity: ${avatar.player.config.lookSensitivity} rad/px`;
+    },
+    setDebugPerf: (on) => {
+      const next = on ?? !debugPerf();
+      setDebugPerf(next);
+      if (!next) {
+        return "performance readout hidden";
+      }
+      return initialDebugPerf
+        ? "performance readout shown"
+        : "performance readout shown (no raymarch statistics: the world did not start with #perf)";
     },
   });
 

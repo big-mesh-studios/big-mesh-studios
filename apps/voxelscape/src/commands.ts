@@ -61,6 +61,8 @@ export interface CommandsParams {
   setMoveSpeed: (n?: number) => string;
   /** Sets the look sensitivity (radians/pixel), or reports it if `n` is omitted. */
   setLookSensitivity: (n?: number) => string;
+  /** Shows or hides the per-frame performance readout, flipping it if `on` is omitted. */
+  setDebugPerf: (on?: boolean) => string;
 }
 
 /** Every debug console command, declared as a single object literal keyed by command name. */
@@ -76,6 +78,7 @@ export const createCommands = ({
   setPlayerVisible,
   setMoveSpeed,
   setLookSensitivity,
+  setDebugPerf,
 }: CommandsParams): Commander => {
   return new Commander({
     "/day": {
@@ -169,6 +172,22 @@ export const createCommands = ({
           return resolution.describe();
         }
         return "usage: /resolution auto|<0.1..1>  (1 renders every display pixel)";
+      },
+    },
+    "/perf": {
+      help: "/perf [on|off]   show or hide the frame-time readout",
+      run: (rest) => {
+        const argument = rest[0];
+        if (argument === undefined) {
+          return setDebugPerf();
+        }
+        if (argument === "on") {
+          return setDebugPerf(true);
+        }
+        if (argument === "off") {
+          return setDebugPerf(false);
+        }
+        return "usage: /perf [on|off]  (no argument flips it)";
       },
     },
     "/tris": {
