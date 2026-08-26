@@ -1089,9 +1089,21 @@ export class RaymarchMaterial extends NodeMaterial {
   /**
    * When true, outputs a fetch-count heatmap instead of the shaded scene: the
    * red and green channels encode the 16-bit count of fine-texel fetches, and
-   * the alpha channel is 1 when the ray entered at least one chunk.
+   * the alpha channel is 1 when the ray entered at least one chunk. The two
+   * are different shaders, so changing this asks the renderer to rebuild this
+   * material's program before it next draws.
    */
-  debugFetchCount: boolean = false;
+  get debugFetchCount(): boolean {
+    return this.debugFetchCount_;
+  }
+  set debugFetchCount(value: boolean) {
+    if (value === this.debugFetchCount_) {
+      return;
+    }
+    this.debugFetchCount_ = value;
+    this.needsUpdate = true;
+  }
+  private debugFetchCount_: boolean = false;
   /** The tile spritesheet uploaded as one 2D texture; set asynchronously once loaded. */
   tilesTexture: Texture | null = null;
   /** Per-voxel-identifier face tiles (normalized atlas rectangles) that drive the rect uniforms. */
@@ -1668,6 +1680,17 @@ export class RaymarchRenderer implements BlockRenderer {
       material.tilesTexture = texture;
       material.voxelTiles = voxelTiles;
       material.needsUpdate = true;
+    }
+  }
+
+  /**
+   * Draws the blocks as a fetch-count heatmap instead of shading them, or goes
+   * back to shading them. Each block's shader is rebuilt the next time it is
+   * drawn, which costs a compile per block.
+   */
+  setDebugFetchCount(on: boolean): void {
+    for (const material of this.materials) {
+      material.debugFetchCount = on;
     }
   }
 

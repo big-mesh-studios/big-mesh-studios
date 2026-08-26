@@ -61,7 +61,11 @@ export interface CommandsParams {
   setMoveSpeed: (n?: number) => string;
   /** Sets the look sensitivity (radians/pixel), or reports it if `n` is omitted. */
   setLookSensitivity: (n?: number) => string;
-  /** Shows or hides the per-frame performance readout, flipping it if `on` is omitted. */
+  /**
+   * Shows or hides the per-frame performance readout, flipping it if `on` is
+   * omitted. Showing it also puts the raymarcher into its fetch-count heatmap,
+   * which it draws in place of the world.
+   */
   setDebugPerf: (on?: boolean) => string;
 }
 

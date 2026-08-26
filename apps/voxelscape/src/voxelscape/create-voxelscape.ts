@@ -37,9 +37,7 @@ export interface VoxelscapeConfig {
   /**
    * Starts the world with the GPU timer and the per-frame statistics passed to
    * `onDebugStats` turned on, which `/perf` then toggles. Defaults to whether
-   * the page URL's hash contains `perf`. Starting it on also compiles the
-   * raymarch materials to draw the fetch-count heatmap the raymarch statistics
-   * are read from, which no later toggle can add.
+   * the page URL's hash contains `perf`.
    */
   debugPerf?: boolean;
   /** Receives the statistics line once per frame while `debugPerf` is on. */
@@ -258,12 +256,8 @@ export const createVoxelscape = ({
     setDebugPerf: (on) => {
       const next = on ?? !debugPerf();
       setDebugPerf(next);
-      if (!next) {
-        return "performance readout hidden";
-      }
-      return initialDebugPerf
-        ? "performance readout shown"
-        : "performance readout shown (no raymarch statistics: the world did not start with #perf)";
+      world.renderers.setFetchCounting(next);
+      return next ? "performance readout shown" : "performance readout hidden";
     },
   });
 
