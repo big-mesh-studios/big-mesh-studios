@@ -49,7 +49,7 @@
     "@atproto/api": "^0.20.41",
     "@atproto/oauth-client-browser": "^0.5.3",
     "@fortawesome/fontawesome-free": "^7.3.1",
-    "@random-mesh/rmsl": "1.8.0",
+    "@random-mesh/rmsl": "https://pkg.pr.new/big-mesh-studios/rmsl/@random-mesh/rmsl@5816089",
     "@solidjs/signals": "2.0.0-beta.29",
     "@solidjs/web": "2.0.0-beta.29",
     "@tailwindcss/vite": "^4.3.0",
