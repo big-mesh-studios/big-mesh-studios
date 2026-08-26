@@ -126,6 +126,12 @@ export interface InputController {
   };
 }
 
+/**
+ * Owns the keyboard and pointer listeners and the per-frame input snapshot
+ * they accumulate into. Each call keeps its own listeners and its own movement
+ * state, so a second world on the page neither shares this one's keys nor
+ * leaves listeners behind when it is disposed.
+ */
 export const createInput = (): InputController => {
   const state: InputState = {
     keyMoveX: 0,

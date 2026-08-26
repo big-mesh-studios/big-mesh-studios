@@ -107,19 +107,12 @@ export const createVoxelscape = ({
   const [editStatus, setEditStatus] = createSignal("");
   const [inReach, setInReach] = createSignal(false);
 
-  /**
-   * Owns the keyboard/pointer listeners and the per-frame input snapshot.
-   * Instance-scoped, so its listeners come off again on `dispose` and a second
-   * world on the page doesn't share this one's movement state.
-   */
   const input = createInput();
   const scene = new Scene();
-  /**
-   * The sky, the weather and their sound. Built first: its sun and moon
-   * billboards are drawn with depth writes off, so the terrain has to be able
-   * to overdraw them at the horizon. The ground sampler is only read when
-   * lightning picks a target, by which time the world exists.
-   */
+  // Built before the world: the sun and moon billboards are drawn with depth
+  // writes off, so the terrain has to be able to overdraw them at the horizon.
+  // Reading `world` here is safe because the sampler is only called when
+  // lightning picks a target, by which time the world exists.
   const environment = createEnvironment({
     scene,
     groundHeightAt: (x, z) => world.heightAt(x, z),
@@ -144,6 +137,7 @@ export const createVoxelscape = ({
     onInitialDraw: (progress) => publishProgress?.(progress),
   });
 
+  /** Restates the world's progress as what a loading screen needs from it. */
   const toLoadingState = ({
     drawn,
     total,
@@ -176,17 +170,15 @@ export const createVoxelscape = ({
     spawn,
     player,
   });
+
   // The rest of the scene, in draw order: water blends over every opaque
   // object, and the weather draws over the water.
   world.addTranslucentPasses();
   environment.addWeatherToScene();
 
-  /**
-   * Inventory (collected blocks + selected slot) and the edit controller that
-   * turns crosshair actions into voxel edits. The look ray comes from the
-   * avatar, so picking matches where the player is aiming.
-   */
   const inventory = new Inventory();
+  // Picks run along the avatar's look ray, so what the crosshair is over is
+  // what an edit lands on.
   const editing = new EditingController({
     blocks: world.blocks,
     layer: world.editLayer,
@@ -212,13 +204,10 @@ export const createVoxelscape = ({
     yaw: avatar.player.yaw,
     pitch: avatar.player.pitch,
   });
-  /**
-   * Owns the cluster-based multiplayer mesh (see `src/multiplayer`): publishes
-   * this player's coarse presence, discovers nearby players' presence, links
-   * to the nearest few over WebRTC, and renders their avatars. Built before
-   * `atproto` because that is what starts it — its own getters below only run
-   * once the mesh is online, by which time both exist.
-   */
+
+  // Built before `atproto`, because signing in is what starts the mesh. Its
+  // getters read `atproto` before that variable is assigned, which holds
+  // because they only run once the mesh is online and both exist by then.
   const multiplayer = new MultiplayerController({
     getRepoClient: () => atproto.repoClient,
     getDid: () => atproto.did,
@@ -241,12 +230,10 @@ export const createVoxelscape = ({
       );
     },
   });
-  /**
-   * Owns the atproto/Bluesky connection and the edit-chunk sync (see
-   * `src/atproto`). Restores any stored session at startup; `/sync` uploads
-   * fresh edits and merges remote ones into the edit overlay. Signing in also
-   * brings the multiplayer mesh online, and signing out takes it down.
-   */
+
+  // Wired here so that signing in brings the multiplayer mesh online and
+  // signing out takes it down, and so a merge from `/sync` reaches the ring's
+  // blocks — none of which the controller itself knows about.
   const atproto = new AtprotoController({
     layer: world.editLayer,
     seed: terrain.seed,
@@ -278,15 +265,15 @@ export const createVoxelscape = ({
     },
     onSignedOut: () => void multiplayer.stop(),
   });
+
   // Reported rather than discarded: restoring a session is the one thing that
   // happens on its own, so without this a reload leaves no way to tell a
   // restored session from a dropped one short of running `/atproto`.
   void atproto.init().then((line) => onNotice?.(line));
 
   /**
-   * Outlives any one canvas: `mount` can run again after an unmount, and the
-   * scale this converged on is worth more than the seconds of measurement a
-   * fresh one would spend rediscovering it.
+   * The render scale for this world, held across mounts rather than by any one
+   * canvas, so a remount keeps the scale this already measured its way to.
    */
   const resolution = new AdaptiveResolution();
 

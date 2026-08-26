@@ -9,6 +9,10 @@ to it. The short version, which is not a substitute for reading it:
 - A comment above a function, class, interface, type, or a standalone named
   declaration is a `/** ... */` JSDoc block, with `@param`/`@returns` where
   useful. Plain `//` comments are for narrating a step inside a computation.
+- A JSDoc block has to describe the declaration — what the value holds, what
+  the function does. A remark about construction order or what a callback is
+  wired to is a step comment, and stays a plain `//` even when it sits above a
+  named declaration. The syntax is not what makes it JSDoc.
 - Say what the declaration _is_, not what it avoids, what it used to be, or
   which alternative was rejected. Decisions belong in `docs/adr/`.
 - Cut anything that would be equally true pasted into an unrelated file.
