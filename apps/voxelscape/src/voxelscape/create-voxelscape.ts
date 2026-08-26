@@ -6,6 +6,9 @@ import { createEnvironment } from "../environment/create-environment";
 import { createInput, type InputController } from "../player/create-input";
 import { createPlayerAvatar } from "../player/create-player-avatar";
 import { createRenderLoop } from "../render/create-render-loop";
+import { MultiplayerController } from "../multiplayer/multiplayer-controller";
+import type { Pose } from "../multiplayer/pose";
+import { createSimplePeerTransport } from "../multiplayer/simplepeer-transport";
 import { createVoxelWorld } from "../world/create-voxel-world";
 import { createDebugCommands } from "../commands";
 import { EditingController } from "../player/editing-controller";
@@ -147,10 +150,35 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
   });
 
   input.install();
+  /** This player's network-relevant state: where they are and where they look. */
+  const currentPose = (): Pose => ({
+    x: avatar.player.position.x,
+    y: avatar.player.position.y,
+    z: avatar.player.position.z,
+    yaw: avatar.player.yaw,
+    pitch: avatar.player.pitch,
+  });
+  /**
+   * Owns the cluster-based multiplayer mesh (see `src/multiplayer`): publishes
+   * this player's coarse presence, discovers nearby players' presence, links
+   * to the nearest few over WebRTC, and renders their avatars. Built before
+   * `atproto` because that is what starts it — its own getters below only run
+   * once the mesh is online, by which time both exist.
+   */
+  const multiplayer = new MultiplayerController({
+    getRepoClient: () => atproto.repoClient,
+    getDid: () => atproto.did,
+    seed: terrain.seed,
+    getPose: currentPose,
+    createPeer: createSimplePeerTransport,
+    scene,
+    camera,
+  });
   /**
    * Owns the atproto/Bluesky connection and the edit-chunk sync (see
    * `src/atproto`). Restores any stored session at startup; `/sync` uploads
-   * fresh edits and merges remote ones into the edit overlay.
+   * fresh edits and merges remote ones into the edit overlay. Signing in also
+   * brings the multiplayer mesh online, and signing out takes it down.
    */
   const atproto = new AtprotoController({
     layer: world.editLayer,
@@ -166,6 +194,8 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
         world.scheduleSave();
       }
     },
+    onConnected: () => void multiplayer.start(),
+    onSignedOut: () => void multiplayer.stop(),
   });
   // Reported rather than discarded: restoring a session is the one thing that
   // happens on its own, so without this a reload leaves no way to tell a
@@ -177,6 +207,7 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     weather: environment.weather,
     sound: environment.sound,
     atproto,
+    multiplayer,
     setView: (mode) => {
       avatar.setFirstPerson(mode === "first");
       return `camera: ${mode}-person view`;
@@ -229,6 +260,9 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     // scroll the terrain ring so the player's block stays centred
     world.scrollTo(avatar.player.position.x, avatar.player.position.z);
     avatar.place();
+    // republish this player's coarse presence when they move, broadcast their
+    // pose to linked peers, and ease the remote avatars toward their latest
+    multiplayer.tick(dt, currentPose());
     const lighting = environment.tick(dt, camera);
     skyColor.set(
       lighting.skyColor[0],
@@ -277,6 +311,8 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
       unmount?.();
       // stop the fill worker, terminate the mesh worker, and store the edits
       world.dispose();
+      // stop presence publishing, discovery, and any peer links
+      multiplayer.dispose();
       // release the atproto OAuth state
       atproto.dispose();
       // release the audio hardware

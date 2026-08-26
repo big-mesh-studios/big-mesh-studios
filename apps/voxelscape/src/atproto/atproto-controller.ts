@@ -23,6 +23,7 @@ import {
   type EditChunkRecord,
 } from "./edits";
 import { configureOAuthClient, signInPopup } from "./oauth";
+import { createAtprotoRepoClient, type AtprotoRepoClient } from "./repo-client";
 
 export interface AtpControllerOptions {
   /**
@@ -53,8 +54,11 @@ export class AtprotoController {
   private readonly seed: number | null;
   private readonly options: AtpControllerOptions;
   private readonly onMerged: (changed: number) => void;
+  private readonly onConnected: (did: Did) => void;
+  private readonly onSignedOut: () => void;
   private agent: OAuthUserAgent | undefined;
   private client: Client | undefined;
+  private repoClient_: AtprotoRepoClient | undefined;
   private did_: Did | null = null;
   private status_: AtpStatus = "pending";
   private lastError: string | null = null;
@@ -73,12 +77,22 @@ export class AtprotoController {
      * and rebuild the affected meshes.
      */
     onMerged?: (changed: number) => void;
+    /**
+     * Called once a session is adopted — at startup from a restored session,
+     * or when `/connect` finishes — so the caller can start the subsystems
+     * that only exist while signed in, like the multiplayer mesh.
+     */
+    onConnected?: (did: Did) => void;
+    /** Called after `/logout` drops the session. */
+    onSignedOut?: () => void;
   }) {
     this.layer = params.layer;
     this.seed = params.seed;
     this.options = params.options;
     this.handleInput = params.getHandle;
     this.onMerged = params.onMerged ?? (() => {});
+    this.onConnected = params.onConnected ?? (() => {});
+    this.onSignedOut = params.onSignedOut ?? (() => {});
     try {
       const saved = Number(localStorage.getItem("bms.atproto.lastUploadAt"));
       if (Number.isFinite(saved)) {
@@ -101,6 +115,15 @@ export class AtprotoController {
   /** Whether a signed-in, ready-to-sync client is available. */
   get ready(): boolean {
     return this.client !== undefined;
+  }
+
+  /**
+   * The signed-in account's record client, for the subsystems that read and
+   * write their own collections (the multiplayer mesh's presence and signal
+   * records). Undefined while anonymous.
+   */
+  get repoClient(): AtprotoRepoClient | undefined {
+    return this.repoClient_;
   }
 
   /**
@@ -223,8 +246,10 @@ export class AtprotoController {
     }
     this.agent = undefined;
     this.client = undefined;
+    this.repoClient_ = undefined;
     this.did_ = null;
     this.status_ = "anonymous";
+    this.onSignedOut();
     return "signed out";
   }
 
@@ -242,6 +267,7 @@ export class AtprotoController {
   dispose(): void {
     this.agent = undefined;
     this.client = undefined;
+    this.repoClient_ = undefined;
   }
 
   private async adoptSession(did: Did): Promise<void> {
@@ -253,9 +279,11 @@ export class AtprotoController {
     );
     this.agent = agent;
     this.client = new Client({ handler: agent });
+    this.repoClient_ = createAtprotoRepoClient(this.client);
     this.did_ = agent.sub;
     this.status_ = "connected";
     this.lastError = null;
+    this.onConnected(this.did_);
   }
 
   private async fetchAllRecords(

@@ -1,5 +1,6 @@
 import type { AtprotoController } from "./atproto/atproto-controller";
 import type { DayNightController } from "./environment/day-night-controller";
+import type { MultiplayerController } from "./multiplayer/multiplayer-controller";
 import type { RendererSwitch } from "./renderers/renderer-switch";
 import type { SoundController } from "./environment/sound-controller";
 import type { WeatherController } from "./environment/weather-controller";
@@ -49,6 +50,7 @@ export interface DebugCommandsParams {
   weather: WeatherController;
   sound: SoundController;
   atproto: AtprotoController;
+  multiplayer: MultiplayerController;
   /** Switches the camera between first and third person views. */
   setView: (mode: "first" | "third") => string;
   /** Shows or hides the player cube (hidden in first person). */
@@ -67,6 +69,7 @@ export const createDebugCommands = (params: DebugCommandsParams): Commander => {
     weather,
     sound,
     atproto,
+    multiplayer,
     setView,
     setPlayerVisible,
     setMoveSpeed,
@@ -198,6 +201,19 @@ export const createDebugCommands = (params: DebugCommandsParams): Commander => {
     "/logout": {
       help: "/logout    revoke the atproto session and sign out",
       run: async () => atproto.signOut(),
+    },
+    "/multiplayer": {
+      help: "/multiplayer start|stop|status   control the multiplayer mesh",
+      run: async (rest) => {
+        const argument = rest[0];
+        if (argument === "start") {
+          return multiplayer.start();
+        }
+        if (argument === "stop") {
+          return multiplayer.stop();
+        }
+        return multiplayer.describe();
+      },
     },
     "/view": {
       help: "/view first|third   switch the camera between first and third person",
