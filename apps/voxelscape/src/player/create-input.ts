@@ -160,7 +160,7 @@ export const createInput = (): InputController => {
         event.pointerType === "mouse" &&
         document.pointerLockElement !== event.currentTarget
       ) {
-        event.currentTarget.requestPointerLock();
+        await event.currentTarget.requestPointerLock();
         return;
       }
 
