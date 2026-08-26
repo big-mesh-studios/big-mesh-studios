@@ -31,9 +31,9 @@ const ConsoleInput: Component<{
   const [candidateIndex, setCandidateIndex] = createSignal(0);
 
   /**
-   * The command names `typed` could still become, longest-standing first.
-   * Only a name is completed, so a line that has reached its arguments — or
-   * that already spells a name out — has none.
+   * The command names `typed` could still become, in the order `names` lists
+   * them. Only a name is completed, so a line that has reached its arguments
+   * — or that already spells a name out — has none.
    */
   const candidatesFor = (typed: string): string[] => {
     if (!typed.startsWith("/") || typed.includes(" ")) {

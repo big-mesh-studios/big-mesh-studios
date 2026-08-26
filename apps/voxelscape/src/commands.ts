@@ -52,9 +52,11 @@ export class Commander {
     return command.run(rest);
   }
 
-  /** Every command's name, in the order they are declared, `/help` first. */
+  /** Every command's name, alphabetically, as something completing one wants them. */
   names(): string[] {
-    return this.help().map((command) => command.name);
+    return this.help()
+      .map((command) => command.name)
+      .sort();
   }
 
   /** Every command there is, in the order they are declared, `/help` first. */
