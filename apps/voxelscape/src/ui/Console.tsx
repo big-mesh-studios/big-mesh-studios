@@ -3,8 +3,10 @@ import {
   createSignal,
   For,
   onCleanup,
+  Show,
   type Component,
 } from "solid-js";
+import type { CommandHelp, CommandOutput } from "../commands";
 import { createPopover } from "../utils/create-popover";
 import { isEditableTarget } from "../utils/utils";
 import styles from "./Console.module.css";
@@ -90,12 +92,54 @@ const ConsoleInput: Component<{
   );
 };
 
-const ConsoleOutput: Component<{ lines: string[] }> = (props) => {
+/**
+ * One entry of the output: a line the world or a command printed, the echo of
+ * a command as it was typed, or the table `/help` answers with.
+ */
+type ConsoleEntry =
+  | { kind: "line"; text: string }
+  | { kind: "echo"; command: string }
+  | { kind: "help"; commands: CommandHelp[] };
+
+/** A typed command, its name and arguments coloured as `/help` colours them. */
+const Echo: Component<{ command: string }> = (props) => {
+  const name = (): string => props.command.split(/\s/)[0];
+  const args = (): string => props.command.slice(name().length);
+
+  return (
+    <div>
+      <span class={styles.prompt}>{"> "}</span>
+      <span class={styles.name}>{name()}</span>
+      <span class={styles.args}>{args()}</span>
+    </div>
+  );
+};
+
+/** Every command, its name against what it does and what it takes. */
+const Help: Component<{ commands: CommandHelp[] }> = (props) => (
+  <dl class={styles.help}>
+    <For each={props.commands}>
+      {(command) => (
+        <>
+          <dt class={styles.name}>{command.name}</dt>
+          <dd>
+            <Show when={command.args}>
+              <span class={styles.args}>{command.args} </span>
+            </Show>
+            {command.description}
+          </dd>
+        </>
+      )}
+    </For>
+  </dl>
+);
+
+const ConsoleOutput: Component<{ entries: ConsoleEntry[] }> = (props) => {
   let element: HTMLOutputElement = null!;
 
-  // keep the output scrolled to the newest line
+  // keep the output scrolled to the newest entry
   createEffect(
-    () => props.lines,
+    () => props.entries,
     () => {
       element.scrollTop = element.scrollHeight;
     },
@@ -103,13 +147,24 @@ const ConsoleOutput: Component<{ lines: string[] }> = (props) => {
 
   return (
     <output ref={element} class={styles.output}>
-      <For each={props.lines}>{(line) => <div>{line}</div>}</For>
+      <For each={props.entries}>
+        {(entry) => {
+          switch (entry.kind) {
+            case "echo":
+              return <Echo command={entry.command} />;
+            case "help":
+              return <Help commands={entry.commands} />;
+            default:
+              return <div>{entry.text}</div>;
+          }
+        }}
+      </For>
     </output>
   );
 };
 
 export interface ConsoleProps {
-  onCommand: (line: string) => string | Promise<string>;
+  onCommand: (line: string) => CommandOutput | Promise<CommandOutput>;
   /**
    * A line to append to the output that no typed command asked for, such as
    * the world reporting its atproto state at startup.
@@ -125,7 +180,17 @@ export interface ConsoleProps {
  * entered.
  */
 export const Console: Component<ConsoleProps> = (props) => {
-  const [lines, setLines] = createSignal<string[]>([]);
+  const [entries, setEntries] = createSignal<ConsoleEntry[]>([]);
+
+  const append = (...added: ConsoleEntry[]): void => {
+    setEntries((entries) => [...entries, ...added]);
+  };
+
+  /** What a command handed back, as entries to print under its echo. */
+  const printed = (output: CommandOutput): ConsoleEntry[] =>
+    typeof output === "string"
+      ? output.split("\n").map((text) => ({ kind: "line", text }))
+      : [{ kind: "help", commands: output }];
 
   const Popover = createPopover();
 
@@ -162,30 +227,30 @@ export const Console: Component<ConsoleProps> = (props) => {
     () => props.notice,
     (notice) => {
       if (notice !== undefined) {
-        setLines((prev) => [...prev, notice]);
+        append({ kind: "line", text: notice });
       }
     },
   );
 
   async function onCommand(command: string) {
     if (command === "/clear") {
-      setLines([]);
+      setEntries([]);
       return;
     }
 
     const result = props.onCommand(command);
 
-    if (typeof result === "string") {
-      setLines((prev) => [...prev, `> ${command}`, ...result.split("\n")]);
-    } else {
-      setLines((prev) => [...prev, `> ${command}`, "…"]);
+    if (!(result instanceof Promise)) {
+      append({ kind: "echo", command }, ...printed(result));
+      return;
+    }
 
-      try {
-        const text = await result;
-        setLines((prev) => [...prev, ...text.split("\n")]);
-      } catch (error) {
-        setLines((prev) => [...prev, `command failed: ${String(error)}`]);
-      }
+    append({ kind: "echo", command }, { kind: "line", text: "…" });
+
+    try {
+      append(...printed(await result));
+    } catch (error) {
+      append({ kind: "line", text: `command failed: ${String(error)}` });
     }
   }
 
@@ -193,7 +258,7 @@ export const Console: Component<ConsoleProps> = (props) => {
     <div class={styles.underlay}>
       <Popover.Trigger class={styles.anchor}>{">_"}</Popover.Trigger>
       <Popover.PopOver class={styles.console}>
-        <ConsoleOutput lines={lines()} />
+        <ConsoleOutput entries={entries()} />
         <div class={styles["input-container"]}>
           <span class={styles.prefix}>{">"}</span>
           <ConsoleInput

@@ -15,9 +15,23 @@ import type { RendererSwitch } from "./renderers/renderer-switch";
  * have no idea a console exists.
  */
 export interface CommandEntry {
-  help: string;
+  /** What the command does, one line, shown against its name by `/help`. */
+  description: string;
+  /** The arguments it takes, written as they would be typed. */
+  args?: string;
   run: (rest: string[]) => string | Promise<string>;
 }
+
+/** One command as `/help` describes it: what to type, and what it does. */
+export interface CommandHelp {
+  /** The command's name, leading slash included. */
+  name: string;
+  args?: string;
+  description: string;
+}
+
+/** What running a line produces: lines to print, or the commands `/help` lists. */
+export type CommandOutput = string | CommandHelp[];
 
 export class Commander {
   private readonly commands: Record<string, CommandEntry>;
@@ -26,10 +40,10 @@ export class Commander {
     this.commands = commands;
   }
 
-  run(line: string): string | Promise<string> {
+  run(line: string): CommandOutput | Promise<CommandOutput> {
     const [name, ...rest] = line.trim().toLowerCase().split(/\s+/);
     if (name === "/help") {
-      return this.helpText();
+      return this.help();
     }
     const command = this.commands[name];
     if (command === undefined) {
@@ -38,10 +52,16 @@ export class Commander {
     return command.run(rest);
   }
 
-  helpText(): string {
-    return Object.values(this.commands)
-      .map((command) => command.help)
-      .join("\n");
+  /** Every command there is, in the order they are declared, `/help` first. */
+  help(): CommandHelp[] {
+    return [
+      { name: "/help", description: "list every command" },
+      ...Object.entries(this.commands).map(([name, command]) => ({
+        name,
+        args: command.args,
+        description: command.description,
+      })),
+    ];
   }
 }
 
@@ -86,35 +106,36 @@ export const createCommands = ({
 }: CommandsParams): Commander => {
   return new Commander({
     "/day": {
-      help: "/day       jump to noon (t=300s)",
+      description: "jump to noon (t=300s)",
       run: () => {
         dayNight.jumpTo(300);
         return "jumped to noon (t=300s)";
       },
     },
     "/sunset": {
-      help: "/sunset    jump to dusk (t=645s)",
+      description: "jump to dusk (t=645s)",
       run: () => {
         dayNight.jumpTo(645);
         return "jumped to dusk (t=645s)";
       },
     },
     "/night": {
-      help: "/night     jump to midnight (t=900s)",
+      description: "jump to midnight (t=900s)",
       run: () => {
         dayNight.jumpTo(900);
         return "jumped to midnight (t=900s)";
       },
     },
     "/sunrise": {
-      help: "/sunrise   jump to dawn (t=1120s)",
+      description: "jump to dawn (t=1120s)",
       run: () => {
         dayNight.jumpTo(1120);
         return "jumped to dawn (t=1120s)";
       },
     },
     "/time": {
-      help: "/time <s>  jump to a second of the 20-min cycle",
+      description: "jump to a second of the 20-minute cycle",
+      args: "<seconds>",
       run: (rest) => {
         const t = Number(rest[0]);
         if (!Number.isFinite(t) || t < 0) {
@@ -125,14 +146,15 @@ export const createCommands = ({
       },
     },
     "/normal": {
-      help: "/normal    resume the live clock",
+      description: "resume the live clock",
       run: () => {
         dayNight.clearOverride();
         return "resumed the live clock";
       },
     },
     "/speed": {
-      help: "/speed <n> run the clock n× fast (0 pauses)",
+      description: "run the clock that many times fast (0 pauses)",
+      args: "<multiplier>",
       run: (rest) => {
         const n = Number(rest[0]);
         if (!Number.isFinite(n) || n < 0) {
@@ -143,11 +165,12 @@ export const createCommands = ({
       },
     },
     "/now": {
-      help: "/now       show the current clock state",
+      description: "show the current clock state",
       run: () => dayNight.describe(),
     },
     "/renderer": {
-      help: "/renderer ray|tri   switch renderer (raymarch | surface triangles)",
+      description: "switch renderer (raymarch or surface triangles)",
+      args: "ray|tri",
       run: (rest) => {
         const arg = rest[0];
         if (arg === "ray") {
@@ -160,7 +183,8 @@ export const createCommands = ({
       },
     },
     "/resolution": {
-      help: "/resolution auto|<0.1..1>   adapt the render resolution, or pin it",
+      description: "adapt the render resolution, or pin it",
+      args: "auto|<0.1..1>",
       run: (rest) => {
         const argument = rest[0];
         if (argument === undefined) {
@@ -179,7 +203,8 @@ export const createCommands = ({
       },
     },
     "/perf": {
-      help: "/perf [on|off]   show or hide the frame-time readout",
+      description: "show or hide the frame-time readout",
+      args: "[on|off]",
       run: (rest) => {
         const argument = rest[0];
         if (argument === undefined) {
@@ -195,12 +220,13 @@ export const createCommands = ({
       },
     },
     "/tris": {
-      help: "/tris      show the current triangle count",
+      description: "show the current triangle count",
       run: () =>
         `triangles: ${rendererSwitch.triangleCount.toLocaleString()} (${rendererSwitch.mode} mode)`,
     },
     "/weather": {
-      help: "/weather clear|rain|thunder|snow|auto   set or resume the weather",
+      description: "set or resume the weather",
+      args: "clear|rain|thunder|snow|auto",
       run: (rest) => {
         const arg = rest[0];
         if (
@@ -217,7 +243,8 @@ export const createCommands = ({
       },
     },
     "/volume": {
-      help: "/volume <0..1>  set the sound volume (0 mutes)",
+      description: "set the sound volume (0 mutes)",
+      args: "<0..1>",
       run: (rest) => {
         const v = Number(rest[0]);
         if (!Number.isFinite(v)) {
@@ -227,27 +254,29 @@ export const createCommands = ({
       },
     },
     "/sound": {
-      help: "/sound     show the sound state",
+      description: "show the sound state",
       run: () => sound.describe(),
     },
     "/connect": {
-      help: "/connect [handle]   sign in to atproto via Bluesky OAuth (popup)",
+      description: "sign in to atproto through the Bluesky login popup",
+      args: "[handle]",
       run: async (rest) => atproto.connect(rest[0]),
     },
     "/sync": {
-      help: "/sync      upload new edits and fetch+merge remote edit chunks",
+      description: "upload new edits, then fetch and merge remote edit chunks",
       run: async () => atproto.sync(),
     },
     "/atproto": {
-      help: "/atproto   show the atproto connection state",
+      description: "show the atproto connection state",
       run: () => atproto.describe(),
     },
     "/logout": {
-      help: "/logout    revoke the atproto session and sign out",
+      description: "revoke the atproto session and sign out",
       run: async () => atproto.signOut(),
     },
     "/multiplayer": {
-      help: "/multiplayer start|stop|status|debug   control and inspect the multiplayer mesh",
+      description: "control and inspect the multiplayer mesh",
+      args: "start|stop|status|debug",
       run: async (rest) => {
         const argument = rest[0];
         if (argument === "start") {
@@ -263,7 +292,8 @@ export const createCommands = ({
       },
     },
     "/view": {
-      help: "/view first|third   switch the camera between first and third person",
+      description: "switch the camera between first and third person",
+      args: "first|third",
       run: (rest) => {
         const arg = rest[0];
         if (arg === "first" || arg === "third") {
@@ -273,7 +303,8 @@ export const createCommands = ({
       },
     },
     "/player": {
-      help: "/player show|hide   show or hide the player cube",
+      description: "show or hide the player cube",
+      args: "show|hide",
       run: (rest) => {
         const arg = rest[0];
         if (arg === "show") {
@@ -286,7 +317,8 @@ export const createCommands = ({
       },
     },
     "/movespeed": {
-      help: "/movespeed [n]   set (or show) the player's move speed, in units/sec",
+      description: "set (or show) the player's move speed, in units per second",
+      args: "[n]",
       run: (rest) => {
         const n = Number(rest[0]);
         return setMoveSpeed(
@@ -297,7 +329,8 @@ export const createCommands = ({
       },
     },
     "/sensitivity": {
-      help: "/sensitivity [n]   set (or show) the look sensitivity, in radians/pixel",
+      description: "set (or show) the look sensitivity, in radians per pixel",
+      args: "[n]",
       run: (rest) => {
         const n = Number(rest[0]);
         return setLookSensitivity(
@@ -308,7 +341,8 @@ export const createCommands = ({
       },
     },
     "/fullscreen": {
-      help: "/fullscreen true|false   toggle fullscreen",
+      description: "enter or leave fullscreen",
+      args: "true|false",
       run: async ([fullscreen]) => {
         const shouldRequest =
           Boolean(fullscreen) ||
@@ -333,7 +367,7 @@ export const createCommands = ({
       },
     },
     "/clear": {
-      help: "/clear   clear terminal",
+      description: "clear the console output",
       run: () => "",
     },
   });

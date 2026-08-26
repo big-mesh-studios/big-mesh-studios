@@ -214,6 +214,8 @@ export {
 export {
   createCommands as createDebugCommands,
   type CommandEntry,
+  type CommandHelp,
+  type CommandOutput,
 } from "./commands";
 export * from "./ui/Console";
 export { EditHud } from "./ui/EditHud";

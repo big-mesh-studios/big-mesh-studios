@@ -40,7 +40,7 @@
   top: anchor(bottom);
   right: anchor(inside);
   left: auto;
-  margin-top: var(--margin);
+  margin-top: calc(var(--margin) / 2);
 
   &:popover-open {
     display: flex;
@@ -52,7 +52,34 @@
   overflow: auto;
   padding: 8px;
   white-space: pre-wrap;
-  word-break: break-all;
+  /* long words wrap where they must rather than everywhere they can, so a
+     description reads as prose and only an unbroken token is cut */
+  overflow-wrap: anywhere;
+}
+
+.help {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 10px;
+  row-gap: 2px;
+  margin: 2px 0;
+  white-space: normal;
+}
+
+.help dd {
+  margin: 0;
+}
+
+.name {
+  color: #6fcf97;
+}
+
+.args {
+  color: #f2c94c;
+}
+
+.prompt {
+  color: #6b7c8c;
 }
 
 .input-container {
