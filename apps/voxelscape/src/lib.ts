@@ -142,6 +142,7 @@ export {
   recordsToEntries,
   recordVoxel,
   type EditChunkCoord,
+  type EditChunkEdit,
   type EditChunkRecord,
 } from "./atproto/edits";
 export {
@@ -156,12 +157,18 @@ export {
   type MultiplayerStatus,
 } from "./multiplayer/multiplayer-controller";
 export { MeshPeer, type MeshPeerParams } from "./multiplayer/mesh-peer";
+export { round, type Pose, type PoseMessage } from "./multiplayer/pose";
 export {
-  decodePose,
-  encodePose,
-  type Pose,
-  type PoseMessage,
-} from "./multiplayer/pose";
+  decodeMessage,
+  encodeMessage,
+  MAX_EDITS_PER_MESSAGE,
+  MAX_VOXEL_ID,
+  MAX_WORLD_VOXEL,
+  type EditItem,
+  type EditWire,
+  type MeshMessage,
+  type PoseWire,
+} from "./multiplayer/messages";
 export { createPeerJSSignaling } from "./multiplayer/peerjs-transport";
 export type {
   PeerTransport,

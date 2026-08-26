@@ -145,6 +145,12 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     surfaceOnly,
     onBlockEdited: (i) => world.renderers.onBlockChanged(i),
     onEditRecorded: () => world.scheduleSave(),
+    // Broadcast each recorded edit to connected peers, who apply it to their
+    // overlay immediately; atproto sync remains the source of truth.
+    onEdit: (w, id, updatedAt) =>
+      multiplayer.broadcastEdits([
+        { x: w[0], y: w[1], z: w[2], id, ts: updatedAt },
+      ]),
     getLook: () => avatar.look(),
     getPlayerVoxels: () => avatar.occupiedVoxels(),
   });
@@ -173,6 +179,17 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     createSignaling: createPeerJSSignaling,
     scene,
     camera,
+    // A connected peer's optimistic edit broadcasts land straight in the
+    // shared overlay (last-write-wins by edit time), where `applyEdits` pushes
+    // them into the ring's blocks, rebuilds their meshes, and persists them.
+    onRemoteEdits: (_did, edits) => {
+      world.applyEdits(
+        edits.map((e) => ({
+          w: [e.x, e.y, e.z],
+          edit: { id: e.id, updatedAt: e.ts },
+        })),
+      );
+    },
   });
   /**
    * Owns the atproto/Bluesky connection and the edit-chunk sync (see

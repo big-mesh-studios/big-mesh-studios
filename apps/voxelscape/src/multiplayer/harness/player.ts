@@ -3,6 +3,7 @@
 // signaling, and a pose log populated by `onRemotePose` so tests can assert
 // what actually arrived over the mesh.
 import { MultiplayerController } from "../multiplayer-controller";
+import type { EditItem } from "../messages";
 import type { Pose, PoseMessage } from "../pose";
 import type { ClusterOptions } from "../roster";
 import type { AtprotoHarness } from "./atproto-harness";
@@ -19,6 +20,10 @@ export interface PlayerSim {
   latestPose(from: string): PoseMessage | undefined;
   /** How many poses were received from `from`. */
   poseCountFor(from: string): number;
+  /** The latest edit batch received from `from`, or undefined before any arrives. */
+  latestEdits(from: string): EditItem[] | undefined;
+  /** How many edit batches were received from `from`. */
+  editBatchCountFor(from: string): number;
 }
 
 export interface PlayerSimParams {
@@ -42,6 +47,8 @@ export const createPlayerSim = (params: PlayerSimParams): PlayerSim => {
   };
   const latestByPeer = new Map<string, PoseMessage>();
   const counts = new Map<string, number>();
+  const latestEditsByPeer = new Map<string, EditItem[]>();
+  const editCounts = new Map<string, number>();
   const repoClient = params.harness.repoClient();
   const controller = new MultiplayerController({
     getRepoClient: () => repoClient,
@@ -56,6 +63,10 @@ export const createPlayerSim = (params: PlayerSimParams): PlayerSim => {
       latestByPeer.set(from, received);
       counts.set(from, (counts.get(from) ?? 0) + 1);
     },
+    onRemoteEdits: (from, edits) => {
+      latestEditsByPeer.set(from, edits);
+      editCounts.set(from, (editCounts.get(from) ?? 0) + 1);
+    },
   });
   return {
     did: params.did,
@@ -65,5 +76,7 @@ export const createPlayerSim = (params: PlayerSimParams): PlayerSim => {
     stop: () => controller.stop(),
     latestPose: (from) => latestByPeer.get(from),
     poseCountFor: (from) => counts.get(from) ?? 0,
+    latestEdits: (from) => latestEditsByPeer.get(from),
+    editBatchCountFor: (from) => editCounts.get(from) ?? 0,
   };
 };

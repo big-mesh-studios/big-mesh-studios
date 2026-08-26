@@ -6,7 +6,8 @@
 // class only wires up the data channel that results. The initiator owns its
 // transport from the start; the responder starts "waiting" and receives it
 // via `attach` when the incoming connection arrives.
-import { decodePose, encodePose, type Pose, type PoseMessage } from "./pose";
+import { decodeMessage, encodeMessage, type EditItem } from "./messages";
+import type { Pose, PoseMessage } from "./pose";
 import type { PeerTransport } from "./transport";
 
 /** How long a responder waits for the initiator's connection before giving up. */
@@ -27,6 +28,8 @@ export interface MeshPeerParams {
   transport?: PeerTransport;
   onOpen: (did: string) => void;
   onPose: (did: string, pose: PoseMessage) => void;
+  /** One optimistic edit broadcast from the peer; applied LWW by edit time. */
+  onEdits: (did: string, edits: EditItem[]) => void;
   onClose: (did: string) => void;
   /** Reports a fatal failure; `code` is the transport's `ERR_*` when there is one. */
   onError: (did: string, message: string, code?: string) => void;
@@ -37,6 +40,7 @@ export class MeshPeer {
   private readonly selfDid: string;
   private readonly onOpen: (did: string) => void;
   private readonly onPose: (did: string, pose: PoseMessage) => void;
+  private readonly onEdits: (did: string, edits: EditItem[]) => void;
   private readonly onClose: (did: string) => void;
   private readonly onError: (
     did: string,
@@ -57,6 +61,7 @@ export class MeshPeer {
     this.selfDid = params.selfDid;
     this.onOpen = params.onOpen;
     this.onPose = params.onPose;
+    this.onEdits = params.onEdits;
     this.onClose = params.onClose;
     this.onError = params.onError;
     this.role = this.selfDid < this.did ? "initiator" : "responder";
@@ -96,7 +101,23 @@ export class MeshPeer {
       return;
     }
     try {
-      this.transport?.send(encodePose({ seq, t: Date.now(), ...pose }));
+      this.transport?.send(
+        encodeMessage({ v: 1, type: "pose", seq, t: Date.now(), ...pose }),
+      );
+    } catch (err) {
+      this.fail(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /** Sends an optimistic edit broadcast to the peer (no-op until open). */
+  sendEdits(edits: EditItem[], seq: number): void {
+    if (this.destroyed || this.phase !== "open") {
+      return;
+    }
+    try {
+      this.transport?.send(
+        encodeMessage({ v: 1, type: "edit", seq, t: Date.now(), edits }),
+      );
     } catch (err) {
       this.fail(err instanceof Error ? err.message : String(err));
     }
@@ -167,9 +188,14 @@ export class MeshPeer {
     if (this.destroyed) {
       return;
     }
-    const pose = decodePose(chunk);
-    if (pose !== null) {
-      this.onPose(this.did, pose);
+    const message = decodeMessage(chunk);
+    if (message === null) {
+      return;
+    }
+    if (message.type === "pose") {
+      this.onPose(this.did, message);
+    } else {
+      this.onEdits(this.did, message.edits);
     }
   }
 
