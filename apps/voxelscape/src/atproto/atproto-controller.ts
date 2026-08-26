@@ -31,6 +31,9 @@ import {
 import { configureOAuthClient, signInPopup } from "./oauth";
 import { createAtprotoRepoClient, type AtprotoRepoClient } from "./repo-client";
 
+/** How often the automatic edit sync runs while signed in, ms. */
+const SYNC_INTERVAL_MS = 60_000;
+
 export interface AtpControllerOptions {
   /**
    * When set, client metadata is loaded from this hosted `client-metadata.json`
@@ -70,6 +73,8 @@ export class AtprotoController {
   private lastError: string | null = null;
   private lastUploadAt = 0;
   private readonly handleInput: () => string;
+  private syncTimer: ReturnType<typeof setInterval> | undefined;
+  private syncInFlight = false;
   /** DID -> its resolved document, so signal polling doesn't re-resolve every pass. */
   private readonly documentCache = new Map<string, DidDocument>();
   /** DID -> its confirmed handle, or null when the account has none to show. */
@@ -187,9 +192,44 @@ export class AtprotoController {
   /**
    * Uploads edits newer than the last sync as one record per 32³ chunk, then
    * fetches every edit record in the repo and merges it into the overlay
-   * (last-write-wins by record timestamp).
+   * (last-write-wins by record timestamp). This is the authoritative, slower
+   * path behind the WebRTC optimistic edits; it is guarded against concurrent
+   * runs, since the automatic sync loop and `/sync` share it.
    */
   async sync(): Promise<string> {
+    if (this.syncInFlight) {
+      return "sync already running";
+    }
+    this.syncInFlight = true;
+    try {
+      return await this.runSync();
+    } finally {
+      this.syncInFlight = false;
+    }
+  }
+
+  /**
+   * Starts the automatic periodic sync (the slow source-of-truth path behind
+   * the WebRTC optimistic edits). No-op once already running.
+   */
+  startSyncLoop(intervalMs = SYNC_INTERVAL_MS): void {
+    if (this.syncTimer !== undefined) {
+      return;
+    }
+    this.syncTimer = setInterval(() => {
+      void this.sync();
+    }, intervalMs);
+  }
+
+  /** Stops the automatic periodic sync. */
+  stopSyncLoop(): void {
+    if (this.syncTimer !== undefined) {
+      clearInterval(this.syncTimer);
+      this.syncTimer = undefined;
+    }
+  }
+
+  private async runSync(): Promise<string> {
     const client = this.client;
     const repo = this.did_;
     if (client === undefined || repo === null) {
@@ -261,6 +301,7 @@ export class AtprotoController {
     this.repoClient_ = undefined;
     this.did_ = null;
     this.status_ = "anonymous";
+    this.stopSyncLoop();
     this.onSignedOut();
     return "signed out";
   }
@@ -277,6 +318,7 @@ export class AtprotoController {
    * controller in the same page restores the same account through `init`.
    */
   dispose(): void {
+    this.stopSyncLoop();
     this.agent = undefined;
     this.client = undefined;
     this.repoClient_ = undefined;
@@ -300,6 +342,7 @@ export class AtprotoController {
     this.status_ = "connected";
     this.lastError = null;
     this.onConnected(this.did_);
+    this.startSyncLoop();
   }
 
   /**

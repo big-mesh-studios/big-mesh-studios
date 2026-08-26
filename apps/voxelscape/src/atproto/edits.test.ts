@@ -68,8 +68,47 @@ describe("groupEditsByChunk", () => {
     expect(first.$type).toBe(EDIT_COLLECTION);
     expect(first.seed).toBe(54321);
     expect(first.createdAt).toBe("2026-05-05T00:00:00Z");
-    expect(first.edits).toContainEqual({ x: 1, y: 1, z: 1, id: VOXEL_GRASS });
-    expect(first.edits).toContainEqual({ x: 2, y: 1, z: 1, id: VOXEL_DIRT });
+    expect(first.edits).toContainEqual({
+      x: 1,
+      y: 1,
+      z: 1,
+      id: VOXEL_GRASS,
+      ts: 10,
+    });
+    expect(first.edits).toContainEqual({
+      x: 2,
+      y: 1,
+      z: 1,
+      id: VOXEL_DIRT,
+      ts: 11,
+    });
+  });
+
+  it("carries each voxel's own edit time in its record entry", () => {
+    const layer = layerWith([
+      [[1, 1, 1], VOXEL_GRASS, 42],
+      [[2, 1, 1], VOXEL_DIRT, 99],
+    ]);
+    const groups = groupEditsByChunk(
+      layer.snapshot(),
+      null,
+      "2026-01-01T00:00:00Z",
+    );
+    const rec = groups.get(chunkKey({ x: 0, y: 0, z: 0 }))!;
+    expect(rec.edits).toContainEqual({
+      x: 1,
+      y: 1,
+      z: 1,
+      id: VOXEL_GRASS,
+      ts: 42,
+    });
+    expect(rec.edits).toContainEqual({
+      x: 2,
+      y: 1,
+      z: 1,
+      id: VOXEL_DIRT,
+      ts: 99,
+    });
   });
 
   it("applies the same timestamp to every voxel in a chunk", () => {
@@ -146,5 +185,25 @@ describe("recordsToEntries + mergeIntoLayer", () => {
     const changed = mergeIntoLayer(layer, recordsToEntries(records));
     expect(changed).toBe(2);
     expect(layer.get([0, 0, 0])?.id).toBe(VOXEL_GRASS);
+  });
+
+  it("prefers a record's per-edit ts over the record createdAt", () => {
+    const withTs: EditChunkRecord = {
+      $type: EDIT_COLLECTION,
+      chunk: { x: 0, y: 0, z: 0 },
+      seed: 1,
+      // createdAt is much older than the per-edit ts, to prove ts wins.
+      createdAt: "2020-01-01T00:00:00.000Z",
+      edits: [{ x: 0, y: 0, z: 0, id: VOXEL_GRASS, ts: 2_000_000_000_000 }],
+    };
+    const entries = recordsToEntries([withTs]);
+    expect(entries[0].edit.updatedAt).toBe(2_000_000_000_000);
+  });
+
+  it("falls back to createdAt for records without a per-edit ts", () => {
+    const entries = recordsToEntries(records);
+    expect(entries[0].edit.updatedAt).toBe(
+      Date.parse("2026-01-01T00:00:00.000Z"),
+    );
   });
 });

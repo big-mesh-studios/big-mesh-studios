@@ -2,7 +2,13 @@ import { Scene } from "@random-mesh/rmsl/scene";
 import { RendererSwitch } from "../renderers/renderer-switch";
 import { loadVoxelTiles } from "../renderers/tile-loader";
 import { BlockGrid } from "./block-grid";
-import { EditLayer } from "./edit-layer";
+import {
+  blockWorldVoxelRange,
+  EditLayer,
+  mergeIntoLayer,
+  type VoxelEdit,
+  type WorldVoxel,
+} from "./edit-layer";
 import { createEditPersistence } from "./edit-persistence";
 import {
   BLOCK_WORLD,
@@ -64,6 +70,16 @@ export interface VoxelWorld {
    * loaded at startup.
    */
   reapplyEdits(): void;
+  /**
+   * Merges `entries` into the edit overlay (last-write-wins by `updatedAt`),
+   * re-applies any change to the containing blocks' stores and GPU levels,
+   * notifies the renderers, and schedules an IndexedDB save. The single
+   * entry-point for remote edits — the WebRTC optimistic path and the atproto
+   * merge both funnel through here. Returns the number of voxels that changed.
+   */
+  applyEdits(
+    entries: Array<{ w: WorldVoxel; edit: VoxelEdit }>,
+  ): number;
   /** Writes the edit overlay to IndexedDB, batched. */
   scheduleSave(): void;
   /**
@@ -130,6 +146,53 @@ export const createVoxelWorld = (config: VoxelWorldConfig): VoxelWorld => {
     }
   };
 
+  /**
+   * Applies a batch of entries to the overlay and to the blocks they land in.
+   * Only the blocks whose range intersects an entry are touched (unlike
+   * `reapplyEdits`, which sweeps the whole ring), so a burst of remote edits
+   * stays cheap.
+   */
+  const applyEdits = (
+    entries: Array<{ w: WorldVoxel; edit: VoxelEdit }>,
+  ): number => {
+    if (entries.length === 0) {
+      return 0;
+    }
+    const changed = mergeIntoLayer(editLayer, entries);
+    if (changed === 0) {
+      return 0;
+    }
+    const candidates = new Set<number>();
+    for (const { w } of entries) {
+      for (let i = 0; i < blockGrid.blocks.length; i++) {
+        const { min, max } = blockWorldVoxelRange(blockGrid.blocks[i].center);
+        if (
+          w[0] >= min[0] &&
+          w[0] <= max[0] &&
+          w[1] >= min[1] &&
+          w[1] <= max[1] &&
+          w[2] >= min[2] &&
+          w[2] <= max[2]
+        ) {
+          candidates.add(i);
+        }
+      }
+    }
+    const affected: number[] = [];
+    for (const i of candidates) {
+      const block = blockGrid.blocks[i];
+      if (editLayer.applyToBlock(block) > 0) {
+        syncLevelFromStore(block.level, block.store, { surfaceOnly });
+        affected.push(i);
+      }
+    }
+    for (const i of affected) {
+      renderers.onBlockChanged(i);
+    }
+    editPersistence.scheduleSave();
+    return changed;
+  };
+
   // Tell every block material which tile each voxel face uses once the
   // spritesheet loads. Fire-and-forget: voxels stay flat blue until it lands.
   loadVoxelTiles(renderers);
@@ -143,6 +206,7 @@ export const createVoxelWorld = (config: VoxelWorldConfig): VoxelWorld => {
     editLayer,
     ringRadius,
     reapplyEdits,
+    applyEdits,
 
     heightAt(x, z) {
       return getWorldHeight(blockGrid.blocks, x, z);

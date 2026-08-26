@@ -211,3 +211,25 @@ export const editLayerFromSnapshot = (
   }
   return new EditLayer(map);
 };
+
+/**
+ * Merges `entries` into `layer` with last-write-wins by `updatedAt`, the same
+ * rule atproto sync and the WebRTC optimistic path both converge on. Returns
+ * the number of voxels whose id actually changed.
+ */
+export const mergeIntoLayer = (
+  layer: EditLayer,
+  entries: Array<{ w: WorldVoxel; edit: VoxelEdit }>,
+): number => {
+  let changed = 0;
+  for (const { w, edit } of entries) {
+    const local = layer.get(w);
+    if (local !== undefined && local.updatedAt > edit.updatedAt) {
+      continue;
+    }
+    if (layer.set(w, edit.id, edit.updatedAt)) {
+      changed++;
+    }
+  }
+  return changed;
+};

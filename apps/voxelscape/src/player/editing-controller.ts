@@ -28,6 +28,11 @@ export interface EditingControllerParams {
   onBlockEdited: (index: number) => void;
   /** Called after any edit is recorded, so persistence can schedule a save. */
   onEditRecorded: () => void;
+  /**
+   * Called with each newly recorded edit (world voxel, id, edit time), so the
+   * caller can broadcast it to connected peers as an optimistic update.
+   */
+  onEdit?: (w: WorldVoxel, id: number, updatedAt: number) => void;
   /** Returns the camera's world position and unit look direction. */
   getLook: () => { origin: Dim3; direction: Dim3 };
   /** Returns the world voxels the player currently occupies, or null. */
@@ -58,6 +63,7 @@ export class EditingController {
   private readonly surfaceOnly: boolean;
   private readonly onBlockEdited: (index: number) => void;
   private readonly onEditRecorded: () => void;
+  private readonly onEdit: (w: WorldVoxel, id: number, updatedAt: number) => void;
   private readonly getLook: () => { origin: Dim3; direction: Dim3 };
   private readonly getPlayerVoxels: () => WorldVoxel[] | null;
 
@@ -68,6 +74,7 @@ export class EditingController {
     this.surfaceOnly = params.surfaceOnly;
     this.onBlockEdited = params.onBlockEdited;
     this.onEditRecorded = params.onEditRecorded;
+    this.onEdit = params.onEdit ?? (() => {});
     this.getLook = params.getLook;
     this.getPlayerVoxels = params.getPlayerVoxels;
   }
@@ -151,12 +158,15 @@ export class EditingController {
 
   /**
    * Records the edit on the overlay and pushes it into the containing block's
-   * store and GPU level, notifying the renderer switch of the slot change.
+   * store and GPU level, notifying the renderer switch of the slot change and
+   * the caller of the newly recorded edit.
    */
   private applyEdit(w: WorldVoxel, id: number): void {
-    if (!this.layer.set(w, id, Date.now())) {
+    const updatedAt = Date.now();
+    if (!this.layer.set(w, id, updatedAt)) {
       return;
     }
+    this.onEdit(w, id, updatedAt);
     const i = findBlockIndex(this.blocks, w);
     if (i < 0) {
       return;

@@ -21,6 +21,7 @@ const makeHarness = () => {
   const inventory = new Inventory();
   const onBlockEdited = vi.fn();
   const onEditRecorded = vi.fn();
+  const onEdit = vi.fn();
   let look = {
     origin: [0, 0, 0] as [number, number, number],
     direction: [0, -1, 0] as [number, number, number],
@@ -33,6 +34,7 @@ const makeHarness = () => {
     surfaceOnly: true,
     onBlockEdited,
     onEditRecorded,
+    onEdit,
     getLook: () => look,
     getPlayerVoxels: () => playerVoxels,
   });
@@ -43,6 +45,7 @@ const makeHarness = () => {
     controller,
     onBlockEdited,
     onEditRecorded,
+    onEdit,
     setLook: (o: [number, number, number], d: [number, number, number]) => {
       look = { origin: o, direction: d };
     },
@@ -77,6 +80,24 @@ describe("EditingController.breakBlock", () => {
     expect(h.inventory.count(VOXEL_DIRT)).toBe(1);
     expect(h.onBlockEdited).toHaveBeenCalledWith(0);
     expect(h.onEditRecorded).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports each recorded edit through onEdit for broadcasting", () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_234_567);
+    const h = makeHarness();
+    const target = wv(48, 40, 48);
+    const [origin, direction] = downOntoTarget();
+    h.setLook(origin, direction);
+    h.controller.breakBlock();
+    expect(h.onEdit).toHaveBeenCalledWith(target, VOXEL_AIR, 1_234_567);
+    vi.restoreAllMocks();
+  });
+
+  it("does not fire onEdit for a refused edit", () => {
+    const h = makeHarness();
+    h.setLook([0, 60, 0], [0, -1, 0]); // far above, target out of reach
+    expect(h.controller.breakBlock()).toBeNull();
+    expect(h.onEdit).not.toHaveBeenCalled();
   });
 
   it("does nothing when there is no target in reach", () => {

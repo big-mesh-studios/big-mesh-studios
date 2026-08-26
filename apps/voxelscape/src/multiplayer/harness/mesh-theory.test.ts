@@ -239,4 +239,115 @@ describe("cluster mesh theory", () => {
     await sim.run(2_000);
     expect(a.poseCountFor(b.did)).toBe(after);
   });
+
+  it("broadcasts an edit to a connected peer, which receives the exact voxel", async () => {
+    const sim = createSimulator({
+      placements: [
+        { x: 0, z: 0 },
+        { x: 3, z: 0 },
+      ],
+    });
+    await sim.startAll();
+    const a = sim.players[0];
+    const b = sim.players[1];
+    expect(
+      await sim.runUntil(25_000, () => a.controller.connections === 1),
+    ).toBe(true);
+
+    a.controller.broadcastEdits([{ x: 10, y: 4, z: -3, id: 2, ts: 5_000 }]);
+    const received = await sim.runUntil(2_000, () => {
+      const edits = b.latestEdits(a.did);
+      return edits !== undefined && edits.length > 0;
+    });
+    expect(received).toBe(true);
+    expect(b.latestEdits(a.did)).toEqual([
+      { x: 10, y: 4, z: -3, id: 2, ts: 5_000 },
+    ]);
+  });
+
+  it("delivers edits to direct peers only, never relays through the cluster", async () => {
+    // A--B--C chain: B is within both A's and C's reach, but A and C are
+    // 200 units apart — past the selection's maxDistance, so they never link.
+    const sim = createSimulator({
+      placements: [
+        { x: 0, z: 0 }, // A
+        { x: 100, z: 0 }, // B
+        { x: 200, z: 0 }, // C
+      ],
+    });
+    await sim.startAll();
+    const a = sim.players[0];
+    const b = sim.players[1];
+    const c = sim.players[2];
+    const linked = await sim.runUntil(
+      40_000,
+      () =>
+        a.controller.connectedDids().includes(b.did) &&
+        b.controller.connectedDids().includes(c.did) &&
+        !a.controller.connectedDids().includes(c.did),
+    );
+    expect(linked).toBe(true);
+
+    a.controller.broadcastEdits([{ x: 1, y: 2, z: 3, id: 1, ts: 9_000 }]);
+    expect(
+      await sim.runUntil(2_000, () => b.latestEdits(a.did) !== undefined),
+    ).toBe(true);
+    expect(b.latestEdits(a.did)).toEqual([
+      { x: 1, y: 2, z: 3, id: 1, ts: 9_000 },
+    ]);
+    // C has no direct link to A and nothing is relayed, so it never hears it.
+    await sim.run(2_000);
+    expect(c.editBatchCountFor(a.did)).toBe(0);
+  });
+
+  it("rejects malformed and out-of-range edit broadcasts before applying them", async () => {
+    const sim = createSimulator({
+      placements: [
+        { x: 0, z: 0 },
+        { x: 3, z: 0 },
+      ],
+    });
+    await sim.startAll();
+    const a = sim.players[0];
+    const b = sim.players[1];
+    expect(
+      await sim.runUntil(25_000, () => a.controller.connections === 1),
+    ).toBe(true);
+
+    // Inject raw chunks into A's side of the link (which delivers to B), as a
+    // malicious or buggy peer might: a non-JSON chunk, an out-of-bounds edit,
+    // and an oversized batch must all be dropped without reaching the controller.
+    const transport = sim.signaling.peer(a.did, b.did);
+    expect(transport).toBeDefined();
+    transport!.send("not json");
+    transport!.send(
+      JSON.stringify({
+        v: 1,
+        type: "edit",
+        seq: 1,
+        t: 1,
+        edits: [{ x: 1_000_000, y: 0, z: 0, id: 1, ts: 1 }],
+      }),
+    );
+    transport!.send(
+      JSON.stringify({
+        v: 1,
+        type: "edit",
+        seq: 1,
+        t: 1,
+        edits: [
+          ...Array.from({ length: 513 }, (_, i) => ({
+            x: i,
+            y: 0,
+            z: 0,
+            id: 1,
+            ts: 1,
+          })),
+        ],
+      }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(b.editBatchCountFor(a.did)).toBe(0);
+  });
 });

@@ -3,7 +3,12 @@
 // as one custom record in the user's repo. Chunking by absolute voxel (not by
 // which ring block held them) keeps a record addressable by location, so any
 // client can resolve it onto its own regenerated terrain.
-import type { EditLayer, WorldVoxel, VoxelEdit } from "../world/edit-layer";
+import type { WorldVoxel, VoxelEdit } from "../world/edit-layer";
+
+// `mergeIntoLayer` moved into `edit-layer.ts` with the overlay it operates on,
+// but is re-exported here so sync callers keep importing it alongside the
+// chunk codec.
+export { mergeIntoLayer } from "../world/edit-layer";
 
 /** One side of an edit chunk, in voxels. */
 export const EDIT_CHUNK_DIM = 32;
@@ -15,6 +20,20 @@ export interface EditChunkCoord {
   y: number;
   z: number;
 }
+
+/** One edit inside a chunk record: the voxel's new id plus when it was made. */
+export type EditChunkEdit = {
+  x: number;
+  y: number;
+  z: number;
+  id: number;
+  /**
+   * Milliseconds since epoch when the edit was made (per-edit, matching the
+   * WebRTC optimistic path's `EditItem`). Absent on records written before
+   * this field existed, whose entries fall back to the record's `createdAt`.
+   */
+  ts?: number;
+};
 
 /**
  * One edit record: a sparse list of voxel ids inside one 32³ chunk. Declared
@@ -28,7 +47,7 @@ export type EditChunkRecord = {
   /** Terrain seed the world was generated with, for reproducible base terrain. */
   seed: number | null;
   createdAt: string;
-  edits: Array<{ x: number; y: number; z: number; id: number }>;
+  edits: EditChunkEdit[];
 };
 
 export const chunkOf = (w: WorldVoxel): EditChunkCoord => ({
@@ -87,7 +106,13 @@ export const groupEditsByChunk = (
       groups.set(key, record);
     }
     const l = chunkLocal(w);
-    record.edits.push({ x: l.x, y: l.y, z: l.z, id: edit.id });
+    record.edits.push({
+      x: l.x,
+      y: l.y,
+      z: l.z,
+      id: edit.id,
+      ts: edit.updatedAt,
+    });
   }
   return groups;
 };
@@ -105,7 +130,8 @@ export const makeRkey = (c: EditChunkCoord): string =>
 /**
  * Flattens records from a repo back into overlay snapshot entries ready to
  * feed `editLayerFromSnapshot` (or merge into a live layer). Coords are
- * reassembled from chunk + local.
+ * reassembled from chunk + local; each edit carries the per-edit `ts` when the
+ * record has one, falling back to the record's `createdAt` for older records.
  */
 export const recordsToEntries = (
   records: EditChunkRecord[],
@@ -113,8 +139,12 @@ export const recordsToEntries = (
   const out: Array<{ w: WorldVoxel; edit: VoxelEdit }> = [];
   for (const record of records) {
     const t = Date.parse(record.createdAt);
-    const updatedAt = Number.isFinite(t) ? t : 0;
+    const fallback = Number.isFinite(t) ? t : 0;
     for (const edit of record.edits) {
+      const updatedAt =
+        typeof edit.ts === "number" && Number.isFinite(edit.ts)
+          ? edit.ts
+          : fallback;
       out.push({
         w: recordVoxel(record, edit),
         edit: { id: edit.id, updatedAt },
@@ -122,25 +152,4 @@ export const recordsToEntries = (
     }
   }
   return out;
-};
-
-/**
- * Merges remote entries into `layer` with last-write-wins by `updatedAt`.
- * Returns the number of voxels whose id actually changed.
- */
-export const mergeIntoLayer = (
-  layer: EditLayer,
-  entries: Array<{ w: WorldVoxel; edit: VoxelEdit }>,
-): number => {
-  let changed = 0;
-  for (const { w, edit } of entries) {
-    const local = layer.get(w);
-    if (local !== undefined && local.updatedAt > edit.updatedAt) {
-      continue;
-    }
-    if (layer.set(w, edit.id, edit.updatedAt)) {
-      changed++;
-    }
-  }
-  return changed;
 };

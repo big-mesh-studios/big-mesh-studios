@@ -18,6 +18,7 @@ import {
   type PresenceRecord,
 } from "./presence";
 import type { Pose, PoseMessage } from "./pose";
+import type { EditItem } from "./messages";
 import { RemotePlayers } from "./remote-players";
 import {
   CLUSTER_DEFAULTS,
@@ -113,6 +114,11 @@ export interface MultiplayerParams {
   resolveHandle?: (did: string) => Promise<string | null>;
   /** Receives every pose a peer sends, for headless verification of the mesh. */
   onRemotePose?: (did: string, pose: PoseMessage) => void;
+  /**
+   * Receives every optimistic edit broadcast a peer sends, for headless
+   * verification and (in the app) for applying straight to the edit overlay.
+   */
+  onRemoteEdits?: (did: string, edits: EditItem[]) => void;
   /** Overrides for the cluster-selection tuning (tests use this to disable hysteresis). */
   clusterOptions?: Partial<ClusterOptions>;
 }
@@ -128,6 +134,7 @@ export class MultiplayerController {
   private readonly resolveHandle:
     ((did: string) => Promise<string | null>) | undefined;
   private readonly onRemotePose: (did: string, pose: PoseMessage) => void;
+  private readonly onRemoteEdits: (did: string, edits: EditItem[]) => void;
   private readonly clusterOptions: Partial<ClusterOptions>;
   private readonly remotePlayers: RemotePlayers | undefined;
 
@@ -152,6 +159,9 @@ export class MultiplayerController {
   private readonly failedAt = new Map<string, number>();
   private peerCount = 0;
   private poseSeq = 0;
+  private editSeq = 0;
+  private editsSent = 0;
+  private editsReceived = 0;
 
   private lastPresenceAt = 0;
   private lastPresenceX = 0;
@@ -172,6 +182,7 @@ export class MultiplayerController {
     this.fetchDirectory = params.fetchDirectory ?? this.relayFetchDirectory;
     this.resolveHandle = params.resolveHandle;
     this.onRemotePose = params.onRemotePose ?? (() => {});
+    this.onRemoteEdits = params.onRemoteEdits ?? (() => {});
     this.clusterOptions = params.clusterOptions ?? {};
     this.remotePlayers =
       params.scene !== undefined && params.camera !== undefined
@@ -339,6 +350,23 @@ export class MultiplayerController {
     this.remotePlayers?.tick(dt);
   }
 
+  /**
+   * Broadcasts a batch of voxel edits to every open peer. The receiver applies
+   * them to its edit overlay immediately (last-write-wins by edit time); this
+   * is the optimistic path, and atproto sync remains the source of truth.
+   * No-op while the mesh is offline.
+   */
+  broadcastEdits(edits: EditItem[]): void {
+    if (!this.running || edits.length === 0) {
+      return;
+    }
+    const seq = ++this.editSeq;
+    this.editsSent += edits.length;
+    for (const peer of this.peers.values()) {
+      peer.sendEdits(edits, seq);
+    }
+  }
+
   describe(): string {
     const state = this.describeState();
     return `multiplayer: ${state}${
@@ -410,6 +438,7 @@ export class MultiplayerController {
     for (const [did, peer] of this.peers) {
       lines.push(`  ${did}: ${peer.describe()}`);
     }
+    lines.push(`edits: ${this.editsSent} sent, ${this.editsReceived} received`);
     lines.push(`lastError: ${this.lastError ?? "none"}`);
     return lines.join("\n");
   }
@@ -673,6 +702,7 @@ export class MultiplayerController {
   private peerHandlers(): {
     onOpen: (d: string) => void;
     onPose: (d: string, pose: PoseMessage) => void;
+    onEdits: (d: string, edits: EditItem[]) => void;
     onClose: (d: string) => void;
     onError: (d: string, message: string, code?: string) => void;
   } {
@@ -687,6 +717,10 @@ export class MultiplayerController {
       onPose: (d, pose) => {
         this.remotePlayers?.update(d, pose);
         this.onRemotePose(d, pose);
+      },
+      onEdits: (d, edits) => {
+        this.editsReceived += edits.length;
+        this.onRemoteEdits(d, edits);
       },
       onClose: (d) => {
         this.peerCount = Math.max(0, this.peerCount - 1);

@@ -142,6 +142,7 @@ export {
   recordsToEntries,
   recordVoxel,
   type EditChunkCoord,
+  type EditChunkEdit,
   type EditChunkRecord,
 } from "./atproto/edits";
 export { claimedHandle, confirmHandle } from "./atproto/handles";
@@ -162,13 +163,25 @@ export {
   type MultiplayerParams,
   type MultiplayerStatus,
 } from "./multiplayer/multiplayer-controller";
-export { createPeerJSSignaling } from "./multiplayer/peerjs-transport";
+export { round, type Pose, type PoseMessage } from "./multiplayer/pose";
 export {
-  decodePose,
-  encodePose,
-  type Pose,
-  type PoseMessage,
-} from "./multiplayer/pose";
+  decodeMessage,
+  encodeMessage,
+  MAX_EDITS_PER_MESSAGE,
+  MAX_VOXEL_ID,
+  MAX_WORLD_VOXEL,
+  type EditItem,
+  type EditWire,
+  type MeshMessage,
+  type PoseWire,
+} from "./multiplayer/messages";
+export { createPeerJSSignaling } from "./multiplayer/peerjs-transport";
+export type {
+  PeerTransport,
+  SignalingFactory,
+  SignalingRemote,
+  SignalingTransport,
+} from "./multiplayer/transport";
 export {
   hashDid,
   horizontalDistance,
@@ -188,12 +201,6 @@ export {
   type ClusterSelection,
   type RosterEntry,
 } from "./multiplayer/roster";
-export type {
-  PeerTransport,
-  SignalingFactory,
-  SignalingRemote,
-  SignalingTransport,
-} from "./multiplayer/transport";
 
 // The debug console: the command table and the components that show it
 export {
