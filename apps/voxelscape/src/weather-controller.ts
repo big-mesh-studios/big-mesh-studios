@@ -444,7 +444,6 @@ const setBoltGeometry = (geometry: LineGeometry, pts: number[]): void => {
 };
 
 export interface WeatherControllerParams {
-  scene: Scene;
   /** Ground-height lookup at an absolute world XZ, for lightning targets. */
   groundHeight: (x: number, z: number) => number;
   /**
@@ -493,7 +492,7 @@ export class WeatherController {
   private tintWeather: Weather = "clear";
 
   constructor(params: WeatherControllerParams) {
-    const { scene, groundHeight, onStrike, seed, rampSeconds, strikeInterval } =
+    const { groundHeight, onStrike, seed, rampSeconds, strikeInterval } =
       params;
     this.groundHeight = groundHeight;
     this.onStrike = onStrike;
@@ -509,7 +508,6 @@ export class WeatherController {
     this.rain.material.tileSize = RAIN_OPTS.tileSize;
     this.rain.material.tint = [0.75, 0.8, 0.9];
     this.rain.material.sway = 0.4;
-    scene.add(this.rain.mesh);
 
     this.snow = new ParticleSystem(
       new ParticleMaterial(),
@@ -520,9 +518,8 @@ export class WeatherController {
     this.snow.material.tint = [0.95, 0.97, 1];
     this.snow.material.sway = 1.6;
     this.snow.material.disc = true;
-    scene.add(this.snow.mesh);
 
-    this.bolts = [this.makeBolt(scene), this.makeBolt(scene)];
+    this.bolts = [this.makeBolt(), this.makeBolt()];
 
     this.flashMaterial = new MeshBasicMaterial({
       color: 0xffffff,
@@ -537,10 +534,23 @@ export class WeatherController {
       this.flashMaterial,
     );
     this.flashMesh.visible = false;
+  }
+
+  /**
+   * Adds the particles, bolts and strike flash to the scene. All of them are
+   * additively blended with depth writes off, and scene-graph order is draw
+   * order, so call this once everything they draw over is in the scene.
+   */
+  addToScene(scene: Scene): void {
+    scene.add(this.rain.mesh);
+    scene.add(this.snow.mesh);
+    for (const bolt of this.bolts) {
+      scene.add(bolt);
+    }
     scene.add(this.flashMesh);
   }
 
-  private makeBolt(scene: Scene): Line2 {
+  private makeBolt(): Line2 {
     const material = new Line2NodeMaterial({
       color: 0xcfe0ff,
       linewidth: 0.7,
@@ -552,7 +562,6 @@ export class WeatherController {
     material.depthWrite = false;
     const bolt = new Line2(new LineGeometry(), material);
     bolt.visible = false;
-    scene.add(bolt);
     return bolt;
   }
 

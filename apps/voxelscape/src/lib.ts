@@ -121,6 +121,11 @@ export {
 } from "./atproto/edits";
 
 // Day/Night & Environment
+export {
+  createEnvironment,
+  type Environment,
+  type EnvironmentConfig,
+} from "./create-environment";
 export { dayNightState } from "./day-night";
 export { DayNightController } from "./day-night-controller";
 export { SoundController, thunderTiming } from "./sound-controller";

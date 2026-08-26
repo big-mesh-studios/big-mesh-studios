@@ -10,9 +10,9 @@ import { createSignal, type Accessor } from "solid-js";
 import { AtprotoController } from "./atproto/atproto-controller";
 import type { Commander } from "./commander";
 import { createInput, type InputController } from "./create-input";
+import { createEnvironment } from "./create-environment";
 import { createRenderLoop } from "./create-render-loop";
 import { createVoxelWorld } from "./create-voxel-world";
-import { DayNightController } from "./day-night-controller";
 import { createDebugCommands } from "./debug-commands";
 import { EditingController } from "./editing-controller";
 import { COLLECTABLE, Inventory } from "./inventory";
@@ -25,9 +25,6 @@ import {
   type Player,
   type PlayerWorld,
 } from "./player";
-import { SoundController } from "./sound-controller";
-import { applyWeather } from "./weather";
-import { WeatherController } from "./weather-controller";
 import { type WorldVoxel } from "./world/edit-layer";
 import { VOXEL_SIZE, type Dim3 } from "./world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
@@ -112,11 +109,15 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
   const input = createInput();
   const scene = new Scene();
   /**
-   * Owns the sun/ambient lights, the sun/moon billboards, and the day-night
-   * clock. `tick` (called from the frame loop) returns the computed day-night
-   * state, which feeds both the renderers' lighting and the clear colour.
+   * The sky, the weather and their sound. Built first: its sun and moon
+   * billboards are drawn with depth writes off, so the terrain has to be able
+   * to overdraw them at the horizon. The ground sampler is only read when
+   * lightning picks a target, by which time the world exists.
    */
-  const dayNight = new DayNightController({ scene });
+  const environment = createEnvironment({
+    scene,
+    groundHeightAt: (x, z) => world.heightAt(x, z),
+  });
 
   const world = createVoxelWorld({
     scene,
@@ -148,8 +149,10 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
   playerCube.position.copy(player.position);
   playerCube.visible = showPlayerCube;
   scene.add(playerCube);
-  // Every opaque object is now in the scene, so the water passes can go on top.
+  // The rest of the scene, in draw order: water blends over every opaque
+  // object, and the weather draws over the water.
   world.addTranslucentPasses();
+  environment.addWeatherToScene();
 
   /** Built once rather than per frame; the samplers read the live blocks. */
   const playerWorld: PlayerWorld = {
@@ -205,36 +208,6 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
 
   input.install();
   /**
-   * Synthesizes the weather's sound (rain, wind, thunder) from the Web Audio
-   * API. Browsers suspend audio until the first user gesture, so `unlock` is
-   * bound to the first pointer/key event below.
-   */
-  const sound = new SoundController();
-  const firstGesture = new AbortController();
-  const unlockSound = (): void => {
-    sound.unlock();
-    firstGesture.abort();
-  };
-  window.addEventListener("pointerdown", unlockSound, {
-    signal: firstGesture.signal,
-  });
-  window.addEventListener("keydown", unlockSound, {
-    signal: firstGesture.signal,
-  });
-  /**
-   * Owns the rain/snow particle systems, the thunder lightning bolts, and the
-   * strike flash. Added to the scene after the translucent passes so the
-   * weather draws over terrain and water; `tick` returns the current weather
-   * so `applyWeather` can tint the day-night state before it reaches the
-   * renderers and the clear colour. Lightning strikes are reported to the
-   * sound controller so thunder can follow the flashes.
-   */
-  const weather = new WeatherController({
-    scene,
-    groundHeight: world.heightAt,
-    onStrike: (x, z) => sound.thunderStrike(x, z),
-  });
-  /**
    * Owns the atproto/Bluesky connection and the edit-chunk sync (see
    * `src/atproto`). Restores any stored session at startup; `/sync` uploads
    * fresh edits and merges remote ones into the edit overlay.
@@ -256,10 +229,10 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
   });
   void atproto.init();
   const commands = createDebugCommands({
-    dayNight,
+    dayNight: environment.dayNight,
     rendererSwitch: world.renderers,
-    weather,
-    sound,
+    weather: environment.weather,
+    sound: environment.sound,
     atproto,
     setView: (mode) => {
       firstPerson = mode === "first";
@@ -318,17 +291,13 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     playerCube.rotation.y = player.yaw;
     playerCube.visible = showPlayerCube;
     placeCamera(camera, player, firstPerson);
-    // advance the day-night clock and re-derive the scene lighting. A command
-    // override pins the shown time; otherwise the real clock (scaled by speed)
-    // drives the cycle. The weather schedule keys off the same shown clock
-    // seconds, and its intensity then tints the day-night state before it
-    // reaches the renderers and the clear colour.
-    const dn = dayNight.tick(dt, camera);
-    const weatherView = weather.tick(dt, camera, dn.elapsed);
-    sound.tick(dt, camera, weatherView);
-    const env = applyWeather(dn, weatherView.weather, weatherView.intensity);
-    skyColor.set(env.skyColor[0], env.skyColor[1], env.skyColor[2]);
-    world.renderers.applyLighting(env);
+    const lighting = environment.tick(dt, camera);
+    skyColor.set(
+      lighting.skyColor[0],
+      lighting.skyColor[1],
+      lighting.skyColor[2],
+    );
+    world.renderers.applyLighting(lighting);
     // per-frame work specific to whichever renderer is active (mesh-build
     // draining for the triangle renderer, underwater tint, etc.)
     world.renderers.tick(dt, camera);
@@ -373,10 +342,9 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
       // release the atproto OAuth state
       atproto.dispose();
       // release the audio hardware
-      sound.dispose();
+      environment.dispose();
       // detach the keyboard/pointer listeners
       input.dispose();
-      firstGesture.abort();
     },
   };
 };
