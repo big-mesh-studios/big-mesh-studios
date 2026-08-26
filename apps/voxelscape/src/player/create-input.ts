@@ -67,9 +67,11 @@ export interface LookDragHandlers {
 
 export interface InputController {
   /**
-   * Binds the keyboard, edit and pointer-lock listeners to `window`. Calling
-   * it twice is a no-op, so an already-installed controller can't end up
-   * handling every key press twice.
+   * Binds the keyboard, edit and pointer-lock listeners to `window` again
+   * after a `dispose`. A freshly created controller is already listening, so
+   * this is only needed to revive a disposed one. Calling it while the
+   * listeners are bound is a no-op, so a controller can't end up handling
+   * every key press twice.
    */
   install(): void;
   /** Removes every listener `install` bound. The controller can be installed again after. */
@@ -115,6 +117,7 @@ export const createInput = (): InputController => {
     placeQueued: false,
     selectQueued: null,
   };
+  let controller: AbortController | null = null;
 
   const addLookDelta = (dx: number, dy: number): void => {
     state.lookDx += dx;
@@ -179,12 +182,14 @@ export const createInput = (): InputController => {
       if (isEditableTarget(e)) {
         return;
       }
+
       // Only dig/place when the press lands on the world canvas itself, not on
       // the touch UI (joystick, buttons, console). Touch taps on the world also
       // reach here as emulated mouse events with the canvas as the target.
       if (!(e.target instanceof HTMLCanvasElement)) {
         return;
       }
+
       // Pointer lock is a mouse-only concept — iOS Safari doesn't implement it
       // at all, and it isn't how touch input works anyway. A touch (or pen) tap
       // fires the action immediately, same as it always has; only a mouse press
@@ -196,6 +201,7 @@ export const createInput = (): InputController => {
         e.target.requestPointerLock();
         return;
       }
+
       if (e.button === 0) {
         state.breakQueued = true;
       } else if (e.button === 2) {
@@ -238,23 +244,25 @@ export const createInput = (): InputController => {
     document.addEventListener("mousemove", onMove, { signal });
   };
 
-  let installed: AbortController | null = null;
+  const install = () => {
+    if (controller !== null) {
+      return;
+    }
+    controller = new AbortController();
+    const { signal } = controller;
+    installKeyboardControls(signal);
+    installEditControls(signal);
+    installPointerLockLook(signal);
+  };
+
+  install();
 
   return {
-    install() {
-      if (installed !== null) {
-        return;
-      }
-      installed = new AbortController();
-      const { signal } = installed;
-      installKeyboardControls(signal);
-      installEditControls(signal);
-      installPointerLockLook(signal);
-    },
+    install,
 
     dispose() {
-      installed?.abort();
-      installed = null;
+      controller?.abort();
+      controller = null;
     },
 
     consume() {

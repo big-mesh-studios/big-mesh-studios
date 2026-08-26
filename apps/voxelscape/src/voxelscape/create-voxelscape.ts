@@ -149,8 +149,6 @@ export const createVoxelscape = ({
     getPlayerVoxels: () => avatar.occupiedVoxels(),
   });
 
-  input.install();
-
   /** This player's network-relevant state: where they are and where they look. */
   const currentPose = (): Pose => ({
     x: avatar.player.position.x,
