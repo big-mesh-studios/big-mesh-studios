@@ -33,6 +33,16 @@ that the following frames have to bear out:
   successive refutation doubles the wait before trying that scale again — a
   device that cannot hold the higher scale stops pulsing between the two
   within a few attempts.
+
+  Both counts leak rather than reset. Requiring an unbroken run of met
+  deadlines to step up sounds stricter and is in fact useless here: this world
+  streams terrain in while the player walks, and a mesh handed over or a
+  garbage collection drops a frame often enough that a run of a hundred and
+  twenty clean ones essentially never happens. A scaler asking for one never
+  steps up at all, which is the bug it was built to fix. A missed deadline
+  instead cancels four met ones, so a scale that mostly holds still climbs
+  while a scale missing a fifth of its frames does not.
+
 - **A descent** is also a claim, checked against a different failure: frames
   miss deadlines for reasons resolution has no bearing on — a mesh rebuild on
   the main thread, a browser throttling the loop on battery. Once a descent
@@ -41,10 +51,14 @@ that the following frames have to bear out:
   waiting on. The scale goes back to where the descent started, with the same
   doubling wait before descending again.
 
-Frame gaps longer than a second are discarded rather than judged, and
-`createRenderLoop` additionally forgets its previous timestamp on
-`visibilitychange`, so the first frame after a hidden page is measured against
-nothing at all.
+Frame gaps longer than a second are discarded rather than judged. A hidden page
+is handled separately and more bluntly: it still receives frames, roughly one a
+second rather than sixty, and every one of them misses its deadline by any
+measure taken here, so `createRenderLoop` feeds the scaler nothing at all while
+`document.hidden` is set. On the way back it also forgets its previous
+timestamp, so the first frame is measured against nothing, and holds the scale
+for a second while the browser reinstates the textures and programs it
+reclaimed.
 
 The scaler is also now constructed by `createVoxelscape` and passed into
 `createRenderLoop`, rather than created inside it. `mount` can run again after

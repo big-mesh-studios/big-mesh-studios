@@ -203,6 +203,38 @@ describe("AdaptiveResolution", () => {
     expect(scale).toBe(1);
   });
 
+  // A world that streams terrain in while the player walks drops the odd
+  // frame to a mesh handover or a garbage collection. Requiring an unbroken
+  // run of met deadlines to step back up means never stepping back up at all
+  // on such a world, which is the whole failure this scaler exists to avoid.
+  it("still recovers when an occasional frame is dropped for reasons other than resolution", () => {
+    const controller = new AdaptiveResolution(undefined, 0.25);
+    let scale = 0.25;
+    for (let frame = 0; frame < 20000; frame++) {
+      const cost = 2 * scale * scale;
+      scale = controller.update(
+        frame % 20 === 0
+          ? REFRESH_60_HERTZ * 2
+          : vsyncGap(cost, REFRESH_60_HERTZ),
+      );
+    }
+    expect(scale).toBe(1);
+  });
+
+  it("does not step up while a fair share of frames are being dropped", () => {
+    const controller = new AdaptiveResolution(undefined, 0.5);
+    let scale = 0.5;
+    for (let frame = 0; frame < 20000; frame++) {
+      // Every third frame missed: cheap to draw, but something else on the
+      // thread is stopping it from holding the deadline, and more pixels
+      // would not help.
+      scale = controller.update(
+        frame % 3 === 0 ? REFRESH_60_HERTZ * 2 : REFRESH_60_HERTZ,
+      );
+    }
+    expect(scale).toBeLessThanOrEqual(0.5);
+  });
+
   it("tolerates isolated hitches without stepping down", () => {
     // One dropped frame in every ten is a hitch, not the sustained overload a
     // step down is for.

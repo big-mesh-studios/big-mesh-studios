@@ -10,6 +10,9 @@ import { GpuTimer } from "./perf";
 /** How many frames between each debug-perf GPU readback, which stalls the pipeline. */
 const SAMPLE_EVERY = 24;
 
+/** How long the resolution is left alone after the page becomes visible again, in frames. */
+const RETURN_HOLD_FRAMES = 60;
+
 export interface RenderLoopConfig {
   canvas: HTMLCanvasElement;
   scene: Scene;
@@ -20,9 +23,9 @@ export interface RenderLoopConfig {
   /** Enables the GPU timer and the statistics line. */
   debugPerf: boolean;
   /**
-   * The scaler deciding this canvas's render resolution. Supplied by the
-   * caller rather than created here so the console can reach it and so a
-   * remount doesn't discard the scale it converged on.
+   * The scaler deciding this canvas's render resolution, shared with whatever
+   * else reads or sets it and outliving any one mounted canvas. A loop given
+   * none keeps a scaler of its own.
    */
   resolution?: AdaptiveResolution;
   /** Advances the world by `dt` seconds. Called once per frame, before drawing. */
@@ -66,6 +69,11 @@ export const createRenderLoop = ({
   renderer.setClearColor(clearColor(), 1);
   const timer = debugPerf ? new GpuTimer(renderer.gl) : undefined;
 
+  /**
+   * The scaler this loop reports each frame's gap to and takes the render
+   * scale from. Its own when the caller supplied none, in which case it lives
+   * and dies with this loop.
+   */
   const adaptive = resolution ?? new AdaptiveResolution();
   /** The canvas's layout size in device pixels; the scale is applied on top of it. */
   let baseWidth = 0;
@@ -129,7 +137,11 @@ export const createRenderLoop = ({
     onFrame(dt);
     renderer.setClearColor(clearColor(), 1);
     const sampled = render();
-    if (lastAdaptTime > 0) {
+    // A hidden page still gets frames, roughly one a second rather than sixty,
+    // and every one of them misses its deadline by any measure taken here. The
+    // resolution would walk itself down for as long as the player was in
+    // another tab, so nothing is measured while they are.
+    if (lastAdaptTime > 0 && !document.hidden) {
       const frameMs = time - lastAdaptTime;
       applyResolution(
         sampled ? adaptive.frame(frameMs) : adaptive.update(frameMs),
@@ -138,17 +150,19 @@ export const createRenderLoop = ({
     lastAdaptTime = time;
   };
 
+  /**
+   * Discards the timing carried over from before the page was hidden. The
+   * first frame back would otherwise report the whole time away as one
+   * frame's gap, and the frames after it pay for textures and programs the
+   * browser reclaimed in the background, so neither is measured.
+   */
   const onVisibilityChange = (): void => {
     if (document.visibilityState !== "visible") {
       return;
     }
-    // `requestAnimationFrame` doesn't fire while the page is hidden, so the
-    // first frame back would otherwise report the entire time away as one
-    // frame's gap. Forget the timestamp from before the page was hidden so
-    // that frame is measured against nothing at all.
     lastAdaptTime = 0;
     lastFrameTime = 0;
-    adaptive.hold();
+    adaptive.hold(RETURN_HOLD_FRAMES);
   };
   document.addEventListener("visibilitychange", onVisibilityChange);
 

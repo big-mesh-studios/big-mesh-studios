@@ -35,8 +35,14 @@ export interface ResolutionConfig {
   outlierMs: number;
   /** Net missed deadlines required before stepping down. */
   downFrames: number;
-  /** Consecutive met deadlines required before probing upward. */
+  /** Net met deadlines required before probing upward. */
   upFrames: number;
+  /**
+   * How many met deadlines one missed deadline cancels out on the way up.
+   * Above one, so that a scale which mostly holds still climbs while a scale
+   * which misses even a fraction of its frames does not.
+   */
+  missPenalty: number;
   /** Scale multiplier applied each time the controller steps down. */
   downStep: number;
   /** Scale multiplier applied each time the controller probes upward. */
@@ -70,10 +76,14 @@ export const DEFAULT_RESOLUTION: ResolutionConfig = {
   outlierMs: 1000,
   downFrames: 30,
   upFrames: 120,
-  // Steps of ~1.25x instead of 2x: rendering cost scales with scale^2, so a 2x
-  // step is a 4x pixel-cost jump that leaps straight across the range of scales
-  // a marginal device can hold, and makes the controller oscillate between two
-  // scales that are both wrong. Finer steps land on one that works.
+  // Tuned for a world that streams while the player walks: a frame in twenty
+  // is dropped by something resolution has no bearing on — a chunk of terrain
+  // arriving, a mesh handed over, a garbage collection — and four still climbs
+  // through that while a fifth of frames missing holds steady.
+  missPenalty: 4,
+  // Rendering cost scales with the square of the scale, so a step of a quarter
+  // is a pixel-cost step of about a half: fine enough that a device which can
+  // hold some scales but not others lands on one of them.
   downStep: 0.8,
   upStep: 1.25,
   minScale: 0.25,
@@ -104,7 +114,7 @@ export class AdaptiveResolution {
 
   /** Missed deadlines since the last change, leaking toward zero as deadlines are met. */
   private missedFrames: number = 0;
-  /** Consecutive met deadlines since the last change. */
+  /** Met deadlines since the last change, leaking toward zero as deadlines are missed. */
   private metFrames: number = 0;
   private settle: number = 0;
   /**
@@ -239,9 +249,16 @@ export class AdaptiveResolution {
     return this._scale;
   }
 
+  /**
+   * Judges one frame and acts on what the frames since the last change add up
+   * to. Both counts leak rather than reset, so each direction answers what the
+   * recent frames mostly did rather than what the last unbroken run of them
+   * did: an isolated hitch is not the sustained overload a step down is for,
+   * and it is not grounds to give up on stepping back up either.
+   */
   private adapt(frameMs: number): void {
     if (frameMs > this.config.targetMs * this.config.missFactor) {
-      this.metFrames = 0;
+      this.metFrames = Math.max(0, this.metFrames - this.config.missPenalty);
       this.missedFrames++;
       if (this.missedFrames >= this.config.downFrames) {
         this.stepDown();
@@ -249,10 +266,6 @@ export class AdaptiveResolution {
       return;
     }
     this.metFrames++;
-    // A met deadline pays back one missed one rather than clearing the count:
-    // an isolated hitch — a texture upload, a garbage collection — is not the
-    // sustained overload a step down is for, so only a run of frames that
-    // misses more often than it hits reaches the threshold.
     if (this.missedFrames > 0) {
       this.missedFrames--;
     }
