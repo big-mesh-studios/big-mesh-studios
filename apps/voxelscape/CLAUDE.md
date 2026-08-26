@@ -1,5 +1,20 @@
 # CLAUDE.md
 
+## Comments
+
+**Read the "To LLM" section of [`CONTRIBUTING.md`](./CONTRIBUTING.md) before
+writing or editing any comment or JSDoc block**, and hold every one you write
+to it. The short version, which is not a substitute for reading it:
+
+- A comment above a function, class, interface, type, or a standalone named
+  declaration is a `/** ... */` JSDoc block, with `@param`/`@returns` where
+  useful. Plain `//` comments are for narrating a step inside a computation.
+- Say what the declaration _is_, not what it avoids, what it used to be, or
+  which alternative was rejected. Decisions belong in `docs/adr/`.
+- Cut anything that would be equally true pasted into an unrelated file.
+- Spell abbreviations out in full in prose, and don't point at another file in
+  place of an explanation.
+
 ## Solid 2.x
 
 This project runs Solid 2.0 (`solid-js@2.0.0-beta`, with `@solidjs/web` and
