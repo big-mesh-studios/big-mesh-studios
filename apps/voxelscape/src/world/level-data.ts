@@ -21,8 +21,6 @@ import {
 
 export type { TerrainConfig };
 
-export type Dim3 = [number, number, number];
-
 /**
  * The number of voxels per axis in a chunk — the fixed-size unit that
  * `Level`'s GPU chunk storage is addressed in.
@@ -85,7 +83,7 @@ export class Level {
   storageCount: Vector3D;
   data: Uint8Array;
   texture: DataTexture;
-  nextStorage: Dim3 = [0, 0, 0];
+  nextStorage: Vector3D = { x: 0, y: 0, z: 0 };
   /** Number of chunk slots handed out so far; used by the storage-overflow guard. */
   allocCount: number = 0;
   warnedStorageOverflow: boolean = false;
@@ -127,16 +125,16 @@ export class Level {
         `[Level] storage exhausted: ${this.allocCount} chunks requested, storage holds ${capacity}`,
       );
     }
-    out.x = this.nextStorage[0];
-    out.y = this.nextStorage[1];
-    out.z = this.nextStorage[2];
-    this.nextStorage[0]++;
-    if (this.nextStorage[0] === this.storageCount.x) {
-      this.nextStorage[0] = 0;
-      this.nextStorage[1]++;
-      if (this.nextStorage[1] === this.storageCount.y) {
-        this.nextStorage[1] = 0;
-        this.nextStorage[2]++;
+    out.x = this.nextStorage.x;
+    out.y = this.nextStorage.y;
+    out.z = this.nextStorage.z;
+    this.nextStorage.x++;
+    if (this.nextStorage.x === this.storageCount.x) {
+      this.nextStorage.x = 0;
+      this.nextStorage.y++;
+      if (this.nextStorage.y === this.storageCount.y) {
+        this.nextStorage.y = 0;
+        this.nextStorage.z++;
       }
     }
   }
@@ -249,7 +247,7 @@ export class Level {
 export const resetLevel = (level: Level): void => {
   level.broadData.fill(0);
   level.data.fill(0);
-  level.nextStorage = [0, 0, 0];
+  level.nextStorage = { x: 0, y: 0, z: 0 };
   level.allocCount = 0;
   level.freeSpots = [];
   level.warnedStorageOverflow = false;
@@ -305,7 +303,7 @@ export const syncLevelFromStore = (
 
 export interface WorldBlock {
   level: Level;
-  center: Dim3;
+  center: Vector3D;
   /**
    * CPU-side source of truth that `level`'s chunk data is derived from.
    * Voxel edits are meant to mutate this store directly and then re-run
@@ -325,7 +323,7 @@ export interface WorldBlock {
  * @param params.surfaceOnly - Whether the derived `Level` stores only surface voxels; defaults to true.
  */
 export const buildBlock = (params: {
-  center: Dim3;
+  center: Vector3D;
   lod?: number;
   terrain?: TerrainConfig;
   surfaceOnly?: boolean;
@@ -368,8 +366,8 @@ const findContainingBlock = (
   let best: WorldBlock | undefined;
   let bestDistSq = Infinity;
   for (const block of blocks) {
-    const dx = worldX - block.center[0];
-    const dz = worldZ - block.center[2];
+    const dx = worldX - block.center.x;
+    const dz = worldZ - block.center.z;
     const hx = block.level.dimensions.x / 2;
     const hz = block.level.dimensions.z / 2;
     if (Math.abs(dx) > hx || Math.abs(dz) > hz) {
@@ -417,18 +415,18 @@ export const getWorldHeight = (
   const clampAxis = (v: number, n: number): number =>
     Math.max(0, Math.min(n - 1, v));
   const vx = clampAxis(
-    Math.floor((worldX - best.center[0]) / scale + vxN / 2),
+    Math.floor((worldX - best.center.x) / scale + vxN / 2),
     vxN,
   );
   const vz = clampAxis(
-    Math.floor((worldZ - best.center[2]) / scale + vzN / 2),
+    Math.floor((worldZ - best.center.z) / scale + vzN / 2),
     vzN,
   );
   for (let vy = vyN - 1; vy >= 0; --vy) {
     const id = store.get(vx, vy, vz);
     // skip water so the player stands on the lakebed (or shore) under water
     if (id !== 0 && id !== VOXEL_WATER) {
-      return best.center[1] + (vy + 1 - vyN / 2) * scale;
+      return best.center.y + (vy + 1 - vyN / 2) * scale;
     }
   }
   return -Infinity;
@@ -472,22 +470,22 @@ export const getGroundHeightBelow = (
   const clampAxis = (v: number, n: number): number =>
     Math.max(0, Math.min(n - 1, v));
   const vx = clampAxis(
-    Math.floor((worldX - best.center[0]) / scale + vxN / 2),
+    Math.floor((worldX - best.center.x) / scale + vxN / 2),
     vxN,
   );
   const vz = clampAxis(
-    Math.floor((worldZ - best.center[2]) / scale + vzN / 2),
+    Math.floor((worldZ - best.center.z) / scale + vzN / 2),
     vzN,
   );
   const startVy = clampAxis(
-    Math.floor((worldY - best.center[1]) / scale + vyN / 2),
+    Math.floor((worldY - best.center.y) / scale + vyN / 2),
     vyN,
   );
   for (let vy = startVy; vy >= 0; --vy) {
     const id = store.get(vx, vy, vz);
     // skip water so the player stands on the lakebed (or shore) under water
     if (id !== 0 && id !== VOXEL_WATER) {
-      return best.center[1] + (vy + 1 - vyN / 2) * scale;
+      return best.center.y + (vy + 1 - vyN / 2) * scale;
     }
   }
   return -Infinity;
@@ -515,9 +513,9 @@ const voxelIdAt = (
   // samplers this deliberately doesn't clamp: clamping would smear the
   // block's edge voxels outward across everything beyond them.
   return store.get(
-    Math.floor((worldX - best.center[0]) / scale + vxN / 2),
-    Math.floor((worldY - best.center[1]) / scale + vyN / 2),
-    Math.floor((worldZ - best.center[2]) / scale + vzN / 2),
+    Math.floor((worldX - best.center.x) / scale + vxN / 2),
+    Math.floor((worldY - best.center.y) / scale + vyN / 2),
+    Math.floor((worldZ - best.center.z) / scale + vzN / 2),
   );
 };
 
@@ -573,7 +571,7 @@ export interface BlockData {
  * @returns The generated arrays, ready to transfer.
  */
 export const buildBlockData = (params: {
-  center: Dim3;
+  center: Vector3D;
   terrain?: TerrainConfig;
   surfaceOnly?: boolean;
   customFillStore?: FillStoreFn;

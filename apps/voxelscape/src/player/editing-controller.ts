@@ -4,17 +4,14 @@
 // keyed, so it persists and syncs), then into the containing block's store
 // and GPU level. A plain domain object: it knows how to edit voxels and keep
 // the renderers informed, not that a console or network exists.
-import {
-  syncLevelFromStore,
-  type Dim3,
-  type WorldBlock,
-} from "../world/level-data";
+import { syncLevelFromStore, type WorldBlock } from "../world/level-data";
 import {
   blockWorldVoxelRange,
   worldVoxelToLocal,
   type EditLayer,
   type WorldVoxel,
 } from "../world/edit-layer";
+import type { Vector3D } from "../utils/maths";
 import { pickVoxel, type VoxelPick } from "../world/picker";
 import { BREAK_YIELD, COLLECTABLE, type Inventory } from "./inventory";
 import { VOXEL_AIR, VOXEL_GRASS, VOXEL_DIRT } from "../world/voxel-store";
@@ -29,7 +26,7 @@ export interface EditingControllerParams {
   /** Called after any edit is recorded, so persistence can schedule a save. */
   onEditRecorded: () => void;
   /** Returns the camera's world position and unit look direction. */
-  getLook: () => { origin: Dim3; direction: Dim3 };
+  getLook: () => { origin: Vector3D; direction: Vector3D };
   /** Returns the world voxels the player currently occupies, or null. */
   getPlayerVoxels: () => WorldVoxel[] | null;
 }
@@ -58,7 +55,7 @@ export class EditingController {
   private readonly surfaceOnly: boolean;
   private readonly onBlockEdited: (index: number) => void;
   private readonly onEditRecorded: () => void;
-  private readonly getLook: () => { origin: Dim3; direction: Dim3 };
+  private readonly getLook: () => { origin: Vector3D; direction: Vector3D };
   private readonly getPlayerVoxels: () => WorldVoxel[] | null;
 
   constructor(params: EditingControllerParams) {
@@ -146,7 +143,7 @@ export class EditingController {
     }
     const block = this.blocks[i];
     const local = worldVoxelToLocal(block.store, block.center, w);
-    return block.store.get(local[0], local[1], local[2]);
+    return block.store.get(local.x, local.y, local.z);
   }
 
   /**
@@ -163,10 +160,10 @@ export class EditingController {
     }
     const block = this.blocks[i];
     const local = worldVoxelToLocal(block.store, block.center, w);
-    if (!block.store.inBounds(local[0], local[1], local[2])) {
+    if (!block.store.inBounds(local.x, local.y, local.z)) {
       return;
     }
-    block.store.set(local[0], local[1], local[2], id);
+    block.store.set(local.x, local.y, local.z, id);
     syncLevelFromStore(block.level, block.store, {
       surfaceOnly: this.surfaceOnly,
     });
@@ -177,10 +174,7 @@ export class EditingController {
   private isFloor(w: WorldVoxel): boolean {
     for (const block of this.blocks) {
       const local = worldVoxelToLocal(block.store, block.center, w);
-      if (
-        block.store.inBounds(local[0], local[1], local[2]) &&
-        local[1] === 0
-      ) {
+      if (block.store.inBounds(local.x, local.y, local.z) && local.y === 0) {
         return true;
       }
     }

@@ -5,7 +5,7 @@ import type {
   Texture,
 } from "@random-mesh/rmsl/scene";
 import type { VoxelTileConfig } from "./atlas";
-import type { Dim3, WorldBlock } from "../world/level-data";
+import type { WorldBlock } from "../world/level-data";
 import { sampleFetchCount } from "../render/perf";
 import type { DayNight } from "./block-renderer";
 import { RaymarchRenderer } from "./raymarch-renderer";
@@ -125,7 +125,7 @@ export class RendererSwitch {
       : "renderer: tri (surface triangles)";
   }
 
-  repositionBlock(index: number, center: Dim3): void {
+  repositionBlock(index: number, center: Vector3D): void {
     this.raymarch.repositionBlock(index, center);
     this.triangle.repositionBlock(index, center);
   }

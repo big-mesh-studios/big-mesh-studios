@@ -1,5 +1,4 @@
 import type { Vector3D } from "../utils/maths";
-import type { Dim3 } from "./level-data";
 import { heightAt, type TerrainConfig } from "./noise";
 
 export const VOXEL_AIR = 0;
@@ -104,7 +103,7 @@ export class VoxelStore {
 
 export type FillStoreFn = (
   store: VoxelStore,
-  center: Dim3,
+  center: Vector3D,
   config: TerrainConfig,
 ) => void;
 
@@ -123,7 +122,7 @@ export type FillStoreFn = (
  */
 export const fillStore = (
   store: VoxelStore,
-  center: Dim3,
+  center: Vector3D,
   config: TerrainConfig,
 ): void => {
   store.reset();
@@ -139,8 +138,8 @@ export const fillStore = (
    * border) through the padded layout.
    */
   const writeColumn = (vx: number, vz: number): void => {
-    const worldX = center[0] + (vx + 0.5 - vxN / 2) * voxelSize;
-    const worldZ = center[2] + (vz + 0.5 - vzN / 2) * voxelSize;
+    const worldX = center.x + (vx + 0.5 - vxN / 2) * voxelSize;
+    const worldZ = center.z + (vz + 0.5 - vzN / 2) * voxelSize;
     const height = heightAt(worldX, worldZ, config);
     const top = Math.max(
       0,

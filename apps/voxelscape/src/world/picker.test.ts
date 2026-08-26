@@ -18,7 +18,7 @@ const blockWithSolidAt = (
   lz: number,
 ): ReturnType<typeof buildBlock> =>
   buildBlock({
-    center: [0, 0, 0],
+    center: { x: 0, y: 0, z: 0 },
     customFillStore: (store) => store.set(lx, ly, lz, VOXEL_GRASS),
   });
 
@@ -29,8 +29,8 @@ describe("pickVoxel", () => {
     // camera a good way above the target column, aiming straight down
     const pick = pickVoxel(
       [block],
-      [wx * 2, 180, wz * 2],
-      [0, -1, 0],
+      { x: wx * 2, y: 180, z: wz * 2 },
+      { x: 0, y: -1, z: 0 },
       DEFAULT_REACH * 100,
     );
     expect(pick.target).toEqual([wx, wy, wz]);
@@ -43,8 +43,8 @@ describe("pickVoxel", () => {
     // the only solid voxel sits far below the short default reach
     const pick = pickVoxel(
       [block],
-      [wx * 2, 60, wz * 2],
-      [0, -1, 0],
+      { x: wx * 2, y: 60, z: wz * 2 },
+      { x: 0, y: -1, z: 0 },
       DEFAULT_REACH,
     );
     expect(pick.target).toBeNull();
@@ -55,8 +55,8 @@ describe("pickVoxel", () => {
     const [wx, wy, wz] = wv(48, 0, 48);
     const pick = pickVoxel(
       [block],
-      [wx * 2, 60, wz * 2],
-      [0, -1, 0],
+      { x: wx * 2, y: 60, z: wz * 2 },
+      { x: 0, y: -1, z: 0 },
       DEFAULT_REACH * 1000,
     );
     expect(pick.target).toEqual([wx, wy, wz]);
@@ -68,8 +68,8 @@ describe("pickVoxel", () => {
     // camera at the target's row, west of it, aiming +X
     const pick = pickVoxel(
       [block],
-      [-40, wy * 2, wz * 2],
-      [1, 0, 0],
+      { x: -40, y: wy * 2, z: wz * 2 },
+      { x: 1, y: 0, z: 0 },
       DEFAULT_REACH * 10,
     );
     expect(pick.target).toEqual([wx, wy, wz]);
@@ -83,8 +83,8 @@ describe("pickVoxel", () => {
     // solid before reporting its first hit
     const pick = pickVoxel(
       [block],
-      [wx * 2, wy * 2, wz * 2],
-      [0, 1, 0],
+      { x: wx * 2, y: wy * 2, z: wz * 2 },
+      { x: 0, y: 1, z: 0 },
       DEFAULT_REACH * 100,
     );
     expect(pick.target).not.toEqual([wx, wy, wz]);

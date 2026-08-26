@@ -5,6 +5,7 @@
 // applies the same day-night sun/moon/ambient lighting and distance fog as
 // `RaymarchMaterial`, and the water pass blends over the scene with the same
 // Fresnel reflection as `RaymarchWaterMaterial`.
+import type { Vector3D } from "../utils/maths";
 import type { Node, UniformNode } from "@random-mesh/rmsl";
 import { float, pow, vec3, vec4 } from "@random-mesh/rmsl";
 import {
@@ -20,7 +21,7 @@ import {
 } from "@random-mesh/rmsl/scene";
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import type { VoxelTileConfig } from "./atlas";
-import type { Dim3, WorldBlock } from "../world/level-data";
+import type { WorldBlock } from "../world/level-data";
 import {
   buildBlockMesh,
   buildWaterMesh,
@@ -284,7 +285,7 @@ export class TriangleRenderer implements BlockRenderer {
     for (let i = 0; i < blocks.length; i++) {
       const center = blocks[i].center;
       const triMesh = new Mesh(new BufferGeometry(), this.triMaterial);
-      triMesh.position.set(center[0], center[1], center[2]);
+      triMesh.position.set(center.x, center.y, center.z);
       triMesh.visible = false;
       scene.add(triMesh);
       this.triMeshes.push(triMesh);
@@ -292,7 +293,7 @@ export class TriangleRenderer implements BlockRenderer {
         new BufferGeometry(),
         this.triWaterMaterial,
       );
-      triWaterMesh.position.set(center[0], center[1], center[2]);
+      triWaterMesh.position.set(center.x, center.y, center.z);
       triWaterMesh.visible = false;
       // added to the scene later, via `addWaterToScene`, after the player
       // cube, so the transparent water blends over it like the raymarch water
@@ -450,9 +451,9 @@ export class TriangleRenderer implements BlockRenderer {
     }
   }
 
-  repositionBlock(index: number, center: Dim3): void {
-    this.triMeshes[index].position.set(center[0], center[1], center[2]);
-    this.triWaterMeshes[index].position.set(center[0], center[1], center[2]);
+  repositionBlock(index: number, center: Vector3D): void {
+    this.triMeshes[index].position.set(center.x, center.y, center.z);
+    this.triWaterMeshes[index].position.set(center.x, center.y, center.z);
     // clear the geometry until the worker rebuilds it for the new terrain
     // (avoid a flash of the old block's surface at the new location, without
     // leaking the old buffers); invalidate any in-flight build for the old

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import type { Vector3D } from "../utils/maths";
 import { describe, expect, it } from "vitest";
 import {
   applyLevelData,
@@ -8,7 +9,6 @@ import {
   getWorldHeight,
   isSolidAt,
   isWaterAt,
-  type Dim3,
 } from "./level-data";
 import { VOXEL_DIRT, VOXEL_WATER } from "./voxel-store";
 
@@ -40,7 +40,7 @@ const buf = (u: Uint8Array): Buffer =>
 
 describe("buildBlockData", () => {
   it("matches the synchronous buildBlock path byte-for-byte", () => {
-    const center: Dim3 = [0, 0, 0];
+    const center: Vector3D = { x: 0, y: 0, z: 0 };
     const sync = buildBlock({ center, terrain: flatConfig, surfaceOnly: true });
     const data = buildBlockData({
       center,
@@ -53,8 +53,14 @@ describe("buildBlockData", () => {
   });
 
   it("generates different data for a different centre", () => {
-    const a = buildBlockData({ center: [0, 0, 0], terrain: noiseConfig });
-    const b = buildBlockData({ center: [1000, 0, 1000], terrain: noiseConfig });
+    const a = buildBlockData({
+      center: { x: 0, y: 0, z: 0 },
+      terrain: noiseConfig,
+    });
+    const b = buildBlockData({
+      center: { x: 1000, y: 0, z: 1000 },
+      terrain: noiseConfig,
+    });
     expect(a.fineData.length).toBe(b.fineData.length);
     expect(buf(a.fineData).equals(buf(b.fineData))).toBe(false);
   });
@@ -63,10 +69,10 @@ describe("buildBlockData", () => {
 describe("getGroundHeightBelow", () => {
   // A hand-built column at the block's centre (world x=0, z=0): solid floor
   // (voxel y 0..40), an air tunnel above it (41..70), solid hill (71..90),
-  // then open sky. World Y = center[1] + (vy - vyN/2) * scale, scale = 2.
+  // then open sky. World Y = center.y + (vy - vyN/2) * scale, scale = 2.
   const tunnelBlock = () =>
     buildBlock({
-      center: [0, 0, 0],
+      center: { x: 0, y: 0, z: 0 },
       customFillStore: (store) => {
         for (let vy = 0; vy <= 40; vy++) store.set(48, vy, 48, VOXEL_DIRT);
         for (let vy = 71; vy <= 90; vy++) store.set(48, vy, 48, VOXEL_DIRT);
@@ -102,7 +108,7 @@ describe("getGroundHeightBelow", () => {
   it("returns -Infinity when there's nothing solid below the query point", () => {
     // a floating hill with open air (and empty void) beneath it all the way down
     const block = buildBlock({
-      center: [0, 0, 0],
+      center: { x: 0, y: 0, z: 0 },
       customFillStore: (store) => {
         for (let vy = 71; vy <= 90; vy++) store.set(48, vy, 48, VOXEL_DIRT);
       },
@@ -135,7 +141,7 @@ describe("isSolidAt and isWaterAt", () => {
   // spans (vy - 64) * 2 to (vy - 63) * 2.
   const block = () =>
     buildBlock({
-      center: [0, 0, 0],
+      center: { x: 0, y: 0, z: 0 },
       customFillStore: (store) => {
         for (let vy = 0; vy <= 40; vy++) store.set(48, vy, 48, VOXEL_DIRT);
         store.set(48, 50, 48, VOXEL_WATER);
@@ -163,7 +169,7 @@ describe("isSolidAt and isWaterAt", () => {
     // back when being in water was inferred from the column's surface
     // height rather than read off the voxel.
     const sea = flatConfig.seaLevel;
-    const b = buildBlock({ center: [0, 0, 0], terrain: flatConfig });
+    const b = buildBlock({ center: { x: 0, y: 0, z: 0 }, terrain: flatConfig });
     const { y: vyN } = b.store.voxels;
     const column = 48;
     const surface = getWorldHeight([b], 1, 1);
@@ -191,13 +197,16 @@ describe("isSolidAt and isWaterAt", () => {
 
 describe("applyLevelData", () => {
   it("adopts worker arrays zero-copy into a block", () => {
-    const block = buildBlock({ center: [0, 0, 0], terrain: flatConfig });
+    const block = buildBlock({
+      center: { x: 0, y: 0, z: 0 },
+      terrain: flatConfig,
+    });
     const source = buildBlock({
-      center: [1000, 0, 1000],
+      center: { x: 1000, y: 0, z: 1000 },
       terrain: flatConfig,
     });
     const data = buildBlockData({
-      center: [1000, 0, 1000],
+      center: { x: 1000, y: 0, z: 1000 },
       terrain: flatConfig,
     });
     const originalStore = block.store.data;

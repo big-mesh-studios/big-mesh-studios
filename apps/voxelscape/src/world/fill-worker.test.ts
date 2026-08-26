@@ -29,7 +29,7 @@ describe("fill worker protocol", () => {
 
   it("ignores a fill request before a config arrives", async () => {
     const out = await handleFillMessage(
-      { type: "fill", indices: [0], centers: [[0, 0, 0]] },
+      { type: "fill", indices: [0], centers: [{ x: 0, y: 0, z: 0 }] },
       undefined,
     );
     expect(out.result).toBeUndefined();
@@ -37,7 +37,10 @@ describe("fill worker protocol", () => {
 
   it("ignores a message that is neither config nor fill", async () => {
     const out = await handleFillMessage(
-      { indices: [0], centers: [[0, 0, 0]] } as unknown as FillBatchRequest,
+      {
+        indices: [0],
+        centers: [{ x: 0, y: 0, z: 0 }],
+      } as unknown as FillBatchRequest,
       config,
     );
     expect(out.result).toBeUndefined();
@@ -48,8 +51,8 @@ describe("fill worker protocol", () => {
       type: "fill",
       indices: [3, 7],
       centers: [
-        [0, 0, 0],
-        [192, 0, 0],
+        { x: 0, y: 0, z: 0 },
+        { x: 192, y: 0, z: 0 },
       ],
     };
     const out = await handleFillMessage(req, config);
@@ -61,7 +64,7 @@ describe("fill worker protocol", () => {
     expect(result.fineData.length).toBe(2);
     // per-block data matches the synchronous path
     const sync = buildBlockData({
-      center: [0, 0, 0],
+      center: { x: 0, y: 0, z: 0 },
       terrain: config.terrain,
       surfaceOnly: true,
     });
@@ -72,7 +75,7 @@ describe("fill worker protocol", () => {
 
   it("produces one transferable buffer per array", async () => {
     const result = await buildFillResult(
-      { type: "fill", indices: [0], centers: [[0, 0, 0]] },
+      { type: "fill", indices: [0], centers: [{ x: 0, y: 0, z: 0 }] },
       config,
     );
     const transfers = fillResultTransfers(result);

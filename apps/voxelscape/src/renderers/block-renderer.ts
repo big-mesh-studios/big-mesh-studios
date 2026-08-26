@@ -1,7 +1,7 @@
+import type { Vector3D } from "../utils/maths";
 import type { PerspectiveCamera, Texture } from "@random-mesh/rmsl/scene";
 import type { VoxelTileConfig } from "./atlas";
 import type { dayNightState } from "../environment/day-night";
-import type { Dim3 } from "../world/level-data";
 
 export type DayNight = ReturnType<typeof dayNightState>;
 
@@ -20,7 +20,7 @@ export interface BlockRenderer {
    * work for it, but don't queue a rebuild yet — the block's data hasn't
    * arrived at the new position (see `onBlockChanged`).
    */
-  repositionBlock(index: number, center: Dim3): void;
+  repositionBlock(index: number, center: Vector3D): void;
   /**
    * This block's voxel data has changed (initial fill, ring refill) and is
    * ready to be reflected on screen.

@@ -1,4 +1,4 @@
-import type { Vector3D } from "../utils/maths";
+import { Vector3D } from "../utils/maths";
 import {
   bool,
   Break,
@@ -32,7 +32,7 @@ import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import type { VoxelTileConfig } from "./atlas";
 import type { DayNight } from "./block-renderer";
 import type { BlockRenderer } from "./block-renderer";
-import type { Dim3, WorldBlock } from "../world/level-data";
+import type { WorldBlock } from "../world/level-data";
 import { VOXEL_WATER } from "../world/voxel-store";
 
 /** Voxel identifier for water, used in raymarching shader comparisons. */
@@ -1202,11 +1202,13 @@ export class RaymarchMaterial extends NodeMaterial {
     for (let i = 0; i < this.blocks.length; i++) {
       const level = this.blocks[i].level;
       const prefix = `b${i}_`;
+      const centerUniform = [0, 0, 0];
       this.blockUniforms.push({
-        center: b.materialUniform(
-          prefix + "center",
-          "vec3",
-          () => this.blocks[i].center,
+        center: b.materialUniform(prefix + "center", "vec3", () =>
+          // The block's centre moves as the ring scrolls, so it is packed on
+          // read rather than once — into this block's own array, so reading it
+          // still allocates nothing.
+          Vector3D.toArray(this.blocks[i].center, centerUniform),
         ),
         dimensions: b.materialUniform(
           prefix + "dimensions",
@@ -1388,11 +1390,13 @@ export class RaymarchWaterMaterial extends NodeMaterial {
     for (let i = 0; i < this.blocks.length; i++) {
       const level = this.blocks[i].level;
       const prefix = `b${i}_`;
+      const centerUniform = [0, 0, 0];
       this.blockUniforms.push({
-        center: b.materialUniform(
-          prefix + "center",
-          "vec3",
-          () => this.blocks[i].center,
+        center: b.materialUniform(prefix + "center", "vec3", () =>
+          // The block's centre moves as the ring scrolls, so it is packed on
+          // read rather than once — into this block's own array, so reading it
+          // still allocates nothing.
+          Vector3D.toArray(this.blocks[i].center, centerUniform),
         ),
         dimensions: b.materialUniform(
           prefix + "dimensions",
@@ -1616,7 +1620,7 @@ export class RaymarchRenderer implements BlockRenderer {
       material.fogStart = fogStart;
       material.setBlocks([block]);
       const mesh = new Mesh(geometry, material);
-      mesh.position.set(block.center[0], block.center[1], block.center[2]);
+      mesh.position.set(block.center.x, block.center.y, block.center.z);
       scene.add(mesh);
       this.meshes.push(mesh);
       this.materials.push(material);
@@ -1637,7 +1641,7 @@ export class RaymarchRenderer implements BlockRenderer {
       waterMaterial.seaLevel = seaLevel;
       waterMaterial.setBlocks([block]);
       const waterMesh = new Mesh(geometry, waterMaterial);
-      waterMesh.position.set(block.center[0], block.center[1], block.center[2]);
+      waterMesh.position.set(block.center.x, block.center.y, block.center.z);
       this.waterMeshes.push(waterMesh);
       this.waterMaterials.push(waterMaterial);
     }
@@ -1663,9 +1667,9 @@ export class RaymarchRenderer implements BlockRenderer {
     }
   }
 
-  repositionBlock(index: number, center: Dim3): void {
-    this.meshes[index].position.set(center[0], center[1], center[2]);
-    this.waterMeshes[index].position.set(center[0], center[1], center[2]);
+  repositionBlock(index: number, center: Vector3D): void {
+    this.meshes[index].position.set(center.x, center.y, center.z);
+    this.waterMeshes[index].position.set(center.x, center.y, center.z);
   }
 
   /** No-op: the level texture lives on the shared `WorldBlock` and is already marked dirty by the data layer before this is called. */

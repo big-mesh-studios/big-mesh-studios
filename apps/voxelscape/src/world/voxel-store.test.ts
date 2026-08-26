@@ -89,7 +89,7 @@ describe("fillStore", () => {
       octaves: 1,
       base: 64,
     };
-    fillStore(store, [0, 0, 0], config);
+    fillStore(store, { x: 0, y: 0, z: 0 }, config);
     // top = round(4/2 + 64/2) = 36, clamped to the block's max row (3)
     for (let x = 0; x < 4; x++) {
       for (let z = 0; z < 4; z++) {
@@ -112,7 +112,7 @@ describe("fillStore", () => {
       base: 0,
       seaLevel: 6,
     };
-    fillStore(store, [0, 0, 0], config);
+    fillStore(store, { x: 0, y: 0, z: 0 }, config);
     for (let x = 0; x < 4; x++) {
       for (let z = 0; z < 4; z++) {
         expect(store.get(x, 2, z)).toBe(VOXEL_GRASS);
@@ -132,7 +132,7 @@ describe("fillStore", () => {
       base: 8,
       seaLevel: 6,
     };
-    fillStore(store, [0, 0, 0], config);
+    fillStore(store, { x: 0, y: 0, z: 0 }, config);
     for (let x = 0; x < 4; x++) {
       for (let z = 0; z < 4; z++) {
         expect(store.get(x, 3, z)).toBe(VOXEL_GRASS);
@@ -153,8 +153,8 @@ describe("fillStore", () => {
       base: 20,
       seaLevel: 30,
     };
-    fillStore(a, [0, 0, 0], rolling);
-    fillStore(b, [8, 0, 0], rolling);
+    fillStore(a, { x: 0, y: 0, z: 0 }, rolling);
+    fillStore(b, { x: 8, y: 0, z: 0 }, rolling);
     // a's east border overlaps b's first column; b's west border overlaps a's last
     for (let y = 0; y < 4; y++) {
       for (let z = 0; z < 4; z++) {
@@ -311,9 +311,7 @@ describe("getWorldHeight", () => {
       dimensions: { x: 8, y: 8, z: 8 },
       scale: 2,
     });
-    const blocks = [
-      { level, center: [0, 0, 0] as [number, number, number], store },
-    ];
+    const blocks = [{ level, center: { x: 0, y: 0, z: 0 }, store }];
     // voxel (1, vy, 1) has world xz = -1; the water row 3 would be world y 4,
     // the lakebed row 2 is world y 2 -> must return the lakebed
     expect(getWorldHeight(blocks, -1, -1)).toBe(2);
@@ -327,7 +325,7 @@ describe("customFillStore", () => {
       store.set(1, 1, 1, VOXEL_DIRT);
     };
     const block = buildBlock({
-      center: [0, 0, 0],
+      center: { x: 0, y: 0, z: 0 },
       customFillStore: customFill,
     });
     expect(block.store.get(0, 0, 0)).toBe(VOXEL_GRASS);

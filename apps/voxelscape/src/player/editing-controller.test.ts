@@ -1,4 +1,5 @@
 // @vitest-environment node
+import type { Vector3D } from "../utils/maths";
 import { describe, expect, it, vi } from "vitest";
 import { EditingController } from "./editing-controller";
 import { Inventory } from "./inventory";
@@ -14,7 +15,7 @@ const wv = (lx: number, ly: number, lz: number): [number, number, number] => [
 
 const makeHarness = () => {
   const block = buildBlock({
-    center: [0, 0, 0],
+    center: { x: 0, y: 0, z: 0 },
     customFillStore: (store) => store.set(48, 40, 48, VOXEL_GRASS),
   });
   const layer = new EditLayer();
@@ -22,8 +23,8 @@ const makeHarness = () => {
   const onBlockEdited = vi.fn();
   const onEditRecorded = vi.fn();
   let look = {
-    origin: [0, 0, 0] as [number, number, number],
-    direction: [0, -1, 0] as [number, number, number],
+    origin: { x: 0, y: 0, z: 0 } as Vector3D,
+    direction: { x: 0, y: -1, z: 0 } as Vector3D,
   };
   let playerVoxels: Array<[number, number, number]> | null = null;
   const controller = new EditingController({
@@ -43,7 +44,7 @@ const makeHarness = () => {
     controller,
     onBlockEdited,
     onEditRecorded,
-    setLook: (o: [number, number, number], d: [number, number, number]) => {
+    setLook: (o: Vector3D, d: Vector3D) => {
       look = { origin: o, direction: d };
     },
     setPlayerVoxels: (v: Array<[number, number, number]> | null) => {
@@ -52,15 +53,12 @@ const makeHarness = () => {
   };
 };
 
-const downOntoTarget = (): [
-  [number, number, number],
-  [number, number, number],
-] => {
+const downOntoTarget = (): [Vector3D, Vector3D] => {
   const [wx, wy] = wv(48, 40, 48);
   // camera one voxel above the target (voxel -20), aiming straight down
   return [
-    [wx * 2, (wy + 4) * 2, wx * 2],
-    [0, -1, 0],
+    { x: wx * 2, y: (wy + 4) * 2, z: wx * 2 },
+    { x: 0, y: -1, z: 0 },
   ];
 };
 
@@ -81,14 +79,14 @@ describe("EditingController.breakBlock", () => {
 
   it("does nothing when there is no target in reach", () => {
     const h = makeHarness();
-    h.setLook([0, 60, 0], [0, -1, 0]); // far above, target out of reach
+    h.setLook({ x: 0, y: 60, z: 0 }, { x: 0, y: -1, z: 0 }); // far above, target out of reach
     expect(h.controller.breakBlock()).toBeNull();
     expect(h.inventory.count(VOXEL_DIRT)).toBe(0);
   });
 
   it("refuses to break the world floor", () => {
     const floorBlock = buildBlock({
-      center: [0, 0, 0],
+      center: { x: 0, y: 0, z: 0 },
       customFillStore: (store) => store.set(48, 0, 48, VOXEL_GRASS),
     });
     const layer = new EditLayer();
@@ -102,12 +100,12 @@ describe("EditingController.breakBlock", () => {
       onEditRecorded: vi.fn(),
       getLook: () => ({
         // camera one voxel above the floor voxel, aiming straight down
-        origin: [
-          wv(48, 0, 48)[0] * 2,
-          (wv(48, 0, 48)[1] + 1) * 2,
-          wv(48, 0, 48)[0] * 2,
-        ],
-        direction: [0, -1, 0],
+        origin: {
+          x: wv(48, 0, 48)[0] * 2,
+          y: (wv(48, 0, 48)[1] + 1) * 2,
+          z: wv(48, 0, 48)[0] * 2,
+        },
+        direction: { x: 0, y: -1, z: 0 },
       }),
       getPlayerVoxels: () => null,
     });
@@ -122,7 +120,10 @@ describe("EditingController.placeBlock", () => {
     const h = makeHarness();
     const target = wv(48, 40, 48);
     h.inventory.add(VOXEL_DIRT, 2);
-    h.setLook([(target[0] - 3) * 2, target[1] * 2, target[2] * 2], [1, 0, 0]);
+    h.setLook(
+      { x: (target[0] - 3) * 2, y: target[1] * 2, z: target[2] * 2 },
+      { x: 1, y: 0, z: 0 },
+    );
     h.setPlayerVoxels([]);
     const msg = h.controller.placeBlock();
     expect(msg).toContain("Dirt");
@@ -137,7 +138,10 @@ describe("EditingController.placeBlock", () => {
     const h = makeHarness();
     const target = wv(48, 40, 48);
     h.inventory.add(VOXEL_DIRT, 2);
-    h.setLook([(target[0] - 3) * 2, target[1] * 2, target[2] * 2], [1, 0, 0]);
+    h.setLook(
+      { x: (target[0] - 3) * 2, y: target[1] * 2, z: target[2] * 2 },
+      { x: 1, y: 0, z: 0 },
+    );
     h.setPlayerVoxels([]);
     // place cell local (47,40,48); fill the cell above it so no grass should grow
     h.block.store.set(47, 41, 48, VOXEL_DIRT);
@@ -151,7 +155,10 @@ describe("EditingController.placeBlock", () => {
     const h = makeHarness();
     const target = wv(48, 40, 48);
     h.inventory.add(VOXEL_DIRT, 2);
-    h.setLook([(target[0] - 1) * 2, target[1] * 2, target[2] * 2], [1, 0, 0]);
+    h.setLook(
+      { x: (target[0] - 1) * 2, y: target[1] * 2, z: target[2] * 2 },
+      { x: 1, y: 0, z: 0 },
+    );
     h.setPlayerVoxels([[target[0] - 1, target[1], target[2]]]);
     const msg = h.controller.placeBlock();
     expect(msg).toContain("inside");
@@ -162,7 +169,10 @@ describe("EditingController.placeBlock", () => {
     const h = makeHarness();
     const target = wv(48, 40, 48);
     h.setPlayerVoxels([]);
-    h.setLook([(target[0] - 3) * 2, target[1] * 2, target[2] * 2], [1, 0, 0]);
+    h.setLook(
+      { x: (target[0] - 3) * 2, y: target[1] * 2, z: target[2] * 2 },
+      { x: 1, y: 0, z: 0 },
+    );
     expect(h.controller.placeBlock()).toContain("no dirt to place");
     expect(h.layer.get([target[0] - 1, target[1], target[2]])).toBeUndefined();
   });
@@ -172,7 +182,7 @@ describe("EditingController.placeBlock", () => {
     h.inventory.add(VOXEL_DIRT, 2);
     h.setPlayerVoxels([]);
     // aim straight up into empty sky: no target face, so nothing is placed
-    h.setLook([0, 60, 0], [0, 1, 0]);
+    h.setLook({ x: 0, y: 60, z: 0 }, { x: 0, y: 1, z: 0 });
     expect(h.controller.placeBlock()).toContain("point at a block face");
     expect(h.layer.size).toBe(0);
   });

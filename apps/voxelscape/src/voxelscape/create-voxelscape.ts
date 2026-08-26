@@ -1,3 +1,4 @@
+import type { Vector3D } from "../utils/maths";
 import { Color, PerspectiveCamera, Scene } from "@random-mesh/rmsl/scene";
 import { createSignal, type Accessor } from "solid-js";
 import { AtprotoController } from "../atproto/atproto-controller";
@@ -11,7 +12,6 @@ import { createDebugCommands } from "../commands";
 import { EditingController } from "../player/editing-controller";
 import { Inventory } from "../player/inventory";
 import type { Player, PlayerConfig } from "../player/player";
-import { type Dim3 } from "../world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "../world/noise";
 
 /** Sky blue, matching the material's default fog color so the horizon blends. */
@@ -25,7 +25,7 @@ export interface VoxelscapeConfig {
   /** When true, only surface voxels are written into each block's GPU chunks instead of the full solid volume. */
   surfaceOnly?: boolean;
   /** Where the player starts, in world units; the spawn height is the terrain surface there. */
-  spawn?: Dim3;
+  spawn?: Vector3D;
   /** Movement settings for this world's player; anything omitted takes its default. */
   player?: Partial<PlayerConfig>;
   /**
@@ -69,7 +69,7 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
   const blocksPerSide = config.blocksPerSide ?? 5;
   const terrain = config.terrain ?? DEFAULT_TERRAIN;
   const surfaceOnly = config.surfaceOnly ?? true;
-  const spawn = config.spawn ?? [0, 0, 0];
+  const spawn = config.spawn ?? { x: 0, y: 0, z: 0 };
   const debugPerf =
     config.debugPerf ??
     (typeof window !== "undefined" && window.location.hash.includes("perf"));

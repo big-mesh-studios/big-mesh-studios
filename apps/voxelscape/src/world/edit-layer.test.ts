@@ -12,7 +12,7 @@ import { VOXEL_GRASS, VOXEL_DIRT, VOXEL_AIR } from "./voxel-store";
 
 const emptyBlock = () =>
   buildBlock({
-    center: [0, 0, 0],
+    center: { x: 0, y: 0, z: 0 },
     customFillStore: (store) => {
       void store;
     },
@@ -61,7 +61,7 @@ describe("EditLayer", () => {
     const written = layer.applyToBlock(block);
     expect(written).toBe(1);
     const local = worldVoxelToLocal(block.store, block.center, [1, 2, 3]);
-    expect(block.store.get(local[0], local[1], local[2])).toBe(VOXEL_GRASS);
+    expect(block.store.get(local.x, local.y, local.z)).toBe(VOXEL_GRASS);
   });
 
   it("round-trips through snapshot and back", () => {
@@ -83,15 +83,15 @@ describe("world voxel mapping", () => {
       [191, 255, 191],
       [1, 200, 3],
     ] as const) {
-      const w = localToWorldVoxel(block.store, block.center, [
-        l[0],
-        l[1],
-        l[2],
-      ]);
+      const w = localToWorldVoxel(block.store, block.center, {
+        x: l[0],
+        y: l[1],
+        z: l[2],
+      });
       const back = worldVoxelToLocal(block.store, block.center, w);
-      expect(back[0], `x round-trip for ${l}`).toBe(l[0]);
-      expect(back[1], `y round-trip for ${l}`).toBe(l[1]);
-      expect(back[2], `z round-trip for ${l}`).toBe(l[2]);
+      expect(back.x, `x round-trip for ${l}`).toBe(l[0]);
+      expect(back.y, `y round-trip for ${l}`).toBe(l[1]);
+      expect(back.z, `z round-trip for ${l}`).toBe(l[2]);
     }
   });
 
@@ -109,11 +109,11 @@ describe("world voxel mapping", () => {
     // fill one voxel of terrain, then erase it via the overlay
     const local = [96, 40, 96] as const;
     block.store.set(local[0], local[1], local[2], VOXEL_GRASS);
-    const w = localToWorldVoxel(block.store, block.center, [
-      local[0],
-      local[1],
-      local[2],
-    ]);
+    const w = localToWorldVoxel(block.store, block.center, {
+      x: local[0],
+      y: local[1],
+      z: local[2],
+    });
     const layer = new EditLayer();
     layer.set(w, VOXEL_AIR, 1);
     layer.applyToBlock(block);

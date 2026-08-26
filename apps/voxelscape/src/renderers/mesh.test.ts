@@ -154,8 +154,8 @@ describe("buildBlockMesh", () => {
   it("culls the seam face shared with a neighbouring block", () => {
     const a = smallStore();
     const b = smallStore();
-    fillStore(a, [0, 0, 0], solidTerrain);
-    fillStore(b, [8, 0, 0], solidTerrain);
+    fillStore(a, { x: 0, y: 0, z: 0 }, solidTerrain);
+    fillStore(b, { x: 8, y: 0, z: 0 }, solidTerrain);
     const meshA = buildBlockMesh(a, []);
     const meshB = buildBlockMesh(b, []);
     // 4x4 top surfaces; no +X/-X seam face between the two blocks
@@ -169,8 +169,8 @@ describe("buildBlockMesh", () => {
   it("emits no vertical water face across a chunk seam", () => {
     const a = smallStore();
     const b = smallStore();
-    fillStore(a, [0, 0, 0], seaTerrain);
-    fillStore(b, [8, 0, 0], seaTerrain);
+    fillStore(a, { x: 0, y: 0, z: 0 }, seaTerrain);
+    fillStore(b, { x: 8, y: 0, z: 0 }, seaTerrain);
     const meshA = buildWaterMesh(a);
     const meshB = buildWaterMesh(b);
     // water surfaces only: a top face per column, never a cliff-side wall
@@ -199,8 +199,8 @@ describe("buildBlockMesh", () => {
       base: 20,
       seaLevel: 30,
     };
-    fillStore(a, [0, 0, 0], rolling);
-    fillStore(b, [8, 0, 0], rolling);
+    fillStore(a, { x: 0, y: 0, z: 0 }, rolling);
+    fillStore(b, { x: 8, y: 0, z: 0 }, rolling);
     // a's east border overlaps b's first column; b's west border overlaps a's last
     for (let y = 0; y < 4; y++) {
       for (let z = 0; z < 4; z++) {
@@ -212,7 +212,7 @@ describe("buildBlockMesh", () => {
 
   it("culls the block's outer edge faces against generated padding", () => {
     const store = smallStore();
-    fillStore(store, [0, 0, 0], solidTerrain);
+    fillStore(store, { x: 0, y: 0, z: 0 }, solidTerrain);
     const mesh = buildBlockMesh(store, []);
     // the border is generated terrain, not air, so even a lone block's
     // outermost faces cull against it

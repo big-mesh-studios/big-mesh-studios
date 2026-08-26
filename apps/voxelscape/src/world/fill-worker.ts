@@ -4,7 +4,8 @@
 // centres of a ring step's changed blocks; each block's three arrays (store
 // data, broad grid, fine chunks) are posted back transferred (moved, not
 // copied) and adopted zero-copy into the block's store and level.
-import { buildBlockData, type Dim3, type TerrainConfig } from "./level-data";
+import type { Vector3D } from "../utils/maths";
+import { buildBlockData, type TerrainConfig } from "./level-data";
 import type { FillStoreFn } from "./voxel-store";
 
 export interface FillConfig {
@@ -16,7 +17,7 @@ export interface FillConfig {
 export interface FillBatchRequest {
   type: "fill";
   indices: number[];
-  centers: Dim3[];
+  centers: Vector3D[];
 }
 
 export interface FillBatchResult {

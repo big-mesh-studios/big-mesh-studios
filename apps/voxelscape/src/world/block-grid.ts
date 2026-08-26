@@ -1,9 +1,5 @@
-import {
-  BLOCK_WORLD,
-  buildBlock,
-  type Dim3,
-  type WorldBlock,
-} from "./level-data";
+import { BLOCK_WORLD, buildBlock, type WorldBlock } from "./level-data";
+import type { Vector3D } from "../utils/maths";
 import type { TerrainConfig } from "./noise";
 import type { FillStoreFn } from "./voxel-store";
 
@@ -34,11 +30,11 @@ export class BlockGrid {
           x: i - (n - 1) / 2,
           z: j - (n - 1) / 2,
         };
-        const center: Dim3 = [
-          grid.x * BLOCK_WORLD.x,
-          0,
-          grid.z * BLOCK_WORLD.z,
-        ];
+        const center: Vector3D = {
+          x: grid.x * BLOCK_WORLD.x,
+          y: 0,
+          z: grid.z * BLOCK_WORLD.z,
+        };
         const block: WorldBlock = buildBlock({
           center,
           terrain: params.terrain,

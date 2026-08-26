@@ -1,9 +1,9 @@
 import {
   applyLevelData,
   syncLevelFromStore,
-  type Dim3,
   type WorldBlock,
 } from "./level-data";
+import type { Vector3D } from "../utils/maths";
 import type { EditLayer } from "./edit-layer";
 import {
   type FillBatchRequest,
@@ -117,7 +117,7 @@ export class FillClient {
    * available or generating it synchronously otherwise. `centers[k]` is the
    * world-space center at which `indices[k]` should be generated.
    */
-  requestFill(indices: number[], centers: Dim3[]): void {
+  requestFill(indices: number[], centers: Vector3D[]): void {
     if (this.worker !== undefined && this.workerAvailable) {
       this.sendFillBatch(indices, centers);
     } else {
@@ -155,7 +155,7 @@ export class FillClient {
     }
   }
 
-  private sendFillBatch(indices: number[], centers: Dim3[]): void {
+  private sendFillBatch(indices: number[], centers: Vector3D[]): void {
     const req: FillBatchRequest = { type: "fill", indices, centers };
     for (const i of indices) {
       this.fillGen[i]++;

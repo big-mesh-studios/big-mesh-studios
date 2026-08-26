@@ -11,12 +11,8 @@
 // Edits are addressed in the LOD-0 voxel grid: one voxel is `VOXEL_SIZE`
 // world units. Every block the ring builds is LOD 0, so `block.store.scale`
 // equals `VOXEL_SIZE` and the local<->world mapping below is exact.
-import {
-  BLOCK_WORLD,
-  VOXEL_SIZE,
-  type Dim3,
-  type WorldBlock,
-} from "./level-data";
+import { BLOCK_WORLD, VOXEL_SIZE, type WorldBlock } from "./level-data";
+import type { Vector3D } from "../utils/maths";
 import type { VoxelStore } from "./voxel-store";
 
 /** A single recorded edit: the world voxel's new id plus when it was made. */
@@ -47,16 +43,16 @@ const fromKey = (key: string): WorldVoxel => {
  */
 export const localToWorldVoxel = (
   store: VoxelStore,
-  center: Dim3,
-  l: Dim3,
+  center: Vector3D,
+  l: Vector3D,
 ): WorldVoxel => {
   const { x: nx, y: ny, z: nz } = store.voxels;
-  const [cx, cy, cz] = center;
+  const { x: cx, y: cy, z: cz } = center;
   const s = store.scale;
   return [
-    Math.round(cx / s - nx / 2 + l[0]),
-    Math.round(cy / s - ny / 2 + l[1]),
-    Math.round(cz / s - nz / 2 + l[2]),
+    Math.round(cx / s - nx / 2 + l.x),
+    Math.round(cy / s - ny / 2 + l.y),
+    Math.round(cz / s - nz / 2 + l.z),
   ];
 };
 
@@ -66,17 +62,17 @@ export const localToWorldVoxel = (
  */
 export const worldVoxelToLocal = (
   store: VoxelStore,
-  center: Dim3,
+  center: Vector3D,
   w: WorldVoxel,
-): Dim3 => {
+): Vector3D => {
   const { x: nx, y: ny, z: nz } = store.voxels;
-  const [cx, cy, cz] = center;
+  const { x: cx, y: cy, z: cz } = center;
   const s = store.scale;
-  return [
-    Math.round(w[0] - cx / s + nx / 2),
-    Math.round(w[1] - cy / s + ny / 2),
-    Math.round(w[2] - cz / s + nz / 2),
-  ];
+  return {
+    x: Math.round(w[0] - cx / s + nx / 2),
+    y: Math.round(w[1] - cy / s + ny / 2),
+    z: Math.round(w[2] - cz / s + nz / 2),
+  };
 };
 
 /**
@@ -84,12 +80,12 @@ export const worldVoxelToLocal = (
  * interior volume, in the LOD-0 grid.
  */
 export const blockWorldVoxelRange = (
-  center: Dim3,
+  center: Vector3D,
 ): { min: WorldVoxel; max: WorldVoxel } => {
   const min: WorldVoxel = [
-    Math.round((center[0] - BLOCK_WORLD.x / 2) / VOXEL_SIZE),
-    Math.round((center[1] - BLOCK_WORLD.y / 2) / VOXEL_SIZE),
-    Math.round((center[2] - BLOCK_WORLD.z / 2) / VOXEL_SIZE),
+    Math.round((center.x - BLOCK_WORLD.x / 2) / VOXEL_SIZE),
+    Math.round((center.y - BLOCK_WORLD.y / 2) / VOXEL_SIZE),
+    Math.round((center.z - BLOCK_WORLD.z / 2) / VOXEL_SIZE),
   ];
   const max: WorldVoxel = [
     min[0] + BLOCK_WORLD.x / VOXEL_SIZE - 1,
@@ -176,8 +172,8 @@ export class EditLayer {
     let written = 0;
     for (const { w, edit } of matches) {
       const local = worldVoxelToLocal(block.store, block.center, w);
-      if (block.store.inBounds(local[0], local[1], local[2])) {
-        block.store.set(local[0], local[1], local[2], edit.id);
+      if (block.store.inBounds(local.x, local.y, local.z)) {
+        block.store.set(local.x, local.y, local.z, edit.id);
         written++;
       }
     }

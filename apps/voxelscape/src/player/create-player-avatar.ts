@@ -5,6 +5,7 @@ import {
   PerspectiveCamera,
   Scene,
 } from "@random-mesh/rmsl/scene";
+import type { Vector3D } from "../utils/maths";
 import type { InputSnapshot } from "./create-input";
 import {
   createPlayer,
@@ -17,7 +18,7 @@ import {
   type PlayerWorld,
 } from "./player";
 import type { WorldVoxel } from "../world/edit-layer";
-import { VOXEL_SIZE, type Dim3 } from "../world/level-data";
+import { VOXEL_SIZE } from "../world/level-data";
 
 /**
  * Distance from the origin beyond which player movement is clamped. The
@@ -42,7 +43,7 @@ export interface PlayerAvatarConfig {
   camera: PerspectiveCamera;
   terrain: AvatarTerrain;
   /** Where the player starts, in world units; the height is the terrain surface there. */
-  spawn: Dim3;
+  spawn: Vector3D;
   /** Movement settings for this player; anything omitted takes its default. */
   player?: Partial<PlayerConfig>;
 }
@@ -58,7 +59,7 @@ export interface PlayerAvatar {
   /** Moves the cube and the camera onto the player's current position. */
   place(): void;
   /** The ray the crosshair points along, from the camera's eye. */
-  look(): { origin: Dim3; direction: Dim3 };
+  look(): { origin: Vector3D; direction: Vector3D };
   /** Every world voxel the player's cube overlaps, so an edit can't bury them. */
   occupiedVoxels(): WorldVoxel[];
   /** First person puts the camera at the player's eye; third person hovers behind the cube. */
@@ -85,9 +86,9 @@ export const createPlayerAvatar = ({
 
   const config = { ...DEFAULT_PLAYER_CONFIG, ...playerConfig };
   const player = createPlayer(
-    spawn[0],
-    terrain.heightAt(spawn[0], spawn[2]) + config.halfSize + 0.1,
-    spawn[2],
+    spawn.x,
+    terrain.heightAt(spawn.x, spawn.z) + config.halfSize + 0.1,
+    spawn.z,
     config,
   );
 
@@ -131,8 +132,8 @@ export const createPlayerAvatar = ({
       const eye = camera.position;
       const [dx, dy, dz] = lookDirection(player);
       return {
-        origin: [eye.x, eye.y, eye.z],
-        direction: [dx, dy, dz],
+        origin: { x: eye.x, y: eye.y, z: eye.z },
+        direction: { x: dx, y: dy, z: dz },
       };
     },
 

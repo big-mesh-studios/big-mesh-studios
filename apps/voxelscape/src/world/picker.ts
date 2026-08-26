@@ -8,7 +8,8 @@ import {
   worldVoxelToLocal,
   type WorldVoxel,
 } from "./edit-layer";
-import { VOXEL_SIZE, type Dim3, type WorldBlock } from "./level-data";
+import type { Vector3D } from "../utils/maths";
+import { VOXEL_SIZE, type WorldBlock } from "./level-data";
 import { VOXEL_AIR } from "./voxel-store";
 
 /** Default reach, in world units; about 4.5 voxels. */
@@ -33,7 +34,7 @@ const readWorldVoxel = (blocks: WorldBlock[], w: WorldVoxel): number => {
       w[2] <= max[2]
     ) {
       const local = worldVoxelToLocal(blocks[i].store, blocks[i].center, w);
-      return blocks[i].store.get(local[0], local[1], local[2]);
+      return blocks[i].store.get(local.x, local.y, local.z);
     }
   }
   return VOXEL_AIR;
@@ -47,26 +48,26 @@ const readWorldVoxel = (blocks: WorldBlock[], w: WorldVoxel): number => {
  */
 export const pickVoxel = (
   blocks: WorldBlock[],
-  origin: Dim3,
-  direction: Dim3,
+  origin: Vector3D,
+  direction: Vector3D,
   maxReach: number = DEFAULT_REACH,
 ): VoxelPick => {
   // Work in the LOD-0 voxel grid; the voxel is isotropic, so the ray direction
   // stays a unit vector in the same space.
   const o: [number, number, number] = [
-    origin[0] / VOXEL_SIZE,
-    origin[1] / VOXEL_SIZE,
-    origin[2] / VOXEL_SIZE,
+    origin.x / VOXEL_SIZE,
+    origin.y / VOXEL_SIZE,
+    origin.z / VOXEL_SIZE,
   ];
   let x = Math.floor(o[0]);
   let y = Math.floor(o[1]);
   let z = Math.floor(o[2]);
-  const stepX = direction[0] > 0 ? 1 : direction[0] < 0 ? -1 : 0;
-  const stepY = direction[1] > 0 ? 1 : direction[1] < 0 ? -1 : 0;
-  const stepZ = direction[2] > 0 ? 1 : direction[2] < 0 ? -1 : 0;
-  const tDeltaX = stepX === 0 ? Infinity : Math.abs(1 / direction[0]);
-  const tDeltaY = stepY === 0 ? Infinity : Math.abs(1 / direction[1]);
-  const tDeltaZ = stepZ === 0 ? Infinity : Math.abs(1 / direction[2]);
+  const stepX = direction.x > 0 ? 1 : direction.x < 0 ? -1 : 0;
+  const stepY = direction.y > 0 ? 1 : direction.y < 0 ? -1 : 0;
+  const stepZ = direction.z > 0 ? 1 : direction.z < 0 ? -1 : 0;
+  const tDeltaX = stepX === 0 ? Infinity : Math.abs(1 / direction.x);
+  const tDeltaY = stepY === 0 ? Infinity : Math.abs(1 / direction.y);
+  const tDeltaZ = stepZ === 0 ? Infinity : Math.abs(1 / direction.z);
   let tMaxX =
     stepX === 0
       ? Infinity

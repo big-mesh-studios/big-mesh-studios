@@ -1,9 +1,5 @@
-import {
-  BLOCK_WORLD,
-  resetLevel,
-  type Dim3,
-  type WorldBlock,
-} from "./level-data";
+import { BLOCK_WORLD, resetLevel, type WorldBlock } from "./level-data";
+import type { Vector3D } from "../utils/maths";
 import { FillClient } from "./fill-client";
 import type { BlockGrid } from "./block-grid";
 import type { EditLayer } from "./edit-layer";
@@ -23,7 +19,7 @@ export interface WorldRingParams {
    * Called when the ring steps and a slot now represents a different world
    * position, before its new data has arrived.
    */
-  onBlockReposition: (index: number, center: Dim3) => void;
+  onBlockReposition: (index: number, center: Vector3D) => void;
   customFillStore?: FillStoreFn;
   customFillStoreUrl?: string;
   /** Applied to each block after its terrain is generated (see `FillClient`). */
@@ -37,7 +33,7 @@ export interface WorldRingParams {
 export class WorldRing {
   private readonly blocks: WorldBlock[];
   private readonly worldGrid: { x: number; z: number }[];
-  private readonly onBlockReposition: (index: number, center: Dim3) => void;
+  private readonly onBlockReposition: (index: number, center: Vector3D) => void;
   private readonly fillClient: FillClient;
 
   // Keeps the ring window centred on the player's block.
@@ -109,13 +105,13 @@ export class WorldRing {
       }
     }
     const changedIndices: number[] = [];
-    const changedCenters: Dim3[] = [];
+    const changedCenters: Vector3D[] = [];
     for (const i of changed) {
-      const center: Dim3 = [
-        this.worldGrid[i].x * BLOCK_WORLD.x,
-        0,
-        this.worldGrid[i].z * BLOCK_WORLD.z,
-      ];
+      const center: Vector3D = {
+        x: this.worldGrid[i].x * BLOCK_WORLD.x,
+        y: 0,
+        z: this.worldGrid[i].z * BLOCK_WORLD.z,
+      };
       this.blocks[i].center = center;
       // reposition both renderers' meshes for this slot; the triangle
       // renderer also clears its geometry there to avoid flashing the old
