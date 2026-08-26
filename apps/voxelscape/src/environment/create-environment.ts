@@ -49,9 +49,10 @@ export interface Environment {
  * schedule, the weather drives its own sound and tints the lighting, so the
  * three only ever advance together and in that order.
  */
-export const createEnvironment = (config: EnvironmentConfig): Environment => {
-  const { scene, groundHeightAt } = config;
-
+export const createEnvironment = ({
+  scene,
+  groundHeightAt,
+}: EnvironmentConfig): Environment => {
   const dayNight = new DayNightController({ scene });
   const sound = new SoundController();
   const weather = new WeatherController({
@@ -61,17 +62,13 @@ export const createEnvironment = (config: EnvironmentConfig): Environment => {
 
   // Browsers suspend audio until the first user gesture, so the sound stays
   // silent until one arrives. Either listener unlocking it removes both.
-  const firstGesture = new AbortController();
-  const unlockSound = (): void => {
+  const controller = new AbortController();
+  const unlockSound = () => {
     sound.unlock();
-    firstGesture.abort();
+    controller.abort();
   };
-  window.addEventListener("pointerdown", unlockSound, {
-    signal: firstGesture.signal,
-  });
-  window.addEventListener("keydown", unlockSound, {
-    signal: firstGesture.signal,
-  });
+  window.addEventListener("pointerdown", unlockSound, controller);
+  window.addEventListener("keydown", unlockSound, controller);
 
   return {
     dayNight,
@@ -95,7 +92,7 @@ export const createEnvironment = (config: EnvironmentConfig): Environment => {
     dispose() {
       // release the audio hardware
       sound.dispose();
-      firstGesture.abort();
+      controller.abort();
     },
   };
 };

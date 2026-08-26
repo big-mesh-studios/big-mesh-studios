@@ -8,16 +8,16 @@ import {
   syncLevelFromStore,
   type Dim3,
   type WorldBlock,
-} from "./world/level-data";
+} from "../world/level-data";
 import {
   blockWorldVoxelRange,
   worldVoxelToLocal,
   type EditLayer,
   type WorldVoxel,
-} from "./world/edit-layer";
-import { pickVoxel, type VoxelPick } from "./world/picker";
+} from "../world/edit-layer";
+import { pickVoxel, type VoxelPick } from "../world/picker";
 import { BREAK_YIELD, COLLECTABLE, type Inventory } from "./inventory";
-import { VOXEL_AIR, VOXEL_GRASS, VOXEL_DIRT } from "./world/voxel-store";
+import { VOXEL_AIR, VOXEL_GRASS, VOXEL_DIRT } from "../world/voxel-store";
 
 export interface EditingControllerParams {
   blocks: WorldBlock[];

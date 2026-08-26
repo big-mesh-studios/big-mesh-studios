@@ -1,6 +1,6 @@
 import { Component, createSignal, onCleanup } from "solid-js";
 import * as THREE from "three";
-import { useVoxelscape } from "../voxelscape-context";
+import { useVoxelscape } from "../voxelscape/voxelscape-context";
 import { ActionButton } from "./ActionButton";
 import { Joystick } from "./Joystick";
 

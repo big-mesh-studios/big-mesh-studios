@@ -4,7 +4,7 @@
 // one slot; water isn't collectable and the floor isn't editable (see
 // `EditingController`). A plain class with an optional change callback so the
 // hotbar HUD can refresh when the count or the selection changes.
-import { VOXEL_DIRT, VOXEL_GRASS } from "./world/voxel-store";
+import { VOXEL_DIRT, VOXEL_GRASS } from "../world/voxel-store";
 
 /** The block name shown for each placeable inventory item (dirt only). */
 export const COLLECTABLE: Record<number, string> = {

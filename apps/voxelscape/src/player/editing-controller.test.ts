@@ -2,9 +2,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { EditingController } from "./editing-controller";
 import { Inventory } from "./inventory";
-import { buildBlock } from "./world/level-data";
-import { EditLayer } from "./world/edit-layer";
-import { VOXEL_GRASS, VOXEL_DIRT, VOXEL_AIR } from "./world/voxel-store";
+import { buildBlock } from "../world/level-data";
+import { EditLayer } from "../world/edit-layer";
+import { VOXEL_GRASS, VOXEL_DIRT, VOXEL_AIR } from "../world/voxel-store";
 
 const wv = (lx: number, ly: number, lz: number): [number, number, number] => [
   lx - 48,

@@ -1,9 +1,47 @@
 import type { AtprotoController } from "./atproto/atproto-controller";
-import { Commander } from "./commander";
-import type { DayNightController } from "./day-night-controller";
+import type { DayNightController } from "./environment/day-night-controller";
 import type { RendererSwitch } from "./renderers/renderer-switch";
-import type { SoundController } from "./sound-controller";
-import type { WeatherController } from "./weather-controller";
+import type { SoundController } from "./environment/sound-controller";
+import type { WeatherController } from "./environment/weather-controller";
+
+/**
+ * Declares every debug console command as a single object literal, keyed by
+ * command name, built once after every command-owning object already
+ * exists. Each entry's `run` closure does its own raw-argument parsing,
+ * validation, and aliasing, then calls a plain typed method on the owning
+ * object — the owning objects themselves expose no command-shaped API and
+ * have no idea a console exists.
+ */
+export interface CommandEntry {
+  help: string;
+  run: (rest: string[]) => string | Promise<string>;
+}
+
+export class Commander {
+  private readonly commands: Record<string, CommandEntry>;
+
+  constructor(commands: Record<string, CommandEntry>) {
+    this.commands = commands;
+  }
+
+  run(line: string): string | Promise<string> {
+    const [name, ...rest] = line.trim().toLowerCase().split(/\s+/);
+    if (name === "/help") {
+      return this.helpText();
+    }
+    const command = this.commands[name];
+    if (command === undefined) {
+      return `unknown command "${line}" — try /help`;
+    }
+    return command.run(rest);
+  }
+
+  helpText(): string {
+    return Object.values(this.commands)
+      .map((command) => command.help)
+      .join("\n");
+  }
+}
 
 export interface DebugCommandsParams {
   dayNight: DayNightController;

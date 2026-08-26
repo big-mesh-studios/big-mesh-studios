@@ -5,7 +5,7 @@ import type {
 } from "@random-mesh/rmsl/scene";
 import type { VoxelTileConfig } from "./atlas";
 import type { Dim3, WorldBlock } from "../world/level-data";
-import { sampleFetchCount } from "../perf";
+import { sampleFetchCount } from "../render/perf";
 import type { DayNight } from "./block-renderer";
 import { RaymarchRenderer } from "./raymarch-renderer";
 import { TriangleRenderer } from "./triangle-renderer";

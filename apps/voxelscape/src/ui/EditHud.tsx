@@ -5,7 +5,7 @@ import styles from "./EditHud.module.css";
 // `Inventory`'s `onChange` callback so counts and the selection refresh
 // without wiring a per-block signal through the domain.
 import { Component, createSignal, For, onCleanup } from "solid-js";
-import { useVoxelscape } from "../voxelscape-context";
+import { useVoxelscape } from "../voxelscape/voxelscape-context";
 
 export const EditHud: Component = () => {
   const { inventory, editStatus, inReach } = useVoxelscape();

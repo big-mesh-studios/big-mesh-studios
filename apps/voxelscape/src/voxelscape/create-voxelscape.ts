@@ -1,18 +1,18 @@
 import { Color, PerspectiveCamera, Scene } from "@random-mesh/rmsl/scene";
 import { createSignal, type Accessor } from "solid-js";
-import { AtprotoController } from "./atproto/atproto-controller";
-import type { Commander } from "./commander";
-import { createEnvironment } from "./create-environment";
-import { createInput, type InputController } from "./create-input";
-import { createPlayerAvatar } from "./create-player-avatar";
-import { createRenderLoop } from "./create-render-loop";
-import { createVoxelWorld } from "./create-voxel-world";
-import { createDebugCommands } from "./debug-commands";
-import { EditingController } from "./editing-controller";
-import { Inventory } from "./inventory";
-import type { Player, PlayerConfig } from "./player";
-import { type Dim3 } from "./world/level-data";
-import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
+import { AtprotoController } from "../atproto/atproto-controller";
+import type { Commander } from "../commands";
+import { createEnvironment } from "../environment/create-environment";
+import { createInput, type InputController } from "../player/create-input";
+import { createPlayerAvatar } from "../player/create-player-avatar";
+import { createRenderLoop } from "../render/create-render-loop";
+import { createVoxelWorld } from "../world/create-voxel-world";
+import { createDebugCommands } from "../commands";
+import { EditingController } from "../player/editing-controller";
+import { Inventory } from "../player/inventory";
+import type { Player, PlayerConfig } from "../player/player";
+import { type Dim3 } from "../world/level-data";
+import { DEFAULT_TERRAIN, type TerrainConfig } from "../world/noise";
 
 /** Sky blue, matching the material's default fog color so the horizon blends. */
 const SKY_BLUE = 0x87ceeb;

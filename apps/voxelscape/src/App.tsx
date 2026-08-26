@@ -5,12 +5,12 @@ import {
   onCleanup,
   Show,
 } from "solid-js";
-import { createVoxelscape } from "./create-voxelscape";
+import { createVoxelscape } from "./voxelscape/create-voxelscape";
 import CoarseControls from "./ui/CoarseControls";
 import { Console } from "./ui/Console";
 import { EditHud } from "./ui/EditHud";
 import { createMediaQuery } from "./utils/create-media-query";
-import { VoxelscapeContext } from "./voxelscape-context";
+import { VoxelscapeContext } from "./voxelscape/voxelscape-context";
 
 const App: Component<{}> = () => {
   const coarsePointer = createMediaQuery("(any-pointer: coarse)");

@@ -16,8 +16,8 @@ import {
   type PlayerConfig,
   type PlayerWorld,
 } from "./player";
-import type { WorldVoxel } from "./world/edit-layer";
-import { VOXEL_SIZE, type Dim3 } from "./world/level-data";
+import type { WorldVoxel } from "../world/edit-layer";
+import { VOXEL_SIZE, type Dim3 } from "../world/level-data";
 
 /**
  * Distance from the origin beyond which player movement is clamped. The

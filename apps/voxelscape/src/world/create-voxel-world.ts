@@ -1,9 +1,9 @@
 import { Scene } from "@random-mesh/rmsl/scene";
-import { RendererSwitch } from "./renderers/renderer-switch";
-import { loadVoxelTiles } from "./renderers/tile-loader";
-import { BlockGrid } from "./world/block-grid";
-import { EditLayer } from "./world/edit-layer";
-import { createEditPersistence } from "./world/edit-persistence";
+import { RendererSwitch } from "../renderers/renderer-switch";
+import { loadVoxelTiles } from "../renderers/tile-loader";
+import { BlockGrid } from "./block-grid";
+import { EditLayer } from "./edit-layer";
+import { createEditPersistence } from "./edit-persistence";
 import {
   BLOCK_WORLD,
   getGroundHeightBelow,
@@ -12,9 +12,9 @@ import {
   isWaterAt,
   syncLevelFromStore,
   type WorldBlock,
-} from "./world/level-data";
-import { type TerrainConfig } from "./world/noise";
-import { WorldRing } from "./world/world-ring";
+} from "./level-data";
+import { type TerrainConfig } from "./noise";
+import { WorldRing } from "./world-ring";
 
 /** Padding added to each mesh's box so adjacent meshes share a thin overlap shell. */
 const PAD = 2.0;
@@ -105,11 +105,18 @@ export const createVoxelWorld = (config: VoxelWorldConfig): VoxelWorld => {
     waterExtinction: WATER_EXTINCTION,
     seaLevel: terrain.seaLevel,
   });
-
   const editLayer = new EditLayer();
   const editPersistence = createEditPersistence(editLayer);
+  const worldRing = new WorldRing({
+    blockGrid,
+    terrain,
+    surfaceOnly,
+    onBlockChanged: (i) => renderers.onBlockChanged(i),
+    onBlockReposition: (i, center) => renderers.repositionBlock(i, center),
+    editLayer,
+  });
 
-  const reapplyEdits = (): void => {
+  const reapplyEdits = () => {
     const affected: number[] = [];
     for (let i = 0; i < blockGrid.blocks.length; i++) {
       const block = blockGrid.blocks[i];
@@ -122,15 +129,6 @@ export const createVoxelWorld = (config: VoxelWorldConfig): VoxelWorld => {
       renderers.onBlockChanged(i);
     }
   };
-
-  const worldRing = new WorldRing({
-    blockGrid,
-    terrain,
-    surfaceOnly,
-    onBlockChanged: (i) => renderers.onBlockChanged(i),
-    onBlockReposition: (i, center) => renderers.repositionBlock(i, center),
-    editLayer,
-  });
 
   // Tell every block material which tile each voxel face uses once the
   // spritesheet loads. Fire-and-forget: voxels stay flat blue until it lands.
@@ -146,24 +144,27 @@ export const createVoxelWorld = (config: VoxelWorldConfig): VoxelWorld => {
     ringRadius,
     reapplyEdits,
 
-    heightAt: (x, z) => getWorldHeight(blockGrid.blocks, x, z),
-    groundHeightAt: (x, y, z) =>
-      getGroundHeightBelow(blockGrid.blocks, x, y, z),
-    inWaterAt: (x, y, z) => isWaterAt(blockGrid.blocks, x, y, z),
-    solidAt: (x, y, z) => isSolidAt(blockGrid.blocks, x, y, z),
-
+    heightAt(x, z) {
+      return getWorldHeight(blockGrid.blocks, x, z);
+    },
+    groundHeightAt(x, y, z) {
+      return getGroundHeightBelow(blockGrid.blocks, x, y, z);
+    },
+    inWaterAt(x, y, z) {
+      return isWaterAt(blockGrid.blocks, x, y, z);
+    },
+    solidAt(x, y, z) {
+      return isSolidAt(blockGrid.blocks, x, y, z);
+    },
     scrollTo(x, z) {
       worldRing.scrollToPlayer(x, z);
     },
-
     scheduleSave() {
       editPersistence.scheduleSave();
     },
-
     addTranslucentPasses() {
       renderers.addTranslucentPassesToScene(scene);
     },
-
     dispose() {
       // stop the fill worker so it doesn't keep running after unmount
       worldRing.dispose();

@@ -1,6 +1,6 @@
 import type { PerspectiveCamera, Texture } from "@random-mesh/rmsl/scene";
 import type { VoxelTileConfig } from "./atlas";
-import type { dayNightState } from "../day-night";
+import type { dayNightState } from "../environment/day-night";
 import type { Dim3 } from "../world/level-data";
 
 export type DayNight = ReturnType<typeof dayNightState>;

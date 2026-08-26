@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import { Inventory, COLLECTABLE, BREAK_YIELD } from "./inventory";
-import { VOXEL_GRASS, VOXEL_DIRT, VOXEL_WATER } from "./world/voxel-store";
+import { VOXEL_GRASS, VOXEL_DIRT, VOXEL_WATER } from "../world/voxel-store";
 
 describe("Inventory", () => {
   it("starts empty and defaults to dirt selected", () => {
