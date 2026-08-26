@@ -1,6 +1,9 @@
 // Renders every connected remote player as a cube (matching the local player
-// cube) with a handle label, interpolating toward each one's latest received
-// pose so the mesh's deliberately low broadcast rate reads smoothly on screen.
+// cube) under a floating label naming them, interpolating toward each one's
+// latest received pose so the mesh's deliberately low broadcast rate reads
+// smoothly on screen. A player's name is their atproto handle once the caller
+// has one to give (`setHandle`); until then it is the tail of their DID, the
+// only name a peer arrives with.
 // Owns its scene objects directly, like `WeatherController`.
 import {
   BoxGeometry,
@@ -42,23 +45,49 @@ interface RemotePlayer {
 export const labelText = (did: string): string =>
   did.slice(did.lastIndexOf(":") + 1) || did;
 
+/** Label font size at its largest, in canvas pixels. */
+const LABEL_FONT_PX = 40;
+/** Canvas pixels kept clear on each side of the label text. */
+const LABEL_PADDING_PX = 10;
+
 const avatarColor = (did: string): number =>
   AVATAR_COLORS[Math.abs(parseInt(hashDid(did), 36)) % AVATAR_COLORS.length];
+
+/**
+ * Paints `text` over a fresh label background, replacing whatever the canvas
+ * held. Everything is drawn through a vertical flip: the renderer uploads a
+ * canvas top row first, where a texture's first row is its bottom, so a canvas
+ * painted the right way up samples upside down on the label.
+ */
+const drawLabel = (canvas: HTMLCanvasElement, text: string): void => {
+  const ctx = canvas.getContext("2d");
+  if (ctx === null) {
+    return;
+  }
+  ctx.setTransform(1, 0, 0, -1, 0, canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+  ctx.fillRect(0, 12, canvas.width, 52);
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  // A handle is as long as its owner's domain, so the text is shrunk to fit
+  // the label rather than the label grown to fit the text: an avatar's name
+  // plate stays the same size whoever is standing there.
+  ctx.font = `bold ${LABEL_FONT_PX}px monospace`;
+  const available = canvas.width - LABEL_PADDING_PX * 2;
+  const width = ctx.measureText(text).width;
+  if (width > available) {
+    ctx.font = `bold ${Math.floor((LABEL_FONT_PX * available) / width)}px monospace`;
+  }
+  ctx.fillText(text, canvas.width / 2, 40);
+};
 
 const makeLabelTexture = (text: string): Texture => {
   const canvas = document.createElement("canvas");
   canvas.width = 256;
   canvas.height = 64;
-  const ctx = canvas.getContext("2d");
-  if (ctx !== null) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
-    ctx.fillRect(0, 12, 256, 52);
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 40px monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(text, 128, 40);
-  }
+  drawLabel(canvas, text);
   const texture = new Texture(canvas);
   texture.needsUpdate = true;
   return texture;
@@ -80,6 +109,8 @@ export class RemotePlayers {
   private readonly scene: Scene;
   private readonly camera: PerspectiveCamera;
   private readonly players = new Map<string, RemotePlayer>();
+  /** DID -> the handle to write on that player's label, once one is known. */
+  private readonly handles = new Map<string, string>();
 
   constructor(params: { scene: Scene; camera: PerspectiveCamera }) {
     this.scene = params.scene;
@@ -98,6 +129,34 @@ export class RemotePlayers {
     player.updatedAt = now;
     player.cube.visible = true;
     player.label.visible = true;
+  }
+
+  /**
+   * Names a peer: their label reads `handle` instead of the tail of their
+   * DID, from now until this player leaves the world — including on the
+   * avatar they get if they disconnect and come back.
+   */
+  setHandle(did: string, handle: string): void {
+    this.handles.set(did, handle);
+    const player = this.players.get(did);
+    if (player === undefined) {
+      return;
+    }
+    // Repainted into the label's own canvas rather than swapped for a second
+    // texture: a renderer holds a GPU texture per `Texture` object it has
+    // bound and frees them only when the renderer itself goes away, so a
+    // replacement would strand the first one for the rest of the session.
+    const texture = (player.label.material as MeshBasicMaterial).map;
+    const canvas = texture?.image;
+    if (
+      texture === undefined ||
+      texture === null ||
+      !(canvas instanceof HTMLCanvasElement)
+    ) {
+      return;
+    }
+    drawLabel(canvas, handle);
+    texture.needsUpdate = true;
   }
 
   /** Removes a peer's avatar from the scene entirely. */
@@ -145,7 +204,7 @@ export class RemotePlayers {
     const label = new Mesh(
       new PlaneGeometry(LABEL_WIDTH, LABEL_HEIGHT),
       new MeshBasicMaterial({
-        map: makeLabelTexture(labelText(did)),
+        map: makeLabelTexture(this.handles.get(did) ?? labelText(did)),
         transparent: true,
       }),
     );

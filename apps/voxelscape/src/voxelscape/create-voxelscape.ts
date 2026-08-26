@@ -169,6 +169,7 @@ export const createVoxelscape = ({
     getDid: () => atproto.did,
     seed: terrain.seed,
     getPose: currentPose,
+    resolveHandle: (did) => atproto.resolveHandle(did),
     createSignaling: createPeerJSSignaling,
     scene,
     camera,

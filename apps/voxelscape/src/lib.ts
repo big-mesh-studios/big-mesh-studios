@@ -144,6 +144,7 @@ export {
   type EditChunkCoord,
   type EditChunkRecord,
 } from "./atproto/edits";
+export { claimedHandle, confirmHandle } from "./atproto/handles";
 export {
   createAtprotoRepoClient,
   type AtprotoRepoClient,

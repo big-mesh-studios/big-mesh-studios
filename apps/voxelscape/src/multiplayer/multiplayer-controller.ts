@@ -104,6 +104,13 @@ export interface MultiplayerParams {
    * relay's `listReposByCollection` fetch. Defaults to the public relay.
    */
   fetchDirectory?: (collection: string) => Promise<string[]>;
+  /**
+   * Resolves a peer's DID to the handle to write on their avatar, or to null
+   * when their account has no confirmed handle. Omitted in headless harness
+   * runs and while nothing can resolve handles, leaving avatars labelled by
+   * DID.
+   */
+  resolveHandle?: (did: string) => Promise<string | null>;
   /** Receives every pose a peer sends, for headless verification of the mesh. */
   onRemotePose?: (did: string, pose: PoseMessage) => void;
   /** Overrides for the cluster-selection tuning (tests use this to disable hysteresis). */
@@ -118,6 +125,8 @@ export class MultiplayerController {
   private readonly createSignaling: SignalingFactory;
   private readonly relay: string;
   private readonly fetchDirectory: (collection: string) => Promise<string[]>;
+  private readonly resolveHandle:
+    ((did: string) => Promise<string | null>) | undefined;
   private readonly onRemotePose: (did: string, pose: PoseMessage) => void;
   private readonly clusterOptions: Partial<ClusterOptions>;
   private readonly remotePlayers: RemotePlayers | undefined;
@@ -161,6 +170,7 @@ export class MultiplayerController {
     this.createSignaling = params.createSignaling;
     this.relay = params.relay ?? DEFAULT_RELAY;
     this.fetchDirectory = params.fetchDirectory ?? this.relayFetchDirectory;
+    this.resolveHandle = params.resolveHandle;
     this.onRemotePose = params.onRemotePose ?? (() => {});
     this.clusterOptions = params.clusterOptions ?? {};
     this.remotePlayers =
@@ -672,6 +682,7 @@ export class MultiplayerController {
         opened = true;
         this.failedAt.delete(d);
         this.peerCount++;
+        void this.nameAvatar(d);
       },
       onPose: (d, pose) => {
         this.remotePlayers?.update(d, pose);
@@ -691,6 +702,30 @@ export class MultiplayerController {
         }`;
       },
     };
+  }
+
+  /**
+   * Writes a newly connected peer's handle onto their avatar. Resolution is
+   * a network round trip, so the avatar appears (labelled by DID) and takes
+   * its name a moment later; an account whose handle cannot be confirmed, or
+   * a lookup that fails outright, keeps the DID.
+   */
+  private async nameAvatar(did: string): Promise<void> {
+    const resolveHandle = this.resolveHandle;
+    const remotePlayers = this.remotePlayers;
+    if (resolveHandle === undefined || remotePlayers === undefined) {
+      return;
+    }
+    try {
+      const handle = await resolveHandle(did);
+      if (handle !== null) {
+        remotePlayers.setHandle(did, handle);
+      }
+    } catch (err) {
+      this.lastError = `${did}: handle lookup failed — ${
+        err instanceof Error ? err.message : String(err)
+      }`;
+    }
   }
 
   /**

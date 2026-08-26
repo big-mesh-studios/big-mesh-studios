@@ -5,7 +5,7 @@
 // logic. A plain domain object: it knows about the network and the edit
 // overlay, not about renderers or a console.
 import { Client, ok } from "@atcute/client";
-import type { Did } from "@atcute/lexicons";
+import type { Did, Handle } from "@atcute/lexicons";
 import { isActorIdentifier } from "@atcute/lexicons/syntax";
 import {
   deleteStoredSession,
@@ -15,8 +15,11 @@ import {
 } from "@atcute/oauth-browser-client";
 import {
   CompositeDidDocumentResolver,
+  CompositeHandleResolver,
+  DohJsonHandleResolver,
   PlcDidDocumentResolver,
   WebDidDocumentResolver,
+  WellKnownHandleResolver,
 } from "@atcute/identity-resolver";
 import type { EditLayer } from "../world/edit-layer";
 import {
@@ -27,8 +30,22 @@ import {
   recordsToEntries,
   type EditChunkRecord,
 } from "./edits";
+import { confirmHandle } from "./handles";
 import { configureOAuthClient, signInPopup } from "./oauth";
 import { createAtprotoRepoClient, type AtprotoRepoClient } from "./repo-client";
+
+/** What the DID document resolver hands back for a resolved DID. */
+type DidDocument = Awaited<
+  ReturnType<CompositeDidDocumentResolver<"plc" | "web">["resolve"]>
+>;
+
+/**
+ * The public DNS-over-HTTPS endpoint a handle is looked up through. A handle
+ * is a domain name, and what it points at lives in that domain's `_atproto`
+ * text record; a web page cannot query DNS itself, so the question goes over
+ * HTTPS to a resolver that can.
+ */
+const DNS_OVER_HTTPS_SERVICE = "https://cloudflare-dns.com/dns-query";
 
 export interface AtpControllerOptions {
   /**
@@ -69,12 +86,29 @@ export class AtprotoController {
   private lastError: string | null = null;
   private lastUploadAt = 0;
   private readonly handleInput: () => string;
-  /** DID -> PDS service endpoint, so signal polling doesn't re-resolve every pass. */
-  private readonly serviceCache = new Map<string, string>();
+  /** DID -> its resolved document, so signal polling doesn't re-resolve every pass. */
+  private readonly documentCache = new Map<string, DidDocument>();
+  /** DID -> its confirmed handle, or null when the account has none to show. */
+  private readonly handleCache = new Map<string, string | null>();
   private readonly didDocumentResolver = new CompositeDidDocumentResolver({
     methods: {
       plc: new PlcDidDocumentResolver(),
       web: new WebDidDocumentResolver(),
+    },
+  });
+  /**
+   * Resolves a handle to the DID it points at, asking the two places whose
+   * answer the handle's own owner controls: the domain's `_atproto` text
+   * record, and the `atproto-did` file the domain serves. Whichever answers
+   * first wins, and either one alone is enough — a domain that publishes only
+   * the record still resolves when a browser cannot read its file across
+   * origins.
+   */
+  private readonly handleResolver = new CompositeHandleResolver({
+    strategy: "race",
+    methods: {
+      dns: new DohJsonHandleResolver({ dohUrl: DNS_OVER_HTTPS_SERVICE }),
+      http: new WellKnownHandleResolver(),
     },
   });
 
@@ -306,17 +340,10 @@ export class AtprotoController {
   /**
    * Resolves a DID to its `#atproto` PDS service endpoint, for reading a
    * peer's public records (presence, signal mailbox) from the PDS that
-   * actually hosts them rather than from this account's own. Cached, because
-   * a peer's handshake polls its repo every 1.2s.
+   * actually hosts them rather than from this account's own.
    */
   private async resolveService(did: string): Promise<string> {
-    const cached = this.serviceCache.get(did);
-    if (cached !== undefined) {
-      return cached;
-    }
-    const document = await this.didDocumentResolver.resolve(
-      did as Did<"plc" | "web">,
-    );
+    const document = await this.resolveDocument(did);
     // Newer DID documents name the PDS service `#atproto_pds`; older ones
     // use `#atproto`. Accept either, falling back to a type match.
     const service =
@@ -334,8 +361,42 @@ export class AtprotoController {
     if (endpoint === undefined) {
       throw new Error(`no #atproto PDS service in DID document for ${did}`);
     }
-    this.serviceCache.set(did, endpoint);
     return endpoint;
+  }
+
+  /**
+   * The handle to show for `did` — a peer's name over their avatar in the
+   * multiplayer mesh — or null when the account has none that can be
+   * confirmed, in which case the caller keeps showing the DID. Both the
+   * confirmed handle and the absence of one are cached for the session, so
+   * asking for the same peer's name again costs nothing.
+   */
+  async resolveHandle(did: string): Promise<string | null> {
+    const cached = this.handleCache.get(did);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const handle = await confirmHandle({
+      did,
+      document: await this.resolveDocument(did),
+      resolveDid: (candidate) =>
+        this.handleResolver.resolve(candidate as Handle),
+    });
+    this.handleCache.set(did, handle);
+    return handle;
+  }
+
+  /** Fetches a DID's document from the PLC directory or its own domain, once per session. */
+  private async resolveDocument(did: string): Promise<DidDocument> {
+    const cached = this.documentCache.get(did);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const document = await this.didDocumentResolver.resolve(
+      did as Did<"plc" | "web">,
+    );
+    this.documentCache.set(did, document);
+    return document;
   }
 
   private async fetchAllRecords(
