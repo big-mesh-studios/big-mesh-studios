@@ -59,8 +59,6 @@ export const tileRect = (
   atlasW: number,
   atlasH: number,
 ): TileRect => {
-  const du = 0.5 / atlasW;
-  const dv = 0.5 / atlasH;
   return [
     (sub.x + 0.5) / atlasW,
     (sub.y + 0.5) / atlasH,

@@ -9,7 +9,6 @@ import {
   type MeshArrays,
 } from "./mesh";
 import {
-  VOXEL_AIR,
   VOXEL_DIRT,
   VOXEL_GRASS,
   VOXEL_WATER,

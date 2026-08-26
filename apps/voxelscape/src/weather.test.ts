@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { CYCLE_SECONDS, dayNightState } from "./day-night";
+import { dayNightState } from "./day-night";
 import {
   STORM_MAX_SECONDS,
   STORM_MEAN_GAP_SECONDS,
