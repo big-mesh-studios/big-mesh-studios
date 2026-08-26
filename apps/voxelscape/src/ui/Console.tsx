@@ -1,9 +1,22 @@
-import { createEffect, createSignal, For, type Component } from "solid-js";
+import {
+  createEffect,
+  createSignal,
+  For,
+  onCleanup,
+  type Component,
+} from "solid-js";
 import { createPopover } from "../utils/create-popover";
+import { isEditableTarget } from "../utils/utils";
 import styles from "./Console.module.css";
+
+export interface ConsoleInputHandle {
+  /** Focuses the input and replaces what is typed, leaving the caret at the end. */
+  prefill(text: string): void;
+}
 
 const ConsoleInput: Component<{
   onCommand(command: string): void;
+  ref(handle: ConsoleInputHandle): void;
 }> = (props) => {
   let element: HTMLInputElement = null!;
 
@@ -49,6 +62,17 @@ const ConsoleInput: Component<{
       }
     }
   };
+
+  props.ref({
+    prefill(text) {
+      setValue(text);
+      // The signal only reaches the DOM on the next microtask, and the caret
+      // has to be placed behind text that is already there.
+      element.value = text;
+      element.focus();
+      element.setSelectionRange(text.length, text.length);
+    },
+  });
 
   return (
     <input
@@ -97,12 +121,42 @@ export interface ConsoleProps {
  * A collapsible command-line overlay for debugging. The `>_` button sits at
  * the top-right; pressing it reveals a small terminal where commands typed
  * in the input are handed to `onCommand`, whose return value is echoed as
- * output.
+ * output. Typing `/` while playing opens it too, with the slash already
+ * entered.
  */
 export const Console: Component<ConsoleProps> = (props) => {
   const [lines, setLines] = createSignal<string[]>([]);
 
   const Popover = createPopover();
+
+  let input: ConsoleInputHandle = null!;
+
+  const controller = new AbortController();
+  onCleanup(() => controller.abort());
+
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      // Modified slashes belong to the browser (Ctrl+/ and friends), and a
+      // slash typed into any text field is just a slash.
+      if (
+        event.key !== "/" ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        isEditableTarget(event)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      // Looking around holds the pointer lock, which hides the cursor and
+      // would leave the console unclickable.
+      document.exitPointerLock();
+      Popover.open();
+      input.prefill("/");
+    },
+    { signal: controller.signal },
+  );
 
   createEffect(
     () => props.notice,
@@ -142,7 +196,12 @@ export const Console: Component<ConsoleProps> = (props) => {
         <ConsoleOutput lines={lines()} />
         <div class={styles["input-container"]}>
           <span class={styles.prefix}>{">"}</span>
-          <ConsoleInput onCommand={onCommand} />
+          <ConsoleInput
+            onCommand={onCommand}
+            ref={(handle) => {
+              input = handle;
+            }}
+          />
         </div>
       </Popover.PopOver>
     </div>

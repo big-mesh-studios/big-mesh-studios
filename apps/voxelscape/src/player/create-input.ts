@@ -1,3 +1,5 @@
+import { isEditableTarget } from "../utils/utils";
+
 /**
  * Unified keyboard, pointer and touch input for the player. Each controller
  * owns its own snapshot, fed by the keyboard/pointer listeners `install`
@@ -54,28 +56,6 @@ const MOVE_KEYS: Record<string, [number, number]> = {
   KeyS: [0, -1],
   KeyA: [-1, 0],
   KeyD: [1, 0],
-};
-
-/**
- * Reports whether the event's target is an editable element — for example,
- * the debug console input — so the global key handlers can skip it instead
- * of calling `preventDefault` on those keys or moving the player.
- *
- * @param e - The keyboard event to check.
- * @returns True if the event originated from an editable element.
- */
-const isEditableTarget = (e: Event): boolean => {
-  const el = e.target as HTMLElement | null;
-  if (el === null) {
-    return false;
-  }
-  const tag = el.tagName;
-  return (
-    tag === "INPUT" ||
-    tag === "TEXTAREA" ||
-    tag === "SELECT" ||
-    el.isContentEditable
-  );
 };
 
 export interface LookDragHandlers {

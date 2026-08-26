@@ -23,11 +23,13 @@ export function createPopover() {
 
   return {
     isOpen,
+    // `togglePopover` rather than `showPopover`/`hidePopover`: those throw when
+    // the popover is already in the state being asked for.
     open() {
-      element?.showPopover();
+      element?.togglePopover(true);
     },
     close() {
-      element?.hidePopover();
+      element?.togglePopover(false);
     },
     Trigger(props: PopoverTriggerProps) {
       return (
