@@ -1,6 +1,6 @@
 import { Component, createSignal, onCleanup } from "solid-js";
 import * as THREE from "three";
-import type { InputController } from "../input";
+import type { InputController } from "../create-input";
 import { ActionButton } from "./ActionButton";
 import { Joystick } from "./Joystick";
 

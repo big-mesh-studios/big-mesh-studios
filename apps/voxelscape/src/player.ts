@@ -1,5 +1,5 @@
 import { PerspectiveCamera, Vector3 } from "@random-mesh/rmsl/scene";
-import type { InputSnapshot } from "./input";
+import type { InputSnapshot } from "./create-input";
 
 export interface Player {
   /** Cube centre, in world units. */

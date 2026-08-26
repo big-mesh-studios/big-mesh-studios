@@ -16,10 +16,10 @@ import {
 } from "solid-js";
 import { AdaptiveResolution } from "./adaptive";
 import { AtprotoController } from "./atproto/atproto-controller";
+import { createInput } from "./create-input";
 import { DayNightController } from "./day-night-controller";
 import { createDebugCommands } from "./debug-commands";
 import { EditingController } from "./editing-controller";
-import { createInput } from "./input";
 import { COLLECTABLE, Inventory } from "./inventory";
 import { GpuTimer } from "./perf";
 import {

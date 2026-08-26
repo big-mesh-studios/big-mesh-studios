@@ -1,13 +1,13 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import type { InputSnapshot } from "./create-input";
 import {
   createPlayer,
-  updatePlayer,
   PLAYER_CFG,
+  updatePlayer,
   type Player,
   type PlayerWorld,
 } from "./player";
-import type { InputSnapshot } from "./input";
 
 const NO_INPUT: InputSnapshot = {
   moveX: 0,
@@ -27,7 +27,9 @@ const NO_WATER = () => false;
  * A world shaped like a heightmap: solid everywhere below the surface the
  * given function returns, open air above it.
  */
-const terrainOf = (heightAt: (x: number, z: number) => number): PlayerWorld => ({
+const terrainOf = (
+  heightAt: (x: number, z: number) => number,
+): PlayerWorld => ({
   groundHeightAt: (x, _y, z) => heightAt(x, z),
   inWaterAt: NO_WATER,
   solidAt: (x, y, z) => y < heightAt(x, z),
@@ -147,10 +149,7 @@ describe("updatePlayer climbing out of a shaft", () => {
   it("climbs the wall and gets out when jump is held", () => {
     const player = createPlayer(0, PLAYER_CFG.halfSize, 0);
     walkEast(player, SHAFT, 240, true);
-    expect(player.position.y).toBeCloseTo(
-      SHAFT_DEPTH + PLAYER_CFG.halfSize,
-      5,
-    );
+    expect(player.position.y).toBeCloseTo(SHAFT_DEPTH + PLAYER_CFG.halfSize, 5);
     expect(player.position.x).toBeGreaterThan(1);
     expect(player.onGround).toBe(true);
   });

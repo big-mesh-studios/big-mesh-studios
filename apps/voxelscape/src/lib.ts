@@ -21,7 +21,7 @@ export {
 } from "./renderers/tile-loader";
 export { TriangleRenderer } from "./renderers/triangle-renderer";
 
-export * from "./input";
+export * from "./create-input";
 export * from "./perf";
 export * from "./player";
 export * from "./ui/Console";
