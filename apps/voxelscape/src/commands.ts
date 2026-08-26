@@ -52,6 +52,11 @@ export class Commander {
     return command.run(rest);
   }
 
+  /** Every command's name, in the order they are declared, `/help` first. */
+  names(): string[] {
+    return this.help().map((command) => command.name);
+  }
+
   /** Every command there is, in the order they are declared, `/help` first. */
   help(): CommandHelp[] {
     return [

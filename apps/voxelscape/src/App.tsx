@@ -50,6 +50,7 @@ const App: Component<{}> = () => {
         <LoadingScreen />
         <Console
           onCommand={(line) => voxelscape.commands.run(line)}
+          names={voxelscape.commands.names()}
           notice={notice()}
         />
         <toasts.Stack>

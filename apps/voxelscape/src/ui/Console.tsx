@@ -17,6 +17,8 @@ export interface ConsoleInputHandle {
 }
 
 const ConsoleInput: Component<{
+  /** Every command name, for completing the one being typed. */
+  names: string[];
   onCommand(command: string): void;
   ref(handle: ConsoleInputHandle): void;
 }> = (props) => {
@@ -26,6 +28,37 @@ const ConsoleInput: Component<{
 
   const [historyIndex, setHistoryIndex] = createSignal(-1);
   const [value, setValue] = createSignal(() => history[historyIndex()]);
+  const [candidateIndex, setCandidateIndex] = createSignal(0);
+
+  /**
+   * The command names `typed` could still become, longest-standing first.
+   * Only a name is completed, so a line that has reached its arguments — or
+   * that already spells a name out — has none.
+   */
+  const candidatesFor = (typed: string): string[] => {
+    if (!typed.startsWith("/") || typed.includes(" ")) {
+      return [];
+    }
+    return props.names.filter(
+      (name) => name.startsWith(typed) && name !== typed,
+    );
+  };
+
+  const typed = (): string => value() ?? "";
+  const candidates = (): string[] => candidatesFor(typed());
+  /** The candidate the arrow keys have landed on, if any is left to show. */
+  const candidate = (): string | undefined => candidates()[candidateIndex()];
+
+  /** Replaces what is typed, leaving the caret at the end. */
+  const fill = (text: string): void => {
+    setValue(text);
+    setCandidateIndex(0);
+    // The signal only reaches the DOM on the next microtask, and the caret
+    // has to be placed behind text that is already there.
+    element.value = text;
+    element.focus();
+    element.setSelectionRange(text.length, text.length);
+  };
 
   const onKeyDown = (
     event: KeyboardEvent & { currentTarget: HTMLInputElement },
@@ -33,18 +66,37 @@ const ConsoleInput: Component<{
     switch (event.key) {
       case "Enter": {
         const line = event.currentTarget.value.trim();
+        // What is shown in front of the caret is what runs, so a name still
+        // being completed runs as the completion standing behind it.
+        const command = candidatesFor(line)[candidateIndex()] ?? line;
 
-        if (line === "") {
+        if (command === "") {
           return;
         }
 
-        props.onCommand(line);
-        history.push(line);
+        props.onCommand(command);
+        history.push(command);
+        setCandidateIndex(0);
         setValue("");
 
         return;
       }
+      case "Tab": {
+        const completion = candidate();
+        if (completion === undefined) {
+          return;
+        }
+        event.preventDefault();
+        fill(completion);
+        return;
+      }
       case "ArrowUp": {
+        const count = candidates().length;
+        if (count > 1) {
+          event.preventDefault();
+          setCandidateIndex((index) => (index + count - 1) % count);
+          return;
+        }
         setHistoryIndex((index) => {
           if (index === -1) {
             return history.length - 1;
@@ -54,6 +106,12 @@ const ConsoleInput: Component<{
         return;
       }
       case "ArrowDown": {
+        const count = candidates().length;
+        if (count > 1) {
+          event.preventDefault();
+          setCandidateIndex((index) => (index + 1) % count);
+          return;
+        }
         setHistoryIndex((index) => {
           if (index === history.length - 1) {
             return -1;
@@ -65,30 +123,32 @@ const ConsoleInput: Component<{
     }
   };
 
-  props.ref({
-    prefill(text) {
-      setValue(text);
-      // The signal only reaches the DOM on the next microtask, and the caret
-      // has to be placed behind text that is already there.
-      element.value = text;
-      element.focus();
-      element.setSelectionRange(text.length, text.length);
-    },
-  });
+  props.ref({ prefill: fill });
 
   return (
-    <input
-      ref={element}
-      value={value()}
-      autofocus
-      onInput={(e) => {
-        setHistoryIndex(-1);
-        setValue(e.currentTarget.value);
-      }}
-      onKeyDown={onKeyDown}
-      placeholder="type a command (/help)"
-      class={styles.input}
-    />
+    <div class={styles.field}>
+      <input
+        ref={element}
+        value={value()}
+        autofocus
+        onInput={(e) => {
+          setHistoryIndex(-1);
+          setCandidateIndex(0);
+          setValue(e.currentTarget.value);
+        }}
+        onKeyDown={onKeyDown}
+        placeholder="type a command (/help)"
+        class={styles.input}
+      />
+      <Show when={candidate()}>
+        {(completion) => (
+          <div class={styles.completion} aria-hidden="true">
+            <span class={styles.typed}>{typed()}</span>
+            {completion().slice(typed().length)}
+          </div>
+        )}
+      </Show>
+    </div>
   );
 };
 
@@ -165,6 +225,8 @@ const ConsoleOutput: Component<{ entries: ConsoleEntry[] }> = (props) => {
 
 export interface ConsoleProps {
   onCommand: (line: string) => CommandOutput | Promise<CommandOutput>;
+  /** Every command name, for completing the one being typed. */
+  names: string[];
   /**
    * A line to append to the output that no typed command asked for, such as
    * the world reporting its atproto state at startup.
@@ -262,6 +324,7 @@ export const Console: Component<ConsoleProps> = (props) => {
         <div class={styles["input-container"]}>
           <span class={styles.prefix}>{">"}</span>
           <ConsoleInput
+            names={props.names}
             onCommand={onCommand}
             ref={(handle) => {
               input = handle;
