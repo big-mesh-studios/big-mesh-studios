@@ -4,7 +4,15 @@
 // harness stand in for the network entirely — no XRPC, no OAuth, no accounts —
 // while the app passes `createAtprotoRepoClient` over a signed-in
 // `@atcute/client` `Client`.
-import { ok, type Client } from "@atcute/client";
+//
+// Routing matters: atcute's OAuth user-agent pins every request to the
+// signed-in account's own PDS (`session.info.aud`), which is right for the
+// mesh's own records but wrong for reading a peer's — their repo lives on
+// their own PDS, and asking the local PDS for it comes back RecordNotFound.
+// So each call resolves which PDS actually hosts `repo`: the authenticated
+// client for this account, or a cloned, anonymous client aimed at the peer's
+// PDS (presence and signal records are public).
+import { ok, simpleFetchHandler, type Client } from "@atcute/client";
 import type { ActorIdentifier, Nsid, RecordKey } from "@atcute/lexicons";
 
 /**
@@ -40,54 +48,78 @@ export interface AtprotoRepoClient {
   }): Promise<void>;
 }
 
-/** Adapts a signed-in XRPC client to `AtprotoRepoClient`. */
-export const createAtprotoRepoClient = (client: Client): AtprotoRepoClient => ({
-  async putRecord({ repo, collection, rkey, record }) {
-    await ok(
-      client.post("com.atproto.repo.putRecord", {
-        input: {
-          repo: repo as ActorIdentifier,
-          collection: collection as Nsid,
-          rkey: rkey as RecordKey,
-          record,
-        },
-      }),
-    );
-  },
-  async getRecord({ repo, collection, rkey }) {
-    const response = await ok(
-      client.get("com.atproto.repo.getRecord", {
-        params: {
-          repo: repo as ActorIdentifier,
-          collection: collection as Nsid,
-          rkey: rkey as RecordKey,
-        },
-      }),
-    );
-    return { value: response.value };
-  },
-  async listRecords({ repo, collection, cursor, limit }) {
-    const response = await ok(
-      client.get("com.atproto.repo.listRecords", {
-        params: {
-          repo: repo as ActorIdentifier,
-          collection: collection as Nsid,
-          cursor,
-          limit,
-        },
-      }),
-    );
-    return { records: response.records, cursor: response.cursor };
-  },
-  async deleteRecord({ repo, collection, rkey }) {
-    await ok(
-      client.post("com.atproto.repo.deleteRecord", {
-        input: {
-          repo: repo as ActorIdentifier,
-          collection: collection as Nsid,
-          rkey: rkey as RecordKey,
-        },
-      }),
-    );
-  },
-});
+/** Adapts a signed-in XRPC client to `AtprotoRepoClient`, routing each call to the repo's own PDS. */
+export const createAtprotoRepoClient = (params: {
+  /** The authenticated client, pinned to the signed-in account's own PDS. */
+  client: Client;
+  /** The signed-in account's DID; calls against it use `client` as-is. */
+  selfDid: string;
+  /** Resolves a DID to its `#atproto` PDS service endpoint (see `AtprotoController`). */
+  resolveService: (did: string) => Promise<string>;
+}): AtprotoRepoClient => {
+  const { client, selfDid, resolveService } = params;
+
+  /** The client that should perform a call against `repo`'s records. */
+  const forRepo = async (repo: string): Promise<Client> => {
+    if (repo === selfDid) {
+      return client;
+    }
+    const service = await resolveService(repo);
+    return client.clone({ handler: simpleFetchHandler({ service }) });
+  };
+
+  return {
+    async putRecord({ repo, collection, rkey, record }) {
+      const target = await forRepo(repo);
+      await ok(
+        target.post("com.atproto.repo.putRecord", {
+          input: {
+            repo: repo as ActorIdentifier,
+            collection: collection as Nsid,
+            rkey: rkey as RecordKey,
+            record,
+          },
+        }),
+      );
+    },
+    async getRecord({ repo, collection, rkey }) {
+      const target = await forRepo(repo);
+      const response = await ok(
+        target.get("com.atproto.repo.getRecord", {
+          params: {
+            repo: repo as ActorIdentifier,
+            collection: collection as Nsid,
+            rkey: rkey as RecordKey,
+          },
+        }),
+      );
+      return { value: response.value };
+    },
+    async listRecords({ repo, collection, cursor, limit }) {
+      const target = await forRepo(repo);
+      const response = await ok(
+        target.get("com.atproto.repo.listRecords", {
+          params: {
+            repo: repo as ActorIdentifier,
+            collection: collection as Nsid,
+            cursor,
+            limit,
+          },
+        }),
+      );
+      return { records: response.records, cursor: response.cursor };
+    },
+    async deleteRecord({ repo, collection, rkey }) {
+      const target = await forRepo(repo);
+      await ok(
+        target.post("com.atproto.repo.deleteRecord", {
+          input: {
+            repo: repo as ActorIdentifier,
+            collection: collection as Nsid,
+            rkey: rkey as RecordKey,
+          },
+        }),
+      );
+    },
+  };
+};

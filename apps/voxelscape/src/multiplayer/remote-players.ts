@@ -13,7 +13,7 @@ import {
   Vector3,
   type PerspectiveCamera,
 } from "@random-mesh/rmsl/scene";
-import { hashDid } from "./signal";
+import { hashDid } from "./presence";
 import type { Pose } from "./pose";
 
 /** Cube half-size, matching the local player cube (a 2x2x2 cube). */

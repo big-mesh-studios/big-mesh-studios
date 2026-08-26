@@ -1,12 +1,12 @@
 // One simulated player in the mesh harness: a mutable pose, a real
 // `MultiplayerController` wired to the in-memory atproto harness and the fake
-// transport, and a pose log populated by `onRemotePose` so tests can assert
+// signaling, and a pose log populated by `onRemotePose` so tests can assert
 // what actually arrived over the mesh.
 import { MultiplayerController } from "../multiplayer-controller";
 import type { Pose, PoseMessage } from "../pose";
 import type { ClusterOptions } from "../roster";
 import type { AtprotoHarness } from "./atproto-harness";
-import type { TransportHarness } from "./transport-harness";
+import type { SignalingHarness } from "./signaling-harness";
 
 export interface PlayerSim {
   did: string;
@@ -24,7 +24,7 @@ export interface PlayerSim {
 export interface PlayerSimParams {
   did: string;
   harness: AtprotoHarness;
-  transport: TransportHarness;
+  signaling: SignalingHarness;
   x?: number;
   y?: number;
   z?: number;
@@ -48,7 +48,7 @@ export const createPlayerSim = (params: PlayerSimParams): PlayerSim => {
     getDid: () => params.did,
     seed: params.seed ?? null,
     getPose: () => pose,
-    createPeer: params.transport.createPeer,
+    createSignaling: params.signaling.createSignaling,
     fetchDirectory: (collection) =>
       Promise.resolve(params.harness.listReposByCollection(collection)),
     clusterOptions: params.clusterOptions,

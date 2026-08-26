@@ -15,6 +15,8 @@ export interface RosterEntry {
   x: number;
   y: number;
   z: number;
+  /** The player's signaling join code, if their presence carried one. */
+  joinCode?: string;
   /** Milliseconds since epoch. */
   updatedAt: number;
 }
@@ -28,6 +30,7 @@ export const rosterFromPresences = (
     x: record.x,
     y: record.y,
     z: record.z,
+    ...(record.joinCode !== undefined ? { joinCode: record.joinCode } : {}),
     updatedAt: record.updatedAt,
   }));
 

@@ -13,6 +13,11 @@ import {
   listStoredSessions,
   OAuthUserAgent,
 } from "@atcute/oauth-browser-client";
+import {
+  CompositeDidDocumentResolver,
+  PlcDidDocumentResolver,
+  WebDidDocumentResolver,
+} from "@atcute/identity-resolver";
 import type { EditLayer } from "../world/edit-layer";
 import {
   EDIT_COLLECTION,
@@ -64,6 +69,14 @@ export class AtprotoController {
   private lastError: string | null = null;
   private lastUploadAt = 0;
   private readonly handleInput: () => string;
+  /** DID -> PDS service endpoint, so signal polling doesn't re-resolve every pass. */
+  private readonly serviceCache = new Map<string, string>();
+  private readonly didDocumentResolver = new CompositeDidDocumentResolver({
+    methods: {
+      plc: new PlcDidDocumentResolver(),
+      web: new WebDidDocumentResolver(),
+    },
+  });
 
   constructor(params: {
     layer: EditLayer;
@@ -279,11 +292,50 @@ export class AtprotoController {
     );
     this.agent = agent;
     this.client = new Client({ handler: agent });
-    this.repoClient_ = createAtprotoRepoClient(this.client);
+    this.repoClient_ = createAtprotoRepoClient({
+      client: this.client,
+      selfDid: agent.sub,
+      resolveService: (target) => this.resolveService(target),
+    });
     this.did_ = agent.sub;
     this.status_ = "connected";
     this.lastError = null;
     this.onConnected(this.did_);
+  }
+
+  /**
+   * Resolves a DID to its `#atproto` PDS service endpoint, for reading a
+   * peer's public records (presence, signal mailbox) from the PDS that
+   * actually hosts them rather than from this account's own. Cached, because
+   * a peer's handshake polls its repo every 1.2s.
+   */
+  private async resolveService(did: string): Promise<string> {
+    const cached = this.serviceCache.get(did);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const document = await this.didDocumentResolver.resolve(
+      did as Did<"plc" | "web">,
+    );
+    // Newer DID documents name the PDS service `#atproto_pds`; older ones
+    // use `#atproto`. Accept either, falling back to a type match.
+    const service =
+      document.service?.find(
+        (s) => s.id === "#atproto" || s.id === "#atproto_pds",
+      ) ??
+      document.service?.find((s) => {
+        const type = Array.isArray(s.type) ? s.type : [s.type];
+        return type.includes("AtprotoPersonalDataServer");
+      });
+    const endpoint =
+      typeof service?.serviceEndpoint === "string"
+        ? service.serviceEndpoint.replace(/\/+$/, "")
+        : undefined;
+    if (endpoint === undefined) {
+      throw new Error(`no #atproto PDS service in DID document for ${did}`);
+    }
+    this.serviceCache.set(did, endpoint);
+    return endpoint;
   }
 
   private async fetchAllRecords(

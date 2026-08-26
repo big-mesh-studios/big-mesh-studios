@@ -8,7 +8,7 @@ import { createPlayerAvatar } from "../player/create-player-avatar";
 import { createRenderLoop } from "../render/create-render-loop";
 import { MultiplayerController } from "../multiplayer/multiplayer-controller";
 import type { Pose } from "../multiplayer/pose";
-import { createSimplePeerTransport } from "../multiplayer/simplepeer-transport";
+import { createPeerJSSignaling } from "../multiplayer/peerjs-transport";
 import { createVoxelWorld } from "../world/create-voxel-world";
 import { createDebugCommands } from "../commands";
 import { EditingController } from "../player/editing-controller";
@@ -170,7 +170,7 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     getDid: () => atproto.did,
     seed: terrain.seed,
     getPose: currentPose,
-    createPeer: createSimplePeerTransport,
+    createSignaling: createPeerJSSignaling,
     scene,
     camera,
   });

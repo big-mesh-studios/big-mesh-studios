@@ -27,7 +27,12 @@ import {
   type ClusterSelection,
   type RosterEntry,
 } from "./roster";
-import type { PeerFactory } from "./transport";
+import type {
+  PeerTransport,
+  SignalingFactory,
+  SignalingRemote,
+  SignalingTransport,
+} from "./transport";
 
 export type MultiplayerStatus = "off" | "online" | "error";
 
@@ -83,8 +88,11 @@ export interface MultiplayerParams {
   seed: number | null;
   /** The player's current pose, asked each publish/selection/send pass. */
   getPose: () => Pose;
-  /** The transport factory; the app supplies simple-peer, a harness a fake. */
-  createPeer: PeerFactory;
+  /**
+   * The signaling factory; the app supplies PeerJS's cloud signaling, a
+   * harness an in-memory registry. Created once per `start`, owned here.
+   */
+  createSignaling: SignalingFactory;
   /** Scene the remote avatars are added to (omitted in headless harness runs). */
   scene?: Scene;
   /** Camera the avatar labels billboard toward (omitted in headless harness runs). */
@@ -107,7 +115,7 @@ export class MultiplayerController {
   private readonly getDid: () => string | null;
   private readonly seed: number | null;
   private readonly getPose: () => Pose;
-  private readonly createPeer: PeerFactory;
+  private readonly createSignaling: SignalingFactory;
   private readonly relay: string;
   private readonly fetchDirectory: (collection: string) => Promise<string[]>;
   private readonly onRemotePose: (did: string, pose: PoseMessage) => void;
@@ -118,10 +126,20 @@ export class MultiplayerController {
   private status_: MultiplayerStatus = "off";
   private lastError: string | null = null;
 
+  private signaling: SignalingTransport | undefined;
+  private joinCode: string | undefined;
+
   private roster: RosterEntry[] = [];
   private selection: ClusterSelection | undefined;
   private lastDiscovery: DiscoveryTelemetry | undefined;
   private readonly peers = new Map<string, MeshPeer>();
+  /** Incoming connections awaiting selection confirmation, so a connection from
+   *  a peer whose selection ran ahead of ours isn't dropped — but also doesn't
+   *  count toward the degree bound until we confirm we want it. */
+  private readonly pendingConnections = new Map<
+    string,
+    { transport: PeerTransport; since: number }
+  >();
   private readonly failedAt = new Map<string, number>();
   private peerCount = 0;
   private poseSeq = 0;
@@ -140,7 +158,7 @@ export class MultiplayerController {
     this.getDid = params.getDid;
     this.seed = params.seed;
     this.getPose = params.getPose;
-    this.createPeer = params.createPeer;
+    this.createSignaling = params.createSignaling;
     this.relay = params.relay ?? DEFAULT_RELAY;
     this.fetchDirectory = params.fetchDirectory ?? this.relayFetchDirectory;
     this.onRemotePose = params.onRemotePose ?? (() => {});
@@ -193,6 +211,19 @@ export class MultiplayerController {
     this.status_ = "online";
     this.lastError = null;
 
+    // One signaling registration per session. Its join code goes into this
+    // player's presence, so peers can find them; incoming connections are
+    // accepted whether or not selection has gotten around to opening them.
+    this.signaling = this.createSignaling({ selfDid: did });
+    this.signaling.onOpen((joinCode) => {
+      this.joinCode = joinCode;
+      void this.publishPresenceTick();
+    });
+    this.signaling.onConnection((remote, transport) =>
+      this.handleIncomingConnection(remote, transport),
+    );
+    this.signaling.onError((err) => this.fail(err));
+
     const now = Date.now();
     this.lastPresenceAt = 0; // force an immediate publish
     await this.publishPresence(repoClient, did, now);
@@ -226,10 +257,17 @@ export class MultiplayerController {
       peer.close("multiplayer stopped");
     }
     this.peers.clear();
+    for (const pending of this.pendingConnections.values()) {
+      pending.transport.destroy();
+    }
+    this.pendingConnections.clear();
     this.failedAt.clear();
     this.peerCount = 0;
     this.roster = [];
     this.selection = undefined;
+    this.signaling?.destroy();
+    this.signaling = undefined;
+    this.joinCode = undefined;
     this.remotePlayers?.clear();
     this.status_ = "off";
     this.lastError = null;
@@ -309,9 +347,9 @@ export class MultiplayerController {
     const lines: string[] = [];
     lines.push(`state: ${this.describeState()}`);
     lines.push(
-      `did: ${this.getDid() ?? "none"}  relay: ${this.relay}  seed: ${
-        this.seed ?? "none"
-      }`,
+      `did: ${this.getDid() ?? "none"}  joinCode: ${
+        this.joinCode ?? "none"
+      }  relay: ${this.relay}  seed: ${this.seed ?? "none"}`,
     );
 
     const discovery = this.lastDiscovery;
@@ -413,6 +451,7 @@ export class MultiplayerController {
           pose.z,
           this.seed,
           now,
+          this.joinCode,
         ) as unknown as {
           [_ in string]: unknown;
         },
@@ -563,20 +602,72 @@ export class MultiplayerController {
         this.peers.get(did)?.close("peer out of range");
       }
     }
+    // Settle held incoming connections against this pass's selection: accept
+    // the ones we now want, and drop the ones that were never wanted (they've
+    // had a full discovery cycle to become one).
+    for (const [did, pending] of this.pendingConnections) {
+      if (wanted.has(did)) {
+        this.pendingConnections.delete(did);
+        this.acceptIncoming(did, pending.transport);
+      } else if (now - pending.since >= DISCOVER_INTERVAL_MS) {
+        this.pendingConnections.delete(did);
+        pending.transport.destroy();
+      }
+    }
   }
 
   private openPeer(did: string): void {
-    const repoClient = this.getRepoClient();
     const selfDid = this.getDid();
-    if (repoClient === undefined || selfDid === null) {
+    const signaling = this.signaling;
+    if (selfDid === null || signaling === undefined) {
       return;
     }
+    const initiator = selfDid < did;
+    if (initiator) {
+      // The lower DID initiates: connect to the peer's signaling join code,
+      // which their presence record carried. Without one (their session
+      // hasn't registered yet) this pass skips them; discovery retries.
+      const joinCode = this.roster.find((e) => e.did === did)?.joinCode;
+      if (joinCode === undefined) {
+        return;
+      }
+      try {
+        const transport = signaling.connect(joinCode, { did: selfDid });
+        this.peers.set(
+          did,
+          new MeshPeer({
+            did,
+            selfDid,
+            transport,
+            ...this.peerHandlers(),
+          }),
+        );
+      } catch (err) {
+        this.lastError = `${err instanceof Error ? err.message : String(err)}`;
+      }
+    } else {
+      // The higher DID waits: register the slot now so an incoming
+      // connection for this peer has somewhere to attach.
+      this.peers.set(
+        did,
+        new MeshPeer({ did, selfDid, ...this.peerHandlers() }),
+      );
+    }
+  }
+
+  /**
+   * The shared MeshPeer callbacks, bound to this controller's bookkeeping.
+   * `opened` is captured per peer so a failure before the channel ever opened
+   * goes onto the retry cooldown while a clean teardown does not.
+   */
+  private peerHandlers(): {
+    onOpen: (d: string) => void;
+    onPose: (d: string, pose: PoseMessage) => void;
+    onClose: (d: string) => void;
+    onError: (d: string, message: string, code?: string) => void;
+  } {
     let opened = false;
-    const peer = new MeshPeer({
-      repoClient,
-      selfDid,
-      peerDid: did,
-      createPeer: this.createPeer,
+    return {
       onOpen: (d) => {
         opened = true;
         this.failedAt.delete(d);
@@ -599,8 +690,79 @@ export class MultiplayerController {
           code !== undefined ? ` (${code})` : ""
         }`;
       },
-    });
-    this.peers.set(did, peer);
+    };
+  }
+
+  /**
+   * An incoming connection from the signaling server. The initiator's DID
+   * rides along as connection metadata, so a responder accepts without having
+   * to map the join code back through its roster. A peer already in the map
+   * (a waiting responder slot) gets the transport attached; a peer in our
+   * current selection gets a fresh link; anyone else is held — not dropped,
+   * since the initiator's selection may simply have run ahead of ours — until
+   * the next selection pass confirms or rejects them.
+   */
+  private handleIncomingConnection(
+    remote: SignalingRemote,
+    transport: PeerTransport,
+  ): void {
+    const did = remote.did;
+    const selfDid = this.getDid();
+    if (did === undefined || did === selfDid || selfDid === null) {
+      transport.destroy();
+      return;
+    }
+    const existing = this.peers.get(did);
+    if (existing !== undefined) {
+      if (existing.canAttach()) {
+        existing.attach(transport);
+      } else {
+        transport.destroy();
+      }
+      return;
+    }
+    if (this.isWanted(did)) {
+      this.acceptIncoming(did, transport);
+      return;
+    }
+    const held = this.pendingConnections.get(did);
+    if (held !== undefined) {
+      transport.destroy();
+    } else {
+      this.pendingConnections.set(did, { transport, since: Date.now() });
+    }
+  }
+
+  /** Whether `did` is currently a peer we maintain or buffer — the only peers
+   *  whose connections count toward the degree bound. */
+  private isWanted(did: string): boolean {
+    const selection = this.selection;
+    return (
+      selection !== undefined &&
+      (selection.target.includes(did) || selection.candidates.includes(did))
+    );
+  }
+
+  /** Opens (or attaches to a waiting slot for) an incoming connection from a peer we now want. */
+  private acceptIncoming(did: string, transport: PeerTransport): void {
+    const selfDid = this.getDid();
+    if (selfDid === null) {
+      transport.destroy();
+      return;
+    }
+    const existing = this.peers.get(did);
+    if (existing !== undefined) {
+      if (existing.canAttach()) {
+        existing.attach(transport);
+      } else {
+        transport.destroy();
+      }
+      return;
+    }
+    this.peers.set(
+      did,
+      new MeshPeer({ did, selfDid, transport, ...this.peerHandlers() }),
+    );
   }
 
   private fail(err: unknown): void {

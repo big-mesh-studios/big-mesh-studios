@@ -10,6 +10,15 @@ export const PRESENCE_COLLECTION = "app.bms.voxelscape.presence";
 /** Presence upserts to this rkey, so the collection never grows. */
 export const PRESENCE_RKEY = "latest";
 
+/** Stable short hash of a DID, for embedding in join codes and record keys. */
+export const hashDid = (s: string): string => {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(36);
+};
+
 export interface PresenceRecord {
   $type: typeof PRESENCE_COLLECTION;
   /** Player cube centre, in integer world units (atproto records hold no floats). */
@@ -18,6 +27,11 @@ export interface PresenceRecord {
   z: number;
   /** Terrain seed the world was generated with; peers sanity-check they share the same world. */
   seed: number | null;
+  /**
+   * This player's signaling-server join code (the PeerJS id); peers connect
+   * to them by it. Absent until this session's signaling has registered.
+   */
+  joinCode?: string;
   /** Milliseconds since epoch. */
   updatedAt: number;
 }
@@ -28,12 +42,14 @@ export const makePresence = (
   z: number,
   seed: number | null,
   updatedAt: number,
+  joinCode?: string,
 ): PresenceRecord => ({
   $type: PRESENCE_COLLECTION,
   x: Math.round(x),
   y: Math.round(y),
   z: Math.round(z),
   seed,
+  ...(joinCode !== undefined ? { joinCode } : {}),
   updatedAt,
 });
 
@@ -48,6 +64,7 @@ export const isPresenceRecord = (v: unknown): v is PresenceRecord => {
     typeof r.y === "number" &&
     typeof r.z === "number" &&
     (r.seed === null || typeof r.seed === "number") &&
+    (r.joinCode === undefined || typeof r.joinCode === "string") &&
     typeof r.updatedAt === "number"
   );
 };

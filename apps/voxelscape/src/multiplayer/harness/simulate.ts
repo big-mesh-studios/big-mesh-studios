@@ -8,7 +8,7 @@ import { CLUSTER_DEFAULTS } from "../roster";
 import type { ClusterOptions } from "../roster";
 import { AtprotoHarness } from "./atproto-harness";
 import { createPlayerSim, type PlayerSim } from "./player";
-import { TransportHarness } from "./transport-harness";
+import { SignalingHarness } from "./signaling-harness";
 
 /** A deterministic PRNG, so placements and tests are reproducible. */
 const mulberry32 = (seed: number): (() => number) => {
@@ -31,7 +31,7 @@ export interface SimulatorOptions {
 export interface Simulator {
   players: PlayerSim[];
   harness: AtprotoHarness;
-  transport: TransportHarness;
+  signaling: SignalingHarness;
   startAll(): Promise<void>;
   stopAll(): Promise<void>;
   /** Moves one simulated player. */
@@ -60,12 +60,12 @@ export interface Simulator {
 
 export const createSimulator = (options: SimulatorOptions): Simulator => {
   const harness = new AtprotoHarness();
-  const transport = new TransportHarness();
+  const signaling = new SignalingHarness();
   const players: PlayerSim[] = options.placements.map((p, i) =>
     createPlayerSim({
       did: `did:plc:p${i}`,
       harness,
-      transport,
+      signaling,
       x: p.x,
       z: p.z,
       seed: options.seed ?? null,
@@ -214,7 +214,7 @@ export const createSimulator = (options: SimulatorOptions): Simulator => {
   return {
     players,
     harness,
-    transport,
+    signaling,
     startAll: async () => {
       await Promise.all(players.map((p) => p.start()));
     },

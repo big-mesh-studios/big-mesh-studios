@@ -162,14 +162,15 @@ export {
   type Pose,
   type PoseMessage,
 } from "./multiplayer/pose";
-export { createSimplePeerTransport } from "./multiplayer/simplepeer-transport";
+export { createPeerJSSignaling } from "./multiplayer/peerjs-transport";
 export type {
-  PeerFactory,
-  PeerFactoryOptions,
-  PeerSignalData,
   PeerTransport,
+  SignalingFactory,
+  SignalingRemote,
+  SignalingTransport,
 } from "./multiplayer/transport";
 export {
+  hashDid,
   horizontalDistance,
   isPresenceRecord,
   makePresence,
@@ -187,17 +188,6 @@ export {
   type ClusterSelection,
   type RosterEntry,
 } from "./multiplayer/roster";
-export {
-  hashDid,
-  isSignalRecord,
-  makeSignal,
-  parseSignals,
-  signalRkey,
-  SIGNAL_COLLECTION,
-  type ParsedSignal,
-  type SignalKind,
-  type SignalRecord,
-} from "./multiplayer/signal";
 
 // The debug console: the command table and the components that show it
 export { createDebugCommands, type CommandEntry } from "./commands";

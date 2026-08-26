@@ -7,7 +7,6 @@
 // hysteresis, staleness, cluster isolation, fault handling — without any
 // accounts, network, or browsers.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SIGNAL_COLLECTION } from "../signal";
 import { PRESENCE_COLLECTION } from "../presence";
 import { CLUSTER_DEFAULTS } from "../roster";
 import { createSimulator, gridPlacements } from "./simulate";
@@ -21,7 +20,7 @@ afterEach(() => {
 });
 
 describe("cluster mesh theory", () => {
-  it("two players form a connection via the atproto mailbox and exchange poses", async () => {
+  it("two players form a connection via the signaling service and exchange poses", async () => {
     const sim = createSimulator({
       placements: [
         { x: 0, z: 0 },
@@ -43,26 +42,18 @@ describe("cluster mesh theory", () => {
     expect(a.controller.rosterSize).toBe(1);
     expect(b.controller.rosterSize).toBe(1);
 
-    // The whole handshake is exactly two records: one offer in the
-    // initiator's repo addressed to the responder, one answer the other way.
-    const aSignals = sim.harness.records(a.did, SIGNAL_COLLECTION);
-    const bSignals = sim.harness.records(b.did, SIGNAL_COLLECTION);
-    expect(aSignals).toHaveLength(1);
-    expect(bSignals).toHaveLength(1);
-    const offer = aSignals[0].value as {
-      to: string;
-      kind: string;
-      seq: number;
-    };
-    const answer = bSignals[0].value as {
-      to: string;
-      kind: string;
-      seq: number;
-    };
-    expect(offer.to).toBe(b.did);
-    expect(offer.kind).toBe("offer");
-    expect(answer.to).toBe(a.did);
-    expect(answer.kind).toBe("answer");
+    // The handshake lives in the signaling service, not an atproto mailbox:
+    // each presence record carries its player's join code, and nothing is
+    // ever written to a signal collection.
+    const aPresence = sim.harness.records(a.did, PRESENCE_COLLECTION)[0]
+      .value as { joinCode?: string };
+    const bPresence = sim.harness.records(b.did, PRESENCE_COLLECTION)[0]
+      .value as { joinCode?: string };
+    expect(aPresence.joinCode).toBeTruthy();
+    expect(bPresence.joinCode).toBeTruthy();
+    expect(
+      sim.harness.listReposByCollection("app.bms.voxelscape.signal"),
+    ).toEqual([]);
 
     // Move B; A should receive B's new position over the data channel.
     sim.move(b.did, 10, 0);
@@ -238,7 +229,7 @@ describe("cluster mesh theory", () => {
     ).toBe(true);
 
     // Kill B's transport for the pair; A (the survivor) observes the close.
-    sim.transport.peer(b.did, a.did)?.destroy();
+    sim.signaling.peer(b.did, a.did)?.destroy();
     expect(
       await sim.runUntil(2_000, () => a.controller.connections === 0),
     ).toBe(true);
