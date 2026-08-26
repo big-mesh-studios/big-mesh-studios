@@ -14,10 +14,7 @@ import { Inventory } from "../player/inventory";
 import type { Player, PlayerConfig } from "../player/player";
 import { AdaptiveResolution } from "../render/adaptive";
 import { createRenderLoop } from "../render/create-render-loop";
-import {
-  createVoxelWorld,
-  type InitialDrawProgress,
-} from "../world/create-voxel-world";
+import { createVoxelWorld } from "../world/create-voxel-world";
 import { type Dim3 } from "../world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "../world/noise";
 
@@ -118,14 +115,11 @@ export const createVoxelscape = ({
     groundHeightAt: (x, z) => world.heightAt(x, z),
   });
 
-  /**
-   * Publishes a progress report once there is a signal to publish it to.
-   * The block the player spawns in is generated and meshed while the world is
-   * still being built, which is inside this component's body, and Solid
-   * refuses a write from there — so the reports made during construction are
-   * dropped here and read back off the finished world instead.
-   */
-  let publishProgress: ((progress: InitialDrawProgress) => void) | undefined;
+  const [loading, setLoading] = createSignal<LoadingState>({
+    blocksDrawn: 0,
+    blocksTotal: blocksPerSide * blocksPerSide,
+    ready: false,
+  });
 
   const world = createVoxelWorld({
     scene,
@@ -134,28 +128,16 @@ export const createVoxelscape = ({
     surfaceOnly,
     debugPerf,
     spawn,
-    onInitialDraw: (progress) => publishProgress?.(progress),
+    onInitialDraw: ({ drawn, total, spawnDrawn }) =>
+      setLoading({
+        blocksDrawn: drawn,
+        blocksTotal: total,
+        // The player is held back only until their own block is on screen; the
+        // rest of the window keeps arriving behind the fog while they walk
+        // around.
+        ready: spawnDrawn,
+      }),
   });
-
-  /** Restates the world's progress as what a loading screen needs from it. */
-  const toLoadingState = ({
-    drawn,
-    total,
-    spawnDrawn,
-  }: InitialDrawProgress): LoadingState => ({
-    blocksDrawn: drawn,
-    blocksTotal: total,
-    // The player is held back only until their own block is on screen; the
-    // rest of the window keeps arriving behind the fog while they walk around.
-    ready: spawnDrawn,
-  });
-
-  const [loading, setLoading] = createSignal<LoadingState>(
-    toLoadingState(world.drawProgress()),
-  );
-  // Every report from here on comes from a worker handing back a block, which
-  // is nowhere near a component body.
-  publishProgress = (progress) => setLoading(toLoadingState(progress));
 
   /**
    * Camera with a far plane beyond the ring's physical extent, so box

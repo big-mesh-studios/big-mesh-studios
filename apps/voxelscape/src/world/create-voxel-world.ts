@@ -49,13 +49,10 @@ export interface VoxelWorldConfig {
   /** Where the player starts, in world units. The window fills outward from here. */
   spawn: Dim3;
   /**
-   * Called as each of the window's blocks becomes visible at startup: its
-   * terrain generated, and in triangle mode its geometry built from that
-   * terrain too. `spawnDrawn` says whether the block containing `spawn` is
-   * among them — it is asked for first and so usually is on the very first
-   * call, but nothing downstream of the request order guarantees it, and a
-   * caller holding the player back until there is ground underfoot needs to
-   * know rather than assume.
+   * Called each time one of the window's blocks becomes visible at startup,
+   * with the running totals rather than a change to them. Never called before
+   * this function returns: the spawn block's terrain is generated during
+   * construction, but what draws it waits on the spritesheet.
    */
   onInitialDraw?: (progress: InitialDrawProgress) => void;
 }
@@ -77,13 +74,6 @@ export interface VoxelWorld {
   editLayer: EditLayer;
   /** The farthest the ring's outer edge can be from the player, in world units. */
   ringRadius: number;
-  /**
-   * How much of the window has been generated and drawn so far. The block the
-   * player spawns in is built during construction, so this already reports it
-   * by the time the world is handed back and `onInitialDraw` has already been
-   * called for it.
-   */
-  drawProgress(): InitialDrawProgress;
   /** Highest solid surface in the column at (`x`, `z`), for spawning and for weather. */
   heightAt(x: number, z: number): number;
   /** Highest solid surface at or below (`x`, `y`, `z`), or `-Infinity` where the column has none. */
@@ -123,17 +113,15 @@ export interface VoxelWorld {
  * The voxel terrain: a window of blocks that streams as the player moves, the
  * overlay of their edits, and the two renderers that draw it.
  */
-export const createVoxelWorld = (config: VoxelWorldConfig): VoxelWorld => {
-  const {
-    scene,
-    blocksPerSide,
-    terrain,
-    surfaceOnly,
-    debugPerf,
-    spawn,
-    onInitialDraw,
-  } = config;
-
+export const createVoxelWorld = ({
+  scene,
+  blocksPerSide,
+  terrain,
+  surfaceOnly,
+  debugPerf,
+  spawn,
+  onInitialDraw,
+}: VoxelWorldConfig): VoxelWorld => {
   const ringRadius = (blocksPerSide / 2) * BLOCK_WORLD[0];
   /**
    * Distance at which fog becomes fully opaque and rays stop marching. Set
@@ -280,7 +268,6 @@ export const createVoxelWorld = (config: VoxelWorldConfig): VoxelWorld => {
     ringRadius,
     reapplyEdits,
     applyEdits,
-    drawProgress,
 
     heightAt(x, z) {
       const height = getWorldHeight(blockGrid.blocks, x, z);
