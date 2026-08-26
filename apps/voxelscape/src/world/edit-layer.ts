@@ -84,7 +84,6 @@ export const worldVoxelToLocal = (
  * interior volume, in the LOD-0 grid.
  */
 export const blockWorldVoxelRange = (
-  store: VoxelStore,
   center: Dim3,
 ): { min: WorldVoxel; max: WorldVoxel } => {
   const min: WorldVoxel = [
@@ -169,7 +168,7 @@ export class EditLayer {
    * @returns The number of store voxels written.
    */
   applyToBlock(block: WorldBlock): number {
-    const { min, max } = blockWorldVoxelRange(block.store, block.center);
+    const { min, max } = blockWorldVoxelRange(block.center);
     const matches = this.queryRange(min, max);
     if (matches.length === 0) {
       return 0;

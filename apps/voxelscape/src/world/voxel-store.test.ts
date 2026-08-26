@@ -318,7 +318,7 @@ describe("getWorldHeight", () => {
 
 describe("customFillStore", () => {
   it("uses custom fill function to generate voxel data", () => {
-    const customFill = (store: any, center: any, config: any) => {
+    const customFill = (store: any, _center: any, _config: any) => {
       store.set(0, 0, 0, VOXEL_GRASS);
       store.set(1, 1, 1, VOXEL_DIRT);
     };

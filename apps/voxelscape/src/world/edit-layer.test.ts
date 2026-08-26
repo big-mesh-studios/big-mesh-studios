@@ -97,7 +97,7 @@ describe("world voxel mapping", () => {
 
   it("covers the block's full span in the LOD-0 grid", () => {
     const block = emptyBlock();
-    const { min, max } = blockWorldVoxelRange(block.store, block.center);
+    const { min, max } = blockWorldVoxelRange(block.center);
     // 192 world units / 2 = 96 voxels per axis
     expect(max[0] - min[0] + 1).toBe(96);
     expect(max[1] - min[1] + 1).toBe(128);

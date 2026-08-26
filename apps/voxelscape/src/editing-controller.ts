@@ -36,10 +36,7 @@ export interface EditingControllerParams {
 
 const findBlockIndex = (blocks: WorldBlock[], w: WorldVoxel): number => {
   for (let i = 0; i < blocks.length; i++) {
-    const { min, max } = blockWorldVoxelRange(
-      blocks[i].store,
-      blocks[i].center,
-    );
+    const { min, max } = blockWorldVoxelRange(blocks[i].center);
     if (
       w[0] >= min[0] &&
       w[0] <= max[0] &&
