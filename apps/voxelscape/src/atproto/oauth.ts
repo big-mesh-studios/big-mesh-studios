@@ -1,0 +1,264 @@
+// OAuth client configuration and the popup sign-in flow, shared by
+// `AtprotoController` and the callback page. atcute's browser OAuth client is
+// configured through module-level state and keeps its sessions in
+// localStorage, so the popup and its opener each configure it the same way and
+// the popup hands back only a DID — the opener reads the session out of shared
+// storage itself.
+import {
+  CompositeDidDocumentResolver,
+  LocalActorResolver,
+  PlcDidDocumentResolver,
+  WebDidDocumentResolver,
+  XrpcHandleResolver,
+} from "@atcute/identity-resolver";
+import type { ActorIdentifier, Did } from "@atcute/lexicons";
+import {
+  configureOAuth,
+  createAuthorizationUrl,
+  finalizeAuthorization,
+} from "@atcute/oauth-browser-client";
+
+/** Requested when the client metadata document does not name a scope itself. */
+const DEFAULT_SCOPE = "atproto transition:generic";
+
+/**
+ * The atproto public API endpoint used to resolve a sign-in handle to its DID
+ * and PDS. A web page has no DNS access, so handle resolution has to go
+ * through an XRPC service; public.api.bsky.app resolves handles for the whole
+ * network.
+ */
+const HANDLE_RESOLVER_SERVICE = "https://public.api.bsky.app";
+
+/** Same-origin channel the popup reports its sign-in result back over. */
+const POPUP_CHANNEL = "bms.voxelscape.oauth";
+
+const POPUP_FEATURES = "popup=1,width=600,height=720";
+
+/** How often the opener checks whether the popup was dismissed by hand. */
+const POPUP_CLOSE_POLL_MS = 500;
+
+/** What the popup reports back to whichever window opened it. */
+export type SignInResult = { did: Did } | { error: string };
+
+interface ClientConfig {
+  /** The `client_id` the authorization server identifies this app by. */
+  clientId: string;
+  /** Must match the document's own URL for `finalizeAuthorization` to work. */
+  redirectUri: string;
+  scope: string;
+}
+
+/**
+ * A loopback client_id is self-describing: the authorization server derives
+ * the client's redirect_uri and scope from this URL's own query string rather
+ * than from a hosted metadata document, which is what lets local development
+ * work without a server. The redirect_uri's host must be the loopback IP, not
+ * "localhost" (RFC 8252 disallows "localhost" as a redirect_uri host); the dev
+ * server binds `--host 127.0.0.1` so this matches regardless of how the page
+ * was loaded.
+ */
+const buildLoopbackConfig = (): ClientConfig => {
+  const port = window.location.port || "5173";
+  const redirectUri = `http://127.0.0.1:${port}/oauth/callback`;
+  const params = new URLSearchParams({
+    redirect_uri: redirectUri,
+    scope: DEFAULT_SCOPE,
+  });
+  return {
+    clientId: `http://localhost?${params.toString()}`,
+    redirectUri,
+    scope: DEFAULT_SCOPE,
+  };
+};
+
+const isLoopbackEnvironment = (): boolean => {
+  if (typeof window === "undefined") return false;
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+};
+
+/**
+ * Reads the redirect URI and scope out of a hosted client metadata document.
+ * atcute needs both up front — unlike `@atproto/oauth-client-browser` it never
+ * fetches the document itself — and taking them from the same JSON the
+ * authorization server will read keeps client and server in agreement.
+ */
+const loadHostedConfig = async (metadataUrl: string): Promise<ClientConfig> => {
+  const response = await fetch(metadataUrl, {
+    headers: { accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `could not load client metadata from ${metadataUrl} (${response.status})`,
+    );
+  }
+  const metadata = (await response.json()) as {
+    redirect_uris?: string[];
+    scope?: string;
+  };
+  const redirectUri = metadata.redirect_uris?.[0];
+  if (redirectUri === undefined) {
+    throw new Error(`client metadata at ${metadataUrl} lists no redirect_uris`);
+  }
+  return {
+    clientId: metadataUrl,
+    redirectUri,
+    scope: metadata.scope ?? DEFAULT_SCOPE,
+  };
+};
+
+const resolveClientConfig = async (
+  clientId: string | undefined,
+): Promise<ClientConfig> => {
+  if (clientId !== undefined) {
+    return loadHostedConfig(clientId);
+  }
+  if (isLoopbackEnvironment()) {
+    return buildLoopbackConfig();
+  }
+  return loadHostedConfig(
+    new URL("client-metadata.json", window.location.href).href,
+  );
+};
+
+let configuring: Promise<ClientConfig> | undefined;
+
+/**
+ * Configures atcute's OAuth module state for this document, at most once —
+ * `configureOAuth` overwrites module-level variables and opens a fresh
+ * localStorage-backed session store each time it runs. Returns the resolved
+ * config because the scope is needed again when authorization starts.
+ */
+export const configureOAuthClient = (
+  clientId?: string,
+): Promise<ClientConfig> => {
+  configuring ??= (async () => {
+    const config = await resolveClientConfig(clientId);
+    configureOAuth({
+      metadata: {
+        client_id: config.clientId,
+        redirect_uri: config.redirectUri,
+      },
+      identityResolver: new LocalActorResolver({
+        handleResolver: new XrpcHandleResolver({
+          serviceUrl: HANDLE_RESOLVER_SERVICE,
+        }),
+        didDocumentResolver: new CompositeDidDocumentResolver({
+          methods: {
+            plc: new PlcDidDocumentResolver(),
+            web: new WebDidDocumentResolver(),
+          },
+        }),
+      }),
+    });
+    return config;
+  })();
+  return configuring;
+};
+
+/**
+ * Whether this document was loaded as the OAuth redirect. atcute asks for
+ * `response_mode=fragment`, so the callback parameters arrive in the hash. The
+ * parameters are what identifies the load, not the path: the deployed
+ * `redirect_uris` points at the site root, because GitHub Pages has no
+ * single-page fallback that could serve a dedicated callback path.
+ */
+export const isOAuthCallback = (): boolean => {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  return params.has("state") && (params.has("code") || params.has("error"));
+};
+
+const publishSignIn = (result: SignInResult): void => {
+  const channel = new BroadcastChannel(POPUP_CHANNEL);
+  channel.postMessage(result);
+  channel.close();
+};
+
+/**
+ * Resolves once the popup reports a DID, and rejects if it reports an error or
+ * is closed without reporting anything at all. There is no event for "popup
+ * gone", hence the poll.
+ */
+const awaitSignIn = (popup: Window): Promise<Did> =>
+  new Promise((resolve, reject) => {
+    const channel = new BroadcastChannel(POPUP_CHANNEL);
+    let poll: ReturnType<typeof setInterval> | undefined;
+    const settle = (finish: () => void) => {
+      clearInterval(poll);
+      channel.close();
+      finish();
+    };
+    channel.onmessage = (event: MessageEvent<SignInResult>) => {
+      const result = event.data;
+      if ("did" in result) {
+        settle(() => resolve(result.did));
+      } else {
+        settle(() => reject(new Error(result.error)));
+      }
+    };
+    poll = setInterval(() => {
+      if (popup.closed) {
+        settle(() => reject(new Error("sign-in window was closed")));
+      }
+    }, POPUP_CLOSE_POLL_MS);
+  });
+
+/**
+ * Signs `identifier` in through a popup and resolves to the account's DID,
+ * whose session atcute has by then written to this origin's localStorage.
+ */
+export const signInPopup = async (params: {
+  identifier: ActorIdentifier;
+  clientId?: string;
+}): Promise<Did> => {
+  // Opened before the first await: a popup that is not a direct result of the
+  // click which started the sign-in is blocked by default.
+  const popup = window.open("about:blank", "_blank", POPUP_FEATURES);
+  if (popup === null) {
+    throw new Error("sign-in popup was blocked — allow popups for this site");
+  }
+  try {
+    const config = await configureOAuthClient(params.clientId);
+    const url = await createAuthorizationUrl({
+      target: { type: "account", identifier: params.identifier },
+      scope: config.scope,
+      display: "popup",
+    });
+    // Listening starts before the popup navigates, so a fast authorization
+    // server cannot answer into a window that has nobody watching yet.
+    const signedIn = awaitSignIn(popup);
+    popup.location.href = url.href;
+    return await signedIn;
+  } catch (err) {
+    popup.close();
+    throw err;
+  }
+};
+
+/**
+ * Runs in the popup: exchanges the callback parameters for a session, which
+ * atcute persists to localStorage where the opener's `getSession` will find
+ * it, and reports the account's DID over the shared channel. Reports the
+ * failure over the same channel instead, so a waiting opener is not left
+ * hanging until the window is closed.
+ */
+export const completeSignIn = async (): Promise<Did> => {
+  try {
+    await configureOAuthClient();
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    // Scrub the callback parameters so a reload cannot replay them.
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + window.location.search,
+    );
+    const { session } = await finalizeAuthorization(params);
+    publishSignIn({ did: session.info.sub });
+    return session.info.sub;
+  } catch (err) {
+    publishSignIn({
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
+};

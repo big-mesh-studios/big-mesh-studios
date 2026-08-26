@@ -1,14 +1,13 @@
-// The page served at the OAuth redirect_uri (`/oauth/callback`). It exists
-// only to finish a popup login: `oauth.init()` reads the callback params off
-// the URL, exchanges them, and (per `@atproto/oauth-client-browser`) signals
-// the opener over a same-origin BroadcastChannel and closes itself. None of
-// that needs the game, so this renders instead of `<App/>` for this one
-// route rather than booting the whole 3D scene just to throw it away —
-// besides the waste, that heavier boot was also delaying (and risked
-// altogether preventing, on any error along the way) the popup ever reaching
-// the code that closes it.
+// The page shown when a document is loaded as the OAuth redirect. It exists
+// only to finish a popup login: `completeSignIn` exchanges the callback
+// parameters off the URL hash, reports the signed-in DID to the opener over a
+// same-origin BroadcastChannel, and this closes the window. None of that needs
+// the game, so this renders instead of `<App/>` for that one load rather than
+// booting the whole 3D scene just to throw it away — besides the waste, that
+// heavier boot was also delaying (and risked altogether preventing, on any
+// error along the way) the popup ever reaching the code that closes it.
 import { createSignal, type Component } from "solid-js";
-import { buildOAuthClient } from "./atproto-controller";
+import { completeSignIn } from "./oauth";
 
 export const OAuthCallbackPage: Component = () => {
   const [status, setStatus] = createSignal("finishing sign-in…");
@@ -18,20 +17,13 @@ export const OAuthCallbackPage: Component = () => {
   // off, so no onMount-equivalent is needed
   void (async () => {
     try {
-      const oauth = await buildOAuthClient({});
-      const result = await oauth.init();
-      if (result === undefined) {
-        setStatus("no sign-in in progress — you can close this window");
-        return;
-      }
+      const did = await completeSignIn();
       if (window.opener) {
         setStatus("signed in — closing…");
         window.close();
       } else {
         // opened directly, not as a popup (e.g. a stale/reloaded tab)
-        setStatus(
-          `signed in as ${result.session.sub} — you can close this window`,
-        );
+        setStatus(`signed in as ${did} — you can close this window`);
       }
     } catch (err) {
       setStatus(

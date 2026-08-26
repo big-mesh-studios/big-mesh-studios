@@ -1,10 +1,18 @@
-// atproto connection and edit-chunk sync. Owns the OAuth session
-// (popup flow via `@atproto/oauth-client-browser`), the `AtpAgent` built on
-// that session, and the upload/fetch of `app.bms.voxelscape.edit` records —
-// see `edits.ts` for the pure record logic. A plain domain object: it knows
-// about the network and the edit overlay, not about renderers or a console.
-import { Agent } from "@atproto/api";
-import { BrowserOAuthClient } from "@atproto/oauth-client-browser";
+// atproto connection and edit-chunk sync. Owns the OAuth session (popup flow
+// via `@atcute/oauth-browser-client` — see `oauth.ts`), the `@atcute/client`
+// XRPC client built on that session, and the upload/fetch of
+// `app.bms.voxelscape.edit` records — see `edits.ts` for the pure record
+// logic. A plain domain object: it knows about the network and the edit
+// overlay, not about renderers or a console.
+import { Client, ok } from "@atcute/client";
+import type { Did } from "@atcute/lexicons";
+import { isActorIdentifier } from "@atcute/lexicons/syntax";
+import {
+  deleteStoredSession,
+  getSession,
+  listStoredSessions,
+  OAuthUserAgent,
+} from "@atcute/oauth-browser-client";
 import type { EditLayer } from "../world/edit-layer";
 import {
   EDIT_COLLECTION,
@@ -14,6 +22,7 @@ import {
   recordsToEntries,
   type EditChunkRecord,
 } from "./edits";
+import { configureOAuthClient, signInPopup } from "./oauth";
 
 export interface AtpControllerOptions {
   /**
@@ -31,68 +40,6 @@ export type AtpStatus =
   | "connected"
   | "error";
 
-const LOOPBACK_SCOPE = "atproto transition:generic";
-
-/**
- * A loopback client_id is self-describing: the auth server derives the
- * client's declared scope and redirect_uri from this URL's own query string
- * (see `@atproto/oauth-types`'s `parseAtprotoLoopbackClientId`), not from any
- * hosted or in-page metadata object. Encoding both here and loading via
- * `BrowserOAuthClient.load()` (which re-derives its metadata from this same
- * string) keeps client and server in agreement — building a separate
- * `clientMetadata` object by hand let the two drift apart. The redirect_uri's
- * host must be the loopback IP, not "localhost" (RFC 8252 disallows
- * "localhost" as a redirect_uri host); the dev server binds
- * `--host 127.0.0.1` so this matches regardless of how the page was loaded.
- */
-const buildLoopbackClientId = (): string => {
-  const port = window.location.port || "5173";
-  const redirectUri = `http://127.0.0.1:${port}/oauth/callback`;
-  const params = new URLSearchParams({
-    redirect_uri: redirectUri,
-    scope: LOOPBACK_SCOPE,
-  });
-  return `http://localhost?${params.toString()}`;
-};
-
-/**
- * The atproto public API endpoint used to resolve a sign-in handle to its DID
- * and PDS. The OAuth client requires either this or a custom identity
- * resolver; public.api.bsky.app resolves handles for the whole network.
- */
-const HANDLE_RESOLVER = "https://public.api.bsky.app";
-
-/**
- * Builds (loads) the OAuth client for the given options: a hosted
- * `client-metadata.json` when `clientId` is set, a loopback client for local
- * development, or the current origin's own `client-metadata.json` otherwise.
- * Standalone (not a method) so the minimal `/oauth/callback` page can
- * complete a popup login without constructing an `AtprotoController` — or
- * the rest of the app — at all.
- */
-export const buildOAuthClient = async (
-  options: AtpControllerOptions,
-): Promise<BrowserOAuthClient> => {
-  if (options.clientId !== undefined) {
-    return BrowserOAuthClient.load({
-      clientId: options.clientId,
-      handleResolver: HANDLE_RESOLVER,
-    });
-  }
-  if (isLoopbackEnvironment()) {
-    return BrowserOAuthClient.load({
-      clientId: buildLoopbackClientId(),
-      handleResolver: HANDLE_RESOLVER,
-    });
-  }
-  const metadataUrl = new URL("client-metadata.json", window.location.href)
-    .href;
-  return BrowserOAuthClient.load({
-    clientId: metadataUrl,
-    handleResolver: HANDLE_RESOLVER,
-  });
-};
-
 /**
  * Wraps the edit-chunk sync onto a player's atproto repo. A single shared
  * overlay is both the source for uploads and the destination for merges, so a
@@ -106,9 +53,9 @@ export class AtprotoController {
   private readonly seed: number | null;
   private readonly options: AtpControllerOptions;
   private readonly onMerged: (changed: number) => void;
-  private oauth: BrowserOAuthClient | undefined;
-  private agent: Agent | undefined;
-  private did_: string | null = null;
+  private agent: OAuthUserAgent | undefined;
+  private client: Client | undefined;
+  private did_: Did | null = null;
   private status_: AtpStatus = "pending";
   private lastError: string | null = null;
   private lastUploadAt = 0;
@@ -151,31 +98,27 @@ export class AtprotoController {
     return this.did_;
   }
 
-  /** Whether a signed-in, ready-to-sync agent is available. */
+  /** Whether a signed-in, ready-to-sync client is available. */
   get ready(): boolean {
-    return this.agent !== undefined;
+    return this.client !== undefined;
   }
 
   /**
-   * Restores any stored session, or completes a popup login callback if the
-   * current URL carries OAuth parameters. Safe to call once at startup.
+   * Restores a stored session if this origin has one. Safe to call once at
+   * startup. A popup login's own callback is finished by the callback page
+   * rather than here, so a window running this is never mid-callback.
    */
   async init(): Promise<string> {
     try {
       this.status_ = "connecting";
-      this.oauth = await this.buildClient();
-      const result = await this.oauth.init();
-      if (result === undefined) {
+      await configureOAuthClient(this.options.clientId);
+      const [stored] = listStoredSessions();
+      if (stored === undefined) {
         this.status_ = "anonymous";
         return "not signed in";
       }
-      // A popup is finished the moment its session is established; the parent
-      // window carries on from its own `init`.
-      if (typeof window !== "undefined" && window.opener) {
-        window.close();
-      }
-      this.adoptSession(result.session);
-      return `restored session for ${this.did_ ?? result.session.sub}`;
+      await this.adoptSession(stored);
+      return `restored session for ${stored}`;
     } catch (err) {
       return this.fail(err);
     }
@@ -186,16 +129,21 @@ export class AtprotoController {
    * which case the configured handle getter supplies it.
    */
   async connect(handle?: string): Promise<string> {
-    const target = handle ?? this.handleInput();
-    if (target.trim() === "") {
+    const target = (handle ?? this.handleInput()).trim();
+    if (target === "") {
       return "provide an atproto handle (e.g. /connect you.bsky.social)";
+    }
+    if (!isActorIdentifier(target)) {
+      return `"${target}" is not an atproto handle or DID`;
     }
     try {
       this.status_ = "connecting";
-      this.oauth ??= await this.buildClient();
-      const session = await this.oauth.signInPopup(target.trim());
-      this.adoptSession(session);
-      return `connected to atproto as ${this.did_}`;
+      const did = await signInPopup({
+        identifier: target,
+        clientId: this.options.clientId,
+      });
+      await this.adoptSession(did);
+      return `connected to atproto as ${did}`;
     } catch (err) {
       return this.fail(err);
     }
@@ -207,7 +155,9 @@ export class AtprotoController {
    * (last-write-wins by record timestamp).
    */
   async sync(): Promise<string> {
-    if (this.agent === undefined) {
+    const client = this.client;
+    const repo = this.did_;
+    if (client === undefined || repo === null) {
       return "not connected — use /connect first";
     }
     const messages: string[] = [];
@@ -221,12 +171,16 @@ export class AtprotoController {
     );
     for (const record of groups.values()) {
       try {
-        await this.agent!.com.atproto.repo.putRecord({
-          repo: this.did_!,
-          collection: EDIT_COLLECTION,
-          rkey: makeRkey(record.chunk),
-          record: record as unknown as { [_ in string]: unknown },
-        });
+        await ok(
+          client.post("com.atproto.repo.putRecord", {
+            input: {
+              repo,
+              collection: EDIT_COLLECTION,
+              rkey: makeRkey(record.chunk),
+              record,
+            },
+          }),
+        );
       } catch (err) {
         return this.fail(err);
       }
@@ -244,7 +198,7 @@ export class AtprotoController {
       messages.push(`uploaded ${groups.size} edit chunk(s)`);
     }
 
-    const fetched = await this.fetchAllRecords();
+    const fetched = await this.fetchAllRecords(client, repo);
     const changed = mergeIntoLayer(this.layer, recordsToEntries(fetched));
     this.onMerged(changed);
     messages.push(
@@ -254,14 +208,21 @@ export class AtprotoController {
   }
 
   async signOut(): Promise<string> {
+    const agent = this.agent;
+    const did = this.did_;
     try {
-      if (this.oauth !== undefined && this.did_ !== null) {
-        await this.oauth.revoke(this.did_);
+      if (agent !== undefined) {
+        await agent.signOut();
       }
     } catch {
-      // ignore — a failed revoke still drops the local session below
+      // A failed revoke (offline, or a token the server already dropped) still
+      // has to sign this browser out, and only `signOut` clears the store.
+      if (did !== null) {
+        deleteStoredSession(did);
+      }
     }
     this.agent = undefined;
+    this.client = undefined;
     this.did_ = null;
     this.status_ = "anonymous";
     return "signed out";
@@ -273,46 +234,45 @@ export class AtprotoController {
     }`;
   }
 
+  /**
+   * Drops the session this controller holds. The stored session outlives it:
+   * atcute's OAuth state is document-scoped module state, so a later
+   * controller in the same page restores the same account through `init`.
+   */
   dispose(): void {
-    void this.oauth?.dispose();
-    this.oauth = undefined;
+    this.agent = undefined;
+    this.client = undefined;
   }
 
-  private async buildClient(): Promise<BrowserOAuthClient> {
-    return buildOAuthClient(this.options);
-  }
-
-  private adoptSession(session: {
-    fetchHandler: (pathname: string, init: RequestInit) => Promise<Response>;
-    sub: string;
-  }): void {
-    this.agent = new Agent({
-      fetchHandler: (url: string, init: RequestInit) =>
-        session.fetchHandler(url, init),
-    });
-    this.did_ = session.sub;
+  private async adoptSession(did: Did): Promise<void> {
+    // `allowStale` accepts an expired access token rather than blocking
+    // startup on a refresh; the agent refreshes on the first request that
+    // needs it.
+    const agent = new OAuthUserAgent(
+      await getSession(did, { allowStale: true }),
+    );
+    this.agent = agent;
+    this.client = new Client({ handler: agent });
+    this.did_ = agent.sub;
     this.status_ = "connected";
     this.lastError = null;
   }
 
-  private async fetchAllRecords(): Promise<EditChunkRecord[]> {
-    const agent = this.agent;
-    if (agent === undefined || this.did_ === null) {
-      return [];
-    }
-    const repo = this.did_;
+  private async fetchAllRecords(
+    client: Client,
+    repo: Did,
+  ): Promise<EditChunkRecord[]> {
     const out: EditChunkRecord[] = [];
     let cursor: string | undefined;
     do {
-      const res = await agent.com.atproto.repo.listRecords({
-        repo,
-        collection: EDIT_COLLECTION,
-        cursor,
-        limit: 100,
-      });
-      cursor = res.data.cursor;
-      for (const rec of res.data.records) {
-        const value = rec.value as unknown as EditChunkRecord;
+      const page = await ok(
+        client.get("com.atproto.repo.listRecords", {
+          params: { repo, collection: EDIT_COLLECTION, cursor, limit: 100 },
+        }),
+      );
+      cursor = page.cursor;
+      for (const rec of page.records) {
+        const value = rec.value as EditChunkRecord;
         if (value?.$type === EDIT_COLLECTION) {
           out.push(value);
         }
@@ -326,10 +286,4 @@ export class AtprotoController {
     this.lastError = err instanceof Error ? err.message : String(err);
     return `atproto error: ${this.lastError}`;
   }
-}
-
-function isLoopbackEnvironment(): boolean {
-  if (typeof window === "undefined") return false;
-  const host = window.location.hostname;
-  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
 }

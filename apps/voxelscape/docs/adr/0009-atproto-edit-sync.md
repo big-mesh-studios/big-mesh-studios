@@ -40,22 +40,35 @@ and an older record can never win. This is per-voxel LWW — adequate for a
 first pass; a future richer merge (per-chunk CRDT or "keep the union of both
 players' walls") is out of scope here.
 
-## OAuth: atproto browser popup
+## OAuth: atcute browser popup
 
-Authentication uses the first-party atproto OAuth flow via
-`@atproto/oauth-client-browser`. The `AtprotoController` builds a
-`BrowserOAuthClient`:
+Authentication uses the atproto OAuth flow via `@atcute/oauth-browser-client`,
+configured once per document in `src/atproto/oauth.ts`:
 
 - **Development** builds a loopback client for the current origin
-  (`buildLoopbackClientId`), so localhost needs no metadata server.
-- **Production** loads hosted client metadata from a `clientId` URL
-  (`public/client-metadata.json`), which the authorization server fetches to
-  learn the redirect URI and scope.
+  (`buildLoopbackConfig`), so localhost needs no metadata server.
+- **Production** fetches the hosted `client-metadata.json` and reads the
+  redirect URI and scope out of it. atcute needs both up front, so the client
+  reads the same document the authorization server does rather than declaring
+  them separately.
 
-`connect()` calls `signInPopup(handle)`; `init()` restores any stored session
-(or finishes the popup's callback, closing the window when it was the
-popup). The authenticated `OAuthSession` powers an `AtpAgent` via its
-`fetchHandler`, keeping the session-managed DPoP fetch in charge of tokens.
+atcute has no popup helper, so `signInPopup` builds the flow out of its
+redirect primitives. The opener holds a blank popup window open across
+`createAuthorizationUrl` (it has to be opened inside the click that started the
+sign-in or the browser blocks it), then navigates it to the authorization URL.
+The popup lands back on the app, `completeSignIn` exchanges the callback
+parameters through `finalizeAuthorization`, and it reports the resulting DID to
+the opener over a same-origin `BroadcastChannel` before closing. Only the DID
+crosses: atcute persists sessions to this origin's localStorage, so the opener
+resolves it back to a session with `getSession` and wraps that in an
+`OAuthUserAgent`, which is the `@atcute/client` `Client`'s fetch handler and
+keeps the DPoP-bound token refresh in charge of tokens.
+
+The callback parameters arrive in the URL hash (`response_mode=fragment`), and
+the deployed `redirect_uris` points at the site root because GitHub Pages has
+no single-page fallback that could serve a dedicated callback path. So
+`index.tsx` decides between the game and the callback page by looking for those
+parameters, not by path.
 
 ## Considered options
 

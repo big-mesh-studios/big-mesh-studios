@@ -16,15 +16,20 @@ export interface EditChunkCoord {
   z: number;
 }
 
-/** One edit record: a sparse list of voxel ids inside one 32³ chunk. */
-export interface EditChunkRecord {
+/**
+ * One edit record: a sparse list of voxel ids inside one 32³ chunk. Declared
+ * as a type alias rather than an interface so it stays assignable to the
+ * `Record<string, unknown>` an atproto record body is typed as — TypeScript
+ * infers an implicit index signature for the one and not the other.
+ */
+export type EditChunkRecord = {
   $type: typeof EDIT_COLLECTION;
   chunk: EditChunkCoord;
   /** Terrain seed the world was generated with, for reproducible base terrain. */
   seed: number | null;
   createdAt: string;
   edits: Array<{ x: number; y: number; z: number; id: number }>;
-}
+};
 
 export const chunkOf = (w: WorldVoxel): EditChunkCoord => ({
   x: Math.floor(w[0] / EDIT_CHUNK_DIM),
