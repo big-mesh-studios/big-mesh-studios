@@ -4,30 +4,17 @@
 // localStorage, so the popup and its opener each configure it the same way and
 // the popup hands back only a DID — the opener reads the session out of shared
 // storage itself.
-import {
-  CompositeDidDocumentResolver,
-  LocalActorResolver,
-  PlcDidDocumentResolver,
-  WebDidDocumentResolver,
-  XrpcHandleResolver,
-} from "@atcute/identity-resolver";
+import { LocalActorResolver } from "@atcute/identity-resolver";
 import type { ActorIdentifier, Did } from "@atcute/lexicons";
 import {
   configureOAuth,
   createAuthorizationUrl,
   finalizeAuthorization,
 } from "@atcute/oauth-browser-client";
+import { createDidDocumentResolver, createHandleResolver } from "./identity";
 
 /** Requested when the client metadata document does not name a scope itself. */
 const DEFAULT_SCOPE = "atproto transition:generic";
-
-/**
- * The atproto public API endpoint used to resolve a sign-in handle to its DID
- * and PDS. A web page has no DNS access, so handle resolution has to go
- * through an XRPC service; public.api.bsky.app resolves handles for the whole
- * network.
- */
-const HANDLE_RESOLVER_SERVICE = "https://public.api.bsky.app";
 
 /** Same-origin channel the popup reports its sign-in result back over. */
 const POPUP_CHANNEL = "bms.voxelscape.oauth";
@@ -146,15 +133,8 @@ export const configureOAuthClient = (
         redirect_uri: config.redirectUri,
       },
       identityResolver: new LocalActorResolver({
-        handleResolver: new XrpcHandleResolver({
-          serviceUrl: HANDLE_RESOLVER_SERVICE,
-        }),
-        didDocumentResolver: new CompositeDidDocumentResolver({
-          methods: {
-            plc: new PlcDidDocumentResolver(),
-            web: new WebDidDocumentResolver(),
-          },
-        }),
+        handleResolver: createHandleResolver(),
+        didDocumentResolver: createDidDocumentResolver(),
       }),
     });
     return config;

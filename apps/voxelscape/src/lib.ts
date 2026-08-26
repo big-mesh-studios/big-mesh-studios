@@ -146,6 +146,11 @@ export {
 } from "./atproto/edits";
 export { claimedHandle, confirmHandle } from "./atproto/handles";
 export {
+  createDidDocumentResolver,
+  createHandleResolver,
+  type DidDocument,
+} from "./atproto/identity";
+export {
   createAtprotoRepoClient,
   type AtprotoRepoClient,
 } from "./atproto/repo-client";

@@ -13,14 +13,6 @@ import {
   listStoredSessions,
   OAuthUserAgent,
 } from "@atcute/oauth-browser-client";
-import {
-  CompositeDidDocumentResolver,
-  CompositeHandleResolver,
-  DohJsonHandleResolver,
-  PlcDidDocumentResolver,
-  WebDidDocumentResolver,
-  WellKnownHandleResolver,
-} from "@atcute/identity-resolver";
 import type { EditLayer } from "../world/edit-layer";
 import {
   EDIT_COLLECTION,
@@ -31,21 +23,13 @@ import {
   type EditChunkRecord,
 } from "./edits";
 import { confirmHandle } from "./handles";
+import {
+  createDidDocumentResolver,
+  createHandleResolver,
+  type DidDocument,
+} from "./identity";
 import { configureOAuthClient, signInPopup } from "./oauth";
 import { createAtprotoRepoClient, type AtprotoRepoClient } from "./repo-client";
-
-/** What the DID document resolver hands back for a resolved DID. */
-type DidDocument = Awaited<
-  ReturnType<CompositeDidDocumentResolver<"plc" | "web">["resolve"]>
->;
-
-/**
- * The public DNS-over-HTTPS endpoint a handle is looked up through. A handle
- * is a domain name, and what it points at lives in that domain's `_atproto`
- * text record; a web page cannot query DNS itself, so the question goes over
- * HTTPS to a resolver that can.
- */
-const DNS_OVER_HTTPS_SERVICE = "https://cloudflare-dns.com/dns-query";
 
 export interface AtpControllerOptions {
   /**
@@ -90,27 +74,8 @@ export class AtprotoController {
   private readonly documentCache = new Map<string, DidDocument>();
   /** DID -> its confirmed handle, or null when the account has none to show. */
   private readonly handleCache = new Map<string, string | null>();
-  private readonly didDocumentResolver = new CompositeDidDocumentResolver({
-    methods: {
-      plc: new PlcDidDocumentResolver(),
-      web: new WebDidDocumentResolver(),
-    },
-  });
-  /**
-   * Resolves a handle to the DID it points at, asking the two places whose
-   * answer the handle's own owner controls: the domain's `_atproto` text
-   * record, and the `atproto-did` file the domain serves. Whichever answers
-   * first wins, and either one alone is enough — a domain that publishes only
-   * the record still resolves when a browser cannot read its file across
-   * origins.
-   */
-  private readonly handleResolver = new CompositeHandleResolver({
-    strategy: "race",
-    methods: {
-      dns: new DohJsonHandleResolver({ dohUrl: DNS_OVER_HTTPS_SERVICE }),
-      http: new WellKnownHandleResolver(),
-    },
-  });
+  private readonly didDocumentResolver = createDidDocumentResolver();
+  private readonly handleResolver = createHandleResolver();
 
   constructor(params: {
     layer: EditLayer;
