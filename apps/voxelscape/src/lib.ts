@@ -10,12 +10,12 @@ export {
 } from "./voxelscape/voxelscape-context";
 
 // World Management
+export { BlockGrid } from "./world/block-grid";
 export {
   createVoxelWorld,
   type VoxelWorld,
   type VoxelWorldConfig,
 } from "./world/create-voxel-world";
-export { BlockGrid } from "./world/block-grid";
 export {
   blockWorldVoxelRange,
   EditLayer,
@@ -81,14 +81,13 @@ export {
 export * from "./render/perf";
 
 // The player: their body, their input, and what they do to the world
+export * from "./player/create-input";
 export {
   createPlayerAvatar,
   type AvatarTerrain,
   type PlayerAvatar,
   type PlayerAvatarConfig,
 } from "./player/create-player-avatar";
-export * from "./player/create-input";
-export * from "./player/player";
 export {
   EditingController,
   type EditingControllerParams,
@@ -100,6 +99,7 @@ export {
   Inventory,
   type InventoryItem,
 } from "./player/inventory";
+export * from "./player/player";
 
 // Day/Night & Environment
 export {
@@ -124,7 +124,7 @@ export {
   type WeatherView,
 } from "./environment/weather-controller";
 
-// atproto / Bluesky
+// atproto
 export {
   AtprotoController,
   type AtpControllerOptions,
@@ -150,25 +150,19 @@ export {
 } from "./atproto/repo-client";
 
 // Multiplayer (cluster-based WebRTC mesh over atproto)
+export { MeshPeer, type MeshPeerParams } from "./multiplayer/mesh-peer";
 export {
   MultiplayerController,
   type MultiplayerParams,
   type MultiplayerStatus,
 } from "./multiplayer/multiplayer-controller";
-export { MeshPeer, type MeshPeerParams } from "./multiplayer/mesh-peer";
+export { createPeerJSSignaling } from "./multiplayer/peerjs-transport";
 export {
   decodePose,
   encodePose,
   type Pose,
   type PoseMessage,
 } from "./multiplayer/pose";
-export { createPeerJSSignaling } from "./multiplayer/peerjs-transport";
-export type {
-  PeerTransport,
-  SignalingFactory,
-  SignalingRemote,
-  SignalingTransport,
-} from "./multiplayer/transport";
 export {
   hashDid,
   horizontalDistance,
@@ -178,7 +172,7 @@ export {
   PRESENCE_RKEY,
   type PresenceRecord,
 } from "./multiplayer/presence";
-export { RemotePlayers, labelText } from "./multiplayer/remote-players";
+export { labelText, RemotePlayers } from "./multiplayer/remote-players";
 export {
   CLUSTER_DEFAULTS,
   rosterFromPresences,
@@ -188,6 +182,12 @@ export {
   type ClusterSelection,
   type RosterEntry,
 } from "./multiplayer/roster";
+export type {
+  PeerTransport,
+  SignalingFactory,
+  SignalingRemote,
+  SignalingTransport,
+} from "./multiplayer/transport";
 
 // The debug console: the command table and the components that show it
 export { createDebugCommands, type CommandEntry } from "./commands";

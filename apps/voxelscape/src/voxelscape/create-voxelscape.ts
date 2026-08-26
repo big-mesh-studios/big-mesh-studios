@@ -2,18 +2,18 @@ import { Color, PerspectiveCamera, Scene } from "@random-mesh/rmsl/scene";
 import { createSignal, type Accessor } from "solid-js";
 import { AtprotoController } from "../atproto/atproto-controller";
 import type { Commander } from "../commands";
+import { createDebugCommands } from "../commands";
 import { createEnvironment } from "../environment/create-environment";
+import { MultiplayerController } from "../multiplayer/multiplayer-controller";
+import { createPeerJSSignaling } from "../multiplayer/peerjs-transport";
+import type { Pose } from "../multiplayer/pose";
 import { createInput, type InputController } from "../player/create-input";
 import { createPlayerAvatar } from "../player/create-player-avatar";
-import { createRenderLoop } from "../render/create-render-loop";
-import { MultiplayerController } from "../multiplayer/multiplayer-controller";
-import type { Pose } from "../multiplayer/pose";
-import { createPeerJSSignaling } from "../multiplayer/peerjs-transport";
-import { createVoxelWorld } from "../world/create-voxel-world";
-import { createDebugCommands } from "../commands";
 import { EditingController } from "../player/editing-controller";
 import { Inventory } from "../player/inventory";
 import type { Player, PlayerConfig } from "../player/player";
+import { createRenderLoop } from "../render/create-render-loop";
+import { createVoxelWorld } from "../world/create-voxel-world";
 import { type Dim3 } from "../world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "../world/noise";
 
@@ -150,6 +150,7 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
   });
 
   input.install();
+
   /** This player's network-relevant state: where they are and where they look. */
   const currentPose = (): Pose => ({
     x: avatar.player.position.x,
@@ -201,6 +202,7 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
   // happens on its own, so without this a reload leaves no way to tell a
   // restored session from a dropped one short of running `/atproto`.
   void atproto.init().then((line) => onNotice?.(line));
+
   const commands = createDebugCommands({
     dayNight: environment.dayNight,
     rendererSwitch: world.renderers,
@@ -292,6 +294,7 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
       unmount = null;
       loop.dispose();
     };
+
     return unmount;
   };
 

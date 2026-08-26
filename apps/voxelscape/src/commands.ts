@@ -1,9 +1,9 @@
 import type { AtprotoController } from "./atproto/atproto-controller";
 import type { DayNightController } from "./environment/day-night-controller";
-import type { MultiplayerController } from "./multiplayer/multiplayer-controller";
-import type { RendererSwitch } from "./renderers/renderer-switch";
 import type { SoundController } from "./environment/sound-controller";
 import type { WeatherController } from "./environment/weather-controller";
+import type { MultiplayerController } from "./multiplayer/multiplayer-controller";
+import type { RendererSwitch } from "./renderers/renderer-switch";
 
 /**
  * Declares every debug console command as a single object literal, keyed by
