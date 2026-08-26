@@ -99,6 +99,13 @@ export interface InputController {
    *
    * Mouse pointers are ignored here — on desktop, looking around is driven by
    * the pointer lock `install` binds, so this is left for touch/pen drags.
+   *
+   * The drag delta is the difference between successive `clientX`/`clientY`
+   * rather than the `movementX`/`movementY` the locked path reads. Those
+   * movement values are reported in physical, logical or CSS pixels depending
+   * on the browser and the operating system, which would make look sensitivity
+   * differ from machine to machine, and Safari on iOS only began reporting
+   * them at version 17.
    */
   createLookDragHandlers(): LookDragHandlers;
 }
@@ -232,6 +239,13 @@ export const createInput = (): InputController => {
    * so `movementX`/`movementY` — not `clientX`/`clientY` — carry the raw
    * mouse delta; outside of lock, mouse movement over the canvas does nothing,
    * matching the click-to-play convention of desktop FPS games.
+   *
+   * The one mouse event in a module that otherwise listens for pointer events,
+   * because the Pointer Lock specification routes locked motion through
+   * `mousemove` specifically: it holds `clientX`/`clientY` at the position the
+   * lock started from and requires all motion data to arrive as `mousemove`.
+   * `pointermove` does carry `movementX`/`movementY` in current browsers, but
+   * no specification says it keeps doing so under lock.
    */
   const installPointerLockLook = (signal: AbortSignal): void => {
     const onMove = (e: MouseEvent): void => {
