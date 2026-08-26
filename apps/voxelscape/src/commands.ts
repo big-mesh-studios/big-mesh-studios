@@ -203,7 +203,7 @@ export const createDebugCommands = (params: DebugCommandsParams): Commander => {
       run: async () => atproto.signOut(),
     },
     "/multiplayer": {
-      help: "/multiplayer start|stop|status   control the multiplayer mesh",
+      help: "/multiplayer start|stop|status|debug   control and inspect the multiplayer mesh",
       run: async (rest) => {
         const argument = rest[0];
         if (argument === "start") {
@@ -211,6 +211,9 @@ export const createDebugCommands = (params: DebugCommandsParams): Commander => {
         }
         if (argument === "stop") {
           return multiplayer.stop();
+        }
+        if (argument === "debug") {
+          return multiplayer.describeDebug();
         }
         return multiplayer.describe();
       },

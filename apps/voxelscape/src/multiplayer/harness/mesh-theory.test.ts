@@ -39,6 +39,9 @@ describe("cluster mesh theory", () => {
     expect(connected).toBe(true);
     expect(a.controller.connectedDids()).toEqual([b.did]);
     expect(b.controller.connectedDids()).toEqual([a.did]);
+    // The roster counts only other players, never this player's own presence.
+    expect(a.controller.rosterSize).toBe(1);
+    expect(b.controller.rosterSize).toBe(1);
 
     // The whole handshake is exactly two records: one offer in the
     // initiator's repo addressed to the responder, one answer the other way.

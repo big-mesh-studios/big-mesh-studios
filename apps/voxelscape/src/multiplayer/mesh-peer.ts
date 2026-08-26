@@ -32,7 +32,8 @@ export interface MeshPeerParams {
   onOpen: (did: string) => void;
   onPose: (did: string, pose: PoseMessage) => void;
   onClose: (did: string) => void;
-  onError: (did: string, message: string) => void;
+  /** Reports a fatal failure; `code` is simple-peer's `ERR_*` when there is one. */
+  onError: (did: string, message: string, code?: string) => void;
 }
 
 export class MeshPeer {
@@ -42,7 +43,11 @@ export class MeshPeer {
   private readonly onOpen: (did: string) => void;
   private readonly onPose: (did: string, pose: PoseMessage) => void;
   private readonly onClose: (did: string) => void;
-  private readonly onError: (did: string, message: string) => void;
+  private readonly onError: (
+    did: string,
+    message: string,
+    code?: string,
+  ) => void;
   private readonly role: "initiator" | "responder";
 
   private peer: PeerTransport;
@@ -52,6 +57,8 @@ export class MeshPeer {
   private lastSeq = 0;
   private startedAt = Date.now();
   private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private lastSignal: { kind: SignalKind; at: number } | null = null;
+  private lastError: string | null = null;
 
   constructor(params: MeshPeerParams) {
     this.repoClient = params.repoClient;
@@ -72,7 +79,9 @@ export class MeshPeer {
     this.peer.on("connect", () => this.handleOpen());
     this.peer.on("data", (chunk) => this.handleData(chunk));
     this.peer.on("close", () => this.close("peer closed"));
-    this.peer.on("error", (err) => this.fail(err.message));
+    this.peer.on("error", (err) =>
+      this.fail(err.message, (err as Error & { code?: string }).code),
+    );
 
     this.pollTimer = setInterval(() => void this.poll(), SIGNAL_POLL_MS);
     void this.poll();
@@ -114,6 +123,18 @@ export class MeshPeer {
     this.onClose(this.peerDid);
   }
 
+  /** A one-line snapshot of this peer's handshake state, for `/multiplayer debug`. */
+  describe(): string {
+    const up = Math.round((Date.now() - this.startedAt) / 1000);
+    const signal =
+      this.lastSignal !== null
+        ? `${this.lastSignal.kind}@${Math.round((Date.now() - this.lastSignal.at) / 1000)}s ago`
+        : "none";
+    return `role=${this.role} phase=${this.phase} up=${up}s lastSignal=${signal}${
+      this.lastError !== null ? ` lastError=${this.lastError}` : ""
+    }`;
+  }
+
   private kindOf(data: PeerSignalData): SignalKind {
     if (data.type === "offer") {
       return "offer";
@@ -130,6 +151,7 @@ export class MeshPeer {
       return;
     }
     const seq = ++this.seq;
+    const kind = this.kindOf(payload as PeerSignalData);
     try {
       await this.repoClient.putRecord({
         repo: this.selfDid,
@@ -137,12 +159,15 @@ export class MeshPeer {
         rkey: signalRkey(this.peerDid, seq),
         record: makeSignal(
           this.peerDid,
-          this.kindOf(payload as PeerSignalData),
+          kind,
           payload,
           seq,
           Date.now(),
-        ) as unknown as { [_ in string]: unknown },
+        ) as unknown as {
+          [_ in string]: unknown;
+        },
       });
+      this.lastSignal = { kind, at: Date.now() };
     } catch (err) {
       this.fail(err instanceof Error ? err.message : String(err));
     }
@@ -154,7 +179,7 @@ export class MeshPeer {
       return;
     }
     if (Date.now() - this.startedAt > SIGNAL_TIMEOUT_MS) {
-      this.close("handshake timed out");
+      this.fail("handshake timed out");
       return;
     }
     try {
@@ -169,6 +194,7 @@ export class MeshPeer {
           continue;
         }
         this.lastSeq = signal.seq;
+        this.lastSignal = { kind: signal.kind, at: Date.now() };
         if (this.phase === "signaling") {
           this.phase = "connecting";
         }
@@ -202,8 +228,9 @@ export class MeshPeer {
     }
   }
 
-  private fail(message: string): void {
-    this.onError(this.peerDid, message);
+  private fail(message: string, code?: string): void {
+    this.lastError = code !== undefined ? `${code}: ${message}` : message;
+    this.onError(this.peerDid, message, code);
     this.close(message);
   }
 }

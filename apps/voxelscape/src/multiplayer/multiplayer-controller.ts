@@ -31,6 +31,29 @@ import type { PeerFactory } from "./transport";
 
 export type MultiplayerStatus = "off" | "online" | "error";
 
+/** Result of fetching one repo's presence record during a discovery pass. */
+export type PresenceFetchResult =
+  | { did: string; ok: true; record: PresenceRecord }
+  | { did: string; ok: false; error: string };
+
+/** One row of the discovery telemetry `describeDebug` reports. */
+export interface DiscoveryFetchEntry {
+  did: string;
+  ok: boolean;
+  /** True when the DID was this player's own repo (skipped, never fetched). */
+  self?: boolean;
+  updatedAt?: number;
+  error?: string;
+}
+
+/** What the last discovery pass saw, for `/multiplayer debug`. */
+export interface DiscoveryTelemetry {
+  at: number;
+  /** The raw DIDs `listReposByCollection` returned from the relay. */
+  relayDids: string[];
+  fetched: DiscoveryFetchEntry[];
+}
+
 /** How often the player's coarse presence is re-published, ms. */
 const PRESENCE_INTERVAL_MS = 20_000;
 /** Never publish presence more often than this, even when moving, ms. */
@@ -97,6 +120,7 @@ export class MultiplayerController {
 
   private roster: RosterEntry[] = [];
   private selection: ClusterSelection | undefined;
+  private lastDiscovery: DiscoveryTelemetry | undefined;
   private readonly peers = new Map<string, MeshPeer>();
   private readonly failedAt = new Map<string, number>();
   private peerCount = 0;
@@ -131,7 +155,7 @@ export class MultiplayerController {
     return this.status_;
   }
 
-  /** The number of players currently within reach of the selection window. */
+  /** The number of other players currently within reach of the selection window. */
   get rosterSize(): number {
     return this.roster.length;
   }
@@ -274,6 +298,74 @@ export class MultiplayerController {
     }`;
   }
 
+  /**
+   * A multi-line dump of the mesh's internals, for `/multiplayer debug`: what
+   * the relay actually returned for discovery, which of those fetches failed
+   * and why, the roster with record ages, the current selection, and each
+   * peer's handshake state. This is how a status line like "2 nearby, 0
+   * connected" is decomposed into its causes.
+   */
+  describeDebug(): string {
+    const lines: string[] = [];
+    lines.push(`state: ${this.describeState()}`);
+    lines.push(
+      `did: ${this.getDid() ?? "none"}  relay: ${this.relay}  seed: ${
+        this.seed ?? "none"
+      }`,
+    );
+
+    const discovery = this.lastDiscovery;
+    if (discovery === undefined) {
+      lines.push("discovery: no pass yet");
+    } else {
+      const age = Math.round((Date.now() - discovery.at) / 1000);
+      lines.push(
+        `discovery: ${age}s ago — relay returned ${discovery.relayDids.length} DID(s) for ${PRESENCE_COLLECTION}`,
+      );
+      for (const did of discovery.relayDids) {
+        lines.push(`  relay listed: ${did}`);
+      }
+      for (const f of discovery.fetched) {
+        if (f.self === true) {
+          lines.push(`  fetch: ${f.did} (self, skipped)`);
+        } else if (f.ok) {
+          const recordAge =
+            f.updatedAt !== undefined
+              ? `${Math.round((Date.now() - f.updatedAt) / 1000)}s old`
+              : "?";
+          lines.push(`  fetch: ${f.did} ok, ${recordAge}`);
+        } else {
+          lines.push(`  fetch: ${f.did} FAILED — ${f.error ?? "unknown"}`);
+        }
+      }
+    }
+
+    lines.push(`roster (${this.roster.length} other player(s)):`);
+    for (const e of this.roster) {
+      lines.push(
+        `  ${e.did} at (${e.x}, ${e.z}) ${Math.round(
+          (Date.now() - e.updatedAt) / 1000,
+        )}s old`,
+      );
+    }
+
+    const selection = this.selection;
+    if (selection === undefined) {
+      lines.push("selection: none yet");
+    } else {
+      lines.push(
+        `selection: target=[${selection.target.join(", ")}] candidates=[${selection.candidates.join(", ")}] connect=[${selection.connect.join(", ")}] disconnect=[${selection.disconnect.join(", ")}]`,
+      );
+    }
+
+    lines.push(`peers (${this.peers.size}):`);
+    for (const [did, peer] of this.peers) {
+      lines.push(`  ${did}: ${peer.describe()}`);
+    }
+    lines.push(`lastError: ${this.lastError ?? "none"}`);
+    return lines.join("\n");
+  }
+
   dispose(): void {
     void this.stop();
   }
@@ -334,6 +426,8 @@ export class MultiplayerController {
    * Re-scans the relay for every repo holding a presence record, fetches each
    * one's latest presence, and re-runs cluster selection. Fatal only to
    * discovery: presence publishing keeps going if the relay is unreachable.
+   * The roster excludes this player's own repo, so "N player(s) nearby" counts
+   * only other players.
    */
   private async refreshDiscovery(now: number): Promise<void> {
     if (!this.running) {
@@ -341,13 +435,23 @@ export class MultiplayerController {
     }
     try {
       const dids = await this.fetchPresenceRepos();
+      const selfDid = this.getDid();
+      const fetched: DiscoveryFetchEntry[] = [];
       const entries: Array<{ did: string; record: PresenceRecord }> = [];
       for (const did of dids) {
-        const record = await this.fetchPresence(did);
-        if (record !== null) {
-          entries.push({ did, record });
+        if (did === selfDid) {
+          fetched.push({ did, ok: true, self: true });
+          continue;
+        }
+        const result = await this.fetchPresence(did);
+        if (result.ok) {
+          fetched.push({ did, ok: true, updatedAt: result.record.updatedAt });
+          entries.push({ did, record: result.record });
+        } else {
+          fetched.push({ did, ok: false, error: result.error });
         }
       }
+      this.lastDiscovery = { at: now, relayDids: dids, fetched };
       this.roster = rosterFromPresences(entries);
       this.applySelection(now);
     } catch (err) {
@@ -393,10 +497,15 @@ export class MultiplayerController {
     return dids;
   };
 
-  private async fetchPresence(did: string): Promise<PresenceRecord | null> {
+  /**
+   * Fetches one repo's latest presence record. Reports the failure explicitly
+   * rather than collapsing to null, so `describeDebug` can tell a repo the
+   * relay never served apart from a fetch that failed.
+   */
+  private async fetchPresence(did: string): Promise<PresenceFetchResult> {
     const repoClient = this.getRepoClient();
     if (repoClient === undefined) {
-      return null;
+      return { did, ok: false, error: "no signed-in record client" };
     }
     try {
       const record = await repoClient.getRecord({
@@ -405,9 +514,16 @@ export class MultiplayerController {
         rkey: PRESENCE_RKEY,
       });
       const value = record.value as unknown;
-      return isPresenceRecord(value) ? value : null;
-    } catch {
-      return null;
+      if (isPresenceRecord(value)) {
+        return { did, ok: true, record: value };
+      }
+      return { did, ok: false, error: "record malformed" };
+    } catch (err) {
+      return {
+        did,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
     }
   }
 
@@ -478,8 +594,10 @@ export class MultiplayerController {
           this.failedAt.set(d, Date.now());
         }
       },
-      onError: (d, message) => {
-        this.lastError = `${d}: ${message}`;
+      onError: (d, message, code) => {
+        this.lastError = `${d}: ${message}${
+          code !== undefined ? ` (${code})` : ""
+        }`;
       },
     });
     this.peers.set(did, peer);
