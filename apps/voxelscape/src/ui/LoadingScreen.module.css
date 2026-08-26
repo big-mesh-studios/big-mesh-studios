@@ -38,27 +38,6 @@
   }
 }
 
-.chip {
-  position: absolute;
-  /* top-left, clear of the hotbar and its status line along the bottom and of
-     the console button in the top-right */
-  left: 12px;
-  top: 12px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.45);
-  color: rgba(255, 255, 255, 0.85);
-  font:
-    11px/1 system-ui,
-    sans-serif;
-  letter-spacing: 0.06em;
-  pointer-events: none;
-}
-
 .track {
   width: 120px;
   height: 3px;
@@ -71,8 +50,4 @@
   height: 100%;
   background: rgba(255, 255, 255, 0.85);
   transition: width 0.2s linear;
-}
-
-.count {
-  white-space: nowrap;
 }

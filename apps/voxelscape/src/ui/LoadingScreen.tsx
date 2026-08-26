@@ -1,38 +1,43 @@
 import styles from "./LoadingScreen.module.css";
 import { Component, Show } from "solid-js";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
+import { Toast } from "./Toasts";
 
 /**
- * Two views of the same progress, because the player is let into the world
- * long before it is finished. Until the block they spawn in is on screen
- * there is nowhere to stand and nothing to look at, so the canvas is covered.
- * From then on the remaining blocks arrive behind the fog while they walk
- * around, and a corner readout counts those in without taking the screen back.
+ * Covers the canvas until the block the player spawns in is drawn: until then
+ * there is nowhere to stand and nothing to look at.
  */
 export const LoadingScreen: Component = () => {
+  const { loading } = useVoxelscape();
+
+  return (
+    <Show when={!loading().spawnDrawn}>
+      <div class={styles.screen}>
+        <div class={styles.title}>generating terrain</div>
+        <div class={styles.spinner} />
+      </div>
+    </Show>
+  );
+};
+
+/**
+ * Counts in the blocks that arrive behind the fog while the player is already
+ * walking around, once the spawn block has handed them the screen.
+ */
+export const LoadingToast: Component = () => {
   const { loading } = useVoxelscape();
   /** The share of the window that is on screen, as a CSS width. */
   const percent = (): string => `${(loading().drawn / loading().total) * 100}%`;
   const remaining = (): number => loading().total - loading().drawn;
 
   return (
-    <Show when={remaining() > 0}>
-      <Show
-        when={loading().spawnDrawn}
-        fallback={
-          <div class={styles.screen}>
-            <div class={styles.title}>generating terrain</div>
-            <div class={styles.spinner} />
-          </div>
-        }
-      >
-        <div class={styles.chip}>
-          <div class={styles.track}>
-            <div class={styles.bar} style={{ width: percent() }} />
-          </div>
-          <span class={styles.count}>{remaining()} blocks to go</span>
+    <Show when={loading().spawnDrawn && remaining() > 0}>
+      <Toast>
+        <div class={styles.track}>
+          <div class={styles.bar} style={{ width: percent() }} />
         </div>
-      </Show>
+        <span>{remaining()} blocks to go</span>
+      </Toast>
     </Show>
   );
 };
