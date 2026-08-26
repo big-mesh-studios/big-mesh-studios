@@ -41,6 +41,11 @@ export {
 } from "./voxelscape-context";
 
 // World Management
+export {
+  createVoxelWorld,
+  type VoxelWorld,
+  type VoxelWorldConfig,
+} from "./create-voxel-world";
 export { BlockGrid } from "./world/block-grid";
 export {
   blockWorldVoxelRange,

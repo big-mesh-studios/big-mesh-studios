@@ -11,10 +11,11 @@ import { createSignal, type Accessor } from "solid-js";
 import { AdaptiveResolution } from "./adaptive";
 import { AtprotoController } from "./atproto/atproto-controller";
 import type { Commander } from "./commander";
+import { createInput, type InputController } from "./create-input";
+import { createVoxelWorld } from "./create-voxel-world";
 import { DayNightController } from "./day-night-controller";
 import { createDebugCommands } from "./debug-commands";
 import { EditingController } from "./editing-controller";
-import { createInput, type InputController } from "./create-input";
 import { COLLECTABLE, Inventory } from "./inventory";
 import { GpuTimer } from "./perf";
 import {
@@ -26,26 +27,12 @@ import {
   type Player,
   type PlayerWorld,
 } from "./player";
-import { RendererSwitch } from "./renderers/renderer-switch";
-import { loadVoxelTiles } from "./renderers/tile-loader";
 import { SoundController } from "./sound-controller";
 import { applyWeather } from "./weather";
 import { WeatherController } from "./weather-controller";
-import { BlockGrid } from "./world/block-grid";
-import { EditLayer, type WorldVoxel } from "./world/edit-layer";
-import { createEditPersistence } from "./world/edit-persistence";
-import {
-  BLOCK_WORLD,
-  getGroundHeightBelow,
-  getWorldHeight,
-  isSolidAt,
-  isWaterAt,
-  syncLevelFromStore,
-  VOXEL_SIZE,
-  type Dim3,
-} from "./world/level-data";
+import { type WorldVoxel } from "./world/edit-layer";
+import { VOXEL_SIZE, type Dim3 } from "./world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
-import { WorldRing } from "./world/world-ring";
 
 /** Sky blue, matching the material's default fog color so the horizon blends. */
 const SKY_BLUE = 0x87ceeb;
@@ -55,10 +42,6 @@ const SKY_BLUE = 0x87ceeb;
  * floating-point drift far outside it.
  */
 const SAFE_EXTENT = 1e6;
-/** Padding added to each mesh's box so adjacent meshes share a thin overlap shell. */
-const PAD = 2.0;
-/** Water absorption used by the raymarch water pass and, at the same value, the triangle renderer's underwater tint. */
-const WATER_EXTINCTION = 0.12;
 /** How many frames between each debug-perf HUD sample (a GPU readback, so throttled). */
 const SAMPLE_EVERY = 24;
 
@@ -118,18 +101,6 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     (typeof window !== "undefined" && window.location.hash.includes("perf"));
   const onDebugStats = config.onDebugStats;
 
-  /** Ring half-extent: the farthest the ring's outer edge can be from the player. */
-  const ringRadius = (blocksPerSide / 2) * BLOCK_WORLD[0];
-  /**
-   * Distance at which fog becomes fully opaque and rays stop marching. Set
-   * to the ring edge's closest possible approach to the player — half a block
-   * short of the ring's half-width — the distance when the player hugs the far
-   * edge of their center block, so fog always hides the ring boundary before
-   * it can become visible.
-   */
-  const fogDistance = (blocksPerSide / 2 - 0.5) * BLOCK_WORLD[0];
-  const fogStart = 0.4 * fogDistance;
-
   /** First person by default: the camera is the player's eye, and the cube is hidden. */
   let firstPerson = true;
   let showPlayerCube = false;
@@ -147,86 +118,27 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
   /**
    * Owns the sun/ambient lights, the sun/moon billboards, and the day-night
    * clock. `tick` (called from the frame loop) returns the computed day-night
-   * state, which feeds both `rendererSwitch.applyLighting` and the clear
-   * colour below.
+   * state, which feeds both the renderers' lighting and the clear colour.
    */
   const dayNight = new DayNightController({ scene });
 
-  /** A square window of WorldBlocks, tagged with their grid coordinates. */
-  const blockGrid = new BlockGrid({ blocksPerSide, terrain, surfaceOnly });
-
-  /**
-   * Builds both rendering strategies' meshes for every block above and owns
-   * switching between them (`/renderer ray|tri`).
-   */
-  const rendererSwitch = new RendererSwitch({
+  const world = createVoxelWorld({
     scene,
-    blocks: blockGrid.blocks,
-    padding: PAD,
-    blockWorld: BLOCK_WORLD,
-    fogDistance,
-    fogStart,
-    debugPerf,
-    waterExtinction: WATER_EXTINCTION,
-    seaLevel: terrain.seaLevel,
-  });
-
-  /**
-   * The world-coordinate edit overlay: every player break/place, keyed by
-   * absolute voxel, so builds survive ring refills and sync to atproto.
-   * Persisted to IndexedDB and re-applied to freshly filled blocks.
-   */
-  const editLayer = new EditLayer();
-  const editPersistence = createEditPersistence(editLayer);
-  /**
-   * Re-applies the edit overlay to every ring block: re-derives the GPU level
-   * of each block an edit intersects and notifies the renderer switch (a
-   * texture re-upload for the raymarch renderer, a queued mesh rebuild for the
-   * triangle renderer). Shared by the IndexedDB load and the post-`/sync`
-   * remote-edit merge, both of which change the overlay after blocks already
-   * hold generated terrain.
-   */
-  const applyLayerToBlocks = (): void => {
-    const affected: number[] = [];
-    for (let i = 0; i < blockGrid.blocks.length; i++) {
-      const block = blockGrid.blocks[i];
-      if (editLayer.applyToBlock(block) > 0) {
-        syncLevelFromStore(block.level, block.store, { surfaceOnly });
-        affected.push(i);
-      }
-    }
-    for (const i of affected) {
-      rendererSwitch.onBlockChanged(i);
-    }
-  };
-
-  /**
-   * Keeps `blockGrid`'s window centred on the player, streamed in off the
-   * main thread as it scrolls.
-   */
-  const worldRing = new WorldRing({
-    blockGrid,
+    blocksPerSide,
     terrain,
     surfaceOnly,
-    onBlockChanged: (i) => rendererSwitch.onBlockChanged(i),
-    onBlockReposition: (i, center) => rendererSwitch.repositionBlock(i, center),
-    editLayer,
+    debugPerf,
   });
 
-  // Tell every block material which tile each voxel face uses once the
-  // spritesheet loads. Fire-and-forget: voxels stay flat blue until it lands.
-  loadVoxelTiles(rendererSwitch);
   /**
    * Camera with a far plane beyond the ring's physical extent, so box
    * geometry is never clipped (fog and early ray termination hide the
    * actual cutoff).
    */
-  const camera = new PerspectiveCamera(50, 1.0, 0.1, ringRadius + 200);
+  const camera = new PerspectiveCamera(50, 1.0, 0.1, world.ringRadius + 200);
   const player = createPlayer(
     spawn[0],
-    getWorldHeight(blockGrid.blocks, spawn[0], spawn[2]) +
-      PLAYER_CFG.halfSize +
-      0.1,
+    world.heightAt(spawn[0], spawn[2]) + PLAYER_CFG.halfSize + 0.1,
     spawn[2],
   );
   const playerCube = new Mesh(
@@ -240,6 +152,16 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
   playerCube.position.copy(player.position);
   playerCube.visible = showPlayerCube;
   scene.add(playerCube);
+  // Every opaque object is now in the scene, so the water passes can go on top.
+  world.addTranslucentPasses();
+
+  /** Built once rather than per frame; the samplers read the live blocks. */
+  const playerWorld: PlayerWorld = {
+    groundHeightAt: world.groundHeightAt,
+    inWaterAt: world.inWaterAt,
+    solidAt: world.solidAt,
+    halfExtent: SAFE_EXTENT,
+  };
 
   /**
    * Inventory (collected blocks + selected slot) and the edit controller that
@@ -268,12 +190,12 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     return out;
   };
   const editing = new EditingController({
-    blocks: blockGrid.blocks,
-    layer: editLayer,
+    blocks: world.blocks,
+    layer: world.editLayer,
     inventory,
     surfaceOnly,
-    onBlockEdited: (i) => rendererSwitch.onBlockChanged(i),
-    onEditRecorded: () => editPersistence.scheduleSave(),
+    onBlockEdited: (i) => world.renderers.onBlockChanged(i),
+    onEditRecorded: () => world.scheduleSave(),
     getLook: () => {
       const p = camera.position;
       const [dx, dy, dz] = lookDirection(player);
@@ -285,15 +207,7 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     getPlayerVoxels: playerVoxels,
   });
 
-  // Re-apply any previously persisted edits to the freshly built initial
-  // blocks, now that the overlay has loaded.
-  void editPersistence.load().then(applyLayerToBlocks);
-
   input.install();
-  // Both renderers' translucent water passes (and the triangle renderer's
-  // underwater tint) blend over the opaque scene; scene-graph draw order
-  // means they must be added after the player cube.
-  rendererSwitch.addTranslucentPassesToScene(scene);
   /**
    * Synthesizes the weather's sound (rain, wind, thunder) from the Web Audio
    * API. Browsers suspend audio until the first user gesture, so `unlock` is
@@ -321,16 +235,16 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
    */
   const weather = new WeatherController({
     scene,
-    groundHeight: (x, z) => getWorldHeight(blockGrid.blocks, x, z),
+    groundHeight: world.heightAt,
     onStrike: (x, z) => sound.thunderStrike(x, z),
   });
   /**
    * Owns the atproto/Bluesky connection and the edit-chunk sync (see
    * `src/atproto`). Restores any stored session at startup; `/sync` uploads
-   * fresh edits and merges remote ones into `editLayer`.
+   * fresh edits and merges remote ones into the edit overlay.
    */
   const atproto = new AtprotoController({
-    layer: editLayer,
+    layer: world.editLayer,
     seed: terrain.seed,
     options: {},
     getHandle: () => "",
@@ -339,15 +253,15 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
         // Remote edits just landed in the overlay; push them into the ring's
         // blocks (store + GPU level + mesh) and persist them locally so a
         // reload doesn't drop the merged world until the next `/sync`.
-        applyLayerToBlocks();
-        editPersistence.scheduleSave();
+        world.reapplyEdits();
+        world.scheduleSave();
       }
     },
   });
   void atproto.init();
   const commands = createDebugCommands({
     dayNight,
-    rendererSwitch,
+    rendererSwitch: world.renderers,
     weather,
     sound,
     atproto,
@@ -381,15 +295,6 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
    */
   const adaptive = new AdaptiveResolution();
 
-  /** Built once rather than per frame; the samplers read the live blocks. */
-  const playerWorld: PlayerWorld = {
-    groundHeightAt: (x, y, z) =>
-      getGroundHeightBelow(blockGrid.blocks, x, y, z),
-    inWaterAt: (x, y, z) => isWaterAt(blockGrid.blocks, x, y, z),
-    solidAt: (x, y, z) => isSolidAt(blockGrid.blocks, x, y, z),
-    halfExtent: SAFE_EXTENT,
-  };
-
   let unmount: (() => void) | null = null;
 
   const mount = (canvas: HTMLCanvasElement): (() => void) => {
@@ -417,7 +322,7 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
       timer.poll();
       sampleCounter++;
       const sample = sampleCounter % SAMPLE_EVERY === 0;
-      const stats = rendererSwitch.describeDebugStats(
+      const stats = world.renderers.describeDebugStats(
         renderer.gl,
         renderer.canvas.width,
         renderer.canvas.height,
@@ -487,7 +392,7 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
         );
       }
       // scroll the terrain ring so the player's block stays centred
-      worldRing.scrollToPlayer(player.position.x, player.position.z);
+      world.scrollTo(player.position.x, player.position.z);
       playerCube.position.copy(player.position);
       // the cube's local +Z faces the heading; a Y rotation by `yaw` aligns it
       playerCube.rotation.y = player.yaw;
@@ -504,10 +409,10 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
       const env = applyWeather(dn, weatherView.weather, weatherView.intensity);
       skyColor.set(env.skyColor[0], env.skyColor[1], env.skyColor[2]);
       renderer.setClearColor(skyColor, 1);
-      rendererSwitch.applyLighting(env);
+      world.renderers.applyLighting(env);
       // per-frame work specific to whichever renderer is active (mesh-build
       // draining for the triangle renderer, underwater tint, etc.)
-      rendererSwitch.tick(dt, camera);
+      world.renderers.tick(dt, camera);
       render();
       adaptResolution(t);
     };
@@ -554,10 +459,8 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
 
     dispose() {
       unmount?.();
-      // stop the fill worker so it doesn't keep running after unmount
-      worldRing.dispose();
-      // store the edit overlay before the render loop stops
-      void editPersistence.saveNow();
+      // stop the fill worker, terminate the mesh worker, and store the edits
+      world.dispose();
       // release the atproto OAuth state
       atproto.dispose();
       // release the audio hardware
