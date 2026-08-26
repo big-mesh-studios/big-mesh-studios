@@ -1,0 +1,165 @@
+import {
+  Color,
+  PerspectiveCamera,
+  Scene,
+  WebGLRenderer,
+} from "@random-mesh/rmsl/scene";
+import { AdaptiveResolution } from "./adaptive";
+import { GpuTimer } from "./perf";
+
+/** How many frames between each debug-perf GPU readback, which stalls the pipeline. */
+const SAMPLE_EVERY = 24;
+
+export interface RenderLoopConfig {
+  canvas: HTMLCanvasElement;
+  scene: Scene;
+  /** Its aspect ratio is kept in step with the canvas's layout size. */
+  camera: PerspectiveCamera;
+  /** The colour to clear to, read once per frame after `onFrame` has run. */
+  clearColor: () => Color;
+  /** Enables the GPU timer and the statistics line. */
+  debugPerf: boolean;
+  /** Advances the world by `dt` seconds. Called once per frame, before drawing. */
+  onFrame: (dt: number) => void;
+  /**
+   * Renderer statistics to append to the debug line. `sample` is true only on
+   * the frames where a GPU readback is affordable.
+   */
+  describeStats?: (
+    gl: WebGL2RenderingContext,
+    width: number,
+    height: number,
+    sample: boolean,
+  ) => string;
+  /** Receives the assembled debug line once per frame while `debugPerf` is on. */
+  onDebugStats?: (line: string) => void;
+}
+
+export interface RenderLoop {
+  /** Stops the loop, stops watching the canvas, and releases the renderer's GPU resources. */
+  dispose(): void;
+}
+
+/**
+ * Drives one canvas: a renderer, the frame loop, and the resolution scaler
+ * that keeps the frame time near budget. Knows nothing about what it draws
+ * beyond the scene and camera handed to it.
+ */
+export const createRenderLoop = ({
+  canvas,
+  scene,
+  camera,
+  debugPerf,
+  onFrame,
+  clearColor,
+  describeStats,
+  onDebugStats,
+}: RenderLoopConfig): RenderLoop => {
+  const renderer = new WebGLRenderer(canvas);
+  renderer.setClearColor(clearColor(), 1);
+  const timer = debugPerf ? new GpuTimer(renderer.gl) : undefined;
+
+  /**
+   * A pure scaler fed this frame's render time. It steps the render
+   * resolution scale by roughly 1.25x per adjustment, so marginal devices
+   * converge on a stable scale instead of thrashing between 1x and 0.5x.
+   */
+  const adaptive = new AdaptiveResolution();
+  /** The canvas's layout size in device pixels; the scale is applied on top of it. */
+  let baseWidth = 0;
+  let baseHeight = 0;
+  let lastAdaptTime = 0;
+  let lastFrameTime = 0;
+  let frameCounter = 0;
+
+  /**
+   * Draws one frame.
+   *
+   * @returns Whether this frame took a GPU readback for the statistics line.
+   * Those frames stall the pipeline, so their timing can't be used to decide
+   * the resolution.
+   */
+  const render = (): boolean => {
+    if (timer === undefined) {
+      renderer.render(scene, camera);
+      return false;
+    }
+    timer.begin();
+    renderer.render(scene, camera);
+    timer.end();
+    timer.poll();
+    frameCounter++;
+    const sample = frameCounter % SAMPLE_EVERY === 0;
+    const stats = describeStats?.(
+      renderer.gl,
+      renderer.canvas.width,
+      renderer.canvas.height,
+      sample,
+    );
+    onDebugStats?.(
+      `frame: ${timer.ms.toFixed(2)} ms | res: ${adaptive.scale}x | ${stats ?? ""}`,
+    );
+    return sample;
+  };
+
+  const applyResolution = (scale: number): void => {
+    if (baseWidth <= 0 || baseHeight <= 0) {
+      return;
+    }
+    const width = Math.max(1, Math.round(baseWidth * scale));
+    const height = Math.max(1, Math.round(baseHeight * scale));
+    if (width !== canvas.width || height !== canvas.height) {
+      canvas.width = width;
+      canvas.height = height;
+      // Resizing the canvas clears its drawing buffer to transparent, which
+      // would flash the page background until the next RAF frame. Draw the new
+      // resolution immediately so the compositor never shows the cleared buffer.
+      render();
+    }
+  };
+
+  const animate = (time: number): void => {
+    const dt =
+      lastFrameTime > 0
+        ? Math.min(0.05, (time - lastFrameTime) / 1000)
+        : 1 / 60;
+    lastFrameTime = time;
+    onFrame(dt);
+    renderer.setClearColor(clearColor(), 1);
+    const sampled = render();
+    if (lastAdaptTime > 0) {
+      const frameMs = time - lastAdaptTime;
+      applyResolution(
+        sampled ? adaptive.frame(frameMs) : adaptive.update(frameMs),
+      );
+    }
+    lastAdaptTime = time;
+  };
+
+  const resizeObserver = new ResizeObserver(() => {
+    const rect = canvas.getBoundingClientRect();
+    const aspect = rect.width / rect.height;
+    if (!Number.isFinite(aspect) || aspect <= 0) {
+      return;
+    }
+    baseWidth = rect.width * window.devicePixelRatio;
+    baseHeight = rect.height * window.devicePixelRatio;
+    camera.aspect = aspect;
+    camera.updateProjectionMatrix();
+    // a layout change changes the render cost, so hold adaptation while
+    // the new base resolution settles
+    adaptive.hold();
+    applyResolution(adaptive.scale);
+  });
+  resizeObserver.observe(canvas);
+  renderer.setAnimationLoop(animate);
+
+  return {
+    dispose() {
+      resizeObserver.disconnect();
+      renderer.setAnimationLoop(null);
+      // release the renderer's GPU programs, buffers and textures
+      renderer.dispose();
+    },
+  };
+};

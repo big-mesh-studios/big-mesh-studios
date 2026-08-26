@@ -5,19 +5,17 @@ import {
   MeshStandardMaterial,
   PerspectiveCamera,
   Scene,
-  WebGLRenderer,
 } from "@random-mesh/rmsl/scene";
 import { createSignal, type Accessor } from "solid-js";
-import { AdaptiveResolution } from "./adaptive";
 import { AtprotoController } from "./atproto/atproto-controller";
 import type { Commander } from "./commander";
 import { createInput, type InputController } from "./create-input";
+import { createRenderLoop } from "./create-render-loop";
 import { createVoxelWorld } from "./create-voxel-world";
 import { DayNightController } from "./day-night-controller";
 import { createDebugCommands } from "./debug-commands";
 import { EditingController } from "./editing-controller";
 import { COLLECTABLE, Inventory } from "./inventory";
-import { GpuTimer } from "./perf";
 import {
   createPlayer,
   lookDirection,
@@ -42,8 +40,6 @@ const SKY_BLUE = 0x87ceeb;
  * floating-point drift far outside it.
  */
 const SAFE_EXTENT = 1e6;
-/** How many frames between each debug-perf HUD sample (a GPU readback, so throttled). */
-const SAMPLE_EVERY = 24;
 
 export interface VoxelscapeConfig {
   /** Width of the streamed block window, in blocks per side. Also sets the fog and camera far distances. */
@@ -288,159 +284,72 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
   });
   placeCamera(camera, player, firstPerson);
 
-  /**
-   * A pure scaler fed this frame's render time. It steps the render
-   * resolution scale by roughly 1.25x per adjustment, so marginal devices
-   * converge on a stable scale instead of thrashing between 1x and 0.5x.
-   */
-  const adaptive = new AdaptiveResolution();
+  /** Reusable color object, updated in place each frame so sky updates don't allocate. */
+  const skyColor = new Color(SKY_BLUE);
 
   let unmount: (() => void) | null = null;
 
+  /** Advances everything by `dt` seconds, leaving the scene ready to draw. */
+  const advance = (dt: number): void => {
+    const snapshot = input.consume();
+    updatePlayer(player, dt, snapshot, playerWorld);
+    // crosshair reach feedback: recompute every frame so it tracks look, not
+    // just edit attempts
+    setInReach(editing.pick().target !== null);
+    // handle block editing input (edge-triggered dig/place + hotbar select)
+    if (snapshot.break) {
+      const result = editing.breakBlock();
+      if (result !== null) {
+        setEditStatus(result);
+      }
+    }
+    if (snapshot.place) {
+      setEditStatus(editing.placeBlock());
+    }
+    if (snapshot.select !== null) {
+      inventory.setSelected(
+        Object.keys(COLLECTABLE).map(Number)[snapshot.select],
+      );
+    }
+    // scroll the terrain ring so the player's block stays centred
+    world.scrollTo(player.position.x, player.position.z);
+    playerCube.position.copy(player.position);
+    // the cube's local +Z faces the heading; a Y rotation by `yaw` aligns it
+    playerCube.rotation.y = player.yaw;
+    playerCube.visible = showPlayerCube;
+    placeCamera(camera, player, firstPerson);
+    // advance the day-night clock and re-derive the scene lighting. A command
+    // override pins the shown time; otherwise the real clock (scaled by speed)
+    // drives the cycle. The weather schedule keys off the same shown clock
+    // seconds, and its intensity then tints the day-night state before it
+    // reaches the renderers and the clear colour.
+    const dn = dayNight.tick(dt, camera);
+    const weatherView = weather.tick(dt, camera, dn.elapsed);
+    sound.tick(dt, camera, weatherView);
+    const env = applyWeather(dn, weatherView.weather, weatherView.intensity);
+    skyColor.set(env.skyColor[0], env.skyColor[1], env.skyColor[2]);
+    world.renderers.applyLighting(env);
+    // per-frame work specific to whichever renderer is active (mesh-build
+    // draining for the triangle renderer, underwater tint, etc.)
+    world.renderers.tick(dt, camera);
+  };
+
   const mount = (canvas: HTMLCanvasElement): (() => void) => {
-    const renderer = new WebGLRenderer(canvas);
-    renderer.setClearColor(SKY_BLUE, 1);
-    const timer = debugPerf ? new GpuTimer(renderer.gl) : undefined;
-
-    /** Reusable color object, updated in place each frame so sky updates don't allocate. */
-    const skyColor = new Color(SKY_BLUE);
-    let baseW = 0;
-    let baseH = 0;
-    let lastAdaptT = 0;
-    let lastFrameT = 0;
-    let sampleCounter = 0;
-
-    const render = (): void => {
-      if (timer !== undefined) {
-        timer.begin();
-      }
-      renderer.render(scene, camera);
-      if (timer === undefined) {
-        return;
-      }
-      timer.end();
-      timer.poll();
-      sampleCounter++;
-      const sample = sampleCounter % SAMPLE_EVERY === 0;
-      const stats = world.renderers.describeDebugStats(
-        renderer.gl,
-        renderer.canvas.width,
-        renderer.canvas.height,
-        sample,
-      );
-      onDebugStats?.(
-        `frame: ${timer.ms.toFixed(2)} ms | res: ${adaptive.scale}x | ${stats}`,
-      );
-    };
-
-    const applyResolution = (scale: number): void => {
-      if (baseW <= 0 || baseH <= 0) {
-        return;
-      }
-      const w = Math.max(1, Math.round(baseW * scale));
-      const h = Math.max(1, Math.round(baseH * scale));
-      if (w !== canvas.width || h !== canvas.height) {
-        canvas.width = w;
-        canvas.height = h;
-        // Resizing the canvas clears its drawing buffer to transparent, which
-        // would flash the page background until the next RAF frame. Draw the new
-        // resolution immediately so the compositor never shows the cleared buffer.
-        render();
-      }
-    };
-
-    /**
-     * Called once per frame after `render()`: feeds the frame time (in
-     * milliseconds) into the scaler and applies whatever scale it settles on.
-     * Readback frames are skipped from the decision (they stall the GPU) but
-     * still update the exponential moving average.
-     */
-    const adaptResolution = (t: number): void => {
-      if (lastAdaptT > 0) {
-        const dt = t - lastAdaptT;
-        const next =
-          debugPerf && sampleCounter % SAMPLE_EVERY === 0
-            ? adaptive.frame(dt)
-            : adaptive.update(dt);
-        applyResolution(next);
-      }
-      lastAdaptT = t;
-    };
-
-    const animate = (t: number): void => {
-      const dt =
-        lastFrameT > 0 ? Math.min(0.05, (t - lastFrameT) / 1000) : 1 / 60;
-      lastFrameT = t;
-      const snapshot = input.consume();
-      updatePlayer(player, dt, snapshot, playerWorld);
-      // crosshair reach feedback: recompute every frame so it tracks look, not
-      // just edit attempts
-      setInReach(editing.pick().target !== null);
-      // handle block editing input (edge-triggered dig/place + hotbar select)
-      if (snapshot.break) {
-        const result = editing.breakBlock();
-        if (result !== null) {
-          setEditStatus(result);
-        }
-      }
-      if (snapshot.place) {
-        setEditStatus(editing.placeBlock());
-      }
-      if (snapshot.select !== null) {
-        inventory.setSelected(
-          Object.keys(COLLECTABLE).map(Number)[snapshot.select],
-        );
-      }
-      // scroll the terrain ring so the player's block stays centred
-      world.scrollTo(player.position.x, player.position.z);
-      playerCube.position.copy(player.position);
-      // the cube's local +Z faces the heading; a Y rotation by `yaw` aligns it
-      playerCube.rotation.y = player.yaw;
-      playerCube.visible = showPlayerCube;
-      placeCamera(camera, player, firstPerson);
-      // advance the day-night clock and re-derive the scene lighting. A command
-      // override pins the shown time; otherwise the real clock (scaled by speed)
-      // drives the cycle. The weather schedule keys off the same shown clock
-      // seconds, and its intensity then tints the day-night state before it
-      // reaches the renderers and the clear colour.
-      const dn = dayNight.tick(dt, camera);
-      const weatherView = weather.tick(dt, camera, dn.elapsed);
-      sound.tick(dt, camera, weatherView);
-      const env = applyWeather(dn, weatherView.weather, weatherView.intensity);
-      skyColor.set(env.skyColor[0], env.skyColor[1], env.skyColor[2]);
-      renderer.setClearColor(skyColor, 1);
-      world.renderers.applyLighting(env);
-      // per-frame work specific to whichever renderer is active (mesh-build
-      // draining for the triangle renderer, underwater tint, etc.)
-      world.renderers.tick(dt, camera);
-      render();
-      adaptResolution(t);
-    };
-
-    const resizeObserver = new ResizeObserver(() => {
-      const rect = canvas.getBoundingClientRect();
-      const aspect = rect.width / rect.height;
-      if (!Number.isFinite(aspect) || aspect <= 0) {
-        return;
-      }
-      baseW = rect.width * window.devicePixelRatio;
-      baseH = rect.height * window.devicePixelRatio;
-      camera.aspect = aspect;
-      camera.updateProjectionMatrix();
-      // a layout change changes the render cost, so hold adaptation while
-      // the new base resolution settles
-      adaptive.hold();
-      applyResolution(adaptive.scale);
+    const loop = createRenderLoop({
+      canvas,
+      scene,
+      camera,
+      debugPerf,
+      onDebugStats,
+      onFrame: advance,
+      clearColor: () => skyColor,
+      describeStats: (gl, width, height, sample) =>
+        world.renderers.describeDebugStats(gl, width, height, sample),
     });
-    resizeObserver.observe(canvas);
-    renderer.setAnimationLoop(animate);
 
     unmount = () => {
       unmount = null;
-      resizeObserver.disconnect();
-      renderer.setAnimationLoop(null);
-      // release the renderer's GPU programs, buffers and textures
-      renderer.dispose();
+      loop.dispose();
     };
     return unmount;
   };

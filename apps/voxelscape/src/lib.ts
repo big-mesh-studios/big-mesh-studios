@@ -1,5 +1,10 @@
 // Renderers and Atlas
 export { AdaptiveResolution } from "./adaptive";
+export {
+  createRenderLoop,
+  type RenderLoop,
+  type RenderLoopConfig,
+} from "./create-render-loop";
 export { createDebugCommands } from "./debug-commands";
 export {
   VOXEL_TILES,
