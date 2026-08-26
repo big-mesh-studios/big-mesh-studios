@@ -35,6 +35,12 @@ export interface VoxelscapeConfig {
   debugPerf?: boolean;
   /** Receives the statistics line once per frame while `debugPerf` is on. */
   onDebugStats?: (line: string) => void;
+  /**
+   * Receives lines the world reports without being asked to — currently only
+   * the atproto state settled at startup, which is the answer to "am I still
+   * signed in?" after a reload. Meant for the debug console.
+   */
+  onNotice?: (line: string) => void;
 }
 
 export interface Voxelscape {
@@ -74,6 +80,7 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     config.debugPerf ??
     (typeof window !== "undefined" && window.location.hash.includes("perf"));
   const onDebugStats = config.onDebugStats;
+  const onNotice = config.onNotice;
 
   const [editStatus, setEditStatus] = createSignal("");
   const [inReach, setInReach] = createSignal(false);
@@ -160,7 +167,10 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
       }
     },
   });
-  void atproto.init();
+  // Reported rather than discarded: restoring a session is the one thing that
+  // happens on its own, so without this a reload leaves no way to tell a
+  // restored session from a dropped one short of running `/atproto`.
+  void atproto.init().then((line) => onNotice?.(line));
   const commands = createDebugCommands({
     dayNight: environment.dayNight,
     rendererSwitch: world.renderers,

@@ -86,6 +86,11 @@ const ConsoleOutput: Component<{ lines: string[] }> = (props) => {
 
 export interface ConsoleProps {
   onCommand: (line: string) => string | Promise<string>;
+  /**
+   * A line to append to the output that no typed command asked for, such as
+   * the world reporting its atproto state at startup.
+   */
+  notice?: string;
 }
 
 /**
@@ -98,6 +103,15 @@ export const Console: Component<ConsoleProps> = (props) => {
   const [lines, setLines] = createSignal<string[]>([]);
 
   const Popover = createPopover();
+
+  createEffect(
+    () => props.notice,
+    (notice) => {
+      if (notice !== undefined) {
+        setLines((prev) => [...prev, notice]);
+      }
+    },
+  );
 
   async function onCommand(command: string) {
     if (command === "/clear") {

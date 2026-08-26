@@ -17,12 +17,14 @@ const App: Component<{}> = () => {
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
 
   let hud: HTMLDivElement | undefined;
+  const [notice, setNotice] = createSignal<string>();
   const voxelscape = createVoxelscape({
     onDebugStats: (line) => {
       if (hud !== undefined) {
         hud.textContent = line;
       }
     },
+    onNotice: setNotice,
   });
   onCleanup(() => voxelscape.dispose());
 
@@ -64,7 +66,10 @@ const App: Component<{}> = () => {
           <CoarseControls />
         </Show>
         <EditHud />
-        <Console onCommand={(line) => voxelscape.commands.run(line)} />
+        <Console
+          onCommand={(line) => voxelscape.commands.run(line)}
+          notice={notice()}
+        />
         <Show when={voxelscape.debugPerf}>
           <div
             ref={(el) => {
