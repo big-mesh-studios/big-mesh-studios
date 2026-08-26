@@ -1,4 +1,4 @@
-import { Scene } from "@random-mesh/rmsl/scene";
+import type { Group } from "@random-mesh/rmsl/scene";
 import { RendererSwitch } from "../renderers/renderer-switch";
 import { loadVoxelTiles } from "../renderers/tile-loader";
 import { BlockGrid } from "./block-grid";
@@ -38,8 +38,6 @@ export interface InitialDrawProgress {
 }
 
 export interface VoxelWorldConfig {
-  /** The renderers' meshes are added to this scene at construction. */
-  scene: Scene;
   /** Width of the streamed block window, in blocks per side. */
   blocksPerSide: number;
   terrain: TerrainConfig;
@@ -66,6 +64,12 @@ export interface VoxelWorld {
   blocks: WorldBlock[];
   /** Both rendering strategies and the switch between them (`/renderer ray|tri`). */
   renderers: RendererSwitch;
+  /** The blocks drawn as solid terrain, for the scene to place in its draw order. */
+  terrain: Group;
+  /** The water surfaces over those blocks, likewise. */
+  water: Group;
+  /** The wash over the whole view when the camera is under the sea, likewise. */
+  underwaterTint: Group;
   /**
    * Every player break/place, keyed by absolute voxel, so builds survive ring
    * refills. Persisted to IndexedDB here; synced to atproto by its own
@@ -99,13 +103,6 @@ export interface VoxelWorld {
   applyEdits(entries: Array<{ w: WorldVoxel; edit: VoxelEdit }>): number;
   /** Writes the edit overlay to IndexedDB, batched. */
   scheduleSave(): void;
-  /**
-   * Adds the renderers' translucent water passes to the scene. Both passes
-   * (and the triangle renderer's underwater tint) blend over the opaque
-   * scene, and scene-graph order is draw order, so call this once every
-   * opaque object is in the scene.
-   */
-  addTranslucentPasses(): void;
   dispose(): void;
 }
 
@@ -114,7 +111,6 @@ export interface VoxelWorld {
  * overlay of their edits, and the two renderers that draw it.
  */
 export const createVoxelWorld = ({
-  scene,
   blocksPerSide,
   terrain,
   surfaceOnly,
@@ -145,7 +141,6 @@ export const createVoxelWorld = ({
     spawnDrawn: drawn.has(spawnIndex),
   });
   const renderers = new RendererSwitch({
-    scene,
     blocks: blockGrid.blocks,
     padding: PAD,
     blockWorld: BLOCK_WORLD,
@@ -264,6 +259,9 @@ export const createVoxelWorld = ({
   return {
     blocks: blockGrid.blocks,
     renderers,
+    terrain: renderers.terrain,
+    water: renderers.water,
+    underwaterTint: renderers.underwaterTint,
     editLayer,
     ringRadius,
     reapplyEdits,
@@ -292,9 +290,6 @@ export const createVoxelWorld = ({
     },
     scheduleSave() {
       editPersistence.scheduleSave();
-    },
-    addTranslucentPasses() {
-      renderers.addTranslucentPassesToScene(scene);
     },
     dispose() {
       // stop the fill worker so it doesn't keep running after unmount

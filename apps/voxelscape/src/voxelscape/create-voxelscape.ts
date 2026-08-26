@@ -105,13 +105,9 @@ export const createVoxelscape = ({
   const [inReach, setInReach] = createSignal(false);
 
   const input = createInput();
-  const scene = new Scene();
-  // Built before the world: the sun and moon billboards are drawn with depth
-  // writes off, so the terrain has to be able to overdraw them at the horizon.
   // Reading `world` here is safe because the sampler is only called when
   // lightning picks a target, by which time the world exists.
   const environment = createEnvironment({
-    scene,
     groundHeightAt: (x, z) => world.heightAt(x, z),
   });
 
@@ -122,7 +118,6 @@ export const createVoxelscape = ({
   });
 
   const world = createVoxelWorld({
-    scene,
     blocksPerSide,
     terrain,
     surfaceOnly,
@@ -146,17 +141,11 @@ export const createVoxelscape = ({
    */
   const camera = new PerspectiveCamera(50, 1.0, 0.1, world.ringRadius + 200);
   const avatar = createPlayerAvatar({
-    scene,
     camera,
     terrain: world,
     spawn,
     player,
   });
-
-  // The rest of the scene, in draw order: water blends over every opaque
-  // object, and the weather draws over the water.
-  world.addTranslucentPasses();
-  environment.addWeatherToScene();
 
   const inventory = new Inventory();
   // Picks run along the avatar's look ray, so what the crosshair is over is
@@ -198,7 +187,6 @@ export const createVoxelscape = ({
     resolveHandle: (did) => atproto.resolveHandle(did),
     resolvePicture: (did) => atproto.resolvePicture(did),
     createSignaling: createPeerJSSignaling,
-    scene,
     camera,
     // A connected peer's optimistic edit broadcasts land straight in the
     // shared overlay (last-write-wins by edit time), where `applyEdits` pushes
@@ -212,6 +200,29 @@ export const createVoxelscape = ({
       );
     },
   });
+
+  /**
+   * Everything drawn, in the order it is drawn. The renderer walks the scene
+   * graph and draws what it finds, with no depth-sorted pass for transparency,
+   * so a group's place in this list is what puts it in front of or behind
+   * another. Each group is owned by whatever fills it, so peers joining an
+   * hour from now still land in the place their group was given here.
+   */
+  const scene = new Scene();
+  scene.add(
+    // The terrain overdraws the sun and moon squares wherever solid ground
+    // lies, which is what occludes them at the horizon.
+    environment.sky,
+    world.terrain,
+    avatar.body,
+    multiplayer.avatars,
+    // Water writes no depth and blends over whatever is already drawn, so
+    // every solid body that can be seen through it comes first.
+    world.water,
+    environment.weatherEffects,
+    // Drawn last with depth testing off, washing the whole view.
+    world.underwaterTint,
+  );
 
   // Wired here so that signing in brings the multiplayer mesh online and
   // signing out takes it down, and so a merge from `/sync` reaches the ring's

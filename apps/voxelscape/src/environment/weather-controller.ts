@@ -14,6 +14,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Builder,
+  Group,
   Line2,
   LineGeometry,
   Line2NodeMaterial,
@@ -474,6 +475,12 @@ export class WeatherController {
 
   private readonly rain: ParticleSystem;
   private readonly snow: ParticleSystem;
+  /**
+   * The rain and snow particles, the lightning bolts and the strike flash.
+   * All additively blended with depth writes off, so they show whatever was
+   * drawn before them through themselves.
+   */
+  readonly weather = new Group();
   private readonly bolts: Line2[];
   private readonly flashMesh: Mesh;
   private readonly flashMaterial: MeshBasicMaterial;
@@ -520,6 +527,7 @@ export class WeatherController {
     this.snow.material.disc = true;
 
     this.bolts = [this.makeBolt(), this.makeBolt()];
+    this.weather.add(this.rain.mesh, this.snow.mesh, ...this.bolts);
 
     this.flashMaterial = new MeshBasicMaterial({
       color: 0xffffff,
@@ -534,20 +542,7 @@ export class WeatherController {
       this.flashMaterial,
     );
     this.flashMesh.visible = false;
-  }
-
-  /**
-   * Adds the particles, bolts and strike flash to the scene. All of them are
-   * additively blended with depth writes off, and scene-graph order is draw
-   * order, so call this once everything they draw over is in the scene.
-   */
-  addToScene(scene: Scene): void {
-    scene.add(this.rain.mesh);
-    scene.add(this.snow.mesh);
-    for (const bolt of this.bolts) {
-      scene.add(bolt);
-    }
-    scene.add(this.flashMesh);
+    this.weather.add(this.flashMesh);
   }
 
   private makeBolt(): Line2 {

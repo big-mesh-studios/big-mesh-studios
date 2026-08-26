@@ -21,6 +21,7 @@ import type { Node, UniformNode } from "@random-mesh/rmsl";
 import {
   BoxGeometry,
   Builder,
+  Group,
   Mesh,
   NodeMaterial,
   Scene,
@@ -1562,7 +1563,6 @@ export class RaymarchWaterMaterial extends NodeMaterial {
 }
 
 export interface RaymarchRendererParams {
-  scene: Scene;
   blocks: WorldBlock[];
   padding: number;
   blockWorld: Dim3;
@@ -1583,6 +1583,14 @@ export interface RaymarchRendererParams {
  * reads it live every frame.
  */
 export class RaymarchRenderer implements BlockRenderer {
+  /** The ray-marched blocks, which write depth and are drawn as opaque terrain. */
+  readonly terrain = new Group();
+  /**
+   * The water pass over those same blocks, blending over whatever was drawn
+   * before it and never writing depth, so terrain or a player in front of it
+   * still hides it.
+   */
+  readonly water = new Group();
   readonly meshes: Mesh[] = [];
   readonly materials: RaymarchMaterial[] = [];
   readonly waterMeshes: Mesh[] = [];
@@ -1590,7 +1598,6 @@ export class RaymarchRenderer implements BlockRenderer {
 
   constructor(params: RaymarchRendererParams) {
     const {
-      scene,
       blocks,
       padding,
       blockWorld,
@@ -1616,14 +1623,10 @@ export class RaymarchRenderer implements BlockRenderer {
       material.setBlocks([block]);
       const mesh = new Mesh(geometry, material);
       mesh.position.set(block.center[0], block.center[1], block.center[2]);
-      scene.add(mesh);
+      this.terrain.add(mesh);
       this.meshes.push(mesh);
       this.materials.push(material);
 
-      // Translucent water pass: blends over the opaque scene, never writes
-      // depth, and depth-tests so terrain or the player in front hide it.
-      // Added to the scene later, after the player cube, since the renderer
-      // draws meshes in scene-graph order.
       const waterMaterial = new RaymarchWaterMaterial();
       waterMaterial.transparent = true;
       waterMaterial.depthWrite = false;
@@ -1637,19 +1640,9 @@ export class RaymarchRenderer implements BlockRenderer {
       waterMaterial.setBlocks([block]);
       const waterMesh = new Mesh(geometry, waterMaterial);
       waterMesh.position.set(block.center[0], block.center[1], block.center[2]);
+      this.water.add(waterMesh);
       this.waterMeshes.push(waterMesh);
       this.waterMaterials.push(waterMaterial);
-    }
-  }
-
-  /**
-   * Must be called once, after the player cube is added to the scene, so the
-   * translucent water pass blends over it. Scene-graph order determines
-   * blending order here, since there is no depth-sorted transparency pass.
-   */
-  addWaterToScene(scene: Scene): void {
-    for (const mesh of this.waterMeshes) {
-      scene.add(mesh);
     }
   }
 

@@ -11,6 +11,7 @@ import {
   BoxGeometry,
   Builder,
   BufferGeometry,
+  Group,
   Mesh,
   MeshBasicMaterial,
   NodeMaterial,
@@ -212,7 +213,6 @@ export class TriangleWaterMaterial extends NodeMaterial {
 }
 
 export interface TriangleRendererParams {
-  scene: Scene;
   blocks: WorldBlock[];
   waterExtinction: number;
   seaLevel: number | undefined;
@@ -236,6 +236,18 @@ export class TriangleRenderer implements BlockRenderer {
   readonly triWaterMaterial = new TriangleWaterMaterial();
   readonly triMeshes: Mesh[] = [];
   readonly triWaterMeshes: Mesh[] = [];
+  /** The meshed blocks, which write depth and are drawn as opaque terrain. */
+  readonly terrain = new Group();
+  /**
+   * The water surfaces over those blocks, blending over whatever was drawn
+   * before them and never writing depth.
+   */
+  readonly water = new Group();
+  /**
+   * A box around the camera, washing the whole view when it dips below the
+   * sea. Depth testing is off, so it covers whatever is already drawn.
+   */
+  readonly underwaterTint = new Group();
 
   private readonly waterExtinction: number;
   private readonly seaLevel: number | undefined;
@@ -257,7 +269,7 @@ export class TriangleRenderer implements BlockRenderer {
   private readonly tintMesh: Mesh;
 
   constructor(params: TriangleRendererParams) {
-    const { scene, blocks, waterExtinction, seaLevel, onBlockMeshed } = params;
+    const { blocks, waterExtinction, seaLevel, onBlockMeshed } = params;
     this.waterExtinction = waterExtinction;
     this.seaLevel = seaLevel;
     this.onBlockMeshed = onBlockMeshed;
@@ -267,7 +279,7 @@ export class TriangleRenderer implements BlockRenderer {
       const triMesh = new Mesh(new BufferGeometry(), this.triMaterial);
       triMesh.position.set(center[0], center[1], center[2]);
       triMesh.visible = false;
-      scene.add(triMesh);
+      this.terrain.add(triMesh);
       this.triMeshes.push(triMesh);
       const triWaterMesh = new Mesh(
         new BufferGeometry(),
@@ -275,9 +287,7 @@ export class TriangleRenderer implements BlockRenderer {
       );
       triWaterMesh.position.set(center[0], center[1], center[2]);
       triWaterMesh.visible = false;
-      // added to the scene later, via `addWaterToScene`, after the player
-      // cube, so the transparent water blends over it like the raymarch water
-      // pass does
+      this.water.add(triWaterMesh);
       this.triWaterMeshes.push(triWaterMesh);
     }
 
@@ -305,6 +315,7 @@ export class TriangleRenderer implements BlockRenderer {
       this.tintMaterial,
     );
     this.tintMesh.visible = false;
+    this.underwaterTint.add(this.tintMesh);
   }
 
   /**
@@ -329,24 +340,6 @@ export class TriangleRenderer implements BlockRenderer {
 
   get triangleCount(): number {
     return this.totalTriangles;
-  }
-
-  /**
-   * Must be called once, after the player cube is added to the scene, so the
-   * translucent water pass blends over it.
-   */
-  addWaterToScene(scene: Scene): void {
-    for (const mesh of this.triWaterMeshes) {
-      scene.add(mesh);
-    }
-  }
-
-  /**
-   * Must be called once, after `addWaterToScene` on both renderers, so the
-   * underwater tint draws over everything.
-   */
-  addTintToScene(scene: Scene): void {
-    scene.add(this.tintMesh);
   }
 
   setVisible(visible: boolean): void {

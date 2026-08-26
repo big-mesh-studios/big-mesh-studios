@@ -1,4 +1,4 @@
-import { PerspectiveCamera, Scene } from "@random-mesh/rmsl/scene";
+import { Group, PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import type { DayNightState } from "./day-night";
 import { DayNightController } from "./day-night-controller";
 import { SoundController } from "./sound-controller";
@@ -6,12 +6,6 @@ import { applyWeather } from "./weather";
 import { WeatherController } from "./weather-controller";
 
 export interface EnvironmentConfig {
-  /**
-   * The lights and the sun/moon billboards are added here at construction, so
-   * build the environment before anything that has to draw over the sky. The
-   * weather waits for `addWeatherToScene`.
-   */
-  scene: Scene;
   /** Highest solid surface at (`x`, `z`): where rain lands and lightning strikes. */
   groundHeightAt: (x: number, z: number) => number;
 }
@@ -36,11 +30,10 @@ export interface Environment {
    * tint already mixed into the day-night state.
    */
   tick(dt: number, camera: PerspectiveCamera): DayNightState;
-  /**
-   * Adds the rain, snow, lightning and strike flash to the scene. They blend
-   * over everything, so call this once the rest of the scene is built.
-   */
-  addWeatherToScene(): void;
+  /** The sun, the moon and the lights, for the scene to place in its draw order. */
+  sky: Group;
+  /** The rain, snow, lightning and strike flash, likewise. */
+  weatherEffects: Group;
   dispose(): void;
 }
 
@@ -50,10 +43,9 @@ export interface Environment {
  * three only ever advance together and in that order.
  */
 export const createEnvironment = ({
-  scene,
   groundHeightAt,
 }: EnvironmentConfig): Environment => {
-  const dayNight = new DayNightController({ scene });
+  const dayNight = new DayNightController();
   const sound = new SoundController();
   const weather = new WeatherController({
     groundHeight: groundHeightAt,
@@ -75,6 +67,8 @@ export const createEnvironment = ({
     dayNight,
     weather,
     sound,
+    sky: dayNight.sky,
+    weatherEffects: weather.weather,
 
     tick(dt, camera) {
       // A command override pins the shown time; otherwise the real clock
@@ -84,10 +78,6 @@ export const createEnvironment = ({
       const view = weather.tick(dt, camera, state.elapsed);
       sound.tick(dt, camera, view);
       return applyWeather(state, view.weather, view.intensity);
-    },
-
-    addWeatherToScene() {
-      weather.addToScene(scene);
     },
 
     dispose() {

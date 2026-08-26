@@ -1,11 +1,11 @@
 import {
   AmbientLight,
   DirectionalLight,
+  Group,
   Mesh,
   MeshBasicMaterial,
   PerspectiveCamera,
   PlaneGeometry,
-  Scene,
 } from "@random-mesh/rmsl/scene";
 import {
   dayNightState,
@@ -15,7 +15,6 @@ import {
 } from "./day-night";
 
 export interface DayNightControllerParams {
-  scene: Scene;
   /**
    * Distance from the camera at which the sun/moon squares orbit, inside
    * the camera's far plane, so the raymarched terrain occludes them at the
@@ -33,6 +32,12 @@ export interface DayNightControllerParams {
  */
 export class DayNightController {
   private readonly sun: DirectionalLight;
+  /**
+   * The sun and moon squares, and the lights the standard materials read.
+   * Drawn before the terrain, which overdraws the squares wherever solid
+   * ground lies and so occludes them at the horizon.
+   */
+  readonly sky = new Group();
   private readonly ambient: AmbientLight;
   private readonly sunMesh: Mesh;
   private readonly moonMesh: Mesh;
@@ -45,30 +50,33 @@ export class DayNightController {
   private timeOverride: number | null = null;
   private timeSpeed = 1;
 
-  constructor(params: DayNightControllerParams) {
-    const { scene, skyDistance = 600, sunSize = 48, moonSize = 32 } = params;
+  constructor({
+    skyDistance = 600,
+    sunSize = 48,
+    moonSize = 32,
+  }: DayNightControllerParams = {}) {
     this.skyDistance = skyDistance;
     // Lights for the standard materials (the player cube). Position/direction,
     // colour and intensity are re-derived from the day-night clock each frame
     // (`tick`), since the raymarched terrain lights itself in-shader.
     this.sun = new DirectionalLight();
     this.sun.position.set(2, 1, 1);
-    scene.add(this.sun);
+    this.sky.add(this.sun);
     this.ambient = new AmbientLight(0xffffff, 0.6);
-    scene.add(this.ambient);
+    this.sky.add(this.ambient);
     // Square sun/moon billboards, drawn before the terrain so the raymarcher
     // overdraws them wherever solid ground lies (occluding the horizon).
     const sunMaterial = new MeshBasicMaterial({ color: 0xfff2a0 });
     sunMaterial.depthWrite = false;
     this.sunMesh = new Mesh(new PlaneGeometry(sunSize, sunSize), sunMaterial);
-    scene.add(this.sunMesh);
+    this.sky.add(this.sunMesh);
     const moonMaterial = new MeshBasicMaterial({ color: 0xcfd6e6 });
     moonMaterial.depthWrite = false;
     this.moonMesh = new Mesh(
       new PlaneGeometry(moonSize, moonSize),
       moonMaterial,
     );
-    scene.add(this.moonMesh);
+    this.sky.add(this.moonMesh);
   }
 
   private shownTime(): number {

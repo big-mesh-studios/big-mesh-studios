@@ -8,9 +8,9 @@
 import {
   BoxGeometry,
   Mesh,
+  Group,
   MeshBasicMaterial,
   PlaneGeometry,
-  Scene,
   Texture,
   Vector3,
   type PerspectiveCamera,
@@ -107,7 +107,12 @@ const angleLerp = (a: number, b: number, t: number): number => {
 };
 
 export class RemotePlayers {
-  private readonly scene: Scene;
+  /**
+   * Every connected peer's cube and name label. Filled as peers connect, long
+   * after the scene's draw order was settled, which is why this group is
+   * placed in that order once rather than each cube being added to the scene.
+   */
+  readonly avatars = new Group();
   private readonly camera: PerspectiveCamera;
   private readonly players = new Map<string, RemotePlayer>();
   /** DID -> the handle to write on that player's label, once one is known. */
@@ -115,8 +120,7 @@ export class RemotePlayers {
   /** DID -> the picture to paint on that player's cube, once one is known. */
   private readonly pictures = new Map<string, ImageBitmap>();
 
-  constructor(params: { scene: Scene; camera: PerspectiveCamera }) {
-    this.scene = params.scene;
+  constructor(params: { camera: PerspectiveCamera }) {
     this.camera = params.camera;
   }
 
@@ -178,8 +182,8 @@ export class RemotePlayers {
     if (player === undefined) {
       return;
     }
-    this.scene.remove(player.cube);
-    this.scene.remove(player.label);
+    this.avatars.remove(player.cube);
+    this.avatars.remove(player.label);
     this.players.delete(did);
   }
 
@@ -227,8 +231,7 @@ export class RemotePlayers {
       }),
     );
     label.visible = false;
-    this.scene.add(cube);
-    this.scene.add(label);
+    this.avatars.add(cube, label);
     const player: RemotePlayer = {
       cube,
       skin,

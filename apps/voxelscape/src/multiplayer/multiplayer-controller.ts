@@ -4,12 +4,14 @@
 // nearest peers worth a WebRTC connection, and owns the connection lifecycle
 // for those peers (`MeshPeer`) plus the rendered remote avatars
 // (`RemotePlayers`). A plain domain object: it knows about atproto, the
-// roster, the scene, and the player; it knows nothing about renderers or a
-// console.
-import type { AtprotoRepoClient } from "../atproto/repo-client";
-import type { Scene } from "@random-mesh/rmsl/scene";
+// roster and the player; it knows nothing about renderers or a console, and
+// hands its avatars over as a group rather than reaching into a scene.
+import { Group } from "@random-mesh/rmsl/scene";
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
+import type { AtprotoRepoClient } from "../atproto/repo-client";
 import { MeshPeer } from "./mesh-peer";
+import type { EditItem } from "./messages";
+import type { Pose, PoseMessage } from "./pose";
 import {
   PRESENCE_COLLECTION,
   PRESENCE_RKEY,
@@ -17,8 +19,6 @@ import {
   makePresence,
   type PresenceRecord,
 } from "./presence";
-import type { Pose, PoseMessage } from "./pose";
-import type { EditItem } from "./messages";
 import { RemotePlayers } from "./remote-players";
 import {
   CLUSTER_DEFAULTS,
@@ -94,8 +94,6 @@ export interface MultiplayerParams {
    * harness an in-memory registry. Created once per `start`, owned here.
    */
   createSignaling: SignalingFactory;
-  /** Scene the remote avatars are added to (omitted in headless harness runs). */
-  scene?: Scene;
   /** Camera the avatar labels billboard toward (omitted in headless harness runs). */
   camera?: PerspectiveCamera;
   /** Public relay base URL for global collection discovery (defaults to the main relay). */
@@ -144,6 +142,11 @@ export class MultiplayerController {
   private readonly onRemotePose: (did: string, pose: PoseMessage) => void;
   private readonly onRemoteEdits: (did: string, edits: EditItem[]) => void;
   private readonly clusterOptions: Partial<ClusterOptions>;
+  /**
+   * Every connected peer's avatar, for the scene to place in its draw order.
+   * Stays empty in headless runs, which have no camera to billboard labels at.
+   */
+  readonly avatars: Group;
   private readonly remotePlayers: RemotePlayers | undefined;
 
   private running = false;
@@ -157,9 +160,11 @@ export class MultiplayerController {
   private selection: ClusterSelection | undefined;
   private lastDiscovery: DiscoveryTelemetry | undefined;
   private readonly peers = new Map<string, MeshPeer>();
-  /** Incoming connections awaiting selection confirmation, so a connection from
+  /**
+   * Incoming connections awaiting selection confirmation, so a connection from
    *  a peer whose selection ran ahead of ours isn't dropped — but also doesn't
-   *  count toward the degree bound until we confirm we want it. */
+   *  count toward the degree bound until we confirm we want it.
+   */
   private readonly pendingConnections = new Map<
     string,
     { transport: PeerTransport; since: number }
@@ -194,9 +199,10 @@ export class MultiplayerController {
     this.onRemoteEdits = params.onRemoteEdits ?? (() => {});
     this.clusterOptions = params.clusterOptions ?? {};
     this.remotePlayers =
-      params.scene !== undefined && params.camera !== undefined
-        ? new RemotePlayers({ scene: params.scene, camera: params.camera })
+      params.camera !== undefined
+        ? new RemotePlayers({ camera: params.camera })
         : undefined;
+    this.avatars = this.remotePlayers?.avatars ?? new Group();
   }
 
   get status(): MultiplayerStatus {

@@ -1,8 +1,5 @@
-import type {
-  PerspectiveCamera,
-  Scene,
-  Texture,
-} from "@random-mesh/rmsl/scene";
+import { Group } from "@random-mesh/rmsl/scene";
+import type { PerspectiveCamera, Texture } from "@random-mesh/rmsl/scene";
 import type { VoxelTileConfig } from "./atlas";
 import type { Dim3, WorldBlock } from "../world/level-data";
 import { sampleFetchCount } from "../render/perf";
@@ -13,7 +10,6 @@ import { TriangleRenderer } from "./triangle-renderer";
 export type RendererMode = "ray" | "tri";
 
 export interface RendererSwitchParams {
-  scene: Scene;
   blocks: WorldBlock[];
   padding: number;
   blockWorld: Dim3;
@@ -41,12 +37,17 @@ export interface RendererSwitchParams {
 export class RendererSwitch {
   readonly raymarch: RaymarchRenderer;
   readonly triangle: TriangleRenderer;
+  /** Both renderers' opaque blocks; only the active one's are visible. */
+  readonly terrain = new Group();
+  /** Both renderers' water passes. */
+  readonly water = new Group();
+  /** The triangle renderer's underwater tint; the raymarcher tints in-shader instead. */
+  readonly underwaterTint: Group;
   private mode_: RendererMode;
   private readonly onBlockDrawable?: (index: number) => void;
 
   constructor(params: RendererSwitchParams) {
     const {
-      scene,
       blocks,
       padding,
       blockWorld,
@@ -60,7 +61,6 @@ export class RendererSwitch {
     } = params;
     this.onBlockDrawable = onBlockDrawable;
     this.raymarch = new RaymarchRenderer({
-      scene,
       blocks,
       padding,
       blockWorld,
@@ -71,7 +71,6 @@ export class RendererSwitch {
       seaLevel: seaLevel ?? 0,
     });
     this.triangle = new TriangleRenderer({
-      scene,
       blocks,
       waterExtinction,
       seaLevel,
@@ -81,6 +80,9 @@ export class RendererSwitch {
         }
       },
     });
+    this.terrain.add(this.raymarch.terrain, this.triangle.terrain);
+    this.water.add(this.raymarch.water, this.triangle.water);
+    this.underwaterTint = this.triangle.underwaterTint;
     this.mode_ = initialMode ?? "tri";
     const rayOn = this.mode_ === "ray";
     this.raymarch.setVisible(rayOn);
@@ -115,18 +117,6 @@ export class RendererSwitch {
     }
     const s = sampleFetchCount(gl, width, height);
     return `ray | fetches/ray: ${s.fetchesPerRay.toFixed(1)} (${s.rays} rays)`;
-  }
-
-  /**
-   * Must be called once, after the player cube is added to the scene: the
-   * translucent water passes (raymarch, then triangle) and the triangle
-   * renderer's underwater tint all rely on scene-graph draw order to blend
-   * over what's already been drawn.
-   */
-  addTranslucentPassesToScene(scene: Scene): void {
-    this.raymarch.addWaterToScene(scene);
-    this.triangle.addWaterToScene(scene);
-    this.triangle.addTintToScene(scene);
   }
 
   setMode(mode: RendererMode): string {

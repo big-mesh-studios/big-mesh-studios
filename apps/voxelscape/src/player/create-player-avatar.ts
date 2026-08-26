@@ -1,8 +1,8 @@
 import {
   BoxGeometry,
+  Group,
   Mesh,
   PerspectiveCamera,
-  Scene,
 } from "@random-mesh/rmsl/scene";
 import { createPlayerSkin } from "./player-skin";
 import type { InputSnapshot } from "./create-input";
@@ -39,8 +39,6 @@ export interface AvatarTerrain {
 }
 
 export interface PlayerAvatarConfig {
-  /** The player's cube is added here. */
-  scene: Scene;
   /** Placed at the eye in first person, behind and above the cube otherwise. */
   camera: PerspectiveCamera;
   terrain: AvatarTerrain;
@@ -51,6 +49,8 @@ export interface PlayerAvatarConfig {
 }
 
 export interface PlayerAvatar {
+  /** The cube drawn for the player, for the scene to place in its draw order. */
+  body: Group;
   /** Carries this player's own movement settings on `config` (`/speed`, `/look`). */
   player: Player;
   /**
@@ -81,7 +81,6 @@ export interface PlayerAvatar {
  * which camera it is and whether the cube is drawn.
  */
 export const createPlayerAvatar = ({
-  scene,
   camera,
   terrain,
   spawn,
@@ -118,10 +117,12 @@ export const createPlayerAvatar = ({
   );
   cube.position.copy(player.position);
   cube.visible = cubeVisible;
-  scene.add(cube);
+  const body = new Group();
+  body.add(cube);
   placeCamera(camera, player, firstPerson);
 
   return {
+    body,
     player,
 
     move(dt, input) {
