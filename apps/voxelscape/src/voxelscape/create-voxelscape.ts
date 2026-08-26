@@ -94,8 +94,6 @@ export const createVoxelscape = ({
   const [inReach, setInReach] = createSignal(false);
 
   const input = createInput();
-  // Reading `world` here is safe because the sampler is only called when
-  // lightning picks a target, by which time the world exists.
   const environment = createEnvironment({
     groundHeightAt: (x, z) => world.heightAt(x, z),
   });
@@ -129,8 +127,6 @@ export const createVoxelscape = ({
   });
 
   const inventory = new Inventory();
-  // Picks run along the avatar's look ray, so what the crosshair is over is
-  // what an edit lands on.
   const editing = new EditingController({
     blocks: world.blocks,
     layer: world.editLayer,
@@ -138,8 +134,8 @@ export const createVoxelscape = ({
     surfaceOnly,
     onBlockEdited: (i) => world.renderers.onBlockChanged(i),
     onEditRecorded: () => world.scheduleSave(),
-    // Broadcast each recorded edit to connected peers, who apply it to their
-    // overlay immediately; atproto sync remains the source of truth.
+    // Peers apply these immediately; the atproto sync is still what settles
+    // disagreements.
     onEdit: (w, id, updatedAt) =>
       multiplayer.broadcastEdits([
         { x: w[0], y: w[1], z: w[2], id, ts: updatedAt },
@@ -148,9 +144,6 @@ export const createVoxelscape = ({
     getPlayerVoxels: () => avatar.occupiedVoxels(),
   });
 
-  // Wired here so that signing in brings the multiplayer mesh online and
-  // signing out takes it down, and so a merge from `/sync` reaches the ring's
-  // blocks — none of which the controller itself knows about.
   const atproto = new AtprotoController({
     layer: world.editLayer,
     seed: terrain.seed,
@@ -158,17 +151,13 @@ export const createVoxelscape = ({
     getHandle: () => "",
     onMerged: (changed) => {
       if (changed > 0) {
-        // Remote edits just landed in the overlay; push them into the ring's
-        // blocks (store + GPU level + mesh) and persist them locally so a
-        // reload doesn't drop the merged world until the next `/sync`.
         world.reapplyEdits();
         world.scheduleSave();
       }
     },
     onConnected: (did) => {
       void multiplayer.start();
-      // The player's own cube wears the same face the peers around them see,
-      // which is only visible from third person but is how they check it.
+      // Their own cube wears the face peers see, which is how they check it.
       void atproto
         .resolvePicture(did)
         .then(async (picture) => {
@@ -198,9 +187,6 @@ export const createVoxelscape = ({
     resolvePicture: (did) => atproto.resolvePicture(did),
     createSignaling: createPeerJSSignaling,
     camera,
-    // A connected peer's optimistic edit broadcasts land straight in the
-    // shared overlay (last-write-wins by edit time), where `applyEdits` pushes
-    // them into the ring's blocks, rebuilds their meshes, and persists them.
     onRemoteEdits: (_did, edits) => {
       world.applyEdits(
         edits.map((e) => ({
@@ -212,31 +198,23 @@ export const createVoxelscape = ({
   });
 
   /**
-   * Everything drawn, in the order it is drawn. The renderer walks the scene
-   * graph and draws what it finds, with no depth-sorted pass for transparency,
-   * so a group's place in this list is what puts it in front of or behind
-   * another. Each group is owned by whatever fills it, so peers joining an
-   * hour from now still land in the place their group was given here.
+   * Everything drawn, in the order it is drawn. There is no depth-sorted pass
+   * for transparency, so a group's place in this list is the whole of what
+   * puts it in front of or behind another.
    */
   const scene = new Scene();
   scene.add(
-    // The terrain overdraws the sun and moon squares wherever solid ground
-    // lies, which is what occludes them at the horizon.
     environment.sky,
     world.terrain,
     avatar.body,
     multiplayer.avatars,
-    // Water writes no depth and blends over whatever is already drawn, so
-    // every solid body that can be seen through it comes first.
     world.water,
     environment.weatherEffects,
-    // Drawn last with depth testing off, washing the whole view.
     world.underwaterTint,
   );
 
-  // Reported rather than discarded: restoring a session is the one thing that
-  // happens on its own, so without this a reload leaves no way to tell a
-  // restored session from a dropped one short of running `/atproto`.
+  // A restored session is the one thing that happens without being asked for,
+  // so it is the one thing worth saying unprompted.
   void atproto.init().then((line) => onNotice?.(line));
 
   /**
@@ -284,25 +262,19 @@ export const createVoxelscape = ({
   const advance = (dt: number): void => {
     const progress = loading();
     if (progress.drawn < progress.total) {
-      // Frames while the window is still being generated and meshed cost what
-      // that work costs, not what drawing the finished world costs. Judging
-      // them would drop the resolution to fit a load that is about to end.
+      // These frames cost what generating terrain costs, not what drawing it
+      // does, and the resolution would drop to fit a load that is about to end.
       resolution.hold();
     }
-    // The player waits for ground to stand on; the world does not wait for the
-    // player. Nothing below this block may be skipped while the world is still
-    // arriving, because arriving is something the renderers do here — the
-    // triangle renderer builds a block's geometry from its `tick`, and it is
-    // that geometry the player is being held back for.
+    // Only the player waits. Moving the renderers' tick in here deadlocks:
+    // it is what builds the geometry this is waiting for.
     if (progress.spawnDrawn) {
       const snapshot = input.consume();
       avatar.move(dt, snapshot);
-      // Editing runs before the camera catches up, so this frame's picks are
-      // taken from where the eye was last frame along where the player now
-      // looks. crosshair reach feedback: recompute every frame so it tracks
-      // look, not just edit attempts
+      // The camera has not caught up yet, so this picks from last frame's eye
+      // along this frame's look. Recomputed every frame, not just on edits, so
+      // the crosshair tracks what it is over.
       setInReach(editing.pick().target !== null);
-      // handle block editing input (edge-triggered dig/place + hotbar select)
       if (snapshot.break) {
         const result = editing.breakBlock();
         if (result !== null) {
@@ -315,12 +287,8 @@ export const createVoxelscape = ({
       if (snapshot.select !== null) {
         inventory.selectSlot(snapshot.select);
       }
-      // scroll the terrain ring so the player's block stays centred
       world.scrollTo(avatar.player.position.x, avatar.player.position.z);
       avatar.place();
-      // republish this player's coarse presence when they move, broadcast
-      // their pose to linked peers, and ease the remote avatars toward their
-      // latest
       multiplayer.tick(dt);
     }
     const lighting = environment.tick(dt, camera);
@@ -330,8 +298,6 @@ export const createVoxelscape = ({
       lighting.skyColor[2],
     );
     world.renderers.applyLighting(lighting);
-    // per-frame work specific to whichever renderer is active (mesh-build
-    // draining for the triangle renderer, underwater tint, etc.)
     world.renderers.tick(dt, camera);
   };
 
@@ -372,15 +338,10 @@ export const createVoxelscape = ({
 
     dispose() {
       unmount?.();
-      // stop the fill worker, terminate the mesh worker, and store the edits
       world.dispose();
-      // stop presence publishing, discovery, and any peer links
       multiplayer.dispose();
-      // release the atproto OAuth state
       atproto.dispose();
-      // release the audio hardware
       environment.dispose();
-      // detach the keyboard/pointer listeners
       input.dispose();
     },
   };

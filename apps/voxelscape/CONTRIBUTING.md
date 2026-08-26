@@ -8,6 +8,27 @@
 
 When writing or editing a comment or JSDoc block in this codebase, hold it to two standards: **specificity** and **no redundancy**.
 
+**Default to no comment.** The first question is not "how should this be worded" but "does the reader get this from the code". A comment that restates the line under it is worse than nothing, because it is one more thing to read and one more thing to keep true:
+
+```ts
+// Picks run along the avatar's look ray, so what the crosshair is over is
+// what an edit lands on.
+const editing = new EditingController({ getLook: () => avatar.look(), ... });
+
+// Wired here so that signing in brings the multiplayer mesh online and
+// signing out takes it down.
+const atproto = new AtprotoController({
+  onConnected: () => multiplayer.start(),
+  onSignedOut: () => multiplayer.stop(),
+});
+```
+
+Both say what the next line says. Delete them, and put nothing in their place.
+
+Watch for the inversion: comments tend to grow longest exactly where the code is least surprising, because there is nothing real to say and prose fills the gap. A construction that needs seven lines to prove it is safe is usually a construction nobody doubted. What earns a comment is what the code cannot state — a hazard that bites the next person to edit it ("moving the renderers' tick inside this gate deadlocks"), an empty `catch` and why it is empty, an invariant enforced somewhere else. Keeping those short is part of the job too.
+
+This applies while writing the code, not as a cleanup pass afterwards, and it applies to comments already in a file being edited — noticing one and leaving it is the same as writing it.
+
 **Specificity** — a comment must say something true of _this_ declaration, not something that would be equally true of any similar one. Concretely:
 
 - Don't justify a design decision by naming what it avoids: "kept private, nothing outside needs it" or "reports changes via a callback, not a direct reference to X" reads as a decision log, not documentation, and the justification is usually true of almost any encapsulated field or decoupled class — it says nothing specific to this one. Describe what the declaration _is_, not why it was shaped that way.
