@@ -1,3 +1,4 @@
+import type { Vector3D } from "../utils/maths";
 import {
   bool,
   Break,
@@ -1210,7 +1211,7 @@ export class RaymarchMaterial extends NodeMaterial {
         dimensions: b.materialUniform(
           prefix + "dimensions",
           "vec3",
-          () => level.dimensions,
+          () => level.dimensionsUniform,
         ),
         broadVoxels: b.sampler(
           prefix + "broadVoxels",
@@ -1220,12 +1221,12 @@ export class RaymarchMaterial extends NodeMaterial {
         broadDim: b.materialUniform(
           prefix + "broadDim",
           "vec3",
-          () => level.broadDim,
+          () => level.broadDimUniform,
         ),
         chunkDim: b.materialUniform(
           prefix + "chunkDim",
           "vec3",
-          () => level.chunkDim,
+          () => level.chunkDimUniform,
         ),
         fineVoxels: b.sampler(
           prefix + "fineVoxels",
@@ -1396,7 +1397,7 @@ export class RaymarchWaterMaterial extends NodeMaterial {
         dimensions: b.materialUniform(
           prefix + "dimensions",
           "vec3",
-          () => level.dimensions,
+          () => level.dimensionsUniform,
         ),
         broadVoxels: b.sampler(
           prefix + "broadVoxels",
@@ -1406,12 +1407,12 @@ export class RaymarchWaterMaterial extends NodeMaterial {
         broadDim: b.materialUniform(
           prefix + "broadDim",
           "vec3",
-          () => level.broadDim,
+          () => level.broadDimUniform,
         ),
         chunkDim: b.materialUniform(
           prefix + "chunkDim",
           "vec3",
-          () => level.chunkDim,
+          () => level.chunkDimUniform,
         ),
         fineVoxels: b.sampler(
           prefix + "fineVoxels",
@@ -1565,7 +1566,7 @@ export interface RaymarchRendererParams {
   scene: Scene;
   blocks: WorldBlock[];
   padding: number;
-  blockWorld: Dim3;
+  blockWorld: Vector3D;
   fogDistance: number;
   fogStart: number;
   debugPerf: boolean;
@@ -1601,9 +1602,9 @@ export class RaymarchRenderer implements BlockRenderer {
       seaLevel,
     } = params;
     const geometry = new BoxGeometry(
-      blockWorld[0] + padding,
-      blockWorld[1] + padding,
-      blockWorld[2] + padding,
+      blockWorld.x + padding,
+      blockWorld.y + padding,
+      blockWorld.z + padding,
     );
     for (const block of blocks) {
       const material = new RaymarchMaterial();

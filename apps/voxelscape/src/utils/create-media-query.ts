@@ -14,9 +14,13 @@ export function createMediaQuery(query: string) {
     }
   }
 
-  mediaQuery.addEventListener("change", event => setBool(handleDeviceChange(event)), {
-    signal: controller.signal,
-  });
+  mediaQuery.addEventListener(
+    "change",
+    (event) => setBool(handleDeviceChange(event)),
+    {
+      signal: controller.signal,
+    },
+  );
 
   onCleanup(() => controller.abort());
 

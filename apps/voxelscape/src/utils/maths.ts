@@ -128,6 +128,35 @@ export namespace Vector3D {
     return out;
   }
 
+  export function addScalar(a: Vector3D, scalar: number, out = create()) {
+    out.x = a.x + scalar;
+    out.y = a.y + scalar;
+    out.z = a.z + scalar;
+    return out;
+  }
+
+  export function multiplyScalar(a: Vector3D, scalar: number, out = create()) {
+    out.x = a.x * scalar;
+    out.y = a.y * scalar;
+    out.z = a.z * scalar;
+    return out;
+  }
+
+  export function divideScalar(a: Vector3D, scalar: number, out = create()) {
+    out.x = a.x / scalar;
+    out.y = a.y / scalar;
+    out.z = a.z / scalar;
+    return out;
+  }
+
+  /** Packed x, y, z — the form a `vec3` shader uniform reads. */
+  export function toArray(a: Vector3D, out: number[] = [0, 0, 0]) {
+    out[0] = a.x;
+    out[1] = a.y;
+    out[2] = a.z;
+    return out;
+  }
+
   export function length(a: Vector3D) {
     return Math.hypot(a.x, a.y, a.z);
   }

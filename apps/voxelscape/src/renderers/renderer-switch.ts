@@ -1,3 +1,4 @@
+import type { Vector3D } from "../utils/maths";
 import type {
   PerspectiveCamera,
   Scene,
@@ -16,7 +17,7 @@ export interface RendererSwitchParams {
   scene: Scene;
   blocks: WorldBlock[];
   padding: number;
-  blockWorld: Dim3;
+  blockWorld: Vector3D;
   fogDistance: number;
   fogStart: number;
   debugPerf: boolean;

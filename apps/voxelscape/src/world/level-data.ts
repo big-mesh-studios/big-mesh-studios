@@ -7,6 +7,7 @@ import {
   RedIntegerFormat,
   UnsignedByteType,
 } from "@random-mesh/rmsl/scene";
+import { Vector3D } from "../utils/maths";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./noise";
 import {
   VOXEL_AIR,
@@ -34,7 +35,11 @@ export const CHUNK_DIM = 16;
  * blocks small enough for the scroll-recycle fill to stay cheap and the
  * render distance tight (about 480 units).
  */
-export const BLOCK_WORLD: Dim3 = [192, 256, 192];
+export const BLOCK_WORLD: Vector3D = {
+  x: 192,
+  y: 256,
+  z: 192,
+};
 /**
  * World units per voxel at LOD 0; each higher LOD doubles this value.
  */
@@ -43,33 +48,21 @@ export const VOXEL_SIZE = 2;
 export const blockConfig = (
   lod: number,
 ): {
-  voxels: Dim3;
-  broadDim: Dim3;
-  chunkDim: Dim3;
-  storageDim: Dim3;
-  dimensions: Dim3;
+  voxels: Vector3D;
+  broadDim: Vector3D;
+  chunkDim: Vector3D;
+  storageDim: Vector3D;
+  dimensions: Vector3D;
   voxelSize: number;
 } => {
   const voxelSize = VOXEL_SIZE * (1 << lod);
-  const voxels: Dim3 = [
-    BLOCK_WORLD[0] / voxelSize,
-    BLOCK_WORLD[1] / voxelSize,
-    BLOCK_WORLD[2] / voxelSize,
-  ];
-  const broadDim: Dim3 = [
-    voxels[0] / CHUNK_DIM,
-    voxels[1] / CHUNK_DIM,
-    voxels[2] / CHUNK_DIM,
-  ];
+  const voxels = Vector3D.divideScalar(BLOCK_WORLD, voxelSize);
+  const broadDim = Vector3D.divideScalar(voxels, CHUNK_DIM);
   // Storage holds exactly one chunk slot per broad cell (each cell owns at most
   // one allocated chunk), so sizing it from the broad grid keeps the fine
   // texture small — important across many recycled blocks.
-  const storageDim: Dim3 = [
-    broadDim[0] * CHUNK_DIM,
-    broadDim[1] * CHUNK_DIM,
-    broadDim[2] * CHUNK_DIM,
-  ];
-  const chunkDim: Dim3 = [CHUNK_DIM, CHUNK_DIM, CHUNK_DIM];
+  const storageDim = Vector3D.multiplyScalar(broadDim, CHUNK_DIM);
+  const chunkDim = Vector3D.create(CHUNK_DIM, CHUNK_DIM, CHUNK_DIM);
   return {
     voxels,
     broadDim,
@@ -84,12 +77,12 @@ export class Level {
   /** Per broad cell: 0 for empty space, 1 for non-empty space. */
   broadData: Uint8Array;
   broadTexture: DataTexture;
-  broadDim: Dim3;
+  broadDim: Vector3D;
   /** Size of each chunk within a broad cell, per axis. */
-  chunkDim: Dim3;
+  chunkDim: Vector3D;
   /** Size of the chunk storage, per axis. */
-  storageDim: Dim3;
-  storageCount: Dim3;
+  storageDim: Vector3D;
+  storageCount: Vector3D;
   data: Uint8Array;
   texture: DataTexture;
   nextStorage: Dim3 = [0, 0, 0];
@@ -102,7 +95,16 @@ export class Level {
     storageZIdx: number;
   }[] = [];
   /** World-unit extents of the volume: a rectangular prism, not necessarily a cube. */
-  dimensions: Dim3;
+  dimensions: Vector3D;
+  /**
+   * `dimensions`, `broadDim` and `chunkDim` packed as the `vec3` uniforms the
+   * raymarch shader reads. Built once at construction — none of the three
+   * change afterwards, and the uniforms are read once per block per frame, so
+   * packing them on demand would allocate three arrays per block per frame.
+   */
+  readonly dimensionsUniform: number[];
+  readonly broadDimUniform: number[];
+  readonly chunkDimUniform: number[];
   /** Voxel size in world units: `VOXEL_SIZE` at LOD 0, doubling at each higher LOD. */
   scale: number = 1;
 
@@ -118,7 +120,7 @@ export class Level {
     }
     this.allocCount++;
     const capacity =
-      this.storageCount[0] * this.storageCount[1] * this.storageCount[2];
+      this.storageCount.x * this.storageCount.y * this.storageCount.z;
     if (this.allocCount > capacity && !this.warnedStorageOverflow) {
       this.warnedStorageOverflow = true;
       console.warn(
@@ -129,10 +131,10 @@ export class Level {
     out.y = this.nextStorage[1];
     out.z = this.nextStorage[2];
     this.nextStorage[0]++;
-    if (this.nextStorage[0] === this.storageCount[0]) {
+    if (this.nextStorage[0] === this.storageCount.x) {
       this.nextStorage[0] = 0;
       this.nextStorage[1]++;
-      if (this.nextStorage[1] === this.storageCount[1]) {
+      if (this.nextStorage[1] === this.storageCount.y) {
         this.nextStorage[1] = 0;
         this.nextStorage[2]++;
       }
@@ -150,31 +152,31 @@ export class Level {
     const bd = this.broadDim;
     const cd = this.chunkDim;
     const sd = this.storageDim;
-    const broadXIdx = Math.floor(x / cd[0]);
-    const broadYIdx = Math.floor(y / cd[1]);
-    const broadZIdx = Math.floor(z / cd[2]);
+    const broadXIdx = Math.floor(x / cd.x);
+    const broadYIdx = Math.floor(y / cd.y);
+    const broadZIdx = Math.floor(z / cd.z);
     const broadIdx =
-      (broadZIdx * bd[1] * bd[0] + broadYIdx * bd[0] + broadXIdx) << 2;
+      (broadZIdx * bd.y * bd.x + broadYIdx * bd.x + broadXIdx) << 2;
     if (this.broadData[broadIdx] === 0) {
       return -1;
     }
     const chunkXIdx = this.broadData[broadIdx + 1];
     const chunkYIdx = this.broadData[broadIdx + 2];
     const chunkZIdx = this.broadData[broadIdx + 3];
-    const fineXIdx = chunkXIdx * cd[0] + (x - broadXIdx * cd[0]);
-    const fineYIdx = chunkYIdx * cd[1] + (y - broadYIdx * cd[1]);
-    const fineZIdx = chunkZIdx * cd[2] + (z - broadZIdx * cd[2]);
-    return fineZIdx * sd[1] * sd[0] + fineYIdx * sd[0] + fineXIdx;
+    const fineXIdx = chunkXIdx * cd.x + (x - broadXIdx * cd.x);
+    const fineYIdx = chunkYIdx * cd.y + (y - broadYIdx * cd.y);
+    const fineZIdx = chunkZIdx * cd.z + (z - broadZIdx * cd.z);
+    return fineZIdx * sd.y * sd.x + fineYIdx * sd.x + fineXIdx;
   }
 
   set(x: number, y: number, z: number, val: number) {
     const bd = this.broadDim;
     const cd = this.chunkDim;
-    const broadXIdx = Math.floor(x / cd[0]);
-    const broadYIdx = Math.floor(y / cd[1]);
-    const broadZIdx = Math.floor(z / cd[2]);
+    const broadXIdx = Math.floor(x / cd.x);
+    const broadYIdx = Math.floor(y / cd.y);
+    const broadZIdx = Math.floor(z / cd.z);
     const broadIdx =
-      (broadZIdx * bd[1] * bd[0] + broadYIdx * bd[0] + broadXIdx) << 2;
+      (broadZIdx * bd.y * bd.x + broadYIdx * bd.x + broadXIdx) << 2;
     if (this.broadData[broadIdx] === 0) {
       this.allocChunk(this._set_chunk);
       this.broadData[broadIdx + 0] = 1;
@@ -194,10 +196,10 @@ export class Level {
   }
 
   constructor(params?: {
-    broadDim?: Dim3;
-    chunkDim?: Dim3;
-    storageDim?: Dim3;
-    dimensions?: Dim3;
+    broadDim?: Vector3D;
+    chunkDim?: Vector3D;
+    storageDim?: Vector3D;
+    dimensions?: Vector3D;
     scale?: number;
   }) {
     const def = blockConfig(0);
@@ -208,25 +210,28 @@ export class Level {
     this.broadDim = bd;
     this.chunkDim = cd;
     this.storageDim = sd;
-    this.storageCount = [
-      Math.floor(sd[0] / cd[0]),
-      Math.floor(sd[1] / cd[1]),
-      Math.floor(sd[2] / cd[2]),
-    ];
-    this.dimensions = dimensions ?? [
-      bd[0] * cd[0],
-      bd[1] * cd[1],
-      bd[2] * cd[2],
-    ];
+    this.storageCount = {
+      x: Math.floor(sd.x / cd.x),
+      y: Math.floor(sd.y / cd.y),
+      z: Math.floor(sd.z / cd.z),
+    };
+    this.dimensions = dimensions ?? {
+      x: bd.x * cd.x,
+      y: bd.y * cd.y,
+      z: bd.z * cd.z,
+    };
     this.scale = scale ?? 1;
-    this.broadData = new Uint8Array(bd[0] * bd[1] * bd[2] * 4);
-    this.broadTexture = new DataTexture(this.broadData, bd[0], bd[1], bd[2]);
-    this.data = new Uint8Array(sd[0] * sd[1] * sd[2]);
+    this.dimensionsUniform = Vector3D.toArray(this.dimensions);
+    this.broadDimUniform = Vector3D.toArray(bd);
+    this.chunkDimUniform = Vector3D.toArray(cd);
+    this.broadData = new Uint8Array(bd.x * bd.y * bd.z * 4);
+    this.broadTexture = new DataTexture(this.broadData, bd.x, bd.y, bd.z);
+    this.data = new Uint8Array(sd.x * sd.y * sd.z);
     this.texture = new DataTexture(
       this.data,
-      sd[0],
-      sd[1],
-      sd[2],
+      sd.x,
+      sd.y,
+      sd.z,
       RedIntegerFormat,
       UnsignedByteType,
     );
@@ -282,7 +287,7 @@ export const syncLevelFromStore = (
       level.set(x, y, z, id);
     });
   } else {
-    const [vxN, vyN, vzN] = store.voxels;
+    const { x: vxN, y: vyN, z: vzN } = store.voxels;
     for (let vz = 0; vz < vzN; ++vz) {
       for (let vy = 0; vy < vyN; ++vy) {
         for (let vx = 0; vx < vxN; ++vx) {
@@ -365,8 +370,8 @@ const findContainingBlock = (
   for (const block of blocks) {
     const dx = worldX - block.center[0];
     const dz = worldZ - block.center[2];
-    const hx = block.level.dimensions[0] / 2;
-    const hz = block.level.dimensions[2] / 2;
+    const hx = block.level.dimensions.x / 2;
+    const hz = block.level.dimensions.z / 2;
     if (Math.abs(dx) > hx || Math.abs(dz) > hz) {
       continue;
     }
@@ -408,7 +413,7 @@ export const getWorldHeight = (
   }
   const store = best.store;
   const scale = store.scale;
-  const [vxN, vyN, vzN] = store.voxels;
+  const { x: vxN, y: vyN, z: vzN } = store.voxels;
   const clampAxis = (v: number, n: number): number =>
     Math.max(0, Math.min(n - 1, v));
   const vx = clampAxis(
@@ -463,7 +468,7 @@ export const getGroundHeightBelow = (
   }
   const store = best.store;
   const scale = store.scale;
-  const [vxN, vyN, vzN] = store.voxels;
+  const { x: vxN, y: vyN, z: vzN } = store.voxels;
   const clampAxis = (v: number, n: number): number =>
     Math.max(0, Math.min(n - 1, v));
   const vx = clampAxis(
@@ -505,7 +510,7 @@ const voxelIdAt = (
   }
   const store = best.store;
   const scale = store.scale;
-  const [vxN, vyN, vzN] = store.voxels;
+  const { x: vxN, y: vyN, z: vzN } = store.voxels;
   // `store.get` reads out-of-range cells as air, so unlike the height
   // samplers this deliberately doesn't clamp: clamping would smear the
   // block's edge voxels outward across everything beyond them.

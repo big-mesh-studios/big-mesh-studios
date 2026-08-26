@@ -35,9 +35,9 @@ export class BlockGrid {
           z: j - (n - 1) / 2,
         };
         const center: Dim3 = [
-          grid.x * BLOCK_WORLD[0],
+          grid.x * BLOCK_WORLD.x,
           0,
-          grid.z * BLOCK_WORLD[2],
+          grid.z * BLOCK_WORLD.z,
         ];
         const block: WorldBlock = buildBlock({
           center,

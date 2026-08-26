@@ -17,7 +17,11 @@ import {
 } from "../world/voxel-store";
 
 const smallStore = (): VoxelStore =>
-  new VoxelStore({ dims: [8, 8, 8], voxels: [4, 4, 4], scale: 2 });
+  new VoxelStore({
+    dims: { x: 8, y: 8, z: 8 },
+    voxels: { x: 4, y: 4, z: 4 },
+    scale: 2,
+  });
 
 /**
  * Constant high terrain (amplitude 0): every column is solid to the block

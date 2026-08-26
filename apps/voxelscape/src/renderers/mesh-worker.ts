@@ -3,6 +3,7 @@
 // border, so seam faces can be culled against the surrounding world without
 // any neighbour data) and gets back both the terrain and water meshes as
 // transferable typed arrays, so no geometry work ever stalls the UI.
+import { Vector3D } from "../utils/maths";
 import type { MeshArrays, MeshBuildRequest, MeshBuildResult } from "./mesh";
 import { buildBlockMesh, buildWaterMesh } from "./mesh";
 import { VoxelStore } from "../world/voxel-store";
@@ -19,7 +20,7 @@ const workerSelf = self as unknown as {
 workerSelf.onmessage = (ev: MessageEvent<MeshBuildRequest>) => {
   const { id, voxels, scale, data, tileRects } = ev.data;
   const store = new VoxelStore({
-    dims: [voxels[0] * scale, voxels[1] * scale, voxels[2] * scale],
+    dims: Vector3D.multiplyScalar(voxels, scale),
     voxels,
     scale,
   });

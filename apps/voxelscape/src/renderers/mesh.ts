@@ -10,6 +10,7 @@
 // from the same world-coordinate terrain function as the interior. The border
 // always matches what the neighbour will contain, so no worker needs a
 // neighbour's live store to resolve a seam.
+import type { Vector3D } from "../utils/maths";
 import { BufferAttribute, BufferGeometry } from "@random-mesh/rmsl/scene";
 import type { TileRect, VoxelTileConfig } from "./atlas";
 import { VOXEL_AIR, VOXEL_WATER, type VoxelStore } from "../world/voxel-store";
@@ -78,7 +79,7 @@ export const buildBlockMesh = (
   store: VoxelStore,
   voxelTiles: VoxelTileConfig[],
 ): MeshArrays => {
-  const [nx, ny, nz] = store.voxels;
+  const { x: nx, y: ny, z: nz } = store.voxels;
   const scale = store.scale;
   const tiles = new Map<number, VoxelTileConfig>();
   for (const t of voxelTiles) {
@@ -179,7 +180,7 @@ export const buildBlockMesh = (
  * the same generated `VoxelStore` border as the terrain mesh.
  */
 export const buildWaterMesh = (store: VoxelStore): MeshArrays => {
-  const [nx, ny, nz] = store.voxels;
+  const { x: nx, y: ny, z: nz } = store.voxels;
   const scale = store.scale;
 
   const positions: number[] = [];
@@ -319,7 +320,7 @@ export const meshArraysToGeometry = (mesh: MeshArrays): BufferGeometry => {
  */
 export interface MeshBuildRequest {
   id: number;
-  voxels: [number, number, number];
+  voxels: Vector3D;
   scale: number;
   data: Uint8Array;
   tileRects: VoxelTileConfig[];

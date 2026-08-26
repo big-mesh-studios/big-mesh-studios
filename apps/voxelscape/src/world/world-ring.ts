@@ -112,9 +112,9 @@ export class WorldRing {
     const changedCenters: Dim3[] = [];
     for (const i of changed) {
       const center: Dim3 = [
-        this.worldGrid[i].x * BLOCK_WORLD[0],
+        this.worldGrid[i].x * BLOCK_WORLD.x,
         0,
-        this.worldGrid[i].z * BLOCK_WORLD[2],
+        this.worldGrid[i].z * BLOCK_WORLD.z,
       ];
       this.blocks[i].center = center;
       // reposition both renderers' meshes for this slot; the triangle
@@ -134,8 +134,8 @@ export class WorldRing {
   }
 
   scrollToPlayer(playerX: number, playerZ: number): void {
-    const blockX = Math.floor(playerX / BLOCK_WORLD[0]);
-    const blockZ = Math.floor(playerZ / BLOCK_WORLD[2]);
+    const blockX = Math.floor(playerX / BLOCK_WORLD.x);
+    const blockZ = Math.floor(playerZ / BLOCK_WORLD.z);
     while (this.centerBlockX !== blockX) {
       this.stepRing(Math.sign(blockX - this.centerBlockX), 0);
       this.centerBlockX += Math.sign(blockX - this.centerBlockX);

@@ -50,7 +50,7 @@ export const localToWorldVoxel = (
   center: Dim3,
   l: Dim3,
 ): WorldVoxel => {
-  const [nx, ny, nz] = store.voxels;
+  const { x: nx, y: ny, z: nz } = store.voxels;
   const [cx, cy, cz] = center;
   const s = store.scale;
   return [
@@ -69,7 +69,7 @@ export const worldVoxelToLocal = (
   center: Dim3,
   w: WorldVoxel,
 ): Dim3 => {
-  const [nx, ny, nz] = store.voxels;
+  const { x: nx, y: ny, z: nz } = store.voxels;
   const [cx, cy, cz] = center;
   const s = store.scale;
   return [
@@ -87,14 +87,14 @@ export const blockWorldVoxelRange = (
   center: Dim3,
 ): { min: WorldVoxel; max: WorldVoxel } => {
   const min: WorldVoxel = [
-    Math.round((center[0] - BLOCK_WORLD[0] / 2) / VOXEL_SIZE),
-    Math.round((center[1] - BLOCK_WORLD[1] / 2) / VOXEL_SIZE),
-    Math.round((center[2] - BLOCK_WORLD[2] / 2) / VOXEL_SIZE),
+    Math.round((center[0] - BLOCK_WORLD.x / 2) / VOXEL_SIZE),
+    Math.round((center[1] - BLOCK_WORLD.y / 2) / VOXEL_SIZE),
+    Math.round((center[2] - BLOCK_WORLD.z / 2) / VOXEL_SIZE),
   ];
   const max: WorldVoxel = [
-    min[0] + BLOCK_WORLD[0] / VOXEL_SIZE - 1,
-    min[1] + BLOCK_WORLD[1] / VOXEL_SIZE - 1,
-    min[2] + BLOCK_WORLD[2] / VOXEL_SIZE - 1,
+    min[0] + BLOCK_WORLD.x / VOXEL_SIZE - 1,
+    min[1] + BLOCK_WORLD.y / VOXEL_SIZE - 1,
+    min[2] + BLOCK_WORLD.z / VOXEL_SIZE - 1,
   ];
   return { min, max };
 };

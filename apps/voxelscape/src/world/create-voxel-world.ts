@@ -83,7 +83,7 @@ export interface VoxelWorld {
 export const createVoxelWorld = (config: VoxelWorldConfig): VoxelWorld => {
   const { scene, blocksPerSide, terrain, surfaceOnly, debugPerf } = config;
 
-  const ringRadius = (blocksPerSide / 2) * BLOCK_WORLD[0];
+  const ringRadius = (blocksPerSide / 2) * BLOCK_WORLD.x;
   /**
    * Distance at which fog becomes fully opaque and rays stop marching. Set
    * to the ring edge's closest possible approach to the player — half a block
@@ -91,7 +91,7 @@ export const createVoxelWorld = (config: VoxelWorldConfig): VoxelWorld => {
    * edge of their center block, so fog always hides the ring boundary before
    * it can become visible.
    */
-  const fogDistance = (blocksPerSide / 2 - 0.5) * BLOCK_WORLD[0];
+  const fogDistance = (blocksPerSide / 2 - 0.5) * BLOCK_WORLD.x;
 
   const blockGrid = new BlockGrid({ blocksPerSide, terrain, surfaceOnly });
   const renderers = new RendererSwitch({

@@ -1,3 +1,4 @@
+import type { Vector3D } from "../utils/maths";
 import type { Dim3 } from "./level-data";
 import { heightAt, type TerrainConfig } from "./noise";
 
@@ -25,34 +26,32 @@ export const VOXEL_PADDING = 1;
  */
 export class VoxelStore {
   /** World-unit extents of the volume. */
-  dims: Dim3;
+  dims: Vector3D;
   /** World units per voxel; matches the block's level-of-detail scale. */
   scale: number;
   /** Voxel counts per axis of the interior volume, excluding the border. */
-  voxels: Dim3;
+  voxels: Vector3D;
   /**
    * `VOXEL_PADDING` rows of meshing-only border voxels on each horizontal
    * side; `data` is laid out with that border included, so its length is
-   * `(voxels[0] + 2*padding) * voxels[1] * (voxels[2] + 2*padding)`.
+   * `(voxels.x + 2*padding) * voxels.y * (voxels.z + 2*padding)`.
    */
   readonly padding: number = VOXEL_PADDING;
   data: Uint8Array;
 
-  constructor(params: { dims: Dim3; voxels: Dim3; scale: number }) {
+  constructor(params: { dims: Vector3D; voxels: Vector3D; scale: number }) {
     this.dims = params.dims;
     this.voxels = params.voxels;
     this.scale = params.scale;
     const p = this.padding;
     this.data = new Uint8Array(
-      (params.voxels[0] + 2 * p) *
-        params.voxels[1] *
-        (params.voxels[2] + 2 * p),
+      (params.voxels.x + 2 * p) * params.voxels.y * (params.voxels.z + 2 * p),
     );
   }
 
   /** Index of an interior voxel (including the border offset). */
   index(x: number, y: number, z: number): number {
-    const [nx, ny] = this.voxels;
+    const { x: nx, y: ny } = this.voxels;
     const p = this.padding;
     return ((z + p) * ny + y) * (nx + 2 * p) + (x + p);
   }
@@ -63,7 +62,7 @@ export class VoxelStore {
    * range (there is no vertical border).
    */
   paddedIndex(x: number, y: number, z: number): number {
-    const [nx, ny] = this.voxels;
+    const { x: nx, y: ny } = this.voxels;
     const p = this.padding;
     return ((z + p) * ny + y) * (nx + 2 * p) + (x + p);
   }
@@ -82,9 +81,9 @@ export class VoxelStore {
       x >= 0 &&
       y >= 0 &&
       z >= 0 &&
-      x < this.voxels[0] &&
-      y < this.voxels[1] &&
-      z < this.voxels[2]
+      x < this.voxels.x &&
+      y < this.voxels.y &&
+      z < this.voxels.z
     );
   }
 
@@ -129,7 +128,7 @@ export const fillStore = (
 ): void => {
   store.reset();
   const voxelSize = store.scale;
-  const [vxN, vyN, vzN] = store.voxels;
+  const { x: vxN, y: vyN, z: vzN } = store.voxels;
   const p = store.padding;
   const seaLevelVoxel =
     config.seaLevel === undefined
@@ -185,7 +184,7 @@ export const sweepSurface = (
   store: VoxelStore,
   cb: (x: number, y: number, z: number, id: number) => void,
 ): number => {
-  const [nx, ny, nz] = store.voxels;
+  const { x: nx, y: ny, z: nz } = store.voxels;
   const data = store.data;
   const idx = (x: number, y: number, z: number): number => store.index(x, y, z);
   let count = 0;
@@ -250,7 +249,7 @@ export const sweepWaterSurface = (
   store: VoxelStore,
   cb: (x: number, y: number, z: number, id: number) => void,
 ): number => {
-  const [nx, ny, nz] = store.voxels;
+  const { x: nx, y: ny, z: nz } = store.voxels;
   const data = store.data;
   const idx = (x: number, y: number, z: number): number => store.index(x, y, z);
   let count = 0;

@@ -17,7 +17,11 @@ import {
 } from "./voxel-store";
 
 const smallStore = (): VoxelStore =>
-  new VoxelStore({ dims: [8, 8, 8], voxels: [4, 4, 4], scale: 2 });
+  new VoxelStore({
+    dims: { x: 8, y: 8, z: 8 },
+    voxels: { x: 4, y: 4, z: 4 },
+    scale: 2,
+  });
 
 const surfaced = (store: VoxelStore): Map<string, number> => {
   const m = new Map<string, number>();
@@ -217,10 +221,10 @@ describe("syncLevelFromStore", () => {
   // Level sized to the 4x4x4 store (voxel size 2, world dims 8x8x8).
   const makeLevel = (): Level =>
     new Level({
-      broadDim: [1, 1, 1],
-      chunkDim: [4, 4, 4],
-      storageDim: [4, 4, 4],
-      dimensions: [8, 8, 8],
+      broadDim: { x: 1, y: 1, z: 1 },
+      chunkDim: { x: 4, y: 4, z: 4 },
+      storageDim: { x: 4, y: 4, z: 4 },
+      dimensions: { x: 8, y: 8, z: 8 },
       scale: 2,
     });
 
@@ -301,10 +305,10 @@ describe("getWorldHeight", () => {
       }
     }
     const level = new Level({
-      broadDim: [1, 1, 1],
-      chunkDim: [4, 4, 4],
-      storageDim: [4, 4, 4],
-      dimensions: [8, 8, 8],
+      broadDim: { x: 1, y: 1, z: 1 },
+      chunkDim: { x: 4, y: 4, z: 4 },
+      storageDim: { x: 4, y: 4, z: 4 },
+      dimensions: { x: 8, y: 8, z: 8 },
       scale: 2,
     });
     const blocks = [

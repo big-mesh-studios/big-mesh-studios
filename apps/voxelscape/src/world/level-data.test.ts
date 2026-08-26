@@ -164,7 +164,7 @@ describe("isSolidAt and isWaterAt", () => {
     // height rather than read off the voxel.
     const sea = flatConfig.seaLevel;
     const b = buildBlock({ center: [0, 0, 0], terrain: flatConfig });
-    const [, vyN] = b.store.voxels;
+    const { y: vyN } = b.store.voxels;
     const column = 48;
     const surface = getWorldHeight([b], 1, 1);
     expect(surface).toBeGreaterThan(sea);
