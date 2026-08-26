@@ -139,11 +139,6 @@ export const createVoxelWorld = ({
   const drawn = new Set<number>();
   /** The slot the player spawns in, or -1 until the initial fill has been asked for. */
   let spawnIndex = -1;
-  const drawProgress = (): InitialDrawProgress => ({
-    drawn: drawn.size,
-    total: blockGrid.blocks.length,
-    spawnDrawn: drawn.has(spawnIndex),
-  });
   const renderers = new RendererSwitch({
     blocks: blockGrid.blocks,
     padding: PAD,
@@ -162,7 +157,11 @@ export const createVoxelWorld = ({
         return;
       }
       drawn.add(i);
-      onInitialDraw?.(drawProgress());
+      onInitialDraw?.({
+        drawn: drawn.size,
+        total: blockGrid.blocks.length,
+        spawnDrawn: drawn.has(spawnIndex),
+      });
     },
   });
   const editLayer = new EditLayer();

@@ -148,9 +148,41 @@ export const createVoxelscape = ({
     getPlayerVoxels: () => avatar.occupiedVoxels(),
   });
 
-  // Built before `atproto`, because signing in is what starts the mesh. Its
-  // getters read `atproto` before that variable is assigned, which holds
-  // because they only run once the mesh is online and both exist by then.
+  // Wired here so that signing in brings the multiplayer mesh online and
+  // signing out takes it down, and so a merge from `/sync` reaches the ring's
+  // blocks — none of which the controller itself knows about.
+  const atproto = new AtprotoController({
+    layer: world.editLayer,
+    seed: terrain.seed,
+    options: {},
+    getHandle: () => "",
+    onMerged: (changed) => {
+      if (changed > 0) {
+        // Remote edits just landed in the overlay; push them into the ring's
+        // blocks (store + GPU level + mesh) and persist them locally so a
+        // reload doesn't drop the merged world until the next `/sync`.
+        world.reapplyEdits();
+        world.scheduleSave();
+      }
+    },
+    onConnected: (did) => {
+      void multiplayer.start();
+      // The player's own cube wears the same face the peers around them see,
+      // which is only visible from third person but is how they check it.
+      void atproto
+        .resolvePicture(did)
+        .then(async (picture) => {
+          if (picture !== null) {
+            avatar.setPicture(await createImageBitmap(picture));
+          }
+        })
+        .catch(() => {
+          // No picture is a look, not a failure worth reporting.
+        });
+    },
+    onSignedOut: () => void multiplayer.stop(),
+  });
+
   const multiplayer = new MultiplayerController({
     getRepoClient: () => atproto.repoClient,
     getDid: () => atproto.did,
@@ -201,41 +233,6 @@ export const createVoxelscape = ({
     // Drawn last with depth testing off, washing the whole view.
     world.underwaterTint,
   );
-
-  // Wired here so that signing in brings the multiplayer mesh online and
-  // signing out takes it down, and so a merge from `/sync` reaches the ring's
-  // blocks — none of which the controller itself knows about.
-  const atproto = new AtprotoController({
-    layer: world.editLayer,
-    seed: terrain.seed,
-    options: {},
-    getHandle: () => "",
-    onMerged: (changed) => {
-      if (changed > 0) {
-        // Remote edits just landed in the overlay; push them into the ring's
-        // blocks (store + GPU level + mesh) and persist them locally so a
-        // reload doesn't drop the merged world until the next `/sync`.
-        world.reapplyEdits();
-        world.scheduleSave();
-      }
-    },
-    onConnected: (did) => {
-      void multiplayer.start();
-      // The player's own cube wears the same face the peers around them see,
-      // which is only visible from third person but is how they check it.
-      void atproto
-        .resolvePicture(did)
-        .then(async (picture) => {
-          if (picture !== null) {
-            avatar.setPicture(await createImageBitmap(picture));
-          }
-        })
-        .catch(() => {
-          // No picture is a look, not a failure worth reporting.
-        });
-    },
-    onSignedOut: () => void multiplayer.stop(),
-  });
 
   // Reported rather than discarded: restoring a session is the one thing that
   // happens on its own, so without this a reload leaves no way to tell a
