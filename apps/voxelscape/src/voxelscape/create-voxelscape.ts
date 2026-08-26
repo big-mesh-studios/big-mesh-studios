@@ -74,17 +74,17 @@ export interface Voxelscape {
  * editing and sync — and owns its frame loop. Touches no DOM beyond the
  * canvas passed to `mount`.
  */
-export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
-  const blocksPerSide = config.blocksPerSide ?? 5;
-  const terrain = config.terrain ?? DEFAULT_TERRAIN;
-  const surfaceOnly = config.surfaceOnly ?? true;
-  const spawn = config.spawn ?? [0, 0, 0];
-  const debugPerf =
-    config.debugPerf ??
-    (typeof window !== "undefined" && window.location.hash.includes("perf"));
-  const onDebugStats = config.onDebugStats;
-  const onNotice = config.onNotice;
-
+export const createVoxelscape = ({
+  blocksPerSide = 5,
+  terrain = DEFAULT_TERRAIN,
+  surfaceOnly = true,
+  spawn = [0, 0, 0],
+  debugPerf = typeof window !== "undefined" &&
+    window.location.hash.includes("perf"),
+  onDebugStats,
+  onNotice,
+  player,
+}: VoxelscapeConfig = {}): Voxelscape => {
   const [editStatus, setEditStatus] = createSignal("");
   const [inReach, setInReach] = createSignal(false);
 
@@ -125,7 +125,7 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     camera,
     terrain: world,
     spawn,
-    player: config.player,
+    player,
   });
   // The rest of the scene, in draw order: water blends over every opaque
   // object, and the weather draws over the water.

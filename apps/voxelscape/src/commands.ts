@@ -62,19 +62,18 @@ export interface CommandsParams {
 }
 
 /** Every debug console command, declared as a single object literal keyed by command name. */
-export const createCommands = (params: CommandsParams): Commander => {
-  const {
-    dayNight,
-    rendererSwitch,
-    weather,
-    sound,
-    atproto,
-    multiplayer,
-    setView,
-    setPlayerVisible,
-    setMoveSpeed,
-    setLookSensitivity,
-  } = params;
+export const createCommands = ({
+  dayNight,
+  rendererSwitch,
+  weather,
+  sound,
+  atproto,
+  multiplayer,
+  setView,
+  setPlayerVisible,
+  setMoveSpeed,
+  setLookSensitivity,
+}: CommandsParams): Commander => {
   return new Commander({
     "/day": {
       help: "/day       jump to noon (t=300s)",
