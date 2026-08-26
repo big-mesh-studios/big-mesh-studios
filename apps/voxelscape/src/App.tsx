@@ -19,13 +19,7 @@ import { AtprotoController } from "./atproto/atproto-controller";
 import { DayNightController } from "./day-night-controller";
 import { createDebugCommands } from "./debug-commands";
 import { EditingController } from "./editing-controller";
-import {
-  consumeInput,
-  createLookDragHandlers,
-  installEditControls,
-  installKeyboardControls,
-  installPointerLockLook,
-} from "./input";
+import { createInput } from "./input";
 import { COLLECTABLE, Inventory } from "./inventory";
 import { GpuTimer } from "./perf";
 import {
@@ -113,6 +107,12 @@ const App: Component<{}> = () => {
   const [editStatus, setEditStatus] = createSignal("");
   /** Whether the crosshair is currently pointing at something within reach. */
   const [inReach, setInReach] = createSignal(false);
+  /**
+   * Owns the keyboard/pointer listeners and the per-frame input snapshot.
+   * Instance-scoped, so its listeners come off again on unmount and a second
+   * Voxelscape on the page doesn't share this one's movement state.
+   */
+  const input = createInput();
   const scene = new Scene();
   /**
    * Owns the sun/ambient lights, the sun/moon billboards, and the day-night
@@ -265,8 +265,7 @@ const App: Component<{}> = () => {
   // blocks, now that the overlay has loaded.
   void editPersistence.load().then(applyLayerToBlocks);
 
-  installEditControls();
-  installPointerLockLook();
+  input.install();
   // Both renderers' translucent water passes (and the triangle renderer's
   // underwater tint) blend over the opaque scene; scene-graph draw order
   // means they must be added after the player cube.
@@ -345,7 +344,6 @@ const App: Component<{}> = () => {
       return `look sensitivity: ${PLAYER_CFG.lookSensitivity} rad/px`;
     },
   });
-  installKeyboardControls();
   placeCamera(camera, player, firstPerson);
   let timer: GpuTimer | undefined;
   let hud: HTMLDivElement | undefined;
@@ -420,23 +418,25 @@ const App: Component<{}> = () => {
     const dt =
       lastFrameT > 0 ? Math.min(0.05, (t - lastFrameT) / 1000) : 1 / 60;
     lastFrameT = t;
-    const input = consumeInput();
-    updatePlayer(player, dt, input, playerWorld);
+    const snapshot = input.consume();
+    updatePlayer(player, dt, snapshot, playerWorld);
     // crosshair reach feedback: recompute every frame so it tracks look, not
     // just edit attempts
     setInReach(editing.pick().target !== null);
     // handle block editing input (edge-triggered dig/place + hotbar select)
-    if (input.break) {
+    if (snapshot.break) {
       const result = editing.breakBlock();
       if (result !== null) {
         setEditStatus(result);
       }
     }
-    if (input.place) {
+    if (snapshot.place) {
       setEditStatus(editing.placeBlock());
     }
-    if (input.select !== null) {
-      inventory.setSelected(Object.keys(COLLECTABLE).map(Number)[input.select]);
+    if (snapshot.select !== null) {
+      inventory.setSelected(
+        Object.keys(COLLECTABLE).map(Number)[snapshot.select],
+      );
     }
     // scroll the terrain ring so the player's block stays centred
     worldRing.scrollToPlayer(player.position.x, player.position.z);
@@ -511,6 +511,8 @@ const App: Component<{}> = () => {
         atproto.dispose();
         // release the audio hardware
         sound.dispose();
+        // detach the keyboard/pointer listeners
+        input.dispose();
         window.removeEventListener("pointerdown", unlockSound);
         window.removeEventListener("keydown", unlockSound);
       };
@@ -542,7 +544,7 @@ const App: Component<{}> = () => {
       );
     }
   };
-  const lookDrag = createLookDragHandlers();
+  const lookDrag = input.createLookDragHandlers();
 
   return (
     <div
@@ -572,7 +574,7 @@ const App: Component<{}> = () => {
         onPointerCancel={lookDrag.onPointerCancel}
       />
       <Show when={coarsePointer()}>
-        <CoarseControls />
+        <CoarseControls input={input} />
       </Show>
       <EditHud inventory={inventory} status={editStatus} inReach={inReach} />
       <Console onCommand={(line) => commands.run(line)} />
