@@ -2,7 +2,7 @@ import { Color, PerspectiveCamera, Scene } from "@random-mesh/rmsl/scene";
 import { createSignal, type Accessor } from "solid-js";
 import { AtprotoController } from "../atproto/atproto-controller";
 import type { Commander } from "../commands";
-import { createDebugCommands } from "../commands";
+import { createCommands } from "../commands";
 import { createEnvironment } from "../environment/create-environment";
 import { MultiplayerController } from "../multiplayer/multiplayer-controller";
 import { createPeerJSSignaling } from "../multiplayer/peerjs-transport";
@@ -203,7 +203,7 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
   // restored session from a dropped one short of running `/atproto`.
   void atproto.init().then((line) => onNotice?.(line));
 
-  const commands = createDebugCommands({
+  const commands = createCommands({
     dayNight: environment.dayNight,
     rendererSwitch: world.renderers,
     weather: environment.weather,

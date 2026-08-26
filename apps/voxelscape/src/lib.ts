@@ -190,7 +190,10 @@ export type {
 } from "./multiplayer/transport";
 
 // The debug console: the command table and the components that show it
-export { createDebugCommands, type CommandEntry } from "./commands";
+export {
+  createCommands as createDebugCommands,
+  type CommandEntry,
+} from "./commands";
 export * from "./ui/Console";
 export { EditHud } from "./ui/EditHud";
 import Controls_ from "./ui/CoarseControls";

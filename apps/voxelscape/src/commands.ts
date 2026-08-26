@@ -44,7 +44,7 @@ export class Commander {
   }
 }
 
-export interface DebugCommandsParams {
+export interface CommandsParams {
   dayNight: DayNightController;
   rendererSwitch: RendererSwitch;
   weather: WeatherController;
@@ -62,7 +62,7 @@ export interface DebugCommandsParams {
 }
 
 /** Every debug console command, declared as a single object literal keyed by command name. */
-export const createDebugCommands = (params: DebugCommandsParams): Commander => {
+export const createCommands = (params: CommandsParams): Commander => {
   const {
     dayNight,
     rendererSwitch,
