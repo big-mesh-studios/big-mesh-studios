@@ -9,13 +9,13 @@ import {
   BoxGeometry,
   Mesh,
   MeshBasicMaterial,
-  MeshStandardMaterial,
   PlaneGeometry,
   Scene,
   Texture,
   Vector3,
   type PerspectiveCamera,
 } from "@random-mesh/rmsl/scene";
+import { createPlayerSkin, type PlayerSkin } from "../player/player-skin";
 import { hashDid } from "./presence";
 import type { Pose } from "./pose";
 
@@ -36,6 +36,7 @@ const AVATAR_COLORS = [
 
 interface RemotePlayer {
   cube: Mesh;
+  skin: PlayerSkin;
   label: Mesh;
   target: Pose;
   updatedAt: number;
@@ -111,6 +112,8 @@ export class RemotePlayers {
   private readonly players = new Map<string, RemotePlayer>();
   /** DID -> the handle to write on that player's label, once one is known. */
   private readonly handles = new Map<string, string>();
+  /** DID -> the picture to paint on that player's cube, once one is known. */
+  private readonly pictures = new Map<string, ImageBitmap>();
 
   constructor(params: { scene: Scene; camera: PerspectiveCamera }) {
     this.scene = params.scene;
@@ -159,6 +162,16 @@ export class RemotePlayers {
     texture.needsUpdate = true;
   }
 
+  /**
+   * Gives a peer a face: their cube is painted with `picture` — the one their
+   * atproto account shows for itself — instead of its assigned colour, for as
+   * long as this player is in the world.
+   */
+  setPicture(did: string, picture: ImageBitmap): void {
+    this.pictures.set(did, picture);
+    this.players.get(did)?.skin.setPicture(picture);
+  }
+
   /** Removes a peer's avatar from the scene entirely. */
   remove(did: string): void {
     const player = this.players.get(did);
@@ -196,9 +209,14 @@ export class RemotePlayers {
   }
 
   private createPlayer(did: string): RemotePlayer {
+    const skin = createPlayerSkin(avatarColor(did));
+    const picture = this.pictures.get(did);
+    if (picture !== undefined) {
+      skin.setPicture(picture);
+    }
     const cube = new Mesh(
       new BoxGeometry(AVATAR_HALF * 2, AVATAR_HALF * 2, AVATAR_HALF * 2),
-      new MeshStandardMaterial({ color: avatarColor(did), roughness: 0.8 }),
+      skin.material,
     );
     cube.visible = false;
     const label = new Mesh(
@@ -213,6 +231,7 @@ export class RemotePlayers {
     this.scene.add(label);
     const player: RemotePlayer = {
       cube,
+      skin,
       label,
       target: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 },
       updatedAt: 0,

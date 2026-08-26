@@ -176,6 +176,7 @@ export const createVoxelscape = ({
     seed: terrain.seed,
     getPose: currentPose,
     resolveHandle: (did) => atproto.resolveHandle(did),
+    resolvePicture: (did) => atproto.resolvePicture(did),
     createSignaling: createPeerJSSignaling,
     scene,
     camera,
@@ -211,7 +212,21 @@ export const createVoxelscape = ({
         world.scheduleSave();
       }
     },
-    onConnected: () => void multiplayer.start(),
+    onConnected: (did) => {
+      void multiplayer.start();
+      // The player's own cube wears the same face the peers around them see,
+      // which is only visible from third person but is how they check it.
+      void atproto
+        .resolvePicture(did)
+        .then(async (picture) => {
+          if (picture !== null) {
+            avatar.setPicture(await createImageBitmap(picture));
+          }
+        })
+        .catch(() => {
+          // No picture is a look, not a failure worth reporting.
+        });
+    },
     onSignedOut: () => void multiplayer.stop(),
   });
   // Reported rather than discarded: restoring a session is the one thing that

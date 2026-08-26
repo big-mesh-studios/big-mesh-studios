@@ -29,6 +29,12 @@ import {
   type DidDocument,
 } from "./identity";
 import { configureOAuthClient, signInPopup } from "./oauth";
+import {
+  pictureBlobCid,
+  pictureBlobUrl,
+  PROFILE_COLLECTION,
+  PROFILE_RKEY,
+} from "./profile";
 import { createAtprotoRepoClient, type AtprotoRepoClient } from "./repo-client";
 
 /** How often the automatic edit sync runs while signed in, ms. */
@@ -79,6 +85,8 @@ export class AtprotoController {
   private readonly documentCache = new Map<string, DidDocument>();
   /** DID -> its confirmed handle, or null when the account has none to show. */
   private readonly handleCache = new Map<string, string | null>();
+  /** DID -> the bytes of its profile picture, or null when it shows none. */
+  private readonly pictureCache = new Map<string, Blob | null>();
   private readonly didDocumentResolver = createDidDocumentResolver();
   private readonly handleResolver = createHandleResolver();
 
@@ -392,6 +400,53 @@ export class AtprotoController {
     });
     this.handleCache.set(did, handle);
     return handle;
+  }
+
+  /**
+   * The picture an account shows for itself, as the bytes an image decoder
+   * takes, or null when it shows none. The record naming the picture and the
+   * bytes themselves both come from the server hosting that account, so a
+   * player's face is served by the same place their world edits are. Fetched
+   * once per account per session, absence included.
+   */
+  async resolvePicture(did: string): Promise<Blob | null> {
+    const cached = this.pictureCache.get(did);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const picture = await this.fetchPicture(did);
+    this.pictureCache.set(did, picture);
+    return picture;
+  }
+
+  private async fetchPicture(did: string): Promise<Blob | null> {
+    const repoClient = this.repoClient_;
+    if (repoClient === undefined) {
+      return null;
+    }
+    let record: unknown;
+    try {
+      record = (
+        await repoClient.getRecord({
+          repo: did,
+          collection: PROFILE_COLLECTION,
+          rkey: PROFILE_RKEY,
+        })
+      ).value;
+    } catch {
+      // An account with no profile record at all: no picture, not an error.
+      return null;
+    }
+    const cid = pictureBlobCid(record);
+    if (cid === null) {
+      return null;
+    }
+    const service = await this.resolveService(did);
+    const response = await fetch(pictureBlobUrl(service, did, cid));
+    if (!response.ok) {
+      return null;
+    }
+    return response.blob();
   }
 
   /** Fetches a DID's document from the PLC directory or its own domain, once per session. */

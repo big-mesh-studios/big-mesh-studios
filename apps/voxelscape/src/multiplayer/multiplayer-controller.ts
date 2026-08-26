@@ -112,6 +112,12 @@ export interface MultiplayerParams {
    * DID.
    */
   resolveHandle?: (did: string) => Promise<string | null>;
+  /**
+   * Resolves a peer's DID to the bytes of the picture their account shows for
+   * itself, or to null when it shows none. Omitted in headless harness runs,
+   * leaving cubes their assigned colour.
+   */
+  resolvePicture?: (did: string) => Promise<Blob | null>;
   /** Receives every pose a peer sends, for headless verification of the mesh. */
   onRemotePose?: (did: string, pose: PoseMessage) => void;
   /**
@@ -133,6 +139,8 @@ export class MultiplayerController {
   private readonly fetchDirectory: (collection: string) => Promise<string[]>;
   private readonly resolveHandle:
     ((did: string) => Promise<string | null>) | undefined;
+  private readonly resolvePicture:
+    ((did: string) => Promise<Blob | null>) | undefined;
   private readonly onRemotePose: (did: string, pose: PoseMessage) => void;
   private readonly onRemoteEdits: (did: string, edits: EditItem[]) => void;
   private readonly clusterOptions: Partial<ClusterOptions>;
@@ -181,6 +189,7 @@ export class MultiplayerController {
     this.relay = params.relay ?? DEFAULT_RELAY;
     this.fetchDirectory = params.fetchDirectory ?? this.relayFetchDirectory;
     this.resolveHandle = params.resolveHandle;
+    this.resolvePicture = params.resolvePicture;
     this.onRemotePose = params.onRemotePose ?? (() => {});
     this.onRemoteEdits = params.onRemoteEdits ?? (() => {});
     this.clusterOptions = params.clusterOptions ?? {};
@@ -713,6 +722,7 @@ export class MultiplayerController {
         this.failedAt.delete(d);
         this.peerCount++;
         void this.nameAvatar(d);
+        void this.faceAvatar(d);
       },
       onPose: (d, pose) => {
         this.remotePlayers?.update(d, pose);
@@ -757,6 +767,30 @@ export class MultiplayerController {
       }
     } catch (err) {
       this.lastError = `${did}: handle lookup failed — ${
+        err instanceof Error ? err.message : String(err)
+      }`;
+    }
+  }
+
+  /**
+   * Paints a newly connected peer's profile picture onto their cube. Like the
+   * handle, it lands a moment after the avatar itself; an account showing no
+   * picture, or one whose server will not part with it, leaves the cube the
+   * colour it was given.
+   */
+  private async faceAvatar(did: string): Promise<void> {
+    const resolvePicture = this.resolvePicture;
+    const remotePlayers = this.remotePlayers;
+    if (resolvePicture === undefined || remotePlayers === undefined) {
+      return;
+    }
+    try {
+      const picture = await resolvePicture(did);
+      if (picture !== null) {
+        remotePlayers.setPicture(did, await createImageBitmap(picture));
+      }
+    } catch (err) {
+      this.lastError = `${did}: picture lookup failed — ${
         err instanceof Error ? err.message : String(err)
       }`;
     }

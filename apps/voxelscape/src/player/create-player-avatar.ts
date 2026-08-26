@@ -1,10 +1,10 @@
 import {
   BoxGeometry,
   Mesh,
-  MeshStandardMaterial,
   PerspectiveCamera,
   Scene,
 } from "@random-mesh/rmsl/scene";
+import { createPlayerSkin } from "./player-skin";
 import type { InputSnapshot } from "./create-input";
 import {
   createPlayer,
@@ -25,6 +25,9 @@ import { VOXEL_SIZE, type Dim3 } from "../world/level-data";
  * floating-point drift far outside it.
  */
 const SAFE_EXTENT = 1e6;
+
+/** The player cube's colour until the signed-in account's picture replaces it. */
+const CUBE_COLOR = 0xff7043;
 
 /** What the physics asks the terrain, plus the column height used to spawn. */
 export interface AvatarTerrain {
@@ -65,6 +68,11 @@ export interface PlayerAvatar {
   setFirstPerson(firstPerson: boolean): void;
   /** Shows or hides the cube drawn for the player (hidden in first person). */
   setCubeVisible(visible: boolean): void;
+  /**
+   * Paints `picture` — the one the signed-in account shows for itself — over
+   * the cube, so the player sees in third person the face other players see.
+   */
+  setPicture(picture: ImageBitmap): void;
 }
 
 /**
@@ -99,13 +107,14 @@ export const createPlayerAvatar = ({
     halfExtent: SAFE_EXTENT,
   };
 
+  const skin = createPlayerSkin(CUBE_COLOR);
   const cube = new Mesh(
     new BoxGeometry(
       player.config.halfSize * 2,
       player.config.halfSize * 2,
       player.config.halfSize * 2,
     ),
-    new MeshStandardMaterial({ color: 0xff7043, roughness: 0.8 }),
+    skin.material,
   );
   cube.position.copy(player.position);
   cube.visible = cubeVisible;
@@ -162,6 +171,10 @@ export const createPlayerAvatar = ({
 
     setCubeVisible(visible) {
       cubeVisible = visible;
+    },
+
+    setPicture(picture) {
+      skin.setPicture(picture);
     },
   };
 };

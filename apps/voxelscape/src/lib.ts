@@ -100,6 +100,7 @@ export {
   type InventoryItem,
 } from "./player/inventory";
 export * from "./player/player";
+export { createPlayerSkin, type PlayerSkin } from "./player/player-skin";
 
 // Day/Night & Environment
 export {
@@ -151,6 +152,12 @@ export {
   createHandleResolver,
   type DidDocument,
 } from "./atproto/identity";
+export {
+  pictureBlobCid,
+  pictureBlobUrl,
+  PROFILE_COLLECTION,
+  PROFILE_RKEY,
+} from "./atproto/profile";
 export {
   createAtprotoRepoClient,
   type AtprotoRepoClient,
