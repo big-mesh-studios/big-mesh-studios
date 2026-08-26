@@ -67,8 +67,9 @@ export const createEnvironment = ({
     sound.unlock();
     controller.abort();
   };
-  window.addEventListener("pointerdown", unlockSound, controller);
-  window.addEventListener("keydown", unlockSound, controller);
+  const { signal } = controller;
+  window.addEventListener("pointerdown", unlockSound, { signal });
+  window.addEventListener("keydown", unlockSound, { signal });
 
   return {
     dayNight,

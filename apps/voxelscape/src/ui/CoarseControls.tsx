@@ -19,7 +19,7 @@ const CoarseControls: Component = () => {
   window.addEventListener(
     "resize",
     () => setViewSize(new THREE.Vector2(window.innerWidth, window.innerHeight)),
-    controller,
+    { signal: controller.signal },
   );
   onCleanup(() => controller.abort());
 
@@ -27,7 +27,6 @@ const CoarseControls: Component = () => {
     <div
       class="pointer-events-none absolute inset-0"
       style={{ "-webkit-tap-highlight-color": "transparent" }}
-      onContextMenu={(e) => e.preventDefault()}
     >
       <div class="pointer-events-auto">
         <Joystick

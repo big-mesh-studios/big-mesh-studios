@@ -124,6 +124,12 @@ export const createInput = (): InputController => {
     state.lookDy += dy;
   };
 
+  /**
+   * Binds every key the player drives the world with: the movement keys, the
+   * space bar's jump, and the top-row number keys that pick a hotbar slot. One
+   * pair of listeners handles all of them, so a press is looked at once and the
+   * "is a text field focused" question is asked once.
+   */
   const installKeyboardControls = (signal: AbortSignal): void => {
     const onDown = (e: KeyboardEvent): void => {
       if (isEditableTarget(e)) {
@@ -133,6 +139,13 @@ export const createInput = (): InputController => {
         e.preventDefault();
         state.jumpQueued = true;
         state.jumpHeld = true;
+        return;
+      }
+      if (e.code.startsWith("Digit")) {
+        const slot = Number(e.code.slice(5));
+        if (slot >= 1 && slot <= 2) {
+          state.selectQueued = slot - 1;
+        }
         return;
       }
       const move = MOVE_KEYS[e.code];
@@ -164,9 +177,11 @@ export const createInput = (): InputController => {
   };
 
   /**
-   * Binds the block-editing controls: left mouse button digs, right mouse button
-   * places, and the top-row number keys select the matching hotbar slot. Edits
-   * are edge-triggered per press, so holding a button doesn't dig repeatedly.
+   * Binds the block-editing presses: left mouse button digs, right mouse button
+   * places. Edits are edge-triggered per press, so holding a button doesn't dig
+   * repeatedly. The right button's browser menu is suppressed across the whole
+   * page, not just over the canvas, so a press that lands a few pixels off the
+   * world can't pop it open mid-game.
    *
    * The first mouse click on the canvas only acquires the pointer lock (see
    * `installPointerLockLook`) — it doesn't also dig or place. Once locked,
@@ -177,12 +192,8 @@ export const createInput = (): InputController => {
    * pointer lock isn't a touch concept, and CoarseControls.tsx already routes
    * digging through a tap on the canvas.
    */
-  const installEditControls = (signal: AbortSignal): void => {
+  const installEditPresses = (signal: AbortSignal): void => {
     const onDown = (e: PointerEvent): void => {
-      if (isEditableTarget(e)) {
-        return;
-      }
-
       // Only dig/place when the press lands on the world canvas itself, not on
       // the touch UI (joystick, buttons, console). Touch taps on the world also
       // reach here as emulated mouse events with the canvas as the target.
@@ -208,19 +219,7 @@ export const createInput = (): InputController => {
         state.placeQueued = true;
       }
     };
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (isEditableTarget(e)) {
-        return;
-      }
-      if (e.code.startsWith("Digit")) {
-        const idx = Number(e.code.slice(5));
-        if (idx >= 1 && idx <= 2) {
-          state.selectQueued = idx - 1;
-        }
-      }
-    };
     window.addEventListener("pointerdown", onDown, { signal });
-    window.addEventListener("keydown", onKeyDown, { signal });
     window.addEventListener("contextmenu", (e) => e.preventDefault(), {
       signal,
     });
@@ -228,7 +227,7 @@ export const createInput = (): InputController => {
 
   /**
    * Feeds the desktop look-around input while the pointer is locked to the
-   * canvas (see `installEditControls`, which requests the lock on the first
+   * canvas (see `installEditPresses`, which requests the lock on the first
    * click). While locked, the OS hides and re-centers the cursor each frame,
    * so `movementX`/`movementY` — not `clientX`/`clientY` — carry the raw
    * mouse delta; outside of lock, mouse movement over the canvas does nothing,
@@ -251,7 +250,7 @@ export const createInput = (): InputController => {
     controller = new AbortController();
     const { signal } = controller;
     installKeyboardControls(signal);
-    installEditControls(signal);
+    installEditPresses(signal);
     installPointerLockLook(signal);
   };
 
