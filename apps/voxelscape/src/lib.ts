@@ -1,7 +1,6 @@
 // The assembled world, and the context its UI components read it from
 export {
   createVoxelscape,
-  type LoadingState,
   type Voxelscape,
   type VoxelscapeConfig,
 } from "./voxelscape/create-voxelscape";
@@ -16,6 +15,7 @@ export {
   createVoxelWorld,
   type VoxelWorld,
   type VoxelWorldConfig,
+  type InitialDrawProgress,
 } from "./world/create-voxel-world";
 export {
   blockWorldVoxelRange,

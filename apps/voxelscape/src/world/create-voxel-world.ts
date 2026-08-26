@@ -33,7 +33,11 @@ export interface InitialDrawProgress {
   /** Blocks generated and, in triangle mode, meshed from that terrain. */
   drawn: number;
   total: number;
-  /** Whether the block containing the spawn point is among them. */
+  /**
+   * Whether the block containing the spawn point is among them: whether there
+   * is ground under the player and something for them to look at. The rest of
+   * the window is still arriving when this first turns true.
+   */
   spawnDrawn: boolean;
 }
 

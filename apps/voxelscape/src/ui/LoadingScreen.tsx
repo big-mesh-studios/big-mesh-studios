@@ -12,14 +12,13 @@ import { useVoxelscape } from "../voxelscape/voxelscape-context";
 export const LoadingScreen: Component = () => {
   const { loading } = useVoxelscape();
   /** The share of the window that is on screen, as a CSS width. */
-  const percent = (): string =>
-    `${(loading().blocksDrawn / loading().blocksTotal) * 100}%`;
-  const remaining = (): number => loading().blocksTotal - loading().blocksDrawn;
+  const percent = (): string => `${(loading().drawn / loading().total) * 100}%`;
+  const remaining = (): number => loading().total - loading().drawn;
 
   return (
     <Show when={remaining() > 0}>
       <Show
-        when={loading().ready}
+        when={loading().spawnDrawn}
         fallback={
           <div class={styles.screen}>
             <div class={styles.title}>generating terrain</div>

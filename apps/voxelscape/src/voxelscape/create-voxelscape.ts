@@ -13,7 +13,10 @@ import { Inventory } from "../player/inventory";
 import type { Player, PlayerConfig } from "../player/player";
 import { AdaptiveResolution } from "../render/adaptive";
 import { createRenderLoop } from "../render/create-render-loop";
-import { createVoxelWorld } from "../world/create-voxel-world";
+import {
+  createVoxelWorld,
+  type InitialDrawProgress,
+} from "../world/create-voxel-world";
 import { type Dim3 } from "../world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "../world/noise";
 
@@ -46,19 +49,6 @@ export interface VoxelscapeConfig {
   onNotice?: (line: string) => void;
 }
 
-/** How much of the world exists yet, for whatever the player is shown while it doesn't. */
-export interface LoadingState {
-  /** Blocks of the window that have been generated and drawn. */
-  blocksDrawn: number;
-  blocksTotal: number;
-  /**
-   * Whether the block the player spawns in is on screen. The rest of the
-   * window is still arriving when this first turns true — it means there is
-   * somewhere to stand and something to see, not that the world is finished.
-   */
-  ready: boolean;
-}
-
 export interface Voxelscape {
   scene: Scene;
   camera: PerspectiveCamera;
@@ -72,8 +62,8 @@ export interface Voxelscape {
   editStatus: Accessor<string>;
   /** Whether the crosshair is currently pointing at something within reach. */
   inReach: Accessor<boolean>;
-  /** How much of the world's terrain exists, for a loading screen to show and dismiss on. */
-  loading: Accessor<LoadingState>;
+  /** How much of the world is on screen, for a loading screen to show and dismiss on. */
+  loading: Accessor<InitialDrawProgress>;
   /**
    * Attaches a renderer to `canvas` and starts the frame loop. Returns a
    * function that stops the loop and releases the renderer, leaving the world
@@ -110,10 +100,10 @@ export const createVoxelscape = ({
     groundHeightAt: (x, z) => world.heightAt(x, z),
   });
 
-  const [loading, setLoading] = createSignal<LoadingState>({
-    blocksDrawn: 0,
-    blocksTotal: blocksPerSide * blocksPerSide,
-    ready: false,
+  const [loading, setLoading] = createSignal<InitialDrawProgress>({
+    drawn: 0,
+    total: blocksPerSide * blocksPerSide,
+    spawnDrawn: false,
   });
 
   const world = createVoxelWorld({
@@ -122,15 +112,7 @@ export const createVoxelscape = ({
     surfaceOnly,
     debugPerf,
     spawn,
-    onInitialDraw: ({ drawn, total, spawnDrawn }) =>
-      setLoading({
-        blocksDrawn: drawn,
-        blocksTotal: total,
-        // The player is held back only until their own block is on screen; the
-        // rest of the window keeps arriving behind the fog while they walk
-        // around.
-        ready: spawnDrawn,
-      }),
+    onInitialDraw: setLoading,
   });
 
   /**
@@ -304,7 +286,7 @@ export const createVoxelscape = ({
   /** Advances everything by `dt` seconds, leaving the scene ready to draw. */
   const advance = (dt: number): void => {
     const progress = loading();
-    if (progress.blocksDrawn < progress.blocksTotal) {
+    if (progress.drawn < progress.total) {
       // Frames while the window is still being generated and meshed cost what
       // that work costs, not what drawing the finished world costs. Judging
       // them would drop the resolution to fit a load that is about to end.
@@ -315,7 +297,7 @@ export const createVoxelscape = ({
     // arriving, because arriving is something the renderers do here — the
     // triangle renderer builds a block's geometry from its `tick`, and it is
     // that geometry the player is being held back for.
-    if (progress.ready) {
+    if (progress.spawnDrawn) {
       const snapshot = input.consume();
       avatar.move(dt, snapshot);
       // Editing runs before the camera catches up, so this frame's picks are
