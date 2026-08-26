@@ -106,8 +106,10 @@ export class AtprotoController {
   private readonly seed: number | null;
   private readonly options: AtpControllerOptions;
   private readonly onMerged: (changed: number) => void;
+  private readonly onConnected: (did: string) => void;
+  private readonly onSignedOut: () => void;
   private oauth: BrowserOAuthClient | undefined;
-  private agent: Agent | undefined;
+  private atpAgent: Agent | undefined;
   private did_: string | null = null;
   private status_: AtpStatus = "pending";
   private lastError: string | null = null;
@@ -126,12 +128,21 @@ export class AtprotoController {
      * and rebuild the affected meshes.
      */
     onMerged?: (changed: number) => void;
+    /**
+     * Called once a session is adopted (startup restore or `/connect`), so the
+     * caller can start session-bound subsystems like the multiplayer mesh.
+     */
+    onConnected?: (did: string) => void;
+    /** Called after a session is revoked by `/logout`. */
+    onSignedOut?: () => void;
   }) {
     this.layer = params.layer;
     this.seed = params.seed;
     this.options = params.options;
     this.handleInput = params.getHandle;
     this.onMerged = params.onMerged ?? (() => {});
+    this.onConnected = params.onConnected ?? (() => {});
+    this.onSignedOut = params.onSignedOut ?? (() => {});
     try {
       const saved = Number(localStorage.getItem("bms.atproto.lastUploadAt"));
       if (Number.isFinite(saved)) {
@@ -153,7 +164,12 @@ export class AtprotoController {
 
   /** Whether a signed-in, ready-to-sync agent is available. */
   get ready(): boolean {
-    return this.agent !== undefined;
+    return this.atpAgent !== undefined;
+  }
+
+  /** The signed-in agent, for subsystems that read and write records. */
+  get agent(): Agent | undefined {
+    return this.atpAgent;
   }
 
   /**
@@ -207,7 +223,7 @@ export class AtprotoController {
    * (last-write-wins by record timestamp).
    */
   async sync(): Promise<string> {
-    if (this.agent === undefined) {
+    if (this.atpAgent === undefined) {
       return "not connected — use /connect first";
     }
     const messages: string[] = [];
@@ -221,7 +237,7 @@ export class AtprotoController {
     );
     for (const record of groups.values()) {
       try {
-        await this.agent!.com.atproto.repo.putRecord({
+        await this.atpAgent!.com.atproto.repo.putRecord({
           repo: this.did_!,
           collection: EDIT_COLLECTION,
           rkey: makeRkey(record.chunk),
@@ -261,9 +277,10 @@ export class AtprotoController {
     } catch {
       // ignore — a failed revoke still drops the local session below
     }
-    this.agent = undefined;
+    this.atpAgent = undefined;
     this.did_ = null;
     this.status_ = "anonymous";
+    this.onSignedOut();
     return "signed out";
   }
 
@@ -286,17 +303,18 @@ export class AtprotoController {
     fetchHandler: (pathname: string, init: RequestInit) => Promise<Response>;
     sub: string;
   }): void {
-    this.agent = new Agent({
+    this.atpAgent = new Agent({
       fetchHandler: (url: string, init: RequestInit) =>
         session.fetchHandler(url, init),
     });
     this.did_ = session.sub;
     this.status_ = "connected";
     this.lastError = null;
+    this.onConnected(this.did_);
   }
 
   private async fetchAllRecords(): Promise<EditChunkRecord[]> {
-    const agent = this.agent;
+    const agent = this.atpAgent;
     if (agent === undefined || this.did_ === null) {
       return [];
     }

@@ -6,5 +6,5 @@
     "emitDeclarationOnly": true,
     "outDir": "./dist-lib"
   },
-  "include": ["src/lib.ts"]
+  "include": ["src/lib.ts", "src/multiplayer/simplepeer.d.ts"]
 }

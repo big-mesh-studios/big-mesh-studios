@@ -19,6 +19,9 @@ import { AtprotoController } from "./atproto/atproto-controller";
 import { DayNightController } from "./day-night-controller";
 import { createDebugCommands } from "./debug-commands";
 import { EditingController } from "./editing-controller";
+import { MultiplayerController } from "./multiplayer/multiplayer-controller";
+import type { Pose } from "./multiplayer/pose";
+import { createSimplePeerTransport } from "./multiplayer/simplepeer-transport";
 import {
   consumeInput,
   createLookDragHandlers,
@@ -300,8 +303,10 @@ const App: Component<{}> = () => {
   /**
    * Owns the atproto/Bluesky connection and the edit-chunk sync (see
    * `src/atproto`). Restores any stored session at startup; `/sync` uploads
-   * fresh edits and merges remote ones into `editLayer`.
+   * fresh edits and merges remote ones into `editLayer`. A successful session
+   * also brings the multiplayer mesh online (wired via `onConnected`).
    */
+  let multiplayerRef: MultiplayerController | undefined;
   const atproto = new AtprotoController({
     layer: editLayer,
     seed: TERRAIN.seed,
@@ -316,14 +321,44 @@ const App: Component<{}> = () => {
         editPersistence.scheduleSave();
       }
     },
+    onConnected: () => {
+      void multiplayerRef?.start();
+    },
+    onSignedOut: () => {
+      void multiplayerRef?.stop();
+    },
   });
   void atproto.init();
+  const currentPose = (): Pose => ({
+    x: player.position.x,
+    y: player.position.y,
+    z: player.position.z,
+    yaw: player.yaw,
+    pitch: player.pitch,
+  });
+  /**
+   * Owns the cluster-based multiplayer mesh: publishes this player's coarse
+   * presence, discovers nearby players' presence, and selects the nearest few
+   * to link. Starts automatically when atproto signs in (`/connect` or a
+   * restored session); `/mp` reports and controls it.
+   */
+  const multiplayer = new MultiplayerController({
+    getAgent: () => atproto.agent,
+    getDid: () => atproto.did,
+    seed: TERRAIN.seed,
+    getPose: currentPose,
+    createPeer: createSimplePeerTransport,
+    scene,
+    camera,
+  });
+  multiplayerRef = multiplayer;
   const commands = createDebugCommands({
     dayNight,
     rendererSwitch,
     weather,
     sound,
     atproto,
+    multiplayer,
     setView: (mode) => {
       firstPerson = mode === "first";
       return `camera: ${mode}-person view`;
@@ -445,6 +480,9 @@ const App: Component<{}> = () => {
     playerCube.rotation.y = player.yaw;
     playerCube.visible = showPlayerCube;
     placeCamera(camera, player, firstPerson);
+    // republish the player's coarse presence when they move, broadcast poses
+    // to linked peers, and ease the remote avatars toward their latest poses
+    multiplayer.tick(dt, currentPose());
     // advance the day-night clock and re-derive the scene lighting. A command
     // override pins the shown time; otherwise the real clock (scaled by speed)
     // drives the cycle. The weather schedule keys off the same shown clock
@@ -509,6 +547,8 @@ const App: Component<{}> = () => {
         void editPersistence.saveNow();
         // release the atproto OAuth state
         atproto.dispose();
+        // stop presence publishing, discovery, and any peer links
+        multiplayer.dispose();
         // release the audio hardware
         sound.dispose();
         window.removeEventListener("pointerdown", unlockSound);

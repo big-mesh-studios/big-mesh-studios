@@ -98,6 +98,57 @@ export {
   type EditChunkRecord,
 } from "./atproto/edits";
 
+// Multiplayer (cluster-based WebRTC mesh over atproto)
+export {
+  MultiplayerController,
+  type MultiplayerParams,
+  type MultiplayerStatus,
+} from "./multiplayer/multiplayer-controller";
+export { MeshPeer, type MeshPeerParams } from "./multiplayer/mesh-peer";
+export {
+  decodePose,
+  encodePose,
+  type Pose,
+  type PoseMessage,
+} from "./multiplayer/pose";
+export { createSimplePeerTransport } from "./multiplayer/simplepeer-transport";
+export type { AtprotoRepoLike } from "./multiplayer/atproto-repo";
+export type {
+  PeerFactory,
+  PeerFactoryOptions,
+  PeerSignalData,
+  PeerTransport,
+} from "./multiplayer/transport";
+export {
+  horizontalDistance,
+  isPresenceRecord,
+  makePresence,
+  PRESENCE_COLLECTION,
+  PRESENCE_RKEY,
+  type PresenceRecord,
+} from "./multiplayer/presence";
+export { RemotePlayers, labelText } from "./multiplayer/remote-players";
+export {
+  CLUSTER_DEFAULTS,
+  rosterFromPresences,
+  selectNeighbors,
+  type ClusterInput,
+  type ClusterOptions,
+  type ClusterSelection,
+  type RosterEntry,
+} from "./multiplayer/roster";
+export {
+  hashDid,
+  isSignalRecord,
+  makeSignal,
+  parseSignals,
+  signalRkey,
+  SIGNAL_COLLECTION,
+  type ParsedSignal,
+  type SignalKind,
+  type SignalRecord,
+} from "./multiplayer/signal";
+
 // Day/Night & Environment
 export { dayNightState } from "./day-night";
 export { DayNightController } from "./day-night-controller";
