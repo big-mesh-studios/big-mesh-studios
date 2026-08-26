@@ -12,7 +12,7 @@ export const PRESENCE_RKEY = "latest";
 
 export interface PresenceRecord {
   $type: typeof PRESENCE_COLLECTION;
-  /** Player cube centre, in world units. */
+  /** Player cube centre, in integer world units (atproto records hold no floats). */
   x: number;
   y: number;
   z: number;
@@ -28,7 +28,14 @@ export const makePresence = (
   z: number,
   seed: number | null,
   updatedAt: number,
-): PresenceRecord => ({ $type: PRESENCE_COLLECTION, x, y, z, seed, updatedAt });
+): PresenceRecord => ({
+  $type: PRESENCE_COLLECTION,
+  x: Math.round(x),
+  y: Math.round(y),
+  z: Math.round(z),
+  seed,
+  updatedAt,
+});
 
 export const isPresenceRecord = (v: unknown): v is PresenceRecord => {
   if (typeof v !== "object" || v === null) {

@@ -22,6 +22,16 @@ describe("presence records", () => {
     expect(isPresenceRecord(record)).toBe(true);
   });
 
+  it("quantizes float world coordinates to integers for atproto", () => {
+    const record = makePresence(1.673, 64.5, -3.2, null, 1_000);
+    expect(record.x).toBe(2);
+    expect(record.y).toBe(65);
+    expect(record.z).toBe(-3);
+    for (const coord of [record.x, record.y, record.z]) {
+      expect(Number.isInteger(coord)).toBe(true);
+    }
+  });
+
   it("rejects non-presence and malformed values", () => {
     expect(isPresenceRecord(null)).toBe(false);
     expect(isPresenceRecord({ x: 1 })).toBe(false);
