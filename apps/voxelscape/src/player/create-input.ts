@@ -1,10 +1,25 @@
-import { isEditableTarget } from "../utils/utils";
+import { JSX } from "@solidjs/web/jsx-runtime";
+import { pointer } from "../utils/pointer";
+import { clamp, isEditableTarget } from "../utils/utils";
+
+/** Maps a `KeyboardEvent` code to its [strafe, forward] contribution. */
+const MOVE_KEYS: Record<string, [number, number]> = {
+  ArrowUp: [0, 1],
+  ArrowDown: [0, -1],
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  KeyW: [0, 1],
+  KeyS: [0, -1],
+  KeyA: [-1, 0],
+  KeyD: [1, 0],
+};
 
 /**
  * Unified keyboard, pointer and touch input for the player. Each controller
- * owns its own snapshot, fed by the keyboard/pointer listeners `install`
- * binds and by the touch UI (`CoarseControls.tsx`), then drained once per
- * frame by `consume`.
+ * owns its own snapshot, fed by the key listeners `install` binds to the
+ * window, by the handlers `canvasHandlers` puts on the world canvas, and by
+ * the touch UI (`CoarseControls.tsx`), then drained once per frame by
+ * `consume`.
  */
 export interface InputSnapshot {
   /** Strafe input, from -1 (left) to 1 (right). */
@@ -44,34 +59,13 @@ interface InputState {
   selectQueued: number | null;
 }
 
-const clamp = (v: number): number => Math.max(-1, Math.min(1, v));
-
-/** Maps a `KeyboardEvent` code to its [strafe, forward] contribution. */
-const MOVE_KEYS: Record<string, [number, number]> = {
-  ArrowUp: [0, 1],
-  ArrowDown: [0, -1],
-  ArrowLeft: [-1, 0],
-  ArrowRight: [1, 0],
-  KeyW: [0, 1],
-  KeyS: [0, -1],
-  KeyA: [-1, 0],
-  KeyD: [1, 0],
-};
-
-export interface LookDragHandlers {
-  onPointerDown: (e: PointerEvent) => void;
-  onPointerMove: (e: PointerEvent) => void;
-  onPointerUp: (e: PointerEvent) => void;
-  onPointerCancel: (e: PointerEvent) => void;
-}
-
 export interface InputController {
   /**
-   * Binds the keyboard, edit and pointer-lock listeners to `window` again
-   * after a `dispose`. A freshly created controller is already listening, so
-   * this is only needed to revive a disposed one. Calling it while the
-   * listeners are bound is a no-op, so a controller can't end up handling
-   * every key press twice.
+   * Binds the key listeners, and the suppression of the browser's menu, to
+   * `window` again after a `dispose`. A freshly created controller is already
+   * listening, so this is only needed to revive a disposed one. Calling it
+   * while the listeners are bound is a no-op, so a controller can't end up
+   * handling every key press twice.
    */
   install(): void;
   /** Removes every listener `install` bound. The controller can be installed again after. */
@@ -92,22 +86,44 @@ export interface InputController {
   setTouchJump(held: boolean): void;
   /** Accumulate drag-to-look deltas (client pixels). */
   addLookDelta(dx: number, dy: number): void;
-  /**
-   * Tracks a single active pointer drag and feeds its movement into
-   * `addLookDelta`. Pointer events from any other pointer are ignored, so a
-   * second finger touching down mid-drag doesn't steal or reset tracking.
-   *
-   * Mouse pointers are ignored here — on desktop, looking around is driven by
-   * the pointer lock `install` binds, so this is left for touch/pen drags.
-   *
-   * The drag delta is the difference between successive `clientX`/`clientY`
-   * rather than the `movementX`/`movementY` the locked path reads. Those
-   * movement values are reported in physical, logical or CSS pixels depending
-   * on the browser and the operating system, which would make look sensitivity
-   * differ from machine to machine, and Safari on iOS only began reporting
-   * them at version 17.
-   */
-  createLookDragHandlers(): LookDragHandlers;
+  canvasHandlers: {
+    /**
+     * Everything a press on the world canvas can mean, for the canvas this is
+     * bound to. A mouse press takes the pointer lock the first time and, once
+     * locked, digs on the left button and places on the right; looking around is
+     * the locked pointer's job from then on. A touch or pen press digs or places
+     * straight away and then turns the view for as long as it is dragged, which
+     * is why the returned promise settles when that drag ends — awaiting it waits
+     * for the finger to lift.
+     *
+     * Only the first drag is followed: a second finger touching down while one is
+     * already turning the view starts nothing, so the view turns at the speed of
+     * one finger however many are down. Digging and placing are edge-triggered
+     * per press, so holding a button doesn't dig repeatedly.
+     *
+     * The drag delta is the difference between successive `clientX`/`clientY`
+     * rather than the `movementX`/`movementY` the locked path reads. Those
+     * movement values are reported in physical, logical or CSS pixels depending
+     * on the browser and the operating system, which would make look sensitivity
+     * differ from machine to machine, and Safari on iOS only began reporting
+     * them at version 17.
+     */
+    onPointerDown: JSX.EventHandler<HTMLCanvasElement, PointerEvent>;
+    /**
+     * Turns the view by the mouse's movement while the canvas this is bound to
+     * holds the pointer lock, and does nothing otherwise — matching the
+     * click-to-play convention of desktop first-person games, where moving an
+     * unlocked cursor over the world doesn't steer it.
+     *
+     * The one mouse event in a module that otherwise handles pointer events,
+     * because the Pointer Lock specification routes locked motion through
+     * `mousemove` specifically: it holds `clientX`/`clientY` at the position the
+     * lock started from and requires all motion data to arrive as `mousemove`.
+     * `pointermove` does carry `movementX`/`movementY` in current browsers, but
+     * no specification says it keeps doing so under lock.
+     */
+    onMouseMove: JSX.EventHandler<HTMLCanvasElement, MouseEvent>;
+  };
 }
 
 export const createInput = (): InputController => {
@@ -131,147 +147,116 @@ export const createInput = (): InputController => {
     state.lookDy += dy;
   };
 
-  /**
-   * Binds every key the player drives the world with: the movement keys, the
-   * space bar's jump, and the top-row number keys that pick a hotbar slot. One
-   * pair of listeners handles all of them, so a press is looked at once and the
-   * "is a text field focused" question is asked once.
-   */
-  const installKeyboardControls = (signal: AbortSignal): void => {
-    const onDown = (e: KeyboardEvent): void => {
-      if (isEditableTarget(e)) {
-        return;
-      }
-      if (e.code === "Space") {
-        e.preventDefault();
-        state.jumpQueued = true;
-        state.jumpHeld = true;
-        return;
-      }
-      if (e.code.startsWith("Digit")) {
-        const slot = Number(e.code.slice(5));
-        if (slot >= 1 && slot <= 2) {
-          state.selectQueued = slot - 1;
-        }
-        return;
-      }
-      const move = MOVE_KEYS[e.code];
-      if (move === undefined || e.repeat) {
-        return;
-      }
-      e.preventDefault();
-      state.keyMoveX += move[0];
-      state.keyMoveY += move[1];
-    };
-    const onUp = (e: KeyboardEvent): void => {
-      if (isEditableTarget(e)) {
-        return;
-      }
-      if (e.code === "Space") {
-        state.jumpHeld = false;
-        return;
-      }
-      const move = MOVE_KEYS[e.code];
-      if (move === undefined) {
-        return;
-      }
-      e.preventDefault();
-      state.keyMoveX -= move[0];
-      state.keyMoveY -= move[1];
-    };
-    window.addEventListener("keydown", onDown, { signal });
-    window.addEventListener("keyup", onUp, { signal });
-  };
-
-  /**
-   * Binds the block-editing presses: left mouse button digs, right mouse button
-   * places. Edits are edge-triggered per press, so holding a button doesn't dig
-   * repeatedly. The right button's browser menu is suppressed across the whole
-   * page, not just over the canvas, so a press that lands a few pixels off the
-   * world can't pop it open mid-game.
-   *
-   * The first mouse click on the canvas only acquires the pointer lock (see
-   * `installPointerLockLook`) — it doesn't also dig or place. Once locked,
-   * looking around no longer involves dragging a visible cursor, so there's
-   * nothing left to disambiguate: mousedown fires the action right away, same
-   * as holding the button to keep mining while you turn in Minecraft. Touch
-   * (and pen) presses skip the lock gate entirely and always fire right away —
-   * pointer lock isn't a touch concept, and CoarseControls.tsx already routes
-   * digging through a tap on the canvas.
-   */
-  const installEditPresses = (signal: AbortSignal): void => {
-    const onDown = (e: PointerEvent): void => {
-      // Only dig/place when the press lands on the world canvas itself, not on
-      // the touch UI (joystick, buttons, console). Touch taps on the world also
-      // reach here as emulated mouse events with the canvas as the target.
-      if (!(e.target instanceof HTMLCanvasElement)) {
-        return;
-      }
-
-      // Pointer lock is a mouse-only concept — iOS Safari doesn't implement it
-      // at all, and it isn't how touch input works anyway. A touch (or pen) tap
-      // fires the action immediately, same as it always has; only a mouse press
-      // is gated behind acquiring the lock first.
+  let dragging = false;
+  const canvasHandlers = {
+    onPointerDown: async (
+      event: PointerEvent & { currentTarget: HTMLCanvasElement },
+    ) => {
+      // Pointer lock is a mouse-only concept — iOS Safari doesn't implement
+      // it at all, and it isn't how touch input works anyway. A touch (or
+      // pen) tap fires the action right away; only a mouse press is gated
+      // behind acquiring the lock first.
       if (
-        e.pointerType === "mouse" &&
-        document.pointerLockElement !== e.target
+        event.pointerType === "mouse" &&
+        document.pointerLockElement !== event.currentTarget
       ) {
-        e.target.requestPointerLock();
+        event.currentTarget.requestPointerLock();
         return;
       }
 
-      if (e.button === 0) {
+      if (event.button === 0) {
         state.breakQueued = true;
-      } else if (e.button === 2) {
+      } else if (event.button === 2) {
         state.placeQueued = true;
       }
-    };
-    window.addEventListener("pointerdown", onDown, { signal });
+
+      if (dragging || event.pointerType === "mouse") {
+        return;
+      }
+      dragging = true;
+      await pointer(event, ({ delta }) => addLookDelta(delta.x, delta.y));
+      dragging = false;
+    },
+    onMouseMove: (event: MouseEvent & { currentTarget: HTMLCanvasElement }) => {
+      if (document.pointerLockElement !== event.currentTarget) {
+        return;
+      }
+      addLookDelta(event.movementX, event.movementY);
+    },
+  };
+
+  const install = () => {
+    if (controller) {
+      return;
+    }
+
+    controller = new AbortController();
+    const { signal } = controller;
+
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        if (isEditableTarget(e)) {
+          return;
+        }
+        if (e.code === "Space") {
+          e.preventDefault();
+          state.jumpQueued = true;
+          state.jumpHeld = true;
+          return;
+        }
+        if (e.code.startsWith("Digit")) {
+          const slot = Number(e.code.slice(5));
+          if (slot >= 1 && slot <= 2) {
+            state.selectQueued = slot - 1;
+          }
+          return;
+        }
+        const move = MOVE_KEYS[e.code];
+        if (move === undefined || e.repeat) {
+          return;
+        }
+        e.preventDefault();
+        state.keyMoveX += move[0];
+        state.keyMoveY += move[1];
+      },
+      { signal },
+    );
+
+    window.addEventListener(
+      "keyup",
+      (e) => {
+        if (isEditableTarget(e)) {
+          return;
+        }
+        if (e.code === "Space") {
+          state.jumpHeld = false;
+          return;
+        }
+        const move = MOVE_KEYS[e.code];
+        if (move === undefined) {
+          return;
+        }
+        e.preventDefault();
+        state.keyMoveX -= move[0];
+        state.keyMoveY -= move[1];
+      },
+      { signal },
+    );
+
+    // The right mouse button places a block, so the browser's menu is
+    // suppressed across the whole page rather than over the canvas alone: a
+    // press that lands a few pixels off the world would otherwise open it.
     window.addEventListener("contextmenu", (e) => e.preventDefault(), {
       signal,
     });
   };
-
-  /**
-   * Feeds the desktop look-around input while the pointer is locked to the
-   * canvas (see `installEditPresses`, which requests the lock on the first
-   * click). While locked, the OS hides and re-centers the cursor each frame,
-   * so `movementX`/`movementY` — not `clientX`/`clientY` — carry the raw
-   * mouse delta; outside of lock, mouse movement over the canvas does nothing,
-   * matching the click-to-play convention of desktop FPS games.
-   *
-   * The one mouse event in a module that otherwise listens for pointer events,
-   * because the Pointer Lock specification routes locked motion through
-   * `mousemove` specifically: it holds `clientX`/`clientY` at the position the
-   * lock started from and requires all motion data to arrive as `mousemove`.
-   * `pointermove` does carry `movementX`/`movementY` in current browsers, but
-   * no specification says it keeps doing so under lock.
-   */
-  const installPointerLockLook = (signal: AbortSignal): void => {
-    const onMove = (e: MouseEvent): void => {
-      if (document.pointerLockElement === null) {
-        return;
-      }
-      addLookDelta(e.movementX, e.movementY);
-    };
-    document.addEventListener("mousemove", onMove, { signal });
-  };
-
-  const install = () => {
-    if (controller !== null) {
-      return;
-    }
-    controller = new AbortController();
-    const { signal } = controller;
-    installKeyboardControls(signal);
-    installEditPresses(signal);
-    installPointerLockLook(signal);
-  };
-
   install();
 
   return {
     install,
+    addLookDelta,
+    canvasHandlers,
 
     dispose() {
       controller?.abort();
@@ -280,8 +265,8 @@ export const createInput = (): InputController => {
 
     consume() {
       const snap: InputSnapshot = {
-        moveX: clamp(state.keyMoveX + state.touchMoveX),
-        moveY: clamp(state.keyMoveY + state.touchMoveY),
+        moveX: clamp(state.keyMoveX + state.touchMoveX, -1, 1),
+        moveY: clamp(state.keyMoveY + state.touchMoveY, -1, 1),
         jump: state.jumpQueued,
         jumpHeld: state.jumpHeld,
         lookDx: state.lookDx,
@@ -322,44 +307,6 @@ export const createInput = (): InputController => {
 
     setTouchJump(held) {
       state.jumpHeld = held;
-    },
-
-    addLookDelta,
-
-    createLookDragHandlers() {
-      let pointerId: number | null = null;
-      let lastX = 0;
-      let lastY = 0;
-      return {
-        onPointerDown: (e) => {
-          if (pointerId === null && e.pointerType !== "mouse") {
-            pointerId = e.pointerId;
-            lastX = e.clientX;
-            lastY = e.clientY;
-            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-          }
-        },
-        onPointerMove: (e) => {
-          if (e.pointerId !== pointerId) {
-            return;
-          }
-          const dx = e.clientX - lastX;
-          const dy = e.clientY - lastY;
-          lastX = e.clientX;
-          lastY = e.clientY;
-          addLookDelta(dx, dy);
-        },
-        onPointerUp: (e) => {
-          if (e.pointerId === pointerId) {
-            pointerId = null;
-          }
-        },
-        onPointerCancel: (e) => {
-          if (e.pointerId === pointerId) {
-            pointerId = null;
-          }
-        },
-      };
     },
   };
 };

@@ -28,3 +28,6 @@ export function isEditableTarget(event: Event): boolean {
     element.isContentEditable
   );
 }
+
+export const clamp = (v: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, v));
