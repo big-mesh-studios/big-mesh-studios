@@ -83,12 +83,26 @@ export class Inventory {
     return true;
   }
 
+  /** Every placeable block, in hotbar order. */
   items(): InventoryItem[] {
     return (Object.keys(COLLECTABLE) as unknown as number[]).map((id) => ({
       id: Number(id),
       name: COLLECTABLE[Number(id)],
       count: this.counts.get(Number(id)) ?? 0,
     }));
+  }
+
+  /**
+   * Selects a hotbar slot by its position, as the number keys do.
+   *
+   * @returns Whether there is a slot at that position.
+   */
+  selectSlot(slot: number): boolean {
+    const item = this.items()[slot];
+    if (item === undefined) {
+      return false;
+    }
+    return this.setSelected(item.id);
   }
 
   private emit(): void {

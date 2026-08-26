@@ -1,42 +1,21 @@
-import {
-  BoxGeometry,
-  Color,
-  Mesh,
-  MeshStandardMaterial,
-  PerspectiveCamera,
-  Scene,
-} from "@random-mesh/rmsl/scene";
+import { Color, PerspectiveCamera, Scene } from "@random-mesh/rmsl/scene";
 import { createSignal, type Accessor } from "solid-js";
 import { AtprotoController } from "./atproto/atproto-controller";
 import type { Commander } from "./commander";
-import { createInput, type InputController } from "./create-input";
 import { createEnvironment } from "./create-environment";
+import { createInput, type InputController } from "./create-input";
+import { createPlayerAvatar } from "./create-player-avatar";
 import { createRenderLoop } from "./create-render-loop";
 import { createVoxelWorld } from "./create-voxel-world";
 import { createDebugCommands } from "./debug-commands";
 import { EditingController } from "./editing-controller";
-import { COLLECTABLE, Inventory } from "./inventory";
-import {
-  createPlayer,
-  lookDirection,
-  placeCamera,
-  PLAYER_CFG,
-  updatePlayer,
-  type Player,
-  type PlayerWorld,
-} from "./player";
-import { type WorldVoxel } from "./world/edit-layer";
-import { VOXEL_SIZE, type Dim3 } from "./world/level-data";
+import { Inventory } from "./inventory";
+import type { Player, PlayerConfig } from "./player";
+import { type Dim3 } from "./world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
 
 /** Sky blue, matching the material's default fog color so the horizon blends. */
 const SKY_BLUE = 0x87ceeb;
-/**
- * Distance from the origin beyond which player movement is clamped. The
- * ring is effectively unbounded, so this exists only to guard against
- * floating-point drift far outside it.
- */
-const SAFE_EXTENT = 1e6;
 
 export interface VoxelscapeConfig {
   /** Width of the streamed block window, in blocks per side. Also sets the fog and camera far distances. */
@@ -47,6 +26,8 @@ export interface VoxelscapeConfig {
   surfaceOnly?: boolean;
   /** Where the player starts, in world units; the spawn height is the terrain surface there. */
   spawn?: Dim3;
+  /** Movement settings for this world's player; anything omitted takes its default. */
+  player?: Partial<PlayerConfig>;
   /**
    * Enables the GPU timer and the per-frame statistics passed to
    * `onDebugStats`. Defaults to whether the page URL's hash contains `perf`.
@@ -94,10 +75,6 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     (typeof window !== "undefined" && window.location.hash.includes("perf"));
   const onDebugStats = config.onDebugStats;
 
-  /** First person by default: the camera is the player's eye, and the cube is hidden. */
-  let firstPerson = true;
-  let showPlayerCube = false;
-
   const [editStatus, setEditStatus] = createSignal("");
   const [inReach, setInReach] = createSignal(false);
 
@@ -133,61 +110,24 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
    * actual cutoff).
    */
   const camera = new PerspectiveCamera(50, 1.0, 0.1, world.ringRadius + 200);
-  const player = createPlayer(
-    spawn[0],
-    world.heightAt(spawn[0], spawn[2]) + PLAYER_CFG.halfSize + 0.1,
-    spawn[2],
-  );
-  const playerCube = new Mesh(
-    new BoxGeometry(
-      PLAYER_CFG.halfSize * 2,
-      PLAYER_CFG.halfSize * 2,
-      PLAYER_CFG.halfSize * 2,
-    ),
-    new MeshStandardMaterial({ color: 0xff7043, roughness: 0.8 }),
-  );
-  playerCube.position.copy(player.position);
-  playerCube.visible = showPlayerCube;
-  scene.add(playerCube);
+  const avatar = createPlayerAvatar({
+    scene,
+    camera,
+    terrain: world,
+    spawn,
+    player: config.player,
+  });
   // The rest of the scene, in draw order: water blends over every opaque
   // object, and the weather draws over the water.
   world.addTranslucentPasses();
   environment.addWeatherToScene();
 
-  /** Built once rather than per frame; the samplers read the live blocks. */
-  const playerWorld: PlayerWorld = {
-    groundHeightAt: world.groundHeightAt,
-    inWaterAt: world.inWaterAt,
-    solidAt: world.solidAt,
-    halfExtent: SAFE_EXTENT,
-  };
-
   /**
    * Inventory (collected blocks + selected slot) and the edit controller that
-   * turns crosshair actions into voxel edits. The camera look direction is
-   * derived from the same look target `placeCamera` uses, so picking matches
-   * where the player is aiming.
+   * turns crosshair actions into voxel edits. The look ray comes from the
+   * avatar, so picking matches where the player is aiming.
    */
   const inventory = new Inventory();
-  const playerVoxels = (): WorldVoxel[] => {
-    const h = PLAYER_CFG.halfSize;
-    const bounds = (c: number): [number, number] => [
-      Math.floor((c - h) / VOXEL_SIZE),
-      Math.floor((c + h) / VOXEL_SIZE),
-    ];
-    const [x0, x1] = bounds(player.position.x);
-    const [y0, y1] = bounds(player.position.y);
-    const [z0, z1] = bounds(player.position.z);
-    const out: WorldVoxel[] = [];
-    for (let x = x0; x <= x1; x++) {
-      for (let y = y0; y <= y1; y++) {
-        for (let z = z0; z <= z1; z++) {
-          out.push([x, y, z]);
-        }
-      }
-    }
-    return out;
-  };
   const editing = new EditingController({
     blocks: world.blocks,
     layer: world.editLayer,
@@ -195,15 +135,8 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     surfaceOnly,
     onBlockEdited: (i) => world.renderers.onBlockChanged(i),
     onEditRecorded: () => world.scheduleSave(),
-    getLook: () => {
-      const p = camera.position;
-      const [dx, dy, dz] = lookDirection(player);
-      return {
-        origin: [p.x, p.y, p.z],
-        direction: [dx, dy, dz],
-      };
-    },
-    getPlayerVoxels: playerVoxels,
+    getLook: () => avatar.look(),
+    getPlayerVoxels: () => avatar.occupiedVoxels(),
   });
 
   input.install();
@@ -235,27 +168,26 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
     sound: environment.sound,
     atproto,
     setView: (mode) => {
-      firstPerson = mode === "first";
+      avatar.setFirstPerson(mode === "first");
       return `camera: ${mode}-person view`;
     },
     setPlayerVisible: (visible) => {
-      showPlayerCube = visible;
+      avatar.setCubeVisible(visible);
       return visible ? "player cube shown" : "player cube hidden";
     },
     setMoveSpeed: (n) => {
       if (n !== undefined) {
-        PLAYER_CFG.speed = n;
+        avatar.player.config.speed = n;
       }
-      return `move speed: ${PLAYER_CFG.speed} units/sec`;
+      return `move speed: ${avatar.player.config.speed} units/sec`;
     },
     setLookSensitivity: (n) => {
       if (n !== undefined) {
-        PLAYER_CFG.lookSensitivity = n;
+        avatar.player.config.lookSensitivity = n;
       }
-      return `look sensitivity: ${PLAYER_CFG.lookSensitivity} rad/px`;
+      return `look sensitivity: ${avatar.player.config.lookSensitivity} rad/px`;
     },
   });
-  placeCamera(camera, player, firstPerson);
 
   /** Reusable color object, updated in place each frame so sky updates don't allocate. */
   const skyColor = new Color(SKY_BLUE);
@@ -265,9 +197,11 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
   /** Advances everything by `dt` seconds, leaving the scene ready to draw. */
   const advance = (dt: number): void => {
     const snapshot = input.consume();
-    updatePlayer(player, dt, snapshot, playerWorld);
-    // crosshair reach feedback: recompute every frame so it tracks look, not
-    // just edit attempts
+    avatar.move(dt, snapshot);
+    // Editing runs before the camera catches up, so this frame's picks are
+    // taken from where the eye was last frame along where the player now
+    // looks. crosshair reach feedback: recompute every frame so it tracks
+    // look, not just edit attempts
     setInReach(editing.pick().target !== null);
     // handle block editing input (edge-triggered dig/place + hotbar select)
     if (snapshot.break) {
@@ -280,17 +214,11 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
       setEditStatus(editing.placeBlock());
     }
     if (snapshot.select !== null) {
-      inventory.setSelected(
-        Object.keys(COLLECTABLE).map(Number)[snapshot.select],
-      );
+      inventory.selectSlot(snapshot.select);
     }
     // scroll the terrain ring so the player's block stays centred
-    world.scrollTo(player.position.x, player.position.z);
-    playerCube.position.copy(player.position);
-    // the cube's local +Z faces the heading; a Y rotation by `yaw` aligns it
-    playerCube.rotation.y = player.yaw;
-    playerCube.visible = showPlayerCube;
-    placeCamera(camera, player, firstPerson);
+    world.scrollTo(avatar.player.position.x, avatar.player.position.z);
+    avatar.place();
     const lighting = environment.tick(dt, camera);
     skyColor.set(
       lighting.skyColor[0],
@@ -326,7 +254,7 @@ export const createVoxelscape = (config: VoxelscapeConfig = {}): Voxelscape => {
   return {
     scene,
     camera,
-    player,
+    player: avatar.player,
     input,
     inventory,
     commands,

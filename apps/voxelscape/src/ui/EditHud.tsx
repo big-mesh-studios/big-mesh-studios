@@ -5,29 +5,15 @@ import styles from "./EditHud.module.css";
 // `Inventory`'s `onChange` callback so counts and the selection refresh
 // without wiring a per-block signal through the domain.
 import { Component, createSignal, For, onCleanup } from "solid-js";
-import { COLLECTABLE } from "../inventory";
 import { useVoxelscape } from "../voxelscape-context";
 
 export const EditHud: Component = () => {
   const { inventory, editStatus, inReach } = useVoxelscape();
-  const order = Object.keys(COLLECTABLE).map(Number);
-  const [items, setItems] = createSignal(
-    order.map((id) => ({
-      id,
-      name: COLLECTABLE[id],
-      count: inventory.count(id),
-    })),
-  );
+  const [items, setItems] = createSignal(inventory.items());
   const [selected, setSelected] = createSignal(inventory.selectedId);
 
   const refresh = (): void => {
-    setItems(
-      order.map((id) => ({
-        id,
-        name: COLLECTABLE[id],
-        count: inventory.count(id),
-      })),
-    );
+    setItems(inventory.items());
     setSelected(inventory.selectedId);
   };
   inventory.onChange = refresh;

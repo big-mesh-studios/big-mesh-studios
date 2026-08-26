@@ -12,6 +12,11 @@ export interface Player {
   vz: number;
   vy: number;
   onGround: boolean;
+  /**
+   * This player's own copy of the movement settings, so `/speed` and `/look`
+   * change one player rather than every player on the page.
+   */
+  config: PlayerConfig;
 }
 
 /** The world as the player's physics sees it: three samplers and a boundary. */
@@ -31,40 +36,40 @@ export interface PlayerWorld {
   halfExtent: number;
 }
 
-export const PLAYER_CFG = {
+export interface PlayerConfig {
   /** Player cube half-size, in world units (a 2x2x2 cube). */
-  halfSize: 1,
+  halfSize: number;
   /** Movement speed, in units per second. */
-  speed: 22.5,
+  speed: number;
   /** Horizontal acceleration/deceleration, in units per second squared — how fast move speed ramps up to (or down from) `speed`. */
-  acceleration: 150,
+  acceleration: number;
   /** Gravitational acceleration, in units per second squared. */
-  gravity: 45,
-  /** Initial upward velocity on jumping, in units per second (about a 2-unit-high jump). */
-  jumpSpeed: 14,
+  gravity: number;
+  /** Initial upward velocity on jumping, in units per second (the default is about a 2-unit-high jump). */
+  jumpSpeed: number;
   /** Upward velocity while holding jump underwater, in units per second. */
-  swimSpeed: 10,
+  swimSpeed: number;
   /**
    * Upward velocity while holding jump against a wall, in units per second.
    * Without it a shaft dug straight down is a trap: its walls are vertical,
    * and a step up only ever clears one voxel.
    */
-  climbSpeed: 10,
+  climbSpeed: number;
   /** Look sensitivity, in radians per pixel of pointer movement. */
-  lookSensitivity: 0.0025,
-  maxPitch: 1.35,
+  lookSensitivity: number;
+  maxPitch: number;
   /** Chase-camera distance behind the cube centre, in world units. */
-  followBack: 9,
+  followBack: number;
   /** Chase-camera height above the cube centre when not in first person. */
-  followUp: 2.5,
+  followUp: number;
   /** Eye height above the player's feet for the first-person camera. */
-  eyeHeight: 0.9,
+  eyeHeight: number;
   /**
    * Tallest rise the player is lifted onto while walking, in world units —
-   * one LOD-0 voxel (`VOXEL_SIZE`). Anything taller is a wall or an
-   * overhang's underside rather than a step, and is walked into, not onto.
+   * by default one LOD-0 voxel (`VOXEL_SIZE`). Anything taller is a wall or
+   * an overhang's underside rather than a step, and is walked into, not onto.
    */
-  stepHeight: 2,
+  stepHeight: number;
   /**
    * Half-width of the box that collides with voxels, in world units. Well
    * under `halfSize`, so the player is narrower than the cube drawn for
@@ -73,10 +78,32 @@ export const PLAYER_CFG = {
    * first-person camera, which sits at the box's centre line, from ever
    * being pushed inside a wall.
    */
+  collisionRadius: number;
+}
+
+export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
+  halfSize: 1,
+  speed: 22.5,
+  acceleration: 150,
+  gravity: 45,
+  jumpSpeed: 14,
+  swimSpeed: 10,
+  climbSpeed: 10,
+  lookSensitivity: 0.0025,
+  maxPitch: 1.35,
+  followBack: 9,
+  followUp: 2.5,
+  eyeHeight: 0.9,
+  stepHeight: 2,
   collisionRadius: 0.6,
 };
 
-export const createPlayer = (x: number, y: number, z: number): Player => ({
+export const createPlayer = (
+  x: number,
+  y: number,
+  z: number,
+  config: Partial<PlayerConfig> = {},
+): Player => ({
   position: new Vector3(x, y, z),
   yaw: 0,
   pitch: 0,
@@ -84,6 +111,7 @@ export const createPlayer = (x: number, y: number, z: number): Player => ({
   vz: 0,
   vy: 0,
   onGround: false,
+  config: { ...DEFAULT_PLAYER_CONFIG, ...config },
 });
 
 /** Steps `current` toward `target` by at most `maxDelta`. */
@@ -129,19 +157,20 @@ const FOOTPRINT_OFFSETS: ReadonlyArray<readonly [number, number]> = [
  * @returns The surface to stand on, or `-Infinity` when no sample offers one.
  */
 const sampleGroundHeight = (
+  config: PlayerConfig,
   groundHeightAt: (x: number, y: number, z: number) => number,
   x: number,
   feetY: number,
   z: number,
 ): number => {
-  const highestStandable = feetY + PLAYER_CFG.stepHeight;
+  const highestStandable = feetY + config.stepHeight;
   let best = -Infinity;
   let bestDist = Infinity;
   for (const [ox, oz] of FOOTPRINT_OFFSETS) {
     const h = groundHeightAt(
-      x + ox * PLAYER_CFG.collisionRadius,
+      x + ox * config.collisionRadius,
       feetY,
-      z + oz * PLAYER_CFG.collisionRadius,
+      z + oz * config.collisionRadius,
     );
     if (!Number.isFinite(h) || h > highestStandable) {
       continue;
@@ -170,18 +199,19 @@ const sampleGroundHeight = (
  * @returns The surface to step onto, or `-Infinity` when there is none.
  */
 const highestStandableSurface = (
+  config: PlayerConfig,
   groundHeightAt: (x: number, y: number, z: number) => number,
   x: number,
   feetY: number,
   z: number,
 ): number => {
-  const limit = feetY + PLAYER_CFG.stepHeight;
+  const limit = feetY + config.stepHeight;
   let best = -Infinity;
   for (const [ox, oz] of FOOTPRINT_OFFSETS) {
     const h = groundHeightAt(
-      x + ox * PLAYER_CFG.collisionRadius,
+      x + ox * config.collisionRadius,
       feetY,
-      z + oz * PLAYER_CFG.collisionRadius,
+      z + oz * config.collisionRadius,
     );
     if (Number.isFinite(h) && h <= limit && h > best) {
       best = h;
@@ -221,16 +251,17 @@ const SKIN = 1e-3;
  * the eight corners is enough, with no need to walk the voxels in between.
  */
 const boxHitsSolid = (
+  config: PlayerConfig,
   solidAt: (x: number, y: number, z: number) => boolean,
   x: number,
   y: number,
   z: number,
 ): boolean => {
-  const low = y - PLAYER_CFG.halfSize + SKIN;
-  const high = y + PLAYER_CFG.halfSize - SKIN;
+  const low = y - config.halfSize + SKIN;
+  const high = y + config.halfSize - SKIN;
   for (const [ox, oz] of CORNER_OFFSETS) {
-    const cx = x + ox * PLAYER_CFG.collisionRadius;
-    const cz = z + oz * PLAYER_CFG.collisionRadius;
+    const cx = x + ox * config.collisionRadius;
+    const cz = z + oz * config.collisionRadius;
     if (solidAt(cx, low, cz) || solidAt(cx, high, cz)) {
       return true;
     }
@@ -258,26 +289,28 @@ const moveHorizontally = (
   if (delta === 0) {
     return false;
   }
+  const config = player.config;
   const from = player.position[axis];
   player.position[axis] = Math.max(
     -world.halfExtent,
     Math.min(world.halfExtent, from + delta),
   );
   const { x, y, z } = player.position;
-  if (!boxHitsSolid(world.solidAt, x, y, z)) {
+  if (!boxHitsSolid(config, world.solidAt, x, y, z)) {
     return false;
   }
   const surface = highestStandableSurface(
+    config,
     world.groundHeightAt,
     x,
-    y - PLAYER_CFG.halfSize,
+    y - config.halfSize,
     z,
   );
-  const stepped = surface + PLAYER_CFG.halfSize;
+  const stepped = surface + config.halfSize;
   if (
     Number.isFinite(surface) &&
     stepped > y &&
-    !boxHitsSolid(world.solidAt, x, stepped, z)
+    !boxHitsSolid(config, world.solidAt, x, stepped, z)
   ) {
     player.position.y = stepped;
     return false;
@@ -291,7 +324,15 @@ const moveHorizontally = (
   for (let i = 0; i < CONTACT_REFINEMENTS; i++) {
     const mid = (clear + blocked) / 2;
     player.position[axis] = mid;
-    if (boxHitsSolid(world.solidAt, player.position.x, y, player.position.z)) {
+    if (
+      boxHitsSolid(
+        config,
+        world.solidAt,
+        player.position.x,
+        y,
+        player.position.z,
+      )
+    ) {
       blocked = mid;
     } else {
       clear = mid;
@@ -307,13 +348,14 @@ export const updatePlayer = (
   input: InputSnapshot,
   world: PlayerWorld,
 ): void => {
+  const config = player.config;
   // drag-to-look
-  player.yaw -= input.lookDx * PLAYER_CFG.lookSensitivity;
+  player.yaw -= input.lookDx * config.lookSensitivity;
   player.pitch = Math.max(
-    -PLAYER_CFG.maxPitch,
+    -config.maxPitch,
     Math.min(
-      PLAYER_CFG.maxPitch,
-      player.pitch - input.lookDy * PLAYER_CFG.lookSensitivity,
+      config.maxPitch,
+      player.pitch - input.lookDy * config.lookSensitivity,
     ),
   );
 
@@ -336,10 +378,10 @@ export const updatePlayer = (
     const len = Math.hypot(mx, my);
     const nx = mx / len;
     const ny = my / len;
-    targetVx = (forwardX * ny + rightX * nx) * PLAYER_CFG.speed;
-    targetVz = (forwardZ * ny + rightZ * nx) * PLAYER_CFG.speed;
+    targetVx = (forwardX * ny + rightX * nx) * config.speed;
+    targetVz = (forwardZ * ny + rightZ * nx) * config.speed;
   }
-  const maxDelta = PLAYER_CFG.acceleration * dt;
+  const maxDelta = config.acceleration * dt;
   player.vx = moveTowards(player.vx, targetVx, maxDelta);
   player.vz = moveTowards(player.vz, targetVz, maxDelta);
   const dx = player.vx * dt;
@@ -348,23 +390,23 @@ export const updatePlayer = (
   // gravity + jump; underwater the gravity is weak and holding jump swims up
   const inWater = world.inWaterAt(
     player.position.x,
-    player.position.y - PLAYER_CFG.halfSize + SKIN,
+    player.position.y - config.halfSize + SKIN,
     player.position.z,
   );
   if (inWater) {
-    player.vy -= PLAYER_CFG.gravity * 0.15 * dt;
+    player.vy -= config.gravity * 0.15 * dt;
     if (input.jumpHeld) {
-      player.vy = PLAYER_CFG.swimSpeed;
+      player.vy = config.swimSpeed;
     } else {
       // gentle drag so an idle player sinks slowly instead of dropping like a
       // stone; holding jump (swim) overrides it
       player.vy *= Math.max(0, 1 - 3 * dt);
     }
   } else {
-    player.vy -= PLAYER_CFG.gravity * dt;
+    player.vy -= config.gravity * dt;
   }
   if (!inWater && player.onGround && input.jump) {
-    player.vy = PLAYER_CFG.jumpSpeed;
+    player.vy = config.jumpSpeed;
   }
 
   // one axis at a time, so a wall that stops one of them still lets the
@@ -378,18 +420,24 @@ export const updatePlayer = (
   // velocity already there, so climbing away from a jump doesn't cut it
   // short. Underwater, swimming already covers this.
   if (stoppedByWall && input.jumpHeld && !inWater) {
-    player.vy = Math.max(player.vy, PLAYER_CFG.climbSpeed);
+    player.vy = Math.max(player.vy, config.climbSpeed);
   }
 
   // The height the ground is judged from is the one the player enters this
   // frame's fall at (after any step up), not where the fall ends: scanning
   // down from there catches every surface crossed on the way, so a fast fall
   // lands on the floor it passed through instead of the next one below it.
-  const feetBefore = player.position.y - PLAYER_CFG.halfSize;
+  const feetBefore = player.position.y - config.halfSize;
   const risenY = player.position.y + player.vy * dt;
   if (
     player.vy > 0 &&
-    boxHitsSolid(world.solidAt, player.position.x, risenY, player.position.z)
+    boxHitsSolid(
+      config,
+      world.solidAt,
+      player.position.x,
+      risenY,
+      player.position.z,
+    )
   ) {
     // head against a ceiling — drop the climb rather than pushing into it
     player.vy = 0;
@@ -399,6 +447,7 @@ export const updatePlayer = (
 
   // snap to the terrain surface
   const ground = sampleGroundHeight(
+    config,
     world.groundHeightAt,
     player.position.x,
     feetBefore,
@@ -409,12 +458,12 @@ export const updatePlayer = (
     // clear through the world, or over blocks that haven't streamed in yet.
     // Rather than drop them out of the world, hold the height they came in
     // at; they resume falling as soon as there's ground to fall toward.
-    player.position.y = feetBefore + PLAYER_CFG.halfSize;
+    player.position.y = feetBefore + config.halfSize;
     player.vy = 0;
     player.onGround = true;
     return;
   }
-  const minY = ground + PLAYER_CFG.halfSize;
+  const minY = ground + config.halfSize;
   if (player.position.y <= minY) {
     player.position.y = minY;
     if (player.vy < 0) {
@@ -447,10 +496,11 @@ export const placeCamera = (
   player: Player,
   firstPerson: boolean = true,
 ): void => {
+  const config = player.config;
   if (firstPerson) {
     camera.position.set(
       player.position.x,
-      player.position.y + PLAYER_CFG.eyeHeight,
+      player.position.y + config.eyeHeight,
       player.position.z,
     );
     const [dx, dy, dz] = lookDirection(player);
@@ -464,9 +514,9 @@ export const placeCamera = (
   const sinYaw = Math.sin(player.yaw);
   const cosYaw = Math.cos(player.yaw);
   camera.position.set(
-    player.position.x - sinYaw * PLAYER_CFG.followBack,
-    player.position.y + PLAYER_CFG.followUp,
-    player.position.z - cosYaw * PLAYER_CFG.followBack,
+    player.position.x - sinYaw * config.followBack,
+    player.position.y + config.followUp,
+    player.position.z - cosYaw * config.followBack,
   );
   // pitch lifts/lowers the look point a little so vertical drag still tilts
   const ty = player.position.y + Math.sin(player.pitch) * 3.0;

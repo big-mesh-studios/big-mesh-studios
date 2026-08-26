@@ -29,6 +29,12 @@ export { TriangleRenderer } from "./renderers/triangle-renderer";
 export * from "./create-input";
 export * from "./perf";
 export * from "./player";
+export {
+  createPlayerAvatar,
+  type AvatarTerrain,
+  type PlayerAvatar,
+  type PlayerAvatarConfig,
+} from "./create-player-avatar";
 export * from "./ui/Console";
 import Controls_ from "./ui/CoarseControls";
 export const Controls = Controls_;

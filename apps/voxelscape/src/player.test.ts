@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { InputSnapshot } from "./create-input";
 import {
   createPlayer,
-  PLAYER_CFG,
+  DEFAULT_PLAYER_CONFIG,
   updatePlayer,
   type Player,
   type PlayerWorld,
@@ -59,13 +59,13 @@ describe("updatePlayer horizontal speed ramp", () => {
     updatePlayer(player, 1 / 60, { ...NO_INPUT, moveY: 1 }, FAR_GROUND);
     // one frame in, still well short of full speed
     expect(speedAt()).toBeGreaterThan(0);
-    expect(speedAt()).toBeLessThan(PLAYER_CFG.speed);
+    expect(speedAt()).toBeLessThan(DEFAULT_PLAYER_CONFIG.speed);
 
     for (let i = 0; i < 60; i++) {
       updatePlayer(player, 1 / 60, { ...NO_INPUT, moveY: 1 }, FAR_GROUND);
     }
     // held long enough, it reaches (and doesn't overshoot) full speed
-    expect(speedAt()).toBeCloseTo(PLAYER_CFG.speed, 5);
+    expect(speedAt()).toBeCloseTo(DEFAULT_PLAYER_CONFIG.speed, 5);
   });
 
   it("decelerates back down instead of stopping instantly when input releases", () => {
@@ -73,12 +73,15 @@ describe("updatePlayer horizontal speed ramp", () => {
     for (let i = 0; i < 60; i++) {
       updatePlayer(player, 1 / 60, { ...NO_INPUT, moveY: 1 }, FAR_GROUND);
     }
-    expect(Math.hypot(player.vx, player.vz)).toBeCloseTo(PLAYER_CFG.speed, 5);
+    expect(Math.hypot(player.vx, player.vz)).toBeCloseTo(
+      DEFAULT_PLAYER_CONFIG.speed,
+      5,
+    );
 
     updatePlayer(player, 1 / 60, NO_INPUT, FAR_GROUND);
     const speedAfterOneFrame = Math.hypot(player.vx, player.vz);
     expect(speedAfterOneFrame).toBeGreaterThan(0);
-    expect(speedAfterOneFrame).toBeLessThan(PLAYER_CFG.speed);
+    expect(speedAfterOneFrame).toBeLessThan(DEFAULT_PLAYER_CONFIG.speed);
 
     for (let i = 0; i < 60; i++) {
       updatePlayer(player, 1 / 60, NO_INPUT, FAR_GROUND);
@@ -93,12 +96,15 @@ describe("updatePlayer walking into terrain it can't climb", () => {
   const CLIFF = terrainOf((x) => (x >= 0 ? CLIFF_TOP : 0));
 
   it("stops at a cliff face instead of being lifted up onto its top", () => {
-    const player = createPlayer(-3, PLAYER_CFG.halfSize, 0);
+    const player = createPlayer(-3, DEFAULT_PLAYER_CONFIG.halfSize, 0);
     walkEast(player, CLIFF, 120);
-    expect(player.position.y).toBeCloseTo(PLAYER_CFG.halfSize, 5);
+    expect(player.position.y).toBeCloseTo(DEFAULT_PLAYER_CONFIG.halfSize, 5);
     // held outside the cliff by the width of the collision box
     expect(player.position.x).toBeLessThan(0);
-    expect(player.position.x).toBeCloseTo(-PLAYER_CFG.collisionRadius, 2);
+    expect(player.position.x).toBeCloseTo(
+      -DEFAULT_PLAYER_CONFIG.collisionRadius,
+      2,
+    );
   });
 
   it("walks under an overhang rather than popping up onto its roof", () => {
@@ -111,10 +117,10 @@ describe("updatePlayer walking into terrain it can't climb", () => {
       solidAt: (x, y) => y < 0 || (x >= 0 && y >= SLAB_BOTTOM && y < ROOF),
       halfExtent: 1e9,
     };
-    const player = createPlayer(-3, PLAYER_CFG.halfSize, 0);
+    const player = createPlayer(-3, DEFAULT_PLAYER_CONFIG.halfSize, 0);
     walkEast(player, overhang, 120);
     expect(player.position.x).toBeGreaterThan(0);
-    expect(player.position.y).toBeCloseTo(PLAYER_CFG.halfSize, 5);
+    expect(player.position.y).toBeCloseTo(DEFAULT_PLAYER_CONFIG.halfSize, 5);
   });
 
   it("does not strand the player mid-air when they jump into an overhang", () => {
@@ -126,16 +132,16 @@ describe("updatePlayer walking into terrain it can't climb", () => {
       solidAt: (_x, y) => y < 0 || (y >= SLAB_BOTTOM && y < ROOF),
       halfExtent: 1e9,
     };
-    const player = createPlayer(0, PLAYER_CFG.halfSize, 0);
+    const player = createPlayer(0, DEFAULT_PLAYER_CONFIG.halfSize, 0);
     // one settling frame: jumping needs the player to be on the ground first
     updatePlayer(player, 1 / 60, NO_INPUT, lowTunnel);
     updatePlayer(player, 1 / 60, { ...NO_INPUT, jump: true }, lowTunnel);
-    expect(player.position.y).toBeGreaterThan(PLAYER_CFG.halfSize);
+    expect(player.position.y).toBeGreaterThan(DEFAULT_PLAYER_CONFIG.halfSize);
     for (let i = 0; i < 60; i++) {
       updatePlayer(player, 1 / 60, NO_INPUT, lowTunnel);
     }
     // back on the floor under the slab, not floating against its underside
-    expect(player.position.y).toBeCloseTo(PLAYER_CFG.halfSize, 5);
+    expect(player.position.y).toBeCloseTo(DEFAULT_PLAYER_CONFIG.halfSize, 5);
     expect(player.onGround).toBe(true);
   });
 });
@@ -147,39 +153,44 @@ describe("updatePlayer climbing out of a shaft", () => {
   const SHAFT = terrainOf((x) => (Math.abs(x) < 1 ? 0 : SHAFT_DEPTH));
 
   it("climbs the wall and gets out when jump is held", () => {
-    const player = createPlayer(0, PLAYER_CFG.halfSize, 0);
+    const player = createPlayer(0, DEFAULT_PLAYER_CONFIG.halfSize, 0);
     walkEast(player, SHAFT, 240, true);
-    expect(player.position.y).toBeCloseTo(SHAFT_DEPTH + PLAYER_CFG.halfSize, 5);
+    expect(player.position.y).toBeCloseTo(
+      SHAFT_DEPTH + DEFAULT_PLAYER_CONFIG.halfSize,
+      5,
+    );
     expect(player.position.x).toBeGreaterThan(1);
     expect(player.onGround).toBe(true);
   });
 
   it("stays at the bottom when jump isn't held, so walls still stop the player", () => {
-    const player = createPlayer(0, PLAYER_CFG.halfSize, 0);
+    const player = createPlayer(0, DEFAULT_PLAYER_CONFIG.halfSize, 0);
     walkEast(player, SHAFT, 240);
-    expect(player.position.y).toBeCloseTo(PLAYER_CFG.halfSize, 5);
+    expect(player.position.y).toBeCloseTo(DEFAULT_PLAYER_CONFIG.halfSize, 5);
     expect(player.position.x).toBeLessThan(1);
   });
 
   it("falls back down when jump is released partway up", () => {
-    const player = createPlayer(0, PLAYER_CFG.halfSize, 0);
+    const player = createPlayer(0, DEFAULT_PLAYER_CONFIG.halfSize, 0);
     walkEast(player, SHAFT, 12, true);
     const partway = player.position.y;
-    expect(partway).toBeGreaterThan(PLAYER_CFG.halfSize);
+    expect(partway).toBeGreaterThan(DEFAULT_PLAYER_CONFIG.halfSize);
     expect(partway).toBeLessThan(SHAFT_DEPTH);
     walkEast(player, SHAFT, 120);
-    expect(player.position.y).toBeCloseTo(PLAYER_CFG.halfSize, 5);
+    expect(player.position.y).toBeCloseTo(DEFAULT_PLAYER_CONFIG.halfSize, 5);
   });
 });
 
 describe("updatePlayer stepping and falling", () => {
   it("steps up onto a rise one voxel tall and keeps walking", () => {
-    const step = terrainOf((x) => (x >= 0 ? PLAYER_CFG.stepHeight : 0));
-    const player = createPlayer(-3, PLAYER_CFG.halfSize, 0);
+    const step = terrainOf((x) =>
+      x >= 0 ? DEFAULT_PLAYER_CONFIG.stepHeight : 0,
+    );
+    const player = createPlayer(-3, DEFAULT_PLAYER_CONFIG.halfSize, 0);
     walkEast(player, step, 120);
     expect(player.position.x).toBeGreaterThan(0);
     expect(player.position.y).toBeCloseTo(
-      PLAYER_CFG.stepHeight + PLAYER_CFG.halfSize,
+      DEFAULT_PLAYER_CONFIG.stepHeight + DEFAULT_PLAYER_CONFIG.halfSize,
       5,
     );
   });
@@ -187,10 +198,10 @@ describe("updatePlayer stepping and falling", () => {
   it("walks off a ledge and lands on the ground below", () => {
     const LEDGE = 20;
     const drop = terrainOf((x) => (x < 0 ? LEDGE : 0));
-    const player = createPlayer(-3, LEDGE + PLAYER_CFG.halfSize, 0);
+    const player = createPlayer(-3, LEDGE + DEFAULT_PLAYER_CONFIG.halfSize, 0);
     walkEast(player, drop, 120);
     expect(player.position.x).toBeGreaterThan(0);
-    expect(player.position.y).toBeCloseTo(PLAYER_CFG.halfSize, 5);
+    expect(player.position.y).toBeCloseTo(DEFAULT_PLAYER_CONFIG.halfSize, 5);
     expect(player.onGround).toBe(true);
   });
 
@@ -199,7 +210,7 @@ describe("updatePlayer stepping and falling", () => {
     for (let i = 0; i < 300; i++) {
       updatePlayer(player, 1 / 60, NO_INPUT, FLAT);
     }
-    expect(player.position.y).toBeCloseTo(PLAYER_CFG.halfSize, 5);
+    expect(player.position.y).toBeCloseTo(DEFAULT_PLAYER_CONFIG.halfSize, 5);
     expect(player.onGround).toBe(true);
   });
 });
@@ -225,15 +236,15 @@ describe("updatePlayer falling through water and air", () => {
     // the column, so a shaft dug below sea level counted as flooded.
     const SHAFT_FLOOR = -40;
     const shaft = terrainOf((x) => (Math.abs(x) < 1 ? SHAFT_FLOOR : 0));
-    const player = createPlayer(0, PLAYER_CFG.halfSize, 0);
+    const player = createPlayer(0, DEFAULT_PLAYER_CONFIG.halfSize, 0);
     for (let i = 0; i < 60; i++) {
       updatePlayer(player, 1 / 60, NO_INPUT, shaft);
     }
     // one second of free fall: full gravity as the speed, and half of
     // gravity times the second squared as the distance
-    expect(player.vy).toBeCloseTo(-PLAYER_CFG.gravity, 0);
-    expect(PLAYER_CFG.halfSize - player.position.y).toBeCloseTo(
-      PLAYER_CFG.gravity / 2,
+    expect(player.vy).toBeCloseTo(-DEFAULT_PLAYER_CONFIG.gravity, 0);
+    expect(DEFAULT_PLAYER_CONFIG.halfSize - player.position.y).toBeCloseTo(
+      DEFAULT_PLAYER_CONFIG.gravity / 2,
       0,
     );
   });
@@ -250,18 +261,21 @@ describe("updatePlayer ground sampling near a narrow tunnel wall", () => {
     // the exact centre point has drifted just past the tunnel's boundary —
     // a single-point sample here would land on the wall, not the tunnel
     const edgeX = TUNNEL_HALF_WIDTH + 0.05;
-    const player = createPlayer(edgeX, PLAYER_CFG.halfSize, 0);
+    const player = createPlayer(edgeX, DEFAULT_PLAYER_CONFIG.halfSize, 0);
     updatePlayer(player, 1 / 60, NO_INPUT, TUNNEL);
-    expect(player.position.y).toBeCloseTo(PLAYER_CFG.halfSize, 5);
+    expect(player.position.y).toBeCloseTo(DEFAULT_PLAYER_CONFIG.halfSize, 5);
   });
 
   it("still finds the wall's own top when standing well away from the tunnel", () => {
     const player = createPlayer(
       TUNNEL_HALF_WIDTH + 5,
-      50 + PLAYER_CFG.halfSize,
+      50 + DEFAULT_PLAYER_CONFIG.halfSize,
       0,
     );
     updatePlayer(player, 1 / 60, NO_INPUT, TUNNEL);
-    expect(player.position.y).toBeCloseTo(50 + PLAYER_CFG.halfSize, 5);
+    expect(player.position.y).toBeCloseTo(
+      50 + DEFAULT_PLAYER_CONFIG.halfSize,
+      5,
+    );
   });
 });
