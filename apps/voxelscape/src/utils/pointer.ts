@@ -43,7 +43,7 @@ export function pointer<T extends HTMLElement>(
 
   function handleEvent(event: PointerEvent) {
     const now = Vector2D.create(event.clientX, event.clientY);
-    const delta = Vector2D.sub(now, previous);
+    const delta = Vector2D.subtract(now, previous);
     previous = now;
     totalDelta = Vector2D.add(totalDelta, delta);
     return {
