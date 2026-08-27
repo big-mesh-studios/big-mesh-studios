@@ -63,7 +63,11 @@ export class EditingController {
   private readonly surfaceOnly: boolean;
   private readonly onBlockEdited: (index: number) => void;
   private readonly onEditRecorded: () => void;
-  private readonly onEdit: (w: WorldVoxel, id: number, updatedAt: number) => void;
+  private readonly onEdit: (
+    w: WorldVoxel,
+    id: number,
+    updatedAt: number,
+  ) => void;
   private readonly getLook: () => { origin: Dim3; direction: Dim3 };
   private readonly getPlayerVoxels: () => WorldVoxel[] | null;
 
@@ -114,8 +118,9 @@ export class EditingController {
    * the block goes on the side of the voxel under the crosshair that you're
    * looking at, exactly as in Minecraft. A dirt block placed where the cell
    * above is open air becomes grass, so a fresh column shows grass where its
-   * top is exposed. Always returns a message so the player can see why a
-   * placement did not happen.
+   * top is exposed. A cell no loaded block covers — above the world's ceiling,
+   * or past the ring's outer edge — costs no item and records no edit. Always
+   * returns a message so the player can see why a placement did not happen.
    */
   placeBlock(): string {
     const selected = this.inventory.selectedId;
@@ -129,17 +134,21 @@ export class EditingController {
     if (pick.target === null) {
       return "point at a block face to place against";
     }
-    if (this.overlapsPlayer(pick.place!)) {
+    const place = pick.place;
+    if (place === null || findBlockIndex(this.blocks, place) < 0) {
+      return "can't build outside the world";
+    }
+    if (this.overlapsPlayer(place)) {
       return "can't place inside yourself";
     }
-    if (this.readVoxel(pick.place!) !== VOXEL_AIR) {
+    if (this.readVoxel(place) !== VOXEL_AIR) {
       return "that space is occupied";
     }
-    const [x, y, z] = pick.place!;
+    const [x, y, z] = place;
     const aboveAir =
       selected === VOXEL_DIRT && this.readVoxel([x, y + 1, z]) === VOXEL_AIR;
     const placedId = aboveAir ? VOXEL_GRASS : selected;
-    this.applyEdit(pick.place!, placedId);
+    this.applyEdit(place, placedId);
     this.inventory.remove(selected, 1);
     this.onEditRecorded();
     return `placed ${COLLECTABLE[selected]} at ${x},${y},${z}`;

@@ -188,6 +188,35 @@ describe("EditingController.placeBlock", () => {
     expect(h.layer.get([target[0] - 1, target[1], target[2]])).toBeUndefined();
   });
 
+  it("refuses to place above the world's ceiling", () => {
+    // a voxel in the block's top row: the cell above it lies in no block
+    const ceilingBlock = buildBlock({
+      center: [0, 0, 0],
+      customFillStore: (store) => store.set(48, 127, 48, VOXEL_GRASS),
+    });
+    const layer = new EditLayer();
+    const inventory = new Inventory();
+    inventory.add(VOXEL_DIRT, 2);
+    const top = wv(48, 127, 48);
+    const controller = new EditingController({
+      blocks: [ceilingBlock],
+      layer,
+      inventory,
+      surfaceOnly: true,
+      onBlockEdited: vi.fn(),
+      onEditRecorded: vi.fn(),
+      getLook: () => ({
+        // camera one voxel above the top voxel, aiming straight down at it
+        origin: [top[0] * 2, (top[1] + 2) * 2, top[2] * 2],
+        direction: [0, -1, 0],
+      }),
+      getPlayerVoxels: () => [],
+    });
+    expect(controller.placeBlock()).toContain("outside the world");
+    expect(layer.size).toBe(0);
+    expect(inventory.count(VOXEL_DIRT)).toBe(2);
+  });
+
   it("reports when the crosshair points at empty air, no floating placements", () => {
     const h = makeHarness();
     h.inventory.add(VOXEL_DIRT, 2);
