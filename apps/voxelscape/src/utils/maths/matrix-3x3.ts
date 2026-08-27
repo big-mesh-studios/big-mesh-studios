@@ -1,5 +1,5 @@
+import type { Vector3D } from "./types";
 import {
-  type Vector3D,
   create as createVector3D,
   cross,
   normalize,

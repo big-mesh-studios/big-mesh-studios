@@ -1,8 +1,4 @@
-import type { Vector2D } from "./vector-2d";
-
-export interface Vector3D extends Vector2D {
-  z: number;
-}
+import type { Vector3D } from "./types";
 
 export function create(x = 0, y = 0, z = 0) {
   return {

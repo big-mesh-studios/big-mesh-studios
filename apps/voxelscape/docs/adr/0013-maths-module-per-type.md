@@ -14,14 +14,19 @@ all eight IIFEs present. Six of the eight groups had no caller outside `maths.ts
 all, yet `Bitmap.toImageData`, `Matrix3x3.rotationY` and `HSVA.fromRGBA` all shipped
 in `dist-lib/lib.es.js` and in the application bundle.
 
-Each type now has its own module under `src/utils/maths/`, exporting a plain interface
-and plain functions. `index.ts` re-exports every one of them twice under one name:
-`export * as Vector2D from "./vector-2d"` for the functions, and
-`export type Vector2D = Vector2DModule.Vector2D` for the shape. A module namespace is
-not a runtime object — `Vector2D.create` resolves statically to a top-level binding —
+Each type now has its own module of functions under `src/utils/maths/`, and the shapes
+those functions operate on are declared together in `types.ts`. `index.ts` re-exports
+every group twice under one name: `export * as Vector2D from "./vector-2d"` for the
+functions, and `export type Vector2D = Types.Vector2D` for the shape. A module namespace
+is not a runtime object — `Vector2D.create` resolves statically to a top-level binding —
 so Rollup drops the members nobody calls. Call sites did not move:
 `import { Vector2D } from "../utils/maths"` still resolves, and still yields both
 `Vector2D.add(...)` and `const a: Vector2D`.
+
+Keeping the shapes out of the function modules is what stops each group from carrying
+its own name as a member. Were `Vector2D` an interface exported from `vector-2d.ts`, the
+star export would carry it, `Vector2D.Vector2D` would be a second spelling of the same
+type, and the editor would offer it alongside `add` and `create`.
 
 ## Considered options
 
@@ -51,8 +56,12 @@ so Rollup drops the members nobody calls. Call sites did not move:
   granularity is Rollup's. `vite build` bundles with Rollup and calls esbuild only to
   minify, and the dev server does not bundle at all, so both configurations in this
   repository get it — but an output bundled by esbuild would lose it silently.
-- Adding a group costs three lines in `index.ts` rather than one: the type-only module
-  import, the star export, and the type alias.
+- Adding a group costs an interface in `types.ts` plus two lines in `index.ts`, the star
+  export and the type alias, and separates a group's shape from its functions.
+- `Matrix3x3` is the one group whose shape stays with its functions: it is
+  `export class Matrix3x3 extends Float32Array {}`, a runtime value that `create` calls
+  with `new`, so a file of pure types cannot hold it. `Matrix3x3.Matrix3x3` therefore
+  remains a second spelling of that one type, where the other six have none.
 - `Dimensions3D` is gone rather than moved. Nothing anywhere called it, and its
   `width`/`height`/`depth` shape was `Vector3D` under other names, so its two functions
   moved onto `Vector3D` as `equals` and `normalizeToLongestAxis`. The second needed the

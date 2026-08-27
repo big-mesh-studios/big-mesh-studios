@@ -1,11 +1,4 @@
-import type { RGBA } from "./rgba";
-
-export interface Bitmap {
-  width: number;
-  height: number;
-  /** One palette index per cell, row by row. `EMPTY` where nothing is drawn. */
-  data: Uint8Array;
-}
+import type { Bitmap, RGBA } from "./types";
 
 /**
  * A cell with nothing drawn in it. Zero is a real palette index, so emptiness

@@ -1,8 +1,4 @@
-export interface RGB {
-  r: number;
-  g: number;
-  b: number;
-}
+import type { RGB } from "./types";
 
 export function equals(a: RGB, b: RGB) {
   return a.r === b.r && a.g === b.g && a.b === b.b;

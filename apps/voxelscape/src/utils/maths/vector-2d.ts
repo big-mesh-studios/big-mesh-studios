@@ -1,7 +1,4 @@
-export interface Vector2D {
-  x: number;
-  y: number;
-}
+import type { Vector2D } from "./types";
 
 export function create(x = 0, y = 0) {
   return {

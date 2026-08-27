@@ -1,15 +1,5 @@
-import { type RGBA, toCSS as rgbaToCSS } from "./rgba";
-
-export interface HSVA {
-  /** Hue in degrees, `0..360`. */
-  h: number;
-  /** Saturation, `0..1`. */
-  s: number;
-  /** Value (brightness), `0..1`. */
-  v: number;
-  /** Alpha, `0..1`. */
-  a: number;
-}
+import { toCSS as rgbaToCSS } from "./rgba";
+import type { HSVA, RGBA } from "./types";
 
 function wrapHue(h: number) {
   return ((h % 360) + 360) % 360;

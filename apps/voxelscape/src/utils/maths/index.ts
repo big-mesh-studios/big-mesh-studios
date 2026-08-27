@@ -5,31 +5,28 @@
  * `const a: Vector2D`.
  */
 
-import type * as Vector2DModule from "./vector-2d";
-import type * as Vector3DModule from "./vector-3d";
-import type * as RGBModule from "./rgb";
-import type * as RGBAModule from "./rgba";
-import type * as HSVAModule from "./hsva";
-import type * as BitmapModule from "./bitmap";
 import type * as Matrix3x3Module from "./matrix-3x3";
+import type * as Types from "./types";
 
 export * as Vector2D from "./vector-2d";
-export type Vector2D = Vector2DModule.Vector2D;
+export type Vector2D = Types.Vector2D;
 
 export * as Vector3D from "./vector-3d";
-export type Vector3D = Vector3DModule.Vector3D;
+export type Vector3D = Types.Vector3D;
 
 export * as RGB from "./rgb";
-export type RGB = RGBModule.RGB;
+export type RGB = Types.RGB;
 
 export * as RGBA from "./rgba";
-export type RGBA = RGBAModule.RGBA;
+export type RGBA = Types.RGBA;
 
 export * as HSVA from "./hsva";
-export type HSVA = HSVAModule.HSVA;
+export type HSVA = Types.HSVA;
 
 export * as Bitmap from "./bitmap";
-export type Bitmap = BitmapModule.Bitmap;
+export type Bitmap = Types.Bitmap;
 
+// Matrix3x3 is a class rather than an interface, so its shape is a runtime
+// value and lives with its functions rather than in types.ts.
 export * as Matrix3x3 from "./matrix-3x3";
 export type Matrix3x3 = Matrix3x3Module.Matrix3x3;
