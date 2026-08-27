@@ -120,7 +120,14 @@ const ConsoleInput: Component<{
           return;
         }
         event.preventDefault();
-        fill(toScopeBoundary(completion, typed()));
+        const scope = toScopeBoundary(completion, typed());
+        fill(scope);
+        // The name the arrows had landed on is still the one being completed,
+        // so the highlight follows it to the place it takes in the shorter
+        // list rather than starting over at the top.
+        setCandidateIndex(
+          Math.max(0, candidatesFor(scope).indexOf(completion)),
+        );
         return;
       }
       case "ArrowUp": {
