@@ -359,7 +359,39 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
   return (
     <div class={styles.modal}>
       <div class={styles.bar}>
-        <div class={styles.title}>Your files</div>
+        <IconButton
+          kind="plus"
+          label="New"
+          disabled={working()}
+          onClick={() => {
+            if (!window.confirm("Start a new file? This will discard your current work.")) {
+              return;
+            }
+            undoRedoManager.clear();
+            reset();
+            setName("");
+            props.onClose();
+          }}
+        />
+        <IconButton
+          kind="folder-open"
+          label="Open"
+          disabled={working()}
+          onClick={() => void openFromDisk()}
+        />
+        <IconButton
+          kind="file-arrow-down"
+          label="Export"
+          disabled={working()}
+          onClick={() => void exportCurrent()}
+        />
+        <IconButton
+          kind="cloud-arrow-up"
+          label="Publish"
+          disabled={working() || atproto.account() === null}
+          title={atproto.account() === null ? "Sign in to publish" : "Publish to your account"}
+          onClick={() => void publishCurrent()}
+        />
         <Show
           when={atproto.account()}
           fallback={
@@ -418,25 +450,10 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
             </span>
           </div>
         </div>
-        <div class={styles.currentActions}>
-          <IconButton
-            kind="file-arrow-down"
-            label="Export"
-            disabled={working()}
-            onClick={() => void exportCurrent()}
-          />
-          <IconButton
-            kind="cloud-arrow-up"
-            label="Publish"
-            disabled={working() || atproto.account() === null}
-            title={atproto.account() === null ? "Sign in to publish" : "Publish to your account"}
-            onClick={() => void publishCurrent()}
-          />
-        </div>
       </div>
 
       <div class={styles.body}>
-        <div class={styles.bar} style={{ border: "none", padding: "0" }}>
+        {/* <div class={styles.sectionBar}>
           <div class={styles.heading}>Everything you can open</div>
           <IconButton
             kind="plus"
@@ -461,7 +478,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
           <Button disabled={working()} onClick={() => void refresh()} title="Look again">
             <Icon kind="arrows-rotate" />
           </Button>
-        </div>
+        </div> */}
 
         <Show when={note()}>
           <div class={styles.note}>{note()}</div>
@@ -491,14 +508,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
                     title="Open in the editor"
                   >
                     <div class={styles.preview}>
-                      <Show
-                        when={previews()[card.key]}
-                        fallback={
-                          <div class={styles.noPreview}>
-                            <Icon kind="cube" />
-                          </div>
-                        }
-                      >
+                      <Show when={previews()[card.key]} fallback={<Icon kind="cube" />}>
                         <img
                           class={styles.thumbnail}
                           src={previews()[card.key]}
@@ -512,17 +522,15 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
                       {card.name}
                     </div>
                   </button>
-                  <div class={styles.meta}>
-                    <span>{when(card.at)}</span>
-                    <button
-                      class={styles.cardAction}
-                      disabled={working()}
-                      onClick={() => void drop(card)}
-                      title={card.kind === "published" ? "Take down" : "Forget this file"}
-                    >
-                      <Icon kind={card.kind === "published" ? "trash" : "xmark"} />
-                    </button>
-                  </div>
+                  <span class={styles.when}>{when(card.at)}</span>
+                  <button
+                    class={styles.cardAction}
+                    disabled={working()}
+                    onClick={() => void drop(card)}
+                    title={card.kind === "published" ? "Take down" : "Forget this file"}
+                  >
+                    <Icon kind={card.kind === "published" ? "trash" : "xmark"} />
+                  </button>
                 </div>
               )}
             </For>

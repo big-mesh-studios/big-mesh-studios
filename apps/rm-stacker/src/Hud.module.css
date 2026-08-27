@@ -45,12 +45,6 @@
   pointer-events: auto;
 }
 
-/* Fills the space the controls leave between them rather than sizing to what
-   is inside it: a button and the margins either side of it, taken off each
-   edge, which is exactly the room the bars are not using. */
-/* Fills the room the controls leave between them: a button and the margins
-   either side of it, taken off each edge, so the controls stay visible around
-   it rather than being covered. */
 .profileDialog {
   --clearance: calc(var(--size) * 2 + var(--margin) * 4);
 

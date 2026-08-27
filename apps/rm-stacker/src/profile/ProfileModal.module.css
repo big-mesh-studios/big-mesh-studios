@@ -10,18 +10,26 @@
   font-size: 11pt;
 }
 
+/* A name, whatever the row is about, and the controls at its end. The middle
+   column is the one that gives, so the controls stay against the right edge. */
 .bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, 100px) 1fr auto;
   align-items: center;
   gap: var(--margin);
-  padding: var(--margin) calc(var(--margin) * 2);
   border-bottom: 1px solid var(--dark-grey);
+
+  & > button {
+    padding: var(--margin) calc(var(--margin) * 2);
+    border-right: 1px solid var(--dark-grey);
+  }
 }
 
 /* What is open in the editor right now, kept in front of everything else the
    modal offers so that "export" and "publish" plainly mean this one. */
 .current {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr;
   align-items: center;
   gap: calc(var(--margin) * 2);
   padding: calc(var(--margin) * 2);
@@ -31,7 +39,6 @@
 .currentPreview {
   width: 64px;
   height: 64px;
-  flex-shrink: 0;
   display: grid;
   place-items: center;
   background-color: var(--color-base-300, #17181c);
@@ -43,40 +50,47 @@
 .currentDetail {
   display: grid;
   gap: calc(var(--margin) / 2);
-  flex-grow: 1;
   min-width: 0;
-}
-
-.currentActions {
-  display: flex;
-  gap: var(--margin);
-  align-items: center;
 }
 
 .where {
   color: var(--grey);
   font-size: 9pt;
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  justify-content: start;
   align-items: center;
   gap: calc(var(--margin) / 1.5);
 }
 
 .title {
-  flex-grow: 1;
-  min-width: 0;
   font-size: 13pt;
 }
 
 .who {
   color: var(--light-grey);
   font-size: 10pt;
+  /* Sits with the sign-out button rather than being stretched across the room
+     the middle column is given. */
+  justify-self: end;
   max-width: 220px;
   margin-left: var(--margin);
   padding-left: calc(var(--margin) * 2);
-  border-left: 1px solid var(--dark-grey);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The header over the listing: what it is, and the ways of adding to it, kept
+   together on the left rather than pushed to opposite edges. */
+.sectionBar {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  justify-content: start;
+  align-items: center;
+  gap: var(--margin);
 }
 
 .body {
@@ -93,8 +107,12 @@
   gap: calc(var(--margin) * 2);
 }
 
+/* The whole card is the button to open it, with when it was last touched and
+   the way to be rid of it along the bottom. */
 .card {
   display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
   gap: var(--margin);
   border: 1px solid transparent;
   border-radius: var(--margin);
@@ -111,6 +129,7 @@
 }
 
 .openCard {
+  grid-column: 1 / -1;
   display: grid;
   gap: var(--margin);
   cursor: pointer;
@@ -139,13 +158,16 @@
 }
 
 /* Shown for a model published before models carried a picture. */
-.noPreview {
+.preview > i {
   color: var(--grey);
   font-size: 20pt;
 }
 
 .name {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  justify-content: start;
   align-items: baseline;
   gap: calc(var(--margin) / 1.5);
   overflow: hidden;
@@ -159,16 +181,9 @@
   }
 }
 
-.meta {
+.when {
   color: var(--grey);
   font-size: 9pt;
-  display: flex;
-  align-items: center;
-  gap: var(--margin);
-}
-
-.meta > span:first-child {
-  flex-grow: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -215,7 +230,8 @@
 }
 
 .signInRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: var(--margin);
   align-items: center;
   width: 100%;
@@ -229,7 +245,6 @@
 }
 
 .input {
-  flex-grow: 1;
   min-width: 0;
   background-color: var(--back);
   border: 1px solid var(--grey);

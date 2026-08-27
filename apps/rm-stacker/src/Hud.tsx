@@ -1,5 +1,4 @@
 import { flush, useContext } from "solid-js";
-import { ProfileModal } from "./profile/ProfileModal";
 import {
   Bar,
   Colour,
@@ -7,15 +6,15 @@ import {
   Column,
   createDialog,
   createPopover,
-  Icon,
   IconButton,
   IconTab,
-  iconTabStyle,
   tabStyle,
 } from "./components/components";
 import { StackerContext } from "./context";
 import styles from "./Hud.module.css";
 import Palette from "./Palette";
+import { ProfileModal } from "./profile/ProfileModal";
+import { ModeKind } from "./types";
 
 export function Hud() {
   const { undoRedoManager, selectedColour, mode, setMode, preview, requestAutoSave, atproto } =
@@ -23,6 +22,8 @@ export function Hud() {
 
   const PalettePopover = createPopover();
   const ProfileDialog = createDialog();
+
+  const isModeSelected = (_mode: ModeKind) => !ProfileDialog.isOpen() && _mode === mode();
 
   return (
     <>
@@ -61,24 +62,32 @@ export function Hud() {
                 <IconTab
                   kind="up-down-left-right"
                   onClick={() => setMode("Idle")}
-                  selected={mode() === "Idle"}
+                  selected={isModeSelected("Idle")}
                 />
-                <IconTab kind="pen" onClick={() => setMode("Draw")} selected={mode() === "Draw"} />
-                <IconTab kind="fill" onClick={() => setMode("Fill")} selected={mode() === "Fill"} />
+                <IconTab
+                  kind="pen"
+                  onClick={() => setMode("Draw")}
+                  selected={isModeSelected("Draw")}
+                />
+                <IconTab
+                  kind="fill"
+                  onClick={() => setMode("Fill")}
+                  selected={isModeSelected("Fill")}
+                />
                 <IconTab
                   kind="eraser"
                   onClick={() => setMode("Erase")}
-                  selected={mode() === "Erase"}
+                  selected={isModeSelected("Erase")}
                 />
                 <IconTab
                   kind="square"
                   onClick={() => setMode("Rectangle")}
-                  selected={mode() === "Rectangle"}
+                  selected={isModeSelected("Rectangle")}
                 />
                 <IconTab
                   kind="eye-dropper"
                   onClick={() => setMode("Eyedrop")}
-                  selected={mode() === "Eyedrop"}
+                  selected={isModeSelected("Eyedrop")}
                 />
               </Bar>
             </Column>
@@ -105,7 +114,7 @@ export function Hud() {
                 flush();
                 requestAutoSave();
               }}
-              selected={preview.autorotate()}
+              selected={!ProfileDialog.isOpen() && preview.autorotate()}
               kind="rotate"
             />
             <IconTab
@@ -114,7 +123,7 @@ export function Hud() {
                 flush();
                 requestAutoSave();
               }}
-              selected={!preview.unlit()}
+              selected={!ProfileDialog.isOpen() && !preview.unlit()}
               kind="lightbulb"
             />
           </Bar>
