@@ -1,12 +1,11 @@
-// The editor's side of atproto: who you are signed in as, and the models that
-// are read from and written to a repository. Everything a view needs is here —
-// the session, the account's name, and the four things you can do with a
-// published model — and nothing about drawing is.
+// The editor's side of atproto: who you are signed in as, and the models kept
+// in that account. Everything a view needs is here — the session, the
+// account's name, and the four things you can do with a model of your own —
+// and nothing about drawing is.
 //
-// Reading never needs a session. A model's record and the zip it points at are
-// both public, so somebody else's models can be listed and opened before ever
-// signing in; only publishing and deleting need an account, being writes to a
-// repository that is yours.
+// One account's work, its own. Everything here needs a session, including the
+// reads: a published model is public and could in principle be read from
+// anybody's account, but the editor only ever asks after yours.
 import { Client } from "@atcute/client";
 import type { Did, Handle } from "@atcute/lexicons";
 import { isActorIdentifier } from "@atcute/lexicons/syntax";
@@ -36,7 +35,7 @@ import {
   type PublishedModel,
 } from "./models";
 import { configureOAuthClient, signInPopup } from "./oauth";
-import { createAtprotoRepoClient } from "./repo-client";
+import { createAtprotoRepoClient, type AtprotoRepoClient } from "./repo-client";
 
 /** How many records a listing asks for at a time. */
 const PAGE_SIZE = 100;
@@ -60,7 +59,7 @@ export function createAtproto() {
   const documents = new Map<string, DidDocument>();
 
   let agent: OAuthUserAgent | undefined;
-  let repoClient = createAtprotoRepoClient({ resolveService });
+  let repoClient: AtprotoRepoClient | undefined;
   let restoring: Promise<void> | undefined;
 
   /** Fetches a DID's document from the directory that issues it or its own domain, once. */
@@ -88,30 +87,14 @@ export function createAtproto() {
     return endpoint;
   }
 
-  /**
-   * The DID `actor` names. A DID is already one; anything else is taken as a
-   * handle and resolved through the places its own owner controls.
-   */
-  async function resolveDid(actor: string): Promise<string> {
-    const identifier = actor.trim().replace(/^@/, "");
-
-    if (!isActorIdentifier(identifier)) {
-      throw new Error(`"${actor}" is not an atproto handle or DID`);
-    }
-
-    return identifier.startsWith("did:")
-      ? identifier
-      : await handleResolver.resolve(identifier as Handle);
-  }
-
   /** Adopts the stored session for `did`, and asks after the name to show for it. */
   async function adoptSession(did: Did): Promise<void> {
     // `allowStale` accepts an expired access token rather than blocking on a
     // refresh; the agent refreshes on the first request that needs one.
     agent = new OAuthUserAgent(await getSession(did, { allowStale: true }));
     repoClient = createAtprotoRepoClient({
-      session: { client: new Client({ handler: agent }), did: agent.sub },
-      resolveService,
+      client: new Client({ handler: agent }),
+      repo: agent.sub,
     });
     setAccount({ did: agent.sub, handle: null });
     setError(null);
@@ -135,14 +118,33 @@ export function createAtproto() {
     throw cause instanceof Error ? cause : new Error(message);
   }
 
-  /** The models in `repo`, newest key first, skipping records this editor cannot open. */
-  async function listRepo(repo: string): Promise<PublishedModel[]> {
+  /** The signed-in account's record client, or a refusal explaining there is none. */
+  function requireSession(): { client: AtprotoRepoClient; did: string } {
+    const signedIn = account();
+
+    if (repoClient === undefined || signedIn === null) {
+      throw new Error("sign in first");
+    }
+
+    return { client: repoClient, did: signedIn.did };
+  }
+
+  /**
+   * Every model in the account, most recently published first, skipping records
+   * this editor cannot open.
+   *
+   * The listing itself arrives in record-key order, and a key is made from the
+   * model's name, so what comes back is alphabetical and says nothing about
+   * when anything was drawn. The order worth showing is by the date in the
+   * record, which is why they are sorted here rather than shown as they came.
+   */
+  async function listOwn(): Promise<PublishedModel[]> {
+    const { client, did } = requireSession();
     const models: PublishedModel[] = [];
     let cursor: string | undefined;
 
     do {
-      const page = await repoClient.listRecords({
-        repo,
+      const page = await client.listRecords({
         collection: MODEL_COLLECTION,
         cursor,
         limit: PAGE_SIZE,
@@ -151,12 +153,12 @@ export function createAtproto() {
 
       for (const { uri, value } of page.records) {
         if (isModelRecord(value)) {
-          models.push({ repo, rkey: uri.slice(uri.lastIndexOf("/") + 1), record: value });
+          models.push({ repo: did, rkey: uri.slice(uri.lastIndexOf("/") + 1), record: value });
         }
       }
     } while (cursor !== undefined);
 
-    return models;
+    return models.sort((a, b) => Date.parse(b.record.createdAt) - Date.parse(a.record.createdAt));
   }
 
   return {
@@ -228,7 +230,7 @@ export function createAtproto() {
       }
 
       agent = undefined;
-      repoClient = createAtprotoRepoClient({ resolveService });
+      repoClient = undefined;
       setAccount(null);
       setError(null);
       setStatus("anonymous");
@@ -246,15 +248,10 @@ export function createAtproto() {
       file: Blob;
       dimensions: Dimensions3D;
     }): Promise<PublishedModel> {
-      const signedIn = account();
-
-      if (signedIn === null) {
-        return fail(new Error("sign in before publishing a model"));
-      }
-
       try {
+        const { client, did } = requireSession();
         const rkey = modelRkey(params.name);
-        const file = await repoClient.uploadBlob(
+        const file = await client.uploadBlob(
           params.file.type === MODEL_MIME_TYPE
             ? params.file
             : new Blob([params.file], { type: MODEL_MIME_TYPE }),
@@ -271,35 +268,19 @@ export function createAtproto() {
           },
         };
 
-        await repoClient.putRecord({
-          repo: signedIn.did,
-          collection: MODEL_COLLECTION,
-          rkey,
-          record,
-        });
+        await client.putRecord({ collection: MODEL_COLLECTION, rkey, record });
         setError(null);
 
-        return { repo: signedIn.did, rkey, record };
+        return { repo: did, rkey, record };
       } catch (cause) {
         return fail(cause);
       }
     },
 
-    /**
-     * Every model `actor` has published, or the signed-in account's own when no
-     * actor is named. Works signed out, an account's records being public.
-     */
-    async list(actor?: string): Promise<PublishedModel[]> {
-      const named = actor?.trim() ?? "";
-
+    /** Every model the account has published. */
+    async list(): Promise<PublishedModel[]> {
       try {
-        const repo = named === "" ? account()?.did : await resolveDid(named);
-
-        if (repo === undefined) {
-          throw new Error("sign in, or name whose models to look for");
-        }
-
-        const models = await listRepo(repo);
+        const models = await listOwn();
         setError(null);
 
         return models;
@@ -327,20 +308,10 @@ export function createAtproto() {
       }
     },
 
-    /** Takes one of the signed-in account's own models down. */
+    /** Takes one of the account's models down. */
     async remove(rkey: string): Promise<void> {
-      const signedIn = account();
-
-      if (signedIn === null) {
-        return fail(new Error("sign in before taking a model down"));
-      }
-
       try {
-        await repoClient.deleteRecord({
-          repo: signedIn.did,
-          collection: MODEL_COLLECTION,
-          rkey,
-        });
+        await requireSession().client.deleteRecord({ collection: MODEL_COLLECTION, rkey });
         setError(null);
       } catch (cause) {
         return fail(cause);

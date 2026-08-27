@@ -1,8 +1,8 @@
 // The editor's one view onto atproto: sign in, publish what is on the canvas,
-// and open anything that has been published — your own models, or the ones an
-// artist you name has put up. It reads the model out of the same store the
-// canvas draws from and writes it with the same `save` the file menu uses, so
-// what is published is byte for byte the file that would have been downloaded.
+// and open anything already published to that account. It reads the model out
+// of the same store the canvas draws from and writes it with the same `save`
+// the file menu uses, so what is published is byte for byte the file that
+// would have been downloaded.
 import { createMemo, createSignal, flush, For, Show, useContext } from "solid-js";
 import { Button, Icon } from "../components/components";
 import { StackerContext } from "../context";
@@ -28,7 +28,6 @@ export function AtprotoPanel() {
 
   const [name, setName] = createSignal(DEFAULT_NAME);
   const [handle, setHandle] = createSignal("");
-  const [actor, setActor] = createSignal("");
   const [models, setModels] = createSignal<PublishedModel[] | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [note, setNote] = createSignal<string | null>(null);
@@ -56,12 +55,12 @@ export function AtprotoPanel() {
     }
   }
 
-  /** Lists `actor`'s models, or the signed-in account's own when nobody is named. */
+  /** Lists what the account has published. */
   function refresh(): Promise<void> {
     return attempt("looking…", async () => {
-      const found = await atproto.list(actor());
+      const found = await atproto.list();
       setModels(found);
-      return found.length === 0 ? "nothing published here yet" : null;
+      return found.length === 0 ? "nothing published yet" : null;
     });
   }
 
@@ -200,43 +199,29 @@ export function AtprotoPanel() {
             </Button>
           </div>
         </div>
-      </Show>
 
-      <div class={styles.separator} />
+        <div class={styles.separator} />
 
-      <div class={styles.section}>
-        <div class={styles.heading}>Published models</div>
-        <div class={styles.row}>
-          <input
-            class={[styles.input, styles.grow]}
-            placeholder={atproto.account() === null ? "whose models?" : "another artist's handle"}
-            value={actor()}
-            disabled={working()}
-            onInput={event => setActor(event.currentTarget.value)}
-            onKeyDown={event => {
-              if (event.key === "Enter") {
-                void refresh();
-              }
-            }}
-          />
-          <Button disabled={working()} onClick={() => void refresh()} title="Look again">
-            <Icon kind="arrows-rotate" />
-          </Button>
-        </div>
-        <Show when={models()?.length}>
-          <div class={styles.models}>
-            <For each={models() ?? []}>
-              {model => (
-                <div class={styles.model}>
-                  <Button
-                    class={styles.modelName}
-                    disabled={working()}
-                    onClick={() => void onOpen(model)}
-                    title="Open"
-                  >
-                    {model.record.name}
-                  </Button>
-                  <Show when={model.repo === atproto.account()?.did}>
+        <div class={styles.section}>
+          <div class={styles.row}>
+            <div class={[styles.heading, styles.grow]}>Your models</div>
+            <Button disabled={working()} onClick={() => void refresh()} title="Look again">
+              <Icon kind="arrows-rotate" />
+            </Button>
+          </div>
+          <Show when={models()?.length}>
+            <div class={styles.models}>
+              <For each={models() ?? []}>
+                {model => (
+                  <div class={styles.model}>
+                    <Button
+                      class={styles.modelName}
+                      disabled={working()}
+                      onClick={() => void onOpen(model)}
+                      title="Open"
+                    >
+                      {model.record.name}
+                    </Button>
                     <Button
                       disabled={working()}
                       onClick={() => void onRemove(model)}
@@ -244,13 +229,13 @@ export function AtprotoPanel() {
                     >
                       <Icon kind="trash" />
                     </Button>
-                  </Show>
-                </div>
-              )}
-            </For>
-          </div>
-        </Show>
-      </div>
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
+      </Show>
 
       <Show when={note()}>
         <div class={styles.note}>{note()}</div>
