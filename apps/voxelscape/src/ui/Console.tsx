@@ -65,11 +65,9 @@ const ConsoleInput: Component<{
   // Keeps the highlighted suggestion in view as the arrow keys walk past the
   // end of the list's scrolled window.
   createEffect(
-    () => candidates()[candidateIndex()],
-    () => {
-      suggestions.children[candidateIndex()]?.scrollIntoView({
-        block: "nearest",
-      });
+    () => candidateIndex(),
+    (index) => {
+      suggestions.children[index]?.scrollIntoView({ block: "nearest" });
     },
   );
 
