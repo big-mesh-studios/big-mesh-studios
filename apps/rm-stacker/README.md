@@ -83,12 +83,12 @@ standing alone - reading a record does not pull in a zip decoder, and reading a
 file does not pull in a lexicon:
 
 ```sh
-pnpm add @random-mesh/rm-stacker
+pnpm add @big-mesh-studios/rm-stacker
 ```
 
 ```ts
-import { load, save } from "@random-mesh/rm-stacker/format";
-import { blobUrl, isModelRecord, modelBlobCid } from "@random-mesh/rm-stacker/lexicon";
+import { load, save } from "@big-mesh-studios/rm-stacker/format";
+import { blobUrl, isModelRecord, modelBlobCid } from "@big-mesh-studios/rm-stacker/lexicon";
 
 // A record out of somebody's repository, turned into voxels.
 if (isModelRecord(value)) {
