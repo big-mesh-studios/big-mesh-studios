@@ -47,6 +47,17 @@ const ConsoleInput: Component<{
     );
   };
 
+  /**
+   * `name` cut back to the scope boundary that follows what is already typed,
+   * so completing `/cl` against `/clock:speed` reaches `/clock:` and
+   * completing that again reaches the whole name. A name with no boundary
+   * left to stop at completes in full.
+   */
+  const toScopeBoundary = (name: string, typed: string): string => {
+    const boundary = name.indexOf(":", typed.length);
+    return boundary === -1 ? name : name.slice(0, boundary + 1);
+  };
+
   const typed = (): string => value() ?? "";
   const candidates = (): string[] => candidatesFor(typed());
   /** The candidate the arrow keys have landed on, if any is left to show. */
@@ -109,7 +120,7 @@ const ConsoleInput: Component<{
           return;
         }
         event.preventDefault();
-        fill(completion);
+        fill(toScopeBoundary(completion, typed()));
         return;
       }
       case "ArrowUp": {
