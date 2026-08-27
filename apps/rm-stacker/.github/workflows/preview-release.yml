@@ -1,0 +1,40 @@
+name: Publish a preview release for any commit
+
+on:
+  push:
+    branches-ignore: ["wip"]
+  pull_request:
+
+# Preview releases are published by the pkg.pr.new GitHub App, which brings its
+# own credentials, so this workflow's own token needs nothing at all.
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: install latest corepack
+        run: npm install corepack@latest -g
+
+      - run: corepack enable
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      # `build`, which builds the site, is the wrong one: what gets packed is
+      # `dist-lib`, and only this builds it.
+      - name: Build the library
+        run: pnpm build-lib
+
+      # Long-form URLs (https://pkg.pr.new/owner/repo/package@commit) rather
+      # than the shorter default, which only resolves once the package has been
+      # released to the npm registry at least once.
+      - name: Publish the preview release
+        run: pnpm exec pkg-pr-new publish --no-compact --commentWithSha

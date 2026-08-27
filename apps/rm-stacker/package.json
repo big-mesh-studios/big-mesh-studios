@@ -2,6 +2,10 @@
   "name": "@big-mesh-studios/rm-stacker",
   "version": "0.0.0",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/big-mesh-studios/rm-stacker.git"
+  },
   "type": "module",
   "sideEffects": false,
   "files": [
@@ -57,6 +61,7 @@
     "browser-fs-access": "^0.38.0",
     "daisyui": "^5.5.20",
     "esbuild": "^0.28.1",
+    "pkg-pr-new": "^0.0.88",
     "prettier": "^3.9.6",
     "solid-js": "2.0.0-beta.29",
     "tailwindcss": "^4.3.0",
