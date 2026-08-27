@@ -108,9 +108,15 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
    * A picture of what is on the canvas, made only while the modal is open —
    * drawing one per stroke behind a closed modal would be work nobody sees.
    */
-  const currentPreview: Accessor<string | null> = createMemo(() =>
-    props.open ? hold(thumbnailFromSides(sides(), palette())) : null,
-  );
+  const currentPreview: Accessor<string | null> = createMemo(() => {
+    if (!props.open) {
+      return null;
+    }
+
+    const picture = thumbnailFromSides(sides(), palette());
+
+    return picture === undefined ? null : hold(picture);
+  });
 
   /** What the model is called, following its home until somebody types over it. */
   const shown = createMemo(() => (name() === "" ? homeName(home()) : name()));
@@ -126,7 +132,10 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
       for (const file of await listRecentFiles()) {
         const key = `file:${file.id}`;
         found.push({ kind: "file", key, name: file.name, at: file.lastOpenedAt, file });
-        addresses[key] = hold(file.thumbnail);
+
+        if (file.thumbnail !== undefined) {
+          addresses[key] = hold(file.thumbnail);
+        }
       }
 
       await atproto.restore();

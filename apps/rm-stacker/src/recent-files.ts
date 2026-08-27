@@ -37,8 +37,11 @@ export interface RecentFile {
   handle: FileSystemFileHandle;
   /** The file's name as it was when last seen, for showing without reading it. */
   name: string;
-  /** The model's picture as of the last time this editor wrote or read the file. */
-  thumbnail: Uint8Array;
+  /**
+   * The model's picture as of the last time this editor wrote or read the file,
+   * absent when there was nothing to draw it with.
+   */
+  thumbnail?: Uint8Array;
   dimensions: Dimensions3D;
   lastOpenedAt: number;
 }
@@ -68,7 +71,7 @@ export async function listRecentFiles(): Promise<RecentFile[]> {
  */
 export async function rememberFile(entry: {
   handle: FileSystemFileHandle;
-  thumbnail: Uint8Array;
+  thumbnail?: Uint8Array;
   dimensions: Dimensions3D;
 }): Promise<RecentFile> {
   const known = await listRecentFiles();

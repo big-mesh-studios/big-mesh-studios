@@ -1,99 +1,74 @@
-import { decode } from "fast-png";
 import { describe, expect, it } from "vitest";
-import { DAWNBRINGER_32_PALETTE } from "../default_palette";
-import { Bitmap } from "../maths";
-import { createInitialSides } from "../stacker-store";
-import type { Sides } from "../types";
-import { thumbnailFromSides } from "./thumbnail";
+import type { Dimensions3D } from "../maths";
+import { cameraDistanceFor } from "./thumbnail";
 
-const dimensions = { width: 12, height: 12, depth: 12 };
+const dimensions: Dimensions3D = { width: 16, height: 16, depth: 16 };
 
-/** A model with nothing drawn in it at all. */
-function blank(): Sides {
-  const panel = () => Bitmap.create(dimensions.width, dimensions.height);
-  return {
-    front: panel(),
-    back: panel(),
-    left: panel(),
-    right: panel(),
-    top: panel(),
-    bottom: panel(),
-  };
+/** A volume with something drawn at each of `at`, and nothing anywhere else. */
+function volume(at: Array<[number, number, number]>): Uint8Array {
+  const { width, height, depth } = dimensions;
+  const voxels = new Uint8Array(width * height * depth * 4);
+
+  for (const [x, y, z] of at) {
+    voxels[((z * width * height + y * width + x) << 2) + 3] = 255;
+  }
+
+  return voxels;
 }
 
-const drawn = () =>
-  decode(thumbnailFromSides(createInitialSides(dimensions), DAWNBRINGER_32_PALETTE));
+/** Every voxel in the box. */
+function everything(): Array<[number, number, number]> {
+  const all: Array<[number, number, number]> = [];
 
-/** Every pixel that was drawn, as red, green, blue. */
-function opaqueColours(image: ReturnType<typeof decode>): string[] {
-  const colours: string[] = [];
-
-  for (let cell = 0; cell < image.width * image.height; cell++) {
-    const offset = cell << 2;
-    if (image.data[offset + 3] !== 0) {
-      colours.push(`${image.data[offset]},${image.data[offset + 1]},${image.data[offset + 2]}`);
+  for (let z = 0; z < dimensions.depth; z++) {
+    for (let y = 0; y < dimensions.height; y++) {
+      for (let x = 0; x < dimensions.width; x++) {
+        all.push([x, y, z]);
+      }
     }
   }
 
-  return colours;
+  return all;
 }
 
-describe("thumbnailFromSides", () => {
-  it("is square, and the same size whatever the model", () => {
-    const small = decode(
-      thumbnailFromSides(createInitialSides(dimensions), DAWNBRINGER_32_PALETTE),
+describe("cameraDistanceFor", () => {
+  it("stands back further for a model that reaches further", () => {
+    const middle = cameraDistanceFor(volume([[8, 8, 8]]), dimensions);
+    const corner = cameraDistanceFor(volume([[0, 0, 0]]), dimensions);
+
+    expect(corner).toBeGreaterThan(middle);
+  });
+
+  it("frames what was drawn, not the box it was drawn in", () => {
+    // Two voxels either side of the middle take up a fraction of the box, so
+    // the camera comes in close — framing the box would leave them a speck.
+    const small = cameraDistanceFor(
+      volume([
+        [7, 8, 8],
+        [8, 8, 8],
+      ]),
+      dimensions,
     );
-    const large = decode(
-      thumbnailFromSides(
-        createInitialSides({ width: 40, height: 20, depth: 8 }),
-        DAWNBRINGER_32_PALETTE,
-      ),
-    );
+    const full = cameraDistanceFor(volume(everything()), dimensions);
 
-    expect(small.width).toBe(small.height);
-    expect(large.width).toBe(small.width);
+    expect(small).toBeLessThan(full / 2);
   });
 
-  it("leaves a model nothing was drawn in entirely clear", () => {
-    const image = decode(thumbnailFromSides(blank(), DAWNBRINGER_32_PALETTE));
+  it("stands somewhere sensible for a model with nothing in it", () => {
+    const distance = cameraDistanceFor(volume([]), dimensions);
 
-    expect(opaqueColours(image)).toHaveLength(0);
+    expect(distance).toBeGreaterThan(0);
+    expect(distance).toBeLessThan(1);
   });
 
-  it("frames the model so it takes up most of the picture", () => {
-    const image = drawn();
-    const covered = opaqueColours(image).length / (image.width * image.height);
+  it("leaves an edge around a model that fills its box", () => {
+    // The whole box normalises to one across its longest side, so its furthest
+    // corner is half of the diagonal away. Twice that would touch the edges of
+    // the picture exactly; a little more leaves the model clear of them.
+    const full = cameraDistanceFor(volume(everything()), dimensions);
+    const touching = 2 * Math.hypot(0.5, 0.5, 0.5);
 
-    expect(covered).toBeGreaterThan(0.2);
-    expect(covered).toBeLessThan(0.8);
-  });
-
-  it("shades the model, so it reads as a solid rather than a silhouette", () => {
-    // A cube seen from a corner shows three faces, each facing the light
-    // differently and so each a different shade of the one colour. One shade
-    // throughout would mean a flat cut-out rather than a rendering.
-    expect(new Set(opaqueColours(drawn())).size).toBeGreaterThanOrEqual(3);
-  });
-
-  it("gives the clear pixels beside the model its colour, so shrinking it leaves no dark edge", () => {
-    const image = drawn();
-    let beside = 0;
-
-    for (let y = 1; y < image.height - 1; y++) {
-      for (let x = 1; x < image.width - 1; x++) {
-        const here = (y * image.width + x) << 2;
-        const right = (y * image.width + x + 1) << 2;
-
-        if (image.data[here + 3] === 0 && image.data[right + 3] !== 0) {
-          beside++;
-          // Transparent, but carrying colour rather than black — otherwise
-          // scaling the picture down blends a dark fringe around the model.
-          const sum = image.data[here] + image.data[here + 1] + image.data[here + 2];
-          expect(sum).toBeGreaterThan(0);
-        }
-      }
-    }
-
-    expect(beside).toBeGreaterThan(0);
+    expect(full).toBeGreaterThan(touching);
+    expect(full).toBeLessThan(touching * 1.3);
   });
 });

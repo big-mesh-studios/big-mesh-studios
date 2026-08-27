@@ -390,12 +390,3 @@ export const cpuVoxelPicker = Fn(() => {
   });
   return voxelPos;
 });
-
-/**
- * The colour the same ray lands on, which is what the fragment shader would
- * have drawn at that point: the volume marched, the palette read and the light
- * applied, all by the code above rather than by a second rendering of the same
- * model. Used to draw the small picture a published model carries, where there
- * is no graphics context to ask for one.
- */
-export const cpuVoxelRenderer = Fn(() => rayMarcher().colour);
