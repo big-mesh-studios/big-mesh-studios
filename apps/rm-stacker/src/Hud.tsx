@@ -1,4 +1,5 @@
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
+import { useNavigate } from "@solidjs/router";
 import { createEffect, createSignal, flush, onSettled, useContext } from "solid-js";
 import { AtprotoPanel } from "./atproto/AtprotoPanel";
 import {
@@ -37,6 +38,7 @@ export function Hud() {
   } = useContext(StackerContext);
 
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
+  const navigate = useNavigate();
 
   const MenuPopover = createPopover();
   const PalettePopover = createPopover();
@@ -125,6 +127,14 @@ export function Hud() {
                 onClick={() => {
                   MenuPopover.close();
                   AtprotoPopover.open();
+                }}
+              />
+              <IconButton
+                kind="grip"
+                label="Your Models"
+                onClick={() => {
+                  MenuPopover.close();
+                  navigate("/profile");
                 }}
               />
             </MenuPopover.PopOver>

@@ -1,34 +1,28 @@
-// The editor's one view onto atproto: sign in, publish what is on the canvas,
-// and open anything already published to that account. It reads the model out
-// of the same store the canvas draws from and writes it with the same `save`
-// the file menu uses, so what is published is byte for byte the file that
-// would have been downloaded.
-import { createMemo, createSignal, flush, For, Show, useContext } from "solid-js";
+// Who you are signed in as, and publishing what is on the canvas. Looking
+// through what has already been published is a page of its own — a wall of
+// pictures needs room this panel does not have — so this stays the small strip
+// of controls that belong beside the editor.
+//
+// It reads the model out of the same store the canvas draws from and writes it
+// with the same `save` the file menu uses, so what is published is byte for
+// byte the file that would have been downloaded.
+import { useNavigate } from "@solidjs/router";
+import { createMemo, createSignal, flush, Show, useContext } from "solid-js";
 import { Button, Icon } from "../components/components";
 import { StackerContext } from "../context";
-import { load, save } from "../load-save";
+import { save } from "../load-save";
 import styles from "./AtprotoPanel.module.css";
-import type { PublishedModel } from "./models";
+import { thumbnailFromSides } from "./thumbnail";
 
 /** What a model is called when the editor has nothing better to suggest. */
 const DEFAULT_NAME = "sprite-stack";
 
 export function AtprotoPanel() {
-  const {
-    atproto,
-    sides,
-    setSides,
-    palette,
-    setPalette,
-    dimensions,
-    updateVoxels,
-    requestRender,
-    requestAutoSave,
-  } = useContext(StackerContext);
+  const { atproto, sides, palette, dimensions } = useContext(StackerContext);
+  const navigate = useNavigate();
 
   const [name, setName] = createSignal(DEFAULT_NAME);
   const [handle, setHandle] = createSignal("");
-  const [models, setModels] = createSignal<PublishedModel[] | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [note, setNote] = createSignal<string | null>(null);
 
@@ -55,15 +49,6 @@ export function AtprotoPanel() {
     }
   }
 
-  /** Lists what the account has published. */
-  function refresh(): Promise<void> {
-    return attempt("looking…", async () => {
-      const found = await atproto.list();
-      setModels(found);
-      return found.length === 0 ? "nothing published yet" : null;
-    });
-  }
-
   function onSignIn(): Promise<void> {
     return attempt("signing in…", async () => {
       await atproto.signIn(handle());
@@ -71,12 +56,9 @@ export function AtprotoPanel() {
       // by throwing, so what happened is read off the account it left behind.
       flush();
 
-      if (atproto.account() === null) {
-        return null;
+      if (atproto.account() !== null) {
+        setHandle("");
       }
-
-      setHandle("");
-      setModels(await atproto.list());
 
       return null;
     });
@@ -88,45 +70,10 @@ export function AtprotoPanel() {
         name: name(),
         file: await save(sides(), palette()),
         dimensions: dimensions(),
+        thumbnail: thumbnailFromSides(sides(), palette()),
       });
-      // Shown straight away rather than by listing the repository again: the
-      // record is already known, and this is the one model whose contents the
-      // editor does not have to be told about.
-      setModels(current =>
-        current === null
-          ? [published]
-          : [published, ...current.filter(model => model.rkey !== published.rkey)],
-      );
 
       return `published as ${published.rkey}`;
-    });
-  }
-
-  /** Draws `model` onto the canvas, in place of whatever is there now. */
-  function onOpen(model: PublishedModel): Promise<void> {
-    return attempt("opening…", async () => {
-      const result = await load(await atproto.open(model), palette());
-      setSides(result.sides);
-      setPalette(result.palette);
-      setName(model.record.name);
-      updateVoxels();
-      requestRender();
-      requestAutoSave();
-
-      return `opened ${model.record.name}`;
-    });
-  }
-
-  function onRemove(model: PublishedModel): Promise<void> {
-    if (!window.confirm(`Take "${model.record.name}" down? This cannot be undone.`)) {
-      return Promise.resolve();
-    }
-
-    return attempt("taking down…", async () => {
-      await atproto.remove(model.rkey);
-      setModels(current => current?.filter(other => other.rkey !== model.rkey) ?? null);
-
-      return null;
     });
   }
 
@@ -198,42 +145,9 @@ export function AtprotoPanel() {
               <Icon kind="cloud-arrow-up" />
             </Button>
           </div>
-        </div>
-
-        <div class={styles.separator} />
-
-        <div class={styles.section}>
-          <div class={styles.row}>
-            <div class={[styles.heading, styles.grow]}>Your models</div>
-            <Button disabled={working()} onClick={() => void refresh()} title="Look again">
-              <Icon kind="arrows-rotate" />
-            </Button>
-          </div>
-          <Show when={models()?.length}>
-            <div class={styles.models}>
-              <For each={models() ?? []}>
-                {model => (
-                  <div class={styles.model}>
-                    <Button
-                      class={styles.modelName}
-                      disabled={working()}
-                      onClick={() => void onOpen(model)}
-                      title="Open"
-                    >
-                      {model.record.name}
-                    </Button>
-                    <Button
-                      disabled={working()}
-                      onClick={() => void onRemove(model)}
-                      title="Take down"
-                    >
-                      <Icon kind="trash" />
-                    </Button>
-                  </div>
-                )}
-              </For>
-            </div>
-          </Show>
+          <Button onClick={() => navigate("/profile")}>
+            <Icon kind="grip" /> See everything you have published
+          </Button>
         </div>
       </Show>
 

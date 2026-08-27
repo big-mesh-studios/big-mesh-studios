@@ -1,0 +1,140 @@
+.page {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  background-color: var(--color-base-300, #17181c);
+  color: var(--front);
+}
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--margin);
+  padding: var(--margin) calc(var(--margin) * 3);
+  background-color: var(--back);
+  border-bottom: 1px solid var(--dark-grey);
+}
+
+.title {
+  flex-grow: 1;
+  min-width: 0;
+  font-size: 13pt;
+}
+
+.who {
+  color: var(--light-grey);
+  font-size: 10pt;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.body {
+  padding: calc(var(--margin) * 3);
+  display: grid;
+  gap: calc(var(--margin) * 3);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: calc(var(--margin) * 3);
+}
+
+.card {
+  display: grid;
+  gap: var(--margin);
+  border: 1px solid transparent;
+  border-radius: var(--margin);
+  padding: var(--margin);
+
+  &:hover {
+    border-color: var(--grey);
+    background-color: var(--back);
+
+    .takeDown {
+      opacity: 1;
+    }
+  }
+}
+
+.openCard {
+  display: grid;
+  gap: var(--margin);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  min-width: 0;
+}
+
+.preview {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  background-color: var(--back);
+  border: 1px solid var(--dark-grey);
+  border-radius: var(--margin);
+  overflow: hidden;
+}
+
+.thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  /* A model is drawn a voxel at a time and its picture is one pixel per voxel,
+     so it is scaled up with the pixels kept square rather than smoothed away. */
+  image-rendering: pixelated;
+}
+
+/* Shown for a model published before models carried a picture. */
+.noPreview {
+  color: var(--grey);
+  font-size: 20pt;
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  color: var(--grey);
+  font-size: 9pt;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--margin);
+}
+
+/* Out of the way until the card is pointed at, so a wall of models is not also
+   a wall of ways to delete them. */
+.takeDown {
+  opacity: 0;
+  cursor: pointer;
+  color: var(--grey);
+  transition: opacity 120ms;
+
+  &:hover {
+    color: var(--front);
+  }
+
+  &:focus-visible {
+    opacity: 1;
+  }
+}
+
+.empty {
+  color: var(--light-grey);
+  display: grid;
+  gap: var(--margin);
+  justify-items: start;
+}
+
+.error {
+  color: #e06c75;
+  overflow-wrap: anywhere;
+}
