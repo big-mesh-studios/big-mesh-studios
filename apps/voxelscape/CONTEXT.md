@@ -100,6 +100,10 @@ _Avoid_: MonsterRenderer (it doesn't render voxel terrain or a strategy — it's
 The ray-marched material an entity's voxel model is drawn with (`src/voxel-model/material.ts`): a fragment shader that steps a 3D DDA through a packed voxel volume and shades the surface with a palette, writing accurate per-fragment depth so models occlude by their geometry. Works on a regular `Mesh` (positioned, rotated, scaled freely) and on an `InstancedMesh` at the identity; the app draws monsters as regular Meshes. Self-lit from `lightDir`/`lightColour`/`ambientColour` uniforms, which **RemoteMonsters.applyLighting** sets from the day-night state. The volume, palette, and grid size are baked in by `solveVoxels`/`encodePalette` (`src/voxel-model/solver.ts`); the model itself comes from `buildDefaultZombieModel` or a zip read by `loadModel`.
 _Avoid_: DuckMaterial (the material is generic; a duck was its first demo), voxel shader (undersells that it owns the volume data and depth handling, not just a shader)
 
+**ModelLibrary**:
+The published drawings this world can wear (`src/atproto/models.ts`): the models somebody made in rm-stacker and published to their own atproto account, read through the public half of the protocol — a repository listing, a record fetched by the key its name makes, and the zip blob it points at. Needs no session and no account of this world's own, because none of those three calls does. `find` takes one model by the name it was published under, `list` says what an account has to offer, and `file` fetches the zip **RemoteMonsters** then reads. The record vocabulary comes from `@big-mesh-studios/rm-stacker/lexicon`, so the editor writing these records and this reading them name the collection once between them.
+_Avoid_: asset store (nothing here stores anything — it reads what somebody else published), model loader (that's `loadModel`, which turns the zip into bitmaps)
+
 ## Relationships
 
 - A **Ring** holds a fixed-size window of **WorldBlock**s, indexed by ring slot.
@@ -115,7 +119,8 @@ _Avoid_: DuckMaterial (the material is generic; a duck was its first demo), voxe
 - **EditingController** is wired to the renderers in `App.tsx` (its `onBlockEdited` calls `RendererSwitch.onBlockChanged`); it holds no renderer reference itself.
 - **EditingController** is how blocks move between the world and the **Inventory**: breaking adds, placing consumes, selection drives `placeBlock`.
 - **RemoteMonsters** reads the **MonsterController**'s snapshot map each frame (constructor-injected getter), so the controller stays renderer-free and the meshes track whatever it simulates.
-- **RemoteMonsters** is fed the same day-night state the renderers get, through `applyLighting`, because its **VoxelModelMaterial** is self-lit; a model zip in `public/models/zombie.zip` (or one picked via `/monsters:file`) replaces the built-in zombie through `setModel`.
+- **RemoteMonsters** is fed the same day-night state the renderers get, through `applyLighting`, because its **VoxelModelMaterial** is self-lit.
+- What the monsters are drawn as is chosen once at startup, in `createVoxelscape`: the model the world's model account published under `zombie` through the **ModelLibrary**, the zip at `public/models/zombie.zip` when that account has nothing to give, and the model built into the game when neither does. `/monsters:model` swaps it for any account's afterwards, and `/monsters:file` for a zip on this device; both arrive at `RemoteMonsters.loadModelFromBlob`.
 - **MonsterController** broadcasts its owned monsters through the mesh via the **MultiplayerController** (`broadcastMonsters`), wired to its `onBroadcast` callback in `App.tsx`; a peer's monsters arrive through `onRemoteMonsters` and `applyMonsterUpdates` — the same optimistic-path separation the edit overlay already uses. Its durable records are written and fetched by **MonsterSync**, wired through `recordsForPersistence`/`markPersisted` and `mergeFromAtproto`.
 
 ## Example dialogue

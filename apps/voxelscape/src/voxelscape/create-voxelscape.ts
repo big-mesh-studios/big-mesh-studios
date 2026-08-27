@@ -1,6 +1,11 @@
 import { Color, PerspectiveCamera, Scene } from "@random-mesh/rmsl/scene";
 import { createSignal, type Accessor } from "solid-js";
 import { AtprotoController } from "../atproto/atproto-controller";
+import {
+  createModelLibrary,
+  MONSTER_MODEL_NAME,
+  WORLD_MODEL_ACCOUNT,
+} from "../atproto/models";
 import type { Commander } from "../commands";
 import { createCommands } from "../commands";
 import { createEnvironment } from "../environment/create-environment";
@@ -43,6 +48,12 @@ export interface VoxelscapeConfig {
    * whether the page URL's hash contains `perf`.
    */
   debugPerf?: boolean;
+  /**
+   * The account whose published models the monsters are drawn as, named by
+   * handle or by account id. Defaults to the account this world publishes its
+   * own drawings to; `null` keeps to the model file the site serves.
+   */
+  modelAccount?: string | null;
   /** Receives the statistics line once per frame while `debugPerf` is on. */
   onDebugStats?: (line: string) => void;
   /**
@@ -88,6 +99,7 @@ export const createVoxelscape = ({
   terrain = DEFAULT_TERRAIN,
   surfaceOnly = true,
   spawn = [0, 0, 0],
+  modelAccount = WORLD_MODEL_ACCOUNT,
   debugPerf: initialDebugPerf = typeof window !== "undefined" &&
     window.location.hash.includes("perf"),
   onDebugStats,
@@ -245,15 +257,36 @@ export const createVoxelscape = ({
     onPersisted: (ids) => monsters.markPersisted(ids),
   });
 
-  // A model zip in `public/models` replaces the built-in zombie; a missing or
-  // unreadable one silently leaves the procedural model in place. Swapping the
-  // file is how the zombie's look is replaced without touching code.
-  void fetch("./models/zombie.zip")
-    .then((res) => (res.ok ? res.blob() : null))
-    .then((blob) =>
-      blob === null ? null : monsterRender.loadModelFromBlob(blob),
-    )
-    .catch(() => {});
+  const modelLibrary = createModelLibrary();
+
+  /**
+   * Puts the monsters in the best drawing this world can reach: the one the
+   * model account published under `MONSTER_MODEL_NAME`, the model file this
+   * site serves when that account has nothing to give, and the built-in model
+   * when neither does. Redrawing a monster is therefore republishing it —
+   * nobody has to touch this code, this site, or wait for either to deploy.
+   */
+  const dressMonsters = async (): Promise<string> => {
+    if (modelAccount !== null) {
+      try {
+        const model = await modelLibrary.find(modelAccount, MONSTER_MODEL_NAME);
+        const line = await monsterRender.loadModelFromBlob(
+          await modelLibrary.file(model),
+        );
+        return `${line} — published by ${modelAccount}`;
+      } catch {
+        // An account that has published nothing under that name is not a
+        // broken world: the file this site serves is the next thing to wear.
+      }
+    }
+    const response = await fetch("./models/zombie.zip").catch(() => null);
+    if (response === null || !response.ok) {
+      return "monsters keep the model built into the game";
+    }
+    return `${await monsterRender.loadModelFromBlob(await response.blob())} — served by this site`;
+  };
+
+  void dressMonsters().then((line) => onNotice?.(line));
 
   /**
    * Everything drawn, in the order it is drawn. There is no depth-sorted pass
@@ -292,6 +325,8 @@ export const createVoxelscape = ({
     monsters,
     monsterSync,
     monsterRender,
+    models: modelLibrary,
+    modelAccount,
     resolution,
     setView: (mode) => {
       avatar.setFirstPerson(mode === "first");

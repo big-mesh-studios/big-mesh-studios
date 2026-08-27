@@ -57,3 +57,36 @@ export const createHandleResolver = (): HandleResolver =>
       http: new WellKnownHandleResolver(),
     },
   });
+
+/**
+ * The address of the server holding the account `document` describes, without
+ * a trailing slash. Newer documents name that service `#atproto_pds` and older
+ * ones `#atproto`; either is accepted, falling back to whichever service
+ * declares itself a personal data server.
+ *
+ * @throws When the document names no such service, which leaves nothing to ask
+ * for the account's records.
+ */
+export const pdsEndpoint = (document: DidDocument): string => {
+  const service =
+    document.service?.find(
+      (candidate) =>
+        candidate.id === "#atproto" || candidate.id === "#atproto_pds",
+    ) ??
+    document.service?.find((candidate) => {
+      const type = Array.isArray(candidate.type)
+        ? candidate.type
+        : [candidate.type];
+      return type.includes("AtprotoPersonalDataServer");
+    });
+  const endpoint =
+    typeof service?.serviceEndpoint === "string"
+      ? service.serviceEndpoint.replace(/\/+$/, "")
+      : undefined;
+  if (endpoint === undefined) {
+    throw new Error(
+      `no personal data server in the account document for ${document.id}`,
+    );
+  }
+  return endpoint;
+};

@@ -26,6 +26,7 @@ import { confirmHandle } from "./handles";
 import {
   createDidDocumentResolver,
   createHandleResolver,
+  pdsEndpoint,
   type DidDocument,
 } from "./identity";
 import { configureOAuthClient, signInPopup } from "./oauth";
@@ -365,30 +366,12 @@ export class AtprotoController {
   }
 
   /**
-   * Resolves a DID to its `#atproto` PDS service endpoint, for reading a
-   * peer's public records (presence, signal mailbox) from the PDS that
-   * actually hosts them rather than from this account's own.
+   * Resolves a DID to the server holding its records, for reading a peer's
+   * public records (presence, signal mailbox) from the server that actually
+   * hosts them rather than from this account's own.
    */
   private async resolveService(did: string): Promise<string> {
-    const document = await this.resolveDocument(did);
-    // Newer DID documents name the PDS service `#atproto_pds`; older ones
-    // use `#atproto`. Accept either, falling back to a type match.
-    const service =
-      document.service?.find(
-        (s) => s.id === "#atproto" || s.id === "#atproto_pds",
-      ) ??
-      document.service?.find((s) => {
-        const type = Array.isArray(s.type) ? s.type : [s.type];
-        return type.includes("AtprotoPersonalDataServer");
-      });
-    const endpoint =
-      typeof service?.serviceEndpoint === "string"
-        ? service.serviceEndpoint.replace(/\/+$/, "")
-        : undefined;
-    if (endpoint === undefined) {
-      throw new Error(`no #atproto PDS service in DID document for ${did}`);
-    }
-    return endpoint;
+    return pdsEndpoint(await this.resolveDocument(did));
   }
 
   /**

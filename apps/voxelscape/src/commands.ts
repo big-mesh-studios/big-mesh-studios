@@ -1,4 +1,6 @@
 import type { AtprotoController } from "./atproto/atproto-controller";
+import type { ModelLibrary } from "./atproto/models";
+import { MONSTER_MODEL_NAME } from "./atproto/models";
 import type { MonsterSync } from "./atproto/monster-sync";
 import type { DayNightController } from "./environment/day-night-controller";
 import type { SoundController } from "./environment/sound-controller";
@@ -85,6 +87,10 @@ export interface CommandsParams {
   monsters: MonsterController;
   monsterSync: MonsterSync;
   monsterRender: RemoteMonsters;
+  /** The published drawings the monsters can be dressed in. */
+  models: ModelLibrary;
+  /** The account those drawings are read from when a command names none. */
+  modelAccount: string | null;
   resolution: AdaptiveResolution;
   /** Switches the camera between first and third person views. */
   setView: (mode: "first" | "third") => string;
@@ -102,6 +108,30 @@ export interface CommandsParams {
   setDebugPerf: (on?: boolean) => string;
 }
 
+/**
+ * Which account a model command was aimed at and which model of theirs it
+ * asked for. A handle is a domain name and an account id begins with `did:`,
+ * so a first word that is neither names the model instead and the account
+ * stays whichever one the world reads its own drawings from.
+ */
+const readModelRequest = (
+  rest: string[],
+  fallbackAccount: string | null,
+): { account: string | null; name: string } => {
+  const first = rest[0];
+  const namesAccount =
+    first !== undefined && (first.includes(".") || first.startsWith("did:"));
+  const words = namesAccount ? rest.slice(1) : rest;
+  return {
+    account: namesAccount ? first : fallbackAccount,
+    name: words.length === 0 ? MONSTER_MODEL_NAME : words.join(" "),
+  };
+};
+
+/** What went wrong, in the words a player reading the console can act on. */
+const describeError = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
+
 /** Every debug console command, declared as a single object literal keyed by command name. */
 export const createCommands = ({
   dayNight,
@@ -113,6 +143,8 @@ export const createCommands = ({
   monsters,
   monsterSync,
   monsterRender,
+  models,
+  modelAccount,
   resolution,
   setView,
   setPlayerVisible,
@@ -341,6 +373,49 @@ export const createCommands = ({
       description: "show what the monsters are doing and what has been saved",
       run: () =>
         `${monsters.describe()}\n${monsterSync.describe()}\n${monsterRender.describe()}`,
+    },
+    "/monsters:model": {
+      description: "dress the monsters in a model an account published",
+      args: "[handle] [name]",
+      run: async (rest) => {
+        const { account, name } = readModelRequest(rest, modelAccount);
+        if (account === null) {
+          return "name the account the model was published by";
+        }
+        try {
+          const model = await models.find(account, name);
+          const line = await monsterRender.loadModelFromBlob(
+            await models.file(model),
+          );
+          return `${line} — "${model.record.name}", published by ${account}`;
+        } catch (err) {
+          return `no "${name}" from ${account} — ${describeError(err)}`;
+        }
+      },
+    },
+    "/monsters:published": {
+      description: "list the models an account has published",
+      args: "[handle]",
+      run: async (rest) => {
+        const account = rest[0] ?? modelAccount;
+        if (account === undefined || account === null) {
+          return "name the account whose models to list";
+        }
+        try {
+          const published = await models.list(account);
+          if (published.length === 0) {
+            return `${account} has published no models`;
+          }
+          return published
+            .map(({ rkey, record }) => {
+              const { width, height, depth } = record.dimensions;
+              return `${rkey} — "${record.name}", ${width}×${height}×${depth}`;
+            })
+            .join("\n");
+        } catch (err) {
+          return `nothing to list from ${account} — ${describeError(err)}`;
+        }
+      },
     },
     "/monsters:file": {
       description: "take the monsters' look from a model saved on this device",

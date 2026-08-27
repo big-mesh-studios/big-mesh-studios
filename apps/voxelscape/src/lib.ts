@@ -151,8 +151,19 @@ export { claimedHandle, confirmHandle } from "./atproto/handles";
 export {
   createDidDocumentResolver,
   createHandleResolver,
+  pdsEndpoint,
   type DidDocument,
 } from "./atproto/identity";
+export {
+  createModelLibrary,
+  locateAccount,
+  MONSTER_MODEL_NAME,
+  publishedModels,
+  WORLD_MODEL_ACCOUNT,
+  type AccountLocation,
+  type LocateAccount,
+  type ModelLibrary,
+} from "./atproto/models";
 export {
   pictureBlobCid,
   pictureBlobUrl,
