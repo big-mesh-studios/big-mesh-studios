@@ -1,5 +1,6 @@
 import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
-import { createSignal, flush, onSettled, useContext } from "solid-js";
+import { createEffect, createSignal, flush, onSettled, useContext } from "solid-js";
+import { AtprotoPanel } from "./atproto/AtprotoPanel";
 import {
   Bar,
   Colour,
@@ -32,12 +33,24 @@ export function Hud() {
     setPalette,
     preview,
     requestAutoSave,
+    atproto,
   } = useContext(StackerContext);
 
   const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
 
   const MenuPopover = createPopover();
   const PalettePopover = createPopover();
+  const AtprotoPopover = createPopover();
+
+  // Signing back in is put off until somebody asks after an account, rather
+  // than done at startup: it fetches this app's client metadata document, and
+  // an editor nobody publishes from should not be talking to the network at
+  // all.
+  createEffect(AtprotoPopover.isOpen, isOpen => {
+    if (isOpen) {
+      void atproto.restore();
+    }
+  });
 
   const onLoad = async () => {
     const file = await fileOpen<false>({
@@ -50,6 +63,7 @@ export function Hud() {
     setPalette(result.palette);
     updateVoxels();
     setFileHandle((file as FileWithHandle).handle ?? null);
+    requestAutoSave();
     onSettled(() => {
       requestRender();
     });
@@ -106,6 +120,14 @@ export function Hud() {
               <IconButton kind="floppy-disk" label="Save As" onClick={onSaveAs} />
               <IconButton onClick={onLoad} kind="folder" label="Load" />
             </MenuPopover.PopOver>
+          </Bar>
+          <Bar>
+            <AtprotoPopover.Trigger class={[tabStyle, iconTabStyle]}>
+              <Icon kind="cloud" />
+            </AtprotoPopover.Trigger>
+            <AtprotoPopover.PopOver class={styles.atprotoPopover}>
+              <AtprotoPanel />
+            </AtprotoPopover.PopOver>
           </Bar>
           <div class={styles.bottom}>
             <Bar>

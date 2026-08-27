@@ -1,0 +1,86 @@
+.panel {
+  display: grid;
+  gap: var(--margin);
+  padding: var(--margin);
+  min-width: 280px;
+  max-width: 320px;
+  font-size: 11pt;
+  color: var(--front);
+}
+
+.section {
+  display: grid;
+  gap: var(--margin);
+}
+
+.row {
+  display: flex;
+  gap: var(--margin);
+  align-items: center;
+}
+
+.grow {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.heading {
+  color: var(--light-grey);
+  font-size: 9pt;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.account {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.input {
+  background-color: var(--dark-grey);
+  border: 1px solid var(--grey);
+  border-radius: calc(var(--margin) / 2);
+  color: var(--front);
+  padding: calc(var(--margin) / 2) var(--margin);
+  min-width: 0;
+
+  &::placeholder {
+    color: var(--grey);
+  }
+}
+
+.models {
+  display: grid;
+  gap: calc(var(--margin) / 2);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.model {
+  display: flex;
+  gap: var(--margin);
+  align-items: center;
+}
+
+.modelName {
+  flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.note {
+  color: var(--light-grey);
+}
+
+.error {
+  color: #e06c75;
+  overflow-wrap: anywhere;
+}
+
+.separator {
+  border-top: 1px solid var(--dark-grey);
+}

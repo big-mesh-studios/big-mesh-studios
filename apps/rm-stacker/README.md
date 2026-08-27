@@ -29,6 +29,8 @@ install. Try it in the **[live demo](https://big-mesh-studios.github.io/rm-stack
   as you draw, so you see the result instantly.
 - **Portable file format** - save your model as a `.zip` containing one PNG per
   face, and load any existing sprite stack back in.
+- **Publish to your own repository** - sign in with an atproto account and put a
+  model where anyone can read it, or open one somebody else has published.
 
 ## How to use
 
@@ -60,15 +62,29 @@ Each image's opaque pixels define the silhouette of the model; the solver carves
 the volume from the overlapping faces and colours the remaining voxels from the
 nearest face. Missing faces load as empty.
 
+## Publishing
+
+Models can be published to an [atproto](https://atproto.com/) account, so that
+a drawing lives somewhere anyone can read it rather than only on the machine it
+was drawn on. Open the cloud panel, sign in with a handle, name the model and
+publish: the same `.zip` the file menu saves is uploaded to the account's own
+server, and a record in the `app.bms.stacker.model` collection points at it.
+
+Publishing under a name that has been used before replaces what is there, so a
+drawing can be touched up without anyone reading it having to follow a new
+address. Reading needs no account at all - name any handle in the panel to list
+and open what that artist has published.
+
 ## Tech stack
 
-| Layer     | Tech                                                                                                                |
-| --------- | ------------------------------------------------------------------------------------------------------------------- |
-| UI        | [SolidJS](https://www.solidjs.com/) + TypeScript                                                                    |
-| Styling   | [Tailwind CSS](https://tailwindcss.com/) + [daisyUI](https://daisyui.com/)                                          |
-| Rendering | WebGL2 raymarching via [rmsl](https://www.npmjs.com/package/@random-mesh/rmsl)                                      |
-| Build     | [Vite](https://vitejs.dev/)                                                                                         |
-| Files     | [JSZip](https://stuk.github.io/jszip/) + [browser-fs-access](https://github.com/GoogleChromeLabs/browser-fs-access) |
+| Layer      | Tech                                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------- |
+| UI         | [SolidJS](https://www.solidjs.com/) + TypeScript                                                                    |
+| Styling    | [Tailwind CSS](https://tailwindcss.com/) + [daisyUI](https://daisyui.com/)                                          |
+| Rendering  | WebGL2 raymarching via [rmsl](https://www.npmjs.com/package/@random-mesh/rmsl)                                      |
+| Build      | [Vite](https://vitejs.dev/)                                                                                         |
+| Files      | [JSZip](https://stuk.github.io/jszip/) + [browser-fs-access](https://github.com/GoogleChromeLabs/browser-fs-access) |
+| Publishing | [atcute](https://github.com/mary-ext/atcute) against [atproto](https://atproto.com/)                                |
 
 ## Development
 
@@ -81,6 +97,11 @@ pnpm build        # build for production (outputs to dist/)
 pnpm test         # run tests
 pnpm check-types  # type-check the codebase
 ```
+
+The dev server prints `http://localhost:5173/`, but signing in only works on
+`http://127.0.0.1:5173/` - an OAuth redirect target may not be named
+"localhost". The app moves itself across on load, so opening either address is
+fine.
 
 ## License
 

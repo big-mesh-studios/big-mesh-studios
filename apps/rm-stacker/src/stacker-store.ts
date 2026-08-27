@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, flush } from "solid-js";
+import { createAtproto } from "./atproto/create-atproto";
 import { Command } from "./command/Command";
 import { createCommander } from "./command/commander";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
@@ -46,6 +47,7 @@ export const createInitialSides = (dimensions: Dimensions3D) => {
 export function createStacker() {
   const enqueue = createEnqueue<Command>();
   const renderSet = new Set<() => void>();
+  const atproto = createAtproto();
 
   const saved = createMemo(() =>
     loadFromIndexedDB(DAWNBRINGER_32_PALETTE).catch(error => {
@@ -174,6 +176,8 @@ export function createStacker() {
 
   return {
     undoRedoManager,
+    // the account models are published to and read from
+    atproto,
     // dimensions
     dimensions,
     // sides
