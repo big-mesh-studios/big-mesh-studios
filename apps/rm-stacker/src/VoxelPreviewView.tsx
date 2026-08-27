@@ -24,7 +24,17 @@ import shaders from "./shaders";
 import { tryCatch } from "./utils/utils";
 import { voxelPicker } from "./voxel-picker";
 import { VoxelPreviewMaterial } from "./voxel-preview-material";
-import { boxSize, FAR, FOV, NEAR, rotateMesh, voxelCellEdges } from "./voxel-preview-scene";
+import {
+  AMBIENT_COLOUR,
+  boxSize,
+  FAR,
+  FOV,
+  LIGHT_COLOUR,
+  LIGHT_DIR,
+  NEAR,
+  rotateMesh,
+  voxelCellEdges,
+} from "./voxel-preview-scene";
 import styles from "./VoxelPreviewView.module.css";
 
 const MIN_RADIUS = 2;
@@ -33,9 +43,6 @@ const MAX_RADIUS = 20;
 // Directional + ambient light for the voxel preview. The direction is fixed in
 // world space and the model turns beneath it, so it is rotated into the model's
 // space before it is uploaded rather than being sent as it stands.
-const LIGHT_DIR = Object.freeze(Vector3D.normalize(Vector3D.create(0.4, 0.7, 0.8)));
-const LIGHT_COLOUR = new Float32Array([1.0, 0.97, 0.9]);
-const AMBIENT_COLOUR = new Float32Array([0.35, 0.35, 0.4]);
 
 const TURNTABLE_SECONDS_PER_REVOLUTION = 20;
 const TURNTABLE_RADIANS_PER_SECOND = -(2 * Math.PI) / TURNTABLE_SECONDS_PER_REVOLUTION;

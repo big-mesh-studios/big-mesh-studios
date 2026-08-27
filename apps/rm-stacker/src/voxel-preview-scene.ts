@@ -1,10 +1,21 @@
 import { Mesh, Quaternion, Vector3 } from "@random-mesh/rmsl/scene";
-import { Dimensions3D } from "./maths";
+import { Dimensions3D, Vector3D } from "./maths";
 
 // The CPU voxel picker builds its ray with a pinhole camera whose focal length
 // is 2 (see rayMarcher in shaders-shared). A perspective camera with this
 // vertical fov emits exactly those rays, so the click picker and the rendered
 // preview agree no matter where the model is turned.
+/**
+ * How the model is lit, wherever it is drawn. The preview and the small picture
+ * a published model carries are two different renderers — one on the graphics
+ * card, one walking rays on the processor — and a model that came out looking
+ * differently lit in a listing than on the canvas would look like a different
+ * model.
+ */
+export const LIGHT_DIR = Object.freeze(Vector3D.normalize(Vector3D.create(0.4, 0.7, 0.8)));
+export const LIGHT_COLOUR = Object.freeze([1.0, 0.97, 0.9]);
+export const AMBIENT_COLOUR = Object.freeze([0.35, 0.35, 0.4]);
+
 export const FOV = 2 * Math.atan(0.5) * (180 / Math.PI);
 export const NEAR = 0.1;
 export const FAR = 100;
