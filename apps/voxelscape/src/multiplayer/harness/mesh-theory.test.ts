@@ -350,4 +350,145 @@ describe("cluster mesh theory", () => {
     await Promise.resolve();
     expect(b.editBatchCountFor(a.did)).toBe(0);
   });
+
+  it("broadcasts a monster's state to a connected peer, which receives it exactly", async () => {
+    const sim = createSimulator({
+      placements: [
+        { x: 0, z: 0 },
+        { x: 3, z: 0 },
+      ],
+    });
+    await sim.startAll();
+    const a = sim.players[0];
+    const b = sim.players[1];
+    expect(
+      await sim.runUntil(25_000, () => a.controller.connections === 1),
+    ).toBe(true);
+
+    a.controller.broadcastMonsters([
+      {
+        id: "m1_0_0_0",
+        kind: "zombie",
+        x: 10,
+        y: 11.1,
+        z: 4,
+        yaw: 1,
+        vx: 2,
+        vz: 0,
+        hp: 20,
+        state: "chase",
+        updatedAt: 5_000,
+      },
+    ]);
+    const received = await sim.runUntil(
+      2_000,
+      () => b.latestMonsters(a.did) !== undefined,
+    );
+    expect(received).toBe(true);
+    expect(b.latestMonsters(a.did)).toEqual([
+      {
+        id: "m1_0_0_0",
+        kind: "zombie",
+        x: 10,
+        y: 11.1,
+        z: 4,
+        yaw: 1,
+        vx: 2,
+        vz: 0,
+        hp: 20,
+        state: "chase",
+        updatedAt: 5_000,
+      },
+    ]);
+  });
+
+  it("delivers monster broadcasts to direct peers only, never relays through the cluster", async () => {
+    const sim = createSimulator({
+      placements: [
+        { x: 0, z: 0 }, // A
+        { x: 100, z: 0 }, // B
+        { x: 200, z: 0 }, // C
+      ],
+    });
+    await sim.startAll();
+    const a = sim.players[0];
+    const b = sim.players[1];
+    const c = sim.players[2];
+    const linked = await sim.runUntil(
+      40_000,
+      () =>
+        a.controller.connectedDids().includes(b.did) &&
+        b.controller.connectedDids().includes(c.did) &&
+        !a.controller.connectedDids().includes(c.did),
+    );
+    expect(linked).toBe(true);
+
+    a.controller.broadcastMonsters([
+      {
+        id: "m1_0_0_0",
+        kind: "zombie",
+        x: 1,
+        y: 11.1,
+        z: 2,
+        yaw: 0,
+        vx: 0,
+        vz: 0,
+        hp: 20,
+        state: "wander",
+        updatedAt: 9_000,
+      },
+    ]);
+    expect(
+      await sim.runUntil(2_000, () => b.latestMonsters(a.did) !== undefined),
+    ).toBe(true);
+    await sim.run(2_000);
+    expect(c.monsterBatchCountFor(a.did)).toBe(0);
+  });
+
+  it("rejects malformed and oversized monster broadcasts before applying them", async () => {
+    const sim = createSimulator({
+      placements: [
+        { x: 0, z: 0 },
+        { x: 3, z: 0 },
+      ],
+    });
+    await sim.startAll();
+    const a = sim.players[0];
+    const b = sim.players[1];
+    expect(
+      await sim.runUntil(25_000, () => a.controller.connections === 1),
+    ).toBe(true);
+
+    const transport = sim.signaling.peer(a.did, b.did);
+    expect(transport).toBeDefined();
+    const base = { v: 1, type: "monster", seq: 1, t: 1 };
+    const valid = {
+      id: "m1_0_0_0",
+      kind: "zombie",
+      x: 1,
+      y: 11.1,
+      z: 1,
+      yaw: 0,
+      vx: 0,
+      vz: 0,
+      hp: 20,
+      state: "chase",
+      updatedAt: 1,
+    };
+    transport!.send(
+      JSON.stringify({ ...base, updates: [{ ...valid, id: "garbage!!" }] }),
+    );
+    transport!.send(
+      JSON.stringify({ ...base, updates: [{ ...valid, state: "fly" }] }),
+    );
+    transport!.send(
+      JSON.stringify({
+        ...base,
+        updates: Array.from({ length: 33 }, () => valid),
+      }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(b.monsterBatchCountFor(a.did)).toBe(0);
+  });
 });

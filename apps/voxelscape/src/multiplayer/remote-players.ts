@@ -129,6 +129,19 @@ export class RemotePlayers {
     return this.players.size;
   }
 
+  /**
+   * Every rendered player's current target position, for callers that need to
+   * know where the connected players actually are (e.g. monsters choosing who
+   * to chase or own them).
+   */
+  positions(): Array<{ did: string; x: number; z: number }> {
+    const out: Array<{ did: string; x: number; z: number }> = [];
+    for (const [did, player] of this.players) {
+      out.push({ did, x: player.target.x, z: player.target.z });
+    }
+    return out;
+  }
+
   /** Creates (or refreshes) the avatar for a peer and targets its new pose. */
   update(did: string, pose: Pose, now = Date.now()): void {
     const player = this.players.get(did) ?? this.createPlayer(did);

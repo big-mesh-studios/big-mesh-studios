@@ -1,7 +1,9 @@
 import type { AtprotoController } from "./atproto/atproto-controller";
+import type { MonsterSync } from "./atproto/monster-sync";
 import type { DayNightController } from "./environment/day-night-controller";
 import type { SoundController } from "./environment/sound-controller";
 import type { WeatherController } from "./environment/weather-controller";
+import type { MonsterController } from "./monsters/monster-controller";
 import type { MultiplayerController } from "./multiplayer/multiplayer-controller";
 import type { AdaptiveResolution } from "./render/adaptive";
 import type { RendererSwitch } from "./renderers/renderer-switch";
@@ -79,6 +81,8 @@ export interface CommandsParams {
   sound: SoundController;
   atproto: AtprotoController;
   multiplayer: MultiplayerController;
+  monsters: MonsterController;
+  monsterSync: MonsterSync;
   resolution: AdaptiveResolution;
   /** Switches the camera between first and third person views. */
   setView: (mode: "first" | "third") => string;
@@ -104,6 +108,8 @@ export const createCommands = ({
   sound,
   atproto,
   multiplayer,
+  monsters,
+  monsterSync,
   resolution,
   setView,
   setPlayerVisible,
@@ -297,6 +303,10 @@ export const createCommands = ({
         }
         return multiplayer.describe();
       },
+    },
+    "/monsters": {
+      description: "show the monster simulation and sync state",
+      run: () => `${monsters.describe()}\n${monsterSync.describe()}`,
     },
     "/view": {
       description: "switch the camera between first and third person",

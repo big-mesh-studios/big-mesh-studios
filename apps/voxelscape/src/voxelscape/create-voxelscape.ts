@@ -4,6 +4,9 @@ import { AtprotoController } from "../atproto/atproto-controller";
 import type { Commander } from "../commands";
 import { createCommands } from "../commands";
 import { createEnvironment } from "../environment/create-environment";
+import { MonsterSync } from "../atproto/monster-sync";
+import { MonsterController } from "../monsters/monster-controller";
+import { RemoteMonsters } from "../monsters/remote-monsters";
 import { MultiplayerController } from "../multiplayer/multiplayer-controller";
 import { createPeerJSSignaling } from "../multiplayer/peerjs-transport";
 import { createInput, type InputController } from "../player/create-input";
@@ -128,6 +131,30 @@ export const createVoxelscape = ({
     player,
   });
 
+  const monsters = new MonsterController({
+    seed: terrain.seed,
+    heightAt: (x, z) => world.heightAt(x, z),
+    solidAt: (x, y, z) => world.solidAt(x, y, z),
+    waterAt: (x, y, z) => world.inWaterAt(x, y, z),
+    getDid: () => atproto.did,
+    // Monsters chase and are owned by the nearest player: the local avatar
+    // plus whoever the mesh has a live link to.
+    getPlayers: () => [
+      {
+        did: atproto.did ?? "",
+        x: avatar.player.position.x,
+        z: avatar.player.position.z,
+      },
+      ...multiplayer.peerPositions(),
+    ],
+    // The optimistic path: owned monsters' state fans out over the mesh, and
+    // peers render it without waiting for atproto.
+    onBroadcast: (updates) => multiplayer.broadcastMonsters(updates),
+  });
+  const monsterRender = new RemoteMonsters({
+    getMonsters: () => monsters.monsters.values(),
+  });
+
   const inventory = new Inventory();
   const editing = new EditingController({
     blocks: world.blocks,
@@ -159,6 +186,7 @@ export const createVoxelscape = ({
     },
     onConnected: (did) => {
       void multiplayer.start();
+      monsterSync.start();
       // Their own cube wears the face peers see, which is how they check it.
       void atproto
         .resolvePicture(did)
@@ -171,7 +199,10 @@ export const createVoxelscape = ({
           // No picture is a look, not a failure worth reporting.
         });
     },
-    onSignedOut: () => void multiplayer.stop(),
+    onSignedOut: () => {
+      void multiplayer.stop();
+      monsterSync.stop();
+    },
   });
 
   const multiplayer = new MultiplayerController({
@@ -197,6 +228,21 @@ export const createVoxelscape = ({
         })),
       );
     },
+    // A peer's monsters are theirs to simulate; we just display what they sent.
+    onRemoteMonsters: (_did, updates) => {
+      monsters.applyMonsterUpdates(updates);
+    },
+  });
+
+  // The durable path: owned monsters are written to atproto at a throttled
+  // cadence, and every repo's records are discovered and merged back in — the
+  // source of truth behind the optimistic broadcasts.
+  const monsterSync = new MonsterSync({
+    getRepoClient: () => atproto.repoClient,
+    getDid: () => atproto.did,
+    onRecords: (records) => monsters.mergeFromAtproto(records),
+    getRecordsToWrite: (now) => monsters.recordsForPersistence(now),
+    onPersisted: (ids) => monsters.markPersisted(ids),
   });
 
   /**
@@ -210,6 +256,7 @@ export const createVoxelscape = ({
     world.terrain,
     avatar.body,
     multiplayer.avatars,
+    monsterRender.group,
     world.water,
     environment.weatherEffects,
     world.underwaterTint,
@@ -232,6 +279,8 @@ export const createVoxelscape = ({
     sound: environment.sound,
     atproto,
     multiplayer,
+    monsters,
+    monsterSync,
     resolution,
     setView: (mode) => {
       avatar.setFirstPerson(mode === "first");
@@ -298,6 +347,8 @@ export const createVoxelscape = ({
       world.scrollTo(avatar.player.position.x, avatar.player.position.z);
       avatar.place();
       multiplayer.tick(dt);
+      monsters.tick(dt);
+      monsterRender.tick(dt);
     }
     const lighting = environment.tick(dt, camera);
     skyColor.set(
@@ -350,6 +401,8 @@ export const createVoxelscape = ({
       multiplayer.dispose();
       atproto.dispose();
       environment.dispose();
+      monsterRender.clear();
+      monsterSync.dispose();
       input.dispose();
     },
   };

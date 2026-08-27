@@ -57,6 +57,7 @@ describe("scene draw order", () => {
       "world.terrain",
       "avatar.body",
       "multiplayer.avatars",
+      "monsterRender.group",
       "world.water",
       "environment.weatherEffects",
       "world.underwaterTint",
