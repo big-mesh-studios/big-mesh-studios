@@ -10,7 +10,7 @@ import {
   omit,
   useContext,
 } from "solid-js";
-import { combineRefs, pointer, tryCatch } from "../utils";
+import { combineRefs, pointer, tryCatch } from "../utils/utils";
 import styles from "./SplitPane.module.css";
 
 /**********************************************************************************/

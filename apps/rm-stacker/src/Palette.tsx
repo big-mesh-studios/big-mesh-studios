@@ -5,7 +5,7 @@ import { colourTabStyle, createPopover, tabStyle } from "./components/components
 import { StackerContext } from "./context";
 import { RGBA } from "./maths";
 import styles from "./Palette.module.css";
-import { pointer } from "./utils";
+import { pointer } from "./utils/utils";
 
 function Palette(props: { class?: string }) {
   const {

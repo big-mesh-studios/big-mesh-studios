@@ -11,7 +11,7 @@ import * as THREE from "three";
 import { SIDE_MASK } from "../constants";
 import { StackerContext } from "../context";
 import { Bitmap, Vector2D } from "../maths";
-import { keysOf, sideMaskToCSS } from "../utils";
+import { keysOf, sideMaskToCSS } from "../utils/utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
 import styles from "./PixelEditorView.module.css";

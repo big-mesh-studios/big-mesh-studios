@@ -4,7 +4,7 @@ import { OPPOSING_SIDE } from "../constants";
 import { StackerContext } from "../context";
 import { Bitmap, RGBA, Vector2D } from "../maths";
 import { SideKind } from "../types";
-import { pointer, screenToWorld } from "../utils";
+import { pointer, screenToWorld } from "../utils/utils";
 import { createEdgeController } from "./create-edge-controller";
 import { createPanScaleControl } from "./pan-scale";
 import { intersectSides, SidePositions } from "./side-layout";

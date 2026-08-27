@@ -3,7 +3,7 @@ import JSZip from "jszip";
 import { Command } from "./command/Command";
 import { Bitmap, RGBA } from "./maths";
 import { PreviewState, SideKind, sideKindSet, Sides } from "./types";
-import { keysOf } from "./utils";
+import { keysOf } from "./utils/utils";
 
 const PALETTE_FILE = "palette.png";
 const DB_NAME = "rm-stacker";

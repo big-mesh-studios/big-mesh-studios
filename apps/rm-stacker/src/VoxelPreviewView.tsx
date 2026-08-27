@@ -1,14 +1,4 @@
 import {
-  Component,
-  createEffect,
-  createMemo,
-  createSignal,
-  createTrackedEffect,
-  onSettled,
-  untrack,
-  useContext,
-} from "solid-js";
-import {
   BoxGeometry,
   Line2NodeMaterial,
   LineSegments2,
@@ -18,13 +8,23 @@ import {
   Scene,
   WebGLRenderer,
 } from "@random-mesh/rmsl/scene";
+import {
+  Component,
+  createEffect,
+  createMemo,
+  createSignal,
+  createTrackedEffect,
+  onSettled,
+  untrack,
+  useContext,
+} from "solid-js";
 import { StackerContext } from "./context";
 import { Dimensions3D, Matrix3x3, Vector3D } from "./maths";
 import shaders from "./shaders";
-import { VoxelPreviewMaterial } from "./voxel-preview-material";
+import { tryCatch } from "./utils/utils";
 import { voxelPicker } from "./voxel-picker";
-import { boxSize, FOV, NEAR, FAR, rotateMesh, voxelCellEdges } from "./voxel-preview-scene";
-import { tryCatch } from "./utils";
+import { VoxelPreviewMaterial } from "./voxel-preview-material";
+import { boxSize, FAR, FOV, NEAR, rotateMesh, voxelCellEdges } from "./voxel-preview-scene";
 import styles from "./VoxelPreviewView.module.css";
 
 const MIN_RADIUS = 2;

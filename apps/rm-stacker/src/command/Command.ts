@@ -1,6 +1,6 @@
 import { Vector2D } from "../maths";
 import { SideKind } from "../types";
-import { base64ToUint8Array, uint8ArrayToBase64 } from "../utils";
+import { base64ToUint8Array, uint8ArrayToBase64 } from "../utils/utils";
 
 export type Command =
   | {

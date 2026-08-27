@@ -3,7 +3,7 @@ import { untrack } from "solid-js";
 import { load, save } from "../load-save";
 import { Bitmap, RGBA } from "../maths";
 import { Sides } from "../types";
-import { intersectSide } from "../utils";
+import { intersectSide } from "../utils/utils";
 import { Command } from "./Command";
 
 export function createCommander({

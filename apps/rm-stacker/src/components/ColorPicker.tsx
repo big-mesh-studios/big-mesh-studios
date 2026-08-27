@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For } from "solid-js";
 import { HSVA, RGBA } from "../maths";
-import { pointer } from "../utils";
+import { pointer } from "../utils/utils";
 import styles from "./ColorPicker.module.css";
 
 const DEFAULT_HSVA: HSVA = { h: 0, s: 1, v: 1, a: 1 };

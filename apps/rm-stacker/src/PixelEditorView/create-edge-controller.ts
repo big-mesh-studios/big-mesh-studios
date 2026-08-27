@@ -4,7 +4,7 @@ import { SIDE_AXES } from "../constants";
 import { StackerContext } from "../context";
 import { Dimensions3D, Vector2D } from "../maths";
 import { Alignment3D, AlignmentKind, SideKind } from "../types";
-import { pointer, screenToWorld } from "../utils";
+import { pointer, screenToWorld } from "../utils/utils";
 import { computeSidePositions, intersectSides, SidePositions } from "./side-layout";
 
 type EdgeKind = "top" | "bottom" | "left" | "right";

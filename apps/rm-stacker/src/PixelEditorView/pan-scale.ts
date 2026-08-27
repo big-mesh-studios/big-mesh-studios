@@ -1,6 +1,6 @@
 import { Accessor } from "solid-js";
 import { Vector2D } from "../maths";
-import { pointer, screenToWorld } from "../utils";
+import { pointer, screenToWorld } from "../utils/utils";
 
 interface PanScaleTransform {
   pan: Vector2D;

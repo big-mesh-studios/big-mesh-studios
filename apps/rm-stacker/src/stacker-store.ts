@@ -7,7 +7,7 @@ import { Bitmap, Dimensions3D, RGBA, Vector2D } from "./maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
 import { ModeKind, type Dimensions2D, type Sides } from "./types";
 import { UndoRedoManager } from "./undo-redo";
-import { createEnqueue, createMediaQuery } from "./utils";
+import { createEnqueue, createMediaQuery } from "./utils/utils";
 import { solveVoxels } from "./voxel-solver";
 
 const INITIAL_DIMENSIONS = { width: 15, height: 15, depth: 15 };
