@@ -17,6 +17,9 @@ export const MODEL_COLLECTION = "app.bms.stacker.model";
 /** The media type the zip is uploaded under. */
 export const MODEL_MIME_TYPE = "application/zip";
 
+/** The media type the small picture is uploaded under. */
+export const THUMBNAIL_MIME_TYPE = "image/png";
+
 /**
  * One published sprite stack. Declared as a type alias rather than an interface
  * so it stays assignable to the `Record<string, unknown>` an atproto record
@@ -32,6 +35,13 @@ export type ModelRecord = {
   file: LexBlob;
   /** The model's extent in voxels, so a listing can be described without it. */
   dimensions: Dimensions3D;
+  /**
+   * A small picture to show for the model, so a listing does not have to fetch
+   * and solve every model it lists. Optional, and absent from anything
+   * published before there was one: a listing falls back to showing the name
+   * and the extent, both of which the record already carries.
+   */
+  thumbnail?: LexBlob;
 };
 
 /** A record as it was found in a repository, with the key it was found under. */
@@ -104,13 +114,19 @@ export function isModelRecord(value: unknown): value is ModelRecord {
     typeof record["name"] === "string" &&
     typeof record["createdAt"] === "string" &&
     isBlob(record["file"]) &&
-    isDimensions(record["dimensions"])
+    isDimensions(record["dimensions"]) &&
+    (record["thumbnail"] === undefined || isBlob(record["thumbnail"]))
   );
 }
 
 /** The content identifier of the zip in `record`. */
 export function modelBlobCid(record: ModelRecord): string {
   return record.file.ref.$link;
+}
+
+/** The content identifier of the model's picture, or null when it has none. */
+export function thumbnailBlobCid(record: ModelRecord): string | null {
+  return isBlob(record.thumbnail) ? record.thumbnail.ref.$link : null;
 }
 
 /**

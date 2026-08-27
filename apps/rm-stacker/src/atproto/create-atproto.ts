@@ -31,6 +31,7 @@ import {
   MODEL_MIME_TYPE,
   modelBlobCid,
   modelRkey,
+  THUMBNAIL_MIME_TYPE,
   type ModelRecord,
   type PublishedModel,
 } from "./models";
@@ -247,6 +248,8 @@ export function createAtproto() {
       name: string;
       file: Blob;
       dimensions: Dimensions3D;
+      /** The small picture to list the model by, from `thumbnailFromSides`. */
+      thumbnail?: Uint8Array;
     }): Promise<PublishedModel> {
       try {
         const { client, did } = requireSession();
@@ -256,6 +259,14 @@ export function createAtproto() {
             ? params.file
             : new Blob([params.file], { type: MODEL_MIME_TYPE }),
         );
+        // A picture that will not upload is not worth failing a publish over:
+        // the model still lists, just without one.
+        const thumbnail =
+          params.thumbnail === undefined
+            ? undefined
+            : await client
+                .uploadBlob(new Blob([params.thumbnail as BlobPart], { type: THUMBNAIL_MIME_TYPE }))
+                .catch(() => undefined);
         const record: ModelRecord = {
           $type: MODEL_COLLECTION,
           name: params.name,
@@ -266,6 +277,7 @@ export function createAtproto() {
             height: params.dimensions.height,
             depth: params.dimensions.depth,
           },
+          ...(thumbnail === undefined ? {} : { thumbnail }),
         };
 
         await client.putRecord({ collection: MODEL_COLLECTION, rkey, record });
@@ -287,6 +299,15 @@ export function createAtproto() {
       } catch (cause) {
         return fail(cause);
       }
+    },
+
+    /**
+     * Where a blob belonging to `did` is served from, for a view that shows
+     * pictures: the address is public and the same for every one of them, so a
+     * listing resolves it once and builds its own image addresses.
+     */
+    async blobAddress(did: string, cid: string): Promise<string> {
+      return blobUrl(await resolveService(did), did, cid);
     },
 
     /** The zip `model` points at, as `load` in `load-save.ts` takes it. */
