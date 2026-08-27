@@ -16,7 +16,7 @@
 
 .side {
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto 1fr;
   justify-content: space-between;
   gap: var(--margin);
   pointer-events: none;
@@ -54,10 +54,13 @@
 }
 
 .atprotoPopover:popover-open {
-  top: calc(anchor(top));
-  left: calc(anchor(right) + var(--margin));
-  max-height: calc(100dvh - var(--margin) * 2);
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  max-height: calc(100dvh - var(--margin) * 8);
   overflow-y: auto;
+  font-size: 11pt;
 }
 
 .palettePopover:popover-open {

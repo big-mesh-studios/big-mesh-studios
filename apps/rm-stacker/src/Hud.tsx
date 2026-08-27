@@ -119,16 +119,19 @@ export function Hud() {
               <IconButton kind="floppy-disk" label="Save File" onClick={onSave} />
               <IconButton kind="floppy-disk" label="Save As" onClick={onSaveAs} />
               <IconButton onClick={onLoad} kind="folder" label="Load" />
+              <IconButton
+                kind="cloud"
+                label={atproto.account() === null ? "Sign In" : "Account"}
+                onClick={() => {
+                  MenuPopover.close();
+                  AtprotoPopover.open();
+                }}
+              />
             </MenuPopover.PopOver>
           </Bar>
-          <Bar>
-            <AtprotoPopover.Trigger class={[tabStyle, iconTabStyle]}>
-              <Icon kind="cloud" />
-            </AtprotoPopover.Trigger>
-            <AtprotoPopover.PopOver class={styles.atprotoPopover}>
-              <AtprotoPanel />
-            </AtprotoPopover.PopOver>
-          </Bar>
+          <AtprotoPopover.PopOver class={styles.atprotoPopover}>
+            <AtprotoPanel />
+          </AtprotoPopover.PopOver>
           <div class={styles.bottom}>
             <Bar>
               <IconButton
