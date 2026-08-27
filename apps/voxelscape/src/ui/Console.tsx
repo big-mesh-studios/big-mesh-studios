@@ -322,9 +322,6 @@ export const Console: Component<ConsoleProps> = (props) => {
         return;
       }
       event.preventDefault();
-      // Looking around holds the pointer lock, which hides the cursor and
-      // would leave the console unclickable.
-      document.exitPointerLock();
       Popover.open();
       input.prefill("/");
     },
