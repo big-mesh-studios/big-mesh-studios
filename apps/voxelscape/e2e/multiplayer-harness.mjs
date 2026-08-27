@@ -173,10 +173,14 @@ rl.on("line", async (line) => {
         log(`[B] browser console:\n${players.B.consoleLog.join("\n")}`);
         break;
       case "evalA":
-        log(`[A] eval ${restStr} => ${JSON.stringify(await players.A.page.evaluate(restStr))}`);
+        log(
+          `[A] eval ${restStr} => ${JSON.stringify(await players.A.page.evaluate(restStr))}`,
+        );
         break;
       case "evalB":
-        log(`[B] eval ${restStr} => ${JSON.stringify(await players.B.page.evaluate(restStr))}`);
+        log(
+          `[B] eval ${restStr} => ${JSON.stringify(await players.B.page.evaluate(restStr))}`,
+        );
         break;
       case "moveA":
       case "moveB": {
