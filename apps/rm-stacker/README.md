@@ -75,6 +75,32 @@ drawing can be touched up without anyone reading it having to follow a new
 address. Reading needs no account at all - name any handle in the panel to list
 and open what that artist has published.
 
+## Using it as a library
+
+The editor is also published as a package, so that a game or a tool can read
+what it writes without reimplementing either half. Two entry points, each
+standing alone - reading a record does not pull in a zip decoder, and reading a
+file does not pull in a lexicon:
+
+```sh
+pnpm add @random-mesh/rm-stacker
+```
+
+```ts
+import { load, save } from "@random-mesh/rm-stacker/format";
+import { blobUrl, isModelRecord, modelBlobCid } from "@random-mesh/rm-stacker/lexicon";
+
+// A record out of somebody's repository, turned into voxels.
+if (isModelRecord(value)) {
+  const file = await fetch(blobUrl(service, did, modelBlobCid(value)));
+  const { sides, palette } = await load(await file.blob(), fallbackPalette);
+}
+```
+
+Solid and [rmsl](https://www.npmjs.com/package/@random-mesh/rmsl) are peer
+dependencies rather than bundled, so an app embedding this ends up with one
+copy of each rather than two.
+
 ## Tech stack
 
 | Layer      | Tech                                                                                                                |
@@ -93,7 +119,8 @@ Prerequisites: [Node.js](https://nodejs.org/) with [pnpm](https://pnpm.io/).
 ```sh
 pnpm install      # install dependencies
 pnpm dev          # start the dev server
-pnpm build        # build for production (outputs to dist/)
+pnpm build        # build the editor for production (outputs to dist/)
+pnpm build-lib    # build the published package (outputs to dist-lib/)
 pnpm test         # run tests
 pnpm check-types  # type-check the codebase
 ```

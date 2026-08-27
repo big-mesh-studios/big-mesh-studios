@@ -8,6 +8,16 @@ importers:
 
   .:
     dependencies:
+      '@atcute/lexicons':
+        specifier: ^2.1.0
+        version: 2.1.0
+      fast-png:
+        specifier: ^8.0.0
+        version: 8.0.0
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
+    devDependencies:
       '@atcute/atproto':
         specifier: ^4.0.4
         version: 4.0.4(@atcute/lexicons@2.1.0)
@@ -17,9 +27,6 @@ importers:
       '@atcute/identity-resolver':
         specifier: ^2.0.1
         version: 2.0.1(@atcute/identity@2.0.2(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3)
-      '@atcute/lexicons':
-        specifier: ^2.1.0
-        version: 2.1.0
       '@atcute/oauth-browser-client':
         specifier: ^5.0.0
         version: 5.0.0(@atcute/identity-resolver@2.0.1(@atcute/identity@2.0.2(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3)
@@ -38,15 +45,24 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.3.0
         version: 4.3.3(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))
+      '@types/node':
+        specifier: ^26.2.0
+        version: 26.2.0
+      '@types/three':
+        specifier: ^0.183.1
+        version: 0.183.1
       browser-fs-access:
         specifier: ^0.38.0
         version: 0.38.0
       daisyui:
         specifier: ^5.5.20
         version: 5.7.4
-      jszip:
-        specifier: ^3.10.1
-        version: 3.10.1
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.1
+      prettier:
+        specifier: ^3.9.6
+        version: 3.9.6
       solid-js:
         specifier: 2.0.0-beta.29
         version: 2.0.0-beta.29
@@ -56,22 +72,6 @@ importers:
       three:
         specifier: ^0.183.2
         version: 0.183.2
-    devDependencies:
-      '@types/node':
-        specifier: ^26.2.0
-        version: 26.2.0
-      '@types/three':
-        specifier: ^0.183.1
-        version: 0.183.1
-      esbuild:
-        specifier: ^0.28.1
-        version: 0.28.1
-      fast-png:
-        specifier: ^8.0.0
-        version: 8.0.0
-      prettier:
-        specifier: ^3.9.6
-        version: 3.9.6
       typescript:
         specifier: ^5.7.2
         version: 5.9.3

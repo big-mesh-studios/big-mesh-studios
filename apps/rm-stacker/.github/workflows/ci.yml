@@ -29,6 +29,9 @@ jobs:
       - name: Check types
         run: pnpm check-types
 
+      - name: Build the library
+        run: pnpm build-lib
+
       - name: Check formatting
         if: github.event_name == 'pull_request'
         run: pnpm format:check
