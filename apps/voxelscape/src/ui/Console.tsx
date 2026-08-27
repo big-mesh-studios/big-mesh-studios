@@ -19,10 +19,13 @@ export interface ConsoleInputHandle {
 const ConsoleInput: Component<{
   /** Every command name, for completing the one being typed. */
   names: string[];
+  /** Whether the console panel is showing, and with it this input. */
+  open: boolean;
   onCommand(command: string): void;
   ref(handle: ConsoleInputHandle): void;
 }> = (props) => {
   let element: HTMLInputElement = null!;
+  let suggestions: HTMLUListElement = null!;
 
   const history: string[] = [];
 
@@ -48,6 +51,27 @@ const ConsoleInput: Component<{
   const candidates = (): string[] => candidatesFor(typed());
   /** The candidate the arrow keys have landed on, if any is left to show. */
   const candidate = (): string | undefined => candidates()[candidateIndex()];
+
+  // Showing the list again whenever the panel reopens puts it back on top of
+  // the panel in the top layer, which is stacked in the order things were
+  // shown.
+  createEffect(
+    () => props.open && candidates().length > 0,
+    (shown) => {
+      suggestions.togglePopover(shown);
+    },
+  );
+
+  // Keeps the highlighted suggestion in view as the arrow keys walk past the
+  // end of the list's scrolled window.
+  createEffect(
+    () => candidates()[candidateIndex()],
+    () => {
+      suggestions.children[candidateIndex()]?.scrollIntoView({
+        block: "nearest",
+      });
+    },
+  );
 
   /** Replaces what is typed, leaving the caret at the end. */
   const fill = (text: string): void => {
@@ -150,6 +174,28 @@ const ConsoleInput: Component<{
           </div>
         )}
       </Show>
+      {/* A manual popover, kept a child of the field so that the panel around
+          it counts as its ancestor and a click on a name doesn't dismiss the
+          console. Showing it lifts it into the top layer, clear of the
+          panel's clipped edges. */}
+      <ul ref={suggestions} popover="manual" class={styles.suggestions}>
+        <For each={candidates()}>
+          {(name, index) => (
+            <li
+              class={[
+                styles.suggestion,
+                { [styles.selected]: index() === candidateIndex() },
+              ]}
+              // The input keeps the focus, so the caret sits after the name the
+              // pointer picked and arguments can be typed straight on.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => fill(name)}
+            >
+              {name}
+            </li>
+          )}
+        </For>
+      </ul>
     </div>
   );
 };
@@ -327,6 +373,7 @@ export const Console: Component<ConsoleProps> = (props) => {
           <span class={styles.prefix}>{">"}</span>
           <ConsoleInput
             names={props.names}
+            open={Popover.isOpen()}
             onCommand={onCommand}
             ref={(handle) => {
               input = handle;
