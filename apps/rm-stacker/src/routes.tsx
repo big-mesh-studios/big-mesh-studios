@@ -10,14 +10,10 @@
 // the deployed site. Everything that has to build an address of its own reads
 // the same value.
 import { createRouter, defineRoutes } from "@solidjs/router";
-import { lazy } from "solid-js";
 import EditorPage from "./EditorPage";
 
 export const routes = defineRoutes([
   { path: "/", component: EditorPage },
-  // Loaded when it is first opened: a page for looking through past work has
-  // no business delaying the editor everyone opens first.
-  { path: "/profile", component: lazy(() => import("./profile/ProfilePage")) },
   // Anything else is the editor, rather than a dead end.
   { path: "*", component: EditorPage },
 ]);

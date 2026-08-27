@@ -1,0 +1,243 @@
+/* Fills whatever the popover around it was given, so the listing takes all the
+   room going and scrolls within it rather than the whole modal growing. */
+.modal {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  color: var(--front);
+  font-size: 11pt;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--margin);
+  padding: var(--margin) calc(var(--margin) * 2);
+  border-bottom: 1px solid var(--dark-grey);
+}
+
+/* What is open in the editor right now, kept in front of everything else the
+   modal offers so that "export" and "publish" plainly mean this one. */
+.current {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--margin) * 2);
+  padding: calc(var(--margin) * 2);
+  border-bottom: 1px solid var(--dark-grey);
+}
+
+.currentPreview {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  background-color: var(--color-base-300, #17181c);
+  border: 1px solid var(--dark-grey);
+  border-radius: var(--margin);
+  overflow: hidden;
+}
+
+.currentDetail {
+  display: grid;
+  gap: calc(var(--margin) / 2);
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.currentActions {
+  display: flex;
+  gap: var(--margin);
+  align-items: center;
+}
+
+.where {
+  color: var(--grey);
+  font-size: 9pt;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--margin) / 1.5);
+}
+
+.title {
+  flex-grow: 1;
+  min-width: 0;
+  font-size: 13pt;
+}
+
+.who {
+  color: var(--light-grey);
+  font-size: 10pt;
+  max-width: 220px;
+  margin-left: var(--margin);
+  padding-left: calc(var(--margin) * 2);
+  border-left: 1px solid var(--dark-grey);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.body {
+  padding: calc(var(--margin) * 2);
+  display: grid;
+  gap: calc(var(--margin) * 2);
+  align-content: start;
+  overflow-y: auto;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: calc(var(--margin) * 2);
+}
+
+.card {
+  display: grid;
+  gap: var(--margin);
+  border: 1px solid transparent;
+  border-radius: var(--margin);
+  padding: var(--margin);
+
+  &:hover {
+    border-color: var(--grey);
+    background-color: var(--back);
+
+    .cardAction {
+      opacity: 1;
+    }
+  }
+}
+
+.openCard {
+  display: grid;
+  gap: var(--margin);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  min-width: 0;
+}
+
+.preview {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  background-color: var(--back);
+  border: 1px solid var(--dark-grey);
+  border-radius: var(--margin);
+  overflow: hidden;
+}
+
+.thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  /* A model is drawn a voxel at a time and its picture is one pixel per voxel,
+     so it is scaled up with the pixels kept square rather than smoothed away. */
+  image-rendering: pixelated;
+}
+
+/* Shown for a model published before models carried a picture. */
+.noPreview {
+  color: var(--grey);
+  font-size: 20pt;
+}
+
+.name {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--margin) / 1.5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  /* Which kind of home the model has: an account, or a file on disk. */
+  & > i {
+    color: var(--grey);
+    font-size: 8pt;
+  }
+}
+
+.meta {
+  color: var(--grey);
+  font-size: 9pt;
+  display: flex;
+  align-items: center;
+  gap: var(--margin);
+}
+
+.meta > span:first-child {
+  flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Out of the way until the card is pointed at, so a wall of models is not also
+   a wall of buttons. */
+.cardAction {
+  opacity: 0;
+  cursor: pointer;
+  color: var(--grey);
+  transition: opacity 120ms;
+
+  &:hover {
+    color: var(--front);
+  }
+
+  &:focus-visible {
+    opacity: 1;
+  }
+}
+
+.empty {
+  color: var(--light-grey);
+  display: grid;
+  gap: var(--margin);
+  justify-items: start;
+}
+
+.error {
+  color: #e06c75;
+  overflow-wrap: anywhere;
+}
+
+.signIn {
+  display: grid;
+  gap: var(--margin);
+  justify-items: start;
+  padding: calc(var(--margin) * 2);
+  border: 1px solid var(--dark-grey);
+  border-radius: var(--margin);
+  max-width: 420px;
+}
+
+.signInRow {
+  display: flex;
+  gap: var(--margin);
+  align-items: center;
+  width: 100%;
+}
+
+.heading {
+  color: var(--light-grey);
+  font-size: 9pt;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.input {
+  flex-grow: 1;
+  min-width: 0;
+  background-color: var(--back);
+  border: 1px solid var(--grey);
+  border-radius: calc(var(--margin) / 2);
+  color: var(--front);
+  padding: calc(var(--margin) / 2) var(--margin);
+
+  &::placeholder {
+    color: var(--grey);
+  }
+}

@@ -148,6 +148,7 @@ export function Column(props: ParentProps<{ style?: JSX.CSSProperties }>) {
 
 export interface PopoverTriggerProps extends ParentProps {
   class?: string | string[];
+  title?: string;
 }
 
 export interface PopoverProps extends ParentProps {
@@ -155,6 +156,57 @@ export interface PopoverProps extends ParentProps {
   popover?: "auto" | "manual";
   style?: JSX.CSSProperties;
   ref?: JSX.Ref<HTMLDivElement>;
+}
+
+/**********************************************************************************/
+/*                                  Create Dialog                                 */
+/**********************************************************************************/
+
+export interface DialogProps extends ParentProps {
+  class?: JSX.ClassValue;
+}
+
+/**
+ * A modal dialogue: while it is open the browser makes the rest of the page
+ * inert, so nothing behind it can be clicked, typed into or tabbed to, and
+ * pressing escape closes it. That is the difference from a popover, which
+ * leaves everything behind it live.
+ */
+export function createDialog() {
+  let element: HTMLDialogElement = null!;
+  const [isOpen, setIsOpen] = createSignal(false);
+
+  return {
+    isOpen,
+    open() {
+      element?.showModal();
+      setIsOpen(true);
+    },
+    close() {
+      element?.close();
+    },
+    Dialog(props: DialogProps) {
+      return (
+        <Portal>
+          <dialog
+            ref={_element => (element = _element)}
+            class={props.class}
+            onClose={() => setIsOpen(false)}
+            // The backdrop is part of the dialogue itself, so a click that
+            // lands on the element rather than on anything inside it is a
+            // click outside — which closes, as it does for a popover.
+            onClick={event => {
+              if (event.target === element) {
+                element.close();
+              }
+            }}
+          >
+            {props.children}
+          </dialog>
+        </Portal>
+      );
+    },
+  };
 }
 
 let counter = 0;
@@ -180,6 +232,7 @@ export function createPopover() {
           }}
           popovertarget={id}
           class={props.class}
+          title={props.title}
         >
           {props.children}
         </button>

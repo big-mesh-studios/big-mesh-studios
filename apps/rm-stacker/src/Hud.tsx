@@ -1,12 +1,11 @@
-import { fileOpen, fileSave, FileWithHandle } from "browser-fs-access";
-import { useNavigate } from "@solidjs/router";
-import { createEffect, createSignal, flush, onSettled, useContext } from "solid-js";
-import { AtprotoPanel } from "./atproto/AtprotoPanel";
+import { flush, useContext } from "solid-js";
+import { ProfileModal } from "./profile/ProfileModal";
 import {
   Bar,
   Colour,
   colourTabStyle,
   Column,
+  createDialog,
   createPopover,
   Icon,
   IconButton,
@@ -16,132 +15,30 @@ import {
 } from "./components/components";
 import { StackerContext } from "./context";
 import styles from "./Hud.module.css";
-import { load, save } from "./load-save";
 import Palette from "./Palette";
 
 export function Hud() {
-  const {
-    sides,
-    setSides,
-    undoRedoManager,
-    updateVoxels,
-    selectedColour,
-    requestRender,
-    mode,
-    setMode,
-    reset,
-    palette,
-    setPalette,
-    preview,
-    requestAutoSave,
-    atproto,
-  } = useContext(StackerContext);
+  const { undoRedoManager, selectedColour, mode, setMode, preview, requestAutoSave, atproto } =
+    useContext(StackerContext);
 
-  const [fileHandle, setFileHandle] = createSignal<FileSystemFileHandle | null>(null);
-  const navigate = useNavigate();
-
-  const MenuPopover = createPopover();
   const PalettePopover = createPopover();
-  const AtprotoPopover = createPopover();
-
-  // Signing back in is put off until somebody asks after an account, rather
-  // than done at startup: it fetches this app's client metadata document, and
-  // an editor nobody publishes from should not be talking to the network at
-  // all.
-  createEffect(AtprotoPopover.isOpen, isOpen => {
-    if (isOpen) {
-      void atproto.restore();
-    }
-  });
-
-  const onLoad = async () => {
-    const file = await fileOpen<false>({
-      extensions: [".zip"],
-      description: "Sprite stack",
-      mimeTypes: ["application/zip"],
-    });
-    const result = await load(file, palette());
-    setSides(result.sides);
-    setPalette(result.palette);
-    updateVoxels();
-    setFileHandle((file as FileWithHandle).handle ?? null);
-    requestAutoSave();
-    onSettled(() => {
-      requestRender();
-    });
-  };
-
-  const onSave = async () => {
-    const blob = await save(sides(), palette());
-    setFileHandle(
-      await fileSave(
-        blob,
-        {
-          fileName: "sprite-stack.zip",
-          extensions: [".zip"],
-          description: "Sprite stack",
-        },
-        fileHandle(),
-      ),
-    );
-  };
-
-  const onSaveAs = async () => {
-    const blob = await save(sides(), palette());
-    setFileHandle(
-      await fileSave(blob, {
-        fileName: "sprite-stack.zip",
-        extensions: [".zip"],
-        description: "Sprite stack",
-      }),
-    );
-  };
+  const ProfileDialog = createDialog();
 
   return (
     <>
       <div class={styles.hud}>
         <div class={styles.side}>
           <Bar>
-            <MenuPopover.Trigger class={[tabStyle, iconTabStyle]}>
-              <Icon kind="bars" />
-            </MenuPopover.Trigger>
-            <MenuPopover.PopOver class={styles.menuPopover}>
-              <IconButton
-                kind="file"
-                label="New File"
-                onClick={() => {
-                  if (!window.confirm("Start a new file? This will discard your current work.")) {
-                    return;
-                  }
-                  undoRedoManager.clear();
-                  reset();
-                  MenuPopover.close();
-                }}
-              />
-              <IconButton kind="floppy-disk" label="Save File" onClick={onSave} />
-              <IconButton kind="floppy-disk" label="Save As" onClick={onSaveAs} />
-              <IconButton onClick={onLoad} kind="folder" label="Load" />
-              <IconButton
-                kind="cloud"
-                label={atproto.account() === null ? "Sign In" : "Account"}
-                onClick={() => {
-                  MenuPopover.close();
-                  AtprotoPopover.open();
-                }}
-              />
-              <IconButton
-                kind="grip"
-                label="Your Models"
-                onClick={() => {
-                  MenuPopover.close();
-                  navigate("/profile");
-                }}
-              />
-            </MenuPopover.PopOver>
+            <IconTab
+              kind="table-cells"
+              onClick={() => ProfileDialog.open()}
+              selected={ProfileDialog.isOpen()}
+              title="Your files"
+            />
           </Bar>
-          <AtprotoPopover.PopOver class={styles.atprotoPopover}>
-            <AtprotoPanel />
-          </AtprotoPopover.PopOver>
+          <ProfileDialog.Dialog class={styles.profileDialog}>
+            <ProfileModal open={ProfileDialog.isOpen()} onClose={() => ProfileDialog.close()} />
+          </ProfileDialog.Dialog>
           <div class={styles.bottom}>
             <Bar>
               <IconButton

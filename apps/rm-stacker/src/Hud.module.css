@@ -39,28 +39,42 @@
   pointer-events: none;
 }
 
-.menuPopover,
-.palettePopover,
-.atprotoPopover {
+.palettePopover {
   inset: unset;
   position: absolute;
   pointer-events: auto;
 }
 
-.menuPopover:popover-open {
-  top: calc(anchor(top));
-  left: calc(anchor(right) + var(--margin));
-  font-size: 11pt;
-}
+/* Fills the space the controls leave between them rather than sizing to what
+   is inside it: a button and the margins either side of it, taken off each
+   edge, which is exactly the room the bars are not using. */
+/* Fills the room the controls leave between them: a button and the margins
+   either side of it, taken off each edge, so the controls stay visible around
+   it rather than being covered. */
+.profileDialog {
+  --clearance: calc(var(--size) * 2 + var(--margin) * 4);
 
-.atprotoPopover:popover-open {
+  /* A modal dialogue is centred by the browser's own `margin: auto`, which the
+     stylesheet reset zeroes along with every other margin — so it is asked for
+     again here rather than left to be taken away. */
   position: fixed;
   inset: 0;
   margin: auto;
-  height: fit-content;
-  max-height: calc(100dvh - var(--margin) * 8);
-  overflow-y: auto;
+  width: calc(100vw - var(--clearance));
+  height: calc(100dvh - var(--clearance));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--grey);
+  border-radius: var(--margin);
+  background-color: var(--back);
+  color: var(--front);
   font-size: 11pt;
+
+  &::backdrop {
+    background-color: rgb(0 0 0 / 40%);
+  }
 }
 
 .palettePopover:popover-open {
