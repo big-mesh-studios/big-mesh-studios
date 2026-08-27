@@ -166,7 +166,7 @@ export class AtprotoController {
         return "not signed in";
       }
       await this.adoptSession(stored);
-      return `restored session for ${stored}`;
+      return `restored session for ${await this.nameFor(stored)}`;
     } catch (err) {
       return this.fail(err);
     }
@@ -191,7 +191,7 @@ export class AtprotoController {
         clientId: this.options.clientId,
       });
       await this.adoptSession(did);
-      return `signed in as ${did}`;
+      return `signed in as ${await this.nameFor(did)}`;
     } catch (err) {
       return this.fail(err);
     }
@@ -314,8 +314,19 @@ export class AtprotoController {
     return "signed out";
   }
 
+  /**
+   * One line for the console: the connection's state, whose account it is, and
+   * the last error if the connection is in one. The account is named by its
+   * handle once one has been resolved — signing in resolves it — and by its
+   * account id until then, since resolving one has to be awaited and this
+   * answers straight away.
+   */
   describe(): string {
-    return `account: ${this.status_}${this.did_ !== null ? ` as ${this.did_}` : ""}${
+    const named =
+      this.did_ === null
+        ? null
+        : (this.handleCache.get(this.did_) ?? this.did_);
+    return `account: ${this.status_}${named !== null ? ` as ${named}` : ""}${
       this.status_ === "error" ? ` — ${this.lastError ?? "unknown error"}` : ""
     }`;
   }
@@ -378,6 +389,19 @@ export class AtprotoController {
       throw new Error(`no #atproto PDS service in DID document for ${did}`);
     }
     return endpoint;
+  }
+
+  /**
+   * What to call `did` in a line the player reads: the handle the account
+   * claims and its own server confirms, falling back to the account id when
+   * it claims none or the lookup fails.
+   */
+  private async nameFor(did: string): Promise<string> {
+    try {
+      return (await this.resolveHandle(did)) ?? did;
+    } catch {
+      return did;
+    }
   }
 
   /**
