@@ -374,7 +374,10 @@ export let marchBlock = (params: {
   const volumeDimensions = dimensions.toVar();
   const virtualDim = broadDim.mul(chunkDim).toVar();
   const cellSizeBroad = volumeDimensions.div(broadDim).toVar();
-  const chunkDimU = chunkDim.toUint();
+  // A chunk is a cube, so one axis is the whole of its size, and the chunk
+  // arithmetic below — a voxel to the chunk holding it, a chunk to its first
+  // voxel — is scalar throughout.
+  const chunkDimU = chunkDim.x.toUint();
 
   const hit = bool(false).toVar();
   const normal = vec3(0).toVar();
@@ -750,7 +753,10 @@ export let marchWater = (params: {
   const volumeDimensions = dimensions.toVar();
   const virtualDim = broadDim.mul(chunkDim).toVar();
   const cellSizeBroad = volumeDimensions.div(broadDim).toVar();
-  const chunkDimU = chunkDim.toUint();
+  // A chunk is a cube, so one axis is the whole of its size, and the chunk
+  // arithmetic below — a voxel to the chunk holding it, a chunk to its first
+  // voxel — is scalar throughout.
+  const chunkDimU = chunkDim.x.toUint();
 
   const enteredWater = bool(false).toVar();
   const surfaceDistance = float(0).toVar();
