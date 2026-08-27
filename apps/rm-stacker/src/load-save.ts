@@ -422,6 +422,35 @@ function saveBlobToDB(key: IDBValidKey, blob: Blob): Promise<void> {
   });
 }
 
+/**
+ * Anything else kept alongside the model: whatever is handed in is stored as
+ * the browser clones it, which is what lets a file handle — a live reference to
+ * a file on disk, not something that survives being written out as text — be
+ * kept from one visit to the next.
+ */
+export function saveValueToDB(key: string, value: unknown): Promise<void> {
+  return new Promise((resolve, reject) => {
+    openDB().then(db => {
+      const transaction = db.transaction(STORE_NAME, "readwrite");
+      const putRequest = transaction.objectStore(STORE_NAME).put(value, key);
+      putRequest.onsuccess = () => resolve();
+      putRequest.onerror = () => reject(putRequest.error || new Error("Failed to write value."));
+    }, reject);
+  });
+}
+
+/** Reads back what `saveValueToDB` kept, or null when nothing is under `key`. */
+export function loadValueFromDB<T>(key: string): Promise<T | null> {
+  return new Promise((resolve, reject) => {
+    openDB().then(db => {
+      const transaction = db.transaction(STORE_NAME, "readonly");
+      const getRequest = transaction.objectStore(STORE_NAME).get(key);
+      getRequest.onsuccess = () => resolve((getRequest.result as T | undefined) ?? null);
+      getRequest.onerror = () => reject(getRequest.error || new Error("Failed to read value."));
+    }, reject);
+  });
+}
+
 function loadTextFromDB(key: IDBValidKey): Promise<string | null> {
   return new Promise((resolve, reject) => {
     openDB().then(db => {

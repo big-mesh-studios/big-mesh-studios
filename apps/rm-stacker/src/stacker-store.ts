@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, flush } from "solid-js";
 import { createAtproto } from "./atproto/create-atproto";
+import { Home } from "./home";
 import { Command } from "./command/Command";
 import { createCommander } from "./command/commander";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
@@ -57,6 +58,10 @@ export function createStacker() {
   );
 
   const [mode, setMode] = createSignal<ModeKind>("Idle");
+  // Where the drawing lives, if anywhere yet. Held here rather than in whatever
+  // view happens to save it, so that opening a model from one place cannot
+  // leave a stale home behind from another.
+  const [home, setHome] = createSignal<Home>({ kind: "nowhere" });
   const [selectedPaletteIndex, selectPaletteIndex] = createSignal(5);
   const [palette, setPalette] = createSignal<RGBA[]>(
     () => saved()?.palette ?? DAWNBRINGER_32_PALETTE,
@@ -178,6 +183,9 @@ export function createStacker() {
     undoRedoManager,
     // the account models are published to and read from
     atproto,
+    // where the drawing lives
+    home,
+    setHome,
     // dimensions
     dimensions,
     // sides
@@ -230,6 +238,7 @@ export function createStacker() {
     },
     reset() {
       setSides(createInitialSides(INITIAL_DIMENSIONS));
+      setHome({ kind: "nowhere" });
       updateVoxels();
       requestAutoSave();
     },
