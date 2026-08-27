@@ -51,7 +51,7 @@ interface ClientConfig {
  */
 function buildLoopbackConfig(): ClientConfig {
   const port = window.location.port || "5173";
-  const redirectUri = `http://127.0.0.1:${port}/`;
+  const redirectUri = `http://127.0.0.1:${port}${import.meta.env.BASE_URL}`;
   const params = new URLSearchParams({
     redirect_uri: redirectUri,
     scope: DEFAULT_SCOPE,
@@ -105,7 +105,13 @@ async function resolveClientConfig(clientId: string | undefined): Promise<Client
   if (isLoopbackEnvironment()) {
     return buildLoopbackConfig();
   }
-  return loadHostedConfig(new URL("client-metadata.json", window.location.href).href);
+  // Resolved against the folder the application sits in rather than the page
+  // being shown: the document lives beside the application, and asking
+  // relative to the current address would look for it beside whichever page
+  // happened to be open.
+  return loadHostedConfig(
+    new URL("client-metadata.json", new URL(import.meta.env.BASE_URL, window.location.origin)).href,
+  );
 }
 
 let configuring: Promise<ClientConfig> | undefined;

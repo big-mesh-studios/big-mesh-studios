@@ -36,6 +36,14 @@ jobs:
       - name: Build app
         run: pnpm build
 
+      # Every address other than the site root is a page this application draws,
+      # not a file on disk. GitHub Pages serves `404.html` for anything it
+      # cannot find, so handing it the application means a page opened directly,
+      # reloaded, or followed from a link arrives at the application, which then
+      # reads the address and shows the right page.
+      - name: Answer unknown addresses with the application
+        run: cp dist/index.html dist/404.html
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:

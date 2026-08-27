@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "@atcute/lexicons": "^2.1.0",
+    "@solidjs/router": "2.0.0-next.13",
     "fast-png": "^8.0.0",
     "jszip": "^3.10.1"
   },

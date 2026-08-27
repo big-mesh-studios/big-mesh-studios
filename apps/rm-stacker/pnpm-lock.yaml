@@ -11,6 +11,9 @@ importers:
       '@atcute/lexicons':
         specifier: ^2.1.0
         version: 2.1.0
+      '@solidjs/router':
+        specifier: 2.0.0-next.13
+        version: 2.0.0-next.13(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)
       fast-png:
         specifier: ^8.0.0
         version: 8.0.0
@@ -551,6 +554,12 @@ packages:
     resolution: {integrity: sha512-MOG/3gTOn4Fwf574RVOaY61I5o6P90legkFADiTyn1hyjNydT+cerU2rLUwPdZkKKyJ+iT+K9p7WXK4LM1Ka6g==}
     cpu: [x64]
     os: [win32]
+
+  '@solidjs/router@2.0.0-next.13':
+    resolution: {integrity: sha512-vNTXv/A+dhQMeJm/TuFZmnmXBOvoL6Y+anuEPXxMI6wSg/FMQ81Q3feNCoXxd5lFieIJx5dhZhmdLXfTrlUc3w==}
+    peerDependencies:
+      '@solidjs/web': '>=2.0.0-beta.28 <2.0.0-experimental.0'
+      solid-js: '>=2.0.0-beta.28 <2.0.0-experimental.0'
 
   '@solidjs/signals@2.0.0-beta.29':
     resolution: {integrity: sha512-/W4goRwA/t9SqA0acIcD008pBJr2p5BMxVpzcdvWMYNswyE88se1ecJKQO/QTa6DjVRZvplOOtKEtDRHpEo3rQ==}
@@ -1636,6 +1645,11 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.62.3':
     optional: true
+
+  '@solidjs/router@2.0.0-next.13(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)':
+    dependencies:
+      '@solidjs/web': 2.0.0-beta.29(solid-js@2.0.0-beta.29)
+      solid-js: 2.0.0-beta.29
 
   '@solidjs/signals@2.0.0-beta.29': {}
 
