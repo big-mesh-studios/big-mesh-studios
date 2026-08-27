@@ -140,7 +140,7 @@ export class MeshPeer {
     this.onClose(this.did);
   }
 
-  /** A one-line snapshot of this link's state, for `/multiplayer debug`. */
+  /** A one-line snapshot of this link's state, for `/multiplayer:debug`. */
   describe(): string {
     const up = Math.round((Date.now() - this.startedAt) / 1000);
     return `role=${this.role} phase=${this.phase} up=${up}s${

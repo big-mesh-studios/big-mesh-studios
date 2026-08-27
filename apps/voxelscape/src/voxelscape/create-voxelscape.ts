@@ -36,8 +36,8 @@ export interface VoxelscapeConfig {
   player?: Partial<PlayerConfig>;
   /**
    * Starts the world with the GPU timer and the per-frame statistics passed to
-   * `onDebugStats` turned on, which `/perf` then toggles. Defaults to whether
-   * the page URL's hash contains `perf`.
+   * `onDebugStats` turned on, which `/render:perf` then toggles. Defaults to
+   * whether the page URL's hash contains `perf`.
    */
   debugPerf?: boolean;
   /** Receives the statistics line once per frame while `debugPerf` is on. */
@@ -57,7 +57,7 @@ export interface Voxelscape {
   input: InputController;
   inventory: Inventory;
   commands: Commander;
-  /** Whether `onDebugStats` is being called, which `/perf` toggles. */
+  /** Whether `onDebugStats` is being called, which `/render:perf` toggles. */
   debugPerf: Accessor<boolean>;
   /** Last break/place result, so the HUD can show silent failures. */
   editStatus: Accessor<string>;

@@ -9,7 +9,7 @@
 //   runA  <cmd>        run a console command in window A (await result)
 //   runB  <cmd>        run a console command in window B (await result)
 //   runboth <cmd>      run in both windows
-//   connA <handle>     dispatch `/connect <handle>` in A, fire-and-forget
+//   connA <handle>     dispatch `/account:login <handle>` in A, fire-and-forget
 //                      (the OAuth popup needs the user to sign in by hand)
 //   connB <handle>     same for B
 //   wait <ms>          sleep
@@ -19,8 +19,8 @@
 //   seedA | seedB      print each window's terrain seed line
 //   quit               close everything and exit
 //
-// `/connect` commands are dispatched without awaiting, because they block until
-// the human completes the OAuth popup; poll `outA`/`outB` to see the result.
+// `/account:login` commands are dispatched without awaiting, because they
+// block until the human completes the OAuth popup; poll `outA`/`outB` to see the result.
 import { chromium } from "playwright";
 import readline from "readline";
 import fs from "fs";
@@ -106,14 +106,16 @@ try {
   process.exit(1);
 }
 
-const isConnect = (cmd) => /^\/connect\b/.test(cmd);
+const isLogin = (cmd) => /^\/account:login\b/.test(cmd);
 
 async function dispatch(key, cmd) {
   const { page } = players[key];
-  if (isConnect(cmd)) {
+  if (isLogin(cmd)) {
     void execCommand(page, cmd)
-      .then(() => log(`${key}: /connect dispatched — waiting for the popup`))
-      .catch((e) => log(`${key}: /connect dispatch error: ${e.message}`));
+      .then(() =>
+        log(`${key}: /account:login dispatched — waiting for the popup`),
+      )
+      .catch((e) => log(`${key}: /account:login dispatch error: ${e.message}`));
     return;
   }
   await execCommand(page, cmd);
@@ -141,10 +143,10 @@ rl.on("line", async (line) => {
         await dispatch("B", restStr);
         break;
       case "connA":
-        await dispatch("A", `/connect ${restStr}`.trim());
+        await dispatch("A", `/account:login ${restStr}`.trim());
         break;
       case "connB":
-        await dispatch("B", `/connect ${restStr}`.trim());
+        await dispatch("B", `/account:login ${restStr}`.trim());
         break;
       case "wait": {
         const ms = parseInt(rest[0] || "0", 10);
@@ -197,7 +199,7 @@ rl.on("line", async (line) => {
       case "status":
         for (const k of ["A", "B"]) {
           const o = await readOutput(players[k].page);
-          const connected = /connected to atproto as/.test(o);
+          const connected = /signed in as/.test(o);
           const restored = /restored session/.test(o);
           const mp = /multiplayer online/.test(o);
           log(

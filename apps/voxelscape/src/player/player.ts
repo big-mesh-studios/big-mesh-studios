@@ -13,8 +13,9 @@ export interface Player {
   vy: number;
   onGround: boolean;
   /**
-   * This player's own copy of the movement settings, so `/speed` and `/look`
-   * change one player rather than every player on the page.
+   * This player's own copy of the movement settings, so `/player:speed` and
+   * `/player:sensitivity` change one player rather than every player on the
+   * page.
    */
   config: PlayerConfig;
 }

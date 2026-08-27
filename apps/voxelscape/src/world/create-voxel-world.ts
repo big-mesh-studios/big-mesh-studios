@@ -66,7 +66,7 @@ export interface VoxelWorld {
    * how the ring maps blocks onto grid coordinates.
    */
   blocks: WorldBlock[];
-  /** Both rendering strategies and the switch between them (`/renderer ray|tri`). */
+  /** Both rendering strategies and the switch between them (`/render:mode ray|tri`). */
   renderers: RendererSwitch;
   /** The blocks drawn as solid terrain, for the scene to place in its draw order. */
   terrain: Group;

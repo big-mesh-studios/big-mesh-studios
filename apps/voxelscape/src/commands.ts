@@ -112,70 +112,70 @@ export const createCommands = ({
   setDebugPerf,
 }: CommandsParams): Commander => {
   return new Commander({
-    "/day": {
+    "/clock:day": {
       description: "jump to noon (t=300s)",
       run: () => {
         dayNight.jumpTo(300);
         return "jumped to noon (t=300s)";
       },
     },
-    "/sunset": {
+    "/clock:sunset": {
       description: "jump to dusk (t=645s)",
       run: () => {
         dayNight.jumpTo(645);
         return "jumped to dusk (t=645s)";
       },
     },
-    "/night": {
+    "/clock:night": {
       description: "jump to midnight (t=900s)",
       run: () => {
         dayNight.jumpTo(900);
         return "jumped to midnight (t=900s)";
       },
     },
-    "/sunrise": {
+    "/clock:sunrise": {
       description: "jump to dawn (t=1120s)",
       run: () => {
         dayNight.jumpTo(1120);
         return "jumped to dawn (t=1120s)";
       },
     },
-    "/time": {
+    "/clock:time": {
       description: "jump to a second of the 20-minute cycle",
       args: "<seconds>",
       run: (rest) => {
         const t = Number(rest[0]);
         if (!Number.isFinite(t) || t < 0) {
-          return "usage: /time <seconds>  (0..1200, wraps)";
+          return "usage: /clock:time <seconds>  (0..1200, wraps)";
         }
         dayNight.jumpTo(t);
         return `time set to ${t}s`;
       },
     },
-    "/normal": {
+    "/clock:speed": {
+      description: "run the clock that many times fast (0 pauses)",
+      args: "<multiplier>",
+      run: (rest) => {
+        const n = Number(rest[0]);
+        if (!Number.isFinite(n) || n < 0) {
+          return "usage: /clock:speed <multiplier>  (0 pauses, 1 = real time)";
+        }
+        dayNight.setSpeed(n);
+        return `clock speed set to ${n}×`;
+      },
+    },
+    "/clock:live": {
       description: "resume the live clock",
       run: () => {
         dayNight.clearOverride();
         return "resumed the live clock";
       },
     },
-    "/speed": {
-      description: "run the clock that many times fast (0 pauses)",
-      args: "<multiplier>",
-      run: (rest) => {
-        const n = Number(rest[0]);
-        if (!Number.isFinite(n) || n < 0) {
-          return "usage: /speed <multiplier>  (0 pauses, 1 = real time)";
-        }
-        dayNight.setSpeed(n);
-        return `clock speed set to ${n}×`;
-      },
-    },
-    "/now": {
+    "/clock:state": {
       description: "show the current clock state",
       run: () => dayNight.describe(),
     },
-    "/renderer": {
+    "/render:mode": {
       description: "switch renderer (raymarch or surface triangles)",
       args: "ray|tri",
       run: (rest) => {
@@ -186,10 +186,10 @@ export const createCommands = ({
         if (arg === "tri" || arg === "mesh" || arg === "triangles") {
           return rendererSwitch.setMode("tri");
         }
-        return `renderer: ${rendererSwitch.mode} — usage: /renderer ray|tri`;
+        return `renderer: ${rendererSwitch.mode} — usage: /render:mode ray|tri`;
       },
     },
-    "/resolution": {
+    "/render:resolution": {
       description: "adapt the render resolution, or pin it",
       args: "auto|<0.1..1>",
       run: (rest) => {
@@ -206,10 +206,10 @@ export const createCommands = ({
           resolution.setFixed(scale);
           return resolution.describe();
         }
-        return "usage: /resolution auto|<0.1..1>  (1 renders every display pixel)";
+        return "usage: /render:resolution auto|<0.1..1>  (1 renders every display pixel)";
       },
     },
-    "/perf": {
+    "/render:perf": {
       description: "show or hide the frame-time readout",
       args: "[on|off]",
       run: (rest) => {
@@ -223,13 +223,110 @@ export const createCommands = ({
         if (argument === "off") {
           return setDebugPerf(false);
         }
-        return "usage: /perf [on|off]  (no argument flips it)";
+        return "usage: /render:perf [on|off]  (no argument flips it)";
       },
     },
-    "/tris": {
+    "/render:triangles": {
       description: "show the current triangle count",
       run: () =>
         `triangles: ${rendererSwitch.triangleCount.toLocaleString()} (${rendererSwitch.mode} mode)`,
+    },
+    "/sound:volume": {
+      description: "set the sound volume (0 mutes)",
+      args: "<0..1>",
+      run: (rest) => {
+        const v = Number(rest[0]);
+        if (!Number.isFinite(v)) {
+          return sound.describe();
+        }
+        return sound.setVolume(v);
+      },
+    },
+    "/sound:state": {
+      description: "show the sound state",
+      run: () => sound.describe(),
+    },
+    "/player:view": {
+      description: "switch the camera between first and third person",
+      args: "first|third",
+      run: (rest) => {
+        const arg = rest[0];
+        if (arg === "first" || arg === "third") {
+          return setView(arg);
+        }
+        return "usage: /player:view first|third";
+      },
+    },
+    "/player:cube": {
+      description: "show or hide the player cube",
+      args: "show|hide",
+      run: (rest) => {
+        const arg = rest[0];
+        if (arg === "show") {
+          return setPlayerVisible(true);
+        }
+        if (arg === "hide") {
+          return setPlayerVisible(false);
+        }
+        return "usage: /player:cube show|hide";
+      },
+    },
+    "/player:speed": {
+      description: "set (or show) the player's move speed, in units per second",
+      args: "[n]",
+      run: (rest) => {
+        const n = Number(rest[0]);
+        return setMoveSpeed(
+          rest[0] === undefined || !Number.isFinite(n) || n <= 0
+            ? undefined
+            : n,
+        );
+      },
+    },
+    "/player:sensitivity": {
+      description: "set (or show) the look sensitivity, in radians per pixel",
+      args: "[n]",
+      run: (rest) => {
+        const n = Number(rest[0]);
+        return setLookSensitivity(
+          rest[0] === undefined || !Number.isFinite(n) || n <= 0
+            ? undefined
+            : n,
+        );
+      },
+    },
+    "/account:login": {
+      description: "sign in through the Bluesky login popup",
+      args: "[handle]",
+      run: async (rest) => atproto.connect(rest[0]),
+    },
+    "/account:logout": {
+      description: "sign out, and revoke the session that was signed in",
+      run: async () => atproto.signOut(),
+    },
+    "/account:sync": {
+      description: "upload new edits, then fetch and merge remote edit chunks",
+      run: async () => atproto.sync(),
+    },
+    "/account:state": {
+      description: "show which account is signed in",
+      run: () => atproto.describe(),
+    },
+    "/multiplayer:start": {
+      description: "bring the multiplayer mesh online",
+      run: async () => multiplayer.start(),
+    },
+    "/multiplayer:stop": {
+      description: "take the multiplayer mesh offline",
+      run: async () => multiplayer.stop(),
+    },
+    "/multiplayer:state": {
+      description: "show the multiplayer mesh's peers and connection state",
+      run: () => multiplayer.describe(),
+    },
+    "/multiplayer:debug": {
+      description: "show what every peer connection is doing",
+      run: () => multiplayer.describeDebug(),
     },
     "/weather": {
       description: "set or resume the weather",
@@ -247,104 +344,6 @@ export const createCommands = ({
           return `weather set to ${arg}`;
         }
         return weather.describe();
-      },
-    },
-    "/volume": {
-      description: "set the sound volume (0 mutes)",
-      args: "<0..1>",
-      run: (rest) => {
-        const v = Number(rest[0]);
-        if (!Number.isFinite(v)) {
-          return sound.describe();
-        }
-        return sound.setVolume(v);
-      },
-    },
-    "/sound": {
-      description: "show the sound state",
-      run: () => sound.describe(),
-    },
-    "/connect": {
-      description: "sign in to atproto through the Bluesky login popup",
-      args: "[handle]",
-      run: async (rest) => atproto.connect(rest[0]),
-    },
-    "/sync": {
-      description: "upload new edits, then fetch and merge remote edit chunks",
-      run: async () => atproto.sync(),
-    },
-    "/atproto": {
-      description: "show the atproto connection state",
-      run: () => atproto.describe(),
-    },
-    "/logout": {
-      description: "revoke the atproto session and sign out",
-      run: async () => atproto.signOut(),
-    },
-    "/multiplayer": {
-      description: "control and inspect the multiplayer mesh",
-      args: "start|stop|status|debug",
-      run: async (rest) => {
-        const argument = rest[0];
-        if (argument === "start") {
-          return multiplayer.start();
-        }
-        if (argument === "stop") {
-          return multiplayer.stop();
-        }
-        if (argument === "debug") {
-          return multiplayer.describeDebug();
-        }
-        return multiplayer.describe();
-      },
-    },
-    "/view": {
-      description: "switch the camera between first and third person",
-      args: "first|third",
-      run: (rest) => {
-        const arg = rest[0];
-        if (arg === "first" || arg === "third") {
-          return setView(arg);
-        }
-        return "usage: /view first|third";
-      },
-    },
-    "/player": {
-      description: "show or hide the player cube",
-      args: "show|hide",
-      run: (rest) => {
-        const arg = rest[0];
-        if (arg === "show") {
-          return setPlayerVisible(true);
-        }
-        if (arg === "hide") {
-          return setPlayerVisible(false);
-        }
-        return "usage: /player show|hide";
-      },
-    },
-    "/movespeed": {
-      description: "set (or show) the player's move speed, in units per second",
-      args: "[n]",
-      run: (rest) => {
-        const n = Number(rest[0]);
-        return setMoveSpeed(
-          rest[0] === undefined || !Number.isFinite(n) || n <= 0
-            ? undefined
-            : n,
-        );
-      },
-    },
-    "/sensitivity": {
-      description: "set (or show) the look sensitivity, in radians per pixel",
-      args: "[n]",
-      run: (rest) => {
-        const n = Number(rest[0]);
-        return setLookSensitivity(
-          rest[0] === undefined || !Number.isFinite(n) || n <= 0
-            ? undefined
-            : n,
-        );
       },
     },
     "/fullscreen": {

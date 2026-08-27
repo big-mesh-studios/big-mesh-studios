@@ -13,7 +13,7 @@ export interface EnvironmentConfig {
 export interface Environment {
   /**
    * Owns the sun/ambient lights, the sun/moon billboards, and the day-night
-   * clock (`/day`, `/time`, `/normal`).
+   * clock (`/clock:day`, `/clock:time`, `/clock:live`).
    */
   dayNight: DayNightController;
   /**
@@ -21,7 +21,7 @@ export interface Environment {
    * strike flash (`/weather`).
    */
   weather: WeatherController;
-  /** Synthesizes rain, wind and thunder from the Web Audio API (`/volume`). */
+  /** Synthesizes rain, wind and thunder from the Web Audio API (`/sound:volume`). */
   sound: SoundController;
   /**
    * Advances the clock, the weather and its sound by `dt` seconds.

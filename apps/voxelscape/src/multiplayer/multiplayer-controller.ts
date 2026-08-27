@@ -52,7 +52,7 @@ export interface DiscoveryFetchEntry {
   error?: string;
 }
 
-/** What the last discovery pass saw, for `/multiplayer debug`. */
+/** What the last discovery pass saw, for `/multiplayer:debug`. */
 export interface DiscoveryTelemetry {
   at: number;
   /** The raw DIDs `listReposByCollection` returned from the relay. */
@@ -241,7 +241,7 @@ export class MultiplayerController {
     const repoClient = this.getRepoClient();
     const did = this.getDid();
     if (repoClient === undefined || did === null) {
-      return "multiplayer requires atproto — use /connect first";
+      return "multiplayer needs an account — use /account:login first";
     }
     this.running = true;
     this.status_ = "online";
@@ -391,7 +391,7 @@ export class MultiplayerController {
   }
 
   /**
-   * A multi-line dump of the mesh's internals, for `/multiplayer debug`: what
+   * A multi-line dump of the mesh's internals, for `/multiplayer:debug`: what
    * the relay actually returned for discovery, which of those fetches failed
    * and why, the roster with record ages, the current selection, and each
    * peer's handshake state. This is how a status line like "2 nearby, 0

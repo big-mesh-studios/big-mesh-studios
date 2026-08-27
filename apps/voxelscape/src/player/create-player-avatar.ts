@@ -51,7 +51,10 @@ export interface PlayerAvatarConfig {
 export interface PlayerAvatar {
   /** The cube drawn for the player, for the scene to place in its draw order. */
   body: Group;
-  /** Carries this player's own movement settings on `config` (`/speed`, `/look`). */
+  /**
+   * Carries this player's own movement settings on `config` (`/player:speed`,
+   * `/player:sensitivity`).
+   */
   player: Player;
   /**
    * Steps the physics. The cube and the camera still show where the player

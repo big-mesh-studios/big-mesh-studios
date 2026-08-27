@@ -5,7 +5,7 @@
  * few game-hours of clock time. The schedule is deterministic — every storm's
  * gap, duration, and kind are derived from a seeded PRNG — so the whole
  * module is pure and unit-testable, and fast-forwarding the day-night clock
- * (via `/speed`) advances the weather at the same rate.
+ * (via `/clock:speed`) advances the weather at the same rate.
  */
 import { CYCLE_SECONDS } from "./day-night";
 import type { DayNightState, Vec3 } from "./day-night";

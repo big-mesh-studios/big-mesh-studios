@@ -59,8 +59,8 @@ export type AtpStatus =
 /**
  * Wraps the edit-chunk sync onto a player's atproto repo. A single shared
  * overlay is both the source for uploads and the destination for merges, so a
- * `/sync` round-trip ends with the local world reflecting everyone's edits.
- * Remote edits land in the overlay only; the caller (wired via `onMerged` in
+ * `/account:sync` round-trip ends with the local world reflecting everyone's
+ * edits. Remote edits land in the overlay only; the caller (wired via `onMerged` in
  * `App.tsx`) is what re-applies them to the ring's blocks and rebuilds their
  * mesh, keeping this object ignorant of renderers.
  */
@@ -94,21 +94,21 @@ export class AtprotoController {
     layer: EditLayer;
     seed: number | null;
     options: AtpControllerOptions;
-    /** Supplies the login handle when `/connect` has no argument. */
+    /** Supplies the login handle when `/account:login` has no argument. */
     getHandle: () => string;
     /**
-     * Called with the number of voxels whose id changed once a `/sync` merge
-     * has updated the overlay, so the caller can re-apply it to live blocks
-     * and rebuild the affected meshes.
+     * Called with the number of voxels whose id changed once an
+     * `/account:sync` merge has updated the overlay, so the caller can
+     * re-apply it to live blocks and rebuild the affected meshes.
      */
     onMerged?: (changed: number) => void;
     /**
      * Called once a session is adopted — at startup from a restored session,
-     * or when `/connect` finishes — so the caller can start the subsystems
-     * that only exist while signed in, like the multiplayer mesh.
+     * or when `/account:login` finishes — so the caller can start the
+     * subsystems that only exist while signed in, like the multiplayer mesh.
      */
     onConnected?: (did: Did) => void;
-    /** Called after `/logout` drops the session. */
+    /** Called after `/account:logout` drops the session. */
     onSignedOut?: () => void;
   }) {
     this.layer = params.layer;
@@ -179,10 +179,10 @@ export class AtprotoController {
   async connect(handle?: string): Promise<string> {
     const target = (handle ?? this.handleInput()).trim();
     if (target === "") {
-      return "provide an atproto handle (e.g. /connect you.bsky.social)";
+      return "provide a Bluesky handle (e.g. /account:login you.bsky.social)";
     }
     if (!isActorIdentifier(target)) {
-      return `"${target}" is not an atproto handle or DID`;
+      return `"${target}" is not a handle or an account id`;
     }
     try {
       this.status_ = "connecting";
@@ -191,7 +191,7 @@ export class AtprotoController {
         clientId: this.options.clientId,
       });
       await this.adoptSession(did);
-      return `connected to atproto as ${did}`;
+      return `signed in as ${did}`;
     } catch (err) {
       return this.fail(err);
     }
@@ -202,7 +202,7 @@ export class AtprotoController {
    * fetches every edit record in the repo and merges it into the overlay
    * (last-write-wins by record timestamp). This is the authoritative, slower
    * path behind the WebRTC optimistic edits; it is guarded against concurrent
-   * runs, since the automatic sync loop and `/sync` share it.
+   * runs, since the automatic sync loop and `/account:sync` share it.
    */
   async sync(): Promise<string> {
     if (this.syncInFlight) {
@@ -241,7 +241,7 @@ export class AtprotoController {
     const client = this.client;
     const repo = this.did_;
     if (client === undefined || repo === null) {
-      return "not connected — use /connect first";
+      return "not connected — use /account:login first";
     }
     const messages: string[] = [];
 
@@ -315,7 +315,7 @@ export class AtprotoController {
   }
 
   describe(): string {
-    return `atproto: ${this.status_}${this.did_ !== null ? ` as ${this.did_}` : ""}${
+    return `account: ${this.status_}${this.did_ !== null ? ` as ${this.did_}` : ""}${
       this.status_ === "error" ? ` — ${this.lastError ?? "unknown error"}` : ""
     }`;
   }
@@ -488,6 +488,6 @@ export class AtprotoController {
   private fail(err: unknown): string {
     this.status_ = "error";
     this.lastError = err instanceof Error ? err.message : String(err);
-    return `atproto error: ${this.lastError}`;
+    return `account error: ${this.lastError}`;
   }
 }
