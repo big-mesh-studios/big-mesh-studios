@@ -50,6 +50,7 @@
     "@atcute/identity-resolver": "^2.0.1",
     "@atcute/lexicons": "^2.1.0",
     "@atcute/oauth-browser-client": "^5.0.0",
+    "@big-mesh-studios/rm-stacker": "https://pkg.pr.new/big-mesh-studios/rm-stacker/@big-mesh-studios/rm-stacker@31994f1",
     "@fortawesome/fontawesome-free": "^7.3.1",
     "@random-mesh/rmsl": "^1.9.0",
     "@solidjs/signals": "2.0.0-beta.29",

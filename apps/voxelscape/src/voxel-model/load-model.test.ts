@@ -1,4 +1,4 @@
-// @vitest-environment node
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { encode } from "fast-png";
 import JSZip from "jszip";
@@ -24,11 +24,11 @@ const palettePng = (): Uint8Array => {
   return encode({ width: 32, height: 1, data, channels: 4 });
 };
 
-const zipWith = async (sides: Uint8Array[]): Promise<ArrayBuffer> => {
+const zipWith = async (sides: Uint8Array[]): Promise<Blob> => {
   const zip = new JSZip();
   SIDES.forEach((kind, i) => zip.file(`${kind}.png`, sides[i]));
   zip.file("palette.png", palettePng());
-  return zip.generateAsync({ type: "arraybuffer" });
+  return zip.generateAsync({ type: "blob" });
 };
 
 describe("loadModel", () => {

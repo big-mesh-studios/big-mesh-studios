@@ -222,6 +222,9 @@ importers:
       '@atcute/oauth-browser-client':
         specifier: ^5.0.0
         version: 5.0.0(@atcute/identity-resolver@2.0.1(@atcute/identity@2.0.2(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3)
+      '@big-mesh-studios/rm-stacker':
+        specifier: https://pkg.pr.new/big-mesh-studios/rm-stacker/@big-mesh-studios/rm-stacker@31994f1
+        version: https://pkg.pr.new/big-mesh-studios/rm-stacker/@big-mesh-studios/rm-stacker@31994f1(@random-mesh/rmsl@1.9.0(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0)))(@solidjs/signals@2.0.0-beta.29)(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)
       '@fortawesome/fontawesome-free':
         specifier: ^7.3.1
         version: 7.3.1
@@ -434,6 +437,15 @@ packages:
   '@babel/types@7.29.8':
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
+
+  '@big-mesh-studios/rm-stacker@https://pkg.pr.new/big-mesh-studios/rm-stacker/@big-mesh-studios/rm-stacker@31994f1':
+    resolution: {integrity: sha512-FmJmCVAeaEyJgQZLinUFIlkl4skof+HDfaSuDPDPZ7C61EqTAGEXDkuq/4dsXeR2XMf8mofBeW0BwlXjeGwBMw==, tarball: https://pkg.pr.new/big-mesh-studios/rm-stacker/@big-mesh-studios/rm-stacker@31994f1}
+    version: 0.0.0
+    peerDependencies:
+      '@random-mesh/rmsl': ^1.9.0
+      '@solidjs/signals': 2.0.0-beta.29
+      '@solidjs/web': 2.0.0-beta.29
+      solid-js: 2.0.0-beta.29
 
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
@@ -1865,6 +1877,16 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@big-mesh-studios/rm-stacker@https://pkg.pr.new/big-mesh-studios/rm-stacker/@big-mesh-studios/rm-stacker@31994f1(@random-mesh/rmsl@1.9.0(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0)))(@solidjs/signals@2.0.0-beta.29)(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)':
+    dependencies:
+      '@atcute/lexicons': 2.1.0
+      '@random-mesh/rmsl': 1.9.0(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))
+      '@solidjs/signals': 2.0.0-beta.29
+      '@solidjs/web': 2.0.0-beta.29(solid-js@2.0.0-beta.29)
+      fast-png: 8.0.0
+      jszip: 3.10.1
+      solid-js: 2.0.0-beta.29
 
   '@bramus/specificity@2.4.2':
     dependencies:
