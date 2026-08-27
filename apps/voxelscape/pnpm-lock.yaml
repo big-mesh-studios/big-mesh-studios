@@ -226,8 +226,8 @@ importers:
         specifier: ^7.3.1
         version: 7.3.1
       '@random-mesh/rmsl':
-        specifier: https://pkg.pr.new/big-mesh-studios/rmsl/@random-mesh/rmsl@ea3b81f
-        version: https://pkg.pr.new/big-mesh-studios/rmsl/@random-mesh/rmsl@ea3b81f(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))
+        specifier: ^1.9.0
+        version: 1.9.0(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))
       '@solidjs/signals':
         specifier: 2.0.0-beta.29
         version: 2.0.0-beta.29
@@ -679,9 +679,8 @@ packages:
     os: [linux]
     libc: [glibc]
 
-  '@random-mesh/rmsl@https://pkg.pr.new/big-mesh-studios/rmsl/@random-mesh/rmsl@ea3b81f':
-    resolution: {integrity: sha512-UaS5+AElFkgxkUJJ63KTdmcXOOjtpA6i/cmvOEeufA/OU8apVnr/a6aocKTrG/NNmSHCBv+cPdKbn/xgkmIKHQ==, tarball: https://pkg.pr.new/big-mesh-studios/rmsl/@random-mesh/rmsl@ea3b81f}
-    version: 1.8.0
+  '@random-mesh/rmsl@1.9.0':
+    resolution: {integrity: sha512-tTsmmrjkocMiCoRhaA9nAumFnQxJ24VsUna/Chk1ve+KvrCbWa9/QrTfhUi8qaOmiRjh3aX33ouIfp/nJFlNXw==}
     peerDependencies:
       vite: '>=5.0.0'
     peerDependenciesMeta:
@@ -2013,7 +2012,7 @@ snapshots:
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
 
-  '@random-mesh/rmsl@https://pkg.pr.new/big-mesh-studios/rmsl/@random-mesh/rmsl@ea3b81f(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))':
+  '@random-mesh/rmsl@1.9.0(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0))':
     dependencies:
       '@webgpu/types': 0.1.71
       esbuild: 0.28.2
