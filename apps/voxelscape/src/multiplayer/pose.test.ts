@@ -51,9 +51,7 @@ describe("pose wire codec", () => {
   });
 
   it("rounds fields to keep the payload small", () => {
-    const wire = encodeMessage(
-      pose({ x: 1.0000001, yaw: 0.00000009 }),
-    );
+    const wire = encodeMessage(pose({ x: 1.0000001, yaw: 0.00000009 }));
     expect(wire).toContain('"x":1');
     expect(wire).toContain('"yaw":0');
   });
