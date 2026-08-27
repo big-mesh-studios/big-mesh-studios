@@ -245,6 +245,16 @@ export const createVoxelscape = ({
     onPersisted: (ids) => monsters.markPersisted(ids),
   });
 
+  // A model zip in `public/models` replaces the built-in zombie; a missing or
+  // unreadable one silently leaves the procedural model in place. Swapping the
+  // file is how the zombie's look is replaced without touching code.
+  void fetch("./models/zombie.zip")
+    .then((res) => (res.ok ? res.blob() : null))
+    .then((blob) =>
+      blob === null ? null : monsterRender.loadModelFromBlob(blob),
+    )
+    .catch(() => {});
+
   /**
    * Everything drawn, in the order it is drawn. There is no depth-sorted pass
    * for transparency, so a group's place in this list is the whole of what
@@ -281,6 +291,7 @@ export const createVoxelscape = ({
     multiplayer,
     monsters,
     monsterSync,
+    monsterRender,
     resolution,
     setView: (mode) => {
       avatar.setFirstPerson(mode === "first");
@@ -357,6 +368,9 @@ export const createVoxelscape = ({
       lighting.skyColor[2],
     );
     world.renderers.applyLighting(lighting);
+    // The voxel-model zombies are self-lit, so they take the same day-night
+    // state the renderers apply to the terrain and the standard materials.
+    monsterRender.applyLighting(lighting);
     world.renderers.tick(dt, camera);
   };
 

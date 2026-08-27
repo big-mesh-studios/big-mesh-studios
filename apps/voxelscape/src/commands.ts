@@ -4,6 +4,7 @@ import type { DayNightController } from "./environment/day-night-controller";
 import type { SoundController } from "./environment/sound-controller";
 import type { WeatherController } from "./environment/weather-controller";
 import type { MonsterController } from "./monsters/monster-controller";
+import type { RemoteMonsters } from "./monsters/remote-monsters";
 import type { MultiplayerController } from "./multiplayer/multiplayer-controller";
 import type { AdaptiveResolution } from "./render/adaptive";
 import type { RendererSwitch } from "./renderers/renderer-switch";
@@ -83,6 +84,7 @@ export interface CommandsParams {
   multiplayer: MultiplayerController;
   monsters: MonsterController;
   monsterSync: MonsterSync;
+  monsterRender: RemoteMonsters;
   resolution: AdaptiveResolution;
   /** Switches the camera between first and third person views. */
   setView: (mode: "first" | "third") => string;
@@ -110,6 +112,7 @@ export const createCommands = ({
   multiplayer,
   monsters,
   monsterSync,
+  monsterRender,
   resolution,
   setView,
   setPlayerVisible,
@@ -306,7 +309,28 @@ export const createCommands = ({
     },
     "/monsters": {
       description: "show the monster simulation and sync state",
-      run: () => `${monsters.describe()}\n${monsterSync.describe()}`,
+      run: () =>
+        `${monsters.describe()}\n${monsterSync.describe()}\n${monsterRender.describe()}`,
+    },
+    "/zombiemodel": {
+      description: "load a zombie model zip saved from rm-stacker",
+      run: () => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".zip,application/zip";
+        input.style.display = "none";
+        input.onchange = () => {
+          const file = input.files?.[0];
+          if (file === undefined) {
+            return;
+          }
+          void monsterRender.loadModelFromBlob(file);
+          input.remove();
+        };
+        document.body.appendChild(input);
+        input.click();
+        return "pick a model zip — the current model stays until one loads";
+      },
     },
     "/view": {
       description: "switch the camera between first and third person",

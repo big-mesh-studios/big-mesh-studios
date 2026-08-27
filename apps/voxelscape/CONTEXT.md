@@ -93,8 +93,12 @@ The atproto persistence for monsters: writes the records this client's **Monster
 _Avoid_: monster syncer (there is no other kind), atproto monster uploader (it also discovers and merges, not just uploads)
 
 **RemoteMonsters**:
-The scene objects that render the monsters: one green-skinned cube per snapshot, walked in place when the monster is moving. Reads the **MonsterController**'s snapshots each frame (constructor-injected getter) rather than owning its own model, so a monster that appears or disappears in the snapshots gets a mesh made or destroyed to match. A monster the local simulation stepped this frame is drawn exactly where it is; one received from an owner's broadcast is dead-reckoned between deliveries — extrapolated by its velocity, eased on small errors, snapped on large ones (`src/monsters/reckon.ts`). Owns its scene objects directly, like **WeatherController**.
+The scene objects that render the monsters as ray-marched voxel models: one mesh per snapshot, all sharing one **VoxelModelMaterial** and geometry baked from the zombie model, walked in place when the monster is moving. Reads the **MonsterController**'s snapshots each frame (constructor-injected getter) rather than owning its own model, so a monster that appears or disappears in the snapshots gets a mesh made or destroyed to match. A monster the local simulation stepped this frame is drawn exactly where it is; one received from an owner's broadcast is dead-reckoned between deliveries — extrapolated by its velocity, eased on small errors, snapped on large ones (`src/monsters/reckon.ts`). `applyLighting` feeds the day-night state into the shared material each frame (the material is self-lit), and `setModel`/`loadModelFromBlob` swap the model for one saved from rm-stacker. Owns its scene objects directly, like **WeatherController**.
 _Avoid_: MonsterRenderer (it doesn't render voxel terrain or a strategy — it's the monsters' meshes)
+
+**VoxelModelMaterial**:
+The ray-marched material an entity's voxel model is drawn with (`src/voxel-model/material.ts`): a fragment shader that steps a 3D DDA through a packed voxel volume and shades the surface with a palette, writing accurate per-fragment depth so models occlude by their geometry. Works on a regular `Mesh` (positioned, rotated, scaled freely) and on an `InstancedMesh` at the identity; the app draws monsters as regular Meshes. Self-lit from `lightDir`/`lightColour`/`ambientColour` uniforms, which **RemoteMonsters.applyLighting** sets from the day-night state. The volume, palette, and grid size are baked in by `solveVoxels`/`encodePalette` (`src/voxel-model/solver.ts`); the model itself comes from `buildDefaultZombieModel` or a zip read by `loadModel`.
+_Avoid_: DuckMaterial (the material is generic; a duck was its first demo), voxel shader (undersells that it owns the volume data and depth handling, not just a shader)
 
 ## Relationships
 
@@ -111,6 +115,7 @@ _Avoid_: MonsterRenderer (it doesn't render voxel terrain or a strategy — it's
 - **EditingController** is wired to the renderers in `App.tsx` (its `onBlockEdited` calls `RendererSwitch.onBlockChanged`); it holds no renderer reference itself.
 - **EditingController** is how blocks move between the world and the **Inventory**: breaking adds, placing consumes, selection drives `placeBlock`.
 - **RemoteMonsters** reads the **MonsterController**'s snapshot map each frame (constructor-injected getter), so the controller stays renderer-free and the meshes track whatever it simulates.
+- **RemoteMonsters** is fed the same day-night state the renderers get, through `applyLighting`, because its **VoxelModelMaterial** is self-lit; a model zip in `public/models/zombie.zip` (or one picked via `/zombiemodel`) replaces the built-in zombie through `setModel`.
 - **MonsterController** broadcasts its owned monsters through the mesh via the **MultiplayerController** (`broadcastMonsters`), wired to its `onBroadcast` callback in `App.tsx`; a peer's monsters arrive through `onRemoteMonsters` and `applyMonsterUpdates` — the same optimistic-path separation the edit overlay already uses. Its durable records are written and fetched by **MonsterSync**, wired through `recordsForPersistence`/`markPersisted` and `mergeFromAtproto`.
 
 ## Example dialogue
