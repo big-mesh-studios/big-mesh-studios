@@ -10,7 +10,7 @@ import { Group } from "@random-mesh/rmsl/scene";
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import type { AtprotoRepoClient } from "../atproto/repo-client";
 import { MeshPeer } from "./mesh-peer";
-import type { EditItem } from "./messages";
+import type { EditItem, MonsterUpdate } from "./messages";
 import type { Pose, PoseMessage } from "./pose";
 import {
   PRESENCE_COLLECTION,
@@ -123,6 +123,11 @@ export interface MultiplayerParams {
    * verification and (in the app) for applying straight to the edit overlay.
    */
   onRemoteEdits?: (did: string, edits: EditItem[]) => void;
+  /**
+   * Receives every monster-state broadcast a peer sends, for headless
+   * verification and (in the app) for handing to the monster controller.
+   */
+  onRemoteMonsters?: (did: string, updates: MonsterUpdate[]) => void;
   /** Overrides for the cluster-selection tuning (tests use this to disable hysteresis). */
   clusterOptions?: Partial<ClusterOptions>;
 }
@@ -141,6 +146,10 @@ export class MultiplayerController {
     ((did: string) => Promise<Blob | null>) | undefined;
   private readonly onRemotePose: (did: string, pose: PoseMessage) => void;
   private readonly onRemoteEdits: (did: string, edits: EditItem[]) => void;
+  private readonly onRemoteMonsters: (
+    did: string,
+    updates: MonsterUpdate[],
+  ) => void;
   private readonly clusterOptions: Partial<ClusterOptions>;
   /**
    * Every connected peer's avatar, for the scene to place in its draw order.
@@ -173,8 +182,11 @@ export class MultiplayerController {
   private peerCount = 0;
   private poseSeq = 0;
   private editSeq = 0;
+  private monsterSeq = 0;
   private editsSent = 0;
   private editsReceived = 0;
+  private monstersSent = 0;
+  private monstersReceived = 0;
 
   private lastPresenceAt = 0;
   private lastPresenceX = 0;
@@ -197,6 +209,7 @@ export class MultiplayerController {
     this.resolvePicture = params.resolvePicture;
     this.onRemotePose = params.onRemotePose ?? (() => {});
     this.onRemoteEdits = params.onRemoteEdits ?? (() => {});
+    this.onRemoteMonsters = params.onRemoteMonsters ?? (() => {});
     this.clusterOptions = params.clusterOptions ?? {};
     this.remotePlayers =
       params.camera !== undefined
@@ -228,6 +241,14 @@ export class MultiplayerController {
       }
     }
     return out.sort();
+  }
+
+  /**
+   * Every connected peer's live position, for callers that need to know where
+   * the other players are (monsters chase and choose owners among them).
+   */
+  peerPositions(): Array<{ did: string; x: number; z: number }> {
+    return this.remotePlayers?.positions() ?? [];
   }
 
   /**
@@ -383,6 +404,23 @@ export class MultiplayerController {
     }
   }
 
+  /**
+   * Broadcasts the monsters this player simulates to every open peer. The
+   * receiver renders them optimistically, dead-reckoning between broadcasts;
+   * atproto sync (a later phase) remains the source of truth. No-op while the
+   * mesh is offline.
+   */
+  broadcastMonsters(updates: MonsterUpdate[]): void {
+    if (!this.running || updates.length === 0) {
+      return;
+    }
+    const seq = ++this.monsterSeq;
+    this.monstersSent += updates.length;
+    for (const peer of this.peers.values()) {
+      peer.sendMonsters(updates, seq);
+    }
+  }
+
   describe(): string {
     const state = this.describeState();
     return `multiplayer: ${state}${
@@ -455,6 +493,9 @@ export class MultiplayerController {
       lines.push(`  ${did}: ${peer.describe()}`);
     }
     lines.push(`edits: ${this.editsSent} sent, ${this.editsReceived} received`);
+    lines.push(
+      `monsters: ${this.monstersSent} sent, ${this.monstersReceived} received`,
+    );
     lines.push(`lastError: ${this.lastError ?? "none"}`);
     return lines.join("\n");
   }
@@ -719,6 +760,7 @@ export class MultiplayerController {
     onOpen: (d: string) => void;
     onPose: (d: string, pose: PoseMessage) => void;
     onEdits: (d: string, edits: EditItem[]) => void;
+    onMonsters: (d: string, updates: MonsterUpdate[]) => void;
     onClose: (d: string) => void;
     onError: (d: string, message: string, code?: string) => void;
   } {
@@ -738,6 +780,10 @@ export class MultiplayerController {
       onEdits: (d, edits) => {
         this.editsReceived += edits.length;
         this.onRemoteEdits(d, edits);
+      },
+      onMonsters: (d, updates) => {
+        this.monstersReceived += updates.length;
+        this.onRemoteMonsters(d, updates);
       },
       onClose: (d) => {
         this.peerCount = Math.max(0, this.peerCount - 1);

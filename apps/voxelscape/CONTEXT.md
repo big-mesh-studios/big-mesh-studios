@@ -80,6 +80,26 @@ _Avoid_: Avatar (that's the local player's whole cube-plus-camera object, `Playe
 Owns the atproto/Bluesky connection and the edit-chunk sync. Configures atcute's OAuth client (loopback client for localhost dev, hosted `client-metadata.json` for prod, see `src/atproto/oauth.ts`), drives the OAuth popup (`connect`), restores/revokes the session, and on `sync` uploads the **EditLayer**'s recent edits as `app.bms.voxelscape.edit` records (32³ chunks, `src/atproto/edits.ts`) then fetches the whole collection and merges it back with per-voxel last-write-wins. Also the one place identities are resolved: a DID's document (cached per session) gives the PDS endpoint a peer's records are read from, `resolveHandle` gives the confirmed handle the multiplayer mesh labels that peer's avatar with, and `resolvePicture` gives the bytes of the picture their account shows for itself, read from that same server as the **PlayerSkin** on their cube. Exposes plain typed methods (`init`, `connect`, `sync`, `signOut`, `resolveHandle`, `describe`); wired to the shared `EditLayer` in `App.tsx`, no renderer or console knowledge.
 _Avoid_: PDSClient, BlueskyConnector (it's specifically the edit-sync + OAuth owner, not a general atproto client)
 
+**Monster**:
+A simulated creature — currently only a zombie — with a deterministic identity and spawn. Every monster that can exist is addressed by the terrain seed and a (cell, slot) pair (`monsterId`, `monsterAt` in `src/monsters/monster.ts`), so any client agrees on which monster is which without a shared server; only some addresses hold a monster, at a configured density. A monster is a snapshot: pose (cube centre plus heading and horizontal velocity), health, and a `sleep | wander | chase | attack` state with the wander/attack timers that state carries. It exists only while its spawn cell is within a player's materialization window; phase 1 forgets it otherwise (later phases persist it).
+_Avoid_: NPC, mob (a **Monster** is any simulated creature; a **Zombie** is the first kind)
+
+**MonsterController**:
+Owns the local simulation of monsters: materializes the spawn cells around the players (from the terrain queries and the player positions it is handed), chooses each monster's owner (the nearest player, ties broken by DID and kept through a hysteresis margin, so every client picks the same owner and it doesn't ping-pong), steps the monsters this client owns through their brains (`stepZombie` in `src/monsters/zombie.ts`), broadcasts those states on the pose cadence, applies the broadcasts it receives for monsters it does not own, and merges the durable atproto records into the same map (last-write-wins by producing clock, ties by owner DID). A plain domain object — no renderer, network, or console knowledge — that exposes its snapshot map, `mergeFromAtproto`, `recordsForPersistence`/`markPersisted`, and a `describe()` for the debug console. `src/monsters/remote-monsters.ts` renders whatever is in that map.
+_Avoid_: MobController, monster system (undersells that it both spawns and steps the simulation)
+
+**MonsterSync**:
+The atproto persistence for monsters: writes the records this client's **MonsterController** says are due (one record per monster it owns, rkey = the monster id) and discovers every repo holding a monster record through the relay, fetching each and merging it into the controller. Started and stopped with the atproto session, alongside the multiplayer mesh; the records it writes are the source of truth behind the WebRTC broadcasts.
+_Avoid_: monster syncer (there is no other kind), atproto monster uploader (it also discovers and merges, not just uploads)
+
+**RemoteMonsters**:
+The scene objects that render the monsters as ray-marched voxel models: one mesh per snapshot, all sharing one **VoxelModelMaterial** and geometry baked from the zombie model, walked in place when the monster is moving. Reads the **MonsterController**'s snapshots each frame (constructor-injected getter) rather than owning its own model, so a monster that appears or disappears in the snapshots gets a mesh made or destroyed to match. A monster the local simulation stepped this frame is drawn exactly where it is; one received from an owner's broadcast is dead-reckoned between deliveries — extrapolated by its velocity, eased on small errors, snapped on large ones (`src/monsters/reckon.ts`). `applyLighting` feeds the day-night state into the shared material each frame (the material is self-lit), and `setModel`/`loadModelFromBlob` swap the model for one saved from rm-stacker. Owns its scene objects directly, like **WeatherController**.
+_Avoid_: MonsterRenderer (it doesn't render voxel terrain or a strategy — it's the monsters' meshes)
+
+**VoxelModelMaterial**:
+The ray-marched material an entity's voxel model is drawn with (`src/voxel-model/material.ts`): a fragment shader that steps a 3D DDA through a packed voxel volume and shades the surface with a palette, writing accurate per-fragment depth so models occlude by their geometry. Works on a regular `Mesh` (positioned, rotated, scaled freely) and on an `InstancedMesh` at the identity; the app draws monsters as regular Meshes. Self-lit from `lightDir`/`lightColour`/`ambientColour` uniforms, which **RemoteMonsters.applyLighting** sets from the day-night state. The volume, palette, and grid size are baked in by `solveVoxels`/`encodePalette` (`src/voxel-model/solver.ts`); the model itself comes from `buildDefaultZombieModel` or a zip read by `loadModel`.
+_Avoid_: DuckMaterial (the material is generic; a duck was its first demo), voxel shader (undersells that it owns the volume data and depth handling, not just a shader)
+
 ## Relationships
 
 - A **Ring** holds a fixed-size window of **WorldBlock**s, indexed by ring slot.
@@ -94,6 +114,9 @@ _Avoid_: PDSClient, BlueskyConnector (it's specifically the edit-sync + OAuth ow
 - **EditLayer** is the single source of truth for voxel edits, keyed by world voxel (not slot); **FillClient**, **EditingController**, **AtprotoController**, and IndexedDB persistence all read or write it.
 - **EditingController** is wired to the renderers in `App.tsx` (its `onBlockEdited` calls `RendererSwitch.onBlockChanged`); it holds no renderer reference itself.
 - **EditingController** is how blocks move between the world and the **Inventory**: breaking adds, placing consumes, selection drives `placeBlock`.
+- **RemoteMonsters** reads the **MonsterController**'s snapshot map each frame (constructor-injected getter), so the controller stays renderer-free and the meshes track whatever it simulates.
+- **RemoteMonsters** is fed the same day-night state the renderers get, through `applyLighting`, because its **VoxelModelMaterial** is self-lit; a model zip in `public/models/zombie.zip` (or one picked via `/monsters:file`) replaces the built-in zombie through `setModel`.
+- **MonsterController** broadcasts its owned monsters through the mesh via the **MultiplayerController** (`broadcastMonsters`), wired to its `onBroadcast` callback in `App.tsx`; a peer's monsters arrive through `onRemoteMonsters` and `applyMonsterUpdates` — the same optimistic-path separation the edit overlay already uses. Its durable records are written and fetched by **MonsterSync**, wired through `recordsForPersistence`/`markPersisted` and `mergeFromAtproto`.
 
 ## Example dialogue
 

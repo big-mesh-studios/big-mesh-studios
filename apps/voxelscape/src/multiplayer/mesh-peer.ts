@@ -6,7 +6,12 @@
 // class only wires up the data channel that results. The initiator owns its
 // transport from the start; the responder starts "waiting" and receives it
 // via `attach` when the incoming connection arrives.
-import { decodeMessage, encodeMessage, type EditItem } from "./messages";
+import {
+  decodeMessage,
+  encodeMessage,
+  type EditItem,
+  type MonsterUpdate,
+} from "./messages";
 import type { Pose, PoseMessage } from "./pose";
 import type { PeerTransport } from "./transport";
 
@@ -30,6 +35,8 @@ export interface MeshPeerParams {
   onPose: (did: string, pose: PoseMessage) => void;
   /** One optimistic edit broadcast from the peer; applied LWW by edit time. */
   onEdits: (did: string, edits: EditItem[]) => void;
+  /** One monster-state broadcast from the peer, for monsters it owns. */
+  onMonsters: (did: string, updates: MonsterUpdate[]) => void;
   onClose: (did: string) => void;
   /** Reports a fatal failure; `code` is the transport's `ERR_*` when there is one. */
   onError: (did: string, message: string, code?: string) => void;
@@ -41,6 +48,7 @@ export class MeshPeer {
   private readonly onOpen: (did: string) => void;
   private readonly onPose: (did: string, pose: PoseMessage) => void;
   private readonly onEdits: (did: string, edits: EditItem[]) => void;
+  private readonly onMonsters: (did: string, updates: MonsterUpdate[]) => void;
   private readonly onClose: (did: string) => void;
   private readonly onError: (
     did: string,
@@ -62,6 +70,7 @@ export class MeshPeer {
     this.onOpen = params.onOpen;
     this.onPose = params.onPose;
     this.onEdits = params.onEdits;
+    this.onMonsters = params.onMonsters;
     this.onClose = params.onClose;
     this.onError = params.onError;
     this.role = this.selfDid < this.did ? "initiator" : "responder";
@@ -117,6 +126,26 @@ export class MeshPeer {
     try {
       this.transport?.send(
         encodeMessage({ v: 1, type: "edit", seq, t: Date.now(), edits }),
+      );
+    } catch (err) {
+      this.fail(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /** Sends the owned monsters' state to the peer (no-op until open). */
+  sendMonsters(updates: MonsterUpdate[], seq: number): void {
+    if (this.destroyed || this.phase !== "open" || updates.length === 0) {
+      return;
+    }
+    try {
+      this.transport?.send(
+        encodeMessage({
+          v: 1,
+          type: "monster",
+          seq,
+          t: Date.now(),
+          updates,
+        }),
       );
     } catch (err) {
       this.fail(err instanceof Error ? err.message : String(err));
@@ -194,8 +223,10 @@ export class MeshPeer {
     }
     if (message.type === "pose") {
       this.onPose(this.did, message);
-    } else {
+    } else if (message.type === "edit") {
       this.onEdits(this.did, message.edits);
+    } else {
+      this.onMonsters(this.did, message.updates);
     }
   }
 
