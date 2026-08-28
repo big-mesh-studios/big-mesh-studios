@@ -22,6 +22,7 @@
 // `/account:login` commands are dispatched without awaiting, because they
 // block until the human completes the OAuth popup; poll `outA`/`outB` to see the result.
 import { chromium } from "playwright";
+import type { BrowserContext, Page } from "playwright";
 import readline from "readline";
 import fs from "fs";
 import path from "path";
@@ -45,9 +46,9 @@ for (let i = 0; i < args.length; i++) {
   else if (a === "--headed") opt.headed = true;
 }
 
-const log = (...m) => console.log(`[harness]`, ...m);
+const log = (...m: unknown[]) => console.log(`[harness]`, ...m);
 
-async function openConsole(page) {
+async function openConsole(page: Page) {
   await page.waitForSelector("canvas", { timeout: 30000 });
   const trigger = page.locator("button[popovertarget]");
   await trigger.first().click();
@@ -56,13 +57,13 @@ async function openConsole(page) {
   });
 }
 
-async function execCommand(page, cmd) {
+async function execCommand(page: Page, cmd: string) {
   const input = page.getByPlaceholder("type a command (/help)");
   await input.fill(cmd);
   await input.press("Enter");
 }
 
-async function readOutput(page) {
+async function readOutput(page: Page) {
   try {
     return await page.locator("output").innerText();
   } catch {
@@ -70,7 +71,7 @@ async function readOutput(page) {
   }
 }
 
-async function makePlayer(key, profile) {
+async function makePlayer(key: string, profile: string): Promise<Player> {
   fs.mkdirSync(profile, { recursive: true });
   const context = await chromium.launchPersistentContext(profile, {
     headless: !opt.headed,
@@ -84,7 +85,7 @@ async function makePlayer(key, profile) {
     ],
   });
   const page = context.pages()[0] ?? (await context.newPage());
-  const consoleLog = [];
+  const consoleLog: string[] = [];
   page.on("console", (msg) => {
     consoleLog.push(`[${key} console.${msg.type()}] ${msg.text()}`);
   });
@@ -97,7 +98,15 @@ async function makePlayer(key, profile) {
   return { key, context, page, consoleLog };
 }
 
-const players = {};
+/** One browser window the harness drives, and what it has said so far. */
+interface Player {
+  key: string;
+  context: BrowserContext;
+  page: Page;
+  consoleLog: string[];
+}
+
+const players: Record<string, Player> = {};
 try {
   players.A = await makePlayer("A", opt.profileA);
   players.B = await makePlayer("B", opt.profileB);
@@ -106,9 +115,9 @@ try {
   process.exit(1);
 }
 
-const isLogin = (cmd) => /^\/account:login\b/.test(cmd);
+const isLogin = (cmd: string) => /^\/account:login\b/.test(cmd);
 
-async function dispatch(key, cmd) {
+async function dispatch(key: string, cmd: string) {
   const { page } = players[key];
   if (isLogin(cmd)) {
     void execCommand(page, cmd)
@@ -240,7 +249,7 @@ rl.on("line", async (line) => {
         log(`unknown command: ${cmd}`);
     }
   } catch (err) {
-    log(`command error: ${err.message}`);
+    log(`command error: ${err instanceof Error ? err.message : String(err)}`);
   }
 });
 

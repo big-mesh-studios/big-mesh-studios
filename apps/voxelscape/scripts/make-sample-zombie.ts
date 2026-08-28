@@ -1,7 +1,7 @@
 // Generates `public/models/zombie.zip`: the built-in zombie model saved in the
 // rm-stacker format (six side PNGs drawn in palette colours, plus palette.png),
 // so the game loads that look through the same model-zip path a hand-made
-// replacement uses. Run with `node scripts/make-sample-zombie.js` after a
+// replacement uses. Run with `node scripts/make-sample-zombie.ts` after a
 // change to `default-zombie-model.ts`; swap the file it writes for any model
 // rm-stacker saved.
 import { build } from "esbuild";
@@ -58,13 +58,15 @@ for (const kind of SIDES) {
 }
 
 const paletteData = new Uint8Array(32 * 4);
-model.palette.forEach((colour, i) => {
-  const o = i * 4;
-  paletteData[o] = colour.r;
-  paletteData[o + 1] = colour.g;
-  paletteData[o + 2] = colour.b;
-  paletteData[o + 3] = colour.a;
-});
+model.palette.forEach(
+  (colour: { r: number; g: number; b: number; a: number }, i: number) => {
+    const o = i * 4;
+    paletteData[o] = colour.r;
+    paletteData[o + 1] = colour.g;
+    paletteData[o + 2] = colour.b;
+    paletteData[o + 3] = colour.a;
+  },
+);
 zip.file(
   "palette.png",
   encode({ width: 32, height: 1, data: paletteData, channels: 4 }),

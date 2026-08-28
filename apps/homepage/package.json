@@ -4,7 +4,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
-    "build": "vite build --ssr src/entry-server.tsx --outDir .ssr && node scripts/prerender.js",
+    "build": "vite build --ssr src/entry-server.tsx --outDir .ssr && node scripts/prerender.ts",
     "serve": "vite preview",
     "check-types": "tsc --noEmit"
   },

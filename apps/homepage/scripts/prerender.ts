@@ -1,10 +1,13 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-import { render } from "../.ssr/entry-server.js";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+// The page is compiled for the server into a folder outside the source tree,
+// so it is loaded by address once it exists rather than imported by name.
+const bundle = pathToFileURL(join(root, ".ssr/entry-server.js")).href;
+const { render } = (await import(bundle)) as { render: () => string };
 
 // The page holds no state and answers no events, so it is written once here
 // and served as the file it produces. Nothing is sent to the browser to run:

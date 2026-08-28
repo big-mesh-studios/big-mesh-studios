@@ -87,10 +87,10 @@ async function main() {
   await b.evaluate(responderScript());
 
   await a.evaluate("window.__offerReady");
-  const offer = await a.evaluate("window.__getOffer()");
-  const answer = await b.evaluate(
+  const offer = (await a.evaluate("window.__getOffer()")) as { cands: number };
+  const answer = (await b.evaluate(
     `window.__setRemote(${JSON.stringify(offer)})`,
-  );
+  )) as { cands: number };
   await a.evaluate(`window.__setAnswer(${JSON.stringify(answer)})`);
 
   const winner = await Promise.race([
