@@ -16,7 +16,6 @@ import {
   getWorldHeight,
   isSolidAt,
   isWaterAt,
-  syncLevelFromStore,
   type Dim3,
   type WorldBlock,
 } from "./level-data";
@@ -44,7 +43,6 @@ export interface VoxelWorldConfig {
   blocksPerSide: number;
   terrain: TerrainConfig;
   /** When true, only surface voxels are written into each block's GPU chunks instead of the full solid volume. */
-  surfaceOnly: boolean;
   /** Where the player starts, in world units. The window fills outward from here. */
   spawn: Dim3;
   /**
@@ -114,7 +112,6 @@ export interface VoxelWorld {
 export const createVoxelWorld = ({
   blocksPerSide,
   terrain,
-  surfaceOnly,
   spawn,
   onInitialDraw,
 }: VoxelWorldConfig): VoxelWorld => {
@@ -159,7 +156,6 @@ export const createVoxelWorld = ({
   const worldRing = new WorldRing({
     blockGrid,
     terrain,
-    surfaceOnly,
     onBlockChanged: (i) => {
       // Recorded before the renderer is told, because a block only counts as
       // drawn once its geometry is built and `onBlockMeshed`
@@ -176,7 +172,6 @@ export const createVoxelWorld = ({
     for (let i = 0; i < blockGrid.blocks.length; i++) {
       const block = blockGrid.blocks[i];
       if (editLayer.applyToBlock(block) > 0) {
-        syncLevelFromStore(block.level, block.store, { surfaceOnly });
         affected.push(i);
       }
     }
@@ -221,7 +216,6 @@ export const createVoxelWorld = ({
     for (const i of candidates) {
       const block = blockGrid.blocks[i];
       if (editLayer.applyToBlock(block) > 0) {
-        syncLevelFromStore(block.level, block.store, { surfaceOnly });
         affected.push(i);
       }
     }

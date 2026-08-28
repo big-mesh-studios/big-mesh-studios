@@ -11,7 +11,6 @@ import type { FillStoreFn } from "./voxel-store";
 
 export interface FillConfig {
   terrain: TerrainConfig;
-  surfaceOnly: boolean;
   customFillStoreUrl?: string;
 }
 
@@ -24,8 +23,6 @@ export interface FillBatchRequest {
 export interface FillBatchResult {
   indices: number[];
   storeData: Uint8Array[];
-  broadData: Uint8Array[];
-  fineData: Uint8Array[];
 }
 
 export type FillWorkerMessage =
@@ -60,14 +57,11 @@ export async function* buildFillResults(
     const data = buildBlockData({
       center: req.centers[i],
       terrain: cfg.terrain,
-      surfaceOnly: cfg.surfaceOnly,
       customFillStore: cachedCustomFillStore,
     });
     yield {
       indices: [req.indices[i]],
       storeData: [data.storeData],
-      broadData: [data.broadData],
-      fineData: [data.fineData],
     };
   }
 }
@@ -78,11 +72,7 @@ export const fillResultTransfers = (
 ): Transferable[] => {
   const transfer: Transferable[] = [];
   for (let i = 0; i < result.storeData.length; i++) {
-    transfer.push(
-      result.storeData[i].buffer,
-      result.broadData[i].buffer,
-      result.fineData[i].buffer,
-    );
+    transfer.push(result.storeData[i].buffer);
   }
   return transfer;
 };

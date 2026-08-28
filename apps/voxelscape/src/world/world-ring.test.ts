@@ -16,7 +16,6 @@ const ringWithRecordedFills = (blocksPerSide: number) => {
   const ring = new WorldRing({
     blockGrid,
     terrain: DEFAULT_TERRAIN,
-    surfaceOnly: true,
     onBlockChanged: (index) => filled.push(index),
     onBlockReposition: () => {},
     customFillStore: () => {},

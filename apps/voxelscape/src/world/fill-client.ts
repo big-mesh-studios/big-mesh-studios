@@ -1,9 +1,4 @@
-import {
-  applyLevelData,
-  syncLevelFromStore,
-  type Dim3,
-  type WorldBlock,
-} from "./level-data";
+import { applyLevelData, type Dim3, type WorldBlock } from "./level-data";
 import type { EditLayer } from "./edit-layer";
 import {
   type FillBatchRequest,
@@ -15,7 +10,6 @@ import { fillStore, type FillStoreFn } from "./voxel-store";
 
 export interface FillClientParams {
   terrain: TerrainConfig;
-  surfaceOnly: boolean;
   /**
    * The blocks a fill result is applied to, indexed the same way as the
    * indices passed to `requestFill`. Shared with the caller, not copied, so
@@ -48,7 +42,6 @@ export class FillClient {
   private readonly fillInflight = new Map<number, number>();
   private readonly blocks: WorldBlock[];
   private readonly terrain: TerrainConfig;
-  private readonly surfaceOnly: boolean;
   private readonly onBlockChanged: (index: number) => void;
   private readonly customFillStore?: FillStoreFn;
   private readonly customFillStoreUrl?: string;
@@ -61,7 +54,6 @@ export class FillClient {
 
   constructor(params: FillClientParams) {
     this.terrain = params.terrain;
-    this.surfaceOnly = params.surfaceOnly;
     this.blocks = params.blocks;
     this.onBlockChanged = params.onBlockChanged;
     this.customFillStore = params.customFillStore;
@@ -75,7 +67,6 @@ export class FillClient {
       });
       const fillConfig: FillConfig = {
         terrain: this.terrain,
-        surfaceOnly: this.surfaceOnly,
         customFillStoreUrl: this.customFillStoreUrl,
       };
       this.worker.postMessage({ type: "config", config: fillConfig });
@@ -91,11 +82,7 @@ export class FillClient {
           if (gen !== this.fillGen[i]) {
             continue; // the slot was requested again; a newer batch will fill it
           }
-          applyLevelData(this.blocks[i], {
-            storeData: msg.storeData[j],
-            broadData: msg.broadData[j],
-            fineData: msg.fineData[j],
-          });
+          applyLevelData(this.blocks[i], { storeData: msg.storeData[j] });
           this.applyEdits(i);
           this.onBlockChanged(i);
         }
@@ -166,9 +153,6 @@ export class FillClient {
     const block = this.blocks[i];
     const fill = this.customFillStore ?? fillStore;
     fill(block.store, block.center, this.terrain);
-    syncLevelFromStore(block.level, block.store, {
-      surfaceOnly: this.surfaceOnly,
-    });
     this.applyEdits(i);
     this.onBlockChanged(i);
   }
@@ -184,9 +168,6 @@ export class FillClient {
       return;
     }
     if (layer.applyToBlock(this.blocks[i]) > 0) {
-      syncLevelFromStore(this.blocks[i].level, this.blocks[i].store, {
-        surfaceOnly: this.surfaceOnly,
-      });
     }
   }
 

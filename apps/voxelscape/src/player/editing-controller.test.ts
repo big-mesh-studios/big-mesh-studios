@@ -31,7 +31,6 @@ const makeHarness = () => {
     blocks: [block],
     layer,
     inventory,
-    surfaceOnly: true,
     onBlockEdited,
     onEditRecorded,
     onEdit,
@@ -118,7 +117,6 @@ describe("EditingController.breakBlock", () => {
       blocks: [floorBlock],
       layer,
       inventory,
-      surfaceOnly: true,
       onBlockEdited: vi.fn(),
       onEditRecorded: vi.fn(),
       getLook: () => ({
@@ -202,7 +200,6 @@ describe("EditingController.placeBlock", () => {
       blocks: [ceilingBlock],
       layer,
       inventory,
-      surfaceOnly: true,
       onBlockEdited: vi.fn(),
       onEditRecorded: vi.fn(),
       getLook: () => ({

@@ -56,7 +56,7 @@ types) — seam culling needs no neighbour data at all.
   cliff in `tri` mode; the `ray` mode still treats the edge as air. Both sit at
   full fog, so the difference is not visible.
 - `VoxelStore.data` is padded-sized; `get`/`set`/`sweepSurface` address the
-  interior only, so the raymarch GPU chunks are byte-identical to before.
+  interior only, so the voxels a block reports are byte-identical to before.
 - The library's `customFillStore` hook writes through `set` and leaves the
   border as air, so a fully custom world reverts to air-edge seams; the
   runtime app only uses `fillStore`, and this is left as a documented

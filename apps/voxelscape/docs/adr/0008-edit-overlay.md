@@ -1,3 +1,7 @@
+> One consequence below no longer holds: the ray marcher that read a block's
+> texture live is gone, so an edit now waits for geometry to be rebuilt. See
+> [ADR 0016](./0016-one-renderer.md).
+
 # Persistent, world-coordinate edit overlay
 
 Voxel editing was added as a Minecraft-style break/place feature. Terrain is
@@ -31,7 +35,7 @@ after a refill — can resolve which of its voxels are edited.
   and the picker stay correct automatically.
 - `EditingController.breakBlock`/`placeBlock` record into the overlay, push
   the voxel into the containing block's store, `syncLevelFromStore`, and notify
-  `RendererSwitch.onBlockChanged` so the triangle renderer re-meshes that slot.
+  the renderer's `onBlockChanged` so the triangle renderer re-meshes that slot.
   The raymarch renderer reads the level's GPU texture live, so it needs nothing.
 - Edits persist to IndexedDB (`src/world/edit-persistence.ts`) — one JSON
   snapshot of the whole overlay, debounced — and are re-applied to the initial

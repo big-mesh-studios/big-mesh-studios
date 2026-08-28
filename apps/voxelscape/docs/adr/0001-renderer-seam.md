@@ -1,3 +1,6 @@
+> Superseded by [ADR 0016](./0016-one-renderer.md), which removes the ray
+> marcher and with it the seam this describes.
+
 # Give the two renderers a real module boundary
 
 `App.tsx` grew two complete, independently-built rendering strategies (fragment-shader

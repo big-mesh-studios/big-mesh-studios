@@ -1,14 +1,10 @@
 // Minecraft-style block editing: break a targeted voxel (collecting it into
 // the inventory) or place the selected block into the adjacent cell. All the
 // actual voxel mutation flows through the shared `EditLayer` (world-voxel
-// keyed, so it persists and syncs), then into the containing block's store
-// and GPU level. A plain domain object: it knows how to edit voxels and keep
-// the renderers informed, not that a console or network exists.
-import {
-  syncLevelFromStore,
-  type Dim3,
-  type WorldBlock,
-} from "../world/level-data";
+// keyed, so it persists and syncs), then into the containing block's store.
+// A plain domain object: it knows how to edit voxels and keep the renderer
+// informed, not that a console or network exists.
+import { type Dim3, type WorldBlock } from "../world/level-data";
 import {
   blockWorldVoxelRange,
   worldVoxelToLocal,
@@ -23,7 +19,6 @@ export interface EditingControllerParams {
   blocks: WorldBlock[];
   layer: EditLayer;
   inventory: Inventory;
-  surfaceOnly: boolean;
   /** Called with a block's slot index after one of its voxels changes. */
   onBlockEdited: (index: number) => void;
   /** Called after any edit is recorded, so persistence can schedule a save. */
@@ -60,7 +55,6 @@ export class EditingController {
   private readonly blocks: WorldBlock[];
   private readonly layer: EditLayer;
   private readonly inventory: Inventory;
-  private readonly surfaceOnly: boolean;
   private readonly onBlockEdited: (index: number) => void;
   private readonly onEditRecorded: () => void;
   private readonly onEdit: (
@@ -75,7 +69,6 @@ export class EditingController {
     this.blocks = params.blocks;
     this.layer = params.layer;
     this.inventory = params.inventory;
-    this.surfaceOnly = params.surfaceOnly;
     this.onBlockEdited = params.onBlockEdited;
     this.onEditRecorded = params.onEditRecorded;
     this.onEdit = params.onEdit ?? (() => {});
@@ -186,9 +179,6 @@ export class EditingController {
       return;
     }
     block.store.set(local[0], local[1], local[2], id);
-    syncLevelFromStore(block.level, block.store, {
-      surfaceOnly: this.surfaceOnly,
-    });
     this.onBlockEdited(i);
   }
 

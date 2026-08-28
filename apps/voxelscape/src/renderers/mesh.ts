@@ -2,7 +2,7 @@
 // Each block's surface is turned into a set of quads — one per exposed face —
 // whose positions are in the block's local world space (centred at the origin,
 // matching the placement the blocks are drawn at). UVs are baked into
-// the atlas using exactly the same face→tile mapping as `rayMarchWorld`, so the
+// the atlas using the face→tile mapping the voxel ids define, so the
 // terrain is lit and textured the same wherever a face is drawn.
 //
 // Seam faces between neighbouring blocks are culled by reading the block's own
@@ -29,7 +29,7 @@ export interface MeshArrays {
 /**
  * One quad's four corners as [xOffset, yOffset, zOffset, u, v] cell
  * offsets: the two tangent axes sweep 0..1 while the face axis stays 0,
- * and (u, v) are the in-plane local UVs from the raymarch renderer's face
+ * and (u, v) are the in-plane local UVs of the face
  * mapping. Side faces flip v so the world-up axis maps to the top of the
  * source tile (grass sits on top).
  */
@@ -72,7 +72,7 @@ const DEFAULT_RECT: TileRect = [0, 0, 1, 1];
  * Neighbours are read from `store`'s 1-voxel meshing border (`atPadded`),
  * so seam faces against the adjacent block's matching voxels are culled
  * without a resolver. Below the floor is solid and above the ceiling is
- * air (the same rules as `sweepSurface`).
+ * air, so the world's underside never surfaces and its top is never capped.
  */
 export const buildBlockMesh = (
   store: VoxelStore,

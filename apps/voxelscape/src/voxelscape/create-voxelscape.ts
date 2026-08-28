@@ -37,7 +37,6 @@ export interface VoxelscapeConfig {
   /** Terrain noise settings shared by every block in the ring. */
   terrain?: TerrainConfig;
   /** When true, only surface voxels are written into each block's GPU chunks instead of the full solid volume. */
-  surfaceOnly?: boolean;
   /** Where the player starts, in world units; the spawn height is the terrain surface there. */
   spawn?: Dim3;
   /** Movement settings for this world's player; anything omitted takes its default. */
@@ -97,7 +96,6 @@ export interface Voxelscape {
 export const createVoxelscape = ({
   blocksPerSide = 5,
   terrain = DEFAULT_TERRAIN,
-  surfaceOnly = true,
   spawn = [0, 0, 0],
   modelAccount = WORLD_MODEL_ACCOUNT,
   debugPerf: initialDebugPerf = typeof window !== "undefined" &&
@@ -124,7 +122,6 @@ export const createVoxelscape = ({
   const world = createVoxelWorld({
     blocksPerSide,
     terrain,
-    surfaceOnly,
     spawn,
     onInitialDraw: setLoading,
   });
@@ -171,7 +168,6 @@ export const createVoxelscape = ({
     blocks: world.blocks,
     layer: world.editLayer,
     inventory,
-    surfaceOnly,
     onBlockEdited: (i) => world.renderer.onBlockChanged(i),
     onEditRecorded: () => world.scheduleSave(),
     // Peers apply these immediately; the atproto sync is still what settles

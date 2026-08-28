@@ -28,7 +28,6 @@ const config: FillConfig = {
     octaves: 1,
     base: 64,
   },
-  surfaceOnly: true,
 };
 
 describe("fill worker protocol", () => {
@@ -71,11 +70,8 @@ describe("fill worker protocol", () => {
     const sync = buildBlockData({
       center: [0, 0, 0],
       terrain: config.terrain,
-      surfaceOnly: true,
     });
     expect(results[0].storeData[0].length).toBe(sync.storeData.length);
-    expect(results[0].broadData[0].length).toBe(sync.broadData.length);
-    expect(results[0].fineData[0].length).toBe(sync.fineData.length);
   });
 
   it("produces one transferable buffer per array", async () => {
@@ -86,9 +82,7 @@ describe("fill worker protocol", () => {
       ),
     );
     const transfers = fillResultTransfers(result);
-    expect(transfers).toHaveLength(3);
+    expect(transfers).toHaveLength(1);
     expect(transfers[0]).toBeInstanceOf(ArrayBuffer);
-    expect(transfers[1]).toBeInstanceOf(ArrayBuffer);
-    expect(transfers[2]).toBeInstanceOf(ArrayBuffer);
   });
 });

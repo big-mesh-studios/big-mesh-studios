@@ -1,9 +1,4 @@
-import {
-  BLOCK_WORLD,
-  resetLevel,
-  type Dim3,
-  type WorldBlock,
-} from "./level-data";
+import { BLOCK_WORLD, type Dim3, type WorldBlock } from "./level-data";
 import { FillClient } from "./fill-client";
 import type { BlockGrid } from "./block-grid";
 import type { EditLayer } from "./edit-layer";
@@ -13,7 +8,6 @@ import type { FillStoreFn } from "./voxel-store";
 export interface WorldRingParams {
   blockGrid: BlockGrid;
   terrain: TerrainConfig;
-  surfaceOnly: boolean;
   /**
    * Called whenever a slot's voxel data is ready to be reflected on screen —
    * during the initial fill, or when a ring-scroll refill lands.
@@ -52,7 +46,6 @@ export class WorldRing {
 
     this.fillClient = new FillClient({
       terrain: params.terrain,
-      surfaceOnly: params.surfaceOnly,
       blocks: this.blocks,
       onBlockChanged: params.onBlockChanged,
       editLayer: params.editLayer,
@@ -148,16 +141,9 @@ export class WorldRing {
         this.worldGrid[i].z * BLOCK_WORLD[2],
       ];
       this.blocks[i].center = center;
-      // reposition both renderers' meshes for this slot; the triangle
-      // renderer also clears its geometry there to avoid flashing the old
-      // block's surface at the new location
+      // repositions the slot's meshes and clears its geometry, so the old
+      // block's surface does not flash at the new location
       this.onBlockReposition(i, center);
-      // clear the raymarch level so no stale terrain renders at the new spot
-      // while the fill worker regenerates it (the block is at the fogged ring
-      // edge, so the brief empty window is hidden)
-      resetLevel(this.blocks[i].level);
-      this.blocks[i].level.broadTexture.needsUpdate = true;
-      this.blocks[i].level.texture.needsUpdate = true;
       changedIndices.push(i);
       changedCenters.push(center);
     }

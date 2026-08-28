@@ -33,8 +33,6 @@ export {
 export {
   BLOCK_WORLD,
   getWorldHeight,
-  Level,
-  syncLevelFromStore,
   type Dim3,
   type WorldBlock,
 } from "./world/level-data";

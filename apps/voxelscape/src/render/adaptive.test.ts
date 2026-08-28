@@ -21,7 +21,7 @@ const vsyncGap = (costMs: number, refreshMs: number): number =>
 
 /**
  * Drives the scaler with a device whose render cost scales with the rendered
- * pixel count (cost ~ scale^2) exactly like the raymarcher, drawn on a display
+ * pixel count (cost ~ scale^2), drawn on a display
  * of a given refresh rate. `costAtOne` is the cost, in milliseconds, of a
  * full-resolution frame.
  */

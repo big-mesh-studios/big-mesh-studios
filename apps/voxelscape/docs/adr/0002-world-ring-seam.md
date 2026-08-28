@@ -15,18 +15,18 @@ array are now a private implementation detail — nothing outside `WorldRing` ev
 needed raw grid coordinates, only "the block at these coordinates" or "all current
 blocks."
 
-`WorldRing` does not depend on `RendererSwitch` or know rendering exists. It reports
+`WorldRing` does not depend on the renderer or know rendering exists. It reports
 block changes and repositions through constructor-injected callbacks
 (`onBlockChanged`, `onBlockReposition`), which `App.tsx` wires to
-`RendererSwitch.onBlockChanged`/`repositionBlock`. This preserves the dependency
-direction already established in ADR 0001, where `RendererSwitch` depends on ring
+the renderer's `onBlockChanged`/`repositionBlock`. This preserves the dependency
+direction already established in ADR 0001, where the renderer depends on ring
 data rather than the reverse — giving `WorldRing` a direct reference the other way
 would have made the two mutually dependent for no reason.
 
 ## Considered options
 
-- **Direct `RendererSwitch` reference instead of callbacks.** Rejected — would create a
-  two-way coupling where `RendererSwitch` already depends on ring data one way; nothing
+- **Direct renderer reference instead of callbacks.** Rejected — would create a
+  two-way coupling where the renderer already depends on ring data one way; nothing
   requires `WorldRing` to know renderers exist.
 - **Split fill-worker orchestration into its own class**, separate from ring
   windowing. Rejected for the same reason `TriangleRenderer` keeps its own mesh-build
