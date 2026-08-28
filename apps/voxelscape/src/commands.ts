@@ -101,6 +101,11 @@ export interface CommandsParams {
   /** Sets the look sensitivity (radians/pixel), or reports it if `n` is omitted. */
   setLookSensitivity: (n?: number) => string;
   /**
+   * Turns flight on or off (toggling if `flying` is omitted): no gravity, and
+   * forward/back follows the full look direction.
+   */
+  setFlying: (flying?: boolean) => string;
+  /**
    * Shows or hides the per-frame performance readout, flipping it if `on` is
    * omitted. Showing it also puts the raymarcher into its fetch-count heatmap,
    * which it draws in place of the world.
@@ -150,6 +155,7 @@ export const createCommands = ({
   setPlayerVisible,
   setMoveSpeed,
   setLookSensitivity,
+  setFlying,
   setDebugPerf,
 }: CommandsParams): Commander => {
   return new Commander({
@@ -334,6 +340,23 @@ export const createCommands = ({
             ? undefined
             : n,
         );
+      },
+    },
+    "/player:fly": {
+      description: "turn flight on or off (no gravity; W follows the look)",
+      args: "[on|off]",
+      run: (rest) => {
+        const arg = rest[0];
+        if (arg === "on") {
+          return setFlying(true);
+        }
+        if (arg === "off") {
+          return setFlying(false);
+        }
+        if (arg === undefined) {
+          return setFlying();
+        }
+        return "usage: /player:fly [on|off]  (no argument flips it)";
       },
     },
     "/account:login": {

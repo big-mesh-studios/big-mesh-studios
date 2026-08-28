@@ -13,6 +13,12 @@ export interface Player {
   vy: number;
   onGround: boolean;
   /**
+   * Whether the player is flying: gravity is off, and forward/back follows
+   * the full look direction (so looking up and holding W climbs). Toggled by
+   * `/player:fly`.
+   */
+  flying: boolean;
+  /**
    * This player's own copy of the movement settings, so `/player:speed` and
    * `/player:sensitivity` change one player rather than every player on the
    * page.
@@ -112,6 +118,7 @@ export const createPlayer = (
   vz: 0,
   vy: 0,
   onGround: false,
+  flying: false,
   config: { ...DEFAULT_PLAYER_CONFIG, ...config },
 });
 
@@ -343,6 +350,103 @@ const moveHorizontally = (
   return true;
 };
 
+/**
+ * Moves the player one axis, stopping flush against solid voxels, without
+ * the grounded step-up behaviour of `moveHorizontally`. Used for all three
+ * axes while flying, where a surface two units up is a wall to be flown
+ * around, not a ledge to climb.
+ */
+const moveAxis = (
+  player: Player,
+  world: PlayerWorld,
+  axis: "x" | "y" | "z",
+  delta: number,
+): boolean => {
+  if (delta === 0) {
+    return false;
+  }
+  const config = player.config;
+  const from = player.position[axis];
+  player.position[axis] = Math.max(
+    -world.halfExtent,
+    Math.min(world.halfExtent, from + delta),
+  );
+  if (
+    !boxHitsSolid(
+      config,
+      world.solidAt,
+      player.position.x,
+      player.position.y,
+      player.position.z,
+    )
+  ) {
+    return false;
+  }
+  // Half the move back toward the last clear position, so the player rests
+  // against the voxel rather than a frame's travel short of it.
+  let clear = from;
+  let blocked = player.position[axis];
+  for (let i = 0; i < CONTACT_REFINEMENTS; i++) {
+    const mid = (clear + blocked) / 2;
+    player.position[axis] = mid;
+    if (
+      boxHitsSolid(
+        config,
+        world.solidAt,
+        player.position.x,
+        player.position.y,
+        player.position.z,
+      )
+    ) {
+      blocked = mid;
+    } else {
+      clear = mid;
+    }
+  }
+  player.position[axis] = clear;
+  return true;
+};
+
+/**
+ * The flight integrator: gravity is off, and forward/back follows the full
+ * look direction (`lookDirection`), so holding W while looking up climbs and
+ * looking down dives; strafing stays horizontal. Each axis is clamped
+ * separately against solid voxels, and the player never snaps to the ground.
+ */
+const updateFlying = (
+  player: Player,
+  input: InputSnapshot,
+  world: PlayerWorld,
+  dt: number,
+): void => {
+  const config = player.config;
+  const [dirX, dirY, dirZ] = lookDirection(player);
+  const rightX = -Math.cos(player.yaw);
+  const rightZ = Math.sin(player.yaw);
+  let targetVx = 0;
+  let targetVy = 0;
+  let targetVz = 0;
+  if (input.moveX !== 0 || input.moveY !== 0) {
+    const len = Math.hypot(input.moveX, input.moveY);
+    const nx = input.moveX / len;
+    const ny = input.moveY / len;
+    targetVx = (dirX * ny + rightX * nx) * config.speed;
+    targetVy = dirY * ny * config.speed;
+    targetVz = (dirZ * ny + rightZ * nx) * config.speed;
+  }
+  const maxDelta = config.acceleration * dt;
+  player.vx = moveTowards(player.vx, targetVx, maxDelta);
+  player.vy = moveTowards(player.vy, targetVy, maxDelta);
+  player.vz = moveTowards(player.vz, targetVz, maxDelta);
+
+  // one axis at a time, so a wall that stops one still lets the player slide
+  // along it with the others
+  moveAxis(player, world, "x", player.vx * dt);
+  moveAxis(player, world, "y", player.vy * dt);
+  moveAxis(player, world, "z", player.vz * dt);
+  player.onGround = false;
+};
+
 export const updatePlayer = (
   player: Player,
   dt: number,
@@ -359,6 +463,11 @@ export const updatePlayer = (
       player.pitch - input.lookDy * config.lookSensitivity,
     ),
   );
+
+  if (player.flying) {
+    updateFlying(player, input, world, dt);
+    return;
+  }
 
   // movement relative to the heading
   const sinYaw = Math.sin(player.yaw);

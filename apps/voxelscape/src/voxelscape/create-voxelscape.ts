@@ -349,6 +349,16 @@ export const createVoxelscape = ({
       }
       return `look sensitivity: ${avatar.player.config.lookSensitivity} rad/px`;
     },
+    setFlying: (flying) => {
+      const next = flying ?? !avatar.player.flying;
+      avatar.player.flying = next;
+      if (next) {
+        // don't carry the fall they were in into the air
+        avatar.player.vy = 0;
+        avatar.player.onGround = false;
+      }
+      return next ? "flying" : "walking";
+    },
     setDebugPerf: (on) => {
       const next = on ?? !debugPerf();
       setDebugPerf(next);
