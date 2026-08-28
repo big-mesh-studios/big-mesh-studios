@@ -236,7 +236,7 @@ export interface TriangleRendererParams {
 }
 
 /** Chunk cells per superchunk per axis: 2 chunks of 64³ voxels, 256³ world units. */
-const SUPERCHUNK_SPAN = 2;
+export const SUPERCHUNK_SPAN = 2;
 /** World units per superchunk axis. */
 const SUPERCHUNK_WORLD = SUPERCHUNK_SPAN * BLOCK_WORLD[0];
 /**
@@ -248,8 +248,14 @@ const SUPERCHUNK_WORLD = SUPERCHUNK_SPAN * BLOCK_WORLD[0];
  */
 const MAX_UPLOAD_STALL_FRAMES = 6;
 
-/** The superchunk cell anchoring the group of 4x4x4 chunks around `center`. */
-const superchunkCellOf = (center: Dim3): [number, number, number] => [
+/**
+ * The superchunk cell a block belongs to, from the world-space centre of that
+ * block. Blocks stack in every axis, so a cell coordinate is as often negative
+ * as positive: the division rounds down rather than toward zero, which is what
+ * keeps every group exactly `SUPERCHUNK_SPAN` cells wide across the origin
+ * instead of one double-width group straddling it.
+ */
+export const superchunkCellOf = (center: Dim3): [number, number, number] => [
   Math.floor(center[0] / SUPERCHUNK_WORLD),
   Math.floor(center[1] / SUPERCHUNK_WORLD),
   Math.floor(center[2] / SUPERCHUNK_WORLD),

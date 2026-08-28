@@ -120,6 +120,81 @@ describe("ChunkSphere", () => {
     }
   }, 30_000);
 
+  it("streams the ball downward, which is the axis the ring could not move on", async () => {
+    vi.useFakeTimers();
+    const radius = 2;
+    const { sphere, filled } = sphereWithRecordedFills(radius);
+    sphere.fillFrom(0, 0, 0);
+    filled.length = 0;
+
+    // Straight down, far enough that the player's own cell is one the old
+    // ball did not hold.
+    const target = cellCenter({ x: 0, y: -3, z: 0 });
+    sphere.scrollTo(target[0], target[1], target[2]);
+
+    const playerBlock = sphere.query(target[0], target[1], target[2]);
+    expect(playerBlock).toBeDefined();
+    expect(filled).toContain(sphere.blocks.indexOf(playerBlock!));
+    expect(sphere.blocks.length).toBe(cellsInSphere(radius));
+
+    // The cell above the old centre has left the ball around (0, -3, 0).
+    const above = cellCenter({ x: 0, y: 2, z: 0 });
+    expect(sphere.query(above[0], above[1], above[2])).toBeUndefined();
+
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+    for (const cell of sphereCells({ x: 0, y: -3, z: 0 }, radius)) {
+      const c = cellCenter(cell);
+      expect(sphere.query(c[0], c[1], c[2])).toBeDefined();
+    }
+  }, 30_000);
+
+  it("holds blocks above and below the player at once", () => {
+    const { sphere } = sphereWithRecordedFills(2);
+    sphere.fillFrom(0, 0, 0);
+
+    const above = cellCenter({ x: 0, y: 1, z: 0 });
+    const below = cellCenter({ x: 0, y: -1, z: 0 });
+
+    expect(sphere.query(above[0], above[1], above[2])).toBeDefined();
+    expect(sphere.query(below[0], below[1], below[2])).toBeDefined();
+    expect(sphere.query(above[0], above[1], above[2])).not.toBe(
+      sphere.query(below[0], below[1], below[2]),
+    );
+  }, 30_000);
+
+  it("streams diagonally, crossing a cell on all three axes at once", async () => {
+    vi.useFakeTimers();
+    const radius = 2;
+    const { sphere } = sphereWithRecordedFills(radius);
+    sphere.fillFrom(0, 0, 0);
+
+    const target = cellCenter({ x: 2, y: -2, z: 2 });
+    sphere.scrollTo(target[0], target[1], target[2]);
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+
+    expect(sphere.blocks.length).toBe(cellsInSphere(radius));
+    for (const cell of sphereCells({ x: 2, y: -2, z: 2 }, radius)) {
+      const c = cellCenter(cell);
+      expect(sphere.query(c[0], c[1], c[2])).toBeDefined();
+    }
+    // No slot is left holding a cell the new ball does not contain.
+    const wanted = new Set(
+      sphereCells({ x: 2, y: -2, z: 2 }, radius).map(
+        (c) => `${c.x},${c.y},${c.z}`,
+      ),
+    );
+    for (const block of sphere.blocks) {
+      const key = [
+        block.center[0] / BLOCK_WORLD[0],
+        block.center[1] / BLOCK_WORLD[1],
+        block.center[2] / BLOCK_WORLD[2],
+      ].join(",");
+      expect(wanted.has(key)).toBe(true);
+    }
+  }, 30_000);
+
   it("does nothing when the player stays within one cell", () => {
     const { sphere, filled } = sphereWithRecordedFills(3);
     sphere.fillFrom(0, 0, 0);
