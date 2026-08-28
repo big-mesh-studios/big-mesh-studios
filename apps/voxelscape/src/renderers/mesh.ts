@@ -70,9 +70,9 @@ const DEFAULT_RECT: TileRect = [0, 0, 1, 1];
  * to `DEFAULT_RECT`.
  *
  * Neighbours are read from `store`'s 1-voxel meshing border (`atPadded`),
- * so seam faces against the adjacent block's matching voxels are culled
- * without a resolver. Below the floor is solid and above the ceiling is
- * air (the same rules as `sweepSurface`).
+ * so seam faces against the adjacent blocks' matching voxels are culled
+ * without a resolver — on faces in every axis, since chunks stack
+ * vertically as well as horizontally.
  */
 export const buildBlockMesh = (
   store: VoxelStore,
@@ -129,8 +129,8 @@ export const buildBlockMesh = (
         if (id === VOXEL_AIR || id === VOXEL_WATER) {
           continue;
         }
-        const below = y === 0 ? 1 : at(x, y - 1, z);
-        const above = y === ny - 1 ? 0 : at(x, y + 1, z);
+        const below = at(x, y - 1, z);
+        const above = at(x, y + 1, z);
         const left = at(x - 1, y, z);
         const right = at(x + 1, y, z);
         const front = at(x, y, z - 1);
@@ -221,8 +221,8 @@ export const buildWaterMesh = (store: VoxelStore): MeshArrays => {
         if (at(x, y, z) !== VOXEL_WATER) {
           continue;
         }
-        const below = y === 0 ? 1 : at(x, y - 1, z);
-        const above = y === ny - 1 ? 0 : at(x, y + 1, z);
+        const below = at(x, y - 1, z);
+        const above = at(x, y + 1, z);
         const left = at(x - 1, y, z);
         const right = at(x + 1, y, z);
         const front = at(x, y, z - 1);

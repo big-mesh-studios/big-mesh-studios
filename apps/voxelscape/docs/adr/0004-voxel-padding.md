@@ -65,4 +65,9 @@ types) — seam culling needs no neighbour data at all.
 
 ## Status
 
-Accepted.
+Accepted. Amended by ADR 0016: blocks now stack vertically, so the padding
+covers all six faces (the "never vertically — blocks don't stack" premise no
+longer holds), `fillStore` generates the top/bottom border rows from the same
+world-coordinate rule, and the mesh builders/sweeps' "below the floor is
+solid / above the ceiling is air" special-cases are gone — the generated
+border supplies that content. Memory per block grows ~10% (64³ -> 66³).

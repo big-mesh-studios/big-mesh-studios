@@ -279,3 +279,39 @@ describe("updatePlayer ground sampling near a narrow tunnel wall", () => {
     );
   });
 });
+
+describe("updatePlayer flying", () => {
+  it("climbs along the look direction instead of falling, over empty space", () => {
+    const player = createPlayer(0, 100, 0);
+    player.flying = true;
+    player.yaw = Math.PI / 2; // facing +X
+    player.pitch = 0.6; // looking up
+    for (let i = 0; i < 120; i++) {
+      updatePlayer(player, 1 / 60, { ...NO_INPUT, moveY: 1 }, FAR_GROUND);
+    }
+    expect(player.position.y).toBeGreaterThan(100);
+    expect(player.position.x).toBeGreaterThan(0);
+  });
+
+  it("holds altitude over empty space with no input", () => {
+    const player = createPlayer(0, 100, 0);
+    player.flying = true;
+    for (let i = 0; i < 120; i++) {
+      updatePlayer(player, 1 / 60, NO_INPUT, FAR_GROUND);
+    }
+    expect(player.position.y).toBe(100);
+  });
+
+  it("stops against the ground when flying down into it", () => {
+    const player = createPlayer(0, 10, 0);
+    player.flying = true;
+    player.yaw = Math.PI / 2;
+    player.pitch = -0.6; // looking down
+    for (let i = 0; i < 600; i++) {
+      updatePlayer(player, 1 / 60, { ...NO_INPUT, moveY: 1 }, FLAT);
+    }
+    // the collision box bottoms out at the surface (feet on the ground)
+    expect(player.position.y).toBeGreaterThanOrEqual(1);
+    expect(player.position.y).toBeLessThan(2);
+  });
+});
