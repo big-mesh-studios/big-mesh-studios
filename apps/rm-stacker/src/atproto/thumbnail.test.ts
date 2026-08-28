@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Dimensions3D } from "../maths";
+import type { Dimensions3D } from "@big-mesh-studios/maths";
 import { cameraDistanceFor } from "./thumbnail";
 
 const dimensions: Dimensions3D = { width: 16, height: 16, depth: 16 };

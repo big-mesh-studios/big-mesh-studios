@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { Bitmap } from "./data";
+import { Bitmap } from "@big-mesh-studios/maths";
 import {
   buildDefaultZombieModel,
   ZOMBIE_PALETTE,

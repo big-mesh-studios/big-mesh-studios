@@ -13,7 +13,7 @@
 // Only browsers with the file system access interface reach any of this. Where
 // it is missing, opening a file yields its contents and no handle, so there is
 // nothing to remember and the listing shows published models alone.
-import { Dimensions3D } from "./maths";
+import { Dimensions3D } from "@big-mesh-studios/maths";
 import { loadValueFromDB, saveValueToDB } from "./load-save";
 
 // Asking after and asking for permission on a handle are part of the file

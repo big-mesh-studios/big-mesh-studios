@@ -10,7 +10,7 @@
 // two separate facts — a file handle over here, a published name over there —
 // they drift: opening a published model would leave a stale handle behind, and
 // the next save would quietly write the wrong model over an unrelated file.
-import type { Dimensions3D } from "./maths";
+import type { Dimensions3D } from "@big-mesh-studios/maths";
 
 export type Home =
   | { kind: "nowhere" }

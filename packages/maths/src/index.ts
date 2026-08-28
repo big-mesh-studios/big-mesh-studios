@@ -1,4 +1,11 @@
-import { Dimensions2D } from "./types";
+/**********************************************************************************/
+/*                                    Vector2D                                    */
+/**********************************************************************************/
+
+export interface Dimensions2D {
+  width: number;
+  height: number;
+}
 
 export interface Vector2D {
   x: number;
@@ -17,6 +24,10 @@ export namespace Vector2D {
     out.x = Math.round(a.x - 0.5);
     out.y = Math.round(a.y - 0.5);
     return out;
+  }
+
+  export function length(a: Vector2D) {
+    return Math.hypot(a.x, a.y);
   }
 
   export function sub(a: Vector2D, b: Vector2D, out = Vector2D.create()) {
@@ -68,6 +79,10 @@ export namespace Vector2D {
     out.x = Math.max(Math.min(a.x, max.x), min.x);
     out.y = Math.max(Math.min(a.y, max.y), min.y);
     return out;
+  }
+
+  export function clone(a: Vector2D) {
+    return Vector2D.create(a.x, a.y);
   }
 
   export const EMPTY = Object.freeze(create());
@@ -142,10 +157,15 @@ export interface Dimensions3D extends Dimensions2D {
 }
 
 export namespace Dimensions3D {
+  /**
+   * Scales the three dimensions so the largest is 1. A voxel model is ray
+   * marched in this normalized space, and the box bounding it is sized from the
+   * result.
+   */
   export function normalize(
     dimensions: Dimensions3D,
-    out = { width: 0, height: 0, depth: 0 },
-  ) {
+    out: Dimensions3D = { width: 0, height: 0, depth: 0 },
+  ): Dimensions3D {
     const max = Math.max(dimensions.width, dimensions.height, dimensions.depth);
     out.width = dimensions.width / max;
     out.height = dimensions.height / max;
@@ -155,6 +175,43 @@ export namespace Dimensions3D {
 
   export function equals(a: Dimensions3D, b: Dimensions3D) {
     return a.width === b.width && a.height === b.height && a.depth === b.depth;
+  }
+}
+
+/**********************************************************************************/
+/*                                      RGB                                       */
+/**********************************************************************************/
+
+export interface RGB {
+  r: number;
+  g: number;
+  b: number;
+}
+
+export namespace RGB {
+  export function equals(a: RGB, b: RGB) {
+    return a.r === b.r && a.g === b.g && a.b === b.b;
+  }
+
+  export function fromHex(
+    hex: number | `0x${string}`,
+    out = { r: 0, g: 0, b: 0 },
+  ) {
+    const value = typeof hex === "number" ? hex : Number(hex);
+
+    if (!Number.isInteger(value) || value < 0 || value > 0xffffff) {
+      throw new Error(`${hex} is not a valid 24-bit hex colour`);
+    }
+
+    out.r = (value >> 16) & 0xff;
+    out.g = (value >> 8) & 0xff;
+    out.b = value & 0xff;
+
+    return out;
+  }
+
+  export function toCSS({ r, g, b }: RGB) {
+    return `rgb(${r}, ${g}, ${b})`;
   }
 }
 
@@ -282,6 +339,10 @@ export namespace HSVA {
     return RGBA.toCSS(toRGBA(hsva));
   }
 }
+
+/**********************************************************************************/
+/*                                     Bitmap                                     */
+/**********************************************************************************/
 
 export interface Bitmap {
   width: number;

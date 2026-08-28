@@ -1,0 +1,22 @@
+{
+  "name": "@big-mesh-studios/maths",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/big-mesh-studios/big-mesh-studios.git",
+    "directory": "packages/maths"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

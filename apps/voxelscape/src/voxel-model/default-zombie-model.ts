@@ -4,7 +4,7 @@
 // projected onto the six side bitmaps exactly the way the solver reads them
 // back, so the two always agree. A model saved to a zip from rm-stacker can
 // replace it via `/zombiemodel`.
-import { Bitmap, Dimensions3D, RGBA } from "./data";
+import { Bitmap, Dimensions3D, RGBA } from "@big-mesh-studios/maths";
 
 const N = 24;
 
