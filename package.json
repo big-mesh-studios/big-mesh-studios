@@ -14,6 +14,7 @@
     "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "pkg-pr-new": "^0.0.88",
     "prettier": "^3.9.6"
   }
 }

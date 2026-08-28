@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      pkg-pr-new:
+        specifier: ^0.0.88
+        version: 0.0.88
       prettier:
         specifier: ^3.9.6
         version: 3.9.6
@@ -69,9 +72,6 @@ importers:
       esbuild:
         specifier: ^0.28.1
         version: 0.28.2
-      pkg-pr-new:
-        specifier: ^0.0.88
-        version: 0.0.88
       solid-js:
         specifier: 2.0.0-beta.29
         version: 2.0.0-beta.29

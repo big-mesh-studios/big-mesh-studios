@@ -61,7 +61,6 @@
     "browser-fs-access": "^0.38.0",
     "daisyui": "^5.5.20",
     "esbuild": "^0.28.1",
-    "pkg-pr-new": "^0.0.88",
     "solid-js": "2.0.0-beta.29",
     "tailwindcss": "^4.3.0",
     "three": "^0.183.2",
