@@ -1,0 +1,34 @@
+{
+  "name": "@big-mesh-studios/atproto",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/big-mesh-studios/big-mesh-studios.git",
+    "directory": "packages/atproto"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./identity": "./src/identity.ts",
+    "./handles": "./src/handles.ts",
+    "./oauth": "./src/oauth.ts",
+    "./repo-client": "./src/repo-client.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@atcute/client": "^5.1.1",
+    "@atcute/identity-resolver": "^2.0.1",
+    "@atcute/lexicons": "^2.1.0",
+    "@atcute/oauth-browser-client": "^5.0.0"
+  },
+  "devDependencies": {
+    "@atcute/atproto": "^4.0.4",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.3"
+  }
+}

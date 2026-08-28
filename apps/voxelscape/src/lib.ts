@@ -147,13 +147,6 @@ export {
   type EditChunkEdit,
   type EditChunkRecord,
 } from "./atproto/edits";
-export { claimedHandle, confirmHandle } from "./atproto/handles";
-export {
-  createDidDocumentResolver,
-  createHandleResolver,
-  pdsEndpoint,
-  type DidDocument,
-} from "./atproto/identity";
 export {
   createModelLibrary,
   locateAccount,
@@ -170,10 +163,6 @@ export {
   PROFILE_COLLECTION,
   PROFILE_RKEY,
 } from "./atproto/profile";
-export {
-  createAtprotoRepoClient,
-  type AtprotoRepoClient,
-} from "./atproto/repo-client";
 
 // Multiplayer (cluster-based WebRTC mesh over atproto)
 export { MeshPeer, type MeshPeerParams } from "./multiplayer/mesh-peer";

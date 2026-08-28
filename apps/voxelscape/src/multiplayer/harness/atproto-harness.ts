@@ -4,7 +4,7 @@
 // `listReposByCollection` view of which repos hold a given collection, and
 // stands in for one player's `AtprotoRepoClient` — the four record calls the
 // mesh makes — against those in-memory repos.
-import type { AtprotoRepoClient } from "../../atproto/repo-client";
+import type { AtprotoRepoClient } from "@big-mesh-studios/atproto/repo-client";
 
 export interface StoredRecord {
   rkey: string;
@@ -92,7 +92,10 @@ export class AtprotoHarness {
         const records = harness
           .records(repo, collection)
           .slice(0, limit)
-          .map((record) => ({ value: record.value }));
+          .map((record) => ({
+            uri: `at://${repo}/${collection}/${record.rkey}`,
+            value: record.value,
+          }));
         return { records };
       },
       async deleteRecord({ repo, collection, rkey }) {

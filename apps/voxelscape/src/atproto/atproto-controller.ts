@@ -22,13 +22,13 @@ import {
   recordsToEntries,
   type EditChunkRecord,
 } from "./edits";
-import { confirmHandle } from "./handles";
+import { confirmHandle } from "@big-mesh-studios/atproto/handles";
 import {
   createDidDocumentResolver,
   createHandleResolver,
   pdsEndpoint,
   type DidDocument,
-} from "./identity";
+} from "@big-mesh-studios/atproto/identity";
 import { configureOAuthClient, signInPopup } from "./oauth";
 import {
   pictureBlobCid,
@@ -36,7 +36,10 @@ import {
   PROFILE_COLLECTION,
   PROFILE_RKEY,
 } from "./profile";
-import { createAtprotoRepoClient, type AtprotoRepoClient } from "./repo-client";
+import {
+  createAtprotoRepoClient,
+  type AtprotoRepoClient,
+} from "@big-mesh-studios/atproto/repo-client";
 
 /** How often the automatic edit sync runs while signed in, ms. */
 const SYNC_INTERVAL_MS = 60_000;

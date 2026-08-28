@@ -11,7 +11,7 @@ import {
   isMonsterRecord,
   type MonsterRecord,
 } from "./monsters";
-import type { AtprotoRepoClient } from "./repo-client";
+import type { AtprotoRepoClient } from "@big-mesh-studios/atproto/repo-client";
 
 export interface MonsterSyncParams {
   getRepoClient: () => AtprotoRepoClient | undefined;

@@ -7,7 +7,7 @@
 // and nothing asked of the person who drew it.
 //
 // The vocabulary itself comes from the editor that writes it
-// (`@big-mesh-studios/rm-stacker/lexicon`), so the collection these records
+// (`@big-mesh-studios/stacker/lexicon`), so the collection these records
 // live in is named in one place across the two programs.
 import { Client, ok, simpleFetchHandler } from "@atcute/client";
 import type {
@@ -24,12 +24,12 @@ import {
   modelBlobCid,
   modelRkey,
   type PublishedModel,
-} from "@big-mesh-studios/rm-stacker/lexicon";
+} from "@big-mesh-studios/stacker/lexicon";
 import {
   createDidDocumentResolver,
   createHandleResolver,
   pdsEndpoint,
-} from "./identity";
+} from "@big-mesh-studios/atproto/identity";
 
 /**
  * The account the studio publishes its own drawings to. Anyone can point the

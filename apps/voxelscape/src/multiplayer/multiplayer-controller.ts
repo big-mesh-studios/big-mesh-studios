@@ -8,7 +8,7 @@
 // hands its avatars over as a group rather than reaching into a scene.
 import { Group } from "@random-mesh/rmsl/scene";
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
-import type { AtprotoRepoClient } from "../atproto/repo-client";
+import type { AtprotoRepoClient } from "@big-mesh-studios/atproto/repo-client";
 import { MeshPeer } from "./mesh-peer";
 import type { EditItem, MonsterUpdate } from "./messages";
 import type { Pose, PoseMessage } from "./pose";

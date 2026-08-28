@@ -16,14 +16,14 @@ import {
   OAuthUserAgent,
 } from "@atcute/oauth-browser-client";
 import { createSignal } from "solid-js";
-import type { Dimensions3D } from "../maths";
-import { confirmHandle } from "./handles";
+import type { Dimensions3D } from "@big-mesh-studios/maths";
+import { confirmHandle } from "@big-mesh-studios/atproto/handles";
 import {
   createDidDocumentResolver,
   createHandleResolver,
   pdsEndpoint,
   type DidDocument,
-} from "./identity";
+} from "@big-mesh-studios/atproto/identity";
 import {
   blobUrl,
   isModelRecord,
@@ -34,9 +34,13 @@ import {
   THUMBNAIL_MIME_TYPE,
   type ModelRecord,
   type PublishedModel,
-} from "./models";
+} from "@big-mesh-studios/stacker/lexicon";
 import { configureOAuthClient, signInPopup } from "./oauth";
-import { createAtprotoRepoClient, type AtprotoRepoClient } from "./repo-client";
+import {
+  createAtprotoRepoClient,
+  type AtprotoBlobClient,
+  type AtprotoRepoClient,
+} from "@big-mesh-studios/atproto/repo-client";
 
 /** How many records a listing asks for at a time. */
 const PAGE_SIZE = 100;
@@ -60,7 +64,7 @@ export function createAtproto() {
   const documents = new Map<string, DidDocument>();
 
   let agent: OAuthUserAgent | undefined;
-  let repoClient: AtprotoRepoClient | undefined;
+  let repoClient: (AtprotoRepoClient & AtprotoBlobClient) | undefined;
   let restoring: Promise<void> | undefined;
 
   /** Fetches a DID's document from the directory that issues it or its own domain, once. */
@@ -81,13 +85,7 @@ export function createAtproto() {
 
   /** The address of the server holding `did`'s repository. */
   async function resolveService(did: string): Promise<string> {
-    const endpoint = pdsEndpoint(await resolveDocument(did));
-
-    if (endpoint === undefined) {
-      throw new Error(`the DID document for ${did} names no atproto server`);
-    }
-
-    return endpoint;
+    return pdsEndpoint(await resolveDocument(did));
   }
 
   /** Adopts the stored session for `did`, and asks after the name to show for it. */
@@ -97,7 +95,8 @@ export function createAtproto() {
     agent = new OAuthUserAgent(await getSession(did, { allowStale: true }));
     repoClient = createAtprotoRepoClient({
       client: new Client({ handler: agent }),
-      repo: agent.sub,
+      selfDid: agent.sub,
+      resolveService,
     });
     setAccount({ did: agent.sub, handle: null });
     setError(null);
@@ -124,7 +123,10 @@ export function createAtproto() {
   }
 
   /** The signed-in account's record client, or a refusal explaining there is none. */
-  function requireSession(): { client: AtprotoRepoClient; did: string } {
+  function requireSession(): {
+    client: AtprotoRepoClient & AtprotoBlobClient;
+    did: string;
+  } {
     const signedIn = account();
 
     if (repoClient === undefined || signedIn === null) {
@@ -150,6 +152,7 @@ export function createAtproto() {
 
     do {
       const page = await client.listRecords({
+        repo: did,
         collection: MODEL_COLLECTION,
         cursor,
         limit: PAGE_SIZE,
@@ -294,7 +297,12 @@ export function createAtproto() {
           ...(thumbnail === undefined ? {} : { thumbnail }),
         };
 
-        await client.putRecord({ collection: MODEL_COLLECTION, rkey, record });
+        await client.putRecord({
+          repo: did,
+          collection: MODEL_COLLECTION,
+          rkey,
+          record,
+        });
         setError(null);
 
         return { repo: did, rkey, record };
@@ -350,7 +358,9 @@ export function createAtproto() {
     /** Takes one of the account's models down. */
     async remove(rkey: string): Promise<void> {
       try {
-        await requireSession().client.deleteRecord({
+        const session = requireSession();
+        await session.client.deleteRecord({
+          repo: session.did,
           collection: MODEL_COLLECTION,
           rkey,
         });

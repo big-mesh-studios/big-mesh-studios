@@ -1,25 +1,28 @@
-// The record-level atproto surface subsystems build on: exactly the four
-// `com.atproto.repo.*` calls the multiplayer mesh makes for presence and the
-// signal mailbox. Declaring it as its own interface is what lets the mesh's
-// harness stand in for the network entirely — no XRPC, no OAuth, no accounts —
-// while the app passes `createAtprotoRepoClient` over a signed-in
-// `@atcute/client` `Client`.
+// The record-level atproto surface both programs build on: the
+// `com.atproto.repo.*` calls reading and writing records needs. Declaring it as
+// its own interface is what lets a test harness stand in for the network
+// entirely — no XRPC, no OAuth, no accounts — while an application passes
+// `createAtprotoRepoClient` over a signed-in `@atcute/client` `Client`.
 //
 // Routing matters: atcute's OAuth user-agent pins every request to the
-// signed-in account's own PDS (`session.info.aud`), which is right for the
-// mesh's own records but wrong for reading a peer's — their repo lives on
-// their own PDS, and asking the local PDS for it comes back RecordNotFound.
-// So each call resolves which PDS actually hosts `repo`: the authenticated
-// client for this account, or a cloned, anonymous client aimed at the peer's
-// PDS (presence and signal records are public).
+// signed-in account's own server, which is right for that account's own records
+// and wrong for reading somebody else's — those live on their own server, and
+// asking the local one comes back RecordNotFound. So each call resolves which
+// server actually hosts `repo`: the authenticated client for this account, or a
+// cloned, anonymous client aimed at the other one.
 import { ok, simpleFetchHandler, type Client } from "@atcute/client";
-import type { ActorIdentifier, Nsid, RecordKey } from "@atcute/lexicons";
+import type {
+  ActorIdentifier,
+  Blob as LexBlob,
+  Nsid,
+  RecordKey,
+} from "@atcute/lexicons";
 
 /**
  * Repos, collections, and record keys are plain strings here rather than
- * atcute's syntactic subtypes: every one the mesh passes came out of a
- * presence record or the relay, so it is already whatever the network said it
- * was, and a stand-in implementation shouldn't have to mint branded values.
+ * atcute's syntactic subtypes: every one passed in came out of a record, a
+ * listing, or the relay, so it is already whatever the network said it was, and
+ * a stand-in implementation shouldn't have to mint branded values.
  * `createAtprotoRepoClient` is where they re-enter the validated world.
  */
 export interface AtprotoRepoClient {
@@ -40,7 +43,10 @@ export interface AtprotoRepoClient {
     collection: string;
     cursor?: string;
     limit?: number;
-  }): Promise<{ records: Array<{ value: unknown }>; cursor?: string }>;
+  }): Promise<{
+    records: Array<{ uri: string; value: unknown }>;
+    cursor?: string;
+  }>;
   deleteRecord(params: {
     repo: string;
     collection: string;
@@ -48,15 +54,33 @@ export interface AtprotoRepoClient {
   }): Promise<void>;
 }
 
-/** Adapts a signed-in XRPC client to `AtprotoRepoClient`, routing each call to the repo's own PDS. */
-export const createAtprotoRepoClient = (params: {
-  /** The authenticated client, pinned to the signed-in account's own PDS. */
+/**
+ * Uploading a file, kept apart from the record calls so that something standing
+ * in for those — a test harness with no network behind it — does not have to
+ * answer for blobs it will never be asked about.
+ */
+export interface AtprotoBlobClient {
+  /**
+   * Stores `blob` on the signed-in account's own server and hands back the
+   * reference a record refers to it by. A blob has to be uploaded to the
+   * repository that will point at it, so this one takes no `repo`.
+   */
+  uploadBlob(blob: Blob): Promise<LexBlob>;
+}
+
+/** Adapts a signed-in client to `AtprotoRepoClient`, routing each call to the repo's own server. */
+export function createAtprotoRepoClient(params: {
+  /** The authenticated client, pinned to the signed-in account's own server. */
   client: Client;
   /** The signed-in account's DID; calls against it use `client` as-is. */
   selfDid: string;
-  /** Resolves a DID to its `#atproto` PDS service endpoint (see `AtprotoController`). */
+  /**
+   * Resolves a DID to the address of the server holding its records. Only
+   * reached for a repo other than the signed-in account's own, so an
+   * application that reads nobody else's records never needs it to work.
+   */
   resolveService: (did: string) => Promise<string>;
-}): AtprotoRepoClient => {
+}): AtprotoRepoClient & AtprotoBlobClient {
   const { client, selfDid, resolveService } = params;
 
   /** The client that should perform a call against `repo`'s records. */
@@ -121,5 +145,11 @@ export const createAtprotoRepoClient = (params: {
         }),
       );
     },
+    async uploadBlob(blob) {
+      const response = await ok(
+        client.post("com.atproto.repo.uploadBlob", { input: blob }),
+      );
+      return response.blob;
+    },
   };
-};
+}
