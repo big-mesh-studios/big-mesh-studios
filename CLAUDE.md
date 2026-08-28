@@ -55,9 +55,9 @@ The world depends on the editor's published package, so `apps/rm-stacker`'s
 `dist-lib` has to be built before the world's types resolve. `pnpm build-lib`
 at the root does that.
 
-Each application keeps its own `package.json`, `tsconfig.json`, and Prettier
-configuration, and the two Prettier configurations differ: a formatting run in
-one leaves the other untouched.
+Each application keeps its own `package.json` and `tsconfig.json`. Formatting
+is settled once at the root, for both: one `.prettierrc`, and `pnpm format`
+run from the repository root.
 
 ## Elsewhere in the repository
 

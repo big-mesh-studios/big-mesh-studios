@@ -10,7 +10,10 @@
     "build-lib": "pnpm -r build-lib",
     "check-types": "pnpm -r check-types",
     "test": "pnpm -r test",
-    "format": "pnpm -r format",
-    "format:check": "pnpm -r format:check"
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.9.6"
   }
 }
