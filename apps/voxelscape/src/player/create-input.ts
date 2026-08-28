@@ -1,6 +1,6 @@
-import { JSX } from "@solidjs/web/jsx-runtime";
 import { pointer } from "@big-mesh-studios/utils/pointer";
-import { clamp, isEditableTarget } from "../utils/utils";
+import { JSX } from "@solidjs/web/jsx-runtime";
+import { clamp, isEditableTarget } from "../utils";
 
 /** Maps a `KeyboardEvent` code to its [strafe, forward] contribution. */
 const MOVE_KEYS: Record<string, [number, number]> = {

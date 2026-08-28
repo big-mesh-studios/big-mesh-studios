@@ -1,3 +1,4 @@
+import { createPopover } from "@big-mesh-studios/utils/create-popover";
 import {
   createEffect,
   createSignal,
@@ -7,8 +8,7 @@ import {
   type Component,
 } from "solid-js";
 import type { CommandHelp, CommandOutput } from "../commands";
-import { createPopover } from "@big-mesh-studios/utils/create-popover";
-import { isEditableTarget } from "../utils/utils";
+import { isEditableTarget } from "../utils";
 import styles from "./Console.module.css";
 
 export interface ConsoleInputHandle {
