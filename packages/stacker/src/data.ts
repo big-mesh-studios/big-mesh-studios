@@ -2,7 +2,7 @@
 // bitmap each of those sides carries. The shapes those bitmaps are made of —
 // `Bitmap`, `RGBA`, `Vector3D`, `Dimensions3D` — come from
 // `@big-mesh-studios/maths`, which knows nothing about models.
-import type { Bitmap, Dimensions3D } from "@big-mesh-studios/maths";
+import type { Bitmap, Dimensions3D, RGBA } from "@big-mesh-studios/maths";
 
 /**
  * Every side of the box a model is drawn on. Declared as an object rather than
@@ -27,6 +27,18 @@ export const sideKinds = Object.keys(sideKindSet) as SideKind[];
 export type Sides = {
   [k in SideKind]: Bitmap;
 };
+
+/**
+ * A voxel model: the six drawings it is made of, the palette those drawings
+ * address, and the box they describe. This is a model as anything that draws
+ * one needs it — a file it was read from and a name it was published under are
+ * somebody else's business.
+ */
+export interface Model {
+  sides: Sides;
+  palette: RGBA[];
+  dimensions: Dimensions3D;
+}
 
 /** One of the model's three axes, named as its extent names it. */
 export type DimensionKind = keyof Dimensions3D;

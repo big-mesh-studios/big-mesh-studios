@@ -8,13 +8,13 @@
 // are dead-reckoned between deliveries (`./reckon`).
 import { BoxGeometry, Group, Mesh } from "@random-mesh/rmsl/scene";
 import type { DayNightState } from "../environment/day-night";
-import { Dimensions3D, type RGBA } from "@big-mesh-studios/maths";
+import { Dimensions3D } from "@big-mesh-studios/maths";
 import {
   boxSize,
   encodePalette,
   solveVoxels,
   VoxelModelMaterial,
-  type Sides,
+  type Model,
 } from "@big-mesh-studios/stacker/renderer";
 import { load } from "@big-mesh-studios/stacker/format";
 import { nextRenderedPosition, type Position3 } from "./reckon";
@@ -62,11 +62,7 @@ export class RemoteMonsters {
    * dimensions, and the padded box sized to the new grid. Existing meshes take
    * the new geometry and scale.
    */
-  setModel(model: {
-    sides: Sides;
-    palette: RGBA[];
-    dimensions: Dimensions3D;
-  }): void {
+  setModel(model: Model): void {
     const voxels = solveVoxels(model.dimensions, model.sides);
     const voxelTexture = this.material.voxelTexture;
     voxelTexture.image = voxels;

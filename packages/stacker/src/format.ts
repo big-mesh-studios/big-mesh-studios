@@ -10,6 +10,7 @@ import {
   sideKinds,
   sideKindSet,
   type DimensionKind,
+  type Model,
   type SideKind,
   type Sides,
 } from "./data";
@@ -179,13 +180,19 @@ function toBitmap(image: DecodedImage, indexOf: Map<number, number>): Bitmap {
   return bitmap;
 }
 
+/** A model read from a file, and which of the two formats it arrived in. */
+export interface LoadedModel extends Model {
+  /**
+   * Whether it arrived in the older format, where a side held colours rather
+   * than palette indices. Callers need to know because anything else they kept
+   * beside the model — an undo history naming colours, say — was written
+   * against that format too.
+   */
+  migrated: boolean;
+}
+
 /**
  * Reads a model, in whichever of the two formats it was written in.
- *
- * `migrated` says it arrived in the older one, where a side held colours rather
- * than palette indices. Callers need to know because anything else they kept
- * beside the model — an undo history naming colours, say — was written against
- * that format too.
  *
  * `dimensions` is the box the six sides describe, which they are checked
  * against: a side disagreeing with another about an axis they both measure is
@@ -201,12 +208,7 @@ function toBitmap(image: DecodedImage, indexOf: Map<number, number>): Bitmap {
 export async function load(
   blob: Blob,
   fallbackPalette: RGBA[] = [],
-): Promise<{
-  sides: Sides;
-  palette: RGBA[];
-  migrated: boolean;
-  dimensions: Dimensions3D;
-}> {
+): Promise<LoadedModel> {
   const zip = await JSZip.loadAsync(blob);
   const result: Partial<Sides> = {};
   // Sides saved as colours, held back until they have all been read: the
