@@ -59,18 +59,11 @@ export {
   type VoxelTileConfig,
   type VoxelTiles,
 } from "./renderers/atlas";
-export type { BlockRenderer } from "./renderers/block-renderer";
-export { RaymarchRenderer } from "./renderers/raymarch-renderer";
-export {
-  RendererSwitch,
-  type RendererMode,
-  type RendererSwitchParams,
-} from "./renderers/renderer-switch";
 export {
   loadVoxelTiles,
   type LoadVoxelTilesOptions,
 } from "./renderers/tile-loader";
-export { TriangleRenderer } from "./renderers/triangle-renderer";
+export { TriangleRenderer, type DayNight } from "./renderers/triangle-renderer";
 
 // The canvas, the frame loop, and what keeps them within budget
 export { AdaptiveResolution } from "./render/adaptive";

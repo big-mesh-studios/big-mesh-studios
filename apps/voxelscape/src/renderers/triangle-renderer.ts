@@ -1,10 +1,10 @@
 // Culled-face triangle mesh renderer: extracts each `WorldBlock`'s visible
 // voxel faces into real geometry (built off the main thread by a worker) and
-// rasterizes it normally. Replicates the raymarched look with real geometry:
+// rasterizes it normally. The look is carried by the materials here:
 // the fragment shades the interpolated vertex normal + baked atlas UV,
 // applies the same day-night sun/moon/ambient lighting and distance fog as
-// `RaymarchMaterial`, and the water pass blends over the scene with the same
-// Fresnel reflection as `RaymarchWaterMaterial`.
+// the surface material, and the water pass blends over the scene with a
+// Fresnel reflection.
 import type { Node, UniformNode } from "@random-mesh/rmsl";
 import { float, pow, vec3, vec4 } from "@random-mesh/rmsl";
 import {
@@ -24,7 +24,9 @@ import type { VoxelTileConfig } from "./atlas";
 import type { Dim3, WorldBlock } from "../world/level-data";
 import { setGeometryData, type MeshArrays } from "./mesh";
 import { MeshClient } from "./mesh-client";
-import type { BlockRenderer, DayNight } from "./block-renderer";
+import type { dayNightState } from "../environment/day-night";
+
+export type DayNight = ReturnType<typeof dayNightState>;
 
 /**
  * Opaque terrain surface material. One shared instance across every block's
@@ -34,7 +36,7 @@ import type { BlockRenderer, DayNight } from "./block-renderer";
 export class TriangleMaterial extends NodeMaterial {
   /**
    * The spritesheet uploaded as one 2D texture, set asynchronously once
-   * loaded (mirrors `RaymarchMaterial.tilesTexture`).
+   * loaded.
    */
   tilesTexture: Texture | null = null;
   maxDistance: number = 480;
@@ -141,7 +143,7 @@ export class TriangleMaterial extends NodeMaterial {
       .add(lightColour.mul(diffuse))
       .add(moonLightColour.mul(moonDiffuse));
 
-    // flat blue until the spritesheet is applied (mirrors the raymarch fallback)
+    // flat blue until the spritesheet is applied
     let albedo = vec3(0.0, 0.0, 1.0);
     if (this.tilesSampler !== undefined) {
       albedo = this.tilesSampler.texture(uv).rgb;
@@ -158,7 +160,7 @@ export class TriangleMaterial extends NodeMaterial {
 /**
  * Translucent water surface material, drawn after the opaque terrain in
  * scene-graph order. Shades each fragment with the same Fresnel sky
- * reflection and base transparency as the raymarch water pass; the geometry
+ * reflection and base transparency; the geometry
  * is the water surface mesh, so depth-testing occludes correctly against
  * terrain and the player.
  */
@@ -231,7 +233,7 @@ const EMPTY_MESH: MeshArrays = {
   indices: [],
 };
 
-export class TriangleRenderer implements BlockRenderer {
+export class TriangleRenderer {
   readonly triMaterial = new TriangleMaterial();
   readonly triWaterMaterial = new TriangleWaterMaterial();
   readonly triMeshes: Mesh[] = [];
@@ -262,7 +264,7 @@ export class TriangleRenderer implements BlockRenderer {
   private readonly meshes: MeshClient;
   private readonly onBlockMeshed?: (index: number) => void;
 
-  // Fullscreen underwater tint (the raymarch water pass tints the view
+  // Fullscreen underwater tint (the water pass tints the view
   // in-shader instead). Drawn last with depth-testing off so it washes the
   // whole view when the camera dips below the sea.
   private readonly tintMaterial: MeshBasicMaterial;

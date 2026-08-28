@@ -125,7 +125,6 @@ export const createVoxelscape = ({
     blocksPerSide,
     terrain,
     surfaceOnly,
-    debugPerf: initialDebugPerf,
     spawn,
     onInitialDraw: setLoading,
   });
@@ -173,7 +172,7 @@ export const createVoxelscape = ({
     layer: world.editLayer,
     inventory,
     surfaceOnly,
-    onBlockEdited: (i) => world.renderers.onBlockChanged(i),
+    onBlockEdited: (i) => world.renderer.onBlockChanged(i),
     onEditRecorded: () => world.scheduleSave(),
     // Peers apply these immediately; the atproto sync is still what settles
     // disagreements.
@@ -315,8 +314,8 @@ export const createVoxelscape = ({
   const resolution = new AdaptiveResolution();
 
   const commands = createCommands({
+    renderer: world.renderer,
     dayNight: environment.dayNight,
-    rendererSwitch: world.renderers,
     weather: environment.weather,
     sound: environment.sound,
     atproto,
@@ -350,7 +349,6 @@ export const createVoxelscape = ({
     setDebugPerf: (on) => {
       const next = on ?? !debugPerf();
       setDebugPerf(next);
-      world.renderers.setFetchCounting(next);
       return next ? "performance readout shown" : "performance readout hidden";
     },
   });
@@ -401,11 +399,11 @@ export const createVoxelscape = ({
       lighting.skyColor[1],
       lighting.skyColor[2],
     );
-    world.renderers.applyLighting(lighting);
+    world.renderer.applyLighting(lighting);
     // The voxel-model zombies are self-lit, so they take the same day-night
     // state the renderers apply to the terrain and the standard materials.
     monsterRender.applyLighting(lighting);
-    world.renderers.tick(dt, camera);
+    world.renderer.tick(dt, camera);
   };
 
   const mount = (canvas: HTMLCanvasElement): (() => void) => {
@@ -418,8 +416,8 @@ export const createVoxelscape = ({
       onDebugStats,
       onFrame: advance,
       clearColor: () => skyColor,
-      describeStats: (gl, width, height, sample) =>
-        world.renderers.describeDebugStats(gl, width, height, sample),
+      describeStats: () =>
+        `tris: ${world.renderer.triangleCount.toLocaleString()}`,
     });
 
     unmount = () => {

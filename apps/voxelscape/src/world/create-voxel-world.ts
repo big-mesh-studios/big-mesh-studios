@@ -1,5 +1,5 @@
 import type { Group } from "@random-mesh/rmsl/scene";
-import { RendererSwitch } from "../renderers/renderer-switch";
+import { TriangleRenderer } from "../renderers/triangle-renderer";
 import { loadVoxelTiles } from "../renderers/tile-loader";
 import { BlockGrid } from "./block-grid";
 import {
@@ -23,9 +23,7 @@ import {
 import { heightAt as terrainHeightAt, type TerrainConfig } from "./noise";
 import { WorldRing } from "./world-ring";
 
-/** Padding added to each mesh's box so adjacent meshes share a thin overlap shell. */
-const PAD = 2.0;
-/** Water absorption used by the raymarch water pass and, at the same value, the triangle renderer's underwater tint. */
+/** Water absorption used by the water pass and the underwater tint alike. */
 const WATER_EXTINCTION = 0.12;
 
 /** How far the window has got towards being generated and on screen. */
@@ -47,7 +45,6 @@ export interface VoxelWorldConfig {
   terrain: TerrainConfig;
   /** When true, only surface voxels are written into each block's GPU chunks instead of the full solid volume. */
   surfaceOnly: boolean;
-  debugPerf: boolean;
   /** Where the player starts, in world units. The window fills outward from here. */
   spawn: Dim3;
   /**
@@ -66,8 +63,8 @@ export interface VoxelWorld {
    * how the ring maps blocks onto grid coordinates.
    */
   blocks: WorldBlock[];
-  /** Both rendering strategies and the switch between them (`/render:mode ray|tri`). */
-  renderers: RendererSwitch;
+  /** What draws the blocks: their visible faces, meshed into triangles. */
+  renderer: TriangleRenderer;
   /** The blocks drawn as solid terrain, for the scene to place in its draw order. */
   terrain: Group;
   /** The water surfaces over those blocks, likewise. */
@@ -112,13 +109,12 @@ export interface VoxelWorld {
 
 /**
  * The voxel terrain: a window of blocks that streams as the player moves, the
- * overlay of their edits, and the two renderers that draw it.
+ * overlay of their edits, and the renderer that draws it.
  */
 export const createVoxelWorld = ({
   blocksPerSide,
   terrain,
   surfaceOnly,
-  debugPerf,
   spawn,
   onInitialDraw,
 }: VoxelWorldConfig): VoxelWorld => {
@@ -130,7 +126,6 @@ export const createVoxelWorld = ({
    * edge of their center block, so fog always hides the ring boundary before
    * it can become visible.
    */
-  const fogDistance = (blocksPerSide / 2 - 0.5) * BLOCK_WORLD[0];
 
   const blockGrid = new BlockGrid({ blocksPerSide });
   /** Slots whose terrain has been generated. Fills up once, during the initial fill. */
@@ -139,16 +134,11 @@ export const createVoxelWorld = ({
   const drawn = new Set<number>();
   /** The slot the player spawns in, or -1 until the initial fill has been asked for. */
   let spawnIndex = -1;
-  const renderers = new RendererSwitch({
+  const renderer = new TriangleRenderer({
     blocks: blockGrid.blocks,
-    padding: PAD,
-    blockWorld: BLOCK_WORLD,
-    fogDistance,
-    fogStart: 0.4 * fogDistance,
-    debugPerf,
     waterExtinction: WATER_EXTINCTION,
     seaLevel: terrain.seaLevel,
-    onBlockDrawable: (i) => {
+    onBlockMeshed: (i) => {
       // The spritesheet landing invalidates every slot's mesh at once, so
       // slots still waiting for their terrain are drawn too, as the nothing
       // they currently hold. Only a draw of a slot that already has terrain
@@ -171,13 +161,13 @@ export const createVoxelWorld = ({
     terrain,
     surfaceOnly,
     onBlockChanged: (i) => {
-      // Recorded before the renderers are told, because in raymarch mode a
-      // block is drawable the moment its data lands and `onBlockDrawable`
+      // Recorded before the renderer is told, because a block only counts as
+      // drawn once its geometry is built and `onBlockMeshed`
       // fires from inside this call.
       filled.add(i);
-      renderers.onBlockChanged(i);
+      renderer.onBlockChanged(i);
     },
-    onBlockReposition: (i, center) => renderers.repositionBlock(i, center),
+    onBlockReposition: (i, center) => renderer.repositionBlock(i, center),
     editLayer,
   });
 
@@ -191,7 +181,7 @@ export const createVoxelWorld = ({
       }
     }
     for (const i of affected) {
-      renderers.onBlockChanged(i);
+      renderer.onBlockChanged(i);
     }
   };
 
@@ -236,7 +226,7 @@ export const createVoxelWorld = ({
       }
     }
     for (const i of affected) {
-      renderers.onBlockChanged(i);
+      renderer.onBlockChanged(i);
     }
     editPersistence.scheduleSave();
     return changed;
@@ -254,17 +244,17 @@ export const createVoxelWorld = ({
   // — and this is the block the player is shown first. The spritesheet is one
   // local asset, and waiting for it costs a fraction of what the block itself
   // cost. If it never arrives, the block is drawn flat blue instead.
-  void loadVoxelTiles(renderers).then(() => renderers.drawBlockNow(spawnIndex));
+  void loadVoxelTiles(renderer).then(() => renderer.meshNow(spawnIndex));
   // Re-apply any previously persisted edits to the freshly built initial
   // blocks, once the overlay has loaded.
   void editPersistence.load().then(reapplyEdits);
 
   return {
     blocks: blockGrid.blocks,
-    renderers,
-    terrain: renderers.terrain,
-    water: renderers.water,
-    underwaterTint: renderers.underwaterTint,
+    renderer,
+    terrain: renderer.terrain,
+    water: renderer.water,
+    underwaterTint: renderer.underwaterTint,
     editLayer,
     ringRadius,
     reapplyEdits,
@@ -298,7 +288,7 @@ export const createVoxelWorld = ({
       // stop the fill worker so it doesn't keep running after unmount
       worldRing.dispose();
       // terminate the mesh worker and release the renderers' GPU resources
-      renderers.dispose();
+      renderer.dispose();
       // store the edit overlay before the render loop stops
       void editPersistence.saveNow();
     },

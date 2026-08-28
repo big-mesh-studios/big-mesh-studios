@@ -4,7 +4,7 @@ import {
   parseTileAtlasXml,
   type VoxelTiles,
 } from "./atlas";
-import type { RendererSwitch } from "./renderer-switch";
+import type { TriangleRenderer } from "./triangle-renderer";
 
 const TILE_URL = "./spritesheets/spritesheet_tiles.png";
 const XML_URL = "./spritesheets/spritesheet_tiles.xml";
@@ -22,7 +22,7 @@ export interface LoadVoxelTilesOptions {
  * startup.
  */
 export const loadVoxelTiles = async (
-  rendererSwitch: RendererSwitch,
+  rendererSwitch: TriangleRenderer,
   options?: LoadVoxelTilesOptions,
 ): Promise<void> => {
   const tileUrl = options?.tileUrl ?? TILE_URL;

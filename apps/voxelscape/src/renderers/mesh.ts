@@ -1,9 +1,9 @@
 // CPU triangle-mesh extraction for the alternative (surface-mesh) renderer.
 // Each block's surface is turned into a set of quads — one per exposed face —
 // whose positions are in the block's local world space (centred at the origin,
-// matching the mesh placement used by the raymarch meshes). UVs are baked into
+// matching the placement the blocks are drawn at). UVs are baked into
 // the atlas using exactly the same face→tile mapping as `rayMarchWorld`, so the
-// triangle renderer looks pixel-identical to the raymarched terrain.
+// terrain is lit and textured the same wherever a face is drawn.
 //
 // Seam faces between neighbouring blocks are culled by reading the block's own
 // 1-voxel meshing border (`VoxelStore.padding`), which `fillStore` generates

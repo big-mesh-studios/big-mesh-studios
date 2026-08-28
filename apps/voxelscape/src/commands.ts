@@ -1,3 +1,4 @@
+import type { TriangleRenderer } from "./renderers/triangle-renderer";
 import type { AtprotoController } from "./atproto/atproto-controller";
 import type { ModelLibrary } from "./atproto/models";
 import { MONSTER_MODEL_NAME } from "./atproto/models";
@@ -9,7 +10,6 @@ import type { MonsterController } from "./monsters/monster-controller";
 import type { RemoteMonsters } from "./monsters/remote-monsters";
 import type { MultiplayerController } from "./multiplayer/multiplayer-controller";
 import type { AdaptiveResolution } from "./render/adaptive";
-import type { RendererSwitch } from "./renderers/renderer-switch";
 
 /**
  * Declares every debug console command as a single object literal, keyed by
@@ -78,8 +78,9 @@ export class Commander {
 }
 
 export interface CommandsParams {
+  /** What draws the world's blocks, for the triangle count it reports. */
+  renderer: TriangleRenderer;
   dayNight: DayNightController;
-  rendererSwitch: RendererSwitch;
   weather: WeatherController;
   sound: SoundController;
   atproto: AtprotoController;
@@ -102,8 +103,7 @@ export interface CommandsParams {
   setLookSensitivity: (n?: number) => string;
   /**
    * Shows or hides the per-frame performance readout, flipping it if `on` is
-   * omitted. Showing it also puts the raymarcher into its fetch-count heatmap,
-   * which it draws in place of the world.
+   * omitted.
    */
   setDebugPerf: (on?: boolean) => string;
 }
@@ -134,8 +134,8 @@ const describeError = (err: unknown): string =>
 
 /** Every debug console command, declared as a single object literal keyed by command name. */
 export const createCommands = ({
+  renderer,
   dayNight,
-  rendererSwitch,
   weather,
   sound,
   atproto,
@@ -216,20 +216,6 @@ export const createCommands = ({
       description: "show the current clock state",
       run: () => dayNight.describe(),
     },
-    "/render:mode": {
-      description: "switch renderer (raymarch or surface triangles)",
-      args: "ray|tri",
-      run: (rest) => {
-        const arg = rest[0];
-        if (arg === "ray") {
-          return rendererSwitch.setMode("ray");
-        }
-        if (arg === "tri" || arg === "mesh" || arg === "triangles") {
-          return rendererSwitch.setMode("tri");
-        }
-        return `renderer: ${rendererSwitch.mode} — usage: /render:mode ray|tri`;
-      },
-    },
     "/render:resolution": {
       description: "adapt the render resolution, or pin it",
       args: "auto|<0.1..1>",
@@ -269,8 +255,7 @@ export const createCommands = ({
     },
     "/render:triangles": {
       description: "show the current triangle count",
-      run: () =>
-        `triangles: ${rendererSwitch.triangleCount.toLocaleString()} (${rendererSwitch.mode} mode)`,
+      run: () => `triangles: ${renderer.triangleCount.toLocaleString()}`,
     },
     "/sound:volume": {
       description: "set the sound volume (0 mutes)",
