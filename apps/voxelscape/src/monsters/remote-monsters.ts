@@ -15,7 +15,6 @@ import {
   solveVoxels,
   VoxelModelMaterial,
 } from "@big-mesh-studios/stacker/renderer";
-import { buildDefaultZombieModel } from "../voxel-model/default-zombie-model";
 import { loadModel, type LoadedModel } from "../voxel-model/load-model";
 import { nextRenderedPosition, type Position3 } from "./reckon";
 import type { MonsterSnapshot } from "./monster";
@@ -26,9 +25,6 @@ const HALF_HEIGHT = 1.1;
 const BOB_RATE = 9;
 /** Walk-bob height, world units above the standing pose. */
 const BOB_AMPLITUDE = 0.15;
-/** The default model, standing tall in a 24³ grid, before any zip is loaded. */
-const DEFAULT_MODEL = buildDefaultZombieModel();
-
 interface MonsterMesh {
   cube: Mesh;
   /** The position the cube was drawn at last frame, for the dead-reckoning blend. */
@@ -43,17 +39,15 @@ export class RemoteMonsters {
   private geometry: BoxGeometry;
   /** Uniform scale making the model stand as tall as the AI cube. */
   private scale = 1;
-  private modelDimensions: Dimensions3D = {
-    width: DEFAULT_MODEL.dimensions.width,
-    height: DEFAULT_MODEL.dimensions.height,
-    depth: DEFAULT_MODEL.dimensions.depth,
-  };
+  /** What the monsters are drawn as, or null until a model has been loaded. */
+  private modelDimensions: Dimensions3D | null = null;
   private time = 0;
 
   constructor(params: { getMonsters: () => Iterable<MonsterSnapshot> }) {
     this.getMonsters = params.getMonsters;
+    // No model to draw with yet. The material's empty volume marches to a miss
+    // on every ray, so a monster is simply not seen until one is loaded.
     this.geometry = new BoxGeometry(1, 1, 1);
-    this.setModel(DEFAULT_MODEL);
   }
 
   /** Number of monster meshes currently in the scene. */
@@ -134,8 +128,12 @@ export class RemoteMonsters {
 
   /** One line about the model and the meshes, for a debug console. */
   describe(): string {
-    const { width, height, depth } = this.modelDimensions;
-    return `voxel model ${width}×${height}×${depth} · ${this.meshes.size} mesh(es)`;
+    const dimensions = this.modelDimensions;
+    const model =
+      dimensions === null
+        ? "no voxel model yet"
+        : `voxel model ${dimensions.width}×${dimensions.height}×${dimensions.depth}`;
+    return `${model} · ${this.meshes.size} mesh(es)`;
   }
 
   /** Loads a model zip saved from rm-stacker and applies it to every monster. */

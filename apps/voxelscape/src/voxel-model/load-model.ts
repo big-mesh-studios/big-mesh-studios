@@ -4,12 +4,10 @@
 // a model file is by construction rather than by two implementations of the
 // same format staying in step.
 //
-// What is left here is what the ray marcher needs and a drawing program has no
-// reason to hand back: the model's extent in voxels, and a palette to fall
-// back on when the file carries none.
+// What is left here is what drawing a model needs and a drawing program has no
+// reason to hand back: the model's extent in voxels.
 import { load } from "@big-mesh-studios/stacker/format";
 import type { Bitmap, Dimensions3D, RGBA } from "@big-mesh-studios/maths";
-import { ZOMBIE_PALETTE } from "./default-zombie-model";
 
 export const sideKinds = [
   "front",
@@ -29,13 +27,13 @@ export type LoadedModel = {
 
 /**
  * Reads a model zip and hands back the six side bitmaps, the palette (the
- * model's own when the zip holds one, else the default zombie palette), and
+ * model's own, or the colours its images use), and
  * the model's grid dimensions — the sides are square, and the grid is that
  * size in every axis. Throws with a readable message when the file is not a
  * model rm-stacker wrote.
  */
 export async function loadModel(file: Blob): Promise<LoadedModel> {
-  const { sides, palette } = await load(file, ZOMBIE_PALETTE);
+  const { sides, palette } = await load(file);
   const size = sides.front.width;
   return {
     sides,

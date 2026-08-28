@@ -179,10 +179,15 @@ function toBitmap(image: DecodedImage, indexOf: Map<number, number>): Bitmap {
  * than palette indices. Callers need to know because anything else they kept
  * beside the model — an undo history naming colours, say — was written against
  * that format too.
+ *
+ * @param fallbackPalette Colours to seed the palette slots a colour-format
+ * model does not fill. Left out, the palette is exactly the colours the file
+ * uses, which is what a reader wants; an editor passes its own so a model
+ * opened for drawing arrives with a full palette to draw from.
  */
 export async function load(
   blob: Blob,
-  fallbackPalette: RGBA[],
+  fallbackPalette: RGBA[] = [],
 ): Promise<{ sides: Sides; palette: RGBA[]; migrated: boolean }> {
   const zip = await JSZip.loadAsync(blob);
   const result: Partial<Sides> = {};

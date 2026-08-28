@@ -254,30 +254,37 @@ export const createVoxelscape = ({
   const modelLibrary = createModelLibrary();
 
   /**
-   * Puts the monsters in the best drawing this world can reach: the one the
-   * model account published under `MONSTER_MODEL_NAME`, the model file this
-   * site serves when that account has nothing to give, and the built-in model
-   * when neither does. Redrawing a monster is therefore republishing it —
-   * nobody has to touch this code, this site, or wait for either to deploy.
+   * Puts the monsters in the best drawing this world can reach, nearest first:
+   * the model file this site serves, then the one the model account published
+   * under `MONSTER_MODEL_NAME` if it has one. The site's file is a small
+   * same-origin fetch and the account is a walk across the network, so taking
+   * them in that order is what gets the monsters dressed at all quickly;
+   * whatever the account publishes then replaces it. Redrawing a monster is
+   * therefore republishing it — nobody has to touch this code, this site, or
+   * wait for either to deploy.
    */
   const dressMonsters = async (): Promise<string> => {
-    if (modelAccount !== null) {
-      try {
-        const model = await modelLibrary.find(modelAccount, MONSTER_MODEL_NAME);
-        const line = await monsterRender.loadModelFromBlob(
-          await modelLibrary.file(model),
-        );
-        return `${line} — published by ${modelAccount}`;
-      } catch {
-        // An account that has published nothing under that name is not a
-        // broken world: the file this site serves is the next thing to wear.
-      }
-    }
     const response = await fetch("./models/zombie.zip").catch(() => null);
-    if (response === null || !response.ok) {
-      return "monsters keep the model built into the game";
+    if (response !== null && response.ok) {
+      const line = await monsterRender.loadModelFromBlob(await response.blob());
+      onNotice?.(`${line} — served by this site`);
     }
-    return `${await monsterRender.loadModelFromBlob(await response.blob())} — served by this site`;
+
+    if (modelAccount === null) {
+      return "monsters wear the model this site serves";
+    }
+
+    try {
+      const model = await modelLibrary.find(modelAccount, MONSTER_MODEL_NAME);
+      const line = await monsterRender.loadModelFromBlob(
+        await modelLibrary.file(model),
+      );
+      return `${line} — published by ${modelAccount}`;
+    } catch {
+      // An account that has published nothing under that name is not a broken
+      // world: the file this site serves is already being worn.
+      return "monsters wear the model this site serves";
+    }
   };
 
   void dressMonsters().then((line) => onNotice?.(line));
