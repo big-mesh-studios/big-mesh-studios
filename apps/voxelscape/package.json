@@ -36,8 +36,9 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
+    "@big-mesh-studios/rm-stacker": "workspace:*",
     "@types/node": "^26.2.0",
     "@types/three": "^0.183.1",
     "esbuild": "^0.28.1",
@@ -55,7 +56,6 @@
     "@atcute/identity-resolver": "^2.0.1",
     "@atcute/lexicons": "^2.1.0",
     "@atcute/oauth-browser-client": "^5.0.0",
-    "@big-mesh-studios/rm-stacker": "workspace:*",
     "@fortawesome/fontawesome-free": "^7.3.1",
     "@random-mesh/rmsl": "^1.9.0",
     "@solidjs/signals": "2.0.0-beta.29",

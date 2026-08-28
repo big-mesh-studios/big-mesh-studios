@@ -110,9 +110,6 @@ importers:
       '@atcute/oauth-browser-client':
         specifier: ^5.0.0
         version: 5.0.0(@atcute/identity-resolver@2.0.1(@atcute/identity@2.0.2(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3)
-      '@big-mesh-studios/rm-stacker':
-        specifier: workspace:*
-        version: link:../rm-stacker
       '@fortawesome/fontawesome-free':
         specifier: ^7.3.1
         version: 7.3.1
@@ -153,6 +150,9 @@ importers:
         specifier: ^0.183.2
         version: 0.183.2
     devDependencies:
+      '@big-mesh-studios/rm-stacker':
+        specifier: workspace:*
+        version: link:../rm-stacker
       '@types/node':
         specifier: ^26.2.0
         version: 26.4.0
