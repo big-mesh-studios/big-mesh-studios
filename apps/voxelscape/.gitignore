@@ -1,0 +1,42 @@
+dist
+dist-lib
+.wrangler
+.output
+.vercel
+.netlify
+.vinxi
+.pnpm-store
+app.config.timestamp_*.js
+
+# Environment
+.env
+.env*.local
+
+# dependencies
+/node_modules
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+*.launch
+.settings/
+.vscode/
+
+# Temp
+gitignore
+
+# E2E runtime artifacts (Playwright browser profiles, harness logs, screenshots)
+e2e/profiles/
+e2e/run/
+e2e/shot-*.png
+
+# Worktrees
+.worktrees
+
+# Design docs
+docs/superpowers
+
+# System Files
+.DS_Store
+Thumbs.db

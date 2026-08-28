@@ -1,0 +1,458 @@
+import { Color, PerspectiveCamera, Scene } from "@random-mesh/rmsl/scene";
+import { createSignal, type Accessor } from "solid-js";
+import { AtprotoController } from "../atproto/atproto-controller";
+import {
+  createModelLibrary,
+  MONSTER_MODEL_NAME,
+  WORLD_MODEL_ACCOUNT,
+} from "../atproto/models";
+import type { Commander } from "../commands";
+import { createCommands } from "../commands";
+import { createEnvironment } from "../environment/create-environment";
+import { MonsterSync } from "../atproto/monster-sync";
+import { MonsterController } from "../monsters/monster-controller";
+import { RemoteMonsters } from "../monsters/remote-monsters";
+import { MultiplayerController } from "../multiplayer/multiplayer-controller";
+import { createPeerJSSignaling } from "../multiplayer/peerjs-transport";
+import { createInput, type InputController } from "../player/create-input";
+import { createPlayerAvatar } from "../player/create-player-avatar";
+import { EditingController } from "../player/editing-controller";
+import { Inventory } from "../player/inventory";
+import type { Player, PlayerConfig } from "../player/player";
+import { AdaptiveResolution } from "../render/adaptive";
+import { createRenderLoop } from "../render/create-render-loop";
+import {
+  createVoxelWorld,
+  type InitialDrawProgress,
+} from "../world/create-voxel-world";
+import { type Dim3 } from "../world/level-data";
+import { DEFAULT_TERRAIN, type TerrainConfig } from "../world/noise";
+
+/** Sky blue, matching the material's default fog color so the horizon blends. */
+const SKY_BLUE = 0x87ceeb;
+
+export interface VoxelscapeConfig {
+  /** Width of the streamed block window, in blocks per side. Also sets the fog and camera far distances. */
+  blocksPerSide?: number;
+  /** Terrain noise settings shared by every block in the ring. */
+  terrain?: TerrainConfig;
+  /** When true, only surface voxels are written into each block's GPU chunks instead of the full solid volume. */
+  surfaceOnly?: boolean;
+  /** Where the player starts, in world units; the spawn height is the terrain surface there. */
+  spawn?: Dim3;
+  /** Movement settings for this world's player; anything omitted takes its default. */
+  player?: Partial<PlayerConfig>;
+  /**
+   * Starts the world with the GPU timer and the per-frame statistics passed to
+   * `onDebugStats` turned on, which `/render:perf` then toggles. Defaults to
+   * whether the page URL's hash contains `perf`.
+   */
+  debugPerf?: boolean;
+  /**
+   * The account whose published models the monsters are drawn as, named by
+   * handle or by account id. Defaults to the account this world publishes its
+   * own drawings to; `null` keeps to the model file the site serves.
+   */
+  modelAccount?: string | null;
+  /** Receives the statistics line once per frame while `debugPerf` is on. */
+  onDebugStats?: (line: string) => void;
+  /**
+   * Receives lines the world reports without being asked to — currently only
+   * the atproto state settled at startup, which is the answer to "am I still
+   * signed in?" after a reload. Meant for the debug console.
+   */
+  onNotice?: (line: string) => void;
+}
+
+export interface Voxelscape {
+  scene: Scene;
+  camera: PerspectiveCamera;
+  player: Player;
+  input: InputController;
+  inventory: Inventory;
+  commands: Commander;
+  /** Whether `onDebugStats` is being called, which `/render:perf` toggles. */
+  debugPerf: Accessor<boolean>;
+  /** Last break/place result, so the HUD can show silent failures. */
+  editStatus: Accessor<string>;
+  /** Whether the crosshair is currently pointing at something within reach. */
+  inReach: Accessor<boolean>;
+  /** How much of the world is on screen, for a loading screen to show and dismiss on. */
+  loading: Accessor<InitialDrawProgress>;
+  /**
+   * Attaches a renderer to `canvas` and starts the frame loop. Returns a
+   * function that stops the loop and releases the renderer, leaving the world
+   * itself intact so it can be mounted onto another canvas.
+   */
+  mount(canvas: HTMLCanvasElement): () => void;
+  /** Unmounts if mounted, then releases the world, its workers, and its listeners. */
+  dispose(): void;
+}
+
+/**
+ * Builds a voxel world — terrain ring, renderers, player, weather, sound,
+ * editing and sync — and owns its frame loop. Touches no DOM beyond the
+ * canvas passed to `mount`.
+ */
+export const createVoxelscape = ({
+  blocksPerSide = 5,
+  terrain = DEFAULT_TERRAIN,
+  surfaceOnly = true,
+  spawn = [0, 0, 0],
+  modelAccount = WORLD_MODEL_ACCOUNT,
+  debugPerf: initialDebugPerf = typeof window !== "undefined" &&
+    window.location.hash.includes("perf"),
+  onDebugStats,
+  onNotice,
+  player,
+}: VoxelscapeConfig = {}): Voxelscape => {
+  const [editStatus, setEditStatus] = createSignal("");
+  const [inReach, setInReach] = createSignal(false);
+  const [debugPerf, setDebugPerf] = createSignal(initialDebugPerf);
+
+  const input = createInput();
+  const environment = createEnvironment({
+    groundHeightAt: (x, z) => world.heightAt(x, z),
+  });
+
+  const [loading, setLoading] = createSignal<InitialDrawProgress>({
+    drawn: 0,
+    total: blocksPerSide * blocksPerSide,
+    spawnDrawn: false,
+  });
+
+  const world = createVoxelWorld({
+    blocksPerSide,
+    terrain,
+    surfaceOnly,
+    debugPerf: initialDebugPerf,
+    spawn,
+    onInitialDraw: setLoading,
+  });
+
+  /**
+   * Camera with a far plane beyond the ring's physical extent, so box
+   * geometry is never clipped (fog and early ray termination hide the
+   * actual cutoff).
+   */
+  const camera = new PerspectiveCamera(50, 1.0, 0.1, world.ringRadius + 200);
+  const avatar = createPlayerAvatar({
+    camera,
+    terrain: world,
+    spawn,
+    player,
+  });
+
+  const monsters = new MonsterController({
+    seed: terrain.seed,
+    heightAt: (x, z) => world.heightAt(x, z),
+    solidAt: (x, y, z) => world.solidAt(x, y, z),
+    waterAt: (x, y, z) => world.inWaterAt(x, y, z),
+    getDid: () => atproto.did,
+    // Monsters chase and are owned by the nearest player: the local avatar
+    // plus whoever the mesh has a live link to.
+    getPlayers: () => [
+      {
+        did: atproto.did ?? "",
+        x: avatar.player.position.x,
+        z: avatar.player.position.z,
+      },
+      ...multiplayer.peerPositions(),
+    ],
+    // The optimistic path: owned monsters' state fans out over the mesh, and
+    // peers render it without waiting for atproto.
+    onBroadcast: (updates) => multiplayer.broadcastMonsters(updates),
+  });
+  const monsterRender = new RemoteMonsters({
+    getMonsters: () => monsters.monsters.values(),
+  });
+
+  const inventory = new Inventory();
+  const editing = new EditingController({
+    blocks: world.blocks,
+    layer: world.editLayer,
+    inventory,
+    surfaceOnly,
+    onBlockEdited: (i) => world.renderers.onBlockChanged(i),
+    onEditRecorded: () => world.scheduleSave(),
+    // Peers apply these immediately; the atproto sync is still what settles
+    // disagreements.
+    onEdit: (w, id, updatedAt) =>
+      multiplayer.broadcastEdits([
+        { x: w[0], y: w[1], z: w[2], id, ts: updatedAt },
+      ]),
+    getLook: () => avatar.look(),
+    getPlayerVoxels: () => avatar.occupiedVoxels(),
+  });
+
+  const atproto = new AtprotoController({
+    layer: world.editLayer,
+    seed: terrain.seed,
+    options: {},
+    getHandle: () => "",
+    onMerged: (changed) => {
+      if (changed > 0) {
+        world.reapplyEdits();
+        world.scheduleSave();
+      }
+    },
+    onConnected: (did) => {
+      void multiplayer.start();
+      monsterSync.start();
+      // Their own cube wears the face peers see, which is how they check it.
+      void atproto
+        .resolvePicture(did)
+        .then(async (picture) => {
+          if (picture !== null) {
+            avatar.setPicture(await createImageBitmap(picture));
+          }
+        })
+        .catch(() => {
+          // No picture is a look, not a failure worth reporting.
+        });
+    },
+    onSignedOut: () => {
+      void multiplayer.stop();
+      monsterSync.stop();
+    },
+  });
+
+  const multiplayer = new MultiplayerController({
+    getRepoClient: () => atproto.repoClient,
+    getDid: () => atproto.did,
+    seed: terrain.seed,
+    getPose: () => ({
+      x: avatar.player.position.x,
+      y: avatar.player.position.y,
+      z: avatar.player.position.z,
+      yaw: avatar.player.yaw,
+      pitch: avatar.player.pitch,
+    }),
+    resolveHandle: (did) => atproto.resolveHandle(did),
+    resolvePicture: (did) => atproto.resolvePicture(did),
+    createSignaling: createPeerJSSignaling,
+    camera,
+    onRemoteEdits: (_did, edits) => {
+      world.applyEdits(
+        edits.map((e) => ({
+          w: [e.x, e.y, e.z],
+          edit: { id: e.id, updatedAt: e.ts },
+        })),
+      );
+    },
+    // A peer's monsters are theirs to simulate; we just display what they sent.
+    onRemoteMonsters: (_did, updates) => {
+      monsters.applyMonsterUpdates(updates);
+    },
+  });
+
+  // The durable path: owned monsters are written to atproto at a throttled
+  // cadence, and every repo's records are discovered and merged back in — the
+  // source of truth behind the optimistic broadcasts.
+  const monsterSync = new MonsterSync({
+    getRepoClient: () => atproto.repoClient,
+    getDid: () => atproto.did,
+    onRecords: (records) => monsters.mergeFromAtproto(records),
+    getRecordsToWrite: (now) => monsters.recordsForPersistence(now),
+    onPersisted: (ids) => monsters.markPersisted(ids),
+  });
+
+  const modelLibrary = createModelLibrary();
+
+  /**
+   * Puts the monsters in the best drawing this world can reach: the one the
+   * model account published under `MONSTER_MODEL_NAME`, the model file this
+   * site serves when that account has nothing to give, and the built-in model
+   * when neither does. Redrawing a monster is therefore republishing it —
+   * nobody has to touch this code, this site, or wait for either to deploy.
+   */
+  const dressMonsters = async (): Promise<string> => {
+    if (modelAccount !== null) {
+      try {
+        const model = await modelLibrary.find(modelAccount, MONSTER_MODEL_NAME);
+        const line = await monsterRender.loadModelFromBlob(
+          await modelLibrary.file(model),
+        );
+        return `${line} — published by ${modelAccount}`;
+      } catch {
+        // An account that has published nothing under that name is not a
+        // broken world: the file this site serves is the next thing to wear.
+      }
+    }
+    const response = await fetch("./models/zombie.zip").catch(() => null);
+    if (response === null || !response.ok) {
+      return "monsters keep the model built into the game";
+    }
+    return `${await monsterRender.loadModelFromBlob(await response.blob())} — served by this site`;
+  };
+
+  void dressMonsters().then((line) => onNotice?.(line));
+
+  /**
+   * Everything drawn, in the order it is drawn. There is no depth-sorted pass
+   * for transparency, so a group's place in this list is the whole of what
+   * puts it in front of or behind another.
+   */
+  const scene = new Scene();
+  scene.add(
+    environment.sky,
+    world.terrain,
+    avatar.body,
+    multiplayer.avatars,
+    monsterRender.group,
+    world.water,
+    environment.weatherEffects,
+    world.underwaterTint,
+  );
+
+  // A restored session is the one thing that happens without being asked for,
+  // so it is the one thing worth saying unprompted.
+  void atproto.init().then((line) => onNotice?.(line));
+
+  /**
+   * The render scale for this world, held across mounts rather than by any one
+   * canvas, so a remount keeps the scale this already measured its way to.
+   */
+  const resolution = new AdaptiveResolution();
+
+  const commands = createCommands({
+    dayNight: environment.dayNight,
+    rendererSwitch: world.renderers,
+    weather: environment.weather,
+    sound: environment.sound,
+    atproto,
+    multiplayer,
+    monsters,
+    monsterSync,
+    monsterRender,
+    models: modelLibrary,
+    modelAccount,
+    resolution,
+    setView: (mode) => {
+      avatar.setFirstPerson(mode === "first");
+      return `camera: ${mode}-person view`;
+    },
+    setPlayerVisible: (visible) => {
+      avatar.setCubeVisible(visible);
+      return visible ? "player cube shown" : "player cube hidden";
+    },
+    setMoveSpeed: (n) => {
+      if (n !== undefined) {
+        avatar.player.config.speed = n;
+      }
+      return `move speed: ${avatar.player.config.speed} units/sec`;
+    },
+    setLookSensitivity: (n) => {
+      if (n !== undefined) {
+        avatar.player.config.lookSensitivity = n;
+      }
+      return `look sensitivity: ${avatar.player.config.lookSensitivity} rad/px`;
+    },
+    setDebugPerf: (on) => {
+      const next = on ?? !debugPerf();
+      setDebugPerf(next);
+      world.renderers.setFetchCounting(next);
+      return next ? "performance readout shown" : "performance readout hidden";
+    },
+  });
+
+  /** Reusable color object, updated in place each frame so sky updates don't allocate. */
+  const skyColor = new Color(SKY_BLUE);
+
+  let unmount: (() => void) | null = null;
+
+  /** Advances everything by `dt` seconds, leaving the scene ready to draw. */
+  const advance = (dt: number): void => {
+    const progress = loading();
+    if (progress.drawn < progress.total) {
+      // These frames cost what generating terrain costs, not what drawing it
+      // does, and the resolution would drop to fit a load that is about to end.
+      resolution.hold();
+    }
+    // Only the player waits. Moving the renderers' tick in here deadlocks:
+    // it is what builds the geometry this is waiting for.
+    if (progress.spawnDrawn) {
+      const snapshot = input.consume();
+      avatar.move(dt, snapshot);
+      // The camera has not caught up yet, so this picks from last frame's eye
+      // along this frame's look. Recomputed every frame, not just on edits, so
+      // the crosshair tracks what it is over.
+      setInReach(editing.pick().target !== null);
+      if (snapshot.break) {
+        const result = editing.breakBlock();
+        if (result !== null) {
+          setEditStatus(result);
+        }
+      }
+      if (snapshot.place) {
+        setEditStatus(editing.placeBlock());
+      }
+      if (snapshot.select !== null) {
+        inventory.selectSlot(snapshot.select);
+      }
+      world.scrollTo(avatar.player.position.x, avatar.player.position.z);
+      avatar.place();
+      multiplayer.tick(dt);
+      monsters.tick(dt);
+      monsterRender.tick(dt);
+    }
+    const lighting = environment.tick(dt, camera);
+    skyColor.set(
+      lighting.skyColor[0],
+      lighting.skyColor[1],
+      lighting.skyColor[2],
+    );
+    world.renderers.applyLighting(lighting);
+    // The voxel-model zombies are self-lit, so they take the same day-night
+    // state the renderers apply to the terrain and the standard materials.
+    monsterRender.applyLighting(lighting);
+    world.renderers.tick(dt, camera);
+  };
+
+  const mount = (canvas: HTMLCanvasElement): (() => void) => {
+    const loop = createRenderLoop({
+      canvas,
+      scene,
+      camera,
+      debugPerf,
+      resolution,
+      onDebugStats,
+      onFrame: advance,
+      clearColor: () => skyColor,
+      describeStats: (gl, width, height, sample) =>
+        world.renderers.describeDebugStats(gl, width, height, sample),
+    });
+
+    unmount = () => {
+      unmount = null;
+      loop.dispose();
+    };
+
+    return unmount;
+  };
+
+  return {
+    scene,
+    camera,
+    player: avatar.player,
+    input,
+    inventory,
+    commands,
+    debugPerf,
+    editStatus,
+    inReach,
+    loading,
+    mount,
+
+    dispose() {
+      unmount?.();
+      world.dispose();
+      multiplayer.dispose();
+      atproto.dispose();
+      environment.dispose();
+      monsterRender.clear();
+      monsterSync.dispose();
+      input.dispose();
+    },
+  };
+};

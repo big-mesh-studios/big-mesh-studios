@@ -1,0 +1,68 @@
+{
+  "name": "@big-mesh-studios/bms-voxelscape",
+  "version": "0.1.3",
+  "description": "",
+  "main": "./dist-lib/lib.umd.js",
+  "module": "./dist-lib/lib.es.js",
+  "types": "./dist-lib/lib.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist-lib/lib.d.ts",
+      "import": "./dist-lib/lib.es.js",
+      "require": "./dist-lib/lib.umd.js"
+    }
+  },
+  "files": [
+    "dist-lib"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "build-lib": "vite build --config vite.config.lib.ts && tsc -p tsconfig.lib.json",
+    "serve": "vite preview",
+    "test": "vitest run",
+    "check-types": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/three": "^0.183.1",
+    "esbuild": "^0.28.1",
+    "jsdom": "^30.0.1",
+    "playwright": "^1.62.1",
+    "prettier": "^3.9.6",
+    "typescript": "^5.7.2",
+    "vite": "^7.1.4",
+    "vite-plugin-solid": "3.0.0-next.5",
+    "vitest": "^4.1.3"
+  },
+  "dependencies": {
+    "@atcute/atproto": "^4.0.4",
+    "@atcute/client": "^5.1.1",
+    "@atcute/identity-resolver": "^2.0.1",
+    "@atcute/lexicons": "^2.1.0",
+    "@atcute/oauth-browser-client": "^5.0.0",
+    "@big-mesh-studios/rm-stacker": "https://pkg.pr.new/big-mesh-studios/rm-stacker/@big-mesh-studios/rm-stacker@31994f1",
+    "@fortawesome/fontawesome-free": "^7.3.1",
+    "@random-mesh/rmsl": "^1.9.0",
+    "@solidjs/signals": "2.0.0-beta.29",
+    "@solidjs/web": "2.0.0-beta.29",
+    "@tailwindcss/vite": "^4.3.0",
+    "browser-fs-access": "^0.38.0",
+    "daisyui": "^5.5.20",
+    "fast-png": "^8.0.0",
+    "jszip": "^3.10.1",
+    "peerjs": "^1.5.5",
+    "solid-js": "2.0.0-beta.29",
+    "tailwindcss": "^4.3.0",
+    "three": "^0.183.2"
+  }
+}

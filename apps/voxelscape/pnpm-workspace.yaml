@@ -1,0 +1,5 @@
+allowBuilds:
+  core-js: true
+  esbuild: true
+minimumReleaseAgeExclude:
+  - '@random-mesh/rmsl@1.9.0'

@@ -1,0 +1,18 @@
+.underlay {
+  position: absolute;
+  user-select: none;
+  touch-action: none;
+}
+.outer-ring {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 5px solid rgba(255, 255, 255, 0.5);
+  box-sizing: content-box;
+}
+.knob {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.5);
+}
