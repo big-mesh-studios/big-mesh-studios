@@ -1,31 +1,31 @@
 # bms-voxelscape
 
-A browser voxel-world renderer/game: an infinite scrolling grid of procedurally generated terrain blocks, viewable through two interchangeable rendering strategies.
+A browser voxel-world renderer/game: an infinite scrolling ball of procedurally generated terrain blocks, viewable through two interchangeable rendering strategies.
 
 ## Language
 
 **WorldBlock**:
-One chunk of the world — a fixed-size voxel volume (192x256x192 voxels) with its own voxel data (`VoxelStore`) and GPU texture (`Level`). Shared by both renderers; owned by neither. Defined in `src/level-data.ts`.
+One chunk of the world — a fixed-size voxel volume (64x64x64 voxels = 128 world units at `VOXEL_SIZE=2`) with its own voxel data (`VoxelStore`) and GPU texture (`Level`). Shared by both renderers; owned by neither. Blocks stack in every axis. Defined in `src/level-data.ts`.
 _Avoid_: Chunk, block (ambiguous with voxel), region
 
 **VoxelStore**:
-The `WorldBlock`'s CPU voxel data (`store.data`), laid out with a 1-voxel meshing border on each horizontal side (`VOXEL_PADDING`): the interior is the volume, and the border carries the voxels the neighbouring `WorldBlock`s will contain, generated deterministically from the same world-coordinate terrain function during the fill. `get`/`set`/`sweepSurface` address the interior only; the border is consumed solely by **TriangleRenderer**'s mesh builders (`atPadded` with `x`/`z` from `-1..nx`/`-1..nz`) so seam faces are culled without ever reading another block's store — no stale-neighbour races and no worker shells.
+The `WorldBlock`'s CPU voxel data (`store.data`), laid out with a 1-voxel meshing border on every face (`VOXEL_PADDING`): the interior is the volume, and the border carries the voxels the neighbouring `WorldBlock`s will contain, generated deterministically from the same world-coordinate terrain function during the fill — including the top/bottom border rows that duplicate vertically-stacked neighbours' boundary rows. `get`/`set`/`sweepSurface` address the interior only; the border is consumed solely by the mesh builders (`atPadded` with any axis from `-1..n`) so seam faces are culled without ever reading another block's store — no stale-neighbour races and no worker shells.
 _Avoid_: Chunk data, padded store (the border lives in the same `data` array, not a separate buffer)
 
-**Ring**:
-The `BLOCKS x BLOCKS` (5x5) window of `WorldBlock`s kept centred on the player. When the player crosses a block boundary, the trailing row/column of the ring teleports to the leading edge and refills its `WorldBlock` in place (same slot, new data) rather than allocating a new one. Owned and managed by **WorldRing**.
-_Avoid_: Chunk grid, world grid (the ring's per-slot integer coordinates are an internal `WorldRing` implementation detail — don't confuse with **Ring** itself)
+**Sphere**:
+The set of `WorldBlock`s the window keeps loaded: every chunk cell within `chunkRadius` (default 4) euclidean chunks of the player's cell, centred on the player in every axis. When the player crosses a chunk boundary, cells that leave the ball are evicted and cells that enter teleport a freed slot to the leading cell and refill its `WorldBlock` in place (same slot, new data) rather than allocating a new one. Owned and managed by **ChunkSphere**.
+_Avoid_: Chunk grid, world grid (the sphere's per-slot integer coordinates are an internal `ChunkSphere` implementation detail — don't confuse with **Sphere** itself)
 
-**WorldRing**:
-The class that owns the **Ring**: builds it synchronously at startup (each `WorldBlock` built directly, on the main thread), keeps it centred on the player (`scrollToPlayer`, `stepRing`), and requests fresh terrain data for each block a scroll reveals from a **FillClient** (mirrors the sync-vs-async split documented for **RaymarchRenderer** vs **TriangleRenderer**). The grid coordinates are its private windowing state (`BlockGrid.worldGrid`); nothing else needs them, because seam culling uses each block's own generated **VoxelStore** border rather than reading neighbours.
+**ChunkSphere**:
+The class that owns the **Sphere**: builds its block pool at startup (each `WorldBlock` built directly, on the main thread), keeps it centred on the player (`scrollTo`), and requests fresh terrain data for each cell a scroll reveals from a **FillClient** (mirrors the sync-vs-async split documented for **RaymarchRenderer** vs **TriangleRenderer**). The grid coordinates are its private windowing state; nothing else needs them, because seam culling uses each block's own generated **VoxelStore** border rather than reading neighbours. Exposes `query`, a **BlockQuery** that resolves a world point to the block owning its voxel in O(1).
 _Avoid_: Terrain streamer, chunk manager
 
 **FillClient**:
-Generates a `WorldBlock`'s procedural voxel data and derived GPU level layout on request, using a Web Worker when available and falling back to generating it synchronously (on the caller's thread) when the worker is unavailable or errors. Tags each request with a per-slot generation counter, so a result that arrives after its slot has been requested again is dropped rather than overwriting newer data. Owned by **WorldRing**, which is its only caller.
+Generates a `WorldBlock`'s procedural voxel data and derived GPU level layout on request, using a pool of Web Workers when available and falling back to generating synchronously (on the caller's thread) when none is. A scroll's entering shell is split round-robin across the pool, so the terrain the player walks toward is generated on several threads at once. Tags each request with a per-slot generation counter, so a result that arrives after its slot has been requested again is dropped rather than overwriting newer data. Owned by **ChunkSphere**, which is its only caller.
 _Avoid_: Fill worker (that's the underlying Web Worker `FillClient` wraps, not `FillClient` itself)
 
 **BlockRenderer**:
-The interface both rendering strategies implement: given the ring's `WorldBlock`s, draw them. Exposes lifecycle hooks for visibility, per-block data changes, per-frame lighting (always applied, even when inactive, so the hidden renderer is ready for an instant toggle), and per-frame active-only work (e.g. draining a mesh-build queue).
+The interface both rendering strategies implement: given the sphere's `WorldBlock`s, draw them. Exposes lifecycle hooks for visibility, per-block data changes, per-frame lighting (always applied, even when inactive, so the hidden renderer is ready for an instant toggle), and per-frame active-only work (e.g. draining a mesh-build queue).
 _Avoid_: Renderer (too generic — always name the specific one)
 
 **RaymarchRenderer**:
@@ -33,7 +33,7 @@ A `BlockRenderer` that ray-marches a DDA voxel traversal per-fragment against ea
 _Avoid_: Raytracer (it's a voxel raymarcher, not a general raytracer), ray renderer
 
 **TriangleRenderer**:
-A `BlockRenderer` that meshes each `WorldBlock`'s visible voxel faces into real triangle geometry (culled-face meshing, built off the main thread by a worker) and rasterizes it normally. Expensive to keep in sync — mesh rebuilds are queued and only drained while this renderer is active, so switching into it after a while away shows a brief catch-up pop-in by design. Seam faces are culled against the block's own generated **VoxelStore** border, so the worker never reads a neighbour's data.
+A `BlockRenderer` that meshes each `WorldBlock`'s visible voxel faces into real triangle geometry (culled-face meshing, built off the main thread by a worker) and rasterizes it normally. Geometry is drawn per **superchunk** — a 2x2x2 group of blocks (128³ voxels, 256³ world units): each block is still built alone (with its generated border, so internal seam faces are culled), then the block meshes are re-origined and concatenated into one mesh pair per superchunk, so 8 chunks cost one draw call instead of 8. The merged geometry is uploaded only once a superchunk's meshing members all land (a six-frame stall backstop forces a partial upload), so a scroll's shell of chunks costs a handful of uploads rather than one per landed chunk. Expensive to keep in sync — mesh rebuilds are queued and only drained while this renderer is active, so switching into it after a while away shows a brief catch-up pop-in by design. Seam faces are culled against the block's own generated **VoxelStore** border, so the worker never reads a neighbour's data.
 _Avoid_: Mesh renderer, tri renderer
 
 **RendererSwitch**:
@@ -41,7 +41,7 @@ The coordinator owning both `BlockRenderer` instances and the active `"ray" | "t
 _Avoid_: rendererMode (that's the mode value it holds, not the coordinator itself)
 
 **DayNightController**:
-Owns applying the pure `dayNightState` cycle (`src/day-night.ts`) to the scene: the sun/ambient lights, the sun/moon billboards, and the clock itself (`elapsed`/override/speed). `tick(dt, camera)` advances the clock, updates its own lights and billboards, and returns the computed `DayNightState` for the caller to also feed into `RendererSwitch.applyLighting` — it does not hold a reference to `RendererSwitch`, the same one-directional dependency `WorldRing` already has. Exposes plain typed methods (`jumpTo(seconds)`, `clearOverride()`, `setSpeed(multiplier)`, `describe()`); like `RendererSwitch`, has no idea a console exists.
+Owns applying the pure `dayNightState` cycle (`src/day-night.ts`) to the scene: the sun/ambient lights, the sun/moon billboards, and the clock itself (`elapsed`/override/speed). `tick(dt, camera)` advances the clock, updates its own lights and billboards, and returns the computed `DayNightState` for the caller to also feed into `RendererSwitch.applyLighting` — it does not hold a reference to `RendererSwitch`, the same one-directional dependency `ChunkSphere` already has. Exposes plain typed methods (`jumpTo(seconds)`, `clearOverride()`, `setSpeed(multiplier)`, `describe()`); like `RendererSwitch`, has no idea a console exists.
 _Avoid_: SkyController (undersells that it also owns the clock, not just lights/billboards)
 
 **Commander**:
@@ -61,7 +61,7 @@ Synthesizes the weather's audio from the Web Audio API: a CC0 rain recording (`p
 _Avoid_: AudioManager, SFXPlayer (it's weather-specific procedural synthesis, not a general audio system)
 
 **EditLayer**:
-The sparse, world-coordinate store of every voxel edit, keyed by absolute LOD-0 voxel coordinate and holding the new id plus an `updatedAt` timestamp. Terrain is noise-generated, so an edit makes sense only as a delta against that base — kept here (not in any `VoxelStore`) because `WorldRing` refills slots from noise and would erase a build the moment the player scrolls away. `FillClient` re-applies it to every freshly filled slot (`applyToBlock`), `EditingController` records into it, and `App.tsx` backs it with IndexedDB (`createEditPersistence`) and strands it to atproto. `snapshot()` is the single source fed to both persistences.
+The sparse, world-coordinate store of every voxel edit, keyed by absolute LOD-0 voxel coordinate and holding the new id plus an `updatedAt` timestamp. Terrain is noise-generated, so an edit makes sense only as a delta against that base — kept here (not in any `VoxelStore`) because `ChunkSphere` refills slots from noise and would erase a build the moment the player scrolls away. `FillClient` re-applies it to every freshly filled slot (`applyToBlock`), `EditingController` records into it, and `App.tsx` backs it with IndexedDB (`createEditPersistence`) and strands it to atproto. `snapshot()` is the single source fed to both persistences.
 _Avoid_: EditStore, diff map (each entry is the new id + timestamp, not a before/after pair)
 
 **EditingController**:
@@ -106,12 +106,13 @@ _Avoid_: asset store (nothing here stores anything — it reads what somebody el
 
 ## Relationships
 
-- A **Ring** holds a fixed-size window of **WorldBlock**s, indexed by ring slot.
+- A **Sphere** holds a fixed-size ball of **WorldBlock**s, indexed by pool slot.
 - A **WorldBlock** is rendered by both a **RaymarchRenderer** and a **TriangleRenderer** at all times; only one is visible, chosen by the **RendererSwitch**.
 - The **RendererSwitch** calls `applyLighting` on both renderers every frame regardless of which is active, but calls `tick` only on the active one.
-- **WorldRing** owns the **Ring** and reports changes to it (via callbacks); **RendererSwitch** is one such callback consumer, not something **WorldRing** depends on directly.
-- **WorldRing** is **FillClient**'s only caller; **FillClient** doesn't know a **Ring** or **WorldRing** exists, only the blocks and indices it's asked to fill.
+- **ChunkSphere** owns the **Sphere** and reports changes to it (via callbacks); **RendererSwitch** is one such callback consumer, not something **ChunkSphere** depends on directly.
+- **ChunkSphere** is **FillClient**'s only caller; **FillClient** doesn't know a **Sphere** or **ChunkSphere** exists, only the blocks and indices it's asked to fill.
 - Block seam faces are culled against each block's own generated **VoxelStore** border, so the **TriangleRenderer**'s mesh worker never reads another block's store (and no block needs re-meshing when a neighbour's data later changes).
+- The **TriangleRenderer** merges each group of 2x2x2 blocks into one superchunk geometry, so a scroll that refills a shell of chunks redraws a handful of superchunk meshes rather than one per chunk.
 - **DayNightController** and **RendererSwitch** each expose plain domain methods and know nothing about the console; **Commander** is the only thing that knows console command names, aliases, or help text exist.
 - **WeatherController** is keyed to the day-night clock's shown seconds, which `DayNightController.tick` returns via `DayNightState.elapsed`; **App.tsx** composes the weather's `{ weather, intensity }` into the day-night state (`applyWeather`) before feeding it to `RendererSwitch.applyLighting` — the same one-directional wiring `DayNightController` already has.
 - **WeatherController** reports lightning strikes through its plain `onStrike(x, z)` callback; **SoundController** is one such consumer (wired in `App.tsx` to `sound.thunderStrike`), not something **WeatherController** depends on.
@@ -125,11 +126,11 @@ _Avoid_: asset store (nothing here stores anything — it reads what somebody el
 
 ## Example dialogue
 
-> **Dev:** "If I switch to `tri` mode right after the ring scrolls, will the triangle geometry already be correct?"
+> **Dev:** "If I switch to `tri` mode right after the sphere scrolls, will the triangle geometry already be correct?"
 > **Domain expert:** "Not necessarily — the `TriangleRenderer` only drains its mesh-build queue while it's the active renderer, so there can be a brief pop-in as it catches up. The `RaymarchRenderer` doesn't have this problem because syncing its GPU texture is cheap enough to do unconditionally, every time a `WorldBlock`'s data changes."
 
 > **Dev:** "Why doesn't `DayNightController` just call `rendererSwitch.applyLighting` itself from inside `tick`? It would save a line in `App.tsx`."
-> **Domain expert:** "Same reason `WorldRing` doesn't hold a `RendererSwitch` reference — `DayNightController` shouldn't need to know renderers exist to do its job. `App.tsx` is where those two get wired together."
+> **Domain expert:** "Same reason `ChunkSphere` doesn't hold a `RendererSwitch` reference — `DayNightController` shouldn't need to know renderers exist to do its job. `App.tsx` is where those two get wired together."
 
 ## Flagged ambiguities
 

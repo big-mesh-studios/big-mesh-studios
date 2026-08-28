@@ -1609,10 +1609,22 @@ export class RaymarchRenderer implements BlockRenderer {
    * still hides it.
    */
   readonly water = new Group();
-  readonly meshes: Mesh[] = [];
-  readonly materials: RaymarchMaterial[] = [];
-  readonly waterMeshes: Mesh[] = [];
-  readonly waterMaterials: RaymarchWaterMaterial[] = [];
+  /** One padded box + material pair per block slot, materialized lazily. */
+  readonly meshes: Array<Mesh | undefined> = [];
+  readonly materials: Array<RaymarchMaterial | undefined> = [];
+  readonly waterMeshes: Array<Mesh | undefined> = [];
+  readonly waterMaterials: Array<RaymarchWaterMaterial | undefined> = [];
+  /** Slots whose level holds surface voxels (and so deserve a drawn box). */
+  private readonly active = new Set<number>();
+  private selfVisible = false;
+
+  private readonly blocks: WorldBlock[];
+  private readonly fogDistance: number;
+  private readonly fogStart: number;
+  private readonly debugPerf: boolean;
+  private readonly waterExtinction: number;
+  private readonly seaLevel: number;
+  private readonly geometry: BoxGeometry;
 
   constructor(params: RaymarchRendererParams) {
     const {
@@ -1625,64 +1637,140 @@ export class RaymarchRenderer implements BlockRenderer {
       waterExtinction,
       seaLevel,
     } = params;
-    const geometry = new BoxGeometry(
+    this.blocks = blocks;
+    this.fogDistance = fogDistance;
+    this.fogStart = fogStart;
+    this.debugPerf = debugPerf;
+    this.waterExtinction = waterExtinction;
+    this.seaLevel = seaLevel;
+    this.geometry = new BoxGeometry(
       blockWorld[0] + padding,
       blockWorld[1] + padding,
       blockWorld[2] + padding,
     );
-    for (const block of blocks) {
-      const material = new RaymarchMaterial();
-      material.transparent = true;
-      material.depthWrite = true;
-      material.debugFetchCount = debugPerf;
-      material.side = Side.DoubleSide;
-      material.maxDistance = fogDistance;
-      material.fogStart = fogStart;
-      material.setBlocks([block]);
-      const mesh = new Mesh(geometry, material);
-      mesh.position.set(block.center[0], block.center[1], block.center[2]);
-      this.terrain.add(mesh);
-      this.meshes.push(mesh);
-      this.materials.push(material);
+    for (let i = 0; i < blocks.length; i++) {
+      this.meshes.push(undefined);
+      this.materials.push(undefined);
+      this.waterMeshes.push(undefined);
+      this.waterMaterials.push(undefined);
+    }
+  }
 
-      const waterMaterial = new RaymarchWaterMaterial();
-      waterMaterial.transparent = true;
-      waterMaterial.depthWrite = false;
-      waterMaterial.side = Side.DoubleSide;
-      waterMaterial.maxDistance = fogDistance;
-      waterMaterial.fogColor = [0.53, 0.81, 0.92];
-      waterMaterial.waterColor = [0.1, 0.35, 0.55];
-      waterMaterial.waterOpacity = 0.5;
-      waterMaterial.waterExtinction = waterExtinction;
-      waterMaterial.seaLevel = seaLevel;
-      waterMaterial.setBlocks([block]);
-      const waterMesh = new Mesh(geometry, waterMaterial);
-      waterMesh.position.set(block.center[0], block.center[1], block.center[2]);
-      this.water.add(waterMesh);
-      this.waterMeshes.push(waterMesh);
-      this.waterMaterials.push(waterMaterial);
+  /**
+   * Whether the block's GPU level has anything to march: any allocated broad
+   * cell means at least one surface voxel was stored there.
+   */
+  private hasSurface(index: number): boolean {
+    const broad = this.blocks[index].level.broadData;
+    for (let i = 0; i < broad.length; i++) {
+      if (broad[i] !== 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Creates a slot's box + material pair on first sight of its surface. */
+  private ensurePooled(index: number): void {
+    if (this.meshes[index] !== undefined) {
+      return;
+    }
+    const block = this.blocks[index];
+    const material = new RaymarchMaterial();
+    material.transparent = true;
+    material.depthWrite = true;
+    material.debugFetchCount = this.debugPerf;
+    material.side = Side.DoubleSide;
+    material.maxDistance = this.fogDistance;
+    material.fogStart = this.fogStart;
+    material.setBlocks([block]);
+    const mesh = new Mesh(this.geometry, material);
+    mesh.position.set(block.center[0], block.center[1], block.center[2]);
+    this.terrain.add(mesh);
+    this.meshes[index] = mesh;
+    this.materials[index] = material;
+
+    const waterMaterial = new RaymarchWaterMaterial();
+    waterMaterial.transparent = true;
+    waterMaterial.depthWrite = false;
+    waterMaterial.side = Side.DoubleSide;
+    waterMaterial.maxDistance = this.fogDistance;
+    waterMaterial.fogColor = [0.53, 0.81, 0.92];
+    waterMaterial.waterColor = [0.1, 0.35, 0.55];
+    waterMaterial.waterOpacity = 0.5;
+    waterMaterial.waterExtinction = this.waterExtinction;
+    waterMaterial.seaLevel = this.seaLevel;
+    waterMaterial.setBlocks([block]);
+    const waterMesh = new Mesh(this.geometry, waterMaterial);
+    waterMesh.position.set(block.center[0], block.center[1], block.center[2]);
+    this.water.add(waterMesh);
+    this.waterMeshes[index] = waterMesh;
+    this.waterMaterials[index] = waterMaterial;
+  }
+
+  /** Brings a slot's box up to date with its level's content and this renderer's visibility. */
+  private refresh(index: number): void {
+    const has = this.hasSurface(index);
+    if (this.meshes[index] === undefined) {
+      if (!has) {
+        return;
+      }
+      this.ensurePooled(index);
+    }
+    const mesh = this.meshes[index]!;
+    const show = this.selfVisible && has;
+    if (show) {
+      this.active.add(index);
+    } else {
+      this.active.delete(index);
+    }
+    mesh.visible = show;
+    const waterMesh = this.waterMeshes[index]!;
+    if (waterMesh !== undefined) {
+      waterMesh.visible = show;
     }
   }
 
   setVisible(visible: boolean): void {
-    for (const mesh of this.meshes) {
-      mesh.visible = visible;
-    }
-    for (const mesh of this.waterMeshes) {
-      mesh.visible = visible;
+    this.selfVisible = visible;
+    for (let i = 0; i < this.meshes.length; i++) {
+      const mesh = this.meshes[i];
+      if (mesh === undefined) {
+        continue;
+      }
+      const show = visible && this.active.has(i);
+      mesh.visible = show;
+      const waterMesh = this.waterMeshes[i];
+      if (waterMesh !== undefined) {
+        waterMesh.visible = show;
+      }
     }
   }
 
   repositionBlock(index: number, center: Dim3): void {
-    this.meshes[index].position.set(center[0], center[1], center[2]);
-    this.waterMeshes[index].position.set(center[0], center[1], center[2]);
+    const mesh = this.meshes[index];
+    if (mesh !== undefined) {
+      mesh.position.set(center[0], center[1], center[2]);
+      const waterMesh = this.waterMeshes[index];
+      if (waterMesh !== undefined) {
+        waterMesh.position.set(center[0], center[1], center[2]);
+      }
+    }
+    // the slot's level is cleared between reposition and its fill landing, so
+    // hide any box that was showing until the new surface data arrives
+    this.refresh(index);
   }
 
-  /** No-op: the level texture lives on the shared `WorldBlock` and is already marked dirty by the data layer before this is called. */
-  onBlockChanged(_index: number): void {}
+  /** The level texture lives on the shared `WorldBlock` and is already marked dirty, so this only (de)materializes the box. */
+  onBlockChanged(index: number): void {
+    this.refresh(index);
+  }
 
   setTiles(voxelTiles: VoxelTileConfig[], texture: Texture): void {
     for (const material of this.materials) {
+      if (material === undefined) {
+        continue;
+      }
       material.tilesTexture = texture;
       material.voxelTiles = voxelTiles;
       material.needsUpdate = true;
@@ -1696,12 +1784,17 @@ export class RaymarchRenderer implements BlockRenderer {
    */
   setDebugFetchCount(on: boolean): void {
     for (const material of this.materials) {
-      material.debugFetchCount = on;
+      if (material !== undefined) {
+        material.debugFetchCount = on;
+      }
     }
   }
 
   applyLighting(dayNight: DayNight): void {
     for (const material of this.materials) {
+      if (material === undefined) {
+        continue;
+      }
       material.fogColor = dayNight.skyColor;
       material.sunDirection = dayNight.sunDir;
       material.sunLightColor = dayNight.sunLight;
@@ -1710,7 +1803,9 @@ export class RaymarchRenderer implements BlockRenderer {
       material.ambientColor = dayNight.ambient;
     }
     for (const waterMaterial of this.waterMaterials) {
-      waterMaterial.fogColor = dayNight.skyColor;
+      if (waterMaterial !== undefined) {
+        waterMaterial.fogColor = dayNight.skyColor;
+      }
     }
   }
 

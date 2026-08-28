@@ -72,3 +72,11 @@ that has to be dismissed.
 - The synchronous fallback in `FillClient`, for when the worker cannot start,
   now generates one block per task rather than looping over all of them, so
   that path shows the loading state too instead of freezing.
+
+## Status
+
+Superseded in detail by ADR 0016: the window is now a `ChunkSphere` ball
+(~260 chunks at radius 4) instead of a 5x5 `BlockGrid` rectangle, and
+`fillFrom`/`scrollTo` keep the same main-thread-nearest + worker-the-rest
+split per cell. The loading-progress contract (`InitialDrawProgress`,
+`heightAt` fallback, physics gated on the spawn block) is unchanged.

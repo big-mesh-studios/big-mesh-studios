@@ -105,9 +105,6 @@ export class EditingController {
     if (yieldId === undefined) {
       return null;
     }
-    if (this.isFloor(pick.target)) {
-      return "can't break the world floor";
-    }
     this.applyEdit(pick.target, VOXEL_AIR);
     this.inventory.add(yieldId, 1);
     this.onEditRecorded();
@@ -190,20 +187,6 @@ export class EditingController {
       surfaceOnly: this.surfaceOnly,
     });
     this.onBlockEdited(i);
-  }
-
-  /** Whether a voxel sits in the bottom row of its block (the world floor). */
-  private isFloor(w: WorldVoxel): boolean {
-    for (const block of this.blocks) {
-      const local = worldVoxelToLocal(block.store, block.center, w);
-      if (
-        block.store.inBounds(local[0], local[1], local[2]) &&
-        local[1] === 0
-      ) {
-        return true;
-      }
-    }
-    return false;
   }
 
   private overlapsPlayer(w: WorldVoxel): boolean {

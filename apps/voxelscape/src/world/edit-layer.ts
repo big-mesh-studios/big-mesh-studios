@@ -1,15 +1,16 @@
 // Persistent, world-coordinate sparse store of voxel edits, independent of
 // any particular `WorldBlock` slot. Terrain is generated deterministically
 // from a noise height field, so an edit is meaningful only as a delta keyed
-// by its absolute voxel position — not by which ring slot happened to hold it
-// when the player acted. `WorldRing` refills scrolled-in slots from the noise
-// field, so a build recorded only in a `VoxelStore` would vanish the moment
-// the player walks away and that slot re-fills; keeping edits here, keyed by
-// world voxel, lets a refilled block re-apply them (`applyToBlock`) and lets
-// atproto sync treat each edit as a stable, coordinate-addressed record.
+// by its absolute voxel position — not by which sphere slot happened to hold
+// it when the player acted. `ChunkSphere` refills scrolled-in slots from the
+// noise field, so a build recorded only in a `VoxelStore` would vanish the
+// moment the player walks away and that slot re-fills; keeping edits here,
+// keyed by world voxel, lets a refilled block re-apply them (`applyToBlock`)
+// and lets atproto sync treat each edit as a stable, coordinate-addressed
+// record.
 //
 // Edits are addressed in the LOD-0 voxel grid: one voxel is `VOXEL_SIZE`
-// world units. Every block the ring builds is LOD 0, so `block.store.scale`
+// world units. Every block the sphere builds is LOD 0, so `block.store.scale`
 // equals `VOXEL_SIZE` and the local<->world mapping below is exact.
 import {
   BLOCK_WORLD,
