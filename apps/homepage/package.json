@@ -1,12 +1,20 @@
 {
   "name": "@big-mesh-studios/homepage",
   "type": "module",
+  "license": "MIT",
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "serve": "astro preview"
+    "dev": "vite",
+    "build": "vite build --ssr src/entry-server.tsx --outDir .ssr && node scripts/prerender.js",
+    "serve": "vite preview",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@solidjs/web": "2.0.0-beta.29",
+    "solid-js": "2.0.0-beta.29"
   },
   "devDependencies": {
-    "astro": "^7.2.9"
+    "typescript": "^5.7.2",
+    "vite": "^7.1.4",
+    "vite-plugin-solid": "3.0.0-next.5"
   }
 }

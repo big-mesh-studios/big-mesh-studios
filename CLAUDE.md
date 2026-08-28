@@ -51,8 +51,9 @@ Things this codebase already relies on that a 1.x reflex gets wrong:
   grid of procedurally generated terrain, whose monsters wear a model read back
   from the editor.
 - [`apps/homepage/`](./apps/homepage) — the front page the site root serves,
-  naming the other two and linking to each. Astro, one page, no content of its
-  own beyond that.
+  naming the other two and linking to each. One page, written in Solid like
+  the other two and rendered to a file at build time, so nothing is sent to
+  the browser to run.
 
 The world depends on the editor's published package, so `apps/rm-stacker`'s
 `dist-lib` has to be built before the world's types resolve. `pnpm build-lib`
