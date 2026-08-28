@@ -134,11 +134,10 @@ export function thumbnailBlobCid(record: ModelRecord): string | null {
 }
 
 /**
- * The address the bytes of `cid` are fetched from, on the server hosting `did`'s
- * repository. Blobs are public, so this needs no session — which is what lets
- * anybody open a model published by an account they are not signed in as.
- *
- * @param service That server's base address, without a trailing slash.
+ * The address the bytes of `cid` are fetched from, on the server at `service`
+ * hosting `did`'s repository — its base address, without a trailing slash.
+ * Blobs are public, so this needs no session, which is what lets anybody open
+ * a model published by an account they are not signed in as.
  */
 export function blobUrl(service: string, did: string, cid: string): string {
   return `${service}/xrpc/com.atproto.sync.getBlob?did=${encodeURIComponent(did)}&cid=${encodeURIComponent(cid)}`;

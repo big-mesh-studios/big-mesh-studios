@@ -34,10 +34,8 @@ export const pictureBlobCid = (record: unknown): string | null => {
 };
 
 /**
- * The address the bytes of `cid` are fetched from, on the server hosting
- * `did`'s repo.
- *
- * @param service That server's base address, without a trailing slash.
+ * The address the bytes of `cid` are fetched from, on the server at `service`
+ * hosting `did`'s repo — its base address, without a trailing slash.
  */
 export const pictureBlobUrl = (
   service: string,

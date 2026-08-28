@@ -155,9 +155,8 @@ export function createAtprotoRepoClient(params: {
 }
 
 /**
- * Every record in a collection, following the cursor to the end.
- *
- * @param repo Whose records to read. Defaults to the signed-in account's own.
+ * Every record in a collection, following the cursor to the end. `pageSize` is
+ * how many to ask for at a time, a hundred by default.
  */
 export async function listAllRecords(
   client: AtprotoRepoClient,
