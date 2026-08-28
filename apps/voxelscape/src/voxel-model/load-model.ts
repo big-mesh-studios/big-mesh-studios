@@ -7,37 +7,34 @@
 // What is left here is what drawing a model needs and a drawing program has no
 // reason to hand back: the model's extent in voxels.
 import { load } from "@big-mesh-studios/stacker/format";
-import type { Bitmap, Dimensions3D, RGBA } from "@big-mesh-studios/maths";
-
-export const sideKinds = [
-  "front",
-  "back",
-  "left",
-  "right",
-  "top",
-  "bottom",
-] as const;
-export type SideKind = (typeof sideKinds)[number];
+import type { Sides } from "@big-mesh-studios/stacker/renderer";
+import type { Dimensions3D, RGBA } from "@big-mesh-studios/maths";
 
 export type LoadedModel = {
-  sides: Record<SideKind, Bitmap>;
+  sides: Sides;
   palette: RGBA[];
   dimensions: Dimensions3D;
 };
 
 /**
  * Reads a model zip and hands back the six side bitmaps, the palette (the
- * model's own, or the colours its images use), and
- * the model's grid dimensions — the sides are square, and the grid is that
- * size in every axis. Throws with a readable message when the file is not a
- * model rm-stacker wrote.
+ * model's own, or the colours its images use), and the model's grid in voxels.
+ * Throws with a readable message when the file is not a model rm-stacker
+ * wrote.
  */
 export async function loadModel(file: Blob): Promise<LoadedModel> {
   const { sides, palette } = await load(file);
-  const size = sides.front.width;
   return {
     sides,
     palette,
-    dimensions: { width: size, height: size, depth: size },
+    // The six sides are the faces of one box, so between them they give all
+    // three of its extents: the front is drawn width across and height down,
+    // and the left is drawn depth across. A model is not required to be a cube
+    // and its sides are not required to be square.
+    dimensions: {
+      width: sides.front.width,
+      height: sides.front.height,
+      depth: sides.left.width,
+    },
   };
 }

@@ -50,6 +50,32 @@ describe("loadModel", () => {
     expect(model.palette[1]).toEqual({ r: 1, g: 1, b: 1, a: 255 });
   });
 
+  it("reads a model that is not a cube from the three axes its sides share", async () => {
+    // A box 4 wide, 3 high and 2 deep. Each side is drawn at the size of the
+    // two axes it faces: the front is width by height, the left is depth by
+    // height, and the top is width by depth.
+    const indexed = (width: number, height: number): Uint8Array =>
+      encode({
+        width,
+        height,
+        data: new Uint8Array(width * height).fill(1),
+        channels: 1,
+        palette: PALETTE_RGBA,
+      });
+    const model = await loadModel(
+      await zipWith([
+        indexed(4, 3), // front
+        indexed(4, 3), // back
+        indexed(2, 3), // left
+        indexed(2, 3), // right
+        indexed(4, 2), // top
+        indexed(4, 2), // bottom
+      ]),
+    );
+
+    expect(model.dimensions).toEqual({ width: 4, height: 3, depth: 2 });
+  });
+
   it("migrates colour-drawn side PNGs onto the palette", async () => {
     // every pixel is colour (1,1,1), which occupies palette slot 1
     const colour = new Uint8Array(3 * 3 * 4);
