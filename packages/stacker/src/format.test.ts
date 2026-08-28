@@ -121,3 +121,46 @@ describe("a side the file does not carry", () => {
     expect(sides.left.height).toBe(3);
   });
 });
+
+describe("sides and palette", () => {
+  it("reads the drawn cells and the palette they address", async () => {
+    const { sides, palette, migrated } = await load(
+      await zipOf(boxOf(3, 3, 3)),
+    );
+
+    expect([...sides.front.data]).toEqual(new Array(9).fill(1));
+    expect([...sides.back.data]).toEqual(new Array(9).fill(1));
+    expect(palette).toHaveLength(32);
+    expect(palette[1]).toEqual({ r: 1, g: 1, b: 1, a: 255 });
+    expect(migrated).toBe(false);
+  });
+
+  it("migrates a model whose sides hold colours rather than palette indices", async () => {
+    // Every pixel is the colour (1, 1, 1); reading it back finds that colour
+    // one palette slot, and every cell drawn in it names that slot.
+    const pixels = new Uint8Array(3 * 3 * 4);
+    for (let p = 0; p < 9; p++) {
+      pixels.set([1, 1, 1, 255], p * 4);
+    }
+    const drawn = encode({
+      width: 3,
+      height: 3,
+      data: pixels,
+      channels: 4,
+      depth: 8,
+    });
+    const colourSides = Object.fromEntries(
+      sideKinds.map((kind) => [kind, drawn]),
+    ) as Record<SideKind, Uint8Array>;
+
+    const { sides, palette, migrated, dimensions } = await load(
+      await zipOf(colourSides),
+    );
+
+    expect(migrated).toBe(true);
+    expect(dimensions).toEqual({ width: 3, height: 3, depth: 3 });
+    const slot = sides.front.data[0];
+    expect(palette[slot]).toEqual({ r: 1, g: 1, b: 1, a: 255 });
+    expect([...sides.front.data]).toEqual(new Array(9).fill(slot));
+  });
+});

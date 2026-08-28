@@ -8,14 +8,15 @@
 // are dead-reckoned between deliveries (`./reckon`).
 import { BoxGeometry, Group, Mesh } from "@random-mesh/rmsl/scene";
 import type { DayNightState } from "../environment/day-night";
-import { Dimensions3D } from "@big-mesh-studios/maths";
+import { Dimensions3D, type RGBA } from "@big-mesh-studios/maths";
 import {
   boxSize,
   encodePalette,
   solveVoxels,
   VoxelModelMaterial,
+  type Sides,
 } from "@big-mesh-studios/stacker/renderer";
-import { loadModel, type LoadedModel } from "../voxel-model/load-model";
+import { load } from "@big-mesh-studios/stacker/format";
 import { nextRenderedPosition, type Position3 } from "./reckon";
 import type { MonsterSnapshot } from "./monster";
 
@@ -61,7 +62,11 @@ export class RemoteMonsters {
    * dimensions, and the padded box sized to the new grid. Existing meshes take
    * the new geometry and scale.
    */
-  setModel(model: LoadedModel): void {
+  setModel(model: {
+    sides: Sides;
+    palette: RGBA[];
+    dimensions: Dimensions3D;
+  }): void {
     const voxels = solveVoxels(model.dimensions, model.sides);
     const voxelTexture = this.material.voxelTexture;
     voxelTexture.image = voxels;
@@ -136,12 +141,13 @@ export class RemoteMonsters {
     return `${model} · ${this.meshes.size} mesh(es)`;
   }
 
-  /** Loads a model zip saved from rm-stacker and applies it to every monster. */
+  /** Reads a model zip saved from rm-stacker and applies it to every monster. */
   async loadModelFromBlob(blob: Blob): Promise<string> {
     try {
-      const model = await loadModel(blob);
+      const model = await load(blob);
       this.setModel(model);
-      return `zombie model set: ${model.dimensions.width}³`;
+      const { width, height, depth } = model.dimensions;
+      return `zombie model set: ${width}×${height}×${depth}`;
     } catch (err) {
       return `not a model rm-stacker saved: ${
         err instanceof Error ? err.message : String(err)
