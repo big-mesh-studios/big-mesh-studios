@@ -2,7 +2,7 @@ name: Publish a preview release for any commit
 
 on:
   push:
-    branches-ignore: ["wip"]
+    branches-ignore: ["wip", "**/wip"]
   pull_request:
 
 # Preview releases are published by the pkg.pr.new GitHub App, which brings its
@@ -28,13 +28,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      # `build`, which builds the site, is the wrong one: what gets packed is
+      # `build`, which builds the sites, is the wrong one: what gets packed is
       # `dist-lib`, and only this builds it.
-      - name: Build the library
+      - name: Build the libraries
         run: pnpm build-lib
 
       # Long-form URLs (https://pkg.pr.new/owner/repo/package@commit) rather
       # than the shorter default, which only resolves once the package has been
       # released to the npm registry at least once.
       - name: Publish the preview release
-        run: pnpm exec pkg-pr-new publish --no-compact --commentWithSha
+        run: pnpm exec pkg-pr-new publish --no-compact --commentWithSha ./apps/rm-stacker

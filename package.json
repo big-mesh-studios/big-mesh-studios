@@ -1,0 +1,16 @@
+{
+  "name": "big-mesh-studios",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev:rm-stacker": "pnpm --filter @big-mesh-studios/rm-stacker dev",
+    "dev:voxelscape": "pnpm --filter @big-mesh-studios/rm-stacker build-lib && pnpm --filter @big-mesh-studios/bms-voxelscape dev",
+    "build": "pnpm --filter @big-mesh-studios/rm-stacker build-lib && pnpm -r build",
+    "build-lib": "pnpm -r build-lib",
+    "check-types": "pnpm -r check-types",
+    "test": "pnpm -r test",
+    "format": "pnpm -r format",
+    "format:check": "pnpm -r format:check"
+  }
+}

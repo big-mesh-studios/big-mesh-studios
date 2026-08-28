@@ -21,8 +21,9 @@ to it. The short version, which is not a substitute for reading it:
 
 ## Solid 2.x
 
-This project runs Solid 2.0 (`solid-js@2.0.0-beta`, with `@solidjs/web` and
-`@solidjs/signals`). **Read [`node_modules/solid-js/CHEATSHEET.md`](./node_modules/solid-js/CHEATSHEET.md)
+Both applications run Solid 2.0 (`solid-js@2.0.0-beta`, with `@solidjs/web`
+and `@solidjs/signals`). **Read
+[`apps/voxelscape/node_modules/solid-js/CHEATSHEET.md`](./apps/voxelscape/node_modules/solid-js/CHEATSHEET.md)
 before writing or editing any reactive or JSX code**, and re-read its closing
 section, "What changed from 1.x", before trusting anything you remember about
 Solid — most published Solid code and most model training data is 1.x, and the
@@ -41,11 +42,30 @@ Things this codebase already relies on that a 1.x reflex gets wrong:
 - Imports come from `solid-js` and `@solidjs/web`. The `solid-js/web` and
   `solid-js/store` subpaths no longer exist.
 
+## The two applications
+
+- [`apps/rm-stacker/`](./apps/rm-stacker) — the editor: somebody draws a voxel
+  model by painting the six faces of a box, and publishes it to their own
+  atproto account.
+- [`apps/voxelscape/`](./apps/voxelscape) — the world: an infinite scrolling
+  grid of procedurally generated terrain, whose monsters wear a model read back
+  from the editor.
+
+The world depends on the editor's published package, so `apps/rm-stacker`'s
+`dist-lib` has to be built before the world's types resolve. `pnpm build-lib`
+at the root does that.
+
+Each application keeps its own `package.json`, `tsconfig.json`, and Prettier
+configuration, and the two Prettier configurations differ: a formatting run in
+one leaves the other untouched.
+
 ## Elsewhere in the repository
 
-- [`CONTEXT.md`](./CONTEXT.md) — the domain language: what to call things, and
-  what not to call them.
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — the standards a comment or JSDoc
-  block in this codebase has to meet, plus the checks (`npm run check-types`,
-  `npm test`, `npm run format:check`) that pass before a change is done.
-- [`docs/adr/`](./docs/adr) — one file per non-obvious architectural decision.
+  block in this codebase has to meet, plus the checks (`pnpm check-types`,
+  `pnpm test`, `pnpm format:check`) that pass before a change is done. They
+  apply to both applications.
+- [`apps/voxelscape/CONTEXT.md`](./apps/voxelscape/CONTEXT.md) — the world's
+  domain language: what to call things, and what not to call them.
+- [`apps/voxelscape/docs/adr/`](./apps/voxelscape/docs/adr) — one file per
+  non-obvious architectural decision in the world.

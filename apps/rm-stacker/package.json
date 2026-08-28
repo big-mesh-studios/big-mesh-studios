@@ -4,7 +4,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/big-mesh-studios/rm-stacker.git"
+    "url": "git+https://github.com/big-mesh-studios/big-mesh-studios.git",
+    "directory": "apps/rm-stacker"
   },
   "type": "module",
   "sideEffects": false,

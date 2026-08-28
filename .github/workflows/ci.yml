@@ -2,7 +2,7 @@ name: Check codebase for type-errors and auto-format
 
 on:
   push:
-    branches-ignore: ["wip"]
+    branches-ignore: ["wip", "**/wip"]
   pull_request:
 
 jobs:
@@ -26,11 +26,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Check types
-        run: pnpm check-types
-
+      # The world imports the editor's package, so its types only resolve once
+      # `dist-lib` exists. Every other check reads whichever application it is
+      # pointed at, and runs across both.
       - name: Build the library
         run: pnpm build-lib
+
+      - name: Check types
+        run: pnpm check-types
 
       - name: Check formatting
         if: github.event_name == 'pull_request'

@@ -2,9 +2,9 @@
 
 **Create voxel models by drawing the six faces of a box.**
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-rm--stacker-6abe30?style=for-the-badge&logo=githubpages&logoColor=white)](https://big-mesh-studios.github.io/rm-stacker/)
-[![GitHub](https://img.shields.io/badge/GitHub-big--mesh--studios%2Frm--stacker-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/big-mesh-studios/rm-stacker)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](https://github.com/big-mesh-studios/rm-stacker/blob/main/LICENSE)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-rm--stacker-6abe30?style=for-the-badge&logo=githubpages&logoColor=white)](https://big-mesh-studios.github.io/big-mesh-studios/rm-stacker/)
+[![GitHub](https://img.shields.io/badge/GitHub-big--mesh--studios%2Fbig--mesh--studios-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/big-mesh-studios/big-mesh-studios/tree/main/apps/rm-stacker)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](https://github.com/big-mesh-studios/big-mesh-studios/blob/main/LICENSE)
 
 ## What is it?
 
@@ -15,7 +15,7 @@ other pixel-art sprite. A voxel solver then reconstructs the 3D volume from thos
 faces, and a real-time WebGL preview renders the finished model.
 
 Everything runs locally in your browser - there is no backend and nothing to
-install. Try it in the **[live demo](https://big-mesh-studios.github.io/rm-stacker/)**.
+install. Try it in the **[live demo](https://big-mesh-studios.github.io/big-mesh-studios/rm-stacker/)**.
 
 ## Features
 
@@ -34,7 +34,7 @@ install. Try it in the **[live demo](https://big-mesh-studios.github.io/rm-stack
 
 ## How to use
 
-1. Open the app - either the **[live demo](https://big-mesh-studios.github.io/rm-stacker/)**
+1. Open the app - either the **[live demo](https://big-mesh-studios.github.io/big-mesh-studios/rm-stacker/)**
    or your local build.
 2. **Pick a colour** from the DawnBringer 32 palette on the left.
 3. **Draw** with the pen tool. The other face of the box updates as you paint.
@@ -132,4 +132,4 @@ fine.
 
 ## License
 
-Released under the [MIT License](https://github.com/big-mesh-studios/rm-stacker/blob/main/LICENSE).
+Released under the [MIT License](https://github.com/big-mesh-studios/big-mesh-studios/blob/main/LICENSE).

@@ -1,4 +1,4 @@
-name: Deploy site to GitHub Pages
+name: Deploy both sites to GitHub Pages
 
 on:
   push:
@@ -33,20 +33,28 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Build app
+      - name: Build both applications
         run: pnpm build
 
-      # Every address other than the site root is a page this application draws,
-      # not a file on disk. GitHub Pages serves `404.html` for anything it
-      # cannot find, so handing it the application means a page opened directly,
+      # One repository publishes one Pages site, so each application takes a
+      # folder under it and the addresses each was built for say so.
+      - name: Gather both builds into one site
+        run: |
+          mkdir -p site/rm-stacker site/voxelscape
+          cp -r apps/rm-stacker/dist/. site/rm-stacker/
+          cp -r apps/voxelscape/dist/. site/voxelscape/
+
+      # Every address other than the site root is a page the editor draws, not
+      # a file on disk. GitHub Pages serves `404.html` for anything it cannot
+      # find, so handing it the application means a page opened directly,
       # reloaded, or followed from a link arrives at the application, which then
       # reads the address and shows the right page.
-      - name: Answer unknown addresses with the application
-        run: cp dist/index.html dist/404.html
+      - name: Answer unknown addresses with the editor
+        run: cp site/rm-stacker/index.html site/rm-stacker/404.html
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist # Adjust if your build output directory is different
-          publish_branch: gh-pages # Specify the branch to deploy to
+          publish_dir: ./site
+          publish_branch: gh-pages

@@ -1,9 +1,11 @@
 {
-  "client_id": "https://big-mesh-studios.github.io/bms-voxelscape/client-metadata.json",
+  "client_id": "https://big-mesh-studios.github.io/big-mesh-studios/voxelscape/client-metadata.json",
   "client_name": "BMS Voxelscape",
-  "client_uri": "https://big-mesh-studios.github.io/bms-voxelscape/",
+  "client_uri": "https://big-mesh-studios.github.io/big-mesh-studios/voxelscape/",
   "logo_uri": "https://avatars.githubusercontent.com/u/312866484?s=200&v=4",
-  "redirect_uris": ["https://big-mesh-studios.github.io/bms-voxelscape/"],
+  "redirect_uris": [
+    "https://big-mesh-studios.github.io/big-mesh-studios/voxelscape/"
+  ],
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
   "scope": "atproto transition:generic",

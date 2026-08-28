@@ -1,8 +1,9 @@
 # Contributing
 
-- Domain language (what to call things, and what to avoid calling them) is defined in [`CONTEXT.md`](./CONTEXT.md).
-- Non-obvious architectural decisions are recorded in [`docs/adr/`](./docs/adr), one file per decision.
-- `npm run check-types`, `npm test`, and `npm run format:check` should all pass before a change is done.
+- These standards apply to both applications under [`apps/`](./apps).
+- Domain language (what to call things, and what to avoid calling them) is defined per application, in [`apps/voxelscape/CONTEXT.md`](./apps/voxelscape/CONTEXT.md).
+- Non-obvious architectural decisions are recorded in [`apps/voxelscape/docs/adr/`](./apps/voxelscape/docs/adr), one file per decision.
+- `pnpm check-types`, `pnpm test`, and `pnpm format:check` should all pass before a change is done. Run from the repository root, each covers both applications.
 
 ## To LLM
 
@@ -39,7 +40,7 @@ This applies while writing the code, not as a cleanup pass afterwards, and it ap
 
 **No diary language** — a comment describes the code's current behavior, not its history. Avoid "used to X, now does Y", "we changed this because...", or narrating a past incident. That history belongs in a commit message or an ADR, not inline.
 
-**JSDoc, not plain comments, for declarations** — a comment that is the leading comment directly above a function, class, interface, type, or a standalone named declaration (a config value, a class instance, a factory) and describes _that_ declaration should be a `/** ... */` JSDoc block, with `@param`/`@returns` where useful. A comment narrating one step of an in-place computation, or one that has to describe several sibling declarations together because it doesn't cleanly belong to just one, should stay a plain comment — forcing it into JSDoc on a single field would misrepresent its scope. Treat needing to write that kind of group comment as a signal worth noticing: it can mean those declarations belong together in an object of their own (see `docs/adr/0005-fill-client-seam.md` for an example of exactly this).
+**JSDoc, not plain comments, for declarations** — a comment that is the leading comment directly above a function, class, interface, type, or a standalone named declaration (a config value, a class instance, a factory) and describes _that_ declaration should be a `/** ... */` JSDoc block, with `@param`/`@returns` where useful. A comment narrating one step of an in-place computation, or one that has to describe several sibling declarations together because it doesn't cleanly belong to just one, should stay a plain comment — forcing it into JSDoc on a single field would misrepresent its scope. Treat needing to write that kind of group comment as a signal worth noticing: it can mean those declarations belong together in an object of their own (see `apps/voxelscape/docs/adr/0005-fill-client-seam.md` for an example of exactly this).
 
 **A JSDoc block must actually document the declaration** — `/** ... */` is not a nicer-looking comment, and wrapping a remark in one does not make it JSDoc. The content has to say what the declaration _is_: what the value holds, what the function does, what the type represents. A remark that instead narrates the surrounding code — why this line comes before that one, what a callback is wired to, which order things are constructed in — is a step comment wearing a JSDoc jacket, and belongs as a plain `//` above the same line.
 
