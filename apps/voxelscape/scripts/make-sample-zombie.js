@@ -1,7 +1,7 @@
 // Generates `public/models/zombie.zip`: the built-in zombie model saved in the
 // rm-stacker format (six side PNGs drawn in palette colours, plus palette.png),
 // so the game loads that look through the same model-zip path a hand-made
-// replacement uses. Run with `node scripts/make-sample-zombie.mjs` after a
+// replacement uses. Run with `node scripts/make-sample-zombie.js` after a
 // change to `default-zombie-model.ts`; swap the file it writes for any model
 // rm-stacker saved.
 import { build } from "esbuild";

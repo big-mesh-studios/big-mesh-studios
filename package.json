@@ -1,8 +1,10 @@
 {
   "name": "big-mesh-studios",
-  "private": true,
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev:rm-stacker": "pnpm --filter @big-mesh-studios/rm-stacker dev",
     "dev:voxelscape": "pnpm --filter @big-mesh-studios/rm-stacker build-lib && pnpm --filter @big-mesh-studios/bms-voxelscape dev",
