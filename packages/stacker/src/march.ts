@@ -1,11 +1,12 @@
-// The ray marcher the voxel-model material shares with nothing else yet: it
-// steps a 3D DDA through the packed voxel texture in model space and returns
-// the surface colour, the hit cell, the face normal, and the exact hit point.
-// Ported from rm-stacker (MIT, big-mesh-studios).
+// The ray marcher both programs draw a voxel model with: a 3D DDA that steps
+// through a packed voxel volume and shades the surface it lands on from a
+// palette. Written as rmsl nodes, so the same traversal compiles into the GPU
+// fragment shader that renders a model and into the editor's CPU voxel picker,
+// and the two can never drift apart.
 import type { Node } from "@random-mesh/rmsl";
 import {
-  Break,
   bool,
+  Break,
   float,
   For,
   If,
@@ -30,11 +31,16 @@ const maxVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
 
 // The voxel texture is an integer (usampler3D) so the lookup compiles to
 // texelFetch, which takes integer texel coordinates — one texel per voxel.
+// .texture() takes those integer texel coordinates directly, not a normalized
+// [0,1] position, so a caller that already works in whole voxel indices
+// fetches by them.
 const sampleCell = (
   voxels: Node<"usampler3D">,
   cell: Node<"ivec3">,
 ): Node<"uvec4"> => voxels.texture(cell.toUVec3());
 
+// The volume fills the whole grid (one texel per voxel), so a cell is inside
+// the volume exactly when every index lies in [0, uVoxelCount).
 const inBounds = (
   voxelCount: Node<"vec3">,
   cell: Node<"ivec3">,
@@ -48,7 +54,9 @@ const inBounds = (
 
 // The ray is intersected with a box padded by one voxel on each side, so its
 // start and exit land safely outside the volume instead of exactly on a wall
-// face, where float error could put them on the wrong side.
+// face, where float error could put them on the wrong side. The DDA therefore
+// walks from up to a cell or two outside, sampling only cells that are in the
+// volume and stopping once it leaves the padded range.
 const paddedInBounds = (
   voxelCount: Node<"vec3">,
   cell: Node<"ivec3">,
@@ -60,29 +68,36 @@ const paddedInBounds = (
     .and(c.lessThan(voxelCount.add(vec3(float(2)))).all());
 };
 
-const readFront = (voxel: Node<"uvec4">): Node<"uint"> =>
-  voxel.r.bitAnd(0b00011111);
-const readBack = (voxel: Node<"uvec4">): Node<"uint"> =>
-  voxel.r
+const readFront = (voxel: Node<"uvec4">): Node<"uint"> => {
+  return voxel.r.bitAnd(0b00011111);
+};
+const readBack = (voxel: Node<"uvec4">): Node<"uint"> => {
+  return voxel.r
     .bitAnd(0b11100000)
     .shiftRight(5)
     .bitOr(voxel.g.bitAnd(0b00000011).shiftLeft(3));
-const readLeft = (voxel: Node<"uvec4">): Node<"uint"> =>
-  voxel.g.bitAnd(0b01111100).shiftRight(2);
-const readRight = (voxel: Node<"uvec4">): Node<"uint"> =>
-  voxel.g
+};
+const readLeft = (voxel: Node<"uvec4">): Node<"uint"> => {
+  return voxel.g.bitAnd(0b01111100).shiftRight(2);
+};
+const readRight = (voxel: Node<"uvec4">): Node<"uint"> => {
+  return voxel.g
     .bitAnd(0b10000000)
     .shiftRight(7)
     .bitOr(voxel.b.bitAnd(0b00001111).shiftLeft(1));
-const readTop = (voxel: Node<"uvec4">): Node<"uint"> =>
-  voxel.b
+};
+const readTop = (voxel: Node<"uvec4">): Node<"uint"> => {
+  return voxel.b
     .bitAnd(0b11110000)
     .shiftRight(4)
     .bitOr(voxel.a.bitAnd(0b00000001).shiftLeft(4));
-const readBottom = (voxel: Node<"uvec4">): Node<"uint"> =>
-  voxel.a.bitAnd(0b00111110).shiftRight(1);
-const isSolid = (voxel: Node<"uvec4">): Node<"bool"> =>
-  voxel.a.bitAnd(0b11000000).notEqual(0);
+};
+const readBottom = (voxel: Node<"uvec4">): Node<"uint"> => {
+  return voxel.a.bitAnd(0b00111110).shiftRight(1);
+};
+const isSolid = (voxel: Node<"uvec4">): Node<"bool"> => {
+  return voxel.a.bitAnd(0b11000000).notEqual(0);
+};
 
 const colourIndexToColour = (
   palette: Node<"sampler2D">,
@@ -116,9 +131,11 @@ export type MarchVolumeNodes = {
 
 /**
  * Ray-march the voxel volume for a fragment, starting from `rayOrigin` along
- * `rayDirection` (both in the volume's model space). The ray is intersected
- * with a box padded by one voxel on each side and marched with a 3D DDA; rays
- * that hit nothing leave `colour` at its initial transparent black.
+ * `rayDirection` (both in model space). Shared by the GPU fragment shader (in
+ * the scene-graph material) and the CPU voxel picker, so the two can never
+ * drift apart. The ray is intersected with a box padded by one voxel on each
+ * side and marched with a 3D DDA; rays that hit nothing leave `colour` at its
+ * initial transparent black.
  */
 export const marchVolume = (
   nodes: MarchVolumeNodes,
@@ -280,7 +297,10 @@ export const marchVolume = (
         });
 
       // The point where the ray crosses into the hit cell: the boundary plane
-      // of the face it entered.
+      // of the face it entered. Used by the GPU material to write an accurate
+      // per-pixel fragment depth (so a line drawn on the voxel's surface is
+      // neither hidden behind the box front face nor z-fighting it). The CPU
+      // picker ignores it.
       const hitDistance = float(0).toVar();
       If(mask.x.notEqual(float(0)), () => {
         hitDistance.assign(
@@ -338,6 +358,7 @@ export const marchVolume = (
     });
   });
   // Rays that hit nothing leave colour at its initial transparent black, so
-  // whatever is painted behind the canvas shows through there.
+  // whatever is painted behind the canvas shows through there. Only rays that
+  // land on a voxel set alpha to 1.
   return { colour, voxelPos, normal, hitPoint };
 };

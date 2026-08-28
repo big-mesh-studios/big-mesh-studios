@@ -1,4 +1,5 @@
-import { SideAxes, SideKind } from "./types";
+import { type SideKind } from "@big-mesh-studios/stacker/renderer";
+import { SideAxes } from "./types";
 
 export const OPPOSING_SIDE = {
   front: "back",

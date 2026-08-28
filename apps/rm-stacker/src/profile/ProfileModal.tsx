@@ -22,12 +22,15 @@ import {
   useContext,
   type Accessor,
 } from "solid-js";
-import { thumbnailBlobCid, type PublishedModel } from "../atproto/models";
+import {
+  thumbnailBlobCid,
+  type PublishedModel,
+} from "@big-mesh-studios/stacker/lexicon";
 import { thumbnailFromSides } from "../atproto/thumbnail";
 import { Button, Icon, IconButton } from "../components/components";
 import { StackerContext } from "../context";
 import { homeName } from "../home";
-import { load, save } from "../load-save";
+import { load, save } from "@big-mesh-studios/stacker/format";
 import {
   forgetFile,
   listRecentFiles,

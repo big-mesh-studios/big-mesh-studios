@@ -1,6 +1,6 @@
+import { Bitmap, Dimensions2D } from "@big-mesh-studios/maths";
 import { SIDE_MASK } from "../constants";
-import { Bitmap } from "../maths";
-import { Dimensions2D, SideKind, Sides } from "../types";
+import { type SideKind, type Sides } from "@big-mesh-studios/stacker/renderer";
 
 /**
  * For each primary face and each of its two axes: the perpendicular face whose

@@ -19,14 +19,12 @@ agree on both by importing rather than by copying.
 ```sh
 pnpm install
 pnpm dev:rm-stacker      # the editor, on its own development server
-pnpm dev:voxelscape      # the world, after building the editor's library
+pnpm dev:voxelscape      # the world, on its own development server
 ```
 
-The world imports `@big-mesh-studios/rm-stacker`, which resolves to
-`apps/rm-stacker/dist-lib`. That has to exist before the world's types resolve
-or its development server starts, which is why `dev:voxelscape` builds it
-first. After editing the editor's `format.ts` or `lexicon.ts`, run
-`pnpm build-lib` for the world to see the change.
+Both applications read the packages under `packages/` straight from source
+across the workspace, so there is no library to build first and an edit to a
+package is picked up the same way an edit inside an application is.
 
 Run from the repository root, `pnpm check-types`, `pnpm test`, and
 `pnpm format:check` each cover both applications.

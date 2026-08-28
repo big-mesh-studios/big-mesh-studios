@@ -19,19 +19,23 @@ import {
   useContext,
 } from "solid-js";
 import { StackerContext } from "./context";
-import { Dimensions3D, Matrix3x3, Vector3D } from "./maths";
+import { Dimensions3D, Matrix3x3, Vector3D } from "@big-mesh-studios/maths";
 import shaders from "./shaders";
 import { tryCatch } from "./utils/utils";
 import { voxelPicker } from "./voxel-picker";
-import { VoxelPreviewMaterial } from "./voxel-preview-material";
+import {
+  boxSize,
+  encodePalette,
+  VoxelModelMaterial,
+} from "@big-mesh-studios/stacker/renderer";
 import {
   AMBIENT_COLOUR,
-  boxSize,
   FAR,
   FOV,
   LIGHT_COLOUR,
   LIGHT_DIR,
   NEAR,
+  OUTLINE_DEPTH_BIAS,
   rotateMesh,
   voxelCellEdges,
 } from "./voxel-preview-scene";
@@ -59,7 +63,7 @@ type PreviewScene = {
   scene: Scene;
   camera: PerspectiveCamera;
   mesh: Mesh;
-  material: VoxelPreviewMaterial;
+  material: VoxelModelMaterial;
   outline: LineSegments2;
 };
 
@@ -138,14 +142,7 @@ const VoxelPreviewView: Component = () => {
 
     Matrix3x3.transform(getWorldToModel(), LIGHT_DIR, modelSpaceLightDirection);
 
-    const paletteData = new Uint8Array(_palette.length * 4);
-    _palette.forEach(({ r, g, b, a }, i) => {
-      const o = i << 2;
-      paletteData[o] = r;
-      paletteData[o + 1] = g;
-      paletteData[o + 2] = b;
-      paletteData[o + 3] = a;
-    });
+    const paletteData = encodePalette(_palette);
 
     const picked = voxelPicker({
       uniforms: {
@@ -363,19 +360,13 @@ const VoxelPreviewView: Component = () => {
     getWorldToModel();
     rotateMesh(mesh, yaw, pitch, spin);
 
-    Matrix3x3.transform(worldToModel, LIGHT_DIR, modelSpaceLightDirection);
-
     material.dimensions = [n.width, n.height, n.depth];
     material.voxelCount = [
       _dimensions.width,
       _dimensions.height,
       _dimensions.depth,
     ];
-    material.lightDir = [
-      modelSpaceLightDirection.x,
-      modelSpaceLightDirection.y,
-      modelSpaceLightDirection.z,
-    ];
+    material.lightDir = [LIGHT_DIR.x, LIGHT_DIR.y, LIGHT_DIR.z];
     material.lightColour = [LIGHT_COLOUR[0], LIGHT_COLOUR[1], LIGHT_COLOUR[2]];
     material.ambientColour = [
       AMBIENT_COLOUR[0],
@@ -411,7 +402,8 @@ const VoxelPreviewView: Component = () => {
         const camera = new PerspectiveCamera(FOV, 1, NEAR, FAR);
         camera.position.set(0, 0, radius);
         camera.lookAt(0, 0, 0);
-        const material = new VoxelPreviewMaterial();
+        const material = new VoxelModelMaterial();
+        material.depthBias = OUTLINE_DEPTH_BIAS;
         const mesh = new Mesh(undefined, material);
         scene.add(mesh);
 

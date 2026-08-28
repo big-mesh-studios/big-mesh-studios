@@ -1,5 +1,5 @@
 import { Mesh, Quaternion, Vector3 } from "@random-mesh/rmsl/scene";
-import { Dimensions3D, Vector3D } from "./maths";
+import { Dimensions3D, Vector3D } from "@big-mesh-studios/maths";
 
 // The CPU voxel picker builds its ray with a pinhole camera whose focal length
 // is 2 (see rayMarcher in shaders-shared). A perspective camera with this
@@ -18,28 +18,22 @@ export const LIGHT_DIR = Object.freeze(
 export const LIGHT_COLOUR = Object.freeze([1.0, 0.97, 0.9]);
 export const AMBIENT_COLOUR = Object.freeze([0.35, 0.35, 0.4]);
 
+/**
+ * How far the material pushes a voxel's surface away from the camera when
+ * writing depth, in window-depth units, so the picked voxel's outline passes
+ * the depth test against the surface it is drawn on. The volume sits in a
+ * shallow slice of the depth range, so this is a fraction of a voxel and is not
+ * visible — but it has to exceed the depth span of the line's screen-space
+ * ribbon or the outline shimmers.
+ */
+export const OUTLINE_DEPTH_BIAS = 0.0001;
+
 export const FOV = 2 * Math.atan(0.5) * (180 / Math.PI);
 export const NEAR = 0.1;
 export const FAR = 100;
 
 const X_AXIS = new Vector3(1, 0, 0);
 const Y_AXIS = new Vector3(0, 1, 0);
-
-/**
- * The size of the box bounding the volume, matching the box the ray marcher
- * intersects in shaders-shared: the volume (normalized) padded by one voxel on
- * each side, so rasterizing it limits the fragment shader to the pixels that
- * could possibly land on a voxel.
- */
-export const boxSize = (dimensions: Dimensions3D) => {
-  const normalized = Dimensions3D.normalize(dimensions);
-  const scale = (axis: number, count: number) => axis * (1 + 2 / count);
-  return {
-    width: scale(normalized.width, dimensions.width),
-    height: scale(normalized.height, dimensions.height),
-    depth: scale(normalized.depth, dimensions.depth),
-  };
-};
 
 /**
  * The 12 edges of a voxel's cell in model space, as `LineSegmentsGeometry`

@@ -4,7 +4,7 @@ import {
   MODEL_COLLECTION,
   modelRkey,
   type ModelRecord,
-} from "./models";
+} from "@big-mesh-studios/stacker/lexicon";
 
 const record: ModelRecord = {
   $type: MODEL_COLLECTION,

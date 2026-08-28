@@ -97,7 +97,7 @@ Mirrors the current lib build of `apps/rm-stacker`:
   public, `sideEffects: false`. Dependencies: `@atcute/lexicons` (type-only),
   `fast-png`, `jszip`. Peer dependency: `@random-mesh/rmsl` (the same peer the
   app-lib declared). Scripts: `build-lib` (vite build + `tsc -p
-  tsconfig.lib.json`), `test` (vitest), `check-types`, `format` covered at the
+tsconfig.lib.json`), `test` (vitest), `check-types`, `format` covered at the
   root.
 
 ### Modules

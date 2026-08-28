@@ -1,5 +1,5 @@
-import { Dimensions3D, Vector2D } from "../maths";
-import { SideKind, Sides } from "../types";
+import { Dimensions3D, Vector2D } from "@big-mesh-studios/maths";
+import { type SideKind, type Sides } from "@big-mesh-studios/stacker/renderer";
 import { intersectSide, keysOf } from "../utils/utils";
 
 const PADDING = 6;

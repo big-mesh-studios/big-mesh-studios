@@ -1,25 +1,27 @@
-// Turns a voxel model's six side bitmaps into the bytes its material reads:
-// a solid volume carved by the side silhouettes, each surviving voxel packed
-// into four bytes holding six faces of five-bit palette index with the top two
+// Turns a voxel model's six side bitmaps into the bytes its material reads: a
+// solid volume carved by the side silhouettes, each surviving voxel packed into
+// four bytes holding six faces of five-bit palette index, with the top two
 // alpha bits marking the voxel solid. Also encodes a palette as the one-row
-// texel buffer the material's palette texture samples. Ported from rm-stacker
-// (MIT, big-mesh-studios).
-import { Bitmap, Dimensions3D, Vector3D, type RGBA } from "./data";
+// texel buffer the material's palette texture samples.
+import type { RGBA } from "@big-mesh-studios/maths";
+import { Bitmap, Dimensions3D, Vector3D } from "@big-mesh-studios/maths";
+import { Axis, Sides } from "./data";
 
 export type ViewSpec = {
-  kind: string;
+  kind: keyof Sides;
   side: Bitmap;
-  axis: "x" | "y" | "z";
+  axis: Axis;
   fixedCoords: (px: number, py: number) => Vector3D;
 };
 
 // Right-handed coordinate system: +x right, +y up, +z out of the front face
 // toward the viewer. The front face is at z = depth - 1 (facing the camera at
 // +z) and the back face is at z = 0. Each view fixes two coordinates and
-// carves along the remaining axis.
+// raymarches the remaining axis; the fixed coordinate tuples put the axis
+// coordinate at 0.
 const createViews = (
   { height, width, depth }: Dimensions3D,
-  { front, left, right, back, top, bottom }: Record<string, Bitmap>,
+  { front, left, right, back, top, bottom }: Sides,
 ): ViewSpec[] => {
   return [
     {
@@ -65,7 +67,7 @@ const createViews = (
 
 export function solveVoxels(
   dimensions: Dimensions3D,
-  sides: Record<string, Bitmap>,
+  sides: Sides,
   out: Uint8Array = new Uint8Array(
     dimensions.width * dimensions.height * dimensions.depth * 4,
   ),
@@ -94,9 +96,11 @@ export function solveVoxels(
 
   const views = createViews(dimensions, sides);
 
-  // Start off with every voxel solid, for the silhouettes to carve away.
+  // Start off with every voxel solid, for the silhouettes to carve away. Only
+  // the alpha byte is read until the packing below, which writes all four.
   out.fill(255);
 
+  // erase the silhouettes
   for (const { side, fixedCoords, axis } of views) {
     const length = axisLength[axis];
     const stride = axisStride[axis];
@@ -126,7 +130,8 @@ export function solveVoxels(
 
   // Pack each surviving voxel into the shader's 30-bit face-colour format: six
   // faces, five bits per colour index, with the top two alpha bits marking the
-  // voxel solid.
+  // voxel solid. Each face takes its colour from the panel that looks at it,
+  // read at the position the coordinates below work out.
   const sideByKind = new Map(views.map((view) => [view.kind, view]));
 
   for (let z = 0; z < depth; z++) {
@@ -147,6 +152,8 @@ export function solveVoxels(
         const top = sideByKind.get("top")!;
         const bottom = sideByKind.get("bottom")!;
 
+        // front: (x, py), back: (width-1-x, py), left: (z, py),
+        // right: (depth-1-z, py), top: (x, z), bottom: (x, depth-1-z)
         const f = faceColourIndex(front, x, py);
         const b = faceColourIndex(back, width - 1 - x, py);
         const l = faceColourIndex(left, z, py);
@@ -168,8 +175,9 @@ export function solveVoxels(
 
 /**
  * The palette index of the side cell at (px, py), which the packed format holds
- * in five bits. A solid voxel can still have an empty cell facing it; those
- * take index zero, the palette's black.
+ * in five bits. A solid voxel can still have an empty cell facing it, on a face
+ * no panel has drawn on; those take index zero, the palette's black, which is
+ * what the nearest-colour search this replaces also settled on.
  */
 const faceColourIndex = (view: ViewSpec, px: number, py: number): number => {
   const index = view.side.data[py * view.side.width + px];

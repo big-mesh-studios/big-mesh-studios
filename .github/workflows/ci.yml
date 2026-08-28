@@ -26,12 +26,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      # The world imports the editor's package, so its types only resolve once
-      # `dist-lib` exists. Every other check reads whichever application it is
-      # pointed at, and runs across both.
-      - name: Build the library
-        run: pnpm build-lib
-
       - name: Check types
         run: pnpm check-types
 

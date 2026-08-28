@@ -9,10 +9,10 @@
 // a model published without one lists by its name and its extent — though a
 // browser that cannot draw this cannot draw the editor either.
 import { encode } from "fast-png";
-import { Dimensions3D, RGBA } from "../maths";
-import type { Sides } from "../types";
+import { Dimensions3D, RGBA } from "@big-mesh-studios/maths";
+import { type Sides } from "@big-mesh-studios/stacker/renderer";
 import { renderVoxelImage } from "../voxel-render";
-import { solveVoxels } from "../voxel-solver";
+import { solveVoxels } from "@big-mesh-studios/stacker/renderer";
 
 /**
  * How many pixels across the picture is: the size a card shows it at, so a
@@ -76,21 +76,6 @@ export function cameraDistanceFor(
   }
 
   return Math.max(NEAREST, 2 * furthest * BREATHING_ROOM);
-}
-
-/** The palette as the marcher wants it: one row of texels, red green blue alpha. */
-function paletteTexels(palette: RGBA[]): Uint8Array {
-  const data = new Uint8Array(palette.length * 4);
-
-  palette.forEach(({ r, g, b, a }, index) => {
-    const offset = index << 2;
-    data[offset + 0] = r;
-    data[offset + 1] = g;
-    data[offset + 2] = b;
-    data[offset + 3] = a;
-  });
-
-  return data;
 }
 
 /**

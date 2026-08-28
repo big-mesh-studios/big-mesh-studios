@@ -4,7 +4,7 @@
 // the record by its content identifier. The record around it holds only what a
 // browser needs in order to list models without downloading any of them.
 import type { Blob as LexBlob } from "@atcute/lexicons";
-import type { Dimensions3D } from "../maths";
+import type { Dimensions3D } from "@big-mesh-studios/maths";
 
 /**
  * The collection sprite stacks are written to. It belongs to this editor, and

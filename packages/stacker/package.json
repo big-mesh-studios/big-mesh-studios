@@ -1,0 +1,36 @@
+{
+  "name": "@big-mesh-studios/stacker",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/big-mesh-studios/big-mesh-studios.git",
+    "directory": "packages/stacker"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./renderer": "./src/renderer.ts",
+    "./format": "./src/format.ts",
+    "./lexicon": "./src/lexicon.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@big-mesh-studios/maths": "workspace:*",
+    "fast-png": "^8.0.0",
+    "jszip": "^3.10.1"
+  },
+  "peerDependencies": {
+    "@random-mesh/rmsl": "^1.9.0"
+  },
+  "devDependencies": {
+    "@atcute/lexicons": "^2.1.0",
+    "@random-mesh/rmsl": "1.9.0",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.3"
+  }
+}

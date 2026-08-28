@@ -8,12 +8,15 @@
 // are dead-reckoned between deliveries (`./reckon`).
 import { BoxGeometry, Group, Mesh } from "@random-mesh/rmsl/scene";
 import type { DayNightState } from "../environment/day-night";
-import { Dimensions3D } from "../voxel-model/data";
-import { boxSize } from "../voxel-model/box-size";
+import { Dimensions3D } from "@big-mesh-studios/maths";
+import {
+  boxSize,
+  encodePalette,
+  solveVoxels,
+  VoxelModelMaterial,
+} from "@big-mesh-studios/stacker/renderer";
 import { buildDefaultZombieModel } from "../voxel-model/default-zombie-model";
 import { loadModel, type LoadedModel } from "../voxel-model/load-model";
-import { VoxelModelMaterial } from "../voxel-model/material";
-import { encodePalette, solveVoxels } from "../voxel-model/solver";
 import { nextRenderedPosition, type Position3 } from "./reckon";
 import type { MonsterSnapshot } from "./monster";
 

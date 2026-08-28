@@ -1,13 +1,9 @@
-import { Bitmap, Dimensions3D, Vector2D } from "./maths";
+import { Dimensions3D, Vector2D } from "@big-mesh-studios/maths";
+import type { SideKind } from "@big-mesh-studios/stacker/renderer";
 
 /**********************************************************************************/
 /*                                       Misc                                     */
 /**********************************************************************************/
-
-export interface Dimensions2D {
-  width: number;
-  height: number;
-}
 
 export type DimensionKind = keyof Dimensions3D;
 
@@ -16,8 +12,6 @@ export type AlignmentKind = "min" | "max";
 
 /** Which end of each axis a resize is applied at. */
 export type Alignment3D = Partial<Record<DimensionKind, AlignmentKind>>;
-
-export type Axis = "x" | "y" | "z";
 
 /**********************************************************************************/
 /*                                       Mode                                     */
@@ -29,25 +23,6 @@ export type ModeKind =
 export type PreviewState = {
   unlit: boolean;
   autorotate: boolean;
-};
-
-/**********************************************************************************/
-/*                                      Sides                                     */
-/**********************************************************************************/
-
-export const sideKindSet = {
-  front: true,
-  left: true,
-  right: true,
-  back: true,
-  top: true,
-  bottom: true,
-} as const;
-
-export type SideKind = keyof typeof sideKindSet;
-
-export type Sides = {
-  [k in SideKind]: Bitmap;
 };
 
 /**

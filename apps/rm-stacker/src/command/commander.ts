@@ -1,8 +1,8 @@
 import { Accessor, Setter } from "@solidjs/signals";
 import { untrack } from "solid-js";
-import { load, save } from "../load-save";
-import { Bitmap, RGBA } from "../maths";
-import { Sides } from "../types";
+import { load, save } from "@big-mesh-studios/stacker/format";
+import { Bitmap, RGBA } from "@big-mesh-studios/maths";
+import { type Sides } from "@big-mesh-studios/stacker/renderer";
 import { intersectSide } from "../utils/utils";
 import { Command } from "./Command";
 

@@ -1,6 +1,7 @@
 import { SIDE_AXES } from "./constants";
-import { Bitmap, Dimensions3D } from "./maths";
-import type { Alignment3D, SideAxis, SideKind, Sides } from "./types";
+import { Bitmap, Dimensions3D } from "@big-mesh-studios/maths";
+import { type SideKind, type Sides } from "@big-mesh-studios/stacker/renderer";
+import type { Alignment3D, SideAxis } from "./types";
 
 export interface ResizeOptions {
   from: {

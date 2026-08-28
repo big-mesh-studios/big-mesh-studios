@@ -77,22 +77,19 @@ and open what that artist has published.
 
 ## Using it as a library
 
-The editor is also published as a package, so that a game or a tool can read
-what it writes without reimplementing either half. Two entry points, each
-standing alone - reading a record does not pull in a zip decoder, and reading a
-file does not pull in a lexicon:
-
-```sh
-pnpm add @big-mesh-studios/rm-stacker
-```
+What the editor writes is read through `@big-mesh-studios/stacker`, in
+`packages/stacker`, so that a game or a tool can read it without
+reimplementing either half. Its entry points each stand alone - reading a
+record does not pull in a zip decoder, and reading a file does not pull in a
+lexicon:
 
 ```ts
-import { load, save } from "@big-mesh-studios/rm-stacker/format";
+import { load, save } from "@big-mesh-studios/stacker/format";
 import {
   blobUrl,
   isModelRecord,
   modelBlobCid,
-} from "@big-mesh-studios/rm-stacker/lexicon";
+} from "@big-mesh-studios/stacker/lexicon";
 
 // A record out of somebody's repository, turned into voxels.
 if (isModelRecord(value)) {
@@ -101,9 +98,9 @@ if (isModelRecord(value)) {
 }
 ```
 
-Solid and [rmsl](https://www.npmjs.com/package/@random-mesh/rmsl) are peer
-dependencies rather than bundled, so an app embedding this ends up with one
-copy of each rather than two.
+[rmsl](https://www.npmjs.com/package/@random-mesh/rmsl) is a peer dependency of
+that package rather than bundled into it, so an application drawing a model
+ends up with one copy of it rather than two.
 
 ## Tech stack
 
@@ -124,7 +121,6 @@ Prerequisites: [Node.js](https://nodejs.org/) with [pnpm](https://pnpm.io/).
 pnpm install      # install dependencies
 pnpm dev          # start the dev server
 pnpm build        # build the editor for production (outputs to dist/)
-pnpm build-lib    # build the published package (outputs to dist-lib/)
 pnpm test         # run tests
 pnpm check-types  # type-check the codebase
 ```

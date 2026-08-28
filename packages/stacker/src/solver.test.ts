@@ -1,14 +1,14 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { Bitmap } from "./data";
+import { Bitmap } from "@big-mesh-studios/maths";
+import { sideKinds, type Sides } from "./data";
 import { encodePalette, solveVoxels } from "./solver";
 
 const DIMS = { width: 3, height: 3, depth: 3 };
-const SIDES = ["front", "back", "left", "right", "top", "bottom"];
 
-const solidSides = (): Record<string, Bitmap> => {
-  const sides: Record<string, Bitmap> = {};
-  for (const kind of SIDES) {
+const solidSides = (): Sides => {
+  const sides = {} as Sides;
+  for (const kind of sideKinds) {
     const bitmap = Bitmap.create(3, 3);
     bitmap.data.fill(1);
     sides[kind] = bitmap;

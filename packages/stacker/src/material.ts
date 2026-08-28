@@ -3,9 +3,7 @@
 // surface with a palette. Works on a regular `Mesh` — positioned, rotated, and
 // scaled freely, with the volume→world transform just the mesh's model matrix —
 // and on an `InstancedMesh` sitting at the identity whose per-instance pose
-// lives in `instanceMatrix`. Adapted from rm-stacker (MIT, big-mesh-studios);
-// the instanced path is kept so the material stays reusable for a crowd later,
-// even though the app's monsters draw as one regular Mesh each.
+// lives in `instanceMatrix`.
 import type { Node, UniformNode } from "@random-mesh/rmsl";
 import { builtinFragDepth, float, If, vec4 } from "@random-mesh/rmsl";
 import type { Builder } from "@random-mesh/rmsl/scene";
@@ -21,6 +19,13 @@ export class VoxelModelMaterial extends NodeMaterial {
   lightColour: [number, number, number] = [1, 1, 1];
   ambientColour: [number, number, number] = [0, 0, 0];
   unlit = false;
+  /**
+   * How far to push the voxel surface away from the camera when writing depth,
+   * in window-depth units. A caller drawing a line on a voxel's surface raises
+   * it enough for the line to win the depth test against the surface it sits
+   * on; left at zero, the depth written is the surface's own.
+   */
+  depthBias = 0;
 
   private voxelsUniform?: UniformNode<"usampler3D">;
   private paletteUniform?: UniformNode<"sampler2D">;
@@ -30,6 +35,7 @@ export class VoxelModelMaterial extends NodeMaterial {
   private lightColourUniform?: UniformNode<"vec3">;
   private ambientColourUniform?: UniformNode<"vec3">;
   private unlitUniform?: UniformNode<"bool">;
+  private depthBiasUniform?: UniformNode<"float">;
 
   constructor() {
     super();
@@ -75,6 +81,11 @@ export class VoxelModelMaterial extends NodeMaterial {
     );
     this.unlitUniform = b.materialUniform("uUnlit", "bool", () =>
       this.unlit ? 1 : 0,
+    );
+    this.depthBiasUniform = b.materialUniform(
+      "uDepthBias",
+      "float",
+      () => this.depthBias,
     );
   }
 
@@ -178,10 +189,17 @@ export class VoxelModelMaterial extends NodeMaterial {
       const clipW = b
         .varying("vClipW", "float")
         .add(b.varying("vRow3", "vec4").dot(vec4(d, float(0))));
-      fragDepth.assign(clipZ.div(clipW).mul(float(0.5)).add(float(0.5)));
+      fragDepth.assign(
+        clipZ
+          .div(clipW)
+          .mul(float(0.5))
+          .add(float(0.5))
+          .add(this.depthBiasUniform!),
+      );
     }).Else(() => {
       // A fragment that hits no voxel is transparent; push it to the far plane
-      // so it never occludes the ground or a model behind it.
+      // so it never occludes whatever is behind it — the ground, another model,
+      // or a line drawn on this one's surface.
       fragDepth.assign(float(1));
     });
 

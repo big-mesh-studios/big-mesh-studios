@@ -7,8 +7,8 @@
 // What is left here is what the ray marcher needs and a drawing program has no
 // reason to hand back: the model's extent in voxels, and a palette to fall
 // back on when the file carries none.
-import { load } from "@big-mesh-studios/rm-stacker/format";
-import type { Bitmap, Dimensions3D, RGBA } from "./data";
+import { load } from "@big-mesh-studios/stacker/format";
+import type { Bitmap, Dimensions3D, RGBA } from "@big-mesh-studios/maths";
 import { ZOMBIE_PALETTE } from "./default-zombie-model";
 
 export const sideKinds = [

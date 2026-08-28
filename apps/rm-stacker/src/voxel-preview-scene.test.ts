@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Matrix3, Mesh } from "@random-mesh/rmsl/scene";
-import { Dimensions3D, Matrix3x3 } from "./maths";
-import { boxSize, rotateMesh, voxelCellEdges } from "./voxel-preview-scene";
+import { Matrix3x3 } from "@big-mesh-studios/maths";
+import { rotateMesh, voxelCellEdges } from "./voxel-preview-scene";
 
 // The world-to-model rotation the CPU voxel picker follows its ray along,
 // replicated from VoxelPreviewView.getWorldToModel: turn the world down to the
@@ -40,26 +40,6 @@ describe("voxel preview scene", () => {
       rotateMesh(mesh, yaw, pitch, spin);
       mesh.updateMatrixWorld(true);
       closeTo(materialWorldToModel(mesh), worldToModelOf(yaw, pitch, spin));
-    }
-  });
-
-  it("sizes the box to the volume padded by one voxel on each side", () => {
-    for (const dimensions of [
-      { width: 10, height: 10, depth: 10 },
-      { width: 16, height: 8, depth: 4 },
-      { width: 1, height: 1, depth: 1 },
-    ]) {
-      const n = Dimensions3D.normalize(dimensions);
-      const size = boxSize(dimensions);
-      expect(size.width).toBeCloseTo(
-        2 * (n.width / 2 + n.width / dimensions.width),
-      );
-      expect(size.height).toBeCloseTo(
-        2 * (n.height / 2 + n.height / dimensions.height),
-      );
-      expect(size.depth).toBeCloseTo(
-        2 * (n.depth / 2 + n.depth / dimensions.depth),
-      );
     }
   });
 

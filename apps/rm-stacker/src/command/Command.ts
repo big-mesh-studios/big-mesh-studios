@@ -1,5 +1,5 @@
-import { Vector2D } from "../maths";
-import { SideKind } from "../types";
+import { Vector2D } from "@big-mesh-studios/maths";
+import { type SideKind } from "@big-mesh-studios/stacker/renderer";
 import { base64ToUint8Array, uint8ArrayToBase64 } from "../utils/utils";
 
 export type Command =

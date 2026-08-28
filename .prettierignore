@@ -2,3 +2,4 @@ pnpm-lock.yaml
 pnpm-workspace.yaml
 dist
 dist-lib
+.ssr

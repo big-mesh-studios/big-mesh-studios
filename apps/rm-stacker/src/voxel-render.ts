@@ -17,16 +17,20 @@ import {
   Scene,
   WebGLRenderer,
 } from "@random-mesh/rmsl/scene";
-import { Dimensions3D, Matrix3x3, RGBA, Vector3D } from "./maths";
-import { VoxelPreviewMaterial } from "./voxel-preview-material";
+import { Dimensions3D, RGBA } from "@big-mesh-studios/maths";
+import {
+  boxSize,
+  encodePalette,
+  VoxelModelMaterial,
+} from "@big-mesh-studios/stacker/renderer";
 import {
   AMBIENT_COLOUR,
-  boxSize,
   FAR,
   FOV,
   LIGHT_COLOUR,
   LIGHT_DIR,
   NEAR,
+  OUTLINE_DEPTH_BIAS,
   rotateMesh,
 } from "./voxel-preview-scene";
 
@@ -43,27 +47,12 @@ export interface VoxelImageRequest {
   radius: number;
 }
 
-/** The palette as a texture: one row of texels, red green blue alpha. */
-function paletteTexels(palette: RGBA[]): Uint8Array {
-  const data = new Uint8Array(palette.length * 4);
-
-  palette.forEach(({ r, g, b, a }, index) => {
-    const offset = index << 2;
-    data[offset + 0] = r;
-    data[offset + 1] = g;
-    data[offset + 2] = b;
-    data[offset + 3] = a;
-  });
-
-  return data;
-}
-
 interface OffscreenScene {
   renderer: WebGLRenderer;
   scene: Scene;
   camera: PerspectiveCamera;
   mesh: Mesh;
-  material: VoxelPreviewMaterial;
+  material: VoxelModelMaterial;
 }
 
 /**
@@ -100,7 +89,8 @@ function offscreenScene(): OffscreenScene | undefined {
     // than sitting on a colour that will not suit wherever it ends up shown.
     renderer.setClearColor(0x000000, 0);
 
-    const material = new VoxelPreviewMaterial();
+    const material = new VoxelModelMaterial();
+    material.depthBias = OUTLINE_DEPTH_BIAS;
     const mesh = new Mesh(new BoxGeometry(1, 1, 1), material);
     const scene = new Scene();
     scene.add(mesh);
@@ -152,7 +142,7 @@ export function renderVoxelImage(
     material.voxelTexture.depth = request.dimensions.depth;
     material.voxelTexture.needsUpdate = true;
 
-    const texels = paletteTexels(request.palette);
+    const texels = encodePalette(request.palette);
     material.paletteTexture.image = texels;
     material.paletteTexture.width = request.palette.length;
     material.paletteTexture.height = 1;
@@ -161,17 +151,6 @@ export function renderVoxelImage(
     // The model is turned to the orientation the light is measured against, so
     // that what lands on a face here is what would land on it in the preview.
     rotateMesh(mesh, request.yaw, request.pitch, 0);
-    const worldToModel = Matrix3x3.multiply(
-      Matrix3x3.rotationY(-request.yaw),
-      Matrix3x3.rotationX(-request.pitch),
-      Matrix3x3.create(),
-    );
-    const lightDirection = Matrix3x3.transform(
-      worldToModel,
-      LIGHT_DIR,
-      Vector3D.create(),
-    );
-
     material.dimensions = [
       normalized.width,
       normalized.height,
@@ -182,7 +161,7 @@ export function renderVoxelImage(
       request.dimensions.height,
       request.dimensions.depth,
     ];
-    material.lightDir = [lightDirection.x, lightDirection.y, lightDirection.z];
+    material.lightDir = [LIGHT_DIR.x, LIGHT_DIR.y, LIGHT_DIR.z];
     material.lightColour = [LIGHT_COLOUR[0], LIGHT_COLOUR[1], LIGHT_COLOUR[2]];
     material.ambientColour = [
       AMBIENT_COLOUR[0],
