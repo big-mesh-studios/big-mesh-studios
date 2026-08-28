@@ -1,18 +1,22 @@
-// atproto connection and edit-chunk sync. Owns the OAuth session (popup flow
-// via `@atcute/oauth-browser-client` — see `oauth.ts`), the `@atcute/client`
-// XRPC client built on that session, and the upload/fetch of
-// `app.bms.voxelscape.edit` records — see `edits.ts` for the pure record
-// logic. A plain domain object: it knows about the network and the edit
-// overlay, not about renderers or a console.
-import { Client, ok } from "@atcute/client";
-import type { Did, Handle } from "@atcute/lexicons";
-import { isActorIdentifier } from "@atcute/lexicons/syntax";
+// The world's edit-chunk sync, and the console's view of who is signed in.
+// Being signed in is the session's own business; this holds one and adds what
+// the world does with it — uploading and fetching `app.bms.voxelscape.edit`
+// records, with the pure record logic in `edits.ts`. A plain domain object: it
+// knows about the network and the edit overlay, not about renderers or a
+// console.
+import type { Did } from "@atcute/lexicons";
 import {
-  deleteStoredSession,
-  getSession,
-  listStoredSessions,
-  OAuthUserAgent,
-} from "@atcute/oauth-browser-client";
+  createIdentityLookup,
+  type IdentityLookup,
+} from "@big-mesh-studios/atproto/identity";
+import { listAllRecords } from "@big-mesh-studios/atproto/repo-client";
+import type { AtprotoRepoClient } from "@big-mesh-studios/atproto/repo-client";
+import {
+  createAtprotoSession,
+  type AtprotoSession,
+  type SessionStatus,
+} from "@big-mesh-studios/atproto/session";
+import { createBrowserSessionStore } from "@big-mesh-studios/atproto/session-store";
 import type { EditLayer } from "../world/edit-layer";
 import {
   EDIT_COLLECTION,
@@ -22,43 +26,12 @@ import {
   recordsToEntries,
   type EditChunkRecord,
 } from "./edits";
-import { confirmHandle } from "@big-mesh-studios/atproto/handles";
-import {
-  createDidDocumentResolver,
-  createHandleResolver,
-  pdsEndpoint,
-  type DidDocument,
-} from "@big-mesh-studios/atproto/identity";
-import { configureOAuthClient, signInPopup } from "./oauth";
-import {
-  pictureBlobCid,
-  pictureBlobUrl,
-  PROFILE_COLLECTION,
-  PROFILE_RKEY,
-} from "./profile";
-import {
-  createAtprotoRepoClient,
-  type AtprotoRepoClient,
-} from "@big-mesh-studios/atproto/repo-client";
+import * as oauth from "./oauth";
 
 /** How often the automatic edit sync runs while signed in, ms. */
 const SYNC_INTERVAL_MS = 60_000;
 
-export interface AtpControllerOptions {
-  /**
-   * When set, client metadata is loaded from this hosted `client-metadata.json`
-   * URL (production). When absent, a loopback client is built for the current
-   * origin, which works for localhost development without a server.
-   */
-  clientId?: string;
-}
-
-export type AtpStatus =
-  | "pending" // init not run yet
-  | "anonymous"
-  | "connecting"
-  | "connected"
-  | "error";
+export type AtpStatus = SessionStatus;
 
 /**
  * Wraps the edit-chunk sync onto a player's atproto repo. A single shared
@@ -71,33 +44,17 @@ export type AtpStatus =
 export class AtprotoController {
   private readonly layer: EditLayer;
   private readonly seed: number | null;
-  private readonly options: AtpControllerOptions;
   private readonly onMerged: (changed: number) => void;
-  private readonly onConnected: (did: Did) => void;
-  private readonly onSignedOut: () => void;
-  private agent: OAuthUserAgent | undefined;
-  private client: Client | undefined;
-  private repoClient_: AtprotoRepoClient | undefined;
-  private did_: Did | null = null;
-  private status_: AtpStatus = "pending";
-  private lastError: string | null = null;
-  private lastUploadAt = 0;
   private readonly handleInput: () => string;
+  private readonly identity: IdentityLookup;
+  private readonly session: AtprotoSession;
+  private lastUploadAt = 0;
   private syncTimer: ReturnType<typeof setInterval> | undefined;
   private syncInFlight = false;
-  /** DID -> its resolved document, so signal polling doesn't re-resolve every pass. */
-  private readonly documentCache = new Map<string, DidDocument>();
-  /** DID -> its confirmed handle, or null when the account has none to show. */
-  private readonly handleCache = new Map<string, string | null>();
-  /** DID -> the bytes of its profile picture, or null when it shows none. */
-  private readonly pictureCache = new Map<string, Blob | null>();
-  private readonly didDocumentResolver = createDidDocumentResolver();
-  private readonly handleResolver = createHandleResolver();
 
   constructor(params: {
     layer: EditLayer;
     seed: number | null;
-    options: AtpControllerOptions;
     /** Supplies the login handle when `/account:login` has no argument. */
     getHandle: () => string;
     /**
@@ -117,11 +74,19 @@ export class AtprotoController {
   }) {
     this.layer = params.layer;
     this.seed = params.seed;
-    this.options = params.options;
     this.handleInput = params.getHandle;
     this.onMerged = params.onMerged ?? (() => {});
-    this.onConnected = params.onConnected ?? (() => {});
-    this.onSignedOut = params.onSignedOut ?? (() => {});
+    this.identity = createIdentityLookup();
+    this.session = createAtprotoSession({
+      oauth,
+      identity: this.identity,
+      store: createBrowserSessionStore(),
+      onConnected: (did) => params.onConnected?.(did as Did),
+      onSignedOut: () => {
+        this.stopSyncLoop();
+        params.onSignedOut?.();
+      },
+    });
     try {
       const saved = Number(localStorage.getItem("bms.atproto.lastUploadAt"));
       if (Number.isFinite(saved)) {
@@ -133,17 +98,17 @@ export class AtprotoController {
   }
 
   get status(): AtpStatus {
-    return this.status_;
+    return this.session.state.status;
   }
 
   /** The authenticated account's DID, or null when signed out. */
   get did(): string | null {
-    return this.did_;
+    return this.session.state.did;
   }
 
   /** Whether a signed-in, ready-to-sync client is available. */
   get ready(): boolean {
-    return this.client !== undefined;
+    return this.session.repoClient !== undefined;
   }
 
   /**
@@ -152,7 +117,17 @@ export class AtprotoController {
    * records). Undefined while anonymous.
    */
   get repoClient(): AtprotoRepoClient | undefined {
-    return this.repoClient_;
+    return this.session.repoClient;
+  }
+
+  /** The handle to show for `did`, or the identifier itself when there is none. */
+  resolveHandle(did: string): Promise<string | null> {
+    return this.identity.handle(did);
+  }
+
+  /** The bytes of the picture an account shows for itself, or null when it shows none. */
+  resolvePicture(did: string): Promise<Blob | null> {
+    return this.identity.picture(did);
   }
 
   /**
@@ -161,19 +136,14 @@ export class AtprotoController {
    * rather than here, so a window running this is never mid-callback.
    */
   async init(): Promise<string> {
-    try {
-      this.status_ = "connecting";
-      await configureOAuthClient(this.options.clientId);
-      const [stored] = listStoredSessions();
-      if (stored === undefined) {
-        this.status_ = "anonymous";
-        return "not signed in";
-      }
-      await this.adoptSession(stored);
-      return `restored session for ${await this.nameFor(stored)}`;
-    } catch (err) {
-      return this.fail(err);
+    await this.session.restore();
+    const { status, did, error } = this.session.state;
+    if (status === "error") {
+      return `account error: ${error}`;
     }
+    return did === null
+      ? "not signed in"
+      : `restored session for ${await this.identity.name(did)}`;
   }
 
   /**
@@ -185,20 +155,12 @@ export class AtprotoController {
     if (target === "") {
       return "provide a Bluesky handle (e.g. /account:login you.bsky.social)";
     }
-    if (!isActorIdentifier(target)) {
-      return `"${target}" is not a handle or an account id`;
+    await this.session.signIn(target);
+    const { status, did, error } = this.session.state;
+    if (status !== "connected" || did === null) {
+      return `account error: ${error}`;
     }
-    try {
-      this.status_ = "connecting";
-      const did = await signInPopup({
-        identifier: target,
-        clientId: this.options.clientId,
-      });
-      await this.adoptSession(did);
-      return `signed in as ${await this.nameFor(did)}`;
-    } catch (err) {
-      return this.fail(err);
-    }
+    return `signed in as ${await this.identity.name(did)}`;
   }
 
   /**
@@ -242,8 +204,8 @@ export class AtprotoController {
   }
 
   private async runSync(): Promise<string> {
-    const client = this.client;
-    const repo = this.did_;
+    const client = this.session.repoClient;
+    const repo = this.session.state.did;
     if (client === undefined || repo === null) {
       return "not connected — use /account:login first";
     }
@@ -258,18 +220,14 @@ export class AtprotoController {
     );
     for (const record of groups.values()) {
       try {
-        await ok(
-          client.post("com.atproto.repo.putRecord", {
-            input: {
-              repo,
-              collection: EDIT_COLLECTION,
-              rkey: makeRkey(record.chunk),
-              record,
-            },
-          }),
-        );
+        await client.putRecord({
+          repo,
+          collection: EDIT_COLLECTION,
+          rkey: makeRkey(record.chunk),
+          record,
+        });
       } catch (err) {
-        return this.fail(err);
+        return `account error: ${err instanceof Error ? err.message : String(err)}`;
       }
     }
     if (groups.size > 0) {
@@ -285,7 +243,11 @@ export class AtprotoController {
       messages.push(`uploaded ${groups.size} edit chunk(s)`);
     }
 
-    const fetched = await this.fetchAllRecords(client, repo);
+    const fetched = (
+      await listAllRecords(client, { repo, collection: EDIT_COLLECTION })
+    )
+      .map(({ value }) => value as EditChunkRecord)
+      .filter((value) => value?.$type === EDIT_COLLECTION);
     const changed = mergeIntoLayer(this.layer, recordsToEntries(fetched));
     this.onMerged(changed);
     messages.push(
@@ -295,26 +257,7 @@ export class AtprotoController {
   }
 
   async signOut(): Promise<string> {
-    const agent = this.agent;
-    const did = this.did_;
-    try {
-      if (agent !== undefined) {
-        await agent.signOut();
-      }
-    } catch {
-      // A failed revoke (offline, or a token the server already dropped) still
-      // has to sign this browser out, and only `signOut` clears the store.
-      if (did !== null) {
-        deleteStoredSession(did);
-      }
-    }
-    this.agent = undefined;
-    this.client = undefined;
-    this.repoClient_ = undefined;
-    this.did_ = null;
-    this.status_ = "anonymous";
-    this.stopSyncLoop();
-    this.onSignedOut();
+    await this.session.signOut();
     return "signed out";
   }
 
@@ -326,12 +269,10 @@ export class AtprotoController {
    * answers straight away.
    */
   describe(): string {
-    const named =
-      this.did_ === null
-        ? null
-        : (this.handleCache.get(this.did_) ?? this.did_);
-    return `account: ${this.status_}${named !== null ? ` as ${named}` : ""}${
-      this.status_ === "error" ? ` — ${this.lastError ?? "unknown error"}` : ""
+    const { status, did, error } = this.session.state;
+    const named = did === null ? null : (this.identity.knownHandle(did) ?? did);
+    return `account: ${status}${named !== null ? ` as ${named}` : ""}${
+      status === "error" ? ` — ${error ?? "unknown error"}` : ""
     }`;
   }
 
@@ -342,162 +283,6 @@ export class AtprotoController {
    */
   dispose(): void {
     this.stopSyncLoop();
-    this.agent = undefined;
-    this.client = undefined;
-    this.repoClient_ = undefined;
-  }
-
-  private async adoptSession(did: Did): Promise<void> {
-    // `allowStale` accepts an expired access token rather than blocking
-    // startup on a refresh; the agent refreshes on the first request that
-    // needs it.
-    const agent = new OAuthUserAgent(
-      await getSession(did, { allowStale: true }),
-    );
-    this.agent = agent;
-    this.client = new Client({ handler: agent });
-    this.repoClient_ = createAtprotoRepoClient({
-      client: this.client,
-      selfDid: agent.sub,
-      resolveService: (target) => this.resolveService(target),
-    });
-    this.did_ = agent.sub;
-    this.status_ = "connected";
-    this.lastError = null;
-    this.onConnected(this.did_);
-    this.startSyncLoop();
-  }
-
-  /**
-   * Resolves a DID to the server holding its records, for reading a peer's
-   * public records (presence, signal mailbox) from the server that actually
-   * hosts them rather than from this account's own.
-   */
-  private async resolveService(did: string): Promise<string> {
-    return pdsEndpoint(await this.resolveDocument(did));
-  }
-
-  /**
-   * What to call `did` in a line the player reads: the handle the account
-   * claims and its own server confirms, falling back to the account id when
-   * it claims none or the lookup fails.
-   */
-  private async nameFor(did: string): Promise<string> {
-    try {
-      return (await this.resolveHandle(did)) ?? did;
-    } catch {
-      return did;
-    }
-  }
-
-  /**
-   * The handle to show for `did` — a peer's name over their avatar in the
-   * multiplayer mesh — or null when the account has none that can be
-   * confirmed, in which case the caller keeps showing the DID. Both the
-   * confirmed handle and the absence of one are cached for the session, so
-   * asking for the same peer's name again costs nothing.
-   */
-  async resolveHandle(did: string): Promise<string | null> {
-    const cached = this.handleCache.get(did);
-    if (cached !== undefined) {
-      return cached;
-    }
-    const handle = await confirmHandle({
-      did,
-      document: await this.resolveDocument(did),
-      resolveDid: (candidate) =>
-        this.handleResolver.resolve(candidate as Handle),
-    });
-    this.handleCache.set(did, handle);
-    return handle;
-  }
-
-  /**
-   * The picture an account shows for itself, as the bytes an image decoder
-   * takes, or null when it shows none. The record naming the picture and the
-   * bytes themselves both come from the server hosting that account, so a
-   * player's face is served by the same place their world edits are. Fetched
-   * once per account per session, absence included.
-   */
-  async resolvePicture(did: string): Promise<Blob | null> {
-    const cached = this.pictureCache.get(did);
-    if (cached !== undefined) {
-      return cached;
-    }
-    const picture = await this.fetchPicture(did);
-    this.pictureCache.set(did, picture);
-    return picture;
-  }
-
-  private async fetchPicture(did: string): Promise<Blob | null> {
-    const repoClient = this.repoClient_;
-    if (repoClient === undefined) {
-      return null;
-    }
-    let record: unknown;
-    try {
-      record = (
-        await repoClient.getRecord({
-          repo: did,
-          collection: PROFILE_COLLECTION,
-          rkey: PROFILE_RKEY,
-        })
-      ).value;
-    } catch {
-      // An account with no profile record at all: no picture, not an error.
-      return null;
-    }
-    const cid = pictureBlobCid(record);
-    if (cid === null) {
-      return null;
-    }
-    const service = await this.resolveService(did);
-    const response = await fetch(pictureBlobUrl(service, did, cid));
-    if (!response.ok) {
-      return null;
-    }
-    return response.blob();
-  }
-
-  /** Fetches a DID's document from the PLC directory or its own domain, once per session. */
-  private async resolveDocument(did: string): Promise<DidDocument> {
-    const cached = this.documentCache.get(did);
-    if (cached !== undefined) {
-      return cached;
-    }
-    const document = await this.didDocumentResolver.resolve(
-      did as Did<"plc" | "web">,
-    );
-    this.documentCache.set(did, document);
-    return document;
-  }
-
-  private async fetchAllRecords(
-    client: Client,
-    repo: Did,
-  ): Promise<EditChunkRecord[]> {
-    const out: EditChunkRecord[] = [];
-    let cursor: string | undefined;
-    do {
-      const page = await ok(
-        client.get("com.atproto.repo.listRecords", {
-          params: { repo, collection: EDIT_COLLECTION, cursor, limit: 100 },
-        }),
-      );
-      cursor = page.cursor;
-      for (const rec of page.records) {
-        const value = rec.value as EditChunkRecord;
-        if (value?.$type === EDIT_COLLECTION) {
-          out.push(value);
-        }
-      }
-    } while (cursor !== undefined);
-    return out;
-  }
-
-  private fail(err: unknown): string {
-    this.status_ = "error";
-    this.lastError = err instanceof Error ? err.message : String(err);
-    return `account error: ${this.lastError}`;
+    this.session.dispose();
   }
 }

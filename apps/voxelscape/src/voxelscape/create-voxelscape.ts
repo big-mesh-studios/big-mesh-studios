@@ -188,7 +188,6 @@ export const createVoxelscape = ({
   const atproto = new AtprotoController({
     layer: world.editLayer,
     seed: terrain.seed,
-    options: {},
     getHandle: () => "",
     onMerged: (changed) => {
       if (changed > 0) {

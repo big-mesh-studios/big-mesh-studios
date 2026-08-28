@@ -4,9 +4,9 @@
 // that hosts the account. Both halves therefore come from the account's own
 // server, with no image service in between.
 //
-// The record belongs to Bluesky's profile vocabulary rather than this world's,
-// because that is the profile people already have — a player who has never
-// heard of this game still arrives with a face.
+// The record belongs to Bluesky's profile vocabulary rather than to either
+// application here, because that is the profile people already have — somebody
+// who has never heard of these programs still arrives with a face.
 
 /** Where an account's profile lives, one record per repo. */
 export const PROFILE_COLLECTION = "app.bsky.actor.profile";

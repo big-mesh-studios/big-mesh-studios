@@ -153,3 +153,29 @@ export function createAtprotoRepoClient(params: {
     },
   };
 }
+
+/**
+ * Every record in a collection, following the cursor to the end.
+ *
+ * @param repo Whose records to read. Defaults to the signed-in account's own.
+ */
+export async function listAllRecords(
+  client: AtprotoRepoClient,
+  params: { repo: string; collection: string; pageSize?: number },
+): Promise<Array<{ uri: string; value: unknown }>> {
+  const out: Array<{ uri: string; value: unknown }> = [];
+  let cursor: string | undefined;
+
+  do {
+    const page = await client.listRecords({
+      repo: params.repo,
+      collection: params.collection,
+      cursor,
+      limit: params.pageSize ?? 100,
+    });
+    out.push(...page.records);
+    cursor = page.cursor;
+  } while (cursor !== undefined);
+
+  return out;
+}

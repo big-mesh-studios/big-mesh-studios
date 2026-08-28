@@ -6,24 +6,9 @@
 // One account's work, its own. Everything here needs a session, including the
 // reads: a published model is public and could in principle be read from
 // anybody's account, but the editor only ever asks after yours.
-import { Client } from "@atcute/client";
-import type { Did, Handle } from "@atcute/lexicons";
-import { isActorIdentifier } from "@atcute/lexicons/syntax";
-import {
-  deleteStoredSession,
-  getSession,
-  listStoredSessions,
-  OAuthUserAgent,
-} from "@atcute/oauth-browser-client";
 import { createSignal } from "solid-js";
 import type { Dimensions3D } from "@big-mesh-studios/maths";
-import { confirmHandle } from "@big-mesh-studios/atproto/handles";
-import {
-  createDidDocumentResolver,
-  createHandleResolver,
-  pdsEndpoint,
-  type DidDocument,
-} from "@big-mesh-studios/atproto/identity";
+import { createIdentityLookup } from "@big-mesh-studios/atproto/identity";
 import {
   blobUrl,
   isModelRecord,
@@ -35,12 +20,13 @@ import {
   type ModelRecord,
   type PublishedModel,
 } from "@big-mesh-studios/stacker/lexicon";
-import { configureOAuthClient, signInPopup } from "./oauth";
-import {
-  createAtprotoRepoClient,
-  type AtprotoBlobClient,
-  type AtprotoRepoClient,
+import type {
+  AtprotoBlobClient,
+  AtprotoRepoClient,
 } from "@big-mesh-studios/atproto/repo-client";
+import { createAtprotoSession } from "@big-mesh-studios/atproto/session";
+import { createBrowserSessionStore } from "@big-mesh-studios/atproto/session-store";
+import * as oauth from "./oauth";
 
 /** How many records a listing asks for at a time. */
 const PAGE_SIZE = 100;
@@ -58,62 +44,36 @@ export function createAtproto() {
   const [account, setAccount] = createSignal<Account | null>(null);
   const [error, setError] = createSignal<string | null>(null);
 
-  const didDocumentResolver = createDidDocumentResolver();
-  const handleResolver = createHandleResolver();
-  /** DID -> its resolved document, so a repository is not looked up twice. */
-  const documents = new Map<string, DidDocument>();
+  const identity = createIdentityLookup();
 
-  let agent: OAuthUserAgent | undefined;
-  let repoClient: (AtprotoRepoClient & AtprotoBlobClient) | undefined;
-  let restoring: Promise<void> | undefined;
-
-  /** Fetches a DID's document from the directory that issues it or its own domain, once. */
-  async function resolveDocument(did: string): Promise<DidDocument> {
-    const cached = documents.get(did);
-
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    const document = await didDocumentResolver.resolve(
-      did as Did<"plc" | "web">,
-    );
-    documents.set(did, document);
-
-    return document;
-  }
-
-  /** The address of the server holding `did`'s repository. */
-  async function resolveService(did: string): Promise<string> {
-    return pdsEndpoint(await resolveDocument(did));
-  }
-
-  /** Adopts the stored session for `did`, and asks after the name to show for it. */
-  async function adoptSession(did: Did): Promise<void> {
-    // `allowStale` accepts an expired access token rather than blocking on a
-    // refresh; the agent refreshes on the first request that needs one.
-    agent = new OAuthUserAgent(await getSession(did, { allowStale: true }));
-    repoClient = createAtprotoRepoClient({
-      client: new Client({ handler: agent }),
-      selfDid: agent.sub,
-      resolveService,
-    });
-    setAccount({ did: agent.sub, handle: null });
-    setError(null);
-    setStatus("connected");
-
-    // The name is worth waiting for but nothing waits on it: the account is
-    // signed in and usable under its DID meanwhile, and shows a handle the
-    // moment one has been confirmed.
-    const confirmed = await confirmHandle({
-      did: agent.sub,
-      document: await resolveDocument(agent.sub),
-      resolveDid: (candidate) => handleResolver.resolve(candidate as Handle),
-    });
-    setAccount((current) =>
-      current?.did === did ? { ...current, handle: confirmed } : current,
-    );
-  }
+  // The session reports through a callback; these three signals are that
+  // report, as the views here read it. A status of "unknown" is what the
+  // session calls not having looked yet, which is what this shows as anonymous.
+  const session = createAtprotoSession({
+    oauth,
+    identity,
+    store: createBrowserSessionStore(),
+    onChange(state) {
+      setStatus(state.status === "unknown" ? "anonymous" : state.status);
+      setError(state.error);
+      setAccount((current) =>
+        state.did === null
+          ? null
+          : current?.did === state.did
+            ? current
+            : { did: state.did, handle: null },
+      );
+    },
+    async onConnected(did) {
+      // The name is worth waiting for but nothing waits on it: the account is
+      // signed in and usable under its DID meanwhile, and shows a handle the
+      // moment one has been confirmed.
+      const confirmed = await identity.handle(did);
+      setAccount((current) =>
+        current?.did === did ? { ...current, handle: confirmed } : current,
+      );
+    },
+  });
 
   function fail(cause: unknown): never {
     const message = cause instanceof Error ? cause.message : String(cause);
@@ -129,11 +89,13 @@ export function createAtproto() {
   } {
     const signedIn = account();
 
-    if (repoClient === undefined || signedIn === null) {
+    const client = session.repoClient;
+
+    if (client === undefined || signedIn === null) {
       throw new Error("sign in first");
     }
 
-    return { client: repoClient, did: signedIn.did };
+    return { client, did: signedIn.did };
   }
 
   /**
@@ -188,66 +150,16 @@ export function createAtproto() {
      * nor at startup, since a session only matters once somebody asks after it.
      */
     restore(): Promise<void> {
-      restoring ??= (async () => {
-        try {
-          setStatus("connecting");
-          await configureOAuthClient();
-          const [stored] = listStoredSessions();
-
-          if (stored === undefined) {
-            setStatus("anonymous");
-            return;
-          }
-
-          await adoptSession(stored);
-        } catch (cause) {
-          setError(cause instanceof Error ? cause.message : String(cause));
-          setStatus("error");
-        }
-      })();
-
-      return restoring;
+      return session.restore();
     },
 
     /** Signs in as `actor` through a popup, and stays signed in across reloads. */
-    async signIn(actor: string): Promise<void> {
-      const identifier = actor.trim().replace(/^@/, "");
-
-      if (!isActorIdentifier(identifier)) {
-        setError(`"${actor}" is not an atproto handle or DID`);
-        setStatus("error");
-        return;
-      }
-
-      try {
-        setStatus("connecting");
-        setError(null);
-        await configureOAuthClient();
-        await adoptSession(await signInPopup({ identifier }));
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause));
-        setStatus("error");
-      }
+    signIn(actor: string): Promise<void> {
+      return session.signIn(actor);
     },
 
-    async signOut(): Promise<void> {
-      try {
-        await agent?.signOut();
-      } catch {
-        // A revoke that fails — offline, or a token the server has already
-        // dropped — still has to sign this browser out, and only the session
-        // store being cleared does that.
-        const did = account()?.did;
-        if (did !== undefined) {
-          deleteStoredSession(did as Did);
-        }
-      }
-
-      agent = undefined;
-      repoClient = undefined;
-      setAccount(null);
-      setError(null);
-      setStatus("anonymous");
+    signOut(): Promise<void> {
+      return session.signOut();
     },
 
     /**
@@ -329,13 +241,13 @@ export function createAtproto() {
      * listing resolves it once and builds its own image addresses.
      */
     async blobAddress(did: string, cid: string): Promise<string> {
-      return blobUrl(await resolveService(did), did, cid);
+      return blobUrl(await identity.service(did), did, cid);
     },
 
     /** The zip `model` points at, as `load` in `load-save.ts` takes it. */
     async open(model: PublishedModel): Promise<Blob> {
       try {
-        const service = await resolveService(model.repo);
+        const service = await identity.service(model.repo);
         const response = await fetch(
           blobUrl(service, model.repo, modelBlobCid(model.record)),
         );

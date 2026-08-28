@@ -129,7 +129,6 @@ export {
 // atproto
 export {
   AtprotoController,
-  type AtpControllerOptions,
   type AtpStatus,
 } from "./atproto/atproto-controller";
 export {
@@ -157,12 +156,6 @@ export {
   type LocateAccount,
   type ModelLibrary,
 } from "./atproto/models";
-export {
-  pictureBlobCid,
-  pictureBlobUrl,
-  PROFILE_COLLECTION,
-  PROFILE_RKEY,
-} from "./atproto/profile";
 
 // Multiplayer (cluster-based WebRTC mesh over atproto)
 export { MeshPeer, type MeshPeerParams } from "./multiplayer/mesh-peer";

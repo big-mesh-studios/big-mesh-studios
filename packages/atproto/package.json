@@ -11,10 +11,13 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    "./identity": "./src/identity.ts",
     "./handles": "./src/handles.ts",
+    "./identity": "./src/identity.ts",
     "./oauth": "./src/oauth.ts",
-    "./repo-client": "./src/repo-client.ts"
+    "./profile": "./src/profile.ts",
+    "./repo-client": "./src/repo-client.ts",
+    "./session": "./src/session.ts",
+    "./session-store": "./src/session-store.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",

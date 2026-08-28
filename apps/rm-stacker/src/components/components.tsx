@@ -3,7 +3,6 @@ import type { JSX } from "@solidjs/web/jsx-runtime";
 import { createSignal, omit, ParentProps, Show } from "solid-js";
 import type { IconKind } from "../icon-kinds";
 import { RGBA } from "@big-mesh-studios/maths";
-import { combineRefs } from "@big-mesh-studios/utils/combine-refs";
 import styles from "./components.module.css";
 
 /**********************************************************************************/

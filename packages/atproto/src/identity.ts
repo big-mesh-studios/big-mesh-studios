@@ -4,6 +4,14 @@
 // holds an account's records, and what name it goes by — are answered the same
 // way wherever they are asked, so a stranger's handle is held to exactly the
 // standard your own was when you typed it.
+import type { Did, Handle } from "@atcute/lexicons";
+import { confirmHandle } from "./handles";
+import {
+  PROFILE_COLLECTION,
+  PROFILE_RKEY,
+  pictureBlobCid,
+  pictureBlobUrl,
+} from "./profile";
 import {
   CompositeDidDocumentResolver,
   CompositeHandleResolver,
@@ -92,4 +100,125 @@ export function pdsEndpoint(document: DidDocument): string {
   }
 
   return endpoint;
+}
+
+/**
+ * Who an identifier belongs to, and what to show for it. Every answer is
+ * remembered for as long as the lookup lives, so asking after the same account
+ * again costs nothing — including when the answer was that there is none.
+ *
+ * Every question here is a public one. None of it needs a session, so a name
+ * and a face can be shown for somebody whether or not anybody is signed in.
+ */
+export interface IdentityLookup {
+  /** The account's document, naming the server that holds it and the handle it claims. */
+  document(did: string): Promise<DidDocument>;
+  /** The address of the server holding that account's records, without a trailing slash. */
+  service(did: string): Promise<string>;
+  /** The handle to show, or null when the account has none that can be confirmed. */
+  handle(did: string): Promise<string | null>;
+  /** The bytes of the picture the account shows for itself, or null when it shows none. */
+  picture(did: string): Promise<Blob | null>;
+  /**
+   * The handle to show, falling back to the identifier itself when there is
+   * none or the lookup fails — for a line of text that cannot wait and cannot
+   * be blank.
+   */
+  name(did: string): Promise<string>;
+  /**
+   * The handle already known for `did` without asking anybody: the confirmed
+   * handle, null when it is settled that there is none, and undefined when the
+   * question has not been answered yet. For a line that has to be written now
+   * and cannot await one.
+   */
+  knownHandle(did: string): string | null | undefined;
+}
+
+export function createIdentityLookup(params?: {
+  didDocumentResolver?: DidDocumentResolver<"plc" | "web">;
+  handleResolver?: HandleResolver;
+  /** How network reads are made. Defaults to the browser's own. */
+  fetch?: typeof globalThis.fetch;
+}): IdentityLookup {
+  const didDocumentResolver =
+    params?.didDocumentResolver ?? createDidDocumentResolver();
+  const handleResolver = params?.handleResolver ?? createHandleResolver();
+  const get = params?.fetch ?? ((...args) => globalThis.fetch(...args));
+
+  const documents = new Map<string, Promise<DidDocument>>();
+  const handles = new Map<string, Promise<string | null>>();
+  const settledHandles = new Map<string, string | null>();
+  const pictures = new Map<string, Promise<Blob | null>>();
+
+  // The promise is cached rather than its result, so two callers asking at
+  // once ask the network once.
+  const once = <T>(
+    cache: Map<string, Promise<T>>,
+    key: string,
+    make: () => Promise<T>,
+  ) => {
+    const pending = cache.get(key);
+    if (pending !== undefined) {
+      return pending;
+    }
+    const started = make();
+    cache.set(key, started);
+    return started;
+  };
+
+  const lookup: IdentityLookup = {
+    document(did) {
+      return once(documents, did, () =>
+        didDocumentResolver.resolve(did as Did<"plc" | "web">),
+      );
+    },
+    async service(did) {
+      return pdsEndpoint(await lookup.document(did));
+    },
+    handle(did) {
+      return once(handles, did, async () => {
+        const confirmed = await confirmHandle({
+          did,
+          document: await lookup.document(did),
+          resolveDid: (candidate) =>
+            handleResolver.resolve(candidate as Handle),
+        });
+        settledHandles.set(did, confirmed);
+        return confirmed;
+      });
+    },
+    knownHandle(did) {
+      return settledHandles.get(did);
+    },
+    picture(did) {
+      return once(pictures, did, async () => {
+        const service = await lookup.service(did);
+        const record = await get(
+          `${service}/xrpc/com.atproto.repo.getRecord?repo=${encodeURIComponent(did)}` +
+            `&collection=${PROFILE_COLLECTION}&rkey=${PROFILE_RKEY}`,
+        );
+        // An account with no profile record at all: no picture, not an error.
+        if (!record.ok) {
+          return null;
+        }
+        const cid = pictureBlobCid(
+          ((await record.json()) as { value?: unknown }).value,
+        );
+        if (cid === null) {
+          return null;
+        }
+        const blob = await get(pictureBlobUrl(service, did, cid));
+        return blob.ok ? blob.blob() : null;
+      });
+    },
+    async name(did) {
+      try {
+        return (await lookup.handle(did)) ?? did;
+      } catch {
+        return did;
+      }
+    },
+  };
+
+  return lookup;
 }

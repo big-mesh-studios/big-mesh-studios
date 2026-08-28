@@ -64,10 +64,13 @@ source across the workspace — none is built, and none is published.
   `Vector2D`, `Vector3D`, `Dimensions2D`, `Dimensions3D`, `RGB`, `RGBA`,
   `HSVA`, `Bitmap`, `Matrix3x3`. Depends on nothing.
 - [`packages/atproto/`](./packages/atproto) — the protocol plumbing both do the
-  same way: resolving an identity, confirming the handle to show for it, the
-  popup sign-in flow, and the record-level client. An application builds its own
-  sign-in flow with `createOAuthClient`, because the popup channel name and the
-  redirect path belong to the application rather than the protocol.
+  same way: being signed in to an account, resolving an identity and the handle
+  and picture to show for it, the popup sign-in flow, and the record-level
+  client. An application builds its own sign-in flow with `createOAuthClient`,
+  because the popup channel name and the redirect path belong to the
+  application rather than the protocol. Nothing here reports in prose: the
+  session reports its state as values and each application says what that means
+  in its own words.
 - [`packages/utils/`](./packages/utils) — the browser-facing helpers both
   interfaces are built from: combining refs, a media query as a signal, a
   popover and its trigger, and following a pointer through a drag.
