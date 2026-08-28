@@ -10,7 +10,13 @@ export {
 } from "./voxelscape/voxelscape-context";
 
 // World Management
-export { BlockGrid } from "./world/block-grid";
+export {
+  cellKey,
+  cellsInSphere,
+  ChunkSphere,
+  sphereCells,
+  type CellCoord,
+} from "./world/chunk-sphere";
 export {
   createVoxelWorld,
   type VoxelWorld,
@@ -47,7 +53,6 @@ export {
   VoxelStore,
   type FillStoreFn,
 } from "./world/voxel-store";
-export { WorldRing } from "./world/world-ring";
 
 // Renderers and Atlas
 export {

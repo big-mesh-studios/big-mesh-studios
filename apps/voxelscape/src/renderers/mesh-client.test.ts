@@ -40,7 +40,11 @@ const setup = (
 ) => {
   const blocks: WorldBlock[] = [];
   for (let i = 0; i < blockCount; i++) {
-    blocks.push(buildBlockShell({ center: [i * 192, 0, 0] }));
+    const block = buildBlockShell({ center: [i * 192, 0, 0] });
+    // These tests exercise the message protocol, not what is worth meshing,
+    // so put a voxel in each shell to keep it on the worker path.
+    block.store.data[0] = 1;
+    blocks.push(block);
   }
   const built: number[] = [];
   const worker = "worker" in options ? options.worker : new FakeMeshWorker();
@@ -101,15 +105,15 @@ describe("MeshClient", () => {
   });
 
   it("hands over no more than the drain's share at a time", () => {
-    const { client, worker } = setup(10);
-    for (let index = 0; index < 10; index++) {
+    const { client, worker } = setup(20);
+    for (let index = 0; index < 20; index++) {
       client.requestBuild(index);
     }
 
     client.drain();
-    expect(worker?.sent).toHaveLength(6);
+    expect(worker?.sent).toHaveLength(12);
     client.drain();
-    expect(worker?.sent).toHaveLength(10);
+    expect(worker?.sent).toHaveLength(20);
   });
 
   it("does not send a second build for a block still in flight", () => {
@@ -166,6 +170,22 @@ describe("MeshClient", () => {
     client.setTiles([]);
     client.drain();
     expect(worker?.sent.map((r) => r.id)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("reports an empty mesh for a chunk whose level holds no surface, without touching a worker", () => {
+    // A shell block whose broad grid stays all-zero holds no surface voxels.
+    const blocks = [buildBlockShell({ center: [0, 0, 0] })];
+    const built: number[] = [];
+    const worker = new FakeMeshWorker();
+    const client = new MeshClient({
+      blocks,
+      onMeshBuilt: (index) => built.push(index),
+      createWorker: () => worker as unknown as Worker | undefined,
+    });
+    client.requestBuild(0);
+    client.drain();
+    expect(worker?.sent).toEqual([]);
+    expect(built).toEqual([0]);
   });
 
   it("terminates the worker when disposed", () => {

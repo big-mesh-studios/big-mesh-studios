@@ -20,25 +20,26 @@ const smallStore = (): VoxelStore =>
   new VoxelStore({ dims: [8, 8, 8], voxels: [4, 4, 4], scale: 2 });
 
 /**
- * Constant high terrain (amplitude 0): every column is solid to the block
- * top, so only top-surface faces are emitted and every seam face is culled.
+ * Constant terrain whose surface sits at the block's top row (base 2): every
+ * column is grass on row 3 over dirt, so top-surface faces are emitted and
+ * every seam face is culled against the generated border.
  */
 const solidTerrain = {
   seed: 1,
   frequency: 1,
   amplitude: 0,
   octaves: 1,
-  base: 64,
+  base: 2,
 };
 
-/** Flat sea at the block top: water everywhere on row y=3. */
+/** Flat sea at the block top: water fills the top row y=3. */
 const seaTerrain = {
   seed: 1,
   frequency: 1,
   amplitude: 0,
   octaves: 1,
   base: 0,
-  seaLevel: 6,
+  seaLevel: 2,
 };
 
 const faceCount = (mesh: MeshArrays): number => mesh.indices.length / 6;
@@ -123,7 +124,12 @@ describe("buildBlockMesh", () => {
 
   it("never surfaces the block floor of a fully solid store", () => {
     const store = smallStore();
+    // the border below carries the equally solid neighbour the real fill
+    // would have generated, so the bottom face culls against it
     for (let z = 0; z < 4; z++) {
+      for (let x = 0; x < 4; x++) {
+        store.data[store.paddedIndex(x, -1, z)] = VOXEL_DIRT;
+      }
       for (let y = 0; y < 4; y++) {
         for (let x = 0; x < 4; x++) {
           store.set(x, y, z, VOXEL_DIRT);

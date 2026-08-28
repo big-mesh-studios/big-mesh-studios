@@ -1,7 +1,7 @@
 // A block of the world as data: where it sits, and the voxels in it. Kept in
 // its own module so a web worker can generate blocks without pulling in
 // anything that draws them.
-import { DEFAULT_TERRAIN, type TerrainConfig } from "./noise";
+import { DEFAULT_TERRAIN, heightAt, type TerrainConfig } from "./noise";
 import {
   VOXEL_AIR,
   VOXEL_WATER,
@@ -14,14 +14,6 @@ export type { TerrainConfig };
 
 export type Dim3 = [number, number, number];
 
-/**
- * World-unit extents of a full-resolution block: 192 x 256 x 192 units made
- * up of `VOXEL_SIZE`-unit voxels at level of detail (LOD) 0. Each higher LOD
- * doubles the voxel size and halves the voxel count per axis, which keeps
- * blocks small enough for the scroll-recycle fill to stay cheap and the
- * render distance tight (about 480 units).
- */
-export const BLOCK_WORLD: Dim3 = [192, 256, 192];
 /**
  * World units per voxel at LOD 0; each higher LOD doubles this value.
  */
@@ -42,6 +34,22 @@ export const blockConfig = (
     voxelSize,
   };
 };
+/**
+ * The number of voxels per axis in a `WorldBlock`, the chunk the sphere
+ * streams. A block is one 64³ volume.
+ */
+export const CHUNK_VOXELS = 64;
+/**
+ * World-unit extents of one full-resolution block: a 64³ voxel cube made up
+ * of `VOXEL_SIZE`-unit voxels at level of detail (LOD) 0. Blocks stack in
+ * every axis now — the window is a sphere of them around the player — so all
+ * three extents are equal.
+ */
+export const BLOCK_WORLD: Dim3 = [
+  CHUNK_VOXELS * VOXEL_SIZE,
+  CHUNK_VOXELS * VOXEL_SIZE,
+  CHUNK_VOXELS * VOXEL_SIZE,
+];
 
 export interface WorldBlock {
   center: Dim3;
@@ -89,29 +97,87 @@ export const buildBlock = (params: {
   return block;
 };
 
-/** Finds the block whose footprint contains (`worldX`, `worldZ`), closest to that point if more than one does. */
-const findContainingBlock = (
-  blocks: WorldBlock[],
+/**
+ * The chunk cell containing a world-space point, in the integer grid where a
+ * block's interior covers world voxels `[cell*CHUNK_VOXELS/2 .. cell*CHUNK_VOXELS/2 +
+ * CHUNK_VOXELS)` — i.e. world units `[cell*BLOCK_WORLD - BLOCK_WORLD/2,
+ * cell*BLOCK_WORLD + BLOCK_WORLD/2), the same ownership `blockWorldVoxelRange`
+ * describes. One resolved block per cell: the window never holds two blocks
+ * at the same cell, so a point's cell names the block that owns its voxel.
+ */
+export const chunkCellOf = (
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+): [number, number, number] => [
+  Math.floor((worldX + BLOCK_WORLD[0] / 2) / BLOCK_WORLD[0]),
+  Math.floor((worldY + BLOCK_WORLD[1] / 2) / BLOCK_WORLD[1]),
+  Math.floor((worldZ + BLOCK_WORLD[2] / 2) / BLOCK_WORLD[2]),
+];
+
+/**
+ * Resolves the block whose cell contains a world-space point. The spherical
+ * window backs this with an O(1) cell map; the array form (`blocksQuery`) is
+ * the test helper.
+ */
+export type BlockQuery = (
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+) => WorldBlock | undefined;
+
+/**
+ * Builds a `BlockQuery` from a list of blocks, resolved by each block's cell
+ * (`chunkCellOf` of its center). Two blocks sharing a cell overwrite each
+ * other; the window never allows that, so the helper is only for tests and
+ * small one-off worlds.
+ */
+export const blocksQuery = (blocks: WorldBlock[]): BlockQuery => {
+  const byCell = new Map<string, WorldBlock>();
+  for (const block of blocks) {
+    const [cx, cy, cz] = chunkCellOf(
+      block.center[0],
+      block.center[1],
+      block.center[2],
+    );
+    byCell.set(`${cx},${cy},${cz}`, block);
+  }
+  return (worldX, worldY, worldZ) => {
+    const [cx, cy, cz] = chunkCellOf(worldX, worldY, worldZ);
+    return byCell.get(`${cx},${cy},${cz}`);
+  };
+};
+
+/**
+ * The topmost solid voxel in a block's column at (`worldX`, `worldZ`), in
+ * world Y, or `-Infinity` when the column in this block is empty. Water is
+ * skipped so the player stands on the lakebed (or shore) under water.
+ */
+const topSolidYInColumn = (
+  block: WorldBlock,
   worldX: number,
   worldZ: number,
-): WorldBlock | undefined => {
-  let best: WorldBlock | undefined;
-  let bestDistSq = Infinity;
-  for (const block of blocks) {
-    const dx = worldX - block.center[0];
-    const dz = worldZ - block.center[2];
-    const hx = block.store.dims[0] / 2;
-    const hz = block.store.dims[2] / 2;
-    if (Math.abs(dx) > hx || Math.abs(dz) > hz) {
-      continue;
-    }
-    const d = dx * dx + dz * dz;
-    if (d < bestDistSq) {
-      bestDistSq = d;
-      best = block;
+): number => {
+  const store = block.store;
+  const scale = store.scale;
+  const [vxN, vyN, vzN] = store.voxels;
+  const clampAxis = (v: number, n: number): number =>
+    Math.max(0, Math.min(n - 1, v));
+  const vx = clampAxis(
+    Math.floor((worldX - block.center[0]) / scale + vxN / 2),
+    vxN,
+  );
+  const vz = clampAxis(
+    Math.floor((worldZ - block.center[2]) / scale + vzN / 2),
+    vzN,
+  );
+  for (let vy = vyN - 1; vy >= 0; --vy) {
+    const id = store.get(vx, vy, vz);
+    if (id !== 0 && id !== VOXEL_WATER) {
+      return block.center[1] + (vy + 1 - vyN / 2) * scale;
     }
   }
-  return best;
+  return -Infinity;
 };
 
 /**
@@ -126,39 +192,39 @@ const findContainingBlock = (
  * it's above whatever solid floor the tunnel itself has. For that, use
  * `getGroundHeightBelow`.
  *
- * @param blocks - The candidate blocks to search.
+ * Blocks stack vertically now, so the scan resolves the loaded cells of the
+ * column around the analytic noise height and takes the highest solid voxel;
+ * `terrain` anchors that search, and its fallback covers columns whose block
+ * has not been filled yet.
+ *
+ * @param query - Resolves a world point to the block whose cell contains it.
  * @param worldX - World-space X coordinate to sample.
  * @param worldZ - World-space Z coordinate to sample.
+ * @param terrain - Terrain configuration anchoring the column search; defaults to `DEFAULT_TERRAIN`.
  * @returns The world-space Y height of the ground surface, or `-Infinity`
- * when the point is outside every block or over empty space.
+ * when the point is over empty space.
  */
 export const getWorldHeight = (
-  blocks: WorldBlock[],
+  query: BlockQuery,
   worldX: number,
   worldZ: number,
+  terrain: TerrainConfig = DEFAULT_TERRAIN,
 ): number => {
-  const best = findContainingBlock(blocks, worldX, worldZ);
-  if (best === undefined) {
-    return -Infinity;
-  }
-  const store = best.store;
-  const scale = store.scale;
-  const [vxN, vyN, vzN] = store.voxels;
-  const clampAxis = (v: number, n: number): number =>
-    Math.max(0, Math.min(n - 1, v));
-  const vx = clampAxis(
-    Math.floor((worldX - best.center[0]) / scale + vxN / 2),
-    vxN,
-  );
-  const vz = clampAxis(
-    Math.floor((worldZ - best.center[2]) / scale + vzN / 2),
-    vzN,
-  );
-  for (let vy = vyN - 1; vy >= 0; --vy) {
-    const id = store.get(vx, vy, vz);
-    // skip water so the player stands on the lakebed (or shore) under water
-    if (id !== 0 && id !== VOXEL_WATER) {
-      return best.center[1] + (vy + 1 - vyN / 2) * scale;
+  const anchorCellY = chunkCellOf(
+    worldX,
+    heightAt(worldX, worldZ, terrain),
+    worldZ,
+  )[1];
+  for (let off = 24; off >= -32; off--) {
+    const cy = anchorCellY + off;
+    const probeY = cy * BLOCK_WORLD[1];
+    const block = query(worldX, probeY, worldZ);
+    if (block === undefined) {
+      continue;
+    }
+    const height = topSolidYInColumn(block, worldX, worldZ);
+    if (height !== -Infinity) {
+      return height;
     }
   }
   return -Infinity;
@@ -179,7 +245,7 @@ export const getWorldHeight = (
  * then by at most the one voxel they're buried in. Callers rely on that to
  * tell a step up from a wall.
  *
- * @param blocks - The candidate blocks to search.
+ * @param query - Resolves a world point to the block whose cell contains it.
  * @param worldX - World-space X coordinate to sample.
  * @param worldY - World-space Y coordinate to scan downward from (the player's feet).
  * @param worldZ - World-space Z coordinate to sample.
@@ -187,38 +253,43 @@ export const getWorldHeight = (
  * below `worldY`, or `-Infinity` when there isn't one (open air/void below).
  */
 export const getGroundHeightBelow = (
-  blocks: WorldBlock[],
+  query: BlockQuery,
   worldX: number,
   worldY: number,
   worldZ: number,
 ): number => {
-  const best = findContainingBlock(blocks, worldX, worldZ);
-  if (best === undefined) {
-    return -Infinity;
-  }
-  const store = best.store;
-  const scale = store.scale;
-  const [vxN, vyN, vzN] = store.voxels;
-  const clampAxis = (v: number, n: number): number =>
-    Math.max(0, Math.min(n - 1, v));
-  const vx = clampAxis(
-    Math.floor((worldX - best.center[0]) / scale + vxN / 2),
-    vxN,
-  );
-  const vz = clampAxis(
-    Math.floor((worldZ - best.center[2]) / scale + vzN / 2),
-    vzN,
-  );
-  const startVy = clampAxis(
-    Math.floor((worldY - best.center[1]) / scale + vyN / 2),
-    vyN,
-  );
-  for (let vy = startVy; vy >= 0; --vy) {
-    const id = store.get(vx, vy, vz);
-    // skip water so the player stands on the lakebed (or shore) under water
-    if (id !== 0 && id !== VOXEL_WATER) {
-      return best.center[1] + (vy + 1 - vyN / 2) * scale;
+  const cell = chunkCellOf(worldX, worldY, worldZ);
+  for (let cellsScanned = 0; cellsScanned < 4; cellsScanned++) {
+    const probeY = cell[1] * BLOCK_WORLD[1];
+    const block = query(worldX, probeY, worldZ);
+    if (block === undefined) {
+      return -Infinity;
     }
+    const store = block.store;
+    const scale = store.scale;
+    const [vxN, vyN, vzN] = store.voxels;
+    const clampAxis = (v: number, n: number): number =>
+      Math.max(0, Math.min(n - 1, v));
+    const vx = clampAxis(
+      Math.floor((worldX - block.center[0]) / scale + vxN / 2),
+      vxN,
+    );
+    const vz = clampAxis(
+      Math.floor((worldZ - block.center[2]) / scale + vzN / 2),
+      vzN,
+    );
+    const startVy = clampAxis(
+      Math.floor((worldY - block.center[1]) / scale + vyN / 2),
+      vyN,
+    );
+    for (let vy = startVy; vy >= 0; --vy) {
+      const id = store.get(vx, vy, vz);
+      // skip water so the player stands on the lakebed (or shore) under water
+      if (id !== 0 && id !== VOXEL_WATER) {
+        return block.center[1] + (vy + 1 - vyN / 2) * scale;
+      }
+    }
+    cell[1]--;
   }
   return -Infinity;
 };
@@ -229,25 +300,25 @@ export const getGroundHeightBelow = (
  * reads as air.
  */
 const voxelIdAt = (
-  blocks: WorldBlock[],
+  query: BlockQuery,
   worldX: number,
   worldY: number,
   worldZ: number,
 ): number => {
-  const best = findContainingBlock(blocks, worldX, worldZ);
-  if (best === undefined) {
+  const block = query(worldX, worldY, worldZ);
+  if (block === undefined) {
     return VOXEL_AIR;
   }
-  const store = best.store;
+  const store = block.store;
   const scale = store.scale;
   const [vxN, vyN, vzN] = store.voxels;
   // `store.get` reads out-of-range cells as air, so unlike the height
   // samplers this deliberately doesn't clamp: clamping would smear the
   // block's edge voxels outward across everything beyond them.
   return store.get(
-    Math.floor((worldX - best.center[0]) / scale + vxN / 2),
-    Math.floor((worldY - best.center[1]) / scale + vyN / 2),
-    Math.floor((worldZ - best.center[2]) / scale + vzN / 2),
+    Math.floor((worldX - block.center[0]) / scale + vxN / 2),
+    Math.floor((worldY - block.center[1]) / scale + vyN / 2),
+    Math.floor((worldZ - block.center[2]) / scale + vzN / 2),
   );
 };
 
@@ -258,12 +329,12 @@ const voxelIdAt = (
  * neighbour never walls the player in while it streams.
  */
 export const isSolidAt = (
-  blocks: WorldBlock[],
+  query: BlockQuery,
   worldX: number,
   worldY: number,
   worldZ: number,
 ): boolean => {
-  const id = voxelIdAt(blocks, worldX, worldY, worldZ);
+  const id = voxelIdAt(query, worldX, worldY, worldZ);
   return id !== VOXEL_AIR && id !== VOXEL_WATER;
 };
 
@@ -277,25 +348,20 @@ export const isSolidAt = (
  * flooded and has the player swimming down it in slow motion.
  */
 export const isWaterAt = (
-  blocks: WorldBlock[],
+  query: BlockQuery,
   worldX: number,
   worldY: number,
   worldZ: number,
-): boolean => voxelIdAt(blocks, worldX, worldY, worldZ) === VOXEL_WATER;
+): boolean => voxelIdAt(query, worldX, worldY, worldZ) === VOXEL_WATER;
 
-/**
- * The worker-facing output of one block generation: the voxel store data
- * plus the derived GPU level arrays (broad grid and fine chunks), ready to
- * transfer to another thread.
- */
+/** The worker-facing output of one block generation, ready to transfer. */
 export interface BlockData {
   storeData: Uint8Array;
 }
 
 /**
- * Generates a block's voxel data and its derived level arrays — the same
- * work `buildBlock` does — into plain arrays that can be posted to another
- * thread. Used by the fill worker.
+ * Generates a block's voxels — the same work `buildBlock` does — into a plain
+ * array that can be posted to another thread. Used by the fill worker.
  *
  * @param params - Same block-generation parameters as `buildBlock`.
  * @returns The generated arrays, ready to transfer.

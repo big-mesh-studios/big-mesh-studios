@@ -1,7 +1,7 @@
 import type { Group } from "@random-mesh/rmsl/scene";
 import { TriangleRenderer } from "../renderers/triangle-renderer";
 import { loadVoxelTiles } from "../renderers/tile-loader";
-import { BlockGrid } from "./block-grid";
+import { ChunkSphere } from "./chunk-sphere";
 import {
   blockWorldVoxelRange,
   EditLayer,
@@ -20,8 +20,8 @@ import {
   type WorldBlock,
 } from "./level-data";
 import { heightAt as terrainHeightAt, type TerrainConfig } from "./noise";
-import { WorldRing } from "./world-ring";
 
+/** Padding added to each mesh's box so adjacent meshes share a thin overlap shell. */
 /** Water absorption used by the water pass and the underwater tint alike. */
 const WATER_EXTINCTION = 0.12;
 
@@ -39,8 +39,8 @@ export interface InitialDrawProgress {
 }
 
 export interface VoxelWorldConfig {
-  /** Width of the streamed block window, in blocks per side. */
-  blocksPerSide: number;
+  /** Radius of the spherical block window, in chunks. */
+  chunkRadius: number;
   terrain: TerrainConfig;
   /** When true, only surface voxels are written into each block's GPU chunks instead of the full solid volume. */
   /** Where the player starts, in world units. The window fills outward from here. */
@@ -83,8 +83,8 @@ export interface VoxelWorld {
   groundHeightAt(x: number, y: number, z: number): number;
   inWaterAt(x: number, y: number, z: number): boolean;
   solidAt(x: number, y: number, z: number): boolean;
-  /** Keeps the block window centred on (`x`, `z`), streaming new blocks in off the main thread. */
-  scrollTo(x: number, z: number): void;
+  /** Keeps the block window centred on (`x`, `y`, `z`), streaming new blocks in off the main thread. */
+  scrollTo(x: number, y: number, z: number): void;
   /**
    * Re-derives the GPU level of every block the edit overlay intersects and
    * queues the renderers' updates. For changes made to the overlay directly
@@ -110,21 +110,37 @@ export interface VoxelWorld {
  * overlay of their edits, and the renderer that draws it.
  */
 export const createVoxelWorld = ({
-  blocksPerSide,
+  chunkRadius,
   terrain,
   spawn,
   onInitialDraw,
 }: VoxelWorldConfig): VoxelWorld => {
-  const ringRadius = (blocksPerSide / 2) * BLOCK_WORLD[0];
+  const ringRadius = chunkRadius * BLOCK_WORLD[0];
   /**
    * Distance at which fog becomes fully opaque and rays stop marching. Set
-   * to the ring edge's closest possible approach to the player — half a block
-   * short of the ring's half-width — the distance when the player hugs the far
-   * edge of their center block, so fog always hides the ring boundary before
+   * to the window edge's closest possible approach to the player — half a
+   * chunk short of the ball's radius — the distance when the player hugs the
+   * far edge of their center chunk, so fog always hides the boundary before
    * it can become visible.
    */
 
-  const blockGrid = new BlockGrid({ blocksPerSide });
+  const editLayer = new EditLayer();
+  const editPersistence = createEditPersistence(editLayer);
+
+  const sphere = new ChunkSphere({
+    radius: chunkRadius,
+    terrain,
+    onBlockChanged: (i) => {
+      // Recorded before the renderer is told, because a block only counts as
+      // drawn once its geometry is built and `onBlockMeshed` fires from
+      // inside this call.
+      filled.add(i);
+      renderer.onBlockChanged(i);
+    },
+    onBlockReposition: (i, center) => renderer.repositionBlock(i, center),
+    editLayer,
+  });
+  const blockGrid = { blocks: sphere.blocks };
   /** Slots whose terrain has been generated. Fills up once, during the initial fill. */
   const filled = new Set<number>();
   /** Slots that have been both generated and drawn at least once. */
@@ -150,21 +166,6 @@ export const createVoxelWorld = ({
         spawnDrawn: drawn.has(spawnIndex),
       });
     },
-  });
-  const editLayer = new EditLayer();
-  const editPersistence = createEditPersistence(editLayer);
-  const worldRing = new WorldRing({
-    blockGrid,
-    terrain,
-    onBlockChanged: (i) => {
-      // Recorded before the renderer is told, because a block only counts as
-      // drawn once its geometry is built and `onBlockMeshed`
-      // fires from inside this call.
-      filled.add(i);
-      renderer.onBlockChanged(i);
-    },
-    onBlockReposition: (i, center) => renderer.repositionBlock(i, center),
-    editLayer,
   });
 
   const reapplyEdits = () => {
@@ -229,7 +230,7 @@ export const createVoxelWorld = ({
   // The spawn block's terrain is generated before this returns; the rest of
   // the window follows off the main thread, so the page paints and the
   // loading state runs while it arrives.
-  spawnIndex = worldRing.fillFrom(spawn[0], spawn[2]);
+  spawnIndex = sphere.fillFrom(spawn[0], spawn[1], spawn[2]);
 
   // Tell every block material which tile each voxel face uses once the
   // spritesheet loads, then draw the spawn block. A mesh bakes each face's
@@ -255,7 +256,7 @@ export const createVoxelWorld = ({
     applyEdits,
 
     heightAt(x, z) {
-      const height = getWorldHeight(blockGrid.blocks, x, z);
+      const height = getWorldHeight(sphere.query, x, z, terrain);
       // A column of air answers the same way whether its block holds no
       // terrain yet or genuinely has nothing above the void. Falling back to
       // the height field the terrain is generated from covers the first case,
@@ -264,24 +265,24 @@ export const createVoxelWorld = ({
       return height === -Infinity ? terrainHeightAt(x, z, terrain) : height;
     },
     groundHeightAt(x, y, z) {
-      return getGroundHeightBelow(blockGrid.blocks, x, y, z);
+      return getGroundHeightBelow(sphere.query, x, y, z);
     },
     inWaterAt(x, y, z) {
-      return isWaterAt(blockGrid.blocks, x, y, z);
+      return isWaterAt(sphere.query, x, y, z);
     },
     solidAt(x, y, z) {
-      return isSolidAt(blockGrid.blocks, x, y, z);
+      return isSolidAt(sphere.query, x, y, z);
     },
-    scrollTo(x, z) {
-      worldRing.scrollToPlayer(x, z);
+    scrollTo(x, y, z) {
+      sphere.scrollTo(x, y, z);
     },
     scheduleSave() {
       editPersistence.scheduleSave();
     },
     dispose() {
       // stop the fill worker so it doesn't keep running after unmount
-      worldRing.dispose();
-      // terminate the mesh worker and release the renderers' GPU resources
+      sphere.dispose();
+      // terminate the mesh worker and release the renderer's GPU resources
       renderer.dispose();
       // store the edit overlay before the render loop stops
       void editPersistence.saveNow();

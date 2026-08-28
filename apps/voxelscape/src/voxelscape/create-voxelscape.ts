@@ -25,6 +25,7 @@ import {
   createVoxelWorld,
   type InitialDrawProgress,
 } from "../world/create-voxel-world";
+import { cellsInSphere } from "../world/chunk-sphere";
 import { type Dim3 } from "../world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "../world/noise";
 
@@ -32,8 +33,8 @@ import { DEFAULT_TERRAIN, type TerrainConfig } from "../world/noise";
 const SKY_BLUE = 0x87ceeb;
 
 export interface VoxelscapeConfig {
-  /** Width of the streamed block window, in blocks per side. Also sets the fog and camera far distances. */
-  blocksPerSide?: number;
+  /** Radius of the spherical streamed window, in chunks. Also sets the fog and camera far distances. */
+  chunkRadius?: number;
   /** Terrain noise settings shared by every block in the ring. */
   terrain?: TerrainConfig;
   /** When true, only surface voxels are written into each block's GPU chunks instead of the full solid volume. */
@@ -94,7 +95,7 @@ export interface Voxelscape {
  * canvas passed to `mount`.
  */
 export const createVoxelscape = ({
-  blocksPerSide = 5,
+  chunkRadius = 4,
   terrain = DEFAULT_TERRAIN,
   spawn = [0, 0, 0],
   modelAccount = WORLD_MODEL_ACCOUNT,
@@ -115,12 +116,12 @@ export const createVoxelscape = ({
 
   const [loading, setLoading] = createSignal<InitialDrawProgress>({
     drawn: 0,
-    total: blocksPerSide * blocksPerSide,
+    total: cellsInSphere(chunkRadius),
     spawnDrawn: false,
   });
 
   const world = createVoxelWorld({
-    blocksPerSide,
+    chunkRadius,
     terrain,
     spawn,
     onInitialDraw: setLoading,
@@ -349,6 +350,16 @@ export const createVoxelscape = ({
       }
       return `look sensitivity: ${avatar.player.config.lookSensitivity} rad/px`;
     },
+    setFlying: (flying) => {
+      const next = flying ?? !avatar.player.flying;
+      avatar.player.flying = next;
+      if (next) {
+        // don't carry the fall they were in into the air
+        avatar.player.vy = 0;
+        avatar.player.onGround = false;
+      }
+      return next ? "flying" : "walking";
+    },
     setDebugPerf: (on) => {
       const next = on ?? !debugPerf();
       setDebugPerf(next);
@@ -390,7 +401,11 @@ export const createVoxelscape = ({
       if (snapshot.select !== null) {
         inventory.selectSlot(snapshot.select);
       }
-      world.scrollTo(avatar.player.position.x, avatar.player.position.z);
+      world.scrollTo(
+        avatar.player.position.x,
+        avatar.player.position.y,
+        avatar.player.position.z,
+      );
       avatar.place();
       multiplayer.tick(dt);
       monsters.tick(dt);

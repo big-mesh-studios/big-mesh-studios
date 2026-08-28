@@ -39,7 +39,7 @@ describe("fill worker protocol", () => {
 
   it("ignores a fill request before a config arrives", () => {
     const out = handleFillMessage(
-      { type: "fill", indices: [0], centers: [[0, 0, 0]] },
+      { type: "fill", indices: [0], centers: [[0, 0, 0]], gens: [1] },
       undefined,
     );
     expect(out.results).toBeUndefined();
@@ -61,11 +61,14 @@ describe("fill worker protocol", () => {
         [0, 0, 0],
         [192, 0, 0],
       ],
+      gens: [11, 22],
     };
     const results = await collect(handleFillMessage(req, config).results);
     // Each block on its own, so the caller can draw it without waiting for
     // the rest of the request.
     expect(results.map((result) => result.indices)).toEqual([[3], [7]]);
+    // the request's generations come back on the matching results
+    expect(results.map((result) => result.gens)).toEqual([[11], [22]]);
     // per-block data matches the synchronous path
     const sync = buildBlockData({
       center: [0, 0, 0],
@@ -77,7 +80,12 @@ describe("fill worker protocol", () => {
   it("produces one transferable buffer per array", async () => {
     const [result] = await collect(
       buildFillResults(
-        { type: "fill", indices: [0], centers: [[0, 0, 0]] },
+        {
+          type: "fill",
+          indices: [0],
+          centers: [[0, 0, 0]],
+          gens: [1],
+        },
         config,
       ),
     );

@@ -79,9 +79,9 @@ describe("world voxel mapping", () => {
     const block = emptyBlock();
     for (const l of [
       [0, 0, 0],
-      [96, 96, 96],
-      [191, 255, 191],
-      [1, 200, 3],
+      [16, 16, 16],
+      [31, 31, 31],
+      [1, 20, 3],
     ] as const) {
       const w = localToWorldVoxel(block.store, block.center, [
         l[0],
@@ -98,16 +98,16 @@ describe("world voxel mapping", () => {
   it("covers the block's full span in the LOD-0 grid", () => {
     const block = emptyBlock();
     const { min, max } = blockWorldVoxelRange(block.center);
-    // 192 world units / 2 = 96 voxels per axis
-    expect(max[0] - min[0] + 1).toBe(96);
-    expect(max[1] - min[1] + 1).toBe(128);
-    expect(max[2] - min[2] + 1).toBe(96);
+    // 128 world units / 2 = 64 voxels per axis
+    expect(max[0] - min[0] + 1).toBe(64);
+    expect(max[1] - min[1] + 1).toBe(64);
+    expect(max[2] - min[2] + 1).toBe(64);
   });
 
   it("an applied air edit removes the voxel", () => {
     const block = emptyBlock();
     // fill one voxel of terrain, then erase it via the overlay
-    const local = [96, 40, 96] as const;
+    const local = [16, 16, 16] as const;
     block.store.set(local[0], local[1], local[2], VOXEL_GRASS);
     const w = localToWorldVoxel(block.store, block.center, [
       local[0],

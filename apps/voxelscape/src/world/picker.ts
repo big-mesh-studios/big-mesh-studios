@@ -1,8 +1,9 @@
 // CPU voxel picking: a DDA raycast from the camera along its look direction
 // against the live `VoxelStore`s (which already carry edits, since the edit
-// layer is applied to stores on fill and on each edit). The raymarch renderer
-// picks in the shader; this is the CPU equivalent the editing feature needs to
-// know which voxel is under the crosshair and where a new one would sit.
+// layer is applied to stores on fill and on each edit). This is how the
+// editing feature knows which voxel is under the crosshair and where a new one
+// would sit; nothing on the graphics card is asked, because what it holds is
+// geometry built from these stores rather than the voxels themselves.
 import {
   blockWorldVoxelRange,
   worldVoxelToLocal,

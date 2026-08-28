@@ -17,7 +17,7 @@ import {
 export interface DayNightControllerParams {
   /**
    * Distance from the camera at which the sun/moon squares orbit, inside
-   * the camera's far plane, so the raymarched terrain occludes them at the
+   * the camera's far plane, so the terrain occludes them at the
    * horizon and they hide once they dip a few degrees below it.
    */
   skyDistance?: number;
@@ -58,13 +58,13 @@ export class DayNightController {
     this.skyDistance = skyDistance;
     // Lights for the standard materials (the player cube). Position/direction,
     // colour and intensity are re-derived from the day-night clock each frame
-    // (`tick`), since the raymarched terrain lights itself in-shader.
+    // (`tick`), since the terrain lights itself in-shader.
     this.sun = new DirectionalLight();
     this.sun.position.set(2, 1, 1);
     this.sky.add(this.sun);
     this.ambient = new AmbientLight(0xffffff, 0.6);
     this.sky.add(this.ambient);
-    // Square sun/moon billboards, drawn before the terrain so the raymarcher
+    // Square sun/moon billboards, drawn before the terrain so the renderer
     // overdraws them wherever solid ground lies (occluding the horizon).
     const sunMaterial = new MeshBasicMaterial({ color: 0xfff2a0 });
     sunMaterial.depthWrite = false;

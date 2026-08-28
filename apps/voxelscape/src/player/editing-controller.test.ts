@@ -6,16 +6,17 @@ import { buildBlock } from "../world/level-data";
 import { EditLayer } from "../world/edit-layer";
 import { VOXEL_GRASS, VOXEL_DIRT, VOXEL_AIR } from "../world/voxel-store";
 
+/** World voxel of local index `l` for a block at the origin (n/2 = 32 per axis). */
 const wv = (lx: number, ly: number, lz: number): [number, number, number] => [
-  lx - 48,
-  ly - 64,
-  lz - 48,
+  lx - 32,
+  ly - 32,
+  lz - 32,
 ];
 
 const makeHarness = () => {
   const block = buildBlock({
     center: [0, 0, 0],
-    customFillStore: (store) => store.set(48, 40, 48, VOXEL_GRASS),
+    customFillStore: (store) => store.set(32, 40, 32, VOXEL_GRASS),
   });
   const layer = new EditLayer();
   const inventory = new Inventory();
@@ -58,8 +59,8 @@ const downOntoTarget = (): [
   [number, number, number],
   [number, number, number],
 ] => {
-  const [wx, wy] = wv(48, 40, 48);
-  // camera one voxel above the target (voxel -20), aiming straight down
+  const [wx, wy] = wv(32, 40, 32);
+  // camera a few voxels above the target, aiming straight down
   return [
     [wx * 2, (wy + 4) * 2, wx * 2],
     [0, -1, 0],
@@ -69,7 +70,7 @@ const downOntoTarget = (): [
 describe("EditingController.breakBlock", () => {
   it("breaks a collectable voxel into the inventory as dirt", () => {
     const h = makeHarness();
-    const target = wv(48, 40, 48);
+    const target = wv(32, 40, 32);
     const [origin, direction] = downOntoTarget();
     h.setLook(origin, direction);
     const msg = h.controller.breakBlock();
@@ -84,7 +85,7 @@ describe("EditingController.breakBlock", () => {
   it("reports each recorded edit through onEdit for broadcasting", () => {
     vi.spyOn(Date, "now").mockReturnValue(1_234_567);
     const h = makeHarness();
-    const target = wv(48, 40, 48);
+    const target = wv(32, 40, 32);
     const [origin, direction] = downOntoTarget();
     h.setLook(origin, direction);
     h.controller.breakBlock();
@@ -106,10 +107,10 @@ describe("EditingController.breakBlock", () => {
     expect(h.inventory.count(VOXEL_DIRT)).toBe(0);
   });
 
-  it("refuses to break the world floor", () => {
+  it("breaks the bottom row of a block — the world has no floor to guard", () => {
     const floorBlock = buildBlock({
       center: [0, 0, 0],
-      customFillStore: (store) => store.set(48, 0, 48, VOXEL_GRASS),
+      customFillStore: (store) => store.set(32, 0, 32, VOXEL_GRASS),
     });
     const layer = new EditLayer();
     const inventory = new Inventory();
@@ -120,26 +121,27 @@ describe("EditingController.breakBlock", () => {
       onBlockEdited: vi.fn(),
       onEditRecorded: vi.fn(),
       getLook: () => ({
-        // camera one voxel above the floor voxel, aiming straight down
+        // camera one voxel above the bottom voxel, aiming straight down
         origin: [
-          wv(48, 0, 48)[0] * 2,
-          (wv(48, 0, 48)[1] + 1) * 2,
-          wv(48, 0, 48)[0] * 2,
+          wv(32, 0, 32)[0] * 2,
+          (wv(32, 0, 32)[1] + 1) * 2,
+          wv(32, 0, 32)[0] * 2,
         ],
         direction: [0, -1, 0],
       }),
       getPlayerVoxels: () => null,
     });
-    expect(controller.breakBlock()).toContain("floor");
-    expect(layer.size).toBe(0);
-    expect(inventory.count(VOXEL_DIRT)).toBe(0);
+    const msg = controller.breakBlock();
+    expect(msg).not.toBeNull();
+    expect(layer.size).toBe(1);
+    expect(inventory.count(VOXEL_DIRT)).toBe(1);
   });
 });
 
 describe("EditingController.placeBlock", () => {
   it("places the selected block into the face-adjacent cell", () => {
     const h = makeHarness();
-    const target = wv(48, 40, 48);
+    const target = wv(32, 40, 32);
     h.inventory.add(VOXEL_DIRT, 2);
     h.setLook([(target[0] - 3) * 2, target[1] * 2, target[2] * 2], [1, 0, 0]);
     h.setPlayerVoxels([]);
@@ -154,12 +156,12 @@ describe("EditingController.placeBlock", () => {
 
   it("places plain dirt when a block sits above the placement cell", () => {
     const h = makeHarness();
-    const target = wv(48, 40, 48);
+    const target = wv(32, 40, 32);
     h.inventory.add(VOXEL_DIRT, 2);
     h.setLook([(target[0] - 3) * 2, target[1] * 2, target[2] * 2], [1, 0, 0]);
     h.setPlayerVoxels([]);
-    // place cell local (47,40,48); fill the cell above it so no grass should grow
-    h.block.store.set(47, 41, 48, VOXEL_DIRT);
+    // place cell local (31,40,32); fill the cell above it so no grass should grow
+    h.block.store.set(31, 41, 32, VOXEL_DIRT);
     h.controller.placeBlock();
     expect(h.layer.get([target[0] - 1, target[1], target[2]])?.id).toBe(
       VOXEL_DIRT,
@@ -168,7 +170,7 @@ describe("EditingController.placeBlock", () => {
 
   it("refuses to place into the player's own voxels", () => {
     const h = makeHarness();
-    const target = wv(48, 40, 48);
+    const target = wv(32, 40, 32);
     h.inventory.add(VOXEL_DIRT, 2);
     h.setLook([(target[0] - 1) * 2, target[1] * 2, target[2] * 2], [1, 0, 0]);
     h.setPlayerVoxels([[target[0] - 1, target[1], target[2]]]);
@@ -179,23 +181,23 @@ describe("EditingController.placeBlock", () => {
 
   it("refuses to place with an empty inventory", () => {
     const h = makeHarness();
-    const target = wv(48, 40, 48);
+    const target = wv(32, 40, 32);
     h.setPlayerVoxels([]);
     h.setLook([(target[0] - 3) * 2, target[1] * 2, target[2] * 2], [1, 0, 0]);
     expect(h.controller.placeBlock()).toContain("no dirt to place");
     expect(h.layer.get([target[0] - 1, target[1], target[2]])).toBeUndefined();
   });
 
-  it("refuses to place above the world's ceiling", () => {
-    // a voxel in the block's top row: the cell above it lies in no block
+  it("refuses to place outside the loaded blocks", () => {
+    // a voxel in the block's top row: the cell above it lies in no loaded block
     const ceilingBlock = buildBlock({
       center: [0, 0, 0],
-      customFillStore: (store) => store.set(48, 127, 48, VOXEL_GRASS),
+      customFillStore: (store) => store.set(32, 63, 32, VOXEL_GRASS),
     });
     const layer = new EditLayer();
     const inventory = new Inventory();
     inventory.add(VOXEL_DIRT, 2);
-    const top = wv(48, 127, 48);
+    const top = wv(32, 63, 32);
     const controller = new EditingController({
       blocks: [ceilingBlock],
       layer,

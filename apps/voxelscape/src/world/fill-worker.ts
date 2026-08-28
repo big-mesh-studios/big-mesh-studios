@@ -18,10 +18,18 @@ export interface FillBatchRequest {
   type: "fill";
   indices: number[];
   centers: Dim3[];
+  /**
+   * One generation per block, echoing the counter the main thread bumped
+   * when it sent this request. Carried back on the result so a stale result
+   * — a fill that finished after its slot was requested again for a
+   * different cell — can be told apart from the request it actually answers.
+   */
+  gens: number[];
 }
 
 export interface FillBatchResult {
   indices: number[];
+  gens: number[];
   storeData: Uint8Array[];
 }
 
@@ -61,6 +69,7 @@ export async function* buildFillResults(
     });
     yield {
       indices: [req.indices[i]],
+      gens: [req.gens[i]],
       storeData: [data.storeData],
     };
   }

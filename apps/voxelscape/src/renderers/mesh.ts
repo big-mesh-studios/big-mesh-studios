@@ -2,7 +2,7 @@
 // Each block's surface is turned into a set of quads — one per exposed face —
 // whose positions are in the block's local world space (centred at the origin,
 // matching the placement the blocks are drawn at). UVs are baked into
-// the atlas using the face→tile mapping the voxel ids define, so the
+// the atlas using exactly the same face→tile mapping as `rayMarchWorld`, so the
 // terrain is lit and textured the same wherever a face is drawn.
 //
 // Seam faces between neighbouring blocks are culled by reading the block's own
@@ -70,9 +70,9 @@ const DEFAULT_RECT: TileRect = [0, 0, 1, 1];
  * to `DEFAULT_RECT`.
  *
  * Neighbours are read from `store`'s 1-voxel meshing border (`atPadded`),
- * so seam faces against the adjacent block's matching voxels are culled
- * without a resolver. Below the floor is solid and above the ceiling is
- * air, so the world's underside never surfaces and its top is never capped.
+ * so seam faces against the adjacent blocks' matching voxels are culled
+ * without a resolver — on faces in every axis, since chunks stack
+ * vertically as well as horizontally.
  */
 export const buildBlockMesh = (
   store: VoxelStore,
@@ -129,8 +129,8 @@ export const buildBlockMesh = (
         if (id === VOXEL_AIR || id === VOXEL_WATER) {
           continue;
         }
-        const below = y === 0 ? 1 : at(x, y - 1, z);
-        const above = y === ny - 1 ? 0 : at(x, y + 1, z);
+        const below = at(x, y - 1, z);
+        const above = at(x, y + 1, z);
         const left = at(x - 1, y, z);
         const right = at(x + 1, y, z);
         const front = at(x, y, z - 1);
@@ -221,8 +221,8 @@ export const buildWaterMesh = (store: VoxelStore): MeshArrays => {
         if (at(x, y, z) !== VOXEL_WATER) {
           continue;
         }
-        const below = y === 0 ? 1 : at(x, y - 1, z);
-        const above = y === ny - 1 ? 0 : at(x, y + 1, z);
+        const below = at(x, y - 1, z);
+        const above = at(x, y + 1, z);
         const left = at(x - 1, y, z);
         const right = at(x + 1, y, z);
         const front = at(x, y, z - 1);

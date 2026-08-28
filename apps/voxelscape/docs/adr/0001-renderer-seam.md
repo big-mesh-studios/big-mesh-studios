@@ -1,4 +1,4 @@
-> Superseded by [ADR 0016](./0016-one-renderer.md), which removes the ray
+> Superseded by [ADR 0017](./0017-one-renderer.md), which removes the ray
 > marcher and with it the seam this describes.
 
 # Give the two renderers a real module boundary

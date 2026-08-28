@@ -15,8 +15,9 @@ the triangle renderer directly.
 
 The larger part of the change is what stopped being needed behind it. Each
 block carried a `Level`: a GPU chunk layout derived from its voxels, kept
-current by `syncLevelFromStore` after every fill, every ring step and every
-edit, and generated in the fill worker alongside the voxels themselves. Only
+current by `syncLevelFromStore` after every fill, every scroll of the window
+and every edit, and generated in the fill worker alongside the voxels
+themselves. Only
 the ray marcher ever read it. It is gone, and with it the surface sweeps that
 fed it, the `surfaceOnly` setting that chose what went into it, and two of the
 three arrays the fill worker used to build and transfer per block.

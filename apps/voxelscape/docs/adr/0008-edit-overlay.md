@@ -1,6 +1,6 @@
 > One consequence below no longer holds: the ray marcher that read a block's
 > texture live is gone, so an edit now waits for geometry to be rebuilt. See
-> [ADR 0016](./0016-one-renderer.md).
+> [ADR 0017](./0017-one-renderer.md).
 
 # Persistent, world-coordinate edit overlay
 

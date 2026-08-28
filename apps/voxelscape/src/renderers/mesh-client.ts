@@ -1,5 +1,6 @@
 import type { VoxelTileConfig } from "./atlas";
 import type { WorldBlock } from "../world/level-data";
+import { VOXEL_AIR } from "../world/voxel-store";
 import {
   buildBlockMesh,
   buildWaterMesh,
@@ -9,10 +10,29 @@ import {
 } from "./mesh";
 
 /**
- * How many block meshes to hand the worker per drain; the worker does the
- * heavy lifting, so the main thread only pays for wrapping the requests.
+ * How many block meshes to hand the workers per drain, in total; the workers
+ * do the heavy lifting, so the main thread only pays for wrapping the requests.
  */
-const MAX_BUILDS_PER_DRAIN = 6;
+const MAX_BUILDS_PER_DRAIN = 12;
+
+/** How many mesh workers to run: a small pool parallelizes the burst of builds a sphere scroll queues. */
+const workerCount = (): number => {
+  if (
+    typeof navigator === "undefined" ||
+    typeof navigator.hardwareConcurrency !== "number"
+  ) {
+    return 2;
+  }
+  return Math.max(1, Math.min(4, navigator.hardwareConcurrency));
+};
+
+/** The geometry of a chunk that holds no surface: nothing to draw. */
+const EMPTY_MESH: MeshArrays = {
+  positions: [],
+  normals: [],
+  uvs: [],
+  indices: [],
+};
 
 export interface MeshClientParams {
   /**
@@ -22,17 +42,18 @@ export interface MeshClientParams {
    */
   blocks: WorldBlock[];
   /**
-   * Called with a block's freshly built geometry, from the worker and from
+   * Called with a block's freshly built geometry, from the workers and from
    * the main-thread fallback alike. Results for data that has since been
    * replaced never reach it.
    */
   onMeshBuilt: (index: number, terrain: MeshArrays, water: MeshArrays) => void;
-  /** How many builds one `drain` hands the worker. Defaults to six. */
+  /** How many builds one `drain` hands the workers, in total. Defaults to twelve. */
   buildsPerDrain?: number;
   /**
-   * Supplies the worker that builds the meshes. Defaults to the module
-   * worker; a caller that hands over something else, or nothing, gets the
-   * same main-thread fallback as a browser without workers.
+   * Supplies the worker that builds the meshes. Defaults to a pool of
+   * `hardwareConcurrency`-bounded module workers; a caller that hands over
+   * one worker (or nothing) gets a single worker (or the main-thread fallback)
+   * instead.
    */
   createWorker?: () => Worker | undefined;
 }
@@ -68,8 +89,10 @@ export class MeshClient {
    * from nothing, which is why `setTiles` invalidates every block.
    */
   private readonly tilesById = new Map<number, VoxelTileConfig>();
-  private worker: Worker | undefined;
+  private readonly workers: Worker[] = [];
   private workerAvailable = true;
+  private warnedWorkerError = false;
+  private nextWorker = 0;
 
   constructor(params: MeshClientParams) {
     this.blocks = params.blocks;
@@ -77,42 +100,67 @@ export class MeshClient {
     this.buildsPerDrain = params.buildsPerDrain ?? MAX_BUILDS_PER_DRAIN;
     this.generation = new Array(params.blocks.length).fill(0);
 
-    try {
-      this.worker =
-        params.createWorker === undefined
-          ? new Worker(new URL("./mesh-worker.ts", import.meta.url), {
-              type: "module",
-            })
-          : params.createWorker();
-      if (this.worker === undefined) {
-        this.workerAvailable = false;
-        return;
+    const count = params.createWorker === undefined ? workerCount() : 1;
+    for (let i = 0; i < count; i++) {
+      try {
+        const worker =
+          params.createWorker === undefined
+            ? new Worker(new URL("./mesh-worker.ts", import.meta.url), {
+                type: "module",
+              })
+            : params.createWorker();
+        if (worker === undefined) {
+          this.workerAvailable = false;
+          break;
+        }
+        worker.onmessage = (ev) => {
+          this.onWorkerMessage(ev.data as MeshBuildResult);
+        };
+        worker.onerror = () => {
+          this.onWorkerError(worker);
+        };
+        this.workers.push(worker);
+      } catch {
+        if (this.workers.length === 0) {
+          this.workerAvailable = false;
+        }
+        break;
       }
-      this.worker.onmessage = (ev) => {
-        const msg = ev.data as MeshBuildResult;
-        const requestedAt = this.inFlight.get(msg.id);
-        if (requestedAt === undefined) {
-          return;
-        }
-        this.inFlight.delete(msg.id);
-        if (requestedAt !== this.generation[msg.id]) {
-          return; // the block changed after this request was sent
-        }
-        this.onMeshBuilt(msg.id, msg.terrain, msg.water);
-      };
-      this.worker.onerror = () => {
-        this.workerAvailable = false;
-        console.warn(
-          "[mesh] worker errored; falling back to main-thread builds",
-        );
-        for (const index of this.inFlight.keys()) {
-          this.pending.add(index);
-        }
-        this.inFlight.clear();
-      };
-    } catch {
+    }
+  }
+
+  private onWorkerMessage(msg: MeshBuildResult): void {
+    const requestedAt = this.inFlight.get(msg.id);
+    if (requestedAt === undefined) {
+      return;
+    }
+    this.inFlight.delete(msg.id);
+    if (requestedAt !== this.generation[msg.id]) {
+      return; // the block changed after this request was sent
+    }
+    this.onMeshBuilt(msg.id, msg.terrain, msg.water);
+  }
+
+  private onWorkerError(failed: Worker): void {
+    const stillAlive = this.workers.filter((w) => w !== failed);
+    this.workers.length = 0;
+    this.workers.push(...stillAlive);
+    if (this.workers.length === 0) {
       this.workerAvailable = false;
     }
+    if (!this.warnedWorkerError) {
+      this.warnedWorkerError = true;
+      console.warn(
+        "[mesh] worker errored; falling back to the remaining workers or the main thread",
+      );
+    }
+    // The builds the dead worker had in flight are owed and will not be
+    // delivered; put them back on the queue for a live worker or the main
+    // thread to redo.
+    for (const index of this.inFlight.keys()) {
+      this.pending.add(index);
+    }
+    this.inFlight.clear();
   }
 
   /**
@@ -143,11 +191,11 @@ export class MeshClient {
   }
 
   /**
-   * Hands the next few queued blocks to the worker, or builds every queued
+   * Hands the next few queued blocks to the workers, or builds every queued
    * block here if there isn't one. Called once a frame.
    */
   drain(): void {
-    if (this.worker === undefined || !this.workerAvailable) {
+    if (this.workers.length === 0 || !this.workerAvailable) {
       const queued = [...this.pending];
       this.pending.clear();
       this.buildOnThisThread(queued);
@@ -156,6 +204,14 @@ export class MeshClient {
     let sent = 0;
     for (const index of this.pending) {
       if (this.inFlight.has(index)) {
+        continue;
+      }
+      if (!this.hasSurfaceData(index)) {
+        // A chunk whose derived level is empty (fully buried rock or upper
+        // air) can never expose a face, so don't round-trip it through a
+        // worker's full-volume sweep.
+        this.pending.delete(index);
+        this.onMeshBuilt(index, EMPTY_MESH, EMPTY_MESH);
         continue;
       }
       this.send(index);
@@ -180,13 +236,13 @@ export class MeshClient {
     }
   }
 
-  dispose(): void {
-    this.worker?.terminate();
-  }
-
   private buildOnThisThread(indices: number[]): void {
     const tiles = [...this.tilesById.values()];
     for (const index of indices) {
+      if (!this.hasSurfaceData(index)) {
+        this.onMeshBuilt(index, EMPTY_MESH, EMPTY_MESH);
+        continue;
+      }
       const store = this.blocks[index].store;
       this.onMeshBuilt(
         index,
@@ -194,6 +250,21 @@ export class MeshClient {
         buildWaterMesh(store),
       );
     }
+  }
+
+  /**
+   * Whether the block holds anything at all to mesh. A slot whose voxels are
+   * all air has no face to build, and asking the worker for one costs a round
+   * trip to be told nothing.
+   */
+  private hasSurfaceData(index: number): boolean {
+    const voxels = this.blocks[index].store.data;
+    for (let i = 0; i < voxels.length; i++) {
+      if (voxels[i] !== VOXEL_AIR) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private send(index: number): void {
@@ -207,6 +278,14 @@ export class MeshClient {
       data: store.data.slice(),
       tileRects: [...this.tilesById.values()],
     };
-    this.worker?.postMessage(request, [request.data.buffer]);
+    const worker = this.workers[this.nextWorker % this.workers.length];
+    this.nextWorker++;
+    worker?.postMessage(request, [request.data.buffer]);
+  }
+
+  dispose(): void {
+    for (const worker of this.workers) {
+      worker.terminate();
+    }
   }
 }
