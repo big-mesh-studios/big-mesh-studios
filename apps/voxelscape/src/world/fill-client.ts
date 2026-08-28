@@ -5,11 +5,7 @@ import {
   type WorldBlock,
 } from "./level-data";
 import type { EditLayer } from "./edit-layer";
-import {
-  type FillBatchRequest,
-  type FillBatchResult,
-  type FillConfig,
-} from "./fill-worker";
+import { type FillBatchResult, type FillConfig } from "./fill-worker";
 import type { TerrainConfig } from "./noise";
 import { fillStore, type FillStoreFn } from "./voxel-store";
 
@@ -32,6 +28,13 @@ export interface FillClientParams {
   editLayer?: EditLayer;
   customFillStore?: FillStoreFn;
   customFillStoreUrl?: string;
+  /**
+   * Supplies the workers that fill blocks. Defaults to a pool of
+   * `hardwareConcurrency`-bounded module workers; a caller that hands over
+   * one worker (or nothing) gets a single worker (or the main-thread
+   * fallback) instead.
+   */
+  createWorker?: () => Worker | undefined;
 }
 
 /** How many fill workers to run: a small pool parallelizes a scroll's entering cap. */
@@ -57,7 +60,8 @@ const workerCount = (): number => {
  */
 export class FillClient {
   private readonly fillGen: number[];
-  private readonly fillInflight = new Map<number, number>();
+  /** Slots with an outstanding worker fill request (for error recovery). */
+  private readonly fillInflight = new Set<number>();
   private readonly blocks: WorldBlock[];
   private readonly terrain: TerrainConfig;
   private readonly surfaceOnly: boolean;
@@ -82,15 +86,19 @@ export class FillClient {
     this.editLayer = params.editLayer;
     this.fillGen = new Array(params.blocks.length).fill(0);
 
-    const count = workerCount();
+    const count = params.createWorker === undefined ? workerCount() : 1;
     for (let i = 0; i < count; i++) {
       try {
-        const worker = new Worker(
-          new URL("./fill-worker.ts", import.meta.url),
-          {
-            type: "module",
-          },
-        );
+        const worker =
+          params.createWorker === undefined
+            ? new Worker(new URL("./fill-worker.ts", import.meta.url), {
+                type: "module",
+              })
+            : params.createWorker();
+        if (worker === undefined) {
+          this.workerAvailable = false;
+          break;
+        }
         const fillConfig: FillConfig = {
           terrain: this.terrain,
           surfaceOnly: this.surfaceOnly,
@@ -116,14 +124,15 @@ export class FillClient {
   private onWorkerMessage(msg: FillBatchResult): void {
     for (let j = 0; j < msg.indices.length; j++) {
       const i = msg.indices[j];
-      const gen = this.fillInflight.get(i);
-      if (gen === undefined) {
+      // The result carries the generation the request it answers was sent
+      // under. If the slot has since been requested again (it moved to a
+      // different cell while this fill was running), the counter has moved on
+      // and this stale fill must be dropped — applying it would paint the
+      // old cell's terrain at the new one.
+      if (msg.gens[j] !== this.fillGen[i]) {
         continue;
       }
       this.fillInflight.delete(i);
-      if (gen !== this.fillGen[i]) {
-        continue; // the slot was requested again; a newer batch will fill it
-      }
       applyLevelData(this.blocks[i], {
         storeData: msg.storeData[j],
         broadData: msg.broadData[j],
@@ -147,7 +156,7 @@ export class FillClient {
         "[fill] worker errored; falling back to the remaining workers or synchronous fills",
       );
     }
-    for (const i of this.fillInflight.keys()) {
+    for (const i of this.fillInflight) {
       this.syncFillBlock(i);
     }
     this.fillInflight.clear();
@@ -164,8 +173,14 @@ export class FillClient {
    * worker and loading its modules costs several times what generating a
    * single block costs, so a block waiting on that start arrives far later
    * than one simply built here.
+   *
+   * The generation is bumped so any fill still in flight for the slot (from
+   * before it moved) is dropped when it lands, instead of painting the old
+   * cell's terrain over this fresh synchronous one.
    */
   fillNow(index: number): void {
+    this.fillGen[index]++;
+    this.fillInflight.delete(index);
     this.syncFillBlock(index);
   }
 
@@ -246,12 +261,13 @@ export class FillClient {
     centers: Dim3[],
     worker: Worker,
   ): void {
-    const req: FillBatchRequest = { type: "fill", indices, centers };
+    const gens: number[] = [];
     for (const i of indices) {
       this.fillGen[i]++;
-      this.fillInflight.set(i, this.fillGen[i]);
+      gens.push(this.fillGen[i]);
+      this.fillInflight.add(i);
     }
-    worker.postMessage(req);
+    worker.postMessage({ type: "fill", indices, centers, gens });
   }
 
   dispose(): void {
