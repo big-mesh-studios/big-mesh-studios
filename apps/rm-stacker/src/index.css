@@ -1,0 +1,22 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: dark --default;
+}
+
+html {
+  --margin: 5px;
+  --size: 36px;
+
+  --front: white;
+  --back: var(--color-base-200);
+
+  --grey: #707070;
+  --light-grey: #a9a9a9;
+  --dark-grey: #343434;
+}
+
+* {
+  scrollbar-color: var(--grey) transparent;
+  scrollbar-width: thin;
+  overscroll-behavior: none;
+}

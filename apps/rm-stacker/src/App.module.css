@@ -1,0 +1,44 @@
+.shell {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--back);
+}
+
+.previewPane {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+}
+
+.handle {
+  background: var(--dark-grey);
+  z-index: 2;
+
+  &:hover {
+    background: var(--light-grey);
+  }
+
+  &[data-active-handle] {
+    background: var(--front);
+  }
+
+  [data-direction="column"] & {
+    cursor: ew-resize;
+  }
+
+  [data-direction="row"] & {
+    cursor: ns-resize;
+  }
+}
+
+.colourPicker {
+  position: absolute;
+  height: 250px;
+  width: 250px;
+  z-index: 2;
+  background: var(--back);
+  padding: var(--margin);
+  border-radius: var(--margin);
+}

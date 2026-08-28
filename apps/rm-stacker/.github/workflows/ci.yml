@@ -1,0 +1,52 @@
+name: Check codebase for type-errors and auto-format
+
+on:
+  push:
+    branches-ignore: ["wip"]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: install latest corepack
+        run: npm install corepack@latest -g
+
+      - run: corepack enable
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Check types
+        run: pnpm check-types
+
+      - name: Build the library
+        run: pnpm build-lib
+
+      - name: Check formatting
+        if: github.event_name == 'pull_request'
+        run: pnpm format:check
+
+      - name: Format
+        if: github.event_name == 'push'
+        run: pnpm format
+
+      - name: Commit formatting changes
+        if: github.event_name == 'push'
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "Format code with prettier"
+            git push origin HEAD:${{ github.ref_name }}
+          fi

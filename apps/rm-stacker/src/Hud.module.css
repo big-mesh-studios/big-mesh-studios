@@ -1,0 +1,78 @@
+.hud {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  margin: var(--margin);
+  gap: var(--margin);
+  z-index: 2;
+
+  & > * {
+    pointer-events: auto;
+  }
+}
+
+.side {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  justify-content: space-between;
+  gap: var(--margin);
+  pointer-events: none;
+
+  .bottom {
+    display: grid;
+    gap: var(--margin);
+    align-items: end;
+    align-content: end;
+  }
+}
+
+.palette {
+  align-self: end;
+}
+
+.main {
+  display: grid;
+  grid-template-rows: 1fr min;
+  pointer-events: none;
+}
+
+.palettePopover {
+  inset: unset;
+  position: absolute;
+  pointer-events: auto;
+}
+
+.profileDialog {
+  --clearance: calc(var(--size) * 2 + var(--margin) * 4);
+
+  /* A modal dialogue is centred by the browser's own `margin: auto`, which the
+     stylesheet reset zeroes along with every other margin — so it is asked for
+     again here rather than left to be taken away. */
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: calc(100vw - var(--clearance));
+  height: calc(100dvh - var(--clearance));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--grey);
+  border-radius: var(--margin);
+  background-color: var(--back);
+  color: var(--front);
+  font-size: 11pt;
+
+  &::backdrop {
+    background-color: rgb(0 0 0 / 40%);
+  }
+}
+
+.palettePopover:popover-open {
+  bottom: calc(anchor(bottom));
+  left: calc(anchor(right) + var(--margin));
+  pointer-events: auto;
+}

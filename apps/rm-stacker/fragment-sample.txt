@@ -1,0 +1,47 @@
+const float _Alpha = 1.0;
+const vec3 _SliceMin = vec3(-0.51,-0.51,-0.51);
+const vec3 _SliceMax = vec3( 0.51, 0.51, 0.51);
+
+bool IntersectBox(vec3 ro, vec3 rd, vec3 boxmin, vec3 boxmax, out float tnear, out float tfar)
+{
+	vec3 invR = 1.0 / rd;
+	vec3 tbot = invR * (boxmin.xyz - ro);
+	vec3 ttop = invR * (boxmax.xyz - ro);
+	vec3 tmin = min (ttop, tbot);
+	vec3 tmax = max (ttop, tbot);
+	vec2 t0 = max (tmin.xx, tmin.yz);
+	tnear = max (t0.x, t0.y);
+	t0 = min (tmax.xx, tmax.yz);
+	tfar = min (t0.x, t0.y);
+	return (tnear > tfar) ? false : true;
+}
+
+mat3 RotationY(float y) 
+{
+	return mat3(cos(y),0.0,-sin(y),0.0,1.0,0.0,sin(y),0.0,cos(y));
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+	vec2 uv = (2.0 * fragCoord.xy - iResolution.xy) / iResolution.y;
+	vec3 ro = vec3(0.0, sin(iTime * 0.33), -1.8) * RotationY(iTime);
+	vec3 rd = normalize(vec3(uv, 2.0)) * RotationY(iTime);
+	vec4 color = vec4(0.0);
+	float near = 0.0, far = 0.0;
+	bool hit = IntersectBox(ro, rd, vec3(-0.5), vec3(0.5), near, far);
+	if (hit)
+	{
+		float stepSize = 0.01;
+		for(float t = near; t < far; t += stepSize)
+		{
+			vec3 p = ro + t * rd;
+			vec4 s = texture(iChannel0, p + vec3(0.5));
+            s.a *= _Alpha;
+			bool insideSlice = all(greaterThan(p, _SliceMin)) && all(lessThan(p, _SliceMax));
+			float weight = (1.0 - color.a) * s.a;
+			color.rgb += insideSlice ? weight * s.rgb : vec3(0.0);
+			color.a += insideSlice ? weight : 0.0;    
+		}
+	}
+	fragColor = vec4(color.rgb, 1.0); 
+}
