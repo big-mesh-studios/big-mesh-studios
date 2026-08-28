@@ -36,7 +36,10 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "@big-mesh-studios/rm-stacker": "workspace:*",
+    "@big-mesh-studios/atproto": "workspace:*",
+    "@big-mesh-studios/maths": "workspace:*",
+    "@big-mesh-studios/stacker": "workspace:*",
+    "@big-mesh-studios/utils": "workspace:*",
     "@types/node": "^26.2.0",
     "@types/three": "^0.183.1",
     "esbuild": "^0.28.1",

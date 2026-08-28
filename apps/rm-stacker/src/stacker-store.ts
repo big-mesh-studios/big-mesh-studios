@@ -5,12 +5,20 @@ import { Command } from "./command/Command";
 import { createCommander } from "./command/commander";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 import { loadFromIndexedDB, saveToIndexedDB } from "./load-save";
-import { Bitmap, Dimensions3D, RGBA, Vector2D } from "./maths";
+import {
+  Bitmap,
+  Dimensions2D,
+  Dimensions3D,
+  RGBA,
+  Vector2D,
+} from "@big-mesh-studios/maths";
 import { ResizeOptions, resizeSides } from "./resize-sides";
-import { ModeKind, type Dimensions2D, type Sides } from "./types";
+import { type Sides } from "@big-mesh-studios/stacker/renderer";
+import { ModeKind } from "./types";
 import { UndoRedoManager } from "./undo-redo";
-import { createEnqueue, createMediaQuery } from "./utils/utils";
-import { solveVoxels } from "./voxel-solver";
+import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
+import { createEnqueue } from "./utils/utils";
+import { solveVoxels } from "@big-mesh-studios/stacker/renderer";
 
 const INITIAL_DIMENSIONS = { width: 15, height: 15, depth: 15 };
 const INITIAL_PALETTE_INDEX = 5;

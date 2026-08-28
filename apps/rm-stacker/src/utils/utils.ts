@@ -1,24 +1,9 @@
-import type { JSX } from "@solidjs/web/jsx-runtime";
 import { SIDE_MASK } from "../constants";
-import { Bitmap, RGBA, Vector2D } from "../maths";
-
-export { createMediaQuery } from "./create-media-query";
-export { pointer } from "./pointer";
+import { Bitmap, RGBA, Vector2D } from "@big-mesh-studios/maths";
 
 /**********************************************************************************/
 /*                                      Misc                                      */
 /**********************************************************************************/
-
-/**
- * Bundles a number of refs into a single one, dropping the ones that were not
- * given. Lets a component keep hold of an element itself while still handing
- * that element to whoever passed a ref in from outside.
- */
-export function combineRefs<T>(
-  ...refs: Array<JSX.Ref<T> | undefined>
-): JSX.Ref<T> {
-  return refs.filter((ref) => ref !== undefined);
-}
 
 export function tryCatch<T, U>(fn: () => T): T | undefined;
 export function tryCatch<T, U>(
@@ -92,7 +77,7 @@ export function base64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-export function hexToRgba(hex: string, alpha = 1): RGBA {
+export function hexToRgba(hex: string): RGBA {
   const digits = hex.replace("#", "");
 
   // Expand shorthand notation: #rgb and #rgba.

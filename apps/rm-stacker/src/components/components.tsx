@@ -2,8 +2,8 @@ import { Portal } from "@solidjs/web";
 import type { JSX } from "@solidjs/web/jsx-runtime";
 import { createSignal, omit, ParentProps, Show } from "solid-js";
 import type { IconKind } from "../icon-kinds";
-import { RGBA } from "../maths";
-import { combineRefs } from "../utils/utils";
+import { RGBA } from "@big-mesh-studios/maths";
+import { combineRefs } from "@big-mesh-studios/utils/combine-refs";
 import styles from "./components.module.css";
 
 /**********************************************************************************/
@@ -126,6 +126,8 @@ export function IconButton(props: IconButtonProps) {
 /*                                       Bar                                      */
 /**********************************************************************************/
 
+export const popoverStyle = styles.popover;
+
 export const barStyle = styles.bar;
 export function Bar(props: ParentProps) {
   return <div class={styles.bar}>{props.children}</div>;
@@ -142,22 +144,6 @@ export function Column(props: ParentProps<{ style?: JSX.CSSProperties }>) {
       {props.children}
     </div>
   );
-}
-
-/**********************************************************************************/
-/*                                 Create Popover                                 */
-/**********************************************************************************/
-
-export interface PopoverTriggerProps extends ParentProps {
-  class?: string | string[];
-  title?: string;
-}
-
-export interface PopoverProps extends ParentProps {
-  class?: string | string[];
-  popover?: "auto" | "manual";
-  style?: JSX.CSSProperties;
-  ref?: JSX.Ref<HTMLDivElement>;
 }
 
 /**********************************************************************************/
@@ -205,59 +191,6 @@ export function createDialog() {
           >
             {props.children}
           </dialog>
-        </Portal>
-      );
-    },
-  };
-}
-
-let counter = 0;
-export function createPopover() {
-  let element: HTMLDivElement = null!;
-  const id = `popover-${counter++}`;
-  const [isOpen, setIsOpen] = createSignal(false);
-
-  return {
-    isOpen,
-    open() {
-      element?.showPopover();
-    },
-    close() {
-      element?.hidePopover();
-    },
-    Trigger(props: PopoverTriggerProps) {
-      return (
-        <button
-          aria-selected={isOpen() ? "true" : "false"}
-          style={{
-            "anchor-name": `--${id}`,
-          }}
-          popovertarget={id}
-          class={props.class}
-          title={props.title}
-        >
-          {props.children}
-        </button>
-      );
-    },
-    PopOver(props: PopoverProps) {
-      return (
-        <Portal>
-          <div
-            style={{
-              "position-anchor": `--${id}`,
-              ...props.style,
-            }}
-            ref={combineRefs(props.ref, (_element) => (element = _element))}
-            id={id}
-            popover={props.popover ?? "auto"}
-            class={[props.class, styles.popover]}
-            onToggle={(event) => {
-              setIsOpen(event.newState === "open");
-            }}
-          >
-            {props.children}
-          </div>
         </Portal>
       );
     },

@@ -1,11 +1,12 @@
 import { flush, useContext } from "solid-js";
+import { createPopover } from "@big-mesh-studios/utils/create-popover";
 import {
   Bar,
   Colour,
   colourTabStyle,
   Column,
   createDialog,
-  createPopover,
+  popoverStyle,
   IconButton,
   IconTab,
   tabStyle,
@@ -107,7 +108,7 @@ export function Hud() {
                 <Colour colour={selectedColour()} />
               </PalettePopover.Trigger>
               <PalettePopover.PopOver
-                class={styles.palettePopover}
+                class={[popoverStyle, styles.palettePopover]}
                 popover="manual"
                 style={{ "anchor-name": "--palette-popover" }}
               >

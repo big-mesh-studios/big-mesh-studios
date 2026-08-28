@@ -2,9 +2,11 @@ import { Setter } from "@solidjs/signals";
 import { Accessor, useContext } from "solid-js";
 import { SIDE_AXES } from "../constants";
 import { StackerContext } from "../context";
-import { Dimensions3D, Vector2D } from "../maths";
-import { Alignment3D, AlignmentKind, SideKind } from "../types";
-import { pointer, screenToWorld } from "../utils/utils";
+import { Dimensions3D, Vector2D } from "@big-mesh-studios/maths";
+import { type SideKind } from "@big-mesh-studios/stacker/renderer";
+import { Alignment3D, AlignmentKind } from "../types";
+import { pointer } from "@big-mesh-studios/utils/pointer";
+import { screenToWorld } from "../utils/utils";
 import {
   computeSidePositions,
   intersectSides,

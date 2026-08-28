@@ -1,10 +1,12 @@
 import { Portal } from "@solidjs/web";
 import { JSX } from "@solidjs/web/jsx-runtime";
 import { ParentProps, createSignal } from "solid-js";
-import { combineRefs } from "./utils";
+import { combineRefs } from "./combine-refs";
 
 export interface PopoverTriggerProps extends ParentProps {
   class?: string | string[];
+  /** The browser's own tooltip for the button, for a trigger drawn as an icon. */
+  title?: string;
 }
 
 export interface PopoverProps extends ParentProps {
@@ -16,6 +18,13 @@ export interface PopoverProps extends ParentProps {
 }
 
 let counter = 0;
+
+/**
+ * A popover and the button that opens it, tied together by a generated
+ * identifier so the browser anchors one to the other. The panel is rendered
+ * through a portal, and carries no styling of its own — a caller passes the
+ * classes it should be drawn with.
+ */
 export function createPopover() {
   let element: HTMLDivElement = null!;
   const id = `popover-${counter++}`;
@@ -40,6 +49,7 @@ export function createPopover() {
           }}
           popovertarget={id}
           class={props.class}
+          title={props.title}
         >
           {props.children}
         </button>

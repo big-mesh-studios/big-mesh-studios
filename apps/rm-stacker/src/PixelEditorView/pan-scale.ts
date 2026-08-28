@@ -1,6 +1,7 @@
 import { Accessor } from "solid-js";
-import { Vector2D } from "../maths";
-import { pointer, screenToWorld } from "../utils/utils";
+import { Vector2D } from "@big-mesh-studios/maths";
+import { pointer } from "@big-mesh-studios/utils/pointer";
+import { screenToWorld } from "../utils/utils";
 
 interface PanScaleTransform {
   pan: Vector2D;

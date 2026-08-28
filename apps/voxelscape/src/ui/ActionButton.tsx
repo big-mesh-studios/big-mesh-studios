@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal } from "solid-js";
-import { RGB } from "../utils/maths";
-import { pointer } from "../utils/pointer";
+import { RGB } from "@big-mesh-studios/maths";
+import { pointer } from "@big-mesh-studios/utils/pointer";
 import styles from "./ActionButton.module.css";
 
 const RGB_WHITE = Object.freeze({ r: 255, g: 255, b: 255 });

@@ -1,15 +1,16 @@
 import { createEffect } from "@solidjs/signals";
 import { createMemo, createSignal, For, useContext } from "solid-js";
 import { ColourPicker } from "./components/ColorPicker";
+import { createPopover } from "@big-mesh-studios/utils/create-popover";
 import {
   colourTabStyle,
-  createPopover,
+  popoverStyle,
   tabStyle,
 } from "./components/components";
 import { StackerContext } from "./context";
-import { RGBA } from "./maths";
+import { RGBA } from "@big-mesh-studios/maths";
 import styles from "./Palette.module.css";
-import { pointer } from "./utils/utils";
+import { pointer } from "@big-mesh-studios/utils/pointer";
 
 function Palette(props: { class?: string }) {
   const {
@@ -61,7 +62,7 @@ function Palette(props: { class?: string }) {
   return (
     <>
       <ColourPickerPopover.PopOver
-        class={styles.colourPickerPopover}
+        class={[popoverStyle, styles.colourPickerPopover]}
         style={{
           "position-anchor": narrow()
             ? "--palette-popover"

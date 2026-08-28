@@ -10,7 +10,9 @@ import {
   omit,
   useContext,
 } from "solid-js";
-import { combineRefs, pointer, tryCatch } from "../utils/utils";
+import { combineRefs } from "@big-mesh-studios/utils/combine-refs";
+import { pointer } from "@big-mesh-studios/utils/pointer";
+import { tryCatch } from "../utils/utils";
 import styles from "./SplitPane.module.css";
 
 /**********************************************************************************/

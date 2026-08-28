@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
-import { Vector2D } from "../utils/maths";
-import { pointer } from "../utils/pointer";
+import { Vector2D } from "@big-mesh-studios/maths";
+import { pointer } from "@big-mesh-studios/utils/pointer";
 import styles from "./Joystick.module.css";
 
 export function Joystick(props: {

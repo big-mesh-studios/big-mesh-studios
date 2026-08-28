@@ -5,7 +5,7 @@ import { Console } from "./ui/Console";
 import { EditHud } from "./ui/EditHud";
 import { LoadingScreen, LoadingToast } from "./ui/LoadingScreen";
 import { createToasts, Toast } from "./ui/Toasts";
-import { createMediaQuery } from "./utils/create-media-query";
+import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import { createVoxelscape } from "./voxelscape/create-voxelscape";
 import { VoxelscapeContext } from "./voxelscape/voxelscape-context";
 

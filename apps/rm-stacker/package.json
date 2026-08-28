@@ -1,6 +1,7 @@
 {
   "name": "@big-mesh-studios/rm-stacker",
   "version": "0.0.0",
+  "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -9,30 +10,13 @@
   },
   "type": "module",
   "sideEffects": false,
-  "files": [
-    "dist-lib"
-  ],
-  "exports": {
-    "./format": {
-      "types": "./dist-lib/format.d.ts",
-      "import": "./dist-lib/format.js"
-    },
-    "./lexicon": {
-      "types": "./dist-lib/lexicon.d.ts",
-      "import": "./dist-lib/lexicon.js"
-    }
-  },
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "serve": "vite preview",
     "test": "vitest run",
     "generate:icon-kinds": "node scripts/generate-icon-kinds.ts",
-    "check-types": "tsc --noEmit",
-    "build-lib": "vite build --config vite.config.lib.ts && tsc -p tsconfig.lib.json"
+    "check-types": "tsc --noEmit"
   },
   "peerDependencies": {
     "@random-mesh/rmsl": "^1.9.0",
@@ -51,6 +35,10 @@
     "@atcute/client": "^5.1.1",
     "@atcute/identity-resolver": "^2.0.1",
     "@atcute/oauth-browser-client": "^5.0.0",
+    "@big-mesh-studios/atproto": "workspace:*",
+    "@big-mesh-studios/maths": "workspace:*",
+    "@big-mesh-studios/stacker": "workspace:*",
+    "@big-mesh-studios/utils": "workspace:*",
     "@fortawesome/fontawesome-free": "^7.3.1",
     "@random-mesh/rmsl": "1.9.0",
     "@solidjs/signals": "2.0.0-beta.29",

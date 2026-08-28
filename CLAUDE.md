@@ -55,13 +55,32 @@ Things this codebase already relies on that a 1.x reflex gets wrong:
   the other two and rendered to a file at build time, so nothing is sent to
   the browser to run.
 
-The world depends on the editor's published package, so `apps/rm-stacker`'s
-`dist-lib` has to be built before the world's types resolve. `pnpm build-lib`
-at the root does that.
+## What is under `packages`
 
-Each of the three keeps its own `package.json` and `tsconfig.json`. Formatting
-is settled once at the root, for both: one `.prettierrc`, and `pnpm format`
-run from the repository root.
+Both applications share these, and both read them straight from TypeScript
+source across the workspace — none is built, and none is published.
+
+- [`packages/maths/`](./packages/maths) — the shapes and their operations:
+  `Vector2D`, `Vector3D`, `Dimensions2D`, `Dimensions3D`, `RGB`, `RGBA`,
+  `HSVA`, `Bitmap`, `Matrix3x3`. Depends on nothing.
+- [`packages/atproto/`](./packages/atproto) — the protocol plumbing both do the
+  same way: resolving an identity, confirming the handle to show for it, the
+  popup sign-in flow, and the record-level client. An application builds its own
+  sign-in flow with `createOAuthClient`, because the popup channel name and the
+  redirect path belong to the application rather than the protocol.
+- [`packages/utils/`](./packages/utils) — the browser-facing helpers both
+  interfaces are built from: combining refs, a media query as a signal, a
+  popover and its trigger, and following a pointer through a drag.
+- [`packages/stacker/`](./packages/stacker) — everything about a voxel model
+  that both programs need: the side vocabulary, the solver that packs it for
+  the graphics card, the ray marcher, the material that draws it, the size of
+  its bounding box, the file format, and the atproto record vocabulary. Three
+  entry points — `renderer`, `format`, `lexicon` — so reading a record does not
+  pull in a zip decoder.
+
+Each application and package keeps its own `package.json` and `tsconfig.json`.
+Formatting is settled once at the root for all of them: one `.prettierrc`, and
+`pnpm format` run from the repository root.
 
 ## Elsewhere in the repository
 

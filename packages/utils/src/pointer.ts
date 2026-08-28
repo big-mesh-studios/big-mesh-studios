@@ -1,4 +1,4 @@
-import { Vector2D } from "./maths";
+import { Vector2D } from "@big-mesh-studios/maths";
 
 interface CustomPointerEvent<T extends HTMLElement> {
   delta: Vector2D;
