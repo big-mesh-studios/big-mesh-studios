@@ -1,11 +1,13 @@
 # big-mesh-studios
 
 Two applications that share a voxel model format: an editor somebody draws in,
-and a world that wears what they drew.
+and a world that wears what they drew, reachable from
+[one front page](https://big-mesh-studios.github.io/big-mesh-studios/).
 
 |                                        |                                                                                                                                                                                                                                            |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [`apps/rm-stacker`](./apps/rm-stacker) | The editor. A voxel model is drawn by painting the six faces of a box, saved as a zip, and published to the artist's own atproto account. [Live site](https://big-mesh-studios.github.io/big-mesh-studios/rm-stacker/)                     |
+| [`apps/homepage`](./apps/homepage)     | The front page. Names the other two and links to each; it is what the site root serves. [Live site](https://big-mesh-studios.github.io/big-mesh-studios/)                                                                                  |
 | [`apps/voxelscape`](./apps/voxelscape) | The world. An infinite scrolling grid of procedurally generated terrain, whose monsters are dressed in a model read back from any account that published one. [Live site](https://big-mesh-studios.github.io/big-mesh-studios/voxelscape/) |
 
 The world depends on the editor: it reads the editor's saved format and names

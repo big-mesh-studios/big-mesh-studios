@@ -36,11 +36,13 @@ jobs:
       - name: Build both applications
         run: pnpm build
 
-      # One repository publishes one Pages site, so each application takes a
-      # folder under it and the addresses each was built for say so.
-      - name: Gather both builds into one site
+      # One repository publishes one Pages site. The two applications take a
+      # folder each under it and the addresses each was built for say so, and
+      # the front page takes the root above them.
+      - name: Gather the front page and both builds into one site
         run: |
           mkdir -p site/rm-stacker site/voxelscape
+          cp -r apps/homepage/dist/. site/
           cp -r apps/rm-stacker/dist/. site/rm-stacker/
           cp -r apps/voxelscape/dist/. site/voxelscape/
 

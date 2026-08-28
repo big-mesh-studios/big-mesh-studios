@@ -42,7 +42,7 @@ Things this codebase already relies on that a 1.x reflex gets wrong:
 - Imports come from `solid-js` and `@solidjs/web`. The `solid-js/web` and
   `solid-js/store` subpaths no longer exist.
 
-## The two applications
+## What is under `apps`
 
 - [`apps/rm-stacker/`](./apps/rm-stacker) — the editor: somebody draws a voxel
   model by painting the six faces of a box, and publishes it to their own
@@ -50,12 +50,15 @@ Things this codebase already relies on that a 1.x reflex gets wrong:
 - [`apps/voxelscape/`](./apps/voxelscape) — the world: an infinite scrolling
   grid of procedurally generated terrain, whose monsters wear a model read back
   from the editor.
+- [`apps/homepage/`](./apps/homepage) — the front page the site root serves,
+  naming the other two and linking to each. Astro, one page, no content of its
+  own beyond that.
 
 The world depends on the editor's published package, so `apps/rm-stacker`'s
 `dist-lib` has to be built before the world's types resolve. `pnpm build-lib`
 at the root does that.
 
-Each application keeps its own `package.json` and `tsconfig.json`. Formatting
+Each of the three keeps its own `package.json` and `tsconfig.json`. Formatting
 is settled once at the root, for both: one `.prettierrc`, and `pnpm format`
 run from the repository root.
 

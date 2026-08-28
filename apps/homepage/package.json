@@ -1,0 +1,12 @@
+{
+  "name": "@big-mesh-studios/homepage",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "serve": "astro preview"
+  },
+  "devDependencies": {
+    "astro": "^7.2.9"
+  }
+}
