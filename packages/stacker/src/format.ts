@@ -4,8 +4,15 @@
 // it likes with it.
 import { decode, encode } from "fast-png";
 import JSZip from "jszip";
-import { Bitmap, type RGBA } from "@big-mesh-studios/maths";
-import { sideKinds, sideKindSet, type SideKind, type Sides } from "./data";
+import { Bitmap, type Dimensions3D, type RGBA } from "@big-mesh-studios/maths";
+import {
+  sideAxes,
+  sideKinds,
+  sideKindSet,
+  type DimensionKind,
+  type SideKind,
+  type Sides,
+} from "./data";
 
 const PALETTE_FILE = "palette.png";
 
@@ -180,15 +187,26 @@ function toBitmap(image: DecodedImage, indexOf: Map<number, number>): Bitmap {
  * beside the model — an undo history naming colours, say — was written against
  * that format too.
  *
+ * `dimensions` is the box the six sides describe, which they are checked
+ * against: a side disagreeing with another about an axis they both measure is
+ * refused.
+ *
  * @param fallbackPalette Colours to seed the palette slots a colour-format
  * model does not fill. Left out, the palette is exactly the colours the file
  * uses, which is what a reader wants; an editor passes its own so a model
  * opened for drawing arrives with a full palette to draw from.
+ * @throws When the file is not a model this format writes, or when its sides
+ * are not faces of one box.
  */
 export async function load(
   blob: Blob,
   fallbackPalette: RGBA[] = [],
-): Promise<{ sides: Sides; palette: RGBA[]; migrated: boolean }> {
+): Promise<{
+  sides: Sides;
+  palette: RGBA[];
+  migrated: boolean;
+  dimensions: Dimensions3D;
+}> {
   const zip = await JSZip.loadAsync(blob);
   const result: Partial<Sides> = {};
   // Sides saved as colours, held back until they have all been read: the
@@ -196,7 +214,6 @@ export async function load(
   // none of them can be turned into indices until all six have been seen.
   const asColours: Partial<Record<SideKind, DecodedImage>> = {};
   let palette: RGBA[] | undefined;
-  let seenSize: number | undefined = undefined;
 
   for (const [_path, entry] of Object.entries(zip.files)) {
     const name = entry.name.toLowerCase();
@@ -222,8 +239,6 @@ export async function load(
 
     const arrayBuffer = await (await entry.async("blob")).arrayBuffer();
     const decoded = decode(new Uint8Array(arrayBuffer));
-
-    seenSize ??= decoded.width;
 
     // Everything written here is eight bits a sample, and every reading below
     // takes one byte at a time. Anything else would be read as though it were
@@ -271,16 +286,74 @@ export async function load(
     }
   }
 
-  seenSize ??= 32;
+  const dimensions = readDimensions(result);
 
+  // A side the file does not carry is drawn as nothing, at the size the sides
+  // that are there say it must be.
   for (const side of sideKinds) {
-    result[side] ??= Bitmap.create(seenSize, seenSize);
+    const [across, down] = sideAxes[side];
+    result[side] ??= Bitmap.create(dimensions[across], dimensions[down]);
   }
 
   return {
     sides: result as Sides,
     palette: palette ?? fallbackPalette,
     migrated: colourSides.length !== 0,
+    dimensions,
+  };
+}
+
+/** The default extent of an axis no side in the file measures. */
+const UNMEASURED = 32;
+
+/**
+ * The box the sides describe, in voxels.
+ *
+ * Each side measures two of the three axes, and each axis is measured by four
+ * of the six sides, so a file that holds more than one side says the same thing
+ * about an axis more than once. Disagreeing about it means the six drawings are
+ * not faces of one box and nothing further can be believed about them, so it is
+ * refused here rather than solved into a shape nobody drew.
+ *
+ * @throws When two sides give an axis different extents.
+ */
+function readDimensions(sides: Partial<Sides>): Dimensions3D {
+  const measured: Partial<Record<DimensionKind, { by: SideKind; of: number }>> =
+    {};
+
+  for (const side of sideKinds) {
+    const bitmap = sides[side];
+
+    if (bitmap === undefined) {
+      continue;
+    }
+
+    const [across, down] = sideAxes[side];
+
+    for (const [axis, extent] of [
+      [across, bitmap.width],
+      [down, bitmap.height],
+    ] as const) {
+      const already = measured[axis];
+
+      if (already === undefined) {
+        measured[axis] = { by: side, of: extent };
+        continue;
+      }
+
+      if (already.of !== extent) {
+        throw new Error(
+          `${side}.png makes the model ${extent} ${axis === "height" ? "high" : axis === "width" ? "wide" : "deep"}, ` +
+            `and ${already.by}.png makes it ${already.of} — the six sides are not faces of one box`,
+        );
+      }
+    }
+  }
+
+  return {
+    width: measured.width?.of ?? UNMEASURED,
+    height: measured.height?.of ?? UNMEASURED,
+    depth: measured.depth?.of ?? UNMEASURED,
   };
 }
 

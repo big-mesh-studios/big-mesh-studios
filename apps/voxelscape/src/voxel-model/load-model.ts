@@ -4,8 +4,7 @@
 // a model file is by construction rather than by two implementations of the
 // same format staying in step.
 //
-// What is left here is what drawing a model needs and a drawing program has no
-// reason to hand back: the model's extent in voxels.
+// What is left here is the shape the rest of this world wants a model in.
 import { load } from "@big-mesh-studios/stacker/format";
 import type { Sides } from "@big-mesh-studios/stacker/renderer";
 import type { Dimensions3D, RGBA } from "@big-mesh-studios/maths";
@@ -23,18 +22,6 @@ export type LoadedModel = {
  * wrote.
  */
 export async function loadModel(file: Blob): Promise<LoadedModel> {
-  const { sides, palette } = await load(file);
-  return {
-    sides,
-    palette,
-    // The six sides are the faces of one box, so between them they give all
-    // three of its extents: the front is drawn width across and height down,
-    // and the left is drawn depth across. A model is not required to be a cube
-    // and its sides are not required to be square.
-    dimensions: {
-      width: sides.front.width,
-      height: sides.front.height,
-      depth: sides.left.width,
-    },
-  };
+  const { sides, palette, dimensions } = await load(file);
+  return { sides, palette, dimensions };
 }

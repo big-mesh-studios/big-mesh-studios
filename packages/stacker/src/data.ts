@@ -2,7 +2,7 @@
 // bitmap each of those sides carries. The shapes those bitmaps are made of —
 // `Bitmap`, `RGBA`, `Vector3D`, `Dimensions3D` — come from
 // `@big-mesh-studios/maths`, which knows nothing about models.
-import type { Bitmap } from "@big-mesh-studios/maths";
+import type { Bitmap, Dimensions3D } from "@big-mesh-studios/maths";
 
 /**
  * Every side of the box a model is drawn on. Declared as an object rather than
@@ -27,6 +27,25 @@ export const sideKinds = Object.keys(sideKindSet) as SideKind[];
 export type Sides = {
   [k in SideKind]: Bitmap;
 };
+
+/** One of the model's three axes, named as its extent names it. */
+export type DimensionKind = keyof Dimensions3D;
+
+/**
+ * The two model axes each side is drawn across and down. A side faces one axis
+ * and spans the other two, which is what lets six flat drawings describe one
+ * box: the front is drawn width across and height down, the left depth across
+ * and height down, the top width across and depth down. Between them the sides
+ * carry all three extents, and every extent is carried by four of them.
+ */
+export const sideAxes = {
+  front: ["width", "height"],
+  back: ["width", "height"],
+  left: ["depth", "height"],
+  right: ["depth", "height"],
+  top: ["width", "depth"],
+  bottom: ["width", "depth"],
+} as const satisfies Record<SideKind, readonly [DimensionKind, DimensionKind]>;
 
 /** One of the model's three axes, named as the vectors that address it name it. */
 export type Axis = "x" | "y" | "z";
