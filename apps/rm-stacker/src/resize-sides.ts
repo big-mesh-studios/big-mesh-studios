@@ -26,13 +26,18 @@ export interface ResizeOptions {
 export const resizeSides = ({ from, to }: ResizeOptions): Sides => {
   const computeOffset = ({ dimension, flipped }: SideAxis) => {
     const growsAtImageStart = (to.alignment[dimension] === "min") !== flipped;
-    return growsAtImageStart ? to.dimensions[dimension] - from.dimensions[dimension] : 0;
+    return growsAtImageStart
+      ? to.dimensions[dimension] - from.dimensions[dimension]
+      : 0;
   };
 
   const resizeSide = (kind: SideKind): Bitmap => {
     const axes = SIDE_AXES[kind];
     const source = from.sides[kind];
-    const target = Bitmap.create(to.dimensions[axes.x.dimension], to.dimensions[axes.y.dimension]);
+    const target = Bitmap.create(
+      to.dimensions[axes.x.dimension],
+      to.dimensions[axes.y.dimension],
+    );
 
     const offset = { x: computeOffset(axes.x), y: computeOffset(axes.y) };
 

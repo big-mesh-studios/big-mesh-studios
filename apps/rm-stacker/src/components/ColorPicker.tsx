@@ -4,7 +4,9 @@ import { pointer } from "../utils/utils";
 import styles from "./ColorPicker.module.css";
 
 const DEFAULT_HSVA: HSVA = { h: 0, s: 1, v: 1, a: 1 };
-const CHANNELS = ["r", "g", "b", "a"] as const satisfies ReadonlyArray<keyof RGBA>;
+const CHANNELS = ["r", "g", "b", "a"] as const satisfies ReadonlyArray<
+  keyof RGBA
+>;
 const CHANNEL_LABELS: Record<keyof RGBA, string> = {
   r: "Red",
   g: "Green",
@@ -35,7 +37,7 @@ export function ColourPicker(props: {
   // `HSVA.fromRGBA` needs for hue and saturation, which have no definition at
   // greys and black.
   const [hsva, setHsva] = createSignal<HSVA>(
-    previous => {
+    (previous) => {
       const colour = props.colour;
       if (colour == undefined) {
         return previous ?? DEFAULT_HSVA;
@@ -53,9 +55,12 @@ export function ColourPicker(props: {
   const colour = createMemo(() => HSVA.toRGBA(hsva()));
 
   // Only one channel is ever mid-edit, so a single draft covers all four inputs.
-  const [draft, setDraft] = createSignal<{ channel: keyof RGBA; text: string }>();
+  const [draft, setDraft] = createSignal<{
+    channel: keyof RGBA;
+    text: string;
+  }>();
 
-  createEffect(colour, colour => {
+  createEffect(colour, (colour) => {
     if (props.colour && RGBA.equals(colour, props.colour)) {
       return;
     }
@@ -69,7 +74,9 @@ export function ColourPicker(props: {
       return;
     }
     const clamped = Math.max(0, Math.min(255, Math.round(value)));
-    setHsva(previous => HSVA.fromRGBA({ ...colour(), [channel]: clamped }, previous));
+    setHsva((previous) =>
+      HSVA.fromRGBA({ ...colour(), [channel]: clamped }, previous),
+    );
   }
 
   async function drag(
@@ -79,7 +86,7 @@ export function ColourPicker(props: {
     const element = event.currentTarget;
     setDraft(undefined);
     await pointer(event, ({ event }) => {
-      setHsva(previous => update(fractionWithin(element, event), previous));
+      setHsva((previous) => update(fractionWithin(element, event), previous));
     });
   }
 
@@ -88,32 +95,49 @@ export function ColourPicker(props: {
       <div
         class={styles.hueSaturation}
         style={{ "--darken": 1 - hsva().v }}
-        onPointerDown={event =>
-          drag(event, ({ x, y }, previous) => ({ ...previous, h: x * 360, s: 1 - y }))
+        onPointerDown={(event) =>
+          drag(event, ({ x, y }, previous) => ({
+            ...previous,
+            h: x * 360,
+            s: 1 - y,
+          }))
         }
       >
         <div
           class={styles.chartHandle}
-          style={{ left: `${(hsva().h / 360) * 100}%`, top: `${(1 - hsva().s) * 100}%` }}
+          style={{
+            left: `${(hsva().h / 360) * 100}%`,
+            top: `${(1 - hsva().s) * 100}%`,
+          }}
         />
       </div>
       <div
         class={styles.brightness}
         style={{ "--full-value-colour": HSVA.toCSS({ ...hsva(), v: 1, a: 1 }) }}
-        onPointerDown={event => drag(event, ({ y }, previous) => ({ ...previous, v: 1 - y }))}
+        onPointerDown={(event) =>
+          drag(event, ({ y }, previous) => ({ ...previous, v: 1 - y }))
+        }
       >
-        <div class={styles.sliderHandle} style={{ bottom: `${hsva().v * 100}%` }} />
+        <div
+          class={styles.sliderHandle}
+          style={{ bottom: `${hsva().v * 100}%` }}
+        />
       </div>
       <div
         class={styles.alpha}
         style={{ "--opaque-colour": HSVA.toCSS({ ...hsva(), a: 1 }) }}
-        onPointerDown={event => drag(event, ({ y }, previous) => ({ ...previous, a: 1 - y }))}
+        onPointerDown={(event) =>
+          drag(event, ({ y }, previous) => ({ ...previous, a: 1 - y }))
+        }
       >
-        <div class={styles.sliderHandle} style={{ bottom: `${hsva().a * 100}%` }} />
+        <div
+          class={styles.sliderHandle}
+          style={{ bottom: `${hsva().a * 100}%` }}
+        />
       </div>
       <div class={styles.fields}>
         <For each={CHANNELS}>
-          {channel => {
+          {(channel) => {
             const _draft = createMemo(() => {
               const value = draft();
               return value?.channel === channel ? value.text : undefined;
@@ -128,7 +152,9 @@ export function ColourPicker(props: {
                   id={`colourpicker-${channel}`}
                   size="4"
                   value={_draft() ?? colour()[channel]}
-                  onInput={event => onChannelInput(channel, event.currentTarget.value)}
+                  onInput={(event) =>
+                    onChannelInput(channel, event.currentTarget.value)
+                  }
                   onBlur={() => setDraft(undefined)}
                 />
               </>

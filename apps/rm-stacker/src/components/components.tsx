@@ -77,7 +77,9 @@ export function Icon(props: IconProps) {
 /**********************************************************************************/
 
 export const colourTabStyle = styles.colourTab;
-export function ColourTab(props: TabProps & { colour: RGBA; style: JSX.CSSProperties }) {
+export function ColourTab(
+  props: TabProps & { colour: RGBA; style: JSX.CSSProperties },
+) {
   return (
     <Tab {...props} class={[styles.colour, props.class]}>
       <Colour colour={props.colour} />
@@ -189,13 +191,13 @@ export function createDialog() {
       return (
         <Portal>
           <dialog
-            ref={_element => (element = _element)}
+            ref={(_element) => (element = _element)}
             class={props.class}
             onClose={() => setIsOpen(false)}
             // The backdrop is part of the dialogue itself, so a click that
             // lands on the element rather than on anything inside it is a
             // click outside — which closes, as it does for a popover.
-            onClick={event => {
+            onClick={(event) => {
               if (event.target === element) {
                 element.close();
               }
@@ -246,11 +248,11 @@ export function createPopover() {
               "position-anchor": `--${id}`,
               ...props.style,
             }}
-            ref={combineRefs(props.ref, _element => (element = _element))}
+            ref={combineRefs(props.ref, (_element) => (element = _element))}
             id={id}
             popover={props.popover ?? "auto"}
             class={[props.class, styles.popover]}
-            onToggle={event => {
+            onToggle={(event) => {
               setIsOpen(event.newState === "open");
             }}
           >

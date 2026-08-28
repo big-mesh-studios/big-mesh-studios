@@ -17,13 +17,21 @@ import { ProfileModal } from "./profile/ProfileModal";
 import { ModeKind } from "./types";
 
 export function Hud() {
-  const { undoRedoManager, selectedColour, mode, setMode, preview, requestAutoSave, atproto } =
-    useContext(StackerContext);
+  const {
+    undoRedoManager,
+    selectedColour,
+    mode,
+    setMode,
+    preview,
+    requestAutoSave,
+    atproto,
+  } = useContext(StackerContext);
 
   const PalettePopover = createPopover();
   const ProfileDialog = createDialog();
 
-  const isModeSelected = (_mode: ModeKind) => !ProfileDialog.isOpen() && _mode === mode();
+  const isModeSelected = (_mode: ModeKind) =>
+    !ProfileDialog.isOpen() && _mode === mode();
 
   return (
     <>
@@ -38,7 +46,10 @@ export function Hud() {
             />
           </Bar>
           <ProfileDialog.Dialog class={styles.profileDialog}>
-            <ProfileModal open={ProfileDialog.isOpen()} onClose={() => ProfileDialog.close()} />
+            <ProfileModal
+              open={ProfileDialog.isOpen()}
+              onClose={() => ProfileDialog.close()}
+            />
           </ProfileDialog.Dialog>
           <div class={styles.bottom}>
             <Bar>
@@ -110,7 +121,7 @@ export function Hud() {
           <Bar>
             <IconTab
               onClick={() => {
-                preview.setAutorotate(rotate => !rotate);
+                preview.setAutorotate((rotate) => !rotate);
                 flush();
                 requestAutoSave();
               }}
@@ -119,7 +130,7 @@ export function Hud() {
             />
             <IconTab
               onClick={() => {
-                preview.setUnlit(unlit => !unlit);
+                preview.setUnlit((unlit) => !unlit);
                 flush();
                 requestAutoSave();
               }}

@@ -16,7 +16,7 @@ const App: Component = () => {
 
   return (
     <StackerContext value={stacker}>
-      <Router>{props => props.children}</Router>
+      <Router>{(props) => props.children}</Router>
     </StackerContext>
   );
 };

@@ -28,7 +28,13 @@ function encodePalette(palette: RGBA[]): Uint8Array {
     data[offset + 3] = a;
   });
 
-  return encode({ width: palette.length, height: 1, data, channels: 4, depth: 8 });
+  return encode({
+    width: palette.length,
+    height: 1,
+    data,
+    channels: 4,
+    depth: 8,
+  });
 }
 
 function decodePalette(data: Uint8Array): RGBA[] {
@@ -64,7 +70,8 @@ interface DecodedImage {
   data: ArrayLike<number>;
 }
 
-const packColour = (r: number, g: number, b: number) => (r << 16) | (g << 8) | b;
+const packColour = (r: number, g: number, b: number) =>
+  (r << 16) | (g << 8) | b;
 
 /** Every colour a model saved as colours was drawn in, packed and deduplicated. */
 function collectColours(images: DecodedImage[]): Set<number> {
@@ -76,7 +83,13 @@ function collectColours(images: DecodedImage[]): Set<number> {
         continue;
       }
 
-      colours.add(packColour(image.data[source], image.data[source + 1], image.data[source + 2]));
+      colours.add(
+        packColour(
+          image.data[source],
+          image.data[source + 1],
+          image.data[source + 2],
+        ),
+      );
     }
   }
 
@@ -116,7 +129,7 @@ function buildPalette(colours: Set<number>, fallbackPalette: RGBA[]) {
     }
   }
 
-  const unplaced = [...colours].filter(colour => !indexOf.has(colour));
+  const unplaced = [...colours].filter((colour) => !indexOf.has(colour));
   const dropped: number[] = [];
 
   for (const colour of unplaced) {
@@ -150,7 +163,11 @@ function toBitmap(image: DecodedImage, indexOf: Map<number, number>): Bitmap {
     }
 
     const index = indexOf.get(
-      packColour(image.data[source], image.data[source + 1], image.data[source + 2]),
+      packColour(
+        image.data[source],
+        image.data[source + 1],
+        image.data[source + 2],
+      ),
     );
 
     // A colour with no slot leaves its cell empty, which `create` already made it.
@@ -187,7 +204,9 @@ export async function load(
     const name = entry.name.toLowerCase();
 
     if (name === PALETTE_FILE) {
-      palette = decodePalette(new Uint8Array(await (await entry.async("blob")).arrayBuffer()));
+      palette = decodePalette(
+        new Uint8Array(await (await entry.async("blob")).arrayBuffer()),
+      );
       continue;
     }
 
@@ -212,7 +231,9 @@ export async function load(
     // takes one byte at a time. Anything else would be read as though it were
     // eight and come back in colours nobody drew, so say so instead.
     if (decoded.depth !== 8) {
-      throw new Error(`${side}.png holds ${decoded.depth} bits per sample, and only eight is read`);
+      throw new Error(
+        `${side}.png holds ${decoded.depth} bits per sample, and only eight is read`,
+      );
     }
 
     // Four channels means a model saved before sides held indices.
@@ -231,8 +252,11 @@ export async function load(
   const colourSides = keysOf(asColours);
 
   if (colourSides.length !== 0) {
-    const images = colourSides.map(side => asColours[side]!);
-    const built = buildPalette(collectColours(images), palette ?? fallbackPalette);
+    const images = colourSides.map((side) => asColours[side]!);
+    const built = buildPalette(
+      collectColours(images),
+      palette ?? fallbackPalette,
+    );
 
     if (built.dropped.length !== 0) {
       console.error(
@@ -267,7 +291,10 @@ export async function save(sides: Sides, palette: RGBA[]): Promise<Blob> {
 
   for (const side of keysOf(sideKindSet)) {
     const { width, height, data } = sides[side];
-    zip.file(`${side}.png`, encode({ width, height, data, channels: 1, depth: 8 }));
+    zip.file(
+      `${side}.png`,
+      encode({ width, height, data, channels: 1, depth: 8 }),
+    );
   }
 
   zip.file(PALETTE_FILE, encodePalette(palette));
@@ -391,8 +418,11 @@ function openDB(): Promise<IDBDatabase> {
 
 function loadBlobFromDB(key: IDBValidKey): Promise<Blob | null> {
   return new Promise((resolve, reject) => {
-    openDB().then(db => {
-      const transaction: IDBTransaction = db.transaction(STORE_NAME, "readonly");
+    openDB().then((db) => {
+      const transaction: IDBTransaction = db.transaction(
+        STORE_NAME,
+        "readonly",
+      );
       const store: IDBObjectStore = transaction.objectStore(STORE_NAME);
       const getRequest: IDBRequest<unknown> = store.get(key);
       getRequest.onsuccess = () => {
@@ -404,7 +434,9 @@ function loadBlobFromDB(key: IDBValidKey): Promise<Blob | null> {
         }
       };
       getRequest.onerror = () => {
-        reject(getRequest.error || new Error("Error retrieving data from store."));
+        reject(
+          getRequest.error || new Error("Error retrieving data from store."),
+        );
       };
     }, reject);
   });
@@ -412,7 +444,7 @@ function loadBlobFromDB(key: IDBValidKey): Promise<Blob | null> {
 
 function saveBlobToDB(key: IDBValidKey, blob: Blob): Promise<void> {
   return new Promise((resolve, reject) => {
-    openDB().then(db => {
+    openDB().then((db) => {
       const transaction = db.transaction(STORE_NAME, "readwrite");
       const store = transaction.objectStore(STORE_NAME);
       const putRequest = store.put(blob, key);
@@ -430,11 +462,12 @@ function saveBlobToDB(key: IDBValidKey, blob: Blob): Promise<void> {
  */
 export function saveValueToDB(key: string, value: unknown): Promise<void> {
   return new Promise((resolve, reject) => {
-    openDB().then(db => {
+    openDB().then((db) => {
       const transaction = db.transaction(STORE_NAME, "readwrite");
       const putRequest = transaction.objectStore(STORE_NAME).put(value, key);
       putRequest.onsuccess = () => resolve();
-      putRequest.onerror = () => reject(putRequest.error || new Error("Failed to write value."));
+      putRequest.onerror = () =>
+        reject(putRequest.error || new Error("Failed to write value."));
     }, reject);
   });
 }
@@ -442,19 +475,24 @@ export function saveValueToDB(key: string, value: unknown): Promise<void> {
 /** Reads back what `saveValueToDB` kept, or null when nothing is under `key`. */
 export function loadValueFromDB<T>(key: string): Promise<T | null> {
   return new Promise((resolve, reject) => {
-    openDB().then(db => {
+    openDB().then((db) => {
       const transaction = db.transaction(STORE_NAME, "readonly");
       const getRequest = transaction.objectStore(STORE_NAME).get(key);
-      getRequest.onsuccess = () => resolve((getRequest.result as T | undefined) ?? null);
-      getRequest.onerror = () => reject(getRequest.error || new Error("Failed to read value."));
+      getRequest.onsuccess = () =>
+        resolve((getRequest.result as T | undefined) ?? null);
+      getRequest.onerror = () =>
+        reject(getRequest.error || new Error("Failed to read value."));
     }, reject);
   });
 }
 
 function loadTextFromDB(key: IDBValidKey): Promise<string | null> {
   return new Promise((resolve, reject) => {
-    openDB().then(db => {
-      const transaction: IDBTransaction = db.transaction(STORE_NAME, "readonly");
+    openDB().then((db) => {
+      const transaction: IDBTransaction = db.transaction(
+        STORE_NAME,
+        "readonly",
+      );
       const store: IDBObjectStore = transaction.objectStore(STORE_NAME);
       const getRequest: IDBRequest<unknown> = store.get(key);
       getRequest.onsuccess = () => {
@@ -465,19 +503,21 @@ function loadTextFromDB(key: IDBValidKey): Promise<string | null> {
           resolve(null);
         }
       };
-      getRequest.onerror = () => reject(getRequest.error || new Error("Failed to read text."));
+      getRequest.onerror = () =>
+        reject(getRequest.error || new Error("Failed to read text."));
     }, reject);
   });
 }
 
 function saveTextToDB(key: IDBValidKey, text: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    openDB().then(db => {
+    openDB().then((db) => {
       const transaction = db.transaction(STORE_NAME, "readwrite");
       const store = transaction.objectStore(STORE_NAME);
       const putRequest = store.put(text, key);
       putRequest.onsuccess = () => resolve();
-      putRequest.onerror = () => reject(putRequest.error || new Error("Failed to write text."));
+      putRequest.onerror = () =>
+        reject(putRequest.error || new Error("Failed to write text."));
     }, reject);
   });
 }

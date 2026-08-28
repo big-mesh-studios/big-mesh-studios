@@ -78,13 +78,20 @@ function isLoopbackEnvironment(): boolean {
  * client and server in agreement.
  */
 async function loadHostedConfig(metadataUrl: string): Promise<ClientConfig> {
-  const response = await fetch(metadataUrl, { headers: { accept: "application/json" } });
+  const response = await fetch(metadataUrl, {
+    headers: { accept: "application/json" },
+  });
 
   if (!response.ok) {
-    throw new Error(`could not load client metadata from ${metadataUrl} (${response.status})`);
+    throw new Error(
+      `could not load client metadata from ${metadataUrl} (${response.status})`,
+    );
   }
 
-  const metadata = (await response.json()) as { redirect_uris?: string[]; scope?: string };
+  const metadata = (await response.json()) as {
+    redirect_uris?: string[];
+    scope?: string;
+  };
   const redirectUri = metadata.redirect_uris?.[0];
 
   if (redirectUri === undefined) {
@@ -98,7 +105,9 @@ async function loadHostedConfig(metadataUrl: string): Promise<ClientConfig> {
   };
 }
 
-async function resolveClientConfig(clientId: string | undefined): Promise<ClientConfig> {
+async function resolveClientConfig(
+  clientId: string | undefined,
+): Promise<ClientConfig> {
   if (clientId !== undefined) {
     return loadHostedConfig(clientId);
   }
@@ -110,7 +119,10 @@ async function resolveClientConfig(clientId: string | undefined): Promise<Client
   // relative to the current address would look for it beside whichever page
   // happened to be open.
   return loadHostedConfig(
-    new URL("client-metadata.json", new URL(import.meta.env.BASE_URL, window.location.origin)).href,
+    new URL(
+      "client-metadata.json",
+      new URL(import.meta.env.BASE_URL, window.location.origin),
+    ).href,
   );
 }
 
@@ -243,12 +255,18 @@ export async function completeSignIn(): Promise<Did> {
     await configureOAuthClient();
     const params = new URLSearchParams(window.location.hash.slice(1));
     // Scrub the callback parameters so a reload cannot replay them.
-    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + window.location.search,
+    );
     const { session } = await finalizeAuthorization(params);
     publishSignIn({ did: session.info.sub });
     return session.info.sub;
   } catch (error) {
-    publishSignIn({ error: error instanceof Error ? error.message : String(error) });
+    publishSignIn({
+      error: error instanceof Error ? error.message : String(error),
+    });
     throw error;
   }
 }

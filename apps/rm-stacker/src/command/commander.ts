@@ -40,7 +40,9 @@ export function createCommander({
           let reverseCommands = Array(commands.length);
 
           for (let i = 0; i < commands.length; ++i) {
-            reverseCommands[reverseCommands.length - 1 - i] = await doCommand(commands[i]);
+            reverseCommands[reverseCommands.length - 1 - i] = await doCommand(
+              commands[i],
+            );
           }
 
           return Command.sequence(reverseCommands);

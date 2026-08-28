@@ -28,7 +28,9 @@ export const OAuthCallbackPage: Component = () => {
         CLOSE_GRACE_MS,
       );
     } catch (error) {
-      setStatus(`sign-in failed: ${error instanceof Error ? error.message : String(error)}`);
+      setStatus(
+        `sign-in failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   })();
 

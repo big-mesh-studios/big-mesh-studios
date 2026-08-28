@@ -45,7 +45,8 @@ const MAX_RADIUS = 20;
 // space before it is uploaded rather than being sent as it stands.
 
 const TURNTABLE_SECONDS_PER_REVOLUTION = 20;
-const TURNTABLE_RADIANS_PER_SECOND = -(2 * Math.PI) / TURNTABLE_SECONDS_PER_REVOLUTION;
+const TURNTABLE_RADIANS_PER_SECOND =
+  -(2 * Math.PI) / TURNTABLE_SECONDS_PER_REVOLUTION;
 
 // The picked voxel's outline: a crisp white wireframe, a couple of device
 // pixels wide. The material's fragDepth bias (see voxel-preview-material) keeps
@@ -68,9 +69,13 @@ const VoxelPreviewView: Component = () => {
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [previewScene, setPreviewScene] = createSignal<PreviewScene>();
   const [glError, setGlError] = createSignal<string | undefined>();
-  const [pickedVoxel, setPickedVoxel] = createSignal<[number, number, number] | undefined>();
+  const [pickedVoxel, setPickedVoxel] = createSignal<
+    [number, number, number] | undefined
+  >();
 
-  const normalizedDimensions = createMemo(() => Dimensions3D.normalize(dimensions()));
+  const normalizedDimensions = createMemo(() =>
+    Dimensions3D.normalize(dimensions()),
+  );
 
   let yaw = Math.PI / 4;
   let pitch = Math.PI / 6;
@@ -88,7 +93,7 @@ const VoxelPreviewView: Component = () => {
   let spinOffset = 0;
   let spin = 0;
 
-  createEffect(preview.autorotate, autoRotate => {
+  createEffect(preview.autorotate, (autoRotate) => {
     if (autoRotate) {
       timeOffset = performance.now();
     } else {
@@ -99,7 +104,10 @@ const VoxelPreviewView: Component = () => {
   const getWorldToModel = () => {
     Matrix3x3.rotationX(-pitch, pitchMatrix);
     if (untrack(preview.autorotate)) {
-      spin = ((performance.now() - timeOffset) / 1000) * TURNTABLE_RADIANS_PER_SECOND + spinOffset;
+      spin =
+        ((performance.now() - timeOffset) / 1000) *
+          TURNTABLE_RADIANS_PER_SECOND +
+        spinOffset;
     }
     Matrix3x3.rotationY(-(yaw + spin), yawMatrix);
     return Matrix3x3.multiply(yawMatrix, pitchMatrix, worldToModel);
@@ -147,7 +155,11 @@ const VoxelPreviewView: Component = () => {
           normalizedDimensions().height,
           normalizedDimensions().depth,
         ],
-        [shaders.uVoxelCount]: [_dimensions.width, _dimensions.height, _dimensions.depth],
+        [shaders.uVoxelCount]: [
+          _dimensions.width,
+          _dimensions.height,
+          _dimensions.depth,
+        ],
         [shaders.uLightDir]: [
           modelSpaceLightDirection.x,
           modelSpaceLightDirection.y,
@@ -167,7 +179,11 @@ const VoxelPreviewView: Component = () => {
           height: _dimensions.height,
           depth: _dimensions.depth,
         },
-        [shaders.uPalette]: { data: paletteData, width: _palette.length, height: 1 },
+        [shaders.uPalette]: {
+          data: paletteData,
+          width: _palette.length,
+          height: 1,
+        },
       },
     });
 
@@ -193,7 +209,9 @@ const VoxelPreviewView: Component = () => {
     activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     // Keep receiving moves for this pointer even when the finger leaves the
     // canvas, so a drag (or a pinch) can run past its edge.
-    (event.currentTarget as HTMLCanvasElement | null)?.setPointerCapture(event.pointerId);
+    (event.currentTarget as HTMLCanvasElement | null)?.setPointerCapture(
+      event.pointerId,
+    );
     if (first) {
       // Pick immediately, so a tap (which produces no pointermove) still
       // selects the voxel under the finger.
@@ -220,7 +238,10 @@ const VoxelPreviewView: Component = () => {
       if (pinchDistance > 0) {
         // Spreading the fingers (distance grows) zooms in, i.e. pulls the
         // camera closer, so the radius scales by the inverse ratio.
-        radius = Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, radius * (pinchDistance / distance)));
+        radius = Math.min(
+          MAX_RADIUS,
+          Math.max(MIN_RADIUS, radius * (pinchDistance / distance)),
+        );
       }
       pinchDistance = distance;
       return;
@@ -230,7 +251,10 @@ const VoxelPreviewView: Component = () => {
     // where the model turns beneath the pointer.
     pickAt(event.clientX, event.clientY);
     yaw += delta.x * RADIANS_PER_PIXEL;
-    pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch + delta.y * RADIANS_PER_PIXEL));
+    pitch = Math.max(
+      -PITCH_LIMIT,
+      Math.min(PITCH_LIMIT, pitch + delta.y * RADIANS_PER_PIXEL),
+    );
   };
 
   const handlePointerEnd = (event: PointerEvent) => {
@@ -250,7 +274,11 @@ const VoxelPreviewView: Component = () => {
     // which is the volume padded by one voxel on each side. Rasterizing it
     // limits the fragment shader to the pixels that could land on a voxel.
     const size = boxSize(_dimensions);
-    _previewScene.mesh.geometry = new BoxGeometry(size.width, size.height, size.depth);
+    _previewScene.mesh.geometry = new BoxGeometry(
+      size.width,
+      size.height,
+      size.depth,
+    );
   });
 
   createTrackedEffect(() => {
@@ -338,14 +366,22 @@ const VoxelPreviewView: Component = () => {
     Matrix3x3.transform(worldToModel, LIGHT_DIR, modelSpaceLightDirection);
 
     material.dimensions = [n.width, n.height, n.depth];
-    material.voxelCount = [_dimensions.width, _dimensions.height, _dimensions.depth];
+    material.voxelCount = [
+      _dimensions.width,
+      _dimensions.height,
+      _dimensions.depth,
+    ];
     material.lightDir = [
       modelSpaceLightDirection.x,
       modelSpaceLightDirection.y,
       modelSpaceLightDirection.z,
     ];
     material.lightColour = [LIGHT_COLOUR[0], LIGHT_COLOUR[1], LIGHT_COLOUR[2]];
-    material.ambientColour = [AMBIENT_COLOUR[0], AMBIENT_COLOUR[1], AMBIENT_COLOUR[2]];
+    material.ambientColour = [
+      AMBIENT_COLOUR[0],
+      AMBIENT_COLOUR[1],
+      AMBIENT_COLOUR[2],
+    ];
     material.unlit = untrack(preview.unlit);
 
     camera.position.set(0, 0, radius);
@@ -364,7 +400,10 @@ const VoxelPreviewView: Component = () => {
 
     const _previewScene = tryCatch(
       (): PreviewScene => {
-        const renderer = new WebGLRenderer(_canvas, { antialias: false, depth: true });
+        const renderer = new WebGLRenderer(_canvas, {
+          antialias: false,
+          depth: true,
+        });
         // Clear to transparent so the background painted behind the canvas
         // shows through the pixels no voxel ray lands on.
         renderer.setClearColor(0x000000, 0);
@@ -381,7 +420,10 @@ const VoxelPreviewView: Component = () => {
         // lets it inherit the model's rotation; it is hidden until a pick lands.
         const outline = new LineSegments2(
           new LineSegmentsGeometry(),
-          new Line2NodeMaterial({ color: OUTLINE_COLOUR, linewidth: OUTLINE_LINE_WIDTH }),
+          new Line2NodeMaterial({
+            color: OUTLINE_COLOUR,
+            linewidth: OUTLINE_LINE_WIDTH,
+          }),
         );
         outline.visible = false;
         mesh.add(outline);
@@ -395,7 +437,7 @@ const VoxelPreviewView: Component = () => {
           outline,
         };
       },
-      e => {
+      (e) => {
         setGlError(e instanceof Error ? e.message : String(e));
       },
     );
@@ -446,9 +488,12 @@ const VoxelPreviewView: Component = () => {
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerEnd}
             onPointerCancel={handlePointerEnd}
-            onWheel={event => {
+            onWheel={(event) => {
               const sign = Math.sign(event.deltaY);
-              radius = Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, radius * Math.pow(1.1, sign)));
+              radius = Math.min(
+                MAX_RADIUS,
+                Math.max(MIN_RADIUS, radius * Math.pow(1.1, sign)),
+              );
             }}
           />
           {pickedVoxel() !== undefined && (

@@ -84,7 +84,11 @@ export function createPanScaleControl({
       // Where the world sat under this finger when the gesture it is currently
       // part of began. A finger joining or leaving changes what the gesture
       // measures, so this is taken again whenever that happens.
-      let anchorWorldPosition = screenToWorld(initialScreenPosition, pan(), scale());
+      let anchorWorldPosition = screenToWorld(
+        initialScreenPosition,
+        pan(),
+        scale(),
+      );
       let anchoredPointerCount = activePointers.size;
       previousSpan = undefined;
 
@@ -122,7 +126,10 @@ export function createPanScaleControl({
         const span = measureSpan();
 
         if (previousSpan !== undefined && previousSpan.distance > 0) {
-          const newScale = Math.max(minScale, scale() * (span.distance / previousSpan.distance));
+          const newScale = Math.max(
+            minScale,
+            scale() * (span.distance / previousSpan.distance),
+          );
 
           // Whatever sat under the midpoint a frame ago should still sit under
           // the midpoint now, at the scale the pinch has just asked for.

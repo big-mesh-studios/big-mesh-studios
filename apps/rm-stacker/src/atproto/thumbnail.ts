@@ -46,7 +46,10 @@ const NEAREST = 0.6;
  * over the box they sit in. A model rarely fills its box, and framing the box
  * would leave the model a speck in the middle of a lot of nothing.
  */
-export function cameraDistanceFor(voxels: Uint8Array, dimensions: Dimensions3D): number {
+export function cameraDistanceFor(
+  voxels: Uint8Array,
+  dimensions: Dimensions3D,
+): number {
   const normalized = Dimensions3D.normalize(dimensions);
   const { width, height, depth } = dimensions;
   let furthest = 0;
@@ -60,9 +63,12 @@ export function cameraDistanceFor(voxels: Uint8Array, dimensions: Dimensions3D):
 
         // The far corner of the voxel rather than its middle, so the one at the
         // edge of the model is inside the picture and not half out of it.
-        const px = (Math.abs(x + 0.5 - width / 2) + 0.5) * (normalized.width / width);
-        const py = (Math.abs(y + 0.5 - height / 2) + 0.5) * (normalized.height / height);
-        const pz = (Math.abs(z + 0.5 - depth / 2) + 0.5) * (normalized.depth / depth);
+        const px =
+          (Math.abs(x + 0.5 - width / 2) + 0.5) * (normalized.width / width);
+        const py =
+          (Math.abs(y + 0.5 - height / 2) + 0.5) * (normalized.height / height);
+        const pz =
+          (Math.abs(z + 0.5 - depth / 2) + 0.5) * (normalized.depth / depth);
 
         furthest = Math.max(furthest, Math.hypot(px, py, pz));
       }
@@ -97,7 +103,11 @@ function paletteTexels(palette: RGBA[]): Uint8Array {
  * around everything. Giving those pixels the colour of what is beside them
  * means the blend has nothing dark to find.
  */
-function bleedColourOutwards(pixels: Uint8Array, width: number, height: number): void {
+function bleedColourOutwards(
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+): void {
   const source = pixels.slice();
 
   for (let y = 0; y < height; y++) {
@@ -138,7 +148,10 @@ function bleedColourOutwards(pixels: Uint8Array, width: number, height: number):
  * The picture of `sides` as the bytes of a png, drawn in `palette`, or
  * undefined where there is nothing to draw it with.
  */
-export function thumbnailFromSides(sides: Sides, palette: RGBA[]): Uint8Array | undefined {
+export function thumbnailFromSides(
+  sides: Sides,
+  palette: RGBA[],
+): Uint8Array | undefined {
   const dimensions: Dimensions3D = {
     width: sides.front.width,
     height: sides.front.height,
@@ -162,5 +175,11 @@ export function thumbnailFromSides(sides: Sides, palette: RGBA[]): Uint8Array | 
 
   bleedColourOutwards(pixels, SIZE, SIZE);
 
-  return encode({ width: SIZE, height: SIZE, data: pixels, channels: 4, depth: 8 });
+  return encode({
+    width: SIZE,
+    height: SIZE,
+    data: pixels,
+    channels: 4,
+    depth: 8,
+  });
 }

@@ -52,18 +52,44 @@ export class VoxelPreviewMaterial extends NodeMaterial {
   }
 
   protected setup(b: Builder, _scene: Scene): void {
-    this.voxelsUniform = b.sampler("uVoxels", "usampler3D", () => this.voxelTexture);
-    this.paletteUniform = b.sampler("uPalette", "sampler2D", () => this.paletteTexture);
-    this.dimensionsUniform = b.materialUniform("uDimensions", "vec3", () => this.dimensions);
-    this.voxelCountUniform = b.materialUniform("uVoxelCount", "vec3", () => this.voxelCount);
-    this.lightDirUniform = b.materialUniform("uLightDir", "vec3", () => this.lightDir);
-    this.lightColourUniform = b.materialUniform("uLightColour", "vec3", () => this.lightColour);
+    this.voxelsUniform = b.sampler(
+      "uVoxels",
+      "usampler3D",
+      () => this.voxelTexture,
+    );
+    this.paletteUniform = b.sampler(
+      "uPalette",
+      "sampler2D",
+      () => this.paletteTexture,
+    );
+    this.dimensionsUniform = b.materialUniform(
+      "uDimensions",
+      "vec3",
+      () => this.dimensions,
+    );
+    this.voxelCountUniform = b.materialUniform(
+      "uVoxelCount",
+      "vec3",
+      () => this.voxelCount,
+    );
+    this.lightDirUniform = b.materialUniform(
+      "uLightDir",
+      "vec3",
+      () => this.lightDir,
+    );
+    this.lightColourUniform = b.materialUniform(
+      "uLightColour",
+      "vec3",
+      () => this.lightColour,
+    );
     this.ambientColourUniform = b.materialUniform(
       "uAmbientColour",
       "vec3",
       () => this.ambientColour,
     );
-    this.unlitUniform = b.materialUniform("uUnlit", "bool", () => (this.unlit ? 1 : 0));
+    this.unlitUniform = b.materialUniform("uUnlit", "bool", () =>
+      this.unlit ? 1 : 0,
+    );
   }
 
   protected buildVertexBody(b: Builder): Node<"vec4"> {
@@ -71,7 +97,9 @@ export class VoxelPreviewMaterial extends NodeMaterial {
     // The vertex's model-space position, interpolated across the box, is the
     // point the ray from the camera hits the volume's bounding box.
     b.varying("vModelPos", "vec3").assign(position);
-    return b.projectionMatrix.mul(b.viewMatrix.mul(b.modelMatrix.mul(vec4(position, float(1)))));
+    return b.projectionMatrix.mul(
+      b.viewMatrix.mul(b.modelMatrix.mul(vec4(position, float(1)))),
+    );
   }
 
   protected buildFragmentBody(b: Builder): Node<"vec4"> {
@@ -79,7 +107,10 @@ export class VoxelPreviewMaterial extends NodeMaterial {
     // CPU voxel picker uses), so transforming the camera's world position by it
     // puts the camera in model space, where the volume lives.
     const rayOrigin = b.normalMatrix.mul(b.cameraPosition);
-    const rayDirection = b.varying("vModelPos", "vec3").sub(rayOrigin).normalize();
+    const rayDirection = b
+      .varying("vModelPos", "vec3")
+      .sub(rayOrigin)
+      .normalize();
     const { colour, hitPoint } = marchVolume({
       rayOrigin,
       rayDirection,
@@ -103,7 +134,13 @@ export class VoxelPreviewMaterial extends NodeMaterial {
       const clip = b.projectionMatrix.mul(
         b.viewMatrix.mul(b.modelMatrix.mul(vec4(hitPoint, float(1)))),
       );
-      fragDepth.assign(clip.z.div(clip.w).mul(float(0.5)).add(float(0.5)).add(float(DEPTH_BIAS)));
+      fragDepth.assign(
+        clip.z
+          .div(clip.w)
+          .mul(float(0.5))
+          .add(float(0.5))
+          .add(float(DEPTH_BIAS)),
+      );
     }).Else(() => {
       // A fragment that hits no voxel is transparent; push it to the far plane
       // so it never occludes the outline (the line's ribbon bleeds a pixel or

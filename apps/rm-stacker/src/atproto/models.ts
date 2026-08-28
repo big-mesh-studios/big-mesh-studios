@@ -82,7 +82,11 @@ function isDimensions(value: unknown): value is Dimensions3D {
     return false;
   }
   const { width, height, depth } = value as Record<string, unknown>;
-  return typeof width === "number" && typeof height === "number" && typeof depth === "number";
+  return (
+    typeof width === "number" &&
+    typeof height === "number" &&
+    typeof depth === "number"
+  );
 }
 
 function isBlob(value: unknown): value is LexBlob {

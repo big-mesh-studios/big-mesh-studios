@@ -2,7 +2,9 @@
   "client_id": "https://big-mesh-studios.github.io/big-mesh-studios/rm-stacker/client-metadata.json",
   "client_name": "rm-stacker",
   "client_uri": "https://big-mesh-studios.github.io/big-mesh-studios/rm-stacker/",
-  "redirect_uris": ["https://big-mesh-studios.github.io/big-mesh-studios/rm-stacker/"],
+  "redirect_uris": [
+    "https://big-mesh-studios.github.io/big-mesh-studios/rm-stacker/"
+  ],
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
   "scope": "atproto transition:generic",

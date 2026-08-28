@@ -12,7 +12,9 @@ import { Dimensions3D, Vector3D } from "./maths";
  * differently lit in a listing than on the canvas would look like a different
  * model.
  */
-export const LIGHT_DIR = Object.freeze(Vector3D.normalize(Vector3D.create(0.4, 0.7, 0.8)));
+export const LIGHT_DIR = Object.freeze(
+  Vector3D.normalize(Vector3D.create(0.4, 0.7, 0.8)),
+);
 export const LIGHT_COLOUR = Object.freeze([1.0, 0.97, 0.9]);
 export const AMBIENT_COLOUR = Object.freeze([0.35, 0.35, 0.4]);
 

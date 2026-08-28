@@ -3,7 +3,12 @@ import { voxelPicker } from "./voxel-picker";
 import shaders from "./shaders";
 import { voxelCellEdges } from "./voxel-preview-scene";
 
-const makeSolidTexture = (width: number, height: number, depth: number, solid: number[][]) => {
+const makeSolidTexture = (
+  width: number,
+  height: number,
+  depth: number,
+  solid: number[][],
+) => {
   const data = new Uint8Array(width * height * depth * 4);
   for (const [x, y, z] of solid) {
     const o = (z * width * height + y * width + x) * 4;

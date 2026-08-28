@@ -53,8 +53,12 @@ export class UndoRedoManager {
     // the last one pushed, which is the end of the stack.
     this._hasUndo = createMemo(() => this._undoStack[0]().length !== 0);
     this._hasRedo = createMemo(() => this._redoStack[0]().length !== 0);
-    this._undoDescription = createMemo(() => this._undoStack[0]().at(-1)?.description);
-    this._redoDescription = createMemo(() => this._redoStack[0]().at(-1)?.description);
+    this._undoDescription = createMemo(
+      () => this._undoStack[0]().at(-1)?.description,
+    );
+    this._redoDescription = createMemo(
+      () => this._redoStack[0]().at(-1)?.description,
+    );
   }
 
   clear() {
@@ -67,11 +71,11 @@ export class UndoRedoManager {
   }
 
   pushUndo(undo: CommandEntry) {
-    this._undoStack[1](stack => [...stack, undo]);
+    this._undoStack[1]((stack) => [...stack, undo]);
   }
 
   pushRedo(redo: CommandEntry) {
-    this._redoStack[1](stack => [...stack, redo]);
+    this._redoStack[1]((stack) => [...stack, redo]);
   }
 
   undo() {
@@ -85,7 +89,7 @@ export class UndoRedoManager {
     const reverseCommand = this._performCommand(entry.command);
 
     this._undoStack[1](stack.slice(0, -1));
-    this._redoStack[1](redoStack => [
+    this._redoStack[1]((redoStack) => [
       ...redoStack,
       { command: reverseCommand, description: entry.description },
     ]);
@@ -102,7 +106,7 @@ export class UndoRedoManager {
     const reverseCommand = this._performCommand(entry.command);
 
     this._redoStack[1](stack.slice(0, -1));
-    this._undoStack[1](undoStack => [
+    this._undoStack[1]((undoStack) => [
       ...undoStack,
       { command: reverseCommand, description: entry.description },
     ]);

@@ -8,7 +8,12 @@
 // would mean asking the server that holds their account instead, which is a
 // question this cannot ask and does not need to.
 import { ok, type Client } from "@atcute/client";
-import type { ActorIdentifier, Blob as LexBlob, Nsid, RecordKey } from "@atcute/lexicons";
+import type {
+  ActorIdentifier,
+  Blob as LexBlob,
+  Nsid,
+  RecordKey,
+} from "@atcute/lexicons";
 
 /**
  * Collections and record keys are plain strings here rather than atcute's
@@ -26,7 +31,10 @@ export interface AtprotoRepoClient {
     collection: string;
     cursor?: string;
     limit?: number;
-  }): Promise<{ records: Array<{ uri: string; value: unknown }>; cursor?: string }>;
+  }): Promise<{
+    records: Array<{ uri: string; value: unknown }>;
+    cursor?: string;
+  }>;
   deleteRecord(params: { collection: string; rkey: string }): Promise<void>;
   /**
    * Stores `blob` on the account's own server and hands back the reference a
@@ -83,7 +91,9 @@ export function createAtprotoRepoClient(params: {
       );
     },
     async uploadBlob(blob) {
-      const response = await ok(client.post("com.atproto.repo.uploadBlob", { input: blob }));
+      const response = await ok(
+        client.post("com.atproto.repo.uploadBlob", { input: blob }),
+      );
       return response.blob;
     },
   };

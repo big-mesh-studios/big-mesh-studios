@@ -52,7 +52,11 @@ export namespace Command {
     return { type: "Sequence", commands };
   }
 
-  export function writePixel(side: SideKind, position: Vector2D, paletteIndex: number): Command {
+  export function writePixel(
+    side: SideKind,
+    position: Vector2D,
+    paletteIndex: number,
+  ): Command {
     return { type: "WritePixel", side, position, paletteIndex };
   }
 
@@ -65,7 +69,11 @@ export namespace Command {
     return { type: "FillRectangle", side, min, max, paletteIndex };
   }
 
-  export function fillPixel(side: SideKind, position: Vector2D, paletteIndex: number): Command {
+  export function fillPixel(
+    side: SideKind,
+    position: Vector2D,
+    paletteIndex: number,
+  ): Command {
     return { type: "FillPixel", side, position, paletteIndex };
   }
 
@@ -97,11 +105,23 @@ export namespace Command {
       }
       case "WritePixel": {
         let { side, position, paletteIndex } = command;
-        return { type: "WritePixel", side, x: position.x, y: position.y, paletteIndex };
+        return {
+          type: "WritePixel",
+          side,
+          x: position.x,
+          y: position.y,
+          paletteIndex,
+        };
       }
       case "FillPixel": {
         let { side, position, paletteIndex } = command;
-        return { type: "FillPixel", side, x: position.x, y: position.y, paletteIndex };
+        return {
+          type: "FillPixel",
+          side,
+          x: position.x,
+          y: position.y,
+          paletteIndex,
+        };
       }
       case "FillRectangle": {
         let { side, min, max, paletteIndex } = command;
@@ -146,7 +166,9 @@ export namespace Command {
       case "NoOperation":
         return Command.noOperation();
       case "Sequence":
-        return Command.sequence(command.commands.map((c: any) => Command.fromJSON(c)));
+        return Command.sequence(
+          command.commands.map((c: any) => Command.fromJSON(c)),
+        );
       case "WritePixel":
         return Command.writePixel(
           command.side,
@@ -176,7 +198,10 @@ export namespace Command {
         return { type: "LoadData", data: data4 };
       }
       case "Async": {
-        return { type: "Async", command: Promise.resolve(Command.fromJSON(command.command)) };
+        return {
+          type: "Async",
+          command: Promise.resolve(Command.fromJSON(command.command)),
+        };
       }
       default:
         return Command.noOperation();

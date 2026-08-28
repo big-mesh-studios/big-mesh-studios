@@ -140,7 +140,11 @@ const PixelEditorView: Component = () => {
 
         const lastImageSmoothingEnabled = ctx.imageSmoothingEnabled;
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(imageCanvasCacheData.canvas, sidePosition.x, sidePosition.y);
+        ctx.drawImage(
+          imageCanvasCacheData.canvas,
+          sidePosition.x,
+          sidePosition.y,
+        );
         ctx.imageSmoothingEnabled = lastImageSmoothingEnabled;
 
         ctx.strokeStyle = `rgba(255, 255, 255, 0.3)`;
@@ -175,8 +179,22 @@ const PixelEditorView: Component = () => {
         const guide = guides[sideKind];
 
         if (guide !== undefined) {
-          renderGuide({ ctx, side, guide, sidePosition, kind: "outer", scale: _scale });
-          renderGuide({ ctx, side, guide, sidePosition, kind: "inner", scale: _scale });
+          renderGuide({
+            ctx,
+            side,
+            guide,
+            sidePosition,
+            kind: "outer",
+            scale: _scale,
+          });
+          renderGuide({
+            ctx,
+            side,
+            guide,
+            sidePosition,
+            kind: "inner",
+            scale: _scale,
+          });
         }
 
         const sideColor = sideMaskToCSS(SIDE_MASK[sideKind]);
@@ -210,7 +228,10 @@ const PixelEditorView: Component = () => {
         ctx.fillText(
           sideKind,
           sidePosition.x + 0.5 * (side.width - metrics.width),
-          sidePosition.y + side.height + metrics.actualBoundingBoxAscent / 2 + LABEL_HEIGHT / 2,
+          sidePosition.y +
+            side.height +
+            metrics.actualBoundingBoxAscent / 2 +
+            LABEL_HEIGHT / 2,
         );
 
         if (mode() === "Idle") {
@@ -236,8 +257,14 @@ const PixelEditorView: Component = () => {
 
           fillPath(ctx, [
             { x: sidePosition.x + side.width, y: sidePosition.y + side.height },
-            { x: sidePosition.x + side.width - 1, y: sidePosition.y + side.height },
-            { x: sidePosition.x + side.width, y: sidePosition.y + side.height - 1 },
+            {
+              x: sidePosition.x + side.width - 1,
+              y: sidePosition.y + side.height,
+            },
+            {
+              x: sidePosition.x + side.width,
+              y: sidePosition.y + side.height - 1,
+            },
           ]);
         }
       }
@@ -274,7 +301,13 @@ const PixelEditorView: Component = () => {
   });
 
   createEffect(
-    () => [canvasSize(), controller.pan(), controller.scale(), controller.overlayDrawing(), mode()],
+    () => [
+      canvasSize(),
+      controller.pan(),
+      controller.scale(),
+      controller.overlayDrawing(),
+      mode(),
+    ],
     () => render(),
   );
 
@@ -289,7 +322,7 @@ const PixelEditorView: Component = () => {
         onPointerUp={controller.onPointerUp}
         onPointerCancel={controller.onPointerCancel}
         onPointerOut={controller.onPointerOut}
-        onTouchStart={event => event.preventDefault()}
+        onTouchStart={(event) => event.preventDefault()}
         onWheel={controller.onWheel}
       />
     </div>

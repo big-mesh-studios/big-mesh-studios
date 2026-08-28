@@ -6,7 +6,11 @@ import { boxSize, rotateMesh, voxelCellEdges } from "./voxel-preview-scene";
 // The world-to-model rotation the CPU voxel picker follows its ray along,
 // replicated from VoxelPreviewView.getWorldToModel: turn the world down to the
 // model by -pitch about x then -(yaw + spin) about y.
-const worldToModelOf = (yaw: number, pitch: number, spin: number): Matrix3x3 => {
+const worldToModelOf = (
+  yaw: number,
+  pitch: number,
+  spin: number,
+): Matrix3x3 => {
   const yawMatrix = Matrix3x3.rotationY(-(yaw + spin));
   const pitchMatrix = Matrix3x3.rotationX(-pitch);
   return Matrix3x3.multiply(yawMatrix, pitchMatrix);
@@ -47,16 +51,25 @@ describe("voxel preview scene", () => {
     ]) {
       const n = Dimensions3D.normalize(dimensions);
       const size = boxSize(dimensions);
-      expect(size.width).toBeCloseTo(2 * (n.width / 2 + n.width / dimensions.width));
-      expect(size.height).toBeCloseTo(2 * (n.height / 2 + n.height / dimensions.height));
-      expect(size.depth).toBeCloseTo(2 * (n.depth / 2 + n.depth / dimensions.depth));
+      expect(size.width).toBeCloseTo(
+        2 * (n.width / 2 + n.width / dimensions.width),
+      );
+      expect(size.height).toBeCloseTo(
+        2 * (n.height / 2 + n.height / dimensions.height),
+      );
+      expect(size.depth).toBeCloseTo(
+        2 * (n.depth / 2 + n.depth / dimensions.depth),
+      );
     }
   });
 
   it("traces the 12 edges of a voxel's cell", () => {
     // Cell 0 is anchored at -dimensions/2, so with a 10 voxel cube each cell
     // is 0.1 wide and voxel (0, 0, 0) sits in [-0.5, -0.4]^3.
-    const edges = voxelCellEdges({ width: 10, height: 10, depth: 10 }, [0, 0, 0]);
+    const edges = voxelCellEdges(
+      { width: 10, height: 10, depth: 10 },
+      [0, 0, 0],
+    );
     expect(edges.length).toBe(12 * 6);
     // Float32 storage makes the corners approximate, so compare with slack.
     for (let i = 0; i < edges.length; i++) {

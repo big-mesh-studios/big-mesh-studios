@@ -71,7 +71,9 @@ export function createAtproto() {
       return cached;
     }
 
-    const document = await didDocumentResolver.resolve(did as Did<"plc" | "web">);
+    const document = await didDocumentResolver.resolve(
+      did as Did<"plc" | "web">,
+    );
     documents.set(did, document);
 
     return document;
@@ -107,9 +109,11 @@ export function createAtproto() {
     const confirmed = await confirmHandle({
       did: agent.sub,
       document: await resolveDocument(agent.sub),
-      resolveDid: candidate => handleResolver.resolve(candidate as Handle),
+      resolveDid: (candidate) => handleResolver.resolve(candidate as Handle),
     });
-    setAccount(current => (current?.did === did ? { ...current, handle: confirmed } : current));
+    setAccount((current) =>
+      current?.did === did ? { ...current, handle: confirmed } : current,
+    );
   }
 
   function fail(cause: unknown): never {
@@ -154,12 +158,18 @@ export function createAtproto() {
 
       for (const { uri, value } of page.records) {
         if (isModelRecord(value)) {
-          models.push({ repo: did, rkey: uri.slice(uri.lastIndexOf("/") + 1), record: value });
+          models.push({
+            repo: did,
+            rkey: uri.slice(uri.lastIndexOf("/") + 1),
+            record: value,
+          });
         }
       }
     } while (cursor !== undefined);
 
-    return models.sort((a, b) => Date.parse(b.record.createdAt) - Date.parse(a.record.createdAt));
+    return models.sort(
+      (a, b) => Date.parse(b.record.createdAt) - Date.parse(a.record.createdAt),
+    );
   }
 
   return {
@@ -265,7 +275,11 @@ export function createAtproto() {
           params.thumbnail === undefined
             ? undefined
             : await client
-                .uploadBlob(new Blob([params.thumbnail as BlobPart], { type: THUMBNAIL_MIME_TYPE }))
+                .uploadBlob(
+                  new Blob([params.thumbnail as BlobPart], {
+                    type: THUMBNAIL_MIME_TYPE,
+                  }),
+                )
                 .catch(() => undefined);
         const record: ModelRecord = {
           $type: MODEL_COLLECTION,
@@ -314,10 +328,14 @@ export function createAtproto() {
     async open(model: PublishedModel): Promise<Blob> {
       try {
         const service = await resolveService(model.repo);
-        const response = await fetch(blobUrl(service, model.repo, modelBlobCid(model.record)));
+        const response = await fetch(
+          blobUrl(service, model.repo, modelBlobCid(model.record)),
+        );
 
         if (!response.ok) {
-          throw new Error(`the file for "${model.record.name}" could not be read from ${service}`);
+          throw new Error(
+            `the file for "${model.record.name}" could not be read from ${service}`,
+          );
         }
 
         const file = await response.blob();
@@ -332,7 +350,10 @@ export function createAtproto() {
     /** Takes one of the account's models down. */
     async remove(rkey: string): Promise<void> {
       try {
-        await requireSession().client.deleteRecord({ collection: MODEL_COLLECTION, rkey });
+        await requireSession().client.deleteRecord({
+          collection: MODEL_COLLECTION,
+          rkey,
+        });
         setError(null);
       } catch (cause) {
         return fail(cause);

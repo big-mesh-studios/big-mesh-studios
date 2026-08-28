@@ -16,12 +16,30 @@ export const OPPOSING_SIDE = {
  * seen from behind, so its leftmost column is the model's rightmost slice.
  */
 export const SIDE_AXES = {
-  front: { x: { dimension: "width", flipped: false }, y: { dimension: "height", flipped: true } },
-  back: { x: { dimension: "width", flipped: true }, y: { dimension: "height", flipped: true } },
-  left: { x: { dimension: "depth", flipped: true }, y: { dimension: "height", flipped: true } },
-  right: { x: { dimension: "depth", flipped: false }, y: { dimension: "height", flipped: true } },
-  top: { x: { dimension: "width", flipped: false }, y: { dimension: "depth", flipped: true } },
-  bottom: { x: { dimension: "width", flipped: false }, y: { dimension: "depth", flipped: false } },
+  front: {
+    x: { dimension: "width", flipped: false },
+    y: { dimension: "height", flipped: true },
+  },
+  back: {
+    x: { dimension: "width", flipped: true },
+    y: { dimension: "height", flipped: true },
+  },
+  left: {
+    x: { dimension: "depth", flipped: true },
+    y: { dimension: "height", flipped: true },
+  },
+  right: {
+    x: { dimension: "depth", flipped: false },
+    y: { dimension: "height", flipped: true },
+  },
+  top: {
+    x: { dimension: "width", flipped: false },
+    y: { dimension: "depth", flipped: true },
+  },
+  bottom: {
+    x: { dimension: "width", flipped: false },
+    y: { dimension: "depth", flipped: false },
+  },
 } satisfies SideAxes;
 
 export const SIDE_MASK = {

@@ -25,7 +25,13 @@ const EditorPage: Component = () => {
             {(() => {
               const pixelEditorPane = (
                 <Split.Pane size={initiallyNarrow ? "75%" : "50%"} max="245px">
-                  <div style={{ "overflow-x": "auto", position: "absolute", inset: 0 }}>
+                  <div
+                    style={{
+                      "overflow-x": "auto",
+                      position: "absolute",
+                      inset: 0,
+                    }}
+                  >
                     <PixelEditorView />
                   </div>
                 </Split.Pane>
@@ -44,7 +50,9 @@ const EditorPage: Component = () => {
               const handle = (
                 <Split.Handle
                   size="5px"
-                  style={{ cursor: stacker.narrow() ? "ns-resize" : "ew-resize" }}
+                  style={{
+                    cursor: stacker.narrow() ? "ns-resize" : "ew-resize",
+                  }}
                   class={styles.handle}
                 />
               );

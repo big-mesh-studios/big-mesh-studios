@@ -12,7 +12,11 @@ export type SidePositions = Record<SideKind, Vector2D>;
  * horizontal band around the front panel, with top and bottom above and below
  * it. Pure in its dimensions so a resize can ask where a panel would end up.
  */
-export const computeSidePositions = ({ width, height, depth }: Dimensions3D): SidePositions => ({
+export const computeSidePositions = ({
+  width,
+  height,
+  depth,
+}: Dimensions3D): SidePositions => ({
   front: { x: 0, y: 0 },
   left: { x: -(depth + PADDING), y: 0 },
   right: { x: width + PADDING, y: 0 },

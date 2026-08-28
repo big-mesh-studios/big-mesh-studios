@@ -125,7 +125,9 @@ function offscreenScene(): OffscreenScene | undefined {
  * into, which is every browser that has WebGL turned off and every test that
  * runs outside a browser altogether.
  */
-export function renderVoxelImage(request: VoxelImageRequest): Uint8Array | null {
+export function renderVoxelImage(
+  request: VoxelImageRequest,
+): Uint8Array | null {
   const built = offscreenScene();
 
   if (built === undefined) {
@@ -164,9 +166,17 @@ export function renderVoxelImage(request: VoxelImageRequest): Uint8Array | null 
       Matrix3x3.rotationX(-request.pitch),
       Matrix3x3.create(),
     );
-    const lightDirection = Matrix3x3.transform(worldToModel, LIGHT_DIR, Vector3D.create());
+    const lightDirection = Matrix3x3.transform(
+      worldToModel,
+      LIGHT_DIR,
+      Vector3D.create(),
+    );
 
-    material.dimensions = [normalized.width, normalized.height, normalized.depth];
+    material.dimensions = [
+      normalized.width,
+      normalized.height,
+      normalized.depth,
+    ];
     material.voxelCount = [
       request.dimensions.width,
       request.dimensions.height,
@@ -174,7 +184,11 @@ export function renderVoxelImage(request: VoxelImageRequest): Uint8Array | null 
     ];
     material.lightDir = [lightDirection.x, lightDirection.y, lightDirection.z];
     material.lightColour = [LIGHT_COLOUR[0], LIGHT_COLOUR[1], LIGHT_COLOUR[2]];
-    material.ambientColour = [AMBIENT_COLOUR[0], AMBIENT_COLOUR[1], AMBIENT_COLOUR[2]];
+    material.ambientColour = [
+      AMBIENT_COLOUR[0],
+      AMBIENT_COLOUR[1],
+      AMBIENT_COLOUR[2],
+    ];
     material.unlit = false;
 
     renderer.render(scene, camera);
@@ -197,7 +211,10 @@ export function renderVoxelImage(request: VoxelImageRequest): Uint8Array | null 
 
     for (let row = 0; row < request.size; row++) {
       rows.set(
-        pixels.subarray((request.size - 1 - row) * stride, (request.size - row) * stride),
+        pixels.subarray(
+          (request.size - 1 - row) * stride,
+          (request.size - row) * stride,
+        ),
         row * stride,
       );
     }

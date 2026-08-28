@@ -7,7 +7,9 @@
 // the handle's owner controls — leads back to the same DID.
 
 /** The handle a DID document claims for itself: its first `at://` alias. */
-export function claimedHandle(document: { alsoKnownAs?: readonly string[] }): string | null {
+export function claimedHandle(document: {
+  alsoKnownAs?: readonly string[];
+}): string | null {
   const prefix = "at://";
 
   for (const alias of document.alsoKnownAs ?? []) {

@@ -5,7 +5,11 @@ import { StackerContext } from "../context";
 import { Dimensions3D, Vector2D } from "../maths";
 import { Alignment3D, AlignmentKind, SideKind } from "../types";
 import { pointer, screenToWorld } from "../utils/utils";
-import { computeSidePositions, intersectSides, SidePositions } from "./side-layout";
+import {
+  computeSidePositions,
+  intersectSides,
+  SidePositions,
+} from "./side-layout";
 
 type EdgeKind = "top" | "bottom" | "left" | "right";
 
@@ -47,9 +51,14 @@ const getDimensionKind = (sideKind: SideKind, edgeKind: EdgeKind) =>
  * its image sits at the axis' minimum, unless the panel looks at that axis from
  * the opposite direction, which swaps the two.
  */
-const getDimensionEnd = (sideKind: SideKind, edgeKind: EdgeKind): AlignmentKind => {
+const getDimensionEnd = (
+  sideKind: SideKind,
+  edgeKind: EdgeKind,
+): AlignmentKind => {
   const atImageStart = edgeKind === "left" || edgeKind === "top";
-  return atImageStart !== getSideAxis(sideKind, edgeKind).flipped ? "min" : "max";
+  return atImageStart !== getSideAxis(sideKind, edgeKind).flipped
+    ? "min"
+    : "max";
 };
 
 /**
@@ -83,10 +92,13 @@ export function createEdgeController({
   setPan: Setter<Vector2D>;
   sidePositions: Accessor<SidePositions>;
 }) {
-  const { sides, resize, pushUndo, snapshot, dimensions } = useContext(StackerContext);
+  const { sides, resize, pushUndo, snapshot, dimensions } =
+    useContext(StackerContext);
 
   const EDGE_TRESHOLD = 10;
-  const findColidingEdge = (_worldPointer: Vector2D): ActiveSideEdge | false => {
+  const findColidingEdge = (
+    _worldPointer: Vector2D,
+  ): ActiveSideEdge | false => {
     const intersection = intersectSides({
       worldPosition: _worldPointer,
       sides: sides(),
@@ -114,9 +126,10 @@ export function createEdgeController({
       return distances[nearest] * scale() < EDGE_TRESHOLD ? nearest : undefined;
     };
 
-    const edgeKinds = [getNearestEdge("left", "right"), getNearestEdge("top", "bottom")].filter(
-      (edgeKind): edgeKind is EdgeKind => edgeKind !== undefined,
-    );
+    const edgeKinds = [
+      getNearestEdge("left", "right"),
+      getNearestEdge("top", "bottom"),
+    ].filter((edgeKind): edgeKind is EdgeKind => edgeKind !== undefined);
 
     if (edgeKinds.length === 0) {
       return false;
@@ -191,7 +204,8 @@ export function createEdgeController({
 
           newDimensions[dimensionKind] = Math.max(
             MIN_DIMENSION,
-            newDimensions[dimensionKind] + delta[EDGE_TO_AXIS[edgeKind]] * EDGE_TO_SIGN[edgeKind],
+            newDimensions[dimensionKind] +
+              delta[EDGE_TO_AXIS[edgeKind]] * EDGE_TO_SIGN[edgeKind],
           );
           alignment[dimensionKind] = getDimensionEnd(sideKind, edgeKind);
         }

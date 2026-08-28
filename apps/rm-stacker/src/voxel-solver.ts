@@ -28,7 +28,8 @@ const createViews = (
       kind: "back",
       side: back,
       axis: "z",
-      fixedCoords: (px, py) => Vector3D.create(width - 1 - px, height - 1 - py, 0),
+      fixedCoords: (px, py) =>
+        Vector3D.create(width - 1 - px, height - 1 - py, 0),
     },
     {
       kind: "left",
@@ -40,7 +41,8 @@ const createViews = (
       kind: "right",
       side: right,
       axis: "x",
-      fixedCoords: (px, py) => Vector3D.create(0, height - 1 - py, depth - 1 - px),
+      fixedCoords: (px, py) =>
+        Vector3D.create(0, height - 1 - py, depth - 1 - px),
     },
     {
       kind: "top",
@@ -60,7 +62,9 @@ const createViews = (
 export function solveVoxels(
   dimensions: Dimensions3D,
   sides: Sides,
-  out: Uint8Array = new Uint8Array(dimensions.width * dimensions.height * dimensions.depth * 4),
+  out: Uint8Array = new Uint8Array(
+    dimensions.width * dimensions.height * dimensions.depth * 4,
+  ),
 ): Uint8Array {
   const { height, width, depth } = dimensions;
   const outLength = width * height * depth * 4;
@@ -122,7 +126,7 @@ export function solveVoxels(
   // faces, five bits per colour index, with the top two alpha bits marking the
   // voxel solid. Each face takes its colour from the panel that looks at it,
   // read at the position the coordinates below work out.
-  const sideByKind = new Map(views.map(view => [view.kind, view]));
+  const sideByKind = new Map(views.map((view) => [view.kind, view]));
 
   for (let z = 0; z < depth; z++) {
     for (let y = 0; y < height; y++) {
@@ -152,7 +156,8 @@ export function solveVoxels(
         const bo = faceColourIndex(bottom, x, depth - 1 - z);
 
         out[offset + 0] = f | ((b & 0b111) << 5);
-        out[offset + 1] = ((b >> 3) & 0b11) | ((l & 0b11111) << 2) | ((r & 0b1) << 7);
+        out[offset + 1] =
+          ((b >> 3) & 0b11) | ((l & 0b11111) << 2) | ((r & 0b1) << 7);
         out[offset + 2] = ((r >> 1) & 0b1111) | ((t & 0b1111) << 4);
         out[offset + 3] = ((t >> 4) & 0b1) | ((bo & 0b11111) << 1) | 0b11000000;
       }

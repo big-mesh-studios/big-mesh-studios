@@ -14,13 +14,21 @@ export { pointer } from "./pointer";
  * given. Lets a component keep hold of an element itself while still handing
  * that element to whoever passed a ref in from outside.
  */
-export function combineRefs<T>(...refs: Array<JSX.Ref<T> | undefined>): JSX.Ref<T> {
-  return refs.filter(ref => ref !== undefined);
+export function combineRefs<T>(
+  ...refs: Array<JSX.Ref<T> | undefined>
+): JSX.Ref<T> {
+  return refs.filter((ref) => ref !== undefined);
 }
 
 export function tryCatch<T, U>(fn: () => T): T | undefined;
-export function tryCatch<T, U>(fn: () => T, onError: (error: unknown) => U): T | U;
-export function tryCatch<T, U>(fn: () => T, onError?: (error: unknown) => U): T | U | undefined {
+export function tryCatch<T, U>(
+  fn: () => T,
+  onError: (error: unknown) => U,
+): T | U;
+export function tryCatch<T, U>(
+  fn: () => T,
+  onError?: (error: unknown) => U,
+): T | U | undefined {
   try {
     return fn();
   } catch (error) {
@@ -28,7 +36,9 @@ export function tryCatch<T, U>(fn: () => T, onError?: (error: unknown) => U): T 
   }
 }
 
-export function keysOf<T extends Record<string, any>>(object: T): Array<keyof T> {
+export function keysOf<T extends Record<string, any>>(
+  object: T,
+): Array<keyof T> {
   return Object.keys(object);
 }
 
@@ -91,7 +101,7 @@ export function hexToRgba(hex: string, alpha = 1): RGBA {
       ? digits
       : digits
           .split("")
-          .map(digit => digit + digit)
+          .map((digit) => digit + digit)
           .join("");
 
   const r = parseInt(expanded.slice(0, 2), 16);
@@ -126,7 +136,13 @@ export function rgbaToCSS({ r, g, b, a = 1 }: RGBA): `rgba(${string})` {
 /*                                  Intersection                                  */
 /**********************************************************************************/
 
-export function intersectSide({ position, side }: { position: Vector2D; side: Bitmap }) {
+export function intersectSide({
+  position,
+  side,
+}: {
+  position: Vector2D;
+  side: Bitmap;
+}) {
   // Round each axis down on its own. Rounding only the finished sum would let a
   // fraction on the vertical axis, multiplied by the width, spill into the
   // horizontal one and pick a cell further along the same row.

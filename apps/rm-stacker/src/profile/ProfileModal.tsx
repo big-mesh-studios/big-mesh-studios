@@ -39,7 +39,13 @@ import styles from "./ProfileModal.module.css";
 
 /** One thing you could open, whichever kind of home it has. */
 type Card =
-  | { kind: "published"; key: string; name: string; at: number; model: PublishedModel }
+  | {
+      kind: "published";
+      key: string;
+      name: string;
+      at: number;
+      model: PublishedModel;
+    }
   | { kind: "file"; key: string; name: string; at: number; file: RecentFile };
 
 /** How old a card reads. */
@@ -94,12 +100,14 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
   // browser holds what is behind it until it is handed back.
   let held: string[] = [];
   const hold = (bytes: Uint8Array): string => {
-    const address = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "image/png" }));
+    const address = URL.createObjectURL(
+      new Blob([bytes as BlobPart], { type: "image/png" }),
+    );
     held.push(address);
     return address;
   };
   const release = () => {
-    held.forEach(address => URL.revokeObjectURL(address));
+    held.forEach((address) => URL.revokeObjectURL(address));
     held = [];
   };
   onCleanup(release);
@@ -131,7 +139,13 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
 
       for (const file of await listRecentFiles()) {
         const key = `file:${file.id}`;
-        found.push({ kind: "file", key, name: file.name, at: file.lastOpenedAt, file });
+        found.push({
+          kind: "file",
+          key,
+          name: file.name,
+          at: file.lastOpenedAt,
+          file,
+        });
 
         if (file.thumbnail !== undefined) {
           addresses[key] = hold(file.thumbnail);
@@ -175,7 +189,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
   let asked = false;
   createEffect(
     () => props.open,
-    isOpen => {
+    (isOpen) => {
       if (isOpen && !asked) {
         asked = true;
         void refresh();
@@ -205,7 +219,10 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
     return card.file.handle.getFile();
   }
 
-  async function run(what: string, action: () => Promise<string | null>): Promise<void> {
+  async function run(
+    what: string,
+    action: () => Promise<string | null>,
+  ): Promise<void> {
     setBusy(true);
     setNote(what);
 
@@ -240,7 +257,11 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
         dimensions: dimensions(),
         thumbnail: thumbnailFromSides(sides(), palette()),
       });
-      setHome({ kind: "published", rkey: published.rkey, name: published.record.name });
+      setHome({
+        kind: "published",
+        rkey: published.rkey,
+        name: published.record.name,
+      });
       await refresh();
 
       return `published as ${published.rkey}`;
@@ -277,8 +298,17 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
       setPalette(result.palette);
       setHome(
         card.kind === "published"
-          ? { kind: "published", rkey: card.model.rkey, name: card.model.record.name }
-          : { kind: "file", id: card.file.id, handle: card.file.handle, name: card.file.name },
+          ? {
+              kind: "published",
+              rkey: card.model.rkey,
+              name: card.model.record.name,
+            }
+          : {
+              kind: "file",
+              id: card.file.id,
+              handle: card.file.handle,
+              name: card.file.name,
+            },
       );
       setName("");
       updateVoxels();
@@ -307,7 +337,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
       } else {
         await forgetFile(card.file.id);
       }
-      setCards(current => current.filter(other => other.key !== card.key));
+      setCards((current) => current.filter((other) => other.key !== card.key));
 
       return null;
     });
@@ -364,7 +394,11 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
           label="New"
           disabled={working()}
           onClick={() => {
-            if (!window.confirm("Start a new file? This will discard your current work.")) {
+            if (
+              !window.confirm(
+                "Start a new file? This will discard your current work.",
+              )
+            ) {
               return;
             }
             undoRedoManager.clear();
@@ -389,7 +423,11 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
           kind="cloud-arrow-up"
           label="Publish"
           disabled={working() || atproto.account() === null}
-          title={atproto.account() === null ? "Sign in to publish" : "Publish to your account"}
+          title={
+            atproto.account() === null
+              ? "Sign in to publish"
+              : "Publish to your account"
+          }
           onClick={() => void publishCurrent()}
         />
         <Show
@@ -401,8 +439,8 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
                 placeholder="you.bsky.social"
                 value={handle()}
                 disabled={working()}
-                onInput={event => setHandle(event.currentTarget.value)}
-                onKeyDown={event => {
+                onInput={(event) => setHandle(event.currentTarget.value)}
+                onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     void signIn();
                   }
@@ -417,8 +455,14 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
             </>
           }
         >
-          <div class={styles.who}>{atproto.account()?.handle ?? atproto.account()?.did}</div>
-          <Button disabled={working()} onClick={() => void atproto.signOut()} title="Sign out">
+          <div class={styles.who}>
+            {atproto.account()?.handle ?? atproto.account()?.did}
+          </div>
+          <Button
+            disabled={working()}
+            onClick={() => void atproto.signOut()}
+            title="Sign out"
+          >
             <Icon kind="arrow-right-from-bracket" />
           </Button>
         </Show>
@@ -427,7 +471,11 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
       <div class={styles.current}>
         <div class={styles.currentPreview}>
           <Show when={currentPreview()} fallback={<Icon kind="cube" />}>
-            <img class={styles.thumbnail} src={currentPreview()!} alt="What you are working on" />
+            <img
+              class={styles.thumbnail}
+              src={currentPreview()!}
+              alt="What you are working on"
+            />
           </Show>
         </div>
         <div class={styles.currentDetail}>
@@ -435,7 +483,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
             class={styles.input}
             value={shown()}
             disabled={working()}
-            onInput={event => setName(event.currentTarget.value)}
+            onInput={(event) => setName(event.currentTarget.value)}
           />
           <div class={styles.where}>
             <Show when={home().kind === "published"}>
@@ -499,8 +547,10 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
         >
           <div class={styles.grid}>
             <For each={cards()}>
-              {card => (
-                <div class={[styles.card, isOpenHere(card) ? styles.openHere : ""]}>
+              {(card) => (
+                <div
+                  class={[styles.card, isOpenHere(card) ? styles.openHere : ""]}
+                >
                   <button
                     class={styles.openCard}
                     disabled={working()}
@@ -508,7 +558,10 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
                     title="Open in the editor"
                   >
                     <div class={styles.preview}>
-                      <Show when={previews()[card.key]} fallback={<Icon kind="cube" />}>
+                      <Show
+                        when={previews()[card.key]}
+                        fallback={<Icon kind="cube" />}
+                      >
                         <img
                           class={styles.thumbnail}
                           src={previews()[card.key]}
@@ -518,7 +571,11 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
                       </Show>
                     </div>
                     <div class={styles.name}>
-                      <Icon kind={card.kind === "published" ? "cloud" : "floppy-disk"} />{" "}
+                      <Icon
+                        kind={
+                          card.kind === "published" ? "cloud" : "floppy-disk"
+                        }
+                      />{" "}
                       {card.name}
                     </div>
                   </button>
@@ -527,9 +584,15 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
                     class={styles.cardAction}
                     disabled={working()}
                     onClick={() => void drop(card)}
-                    title={card.kind === "published" ? "Take down" : "Forget this file"}
+                    title={
+                      card.kind === "published"
+                        ? "Take down"
+                        : "Forget this file"
+                    }
                   >
-                    <Icon kind={card.kind === "published" ? "trash" : "xmark"} />
+                    <Icon
+                      kind={card.kind === "published" ? "trash" : "xmark"}
+                    />
                   </button>
                 </div>
               )}

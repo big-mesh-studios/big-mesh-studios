@@ -20,7 +20,9 @@ const createInitialImageBitmap = (
   padding: Vector2D | number,
 ): Bitmap => {
   dimensions =
-    typeof dimensions === "number" ? { width: dimensions, height: dimensions } : dimensions;
+    typeof dimensions === "number"
+      ? { width: dimensions, height: dimensions }
+      : dimensions;
   padding = typeof padding === "number" ? { x: padding, y: padding } : padding;
 
   const data = Bitmap.create(dimensions.width, dimensions.height);
@@ -51,7 +53,7 @@ export function createStacker() {
   const atproto = createAtproto();
 
   const saved = createMemo(() =>
-    loadFromIndexedDB(DAWNBRINGER_32_PALETTE).catch(error => {
+    loadFromIndexedDB(DAWNBRINGER_32_PALETTE).catch((error) => {
       console.error("The saved model could not be read", error);
       return null;
     }),
@@ -70,7 +72,7 @@ export function createStacker() {
     () => saved()?.sides ?? createInitialSides(INITIAL_DIMENSIONS),
   );
   const undoRedoManager = new UndoRedoManager(
-    command => doCommandAndUpdate(command),
+    (command) => doCommandAndUpdate(command),
     () => saved()?.undoStack ?? [],
     () => saved()?.redoStack ?? [],
   );
@@ -79,11 +81,15 @@ export function createStacker() {
     height: sides().front.height,
     depth: sides().left.width,
   }));
-  const [voxels, setVoxels] = createSignal(() => solveVoxels(dimensions(), sides()));
+  const [voxels, setVoxels] = createSignal(() =>
+    solveVoxels(dimensions(), sides()),
+  );
   const narrow = createMediaQuery("(max-width: 500px)");
 
   const [unlit, setUnlit] = createSignal(() => saved()?.preview?.unlit ?? true);
-  const [autorotate, setAutorotate] = createSignal(() => saved()?.preview?.autorotate ?? true);
+  const [autorotate, setAutorotate] = createSignal(
+    () => saved()?.preview?.autorotate ?? true,
+  );
 
   const preview = {
     unlit,
@@ -159,7 +165,11 @@ export function createStacker() {
     );
   }
 
-  function doCommandAndUndo(command: Command, pushUndo?: boolean, description?: string): Command {
+  function doCommandAndUndo(
+    command: Command,
+    pushUndo?: boolean,
+    description?: string,
+  ): Command {
     let reverseCommand = doCommandAndUpdate(command);
 
     if (pushUndo) {
@@ -173,7 +183,7 @@ export function createStacker() {
   }
 
   function requestRender() {
-    renderSet.forEach(render => render());
+    renderSet.forEach((render) => render());
   }
 
   createEffect(sides, requestRender);

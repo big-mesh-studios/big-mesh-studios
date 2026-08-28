@@ -22,14 +22,18 @@ import {
 const DNS_OVER_HTTPS_SERVICE = "https://cloudflare-dns.com/dns-query";
 
 /** What a DID document resolver hands back for a resolved DID. */
-export type DidDocument = Awaited<ReturnType<DidDocumentResolver<"plc" | "web">["resolve"]>>;
+export type DidDocument = Awaited<
+  ReturnType<DidDocumentResolver<"plc" | "web">["resolve"]>
+>;
 
 /**
  * Resolves a DID to its document — the record naming the server that holds the
  * account and the handle it claims. `did:plc` documents come from the directory
  * that issues them, `did:web` documents from the domain itself.
  */
-export function createDidDocumentResolver(): DidDocumentResolver<"plc" | "web"> {
+export function createDidDocumentResolver(): DidDocumentResolver<
+  "plc" | "web"
+> {
   return new CompositeDidDocumentResolver({
     methods: {
       plc: new PlcDidDocumentResolver(),
@@ -62,8 +66,10 @@ export function createHandleResolver(): HandleResolver {
  */
 export function pdsEndpoint(document: DidDocument): string | undefined {
   const service =
-    document.service?.find(entry => entry.id === "#atproto" || entry.id === "#atproto_pds") ??
-    document.service?.find(entry => {
+    document.service?.find(
+      (entry) => entry.id === "#atproto" || entry.id === "#atproto_pds",
+    ) ??
+    document.service?.find((entry) => {
       const type = Array.isArray(entry.type) ? entry.type : [entry.type];
       return type.includes("AtprotoPersonalDataServer");
     });

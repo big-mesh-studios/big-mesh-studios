@@ -21,8 +21,12 @@ import { loadValueFromDB, saveValueToDB } from "./load-save";
 // does not yet cover.
 declare global {
   interface FileSystemHandle {
-    queryPermission(descriptor?: { mode?: "read" | "readwrite" }): Promise<PermissionState>;
-    requestPermission(descriptor?: { mode?: "read" | "readwrite" }): Promise<PermissionState>;
+    queryPermission(descriptor?: {
+      mode?: "read" | "readwrite";
+    }): Promise<PermissionState>;
+    requestPermission(descriptor?: {
+      mode?: "read" | "readwrite";
+    }): Promise<PermissionState>;
   }
 }
 
@@ -60,7 +64,7 @@ export async function listRecentFiles(): Promise<RecentFile[]> {
   }
 
   return stored
-    .filter(entry => entry?.handle !== undefined)
+    .filter((entry) => entry?.handle !== undefined)
     .sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
 }
 
@@ -75,7 +79,9 @@ export async function rememberFile(entry: {
   dimensions: Dimensions3D;
 }): Promise<RecentFile> {
   const known = await listRecentFiles();
-  const same = await Promise.all(known.map(other => entry.handle.isSameEntry(other.handle)));
+  const same = await Promise.all(
+    known.map((other) => entry.handle.isSameEntry(other.handle)),
+  );
   const existing = known.find((_, index) => same[index]);
   const remembered: RecentFile = {
     id: existing?.id ?? crypto.randomUUID(),
@@ -99,7 +105,7 @@ export async function forgetFile(id: string): Promise<void> {
   const known = await listRecentFiles();
   await saveValueToDB(
     RECENT_FILES_KEY,
-    known.filter(entry => entry.id !== id),
+    known.filter((entry) => entry.id !== id),
   );
 }
 

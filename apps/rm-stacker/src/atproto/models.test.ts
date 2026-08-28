@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isModelRecord, MODEL_COLLECTION, modelRkey, type ModelRecord } from "./models";
+import {
+  isModelRecord,
+  MODEL_COLLECTION,
+  modelRkey,
+  type ModelRecord,
+} from "./models";
 
 const record: ModelRecord = {
   $type: MODEL_COLLECTION,
@@ -38,7 +43,9 @@ describe("isModelRecord", () => {
   });
 
   it("passes over a record from another collection", () => {
-    expect(isModelRecord({ ...record, $type: "app.bsky.feed.post" })).toBe(false);
+    expect(isModelRecord({ ...record, $type: "app.bsky.feed.post" })).toBe(
+      false,
+    );
   });
 
   it("passes over a record whose file went missing", () => {
@@ -46,7 +53,9 @@ describe("isModelRecord", () => {
   });
 
   it("passes over a record naming dimensions it does not have", () => {
-    expect(isModelRecord({ ...record, dimensions: { width: 15, height: 15 } })).toBe(false);
+    expect(
+      isModelRecord({ ...record, dimensions: { width: 15, height: 15 } }),
+    ).toBe(false);
   });
 
   it("passes over what is not a record at all", () => {

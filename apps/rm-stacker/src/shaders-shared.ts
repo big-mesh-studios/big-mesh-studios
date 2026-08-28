@@ -50,12 +50,17 @@ const maxVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
 // .texture() takes those integer texel coordinates directly, not a normalized
 // [0,1] position, so a caller that already works in whole voxel indices
 // fetches by them.
-const sampleCell = (voxels: Node<"usampler3D">, cell: Node<"ivec3">): Node<"uvec4"> =>
-  voxels.texture(cell.toUVec3());
+const sampleCell = (
+  voxels: Node<"usampler3D">,
+  cell: Node<"ivec3">,
+): Node<"uvec4"> => voxels.texture(cell.toUVec3());
 
 // The volume fills the whole grid (one texel per voxel), so a cell is inside
 // the volume exactly when every index lies in [0, uVoxelCount).
-const inBounds = (voxelCount: Node<"vec3">, cell: Node<"ivec3">): Node<"bool"> => {
+const inBounds = (
+  voxelCount: Node<"vec3">,
+  cell: Node<"ivec3">,
+): Node<"bool"> => {
   const c = cell.toVec3();
   return c
     .greaterThanEqual(vec3(float(0)))
@@ -68,7 +73,10 @@ const inBounds = (voxelCount: Node<"vec3">, cell: Node<"ivec3">): Node<"bool"> =
 // face, where float error could put them on the wrong side. The DDA therefore
 // walks from up to a cell or two outside, sampling only cells that are in the
 // volume and stopping once it leaves the padded range.
-const paddedInBounds = (voxelCount: Node<"vec3">, cell: Node<"ivec3">): Node<"bool"> => {
+const paddedInBounds = (
+  voxelCount: Node<"vec3">,
+  cell: Node<"ivec3">,
+): Node<"bool"> => {
   const c = cell.toVec3();
   return c
     .greaterThanEqual(vec3(float(-2)))
@@ -80,16 +88,25 @@ const readFront = (voxel: Node<"uvec4">): Node<"uint"> => {
   return voxel.r.bitAnd(0b00011111);
 };
 const readBack = (voxel: Node<"uvec4">): Node<"uint"> => {
-  return voxel.r.bitAnd(0b11100000).shiftRight(5).bitOr(voxel.g.bitAnd(0b00000011).shiftLeft(3));
+  return voxel.r
+    .bitAnd(0b11100000)
+    .shiftRight(5)
+    .bitOr(voxel.g.bitAnd(0b00000011).shiftLeft(3));
 };
 const readLeft = (voxel: Node<"uvec4">): Node<"uint"> => {
   return voxel.g.bitAnd(0b01111100).shiftRight(2);
 };
 const readRight = (voxel: Node<"uvec4">): Node<"uint"> => {
-  return voxel.g.bitAnd(0b10000000).shiftRight(7).bitOr(voxel.b.bitAnd(0b00001111).shiftLeft(1));
+  return voxel.g
+    .bitAnd(0b10000000)
+    .shiftRight(7)
+    .bitOr(voxel.b.bitAnd(0b00001111).shiftLeft(1));
 };
 const readTop = (voxel: Node<"uvec4">): Node<"uint"> => {
-  return voxel.b.bitAnd(0b11110000).shiftRight(4).bitOr(voxel.a.bitAnd(0b00000001).shiftLeft(4));
+  return voxel.b
+    .bitAnd(0b11110000)
+    .shiftRight(4)
+    .bitOr(voxel.a.bitAnd(0b00000001).shiftLeft(4));
 };
 const readBottom = (voxel: Node<"uvec4">): Node<"uint"> => {
   return voxel.a.bitAnd(0b00111110).shiftRight(1);
@@ -170,11 +187,21 @@ export const marchVolume = (
   const boxMax = dimensions.mul(float(0.5)).add(cellSize).toVar();
   const inverseRayDirection = vec3(float(1)).div(rayDirection);
 
-  const distanceToMinPlanes = inverseRayDirection.mul(boxMin.sub(rayOrigin)).toVar();
-  const distanceToMaxPlanes = inverseRayDirection.mul(boxMax.sub(rayOrigin)).toVar();
+  const distanceToMinPlanes = inverseRayDirection
+    .mul(boxMin.sub(rayOrigin))
+    .toVar();
+  const distanceToMaxPlanes = inverseRayDirection
+    .mul(boxMax.sub(rayOrigin))
+    .toVar();
 
-  const nearPlaneDistances = minVec3(distanceToMinPlanes, distanceToMaxPlanes).toVar();
-  const farPlaneDistances = maxVec3(distanceToMinPlanes, distanceToMaxPlanes).toVar();
+  const nearPlaneDistances = minVec3(
+    distanceToMinPlanes,
+    distanceToMaxPlanes,
+  ).toVar();
+  const farPlaneDistances = maxVec3(
+    distanceToMinPlanes,
+    distanceToMaxPlanes,
+  ).toVar();
 
   const nearPair = maxVec2(
     vec2(nearPlaneDistances.x, nearPlaneDistances.x),
@@ -232,8 +259,8 @@ export const marchVolume = (
     const hit = bool(false).toVar();
     For(
       () => int(0).toVar(),
-      i => i.lessThan(maxSteps),
-      i => i.assign(i.add(1)),
+      (i) => i.lessThan(maxSteps),
+      (i) => i.assign(i.add(1)),
       () => {
         If(paddedInBounds(voxelCount, mapPos).not(), () => {
           Break();
@@ -362,7 +389,10 @@ export const marchVolume = (
  */
 export const rayMarcher = () => {
   const fragmentCoord = vUv.mul(uResolution);
-  const screenPosition = fragmentCoord.mul(float(2)).sub(uResolution).div(uResolution.y);
+  const screenPosition = fragmentCoord
+    .mul(float(2))
+    .sub(uResolution)
+    .div(uResolution.y);
 
   const rayOrigin = uWorldToModel.mul(uCameraPosition);
   const rayDirection = uWorldToModel.mul(

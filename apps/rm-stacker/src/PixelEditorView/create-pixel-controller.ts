@@ -20,15 +20,26 @@ export const createPixelEditorController = ({
   canvas: Accessor<HTMLCanvasElement | undefined>;
   sidePositions: Accessor<SidePositions>;
   pushUndo: (reverseCommand: Command, description: string) => void;
-  doCommand: (command: Command, pushUndo?: boolean, description?: string) => Command;
+  doCommand: (
+    command: Command,
+    pushUndo?: boolean,
+    description?: string,
+  ) => Command;
 }) => {
-  const { sides, selectedColour, selectPaletteIndex, selectedPaletteIndex, requestRender, mode } =
-    useContext(StackerContext);
+  const {
+    sides,
+    selectedColour,
+    selectPaletteIndex,
+    selectedPaletteIndex,
+    requestRender,
+    mode,
+  } = useContext(StackerContext);
 
   const [pan, setPan] = createSignal({ x: -10.0, y: -10.0 });
   const [scale, setScale] = createSignal(8);
   const [cursorStyle, setCursorStyle] = createSignal<string>();
-  const [roundedWorldPosition, setRoundedWorldPosition] = createSignal<Vector2D>();
+  const [roundedWorldPosition, setRoundedWorldPosition] =
+    createSignal<Vector2D>();
 
   const pointerIds = new Set<number>();
 
@@ -67,7 +78,11 @@ export const createPixelEditorController = ({
     const oppositeKind = OPPOSING_SIDE[kind];
     return {
       kind: oppositeKind,
-      index: Bitmap.get(sides()[oppositeKind], oppositePosition.x, oppositePosition.y),
+      index: Bitmap.get(
+        sides()[oppositeKind],
+        oppositePosition.x,
+        oppositePosition.y,
+      ),
       position: oppositePosition,
     };
   }
@@ -87,7 +102,9 @@ export const createPixelEditorController = ({
     );
   }
 
-  function eventToRoundedWorldPosition(event: PointerEvent & { currentTarget: HTMLElement }) {
+  function eventToRoundedWorldPosition(
+    event: PointerEvent & { currentTarget: HTMLElement },
+  ) {
     const screenPointer = { x: event.layerX, y: event.layerY };
     return Vector2D.round(screenToWorld(screenPointer, pan(), scale()));
   }
@@ -102,7 +119,9 @@ export const createPixelEditorController = ({
     }
   }
 
-  async function onPointerDown(event: PointerEvent & { currentTarget: HTMLElement }) {
+  async function onPointerDown(
+    event: PointerEvent & { currentTarget: HTMLElement },
+  ) {
     // Everything this pointer raises from here on lands on the canvas even
     // once it has been taken off it, so however the gesture below ends, the
     // end is heard and the pointer can be dropped from the set again.
@@ -164,11 +183,17 @@ export const createPixelEditorController = ({
         const opposite = getOppositePixel(kind, position);
 
         if (_selectedPaletteIndex !== undefined) {
-          commands.push(Command.fillPixel(kind, position, _selectedPaletteIndex));
+          commands.push(
+            Command.fillPixel(kind, position, _selectedPaletteIndex),
+          );
 
           if (opposite.index === Bitmap.EMPTY) {
             commands.push(
-              Command.fillPixel(opposite.kind, opposite.position, _selectedPaletteIndex),
+              Command.fillPixel(
+                opposite.kind,
+                opposite.position,
+                _selectedPaletteIndex,
+              ),
             );
           }
         }
@@ -177,7 +202,8 @@ export const createPixelEditorController = ({
           return;
         }
 
-        const command = commands.length === 1 ? commands[0] : Command.sequence(commands);
+        const command =
+          commands.length === 1 ? commands[0] : Command.sequence(commands);
         undoCommandsReversed.push(doCommand(command));
 
         return;
@@ -206,7 +232,10 @@ export const createPixelEditorController = ({
             sidePositions()[start.kind],
           );
 
-          const min = Vector2D.max(Vector2D.min(start.position, current), Vector2D.EMPTY);
+          const min = Vector2D.max(
+            Vector2D.min(start.position, current),
+            Vector2D.EMPTY,
+          );
           const max = Vector2D.min(Vector2D.max(start.position, current), {
             x: side.width - 1,
             y: side.height - 1,
@@ -227,14 +256,19 @@ export const createPixelEditorController = ({
           sidePositions()[start.kind],
         );
 
-        const min = Vector2D.max(Vector2D.min(start.position, end), Vector2D.EMPTY);
+        const min = Vector2D.max(
+          Vector2D.min(start.position, end),
+          Vector2D.EMPTY,
+        );
         const max = Vector2D.min(Vector2D.max(start.position, end), {
           x: side.width - 1,
           y: side.height - 1,
         });
 
         undoCommandsReversed.push(
-          doCommand(Command.fillRectangle(start.kind, min, max, selectedPaletteIndex())),
+          doCommand(
+            Command.fillRectangle(start.kind, min, max, selectedPaletteIndex()),
+          ),
         );
 
         // The pointer going up is what both ends this gesture and closes the
@@ -274,7 +308,9 @@ export const createPixelEditorController = ({
               commands.push(Command.erasePixel(kind, position));
 
               if (opposite.index !== Bitmap.EMPTY) {
-                commands.push(Command.erasePixel(opposite.kind, opposite.position));
+                commands.push(
+                  Command.erasePixel(opposite.kind, opposite.position),
+                );
               }
 
               break;
@@ -283,13 +319,19 @@ export const createPixelEditorController = ({
               const _selectedPaletteIndex = selectedPaletteIndex();
 
               if (_selectedPaletteIndex !== undefined) {
-                commands.push(Command.writePixel(kind, position, _selectedPaletteIndex));
+                commands.push(
+                  Command.writePixel(kind, position, _selectedPaletteIndex),
+                );
 
                 // Only carry the colour to the far side where nothing is drawn,
                 // so drawing on one panel does not paint over the other.
                 if (opposite.index === Bitmap.EMPTY) {
                   commands.push(
-                    Command.writePixel(opposite.kind, opposite.position, _selectedPaletteIndex),
+                    Command.writePixel(
+                      opposite.kind,
+                      opposite.position,
+                      _selectedPaletteIndex,
+                    ),
                   );
                 }
               }
@@ -302,7 +344,8 @@ export const createPixelEditorController = ({
             return;
           }
 
-          const command = commands.length === 1 ? commands[0] : Command.sequence(commands);
+          const command =
+            commands.length === 1 ? commands[0] : Command.sequence(commands);
           undoCommandsReversed.push(doCommand(command));
         });
       }

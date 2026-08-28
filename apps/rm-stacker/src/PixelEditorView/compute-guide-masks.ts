@@ -46,8 +46,15 @@ function isRowEmpty(side: Bitmap, index: number, mirror = false) {
   return true;
 }
 
-function isLineEmpty(side: Bitmap, line: "row" | "column", index: number, mirror: boolean) {
-  return line === "column" ? isColumnEmpty(side, index, mirror) : isRowEmpty(side, index, mirror);
+function isLineEmpty(
+  side: Bitmap,
+  line: "row" | "column",
+  index: number,
+  mirror: boolean,
+) {
+  return line === "column"
+    ? isColumnEmpty(side, index, mirror)
+    : isRowEmpty(side, index, mirror);
 }
 
 function mirrorX(source: Uint8Array, dimensions: Dimensions2D) {
@@ -55,7 +62,8 @@ function mirrorX(source: Uint8Array, dimensions: Dimensions2D) {
 
   for (let x = 0; x < dimensions.width; x++) {
     for (let y = 0; y < dimensions.height; y++) {
-      array[y * dimensions.width + x] = source[y * dimensions.width + (dimensions.width - x - 1)];
+      array[y * dimensions.width + x] =
+        source[y * dimensions.width + (dimensions.width - x - 1)];
     }
   }
 
@@ -67,14 +75,17 @@ function mirrorY(source: Uint8Array, dimensions: Dimensions2D) {
 
   for (let x = 0; x < dimensions.width; x++) {
     for (let y = 0; y < dimensions.height; y++) {
-      array[y * dimensions.width + x] = source[(dimensions.height - y - 1) * dimensions.width + x];
+      array[y * dimensions.width + x] =
+        source[(dimensions.height - y - 1) * dimensions.width + x];
     }
   }
 
   return array;
 }
 
-export function computeGuideMasks(sides: Sides): Record<keyof Sides, Uint8Array> {
+export function computeGuideMasks(
+  sides: Sides,
+): Record<keyof Sides, Uint8Array> {
   const primaryKinds = ["front", "top", "right"] satisfies Array<SideKind>;
 
   const guides = {} as Record<keyof Sides, Uint8Array>;
@@ -83,8 +94,16 @@ export function computeGuideMasks(sides: Sides): Record<keyof Sides, Uint8Array>
     const side = sides[kind];
     const guide = new Uint8Array(side.width * side.height);
 
-    const { side: xSide, axis: xLine, mirror: xMirror } = SIDE_AXIS_MAPPING[kind].x;
-    const { side: ySide, axis: yLine, mirror: yMirror } = SIDE_AXIS_MAPPING[kind].y;
+    const {
+      side: xSide,
+      axis: xLine,
+      mirror: xMirror,
+    } = SIDE_AXIS_MAPPING[kind].x;
+    const {
+      side: ySide,
+      axis: yLine,
+      mirror: yMirror,
+    } = SIDE_AXIS_MAPPING[kind].y;
 
     for (let x = 0; x < side.width; x++) {
       if (isLineEmpty(sides[xSide], xLine, x, xMirror)) {

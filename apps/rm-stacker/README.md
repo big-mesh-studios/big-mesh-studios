@@ -88,7 +88,11 @@ pnpm add @big-mesh-studios/rm-stacker
 
 ```ts
 import { load, save } from "@big-mesh-studios/rm-stacker/format";
-import { blobUrl, isModelRecord, modelBlobCid } from "@big-mesh-studios/rm-stacker/lexicon";
+import {
+  blobUrl,
+  isModelRecord,
+  modelBlobCid,
+} from "@big-mesh-studios/rm-stacker/lexicon";
 
 // A record out of somebody's repository, turned into voxels.
 if (isModelRecord(value)) {

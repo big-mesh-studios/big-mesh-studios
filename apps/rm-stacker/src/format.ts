@@ -5,4 +5,9 @@
 // it.
 export { load, save } from "./load-save";
 export { Bitmap, Dimensions3D, RGBA } from "./maths";
-export { sideKindSet, type Dimensions2D, type SideKind, type Sides } from "./types";
+export {
+  sideKindSet,
+  type Dimensions2D,
+  type SideKind,
+  type Sides,
+} from "./types";

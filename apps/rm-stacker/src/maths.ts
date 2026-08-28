@@ -37,7 +37,11 @@ export namespace Vector2D {
     return out;
   }
 
-  export function multiplyScalar(a: Vector2D, scalar: number, out = Vector2D.create()) {
+  export function multiplyScalar(
+    a: Vector2D,
+    scalar: number,
+    out = Vector2D.create(),
+  ) {
     out.x = a.x * scalar;
     out.y = a.y * scalar;
     return out;
@@ -55,7 +59,12 @@ export namespace Vector2D {
     return out;
   }
 
-  export function clamp(a: Vector2D, min: Vector2D, max: Vector2D, out = Vector2D.create()) {
+  export function clamp(
+    a: Vector2D,
+    min: Vector2D,
+    max: Vector2D,
+    out = Vector2D.create(),
+  ) {
     out.x = Math.max(Math.min(a.x, max.x), min.x);
     out.y = Math.max(Math.min(a.y, max.y), min.y);
     return out;
@@ -133,7 +142,10 @@ export interface Dimensions3D extends Dimensions2D {
 }
 
 export namespace Dimensions3D {
-  export function normalize(dimensions: Dimensions3D, out = { width: 0, height: 0, depth: 0 }) {
+  export function normalize(
+    dimensions: Dimensions3D,
+    out = { width: 0, height: 0, depth: 0 },
+  ) {
     const max = Math.max(dimensions.width, dimensions.height, dimensions.depth);
     out.width = dimensions.width / max;
     out.height = dimensions.height / max;
@@ -310,7 +322,12 @@ export namespace Bitmap {
     return bitmap.data[offset(bitmap, x, y)];
   }
 
-  export function set(bitmap: Bitmap, x: number, y: number, index: number): void {
+  export function set(
+    bitmap: Bitmap,
+    x: number,
+    y: number,
+    index: number,
+  ): void {
     bitmap.data[offset(bitmap, x, y)] = index;
   }
 
@@ -331,7 +348,8 @@ export namespace Bitmap {
     out = new ImageData(bitmap.width, bitmap.height),
   ): ImageData {
     for (let i = 0; i < bitmap.data.length; i++) {
-      const colour = bitmap.data[i] === EMPTY ? undefined : palette[bitmap.data[i]];
+      const colour =
+        bitmap.data[i] === EMPTY ? undefined : palette[bitmap.data[i]];
       const target = i << 2;
 
       out.data[target + 0] = colour?.r ?? 0;
@@ -351,7 +369,17 @@ export namespace Bitmap {
 export class Matrix3x3 extends Float32Array {}
 
 export namespace Matrix3x3 {
-  export function create(a = 0, b = 0, c = 0, d = 0, e = 0, f = 0, g = 0, h = 0, i = 0) {
+  export function create(
+    a = 0,
+    b = 0,
+    c = 0,
+    d = 0,
+    e = 0,
+    f = 0,
+    g = 0,
+    h = 0,
+    i = 0,
+  ) {
     return new Matrix3x3([a, b, c, d, e, f, g, h, i]);
   }
 
@@ -434,22 +462,35 @@ export namespace Matrix3x3 {
     return out;
   }
 
-  export function multiply(a: Matrix3x3, b: Matrix3x3, out = Matrix3x3.create()) {
+  export function multiply(
+    a: Matrix3x3,
+    b: Matrix3x3,
+    out = Matrix3x3.create(),
+  ) {
     const product = [0, 0, 0, 0, 0, 0, 0, 0, 0];
     for (let column = 0; column < 3; column++) {
       for (let row = 0; row < 3; row++) {
         product[column * 3 + row] =
-          a[row] * b[column * 3] + a[3 + row] * b[column * 3 + 1] + a[6 + row] * b[column * 3 + 2];
+          a[row] * b[column * 3] +
+          a[3 + row] * b[column * 3 + 1] +
+          a[6 + row] * b[column * 3 + 2];
       }
     }
     out.set(product);
     return out;
   }
 
-  export function transform(matrix: Matrix3x3, vector: Vector3D, out = Vector3D.create()) {
-    const x = matrix[0] * vector.x + matrix[3] * vector.y + matrix[6] * vector.z;
-    const y = matrix[1] * vector.x + matrix[4] * vector.y + matrix[7] * vector.z;
-    const z = matrix[2] * vector.x + matrix[5] * vector.y + matrix[8] * vector.z;
+  export function transform(
+    matrix: Matrix3x3,
+    vector: Vector3D,
+    out = Vector3D.create(),
+  ) {
+    const x =
+      matrix[0] * vector.x + matrix[3] * vector.y + matrix[6] * vector.z;
+    const y =
+      matrix[1] * vector.x + matrix[4] * vector.y + matrix[7] * vector.z;
+    const z =
+      matrix[2] * vector.x + matrix[5] * vector.y + matrix[8] * vector.z;
     out.x = x;
     out.y = y;
     out.z = z;
