@@ -17,12 +17,12 @@ export interface LoadVoxelTilesOptions {
 
 /**
  * Loads the tile spritesheet (one 2D GPU texture) plus its atlas XML, and
- * applies the resulting per-voxel tile config to `rendererSwitch`. Failures
+ * applies the resulting per-voxel tile config to `renderer`. Failures
  * are logged and swallowed — voxels stay flat blue rather than blocking
  * startup.
  */
 export const loadVoxelTiles = async (
-  rendererSwitch: TriangleRenderer,
+  renderer: TriangleRenderer,
   options?: LoadVoxelTilesOptions,
 ): Promise<void> => {
   const tileUrl = options?.tileUrl ?? TILE_URL;
@@ -42,7 +42,7 @@ export const loadVoxelTiles = async (
       loaded.height,
       options?.customVoxelTiles,
     );
-    rendererSwitch.setTiles(voxelTiles, loaded.texture);
+    renderer.setTiles(voxelTiles, loaded.texture);
   } catch (err) {
     console.warn(
       "[atlas] spritesheet not applied; voxels stay flat blue.",

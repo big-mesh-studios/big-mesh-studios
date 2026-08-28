@@ -386,7 +386,6 @@ export class TriangleRenderer {
   /** Superchunks whose merged geometry is non-empty (content mirrors `visible`). */
   private readonly contentTerrain = new Set<string>();
   private readonly contentWater = new Set<string>();
-  private selfVisible = false;
 
   // Fullscreen underwater tint (the water pass tints the view
   // in-shader instead). Drawn last with depth-testing off so it washes the
@@ -602,8 +601,11 @@ export class TriangleRenderer {
     } else {
       this.contentWater.delete(key);
     }
-    triMesh.visible = this.selfVisible && this.contentTerrain.has(key);
-    waterMesh.visible = this.selfVisible && this.contentWater.has(key);
+    // A superchunk is drawn when it has geometry to draw and not otherwise.
+    // Nothing else hides it: there is one renderer, so there is no state in
+    // which the world is loaded and deliberately not shown.
+    triMesh.visible = this.contentTerrain.has(key);
+    waterMesh.visible = this.contentWater.has(key);
     this.updateTriCount();
     return true;
   }
@@ -630,23 +632,6 @@ export class TriangleRenderer {
 
   get triangleCount(): number {
     return this.totalTriangles;
-  }
-
-  setVisible(visible: boolean): void {
-    this.selfVisible = visible;
-    for (const key of this.scTerrainMesh.keys()) {
-      const tri = this.scTerrainMesh.get(key);
-      const water = this.scWaterMesh.get(key);
-      if (tri !== undefined) {
-        tri.visible = visible && this.contentTerrain.has(key);
-      }
-      if (water !== undefined) {
-        water.visible = visible && this.contentWater.has(key);
-      }
-    }
-    if (!visible) {
-      this.tintMesh.visible = false;
-    }
   }
 
   repositionBlock(index: number, center: Dim3): void {

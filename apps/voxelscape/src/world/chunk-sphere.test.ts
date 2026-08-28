@@ -150,6 +150,11 @@ describe("ChunkSphere", () => {
   }, 30_000);
 
   it("holds blocks above and below the player at once", () => {
+    // Which cell each slot holds is settled by `fillFrom` itself; generating
+    // the terrain for them is deferred, and this asks nothing of it. Fake
+    // timers keep that deferred work off the real clock, where waiting for it
+    // costs a hundred times what the rest of this file does.
+    vi.useFakeTimers();
     const { sphere } = sphereWithRecordedFills(2);
     sphere.fillFrom(0, 0, 0);
 
@@ -161,7 +166,8 @@ describe("ChunkSphere", () => {
     expect(sphere.query(above[0], above[1], above[2])).not.toBe(
       sphere.query(below[0], below[1], below[2]),
     );
-  }, 30_000);
+    vi.useRealTimers();
+  });
 
   it("streams diagonally, crossing a cell on all three axes at once", async () => {
     vi.useFakeTimers();
