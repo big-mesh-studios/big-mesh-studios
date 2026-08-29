@@ -31,6 +31,8 @@ export interface FillBatchResult {
   indices: number[];
   gens: number[];
   storeData: Uint8Array[];
+  /** Whether each block is worth meshing; see `VoxelStore.mightHaveVoxels`. */
+  mightHaveVoxels: boolean[];
 }
 
 export type FillWorkerMessage =
@@ -71,6 +73,7 @@ export async function* buildFillResults(
       indices: [req.indices[i]],
       gens: [req.gens[i]],
       storeData: [data.storeData],
+      mightHaveVoxels: [data.mightHaveVoxels],
     };
   }
 }

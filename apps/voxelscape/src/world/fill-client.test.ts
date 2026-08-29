@@ -38,6 +38,7 @@ class FakeFillWorker {
       indices: request.indices,
       gens: request.gens,
       storeData: request.indices.map(() => new Uint8Array(0)),
+      mightHaveVoxels: request.indices.map(() => true),
     };
     this.onmessage?.({ data: result } as MessageEvent);
   }

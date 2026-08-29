@@ -357,6 +357,8 @@ export const isWaterAt = (
 /** The worker-facing output of one block generation, ready to transfer. */
 export interface BlockData {
   storeData: Uint8Array;
+  /** Whether these voxels are worth meshing; see `VoxelStore.mightHaveVoxels`. */
+  mightHaveVoxels: boolean;
 }
 
 /**
@@ -371,7 +373,11 @@ export const buildBlockData = (params: {
   terrain?: TerrainConfig;
   customFillStore?: FillStoreFn;
 }): BlockData => {
-  return { storeData: buildBlock(params).store.data };
+  const { store } = buildBlock(params);
+  return {
+    storeData: store.data,
+    mightHaveVoxels: store.mightHaveVoxels,
+  };
 };
 
 /**
@@ -383,4 +389,5 @@ export const buildBlockData = (params: {
  */
 export const applyLevelData = (block: WorldBlock, data: BlockData): void => {
   block.store.data = data.storeData;
+  block.store.mightHaveVoxels = data.mightHaveVoxels;
 };

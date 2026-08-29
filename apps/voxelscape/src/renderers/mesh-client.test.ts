@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MeshClient } from "./mesh-client";
 import { buildBlockShell, type WorldBlock } from "../world/level-data";
+import { VOXEL_GRASS } from "../world/voxel-store";
 import type { MeshBuildRequest, MeshBuildResult } from "./mesh";
 
 /**
@@ -43,7 +44,7 @@ const setup = (
     const block = buildBlockShell({ center: [i * 192, 0, 0] });
     // These tests exercise the message protocol, not what is worth meshing,
     // so put a voxel in each shell to keep it on the worker path.
-    block.store.data[0] = 1;
+    block.store.set(0, 0, 0, VOXEL_GRASS);
     blocks.push(block);
   }
   const built: number[] = [];

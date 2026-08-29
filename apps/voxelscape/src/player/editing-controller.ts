@@ -183,6 +183,9 @@ export class EditingController {
         continue;
       }
       block.store.data[block.store.paddedIndex(x, y, z)] = id;
+      if (id !== VOXEL_AIR) {
+        block.store.mightHaveVoxels = true;
+      }
       holders.push(i);
     }
     if (holders.length > 0) {

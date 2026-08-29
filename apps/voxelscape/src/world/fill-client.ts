@@ -124,7 +124,10 @@ export class FillClient {
         continue;
       }
       this.fillInflight.delete(i);
-      applyLevelData(this.blocks[i], { storeData: msg.storeData[j] });
+      applyLevelData(this.blocks[i], {
+        storeData: msg.storeData[j],
+        mightHaveVoxels: msg.mightHaveVoxels[j],
+      });
       this.applyEdits(i);
       this.onBlockChanged(i);
     }

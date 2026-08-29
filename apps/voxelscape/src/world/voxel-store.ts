@@ -38,6 +38,18 @@ export class VoxelStore {
    */
   readonly padding: number = VOXEL_PADDING;
   data: Uint8Array;
+  /**
+   * Whether this block might hold anything but air, and so might be worth
+   * meshing. Kept as a flag rather than answered by reading the voxels,
+   * because a block of nothing but sky has no voxel to stop the reading early
+   * and there are hundreds of thousands of them to get through.
+   *
+   * Wrong only ever in the safe direction: something that is really empty may
+   * say it is not, which costs a mesh build that comes back with no faces in
+   * it. Nothing that holds a voxel ever says it is empty, so a write of
+   * anything but air raises this wherever the voxels are written.
+   */
+  mightHaveVoxels = false;
 
   constructor(params: { dims: Dim3; voxels: Dim3; scale: number }) {
     this.dims = params.dims;
@@ -112,11 +124,15 @@ export class VoxelStore {
   set(x: number, y: number, z: number, val: number): void {
     if (this.inBounds(x, y, z)) {
       this.data[this.index(x, y, z)] = val;
+      if (val !== VOXEL_AIR) {
+        this.mightHaveVoxels = true;
+      }
     }
   }
 
   reset(): void {
     this.data.fill(VOXEL_AIR);
+    this.mightHaveVoxels = false;
   }
 }
 
@@ -178,6 +194,9 @@ export const fillStore = (
               ? VOXEL_WATER
               : VOXEL_AIR;
       store.data[store.paddedIndex(vx, vy, vz)] = id;
+      if (id !== VOXEL_AIR) {
+        store.mightHaveVoxels = true;
+      }
     }
   };
   for (let vz = -p; vz < vzN + p; ++vz) {

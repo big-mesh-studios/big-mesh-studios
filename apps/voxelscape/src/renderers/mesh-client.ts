@@ -1,6 +1,5 @@
 import type { VoxelTileConfig } from "./atlas";
 import type { WorldBlock } from "../world/level-data";
-import { VOXEL_AIR } from "../world/voxel-store";
 import {
   buildBlockMesh,
   buildWaterMesh,
@@ -258,13 +257,7 @@ export class MeshClient {
    * trip to be told nothing.
    */
   private hasSurfaceData(index: number): boolean {
-    const voxels = this.blocks[index].store.data;
-    for (let i = 0; i < voxels.length; i++) {
-      if (voxels[i] !== VOXEL_AIR) {
-        return true;
-      }
-    }
-    return false;
+    return this.blocks[index].store.mightHaveVoxels;
   }
 
   private send(index: number): void {
