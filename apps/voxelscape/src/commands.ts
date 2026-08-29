@@ -9,6 +9,7 @@ import type { WeatherController } from "./environment/weather-controller";
 import type { MonsterController } from "./monsters/monster-controller";
 import type { RemoteMonsters } from "./monsters/remote-monsters";
 import type { MultiplayerController } from "./multiplayer/multiplayer-controller";
+import type { PlayerHealth } from "./player/health";
 import type { AdaptiveResolution } from "./render/adaptive";
 
 /**
@@ -88,6 +89,8 @@ export interface CommandsParams {
   monsters: MonsterController;
   monsterSync: MonsterSync;
   monsterRender: RemoteMonsters;
+  /** The player's hearts, for a command to restore them. */
+  health: PlayerHealth;
   /** The published drawings the monsters can be dressed in. */
   models: ModelLibrary;
   /** The account those drawings are read from when a command names none. */
@@ -148,6 +151,7 @@ export const createCommands = ({
   monsters,
   monsterSync,
   monsterRender,
+  health,
   models,
   modelAccount,
   resolution,
@@ -342,6 +346,13 @@ export const createCommands = ({
           return setFlying();
         }
         return "usage: /player:fly [on|off]  (no argument flips it)";
+      },
+    },
+    "/player:heal": {
+      description: "restore the player's hearts to full",
+      run: () => {
+        health.heal(health.maxHp);
+        return `hearts restored to ${health.hp}`;
       },
     },
     "/account:login": {

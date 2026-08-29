@@ -189,3 +189,61 @@ describe("damage message codec", () => {
     }
   });
 });
+
+describe("player-damage message codec", () => {
+  const hit = (
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> => ({
+    v: 1,
+    type: "player-damage",
+    seq: 5,
+    t: 700,
+    target: "did:plc:abc123",
+    amount: 2,
+    ...overrides,
+  });
+
+  it("round-trips a zombie swing's damage", () => {
+    const encoded = encodeMessage({
+      v: 1,
+      type: "player-damage",
+      seq: 5,
+      t: 700,
+      target: "did:plc:abc123",
+      amount: 2,
+    });
+    const decoded = decodeMessage(encoded);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.type).toBe("player-damage");
+    const message = decoded as Extract<
+      typeof decoded,
+      { type: "player-damage" }
+    >;
+    expect(message.seq).toBe(5);
+    expect(message.t).toBe(700);
+    expect(message.target).toBe("did:plc:abc123");
+    expect(message.amount).toBe(2);
+  });
+
+  it("accepts a valid player-damage message", () => {
+    expect(decodeMessage(JSON.stringify(hit()))).not.toBeNull();
+  });
+
+  it("rejects player-damage with a missing target or an impossible amount", () => {
+    const cases = [
+      hit({ target: "" }),
+      hit({ target: undefined }),
+      hit({ target: "x".repeat(257) }),
+      hit({ amount: 0 }),
+      hit({ amount: -2 }),
+      hit({ amount: MAX_DAMAGE + 1 }),
+      hit({ amount: 1.5 }),
+    ];
+    for (const bad of cases) {
+      expect(
+        decodeMessage(JSON.stringify(bad)),
+        JSON.stringify(bad),
+      ).toBeNull();
+    }
+  });
+});

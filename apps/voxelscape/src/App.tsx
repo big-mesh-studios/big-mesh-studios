@@ -3,6 +3,7 @@ import styles from "./App.module.css";
 import CoarseControls from "./ui/CoarseControls";
 import { Console } from "./ui/Console";
 import { EditHud } from "./ui/EditHud";
+import { HealthHud } from "./ui/HealthHud";
 import { LoadingScreen, LoadingToast } from "./ui/LoadingScreen";
 import { createToasts, Toast } from "./ui/Toasts";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
@@ -47,6 +48,7 @@ const App: Component<{}> = () => {
           <CoarseControls />
         </Show>
         <EditHud />
+        <HealthHud />
         <LoadingScreen />
         <Console
           onCommand={(line) => voxelscape.commands.run(line)}

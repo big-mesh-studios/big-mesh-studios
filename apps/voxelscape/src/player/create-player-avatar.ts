@@ -9,6 +9,7 @@ import type { InputSnapshot } from "./create-input";
 import {
   createPlayer,
   DEFAULT_PLAYER_CONFIG,
+  deathCameraPose,
   lookDirection,
   placeCamera,
   updatePlayer,
@@ -63,6 +64,13 @@ export interface PlayerAvatar {
   move(dt: number, input: InputSnapshot): void;
   /** Moves the cube and the camera onto the player's current position. */
   place(): void;
+  /**
+   * Moves the cube and the camera into the death fall's pose at `progress`
+   * (0 standing, 1 fallen flat): in first person the eye sweeps down the
+   * backward arc while the view tips to the sky; in third person the cube
+   * tips backward over its feet like a corpse.
+   */
+  placeDeath(progress: number): void;
   /** The ray the crosshair points along, from the camera's eye. */
   look(): { origin: Dim3; direction: Dim3 };
   /** Every world voxel the player's cube overlaps, so an edit can't bury them. */
@@ -140,6 +148,42 @@ export const createPlayerAvatar = ({
       cube.rotation.y = player.yaw;
       cube.visible = cubeVisible;
       placeCamera(camera, player, firstPerson);
+    },
+
+    placeDeath(progress) {
+      if (firstPerson) {
+        const pose = deathCameraPose(progress, player);
+        camera.position.set(
+          pose.position[0],
+          pose.position[1],
+          pose.position[2],
+        );
+        const [dx, dy, dz] = lookDirection({
+          ...player,
+          pitch: pose.pitch,
+        });
+        camera.lookAt(
+          pose.position[0] + dx,
+          pose.position[1] + dy,
+          pose.position[2] + dz,
+        );
+      } else {
+        // The cube plays the same fall a corpse does: tip backward about the
+        // planted feet, following the arc the zombie meshes draw.
+        const p = Math.max(0, Math.min(1, progress));
+        const fall = (-Math.PI / 2) * p;
+        const sinFall = Math.sin(fall);
+        const cosFall = Math.cos(fall);
+        const sinYaw = Math.sin(player.yaw);
+        const cosYaw = Math.cos(player.yaw);
+        const half = player.config.halfSize;
+        cube.rotation.set(fall, player.yaw, 0);
+        cube.position.set(
+          player.position.x + half * sinFall * sinYaw,
+          player.position.y - half + half * cosFall,
+          player.position.z + half * sinFall * cosYaw,
+        );
+      }
     },
 
     look() {

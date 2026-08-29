@@ -18,6 +18,7 @@ import { createPeerJSSignaling } from "../multiplayer/peerjs-transport";
 import { createInput, type InputController } from "../player/create-input";
 import { createPlayerAvatar } from "../player/create-player-avatar";
 import { EditingController } from "../player/editing-controller";
+import { PlayerHealth } from "../player/health";
 import { HeldItem } from "../player/held-item";
 import { Inventory, SWORD } from "../player/inventory";
 import type { Player, PlayerConfig } from "../player/player";
@@ -73,6 +74,8 @@ export interface Voxelscape {
   player: Player;
   input: InputController;
   inventory: Inventory;
+  /** The player's hearts and the death fall that empties them. */
+  health: PlayerHealth;
   commands: Commander;
   /** Whether `onDebugStats` is being called, which `/render:perf` toggles. */
   debugPerf: Accessor<boolean>;
@@ -143,6 +146,32 @@ export const createVoxelscape = ({
     player,
   });
 
+  /**
+   * The player's hearts and the death sequence. When a zombie's swing empties
+   * them, the camera plays the fall a corpse does, then this stands the
+   * player back up at spawn with full hearts.
+   */
+  const health = new PlayerHealth({
+    onFallDone: () => {
+      // The fall has lain out: put the player back on their feet at spawn,
+      // facing the way they started, before this frame's normal placement.
+      const ground = world.heightAt(spawn[0], spawn[2]);
+      avatar.player.position.set(
+        spawn[0],
+        ground + avatar.player.config.halfSize + 0.1,
+        spawn[2],
+      );
+      avatar.player.yaw = 0;
+      avatar.player.pitch = 0;
+      avatar.player.vx = 0;
+      avatar.player.vy = 0;
+      avatar.player.vz = 0;
+      avatar.player.onGround = false;
+      avatar.player.flying = false;
+      health.respawn();
+    },
+  });
+
   const monsters = new MonsterController({
     seed: terrain.seed,
     heightAt: (x, z) => world.heightAt(x, z),
@@ -164,6 +193,15 @@ export const createVoxelscape = ({
     onBroadcast: (updates) => multiplayer.broadcastMonsters(updates),
     // A monster this client hurt flashes red, so the hit reads on the model.
     onHit: (id) => monsterRender.flashHit(id),
+    // A zombie's swing lands on a player: the local player takes it on their
+    // own health, a peer is told over the mesh so their client applies it.
+    onHitPlayer: (did, amount) => {
+      if (did === (atproto.did ?? "")) {
+        health.takeDamage(amount);
+      } else {
+        multiplayer.broadcastPlayerDamage({ target: did, amount });
+      }
+    },
   });
   const monsterRender = new RemoteMonsters({
     getMonsters: () => monsters.monsters.values(),
@@ -282,6 +320,12 @@ export const createVoxelscape = ({
     onRemoteDamage: (_did, damage) => {
       monsters.applyRemoteDamage(damage);
     },
+    // A peer's zombie swung at this player: apply it to the local health.
+    onRemotePlayerDamage: (_did, damage) => {
+      if (damage.target === (atproto.did ?? "")) {
+        health.takeDamage(damage.amount);
+      }
+    },
   });
 
   // The durable path: owned monsters are written to atproto at a throttled
@@ -382,6 +426,7 @@ export const createVoxelscape = ({
     monsters,
     monsterSync,
     monsterRender,
+    health,
     models: modelLibrary,
     modelAccount,
     resolution,
@@ -438,36 +483,46 @@ export const createVoxelscape = ({
     // Only the player waits. Moving the renderers' tick in here deadlocks:
     // it is what builds the geometry this is waiting for.
     if (progress.spawnDrawn) {
-      const snapshot = input.consume();
-      avatar.move(dt, snapshot);
-      // The camera has not caught up yet, so this picks from last frame's eye
-      // along this frame's look. Recomputed every frame, not just on edits, so
-      // the crosshair tracks what it is over.
-      setInReach(editing.pick().target !== null);
-      if (snapshot.break) {
-        const result = editing.breakBlock();
-        if (result !== null) {
-          setEditStatus(result);
+      health.tick(dt);
+      if (health.dead) {
+        // The player's body lies where it fell: no input, no editing, and no
+        // swing — just the death fall the camera plays while the world keeps
+        // simulating around the corpse. `onFallDone` stands them back up at
+        // spawn once it has lain out, and the ordinary branch below runs
+        // from this frame on.
+        avatar.placeDeath(health.fallProgress);
+      } else {
+        const snapshot = input.consume();
+        avatar.move(dt, snapshot);
+        // The camera has not caught up yet, so this picks from last frame's eye
+        // along this frame's look. Recomputed every frame, not just on edits, so
+        // the crosshair tracks what it is over.
+        setInReach(editing.pick().target !== null);
+        if (snapshot.break) {
+          const result = editing.breakBlock();
+          if (result !== null) {
+            setEditStatus(result);
+          }
         }
+        // With the sword selected the place button swings it instead; the swing
+        // itself runs inside `heldItem.update`.
+        if (snapshot.place && inventory.selectedId !== SWORD) {
+          setEditStatus(editing.placeBlock());
+        }
+        if (snapshot.select !== null) {
+          inventory.selectSlot(snapshot.select);
+        }
+        if (snapshot.wheel !== 0) {
+          inventory.selectStep(snapshot.wheel);
+        }
+        world.scrollTo(
+          avatar.player.position.x,
+          avatar.player.position.y,
+          avatar.player.position.z,
+        );
+        avatar.place();
+        heldItem.update(dt, snapshot.placeHeld, snapshot.placeReleased);
       }
-      // With the sword selected the place button swings it instead; the swing
-      // itself runs inside `heldItem.update`.
-      if (snapshot.place && inventory.selectedId !== SWORD) {
-        setEditStatus(editing.placeBlock());
-      }
-      if (snapshot.select !== null) {
-        inventory.selectSlot(snapshot.select);
-      }
-      if (snapshot.wheel !== 0) {
-        inventory.selectStep(snapshot.wheel);
-      }
-      world.scrollTo(
-        avatar.player.position.x,
-        avatar.player.position.y,
-        avatar.player.position.z,
-      );
-      avatar.place();
-      heldItem.update(dt, snapshot.placeHeld, snapshot.placeReleased);
       multiplayer.tick(dt);
       monsters.tick(dt);
       monsterRender.tick(dt);
@@ -514,6 +569,7 @@ export const createVoxelscape = ({
     player: avatar.player,
     input,
     inventory,
+    health,
     commands,
     debugPerf,
     editStatus,

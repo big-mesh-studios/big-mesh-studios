@@ -1,4 +1,5 @@
 import { PerspectiveCamera, Vector3 } from "@random-mesh/rmsl/scene";
+import type { Dim3 } from "../world/level-data";
 import type { InputSnapshot } from "./create-input";
 
 export interface Player {
@@ -631,4 +632,33 @@ export const placeCamera = (
   // pitch lifts/lowers the look point a little so vertical drag still tilts
   const ty = player.position.y + Math.sin(player.pitch) * 3.0;
   camera.lookAt(player.position.x, ty, player.position.z);
+};
+
+/**
+ * The pose the death fall puts the camera in at `progress` — 0 standing, 1
+ * fallen flat. The eye sweeps down a backward arc about the planted feet to
+ * the ground while the view tips up to the sky, the same fall a zombie corpse
+ * plays. Returns the eye's position and the pitch the camera should look
+ * along; the heading does not change.
+ */
+export const deathCameraPose = (
+  progress: number,
+  player: Player,
+): { position: Dim3; pitch: number } => {
+  const p = Math.max(0, Math.min(1, progress));
+  const fall = (-Math.PI / 2) * p;
+  const sinFall = Math.sin(fall);
+  const cosFall = Math.cos(fall);
+  const sinYaw = Math.sin(player.yaw);
+  const cosYaw = Math.cos(player.yaw);
+  const eye = player.config.eyeHeight;
+  const feetY = player.position.y - player.config.halfSize;
+  return {
+    position: [
+      player.position.x + eye * sinFall * sinYaw,
+      feetY + eye * cosFall,
+      player.position.z + eye * sinFall * cosYaw,
+    ],
+    pitch: player.pitch + (Math.PI / 2) * p,
+  };
 };

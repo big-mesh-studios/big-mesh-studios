@@ -8,7 +8,7 @@ import {
   MonsterController,
 } from "./monster-controller";
 import { KNOCKBACK } from "./hit";
-import { WAKE_RADIUS } from "./zombie";
+import { ATTACK_INTERVAL_SECONDS, WAKE_RADIUS, ZOMBIE_DAMAGE } from "./zombie";
 
 const GROUND = 10;
 
@@ -515,5 +515,108 @@ describe("monster controller damage", () => {
     const deadBroadcast = sent.flat().find((u) => u.id === id);
     expect(deadBroadcast).toBeDefined();
     expect(deadBroadcast!.hp).toBe(0);
+  });
+});
+
+describe("monster controller attacks", () => {
+  const record = (overrides: Partial<MonsterRecord> = {}): MonsterRecord => ({
+    $type: MONSTER_COLLECTION,
+    id: "m1_0_0_0",
+    kind: "zombie",
+    owner: "me",
+    seed: 42,
+    x: 0,
+    y: 11,
+    z: 0,
+    yawDeg: 0,
+    hp: 20,
+    state: "chase",
+    updatedAt: 1_000,
+    createdAt: "t",
+    ...overrides,
+  });
+
+  /** The attacker positions a fresh controller a player next to, then waits for a swing. */
+  const placeNextTo = (
+    c: MonsterController,
+    player: { did: string; x: number; z: number },
+    seconds: number,
+  ): void => {
+    c.tick(1 / 60);
+    const [, m] = [...c.monsters.entries()][0];
+    player.x = m.pose.x + 1;
+    player.z = m.pose.z;
+    for (let i = 0; i < Math.ceil(seconds / (1 / 60)); i++) {
+      c.tick(1 / 60);
+      vi.advanceTimersByTime(16);
+    }
+  };
+
+  it("reports an owned zombie's swing on the local player", () => {
+    const me = { did: "me", x: 0, z: 0 };
+    const hits: Array<[string, number]> = [];
+    const c = makeController({
+      getPlayers: () => [me],
+      onHitPlayer: (did, amount) => hits.push([did, amount]),
+    });
+    placeNextTo(c, me, ATTACK_INTERVAL_SECONDS + 1);
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every(([did]) => did === "me")).toBe(true);
+    expect(hits[0][1]).toBe(ZOMBIE_DAMAGE);
+  });
+
+  it("reports the swing on the nearer peer when one stands closer", () => {
+    const me = { did: "me", x: 0, z: 0 };
+    const peer = { did: "aaa", x: 0, z: 0 };
+    const hits: Array<[string, number]> = [];
+    const c = makeController({
+      getPlayers: () => [me, peer],
+      onHitPlayer: (did, amount) => hits.push([did, amount]),
+    });
+    c.tick(1 / 60);
+    const [id, m] = [...c.monsters.entries()][0];
+    // The local player stands close enough to own the monster first, so the
+    // hysteresis keeps it theirs once the peer edges nearer.
+    me.x = m.pose.x + 2;
+    me.z = m.pose.z;
+    for (let i = 0; i < 30; i++) {
+      c.tick(1 / 60);
+      vi.advanceTimersByTime(16);
+    }
+    expect(c.monsters.get(id)!.owner).toBe("me");
+    // The peer stands one unit closer than the local player — inside the
+    // ownership hysteresis, so the local player keeps the monster but the
+    // zombie's swings land on the peer.
+    peer.x = m.pose.x + 1;
+    peer.z = m.pose.z;
+    hits.length = 0; // swings before the peer closed in are not this test's business
+    for (
+      let i = 0;
+      i < Math.ceil((ATTACK_INTERVAL_SECONDS + 1) / (1 / 60));
+      i++
+    ) {
+      c.tick(1 / 60);
+      vi.advanceTimersByTime(16);
+    }
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every(([did]) => did === "aaa")).toBe(true);
+    expect(hits[0][1]).toBe(ZOMBIE_DAMAGE);
+  });
+
+  it("reports nothing for a monster a peer owns", () => {
+    const me = { did: "me", x: 0, z: 0 };
+    const peer = { did: "aaa", x: 0, z: 0 };
+    const hits: Array<[string, number]> = [];
+    const c = makeController({
+      getPlayers: () => [me, peer],
+      onHitPlayer: (did, amount) => hits.push([did, amount]),
+    });
+    c.mergeFromAtproto([record({ owner: "aaa" })]);
+    // the peer is the nearest player, so they own and simulate the monster
+    for (let i = 0; i < 60; i++) {
+      c.tick(1 / 60);
+      vi.advanceTimersByTime(16);
+    }
+    expect(hits).toEqual([]);
   });
 });

@@ -30,6 +30,8 @@ export const AGGRO_RADIUS = 18;
 export const ATTACK_RADIUS = 2.4;
 /** Seconds between swings while a player stays in melee range. */
 export const ATTACK_INTERVAL_SECONDS = 1;
+/** Damage one zombie swing deals; a player loses a heart per hit. */
+export const ZOMBIE_DAMAGE = 2;
 /** World units per second while chasing. */
 export const ZOMBIE_SPEED = 2.4;
 /** World units per second while wandering. */
@@ -119,18 +121,22 @@ const move = (
 };
 
 /**
- * The next snapshot after `dt` seconds. The zombie sleeps when no player is
+ * The next step of a zombie and whatever it did to reach it: the snapshot
+ * after `dt` seconds, plus the horizontal position of the player a swing
+ * landed on this step when one did. The zombie sleeps when no player is
  * within `WAKE_RADIUS`, wanders when one is merely nearby, chases the nearest
  * player inside `AGGRO_RADIUS`, and swings (standing still) inside
- * `ATTACK_RADIUS`, on a `cooldown`-gated interval. `rng` supplies every random
- * choice, so repeated calls with the same inputs and sequence agree.
+ * `ATTACK_RADIUS`, on a `cooldown`-gated interval; a swing lands the moment
+ * the cooldown runs out while a player is in melee range. `rng` supplies
+ * every random choice, so repeated calls with the same inputs and sequence
+ * agree.
  */
 export const stepZombie = (
   dt: number,
   m: MonsterSnapshot,
   rng: () => number,
   inputs: ZombieStepInputs,
-): MonsterSnapshot => {
+): { snapshot: MonsterSnapshot; attack: { x: number; z: number } | null } => {
   const halfHeight = kindHalfHeight(m.kind);
   const nearest = nearestPlayer(m.pose, inputs.players);
   const distance =
@@ -139,6 +145,7 @@ export const stepZombie = (
       : horizontalDistance(m.pose, nearest.x, nearest.z);
   let cooldown = Math.max(0, m.cooldown - dt);
   let wanderLeft = m.wanderLeft;
+  let attack: { x: number; z: number } | null = null;
 
   const grounded = (pose: MonsterPose): MonsterPose => ({
     ...pose,
@@ -147,10 +154,13 @@ export const stepZombie = (
 
   if (nearest === null || distance > WAKE_RADIUS) {
     return {
-      ...m,
-      pose: { ...grounded(m.pose), vx: 0, vz: 0 },
-      state: "sleep",
-      cooldown,
+      snapshot: {
+        ...m,
+        pose: { ...grounded(m.pose), vx: 0, vz: 0 },
+        state: "sleep",
+        cooldown,
+      },
+      attack,
     };
   }
 
@@ -168,6 +178,7 @@ export const stepZombie = (
     const yaw = Math.atan2(nearest.x - m.pose.x, nearest.z - m.pose.z);
     if (cooldown <= 0) {
       cooldown = ATTACK_INTERVAL_SECONDS;
+      attack = { x: nearest.x, z: nearest.z };
     }
     pose = { ...grounded(m.pose), yaw, vx: 0, vz: 0 };
   } else if (state === "chase") {
@@ -195,5 +206,8 @@ export const stepZombie = (
     }
   }
 
-  return { ...m, pose, state, wanderLeft, cooldown };
+  return {
+    snapshot: { ...m, pose, state, wanderLeft, cooldown },
+    attack,
+  };
 };
