@@ -1,3 +1,9 @@
+import { Dimensions3D, Matrix3x3, Vector3D } from "@big-mesh-studios/maths";
+import {
+  boxSize,
+  encodePalette,
+  VoxelModelMaterial,
+} from "@big-mesh-studios/stacker/renderer";
 import {
   BoxGeometry,
   Line2NodeMaterial,
@@ -13,21 +19,14 @@ import {
   createEffect,
   createMemo,
   createSignal,
-  createTrackedEffect,
   onSettled,
   untrack,
   useContext,
 } from "solid-js";
 import { StackerContext } from "./context";
-import { Dimensions3D, Matrix3x3, Vector3D } from "@big-mesh-studios/maths";
 import shaders from "./shaders";
 import { tryCatch } from "./utils/utils";
 import { voxelPicker } from "./voxel-picker";
-import {
-  boxSize,
-  encodePalette,
-  VoxelModelMaterial,
-} from "@big-mesh-studios/stacker/renderer";
 import {
   AMBIENT_COLOUR,
   FAR,
@@ -261,83 +260,6 @@ const VoxelPreviewView: Component = () => {
     }
   };
 
-  createTrackedEffect(() => {
-    const _previewScene = previewScene();
-    const _dimensions = dimensions();
-    if (_previewScene === undefined || untrack(voxels).length === 0) {
-      return;
-    }
-    // The box that bounds the volume: the same one the marcher intersects,
-    // which is the volume padded by one voxel on each side. Rasterizing it
-    // limits the fragment shader to the pixels that could land on a voxel.
-    const size = boxSize(_dimensions);
-    _previewScene.mesh.geometry = new BoxGeometry(
-      size.width,
-      size.height,
-      size.depth,
-    );
-  });
-
-  createTrackedEffect(() => {
-    const _previewScene = previewScene();
-    const _dimensions = dimensions();
-    const _voxels = voxels();
-    if (_previewScene === undefined || _voxels.length === 0) {
-      return;
-    }
-    const texture = _previewScene.material.voxelTexture;
-    texture.image = _voxels;
-    texture.width = _dimensions.width;
-    texture.height = _dimensions.height;
-    texture.depth = _dimensions.depth;
-    texture.needsUpdate = true;
-  });
-
-  createTrackedEffect(() => {
-    const _previewScene = previewScene();
-    const _palette = palette();
-    if (_previewScene === undefined) {
-      return;
-    }
-    const paletteData = new Uint8Array(_palette.length * 4);
-    _palette.forEach(({ r, g, b, a }, i) => {
-      const offset = i << 2;
-      paletteData[offset] = r;
-      paletteData[offset + 1] = g;
-      paletteData[offset + 2] = b;
-      paletteData[offset + 3] = a;
-    });
-    const texture = _previewScene.material.paletteTexture;
-    texture.image = paletteData;
-    texture.width = _palette.length;
-    texture.height = 1;
-    texture.needsUpdate = true;
-  });
-
-  // The outline follows the pick: trace the picked voxel's cell (in model
-  // space, from the same dimensions the marcher sizes its box by) and hide it
-  // when the pick is empty.
-  createTrackedEffect(() => {
-    const _previewScene = previewScene();
-    const _dimensions = dimensions();
-    const _picked = pickedVoxel();
-    if (_previewScene === undefined) {
-      return;
-    }
-    if (_picked !== undefined && _picked[0] >= 0) {
-      const geometry = _previewScene.outline.geometry;
-      geometry.setPositions(voxelCellEdges(_dimensions, _picked));
-      // setPositions swaps in fresh instance attributes whose needsUpdate flag
-      // is false, so the renderer would keep drawing the previous pick's edges.
-      // Flag them so the next frame uploads the new cell.
-      geometry.attributes.instanceStart.needsUpdate = true;
-      geometry.attributes.instanceEnd.needsUpdate = true;
-      _previewScene.outline.visible = true;
-    } else {
-      _previewScene.outline.visible = false;
-    }
-  });
-
   const render = () => {
     const _previewScene = untrack(previewScene);
     const _canvas = untrack(canvas);
@@ -382,6 +304,85 @@ const VoxelPreviewView: Component = () => {
     // no line poking through the volume.
     renderer.render(scene, camera);
   };
+
+  createEffect(
+    () => [previewScene(), dimensions()] as const,
+    ([previewScene, dimensions]) => {
+      if (previewScene === undefined || untrack(voxels).length === 0) {
+        return;
+      }
+      // The box that bounds the volume: the same one the marcher intersects,
+      // which is the volume padded by one voxel on each side. Rasterizing it
+      // limits the fragment shader to the pixels that could land on a voxel.
+      const size = boxSize(dimensions);
+      previewScene.mesh.geometry = new BoxGeometry(
+        size.width,
+        size.height,
+        size.depth,
+      );
+    },
+  );
+
+  createEffect(
+    () => [previewScene(), dimensions(), voxels()] as const,
+    ([previewScene, dimensions, voxels]) => {
+      if (previewScene === undefined || voxels.length === 0) {
+        return;
+      }
+      const texture = previewScene.material.voxelTexture;
+      texture.image = voxels;
+      texture.width = dimensions.width;
+      texture.height = dimensions.height;
+      texture.depth = dimensions.depth;
+      texture.needsUpdate = true;
+    },
+  );
+
+  createEffect(
+    () => [previewScene(), palette()] as const,
+    ([previewScene, palette]) => {
+      if (previewScene === undefined) {
+        return;
+      }
+      const paletteData = new Uint8Array(palette.length * 4);
+      palette.forEach(({ r, g, b, a }, i) => {
+        const offset = i << 2;
+        paletteData[offset] = r;
+        paletteData[offset + 1] = g;
+        paletteData[offset + 2] = b;
+        paletteData[offset + 3] = a;
+      });
+      const texture = previewScene.material.paletteTexture;
+      texture.image = paletteData;
+      texture.width = palette.length;
+      texture.height = 1;
+      texture.needsUpdate = true;
+    },
+  );
+
+  // The outline follows the pick: trace the picked voxel's cell (in model
+  // space, from the same dimensions the marcher sizes its box by) and hide it
+  // when the pick is empty.
+  createEffect(
+    () => [previewScene(), dimensions(), pickedVoxel()] as const,
+    ([previewScene, dimensions, pickedVoxel]) => {
+      if (previewScene === undefined) {
+        return;
+      }
+      if (pickedVoxel !== undefined && pickedVoxel[0] >= 0) {
+        const geometry = previewScene.outline.geometry;
+        geometry.setPositions(voxelCellEdges(dimensions, pickedVoxel));
+        // setPositions swaps in fresh instance attributes whose needsUpdate flag
+        // is false, so the renderer would keep drawing the previous pick's edges.
+        // Flag them so the next frame uploads the new cell.
+        geometry.attributes.instanceStart.needsUpdate = true;
+        geometry.attributes.instanceEnd.needsUpdate = true;
+        previewScene.outline.visible = true;
+      } else {
+        previewScene.outline.visible = false;
+      }
+    },
+  );
 
   onSettled(() => {
     const _canvas = canvas();
