@@ -1,19 +1,19 @@
-import { flush, useContext } from "solid-js";
 import { createPopover } from "@big-mesh-studios/utils/create-popover";
+import { flush, useContext } from "solid-js";
 import {
   Bar,
   Colour,
   colourTabStyle,
   Column,
   createDialog,
-  popoverStyle,
   IconButton,
   IconTab,
+  popoverStyle,
   tabStyle,
 } from "./components/components";
+import Palette from "./components/Palette";
 import { StackerContext } from "./context";
 import styles from "./Hud.module.css";
-import Palette from "./Palette";
 import { ProfileModal } from "./profile/ProfileModal";
 import { ModeKind } from "./types";
 

@@ -1,16 +1,12 @@
+import { RGBA } from "@big-mesh-studios/maths";
+import { createPopover } from "@big-mesh-studios/utils/create-popover";
+import { pointer } from "@big-mesh-studios/utils/pointer";
 import { createEffect } from "@solidjs/signals";
 import { createMemo, createSignal, For, useContext } from "solid-js";
-import { ColourPicker } from "./components/ColorPicker";
-import { createPopover } from "@big-mesh-studios/utils/create-popover";
-import {
-  colourTabStyle,
-  popoverStyle,
-  tabStyle,
-} from "./components/components";
-import { StackerContext } from "./context";
-import { RGBA } from "@big-mesh-studios/maths";
+import { StackerContext } from "../context";
+import { ColourPicker } from "./ColorPicker";
+import { colourTabStyle, popoverStyle, tabStyle } from "./components";
 import styles from "./Palette.module.css";
-import { pointer } from "@big-mesh-studios/utils/pointer";
 
 function Palette(props: { class?: string }) {
   const {
