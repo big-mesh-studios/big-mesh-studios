@@ -60,14 +60,11 @@
     "@random-mesh/rmsl": "^1.9.0",
     "@solidjs/signals": "2.0.0-beta.29",
     "@solidjs/web": "2.0.0-beta.29",
-    "@tailwindcss/vite": "^4.3.0",
     "browser-fs-access": "^0.38.0",
-    "daisyui": "^5.5.20",
     "fast-png": "^8.0.0",
     "jszip": "^3.10.1",
     "peerjs": "^1.5.5",
     "solid-js": "2.0.0-beta.29",
-    "tailwindcss": "^4.3.0",
     "three": "^0.183.2"
   }
 }

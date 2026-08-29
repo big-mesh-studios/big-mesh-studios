@@ -1,0 +1,14 @@
+/*
+ * The touch controls lie over the whole view without taking any of its input:
+ * a look-drag has to reach the canvas underneath, so only the controls
+ * themselves accept a pointer.
+ */
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.control {
+  pointer-events: auto;
+}

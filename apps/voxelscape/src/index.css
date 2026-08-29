@@ -1,14 +1,102 @@
-@import "tailwindcss";
-@plugin "daisyui" {
-  themes: dark --default;
+/*
+ * The reset these interfaces are built on. It was Tailwind's preflight until
+ * nothing else of Tailwind was used: no utility class, and no theme beyond the
+ * two surface colours below, against a stylesheet that shipped whole.
+ *
+ * What is kept is what the components here actually lean on — every element
+ * sized by its border box and carrying no margin or padding of its own, form
+ * controls that inherit their font and colour instead of the browser's, and
+ * media laid out as blocks.
+ */
+*,
+*::before,
+*::after,
+::backdrop {
+  box-sizing: border-box;
+  border: 0 solid;
+  margin: 0;
+  padding: 0;
 }
 
 html {
+  line-height: 1.5;
+  tab-size: 4;
+  -webkit-text-size-adjust: 100%;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+button,
+input,
+select,
+optgroup,
+textarea {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background-color: transparent;
+  border-radius: 0;
+  opacity: 1;
+}
+
+button,
+input[type="button"],
+input[type="reset"],
+input[type="submit"] {
+  appearance: button;
+}
+
+::placeholder {
+  color: color-mix(in oklab, currentcolor 50%, transparent);
+  opacity: 1;
+}
+
+textarea {
+  resize: vertical;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: inherit;
+}
+
+img,
+svg,
+video,
+canvas,
+audio,
+iframe,
+embed,
+object {
+  display: block;
+  vertical-align: middle;
+}
+
+img,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+html {
+  color-scheme: dark;
+
   --margin: 12px;
   --size: 36px;
 
   --front: white;
-  --back: var(--color-base-200);
+  --back: oklch(23.26% 0.014 253.1);
 
   --grey: #707070;
   --light-grey: #a9a9a9;

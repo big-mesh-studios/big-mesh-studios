@@ -41,7 +41,7 @@
   height: 64px;
   display: grid;
   place-items: center;
-  background-color: var(--color-base-300, #17181c);
+  background-color: oklch(21.15% 0.012 254.09);
   border: 1px solid var(--dark-grey);
   border-radius: var(--margin);
   overflow: hidden;

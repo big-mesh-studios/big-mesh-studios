@@ -1,4 +1,5 @@
 import { Component, createSignal, onCleanup } from "solid-js";
+import styles from "./CoarseControls.module.css";
 import * as THREE from "three";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
 import { ActionButton } from "./ActionButton";
@@ -25,10 +26,10 @@ const CoarseControls: Component = () => {
 
   return (
     <div
-      class="pointer-events-none absolute inset-0"
+      class={styles.overlay}
       style={{ "-webkit-tap-highlight-color": "transparent" }}
     >
-      <div class="pointer-events-auto">
+      <div class={styles.control}>
         <Joystick
           left={MARGIN}
           top={viewSize().y - MARGIN - HIT}
@@ -41,7 +42,7 @@ const CoarseControls: Component = () => {
         />
       </div>
 
-      <div class="pointer-events-auto">
+      <div class={styles.control}>
         <ActionButton
           left={viewSize().x - MARGIN - BUTTON}
           top={viewSize().y - MARGIN - BUTTON}
@@ -59,7 +60,7 @@ const CoarseControls: Component = () => {
           direct handler keeps it independent of Solid's reactive effect
           semantics */}
       <div
-        class="pointer-events-auto"
+        class={styles.control}
         onPointerDown={(e) => e.stopPropagation()}
         onPointerUp={(e) => {
           e.stopPropagation();

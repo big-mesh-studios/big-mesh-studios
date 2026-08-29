@@ -1,7 +1,6 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import { precompileJS } from "@random-mesh/rmsl/vite";
-import tailwindcss from "@tailwindcss/vite";
 import solid from "vite-plugin-solid";
 
 export default defineConfig(({ command }) => ({
@@ -15,7 +14,6 @@ export default defineConfig(({ command }) => ({
   base: command === "build" ? "/big-mesh-studios/rm-stacker/" : "/",
   plugins: [
     precompileJS({ include: "src/voxel-picker-cpu.ts" }),
-    tailwindcss(),
     solid({ ssr: false }),
   ],
   optimizeDeps: {
