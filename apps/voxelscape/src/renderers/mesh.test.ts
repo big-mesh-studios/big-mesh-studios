@@ -32,6 +32,18 @@ const solidTerrain = {
   base: 2,
 };
 
+/**
+ * Constant terrain whose surface sits inside the block above the origin one,
+ * so that block is solid with a top and the one below it is buried entirely.
+ */
+const buriedTerrain = {
+  seed: 1,
+  frequency: 1,
+  amplitude: 0,
+  octaves: 1,
+  base: 10,
+};
+
 /** Flat sea at the block top: water fills the top row y=3. */
 const seaTerrain = {
   seed: 1,
@@ -166,6 +178,25 @@ describe("buildBlockMesh", () => {
     expect(hasNormal(meshA, 1, 0, 0)).toBe(false); // no +X seam face
     expect(hasNormal(meshB, -1, 0, 0)).toBe(false); // no -X seam face
     expect(hasNormal(meshA, 0, 1, 0)).toBe(true);
+  });
+
+  it("culls the seam face shared with the block stacked above it", () => {
+    // Blocks stack in every axis, so the seam between one and the block above
+    // it is culled against the border the same way a sideways one is. Terrain
+    // whose surface sits inside the upper block leaves the lower one buried.
+    const under = smallStore();
+    const over = smallStore();
+    fillStore(under, [0, 0, 0], buriedTerrain);
+    fillStore(over, [0, 8, 0], buriedTerrain);
+    const meshUnder = buildBlockMesh(under, []);
+    const meshOver = buildBlockMesh(over, []);
+
+    // Nothing of the lower block is exposed: every face of it, its top
+    // included, meets solid ground in some neighbour's border.
+    expect(faceCount(meshUnder)).toBe(0);
+    // The upper block shows its own surface and no floor against the one below.
+    expect(hasNormal(meshOver, 0, 1, 0)).toBe(true);
+    expect(hasNormal(meshOver, 0, -1, 0)).toBe(false);
   });
 
   it("emits no vertical water face across a chunk seam", () => {
