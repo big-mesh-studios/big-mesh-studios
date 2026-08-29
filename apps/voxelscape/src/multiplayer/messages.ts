@@ -20,6 +20,8 @@ export const MAX_MONSTERS_PER_MESSAGE = 32;
 const MAX_MONSTER_SPEED = 100;
 /** Largest health a broadcast monster may report. */
 const MAX_MONSTER_HP = 100;
+/** Largest damage a single swing may claim to deal. */
+export const MAX_DAMAGE = 100;
 
 /** The only monster kinds and states that exist; everything else is rejected. */
 const MONSTER_KINDS = new Set<MonsterKind>(["zombie"]);
@@ -96,7 +98,26 @@ export interface MonsterWire {
   updates: MonsterUpdate[];
 }
 
-export type MeshMessage = PoseWire | EditWire | MonsterWire;
+/**
+ * One sword swing's damage, sent to every peer so the monster's owner applies
+ * it: the receiver gates on its own ownership, so a hit lands exactly once,
+ * on the client that simulates the monster.
+ */
+export interface DamageWire {
+  v: 1;
+  type: "damage";
+  seq: number;
+  t: number;
+  /** The id of the monster the swing hit. */
+  id: string;
+  /** Health the swing claims to take. */
+  amount: number;
+  /** The attacker's horizontal position, so the monster's owner can knock it back. */
+  attackerX: number;
+  attackerZ: number;
+}
+
+export type MeshMessage = PoseWire | EditWire | MonsterWire | DamageWire;
 
 const isPoseWire = (r: object): r is PoseWire => {
   const v = r as Record<string, unknown>;
@@ -202,6 +223,28 @@ const isMonsterWire = (r: object): r is MonsterWire => {
   );
 };
 
+const isDamageWire = (r: object): r is DamageWire => {
+  const v = r as Record<string, unknown>;
+  return (
+    v.type === "damage" &&
+    v.v === 1 &&
+    typeof v.seq === "number" &&
+    typeof v.t === "number" &&
+    typeof v.id === "string" &&
+    v.id.length <= 64 &&
+    MONSTER_ID_RE.test(v.id) &&
+    Number.isInteger(v.amount) &&
+    (v.amount as number) >= 1 &&
+    (v.amount as number) <= MAX_DAMAGE &&
+    typeof v.attackerX === "number" &&
+    Number.isFinite(v.attackerX) &&
+    Math.abs(v.attackerX) <= MAX_WORLD_VOXEL &&
+    typeof v.attackerZ === "number" &&
+    Number.isFinite(v.attackerZ) &&
+    Math.abs(v.attackerZ) <= MAX_WORLD_VOXEL
+  );
+};
+
 /** Serializes a message to its compact wire form. */
 export const encodeMessage = (m: MeshMessage): string => {
   if (m.type === "pose") {
@@ -224,6 +267,18 @@ export const encodeMessage = (m: MeshMessage): string => {
       seq: m.seq,
       t: Math.round(m.t),
       edits: m.edits,
+    });
+  }
+  if (m.type === "damage") {
+    return JSON.stringify({
+      v: 1,
+      type: "damage",
+      seq: m.seq,
+      t: Math.round(m.t),
+      id: m.id,
+      amount: m.amount,
+      attackerX: round(m.attackerX, 2),
+      attackerZ: round(m.attackerZ, 2),
     });
   }
   return JSON.stringify({
@@ -271,6 +326,9 @@ export const decodeMessage = (chunk: unknown): MeshMessage | null => {
     return r;
   }
   if (isMonsterWire(r)) {
+    return r;
+  }
+  if (isDamageWire(r)) {
     return r;
   }
   return null;

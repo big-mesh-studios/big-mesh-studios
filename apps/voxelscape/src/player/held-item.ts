@@ -35,12 +35,19 @@ export interface HeldItemParams {
   getSelected: () => number;
   /** Whether the camera is in first person, read each frame. */
   getFirstPerson: () => boolean;
+  /**
+   * Called the frame a swing begins — the release edge from rest or from a
+   * wind-up — so the caller can settle what the swing hits. Not called while
+   * the sword is unheld, so a place that merely winds up swings nothing.
+   */
+  onSwing?: () => void;
 }
 
 export class HeldItem {
   private readonly camera: PerspectiveCamera;
   private readonly getSelected: () => number;
   private readonly getFirstPerson: () => boolean;
+  private readonly onSwing: (() => void) | undefined;
   private readonly material = new VoxelModelMaterial();
   private readonly mesh: Mesh;
   private geometry: BoxGeometry;
@@ -56,6 +63,7 @@ export class HeldItem {
     this.camera = params.camera;
     this.getSelected = params.getSelected;
     this.getFirstPerson = params.getFirstPerson;
+    this.onSwing = params.onSwing;
     // No model to draw with yet; an empty volume marches to a miss on every
     // ray, so nothing is seen until a model is loaded.
     this.geometry = new BoxGeometry(1, 1, 1);
@@ -146,6 +154,7 @@ export class HeldItem {
             this.state = "swing";
             this.stateTime = 0;
             this.windupProgress = 0;
+            this.onSwing?.();
           }
           break;
         case "windup":
@@ -154,6 +163,7 @@ export class HeldItem {
           if (placeReleased) {
             this.state = "swing";
             this.stateTime = 0;
+            this.onSwing?.();
           }
           break;
         case "swing":

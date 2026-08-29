@@ -10,7 +10,7 @@ import { Group } from "@random-mesh/rmsl/scene";
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import type { AtprotoRepoClient } from "@big-mesh-studios/atproto/repo-client";
 import { MeshPeer } from "./mesh-peer";
-import type { EditItem, MonsterUpdate } from "./messages";
+import type { DamageWire, EditItem, MonsterUpdate } from "./messages";
 import type { Pose, PoseMessage } from "./pose";
 import {
   PRESENCE_COLLECTION,
@@ -128,6 +128,11 @@ export interface MultiplayerParams {
    * verification and (in the app) for handing to the monster controller.
    */
   onRemoteMonsters?: (did: string, updates: MonsterUpdate[]) => void;
+  /**
+   * Receives a peer's swing damage, for headless verification and (in the app)
+   * for the monster controller to apply to the monsters this client owns.
+   */
+  onRemoteDamage?: (did: string, damage: DamageWire) => void;
   /** Overrides for the cluster-selection tuning (tests use this to disable hysteresis). */
   clusterOptions?: Partial<ClusterOptions>;
 }
@@ -150,6 +155,7 @@ export class MultiplayerController {
     did: string,
     updates: MonsterUpdate[],
   ) => void;
+  private readonly onRemoteDamage: (did: string, damage: DamageWire) => void;
   private readonly clusterOptions: Partial<ClusterOptions>;
   /**
    * Every connected peer's avatar, for the scene to place in its draw order.
@@ -183,10 +189,13 @@ export class MultiplayerController {
   private poseSeq = 0;
   private editSeq = 0;
   private monsterSeq = 0;
+  private damageSeq = 0;
   private editsSent = 0;
   private editsReceived = 0;
   private monstersSent = 0;
   private monstersReceived = 0;
+  private damageSent = 0;
+  private damageReceived = 0;
 
   private lastPresenceAt = 0;
   private lastPresenceX = 0;
@@ -210,6 +219,7 @@ export class MultiplayerController {
     this.onRemotePose = params.onRemotePose ?? (() => {});
     this.onRemoteEdits = params.onRemoteEdits ?? (() => {});
     this.onRemoteMonsters = params.onRemoteMonsters ?? (() => {});
+    this.onRemoteDamage = params.onRemoteDamage ?? (() => {});
     this.clusterOptions = params.clusterOptions ?? {};
     this.remotePlayers =
       params.camera !== undefined
@@ -421,6 +431,31 @@ export class MultiplayerController {
     }
   }
 
+  /**
+   * Broadcasts a sword swing's damage to every open peer. Each receiver's
+   * monster controller applies it only to the monsters that client owns, so a
+   * hit is applied exactly once, wherever the damage belongs; the owner's next
+   * monster broadcast carries the lowered health back to everyone. No-op while
+   * the mesh is offline.
+   */
+  broadcastDamage(damage: Omit<DamageWire, "v" | "type" | "seq" | "t">): void {
+    if (!this.running) {
+      return;
+    }
+    const seq = ++this.damageSeq;
+    this.damageSent++;
+    const wire: DamageWire = {
+      v: 1,
+      type: "damage",
+      seq,
+      t: Date.now(),
+      ...damage,
+    };
+    for (const peer of this.peers.values()) {
+      peer.sendDamage(wire);
+    }
+  }
+
   describe(): string {
     const state = this.describeState();
     return `multiplayer: ${state}${
@@ -495,6 +530,9 @@ export class MultiplayerController {
     lines.push(`edits: ${this.editsSent} sent, ${this.editsReceived} received`);
     lines.push(
       `monsters: ${this.monstersSent} sent, ${this.monstersReceived} received`,
+    );
+    lines.push(
+      `damage: ${this.damageSent} sent, ${this.damageReceived} received`,
     );
     lines.push(`lastError: ${this.lastError ?? "none"}`);
     return lines.join("\n");
@@ -761,6 +799,7 @@ export class MultiplayerController {
     onPose: (d: string, pose: PoseMessage) => void;
     onEdits: (d: string, edits: EditItem[]) => void;
     onMonsters: (d: string, updates: MonsterUpdate[]) => void;
+    onDamage: (d: string, damage: DamageWire) => void;
     onClose: (d: string) => void;
     onError: (d: string, message: string, code?: string) => void;
   } {
@@ -784,6 +823,10 @@ export class MultiplayerController {
       onMonsters: (d, updates) => {
         this.monstersReceived += updates.length;
         this.onRemoteMonsters(d, updates);
+      },
+      onDamage: (d, damage) => {
+        this.damageReceived++;
+        this.onRemoteDamage(d, damage);
       },
       onClose: (d) => {
         this.peerCount = Math.max(0, this.peerCount - 1);

@@ -9,6 +9,7 @@
 import {
   decodeMessage,
   encodeMessage,
+  type DamageWire,
   type EditItem,
   type MonsterUpdate,
 } from "./messages";
@@ -37,6 +38,8 @@ export interface MeshPeerParams {
   onEdits: (did: string, edits: EditItem[]) => void;
   /** One monster-state broadcast from the peer, for monsters it owns. */
   onMonsters: (did: string, updates: MonsterUpdate[]) => void;
+  /** One sword swing's damage from the peer, for the monster's owner to apply. */
+  onDamage: (did: string, damage: DamageWire) => void;
   onClose: (did: string) => void;
   /** Reports a fatal failure; `code` is the transport's `ERR_*` when there is one. */
   onError: (did: string, message: string, code?: string) => void;
@@ -49,6 +52,7 @@ export class MeshPeer {
   private readonly onPose: (did: string, pose: PoseMessage) => void;
   private readonly onEdits: (did: string, edits: EditItem[]) => void;
   private readonly onMonsters: (did: string, updates: MonsterUpdate[]) => void;
+  private readonly onDamage: (did: string, damage: DamageWire) => void;
   private readonly onClose: (did: string) => void;
   private readonly onError: (
     did: string,
@@ -71,6 +75,7 @@ export class MeshPeer {
     this.onPose = params.onPose;
     this.onEdits = params.onEdits;
     this.onMonsters = params.onMonsters;
+    this.onDamage = params.onDamage;
     this.onClose = params.onClose;
     this.onError = params.onError;
     this.role = this.selfDid < this.did ? "initiator" : "responder";
@@ -152,6 +157,18 @@ export class MeshPeer {
     }
   }
 
+  /** Sends a swing's damage to the peer (no-op until open). */
+  sendDamage(damage: DamageWire): void {
+    if (this.destroyed || this.phase !== "open") {
+      return;
+    }
+    try {
+      this.transport?.send(encodeMessage(damage));
+    } catch (err) {
+      this.fail(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   /** Tears the connection down and releases its resources. */
   close(reason = "closed"): void {
     if (this.destroyed) {
@@ -225,6 +242,8 @@ export class MeshPeer {
       this.onPose(this.did, message);
     } else if (message.type === "edit") {
       this.onEdits(this.did, message.edits);
+    } else if (message.type === "damage") {
+      this.onDamage(this.did, message);
     } else {
       this.onMonsters(this.did, message.updates);
     }

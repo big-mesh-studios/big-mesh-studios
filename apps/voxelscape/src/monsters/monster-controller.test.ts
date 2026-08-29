@@ -2,7 +2,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MONSTER_COLLECTION, type MonsterRecord } from "../atproto/monsters";
 import type { MonsterUpdate } from "../multiplayer/messages";
-import { PERSIST_INTERVAL_MS, MonsterController } from "./monster-controller";
+import {
+  CORPSE_MS,
+  PERSIST_INTERVAL_MS,
+  MonsterController,
+} from "./monster-controller";
+import { KNOCKBACK } from "./hit";
 import { WAKE_RADIUS } from "./zombie";
 
 const GROUND = 10;
@@ -318,5 +323,197 @@ describe("monster controller multiplayer", () => {
     a.x = 10.5;
     c.tick(1 / 60);
     expect(c.monsters.get("m1_0_0_0")!.owner).toBe("b");
+  });
+});
+
+describe("monster controller damage", () => {
+  const record = (overrides: Partial<MonsterRecord> = {}): MonsterRecord => ({
+    $type: MONSTER_COLLECTION,
+    id: "m1_0_0_0",
+    kind: "zombie",
+    owner: "me",
+    seed: 42,
+    x: 0,
+    y: 11,
+    z: 0,
+    yawDeg: 0,
+    hp: 20,
+    state: "chase",
+    updatedAt: 1_000,
+    createdAt: "t",
+    ...overrides,
+  });
+
+  it("deals damage to a monster it owns", () => {
+    const player = { did: "me", x: 0, z: 0 };
+    const c = makeController({ getPlayers: () => [player] });
+    c.tick(1 / 60);
+    const [id, m] = [...c.monsters.entries()][0];
+    player.x = m.pose.x;
+    player.z = m.pose.z;
+    c.tick(1 / 60);
+    expect(c.damage(id, 8)).toBe(true);
+    expect(c.monsters.get(id)!.hp).toBe(m.maxHp - 8);
+  });
+
+  it("refuses to damage a monster another player owns", () => {
+    const me = { did: "me", x: 0, z: 0 };
+    const peer = { did: "aaa", x: 10, z: 0 }; // strictly closer to the crafted monster
+    const c = makeController({ getPlayers: () => [me, peer] });
+    c.applyMonsterUpdates([update()]);
+    expect(c.monsters.get("m1_0_0_0")!.owner).toBe("aaa");
+    expect(c.damage("m1_0_0_0", 8)).toBe(false);
+    expect(c.monsters.get("m1_0_0_0")!.hp).toBe(20);
+  });
+
+  it("applies a peer's remote damage to a monster it owns", () => {
+    const player = { did: "me", x: 0, z: 0 };
+    const c = makeController({ getPlayers: () => [player] });
+    c.tick(1 / 60);
+    const [id, m] = [...c.monsters.entries()][0];
+    player.x = m.pose.x;
+    player.z = m.pose.z;
+    c.tick(1 / 60);
+    expect(
+      c.applyRemoteDamage({ id, amount: 8, attackerX: 0, attackerZ: 0 }),
+    ).toBe(true);
+    expect(c.monsters.get(id)!.hp).toBe(m.maxHp - 8);
+  });
+
+  it("knocks a monster back from the attacker", () => {
+    const player = { did: "me", x: 0, z: 0 };
+    const c = makeController({ getPlayers: () => [player] });
+    c.tick(1 / 60);
+    const [id, m] = [...c.monsters.entries()][0];
+    // Stand two units away: the zombie attacks in place instead of chasing.
+    player.x = m.pose.x + 2;
+    player.z = m.pose.z;
+    c.tick(1 / 60);
+    const before = c.monsters.get(id)!.pose;
+    expect(c.damage(id, 8)).toBe(true);
+    const after = c.monsters.get(id)!.pose;
+    const near = Math.hypot(before.x - player.x, before.z - player.z);
+    const far = Math.hypot(after.x - player.x, after.z - player.z);
+    expect(far).toBeCloseTo(near + KNOCKBACK, 5);
+  });
+
+  it("does not push a monster far enough to reach a wall", () => {
+    const player = { did: "me", x: 0, z: 0 };
+    const c = makeController({
+      getPlayers: () => [player],
+      solidAt: () => true,
+    });
+    c.tick(1 / 60);
+    const [id, m] = [...c.monsters.entries()][0];
+    player.x = m.pose.x + 2;
+    player.z = m.pose.z;
+    c.tick(1 / 60);
+    const before = c.monsters.get(id)!.pose;
+    c.damage(id, 8);
+    const after = c.monsters.get(id)!.pose;
+    expect(after.x).toBeCloseTo(before.x, 6);
+    expect(after.z).toBeCloseTo(before.z, 6);
+    expect(c.monsters.get(id)!.hp).toBeLessThan(20);
+  });
+
+  it("reports the hit through onHit", () => {
+    const player = { did: "me", x: 0, z: 0 };
+    const hits: string[] = [];
+    const c = makeController({
+      getPlayers: () => [player],
+      onHit: (id) => hits.push(id),
+    });
+    c.tick(1 / 60);
+    const [id, m] = [...c.monsters.entries()][0];
+    player.x = m.pose.x;
+    player.z = m.pose.z;
+    c.tick(1 / 60);
+    c.damage(id, 8);
+    expect(hits).toEqual([id]);
+  });
+
+  it("floors health at zero, writes the tombstone, and never revives the monster", () => {
+    const player = { did: "me", x: 0, z: 0 };
+    const c = makeController({ getPlayers: () => [player] });
+    c.tick(1 / 60);
+    const [id, m] = [...c.monsters.entries()][0];
+    player.x = m.pose.x;
+    player.z = m.pose.z;
+    c.tick(1 / 60);
+    expect(c.damage(id, 100)).toBe(true);
+    expect(c.monsters.get(id)!.hp).toBe(0);
+
+    // the dead monster is persisted as the tombstone, then forgotten
+    const now = Date.now();
+    const due = c.recordsForPersistence(now);
+    const tombstone = due.find((r) => r.id === id);
+    expect(tombstone).toBeDefined();
+    expect(tombstone!.hp).toBe(0);
+    c.markPersisted([id]);
+    expect(c.monsters.has(id)).toBe(false);
+
+    // nothing re-materializes it, from a spawn or a stale record
+    c.tick(1 / 60);
+    expect(c.monsters.has(id)).toBe(false);
+    c.mergeFromAtproto([record({ id, hp: 20, updatedAt: 2_000 })]);
+    expect(c.monsters.has(id)).toBe(false);
+  });
+
+  it("marks a monster dead from a zero-health broadcast and ignores later ones", () => {
+    const c = makeController();
+    c.applyMonsterUpdates([update({ hp: 0 })]);
+    expect(c.monsters.has("m1_0_0_0")).toBe(false);
+    // a stale full-health broadcast must not bring it back
+    c.applyMonsterUpdates([update({ hp: 20 })]);
+    expect(c.monsters.has("m1_0_0_0")).toBe(false);
+  });
+
+  it("keeps a peer-owned corpse until it has lain out, then forgets it", () => {
+    const me = { did: "me", x: 0, z: 0 };
+    const peer = { did: "aaa", x: 10, z: 0 };
+    const c = makeController({ getPlayers: () => [me, peer] });
+    c.applyMonsterUpdates([update()]);
+    expect(c.monsters.get("m1_0_0_0")!.owner).toBe("aaa");
+
+    // the owner's death broadcast leaves the corpse in the map, so this client
+    // can render the fall before it disappears
+    c.applyMonsterUpdates([update({ hp: 0 })]);
+    const corpse = c.monsters.get("m1_0_0_0");
+    expect(corpse).toBeDefined();
+    expect(corpse!.hp).toBe(0);
+
+    // once it has lain out it is forgotten, and nothing revives it
+    vi.advanceTimersByTime(CORPSE_MS + 1);
+    c.tick(1 / 60);
+    expect(c.monsters.has("m1_0_0_0")).toBe(false);
+    c.applyMonsterUpdates([update({ hp: 20 })]);
+    expect(c.monsters.has("m1_0_0_0")).toBe(false);
+  });
+
+  it("adopts nothing from a tombstone record", () => {
+    const c = makeController();
+    c.mergeFromAtproto([record({ hp: 0 })]);
+    expect(c.monsters.has("m1_0_0_0")).toBe(false);
+  });
+
+  it("broadcasts a dead monster's final state so peers hide it", () => {
+    const player = { did: "me", x: 0, z: 0 };
+    const sent: MonsterUpdate[][] = [];
+    const c = makeController({
+      getPlayers: () => [player],
+      onBroadcast: (updates) => sent.push(updates),
+    });
+    c.tick(1 / 60);
+    const [id, m] = [...c.monsters.entries()][0];
+    player.x = m.pose.x;
+    player.z = m.pose.z;
+    c.tick(1 / 60);
+    sent.length = 0;
+    vi.advanceTimersByTime(2_001);
+    expect(c.damage(id, 100)).toBe(true);
+    c.tick(1 / 60);
+    const deadBroadcast = sent.flat().find((u) => u.id === id);
+    expect(deadBroadcast).toBeDefined();
+    expect(deadBroadcast!.hp).toBe(0);
   });
 });

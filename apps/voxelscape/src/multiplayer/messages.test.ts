@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
+  MAX_DAMAGE,
   MAX_MONSTERS_PER_MESSAGE,
   decodeMessage,
   encodeMessage,
@@ -113,5 +114,78 @@ describe("monster message codec", () => {
       ) as never,
     });
     expect(decodeMessage(encoded)).toBeNull();
+  });
+});
+
+describe("damage message codec", () => {
+  const damage = (
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> => ({
+    v: 1,
+    type: "damage",
+    seq: 4,
+    t: 600,
+    id: "m1_0_0_0",
+    amount: 8,
+    attackerX: 12.3456,
+    attackerZ: -4.5,
+    ...overrides,
+  });
+
+  it("round-trips a swing's damage", () => {
+    const encoded = encodeMessage({
+      v: 1,
+      type: "damage",
+      seq: 4,
+      t: 600,
+      id: "m1_0_0_0",
+      amount: 8,
+      attackerX: 12.3456,
+      attackerZ: -4.5,
+    });
+    const decoded = decodeMessage(encoded);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.type).toBe("damage");
+    const message = decoded as Extract<typeof decoded, { type: "damage" }>;
+    expect(message.seq).toBe(4);
+    expect(message.t).toBe(600);
+    expect(message.id).toBe("m1_0_0_0");
+    expect(message.amount).toBe(8);
+    // the attacker's position is quantized like the monster positions
+    expect(message.attackerX).toBeCloseTo(12.35, 2);
+    expect(message.attackerZ).toBeCloseTo(-4.5, 2);
+  });
+
+  it("accepts a valid damage message", () => {
+    const encoded = encodeMessage({
+      v: 1,
+      type: "damage",
+      seq: 1,
+      t: 1,
+      id: "m1_0_0_0",
+      amount: 1,
+      attackerX: 0,
+      attackerZ: 0,
+    });
+    expect(decodeMessage(encoded)).not.toBeNull();
+  });
+
+  it("rejects damage with an out-of-grammar id or an impossible amount", () => {
+    const cases = [
+      damage({ id: "garbage!!" }),
+      damage({ amount: 0 }),
+      damage({ amount: -8 }),
+      damage({ amount: MAX_DAMAGE + 1 }),
+      damage({ amount: 1.5 }),
+      damage({ attackerX: 1_000_000 }),
+      damage({ attackerZ: "north" }),
+      damage({ attackerX: undefined }),
+    ];
+    for (const bad of cases) {
+      expect(
+        decodeMessage(JSON.stringify(bad)),
+        JSON.stringify(bad),
+      ).toBeNull();
+    }
   });
 });

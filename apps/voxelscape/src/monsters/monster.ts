@@ -59,10 +59,18 @@ interface KindTraits {
   maxHp: number;
   /** Half the cube height, so a pose's y (a cube centre) stands above the ground. */
   halfHeight: number;
+  /** Half the body's width, across the monster's own left-right axis. */
+  halfWidth: number;
+  /** Half the body's depth, across the monster's own front-back axis. */
+  halfDepth: number;
 }
 
+// The zombie's body measures 15 voxels wide, 22 tall and 8 deep in its 24³
+// grid, rendered into a 2.2-unit box (about 0.09 units per voxel): a 1.1-unit
+// shoulder span and a half-metre depth, with a little given away to make a
+// swing at the model land.
 const KIND_TRAITS: Record<MonsterKind, KindTraits> = {
-  zombie: { maxHp: 20, halfHeight: 1.1 },
+  zombie: { maxHp: 20, halfHeight: 1.1, halfWidth: 0.7, halfDepth: 0.45 },
 };
 
 /** The stable, world-unique id of the monster at a (seed, cell, slot) address. */
@@ -120,6 +128,15 @@ export const monsterAt = (
 /** Half the cube height a monster of `kind` stands at. */
 export const kindHalfHeight = (kind: MonsterKind): number =>
   KIND_TRAITS[kind].halfHeight;
+
+/** The body half-extents a monster of `kind` is hit by, in its own frame. */
+export const kindHitbox = (
+  kind: MonsterKind,
+): { halfWidth: number; halfHeight: number; halfDepth: number } => ({
+  halfWidth: KIND_TRAITS[kind].halfWidth,
+  halfHeight: KIND_TRAITS[kind].halfHeight,
+  halfDepth: KIND_TRAITS[kind].halfDepth,
+});
 
 /** Full health a monster of `kind` has when unhurt. */
 export const kindMaxHp = (kind: MonsterKind): number => KIND_TRAITS[kind].maxHp;

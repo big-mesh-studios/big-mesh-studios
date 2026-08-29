@@ -5,7 +5,14 @@
 // and on an `InstancedMesh` sitting at the identity whose per-instance pose
 // lives in `instanceMatrix`.
 import type { Node, UniformNode } from "@random-mesh/rmsl";
-import { builtinFragDepth, float, If, vec4 } from "@random-mesh/rmsl";
+import {
+  builtinFragDepth,
+  float,
+  If,
+  mix,
+  vec3,
+  vec4,
+} from "@random-mesh/rmsl";
 import type { Builder } from "@random-mesh/rmsl/scene";
 import { DataTexture, NodeMaterial, Scene } from "@random-mesh/rmsl/scene";
 import { marchVolume } from "./march";
@@ -19,6 +26,12 @@ export class VoxelModelMaterial extends NodeMaterial {
   lightColour: [number, number, number] = [1, 1, 1];
   ambientColour: [number, number, number] = [0, 0, 0];
   unlit = false;
+  /**
+   * How strongly the surface mixes toward red, 0 to 1. A caller flashes a hit
+   * monster by raising this on the material it draws with; the colour alone is
+   * mixed so transparent fragments stay transparent.
+   */
+  flash = 0;
   /**
    * How far to push the voxel surface away from the camera when writing depth,
    * in window-depth units. A caller drawing a line on a voxel's surface raises
@@ -35,6 +48,7 @@ export class VoxelModelMaterial extends NodeMaterial {
   private lightColourUniform?: UniformNode<"vec3">;
   private ambientColourUniform?: UniformNode<"vec3">;
   private unlitUniform?: UniformNode<"bool">;
+  private flashUniform?: UniformNode<"float">;
   private depthBiasUniform?: UniformNode<"float">;
 
   constructor() {
@@ -82,6 +96,7 @@ export class VoxelModelMaterial extends NodeMaterial {
     this.unlitUniform = b.materialUniform("uUnlit", "bool", () =>
       this.unlit ? 1 : 0,
     );
+    this.flashUniform = b.materialUniform("uFlash", "float", () => this.flash);
     this.depthBiasUniform = b.materialUniform(
       "uDepthBias",
       "float",
@@ -175,6 +190,18 @@ export class VoxelModelMaterial extends NodeMaterial {
       unlit: this.unlitUniform!,
     });
 
+    // A hit monster flashes red: mix the shaded colour toward red by `flash`,
+    // leaving the alpha alone so empty fragments stay empty and the depth
+    // test below still sees the voxel surface.
+    const tinted = vec4(
+      mix(
+        colour.xyz,
+        vec3(float(1), float(0.15), float(0.15)),
+        this.flashUniform!,
+      ),
+      colour.a,
+    );
+
     const fragDepth = builtinFragDepth();
     If(colour.a.greaterThan(float(0.5)), () => {
       // Write the depth of the true voxel surface, so models occlude each other
@@ -203,6 +230,6 @@ export class VoxelModelMaterial extends NodeMaterial {
       fragDepth.assign(float(1));
     });
 
-    return colour;
+    return tinted;
   }
 }

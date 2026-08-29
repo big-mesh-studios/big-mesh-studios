@@ -11,6 +11,7 @@ import { createCommands } from "../commands";
 import { createEnvironment } from "../environment/create-environment";
 import { MonsterSync } from "../atproto/monster-sync";
 import { MonsterController } from "../monsters/monster-controller";
+import { SWORD_DAMAGE, pickMonster } from "../monsters/hit";
 import { RemoteMonsters } from "../monsters/remote-monsters";
 import { MultiplayerController } from "../multiplayer/multiplayer-controller";
 import { createPeerJSSignaling } from "../multiplayer/peerjs-transport";
@@ -161,6 +162,8 @@ export const createVoxelscape = ({
     // The optimistic path: owned monsters' state fans out over the mesh, and
     // peers render it without waiting for atproto.
     onBroadcast: (updates) => multiplayer.broadcastMonsters(updates),
+    // A monster this client hurt flashes red, so the hit reads on the model.
+    onHit: (id) => monsterRender.flashHit(id),
   });
   const monsterRender = new RemoteMonsters({
     getMonsters: () => monsters.monsters.values(),
@@ -171,6 +174,35 @@ export const createVoxelscape = ({
     camera,
     getSelected: () => inventory.selectedId,
     getFirstPerson: () => avatar.firstPerson,
+    // The swing fires on the release edge, inside the frame's advance. What it
+    // hits is whatever the crosshair is over that moment; the monster's owner
+    // applies the damage (this client, or a peer who then sends the lowered
+    // health back in its next broadcast).
+    onSwing: () => {
+      const look = avatar.look();
+      const hit = pickMonster(
+        look.origin,
+        look.direction,
+        monsters.monsters.values(),
+      );
+      if (hit === null) {
+        return;
+      }
+      // The attacker sees the hit flash on their own client, whatever the
+      // monster's owner does with it.
+      monsterRender.flashHit(hit.id);
+      const damage = {
+        id: hit.id,
+        amount: SWORD_DAMAGE,
+        attackerX: avatar.player.position.x,
+        attackerZ: avatar.player.position.z,
+      };
+      // A monster the swing landed on but this client does not own is the
+      // owner's to damage: broadcast the hit and let them apply it.
+      if (!monsters.damage(hit.id, SWORD_DAMAGE)) {
+        multiplayer.broadcastDamage(damage);
+      }
+    },
   });
   const editing = new EditingController({
     blocks: world.blocks,
@@ -245,6 +277,10 @@ export const createVoxelscape = ({
     // A peer's monsters are theirs to simulate; we just display what they sent.
     onRemoteMonsters: (_did, updates) => {
       monsters.applyMonsterUpdates(updates);
+    },
+    // A peer's swing damages the monsters this client owns.
+    onRemoteDamage: (_did, damage) => {
+      monsters.applyRemoteDamage(damage);
     },
   });
 
