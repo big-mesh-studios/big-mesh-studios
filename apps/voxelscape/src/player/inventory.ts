@@ -1,14 +1,27 @@
-// Player inventory: how many of each placeable block the player holds, and
-// which block is selected for placement. Breaking a collectable voxel yields
-// a single "Dirt" item (grass and dirt both become dirt), so the hotbar is
-// one slot; water isn't collectable and the floor isn't editable (see
-// `EditingController`). A plain class with an optional change callback so the
-// hotbar HUD can refresh when the count or the selection changes.
+// Player inventory: how many of each placeable block the player holds, which
+// block is selected for placement, and the non-stackable tools carried beside
+// them. Breaking a collectable voxel yields a single "Dirt" item (grass and
+// dirt both become dirt), so the hotbar is one slot; water isn't collectable
+// and the floor isn't editable (see `EditingController`). The player starts
+// carrying the bronze sword, which never stacks and is never consumed. A plain
+// class with an optional change callback so the hotbar HUD can refresh when
+// the count or the selection changes.
 import { VOXEL_DIRT, VOXEL_GRASS } from "../world/voxel-store";
 
 /** The block name shown for each placeable inventory item (dirt only). */
 export const COLLECTABLE: Record<number, string> = {
   [VOXEL_DIRT]: "Dirt",
+};
+
+/** The id of the sword every player starts with. */
+export const SWORD = 4;
+
+/**
+ * The name shown for each non-stackable tool. A tool is carried exactly once,
+ * cannot be added to or removed, and is never a block to place.
+ */
+export const TOOLS: Record<number, string> = {
+  [SWORD]: "Sword",
 };
 
 /**
@@ -30,6 +43,8 @@ export interface InventoryItem {
   id: number;
   name: string;
   count: number;
+  /** Whether more than one can be carried; tools are always carried alone. */
+  stackable: boolean;
 }
 
 export class Inventory {
@@ -39,8 +54,12 @@ export class Inventory {
   private counts = new Map<number, number>();
   private selected: number = VOXEL_DIRT;
 
+  constructor() {
+    this.counts.set(SWORD, 1);
+  }
+
   add(id: number, n: number = 1): void {
-    if (!(id in COLLECTABLE)) {
+    if (!(id in COLLECTABLE) || id in TOOLS) {
       return;
     }
     this.counts.set(id, (this.counts.get(id) ?? 0) + n);
@@ -49,6 +68,9 @@ export class Inventory {
 
   /** Removes up to `n` of a block; returns false when there weren't enough. */
   remove(id: number, n: number = 1): boolean {
+    if (id in TOOLS) {
+      return false;
+    }
     const have = this.counts.get(id) ?? 0;
     if (have < n) {
       return false;
@@ -72,7 +94,7 @@ export class Inventory {
   }
 
   setSelected(id: number): boolean {
-    if (!(id in COLLECTABLE)) {
+    if (!(id in COLLECTABLE) && !(id in TOOLS)) {
       return false;
     }
     if (this.selected === id) {
@@ -83,13 +105,29 @@ export class Inventory {
     return true;
   }
 
-  /** Every placeable block, in hotbar order. */
+  /** Every carried item, collectable blocks in hotbar order then the tools. */
   items(): InventoryItem[] {
-    return (Object.keys(COLLECTABLE) as unknown as number[]).map((id) => ({
-      id: Number(id),
-      name: COLLECTABLE[Number(id)],
-      count: this.counts.get(Number(id)) ?? 0,
-    }));
+    const collectable = (Object.keys(COLLECTABLE) as unknown as number[]).map(
+      (id) => {
+        const numeric = Number(id);
+        return {
+          id: numeric,
+          name: COLLECTABLE[numeric],
+          count: this.counts.get(numeric) ?? 0,
+          stackable: true,
+        };
+      },
+    );
+    const tools = (Object.keys(TOOLS) as unknown as number[]).map((id) => {
+      const numeric = Number(id);
+      return {
+        id: numeric,
+        name: TOOLS[numeric],
+        count: 1,
+        stackable: false,
+      };
+    });
+    return [...collectable, ...tools];
   }
 
   /**
@@ -103,6 +141,25 @@ export class Inventory {
       return false;
     }
     return this.setSelected(item.id);
+  }
+
+  /**
+   * Moves the selection one hotbar slot forward or back, wrapping around —
+   * what the mouse wheel asks for.
+   *
+   * @returns Whether the selection changed.
+   */
+  selectStep(direction: 1 | -1): boolean {
+    const items = this.items();
+    if (items.length < 2) {
+      return false;
+    }
+    const current = items.findIndex((item) => item.id === this.selected);
+    const next = items[(current + direction + items.length) % items.length];
+    if (next === undefined) {
+      return false;
+    }
+    return this.setSelected(next.id);
   }
 
   private emit(): void {

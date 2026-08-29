@@ -56,15 +56,22 @@ const CoarseControls: Component = () => {
         />
       </div>
 
-      {/* place fires once on the last pointer that lifts off the button; a
-          direct handler keeps it independent of Solid's reactive effect
+      {/* holding the place button winds up the sword and releasing it swings;
+          a direct handler keeps it independent of Solid's reactive effect
           semantics */}
       <div
         class={styles.control}
-        onPointerDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          input.setTouchPlace(true);
+        }}
         onPointerUp={(e) => {
           e.stopPropagation();
-          input.queuePlace();
+          input.setTouchPlace(false);
+        }}
+        onPointerCancel={(e) => {
+          e.stopPropagation();
+          input.setTouchPlace(false);
         }}
       >
         <ActionButton

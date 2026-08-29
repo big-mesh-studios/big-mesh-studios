@@ -41,8 +41,14 @@ export interface InputSnapshot {
   break: boolean;
   /** Edge-triggered: true only on the frame the place action fired. */
   place: boolean;
+  /** True while the place button is held down, for the sword's wind-up. */
+  placeHeld: boolean;
+  /** Edge-triggered: true only on the frame the place button went up. */
+  placeReleased: boolean;
   /** Edge-triggered: the selected hotbar slot changed this frame, or null. */
   select: number | null;
+  /** Edge-triggered: the mouse wheel's direction this frame, or 0. */
+  wheel: -1 | 0 | 1;
 }
 
 interface InputState {
@@ -56,7 +62,10 @@ interface InputState {
   lookDy: number;
   breakQueued: boolean;
   placeQueued: boolean;
+  placeHeld: boolean;
+  placeReleasedQueued: boolean;
   selectQueued: number | null;
+  wheelQueued: -1 | 0 | 1;
 }
 
 export interface InputController {
@@ -84,6 +93,8 @@ export interface InputController {
   setTouchMove(x: number, y: number): void;
   /** Touch button held state (drives swimming up and wall climbing). */
   setTouchJump(held: boolean): void;
+  /** Touch place button held state; releasing fires the swing release. */
+  setTouchPlace(held: boolean): void;
   /** Accumulate drag-to-look deltas (client pixels). */
   addLookDelta(dx: number, dy: number): void;
   canvasHandlers: {
@@ -99,7 +110,8 @@ export interface InputController {
      * Only the first drag is followed: a second finger touching down while one is
      * already turning the view starts nothing, so the view turns at the speed of
      * one finger however many are down. Digging and placing are edge-triggered
-     * per press, so holding a button doesn't dig repeatedly.
+     * per press, so holding a button doesn't dig repeatedly; the right button's
+     * hold is still tracked, so a held place can wind up a swing.
      *
      * The drag delta is the difference between successive `clientX`/`clientY`
      * rather than the `movementX`/`movementY` the locked path reads. Those
@@ -123,6 +135,12 @@ export interface InputController {
      * no specification says it keeps doing so under lock.
      */
     onMouseMove: JSX.EventHandler<HTMLCanvasElement, MouseEvent>;
+    /**
+     * Ends a right-button hold: the button going up is what swings the sword,
+     * and the edge is queued only when a hold actually started, so a click that
+     * merely took the pointer lock swings nothing.
+     */
+    onPointerUp: JSX.EventHandler<HTMLCanvasElement, PointerEvent>;
   };
 }
 
@@ -144,7 +162,10 @@ export const createInput = (): InputController => {
     lookDy: 0,
     breakQueued: false,
     placeQueued: false,
+    placeHeld: false,
+    placeReleasedQueued: false,
     selectQueued: null,
+    wheelQueued: 0,
   };
   let controller: AbortController | null = null;
 
@@ -174,6 +195,7 @@ export const createInput = (): InputController => {
         state.breakQueued = true;
       } else if (event.button === 2) {
         state.placeQueued = true;
+        state.placeHeld = true;
       }
 
       if (dragging || event.pointerType === "mouse") {
@@ -188,6 +210,18 @@ export const createInput = (): InputController => {
         return;
       }
       addLookDelta(event.movementX, event.movementY);
+    },
+    onPointerUp: (
+      event: PointerEvent & { currentTarget: HTMLCanvasElement },
+    ) => {
+      if (
+        event.pointerType === "mouse" &&
+        event.button === 2 &&
+        state.placeHeld
+      ) {
+        state.placeHeld = false;
+        state.placeReleasedQueued = true;
+      }
     },
   };
 
@@ -213,7 +247,7 @@ export const createInput = (): InputController => {
         }
         if (e.code.startsWith("Digit")) {
           const slot = Number(e.code.slice(5));
-          if (slot >= 1 && slot <= 2) {
+          if (slot >= 1 && slot <= 9) {
             state.selectQueued = slot - 1;
           }
           return;
@@ -250,6 +284,22 @@ export const createInput = (): InputController => {
       { signal },
     );
 
+    window.addEventListener(
+      "wheel",
+      (e) => {
+        if (isEditableTarget(e)) {
+          return;
+        }
+        e.preventDefault();
+        if (e.deltaY < 0) {
+          state.wheelQueued = -1;
+        } else if (e.deltaY > 0) {
+          state.wheelQueued = 1;
+        }
+      },
+      { signal },
+    );
+
     // The right mouse button places a block, so the browser's menu is
     // suppressed across the whole page rather than over the canvas alone: a
     // press that lands a few pixels off the world would otherwise open it.
@@ -279,14 +329,19 @@ export const createInput = (): InputController => {
         lookDy: state.lookDy,
         break: state.breakQueued,
         place: state.placeQueued,
+        placeHeld: state.placeHeld,
+        placeReleased: state.placeReleasedQueued,
         select: state.selectQueued,
+        wheel: state.wheelQueued,
       };
       state.jumpQueued = false;
       state.lookDx = 0;
       state.lookDy = 0;
       state.breakQueued = false;
       state.placeQueued = false;
+      state.placeReleasedQueued = false;
       state.selectQueued = null;
+      state.wheelQueued = 0;
       return snap;
     },
 
@@ -313,6 +368,16 @@ export const createInput = (): InputController => {
 
     setTouchJump(held) {
       state.jumpHeld = held;
+    },
+
+    setTouchPlace(held) {
+      if (held) {
+        state.placeQueued = true;
+        state.placeHeld = true;
+      } else if (state.placeHeld) {
+        state.placeHeld = false;
+        state.placeReleasedQueued = true;
+      }
     },
   };
 };

@@ -69,6 +69,8 @@ export interface PlayerAvatar {
   occupiedVoxels(): WorldVoxel[];
   /** First person puts the camera at the player's eye; third person hovers behind the cube. */
   setFirstPerson(firstPerson: boolean): void;
+  /** Whether the camera is the player's eye right now. */
+  get firstPerson(): boolean;
   /** Shows or hides the cube drawn for the player (hidden in first person). */
   setCubeVisible(visible: boolean): void;
   /**
@@ -171,6 +173,10 @@ export const createPlayerAvatar = ({
 
     setFirstPerson(next) {
       firstPerson = next;
+    },
+
+    get firstPerson() {
+      return firstPerson;
     },
 
     setCubeVisible(visible) {

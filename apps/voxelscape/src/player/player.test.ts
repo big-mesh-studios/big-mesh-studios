@@ -18,7 +18,10 @@ const NO_INPUT: InputSnapshot = {
   lookDy: 0,
   break: false,
   place: false,
+  placeHeld: false,
+  placeReleased: false,
   select: null,
+  wheel: 0,
 };
 
 const NO_WATER = () => false;

@@ -94,8 +94,37 @@ export {
   BREAKABLE,
   COLLECTABLE,
   Inventory,
+  SWORD,
+  TOOLS,
   type InventoryItem,
 } from "./player/inventory";
+export { HeldItem, type HeldItemParams } from "./player/held-item";
+export {
+  buildSwordModel,
+  loadSwordModel,
+  SPRITESHEET_HEIGHT,
+  SPRITESHEET_URL,
+  SPRITESHEET_WIDTH,
+  SWORD_SPRITE,
+  SWORD_SPRITE_BBOX,
+} from "./player/sword-model";
+export {
+  BASE_ROTATION_ANGLE,
+  BASE_ROTATION_AXIS,
+  HANDLE_FRACTION,
+  poseAt,
+  PULLED_POSE,
+  quatRotate,
+  RECOVER_TIME,
+  REST_POSE,
+  SWING_TIME,
+  swingTransform,
+  SWUNG_POSE,
+  WINDUP_TIME,
+  type SwingPose,
+  type SwingState,
+  type SwingTransform,
+} from "./player/swing";
 export * from "./player/player";
 export { createPlayerSkin, type PlayerSkin } from "./player/player-skin";
 

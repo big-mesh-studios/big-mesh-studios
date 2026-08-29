@@ -17,8 +17,10 @@ import { createPeerJSSignaling } from "../multiplayer/peerjs-transport";
 import { createInput, type InputController } from "../player/create-input";
 import { createPlayerAvatar } from "../player/create-player-avatar";
 import { EditingController } from "../player/editing-controller";
-import { Inventory } from "../player/inventory";
+import { HeldItem } from "../player/held-item";
+import { Inventory, SWORD } from "../player/inventory";
 import type { Player, PlayerConfig } from "../player/player";
+import { loadSwordModel } from "../player/sword-model";
 import { AdaptiveResolution } from "../render/adaptive";
 import { createRenderLoop } from "../render/create-render-loop";
 import {
@@ -165,6 +167,11 @@ export const createVoxelscape = ({
   });
 
   const inventory = new Inventory();
+  const heldItem = new HeldItem({
+    camera,
+    getSelected: () => inventory.selectedId,
+    getFirstPerson: () => avatar.firstPerson,
+  });
   const editing = new EditingController({
     blocks: world.blocks,
     layer: world.editLayer,
@@ -290,6 +297,14 @@ export const createVoxelscape = ({
 
   void dressMonsters().then((line) => onNotice?.(line));
 
+  // The held sword is drawn from the site's spritesheet; a failure to load
+  // just leaves it unheld rather than blocking the world.
+  void loadSwordModel()
+    .then((model) => heldItem.setModel(model))
+    .catch((err) =>
+      console.warn("[sword] not drawn; the player holds nothing.", err),
+    );
+
   /**
    * Everything drawn, in the order it is drawn. There is no depth-sorted pass
    * for transparency, so a group's place in this list is the whole of what
@@ -305,6 +320,10 @@ export const createVoxelscape = ({
     world.water,
     environment.weatherEffects,
     world.underwaterTint,
+    // The camera carries the held sword, and it has to be part of the scene
+    // for its children to be drawn; it also sits last so the sword draws over
+    // the world when it overlaps the view.
+    camera,
   );
 
   // A restored session is the one thing that happens without being asked for,
@@ -395,11 +414,16 @@ export const createVoxelscape = ({
           setEditStatus(result);
         }
       }
-      if (snapshot.place) {
+      // With the sword selected the place button swings it instead; the swing
+      // itself runs inside `heldItem.update`.
+      if (snapshot.place && inventory.selectedId !== SWORD) {
         setEditStatus(editing.placeBlock());
       }
       if (snapshot.select !== null) {
         inventory.selectSlot(snapshot.select);
+      }
+      if (snapshot.wheel !== 0) {
+        inventory.selectStep(snapshot.wheel);
       }
       world.scrollTo(
         avatar.player.position.x,
@@ -407,6 +431,7 @@ export const createVoxelscape = ({
         avatar.player.position.z,
       );
       avatar.place();
+      heldItem.update(dt, snapshot.placeHeld, snapshot.placeReleased);
       multiplayer.tick(dt);
       monsters.tick(dt);
       monsterRender.tick(dt);
@@ -421,6 +446,7 @@ export const createVoxelscape = ({
     // The voxel-model zombies are self-lit, so they take the same day-night
     // state the renderers apply to the terrain and the standard materials.
     monsterRender.applyLighting(lighting);
+    heldItem.applyLighting(lighting);
     world.renderer.tick(dt, camera);
   };
 
@@ -467,6 +493,7 @@ export const createVoxelscape = ({
       environment.dispose();
       monsterRender.clear();
       monsterSync.dispose();
+      heldItem.dispose();
       input.dispose();
     },
   };
