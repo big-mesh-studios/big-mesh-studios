@@ -86,16 +86,17 @@ export const worldVoxelToLocal = (
  */
 export const blockWorldVoxelRange = (
   center: Dim3,
+  padding = 0,
 ): { min: WorldVoxel; max: WorldVoxel } => {
   const min: WorldVoxel = [
-    Math.round((center[0] - BLOCK_WORLD[0] / 2) / VOXEL_SIZE),
-    Math.round((center[1] - BLOCK_WORLD[1] / 2) / VOXEL_SIZE),
-    Math.round((center[2] - BLOCK_WORLD[2] / 2) / VOXEL_SIZE),
+    Math.round((center[0] - BLOCK_WORLD[0] / 2) / VOXEL_SIZE) - padding,
+    Math.round((center[1] - BLOCK_WORLD[1] / 2) / VOXEL_SIZE) - padding,
+    Math.round((center[2] - BLOCK_WORLD[2] / 2) / VOXEL_SIZE) - padding,
   ];
   const max: WorldVoxel = [
-    min[0] + BLOCK_WORLD[0] / VOXEL_SIZE - 1,
-    min[1] + BLOCK_WORLD[1] / VOXEL_SIZE - 1,
-    min[2] + BLOCK_WORLD[2] / VOXEL_SIZE - 1,
+    min[0] + BLOCK_WORLD[0] / VOXEL_SIZE - 1 + 2 * padding,
+    min[1] + BLOCK_WORLD[1] / VOXEL_SIZE - 1 + 2 * padding,
+    min[2] + BLOCK_WORLD[2] / VOXEL_SIZE - 1 + 2 * padding,
   ];
   return { min, max };
 };
@@ -162,23 +163,31 @@ export class EditLayer {
   }
 
   /**
-   * Applies every edit intersecting `block`'s interior to its `store`. The
-   * caller must re-run `syncLevelFromStore` (and, for the triangle renderer,
-   * `onBlockChanged`) when this returns a count above zero.
+   * Applies every edit this block holds a voxel for to its `store` — its
+   * interior and its meshing border alike. The border matters: a block culls
+   * its seam faces against it, so an edit to a neighbour's boundary voxel that
+   * never reached this copy leaves a face culled that should be drawn, and a
+   * hole in the world where the two meet.
+   *
+   * The caller must tell the renderer (`onBlockChanged`) when this returns a
+   * count above zero.
    *
    * @returns The number of store voxels written.
    */
   applyToBlock(block: WorldBlock): number {
-    const { min, max } = blockWorldVoxelRange(block.center);
+    const { min, max } = blockWorldVoxelRange(
+      block.center,
+      block.store.padding,
+    );
     const matches = this.queryRange(min, max);
     if (matches.length === 0) {
       return 0;
     }
     let written = 0;
     for (const { w, edit } of matches) {
-      const local = worldVoxelToLocal(block.store, block.center, w);
-      if (block.store.inBounds(local[0], local[1], local[2])) {
-        block.store.set(local[0], local[1], local[2], edit.id);
+      const [x, y, z] = worldVoxelToLocal(block.store, block.center, w);
+      if (block.store.inBoundsPadded(x, y, z)) {
+        block.store.data[block.store.paddedIndex(x, y, z)] = edit.id;
         written++;
       }
     }

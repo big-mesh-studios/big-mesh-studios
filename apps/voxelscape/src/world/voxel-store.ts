@@ -76,6 +76,24 @@ export class VoxelStore {
     return this.data[this.paddedIndex(x, y, z)];
   }
 
+  /**
+   * Whether this store holds the voxel at these coordinates at all, its
+   * meshing border included. A voxel on a neighbouring block's boundary is
+   * held here too, as the border this block culls its seam faces against, so
+   * a change to it has to be written here as well.
+   */
+  inBoundsPadded(x: number, y: number, z: number): boolean {
+    const p = this.padding;
+    return (
+      x >= -p &&
+      y >= -p &&
+      z >= -p &&
+      x < this.voxels[0] + p &&
+      y < this.voxels[1] + p &&
+      z < this.voxels[2] + p
+    );
+  }
+
   inBounds(x: number, y: number, z: number): boolean {
     return (
       x >= 0 &&

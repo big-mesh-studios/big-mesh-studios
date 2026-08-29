@@ -166,17 +166,20 @@ export class EditingController {
       return;
     }
     this.onEdit(w, id, updatedAt);
-    const i = findBlockIndex(this.blocks, w);
-    if (i < 0) {
-      return;
+    // A voxel on a block's boundary is held by that block and by every block
+    // whose meshing border reaches it — up to eight at a corner. Each culls
+    // its seam faces against its own copy, so every copy is written and every
+    // holder is rebuilt; writing only the one whose interior owns it leaves
+    // the others culling a face against a voxel that is no longer there.
+    for (let i = 0; i < this.blocks.length; i++) {
+      const block = this.blocks[i];
+      const [x, y, z] = worldVoxelToLocal(block.store, block.center, w);
+      if (!block.store.inBoundsPadded(x, y, z)) {
+        continue;
+      }
+      block.store.data[block.store.paddedIndex(x, y, z)] = id;
+      this.onBlockEdited(i);
     }
-    const block = this.blocks[i];
-    const local = worldVoxelToLocal(block.store, block.center, w);
-    if (!block.store.inBounds(local[0], local[1], local[2])) {
-      return;
-    }
-    block.store.set(local[0], local[1], local[2], id);
-    this.onBlockEdited(i);
   }
 
   private overlapsPlayer(w: WorldVoxel): boolean {

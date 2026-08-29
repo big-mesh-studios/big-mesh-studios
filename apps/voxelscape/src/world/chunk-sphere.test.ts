@@ -149,24 +149,19 @@ describe("ChunkSphere", () => {
     }
   }, 30_000);
 
-  it("holds blocks above and below the player at once", () => {
-    // Which cell each slot holds is settled by `fillFrom` itself; generating
-    // the terrain for them is deferred, and this asks nothing of it. Fake
-    // timers keep that deferred work off the real clock, where waiting for it
-    // costs a hundred times what the rest of this file does.
-    vi.useFakeTimers();
-    const { sphere } = sphereWithRecordedFills(2);
-    sphere.fillFrom(0, 0, 0);
+  it("reaches above and below its centre, not only around it", () => {
+    // The ball the window keeps loaded is what makes the world run upward and
+    // downward rather than outward alone. Asked of the shape itself, which is
+    // where it is decided; a sphere driving its fill client to answer the same
+    // question takes seconds and is the slowest thing in this suite.
+    const cells = sphereCells({ x: 0, y: 0, z: 0 }, 1);
+    const keys = new Set(cells.map((c) => `${c.x},${c.y},${c.z}`));
 
-    const above = cellCenter({ x: 0, y: 1, z: 0 });
-    const below = cellCenter({ x: 0, y: -1, z: 0 });
-
-    expect(sphere.query(above[0], above[1], above[2])).toBeDefined();
-    expect(sphere.query(below[0], below[1], below[2])).toBeDefined();
-    expect(sphere.query(above[0], above[1], above[2])).not.toBe(
-      sphere.query(below[0], below[1], below[2]),
+    expect(keys.has("0,1,0")).toBe(true);
+    expect(keys.has("0,-1,0")).toBe(true);
+    expect(cells.filter((c) => c.y > 0)).toHaveLength(
+      cells.filter((c) => c.y < 0).length,
     );
-    vi.useRealTimers();
   });
 
   it("streams diagonally, crossing a cell on all three axes at once", async () => {
