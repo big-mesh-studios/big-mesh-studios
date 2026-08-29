@@ -386,6 +386,18 @@ export class TriangleRenderer {
   /** Superchunks whose merged geometry is non-empty (content mirrors `visible`). */
   private readonly contentTerrain = new Set<string>();
   private readonly contentWater = new Set<string>();
+  /**
+   * Blocks that changed as one edit and whose geometry has to reach the screen
+   * together. A voxel on a chunk's boundary belongs to several blocks at once;
+   * uploading one before the others shows it removed from that one while the
+   * blocks beside it still draw the faces they culled against it, which is a
+   * hole for as long as it takes the rest to land.
+   */
+  private readonly changedTogether: Array<{
+    waitingFor: Set<number>;
+    keys: Set<string>;
+    since: number;
+  }> = [];
 
   // Fullscreen underwater tint (the water pass tints the view
   // in-shader instead). Drawn last with depth-testing off so it washes the
@@ -413,7 +425,9 @@ export class TriangleRenderer {
           if (this.scMerged.get(key)?.slots.has(index) === true) {
             this.scNeedsFull.add(key);
           }
-          this.dirty.add(key);
+          if (!this.heldForGroup(index, key)) {
+            this.dirty.add(key);
+          }
         }
         this.onBlockMeshed?.(index);
       },
@@ -664,6 +678,48 @@ export class TriangleRenderer {
     this.scMembers.get(newKey)!.push({ index, center });
   }
 
+  /**
+   * Whether `index`'s superchunk is being kept back because it changed
+   * alongside blocks that have not been rebuilt yet. Releases every superchunk
+   * the group touches once the last of them lands, so they upload as one.
+   */
+  private heldForGroup(index: number, key: string): boolean {
+    for (let i = 0; i < this.changedTogether.length; i++) {
+      const group = this.changedTogether[i];
+      if (!group.waitingFor.has(index)) {
+        continue;
+      }
+      group.waitingFor.delete(index);
+      group.keys.add(key);
+      if (group.waitingFor.size === 0) {
+        for (const held of group.keys) {
+          this.dirty.add(held);
+        }
+        this.changedTogether.splice(i, 1);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Several blocks changed as one edit, and their geometry is uploaded
+   * together. Pass every block holding the edited voxel — the one whose
+   * interior owns it and the ones carrying it in their meshing border.
+   */
+  onBlocksChanged(indices: number[]): void {
+    if (indices.length > 1) {
+      this.changedTogether.push({
+        waitingFor: new Set(indices),
+        keys: new Set(),
+        since: this.frame,
+      });
+    }
+    for (const index of indices) {
+      this.onBlockChanged(index);
+    }
+  }
+
   onBlockChanged(index: number): void {
     this.meshes.requestBuild(index);
   }
@@ -693,6 +749,19 @@ export class TriangleRenderer {
     // a superchunk that is still meshing stays dirty and uploads once it
     // settles (or the stall backstop trips)
     this.frame++;
+    // A block whose rebuild never arrives must not hold its neighbours off the
+    // screen forever; past the stall backstop the group gives up whatever has
+    // landed so far, and anything later uploads on its own.
+    for (let i = this.changedTogether.length - 1; i >= 0; i--) {
+      const group = this.changedTogether[i];
+      if (this.frame - group.since < MAX_UPLOAD_STALL_FRAMES) {
+        continue;
+      }
+      for (const held of group.keys) {
+        this.dirty.add(held);
+      }
+      this.changedTogether.splice(i, 1);
+    }
     const dirty = [...this.dirty];
     this.dirty.clear();
     for (const key of dirty) {

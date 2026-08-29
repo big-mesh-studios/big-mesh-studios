@@ -19,8 +19,12 @@ export interface EditingControllerParams {
   blocks: WorldBlock[];
   layer: EditLayer;
   inventory: Inventory;
-  /** Called with a block's slot index after one of its voxels changes. */
-  onBlockEdited: (index: number) => void;
+  /**
+   * Called with the slot index of every block a changed voxel belongs to: the
+   * one whose interior owns it, and any carrying it in their meshing border.
+   * They are given together so their geometry can reach the screen together.
+   */
+  onBlocksEdited: (indices: number[]) => void;
   /** Called after any edit is recorded, so persistence can schedule a save. */
   onEditRecorded: () => void;
   /**
@@ -55,7 +59,7 @@ export class EditingController {
   private readonly blocks: WorldBlock[];
   private readonly layer: EditLayer;
   private readonly inventory: Inventory;
-  private readonly onBlockEdited: (index: number) => void;
+  private readonly onBlocksEdited: (indices: number[]) => void;
   private readonly onEditRecorded: () => void;
   private readonly onEdit: (
     w: WorldVoxel,
@@ -69,7 +73,7 @@ export class EditingController {
     this.blocks = params.blocks;
     this.layer = params.layer;
     this.inventory = params.inventory;
-    this.onBlockEdited = params.onBlockEdited;
+    this.onBlocksEdited = params.onBlocksEdited;
     this.onEditRecorded = params.onEditRecorded;
     this.onEdit = params.onEdit ?? (() => {});
     this.getLook = params.getLook;
@@ -171,6 +175,7 @@ export class EditingController {
     // its seam faces against its own copy, so every copy is written and every
     // holder is rebuilt; writing only the one whose interior owns it leaves
     // the others culling a face against a voxel that is no longer there.
+    const holders: number[] = [];
     for (let i = 0; i < this.blocks.length; i++) {
       const block = this.blocks[i];
       const [x, y, z] = worldVoxelToLocal(block.store, block.center, w);
@@ -178,7 +183,10 @@ export class EditingController {
         continue;
       }
       block.store.data[block.store.paddedIndex(x, y, z)] = id;
-      this.onBlockEdited(i);
+      holders.push(i);
+    }
+    if (holders.length > 0) {
+      this.onBlocksEdited(holders);
     }
   }
 

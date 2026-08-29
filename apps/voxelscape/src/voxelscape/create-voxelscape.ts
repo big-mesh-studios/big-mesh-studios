@@ -169,7 +169,7 @@ export const createVoxelscape = ({
     blocks: world.blocks,
     layer: world.editLayer,
     inventory,
-    onBlockEdited: (i) => world.renderer.onBlockChanged(i),
+    onBlocksEdited: (indices) => world.renderer.onBlocksChanged(indices),
     onEditRecorded: () => world.scheduleSave(),
     // Peers apply these immediately; the atproto sync is still what settles
     // disagreements.

@@ -17,10 +17,10 @@ const blockWithFloor = (): WorldBlock => {
   return block;
 };
 
-/** A renderer holding one block, with a tile for the voxel that block is drawn in. */
-const rendererFor = (block: WorldBlock) => {
+/** A renderer holding these blocks, with a tile for the voxel they are drawn in. */
+const rendererFor = (...blocks: WorldBlock[]) => {
   const renderer = new TriangleRenderer({
-    blocks: [block],
+    blocks,
     waterExtinction: 0.1,
     seaLevel: undefined,
     onBlockMeshed: () => {},
@@ -71,5 +71,37 @@ describe("TriangleRenderer", () => {
     for (const mesh of renderer.terrain.children) {
       expect(mesh.visible).toBe(false);
     }
+  });
+
+  it("holds a superchunk back until every block of one edit has landed", () => {
+    // A voxel on a chunk's boundary belongs to several blocks. Showing the
+    // one that no longer draws it, before the ones that still cull a face
+    // against it have caught up, is the hole. Here the second block never
+    // reports back, so the first stays held.
+    const renderer = rendererFor(blockWithFloor(), blockWithFloor());
+    const camera = new PerspectiveCamera(60, 1, 0.1, 1000);
+    renderer.repositionBlock(0, [0, 0, 0]);
+
+    renderer.onBlocksChanged([0, 1]);
+    renderer.meshNow(0);
+    renderer.tick(0.016, camera);
+
+    expect(renderer.terrain.children.filter((m) => m.visible)).toHaveLength(0);
+  });
+
+  it("gives up holding when a block of the group never comes back", () => {
+    // Nothing may be kept off the screen forever. Past the stall backstop
+    // whatever has landed is shown, and a straggler uploads on its own.
+    const renderer = rendererFor(blockWithFloor(), blockWithFloor());
+    const camera = new PerspectiveCamera(60, 1, 0.1, 1000);
+    renderer.repositionBlock(0, [0, 0, 0]);
+
+    renderer.onBlocksChanged([0, 1]);
+    renderer.meshNow(0);
+    for (let frame = 0; frame < 12; frame++) {
+      renderer.tick(0.016, camera);
+    }
+
+    expect(renderer.terrain.children.filter((m) => m.visible)).toHaveLength(1);
   });
 });

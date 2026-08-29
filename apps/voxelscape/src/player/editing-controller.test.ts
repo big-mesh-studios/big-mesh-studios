@@ -20,7 +20,7 @@ const makeHarness = () => {
   });
   const layer = new EditLayer();
   const inventory = new Inventory();
-  const onBlockEdited = vi.fn();
+  const onBlocksEdited = vi.fn();
   const onEditRecorded = vi.fn();
   const onEdit = vi.fn();
   let look = {
@@ -32,7 +32,7 @@ const makeHarness = () => {
     blocks: [block],
     layer,
     inventory,
-    onBlockEdited,
+    onBlocksEdited,
     onEditRecorded,
     onEdit,
     getLook: () => look,
@@ -43,7 +43,7 @@ const makeHarness = () => {
     layer,
     inventory,
     controller,
-    onBlockEdited,
+    onBlocksEdited,
     onEditRecorded,
     onEdit,
     setLook: (o: [number, number, number], d: [number, number, number]) => {
@@ -78,7 +78,7 @@ describe("EditingController.breakBlock", () => {
     expect(msg).toContain("Dirt");
     expect(h.layer.get(target)?.id).toBe(VOXEL_AIR);
     expect(h.inventory.count(VOXEL_DIRT)).toBe(1);
-    expect(h.onBlockEdited).toHaveBeenCalledWith(0);
+    expect(h.onBlocksEdited).toHaveBeenCalledWith(expect.arrayContaining([0]));
     expect(h.onEditRecorded).toHaveBeenCalledTimes(1);
   });
 
@@ -118,7 +118,7 @@ describe("EditingController.breakBlock", () => {
       blocks: [floorBlock],
       layer,
       inventory,
-      onBlockEdited: vi.fn(),
+      onBlocksEdited: vi.fn(),
       onEditRecorded: vi.fn(),
       getLook: () => ({
         // camera one voxel above the bottom voxel, aiming straight down
@@ -202,7 +202,7 @@ describe("EditingController.placeBlock", () => {
       blocks: [ceilingBlock],
       layer,
       inventory,
-      onBlockEdited: vi.fn(),
+      onBlocksEdited: vi.fn(),
       onEditRecorded: vi.fn(),
       getLook: () => ({
         // camera one voxel above the top voxel, aiming straight down at it
