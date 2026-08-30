@@ -1,13 +1,8 @@
-import {
-  applyLevelData,
-  blockConfig,
-  type Dim3,
-  type WorldBlock,
-} from "./level-data";
+import { applyLevelData, type Dim3, type WorldBlock } from "./level-data";
 import type { EditLayer } from "./edit-layer";
 import { type FillBatchResult, type FillConfig } from "./fill-worker";
 import type { TerrainConfig } from "./noise";
-import { fillStore, type BorderSizes, type FillStoreFn } from "./voxel-store";
+import { fillStore, type FillStoreFn } from "./voxel-store";
 
 export interface FillClientParams {
   terrain: TerrainConfig;
@@ -59,10 +54,6 @@ const workerCount = (): number => {
  */
 export class FillClient {
   private readonly fillGen: number[];
-  /** The level of detail each slot's most recent fill was requested at. */
-  private readonly fillLod: number[];
-  /** The neighbour-voxel sizes each slot's most recent fill was requested with. */
-  private readonly fillBorder: (BorderSizes | undefined)[];
   /** Slots with an outstanding worker fill request (for error recovery). */
   private readonly fillInflight = new Set<number>();
   private readonly blocks: WorldBlock[];
@@ -76,10 +67,6 @@ export class FillClient {
   private warnedWorkerError = false;
   /** Slots waiting to be generated on the main thread, one task each. */
   private readonly pendingSyncFills = new Set<number>();
-  /** The level of detail each queued synchronous fill will be generated at. */
-  private readonly pendingSyncLods = new Map<number, number>();
-  /** The neighbour-voxel sizes each queued synchronous fill will be generated with. */
-  private readonly pendingSyncBorder = new Map<number, BorderSizes>();
   private syncFillTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(params: FillClientParams) {
@@ -90,8 +77,6 @@ export class FillClient {
     this.customFillStoreUrl = params.customFillStoreUrl;
     this.editLayer = params.editLayer;
     this.fillGen = new Array(params.blocks.length).fill(0);
-    this.fillLod = new Array(params.blocks.length).fill(0);
-    this.fillBorder = new Array(params.blocks.length).fill(undefined);
 
     const count = params.createWorker === undefined ? workerCount() : 1;
     for (let i = 0; i < count; i++) {
@@ -142,7 +127,6 @@ export class FillClient {
       applyLevelData(this.blocks[i], {
         storeData: msg.storeData[j],
         mightHaveVoxels: msg.mightHaveVoxels[j],
-        lod: msg.lods[j],
       });
       this.applyEdits(i);
       this.onBlockChanged(i);
@@ -163,11 +147,16 @@ export class FillClient {
       );
     }
     for (const i of this.fillInflight) {
-      this.syncFillBlock(i, this.fillLod[i], this.fillBorder[i]);
+      this.syncFillBlock(i);
     }
     this.fillInflight.clear();
   }
 
+  /**
+   * Requests voxel data for each of these slots, using the worker if it's
+   * available or generating it synchronously otherwise. `centers[k]` is the
+   * world-space center at which `indices[k]` should be generated.
+   */
   /**
    * Generates one slot's voxel data on the calling thread, before returning.
    * For the block that has to exist before anything can be shown: starting a
@@ -179,57 +168,26 @@ export class FillClient {
    * before it moved) is dropped when it lands, instead of painting the old
    * cell's terrain over this fresh synchronous one.
    */
-  fillNow(index: number, lod = 0, borderSizes?: BorderSizes): void {
+  fillNow(index: number): void {
     this.fillGen[index]++;
     this.fillInflight.delete(index);
-    this.fillLod[index] = lod;
-    this.fillBorder[index] = borderSizes;
-    this.syncFillBlock(index, lod, borderSizes);
+    this.syncFillBlock(index);
   }
 
-  /**
-   * Requests voxel data for each of these slots, using the worker if it's
-   * available or generating it synchronously otherwise. `centers[k]` is the
-   * world-space center and `lods[k]` the level of detail at which
-   * `indices[k]` should be generated, and `borderSizes[k]` the neighbour
-   * voxel sizes its border should cull its seam faces against.
-   */
-  requestFill(
-    indices: number[],
-    centers: Dim3[],
-    lods: number[],
-    borderSizes?: BorderSizes[],
-  ): void {
+  requestFill(indices: number[], centers: Dim3[]): void {
     if (this.workers.length > 0 && this.workerAvailable) {
       // Split the batch across the pool, round-robin, so a scroll's entering
       // shell generates on several threads at once.
-      const batches: Array<{
-        indices: number[];
-        centers: Dim3[];
-        lods: number[];
-        borderSizes: BorderSizes[];
-      }> = this.workers.map(() => ({
-        indices: [],
-        centers: [],
-        lods: [],
-        borderSizes: [],
-      }));
+      const batches: Array<{ indices: number[]; centers: Dim3[] }> =
+        this.workers.map(() => ({ indices: [], centers: [] }));
       for (let k = 0; k < indices.length; k++) {
         batches[k % batches.length].indices.push(indices[k]);
         batches[k % batches.length].centers.push(centers[k]);
-        batches[k % batches.length].lods.push(lods[k]);
-        batches[k % batches.length].borderSizes.push(borderSizes?.[k] ?? {});
       }
       for (let w = 0; w < this.workers.length; w++) {
         const batch = batches[w];
         if (batch.indices.length > 0) {
-          this.sendFillBatch(
-            batch.indices,
-            batch.centers,
-            batch.lods,
-            batch.borderSizes,
-            this.workers[w],
-          );
+          this.sendFillBatch(batch.indices, batch.centers, this.workers[w]);
         }
       }
       return;
@@ -238,13 +196,8 @@ export class FillClient {
     // block takes long enough that a whole window's worth in a single task
     // freezes the page for seconds, with nothing drawn and no loading state
     // shown until the last one is done.
-    for (let k = 0; k < indices.length; k++) {
-      this.pendingSyncFills.add(indices[k]);
-      this.pendingSyncLods.set(indices[k], lods[k]);
-      const border = borderSizes?.[k];
-      if (border !== undefined) {
-        this.pendingSyncBorder.set(indices[k], border);
-      }
+    for (const i of indices) {
+      this.pendingSyncFills.add(i);
     }
     this.drainSyncFills();
   }
@@ -257,30 +210,18 @@ export class FillClient {
     if (next.done === true) {
       return;
     }
-    const index = next.value;
-    this.pendingSyncFills.delete(index);
-    const lod = this.pendingSyncLods.get(index) ?? 0;
-    this.pendingSyncLods.delete(index);
-    const borderSizes = this.pendingSyncBorder.get(index);
-    this.pendingSyncBorder.delete(index);
+    this.pendingSyncFills.delete(next.value);
     this.syncFillTimer = setTimeout(() => {
       this.syncFillTimer = undefined;
-      this.syncFillBlock(index, lod, borderSizes);
+      this.syncFillBlock(next.value);
       this.drainSyncFills();
     }, 0);
   }
 
-  private syncFillBlock(i: number, lod = 0, borderSizes?: BorderSizes): void {
+  private syncFillBlock(i: number): void {
     const block = this.blocks[i];
-    // The store's resolution is the fill's: a slot filled at a different
-    // level of detail than it was built at has to read its voxels at that
-    // LOD's scale before the fill writes into it.
-    const { dimensions, voxels, voxelSize } = blockConfig(lod);
-    block.store.dims = dimensions;
-    block.store.voxels = voxels;
-    block.store.scale = voxelSize;
     const fill = this.customFillStore ?? fillStore;
-    fill(block.store, block.center, this.terrain, borderSizes);
+    fill(block.store, block.center, this.terrain);
     this.applyEdits(i);
     this.onBlockChanged(i);
   }
@@ -300,27 +241,15 @@ export class FillClient {
   private sendFillBatch(
     indices: number[],
     centers: Dim3[],
-    lods: number[],
-    borderSizes: BorderSizes[],
     worker: Worker,
   ): void {
     const gens: number[] = [];
-    for (let k = 0; k < indices.length; k++) {
-      const i = indices[k];
+    for (const i of indices) {
       this.fillGen[i]++;
       gens.push(this.fillGen[i]);
-      this.fillLod[i] = lods[k];
-      this.fillBorder[i] = borderSizes[k];
       this.fillInflight.add(i);
     }
-    worker.postMessage({
-      type: "fill",
-      indices,
-      centers,
-      lods,
-      borderSizes,
-      gens,
-    });
+    worker.postMessage({ type: "fill", indices, centers, gens });
   }
 
   dispose(): void {

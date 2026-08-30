@@ -8,7 +8,6 @@ import {
   VOXEL_WATER,
   VoxelStore,
   fillStore,
-  type BorderSizes,
   type FillStoreFn,
 } from "./voxel-store";
 
@@ -92,16 +91,10 @@ export const buildBlock = (params: {
   lod?: number;
   terrain?: TerrainConfig;
   customFillStore?: FillStoreFn;
-  borderSizes?: BorderSizes;
 }): WorldBlock => {
   const block = buildBlockShell(params);
   const fill = params.customFillStore ?? fillStore;
-  fill(
-    block.store,
-    params.center,
-    params.terrain ?? DEFAULT_TERRAIN,
-    params.borderSizes,
-  );
+  fill(block.store, params.center, params.terrain ?? DEFAULT_TERRAIN);
   return block;
 };
 
@@ -369,8 +362,6 @@ export interface BlockData {
   storeData: Uint8Array;
   /** Whether these voxels are worth meshing; see `VoxelStore.mightHaveVoxels`. */
   mightHaveVoxels: boolean;
-  /** The level of detail these voxels were generated at. */
-  lod: number;
 }
 
 /**
@@ -382,17 +373,13 @@ export interface BlockData {
  */
 export const buildBlockData = (params: {
   center: Dim3;
-  lod?: number;
   terrain?: TerrainConfig;
   customFillStore?: FillStoreFn;
-  borderSizes?: BorderSizes;
 }): BlockData => {
-  const lod = params.lod ?? 0;
-  const { store } = buildBlock({ ...params, lod });
+  const { store } = buildBlock(params);
   return {
     storeData: store.data,
     mightHaveVoxels: store.mightHaveVoxels,
-    lod,
   };
 };
 
@@ -404,13 +391,6 @@ export const buildBlockData = (params: {
  * @param data - The worker-generated arrays to adopt.
  */
 export const applyLevelData = (block: WorldBlock, data: BlockData): void => {
-  // The store's resolution follows the data it adopts, so a slot refilled at
-  // a different level of detail reads its voxels at that LOD's scale rather
-  // than the one the shell was built at.
-  const { dimensions, voxels, voxelSize } = blockConfig(data.lod);
-  block.store.dims = dimensions;
-  block.store.voxels = voxels;
-  block.store.scale = voxelSize;
   block.store.data = data.storeData;
   block.store.mightHaveVoxels = data.mightHaveVoxels;
 };

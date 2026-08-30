@@ -39,13 +39,7 @@ describe("fill worker protocol", () => {
 
   it("ignores a fill request before a config arrives", () => {
     const out = handleFillMessage(
-      {
-        type: "fill",
-        indices: [0],
-        centers: [[0, 0, 0]],
-        lods: [0],
-        gens: [1],
-      },
+      { type: "fill", indices: [0], centers: [[0, 0, 0]], gens: [1] },
       undefined,
     );
     expect(out.results).toBeUndefined();
@@ -53,11 +47,7 @@ describe("fill worker protocol", () => {
 
   it("ignores a message that is neither config nor fill", () => {
     const out = handleFillMessage(
-      {
-        indices: [0],
-        centers: [[0, 0, 0]],
-        lods: [0],
-      } as unknown as FillBatchRequest,
+      { indices: [0], centers: [[0, 0, 0]] } as unknown as FillBatchRequest,
       config,
     );
     expect(out.results).toBeUndefined();
@@ -71,7 +61,6 @@ describe("fill worker protocol", () => {
         [0, 0, 0],
         [192, 0, 0],
       ],
-      lods: [0, 0],
       gens: [11, 22],
     };
     const results = await collect(handleFillMessage(req, config).results);
@@ -88,60 +77,6 @@ describe("fill worker protocol", () => {
     expect(results[0].storeData[0].length).toBe(sync.storeData.length);
   });
 
-  it("generates each block at its requested level of detail", async () => {
-    const results = await collect(
-      buildFillResults(
-        {
-          type: "fill",
-          indices: [0],
-          centers: [[0, 0, 0]],
-          lods: [2],
-          gens: [1],
-        },
-        config,
-      ),
-    );
-    expect(results[0].lods).toEqual([2]);
-    // A LOD-2 block is a 16³ volume instead of the full 64³, so the store
-    // matches the synchronous LOD-2 build rather than the LOD-0 one.
-    const lod2 = buildBlockData({
-      center: [0, 0, 0],
-      lod: 2,
-      terrain: config.terrain,
-    });
-    expect(results[0].storeData[0].length).toBe(lod2.storeData.length);
-    const lod0 = buildBlockData({
-      center: [0, 0, 0],
-      terrain: config.terrain,
-    });
-    expect(lod2.storeData.length).toBeLessThan(lod0.storeData.length);
-  });
-
-  it("generates a block's border against the neighbours' voxel sizes it is sent", async () => {
-    const borderSizes = { px: 4, nx: 4 };
-    const results = await collect(
-      buildFillResults(
-        {
-          type: "fill",
-          indices: [0],
-          centers: [[0, 0, 0]],
-          lods: [0],
-          borderSizes: [borderSizes],
-          gens: [1],
-        },
-        config,
-      ),
-    );
-    const sync = buildBlockData({
-      center: [0, 0, 0],
-      lod: 0,
-      terrain: config.terrain,
-      borderSizes,
-    });
-    expect(results[0].storeData[0].length).toBe(sync.storeData.length);
-    expect(results[0].storeData[0]).toEqual(sync.storeData);
-  });
-
   it("produces one transferable buffer per array", async () => {
     const [result] = await collect(
       buildFillResults(
@@ -149,7 +84,6 @@ describe("fill worker protocol", () => {
           type: "fill",
           indices: [0],
           centers: [[0, 0, 0]],
-          lods: [0],
           gens: [1],
         },
         config,

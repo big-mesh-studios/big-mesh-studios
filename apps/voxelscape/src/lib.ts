@@ -11,11 +11,9 @@ export {
 
 // World Management
 export {
-  borderSizesOf,
   cellKey,
   cellsInSphere,
   ChunkSphere,
-  lodAt,
   sphereCells,
   type CellCoord,
 } from "./world/chunk-sphere";

@@ -10,10 +10,8 @@
 // record.
 //
 // Edits are addressed in the LOD-0 voxel grid: one voxel is `VOXEL_SIZE`
-// world units. The mapping below converts through the store's own scale, so a
-// store built at a coarser level of detail places an edit at the coarse voxel
-// containing the edited world voxel, or drops it when the range is out of
-// bounds.
+// world units. Every block the sphere builds is LOD 0, so `block.store.scale`
+// equals `VOXEL_SIZE` and the local<->world mapping below is exact.
 import {
   BLOCK_WORLD,
   VOXEL_SIZE,
