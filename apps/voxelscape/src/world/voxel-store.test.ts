@@ -1,8 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { blocksQuery, getWorldHeight } from "./level-data";
+import { DEFAULT_TERRAIN } from "./noise";
 import {
   VOXEL_AIR,
+  VOXEL_CLOUD,
   VOXEL_DIRT,
   VOXEL_GRASS,
   VOXEL_WATER,
@@ -210,6 +212,77 @@ describe("fillStore", () => {
       for (let z = 0; z < 4; z++) {
         expect(a.atPadded(x, 4, z)).toBe(b.get(x, 0, z));
         expect(b.atPadded(x, -1, z)).toBe(a.get(x, 3, z));
+      }
+    }
+  });
+});
+
+describe("fillStore clouds", () => {
+  /** A 32³ store, wide enough that a bank of the clumpy cloud field lands in it. */
+  const cloudStore = (center: [number, number, number]): VoxelStore => {
+    const store = new VoxelStore({
+      dims: [64, 64, 64],
+      voxels: [32, 32, 32],
+      scale: 2,
+    });
+    fillStore(store, center, DEFAULT_TERRAIN);
+    return store;
+  };
+
+  const countOf = (store: VoxelStore, id: number): number => {
+    let n = 0;
+    for (let i = 0; i < store.data.length; i++) {
+      if (store.data[i] === id) n++;
+    }
+    return n;
+  };
+
+  it("scatters still clouds in the band of a block at the cloud altitude", () => {
+    // (128, 220) sits inside a cloud bank of the default seed's field
+    const store = cloudStore([128, 220, 0]);
+    expect(countOf(store, VOXEL_CLOUD)).toBeGreaterThan(0);
+    expect(store.mightHaveVoxels).toBe(true);
+    // the band is far above the highest terrain, so every filled voxel is cloud
+    expect(countOf(store, VOXEL_GRASS)).toBe(0);
+    expect(countOf(store, VOXEL_DIRT)).toBe(0);
+    expect(countOf(store, VOXEL_WATER)).toBe(0);
+  });
+
+  it("keeps every cloud voxel inside the cloud band", () => {
+    const store = cloudStore([128, 220, 0]);
+    for (let z = 0; z < 32; z++) {
+      for (let y = 0; y < 32; y++) {
+        for (let x = 0; x < 32; x++) {
+          if (store.get(x, y, z) !== VOXEL_CLOUD) {
+            continue;
+          }
+          const worldY = 220 + (y + 0.5 - 16) * 2;
+          expect(worldY).toBeGreaterThanOrEqual(156);
+          expect(worldY).toBeLessThanOrEqual(284);
+        }
+      }
+    }
+  });
+
+  it("fills no cloud for a block whose rows miss the band", () => {
+    // well below the band (underground) and well above it (open sky)
+    expect(countOf(cloudStore([0, 0, 0]), VOXEL_CLOUD)).toBe(0);
+    expect(countOf(cloudStore([0, 400, 0]), VOXEL_CLOUD)).toBe(0);
+  });
+
+  it("is deterministic for a given terrain seed", () => {
+    const a = cloudStore([128, 220, 0]);
+    const b = cloudStore([128, 220, 0]);
+    expect([...a.data]).toEqual([...b.data]);
+  });
+
+  it("writes the cloud border rows to match a neighbouring block", () => {
+    const a = cloudStore([128, 220, 0]);
+    const b = cloudStore([128 + 64, 220, 0]);
+    for (let y = 0; y < 32; y++) {
+      for (let z = 0; z < 32; z++) {
+        expect(a.atPadded(32, y, z)).toBe(b.get(0, y, z));
+        expect(b.atPadded(-1, y, z)).toBe(a.get(31, y, z));
       }
     }
   });

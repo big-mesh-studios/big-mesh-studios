@@ -12,6 +12,10 @@ _Avoid_: Chunk, block (ambiguous with voxel), region
 The `WorldBlock`'s CPU voxel data (`store.data`), laid out with a 1-voxel meshing border on every face (`VOXEL_PADDING`): the interior is the volume, and the border carries the voxels the neighbouring `WorldBlock`s will contain, generated deterministically from the same world-coordinate terrain function during the fill — including the top/bottom border rows that duplicate vertically-stacked neighbours' boundary rows. `get`/`set` address the interior only; the border is consumed solely by the mesh builders (`atPadded` with any axis from `-1..n`) so seam faces are culled without ever reading another block's store — no stale-neighbour races and no worker shells.
 _Avoid_: Chunk data, padded store (the border lives in the same `data` array, not a separate buffer)
 
+**Cloud Block**:
+The white voxel (`VOXEL_CLOUD`) the fill scatters through the cloud-field band centred on `CLOUD_Y`, sampled from the same seeded 3D Perlin field the moving puffs are built from, so the still layout lines up with the visible sky. Solid to the player — it is the secret floor they can stand on — but skipped by the ground-height samplers, so spawn, monster and weather heights still read the terrain; it breaks into a Cloud inventory item like any collectable block.
+_Avoid_: Cloud (ambiguous with the moving puff field), sky block
+
 **Sphere**:
 The set of `WorldBlock`s the window keeps loaded: every chunk cell within `chunkRadius` (default 4) euclidean chunks of the player's cell, centred on the player in every axis. When the player crosses a chunk boundary, cells that leave the ball are evicted and cells that enter teleport a freed slot to the leading cell and refill its `WorldBlock` in place (same slot, new data) rather than allocating a new one. Owned and managed by **ChunkSphere**.
 _Avoid_: Chunk grid, world grid (the sphere's per-slot integer coordinates are an internal `ChunkSphere` implementation detail — don't confuse with **Sphere** itself)
@@ -65,7 +69,7 @@ Turns crosshair actions into voxel edits: consumes a CPU DDA voxel pick (`pickVo
 _Avoid_: VoxelEditor, block tool (undersells that it also owns inventory handoff, not just voxel mutation)
 
 **Inventory**:
-How many Dirt blocks the player holds (grass and dirt both break into a single dirt item; water isn't collectable), plus which block is selected for placement. A tiny plain class with an `onChange` callback the hotbar HUD (`EditHud`) subscribes to; `EditingController.breakBlock` adds and `placeBlock` consumes.
+How many of each placeable block the player holds — dirt (grass and dirt both break into a single dirt item) and the cloud blocks mined from the sky — plus which block is selected for placement. Water isn't collectable. A tiny plain class with an `onChange` callback the hotbar HUD (`EditHud`) subscribes to; `EditingController.breakBlock` adds and `placeBlock` consumes.
 _Avoid_: ItemStackSystem (it's a flat per-id count, not stack slots)
 
 **PlayerHealth**:

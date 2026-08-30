@@ -47,6 +47,7 @@ export { DEFAULT_REACH, pickVoxel, type VoxelPick } from "./world/picker";
 export {
   fillStore,
   VOXEL_AIR,
+  VOXEL_CLOUD,
   VOXEL_DIRT,
   VOXEL_GRASS,
   VOXEL_WATER,

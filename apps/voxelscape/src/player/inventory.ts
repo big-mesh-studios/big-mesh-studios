@@ -1,16 +1,17 @@
 // Player inventory: how many of each placeable block the player holds, which
 // block is selected for placement, and the non-stackable tools carried beside
-// them. Breaking a collectable voxel yields a single "Dirt" item (grass and
-// dirt both become dirt), so the hotbar is one slot; water isn't collectable
-// and the floor isn't editable (see `EditingController`). The player starts
-// carrying the bronze sword, which never stacks and is never consumed. A plain
-// class with an optional change callback so the hotbar HUD can refresh when
-// the count or the selection changes.
-import { VOXEL_DIRT, VOXEL_GRASS } from "../world/voxel-store";
+// them. Breaking a collectable voxel yields a single item (grass and dirt both
+// become dirt; cloud becomes cloud), water isn't collectable and the floor
+// isn't editable (see `EditingController`). The player starts carrying the
+// bronze sword, which never stacks and is never consumed. A plain class with an
+// optional change callback so the hotbar HUD can refresh when the count or the
+// selection changes.
+import { VOXEL_CLOUD, VOXEL_DIRT, VOXEL_GRASS } from "../world/voxel-store";
 
-/** The block name shown for each placeable inventory item (dirt only). */
+/** The block name shown for each placeable inventory item. */
 export const COLLECTABLE: Record<number, string> = {
   [VOXEL_DIRT]: "Dirt",
+  [VOXEL_CLOUD]: "Cloud",
 };
 
 /** The id of the sword every player starts with. */
@@ -31,12 +32,14 @@ export const TOOLS: Record<number, string> = {
 export const BREAK_YIELD: Record<number, number> = {
   [VOXEL_GRASS]: VOXEL_DIRT,
   [VOXEL_DIRT]: VOXEL_DIRT,
+  [VOXEL_CLOUD]: VOXEL_CLOUD,
 };
 
 /** Human-readable name of each breakable voxel (for pick feedback). */
 export const BREAKABLE: Record<number, string> = {
   [VOXEL_GRASS]: "Grass",
   [VOXEL_DIRT]: "Dirt",
+  [VOXEL_CLOUD]: "Cloud",
 };
 
 export interface InventoryItem {
