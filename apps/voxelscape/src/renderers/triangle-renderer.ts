@@ -21,6 +21,7 @@ import {
   Builder,
   BufferGeometry,
   Group,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   NodeMaterial,
@@ -287,6 +288,47 @@ const emptyArrays = (): MergedArrays => ({
   uvs: [],
   indices: [],
 });
+
+/** One view-frustum plane as the `[a, b, c, d]` of `a*x + b*y + c*z + d`. */
+type FrustumPlane = [number, number, number, number];
+
+/**
+ * The six planes of a view-projection matrix, extracted the Gribb–Hartmann
+ * way (not normalized — the sign tests below never need the magnitude). The
+ * planes are named for which side of the frustum they bound.
+ */
+const frustumPlanes = (viewProjection: Matrix4): FrustumPlane[] => {
+  const e = viewProjection.elements;
+  return [
+    [e[3] - e[0], e[7] - e[4], e[11] - e[8], e[15] - e[12]], // right
+    [e[3] + e[0], e[7] + e[4], e[11] + e[8], e[15] + e[12]], // left
+    [e[3] + e[1], e[7] + e[5], e[11] + e[9], e[15] + e[13]], // bottom
+    [e[3] - e[1], e[7] - e[5], e[11] - e[9], e[15] - e[13]], // top
+    [e[3] - e[2], e[7] - e[6], e[11] - e[10], e[15] - e[14]], // far
+    [e[3] + e[2], e[7] + e[6], e[11] + e[10], e[15] + e[14]], // near
+  ];
+};
+
+/**
+ * Whether the axis-aligned box centred on `center` with half-extent `half`
+ * on every axis intersects the frustum: it is fully outside the moment its
+ * corner most forward along a plane's normal sits behind that plane.
+ */
+const inFrustum = (
+  planes: FrustumPlane[],
+  center: Dim3,
+  half: number,
+): boolean => {
+  for (const [a, b, c, d] of planes) {
+    const vx = a >= 0 ? center[0] + half : center[0] - half;
+    const vy = b >= 0 ? center[1] + half : center[1] - half;
+    const vz = c >= 0 ? center[2] + half : center[2] - half;
+    if (a * vx + b * vy + c * vz + d < 0) {
+      return false;
+    }
+  }
+  return true;
+};
 
 /**
  * Appends one chunk's geometry to a superchunk's merged arrays at the
@@ -764,7 +806,21 @@ export class TriangleRenderer {
     }
     const dirty = [...this.dirty];
     this.dirty.clear();
+    // A superchunk the camera cannot see is left dirty rather than merged and
+    // uploaded: the merge is the expensive part of a scroll's burst, and most
+    // of the entering shell sits behind or beside the player. It rebuilds the
+    // frame the camera turns onto it. The camera's view matrix is last
+    // frame's — a frame stale is fine for deciding what to hide.
+    const viewProjection = new Matrix4()
+      .copy(camera.projectionMatrix)
+      .multiply(camera.matrixWorldInverse);
+    const planes = frustumPlanes(viewProjection);
+    const half = SUPERCHUNK_WORLD / 2;
     for (const key of dirty) {
+      if (!inFrustum(planes, scCenterOf(key), half)) {
+        this.dirty.add(key);
+        continue;
+      }
       this.rebuildSuperchunk(key);
     }
     // fullscreen underwater tint when the camera dips below the sea

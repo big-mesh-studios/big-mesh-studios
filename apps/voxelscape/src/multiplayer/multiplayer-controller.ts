@@ -10,7 +10,12 @@ import { Group } from "@random-mesh/rmsl/scene";
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import type { AtprotoRepoClient } from "@big-mesh-studios/atproto/repo-client";
 import { MeshPeer } from "./mesh-peer";
-import type { DamageWire, EditItem, MonsterUpdate } from "./messages";
+import type {
+  DamageWire,
+  EditItem,
+  MonsterUpdate,
+  PlayerDamageWire,
+} from "./messages";
 import type { Pose, PoseMessage } from "./pose";
 import {
   PRESENCE_COLLECTION,
@@ -133,6 +138,11 @@ export interface MultiplayerParams {
    * for the monster controller to apply to the monsters this client owns.
    */
   onRemoteDamage?: (did: string, damage: DamageWire) => void;
+  /**
+   * Receives a peer's zombie swing aimed at this player, for headless
+   * verification and (in the app) for applying to the local player's health.
+   */
+  onRemotePlayerDamage?: (did: string, damage: PlayerDamageWire) => void;
   /** Overrides for the cluster-selection tuning (tests use this to disable hysteresis). */
   clusterOptions?: Partial<ClusterOptions>;
 }
@@ -156,6 +166,10 @@ export class MultiplayerController {
     updates: MonsterUpdate[],
   ) => void;
   private readonly onRemoteDamage: (did: string, damage: DamageWire) => void;
+  private readonly onRemotePlayerDamage: (
+    did: string,
+    damage: PlayerDamageWire,
+  ) => void;
   private readonly clusterOptions: Partial<ClusterOptions>;
   /**
    * Every connected peer's avatar, for the scene to place in its draw order.
@@ -190,12 +204,15 @@ export class MultiplayerController {
   private editSeq = 0;
   private monsterSeq = 0;
   private damageSeq = 0;
+  private playerDamageSeq = 0;
   private editsSent = 0;
   private editsReceived = 0;
   private monstersSent = 0;
   private monstersReceived = 0;
   private damageSent = 0;
   private damageReceived = 0;
+  private playerDamageSent = 0;
+  private playerDamageReceived = 0;
 
   private lastPresenceAt = 0;
   private lastPresenceX = 0;
@@ -220,6 +237,7 @@ export class MultiplayerController {
     this.onRemoteEdits = params.onRemoteEdits ?? (() => {});
     this.onRemoteMonsters = params.onRemoteMonsters ?? (() => {});
     this.onRemoteDamage = params.onRemoteDamage ?? (() => {});
+    this.onRemotePlayerDamage = params.onRemotePlayerDamage ?? (() => {});
     this.clusterOptions = params.clusterOptions ?? {};
     this.remotePlayers =
       params.camera !== undefined
@@ -257,7 +275,7 @@ export class MultiplayerController {
    * Every connected peer's live position, for callers that need to know where
    * the other players are (monsters chase and choose owners among them).
    */
-  peerPositions(): Array<{ did: string; x: number; z: number }> {
+  peerPositions(): Array<{ did: string; x: number; y: number; z: number }> {
     return this.remotePlayers?.positions() ?? [];
   }
 
@@ -456,6 +474,32 @@ export class MultiplayerController {
     }
   }
 
+  /**
+   * Broadcasts a zombie swing's damage to every open peer. Each receiver
+   * applies it only if the swing names that player, so a hit lands exactly
+   * once, on the client that owns the hurt player. No-op while the mesh is
+   * offline.
+   */
+  broadcastPlayerDamage(
+    damage: Omit<PlayerDamageWire, "v" | "type" | "seq" | "t">,
+  ): void {
+    if (!this.running) {
+      return;
+    }
+    const seq = ++this.playerDamageSeq;
+    this.playerDamageSent++;
+    const wire: PlayerDamageWire = {
+      v: 1,
+      type: "player-damage",
+      seq,
+      t: Date.now(),
+      ...damage,
+    };
+    for (const peer of this.peers.values()) {
+      peer.sendPlayerDamage(wire);
+    }
+  }
+
   describe(): string {
     const state = this.describeState();
     return `multiplayer: ${state}${
@@ -533,6 +577,9 @@ export class MultiplayerController {
     );
     lines.push(
       `damage: ${this.damageSent} sent, ${this.damageReceived} received`,
+    );
+    lines.push(
+      `player-damage: ${this.playerDamageSent} sent, ${this.playerDamageReceived} received`,
     );
     lines.push(`lastError: ${this.lastError ?? "none"}`);
     return lines.join("\n");
@@ -800,6 +847,7 @@ export class MultiplayerController {
     onEdits: (d: string, edits: EditItem[]) => void;
     onMonsters: (d: string, updates: MonsterUpdate[]) => void;
     onDamage: (d: string, damage: DamageWire) => void;
+    onPlayerDamage: (d: string, damage: PlayerDamageWire) => void;
     onClose: (d: string) => void;
     onError: (d: string, message: string, code?: string) => void;
   } {
@@ -827,6 +875,10 @@ export class MultiplayerController {
       onDamage: (d, damage) => {
         this.damageReceived++;
         this.onRemoteDamage(d, damage);
+      },
+      onPlayerDamage: (d, damage) => {
+        this.playerDamageReceived++;
+        this.onRemotePlayerDamage(d, damage);
       },
       onClose: (d) => {
         this.peerCount = Math.max(0, this.peerCount - 1);

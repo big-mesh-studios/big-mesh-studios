@@ -25,11 +25,17 @@ import {
 } from "../atproto/monsters";
 import type { MonsterUpdate } from "../multiplayer/messages";
 import { KNOCKBACK } from "./hit";
-import { WAKE_RADIUS, stepZombie, type ZombieStepInputs } from "./zombie";
+import {
+  WAKE_RADIUS,
+  ZOMBIE_DAMAGE,
+  stepZombie,
+  type ZombieStepInputs,
+} from "./zombie";
 
 export interface MonsterPlayer {
   did: string;
   x: number;
+  y: number;
   z: number;
 }
 
@@ -55,6 +61,13 @@ export interface MonsterControllerParams {
    * the monster red.
    */
   onHit?: (id: string) => void;
+  /**
+   * Called when an owned monster's swing lands on a player: the attacked
+   * player's DID and the damage the swing deals. The caller decides whether
+   * the target is the local player (apply it to their health) or a peer (send
+   * them the hit over the mesh).
+   */
+  onHitPlayer?: (did: string, amount: number) => void;
 }
 
 /** Cells whose nearest point is within this of a player are materialized, world units. */
@@ -92,6 +105,8 @@ export class MonsterController {
   private readonly onBroadcast:
     ((updates: MonsterUpdate[]) => void) | undefined;
   private readonly onHit: ((id: string) => void) | undefined;
+  private readonly onHitPlayer:
+    ((did: string, amount: number) => void) | undefined;
 
   private readonly monsters_ = new Map<string, MonsterSnapshot>();
   private readonly rngs = new Map<string, () => number>();
@@ -113,6 +128,7 @@ export class MonsterController {
     this.getPlayers = params.getPlayers;
     this.onBroadcast = params.onBroadcast;
     this.onHit = params.onHit;
+    this.onHitPlayer = params.onHitPlayer;
   }
 
   /** Every monster currently simulated or displayed, keyed by id. */
@@ -470,7 +486,7 @@ export class MonsterController {
       if (rng === undefined) {
         continue;
       }
-      const next = stepZombie(dt, snapshot, rng, inputs);
+      const { snapshot: next, attack } = stepZombie(dt, snapshot, rng, inputs);
       this.monsters_.set(id, {
         ...next,
         owner: selfDid,
@@ -478,6 +494,14 @@ export class MonsterController {
         updatedAt: now,
       });
       owned.push(this.toUpdate(this.monsters_.get(id)!));
+      // A swing the zombie landed names its target, which the owner resolves
+      // to a player and reports; who applies the damage is the caller's call.
+      if (attack !== null) {
+        const target = this.nearestPlayer(attack.x, attack.z, players);
+        if (target !== null) {
+          this.onHitPlayer?.(target.did, ZOMBIE_DAMAGE);
+        }
+      }
     }
     this.broadcastOwned(owned, now);
   }

@@ -1,7 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import { Inventory, COLLECTABLE, BREAK_YIELD, SWORD, TOOLS } from "./inventory";
-import { VOXEL_GRASS, VOXEL_DIRT, VOXEL_WATER } from "../world/voxel-store";
+import {
+  VOXEL_CLOUD,
+  VOXEL_GRASS,
+  VOXEL_DIRT,
+  VOXEL_WATER,
+} from "../world/voxel-store";
 
 describe("Inventory", () => {
   it("starts carrying the sword and defaults to dirt selected", () => {
@@ -40,7 +45,7 @@ describe("Inventory", () => {
     expect(inv.count(SWORD)).toBe(1);
   });
 
-  it("selects dirt and the sword and reports them in hotbar order", () => {
+  it("selects blocks and the sword and reports them in hotbar order", () => {
     const inv = new Inventory();
     inv.add(VOXEL_DIRT, 2);
     // dirt is selected by default; re-selecting it is a no-op
@@ -52,6 +57,7 @@ describe("Inventory", () => {
     expect(inv.setSelected(99)).toBe(false);
     expect(inv.items()).toEqual([
       { id: VOXEL_DIRT, name: "Dirt", count: 2, stackable: true },
+      { id: VOXEL_CLOUD, name: "Cloud", count: 0, stackable: true },
       { id: SWORD, name: "Sword", count: 1, stackable: false },
     ]);
   });
@@ -60,6 +66,8 @@ describe("Inventory", () => {
     const inv = new Inventory();
     expect(inv.selectedId).toBe(VOXEL_DIRT);
     expect(inv.selectStep(1)).toBe(true);
+    expect(inv.selectedId).toBe(VOXEL_CLOUD);
+    expect(inv.selectStep(1)).toBe(true);
     expect(inv.selectedId).toBe(SWORD);
     expect(inv.selectStep(1)).toBe(true);
     expect(inv.selectedId).toBe(VOXEL_DIRT);
@@ -67,14 +75,16 @@ describe("Inventory", () => {
     expect(inv.selectedId).toBe(SWORD);
   });
 
-  it("selects the sword as hotbar slot 1", () => {
+  it("selects hotbar slots in order", () => {
     const inv = new Inventory();
     expect(inv.selectedId).toBe(VOXEL_DIRT);
     expect(inv.selectSlot(1)).toBe(true);
-    expect(inv.selectedId).toBe(SWORD);
+    expect(inv.selectedId).toBe(VOXEL_CLOUD);
     expect(inv.selectSlot(0)).toBe(true);
     expect(inv.selectedId).toBe(VOXEL_DIRT);
-    expect(inv.selectSlot(2)).toBe(false);
+    expect(inv.selectSlot(2)).toBe(true);
+    expect(inv.selectedId).toBe(SWORD);
+    expect(inv.selectSlot(3)).toBe(false);
   });
 
   it("notifies onChange when a count changes", () => {
@@ -96,9 +106,13 @@ describe("Inventory", () => {
   });
 });
 
-it("grass and dirt both break into a single dirt item", () => {
-  expect(COLLECTABLE).toEqual({ [VOXEL_DIRT]: "Dirt" });
+it("grass and dirt both break into a single dirt item; cloud breaks into cloud", () => {
+  expect(COLLECTABLE).toEqual({
+    [VOXEL_DIRT]: "Dirt",
+    [VOXEL_CLOUD]: "Cloud",
+  });
   expect(TOOLS).toEqual({ [SWORD]: "Sword" });
   expect(BREAK_YIELD[VOXEL_GRASS]).toBe(VOXEL_DIRT);
   expect(BREAK_YIELD[VOXEL_DIRT]).toBe(VOXEL_DIRT);
+  expect(BREAK_YIELD[VOXEL_CLOUD]).toBe(VOXEL_CLOUD);
 });

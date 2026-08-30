@@ -1,10 +1,17 @@
 import type { Dim3 } from "./level-data";
+import {
+  CLOUD_FILL_DEFAULTS,
+  cloudColumnCoverage,
+  cloudFillNoise,
+  cloudVoxelAt,
+} from "./cloud-fill";
 import { heightAt, type TerrainConfig } from "./noise";
 
 export const VOXEL_AIR = 0;
 export const VOXEL_GRASS = 1;
 export const VOXEL_DIRT = 2;
 export const VOXEL_WATER = 3;
+export const VOXEL_CLOUD = 5;
 
 /**
  * How many rows of extra voxels each block stores beyond its interior volume,
@@ -148,7 +155,8 @@ export type FillStoreFn = (
  * neighbouring blocks meet seamlessly). Each column is solid from below up
  * to the noise height; the top voxel is grass and everything below is dirt.
  * When `config.seaLevel` is set, the air above columns that dip below it is
- * filled with water up to sea level.
+ * filled with water up to sea level. The open air of the cloud band
+ * (`cloud-fill.ts`) is filled with still-cloud voxels from a seeded 3D noise.
  *
  * The block may sit anywhere vertically: only the slice of each column that
  * falls inside the block's own rows is written, so a block far above the
@@ -170,6 +178,21 @@ export const fillStore = (
   const halfY = vyN / 2;
   const seaLevel = config.seaLevel;
 
+  // The still-cloud band. A block whose swept rows (meshing border included)
+  // miss the band skips the cloud pass entirely, so ordinary fills cost
+  // nothing extra; the noise is sampled per world coordinate, which makes the
+  // border rows agree with the neighbouring blocks' clouds exactly as the
+  // terrain rows do.
+  const cloud = CLOUD_FILL_DEFAULTS;
+  const bandMin = cloud.y - cloud.halfHeight;
+  const bandMax = cloud.y + cloud.halfHeight;
+  const sweptMinY = center[1] + (-p + 0.5 - vyN / 2) * voxelSize;
+  const sweptMaxY = center[1] + (vyN + p - 0.5 - vyN / 2) * voxelSize;
+  const cloudNoise =
+    sweptMaxY >= bandMin && sweptMinY <= bandMax
+      ? cloudFillNoise(config.seed)
+      : undefined;
+
   /** The local row whose world Y is `worldY`: may be outside the block. */
   const rowOfY = (worldY: number): number =>
     Math.round((worldY - center[1]) / voxelSize + halfY);
@@ -184,8 +207,15 @@ export const fillStore = (
     const height = heightAt(worldX, worldZ, config);
     const top = rowOfY(height);
     const waterBottom = seaLevel === undefined ? -Infinity : rowOfY(seaLevel);
+    // One coverage sample per column, gate: columns below the coverage floor
+    // stay clear and skip the per-voxel cloud noise.
+    const coverage =
+      cloudNoise === undefined
+        ? -Infinity
+        : cloudColumnCoverage(cloudNoise, worldX, worldZ);
+    const gated = coverage >= cloud.coverageThreshold;
     for (let vy = -p; vy < vyN + p; ++vy) {
-      const id =
+      let id: number =
         vy === top
           ? VOXEL_GRASS
           : vy < top
@@ -193,6 +223,19 @@ export const fillStore = (
             : seaLevel !== undefined && vy >= top + 1 && vy <= waterBottom
               ? VOXEL_WATER
               : VOXEL_AIR;
+      // Clouds fill the open air of the band above the terrain; never
+      // overwrite a solid column or the water above it (the band sits well
+      // above the highest terrain, so this is defensive).
+      if (id === VOXEL_AIR && gated && cloudNoise !== undefined) {
+        const worldY = center[1] + (vy + 0.5 - vyN / 2) * voxelSize;
+        if (
+          worldY >= bandMin &&
+          worldY <= bandMax &&
+          cloudVoxelAt(cloudNoise, worldX, worldY, worldZ, coverage)
+        ) {
+          id = VOXEL_CLOUD;
+        }
+      }
       store.data[store.paddedIndex(vx, vy, vz)] = id;
       if (id !== VOXEL_AIR) {
         store.mightHaveVoxels = true;

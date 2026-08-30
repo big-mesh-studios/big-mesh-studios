@@ -11,7 +11,7 @@ import {
   isWaterAt,
   type Dim3,
 } from "./level-data";
-import { VOXEL_DIRT, VOXEL_WATER } from "./voxel-store";
+import { VOXEL_CLOUD, VOXEL_DIRT, VOXEL_WATER } from "./voxel-store";
 
 /** A fast, deterministic constant-height terrain for the byte-for-byte tests. */
 const flatConfig = {
@@ -203,6 +203,43 @@ describe("isSolidAt and isWaterAt", () => {
     // the floor's own column, but far below and far above the block's extent
     expect(isSolidAt(blocksQuery([b]), 1, -1000, 1)).toBe(false);
     expect(isSolidAt(blocksQuery([b]), 1, 1000, 1)).toBe(false);
+  });
+});
+
+describe("still-cloud blocks", () => {
+  // A column with terrain below (voxel y 0..20) and a cloud slab above
+  // (voxel y 40..44), with open air between them, at the block's centre column
+  // (world xz = 0). World Y of voxel vy spans [(vy - 32) * 2, (vy - 31) * 2).
+  const cloudBlock = () =>
+    buildBlock({
+      center: [0, 0, 0],
+      customFillStore: (store) => {
+        for (let vy = 0; vy <= 20; vy++) store.set(32, vy, 32, VOXEL_DIRT);
+        for (let vy = 40; vy <= 44; vy++) store.set(32, vy, 32, VOXEL_CLOUD);
+      },
+    });
+
+  it("ignores the cloud when sampling the ground height, so spawn and monsters stay on terrain", () => {
+    // the dirt top (voxel 20) is the ground; the cloud above it must not win
+    expect(getWorldHeight(blocksQuery([cloudBlock()]), 0, 0)).toBe(
+      (20 + 1 - 32) * 2,
+    );
+  });
+
+  it("reports the cloud top when the player stands on it", () => {
+    // query from inside the air above the cloud slab
+    const aboveCloudY = (45 - 32) * 2;
+    expect(
+      getGroundHeightBelow(blocksQuery([cloudBlock()]), 0, aboveCloudY, 0),
+    ).toBe((44 + 1 - 32) * 2);
+  });
+
+  it("treats a cloud voxel as solid, so the player stands on it", () => {
+    const b = cloudBlock();
+    // inside the cloud slab
+    expect(isSolidAt(blocksQuery([b]), 1, (42 - 32) * 2 + 1, 1)).toBe(true);
+    // the air above the slab
+    expect(isSolidAt(blocksQuery([b]), 1, (47 - 32) * 2 + 1, 1)).toBe(false);
   });
 });
 

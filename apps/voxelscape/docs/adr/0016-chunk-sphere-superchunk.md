@@ -1,5 +1,10 @@
 # Stream chunks in a spherical window and draw them in superchunks
 
+> Superseded in part by [ADR 0021](./0021-async-player-cell-fill.md), which
+> stops filling the player's cell synchronously on scroll and gates physics on
+> its fill landing instead. The startup spawn-block fill and the rest of this
+> ADR stand.
+
 The original window was a 5x5 grid of huge blocks (192x256x192 world units,
 full world height) that scrolled in X/Z only, with a rectangle recycle that
 teleported trailing rows and columns to the leading edge. That kept object

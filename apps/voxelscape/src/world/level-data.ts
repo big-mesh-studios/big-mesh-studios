@@ -4,6 +4,7 @@
 import { DEFAULT_TERRAIN, heightAt, type TerrainConfig } from "./noise";
 import {
   VOXEL_AIR,
+  VOXEL_CLOUD,
   VOXEL_WATER,
   VoxelStore,
   fillStore,
@@ -151,7 +152,9 @@ export const blocksQuery = (blocks: WorldBlock[]): BlockQuery => {
 /**
  * The topmost solid voxel in a block's column at (`worldX`, `worldZ`), in
  * world Y, or `-Infinity` when the column in this block is empty. Water is
- * skipped so the player stands on the lakebed (or shore) under water.
+ * skipped so the player stands on the lakebed (or shore) under water, and the
+ * still clouds are skipped so spawn, monster and weather heights read the
+ * terrain — a cloud column is a floor the player can stand on, not the ground.
  */
 const topSolidYInColumn = (
   block: WorldBlock,
@@ -173,7 +176,7 @@ const topSolidYInColumn = (
   );
   for (let vy = vyN - 1; vy >= 0; --vy) {
     const id = store.get(vx, vy, vz);
-    if (id !== 0 && id !== VOXEL_WATER) {
+    if (id !== 0 && id !== VOXEL_WATER && id !== VOXEL_CLOUD) {
       return block.center[1] + (vy + 1 - vyN / 2) * scale;
     }
   }

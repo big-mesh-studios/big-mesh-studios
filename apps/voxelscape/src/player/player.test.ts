@@ -4,6 +4,7 @@ import type { InputSnapshot } from "./create-input";
 import {
   createPlayer,
   DEFAULT_PLAYER_CONFIG,
+  deathCameraPose,
   updatePlayer,
   type Player,
   type PlayerWorld,
@@ -316,5 +317,50 @@ describe("updatePlayer flying", () => {
     // the collision box bottoms out at the surface (feet on the ground)
     expect(player.position.y).toBeGreaterThanOrEqual(1);
     expect(player.position.y).toBeLessThan(2);
+  });
+});
+
+describe("deathCameraPose", () => {
+  const GROUND = 4;
+
+  const makePlayer = (overrides: Partial<Player> = {}): Player => {
+    const player = createPlayer(0, GROUND + DEFAULT_PLAYER_CONFIG.halfSize, 0);
+    return { ...player, ...overrides };
+  };
+
+  it("holds the standing eye and pitch at progress zero", () => {
+    const player = makePlayer({ yaw: Math.PI / 2, pitch: 0.3 });
+    const pose = deathCameraPose(0, player);
+    expect(pose.position[0]).toBe(0);
+    expect(pose.position[1]).toBe(GROUND + DEFAULT_PLAYER_CONFIG.eyeHeight);
+    expect(pose.position[2]).toBe(0);
+    expect(pose.pitch).toBeCloseTo(0.3, 10);
+  });
+
+  it("sweeps the eye down to the ground and the view up to the sky at progress one", () => {
+    const player = makePlayer({ yaw: 0, pitch: 0 });
+    const pose = deathCameraPose(1, player);
+    // fallen backward along the heading, the eye ends at the feet on the ground
+    expect(pose.position[1]).toBeCloseTo(GROUND, 5);
+    expect(pose.position[2]).toBeCloseTo(-DEFAULT_PLAYER_CONFIG.eyeHeight, 5);
+    expect(pose.position[0]).toBeCloseTo(0, 5);
+    expect(pose.pitch).toBeCloseTo(Math.PI / 2, 5);
+  });
+
+  it("tips backward along the heading, not sideways", () => {
+    const player = makePlayer({ yaw: Math.PI / 2, pitch: 0 });
+    const pose = deathCameraPose(1, player);
+    expect(pose.position[0]).toBeCloseTo(-DEFAULT_PLAYER_CONFIG.eyeHeight, 5);
+    expect(pose.position[2]).toBeCloseTo(0, 5);
+  });
+
+  it("clamps progress outside 0..1", () => {
+    const player = makePlayer({ pitch: 0.1 });
+    expect(deathCameraPose(-1, player).position[1]).toBe(
+      deathCameraPose(0, player).position[1],
+    );
+    expect(deathCameraPose(2, player).position[1]).toBe(
+      deathCameraPose(1, player).position[1],
+    );
   });
 });

@@ -1,0 +1,37 @@
+.health {
+  position: absolute;
+  left: 24px;
+  bottom: 18px;
+  display: flex;
+  gap: 4px;
+  pointer-events: none;
+
+  &.on-coarse {
+    /* the touch joystick owns the bottom-left corner, so the hearts sit above it */
+    bottom: 192px;
+  }
+}
+
+.heart {
+  width: 26px;
+  height: 26px;
+  display: block;
+}
+
+.heart-outline {
+  fill: rgba(0, 0, 0, 0.55);
+  stroke: rgba(255, 255, 255, 0.4);
+  stroke-width: 1.5;
+}
+
+.heart-red {
+  fill: #d22f35;
+}
+
+.heart-empty {
+  fill: none;
+}
+
+.heart-glint {
+  fill: rgba(255, 255, 255, 0.75);
+}

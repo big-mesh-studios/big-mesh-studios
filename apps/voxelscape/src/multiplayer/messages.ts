@@ -117,7 +117,24 @@ export interface DamageWire {
   attackerZ: number;
 }
 
-export type MeshMessage = PoseWire | EditWire | MonsterWire | DamageWire;
+/**
+ * One zombie swing's damage, sent to every peer so the player it hit applies
+ * it: the receiver gates on its own DID, so the hit is applied exactly once,
+ * on the client that owns the hurt player.
+ */
+export interface PlayerDamageWire {
+  v: 1;
+  type: "player-damage";
+  seq: number;
+  t: number;
+  /** The DID of the player the swing hit; only that receiver applies it. */
+  target: string;
+  /** Health the swing claims to take. */
+  amount: number;
+}
+
+export type MeshMessage =
+  PoseWire | EditWire | MonsterWire | DamageWire | PlayerDamageWire;
 
 const isPoseWire = (r: object): r is PoseWire => {
   const v = r as Record<string, unknown>;
@@ -245,6 +262,22 @@ const isDamageWire = (r: object): r is DamageWire => {
   );
 };
 
+const isPlayerDamageWire = (r: object): r is PlayerDamageWire => {
+  const v = r as Record<string, unknown>;
+  return (
+    v.type === "player-damage" &&
+    v.v === 1 &&
+    typeof v.seq === "number" &&
+    typeof v.t === "number" &&
+    typeof v.target === "string" &&
+    v.target.length >= 1 &&
+    v.target.length <= 256 &&
+    Number.isInteger(v.amount) &&
+    (v.amount as number) >= 1 &&
+    (v.amount as number) <= MAX_DAMAGE
+  );
+};
+
 /** Serializes a message to its compact wire form. */
 export const encodeMessage = (m: MeshMessage): string => {
   if (m.type === "pose") {
@@ -279,6 +312,16 @@ export const encodeMessage = (m: MeshMessage): string => {
       amount: m.amount,
       attackerX: round(m.attackerX, 2),
       attackerZ: round(m.attackerZ, 2),
+    });
+  }
+  if (m.type === "player-damage") {
+    return JSON.stringify({
+      v: 1,
+      type: "player-damage",
+      seq: m.seq,
+      t: Math.round(m.t),
+      target: m.target,
+      amount: m.amount,
     });
   }
   return JSON.stringify({
@@ -329,6 +372,9 @@ export const decodeMessage = (chunk: unknown): MeshMessage | null => {
     return r;
   }
   if (isDamageWire(r)) {
+    return r;
+  }
+  if (isPlayerDamageWire(r)) {
     return r;
   }
   return null;

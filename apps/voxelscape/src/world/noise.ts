@@ -76,6 +76,136 @@ export class PerlinNoise2D {
   }
 }
 
+/**
+ * Seeded 3D Perlin noise over a volume, the same permutation-table shape as
+ * `PerlinNoise2D` but with the eight corners of a cube. The still-cloud fill
+ * (`world/cloud-fill.ts`) samples it at an anisotropically scaled point so the
+ * clouds come out flatter than they are wide.
+ *
+ * A `period` below 256 makes the field tile seamlessly over that many lattice
+ * cells in every axis: every lattice index, including the far-side corners,
+ * is reduced modulo the period, which the cloud fill needs so its wrap-tile
+ * seams match. At the default 256 the reduction matches the classic `& 255`
+ * hashing exactly.
+ */
+export class PerlinNoise3D {
+  private perm: number[] = [];
+
+  constructor(
+    seed: number = 0,
+    readonly period: number = 256,
+  ) {
+    const p: number[] = [];
+    for (let i = 0; i < 256; i++) p[i] = i;
+
+    let n = seed;
+    for (let i = 255; i > 0; i--) {
+      n = (n * 1103515245 + 12345) & 0x7fffffff;
+      const j = n % (i + 1);
+      [p[i], p[j]] = [p[j], p[i]];
+    }
+
+    // Doubled table: every intermediate hash index below (up to 510) reaches
+    // into it, and the extra entry absorbs the +1 the far-side corners add.
+    for (let i = 0; i < 513; i++) this.perm[i] = p[i & 255];
+  }
+
+  private fade(t: number): number {
+    return t * t * t * (t * (t * 6 - 15) + 10);
+  }
+
+  private lerp(a: number, b: number, t: number): number {
+    return a + t * (b - a);
+  }
+
+  private grad(hash: number, x: number, y: number, z: number): number {
+    const h = hash & 15;
+    const u = h < 8 ? x : y;
+    const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
+    return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+  }
+
+  noise(x: number, y: number, z: number): number {
+    const period = this.period;
+    const X = Math.floor(x);
+    const Y = Math.floor(y);
+    const Z = Math.floor(z);
+    const xi = ((X % period) + period) % period;
+    const yi = ((Y % period) + period) % period;
+    const zi = ((Z % period) + period) % period;
+    const xf = x - X;
+    const yf = y - Y;
+    const zf = z - Z;
+    const u = this.fade(xf);
+    const v = this.fade(yf);
+    const w = this.fade(zf);
+
+    // Only the lattice coordinates are reduced modulo the period; the
+    // intermediate perm lookups stay in the full 0..255 range, so a small
+    // period keeps its gradient variety instead of re-using `period` hashes.
+    const A = this.perm[xi] + yi;
+    const B = this.perm[(xi + 1) % period] + yi;
+    const C = this.perm[xi] + ((yi + 1) % period);
+    const D = this.perm[(xi + 1) % period] + ((yi + 1) % period);
+    const AA = this.perm[A] + zi;
+    const AB = this.perm[B] + zi;
+    const AC = this.perm[C] + zi;
+    const AD = this.perm[D] + zi;
+    const z1 = (zi + 1) % period;
+    const BA = this.perm[A] + z1;
+    const BB = this.perm[B] + z1;
+    const BC = this.perm[C] + z1;
+    const BD = this.perm[D] + z1;
+
+    return this.lerp(
+      this.lerp(
+        this.lerp(
+          this.grad(this.perm[AA], xf, yf, zf),
+          this.grad(this.perm[AB], xf - 1, yf, zf),
+          u,
+        ),
+        this.lerp(
+          this.grad(this.perm[AC], xf, yf - 1, zf),
+          this.grad(this.perm[AD], xf - 1, yf - 1, zf),
+          u,
+        ),
+        v,
+      ),
+      this.lerp(
+        this.lerp(
+          this.grad(this.perm[BA], xf, yf, zf - 1),
+          this.grad(this.perm[BB], xf - 1, yf, zf - 1),
+          u,
+        ),
+        this.lerp(
+          this.grad(this.perm[BC], xf, yf - 1, zf - 1),
+          this.grad(this.perm[BD], xf - 1, yf - 1, zf - 1),
+          u,
+        ),
+        v,
+      ),
+      w,
+    );
+  }
+
+  fbm(x: number, y: number, z: number, octaves: number = 3): number {
+    let value = 0;
+    let amplitude = 1;
+    let frequency = 1;
+    let maxValue = 0;
+
+    for (let i = 0; i < octaves; i++) {
+      value +=
+        amplitude * this.noise(x * frequency, y * frequency, z * frequency);
+      maxValue += amplitude;
+      amplitude *= 0.5;
+      frequency *= 2;
+    }
+
+    return value / maxValue;
+  }
+}
+
 export interface PlainsConfig {
   /** Seed for the second, flatness-mask noise. */
   seed: number;
