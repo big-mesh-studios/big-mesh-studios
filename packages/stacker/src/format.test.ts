@@ -2,8 +2,17 @@
 import { describe, expect, it } from "vitest";
 import { encode } from "fast-png";
 import JSZip from "jszip";
-import { load, save } from "./format";
-import { sideAxes, sideKinds, type SideKind } from "./data";
+import { load, loadFigure, save, saveFigure } from "./format";
+import {
+  composeRoot,
+  partDimensions,
+  sideAxes,
+  sideKinds,
+  type Figure,
+  type Part,
+  type SideKind,
+} from "./data";
+import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
 
 const PALETTE = Array.from({ length: 32 }, (_, i) => [i, i, i, 255]);
 
@@ -162,5 +171,222 @@ describe("sides and palette", () => {
     const slot = sides.front.data[0];
     expect(palette[slot]).toEqual({ r: 1, g: 1, b: 1, a: 255 });
     expect([...sides.front.data]).toEqual(new Array(9).fill(slot));
+  });
+});
+
+/** A part of the given size, drawn in one palette slot, sitting where it is put. */
+const partOf = (
+  name: string,
+  extent: { width: number; height: number; depth: number },
+  placement: Partial<Pick<Part, "root" | "pivot" | "parent">> = {},
+): Part => ({
+  name,
+  sides: Object.fromEntries(
+    sideKinds.map((kind) => {
+      const [across, down] = sideAxes[kind];
+      const bitmap = Bitmap.create(extent[across], extent[down]);
+      bitmap.data.fill(1);
+      return [kind, bitmap];
+    }),
+  ) as Part["sides"],
+  root: placement.root ?? Vector3D.create(),
+  pivot: placement.pivot ?? Vector3D.create(),
+  parent: placement.parent ?? null,
+});
+
+const figureOf = (...parts: Part[]): Figure => ({
+  parts,
+  palette: Array.from({ length: 32 }, (_, i) => ({
+    r: i,
+    g: i,
+    b: i,
+    a: 255,
+  })),
+});
+
+describe("a figure of several parts", () => {
+  it("survives a round trip, keeping each part's box and placement", async () => {
+    const figure = figureOf(
+      partOf("torso", { width: 6, height: 8, depth: 4 }),
+      partOf(
+        "head",
+        { width: 4, height: 4, depth: 4 },
+        {
+          root: Vector3D.create(0, 8, 0),
+          pivot: Vector3D.create(2, 0, 2),
+          parent: "torso",
+        },
+      ),
+    );
+
+    const reread = await loadFigure(await saveFigure(figure));
+
+    expect(reread.parts.map((part) => part.name)).toEqual(["torso", "head"]);
+    expect(partDimensions(reread.parts[0])).toEqual({
+      width: 6,
+      height: 8,
+      depth: 4,
+    });
+    expect(partDimensions(reread.parts[1])).toEqual({
+      width: 4,
+      height: 4,
+      depth: 4,
+    });
+    expect(reread.parts[1].root).toEqual({ x: 0, y: 8, z: 0 });
+    expect(reread.parts[1].pivot).toEqual({ x: 2, y: 0, z: 2 });
+    expect(reread.parts[1].parent).toBe("torso");
+    expect(reread.migrated).toBe(false);
+  });
+
+  it("keeps each part's drawings apart", async () => {
+    const figure = figureOf(
+      partOf("torso", { width: 2, height: 2, depth: 2 }),
+      partOf("head", { width: 3, height: 3, depth: 3 }),
+    );
+    figure.parts[1].sides.front.data.fill(7);
+
+    const reread = await loadFigure(await saveFigure(figure));
+
+    expect([...reread.parts[0].sides.front.data]).toEqual(new Array(4).fill(1));
+    expect([...reread.parts[1].sides.front.data]).toEqual(new Array(9).fill(7));
+  });
+
+  it("names the part in a refusal, so it is clear which box does not close", async () => {
+    const figure = figureOf(partOf("head", { width: 4, height: 3, depth: 2 }));
+    // top is width across; the front says width is 4
+    figure.parts[0].sides.top = Bitmap.create(5, 2);
+
+    await expect(loadFigure(await saveFigure(figure))).rejects.toThrow(
+      /head\/top\.png makes the model 5 wide, and head\/front\.png makes it 4/,
+    );
+  });
+
+  it("refuses a name that cannot be a folder", async () => {
+    await expect(
+      saveFigure(
+        figureOf(partOf("arm/left", { width: 2, height: 2, depth: 2 })),
+      ),
+    ).rejects.toThrow(/"arm\/left" cannot name a part/);
+  });
+
+  it("refuses two parts sharing a name, which would write over each other", async () => {
+    await expect(
+      saveFigure(
+        figureOf(
+          partOf("arm", { width: 2, height: 2, depth: 2 }),
+          partOf("arm", { width: 3, height: 3, depth: 3 }),
+        ),
+      ),
+    ).rejects.toThrow(/Two parts are called "arm"/);
+  });
+});
+
+describe("a file written before figures", () => {
+  it("is read as one part sitting at the origin", async () => {
+    const figure = await loadFigure(await zipOf(boxOf(4, 3, 2)));
+
+    expect(figure.parts).toHaveLength(1);
+    expect(figure.parts[0].name).toBe("body");
+    expect(figure.parts[0].root).toEqual({ x: 0, y: 0, z: 0 });
+    expect(figure.parts[0].parent).toBe(null);
+    expect(partDimensions(figure.parts[0])).toEqual({
+      width: 4,
+      height: 3,
+      depth: 2,
+    });
+  });
+
+  it("still loads through load, which reads one box", async () => {
+    const { dimensions, migrated } = await load(await zipOf(boxOf(4, 3, 2)));
+
+    expect(dimensions).toEqual({ width: 4, height: 3, depth: 2 });
+    expect(migrated).toBe(false);
+  });
+});
+
+describe("load, given a figure", () => {
+  it("hands back the first part, for a reader that draws one box", async () => {
+    const figure = figureOf(
+      partOf("torso", { width: 6, height: 8, depth: 4 }),
+      partOf("head", { width: 4, height: 4, depth: 4 }),
+    );
+
+    const { dimensions } = await load(await saveFigure(figure));
+
+    expect(dimensions).toEqual({ width: 6, height: 8, depth: 4 });
+  });
+});
+
+describe("composeRoot", () => {
+  it("sums a part's root with every root above it", () => {
+    const figure = figureOf(
+      partOf(
+        "torso",
+        { width: 2, height: 2, depth: 2 },
+        {
+          root: Vector3D.create(1, 2, 3),
+        },
+      ),
+      partOf(
+        "arm",
+        { width: 2, height: 2, depth: 2 },
+        {
+          root: Vector3D.create(10, 0, 0),
+          parent: "torso",
+        },
+      ),
+      partOf(
+        "hand",
+        { width: 2, height: 2, depth: 2 },
+        {
+          root: Vector3D.create(0, -5, 0),
+          parent: "arm",
+        },
+      ),
+    );
+
+    expect(composeRoot(figure, figure.parts[2])).toEqual({
+      x: 11,
+      y: -3,
+      z: 3,
+    });
+  });
+
+  it("places a part whose parent the figure does not hold", () => {
+    const figure = figureOf(
+      partOf(
+        "hand",
+        { width: 2, height: 2, depth: 2 },
+        {
+          root: Vector3D.create(4, 0, 0),
+          parent: "arm",
+        },
+      ),
+    );
+
+    expect(composeRoot(figure, figure.parts[0])).toEqual({ x: 4, y: 0, z: 0 });
+  });
+
+  it("places a part caught in a cycle of parents rather than looping", () => {
+    const figure = figureOf(
+      partOf(
+        "a",
+        { width: 2, height: 2, depth: 2 },
+        {
+          root: Vector3D.create(1, 0, 0),
+          parent: "b",
+        },
+      ),
+      partOf(
+        "b",
+        { width: 2, height: 2, depth: 2 },
+        {
+          root: Vector3D.create(0, 1, 0),
+          parent: "a",
+        },
+      ),
+    );
+
+    expect(composeRoot(figure, figure.parts[0])).toEqual({ x: 1, y: 1, z: 0 });
   });
 });

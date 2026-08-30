@@ -94,7 +94,7 @@ export function createEdgeController({
   setPan: Setter<Vector2D>;
   sidePositions: Accessor<SidePositions>;
 }) {
-  const { sides, resize, pushUndo, snapshot, dimensions } =
+  const { sides, parts, resize, pushUndo, snapshot, dimensions } =
     useContext(StackerContext);
 
   const EDGE_TRESHOLD = 10;
@@ -186,6 +186,9 @@ export function createEdgeController({
       const { edgeKinds, sideKind } = collidingEdge;
       const initialDimensions = { ...dimensions() };
       const initialSides = { ...sides() };
+      // Re-framing replaces the part rather than drawing over its panels, so
+      // the figure held here goes on describing the box the drag started from.
+      const initialParts = parts();
       const initialPan = { ...pan() };
 
       resizing = true;
@@ -253,7 +256,7 @@ export function createEdgeController({
           initialDimensions.height !== dimensions().height ||
           initialDimensions.depth !== dimensions().depth
         ) {
-          pushUndo(snapshot(initialSides), "Resize");
+          pushUndo(snapshot(initialParts), "Resize");
         }
 
         resizing = false;

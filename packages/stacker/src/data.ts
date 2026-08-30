@@ -3,6 +3,7 @@
 // `Bitmap`, `RGBA`, `Vector3D`, `Dimensions3D` — come from
 // `@big-mesh-studios/maths`, which knows nothing about models.
 import type { Bitmap, Dimensions3D, RGBA } from "@big-mesh-studios/maths";
+import { Vector3D } from "@big-mesh-studios/maths";
 
 /**
  * Every side of the box a model is drawn on. Declared as an object rather than
@@ -61,3 +62,91 @@ export const sideAxes = {
 
 /** One of the model's three axes, named as the vectors that address it name it. */
 export type Axis = "x" | "y" | "z";
+
+/**********************************************************************************/
+/*                                     Figures                                    */
+/**********************************************************************************/
+
+/**
+ * One box of a figure: the six drawings it is made of, where it sits, and the
+ * point it turns about.
+ */
+export interface Part {
+  /**
+   * What the part is called. Unique within its figure, and the name of the
+   * folder its drawings are written to.
+   */
+  name: string;
+  sides: Sides;
+  /**
+   * Where the part's pivot sits, in whole voxels, measured from its parent's
+   * pivot — or from the figure's origin for a part with no parent.
+   */
+  root: Vector3D;
+  /**
+   * The point inside the part's own box that `root` places, in voxels from the
+   * box's low corner. Turning the part turns it about this point. A box with an
+   * odd extent has its centre half a voxel in, so this is not held to whole
+   * voxels the way `root` is.
+   */
+  pivot: Vector3D;
+  /** The name of the part this one hangs off, or null for one hanging off the figure. */
+  parent: string | null;
+}
+
+/**
+ * A model made of several parts drawn in one palette. The order of `parts` is
+ * the order they are listed in.
+ */
+export interface Figure {
+  parts: Part[];
+  palette: RGBA[];
+}
+
+/**
+ * The middle of a box that size, which is where a part's pivot sits unless it
+ * has been put somewhere else. A part pivoting on its middle is drawn centred
+ * on its root, so a figure of one part fills the view the way a lone model does.
+ */
+export function centrePivot(dimensions: Dimensions3D): Vector3D {
+  return Vector3D.create(
+    dimensions.width / 2,
+    dimensions.height / 2,
+    dimensions.depth / 2,
+  );
+}
+
+/** The box `part` is drawn on, in voxels, as its six drawings measure it. */
+export function partDimensions(part: Part): Dimensions3D {
+  return {
+    width: part.sides.front.width,
+    height: part.sides.front.height,
+    depth: part.sides.left.width,
+  };
+}
+
+/**
+ * Where `part`'s pivot sits in the figure, in whole voxels from the figure's
+ * origin: its own root plus every root above it.
+ *
+ * A parent naming a part the figure does not hold, and a cycle of parents, both
+ * end the walk where they are found, so parentage that does not describe a tree
+ * still places every part somewhere.
+ */
+export function composeRoot(figure: Figure, part: Part): Vector3D {
+  const composed = Vector3D.create();
+  const seen = new Set<string>();
+  let current: Part | undefined = part;
+
+  while (current !== undefined && !seen.has(current.name)) {
+    seen.add(current.name);
+    Vector3D.add(composed, current.root, composed);
+    const parent: string | null = current.parent;
+    current =
+      parent === null
+        ? undefined
+        : figure.parts.find((candidate) => candidate.name === parent);
+  }
+
+  return composed;
+}

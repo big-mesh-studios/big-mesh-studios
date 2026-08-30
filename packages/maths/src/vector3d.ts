@@ -83,6 +83,10 @@ export namespace Vector3D {
     return out;
   }
 
+  export function equals(a: Vector3D, b: Vector3D) {
+    return a.x === b.x && a.y === b.y && a.z === b.z;
+  }
+
   export const EMPTY = Object.freeze(Vector3D.create());
 }
 

@@ -29,12 +29,17 @@ export const createPixelEditorController = ({
 }) => {
   const {
     sides,
+    selectedPart,
     selectedColour,
     selectPaletteIndex,
     selectedPaletteIndex,
     requestRender,
     mode,
   } = useContext(StackerContext);
+
+  // Read at the moment a command is built, so a stroke lands on the part that
+  // was being drawn on and can be taken back against it later.
+  const drawnPart = () => selectedPart().name;
 
   const [pan, setPan] = createSignal({ x: -10.0, y: -10.0 });
   const [scale, setScale] = createSignal(8);
@@ -185,12 +190,18 @@ export const createPixelEditorController = ({
 
         if (_selectedPaletteIndex !== undefined) {
           commands.push(
-            Command.fillPixel(kind, position, _selectedPaletteIndex),
+            Command.fillPixel(
+              drawnPart(),
+              kind,
+              position,
+              _selectedPaletteIndex,
+            ),
           );
 
           if (opposite.index === Bitmap.EMPTY) {
             commands.push(
               Command.fillPixel(
+                drawnPart(),
                 opposite.kind,
                 opposite.position,
                 _selectedPaletteIndex,
@@ -268,7 +279,13 @@ export const createPixelEditorController = ({
 
         undoCommandsReversed.push(
           doCommand(
-            Command.fillRectangle(start.kind, min, max, selectedPaletteIndex()),
+            Command.fillRectangle(
+              drawnPart(),
+              start.kind,
+              min,
+              max,
+              selectedPaletteIndex(),
+            ),
           ),
         );
 
@@ -306,11 +323,15 @@ export const createPixelEditorController = ({
 
           switch (mode()) {
             case "Erase": {
-              commands.push(Command.erasePixel(kind, position));
+              commands.push(Command.erasePixel(drawnPart(), kind, position));
 
               if (opposite.index !== Bitmap.EMPTY) {
                 commands.push(
-                  Command.erasePixel(opposite.kind, opposite.position),
+                  Command.erasePixel(
+                    drawnPart(),
+                    opposite.kind,
+                    opposite.position,
+                  ),
                 );
               }
 
@@ -321,7 +342,12 @@ export const createPixelEditorController = ({
 
               if (_selectedPaletteIndex !== undefined) {
                 commands.push(
-                  Command.writePixel(kind, position, _selectedPaletteIndex),
+                  Command.writePixel(
+                    drawnPart(),
+                    kind,
+                    position,
+                    _selectedPaletteIndex,
+                  ),
                 );
 
                 // Only carry the colour to the far side where nothing is drawn,
@@ -329,6 +355,7 @@ export const createPixelEditorController = ({
                 if (opposite.index === Bitmap.EMPTY) {
                   commands.push(
                     Command.writePixel(
+                      drawnPart(),
                       opposite.kind,
                       opposite.position,
                       _selectedPaletteIndex,

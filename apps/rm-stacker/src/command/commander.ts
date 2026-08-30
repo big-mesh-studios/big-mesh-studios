@@ -1,30 +1,42 @@
 import { Accessor, Setter } from "@solidjs/signals";
 import { untrack } from "solid-js";
-import { load, save } from "@big-mesh-studios/stacker/format";
-import { Bitmap, RGBA } from "@big-mesh-studios/maths";
-import { type Sides } from "@big-mesh-studios/stacker/renderer";
+import { loadFigure, saveFigure } from "@big-mesh-studios/stacker/format";
+import { Bitmap, RGBA, Vector3D } from "@big-mesh-studios/maths";
+import { type Part, type Sides } from "@big-mesh-studios/stacker/renderer";
 import { intersectSide } from "../utils/utils";
 import { Command } from "./Command";
 
 export function createCommander({
-  sides,
-  setSides,
+  parts,
+  setParts,
   updateVoxels,
   requestRender,
   requestAutoSave,
   palette,
   setPalette,
 }: {
-  sides: Accessor<Sides>;
-  setSides: Setter<Sides>;
+  parts: Accessor<Part[]>;
+  setParts: Setter<Part[]>;
   setPalette: Setter<RGBA[]>;
   updateVoxels(): void;
   requestRender(): void;
   requestAutoSave(): void;
   palette: Accessor<RGBA[]>;
 }) {
-  function snapshot(_sides = sides()): Command {
-    return Command.async(save(_sides, palette()).then(Command.loadData));
+  function snapshot(_parts = parts()): Command {
+    return Command.async(
+      saveFigure({ parts: _parts, palette: palette() }).then(Command.loadData),
+    );
+  }
+
+  /**
+   * The drawings of the part called `name`, or undefined when the figure no
+   * longer holds it. A command names the part it was made against, and that
+   * part can have been deleted since — by an undo reaching back past the point
+   * it was added, say — so every command that draws checks before it draws.
+   */
+  function sidesOf(name: string): Sides | undefined {
+    return parts().find((part) => part.name === name)?.sides;
   }
 
   async function doCommand(command: Command): Promise<Command> {
@@ -48,8 +60,19 @@ export function createCommander({
           return Command.sequence(reverseCommands);
         }
         case "FillPixel": {
-          const { side: kind, position, paletteIndex } = command;
-          const side = sides()[kind];
+          const {
+            part: partName,
+            side: kind,
+            position,
+            paletteIndex,
+          } = command;
+          const sides = sidesOf(partName);
+
+          if (sides === undefined) {
+            return Command.noOperation();
+          }
+
+          const side = sides[kind];
 
           const intersection = intersectSide({ position, side });
 
@@ -120,10 +143,22 @@ export function createCommander({
           return undo;
         }
         case "FillRectangle": {
-          const { side: kind, min, max, paletteIndex } = command;
-          const side = sides()[kind];
+          const {
+            part: partName,
+            side: kind,
+            min,
+            max,
+            paletteIndex,
+          } = command;
+          const sides = sidesOf(partName);
 
-          const _snapshot = snapshot(sides());
+          if (sides === undefined) {
+            return Command.noOperation();
+          }
+
+          const side = sides[kind];
+
+          const _snapshot = snapshot(parts());
 
           for (let x = min.x; x <= max.x; x++) {
             for (let y = min.y; y <= max.y; y++) {
@@ -134,8 +169,19 @@ export function createCommander({
           return _snapshot;
         }
         case "WritePixel": {
-          const { side: kind, position, paletteIndex } = command;
-          const side = sides()[kind];
+          const {
+            part: partName,
+            side: kind,
+            position,
+            paletteIndex,
+          } = command;
+          const sides = sidesOf(partName);
+
+          if (sides === undefined) {
+            return Command.noOperation();
+          }
+
+          const side = sides[kind];
 
           const intersection = intersectSide({ position, side });
 
@@ -148,13 +194,19 @@ export function createCommander({
           side.data[offset] = paletteIndex;
 
           return oldIndex === Bitmap.EMPTY
-            ? Command.erasePixel(kind, position)
-            : Command.writePixel(kind, position, oldIndex);
+            ? Command.erasePixel(partName, kind, position)
+            : Command.writePixel(partName, kind, position, oldIndex);
         }
 
         case "ErasePixel": {
-          const { side: kind, position } = command;
-          const side = sides()[kind];
+          const { part: partName, side: kind, position } = command;
+          const sides = sidesOf(partName);
+
+          if (sides === undefined) {
+            return Command.noOperation();
+          }
+
+          const side = sides[kind];
 
           const intersection = intersectSide({ position, side });
 
@@ -170,14 +222,36 @@ export function createCommander({
 
           side.data[offset] = Bitmap.EMPTY;
 
-          return Command.writePixel(kind, position, oldIndex);
+          return Command.writePixel(partName, kind, position, oldIndex);
+        }
+        case "MovePart": {
+          const { part: partName, root } = command;
+          const moved = parts().find((part) => part.name === partName);
+
+          if (moved === undefined) {
+            return Command.noOperation();
+          }
+
+          if (Vector3D.equals(moved.root, root)) {
+            return Command.noOperation();
+          }
+
+          const previousRoot = moved.root;
+
+          setParts((current) =>
+            current.map((part) =>
+              part.name === partName ? { ...part, root } : part,
+            ),
+          );
+
+          return Command.movePart(partName, previousRoot);
         }
         case "LoadData": {
           const undoCommand = snapshot();
-          const loaded = await load(command.data, palette());
+          const loaded = await loadFigure(command.data, palette());
 
           setPalette(loaded.palette);
-          setSides(loaded.sides);
+          setParts(loaded.parts);
           updateVoxels();
           requestRender();
 

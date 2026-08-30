@@ -2,8 +2,8 @@
 // same zip the file format writes plus the undo history and view state that
 // only mean anything inside this editor.
 import { RGBA } from "@big-mesh-studios/maths";
-import { load, save } from "@big-mesh-studios/stacker/format";
-import type { Sides } from "@big-mesh-studios/stacker/renderer";
+import { loadFigure, saveFigure } from "@big-mesh-studios/stacker/format";
+import type { Part } from "@big-mesh-studios/stacker/renderer";
 import { Command } from "./command/Command";
 import { PreviewState } from "./types";
 
@@ -15,12 +15,14 @@ const DB_KEYS = {
   zipFileData: "zipFileData",
   undoRedoData: "undoRedoData",
   preview: "preview",
+  selectedPart: "selectedPart",
 } as const;
 
 type CommandStack = { command: Command; description: string }[];
 
 export async function loadFromIndexedDB(fallbackPalette: RGBA[]): Promise<{
-  sides: Sides;
+  parts: Part[];
+  selectedPartName: string;
   undoStack: { command: Command; description: string }[];
   redoStack: { command: Command; description: string }[];
   palette: RGBA[];
@@ -30,7 +32,7 @@ export async function loadFromIndexedDB(fallbackPalette: RGBA[]): Promise<{
   if (blob === null) {
     return null;
   }
-  const { sides, palette, migrated } = await load(blob, fallbackPalette);
+  const { parts, palette, migrated } = await loadFigure(blob, fallbackPalette);
 
   const previewText = await loadTextFromDB(DB_KEYS.preview);
 
@@ -38,6 +40,14 @@ export async function loadFromIndexedDB(fallbackPalette: RGBA[]): Promise<{
     previewText === null
       ? { unlit: false, autorotate: true }
       : (JSON.parse(previewText) as PreviewState);
+
+  // A part that was selected and has since gone — a figure opened from
+  // somewhere else, say — leaves the first part to be drawn on.
+  const savedPartName = await loadTextFromDB(DB_KEYS.selectedPart);
+  const selectedPartName =
+    savedPartName !== null && parts.some((part) => part.name === savedPartName)
+      ? savedPartName
+      : parts[0].name;
 
   let undoStack: CommandStack;
   let redoStack: CommandStack;
@@ -62,7 +72,8 @@ export async function loadFromIndexedDB(fallbackPalette: RGBA[]): Promise<{
   }
 
   return {
-    sides,
+    parts,
+    selectedPartName,
     undoStack,
     redoStack,
     palette,
@@ -71,22 +82,25 @@ export async function loadFromIndexedDB(fallbackPalette: RGBA[]): Promise<{
 }
 
 export async function saveToIndexedDB({
-  sides,
+  parts,
+  selectedPartName,
   undoStack,
   redoStack,
   palette,
   unlit,
   autorotate,
 }: {
-  sides: Sides;
+  parts: Part[];
+  selectedPartName: string;
   undoStack: { command: Command; description: string }[];
   redoStack: { command: Command; description: string }[];
   palette: RGBA[];
   unlit: boolean;
   autorotate: boolean;
 }): Promise<void> {
-  const blob = await save(sides, palette);
+  const blob = await saveFigure({ parts, palette });
   await saveBlobToDB(DB_KEYS.zipFileData, blob);
+  await saveTextToDB(DB_KEYS.selectedPart, selectedPartName);
   const undoStackJson = [];
   for (const { command, description } of undoStack) {
     undoStackJson.push({

@@ -1,5 +1,6 @@
-import { Mesh, Quaternion, Vector3 } from "@random-mesh/rmsl/scene";
+import { Object3D, Quaternion, Vector3 } from "@random-mesh/rmsl/scene";
 import { Dimensions3D, Vector3D } from "@big-mesh-studios/maths";
+import type { FigureMeshes } from "@big-mesh-studios/stacker/renderer";
 
 // The CPU voxel picker builds its ray with a pinhole camera whose focal length
 // is 2 (see rayMarcher in shaders-shared). A perspective camera with this
@@ -31,6 +32,31 @@ export const OUTLINE_DEPTH_BIAS = 0.0001;
 export const FOV = 2 * Math.atan(0.5) * (180 / Math.PI);
 export const NEAR = 0.1;
 export const FAR = 100;
+
+/**
+ * Lights every part of a figure the way this editor lights one, and sets the
+ * depth bias the picked voxel's outline is drawn against.
+ *
+ * The meshes carry a figure's shape and know nothing about how it should look,
+ * because the world lights the same figure by its own sun. This is what the
+ * editor asks for, and it is asked for on every frame because a part added
+ * since the last one arrives with a material of its own to be told.
+ *
+ * @param unlit Whether to show the colours flat rather than lit.
+ */
+export const lightFigure = (meshes: FigureMeshes, unlit: boolean) => {
+  for (const material of meshes.materials) {
+    material.lightDir = [LIGHT_DIR.x, LIGHT_DIR.y, LIGHT_DIR.z];
+    material.lightColour = [LIGHT_COLOUR[0], LIGHT_COLOUR[1], LIGHT_COLOUR[2]];
+    material.ambientColour = [
+      AMBIENT_COLOUR[0],
+      AMBIENT_COLOUR[1],
+      AMBIENT_COLOUR[2],
+    ];
+    material.depthBias = OUTLINE_DEPTH_BIAS;
+    material.unlit = unlit;
+  }
+};
 
 const X_AXIS = new Vector3(1, 0, 0);
 const Y_AXIS = new Vector3(0, 1, 0);
@@ -100,14 +126,17 @@ export const voxelCellEdges = (
 };
 
 /**
- * Turns the mesh to the orientation the world-to-model matrix (used by both
- * the CPU voxel picker and the material's ray origin) describes: the mesh's
- * world rotation is the inverse of that matrix, so its world-to-model — the
+ * Turns what a figure is drawn as to the orientation the world-to-model matrix
+ * (used by both the CPU voxel picker and the material's ray origin) describes:
+ * its world rotation is the inverse of that matrix, so its world-to-model — the
  * inverse of its world matrix — is exactly what the picker follows its ray
  * along.
+ *
+ * The turn goes on the whole figure rather than on any one part, so the parts
+ * keep their places against each other however it is turned.
  */
-export const rotateMesh = (
-  mesh: Mesh,
+export const rotateFigure = (
+  figure: Object3D,
   yaw: number,
   pitch: number,
   spin: number,
@@ -116,5 +145,5 @@ export const rotateMesh = (
 ) => {
   pitchQuaternion.setFromAxisAngle(X_AXIS, pitch);
   yawQuaternion.setFromAxisAngle(Y_AXIS, yaw + spin);
-  mesh.quaternion.copy(pitchQuaternion.multiply(yawQuaternion));
+  figure.quaternion.copy(pitchQuaternion.multiply(yawQuaternion));
 };

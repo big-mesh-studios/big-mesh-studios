@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Matrix3, Mesh } from "@random-mesh/rmsl/scene";
 import { Matrix3x3 } from "@big-mesh-studios/maths";
-import { rotateMesh, voxelCellEdges } from "./voxel-preview-scene";
+import { rotateFigure, voxelCellEdges } from "./voxel-preview-scene";
 
 // The world-to-model rotation the CPU voxel picker follows its ray along,
 // replicated from VoxelPreviewView.getWorldToModel: turn the world down to the
@@ -37,7 +37,7 @@ describe("voxel preview scene", () => {
       [-2.1, 1.2, 0.7],
       [Math.PI, Math.PI / 2 - 0.01, 3],
     ]) {
-      rotateMesh(mesh, yaw, pitch, spin);
+      rotateFigure(mesh, yaw, pitch, spin);
       mesh.updateMatrixWorld(true);
       closeTo(materialWorldToModel(mesh), worldToModelOf(yaw, pitch, spin));
     }

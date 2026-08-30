@@ -11,34 +11,28 @@
 // to be preserved — costs something on every frame ever drawn, to be paid back
 // on the rare one that is read.
 import {
-  BoxGeometry,
-  Mesh,
   PerspectiveCamera,
   Scene,
   WebGLRenderer,
 } from "@random-mesh/rmsl/scene";
-import { Dimensions3D, RGBA } from "@big-mesh-studios/maths";
 import {
-  boxSize,
-  encodePalette,
-  VoxelModelMaterial,
+  FigureMeshes,
+  type Figure,
+  type SolvedPart,
 } from "@big-mesh-studios/stacker/renderer";
 import {
-  AMBIENT_COLOUR,
   FAR,
   FOV,
-  LIGHT_COLOUR,
-  LIGHT_DIR,
+  lightFigure,
   NEAR,
-  OUTLINE_DEPTH_BIAS,
-  rotateMesh,
+  rotateFigure,
 } from "./voxel-preview-scene";
 
 export interface VoxelImageRequest {
-  dimensions: Dimensions3D;
-  /** The solved volume, as `solveVoxels` hands it back. */
-  voxels: Uint8Array;
-  palette: RGBA[];
+  /** The figure to draw, with every part in it. */
+  figure: Figure;
+  /** Each part's volume, in the order `figure.parts` holds them. */
+  solved: SolvedPart[];
   /** How many pixels across and down the picture is. */
   size: number;
   /** Which way the model is turned, and how far back the camera stands. */
@@ -51,8 +45,7 @@ interface OffscreenScene {
   renderer: WebGLRenderer;
   scene: Scene;
   camera: PerspectiveCamera;
-  mesh: Mesh;
-  material: VoxelModelMaterial;
+  meshes: FigureMeshes;
 }
 
 /**
@@ -89,17 +82,14 @@ function offscreenScene(): OffscreenScene | undefined {
     // than sitting on a colour that will not suit wherever it ends up shown.
     renderer.setClearColor(0x000000, 0);
 
-    const material = new VoxelModelMaterial();
-    material.depthBias = OUTLINE_DEPTH_BIAS;
-    const mesh = new Mesh(new BoxGeometry(1, 1, 1), material);
+    const meshes = new FigureMeshes();
     const scene = new Scene();
-    scene.add(mesh);
+    scene.add(meshes.group);
 
     offscreen = {
       renderer,
       scene,
-      material,
-      mesh,
+      meshes,
       camera: new PerspectiveCamera(FOV, 1, NEAR, FAR),
     };
 
@@ -124,51 +114,20 @@ export function renderVoxelImage(
     return null;
   }
 
-  const { renderer, scene, camera, mesh, material } = built;
+  const { renderer, scene, camera, meshes } = built;
 
   try {
     renderer.setSize(request.size, request.size);
 
-    const normalized = Dimensions3D.normalize(request.dimensions);
-    const size = boxSize(request.dimensions);
-    mesh.geometry = new BoxGeometry(size.width, size.height, size.depth);
-
     camera.position.set(0, 0, request.radius);
     camera.lookAt(0, 0, 0);
 
-    material.voxelTexture.image = request.voxels;
-    material.voxelTexture.width = request.dimensions.width;
-    material.voxelTexture.height = request.dimensions.height;
-    material.voxelTexture.depth = request.dimensions.depth;
-    material.voxelTexture.needsUpdate = true;
+    meshes.sync(request.figure, request.solved);
+    lightFigure(meshes, false);
 
-    const texels = encodePalette(request.palette);
-    material.paletteTexture.image = texels;
-    material.paletteTexture.width = request.palette.length;
-    material.paletteTexture.height = 1;
-    material.paletteTexture.needsUpdate = true;
-
-    // The model is turned to the orientation the light is measured against, so
+    // The figure is turned to the orientation the light is measured against, so
     // that what lands on a face here is what would land on it in the preview.
-    rotateMesh(mesh, request.yaw, request.pitch, 0);
-    material.dimensions = [
-      normalized.width,
-      normalized.height,
-      normalized.depth,
-    ];
-    material.voxelCount = [
-      request.dimensions.width,
-      request.dimensions.height,
-      request.dimensions.depth,
-    ];
-    material.lightDir = [LIGHT_DIR.x, LIGHT_DIR.y, LIGHT_DIR.z];
-    material.lightColour = [LIGHT_COLOUR[0], LIGHT_COLOUR[1], LIGHT_COLOUR[2]];
-    material.ambientColour = [
-      AMBIENT_COLOUR[0],
-      AMBIENT_COLOUR[1],
-      AMBIENT_COLOUR[2],
-    ];
-    material.unlit = false;
+    rotateFigure(meshes.group, request.yaw, request.pitch, 0);
 
     renderer.render(scene, camera);
 

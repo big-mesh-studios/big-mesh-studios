@@ -1,7 +1,15 @@
-import { Vector2D } from "@big-mesh-studios/maths";
+import { Vector2D, Vector3D } from "@big-mesh-studios/maths";
 import { type SideKind } from "@big-mesh-studios/stacker/renderer";
 import { base64ToUint8Array, uint8ArrayToBase64 } from "../utils/utils";
 
+/**
+ * A change to the figure being drawn, in a form that can be applied, reversed,
+ * and written to the undo history on disk.
+ *
+ * Everything that touches a drawing names the part it is drawn on. An undo may
+ * be taken long after the selection has moved on, and naming the part is what
+ * lands it on the drawing it was made against.
+ */
 export type Command =
   | {
       type: "NoOperation";
@@ -12,18 +20,21 @@ export type Command =
     }
   | {
       type: "WritePixel";
+      part: string;
       side: SideKind;
       position: Vector2D;
       paletteIndex: number;
     }
   | {
       type: "FillPixel";
+      part: string;
       side: SideKind;
       position: Vector2D;
       paletteIndex: number;
     }
   | {
       type: "FillRectangle";
+      part: string;
       side: SideKind;
       min: Vector2D;
       max: Vector2D;
@@ -31,8 +42,14 @@ export type Command =
     }
   | {
       type: "ErasePixel";
+      part: string;
       side: SideKind;
       position: Vector2D;
+    }
+  | {
+      type: "MovePart";
+      part: string;
+      root: Vector3D;
     }
   | {
       type: "LoadData";
@@ -53,32 +70,43 @@ export namespace Command {
   }
 
   export function writePixel(
+    part: string,
     side: SideKind,
     position: Vector2D,
     paletteIndex: number,
   ): Command {
-    return { type: "WritePixel", side, position, paletteIndex };
+    return { type: "WritePixel", part, side, position, paletteIndex };
   }
 
   export function fillRectangle(
+    part: string,
     side: SideKind,
     min: Vector2D,
     max: Vector2D,
     paletteIndex: number,
   ): Command {
-    return { type: "FillRectangle", side, min, max, paletteIndex };
+    return { type: "FillRectangle", part, side, min, max, paletteIndex };
   }
 
   export function fillPixel(
+    part: string,
     side: SideKind,
     position: Vector2D,
     paletteIndex: number,
   ): Command {
-    return { type: "FillPixel", side, position, paletteIndex };
+    return { type: "FillPixel", part, side, position, paletteIndex };
   }
 
-  export function erasePixel(side: SideKind, position: Vector2D): Command {
-    return { type: "ErasePixel", side, position };
+  export function erasePixel(
+    part: string,
+    side: SideKind,
+    position: Vector2D,
+  ): Command {
+    return { type: "ErasePixel", part, side, position };
+  }
+
+  export function movePart(part: string, root: Vector3D): Command {
+    return { type: "MovePart", part, root };
   }
 
   export function loadData(data: Blob): Command {
@@ -104,9 +132,10 @@ export namespace Command {
         };
       }
       case "WritePixel": {
-        let { side, position, paletteIndex } = command;
+        let { part, side, position, paletteIndex } = command;
         return {
           type: "WritePixel",
+          part,
           side,
           x: position.x,
           y: position.y,
@@ -114,9 +143,10 @@ export namespace Command {
         };
       }
       case "FillPixel": {
-        let { side, position, paletteIndex } = command;
+        let { part, side, position, paletteIndex } = command;
         return {
           type: "FillPixel",
+          part,
           side,
           x: position.x,
           y: position.y,
@@ -124,9 +154,10 @@ export namespace Command {
         };
       }
       case "FillRectangle": {
-        let { side, min, max, paletteIndex } = command;
+        let { part, side, min, max, paletteIndex } = command;
         return {
           type: "FillRectangle",
+          part,
           side,
           minX: min.x,
           minY: min.y,
@@ -136,8 +167,12 @@ export namespace Command {
         };
       }
       case "ErasePixel": {
-        let { side, position } = command;
-        return { type: "ErasePixel", side, x: position.x, y: position.y };
+        let { part, side, position } = command;
+        return { type: "ErasePixel", part, side, x: position.x, y: position.y };
+      }
+      case "MovePart": {
+        let { part, root } = command;
+        return { type: "MovePart", part, x: root.x, y: root.y, z: root.z };
       }
       case "LoadData": {
         let data = await command.data.arrayBuffer();
@@ -170,26 +205,53 @@ export namespace Command {
           command.commands.map((c: any) => Command.fromJSON(c)),
         );
       case "WritePixel":
+        if (typeof command.part !== "string") {
+          return Command.noOperation();
+        }
         return Command.writePixel(
+          command.part,
           command.side,
           { x: command.x, y: command.y },
           command.paletteIndex,
         );
       case "FillRectangle":
+        if (typeof command.part !== "string") {
+          return Command.noOperation();
+        }
         return Command.fillRectangle(
+          command.part,
           command.side,
           { x: command.minX, y: command.minY },
           { x: command.maxX, y: command.maxY },
           command.paletteIndex,
         );
       case "FillPixel":
+        if (typeof command.part !== "string") {
+          return Command.noOperation();
+        }
         return Command.fillPixel(
+          command.part,
           command.side,
           { x: command.x, y: command.y },
           command.paletteIndex,
         );
       case "ErasePixel":
-        return Command.erasePixel(command.side, { x: command.x, y: command.y });
+        if (typeof command.part !== "string") {
+          return Command.noOperation();
+        }
+        return Command.erasePixel(command.part, command.side, {
+          x: command.x,
+          y: command.y,
+        });
+      case "MovePart":
+        if (typeof command.part !== "string") {
+          return Command.noOperation();
+        }
+        return Command.movePart(command.part, {
+          x: command.x,
+          y: command.y,
+          z: command.z,
+        });
       case "LoadData": {
         let data = command.data;
         let data2 = base64ToUint8Array(data);

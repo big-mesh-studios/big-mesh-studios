@@ -26,11 +26,11 @@ import {
   thumbnailBlobCid,
   type PublishedModel,
 } from "@big-mesh-studios/stacker/lexicon";
-import { thumbnailFromSides } from "../atproto/thumbnail";
+import { thumbnailFromFigure } from "../atproto/thumbnail";
 import { Button, Icon, IconButton } from "../components/components";
 import { StackerContext } from "../context";
 import { homeName } from "../home";
-import { load, save } from "@big-mesh-studios/stacker/format";
+import { loadFigure, saveFigure } from "@big-mesh-studios/stacker/format";
 import {
   forgetFile,
   listRecentFiles,
@@ -75,8 +75,8 @@ function when(at: number): string {
 export function ProfileModal(props: { open: boolean; onClose: () => void }) {
   const {
     atproto,
-    sides,
-    setSides,
+    figure,
+    setParts,
     palette,
     setPalette,
     dimensions,
@@ -124,7 +124,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
       return null;
     }
 
-    const picture = thumbnailFromSides(sides(), palette());
+    const picture = thumbnailFromFigure(figure());
 
     return picture === undefined ? null : hold(picture);
   });
@@ -241,7 +241,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
   /** Writes what is on the canvas out to a file of the person's choosing. */
   function exportCurrent(): Promise<void> {
     return run("exporting…", async () => {
-      await fileSave(await save(sides(), palette()), {
+      await fileSave(await saveFigure(figure()), {
         fileName: `${shown()}.zip`,
         extensions: [".zip"],
         description: "Sprite stack",
@@ -256,9 +256,9 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
     return run("publishing…", async () => {
       const published = await atproto.publish({
         name: shown(),
-        file: await save(sides(), palette()),
+        file: await saveFigure(figure()),
         dimensions: dimensions(),
-        thumbnail: thumbnailFromSides(sides(), palette()),
+        thumbnail: thumbnailFromFigure(figure()),
       });
       setHome({
         kind: "published",
@@ -296,8 +296,8 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
         return null;
       }
 
-      const result = await load(contents, palette());
-      setSides(result.sides);
+      const result = await loadFigure(contents, palette());
+      setParts(result.parts);
       setPalette(result.palette);
       setHome(
         card.kind === "published"
@@ -354,9 +354,9 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
         description: "Sprite stack",
         mimeTypes: ["application/zip"],
       })) as FileWithHandle;
-      const result = await load(file, palette());
+      const result = await loadFigure(file, palette());
 
-      setSides(result.sides);
+      setParts(result.parts);
       setPalette(result.palette);
       updateVoxels();
       flush();
@@ -368,7 +368,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
       } else {
         const remembered = await rememberFile({
           handle: file.handle,
-          thumbnail: thumbnailFromSides(sides(), palette()),
+          thumbnail: thumbnailFromFigure(figure()),
           dimensions: dimensions(),
         });
         setHome({

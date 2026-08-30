@@ -5,10 +5,9 @@
 // pose of its own. Shown only in first person and only while the sword is the
 // selected inventory item; holding the place button winds it back and letting
 // go swings it, per the pure transform in `./swing`.
-import { Dimensions3D } from "@big-mesh-studios/maths";
 import {
   boxSize,
-  encodePalette,
+  bakeVolume,
   solveVoxels,
   VoxelModelMaterial,
   type Model,
@@ -76,32 +75,12 @@ export class HeldItem {
 
   /** Swaps the held model for `model`, baking it into the material and geometry. */
   setModel(model: Model): void {
-    const voxels = solveVoxels(model.dimensions, model.sides);
-    const voxelTexture = this.material.voxelTexture;
-    voxelTexture.image = voxels;
-    voxelTexture.width = model.dimensions.width;
-    voxelTexture.height = model.dimensions.height;
-    voxelTexture.depth = model.dimensions.depth;
-    voxelTexture.needsUpdate = true;
-
-    const paletteData = encodePalette(model.palette);
-    const paletteTexture = this.material.paletteTexture;
-    paletteTexture.image = paletteData;
-    paletteTexture.width = model.palette.length;
-    paletteTexture.height = 1;
-    paletteTexture.needsUpdate = true;
-
-    const normalized = Dimensions3D.normalize(model.dimensions);
-    this.material.dimensions = [
-      normalized.width,
-      normalized.height,
-      normalized.depth,
-    ];
-    this.material.voxelCount = [
-      model.dimensions.width,
-      model.dimensions.height,
-      model.dimensions.depth,
-    ];
+    bakeVolume(
+      this.material,
+      model.dimensions,
+      solveVoxels(model.dimensions, model.sides),
+      model.palette,
+    );
 
     const size = boxSize(model.dimensions);
     this.geometry = new BoxGeometry(size.width, size.height, size.depth);

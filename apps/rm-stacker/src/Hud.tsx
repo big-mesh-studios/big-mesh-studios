@@ -14,6 +14,7 @@ import {
 import Palette from "./components/Palette";
 import { StackerContext } from "./context";
 import styles from "./Hud.module.css";
+import { PartsPanel } from "./PartsPanel";
 import { ProfileModal } from "./profile/ProfileModal";
 import { ModeKind } from "./types";
 
@@ -118,27 +119,30 @@ export function Hud() {
           </div>
         </div>
         <div class={styles.main}></div>
-        <div class={styles.bottom}>
-          <Bar>
-            <IconTab
-              onClick={() => {
-                preview.setAutorotate((rotate) => !rotate);
-                flush();
-                requestAutoSave();
-              }}
-              selected={!ProfileDialog.isOpen() && preview.autorotate()}
-              kind="rotate"
-            />
-            <IconTab
-              onClick={() => {
-                preview.setUnlit((unlit) => !unlit);
-                flush();
-                requestAutoSave();
-              }}
-              selected={!ProfileDialog.isOpen() && !preview.unlit()}
-              kind="lightbulb"
-            />
-          </Bar>
+        <div class={styles.side}>
+          <PartsPanel />
+          <div class={styles.bottom}>
+            <Bar>
+              <IconTab
+                onClick={() => {
+                  preview.setAutorotate((rotate) => !rotate);
+                  flush();
+                  requestAutoSave();
+                }}
+                selected={!ProfileDialog.isOpen() && preview.autorotate()}
+                kind="rotate"
+              />
+              <IconTab
+                onClick={() => {
+                  preview.setUnlit((unlit) => !unlit);
+                  flush();
+                  requestAutoSave();
+                }}
+                selected={!ProfileDialog.isOpen() && !preview.unlit()}
+                kind="lightbulb"
+              />
+            </Bar>
+          </div>
         </div>
       </div>
     </>

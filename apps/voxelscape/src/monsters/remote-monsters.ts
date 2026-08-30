@@ -11,7 +11,7 @@ import type { DayNightState } from "../environment/day-night";
 import { Dimensions3D } from "@big-mesh-studios/maths";
 import {
   boxSize,
-  encodePalette,
+  bakeVolume,
   solveVoxels,
   VoxelModelMaterial,
   type Model,
@@ -109,32 +109,12 @@ export class RemoteMonsters {
 
   /** Bakes a model's volume, palette, and grid into one material's uniforms. */
   private bakeInto(material: VoxelModelMaterial, model: Model): void {
-    const voxels = solveVoxels(model.dimensions, model.sides);
-    const voxelTexture = material.voxelTexture;
-    voxelTexture.image = voxels;
-    voxelTexture.width = model.dimensions.width;
-    voxelTexture.height = model.dimensions.height;
-    voxelTexture.depth = model.dimensions.depth;
-    voxelTexture.needsUpdate = true;
-
-    const paletteData = encodePalette(model.palette);
-    const paletteTexture = material.paletteTexture;
-    paletteTexture.image = paletteData;
-    paletteTexture.width = model.palette.length;
-    paletteTexture.height = 1;
-    paletteTexture.needsUpdate = true;
-
-    const normalized = Dimensions3D.normalize(model.dimensions);
-    material.dimensions = [
-      normalized.width,
-      normalized.height,
-      normalized.depth,
-    ];
-    material.voxelCount = [
-      model.dimensions.width,
-      model.dimensions.height,
-      model.dimensions.depth,
-    ];
+    bakeVolume(
+      material,
+      model.dimensions,
+      solveVoxels(model.dimensions, model.sides),
+      model.palette,
+    );
   }
 
   /**

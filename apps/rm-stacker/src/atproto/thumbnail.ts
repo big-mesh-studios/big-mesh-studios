@@ -9,10 +9,15 @@
 // a model published without one lists by its name and its extent — though a
 // browser that cannot draw this cannot draw the editor either.
 import { encode } from "fast-png";
-import { Dimensions3D, RGBA } from "@big-mesh-studios/maths";
-import { type Sides } from "@big-mesh-studios/stacker/renderer";
+import { Vector3D } from "@big-mesh-studios/maths";
+import {
+  composeRoot,
+  figurePlacement,
+  solveFigure,
+  type Figure,
+  type SolvedPart,
+} from "@big-mesh-studios/stacker/renderer";
 import { renderVoxelImage } from "../voxel-render";
-import { solveVoxels } from "@big-mesh-studios/stacker/renderer";
 
 /**
  * How many pixels across the picture is: the size a card shows it at, so a
@@ -35,45 +40,51 @@ const BREATHING_ROOM = 1.12;
 const NEAREST = 0.6;
 
 /**
- * How far back the camera stands to frame `voxels`.
+ * How far back the camera stands to frame `figure`.
  *
  * The marcher builds its rays through a pinhole of focal length two, so at
  * distance d it sees d/2 either side of the middle: standing at twice the
- * model's own reach frames it exactly, and a little more leaves an edge around
+ * figure's own reach frames it exactly, and a little more leaves an edge around
  * it.
  *
  * The reach is measured over the voxels that were actually drawn rather than
- * over the box they sit in. A model rarely fills its box, and framing the box
- * would leave the model a speck in the middle of a lot of nothing.
+ * over the boxes they sit in. A part rarely fills its box, and framing the
+ * boxes would leave the figure a speck in the middle of a lot of nothing.
+ *
+ * @param solved Each part's volume, in the order `figure.parts` holds them.
  */
 export function cameraDistanceFor(
-  voxels: Uint8Array,
-  dimensions: Dimensions3D,
+  figure: Figure,
+  solved: SolvedPart[],
 ): number {
-  const normalized = Dimensions3D.normalize(dimensions);
-  const { width, height, depth } = dimensions;
+  const { voxelSize } = figurePlacement(figure);
   let furthest = 0;
 
-  for (let z = 0; z < depth; z++) {
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        if (voxels[((z * width * height + y * width + x) << 2) + 3] === 0) {
-          continue;
+  figure.parts.forEach((part, index) => {
+    const { dimensions, voxels } = solved[index];
+    const { width, height, depth } = dimensions;
+    // Where the part's low corner sits in the figure, which is what turns a
+    // voxel's place in its own box into its place in the whole drawing.
+    const low = Vector3D.subtract(composeRoot(figure, part), part.pivot);
+
+    for (let z = 0; z < depth; z++) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (voxels[((z * width * height + y * width + x) << 2) + 3] === 0) {
+            continue;
+          }
+
+          // The far corner of the voxel rather than its middle, so the one at
+          // the edge of the figure is inside the picture and not half out of it.
+          const px = (Math.abs(low.x + x + 0.5) + 0.5) * voxelSize;
+          const py = (Math.abs(low.y + y + 0.5) + 0.5) * voxelSize;
+          const pz = (Math.abs(low.z + z + 0.5) + 0.5) * voxelSize;
+
+          furthest = Math.max(furthest, Math.hypot(px, py, pz));
         }
-
-        // The far corner of the voxel rather than its middle, so the one at the
-        // edge of the model is inside the picture and not half out of it.
-        const px =
-          (Math.abs(x + 0.5 - width / 2) + 0.5) * (normalized.width / width);
-        const py =
-          (Math.abs(y + 0.5 - height / 2) + 0.5) * (normalized.height / height);
-        const pz =
-          (Math.abs(z + 0.5 - depth / 2) + 0.5) * (normalized.depth / depth);
-
-        furthest = Math.max(furthest, Math.hypot(px, py, pz));
       }
     }
-  }
+  });
 
   return Math.max(NEAREST, 2 * furthest * BREATHING_ROOM);
 }
@@ -130,28 +141,19 @@ function bleedColourOutwards(
 }
 
 /**
- * The picture of `sides` as the bytes of a png, drawn in `palette`, or
- * undefined where there is nothing to draw it with.
+ * The picture of `figure` as the bytes of a png, with every part of it in
+ * place, or undefined where there is nothing to draw it with.
  */
-export function thumbnailFromSides(
-  sides: Sides,
-  palette: RGBA[],
-): Uint8Array | undefined {
-  const dimensions: Dimensions3D = {
-    width: sides.front.width,
-    height: sides.front.height,
-    depth: sides.left.width,
-  };
-  const voxels = solveVoxels(dimensions, sides);
+export function thumbnailFromFigure(figure: Figure): Uint8Array | undefined {
+  const solved = solveFigure(figure);
 
   const pixels = renderVoxelImage({
-    dimensions,
-    voxels,
-    palette,
+    figure,
+    solved,
     size: SIZE,
     yaw: YAW,
     pitch: PITCH,
-    radius: cameraDistanceFor(voxels, dimensions),
+    radius: cameraDistanceFor(figure, solved),
   });
 
   if (pixels === null) {

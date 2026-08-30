@@ -1,21 +1,54 @@
-// The sprite stack file, for anything that has to read or write one: the zip of
-// six indexed pngs and a palette. Nothing here knows about drawing, undo, or
-// the browser's file pickers — a reader gets the model and is left to do what
-// it likes with it.
+// The sprite stack file, for anything that has to read or write one: a zip of
+// indexed pngs and a palette. A figure keeps each part's six drawings in a
+// folder of its own and lists where those parts sit in `parts.json`; a file
+// holding one part keeps its drawings at the root and carries no list. Nothing
+// here knows about drawing, undo, or the browser's file pickers — a reader gets
+// the model and is left to do what it likes with it.
 import { decode, encode } from "fast-png";
 import JSZip from "jszip";
-import { Bitmap, type Dimensions3D, type RGBA } from "@big-mesh-studios/maths";
 import {
+  Bitmap,
+  Vector3D,
+  type Dimensions3D,
+  type RGBA,
+} from "@big-mesh-studios/maths";
+import {
+  centrePivot,
+  partDimensions,
   sideAxes,
   sideKinds,
   sideKindSet,
   type DimensionKind,
+  type Figure,
   type Model,
+  type Part,
   type SideKind,
   type Sides,
 } from "./data";
 
 const PALETTE_FILE = "palette.png";
+const PARTS_FILE = "parts.json";
+
+/**
+ * What the one part of a file written before figures is called. Such a file
+ * keeps its drawings at the zip's root and says nothing about where they sit,
+ * so the part it is read back as needs a name from somewhere.
+ */
+const ONLY_PART = "body";
+
+/**
+ * Where a figure's parts sit, as `parts.json` holds it. The drawings stay in
+ * the folders; this carries only what cannot be read off a png.
+ */
+interface PartsManifest {
+  version: 1;
+  parts: {
+    name: string;
+    root: Vector3D;
+    pivot: Vector3D;
+    parent: string | null;
+  }[];
+}
 
 /** The palette as the file holds it: a one-row png, one texel per colour. */
 function encodePalettePng(palette: RGBA[]): Uint8Array {
@@ -192,11 +225,13 @@ export interface LoadedModel extends Model {
 }
 
 /**
- * Reads a model, in whichever of the two formats it was written in.
+ * Reads the first of a file's parts as a model on its own, for a reader that
+ * draws one box and has nowhere to put the rest. A file holding a single part
+ * is read whole.
  *
- * `dimensions` is the box the six sides describe, which they are checked
- * against: a side disagreeing with another about an axis they both measure is
- * refused.
+ * `dimensions` is the box that part's six sides describe, which they are
+ * checked against: a side disagreeing with another about an axis they both
+ * measure is refused.
  *
  * @param fallbackPalette Colours to seed the palette slots a colour-format
  * model does not fill. Left out, the palette is exactly the colours the file
@@ -209,31 +244,148 @@ export async function load(
   blob: Blob,
   fallbackPalette: RGBA[] = [],
 ): Promise<LoadedModel> {
+  const figure = await loadFigure(blob, fallbackPalette);
+  const part = figure.parts[0];
+
+  return {
+    sides: part.sides,
+    palette: figure.palette,
+    migrated: figure.migrated,
+    dimensions: partDimensions(part),
+  };
+}
+
+/** A figure read from a file, and which of the two formats it arrived in. */
+export interface LoadedFigure extends Figure {
+  /**
+   * Whether any of its parts arrived in the older format, where a side held
+   * colours rather than palette indices. Callers need to know because anything
+   * else they kept beside the model — an undo history naming colours, say —
+   * was written against that format too.
+   */
+  migrated: boolean;
+}
+
+/** Reads `parts.json`, refusing anything that is not the list this format writes. */
+function readManifest(text: string): PartsManifest {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${PARTS_FILE} is not readable as JSON: ${error}`);
+  }
+
+  const parts = (parsed as PartsManifest | null)?.parts;
+
+  if (!Array.isArray(parts)) {
+    throw new Error(`${PARTS_FILE} lists no parts`);
+  }
+
+  return {
+    version: 1,
+    parts: parts.map((part, index) => {
+      const name = (part as { name?: unknown })?.name;
+
+      if (typeof name !== "string" || name === "") {
+        throw new Error(`${PARTS_FILE} gives part ${index} no name`);
+      }
+
+      const readVector = (value: unknown): Vector3D => {
+        const { x, y, z } = (value ?? {}) as Record<string, unknown>;
+        return Vector3D.create(
+          typeof x === "number" ? x : 0,
+          typeof y === "number" ? y : 0,
+          typeof z === "number" ? z : 0,
+        );
+      };
+
+      const parent = (part as { parent?: unknown }).parent;
+
+      return {
+        name,
+        root: readVector((part as { root?: unknown }).root),
+        pivot: readVector((part as { pivot?: unknown }).pivot),
+        parent: typeof parent === "string" ? parent : null,
+      };
+    }),
+  };
+}
+
+/** The six drawings of one part, as the zip carries them before they are read. */
+interface PartEntry {
+  indexed: Partial<Sides>;
+  /**
+   * Sides saved as colours, held back until every part has been read: the
+   * palette is worked out from every colour the whole figure was drawn in, so
+   * none of them can be turned into indices until all of them have been seen.
+   */
+  asColours: Partial<Record<SideKind, DecodedImage>>;
+}
+
+/**
+ * Reads a figure, in whichever of the two formats it was written in.
+ *
+ * A file with a `parts.json` is read as the parts it lists, each from the
+ * folder its name gives. A file without one holds a single part's drawings at
+ * its root, and is read as one part called `body` pivoting on its own middle at
+ * the origin — which is where a lone model has always been drawn.
+ *
+ * @param fallbackPalette Colours to seed the palette slots a colour-format
+ * model does not fill. Left out, the palette is exactly the colours the file
+ * uses, which is what a reader wants; an editor passes its own so a model
+ * opened for drawing arrives with a full palette to draw from.
+ * @throws When the file is not a model this format writes, when `parts.json`
+ * is not the list this format writes, or when a part's sides are not faces of
+ * one box.
+ */
+export async function loadFigure(
+  blob: Blob,
+  fallbackPalette: RGBA[] = [],
+): Promise<LoadedFigure> {
   const zip = await JSZip.loadAsync(blob);
-  const result: Partial<Sides> = {};
-  // Sides saved as colours, held back until they have all been read: the
-  // palette is worked out from every colour the whole model was drawn in, so
-  // none of them can be turned into indices until all six have been seen.
-  const asColours: Partial<Record<SideKind, DecodedImage>> = {};
+  // Keyed by the folder the drawings were found in; the empty string is the
+  // zip's root, where a file written before figures keeps its only part.
+  const entries = new Map<string, PartEntry>();
   let palette: RGBA[] | undefined;
+  let manifest: PartsManifest | undefined;
+
+  const entryFor = (folder: string): PartEntry => {
+    let entry = entries.get(folder);
+
+    if (entry === undefined) {
+      entry = { indexed: {}, asColours: {} };
+      entries.set(folder, entry);
+    }
+
+    return entry;
+  };
 
   for (const [_path, entry] of Object.entries(zip.files)) {
-    const name = entry.name.toLowerCase();
+    const lowercased = entry.name.toLowerCase();
 
-    if (name === PALETTE_FILE) {
+    if (lowercased === PALETTE_FILE) {
       palette = decodePalette(
         new Uint8Array(await (await entry.async("blob")).arrayBuffer()),
       );
       continue;
     }
 
-    const match = /^(.*)\.png$/.exec(name);
+    if (lowercased === PARTS_FILE) {
+      manifest = readManifest(await entry.async("text"));
+      continue;
+    }
+
+    // A folder name keeps the case it was written in, because it has to match
+    // the part name `parts.json` gives; only the side name is matched loosely.
+    const match = /^(?:(.+)\/)?([^/]+)\.png$/i.exec(entry.name);
 
     if (match === null) {
       continue;
     }
 
-    const side = match[1] as SideKind;
+    const folder = match[1] ?? "";
+    const side = match[2].toLowerCase() as SideKind;
 
     if (!sideKindSet[side]) {
       continue;
@@ -247,29 +399,33 @@ export async function load(
     // eight and come back in colours nobody drew, so say so instead.
     if (decoded.depth !== 8) {
       throw new Error(
-        `${side}.png holds ${decoded.depth} bits per sample, and only eight is read`,
+        `${entry.name} holds ${decoded.depth} bits per sample, and only eight is read`,
       );
     }
 
     // Four channels means a model saved before sides held indices.
     if (decoded.channels === 4) {
-      asColours[side] = decoded;
+      entryFor(folder).asColours[side] = decoded;
       continue;
     }
 
-    result[side] = {
+    entryFor(folder).indexed[side] = {
       width: decoded.width,
       height: decoded.height,
       data: new Uint8Array(decoded.data),
     };
   }
 
-  const colourSides = Object.keys(asColours) as SideKind[];
+  const colourImages = [...entries.values()].flatMap((entry) =>
+    (Object.keys(entry.asColours) as SideKind[]).map(
+      (side) => entry.asColours[side]!,
+    ),
+  );
+  const migrated = colourImages.length !== 0;
 
-  if (colourSides.length !== 0) {
-    const images = colourSides.map((side) => asColours[side]!);
+  if (migrated) {
     const built = buildPalette(
-      collectColours(images),
+      collectColours(colourImages),
       palette ?? fallbackPalette,
     );
 
@@ -283,26 +439,43 @@ export async function load(
 
     palette = built.palette;
 
-    for (const side of colourSides) {
-      result[side] = toBitmap(asColours[side]!, built.indexOf);
+    for (const entry of entries.values()) {
+      for (const side of Object.keys(entry.asColours) as SideKind[]) {
+        entry.indexed[side] = toBitmap(entry.asColours[side]!, built.indexOf);
+      }
     }
   }
 
-  const dimensions = readDimensions(result);
+  const placements: (Omit<PartsManifest["parts"][number], "pivot"> & {
+    pivot?: Vector3D;
+  })[] = manifest?.parts ?? [
+    { name: ONLY_PART, root: Vector3D.create(), parent: null },
+  ];
 
-  // A side the file does not carry is drawn as nothing, at the size the sides
-  // that are there say it must be.
-  for (const side of sideKinds) {
-    const [across, down] = sideAxes[side];
-    result[side] ??= Bitmap.create(dimensions[across], dimensions[down]);
-  }
+  const parts = placements.map(({ name, root, pivot, parent }): Part => {
+    // A file without a list keeps its only part at the root, so that part's
+    // name and the folder it was read from are not the same string.
+    const folder = manifest === undefined ? "" : name;
+    const sides = entries.get(folder)?.indexed ?? {};
+    const dimensions = readDimensions(sides, folder);
 
-  return {
-    sides: result as Sides,
-    palette: palette ?? fallbackPalette,
-    migrated: colourSides.length !== 0,
-    dimensions,
-  };
+    // A side the file does not carry is drawn as nothing, at the size the sides
+    // that are there say it must be.
+    for (const side of sideKinds) {
+      const [across, down] = sideAxes[side];
+      sides[side] ??= Bitmap.create(dimensions[across], dimensions[down]);
+    }
+
+    return {
+      name,
+      sides: sides as Sides,
+      root,
+      pivot: pivot ?? centrePivot(dimensions),
+      parent,
+    };
+  });
+
+  return { parts, palette: palette ?? fallbackPalette, migrated };
 }
 
 /** The default extent of an axis no side in the file measures. */
@@ -317,9 +490,12 @@ const UNMEASURED = 32;
  * not faces of one box and nothing further can be believed about them, so it is
  * refused here rather than solved into a shape nobody drew.
  *
+ * @param folder Which folder in the zip the sides were read from, so a refusal
+ * names the part it is about. Empty for a file that keeps its drawings at the
+ * root.
  * @throws When two sides give an axis different extents.
  */
-function readDimensions(sides: Partial<Sides>): Dimensions3D {
+function readDimensions(sides: Partial<Sides>, folder: string): Dimensions3D {
   const measured: Partial<Record<DimensionKind, { by: SideKind; of: number }>> =
     {};
 
@@ -344,9 +520,10 @@ function readDimensions(sides: Partial<Sides>): Dimensions3D {
       }
 
       if (already.of !== extent) {
+        const where = folder === "" ? "" : `${folder}/`;
         throw new Error(
-          `${side}.png makes the model ${extent} ${axis === "height" ? "high" : axis === "width" ? "wide" : "deep"}, ` +
-            `and ${already.by}.png makes it ${already.of} — the six sides are not faces of one box`,
+          `${where}${side}.png makes the model ${extent} ${axis === "height" ? "high" : axis === "width" ? "wide" : "deep"}, ` +
+            `and ${where}${already.by}.png makes it ${already.of} — the six sides are not faces of one box`,
         );
       }
     }
@@ -371,6 +548,65 @@ export async function save(sides: Sides, palette: RGBA[]): Promise<Blob> {
   }
 
   zip.file(PALETTE_FILE, encodePalettePng(palette));
+
+  return zip.generateAsync({ type: "blob" });
+}
+
+/**
+ * Whether `name` can be a part's name.
+ *
+ * A part's drawings are written to a folder called after it, so a name has to
+ * be a folder name a reader will find them under again: a name holding a
+ * slash would be read back as a folder inside a folder, and one made of dots
+ * addresses somewhere else entirely.
+ */
+export function isPartName(name: string): boolean {
+  return name !== "" && !/[/\\]/.test(name) && name !== "." && name !== "..";
+}
+
+/**
+ * Writes a figure: each part's six drawings in a folder called after it, the
+ * palette they all address, and the list saying where the parts sit.
+ *
+ * @throws When a part is named something that cannot be a folder, or when two
+ * parts share a name and so would be written over each other.
+ */
+export async function saveFigure(figure: Figure): Promise<Blob> {
+  const zip = new JSZip();
+  const written = new Set<string>();
+
+  for (const part of figure.parts) {
+    if (!isPartName(part.name)) {
+      throw new Error(`"${part.name}" cannot name a part`);
+    }
+
+    if (written.has(part.name)) {
+      throw new Error(`Two parts are called "${part.name}"`);
+    }
+
+    written.add(part.name);
+
+    for (const side of sideKinds) {
+      const { width, height, data } = part.sides[side];
+      zip.file(
+        `${part.name}/${side}.png`,
+        encode({ width, height, data, channels: 1, depth: 8 }),
+      );
+    }
+  }
+
+  const manifest: PartsManifest = {
+    version: 1,
+    parts: figure.parts.map(({ name, root, pivot, parent }) => ({
+      name,
+      root,
+      pivot,
+      parent,
+    })),
+  };
+
+  zip.file(PARTS_FILE, JSON.stringify(manifest, null, 2));
+  zip.file(PALETTE_FILE, encodePalettePng(figure.palette));
 
   return zip.generateAsync({ type: "blob" });
 }
