@@ -21,7 +21,7 @@ const makeController = (
     solidAt: () => false,
     waterAt: () => false,
     getDid: () => "me",
-    getPlayers: () => [{ did: "me", x: 0, z: 0 }],
+    getPlayers: () => [{ did: "me", x: 0, y: GROUND + 1, z: 0 }],
     ...overrides,
   });
 
@@ -90,7 +90,7 @@ describe("monster controller", () => {
   });
 
   it("forgets monsters when their cells leave the materialization window", () => {
-    const player = { did: "me", x: 0, z: 0 };
+    const player = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const c = makeController({ getPlayers: () => [player] });
     c.tick(1 / 60);
     const original = [...c.monsters.keys()];
@@ -104,7 +104,7 @@ describe("monster controller", () => {
   });
 
   it("chases toward a player placed next to a monster", () => {
-    const player = { did: "me", x: 0, z: 0 };
+    const player = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const c = makeController({ getPlayers: () => [player] });
     c.tick(1 / 60);
     const [id, m] = [...c.monsters.entries()][0];
@@ -123,7 +123,7 @@ describe("monster controller", () => {
 describe("monster controller multiplayer", () => {
   it("broadcasts owned monsters to the mesh, at the moving cadence", () => {
     const sent: MonsterUpdate[][] = [];
-    const player = { did: "me", x: 0, z: 0 };
+    const player = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const c = makeController({
       getPlayers: () => [player],
       onBroadcast: (updates) => sent.push(updates),
@@ -150,7 +150,7 @@ describe("monster controller multiplayer", () => {
   });
 
   it("ignores broadcasts for monsters it owns", () => {
-    const player = { did: "me", x: 0, z: 0 };
+    const player = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const c = makeController({ getPlayers: () => [player] });
     c.tick(1 / 60);
     const [id, m] = [...c.monsters.entries()][0];
@@ -161,8 +161,8 @@ describe("monster controller multiplayer", () => {
   });
 
   it("adopts a peer-owned monster from its broadcasts without stepping it", () => {
-    const me = { did: "me", x: 0, z: 0 };
-    const peer = { did: "aaa", x: 10, z: 0 }; // strictly closer to the crafted monster
+    const me = { did: "me", x: 0, y: GROUND + 1, z: 0 };
+    const peer = { did: "aaa", x: 10, y: GROUND + 1, z: 0 }; // strictly closer to the crafted monster
     const c = makeController({ getPlayers: () => [me, peer] });
     c.applyMonsterUpdates([update()]);
     const adopted = c.monsters.get("m1_0_0_0");
@@ -174,8 +174,8 @@ describe("monster controller multiplayer", () => {
   });
 
   it("two clients converge on each monster's owner's simulation via broadcast and apply", () => {
-    const a = { did: "a", x: 0, z: 0 };
-    const b = { did: "b", x: 10, z: 0 };
+    const a = { did: "a", x: 0, y: GROUND + 1, z: 0 };
+    const b = { did: "b", x: 10, y: GROUND + 1, z: 0 };
     let bC: MonsterController | undefined;
     const aC = makeController({
       getDid: () => "a",
@@ -242,7 +242,7 @@ describe("monster controller multiplayer", () => {
   });
 
   it("persists only owned monsters, immediately then at the interval", () => {
-    const player = { did: "me", x: 0, z: 0 };
+    const player = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const c = makeController({ getPlayers: () => [player] });
     c.tick(1 / 60);
     const [, m] = [...c.monsters.entries()][0];
@@ -267,7 +267,7 @@ describe("monster controller multiplayer", () => {
   });
 
   it("writes immediately when an owned monster's state changes", () => {
-    const player = { did: "me", x: 0, z: 0 };
+    const player = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const c = makeController({ getPlayers: () => [player] });
     c.tick(1 / 60);
     const [id, m] = [...c.monsters.entries()][0];
@@ -289,8 +289,8 @@ describe("monster controller multiplayer", () => {
   });
 
   it("keeps the current owner within a hysteresis margin, then hands off", () => {
-    const a = { did: "a", x: 11, z: 0 };
-    const b = { did: "b", x: 10, z: 0 };
+    const a = { did: "a", x: 11, y: GROUND + 1, z: 0 };
+    const b = { did: "b", x: 10, y: GROUND + 1, z: 0 };
     const c = makeController({ getDid: () => "c", getPlayers: () => [a, b] });
     const record: MonsterRecord = {
       $type: MONSTER_COLLECTION,
@@ -345,7 +345,7 @@ describe("monster controller damage", () => {
   });
 
   it("deals damage to a monster it owns", () => {
-    const player = { did: "me", x: 0, z: 0 };
+    const player = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const c = makeController({ getPlayers: () => [player] });
     c.tick(1 / 60);
     const [id, m] = [...c.monsters.entries()][0];
@@ -357,8 +357,8 @@ describe("monster controller damage", () => {
   });
 
   it("refuses to damage a monster another player owns", () => {
-    const me = { did: "me", x: 0, z: 0 };
-    const peer = { did: "aaa", x: 10, z: 0 }; // strictly closer to the crafted monster
+    const me = { did: "me", x: 0, y: GROUND + 1, z: 0 };
+    const peer = { did: "aaa", x: 10, y: GROUND + 1, z: 0 }; // strictly closer to the crafted monster
     const c = makeController({ getPlayers: () => [me, peer] });
     c.applyMonsterUpdates([update()]);
     expect(c.monsters.get("m1_0_0_0")!.owner).toBe("aaa");
@@ -367,7 +367,7 @@ describe("monster controller damage", () => {
   });
 
   it("applies a peer's remote damage to a monster it owns", () => {
-    const player = { did: "me", x: 0, z: 0 };
+    const player = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const c = makeController({ getPlayers: () => [player] });
     c.tick(1 / 60);
     const [id, m] = [...c.monsters.entries()][0];
@@ -381,7 +381,7 @@ describe("monster controller damage", () => {
   });
 
   it("knocks a monster back from the attacker", () => {
-    const player = { did: "me", x: 0, z: 0 };
+    const player = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const c = makeController({ getPlayers: () => [player] });
     c.tick(1 / 60);
     const [id, m] = [...c.monsters.entries()][0];
@@ -398,7 +398,7 @@ describe("monster controller damage", () => {
   });
 
   it("does not push a monster far enough to reach a wall", () => {
-    const player = { did: "me", x: 0, z: 0 };
+    const player = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const c = makeController({
       getPlayers: () => [player],
       solidAt: () => true,
@@ -417,7 +417,7 @@ describe("monster controller damage", () => {
   });
 
   it("reports the hit through onHit", () => {
-    const player = { did: "me", x: 0, z: 0 };
+    const player = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const hits: string[] = [];
     const c = makeController({
       getPlayers: () => [player],
@@ -433,7 +433,7 @@ describe("monster controller damage", () => {
   });
 
   it("floors health at zero, writes the tombstone, and never revives the monster", () => {
-    const player = { did: "me", x: 0, z: 0 };
+    const player = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const c = makeController({ getPlayers: () => [player] });
     c.tick(1 / 60);
     const [id, m] = [...c.monsters.entries()][0];
@@ -469,8 +469,8 @@ describe("monster controller damage", () => {
   });
 
   it("keeps a peer-owned corpse until it has lain out, then forgets it", () => {
-    const me = { did: "me", x: 0, z: 0 };
-    const peer = { did: "aaa", x: 10, z: 0 };
+    const me = { did: "me", x: 0, y: GROUND + 1, z: 0 };
+    const peer = { did: "aaa", x: 10, y: GROUND + 1, z: 0 };
     const c = makeController({ getPlayers: () => [me, peer] });
     c.applyMonsterUpdates([update()]);
     expect(c.monsters.get("m1_0_0_0")!.owner).toBe("aaa");
@@ -497,7 +497,7 @@ describe("monster controller damage", () => {
   });
 
   it("broadcasts a dead monster's final state so peers hide it", () => {
-    const player = { did: "me", x: 0, z: 0 };
+    const player = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const sent: MonsterUpdate[][] = [];
     const c = makeController({
       getPlayers: () => [player],
@@ -539,7 +539,7 @@ describe("monster controller attacks", () => {
   /** The attacker positions a fresh controller a player next to, then waits for a swing. */
   const placeNextTo = (
     c: MonsterController,
-    player: { did: string; x: number; z: number },
+    player: { did: string; x: number; y: number; z: number },
     seconds: number,
   ): void => {
     c.tick(1 / 60);
@@ -553,7 +553,7 @@ describe("monster controller attacks", () => {
   };
 
   it("reports an owned zombie's swing on the local player", () => {
-    const me = { did: "me", x: 0, z: 0 };
+    const me = { did: "me", x: 0, y: GROUND + 1, z: 0 };
     const hits: Array<[string, number]> = [];
     const c = makeController({
       getPlayers: () => [me],
@@ -566,8 +566,8 @@ describe("monster controller attacks", () => {
   });
 
   it("reports the swing on the nearer peer when one stands closer", () => {
-    const me = { did: "me", x: 0, z: 0 };
-    const peer = { did: "aaa", x: 0, z: 0 };
+    const me = { did: "me", x: 0, y: GROUND + 1, z: 0 };
+    const peer = { did: "aaa", x: 0, y: GROUND + 1, z: 0 };
     const hits: Array<[string, number]> = [];
     const c = makeController({
       getPlayers: () => [me, peer],
@@ -604,8 +604,8 @@ describe("monster controller attacks", () => {
   });
 
   it("reports nothing for a monster a peer owns", () => {
-    const me = { did: "me", x: 0, z: 0 };
-    const peer = { did: "aaa", x: 0, z: 0 };
+    const me = { did: "me", x: 0, y: GROUND + 1, z: 0 };
+    const peer = { did: "aaa", x: 0, y: GROUND + 1, z: 0 };
     const hits: Array<[string, number]> = [];
     const c = makeController({
       getPlayers: () => [me, peer],
@@ -618,5 +618,44 @@ describe("monster controller attacks", () => {
       vi.advanceTimersByTime(16);
     }
     expect(hits).toEqual([]);
+  });
+
+  it("does not swing at a player far above, but swings once they are at its height", () => {
+    const me = { did: "me", x: 0, y: GROUND + 1, z: 0 };
+    const hits: Array<[string, number]> = [];
+    const c = makeController({
+      getPlayers: () => [me],
+      onHitPlayer: (did, amount) => hits.push([did, amount]),
+    });
+    const stepFor = (): void => {
+      for (
+        let i = 0;
+        i < Math.ceil((ATTACK_INTERVAL_SECONDS + 1) / (1 / 60));
+        i++
+      ) {
+        c.tick(1 / 60);
+        vi.advanceTimersByTime(16);
+      }
+    };
+    c.tick(1 / 60);
+    // Stand exactly where the zombie is, five units above it: the old
+    // horizontal-only distance read ~0 and swung through the air.
+    {
+      const [, m] = [...c.monsters.entries()][0];
+      me.x = m.pose.x;
+      me.z = m.pose.z;
+      me.y = m.pose.y + 5;
+    }
+    stepFor();
+    expect(hits).toEqual([]);
+    // Drop to the zombie's height, still right next to it: it swings.
+    {
+      const [, m] = [...c.monsters.entries()][0];
+      me.x = m.pose.x + 1;
+      me.z = m.pose.z;
+      me.y = m.pose.y;
+    }
+    stepFor();
+    expect(hits.length).toBeGreaterThan(0);
   });
 });

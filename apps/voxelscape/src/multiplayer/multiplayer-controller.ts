@@ -275,7 +275,7 @@ export class MultiplayerController {
    * Every connected peer's live position, for callers that need to know where
    * the other players are (monsters chase and choose owners among them).
    */
-  peerPositions(): Array<{ did: string; x: number; z: number }> {
+  peerPositions(): Array<{ did: string; x: number; y: number; z: number }> {
     return this.remotePlayers?.positions() ?? [];
   }
 

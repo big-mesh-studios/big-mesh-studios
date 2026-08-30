@@ -50,7 +50,9 @@ describe("zombie brain", () => {
 
   it("sleeps when the nearest player is beyond wake radius", () => {
     const m = makeSnapshot();
-    const inputs = makeInputs({ players: [{ x: WAKE_RADIUS + 10, z: 0 }] });
+    const inputs = makeInputs({
+      players: [{ x: WAKE_RADIUS + 10, y: GROUND + 1, z: 0 }],
+    });
     const { snapshot } = stepZombie(1, m, rng, inputs);
     expect(snapshot.state).toBe("sleep");
     expect(snapshot.pose.x).toBe(0);
@@ -58,14 +60,14 @@ describe("zombie brain", () => {
 
   it("wanders when a player is within wake but outside aggro", () => {
     const m = makeSnapshot();
-    const inputs = makeInputs({ players: [{ x: 30, z: 0 }] });
+    const inputs = makeInputs({ players: [{ x: 30, y: GROUND + 1, z: 0 }] });
     const { snapshot } = stepZombie(1, m, rng, inputs);
     expect(snapshot.state).toBe("wander");
   });
 
   it("chases the nearest player and closes the distance", () => {
     const m = makeSnapshot();
-    const inputs = makeInputs({ players: [{ x: 10, z: 0 }] });
+    const inputs = makeInputs({ players: [{ x: 10, y: GROUND + 1, z: 0 }] });
     const { snapshot } = stepZombie(1, m, rng, inputs);
     expect(snapshot.state).toBe("chase");
     expect(snapshot.pose.x).toBeGreaterThan(0);
@@ -76,7 +78,7 @@ describe("zombie brain", () => {
 
   it("swings at a player in melee range, on an interval", () => {
     const m = makeSnapshot({ cooldown: 0.2 });
-    const inputs = makeInputs({ players: [{ x: 1, z: 0 }] });
+    const inputs = makeInputs({ players: [{ x: 1, y: GROUND + 1, z: 0 }] });
     const { snapshot } = stepZombie(1, m, rng, inputs);
     expect(snapshot.state).toBe("attack");
     expect(snapshot.pose.x).toBe(0);
@@ -86,7 +88,7 @@ describe("zombie brain", () => {
 
   it("keeps the swing timing when mid-swing", () => {
     const m = makeSnapshot({ cooldown: 0.6 });
-    const inputs = makeInputs({ players: [{ x: 1, z: 0 }] });
+    const inputs = makeInputs({ players: [{ x: 1, y: GROUND + 1, z: 0 }] });
     const { snapshot } = stepZombie(0.2, m, rng, inputs);
     expect(snapshot.state).toBe("attack");
     expect(snapshot.cooldown).toBeCloseTo(0.4, 5);
@@ -95,7 +97,7 @@ describe("zombie brain", () => {
   it("stays grounded on the height field", () => {
     const m = makeSnapshot();
     const inputs = makeInputs({
-      players: [{ x: 10, z: 0 }],
+      players: [{ x: 10, y: GROUND + 1, z: 0 }],
       heightAt: (x) => GROUND + x * 0.5,
     });
     const { snapshot } = stepZombie(0.5, m, rng, inputs);
@@ -108,7 +110,7 @@ describe("zombie brain", () => {
   it("will not walk into a solid block", () => {
     const m = makeSnapshot();
     const inputs = makeInputs({
-      players: [{ x: 10, z: 0 }],
+      players: [{ x: 10, y: GROUND + 1, z: 0 }],
       solidAt: (x) => x > 1,
     });
     const { snapshot } = stepZombie(1, m, rng, inputs);
@@ -118,7 +120,7 @@ describe("zombie brain", () => {
   it("will not wade into water", () => {
     const m = makeSnapshot();
     const inputs = makeInputs({
-      players: [{ x: 10, z: 0 }],
+      players: [{ x: 10, y: GROUND + 1, z: 0 }],
       waterAt: (x) => x > 1,
     });
     const { snapshot } = stepZombie(1, m, rng, inputs);
@@ -128,7 +130,7 @@ describe("zombie brain", () => {
   it("refuses to climb too steep a slope", () => {
     const m = makeSnapshot();
     const inputs = makeInputs({
-      players: [{ x: 10, z: 0 }],
+      players: [{ x: 10, y: GROUND + 1, z: 0 }],
       heightAt: (x) => (x > 1 ? GROUND + 5 : GROUND),
     });
     const { snapshot } = stepZombie(1, m, rng, inputs);
@@ -137,7 +139,7 @@ describe("zombie brain", () => {
 
   it("re-rolls the wander heading when its time is up", () => {
     const m = makeSnapshot();
-    const inputs = makeInputs({ players: [{ x: 30, z: 0 }] });
+    const inputs = makeInputs({ players: [{ x: 30, y: GROUND + 1, z: 0 }] });
     let calls = 0;
     const seqRng = (): number => (++calls === 1 ? 0 : 0.75);
     const { snapshot } = stepZombie(1, m, seqRng, inputs);
@@ -149,13 +151,13 @@ describe("zombie brain", () => {
 });
 
 describe("zombie attacks", () => {
-  const melee = { x: 1, z: 0 };
+  const melee = { x: 1, y: GROUND + 1, z: 0 };
 
   it("reports the nearest player when a swing lands", () => {
     const m = makeSnapshot({ cooldown: 0.1 });
     const inputs = makeInputs({ players: [melee] });
     const { attack } = stepZombie(1, m, rng, inputs);
-    expect(attack).toEqual(melee);
+    expect(attack).toEqual({ x: melee.x, z: melee.z });
   });
 
   it("reports nothing while the cooldown still runs", () => {
@@ -170,30 +172,65 @@ describe("zombie attacks", () => {
       1,
       makeSnapshot(),
       rng,
-      makeInputs({ players: [{ x: 10, z: 0 }] }),
+      makeInputs({ players: [{ x: 10, y: GROUND + 1, z: 0 }] }),
     );
     expect(chase.attack).toBeNull();
     const wander = stepZombie(
       1,
       makeSnapshot(),
       rng,
-      makeInputs({ players: [{ x: 30, z: 0 }] }),
+      makeInputs({ players: [{ x: 30, y: GROUND + 1, z: 0 }] }),
     );
     expect(wander.attack).toBeNull();
     const sleep = stepZombie(
       1,
       makeSnapshot(),
       rng,
-      makeInputs({ players: [{ x: WAKE_RADIUS + 10, z: 0 }] }),
+      makeInputs({ players: [{ x: WAKE_RADIUS + 10, y: GROUND + 1, z: 0 }] }),
     );
     expect(sleep.attack).toBeNull();
   });
 
   it("reports no swing against a player outside melee range", () => {
-    const far = { x: ATTACK_RADIUS + 1, z: 0 };
+    const far = { x: ATTACK_RADIUS + 1, y: GROUND + 1, z: 0 };
     const m = makeSnapshot({ cooldown: 0 });
     const { attack } = stepZombie(1, m, rng, makeInputs({ players: [far] }));
     expect(attack).toBeNull();
+  });
+
+  it("swings at a player close in all three axes", () => {
+    const m = makeSnapshot({ cooldown: 0 });
+    const atHeight = { x: 1, y: m.pose.y, z: 0 };
+    const { snapshot, attack } = stepZombie(
+      1,
+      m,
+      rng,
+      makeInputs({ players: [atHeight] }),
+    );
+    expect(snapshot.state).toBe("attack");
+    expect(attack).toEqual({ x: atHeight.x, z: atHeight.z });
+  });
+
+  it("does not swing at a player far above despite matching x and z", () => {
+    // The reported bug: a player on a ledge directly above the zombie (same
+    // xz, five units up) was at horizontal distance ~0 and so in melee range.
+    const m = makeSnapshot({ cooldown: 0 });
+    const above = { x: 1, y: m.pose.y + 5, z: 0 };
+    const { snapshot, attack } = stepZombie(
+      1,
+      m,
+      rng,
+      makeInputs({ players: [above] }),
+    );
+    expect(snapshot.state).toBe("chase");
+    expect(attack).toBeNull();
+  });
+
+  it("sleeps when the nearest player is far away vertically", () => {
+    const m = makeSnapshot();
+    const high = { x: 0, y: m.pose.y + WAKE_RADIUS + 10, z: 0 };
+    const { snapshot } = stepZombie(1, m, rng, makeInputs({ players: [high] }));
+    expect(snapshot.state).toBe("sleep");
   });
 
   it("swings immediately if the cooldown already ran out while chasing", () => {
@@ -203,6 +240,6 @@ describe("zombie attacks", () => {
     const inputs = makeInputs({ players: [melee] });
     const { snapshot, attack } = stepZombie(1, m, rng, inputs);
     expect(snapshot.state).toBe("attack");
-    expect(attack).toEqual(melee);
+    expect(attack).toEqual({ x: melee.x, z: melee.z });
   });
 });

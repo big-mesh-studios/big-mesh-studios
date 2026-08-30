@@ -12,8 +12,8 @@ import {
 } from "./monster";
 
 export interface ZombieStepInputs {
-  /** Every player the zombie can see, as ground positions. */
-  players: Array<{ x: number; z: number }>;
+  /** Every player the zombie can see, as cube-centre positions. */
+  players: Array<{ x: number; y: number; z: number }>;
   /** Ground height at an absolute world xz, for standing and steepness checks. */
   heightAt: (x: number, z: number) => number;
   /** Whether a voxel is solid, for walls placed by players. */
@@ -22,11 +22,11 @@ export interface ZombieStepInputs {
   waterAt: (x: number, y: number, z: number) => boolean;
 }
 
-/** Players beyond this horizontal distance are ignored; the zombie sleeps. */
+/** Players beyond this distance are ignored; the zombie sleeps. */
 export const WAKE_RADIUS = 48;
-/** Players within this horizontal distance are chased. */
+/** Players within this distance are chased. */
 export const AGGRO_RADIUS = 18;
-/** Players within this horizontal distance are swung at. */
+/** Players within this distance are swung at. */
 export const ATTACK_RADIUS = 2.4;
 /** Seconds between swings while a player stays in melee range. */
 export const ATTACK_INTERVAL_SECONDS = 1;
@@ -45,17 +45,19 @@ const WANDER_MIN_SECONDS = 3;
 /** Uniform spread added to the shortest wander duration, seconds. */
 const WANDER_SPREAD_SECONDS = 4;
 
-const horizontalDistance = (pose: MonsterPose, x: number, z: number): number =>
-  Math.hypot(pose.x - x, pose.z - z);
+const distance = (
+  pose: MonsterPose,
+  p: { x: number; y: number; z: number },
+): number => Math.hypot(pose.x - p.x, pose.y - p.y, pose.z - p.z);
 
 const nearestPlayer = (
   pose: MonsterPose,
-  players: Array<{ x: number; z: number }>,
-): { x: number; z: number } | null => {
-  let best: { x: number; z: number } | null = null;
+  players: Array<{ x: number; y: number; z: number }>,
+): { x: number; y: number; z: number } | null => {
+  let best: { x: number; y: number; z: number } | null = null;
   let bestDistance = Infinity;
   for (const p of players) {
-    const d = horizontalDistance(pose, p.x, p.z);
+    const d = distance(pose, p);
     if (d < bestDistance) {
       bestDistance = d;
       best = p;
@@ -139,10 +141,7 @@ export const stepZombie = (
 ): { snapshot: MonsterSnapshot; attack: { x: number; z: number } | null } => {
   const halfHeight = kindHalfHeight(m.kind);
   const nearest = nearestPlayer(m.pose, inputs.players);
-  const distance =
-    nearest === null
-      ? Infinity
-      : horizontalDistance(m.pose, nearest.x, nearest.z);
+  const dist = nearest === null ? Infinity : distance(m.pose, nearest);
   let cooldown = Math.max(0, m.cooldown - dt);
   let wanderLeft = m.wanderLeft;
   let attack: { x: number; z: number } | null = null;
@@ -152,7 +151,7 @@ export const stepZombie = (
     y: inputs.heightAt(pose.x, pose.z) + halfHeight,
   });
 
-  if (nearest === null || distance > WAKE_RADIUS) {
+  if (nearest === null || dist > WAKE_RADIUS) {
     return {
       snapshot: {
         ...m,
@@ -165,9 +164,9 @@ export const stepZombie = (
   }
 
   let state: MonsterState;
-  if (distance <= ATTACK_RADIUS) {
+  if (dist <= ATTACK_RADIUS) {
     state = "attack";
-  } else if (distance <= AGGRO_RADIUS) {
+  } else if (dist <= AGGRO_RADIUS) {
     state = "chase";
   } else {
     state = "wander";

@@ -134,10 +134,15 @@ export class RemotePlayers {
    * know where the connected players actually are (e.g. monsters choosing who
    * to chase or own them).
    */
-  positions(): Array<{ did: string; x: number; z: number }> {
-    const out: Array<{ did: string; x: number; z: number }> = [];
+  positions(): Array<{ did: string; x: number; y: number; z: number }> {
+    const out: Array<{ did: string; x: number; y: number; z: number }> = [];
     for (const [did, player] of this.players) {
-      out.push({ did, x: player.target.x, z: player.target.z });
+      out.push({
+        did,
+        x: player.target.x,
+        y: player.target.y,
+        z: player.target.z,
+      });
     }
     return out;
   }

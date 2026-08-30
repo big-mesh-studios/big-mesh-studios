@@ -184,6 +184,7 @@ export const createVoxelscape = ({
       {
         did: atproto.did ?? "",
         x: avatar.player.position.x,
+        y: avatar.player.position.y,
         z: avatar.player.position.z,
       },
       ...multiplayer.peerPositions(),

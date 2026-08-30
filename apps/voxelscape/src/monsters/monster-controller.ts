@@ -35,6 +35,7 @@ import {
 export interface MonsterPlayer {
   did: string;
   x: number;
+  y: number;
   z: number;
 }
 

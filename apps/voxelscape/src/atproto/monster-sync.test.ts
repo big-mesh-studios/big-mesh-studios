@@ -8,7 +8,7 @@ import { MonsterSync } from "./monster-sync";
 const makePlayer = (
   did: string,
   harness: AtprotoHarness,
-  players: Array<{ did: string; x: number; z: number }>,
+  players: Array<{ did: string; x: number; y: number; z: number }>,
 ): { controller: MonsterController; sync: MonsterSync } => {
   const controller = new MonsterController({
     seed: 42,
@@ -41,7 +41,7 @@ afterEach(() => {
 describe("monster sync", () => {
   it("persists owned monsters to the repo and discovers them into a second client", async () => {
     const harness = new AtprotoHarness();
-    const playersA = [{ did: "a", x: 0, z: 0 }];
+    const playersA = [{ did: "a", x: 0, y: 11, z: 0 }];
     const a = makePlayer("a", harness, playersA);
     a.sync.start();
     a.controller.tick(1 / 60);
@@ -61,7 +61,7 @@ describe("monster sync", () => {
 
     // a second client at the same spot discovers a's records and adopts them
     const b = makePlayer("b", harness, [
-      { did: "b", x: playersA[0].x, z: playersA[0].z },
+      { did: "b", x: playersA[0].x, y: playersA[0].y, z: playersA[0].z },
     ]);
     b.sync.start();
     await vi.advanceTimersByTimeAsync(100);
@@ -77,7 +77,7 @@ describe("monster sync", () => {
 
   it("writes a state change immediately rather than waiting for the interval", async () => {
     const harness = new AtprotoHarness();
-    const players = [{ did: "a", x: 0, z: 0 }];
+    const players = [{ did: "a", x: 0, y: 11, z: 0 }];
     const a = makePlayer("a", harness, players);
     a.sync.start();
     a.controller.tick(1 / 60);
