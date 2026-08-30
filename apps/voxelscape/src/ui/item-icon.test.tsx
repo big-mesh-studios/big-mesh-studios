@@ -1,19 +1,20 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { render } from "@solidjs/web";
-import { ICON_SIZE, swordIconStyle } from "./item-icon";
+import { ICON_SIZE, spriteIconStyle } from "./item-icon";
 import {
   SPRITESHEET_HEIGHT,
   SPRITESHEET_URL,
   SPRITESHEET_WIDTH,
-  SWORD_SPRITE_BBOX,
-} from "../player/sword-model";
+} from "../player/sprite-model";
 
-describe("swordIconStyle", () => {
-  it("crops the sword cell out of the spritesheet with kebab-case keys", () => {
-    const style = swordIconStyle();
-    const scale =
-      ICON_SIZE / Math.max(SWORD_SPRITE_BBOX.w, SWORD_SPRITE_BBOX.h);
+/** The drawn pixels of the bronze sword, as its sprite's own crop reports them. */
+const SWORD_BBOX = { x: 17, y: 651, w: 99, h: 108 };
+
+describe("spriteIconStyle", () => {
+  it("crops the sprite out of the spritesheet with kebab-case keys", () => {
+    const style = spriteIconStyle(SWORD_BBOX);
+    const scale = ICON_SIZE / Math.max(SWORD_BBOX.w, SWORD_BBOX.h);
     expect(style["background-image"]).toBe(`url("${SPRITESHEET_URL}")`);
     expect(style["background-repeat"]).toBe("no-repeat");
     expect(style["background-size"]).toBe(
@@ -26,19 +27,20 @@ describe("swordIconStyle", () => {
     );
     expect(position).not.toBeNull();
     expect(Number(position![1])).toBeCloseTo(
-      (ICON_SIZE - SWORD_SPRITE_BBOX.w * scale) / 2 -
-        SWORD_SPRITE_BBOX.x * scale,
+      (ICON_SIZE - SWORD_BBOX.w * scale) / 2 - SWORD_BBOX.x * scale,
     );
     expect(Number(position![2])).toBeLessThan(-200);
     expect(Number(position![2])).toBeCloseTo(
-      (ICON_SIZE - SWORD_SPRITE_BBOX.h * scale) / 2 -
-        SWORD_SPRITE_BBOX.y * scale,
+      (ICON_SIZE - SWORD_BBOX.h * scale) / 2 - SWORD_BBOX.y * scale,
     );
   });
 
   it("reaches a span's style through Solid", () => {
     const host = document.createElement("div");
-    render(() => <span class="icon" style={swordIconStyle()} />, host);
+    render(
+      () => <span class="icon" style={spriteIconStyle(SWORD_BBOX)} />,
+      host,
+    );
     const span = host.querySelector(".icon") as HTMLElement;
     expect(span.style.backgroundImage).toBe(`url("${SPRITESHEET_URL}")`);
     expect(span.style.backgroundRepeat).toBe("no-repeat");

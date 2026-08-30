@@ -37,14 +37,14 @@ export interface InputSnapshot {
   lookDx: number;
   /** Vertical pointer-move delta accumulated since the last frame (drag-to-look). */
   lookDy: number;
-  /** Edge-triggered: true only on the frame the break (dig) action fired. */
-  break: boolean;
-  /** Edge-triggered: true only on the frame the place action fired. */
-  place: boolean;
-  /** True while the place button is held down, for the sword's wind-up. */
-  placeHeld: boolean;
-  /** Edge-triggered: true only on the frame the place button went up. */
-  placeReleased: boolean;
+  /** Edge-triggered: true only on the frame the primary (strike) button fired. */
+  primary: boolean;
+  /** Edge-triggered: true only on the frame the secondary (use) button fired. */
+  secondary: boolean;
+  /** True while the secondary button is held down, which is what raises a guard. */
+  secondaryHeld: boolean;
+  /** Edge-triggered: true only on the frame the secondary button went up. */
+  secondaryReleased: boolean;
   /** Edge-triggered: the selected hotbar slot changed this frame, or null. */
   select: number | null;
   /** Edge-triggered: the mouse wheel's direction this frame, or 0. */
@@ -60,10 +60,10 @@ interface InputState {
   jumpHeld: boolean;
   lookDx: number;
   lookDy: number;
-  breakQueued: boolean;
-  placeQueued: boolean;
-  placeHeld: boolean;
-  placeReleasedQueued: boolean;
+  primaryQueued: boolean;
+  secondaryQueued: boolean;
+  secondaryHeld: boolean;
+  secondaryReleasedQueued: boolean;
   selectQueued: number | null;
   wheelQueued: -1 | 0 | 1;
 }
@@ -81,10 +81,10 @@ export interface InputController {
   dispose(): void;
   /** Called once per frame: returns the latest input and clears per-frame state. */
   consume(): InputSnapshot;
-  /** Edge-triggered break (dig) request, normally from the left mouse button. */
-  queueBreak(): void;
-  /** Edge-triggered place request, normally from the right mouse button. */
-  queuePlace(): void;
+  /** Edge-triggered primary (strike) request, normally from the left mouse button. */
+  queuePrimary(): void;
+  /** Edge-triggered secondary (use) request, normally from the right mouse button. */
+  queueSecondary(): void;
   /** Selects a hotbar slot by index (0-based) on the next frame. */
   queueSelect(slot: number): void;
   /** Edge-triggered jump request from the touch button. */
@@ -93,25 +93,25 @@ export interface InputController {
   setTouchMove(x: number, y: number): void;
   /** Touch button held state (drives swimming up and wall climbing). */
   setTouchJump(held: boolean): void;
-  /** Touch place button held state; releasing fires the swing release. */
-  setTouchPlace(held: boolean): void;
+  /** Touch secondary button held state, which is what a held guard reads. */
+  setTouchSecondary(held: boolean): void;
   /** Accumulate drag-to-look deltas (client pixels). */
   addLookDelta(dx: number, dy: number): void;
   canvasHandlers: {
     /**
      * Everything a press on the world canvas can mean, for the canvas this is
      * bound to. A mouse press takes the pointer lock the first time and, once
-     * locked, digs on the left button and places on the right; looking around is
-     * the locked pointer's job from then on. A touch or pen press digs or places
-     * straight away and then turns the view for as long as it is dragged, which
-     * is why the returned promise settles when that drag ends — awaiting it waits
-     * for the finger to lift.
+     * locked, strikes on the left button and uses the held item on the right;
+     * looking around is the locked pointer's job from then on. A touch or pen
+     * press fires the same action straight away and then turns the view for as
+     * long as it is dragged, which is why the returned promise settles when that
+     * drag ends — awaiting it waits for the finger to lift.
      *
      * Only the first drag is followed: a second finger touching down while one is
      * already turning the view starts nothing, so the view turns at the speed of
-     * one finger however many are down. Digging and placing are edge-triggered
-     * per press, so holding a button doesn't dig repeatedly; the right button's
-     * hold is still tracked, so a held place can wind up a swing.
+     * one finger however many are down. Both actions are edge-triggered per
+     * press, so holding a button doesn't repeat; the right button's hold is
+     * still tracked, so a held secondary can raise a guard.
      *
      * The drag delta is the difference between successive `clientX`/`clientY`
      * rather than the `movementX`/`movementY` the locked path reads. Those
@@ -136,9 +136,9 @@ export interface InputController {
      */
     onMouseMove: JSX.EventHandler<HTMLCanvasElement, MouseEvent>;
     /**
-     * Ends a right-button hold: the button going up is what swings the sword,
-     * and the edge is queued only when a hold actually started, so a click that
-     * merely took the pointer lock swings nothing.
+     * Ends a right-button hold, queuing the release edge only when a hold
+     * actually started, so a click that merely took the pointer lock releases
+     * nothing.
      */
     onPointerUp: JSX.EventHandler<HTMLCanvasElement, PointerEvent>;
   };
@@ -160,10 +160,10 @@ export const createInput = (): InputController => {
     jumpHeld: false,
     lookDx: 0,
     lookDy: 0,
-    breakQueued: false,
-    placeQueued: false,
-    placeHeld: false,
-    placeReleasedQueued: false,
+    primaryQueued: false,
+    secondaryQueued: false,
+    secondaryHeld: false,
+    secondaryReleasedQueued: false,
     selectQueued: null,
     wheelQueued: 0,
   };
@@ -192,10 +192,10 @@ export const createInput = (): InputController => {
       }
 
       if (event.button === 0) {
-        state.breakQueued = true;
+        state.primaryQueued = true;
       } else if (event.button === 2) {
-        state.placeQueued = true;
-        state.placeHeld = true;
+        state.secondaryQueued = true;
+        state.secondaryHeld = true;
       }
 
       if (dragging || event.pointerType === "mouse") {
@@ -217,10 +217,10 @@ export const createInput = (): InputController => {
       if (
         event.pointerType === "mouse" &&
         event.button === 2 &&
-        state.placeHeld
+        state.secondaryHeld
       ) {
-        state.placeHeld = false;
-        state.placeReleasedQueued = true;
+        state.secondaryHeld = false;
+        state.secondaryReleasedQueued = true;
       }
     },
   };
@@ -300,7 +300,7 @@ export const createInput = (): InputController => {
       { signal },
     );
 
-    // The right mouse button places a block, so the browser's menu is
+    // The right mouse button uses the held item, so the browser's menu is
     // suppressed across the whole page rather than over the canvas alone: a
     // press that lands a few pixels off the world would otherwise open it.
     window.addEventListener("contextmenu", (e) => e.preventDefault(), {
@@ -327,30 +327,30 @@ export const createInput = (): InputController => {
         jumpHeld: state.jumpHeld,
         lookDx: state.lookDx,
         lookDy: state.lookDy,
-        break: state.breakQueued,
-        place: state.placeQueued,
-        placeHeld: state.placeHeld,
-        placeReleased: state.placeReleasedQueued,
+        primary: state.primaryQueued,
+        secondary: state.secondaryQueued,
+        secondaryHeld: state.secondaryHeld,
+        secondaryReleased: state.secondaryReleasedQueued,
         select: state.selectQueued,
         wheel: state.wheelQueued,
       };
       state.jumpQueued = false;
       state.lookDx = 0;
       state.lookDy = 0;
-      state.breakQueued = false;
-      state.placeQueued = false;
-      state.placeReleasedQueued = false;
+      state.primaryQueued = false;
+      state.secondaryQueued = false;
+      state.secondaryReleasedQueued = false;
       state.selectQueued = null;
       state.wheelQueued = 0;
       return snap;
     },
 
-    queueBreak() {
-      state.breakQueued = true;
+    queuePrimary() {
+      state.primaryQueued = true;
     },
 
-    queuePlace() {
-      state.placeQueued = true;
+    queueSecondary() {
+      state.secondaryQueued = true;
     },
 
     queueSelect(slot) {
@@ -370,13 +370,13 @@ export const createInput = (): InputController => {
       state.jumpHeld = held;
     },
 
-    setTouchPlace(held) {
+    setTouchSecondary(held) {
       if (held) {
-        state.placeQueued = true;
-        state.placeHeld = true;
-      } else if (state.placeHeld) {
-        state.placeHeld = false;
-        state.placeReleasedQueued = true;
+        state.secondaryQueued = true;
+        state.secondaryHeld = true;
+      } else if (state.secondaryHeld) {
+        state.secondaryHeld = false;
+        state.secondaryReleasedQueued = true;
       }
     },
   };

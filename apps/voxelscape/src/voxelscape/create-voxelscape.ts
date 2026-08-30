@@ -11,24 +11,26 @@ import { createCommands } from "../commands";
 import { createEnvironment } from "../environment/create-environment";
 import { MonsterSync } from "../atproto/monster-sync";
 import { MonsterController } from "../monsters/monster-controller";
-import { SWORD_DAMAGE, pickMonster } from "../monsters/hit";
 import { RemoteMonsters } from "../monsters/remote-monsters";
 import { MultiplayerController } from "../multiplayer/multiplayer-controller";
 import { createPeerJSSignaling } from "../multiplayer/peerjs-transport";
 import { createInput, type InputController } from "../player/create-input";
 import { createPlayerAvatar } from "../player/create-player-avatar";
 import { EditingController } from "../player/editing-controller";
+import { Hand } from "../player/hand";
 import { PlayerHealth } from "../player/health";
-import { HeldItem } from "../player/held-item";
-import { Inventory, SWORD } from "../player/inventory";
+import { Inventory } from "../player/inventory";
+import { ITEM_ORDER, ITEMS, type ItemId } from "../player/items";
 import type { Player, PlayerConfig } from "../player/player";
-import { loadSwordModel } from "../player/sword-model";
+import { loadSpriteModel } from "../player/sprite-model";
+import type { Target, Tool, ToolContext } from "../player/tools/tool";
 import { AdaptiveResolution } from "../render/adaptive";
 import { createRenderLoop } from "../render/create-render-loop";
 import {
   createVoxelWorld,
   type InitialDrawProgress,
 } from "../world/create-voxel-world";
+import type { SubTexture } from "../renderers/atlas";
 import { cellsInSphere } from "../world/chunk-sphere";
 import { type Dim3 } from "../world/level-data";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "../world/noise";
@@ -79,10 +81,15 @@ export interface Voxelscape {
   commands: Commander;
   /** Whether `onDebugStats` is being called, which `/render:perf` toggles. */
   debugPerf: Accessor<boolean>;
-  /** Last break/place result, so the HUD can show silent failures. */
+  /** Last strike or use result, so the HUD can show silent failures. */
   editStatus: Accessor<string>;
-  /** Whether the crosshair is currently pointing at something within reach. */
-  inReach: Accessor<boolean>;
+  /** What the crosshair is over, or null when the primary button would find nothing. */
+  target: Accessor<Target | null>;
+  /**
+   * The spritesheet crop each item's hotbar icon is drawn from, filled in as
+   * the sprites load. An item absent here is shown by name instead.
+   */
+  icons: Accessor<Partial<Record<ItemId, SubTexture>>>;
   /** How much of the world is on screen, for a loading screen to show and dismiss on. */
   loading: Accessor<InitialDrawProgress>;
   /**
@@ -112,7 +119,10 @@ export const createVoxelscape = ({
   player,
 }: VoxelscapeConfig = {}): Voxelscape => {
   const [editStatus, setEditStatus] = createSignal("");
-  const [inReach, setInReach] = createSignal(false);
+  const [target, setTarget] = createSignal<Target | null>(null);
+  const [icons, setIcons] = createSignal<Partial<Record<ItemId, SubTexture>>>(
+    {},
+  );
   const [debugPerf, setDebugPerf] = createSignal(initialDebugPerf);
 
   const input = createInput();
@@ -209,40 +219,7 @@ export const createVoxelscape = ({
   });
 
   const inventory = new Inventory();
-  const heldItem = new HeldItem({
-    camera,
-    getSelected: () => inventory.selectedId,
-    getFirstPerson: () => avatar.firstPerson,
-    // The swing fires on the release edge, inside the frame's advance. What it
-    // hits is whatever the crosshair is over that moment; the monster's owner
-    // applies the damage (this client, or a peer who then sends the lowered
-    // health back in its next broadcast).
-    onSwing: () => {
-      const look = avatar.look();
-      const hit = pickMonster(
-        look.origin,
-        look.direction,
-        monsters.monsters.values(),
-      );
-      if (hit === null) {
-        return;
-      }
-      // The attacker sees the hit flash on their own client, whatever the
-      // monster's owner does with it.
-      monsterRender.flashHit(hit.id);
-      const damage = {
-        id: hit.id,
-        amount: SWORD_DAMAGE,
-        attackerX: avatar.player.position.x,
-        attackerZ: avatar.player.position.z,
-      };
-      // A monster the swing landed on but this client does not own is the
-      // owner's to damage: broadcast the hit and let them apply it.
-      if (!monsters.damage(hit.id, SWORD_DAMAGE)) {
-        multiplayer.broadcastDamage(damage);
-      }
-    },
-  });
+  const hand = new Hand({ camera });
   const editing = new EditingController({
     blocks: world.blocks,
     layer: world.editLayer,
@@ -258,6 +235,32 @@ export const createVoxelscape = ({
     getLook: () => avatar.look(),
     getPlayerVoxels: () => avatar.occupiedVoxels(),
   });
+
+  const toolContext: ToolContext = {
+    editing,
+    look: () => avatar.look(),
+    position: () => avatar.player.position,
+    monsters: () => monsters.monsters.values(),
+    damageMonster: (id, amount) => monsters.damage(id, amount),
+    flashMonster: (id) => monsterRender.flashHit(id),
+    broadcastMonsterDamage: (damage) => multiplayer.broadcastDamage(damage),
+    setGuarding: (raised) => health.setGuarding(raised),
+  };
+  const tools = Object.fromEntries(
+    ITEM_ORDER.map((id) => [id, ITEMS[id].tool(toolContext)]),
+  ) as Record<ItemId, Tool>;
+
+  /** The item the hand holds, so the tool it names is put away when it changes. */
+  let wielded: ItemId | null = null;
+  const wield = (next: ItemId | null): void => {
+    if (next === wielded) {
+      return;
+    }
+    if (wielded !== null) {
+      tools[wielded].stow();
+    }
+    wielded = next;
+  };
 
   const atproto = new AtprotoController({
     layer: world.editLayer,
@@ -378,13 +381,23 @@ export const createVoxelscape = ({
 
   void dressMonsters().then((line) => onNotice?.(line));
 
-  // The held sword is drawn from the site's spritesheet; a failure to load
-  // just leaves it unheld rather than blocking the world.
-  void loadSwordModel()
-    .then((model) => heldItem.setModel(model))
-    .catch((err) =>
-      console.warn("[sword] not drawn; the player holds nothing.", err),
-    );
+  // Every item drawn from the site's spritesheet is read once, for the mesh
+  // the hand holds and the crop its hotbar icon shows; a failure to load just
+  // leaves that item undrawn rather than blocking the world.
+  for (const id of ITEM_ORDER) {
+    const sprite = ITEMS[id].sprite;
+    if (sprite === null) {
+      continue;
+    }
+    void loadSpriteModel(sprite)
+      .then(({ model, bbox }) => {
+        hand.setModel(id, model);
+        setIcons((current) => ({ ...current, [id]: bbox }));
+      })
+      .catch((err) =>
+        console.warn(`[${id}] not drawn; the player holds nothing.`, err),
+      );
+  }
 
   /**
    * Everything drawn, in the order it is drawn. There is no depth-sorted pass
@@ -501,29 +514,38 @@ export const createVoxelscape = ({
         // spawn once it has lain out, and the ordinary branch below runs
         // from this frame on.
         avatar.placeDeath(health.fallProgress);
+        wield(null);
+        setTarget(null);
+        hand.show(null, null);
       } else {
         const snapshot = input.consume();
         avatar.move(dt, snapshot);
-        // The camera has not caught up yet, so this picks from last frame's eye
-        // along this frame's look. Recomputed every frame, not just on edits, so
-        // the crosshair tracks what it is over.
-        setInReach(editing.pick().target !== null);
-        if (snapshot.break) {
-          const result = editing.breakBlock();
-          if (result !== null) {
-            setEditStatus(result);
-          }
-        }
-        // With the sword selected the place button swings it instead; the swing
-        // itself runs inside `heldItem.update`.
-        if (snapshot.place && inventory.selectedId !== SWORD) {
-          setEditStatus(editing.placeBlock());
-        }
+        // Selecting first, so the rest of the frame — the pick, both buttons,
+        // and what the hand draws — all belong to the same tool.
         if (snapshot.select !== null) {
           inventory.selectSlot(snapshot.select);
         }
         if (snapshot.wheel !== 0) {
           inventory.selectStep(snapshot.wheel);
+        }
+        wield(inventory.selectedId);
+        const tool = tools[inventory.selectedId];
+        // The camera has not caught up yet, so this picks from last frame's eye
+        // along this frame's look. Recomputed every frame, not just on edits, so
+        // the crosshair tracks what it is over.
+        const pick = tool.pick();
+        setTarget(pick.primary);
+        if (snapshot.primary) {
+          const result = tool.primary(pick);
+          if (result !== null) {
+            setEditStatus(result);
+          }
+        }
+        if (snapshot.secondary) {
+          const result = tool.secondary(pick);
+          if (result !== null) {
+            setEditStatus(result);
+          }
         }
         world.scrollTo(
           avatar.player.position.x,
@@ -531,7 +553,11 @@ export const createVoxelscape = ({
           avatar.player.position.z,
         );
         avatar.place();
-        heldItem.update(dt, snapshot.placeHeld, snapshot.placeReleased);
+        tool.update(dt, snapshot);
+        hand.show(
+          avatar.firstPerson ? inventory.selectedId : null,
+          tool.pose(),
+        );
       }
       multiplayer.tick(dt);
       monsters.tick(dt);
@@ -547,7 +573,7 @@ export const createVoxelscape = ({
     // The voxel-model zombies are self-lit, so they take the same day-night
     // state the renderers apply to the terrain and the standard materials.
     monsterRender.applyLighting(lighting);
-    heldItem.applyLighting(lighting);
+    hand.applyLighting(lighting);
     world.renderer.tick(dt, camera);
   };
 
@@ -583,7 +609,8 @@ export const createVoxelscape = ({
     commands,
     debugPerf,
     editStatus,
-    inReach,
+    target,
+    icons,
     loading,
     mount,
 
@@ -595,7 +622,7 @@ export const createVoxelscape = ({
       environment.dispose();
       monsterRender.clear();
       monsterSync.dispose();
-      heldItem.dispose();
+      hand.dispose();
       input.dispose();
     },
   };

@@ -1,21 +1,19 @@
-// The sword the player holds, as a `rm-stacker` voxel model built from the
-// items spritesheet. The bronze-sword sprite is cropped to its drawn pixels,
-// downsampled to 24×24, and given a one-pixel black outline by turning every
-// empty cell touching a solid one black; that is the front face, the back face
-// is its horizontal flip, and the left, right, top and bottom faces are each a
-// single black line. The solver's silhouette carving turns that into a flat
-// sword card a voxel thick with a black rim, exactly the drawing a held item
-// needs.
+// A tool the player holds, as a `rm-stacker` voxel model built from the items
+// spritesheet. The sprite is cropped to its drawn pixels, downsampled to
+// 24×24, and given a one-pixel black outline by turning every empty cell
+// touching a solid one black; that is the front face, the back face is its
+// horizontal flip, and the left, right, top and bottom faces are each a single
+// black line. The solver's silhouette carving turns that into a flat card a
+// voxel thick with a black rim, exactly the drawing a held item needs. The
+// crop it measured comes back with the model, so the hotbar icon can show the
+// same pixels without the rectangle being measured a second time by hand.
 import { decode } from "fast-png";
 import { Bitmap, type Dimensions3D, type RGBA } from "@big-mesh-studios/maths";
 import type { Model } from "@big-mesh-studios/stacker/renderer";
-import { parseTileAtlasXml } from "../renderers/atlas";
+import { parseTileAtlasXml, type SubTexture } from "../renderers/atlas";
 
-/** The resolution every face of the sword model is built at. */
+/** The resolution every face of a tool's model is built at. */
 const SIDE = 24;
-
-/** The sprite that becomes the sword, as the atlas XML names it. */
-export const SWORD_SPRITE = "sword_bronze";
 
 export const SPRITESHEET_URL = "./spritesheets/spritesheet_items.png";
 const SPRITESHEET_XML_URL = "./spritesheets/spritesheet_items.xml";
@@ -24,11 +22,15 @@ const SPRITESHEET_XML_URL = "./spritesheets/spritesheet_items.xml";
 export const SPRITESHEET_WIDTH = 896;
 export const SPRITESHEET_HEIGHT = 1024;
 
-/** The rectangle of the sword's drawn pixels in the spritesheet, for an icon. */
-export const SWORD_SPRITE_BBOX = { x: 17, y: 651, w: 99, h: 108 };
-
-/** Alpha above which a sampled sprite pixel counts as solid sword. */
+/** Alpha above which a sampled sprite pixel counts as solid drawing. */
 const ALPHA_SOLID = 100;
+
+/** A model and the rectangle of the sprite's drawn pixels it was built from. */
+export interface SpriteModel {
+  model: Model;
+  /** The drawn pixels, relative to the sprite's own cell in the spritesheet. */
+  trim: SubTexture;
+}
 
 /** Black, the palette entry the outline and the side lines are drawn in. */
 const BLACK: RGBA = { r: 0, g: 0, b: 0, a: 255 };
@@ -76,7 +78,7 @@ export const sampleSpriteRegion = (
  * resolution: crops to the opaque rectangle, downsamples to 24×24, outlines
  * the silhouette in black, and lays the six faces out for the stacker solver.
  */
-export const buildSwordModel = (sprite: SpritePixels): Model => {
+export const buildSpriteModel = (sprite: SpritePixels): SpriteModel => {
   const { width, height, data } = sprite;
   const alphaAt = (x: number, y: number): number =>
     data[(y * width + x) * 4 + 3];
@@ -254,18 +256,25 @@ export const buildSwordModel = (sprite: SpritePixels): Model => {
   const dimensions: Dimensions3D = { width: SIDE, height: SIDE, depth: SIDE };
 
   return {
-    sides: { front, back, left, right, top, bottom },
-    palette,
-    dimensions,
+    model: {
+      sides: { front, back, left, right, top, bottom },
+      palette,
+      dimensions,
+    },
+    trim: { x: minX, y: minY, w: drawnW, h: drawnH },
   };
 };
 
 /**
- * Reads the bronze-sword sprite out of the items spritesheet and its atlas
- * XML, decodes it, and builds the sword model. Throws when any of the files or
- * the sprite itself is missing, which a caller is expected to swallow.
+ * Reads one named sprite out of the items spritesheet and its atlas XML,
+ * decodes it, and builds its model. The returned crop is in spritesheet
+ * coordinates, so a hotbar icon can be cut from the same sheet. Throws when
+ * any of the files or the sprite itself is missing, which a caller is expected
+ * to swallow.
  */
-export const loadSwordModel = async (): Promise<Model> => {
+export const loadSpriteModel = async (
+  name: string,
+): Promise<{ model: Model; bbox: SubTexture }> => {
   const [pngRes, xmlRes] = await Promise.all([
     fetch(SPRITESHEET_URL),
     fetch(SPRITESHEET_XML_URL),
@@ -279,14 +288,19 @@ export const loadSwordModel = async (): Promise<Model> => {
     );
   }
   const atlas = parseTileAtlasXml(await xmlRes.text());
-  const sub = atlas.get(SWORD_SPRITE);
+  const sub = atlas.get(name);
   if (sub === undefined) {
-    throw new Error(`the items spritesheet has no "${SWORD_SPRITE}"`);
+    throw new Error(`the items spritesheet has no "${name}"`);
   }
   const png = decode(new Uint8Array(await pngRes.arrayBuffer()));
   if (png.depth !== 8) {
     throw new Error(`the items spritesheet is not an 8-bit png`);
   }
-  const sprite = sampleSpriteRegion(png, png.palette, sub);
-  return buildSwordModel(sprite);
+  const { model, trim } = buildSpriteModel(
+    sampleSpriteRegion(png, png.palette, sub),
+  );
+  return {
+    model,
+    bbox: { x: sub.x + trim.x, y: sub.y + trim.y, w: trim.w, h: trim.h },
+  };
 };

@@ -20,6 +20,12 @@ export interface VoxelPick {
   target: WorldVoxel | null;
   /** The empty voxel adjacent to the hit face (the placement cell), or null. */
   place: WorldVoxel | null;
+  /**
+   * How far along the ray the target's near face sits, in world units, and
+   * `Infinity` when the ray crossed nothing. A tool compares this against
+   * another kind of pick to find which of the two the crosshair is really on.
+   */
+  distance: number;
 }
 
 const readWorldVoxel = (blocks: WorldBlock[], w: WorldVoxel): number => {
@@ -114,7 +120,7 @@ export const pickVoxel = (
       tMaxZ += tDeltaZ;
     }
     if (t > maxVoxelT) {
-      return { target: null, place: prev };
+      return { target: null, place: prev, distance: Infinity };
     }
   }
 
@@ -122,7 +128,7 @@ export const pickVoxel = (
     const w: WorldVoxel = [x, y, z];
     const id = readWorldVoxel(blocks, w);
     if (id !== VOXEL_AIR) {
-      return { target: w, place: prev };
+      return { target: w, place: prev, distance: t * VOXEL_SIZE };
     }
     prev = w;
     if (tMaxX < tMaxY && tMaxX < tMaxZ) {
@@ -139,7 +145,7 @@ export const pickVoxel = (
       tMaxZ += tDeltaZ;
     }
     if (t > maxVoxelT) {
-      return { target: null, place: prev };
+      return { target: null, place: prev, distance: Infinity };
     }
   }
 };

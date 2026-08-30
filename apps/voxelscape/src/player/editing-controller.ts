@@ -1,9 +1,9 @@
-// Minecraft-style block editing: break a targeted voxel (collecting it into
-// the inventory) or place the selected block into the adjacent cell. All the
-// actual voxel mutation flows through the shared `EditLayer` (world-voxel
+// Block editing: break the targeted voxel (collecting it into the inventory)
+// or place a given block into the cell against the face being looked at. All
+// the actual voxel mutation flows through the shared `EditLayer` (world-voxel
 // keyed, so it persists and syncs), then into the containing block's store.
 // A plain domain object: it knows how to edit voxels and keep the renderer
-// informed, not that a console or network exists.
+// informed, not which item is wielded, nor that a console or network exists.
 import { type Dim3, type WorldBlock } from "../world/level-data";
 import {
   blockWorldVoxelRange,
@@ -12,7 +12,8 @@ import {
   type WorldVoxel,
 } from "../world/edit-layer";
 import { pickVoxel, type VoxelPick } from "../world/picker";
-import { BREAK_YIELD, COLLECTABLE, type Inventory } from "./inventory";
+import { BREAK_YIELD, ITEMS, type ItemId } from "./items";
+import { type Inventory } from "./inventory";
 import { VOXEL_AIR, VOXEL_GRASS, VOXEL_DIRT } from "../world/voxel-store";
 
 export interface EditingControllerParams {
@@ -87,48 +88,51 @@ export class EditingController {
   }
 
   /**
-   * Breaks the targeted voxel and adds its inventory yield (grass and dirt
-   * both collect as dirt). Returns a message describing the outcome, or null
-   * when nothing was broken.
+   * Breaks `target` and adds what it yields to the inventory (grass and dirt
+   * both collect as dirt).
+   *
+   * @returns A message describing the outcome, or null when nothing was
+   * broken — no target, or a voxel that yields nothing.
    */
-  breakBlock(): string | null {
-    const pick = this.pick();
-    if (pick.target === null) {
+  breakBlock(target: WorldVoxel | null): string | null {
+    if (target === null) {
       return null;
     }
-    const [x, y, z] = pick.target;
-    const id = this.readVoxel(pick.target);
-    const yieldId = BREAK_YIELD[id];
-    if (yieldId === undefined) {
+    const [x, y, z] = target;
+    const item = BREAK_YIELD[this.readVoxel(target)];
+    if (item === undefined) {
       return null;
     }
-    this.applyEdit(pick.target, VOXEL_AIR);
-    this.inventory.add(yieldId, 1);
+    this.applyEdit(target, VOXEL_AIR);
+    this.inventory.add(item, 1);
     this.onEditRecorded();
-    return `broke ${COLLECTABLE[yieldId]} at ${x},${y},${z}`;
+    return `broke ${ITEMS[item].name} at ${x},${y},${z}`;
   }
   /**
-   * Places the selected block into the cell adjacent to the targeted face —
-   * the block goes on the side of the voxel under the crosshair that you're
+   * Places `voxel` into `place`, the cell adjacent to the targeted face — the
+   * block goes on the side of the voxel under the crosshair that you're
    * looking at, exactly as in Minecraft. A dirt block placed where the cell
    * above is open air becomes grass, so a fresh column shows grass where its
    * top is exposed. A cell no loaded block covers — above the world's ceiling,
-   * or past the ring's outer edge — costs no item and records no edit. Always
-   * returns a message so the player can see why a placement did not happen.
+   * or past the ring's outer edge — costs no item and records no edit.
+   *
+   * @param item The inventory item spent, one per placement.
+   * @param voxel The voxel id written into the world.
+   * @returns Always a message, so the player can see why a placement did not
+   * happen.
    */
-  placeBlock(): string {
-    const selected = this.inventory.selectedId;
-    if (!(selected in COLLECTABLE)) {
-      return "nothing selected to place";
+  placeBlock(
+    item: ItemId,
+    voxel: number,
+    target: WorldVoxel | null,
+    place: WorldVoxel | null,
+  ): string {
+    if (this.inventory.count(item) < 1) {
+      return `no ${ITEMS[item].name.toLowerCase()} to place — break some first`;
     }
-    if (this.inventory.count(selected) < 1) {
-      return `no ${COLLECTABLE[selected].toLowerCase()} to place — break some first`;
-    }
-    const pick = this.pick();
-    if (pick.target === null) {
+    if (target === null) {
       return "point at a block face to place against";
     }
-    const place = pick.place;
     if (place === null || findBlockIndex(this.blocks, place) < 0) {
       return "can't build outside the world";
     }
@@ -140,12 +144,11 @@ export class EditingController {
     }
     const [x, y, z] = place;
     const aboveAir =
-      selected === VOXEL_DIRT && this.readVoxel([x, y + 1, z]) === VOXEL_AIR;
-    const placedId = aboveAir ? VOXEL_GRASS : selected;
-    this.applyEdit(place, placedId);
-    this.inventory.remove(selected, 1);
+      voxel === VOXEL_DIRT && this.readVoxel([x, y + 1, z]) === VOXEL_AIR;
+    this.applyEdit(place, aboveAir ? VOXEL_GRASS : voxel);
+    this.inventory.remove(item, 1);
     this.onEditRecorded();
-    return `placed ${COLLECTABLE[selected]} at ${x},${y},${z}`;
+    return `placed ${ITEMS[item].name} at ${x},${y},${z}`;
   }
 
   /** Reads the current voxel id at a world voxel from the containing store. */

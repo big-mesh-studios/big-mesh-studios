@@ -56,22 +56,22 @@ const CoarseControls: Component = () => {
         />
       </div>
 
-      {/* holding the place button winds up the sword and releasing it swings;
-          a direct handler keeps it independent of Solid's reactive effect
+      {/* the secondary button is held as well as tapped — a held sword guards —
+          so a direct handler keeps it independent of Solid's reactive effect
           semantics */}
       <div
         class={styles.control}
         onPointerDown={(e) => {
           e.stopPropagation();
-          input.setTouchPlace(true);
+          input.setTouchSecondary(true);
         }}
         onPointerUp={(e) => {
           e.stopPropagation();
-          input.setTouchPlace(false);
+          input.setTouchSecondary(false);
         }}
         onPointerCancel={(e) => {
           e.stopPropagation();
-          input.setTouchPlace(false);
+          input.setTouchSecondary(false);
         }}
       >
         <ActionButton

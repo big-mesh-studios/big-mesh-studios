@@ -5,7 +5,7 @@
 }
 
 .crosshair {
-  --color: rgb(255, 0, 0);
+  --color: rgba(255, 255, 255, 0.45);
 
   position: absolute;
   left: 50%;
@@ -18,8 +18,12 @@
   align-items: center;
   justify-content: center;
 
-  &.active {
+  &.voxel {
     --color: white;
+  }
+
+  &.monster {
+    --color: #d22f35;
   }
 
   & > .vertical-stroke {
