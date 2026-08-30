@@ -1,8 +1,11 @@
 // @vitest-environment node
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { load } from "@big-mesh-studios/stacker/format";
-import { solveVoxels } from "@big-mesh-studios/stacker/renderer";
+import { loadFigure } from "@big-mesh-studios/stacker/format";
+import {
+  partDimensions,
+  solveVoxels,
+} from "@big-mesh-studios/stacker/renderer";
 import { DEFAULT_REACH } from "../world/picker";
 import {
   createPlayer,
@@ -226,32 +229,51 @@ describe("pickMonster against the rendered model", () => {
   const MODEL = new URL("../../public/models/zombie.zip", import.meta.url);
 
   it("covers the body the bundled model draws", async () => {
-    const model = await load(readFileSync(MODEL) as unknown as Blob);
+    const figure = await loadFigure(readFileSync(MODEL) as unknown as Blob);
     const m = standingZombie(0, 5);
     const render = new RemoteMonsters({ getMonsters: () => [m] });
-    render.setModel(model);
+    render.setFigure(figure);
     render.tick(1 / 60);
 
-    // The mesh the model is drawn through is always scaled to stand 2.2 units
-    // tall, so its box matches the hitbox half-height of 1.1 exactly.
-    const cube = render.group.children[0] as unknown as {
-      position: { x: number; y: number; z: number };
-      scale: { x: number; y: number; z: number };
-      geometry: { attributes: { position: { array: Float32Array } } };
+    // The figure the model is drawn as is always scaled to stand 2.2 units
+    // tall, so the box its parts together fill matches the hitbox half-height
+    // of 1.1 exactly.
+    const copy = render.group.children[0] as unknown as {
+      position: { y: number };
+      scale: { y: number };
+      children: {
+        position: { y: number };
+        scale: { y: number };
+        geometry: { attributes: { position: { array: Float32Array } } };
+      }[];
     };
-    const yValues = cube.geometry.attributes.position.array.filter(
-      (_v: number, i: number) => (i - 1) % 3 === 0,
-    );
-    const boxTop = cube.position.y + Math.max(...yValues) * cube.scale.y;
-    const boxBottom = cube.position.y + Math.min(...yValues) * cube.scale.y;
+    let highest = -Infinity;
+    let lowest = Infinity;
+    for (const mesh of copy.children) {
+      const yValues = mesh.geometry.attributes.position.array.filter(
+        (_v: number, i: number) => (i - 1) % 3 === 0,
+      );
+      highest = Math.max(
+        highest,
+        mesh.position.y + Math.max(...yValues) * mesh.scale.y,
+      );
+      lowest = Math.min(
+        lowest,
+        mesh.position.y + Math.min(...yValues) * mesh.scale.y,
+      );
+    }
+    const boxTop = copy.position.y + highest * copy.scale.y;
+    const boxBottom = copy.position.y + lowest * copy.scale.y;
     expect(boxTop).toBeCloseTo(m.pose.y + 1.1, 6);
     expect(boxBottom).toBeCloseTo(m.pose.y - 1.1, 6);
 
     // The visible voxel body sits inside that box, so the hitbox covers every
     // part of the model a player can aim at. The body's voxel rows map to
     // world offsets from the pose, which the hitbox half-height must span.
-    const { width, height, depth } = model.dimensions;
-    const voxels = solveVoxels(model.dimensions, model.sides);
+    const part = figure.parts[0];
+    const dimensions = partDimensions(part);
+    const { width, height, depth } = dimensions;
+    const voxels = solveVoxels(dimensions, part.sides);
     let bodyMinY = height;
     let bodyMaxY = 0;
     for (let z = 0; z < depth; z++) {

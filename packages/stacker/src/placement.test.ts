@@ -138,9 +138,56 @@ describe("figurePlacement", () => {
     expect(after.placements[0].position).toEqual(before.placements[0].position);
   });
 
+  it("measures the box every part together fills, in voxels", () => {
+    const figure = figureOf(
+      partOf("torso", { width: 10, height: 12, depth: 6 }),
+      partOf(
+        "head",
+        { width: 4, height: 4, depth: 4 },
+        { root: Vector3D.create(0, 8, 0) },
+      ),
+    );
+
+    const { extent } = figurePlacement(figure);
+
+    // The torso spans -6..6 high about the origin and the head 6..10, so the
+    // figure is sixteen high; neither part reaches past the torso's own width
+    // or depth.
+    expect(extent).toEqual({ width: 10, height: 16, depth: 6 });
+  });
+
+  it("draws a figure of one part inside the box that lone model is drawn in", () => {
+    const dimensions = { width: 12, height: 20, depth: 7 };
+
+    const { size } = figurePlacement(figureOf(partOf("body", dimensions)));
+
+    expect(size.width).toBeCloseTo(boxSize(dimensions).width);
+    expect(size.height).toBeCloseTo(boxSize(dimensions).height);
+    expect(size.depth).toBeCloseTo(boxSize(dimensions).depth);
+  });
+
+  it("reaches a voxel past the outermost part, as each part's own box does", () => {
+    const figure = figureOf(
+      partOf("torso", { width: 10, height: 12, depth: 6 }),
+      partOf(
+        "head",
+        { width: 4, height: 4, depth: 4 },
+        { root: Vector3D.create(0, 8, 0) },
+      ),
+    );
+
+    const { size, voxelSize } = figurePlacement(figure);
+
+    // Sixteen voxels high, plus the one voxel of padding at the top and the one
+    // at the bottom.
+    expect(size.height).toBeCloseTo(18 * voxelSize);
+  });
+
   it("gives a figure with no parts something to draw at", () => {
     expect(figurePlacement(figureOf())).toEqual({
       voxelSize: 1,
+      extent: { width: 0, height: 0, depth: 0 },
+      size: { width: 0, height: 0, depth: 0 },
       placements: [],
     });
   });

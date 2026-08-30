@@ -7,7 +7,7 @@
 // A caller reaches the materials to say so.
 import { Dimensions3D, type RGBA } from "@big-mesh-studios/maths";
 import { BoxGeometry, Group, Mesh } from "@random-mesh/rmsl/scene";
-import { boxSize, figurePlacement } from "./box";
+import { boxSize, figurePlacement, type PartPlacement } from "./box";
 import { partDimensions, type Figure, type Part } from "./data";
 import { encodePalette, solveVoxels } from "./solver";
 import { VoxelModelMaterial } from "./material";
@@ -65,6 +65,12 @@ export function bakeVolume(
   const normalized = Dimensions3D.normalize(dimensions);
   material.dimensions = [normalized.width, normalized.height, normalized.depth];
   material.voxelCount = [dimensions.width, dimensions.height, dimensions.depth];
+}
+
+/** The box a part's volume is marched inside, at the size `boxSize` gives it. */
+function partGeometry(dimensions: Dimensions3D): BoxGeometry {
+  const size = boxSize(dimensions);
+  return new BoxGeometry(size.width, size.height, size.depth);
 }
 
 /** The mesh drawing one part, and the material it is drawn with. */
@@ -134,12 +140,7 @@ export class FigureMeshes {
         entry.builtFor === undefined ||
         !Dimensions3D.equals(entry.builtFor, dimensions)
       ) {
-        const size = boxSize(dimensions);
-        entry.mesh.geometry = new BoxGeometry(
-          size.width,
-          size.height,
-          size.depth,
-        );
+        entry.mesh.geometry = partGeometry(dimensions);
         entry.builtFor = dimensions;
       }
 
@@ -152,6 +153,113 @@ export class FigureMeshes {
       entry.mesh.scale.set(placement.scale, placement.scale, placement.scale);
 
       bakeVolume(entry.material, dimensions, voxels, figure.palette);
+    });
+  }
+}
+
+/** One part of a baked figure: the box drawing it, and where that box stands. */
+export interface BakedPart {
+  name: string;
+  dimensions: Dimensions3D;
+  voxels: Uint8Array;
+  /** The box the part's volume is marched inside, shared by every copy. */
+  geometry: BoxGeometry;
+  placement: PartPlacement;
+}
+
+/**
+ * A figure baked for drawing many times over: every part solved into a volume
+ * and given a box, once, however many copies of the figure are drawn.
+ *
+ * `FigureMeshes` draws one figure and keeps it in step with each edit, which is
+ * what an editor wants. A world draws the same figure once per monster, and
+ * monsters come and go as a player walks: solving the volumes, building the
+ * boxes and uploading the textures again for each of them would be that work
+ * repeated per monster, at the moment one walks into view. Baking does it once,
+ * and `copy` hands back a group of meshes wearing what is already made.
+ */
+export class BakedFigure {
+  readonly parts: readonly BakedPart[];
+  /** The box every part together fills, in voxels. */
+  readonly extent: Dimensions3D;
+  /**
+   * The box the whole figure is drawn inside, before whoever draws it scales it
+   * to the size they want it at.
+   */
+  readonly size: Dimensions3D;
+  private readonly palette: RGBA[];
+
+  constructor(figure: Figure) {
+    const { extent, size, placements } = figurePlacement(figure);
+
+    this.extent = extent;
+    this.size = size;
+    this.palette = figure.palette;
+    this.parts = figure.parts.map((part, index) => {
+      const { name, dimensions, voxels } = solvePart(part);
+      return {
+        name,
+        dimensions,
+        voxels,
+        geometry: partGeometry(dimensions),
+        placement: placements[index],
+      };
+    });
+  }
+
+  /**
+   * One material per part, each carrying that part's volume and the palette the
+   * whole figure is drawn in.
+   *
+   * A caller wanting the same figure drawn two ways — plainly, and flashed red
+   * where a monster was hit — takes a set for each and says on the materials
+   * how the two differ. Every copy wearing a set shares its textures, so the
+   * volumes are uploaded once per way the figure is drawn rather than once per
+   * copy of it.
+   */
+  createMaterials(): VoxelModelMaterial[] {
+    return this.parts.map((part) => {
+      const material = new VoxelModelMaterial();
+      bakeVolume(material, part.dimensions, part.voxels, this.palette);
+      return material;
+    });
+  }
+
+  /** A fresh group of meshes drawing the figure, wearing `materials`. */
+  copy(materials: readonly VoxelModelMaterial[]): FigureCopy {
+    return new FigureCopy(this.parts, materials);
+  }
+}
+
+/**
+ * The meshes drawing one copy of a baked figure: a mesh per part in a group
+ * that whoever holds it moves and turns as a whole, so the parts keep their
+ * places against each other wherever the copy is put.
+ *
+ * Made by `BakedFigure.copy`, which is what gives it the boxes to draw.
+ */
+export class FigureCopy {
+  readonly group = new Group();
+  private readonly meshes: Mesh[];
+
+  constructor(
+    parts: readonly BakedPart[],
+    materials: readonly VoxelModelMaterial[],
+  ) {
+    this.meshes = parts.map((part, index) => {
+      const { position, scale } = part.placement;
+      const mesh = new Mesh(part.geometry, materials[index]);
+      mesh.position.set(position.x, position.y, position.z);
+      mesh.scale.set(scale, scale, scale);
+      this.group.add(mesh);
+      return mesh;
+    });
+  }
+
+  /** Draws every part with the material standing beside it in `materials`. */
+  wear(materials: readonly VoxelModelMaterial[]): void {
+    this.meshes.forEach((mesh, index) => {
+      mesh.material = materials[index];
     });
   }
 }

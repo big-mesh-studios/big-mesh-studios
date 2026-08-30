@@ -1,22 +1,20 @@
-// Renders the simulated monsters as ray-marched voxel models: one mesh per
-// snapshot, all sharing one `VoxelModelMaterial` and geometry baked from the
-// zombie model, walked in place when the monster moves. Reads the controller's
-// snapshots each frame, so it holds no model of its own to keep in sync; a
-// monster that appears or disappears in the snapshots gets a mesh made or
-// destroyed to match. Monsters the local simulation stepped this frame are
-// drawn exactly where they are; monsters received from an owner's broadcast
-// are dead-reckoned between deliveries (`./reckon`).
-import { BoxGeometry, Group, Mesh } from "@random-mesh/rmsl/scene";
+// Renders the simulated monsters as ray-marched voxel figures: one group of
+// part meshes per snapshot, all drawn from one bake of the figure and wearing
+// one set of materials, walked in place when the monster moves. Reads the
+// controller's snapshots each frame, so it holds no model of its own to keep in
+// sync; a monster that appears or disappears in the snapshots gets a copy of
+// the figure made or destroyed to match. Monsters the local simulation stepped
+// this frame are drawn exactly where they are; monsters received from an
+// owner's broadcast are dead-reckoned between deliveries (`./reckon`).
+import { Group } from "@random-mesh/rmsl/scene";
 import type { DayNightState } from "../environment/day-night";
-import { Dimensions3D } from "@big-mesh-studios/maths";
 import {
-  boxSize,
-  bakeVolume,
-  solveVoxels,
+  BakedFigure,
   VoxelModelMaterial,
-  type Model,
+  type Figure,
+  type FigureCopy,
 } from "@big-mesh-studios/stacker/renderer";
-import { load } from "@big-mesh-studios/stacker/format";
+import { loadFigure } from "@big-mesh-studios/stacker/format";
 import { nextRenderedPosition, type Position3 } from "./reckon";
 import type { MonsterSnapshot } from "./monster";
 
@@ -32,15 +30,22 @@ const HURT_FLASH_MS = 180;
 const FALL_TIME = 0.5;
 /** How long the fallen corpse lies before it is removed, in seconds. */
 const LIE_TIME = 0.5;
+/**
+ * What the monsters wear before a figure has been loaded: a figure of no parts,
+ * which is drawn as an empty group, so a monster is simply not seen until one
+ * arrives.
+ */
+const NOTHING: Figure = { parts: [], palette: [] };
+
 interface MonsterMesh {
-  cube: Mesh;
-  /** The position the cube was drawn at last frame, for the dead-reckoning blend. */
+  copy: FigureCopy;
+  /** The position the copy was drawn at last frame, for the dead-reckoning blend. */
   rendered: Position3;
 }
 
-/** A monster that died and is playing its fall: its mesh, pose, and elapsed time. */
+/** A monster that died and is playing its fall: its meshes, pose, and elapsed time. */
 interface Corpse {
-  cube: Mesh;
+  copy: FigureCopy;
   /** The feet position the corpse pivots on, in world units. */
   x: number;
   y: number;
@@ -55,14 +60,15 @@ export class RemoteMonsters {
   readonly group = new Group();
   private readonly getMonsters: () => Iterable<MonsterSnapshot>;
   private readonly meshes = new Map<string, MonsterMesh>();
-  private readonly material = new VoxelModelMaterial();
-  /** The material a hit monster is drawn with: the same model, fully flashed. */
-  private readonly flashMaterial = new VoxelModelMaterial();
-  private geometry: BoxGeometry;
-  /** Uniform scale making the model stand as tall as the AI cube. */
+  /** The figure every monster is drawn from: its boxes and volumes, made once. */
+  private baked = new BakedFigure(NOTHING);
+  private materials: VoxelModelMaterial[] = [];
+  /** What a hit monster is drawn with: the same figure, fully flashed. */
+  private flashMaterials: VoxelModelMaterial[] = [];
+  /** Uniform scale making the figure stand as tall as the AI cube. */
   private scale = 1;
-  /** What the monsters are drawn as, or null until a model has been loaded. */
-  private modelDimensions: Dimensions3D | null = null;
+  /** The figure the monsters wear, as one phrase for a debug console. */
+  private worn = "no voxel model yet";
   /** Ids currently flashing red, with the local moment the flash ends. */
   private readonly hurtUntil = new Map<string, number>();
   /** Dying monsters still lying out, keyed by id; they survive their snapshots. */
@@ -71,50 +77,49 @@ export class RemoteMonsters {
 
   constructor(params: { getMonsters: () => Iterable<MonsterSnapshot> }) {
     this.getMonsters = params.getMonsters;
-    // No model to draw with yet. The material's empty volume marches to a miss
-    // on every ray, so a monster is simply not seen until one is loaded.
-    this.geometry = new BoxGeometry(1, 1, 1);
-    this.flashMaterial.flash = 1;
   }
 
-  /** Number of monster meshes currently in the scene. */
+  /** Number of monsters currently drawn in the scene. */
   get size(): number {
     return this.meshes.size;
   }
 
   /**
-   * Swaps every monster's look for `model`, baking it into the shared material
-   * and geometry: the packed volume and palette textures, the normalized
-   * dimensions, and the padded box sized to the new grid. Existing meshes take
-   * the new geometry and scale.
+   * Swaps every monster's look for `figure`: its parts are solved, boxed and
+   * given the two sets of materials — the plain one and the flashed one — that
+   * every monster shares, and the whole is scaled to stand as tall as the AI
+   * cube it replaces.
+   *
+   * Monsters already drawn are drawn again from the new bake, because the
+   * meshes they hold carry the boxes and materials of the figure before it. A
+   * corpse is left to finish its fall in what it is already wearing.
    */
-  setModel(model: Model): void {
-    this.bakeInto(this.material, model);
-    this.bakeInto(this.flashMaterial, model);
+  setFigure(figure: Figure): void {
+    this.baked = new BakedFigure(figure);
+    this.materials = this.baked.createMaterials();
+    this.flashMaterials = this.baked.createMaterials();
 
-    this.modelDimensions = {
-      width: model.dimensions.width,
-      height: model.dimensions.height,
-      depth: model.dimensions.depth,
-    };
-    const size = boxSize(model.dimensions);
-    this.geometry = new BoxGeometry(size.width, size.height, size.depth);
-    // Uniform scale so the model stands as tall as the AI cube it replaces.
-    this.scale = (HALF_HEIGHT * 2) / size.height;
-    for (const { cube } of this.meshes.values()) {
-      cube.geometry = this.geometry;
-      cube.scale.set(this.scale, this.scale, this.scale);
+    for (const material of this.flashMaterials) {
+      material.flash = 1;
     }
-  }
 
-  /** Bakes a model's volume, palette, and grid into one material's uniforms. */
-  private bakeInto(material: VoxelModelMaterial, model: Model): void {
-    bakeVolume(
-      material,
-      model.dimensions,
-      solveVoxels(model.dimensions, model.sides),
-      model.palette,
-    );
+    const { width, height, depth } = this.baked.extent;
+    const parts = figure.parts.length;
+    this.worn = `${width}×${height}×${depth} voxel model in ${
+      parts === 1 ? "one part" : `${parts} parts`
+    }`;
+    // A figure of no parts fills nothing and so gives no height to divide by.
+    this.scale =
+      this.baked.size.height > 0
+        ? (HALF_HEIGHT * 2) / this.baked.size.height
+        : 1;
+
+    for (const entry of this.meshes.values()) {
+      this.group.remove(entry.copy.group);
+      entry.copy = this.newCopy();
+      const { x, y, z } = entry.rendered;
+      entry.copy.group.position.set(x, y, z);
+    }
   }
 
   /**
@@ -137,7 +142,7 @@ export class RemoteMonsters {
       state.ambient[1],
       state.ambient[2],
     ];
-    for (const material of [this.material, this.flashMaterial]) {
+    for (const material of [...this.materials, ...this.flashMaterials]) {
       material.lightDir = sunDir;
       material.lightColour = sunLight;
       material.ambientColour = ambient;
@@ -152,23 +157,16 @@ export class RemoteMonsters {
     this.hurtUntil.set(id, Date.now() + HURT_FLASH_MS);
   }
 
-  /** One line about the model and the meshes, for a debug console. */
+  /** One line about the model and the monsters drawn from it, for a debug console. */
   describe(): string {
-    const dimensions = this.modelDimensions;
-    const model =
-      dimensions === null
-        ? "no voxel model yet"
-        : `voxel model ${dimensions.width}×${dimensions.height}×${dimensions.depth}`;
-    return `${model} · ${this.meshes.size} mesh(es)`;
+    return `${this.worn} · ${this.meshes.size} mesh(es)`;
   }
 
   /** Reads a model zip saved from rm-stacker and applies it to every monster. */
   async loadModelFromBlob(blob: Blob): Promise<string> {
     try {
-      const model = await load(blob);
-      this.setModel(model);
-      const { width, height, depth } = model.dimensions;
-      return `zombie model set: ${width}×${height}×${depth}`;
+      this.setFigure(await loadFigure(blob));
+      return `zombie model set: ${this.worn}`;
     } catch (err) {
       return `not a model rm-stacker saved: ${
         err instanceof Error ? err.message : String(err)
@@ -178,7 +176,7 @@ export class RemoteMonsters {
 
   /**
    * Called once per frame: reconciles the meshes against the controller's
-   * snapshots, places each cube at its monster's rendered position (exact for
+   * snapshots, places each copy at its monster's rendered position (exact for
    * locally-stepped monsters, dead-reckoned for broadcast ones), and bobs the
    * ones that are walking.
    */
@@ -188,9 +186,9 @@ export class RemoteMonsters {
     const current = new Set<string>();
     for (const snapshot of this.getMonsters()) {
       current.add(snapshot.id);
-      // A monster that died starts its fall here. The corpse takes its mesh
-      // out of the live set and keeps it, so it keeps animating even after the
-      // controller forgets the snapshot once the tombstone has been written.
+      // A monster that died starts its fall here. The corpse takes its meshes
+      // out of the live set and keeps them, so it keeps animating even after
+      // the controller forgets the snapshot once the tombstone has been written.
       if (snapshot.hp <= 0) {
         if (!this.corpses.has(snapshot.id)) {
           this.startCorpse(snapshot.id, snapshot);
@@ -198,7 +196,7 @@ export class RemoteMonsters {
         continue;
       }
       const entry = this.meshes.get(snapshot.id) ?? this.create(snapshot);
-      const { cube, rendered } = entry;
+      const { copy, rendered } = entry;
       const { position } = nextRenderedPosition({
         snapshot,
         current: rendered,
@@ -206,24 +204,24 @@ export class RemoteMonsters {
         dt,
       });
       entry.rendered = position;
-      cube.position.set(position.x, position.y, position.z);
-      cube.rotation.y = snapshot.pose.yaw;
-      // A recently hit monster draws with the flashed material until its flash
+      copy.group.position.set(position.x, position.y, position.z);
+      copy.group.rotation.y = snapshot.pose.yaw;
+      // A recently hit monster draws with the flashed materials until its flash
       // lapses; a flash that has lapsed is forgotten rather than re-tested.
       if ((this.hurtUntil.get(snapshot.id) ?? 0) > now) {
-        cube.material = this.flashMaterial;
+        copy.wear(this.flashMaterials);
       } else {
-        cube.material = this.material;
+        copy.wear(this.materials);
         this.hurtUntil.delete(snapshot.id);
       }
       const moving =
         (snapshot.state === "wander" || snapshot.state === "chase") &&
         (snapshot.pose.vx !== 0 || snapshot.pose.vz !== 0);
       if (moving) {
-        cube.position.y +=
+        copy.group.position.y +=
           Math.abs(Math.sin(this.time * BOB_RATE)) * BOB_AMPLITUDE;
       }
-      cube.visible = true;
+      copy.group.visible = true;
     }
     this.advanceCorpses(dt);
     for (const id of [...this.meshes.keys()]) {
@@ -233,19 +231,19 @@ export class RemoteMonsters {
     }
   }
 
-  /** Removes every monster mesh and corpse (mesh teardown). */
+  /** Removes every monster's meshes and every corpse's (mesh teardown). */
   clear(): void {
     for (const id of [...this.meshes.keys()]) {
       this.remove(id);
     }
-    for (const { cube } of this.corpses.values()) {
-      this.group.remove(cube);
+    for (const { copy } of this.corpses.values()) {
+      this.group.remove(copy.group);
     }
     this.corpses.clear();
   }
 
   /**
-   * Moves a dying monster's mesh out of the live set and starts its fall: it
+   * Moves a dying monster's meshes out of the live set and starts its fall: it
    * rotates backward (about its own left-right axis) about its feet over
    * `FALL_TIME`, lies still for `LIE_TIME`, then is removed.
    */
@@ -256,9 +254,9 @@ export class RemoteMonsters {
     }
     this.meshes.delete(id);
     this.hurtUntil.delete(id);
-    entry.cube.material = this.material;
+    entry.copy.wear(this.materials);
     this.corpses.set(id, {
-      cube: entry.cube,
+      copy: entry.copy,
       x: snapshot.pose.x,
       y: snapshot.pose.y - HALF_HEIGHT,
       z: snapshot.pose.z,
@@ -280,26 +278,32 @@ export class RemoteMonsters {
       const cosFall = Math.cos(fall);
       const sinYaw = Math.sin(corpse.yaw);
       const cosYaw = Math.cos(corpse.yaw);
-      corpse.cube.position.set(
+      corpse.copy.group.position.set(
         corpse.x + HALF_HEIGHT * sinFall * sinYaw,
         corpse.y + HALF_HEIGHT * cosFall,
         corpse.z + HALF_HEIGHT * sinFall * cosYaw,
       );
-      corpse.cube.rotation.set(fall, corpse.yaw, 0);
+      corpse.copy.group.rotation.set(fall, corpse.yaw, 0);
       if (corpse.elapsed >= FALL_TIME + LIE_TIME) {
-        this.group.remove(corpse.cube);
+        this.group.remove(corpse.copy.group);
         this.corpses.delete(id);
       }
     }
   }
 
+  /** A copy of the figure, scaled to monster height and added to the scene. */
+  private newCopy(): FigureCopy {
+    const copy = this.baked.copy(this.materials);
+    copy.group.scale.set(this.scale, this.scale, this.scale);
+    this.group.add(copy.group);
+    return copy;
+  }
+
   private create(snapshot: MonsterSnapshot): MonsterMesh {
-    const cube = new Mesh(this.geometry, this.material);
-    cube.scale.set(this.scale, this.scale, this.scale);
-    cube.visible = false;
-    this.group.add(cube);
+    const copy = this.newCopy();
+    copy.group.visible = false;
     const entry: MonsterMesh = {
-      cube,
+      copy,
       rendered: { x: snapshot.pose.x, y: snapshot.pose.y, z: snapshot.pose.z },
     };
     this.meshes.set(snapshot.id, entry);
@@ -311,7 +315,7 @@ export class RemoteMonsters {
     if (entry === undefined) {
       return;
     }
-    this.group.remove(entry.cube);
+    this.group.remove(entry.copy.group);
     this.meshes.delete(id);
     this.hurtUntil.delete(id);
   }

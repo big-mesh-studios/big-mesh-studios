@@ -8,7 +8,8 @@ so a model is now a **figure** of several **parts**, each a box of its own with
 a **root** saying where it sits.
 
 `Part` and `Figure` live in `packages/stacker/src/data.ts` beside `Model`, which
-still means one box: voxelscape reads models and had no reason to change.
+still means one box — which is what the sword a player holds is, built in code
+rather than read from a file.
 
 ## A tree in the data, a list in the interface
 
@@ -76,6 +77,28 @@ determines — geometry, placement, volume, palette — and exposes `materials` 
 a caller to say the rest. The editor says it in `lightFigure`, next to the light
 constants it uses.
 
+## The world draws one bake of a figure, not one figure per monster
+
+`FigureMeshes` draws a figure and keeps it in step with each edit, which is what
+the editor needs and what a monster does not. A world draws the same figure once
+per monster, and monsters materialize and are forgotten continuously as a player
+walks. Giving each its own `FigureMeshes` would solve the volumes, build the
+boxes and upload a three-dimensional texture again for every monster, at the
+moment it walks into view.
+
+`BakedFigure` does that work once. `createMaterials` hands back one material per
+part for _one way of drawing_ the figure — the world takes two sets, a plain one
+and one flashed red — and `copy` hands back a `FigureCopy`: a group holding a
+cheap mesh per part, wearing boxes and materials already made. A monster
+appearing costs a group and a mesh apiece; flashing a hit one is `wear` swapping
+which set of materials its meshes point at. The lighting the day-night cycle
+feeds in is written to the two shared sets rather than to every monster's own.
+
+The whole of a monster's look is therefore shared but for its transform, which
+is why the parts hang in a group: the group carries the monster's position, its
+heading and the scale that stands the figure as tall as its hitbox, and the
+parts keep their places against each other inside it.
+
 ## A folder per part in the file
 
 `saveFigure` writes each part's six pngs to a folder named after it, plus a
@@ -90,13 +113,21 @@ over another's.
 
 ## Consequences
 
-- **`load` hands back only a figure's first part.** It keeps its signature and
-  its meaning of one box, which is what voxelscape's `remote-monsters` and
-  `held-item` read. A multi-part model published today therefore appears in the
-  world as its first part alone. What is left to change is those two call sites:
-  reading with `loadFigure` and drawing with `FigureMeshes` rather than a mesh
-  apiece. Until then, publishing a figure and expecting a monster to wear all of
-  it will disappoint.
+- **A figure a monster wears has to be scaled by something the whole of it
+  measures.** A lone model was stood against `boxSize`, the box its own six
+  drawings describe. A figure has no single such box, so `figurePlacement`
+  reports the box every part together fills — in voxels as `extent`, and in
+  drawn space, padded the way `boxSize` pads, as `size`. `RemoteMonsters` scales
+  against `size.height`, which for a figure of one part is `boxSize`'s height
+  exactly, so a model that was already being worn is drawn no differently.
+- **`load` is left without a caller.** It keeps its signature and its meaning of
+  one box — a figure's first part, read on its own — but nothing needs a model
+  read that way any more. The monsters read whole figures with `loadFigure` and
+  draw them with `BakedFigure`, so a monster wears every part of what an account
+  published. The held sword never read a file: it is built in code from the
+  items spritesheet, one box, so it still takes a `Model` and draws one mesh.
+  Letting a player hold a published figure is a feature rather than a
+  conversion, and until somebody wants it there is nothing for `load` to do.
 - **Every drawing command names its part.** An undo can be taken long after the
   selection has moved on, and the name is what lands it on the drawing it was
   made against. A command read back from a history written before this carries no

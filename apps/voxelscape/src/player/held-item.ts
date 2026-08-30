@@ -1,8 +1,9 @@
 // The sword the player holds: a single ray-marched voxel-model mesh riding as
 // a child of the camera, so it stays fixed to the first-person view at the
 // lower right of the frame. Baked from the same `VoxelModelMaterial` textures
-// as the zombie meshes (`RemoteMonsters.setModel`), but for one mesh with a
-// pose of its own. Shown only in first person and only while the sword is the
+// as the zombie meshes (`RemoteMonsters.setFigure`), but for one mesh with a
+// pose of its own: the sword is built in code from the items spritesheet, one
+// box, rather than read from a file that could hold a figure of several. Shown only in first person and only while the sword is the
 // selected inventory item; holding the place button winds it back and letting
 // go swings it, per the pure transform in `./swing`.
 import {
