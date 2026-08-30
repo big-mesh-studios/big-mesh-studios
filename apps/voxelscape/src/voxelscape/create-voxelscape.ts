@@ -481,8 +481,17 @@ export const createVoxelscape = ({
       resolution.hold();
     }
     // Only the player waits. Moving the renderers' tick in here deadlocks:
-    // it is what builds the geometry this is waiting for.
-    if (progress.spawnDrawn) {
+    // it is what builds the geometry this is waiting for. The world-ready
+    // half holds them still while a scroll's player cell has been asked for
+    // but has not landed, so physics never reads a cell that holds nothing.
+    if (
+      progress.spawnDrawn &&
+      world.cellReady(
+        avatar.player.position.x,
+        avatar.player.position.y,
+        avatar.player.position.z,
+      )
+    ) {
       health.tick(dt);
       if (health.dead) {
         // The player's body lies where it fell: no input, no editing, and no

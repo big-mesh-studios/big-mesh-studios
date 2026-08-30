@@ -109,8 +109,7 @@ export class ChunkSphere {
     });
 
     this.query = (worldX, worldY, worldZ) => {
-      const [cx, cy, cz] = chunkCellOf(worldX, worldY, worldZ);
-      const slot = this.cellIndex.get(cellKey({ x: cx, y: cy, z: cz }));
+      const slot = this.slotAt(worldX, worldY, worldZ);
       return slot === undefined ? undefined : this.blocks[slot];
     };
 
@@ -122,6 +121,16 @@ export class ChunkSphere {
       customFillStore: params.customFillStore,
       customFillStoreUrl: params.customFillStoreUrl,
     });
+  }
+
+  /**
+   * The slot holding the cell that contains a world point, or `undefined`
+   * when the window does not hold that cell. Backs `query` and the caller's
+   * "is this cell's data ready" check.
+   */
+  slotAt(worldX: number, worldY: number, worldZ: number): number | undefined {
+    const [cx, cy, cz] = chunkCellOf(worldX, worldY, worldZ);
+    return this.cellIndex.get(cellKey({ x: cx, y: cy, z: cz }));
   }
 
   /**
@@ -178,8 +187,9 @@ export class ChunkSphere {
   /**
    * Keeps the window centred on the player: when they cross a chunk boundary,
    * the cells that leave the ball are evicted and the cells that enter claim
-   * the freed slots. The player's own new cell is generated on the calling
-   * thread so collision data exists under them before the frame advances.
+   * the freed slots. Every entering cell streams in through the worker pool;
+   * the player's own cell is requested first, and the caller holds physics
+   * until its fill lands.
    */
   scrollTo(x: number, y: number, z: number): void {
     const [cx, cy, cz] = chunkCellOf(x, y, z);
@@ -201,8 +211,6 @@ export class ChunkSphere {
     }
 
     const entering: number[] = [];
-    const playerKey = cellKey({ x: cx, y: cy, z: cz });
-    let playerSlot = -1;
     for (const cell of next) {
       const key = cellKey(cell);
       if (this.cellIndex.has(key)) {
@@ -225,9 +233,6 @@ export class ChunkSphere {
       // block's surface at the new location
       this.onBlockReposition(slot, c);
       entering.push(slot);
-      if (key === playerKey) {
-        playerSlot = slot;
-      }
     }
 
     this.centerCell = { x: cx, y: cy, z: cz };
@@ -236,27 +241,18 @@ export class ChunkSphere {
       return;
     }
     // Fill nearest-first so the terrain the player is walking toward appears
-    // before the cap behind them; the player's own cell still comes first.
+    // before the cap behind them; the player's own cell, being nearest, is
+    // the first of the first worker's batch and lands first.
     const order = entering
       .map((slot) => slot)
       .sort(
         (a, b) =>
           this.distanceSquared(a, x, y, z) - this.distanceSquared(b, x, y, z),
       );
-    if (playerSlot >= 0) {
-      // The block under the player has to exist before physics reads it.
-      const rest = order.filter((slot) => slot !== playerSlot);
-      this.fillClient.fillNow(playerSlot);
-      this.fillClient.requestFill(
-        rest,
-        rest.map((index) => this.blocks[index].center),
-      );
-    } else {
-      this.fillClient.requestFill(
-        order,
-        order.map((index) => this.blocks[index].center),
-      );
-    }
+    this.fillClient.requestFill(
+      order,
+      order.map((index) => this.blocks[index].center),
+    );
   }
 
   dispose(): void {

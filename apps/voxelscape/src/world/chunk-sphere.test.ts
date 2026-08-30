@@ -91,6 +91,8 @@ describe("ChunkSphere", () => {
     const radius = 2;
     const { sphere, filled } = sphereWithRecordedFills(radius);
     sphere.fillFrom(0, 0, 0);
+    // Drain the initial fill before measuring the scroll's own ordering.
+    await vi.runAllTimersAsync();
     filled.length = 0;
 
     // Cross two cells along each of x and z, so the player's own cell is one
@@ -98,12 +100,12 @@ describe("ChunkSphere", () => {
     const target = cellCenter({ x: 2, y: 0, z: 2 });
     sphere.scrollTo(target[0], target[1], target[2]);
 
-    // The block under the player is generated synchronously, before any timer.
-    const playerBlock = sphere.query(target[0], target[1], target[2]);
-    expect(playerBlock).toBeDefined();
-    const playerSlot = sphere.blocks.indexOf(playerBlock!);
-    expect(playerSlot).toBeGreaterThanOrEqual(0);
-    expect(filled).toContain(playerSlot);
+    // The block under the player is asked for first, so it is the first cell
+    // the fallback's one-block-per-task drain fills.
+    const playerSlot = sphere.slotAt(target[0], target[1], target[2]);
+    expect(playerSlot).toBeDefined();
+    vi.advanceTimersToNextTimer();
+    expect(filled[0]).toBe(playerSlot);
     expect(sphere.blocks.length).toBe(cellsInSphere(radius));
 
     // A block whose cell leaves the ball is freed: the far -x pole of the old
@@ -125,6 +127,8 @@ describe("ChunkSphere", () => {
     const radius = 2;
     const { sphere, filled } = sphereWithRecordedFills(radius);
     sphere.fillFrom(0, 0, 0);
+    // Drain the initial fill before measuring the scroll's own ordering.
+    await vi.runAllTimersAsync();
     filled.length = 0;
 
     // Straight down, far enough that the player's own cell is one the old
@@ -132,9 +136,10 @@ describe("ChunkSphere", () => {
     const target = cellCenter({ x: 0, y: -3, z: 0 });
     sphere.scrollTo(target[0], target[1], target[2]);
 
-    const playerBlock = sphere.query(target[0], target[1], target[2]);
-    expect(playerBlock).toBeDefined();
-    expect(filled).toContain(sphere.blocks.indexOf(playerBlock!));
+    const playerSlot = sphere.slotAt(target[0], target[1], target[2]);
+    expect(playerSlot).toBeDefined();
+    vi.advanceTimersToNextTimer();
+    expect(filled[0]).toBe(playerSlot);
     expect(sphere.blocks.length).toBe(cellsInSphere(radius));
 
     // The cell above the old centre has left the ball around (0, -3, 0).

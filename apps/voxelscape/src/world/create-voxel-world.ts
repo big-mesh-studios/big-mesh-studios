@@ -86,6 +86,12 @@ export interface VoxelWorld {
   /** Keeps the block window centred on (`x`, `y`, `z`), streaming new blocks in off the main thread. */
   scrollTo(x: number, y: number, z: number): void;
   /**
+   * Whether the cell containing a world point holds generated terrain for its
+   * current cell — false in the gap between a scroll repositioning a slot and
+   * its fill landing, which is when physics must hold the player in place.
+   */
+  cellReady(x: number, y: number, z: number): boolean;
+  /**
    * Re-derives the GPU level of every block the edit overlay intersects and
    * queues the renderers' updates. For changes made to the overlay directly
    * rather than through an edit — a remote merge, or the persisted edits
@@ -135,9 +141,15 @@ export const createVoxelWorld = ({
       // drawn once its geometry is built and `onBlockMeshed` fires from
       // inside this call.
       filled.add(i);
+      ready.add(i);
       renderer.onBlockChanged(i);
     },
-    onBlockReposition: (i, center) => renderer.repositionBlock(i, center),
+    onBlockReposition: (i, center) => {
+      // The slot now points at a different, as-yet-unfilled cell, so it no
+      // longer answers for the terrain it last held.
+      ready.delete(i);
+      renderer.repositionBlock(i, center);
+    },
     editLayer,
   });
   const blockGrid = { blocks: sphere.blocks };
@@ -145,6 +157,8 @@ export const createVoxelWorld = ({
   const filled = new Set<number>();
   /** Slots that have been both generated and drawn at least once. */
   const drawn = new Set<number>();
+  /** Slots holding generated terrain for the cell they currently answer for. */
+  const ready = new Set<number>();
   /** The slot the player spawns in, or -1 until the initial fill has been asked for. */
   let spawnIndex = -1;
   const renderer = new TriangleRenderer({
@@ -275,6 +289,10 @@ export const createVoxelWorld = ({
     },
     scrollTo(x, y, z) {
       sphere.scrollTo(x, y, z);
+    },
+    cellReady(x, y, z) {
+      const slot = sphere.slotAt(x, y, z);
+      return slot !== undefined && ready.has(slot);
     },
     scheduleSave() {
       editPersistence.scheduleSave();
