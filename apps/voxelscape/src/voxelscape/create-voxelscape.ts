@@ -118,6 +118,7 @@ export const createVoxelscape = ({
   const input = createInput();
   const environment = createEnvironment({
     groundHeightAt: (x, z) => world.heightAt(x, z),
+    seed: terrain.seed,
   });
 
   const [loading, setLoading] = createSignal<InitialDrawProgress>({
@@ -393,6 +394,10 @@ export const createVoxelscape = ({
   const scene = new Scene();
   scene.add(
     environment.sky,
+    // The cloud field sits with the sky, drawn before the terrain: every puff
+    // is above the highest ground, so nothing overdraws it, and the sun/moon
+    // squares pass behind it the way they should.
+    environment.clouds.cloudField,
     world.terrain,
     avatar.body,
     multiplayer.avatars,
@@ -420,6 +425,7 @@ export const createVoxelscape = ({
     renderer: world.renderer,
     dayNight: environment.dayNight,
     weather: environment.weather,
+    clouds: environment.clouds,
     sound: environment.sound,
     atproto,
     multiplayer,

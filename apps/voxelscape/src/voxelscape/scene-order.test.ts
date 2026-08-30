@@ -54,6 +54,7 @@ describe("scene draw order", () => {
     // to name every group rather than leaving some to be added elsewhere.
     expect(groups).toEqual([
       "environment.sky",
+      "environment.clouds.cloudField",
       "world.terrain",
       "avatar.body",
       "multiplayer.avatars",

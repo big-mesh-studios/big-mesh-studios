@@ -134,6 +134,14 @@ export {
   type Environment,
   type EnvironmentConfig,
 } from "./environment/create-environment";
+export {
+  cloudCellVolume,
+  cloudCoverage,
+  CloudController,
+  CloudMaterial,
+  type CloudCellOptions,
+  type CloudControllerParams,
+} from "./environment/clouds";
 export { dayNightState } from "./environment/day-night";
 export { DayNightController } from "./environment/day-night-controller";
 export { SoundController, thunderTiming } from "./environment/sound-controller";

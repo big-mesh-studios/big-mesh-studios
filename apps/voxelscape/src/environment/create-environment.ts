@@ -1,4 +1,5 @@
 import { Group, PerspectiveCamera } from "@random-mesh/rmsl/scene";
+import { CloudController } from "./clouds";
 import type { DayNightState } from "./day-night";
 import { DayNightController } from "./day-night-controller";
 import { SoundController } from "./sound-controller";
@@ -8,6 +9,8 @@ import { WeatherController } from "./weather-controller";
 export interface EnvironmentConfig {
   /** Highest solid surface at (`x`, `z`): where rain lands and lightning strikes. */
   groundHeightAt: (x: number, z: number) => number;
+  /** The world's terrain seed, so the cloud field is the same on every client. */
+  seed?: number;
 }
 
 export interface Environment {
@@ -21,6 +24,11 @@ export interface Environment {
    * strike flash (`/weather`).
    */
   weather: WeatherController;
+  /**
+   * Owns the field of blocky cloud puffs that drifts across the sky and wraps
+   * around the player (`/clouds`).
+   */
+  clouds: CloudController;
   /** Synthesizes rain, wind and thunder from the Web Audio API (`/sound:volume`). */
   sound: SoundController;
   /**
@@ -44,6 +52,7 @@ export interface Environment {
  */
 export const createEnvironment = ({
   groundHeightAt,
+  seed,
 }: EnvironmentConfig): Environment => {
   const dayNight = new DayNightController();
   const sound = new SoundController();
@@ -51,6 +60,7 @@ export const createEnvironment = ({
     groundHeight: groundHeightAt,
     onStrike: (x, z) => sound.thunderStrike(x, z),
   });
+  const clouds = new CloudController({ seed: seed ?? 0 });
 
   // Browsers suspend audio until the first user gesture, so the sound stays
   // silent until one arrives. Either listener unlocking it removes both.
@@ -66,6 +76,7 @@ export const createEnvironment = ({
   return {
     dayNight,
     weather,
+    clouds,
     sound,
     sky: dayNight.sky,
     weatherEffects: weather.weather,
@@ -76,8 +87,13 @@ export const createEnvironment = ({
       // same shown clock seconds.
       const state = dayNight.tick(dt, camera);
       const view = weather.tick(dt, camera, state.elapsed);
+      clouds.tick(dt, camera);
       sound.tick(dt, camera, view);
-      return applyWeather(state, view.weather, view.intensity);
+      const final = applyWeather(state, view.weather, view.intensity);
+      // The clouds take the weather-mixed state, so their fog colour and
+      // lights darken and tint with a storm exactly like the terrain's.
+      clouds.applyLighting(final);
+      return final;
     },
 
     dispose() {

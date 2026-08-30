@@ -4,6 +4,7 @@ import type { ModelLibrary } from "./atproto/models";
 import { MONSTER_MODEL_NAME } from "./atproto/models";
 import type { MonsterSync } from "./atproto/monster-sync";
 import type { DayNightController } from "./environment/day-night-controller";
+import type { CloudController } from "./environment/clouds";
 import type { SoundController } from "./environment/sound-controller";
 import type { WeatherController } from "./environment/weather-controller";
 import type { MonsterController } from "./monsters/monster-controller";
@@ -83,6 +84,7 @@ export interface CommandsParams {
   renderer: TriangleRenderer;
   dayNight: DayNightController;
   weather: WeatherController;
+  clouds: CloudController;
   sound: SoundController;
   atproto: AtprotoController;
   multiplayer: MultiplayerController;
@@ -145,6 +147,7 @@ export const createCommands = ({
   renderer,
   dayNight,
   weather,
+  clouds,
   sound,
   atproto,
   multiplayer,
@@ -472,6 +475,20 @@ export const createCommands = ({
           return `weather set to ${arg}`;
         }
         return weather.describe();
+      },
+    },
+    "/clouds": {
+      description: "show or hide the clouds",
+      args: "[on|off]",
+      run: (rest) => {
+        const argument = rest[0];
+        if (argument !== undefined && argument !== "on" && argument !== "off") {
+          return "usage: /clouds [on|off]  (no argument flips it)";
+        }
+        const next =
+          argument === undefined ? !clouds.visible : argument === "on";
+        clouds.setVisible(next);
+        return next ? "clouds shown" : "clouds hidden";
       },
     },
     "/fullscreen": {
