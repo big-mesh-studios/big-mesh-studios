@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ChunkSphere, cellsInSphere, sphereCells } from "./chunk-sphere";
 import { BLOCK_WORLD } from "./level-data";
 import { DEFAULT_TERRAIN } from "./noise";
+import type { BorderSizes } from "./voxel-store";
 
 /**
  * Builds a sphere whose fills are recorded rather than performed. `Worker` is
@@ -72,6 +73,94 @@ describe("ChunkSphere", () => {
       return c[0] ** 2 + c[1] ** 2 + c[2] ** 2;
     });
     expect(distances).toEqual([...distances].sort((a, b) => a - b));
+  });
+
+  it("generates nearer cells at a finer level of detail than far ones", async () => {
+    vi.useFakeTimers();
+    const radius = 4;
+    const { sphere } = sphereWithRecordedFills(radius);
+    sphere.fillFrom(0, 0, 0);
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+
+    // Everything within three chunks stays at full resolution.
+    const centerSlot = sphere.slotAt(0, 0, 0);
+    expect(sphere.blocks[centerSlot!].store.voxels).toEqual([64, 64, 64]);
+    const mid = sphereCells({ x: 0, y: 0, z: 0 }, radius).find(
+      (c) => c.x === 2 && c.y === 0 && c.z === 0,
+    );
+    const midSlot = sphere.slotAt(
+      mid!.x * BLOCK_WORLD[0],
+      0,
+      mid!.z * BLOCK_WORLD[2],
+    );
+    expect(sphere.blocks[midSlot!].store.voxels).toEqual([64, 64, 64]);
+
+    // A cell at the ball's far edge, three to four chunks out, is one level
+    // coarser than the near field.
+    const far = sphereCells({ x: 0, y: 0, z: 0 }, radius).find(
+      (c) => c.x === radius && c.y === 0 && c.z === 0,
+    );
+    const farSlot = sphere.slotAt(
+      far!.x * BLOCK_WORLD[0],
+      0,
+      far!.z * BLOCK_WORLD[2],
+    );
+    expect(sphere.blocks[farSlot!].store.voxels).toEqual([32, 32, 32]);
+    expect(sphere.blocks[farSlot!].store.scale).toBe(4);
+  });
+
+  it("refills a surviving cell whose level of detail changed as the player moved", async () => {
+    vi.useFakeTimers();
+    const radius = 4;
+    const { sphere, repositioned } = sphereWithRecordedFills(radius);
+    sphere.fillFrom(0, 0, 0);
+    await vi.runAllTimersAsync();
+
+    // The cell four chunks east is generated coarse at the start.
+    const farCell = cellCenter({ x: 4, y: 0, z: 0 });
+    const slot = sphere.slotAt(farCell[0], farCell[1], farCell[2]);
+    expect(sphere.blocks[slot!].store.voxels).toEqual([32, 32, 32]);
+
+    repositioned.length = 0;
+    // Walk one cell east: that cell is now three chunks away, inside the
+    // full-resolution ring, so it must be refilled in place rather than
+    // moved.
+    sphere.scrollTo(cellCenter({ x: 1, y: 0, z: 0 })[0], 0, 0);
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+
+    const slotAfter = sphere.slotAt(farCell[0], farCell[1], farCell[2]);
+    expect(slotAfter).toBe(slot);
+    expect(repositioned).not.toContain(slot);
+    expect(sphere.blocks[slot!].store.voxels).toEqual([64, 64, 64]);
+  });
+
+  it("asks each cell's fill to cull its borders against its neighbours' voxel sizes", async () => {
+    vi.useFakeTimers();
+    const radius = 4;
+    const seen = new Map<string, BorderSizes>();
+    const sphere = new ChunkSphere({
+      radius,
+      terrain: DEFAULT_TERRAIN,
+      onBlockChanged: () => {},
+      onBlockReposition: () => {},
+      customFillStore: (_store, center, _config, borderSizes) => {
+        seen.set(center.join(","), borderSizes ?? {});
+      },
+    });
+    sphere.fillFrom(0, 0, 0);
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+
+    // Cell (3,0,0) is still full-resolution, but its +X neighbour (4,0,0) is
+    // the coarse outer shell: its +X border culls against 4-unit voxels.
+    const ringCell = `${3 * BLOCK_WORLD[0]},0,0`;
+    expect(seen.get(ringCell)?.px).toBe(4);
+    // Cell (1,0,0) is surrounded by full-resolution cells.
+    const innerCell = `${1 * BLOCK_WORLD[0]},0,0`;
+    expect(seen.get(innerCell)?.px).toBe(2);
+    expect(seen.get(innerCell)?.nx).toBe(2);
   });
 
   it("generates the nearest block before returning, and the rest one per task", async () => {
@@ -208,4 +297,39 @@ describe("ChunkSphere", () => {
     sphere.scrollTo(10, 5, -10);
     expect(filled).toHaveLength(0);
   }, 30_000);
+
+  it("does not re-request refills when scrollTo is called repeatedly while fills are pending", async () => {
+    vi.useFakeTimers();
+    const radius = 4;
+    let requestCount = 0;
+    const sphere = new ChunkSphere({
+      radius,
+      terrain: DEFAULT_TERRAIN,
+      onBlockChanged: () => {},
+      onBlockReposition: () => {},
+      customFillStore: () => {},
+    });
+    const origRequest = sphere["fillClient"].requestFill.bind(
+      sphere["fillClient"],
+    );
+    sphere["fillClient"].requestFill = (...args) => {
+      requestCount++;
+      return origRequest(...args);
+    };
+
+    sphere.fillFrom(0, 0, 0);
+    requestCount = 0;
+
+    // Walk one cell east
+    sphere.scrollTo(cellCenter({ x: 1, y: 0, z: 0 })[0], 0, 0);
+    const initialRequests = requestCount;
+    expect(initialRequests).toBeGreaterThan(0);
+
+    // Call scrollTo again within the same chunk before fills complete
+    sphere.scrollTo(cellCenter({ x: 1, y: 0, z: 0 })[0] + 5, 0, 0);
+    expect(requestCount).toBe(initialRequests);
+
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+  });
 });

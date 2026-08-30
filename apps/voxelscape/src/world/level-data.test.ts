@@ -11,7 +11,7 @@ import {
   isWaterAt,
   type Dim3,
 } from "./level-data";
-import { VOXEL_CLOUD, VOXEL_DIRT, VOXEL_WATER } from "./voxel-store";
+import { VOXEL_AIR, VOXEL_CLOUD, VOXEL_DIRT, VOXEL_WATER } from "./voxel-store";
 
 /** A fast, deterministic constant-height terrain for the byte-for-byte tests. */
 const flatConfig = {
@@ -260,5 +260,104 @@ describe("applyLevelData", () => {
     const releasedStore = block.store.data !== originalStore;
     expect(adoptedStore).toBe(true);
     expect(releasedStore).toBe(true);
+  });
+});
+
+describe("mixed-level-of-detail seams", () => {
+  /** A coarse +X neighbour of the fine block: cell (1,0,0) at LOD 1. */
+  const coarseNeighbour = () =>
+    buildBlock({ center: [128, 0, 0], lod: 1, terrain: noiseConfig });
+
+  /** A fine block whose +X border culls against a coarse neighbour. */
+  const fineWithCoarseNeighbour = () =>
+    buildBlock({
+      center: [0, 0, 0],
+      lod: 0,
+      terrain: noiseConfig,
+      borderSizes: { px: 4 },
+    });
+
+  it("culls a fine block's +X face only against coarse voxels that are solid", () => {
+    const coarse = coarseNeighbour();
+    const fine = fineWithCoarseNeighbour();
+    for (let vy = 0; vy < 64; vy++) {
+      for (let vz = 0; vz < 64; vz++) {
+        const fineBorder = fine.store.atPadded(64, vy, vz);
+        // The coarse voxel (size 4) containing the fine border cell's world
+        // centre, in the coarse block's own grid.
+        const worldY = (vy + 0.5 - 32) * 2;
+        const worldZ = (vz + 0.5 - 32) * 2;
+        const ccy = Math.floor(worldY / 4) * 4 + 2;
+        const ccz = Math.floor(worldZ / 4) * 4 + 2;
+        const coarseVoxel = coarse.store.get(
+          0,
+          Math.round(ccy / 4 + 15.5),
+          Math.round(ccz / 4 + 15.5),
+        );
+        // The fine border is solid only where the whole coarse voxel is
+        // solid, so a culled face is always hidden inside the neighbour.
+        if (fineBorder !== VOXEL_AIR && fineBorder !== VOXEL_WATER) {
+          expect(coarseVoxel).not.toBe(VOXEL_AIR);
+          expect(coarseVoxel).not.toBe(VOXEL_WATER);
+        }
+        // And where the neighbour is air, the fine face is always drawn.
+        if (coarseVoxel === VOXEL_AIR) {
+          expect(fineBorder).toBe(VOXEL_AIR);
+        }
+      }
+    }
+  });
+
+  it("culls a coarse block's +X face only where the fine neighbour is solid", () => {
+    const coarse = buildBlock({
+      center: [0, 0, 0],
+      lod: 1,
+      terrain: noiseConfig,
+      borderSizes: { px: 2 },
+    });
+    const fine = buildBlock({
+      center: [128, 0, 0],
+      lod: 0,
+      terrain: noiseConfig,
+    });
+    for (let cy = 0; cy < 32; cy++) {
+      for (let cz = 0; cz < 32; cz++) {
+        const coarseBorder = coarse.store.atPadded(32, cy, cz);
+        // The fine cells (size 2) inside the coarse border voxel, in the fine
+        // neighbour's grid: two columns across the shared plane and two rows
+        // per axis.
+        const worldY = (cy + 0.5 - 16) * 4;
+        const worldZ = (cz + 0.5 - 16) * 4;
+        const fineY = Math.round((worldY - 1) / 2 + 31.5);
+        const fineZ = Math.round((worldZ - 1) / 2 + 31.5);
+        const fineCells: number[] = [];
+        for (const fx of [0, 1]) {
+          for (const fy of [fineY, fineY + 1]) {
+            for (const fz of [fineZ, fineZ + 1]) {
+              fineCells.push(fine.store.get(fx, fy, fz));
+            }
+          }
+        }
+        const solid = (id: number): boolean =>
+          id !== VOXEL_AIR && id !== VOXEL_WATER;
+        if (solid(coarseBorder) && !fineCells.every(solid)) {
+          console.log("DBG seam", {
+            cy,
+            cz,
+            coarseBorder,
+            worldY,
+            fineY,
+            fineZ,
+            fineCells,
+          });
+        }
+        if (solid(coarseBorder)) {
+          expect(fineCells.every(solid)).toBe(true);
+        }
+        if (fineCells.some((id) => id === VOXEL_AIR)) {
+          expect(coarseBorder).toBe(VOXEL_AIR);
+        }
+      }
+    }
   });
 });

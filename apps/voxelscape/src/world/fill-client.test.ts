@@ -37,6 +37,7 @@ class FakeFillWorker {
     const result: FillBatchResult = {
       indices: request.indices,
       gens: request.gens,
+      lods: request.lods,
       storeData: request.indices.map(() => new Uint8Array(0)),
       mightHaveVoxels: request.indices.map(() => true),
     };
@@ -58,9 +59,9 @@ describe("FillClient", () => {
 
     // First a fill for the slot at cell A, then — before it returns — the
     // same slot is re-requested at cell B (the sphere moved it on).
-    client.requestFill([0], [[0, 0, 0]]);
+    client.requestFill([0], [[0, 0, 0]], [0]);
     blocks[0].center = [128, 0, 0];
-    client.requestFill([0], [[128, 0, 0]]);
+    client.requestFill([0], [[128, 0, 0]], [0]);
 
     expect(worker.sent).toHaveLength(2);
     expect(worker.sent[0].gens).toEqual([1]);
@@ -86,9 +87,36 @@ describe("FillClient", () => {
       createWorker: () => worker as unknown as Worker | undefined,
     });
 
-    client.requestFill([0], [[0, 0, 0]]);
+    client.requestFill([0], [[0, 0, 0]], [0]);
     worker.deliver(0);
     expect(changed).toHaveBeenCalledWith(0);
+  });
+
+  it("sends each slot's requested level of detail to the worker", () => {
+    const blocks = [buildBlockShell({ center: [0, 0, 0] })];
+    const worker = new FakeFillWorker();
+    const client = new FillClient({
+      terrain: DEFAULT_TERRAIN,
+      blocks,
+      onBlockChanged: () => {},
+      createWorker: () => worker as unknown as Worker | undefined,
+    });
+
+    client.requestFill([0], [[0, 0, 0]], [2]);
+    expect(worker.sent[0].lods).toEqual([2]);
+  });
+
+  it("sizes the slot's store to the level of detail it fills at", () => {
+    const blocks = [buildBlockShell({ center: [0, 0, 0] })];
+    const client = new FillClient({
+      terrain: DEFAULT_TERRAIN,
+      blocks,
+      onBlockChanged: () => {},
+    });
+
+    client.fillNow(0, 2);
+    expect(blocks[0].store.voxels).toEqual([16, 16, 16]);
+    expect(blocks[0].store.scale).toBe(8);
   });
 
   it("drops an in-flight fill for a slot synchronously refilled before it lands", () => {
@@ -102,7 +130,7 @@ describe("FillClient", () => {
       createWorker: () => worker as unknown as Worker | undefined,
     });
 
-    client.requestFill([0], [[0, 0, 0]]);
+    client.requestFill([0], [[0, 0, 0]], [0]);
     // The player stepped into this cell, so it is filled on the calling
     // thread — that must invalidate the request already in flight.
     client.fillNow(0);

@@ -7,7 +7,7 @@
 // transferred (moved, not copied) and adopted zero-copy into the block's store
 // and level.
 import { buildBlockData, type Dim3, type TerrainConfig } from "./level-data";
-import type { FillStoreFn } from "./voxel-store";
+import type { BorderSizes, FillStoreFn } from "./voxel-store";
 
 export interface FillConfig {
   terrain: TerrainConfig;
@@ -18,6 +18,13 @@ export interface FillBatchRequest {
   type: "fill";
   indices: number[];
   centers: Dim3[];
+  /** One level of detail per block, the resolution its voxels are generated at. */
+  lods: number[];
+  /**
+   * One neighbour-voxel-size map per block, so a block's border culls its seam
+   * faces against a neighbour built at a different level of detail.
+   */
+  borderSizes?: BorderSizes[];
   /**
    * One generation per block, echoing the counter the main thread bumped
    * when it sent this request. Carried back on the result so a stale result
@@ -30,6 +37,8 @@ export interface FillBatchRequest {
 export interface FillBatchResult {
   indices: number[];
   gens: number[];
+  /** Each block's level of detail, echoed like `gens`. */
+  lods: number[];
   storeData: Uint8Array[];
   /** Whether each block is worth meshing; see `VoxelStore.mightHaveVoxels`. */
   mightHaveVoxels: boolean[];
@@ -66,12 +75,15 @@ export async function* buildFillResults(
   for (let i = 0; i < req.centers.length; i++) {
     const data = buildBlockData({
       center: req.centers[i],
+      lod: req.lods[i],
       terrain: cfg.terrain,
       customFillStore: cachedCustomFillStore,
+      borderSizes: req.borderSizes?.[i],
     });
     yield {
       indices: [req.indices[i]],
       gens: [req.gens[i]],
+      lods: [req.lods[i]],
       storeData: [data.storeData],
       mightHaveVoxels: [data.mightHaveVoxels],
     };
