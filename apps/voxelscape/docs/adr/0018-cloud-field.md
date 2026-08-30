@@ -1,5 +1,9 @@
 # Clouds: static blocky puffs, wrapped around the player
 
+> Superseded by [ADR 0020](./0020-remove-moving-clouds.md), which removes the
+> puff field because the still Cloud Blocks (ADR 0019) cover the same ground
+> and the two together read as a duplication.
+
 Minecraft-style clouds were added as a third environment system (after
 day-night, ADR 0003, and weather, ADR 0006) with the same one-directional
 seam: a pure, seeded generator plus a scene-owning controller that knows

@@ -155,9 +155,8 @@ export type FillStoreFn = (
  * neighbouring blocks meet seamlessly). Each column is solid from below up
  * to the noise height; the top voxel is grass and everything below is dirt.
  * When `config.seaLevel` is set, the air above columns that dip below it is
- * filled with water up to sea level. The open air of the cloud-field band
- * (`cloud-fill.ts`) is filled with still-cloud voxels from the same seeded
- * 3D noise the moving puffs are built from.
+ * filled with water up to sea level. The open air of the cloud band
+ * (`cloud-fill.ts`) is filled with still-cloud voxels from a seeded 3D noise.
  *
  * The block may sit anywhere vertically: only the slice of each column that
  * falls inside the block's own rows is written, so a block far above the
@@ -209,7 +208,7 @@ export const fillStore = (
     const top = rowOfY(height);
     const waterBottom = seaLevel === undefined ? -Infinity : rowOfY(seaLevel);
     // One coverage sample per column, gate: columns below the coverage floor
-    // stay clear and skip the per-voxel cloud noise (mirrors the puff field).
+    // stay clear and skip the per-voxel cloud noise.
     const coverage =
       cloudNoise === undefined
         ? -Infinity

@@ -78,13 +78,13 @@ export class PerlinNoise2D {
 
 /**
  * Seeded 3D Perlin noise over a volume, the same permutation-table shape as
- * `PerlinNoise2D` but with the eight corners of a cube. The cloud field
- * samples it at an anisotropically scaled point (see `buildCloudMesh`) so its
- * puffs come out flatter than they are wide.
+ * `PerlinNoise2D` but with the eight corners of a cube. The still-cloud fill
+ * (`world/cloud-fill.ts`) samples it at an anisotropically scaled point so the
+ * clouds come out flatter than they are wide.
  *
  * A `period` below 256 makes the field tile seamlessly over that many lattice
  * cells in every axis: every lattice index, including the far-side corners,
- * is reduced modulo the period, which the cloud field needs so its wrap-tile
+ * is reduced modulo the period, which the cloud fill needs so its wrap-tile
  * seams match. At the default 256 the reduction matches the classic `& 255`
  * hashing exactly.
  */

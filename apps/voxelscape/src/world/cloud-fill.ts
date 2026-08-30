@@ -1,32 +1,30 @@
-// The still clouds `fillStore` scatters at the cloud-field altitude: the same
-// seeded 3D Perlin field the moving puffs are built from (`environment/clouds.ts`),
-// sampled at the world's voxel scale so the layout matches the visible puffs
-// while the fill stays deterministic per terrain seed. Kept here rather than in
-// `environment/clouds.ts` because the fill worker must not pull in rmsl; this
-// module imports only `noise.ts`.
+// The still clouds `fillStore` scatters through the cloud band: a seeded 3D
+// Perlin field (`PerlinNoise3D`), sampled at the world's voxel scale so the
+// layout is deterministic per terrain seed. Kept in its own module because the
+// fill worker must not pull in rmsl; this module imports only `noise.ts`.
 import { PerlinNoise3D } from "./noise";
 
-/** World units per axis the cloud field is periodic over (the puff field's wrap tile). */
+/** World units per axis the cloud field is periodic over. */
 const FILL_CLOUD_TILE = 1024;
 /** Lattice periods of the cloud noise across that tile; the field recycles every `FILL_CLOUD_TILE` units. */
 const FILL_CLOUD_PERIOD = 8;
-/** The altitude, in world units, the still-cloud band is centred on: the puffs' `CLOUD_Y`. */
+/** The altitude, in world units, the still-cloud band is centred on. */
 export const FILL_CLOUD_Y = 220;
-/** Half the band's height in world units; matches the puff volumes' vertical span. */
+/** Half the band's height in world units. */
 export const FILL_CLOUD_HALF_HEIGHT = 64;
-/** Noise frequency, in 1/world-units: exactly `FILL_CLOUD_PERIOD` periods across the tile, like the puffs. */
+/** Noise frequency, in 1/world-units: exactly `FILL_CLOUD_PERIOD` periods across the tile. */
 export const FILL_CLOUD_FREQUENCY = FILL_CLOUD_PERIOD / FILL_CLOUD_TILE;
-/** How many times wider than tall the still clouds come out (the puffs' `CLOUD_FLATNESS`). */
+/** How many times wider than tall the still clouds come out. */
 export const FILL_CLOUD_FLATNESS = 5;
-/** fBm octaves of the cloud noise, like the puffs. */
+/** fBm octaves of the cloud noise. */
 export const FILL_CLOUD_OCTAVES = 3;
-/** The fBm value a voxel must clear to be cloud (the puffs' `CLOUD_THRESHOLD`). */
+/** The fBm value a voxel must clear to be cloud. */
 export const FILL_CLOUD_THRESHOLD = 0.37;
-/** Coverage fBm value a column must clear to hold any cloud (the puffs' `CLOUD_COVERAGE_THRESHOLD`). */
+/** Coverage fBm value a column must clear to hold any cloud. */
 export const FILL_CLOUD_COVERAGE_THRESHOLD = -2;
-/** How strongly a column's coverage lowers the fill threshold, making denser banks (the puffs' `CLOUD_COVERAGE_DRIVE`). */
+/** How strongly a column's coverage lowers the fill threshold, making denser banks. */
 export const FILL_CLOUD_COVERAGE_DRIVE = 0.8;
-/** Distinguishes the cloud seed stream from the terrain seed — the same mix the puff field uses. */
+/** Distinguishes the cloud seed stream from the terrain seed. */
 export const FILL_CLOUD_SEED_MIX = 0xc10d5;
 
 /** The knobs `fillStore` samples the still-cloud field with. */
@@ -96,7 +94,7 @@ export const cloudColumnCoverage = (
 /**
  * Whether the voxel at (`worldX`, `worldY`, `worldZ`) is still-cloud, given
  * the coverage of its column: the fill threshold drops where coverage is high,
- * so denser areas grow fatter banks exactly like the puff field.
+ * so denser areas grow fatter banks.
  */
 export const cloudVoxelAt = (
   noise: PerlinNoise3D,
