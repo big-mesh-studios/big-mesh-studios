@@ -5,7 +5,7 @@ A browser voxel-world renderer/game: an infinite scrolling ball of procedurally 
 ## Language
 
 **WorldBlock**:
-One chunk of the world — a fixed-size voxel volume (64x64x64 voxels = 128 world units at `VOXEL_SIZE=2`) with its own voxel data (`VoxelStore`) and GPU texture (`Level`). Shared by both renderers; owned by neither. Blocks stack in every axis. Defined in `src/level-data.ts`.
+One chunk of the world — a voxel volume of fixed world extent (128 world units per axis), whose resolution is set by its level of detail: `VOXEL_SIZE=2` world units per voxel at LOD 0, doubling each level, so a block holds a 64³, 32³, or 16³ voxel volume (`VoxelStore`). Shared by both renderers; owned by neither. Blocks stack in every axis. Defined in `src/level-data.ts`.
 _Avoid_: Chunk, block (ambiguous with voxel), region
 
 **VoxelStore**:
@@ -21,7 +21,7 @@ The set of `WorldBlock`s the window keeps loaded: every chunk cell within `chunk
 _Avoid_: Chunk grid, world grid (the sphere's per-slot integer coordinates are an internal `ChunkSphere` implementation detail — don't confuse with **Sphere** itself)
 
 **ChunkSphere**:
-The class that owns the **Sphere**: builds its block pool at startup (each `WorldBlock` built directly, on the main thread), keeps it centred on the player (`scrollTo`), and requests fresh terrain data for each cell a scroll reveals from a **FillClient** (built synchronously at startup, asked for asynchronously afterwards). Every entering cell — the player's included — streams in through the worker pool, ordered nearest-first so the player's cell is asked for first; the composer holds the player's physics (`cellReady`) until that cell's fill lands. The grid coordinates are its private windowing state; nothing else needs them, because seam culling uses each block's own generated **VoxelStore** border rather than reading neighbours. Exposes `query`, a **BlockQuery** that resolves a world point to the block owning its voxel in O(1), and `slotAt`, the slot for that cell.
+The class that owns the **Sphere**: builds its block pool at startup (each `WorldBlock` built directly, on the main thread), keeps it centred on the player (`scrollTo`), and requests fresh terrain data for each cell a scroll reveals from a **FillClient** (built synchronously at startup, asked for asynchronously afterwards), asking for each cell at the level of detail its distance from the player earns (`lodAt`): full resolution within three chunks, one level coarser in the shell out to four, and coarsest beyond. A cell that stays in the ball but crosses a level-of-detail ring is refilled in place at the new resolution, so terrain the player walks toward sheds its coarse voxels before it comes into view. Each request also carries the six neighbours' voxel sizes (`borderSizesOf`), so a block's seam border culls against a neighbour built at a different level of detail. Every entering cell — the player's included — streams in through the worker pool, ordered nearest-first so the player's cell is asked for first; the composer holds the player's physics (`cellReady`) until that cell's fill lands. The grid coordinates are its private windowing state; nothing else needs them, because seam culling uses each block's own generated **VoxelStore** border rather than reading neighbours. Exposes `query`, a **BlockQuery** that resolves a world point to the block owning its voxel in O(1), and `slotAt`, the slot for that cell.
 _Avoid_: Terrain streamer, chunk manager
 
 **FillClient**:
