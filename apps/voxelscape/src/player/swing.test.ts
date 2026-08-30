@@ -1,17 +1,18 @@
 // @vitest-environment node
+import { Vector3D } from "@big-mesh-studios/maths";
 import { describe, expect, it } from "vitest";
 import {
   HANDLE_FRACTION,
   poseAt,
   PULLED_POSE,
-  quatRotate,
   RECOVER_TIME,
   REST_POSE,
   SWING_TIME,
+  SwingTransform,
   swingTransform,
   SWUNG_POSE,
-  type SwingState,
   WINDUP_TIME,
+  type SwingState,
 } from "./swing";
 
 const closeTo = (a: number, b: number, epsilon = 1e-9): boolean =>
@@ -70,22 +71,14 @@ describe("swing poses", () => {
 describe("swing transform", () => {
   const CARD_SIZE = 0.455;
 
-  const hilt = (t: {
-    qx: number;
-    qy: number;
-    qz: number;
-    qw: number;
-    x: number;
-    y: number;
-    z: number;
-  }): { x: number; y: number; z: number } => {
+  const hilt = (transform: SwingTransform): Vector3D => {
     const handleLocal = {
       x: HANDLE_FRACTION.x * CARD_SIZE,
       y: HANDLE_FRACTION.y * CARD_SIZE,
       z: 0,
     };
-    const offset = quatRotate([t.qx, t.qy, t.qz, t.qw], handleLocal);
-    return { x: t.x + offset.x, y: t.y + offset.y, z: t.z + offset.z };
+    const offset = Vector3D.rotateQuaternion(handleLocal, transform.rotation);
+    return Vector3D.add(transform.position, offset);
   };
 
   it("keeps the hilt on the hand path in every state", () => {
@@ -113,9 +106,9 @@ describe("swing transform", () => {
 
   it("holds the sword at a three-quarter view, half front half right", () => {
     const transform = swingTransform("idle", 0, 0, CARD_SIZE);
-    const normal = quatRotate(
-      [transform.qx, transform.qy, transform.qz, transform.qw],
+    const normal = Vector3D.rotateQuaternion(
       { x: 0, y: 0, z: 1 },
+      transform.rotation,
     );
     // the front face is canted toward the camera's right, not straight on
     expect(normal.x).toBeGreaterThan(0.4);
@@ -127,14 +120,8 @@ describe("swing transform", () => {
     const swung = swingTransform("swing", 1, 1, CARD_SIZE);
     // the top-right corner of the card, the blade end opposite the hilt
     const bladeLocal = { x: 0.5 * CARD_SIZE, y: 0.5 * CARD_SIZE, z: 0 };
-    const bladeRest = quatRotate(
-      [rest.qx, rest.qy, rest.qz, rest.qw],
-      bladeLocal,
-    );
-    const bladeSwung = quatRotate(
-      [swung.qx, swung.qy, swung.qz, swung.qw],
-      bladeLocal,
-    );
+    const bladeRest = Vector3D.rotateQuaternion(bladeLocal, rest.rotation);
+    const bladeSwung = Vector3D.rotateQuaternion(bladeLocal, swung.rotation);
     const travelled = Math.hypot(
       bladeSwung.x - bladeRest.x,
       bladeSwung.y - bladeRest.y,

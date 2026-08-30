@@ -5,7 +5,6 @@
 // pose of its own. Shown only in first person and only while the sword is the
 // selected inventory item; holding the place button winds it back and letting
 // go swings it, per the pure transform in `./swing`.
-import { BoxGeometry, Mesh, PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import { Dimensions3D } from "@big-mesh-studios/maths";
 import {
   boxSize,
@@ -14,6 +13,7 @@ import {
   VoxelModelMaterial,
   type Model,
 } from "@big-mesh-studios/stacker/renderer";
+import { BoxGeometry, Mesh, PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import type { DayNightState } from "../environment/day-night";
 import { SWORD } from "./inventory";
 import {
@@ -201,13 +201,8 @@ export class HeldItem {
     this.camera.remove(this.mesh);
   }
 
-  private applyTransform(transform: SwingTransform): void {
-    this.mesh.position.set(transform.x, transform.y, transform.z);
-    this.mesh.quaternion.set(
-      transform.qx,
-      transform.qy,
-      transform.qz,
-      transform.qw,
-    );
+  private applyTransform({ position, rotation }: SwingTransform): void {
+    this.mesh.position.set(position.x, position.y, position.z);
+    this.mesh.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
   }
 }

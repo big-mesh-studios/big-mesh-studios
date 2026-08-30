@@ -19,9 +19,9 @@ export {
 } from "./world/chunk-sphere";
 export {
   createVoxelWorld,
+  type InitialDrawProgress,
   type VoxelWorld,
   type VoxelWorldConfig,
-  type InitialDrawProgress,
 } from "./world/create-voxel-world";
 export {
   blockWorldVoxelRange,
@@ -89,6 +89,7 @@ export {
   EditingController,
   type EditingControllerParams,
 } from "./player/editing-controller";
+export { HeldItem, type HeldItemParams } from "./player/held-item";
 export {
   BREAK_YIELD,
   BREAKABLE,
@@ -98,23 +99,14 @@ export {
   TOOLS,
   type InventoryItem,
 } from "./player/inventory";
-export { HeldItem, type HeldItemParams } from "./player/held-item";
-export {
-  buildSwordModel,
-  loadSwordModel,
-  SPRITESHEET_HEIGHT,
-  SPRITESHEET_URL,
-  SPRITESHEET_WIDTH,
-  SWORD_SPRITE,
-  SWORD_SPRITE_BBOX,
-} from "./player/sword-model";
+export * from "./player/player";
+export { createPlayerSkin, type PlayerSkin } from "./player/player-skin";
 export {
   BASE_ROTATION_ANGLE,
   BASE_ROTATION_AXIS,
   HANDLE_FRACTION,
   poseAt,
   PULLED_POSE,
-  quatRotate,
   RECOVER_TIME,
   REST_POSE,
   SWING_TIME,
@@ -125,8 +117,15 @@ export {
   type SwingState,
   type SwingTransform,
 } from "./player/swing";
-export * from "./player/player";
-export { createPlayerSkin, type PlayerSkin } from "./player/player-skin";
+export {
+  buildSwordModel,
+  loadSwordModel,
+  SPRITESHEET_HEIGHT,
+  SPRITESHEET_URL,
+  SPRITESHEET_WIDTH,
+  SWORD_SPRITE,
+  SWORD_SPRITE_BBOX,
+} from "./player/sword-model";
 
 // Day/Night & Environment
 export {
@@ -185,12 +184,6 @@ export {
 // Multiplayer (cluster-based WebRTC mesh over atproto)
 export { MeshPeer, type MeshPeerParams } from "./multiplayer/mesh-peer";
 export {
-  MultiplayerController,
-  type MultiplayerParams,
-  type MultiplayerStatus,
-} from "./multiplayer/multiplayer-controller";
-export { round, type Pose, type PoseMessage } from "./multiplayer/pose";
-export {
   decodeMessage,
   encodeMessage,
   MAX_EDITS_PER_MESSAGE,
@@ -201,13 +194,13 @@ export {
   type MeshMessage,
   type PoseWire,
 } from "./multiplayer/messages";
+export {
+  MultiplayerController,
+  type MultiplayerParams,
+  type MultiplayerStatus,
+} from "./multiplayer/multiplayer-controller";
 export { createPeerJSSignaling } from "./multiplayer/peerjs-transport";
-export type {
-  PeerTransport,
-  SignalingFactory,
-  SignalingRemote,
-  SignalingTransport,
-} from "./multiplayer/transport";
+export { round, type Pose, type PoseMessage } from "./multiplayer/pose";
 export {
   hashDid,
   horizontalDistance,
@@ -227,6 +220,12 @@ export {
   type ClusterSelection,
   type RosterEntry,
 } from "./multiplayer/roster";
+export type {
+  PeerTransport,
+  SignalingFactory,
+  SignalingRemote,
+  SignalingTransport,
+} from "./multiplayer/transport";
 
 // The debug console: the command table and the components that show it
 export {
