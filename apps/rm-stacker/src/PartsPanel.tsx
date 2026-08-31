@@ -8,7 +8,7 @@ import { Command } from "./command/Command";
 import { IconButton, Tab } from "./components/components";
 import { StackerContext } from "./context";
 import styles from "./PartsPanel.module.css";
-import { widgetAxes, type WidgetAxis } from "./translate-widget";
+import { type WidgetAxis } from "./translate-widget";
 
 export function PartsPanel() {
   const {
@@ -45,29 +45,7 @@ export function PartsPanel() {
   return (
     <>
       <div class={styles.header}>
-        <span class={styles.title}>Parts</span>
         <IconButton kind="plus" onClick={addPart} title="Add a part" />
-      </div>
-      <div class={styles.list}>
-        <For each={parts()}>
-          {(part) => (
-            <Tab
-              class={styles.part}
-              selected={part.name === selectedPart().name}
-              onClick={() => selectPart(part.name)}
-              title={part.name}
-            >
-              {part.name}
-            </Tab>
-          )}
-        </For>
-      </div>
-      <div class={styles.header}>
-        <IconButton
-          kind="pen-to-square"
-          onClick={askForName}
-          title="Rename this part"
-        />
         <IconButton
           kind="clone"
           onClick={() => duplicatePart(selectedPart().name)}
@@ -80,9 +58,40 @@ export function PartsPanel() {
           title="Remove this part"
         />
       </div>
+      <div class={styles.list}>
+        <For each={parts()}>
+          {(part) => {
+            const isActive = () => part.name === selectedPart().name;
+            return (
+              <div
+                style={{
+                  display: "grid",
+                  "grid-template-columns": isActive() ? "1fr auto" : "",
+                }}
+              >
+                <Tab
+                  class={styles.part}
+                  selected={isActive()}
+                  onClick={() => selectPart(part.name)}
+                  title={part.name}
+                >
+                  <span>{part.name}</span>
+                </Tab>
+                <Show when={isActive()}>
+                  <IconButton
+                    kind="pen-to-square"
+                    onClick={askForName}
+                    title="Rename this part"
+                  />
+                </Show>
+              </div>
+            );
+          }}
+        </For>
+      </div>
       {/* A figure of one part has nothing to place that part against, so its
           root says nothing until there is a second one. */}
-      <Show when={parts().length > 1}>
+      {/* <Show when={parts().length > 1}>
         <div class={styles.root}>
           <For each={widgetAxes}>
             {(axis) => (
@@ -100,7 +109,7 @@ export function PartsPanel() {
             )}
           </For>
         </div>
-      </Show>
+      </Show> */}
     </>
   );
 }

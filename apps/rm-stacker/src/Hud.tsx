@@ -132,13 +132,18 @@ export function Hud() {
           selected={!ProfileDialog.isOpen() && !preview.unlit()}
           kind="lightbulb"
         />
+      </Bar>
+      <Bar class={styles.partsBar}>
         <PartsPopover.Trigger
           class={[tabStyle, iconTabStyle]}
           title="The figure's parts"
         >
           <Icon kind="cubes" />
         </PartsPopover.Trigger>
-        <PartsPopover.PopOver class={[popoverStyle, styles.partsPopover]}>
+        <PartsPopover.PopOver
+          popover="manual"
+          class={[popoverStyle, styles.partsPopover]}
+        >
           <PartsPanel />
         </PartsPopover.PopOver>
       </Bar>

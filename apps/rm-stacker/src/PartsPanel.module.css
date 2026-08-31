@@ -3,6 +3,7 @@
   align-items: center;
   gap: var(--margin);
   align-self: stretch;
+  justify-content: space-evenly;
 }
 
 .title {
@@ -23,13 +24,15 @@
 .part {
   justify-content: start;
   align-items: center;
-  padding: 0 calc(var(--margin) / 2);
+  padding-inline: var(--margin);
   font-size: 10pt;
   text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 12ch;
+
+  & > span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 .root {
@@ -59,4 +62,9 @@
     font: inherit;
     padding: 0 calc(var(--margin) / 2);
   }
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr;
 }

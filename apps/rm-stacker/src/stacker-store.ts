@@ -1,18 +1,11 @@
-import { createEffect, createMemo, createSignal, flush } from "solid-js";
-import { createAtproto } from "./atproto/create-atproto";
-import { Home } from "./home";
-import { Command } from "./command/Command";
-import { createCommander } from "./command/commander";
-import { DAWNBRINGER_32_PALETTE } from "./default_palette";
-import { loadFromIndexedDB, saveToIndexedDB } from "./load-save";
 import {
   Bitmap,
   Dimensions2D,
   Dimensions3D,
   RGBA,
   Vector2D,
+  Vector3D,
 } from "@big-mesh-studios/maths";
-import { ResizeOptions, resizeSides } from "./resize-sides";
 import {
   centrePivot,
   partDimensions,
@@ -22,11 +15,18 @@ import {
   type Sides,
   type SolvedPart,
 } from "@big-mesh-studios/stacker/renderer";
+import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
+import { createEffect, createMemo, createSignal, flush } from "solid-js";
+import { createAtproto } from "./atproto/create-atproto";
+import { Command } from "./command/Command";
+import { createCommander } from "./command/commander";
+import { DAWNBRINGER_32_PALETTE } from "./default_palette";
+import { Home } from "./home";
+import { loadFromIndexedDB, saveToIndexedDB } from "./load-save";
+import { ResizeOptions, resizeSides } from "./resize-sides";
 import { ModeKind } from "./types";
 import { UndoRedoManager } from "./undo-redo";
-import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import { createEnqueue } from "./utils/utils";
-import { Vector3D } from "@big-mesh-studios/maths";
 
 const INITIAL_DIMENSIONS = { width: 15, height: 15, depth: 15 };
 const INITIAL_PALETTE_INDEX = 5;
@@ -263,6 +263,7 @@ export function createStacker() {
 
   createEffect(parts, requestRender);
   createEffect(palette, requestRender);
+  createEffect(selectedPart, requestRender);
 
   /**
    * Replaces the parts, taking the figure as it stands first so the change can

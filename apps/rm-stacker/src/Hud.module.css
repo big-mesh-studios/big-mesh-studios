@@ -16,7 +16,7 @@
     ".       . ."
     "history . ."
     "tools   . ."
-    "colour  . .";
+    "colour  . parts";
   /* Only the bars themselves are reachable, and each asks for that for itself.
      Everything between them is the model behind, which orbits to a drag. */
   pointer-events: none;
@@ -81,9 +81,15 @@
   pointer-events: auto;
 }
 
+.partsBar {
+  grid-area: parts;
+}
+
 /* The parts open to the left of the button that shows them, tops level with it,
    because the button stands in the bar along the right edge of the window. */
 .partsPopover:popover-open {
-  top: calc(anchor(top));
-  right: calc(anchor(left) + var(--margin));
+  bottom: calc(anchor(top) + var(--margin));
+  right: calc(anchor(right));
+  width: 150px;
+  max-width: calc(100vw - var(--margin) * 4 - var(--size) * 2 - 2px);
 }
