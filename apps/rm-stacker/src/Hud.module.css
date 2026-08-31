@@ -2,41 +2,55 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-  pointer-events: none;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  z-index: 2;
   margin: var(--margin);
   gap: var(--margin);
-  z-index: 2;
-
-  & > * {
-    pointer-events: auto;
-  }
-}
-
-.side {
   display: grid;
-  grid-template-rows: auto 1fr;
-  justify-content: space-between;
-  gap: var(--margin);
+  grid-template-columns: auto 1fr auto;
+  /* The second row takes whatever the bars leave, which is what holds the rows
+     after it against the bottom edge. Each bar down the left is a row of its
+     own, so they stack against each other; the parts panel reaches across all
+     four and stands at the bottom of them, which is the one edge it shares. */
+  grid-template-rows: auto 1fr auto auto auto;
+  grid-template-areas:
+    "files   . view"
+    ".       . parts"
+    "history . parts"
+    "tools   . parts"
+    "colour  . parts";
+  /* Only the bars themselves are reachable, and each asks for that for itself.
+     Everything between them is the model behind, which orbits to a drag. */
   pointer-events: none;
 
-  .bottom {
-    display: grid;
-    gap: var(--margin);
-    align-items: end;
-    align-content: end;
+  & > .files {
+    grid-area: files;
   }
-}
 
-.palette {
-  align-self: end;
-}
+  & > .history {
+    grid-area: history;
+  }
 
-.main {
-  display: grid;
-  grid-template-rows: 1fr min;
-  pointer-events: none;
+  & > .tools {
+    grid-area: tools;
+  }
+
+  & > .colour {
+    grid-area: colour;
+  }
+
+  & > .view {
+    grid-area: view;
+    /* The parts panel is the wider of the two in this column, and a bar fills
+       the width it is given unless it is told where in it to stand. */
+    justify-self: end;
+  }
+
+  & > .parts {
+    grid-area: parts;
+    /* A bar hangs from the top of what it is given, and this one is given four
+       rows to keep the bars on the left from being spread apart by its height. */
+    align-self: end;
+  }
 }
 
 .palettePopover {
@@ -75,7 +89,4 @@
   bottom: calc(anchor(bottom));
   left: calc(anchor(right) + var(--margin));
   pointer-events: auto;
-}
-.right {
-  justify-items: end;
 }

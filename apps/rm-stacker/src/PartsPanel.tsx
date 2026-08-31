@@ -2,6 +2,7 @@
 // on. Choosing a part here is what points the six drawing panels, the preview's
 // outline, and the arrows at it.
 import { Vector3D } from "@big-mesh-studios/maths";
+import type { JSX } from "@solidjs/web/jsx-runtime";
 import { For, Show, useContext } from "solid-js";
 import { Command } from "./command/Command";
 import { Bar, IconButton, Tab } from "./components/components";
@@ -9,7 +10,7 @@ import { StackerContext } from "./context";
 import styles from "./PartsPanel.module.css";
 import { widgetAxes, type WidgetAxis } from "./translate-widget";
 
-export function PartsPanel() {
+export function PartsPanel(props: { class?: JSX.ClassValue }) {
   const {
     parts,
     selectedPart,
@@ -42,7 +43,7 @@ export function PartsPanel() {
   }
 
   return (
-    <Bar>
+    <Bar class={props.class}>
       <div class={styles.header}>
         <span class={styles.title}>Parts</span>
         <IconButton kind="plus" onClick={addPart} title="Add a part" />

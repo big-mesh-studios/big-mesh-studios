@@ -128,21 +128,8 @@ export function IconButton(props: IconButtonProps) {
 export const popoverStyle = styles.popover;
 
 export const barStyle = styles.bar;
-export function Bar(props: ParentProps) {
-  return <div class={styles.bar}>{props.children}</div>;
-}
-
-/**********************************************************************************/
-/*                                     Column                                     */
-/**********************************************************************************/
-
-export const columnStyle = styles.column;
-export function Column(props: ParentProps<{ style?: JSX.CSSProperties }>) {
-  return (
-    <div style={props.style} class={styles.column}>
-      {props.children}
-    </div>
-  );
+export function Bar(props: ParentProps<{ class?: JSX.ClassValue }>) {
+  return <div class={[styles.bar, props.class]}>{props.children}</div>;
 }
 
 /**********************************************************************************/
