@@ -229,51 +229,6 @@ export const fillStore = (
     Math.round((worldY - center[1]) / voxelSize + halfY);
 
   /**
-   * The terrain id at a world point sampled at voxel size `size`: the surface
-   * voxel is grass, below it is dirt, between the surface and sea level is
-   * water, and the cloud band fills the open air above. The y grid is
-   * anchored on the block's own center, which cancels out of the row
-   * comparisons (any shift is a whole number of voxels at every size), so the
-   * rule samples a neighbour's resolution unchanged.
-   */
-  const voxelIdAt = (
-    wx: number,
-    wy: number,
-    wz: number,
-    size: number,
-  ): number => {
-    const halfYAt = spanY / 2 / size;
-    const height = heightAt(wx, wz, config);
-    const vy = Math.round((wy - center[1]) / size + halfYAt - 0.5);
-    const top = Math.round((height - center[1]) / size + halfYAt);
-    let id: number =
-      vy === top
-        ? VOXEL_GRASS
-        : vy < top
-          ? VOXEL_DIRT
-          : seaLevel !== undefined &&
-              vy >= top + 1 &&
-              vy <= Math.round((seaLevel - center[1]) / size + halfYAt)
-            ? VOXEL_WATER
-            : VOXEL_AIR;
-    if (
-      id === VOXEL_AIR &&
-      cloudNoise !== undefined &&
-      wy >= bandMin &&
-      wy <= bandMax
-    ) {
-      const coverage = cloudColumnCoverage(cloudNoise, wx, wz);
-      if (
-        coverage >= cloud.coverageThreshold &&
-        cloudVoxelAt(cloudNoise, wx, wy, wz, coverage)
-      ) {
-        id = VOXEL_CLOUD;
-      }
-    }
-    return id;
-  };
-
-  /**
    * A border cell on a face whose neighbour is built at a different size: the
    * coarser of the two voxels spanning the cell has every finest-resolution
    * cell inside it sampled. When they all agree on solid or water the border
