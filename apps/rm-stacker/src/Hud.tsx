@@ -5,8 +5,10 @@ import {
   Colour,
   colourTabStyle,
   createDialog,
+  Icon,
   IconButton,
   IconTab,
+  iconTabStyle,
   popoverStyle,
   tabStyle,
 } from "./components/components";
@@ -29,6 +31,7 @@ export function Hud() {
   } = useContext(StackerContext);
 
   const PalettePopover = createPopover();
+  const PartsPopover = createPopover();
   const ProfileDialog = createDialog();
 
   const isModeSelected = (_mode: ModeKind) =>
@@ -129,8 +132,16 @@ export function Hud() {
           selected={!ProfileDialog.isOpen() && !preview.unlit()}
           kind="lightbulb"
         />
+        <PartsPopover.Trigger
+          class={[tabStyle, iconTabStyle]}
+          title="The figure's parts"
+        >
+          <Icon kind="cubes" />
+        </PartsPopover.Trigger>
+        <PartsPopover.PopOver class={[popoverStyle, styles.partsPopover]}>
+          <PartsPanel />
+        </PartsPopover.PopOver>
       </Bar>
-      <PartsPanel class={styles.parts} />
     </div>
   );
 }

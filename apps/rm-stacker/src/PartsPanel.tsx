@@ -1,16 +1,16 @@
 // The list of a figure's parts and the root of whichever one is being drawn
 // on. Choosing a part here is what points the six drawing panels, the preview's
-// outline, and the arrows at it.
+// outline, and the arrows at it. What it is drawn inside — the panel it opens
+// in — is the caller's to say.
 import { Vector3D } from "@big-mesh-studios/maths";
-import type { JSX } from "@solidjs/web/jsx-runtime";
 import { For, Show, useContext } from "solid-js";
 import { Command } from "./command/Command";
-import { Bar, IconButton, Tab } from "./components/components";
+import { IconButton, Tab } from "./components/components";
 import { StackerContext } from "./context";
 import styles from "./PartsPanel.module.css";
 import { widgetAxes, type WidgetAxis } from "./translate-widget";
 
-export function PartsPanel(props: { class?: JSX.ClassValue }) {
+export function PartsPanel() {
   const {
     parts,
     selectedPart,
@@ -43,7 +43,7 @@ export function PartsPanel(props: { class?: JSX.ClassValue }) {
   }
 
   return (
-    <Bar class={props.class}>
+    <>
       <div class={styles.header}>
         <span class={styles.title}>Parts</span>
         <IconButton kind="plus" onClick={addPart} title="Add a part" />
@@ -101,6 +101,6 @@ export function PartsPanel(props: { class?: JSX.ClassValue }) {
           </For>
         </div>
       </Show>
-    </Bar>
+    </>
   );
 }

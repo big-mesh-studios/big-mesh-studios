@@ -9,15 +9,14 @@
   grid-template-columns: auto 1fr auto;
   /* The second row takes whatever the bars leave, which is what holds the rows
      after it against the bottom edge. Each bar down the left is a row of its
-     own, so they stack against each other; the parts panel reaches across all
-     four and stands at the bottom of them, which is the one edge it shares. */
+     own, so they stack against each other. */
   grid-template-rows: auto 1fr auto auto auto;
   grid-template-areas:
     "files   . view"
-    ".       . parts"
-    "history . parts"
-    "tools   . parts"
-    "colour  . parts";
+    ".       . ."
+    "history . ."
+    "tools   . ."
+    "colour  . .";
   /* Only the bars themselves are reachable, and each asks for that for itself.
      Everything between them is the model behind, which orbits to a drag. */
   pointer-events: none;
@@ -40,20 +39,11 @@
 
   & > .view {
     grid-area: view;
-    /* The parts panel is the wider of the two in this column, and a bar fills
-       the width it is given unless it is told where in it to stand. */
-    justify-self: end;
-  }
-
-  & > .parts {
-    grid-area: parts;
-    /* A bar hangs from the top of what it is given, and this one is given four
-       rows to keep the bars on the left from being spread apart by its height. */
-    align-self: end;
   }
 }
 
-.palettePopover {
+.palettePopover,
+.partsPopover {
   inset: unset;
   position: absolute;
   pointer-events: auto;
@@ -89,4 +79,11 @@
   bottom: calc(anchor(bottom));
   left: calc(anchor(right) + var(--margin));
   pointer-events: auto;
+}
+
+/* The parts open to the left of the button that shows them, tops level with it,
+   because the button stands in the bar along the right edge of the window. */
+.partsPopover:popover-open {
+  top: calc(anchor(top));
+  right: calc(anchor(left) + var(--margin));
 }
