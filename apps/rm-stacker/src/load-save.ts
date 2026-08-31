@@ -20,14 +20,18 @@ const DB_KEYS = {
 
 type CommandStack = { command: Command; description: string }[];
 
-export async function loadFromIndexedDB(fallbackPalette: RGBA[]): Promise<{
+export interface IndexedDBData {
   parts: Part[];
   selectedPartName: string;
   undoStack: { command: Command; description: string }[];
   redoStack: { command: Command; description: string }[];
   palette: RGBA[];
   preview: PreviewState;
-} | null> {
+}
+
+export async function loadFromIndexedDB(
+  fallbackPalette: RGBA[],
+): Promise<IndexedDBData | null> {
   let blob = await loadBlobFromDB(DB_KEYS.zipFileData);
   if (blob === null) {
     return null;

@@ -438,7 +438,7 @@ const VoxelPreviewView: Component = () => {
   const grabArm = (
     at: Vector2D,
   ): { axis: WidgetAxis; arm: ArmOnScreen } | undefined => {
-    if (scene === undefined || canvas === undefined) {
+    if (scene === undefined || canvas === undefined || !preview.axesVisible()) {
       return undefined;
     }
 
@@ -549,6 +549,11 @@ const VoxelPreviewView: Component = () => {
 
     renderer.render(scene, camera);
   };
+
+  createEffect(preview.axesVisible, (axesVisible) => {
+    console.log(axesVisible);
+    widget.visible = axesVisible;
+  });
 
   createEffect(
     () => [figure(), solvedParts(), placement()] as const,

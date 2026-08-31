@@ -16,13 +16,14 @@ import {
   type SolvedPart,
 } from "@big-mesh-studios/stacker/renderer";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
+import { Accessor } from "@solidjs/signals";
 import { createEffect, createMemo, createSignal, flush } from "solid-js";
 import { createAtproto } from "./atproto/create-atproto";
 import { Command } from "./command/Command";
 import { createCommander } from "./command/commander";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 import { Home } from "./home";
-import { loadFromIndexedDB, saveToIndexedDB } from "./load-save";
+import { IndexedDBData, loadFromIndexedDB, saveToIndexedDB } from "./load-save";
 import { ResizeOptions, resizeSides } from "./resize-sides";
 import { ModeKind } from "./types";
 import { UndoRedoManager } from "./undo-redo";
@@ -99,6 +100,25 @@ export const unusedPartName = (parts: Part[], base: string): string => {
   }
 };
 
+function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
+  const [unlit, setUnlit] = createSignal(() => saved()?.preview?.unlit ?? true);
+  const [autorotate, setAutorotate] = createSignal(
+    () => saved()?.preview?.autorotate ?? true,
+  );
+  const [axesVisible, setAxesVisible] = createSignal(
+    () => saved()?.preview?.axesVisible ?? false,
+  );
+
+  return {
+    unlit,
+    setUnlit,
+    autorotate,
+    setAutorotate,
+    axesVisible,
+    setAxesVisible,
+  };
+}
+
 export function createStacker() {
   const enqueue = createEnqueue<Command>();
   const renderSet = new Set<() => void>();
@@ -160,17 +180,7 @@ export function createStacker() {
   );
   const narrow = createMediaQuery("(max-width: 500px)");
 
-  const [unlit, setUnlit] = createSignal(() => saved()?.preview?.unlit ?? true);
-  const [autorotate, setAutorotate] = createSignal(
-    () => saved()?.preview?.autorotate ?? true,
-  );
-
-  const preview = {
-    unlit,
-    setUnlit,
-    autorotate,
-    setAutorotate,
-  };
+  const preview = createPreviewStore(saved);
 
   const selectedColour = createMemo(() => palette()[selectedPaletteIndex()]);
 
@@ -200,8 +210,8 @@ export function createStacker() {
               selectedPartName: selectedPartName(),
               undoStack,
               redoStack,
-              unlit: unlit(),
-              autorotate: autorotate(),
+              unlit: preview.unlit(),
+              autorotate: preview.autorotate(),
             });
           } while (trySaveAgain);
           saving = false;

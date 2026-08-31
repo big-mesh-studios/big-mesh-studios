@@ -23,6 +23,7 @@ export type ModeKind =
 export type PreviewState = {
   unlit: boolean;
   autorotate: boolean;
+  axesVisible: boolean;
 };
 
 /**

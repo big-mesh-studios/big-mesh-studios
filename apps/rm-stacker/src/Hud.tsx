@@ -132,6 +132,15 @@ export function Hud() {
           selected={!ProfileDialog.isOpen() && !preview.unlit()}
           kind="lightbulb"
         />
+        <IconTab
+          onClick={() => {
+            preview.setAxesVisible((unlit) => !unlit);
+            flush();
+            requestAutoSave();
+          }}
+          selected={!ProfileDialog.isOpen() && preview.axesVisible()}
+          kind="arrows-up-down-left-right"
+        />
       </Bar>
       <Bar class={styles.partsBar}>
         <PartsPopover.Trigger
