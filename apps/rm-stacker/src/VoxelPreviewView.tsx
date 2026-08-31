@@ -1,12 +1,6 @@
-import {
-  Dimensions3D,
-  Matrix3x3,
-  Vector2D,
-  Vector3D,
-} from "@big-mesh-studios/maths";
+import { Matrix3x3, Vector2D, Vector3D } from "@big-mesh-studios/maths";
 import {
   composeRoot,
-  encodePalette,
   FigureMeshes,
   figurePlacement,
 } from "@big-mesh-studios/stacker/renderer";
@@ -31,7 +25,7 @@ import {
 } from "solid-js";
 import { Command } from "./command/Command";
 import { StackerContext } from "./context";
-import shaders from "./shaders";
+import { pickFigure, type FigurePick } from "./figure-picker";
 import {
   armUnderPointer,
   TranslateWidget,
@@ -40,12 +34,9 @@ import {
   type WidgetAxis,
 } from "./translate-widget";
 import { tryCatch } from "./utils/utils";
-import { voxelPicker } from "./voxel-picker";
 import {
-  AMBIENT_COLOUR,
   FAR,
   FOV,
-  LIGHT_COLOUR,
   LIGHT_DIR,
   lightFigure,
   NEAR,
@@ -70,6 +61,15 @@ const TURNTABLE_RADIANS_PER_SECOND =
 // it in front of the voxel face it sits on.
 const OUTLINE_COLOUR = 0xffffff;
 const OUTLINE_LINE_WIDTH = 2;
+
+/** How far a press may wander across the canvas and still count as a tap. */
+const TAP_SLOP = 4;
+
+/** How long a press may be held down and still count as a tap, in milliseconds. */
+const TAP_HELD = 300;
+
+/** What a pick met: a voxel of one of the figure's parts, or nothing at all. */
+type Picked = FigurePick | "nothing";
 
 type PreviewScene = {
   renderer: WebGLRenderer;
@@ -101,9 +101,8 @@ const VoxelPreviewView: Component = () => {
     figure,
     parts,
     selectedPart,
+    selectPart,
     solvedParts,
-    dimensions,
-    voxels,
     palette,
     preview,
     doCommand,
@@ -113,13 +112,7 @@ const VoxelPreviewView: Component = () => {
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [previewScene, setPreviewScene] = createSignal<PreviewScene>();
   const [glError, setGlError] = createSignal<string | undefined>();
-  const [pickedVoxel, setPickedVoxel] = createSignal<
-    [number, number, number] | undefined
-  >();
-
-  const normalizedDimensions = createMemo(() =>
-    Dimensions3D.normalize(dimensions()),
-  );
+  const [picked, setPicked] = createSignal<Picked | undefined>();
 
   /**
    * How much of the drawn world one voxel takes up for as long as a drag runs,
@@ -139,12 +132,6 @@ const VoxelPreviewView: Component = () => {
   const placement = createMemo(() =>
     figurePlacement(figure(), heldVoxelSize()),
   );
-
-  /** Where the selected part's box is drawn, and what its own box is scaled by. */
-  const selectedPlacement = createMemo(() => {
-    const index = parts().indexOf(selectedPart());
-    return placement().placements[index === -1 ? 0 : index];
-  });
 
   /**
    * Where the selected part's root sits in the drawn world, which is where the
@@ -176,7 +163,6 @@ const VoxelPreviewView: Component = () => {
   const inversePitchMatrix = Matrix3x3.create();
   const modelToWorld = Matrix3x3.create();
   const modelSpaceLightDirection = Vector3D.create();
-  const partOffset = Vector3D.create();
 
   let timeOffset = 0;
   let spinOffset = 0;
@@ -224,94 +210,67 @@ const VoxelPreviewView: Component = () => {
     );
   };
 
-  // CPU voxel picking: ray-march the same volume the fragment shader renders,
-  // from the click position in UV space, and return the voxel index under it
-  // (or [-1, -1, -1] for empty space). The picker is precompiled at build time
-  // by precompileJS, so this never runs the rmsl graph in the browser.
-  //
-  // Only the part being drawn on is picked. The picker hands back which voxel a
-  // ray met and not how far along it, so with several parts in the way there is
-  // nothing to tell which of their answers is the nearest; the part list is what
-  // chooses a part.
+  // CPU voxel picking: ray-march the same volumes the fragment shader renders,
+  // from the pointer position in UV space, and hold on to the voxel met first
+  // across the whole figure. The picker is precompiled at build time by
+  // precompileJS, so this never runs the rmsl graph in the browser.
   const pickAt = (clientX: number, clientY: number) => {
     const _canvas = canvas();
-    const _dimensions = dimensions();
-    const _voxels = voxels();
-    const _palette = palette();
-    if (_canvas === undefined || _voxels.length === 0) {
+
+    if (_canvas === undefined) {
       return;
     }
+
     const rect = _canvas.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
-    // The drawing buffer is scaled by devicePixelRatio, but vUv spans the CSS
-    // box, so the click position is normalized against the CSS size.
-    const width = _canvas.width;
-    const height = _canvas.height;
+
     if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) {
       return;
     }
 
     Matrix3x3.transform(getWorldToModel(), LIGHT_DIR, modelSpaceLightDirection);
 
-    // The marcher walks a volume standing at the origin, and this part stands
-    // wherever its root puts it at whatever the figure's voxel size scales it
-    // to. Moving the camera by the part's own place instead — out of the
-    // figure's space and into the world, then away by where the part sits —
-    // gives the same ray in the part's own terms.
-    const { position, scale } = selectedPlacement();
-    Matrix3x3.transform(getModelToWorld(), position, partOffset);
+    setPicked(
+      pickFigure({
+        solved: solvedParts(),
+        placements: placement().placements,
+        palette: palette(),
+        // The drawing buffer is scaled by devicePixelRatio, but vUv spans the
+        // CSS box, so the pointer is normalized against the CSS size.
+        uv: { x: x / rect.width, y: 1 - y / rect.height },
+        resolution: { width: _canvas.width, height: _canvas.height },
+        cameraDistance: radius,
+        worldToModel,
+        modelToWorld: getModelToWorld(),
+        lightDirection: modelSpaceLightDirection,
+        unlit: untrack(preview.unlit),
+      }) ?? "nothing",
+    );
+  };
 
-    const paletteData = encodePalette(_palette);
+  /** What the readout says the pointer is over, or undefined before any pick. */
+  const pickedLabel = createMemo(() => {
+    const _picked = picked();
 
-    const picked = voxelPicker({
-      uniforms: {
-        [shaders.uResolution]: [width, height],
-        [shaders.uDimensions]: [
-          normalizedDimensions().width,
-          normalizedDimensions().height,
-          normalizedDimensions().depth,
-        ],
-        [shaders.uVoxelCount]: [
-          _dimensions.width,
-          _dimensions.height,
-          _dimensions.depth,
-        ],
-        [shaders.uLightDir]: [
-          modelSpaceLightDirection.x,
-          modelSpaceLightDirection.y,
-          modelSpaceLightDirection.z,
-        ],
-        [shaders.uLightColour]: Array.from(LIGHT_COLOUR),
-        [shaders.uAmbientColour]: Array.from(AMBIENT_COLOUR),
-        [shaders.uCameraPosition]: [
-          -partOffset.x / scale,
-          -partOffset.y / scale,
-          (radius - partOffset.z) / scale,
-        ],
-        [shaders.uWorldToModel]: Array.from(worldToModel),
-        [shaders.uUnlit]: untrack(preview.unlit),
-      },
-      varying: { vUv: [x / rect.width, 1 - y / rect.height] },
-      textures: {
-        [shaders.uVoxels]: {
-          data: _voxels,
-          width: _dimensions.width,
-          height: _dimensions.height,
-          depth: _dimensions.depth,
-        },
-        [shaders.uPalette]: {
-          data: paletteData,
-          width: _palette.length,
-          height: 1,
-        },
-      },
-    });
+    if (_picked === undefined) {
+      return undefined;
+    }
 
-    // The picker is not reentrant: it returns a shared scratch array that it
-    // mutates in place on every call, so copying it gives Solid a new reference
-    // to trigger a re-render.
-    setPickedVoxel(picked.slice() as [number, number, number]);
+    return _picked === "nothing"
+      ? "no voxel"
+      : `${_picked.part}: voxel ${_picked.voxel.join(", ")}`;
+  });
+
+  /** Points the editor at the part the pointer last met, so a tap reaches it. */
+  const selectPicked = () => {
+    const _picked = untrack(picked);
+
+    if (_picked === undefined || _picked === "nothing") {
+      return;
+    }
+
+    selectPart(_picked.part);
   };
 
   /** Where a pointer event lands on the canvas, in pixels from its top left. */
@@ -412,6 +371,13 @@ const VoxelPreviewView: Component = () => {
   const activePointers = new Map<number, { x: number; y: number }>();
   let pinchDistance = 0;
 
+  /**
+   * Where and when a press that could still turn out to be a tap landed, or
+   * undefined once it has wandered far enough to be an orbit — or taken hold of
+   * an arrow, or been joined by a second finger — instead.
+   */
+  let press: { at: Vector2D; when: number } | undefined;
+
   const pinchSpan = () => {
     const [a, b] = [...activePointers.values()];
     return Math.hypot(a.x - b.x, a.y - b.y);
@@ -449,15 +415,21 @@ const VoxelPreviewView: Component = () => {
           lastRoot: part.root,
         };
         untrack(previewScene)?.widget.setHeld(grabbed.axis);
+        press = undefined;
         return;
       }
 
       // Pick immediately, so a tap (which produces no pointermove) still
       // selects the voxel under the finger.
       pickAt(event.clientX, event.clientY);
+      press = {
+        at: { x: event.clientX, y: event.clientY },
+        when: performance.now(),
+      };
     } else if (activePointers.size === 2) {
       // A second finger ends an arrow drag rather than fighting it for the move.
       endWidgetDrag();
+      press = undefined;
       pinchDistance = pinchSpan();
     }
   };
@@ -473,6 +445,14 @@ const VoxelPreviewView: Component = () => {
     };
     tracked.x = event.clientX;
     tracked.y = event.clientY;
+
+    if (
+      press !== undefined &&
+      Math.hypot(event.clientX - press.at.x, event.clientY - press.at.y) >
+        TAP_SLOP
+    ) {
+      press = undefined;
+    }
 
     if (widgetDrag !== undefined) {
       const at = pointerOnCanvas(event);
@@ -514,7 +494,16 @@ const VoxelPreviewView: Component = () => {
       pinchDistance = 0;
     }
     if (activePointers.size === 0) {
+      // A press that stayed put and was let go again quickly is a tap on the
+      // figure, which reaches for whichever part it landed on.
+      const tapped =
+        press !== undefined && performance.now() - press.when <= TAP_HELD;
+      press = undefined;
       endWidgetDrag();
+
+      if (tapped) {
+        selectPicked();
+      }
     }
   };
 
@@ -561,24 +550,26 @@ const VoxelPreviewView: Component = () => {
 
   // The outline follows the pick: trace the picked voxel's cell (in the part's
   // own space, from the same dimensions the marcher sizes its box by) and hide
-  // it when the pick is empty. It hangs off the part it belongs to, so it moves
-  // and turns with it.
+  // it when the pick met nothing. It hangs off the part it was picked on, so it
+  // moves and turns with it.
   createEffect(
-    () =>
-      [previewScene(), selectedPart(), dimensions(), pickedVoxel()] as const,
-    ([previewScene, selectedPart, dimensions, pickedVoxel]) => {
+    () => [previewScene(), solvedParts(), picked()] as const,
+    ([previewScene, solvedParts, picked]) => {
       if (previewScene === undefined) {
         return;
       }
 
       const { outline, meshes } = previewScene;
-      const host = meshes.meshFor(selectedPart.name);
 
-      if (
-        host === undefined ||
-        pickedVoxel === undefined ||
-        pickedVoxel[0] < 0
-      ) {
+      if (picked === undefined || picked === "nothing") {
+        outline.visible = false;
+        return;
+      }
+
+      const on = solvedParts.find((solved) => solved.name === picked.part);
+      const host = meshes.meshFor(picked.part);
+
+      if (on === undefined || host === undefined) {
         outline.visible = false;
         return;
       }
@@ -589,7 +580,7 @@ const VoxelPreviewView: Component = () => {
       }
 
       const geometry = outline.geometry;
-      geometry.setPositions(voxelCellEdges(dimensions, pickedVoxel));
+      geometry.setPositions(voxelCellEdges(on.dimensions, picked.voxel));
       // setPositions swaps in fresh instance attributes whose needsUpdate flag
       // is false, so the renderer would keep drawing the previous pick's edges.
       // Flag them so the next frame uploads the new cell.
@@ -713,12 +704,8 @@ const VoxelPreviewView: Component = () => {
               );
             }}
           />
-          {pickedVoxel() !== undefined && (
-            <div class={styles.picked}>
-              {pickedVoxel()![0] === -1
-                ? "no voxel"
-                : `voxel ${pickedVoxel()![0]}, ${pickedVoxel()![1]}, ${pickedVoxel()![2]}`}
-            </div>
+          {pickedLabel() !== undefined && (
+            <div class={styles.picked}>{pickedLabel()}</div>
           )}
         </>
       ) : (
