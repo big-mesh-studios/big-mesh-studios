@@ -4,7 +4,11 @@ import {
   FigureMeshes,
   figurePlacement,
 } from "@big-mesh-studios/stacker/renderer";
-import { getPointerCount, pointer } from "@big-mesh-studios/utils/pointer";
+import {
+  getPointerCount,
+  getPointers,
+  pointer,
+} from "@big-mesh-studios/utils/pointer";
 import {
   Group,
   Line2NodeMaterial,
@@ -66,31 +70,6 @@ const TAP_SLOP = 4;
 
 /** How long a press may be held down and still count as a tap, in milliseconds. */
 const TAP_HELD = 300;
-
-type PreviewScene = {
-  renderer: WebGLRenderer;
-  scene: Scene;
-  camera: PerspectiveCamera;
-  /** The figure and the arrows standing in it, turned as one by the turntable. */
-  turntable: Group;
-  meshes: FigureMeshes;
-  widget: TranslateWidget;
-  outline: LineSegments2;
-};
-
-/** A drag of one of the widget's arrows, from the moment it was taken hold of. */
-interface WidgetDrag {
-  part: string;
-  axis: WidgetAxis;
-  /** Where the arrow lay on the canvas when it was grabbed, which fixes how far a pixel slides it. */
-  arm: ArmOnScreen;
-  armLength: number;
-  voxelSize: number;
-  startPointer: Vector2D;
-  startRoot: Vector3D;
-  /** The root the part was last put at, so a move is only issued when it changes. */
-  lastRoot: Vector3D;
-}
 
 const VoxelPreviewView: Component = () => {
   const {
@@ -154,53 +133,93 @@ const VoxelPreviewView: Component = () => {
   let spinOffset = 0;
   let spin = 0;
 
-  async function handlePointer(
+  async function handleWidgetDrag(
+    initialEvent: PointerEvent & { currentTarget: HTMLElement },
+    at: Vector2D,
+    grabbedArm: {
+      axis: keyof Vector3D;
+      arm: ArmOnScreen;
+    },
+  ) {
+    const part = untrack(selectedPart);
+    // Hold the figure still, in its turn and in the size it is drawn at
+    // alike: an arrow dragged against a turning model would slide along an
+    // axis that had moved on by the time the pointer did, and a figure
+    // measured afresh as the part moves would rescale under the pointer.
+    spinOffset = spin;
+    setHeldVoxelSize(untrack(placement).voxelSize);
+
+    isDraggingWidget = true;
+
+    const widgetDrag = {
+      part: part.name,
+      axis: grabbedArm.axis,
+      arm: grabbedArm.arm,
+      armLength: widget.armLength,
+      voxelSize: untrack(placement).voxelSize,
+      startPointer: at,
+      startRoot: part.root,
+      lastRoot: part.root,
+    };
+
+    widget.setHeld(grabbedArm.axis);
+
+    await pointer(initialEvent, ({ delta, event }) => {
+      const at = pointerOnCanvas(event);
+
+      if (at !== undefined) {
+        const steps = voxelsDragged(
+          {
+            x: at.x - widgetDrag.startPointer.x,
+            y: at.y - widgetDrag.startPointer.y,
+          },
+          widgetDrag.arm,
+          widgetDrag.armLength,
+          widgetDrag.voxelSize,
+        );
+
+        const root = { ...widgetDrag.startRoot };
+        root[widgetDrag.axis] = widgetDrag.startRoot[widgetDrag.axis] + steps;
+
+        if (Vector3D.equals(root, widgetDrag.lastRoot)) {
+          return;
+        }
+
+        widgetDrag.lastRoot = root;
+        doCommand(Command.movePart(widgetDrag.part, root));
+      }
+    });
+
+    isDraggingWidget = false;
+
+    widget.setHeld(undefined);
+    // Measure the figure again, so it fits the view at wherever the part landed.
+    setHeldVoxelSize(undefined);
+
+    // The figure was held still for the drag; pick the turntable up from where
+    // it was rather than from where it would have got to.
+    timeOffset = performance.now();
+    spinOffset = spin;
+
+    if (!Vector3D.equals(widgetDrag.startRoot, widgetDrag.lastRoot)) {
+      pushUndo(
+        Command.movePart(widgetDrag.part, widgetDrag.startRoot),
+        "Move Part",
+      );
+    }
+  }
+
+  async function handlePartDrag(
     initialEvent: PointerEvent & { currentTarget: HTMLElement },
   ) {
-    const initialPointerCount = getPointerCount(initialEvent.currentTarget);
-    const first = initialPointerCount === 0;
+    // Pick immediately, so a tap (which produces no pointermove) still
+    // selects the voxel under the finger.
+    pickAt(initialEvent.clientX, initialEvent.clientY);
 
-    if (first) {
-      const at = pointerOnCanvas(initialEvent);
-      const grabbed = at === undefined ? undefined : grabArm(at);
-
-      if (at !== undefined && grabbed !== undefined) {
-        const part = untrack(selectedPart);
-        // Hold the figure still, in its turn and in the size it is drawn at
-        // alike: an arrow dragged against a turning model would slide along an
-        // axis that had moved on by the time the pointer did, and a figure
-        // measured afresh as the part moves would rescale under the pointer.
-        spinOffset = spin;
-        setHeldVoxelSize(untrack(placement).voxelSize);
-
-        widgetDrag = {
-          part: part.name,
-          axis: grabbed.axis,
-          arm: grabbed.arm,
-          armLength: widget.armLength,
-          voxelSize: untrack(placement).voxelSize,
-          startPointer: at,
-          startRoot: part.root,
-          lastRoot: part.root,
-        };
-
-        widget.setHeld(grabbed.axis);
-        press = undefined;
-      } else {
-        // Pick immediately, so a tap (which produces no pointermove) still
-        // selects the voxel under the finger.
-        pickAt(initialEvent.clientX, initialEvent.clientY);
-        press = {
-          at: { x: initialEvent.clientX, y: initialEvent.clientY },
-          when: performance.now(),
-        };
-      }
-    } else if (initialPointerCount === 1) {
-      // A second finger ends an arrow drag rather than fighting it for the move.
-      endWidgetDrag();
-      press = undefined;
-      pinchDistance = pinchSpan();
-    }
+    let press: { at: Vector2D; when: number } | undefined = {
+      at: { x: initialEvent.clientX, y: initialEvent.clientY },
+      when: performance.now(),
+    };
 
     await pointer(initialEvent, ({ delta, event }) => {
       if (
@@ -210,31 +229,6 @@ const VoxelPreviewView: Component = () => {
       ) {
         press = undefined;
       }
-
-      if (widgetDrag !== undefined) {
-        const at = pointerOnCanvas(event);
-
-        if (at !== undefined) {
-          dragWidget(at);
-        }
-
-        return;
-      }
-
-      if (initialPointerCount >= 1) {
-        const distance = pinchSpan();
-        if (pinchDistance > 0) {
-          // Spreading the fingers (distance grows) zooms in, i.e. pulls the
-          // camera closer, so the radius scales by the inverse ratio.
-          radius = Math.min(
-            MAX_RADIUS,
-            Math.max(MIN_RADIUS, radius * (pinchDistance / distance)),
-          );
-        }
-        pinchDistance = distance;
-        return;
-      }
-
       // Keep the readout in step with the cursor — including while orbiting,
       // where the model turns beneath the pointer.
       pickAt(event.clientX, event.clientY);
@@ -247,21 +241,59 @@ const VoxelPreviewView: Component = () => {
 
     const finalPointerCount = getPointerCount(initialEvent.currentTarget);
 
-    if (finalPointerCount < 2) {
-      pinchDistance = 0;
+    if (finalPointerCount !== 0) {
+      return;
     }
 
-    if (finalPointerCount === 0) {
-      // A press that stayed put and was let go again quickly is a tap on the
-      // figure, which reaches for whichever part it landed on.
-      const tapped =
-        press !== undefined && performance.now() - press.when <= TAP_HELD;
+    // A press that stayed put and was let go again quickly is a tap on the
+    // figure, which reaches for whichever part it landed on.
+    const tapped =
+      press !== undefined && performance.now() - press.when <= TAP_HELD;
 
-      press = undefined;
-      endWidgetDrag();
+    press = undefined;
 
-      if (tapped) {
-        selectPicked();
+    if (tapped) {
+      selectPicked();
+    }
+  }
+
+  async function handlePointer(
+    initialEvent: PointerEvent & { currentTarget: HTMLElement },
+  ) {
+    const initialPointerCount = getPointerCount(initialEvent.currentTarget);
+
+    switch (initialPointerCount) {
+      case 0: {
+        const at = pointerOnCanvas(initialEvent);
+        const grabbedArm = at === undefined ? undefined : grabArm(at);
+
+        if (at !== undefined && grabbedArm !== undefined) {
+          handleWidgetDrag(initialEvent, at, grabbedArm);
+          return;
+        }
+
+        handlePartDrag(initialEvent);
+        return;
+      }
+      case 1: {
+        const pinchSpan = (element: HTMLElement) => {
+          const [a, b] = getPointers(element);
+          return Math.hypot(a.x - b.x, a.y - b.y);
+        };
+
+        let pinchDistance = pinchSpan(initialEvent.currentTarget);
+        await pointer(initialEvent, () => {
+          const distance = pinchSpan(initialEvent.currentTarget);
+          if (pinchDistance > 0) {
+            // Spreading the fingers (distance grows) zooms in, i.e. pulls the
+            // camera closer, so the radius scales by the inverse ratio.
+            radius = Math.min(
+              MAX_RADIUS,
+              Math.max(MIN_RADIUS, radius * (pinchDistance / distance)),
+            );
+          }
+          pinchDistance = distance;
+        });
       }
     }
   }
@@ -318,9 +350,6 @@ const VoxelPreviewView: Component = () => {
   const widget = new TranslateWidget();
   turntable.add(widget.group);
 
-  /** The arrow being dragged, or undefined when none is. */
-  let widgetDrag: WidgetDrag | undefined;
-
   createEffect(preview.autorotate, (autoRotate) => {
     if (autoRotate) {
       timeOffset = performance.now();
@@ -329,9 +358,10 @@ const VoxelPreviewView: Component = () => {
     }
   });
 
-  /** Whether the figure is turning on its own right now. */
-  const spinning = () =>
-    untrack(preview.autorotate) && widgetDrag === undefined;
+  let isDraggingWidget = false;
+
+  // /** Whether the figure is turning on its own right now. */
+  const spinning = () => untrack(preview.autorotate) && !isDraggingWidget;
 
   const getWorldToModel = () => {
     Matrix3x3.rotationX(-pitch, pitchMatrix);
@@ -407,7 +437,6 @@ const VoxelPreviewView: Component = () => {
   /** Where a pointer event lands on the canvas, in pixels from its top left. */
   const pointerOnCanvas = (event: PointerEvent): Vector2D | undefined => {
     const rect = canvas.getBoundingClientRect();
-
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
 
@@ -436,73 +465,6 @@ const VoxelPreviewView: Component = () => {
     }
 
     return { axis, arm: arms.find((arm) => arm.axis === axis)! };
-  };
-
-  /** Slides the part being dragged to wherever the pointer has carried its arrow. */
-  const dragWidget = (at: Vector2D) => {
-    if (widgetDrag === undefined) {
-      return;
-    }
-
-    const steps = voxelsDragged(
-      {
-        x: at.x - widgetDrag.startPointer.x,
-        y: at.y - widgetDrag.startPointer.y,
-      },
-      widgetDrag.arm,
-      widgetDrag.armLength,
-      widgetDrag.voxelSize,
-    );
-
-    const root = { ...widgetDrag.startRoot };
-    root[widgetDrag.axis] = widgetDrag.startRoot[widgetDrag.axis] + steps;
-
-    if (Vector3D.equals(root, widgetDrag.lastRoot)) {
-      return;
-    }
-
-    widgetDrag.lastRoot = root;
-    doCommand(Command.movePart(widgetDrag.part, root));
-  };
-
-  /** Ends a drag, leaving one step in the history for the whole of it. */
-  const endWidgetDrag = () => {
-    if (widgetDrag === undefined) {
-      return;
-    }
-
-    const { part, startRoot, lastRoot } = widgetDrag;
-    widgetDrag = undefined;
-    widget.setHeld(undefined);
-    // Measure the figure again, so it fits the view at wherever the part landed.
-    setHeldVoxelSize(undefined);
-
-    // The figure was held still for the drag; pick the turntable up from where
-    // it was rather than from where it would have got to.
-    timeOffset = performance.now();
-    spinOffset = spin;
-
-    if (!Vector3D.equals(startRoot, lastRoot)) {
-      pushUndo(Command.movePart(part, startRoot), "Move Part");
-    }
-  };
-
-  // One finger orbits, two fingers pinch to zoom. Every pointer is tracked so
-  // the pinch can be measured from both of them regardless of which raised the
-  // move; while pinching, the drag (and the pick readout) is suspended.
-  const activePointers = new Map<number, { x: number; y: number }>();
-  let pinchDistance = 0;
-
-  /**
-   * Where and when a press that could still turn out to be a tap landed, or
-   * undefined once it has wandered far enough to be an orbit — or taken hold of
-   * an arrow, or been joined by a second finger — instead.
-   */
-  let press: { at: Vector2D; when: number } | undefined;
-
-  const pinchSpan = () => {
-    const [a, b] = [...activePointers.values()];
-    return Math.hypot(a.x - b.x, a.y - b.y);
   };
 
   const render = () => {

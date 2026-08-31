@@ -16,6 +16,10 @@ export function getPointerCount(element: HTMLElement) {
   return POINTER_EVENT_MAP.get(element)?.size ?? 0;
 }
 
+export function getPointers(element: HTMLElement) {
+  return POINTER_EVENT_MAP.get(element)?.values() ?? ([] as const);
+}
+
 /**
  * Follows a pointer from the event that started a drag until the drag ends.
  *
