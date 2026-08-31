@@ -10,7 +10,6 @@ import {
   Mesh,
   MeshBasicMaterial,
   Object3D,
-  Quaternion,
   Vector3,
   type Camera,
 } from "@random-mesh/rmsl/scene";

@@ -9,7 +9,6 @@ import {
   Line2NodeMaterial,
   LineSegments2,
   LineSegmentsGeometry,
-  Mesh,
   PerspectiveCamera,
   Scene,
   WebGLRenderer,
@@ -33,7 +32,6 @@ import {
   type ArmOnScreen,
   type WidgetAxis,
 } from "./translate-widget";
-import { tryCatch } from "./utils/utils";
 import {
   FAR,
   FOV,
@@ -68,9 +66,6 @@ const TAP_SLOP = 4;
 /** How long a press may be held down and still count as a tap, in milliseconds. */
 const TAP_HELD = 300;
 
-/** What a pick met: a voxel of one of the figure's parts, or nothing at all. */
-type Picked = FigurePick | "nothing";
-
 type PreviewScene = {
   renderer: WebGLRenderer;
   scene: Scene;
@@ -99,7 +94,6 @@ interface WidgetDrag {
 const VoxelPreviewView: Component = () => {
   const {
     figure,
-    parts,
     selectedPart,
     selectPart,
     solvedParts,
@@ -108,11 +102,6 @@ const VoxelPreviewView: Component = () => {
     doCommand,
     pushUndo,
   } = useContext(StackerContext);
-
-  const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
-  const [previewScene, setPreviewScene] = createSignal<PreviewScene>();
-  const [glError, setGlError] = createSignal<string | undefined>();
-  const [picked, setPicked] = createSignal<Picked | undefined>();
 
   /**
    * How much of the drawn world one voxel takes up for as long as a drag runs,
@@ -127,6 +116,7 @@ const VoxelPreviewView: Component = () => {
    * dragged and the rest of the figure stays where it stands.
    */
   const [heldVoxelSize, setHeldVoxelSize] = createSignal<number | undefined>();
+  const [picked, setPicked] = createSignal<FigurePick | undefined>();
 
   /** Where every part stands, and how much of the drawn world one voxel takes. */
   const placement = createMemo(() =>
@@ -144,10 +134,16 @@ const VoxelPreviewView: Component = () => {
     ),
   );
 
-  // A figure of one part has nothing for that part to be placed against, and
-  // sliding it would only move the whole drawing, so the arrows wait until
-  // there is a second part to line it up with.
-  const widgetShown = createMemo(() => parts().length > 1);
+  /** What the readout says the pointer is over, or undefined before any pick. */
+  const pickedLabel = createMemo(() => {
+    const _picked = picked();
+
+    if (_picked === undefined) {
+      return "no voxel";
+    }
+
+    return `${_picked.part}: voxel ${_picked.voxel.join(", ")}`;
+  });
 
   let yaw = Math.PI / 4;
   let pitch = Math.PI / 6;
@@ -167,6 +163,183 @@ const VoxelPreviewView: Component = () => {
   let timeOffset = 0;
   let spinOffset = 0;
   let spin = 0;
+
+  const handlePointerEnd = (event: PointerEvent) => {
+    activePointers.delete(event.pointerId);
+    if (activePointers.size < 2) {
+      pinchDistance = 0;
+    }
+    if (activePointers.size === 0) {
+      // A press that stayed put and was let go again quickly is a tap on the
+      // figure, which reaches for whichever part it landed on.
+      const tapped =
+        press !== undefined && performance.now() - press.when <= TAP_HELD;
+      press = undefined;
+      endWidgetDrag();
+
+      if (tapped) {
+        selectPicked();
+      }
+    }
+  };
+
+  const canvas = (
+    <canvas
+      class={styles.canvas}
+      onPointerDown={(event) => {
+        const first = activePointers.size === 0;
+        activePointers.set(event.pointerId, {
+          x: event.clientX,
+          y: event.clientY,
+        });
+        // Keep receiving moves for this pointer even when the finger leaves the
+        // canvas, so a drag (or a pinch) can run past its edge.
+        event.currentTarget.setPointerCapture(event.pointerId);
+
+        if (first) {
+          const at = pointerOnCanvas(event);
+          const grabbed = at === undefined ? undefined : grabArm(at);
+
+          if (at !== undefined && grabbed !== undefined) {
+            const part = untrack(selectedPart);
+            // Hold the figure still, in its turn and in the size it is drawn at
+            // alike: an arrow dragged against a turning model would slide along an
+            // axis that had moved on by the time the pointer did, and a figure
+            // measured afresh as the part moves would rescale under the pointer.
+            spinOffset = spin;
+            setHeldVoxelSize(untrack(placement).voxelSize);
+            widgetDrag = {
+              part: part.name,
+              axis: grabbed.axis,
+              arm: grabbed.arm,
+              armLength: widget.armLength,
+              voxelSize: untrack(placement).voxelSize,
+              startPointer: at,
+              startRoot: part.root,
+              lastRoot: part.root,
+            };
+            widget.setHeld(grabbed.axis);
+            press = undefined;
+            console.log("this");
+            return;
+          }
+
+          // Pick immediately, so a tap (which produces no pointermove) still
+          // selects the voxel under the finger.
+          pickAt(event.clientX, event.clientY);
+          press = {
+            at: { x: event.clientX, y: event.clientY },
+            when: performance.now(),
+          };
+        } else if (activePointers.size === 2) {
+          // A second finger ends an arrow drag rather than fighting it for the move.
+          endWidgetDrag();
+          press = undefined;
+          pinchDistance = pinchSpan();
+        }
+      }}
+      onPointerMove={(event: PointerEvent) => {
+        const tracked = activePointers.get(event.pointerId);
+        if (tracked === undefined) {
+          return;
+        }
+        const delta = {
+          x: event.clientX - tracked.x,
+          y: event.clientY - tracked.y,
+        };
+        tracked.x = event.clientX;
+        tracked.y = event.clientY;
+
+        if (
+          press !== undefined &&
+          Math.hypot(event.clientX - press.at.x, event.clientY - press.at.y) >
+            TAP_SLOP
+        ) {
+          press = undefined;
+        }
+
+        if (widgetDrag !== undefined) {
+          const at = pointerOnCanvas(event);
+
+          if (at !== undefined) {
+            dragWidget(at);
+          }
+
+          return;
+        }
+
+        if (activePointers.size >= 2) {
+          const distance = pinchSpan();
+          if (pinchDistance > 0) {
+            // Spreading the fingers (distance grows) zooms in, i.e. pulls the
+            // camera closer, so the radius scales by the inverse ratio.
+            radius = Math.min(
+              MAX_RADIUS,
+              Math.max(MIN_RADIUS, radius * (pinchDistance / distance)),
+            );
+          }
+          pinchDistance = distance;
+          return;
+        }
+
+        // Keep the readout in step with the cursor — including while orbiting,
+        // where the model turns beneath the pointer.
+        pickAt(event.clientX, event.clientY);
+        yaw += delta.x * RADIANS_PER_PIXEL;
+        pitch = Math.max(
+          -PITCH_LIMIT,
+          Math.min(PITCH_LIMIT, pitch + delta.y * RADIANS_PER_PIXEL),
+        );
+      }}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+      onWheel={(event) => {
+        const sign = Math.sign(event.deltaY);
+        radius = Math.min(
+          MAX_RADIUS,
+          Math.max(MIN_RADIUS, radius * Math.pow(1.1, sign)),
+        );
+      }}
+    />
+  ) as HTMLCanvasElement;
+
+  const renderer = new WebGLRenderer(canvas, {
+    antialias: false,
+    depth: true,
+  });
+
+  // Clear to transparent so the background painted behind the canvas
+  // shows through the pixels no voxel ray lands on.
+  renderer.setClearColor(0x000000, 0);
+  const scene = new Scene();
+  const camera = new PerspectiveCamera(FOV, 1, NEAR, FAR);
+  camera.position.set(0, 0, radius);
+  camera.lookAt(0, 0, 0);
+
+  // The figure and the arrows are turned together, so an arrow stands at
+  // the root of the part it moves however the turntable has carried it.
+  const turntable = new Group();
+  scene.add(turntable);
+
+  const meshes = new FigureMeshes();
+  turntable.add(meshes.group);
+
+  // The picked voxel's outline. Its geometry is in the part's own space
+  // (the same cell layout the marcher walks), so it is made a child of
+  // whichever part is picked and inherits that part's place and turn.
+  const outline = new LineSegments2(
+    new LineSegmentsGeometry(),
+    new Line2NodeMaterial({
+      color: OUTLINE_COLOUR,
+      linewidth: OUTLINE_LINE_WIDTH,
+    }),
+  );
+  outline.visible = false;
+
+  // Added after the figure, and drawn without a depth test, so the arrows
+  // come out over whatever they reach into rather than inside it.
+  const widget = new TranslateWidget();
+  turntable.add(widget.group);
 
   /** The arrow being dragged, or undefined when none is. */
   let widgetDrag: WidgetDrag | undefined;
@@ -215,13 +388,7 @@ const VoxelPreviewView: Component = () => {
   // across the whole figure. The picker is precompiled at build time by
   // precompileJS, so this never runs the rmsl graph in the browser.
   const pickAt = (clientX: number, clientY: number) => {
-    const _canvas = canvas();
-
-    if (_canvas === undefined) {
-      return;
-    }
-
-    const rect = _canvas.getBoundingClientRect();
+    const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
 
@@ -239,34 +406,21 @@ const VoxelPreviewView: Component = () => {
         // The drawing buffer is scaled by devicePixelRatio, but vUv spans the
         // CSS box, so the pointer is normalized against the CSS size.
         uv: { x: x / rect.width, y: 1 - y / rect.height },
-        resolution: { width: _canvas.width, height: _canvas.height },
+        resolution: { width: canvas.width, height: canvas.height },
         cameraDistance: radius,
         worldToModel,
         modelToWorld: getModelToWorld(),
         lightDirection: modelSpaceLightDirection,
         unlit: untrack(preview.unlit),
-      }) ?? "nothing",
+      }),
     );
   };
-
-  /** What the readout says the pointer is over, or undefined before any pick. */
-  const pickedLabel = createMemo(() => {
-    const _picked = picked();
-
-    if (_picked === undefined) {
-      return undefined;
-    }
-
-    return _picked === "nothing"
-      ? "no voxel"
-      : `${_picked.part}: voxel ${_picked.voxel.join(", ")}`;
-  });
 
   /** Points the editor at the part the pointer last met, so a tap reaches it. */
   const selectPicked = () => {
     const _picked = untrack(picked);
 
-    if (_picked === undefined || _picked === "nothing") {
+    if (_picked === undefined) {
       return;
     }
 
@@ -275,13 +429,7 @@ const VoxelPreviewView: Component = () => {
 
   /** Where a pointer event lands on the canvas, in pixels from its top left. */
   const pointerOnCanvas = (event: PointerEvent): Vector2D | undefined => {
-    const _canvas = canvas();
-
-    if (_canvas === undefined) {
-      return undefined;
-    }
-
-    const rect = _canvas.getBoundingClientRect();
+    const rect = canvas.getBoundingClientRect();
 
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
@@ -290,20 +438,17 @@ const VoxelPreviewView: Component = () => {
   const grabArm = (
     at: Vector2D,
   ): { axis: WidgetAxis; arm: ArmOnScreen } | undefined => {
-    const scene = untrack(previewScene);
-    const _canvas = untrack(canvas);
-
-    if (scene === undefined || _canvas === undefined || !widgetShown()) {
+    if (scene === undefined || canvas === undefined) {
       return undefined;
     }
 
-    const rect = _canvas.getBoundingClientRect();
+    const rect = canvas.getBoundingClientRect();
     // The arrows are placed for this frame's camera before they are measured,
     // so a grab reads the same picture the pointer is looking at.
-    scene.widget.place(selectedRoot(), radius);
-    rotateFigure(scene.turntable, yaw, pitch, spin);
+    widget.place(selectedRoot(), radius);
+    rotateFigure(turntable, yaw, pitch, spin);
 
-    const arms = scene.widget.armsOnScreen(scene.camera, {
+    const arms = widget.armsOnScreen(camera, {
       width: rect.width,
       height: rect.height,
     });
@@ -351,7 +496,7 @@ const VoxelPreviewView: Component = () => {
 
     const { part, startRoot, lastRoot } = widgetDrag;
     widgetDrag = undefined;
-    untrack(previewScene)?.widget.setHeld(undefined);
+    widget.setHeld(undefined);
     // Measure the figure again, so it fits the view at wherever the part landed.
     setHeldVoxelSize(undefined);
 
@@ -383,139 +528,7 @@ const VoxelPreviewView: Component = () => {
     return Math.hypot(a.x - b.x, a.y - b.y);
   };
 
-  const handlePointerDown = (event: PointerEvent) => {
-    const first = activePointers.size === 0;
-    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    // Keep receiving moves for this pointer even when the finger leaves the
-    // canvas, so a drag (or a pinch) can run past its edge.
-    (event.currentTarget as HTMLCanvasElement | null)?.setPointerCapture(
-      event.pointerId,
-    );
-
-    if (first) {
-      const at = pointerOnCanvas(event);
-      const grabbed = at === undefined ? undefined : grabArm(at);
-
-      if (at !== undefined && grabbed !== undefined) {
-        const part = untrack(selectedPart);
-        // Hold the figure still, in its turn and in the size it is drawn at
-        // alike: an arrow dragged against a turning model would slide along an
-        // axis that had moved on by the time the pointer did, and a figure
-        // measured afresh as the part moves would rescale under the pointer.
-        spinOffset = spin;
-        setHeldVoxelSize(untrack(placement).voxelSize);
-        widgetDrag = {
-          part: part.name,
-          axis: grabbed.axis,
-          arm: grabbed.arm,
-          armLength: untrack(previewScene)!.widget.armLength,
-          voxelSize: untrack(placement).voxelSize,
-          startPointer: at,
-          startRoot: part.root,
-          lastRoot: part.root,
-        };
-        untrack(previewScene)?.widget.setHeld(grabbed.axis);
-        press = undefined;
-        return;
-      }
-
-      // Pick immediately, so a tap (which produces no pointermove) still
-      // selects the voxel under the finger.
-      pickAt(event.clientX, event.clientY);
-      press = {
-        at: { x: event.clientX, y: event.clientY },
-        when: performance.now(),
-      };
-    } else if (activePointers.size === 2) {
-      // A second finger ends an arrow drag rather than fighting it for the move.
-      endWidgetDrag();
-      press = undefined;
-      pinchDistance = pinchSpan();
-    }
-  };
-
-  const handlePointerMove = (event: PointerEvent) => {
-    const tracked = activePointers.get(event.pointerId);
-    if (tracked === undefined) {
-      return;
-    }
-    const delta = {
-      x: event.clientX - tracked.x,
-      y: event.clientY - tracked.y,
-    };
-    tracked.x = event.clientX;
-    tracked.y = event.clientY;
-
-    if (
-      press !== undefined &&
-      Math.hypot(event.clientX - press.at.x, event.clientY - press.at.y) >
-        TAP_SLOP
-    ) {
-      press = undefined;
-    }
-
-    if (widgetDrag !== undefined) {
-      const at = pointerOnCanvas(event);
-
-      if (at !== undefined) {
-        dragWidget(at);
-      }
-
-      return;
-    }
-
-    if (activePointers.size >= 2) {
-      const distance = pinchSpan();
-      if (pinchDistance > 0) {
-        // Spreading the fingers (distance grows) zooms in, i.e. pulls the
-        // camera closer, so the radius scales by the inverse ratio.
-        radius = Math.min(
-          MAX_RADIUS,
-          Math.max(MIN_RADIUS, radius * (pinchDistance / distance)),
-        );
-      }
-      pinchDistance = distance;
-      return;
-    }
-
-    // Keep the readout in step with the cursor — including while orbiting,
-    // where the model turns beneath the pointer.
-    pickAt(event.clientX, event.clientY);
-    yaw += delta.x * RADIANS_PER_PIXEL;
-    pitch = Math.max(
-      -PITCH_LIMIT,
-      Math.min(PITCH_LIMIT, pitch + delta.y * RADIANS_PER_PIXEL),
-    );
-  };
-
-  const handlePointerEnd = (event: PointerEvent) => {
-    activePointers.delete(event.pointerId);
-    if (activePointers.size < 2) {
-      pinchDistance = 0;
-    }
-    if (activePointers.size === 0) {
-      // A press that stayed put and was let go again quickly is a tap on the
-      // figure, which reaches for whichever part it landed on.
-      const tapped =
-        press !== undefined && performance.now() - press.when <= TAP_HELD;
-      press = undefined;
-      endWidgetDrag();
-
-      if (tapped) {
-        selectPicked();
-      }
-    }
-  };
-
   const render = () => {
-    const _previewScene = untrack(previewScene);
-    const _canvas = untrack(canvas);
-    if (_previewScene === undefined || _canvas === undefined) {
-      return;
-    }
-    const { renderer, scene, camera, turntable, meshes, widget } =
-      _previewScene;
-
     // The figure is turned to the orientation getWorldToModel describes, so the
     // meshes' world-to-model matrices (the inverse of their world matrices,
     // which the material uses for its ray origin) stay in step with the matrix
@@ -528,7 +541,6 @@ const VoxelPreviewView: Component = () => {
 
     // The arrows stand inside the figure, turned by the same turntable, so they
     // stay pointing along the axes a drag moves the part along.
-    widget.visible = untrack(widgetShown);
     if (widget.visible) {
       widget.place(untrack(selectedRoot), radius);
     }
@@ -539,12 +551,9 @@ const VoxelPreviewView: Component = () => {
   };
 
   createEffect(
-    () => [previewScene(), figure(), solvedParts(), placement()] as const,
-    ([previewScene, figure, solvedParts, placement]) => {
-      if (previewScene === undefined) {
-        return;
-      }
-      previewScene.meshes.sync(figure, solvedParts, placement);
+    () => [figure(), solvedParts(), placement()] as const,
+    ([figure, solvedParts, placement]) => {
+      meshes.sync(figure, solvedParts, placement);
     },
   );
 
@@ -553,15 +562,9 @@ const VoxelPreviewView: Component = () => {
   // it when the pick met nothing. It hangs off the part it was picked on, so it
   // moves and turns with it.
   createEffect(
-    () => [previewScene(), solvedParts(), picked()] as const,
-    ([previewScene, solvedParts, picked]) => {
-      if (previewScene === undefined) {
-        return;
-      }
-
-      const { outline, meshes } = previewScene;
-
-      if (picked === undefined || picked === "nothing") {
+    () => [solvedParts(), picked()] as const,
+    ([solvedParts, picked]) => {
+      if (picked === undefined) {
         outline.visible = false;
         return;
       }
@@ -591,86 +594,20 @@ const VoxelPreviewView: Component = () => {
   );
 
   onSettled(() => {
-    const _canvas = canvas();
-    if (_canvas === undefined) {
-      return;
-    }
-
-    const _previewScene = tryCatch(
-      (): PreviewScene => {
-        const renderer = new WebGLRenderer(_canvas, {
-          antialias: false,
-          depth: true,
-        });
-        // Clear to transparent so the background painted behind the canvas
-        // shows through the pixels no voxel ray lands on.
-        renderer.setClearColor(0x000000, 0);
-        const scene = new Scene();
-        const camera = new PerspectiveCamera(FOV, 1, NEAR, FAR);
-        camera.position.set(0, 0, radius);
-        camera.lookAt(0, 0, 0);
-
-        // The figure and the arrows are turned together, so an arrow stands at
-        // the root of the part it moves however the turntable has carried it.
-        const turntable = new Group();
-        scene.add(turntable);
-
-        const meshes = new FigureMeshes();
-        turntable.add(meshes.group);
-
-        // The picked voxel's outline. Its geometry is in the part's own space
-        // (the same cell layout the marcher walks), so it is made a child of
-        // whichever part is picked and inherits that part's place and turn.
-        const outline = new LineSegments2(
-          new LineSegmentsGeometry(),
-          new Line2NodeMaterial({
-            color: OUTLINE_COLOUR,
-            linewidth: OUTLINE_LINE_WIDTH,
-          }),
-        );
-        outline.visible = false;
-
-        // Added after the figure, and drawn without a depth test, so the arrows
-        // come out over whatever they reach into rather than inside it.
-        const widget = new TranslateWidget();
-        turntable.add(widget.group);
-
-        return {
-          renderer,
-          scene,
-          camera,
-          turntable,
-          meshes,
-          widget,
-          outline,
-        };
-      },
-      (e) => {
-        setGlError(e instanceof Error ? e.message : String(e));
-      },
-    );
-
-    if (!_previewScene) {
-      return;
-    }
-
-    setPreviewScene(_previewScene);
-
-    const { renderer, camera } = _previewScene;
-
     const sizeToCanvas = () => {
-      const rect = _canvas.getBoundingClientRect();
+      const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       const width = Math.max(1, Math.round(rect.width * dpr));
       const height = Math.max(1, Math.round(rect.height * dpr));
       renderer.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+      render();
     };
     sizeToCanvas();
 
     const resizeObserver = new ResizeObserver(sizeToCanvas);
-    resizeObserver.observe(_canvas);
+    resizeObserver.observe(canvas);
 
     let rafId = requestAnimationFrame(function renderLoop() {
       render();
@@ -679,37 +616,14 @@ const VoxelPreviewView: Component = () => {
 
     return () => {
       cancelAnimationFrame(rafId);
-      resizeObserver.disconnect();
-      renderer.dispose();
-      setPreviewScene(undefined);
     };
   });
 
   return (
     <div class={styles.container}>
-      {glError() === undefined ? (
-        <>
-          <canvas
-            ref={setCanvas}
-            class={styles.canvas}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerEnd}
-            onPointerCancel={handlePointerEnd}
-            onWheel={(event) => {
-              const sign = Math.sign(event.deltaY);
-              radius = Math.min(
-                MAX_RADIUS,
-                Math.max(MIN_RADIUS, radius * Math.pow(1.1, sign)),
-              );
-            }}
-          />
-          {pickedLabel() !== undefined && (
-            <div class={styles.picked}>{pickedLabel()}</div>
-          )}
-        </>
-      ) : (
-        <div class={styles.error}>{glError()}</div>
+      {canvas}
+      {pickedLabel() !== undefined && (
+        <div class={styles.picked}>{pickedLabel()}</div>
       )}
     </div>
   );
