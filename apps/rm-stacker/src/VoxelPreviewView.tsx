@@ -4,6 +4,7 @@ import {
   FigureMeshes,
   figurePlacement,
 } from "@big-mesh-studios/stacker/renderer";
+import { getPointerCount, pointer } from "@big-mesh-studios/utils/pointer";
 import {
   Group,
   Line2NodeMaterial,
@@ -134,17 +135,6 @@ const VoxelPreviewView: Component = () => {
     ),
   );
 
-  /** What the readout says the pointer is over, or undefined before any pick. */
-  const pickedLabel = createMemo(() => {
-    const _picked = picked();
-
-    if (_picked === undefined) {
-      return "no voxel";
-    }
-
-    return `${_picked.part}: voxel ${_picked.voxel.join(", ")}`;
-  });
-
   let yaw = Math.PI / 4;
   let pitch = Math.PI / 6;
   let radius = 3;
@@ -164,16 +154,109 @@ const VoxelPreviewView: Component = () => {
   let spinOffset = 0;
   let spin = 0;
 
-  const handlePointerEnd = (event: PointerEvent) => {
-    activePointers.delete(event.pointerId);
-    if (activePointers.size < 2) {
+  async function handlePointer(
+    initialEvent: PointerEvent & { currentTarget: HTMLElement },
+  ) {
+    const initialPointerCount = getPointerCount(initialEvent.currentTarget);
+    const first = initialPointerCount === 0;
+
+    if (first) {
+      const at = pointerOnCanvas(initialEvent);
+      const grabbed = at === undefined ? undefined : grabArm(at);
+
+      if (at !== undefined && grabbed !== undefined) {
+        const part = untrack(selectedPart);
+        // Hold the figure still, in its turn and in the size it is drawn at
+        // alike: an arrow dragged against a turning model would slide along an
+        // axis that had moved on by the time the pointer did, and a figure
+        // measured afresh as the part moves would rescale under the pointer.
+        spinOffset = spin;
+        setHeldVoxelSize(untrack(placement).voxelSize);
+
+        widgetDrag = {
+          part: part.name,
+          axis: grabbed.axis,
+          arm: grabbed.arm,
+          armLength: widget.armLength,
+          voxelSize: untrack(placement).voxelSize,
+          startPointer: at,
+          startRoot: part.root,
+          lastRoot: part.root,
+        };
+
+        widget.setHeld(grabbed.axis);
+        press = undefined;
+      } else {
+        // Pick immediately, so a tap (which produces no pointermove) still
+        // selects the voxel under the finger.
+        pickAt(initialEvent.clientX, initialEvent.clientY);
+        press = {
+          at: { x: initialEvent.clientX, y: initialEvent.clientY },
+          when: performance.now(),
+        };
+      }
+    } else if (initialPointerCount === 1) {
+      // A second finger ends an arrow drag rather than fighting it for the move.
+      endWidgetDrag();
+      press = undefined;
+      pinchDistance = pinchSpan();
+    }
+
+    await pointer(initialEvent, ({ delta, event }) => {
+      if (
+        press !== undefined &&
+        Math.hypot(event.clientX - press.at.x, event.clientY - press.at.y) >
+          TAP_SLOP
+      ) {
+        press = undefined;
+      }
+
+      if (widgetDrag !== undefined) {
+        const at = pointerOnCanvas(event);
+
+        if (at !== undefined) {
+          dragWidget(at);
+        }
+
+        return;
+      }
+
+      if (initialPointerCount >= 1) {
+        const distance = pinchSpan();
+        if (pinchDistance > 0) {
+          // Spreading the fingers (distance grows) zooms in, i.e. pulls the
+          // camera closer, so the radius scales by the inverse ratio.
+          radius = Math.min(
+            MAX_RADIUS,
+            Math.max(MIN_RADIUS, radius * (pinchDistance / distance)),
+          );
+        }
+        pinchDistance = distance;
+        return;
+      }
+
+      // Keep the readout in step with the cursor — including while orbiting,
+      // where the model turns beneath the pointer.
+      pickAt(event.clientX, event.clientY);
+      yaw += delta.x * RADIANS_PER_PIXEL;
+      pitch = Math.max(
+        -PITCH_LIMIT,
+        Math.min(PITCH_LIMIT, pitch + delta.y * RADIANS_PER_PIXEL),
+      );
+    });
+
+    const finalPointerCount = getPointerCount(initialEvent.currentTarget);
+
+    if (finalPointerCount < 2) {
       pinchDistance = 0;
     }
-    if (activePointers.size === 0) {
+
+    if (finalPointerCount === 0) {
       // A press that stayed put and was let go again quickly is a tap on the
       // figure, which reaches for whichever part it landed on.
       const tapped =
         press !== undefined && performance.now() - press.when <= TAP_HELD;
+
       press = undefined;
       endWidgetDrag();
 
@@ -181,118 +264,12 @@ const VoxelPreviewView: Component = () => {
         selectPicked();
       }
     }
-  };
+  }
 
   const canvas = (
     <canvas
       class={styles.canvas}
-      onPointerDown={(event) => {
-        const first = activePointers.size === 0;
-        activePointers.set(event.pointerId, {
-          x: event.clientX,
-          y: event.clientY,
-        });
-        // Keep receiving moves for this pointer even when the finger leaves the
-        // canvas, so a drag (or a pinch) can run past its edge.
-        event.currentTarget.setPointerCapture(event.pointerId);
-
-        if (first) {
-          const at = pointerOnCanvas(event);
-          const grabbed = at === undefined ? undefined : grabArm(at);
-
-          if (at !== undefined && grabbed !== undefined) {
-            const part = untrack(selectedPart);
-            // Hold the figure still, in its turn and in the size it is drawn at
-            // alike: an arrow dragged against a turning model would slide along an
-            // axis that had moved on by the time the pointer did, and a figure
-            // measured afresh as the part moves would rescale under the pointer.
-            spinOffset = spin;
-            setHeldVoxelSize(untrack(placement).voxelSize);
-            widgetDrag = {
-              part: part.name,
-              axis: grabbed.axis,
-              arm: grabbed.arm,
-              armLength: widget.armLength,
-              voxelSize: untrack(placement).voxelSize,
-              startPointer: at,
-              startRoot: part.root,
-              lastRoot: part.root,
-            };
-            widget.setHeld(grabbed.axis);
-            press = undefined;
-            console.log("this");
-            return;
-          }
-
-          // Pick immediately, so a tap (which produces no pointermove) still
-          // selects the voxel under the finger.
-          pickAt(event.clientX, event.clientY);
-          press = {
-            at: { x: event.clientX, y: event.clientY },
-            when: performance.now(),
-          };
-        } else if (activePointers.size === 2) {
-          // A second finger ends an arrow drag rather than fighting it for the move.
-          endWidgetDrag();
-          press = undefined;
-          pinchDistance = pinchSpan();
-        }
-      }}
-      onPointerMove={(event: PointerEvent) => {
-        const tracked = activePointers.get(event.pointerId);
-        if (tracked === undefined) {
-          return;
-        }
-        const delta = {
-          x: event.clientX - tracked.x,
-          y: event.clientY - tracked.y,
-        };
-        tracked.x = event.clientX;
-        tracked.y = event.clientY;
-
-        if (
-          press !== undefined &&
-          Math.hypot(event.clientX - press.at.x, event.clientY - press.at.y) >
-            TAP_SLOP
-        ) {
-          press = undefined;
-        }
-
-        if (widgetDrag !== undefined) {
-          const at = pointerOnCanvas(event);
-
-          if (at !== undefined) {
-            dragWidget(at);
-          }
-
-          return;
-        }
-
-        if (activePointers.size >= 2) {
-          const distance = pinchSpan();
-          if (pinchDistance > 0) {
-            // Spreading the fingers (distance grows) zooms in, i.e. pulls the
-            // camera closer, so the radius scales by the inverse ratio.
-            radius = Math.min(
-              MAX_RADIUS,
-              Math.max(MIN_RADIUS, radius * (pinchDistance / distance)),
-            );
-          }
-          pinchDistance = distance;
-          return;
-        }
-
-        // Keep the readout in step with the cursor — including while orbiting,
-        // where the model turns beneath the pointer.
-        pickAt(event.clientX, event.clientY);
-        yaw += delta.x * RADIANS_PER_PIXEL;
-        pitch = Math.max(
-          -PITCH_LIMIT,
-          Math.min(PITCH_LIMIT, pitch + delta.y * RADIANS_PER_PIXEL),
-        );
-      }}
-      onPointerUp={handlePointerEnd}
-      onPointerCancel={handlePointerEnd}
+      onPointerDown={handlePointer}
       onWheel={(event) => {
         const sign = Math.sign(event.deltaY);
         radius = Math.min(
@@ -624,14 +601,7 @@ const VoxelPreviewView: Component = () => {
     };
   });
 
-  return (
-    <div class={styles.container}>
-      {canvas}
-      {pickedLabel() !== undefined && (
-        <div class={styles.picked}>{pickedLabel()}</div>
-      )}
-    </div>
-  );
+  return <div class={styles.container}>{canvas}</div>;
 };
 
 export default VoxelPreviewView;
