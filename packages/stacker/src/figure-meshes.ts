@@ -7,7 +7,12 @@
 // A caller reaches the materials to say so.
 import { Dimensions3D, type RGBA } from "@big-mesh-studios/maths";
 import { BoxGeometry, Group, Mesh } from "@random-mesh/rmsl/scene";
-import { boxSize, figurePlacement, type PartPlacement } from "./box";
+import {
+  boxSize,
+  figurePlacement,
+  type FigurePlacement,
+  type PartPlacement,
+} from "./box";
 import { partDimensions, type Figure, type Part } from "./data";
 import { encodePalette, solveVoxels } from "./solver";
 import { VoxelModelMaterial } from "./material";
@@ -114,9 +119,16 @@ export class FigureMeshes {
    * volume and the palette they all share.
    *
    * @param solved Each part's volume, in the order `figure.parts` holds them.
+   * @param placement Where the parts stand and how big a voxel is across them,
+   * for a caller that draws the figure at a placement of its own rather than at
+   * the one the figure measures to. Left out, the figure is drawn at its own.
    */
-  sync(figure: Figure, solved: SolvedPart[]): void {
-    const { placements } = figurePlacement(figure);
+  sync(
+    figure: Figure,
+    solved: SolvedPart[],
+    placement: FigurePlacement = figurePlacement(figure),
+  ): void {
+    const { placements } = placement;
 
     while (this.entries.length > figure.parts.length) {
       this.group.remove(this.entries.pop()!.mesh);
@@ -144,13 +156,17 @@ export class FigureMeshes {
         entry.builtFor = dimensions;
       }
 
-      const placement = placements[index];
+      const partPlacement = placements[index];
       entry.mesh.position.set(
-        placement.position.x,
-        placement.position.y,
-        placement.position.z,
+        partPlacement.position.x,
+        partPlacement.position.y,
+        partPlacement.position.z,
       );
-      entry.mesh.scale.set(placement.scale, placement.scale, placement.scale);
+      entry.mesh.scale.set(
+        partPlacement.scale,
+        partPlacement.scale,
+        partPlacement.scale,
+      );
 
       bakeVolume(entry.material, dimensions, voxels, figure.palette);
     });

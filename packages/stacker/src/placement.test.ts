@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
 import { boxSize, figurePlacement } from "./box";
+import { FigureMeshes, solveFigure } from "./figure-meshes";
 import {
   centrePivot,
   sideAxes,
@@ -190,5 +191,58 @@ describe("figurePlacement", () => {
       size: { width: 0, height: 0, depth: 0 },
       placements: [],
     });
+  });
+});
+
+describe("FigureMeshes drawn at a voxel size of its own", () => {
+  /** Two parts standing apart along x, the second `apartBy` voxels out. */
+  const twoParts = (apartBy: number) =>
+    figureOf(
+      partOf(
+        "still",
+        { width: 8, height: 8, depth: 8 },
+        {
+          root: Vector3D.create(-6, 0, 0),
+        },
+      ),
+      partOf(
+        "moved",
+        { width: 8, height: 8, depth: 8 },
+        {
+          root: Vector3D.create(apartBy, 0, 0),
+        },
+      ),
+    );
+
+  it("moves the part that moved by what its root changed, and moves no other", () => {
+    const figure = twoParts(10);
+    const held = figurePlacement(figure).voxelSize;
+    const meshes = new FigureMeshes();
+
+    meshes.sync(figure, solveFigure(figure), figurePlacement(figure, held));
+    const still = meshes.meshFor("still")!.position.x;
+    const moved = meshes.meshFor("moved")!.position.x;
+
+    const slid = twoParts(15);
+    meshes.sync(slid, solveFigure(slid), figurePlacement(slid, held));
+
+    expect(meshes.meshFor("still")!.position.x).toBeCloseTo(still);
+    expect(meshes.meshFor("moved")!.position.x).toBeCloseTo(moved + 5 * held);
+  });
+
+  it("draws a figure at the size it measures to when it is given none", () => {
+    // Measured afresh, a part carried outwards makes every voxel in the figure
+    // smaller, which draws the parts standing still nearer the origin — what a
+    // drag holds a voxel size still to keep from happening under the pointer.
+    const figure = twoParts(10);
+    const meshes = new FigureMeshes();
+
+    meshes.sync(figure, solveFigure(figure));
+    const still = meshes.meshFor("still")!.position.x;
+
+    const slid = twoParts(15);
+    meshes.sync(slid, solveFigure(slid));
+
+    expect(meshes.meshFor("still")!.position.x).toBeGreaterThan(still);
   });
 });

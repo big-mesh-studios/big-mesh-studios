@@ -11,6 +11,7 @@ import {
   figurePlacement,
 } from "@big-mesh-studios/stacker/renderer";
 import {
+  Group,
   Line2NodeMaterial,
   LineSegments2,
   LineSegmentsGeometry,
@@ -74,6 +75,8 @@ type PreviewScene = {
   renderer: WebGLRenderer;
   scene: Scene;
   camera: PerspectiveCamera;
+  /** The figure and the arrows standing in it, turned as one by the turntable. */
+  turntable: Group;
   meshes: FigureMeshes;
   widget: TranslateWidget;
   outline: LineSegments2;
@@ -118,8 +121,24 @@ const VoxelPreviewView: Component = () => {
     Dimensions3D.normalize(dimensions()),
   );
 
+  /**
+   * How much of the drawn world one voxel takes up for as long as a drag runs,
+   * or undefined when none is running and the figure is drawn at the size it
+   * measures to.
+   *
+   * A figure is drawn at a voxel size worked out from the box its parts
+   * together fill, so a part carried outwards makes every voxel in the figure
+   * smaller: the part being dragged would lag behind the arrow pulling it and
+   * the parts standing still would slide the other way. Held at the size the
+   * arrow was measured against, a part moves a voxel for every voxel it is
+   * dragged and the rest of the figure stays where it stands.
+   */
+  const [heldVoxelSize, setHeldVoxelSize] = createSignal<number | undefined>();
+
   /** Where every part stands, and how much of the drawn world one voxel takes. */
-  const placement = createMemo(() => figurePlacement(figure()));
+  const placement = createMemo(() =>
+    figurePlacement(figure(), heldVoxelSize()),
+  );
 
   /** Where the selected part's box is drawn, and what its own box is scaled by. */
   const selectedPlacement = createMemo(() => {
@@ -323,8 +342,7 @@ const VoxelPreviewView: Component = () => {
     // The arrows are placed for this frame's camera before they are measured,
     // so a grab reads the same picture the pointer is looking at.
     scene.widget.place(selectedRoot(), radius);
-    rotateFigure(scene.meshes.group, yaw, pitch, spin);
-    scene.widget.group.quaternion.copy(scene.meshes.group.quaternion);
+    rotateFigure(scene.turntable, yaw, pitch, spin);
 
     const arms = scene.widget.armsOnScreen(scene.camera, {
       width: rect.width,
@@ -375,6 +393,8 @@ const VoxelPreviewView: Component = () => {
     const { part, startRoot, lastRoot } = widgetDrag;
     widgetDrag = undefined;
     untrack(previewScene)?.widget.setHeld(undefined);
+    // Measure the figure again, so it fits the view at wherever the part landed.
+    setHeldVoxelSize(undefined);
 
     // The figure was held still for the drag; pick the turntable up from where
     // it was rather than from where it would have got to.
@@ -412,9 +432,12 @@ const VoxelPreviewView: Component = () => {
 
       if (at !== undefined && grabbed !== undefined) {
         const part = untrack(selectedPart);
-        // Hold the figure still: an arrow dragged against a turning model would
-        // slide along an axis that had moved on by the time the pointer did.
+        // Hold the figure still, in its turn and in the size it is drawn at
+        // alike: an arrow dragged against a turning model would slide along an
+        // axis that had moved on by the time the pointer did, and a figure
+        // measured afresh as the part moves would rescale under the pointer.
         spinOffset = spin;
+        setHeldVoxelSize(untrack(placement).voxelSize);
         widgetDrag = {
           part: part.name,
           axis: grabbed.axis,
@@ -501,7 +524,8 @@ const VoxelPreviewView: Component = () => {
     if (_previewScene === undefined || _canvas === undefined) {
       return;
     }
-    const { renderer, scene, camera, meshes, widget } = _previewScene;
+    const { renderer, scene, camera, turntable, meshes, widget } =
+      _previewScene;
 
     // The figure is turned to the orientation getWorldToModel describes, so the
     // meshes' world-to-model matrices (the inverse of their world matrices,
@@ -509,15 +533,14 @@ const VoxelPreviewView: Component = () => {
     // the CPU picker follows its ray along — keeping the pick under the pointer
     // aligned with what is drawn.
     getWorldToModel();
-    rotateFigure(meshes.group, yaw, pitch, spin);
+    rotateFigure(turntable, yaw, pitch, spin);
 
     lightFigure(meshes, untrack(preview.unlit));
 
-    // The arrows stand inside the figure, so they are turned with it and stay
-    // pointing along the axes a drag moves the part along.
+    // The arrows stand inside the figure, turned by the same turntable, so they
+    // stay pointing along the axes a drag moves the part along.
     widget.visible = untrack(widgetShown);
     if (widget.visible) {
-      widget.group.quaternion.copy(meshes.group.quaternion);
       widget.place(untrack(selectedRoot), radius);
     }
 
@@ -528,11 +551,11 @@ const VoxelPreviewView: Component = () => {
 
   createEffect(
     () => [previewScene(), figure(), solvedParts(), placement()] as const,
-    ([previewScene, figure, solvedParts]) => {
+    ([previewScene, figure, solvedParts, placement]) => {
       if (previewScene === undefined) {
         return;
       }
-      previewScene.meshes.sync(figure, solvedParts);
+      previewScene.meshes.sync(figure, solvedParts, placement);
     },
   );
 
@@ -596,8 +619,13 @@ const VoxelPreviewView: Component = () => {
         camera.position.set(0, 0, radius);
         camera.lookAt(0, 0, 0);
 
+        // The figure and the arrows are turned together, so an arrow stands at
+        // the root of the part it moves however the turntable has carried it.
+        const turntable = new Group();
+        scene.add(turntable);
+
         const meshes = new FigureMeshes();
-        scene.add(meshes.group);
+        turntable.add(meshes.group);
 
         // The picked voxel's outline. Its geometry is in the part's own space
         // (the same cell layout the marcher walks), so it is made a child of
@@ -614,12 +642,13 @@ const VoxelPreviewView: Component = () => {
         // Added after the figure, and drawn without a depth test, so the arrows
         // come out over whatever they reach into rather than inside it.
         const widget = new TranslateWidget();
-        scene.add(widget.group);
+        turntable.add(widget.group);
 
         return {
           renderer,
           scene,
           camera,
+          turntable,
           meshes,
           widget,
           outline,

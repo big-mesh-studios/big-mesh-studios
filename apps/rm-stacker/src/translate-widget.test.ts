@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  Group,
+  Matrix4,
+  PerspectiveCamera,
+  Vector3,
+} from "@random-mesh/rmsl/scene";
+import {
   armUnderPointer,
   distanceToSegment,
+  projectToScreen,
+  TranslateWidget,
   voxelsDragged,
   type ArmOnScreen,
 } from "./translate-widget";
+import { FAR, FOV, NEAR, rotateFigure } from "./voxel-preview-scene";
 
 /** An arrow lying flat across the canvas, `length` pixels long, from `from`. */
 const across = (
@@ -116,5 +125,94 @@ describe("voxelsDragged", () => {
     expect(
       voxelsDragged({ x: 40, y: 0 }, foreshortened, ARM_LENGTH, VOXEL_SIZE),
     ).toBe(0);
+  });
+});
+
+describe("the arrows standing in a turned figure", () => {
+  const SIZE = { width: 640, height: 480 };
+  const RADIUS = 3;
+  const ROOT = { x: 0.3, y: 0.1, z: -0.2 };
+
+  /** The camera the preview looks through, ready to project points. */
+  const lookOn = () => {
+    const camera = new PerspectiveCamera(
+      FOV,
+      SIZE.width / SIZE.height,
+      NEAR,
+      FAR,
+    );
+    camera.position.set(0, 0, RADIUS);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld();
+
+    const viewProjection = new Matrix4()
+      .copy(camera.projectionMatrix)
+      .multiply(camera.matrixWorldInverse);
+
+    return { camera, viewProjection };
+  };
+
+  /** The preview's scene: a widget standing in a figure turned on a turntable. */
+  const standing = (yaw: number, pitch: number) => {
+    const turntable = new Group();
+    rotateFigure(turntable, yaw, pitch, 0);
+
+    const widget = new TranslateWidget();
+    turntable.add(widget.group);
+    widget.place(ROOT, RADIUS);
+
+    return { turntable, widget };
+  };
+
+  /** Where a point of the figure's own space lands on the canvas. */
+  const drawnOn = (
+    turntable: Group,
+    viewProjection: Matrix4,
+    point: { x: number; y: number; z: number },
+  ) => {
+    turntable.updateMatrixWorld(true);
+    return projectToScreen(
+      new Vector3(point.x, point.y, point.z).applyMatrix4(
+        turntable.matrixWorld,
+      ),
+      viewProjection,
+      SIZE,
+    )!;
+  };
+
+  it("meets at the root as the figure draws it, however the figure is turned", () => {
+    for (const [yaw, pitch] of [
+      [0, 0],
+      [Math.PI / 4, Math.PI / 6],
+      [-2.1, 1.2],
+    ]) {
+      const { turntable, widget } = standing(yaw, pitch);
+      const { camera, viewProjection } = lookOn();
+      const hub = widget.armsOnScreen(camera, SIZE)[0].from;
+      const root = drawnOn(turntable, viewProjection, ROOT);
+
+      expect(hub.x, `yaw ${yaw}`).toBeCloseTo(root.x, 3);
+      expect(hub.y, `yaw ${yaw}`).toBeCloseTo(root.y, 3);
+    }
+  });
+
+  it("points each arrow the way its axis carries the part across the canvas", () => {
+    const { turntable, widget } = standing(Math.PI / 4, Math.PI / 6);
+    const { camera, viewProjection } = lookOn();
+    const at = drawnOn(turntable, viewProjection, ROOT);
+
+    for (const arm of widget.armsOnScreen(camera, SIZE)) {
+      const slid = drawnOn(turntable, viewProjection, {
+        ...ROOT,
+        [arm.axis]: ROOT[arm.axis] + 0.2,
+      });
+      const arrow = Math.atan2(arm.to.y - arm.from.y, arm.to.x - arm.from.x);
+      const carried = Math.atan2(slid.y - at.y, slid.x - at.x);
+
+      // A degree apart at most: the arrow and the part it moves run along the
+      // same line of the world, and only the spread of the perspective tells
+      // the two directions apart at all.
+      expect(Math.abs(arrow - carried), arm.axis).toBeLessThan(Math.PI / 180);
+    }
   });
 });

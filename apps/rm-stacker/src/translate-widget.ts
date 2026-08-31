@@ -9,6 +9,7 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
+  Object3D,
   Quaternion,
   Vector3,
   type Camera,
@@ -273,7 +274,15 @@ export class TranslateWidget {
    * ungrabbable.
    */
   armsOnScreen(camera: Camera, size: Dimensions2D): ArmOnScreen[] {
-    this.group.updateMatrixWorld(true);
+    // The arrows stand inside the figure, so where they have been carried to is
+    // read off the whole tree above them rather than off the group alone.
+    let outermost: Object3D = this.group;
+
+    while (outermost.parent !== null) {
+      outermost = outermost.parent;
+    }
+
+    outermost.updateMatrixWorld(true);
     camera.updateMatrixWorld();
     this.viewProjection
       .copy(camera.projectionMatrix)

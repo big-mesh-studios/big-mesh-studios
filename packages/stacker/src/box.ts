@@ -74,8 +74,19 @@ const AXES = [
  * are placed from the figure's origin rather than from the middle of that box,
  * which is what lets one part be moved without the others sliding under the
  * pointer to keep the figure centred.
+ *
+ * @param voxelSize How much of the drawn space one voxel is to take up, for a
+ * caller drawing the figure at a size of its own. A drag holds the size the
+ * arrow was measured against for as long as it runs: measured afresh, a part
+ * carried outwards makes every voxel in the figure smaller, so the part being
+ * dragged would lag behind the arrow pulling it and the parts standing still
+ * would slide the other way. Left out, the size is the one that fits the figure
+ * into the space a single model is drawn in.
  */
-export function figurePlacement(figure: Figure): FigurePlacement {
+export function figurePlacement(
+  figure: Figure,
+  voxelSize?: number,
+): FigurePlacement {
   const boxes = figure.parts.map((part) => {
     const dimensions = partDimensions(part);
     const low = Vector3D.subtract(composeRoot(figure, part), part.pivot);
@@ -99,15 +110,15 @@ export function figurePlacement(figure: Figure): FigurePlacement {
   const span = longestAxis(extent);
   // A figure with no parts, or one whose parts are all empty, gives no span to
   // scale by; anything drawn for it is drawn at one voxel to the unit.
-  const voxelSize = span > 0 ? 1 / span : 1;
+  const drawnVoxel = voxelSize ?? (span > 0 ? 1 / span : 1);
   // Each outermost part's own box already reaches one voxel past its volume,
   // which is the padding `boxSize` gives it, so the figure's box reaches that
   // far too. A figure with no parts is drawn nowhere and so fills nothing.
   const padded = (of: number) =>
-    boxes.length === 0 ? 0 : (of + 2) * voxelSize;
+    boxes.length === 0 ? 0 : (of + 2) * drawnVoxel;
 
   return {
-    voxelSize,
+    voxelSize: drawnVoxel,
     extent,
     size: {
       width: padded(extent.width),
@@ -116,11 +127,11 @@ export function figurePlacement(figure: Figure): FigurePlacement {
     },
     placements: boxes.map(({ dimensions, low }) => ({
       position: Vector3D.create(
-        (low.x + dimensions.width / 2) * voxelSize,
-        (low.y + dimensions.height / 2) * voxelSize,
-        (low.z + dimensions.depth / 2) * voxelSize,
+        (low.x + dimensions.width / 2) * drawnVoxel,
+        (low.y + dimensions.height / 2) * drawnVoxel,
+        (low.z + dimensions.depth / 2) * drawnVoxel,
       ),
-      scale: voxelSize * longestAxis(dimensions),
+      scale: drawnVoxel * longestAxis(dimensions),
     })),
   };
 }
