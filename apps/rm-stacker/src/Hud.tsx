@@ -119,29 +119,30 @@ export function Hud() {
           </div>
         </div>
         <div class={styles.main}></div>
-        <div class={styles.side}>
-          <PartsPanel />
+        <div class={[styles.side, styles.right]}>
+          <Bar>
+            <IconTab
+              onClick={() => {
+                preview.setAutorotate((rotate) => !rotate);
+                flush();
+                requestAutoSave();
+              }}
+              selected={!ProfileDialog.isOpen() && preview.autorotate()}
+              kind="rotate"
+            />
+            <IconTab
+              onClick={() => {
+                preview.setUnlit((unlit) => !unlit);
+                flush();
+                requestAutoSave();
+              }}
+              selected={!ProfileDialog.isOpen() && !preview.unlit()}
+              kind="lightbulb"
+            />
+          </Bar>
+
           <div class={styles.bottom}>
-            <Bar>
-              <IconTab
-                onClick={() => {
-                  preview.setAutorotate((rotate) => !rotate);
-                  flush();
-                  requestAutoSave();
-                }}
-                selected={!ProfileDialog.isOpen() && preview.autorotate()}
-                kind="rotate"
-              />
-              <IconTab
-                onClick={() => {
-                  preview.setUnlit((unlit) => !unlit);
-                  flush();
-                  requestAutoSave();
-                }}
-                selected={!ProfileDialog.isOpen() && !preview.unlit()}
-                kind="lightbulb"
-              />
-            </Bar>
+            <PartsPanel />
           </div>
         </div>
       </div>

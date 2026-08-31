@@ -5,8 +5,6 @@
   background-color: var(--back);
   border: 1px solid var(--grey);
   border-radius: var(--margin);
-  align-items: start;
-  justify-self: start;
   pointer-events: all;
   align-self: start;
 }

@@ -76,3 +76,6 @@
   left: calc(anchor(right) + var(--margin));
   pointer-events: auto;
 }
+.right {
+  justify-items: end;
+}
