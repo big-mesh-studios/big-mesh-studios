@@ -57,15 +57,27 @@ The sparse, world-coordinate store of every voxel edit, keyed by absolute LOD-0 
 _Avoid_: EditStore, diff map (each entry is the new id + timestamp, not a before/after pair)
 
 **EditingController**:
-Turns crosshair actions into voxel edits: consumes a CPU DDA voxel pick (`pickVoxel`) computed from the camera look direction, breaks a reachable collectable voxel (adding it to the **Inventory**) or places the selected block into the adjacent cell (dirt placed with open air above grows grass on top), and pushes the result through the shared **EditLayer** into the containing block's store, notifying the renderer's `onBlockChanged` for the slot. Refuses to break the world floor or place inside the player. A plain domain object exposing `breakBlock`, `placeBlock`, `pick`; has no idea a console or network exists.
-_Avoid_: VoxelEditor, block tool (undersells that it also owns inventory handoff, not just voxel mutation)
+Turns a tool's targets into voxel edits: breaks the voxel it is given (adding what it yields to the **Inventory**) or places the voxel it is given into the cell against the targeted face (dirt placed with open air above grows grass on top), and pushes the result through the shared **EditLayer** into the containing block's store, notifying the renderer's `onBlockChanged` for the slot. Refuses to place inside the player or outside the loaded blocks. Also owns the CPU DDA voxel pick (`pickVoxel`) the tools aim with. A plain domain object exposing `breakBlock`, `placeBlock`, `pick`; it does not read which item is wielded, and has no idea a console or network exists.
+_Avoid_: VoxelEditor, block tool (that's `BlockTool`, the thing that calls this)
 
 **Inventory**:
-How many of each placeable block the player holds — dirt (grass and dirt both break into a single dirt item) and the cloud blocks mined from the sky — plus which block is selected for placement. Water isn't collectable. A tiny plain class with an `onChange` callback the hotbar HUD (`EditHud`) subscribes to; `EditingController.breakBlock` adds and `placeBlock` consumes.
-_Avoid_: ItemStackSystem (it's a flat per-id count, not stack slots)
+How many of each item the player holds, keyed by string item id, plus which one is selected. Dirt (grass and dirt both break into a single dirt item) and the cloud blocks mined from the sky stack; the sword is carried exactly once and never consumed. Water isn't collectable. A tiny plain class with an `onChange` callback the hotbar HUD (`EditHud`) subscribes to. It knows nothing about what wielding an item does — that is its **Tool** — and nothing about voxels: an item id is its own thing, and a block item's voxel id lives on its tool.
+_Avoid_: ItemStackSystem (it's a flat per-id count, not stack slots), voxel id (an item id is a separate space; the two meet only in `BREAK_YIELD` and in each `BlockTool`)
+
+**Tool**:
+What wielding one hotbar item means: what its crosshair looks for, what each of the two buttons does with what it finds, and how it is drawn in the hand. Every item resolves to one — a `BlockTool` closed over the voxel its slot places, which wraps **EditingController** for the mutation itself, or the `SwordTool` that strikes and guards. A tool picks its own **Target** and runs its own `update`, so a bow's draw and a pickaxe's hold-to-mine owe nothing to the sword's timing. Each is built once in `createVoxelscape` from the factory its `ITEMS` entry carries, against a `ToolContext` holding everything any tool acts on.
+_Avoid_: Item (that's the inventory row a tool is reached through), weapon (a block tool is not one), ToolSystem
+
+**Target**:
+What the crosshair is over, as the wielded **Tool** found it: a monster, or a voxel, each with the distance along the look ray it was crossed at. A tool's pick carries one of these for the primary button and the cell a placement would fill for the secondary. The distance is what lets the sword compare its two picks and take the nearer, which is why a swing cannot land on a monster through a wall — block reach exceeds sword reach, so any wall in front of a reachable monster is itself the nearer pick.
+_Avoid_: Pick (that's `pickVoxel`/`pickMonster`'s own result, which a target is built from), hit, inReach (the boolean this replaced meant either kind depending on the selection)
+
+**Hand**:
+The first-person view of what the player is holding: a ray-marched mesh per **Tool** that draws one, riding as children of the camera so they stay fixed to the lower right of the frame. Only the wielded tool's mesh is visible, sitting at whatever pose that tool returned; the hand keeps no timing of its own. Drawn only in first person. Its models and the hotbar icons come from the same items-spritesheet sprites, cropped to their drawn pixels by `sprite-model.ts`, which reports the crop it measured so the icon needs no second measurement.
+_Avoid_: HeldItem (it holds every tool's mesh, not one item), weapon view
 
 **PlayerHealth**:
-The player's hit points, in the Ocarina-of-Time idiom of hearts: each heart holds two hit points (`HEART_HP`), and a hit that cuts through a heart leaves it half full — `heartStates` in `src/player/health.ts` turns hit points into the per-heart fills the HUD draws. A plain class with an optional change callback the hearts HUD subscribes to, like **Inventory** for the hotbar. It also owns the death sequence: a player whose hearts empty falls to the ground over `DEATH_FALL_SECONDS`, lies there for `DEATH_LIE_SECONDS`, then fires `onFallDone` so the app can stand them back up at spawn with full hearts — the same fall a zombie corpse plays, read through `fallProgress` so the camera can draw it (`deathCameraPose` in `src/player/player.ts`). A zombie's swing (`ZOMBIE_DAMAGE` in `src/monsters/zombie.ts`) is what empties the hearts.
+The player's hit points, in the Ocarina-of-Time idiom of hearts: each heart holds two hit points (`HEART_HP`), and a hit that cuts through a heart leaves it half full — `heartStates` in `src/player/health.ts` turns hit points into the per-heart fills the HUD draws. A plain class with an optional change callback the hearts HUD subscribes to, like **Inventory** for the hotbar. It also owns the death sequence: a player whose hearts empty falls to the ground over `DEATH_FALL_SECONDS`, lies there for `DEATH_LIE_SECONDS`, then fires `onFallDone` so the app can stand them back up at spawn with full hearts — the same fall a zombie corpse plays, read through `fallProgress` so the camera can draw it (`deathCameraPose` in `src/player/player.ts`). A zombie's swing (`ZOMBIE_DAMAGE` in `src/monsters/zombie.ts`) is what empties the hearts, halved while the guard is up — a state of the player that a wielded tool raises, so a shield in a later off-hand would raise the same one.
 _Avoid_: Healthbar, HP (each unit of health is a half-heart, and the HUD draws hearts, not a bar)
 
 **PlayerSkin**:
@@ -113,7 +125,12 @@ _Avoid_: asset store (nothing here stores anything — it reads what somebody el
 - **WeatherController** reports lightning strikes through its plain `onStrike(x, z)` callback; **SoundController** is one such consumer (wired in `App.tsx` to `sound.thunderStrike`), not something **WeatherController** depends on.
 - **EditLayer** is the single source of truth for voxel edits, keyed by world voxel (not slot); **FillClient**, **EditingController**, **AtprotoController**, and IndexedDB persistence all read or write it.
 - **EditingController** is wired to the renderer in `App.tsx` (its `onBlockEdited` calls the renderer's `onBlockChanged`); it holds no renderer reference itself.
-- **EditingController** is how blocks move between the world and the **Inventory**: breaking adds, placing consumes, selection drives `placeBlock`.
+- **EditingController** is how blocks move between the world and the **Inventory**: breaking adds and placing consumes, both driven by the `BlockTool` that passes it the voxel.
+- Every hotbar item resolves to a **Tool**, and the frame loop calls `pick`, whichever button fired, and `update` on whatever is wielded — it never asks which item that is.
+- A **Tool** picks its own **Target** once a frame, and the same pick is handed to the button actions, so the crosshair and the button can never disagree and a dig raycasts the world once.
+- **Hand** draws the wielded **Tool**'s model at the pose that tool returned; the swing's timing belongs to the tool, not to the hand.
+- Item ids and voxel ids are separate spaces meeting in exactly two places, the only two operations that cross between the world and the hand: `BREAK_YIELD` translates a broken voxel into the item it yields, and each `BlockTool` translates its item back into the voxel it places.
+- A `SwordTool` swing reports its hit the way the frame loop used to: **MonsterController** applies the damage when this client owns the monster, and **MultiplayerController** broadcasts it to the owner when it does not.
 - **RemoteMonsters** reads the **MonsterController**'s snapshot map each frame (constructor-injected getter), so the controller stays renderer-free and the meshes track whatever it simulates.
 - **RemoteMonsters** is fed the same day-night state the renderers get, through `applyLighting`, because its **VoxelModelMaterial** is self-lit.
 - What the monsters are drawn as is chosen at startup, in `createVoxelscape`, nearest source first: the zip at `public/models/zombie.zip` this site serves, then the model the world's model account published under `zombie` through the **ModelLibrary**, which replaces it once it arrives. Until the first of those lands there is no model, and a monster is not drawn — the material marches an empty volume to a miss. `/monsters:model` swaps it for any account's afterwards, and `/monsters:file` for a zip on this device; both arrive at `RemoteMonsters.loadModelFromBlob`.
@@ -130,4 +147,5 @@ _Avoid_: asset store (nothing here stores anything — it reads what somebody el
 
 ## Flagged ambiguities
 
+- "tool" once meant the non-stackable items an `Inventory` held — the sword, as a thing carried — while a **Tool** is what wielding any item does, blocks included. That record is gone; the word now means only the latter.
 - "renderer" was once used loosely for both a rendering strategy and the subsystem picking between two of them — resolved by there being one renderer, **TriangleRenderer**, which the word now means without ambiguity.

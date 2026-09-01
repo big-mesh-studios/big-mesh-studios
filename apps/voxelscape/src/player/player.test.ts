@@ -17,10 +17,10 @@ const NO_INPUT: InputSnapshot = {
   jumpHeld: false,
   lookDx: 0,
   lookDy: 0,
-  break: false,
-  place: false,
-  placeHeld: false,
-  placeReleased: false,
+  primary: false,
+  secondary: false,
+  secondaryHeld: false,
+  secondaryReleased: false,
   select: null,
   wheel: 0,
 };
@@ -317,6 +317,33 @@ describe("updatePlayer flying", () => {
     // the collision box bottoms out at the surface (feet on the ground)
     expect(player.position.y).toBeGreaterThanOrEqual(1);
     expect(player.position.y).toBeLessThan(2);
+  });
+});
+
+describe("updatePlayer no-clip", () => {
+  it("climbs along the look direction instead of falling, over empty space", () => {
+    const player = createPlayer(0, 100, 0);
+    player.noclip = true;
+    player.yaw = Math.PI / 2; // facing +X
+    player.pitch = 0.6; // looking up
+    for (let i = 0; i < 120; i++) {
+      updatePlayer(player, 1 / 60, { ...NO_INPUT, moveY: 1 }, FAR_GROUND);
+    }
+    expect(player.position.y).toBeGreaterThan(100);
+    expect(player.position.x).toBeGreaterThan(0);
+  });
+
+  it("flies through a solid wall instead of stopping at it", () => {
+    // flat ground up to x=0, then a sheer face rising far above the player
+    const WALL_TOP = 50;
+    const WALL = terrainOf((x) => (x >= 0 ? WALL_TOP : 0));
+    const player = createPlayer(-3, DEFAULT_PLAYER_CONFIG.halfSize, 0);
+    player.noclip = true;
+    player.yaw = Math.PI / 2; // facing +X
+    for (let i = 0; i < 120; i++) {
+      updatePlayer(player, 1 / 60, { ...NO_INPUT, moveY: 1 }, WALL);
+    }
+    expect(player.position.x).toBeGreaterThan(0);
   });
 });
 

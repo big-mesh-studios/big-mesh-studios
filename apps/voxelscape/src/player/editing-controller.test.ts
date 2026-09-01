@@ -55,6 +55,16 @@ const makeHarness = () => {
   };
 };
 
+/** Breaks whatever the controller's own pick is over, as a `BlockTool` does. */
+const breakBlock = (controller: EditingController): string | null =>
+  controller.breakBlock(controller.pick().target);
+
+/** Places dirt against whatever the controller's own pick is over. */
+const placeBlock = (controller: EditingController): string => {
+  const pick = controller.pick();
+  return controller.placeBlock("dirt", VOXEL_DIRT, pick.target, pick.place);
+};
+
 const downOntoTarget = (): [
   [number, number, number],
   [number, number, number],
@@ -73,11 +83,11 @@ describe("EditingController.breakBlock", () => {
     const target = wv(32, 40, 32);
     const [origin, direction] = downOntoTarget();
     h.setLook(origin, direction);
-    const msg = h.controller.breakBlock();
+    const msg = breakBlock(h.controller);
     // grass and dirt both collect as a single dirt item
     expect(msg).toContain("Dirt");
     expect(h.layer.get(target)?.id).toBe(VOXEL_AIR);
-    expect(h.inventory.count(VOXEL_DIRT)).toBe(1);
+    expect(h.inventory.count("dirt")).toBe(1);
     expect(h.onBlocksEdited).toHaveBeenCalledWith(expect.arrayContaining([0]));
     expect(h.onEditRecorded).toHaveBeenCalledTimes(1);
   });
@@ -88,7 +98,7 @@ describe("EditingController.breakBlock", () => {
     const target = wv(32, 40, 32);
     const [origin, direction] = downOntoTarget();
     h.setLook(origin, direction);
-    h.controller.breakBlock();
+    breakBlock(h.controller);
     expect(h.onEdit).toHaveBeenCalledWith(target, VOXEL_AIR, 1_234_567);
     vi.restoreAllMocks();
   });
@@ -96,15 +106,15 @@ describe("EditingController.breakBlock", () => {
   it("does not fire onEdit for a refused edit", () => {
     const h = makeHarness();
     h.setLook([0, 60, 0], [0, -1, 0]); // far above, target out of reach
-    expect(h.controller.breakBlock()).toBeNull();
+    expect(breakBlock(h.controller)).toBeNull();
     expect(h.onEdit).not.toHaveBeenCalled();
   });
 
   it("does nothing when there is no target in reach", () => {
     const h = makeHarness();
     h.setLook([0, 60, 0], [0, -1, 0]); // far above, target out of reach
-    expect(h.controller.breakBlock()).toBeNull();
-    expect(h.inventory.count(VOXEL_DIRT)).toBe(0);
+    expect(breakBlock(h.controller)).toBeNull();
+    expect(h.inventory.count("dirt")).toBe(0);
   });
 
   it("breaks the bottom row of a block — the world has no floor to guard", () => {
@@ -131,10 +141,10 @@ describe("EditingController.breakBlock", () => {
       }),
       getPlayerVoxels: () => null,
     });
-    const msg = controller.breakBlock();
+    const msg = breakBlock(controller);
     expect(msg).not.toBeNull();
     expect(layer.size).toBe(1);
-    expect(inventory.count(VOXEL_DIRT)).toBe(1);
+    expect(inventory.count("dirt")).toBe(1);
   });
 });
 
@@ -142,27 +152,27 @@ describe("EditingController.placeBlock", () => {
   it("places the selected block into the face-adjacent cell", () => {
     const h = makeHarness();
     const target = wv(32, 40, 32);
-    h.inventory.add(VOXEL_DIRT, 2);
+    h.inventory.add("dirt", 2);
     h.setLook([(target[0] - 3) * 2, target[1] * 2, target[2] * 2], [1, 0, 0]);
     h.setPlayerVoxels([]);
-    const msg = h.controller.placeBlock();
+    const msg = placeBlock(h.controller);
     expect(msg).toContain("Dirt");
     // the cell above the placement is open air, so the dirt grows grass
     expect(h.layer.get([target[0] - 1, target[1], target[2]])?.id).toBe(
       VOXEL_GRASS,
     );
-    expect(h.inventory.count(VOXEL_DIRT)).toBe(1);
+    expect(h.inventory.count("dirt")).toBe(1);
   });
 
   it("places plain dirt when a block sits above the placement cell", () => {
     const h = makeHarness();
     const target = wv(32, 40, 32);
-    h.inventory.add(VOXEL_DIRT, 2);
+    h.inventory.add("dirt", 2);
     h.setLook([(target[0] - 3) * 2, target[1] * 2, target[2] * 2], [1, 0, 0]);
     h.setPlayerVoxels([]);
     // place cell local (31,40,32); fill the cell above it so no grass should grow
     h.block.store.set(31, 41, 32, VOXEL_DIRT);
-    h.controller.placeBlock();
+    placeBlock(h.controller);
     expect(h.layer.get([target[0] - 1, target[1], target[2]])?.id).toBe(
       VOXEL_DIRT,
     );
@@ -171,12 +181,12 @@ describe("EditingController.placeBlock", () => {
   it("refuses to place into the player's own voxels", () => {
     const h = makeHarness();
     const target = wv(32, 40, 32);
-    h.inventory.add(VOXEL_DIRT, 2);
+    h.inventory.add("dirt", 2);
     h.setLook([(target[0] - 1) * 2, target[1] * 2, target[2] * 2], [1, 0, 0]);
     h.setPlayerVoxels([[target[0] - 1, target[1], target[2]]]);
-    const msg = h.controller.placeBlock();
+    const msg = placeBlock(h.controller);
     expect(msg).toContain("inside");
-    expect(h.inventory.count(VOXEL_DIRT)).toBe(2);
+    expect(h.inventory.count("dirt")).toBe(2);
   });
 
   it("refuses to place with an empty inventory", () => {
@@ -184,7 +194,7 @@ describe("EditingController.placeBlock", () => {
     const target = wv(32, 40, 32);
     h.setPlayerVoxels([]);
     h.setLook([(target[0] - 3) * 2, target[1] * 2, target[2] * 2], [1, 0, 0]);
-    expect(h.controller.placeBlock()).toContain("no dirt to place");
+    expect(placeBlock(h.controller)).toContain("no dirt to place");
     expect(h.layer.get([target[0] - 1, target[1], target[2]])).toBeUndefined();
   });
 
@@ -196,7 +206,7 @@ describe("EditingController.placeBlock", () => {
     });
     const layer = new EditLayer();
     const inventory = new Inventory();
-    inventory.add(VOXEL_DIRT, 2);
+    inventory.add("dirt", 2);
     const top = wv(32, 63, 32);
     const controller = new EditingController({
       blocks: [ceilingBlock],
@@ -211,18 +221,18 @@ describe("EditingController.placeBlock", () => {
       }),
       getPlayerVoxels: () => [],
     });
-    expect(controller.placeBlock()).toContain("outside the world");
+    expect(placeBlock(controller)).toContain("outside the world");
     expect(layer.size).toBe(0);
-    expect(inventory.count(VOXEL_DIRT)).toBe(2);
+    expect(inventory.count("dirt")).toBe(2);
   });
 
   it("reports when the crosshair points at empty air, no floating placements", () => {
     const h = makeHarness();
-    h.inventory.add(VOXEL_DIRT, 2);
+    h.inventory.add("dirt", 2);
     h.setPlayerVoxels([]);
     // aim straight up into empty sky: no target face, so nothing is placed
     h.setLook([0, 60, 0], [0, 1, 0]);
-    expect(h.controller.placeBlock()).toContain("point at a block face");
+    expect(placeBlock(h.controller)).toContain("point at a block face");
     expect(h.layer.size).toBe(0);
   });
 });

@@ -52,6 +52,7 @@ export {
   VOXEL_CLOUD,
   VOXEL_DIRT,
   VOXEL_GRASS,
+  VOXEL_STONE,
   VOXEL_WATER,
   VoxelStore,
   type FillStoreFn,
@@ -92,43 +93,49 @@ export {
   EditingController,
   type EditingControllerParams,
 } from "./player/editing-controller";
-export { HeldItem, type HeldItemParams } from "./player/held-item";
+export { Hand, type HandParams } from "./player/hand";
+export { Inventory, type InventoryItem } from "./player/inventory";
 export {
   BREAK_YIELD,
-  BREAKABLE,
-  COLLECTABLE,
-  Inventory,
-  SWORD,
-  TOOLS,
-  type InventoryItem,
-} from "./player/inventory";
+  ITEM_ORDER,
+  ITEMS,
+  type ItemDefinition,
+  type ItemId,
+} from "./player/items";
+export { BlockTool } from "./player/tools/block-tool";
+export {
+  GUARD_POSE,
+  GUARD_TIME,
+  RECOVER_TIME,
+  REST_POSE,
+  SWING_TIME,
+  swordPose,
+  SwordTool,
+  SWUNG_POSE,
+  type SwordState,
+} from "./player/tools/sword-tool";
+export type { Target, Tool, ToolContext, ToolPick } from "./player/tools/tool";
 export * from "./player/player";
 export { createPlayerSkin, type PlayerSkin } from "./player/player-skin";
 export {
   BASE_ROTATION_ANGLE,
   BASE_ROTATION_AXIS,
+  easeInOut,
+  easeOut,
+  handTransform,
   HANDLE_FRACTION,
-  poseAt,
-  PULLED_POSE,
-  RECOVER_TIME,
-  REST_POSE,
-  SWING_TIME,
-  swingTransform,
-  SWUNG_POSE,
-  WINDUP_TIME,
+  lerpPose,
   type SwingPose,
-  type SwingState,
   type SwingTransform,
 } from "./player/swing";
 export {
-  buildSwordModel,
-  loadSwordModel,
+  buildSpriteModel,
+  loadSpriteModel,
   SPRITESHEET_HEIGHT,
   SPRITESHEET_URL,
   SPRITESHEET_WIDTH,
-  SWORD_SPRITE,
-  SWORD_SPRITE_BBOX,
-} from "./player/sword-model";
+  type SpriteModel,
+} from "./player/sprite-model";
 
 // Day/Night & Environment
 export {

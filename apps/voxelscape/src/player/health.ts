@@ -19,6 +19,12 @@ export const DEATH_FALL_SECONDS = 0.5;
 /** Seconds the fallen player lies before respawning, matching a corpse's lie. */
 export const DEATH_LIE_SECONDS = 0.5;
 
+/**
+ * The share of a hit a raised guard still lets through, rounded up so the
+ * smallest hits are lessened rather than turned away entirely.
+ */
+export const GUARD_SHARE = 0.5;
+
 /** A heart's fill, as the HUD draws it: empty, half, or full. */
 export type HeartFill = 0 | 1 | 2;
 
@@ -68,6 +74,9 @@ export class PlayerHealth {
   /** Whether the player is lying dead, mid fall or waiting to respawn. */
   dead = false;
 
+  /** Whether the player's guard is up, which lessens what a hit takes. */
+  private guarding = false;
+
   private readonly onFallDone: (() => void) | undefined;
   private fallSeconds = 0;
   private fallDone = false;
@@ -76,15 +85,21 @@ export class PlayerHealth {
     this.onFallDone = params.onFallDone;
   }
 
+  /** Raises or lowers the guard, which is what a wielded tool holds up. */
+  setGuarding(raised: boolean): void {
+    this.guarding = raised;
+  }
+
   /**
-   * Deals `amount` damage, flooring health at zero. Returns the health
-   * actually taken — a hit on a corpse takes nothing, and a swing stronger
-   * than the health left takes only what remains. The first hit that empties
-   * the hearts starts the death fall.
+   * Deals `amount` damage, lessened while the guard is up and flooring health
+   * at zero. Returns the health actually taken — a hit on a corpse takes
+   * nothing, and a swing stronger than the health left takes only what
+   * remains. The first hit that empties the hearts starts the death fall.
    */
   takeDamage(amount: number): number {
+    const taking = this.guarding ? Math.ceil(amount * GUARD_SHARE) : amount;
     const before = this.hp;
-    this.hp = Math.max(0, this.hp - amount);
+    this.hp = Math.max(0, this.hp - taking);
     const taken = before - this.hp;
     if (taken > 0) {
       this.emit();
@@ -132,6 +147,7 @@ export class PlayerHealth {
   /** Restores full hearts and stands the player up, ending the death sequence. */
   respawn(): void {
     this.dead = false;
+    this.guarding = false;
     this.fallSeconds = 0;
     this.fallDone = false;
     this.hp = this.maxHp;

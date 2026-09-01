@@ -2,10 +2,10 @@
 import { describe, expect, it } from "vitest";
 import { Bitmap } from "@big-mesh-studios/maths";
 import {
-  buildSwordModel,
+  buildSpriteModel,
   sampleSpriteRegion,
   type SpritePixels,
-} from "./sword-model";
+} from "./sprite-model";
 
 /** A sprite whose drawn pixels form a circle, so its corners stay empty. */
 const circleSprite = (size: number, radius: number): SpritePixels => {
@@ -27,12 +27,12 @@ const circleSprite = (size: number, radius: number): SpritePixels => {
   return { width: size, height: size, data };
 };
 
-/** Whether the cell holds a drawn sword colour, not the black outline. */
+/** Whether the cell holds a drawn sprite colour, not the black outline. */
 const drawn = (front: Bitmap, x: number, y: number): boolean =>
   x >= 0 && y >= 0 && x < 24 && y < 24 && front.data[y * 24 + x] >= 1;
 
-describe("buildSwordModel", () => {
-  const model = buildSwordModel(circleSprite(96, 40));
+describe("buildSpriteModel", () => {
+  const { model, trim } = buildSpriteModel(circleSprite(96, 40));
   const { front, back, left, right, top, bottom } = model.sides;
 
   it("builds a 24×24×24 box", () => {
@@ -44,6 +44,11 @@ describe("buildSwordModel", () => {
   it("puts black first in the palette", () => {
     expect(model.palette[0]).toEqual({ r: 0, g: 0, b: 0, a: 255 });
     expect(model.palette.length).toBeLessThanOrEqual(32);
+  });
+
+  it("reports the rectangle of drawn pixels it cropped to", () => {
+    // a circle of radius 40 centred in a 96px sprite draws pixels 8..87
+    expect(trim).toEqual({ x: 8, y: 8, w: 80, h: 80 });
   });
 
   it("keeps the circle's empty corners, outlines its silhouette", () => {
@@ -107,13 +112,13 @@ describe("buildSwordModel", () => {
   });
 
   it("builds a sprite with no drawn pixels as an empty model", () => {
-    const empty = buildSwordModel({
+    const empty = buildSpriteModel({
       width: 8,
       height: 8,
       data: new Uint8Array(8 * 8 * 4),
     });
     expect(
-      empty.sides.front.data.every((index) => index === Bitmap.EMPTY),
+      empty.model.sides.front.data.every((index) => index === Bitmap.EMPTY),
     ).toBe(true);
   });
 });

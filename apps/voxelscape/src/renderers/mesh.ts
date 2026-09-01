@@ -58,6 +58,16 @@ const FACE_CORNERS: Array<Array<[number, number, number, number, number]>> = [
 ];
 
 /**
+ * Whether a face on `axis` with outward normal `sign` is already wound, in
+ * `FACE_CORNERS` order, toward that normal. The corner order fronts exactly
+ * the +x, −y and +z faces; the other three orientations (west, top, south)
+ * are emitted with reversed indices so every face fronts the side it is
+ * exposed on and back faces can be culled.
+ */
+const windsOutward = (axis: number, sign: number): boolean =>
+  axis === 1 ? sign === -1 : sign === 1;
+
+/**
  * Used until the atlas loads (or for voxel ids with no tile config): a
  * full texel rect so faces still map to something sane.
  */
@@ -119,7 +129,11 @@ export const buildBlockMesh = (
         rect[1] + v * (rect[3] - rect[1]),
       );
     }
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    if (windsOutward(axis, sign)) {
+      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    } else {
+      indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    }
   };
 
   for (let z = 0; z < nz; ++z) {
@@ -212,7 +226,11 @@ export const buildWaterMesh = (store: VoxelStore): MeshArrays => {
       );
       uvs.push(u, v);
     }
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    if (windsOutward(axis, sign)) {
+      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    } else {
+      indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    }
   };
 
   for (let z = 0; z < nz; ++z) {

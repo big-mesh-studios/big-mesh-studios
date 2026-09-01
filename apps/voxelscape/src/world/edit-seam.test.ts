@@ -18,7 +18,7 @@ const stacked = () => ({
 });
 
 /** A voxel on the bottom face of the block at the origin. */
-const onTheSeam: WorldVoxel = [-32, -32, -6];
+const onTheSeam: WorldVoxel = [-32, -32, 10];
 
 describe("an edit to a voxel two blocks hold", () => {
   it("reaches the neighbour's border, not just the owner's interior", () => {

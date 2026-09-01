@@ -7,6 +7,7 @@ import {
   VOXEL_CLOUD,
   VOXEL_DIRT,
   VOXEL_GRASS,
+  VOXEL_STONE,
   VOXEL_WATER,
   VoxelStore,
   fillStore,
@@ -148,7 +149,7 @@ describe("fillStore", () => {
     for (let x = 0; x < 4; x++) {
       for (let z = 0; z < 4; z++) {
         for (let y = 0; y < 4; y++) {
-          expect(store.get(x, y, z)).toBe(VOXEL_DIRT);
+          expect(store.get(x, y, z)).toBe(VOXEL_STONE);
         }
       }
     }

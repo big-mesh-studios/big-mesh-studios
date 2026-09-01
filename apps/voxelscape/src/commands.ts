@@ -110,6 +110,11 @@ export interface CommandsParams {
    */
   setFlying: (flying?: boolean) => string;
   /**
+   * Turns no-clip on or off (toggling if `noclip` is omitted): flight control
+   * with collision off, so the player passes through solid voxels.
+   */
+  setNoClip: (noclip?: boolean) => string;
+  /**
    * Shows or hides the per-frame performance readout, flipping it if `on` is
    * omitted.
    */
@@ -160,6 +165,7 @@ export const createCommands = ({
   setMoveSpeed,
   setLookSensitivity,
   setFlying,
+  setNoClip,
   setDebugPerf,
 }: CommandsParams): Commander => {
   return new Commander({
@@ -346,6 +352,23 @@ export const createCommands = ({
           return setFlying();
         }
         return "usage: /player:fly [on|off]  (no argument flips it)";
+      },
+    },
+    "/player:no-clip": {
+      description: "turn no-clip on or off (fly through solid blocks)",
+      args: "[on|off]",
+      run: (rest) => {
+        const arg = rest[0];
+        if (arg === "on") {
+          return setNoClip(true);
+        }
+        if (arg === "off") {
+          return setNoClip(false);
+        }
+        if (arg === undefined) {
+          return setNoClip();
+        }
+        return "usage: /player:no-clip [on|off]  (no argument flips it)";
       },
     },
     "/player:heal": {

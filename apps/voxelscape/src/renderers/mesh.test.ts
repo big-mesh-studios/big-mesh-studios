@@ -57,6 +57,37 @@ const seaTerrain = {
 const faceCount = (mesh: MeshArrays): number => mesh.indices.length / 6;
 const vertexCount = (mesh: MeshArrays): number => mesh.positions.length / 3;
 
+/**
+ * Whether every triangle's winding, by the right-hand rule over its indices,
+ * agrees with its face's baked normal: what back-face culling relies on. The
+ * geometry is only front-facing when each quad fronts the side it is exposed
+ * on.
+ */
+const windsOutward = (mesh: MeshArrays): boolean => {
+  const { positions, normals, indices } = mesh;
+  for (let i = 0; i < indices.length; i += 3) {
+    const [a, b, c] = [indices[i], indices[i + 1], indices[i + 2]];
+    const ax = positions[a * 3];
+    const ay = positions[a * 3 + 1];
+    const az = positions[a * 3 + 2];
+    const ux = positions[b * 3] - ax;
+    const uy = positions[b * 3 + 1] - ay;
+    const uz = positions[b * 3 + 2] - az;
+    const vx = positions[c * 3] - ax;
+    const vy = positions[c * 3 + 1] - ay;
+    const vz = positions[c * 3 + 2] - az;
+    const gx = uy * vz - uz * vy;
+    const gy = uz * vx - ux * vz;
+    const gz = ux * vy - uy * vx;
+    const dot =
+      gx * normals[a * 3] + gy * normals[a * 3 + 1] + gz * normals[a * 3 + 2];
+    if (dot <= 0) {
+      return false;
+    }
+  }
+  return true;
+};
+
 /** Collects each vertex's normal, keyed to its uv. */
 const facesByNormal = (
   mesh: MeshArrays,
@@ -109,6 +140,16 @@ describe("buildBlockMesh", () => {
     ]) {
       expect(hasNormal(mesh, normal[0], normal[1], normal[2])).toBe(true);
     }
+  });
+
+  it("winds every face on the side it is exposed on", () => {
+    // Each face fronts its own outward normal, so the material can cull the
+    // back faces and halve what the GPU shades.
+    const store = smallStore();
+    store.set(1, 1, 1, VOXEL_GRASS);
+    expect(windsOutward(buildBlockMesh(store, []))).toBe(true);
+    store.set(2, 1, 1, VOXEL_WATER);
+    expect(windsOutward(buildWaterMesh(store))).toBe(true);
   });
 
   it("does not mesh the interior of a solid cube", () => {

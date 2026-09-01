@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { PerspectiveCamera } from "@random-mesh/rmsl/scene";
-import { TriangleRenderer } from "./triangle-renderer";
+import { scBounds, TriangleRenderer } from "./triangle-renderer";
 import { buildBlockShell, type WorldBlock } from "../world/level-data";
 import { VOXEL_GRASS } from "../world/voxel-store";
 import type { TileRect } from "./atlas";
@@ -44,9 +44,10 @@ const settle = (renderer: TriangleRenderer): void => {
 
 describe("TriangleRenderer", () => {
   it("shows a block it has meshed", () => {
-    // Nothing tells the renderer to become visible: there is one renderer, so
-    // a block with geometry is a block that is drawn. This is the whole of
-    // what a player sees of the world, and it went unnoticed once already.
+    // The camera at the origin and the block's superchunk contain each other,
+    // so the frustum hides nothing: a block with geometry is a block that is
+    // drawn. This is the whole of what a player sees of the world, and it
+    // went unnoticed once already.
     const renderer = rendererFor(blockWithFloor());
 
     renderer.repositionBlock(0, [0, 0, 0]);
@@ -71,6 +72,33 @@ describe("TriangleRenderer", () => {
     for (const mesh of renderer.terrain.children) {
       expect(mesh.visible).toBe(false);
     }
+  });
+
+  it("hides a superchunk the camera cannot see", () => {
+    // Geometry is uploaded and kept, but a superchunk out of the frustum is
+    // not drawn; the frame the camera turns onto it shows it without a rebuild.
+    const renderer = rendererFor(blockWithFloor());
+
+    renderer.repositionBlock(0, [100000, 0, 0]);
+    renderer.onBlockChanged(0);
+    renderer.meshNow(0);
+    settle(renderer);
+
+    for (const mesh of renderer.terrain.children) {
+      expect(mesh.visible).toBe(false);
+    }
+  });
+
+  it("bounds a superchunk by the box its merged geometry fills", () => {
+    // A superchunk's two block centroids sit one BLOCK_WORLD apart, so the
+    // merged geometry reaches a block-half before the superchunk's own centre
+    // and a block-half plus a superchunk beyond it. A box centred on the
+    // superchunk itself misses that far block-half, hiding it while it was
+    // still on screen — the vanish this culling took for a frustum bug.
+    const cellZero = scBounds("0,0,0");
+    expect(cellZero.half).toBe(128);
+    expect(cellZero.center).toEqual([64, 64, 64]);
+    expect(scBounds("1,-1,2").center).toEqual([320, -192, 576]);
   });
 
   it("holds a superchunk back until every block of one edit has landed", () => {
