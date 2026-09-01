@@ -21,10 +21,11 @@ export type ModeKind =
   "Draw" | "Erase" | "Fill" | "Idle" | "Eyedrop" | "Rectangle";
 
 /**
- * What the preview turns about and holds in the middle of the view: the middle
- * of the box the whole figure fills, or the pivot of the part being drawn on.
+ * What the preview turns about and holds in the middle of the view: the
+ * figure's own root, which stays put however its parts are moved, or the pivot
+ * of the part being drawn on.
  */
-export type FocusKind = "figure" | "part";
+export type FocusKind = "root" | "part";
 
 export type PreviewState = {
   unlit: boolean;

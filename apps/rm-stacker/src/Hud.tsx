@@ -143,7 +143,7 @@ export function Hud() {
         />
         <IconTab
           onClick={() => {
-            preview.setFocus((focus) => (focus === "part" ? "figure" : "part"));
+            preview.setFocus((focus) => (focus === "part" ? "root" : "part"));
             flush();
             requestAutoSave();
           }}
@@ -152,7 +152,7 @@ export function Hud() {
           title={
             preview.focus() === "part"
               ? "Turning about the part being drawn on"
-              : "Turning about the middle of the figure"
+              : "Turning about the figure's root"
           }
         />
       </Bar>

@@ -109,7 +109,7 @@ function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
     () => saved()?.preview?.axesVisible ?? false,
   );
   const [focus, setFocus] = createSignal<FocusKind>(
-    () => saved()?.preview?.focus ?? "figure",
+    () => saved()?.preview?.focus ?? "root",
   );
 
   /** How the preview is drawn, as the one value that is written back out. */
