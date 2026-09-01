@@ -136,6 +136,7 @@ function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
 export function createStacker() {
   const enqueue = createEnqueue<Command>();
   const renderSet = new Set<() => void>();
+  const fitSet = new Set<() => void>();
   const atproto = createAtproto();
 
   const saved = createMemo(() =>
@@ -283,6 +284,19 @@ export function createStacker() {
 
   function requestRender() {
     renderSet.forEach((render) => render());
+  }
+
+  /**
+   * Asks every view drawing the figure to frame the whole of it again, for a
+   * part that has been carried out past the edge of what is on screen.
+   *
+   * A view measures the figure when a whole one is put in front of it and holds
+   * that measure through the edits after, so that drawing on a part or moving
+   * one does not resize what is under the pointer. This is how somebody asks
+   * for it to be measured again.
+   */
+  function requestFitToView() {
+    fitSet.forEach((fit) => fit());
   }
 
   createEffect(parts, requestRender);
@@ -462,6 +476,11 @@ export function createStacker() {
     onRender(callback: () => void) {
       renderSet.add(callback);
       return () => renderSet.delete(callback);
+    },
+    requestFitToView,
+    onFitToView(callback: () => void) {
+      fitSet.add(callback);
+      return () => fitSet.delete(callback);
     },
     reset() {
       loadParts([createInitialPart(FIRST_PART, INITIAL_DIMENSIONS)]);

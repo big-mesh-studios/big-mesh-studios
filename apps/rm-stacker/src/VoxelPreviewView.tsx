@@ -95,6 +95,7 @@ const VoxelPreviewView: Component = () => {
     doCommand,
     pushUndo,
     figureLoads,
+    onFitToView,
   } = useContext(StackerContext);
 
   let yaw = Math.PI / 4;
@@ -470,6 +471,8 @@ const VoxelPreviewView: Component = () => {
   createEffect(framing, (framing) => {
     applyFraming(framed, framing);
   });
+
+  onSettled(() => onFitToView(fitToView));
 
   // The figure is fitted to the view when a whole one is put in front of the
   // editor and never while it is being drawn on, so an edit cannot resize what

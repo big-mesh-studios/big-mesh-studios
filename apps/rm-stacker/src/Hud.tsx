@@ -27,6 +27,7 @@ export function Hud() {
     setMode,
     preview,
     requestAutoSave,
+    requestFitToView,
     atproto,
   } = useContext(StackerContext);
 
@@ -154,6 +155,11 @@ export function Hud() {
               ? "Turning about the part being drawn on"
               : "Turning about the figure's root"
           }
+        />
+        <IconButton
+          onClick={requestFitToView}
+          kind="expand"
+          title="Frame the whole figure"
         />
       </Bar>
       <Bar class={styles.partsBar}>
