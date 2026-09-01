@@ -5,8 +5,8 @@ import {
   figurePlacement,
 } from "@big-mesh-studios/stacker/renderer";
 import {
-  getPointerCount,
   getPointers,
+  getPointerSize,
   pointer,
 } from "@big-mesh-studios/utils/pointer";
 import {
@@ -71,6 +71,16 @@ const TAP_SLOP = 4;
 /** How long a press may be held down and still count as a tap, in milliseconds. */
 const TAP_HELD = 300;
 
+const RADIANS_PER_PIXEL = 0.005;
+const PITCH_LIMIT = Math.PI / 2 - 0.01;
+
+const pinchSpan = ([a, b]: Iterable<PointerEvent> = []) => {
+  if (a === undefined || b === undefined) {
+    return undefined;
+  }
+  return Math.hypot(a.x - b.x, a.y - b.y);
+};
+
 const VoxelPreviewView: Component = () => {
   const {
     figure,
@@ -118,8 +128,11 @@ const VoxelPreviewView: Component = () => {
   let pitch = Math.PI / 6;
   let radius = 3;
 
-  const RADIANS_PER_PIXEL = 0.005;
-  const PITCH_LIMIT = Math.PI / 2 - 0.01;
+  let timeOffset = 0;
+  let spinOffset = 0;
+  let spin = 0;
+
+  let isDraggingWidget = false;
 
   const yawMatrix = Matrix3x3.create();
   const pitchMatrix = Matrix3x3.create();
@@ -129,9 +142,87 @@ const VoxelPreviewView: Component = () => {
   const modelToWorld = Matrix3x3.create();
   const modelSpaceLightDirection = Vector3D.create();
 
-  let timeOffset = 0;
-  let spinOffset = 0;
-  let spin = 0;
+  function getWorldToModel() {
+    Matrix3x3.rotationX(-pitch, pitchMatrix);
+    Matrix3x3.rotationY(-(yaw + spin), yawMatrix);
+    return Matrix3x3.multiply(yawMatrix, pitchMatrix, worldToModel);
+  }
+
+  function getModelToWorld() {
+    Matrix3x3.rotationX(pitch, inversePitchMatrix);
+    Matrix3x3.rotationY(yaw + spin, inverseYawMatrix);
+    return Matrix3x3.multiply(
+      inversePitchMatrix,
+      inverseYawMatrix,
+      modelToWorld,
+    );
+  }
+
+  /** Where a pointer event lands on the canvas, in pixels from its top left. */
+  function pointerOnCanvas(event: PointerEvent): Vector2D | undefined {
+    const rect = canvas.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  /** Which arrow lies under the pointer, and where each of them lies. */
+  function grabArm(
+    at: Vector2D,
+  ): { axis: WidgetAxis; arm: ArmOnScreen } | undefined {
+    if (scene === undefined || canvas === undefined || !preview.axesVisible()) {
+      return undefined;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    // The arrows are placed for this frame's camera before they are measured,
+    // so a grab reads the same picture the pointer is looking at.
+    widget.place(selectedRoot(), radius);
+    rotateFigure(turntable, yaw, pitch, spin);
+
+    const arms = widget.armsOnScreen(camera, {
+      width: rect.width,
+      height: rect.height,
+    });
+    const axis = armUnderPointer(at, arms);
+
+    if (axis === undefined) {
+      return undefined;
+    }
+
+    return { axis, arm: arms.find((arm) => arm.axis === axis)! };
+  }
+
+  // CPU voxel picking: ray-march the same volumes the fragment shader renders,
+  // from the pointer position in UV space, and hold on to the voxel met first
+  // across the whole figure. The picker is precompiled at build time by
+  // precompileJS, so this never runs the rmsl graph in the browser.
+  function pickAt(clientX: number, clientY: number) {
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) {
+      return;
+    }
+
+    Matrix3x3.transform(getWorldToModel(), LIGHT_DIR, modelSpaceLightDirection);
+
+    setPicked(
+      pickFigure({
+        solved: solvedParts(),
+        placements: placement().placements,
+        palette: palette(),
+        // The drawing buffer is scaled by devicePixelRatio, but vUv spans the
+        // CSS box, so the pointer is normalized against the CSS size.
+        uv: { x: x / rect.width, y: 1 - y / rect.height },
+        resolution: { width: canvas.width, height: canvas.height },
+        cameraDistance: radius,
+        worldToModel,
+        modelToWorld: getModelToWorld(),
+        lightDirection: modelSpaceLightDirection,
+        unlit: untrack(preview.unlit),
+      }),
+    );
+  }
 
   async function handleWidgetDrag(
     initialEvent: PointerEvent & { currentTarget: HTMLElement },
@@ -147,47 +238,33 @@ const VoxelPreviewView: Component = () => {
     // axis that had moved on by the time the pointer did, and a figure
     // measured afresh as the part moves would rescale under the pointer.
     spinOffset = spin;
-    setHeldVoxelSize(untrack(placement).voxelSize);
-
     isDraggingWidget = true;
 
-    const widgetDrag = {
-      part: part.name,
-      axis: grabbedArm.axis,
-      arm: grabbedArm.arm,
-      armLength: widget.armLength,
-      voxelSize: untrack(placement).voxelSize,
-      startPointer: at,
-      startRoot: part.root,
-      lastRoot: part.root,
-    };
+    setHeldVoxelSize(untrack(placement).voxelSize);
+
+    let lastRoot = part.root;
+    const startRoot = part.root;
+    const voxelSize = untrack(placement).voxelSize;
 
     widget.setHeld(grabbedArm.axis);
 
-    await pointer(initialEvent, ({ delta, event }) => {
-      const at = pointerOnCanvas(event);
+    await pointer(initialEvent, ({ totalDelta }) => {
+      const steps = voxelsDragged(
+        totalDelta,
+        grabbedArm.arm,
+        widget.armLength,
+        voxelSize,
+      );
 
-      if (at !== undefined) {
-        const steps = voxelsDragged(
-          {
-            x: at.x - widgetDrag.startPointer.x,
-            y: at.y - widgetDrag.startPointer.y,
-          },
-          widgetDrag.arm,
-          widgetDrag.armLength,
-          widgetDrag.voxelSize,
-        );
+      const root = { ...startRoot };
+      root[grabbedArm.axis] = startRoot[grabbedArm.axis] + steps;
 
-        const root = { ...widgetDrag.startRoot };
-        root[widgetDrag.axis] = widgetDrag.startRoot[widgetDrag.axis] + steps;
-
-        if (Vector3D.equals(root, widgetDrag.lastRoot)) {
-          return;
-        }
-
-        widgetDrag.lastRoot = root;
-        doCommand(Command.movePart(widgetDrag.part, root));
+      if (Vector3D.equals(root, lastRoot)) {
+        return;
       }
+
+      lastRoot = root;
+      doCommand(Command.movePart(part.name, root));
     });
 
     isDraggingWidget = false;
@@ -201,100 +278,89 @@ const VoxelPreviewView: Component = () => {
     timeOffset = performance.now();
     spinOffset = spin;
 
-    if (!Vector3D.equals(widgetDrag.startRoot, widgetDrag.lastRoot)) {
-      pushUndo(
-        Command.movePart(widgetDrag.part, widgetDrag.startRoot),
-        "Move Part",
-      );
-    }
-  }
-
-  async function handlePartDrag(
-    initialEvent: PointerEvent & { currentTarget: HTMLElement },
-  ) {
-    // Pick immediately, so a tap (which produces no pointermove) still
-    // selects the voxel under the finger.
-    pickAt(initialEvent.clientX, initialEvent.clientY);
-
-    let press: { at: Vector2D; when: number } | undefined = {
-      at: { x: initialEvent.clientX, y: initialEvent.clientY },
-      when: performance.now(),
-    };
-
-    await pointer(initialEvent, ({ delta, event }) => {
-      if (
-        press !== undefined &&
-        Math.hypot(event.clientX - press.at.x, event.clientY - press.at.y) >
-          TAP_SLOP
-      ) {
-        press = undefined;
-      }
-      // Keep the readout in step with the cursor — including while orbiting,
-      // where the model turns beneath the pointer.
-      pickAt(event.clientX, event.clientY);
-      yaw += delta.x * RADIANS_PER_PIXEL;
-      pitch = Math.max(
-        -PITCH_LIMIT,
-        Math.min(PITCH_LIMIT, pitch + delta.y * RADIANS_PER_PIXEL),
-      );
-    });
-
-    const finalPointerCount = getPointerCount(initialEvent.currentTarget);
-
-    if (finalPointerCount !== 0) {
-      return;
-    }
-
-    // A press that stayed put and was let go again quickly is a tap on the
-    // figure, which reaches for whichever part it landed on.
-    const tapped =
-      press !== undefined && performance.now() - press.when <= TAP_HELD;
-
-    press = undefined;
-
-    if (tapped) {
-      selectPicked();
+    if (!Vector3D.equals(startRoot, lastRoot)) {
+      pushUndo(Command.movePart(part.name, startRoot), "Move Part");
     }
   }
 
   async function handlePointer(
     initialEvent: PointerEvent & { currentTarget: HTMLElement },
   ) {
-    const initialPointerCount = getPointerCount(initialEvent.currentTarget);
+    const element = initialEvent.currentTarget;
+    const initialPointerCount = getPointerSize(element);
 
-    switch (initialPointerCount) {
-      case 0: {
-        const at = pointerOnCanvas(initialEvent);
-        const grabbedArm = at === undefined ? undefined : grabArm(at);
+    if (initialPointerCount === 0) {
+      const at = pointerOnCanvas(initialEvent);
+      const grabbedArm = at === undefined ? undefined : grabArm(at);
 
-        if (at !== undefined && grabbedArm !== undefined) {
-          handleWidgetDrag(initialEvent, at, grabbedArm);
-          return;
-        }
-
-        handlePartDrag(initialEvent);
+      if (at !== undefined && grabbedArm !== undefined) {
+        handleWidgetDrag(initialEvent, at, grabbedArm);
         return;
       }
-      case 1: {
-        const pinchSpan = (element: HTMLElement) => {
-          const [a, b] = getPointers(element);
-          return Math.hypot(a.x - b.x, a.y - b.y);
-        };
 
-        let pinchDistance = pinchSpan(initialEvent.currentTarget);
-        await pointer(initialEvent, () => {
-          const distance = pinchSpan(initialEvent.currentTarget);
-          if (pinchDistance > 0) {
-            // Spreading the fingers (distance grows) zooms in, i.e. pulls the
-            // camera closer, so the radius scales by the inverse ratio.
-            radius = Math.min(
-              MAX_RADIUS,
-              Math.max(MIN_RADIUS, radius * (pinchDistance / distance)),
+      pickAt(initialEvent.clientX, initialEvent.clientY);
+    }
+
+    let isTap = initialPointerCount === 0;
+    let previousPinchDistance: number | undefined = pinchSpan(
+      getPointers(element),
+    );
+
+    const { timespan, pointers } = await pointer(
+      initialEvent,
+      ({ event, delta, pointers, totalDelta }) => {
+        switch (pointers.size) {
+          case 1: {
+            if (isTap && Math.hypot(totalDelta.x, totalDelta.y) > TAP_SLOP) {
+              isTap = false;
+            }
+
+            // Keep the readout in step with the cursor — including while orbiting,
+            // where the model turns beneath the pointer.
+            pickAt(event.clientX, event.clientY);
+            yaw += delta.x * RADIANS_PER_PIXEL;
+            pitch = Math.max(
+              -PITCH_LIMIT,
+              Math.min(PITCH_LIMIT, pitch + delta.y * RADIANS_PER_PIXEL),
             );
+
+            previousPinchDistance = undefined;
+
+            break;
           }
-          pinchDistance = distance;
-        });
+          case 2: {
+            isTap = false;
+
+            const distance = pinchSpan(pointers.values());
+
+            if (previousPinchDistance && distance) {
+              // Spreading the fingers (distance grows) zooms in, i.e. pulls the
+              // camera closer, so the radius scales by the inverse ratio.
+              radius = Math.min(
+                MAX_RADIUS,
+                Math.max(
+                  MIN_RADIUS,
+                  radius * (previousPinchDistance / distance),
+                ),
+              );
+            }
+
+            previousPinchDistance = distance;
+
+            break;
+          }
+        }
+      },
+    );
+
+    if (isTap && pointers.size === 0 && timespan <= TAP_HELD) {
+      const _picked = untrack(picked);
+
+      if (_picked === undefined) {
+        return;
       }
+
+      selectPart(_picked.part);
     }
   }
 
@@ -358,113 +424,13 @@ const VoxelPreviewView: Component = () => {
     }
   });
 
-  let isDraggingWidget = false;
-
-  // /** Whether the figure is turning on its own right now. */
-  const spinning = () => untrack(preview.autorotate) && !isDraggingWidget;
-
-  const getWorldToModel = () => {
-    Matrix3x3.rotationX(-pitch, pitchMatrix);
-    if (spinning()) {
+  const updateSpin = () => {
+    if (untrack(preview.autorotate) && !isDraggingWidget) {
       spin =
         ((performance.now() - timeOffset) / 1000) *
           TURNTABLE_RADIANS_PER_SECOND +
         spinOffset;
     }
-    Matrix3x3.rotationY(-(yaw + spin), yawMatrix);
-    return Matrix3x3.multiply(yawMatrix, pitchMatrix, worldToModel);
-  };
-
-  /**
-   * The turn that carries a point out of the space the figure is drawn in and
-   * into the world, which is what puts a part's place in the figure into the
-   * same terms as the camera's.
-   */
-  const getModelToWorld = () => {
-    Matrix3x3.rotationX(pitch, inversePitchMatrix);
-    Matrix3x3.rotationY(yaw + spin, inverseYawMatrix);
-    return Matrix3x3.multiply(
-      inversePitchMatrix,
-      inverseYawMatrix,
-      modelToWorld,
-    );
-  };
-
-  // CPU voxel picking: ray-march the same volumes the fragment shader renders,
-  // from the pointer position in UV space, and hold on to the voxel met first
-  // across the whole figure. The picker is precompiled at build time by
-  // precompileJS, so this never runs the rmsl graph in the browser.
-  const pickAt = (clientX: number, clientY: number) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-
-    if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) {
-      return;
-    }
-
-    Matrix3x3.transform(getWorldToModel(), LIGHT_DIR, modelSpaceLightDirection);
-
-    setPicked(
-      pickFigure({
-        solved: solvedParts(),
-        placements: placement().placements,
-        palette: palette(),
-        // The drawing buffer is scaled by devicePixelRatio, but vUv spans the
-        // CSS box, so the pointer is normalized against the CSS size.
-        uv: { x: x / rect.width, y: 1 - y / rect.height },
-        resolution: { width: canvas.width, height: canvas.height },
-        cameraDistance: radius,
-        worldToModel,
-        modelToWorld: getModelToWorld(),
-        lightDirection: modelSpaceLightDirection,
-        unlit: untrack(preview.unlit),
-      }),
-    );
-  };
-
-  /** Points the editor at the part the pointer last met, so a tap reaches it. */
-  const selectPicked = () => {
-    const _picked = untrack(picked);
-
-    if (_picked === undefined) {
-      return;
-    }
-
-    selectPart(_picked.part);
-  };
-
-  /** Where a pointer event lands on the canvas, in pixels from its top left. */
-  const pointerOnCanvas = (event: PointerEvent): Vector2D | undefined => {
-    const rect = canvas.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-  };
-
-  /** Which arrow lies under the pointer, and where each of them lies. */
-  const grabArm = (
-    at: Vector2D,
-  ): { axis: WidgetAxis; arm: ArmOnScreen } | undefined => {
-    if (scene === undefined || canvas === undefined || !preview.axesVisible()) {
-      return undefined;
-    }
-
-    const rect = canvas.getBoundingClientRect();
-    // The arrows are placed for this frame's camera before they are measured,
-    // so a grab reads the same picture the pointer is looking at.
-    widget.place(selectedRoot(), radius);
-    rotateFigure(turntable, yaw, pitch, spin);
-
-    const arms = widget.armsOnScreen(camera, {
-      width: rect.width,
-      height: rect.height,
-    });
-    const axis = armUnderPointer(at, arms);
-
-    if (axis === undefined) {
-      return undefined;
-    }
-
-    return { axis, arm: arms.find((arm) => arm.axis === axis)! };
   };
 
   const render = () => {
@@ -473,6 +439,7 @@ const VoxelPreviewView: Component = () => {
     // which the material uses for its ray origin) stay in step with the matrix
     // the CPU picker follows its ray along — keeping the pick under the pointer
     // aligned with what is drawn.
+    updateSpin();
     getWorldToModel();
     rotateFigure(turntable, yaw, pitch, spin);
 
@@ -490,7 +457,6 @@ const VoxelPreviewView: Component = () => {
   };
 
   createEffect(preview.axesVisible, (axesVisible) => {
-    console.log(axesVisible);
     widget.visible = axesVisible;
   });
 

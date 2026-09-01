@@ -5,6 +5,7 @@ interface CustomPointerEvent<T extends HTMLElement> {
   totalDelta: Vector2D;
   event: PointerEvent & { currentTarget: T };
   timespan: number;
+  pointers: Map<number, PointerEvent>;
 }
 
 export const POINTER_EVENT_MAP = new Map<
@@ -12,12 +13,12 @@ export const POINTER_EVENT_MAP = new Map<
   Map<number, PointerEvent>
 >();
 
-export function getPointerCount(element: HTMLElement) {
+export function getPointerSize(element: HTMLElement) {
   return POINTER_EVENT_MAP.get(element)?.size ?? 0;
 }
 
 export function getPointers(element: HTMLElement) {
-  return POINTER_EVENT_MAP.get(element)?.values() ?? ([] as const);
+  return POINTER_EVENT_MAP.get(element)?.values();
 }
 
 /**
@@ -52,11 +53,11 @@ export function pointer<T extends HTMLElement>(
   const element = initialEvent.currentTarget;
   element.setPointerCapture(pointerId);
 
-  const map = POINTER_EVENT_MAP.getOrInsert(
+  const pointers = POINTER_EVENT_MAP.getOrInsert(
     initialEvent.currentTarget,
     new Map(),
   );
-  map.set(initialEvent.pointerId, initialEvent);
+  pointers.set(initialEvent.pointerId, initialEvent);
 
   options?.signal.addEventListener("abort", () => controller.abort());
 
@@ -65,12 +66,13 @@ export function pointer<T extends HTMLElement>(
     const delta = Vector2D.sub(now, previous);
     previous = now;
     totalDelta = Vector2D.add(totalDelta, delta);
-    map.set(event.pointerId, event);
+    pointers.set(event.pointerId, event);
     return {
       delta,
       totalDelta,
       event: event as PointerEvent & { currentTarget: T },
       timespan: performance.now() - startTime,
+      pointers,
     };
   }
 
@@ -80,8 +82,8 @@ export function pointer<T extends HTMLElement>(
     // the first of them to finish is the one that gives the capture back.
     if (element.hasPointerCapture(pointerId)) {
       element.releasePointerCapture(pointerId);
-      map.delete(event.pointerId);
-      if (map.size === 0) {
+      pointers.delete(event.pointerId);
+      if (pointers.size === 0) {
         POINTER_EVENT_MAP.delete(element);
       }
     }
