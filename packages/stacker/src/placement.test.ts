@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
-import { boxSize, figurePlacement } from "./box";
-import { FigureMeshes, solveFigure } from "./figure-meshes";
+import { Group } from "@random-mesh/rmsl/scene";
+import { boundsCentre, boxSize, figurePlacement, fitVoxelSize } from "./box";
+import { applyFraming, FigureMeshes, solveFigure } from "./figure-meshes";
 import {
   centrePivot,
   sideAxes,
@@ -43,15 +44,14 @@ const drawnVoxelWidth = (part: Part, scale: number) =>
   (part.sides.front.width + 2);
 
 describe("figurePlacement", () => {
-  it("draws a voxel the same size in every part, whatever each part's own box", () => {
+  it("draws a voxel one unit across in every part, whatever each part's own box", () => {
     const small = partOf("small", { width: 8, height: 8, depth: 8 });
     const large = partOf("large", { width: 20, height: 20, depth: 20 });
 
     const { placements } = figurePlacement(figureOf(small, large));
 
-    expect(drawnVoxelWidth(small, placements[0].scale)).toBeCloseTo(
-      drawnVoxelWidth(large, placements[1].scale),
-    );
+    expect(drawnVoxelWidth(small, placements[0].scale)).toBeCloseTo(1);
+    expect(drawnVoxelWidth(large, placements[1].scale)).toBeCloseTo(1);
   });
 
   it("centres a figure of one part on the origin, as a lone model is drawn", () => {
@@ -64,16 +64,7 @@ describe("figurePlacement", () => {
     expect(placements[0].position.z).toBeCloseTo(0);
   });
 
-  it("fills about the same space as a lone model, so the camera still frames it", () => {
-    const alone = figurePlacement(
-      figureOf(partOf("body", { width: 16, height: 16, depth: 16 })),
-    );
-
-    // A 16-voxel box, one voxel to the unit, spans one unit across.
-    expect(alone.voxelSize * 16).toBeCloseTo(1);
-  });
-
-  it("puts a part where its root says, in voxels of the shared size", () => {
+  it("puts a part where its root says, in voxels", () => {
     const figure = figureOf(
       partOf("torso", { width: 10, height: 10, depth: 10 }),
       partOf(
@@ -83,11 +74,9 @@ describe("figurePlacement", () => {
       ),
     );
 
-    const { voxelSize, placements } = figurePlacement(figure);
+    const { placements } = figurePlacement(figure);
 
-    expect(placements[1].position.y - placements[0].position.y).toBeCloseTo(
-      8 * voxelSize,
-    );
+    expect(placements[1].position.y - placements[0].position.y).toBeCloseTo(8);
   });
 
   it("carries a part's root through its parent's", () => {
@@ -104,42 +93,37 @@ describe("figurePlacement", () => {
       ),
     );
 
-    const { voxelSize, placements } = figurePlacement(figure);
+    const { placements } = figurePlacement(figure);
 
     // The head sits eight above the torso, which itself sits five above the
     // origin: thirteen from the figure's origin.
-    expect(placements[1].position.y).toBeCloseTo(13 * voxelSize);
+    expect(placements[1].position.y).toBeCloseTo(13);
   });
 
-  it("leaves the other parts where they were when one part is moved", () => {
-    const before = figurePlacement(
-      figureOf(
-        partOf("torso", { width: 20, height: 20, depth: 20 }),
-        partOf(
-          "head",
-          { width: 4, height: 4, depth: 4 },
-          { root: Vector3D.create(0, 4, 0) },
-        ),
-      ),
-    );
-    const after = figurePlacement(
-      figureOf(
-        partOf("torso", { width: 20, height: 20, depth: 20 }),
-        partOf(
-          "head",
-          { width: 4, height: 4, depth: 4 },
-          { root: Vector3D.create(0, 6, 0) },
-        ),
-      ),
-    );
+  it("leaves every other part exactly where it was when one part is carried outside the figure", () => {
+    const torso = partOf("torso", { width: 20, height: 20, depth: 20 });
+    const headAt = (y: number) =>
+      partOf(
+        "head",
+        { width: 4, height: 4, depth: 4 },
+        {
+          root: Vector3D.create(0, y, 0),
+        },
+      );
 
-    // The head stays inside the torso's span either way, so the figure's span
-    // does not change and the torso is drawn in exactly the same place.
-    expect(after.voxelSize).toBeCloseTo(before.voxelSize);
-    expect(after.placements[0].position).toEqual(before.placements[0].position);
+    const before = figurePlacement(figureOf(torso, headAt(4)));
+    // Far enough out that the head alone doubles the height of the box the
+    // figure fills.
+    const after = figurePlacement(figureOf(torso, headAt(40)));
+
+    expect(after.placements[0]).toEqual(before.placements[0]);
+    expect(after.placements[1].scale).toEqual(before.placements[1].scale);
+    expect(
+      after.placements[1].position.y - before.placements[1].position.y,
+    ).toBeCloseTo(36);
   });
 
-  it("measures the box every part together fills, in voxels", () => {
+  it("measures the box every part together fills, in voxels from the figure's origin", () => {
     const figure = figureOf(
       partOf("torso", { width: 10, height: 12, depth: 6 }),
       partOf(
@@ -149,22 +133,13 @@ describe("figurePlacement", () => {
       ),
     );
 
-    const { extent } = figurePlacement(figure);
+    const { bounds } = figurePlacement(figure);
 
     // The torso spans -6..6 high about the origin and the head 6..10, so the
     // figure is sixteen high; neither part reaches past the torso's own width
     // or depth.
-    expect(extent).toEqual({ width: 10, height: 16, depth: 6 });
-  });
-
-  it("draws a figure of one part inside the box that lone model is drawn in", () => {
-    const dimensions = { width: 12, height: 20, depth: 7 };
-
-    const { size } = figurePlacement(figureOf(partOf("body", dimensions)));
-
-    expect(size.width).toBeCloseTo(boxSize(dimensions).width);
-    expect(size.height).toBeCloseTo(boxSize(dimensions).height);
-    expect(size.depth).toBeCloseTo(boxSize(dimensions).depth);
+    expect(bounds.low).toEqual(Vector3D.create(-5, -6, -3));
+    expect(bounds.dimensions).toEqual({ width: 10, height: 16, depth: 6 });
   });
 
   it("reaches a voxel past the outermost part, as each part's own box does", () => {
@@ -177,24 +152,78 @@ describe("figurePlacement", () => {
       ),
     );
 
-    const { size, voxelSize } = figurePlacement(figure);
+    const { size } = figurePlacement(figure);
 
     // Sixteen voxels high, plus the one voxel of padding at the top and the one
     // at the bottom.
-    expect(size.height).toBeCloseTo(18 * voxelSize);
+    expect(size).toEqual({ width: 12, height: 18, depth: 8 });
   });
 
   it("gives a figure with no parts something to draw at", () => {
     expect(figurePlacement(figureOf())).toEqual({
-      voxelSize: 1,
-      extent: { width: 0, height: 0, depth: 0 },
+      bounds: {
+        low: Vector3D.create(),
+        dimensions: { width: 0, height: 0, depth: 0 },
+      },
       size: { width: 0, height: 0, depth: 0 },
       placements: [],
     });
   });
 });
 
-describe("FigureMeshes drawn at a voxel size of its own", () => {
+describe("fitVoxelSize", () => {
+  it("draws a figure of one part inside the box that lone model is drawn in", () => {
+    const dimensions = { width: 12, height: 20, depth: 7 };
+    const { bounds, size } = figurePlacement(
+      figureOf(partOf("body", dimensions)),
+    );
+
+    const voxelSize = fitVoxelSize(bounds.dimensions);
+
+    expect(size.width * voxelSize).toBeCloseTo(boxSize(dimensions).width);
+    expect(size.height * voxelSize).toBeCloseTo(boxSize(dimensions).height);
+    expect(size.depth * voxelSize).toBeCloseTo(boxSize(dimensions).depth);
+  });
+
+  it("draws a figure with nothing in it at one voxel to the unit", () => {
+    expect(fitVoxelSize({ width: 0, height: 0, depth: 0 })).toBe(1);
+  });
+});
+
+describe("applyFraming", () => {
+  it("brings the focus to the origin and draws a voxel at the size it is given", () => {
+    const framed = new Group();
+
+    applyFraming(framed, {
+      focus: Vector3D.create(4, -2, 0),
+      voxelSize: 0.25,
+    });
+
+    expect(framed.scale.x).toBeCloseTo(0.25);
+    expect(framed.position.x).toBeCloseTo(-1);
+    expect(framed.position.y).toBeCloseTo(0.5);
+    expect(framed.position.z).toBeCloseTo(0);
+  });
+
+  it("frames a figure on the middle of the box its parts fill", () => {
+    const { bounds } = figurePlacement(
+      figureOf(
+        partOf("torso", { width: 10, height: 12, depth: 6 }),
+        partOf(
+          "head",
+          { width: 4, height: 4, depth: 4 },
+          { root: Vector3D.create(0, 8, 0) },
+        ),
+      ),
+    );
+
+    // Sixteen voxels of height reaching from six below the origin, so its
+    // middle is two above.
+    expect(boundsCentre(bounds)).toEqual(Vector3D.create(0, 2, 0));
+  });
+});
+
+describe("FigureMeshes", () => {
   /** Two parts standing apart along x, the second `apartBy` voxels out. */
   const twoParts = (apartBy: number) =>
     figureOf(
@@ -214,35 +243,20 @@ describe("FigureMeshes drawn at a voxel size of its own", () => {
       ),
     );
 
-  it("moves the part that moved by what its root changed, and moves no other", () => {
-    const figure = twoParts(10);
-    const held = figurePlacement(figure).voxelSize;
-    const meshes = new FigureMeshes();
-
-    meshes.sync(figure, solveFigure(figure), figurePlacement(figure, held));
-    const still = meshes.meshFor("still")!.position.x;
-    const moved = meshes.meshFor("moved")!.position.x;
-
-    const slid = twoParts(15);
-    meshes.sync(slid, solveFigure(slid), figurePlacement(slid, held));
-
-    expect(meshes.meshFor("still")!.position.x).toBeCloseTo(still);
-    expect(meshes.meshFor("moved")!.position.x).toBeCloseTo(moved + 5 * held);
-  });
-
-  it("draws a figure at the size it measures to when it is given none", () => {
-    // Measured afresh, a part carried outwards makes every voxel in the figure
-    // smaller, which draws the parts standing still nearer the origin — what a
-    // drag holds a voxel size still to keep from happening under the pointer.
+  it("moves the mesh of the part that moved by what its root changed, and moves no other", () => {
     const figure = twoParts(10);
     const meshes = new FigureMeshes();
 
     meshes.sync(figure, solveFigure(figure));
     const still = meshes.meshFor("still")!.position.x;
+    const moved = meshes.meshFor("moved")!.position.x;
+    const scale = meshes.meshFor("moved")!.scale.x;
 
     const slid = twoParts(15);
     meshes.sync(slid, solveFigure(slid));
 
-    expect(meshes.meshFor("still")!.position.x).toBeGreaterThan(still);
+    expect(meshes.meshFor("still")!.position.x).toBe(still);
+    expect(meshes.meshFor("moved")!.position.x).toBeCloseTo(moved + 5);
+    expect(meshes.meshFor("moved")!.scale.x).toBe(scale);
   });
 });

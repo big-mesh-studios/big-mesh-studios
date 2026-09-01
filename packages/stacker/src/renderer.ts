@@ -17,9 +17,15 @@ export type { ViewSpec } from "./solver";
 export { marchVolume } from "./march";
 export type { MarchVolumeNodes } from "./march";
 export { VoxelModelMaterial } from "./material";
-export { boxSize, figurePlacement } from "./box";
-export type { FigurePlacement, PartPlacement } from "./box";
+export { boundsCentre, boxSize, figurePlacement, fitVoxelSize } from "./box";
+export type {
+  FigureBounds,
+  FigureFraming,
+  FigurePlacement,
+  PartPlacement,
+} from "./box";
 export {
+  applyFraming,
   bakeVolume,
   BakedFigure,
   FigureCopy,

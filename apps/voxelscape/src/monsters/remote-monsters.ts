@@ -103,7 +103,7 @@ export class RemoteMonsters {
       material.flash = 1;
     }
 
-    const { width, height, depth } = this.baked.extent;
+    const { width, height, depth } = this.baked.bounds.dimensions;
     const parts = figure.parts.length;
     this.worn = `${width}×${height}×${depth} voxel model in ${
       parts === 1 ? "one part" : `${parts} parts`

@@ -93,15 +93,15 @@ describe("cameraDistanceFor", () => {
     const distance = cameraDistanceFor(...lone([]));
 
     expect(distance).toBeGreaterThan(0);
-    expect(distance).toBeLessThan(1);
+    expect(distance).toBeLessThan(cameraDistanceFor(...lone([[8, 8, 8]])));
   });
 
   it("leaves an edge around a model that fills its box", () => {
-    // The whole box normalises to one across its longest side, so its furthest
-    // corner is half of the diagonal away. Twice that would touch the edges of
-    // the picture exactly; a little more leaves the model clear of them.
+    // The box is sixteen voxels across, so its furthest corner is eight voxels
+    // out along each axis. Twice that distance would touch the edges of the
+    // picture exactly; a little more leaves the model clear of them.
     const full = cameraDistanceFor(...lone(everything()));
-    const touching = 2 * Math.hypot(0.5, 0.5, 0.5);
+    const touching = 2 * Math.hypot(8, 8, 8);
 
     expect(full).toBeGreaterThan(touching);
     expect(full).toBeLessThan(touching * 1.3);

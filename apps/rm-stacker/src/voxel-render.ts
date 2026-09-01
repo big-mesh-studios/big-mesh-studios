@@ -11,13 +11,16 @@
 // to be preserved — costs something on every frame ever drawn, to be paid back
 // on the rare one that is read.
 import {
+  Group,
   PerspectiveCamera,
   Scene,
   WebGLRenderer,
 } from "@random-mesh/rmsl/scene";
 import {
+  applyFraming,
   FigureMeshes,
   type Figure,
+  type FigureFraming,
   type SolvedPart,
 } from "@big-mesh-studios/stacker/renderer";
 import {
@@ -33,6 +36,8 @@ export interface VoxelImageRequest {
   figure: Figure;
   /** Each part's volume, in the order `figure.parts` holds them. */
   solved: SolvedPart[];
+  /** How the figure's voxels are drawn in the world the camera stands in. */
+  framing: FigureFraming;
   /** How many pixels across and down the picture is. */
   size: number;
   /** Which way the model is turned, and how far back the camera stands. */
@@ -46,6 +51,10 @@ interface OffscreenScene {
   scene: Scene;
   camera: PerspectiveCamera;
   meshes: FigureMeshes;
+  /** The group the figure is turned by, holding the one it is framed by. */
+  turned: Group;
+  /** The group the figure is framed by, holding the parts in their voxels. */
+  framed: Group;
 }
 
 /**
@@ -84,12 +93,20 @@ function offscreenScene(): OffscreenScene | undefined {
 
     const meshes = new FigureMeshes();
     const scene = new Scene();
-    scene.add(meshes.group);
+    // The figure is framed inside what turns it, so it turns about the point it
+    // is framed on rather than about the figure's own origin.
+    const turned = new Group();
+    const framed = new Group();
+    framed.add(meshes.group);
+    turned.add(framed);
+    scene.add(turned);
 
     offscreen = {
       renderer,
       scene,
       meshes,
+      turned,
+      framed,
       camera: new PerspectiveCamera(FOV, 1, NEAR, FAR),
     };
 
@@ -114,7 +131,7 @@ export function renderVoxelImage(
     return null;
   }
 
-  const { renderer, scene, camera, meshes } = built;
+  const { renderer, scene, camera, meshes, turned, framed } = built;
 
   try {
     renderer.setSize(request.size, request.size);
@@ -123,11 +140,12 @@ export function renderVoxelImage(
     camera.lookAt(0, 0, 0);
 
     meshes.sync(request.figure, request.solved);
+    applyFraming(framed, request.framing);
     lightFigure(meshes, false);
 
     // The figure is turned to the orientation the light is measured against, so
     // that what lands on a face here is what would land on it in the preview.
-    rotateFigure(meshes.group, request.yaw, request.pitch, 0);
+    rotateFigure(turned, request.yaw, request.pitch, 0);
 
     renderer.render(scene, camera);
 

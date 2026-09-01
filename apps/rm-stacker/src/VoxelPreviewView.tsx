@@ -1,8 +1,11 @@
 import { Matrix3x3, Vector2D, Vector3D } from "@big-mesh-studios/maths";
 import {
+  applyFraming,
   composeRoot,
   FigureMeshes,
   figurePlacement,
+  fitVoxelSize,
+  type FigureFraming,
 } from "@big-mesh-studios/stacker/renderer";
 import {
   getPointers,
@@ -91,6 +94,7 @@ const VoxelPreviewView: Component = () => {
     preview,
     doCommand,
     pushUndo,
+    figureLoads,
   } = useContext(StackerContext);
 
   let yaw = Math.PI / 4;
@@ -121,8 +125,17 @@ const VoxelPreviewView: Component = () => {
   const turntable = new Group();
   scene.add(turntable);
 
+  /**
+   * The group the figure's voxel space is drawn in. Everything inside it stands
+   * in voxels from the figure's origin, so this group's own place and size are
+   * the whole of what point the view is looking at and how large the figure is
+   * drawn — a part moved never changes either.
+   */
+  const framed = new Group();
+  turntable.add(framed);
+
   const meshes = new FigureMeshes();
-  turntable.add(meshes.group);
+  framed.add(meshes.group);
 
   // The picked voxel's outline. Its geometry is in the part's own space
   // (the same cell layout the marcher walks), so it is made a child of
@@ -141,38 +154,40 @@ const VoxelPreviewView: Component = () => {
   const widget = new TranslateWidget();
   turntable.add(widget.group);
 
-  /**
-   * How much of the drawn world one voxel takes up for as long as a drag runs,
-   * or undefined when none is running and the figure is drawn at the size it
-   * measures to.
-   *
-   * A figure is drawn at a voxel size worked out from the box its parts
-   * together fill, so a part carried outwards makes every voxel in the figure
-   * smaller: the part being dragged would lag behind the arrow pulling it and
-   * the parts standing still would slide the other way. Held at the size the
-   * arrow was measured against, a part moves a voxel for every voxel it is
-   * dragged and the rest of the figure stays where it stands.
-   */
-  const [heldVoxelSize, setHeldVoxelSize] = createSignal<number | undefined>();
+  /** How much of the drawn world one voxel takes up. */
+  const [voxelSize, setVoxelSize] = createSignal(1);
   const [pickedFigure, setPickedFigure] = createSignal<
     FigurePick | undefined
   >();
 
-  /** Where every part stands, and how much of the drawn world one voxel takes. */
-  const placement = createMemo(() =>
-    figurePlacement(figure(), heldVoxelSize()),
-  );
+  /** Where every part stands, in voxels from the figure's origin. */
+  const placement = createMemo(() => figurePlacement(figure()));
+
+  /** The point of the figure drawn at the middle of the view. */
+  const focus = createMemo(() => Vector3D.EMPTY);
+
+  /** How the figure's voxels are drawn in the world the camera stands in. */
+  const framing = createMemo<FigureFraming>(() => ({
+    focus: focus(),
+    voxelSize: voxelSize(),
+  }));
+
+  /** Draws the figure at the size that brings the whole of it into the view. */
+  function fitToView() {
+    setVoxelSize(fitVoxelSize(untrack(placement).bounds.dimensions));
+  }
 
   /**
    * Where the selected part's root sits in the drawn world, which is where the
    * arrows stand.
    */
-  const selectedRoot = createMemo(() =>
-    Vector3D.multiplyScalar(
-      composeRoot(figure(), selectedPart()),
-      placement().voxelSize,
-    ),
-  );
+  const selectedRoot = createMemo(() => {
+    const { focus, voxelSize } = framing();
+    return Vector3D.multiplyScalar(
+      Vector3D.subtract(composeRoot(figure(), selectedPart()), focus),
+      voxelSize,
+    );
+  });
 
   function getWorldToModel() {
     Matrix3x3.rotationX(-pitch, pitchMatrix);
@@ -242,6 +257,7 @@ const VoxelPreviewView: Component = () => {
       pickFigure({
         solved: solvedParts(),
         placements: placement().placements,
+        framing: framing(),
         palette: palette(),
         // The drawing buffer is scaled by devicePixelRatio, but vUv spans the
         // CSS box, so the pointer is normalized against the CSS size.
@@ -265,18 +281,14 @@ const VoxelPreviewView: Component = () => {
     },
   ) {
     const part = untrack(selectedPart);
-    // Hold the figure still, in its turn and in the size it is drawn at
-    // alike: an arrow dragged against a turning model would slide along an
-    // axis that had moved on by the time the pointer did, and a figure
-    // measured afresh as the part moves would rescale under the pointer.
+    // Hold the figure still in its turn: an arrow dragged against a turning
+    // model would slide along an axis that had moved on by the time the
+    // pointer did.
     spinOffset = spin;
     isDraggingWidget = true;
 
-    setHeldVoxelSize(untrack(placement).voxelSize);
-
     let lastRoot = part.root;
     const startRoot = part.root;
-    const voxelSize = untrack(placement).voxelSize;
 
     widget.setHeld(grabbedArm.axis);
 
@@ -285,7 +297,7 @@ const VoxelPreviewView: Component = () => {
         totalDelta,
         grabbedArm.arm,
         widget.armLength,
-        voxelSize,
+        voxelSize(),
       );
 
       const root = { ...startRoot };
@@ -302,8 +314,6 @@ const VoxelPreviewView: Component = () => {
     isDraggingWidget = false;
 
     widget.setHeld(undefined);
-    // Measure the figure again, so it fits the view at wherever the part landed.
-    setHeldVoxelSize(undefined);
 
     // The figure was held still for the drag; pick the turntable up from where
     // it was rather than from where it would have got to.
@@ -445,6 +455,28 @@ const VoxelPreviewView: Component = () => {
     widget.visible = axesVisible;
   });
 
+  createEffect(framing, (framing) => {
+    applyFraming(framed, framing);
+  });
+
+  // The figure is fitted to the view when a whole one is put in front of the
+  // editor and never while it is being drawn on, so an edit cannot resize what
+  // is under the pointer. The placement is tracked as well as the count of
+  // loads, because the model kept in the browser is restored after the first
+  // run and there is nothing to measure until it arrives.
+  let fittedFor = -1;
+  createEffect(
+    () => [figureLoads(), placement()] as const,
+    ([loads]) => {
+      if (loads === fittedFor) {
+        return;
+      }
+
+      fittedFor = loads;
+      fitToView();
+    },
+  );
+
   createEffect(
     () => [figure(), solvedParts(), placement()] as const,
     ([figure, solvedParts, placement]) => {
@@ -487,6 +519,7 @@ const VoxelPreviewView: Component = () => {
 
       const geometry = outline.geometry;
       geometry.setPositions(voxelCellEdges(on.dimensions, picked.voxel));
+
       // setPositions swaps in fresh instance attributes whose needsUpdate flag
       // is false, so the renderer would keep drawing the previous pick's edges.
       // Flag them so the next frame uploads the new cell.
@@ -502,12 +535,14 @@ const VoxelPreviewView: Component = () => {
       const dpr = window.devicePixelRatio || 1;
       const width = Math.max(1, Math.round(rect.width * dpr));
       const height = Math.max(1, Math.round(rect.height * dpr));
+
       renderer.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       render();
     };
     sizeToCanvas();
+
     const resizeObserver = new ResizeObserver(sizeToCanvas);
     resizeObserver.observe(canvas);
 

@@ -11,6 +11,7 @@ import {
 } from "@big-mesh-studios/maths";
 import {
   encodePalette,
+  type FigureFraming,
   type PartPlacement,
   type SolvedPart,
 } from "@big-mesh-studios/stacker/renderer";
@@ -28,8 +29,10 @@ export interface FigurePick {
 export interface FigurePickView {
   /** Every part's volume, in the order the figure holds them. */
   solved: readonly SolvedPart[];
-  /** Where each part stands and what its box is scaled by, in that same order. */
+  /** Where each part stands in voxels, and what its box is scaled by, in that same order. */
   placements: readonly PartPlacement[];
+  /** How those voxels are drawn in the world the camera stands in. */
+  framing: FigureFraming;
   /** The colours the volumes address. */
   palette: RGBA[];
   /** Where the pointer is, as a fraction of the canvas from its bottom left. */
@@ -63,6 +66,7 @@ export interface FigurePickView {
 export function pickFigure(view: FigurePickView): FigurePick | undefined {
   const encodedPalette = encodePalette(view.palette);
   const partOffset: Vector3D = { x: 0, y: 0, z: 0 };
+  const stands = { position: { x: 0, y: 0, z: 0 }, scale: 0 };
   const voxelCentre: Vector3D = { x: 0, y: 0, z: 0 };
   const inWorld: Vector3D = { x: 0, y: 0, z: 0 };
   const normalized: Dimensions3D = { width: 0, height: 0, depth: 0 };
@@ -70,12 +74,21 @@ export function pickFigure(view: FigurePickView): FigurePick | undefined {
   let nearest: FigurePick | undefined;
   let nearestDistance = Infinity;
 
-  view.solved.forEach(({ name, dimensions, voxels }, index) => {
-    const stands = view.placements[index];
+  const { focus, voxelSize } = view.framing;
 
-    if (stands === undefined || voxels.length === 0) {
+  view.solved.forEach(({ name, dimensions, voxels }, index) => {
+    const placed = view.placements[index];
+
+    if (placed === undefined || voxels.length === 0) {
       return;
     }
+
+    // The placement measures the part in voxels from the figure's origin; the
+    // marcher wants it where the camera sees it, which is what the framing says.
+    stands.position.x = (placed.position.x - focus.x) * voxelSize;
+    stands.position.y = (placed.position.y - focus.y) * voxelSize;
+    stands.position.z = (placed.position.z - focus.z) * voxelSize;
+    stands.scale = placed.scale * voxelSize;
 
     Dimensions3D.normalize(dimensions, normalized);
     Matrix3x3.transform(view.modelToWorld, stands.position, partOffset);

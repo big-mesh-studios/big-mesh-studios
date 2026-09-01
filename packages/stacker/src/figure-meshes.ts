@@ -6,16 +6,18 @@
 // is drawn under studio light in the editor and under a moving sun in the world.
 // A caller reaches the materials to say so.
 import { Dimensions3D, type RGBA } from "@big-mesh-studios/maths";
-import { BoxGeometry, Group, Mesh } from "@random-mesh/rmsl/scene";
+import { BoxGeometry, Group, Mesh, Object3D } from "@random-mesh/rmsl/scene";
 import {
   boxSize,
   figurePlacement,
+  type FigureBounds,
+  type FigureFraming,
   type FigurePlacement,
   type PartPlacement,
 } from "./box";
 import { partDimensions, type Figure, type Part } from "./data";
-import { encodePalette, solveVoxels } from "./solver";
 import { VoxelModelMaterial } from "./material";
+import { encodePalette, solveVoxels } from "./solver";
 
 /** One part's volume as the graphics card reads it, and the box it fills. */
 export interface SolvedPart {
@@ -72,6 +74,23 @@ export function bakeVolume(
   material.voxelCount = [dimensions.width, dimensions.height, dimensions.depth];
 }
 
+/**
+ * Puts `object` where `framing` draws the figure standing inside it: the focus
+ * brought to the origin, and a voxel drawn at the size the framing gives it.
+ *
+ * Parts are placed in voxels from the figure's origin, so this is the whole of
+ * what turns those into the size and the place the figure is seen at.
+ */
+export function applyFraming(object: Object3D, framing: FigureFraming): void {
+  const { focus, voxelSize } = framing;
+  object.scale.set(voxelSize, voxelSize, voxelSize);
+  object.position.set(
+    -focus.x * voxelSize,
+    -focus.y * voxelSize,
+    -focus.z * voxelSize,
+  );
+}
+
 /** The box a part's volume is marched inside, at the size `boxSize` gives it. */
 function partGeometry(dimensions: Dimensions3D): BoxGeometry {
   const size = boxSize(dimensions);
@@ -115,13 +134,13 @@ export class FigureMeshes {
 
   /**
    * Brings the meshes in step with the figure: a mesh for each part, sized and
-   * placed so a voxel is the same size in all of them, carrying that part's
-   * volume and the palette they all share.
+   * placed in voxels so a voxel is the same size in all of them, carrying that
+   * part's volume and the palette they all share.
    *
    * @param solved Each part's volume, in the order `figure.parts` holds them.
-   * @param placement Where the parts stand and how big a voxel is across them,
-   * for a caller that draws the figure at a placement of its own rather than at
-   * the one the figure measures to. Left out, the figure is drawn at its own.
+   * @param placement Where the parts stand, for a caller that has already
+   * measured the figure and would rather not have it measured again. Left out,
+   * it is measured here.
    */
   sync(
     figure: Figure,
@@ -196,19 +215,19 @@ export interface BakedPart {
  */
 export class BakedFigure {
   readonly parts: readonly BakedPart[];
-  /** The box every part together fills, in voxels. */
-  readonly extent: Dimensions3D;
+  /** The box every part together fills, in voxels from the figure's origin. */
+  readonly bounds: FigureBounds;
   /**
-   * The box the whole figure is drawn inside, before whoever draws it scales it
-   * to the size they want it at.
+   * The box the whole figure is drawn inside, in voxels, which is what whoever
+   * draws it measures against to scale it to the size they want it at.
    */
   readonly size: Dimensions3D;
   private readonly palette: RGBA[];
 
   constructor(figure: Figure) {
-    const { extent, size, placements } = figurePlacement(figure);
+    const { bounds, size, placements } = figurePlacement(figure);
 
-    this.extent = extent;
+    this.bounds = bounds;
     this.size = size;
     this.palette = figure.palette;
     this.parts = figure.parts.map((part, index) => {

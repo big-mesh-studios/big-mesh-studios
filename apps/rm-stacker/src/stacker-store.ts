@@ -146,6 +146,7 @@ export function createStacker() {
   const [selectedPartName, selectPart] = createSignal<string>(
     () => saved()?.selectedPartName ?? FIRST_PART,
   );
+  const [figureLoads, setFigureLoads] = createSignal(0);
   const undoRedoManager = new UndoRedoManager(
     (command) => doCommandAndUpdate(command),
     () => saved()?.undoStack ?? [],
@@ -276,6 +277,17 @@ export function createStacker() {
   createEffect(selectedPart, requestRender);
 
   /**
+   * Puts a whole figure in front of the editor in place of the one being drawn:
+   * a model opened, a file read, the editor started afresh. A view that frames
+   * the figure to its viewport frames it again on each of these, and leaves its
+   * framing alone through an edit.
+   */
+  function loadParts(next: Part[]) {
+    setParts(next);
+    setFigureLoads((loads) => loads + 1);
+  }
+
+  /**
    * Replaces the parts, taking the figure as it stands first so the change can
    * be taken back in one step.
    */
@@ -299,6 +311,9 @@ export function createStacker() {
     figure,
     parts,
     setParts,
+    loadParts,
+    /** How many whole figures have been put in front of the editor. */
+    figureLoads,
     selectedPart,
     selectedPartName,
     selectPart,
@@ -436,7 +451,7 @@ export function createStacker() {
       return () => renderSet.delete(callback);
     },
     reset() {
-      setParts([createInitialPart(FIRST_PART, INITIAL_DIMENSIONS)]);
+      loadParts([createInitialPart(FIRST_PART, INITIAL_DIMENSIONS)]);
       selectPart(FIRST_PART);
       setHome({ kind: "nowhere" });
       updateVoxels();

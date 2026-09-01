@@ -76,7 +76,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
   const {
     atproto,
     figure,
-    setParts,
+    loadParts,
     palette,
     setPalette,
     dimensions,
@@ -297,7 +297,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
       }
 
       const result = await loadFigure(contents, palette());
-      setParts(result.parts);
+      loadParts(result.parts);
       setPalette(result.palette);
       setHome(
         card.kind === "published"
@@ -356,7 +356,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
       })) as FileWithHandle;
       const result = await loadFigure(file, palette());
 
-      setParts(result.parts);
+      loadParts(result.parts);
       setPalette(result.palette);
       updateVoxels();
       flush();

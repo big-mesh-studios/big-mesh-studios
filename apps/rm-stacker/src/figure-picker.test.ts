@@ -8,6 +8,7 @@ import {
 import {
   centrePivot,
   figurePlacement,
+  fitVoxelSize,
   partDimensions,
   sideAxes,
   sideKinds,
@@ -60,18 +61,26 @@ const emptied = (solved: SolvedPart): SolvedPart => ({
  * `figure` seen from a camera three units down the z axis, turned `yaw` radians
  * about y, with the pointer just off the middle of a square canvas.
  */
-const lookingAt = (figure: Figure, yaw: number): FigurePickView => ({
-  solved: figure.parts.map(solid),
-  placements: figurePlacement(figure).placements,
-  palette: PALETTE,
-  uv: { x: 0.51, y: 0.51 },
-  resolution: { width: 500, height: 500 },
-  cameraDistance: 3,
-  worldToModel: Matrix3x3.rotationY(-yaw),
-  modelToWorld: Matrix3x3.rotationY(yaw),
-  lightDirection: Vector3D.create(0, 0, 1),
-  unlit: true,
-});
+const lookingAt = (figure: Figure, yaw: number): FigurePickView => {
+  const { bounds, placements } = figurePlacement(figure);
+
+  return {
+    solved: figure.parts.map(solid),
+    placements,
+    framing: {
+      focus: Vector3D.EMPTY,
+      voxelSize: fitVoxelSize(bounds.dimensions),
+    },
+    palette: PALETTE,
+    uv: { x: 0.51, y: 0.51 },
+    resolution: { width: 500, height: 500 },
+    cameraDistance: 3,
+    worldToModel: Matrix3x3.rotationY(-yaw),
+    modelToWorld: Matrix3x3.rotationY(yaw),
+    lightDirection: Vector3D.create(0, 0, 1),
+    unlit: true,
+  };
+};
 
 describe("pickFigure", () => {
   const front = partAt("front", 12);

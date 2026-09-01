@@ -13,6 +13,7 @@ import { Vector3D } from "@big-mesh-studios/maths";
 import {
   composeRoot,
   figurePlacement,
+  fitVoxelSize,
   solveFigure,
   type Figure,
   type SolvedPart,
@@ -36,11 +37,15 @@ const PITCH = Math.PI / 6;
 /** How much clear space is left around the model, as a share of its size. */
 const BREATHING_ROOM = 1.12;
 
-/** Kept away from nothing at all, for a model with a single voxel in it. */
-const NEAREST = 0.6;
+/**
+ * How near the camera may stand, in voxels. A figure with nothing drawn in it
+ * has no reach to measure, and the camera would otherwise be put on the origin.
+ */
+const NEAREST = 2;
 
 /**
- * How far back the camera stands to frame `figure`.
+ * How far back the camera stands to frame `figure`, in the voxels the figure is
+ * drawn in.
  *
  * The marcher builds its rays through a pinhole of focal length two, so at
  * distance d it sees d/2 either side of the middle: standing at twice the
@@ -57,7 +62,6 @@ export function cameraDistanceFor(
   figure: Figure,
   solved: SolvedPart[],
 ): number {
-  const { voxelSize } = figurePlacement(figure);
   let furthest = 0;
 
   figure.parts.forEach((part, index) => {
@@ -76,9 +80,9 @@ export function cameraDistanceFor(
 
           // The far corner of the voxel rather than its middle, so the one at
           // the edge of the figure is inside the picture and not half out of it.
-          const px = (Math.abs(low.x + x + 0.5) + 0.5) * voxelSize;
-          const py = (Math.abs(low.y + y + 0.5) + 0.5) * voxelSize;
-          const pz = (Math.abs(low.z + z + 0.5) + 0.5) * voxelSize;
+          const px = Math.abs(low.x + x + 0.5) + 0.5;
+          const py = Math.abs(low.y + y + 0.5) + 0.5;
+          const pz = Math.abs(low.z + z + 0.5) + 0.5;
 
           furthest = Math.max(furthest, Math.hypot(px, py, pz));
         }
@@ -146,14 +150,20 @@ function bleedColourOutwards(
  */
 export function thumbnailFromFigure(figure: Figure): Uint8Array | undefined {
   const solved = solveFigure(figure);
+  const { bounds } = figurePlacement(figure);
+  const framing = {
+    focus: Vector3D.EMPTY,
+    voxelSize: fitVoxelSize(bounds.dimensions),
+  };
 
   const pixels = renderVoxelImage({
     figure,
     solved,
+    framing,
     size: SIZE,
     yaw: YAW,
     pitch: PITCH,
-    radius: cameraDistanceFor(figure, solved),
+    radius: cameraDistanceFor(figure, solved) * framing.voxelSize,
   });
 
   if (pixels === null) {

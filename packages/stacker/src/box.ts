@@ -19,30 +19,55 @@ export const boxSize = (dimensions: Dimensions3D) => {
 
 /** Where one part's box stands when the whole figure is drawn. */
 export interface PartPlacement {
-  /** The middle of the part's box, in the space the figure is drawn in. */
+  /** The middle of the part's box, in voxels from the figure's origin. */
   position: Vector3D;
   /**
    * What the part's box, built at the size `boxSize` gives, is multiplied by to
-   * bring it to the figure's voxel size.
+   * measure it in voxels. The marcher walks a box whose own longest axis is
+   * one, so a part twenty voxels across and a part eight voxels across come out
+   * the same size and a voxel means a different distance in each; this is the
+   * part's own longest axis, which undoes that.
    */
   scale: number;
 }
 
-/** Where a figure's parts stand, and how big a voxel is across all of them. */
+/** The box a figure's parts together fill, in voxels from the figure's origin. */
+export interface FigureBounds {
+  /** The corner the box starts at. */
+  low: Vector3D;
+  /** How far the box reaches from that corner. */
+  dimensions: Dimensions3D;
+}
+
+/** Where a figure's parts stand, and the box they together fill. */
 export interface FigurePlacement {
-  /** How much of the drawn space one voxel takes up, in every part alike. */
-  voxelSize: number;
-  /** The box every part of the figure together fills, in voxels. */
-  extent: Dimensions3D;
+  bounds: FigureBounds;
   /**
-   * The box the whole figure is drawn inside: its extent at the figure's voxel
-   * size, padded by one voxel on each side the way `boxSize` pads a single
-   * model's box. Whoever draws a figure at a size of their own — as tall as a
-   * monster, small enough to sit in a hand — measures against this.
+   * The box the whole figure is drawn inside: its bounds padded by one voxel on
+   * each side, the way `boxSize` pads a single part's box. Whoever draws a
+   * figure at a size of their own — as tall as a monster, small enough to sit
+   * in a hand — measures against this.
    */
   size: Dimensions3D;
   /** One placement per part, in the order `figure.parts` holds them. */
   placements: PartPlacement[];
+}
+
+/**
+ * How a figure is put in front of a camera: which point of it stands at the
+ * origin, and how much of the drawn world one voxel takes up.
+ *
+ * A placement measures a figure in voxels and in nothing else, which leaves
+ * both of these open. Whoever draws a figure holds one of these and applies it
+ * to the group the parts are drawn in, so framing the figure on a different
+ * point, or drawing it larger, moves that one group and leaves every part
+ * standing where the placement put it.
+ */
+export interface FigureFraming {
+  /** The point of the figure, in voxels from its origin, drawn at the origin. */
+  focus: Vector3D;
+  /** How much of the drawn world one voxel takes up. */
+  voxelSize: number;
 }
 
 /** The largest of a box's three extents. */
@@ -57,81 +82,92 @@ const AXES = [
 ] as const;
 
 /**
- * Where each of a figure's parts stands, and how much of the drawn space one
- * voxel takes up across all of them.
+ * Where each of a figure's parts stands, in voxels from the figure's origin.
  *
  * A part's box is built in the space the marcher walks, where `Dimensions3D`'s
  * `normalize` has made the box's own longest axis one — so on its own, a part
  * eight voxels across and a part twenty voxels across come out the same size,
  * and a voxel means a different distance in each. Parts cannot be put beside
  * each other on those terms. Multiplying a part's box back up by its own
- * longest axis undoes that, and multiplying by one voxel size shared across the
- * figure brings every part to the same scale, so a voxel is a voxel wherever it
- * is drawn.
+ * longest axis undoes that, and leaves every part measured in the voxels they
+ * share, so a voxel is a voxel wherever it is drawn.
  *
- * The shared voxel size is worked out from the box every part together fills,
- * so a figure takes up about as much of the view as a single model does. Parts
- * are placed from the figure's origin rather than from the middle of that box,
- * which is what lets one part be moved without the others sliding under the
- * pointer to keep the figure centred.
- *
- * @param voxelSize How much of the drawn space one voxel is to take up, for a
- * caller drawing the figure at a size of its own. A drag holds the size the
- * arrow was measured against for as long as it runs: measured afresh, a part
- * carried outwards makes every voxel in the figure smaller, so the part being
- * dragged would lag behind the arrow pulling it and the parts standing still
- * would slide the other way. Left out, the size is the one that fits the figure
- * into the space a single model is drawn in.
+ * Everything here is measured in voxels and in nothing else, so moving a part
+ * changes that part's position and nothing about any other. How large the
+ * figure is drawn, and what point of it the camera looks at, are a
+ * `FigureFraming` the caller applies to the group it draws the parts in.
  */
-export function figurePlacement(
-  figure: Figure,
-  voxelSize?: number,
-): FigurePlacement {
+export function figurePlacement(figure: Figure): FigurePlacement {
   const boxes = figure.parts.map((part) => {
     const dimensions = partDimensions(part);
     const low = Vector3D.subtract(composeRoot(figure, part), part.pivot);
     return { dimensions, low };
   });
 
-  const extent: Dimensions3D = { width: 0, height: 0, depth: 0 };
+  const low = Vector3D.create();
+  const dimensions: Dimensions3D = { width: 0, height: 0, depth: 0 };
 
   for (const { axis, extent: measures } of AXES) {
     let min = Infinity;
     let max = -Infinity;
 
-    for (const { dimensions, low } of boxes) {
-      min = Math.min(min, low[axis]);
-      max = Math.max(max, low[axis] + dimensions[measures]);
+    for (const box of boxes) {
+      min = Math.min(min, box.low[axis]);
+      max = Math.max(max, box.low[axis] + box.dimensions[measures]);
     }
 
-    extent[measures] = boxes.length === 0 ? 0 : max - min;
+    if (boxes.length > 0) {
+      low[axis] = min;
+      dimensions[measures] = max - min;
+    }
   }
 
-  const span = longestAxis(extent);
-  // A figure with no parts, or one whose parts are all empty, gives no span to
-  // scale by; anything drawn for it is drawn at one voxel to the unit.
-  const drawnVoxel = voxelSize ?? (span > 0 ? 1 / span : 1);
   // Each outermost part's own box already reaches one voxel past its volume,
   // which is the padding `boxSize` gives it, so the figure's box reaches that
   // far too. A figure with no parts is drawn nowhere and so fills nothing.
-  const padded = (of: number) =>
-    boxes.length === 0 ? 0 : (of + 2) * drawnVoxel;
+  const padded = (of: number) => (boxes.length === 0 ? 0 : of + 2);
 
   return {
-    voxelSize: drawnVoxel,
-    extent,
+    bounds: { low, dimensions },
     size: {
-      width: padded(extent.width),
-      height: padded(extent.height),
-      depth: padded(extent.depth),
+      width: padded(dimensions.width),
+      height: padded(dimensions.height),
+      depth: padded(dimensions.depth),
     },
-    placements: boxes.map(({ dimensions, low }) => ({
+    placements: boxes.map((box) => ({
       position: Vector3D.create(
-        (low.x + dimensions.width / 2) * drawnVoxel,
-        (low.y + dimensions.height / 2) * drawnVoxel,
-        (low.z + dimensions.depth / 2) * drawnVoxel,
+        box.low.x + box.dimensions.width / 2,
+        box.low.y + box.dimensions.height / 2,
+        box.low.z + box.dimensions.depth / 2,
       ),
-      scale: drawnVoxel * longestAxis(dimensions),
+      scale: longestAxis(box.dimensions),
     })),
   };
+}
+
+/** The middle of `bounds`, framing a figure on the whole of what it fills. */
+export function boundsCentre(bounds: FigureBounds): Vector3D {
+  return Vector3D.create(
+    bounds.low.x + bounds.dimensions.width / 2,
+    bounds.low.y + bounds.dimensions.height / 2,
+    bounds.low.z + bounds.dimensions.depth / 2,
+  );
+}
+
+/**
+ * How much of the drawn world one voxel takes up for a figure that is to reach
+ * `span` along its longest axis.
+ *
+ * A figure measured this way fills about as much of the view as a single model
+ * does, whose own box is likewise its longest axis brought to one and then
+ * padded.
+ *
+ * @param dimensions The box the figure's parts together fill, which
+ * `FigurePlacement` carries as its `bounds`. A figure with no parts, or one
+ * whose parts are all empty, fills nothing and so gives no span to divide by:
+ * it is drawn at one voxel to the unit.
+ */
+export function fitVoxelSize(dimensions: Dimensions3D, span = 1): number {
+  const longest = longestAxis(dimensions);
+  return longest > 0 ? span / longest : 1;
 }
