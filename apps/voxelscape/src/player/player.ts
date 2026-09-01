@@ -20,6 +20,11 @@ export interface Player {
    */
   flying: boolean;
   /**
+   * Whether the player is no-clip: flight control, but solid voxels are
+   * passed through rather than collided with. Toggled by `/player:no-clip`.
+   */
+  noclip: boolean;
+  /**
    * This player's own copy of the movement settings, so `/player:speed` and
    * `/player:sensitivity` change one player rather than every player on the
    * page.
@@ -120,6 +125,7 @@ export const createPlayer = (
   vy: 0,
   onGround: false,
   flying: false,
+  noclip: false,
   config: { ...DEFAULT_PLAYER_CONFIG, ...config },
 });
 
@@ -409,15 +415,13 @@ const moveAxis = (
 };
 
 /**
- * The flight integrator: gravity is off, and forward/back follows the full
- * look direction (`lookDirection`), so holding W while looking up climbs and
- * looking down dives; strafing stays horizontal. Each axis is clamped
- * separately against solid voxels, and the player never snaps to the ground.
+ * The velocity flight control settles on for `input`: forward/back along the
+ * full look direction, strafe horizontal, both ramped toward the configured
+ * speed by the acceleration.
  */
-const updateFlying = (
+const rampFlightVelocity = (
   player: Player,
   input: InputSnapshot,
-  world: PlayerWorld,
   dt: number,
 ): void => {
   const config = player.config;
@@ -439,12 +443,54 @@ const updateFlying = (
   player.vx = moveTowards(player.vx, targetVx, maxDelta);
   player.vy = moveTowards(player.vy, targetVy, maxDelta);
   player.vz = moveTowards(player.vz, targetVz, maxDelta);
+};
+
+/**
+ * The flight integrator: gravity is off, and forward/back follows the full
+ * look direction (`lookDirection`), so holding W while looking up climbs and
+ * looking down dives; strafing stays horizontal. Each axis is clamped
+ * separately against solid voxels, and the player never snaps to the ground.
+ */
+const updateFlying = (
+  player: Player,
+  input: InputSnapshot,
+  world: PlayerWorld,
+  dt: number,
+): void => {
+  rampFlightVelocity(player, input, dt);
 
   // one axis at a time, so a wall that stops one still lets the player slide
   // along it with the others
   moveAxis(player, world, "x", player.vx * dt);
   moveAxis(player, world, "y", player.vy * dt);
   moveAxis(player, world, "z", player.vz * dt);
+  player.onGround = false;
+};
+
+/**
+ * The no-clip integrator: flight control with the collision step dropped, so
+ * the player passes through solid voxels. Positions move the whole frame's
+ * travel, clamped only to the world boundary.
+ */
+const updateNoClip = (
+  player: Player,
+  input: InputSnapshot,
+  world: PlayerWorld,
+  dt: number,
+): void => {
+  rampFlightVelocity(player, input, dt);
+  player.position.x = Math.max(
+    -world.halfExtent,
+    Math.min(world.halfExtent, player.position.x + player.vx * dt),
+  );
+  player.position.y = Math.max(
+    -world.halfExtent,
+    Math.min(world.halfExtent, player.position.y + player.vy * dt),
+  );
+  player.position.z = Math.max(
+    -world.halfExtent,
+    Math.min(world.halfExtent, player.position.z + player.vz * dt),
+  );
   player.onGround = false;
 };
 
@@ -464,6 +510,11 @@ export const updatePlayer = (
       player.pitch - input.lookDy * config.lookSensitivity,
     ),
   );
+
+  if (player.noclip) {
+    updateNoClip(player, input, world, dt);
+    return;
+  }
 
   if (player.flying) {
     updateFlying(player, input, world, dt);

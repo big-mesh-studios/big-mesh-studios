@@ -474,6 +474,16 @@ export const createVoxelscape = ({
       }
       return next ? "flying" : "walking";
     },
+    setNoClip: (noclip) => {
+      const next = noclip ?? !avatar.player.noclip;
+      avatar.player.noclip = next;
+      if (next) {
+        // don't carry the fall they were in into the air
+        avatar.player.vy = 0;
+        avatar.player.onGround = false;
+      }
+      return next ? "no-clip" : "collisions on";
+    },
     setDebugPerf: (on) => {
       const next = on ?? !debugPerf();
       setDebugPerf(next);
