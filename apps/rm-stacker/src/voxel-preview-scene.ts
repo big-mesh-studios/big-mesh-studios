@@ -1,4 +1,4 @@
-import { Object3D, Quaternion, Vector3 } from "@random-mesh/rmsl/scene";
+import { Object3D, Quaternion, Side, Vector3 } from "@random-mesh/rmsl/scene";
 import { Dimensions3D, Vector3D } from "@big-mesh-studios/maths";
 import type { FigureMeshes } from "@big-mesh-studios/stacker/renderer";
 
@@ -55,6 +55,11 @@ export const lightFigure = (meshes: FigureMeshes, unlit: boolean) => {
     ];
     material.depthBias = OUTLINE_DEPTH_BIAS;
     material.unlit = unlit;
+    // The marcher casts its rays at the faces of the box a part is drawn in, so
+    // a camera taken inside that box has none in front of it to cast at and the
+    // part goes out of sight. Drawing the far faces as well leaves it something
+    // to cast at from within.
+    material.side = Side.DoubleSide;
   }
 };
 

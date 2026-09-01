@@ -51,7 +51,6 @@ import {
 } from "./voxel-preview-scene";
 import styles from "./VoxelPreviewView.module.css";
 
-const MIN_RADIUS = 2;
 const MAX_RADIUS = 20;
 
 // Directional + ambient light for the voxel preview. The direction is fixed in
@@ -393,10 +392,7 @@ const VoxelPreviewView: Component = () => {
               // camera closer, so the radius scales by the inverse ratio.
               radius = Math.min(
                 MAX_RADIUS,
-                Math.max(
-                  MIN_RADIUS,
-                  radius * (previousPinchDistance / distance),
-                ),
+                radius * (previousPinchDistance / distance),
               );
             }
 
@@ -425,10 +421,7 @@ const VoxelPreviewView: Component = () => {
       onPointerDown={handlePointer}
       onWheel={(event) => {
         const sign = Math.sign(event.deltaY);
-        radius = Math.min(
-          MAX_RADIUS,
-          Math.max(MIN_RADIUS, radius * Math.pow(1.1, sign)),
-        );
+        radius = Math.min(MAX_RADIUS, radius * Math.pow(1.1, sign));
       }}
     />
   ) as HTMLCanvasElement;

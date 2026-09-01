@@ -191,7 +191,9 @@ export const marchVolume = (
     vec2(nearPlaneDistances.x, nearPlaneDistances.x),
     vec2(nearPlaneDistances.y, nearPlaneDistances.z),
   ).toVar();
-  const entryDistance = nearPair.x.max(nearPair.y).toVar();
+  // Held to the ray's own start, so a ray that begins inside the box marches
+  // forward from where it begins rather than from the wall behind it.
+  const entryDistance = nearPair.x.max(nearPair.y).max(float(0)).toVar();
 
   const farPair = minVec2(
     vec2(farPlaneDistances.x, farPlaneDistances.x),
