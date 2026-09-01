@@ -4,7 +4,12 @@
 // something — `BREAK_YIELD` when a voxel becomes an item, and each
 // `BlockTool` when an item becomes a voxel again. Declaration order here is
 // hotbar order.
-import { VOXEL_CLOUD, VOXEL_DIRT, VOXEL_GRASS, VOXEL_STONE } from "../world/voxel-store";
+import {
+  VOXEL_CLOUD,
+  VOXEL_DIRT,
+  VOXEL_GRASS,
+  VOXEL_STONE,
+} from "../world/voxel-store";
 import { BlockTool } from "./tools/block-tool";
 import { SwordTool } from "./tools/sword-tool";
 import type { Tool, ToolContext } from "./tools/tool";

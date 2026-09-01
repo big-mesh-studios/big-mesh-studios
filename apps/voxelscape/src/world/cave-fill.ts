@@ -54,7 +54,12 @@ export const isCaveVoxel = (
   // Y-freq multiplier at 2.0: noise changes faster vertically than horizontally,
   // squashing caves into flat slabs without rapid oscillation (which would add triangles).
   const yFreqScale = 2.0;
-  const n1 = noise.fbm(wx * freq, wy * freq * yFreqScale, wz * freq, FILL_CAVE_OCTAVES);
+  const n1 = noise.fbm(
+    wx * freq,
+    wy * freq * yFreqScale,
+    wz * freq,
+    FILL_CAVE_OCTAVES,
+  );
   const n2 = noise.fbm(
     (wx + 317) * freq,
     (wy + 317) * freq * yFreqScale,

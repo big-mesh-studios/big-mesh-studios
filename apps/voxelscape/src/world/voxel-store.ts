@@ -295,9 +295,7 @@ export const fillStore = (
             id = VOXEL_GRASS;
           } else if (subVy < subTop) {
             id =
-              subWy >= subHeight - DIRT_LAYER_DEPTH
-                ? VOXEL_DIRT
-                : VOXEL_STONE;
+              subWy >= subHeight - DIRT_LAYER_DEPTH ? VOXEL_DIRT : VOXEL_STONE;
           } else if (
             seaLevel !== undefined &&
             subVy >= subTop + 1 &&
@@ -383,8 +381,7 @@ export const fillStore = (
       if (vy === top) {
         id = VOXEL_GRASS;
       } else if (vy < top) {
-        id =
-          worldY >= height - DIRT_LAYER_DEPTH ? VOXEL_DIRT : VOXEL_STONE;
+        id = worldY >= height - DIRT_LAYER_DEPTH ? VOXEL_DIRT : VOXEL_STONE;
       } else if (seaLevel !== undefined && vy >= top + 1 && vy <= waterBottom) {
         id = VOXEL_WATER;
       } else {
