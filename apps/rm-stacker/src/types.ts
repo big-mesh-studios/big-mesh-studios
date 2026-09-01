@@ -20,6 +20,24 @@ export type Alignment3D = Partial<Record<DimensionKind, AlignmentKind>>;
 export type ModeKind =
   "Draw" | "Erase" | "Fill" | "Idle" | "Eyedrop" | "Rectangle";
 
+/**********************************************************************************/
+/*                                      Mirror                                    */
+/**********************************************************************************/
+
+/**
+ * Which of a panel's image axes a stroke is reflected along, so that a mark made
+ * on one half of the panel is made on the other half as well. `x` reflects
+ * across the panel's vertical middle, `y` across its horizontal middle, and both
+ * together carry a mark into all four quarters of the panel.
+ *
+ * A panel is mirrored within itself: what is drawn on the front panel is not
+ * carried to the left or the right one.
+ */
+export interface Mirror {
+  x: boolean;
+  y: boolean;
+}
+
 /**
  * What the preview turns about and holds in the middle of the view: the
  * figure's own root, which stays put however its parts are moved, or the pivot

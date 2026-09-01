@@ -24,8 +24,9 @@ import { createCommander } from "./command/commander";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 import { Home } from "./home";
 import { IndexedDBData, loadFromIndexedDB, saveToIndexedDB } from "./load-save";
+import { NO_MIRROR } from "./mirror";
 import { ResizeOptions, resizeSides } from "./resize-sides";
-import { FocusKind, ModeKind, PreviewState } from "./types";
+import { FocusKind, Mirror, ModeKind, PreviewState } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { createEnqueue } from "./utils/utils";
 
@@ -147,6 +148,7 @@ export function createStacker() {
   );
 
   const [mode, setMode] = createSignal<ModeKind>("Idle");
+  const [mirror, setMirror] = createSignal<Mirror>(NO_MIRROR);
   // Where the drawing lives, if anywhere yet. Held here rather than in whatever
   // view happens to save it, so that opening a model from one place cannot
   // leave a stale home behind from another.
@@ -361,6 +363,9 @@ export function createStacker() {
     // mode
     mode,
     setMode,
+    // which panel axes a stroke is reflected along
+    mirror,
+    setMirror,
     // layout
     narrow,
     // methods

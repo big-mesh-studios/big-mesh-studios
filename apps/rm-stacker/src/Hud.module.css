@@ -10,12 +10,13 @@
   /* The second row takes whatever the bars leave, which is what holds the rows
      after it against the bottom edge. Each bar down the left is a row of its
      own, so they stack against each other. */
-  grid-template-rows: auto 1fr auto auto auto;
+  grid-template-rows: auto 1fr auto auto auto auto;
   grid-template-areas:
     "files   . view"
     ".       . ."
     "history . ."
     "tools   . ."
+    "mirror  . ."
     "colour  . parts";
   /* Only the bars themselves are reachable, and each asks for that for itself.
      Everything between them is the model behind, which orbits to a drag. */
@@ -31,6 +32,10 @@
 
   & > .tools {
     grid-area: tools;
+  }
+
+  & > .mirror {
+    grid-area: mirror;
   }
 
   & > .colour {

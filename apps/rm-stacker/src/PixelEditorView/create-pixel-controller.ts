@@ -5,6 +5,7 @@ import { StackerContext } from "../context";
 import { Bitmap, RGBA, Vector2D } from "@big-mesh-studios/maths";
 import { type SideKind } from "@big-mesh-studios/stacker/renderer";
 import { pointer } from "@big-mesh-studios/utils/pointer";
+import { mirrorPositions, mirrorRectangles } from "../mirror";
 import { screenToWorld } from "../utils/utils";
 import { createEdgeController } from "./create-edge-controller";
 import { createPanScaleControl } from "./pan-scale";
@@ -35,6 +36,7 @@ export const createPixelEditorController = ({
     selectedPaletteIndex,
     requestRender,
     mode,
+    mirror,
   } = useContext(StackerContext);
 
   // Read at the moment a command is built, so a stroke lands on the part that
@@ -91,6 +93,47 @@ export const createPixelEditorController = ({
       ),
       position: oppositePosition,
     };
+  }
+
+  /**
+   * Every cell on `kind`'s panel that a mark at `position` lands on: the cell
+   * itself, and its reflections where the mirror is switched on.
+   */
+  function strokePositions(kind: SideKind, position: Vector2D): Vector2D[] {
+    return mirrorPositions(mirror(), sides()[kind], position);
+  }
+
+  /**
+   * The panel `worldPosition` falls on, where that panel sits on the canvas, and
+   * every cell on the canvas a mark there would cover once the mirror has
+   * reflected it. Undefined where the position falls between the panels.
+   */
+  function hoveredPanel(worldPosition: Vector2D) {
+    const intersection = intersectSides({
+      sidePositions: sidePositions(),
+      sides: sides(),
+      worldPosition,
+    });
+
+    if (!intersection) {
+      return;
+    }
+
+    const panel = sides()[intersection.kind];
+    const panelPosition = sidePositions()[intersection.kind];
+
+    return {
+      panel,
+      panelPosition,
+      cells: mirrorPositions(mirror(), panel, intersection.position).map(
+        (cell) => Vector2D.add(cell, panelPosition),
+      ),
+    };
+  }
+
+  /** One command running `commands` in order, or the only command there is. */
+  function combine(commands: Command[]): Command {
+    return commands.length === 1 ? commands[0] : Command.sequence(commands);
   }
 
   // Every pixel a stroke has changed so far, so that the whole stroke can be
@@ -186,27 +229,30 @@ export const createPixelEditorController = ({
         }
 
         const { kind, position } = intersection;
-        const opposite = getOppositePixel(kind, position);
 
         if (_selectedPaletteIndex !== undefined) {
-          commands.push(
-            Command.fillPixel(
-              drawnPart(),
-              kind,
-              position,
-              _selectedPaletteIndex,
-            ),
-          );
-
-          if (opposite.index === Bitmap.EMPTY) {
+          for (const target of strokePositions(kind, position)) {
             commands.push(
               Command.fillPixel(
                 drawnPart(),
-                opposite.kind,
-                opposite.position,
+                kind,
+                target,
                 _selectedPaletteIndex,
               ),
             );
+
+            const opposite = getOppositePixel(kind, target);
+
+            if (opposite.index === Bitmap.EMPTY) {
+              commands.push(
+                Command.fillPixel(
+                  drawnPart(),
+                  opposite.kind,
+                  opposite.position,
+                  _selectedPaletteIndex,
+                ),
+              );
+            }
           }
         }
 
@@ -214,9 +260,7 @@ export const createPixelEditorController = ({
           return;
         }
 
-        const command =
-          commands.length === 1 ? commands[0] : Command.sequence(commands);
-        undoCommandsReversed.push(doCommand(command));
+        undoCommandsReversed.push(doCommand(combine(commands)));
 
         return;
       }
@@ -253,9 +297,11 @@ export const createPixelEditorController = ({
             y: side.height - 1,
           });
 
-          for (let x = min.x; x <= max.x; x++) {
-            for (let y = min.y; y <= max.y; y++) {
-              Bitmap.set(copy, x, y, selectedPaletteIndex());
+          for (const block of mirrorRectangles(mirror(), side, { min, max })) {
+            for (let x = block.min.x; x <= block.max.x; x++) {
+              for (let y = block.min.y; y <= block.max.y; y++) {
+                Bitmap.set(copy, x, y, selectedPaletteIndex());
+              }
             }
           }
           requestRender();
@@ -279,12 +325,16 @@ export const createPixelEditorController = ({
 
         undoCommandsReversed.push(
           doCommand(
-            Command.fillRectangle(
-              drawnPart(),
-              start.kind,
-              min,
-              max,
-              selectedPaletteIndex(),
+            combine(
+              mirrorRectangles(mirror(), side, { min, max }).map((block) =>
+                Command.fillRectangle(
+                  drawnPart(),
+                  start.kind,
+                  block.min,
+                  block.max,
+                  selectedPaletteIndex(),
+                ),
+              ),
             ),
           ),
         );
@@ -317,54 +367,58 @@ export const createPixelEditorController = ({
           }
 
           const { kind, position } = intersection;
-          const opposite = getOppositePixel(kind, position);
 
           const commands: Command[] = [];
 
-          switch (mode()) {
-            case "Erase": {
-              commands.push(Command.erasePixel(drawnPart(), kind, position));
+          for (const target of strokePositions(kind, position)) {
+            const opposite = getOppositePixel(kind, target);
 
-              if (opposite.index !== Bitmap.EMPTY) {
-                commands.push(
-                  Command.erasePixel(
-                    drawnPart(),
-                    opposite.kind,
-                    opposite.position,
-                  ),
-                );
-              }
+            switch (mode()) {
+              case "Erase": {
+                commands.push(Command.erasePixel(drawnPart(), kind, target));
 
-              break;
-            }
-            case "Draw": {
-              const _selectedPaletteIndex = selectedPaletteIndex();
-
-              if (_selectedPaletteIndex !== undefined) {
-                commands.push(
-                  Command.writePixel(
-                    drawnPart(),
-                    kind,
-                    position,
-                    _selectedPaletteIndex,
-                  ),
-                );
-
-                // Only carry the colour to the far side where nothing is drawn,
-                // so drawing on one panel does not paint over the other.
-                if (opposite.index === Bitmap.EMPTY) {
+                if (opposite.index !== Bitmap.EMPTY) {
                   commands.push(
-                    Command.writePixel(
+                    Command.erasePixel(
                       drawnPart(),
                       opposite.kind,
                       opposite.position,
-                      _selectedPaletteIndex,
                     ),
                   );
                 }
-              }
 
-              break;
+                break;
+              }
+              case "Draw": {
+                const _selectedPaletteIndex = selectedPaletteIndex();
+
+                if (_selectedPaletteIndex !== undefined) {
+                  commands.push(
+                    Command.writePixel(
+                      drawnPart(),
+                      kind,
+                      target,
+                      _selectedPaletteIndex,
+                    ),
+                  );
+
+                  // Only carry the colour to the far side where nothing is
+                  // drawn, so drawing on one panel does not paint over the
+                  // other.
+                  if (opposite.index === Bitmap.EMPTY) {
+                    commands.push(
+                      Command.writePixel(
+                        drawnPart(),
+                        opposite.kind,
+                        opposite.position,
+                        _selectedPaletteIndex,
+                      ),
+                    );
+                  }
+                }
+
+                break;
+              }
             }
           }
 
@@ -372,9 +426,7 @@ export const createPixelEditorController = ({
             return;
           }
 
-          const command =
-            commands.length === 1 ? commands[0] : Command.sequence(commands);
-          undoCommandsReversed.push(doCommand(command));
+          undoCommandsReversed.push(doCommand(combine(commands)));
         });
       }
     }
@@ -395,16 +447,49 @@ export const createPixelEditorController = ({
         return;
       }
 
+      const _mirror = mirror();
+      const hovered = hoveredPanel(position);
+
+      // A panel is what a mirror reflects within, so where a stroke would land
+      // is only known while the pointer is over one. Between the panels there
+      // is just the cell under the pointer, wherever the mirror stands.
+      const cells = hovered?.cells ?? [position];
+
       return (ctx: CanvasRenderingContext2D) => {
+        ctx.lineWidth = 1 / scale();
+
+        if (hovered) {
+          const { panel, panelPosition } = hovered;
+
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+          ctx.beginPath();
+
+          if (_mirror.x) {
+            const x = panelPosition.x + panel.width / 2;
+            ctx.moveTo(x, panelPosition.y);
+            ctx.lineTo(x, panelPosition.y + panel.height);
+          }
+
+          if (_mirror.y) {
+            const y = panelPosition.y + panel.height / 2;
+            ctx.moveTo(panelPosition.x, y);
+            ctx.lineTo(panelPosition.x + panel.width, y);
+          }
+
+          ctx.stroke();
+        }
+
         ctx.fillStyle =
           mode() === "Erase"
             ? // var(--back)
               "oklch(23.26% .014 253.1)"
             : RGBA.toCSS(selectedColour());
-        ctx.fillRect(position.x, position.y, 1.0, 1.0);
         ctx.strokeStyle = "white";
-        ctx.lineWidth = 1 / scale();
-        ctx.strokeRect(position.x, position.y, 1.0, 1.0);
+
+        for (const cell of cells) {
+          ctx.fillRect(cell.x, cell.y, 1.0, 1.0);
+          ctx.strokeRect(cell.x, cell.y, 1.0, 1.0);
+        }
       };
     },
     onPointerDown,

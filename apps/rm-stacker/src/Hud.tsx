@@ -25,6 +25,8 @@ export function Hud() {
     selectedColour,
     mode,
     setMode,
+    mirror,
+    setMirror,
     preview,
     requestAutoSave,
     requestFitToView,
@@ -100,6 +102,24 @@ export function Hud() {
           kind="eye-dropper"
           onClick={() => setMode("Eyedrop")}
           selected={isModeSelected("Eyedrop")}
+        />
+      </Bar>
+      <Bar class={styles.mirror}>
+        <IconTab
+          kind="left-right"
+          onClick={() =>
+            setMirror((current) => ({ ...current, x: !current.x }))
+          }
+          selected={!ProfileDialog.isOpen() && mirror().x}
+          title="Mirror what is drawn across the panel's vertical middle"
+        />
+        <IconTab
+          kind="up-down"
+          onClick={() =>
+            setMirror((current) => ({ ...current, y: !current.y }))
+          }
+          selected={!ProfileDialog.isOpen() && mirror().y}
+          title="Mirror what is drawn across the panel's horizontal middle"
         />
       </Bar>
       <Bar class={styles.colour}>
