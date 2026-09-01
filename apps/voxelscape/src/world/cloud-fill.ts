@@ -18,10 +18,10 @@ export const FILL_CLOUD_FREQUENCY = FILL_CLOUD_PERIOD / FILL_CLOUD_TILE;
 export const FILL_CLOUD_FLATNESS = 5;
 /** fBm octaves of the cloud noise. */
 export const FILL_CLOUD_OCTAVES = 3;
-/** The fBm value a voxel must clear to be cloud. */
-export const FILL_CLOUD_THRESHOLD = 0.37;
+/** The fBm value a voxel must clear to be cloud; raised to thin the cloud band and cap its triangle count. */
+export const FILL_CLOUD_THRESHOLD = 0.52;
 /** Coverage fBm value a column must clear to hold any cloud. */
-export const FILL_CLOUD_COVERAGE_THRESHOLD = -2;
+export const FILL_CLOUD_COVERAGE_THRESHOLD = 0.15;
 /** How strongly a column's coverage lowers the fill threshold, making denser banks. */
 export const FILL_CLOUD_COVERAGE_DRIVE = 0.8;
 /** Distinguishes the cloud seed stream from the terrain seed. */

@@ -78,7 +78,9 @@ export class TriangleMaterial extends NodeMaterial {
 
   constructor() {
     super();
-    this.side = Side.DoubleSide;
+    // Every face is wound in `buildBlockMesh` toward the side it is exposed
+    // on, so only the front side needs drawing.
+    this.side = Side.FrontSide;
   }
 
   protected setup(b: Builder, _scene: Scene): void {
@@ -187,7 +189,9 @@ export class TriangleWaterMaterial extends NodeMaterial {
     super();
     this.transparent = true;
     this.depthWrite = false;
-    this.side = Side.DoubleSide;
+    // The water surface's triangle are wound toward their exposed side, and
+    // its underside is never seen — the sea floor's tint covers that view.
+    this.side = Side.FrontSide;
   }
 
   protected setup(b: Builder, _scene: Scene): void {
@@ -240,6 +244,10 @@ export interface TriangleRendererParams {
 export const SUPERCHUNK_SPAN = 2;
 /** World units per superchunk axis. */
 const SUPERCHUNK_WORLD = SUPERCHUNK_SPAN * BLOCK_WORLD[0];
+/** Half a superchunk's extent per axis, the half-extent of the `scBounds` box. */
+const SUPERCHUNK_HALF = SUPERCHUNK_WORLD / 2;
+/** Half a block's world extent per axis. */
+const BLOCK_HALF = BLOCK_WORLD[0] / 2;
 /**
  * Frames a superchunk may keep gaining members before a partial upload is
  * forced. A scroll's entering cells land over many frames; without this a
@@ -268,6 +276,23 @@ const scKey = (c: [number, number, number]): string =>
 const scCenterOf = (key: string): Dim3 => {
   const [x, y, z] = key.split(",").map(Number);
   return [x * SUPERCHUNK_WORLD, y * SUPERCHUNK_WORLD, z * SUPERCHUNK_WORLD];
+};
+
+/**
+ * The world-space box a superchunk's merged geometry actually spans, for the
+ * frustum test. Its two block centroids sit one `BLOCK_WORLD` apart, so the
+ * union of their voxels reaches `BLOCK_HALF` before the superchunk's own
+ * centre and `BLOCK_HALF + SUPERCHUNK_WORLD - BLOCK_HALF` after it: one
+ * `SUPERCHUNK_HALF` each way around a centre shifted `BLOCK_HALF` out along
+ * every axis. A box centred on the superchunk itself is a block-half short of
+ * the far edge, which hid that sliver while it was still on screen.
+ */
+export const scBounds = (key: string): { center: Dim3; half: number } => {
+  const [x, y, z] = scCenterOf(key);
+  return {
+    center: [x + BLOCK_HALF, y + BLOCK_HALF, z + BLOCK_HALF],
+    half: SUPERCHUNK_HALF,
+  };
 };
 
 /**
@@ -686,6 +711,26 @@ export class TriangleRenderer {
     this.totalTriangles = Math.round(tris);
   }
 
+  /**
+   * Points every superchunk's meshes at the camera: a mesh draws when it has
+   * geometry and its box is inside the frustum. Geometry stays uploaded and
+   * the content flags keep holding, so a superchunk the camera turns onto is
+   * shown the same frame rather than rebuilt; the degree of hiding here only
+   * decides what is drawn, never what the window holds.
+   */
+  private applyVisibility(planes: FrustumPlane[]): void {
+    for (const [key, mesh] of this.scTerrainMesh) {
+      const { center, half } = scBounds(key);
+      mesh.visible =
+        this.contentTerrain.has(key) && inFrustum(planes, center, half);
+    }
+    for (const [key, mesh] of this.scWaterMesh) {
+      const { center, half } = scBounds(key);
+      mesh.visible =
+        this.contentWater.has(key) && inFrustum(planes, center, half);
+    }
+  }
+
   get triangleCount(): number {
     return this.totalTriangles;
   }
@@ -809,20 +854,24 @@ export class TriangleRenderer {
     // A superchunk the camera cannot see is left dirty rather than merged and
     // uploaded: the merge is the expensive part of a scroll's burst, and most
     // of the entering shell sits behind or beside the player. It rebuilds the
-    // frame the camera turns onto it. The camera's view matrix is last
-    // frame's — a frame stale is fine for deciding what to hide.
+    // frame the camera turns onto it. The camera's world matrix is refreshed
+    // here so the frustum is this frame's rather than last render's.
+    camera.updateMatrixWorld(true);
     const viewProjection = new Matrix4()
       .copy(camera.projectionMatrix)
       .multiply(camera.matrixWorldInverse);
     const planes = frustumPlanes(viewProjection);
-    const half = SUPERCHUNK_WORLD / 2;
     for (const key of dirty) {
-      if (!inFrustum(planes, scCenterOf(key), half)) {
+      const { center, half } = scBounds(key);
+      if (!inFrustum(planes, center, half)) {
         this.dirty.add(key);
         continue;
       }
       this.rebuildSuperchunk(key);
     }
+    // Hide what the camera is not looking at, now that this frame's rebuilds
+    // have decided which superchunks have geometry.
+    this.applyVisibility(planes);
     // fullscreen underwater tint when the camera dips below the sea
     if (this.seaLevel !== undefined) {
       const depth = this.seaLevel - camera.position.y;

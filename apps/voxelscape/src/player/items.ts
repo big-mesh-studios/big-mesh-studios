@@ -4,13 +4,13 @@
 // something — `BREAK_YIELD` when a voxel becomes an item, and each
 // `BlockTool` when an item becomes a voxel again. Declaration order here is
 // hotbar order.
-import { VOXEL_CLOUD, VOXEL_DIRT, VOXEL_GRASS } from "../world/voxel-store";
+import { VOXEL_CLOUD, VOXEL_DIRT, VOXEL_GRASS, VOXEL_STONE } from "../world/voxel-store";
 import { BlockTool } from "./tools/block-tool";
 import { SwordTool } from "./tools/sword-tool";
 import type { Tool, ToolContext } from "./tools/tool";
 
 /** Everything the player can hold, one id per hotbar slot. */
-export type ItemId = "dirt" | "cloud" | "sword";
+export type ItemId = "dirt" | "stone" | "cloud" | "sword";
 
 export interface ItemDefinition {
   /** The name the hotbar shows, and the one edit messages are phrased with. */
@@ -33,6 +33,12 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     sprite: null,
     tool: (ctx) => new BlockTool(ctx, "dirt", VOXEL_DIRT),
   },
+  stone: {
+    name: "Stone",
+    stackable: true,
+    sprite: null,
+    tool: (ctx) => new BlockTool(ctx, "stone", VOXEL_STONE),
+  },
   cloud: {
     name: "Cloud",
     stackable: true,
@@ -52,10 +58,11 @@ export const ITEM_ORDER = Object.keys(ITEMS) as ItemId[];
 
 /**
  * What breaking each breakable voxel yields: grass and dirt both collect as
- * plain dirt, and a voxel absent here cannot be broken into anything.
+ * plain dirt, stone collects as stone, and a voxel absent here cannot be broken.
  */
 export const BREAK_YIELD: Record<number, ItemId> = {
   [VOXEL_GRASS]: "dirt",
   [VOXEL_DIRT]: "dirt",
+  [VOXEL_STONE]: "stone",
   [VOXEL_CLOUD]: "cloud",
 };

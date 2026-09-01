@@ -5,12 +5,14 @@ import {
   cloudFillNoise,
   cloudVoxelAt,
 } from "./cloud-fill";
+import { caveFillNoise, DIRT_LAYER_DEPTH, isCaveVoxel } from "./cave-fill";
 import { heightAt, type TerrainConfig } from "./noise";
 
 export const VOXEL_AIR = 0;
 export const VOXEL_GRASS = 1;
 export const VOXEL_DIRT = 2;
 export const VOXEL_WATER = 3;
+export const VOXEL_STONE = 4;
 export const VOXEL_CLOUD = 5;
 
 /**
@@ -224,6 +226,8 @@ export const fillStore = (
       ? cloudFillNoise(config.seed)
       : undefined;
 
+  const caveNoise = caveFillNoise(config.seed);
+
   /** The local row whose world Y is `worldY`: may be outside the block. */
   const rowOfY = (worldY: number): number =>
     Math.round((worldY - center[1]) / voxelSize + halfY);
@@ -271,16 +275,38 @@ export const fillStore = (
           const subWy = originY + j * fine;
           const subVy = Math.round((subWy - center[1]) / fine + halfYAt - 0.5);
 
-          let id: number =
-            subVy === subTop
-              ? VOXEL_GRASS
-              : subVy < subTop
+          const subInCave = isCaveVoxel(
+            caveNoise,
+            subWx,
+            subWy,
+            subWz,
+            subHeight,
+            config.amplitude,
+          );
+          let id: number;
+          if (subInCave) {
+            id =
+              seaLevel !== undefined &&
+              subVy >= subTop + 1 &&
+              subVy <= Math.round((seaLevel - center[1]) / fine + halfYAt)
+                ? VOXEL_WATER
+                : VOXEL_AIR;
+          } else if (subVy === subTop) {
+            id = VOXEL_GRASS;
+          } else if (subVy < subTop) {
+            id =
+              subWy >= subHeight - DIRT_LAYER_DEPTH
                 ? VOXEL_DIRT
-                : seaLevel !== undefined &&
-                    subVy >= subTop + 1 &&
-                    subVy <= Math.round((seaLevel - center[1]) / fine + halfYAt)
-                  ? VOXEL_WATER
-                  : VOXEL_AIR;
+                : VOXEL_STONE;
+          } else if (
+            seaLevel !== undefined &&
+            subVy >= subTop + 1 &&
+            subVy <= Math.round((seaLevel - center[1]) / fine + halfYAt)
+          ) {
+            id = VOXEL_WATER;
+          } else {
+            id = VOXEL_AIR;
+          }
 
           if (
             id === VOXEL_AIR &&
@@ -337,16 +363,33 @@ export const fillStore = (
         ? -Infinity
         : cloudColumnCoverage(cloudNoise, worldX, worldZ);
     const gated = coverage >= cloud.coverageThreshold;
-    /** The single-cell rule for one row: the surface voxel, then dirt, water, clouds. */
+    /** The single-cell rule for one row: caves, surface voxel, dirt, stone, water, clouds. */
     const plainId = (vy: number, worldY: number): number => {
-      const id =
-        vy === top
-          ? VOXEL_GRASS
-          : vy < top
-            ? VOXEL_DIRT
-            : seaLevel !== undefined && vy >= top + 1 && vy <= waterBottom
-              ? VOXEL_WATER
-              : VOXEL_AIR;
+      const inCave = isCaveVoxel(
+        caveNoise,
+        worldX,
+        worldY,
+        worldZ,
+        height,
+        config.amplitude,
+      );
+      if (inCave) {
+        if (seaLevel !== undefined && vy >= top + 1 && vy <= waterBottom) {
+          return VOXEL_WATER;
+        }
+        return VOXEL_AIR;
+      }
+      let id: number;
+      if (vy === top) {
+        id = VOXEL_GRASS;
+      } else if (vy < top) {
+        id =
+          worldY >= height - DIRT_LAYER_DEPTH ? VOXEL_DIRT : VOXEL_STONE;
+      } else if (seaLevel !== undefined && vy >= top + 1 && vy <= waterBottom) {
+        id = VOXEL_WATER;
+      } else {
+        id = VOXEL_AIR;
+      }
       // Clouds fill the open air of the band above the terrain; never
       // overwrite a solid column or the water above it (the band sits well
       // above the highest terrain, so this is defensive).

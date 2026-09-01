@@ -52,6 +52,7 @@ export {
   VOXEL_CLOUD,
   VOXEL_DIRT,
   VOXEL_GRASS,
+  VOXEL_STONE,
   VOXEL_WATER,
   VoxelStore,
   type FillStoreFn,
