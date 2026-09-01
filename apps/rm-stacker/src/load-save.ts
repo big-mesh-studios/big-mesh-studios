@@ -26,7 +26,11 @@ export interface IndexedDBData {
   undoStack: { command: Command; description: string }[];
   redoStack: { command: Command; description: string }[];
   palette: RGBA[];
-  preview: PreviewState;
+  /**
+   * How the preview was drawn when it was last saved. A setting added since
+   * that save is missing, and falls back to whatever the editor opens with.
+   */
+  preview: Partial<PreviewState>;
 }
 
 export async function loadFromIndexedDB(
@@ -40,10 +44,10 @@ export async function loadFromIndexedDB(
 
   const previewText = await loadTextFromDB(DB_KEYS.preview);
 
-  const preview =
+  const preview: Partial<PreviewState> =
     previewText === null
       ? { unlit: false, autorotate: true }
-      : (JSON.parse(previewText) as PreviewState);
+      : JSON.parse(previewText);
 
   // A part that was selected and has since gone — a figure opened from
   // somewhere else, say — leaves the first part to be drawn on.
@@ -91,16 +95,14 @@ export async function saveToIndexedDB({
   undoStack,
   redoStack,
   palette,
-  unlit,
-  autorotate,
+  preview,
 }: {
   parts: Part[];
   selectedPartName: string;
   undoStack: { command: Command; description: string }[];
   redoStack: { command: Command; description: string }[];
   palette: RGBA[];
-  unlit: boolean;
-  autorotate: boolean;
+  preview: PreviewState;
 }): Promise<void> {
   const blob = await saveFigure({ parts, palette });
   await saveBlobToDB(DB_KEYS.zipFileData, blob);
@@ -125,7 +127,7 @@ export async function saveToIndexedDB({
   };
   const undoRedoJsonText = JSON.stringify(undoRedoJson);
   await saveTextToDB(DB_KEYS.undoRedoData, undoRedoJsonText);
-  await saveTextToDB(DB_KEYS.preview, JSON.stringify({ unlit, autorotate }));
+  await saveTextToDB(DB_KEYS.preview, JSON.stringify(preview));
 }
 
 function openDB(): Promise<IDBDatabase> {

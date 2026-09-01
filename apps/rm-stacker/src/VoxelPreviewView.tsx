@@ -1,6 +1,7 @@
 import { Matrix3x3, Vector2D, Vector3D } from "@big-mesh-studios/maths";
 import {
   applyFraming,
+  boundsCentre,
   composeRoot,
   FigureMeshes,
   figurePlacement,
@@ -163,8 +164,16 @@ const VoxelPreviewView: Component = () => {
   /** Where every part stands, in voxels from the figure's origin. */
   const placement = createMemo(() => figurePlacement(figure()));
 
-  /** The point of the figure drawn at the middle of the view. */
-  const focus = createMemo(() => Vector3D.EMPTY);
+  /**
+   * The point of the figure drawn at the middle of the view, which is also the
+   * point the turntable turns about: the middle of the box the whole figure
+   * fills, or the pivot of the part being drawn on.
+   */
+  const focus = createMemo(() =>
+    preview.focus() === "part"
+      ? composeRoot(figure(), selectedPart())
+      : boundsCentre(placement().bounds),
+  );
 
   /** How the figure's voxels are drawn in the world the camera stands in. */
   const framing = createMemo<FigureFraming>(() => ({

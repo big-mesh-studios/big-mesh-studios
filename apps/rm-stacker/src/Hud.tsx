@@ -141,6 +141,20 @@ export function Hud() {
           selected={!ProfileDialog.isOpen() && preview.axesVisible()}
           kind="arrows-up-down-left-right"
         />
+        <IconTab
+          onClick={() => {
+            preview.setFocus((focus) => (focus === "part" ? "figure" : "part"));
+            flush();
+            requestAutoSave();
+          }}
+          selected={!ProfileDialog.isOpen() && preview.focus() === "part"}
+          kind="crosshairs"
+          title={
+            preview.focus() === "part"
+              ? "Turning about the part being drawn on"
+              : "Turning about the middle of the figure"
+          }
+        />
       </Bar>
       <Bar class={styles.partsBar}>
         <PartsPopover.Trigger

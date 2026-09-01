@@ -20,10 +20,17 @@ export type Alignment3D = Partial<Record<DimensionKind, AlignmentKind>>;
 export type ModeKind =
   "Draw" | "Erase" | "Fill" | "Idle" | "Eyedrop" | "Rectangle";
 
+/**
+ * What the preview turns about and holds in the middle of the view: the middle
+ * of the box the whole figure fills, or the pivot of the part being drawn on.
+ */
+export type FocusKind = "figure" | "part";
+
 export type PreviewState = {
   unlit: boolean;
   autorotate: boolean;
   axesVisible: boolean;
+  focus: FocusKind;
 };
 
 /**

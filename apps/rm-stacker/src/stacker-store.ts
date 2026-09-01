@@ -25,7 +25,7 @@ import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 import { Home } from "./home";
 import { IndexedDBData, loadFromIndexedDB, saveToIndexedDB } from "./load-save";
 import { ResizeOptions, resizeSides } from "./resize-sides";
-import { ModeKind } from "./types";
+import { FocusKind, ModeKind, PreviewState } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { createEnqueue } from "./utils/utils";
 
@@ -108,6 +108,17 @@ function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
   const [axesVisible, setAxesVisible] = createSignal(
     () => saved()?.preview?.axesVisible ?? false,
   );
+  const [focus, setFocus] = createSignal<FocusKind>(
+    () => saved()?.preview?.focus ?? "figure",
+  );
+
+  /** How the preview is drawn, as the one value that is written back out. */
+  const state = createMemo<PreviewState>(() => ({
+    unlit: unlit(),
+    autorotate: autorotate(),
+    axesVisible: axesVisible(),
+    focus: focus(),
+  }));
 
   return {
     unlit,
@@ -116,6 +127,9 @@ function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
     setAutorotate,
     axesVisible,
     setAxesVisible,
+    focus,
+    setFocus,
+    state,
   };
 }
 
@@ -211,8 +225,7 @@ export function createStacker() {
               selectedPartName: selectedPartName(),
               undoStack,
               redoStack,
-              unlit: preview.unlit(),
-              autorotate: preview.autorotate(),
+              preview: preview.state(),
             });
           } while (trySaveAgain);
           saving = false;
