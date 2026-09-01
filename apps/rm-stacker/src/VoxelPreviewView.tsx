@@ -93,37 +93,6 @@ const VoxelPreviewView: Component = () => {
     pushUndo,
   } = useContext(StackerContext);
 
-  /**
-   * How much of the drawn world one voxel takes up for as long as a drag runs,
-   * or undefined when none is running and the figure is drawn at the size it
-   * measures to.
-   *
-   * A figure is drawn at a voxel size worked out from the box its parts
-   * together fill, so a part carried outwards makes every voxel in the figure
-   * smaller: the part being dragged would lag behind the arrow pulling it and
-   * the parts standing still would slide the other way. Held at the size the
-   * arrow was measured against, a part moves a voxel for every voxel it is
-   * dragged and the rest of the figure stays where it stands.
-   */
-  const [heldVoxelSize, setHeldVoxelSize] = createSignal<number | undefined>();
-  const [picked, setPicked] = createSignal<FigurePick | undefined>();
-
-  /** Where every part stands, and how much of the drawn world one voxel takes. */
-  const placement = createMemo(() =>
-    figurePlacement(figure(), heldVoxelSize()),
-  );
-
-  /**
-   * Where the selected part's root sits in the drawn world, which is where the
-   * arrows stand.
-   */
-  const selectedRoot = createMemo(() =>
-    Vector3D.multiplyScalar(
-      composeRoot(figure(), selectedPart()),
-      placement().voxelSize,
-    ),
-  );
-
   let yaw = Math.PI / 4;
   let pitch = Math.PI / 6;
   let radius = 3;
@@ -141,6 +110,69 @@ const VoxelPreviewView: Component = () => {
   const inversePitchMatrix = Matrix3x3.create();
   const modelToWorld = Matrix3x3.create();
   const modelSpaceLightDirection = Vector3D.create();
+
+  const scene = new Scene();
+  const camera = new PerspectiveCamera(FOV, 1, NEAR, FAR);
+  camera.position.set(0, 0, radius);
+  camera.lookAt(0, 0, 0);
+
+  // The figure and the arrows are turned together, so an arrow stands at
+  // the root of the part it moves however the turntable has carried it.
+  const turntable = new Group();
+  scene.add(turntable);
+
+  const meshes = new FigureMeshes();
+  turntable.add(meshes.group);
+
+  // The picked voxel's outline. Its geometry is in the part's own space
+  // (the same cell layout the marcher walks), so it is made a child of
+  // whichever part is picked and inherits that part's place and turn.
+  const outline = new LineSegments2(
+    new LineSegmentsGeometry(),
+    new Line2NodeMaterial({
+      color: OUTLINE_COLOUR,
+      linewidth: OUTLINE_LINE_WIDTH,
+    }),
+  );
+  outline.visible = false;
+
+  // Added after the figure, and drawn without a depth test, so the arrows
+  // come out over whatever they reach into rather than inside it.
+  const widget = new TranslateWidget();
+  turntable.add(widget.group);
+
+  /**
+   * How much of the drawn world one voxel takes up for as long as a drag runs,
+   * or undefined when none is running and the figure is drawn at the size it
+   * measures to.
+   *
+   * A figure is drawn at a voxel size worked out from the box its parts
+   * together fill, so a part carried outwards makes every voxel in the figure
+   * smaller: the part being dragged would lag behind the arrow pulling it and
+   * the parts standing still would slide the other way. Held at the size the
+   * arrow was measured against, a part moves a voxel for every voxel it is
+   * dragged and the rest of the figure stays where it stands.
+   */
+  const [heldVoxelSize, setHeldVoxelSize] = createSignal<number | undefined>();
+  const [pickedFigure, setPickedFigure] = createSignal<
+    FigurePick | undefined
+  >();
+
+  /** Where every part stands, and how much of the drawn world one voxel takes. */
+  const placement = createMemo(() =>
+    figurePlacement(figure(), heldVoxelSize()),
+  );
+
+  /**
+   * Where the selected part's root sits in the drawn world, which is where the
+   * arrows stand.
+   */
+  const selectedRoot = createMemo(() =>
+    Vector3D.multiplyScalar(
+      composeRoot(figure(), selectedPart()),
+      placement().voxelSize,
+    ),
+  );
 
   function getWorldToModel() {
     Matrix3x3.rotationX(-pitch, pitchMatrix);
@@ -195,10 +227,10 @@ const VoxelPreviewView: Component = () => {
   // from the pointer position in UV space, and hold on to the voxel met first
   // across the whole figure. The picker is precompiled at build time by
   // precompileJS, so this never runs the rmsl graph in the browser.
-  function pickAt(clientX: number, clientY: number) {
-    const rect = canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+  function pickAt(event: PointerEvent & { currentTarget: HTMLElement }) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
 
     if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) {
       return;
@@ -206,7 +238,7 @@ const VoxelPreviewView: Component = () => {
 
     Matrix3x3.transform(getWorldToModel(), LIGHT_DIR, modelSpaceLightDirection);
 
-    setPicked(
+    setPickedFigure(
       pickFigure({
         solved: solvedParts(),
         placements: placement().placements,
@@ -298,7 +330,7 @@ const VoxelPreviewView: Component = () => {
         return;
       }
 
-      pickAt(initialEvent.clientX, initialEvent.clientY);
+      pickAt(initialEvent);
     }
 
     let isTap = initialPointerCount === 0;
@@ -317,7 +349,7 @@ const VoxelPreviewView: Component = () => {
 
             // Keep the readout in step with the cursor — including while orbiting,
             // where the model turns beneath the pointer.
-            pickAt(event.clientX, event.clientY);
+            pickAt(event);
             yaw += delta.x * RADIANS_PER_PIXEL;
             pitch = Math.max(
               -PITCH_LIMIT,
@@ -354,7 +386,7 @@ const VoxelPreviewView: Component = () => {
     );
 
     if (isTap && pointers.size === 0 && timespan <= TAP_HELD) {
-      const _picked = untrack(picked);
+      const _picked = untrack(pickedFigure);
 
       if (_picked === undefined) {
         return;
@@ -386,61 +418,14 @@ const VoxelPreviewView: Component = () => {
   // Clear to transparent so the background painted behind the canvas
   // shows through the pixels no voxel ray lands on.
   renderer.setClearColor(0x000000, 0);
-  const scene = new Scene();
-  const camera = new PerspectiveCamera(FOV, 1, NEAR, FAR);
-  camera.position.set(0, 0, radius);
-  camera.lookAt(0, 0, 0);
 
-  // The figure and the arrows are turned together, so an arrow stands at
-  // the root of the part it moves however the turntable has carried it.
-  const turntable = new Group();
-  scene.add(turntable);
-
-  const meshes = new FigureMeshes();
-  turntable.add(meshes.group);
-
-  // The picked voxel's outline. Its geometry is in the part's own space
-  // (the same cell layout the marcher walks), so it is made a child of
-  // whichever part is picked and inherits that part's place and turn.
-  const outline = new LineSegments2(
-    new LineSegmentsGeometry(),
-    new Line2NodeMaterial({
-      color: OUTLINE_COLOUR,
-      linewidth: OUTLINE_LINE_WIDTH,
-    }),
-  );
-  outline.visible = false;
-
-  // Added after the figure, and drawn without a depth test, so the arrows
-  // come out over whatever they reach into rather than inside it.
-  const widget = new TranslateWidget();
-  turntable.add(widget.group);
-
-  createEffect(preview.autorotate, (autoRotate) => {
-    if (autoRotate) {
-      timeOffset = performance.now();
-    } else {
-      spinOffset = spin;
-    }
-  });
-
-  const updateSpin = () => {
+  const render = () => {
     if (untrack(preview.autorotate) && !isDraggingWidget) {
       spin =
         ((performance.now() - timeOffset) / 1000) *
           TURNTABLE_RADIANS_PER_SECOND +
         spinOffset;
     }
-  };
-
-  const render = () => {
-    // The figure is turned to the orientation getWorldToModel describes, so the
-    // meshes' world-to-model matrices (the inverse of their world matrices,
-    // which the material uses for its ray origin) stay in step with the matrix
-    // the CPU picker follows its ray along — keeping the pick under the pointer
-    // aligned with what is drawn.
-    updateSpin();
-    getWorldToModel();
     rotateFigure(turntable, yaw, pitch, spin);
 
     lightFigure(meshes, untrack(preview.unlit));
@@ -467,12 +452,20 @@ const VoxelPreviewView: Component = () => {
     },
   );
 
+  createEffect(preview.autorotate, (autoRotate) => {
+    if (autoRotate) {
+      timeOffset = performance.now();
+    } else {
+      spinOffset = spin;
+    }
+  });
+
   // The outline follows the pick: trace the picked voxel's cell (in the part's
   // own space, from the same dimensions the marcher sizes its box by) and hide
   // it when the pick met nothing. It hangs off the part it was picked on, so it
   // moves and turns with it.
   createEffect(
-    () => [solvedParts(), picked()] as const,
+    () => [solvedParts(), pickedFigure()] as const,
     ([solvedParts, picked]) => {
       if (picked === undefined) {
         outline.visible = false;
@@ -515,7 +508,6 @@ const VoxelPreviewView: Component = () => {
       render();
     };
     sizeToCanvas();
-
     const resizeObserver = new ResizeObserver(sizeToCanvas);
     resizeObserver.observe(canvas);
 
@@ -526,6 +518,7 @@ const VoxelPreviewView: Component = () => {
 
     return () => {
       cancelAnimationFrame(rafId);
+      resizeObserver.disconnect();
     };
   });
 
