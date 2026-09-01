@@ -25,17 +25,24 @@ export type ModeKind =
 /**********************************************************************************/
 
 /**
- * Which of a panel's image axes a stroke is reflected along, so that a mark made
- * on one half of the panel is made on the other half as well. `x` reflects
- * across the panel's vertical middle, `y` across its horizontal middle, and both
- * together carry a mark into all four quarters of the panel.
- *
- * A panel is mirrored within itself: what is drawn on the front panel is not
- * carried to the left or the right one.
+ * How a stroke is reflected, so that a mark made on one side of a middle is made
+ * on the other side of it as well. Every reflection switched on is applied to
+ * what the others reached, so two together also reach the corner they share.
  */
 export interface Mirror {
-  x: boolean;
-  y: boolean;
+  /**
+   * Image axes a mark is reflected along within the panel it was drawn on, and
+   * no further: `x` across the panel's vertical middle, `y` across its
+   * horizontal middle.
+   */
+  panel: Record<keyof Vector2D, boolean>;
+  /**
+   * Whether a mark is also made on the panel opposite the one drawn on, where
+   * that panel's own axes put it: the front panel's marks appear on the back,
+   * the top's on the bottom, the left's on the right, and each the other way
+   * about.
+   */
+  opposing: boolean;
 }
 
 /**

@@ -5,8 +5,8 @@ import { StackerContext } from "../context";
 import { Bitmap, RGBA, Vector2D } from "@big-mesh-studios/maths";
 import { type SideKind } from "@big-mesh-studios/stacker/renderer";
 import { pointer } from "@big-mesh-studios/utils/pointer";
-import { mirrorPositions, mirrorRectangles } from "../mirror";
-import { screenToWorld } from "../utils/utils";
+import { mirrorBlocks, mirrorMarks, type Mark } from "../mirror";
+import { keysOf, screenToWorld } from "../utils/utils";
 import { createEdgeController } from "./create-edge-controller";
 import { createPanScaleControl } from "./pan-scale";
 import { intersectSides, SidePositions } from "./side-layout";
@@ -96,11 +96,28 @@ export const createPixelEditorController = ({
   }
 
   /**
-   * Every cell on `kind`'s panel that a mark at `position` lands on: the cell
-   * itself, and its reflections where the mirror is switched on.
+   * Every cell a mark at `position` on `kind`'s panel lands on: the cell itself,
+   * and its reflections where the mirror is switched on. A reflection across one
+   * of the part's own axes can land on a different panel from the one drawn on.
    */
-  function strokePositions(kind: SideKind, position: Vector2D): Vector2D[] {
-    return mirrorPositions(mirror(), sides()[kind], position);
+  function strokeMarks(kind: SideKind, position: Vector2D): Mark[] {
+    return mirrorMarks(mirror(), sides(), { side: kind, position });
+  }
+
+  /** `marks` with each cell kept only the first time it is named. */
+  function uniqueMarks(marks: Mark[]): Mark[] {
+    const found = new Set<string>();
+
+    return marks.filter((mark) => {
+      const key = `${mark.side}:${mark.position.x},${mark.position.y}`;
+
+      if (found.has(key)) {
+        return false;
+      }
+
+      found.add(key);
+      return true;
+    });
   }
 
   /**
@@ -119,14 +136,12 @@ export const createPixelEditorController = ({
       return;
     }
 
-    const panel = sides()[intersection.kind];
-    const panelPosition = sidePositions()[intersection.kind];
-
     return {
-      panel,
-      panelPosition,
-      cells: mirrorPositions(mirror(), panel, intersection.position).map(
-        (cell) => Vector2D.add(cell, panelPosition),
+      panel: sides()[intersection.kind],
+      panelPosition: sidePositions()[intersection.kind],
+      mirroredAxes: mirror().panel,
+      cells: strokeMarks(intersection.kind, intersection.position).map((mark) =>
+        Vector2D.add(mark.position, sidePositions()[mark.side]),
       ),
     };
   }
@@ -231,28 +246,30 @@ export const createPixelEditorController = ({
         const { kind, position } = intersection;
 
         if (_selectedPaletteIndex !== undefined) {
-          for (const target of strokePositions(kind, position)) {
+          const targets: Mark[] = [];
+
+          for (const mark of strokeMarks(kind, position)) {
+            targets.push(mark);
+
+            const opposite = getOppositePixel(mark.side, mark.position);
+
+            if (opposite.index === Bitmap.EMPTY) {
+              targets.push({
+                side: opposite.kind,
+                position: opposite.position,
+              });
+            }
+          }
+
+          for (const target of uniqueMarks(targets)) {
             commands.push(
               Command.fillPixel(
                 drawnPart(),
-                kind,
-                target,
+                target.side,
+                target.position,
                 _selectedPaletteIndex,
               ),
             );
-
-            const opposite = getOppositePixel(kind, target);
-
-            if (opposite.index === Bitmap.EMPTY) {
-              commands.push(
-                Command.fillPixel(
-                  drawnPart(),
-                  opposite.kind,
-                  opposite.position,
-                  _selectedPaletteIndex,
-                ),
-              );
-            }
           }
         }
 
@@ -277,63 +294,85 @@ export const createPixelEditorController = ({
         }
 
         const side = sides()[start.kind];
-        const original = sides()[start.kind];
+        // Every panel as it stands, so that each move of the preview can put
+        // them all back before drawing the rectangle where the pointer is now.
+        // A reflection across one of the part's axes lands on another panel, so
+        // more than the one being dragged on can be under the preview.
+        const originals = { ...sides() };
 
-        const { event: finalEvent } = await pointer(event, ({ event }) => {
-          const copy = Bitmap.clone(original);
-          sides()[start.kind] = copy;
-
+        /** Where the rectangle reaches on `start`'s panel, given the pointer. */
+        function draggedBlock(
+          event: PointerEvent & { currentTarget: HTMLElement },
+        ) {
           const current = Vector2D.sub(
             eventToRoundedWorldPosition(event),
-            sidePositions()[start.kind],
+            sidePositions()[start!.kind],
           );
 
-          const min = Vector2D.max(
-            Vector2D.min(start.position, current),
-            Vector2D.EMPTY,
-          );
-          const max = Vector2D.min(Vector2D.max(start.position, current), {
-            x: side.width - 1,
-            y: side.height - 1,
-          });
+          return {
+            side: start!.kind,
+            min: Vector2D.max(
+              Vector2D.min(start!.position, current),
+              Vector2D.EMPTY,
+            ),
+            max: Vector2D.min(Vector2D.max(start!.position, current), {
+              x: side.width - 1,
+              y: side.height - 1,
+            }),
+          };
+        }
 
-          for (const block of mirrorRectangles(mirror(), side, { min, max })) {
+        function restorePanels() {
+          const panels = sides();
+
+          for (const kind of keysOf(originals)) {
+            panels[kind] = originals[kind];
+          }
+        }
+
+        const { event: finalEvent } = await pointer(event, ({ event }) => {
+          restorePanels();
+
+          const panels = sides();
+          const copies = new Map<SideKind, Bitmap>();
+
+          for (const block of mirrorBlocks(
+            mirror(),
+            panels,
+            draggedBlock(event),
+          )) {
+            let copy = copies.get(block.side);
+
+            if (copy === undefined) {
+              copy = Bitmap.clone(originals[block.side]);
+              copies.set(block.side, copy);
+              panels[block.side] = copy;
+            }
+
             for (let x = block.min.x; x <= block.max.x; x++) {
               for (let y = block.min.y; y <= block.max.y; y++) {
                 Bitmap.set(copy, x, y, selectedPaletteIndex());
               }
             }
           }
+
           requestRender();
         });
 
-        sides()[start.kind] = original;
-
-        const end = Vector2D.sub(
-          eventToRoundedWorldPosition(finalEvent),
-          sidePositions()[start.kind],
-        );
-
-        const min = Vector2D.max(
-          Vector2D.min(start.position, end),
-          Vector2D.EMPTY,
-        );
-        const max = Vector2D.min(Vector2D.max(start.position, end), {
-          x: side.width - 1,
-          y: side.height - 1,
-        });
+        restorePanels();
 
         undoCommandsReversed.push(
           doCommand(
             combine(
-              mirrorRectangles(mirror(), side, { min, max }).map((block) =>
-                Command.fillRectangle(
-                  drawnPart(),
-                  start.kind,
-                  block.min,
-                  block.max,
-                  selectedPaletteIndex(),
-                ),
+              mirrorBlocks(mirror(), sides(), draggedBlock(finalEvent)).map(
+                (block) =>
+                  Command.fillRectangle(
+                    drawnPart(),
+                    block.side,
+                    block.min,
+                    block.max,
+                    selectedPaletteIndex(),
+                  ),
               ),
             ),
           ),
@@ -368,57 +407,47 @@ export const createPixelEditorController = ({
 
           const { kind, position } = intersection;
 
+          const _mode = mode();
+          const _selectedPaletteIndex = selectedPaletteIndex();
+          const targets: Mark[] = [];
+
+          for (const mark of strokeMarks(kind, position)) {
+            targets.push(mark);
+
+            const opposite = getOppositePixel(mark.side, mark.position);
+
+            // Erasing reaches the far side wherever something is drawn there;
+            // drawing only reaches it where nothing is, so painting one panel
+            // does not paint over the other.
+            const reaches =
+              _mode === "Erase"
+                ? opposite.index !== Bitmap.EMPTY
+                : opposite.index === Bitmap.EMPTY;
+
+            if (reaches) {
+              targets.push({
+                side: opposite.kind,
+                position: opposite.position,
+              });
+            }
+          }
+
           const commands: Command[] = [];
 
-          for (const target of strokePositions(kind, position)) {
-            const opposite = getOppositePixel(kind, target);
-
-            switch (mode()) {
-              case "Erase": {
-                commands.push(Command.erasePixel(drawnPart(), kind, target));
-
-                if (opposite.index !== Bitmap.EMPTY) {
-                  commands.push(
-                    Command.erasePixel(
-                      drawnPart(),
-                      opposite.kind,
-                      opposite.position,
-                    ),
-                  );
-                }
-
-                break;
-              }
-              case "Draw": {
-                const _selectedPaletteIndex = selectedPaletteIndex();
-
-                if (_selectedPaletteIndex !== undefined) {
-                  commands.push(
-                    Command.writePixel(
-                      drawnPart(),
-                      kind,
-                      target,
-                      _selectedPaletteIndex,
-                    ),
-                  );
-
-                  // Only carry the colour to the far side where nothing is
-                  // drawn, so drawing on one panel does not paint over the
-                  // other.
-                  if (opposite.index === Bitmap.EMPTY) {
-                    commands.push(
-                      Command.writePixel(
-                        drawnPart(),
-                        opposite.kind,
-                        opposite.position,
-                        _selectedPaletteIndex,
-                      ),
-                    );
-                  }
-                }
-
-                break;
-              }
+          for (const target of uniqueMarks(targets)) {
+            if (_mode === "Erase") {
+              commands.push(
+                Command.erasePixel(drawnPart(), target.side, target.position),
+              );
+            } else if (_selectedPaletteIndex !== undefined) {
+              commands.push(
+                Command.writePixel(
+                  drawnPart(),
+                  target.side,
+                  target.position,
+                  _selectedPaletteIndex,
+                ),
+              );
             }
           }
 
@@ -447,30 +476,29 @@ export const createPixelEditorController = ({
         return;
       }
 
-      const _mirror = mirror();
       const hovered = hoveredPanel(position);
 
-      // A panel is what a mirror reflects within, so where a stroke would land
-      // is only known while the pointer is over one. Between the panels there
-      // is just the cell under the pointer, wherever the mirror stands.
+      // A stroke is reflected about the panel it is drawn on, so where it would
+      // land is only known while the pointer is over one. Between the panels
+      // there is just the cell under the pointer, wherever the mirror stands.
       const cells = hovered?.cells ?? [position];
 
       return (ctx: CanvasRenderingContext2D) => {
         ctx.lineWidth = 1 / scale();
 
         if (hovered) {
-          const { panel, panelPosition } = hovered;
+          const { panel, panelPosition, mirroredAxes } = hovered;
 
           ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
           ctx.beginPath();
 
-          if (_mirror.x) {
+          if (mirroredAxes.x) {
             const x = panelPosition.x + panel.width / 2;
             ctx.moveTo(x, panelPosition.y);
             ctx.lineTo(x, panelPosition.y + panel.height);
           }
 
-          if (_mirror.y) {
+          if (mirroredAxes.y) {
             const y = panelPosition.y + panel.height / 2;
             ctx.moveTo(panelPosition.x, y);
             ctx.lineTo(panelPosition.x + panel.width, y);

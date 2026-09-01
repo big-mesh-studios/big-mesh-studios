@@ -1,91 +1,140 @@
-import { Dimensions2D, Vector2D } from "@big-mesh-studios/maths";
+import { Bitmap, Vector2D } from "@big-mesh-studios/maths";
+import { type SideKind, type Sides } from "@big-mesh-studios/stacker/renderer";
+import { OPPOSING_SIDE, SIDE_AXES } from "./constants";
 import { Mirror } from "./types";
 
-/** A run of cells along one axis of a panel, from `low` to `high` inclusive. */
-interface Span {
-  low: number;
-  high: number;
+/** One cell of one of a part's panels. */
+export interface Mark {
+  side: SideKind;
+  position: Vector2D;
 }
 
-/** A block of cells on a panel, from its low corner to its high one inclusive. */
-export interface Rectangle {
+/** A block of cells on one of a part's panels, both corners included. */
+export interface Block {
+  side: SideKind;
   min: Vector2D;
   max: Vector2D;
 }
 
-/** Neither axis reflected: a stroke lands only where the pointer put it. */
-export const NO_MIRROR: Mirror = Object.freeze({ x: false, y: false });
+/** Nothing reflected: a stroke lands only where the pointer put it. */
+export const NO_MIRROR: Mirror = Object.freeze({
+  panel: Object.freeze({ x: false, y: false }),
+  opposing: false,
+});
 
-/**
- * `span` together with its reflection about the middle of an axis `extent`
- * cells long, or `span` alone when the axis is not being mirrored or when the
- * reflection covers the same cells — a span already centred on that middle
- * reflects onto itself.
- */
-function mirrorSpans(mirrored: boolean, extent: number, span: Span): Span[] {
-  const reflected = {
-    low: extent - 1 - span.high,
-    high: extent - 1 - span.low,
-  };
-
-  if (
-    !mirrored ||
-    (reflected.low === span.low && reflected.high === span.high)
-  ) {
-    return [span];
+/** Turns `block` back to front along one of its panel's image axes. */
+function flipAlong(axis: keyof Vector2D, panel: Bitmap, block: Block): Block {
+  if (axis === "x") {
+    const extent = panel.width;
+    return {
+      side: block.side,
+      min: { x: extent - 1 - block.max.x, y: block.min.y },
+      max: { x: extent - 1 - block.min.x, y: block.max.y },
+    };
   }
 
-  return [span, reflected];
+  const extent = panel.height;
+  return {
+    side: block.side,
+    min: { x: block.min.x, y: extent - 1 - block.max.y },
+    max: { x: block.max.x, y: extent - 1 - block.min.y },
+  };
 }
 
 /**
- * Every cell a mark at `position` covers on a panel of `dimensions`: the cell
- * itself first, then its reflection along each axis the mirror names, and the
- * diagonally opposite cell when it names both. No cell is listed twice, so a
- * mark on the middle column or row of a panel with an odd number of cells is
- * still drawn once.
+ * Which of `side`'s image axes run backwards on the panel facing it. The two
+ * panels see the part from opposite directions, so an axis they disagree about
+ * counts up one way on one and the other way on the other, and a mark carried
+ * between them has to be turned back to front along it.
  */
-export function mirrorPositions(
-  mirror: Mirror,
-  dimensions: Dimensions2D,
-  position: Vector2D,
-): Vector2D[] {
-  const xs = mirrorSpans(mirror.x, dimensions.width, {
-    low: position.x,
-    high: position.x,
-  });
-  const ys = mirrorSpans(mirror.y, dimensions.height, {
-    low: position.y,
-    high: position.y,
-  });
+function opposingFlips(side: SideKind): Record<keyof Vector2D, boolean> {
+  const here = SIDE_AXES[side];
+  const there = SIDE_AXES[OPPOSING_SIDE[side]];
 
-  return ys.flatMap((y) => xs.map((x) => ({ x: x.low, y: y.low })));
+  return {
+    x: here.x.flipped !== there.x.flipped,
+    y: here.y.flipped !== there.y.flipped,
+  };
 }
 
 /**
- * Every block a rectangle covers on a panel of `dimensions`, reflected the same
- * way `mirrorPositions` reflects a single cell. Reflected blocks can overlap the
- * one that was drawn; they all carry the same colour, so the overlap paints the
- * same cells twice rather than fighting over them.
+ * `block` carried onto the panel opposite the one it sits on, at the place that
+ * panel's own axes put it. The two panels are always the same size, so a block
+ * that fits on one fits on the other.
  */
-export function mirrorRectangles(
-  mirror: Mirror,
-  dimensions: Dimensions2D,
-  rectangle: Rectangle,
-): Rectangle[] {
-  const xs = mirrorSpans(mirror.x, dimensions.width, {
-    low: rectangle.min.x,
-    high: rectangle.max.x,
-  });
-  const ys = mirrorSpans(mirror.y, dimensions.height, {
-    low: rectangle.min.y,
-    high: rectangle.max.y,
-  });
+function reflectOntoOpposing(sides: Sides, block: Block): Block {
+  const flips = opposingFlips(block.side);
+  const panel = sides[block.side];
 
-  return ys.flatMap((y) =>
-    xs.map((x) => ({
-      min: { x: x.low, y: y.low },
-      max: { x: x.high, y: y.high },
-    })),
-  );
+  let carried: Block = { ...block, side: OPPOSING_SIDE[block.side] };
+
+  if (flips.x) {
+    carried = flipAlong("x", panel, carried);
+  }
+
+  if (flips.y) {
+    carried = flipAlong("y", panel, carried);
+  }
+
+  return carried;
+}
+
+const blockKey = ({ side, min, max }: Block) =>
+  `${side}:${min.x},${min.y}:${max.x},${max.y}`;
+
+/**
+ * Every block a mark covers once the mirror has reflected it: the block that was
+ * drawn, each reflection the mirror asks for, and the reflections of those, so
+ * that two axes at once reach the corner they share. No block is listed twice,
+ * so a block already lying on an axis it is reflected across is drawn once.
+ */
+export function mirrorBlocks(
+  mirror: Mirror,
+  sides: Sides,
+  block: Block,
+): Block[] {
+  const reflections: Array<(block: Block) => Block> = [];
+
+  if (mirror.panel.x) {
+    reflections.push((block) => flipAlong("x", sides[block.side], block));
+  }
+
+  if (mirror.panel.y) {
+    reflections.push((block) => flipAlong("y", sides[block.side], block));
+  }
+
+  if (mirror.opposing) {
+    reflections.push((block) => reflectOntoOpposing(sides, block));
+  }
+
+  const blocks = [block];
+  const found = new Set([blockKey(block)]);
+
+  // Walks the blocks gathered so far, reflecting each one again, so that a
+  // block reached by one axis is still offered to the others. Every reflection
+  // undoes itself, so the list stops growing once each has been answered.
+  for (let i = 0; i < blocks.length; i++) {
+    for (const reflect of reflections) {
+      const reflected = reflect(blocks[i]);
+      const key = blockKey(reflected);
+
+      if (found.has(key)) {
+        continue;
+      }
+
+      found.add(key);
+      blocks.push(reflected);
+    }
+  }
+
+  return blocks;
+}
+
+/** `mirrorBlocks` for a single cell rather than a block of them. */
+export function mirrorMarks(mirror: Mirror, sides: Sides, mark: Mark): Mark[] {
+  return mirrorBlocks(mirror, sides, {
+    side: mark.side,
+    min: mark.position,
+    max: mark.position,
+  }).map(({ side, min }) => ({ side, position: min }));
 }

@@ -40,6 +40,12 @@ export function Hud() {
   const isModeSelected = (_mode: ModeKind) =>
     !ProfileDialog.isOpen() && _mode === mode();
 
+  const togglePanelMirror = (axis: "x" | "y") =>
+    setMirror((current) => ({
+      ...current,
+      panel: { ...current.panel, [axis]: !current.panel[axis] },
+    }));
+
   return (
     <div class={styles.hud}>
       <Bar class={styles.files}>
@@ -107,19 +113,26 @@ export function Hud() {
       <Bar class={styles.mirror}>
         <IconTab
           kind="left-right"
-          onClick={() =>
-            setMirror((current) => ({ ...current, x: !current.x }))
-          }
-          selected={!ProfileDialog.isOpen() && mirror().x}
-          title="Mirror what is drawn across the panel's vertical middle"
+          onClick={() => togglePanelMirror("x")}
+          selected={!ProfileDialog.isOpen() && mirror().panel.x}
+          title="Mirror across the panel's vertical middle, staying on that panel"
         />
         <IconTab
           kind="up-down"
+          onClick={() => togglePanelMirror("y")}
+          selected={!ProfileDialog.isOpen() && mirror().panel.y}
+          title="Mirror across the panel's horizontal middle, staying on that panel"
+        />
+        <IconTab
+          kind="clone"
           onClick={() =>
-            setMirror((current) => ({ ...current, y: !current.y }))
+            setMirror((current) => ({
+              ...current,
+              opposing: !current.opposing,
+            }))
           }
-          selected={!ProfileDialog.isOpen() && mirror().y}
-          title="Mirror what is drawn across the panel's horizontal middle"
+          selected={!ProfileDialog.isOpen() && mirror().opposing}
+          title="Mirror onto the panel opposite the one drawn on: front to back, top to bottom, left to right"
         />
       </Bar>
       <Bar class={styles.colour}>

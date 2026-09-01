@@ -9,15 +9,19 @@
   grid-template-columns: auto 1fr auto;
   /* The second row takes whatever the bars leave, which is what holds the rows
      after it against the bottom edge. Each bar down the left is a row of its
-     own, so they stack against each other. */
+     own, so they stack against each other.
+     Only the left column's bars are laid out in rows. The bars down the right
+     edge span every row instead and hold themselves to the top and the bottom,
+     so however tall they grow they never set the height of a row the left
+     column has to sit below. */
   grid-template-rows: auto 1fr auto auto auto auto;
   grid-template-areas:
-    "files   . view"
+    "files   . ."
     ".       . ."
     "history . ."
     "tools   . ."
     "mirror  . ."
-    "colour  . parts";
+    "colour  . .";
   /* Only the bars themselves are reachable, and each asks for that for itself.
      Everything between them is the model behind, which orbits to a drag. */
   pointer-events: none;
@@ -43,7 +47,15 @@
   }
 
   & > .view {
-    grid-area: view;
+    grid-column: 3;
+    grid-row: 1 / -1;
+    align-self: start;
+  }
+
+  & > .partsBar {
+    grid-column: 3;
+    grid-row: 1 / -1;
+    align-self: end;
   }
 }
 
@@ -84,10 +96,6 @@
   bottom: calc(anchor(bottom) - 1px);
   left: calc(anchor(right) + var(--margin));
   pointer-events: auto;
-}
-
-.partsBar {
-  grid-area: parts;
 }
 
 /* The parts open to the left of the button that shows them, tops level with it,
