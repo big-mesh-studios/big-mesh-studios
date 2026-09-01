@@ -76,7 +76,7 @@
 }
 
 .palettePopover:popover-open {
-  bottom: calc(anchor(bottom));
+  bottom: calc(anchor(bottom) - 1px);
   left: calc(anchor(right) + var(--margin));
   pointer-events: auto;
 }
