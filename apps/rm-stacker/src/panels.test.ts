@@ -447,11 +447,12 @@ describe("computeSliceLayouts and computeSliceMarkers", () => {
     expect(slice.box.min.y).toBeGreaterThan(
       DIMENSIONS.height + DIMENSIONS.depth,
     );
-    // Wide enough for the two faces side by side, and its tab stands on top.
+    // Wide enough for the two faces side by side, and its number stands inside
+    // the corner rather than on top of it.
     expect(slice.box.max.x - slice.box.min.x).toBeGreaterThan(
       DIMENSIONS.depth * 2,
     );
-    expect(slice.label.max.y).toBe(slice.box.min.y);
+    expect(slice.label.min).toEqual(slice.box.min);
   });
 
   it("stands both faces of the slice inside its box", () => {
@@ -475,7 +476,7 @@ describe("computeSliceLayouts and computeSliceMarkers", () => {
       slice.remove.max.y - slice.remove.min.y,
     );
     expect(slice.remove.max.x).toBe(slice.box.max.x);
-    expect(slice.remove.max.y).toBe(slice.box.min.y);
+    expect(slice.remove.min.y).toBe(slice.box.min.y);
     // Standing clear of the number at the other corner.
     expect(slice.remove.min.x).toBeGreaterThan(slice.label.max.x);
   });

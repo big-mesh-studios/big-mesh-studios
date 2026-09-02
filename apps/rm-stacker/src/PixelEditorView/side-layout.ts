@@ -27,6 +27,13 @@ const SLICE_PADDING = 2;
 /** How wide the little box carrying a slice's number is. */
 const NUMBER_WIDTH = 4;
 
+/**
+ * How far below the top of a slice's box its faces stand: the number and the
+ * square that takes the cut away stand across the top of the box, with the
+ * clear space it leaves everywhere else below them.
+ */
+const FACES_BELOW = LABEL_HEIGHT + SLICE_PADDING;
+
 /** How large the space is that a slice's number is taken hold of by. */
 const MARKER_SIZE = 3;
 
@@ -113,9 +120,9 @@ export interface SliceLayout {
   axis: DimensionKind;
   /** The box its two faces and their labels stand in. */
   box: Box;
-  /** The little box at that box's top left corner, carrying its number. */
+  /** The little box inside its top left corner, carrying its number. */
   label: Box;
-  /** The little box at the corner opposite, which takes the cut away. */
+  /** The little box inside the corner opposite, which takes the cut away. */
   remove: Box;
 }
 
@@ -144,10 +151,10 @@ export function computeSliceLayouts(
   return part.sections.map((section, cut) => {
     const face = faceSize(section.axis, dimensions);
     const box: Box = {
-      min: { x: -SLICE_PADDING, y: top + LABEL_HEIGHT },
+      min: { x: -SLICE_PADDING, y: top },
       max: {
         x: face.width * 2 + PADDING + SLICE_PADDING,
-        y: top + LABEL_HEIGHT + SLICE_PADDING * 2 + face.height + LABEL_HEIGHT,
+        y: top + FACES_BELOW + face.height + LABEL_HEIGHT + SLICE_PADDING,
       },
     };
 
@@ -158,15 +165,16 @@ export function computeSliceLayouts(
       number: `${cut + 1}`,
       axis: section.axis,
       box,
-      // Standing on the box's top left corner, the way a tab stands on a folder.
+      // Inside the box's top left corner, in the clear space the faces leave
+      // above them, so that everything belonging to the cut is within its box.
       label: {
-        min: { x: box.min.x, y: box.min.y - LABEL_HEIGHT },
-        max: { x: box.min.x + NUMBER_WIDTH, y: box.min.y },
+        min: box.min,
+        max: { x: box.min.x + NUMBER_WIDTH, y: box.min.y + LABEL_HEIGHT },
       },
-      // A square standing on the corner opposite, the tab's own height across.
+      // A square inside the corner opposite, the number's own height across.
       remove: {
-        min: { x: box.max.x - LABEL_HEIGHT, y: box.min.y - LABEL_HEIGHT },
-        max: { x: box.max.x, y: box.min.y },
+        min: { x: box.max.x - LABEL_HEIGHT, y: box.min.y },
+        max: { x: box.max.x, y: box.min.y + LABEL_HEIGHT },
       },
     };
   });
@@ -184,7 +192,7 @@ export function computePanelPositions(
 
   for (const slice of computeSliceLayouts(part, dimensions)) {
     const face = faceSize(slice.axis, dimensions);
-    const y = slice.box.min.y + SLICE_PADDING;
+    const y = slice.box.min.y + FACES_BELOW;
 
     positions[sectionFaceKind(slice.cut, "before")] = {
       x: slice.box.min.x + SLICE_PADDING,
