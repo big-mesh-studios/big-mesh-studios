@@ -20,7 +20,7 @@ import {
   type Dim3,
   type WorldBlock,
 } from "./level-data";
-import { VOXEL_AIR, type VoxelStore } from "./voxel-store";
+import { VOXEL_AIR, VOXEL_WATER, type VoxelStore } from "./voxel-store";
 
 /** A single recorded edit: the world voxel's new id plus when it was made. */
 export interface VoxelEdit {
@@ -190,7 +190,9 @@ export class EditLayer {
       const [x, y, z] = worldVoxelToLocal(block.store, block.center, w);
       if (block.store.inBoundsPadded(x, y, z)) {
         block.store.data[block.store.paddedIndex(x, y, z)] = edit.id;
-        if (edit.id !== VOXEL_AIR) {
+        if (edit.id === VOXEL_WATER) {
+          block.store.hasWater = true;
+        } else if (edit.id !== VOXEL_AIR) {
           block.store.mightHaveVoxels = true;
         }
         written++;

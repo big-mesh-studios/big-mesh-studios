@@ -201,6 +201,12 @@ export const buildWaterMesh = (store: VoxelStore): MeshArrays => {
   const uvs: number[] = [];
   const indices: number[] = [];
 
+  // A store whose fill reported no water voxel cannot expose a water face, and
+  // sweeping a full volume to prove it is the point of this flag.
+  if (!store.hasWater) {
+    return { positions, normals, uvs, indices };
+  }
+
   const at = (x: number, y: number, z: number): number =>
     store.atPadded(x, y, z);
 
@@ -359,6 +365,8 @@ export interface MeshBuildRequest {
   voxels: [number, number, number];
   scale: number;
   data: Uint8Array;
+  /** Whether `data` holds any water voxel; an empty water sweep when false. */
+  hasWater: boolean;
   tileRects: VoxelTileConfig[];
 }
 

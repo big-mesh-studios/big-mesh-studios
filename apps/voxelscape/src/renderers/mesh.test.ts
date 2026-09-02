@@ -354,6 +354,17 @@ describe("buildWaterMesh", () => {
     // centre voxel
     expect(faceCount(mesh)).toBe(54);
   });
+
+  it("returns empty water arrays for a store that never reported water", () => {
+    const store = smallStore();
+    // Terrain only: hasWater was never raised, so the whole-volume sweep is
+    // skipped and nothing is emitted.
+    store.set(1, 0, 1, VOXEL_DIRT);
+    store.set(1, 1, 1, VOXEL_DIRT);
+    const mesh = buildWaterMesh(store);
+    expect(mesh.indices.length).toBe(0);
+    expect(mesh.positions.length).toBe(0);
+  });
 });
 
 describe("meshArraysToGeometry", () => {

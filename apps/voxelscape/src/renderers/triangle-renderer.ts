@@ -320,29 +320,119 @@ export const scBounds = (key: string): { center: Dim3; half: number } => {
 };
 
 /**
- * The accumulating vertex arrays of a superchunk's merged geometry, kept as
- * plain growable arrays so a landed chunk can be appended without re-joining
- * the whole superchunk.
+ * A growable typed array: appends into a buffer that doubles when full, so a
+ * landed chunk's arrays are merged straight into float/uint buffers instead of
+ * boxed numbers that then get copied to typed arrays at upload. The logical
+ * length is tracked separately from the capacity, and `array()` returns a
+ * view of exactly the written elements.
+ */
+class Growable<T extends Float32Array | Uint32Array> {
+  private buf: T;
+  private readonly ctor: new (size: number) => T;
+  private readonly chunk: number;
+  length = 0;
+
+  constructor(ctor: new (size: number) => T, chunk = 512) {
+    this.ctor = ctor;
+    this.chunk = chunk;
+    this.buf = new ctor(chunk);
+  }
+
+  /** Grows the backing buffer so at least `amount` more elements fit. */
+  private growBy(amount: number): void {
+    const needed = this.length + amount;
+    if (needed <= this.buf.length) {
+      return;
+    }
+    let size = this.buf.length;
+    while (size < needed) {
+      size = Math.max(size * 2, this.chunk);
+    }
+    const next = new this.ctor(size);
+    next.set(this.buf.subarray(0, this.length));
+    this.buf = next;
+  }
+
+  /** Appends `values` as-is (positions, normals, uvs). */
+  pushMany(values: ArrayLike<number>): void {
+    this.growBy(values.length);
+    this.buf.set(values, this.length);
+    this.length += values.length;
+  }
+
+  /** Appends `values`, shifting each by `shift` (indices are re-based). */
+  pushShifted(values: ArrayLike<number>, shift: number): void {
+    this.growBy(values.length);
+    for (let i = 0; i < values.length; i++) {
+      this.buf[this.length + i] = values[i] + shift;
+    }
+    this.length += values.length;
+  }
+
+  /** Appends positions shifted per component by `(dx, dy, dz)`. */
+  pushOffset(
+    values: ArrayLike<number>,
+    dx: number,
+    dy: number,
+    dz: number,
+  ): void {
+    this.growBy(values.length);
+    for (let i = 0; i < values.length; i += 3) {
+      this.buf[this.length + i] = values[i] + dx;
+      this.buf[this.length + i + 1] = values[i + 1] + dy;
+      this.buf[this.length + i + 2] = values[i + 2] + dz;
+    }
+    this.length += values.length;
+  }
+
+  /** Appends `count` copies of the same three values (a vertex run's colour). */
+  pushTris(r: number, g: number, b: number, count: number): void {
+    const amount = count * 3;
+    this.growBy(amount);
+    for (let i = 0; i < count; i++) {
+      const at = this.length + i * 3;
+      this.buf[at] = r;
+      this.buf[at + 1] = g;
+      this.buf[at + 2] = b;
+    }
+    this.length += amount;
+  }
+
+  /** The current length, for the callers that count vertices or indices. */
+  get count(): number {
+    return this.length;
+  }
+
+  /** The written elements, as a same-typed view the uploader passes straight through. */
+  array(): T {
+    return this.buf.subarray(0, this.length) as T;
+  }
+}
+
+/**
+ * The accumulating vertex arrays of a superchunk's merged geometry, typed so
+ * a landed chunk can be appended without re-joining the whole superchunk and
+ * without a boxed intermediate.
  */
 type MergedArrays = {
-  positions: number[];
-  normals: number[];
-  uvs: number[];
-  indices: number[];
+  positions: Growable<Float32Array>;
+  normals: Growable<Float32Array>;
+  uvs: Growable<Float32Array>;
+  indices: Growable<Uint32Array>;
   /**
    * Three 0..1 channels per vertex. The occlusion probe material reads this
    * as the chunk's flat colour, so the merged geometry carries what slot each
    * run of its vertices belongs to.
    */
-  colors: number[];
+  colors: Growable<Float32Array>;
 };
 
 const emptyArrays = (): MergedArrays => ({
-  positions: [],
-  normals: [],
-  uvs: [],
-  indices: [],
-  colors: [],
+  positions: new Growable(Float32Array),
+  normals: new Growable(Float32Array),
+  uvs: new Growable(Float32Array),
+  indices: new Growable(Uint32Array),
+  colors: new Growable(Float32Array),
 });
 
 /** One view-frustum plane as the `[a, b, c, d]` of `a*x + b*y + c*z + d`. */
@@ -402,24 +492,13 @@ const appendArrays = (
   dz: number,
   color: [number, number, number],
 ): void => {
-  const base = into.positions.length / 3;
-  for (let i = 0; i < a.positions.length; i += 3) {
-    into.positions.push(
-      a.positions[i] + dx,
-      a.positions[i + 1] + dy,
-      a.positions[i + 2] + dz,
-    );
-    into.colors.push(color[0], color[1], color[2]);
-  }
-  for (let i = 0; i < a.normals.length; i++) {
-    into.normals.push(a.normals[i]);
-  }
-  for (let i = 0; i < a.uvs.length; i++) {
-    into.uvs.push(a.uvs[i]);
-  }
-  for (let i = 0; i < a.indices.length; i++) {
-    into.indices.push(a.indices[i] + base);
-  }
+  const base = into.positions.count / 3;
+  const vertices = a.positions.length / 3;
+  into.positions.pushOffset(a.positions, dx, dy, dz);
+  into.colors.pushTris(color[0], color[1], color[2], vertices);
+  into.normals.pushMany(a.normals);
+  into.uvs.pushMany(a.uvs);
+  into.indices.pushShifted(a.indices, base);
 };
 
 /** A superchunk's merged arrays plus the member slots already joined into them. */
@@ -732,10 +811,20 @@ export class TriangleRenderer {
       }
       return false;
     }
-    setGeometryData(state.terrainGeometry, state.terrain);
-    setOcclusionColors(state.terrainGeometry, state.terrain.colors);
-    setGeometryData(state.waterGeometry, state.water);
-    setOcclusionColors(state.waterGeometry, state.water.colors);
+    setGeometryData(state.terrainGeometry, {
+      positions: state.terrain.positions.array(),
+      normals: state.terrain.normals.array(),
+      uvs: state.terrain.uvs.array(),
+      indices: state.terrain.indices.array(),
+    });
+    setOcclusionColors(state.terrainGeometry, state.terrain.colors.array());
+    setGeometryData(state.waterGeometry, {
+      positions: state.water.positions.array(),
+      normals: state.water.normals.array(),
+      uvs: state.water.uvs.array(),
+      indices: state.water.indices.array(),
+    });
+    setOcclusionColors(state.waterGeometry, state.water.colors.array());
     this.scLastUpload.set(key, this.frame);
     this.syncSlotMeshes(key, center, state);
     this.updateTriCount();
@@ -753,13 +842,13 @@ export class TriangleRenderer {
     const dy = m.center[1] - center[1];
     const dz = m.center[2] - center[2];
     const color = probeColor(m.index);
-    const terrainStart = state.terrain.indices.length;
+    const terrainStart = state.terrain.indices.count;
     appendArrays(state.terrain, mesh.terrain, dx, dy, dz, color);
     state.terrainRanges.set(m.index, {
       start: terrainStart,
       count: mesh.terrain.indices.length,
     });
-    const waterStart = state.water.indices.length;
+    const waterStart = state.water.indices.count;
     appendArrays(state.water, mesh.water, dx, dy, dz, color);
     state.waterRanges.set(m.index, {
       start: waterStart,
@@ -971,24 +1060,92 @@ export class TriangleRenderer {
     // and the probe cannot see the view from inside) or when the last query
     // actually saw it; anything else the query looked at but found covered is
     // skipped this frame.
-    if (!this.lastQueryTested.has(slot)) {
-      this.lastTimedOut++;
-      return true;
-    }
-    if (
-      isNearCell(this.blockSc.get(slot) ?? "", playerKey, OCCLUSION_NEAR_CELLS)
-    ) {
-      this.lastNearExempt++;
-      return true;
-    }
-    if (this.lastVisible !== null && this.lastVisible.has(slot)) {
-      this.lastSaw++;
+    if (!this.slotHiddenByOcclusion(slot, playerKey)) {
+      if (!this.lastQueryTested.has(slot)) {
+        this.lastTimedOut++;
+      } else if (
+        isNearCell(
+          this.blockSc.get(slot) ?? "",
+          playerKey,
+          OCCLUSION_NEAR_CELLS,
+        )
+      ) {
+        this.lastNearExempt++;
+      } else {
+        this.lastSaw++;
+      }
       return true;
     }
     if (countOccluded) {
       this.occludedCount++;
     }
     return false;
+  }
+
+  /**
+   * Whether the occlusion pass has *proved* `slot` covered: it was measured by
+   * the last query, is not inside the player's near-cell ring, and the query
+   * never saw its id win a pixel. A slot the query has not measured (its
+   * geometry landed after the last readback) is never called hidden, and
+   * neither is one the camera sits beside or inside, whose surroundings the
+   * probe cannot see. This is the same predicate the drawing path uses, so a
+   * chunk the culler hides from drawing is also a chunk whose freshly-built
+   * geometry the merge stage may safely leave unbuilt.
+   */
+  private slotHiddenByOcclusion(slot: number, playerKey: string): boolean {
+    if (!this.lastQueryTested.has(slot)) {
+      return false;
+    }
+    if (
+      isNearCell(this.blockSc.get(slot) ?? "", playerKey, OCCLUSION_NEAR_CELLS)
+    ) {
+      return false;
+    }
+    return this.lastVisible !== null && !this.lastVisible.has(slot);
+  }
+
+  /**
+   * Whether a superchunk's merged geometry may be left unbuilt this frame
+   * because the occlusion pass has proved every one of its content members
+   * covered. A superchunk with no content needs no upload, and a member that
+   * is on screen, near the player, or never measured keeps the whole superchunk
+   * merging, since it can only be drawn from the merged geometry. Deciding from
+   * which members carry geometry works on a superchunk the moment its first
+   * meshes land, so a scroll's whole occluded shell defers from its first
+   * chunk, not only once it has merged once.
+   */
+  private scOccluded(key: string, playerKey: string): boolean {
+    const mergedSlots = this.scMerged.get(key)?.slots;
+    if (mergedSlots !== undefined && mergedSlots.size > 0) {
+      for (const slot of mergedSlots as Set<number>) {
+        if (!this.slotHiddenByOcclusion(slot, playerKey)) {
+          return false;
+        }
+      }
+      return true;
+    }
+    // Not merged yet: judge by the members whose builds have landed with actual
+    // geometry. A member with no build, or one whose build is empty, does not
+    // force an upload; the rest must all be proved covered.
+    const members = this.scMembers.get(key);
+    if (members === undefined || members.length === 0) {
+      return false;
+    }
+    let sawContent = false;
+    for (const m of members) {
+      const built = this.chunkMeshes.get(m.index);
+      if (
+        built === undefined ||
+        (built.terrain.indices.length === 0 && built.water.indices.length === 0)
+      ) {
+        continue;
+      }
+      sawContent = true;
+      if (!this.slotHiddenByOcclusion(m.index, playerKey)) {
+        return false;
+      }
+    }
+    return sawContent;
   }
 
   get triangleCount(): number {
@@ -1121,16 +1278,6 @@ export class TriangleRenderer {
       .copy(camera.projectionMatrix)
       .multiply(camera.matrixWorldInverse);
     const planes = frustumPlanes(viewProjection);
-    for (const key of dirty) {
-      const { center, half } = scBounds(key);
-      if (!inFrustum(planes, center, half)) {
-        this.dirty.add(key);
-        continue;
-      }
-      this.rebuildSuperchunk(key);
-    }
-    // Hide what the camera is not looking at, now that this frame's rebuilds
-    // have decided which superchunks have geometry.
     const playerKey = scKey(
       superchunkCellOf([
         camera.position.x,
@@ -1138,6 +1285,28 @@ export class TriangleRenderer {
         camera.position.z,
       ]),
     );
+    for (const key of dirty) {
+      const { center, half } = scBounds(key);
+      if (!inFrustum(planes, center, half)) {
+        this.dirty.add(key);
+        continue;
+      }
+      // A superchunk whose every content member the occlusion pass has proved
+      // covered is deferred like an off-frustum one: no point merging and
+      // uploading geometry the culler has already shown the player cannot see.
+      // It stays dirty — proxies behind a hill or along occluded sight-lines
+      // are the bulk of what a scroll's entering shell would otherwise merge —
+      // and rebuilds the frame a query or camera move re-exposes a member.
+      // A superchunk with any member on screen or unmeasured still merges, so
+      // nothing the player could see waits on the culler.
+      if (this.scOccluded(key, playerKey)) {
+        this.dirty.add(key);
+        continue;
+      }
+      this.rebuildSuperchunk(key);
+    }
+    // Hide what the camera is not looking at, now that this frame's rebuilds
+    // have decided which superchunks have geometry.
     this.applyVisibility(planes, playerKey);
     // fullscreen underwater tint when the camera dips below the sea
     if (this.seaLevel !== undefined) {

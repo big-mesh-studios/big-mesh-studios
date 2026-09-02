@@ -269,6 +269,7 @@ export class MeshClient {
       voxels: store.voxels,
       scale: store.scale,
       data: store.data.slice(),
+      hasWater: store.hasWater,
       tileRects: [...this.tilesById.values()],
     };
     const worker = this.workers[this.nextWorker % this.workers.length];

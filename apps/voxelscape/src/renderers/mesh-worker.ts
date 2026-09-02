@@ -17,7 +17,7 @@ const workerSelf = self as unknown as {
 };
 
 workerSelf.onmessage = (ev: MessageEvent<MeshBuildRequest>) => {
-  const { id, voxels, scale, data, tileRects } = ev.data;
+  const { id, voxels, scale, data, hasWater, tileRects } = ev.data;
   const store = new VoxelStore({
     dims: [voxels[0] * scale, voxels[1] * scale, voxels[2] * scale],
     voxels,
@@ -26,6 +26,7 @@ workerSelf.onmessage = (ev: MessageEvent<MeshBuildRequest>) => {
   // adopt the transferred buffer instead of copying it again; it already
   // includes the block's meshing border
   store.data = data;
+  store.hasWater = hasWater;
   const toTyped = (m: MeshArrays): MeshArrays => ({
     positions:
       m.positions instanceof Float32Array

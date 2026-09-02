@@ -67,6 +67,18 @@ describe("VoxelStore", () => {
     const store = smallStore();
     expect(store.data.length).toBe(6 * 6 * 6);
   });
+
+  it("raises hasWater only on a water write and clears it on reset", () => {
+    const store = smallStore();
+    store.set(1, 1, 1, VOXEL_GRASS);
+    expect(store.hasWater).toBe(false);
+
+    store.set(2, 1, 1, VOXEL_WATER);
+    expect(store.hasWater).toBe(true);
+
+    store.reset();
+    expect(store.hasWater).toBe(false);
+  });
 });
 
 describe("fillStore", () => {

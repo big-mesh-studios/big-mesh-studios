@@ -59,6 +59,15 @@ export class VoxelStore {
    * anything but air raises this wherever the voxels are written.
    */
   mightHaveVoxels = false;
+  /**
+   * Whether this block holds any water voxel. A block with none cannot expose
+   * a water face, so its water mesh is empty and the sweep that would prove it
+   * is skipped. Wrong only ever in the safe direction: a block that really has
+   * water but reports none would lose its surface, so every place water is
+   * written raises this flag alongside `mightHaveVoxels`, and nothing removes
+   * it; a dry block carrying the flag only costs an empty water build.
+   */
+  hasWater = false;
 
   constructor(params: { dims: Dim3; voxels: Dim3; scale: number }) {
     this.dims = params.dims;
@@ -133,7 +142,9 @@ export class VoxelStore {
   set(x: number, y: number, z: number, val: number): void {
     if (this.inBounds(x, y, z)) {
       this.data[this.index(x, y, z)] = val;
-      if (val !== VOXEL_AIR) {
+      if (val === VOXEL_WATER) {
+        this.hasWater = true;
+      } else if (val !== VOXEL_AIR) {
         this.mightHaveVoxels = true;
       }
     }
@@ -142,6 +153,7 @@ export class VoxelStore {
   reset(): void {
     this.data.fill(VOXEL_AIR);
     this.mightHaveVoxels = false;
+    this.hasWater = false;
   }
 }
 
@@ -435,7 +447,9 @@ export const fillStore = (
         id = plainId(vy, worldY);
       }
       store.data[store.paddedIndex(vx, vy, vz)] = id;
-      if (id !== VOXEL_AIR) {
+      if (id === VOXEL_WATER) {
+        store.hasWater = true;
+      } else if (id !== VOXEL_AIR) {
         store.mightHaveVoxels = true;
       }
     }

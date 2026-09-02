@@ -14,7 +14,12 @@ import {
 import { pickVoxel, type VoxelPick } from "../world/picker";
 import { BREAK_YIELD, ITEMS, type ItemId } from "./items";
 import { type Inventory } from "./inventory";
-import { VOXEL_AIR, VOXEL_GRASS, VOXEL_DIRT } from "../world/voxel-store";
+import {
+  VOXEL_AIR,
+  VOXEL_GRASS,
+  VOXEL_DIRT,
+  VOXEL_WATER,
+} from "../world/voxel-store";
 
 export interface EditingControllerParams {
   blocks: WorldBlock[];
@@ -186,7 +191,9 @@ export class EditingController {
         continue;
       }
       block.store.data[block.store.paddedIndex(x, y, z)] = id;
-      if (id !== VOXEL_AIR) {
+      if (id === VOXEL_WATER) {
+        block.store.hasWater = true;
+      } else if (id !== VOXEL_AIR) {
         block.store.mightHaveVoxels = true;
       }
       holders.push(i);
