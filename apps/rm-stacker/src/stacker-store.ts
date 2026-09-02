@@ -13,6 +13,7 @@ import {
   type DimensionKind,
   type Figure,
   type Part,
+  type Section,
   type Sides,
   type SolvedPart,
 } from "@big-mesh-studios/stacker/renderer";
@@ -202,6 +203,7 @@ export function createStacker() {
       parts().find((part) => part.name === selectedPartName()) ?? parts()[0],
   );
   const sides = createMemo<Sides>(() => selectedPart().sides);
+  const sections = createMemo<Section[]>(() => selectedPart().sections);
   const dimensions = createMemo<Dimensions3D>(() =>
     partDimensions(selectedPart()),
   );
@@ -385,6 +387,8 @@ export function createStacker() {
     dimensions,
     // sides
     sides,
+    // the cuts across the part being drawn on
+    sections,
     // voxels
     voxels,
     solvedParts,
@@ -430,7 +434,7 @@ export function createStacker() {
             ? {
                 ...part,
                 sides: resized,
-                sections: resizeSections(part.sections, options),
+                sections: resizeSections(options),
               }
             : part,
         ),

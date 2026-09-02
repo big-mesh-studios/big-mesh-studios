@@ -109,6 +109,8 @@
   font-size: 10pt;
   text-align: right;
   padding-inline: var(--margin);
+  display: grid;
+  align-items: center;
 
   & > span {
     overflow: hidden;

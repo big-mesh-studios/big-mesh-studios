@@ -11,6 +11,8 @@ import type { Alignment3D, SideAxis } from "./types";
 export interface ResizeOptions {
   from: {
     sides: Sides;
+    /** The cuts across the part as it stood before the change. */
+    sections: Section[];
     dimensions: Dimensions3D;
   };
   to: {
@@ -86,16 +88,15 @@ export const resizeSides = ({ from, to }: ResizeOptions): Sides => {
  * it nowhere to stand: it is dropped, which leaves the part the shape its six
  * sides describe there.
  */
-export const resizeSections = (
-  sections: Section[],
-  { from, to }: ResizeOptions,
-): Section[] => {
-  const resized = sections.map((section) => {
+export const resizeSections = ({ from, to }: ResizeOptions): Section[] => {
+  const resized = from.sections.map((section) => {
     const [low, high] = axisSides[section.axis];
+    // The faces re-framed the way the two sides they parallel are re-framed,
+    // by standing them in the place of those two.
     const faces = resizeSides({
       from: {
+        ...from,
         sides: { ...from.sides, [high]: section.before, [low]: section.after },
-        dimensions: from.dimensions,
       },
       to,
     });
