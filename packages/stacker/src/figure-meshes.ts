@@ -5,7 +5,12 @@
 // and the depth bias under an outline are the caller's, because the same figure
 // is drawn under studio light in the editor and under a moving sun in the world.
 // A caller reaches the materials to say so.
-import { Dimensions3D, Vector3D, type RGBA } from "@big-mesh-studios/maths";
+import {
+  Dimensions3D,
+  Matrix3x3,
+  Vector3D,
+  type RGBA,
+} from "@big-mesh-studios/maths";
 import {
   BoxGeometry,
   Group,
@@ -21,7 +26,7 @@ import {
   type FigurePlacement,
   type PartPlacement,
 } from "./box";
-import { composeRoot, partDimensions, type Figure, type Part } from "./data";
+import { composePose, partDimensions, type Figure, type Part } from "./data";
 import { VoxelModelMaterial } from "./material";
 import { encodePalette, solveVoxels } from "./solver";
 
@@ -70,13 +75,19 @@ export function voxelReach(
   from: Vector3D = Vector3D.EMPTY,
 ): number {
   let furthest = 0;
+  const middle = Vector3D.create();
+  const turned = Vector3D.create();
 
   figure.parts.forEach((part, index) => {
     const { dimensions, voxels } = solved[index];
     const { width, height, depth } = dimensions;
-    // Where the part's low corner sits in the figure, which is what turns a
-    // voxel's place in its own box into its place in the whole drawing.
-    const low = Vector3D.subtract(composeRoot(figure, part), part.pivot);
+    // Where the part stands, which is what turns a voxel's place in its own box
+    // into its place in the whole drawing.
+    const pose = composePose(figure, part);
+    // A voxel reaches half its own diagonal past its middle, wherever the part
+    // it belongs to has been turned to, so this is what stands for the corner
+    // that a voxel drawn square shows on the axis it is furthest along.
+    const corner = (Math.sqrt(3) / 2) * pose.scale;
 
     for (let z = 0; z < depth; z++) {
       for (let y = 0; y < height; y++) {
@@ -85,13 +96,24 @@ export function voxelReach(
             continue;
           }
 
-          // The far corner of the voxel rather than its middle, so the one at
-          // the edge of the figure is inside the picture and not half out of it.
-          const px = Math.abs(low.x + x + 0.5 - from.x) + 0.5;
-          const py = Math.abs(low.y + y + 0.5 - from.y) + 0.5;
-          const pz = Math.abs(low.z + z + 0.5 - from.z) + 0.5;
+          middle.x = x + 0.5 - part.pivot.x;
+          middle.y = y + 0.5 - part.pivot.y;
+          middle.z = z + 0.5 - part.pivot.z;
 
-          furthest = Math.max(furthest, Math.hypot(px, py, pz));
+          Matrix3x3.transform(
+            pose.turn,
+            Vector3D.multiplyScalar(middle, pose.scale, middle),
+            turned,
+          );
+
+          furthest = Math.max(
+            furthest,
+            Math.hypot(
+              pose.at.x + turned.x - from.x,
+              pose.at.y + turned.y - from.y,
+              pose.at.z + turned.z - from.z,
+            ) + corner,
+          );
         }
       }
     }

@@ -123,6 +123,26 @@ export namespace Matrix3x3 {
     return out;
   }
 
+  /**
+   * `matrix` with its rows and columns swapped over, which for a turn is the
+   * turn back: undoing it is turning the other way about every axis at once.
+   */
+  export function transpose(matrix: Matrix3x3, out = Matrix3x3.create()) {
+    const swapped = [
+      matrix[0],
+      matrix[3],
+      matrix[6],
+      matrix[1],
+      matrix[4],
+      matrix[7],
+      matrix[2],
+      matrix[5],
+      matrix[8],
+    ];
+    out.set(swapped);
+    return out;
+  }
+
   export function multiply(
     a: Matrix3x3,
     b: Matrix3x3,

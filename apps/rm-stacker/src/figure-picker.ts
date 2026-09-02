@@ -70,6 +70,8 @@ export function pickFigure(view: FigurePickView): FigurePick | undefined {
   const voxelCentre: Vector3D = { x: 0, y: 0, z: 0 };
   const inWorld: Vector3D = { x: 0, y: 0, z: 0 };
   const normalized: Dimensions3D = { width: 0, height: 0, depth: 0 };
+  const partTurnBack = Matrix3x3.create();
+  const intoPart = Matrix3x3.create();
 
   let nearest: FigurePick | undefined;
   let nearestDistance = Infinity;
@@ -92,6 +94,15 @@ export function pickFigure(view: FigurePickView): FigurePick | undefined {
 
     Dimensions3D.normalize(dimensions, normalized);
     Matrix3x3.transform(view.modelToWorld, stands.position, partOffset);
+
+    // Into the part's own space rather than the figure's: down through the
+    // figure's turn, and then back through the part's own, since undoing a
+    // turn is turning the other way.
+    Matrix3x3.multiply(
+      Matrix3x3.transpose(placed.turn, partTurnBack),
+      view.worldToModel,
+      intoPart,
+    );
 
     const met = voxelPicker({
       uniforms: {
@@ -118,7 +129,7 @@ export function pickFigure(view: FigurePickView): FigurePick | undefined {
           -partOffset.y / stands.scale,
           (view.cameraDistance - partOffset.z) / stands.scale,
         ],
-        [shaders.uWorldToModel]: Array.from(view.worldToModel),
+        [shaders.uWorldToModel]: Array.from(intoPart),
         [shaders.uUnlit]: view.unlit,
       },
       varying: { vUv: [view.uv.x, view.uv.y] },
@@ -153,8 +164,10 @@ export function pickFigure(view: FigurePickView): FigurePick | undefined {
       (normalized.depth * (met[2] + 0.5)) / dimensions.depth -
       normalized.depth / 2;
 
-    // Out of the part's own space, up to the size and the place the figure
-    // draws it at, and from there into the world the camera stands in.
+    // Out of the part's own space: turned the way the part is turned, then up
+    // to the size and the place the figure draws it at, and from there into the
+    // world the camera stands in.
+    Matrix3x3.transform(placed.turn, voxelCentre, voxelCentre);
     voxelCentre.x = voxelCentre.x * stands.scale + stands.position.x;
     voxelCentre.y = voxelCentre.y * stands.scale + stands.position.y;
     voxelCentre.z = voxelCentre.z * stands.scale + stands.position.z;

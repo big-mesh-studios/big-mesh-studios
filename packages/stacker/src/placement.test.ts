@@ -381,6 +381,33 @@ describe("voxelReach", () => {
   it("reaches nowhere in a figure with nothing drawn in it", () => {
     expect(voxelReach(figure, drawnAt([]))).toBe(0);
   });
+
+  it("measures a voxel where the part's turn has carried it", () => {
+    const turned = partOf("body", extent, {
+      turn: Vector3D.create(0, QUARTER, 0),
+    });
+    // Three voxels in front of the part, along the axis the turn works across.
+    const inFront = Vector3D.create(0, 0, 3);
+    const corner = Math.sqrt(3) / 2;
+
+    // The voxel stands a voxel and a half out along each of the part's own
+    // axes. A quarter turn about y carries it from the near side of the part
+    // to the far side, which is three voxels further from anything in front.
+    expect(voxelReach(figureOf(turned), drawnAt([[3, 3, 3]]), inFront)).toEqual(
+      Math.hypot(1.5, 1.5, 4.5) + corner,
+    );
+    expect(voxelReach(figure, drawnAt([[3, 3, 3]]), inFront)).toEqual(
+      Math.hypot(1.5, 1.5, 1.5) + corner,
+    );
+  });
+
+  it("measures a voxel of a part drawn larger as standing further out", () => {
+    const large = partOf("body", extent, { scale: 3 });
+
+    expect(voxelReach(figureOf(large), drawnAt([[3, 3, 3]]))).toBeCloseTo(
+      3 * voxelReach(figure, drawnAt([[3, 3, 3]])),
+    );
+  });
 });
 
 describe("applyFraming", () => {

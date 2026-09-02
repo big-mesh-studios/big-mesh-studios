@@ -26,6 +26,8 @@ export function PartsPanel() {
     duplicatePart,
     removePart,
     renamePart,
+    turnPart,
+    scalePart,
     doCommand,
   } = useContext(StackerContext);
 
@@ -38,6 +40,35 @@ export function PartsPanel() {
     }
 
     doCommand(Command.movePart(part.name, root), true, "Move Part");
+  }
+
+  /** How many degrees a turn of one radian is, a turn being typed in degrees. */
+  const DEGREES = 180 / Math.PI;
+
+  function turnTo(axis: WidgetAxis, degrees: number) {
+    const part = selectedPart();
+
+    if (Number.isNaN(degrees)) {
+      return;
+    }
+
+    const turn = { ...part.turn, [axis]: degrees / DEGREES };
+
+    if (Vector3D.equals(turn, part.turn)) {
+      return;
+    }
+
+    turnPart(part.name, turn);
+  }
+
+  function scaleTo(scale: number) {
+    const part = selectedPart();
+
+    if (Number.isNaN(scale) || scale === part.scale) {
+      return;
+    }
+
+    scalePart(part.name, scale);
   }
 
   function askForName() {
@@ -99,7 +130,10 @@ export function PartsPanel() {
         <div class={[styles.pose, styles.pane]}>
           <For each={widgetAxes}>
             {(axis) => (
-              <label class={styles.field}>
+              <label
+                class={styles.field}
+                title={`Where the part stands along the ${axis} axis, in voxels`}
+              >
                 <span>{axis}</span>
                 <input
                   type="number"
@@ -112,6 +146,37 @@ export function PartsPanel() {
               </label>
             )}
           </For>
+          <For each={widgetAxes}>
+            {(axis) => (
+              <label
+                class={styles.field}
+                title={`How far the part is turned about its own ${axis} axis, in degrees`}
+              >
+                <span>{axis}°</span>
+                <input
+                  type="number"
+                  step="15"
+                  value={Math.round(selectedPart().turn[axis] * DEGREES)}
+                  onChange={(event) =>
+                    turnTo(axis, event.currentTarget.valueAsNumber)
+                  }
+                />
+              </label>
+            )}
+          </For>
+          <label
+            class={styles.field}
+            title="How large the part is drawn, against the part it hangs off"
+          >
+            <span>×</span>
+            <input
+              type="number"
+              step="0.1"
+              min="0.01"
+              value={selectedPart().scale}
+              onChange={(event) => scaleTo(event.currentTarget.valueAsNumber)}
+            />
+          </label>
         </div>
       </PartsPopover.PopOver>
     </>

@@ -456,6 +456,28 @@ export function createStacker() {
     },
     /** Adds a copy of `name`'s drawings and placement beside it, and selects it. */
     /**
+     * Turns the part called `name` to `turn`, in radians about its own axes.
+     * A part hanging off it is carried round with it.
+     */
+    turnPart(name: string, turn: Vector3D) {
+      changeParts("Turn Part", (current) =>
+        current.map((part) => (part.name === name ? { ...part, turn } : part)),
+      );
+    },
+    /**
+     * Draws the part called `name` at `scale`, against the voxels the part it
+     * hangs off is drawn in. A part hanging off it is drawn larger with it.
+     */
+    scalePart(name: string, scale: number) {
+      if (!(scale > 0)) {
+        return;
+      }
+
+      changeParts("Scale Part", (current) =>
+        current.map((part) => (part.name === name ? { ...part, scale } : part)),
+      );
+    },
+    /**
      * Cuts the selected part across `axis`, at `at` voxels from the low end of
      * it, and hands the cut the two faces it reveals. A cut that would stand
      * outside the box, or where the part is already cut, is not made.

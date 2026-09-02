@@ -123,3 +123,63 @@ describe("pickFigure", () => {
     ).toBe(undefined);
   });
 });
+
+describe("pickFigure, with a part turned", () => {
+  const BAR = { width: 16, height: 2, depth: 2 };
+
+  /** A bar lying along the width, turned as it is told. */
+  const bar = (turn: Vector3D): Figure => ({
+    parts: [
+      {
+        name: "bar",
+        sides: Object.fromEntries(
+          sideKinds.map((kind) => {
+            const [across, down] = sideAxes[kind];
+            return [kind, Bitmap.create(BAR[across], BAR[down])];
+          }),
+        ) as Part["sides"],
+        sections: [],
+        root: Vector3D.create(),
+        pivot: centrePivot(BAR),
+        turn,
+        scale: 1,
+        parent: null,
+      },
+    ],
+    palette: PALETTE,
+  });
+
+  // Well to the right of the middle, but inside the reach of a bar lying
+  // across the view: a third of the way out along one that spans the middle.
+  const OFF_TO_THE_SIDE = { x: 0.63, y: 0.51 };
+
+  it("meets a bar lying across the view out where it reaches", () => {
+    expect(
+      pickFigure({
+        ...lookingAt(bar(Vector3D.create()), 0),
+        uv: OFF_TO_THE_SIDE,
+      })?.part,
+    ).toBe("bar");
+  });
+
+  it("misses it once its own turn has stood it end on to the camera", () => {
+    // Turned a quarter about its pivot, the bar runs away from the camera
+    // rather than across it, and reaches two voxels either side of the middle
+    // instead of eight.
+    expect(
+      pickFigure({
+        ...lookingAt(bar(Vector3D.create(0, Math.PI / 2, 0)), 0),
+        uv: OFF_TO_THE_SIDE,
+      }),
+    ).toBe(undefined);
+  });
+
+  it("still meets it at the middle, where the turn leaves it standing", () => {
+    expect(
+      pickFigure({
+        ...lookingAt(bar(Vector3D.create(0, Math.PI / 2, 0)), 0),
+        uv: { x: 0.51, y: 0.51 },
+      })?.part,
+    ).toBe("bar");
+  });
+});
