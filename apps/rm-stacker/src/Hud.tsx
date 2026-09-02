@@ -145,9 +145,6 @@ export function Hud() {
         />
       </Bar>
       <Bar class={styles.colour}>
-        <PalettePopover.Trigger class={[tabStyle, colourTabStyle]}>
-          <Colour colour={selectedColour()} />
-        </PalettePopover.Trigger>
         <IconTab
           kind="eraser"
           onClick={() => selectPaletteIndex(Bitmap.EMPTY)}
@@ -156,6 +153,9 @@ export function Hud() {
           }
           title="Draw in nothing, which takes away what is drawn"
         />
+        <PalettePopover.Trigger class={[tabStyle, colourTabStyle]}>
+          <Colour colour={selectedColour()} />
+        </PalettePopover.Trigger>
         <PalettePopover.PopOver
           class={[popoverStyle, styles.palettePopover]}
           popover="manual"
