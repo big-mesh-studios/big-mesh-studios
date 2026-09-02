@@ -53,11 +53,10 @@ export function pointer<T extends HTMLElement>(
   const element = initialEvent.currentTarget;
   element.setPointerCapture(pointerId);
 
-  const pointers = POINTER_EVENT_MAP.getOrInsert(
-    initialEvent.currentTarget,
-    new Map(),
-  );
-  pointers.set(initialEvent.pointerId, initialEvent);
+  const pointers =
+    POINTER_EVENT_MAP.get(element) ?? new Map<number, PointerEvent>();
+  POINTER_EVENT_MAP.set(element, pointers);
+  pointers.set(pointerId, initialEvent);
 
   options?.signal.addEventListener("abort", () => controller.abort());
 
