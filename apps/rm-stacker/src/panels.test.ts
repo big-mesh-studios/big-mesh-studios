@@ -468,6 +468,18 @@ describe("computeSliceLayouts and computeSliceMarkers", () => {
     }
   });
 
+  it("stands a square for taking the cut away on the corner opposite its number", () => {
+    const [slice] = computeSliceLayouts(part, DIMENSIONS);
+
+    expect(slice.remove.max.x - slice.remove.min.x).toBe(
+      slice.remove.max.y - slice.remove.min.y,
+    );
+    expect(slice.remove.max.x).toBe(slice.box.max.x);
+    expect(slice.remove.max.y).toBe(slice.box.min.y);
+    // Standing clear of the number at the other corner.
+    expect(slice.remove.min.x).toBeGreaterThan(slice.label.max.x);
+  });
+
   it("stacks a second slice under the first", () => {
     const [first, second] = computeSliceLayouts(
       partOf(acrossTheWidth(2), acrossTheWidth(3)),

@@ -28,6 +28,7 @@ import {
   intersectPanels,
   intersectSliceLabels,
   intersectSliceMarkers,
+  intersectSliceRemoves,
   withPadding,
   type Box,
   type PanelLabel,
@@ -72,6 +73,7 @@ export const createPixelEditorController = ({
 }) => {
   const {
     cutPart,
+    removeCut,
     selectedPart,
     selectedColour,
     selectPaletteIndex,
@@ -223,6 +225,33 @@ export const createPixelEditorController = ({
     return takingAway
       ? opposite.index !== Bitmap.EMPTY
       : opposite.index === Bitmap.EMPTY;
+  }
+
+  /**
+   * What taking hold of a place on the canvas does, where something standing
+   * there does anything at all.
+   */
+  type Press = { kind: "brings"; box: Box } | { kind: "removes"; cut: number };
+
+  /**
+   * What taking hold of `worldPosition` does: a slice's number brings that
+   * slice into view, a panel's name brings that panel, and the box at the
+   * corner of a slice takes its cut away.
+   *
+   * Everything answering to a press stands in the space around a drawing,
+   * where nothing is drawn, so none of it takes a stroke off a panel.
+   */
+  function pressAt(worldPosition: Vector2D): Press | undefined {
+    const slices = sliceLayouts();
+    const removed = intersectSliceRemoves(slices, worldPosition);
+
+    if (removed !== undefined) {
+      return { kind: "removes", cut: removed.cut };
+    }
+
+    const box = broughtIntoViewAt(worldPosition);
+
+    return box === undefined ? undefined : { kind: "brings", box };
   }
 
   /**
@@ -389,13 +418,17 @@ export const createPixelEditorController = ({
     event.currentTarget.setPointerCapture(event.pointerId);
     pointerIds.add(event.pointerId);
 
-    // A slice's number and a panel's name are both ways of reaching what they
-    // stand for, whatever tool is in hand: what is under either of them is the
-    // space around a drawing, and nothing draws there.
-    const brought = broughtIntoViewAt(eventToWorldPosition(event));
+    // Whatever stands in the space around the drawings answers first, and does
+    // so whatever tool is in hand.
+    const press = pressAt(eventToWorldPosition(event));
 
-    if (brought !== undefined) {
-      focusOn(brought);
+    if (press?.kind === "brings") {
+      focusOn(press.box);
+      return;
+    }
+
+    if (press?.kind === "removes") {
+      removeCut(press.cut);
       return;
     }
 
@@ -817,9 +850,9 @@ export const createPixelEditorController = ({
 
       // Said after the edges have had their say, so that a number standing over
       // one of them still shows what it does.
-      const brought = broughtIntoViewAt(eventToWorldPosition(event));
+      const press = pressAt(eventToWorldPosition(event));
 
-      if (brought !== undefined) {
+      if (press !== undefined) {
         setCursorStyle("pointer");
       } else if (mode() !== "Idle") {
         setCursorStyle(undefined);

@@ -444,6 +444,8 @@ const PixelEditorView: Component = () => {
         ctx.setLineDash([]);
 
         fillLabel(ctx, slice.label, slice.number, colour, _scale);
+        // At the corner opposite its number: what takes the cut away again.
+        fillLabel(ctx, slice.remove, "×", colour, _scale);
       }
 
       // The same number again, standing outside the panels the cut crosses, so

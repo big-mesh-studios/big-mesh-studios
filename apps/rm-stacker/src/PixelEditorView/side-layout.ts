@@ -115,6 +115,8 @@ export interface SliceLayout {
   box: Box;
   /** The little box at that box's top left corner, carrying its number. */
   label: Box;
+  /** The little box at the corner opposite, which takes the cut away. */
+  remove: Box;
 }
 
 /**
@@ -160,6 +162,11 @@ export function computeSliceLayouts(
       label: {
         min: { x: box.min.x, y: box.min.y - LABEL_HEIGHT },
         max: { x: box.min.x + NUMBER_WIDTH, y: box.min.y },
+      },
+      // A square standing on the corner opposite, the tab's own height across.
+      remove: {
+        min: { x: box.max.x - LABEL_HEIGHT, y: box.min.y - LABEL_HEIGHT },
+        max: { x: box.max.x, y: box.min.y },
       },
     };
   });
@@ -367,6 +374,14 @@ export function intersectSliceLabels(
   worldPosition: Vector2D,
 ): SliceLayout | undefined {
   return slices.find((slice) => boxHolds(slice.label, worldPosition));
+}
+
+/** Which slice's box for taking the cut away `worldPosition` falls on. */
+export function intersectSliceRemoves(
+  slices: SliceLayout[],
+  worldPosition: Vector2D,
+): SliceLayout | undefined {
+  return slices.find((slice) => boxHolds(slice.remove, worldPosition));
 }
 
 /** Which panel's name `worldPosition` falls on, where it falls on one at all. */

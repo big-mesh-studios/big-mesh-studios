@@ -470,6 +470,32 @@ export function createStacker() {
         ),
       );
     },
+    /**
+     * Takes the cut `cut` away from the selected part, and the two faces it
+     * revealed with it. The stretches either side of it become one again,
+     * carved by whatever closes them once the cut is gone, so a shape drawn on
+     * those faces is a shape the part no longer holds.
+     */
+    removeCut(cut: number) {
+      const part = selectedPart();
+
+      if (part.sections[cut] === undefined) {
+        return;
+      }
+
+      changeParts("Remove Cut", (current) =>
+        current.map((candidate) =>
+          candidate.name === part.name
+            ? {
+                ...candidate,
+                sections: candidate.sections.filter(
+                  (_section, index) => index !== cut,
+                ),
+              }
+            : candidate,
+        ),
+      );
+    },
     duplicatePart(name: string) {
       const source = parts().find((part) => part.name === name);
 
