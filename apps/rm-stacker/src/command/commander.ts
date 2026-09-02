@@ -2,7 +2,11 @@ import { Accessor, Setter } from "@solidjs/signals";
 import { untrack } from "solid-js";
 import { loadFigure, saveFigure } from "@big-mesh-studios/stacker/format";
 import { Bitmap, RGBA, Vector3D } from "@big-mesh-studios/maths";
-import { type Part, type Sides } from "@big-mesh-studios/stacker/renderer";
+import {
+  panelBitmap,
+  type PanelKind,
+  type Part,
+} from "@big-mesh-studios/stacker/renderer";
 import { intersectSide } from "../utils/utils";
 import { Command } from "./Command";
 
@@ -30,13 +34,17 @@ export function createCommander({
   }
 
   /**
-   * The drawings of the part called `name`, or undefined when the figure no
-   * longer holds it. A command names the part it was made against, and that
-   * part can have been deleted since — by an undo reaching back past the point
-   * it was added, say — so every command that draws checks before it draws.
+   * The drawing a command lands on: the panel of that name on the part of that
+   * name, or undefined when the figure no longer holds either.
+   *
+   * A command names the part it was made against, and that part can have been
+   * deleted since — by an undo reaching back past the point it was added, say —
+   * or have lost the cut whose face was drawn on, so every command that draws
+   * checks before it draws.
    */
-  function sidesOf(name: string): Sides | undefined {
-    return parts().find((part) => part.name === name)?.sides;
+  function panelOf(name: string, panel: PanelKind): Bitmap | undefined {
+    const part = parts().find((part) => part.name === name);
+    return part === undefined ? undefined : panelBitmap(part, panel);
   }
 
   async function doCommand(command: Command): Promise<Command> {
@@ -62,17 +70,15 @@ export function createCommander({
         case "FillPixel": {
           const {
             part: partName,
-            side: kind,
+            panel: kind,
             position,
             paletteIndex,
           } = command;
-          const sides = sidesOf(partName);
+          const side = panelOf(partName, kind);
 
-          if (sides === undefined) {
+          if (side === undefined) {
             return Command.noOperation();
           }
-
-          const side = sides[kind];
 
           const intersection = intersectSide({ position, side });
 
@@ -145,18 +151,16 @@ export function createCommander({
         case "FillRectangle": {
           const {
             part: partName,
-            side: kind,
+            panel: kind,
             min,
             max,
             paletteIndex,
           } = command;
-          const sides = sidesOf(partName);
+          const side = panelOf(partName, kind);
 
-          if (sides === undefined) {
+          if (side === undefined) {
             return Command.noOperation();
           }
-
-          const side = sides[kind];
 
           const _snapshot = snapshot(parts());
 
@@ -171,17 +175,15 @@ export function createCommander({
         case "WritePixel": {
           const {
             part: partName,
-            side: kind,
+            panel: kind,
             position,
             paletteIndex,
           } = command;
-          const sides = sidesOf(partName);
+          const side = panelOf(partName, kind);
 
-          if (sides === undefined) {
+          if (side === undefined) {
             return Command.noOperation();
           }
-
-          const side = sides[kind];
 
           const intersection = intersectSide({ position, side });
 
@@ -199,14 +201,12 @@ export function createCommander({
         }
 
         case "ErasePixel": {
-          const { part: partName, side: kind, position } = command;
-          const sides = sidesOf(partName);
+          const { part: partName, panel: kind, position } = command;
+          const side = panelOf(partName, kind);
 
-          if (sides === undefined) {
+          if (side === undefined) {
             return Command.noOperation();
           }
-
-          const side = sides[kind];
 
           const intersection = intersectSide({ position, side });
 

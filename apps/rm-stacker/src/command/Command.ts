@@ -1,14 +1,15 @@
 import { Vector2D, Vector3D } from "@big-mesh-studios/maths";
-import { type SideKind } from "@big-mesh-studios/stacker/renderer";
+import { type PanelKind } from "@big-mesh-studios/stacker/renderer";
 import { base64ToUint8Array, uint8ArrayToBase64 } from "../utils/utils";
 
 /**
  * A change to the figure being drawn, in a form that can be applied, reversed,
  * and written to the undo history on disk.
  *
- * Everything that touches a drawing names the part it is drawn on. An undo may
- * be taken long after the selection has moved on, and naming the part is what
- * lands it on the drawing it was made against.
+ * Everything that touches a drawing names the part it is drawn on and the panel
+ * of that part it lands on — one of its six sides, or a face of one of its
+ * cuts. An undo may be taken long after the selection has moved on, and naming
+ * both is what lands it on the drawing it was made against.
  */
 export type Command =
   | {
@@ -21,21 +22,21 @@ export type Command =
   | {
       type: "WritePixel";
       part: string;
-      side: SideKind;
+      panel: PanelKind;
       position: Vector2D;
       paletteIndex: number;
     }
   | {
       type: "FillPixel";
       part: string;
-      side: SideKind;
+      panel: PanelKind;
       position: Vector2D;
       paletteIndex: number;
     }
   | {
       type: "FillRectangle";
       part: string;
-      side: SideKind;
+      panel: PanelKind;
       min: Vector2D;
       max: Vector2D;
       paletteIndex: number;
@@ -43,7 +44,7 @@ export type Command =
   | {
       type: "ErasePixel";
       part: string;
-      side: SideKind;
+      panel: PanelKind;
       position: Vector2D;
     }
   | {
@@ -71,38 +72,38 @@ export namespace Command {
 
   export function writePixel(
     part: string,
-    side: SideKind,
+    panel: PanelKind,
     position: Vector2D,
     paletteIndex: number,
   ): Command {
-    return { type: "WritePixel", part, side, position, paletteIndex };
+    return { type: "WritePixel", part, panel, position, paletteIndex };
   }
 
   export function fillRectangle(
     part: string,
-    side: SideKind,
+    panel: PanelKind,
     min: Vector2D,
     max: Vector2D,
     paletteIndex: number,
   ): Command {
-    return { type: "FillRectangle", part, side, min, max, paletteIndex };
+    return { type: "FillRectangle", part, panel, min, max, paletteIndex };
   }
 
   export function fillPixel(
     part: string,
-    side: SideKind,
+    panel: PanelKind,
     position: Vector2D,
     paletteIndex: number,
   ): Command {
-    return { type: "FillPixel", part, side, position, paletteIndex };
+    return { type: "FillPixel", part, panel, position, paletteIndex };
   }
 
   export function erasePixel(
     part: string,
-    side: SideKind,
+    panel: PanelKind,
     position: Vector2D,
   ): Command {
-    return { type: "ErasePixel", part, side, position };
+    return { type: "ErasePixel", part, panel, position };
   }
 
   export function movePart(part: string, root: Vector3D): Command {
@@ -132,33 +133,33 @@ export namespace Command {
         };
       }
       case "WritePixel": {
-        let { part, side, position, paletteIndex } = command;
+        let { part, panel, position, paletteIndex } = command;
         return {
           type: "WritePixel",
           part,
-          side,
+          panel,
           x: position.x,
           y: position.y,
           paletteIndex,
         };
       }
       case "FillPixel": {
-        let { part, side, position, paletteIndex } = command;
+        let { part, panel, position, paletteIndex } = command;
         return {
           type: "FillPixel",
           part,
-          side,
+          panel,
           x: position.x,
           y: position.y,
           paletteIndex,
         };
       }
       case "FillRectangle": {
-        let { part, side, min, max, paletteIndex } = command;
+        let { part, panel, min, max, paletteIndex } = command;
         return {
           type: "FillRectangle",
           part,
-          side,
+          panel,
           minX: min.x,
           minY: min.y,
           maxX: max.x,
@@ -167,8 +168,14 @@ export namespace Command {
         };
       }
       case "ErasePixel": {
-        let { part, side, position } = command;
-        return { type: "ErasePixel", part, side, x: position.x, y: position.y };
+        let { part, panel, position } = command;
+        return {
+          type: "ErasePixel",
+          part,
+          panel,
+          x: position.x,
+          y: position.y,
+        };
       }
       case "MovePart": {
         let { part, root } = command;
@@ -195,8 +202,14 @@ export namespace Command {
    * doesn't match a known, current command shape (e.g. history persisted
    * before a command shape change) so one stale entry can't take down the
    * rest of a loaded undo/redo stack.
+   *
+   * A command written before a part had anything but its six sides to draw on
+   * names a `side` rather than a panel. It is read as the panel of that name,
+   * which is the same drawing.
    */
   export function fromJSON(command: any): Command {
+    const panelOf = (command: any): PanelKind => command.panel ?? command.side;
+
     switch (command?.type) {
       case "NoOperation":
         return Command.noOperation();
@@ -210,7 +223,7 @@ export namespace Command {
         }
         return Command.writePixel(
           command.part,
-          command.side,
+          panelOf(command),
           { x: command.x, y: command.y },
           command.paletteIndex,
         );
@@ -220,7 +233,7 @@ export namespace Command {
         }
         return Command.fillRectangle(
           command.part,
-          command.side,
+          panelOf(command),
           { x: command.minX, y: command.minY },
           { x: command.maxX, y: command.maxY },
           command.paletteIndex,
@@ -231,7 +244,7 @@ export namespace Command {
         }
         return Command.fillPixel(
           command.part,
-          command.side,
+          panelOf(command),
           { x: command.x, y: command.y },
           command.paletteIndex,
         );
@@ -239,7 +252,7 @@ export namespace Command {
         if (typeof command.part !== "string") {
           return Command.noOperation();
         }
-        return Command.erasePixel(command.part, command.side, {
+        return Command.erasePixel(command.part, panelOf(command), {
           x: command.x,
           y: command.y,
         });

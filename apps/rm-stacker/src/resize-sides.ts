@@ -1,6 +1,11 @@
 import { SIDE_AXES } from "./constants";
 import { Bitmap, Dimensions3D } from "@big-mesh-studios/maths";
-import { type SideKind, type Sides } from "@big-mesh-studios/stacker/renderer";
+import {
+  axisSides,
+  type Section,
+  type SideKind,
+  type Sides,
+} from "@big-mesh-studios/stacker/renderer";
 import type { Alignment3D, SideAxis } from "./types";
 
 export interface ResizeOptions {
@@ -69,4 +74,45 @@ export const resizeSides = ({ from, to }: ResizeOptions): Sides => {
     top: resizeSide("top"),
     bottom: resizeSide("bottom"),
   };
+};
+
+/**
+ * Every cut re-framed for the same change, and every cut the box no longer has
+ * room for left out.
+ *
+ * A section's faces are drawn the way the two sides that look along its axis
+ * are drawn, so they are re-framed exactly as those sides are. The cut itself
+ * stands somewhere along that axis, and an axis that has shrunk past it leaves
+ * it nowhere to stand: it is dropped, which leaves the part the shape its six
+ * sides describe there.
+ */
+export const resizeSections = (
+  sections: Section[],
+  { from, to }: ResizeOptions,
+): Section[] => {
+  const resized = sections.map((section) => {
+    const [low, high] = axisSides[section.axis];
+    const faces = resizeSides({
+      from: {
+        sides: { ...from.sides, [high]: section.before, [low]: section.after },
+        dimensions: from.dimensions,
+      },
+      to,
+    });
+
+    const grewAtStart = to.alignment[section.axis] === "min";
+    const grew = to.dimensions[section.axis] - from.dimensions[section.axis];
+
+    return {
+      ...section,
+      at: grewAtStart ? section.at + grew : section.at,
+      before: faces[high],
+      after: faces[low],
+    };
+  });
+
+  return resized.filter(
+    (section) =>
+      section.at >= 1 && section.at <= to.dimensions[section.axis] - 1,
+  );
 };

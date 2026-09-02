@@ -123,6 +123,33 @@ export interface Section {
 }
 
 /**
+ * What one of a section's two faces is called: the cut it belongs to, counted
+ * as the part lists them, and which of the two it is. A face is written to the
+ * file under this name, and drawn on under it.
+ */
+export type SectionFaceKind = `section-${number}-${"before" | "after"}`;
+
+/** One of the drawings a part is made of: one of its six sides, or a section's face. */
+export type PanelKind = SideKind | SectionFaceKind;
+
+/** What the `face` face of the cut `cut` is called. */
+export const sectionFaceKind = (
+  cut: number,
+  face: "before" | "after",
+): SectionFaceKind => `section-${cut}-${face}`;
+
+/** Which cut and which face `panel` names, or undefined for one of the six sides. */
+export function readSectionFace(
+  panel: PanelKind,
+): { cut: number; face: "before" | "after" } | undefined {
+  const read = /^section-(\d+)-(before|after)$/.exec(panel);
+
+  return read === null
+    ? undefined
+    : { cut: Number(read[1]), face: read[2] as "before" | "after" };
+}
+
+/**
  * One box of a figure: the six drawings it is made of, the cuts through it,
  * where it sits, and the point it turns about.
  */
@@ -183,6 +210,46 @@ export function partDimensions(part: Part): Dimensions3D {
     height: part.sides.front.height,
     depth: part.sides.left.width,
   };
+}
+
+/**
+ * The drawing `panel` names, or undefined where the part has no such drawing —
+ * a cut it does not have, or a name that is neither a side nor a face.
+ */
+export function panelBitmap(part: Part, panel: PanelKind): Bitmap | undefined {
+  const face = readSectionFace(panel);
+
+  return face === undefined
+    ? part.sides[panel as SideKind]
+    : part.sections[face.cut]?.[face.face];
+}
+
+/**
+ * Which of the six sides `panel` is drawn the way of: itself, for one of those
+ * six, and for a section's face the side it parallels — the one at the high end
+ * of the cut's axis for the face closing the run before it, and the one at the
+ * low end for the face opening the run after.
+ *
+ * A face is drawn the way that side is drawn, across the same two axes and
+ * turned the same way about, which is what lets everything that lays out,
+ * mirrors or measures a side do the same for a face.
+ */
+export function panelSide(part: Part, panel: PanelKind): SideKind | undefined {
+  const face = readSectionFace(panel);
+
+  if (face === undefined) {
+    return sideKindSet[panel as SideKind] ? (panel as SideKind) : undefined;
+  }
+
+  const section = part.sections[face.cut];
+
+  if (section === undefined) {
+    return undefined;
+  }
+
+  const [low, high] = axisSides[section.axis];
+
+  return face.face === "before" ? high : low;
 }
 
 /**

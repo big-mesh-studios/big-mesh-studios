@@ -11,11 +11,12 @@ import * as THREE from "three";
 import { SIDE_MASK } from "../constants";
 import { StackerContext } from "../context";
 import { Bitmap, Vector2D } from "@big-mesh-studios/maths";
-import { keysOf, sideMaskToCSS } from "../utils/utils";
+import { panelLabel, panelTable } from "../panels";
+import { sideMaskToCSS } from "../utils/utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
 import styles from "./PixelEditorView.module.css";
-import { computeSidePositions, LABEL_HEIGHT } from "./side-layout";
+import { computePanelPositions, LABEL_HEIGHT } from "./side-layout";
 
 interface ImageCanvasCacheData {
   canvas: HTMLCanvasElement;
@@ -36,18 +37,28 @@ function fillPath(ctx: CanvasRenderingContext2D, [start, ...path]: Vector2D[]) {
 }
 
 const PixelEditorView: Component = () => {
-  const { sides, doCommand, pushUndo, onRender, dimensions, mode, palette } =
-    useContext(StackerContext);
+  const {
+    sides,
+    selectedPart,
+    doCommand,
+    pushUndo,
+    onRender,
+    dimensions,
+    mode,
+    palette,
+  } = useContext(StackerContext);
   const imageCanvasCache = new WeakMap<Bitmap, ImageCanvasCacheData>();
 
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [canvasSize, setCanvasSize] = createSignal<THREE.Vector2 | undefined>();
 
-  const sidePositions = createMemo(() => computeSidePositions(dimensions()));
+  const panelPositions = createMemo(() =>
+    computePanelPositions(selectedPart(), dimensions()),
+  );
 
   const controller = createPixelEditorController({
     canvas,
-    sidePositions,
+    panelPositions,
     doCommand,
     pushUndo,
   });
@@ -129,9 +140,22 @@ const PixelEditorView: Component = () => {
       ctx.scale(_scale, _scale);
       ctx.translate(-_pan.x, -_pan.y);
 
-      for (const sideKind of keysOf(sides())) {
-        const side = sides()[sideKind];
-        const sidePosition = sidePositions()[sideKind];
+      const table = panelTable(selectedPart());
+
+      for (const panelKind of table.kinds) {
+        const side = table.bitmap(panelKind);
+        const sidePosition = panelPositions()[panelKind];
+        const sideKind = table.side(panelKind);
+
+        if (
+          side === undefined ||
+          sidePosition === undefined ||
+          sideKind === undefined
+        ) {
+          continue;
+        }
+
+        const label = panelLabel(selectedPart(), panelKind);
 
         const imageCanvasCacheData =
           imageCanvasCache.get(side) ?? createImageCanvasCacheEntry(side);
@@ -176,7 +200,7 @@ const PixelEditorView: Component = () => {
           ctx.restore();
         }
 
-        const guide = guides[sideKind];
+        const guide = panelKind === sideKind ? guides[sideKind] : undefined;
 
         if (guide !== undefined) {
           renderGuide({
@@ -206,7 +230,7 @@ const PixelEditorView: Component = () => {
         ctx.fillStyle = sideColor;
 
         ctx.font = "1.75px sans-serif";
-        const metrics = ctx.measureText(sideKind);
+        const metrics = ctx.measureText(label);
 
         const overflow = Math.max(Math.ceil(metrics.width) + 2 - side.width, 0);
 
@@ -226,7 +250,7 @@ const PixelEditorView: Component = () => {
         ctx.fillStyle = "oklch(23.26% .014 253.1)";
 
         ctx.fillText(
-          sideKind,
+          label,
           sidePosition.x + 0.5 * (side.width - metrics.width),
           sidePosition.y +
             side.height +

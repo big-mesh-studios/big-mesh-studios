@@ -18,12 +18,15 @@ import {
   centrePivot,
   dimensionKinds,
   partDimensions,
+  readSectionFace,
+  sectionFaceKind,
   sideAxes,
   sideKinds,
   sideKindSet,
   type DimensionKind,
   type Figure,
   type Model,
+  type PanelKind,
   type Part,
   type Section,
   type SideKind,
@@ -59,12 +62,9 @@ interface PartsManifest {
   }[];
 }
 
-/** Which face of which section a png in a part's folder holds. */
-const SECTION_FILE = /^section-(\d+)-(before|after)$/;
-
-/** What a section's two faces are called in the folder, in the order they are written. */
-const sectionFileName = (index: number, face: "before" | "after") =>
-  `section-${index}-${face}.png`;
+/** What a section's face is written to the folder as: the name it is drawn on under. */
+const sectionFileName = (cut: number, face: "before" | "after") =>
+  `${sectionFaceKind(cut, face)}.png`;
 
 /** The palette as the file holds it: a one-row png, one texel per colour. */
 function encodePalettePng(palette: RGBA[]): Uint8Array {
@@ -423,9 +423,9 @@ export async function loadFigure(
     const folder = match[1] ?? "";
     const name = match[2].toLowerCase();
     const side = name as SideKind;
-    const cut = SECTION_FILE.exec(name);
+    const face = readSectionFace(name as PanelKind);
 
-    if (!sideKindSet[side] && cut === null) {
+    if (!sideKindSet[side] && face === undefined) {
       continue;
     }
 
@@ -447,7 +447,7 @@ export async function loadFigure(
       data: new Uint8Array(decoded.data),
     };
 
-    if (cut !== null) {
+    if (face !== undefined) {
       // Sections came after the format stopped writing colours, so a face
       // holding them is not a drawing this reader can place.
       if (decoded.channels === 4) {
@@ -457,11 +457,7 @@ export async function loadFigure(
       }
 
       const faces = entryFor(folder).sectionFaces;
-      const index = Number(cut[1]);
-      faces.set(index, {
-        ...faces.get(index),
-        [cut[2] as "before" | "after"]: bitmap,
-      });
+      faces.set(face.cut, { ...faces.get(face.cut), [face.face]: bitmap });
       continue;
     }
 

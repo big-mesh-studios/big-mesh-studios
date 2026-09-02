@@ -10,6 +10,7 @@ import {
   centrePivot,
   partDimensions,
   solvePart,
+  type DimensionKind,
   type Figure,
   type Part,
   type Sides,
@@ -25,7 +26,8 @@ import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 import { Home } from "./home";
 import { IndexedDBData, loadFromIndexedDB, saveToIndexedDB } from "./load-save";
 import { NO_MIRROR } from "./mirror";
-import { ResizeOptions, resizeSides } from "./resize-sides";
+import { cutSection } from "./panels";
+import { ResizeOptions, resizeSections, resizeSides } from "./resize-sides";
 import { FocusKind, Mirror, ModeKind, PreviewState } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { createEnqueue } from "./utils/utils";
@@ -381,7 +383,13 @@ export function createStacker() {
       const name = selectedPart().name;
       setParts(
         parts().map((part) =>
-          part.name === name ? { ...part, sides: resized } : part,
+          part.name === name
+            ? {
+                ...part,
+                sides: resized,
+                sections: resizeSections(part.sections, options),
+              }
+            : part,
         ),
       );
       updateVoxels();
@@ -398,6 +406,27 @@ export function createStacker() {
       selectPart(name);
     },
     /** Adds a copy of `name`'s drawings and placement beside it, and selects it. */
+    /**
+     * Cuts the selected part across `axis`, at `at` voxels from the low end of
+     * it, and hands the cut the two faces it reveals. A cut that would stand
+     * outside the box, or where the part is already cut, is not made.
+     */
+    cutPart(axis: DimensionKind, at: number) {
+      const part = selectedPart();
+      const section = cutSection(part, axis, at);
+
+      if (section === undefined) {
+        return;
+      }
+
+      changeParts("Cut Part", (current) =>
+        current.map((candidate) =>
+          candidate.name === part.name
+            ? { ...candidate, sections: [...candidate.sections, section] }
+            : candidate,
+        ),
+      );
+    },
     duplicatePart(name: string) {
       const source = parts().find((part) => part.name === name);
 
@@ -417,6 +446,11 @@ export function createStacker() {
               { ...bitmap, data: new Uint8Array(bitmap.data) },
             ]),
           ) as Sides,
+          sections: source.sections.map((section) => ({
+            ...section,
+            before: Bitmap.clone(section.before),
+            after: Bitmap.clone(section.after),
+          })),
         },
       ]);
       selectPart(copyName);
