@@ -3,7 +3,7 @@
   align-items: center;
   gap: var(--margin);
   align-self: stretch;
-  justify-content: space-evenly;
+  justify-content: end;
 }
 
 .title {
@@ -47,7 +47,7 @@
 .field {
   display: flex;
   align-items: center;
-  gap: var(--margin);
+  gap: calc(var(--margin) / 2);
   color: var(--grey);
   font-size: 10pt;
 
@@ -56,8 +56,6 @@
     flex-grow: 1;
     min-width: 0;
     background-color: transparent;
-    border: 1px solid var(--grey);
-    border-radius: calc(var(--margin) / 2);
     color: var(--front);
     font: inherit;
     padding: 0 calc(var(--margin) / 2);
@@ -67,4 +65,10 @@
 .row {
   display: grid;
   grid-template-columns: 1fr;
+}
+
+.pane {
+  background-color: var(--back);
+  border: 1px solid var(--grey);
+  border-radius: var(--margin);
 }

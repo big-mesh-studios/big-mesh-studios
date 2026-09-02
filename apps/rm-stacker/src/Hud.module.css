@@ -101,8 +101,11 @@
 /* The parts open to the left of the button that shows them, tops level with it,
    because the button stands in the bar along the right edge of the window. */
 .partsPopover:popover-open {
+  display: grid;
+  gap: var(--margin);
+  background-color: transparent;
   bottom: calc(anchor(top) + var(--margin));
   right: calc(anchor(right));
-  width: 150px;
+  width: 180px;
   max-width: calc(100vw - var(--margin) * 4 - var(--size) * 2 - 2px);
 }

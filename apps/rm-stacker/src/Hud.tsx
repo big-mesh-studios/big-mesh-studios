@@ -202,10 +202,7 @@ export function Hud() {
         >
           <Icon kind="cubes" />
         </PartsPopover.Trigger>
-        <PartsPopover.PopOver
-          popover="manual"
-          class={[popoverStyle, styles.partsPopover]}
-        >
+        <PartsPopover.PopOver popover="manual" class={[styles.partsPopover]}>
           <PartsPanel />
         </PartsPopover.PopOver>
       </Bar>
