@@ -56,6 +56,8 @@ export type PreviewState = {
   unlit: boolean;
   autorotate: boolean;
   axesVisible: boolean;
+  /** Whether the preview resizes the figure to fit the view on every change to it. */
+  autoframe: boolean;
   focus: FocusKind;
 };
 

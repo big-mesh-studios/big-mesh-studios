@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
 import { Group } from "@random-mesh/rmsl/scene";
 import { boundsCentre, boxSize, figurePlacement, fitVoxelSize } from "./box";
-import { applyFraming, FigureMeshes, solveFigure } from "./figure-meshes";
+import {
+  applyFraming,
+  FigureMeshes,
+  solveFigure,
+  voxelReach,
+} from "./figure-meshes";
 import {
   centrePivot,
   sideAxes,
@@ -187,6 +192,43 @@ describe("fitVoxelSize", () => {
 
   it("draws a figure with nothing in it at one voxel to the unit", () => {
     expect(fitVoxelSize({ width: 0, height: 0, depth: 0 })).toBe(1);
+  });
+});
+
+describe("voxelReach", () => {
+  const extent = { width: 4, height: 4, depth: 4 };
+  const body = partOf("body", extent);
+  const figure = figureOf(body);
+
+  /** A four-voxel cube with something drawn in each of `at` and nowhere else. */
+  const drawnAt = (at: [number, number, number][]) => {
+    const voxels = new Uint8Array(4 * 4 * 4 * 4);
+
+    for (const [x, y, z] of at) {
+      voxels[((z * 16 + y * 4 + x) << 2) + 3] = 255;
+    }
+
+    return [{ name: body.name, dimensions: extent, voxels }];
+  };
+
+  it("measures to the furthest corner of the furthest voxel drawn in it", () => {
+    // The part pivots on its own middle, so its furthest voxel runs from one
+    // and a half voxels out to two along each axis.
+    expect(voxelReach(figure, drawnAt([[3, 3, 3]]))).toBeCloseTo(
+      Math.hypot(2, 2, 2),
+    );
+  });
+
+  it("measures from the point it is given, which the figure turns about", () => {
+    const middle = Vector3D.create(1.5, 1.5, 1.5);
+
+    expect(voxelReach(figure, drawnAt([[3, 3, 3]]), middle)).toBeCloseTo(
+      Math.hypot(0.5, 0.5, 0.5),
+    );
+  });
+
+  it("reaches nowhere in a figure with nothing drawn in it", () => {
+    expect(voxelReach(figure, drawnAt([]))).toBe(0);
   });
 });
 

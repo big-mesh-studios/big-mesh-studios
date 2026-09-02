@@ -47,9 +47,11 @@
   }
 
   & > .view {
+    display: grid;
     grid-column: 3;
     grid-row: 1 / -1;
     align-self: start;
+    gap: var(--margin);
   }
 
   & > .partsBar {

@@ -11,10 +11,10 @@
 import { encode } from "fast-png";
 import { Vector3D } from "@big-mesh-studios/maths";
 import {
-  composeRoot,
   figurePlacement,
   fitVoxelSize,
   solveFigure,
+  voxelReach,
   type Figure,
   type SolvedPart,
 } from "@big-mesh-studios/stacker/renderer";
@@ -52,45 +52,13 @@ const NEAREST = 2;
  * figure's own reach frames it exactly, and a little more leaves an edge around
  * it.
  *
- * The reach is measured over the voxels that were actually drawn rather than
- * over the boxes they sit in. A part rarely fills its box, and framing the
- * boxes would leave the figure a speck in the middle of a lot of nothing.
- *
  * @param solved Each part's volume, in the order `figure.parts` holds them.
  */
 export function cameraDistanceFor(
   figure: Figure,
   solved: SolvedPart[],
 ): number {
-  let furthest = 0;
-
-  figure.parts.forEach((part, index) => {
-    const { dimensions, voxels } = solved[index];
-    const { width, height, depth } = dimensions;
-    // Where the part's low corner sits in the figure, which is what turns a
-    // voxel's place in its own box into its place in the whole drawing.
-    const low = Vector3D.subtract(composeRoot(figure, part), part.pivot);
-
-    for (let z = 0; z < depth; z++) {
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          if (voxels[((z * width * height + y * width + x) << 2) + 3] === 0) {
-            continue;
-          }
-
-          // The far corner of the voxel rather than its middle, so the one at
-          // the edge of the figure is inside the picture and not half out of it.
-          const px = Math.abs(low.x + x + 0.5) + 0.5;
-          const py = Math.abs(low.y + y + 0.5) + 0.5;
-          const pz = Math.abs(low.z + z + 0.5) + 0.5;
-
-          furthest = Math.max(furthest, Math.hypot(px, py, pz));
-        }
-      }
-    }
-  });
-
-  return Math.max(NEAREST, 2 * furthest * BREATHING_ROOM);
+  return Math.max(NEAREST, 2 * voxelReach(figure, solved) * BREATHING_ROOM);
 }
 
 /**

@@ -5,7 +5,7 @@
 // and the depth bias under an outline are the caller's, because the same figure
 // is drawn under studio light in the editor and under a moving sun in the world.
 // A caller reaches the materials to say so.
-import { Dimensions3D, type RGBA } from "@big-mesh-studios/maths";
+import { Dimensions3D, Vector3D, type RGBA } from "@big-mesh-studios/maths";
 import { BoxGeometry, Group, Mesh, Object3D } from "@random-mesh/rmsl/scene";
 import {
   boxSize,
@@ -15,7 +15,7 @@ import {
   type FigurePlacement,
   type PartPlacement,
 } from "./box";
-import { partDimensions, type Figure, type Part } from "./data";
+import { composeRoot, partDimensions, type Figure, type Part } from "./data";
 import { VoxelModelMaterial } from "./material";
 import { encodePalette, solveVoxels } from "./solver";
 
@@ -39,6 +39,59 @@ export function solvePart(part: Part): SolvedPart {
 /** Every part of `figure`, in the order it holds them. */
 export function solveFigure(figure: Figure): SolvedPart[] {
   return figure.parts.map(solvePart);
+}
+
+/**
+ * How far the voxels drawn in `figure` reach from `from`, in the voxels the
+ * figure is drawn in: the distance to the furthest corner of the furthest voxel
+ * that has anything in it, and no reach at all for a figure nothing has been
+ * drawn in.
+ *
+ * The reach is measured over the voxels that were actually drawn rather than
+ * over the boxes they sit in. A part rarely fills its box, and measuring the
+ * boxes would leave the figure a speck in the middle of a lot of nothing.
+ *
+ * Whoever frames a figure turns it about one point of it, so a figure measured
+ * from that point stays inside a sphere of this reach however it is turned.
+ *
+ * @param solved Each part's volume, in the order `figure.parts` holds them.
+ * @param from The point it is measured from, in voxels from the figure's
+ * origin, which is the point the figure is turned about.
+ */
+export function voxelReach(
+  figure: Figure,
+  solved: SolvedPart[],
+  from: Vector3D = Vector3D.EMPTY,
+): number {
+  let furthest = 0;
+
+  figure.parts.forEach((part, index) => {
+    const { dimensions, voxels } = solved[index];
+    const { width, height, depth } = dimensions;
+    // Where the part's low corner sits in the figure, which is what turns a
+    // voxel's place in its own box into its place in the whole drawing.
+    const low = Vector3D.subtract(composeRoot(figure, part), part.pivot);
+
+    for (let z = 0; z < depth; z++) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (voxels[((z * width * height + y * width + x) << 2) + 3] === 0) {
+            continue;
+          }
+
+          // The far corner of the voxel rather than its middle, so the one at
+          // the edge of the figure is inside the picture and not half out of it.
+          const px = Math.abs(low.x + x + 0.5 - from.x) + 0.5;
+          const py = Math.abs(low.y + y + 0.5 - from.y) + 0.5;
+          const pz = Math.abs(low.z + z + 0.5 - from.z) + 0.5;
+
+          furthest = Math.max(furthest, Math.hypot(px, py, pz));
+        }
+      }
+    }
+  });
+
+  return furthest;
 }
 
 /**

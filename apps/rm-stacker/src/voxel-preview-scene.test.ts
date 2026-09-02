@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { Matrix3, Mesh } from "@random-mesh/rmsl/scene";
 import { Matrix3x3 } from "@big-mesh-studios/maths";
-import { rotateFigure, voxelCellEdges } from "./voxel-preview-scene";
+import {
+  framedVoxelSize,
+  rotateFigure,
+  voxelCellEdges,
+} from "./voxel-preview-scene";
 
 // The world-to-model rotation the CPU voxel picker follows its ray along,
 // replicated from VoxelPreviewView.getWorldToModel: turn the world down to the
@@ -27,6 +31,42 @@ const closeTo = (a: ArrayLike<number>, b: ArrayLike<number>, eps = 1e-6) => {
 // matrix or the pick would land off the voxel.
 const materialWorldToModel = (mesh: Mesh): number[] =>
   new Matrix3().getNormalMatrix(mesh.matrixWorld).toArray();
+
+describe("framedVoxelSize", () => {
+  // The sphere a figure turns inside touches the sides of the view when its
+  // world radius is the camera's distance times the sine of the angle it is
+  // seen through — half the field of view, up and down, on a square canvas.
+  const touching = (distance: number) => distance * Math.sin(Math.atan(0.5));
+
+  it("draws the figure large enough to fill the view and no larger", () => {
+    const reach = 12;
+    const spans = framedVoxelSize(reach, 3, 1) * reach;
+
+    expect(spans).toBeLessThan(touching(3));
+    expect(spans).toBeGreaterThan(touching(3) * 0.8);
+  });
+
+  it("draws it larger the further back the camera stands", () => {
+    expect(framedVoxelSize(12, 6, 1)).toBeCloseTo(
+      2 * framedVoxelSize(12, 3, 1),
+    );
+  });
+
+  it("frames a canvas taller than it is wide on its width", () => {
+    const narrow = framedVoxelSize(12, 3, 0.5);
+
+    expect(narrow).toBeLessThan(framedVoxelSize(12, 3, 1));
+    expect(narrow * 12).toBeLessThan(touching(3) * 0.5);
+  });
+
+  it("frames a canvas wider than it is tall on its height", () => {
+    expect(framedVoxelSize(12, 3, 2)).toBe(framedVoxelSize(12, 3, 1));
+  });
+
+  it("draws a figure with nothing in it at one voxel to the unit", () => {
+    expect(framedVoxelSize(0, 3, 1)).toBe(1);
+  });
+});
 
 describe("voxel preview scene", () => {
   it("turns the mesh so its world-to-model matches the picker's matrix", () => {

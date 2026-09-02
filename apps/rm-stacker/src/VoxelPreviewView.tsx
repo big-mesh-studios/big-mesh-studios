@@ -4,7 +4,7 @@ import {
   composeRoot,
   FigureMeshes,
   figurePlacement,
-  fitVoxelSize,
+  voxelReach,
   type FigureFraming,
 } from "@big-mesh-studios/stacker/renderer";
 import {
@@ -43,6 +43,7 @@ import {
 import {
   FAR,
   FOV,
+  framedVoxelSize,
   LIGHT_DIR,
   lightFigure,
   NEAR,
@@ -94,7 +95,6 @@ const VoxelPreviewView: Component = () => {
     doCommand,
     pushUndo,
     figureLoads,
-    onFitToView,
   } = useContext(StackerContext);
 
   let yaw = Math.PI / 4;
@@ -184,9 +184,19 @@ const VoxelPreviewView: Component = () => {
     voxelSize: voxelSize(),
   }));
 
-  /** Draws the figure at the size that brings the whole of it into the view. */
+  /**
+   * Draws the figure at the size that brings the whole of it into the view,
+   * from where the camera stands now: a figure framed while the view is zoomed
+   * in fills that closer view, as the one it is framed against.
+   */
   function fitToView() {
-    setVoxelSize(fitVoxelSize(untrack(placement).bounds.dimensions));
+    setVoxelSize(
+      framedVoxelSize(
+        voxelReach(untrack(figure), untrack(solvedParts), untrack(focus)),
+        radius,
+        camera.aspect,
+      ),
+    );
   }
 
   /**
@@ -465,18 +475,25 @@ const VoxelPreviewView: Component = () => {
     applyFraming(framed, framing);
   });
 
-  onSettled(() => onFitToView(fitToView));
-
   // The figure is fitted to the view when a whole one is put in front of the
-  // editor and never while it is being drawn on, so an edit cannot resize what
-  // is under the pointer. The placement is tracked as well as the count of
-  // loads, because the model kept in the browser is restored after the first
-  // run and there is nothing to measure until it arrives.
+  // editor, and, while autoframing is on, on every change to what is drawn or
+  // to the point the view is framed on. With autoframing off an edit leaves the
+  // size alone, so drawing on a part or moving one does not resize what is
+  // under the pointer. The drawing is tracked as well as the count of loads,
+  // because the model kept in the browser is restored after the first run and
+  // there is nothing to measure until it arrives.
   let fittedFor = -1;
   createEffect(
-    () => [figureLoads(), placement()] as const,
-    ([loads]) => {
-      if (loads === fittedFor) {
+    () =>
+      [
+        figureLoads(),
+        figure(),
+        solvedParts(),
+        focus(),
+        preview.autoframe(),
+      ] as const,
+    ([loads, , , , autoframe]) => {
+      if (!autoframe && loads === fittedFor) {
         return;
       }
 
@@ -547,6 +564,14 @@ const VoxelPreviewView: Component = () => {
       renderer.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+
+      // A canvas that has changed shape has changed how much room there is to
+      // frame the figure in, which is the other half of what a framing is
+      // measured against.
+      if (untrack(preview.autoframe)) {
+        fitToView();
+      }
+
       render();
     };
     sizeToCanvas();

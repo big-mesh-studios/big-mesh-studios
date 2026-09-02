@@ -29,9 +29,47 @@ export const AMBIENT_COLOUR = Object.freeze([0.35, 0.35, 0.4]);
  */
 export const OUTLINE_DEPTH_BIAS = 0.0001;
 
-export const FOV = 2 * Math.atan(0.5) * (180 / Math.PI);
+/** Half the camera's field of view, up and down, in radians. */
+const HALF_FOV = Math.atan(0.5);
+
+export const FOV = 2 * HALF_FOV * (180 / Math.PI);
 export const NEAR = 0.1;
 export const FAR = 100;
+
+/** How much of the room across the view a framed figure leaves around itself. */
+const FRAMING_MARGIN = 0.9;
+
+/**
+ * How much of the drawn world one voxel takes up for a figure framed to the
+ * view: one whose voxels reach `reach` voxels from the point the camera looks
+ * at, seen from `distance` away on a canvas `aspect` times as wide as it is
+ * tall.
+ *
+ * The figure turns about the point the camera looks at, so what has to fit in
+ * the view is the sphere the figure turns inside, and a framing holds however
+ * it is turned afterwards. A sphere that fills the view touches the sides of
+ * the view rather than the plane through its middle, which is why this is a
+ * sine of the angle it is seen through and not a tangent.
+ *
+ * A canvas taller than it is wide has less room across it than up it, and is
+ * framed on the narrower of the two.
+ *
+ * @param reach How far the figure reaches from that point, in voxels, which
+ * `voxelReach` measures. A figure with nothing drawn in it reaches nowhere and
+ * so gives nothing to divide by: it is drawn at one voxel to the unit.
+ */
+export const framedVoxelSize = (
+  reach: number,
+  distance: number,
+  aspect: number,
+): number => {
+  if (reach <= 0) {
+    return 1;
+  }
+
+  const halfAngle = Math.min(HALF_FOV, Math.atan(Math.tan(HALF_FOV) * aspect));
+  return (FRAMING_MARGIN * distance * Math.sin(halfAngle)) / reach;
+};
 
 /**
  * Lights every part of a figure the way this editor lights one, and sets the
