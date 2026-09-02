@@ -25,11 +25,11 @@
     "jszip": "^3.10.1"
   },
   "peerDependencies": {
-    "@random-mesh/rmsl": "^1.9.0"
+    "@random-mesh/rmsl": "*"
   },
   "devDependencies": {
     "@atcute/lexicons": "^2.1.0",
-    "@random-mesh/rmsl": "1.9.0",
+    "@random-mesh/rmsl": "*",
     "jsdom": "^30.0.1",
     "typescript": "^5.7.2",
     "vitest": "^4.1.3"

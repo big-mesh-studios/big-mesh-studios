@@ -19,7 +19,12 @@ minimumReleaseAgeExclude:
   - "@solidjs/web@2.0.0-beta.29"
   - solid-js@2.0.0-beta.29
 
-# Development wiring: the apps consume the local rmsl checkout instead of the
-# published package. Drop this key once the target features ship in a release.
-# overrides:
-#  "@random-mesh/rmsl": link:../rmsl
+# Every package asks for "@random-mesh/rmsl": "*", so the version they all
+# share is decided here. A package that meets a second copy of it does not
+# type-check: one class from two copies is two classes, each with its own
+# declarations of the private fields the other one lacks.
+overrides:
+  "@random-mesh/rmsl": "^1.10.0"
+  # Swap the line above for this one to build the apps against the local rmsl
+  # checkout instead of the published package.
+  # "@random-mesh/rmsl": link:../rmsl
