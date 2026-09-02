@@ -298,6 +298,27 @@ export const createCommands = ({
         return `occlusion: ${renderer.occlusionEnabled ? "on" : "off"}, query every ${renderer.occlusionIntervalFrames} frames, ${renderer.occlusions} chunks hidden`;
       },
     },
+    "/render:probe": {
+      description:
+        "draw every chunk in its own colour, showing the occlusion probe view",
+      args: "[on|off]",
+      run: (rest) => {
+        const argument = rest[0];
+        if (argument === "on") {
+          renderer.probeDebug = true;
+          return "probe view: on — the world shows the occlusion culler's render";
+        }
+        if (argument === "off") {
+          renderer.probeDebug = false;
+          return "probe view: off";
+        }
+        if (argument === undefined) {
+          renderer.probeDebug = !renderer.probeDebug;
+          return `probe view: ${renderer.probeDebug ? "on" : "off"}`;
+        }
+        return "usage: /render:probe [on|off]  (no argument flips it)";
+      },
+    },
     "/sound:volume": {
       description: "set the sound volume (0 mutes)",
       args: "<0..1>",

@@ -40,6 +40,7 @@ import type { VoxelTileConfig } from "./atlas";
 import { BLOCK_WORLD, type Dim3, type WorldBlock } from "../world/level-data";
 import { setGeometryData, setOcclusionColors, type MeshArrays } from "./mesh";
 import { MeshClient } from "./mesh-client";
+import { OcclusionDebugMaterial } from "./occlusion-debug-material";
 import { OcclusionProbeMaterial } from "./occlusion-probe-material";
 import {
   isNearCell,
@@ -517,6 +518,12 @@ export class TriangleRenderer {
   // not drawn on the main pass until a later query sees it again.
   private readonly probeTerrainMaterial = new OcclusionProbeMaterial();
   private readonly probeWaterMaterial = new OcclusionProbeMaterial();
+  /**
+   * Draws each world chunk in the flat, visually-distinct colour of its slot
+   * id, standing in for the terrain and water materials while `/render:probe`
+   * is on so the occlusion culler's probe pass can be seen on screen.
+   */
+  private readonly probeDebugMaterial = new OcclusionDebugMaterial();
   private readonly occlusionScene = new Scene();
   private readonly scProbeTerrain = new Map<number, Mesh>();
   private readonly scProbeWater = new Map<number, Mesh>();
@@ -537,6 +544,8 @@ export class TriangleRenderer {
   private lastQueryForward: [number, number, number] | null = null;
   private occlusionOn = true;
   private occlusionInterval = DEFAULT_OCCLUSION_INTERVAL;
+  /** When on, the world draws as its probe pass: every chunk in its slot's debug colour. */
+  private showProbe = false;
   /** Slots the occlusion pass is hiding this frame (content, in the frustum, neither near nor seen). */
   private occludedCount = 0;
 
@@ -776,7 +785,7 @@ export class TriangleRenderer {
         this.seatSlotMesh(
           mesh,
           state.terrainGeometry,
-          this.triMaterial,
+          this.worldTerrainMaterial(),
           center,
           terrainRange,
         );
@@ -798,7 +807,7 @@ export class TriangleRenderer {
         this.seatSlotMesh(
           mesh,
           state.waterGeometry,
-          this.triWaterMaterial,
+          this.worldWaterMaterial(),
           center,
           waterRange,
         );
@@ -868,6 +877,26 @@ export class TriangleRenderer {
     }
   }
 
+  /** The terrain world material, or the probe debug material while `/render:probe` is on. */
+  private worldTerrainMaterial(): NodeMaterial {
+    return this.showProbe ? this.probeDebugMaterial : this.triMaterial;
+  }
+
+  /** The water world material, or the probe debug material while `/render:probe` is on. */
+  private worldWaterMaterial(): NodeMaterial {
+    return this.showProbe ? this.probeDebugMaterial : this.triWaterMaterial;
+  }
+
+  /** Points every existing world mesh's material at the probe debug view on a toggle. */
+  private syncProbeMaterials(): void {
+    for (const mesh of this.scChunkTerrain.values()) {
+      mesh.material = this.worldTerrainMaterial();
+    }
+    for (const mesh of this.scChunkWater.values()) {
+      mesh.material = this.worldWaterMaterial();
+    }
+  }
+
   /**
    * Builds one block's mesh on the calling thread, before returning. For the
    * block that has to be on screen before the player is let in, which cannot
@@ -920,6 +949,12 @@ export class TriangleRenderer {
     }
     if (!inFrustum(planes, center, BLOCK_HALF)) {
       return false;
+    }
+    // The probe view draws every chunk the frustum keeps, so the whole of the
+    // probe scene shows at once; the occlusion hiding below applies only to
+    // the lit world.
+    if (this.showProbe) {
+      return true;
     }
     // A chunk the occlusion pass has never measured is never hidden by it:
     // the query that ran before its geometry landed could not have seen it,
@@ -1213,6 +1248,20 @@ export class TriangleRenderer {
   /** Chunks the occlusion pass is hiding this frame, for the debug line. */
   get occlusions(): number {
     return this.occludedCount;
+  }
+
+  /** Whether the world draws as its probe pass, each chunk in its slot's debug colour. */
+  get probeDebug(): boolean {
+    return this.showProbe;
+  }
+
+  /** Turns the probe view on or off, repointing every world mesh's material. */
+  set probeDebug(on: boolean) {
+    if (this.showProbe === on) {
+      return;
+    }
+    this.showProbe = on;
+    this.syncProbeMaterials();
   }
 
   /**
