@@ -10,6 +10,11 @@
 // and the files on disk this editor has seen. A card is drawn from what is
 // already known about it, so a wall of them costs one small picture each rather
 // than a zip, six panels decoded, a volume solved and a scene rendered.
+import { loadFigure, saveFigure } from "@big-mesh-studios/stacker/format";
+import {
+  thumbnailBlobCid,
+  type PublishedModel,
+} from "@big-mesh-studios/stacker/lexicon";
 import { fileOpen, fileSave, type FileWithHandle } from "browser-fs-access";
 import {
   createEffect,
@@ -22,15 +27,10 @@ import {
   useContext,
   type Accessor,
 } from "solid-js";
-import {
-  thumbnailBlobCid,
-  type PublishedModel,
-} from "@big-mesh-studios/stacker/lexicon";
 import { thumbnailFromFigure } from "../atproto/thumbnail";
 import { Button, Icon, IconButton } from "../components/components";
 import { StackerContext } from "../context";
 import { homeName } from "../home";
-import { loadFigure, saveFigure } from "@big-mesh-studios/stacker/format";
 import {
   forgetFile,
   listRecentFiles,
@@ -393,8 +393,10 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
     <div class={styles.modal}>
       <div class={styles.bar}>
         <IconButton
+          class={styles.new}
           kind="plus"
           label="New"
+          title="Start a new file"
           disabled={working()}
           onClick={() => {
             if (
@@ -411,18 +413,23 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
           }}
         />
         <IconButton
+          class={styles.open}
           kind="folder-open"
           label="Open"
+          title="Open a file from disk"
           disabled={working()}
           onClick={() => void openFromDisk()}
         />
         <IconButton
+          class={styles.export}
           kind="file-arrow-down"
           label="Export"
+          title="Write this model out to a file"
           disabled={working()}
           onClick={() => void exportCurrent()}
         />
         <IconButton
+          class={styles.publish}
           kind="cloud-arrow-up"
           label="Publish"
           disabled={working() || atproto.account() === null}
@@ -438,7 +445,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
           fallback={
             <>
               <input
-                class={styles.input}
+                class={[styles.input, styles.account]}
                 placeholder="you.bsky.social"
                 value={handle()}
                 disabled={working()}
@@ -450,25 +457,35 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
                 }}
               />
               <IconButton
+                class={styles.auth}
                 kind="arrow-right-to-bracket"
                 label="Sign in"
+                title="Sign in"
                 disabled={working() || handle().trim() === ""}
                 onClick={() => void signIn()}
               />
             </>
           }
         >
-          <div class={styles.who}>
-            {atproto.account()?.handle ?? atproto.account()?.did}
+          <div class={[styles.who, styles.account]}>
+            <span>{atproto.account()?.handle ?? atproto.account()?.did}</span>
           </div>
           <Button
+            class={styles.auth}
             disabled={working()}
             onClick={() => void atproto.signOut()}
             title="Sign out"
+            id="sign-out"
           >
             <Icon kind="arrow-right-from-bracket" />
           </Button>
         </Show>
+        <IconButton
+          class={styles.close}
+          kind="xmark"
+          title="Close"
+          onClick={() => props.onClose()}
+        />
       </div>
 
       <div class={styles.current}>
@@ -578,8 +595,8 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
                         kind={
                           card.kind === "published" ? "cloud" : "floppy-disk"
                         }
-                      />{" "}
-                      {card.name}
+                      />
+                      <span class={styles.nameText}>{card.name}</span>
                     </div>
                   </button>
                   <span class={styles.when}>{when(card.at)}</span>

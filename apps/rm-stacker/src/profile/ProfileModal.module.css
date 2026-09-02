@@ -1,8 +1,7 @@
-/* Fills whatever the popover around it was given, so the listing takes all the
-   room going and scrolls within it rather than the whole modal growing. */
 .modal {
   display: grid;
   grid-template-rows: auto auto 1fr;
+  container-type: inline-size;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -10,23 +9,77 @@
   font-size: 11pt;
 }
 
-/* A name, whatever the row is about, and the controls at its end. The middle
-   column is the one that gives, so the controls stay against the right edge. */
 .bar {
   display: grid;
-  grid-template-columns: repeat(4, 100px) 1fr auto;
+  grid-template-columns: repeat(4, 100px) minmax(0, 1fr) auto auto;
+  grid-template-areas: "new open export publish account auth close";
   align-items: center;
   gap: var(--margin);
   border-bottom: 1px solid var(--dark-grey);
 
-  & > button {
-    padding: var(--margin) calc(var(--margin) * 2);
-    border-right: 1px solid var(--dark-grey);
+  @container (max-width: 620px) {
+    grid-template-columns: repeat(4, auto) minmax(0, 1fr) auto auto;
+  }
+
+  @container (max-width: 400px) {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-areas:
+      "new     open    export  publish close"
+      "account account account account auth ";
+
+    & button {
+      justify-content: center;
+    }
+
+    & .close {
+      border-left: none;
+    }
   }
 }
 
-/* What is open in the editor right now, kept in front of everything else the
-   modal offers so that "export" and "publish" plainly mean this one. */
+.new {
+  grid-area: new;
+}
+
+.open {
+  grid-area: open;
+}
+
+.export {
+  grid-area: export;
+}
+
+.publish {
+  grid-area: publish;
+}
+
+.new,
+.open,
+.export,
+.publish {
+  padding: var(--margin) calc(var(--margin) * 2);
+  border-right: 1px solid var(--dark-grey);
+}
+
+.account {
+  grid-area: account;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth {
+  grid-area: auth;
+}
+
+.close {
+  grid-area: close;
+  justify-content: center;
+  padding: var(--margin) calc(var(--margin) * 2);
+  border-left: 1px solid var(--dark-grey);
+}
+
 .current {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -56,10 +109,8 @@
 .where {
   color: var(--grey);
   font-size: 9pt;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: max-content;
-  justify-content: start;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: calc(var(--margin) / 1.5);
 }
@@ -71,19 +122,14 @@
 .who {
   color: var(--light-grey);
   font-size: 10pt;
-  /* Sits with the sign-out button rather than being stretched across the room
-     the middle column is given. */
-  justify-self: end;
-  max-width: 220px;
-  margin-left: var(--margin);
-  padding-left: calc(var(--margin) * 2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: right;
+  padding-inline: var(--margin);
+
+  & > span {
+    overflow: hidden;
+  }
 }
 
-/* The header over the listing: what it is, and the ways of adding to it, kept
-   together on the left rather than pushed to opposite edges. */
 .sectionBar {
   display: grid;
   grid-auto-flow: column;
@@ -103,12 +149,10 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(132px, 100%), 1fr));
   gap: calc(var(--margin) * 2);
 }
 
-/* The whole card is the button to open it, with when it was last touched and
-   the way to be rid of it along the bottom. */
 .card {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -152,33 +196,31 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
-  /* A model is drawn a voxel at a time and its picture is one pixel per voxel,
-     so it is scaled up with the pixels kept square rather than smoothed away. */
   image-rendering: pixelated;
 }
 
-/* Shown for a model published before models carried a picture. */
 .preview > i {
   color: var(--grey);
   font-size: 20pt;
 }
 
 .name {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: max-content;
-  justify-content: start;
+  display: flex;
   align-items: baseline;
   gap: calc(var(--margin) / 1.5);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-
-  /* Which kind of home the model has: an account, or a file on disk. */
+  min-width: 0;
   & > i {
     color: var(--grey);
     font-size: 8pt;
+    flex: none;
   }
+}
+
+.nameText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .when {
@@ -190,8 +232,6 @@
   white-space: nowrap;
 }
 
-/* Out of the way until the card is pointed at, so a wall of models is not also
-   a wall of buttons. */
 .cardAction {
   opacity: 0;
   cursor: pointer;
@@ -203,6 +243,12 @@
   }
 
   &:focus-visible {
+    opacity: 1;
+  }
+}
+
+@media (hover: none) {
+  .cardAction {
     opacity: 1;
   }
 }
@@ -254,5 +300,32 @@
 
   &::placeholder {
     color: var(--grey);
+  }
+}
+
+@container (max-width: 620px) {
+  .bar button {
+    justify-content: center;
+    padding: var(--margin);
+  }
+
+  .bar button > span {
+    display: none;
+  }
+
+  .new,
+  .open,
+  .export,
+  .publish {
+    border-right: 0;
+  }
+
+  .current {
+    gap: var(--margin);
+  }
+
+  .currentPreview {
+    width: 48px;
+    height: 48px;
   }
 }

@@ -92,6 +92,18 @@
   }
 }
 
+/* On a screen this narrow there is no room to give away to the backdrop, so the
+   dialogue takes the whole window and its own close button stands in for the
+   click outside it. */
+@media (max-width: 500px) {
+  .profileDialog {
+    --clearance: 0px;
+
+    border: 0;
+    border-radius: 0;
+  }
+}
+
 .palettePopover:popover-open {
   bottom: calc(anchor(bottom) - 1px);
   left: calc(anchor(right) + var(--margin));

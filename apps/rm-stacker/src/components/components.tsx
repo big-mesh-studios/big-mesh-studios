@@ -1,8 +1,8 @@
+import { RGBA } from "@big-mesh-studios/maths";
 import { Portal } from "@solidjs/web";
 import type { JSX } from "@solidjs/web/jsx-runtime";
 import { createSignal, omit, ParentProps, Show } from "solid-js";
 import type { IconKind } from "../icon-kinds";
-import { RGBA } from "@big-mesh-studios/maths";
 import styles from "./components.module.css";
 
 /**********************************************************************************/
