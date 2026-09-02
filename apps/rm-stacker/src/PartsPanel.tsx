@@ -52,10 +52,9 @@ export function PartsPanel() {
           title="Duplicate this part"
         />
         <IconButton
-          kind="trash"
-          onClick={() => removePart(selectedPart().name)}
-          disabled={parts().length <= 1}
-          title="Remove this part"
+          kind="pen-to-square"
+          onClick={askForName}
+          title="Rename this part"
         />
       </div>
       <div class={styles.list}>
@@ -79,9 +78,10 @@ export function PartsPanel() {
                 </Tab>
                 <Show when={isActive()}>
                   <IconButton
-                    kind="pen-to-square"
-                    onClick={askForName}
-                    title="Rename this part"
+                    kind="trash"
+                    onClick={() => removePart(selectedPart().name)}
+                    disabled={parts().length <= 1}
+                    title="Remove this part"
                   />
                 </Show>
               </div>
