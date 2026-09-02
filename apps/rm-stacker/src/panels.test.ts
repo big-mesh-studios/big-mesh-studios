@@ -14,6 +14,7 @@ import {
   computePanelPositions,
   computeSliceLayouts,
   computeSliceMarkers,
+  withPadding,
   zipLanes,
 } from "./PixelEditorView/side-layout";
 import {
@@ -570,6 +571,29 @@ describe("computePanelLabels", () => {
         y: positions.left.y + DIMENSIONS.height,
       },
     });
+  });
+});
+
+describe("withPadding", () => {
+  it("grows a box by the space the net leaves around its panels", () => {
+    const part = partOf(acrossTheWidth(2));
+    const positions = computePanelPositions(part, DIMENSIONS);
+    const front = computePanelLabels(part, positions).find(
+      (label) => label.panel === "front",
+    )!;
+    const brought = withPadding(front.panelBox);
+
+    // Wide enough to hold the numbers standing either side of the panel and
+    // the name written under it, rather than the drawing on its own.
+    const markers = computeSliceMarkers(part, DIMENSIONS, positions).filter(
+      (marker) => marker.box.max.y <= positions.front.y,
+    );
+    const above = markers.sort(
+      (one, other) => other.box.min.y - one.box.min.y,
+    )[0];
+
+    expect(brought.min.y).toBeLessThanOrEqual(above.box.min.y);
+    expect(brought.max.y).toBeGreaterThanOrEqual(front.box.max.y);
   });
 });
 

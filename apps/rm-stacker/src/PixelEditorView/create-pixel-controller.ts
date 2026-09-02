@@ -8,7 +8,10 @@ import {
 import { Command } from "../command/Command";
 import { StackerContext } from "../context";
 import { Bitmap, RGBA, Vector2D } from "@big-mesh-studios/maths";
-import { type PanelKind } from "@big-mesh-studios/stacker/renderer";
+import {
+  readSectionFace,
+  type PanelKind,
+} from "@big-mesh-studios/stacker/renderer";
 import { pointer } from "@big-mesh-studios/utils/pointer";
 import type { ModeKind } from "../types";
 import { mirrorBlocks, mirrorMarks, type Block, type Mark } from "../mirror";
@@ -26,7 +29,9 @@ import { createPanScaleControl } from "./pan-scale";
 import {
   intersectPanelLabels,
   intersectPanels,
+  intersectSliceLabels,
   intersectSliceMarkers,
+  withPadding,
   type Box,
   type PanelLabel,
   type PanelPositions,
@@ -229,13 +234,34 @@ export const createPixelEditorController = ({
    * slice, and a panel's name brings that panel.
    */
   function broughtIntoViewAt(worldPosition: Vector2D): Box | undefined {
+    const slices = sliceLayouts();
     const marker = intersectSliceMarkers(sliceMarkers(), worldPosition);
 
-    if (marker !== undefined) {
-      return sliceLayouts()[marker.cut]?.box;
+    // A slice's number, wherever it is taken hold of: standing beside a cut, or
+    // on the tab of the slice's own box.
+    const numbered =
+      marker === undefined
+        ? intersectSliceLabels(slices, worldPosition)
+        : slices[marker.cut];
+
+    if (numbered !== undefined) {
+      return withPadding(numbered.box);
     }
 
-    return intersectPanelLabels(panelLabels(), worldPosition)?.panelBox;
+    const label = intersectPanelLabels(panelLabels(), worldPosition);
+
+    if (label === undefined) {
+      return undefined;
+    }
+
+    // The name of one of a cut's faces brings the whole slice into view. The
+    // two faces are one cut through the part, and they stand together.
+    const face = readSectionFace(label.panel);
+    const slice = face === undefined ? undefined : slices[face.cut];
+
+    // With the space around it, so that what is brought into view arrives with
+    // its name and the numbers of the cuts crossing it rather than on its own.
+    return withPadding(slice?.box ?? label.panelBox);
   }
 
   /** How a block is named when it is being kept track of once only. */

@@ -61,6 +61,19 @@ export interface Box {
   max: Vector2D;
 }
 
+/**
+ * `box` with the space the net leaves around its panels added to it.
+ *
+ * What stands in that space belongs to what is inside the box — the name under
+ * a panel, the numbers of the cuts crossing it, the tab a slice carries — so
+ * bringing a panel into view without it would be bringing the drawing alone
+ * and leaving out everything saying what it is.
+ */
+export const withPadding = (box: Box): Box => ({
+  min: { x: box.min.x - PADDING, y: box.min.y - PADDING },
+  max: { x: box.max.x + PADDING, y: box.max.y + PADDING },
+});
+
 const boxHolds = (box: Box, position: Vector2D): boolean =>
   position.x >= box.min.x &&
   position.y >= box.min.y &&
@@ -346,6 +359,14 @@ export function computePanelLabels(
       },
     ];
   });
+}
+
+/** Which slice's numbered tab `worldPosition` falls on, where it falls on one. */
+export function intersectSliceLabels(
+  slices: SliceLayout[],
+  worldPosition: Vector2D,
+): SliceLayout | undefined {
+  return slices.find((slice) => boxHolds(slice.label, worldPosition));
 }
 
 /** Which panel's name `worldPosition` falls on, where it falls on one at all. */
