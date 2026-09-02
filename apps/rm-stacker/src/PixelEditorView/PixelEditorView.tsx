@@ -20,6 +20,7 @@ import {
   computePanelPositions,
   computeSliceLayouts,
   computeSliceMarkers,
+  LABEL_FONT,
   LABEL_HEIGHT,
   type Box,
 } from "./side-layout";
@@ -150,7 +151,7 @@ const PixelEditorView: Component = () => {
     ctx.fillRect(box.min.x, box.min.y, width, height);
     ctx.strokeRect(box.min.x, box.min.y, width, height);
 
-    ctx.font = "1.75px sans-serif";
+    ctx.font = LABEL_FONT;
     const metrics = ctx.measureText(text);
 
     ctx.fillStyle = "oklch(23.26% .014 253.1)";
@@ -182,7 +183,7 @@ const PixelEditorView: Component = () => {
     ctx.arc(middle.x, middle.y, (box.max.x - box.min.x) / 2, 0, 2 * Math.PI);
     ctx.fill();
 
-    ctx.font = "1.75px sans-serif";
+    ctx.font = LABEL_FONT;
     const metrics = ctx.measureText(text);
 
     ctx.fillStyle = "oklch(23.26% .014 253.1)";
@@ -329,10 +330,13 @@ const PixelEditorView: Component = () => {
 
         ctx.fillStyle = sideColor;
 
-        ctx.font = "1.75px sans-serif";
+        ctx.font = LABEL_FONT;
         const metrics = ctx.measureText(label);
 
-        const overflow = Math.max(Math.ceil(metrics.width) + 2 - side.width, 0);
+        // How far the label reaches past the panel it names, so that a name
+        // longer than the panel is wide still has a box around it: half a cell
+        // of clear space either side of the writing and no more.
+        const overflow = Math.max(Math.ceil(metrics.width) + 1 - side.width, 0);
 
         ctx.fillRect(
           sidePosition.x - overflow / 2,

@@ -14,7 +14,12 @@ import { panelLineFromCut } from "../panels";
 import { intersectSide, keysOf } from "../utils/utils";
 
 const PADDING = 6;
-export const LABEL_HEIGHT = 3;
+
+/** How tall the box carrying a panel's name or a slice's number is, in cells. */
+export const LABEL_HEIGHT = 2;
+
+/** What a label is written in, at the size a cell is drawn. */
+export const LABEL_FONT = "1.25px sans-serif";
 
 /** How much clear space a slice's box leaves around the faces standing in it. */
 const SLICE_PADDING = 2;
