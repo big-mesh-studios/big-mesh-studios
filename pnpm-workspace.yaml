@@ -19,12 +19,32 @@ minimumReleaseAgeExclude:
   - "@solidjs/web@2.0.0-beta.29"
   - solid-js@2.0.0-beta.29
 
-# Every package asks for "@random-mesh/rmsl": "*", so the version they all
-# share is decided here. A package that meets a second copy of it does not
-# type-check: one class from two copies is two classes, each with its own
-# declarations of the private fields the other one lacks.
-overrides:
+# Every version that more than one package depends on is written here once,
+# and each package asks for "catalog:" rather than naming a range of its own.
+# Two packages that end up on different versions of the same dependency do
+# not type-check where their classes meet: one class from two copies is two
+# classes, each with its own declarations of the private fields the other
+# one lacks.
+catalog:
+  "@atcute/atproto": "^4.0.4"
+  "@atcute/client": "^5.1.1"
+  "@atcute/identity-resolver": "^2.0.1"
+  "@atcute/lexicons": "^2.1.0"
+  "@atcute/oauth-browser-client": "^5.0.0"
+  "@fortawesome/fontawesome-free": "^7.3.1"
   "@random-mesh/rmsl": "^1.10.0"
-  # Swap the line above for this one to build the apps against the local rmsl
-  # checkout instead of the published package.
-  # "@random-mesh/rmsl": link:../rmsl
+  "@solidjs/signals": "2.0.0-beta.29"
+  "@solidjs/web": "2.0.0-beta.29"
+  "@types/node": "^26.2.0"
+  "@types/three": "^0.183.1"
+  "browser-fs-access": "^0.38.0"
+  "esbuild": "^0.28.1"
+  "fast-png": "^8.0.0"
+  "jsdom": "^30.0.1"
+  "jszip": "^3.10.1"
+  "solid-js": "2.0.0-beta.29"
+  "three": "^0.183.2"
+  "typescript": "^5.7.2"
+  "vite": "^7.1.4"
+  "vite-plugin-solid": "3.0.0-next.5"
+  "vitest": "^4.1.3"

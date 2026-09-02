@@ -4,8 +4,74 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  '@random-mesh/rmsl': ^1.10.0
+catalogs:
+  default:
+    '@atcute/atproto':
+      specifier: ^4.0.4
+      version: 4.0.4
+    '@atcute/client':
+      specifier: ^5.1.1
+      version: 5.1.1
+    '@atcute/identity-resolver':
+      specifier: ^2.0.1
+      version: 2.0.1
+    '@atcute/lexicons':
+      specifier: ^2.1.0
+      version: 2.1.0
+    '@atcute/oauth-browser-client':
+      specifier: ^5.0.0
+      version: 5.0.0
+    '@fortawesome/fontawesome-free':
+      specifier: ^7.3.1
+      version: 7.3.1
+    '@random-mesh/rmsl':
+      specifier: ^1.10.0
+      version: 1.10.0
+    '@solidjs/signals':
+      specifier: 2.0.0-beta.29
+      version: 2.0.0-beta.29
+    '@solidjs/web':
+      specifier: 2.0.0-beta.29
+      version: 2.0.0-beta.29
+    '@types/node':
+      specifier: ^26.2.0
+      version: 26.4.0
+    '@types/three':
+      specifier: ^0.183.1
+      version: 0.183.1
+    browser-fs-access:
+      specifier: ^0.38.0
+      version: 0.38.0
+    esbuild:
+      specifier: ^0.28.1
+      version: 0.28.2
+    fast-png:
+      specifier: ^8.0.0
+      version: 8.0.0
+    jsdom:
+      specifier: ^30.0.1
+      version: 30.0.1
+    jszip:
+      specifier: ^3.10.1
+      version: 3.10.1
+    solid-js:
+      specifier: 2.0.0-beta.29
+      version: 2.0.0-beta.29
+    three:
+      specifier: ^0.183.2
+      version: 0.183.2
+    typescript:
+      specifier: ^5.7.2
+      version: 5.9.3
+    vite:
+      specifier: ^7.1.4
+      version: 7.3.6
+    vite-plugin-solid:
+      specifier: 3.0.0-next.5
+      version: 3.0.0-next.5
+    vitest:
+      specifier: ^4.1.3
+      version: 4.1.11
 
 importers:
 
@@ -18,48 +84,48 @@ importers:
   apps/homepage:
     dependencies:
       '@solidjs/web':
-        specifier: 2.0.0-beta.29
+        specifier: 'catalog:'
         version: 2.0.0-beta.29(solid-js@2.0.0-beta.29)
       solid-js:
-        specifier: 2.0.0-beta.29
+        specifier: 'catalog:'
         version: 2.0.0-beta.29
     devDependencies:
       typescript:
-        specifier: ^5.7.2
+        specifier: 'catalog:'
         version: 5.9.3
       vite:
-        specifier: ^7.1.4
+        specifier: 'catalog:'
         version: 7.3.6(@types/node@26.4.0)
       vite-plugin-solid:
-        specifier: 3.0.0-next.5
+        specifier: 'catalog:'
         version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)(vite@7.3.6(@types/node@26.4.0))
 
   apps/rm-stacker:
     dependencies:
       '@atcute/lexicons':
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0
       '@solidjs/router':
         specifier: 2.0.0-next.13
         version: 2.0.0-next.13(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)
       fast-png:
-        specifier: ^8.0.0
+        specifier: 'catalog:'
         version: 8.0.0
       jszip:
-        specifier: ^3.10.1
+        specifier: 'catalog:'
         version: 3.10.1
     devDependencies:
       '@atcute/atproto':
-        specifier: ^4.0.4
+        specifier: 'catalog:'
         version: 4.0.4(@atcute/lexicons@2.1.0)
       '@atcute/client':
-        specifier: ^5.1.1
+        specifier: 'catalog:'
         version: 5.1.1(@atcute/lexicons@2.1.0)(typescript@5.9.3)
       '@atcute/identity-resolver':
-        specifier: ^2.0.1
+        specifier: 'catalog:'
         version: 2.0.1(@atcute/identity@2.0.2(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3)
       '@atcute/oauth-browser-client':
-        specifier: ^5.0.0
+        specifier: 'catalog:'
         version: 5.0.0(@atcute/identity-resolver@2.0.1(@atcute/identity@2.0.2(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3)
       '@big-mesh-studios/atproto':
         specifier: workspace:*
@@ -74,94 +140,94 @@ importers:
         specifier: workspace:*
         version: link:../../packages/utils
       '@fortawesome/fontawesome-free':
-        specifier: ^7.3.1
+        specifier: 'catalog:'
         version: 7.3.1
       '@random-mesh/rmsl':
-        specifier: ^1.10.0
+        specifier: 'catalog:'
         version: 1.10.0(vite@7.3.6(@types/node@26.4.0))
       '@solidjs/signals':
-        specifier: 2.0.0-beta.29
+        specifier: 'catalog:'
         version: 2.0.0-beta.29
       '@solidjs/web':
-        specifier: 2.0.0-beta.29
+        specifier: 'catalog:'
         version: 2.0.0-beta.29(solid-js@2.0.0-beta.29)
       '@types/node':
-        specifier: ^26.2.0
+        specifier: 'catalog:'
         version: 26.4.0
       '@types/three':
-        specifier: ^0.183.1
+        specifier: 'catalog:'
         version: 0.183.1
       browser-fs-access:
-        specifier: ^0.38.0
+        specifier: 'catalog:'
         version: 0.38.0
       esbuild:
-        specifier: ^0.28.1
+        specifier: 'catalog:'
         version: 0.28.2
       solid-js:
-        specifier: 2.0.0-beta.29
+        specifier: 'catalog:'
         version: 2.0.0-beta.29
       three:
-        specifier: ^0.183.2
+        specifier: 'catalog:'
         version: 0.183.2
       typescript:
-        specifier: ^5.7.2
+        specifier: 'catalog:'
         version: 5.9.3
       vite:
-        specifier: ^7.1.4
+        specifier: 'catalog:'
         version: 7.3.6(@types/node@26.4.0)
       vite-plugin-solid:
-        specifier: 3.0.0-next.5
+        specifier: 'catalog:'
         version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)(vite@7.3.6(@types/node@26.4.0))
       vitest:
-        specifier: ^4.1.3
+        specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(vite@7.3.6(@types/node@26.4.0))
 
   apps/voxelscape:
     dependencies:
       '@atcute/atproto':
-        specifier: ^4.0.4
+        specifier: 'catalog:'
         version: 4.0.4(@atcute/lexicons@2.1.0)
       '@atcute/client':
-        specifier: ^5.1.1
+        specifier: 'catalog:'
         version: 5.1.1(@atcute/lexicons@2.1.0)(typescript@5.9.3)
       '@atcute/identity-resolver':
-        specifier: ^2.0.1
+        specifier: 'catalog:'
         version: 2.0.1(@atcute/identity@2.0.2(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3)
       '@atcute/lexicons':
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0
       '@atcute/oauth-browser-client':
-        specifier: ^5.0.0
+        specifier: 'catalog:'
         version: 5.0.0(@atcute/identity-resolver@2.0.1(@atcute/identity@2.0.2(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3)
       '@fortawesome/fontawesome-free':
-        specifier: ^7.3.1
+        specifier: 'catalog:'
         version: 7.3.1
       '@random-mesh/rmsl':
-        specifier: ^1.10.0
+        specifier: 'catalog:'
         version: 1.10.0(vite@7.3.6(@types/node@26.4.0))
       '@solidjs/signals':
-        specifier: 2.0.0-beta.29
+        specifier: 'catalog:'
         version: 2.0.0-beta.29
       '@solidjs/web':
-        specifier: 2.0.0-beta.29
+        specifier: 'catalog:'
         version: 2.0.0-beta.29(solid-js@2.0.0-beta.29)
       browser-fs-access:
-        specifier: ^0.38.0
+        specifier: 'catalog:'
         version: 0.38.0
       fast-png:
-        specifier: ^8.0.0
+        specifier: 'catalog:'
         version: 8.0.0
       jszip:
-        specifier: ^3.10.1
+        specifier: 'catalog:'
         version: 3.10.1
       peerjs:
         specifier: ^1.5.5
         version: 1.5.5
       solid-js:
-        specifier: 2.0.0-beta.29
+        specifier: 'catalog:'
         version: 2.0.0-beta.29
       three:
-        specifier: ^0.183.2
+        specifier: 'catalog:'
         version: 0.183.2
     devDependencies:
       '@big-mesh-studios/atproto':
@@ -177,62 +243,62 @@ importers:
         specifier: workspace:*
         version: link:../../packages/utils
       '@types/node':
-        specifier: ^26.2.0
+        specifier: 'catalog:'
         version: 26.4.0
       '@types/three':
-        specifier: ^0.183.1
+        specifier: 'catalog:'
         version: 0.183.1
       esbuild:
-        specifier: ^0.28.1
+        specifier: 'catalog:'
         version: 0.28.2
       jsdom:
-        specifier: ^30.0.1
+        specifier: 'catalog:'
         version: 30.0.1
       playwright:
         specifier: ^1.62.1
         version: 1.62.1
       typescript:
-        specifier: ^5.7.2
+        specifier: 'catalog:'
         version: 5.9.3
       vite:
-        specifier: ^7.1.4
+        specifier: 'catalog:'
         version: 7.3.6(@types/node@26.4.0)
       vite-plugin-solid:
-        specifier: 3.0.0-next.5
+        specifier: 'catalog:'
         version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)(vite@7.3.6(@types/node@26.4.0))
       vitest:
-        specifier: ^4.1.3
+        specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(vite@7.3.6(@types/node@26.4.0))
 
   packages/atproto:
     dependencies:
       '@atcute/client':
-        specifier: ^5.1.1
+        specifier: 'catalog:'
         version: 5.1.1(@atcute/lexicons@2.1.0)(typescript@5.9.3)
       '@atcute/identity-resolver':
-        specifier: ^2.0.1
+        specifier: 'catalog:'
         version: 2.0.1(@atcute/identity@2.0.2(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3)
       '@atcute/lexicons':
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0
       '@atcute/oauth-browser-client':
-        specifier: ^5.0.0
+        specifier: 'catalog:'
         version: 5.0.0(@atcute/identity-resolver@2.0.1(@atcute/identity@2.0.2(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3)
     devDependencies:
       '@atcute/atproto':
-        specifier: ^4.0.4
+        specifier: 'catalog:'
         version: 4.0.4(@atcute/lexicons@2.1.0)
       typescript:
-        specifier: ^5.7.2
+        specifier: 'catalog:'
         version: 5.9.3
       vitest:
-        specifier: ^4.1.3
+        specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(vite@7.3.6(@types/node@26.4.0))
 
   packages/maths:
     devDependencies:
       typescript:
-        specifier: ^5.7.2
+        specifier: 'catalog:'
         version: 5.9.3
 
   packages/stacker:
@@ -241,26 +307,26 @@ importers:
         specifier: workspace:*
         version: link:../maths
       fast-png:
-        specifier: ^8.0.0
+        specifier: 'catalog:'
         version: 8.0.0
       jszip:
-        specifier: ^3.10.1
+        specifier: 'catalog:'
         version: 3.10.1
     devDependencies:
       '@atcute/lexicons':
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0
       '@random-mesh/rmsl':
-        specifier: ^1.10.0
+        specifier: 'catalog:'
         version: 1.10.0(vite@7.3.6(@types/node@26.4.0))
       jsdom:
-        specifier: ^30.0.1
+        specifier: 'catalog:'
         version: 30.0.1
       typescript:
-        specifier: ^5.7.2
+        specifier: 'catalog:'
         version: 5.9.3
       vitest:
-        specifier: ^4.1.3
+        specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(vite@7.3.6(@types/node@26.4.0))
 
   packages/utils:
@@ -270,13 +336,13 @@ importers:
         version: link:../maths
     devDependencies:
       '@solidjs/web':
-        specifier: 2.0.0-beta.29
+        specifier: 'catalog:'
         version: 2.0.0-beta.29(solid-js@2.0.0-beta.29)
       solid-js:
-        specifier: 2.0.0-beta.29
+        specifier: 'catalog:'
         version: 2.0.0-beta.29
       typescript:
-        specifier: ^5.7.2
+        specifier: 'catalog:'
         version: 5.9.3
 
 packages:

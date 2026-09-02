@@ -24,14 +24,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@atcute/client": "^5.1.1",
-    "@atcute/identity-resolver": "^2.0.1",
-    "@atcute/lexicons": "^2.1.0",
-    "@atcute/oauth-browser-client": "^5.0.0"
+    "@atcute/client": "catalog:",
+    "@atcute/identity-resolver": "catalog:",
+    "@atcute/lexicons": "catalog:",
+    "@atcute/oauth-browser-client": "catalog:"
   },
   "devDependencies": {
-    "@atcute/atproto": "^4.0.4",
-    "typescript": "^5.7.2",
-    "vitest": "^4.1.3"
+    "@atcute/atproto": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
