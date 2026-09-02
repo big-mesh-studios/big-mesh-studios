@@ -6,7 +6,7 @@
 // it — and creating it per page would mean the drawing, the undo history, the
 // preview's WebGL context and the signed-in session all being thrown away and
 // rebuilt every time somebody looked at their work and came back.
-import { Component } from "solid-js";
+import { Component, Loading } from "solid-js";
 import { StackerContext } from "./context";
 import { Router } from "./routes";
 import { createStacker } from "./stacker-store";
@@ -16,7 +16,9 @@ const App: Component = () => {
 
   return (
     <StackerContext value={stacker}>
-      <Router>{(props) => props.children}</Router>
+      <Loading>
+        <Router>{(props) => props.children}</Router>
+      </Loading>
     </StackerContext>
   );
 };
