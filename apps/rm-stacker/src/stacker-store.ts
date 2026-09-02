@@ -29,7 +29,14 @@ import { IndexedDBData, loadFromIndexedDB, saveToIndexedDB } from "./load-save";
 import { NO_MIRROR } from "./mirror";
 import { cutSection } from "./panels";
 import { ResizeOptions, resizeSections, resizeSides } from "./resize-sides";
-import { FocusKind, HandleKind, Mirror, ModeKind, PreviewState } from "./types";
+import {
+  FocusKind,
+  HandleAxes,
+  HandleKind,
+  Mirror,
+  ModeKind,
+  PreviewState,
+} from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { createEnqueue } from "./utils/utils";
 
@@ -124,6 +131,9 @@ function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
   const [autoframe, setAutoframe] = createSignal(
     () => saved()?.preview?.autoframe ?? false,
   );
+  const [handleAxes, setHandleAxes] = createSignal<HandleAxes>(
+    () => saved()?.preview?.handleAxes ?? "figure",
+  );
   const [focus, setFocus] = createSignal<FocusKind>(
     () => saved()?.preview?.focus ?? "root",
   );
@@ -133,6 +143,7 @@ function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
     unlit: unlit(),
     autorotate: autorotate(),
     handles: handles(),
+    handleAxes: handleAxes(),
     autoframe: autoframe(),
     focus: focus(),
   }));
@@ -144,6 +155,8 @@ function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
     setAutorotate,
     handles,
     setHandles,
+    handleAxes,
+    setHandleAxes,
     autoframe,
     setAutoframe,
     focus,

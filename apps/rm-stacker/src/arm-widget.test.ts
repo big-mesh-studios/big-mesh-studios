@@ -5,6 +5,7 @@ import {
   PerspectiveCamera,
   Vector3,
 } from "@random-mesh/rmsl/scene";
+import { Vector3D } from "@big-mesh-studios/maths";
 import {
   armUnderPointer,
   sizeDragged,
@@ -160,7 +161,9 @@ describe("the arrows standing in a turned figure", () => {
 
     const widget = new ArmWidget("arrow");
     turntable.add(widget.group);
-    widget.place(ROOT, RADIUS);
+    // Standing square: how the arms follow a part's own turn is the widget's
+    // to say, and what is asked here is how they follow the figure's.
+    widget.place(ROOT, RADIUS, Vector3D.create());
 
     return { turntable, widget };
   };

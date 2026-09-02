@@ -220,6 +220,24 @@ export function Hud() {
           </For>
           <IconTab
             onClick={() => {
+              preview.setHandleAxes((axes) =>
+                axes === "part" ? "figure" : "part",
+              );
+              flush();
+              requestAutoSave();
+            }}
+            selected={
+              !ProfileDialog.isOpen() && preview.handleAxes() === "part"
+            }
+            kind="compass"
+            title={
+              preview.handleAxes() === "part"
+                ? "Handles lying along the part's own axes"
+                : "Handles lying along the figure's axes"
+            }
+          />
+          <IconTab
+            onClick={() => {
               preview.setFocus((focus) => (focus === "part" ? "root" : "part"));
               flush();
               requestAutoSave();

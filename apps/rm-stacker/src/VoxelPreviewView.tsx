@@ -63,6 +63,13 @@ import styles from "./VoxelPreviewView.module.css";
 
 const MAX_RADIUS = 20;
 
+/** The way each arm points, before the part's own turn has pointed it. */
+const ALONG: Record<WidgetAxis, Vector3D> = {
+  x: Object.freeze(Vector3D.create(1, 0, 0)),
+  y: Object.freeze(Vector3D.create(0, 1, 0)),
+  z: Object.freeze(Vector3D.create(0, 0, 1)),
+};
+
 /** A turn of so many radians about each of the axes a ring lies across. */
 const ABOUT: Record<WidgetAxis, (angle: number) => Matrix3x3> = {
   x: (angle) => Matrix3x3.rotationX(angle),
@@ -252,6 +259,13 @@ const VoxelPreviewView: Component = () => {
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
 
+  /**
+   * The turn the handles stand along: the part's own, or none at all for
+   * handles standing along the figure's axes, which is what every part shares.
+   */
+  const handleTurn = () =>
+    preview.handleAxes() === "part" ? selectedPart().turn : Vector3D.EMPTY;
+
   /** The handles standing at the part being drawn on, whichever set it is. */
   function standingWidget() {
     switch (preview.handles()) {
@@ -284,7 +298,7 @@ const VoxelPreviewView: Component = () => {
     }
 
     const rect = canvas.getBoundingClientRect();
-    widget.place(selectedRoot(), radius);
+    widget.place(selectedRoot(), radius, handleTurn());
     rotateFigure(turntable, yaw, pitch, spin);
 
     const arms = widget.armsOnScreen(camera, {
@@ -307,7 +321,7 @@ const VoxelPreviewView: Component = () => {
     }
 
     const rect = canvas.getBoundingClientRect();
-    turnWidget.place(selectedRoot(), radius, selectedPart().turn);
+    turnWidget.place(selectedRoot(), radius, handleTurn());
     rotateFigure(turntable, yaw, pitch, spin);
 
     const rings = turnWidget.ringsOnScreen(camera, {
@@ -396,8 +410,19 @@ const VoxelPreviewView: Component = () => {
         voxelSize(),
       );
 
-      const root = { ...startRoot };
-      root[grabbedArm.axis] = startRoot[grabbedArm.axis] + steps;
+      // The arm points along one of the axes the handles stand on, which the
+      // part's own turn may have taken somewhere of its own; a root is whole
+      // voxels, so where that line falls between them the part takes the
+      // nearest.
+      const along = Matrix3x3.transform(
+        turnMatrix(untrack(handleTurn)),
+        ALONG[grabbedArm.axis],
+      );
+      const root = Vector3D.create(
+        Math.round(startRoot.x + along.x * steps),
+        Math.round(startRoot.y + along.y * steps),
+        Math.round(startRoot.z + along.z * steps),
+      );
 
       if (Vector3D.equals(root, lastRoot)) {
         return;
@@ -441,6 +466,7 @@ const VoxelPreviewView: Component = () => {
     isDraggingWidget = true;
 
     const startTurn = part.turn;
+    const alongThePart = untrack(preview.handleAxes) === "part";
     let lastTurn = startTurn;
 
     turnWidget.setHeld(ring.axis);
@@ -452,14 +478,18 @@ const VoxelPreviewView: Component = () => {
         return;
       }
 
-      // The rings lie along the part's own axes, so what the drag says is a
-      // turn about one of those — put after the turn the part already has,
-      // rather than added to whichever of its three angles shares the name.
+      // What the drag says is a turn about the axis the ring lies along, which
+      // is put together with the turn the part already has rather than added to
+      // whichever of its three angles shares the ring's name. A ring lying
+      // along the part's own axis turns it after that turn; one lying along the
+      // figure's turns it before, the figure's axes being the ones the part's
+      // own turn is written against.
+      const swept = ABOUT[ring.axis](radiansDragged(at, now, ring));
+      const already = turnMatrix(startTurn);
       const turn = turnAngles(
-        Matrix3x3.multiply(
-          turnMatrix(startTurn),
-          ABOUT[ring.axis](radiansDragged(at, now, ring)),
-        ),
+        alongThePart
+          ? Matrix3x3.multiply(already, swept)
+          : Matrix3x3.multiply(swept, already),
       );
 
       if (Vector3D.equals(turn, lastTurn)) {
@@ -602,13 +632,7 @@ const VoxelPreviewView: Component = () => {
 
     // The handles stand inside the figure, turned by the same turntable, so
     // they stay pointing along the axes a drag works along.
-    const standing = standingWidget();
-
-    if (standing instanceof TurnWidget) {
-      standing.place(untrack(selectedRoot), radius, untrack(selectedPart).turn);
-    } else {
-      standing?.place(untrack(selectedRoot), radius);
-    }
+    standingWidget()?.place(untrack(selectedRoot), radius, untrack(handleTurn));
 
     camera.position.set(0, 0, radius);
 

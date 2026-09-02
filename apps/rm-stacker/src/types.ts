@@ -59,10 +59,17 @@ export type FocusKind = "root" | "part";
  */
 export type HandleKind = "none" | "move" | "turn" | "size";
 
+/**
+ * Which axes the handles standing at a part lie along: the part's own, turned
+ * as the part is turned, or the figure's, which every part shares.
+ */
+export type HandleAxes = "part" | "figure";
+
 export type PreviewState = {
   unlit: boolean;
   autorotate: boolean;
   handles: HandleKind;
+  handleAxes: HandleAxes;
   /** Whether the preview resizes the figure to fit the view on every change to it. */
   autoframe: boolean;
   focus: FocusKind;

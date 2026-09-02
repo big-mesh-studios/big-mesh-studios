@@ -12,6 +12,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   Object3D,
+  Quaternion,
   Vector3,
   type Camera,
 } from "@random-mesh/rmsl/scene";
@@ -63,6 +64,7 @@ const HUB_RADIUS = 14;
 const TOO_FORESHORTENED = 10;
 
 const X_AXIS = new Vector3(1, 0, 0);
+const Y_AXIS = new Vector3(0, 1, 0);
 const Z_AXIS = new Vector3(0, 0, 1);
 
 /**
@@ -266,6 +268,9 @@ export class ArmWidget {
   private readonly viewProjection = new Matrix4();
   private readonly scratch = new Vector3();
   private readonly worldTip = new Vector3();
+  // Kept between the turns rather than made afresh for each of them.
+  private readonly aboutY = new Quaternion();
+  private readonly aboutZ = new Quaternion();
 
   /**
    * How long an arrow is in the drawn world, as of the last `place`. A drag
@@ -290,13 +295,21 @@ export class ArmWidget {
   }
 
   /**
-   * Stands the arrows at `position` and sizes them for a camera `radius` away,
-   * so they take up the same part of the picture however far it has zoomed.
+   * Stands the arms at `position`, turned as `turn` turns the part, and sizes
+   * them for a camera `radius` away so they take up the same part of the
+   * picture however far it has zoomed.
+   *
+   * The arms lie along the part's own axes rather than the figure's, so the arm
+   * taken hold of is the line the part will travel along.
    */
-  place(position: Vector3D, radius: number): void {
+  place(position: Vector3D, radius: number, turn: Vector3D): void {
     this.armLength = VIEW_SHARE * radius;
     this.group.position.set(position.x, position.y, position.z);
     this.group.scale.set(this.armLength, this.armLength, this.armLength);
+    this.group.quaternion
+      .setFromAxisAngle(X_AXIS, turn.x)
+      .multiply(this.aboutY.setFromAxisAngle(Y_AXIS, turn.y))
+      .multiply(this.aboutZ.setFromAxisAngle(Z_AXIS, turn.z));
   }
 
   /**
