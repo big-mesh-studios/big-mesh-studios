@@ -31,16 +31,23 @@ const NUMBER_WIDTH = 4;
 const MARKER_SIZE = 3;
 
 /**
- * How large the circle a slice's number stands in is drawn, in cells. Smaller
- * than the box it is taken hold of by, which stays a size a finger can find.
+ * How close two numbers may stand in one lane, and how much further out the
+ * next lane is. Cuts stand a whole voxel apart at the closest, so this is what
+ * says that two a voxel apart step into different lanes and two a couple of
+ * voxels apart do not.
  */
-export const MARKER_RADIUS = 1;
+const MARKER_LANE = 2;
 
 /**
- * How close two numbers may stand in one lane, and how much further out the
- * next lane is: the width of the circle either of them is drawn in.
+ * How large the circle a slice's number is drawn in is, in cells.
+ *
+ * Less than half a lane, so that two numbers standing as close as one lane
+ * allows still have clear space between them — enough for the line of a cut
+ * standing between the two of them to be seen passing through. It is smaller
+ * again than the box the number is taken hold of by, which stays a size a
+ * finger can find.
  */
-const MARKER_LANE = MARKER_RADIUS * 2;
+export const MARKER_RADIUS = 0.8;
 
 export type SidePositions = Record<SideKind, Vector2D>;
 
