@@ -161,6 +161,38 @@ const PixelEditorView: Component = () => {
     );
   };
 
+  /**
+   * A round `colour` with `text` standing in the middle of it, which is how a
+   * slice's number is shown beside the cut it belongs to: a thing to take hold
+   * of rather than a thing drawn on, and round so it says so.
+   */
+  const fillMarker = (
+    ctx: CanvasRenderingContext2D,
+    box: Box,
+    text: string,
+    colour: string,
+  ) => {
+    const middle = {
+      x: (box.min.x + box.max.x) / 2,
+      y: (box.min.y + box.max.y) / 2,
+    };
+
+    ctx.fillStyle = colour;
+    ctx.beginPath();
+    ctx.arc(middle.x, middle.y, (box.max.x - box.min.x) / 2, 0, 2 * Math.PI);
+    ctx.fill();
+
+    ctx.font = "1.75px sans-serif";
+    const metrics = ctx.measureText(text);
+
+    ctx.fillStyle = "oklch(23.26% .014 253.1)";
+    ctx.fillText(
+      text,
+      middle.x - metrics.width / 2,
+      middle.y + metrics.actualBoundingBoxAscent / 2,
+    );
+  };
+
   let ctx: CanvasRenderingContext2D | undefined | null;
   const render = () => {
     untrack(() => {
@@ -384,13 +416,7 @@ const PixelEditorView: Component = () => {
       // The same number again, standing outside the panels the cut crosses, so
       // a cut seen in a drawing can be followed to the faces it reveals.
       for (const marker of sliceMarkers()) {
-        fillLabel(
-          ctx,
-          marker.box,
-          marker.number,
-          axisColour(marker.axis),
-          _scale,
-        );
+        fillMarker(ctx, marker.box, marker.number, axisColour(marker.axis));
       }
 
       if (_overlayDrawing) {

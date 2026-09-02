@@ -161,6 +161,11 @@ export interface SliceMarker {
   cut: number;
   number: string;
   axis: DimensionKind;
+  /**
+   * Where it stands. The number is drawn as a circle inside this, and taken
+   * hold of anywhere in it, which leaves a little room around the circle for a
+   * finger that lands beside it.
+   */
   box: Box;
 }
 
