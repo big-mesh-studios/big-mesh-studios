@@ -92,8 +92,6 @@ export function PartsPanel() {
         </div>
       </div>
 
-      {/* A figure of one part has nothing to place that part against, so its
-          root says nothing until there is a second one. */}
       <div class={[styles.pose, styles.pane]}>
         <For each={widgetAxes}>
           {(axis) => (
