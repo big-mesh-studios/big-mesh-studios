@@ -1,10 +1,10 @@
-// The spherical block window: keeps a fixed-size ball of `WorldBlock`s —
-// one per chunk cell within `radius` chunks of the player's cell — centred
-// on the player, in every axis. When the player crosses a chunk boundary,
-// cells that leave the ball are evicted and cells that enter claim their
-// slot (same slot, new data) rather than allocating fresh ones. Owns the
-// `FillClient` that generates each cell's terrain, offline when the worker
-// is available.
+// The block window: keeps a fixed-size ball of `WorldBlock`s — one per
+// chunk cell within `radius` chunks of the player's cell, `yRadius` chunks
+// above and below it — centred on the player in every axis. When the player
+// crosses a chunk boundary, cells that leave the ball are evicted and cells
+// that enter claim their slot (same slot, new data) rather than allocating
+// fresh ones. Owns the `FillClient` that generates each cell's terrain,
+// offline when the worker is available.
 import {
   BLOCK_WORLD,
   VOXEL_SIZE,
@@ -28,16 +28,24 @@ export interface CellCoord {
 export const cellKey = (c: CellCoord): string => `${c.x},${c.y},${c.z}`;
 
 /**
- * Every integer lattice cell within euclidean `radius` of `center`: the set
- * of chunks the window holds. Ordered in `x`, then `y`, then `z`.
+ * Every integer lattice cell within `radius` squared of `center` — the set
+ * of chunks the window holds. The Y extent is `yRadius` (default `radius`,
+ * a regular ball), so the window can be flattened vertically — a squashed
+ * ball — when there is nothing worth streaming far above and below the
+ * player. Ordered in `x`, then `y`, then `z`.
  */
-export const sphereCells = (center: CellCoord, radius: number): CellCoord[] => {
+export const sphereCells = (
+  center: CellCoord,
+  radius: number,
+  yRadius = radius,
+): CellCoord[] => {
   const out: CellCoord[] = [];
   const r2 = radius * radius;
+  const ky = radius / yRadius;
   for (let x = -radius; x <= radius; x++) {
-    for (let y = -radius; y <= radius; y++) {
+    for (let y = -yRadius; y <= yRadius; y++) {
       for (let z = -radius; z <= radius; z++) {
-        if (x * x + y * y + z * z <= r2) {
+        if (x * x + z * z + (y * ky) ** 2 <= r2) {
           out.push({ x: center.x + x, y: center.y + y, z: center.z + z });
         }
       }
@@ -46,9 +54,9 @@ export const sphereCells = (center: CellCoord, radius: number): CellCoord[] => {
   return out;
 };
 
-/** How many cells a spherical window of this `radius` holds. */
-export const cellsInSphere = (radius: number): number =>
-  sphereCells({ x: 0, y: 0, z: 0 }, radius).length;
+/** How many cells a window of these `radius` and `yRadius` values holds. */
+export const cellsInSphere = (radius: number, yRadius = radius): number =>
+  sphereCells({ x: 0, y: 0, z: 0 }, radius, yRadius).length;
 
 /**
  * The level of detail a cell is generated at, from its euclidean distance in
@@ -98,8 +106,15 @@ export const borderSizesOf = (
 };
 
 export interface ChunkSphereParams {
-  /** Chunk radius of the spherical window. */
+  /** Chunk radius of the window in X and Z. */
   radius: number;
+  /**
+   * Chunk radius of the window in Y, defaulting to `radius` (a regular
+   * ball). Smaller than `radius` flattens the window vertically, bounding
+   * the pool to the terrain around the player instead of a full ball of
+   * stone above and below it.
+   */
+  yRadius?: number;
   terrain: TerrainConfig;
   /**
    * Called whenever a slot's voxel data is ready to be reflected on screen —
@@ -118,15 +133,16 @@ export interface ChunkSphereParams {
 }
 
 /**
- * Requests a spherical window's chunk data from a `FillClient` — every cell
- * at startup through `fillFrom`, then the cells each scroll reveals — and
- * keeps the ball centred on the player. `blocks` stays the same array
- * reference across scrolling, so anything holding onto it (e.g.
- * `RendererSwitch`) sees updates in place.
+ * Requests a window's chunk data from a `FillClient` — every cell at
+ * startup through `fillFrom`, then the cells each scroll reveals — and
+ * keeps the ball (flattened to `yRadius` in Y) centred on the player.
+ * `blocks` stays the same array reference across scrolling, so anything
+ * holding onto it (e.g. `RendererSwitch`) sees updates in place.
  */
 export class ChunkSphere {
   readonly blocks: WorldBlock[];
   readonly radius: number;
+  readonly yRadius: number;
   /**
    * Resolves a world point to the block whose cell contains it. Backs the
    * terrain queries (height, collision), which must stay O(1) per call.
@@ -143,9 +159,14 @@ export class ChunkSphere {
 
   constructor(params: ChunkSphereParams) {
     this.radius = params.radius;
+    this.yRadius = params.yRadius ?? params.radius;
     this.onBlockReposition = params.onBlockReposition;
 
-    const initial = sphereCells({ x: 0, y: 0, z: 0 }, params.radius);
+    const initial = sphereCells(
+      { x: 0, y: 0, z: 0 },
+      this.radius,
+      this.yRadius,
+    );
     this.blocks = initial.map((cell) => {
       const center: Dim3 = [
         cell.x * BLOCK_WORLD[0],
@@ -197,7 +218,7 @@ export class ChunkSphere {
   fillFrom(x: number, y: number, z: number): number {
     const center = chunkCellOf(x, y, z);
     this.centerCell = { x: center[0], y: center[1], z: center[2] };
-    const cells = sphereCells(this.centerCell, this.radius);
+    const cells = sphereCells(this.centerCell, this.radius, this.yRadius);
     for (let i = 0; i < this.blocks.length; i++) {
       this.cells[i] = cells[i];
       this.cellIndex.set(cellKey(cells[i]), i);
@@ -270,7 +291,11 @@ export class ChunkSphere {
     ) {
       return;
     }
-    const next = sphereCells({ x: cx, y: cy, z: cz }, this.radius);
+    const next = sphereCells(
+      { x: cx, y: cy, z: cz },
+      this.radius,
+      this.yRadius,
+    );
     const nextKeys = new Set(next.map(cellKey));
 
     // A cell that stays in the ball keeps its slot, but the level of detail

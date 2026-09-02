@@ -34,6 +34,13 @@ export interface RenderLoopConfig {
   /** Advances the world by `dt` seconds. Called once per frame, before drawing. */
   onFrame: (dt: number) => void;
   /**
+   * Runs once per frame, just before the scene is drawn, with the renderer
+   * and camera — the slot for a pass the visible draw must not capture (an
+   * occlusion readback) to run first on the same context and the same camera
+   * view.
+   */
+  beforeRender?: (renderer: WebGLRenderer, camera: PerspectiveCamera) => void;
+  /**
    * Renderer statistics to append to the debug line. `sample` is true only on
    * the frames where a GPU readback is affordable.
    */
@@ -64,6 +71,7 @@ export const createRenderLoop = ({
   debugPerf,
   resolution,
   onFrame,
+  beforeRender,
   clearColor,
   describeStats,
   onDebugStats,
@@ -90,11 +98,13 @@ export const createRenderLoop = ({
    */
   const render = (): boolean => {
     if (!debugPerf()) {
+      beforeRender?.(renderer, camera);
       renderer.render(scene, camera);
       return false;
     }
     timer ??= new GpuTimer(renderer.gl);
     timer.begin();
+    beforeRender?.(renderer, camera);
     renderer.render(scene, camera);
     timer.end();
     timer.poll();

@@ -67,6 +67,8 @@ describe("Inventory", () => {
     expect(inv.selectedId).toBe("stone");
     expect(inv.selectSlot(0)).toBe(true);
     expect(inv.selectedId).toBe("dirt");
+    expect(inv.selectSlot(2)).toBe(true);
+    expect(inv.selectedId).toBe("cloud");
     expect(inv.selectSlot(3)).toBe(true);
     expect(inv.selectedId).toBe("sword");
     expect(inv.selectSlot(ITEM_ORDER.length)).toBe(false);

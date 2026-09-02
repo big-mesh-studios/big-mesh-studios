@@ -134,8 +134,8 @@ importers:
         specifier: ^7.3.1
         version: 7.3.1
       '@random-mesh/rmsl':
-        specifier: ^1.9.0
-        version: 1.9.0(vite@7.3.6(@types/node@26.4.0))
+        specifier: ^1.10.0
+        version: 1.10.0(vite@7.3.6(@types/node@26.4.0))
       '@solidjs/signals':
         specifier: 2.0.0-beta.29
         version: 2.0.0-beta.29
@@ -661,6 +661,14 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [glibc]
+
+  '@random-mesh/rmsl@1.10.0':
+    resolution: {integrity: sha512-NcyuTu9T4ph2qAF1Erf9jjnD6YBgW87XJWdlnWajUY/pMiZrHM2BGYfgFMVlvZdr9yGabW+BRiwqPQKVVMNQ/g==}
+    peerDependencies:
+      vite: '>=5.0.0'
+    peerDependenciesMeta:
+      vite:
+        optional: true
 
   '@random-mesh/rmsl@1.9.0':
     resolution: {integrity: sha512-tTsmmrjkocMiCoRhaA9nAumFnQxJ24VsUna/Chk1ve+KvrCbWa9/QrTfhUi8qaOmiRjh3aX33ouIfp/nJFlNXw==}
@@ -1807,6 +1815,13 @@ snapshots:
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
+
+  '@random-mesh/rmsl@1.10.0(vite@7.3.6(@types/node@26.4.0))':
+    dependencies:
+      '@webgpu/types': 0.1.72
+      esbuild: 0.28.2
+    optionalDependencies:
+      vite: 7.3.6(@types/node@26.4.0)
 
   '@random-mesh/rmsl@1.9.0(vite@7.3.6(@types/node@26.4.0))':
     dependencies:

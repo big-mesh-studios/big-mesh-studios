@@ -39,8 +39,10 @@ import { DEFAULT_TERRAIN, type TerrainConfig } from "../world/noise";
 const SKY_BLUE = 0x87ceeb;
 
 export interface VoxelscapeConfig {
-  /** Radius of the spherical streamed window, in chunks. Also sets the fog and camera far distances. */
+  /** Radius of the block window in X and Z, in chunks. Also sets the fog and camera far distances. */
   chunkRadius?: number;
+  /** Radius of the block window in Y, in chunks; defaults to 2, flattening the window toward the ground. */
+  chunkRadiusY?: number;
   /** Terrain noise settings shared by every block in the ring. */
   terrain?: TerrainConfig;
   /** When true, only surface voxels are written into each block's GPU chunks instead of the full solid volume. */
@@ -109,6 +111,7 @@ export interface Voxelscape {
  */
 export const createVoxelscape = ({
   chunkRadius = 4,
+  chunkRadiusY = 2,
   terrain = DEFAULT_TERRAIN,
   spawn = [0, 0, 0],
   modelAccount = WORLD_MODEL_ACCOUNT,
@@ -132,12 +135,13 @@ export const createVoxelscape = ({
 
   const [loading, setLoading] = createSignal<InitialDrawProgress>({
     drawn: 0,
-    total: cellsInSphere(chunkRadius),
+    total: cellsInSphere(chunkRadius, chunkRadiusY),
     spawnDrawn: false,
   });
 
   const world = createVoxelWorld({
     chunkRadius,
+    chunkRadiusY,
     terrain,
     spawn,
     onInitialDraw: setLoading,
@@ -597,8 +601,10 @@ export const createVoxelscape = ({
       onDebugStats,
       onFrame: advance,
       clearColor: () => skyColor,
+      beforeRender: (renderer, camera) =>
+        world.renderer.occlusionFrame(renderer, camera),
       describeStats: () =>
-        `tris: ${world.renderer.triangleCount.toLocaleString()}`,
+        `tris: ${world.renderer.triangleCount.toLocaleString()} | occluded: ${world.renderer.occlusions}`,
     });
 
     unmount = () => {
