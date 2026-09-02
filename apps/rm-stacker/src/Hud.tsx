@@ -1,5 +1,5 @@
 import { createPopover } from "@big-mesh-studios/utils/create-popover";
-import { For, flush, useContext } from "solid-js";
+import { flush, For, useContext } from "solid-js";
 import {
   Bar,
   Colour,
@@ -13,9 +13,9 @@ import {
 import Palette from "./components/Palette";
 import { StackerContext } from "./context";
 import styles from "./Hud.module.css";
+import type { IconKind } from "./icon-kinds";
 import { PartsPanel } from "./PartsPanel";
 import { ProfileModal } from "./profile/ProfileModal";
-import type { IconKind } from "./icon-kinds";
 import { HandleKind, ModeKind } from "./types";
 
 /** The handles that can stand at the part being drawn on, and what each says. */
@@ -182,24 +182,20 @@ export function Hud() {
         <Bar>
           <IconTab
             onClick={() => {
-              preview.setAutorotate((rotate) => !rotate);
+              preview.setHandleAxes((axes) =>
+                axes === "part" ? "figure" : "part",
+              );
               flush();
               requestAutoSave();
             }}
-            selected={!ProfileDialog.isOpen() && preview.autorotate()}
-            kind="rotate"
+            selected={ProfileDialog.isOpen() || preview.handleAxes() !== "part"}
+            kind="globe"
+            title={
+              preview.handleAxes() === "part"
+                ? "Handles lying along the part's own axes"
+                : "Handles lying along the figure's axes"
+            }
           />
-          <IconTab
-            onClick={() => {
-              preview.setUnlit((unlit) => !unlit);
-              flush();
-              requestAutoSave();
-            }}
-            selected={!ProfileDialog.isOpen() && !preview.unlit()}
-            kind="lightbulb"
-          />
-        </Bar>
-        <Bar>
           <For each={HANDLES}>
             {({ kind, icon, title }) => (
               <IconTab
@@ -218,24 +214,28 @@ export function Hud() {
               />
             )}
           </For>
+        </Bar>
+        <Bar>
           <IconTab
             onClick={() => {
-              preview.setHandleAxes((axes) =>
-                axes === "part" ? "figure" : "part",
-              );
+              preview.setAutorotate((rotate) => !rotate);
               flush();
               requestAutoSave();
             }}
-            selected={
-              !ProfileDialog.isOpen() && preview.handleAxes() === "part"
-            }
-            kind="compass"
-            title={
-              preview.handleAxes() === "part"
-                ? "Handles lying along the part's own axes"
-                : "Handles lying along the figure's axes"
-            }
+            selected={!ProfileDialog.isOpen() && preview.autorotate()}
+            kind="rotate"
           />
+          <IconTab
+            onClick={() => {
+              preview.setUnlit((unlit) => !unlit);
+              flush();
+              requestAutoSave();
+            }}
+            selected={!ProfileDialog.isOpen() && !preview.unlit()}
+            kind="lightbulb"
+          />
+        </Bar>
+        <Bar>
           <IconTab
             onClick={() => {
               preview.setFocus((focus) => (focus === "part" ? "root" : "part"));

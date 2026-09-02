@@ -31,7 +31,7 @@ export function PartsPanel() {
 
   function moveTo(axis: WidgetAxis, to: number) {
     const part = selectedPart();
-    const root = { ...part.root, [axis]: Math.round(to) };
+    const root = { ...part.root, [axis]: to };
 
     if (Vector3D.equals(root, part.root)) {
       return;
@@ -135,7 +135,7 @@ export function PartsPanel() {
                 <span>{axis}</span>
                 <input
                   type="number"
-                  step="1"
+                  step="any"
                   value={selectedPart().root[axis]}
                   onChange={(event) =>
                     moveTo(axis, event.currentTarget.valueAsNumber)

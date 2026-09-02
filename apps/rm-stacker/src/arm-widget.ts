@@ -172,8 +172,9 @@ export function armUnderPointer(
  * @param arm Where the arrow lies on the canvas.
  * @param armLength How long the arrow is in the drawn world.
  * @param voxelSize How much of the drawn world one voxel takes up.
- * @returns A whole number of voxels, or 0 for an arrow too foreshortened to
- * read a distance off.
+ * @returns How far in voxels, which need not be a whole number of them: a part
+ * stands where it is put. Zero for an arrow too foreshortened to read a
+ * distance off.
  */
 export function voxelsDragged(
   dragged: Vector2D,
@@ -190,7 +191,7 @@ export function voxelsDragged(
 
   const along = (dragged.x * run.x + dragged.y * run.y) / onScreen;
 
-  return Math.round((along / onScreen) * (armLength / voxelSize));
+  return (along / onScreen) * (armLength / voxelSize);
 }
 
 /** What an arm is tipped with, which is what taking hold of it does. */

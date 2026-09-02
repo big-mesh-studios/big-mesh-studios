@@ -28,6 +28,10 @@ rather than refusing to draw a figure that got into a state nobody can see.
 
 ## A root is whole voxels; a pivot need not be
 
+_Taken back by [0003](./0003-posing-a-part.md), which turns a part about its
+pivot: a turned part has no voxel on the figure's grid whatever its root is, so
+holding the root to whole voxels no longer keeps anything flush._
+
 A root is where a part's pivot sits, in whole voxels from its parent's pivot. It
 is whole voxels because that is what a voxel editor is for: parts meet flush,
 nothing lands on a half cell, and the picker's arithmetic stays integral.

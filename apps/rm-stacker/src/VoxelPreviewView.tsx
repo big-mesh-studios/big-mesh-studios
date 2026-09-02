@@ -411,17 +411,17 @@ const VoxelPreviewView: Component = () => {
       );
 
       // The arm points along one of the axes the handles stand on, which the
-      // part's own turn may have taken somewhere of its own; a root is whole
-      // voxels, so where that line falls between them the part takes the
-      // nearest.
+      // part's own turn may have taken somewhere of its own. A root falls where
+      // it likes, so the part goes as far along that line as the pointer has
+      // carried it and stops there.
       const along = Matrix3x3.transform(
         turnMatrix(untrack(handleTurn)),
         ALONG[grabbedArm.axis],
       );
       const root = Vector3D.create(
-        Math.round(startRoot.x + along.x * steps),
-        Math.round(startRoot.y + along.y * steps),
-        Math.round(startRoot.z + along.z * steps),
+        startRoot.x + along.x * steps,
+        startRoot.y + along.y * steps,
+        startRoot.z + along.z * steps,
       );
 
       if (Vector3D.equals(root, lastRoot)) {

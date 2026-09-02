@@ -111,12 +111,10 @@ describe("voxelsDragged", () => {
     );
   });
 
-  it("lands on whole voxels, so a part never sits between them", () => {
-    expect(
-      Number.isInteger(
-        voxelsDragged({ x: 27, y: 0 }, arm, ARM_LENGTH, VOXEL_SIZE),
-      ),
-    ).toBe(true);
+  it("lets a part stand between voxels, where the drag left it", () => {
+    expect(voxelsDragged({ x: 27, y: 0 }, arm, ARM_LENGTH, VOXEL_SIZE)).toBe(
+      5.4,
+    );
   });
 
   it("holds still for an arrow pointing almost straight at the camera", () => {

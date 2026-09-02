@@ -180,8 +180,13 @@ export interface Part {
    */
   sections: Section[];
   /**
-   * Where the part's pivot sits, in whole voxels, measured from its parent's
-   * pivot — or from the figure's origin for a part with no parent.
+   * Where the part's pivot sits, in voxels, measured from its parent's pivot —
+   * or from the figure's origin for a part with no parent.
+   *
+   * It falls where it likes rather than on whole voxels. A part carries a turn
+   * about its own pivot and a size of its own, so its voxels no longer line up
+   * with the figure's grid whatever its root is, and holding the root to the
+   * grid would only stop a part from meeting a turned one where it touches it.
    */
   root: Vector3D;
   /**
@@ -380,9 +385,9 @@ export function composePose(figure: Figure, part: Part): PartPose {
 }
 
 /**
- * Where `part`'s pivot sits in the figure, in voxels from the figure's origin.
- * Whole voxels for a figure nothing is turned or scaled in, since a root is
- * whole voxels and they are only summed.
+ * Where `part`'s pivot sits in the figure, in voxels from the figure's origin:
+ * its own root and every root above it, each carried by the turns and the sizes
+ * of everything it hangs off.
  */
 export function composeRoot(figure: Figure, part: Part): Vector3D {
   return composePose(figure, part).at;
