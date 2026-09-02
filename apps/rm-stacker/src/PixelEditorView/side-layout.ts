@@ -37,6 +37,12 @@ const MARKER_GAP = 1;
  */
 export const MARKER_RADIUS = 1;
 
+/**
+ * How close two numbers may stand in one lane, and how much further out the
+ * next lane is: the width of the circle either of them is drawn in.
+ */
+const MARKER_LANE = MARKER_RADIUS * 2;
+
 export type SidePositions = Record<SideKind, Vector2D>;
 
 /** Where each of a part's drawings sits on the editor canvas. */
@@ -168,54 +174,29 @@ export function computePanelPositions(
 }
 
 /**
- * Where a row of things wanting to stand at `wanted` ends up standing, once
- * those too close together have been pushed apart to `spacing`.
+ * How far out from the panel each of a row of numbers standing at `at` is put,
+ * counted in lanes, so that no two in one lane stand closer than `spacing`.
  *
- * Anything with room around it stays where it wanted to be. A crowd is spread
- * evenly about the middle of where its members wanted to stand, so that what is
- * pushed aside moves as little as it can, in both directions rather than one,
- * and stands in the order it was given in.
+ * Two cuts can stand a single voxel apart, which is closer than two numbers can
+ * be drawn side by side — and moving one along the edge would take it off the
+ * cut it belongs to. They step out from the panel instead, the way the teeth of
+ * a zip pass each other: near lane, far lane, near lane again. Each number
+ * stays on its own cut, and the lane it stands in is the least it can take.
  *
- * @param wanted Where each of them wants to stand, in the order they stand in.
+ * @param at Where each of them stands along the edge, in that order.
  */
-export function spreadApart(wanted: number[], spacing: number): number[] {
-  /** A run of them that has closed up, and what they wanted between them. */
-  const crowds: { count: number; total: number }[] = [];
+export function zipLanes(at: number[], spacing: number): number[] {
+  /** Where the last number put in each lane stands. */
+  const lastInLane: number[] = [];
 
-  const middleOf = (crowd: { count: number; total: number }) =>
-    crowd.total / crowd.count;
-  /** Where a crowd's first and last stand once it has been spread. */
-  const first = (crowd: { count: number; total: number }) =>
-    middleOf(crowd) - ((crowd.count - 1) / 2) * spacing;
-  const last = (crowd: { count: number; total: number }) =>
-    middleOf(crowd) + ((crowd.count - 1) / 2) * spacing;
+  return at.map((position) => {
+    const free = lastInLane.findIndex((last) => position - last >= spacing);
+    const lane = free === -1 ? lastInLane.length : free;
 
-  for (const want of wanted) {
-    crowds.push({ count: 1, total: want });
+    lastInLane[lane] = position;
 
-    // Taking one in can push a crowd back into the one before it, which then
-    // has to take that one in as well.
-    while (crowds.length > 1) {
-      const behind = crowds[crowds.length - 2];
-      const ahead = crowds[crowds.length - 1];
-
-      if (first(ahead) - last(behind) >= spacing) {
-        break;
-      }
-
-      crowds.splice(crowds.length - 2, 2, {
-        count: behind.count + ahead.count,
-        total: behind.total + ahead.total,
-      });
-    }
-  }
-
-  return crowds.flatMap((crowd) =>
-    Array.from(
-      { length: crowd.count },
-      (_, index) => first(crowd) + index * spacing,
-    ),
-  );
+    return lane;
+  });
 }
 
 /** A slice's number, standing beside the cut where it crosses a panel. */
@@ -226,7 +207,8 @@ export interface SliceMarker {
   /**
    * Where it stands. The number is drawn as a circle inside this, and taken
    * hold of anywhere in it, which leaves a little room around the circle for a
-   * finger that lands beside it.
+   * finger that lands beside it. Two of these can lie over each other where the
+   * cuts are close; a press goes to whichever number it landed nearest.
    */
   box: Box;
 }
@@ -237,11 +219,9 @@ export interface SliceMarker {
  * reveals — and taken hold of, to bring those faces into view.
  *
  * A cut drawn down a panel is marked above that panel and one drawn across it
- * to its left, which is where the net leaves room.
- *
- * Two cuts can stand a single voxel apart, which is closer than two numbers can
- * be read or pressed, so numbers crowded like that are pushed along the edge
- * until they clear each other. A number with room around it stands on its cut.
+ * to its left, which is where the net leaves room. Numbers too close together
+ * to be drawn side by side step out from the panel instead, so that each stays
+ * on the cut it belongs to.
  */
 export function computeSliceMarkers(
   part: Part,
@@ -266,23 +246,23 @@ export function computeSliceMarkers(
     });
 
     for (const along of ["x", "y"] as const) {
-      // In the order they stand along the edge, which is the order they are
-      // spread apart in.
+      // In the order they stand along the edge, which is the order the lanes
+      // are handed out in.
       const inOrder = crossings
         .filter((crossing) => crossing.along === along)
         .sort((one, other) => one.line - other.line);
 
-      const spread = spreadApart(
-        inOrder.map((crossing) => panel[along] + crossing.line),
-        MARKER_SIZE,
-      );
+      const standing = inOrder.map((crossing) => panel[along] + crossing.line);
+      const lanes = zipLanes(standing, MARKER_LANE);
 
       inOrder.forEach((crossing, index) => {
-        const middle = spread[index];
+        const middle = standing[index];
+        const out = MARKER_GAP + MARKER_SIZE + lanes[index] * MARKER_LANE;
+
         const min =
           along === "x"
-            ? { x: middle - half, y: panel.y - MARKER_GAP - MARKER_SIZE }
-            : { x: panel.x - MARKER_GAP - MARKER_SIZE, y: middle - half };
+            ? { x: middle - half, y: panel.y - out }
+            : { x: panel.x - out, y: middle - half };
 
         markers.push({
           cut: crossing.cut,
@@ -302,7 +282,15 @@ export function intersectSliceMarkers(
   markers: SliceMarker[],
   worldPosition: Vector2D,
 ): SliceMarker | undefined {
-  return markers.find((marker) => boxHolds(marker.box, worldPosition));
+  const reachOf = (marker: SliceMarker) =>
+    Math.hypot(
+      (marker.box.min.x + marker.box.max.x) / 2 - worldPosition.x,
+      (marker.box.min.y + marker.box.max.y) / 2 - worldPosition.y,
+    );
+
+  return markers
+    .filter((marker) => boxHolds(marker.box, worldPosition))
+    .sort((one, other) => reachOf(one) - reachOf(other))[0];
 }
 
 /**
