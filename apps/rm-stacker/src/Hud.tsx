@@ -1,3 +1,4 @@
+import { Bitmap } from "@big-mesh-studios/maths";
 import { createPopover } from "@big-mesh-studios/utils/create-popover";
 import { flush, useContext } from "solid-js";
 import {
@@ -23,6 +24,8 @@ export function Hud() {
   const {
     undoRedoManager,
     selectedColour,
+    selectedPaletteIndex,
+    selectPaletteIndex,
     mode,
     setMode,
     mirror,
@@ -94,11 +97,6 @@ export function Hud() {
           selected={isModeSelected("Fill")}
         />
         <IconTab
-          kind="eraser"
-          onClick={() => setMode("Erase")}
-          selected={isModeSelected("Erase")}
-        />
-        <IconTab
           kind="square"
           onClick={() => setMode("Rectangle")}
           selected={isModeSelected("Rectangle")}
@@ -150,6 +148,14 @@ export function Hud() {
         <PalettePopover.Trigger class={[tabStyle, colourTabStyle]}>
           <Colour colour={selectedColour()} />
         </PalettePopover.Trigger>
+        <IconTab
+          kind="eraser"
+          onClick={() => selectPaletteIndex(Bitmap.EMPTY)}
+          selected={
+            !ProfileDialog.isOpen() && selectedPaletteIndex() === Bitmap.EMPTY
+          }
+          title="Draw in nothing, which takes away what is drawn"
+        />
         <PalettePopover.PopOver
           class={[popoverStyle, styles.palettePopover]}
           popover="manual"

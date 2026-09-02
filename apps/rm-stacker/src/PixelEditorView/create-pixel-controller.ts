@@ -186,6 +186,25 @@ export const createPixelEditorController = ({
     };
   }
 
+  /**
+   * Whether a stroke reaches the cell at the other end of the run it carves.
+   *
+   * Drawing reaches it where nothing is drawn there, because a run empty at
+   * that end is carved away and the stroke would show nothing; it goes no
+   * further than that, so drawing on one panel does not paint over the other.
+   * Drawing in nothing reaches it the other way about, wherever something is
+   * drawn there: the run is being taken away, and what was drawn at its far end
+   * is left with no voxel to sit on.
+   */
+  function reachesAcross(
+    takingAway: boolean,
+    opposite: { index: number },
+  ): boolean {
+    return takingAway
+      ? opposite.index !== Bitmap.EMPTY
+      : opposite.index === Bitmap.EMPTY;
+  }
+
   /** How a block is named when it is being kept track of once only. */
   const blockKey = (block: Block) =>
     `${block.panel}:${block.min.x},${block.min.y}:${block.max.x},${block.max.y}`;
@@ -264,7 +283,9 @@ export const createPixelEditorController = ({
     undoCommandsReversed = [];
     pushUndo(
       Command.sequence(undoCommands),
-      untrack(mode) === "Erase" ? "Erase Pixels" : "Draw Pixels",
+      untrack(selectedPaletteIndex) === Bitmap.EMPTY
+        ? "Erase Pixels"
+        : "Draw Pixels",
     );
   }
 
@@ -304,10 +325,12 @@ export const createPixelEditorController = ({
           worldPosition: _roundedWorldPosition,
         });
 
-        if (!intersection || intersection.index === Bitmap.EMPTY) {
+        if (!intersection) {
           return;
         }
 
+        // An empty cell is picked up as the empty colour, so the eyedropper
+        // hands back whatever is under it, drawn or not.
         selectPaletteIndex(intersection.index);
 
         break;
@@ -332,7 +355,8 @@ export const createPixelEditorController = ({
       }
 
       case "Fill": {
-        const _selectedPaletteIndex = selectedPaletteIndex();
+        const drawn = selectedPaletteIndex();
+        const takingAway = drawn === Bitmap.EMPTY;
         const commands: Command[] = [];
 
         const intersection = intersectPanels({
@@ -347,32 +371,30 @@ export const createPixelEditorController = ({
 
         const { kind, position } = intersection;
 
-        if (_selectedPaletteIndex !== undefined) {
-          const targets: Mark[] = [];
+        const targets: Mark[] = [];
 
-          for (const mark of strokeMarks(kind, position)) {
-            targets.push(mark);
+        for (const mark of strokeMarks(kind, position)) {
+          targets.push(mark);
 
-            const opposite = getOppositePixel(mark.panel, mark.position);
+          const opposite = getOppositePixel(mark.panel, mark.position);
 
-            if (opposite?.index === Bitmap.EMPTY) {
-              targets.push({
-                panel: opposite.kind,
-                position: opposite.position,
-              });
-            }
+          if (opposite !== undefined && reachesAcross(takingAway, opposite)) {
+            targets.push({
+              panel: opposite.kind,
+              position: opposite.position,
+            });
           }
+        }
 
-          for (const target of uniqueMarks(targets)) {
-            commands.push(
-              Command.fillPixel(
-                drawnPart(),
-                target.panel,
-                target.position,
-                _selectedPaletteIndex,
-              ),
-            );
-          }
+        for (const target of uniqueMarks(targets)) {
+          commands.push(
+            Command.fillPixel(
+              drawnPart(),
+              target.panel,
+              target.position,
+              drawn,
+            ),
+          );
         }
 
         if (commands.length === 0) {
@@ -471,6 +493,10 @@ export const createPixelEditorController = ({
             block,
             onlyWhereEmpty: false,
           }));
+          // A rectangle drawn in nothing takes the far end away with it rather
+          // than filling it in, and a cell already empty there is nothing to
+          // take away, so it goes over the whole block.
+          const onlyWhereEmpty = selectedPaletteIndex() !== Bitmap.EMPTY;
 
           for (const block of drawn) {
             const across = blockAcrossTheRun(table(), block);
@@ -480,7 +506,7 @@ export const createPixelEditorController = ({
             }
 
             covered.add(blockKey(across));
-            blocks.push({ block: across, onlyWhereEmpty: true });
+            blocks.push({ block: across, onlyWhereEmpty });
           }
 
           return blocks;
@@ -567,8 +593,8 @@ export const createPixelEditorController = ({
 
           const { kind, position } = intersection;
 
-          const _mode = mode();
-          const _selectedPaletteIndex = selectedPaletteIndex();
+          const drawn = selectedPaletteIndex();
+          const takingAway = drawn === Bitmap.EMPTY;
           const targets: Mark[] = [];
 
           for (const mark of strokeMarks(kind, position)) {
@@ -576,16 +602,7 @@ export const createPixelEditorController = ({
 
             const opposite = getOppositePixel(mark.panel, mark.position);
 
-            // Erasing reaches the far side wherever something is drawn there;
-            // drawing only reaches it where nothing is, so painting one panel
-            // does not paint over the other.
-            const reaches =
-              opposite !== undefined &&
-              (_mode === "Erase"
-                ? opposite.index !== Bitmap.EMPTY
-                : opposite.index === Bitmap.EMPTY);
-
-            if (reaches) {
+            if (opposite !== undefined && reachesAcross(takingAway, opposite)) {
               targets.push({
                 panel: opposite.kind,
                 position: opposite.position,
@@ -596,20 +613,16 @@ export const createPixelEditorController = ({
           const commands: Command[] = [];
 
           for (const target of uniqueMarks(targets)) {
-            if (_mode === "Erase") {
-              commands.push(
-                Command.erasePixel(drawnPart(), target.panel, target.position),
-              );
-            } else if (_selectedPaletteIndex !== undefined) {
-              commands.push(
-                Command.writePixel(
-                  drawnPart(),
-                  target.panel,
-                  target.position,
-                  _selectedPaletteIndex,
-                ),
-              );
-            }
+            commands.push(
+              takingAway
+                ? Command.erasePixel(drawnPart(), target.panel, target.position)
+                : Command.writePixel(
+                    drawnPart(),
+                    target.panel,
+                    target.position,
+                    drawn,
+                  ),
+            );
           }
 
           if (commands.length === 0) {
@@ -693,11 +706,13 @@ export const createPixelEditorController = ({
           ctx.stroke();
         }
 
+        const colour = selectedColour();
+
         ctx.fillStyle =
-          mode() === "Erase"
+          colour === undefined
             ? // var(--back)
               "oklch(23.26% .014 253.1)"
-            : RGBA.toCSS(selectedColour());
+            : RGBA.toCSS(colour);
         ctx.strokeStyle = "white";
 
         for (const cell of cells) {

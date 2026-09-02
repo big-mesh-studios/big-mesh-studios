@@ -90,9 +90,10 @@ function Palette(props: { class?: string }) {
       <div class={[styles.palette, narrow() && styles.narrow, props.class]}>
         <For each={palette()}>
           {(colour, index) => {
-            const isSelected = createMemo(
-              () => selectedColour() && RGBA.equals(colour, selectedColour()),
-            );
+            const isSelected = createMemo(() => {
+              const selected = selectedColour();
+              return selected !== undefined && RGBA.equals(colour, selected);
+            });
 
             async function onPointerDown(
               event: PointerEvent & { currentTarget?: HTMLElement },

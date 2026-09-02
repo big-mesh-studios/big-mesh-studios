@@ -208,7 +208,14 @@ export function createStacker() {
 
   const preview = createPreviewStore(saved);
 
-  const selectedColour = createMemo(() => palette()[selectedPaletteIndex()]);
+  /**
+   * The colour being drawn in, or undefined for the empty one: drawing in
+   * nothing is what takes away what is drawn, and the palette holds no entry
+   * for it.
+   */
+  const selectedColour = createMemo<RGBA | undefined>(
+    () => palette()[selectedPaletteIndex()],
+  );
 
   const requestAutoSave = (() => {
     let aboutToSave = false;

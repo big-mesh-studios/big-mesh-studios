@@ -87,6 +87,17 @@
   align-content: center;
 }
 
+/* Nothing drawn, shown the way a picture shows what it has nothing in. */
+.empty {
+  background: conic-gradient(
+      var(--front) 0 25%,
+      var(--light-grey) 0 50%,
+      var(--front) 0 75%,
+      var(--light-grey) 0
+    )
+    0 0 / 8px 8px;
+}
+
 .colourTab {
   padding: var(--margin);
   & > * {

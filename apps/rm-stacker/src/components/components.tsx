@@ -48,12 +48,16 @@ export function Tab(props: TabProps) {
 /*                                      Colour                                    */
 /**********************************************************************************/
 
-export function Colour(props: { colour: RGBA }) {
+/** A colour to draw in, or the checkerboard standing for drawing in nothing. */
+export function Colour(props: { colour: RGBA | undefined }) {
   return (
     <div
-      style={{
-        "background-color": RGBA.toCSS(props.colour),
-      }}
+      class={props.colour === undefined ? styles.empty : undefined}
+      style={
+        props.colour === undefined
+          ? undefined
+          : { "background-color": RGBA.toCSS(props.colour) }
+      }
     />
   );
 }
