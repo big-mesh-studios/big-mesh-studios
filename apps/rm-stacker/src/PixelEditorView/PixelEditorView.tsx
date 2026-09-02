@@ -22,6 +22,7 @@ import {
   computeSliceMarkers,
   LABEL_FONT,
   LABEL_HEIGHT,
+  MARKER_RADIUS,
   type Box,
 } from "./side-layout";
 
@@ -180,7 +181,7 @@ const PixelEditorView: Component = () => {
 
     ctx.fillStyle = colour;
     ctx.beginPath();
-    ctx.arc(middle.x, middle.y, (box.max.x - box.min.x) / 2, 0, 2 * Math.PI);
+    ctx.arc(middle.x, middle.y, MARKER_RADIUS, 0, 2 * Math.PI);
     ctx.fill();
 
     ctx.font = LABEL_FONT;

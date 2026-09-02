@@ -31,6 +31,12 @@ const NUMBER_WIDTH = 4;
 const MARKER_SIZE = 3;
 const MARKER_GAP = 1;
 
+/**
+ * How large the circle a slice's number stands in is drawn, in cells. Smaller
+ * than the box it is taken hold of by, which stays a size a finger can find.
+ */
+export const MARKER_RADIUS = 1;
+
 export type SidePositions = Record<SideKind, Vector2D>;
 
 /** Where each of a part's drawings sits on the editor canvas. */
