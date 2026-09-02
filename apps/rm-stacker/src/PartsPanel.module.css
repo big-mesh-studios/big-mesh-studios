@@ -52,6 +52,10 @@
   color: var(--grey);
   font-size: 10pt;
 
+  & span {
+    width: 10px;
+  }
+
   & input {
     width: 5ch;
     flex-grow: 1;

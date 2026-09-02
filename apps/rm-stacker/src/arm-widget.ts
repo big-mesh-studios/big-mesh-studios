@@ -1,8 +1,10 @@
-// The three arrows that move a part's root: one per axis, standing at the root
-// inside the figure so they turn with it, and dragged along their own axis to
-// slide the part a voxel at a time.
+// The three arms standing at a part's root: one per axis, standing inside the
+// figure so they turn with it, and dragged along their own axis. Arms tipped
+// with an arrowhead slide the part a voxel at a time; arms tipped with a cube
+// draw it larger or smaller.
 import { Dimensions2D, Vector2D, Vector3D } from "@big-mesh-studios/maths";
 import {
+  BoxGeometry,
   ConeGeometry,
   CylinderGeometry,
   Group,
@@ -189,8 +191,36 @@ export function voxelsDragged(
   return Math.round((along / onScreen) * (armLength / voxelSize));
 }
 
-/** One arrow: a shaft with a head on it, pointing down its own axis. */
-function buildArm(axis: WidgetAxis): Group {
+/** What an arm is tipped with, which is what taking hold of it does. */
+export type ArmHead = "arrow" | "cube";
+
+/**
+ * What a drag along an arm multiplies the part's size by.
+ *
+ * An arm's whole length on screen stands for doubling the part, and dragging
+ * back along it for halving: the part grows by as much again as the pointer has
+ * carried the arm's tip out past where it began.
+ *
+ * @param dragged How far the pointer has come since the drag began, in pixels.
+ * @param arm Where the arm lies on the canvas.
+ * @returns One for an arm too foreshortened to read a distance off, that being
+ * the size the part is already drawn at.
+ */
+export function sizeDragged(dragged: Vector2D, arm: ArmOnScreen): number {
+  const run = { x: arm.to.x - arm.from.x, y: arm.to.y - arm.from.y };
+  const onScreen = Math.hypot(run.x, run.y);
+
+  if (onScreen < TOO_FORESHORTENED) {
+    return 1;
+  }
+
+  const along = (dragged.x * run.x + dragged.y * run.y) / onScreen;
+
+  return Math.pow(2, along / onScreen);
+}
+
+/** One arm: a shaft with a head on it, pointing down its own axis. */
+function buildArm(axis: WidgetAxis, head: ArmHead): Group {
   const arm = new Group();
   const material = new MeshBasicMaterial({ color: AXIS_COLOUR[axis] });
   // Drawn over whatever it stands in front of, so an arrow reaching into the
@@ -204,13 +234,15 @@ function buildArm(axis: WidgetAxis): Group {
   );
   shaft.position.set(0, shaftLength / 2, 0);
 
-  const head = new Mesh(
-    new ConeGeometry(HEAD_RADIUS, HEAD_LENGTH, 10),
+  const tip = new Mesh(
+    head === "arrow"
+      ? new ConeGeometry(HEAD_RADIUS, HEAD_LENGTH, 10)
+      : new BoxGeometry(HEAD_LENGTH, HEAD_LENGTH, HEAD_LENGTH),
     material,
   );
-  head.position.set(0, shaftLength + HEAD_LENGTH / 2, 0);
+  tip.position.set(0, shaftLength + HEAD_LENGTH / 2, 0);
 
-  arm.add(shaft, head);
+  arm.add(shaft, tip);
 
   // The shapes are built standing on the y axis, so the two other arms are
   // turned a quarter circle to lie along theirs.
@@ -224,11 +256,11 @@ function buildArm(axis: WidgetAxis): Group {
 }
 
 /**
- * The three arrows standing at a part's root. Whoever holds one puts `group`
- * into the same space the figure is drawn in, so the arrows turn as the figure
- * turns, and calls `place` whenever the root or the camera moves.
+ * The three arms standing at a part's root. Whoever holds one puts `group` into
+ * the same space the figure is drawn in, so the arms turn as the figure turns,
+ * and calls `place` whenever the root or the camera moves.
  */
-export class TranslateWidget {
+export class ArmWidget {
   readonly group = new Group();
   private arms: { axis: WidgetAxis; arm: Group; tip: Vector3 }[];
   private readonly viewProjection = new Matrix4();
@@ -241,9 +273,9 @@ export class TranslateWidget {
    */
   armLength = 0;
 
-  constructor() {
+  constructor(head: ArmHead) {
     this.arms = widgetAxes.map((axis) => {
-      const arm = buildArm(axis);
+      const arm = buildArm(axis, head);
       this.group.add(arm);
       return { axis, arm, tip: new Vector3() };
     });

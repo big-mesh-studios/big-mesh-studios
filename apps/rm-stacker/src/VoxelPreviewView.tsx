@@ -4,6 +4,8 @@ import {
   composeRoot,
   FigureMeshes,
   figurePlacement,
+  turnAngles,
+  turnMatrix,
   voxelReach,
   type FigureFraming,
 } from "@big-mesh-studios/stacker/renderer";
@@ -35,11 +37,18 @@ import { StackerContext } from "./context";
 import { pickFigure, type FigurePick } from "./figure-picker";
 import {
   armUnderPointer,
-  TranslateWidget,
+  ArmWidget,
+  sizeDragged,
   voxelsDragged,
   type ArmOnScreen,
   type WidgetAxis,
-} from "./translate-widget";
+} from "./arm-widget";
+import {
+  radiansDragged,
+  ringUnderPointer,
+  TurnWidget,
+  type RingOnScreen,
+} from "./turn-widget";
 import {
   FAR,
   FOV,
@@ -53,6 +62,13 @@ import {
 import styles from "./VoxelPreviewView.module.css";
 
 const MAX_RADIUS = 20;
+
+/** A turn of so many radians about each of the axes a ring lies across. */
+const ABOUT: Record<WidgetAxis, (angle: number) => Matrix3x3> = {
+  x: (angle) => Matrix3x3.rotationX(angle),
+  y: (angle) => Matrix3x3.rotationY(angle),
+  z: (angle) => Matrix3x3.rotationZ(angle),
+};
 
 // Directional + ambient light for the voxel preview. The direction is fixed in
 // world space and the model turns beneath it, so it is rotated into the model's
@@ -149,10 +165,13 @@ const VoxelPreviewView: Component = () => {
   );
   outline.visible = false;
 
-  // Added after the figure, and drawn without a depth test, so the arrows
-  // come out over whatever they reach into rather than inside it.
-  const widget = new TranslateWidget();
-  turntable.add(widget.group);
+  // Added after the figure, and drawn without a depth test, so the handles come
+  // out over whatever they reach into rather than inside it. One set of them
+  // stands at a time, which is the set the view bar has asked for.
+  const moveWidget = new ArmWidget("arrow");
+  const sizeWidget = new ArmWidget("cube");
+  const turnWidget = new TurnWidget();
+  turntable.add(moveWidget.group, sizeWidget.group, turnWidget.group);
 
   /** How much of the drawn world one voxel takes up. */
   const [voxelSize, setVoxelSize] = createSignal(1);
@@ -233,17 +252,38 @@ const VoxelPreviewView: Component = () => {
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
 
-  /** Which arrow lies under the pointer, and where each of them lies. */
+  /** The handles standing at the part being drawn on, whichever set it is. */
+  function standingWidget() {
+    switch (preview.handles()) {
+      case "move":
+        return moveWidget;
+      case "size":
+        return sizeWidget;
+      case "turn":
+        return turnWidget;
+      default:
+        return undefined;
+    }
+  }
+
+  /**
+   * Which arm lies under the pointer, and where each of them lies. Placed for
+   * this frame's camera before they are measured, so a grab reads the same
+   * picture the pointer is looking at.
+   */
   function grabArm(
     at: Vector2D,
   ): { axis: WidgetAxis; arm: ArmOnScreen } | undefined {
-    if (scene === undefined || canvas === undefined || !preview.axesVisible()) {
+    const widget = standingWidget();
+
+    if (
+      canvas === undefined ||
+      (widget !== moveWidget && widget !== sizeWidget)
+    ) {
       return undefined;
     }
 
     const rect = canvas.getBoundingClientRect();
-    // The arrows are placed for this frame's camera before they are measured,
-    // so a grab reads the same picture the pointer is looking at.
     widget.place(selectedRoot(), radius);
     rotateFigure(turntable, yaw, pitch, spin);
 
@@ -258,6 +298,25 @@ const VoxelPreviewView: Component = () => {
     }
 
     return { axis, arm: arms.find((arm) => arm.axis === axis)! };
+  }
+
+  /** Which ring lies under the pointer, and where it lies. */
+  function grabRing(at: Vector2D): RingOnScreen | undefined {
+    if (canvas === undefined || standingWidget() !== turnWidget) {
+      return undefined;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    turnWidget.place(selectedRoot(), radius, selectedPart().turn);
+    rotateFigure(turntable, yaw, pitch, spin);
+
+    const rings = turnWidget.ringsOnScreen(camera, {
+      width: rect.width,
+      height: rect.height,
+    });
+    const axis = ringUnderPointer(at, rings);
+
+    return rings.find((ring) => ring.axis === axis);
   }
 
   // CPU voxel picking: ray-march the same volumes the fragment shader renders,
@@ -294,27 +353,42 @@ const VoxelPreviewView: Component = () => {
     );
   }
 
-  async function handleWidgetDrag(
+  async function handleArmDrag(
     initialEvent: PointerEvent & { currentTarget: HTMLElement },
-    at: Vector2D,
     grabbedArm: {
       axis: keyof Vector3D;
       arm: ArmOnScreen;
     },
   ) {
     const part = untrack(selectedPart);
-    // Hold the figure still in its turn: an arrow dragged against a turning
+    const sizing = standingWidget() === sizeWidget;
+    const widget = sizing ? sizeWidget : moveWidget;
+    // Hold the figure still in its turn: an arm dragged against a turning
     // model would slide along an axis that had moved on by the time the
     // pointer did.
     spinOffset = spin;
     isDraggingWidget = true;
 
-    let lastRoot = part.root;
     const startRoot = part.root;
+    const startScale = part.scale;
+    let lastRoot = startRoot;
+    let lastScale = startScale;
 
     widget.setHeld(grabbedArm.axis);
 
     await pointer(initialEvent, ({ totalDelta }) => {
+      if (sizing) {
+        const scale = startScale * sizeDragged(totalDelta, grabbedArm.arm);
+
+        if (scale === lastScale) {
+          return;
+        }
+
+        lastScale = scale;
+        doCommand(Command.scalePart(part.name, scale));
+        return;
+      }
+
       const steps = voxelsDragged(
         totalDelta,
         grabbedArm.arm,
@@ -345,6 +419,69 @@ const VoxelPreviewView: Component = () => {
     if (!Vector3D.equals(startRoot, lastRoot)) {
       pushUndo(Command.movePart(part.name, startRoot), "Move Part");
     }
+
+    if (lastScale !== startScale) {
+      pushUndo(Command.scalePart(part.name, startScale), "Scale Part");
+    }
+  }
+
+  /**
+   * Turns the part as the pointer carries the ring round, and puts the turn it
+   * came from on the history once the pointer is let go.
+   */
+  async function handleRingDrag(
+    initialEvent: PointerEvent & { currentTarget: HTMLElement },
+    at: Vector2D,
+    ring: RingOnScreen,
+  ) {
+    const part = untrack(selectedPart);
+    // Hold the figure still in its turn, as an arm's drag does: a ring dragged
+    // against a turning model would be measured about a middle that had moved.
+    spinOffset = spin;
+    isDraggingWidget = true;
+
+    const startTurn = part.turn;
+    let lastTurn = startTurn;
+
+    turnWidget.setHeld(ring.axis);
+
+    await pointer(initialEvent, ({ event }) => {
+      const now = pointerOnCanvas(event);
+
+      if (now === undefined) {
+        return;
+      }
+
+      // The rings lie along the part's own axes, so what the drag says is a
+      // turn about one of those — put after the turn the part already has,
+      // rather than added to whichever of its three angles shares the name.
+      const turn = turnAngles(
+        Matrix3x3.multiply(
+          turnMatrix(startTurn),
+          ABOUT[ring.axis](radiansDragged(at, now, ring)),
+        ),
+      );
+
+      if (Vector3D.equals(turn, lastTurn)) {
+        return;
+      }
+
+      lastTurn = turn;
+      doCommand(Command.turnPart(part.name, turn));
+    });
+
+    isDraggingWidget = false;
+
+    turnWidget.setHeld(undefined);
+
+    // The figure was held still for the drag; pick the turntable up from where
+    // it was rather than from where it would have got to.
+    timeOffset = performance.now();
+    spinOffset = spin;
+
+    if (!Vector3D.equals(startTurn, lastTurn)) {
+      pushUndo(Command.turnPart(part.name, startTurn), "Turn Part");
+    }
   }
 
   async function handlePointer(
@@ -357,8 +494,15 @@ const VoxelPreviewView: Component = () => {
       const at = pointerOnCanvas(initialEvent);
       const grabbedArm = at === undefined ? undefined : grabArm(at);
 
-      if (at !== undefined && grabbedArm !== undefined) {
-        handleWidgetDrag(initialEvent, at, grabbedArm);
+      if (grabbedArm !== undefined) {
+        handleArmDrag(initialEvent, grabbedArm);
+        return;
+      }
+
+      const grabbedRing = at === undefined ? undefined : grabRing(at);
+
+      if (at !== undefined && grabbedRing !== undefined) {
+        handleRingDrag(initialEvent, at, grabbedRing);
         return;
       }
 
@@ -456,10 +600,14 @@ const VoxelPreviewView: Component = () => {
 
     lightFigure(meshes, untrack(preview.unlit));
 
-    // The arrows stand inside the figure, turned by the same turntable, so they
-    // stay pointing along the axes a drag moves the part along.
-    if (widget.visible) {
-      widget.place(untrack(selectedRoot), radius);
+    // The handles stand inside the figure, turned by the same turntable, so
+    // they stay pointing along the axes a drag works along.
+    const standing = standingWidget();
+
+    if (standing instanceof TurnWidget) {
+      standing.place(untrack(selectedRoot), radius, untrack(selectedPart).turn);
+    } else {
+      standing?.place(untrack(selectedRoot), radius);
     }
 
     camera.position.set(0, 0, radius);
@@ -467,8 +615,10 @@ const VoxelPreviewView: Component = () => {
     renderer.render(scene, camera);
   };
 
-  createEffect(preview.axesVisible, (axesVisible) => {
-    widget.visible = axesVisible;
+  createEffect(preview.handles, (handles) => {
+    moveWidget.visible = handles === "move";
+    sizeWidget.visible = handles === "size";
+    turnWidget.visible = handles === "turn";
   });
 
   createEffect(framing, (framing) => {

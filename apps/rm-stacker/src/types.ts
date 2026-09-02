@@ -52,10 +52,17 @@ export interface Mirror {
  */
 export type FocusKind = "root" | "part";
 
+/**
+ * Which handles stand at the part being drawn on, there being one set of them
+ * at a time: the arrows that move it, the rings that turn it, the arms that
+ * size it, or none at all.
+ */
+export type HandleKind = "none" | "move" | "turn" | "size";
+
 export type PreviewState = {
   unlit: boolean;
   autorotate: boolean;
-  axesVisible: boolean;
+  handles: HandleKind;
   /** Whether the preview resizes the figure to fit the view on every change to it. */
   autoframe: boolean;
   focus: FocusKind;

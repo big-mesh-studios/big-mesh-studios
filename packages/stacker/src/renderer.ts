@@ -18,6 +18,8 @@ export {
   sideAxes,
   sideKinds,
   sideKindSet,
+  turnAngles,
+  turnMatrix,
 } from "./data";
 export type {
   Axis,

@@ -29,7 +29,7 @@ import { IndexedDBData, loadFromIndexedDB, saveToIndexedDB } from "./load-save";
 import { NO_MIRROR } from "./mirror";
 import { cutSection } from "./panels";
 import { ResizeOptions, resizeSections, resizeSides } from "./resize-sides";
-import { FocusKind, Mirror, ModeKind, PreviewState } from "./types";
+import { FocusKind, HandleKind, Mirror, ModeKind, PreviewState } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { createEnqueue } from "./utils/utils";
 
@@ -112,8 +112,14 @@ function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
   const [autorotate, setAutorotate] = createSignal(
     () => saved()?.preview?.autorotate ?? true,
   );
-  const [axesVisible, setAxesVisible] = createSignal(
-    () => saved()?.preview?.axesVisible ?? false,
+  const [handles, setHandles] = createSignal<HandleKind>(
+    () =>
+      // A preview saved before there was more than one set of handles says only
+      // whether the arrows were up, which is the set it was saying yes to.
+      saved()?.preview?.handles ??
+      ((saved()?.preview as { axesVisible?: boolean } | undefined)?.axesVisible
+        ? "move"
+        : "none"),
   );
   const [autoframe, setAutoframe] = createSignal(
     () => saved()?.preview?.autoframe ?? false,
@@ -126,7 +132,7 @@ function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
   const state = createMemo<PreviewState>(() => ({
     unlit: unlit(),
     autorotate: autorotate(),
-    axesVisible: axesVisible(),
+    handles: handles(),
     autoframe: autoframe(),
     focus: focus(),
   }));
@@ -136,8 +142,8 @@ function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
     setUnlit,
     autorotate,
     setAutorotate,
-    axesVisible,
-    setAxesVisible,
+    handles,
+    setHandles,
     autoframe,
     setAutoframe,
     focus,
@@ -455,28 +461,6 @@ export function createStacker() {
       selectPart(name);
     },
     /** Adds a copy of `name`'s drawings and placement beside it, and selects it. */
-    /**
-     * Turns the part called `name` to `turn`, in radians about its own axes.
-     * A part hanging off it is carried round with it.
-     */
-    turnPart(name: string, turn: Vector3D) {
-      changeParts("Turn Part", (current) =>
-        current.map((part) => (part.name === name ? { ...part, turn } : part)),
-      );
-    },
-    /**
-     * Draws the part called `name` at `scale`, against the voxels the part it
-     * hangs off is drawn in. A part hanging off it is drawn larger with it.
-     */
-    scalePart(name: string, scale: number) {
-      if (!(scale > 0)) {
-        return;
-      }
-
-      changeParts("Scale Part", (current) =>
-        current.map((part) => (part.name === name ? { ...part, scale } : part)),
-      );
-    },
     /**
      * Cuts the selected part across `axis`, at `at` voxels from the low end of
      * it, and hands the cut the two faces it reveals. A cut that would stand

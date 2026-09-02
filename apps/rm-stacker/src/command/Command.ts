@@ -60,6 +60,16 @@ export type Command =
       root: Vector3D;
     }
   | {
+      type: "TurnPart";
+      part: string;
+      turn: Vector3D;
+    }
+  | {
+      type: "ScalePart";
+      part: string;
+      scale: number;
+    }
+  | {
       type: "LoadData";
       data: Blob;
     }
@@ -124,6 +134,14 @@ export namespace Command {
 
   export function movePart(part: string, root: Vector3D): Command {
     return { type: "MovePart", part, root };
+  }
+
+  export function turnPart(part: string, turn: Vector3D): Command {
+    return { type: "TurnPart", part, turn };
+  }
+
+  export function scalePart(part: string, scale: number): Command {
+    return { type: "ScalePart", part, scale };
   }
 
   export function loadData(data: Blob): Command {
@@ -197,6 +215,14 @@ export namespace Command {
       case "MovePart": {
         let { part, root } = command;
         return { type: "MovePart", part, x: root.x, y: root.y, z: root.z };
+      }
+      case "TurnPart": {
+        let { part, turn } = command;
+        return { type: "TurnPart", part, x: turn.x, y: turn.y, z: turn.z };
+      }
+      case "ScalePart": {
+        let { part, scale } = command;
+        return { type: "ScalePart", part, scale };
       }
       case "LoadData": {
         let data = await command.data.arrayBuffer();
@@ -283,6 +309,20 @@ export namespace Command {
           y: command.y,
           z: command.z,
         });
+      case "TurnPart":
+        if (typeof command.part !== "string") {
+          return Command.noOperation();
+        }
+        return Command.turnPart(command.part, {
+          x: command.x,
+          y: command.y,
+          z: command.z,
+        });
+      case "ScalePart":
+        if (typeof command.part !== "string" || !(command.scale > 0)) {
+          return Command.noOperation();
+        }
+        return Command.scalePart(command.part, command.scale);
       case "LoadData": {
         let data = command.data;
         let data2 = base64ToUint8Array(data);

@@ -7,12 +7,13 @@ import {
 } from "@random-mesh/rmsl/scene";
 import {
   armUnderPointer,
+  sizeDragged,
   distanceToSegment,
   projectToScreen,
-  TranslateWidget,
+  ArmWidget,
   voxelsDragged,
   type ArmOnScreen,
-} from "./translate-widget";
+} from "./arm-widget";
 import { FAR, FOV, NEAR, rotateFigure } from "./voxel-preview-scene";
 
 /** An arrow lying flat across the canvas, `length` pixels long, from `from`. */
@@ -157,7 +158,7 @@ describe("the arrows standing in a turned figure", () => {
     const turntable = new Group();
     rotateFigure(turntable, yaw, pitch, 0);
 
-    const widget = new TranslateWidget();
+    const widget = new ArmWidget("arrow");
     turntable.add(widget.group);
     widget.place(ROOT, RADIUS);
 
@@ -214,5 +215,42 @@ describe("the arrows standing in a turned figure", () => {
       // the two directions apart at all.
       expect(Math.abs(arrow - carried), arm.axis).toBeLessThan(Math.PI / 180);
     }
+  });
+});
+
+describe("sizeDragged", () => {
+  /** An arm lying to the right of where it stands, sixty pixels long. */
+  const arm = {
+    axis: "x" as const,
+    from: { x: 100, y: 100 },
+    to: { x: 160, y: 100 },
+  };
+
+  it("leaves the size alone for a pointer that has not moved", () => {
+    expect(sizeDragged({ x: 0, y: 0 }, arm)).toBe(1);
+  });
+
+  it("doubles the size for a drag of the arm's own length along it", () => {
+    expect(sizeDragged({ x: 60, y: 0 }, arm)).toBeCloseTo(2);
+  });
+
+  it("halves it for the same drag back the other way", () => {
+    expect(sizeDragged({ x: -60, y: 0 }, arm)).toBeCloseTo(0.5);
+  });
+
+  it("counts only what runs along the arm, not across it", () => {
+    expect(sizeDragged({ x: 60, y: 40 }, arm)).toBeCloseTo(
+      sizeDragged({ x: 60, y: 0 }, arm),
+    );
+  });
+
+  it("leaves the size alone for an arm too foreshortened to read", () => {
+    const endOn = {
+      axis: "x" as const,
+      from: { x: 100, y: 100 },
+      to: { x: 104, y: 100 },
+    };
+
+    expect(sizeDragged({ x: 40, y: 0 }, endOn)).toBe(1);
   });
 });

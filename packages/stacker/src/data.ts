@@ -295,6 +295,33 @@ export function turnMatrix(
   );
 }
 
+/**
+ * The three angles a turn is made of, read back off the turn itself: about the
+ * x axis, then the y that turn leaves, then the z, which is the order
+ * `turnMatrix` puts them together in.
+ *
+ * A turn straight up or down leaves the first and the last angle turning about
+ * the same axis, with nothing to say how much of it belongs to which; the first
+ * takes all of it, which is one of the pairs that make the turn asked for.
+ */
+export function turnAngles(turn: Matrix3x3, out = Vector3D.create()): Vector3D {
+  // Written as rows, the way the angles read off it: turn[row + 3 * column].
+  const row = (r: number, c: number) => turn[r + 3 * c];
+  const upright = Math.min(1, Math.max(-1, row(0, 2)));
+
+  out.y = Math.asin(upright);
+
+  if (Math.abs(upright) < 0.9999999) {
+    out.x = Math.atan2(-row(1, 2), row(2, 2));
+    out.z = Math.atan2(-row(0, 1), row(0, 0));
+  } else {
+    out.x = Math.atan2(row(1, 0), row(1, 1));
+    out.z = 0;
+  }
+
+  return out;
+}
+
 /** How a part stands in the figure it belongs to. */
 export interface PartPose {
   /** Where its pivot sits, in the figure's voxels from the figure's origin. */

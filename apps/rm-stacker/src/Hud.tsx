@@ -1,5 +1,5 @@
 import { createPopover } from "@big-mesh-studios/utils/create-popover";
-import { flush, useContext } from "solid-js";
+import { For, flush, useContext } from "solid-js";
 import {
   Bar,
   Colour,
@@ -15,7 +15,27 @@ import { StackerContext } from "./context";
 import styles from "./Hud.module.css";
 import { PartsPanel } from "./PartsPanel";
 import { ProfileModal } from "./profile/ProfileModal";
-import { ModeKind } from "./types";
+import type { IconKind } from "./icon-kinds";
+import { HandleKind, ModeKind } from "./types";
+
+/** The handles that can stand at the part being drawn on, and what each says. */
+const HANDLES = [
+  {
+    kind: "move",
+    icon: "arrows-up-down-left-right",
+    title: "Arrows to move the part, a voxel at a time",
+  },
+  {
+    kind: "turn",
+    icon: "arrows-spin",
+    title: "Rings to turn the part about its own pivot",
+  },
+  {
+    kind: "size",
+    icon: "up-right-and-down-left-from-center",
+    title: "Arms to draw the part larger or smaller",
+  },
+] as const satisfies { kind: HandleKind; icon: IconKind; title: string }[];
 
 export function Hud() {
   const {
@@ -180,15 +200,24 @@ export function Hud() {
           />
         </Bar>
         <Bar>
-          <IconTab
-            onClick={() => {
-              preview.setAxesVisible((unlit) => !unlit);
-              flush();
-              requestAutoSave();
-            }}
-            selected={!ProfileDialog.isOpen() && preview.axesVisible()}
-            kind="arrows-up-down-left-right"
-          />
+          <For each={HANDLES}>
+            {({ kind, icon, title }) => (
+              <IconTab
+                onClick={() => {
+                  // Taking up the handles that are already up puts them down,
+                  // there being nowhere else for the button to send them.
+                  preview.setHandles((standing) =>
+                    standing === kind ? "none" : kind,
+                  );
+                  flush();
+                  requestAutoSave();
+                }}
+                selected={!ProfileDialog.isOpen() && preview.handles() === kind}
+                kind={icon}
+                title={title}
+              />
+            )}
+          </For>
           <IconTab
             onClick={() => {
               preview.setFocus((focus) => (focus === "part" ? "root" : "part"));

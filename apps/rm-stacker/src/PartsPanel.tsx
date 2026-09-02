@@ -15,7 +15,7 @@ import {
 } from "./components/components";
 import { StackerContext } from "./context";
 import styles from "./PartsPanel.module.css";
-import { widgetAxes, type WidgetAxis } from "./translate-widget";
+import { widgetAxes, type WidgetAxis } from "./arm-widget";
 
 export function PartsPanel() {
   const {
@@ -26,8 +26,6 @@ export function PartsPanel() {
     duplicatePart,
     removePart,
     renamePart,
-    turnPart,
-    scalePart,
     doCommand,
   } = useContext(StackerContext);
 
@@ -58,7 +56,7 @@ export function PartsPanel() {
       return;
     }
 
-    turnPart(part.name, turn);
+    doCommand(Command.turnPart(part.name, turn), true, "Turn Part");
   }
 
   function scaleTo(scale: number) {
@@ -68,7 +66,7 @@ export function PartsPanel() {
       return;
     }
 
-    scalePart(part.name, scale);
+    doCommand(Command.scalePart(part.name, scale), true, "Scale Part");
   }
 
   function askForName() {

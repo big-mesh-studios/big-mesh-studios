@@ -251,6 +251,42 @@ export function createCommander({
 
           return Command.movePart(partName, previousRoot);
         }
+        case "TurnPart": {
+          const { part: partName, turn } = command;
+          const turned = parts().find((part) => part.name === partName);
+
+          if (turned === undefined || Vector3D.equals(turned.turn, turn)) {
+            return Command.noOperation();
+          }
+
+          const previousTurn = turned.turn;
+
+          setParts((current) =>
+            current.map((part) =>
+              part.name === partName ? { ...part, turn } : part,
+            ),
+          );
+
+          return Command.turnPart(partName, previousTurn);
+        }
+        case "ScalePart": {
+          const { part: partName, scale } = command;
+          const scaled = parts().find((part) => part.name === partName);
+
+          if (scaled === undefined || !(scale > 0) || scaled.scale === scale) {
+            return Command.noOperation();
+          }
+
+          const previousScale = scaled.scale;
+
+          setParts((current) =>
+            current.map((part) =>
+              part.name === partName ? { ...part, scale } : part,
+            ),
+          );
+
+          return Command.scalePart(partName, previousScale);
+        }
         case "LoadData": {
           const undoCommand = snapshot();
           const loaded = await loadFigure(command.data, palette());

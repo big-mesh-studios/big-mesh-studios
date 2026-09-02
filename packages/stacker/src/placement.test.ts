@@ -13,6 +13,8 @@ import {
   centrePivot,
   composePose,
   sideAxes,
+  turnAngles,
+  turnMatrix,
   sideKinds,
   type Figure,
   type Part,
@@ -208,6 +210,40 @@ describe("fitVoxelSize", () => {
 
   it("draws a figure with nothing in it at one voxel to the unit", () => {
     expect(fitVoxelSize({ width: 0, height: 0, depth: 0 })).toBe(1);
+  });
+});
+
+describe("turnAngles", () => {
+  it("reads back the three angles a turn was made from", () => {
+    for (const turn of [
+      Vector3D.create(),
+      Vector3D.create(QUARTER, 0, 0),
+      Vector3D.create(0, QUARTER, 0),
+      Vector3D.create(0, 0, QUARTER),
+      Vector3D.create(0.3, -0.7, 1.1),
+      Vector3D.create(-1.2, 0.4, -0.9),
+    ]) {
+      closeTo(turnAngles(turnMatrix(turn)), turn);
+    }
+  });
+
+  it("gives a turn that turns the same way, where two say the same thing", () => {
+    // Turned straight up, the first angle and the last turn about the one axis
+    // between them, so the three that come back need not be the three that went
+    // in — what they must do is make the same turn.
+    const upright = Vector3D.create(0.5, QUARTER, 0.5);
+    const read = turnAngles(turnMatrix(upright));
+
+    for (const along of [
+      Vector3D.create(1, 0, 0),
+      Vector3D.create(0, 1, 0),
+      Vector3D.create(0, 0, 1),
+    ]) {
+      closeTo(
+        Matrix3x3.transform(turnMatrix(read), along),
+        Matrix3x3.transform(turnMatrix(upright), along),
+      );
+    }
   });
 });
 
