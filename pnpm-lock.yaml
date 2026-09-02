@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  '@random-mesh/rmsl': link:../rmsl
-
 importers:
 
   .:
@@ -39,9 +36,6 @@ importers:
       '@atcute/lexicons':
         specifier: ^2.1.0
         version: 2.1.0
-      '@random-mesh/rmsl':
-        specifier: link:../../../rmsl
-        version: link:../../../rmsl
       '@solidjs/router':
         specifier: 2.0.0-next.13
         version: 2.0.0-next.13(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)
@@ -79,6 +73,9 @@ importers:
       '@fortawesome/fontawesome-free':
         specifier: ^7.3.1
         version: 7.3.1
+      '@random-mesh/rmsl':
+        specifier: 1.9.0
+        version: 1.9.0(vite@7.3.6(@types/node@26.4.0))
       '@solidjs/signals':
         specifier: 2.0.0-beta.29
         version: 2.0.0-beta.29
@@ -137,8 +134,8 @@ importers:
         specifier: ^7.3.1
         version: 7.3.1
       '@random-mesh/rmsl':
-        specifier: link:../../../rmsl
-        version: link:../../../rmsl
+        specifier: ^1.10.0
+        version: 1.10.0(vite@7.3.6(@types/node@26.4.0))
       '@solidjs/signals':
         specifier: 2.0.0-beta.29
         version: 2.0.0-beta.29
@@ -240,9 +237,6 @@ importers:
       '@big-mesh-studios/maths':
         specifier: workspace:*
         version: link:../maths
-      '@random-mesh/rmsl':
-        specifier: link:../../../rmsl
-        version: link:../../../rmsl
       fast-png:
         specifier: ^8.0.0
         version: 8.0.0
@@ -253,6 +247,9 @@ importers:
       '@atcute/lexicons':
         specifier: ^2.1.0
         version: 2.1.0
+      '@random-mesh/rmsl':
+        specifier: 1.9.0
+        version: 1.9.0(vite@7.3.6(@types/node@26.4.0))
       jsdom:
         specifier: ^30.0.1
         version: 30.0.1
@@ -664,6 +661,22 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [glibc]
+
+  '@random-mesh/rmsl@1.10.0':
+    resolution: {integrity: sha512-NcyuTu9T4ph2qAF1Erf9jjnD6YBgW87XJWdlnWajUY/pMiZrHM2BGYfgFMVlvZdr9yGabW+BRiwqPQKVVMNQ/g==}
+    peerDependencies:
+      vite: '>=5.0.0'
+    peerDependenciesMeta:
+      vite:
+        optional: true
+
+  '@random-mesh/rmsl@1.9.0':
+    resolution: {integrity: sha512-tTsmmrjkocMiCoRhaA9nAumFnQxJ24VsUna/Chk1ve+KvrCbWa9/QrTfhUi8qaOmiRjh3aX33ouIfp/nJFlNXw==}
+    peerDependencies:
+      vite: '>=5.0.0'
+    peerDependenciesMeta:
+      vite:
+        optional: true
 
   '@rollup/rollup-android-arm-eabi@4.63.0':
     resolution: {integrity: sha512-70TeIFezKKy65LgAVyQh+w94/gjWhvPWaLaGGeMEgVrPkQhuj/M5bAYYZzIFUj9Y69oHyTm5Um/R6gcLh4A8JA==}
@@ -1802,6 +1815,20 @@ snapshots:
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
+
+  '@random-mesh/rmsl@1.10.0(vite@7.3.6(@types/node@26.4.0))':
+    dependencies:
+      '@webgpu/types': 0.1.72
+      esbuild: 0.28.2
+    optionalDependencies:
+      vite: 7.3.6(@types/node@26.4.0)
+
+  '@random-mesh/rmsl@1.9.0(vite@7.3.6(@types/node@26.4.0))':
+    dependencies:
+      '@webgpu/types': 0.1.72
+      esbuild: 0.28.2
+    optionalDependencies:
+      vite: 7.3.6(@types/node@26.4.0)
 
   '@rollup/rollup-android-arm-eabi@4.63.0':
     optional: true
