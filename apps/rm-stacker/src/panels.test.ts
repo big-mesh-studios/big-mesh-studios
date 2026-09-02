@@ -10,6 +10,7 @@ import {
 } from "@big-mesh-studios/stacker/renderer";
 import { describe, expect, it } from "vitest";
 import {
+  computeCutLines,
   computePanelLabels,
   computePanelPositions,
   computeSliceLayouts,
@@ -434,6 +435,65 @@ describe("cutSection", () => {
     part.sections.push(cutSection(part, "width", 2)!);
 
     expect(cutSection(part, "width", 2)).toBeUndefined();
+  });
+});
+
+describe("computeCutLines", () => {
+  it("draws the cut down every panel spanning the axis it cuts, and no others", () => {
+    const part = partOf();
+    const positions = computePanelPositions(part, DIMENSIONS);
+    const lines = computeCutLines({
+      part,
+      axis: "width",
+      at: 2,
+      dimensions: DIMENSIONS,
+      positions,
+    });
+
+    // The four sides spanning the width: the front and back, and the top and
+    // bottom. The left and right look along it and so are not crossed.
+    expect(lines.map((line) => line.panel).sort()).toEqual([
+      "back",
+      "bottom",
+      "front",
+      "top",
+    ]);
+
+    const front = lines.find((line) => line.panel === "front")!;
+
+    // Down the front panel, two voxels along it, from its top edge to its
+    // bottom one.
+    expect(front.from).toEqual({
+      x: positions.front.x + 2,
+      y: positions.front.y,
+    });
+    expect(front.to).toEqual({
+      x: positions.front.x + 2,
+      y: positions.front.y + DIMENSIONS.height,
+    });
+
+    // The back panel looks at the width the other way about, so the same cut
+    // stands the same distance in from its other edge.
+    const back = lines.find((line) => line.panel === "back")!;
+
+    expect(back.from.x).toBe(positions.back.x + DIMENSIONS.width - 2);
+  });
+
+  it("draws the cut across the faces of the cuts already made", () => {
+    const part = partOf(acrossTheWidth(2));
+    const lines = computeCutLines({
+      part,
+      axis: "height",
+      at: 3,
+      dimensions: DIMENSIONS,
+      positions: computePanelPositions(part, DIMENSIONS),
+    });
+
+    // Both faces of the cut across the width span the height, so a cut across
+    // the height crosses them as well as the four sides that span it.
+    expect(lines.map((line) => line.panel)).toContain("section-0-before");
+    expect(lines.map((line) => line.panel)).toContain("section-0-after");
+    expect(lines.length).toBe(6);
   });
 });
 

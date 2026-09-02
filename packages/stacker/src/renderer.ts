@@ -53,6 +53,7 @@ export {
   FigureMeshes,
   solveFigure,
   solvePart,
+  standAs,
   voxelReach,
 } from "./figure-meshes";
 export type { BakedPart, SolvedPart } from "./figure-meshes";

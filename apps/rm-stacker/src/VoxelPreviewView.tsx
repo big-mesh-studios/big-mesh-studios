@@ -4,6 +4,7 @@ import {
   composeRoot,
   FigureMeshes,
   figurePlacement,
+  type PartPlacement,
   turnAngles,
   turnMatrix,
   voxelReach,
@@ -34,6 +35,7 @@ import {
 } from "solid-js";
 import { Command } from "./command/Command";
 import { StackerContext } from "./context";
+import { CutPlane } from "./cut-plane";
 import { pickFigure, type FigurePick } from "./figure-picker";
 import {
   armUnderPointer,
@@ -118,6 +120,8 @@ const VoxelPreviewView: Component = () => {
     doCommand,
     pushUndo,
     figureLoads,
+    dimensions,
+    knifeCut,
   } = useContext(StackerContext);
 
   let yaw = Math.PI / 4;
@@ -159,6 +163,11 @@ const VoxelPreviewView: Component = () => {
 
   const meshes = new FigureMeshes();
   framed.add(meshes.group);
+
+  // Added after the meshes, so a plane standing among a part's voxels is drawn
+  // against the figure that is already there.
+  const cutPlane = new CutPlane();
+  framed.add(cutPlane.group);
 
   // The picked voxel's outline. Its geometry is in the part's own space
   // (the same cell layout the marcher walks), so it is made a child of
@@ -235,6 +244,15 @@ const VoxelPreviewView: Component = () => {
       Vector3D.subtract(composeRoot(figure(), selectedPart()), focus),
       voxelSize,
     );
+  });
+
+  /**
+   * Where the part being drawn on stands in the figure, which is where a cut
+   * through it stands as well.
+   */
+  const selectedPlacement = createMemo<PartPlacement | undefined>(() => {
+    const index = figure().parts.indexOf(selectedPart());
+    return index === -1 ? undefined : placement().placements[index];
   });
 
   function getWorldToModel() {
@@ -648,6 +666,22 @@ const VoxelPreviewView: Component = () => {
   createEffect(framing, (framing) => {
     applyFraming(framed, framing);
   });
+
+  // The plane follows the knife: it stands through the part being drawn on
+  // wherever the cut in hand would divide it, and is nowhere at all while no
+  // knife is over a panel.
+  createEffect(
+    () => [knifeCut(), selectedPlacement(), dimensions()] as const,
+    ([cut, placement, dimensions]) => {
+      if (cut === undefined || placement === undefined) {
+        cutPlane.visible = false;
+        return;
+      }
+
+      cutPlane.place(placement, dimensions, cut);
+      cutPlane.visible = true;
+    },
+  );
 
   // The figure is fitted to the view when a whole one is put in front of the
   // editor, and, while autoframing is on, on every change to what is drawn or

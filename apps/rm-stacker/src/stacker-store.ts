@@ -30,6 +30,7 @@ import { NO_MIRROR } from "./mirror";
 import { cutSection } from "./panels";
 import { ResizeOptions, resizeSections, resizeSides } from "./resize-sides";
 import {
+  Cut,
   FocusKind,
   HandleAxes,
   HandleKind,
@@ -178,6 +179,15 @@ export function createStacker() {
   );
 
   const [mode, setMode] = createSignal<ModeKind>("Idle");
+  /**
+   * The cut a knife standing over a panel would make, or undefined while no
+   * knife is in hand or the one in hand stands where no cut can be made.
+   *
+   * Held for the whole editor rather than by the canvas the knife is drawn on,
+   * because a cut is a plane through the model: the panels show where it lands
+   * on each of them, and the preview stands it through the figure.
+   */
+  const [knifeCut, setKnifeCut] = createSignal<Cut | undefined>(undefined);
   const [mirror, setMirror] = createSignal<Mirror>(NO_MIRROR);
   // Where the drawing lives, if anywhere yet. Held here rather than in whatever
   // view happens to save it, so that opening a model from one place cannot
@@ -426,6 +436,9 @@ export function createStacker() {
     // mode
     mode,
     setMode,
+    // the cut a knife in hand would make where it stands
+    knifeCut,
+    setKnifeCut,
     // which panel axes a stroke is reflected along
     mirror,
     setMirror,

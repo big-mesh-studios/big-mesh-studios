@@ -106,11 +106,24 @@ export function hexToRgba(hex: string): RGBA {
 const PASTEL = 150;
 const INTENSITY = 0.75;
 
+/** What a side's mask is drawn in, as three channels from 0 to 255. */
+function sideMaskChannels(mask: number) {
+  return {
+    r: (SIDE_MASK.front & mask ? 255 : PASTEL) * INTENSITY,
+    g: (SIDE_MASK.left & mask ? 255 : PASTEL) * INTENSITY,
+    b: (SIDE_MASK.top & mask ? 255 : PASTEL) * INTENSITY,
+  };
+}
+
 export function sideMaskToCSS(mask: number) {
-  const r = (SIDE_MASK.front & mask ? 255 : PASTEL) * INTENSITY;
-  const g = (SIDE_MASK.left & mask ? 255 : PASTEL) * INTENSITY;
-  const b = (SIDE_MASK.top & mask ? 255 : PASTEL) * INTENSITY;
+  const { r, g, b } = sideMaskChannels(mask);
   return `rgb(${r}, ${g}, ${b})`;
+}
+
+/** The same colour as `sideMaskToCSS`, as the one number a material is given. */
+export function sideMaskToHex(mask: number) {
+  const { r, g, b } = sideMaskChannels(mask);
+  return (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b);
 }
 
 export function rgbaToCSS({ r, g, b, a = 1 }: RGBA): `rgba(${string})` {

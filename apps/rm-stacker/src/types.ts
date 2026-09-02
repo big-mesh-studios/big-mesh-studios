@@ -13,6 +13,15 @@ export type AlignmentKind = "min" | "max";
 /** Which end of each axis a resize is applied at. */
 export type Alignment3D = Partial<Record<DimensionKind, AlignmentKind>>;
 
+/**
+ * A cut across one of a part's axes: which axis it divides, and how far along
+ * that axis it stands, in voxels from the low end of it.
+ */
+export interface Cut {
+  axis: DimensionKind;
+  at: number;
+}
+
 /**********************************************************************************/
 /*                                       Mode                                     */
 /**********************************************************************************/

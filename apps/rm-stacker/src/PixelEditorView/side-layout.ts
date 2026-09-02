@@ -207,6 +207,79 @@ export function computePanelPositions(
   return positions;
 }
 
+/** A cut standing across one panel, as a line on the canvas. */
+export interface CutLine {
+  panel: PanelKind;
+  from: Vector2D;
+  to: Vector2D;
+}
+
+/**
+ * The line a cut across `axis` at `at` is drawn as on each of `part`'s panels
+ * that it crosses, in the order the panels are laid out.
+ *
+ * A cut stands through the whole part rather than through the one panel it was
+ * drawn on, so a panel spanning the axis it cuts shows it as well — which is
+ * what lets a cut about to be made be seen everywhere it lands before it is
+ * made anywhere.
+ */
+export function computeCutLines({
+  part,
+  axis,
+  at,
+  dimensions,
+  positions,
+}: {
+  part: Part;
+  axis: DimensionKind;
+  at: number;
+  dimensions: Dimensions3D;
+  positions: PanelPositions;
+}): CutLine[] {
+  const table = panelTable(part);
+
+  return table.kinds.flatMap((panel) => {
+    const drawnLike = table.side(panel);
+    const drawing = table.bitmap(panel);
+    const panelPosition = positions[panel];
+
+    if (
+      drawnLike === undefined ||
+      drawing === undefined ||
+      panelPosition === undefined
+    ) {
+      return [];
+    }
+
+    const line = panelLineFromCut({ drawnLike, axis, at, dimensions });
+
+    if (line === undefined) {
+      return [];
+    }
+
+    return [
+      {
+        panel,
+        ...(line.along === "x"
+          ? {
+              from: { x: panelPosition.x + line.line, y: panelPosition.y },
+              to: {
+                x: panelPosition.x + line.line,
+                y: panelPosition.y + drawing.height,
+              },
+            }
+          : {
+              from: { x: panelPosition.x, y: panelPosition.y + line.line },
+              to: {
+                x: panelPosition.x + drawing.width,
+                y: panelPosition.y + line.line,
+              },
+            }),
+      },
+    ];
+  });
+}
+
 /**
  * How far out from the panel each of a row of numbers standing at `at` is put,
  * counted in lanes, so that no two in one lane stand closer than `spacing`.

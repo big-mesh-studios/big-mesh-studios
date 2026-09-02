@@ -21,7 +21,7 @@ import {
 } from "@big-mesh-studios/stacker/renderer";
 import { OPPOSING_SIDE, SIDE_AXES, SIDE_MASK } from "./constants";
 import type { Block } from "./mirror";
-import { sideMaskToCSS } from "./utils/utils";
+import { sideMaskToCSS, sideMaskToHex } from "./utils/utils";
 
 /** The drawings of one part, and how each of them is turned. */
 export interface PanelTable {
@@ -283,6 +283,14 @@ export function sectionLines(
  */
 export function axisColour(axis: DimensionKind): string {
   return sideMaskToCSS(SIDE_MASK[axisSides[axis][0]]);
+}
+
+/**
+ * The same colour as the one number a material is given, so a cut looks the
+ * same drawn as a line down a panel and stood through the model as a plane.
+ */
+export function axisColourHex(axis: DimensionKind): number {
+  return sideMaskToHex(SIDE_MASK[axisSides[axis][0]]);
 }
 
 /**

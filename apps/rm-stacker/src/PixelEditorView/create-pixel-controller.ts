@@ -1,7 +1,9 @@
 import {
   Accessor,
+  createEffect,
   createMemo,
   createSignal,
+  onCleanup,
   untrack,
   useContext,
 } from "solid-js";
@@ -10,7 +12,7 @@ import { StackerContext } from "../context";
 import { Bitmap, RGBA, Vector2D } from "@big-mesh-studios/maths";
 import { type PanelKind } from "@big-mesh-studios/stacker/renderer";
 import { pointer } from "@big-mesh-studios/utils/pointer";
-import type { ModeKind } from "../types";
+import type { Cut, ModeKind } from "../types";
 import { mirrorBlocks, mirrorMarks, type Block, type Mark } from "../mirror";
 import {
   axisColour,
@@ -24,6 +26,7 @@ import { screenToWorld } from "../utils/utils";
 import { createEdgeController } from "./create-edge-controller";
 import { createPanScaleControl } from "./pan-scale";
 import {
+  computeCutLines,
   intersectPanelLabels,
   intersectPanels,
   intersectSliceLabels,
@@ -74,6 +77,7 @@ export const createPixelEditorController = ({
   const {
     cutPart,
     removeCut,
+    setKnifeCut,
     selectedPart,
     selectedColour,
     selectPaletteIndex,
@@ -156,8 +160,7 @@ export const createPixelEditorController = ({
   }
 
   /**
-   * The cut the knife would make with the pointer where it is, and the line
-   * standing for it on the canvas.
+   * The cut the knife would make with the pointer where it is.
    *
    * Undefined where the pointer is not over a panel, or over a place along it
    * no cut can stand: the ends of an axis, where a cut would leave nothing on
@@ -167,17 +170,19 @@ export const createPixelEditorController = ({
    * knife in hand says: a line down the panel divides the axis it is drawn
    * across, and a line across it divides the one it is drawn down.
    */
-  function knifeAt(worldPosition: Vector2D, along: keyof Vector2D) {
+  function knifeAt(
+    worldPosition: Vector2D,
+    along: keyof Vector2D,
+  ): Cut | undefined {
     const over = intersectPanels({
       positions: panelPositions(),
       table: table(),
       worldPosition,
     });
     const drawnLike = over && table().side(over.kind);
-    const drawing = over && table().bitmap(over.kind);
     const panelPosition = over && panelPositions()[over.kind];
 
-    if (!over || !drawnLike || !drawing || !panelPosition) {
+    if (!over || !drawnLike || !panelPosition) {
       return undefined;
     }
 
@@ -193,20 +198,32 @@ export const createPixelEditorController = ({
       return undefined;
     }
 
-    return {
-      cut,
-      line:
-        along === "x"
-          ? {
-              from: { x: worldPosition.x, y: panelPosition.y },
-              to: { x: worldPosition.x, y: panelPosition.y + drawing.height },
-            }
-          : {
-              from: { x: panelPosition.x, y: worldPosition.y },
-              to: { x: panelPosition.x + drawing.width, y: worldPosition.y },
-            },
-    };
+    return cut;
   }
+
+  /**
+   * The cut the knife in hand is standing over, or undefined while there is no
+   * knife in hand, or it is nowhere a cut can be made.
+   *
+   * Handed to the editor as a whole rather than kept to this canvas, because
+   * the preview stands the same cut through the figure as a plane.
+   */
+  const pointedCut = createMemo<Cut | undefined>(() => {
+    const along = KNIFE_AXES[mode() as KnifeMode];
+    const position = roundedWorldPosition();
+
+    return along === undefined || position === undefined
+      ? undefined
+      : knifeAt(position, along);
+  });
+
+  createEffect(pointedCut, (cut) => {
+    setKnifeCut(cut);
+  });
+
+  onCleanup(() => {
+    setKnifeCut(undefined);
+  });
 
   /**
    * Whether a stroke reaches the cell at the other end of the run it carves.
@@ -538,7 +555,7 @@ export const createPixelEditorController = ({
         );
 
         if (knife !== undefined) {
-          cutPart(knife.cut.axis, knife.cut.at);
+          cutPart(knife.axis, knife.at);
         }
 
         return;
@@ -761,27 +778,37 @@ export const createPixelEditorController = ({
         return;
       }
 
-      const knifeAxis = KNIFE_AXES[mode() as KnifeMode];
+      if (KNIFE_AXES[mode() as KnifeMode] !== undefined) {
+        const cut = pointedCut();
 
-      if (knifeAxis !== undefined) {
-        const position = roundedWorldPosition();
-        const knife =
-          position === undefined ? undefined : knifeAt(position, knifeAxis);
-
-        if (knife === undefined) {
+        if (cut === undefined) {
           return;
         }
 
         // The colour of the axis it would cut, which is the colour the cut is
         // drawn in once it is made.
-        const colour = axisColour(knife.cut.axis);
+        const colour = axisColour(cut.axis);
+        // On every panel it would cross rather than on the one under the
+        // pointer alone: a cut stands through the whole part, and the line
+        // shows where it lands on each drawing of it before it is made.
+        const lines = computeCutLines({
+          part: selectedPart(),
+          axis: cut.axis,
+          at: cut.at,
+          dimensions: dimensions(),
+          positions: panelPositions(),
+        });
 
         return (ctx: CanvasRenderingContext2D) => {
           ctx.lineWidth = 2 / scale();
           ctx.strokeStyle = colour;
           ctx.beginPath();
-          ctx.moveTo(knife.line.from.x, knife.line.from.y);
-          ctx.lineTo(knife.line.to.x, knife.line.to.y);
+
+          for (const line of lines) {
+            ctx.moveTo(line.from.x, line.from.y);
+            ctx.lineTo(line.to.x, line.to.y);
+          }
+
           ctx.stroke();
         };
       }
