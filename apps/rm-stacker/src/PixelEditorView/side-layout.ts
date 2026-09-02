@@ -167,6 +167,57 @@ export function computePanelPositions(
   return positions;
 }
 
+/**
+ * Where a row of things wanting to stand at `wanted` ends up standing, once
+ * those too close together have been pushed apart to `spacing`.
+ *
+ * Anything with room around it stays where it wanted to be. A crowd is spread
+ * evenly about the middle of where its members wanted to stand, so that what is
+ * pushed aside moves as little as it can, in both directions rather than one,
+ * and stands in the order it was given in.
+ *
+ * @param wanted Where each of them wants to stand, in the order they stand in.
+ */
+export function spreadApart(wanted: number[], spacing: number): number[] {
+  /** A run of them that has closed up, and what they wanted between them. */
+  const crowds: { count: number; total: number }[] = [];
+
+  const middleOf = (crowd: { count: number; total: number }) =>
+    crowd.total / crowd.count;
+  /** Where a crowd's first and last stand once it has been spread. */
+  const first = (crowd: { count: number; total: number }) =>
+    middleOf(crowd) - ((crowd.count - 1) / 2) * spacing;
+  const last = (crowd: { count: number; total: number }) =>
+    middleOf(crowd) + ((crowd.count - 1) / 2) * spacing;
+
+  for (const want of wanted) {
+    crowds.push({ count: 1, total: want });
+
+    // Taking one in can push a crowd back into the one before it, which then
+    // has to take that one in as well.
+    while (crowds.length > 1) {
+      const behind = crowds[crowds.length - 2];
+      const ahead = crowds[crowds.length - 1];
+
+      if (first(ahead) - last(behind) >= spacing) {
+        break;
+      }
+
+      crowds.splice(crowds.length - 2, 2, {
+        count: behind.count + ahead.count,
+        total: behind.total + ahead.total,
+      });
+    }
+  }
+
+  return crowds.flatMap((crowd) =>
+    Array.from(
+      { length: crowd.count },
+      (_, index) => first(crowd) + index * spacing,
+    ),
+  );
+}
+
 /** A slice's number, standing beside the cut where it crosses a panel. */
 export interface SliceMarker {
   cut: number;
@@ -187,6 +238,10 @@ export interface SliceMarker {
  *
  * A cut drawn down a panel is marked above that panel and one drawn across it
  * to its left, which is where the net leaves room.
+ *
+ * Two cuts can stand a single voxel apart, which is closer than two numbers can
+ * be read or pressed, so numbers crowded like that are pushed along the edge
+ * until they clear each other. A number with room around it stands on its cut.
  */
 export function computeSliceMarkers(
   part: Part,
@@ -197,9 +252,9 @@ export function computeSliceMarkers(
   const half = MARKER_SIZE / 2;
 
   for (const side of sideKinds) {
-    const at = positions[side];
+    const panel = positions[side];
 
-    part.sections.forEach((section, cut) => {
+    const crossings = part.sections.flatMap((section, cut) => {
       const line = panelLineFromCut({
         drawnLike: side,
         axis: section.axis,
@@ -207,22 +262,36 @@ export function computeSliceMarkers(
         dimensions,
       });
 
-      if (line === undefined) {
-        return;
-      }
-
-      const min =
-        line.along === "x"
-          ? { x: at.x + line.line - half, y: at.y - MARKER_GAP - MARKER_SIZE }
-          : { x: at.x - MARKER_GAP - MARKER_SIZE, y: at.y + line.line - half };
-
-      markers.push({
-        cut,
-        number: `${cut + 1}`,
-        axis: section.axis,
-        box: { min, max: { x: min.x + MARKER_SIZE, y: min.y + MARKER_SIZE } },
-      });
+      return line === undefined ? [] : [{ cut, section, ...line }];
     });
+
+    for (const along of ["x", "y"] as const) {
+      // In the order they stand along the edge, which is the order they are
+      // spread apart in.
+      const inOrder = crossings
+        .filter((crossing) => crossing.along === along)
+        .sort((one, other) => one.line - other.line);
+
+      const spread = spreadApart(
+        inOrder.map((crossing) => panel[along] + crossing.line),
+        MARKER_SIZE,
+      );
+
+      inOrder.forEach((crossing, index) => {
+        const middle = spread[index];
+        const min =
+          along === "x"
+            ? { x: middle - half, y: panel.y - MARKER_GAP - MARKER_SIZE }
+            : { x: panel.x - MARKER_GAP - MARKER_SIZE, y: middle - half };
+
+        markers.push({
+          cut: crossing.cut,
+          number: `${crossing.cut + 1}`,
+          axis: crossing.section.axis,
+          box: { min, max: { x: min.x + MARKER_SIZE, y: min.y + MARKER_SIZE } },
+        });
+      });
+    }
   }
 
   return markers;

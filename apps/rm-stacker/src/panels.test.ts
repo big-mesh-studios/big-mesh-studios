@@ -13,6 +13,8 @@ import {
   computePanelPositions,
   computeSliceLayouts,
   computeSliceMarkers,
+  spreadApart,
+  type SliceMarker,
 } from "./PixelEditorView/side-layout";
 import {
   blockAcrossTheRun,
@@ -488,8 +490,53 @@ describe("computeSliceLayouts and computeSliceMarkers", () => {
       (marker) => marker.box.min.y < positions.front.y,
     )!;
 
+    // Standing on the cut, which is two voxels along the front panel.
     expect(front.box.max.y).toBeLessThanOrEqual(positions.front.y);
-    expect(front.box.min.x).toBeLessThan(2);
-    expect(front.box.max.x).toBeGreaterThan(2);
+    expect((front.box.min.x + front.box.max.x) / 2).toBe(positions.front.x + 2);
+  });
+
+  it("pushes two numbers a voxel apart until they clear each other", () => {
+    const crowded = partOf(acrossTheWidth(2), acrossTheWidth(3));
+    const positions = computePanelPositions(crowded, DIMENSIONS);
+    const above = computeSliceMarkers(crowded, DIMENSIONS, positions).filter(
+      (marker) => marker.box.max.y <= positions.front.y,
+    );
+    // The band closest to the front panel is the front panel's own: the top
+    // panel spans the width as well, and is marked further up again.
+    const band = Math.max(...above.map((marker) => marker.box.max.y));
+    const [first, second] = above
+      .filter((marker) => marker.box.max.y === band)
+      .sort((one, other) => one.box.min.x - other.box.min.x);
+
+    const middleOf = (marker: SliceMarker) =>
+      (marker.box.min.x + marker.box.max.x) / 2;
+
+    // Neither runs into the other, and they are pushed apart both ways about
+    // the middle of the two cuts, which stand at two and three.
+    expect(second.box.min.x).toBeGreaterThanOrEqual(first.box.max.x);
+    expect(middleOf(first) + middleOf(second)).toBe(2 + 3);
+    // The one nearer the low end of the axis is still the first cut.
+    expect(first.number).toBe("1");
+    expect(second.number).toBe("2");
+  });
+});
+
+describe("spreadApart", () => {
+  it("leaves alone what has room around it", () => {
+    expect(spreadApart([0, 10, 20], 3)).toEqual([0, 10, 20]);
+  });
+
+  it("pushes a crowd apart about the middle of where it wanted to stand", () => {
+    expect(spreadApart([2, 3], 3)).toEqual([1, 4]);
+  });
+
+  it("takes in whatever a spread pushes it into", () => {
+    // The first two spread to -1 and 2, which runs into the third: all three
+    // then stand evenly about the middle of where the three of them wanted to.
+    expect(spreadApart([0, 1, 2], 3)).toEqual([-2, 1, 4]);
+  });
+
+  it("keeps them in the order they were given in", () => {
+    expect(spreadApart([5, 5, 5], 2)).toEqual([3, 5, 7]);
   });
 });
