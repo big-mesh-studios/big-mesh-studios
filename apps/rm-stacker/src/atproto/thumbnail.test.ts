@@ -37,6 +37,7 @@ function part(name: string, root = Vector3D.create()): Part {
         ] as const;
       }),
     ) as Part["sides"],
+    sections: [],
     root,
     pivot: centrePivot(dimensions),
     parent: null,

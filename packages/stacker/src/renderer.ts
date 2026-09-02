@@ -4,14 +4,26 @@
 // the group of boxes a figure of several parts is drawn as — either kept in
 // step with an edit, or baked once and drawn as many copies as are wanted.
 export {
+  axisSides,
   centrePivot,
   composeRoot,
+  dimensionAxes,
+  dimensionKinds,
   partDimensions,
   sideAxes,
   sideKinds,
   sideKindSet,
 } from "./data";
-export type { Axis, Figure, Model, Part, SideKind, Sides } from "./data";
+export type {
+  Axis,
+  DimensionKind,
+  Figure,
+  Model,
+  Part,
+  Section,
+  SideKind,
+  Sides,
+} from "./data";
 export { solveVoxels, encodePalette } from "./solver";
 export type { ViewSpec } from "./solver";
 export { marchVolume } from "./march";

@@ -76,6 +76,7 @@ export const createInitialPart = (
 ): Part => ({
   name,
   sides: createInitialSides(dimensions),
+  sections: [],
   root,
   pivot: centrePivot(dimensions),
   parent: null,

@@ -32,7 +32,7 @@ export function solvePart(part: Part): SolvedPart {
   return {
     name: part.name,
     dimensions,
-    voxels: solveVoxels(dimensions, part.sides),
+    voxels: solveVoxels(dimensions, part.sides, part.sections),
   };
 }
 

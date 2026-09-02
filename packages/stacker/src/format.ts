@@ -469,6 +469,7 @@ export async function loadFigure(
     return {
       name,
       sides: sides as Sides,
+      sections: [],
       root,
       pivot: pivot ?? centrePivot(dimensions),
       parent,

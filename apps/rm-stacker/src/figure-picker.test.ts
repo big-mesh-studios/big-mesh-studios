@@ -30,6 +30,7 @@ const partAt = (name: string, atZ: number): Part => ({
       return [kind, Bitmap.create(EXTENT[across], EXTENT[down])];
     }),
   ) as Part["sides"],
+  sections: [],
   root: Vector3D.create(0, 0, atZ),
   pivot: centrePivot(EXTENT),
   parent: null,

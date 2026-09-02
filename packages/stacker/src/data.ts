@@ -63,13 +63,68 @@ export const sideAxes = {
 /** One of the model's three axes, named as the vectors that address it name it. */
 export type Axis = "x" | "y" | "z";
 
+/** Every extent of a box, in the order the axes that measure them are named. */
+export const dimensionKinds = ["width", "height", "depth"] as const;
+
+/** The axis each of a box's three extents is measured along. */
+export const dimensionAxes = {
+  width: "x",
+  height: "y",
+  depth: "z",
+} as const satisfies Record<DimensionKind, Axis>;
+
+/**
+ * The two sides that look along each axis: the one at the low end of the axis
+ * and then the one at the high end. A voxel takes the colour of its two faces
+ * along an axis from this pair, and each of them carves the run of voxels it
+ * looks down.
+ */
+export const axisSides = {
+  width: ["left", "right"],
+  height: ["bottom", "top"],
+  depth: ["back", "front"],
+} as const satisfies Record<DimensionKind, readonly [SideKind, SideKind]>;
+
 /**********************************************************************************/
 /*                                     Figures                                    */
 /**********************************************************************************/
 
 /**
- * One box of a figure: the six drawings it is made of, where it sits, and the
- * point it turns about.
+ * A cut across a part's box, and the two faces it reveals: the drawing of what
+ * the part is like inside.
+ *
+ * Each of the six sides carves the whole run of voxels it looks down, so six of
+ * them describe one shape, the same the whole way along every axis. A section
+ * divides one axis in two and hands each stretch of it a pair of faces of its
+ * own, so a part can be one shape before the cut and another after it. That is
+ * what six sides alone cannot hold: two bumps standing on a diagonal come out
+ * of six sides as four, and a cut between them takes the other two away.
+ */
+export interface Section {
+  /** Which of the box's three axes the cut stands across. */
+  axis: DimensionKind;
+  /**
+   * Where the cut stands, in voxels from the low end of that axis. The plane
+   * sits before this index, dividing the axis into the run up to `at` and the
+   * run from `at` on, so it lies between one and one less than the extent.
+   */
+  at: number;
+  /**
+   * The face closing the run before the cut. It is drawn the way the side at
+   * the high end of the axis is drawn — the right for a width section, the top
+   * for a height one, the front for a depth one — and measures the same.
+   */
+  before: Bitmap;
+  /**
+   * The face opening the run after the cut, drawn the way the side at the low
+   * end of the axis is drawn: the left, the bottom or the back.
+   */
+  after: Bitmap;
+}
+
+/**
+ * One box of a figure: the six drawings it is made of, the cuts through it,
+ * where it sits, and the point it turns about.
  */
 export interface Part {
   /**
@@ -78,6 +133,11 @@ export interface Part {
    */
   name: string;
   sides: Sides;
+  /**
+   * The cuts across the box and the faces they reveal, in no particular order.
+   * Empty for a part drawn on its six sides alone.
+   */
+  sections: Section[];
   /**
    * Where the part's pivot sits, in whole voxels, measured from its parent's
    * pivot — or from the figure's origin for a part with no parent.

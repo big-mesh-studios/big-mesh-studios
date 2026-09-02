@@ -189,6 +189,7 @@ const partOf = (
       return [kind, bitmap];
     }),
   ) as Part["sides"],
+  sections: [],
   root: placement.root ?? Vector3D.create(),
   pivot: placement.pivot ?? Vector3D.create(),
   parent: placement.parent ?? null,
