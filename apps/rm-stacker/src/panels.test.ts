@@ -10,6 +10,7 @@ import {
 } from "@big-mesh-studios/stacker/renderer";
 import { describe, expect, it } from "vitest";
 import {
+  computePanelLabels,
   computePanelPositions,
   computeSliceLayouts,
   computeSliceMarkers,
@@ -532,6 +533,43 @@ describe("computeSliceLayouts and computeSliceMarkers", () => {
     );
     expect(first.number).toBe("1");
     expect(second.number).toBe("2");
+  });
+});
+
+describe("computePanelLabels", () => {
+  const part = partOf(acrossTheWidth(2));
+  const positions = computePanelPositions(part, DIMENSIONS);
+  const labels = computePanelLabels(part, positions);
+
+  it("names every drawing the part is made of, sides and faces alike", () => {
+    expect(labels.map((label) => label.panel)).toEqual([
+      ...sideKinds,
+      "section-0-before",
+      "section-0-after",
+    ]);
+  });
+
+  it("stands a name under the panel it names, as wide as that panel", () => {
+    const front = labels.find((label) => label.panel === "front")!;
+
+    expect(front.box.min).toEqual({
+      x: positions.front.x,
+      y: positions.front.y + DIMENSIONS.height,
+    });
+    expect(front.box.max.x).toBe(positions.front.x + DIMENSIONS.width);
+    expect(front.box.max.y).toBeGreaterThan(front.box.min.y);
+  });
+
+  it("carries the panel itself, which is what its name brings into view", () => {
+    const left = labels.find((label) => label.panel === "left")!;
+
+    expect(left.panelBox).toEqual({
+      min: positions.left,
+      max: {
+        x: positions.left.x + DIMENSIONS.depth,
+        y: positions.left.y + DIMENSIONS.height,
+      },
+    });
   });
 });
 

@@ -24,9 +24,11 @@ import { screenToWorld } from "../utils/utils";
 import { createEdgeController } from "./create-edge-controller";
 import { createPanScaleControl } from "./pan-scale";
 import {
+  intersectPanelLabels,
   intersectPanels,
   intersectSliceMarkers,
   type Box,
+  type PanelLabel,
   type PanelPositions,
   type SliceLayout,
   type SliceMarker,
@@ -48,6 +50,7 @@ type KnifeMode = keyof typeof KNIFE_AXES;
 export const createPixelEditorController = ({
   canvas,
   panelPositions,
+  panelLabels,
   sliceLayouts,
   sliceMarkers,
   pushUndo,
@@ -55,6 +58,7 @@ export const createPixelEditorController = ({
 }: {
   canvas: Accessor<HTMLCanvasElement | undefined>;
   panelPositions: Accessor<PanelPositions>;
+  panelLabels: Accessor<PanelLabel[]>;
   sliceLayouts: Accessor<SliceLayout[]>;
   sliceMarkers: Accessor<SliceMarker[]>;
   pushUndo: (reverseCommand: Command, description: string) => void;
@@ -219,6 +223,21 @@ export const createPixelEditorController = ({
       : opposite.index === Bitmap.EMPTY;
   }
 
+  /**
+   * What taking hold of `worldPosition` brings into view, where something
+   * there is a way of reaching something else: a slice's number brings that
+   * slice, and a panel's name brings that panel.
+   */
+  function broughtIntoViewAt(worldPosition: Vector2D): Box | undefined {
+    const marker = intersectSliceMarkers(sliceMarkers(), worldPosition);
+
+    if (marker !== undefined) {
+      return sliceLayouts()[marker.cut]?.box;
+    }
+
+    return intersectPanelLabels(panelLabels(), worldPosition)?.panelBox;
+  }
+
   /** How a block is named when it is being kept track of once only. */
   const blockKey = (block: Block) =>
     `${block.panel}:${block.min.x},${block.min.y}:${block.max.x},${block.max.y}`;
@@ -354,16 +373,13 @@ export const createPixelEditorController = ({
     event.currentTarget.setPointerCapture(event.pointerId);
     pointerIds.add(event.pointerId);
 
-    // A slice's number is a way of reaching it, whatever tool is in hand: what
-    // is under it is the panel it stands outside, and nothing draws there.
-    const marker = intersectSliceMarkers(
-      sliceMarkers(),
-      eventToWorldPosition(event),
-    );
-    const slice = marker && sliceLayouts()[marker.cut];
+    // A slice's number and a panel's name are both ways of reaching what they
+    // stand for, whatever tool is in hand: what is under either of them is the
+    // space around a drawing, and nothing draws there.
+    const brought = broughtIntoViewAt(eventToWorldPosition(event));
 
-    if (slice !== undefined) {
-      focusOn(slice.box);
+    if (brought !== undefined) {
+      focusOn(brought);
       return;
     }
 
@@ -785,11 +801,9 @@ export const createPixelEditorController = ({
 
       // Said after the edges have had their say, so that a number standing over
       // one of them still shows what it does.
-      const overMarker =
-        intersectSliceMarkers(sliceMarkers(), eventToWorldPosition(event)) !==
-        undefined;
+      const brought = broughtIntoViewAt(eventToWorldPosition(event));
 
-      if (overMarker) {
+      if (brought !== undefined) {
         setCursorStyle("pointer");
       } else if (mode() !== "Idle") {
         setCursorStyle(undefined);

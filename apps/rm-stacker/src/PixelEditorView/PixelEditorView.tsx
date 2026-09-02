@@ -17,6 +17,7 @@ import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
 import styles from "./PixelEditorView.module.css";
 import {
+  computePanelLabels,
   computePanelPositions,
   computeSliceLayouts,
   computeSliceMarkers,
@@ -64,6 +65,9 @@ const PixelEditorView: Component = () => {
   const panelPositions = createMemo(() =>
     computePanelPositions(selectedPart(), dimensions()),
   );
+  const panelLabels = createMemo(() =>
+    computePanelLabels(selectedPart(), panelPositions()),
+  );
   const sliceLayouts = createMemo(() =>
     computeSliceLayouts(selectedPart(), dimensions()),
   );
@@ -74,6 +78,7 @@ const PixelEditorView: Component = () => {
   const controller = createPixelEditorController({
     canvas,
     panelPositions,
+    panelLabels,
     sliceLayouts,
     sliceMarkers,
     doCommand,

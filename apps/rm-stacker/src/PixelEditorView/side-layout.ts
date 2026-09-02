@@ -10,7 +10,7 @@ import {
   type Sides,
   type SideKind,
 } from "@big-mesh-studios/stacker/renderer";
-import { panelLineFromCut } from "../panels";
+import { panelLineFromCut, panelTable } from "../panels";
 import { intersectSide, keysOf } from "../utils/utils";
 
 const PADDING = 6;
@@ -295,6 +295,65 @@ export function computeSliceMarkers(
   }
 
   return markers;
+}
+
+/** A panel's name, standing under the panel it names. */
+export interface PanelLabel {
+  panel: PanelKind;
+  /**
+   * The space the name is taken hold of by: as wide as the panel it names. A
+   * name too long for its panel is written wider than this, and the part of it
+   * hanging past either end is only writing.
+   */
+  box: Box;
+  /** The panel itself, which is what taking hold of its name brings into view. */
+  panelBox: Box;
+}
+
+/**
+ * Where each of `part`'s panels is named, so that a name can be taken hold of
+ * to bring the panel it names into view — the same way a slice's number brings
+ * the slice into view.
+ */
+export function computePanelLabels(
+  part: Part,
+  positions: PanelPositions,
+): PanelLabel[] {
+  const table = panelTable(part);
+
+  return table.kinds.flatMap((panel) => {
+    const at = positions[panel];
+    const drawing = table.bitmap(panel);
+
+    if (at === undefined || drawing === undefined) {
+      return [];
+    }
+
+    return [
+      {
+        panel,
+        box: {
+          min: { x: at.x, y: at.y + drawing.height },
+          max: {
+            x: at.x + drawing.width,
+            y: at.y + drawing.height + LABEL_HEIGHT,
+          },
+        },
+        panelBox: {
+          min: at,
+          max: { x: at.x + drawing.width, y: at.y + drawing.height },
+        },
+      },
+    ];
+  });
+}
+
+/** Which panel's name `worldPosition` falls on, where it falls on one at all. */
+export function intersectPanelLabels(
+  labels: PanelLabel[],
+  worldPosition: Vector2D,
+): PanelLabel | undefined {
+  return labels.find((label) => boxHolds(label.box, worldPosition));
 }
 
 /** Which numbered box `worldPosition` falls on, where it falls on one at all. */
