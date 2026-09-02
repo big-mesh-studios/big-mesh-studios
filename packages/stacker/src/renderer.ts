@@ -16,6 +16,7 @@ export {
   readSectionFace,
   sectionFaceKind,
   sideAxes,
+  sideDirections,
   sideKinds,
   sideKindSet,
   turnAngles,

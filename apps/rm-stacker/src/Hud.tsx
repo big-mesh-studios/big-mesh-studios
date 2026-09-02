@@ -260,6 +260,16 @@ export function Hud() {
             kind="expand"
             title="Autoframe: keep the whole figure in the view as it is drawn"
           />
+          <IconTab
+            onClick={() => {
+              preview.setDebug((debug) => !debug);
+              flush();
+              requestAutoSave();
+            }}
+            selected={!ProfileDialog.isOpen() && preview.debug()}
+            kind="bug"
+            title="Stand every part's sides and cuts in the view as planes"
+          />
         </Bar>
       </div>
       <Bar class={styles.partsBar}>

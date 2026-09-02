@@ -138,6 +138,9 @@ function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
   const [focus, setFocus] = createSignal<FocusKind>(
     () => saved()?.preview?.focus ?? "root",
   );
+  const [debug, setDebug] = createSignal(
+    () => saved()?.preview?.debug ?? false,
+  );
 
   /** How the preview is drawn, as the one value that is written back out. */
   const state = createMemo<PreviewState>(() => ({
@@ -147,6 +150,7 @@ function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
     handleAxes: handleAxes(),
     autoframe: autoframe(),
     focus: focus(),
+    debug: debug(),
   }));
 
   return {
@@ -162,6 +166,8 @@ function createPreviewStore(saved: Accessor<IndexedDBData | null>) {
     setAutoframe,
     focus,
     setFocus,
+    debug,
+    setDebug,
     state,
   };
 }

@@ -9,6 +9,10 @@ import {
   axisSides,
   dimensionAxes,
   dimensionKinds,
+  facingAxis,
+  sideAxes,
+  sideDirections,
+  sideKinds,
   type Axis,
   type Section,
   type Sides,
@@ -23,54 +27,30 @@ export type ViewSpec = {
 
 // Right-handed coordinate system: +x right, +y up, +z out of the front face
 // toward the viewer. The front face is at z = depth - 1 (facing the camera at
-// +z) and the back face is at z = 0. Each view fixes two coordinates and
-// raymarches the remaining axis; the fixed coordinate tuples put the axis
-// coordinate at 0.
-const createViews = (
-  { height, width, depth }: Dimensions3D,
-  { front, left, right, back, top, bottom }: Sides,
-): ViewSpec[] => {
-  return [
-    {
-      kind: "front",
-      side: front,
-      axis: "z",
-      fixedCoords: (px, py) => Vector3D.create(px, height - 1 - py, 0),
-    },
-    {
-      kind: "back",
-      side: back,
-      axis: "z",
-      fixedCoords: (px, py) =>
-        Vector3D.create(width - 1 - px, height - 1 - py, 0),
-    },
-    {
-      kind: "left",
-      side: left,
-      axis: "x",
-      fixedCoords: (px, py) => Vector3D.create(0, height - 1 - py, px),
-    },
-    {
-      kind: "right",
-      side: right,
-      axis: "x",
-      fixedCoords: (px, py) =>
-        Vector3D.create(0, height - 1 - py, depth - 1 - px),
-    },
-    {
-      kind: "top",
-      side: top,
-      axis: "y",
-      fixedCoords: (px, py) => Vector3D.create(px, 0, py),
-    },
-    {
-      kind: "bottom",
-      side: bottom,
-      axis: "y",
-      fixedCoords: (px, py) => Vector3D.create(px, 0, depth - 1 - py),
-    },
-  ];
-};
+// +z) and the back face is at z = 0. Each view fixes the two coordinates its
+// drawing spans, which way about `sideDirections` says, and leaves the one
+// along the axis it looks down at zero for the caller to march.
+const createViews = (dimensions: Dimensions3D, sides: Sides): ViewSpec[] =>
+  sideKinds.map((kind) => {
+    const [across, down] = sideAxes[kind];
+    const [acrossAgainst, downAgainst] = sideDirections[kind];
+
+    return {
+      kind,
+      side: sides[kind],
+      axis: dimensionAxes[facingAxis[kind]],
+      fixedCoords: (px, py) => {
+        const at = Vector3D.create();
+
+        at[dimensionAxes[across]] = acrossAgainst
+          ? dimensions[across] - 1 - px
+          : px;
+        at[dimensionAxes[down]] = downAgainst ? dimensions[down] - 1 - py : py;
+
+        return at;
+      },
+    };
+  });
 
 /** One face bounding a stretch of an axis: a drawing, and where its cells sit. */
 interface Face {

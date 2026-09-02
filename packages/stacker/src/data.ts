@@ -88,6 +88,27 @@ export const facingAxis = {
 } as const satisfies Record<SideKind, DimensionKind>;
 
 /**
+ * Which way each side's drawing counts the two axes it spans, in the order
+ * `sideAxes` names them: `true` for an axis whose cells count up as the model's
+ * axis counts down.
+ *
+ * A drawing's rows count down from its top row while every axis of the model
+ * counts up, which is why every side that spans the height counts it against.
+ * The rest is where each side stands: the two sides looking along an axis see
+ * what they span from opposite ends, so of each pair one counts a spanned axis
+ * the other way about — the back the width, the right the depth, and the bottom
+ * the depth.
+ */
+export const sideDirections = {
+  front: [false, true],
+  back: [true, true],
+  left: [false, true],
+  right: [true, true],
+  top: [false, false],
+  bottom: [false, true],
+} as const satisfies Record<SideKind, readonly [boolean, boolean]>;
+
+/**
  * The two sides that look along each axis: the one at the low end of the axis
  * and then the one at the high end. A voxel takes the colour of its two faces
  * along an axis from this pair, and each of them carves the run of voxels it

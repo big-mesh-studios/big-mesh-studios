@@ -82,6 +82,11 @@ export type PreviewState = {
   /** Whether the preview resizes the figure to fit the view on every change to it. */
   autoframe: boolean;
   focus: FocusKind;
+  /**
+   * Whether every part's sides and cuts stand in the view as the planes they
+   * are, over the figure they bound and divide.
+   */
+  debug: boolean;
 };
 
 /**

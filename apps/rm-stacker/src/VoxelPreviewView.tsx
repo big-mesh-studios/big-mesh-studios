@@ -36,6 +36,7 @@ import {
 import { Command } from "./command/Command";
 import { StackerContext } from "./context";
 import { CutPlane } from "./cut-plane";
+import { DebugPlanes } from "./debug-planes";
 import { pickFigure, type FigurePick } from "./figure-picker";
 import {
   armUnderPointer,
@@ -168,6 +169,9 @@ const VoxelPreviewView: Component = () => {
   // against the figure that is already there.
   const cutPlane = new CutPlane();
   framed.add(cutPlane.group);
+
+  const debugPlanes = new DebugPlanes();
+  framed.add(debugPlanes.group);
 
   // The picked voxel's outline. Its geometry is in the part's own space
   // (the same cell layout the marcher walks), so it is made a child of
@@ -680,6 +684,23 @@ const VoxelPreviewView: Component = () => {
 
       cutPlane.place(placement, dimensions, cut);
       cutPlane.visible = true;
+    },
+  );
+
+  // The planes follow the figure while the debug view is up, and are nowhere
+  // while it is down: a figure edited with them down is measured again the
+  // moment they come back up, because putting them up is itself a change here.
+  // A stroke is drawn into the bitmap a panel already holds, which leaves the
+  // figure the same value it was — the volumes solved from those bitmaps are
+  // what says a drawing has changed.
+  createEffect(
+    () => [preview.debug(), figure(), solvedParts(), placement()] as const,
+    ([debug, figure, , placement]) => {
+      debugPlanes.visible = debug;
+
+      if (debug) {
+        debugPlanes.sync(figure, placement.placements);
+      }
     },
   );
 
