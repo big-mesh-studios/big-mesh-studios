@@ -4,7 +4,8 @@
 // in — is the caller's to say.
 import { Vector3D } from "@big-mesh-studios/maths";
 import { createPopover } from "@big-mesh-studios/utils/create-popover";
-import { For, useContext } from "solid-js";
+import { For, Show, useContext } from "solid-js";
+import { widgetAxes, type WidgetAxis } from "./arm-widget";
 import { Command } from "./command/Command";
 import {
   Icon,
@@ -15,7 +16,6 @@ import {
 } from "./components/components";
 import { StackerContext } from "./context";
 import styles from "./PartsPanel.module.css";
-import { widgetAxes, type WidgetAxis } from "./arm-widget";
 
 export function PartsPanel() {
   const {
@@ -42,6 +42,13 @@ export function PartsPanel() {
 
   /** How many degrees a turn of one radian is, a turn being typed in degrees. */
   const DEGREES = 180 / Math.PI;
+
+  /**
+   * A number as the panel shows it: two places past the point and no more. A
+   * part stands wherever a drag left it, which is a number with a great deal of
+   * nothing much on the end of it, and the field is a few characters wide.
+   */
+  const shown = (value: number) => Math.round(value * 100) / 100;
 
   function turnTo(axis: WidgetAxis, degrees: number) {
     const part = selectedPart();
@@ -112,12 +119,14 @@ export function PartsPanel() {
                       onClick={() => duplicatePart(selectedPart().name)}
                       title="Duplicate this part"
                     />
-                    <IconButton
-                      kind="trash"
-                      onClick={() => removePart(selectedPart().name)}
-                      disabled={parts().length <= 1}
-                      title="Remove this part"
-                    />
+                    <Show when={parts().length > 1}>
+                      <IconButton
+                        kind="trash"
+                        onClick={() => removePart(selectedPart().name)}
+
+                        title="Remove this part"
+                      />
+                    </Show>
                   </div>
                 );
               }}
@@ -136,7 +145,7 @@ export function PartsPanel() {
                 <input
                   type="number"
                   step="any"
-                  value={selectedPart().root[axis]}
+                  value={shown(selectedPart().root[axis])}
                   onChange={(event) =>
                     moveTo(axis, event.currentTarget.valueAsNumber)
                   }
@@ -171,7 +180,7 @@ export function PartsPanel() {
               type="number"
               step="0.1"
               min="0.01"
-              value={selectedPart().scale}
+              value={shown(selectedPart().scale)}
               onChange={(event) => scaleTo(event.currentTarget.valueAsNumber)}
             />
           </label>

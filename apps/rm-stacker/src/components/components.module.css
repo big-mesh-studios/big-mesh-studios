@@ -33,7 +33,7 @@
   min-width: var(--size);
   min-height: var(--size);
 
-  &:hover {
+  &:not([disabled]):hover {
     color: var(--light-grey);
   }
 
@@ -55,8 +55,13 @@
   min-height: var(--size);
   cursor: pointer;
 
-  &:not(:hover)[disabled] {
+  &.iconButton[disabled],
+  &[disabled] {
     color: var(--grey);
+  }
+
+  &:not([disabled]):hover {
+    --color: white;
   }
 
   &.iconButton {
@@ -67,10 +72,6 @@
     align-items: center;
     gap: var(--margin);
     color: var(--color);
-
-    &:hover {
-      --color: var(--light-grey);
-    }
 
     & > .icon {
       min-width: calc(var(--size) - var(--margin) * 2);
