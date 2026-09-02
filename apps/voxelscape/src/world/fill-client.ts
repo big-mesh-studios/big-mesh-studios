@@ -142,6 +142,7 @@ export class FillClient {
       applyLevelData(this.blocks[i], {
         storeData: msg.storeData[j],
         mightHaveVoxels: msg.mightHaveVoxels[j],
+        hasWater: msg.hasWater[j],
         lod: msg.lods[j],
       });
       this.applyEdits(i);

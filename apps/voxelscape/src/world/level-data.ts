@@ -373,6 +373,8 @@ export interface BlockData {
   storeData: Uint8Array;
   /** Whether these voxels are worth meshing; see `VoxelStore.mightHaveVoxels`. */
   mightHaveVoxels: boolean;
+  /** Whether these voxels hold any water; see `VoxelStore.hasWater`. */
+  hasWater: boolean;
   /** The level of detail these voxels were generated at. */
   lod: number;
 }
@@ -396,6 +398,7 @@ export const buildBlockData = (params: {
   return {
     storeData: store.data,
     mightHaveVoxels: store.mightHaveVoxels,
+    hasWater: store.hasWater,
     lod,
   };
 };
@@ -417,5 +420,6 @@ export const applyLevelData = (block: WorldBlock, data: BlockData): void => {
   block.store.scale = voxelSize;
   block.store.data = data.storeData;
   block.store.mightHaveVoxels = data.mightHaveVoxels;
+  block.store.hasWater = data.hasWater;
   block.targetLod = data.lod;
 };

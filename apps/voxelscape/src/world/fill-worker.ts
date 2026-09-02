@@ -42,6 +42,8 @@ export interface FillBatchResult {
   storeData: Uint8Array[];
   /** Whether each block is worth meshing; see `VoxelStore.mightHaveVoxels`. */
   mightHaveVoxels: boolean[];
+  /** Whether each block holds water; see `VoxelStore.hasWater`. */
+  hasWater: boolean[];
 }
 
 export type FillWorkerMessage =
@@ -86,6 +88,7 @@ export async function* buildFillResults(
       lods: [req.lods[i]],
       storeData: [data.storeData],
       mightHaveVoxels: [data.mightHaveVoxels],
+      hasWater: [data.hasWater],
     };
   }
 }
