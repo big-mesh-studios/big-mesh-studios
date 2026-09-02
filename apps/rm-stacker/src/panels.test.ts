@@ -489,9 +489,10 @@ describe("computeSliceLayouts and computeSliceMarkers", () => {
       (marker) => marker.box.min.y < positions.front.y,
     )!;
 
-    // Standing on the cut, which is two voxels along the front panel.
-    expect(front.box.max.y).toBeLessThanOrEqual(positions.front.y);
+    // Standing on the cut, which is two voxels along the front panel, and
+    // halfway across the space between that panel and the one above it.
     expect((front.box.min.x + front.box.max.x) / 2).toBe(positions.front.x + 2);
+    expect((front.box.min.y + front.box.max.y) / 2).toBe(positions.front.y - 3);
   });
 
   it("steps two numbers a voxel apart out into lanes, each on its own cut", () => {
@@ -522,8 +523,13 @@ describe("computeSliceLayouts and computeSliceMarkers", () => {
       x: positions.front.x + 3,
       y: positions.front.y,
     });
-    // The second stands a lane further out, so the circles clear each other.
+    // The second stands a lane further out, so the circles clear each other,
+    // and the two lanes together stand halfway across the space beside the
+    // panel rather than the near one taking the middle for itself.
     expect(first.box.max.y - second.box.max.y).toBe(2);
+    expect((second.box.min.y + first.box.max.y) / 2).toBe(
+      positions.front.y - 3,
+    );
     expect(first.number).toBe("1");
     expect(second.number).toBe("2");
   });

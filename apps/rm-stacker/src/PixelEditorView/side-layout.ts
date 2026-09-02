@@ -27,9 +27,8 @@ const SLICE_PADDING = 2;
 /** How wide the little box carrying a slice's number is. */
 const NUMBER_WIDTH = 4;
 
-/** How large a slice's number is where it stands beside a cut, and how far out. */
+/** How large the space is that a slice's number is taken hold of by. */
 const MARKER_SIZE = 3;
-const MARKER_GAP = 1;
 
 /**
  * How large the circle a slice's number stands in is drawn, in cells. Smaller
@@ -226,7 +225,8 @@ export interface SliceMarker {
  * A cut drawn down a panel is marked above that panel and one drawn across it
  * to its left, which is where the net leaves room. Numbers too close together
  * to be drawn side by side step out from the panel instead, so that each stays
- * on the cut it belongs to.
+ * on the cut it belongs to, and however many lanes that takes stand together in
+ * the middle of the space beside the panel.
  */
 export function computeSliceMarkers(
   part: Part,
@@ -259,15 +259,19 @@ export function computeSliceMarkers(
 
       const standing = inOrder.map((crossing) => panel[along] + crossing.line);
       const lanes = zipLanes(standing, MARKER_LANE);
+      // Where the near lane stands, so that the lanes taken together are
+      // halfway across the space between this panel and the next: one lane
+      // stands in the middle of it, and two either side of the middle.
+      const nearest = PADDING / 2 - (Math.max(0, ...lanes) * MARKER_LANE) / 2;
 
       inOrder.forEach((crossing, index) => {
         const middle = standing[index];
-        const out = MARKER_GAP + MARKER_SIZE + lanes[index] * MARKER_LANE;
+        const out = nearest + lanes[index] * MARKER_LANE;
 
         const min =
           along === "x"
-            ? { x: middle - half, y: panel.y - out }
-            : { x: panel.x - out, y: middle - half };
+            ? { x: middle - half, y: panel.y - out - half }
+            : { x: panel.x - out - half, y: middle - half };
 
         markers.push({
           cut: crossing.cut,
