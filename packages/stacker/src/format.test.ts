@@ -10,6 +10,7 @@ import {
   sideKinds,
   type Figure,
   type Part,
+  type Section,
   type SideKind,
 } from "./data";
 import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
@@ -279,6 +280,114 @@ describe("a figure of several parts", () => {
         ),
       ),
     ).rejects.toThrow(/Two parts are called "arm"/);
+  });
+});
+
+describe("a part cut by a section", () => {
+  /** A face of the given size, drawn in one palette slot throughout. */
+  const face = (width: number, height: number): Bitmap => {
+    const bitmap = Bitmap.create(width, height);
+    bitmap.data.fill(1);
+    return bitmap;
+  };
+
+  /** A part six wide, eight high and four deep, cut where it is told. */
+  const cutPart = (...sections: Section[]): Part => ({
+    ...partOf("torso", { width: 6, height: 8, depth: 4 }),
+    sections,
+  });
+
+  it("carries its cuts and their faces through a save and a load", async () => {
+    // A width section is drawn the way the left and the right are: depth
+    // across, height down.
+    const before = face(4, 8);
+    const after = face(4, 8);
+    after.data[0] = Bitmap.EMPTY;
+
+    const reread = await loadFigure(
+      await saveFigure(
+        figureOf(cutPart({ axis: "width", at: 2, before, after })),
+      ),
+    );
+
+    expect(reread.parts[0].sections).toEqual([
+      { axis: "width", at: 2, before, after },
+    ]);
+  });
+
+  it("keeps several cuts apart, in the order the part holds them", async () => {
+    const reread = await loadFigure(
+      await saveFigure(
+        figureOf(
+          cutPart(
+            { axis: "width", at: 2, before: face(4, 8), after: face(4, 8) },
+            { axis: "depth", at: 1, before: face(6, 8), after: face(6, 8) },
+          ),
+        ),
+      ),
+    );
+
+    expect(reread.parts[0].sections.map(({ axis, at }) => [axis, at])).toEqual([
+      ["width", 2],
+      ["depth", 1],
+    ]);
+  });
+
+  it("leaves out a cut whose faces the file does not carry", async () => {
+    const written = await saveFigure(
+      figureOf(
+        cutPart({
+          axis: "width",
+          at: 2,
+          before: face(4, 8),
+          after: face(4, 8),
+        }),
+      ),
+    );
+
+    const zip = await JSZip.loadAsync(written);
+    zip.remove("torso/section-0-after.png");
+
+    const reread = await loadFigure(await zip.generateAsync({ type: "blob" }));
+
+    // What is left is the shape the six sides describe, which is what a reader
+    // knowing nothing of sections draws.
+    expect(reread.parts[0].sections).toEqual([]);
+    expect(partDimensions(reread.parts[0])).toEqual({
+      width: 6,
+      height: 8,
+      depth: 4,
+    });
+  });
+
+  it("refuses a face that is not the size of the sides it is drawn like", async () => {
+    const written = await saveFigure(
+      figureOf(
+        cutPart({
+          axis: "width",
+          at: 2,
+          before: face(4, 8),
+          after: face(4, 8),
+        }),
+      ),
+    );
+
+    const zip = await JSZip.loadAsync(written);
+    zip.file(
+      "torso/section-0-before.png",
+      encode({
+        width: 3,
+        height: 8,
+        data: new Uint8Array(3 * 8).fill(1),
+        channels: 1,
+        depth: 8,
+        palette: PALETTE,
+      }),
+    );
+
+    await expect(
+      loadFigure(await zip.generateAsync({ type: "blob" })),
+    ).rejects.toThrow(/cut 0 is drawn 3 by 8/);
   });
 });
 

@@ -64,6 +64,7 @@ const partOf = (
       return [kind, Bitmap.create(extent[across], extent[down])];
     }),
   ) as Part["sides"],
+  sections: [],
   root,
   pivot: centrePivot(extent),
   parent: null,

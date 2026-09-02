@@ -1,6 +1,7 @@
 // The sprite stack file, for anything that has to read or write one: a zip of
-// indexed pngs and a palette. A figure keeps each part's six drawings in a
-// folder of its own and lists where those parts sit in `parts.json`; a file
+// indexed pngs and a palette. A figure keeps each part's drawings in a folder
+// of its own — its six sides, and two more for each cut across it — and lists
+// where those parts sit, and where their cuts stand, in `parts.json`; a file
 // holding one part keeps its drawings at the root and carries no list. Nothing
 // here knows about drawing, undo, or the browser's file pickers — a reader gets
 // the model and is left to do what it likes with it.
@@ -13,7 +14,9 @@ import {
   type RGBA,
 } from "@big-mesh-studios/maths";
 import {
+  axisSides,
   centrePivot,
+  dimensionKinds,
   partDimensions,
   sideAxes,
   sideKinds,
@@ -22,6 +25,7 @@ import {
   type Figure,
   type Model,
   type Part,
+  type Section,
   type SideKind,
   type Sides,
 } from "./data";
@@ -39,16 +43,28 @@ const ONLY_PART = "body";
 /**
  * Where a figure's parts sit, as `parts.json` holds it. The drawings stay in
  * the folders; this carries only what cannot be read off a png.
+ *
+ * Version two added the cuts across a part. A file written before it lists no
+ * sections and reads as parts drawn on their six sides alone.
  */
 interface PartsManifest {
-  version: 1;
+  version: 2;
   parts: {
     name: string;
     root: Vector3D;
     pivot: Vector3D;
     parent: string | null;
+    /** Where each cut across the part stands. Its faces are pngs beside the sides. */
+    sections: { axis: DimensionKind; at: number }[];
   }[];
 }
+
+/** Which face of which section a png in a part's folder holds. */
+const SECTION_FILE = /^section-(\d+)-(before|after)$/;
+
+/** What a section's two faces are called in the folder, in the order they are written. */
+const sectionFileName = (index: number, face: "before" | "after") =>
+  `section-${index}-${face}.png`;
 
 /** The palette as the file holds it: a one-row png, one texel per colour. */
 function encodePalettePng(palette: RGBA[]): Uint8Array {
@@ -283,7 +299,7 @@ function readManifest(text: string): PartsManifest {
   }
 
   return {
-    version: 1,
+    version: 2,
     parts: parts.map((part, index) => {
       const name = (part as { name?: unknown })?.name;
 
@@ -301,20 +317,40 @@ function readManifest(text: string): PartsManifest {
       };
 
       const parent = (part as { parent?: unknown }).parent;
+      const listed = (part as { sections?: unknown }).sections;
 
       return {
         name,
         root: readVector((part as { root?: unknown }).root),
         pivot: readVector((part as { pivot?: unknown }).pivot),
         parent: typeof parent === "string" ? parent : null,
+        sections: (Array.isArray(listed) ? listed : []).map((section, cut) => {
+          const { axis, at } = (section ?? {}) as Record<string, unknown>;
+
+          if (!dimensionKinds.includes(axis as DimensionKind)) {
+            throw new Error(
+              `${PARTS_FILE} cuts ${name} across "${axis}", which is not one of its axes`,
+            );
+          }
+
+          if (typeof at !== "number") {
+            throw new Error(
+              `${PARTS_FILE} gives cut ${cut} of ${name} nowhere to stand`,
+            );
+          }
+
+          return { axis: axis as DimensionKind, at };
+        }),
       };
     }),
   };
 }
 
-/** The six drawings of one part, as the zip carries them before they are read. */
+/** The drawings of one part, as the zip carries them before they are read. */
 interface PartEntry {
   indexed: Partial<Sides>;
+  /** A section's faces, keyed by the cut they belong to as `parts.json` lists them. */
+  sectionFaces: Map<number, Partial<Record<"before" | "after", Bitmap>>>;
   /**
    * Sides saved as colours, held back until every part has been read: the
    * palette is worked out from every colour the whole figure was drawn in, so
@@ -354,7 +390,7 @@ export async function loadFigure(
     let entry = entries.get(folder);
 
     if (entry === undefined) {
-      entry = { indexed: {}, asColours: {} };
+      entry = { indexed: {}, asColours: {}, sectionFaces: new Map() };
       entries.set(folder, entry);
     }
 
@@ -385,9 +421,11 @@ export async function loadFigure(
     }
 
     const folder = match[1] ?? "";
-    const side = match[2].toLowerCase() as SideKind;
+    const name = match[2].toLowerCase();
+    const side = name as SideKind;
+    const cut = SECTION_FILE.exec(name);
 
-    if (!sideKindSet[side]) {
+    if (!sideKindSet[side] && cut === null) {
       continue;
     }
 
@@ -403,17 +441,37 @@ export async function loadFigure(
       );
     }
 
+    const bitmap = {
+      width: decoded.width,
+      height: decoded.height,
+      data: new Uint8Array(decoded.data),
+    };
+
+    if (cut !== null) {
+      // Sections came after the format stopped writing colours, so a face
+      // holding them is not a drawing this reader can place.
+      if (decoded.channels === 4) {
+        throw new Error(
+          `${entry.name} holds colours, and a section's face is only read as palette indices`,
+        );
+      }
+
+      const faces = entryFor(folder).sectionFaces;
+      const index = Number(cut[1]);
+      faces.set(index, {
+        ...faces.get(index),
+        [cut[2] as "before" | "after"]: bitmap,
+      });
+      continue;
+    }
+
     // Four channels means a model saved before sides held indices.
     if (decoded.channels === 4) {
       entryFor(folder).asColours[side] = decoded;
       continue;
     }
 
-    entryFor(folder).indexed[side] = {
-      width: decoded.width,
-      height: decoded.height,
-      data: new Uint8Array(decoded.data),
-    };
+    entryFor(folder).indexed[side] = bitmap;
   }
 
   const colourImages = [...entries.values()].flatMap((entry) =>
@@ -449,34 +507,85 @@ export async function loadFigure(
   const placements: (Omit<PartsManifest["parts"][number], "pivot"> & {
     pivot?: Vector3D;
   })[] = manifest?.parts ?? [
-    { name: ONLY_PART, root: Vector3D.create(), parent: null },
+    { name: ONLY_PART, root: Vector3D.create(), parent: null, sections: [] },
   ];
 
-  const parts = placements.map(({ name, root, pivot, parent }): Part => {
-    // A file without a list keeps its only part at the root, so that part's
-    // name and the folder it was read from are not the same string.
-    const folder = manifest === undefined ? "" : name;
-    const sides = entries.get(folder)?.indexed ?? {};
-    const dimensions = readDimensions(sides, folder);
+  const parts = placements.map(
+    ({ name, root, pivot, parent, sections }): Part => {
+      // A file without a list keeps its only part at the root, so that part's
+      // name and the folder it was read from are not the same string.
+      const folder = manifest === undefined ? "" : name;
+      const sides = entries.get(folder)?.indexed ?? {};
+      const dimensions = readDimensions(sides, folder);
 
-    // A side the file does not carry is drawn as nothing, at the size the sides
-    // that are there say it must be.
-    for (const side of sideKinds) {
-      const [across, down] = sideAxes[side];
-      sides[side] ??= Bitmap.create(dimensions[across], dimensions[down]);
-    }
+      // A side the file does not carry is drawn as nothing, at the size the sides
+      // that are there say it must be.
+      for (const side of sideKinds) {
+        const [across, down] = sideAxes[side];
+        sides[side] ??= Bitmap.create(dimensions[across], dimensions[down]);
+      }
 
-    return {
-      name,
-      sides: sides as Sides,
-      sections: [],
-      root,
-      pivot: pivot ?? centrePivot(dimensions),
-      parent,
-    };
-  });
+      return {
+        name,
+        sides: sides as Sides,
+        sections: readSections(sections, entries.get(folder), dimensions, name),
+        root,
+        pivot: pivot ?? centrePivot(dimensions),
+        parent,
+      };
+    },
+  );
 
   return { parts, palette: palette ?? fallbackPalette, migrated };
+}
+
+/**
+ * The cuts across one part, each listed in `parts.json` and drawn on the two
+ * pngs beside its sides.
+ *
+ * A cut whose faces the file does not carry is left out rather than read as two
+ * blank faces, which would carve the part away either side of it. What is left
+ * is the shape the six sides describe — the same shape a reader that knows
+ * nothing of sections draws.
+ *
+ * @throws When a face is not the size of the sides it is drawn like, since it
+ * would then carve a run nobody drew.
+ */
+function readSections(
+  listed: PartsManifest["parts"][number]["sections"],
+  entry: PartEntry | undefined,
+  dimensions: Dimensions3D,
+  name: string,
+): Section[] {
+  const sections: Section[] = [];
+
+  listed.forEach(({ axis, at }, cut) => {
+    const faces = entry?.sectionFaces.get(cut);
+
+    if (faces?.before === undefined || faces.after === undefined) {
+      return;
+    }
+
+    // A section's faces are drawn the way the two sides that look along its
+    // axis are drawn, so they measure the same as those two do.
+    const [across, down] = sideAxes[axisSides[axis][0]];
+
+    for (const face of [faces.before, faces.after]) {
+      if (
+        face.width !== dimensions[across] ||
+        face.height !== dimensions[down]
+      ) {
+        throw new Error(
+          `${name}'s cut ${cut} is drawn ${face.width} by ${face.height}, ` +
+            `and the ${axis} it cuts across makes it ${dimensions[across]} by ${dimensions[down]}`,
+        );
+      }
+    }
+
+    sections.push({ axis, at, before: faces.before, after: faces.after });
+  });
+
+  return sections;
 }
 
 /** The default extent of an axis no side in the file measures. */
@@ -566,8 +675,9 @@ export function isPartName(name: string): boolean {
 }
 
 /**
- * Writes a figure: each part's six drawings in a folder called after it, the
- * palette they all address, and the list saying where the parts sit.
+ * Writes a figure: each part's drawings in a folder called after it — the six
+ * sides, and the two faces of each cut across it — the palette they all
+ * address, and the list saying where the parts sit and where their cuts stand.
  *
  * @throws When a part is named something that cannot be a folder, or when two
  * parts share a name and so would be written over each other.
@@ -594,15 +704,26 @@ export async function saveFigure(figure: Figure): Promise<Blob> {
         encode({ width, height, data, channels: 1, depth: 8 }),
       );
     }
+
+    part.sections.forEach((section, cut) => {
+      for (const face of ["before", "after"] as const) {
+        const { width, height, data } = section[face];
+        zip.file(
+          `${part.name}/${sectionFileName(cut, face)}`,
+          encode({ width, height, data, channels: 1, depth: 8 }),
+        );
+      }
+    });
   }
 
   const manifest: PartsManifest = {
-    version: 1,
-    parts: figure.parts.map(({ name, root, pivot, parent }) => ({
+    version: 2,
+    parts: figure.parts.map(({ name, root, pivot, parent, sections }) => ({
       name,
       root,
       pivot,
       parent,
+      sections: sections.map(({ axis, at }) => ({ axis, at })),
     })),
   };
 
