@@ -9,6 +9,7 @@ export {
   composeRoot,
   dimensionAxes,
   dimensionKinds,
+  facingAxis,
   panelBitmap,
   panelSide,
   partDimensions,

@@ -74,6 +74,20 @@ export const dimensionAxes = {
 } as const satisfies Record<DimensionKind, Axis>;
 
 /**
+ * The axis each side looks along, which is the one its drawing does not span.
+ * A side carves the run of voxels that runs along it, and shares that run with
+ * whatever bounds it at the other end.
+ */
+export const facingAxis = {
+  front: "depth",
+  back: "depth",
+  left: "width",
+  right: "width",
+  top: "height",
+  bottom: "height",
+} as const satisfies Record<SideKind, DimensionKind>;
+
+/**
  * The two sides that look along each axis: the one at the low end of the axis
  * and then the one at the high end. A voxel takes the colour of its two faces
  * along an axis from this pair, and each of them carves the run of voxels it

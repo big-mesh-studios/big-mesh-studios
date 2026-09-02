@@ -88,9 +88,9 @@ export const createPixelEditorController = ({
   });
 
   /**
-   * Where `position` on `panel` lands on the panel facing the other way, which
-   * looks at the part from the opposite direction and so counts one of its two
-   * axes the other way about.
+   * Where `position` on `panel` lands on the face at the other end of the run
+   * it carves, which looks at the part from the opposite direction and so
+   * counts one of its two axes the other way about.
    */
   function getOppositePosition(
     panel: PanelKind,
@@ -110,10 +110,18 @@ export const createPixelEditorController = ({
     return { x: side.width - position.x - 1, y: position.y };
   }
 
-  /** The cell facing `position` from the other side of the part, where there is one. */
+  /**
+   * The cell at the other end of the run `position` carves, where there is one.
+   *
+   * The two faces bounding a run carve the same voxels, so a stroke on one of
+   * them is answered on the other: what one takes away leaves the other's
+   * drawing with no voxel to sit on. Across an uncut axis those two are the
+   * sides facing each other; a cut puts its own face at one end of each of the
+   * stretches it leaves.
+   */
   function getOppositePixel(panel: PanelKind, position: Vector2D) {
     const oppositePosition = getOppositePosition(panel, position);
-    const opposite = table().opposing(panel);
+    const opposite = table().across(panel);
     const drawing =
       opposite === undefined ? undefined : table().bitmap(opposite);
 

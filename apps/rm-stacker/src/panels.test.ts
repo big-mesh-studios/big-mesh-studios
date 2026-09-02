@@ -143,6 +143,59 @@ describe("panelTable", () => {
   });
 });
 
+describe("panelTable, across the run a face carves", () => {
+  it("pairs the sides facing each other across an uncut axis", () => {
+    const table = panelTable(partOf());
+
+    expect(table.across("left")).toBe("right");
+    expect(table.across("right")).toBe("left");
+    expect(table.across("front")).toBe("back");
+    expect(table.across("top")).toBe("bottom");
+  });
+
+  it("puts a cut's faces at the near end of each stretch it leaves", () => {
+    const table = panelTable(partOf(acrossTheWidth(2)));
+
+    expect(table.across("left")).toBe("section-0-before");
+    expect(table.across("section-0-before")).toBe("left");
+    expect(table.across("section-0-after")).toBe("right");
+    expect(table.across("right")).toBe("section-0-after");
+  });
+
+  it("never pairs a cut's two faces, which bound stretches either side of it", () => {
+    const table = panelTable(partOf(acrossTheWidth(2)));
+
+    // Their being paired is what would carve both stretches at once, and an
+    // undercut is exactly carving one and leaving the other.
+    expect(table.across("section-0-before")).not.toBe("section-0-after");
+    expect(table.across("section-0-after")).not.toBe("section-0-before");
+  });
+
+  it("chains the faces along an axis cut more than once, in the order they stand", () => {
+    // Listed out of the order they stand in, to show the chain follows the
+    // cuts along the axis rather than the order the part holds them.
+    const table = panelTable(partOf(acrossTheWidth(3), acrossTheWidth(1)));
+
+    expect(table.across("left")).toBe("section-1-before");
+    expect(table.across("section-1-after")).toBe("section-0-before");
+    expect(table.across("section-0-after")).toBe("right");
+  });
+
+  it("leaves a cut across another axis out of the chain", () => {
+    const table = panelTable(
+      partOf({
+        axis: "height",
+        at: 3,
+        before: Bitmap.create(DIMENSIONS.width, DIMENSIONS.depth),
+        after: Bitmap.create(DIMENSIONS.width, DIMENSIONS.depth),
+      }),
+    );
+
+    expect(table.across("left")).toBe("right");
+    expect(table.across("bottom")).toBe("section-0-before");
+  });
+});
+
 describe("panelLabel", () => {
   it("calls a side by its own name", () => {
     expect(panelLabel(partOf(), "front")).toBe("front");

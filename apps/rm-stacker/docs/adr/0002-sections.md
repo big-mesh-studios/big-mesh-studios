@@ -60,6 +60,31 @@ A face is named for the cut it belongs to and which of the two it is:
 run after it. That name is what the file writes it under and what a drawing
 command names, so the panel and the png are one thing.
 
+## Two faces carve one run, and answer each other; a cut's two do not
+
+The editor has always kept the two panels facing each other in step without
+being asked: erasing a cell on the front erases the matching cell on the back
+where something was drawn there, and drawing on the front reaches the back only
+where nothing is. The two carve the same run of voxels, so a drawing one of
+them takes away is left with no voxel to sit on.
+
+A cut changes which two those are. Across an uncut width, the left and the
+right bound the one stretch there is. Cut it, and the left is bounded by the
+face closing the run before the cut, and the right by the face opening the run
+after it — each stretch by the faces at its own ends. The left and the right no
+longer carve the same voxels and are no longer kept in step, which is right:
+erasing on the left now takes away only the stretch before the cut, and the
+right's drawing on the stretch after it is still standing on something.
+
+The two faces of one cut are never a pair. They bound the stretches either side
+of the plane, and pairing them would carve both at once — which is exactly the
+thing a section exists to avoid. Every cut would then be undone by the first
+stroke made on it.
+
+The mirror is a separate matter, and stays what somebody asked for: with it
+switched on, a stroke on one face of a cut is carried onto the other, the two
+of them being two sides of one plane.
+
 ## Both faces of a new cut are copies
 
 A face cannot start blank: an empty cell carves its whole run, so two blank

@@ -5,12 +5,14 @@
 import { Bitmap, Dimensions3D, Vector2D } from "@big-mesh-studios/maths";
 import {
   axisSides,
+  facingAxis,
   panelBitmap,
   panelSide,
   partDimensions,
   readSectionFace,
   sectionFaceKind,
   sideKinds,
+  sideKindSet,
   type DimensionKind,
   type PanelKind,
   type Part,
@@ -33,6 +35,42 @@ export interface PanelTable {
    * cut, which is the other side of the same plane.
    */
   opposing(panel: PanelKind): PanelKind | undefined;
+  /**
+   * The face at the other end of the stretch of the axis `panel` bounds: the
+   * two of them carve one run of voxels between them, so what one of them takes
+   * away leaves the other's drawing there with no voxel to sit on.
+   *
+   * Across an uncut axis that is the side facing the other way. A cut divides
+   * the axis, and each stretch is then bounded by the faces at its own ends —
+   * the left and the face closing the run before the cut, then the face opening
+   * the run after it and the right. The two faces of one cut are never a pair:
+   * they bound the stretches either side of it, which is what lets one be
+   * carved away and the other left standing.
+   */
+  across(panel: PanelKind): PanelKind | undefined;
+}
+
+/**
+ * Every face bounding `axis`, in the order they stand along it: the side at its
+ * low end, each cut's two faces, then the side at its high end. Taken in pairs
+ * from the low end, each pair closes one stretch of the axis.
+ */
+function facesAlong(part: Part, axis: DimensionKind): PanelKind[] {
+  const [low, high] = axisSides[axis];
+
+  const cuts = part.sections
+    .map((section, cut) => ({ section, cut }))
+    .filter(({ section }) => section.axis === axis)
+    .sort((one, other) => one.section.at - other.section.at);
+
+  return [
+    low,
+    ...cuts.flatMap(({ cut }) => [
+      sectionFaceKind(cut, "before"),
+      sectionFaceKind(cut, "after"),
+    ]),
+    high,
+  ];
 }
 
 /**
@@ -171,6 +209,24 @@ export function panelTable(part: Part): PanelTable {
             face.cut,
             face.face === "before" ? "after" : "before",
           );
+    },
+    across(panel) {
+      const face = readSectionFace(panel);
+      const axis =
+        face === undefined
+          ? sideKindSet[panel as SideKind]
+            ? facingAxis[panel as SideKind]
+            : undefined
+          : part.sections[face.cut]?.axis;
+
+      if (axis === undefined) {
+        return undefined;
+      }
+
+      const along = facesAlong(part, axis);
+      const at = along.indexOf(panel);
+
+      return at === -1 ? undefined : along[at % 2 === 0 ? at + 1 : at - 1];
     },
   };
 }
