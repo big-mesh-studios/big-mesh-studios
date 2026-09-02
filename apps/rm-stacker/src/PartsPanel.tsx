@@ -8,7 +8,7 @@ import { Command } from "./command/Command";
 import { IconButton, Tab } from "./components/components";
 import { StackerContext } from "./context";
 import styles from "./PartsPanel.module.css";
-import { type WidgetAxis } from "./translate-widget";
+import { widgetAxes, type WidgetAxis } from "./translate-widget";
 
 export function PartsPanel() {
   const {
@@ -94,25 +94,23 @@ export function PartsPanel() {
 
       {/* A figure of one part has nothing to place that part against, so its
           root says nothing until there is a second one. */}
-      {/* <Show when={parts().length > 1}>
-        <div class={styles.root}>
-          <For each={widgetAxes}>
-            {(axis) => (
-              <label class={styles.field}>
-                <span>{axis}</span>
-                <input
-                  type="number"
-                  step="1"
-                  value={selectedPart().root[axis]}
-                  onChange={(event) =>
-                    moveTo(axis, event.currentTarget.valueAsNumber)
-                  }
-                />
-              </label>
-            )}
-          </For>
-        </div>
-      </Show> */}
+      <div class={[styles.pose, styles.pane]}>
+        <For each={widgetAxes}>
+          {(axis) => (
+            <label class={styles.field}>
+              <span>{axis}</span>
+              <input
+                type="number"
+                step="1"
+                value={selectedPart().root[axis]}
+                onChange={(event) =>
+                  moveTo(axis, event.currentTarget.valueAsNumber)
+                }
+              />
+            </label>
+          )}
+        </For>
+      </div>
     </>
   );
 }

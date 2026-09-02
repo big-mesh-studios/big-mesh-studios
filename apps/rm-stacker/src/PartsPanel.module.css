@@ -35,10 +35,11 @@
   }
 }
 
-.root {
-  display: flex;
-  flex-direction: column;
+.pose {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: calc(var(--margin) / 2);
+  padding: calc(var(--margin) / 2);
   align-self: stretch;
   border-top: 1px solid var(--grey);
   padding-top: var(--margin);
