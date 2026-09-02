@@ -21,7 +21,7 @@
   overflow-y: auto;
 }
 
-.part {
+.partName {
   justify-content: start;
   align-items: center;
   padding-inline: var(--margin);
@@ -38,8 +38,8 @@
 .pose {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: calc(var(--margin) / 2);
-  padding: calc(var(--margin) / 2);
+  gap: var(--margin);
+  padding: var(--margin);
   align-self: stretch;
   border-top: 1px solid var(--grey);
   padding-top: var(--margin);
@@ -48,7 +48,7 @@
 .field {
   display: flex;
   align-items: center;
-  gap: calc(var(--margin) / 2);
+  gap: var(--margin);
   color: var(--grey);
   font-size: 10pt;
 
@@ -72,4 +72,24 @@
   background-color: var(--back);
   border: 1px solid var(--grey);
   border-radius: var(--margin);
+}
+.part {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+}
+
+.partsPopover {
+  inset: unset;
+  position: absolute;
+  pointer-events: auto;
+
+  &:popover-open {
+    display: grid;
+    gap: var(--margin);
+    background-color: transparent;
+    bottom: calc(anchor(top) + var(--margin));
+    right: calc(anchor(right));
+    width: 220px;
+    max-width: calc(100vw - var(--margin) * 4 - var(--size) * 2 - 2px);
+  }
 }

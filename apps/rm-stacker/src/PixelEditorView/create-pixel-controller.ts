@@ -23,9 +23,19 @@ import {
 import { screenToWorld } from "../utils/utils";
 import { createEdgeController } from "./create-edge-controller";
 import { createPanScaleControl } from "./pan-scale";
-import { intersectPanels, PanelPositions } from "./side-layout";
+import {
+  intersectPanels,
+  intersectSliceMarkers,
+  type Box,
+  type PanelPositions,
+  type SliceLayout,
+  type SliceMarker,
+} from "./side-layout";
 
 const PannableModes = new Set(["Idle", "Eyedrop"]);
+
+/** How much of the view is left around what it is brought to look at. */
+const FOCUS_MARGIN = 0.9;
 
 /** The tools that cut, and which of a panel's image axes each of them divides. */
 const KNIFE_AXES = {
@@ -38,11 +48,15 @@ type KnifeMode = keyof typeof KNIFE_AXES;
 export const createPixelEditorController = ({
   canvas,
   panelPositions,
+  sliceLayouts,
+  sliceMarkers,
   pushUndo,
   doCommand,
 }: {
   canvas: Accessor<HTMLCanvasElement | undefined>;
   panelPositions: Accessor<PanelPositions>;
+  sliceLayouts: Accessor<SliceLayout[]>;
+  sliceMarkers: Accessor<SliceMarker[]>;
   pushUndo: (reverseCommand: Command, description: string) => void;
   doCommand: (
     command: Command,
@@ -289,11 +303,36 @@ export const createPixelEditorController = ({
     );
   }
 
+  function eventToWorldPosition(event: PointerEvent) {
+    return screenToWorld({ x: event.layerX, y: event.layerY }, pan(), scale());
+  }
+
   function eventToRoundedWorldPosition(
     event: PointerEvent & { currentTarget: HTMLElement },
   ) {
-    const screenPointer = { x: event.layerX, y: event.layerY };
-    return Vector2D.round(screenToWorld(screenPointer, pan(), scale()));
+    return Vector2D.round(eventToWorldPosition(event));
+  }
+
+  /** Brings `box` to the middle of the view, as large as it goes there. */
+  function focusOn(box: Box) {
+    const element = canvas();
+
+    if (element === undefined) {
+      return;
+    }
+
+    const fitted =
+      FOCUS_MARGIN *
+      Math.min(
+        element.width / (box.max.x - box.min.x),
+        element.height / (box.max.y - box.min.y),
+      );
+
+    setScale(fitted);
+    setPan({
+      x: (box.min.x + box.max.x) / 2 - element.width / (2 * fitted),
+      y: (box.min.y + box.max.y) / 2 - element.height / (2 * fitted),
+    });
   }
 
   function endPointer(event: PointerEvent) {
@@ -314,6 +353,19 @@ export const createPixelEditorController = ({
     // end is heard and the pointer can be dropped from the set again.
     event.currentTarget.setPointerCapture(event.pointerId);
     pointerIds.add(event.pointerId);
+
+    // A slice's number is a way of reaching it, whatever tool is in hand: what
+    // is under it is the panel it stands outside, and nothing draws there.
+    const marker = intersectSliceMarkers(
+      sliceMarkers(),
+      eventToWorldPosition(event),
+    );
+    const slice = marker && sliceLayouts()[marker.cut];
+
+    if (slice !== undefined) {
+      focusOn(slice.box);
+      return;
+    }
 
     const _roundedWorldPosition = eventToRoundedWorldPosition(event);
 
@@ -724,10 +776,23 @@ export const createPixelEditorController = ({
     onPointerDown,
     onPointerMove(event: PointerEvent & { currentTarget: HTMLElement }) {
       setRoundedWorldPosition(eventToRoundedWorldPosition(event));
+
       switch (mode()) {
         case "Idle": {
           edgeController.onPointerMove(event);
         }
+      }
+
+      // Said after the edges have had their say, so that a number standing over
+      // one of them still shows what it does.
+      const overMarker =
+        intersectSliceMarkers(sliceMarkers(), eventToWorldPosition(event)) !==
+        undefined;
+
+      if (overMarker) {
+        setCursorStyle("pointer");
+      } else if (mode() !== "Idle") {
+        setCursorStyle(undefined);
       }
     },
     onPointerUp(event: PointerEvent) {

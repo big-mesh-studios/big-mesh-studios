@@ -13,27 +13,12 @@
   display: grid;
   grid-template-columns: repeat(4, 100px) minmax(0, 1fr) auto auto;
   grid-template-areas: "new open export publish account auth close";
-  align-items: center;
-  gap: var(--margin);
-  border-bottom: 1px solid var(--dark-grey);
-
-  @container (max-width: 620px) {
-    grid-template-columns: repeat(4, auto) minmax(0, 1fr) auto auto;
-  }
 
   @container (max-width: 400px) {
     grid-template-columns: repeat(4, 1fr);
     grid-template-areas:
       "new     open    export  publish close"
       "account account account account auth ";
-
-    & button {
-      justify-content: center;
-    }
-
-    & .close {
-      border-left: none;
-    }
   }
 }
 

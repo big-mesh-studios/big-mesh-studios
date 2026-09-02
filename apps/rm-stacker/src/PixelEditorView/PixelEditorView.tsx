@@ -16,7 +16,13 @@ import { sideMaskToCSS } from "../utils/utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
 import styles from "./PixelEditorView.module.css";
-import { computePanelPositions, LABEL_HEIGHT } from "./side-layout";
+import {
+  computePanelPositions,
+  computeSliceLayouts,
+  computeSliceMarkers,
+  LABEL_HEIGHT,
+  type Box,
+} from "./side-layout";
 
 interface ImageCanvasCacheData {
   canvas: HTMLCanvasElement;
@@ -55,10 +61,18 @@ const PixelEditorView: Component = () => {
   const panelPositions = createMemo(() =>
     computePanelPositions(selectedPart(), dimensions()),
   );
+  const sliceLayouts = createMemo(() =>
+    computeSliceLayouts(selectedPart(), dimensions()),
+  );
+  const sliceMarkers = createMemo(() =>
+    computeSliceMarkers(selectedPart(), dimensions(), panelPositions()),
+  );
 
   const controller = createPixelEditorController({
     canvas,
     panelPositions,
+    sliceLayouts,
+    sliceMarkers,
     doCommand,
     pushUndo,
   });
@@ -114,6 +128,37 @@ const PixelEditorView: Component = () => {
         }
       }
     }
+  };
+
+  /**
+   * A box filled in `colour` with `text` standing in the middle of it, which is
+   * what a panel's name and a slice's number are both shown as.
+   */
+  const fillLabel = (
+    ctx: CanvasRenderingContext2D,
+    box: Box,
+    text: string,
+    colour: string,
+    scale: number,
+  ) => {
+    const width = box.max.x - box.min.x;
+    const height = box.max.y - box.min.y;
+
+    ctx.fillStyle = colour;
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 1 / scale;
+    ctx.fillRect(box.min.x, box.min.y, width, height);
+    ctx.strokeRect(box.min.x, box.min.y, width, height);
+
+    ctx.font = "1.75px sans-serif";
+    const metrics = ctx.measureText(text);
+
+    ctx.fillStyle = "oklch(23.26% .014 253.1)";
+    ctx.fillText(
+      text,
+      box.min.x + 0.5 * (width - metrics.width),
+      box.min.y + 0.5 * height + metrics.actualBoundingBoxAscent / 2,
+    );
   };
 
   let ctx: CanvasRenderingContext2D | undefined | null;
@@ -314,6 +359,38 @@ const PixelEditorView: Component = () => {
             },
           ]);
         }
+      }
+
+      // Each slice stands in a dashed box of its own, in the colour of the axis
+      // it cuts across, with its number on a tab at the corner: what is inside
+      // the box is one cut through the part, not two more sides of it.
+      for (const slice of sliceLayouts()) {
+        const colour = axisColour(slice.axis);
+
+        ctx.strokeStyle = colour;
+        ctx.lineWidth = 1 / _scale;
+        ctx.setLineDash([1 / _scale, 1 / _scale]);
+        ctx.strokeRect(
+          slice.box.min.x,
+          slice.box.min.y,
+          slice.box.max.x - slice.box.min.x,
+          slice.box.max.y - slice.box.min.y,
+        );
+        ctx.setLineDash([]);
+
+        fillLabel(ctx, slice.label, slice.number, colour, _scale);
+      }
+
+      // The same number again, standing outside the panels the cut crosses, so
+      // a cut seen in a drawing can be followed to the faces it reveals.
+      for (const marker of sliceMarkers()) {
+        fillLabel(
+          ctx,
+          marker.box,
+          marker.number,
+          axisColour(marker.axis),
+          _scale,
+        );
       }
 
       if (_overlayDrawing) {

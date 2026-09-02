@@ -1,4 +1,3 @@
-import { Bitmap } from "@big-mesh-studios/maths";
 import { createPopover } from "@big-mesh-studios/utils/create-popover";
 import { flush, useContext } from "solid-js";
 import {
@@ -6,10 +5,8 @@ import {
   Colour,
   colourTabStyle,
   createDialog,
-  Icon,
   IconButton,
   IconTab,
-  iconTabStyle,
   popoverStyle,
   tabStyle,
 } from "./components/components";
@@ -32,11 +29,10 @@ export function Hud() {
     setMirror,
     preview,
     requestAutoSave,
-    atproto,
   } = useContext(StackerContext);
 
   const PalettePopover = createPopover();
-  const PartsPopover = createPopover();
+
   const ProfileDialog = createDialog();
 
   const isModeSelected = (_mode: ModeKind) =>
@@ -220,15 +216,7 @@ export function Hud() {
         </Bar>
       </div>
       <Bar class={styles.partsBar}>
-        <PartsPopover.Trigger
-          class={[tabStyle, iconTabStyle]}
-          title="The figure's parts"
-        >
-          <Icon kind="cubes" />
-        </PartsPopover.Trigger>
-        <PartsPopover.PopOver popover="manual" class={[styles.partsPopover]}>
-          <PartsPanel />
-        </PartsPopover.PopOver>
+        <PartsPanel />
       </Bar>
     </div>
   );

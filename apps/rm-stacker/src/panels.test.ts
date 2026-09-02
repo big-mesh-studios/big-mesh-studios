@@ -10,6 +10,11 @@ import {
 } from "@big-mesh-studios/stacker/renderer";
 import { describe, expect, it } from "vitest";
 import {
+  computePanelPositions,
+  computeSliceLayouts,
+  computeSliceMarkers,
+} from "./PixelEditorView/side-layout";
+import {
   blockAcrossTheRun,
   cellAcrossTheRun,
   cutFromPanelLine,
@@ -424,5 +429,67 @@ describe("cutSection", () => {
     part.sections.push(cutSection(part, "width", 2)!);
 
     expect(cutSection(part, "width", 2)).toBeUndefined();
+  });
+});
+
+describe("computeSliceLayouts and computeSliceMarkers", () => {
+  const part = partOf(acrossTheWidth(2));
+
+  it("gives each slice a box under the net, numbered from one", () => {
+    const [slice] = computeSliceLayouts(part, DIMENSIONS);
+
+    expect(slice.number).toBe("1");
+    expect(slice.axis).toBe("width");
+    // Below the bottom panel, which is the lowest thing in the net.
+    expect(slice.box.min.y).toBeGreaterThan(
+      DIMENSIONS.height + DIMENSIONS.depth,
+    );
+    // Wide enough for the two faces side by side, and its tab stands on top.
+    expect(slice.box.max.x - slice.box.min.x).toBeGreaterThan(
+      DIMENSIONS.depth * 2,
+    );
+    expect(slice.label.max.y).toBe(slice.box.min.y);
+  });
+
+  it("stands both faces of the slice inside its box", () => {
+    const [slice] = computeSliceLayouts(part, DIMENSIONS);
+    const positions = computePanelPositions(part, DIMENSIONS);
+
+    for (const face of ["section-0-before", "section-0-after"] as const) {
+      const at = positions[face]!;
+
+      expect(at.x).toBeGreaterThanOrEqual(slice.box.min.x);
+      expect(at.y).toBeGreaterThanOrEqual(slice.box.min.y);
+      expect(at.x + DIMENSIONS.depth).toBeLessThanOrEqual(slice.box.max.x);
+      expect(at.y + DIMENSIONS.height).toBeLessThanOrEqual(slice.box.max.y);
+    }
+  });
+
+  it("stacks a second slice under the first", () => {
+    const [first, second] = computeSliceLayouts(
+      partOf(acrossTheWidth(2), acrossTheWidth(3)),
+      DIMENSIONS,
+    );
+
+    expect(second.number).toBe("2");
+    expect(second.box.min.y).toBeGreaterThan(first.box.max.y);
+  });
+
+  it("marks the cut outside every side it crosses, and none of the others", () => {
+    const positions = computePanelPositions(part, DIMENSIONS);
+    const markers = computeSliceMarkers(part, DIMENSIONS, positions);
+
+    // A cut across the width crosses the four sides that span it.
+    expect(markers.length).toBe(4);
+    expect(markers.every((marker) => marker.number === "1")).toBe(true);
+
+    // Above the front panel, at the line it cuts along.
+    const front = markers.find(
+      (marker) => marker.box.min.y < positions.front.y,
+    )!;
+
+    expect(front.box.max.y).toBeLessThanOrEqual(positions.front.y);
+    expect(front.box.min.x).toBeLessThan(2);
+    expect(front.box.max.x).toBeGreaterThan(2);
   });
 });
