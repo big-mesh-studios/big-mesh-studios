@@ -20,6 +20,7 @@ import {
   type SideKind,
 } from "@big-mesh-studios/stacker/renderer";
 import { OPPOSING_SIDE, SIDE_AXES } from "./constants";
+import type { Block } from "./mirror";
 
 /** The drawings of one part, and how each of them is turned. */
 export interface PanelTable {
@@ -71,6 +72,67 @@ function facesAlong(part: Part, axis: DimensionKind): PanelKind[] {
     ]),
     high,
   ];
+}
+
+/**
+ * Where a cell on `panel` lands on the face at the other end of the run it
+ * carves, or undefined where there is no such face.
+ *
+ * The two look at the part from opposite directions, so one of the two axes
+ * they are drawn across counts up the other way about — the front's leftmost
+ * column is the back's rightmost, and the top's first row is the bottom's last.
+ */
+export function cellAcrossTheRun(
+  table: PanelTable,
+  panel: PanelKind,
+  position: Vector2D,
+): { panel: PanelKind; position: Vector2D } | undefined {
+  const across = table.across(panel);
+  const drawing = table.bitmap(panel);
+  const drawnLike = table.side(panel);
+
+  if (
+    across === undefined ||
+    drawing === undefined ||
+    drawnLike === undefined
+  ) {
+    return undefined;
+  }
+
+  if (table.bitmap(across) === undefined) {
+    return undefined;
+  }
+
+  return {
+    panel: across,
+    position:
+      drawnLike === "top" || drawnLike === "bottom"
+        ? { x: position.x, y: drawing.height - position.y - 1 }
+        : { x: drawing.width - position.x - 1, y: position.y },
+  };
+}
+
+/**
+ * `block` where it lands on the face at the other end of the run it carves. The
+ * axis that counts up the other way about there swaps the block's ends over, so
+ * its corners are taken back to the lower and the higher of the two.
+ */
+export function blockAcrossTheRun(
+  table: PanelTable,
+  block: Block,
+): Block | undefined {
+  const min = cellAcrossTheRun(table, block.panel, block.min);
+  const max = cellAcrossTheRun(table, block.panel, block.max);
+
+  if (min === undefined || max === undefined) {
+    return undefined;
+  }
+
+  return {
+    panel: min.panel,
+    min: Vector2D.min(min.position, max.position),
+    max: Vector2D.max(min.position, max.position),
+  };
 }
 
 /**

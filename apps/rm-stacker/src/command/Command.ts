@@ -40,6 +40,13 @@ export type Command =
       min: Vector2D;
       max: Vector2D;
       paletteIndex: number;
+      /**
+       * Whether cells that already have something drawn on them are left as
+       * they are. This is how a rectangle reaches the far end of the runs it
+       * carves — filling in what would otherwise carve them away — without
+       * painting over the drawing that is there.
+       */
+      onlyWhereEmpty: boolean;
     }
   | {
       type: "ErasePixel";
@@ -85,8 +92,17 @@ export namespace Command {
     min: Vector2D,
     max: Vector2D,
     paletteIndex: number,
+    onlyWhereEmpty = false,
   ): Command {
-    return { type: "FillRectangle", part, panel, min, max, paletteIndex };
+    return {
+      type: "FillRectangle",
+      part,
+      panel,
+      min,
+      max,
+      paletteIndex,
+      onlyWhereEmpty,
+    };
   }
 
   export function fillPixel(
@@ -155,7 +171,7 @@ export namespace Command {
         };
       }
       case "FillRectangle": {
-        let { part, panel, min, max, paletteIndex } = command;
+        let { part, panel, min, max, paletteIndex, onlyWhereEmpty } = command;
         return {
           type: "FillRectangle",
           part,
@@ -165,6 +181,7 @@ export namespace Command {
           maxX: max.x,
           maxY: max.y,
           paletteIndex,
+          onlyWhereEmpty,
         };
       }
       case "ErasePixel": {
@@ -237,6 +254,7 @@ export namespace Command {
           { x: command.minX, y: command.minY },
           { x: command.maxX, y: command.maxY },
           command.paletteIndex,
+          command.onlyWhereEmpty === true,
         );
       case "FillPixel":
         if (typeof command.part !== "string") {

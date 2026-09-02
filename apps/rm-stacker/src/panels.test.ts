@@ -9,7 +9,14 @@ import {
   type Sides,
 } from "@big-mesh-studios/stacker/renderer";
 import { describe, expect, it } from "vitest";
-import { cutFromPanelLine, cutSection, panelLabel, panelTable } from "./panels";
+import {
+  blockAcrossTheRun,
+  cellAcrossTheRun,
+  cutFromPanelLine,
+  cutSection,
+  panelLabel,
+  panelTable,
+} from "./panels";
 
 // A part five voxels wide, seven high and three deep, so that no two axes are
 // the same length and a line read off the wrong one shows up as a wrong place.
@@ -193,6 +200,52 @@ describe("panelTable, across the run a face carves", () => {
 
     expect(table.across("left")).toBe("right");
     expect(table.across("bottom")).toBe("section-0-before");
+  });
+});
+
+describe("cellAcrossTheRun and blockAcrossTheRun", () => {
+  it("counts the axis the two panels disagree about the other way about", () => {
+    const table = panelTable(partOf());
+
+    // The front and the back are five across; the front's leftmost column is
+    // the back's rightmost, and both count their rows the same way.
+    expect(cellAcrossTheRun(table, "front", { x: 1, y: 2 })).toEqual({
+      panel: "back",
+      position: { x: 3, y: 2 },
+    });
+
+    // The top and the bottom disagree about their rows rather than their
+    // columns, and are three rows deep.
+    expect(cellAcrossTheRun(table, "top", { x: 1, y: 0 })).toEqual({
+      panel: "bottom",
+      position: { x: 1, y: 2 },
+    });
+  });
+
+  it("carries a cell onto the face a cut puts at the end of its run", () => {
+    const table = panelTable(partOf(acrossTheWidth(2)));
+
+    expect(cellAcrossTheRun(table, "left", { x: 0, y: 1 })).toEqual({
+      panel: "section-0-before",
+      position: { x: 2, y: 1 },
+    });
+  });
+
+  it("takes a block's corners back to its lower and higher ends", () => {
+    const table = panelTable(partOf());
+
+    // Reading the block's own corners through the flip swaps its ends over.
+    expect(
+      blockAcrossTheRun(table, {
+        panel: "front",
+        min: { x: 0, y: 0 },
+        max: { x: 1, y: 2 },
+      }),
+    ).toEqual({
+      panel: "back",
+      min: { x: 3, y: 0 },
+      max: { x: 4, y: 2 },
+    });
   });
 });
 

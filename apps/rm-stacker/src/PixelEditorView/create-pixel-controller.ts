@@ -10,8 +10,14 @@ import { StackerContext } from "../context";
 import { Bitmap, RGBA, Vector2D } from "@big-mesh-studios/maths";
 import { type PanelKind } from "@big-mesh-studios/stacker/renderer";
 import { pointer } from "@big-mesh-studios/utils/pointer";
-import { mirrorBlocks, mirrorMarks, type Mark } from "../mirror";
-import { cutFromPanelLine, panelTable, writePanel } from "../panels";
+import { mirrorBlocks, mirrorMarks, type Block, type Mark } from "../mirror";
+import {
+  blockAcrossTheRun,
+  cellAcrossTheRun,
+  cutFromPanelLine,
+  panelTable,
+  writePanel,
+} from "../panels";
 import { screenToWorld } from "../utils/utils";
 import { createEdgeController } from "./create-edge-controller";
 import { createPanScaleControl } from "./pan-scale";
@@ -88,55 +94,27 @@ export const createPixelEditorController = ({
   });
 
   /**
-   * Where `position` on `panel` lands on the face at the other end of the run
-   * it carves, which looks at the part from the opposite direction and so
-   * counts one of its two axes the other way about.
-   */
-  function getOppositePosition(
-    panel: PanelKind,
-    position: Vector2D,
-  ): Vector2D | undefined {
-    const side = table().bitmap(panel);
-    const drawnLike = table().side(panel);
-
-    if (side === undefined || drawnLike === undefined) {
-      return undefined;
-    }
-
-    if (drawnLike === "top" || drawnLike === "bottom") {
-      return { x: position.x, y: side.height - position.y - 1 };
-    }
-
-    return { x: side.width - position.x - 1, y: position.y };
-  }
-
-  /**
-   * The cell at the other end of the run `position` carves, where there is one.
+   * The cell at the other end of the run `position` carves, and what is drawn
+   * there, where there is such a cell.
    *
    * The two faces bounding a run carve the same voxels, so a stroke on one of
    * them is answered on the other: what one takes away leaves the other's
-   * drawing with no voxel to sit on. Across an uncut axis those two are the
-   * sides facing each other; a cut puts its own face at one end of each of the
-   * stretches it leaves.
+   * drawing with no voxel to sit on, and what one draws shows nothing unless
+   * the other has something there to keep the run from being carved.
    */
   function getOppositePixel(panel: PanelKind, position: Vector2D) {
-    const oppositePosition = getOppositePosition(panel, position);
-    const opposite = table().across(panel);
+    const across = cellAcrossTheRun(table(), panel, position);
     const drawing =
-      opposite === undefined ? undefined : table().bitmap(opposite);
+      across === undefined ? undefined : table().bitmap(across.panel);
 
-    if (
-      oppositePosition === undefined ||
-      opposite === undefined ||
-      drawing === undefined
-    ) {
+    if (across === undefined || drawing === undefined) {
       return undefined;
     }
 
     return {
-      kind: opposite,
-      index: Bitmap.get(drawing, oppositePosition.x, oppositePosition.y),
-      position: oppositePosition,
+      kind: across.panel,
+      index: Bitmap.get(drawing, across.position.x, across.position.y),
+      position: across.position,
     };
   }
 
@@ -148,6 +126,10 @@ export const createPixelEditorController = ({
   function strokeMarks(panel: PanelKind, position: Vector2D): Mark[] {
     return mirrorMarks(mirror(), table(), { panel, position });
   }
+
+  /** How a block is named when it is being kept track of once only. */
+  const blockKey = (block: Block) =>
+    `${block.panel}:${block.min.x},${block.min.y}:${block.max.x},${block.max.y}`;
 
   /** `marks` with each cell kept only the first time it is named. */
   function uniqueMarks(marks: Mark[]): Mark[] {
@@ -461,6 +443,40 @@ export const createPixelEditorController = ({
           };
         }
 
+        /**
+         * Every block the rectangle covers: the block dragged out and each
+         * reflection of it, then the far end of every run those carve, filled
+         * in only where nothing is drawn.
+         *
+         * A run carved away at its far end would leave the rectangle with no
+         * voxels to show it, which is why the far end is reached at all; the
+         * drawing already there is what says the run is not carved, so it is
+         * left alone. A block already being drawn on is listed once.
+         */
+        function coveredBlocks(
+          event: PointerEvent & { currentTarget: HTMLElement },
+        ): { block: Block; onlyWhereEmpty: boolean }[] {
+          const drawn = mirrorBlocks(mirror(), table(), draggedBlock(event));
+          const covered = new Set(drawn.map(blockKey));
+          const blocks = drawn.map((block) => ({
+            block,
+            onlyWhereEmpty: false,
+          }));
+
+          for (const block of drawn) {
+            const across = blockAcrossTheRun(table(), block);
+
+            if (across === undefined || covered.has(blockKey(across))) {
+              continue;
+            }
+
+            covered.add(blockKey(across));
+            blocks.push({ block: across, onlyWhereEmpty: true });
+          }
+
+          return blocks;
+        }
+
         function restorePanels() {
           for (const [kind, drawing] of originals) {
             writePanel(selectedPart(), kind, drawing);
@@ -472,11 +488,7 @@ export const createPixelEditorController = ({
 
           const copies = new Map<PanelKind, Bitmap>();
 
-          for (const block of mirrorBlocks(
-            mirror(),
-            table(),
-            draggedBlock(event),
-          )) {
+          for (const { block, onlyWhereEmpty } of coveredBlocks(event)) {
             let copy = copies.get(block.panel);
             const original = originals.get(block.panel);
 
@@ -492,6 +504,10 @@ export const createPixelEditorController = ({
 
             for (let x = block.min.x; x <= block.max.x; x++) {
               for (let y = block.min.y; y <= block.max.y; y++) {
+                if (onlyWhereEmpty && !Bitmap.isEmpty(copy, x, y)) {
+                  continue;
+                }
+
                 Bitmap.set(copy, x, y, selectedPaletteIndex());
               }
             }
@@ -505,19 +521,257 @@ export const createPixelEditorController = ({
         undoCommandsReversed.push(
           doCommand(
             combine(
-              mirrorBlocks(mirror(), table(), draggedBlock(finalEvent)).map(
-                (block) =>
-                  Command.fillRectangle(
-                    drawnPart(),
-                    block.panel,
-                    block.min,
-                    block.max,
-                    selectedPaletteIndex(),
-                  ),
+              coveredBlocks(finalEvent).map(({ block, onlyWhereEmpty }) =>
+                Command.fillRectangle(
+                  drawnPart(),
+                  block.panel,
+                  block.min,
+                  block.max,
+                  selectedPaletteIndex(),
+                  onlyWhereEmpty,
+                ),
               ),
             ),
           ),
         );
+
+        return;
+      }
+
+      case "Cut": {
+        const start = intersectPanels({
+          positions: panelPositions(),
+          table: table(),
+          worldPosition: _roundedWorldPosition,
+        });
+        const drawnLike = start && table().side(start.kind);
+        const drawing = start && table().bitmap(start.kind);
+        const panelPosition = start && panelPositions()[start.kind];
+
+        if (!drawnLike || !drawing || !panelPosition) {
+          return;
+        }
+
+        // The pointer is rounded to the nearest corner of a cell rather than
+        // into one, because a cut stands between two cells and not on either.
+        const corner = Vector2D.sub(_roundedWorldPosition, panelPosition);
+
+        /**
+         * Which of the panel's axes the cut divides: the knife is drawn across
+         * the axis it cuts, so a drag along the panel leaves a line down it.
+         */
+        let cutAxis: keyof Vector2D | undefined;
+
+        await pointer(event, ({ totalDelta }) => {
+          cutAxis =
+            totalDelta.x === 0 && totalDelta.y === 0
+              ? undefined
+              : Math.abs(totalDelta.x) >= Math.abs(totalDelta.y)
+                ? "y"
+                : "x";
+
+          setCutLine(
+            cutAxis === undefined
+              ? undefined
+              : cutAxis === "x"
+                ? {
+                    from: { x: _roundedWorldPosition.x, y: panelPosition.y },
+                    to: {
+                      x: _roundedWorldPosition.x,
+                      y: panelPosition.y + drawing.height,
+                    },
+                  }
+                : {
+                    from: { x: panelPosition.x, y: _roundedWorldPosition.y },
+                    to: {
+                      x: panelPosition.x + drawing.width,
+                      y: _roundedWorldPosition.y,
+                    },
+                  },
+          );
+        });
+
+        setCutLine(undefined);
+
+        if (cutAxis === undefined) {
+          return;
+        }
+
+        const cut = cutFromPanelLine({
+          drawnLike,
+          axis: cutAxis,
+          line: cutAxis === "x" ? corner.x : corner.y,
+          dimensions: dimensions(),
+        });
+
+        cutPart(cut.axis, cut.at);
+
+        return;
+      }
+
+      case "Rectangle": {
+        const start = intersectPanels({
+          positions: panelPositions(),
+          worldPosition: eventToRoundedWorldPosition(event),
+          table: table(),
+        });
+
+        const side =
+          start === undefined ? undefined : table().bitmap(start.kind);
+
+        if (start === undefined || side === undefined) {
+          return;
+        }
+
+        // Every drawing as it stands, so that each move of the preview can put
+        // them all back before drawing the rectangle where the pointer is now.
+        // A reflection across one of the part's axes lands on another panel, so
+        // more than the one being dragged on can be under the preview.
+        const originals = new Map(
+          table().kinds.flatMap((kind) => {
+            const drawing = table().bitmap(kind);
+            return drawing === undefined ? [] : [[kind, drawing] as const];
+          }),
+        );
+
+        /** Where the rectangle reaches on `start`'s panel, given the pointer. */
+        function draggedBlock(
+          event: PointerEvent & { currentTarget: HTMLElement },
+        ) {
+          const current = Vector2D.sub(
+            eventToRoundedWorldPosition(event),
+            panelPositions()[start!.kind] ?? Vector2D.EMPTY,
+          );
+
+          return {
+            panel: start!.kind,
+            min: Vector2D.max(
+              Vector2D.min(start!.position, current),
+              Vector2D.EMPTY,
+            ),
+            max: Vector2D.min(Vector2D.max(start!.position, current), {
+              x: side!.width - 1,
+              y: side!.height - 1,
+            }),
+          };
+        }
+
+        /**
+         * Every block the rectangle covers: the block dragged out and each
+         * reflection of it, then the far end of every run those carve, filled
+         * in only where nothing is drawn.
+         *
+         * A run carved away at its far end would leave the rectangle with no
+         * voxels to show it, which is why the far end is reached at all; the
+         * drawing already there is what says the run is not carved, so it is
+         * left alone. A block already being drawn on is listed once.
+         */
+        function coveredBlocks(
+          event: PointerEvent & { currentTarget: HTMLElement },
+        ): { block: Block; onlyWhereEmpty: boolean }[] {
+          const drawn = mirrorBlocks(mirror(), table(), draggedBlock(event));
+          const covered = new Set(drawn.map(blockKey));
+          const blocks = drawn.map((block) => ({
+            block,
+            onlyWhereEmpty: false,
+          }));
+
+          for (const block of drawn) {
+            const across = blockAcrossTheRun(table(), block);
+
+            if (across === undefined || covered.has(blockKey(across))) {
+              continue;
+            }
+
+            covered.add(blockKey(across));
+            blocks.push({ block: across, onlyWhereEmpty: true });
+          }
+
+          return blocks;
+        }
+
+        function restorePanels() {
+          for (const [kind, drawing] of originals) {
+            writePanel(selectedPart(), kind, drawing);
+          }
+        }
+
+        const { event: finalEvent } = await pointer(event, ({ event }) => {
+          restorePanels();
+
+          const copies = new Map<PanelKind, Bitmap>();
+
+          for (const { block, onlyWhereEmpty } of coveredBlocks(event)) {
+            let copy = copies.get(block.panel);
+            const original = originals.get(block.panel);
+
+            if (copy === undefined && original !== undefined) {
+              copy = Bitmap.clone(original);
+              copies.set(block.panel, copy);
+              writePanel(selectedPart(), block.panel, copy);
+            }
+
+            if (copy === undefined) {
+              continue;
+            }
+
+            for (let x = block.min.x; x <= block.max.x; x++) {
+              for (let y = block.min.y; y <= block.max.y; y++) {
+                if (onlyWhereEmpty && !Bitmap.isEmpty(copy, x, y)) {
+                  continue;
+                }
+
+                Bitmap.set(copy, x, y, selectedPaletteIndex());
+              }
+            }
+          }
+
+          requestRender();
+        });
+
+        restorePanels();
+
+        const drawn = mirrorBlocks(mirror(), table(), draggedBlock(finalEvent));
+        const commands: Command[] = [];
+        const covered = new Set(drawn.map(blockKey));
+
+        for (const block of drawn) {
+          commands.push(
+            Command.fillRectangle(
+              drawnPart(),
+              block.panel,
+              block.min,
+              block.max,
+              selectedPaletteIndex(),
+            ),
+          );
+        }
+
+        // The far end of each run the rectangle covers, filled in only where
+        // nothing is drawn: a run carved away at that end would leave the
+        // rectangle with no voxels to show it, and a block already being drawn
+        // is drawn once.
+        for (const block of drawn) {
+          const across = blockAcrossTheRun(table(), block);
+
+          if (across === undefined || covered.has(blockKey(across))) {
+            continue;
+          }
+
+          covered.add(blockKey(across));
+          commands.push(
+            Command.fillRectangle(
+              drawnPart(),
+              across.panel,
+              across.min,
+              across.max,
+              selectedPaletteIndex(),
+              true,
+            ),
+          );
+        }
+
+        undoCommandsReversed.push(doCommand(combine(commands)));
 
         // The pointer going up is what both ends this gesture and closes the
         // stroke, and the close runs first, while there is still nothing to

@@ -155,6 +155,7 @@ export function createCommander({
             min,
             max,
             paletteIndex,
+            onlyWhereEmpty,
           } = command;
           const side = panelOf(partName, kind);
 
@@ -166,6 +167,10 @@ export function createCommander({
 
           for (let x = min.x; x <= max.x; x++) {
             for (let y = min.y; y <= max.y; y++) {
+              if (onlyWhereEmpty && !Bitmap.isEmpty(side, x, y)) {
+                continue;
+              }
+
               Bitmap.set(side, x, y, paletteIndex);
             }
           }
