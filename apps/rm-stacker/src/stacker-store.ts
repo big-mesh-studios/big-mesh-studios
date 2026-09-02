@@ -82,6 +82,8 @@ export const createInitialPart = (
   sections: [],
   root,
   pivot: centrePivot(dimensions),
+  turn: Vector3D.create(),
+  scale: 1,
   parent: null,
 });
 

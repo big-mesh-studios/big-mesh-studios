@@ -17,6 +17,12 @@ export namespace Matrix3x3 {
     return new Matrix3x3([a, b, c, d, e, f, g, h, i]);
   }
 
+  /** The matrix that turns nothing: every vector comes back as it went in. */
+  export function identity(out = Matrix3x3.create()) {
+    out.set([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    return out;
+  }
+
   /**
    * The orientation of a camera that sits at `eye` and points at `target`:
    * takes a direction written in camera space, where the camera looks down its
@@ -93,6 +99,27 @@ export namespace Matrix3x3 {
     out[6] = sin;
     out[7] = 0;
     out[8] = cos;
+    return out;
+  }
+
+  /**
+   * A turn of `angle` radians about the z axis, counterclockwise seen from in
+   * front. Negating the angle gives the inverse, since undoing a turn is only
+   * turning back the other way.
+   */
+  export function rotationZ(angle: number, out = Matrix3x3.create()) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+
+    out[0] = cos;
+    out[1] = sin;
+    out[2] = 0;
+    out[3] = -sin;
+    out[4] = cos;
+    out[5] = 0;
+    out[6] = 0;
+    out[7] = 0;
+    out[8] = 1;
     return out;
   }
 

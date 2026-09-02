@@ -26,6 +26,8 @@ const TABLE = panelTable({
   name: "body",
   sides: SIDES,
   sections: [],
+  turn: Vector3D.create(),
+  scale: 1,
   root: Vector3D.create(),
   pivot: centrePivot({ width: 5, height: 5, depth: 3 }),
   parent: null,

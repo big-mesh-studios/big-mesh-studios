@@ -3,7 +3,7 @@
 // `Bitmap`, `RGBA`, `Vector3D`, `Dimensions3D` — come from
 // `@big-mesh-studios/maths`, which knows nothing about models.
 import type { Bitmap, Dimensions3D, RGBA } from "@big-mesh-studios/maths";
-import { Vector3D } from "@big-mesh-studios/maths";
+import { Matrix3x3, Vector3D } from "@big-mesh-studios/maths";
 
 /**
  * Every side of the box a model is drawn on. Declared as an object rather than
@@ -191,6 +191,20 @@ export interface Part {
    * voxels the way `root` is.
    */
   pivot: Vector3D;
+  /**
+   * How far the part is turned about its pivot, in radians: about its own x
+   * axis, then about the y axis that turn leaves it with, then about the z.
+   *
+   * A part hanging off another is turned by that one as well, so an arm turning
+   * carries the hand on the end of it.
+   */
+  turn: Vector3D;
+  /**
+   * How large the part is drawn, against the voxels the part it hangs off is
+   * drawn in — one for a part drawn at the same size as that one. A part
+   * hanging off another is scaled by that one as well.
+   */
+  scale: number;
   /** The name of the part this one hangs off, or null for one hanging off the figure. */
   parent: string | null;
 }
@@ -266,22 +280,52 @@ export function panelSide(part: Part, panel: PanelKind): SideKind | undefined {
   return face.face === "before" ? high : low;
 }
 
+/** How a part is turned about its pivot, as one turn rather than three. */
+export function turnMatrix(
+  turn: Vector3D,
+  out = Matrix3x3.create(),
+): Matrix3x3 {
+  return Matrix3x3.multiply(
+    Matrix3x3.multiply(
+      Matrix3x3.rotationX(turn.x),
+      Matrix3x3.rotationY(turn.y),
+    ),
+    Matrix3x3.rotationZ(turn.z),
+    out,
+  );
+}
+
+/** How a part stands in the figure it belongs to. */
+export interface PartPose {
+  /** Where its pivot sits, in the figure's voxels from the figure's origin. */
+  at: Vector3D;
+  /** How it is turned about that pivot. */
+  turn: Matrix3x3;
+  /** How large it is drawn, in the figure's voxels to its own. */
+  scale: number;
+}
+
 /**
- * Where `part`'s pivot sits in the figure, in whole voxels from the figure's
- * origin: its own root plus every root above it.
+ * How `part` stands in `figure`: its own root, turn and scale carried by
+ * everything it hangs off.
+ *
+ * A part's root says where its pivot sits measured from its parent's pivot, in
+ * the voxels that parent is drawn in and along the axes that parent is turned
+ * to — so a part hanging off an arm is carried by the arm's turn and drawn at
+ * the arm's size, which is what makes a turn worth having on a limb.
  *
  * A parent naming a part the figure does not hold, and a cycle of parents, both
  * end the walk where they are found, so parentage that does not describe a tree
  * still places every part somewhere.
  */
-export function composeRoot(figure: Figure, part: Part): Vector3D {
-  const composed = Vector3D.create();
+export function composePose(figure: Figure, part: Part): PartPose {
+  const chain: Part[] = [];
   const seen = new Set<string>();
   let current: Part | undefined = part;
 
   while (current !== undefined && !seen.has(current.name)) {
     seen.add(current.name);
-    Vector3D.add(composed, current.root, composed);
+    chain.push(current);
     const parent: string | null = current.parent;
     current =
       parent === null
@@ -289,5 +333,30 @@ export function composeRoot(figure: Figure, part: Part): Vector3D {
         : figure.parts.find((candidate) => candidate.name === parent);
   }
 
-  return composed;
+  const at = Vector3D.create();
+  let turn = Matrix3x3.identity();
+  let scale = 1;
+
+  // From the part everything hangs off down to this one, each standing in the
+  // space the one before it leaves.
+  for (const node of chain.reverse()) {
+    Vector3D.add(
+      at,
+      Matrix3x3.transform(turn, Vector3D.multiplyScalar(node.root, scale)),
+      at,
+    );
+    turn = Matrix3x3.multiply(turn, turnMatrix(node.turn));
+    scale *= node.scale;
+  }
+
+  return { at, turn, scale };
+}
+
+/**
+ * Where `part`'s pivot sits in the figure, in voxels from the figure's origin.
+ * Whole voxels for a figure nothing is turned or scaled in, since a root is
+ * whole voxels and they are only summed.
+ */
+export function composeRoot(figure: Figure, part: Part): Vector3D {
+  return composePose(figure, part).at;
 }

@@ -47,15 +47,18 @@ const ONLY_PART = "body";
  * Where a figure's parts sit, as `parts.json` holds it. The drawings stay in
  * the folders; this carries only what cannot be read off a png.
  *
- * Version two added the cuts across a part. A file written before it lists no
- * sections and reads as parts drawn on their six sides alone.
+ * Version two added the cuts across a part, and version three how a part is
+ * turned and how large it is drawn. A file written before either reads as parts
+ * drawn on their six sides alone, standing square and at their own size.
  */
 interface PartsManifest {
-  version: 2;
+  version: 3;
   parts: {
     name: string;
     root: Vector3D;
     pivot: Vector3D;
+    turn: Vector3D;
+    scale: number;
     parent: string | null;
     /** Where each cut across the part stands. Its faces are pngs beside the sides. */
     sections: { axis: DimensionKind; at: number }[];
@@ -299,7 +302,7 @@ function readManifest(text: string): PartsManifest {
   }
 
   return {
-    version: 2,
+    version: 3,
     parts: parts.map((part, index) => {
       const name = (part as { name?: unknown })?.name;
 
@@ -318,11 +321,16 @@ function readManifest(text: string): PartsManifest {
 
       const parent = (part as { parent?: unknown }).parent;
       const listed = (part as { sections?: unknown }).sections;
+      const scale = (part as { scale?: unknown }).scale;
 
       return {
         name,
         root: readVector((part as { root?: unknown }).root),
         pivot: readVector((part as { pivot?: unknown }).pivot),
+        // A file written before a part could be turned or drawn at a size of
+        // its own says neither, and stands square at the size it was drawn.
+        turn: readVector((part as { turn?: unknown }).turn),
+        scale: typeof scale === "number" && scale > 0 ? scale : 1,
         parent: typeof parent === "string" ? parent : null,
         sections: (Array.isArray(listed) ? listed : []).map((section, cut) => {
           const { axis, at } = (section ?? {}) as Record<string, unknown>;
@@ -503,11 +511,18 @@ export async function loadFigure(
   const placements: (Omit<PartsManifest["parts"][number], "pivot"> & {
     pivot?: Vector3D;
   })[] = manifest?.parts ?? [
-    { name: ONLY_PART, root: Vector3D.create(), parent: null, sections: [] },
+    {
+      name: ONLY_PART,
+      root: Vector3D.create(),
+      turn: Vector3D.create(),
+      scale: 1,
+      parent: null,
+      sections: [],
+    },
   ];
 
   const parts = placements.map(
-    ({ name, root, pivot, parent, sections }): Part => {
+    ({ name, root, pivot, turn, scale, parent, sections }): Part => {
       // A file without a list keeps its only part at the root, so that part's
       // name and the folder it was read from are not the same string.
       const folder = manifest === undefined ? "" : name;
@@ -527,6 +542,8 @@ export async function loadFigure(
         sections: readSections(sections, entries.get(folder), dimensions, name),
         root,
         pivot: pivot ?? centrePivot(dimensions),
+        turn,
+        scale,
         parent,
       };
     },
@@ -713,14 +730,18 @@ export async function saveFigure(figure: Figure): Promise<Blob> {
   }
 
   const manifest: PartsManifest = {
-    version: 2,
-    parts: figure.parts.map(({ name, root, pivot, parent, sections }) => ({
-      name,
-      root,
-      pivot,
-      parent,
-      sections: sections.map(({ axis, at }) => ({ axis, at })),
-    })),
+    version: 3,
+    parts: figure.parts.map(
+      ({ name, root, pivot, turn, scale, parent, sections }) => ({
+        name,
+        root,
+        pivot,
+        turn,
+        scale,
+        parent,
+        sections: sections.map(({ axis, at }) => ({ axis, at })),
+      }),
+    ),
   };
 
   zip.file(PARTS_FILE, JSON.stringify(manifest, null, 2));

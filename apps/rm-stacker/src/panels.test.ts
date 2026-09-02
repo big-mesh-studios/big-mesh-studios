@@ -44,6 +44,8 @@ const partOf = (...sections: Section[]): Part => ({
   name: "body",
   sides: sides(),
   sections,
+  turn: Vector3D.create(),
+  scale: 1,
   root: Vector3D.create(),
   pivot: centrePivot(DIMENSIONS),
   parent: null,

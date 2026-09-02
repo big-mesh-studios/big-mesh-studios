@@ -65,6 +65,8 @@ const partOf = (
     }),
   ) as Part["sides"],
   sections: [],
+  turn: Vector3D.create(),
+  scale: 1,
   root,
   pivot: centrePivot(extent),
   parent: null,

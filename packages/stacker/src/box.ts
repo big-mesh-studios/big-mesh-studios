@@ -1,5 +1,5 @@
-import { Dimensions3D, Vector3D } from "@big-mesh-studios/maths";
-import { composeRoot, partDimensions, type Figure } from "./data";
+import { Dimensions3D, Matrix3x3, Vector3D } from "@big-mesh-studios/maths";
+import { composePose, partDimensions, type Figure } from "./data";
 
 /**
  * The size of the box bounding the volume, matching the box the ray marcher
@@ -21,12 +21,15 @@ export const boxSize = (dimensions: Dimensions3D) => {
 export interface PartPlacement {
   /** The middle of the part's box, in voxels from the figure's origin. */
   position: Vector3D;
+  /** How the box is turned about that middle. */
+  turn: Matrix3x3;
   /**
    * What the part's box, built at the size `boxSize` gives, is multiplied by to
    * measure it in voxels. The marcher walks a box whose own longest axis is
    * one, so a part twenty voxels across and a part eight voxels across come out
    * the same size and a voxel means a different distance in each; this is the
-   * part's own longest axis, which undoes that.
+   * part's own longest axis, which undoes that — times whatever the part is
+   * drawn larger or smaller by.
    */
   scale: number;
 }
@@ -100,8 +103,44 @@ const AXES = [
 export function figurePlacement(figure: Figure): FigurePlacement {
   const boxes = figure.parts.map((part) => {
     const dimensions = partDimensions(part);
-    const low = Vector3D.subtract(composeRoot(figure, part), part.pivot);
-    return { dimensions, low };
+    const pose = composePose(figure, part);
+
+    /** Where a point of the part's own voxel space stands in the figure. */
+    const standing = (x: number, y: number, z: number) =>
+      Vector3D.add(
+        pose.at,
+        Matrix3x3.transform(
+          pose.turn,
+          Vector3D.multiplyScalar(
+            Vector3D.subtract(Vector3D.create(x, y, z), part.pivot),
+            pose.scale,
+          ),
+        ),
+      );
+
+    return {
+      dimensions,
+      pose,
+      middle: standing(
+        dimensions.width / 2,
+        dimensions.height / 2,
+        dimensions.depth / 2,
+      ),
+      // Every corner of the box, because a box that has been turned no longer
+      // has its own low corner lowest, and what it fills is what its corners
+      // reach between.
+      corners: [0, 1].flatMap((x) =>
+        [0, 1].flatMap((y) =>
+          [0, 1].map((z) =>
+            standing(
+              x * dimensions.width,
+              y * dimensions.height,
+              z * dimensions.depth,
+            ),
+          ),
+        ),
+      ),
+    };
   });
 
   const low = Vector3D.create();
@@ -112,8 +151,10 @@ export function figurePlacement(figure: Figure): FigurePlacement {
     let max = -Infinity;
 
     for (const box of boxes) {
-      min = Math.min(min, box.low[axis]);
-      max = Math.max(max, box.low[axis] + box.dimensions[measures]);
+      for (const corner of box.corners) {
+        min = Math.min(min, corner[axis]);
+        max = Math.max(max, corner[axis]);
+      }
     }
 
     if (boxes.length > 0) {
@@ -135,12 +176,9 @@ export function figurePlacement(figure: Figure): FigurePlacement {
       depth: padded(dimensions.depth),
     },
     placements: boxes.map((box) => ({
-      position: Vector3D.create(
-        box.low.x + box.dimensions.width / 2,
-        box.low.y + box.dimensions.height / 2,
-        box.low.z + box.dimensions.depth / 2,
-      ),
-      scale: longestAxis(box.dimensions),
+      position: box.middle,
+      turn: box.pose.turn,
+      scale: longestAxis(box.dimensions) * box.pose.scale,
     })),
   };
 }

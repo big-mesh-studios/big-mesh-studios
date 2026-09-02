@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
 import { Group } from "@random-mesh/rmsl/scene";
+import { Matrix3x3 } from "@big-mesh-studios/maths";
 import { boundsCentre, boxSize, figurePlacement, fitVoxelSize } from "./box";
 import {
   applyFraming,
@@ -10,6 +11,7 @@ import {
 } from "./figure-meshes";
 import {
   centrePivot,
+  composePose,
   sideAxes,
   sideKinds,
   type Figure,
@@ -20,7 +22,9 @@ import {
 const partOf = (
   name: string,
   extent: { width: number; height: number; depth: number },
-  placement: Partial<Pick<Part, "root" | "pivot" | "parent">> = {},
+  placement: Partial<
+    Pick<Part, "root" | "pivot" | "turn" | "scale" | "parent">
+  > = {},
 ): Part => ({
   name,
   sides: Object.fromEntries(
@@ -32,8 +36,19 @@ const partOf = (
   sections: [],
   root: placement.root ?? Vector3D.create(),
   pivot: placement.pivot ?? centrePivot(extent),
+  turn: placement.turn ?? Vector3D.create(),
+  scale: placement.scale ?? 1,
   parent: placement.parent ?? null,
 });
+
+const QUARTER = Math.PI / 2;
+
+/** How far apart two points stand, for saying they are the same one. */
+const closeTo = (a: Vector3D, b: Vector3D) => {
+  expect(a.x).toBeCloseTo(b.x);
+  expect(a.y).toBeCloseTo(b.y);
+  expect(a.z).toBeCloseTo(b.z);
+};
 
 const figureOf = (...parts: Part[]): Figure => ({ parts, palette: [] });
 
@@ -193,6 +208,141 @@ describe("fitVoxelSize", () => {
 
   it("draws a figure with nothing in it at one voxel to the unit", () => {
     expect(fitVoxelSize({ width: 0, height: 0, depth: 0 })).toBe(1);
+  });
+});
+
+describe("composePose", () => {
+  const CUBE = { width: 4, height: 4, depth: 4 };
+
+  it("leaves a part standing square and at its own size until it is told otherwise", () => {
+    const body = partOf("body", CUBE, { root: Vector3D.create(1, 2, 3) });
+    const pose = composePose(figureOf(body), body);
+
+    closeTo(pose.at, { x: 1, y: 2, z: 3 });
+    expect(pose.scale).toBe(1);
+    closeTo(Matrix3x3.transform(pose.turn, Vector3D.create(1, 0, 0)), {
+      x: 1,
+      y: 0,
+      z: 0,
+    });
+  });
+
+  it("turns a part about its own pivot, which does not move it", () => {
+    const body = partOf("body", CUBE, {
+      root: Vector3D.create(0, 5, 0),
+      turn: Vector3D.create(0, QUARTER, 0),
+    });
+    const pose = composePose(figureOf(body), body);
+
+    closeTo(pose.at, { x: 0, y: 5, z: 0 });
+    // A quarter turn about the y axis takes what pointed along z to along x.
+    closeTo(Matrix3x3.transform(pose.turn, Vector3D.create(0, 0, 1)), {
+      x: 1,
+      y: 0,
+      z: 0,
+    });
+  });
+
+  it("carries a part hanging off another around with that one's turn", () => {
+    const arm = partOf("arm", CUBE, { turn: Vector3D.create(0, QUARTER, 0) });
+    const hand = partOf("hand", CUBE, {
+      root: Vector3D.create(0, 0, 4),
+      parent: "arm",
+    });
+    const pose = composePose(figureOf(arm, hand), hand);
+
+    // The hand sits four voxels along the arm's own z, which the arm's turn
+    // has taken round to the figure's x.
+    closeTo(pose.at, { x: 4, y: 0, z: 0 });
+    closeTo(Matrix3x3.transform(pose.turn, Vector3D.create(0, 0, 1)), {
+      x: 1,
+      y: 0,
+      z: 0,
+    });
+  });
+
+  it("draws a part hanging off another at that one's size as well as its own", () => {
+    const arm = partOf("arm", CUBE, { scale: 2 });
+    const hand = partOf("hand", CUBE, {
+      root: Vector3D.create(0, 3, 0),
+      scale: 0.5,
+      parent: "arm",
+    });
+    const pose = composePose(figureOf(arm, hand), hand);
+
+    // Three voxels along an arm drawn at two voxels to the voxel is six.
+    closeTo(pose.at, { x: 0, y: 6, z: 0 });
+    expect(pose.scale).toBe(1);
+  });
+
+  it("turns and scales in that order down a chain, not the other way about", () => {
+    const arm = partOf("arm", CUBE, {
+      scale: 2,
+      turn: Vector3D.create(0, QUARTER, 0),
+    });
+    const hand = partOf("hand", CUBE, {
+      root: Vector3D.create(0, 0, 3),
+      parent: "arm",
+    });
+
+    // Three voxels of the arm's own z, drawn at twice the size, taken round to
+    // the figure's x: six along x rather than three.
+    closeTo(composePose(figureOf(arm, hand), hand).at, { x: 6, y: 0, z: 0 });
+  });
+});
+
+describe("figurePlacement, with a part turned or drawn larger", () => {
+  const CUBE = { width: 4, height: 4, depth: 4 };
+
+  it("stands a part's box where its pivot and its turn put it", () => {
+    const body = partOf("body", CUBE, {
+      root: Vector3D.create(0, 5, 0),
+      turn: Vector3D.create(0, QUARTER, 0),
+    });
+    const { placements } = figurePlacement(figureOf(body));
+
+    // The part pivots on its own middle, so turning it leaves that middle
+    // where it was, and the box is drawn there turned about it.
+    closeTo(placements[0].position, { x: 0, y: 5, z: 0 });
+    closeTo(Matrix3x3.transform(placements[0].turn, Vector3D.create(0, 0, 1)), {
+      x: 1,
+      y: 0,
+      z: 0,
+    });
+  });
+
+  it("draws a part's box at the size the part is drawn at", () => {
+    const body = partOf("body", CUBE, { scale: 3 });
+    const { placements } = figurePlacement(figureOf(body));
+
+    // The marcher walks a box whose longest axis is one, so the box is scaled
+    // by the part's own longest axis, and again by what it is drawn at.
+    expect(placements[0].scale).toBe(4 * 3);
+  });
+
+  it("measures the figure across the corners a turned box reaches", () => {
+    const square = figurePlacement(figureOf(partOf("body", CUBE)));
+    const turned = figurePlacement(
+      figureOf(
+        partOf("body", CUBE, { turn: Vector3D.create(0, Math.PI / 4, 0) }),
+      ),
+    );
+
+    // A box turned half a quarter about y reaches its own diagonal across the
+    // width and the depth, and is no taller than it was.
+    expect(turned.bounds.dimensions.width).toBeCloseTo(4 * Math.SQRT2);
+    expect(turned.bounds.dimensions.depth).toBeCloseTo(4 * Math.SQRT2);
+    expect(turned.bounds.dimensions.height).toBeCloseTo(
+      square.bounds.dimensions.height,
+    );
+  });
+
+  it("measures a part drawn larger as the larger box it fills", () => {
+    const { bounds } = figurePlacement(
+      figureOf(partOf("body", CUBE, { scale: 2 })),
+    );
+
+    expect(bounds.dimensions).toEqual({ width: 8, height: 8, depth: 8 });
   });
 });
 

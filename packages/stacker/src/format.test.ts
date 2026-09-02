@@ -191,6 +191,8 @@ const partOf = (
     }),
   ) as Part["sides"],
   sections: [],
+  turn: Vector3D.create(),
+  scale: 1,
   root: placement.root ?? Vector3D.create(),
   pivot: placement.pivot ?? Vector3D.create(),
   parent: placement.parent ?? null,
@@ -280,6 +282,43 @@ describe("a figure of several parts", () => {
         ),
       ),
     ).rejects.toThrow(/Two parts are called "arm"/);
+  });
+});
+
+describe("a part turned or drawn at a size of its own", () => {
+  it("carries its turn and its size through a save and a load", async () => {
+    const turned = {
+      ...partOf("torso", { width: 6, height: 8, depth: 4 }),
+      turn: Vector3D.create(0.25, -0.5, 1),
+      scale: 2.5,
+    };
+
+    const reread = await loadFigure(await saveFigure(figureOf(turned)));
+
+    expect(reread.parts[0].turn).toEqual(turned.turn);
+    expect(reread.parts[0].scale).toBe(2.5);
+  });
+
+  it("reads a part that says neither as standing square at its own size", async () => {
+    const written = await saveFigure(
+      figureOf(partOf("torso", { width: 6, height: 8, depth: 4 })),
+    );
+
+    const zip = await JSZip.loadAsync(written);
+    const manifest = JSON.parse(await zip.file("parts.json")!.async("text"));
+
+    // A file written before a part could be turned says neither of them.
+    for (const part of manifest.parts) {
+      delete part.turn;
+      delete part.scale;
+    }
+
+    zip.file("parts.json", JSON.stringify(manifest));
+
+    const reread = await loadFigure(await zip.generateAsync({ type: "blob" }));
+
+    expect(reread.parts[0].turn).toEqual(Vector3D.create());
+    expect(reread.parts[0].scale).toBe(1);
   });
 });
 

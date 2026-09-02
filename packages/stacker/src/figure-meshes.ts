@@ -6,7 +6,13 @@
 // is drawn under studio light in the editor and under a moving sun in the world.
 // A caller reaches the materials to say so.
 import { Dimensions3D, Vector3D, type RGBA } from "@big-mesh-studios/maths";
-import { BoxGeometry, Group, Mesh, Object3D } from "@random-mesh/rmsl/scene";
+import {
+  BoxGeometry,
+  Group,
+  Matrix4,
+  Mesh,
+  Object3D,
+} from "@random-mesh/rmsl/scene";
 import {
   boxSize,
   figurePlacement,
@@ -144,6 +150,45 @@ export function applyFraming(object: Object3D, framing: FigureFraming): void {
   );
 }
 
+/**
+ * Stands `object` where `placement` puts it: at the middle of the part's box,
+ * turned as the part is turned, and scaled to the voxels the figure is drawn
+ * in.
+ *
+ * The turn arrives as the three axes it turns to, which is what the maths this
+ * package is written in carries a turn as; what draws it wants a quaternion, so
+ * it is read off those axes here.
+ */
+export function standAs(object: Object3D, placement: PartPlacement): void {
+  const { position, turn, scale } = placement;
+
+  object.position.set(position.x, position.y, position.z);
+  object.scale.set(scale, scale, scale);
+  object.quaternion.setFromRotationMatrix(
+    TURN.set(
+      turn[0],
+      turn[3],
+      turn[6],
+      0,
+      turn[1],
+      turn[4],
+      turn[7],
+      0,
+      turn[2],
+      turn[5],
+      turn[8],
+      0,
+      0,
+      0,
+      0,
+      1,
+    ),
+  );
+}
+
+/** Reused between the parts, a turn being read off it and not kept. */
+const TURN = new Matrix4();
+
 /** The box a part's volume is marched inside, at the size `boxSize` gives it. */
 function partGeometry(dimensions: Dimensions3D): BoxGeometry {
   const size = boxSize(dimensions);
@@ -229,16 +274,7 @@ export class FigureMeshes {
       }
 
       const partPlacement = placements[index];
-      entry.mesh.position.set(
-        partPlacement.position.x,
-        partPlacement.position.y,
-        partPlacement.position.z,
-      );
-      entry.mesh.scale.set(
-        partPlacement.scale,
-        partPlacement.scale,
-        partPlacement.scale,
-      );
+      standAs(entry.mesh, partPlacement);
 
       bakeVolume(entry.material, dimensions, voxels, figure.palette);
     });
@@ -335,10 +371,8 @@ export class FigureCopy {
     materials: readonly VoxelModelMaterial[],
   ) {
     this.meshes = parts.map((part, index) => {
-      const { position, scale } = part.placement;
       const mesh = new Mesh(part.geometry, materials[index]);
-      mesh.position.set(position.x, position.y, position.z);
-      mesh.scale.set(scale, scale, scale);
+      standAs(mesh, part.placement);
       this.group.add(mesh);
       return mesh;
     });

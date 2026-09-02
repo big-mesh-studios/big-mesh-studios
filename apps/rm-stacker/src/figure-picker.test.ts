@@ -31,6 +31,8 @@ const partAt = (name: string, atZ: number): Part => ({
     }),
   ) as Part["sides"],
   sections: [],
+  turn: Vector3D.create(),
+  scale: 1,
   root: Vector3D.create(0, 0, atZ),
   pivot: centrePivot(EXTENT),
   parent: null,
