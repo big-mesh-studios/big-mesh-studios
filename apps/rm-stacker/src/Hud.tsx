@@ -24,8 +24,8 @@ export function Hud() {
   const {
     undoRedoManager,
     selectedColour,
-    selectedPaletteIndex,
-    selectPaletteIndex,
+    erasing,
+    setErasing,
     mode,
     setMode,
     mirror,
@@ -147,11 +147,9 @@ export function Hud() {
       <Bar class={styles.colour}>
         <IconTab
           kind="eraser"
-          onClick={() => selectPaletteIndex(Bitmap.EMPTY)}
-          selected={
-            !ProfileDialog.isOpen() && selectedPaletteIndex() === Bitmap.EMPTY
-          }
-          title="Draw in nothing, which takes away what is drawn"
+          onClick={() => setErasing((erasing) => !erasing)}
+          selected={!ProfileDialog.isOpen() && erasing()}
+          title="Draw in nothing, which takes away what is drawn. Put it down again to draw in the colour below it."
         />
         <PalettePopover.Trigger class={[tabStyle, colourTabStyle]}>
           <Colour colour={selectedColour()} />

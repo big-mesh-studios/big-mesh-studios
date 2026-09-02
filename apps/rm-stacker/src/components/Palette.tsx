@@ -12,7 +12,7 @@ function Palette(props: { class?: string }) {
   const {
     palette,
     setPalette,
-    selectedColour,
+    chosenColour,
     selectPaletteIndex,
     narrow,
     requestRender,
@@ -90,10 +90,9 @@ function Palette(props: { class?: string }) {
       <div class={[styles.palette, narrow() && styles.narrow, props.class]}>
         <For each={palette()}>
           {(colour, index) => {
-            const isSelected = createMemo(() => {
-              const selected = selectedColour();
-              return selected !== undefined && RGBA.equals(colour, selected);
-            });
+            const isSelected = createMemo(() =>
+              RGBA.equals(colour, chosenColour()),
+            );
 
             async function onPointerDown(
               event: PointerEvent & { currentTarget?: HTMLElement },

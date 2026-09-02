@@ -161,7 +161,18 @@ export function createStacker() {
   // view happens to save it, so that opening a model from one place cannot
   // leave a stale home behind from another.
   const [home, setHome] = createSignal<Home>({ kind: "nowhere" });
-  const [selectedPaletteIndex, selectPaletteIndex] = createSignal(5);
+  /** Which of the palette's colours is chosen to draw in. */
+  const [chosenPaletteIndex, choosePaletteIndex] = createSignal(
+    INITIAL_PALETTE_INDEX,
+  );
+  /**
+   * Whether nothing is being drawn in, which takes away what it is drawn over.
+   *
+   * It lies over the chosen colour rather than taking its place, so putting it
+   * down again draws in that colour: somebody who reaches for it to take a mark
+   * back does not have to go and find the colour they were drawing in.
+   */
+  const [erasing, setErasing] = createSignal(false);
   const [palette, setPalette] = createSignal<RGBA[]>(
     () => saved()?.palette ?? DAWNBRINGER_32_PALETTE,
   );
@@ -208,13 +219,35 @@ export function createStacker() {
 
   const preview = createPreviewStore(saved);
 
+  /** What a stroke puts in a cell: nothing, or the chosen colour. */
+  const selectedPaletteIndex = createMemo(() =>
+    erasing() ? Bitmap.EMPTY : chosenPaletteIndex(),
+  );
+
   /**
-   * The colour being drawn in, or undefined for the empty one: drawing in
-   * nothing is what takes away what is drawn, and the palette holds no entry
-   * for it.
+   * Draws in `index` from here on: a colour, or `Bitmap.EMPTY` for nothing,
+   * which is what the eyedropper hands back off a cell with nothing in it.
+   * Choosing a colour puts down the empty one.
    */
-  const selectedColour = createMemo<RGBA | undefined>(
-    () => palette()[selectedPaletteIndex()],
+  function selectPaletteIndex(index: number) {
+    if (index === Bitmap.EMPTY) {
+      setErasing(true);
+      return;
+    }
+
+    choosePaletteIndex(index);
+    setErasing(false);
+  }
+
+  /** The colour chosen from the palette, whether or not it is being drawn in. */
+  const chosenColour = createMemo(() => palette()[chosenPaletteIndex()]);
+
+  /**
+   * The colour being drawn in, or undefined while nothing is: the palette holds
+   * no entry for nothing, and a swatch showing it shows that instead.
+   */
+  const selectedColour = createMemo<RGBA | undefined>(() =>
+    erasing() ? undefined : chosenColour(),
   );
 
   const requestAutoSave = (() => {
@@ -361,6 +394,9 @@ export function createStacker() {
     setPalette,
     selectedPaletteIndex,
     selectPaletteIndex,
+    chosenColour,
+    erasing,
+    setErasing,
     selectedColour,
     // mode
     mode,
