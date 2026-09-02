@@ -32,6 +32,25 @@ describe("solveVoxels", () => {
     expect(out[3] & 0xc0).toBe(0xc0);
   });
 
+  it("carves a run for an empty cell on every one of the six sides", () => {
+    // Each side looks down one axis, so one empty cell takes three of the
+    // twenty-seven voxels away whichever side it was erased from.
+    for (const kind of sideKinds) {
+      const sides = solidSides();
+      sides[kind].data[1 * 3 + 1] = Bitmap.EMPTY;
+      const out = solveVoxels(DIMS, sides);
+
+      let solid = 0;
+      for (let i = 3; i < out.length; i += 4) {
+        if (out[i] !== 0) {
+          solid++;
+        }
+      }
+
+      expect(solid, `erased the middle cell of ${kind}`).toBe(24);
+    }
+  });
+
   it("carves the columns an empty side cell looks down", () => {
     const sides = solidSides();
     // front (px=1, py=0) maps to (x=1, y=height-1=2, z=0..2)
@@ -43,6 +62,20 @@ describe("solveVoxels", () => {
     expect(alpha(1, 2, 1)).toBe(0);
     expect(alpha(1, 2, 2)).toBe(0);
     expect(alpha(0, 2, 1)).not.toBe(0);
+  });
+
+  it("carves upwards from the cell the bottom is drawn on", () => {
+    const sides = solidSides();
+    // bottom (px=1, py=0) maps to (x=1, z=depth-1=2, y=0..2), the same cell the
+    // packed face colour is read from.
+    sides.bottom.data[0 * 3 + 1] = Bitmap.EMPTY;
+    const out = solveVoxels(DIMS, sides);
+    const alpha = (x: number, y: number, z: number): number =>
+      out[(z * 9 + y * 3 + x) * 4 + 3];
+    expect(alpha(1, 0, 2)).toBe(0);
+    expect(alpha(1, 1, 2)).toBe(0);
+    expect(alpha(1, 2, 2)).toBe(0);
+    expect(alpha(1, 1, 1)).not.toBe(0);
   });
 });
 

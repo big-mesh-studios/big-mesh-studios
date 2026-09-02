@@ -60,7 +60,7 @@ const createViews = (
       kind: "bottom",
       side: bottom,
       axis: "y",
-      fixedCoords: (px, py) => Vector3D.create(px, 0, 1 - depth - py),
+      fixedCoords: (px, py) => Vector3D.create(px, 0, depth - 1 - py),
     },
   ];
 };
