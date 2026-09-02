@@ -39,8 +39,10 @@ export interface InitialDrawProgress {
 }
 
 export interface VoxelWorldConfig {
-  /** Radius of the spherical block window, in chunks. */
+  /** Radius of the block window in X and Z, in chunks. */
   chunkRadius: number;
+  /** Radius of the block window in Y, in chunks; defaults to `chunkRadius`. */
+  chunkRadiusY?: number;
   terrain: TerrainConfig;
   /** When true, only surface voxels are written into each block's GPU chunks instead of the full solid volume. */
   /** Where the player starts, in world units. The window fills outward from here. */
@@ -117,6 +119,7 @@ export interface VoxelWorld {
  */
 export const createVoxelWorld = ({
   chunkRadius,
+  chunkRadiusY = chunkRadius,
   terrain,
   spawn,
   onInitialDraw,
@@ -135,6 +138,7 @@ export const createVoxelWorld = ({
 
   const sphere = new ChunkSphere({
     radius: chunkRadius,
+    yRadius: chunkRadiusY,
     terrain,
     onBlockChanged: (i) => {
       // Recorded before the renderer is told, because a block only counts as

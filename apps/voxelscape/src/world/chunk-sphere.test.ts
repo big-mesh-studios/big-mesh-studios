@@ -10,11 +10,12 @@ import type { BorderSizes } from "./voxel-store";
  * undefined under Node, so `FillClient` takes its synchronous fallback, which
  * runs the custom fill store below instead of generating terrain.
  */
-const sphereWithRecordedFills = (radius: number) => {
+const sphereWithRecordedFills = (radius: number, yRadius?: number) => {
   const filled: number[] = [];
   const repositioned: number[] = [];
   const sphere = new ChunkSphere({
     radius,
+    yRadius,
     terrain: DEFAULT_TERRAIN,
     onBlockChanged: (index) => filled.push(index),
     onBlockReposition: (index) => repositioned.push(index),
@@ -256,6 +257,71 @@ describe("ChunkSphere", () => {
     expect(cells.filter((c) => c.y > 0)).toHaveLength(
       cells.filter((c) => c.y < 0).length,
     );
+  });
+
+  describe("squashed window", () => {
+    it("counts the cells a flattened ball holds", () => {
+      // Horizontal radius 4 with a 2-chunk Y reach is the world's default
+      // window: about half the 257 cells of a full radius-4 ball.
+      expect(cellsInSphere(4)).toBe(257);
+      expect(cellsInSphere(4, 4)).toBe(257);
+      expect(cellsInSphere(4, 2)).toBe(125);
+      expect(cellsInSphere(4, 1)).toBe(51);
+    });
+
+    it("holds cells up to the y-radius and no further", () => {
+      const cells = sphereCells({ x: 0, y: 0, z: 0 }, 4, 2);
+      const keys = new Set(cells.map((c) => `${c.x},${c.y},${c.z}`));
+
+      // The poles of the full ball are cut off...
+      expect(keys.has("0,2,0")).toBe(true);
+      expect(keys.has("0,3,0")).toBe(false);
+      expect(keys.has("4,0,0")).toBe(true);
+      // ...and so is anything that combines a far horizontal cell with much
+      // vertical rise.
+      expect(keys.has("4,0,1")).toBe(false);
+      expect(cells.filter((c) => c.y > 0)).toHaveLength(
+        cells.filter((c) => c.y < 0).length,
+      );
+    });
+
+    it("keeps a fixed block pool the size of the squashed ball", async () => {
+      vi.useFakeTimers();
+      const { sphere } = sphereWithRecordedFills(4, 2);
+      sphere.fillFrom(0, 0, 0);
+      await vi.runAllTimersAsync();
+      vi.useRealTimers();
+
+      expect(sphere.blocks.length).toBe(125);
+      // The cell two chunks below the centre is held; three chunks below is
+      // beyond the flattened window.
+      expect(sphere.slotAt(0, -2 * BLOCK_WORLD[1], 0)).toBeDefined();
+      expect(sphere.slotAt(0, -3 * BLOCK_WORLD[1], 0)).toBeUndefined();
+    }, 30_000);
+
+    it("streams the squashed window, evicting cells beyond the y-radius", async () => {
+      vi.useFakeTimers();
+      const radius = 4;
+      const { sphere } = sphereWithRecordedFills(radius, 2);
+      sphere.fillFrom(0, 0, 0);
+      await vi.runAllTimersAsync();
+
+      // Straight down by three cells: the old top is outside the new
+      // window's 2-chunk vertical reach and is evicted.
+      const target = cellCenter({ x: 0, y: -3, z: 0 });
+      sphere.scrollTo(target[0], target[1], target[2]);
+
+      const above = cellCenter({ x: 0, y: 2, z: 0 });
+      expect(sphere.query(above[0], above[1], above[2])).toBeUndefined();
+      expect(sphere.blocks.length).toBe(cellsInSphere(radius, 2));
+
+      await vi.runAllTimersAsync();
+      vi.useRealTimers();
+      for (const cell of sphereCells({ x: 0, y: -3, z: 0 }, radius, 2)) {
+        const c = cellCenter(cell);
+        expect(sphere.query(c[0], c[1], c[2])).toBeDefined();
+      }
+    }, 30_000);
   });
 
   it("streams diagonally, crossing a cell on all three axes at once", async () => {

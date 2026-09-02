@@ -17,7 +17,7 @@ The white voxel (`VOXEL_CLOUD`) the fill scatters through the cloud band centred
 _Avoid_: sky block
 
 **Sphere**:
-The set of `WorldBlock`s the window keeps loaded: every chunk cell within `chunkRadius` (default 4) euclidean chunks of the player's cell, centred on the player in every axis. When the player crosses a chunk boundary, cells that leave the ball are evicted and cells that enter teleport a freed slot to the leading cell and refill its `WorldBlock` in place (same slot, new data) rather than allocating a new one. Owned and managed by **ChunkSphere**.
+The set of `WorldBlock`s the window keeps loaded: every chunk cell within `chunkRadius` (default 4) chunks of the player's cell horizontally and `chunkRadiusY` (default 2) chunks above and below it — a ball flattened in Y, since the terrain, its caves, and the clouds span only a couple of chunks of height and the full round ball's upper and lower caps were stone that cost fill, mesh, and draw time for nothing the player could see. (The name is a legacy of when the window was round in every axis.) When the player crosses a chunk boundary, cells that leave the ball are evicted and cells that enter teleport a freed slot to the leading cell and refill its `WorldBlock` in place (same slot, new data) rather than allocating a new one. Owned and managed by **ChunkSphere**.
 _Avoid_: Chunk grid, world grid (the sphere's per-slot integer coordinates are an internal `ChunkSphere` implementation detail — don't confuse with **Sphere** itself)
 
 **ChunkSphere**:
