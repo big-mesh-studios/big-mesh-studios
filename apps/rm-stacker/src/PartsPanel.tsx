@@ -172,10 +172,10 @@ export function PartsPanel() {
             )}
           </For>
           <label
-            class={styles.field}
+            class={[styles.field, styles.size]}
             title="How large the part is drawn, against the part it hangs off"
           >
-            <span>×</span>
+            <span>size</span>
             <input
               type="number"
               step="0.1"
