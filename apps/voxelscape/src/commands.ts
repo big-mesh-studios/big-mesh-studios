@@ -275,8 +275,8 @@ export const createCommands = ({
     },
     "/render:occlusion": {
       description:
-        "turn the occlusion culler on/off, or set its query interval",
-      args: "[on|off] [<frames>]",
+        "turn the occlusion culler on/off, set its query interval, or force a fresh query",
+      args: "[on|off|force] [<frames>]",
       run: (rest) => {
         const argument = rest[0];
         if (argument === "off") {
@@ -287,15 +287,19 @@ export const createCommands = ({
           renderer.occlusionEnabled = true;
           return `occlusion: on, query every ${renderer.occlusionIntervalFrames} frames`;
         }
+        if (argument === "force") {
+          renderer.forceOcclusionQuery();
+          return `occlusion: a fresh query runs next frame; last query saw ${renderer.lastVisibleCount} chunks`;
+        }
         if (argument !== undefined) {
           const frames = Number(argument);
           if (Number.isFinite(frames) && frames >= 1) {
             renderer.occlusionIntervalFrames = frames;
             return `occlusion: on, query every ${renderer.occlusionIntervalFrames} frames`;
           }
-          return "usage: /render:occlusion [on|off] [<frames>]";
+          return "usage: /render:occlusion [on|off|force] [<frames>]";
         }
-        return `occlusion: ${renderer.occlusionEnabled ? "on" : "off"}, query every ${renderer.occlusionIntervalFrames} frames, ${renderer.occlusions} chunks hidden`;
+        return `occlusion: ${renderer.occlusionEnabled ? "on" : "off"}, query every ${renderer.occlusionIntervalFrames} frames, last query saw ${renderer.lastVisibleCount} chunks, hidden ${renderer.occlusions}: ${renderer.occlusionBreakdown}`;
       },
     },
     "/render:probe": {
@@ -306,6 +310,7 @@ export const createCommands = ({
         const argument = rest[0];
         if (argument === "on") {
           renderer.probeDebug = true;
+          renderer.forceOcclusionQuery();
           return "probe view: on — the world shows the occlusion culler's render";
         }
         if (argument === "off") {
@@ -314,6 +319,7 @@ export const createCommands = ({
         }
         if (argument === undefined) {
           renderer.probeDebug = !renderer.probeDebug;
+          renderer.forceOcclusionQuery();
           return `probe view: ${renderer.probeDebug ? "on" : "off"}`;
         }
         return "usage: /render:probe [on|off]  (no argument flips it)";

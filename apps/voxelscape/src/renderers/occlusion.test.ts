@@ -70,6 +70,15 @@ describe("scanVisible", () => {
     const visible = scanVisible(oneRowOf(255), [255]);
     expect(visible.has(255)).toBe(true);
   });
+
+  it("ignores stale bytes past the given byte count", () => {
+    // Two current pixels, then stale bytes for chunk 7 left over from a
+    // larger target the readback buffer was already reused for. Only the
+    // leading byteCount bytes describe this target.
+    const pixels = Uint8Array.from([...oneRowOf(1, 2), 0, 0, ...packId(7), 0]);
+    const visible = scanVisible(pixels, [1, 2, 7], 8);
+    expect([...visible].sort((a, b) => a - b)).toEqual([1, 2]);
+  });
 });
 
 describe("queryIsDue", () => {
