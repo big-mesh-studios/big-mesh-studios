@@ -6,20 +6,24 @@
 // the surface material, and the water pass blends over the scene with a
 // Fresnel reflection.
 //
-// Geometry is drawn in superchunks: every group of two chunk cells per axis
-// (each chunk a 64³ block = 128³ voxels / 256³ world units, 8 chunks) is
-// merged into one mesh pair. The per-chunk worker build is unchanged and
-// still culls seam faces against each block's generated border, so a merged
-// superchunk has no faces along its internal chunk boundaries; the merger
-// only re-origins and concatenates the vertex data. One draw call then
-// covers 8 chunks instead of one, keeping the ~260-block window to a few
-// dozen meshes.
+// Geometry is still merged and uploaded in superchunks: every group of two
+// chunk cells per axis (each chunk a 64³ block = 128³ voxels / 256³ world
+// units, 8 chunks) is joined into one pair of `BufferGeometry`s. The
+// per-chunk worker build is unchanged and still culls seam faces against each
+// block's generated border, so a merged superchunk has no faces along its
+// internal chunk boundaries; the merger only re-origins and concatenates the
+// vertex data. What is drawn, though, is per chunk: each block slot gets its
+// own mesh pair pointing at a slice of the shared superchunk geometry via
+// `drawRange`, so the window's chunks can be culled independently — by the
+// frustum, and by the hardware occlusion pass, which readbacks the window of
+// terrain a sampling of the view actually shows and skips the rest.
 import type { Node, UniformNode } from "@random-mesh/rmsl";
 import { float, pow, vec3, vec4 } from "@random-mesh/rmsl";
 import {
   BoxGeometry,
   Builder,
   BufferGeometry,
+  Color,
   Group,
   Matrix4,
   Mesh,
@@ -28,12 +32,22 @@ import {
   Scene,
   Side,
   Texture,
+  WebGLRenderer,
+  WebGLRenderTarget,
 } from "@random-mesh/rmsl/scene";
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import type { VoxelTileConfig } from "./atlas";
 import { BLOCK_WORLD, type Dim3, type WorldBlock } from "../world/level-data";
-import { setGeometryData, type MeshArrays } from "./mesh";
+import { setGeometryData, setOcclusionColors, type MeshArrays } from "./mesh";
 import { MeshClient } from "./mesh-client";
+import { OcclusionProbeMaterial } from "./occlusion-probe-material";
+import {
+  isNearCell,
+  probeColor,
+  queryIsDue,
+  scanVisible,
+  targetSizeFor,
+} from "./occlusion";
 import type { dayNightState } from "../environment/day-night";
 
 export type DayNight = ReturnType<typeof dayNightState>;
@@ -257,6 +271,15 @@ const BLOCK_HALF = BLOCK_WORLD[0] / 2;
  */
 const MAX_UPLOAD_STALL_FRAMES = 6;
 
+/** Frames between the hardware occlusion queries, each a readback that stalls the pipeline. */
+const DEFAULT_OCCLUSION_INTERVAL = 200;
+/** Superchunk cells around the player's own that an occlusion result never hides. */
+const OCCLUSION_NEAR_CELLS = 1;
+/** World distance before a camera move forces an immediate occlusion query. */
+const OCCLUSION_MOVE_FAST_TRACK = SUPERCHUNK_WORLD;
+/** Cosine of the forward-turn past which a camera rotation forces a query. */
+const OCCLUSION_TURN_FAST_TRACK = 0.75;
+
 /**
  * The superchunk cell a block belongs to, from the world-space centre of that
  * block. Blocks stack in every axis, so a cell coordinate is as often negative
@@ -305,6 +328,12 @@ type MergedArrays = {
   normals: number[];
   uvs: number[];
   indices: number[];
+  /**
+   * Three 0..1 channels per vertex. The occlusion probe material reads this
+   * as the chunk's flat colour, so the merged geometry carries what slot each
+   * run of its vertices belongs to.
+   */
+  colors: number[];
 };
 
 const emptyArrays = (): MergedArrays => ({
@@ -312,6 +341,7 @@ const emptyArrays = (): MergedArrays => ({
   normals: [],
   uvs: [],
   indices: [],
+  colors: [],
 });
 
 /** One view-frustum plane as the `[a, b, c, d]` of `a*x + b*y + c*z + d`. */
@@ -359,7 +389,9 @@ const inFrustum = (
  * Appends one chunk's geometry to a superchunk's merged arrays at the
  * superchunk's origin: the chunk's block-local vertices are re-origined by
  * `(blockCenter - superchunkCenter)` and its indices are re-based on the
- * running vertex count.
+ * running vertex count. Every appended vertex also receives the chunk's probe
+ * colour, so the merged geometry tells the occlusion pass which slot each run
+ * of triangles belongs to.
  */
 const appendArrays = (
   into: MergedArrays,
@@ -367,6 +399,7 @@ const appendArrays = (
   dx: number,
   dy: number,
   dz: number,
+  color: [number, number, number],
 ): void => {
   const base = into.positions.length / 3;
   for (let i = 0; i < a.positions.length; i += 3) {
@@ -375,6 +408,7 @@ const appendArrays = (
       a.positions[i + 1] + dy,
       a.positions[i + 2] + dz,
     );
+    into.colors.push(color[0], color[1], color[2]);
   }
   for (let i = 0; i < a.normals.length; i++) {
     into.normals.push(a.normals[i]);
@@ -392,7 +426,16 @@ interface SuperchunkState {
   slots: Set<number>;
   terrain: MergedArrays;
   water: MergedArrays;
+  /** The uploaded geometry the slot meshes share, keyed by the merged arrays above. */
+  terrainGeometry: BufferGeometry;
+  waterGeometry: BufferGeometry;
+  /** Each member's contiguous run of indices in the merged geometry, for its `drawRange`. */
+  terrainRanges: Map<number, { start: number; count: number }>;
+  waterRanges: Map<number, { start: number; count: number }>;
 }
+
+/** A chunk slice that holds nothing: whatever slice a slot actually has overwrites this. */
+const EMPTY_RANGE = { start: 0, count: 0 };
 
 export class TriangleRenderer {
   /** One shared material instance across every superchunk's terrain mesh. */
@@ -439,9 +482,12 @@ export class TriangleRenderer {
   >();
   /** Which superchunk each block slot belongs to right now. */
   private readonly blockSc = new Map<number, string>();
-  private readonly scTerrainMesh = new Map<string, Mesh>();
-  private readonly scWaterMesh = new Map<string, Mesh>();
-  /** Each superchunk's merged arrays and the member slots joined into them. */
+  /** Each drawable chunk's meshes, one pair per block slot, sharing the superchunk geometry by `drawRange`. */
+  private readonly scChunkTerrain = new Map<number, Mesh>();
+  private readonly scChunkWater = new Map<number, Mesh>();
+  /** Each slot's world-space centre, for the per-chunk frustum and near tests. */
+  private readonly slotCenter = new Map<number, Dim3>();
+  /** Each superchunk's merged arrays, uploaded geometry, and members' index runs. */
   private readonly scMerged = new Map<string, SuperchunkState>();
   /** Superchunks whose merged geometry must be fully re-joined (membership or data replaced). */
   private readonly scNeedsFull = new Set<string>();
@@ -450,9 +496,8 @@ export class TriangleRenderer {
   /** Frame a superchunk's merged geometry was last uploaded on (drives the stall backstop). */
   private readonly scLastUpload = new Map<string, number>();
   private frame = 0;
-  /** Superchunks whose merged geometry is non-empty (content mirrors `visible`). */
-  private readonly contentTerrain = new Set<string>();
-  private readonly contentWater = new Set<string>();
+  /** Slots currently holding merged geometry of either kind. */
+  private readonly contentSlots = new Set<number>();
   /**
    * Blocks that changed as one edit and whose geometry has to reach the screen
    * together. A voxel on a chunk's boundary belongs to several blocks at once;
@@ -466,6 +511,35 @@ export class TriangleRenderer {
     since: number;
   }> = [];
 
+  // The hardware occlusion culler: draws the window into an offscreen target
+  // in one flat colour per chunk, reads the pixels back, and keeps the slots
+  // that were actually visible. A chunk whose slot never appears on screen is
+  // not drawn on the main pass until a later query sees it again.
+  private readonly probeTerrainMaterial = new OcclusionProbeMaterial();
+  private readonly probeWaterMaterial = new OcclusionProbeMaterial();
+  private readonly occlusionScene = new Scene();
+  private readonly scProbeTerrain = new Map<number, Mesh>();
+  private readonly scProbeWater = new Map<number, Mesh>();
+  private occlusionTarget: WebGLRenderTarget | null = null;
+  private occlusionReadback: Uint8Array | null = null;
+  /** The slots whose id won a pixel in the last query, or `null` before any ran. */
+  private lastVisible: Set<number> | null = null;
+  /**
+   * The slots the last query's weave actually drew — a snapshot of the probe
+   * scene at query time. A chunk is hidden only when it was in this set but
+   * its id never won a pixel: a chunk whose geometry landed after the query
+   * is one it never measured, so it keeps drawing until a later query
+   * includes it.
+   */
+  private lastQueryTested = new Set<number>();
+  private lastQueryFrame = Number.NEGATIVE_INFINITY;
+  private lastQueryPosition: [number, number, number] | null = null;
+  private lastQueryForward: [number, number, number] | null = null;
+  private occlusionOn = true;
+  private occlusionInterval = DEFAULT_OCCLUSION_INTERVAL;
+  /** Slots the occlusion pass is hiding this frame (content, in the frustum, neither near nor seen). */
+  private occludedCount = 0;
+
   // Fullscreen underwater tint (the water pass tints the view
   // in-shader instead). Drawn last with depth-testing off so it washes the
   // whole view when the camera dips below the sea.
@@ -477,6 +551,10 @@ export class TriangleRenderer {
     this.waterExtinction = waterExtinction;
     this.seaLevel = seaLevel;
     this.onBlockMeshed = onBlockMeshed;
+    // Water probes shade over terrain but never hide it the way the real water
+    // pass blends over the scene: the probe's depth stays the terrain's, so the
+    // culler cannot mistake translucent water for an opaque occluder.
+    this.probeWaterMaterial.depthWrite = false;
 
     this.meshes = new MeshClient({
       blocks,
@@ -515,44 +593,49 @@ export class TriangleRenderer {
     this.underwaterTint.add(this.tintMesh);
   }
 
-  /** Creates a superchunk's pair of meshes and its member list, once. */
+  /** Opens a superchunk's member list, once. The slot meshes appear at upload. */
   private ensureSuperchunk(key: string): void {
     if (this.scMembers.has(key)) {
       return;
     }
     this.scMembers.set(key, []);
-    const center = scCenterOf(key);
-    const triMesh = new Mesh(new BufferGeometry(), this.triMaterial);
-    triMesh.position.set(center[0], center[1], center[2]);
-    triMesh.visible = false;
-    this.terrain.add(triMesh);
-    this.scTerrainMesh.set(key, triMesh);
-    const waterMesh = new Mesh(new BufferGeometry(), this.triWaterMaterial);
-    waterMesh.position.set(center[0], center[1], center[2]);
-    waterMesh.visible = false;
-    this.water.add(waterMesh);
-    this.scWaterMesh.set(key, waterMesh);
   }
 
-  /** Removes a superchunk's meshes once its last member leaves. */
+  /** Removes a superchunk's meshes and its member slots' chunks once its last member leaves. */
   private removeSuperchunk(key: string): void {
-    const tri = this.scTerrainMesh.get(key);
-    const water = this.scWaterMesh.get(key);
-    if (tri !== undefined) {
-      this.terrain.remove(tri);
+    const members = this.scMembers.get(key);
+    if (members !== undefined) {
+      for (const m of members) {
+        this.dropSlot(m.index);
+      }
     }
-    if (water !== undefined) {
-      this.water.remove(water);
-    }
-    this.scTerrainMesh.delete(key);
-    this.scWaterMesh.delete(key);
     this.scMembers.delete(key);
     this.scMerged.delete(key);
     this.scNeedsFull.delete(key);
-    this.contentTerrain.delete(key);
-    this.contentWater.delete(key);
     this.dirty.delete(key);
     this.updateTriCount();
+  }
+
+  /** Unlinks one slot's world meshes and probes; the slot stays registered in `blockSc`. */
+  private dropSlot(slot: number): void {
+    for (const map of [this.scChunkTerrain, this.scChunkWater]) {
+      const mesh = map.get(slot);
+      if (mesh !== undefined) {
+        // remove from whichever group holds the mesh, then drop the reference
+        this.terrain.remove(mesh);
+        this.water.remove(mesh);
+        map.delete(slot);
+      }
+    }
+    for (const map of [this.scProbeTerrain, this.scProbeWater]) {
+      const probe = map.get(slot);
+      if (probe !== undefined) {
+        this.occlusionScene.remove(probe);
+        map.delete(slot);
+      }
+    }
+    this.contentSlots.delete(slot);
+    this.slotCenter.delete(slot);
   }
 
   /**
@@ -568,20 +651,18 @@ export class TriangleRenderer {
    * for one GPU upload per superchunk instead of one per frame; a superchunk
    * that fails to settle within `MAX_UPLOAD_STALL_FRAMES` still uploads what
    * it has. `force` bypasses the wait for a spot that has to change right away
-   * (a freshly repositioned cell whose stale surface must not flash).
+   * (a freshly repositioned cell whose stale surface must not flash). Each
+   * member's contiguous run of indices is recorded against the merged arrays,
+   * so the per-chunk meshes can be re-pointed at the freshly uploaded geometry
+   * and the chunk data carries no more than its own `drawRange` and probe
+   * colour.
    *
    * @returns Whether the merged geometry was uploaded.
    */
   private rebuildSuperchunk(key: string, force = false): boolean {
     const center = scCenterOf(key);
     const members = this.scMembers.get(key);
-    const triMesh = this.scTerrainMesh.get(key);
-    const waterMesh = this.scWaterMesh.get(key);
-    if (
-      members === undefined ||
-      triMesh === undefined ||
-      waterMesh === undefined
-    ) {
+    if (members === undefined) {
       return false;
     }
     const existing = this.scMerged.get(key);
@@ -593,56 +674,26 @@ export class TriangleRenderer {
         slots: new Set(),
         terrain: emptyArrays(),
         water: emptyArrays(),
+        terrainGeometry: new BufferGeometry(),
+        waterGeometry: new BufferGeometry(),
+        terrainRanges: new Map(),
+        waterRanges: new Map(),
       };
       this.scMerged.set(key, state);
       this.scNeedsFull.delete(key);
       for (const m of members) {
-        const mesh = this.chunkMeshes.get(m.index);
-        if (mesh === undefined) {
-          continue;
+        if (this.chunkMeshes.has(m.index)) {
+          this.appendChunk(state, m, center);
+          appended = true;
         }
-        appendArrays(
-          state.terrain,
-          mesh.terrain,
-          m.center[0] - center[0],
-          m.center[1] - center[1],
-          m.center[2] - center[2],
-        );
-        appendArrays(
-          state.water,
-          mesh.water,
-          m.center[0] - center[0],
-          m.center[1] - center[1],
-          m.center[2] - center[2],
-        );
-        state.slots.add(m.index);
-        appended = true;
       }
     } else {
       state = existing as SuperchunkState;
       for (const m of members) {
-        if (state.slots.has(m.index)) {
+        if (state.slots.has(m.index) || !this.chunkMeshes.has(m.index)) {
           continue;
         }
-        const mesh = this.chunkMeshes.get(m.index);
-        if (mesh === undefined) {
-          continue;
-        }
-        appendArrays(
-          state.terrain,
-          mesh.terrain,
-          m.center[0] - center[0],
-          m.center[1] - center[1],
-          m.center[2] - center[2],
-        );
-        appendArrays(
-          state.water,
-          mesh.water,
-          m.center[0] - center[0],
-          m.center[1] - center[1],
-          m.center[2] - center[2],
-        );
-        state.slots.add(m.index);
+        this.appendChunk(state, m, center);
         appended = true;
       }
     }
@@ -667,28 +718,154 @@ export class TriangleRenderer {
       }
       return false;
     }
-    setGeometryData(triMesh.geometry, state.terrain);
-    setGeometryData(waterMesh.geometry, state.water);
+    setGeometryData(state.terrainGeometry, state.terrain);
+    setOcclusionColors(state.terrainGeometry, state.terrain.colors);
+    setGeometryData(state.waterGeometry, state.water);
+    setOcclusionColors(state.waterGeometry, state.water.colors);
     this.scLastUpload.set(key, this.frame);
-    const has = (a: { positions: ArrayLike<number> }): boolean =>
-      a.positions.length > 0;
-    if (has(state.terrain)) {
-      this.contentTerrain.add(key);
-    } else {
-      this.contentTerrain.delete(key);
-    }
-    if (has(state.water)) {
-      this.contentWater.add(key);
-    } else {
-      this.contentWater.delete(key);
-    }
-    // A superchunk is drawn when it has geometry to draw and not otherwise.
-    // Nothing else hides it: there is one renderer, so there is no state in
-    // which the world is loaded and deliberately not shown.
-    triMesh.visible = this.contentTerrain.has(key);
-    waterMesh.visible = this.contentWater.has(key);
+    this.syncSlotMeshes(key, center, state);
     this.updateTriCount();
     return true;
+  }
+
+  /** Appends one member's geometry to a superchunk's merged arrays and records its index run. */
+  private appendChunk(
+    state: SuperchunkState,
+    m: { index: number; center: Dim3 },
+    center: Dim3,
+  ): void {
+    const mesh = this.chunkMeshes.get(m.index)!;
+    const dx = m.center[0] - center[0];
+    const dy = m.center[1] - center[1];
+    const dz = m.center[2] - center[2];
+    const color = probeColor(m.index);
+    const terrainStart = state.terrain.indices.length;
+    appendArrays(state.terrain, mesh.terrain, dx, dy, dz, color);
+    state.terrainRanges.set(m.index, {
+      start: terrainStart,
+      count: mesh.terrain.indices.length,
+    });
+    const waterStart = state.water.indices.length;
+    appendArrays(state.water, mesh.water, dx, dy, dz, color);
+    state.waterRanges.set(m.index, {
+      start: waterStart,
+      count: mesh.water.indices.length,
+    });
+    state.slots.add(m.index);
+  }
+
+  /**
+   * Re-points a slot's world meshes and occlusion probes at the freshly
+   * uploaded superchunk geometry, creating them the first time the slot
+   * carries content. A slot that no longer carries one or the other mesh kind
+   * has that mesh reduced to an empty range, hiding it.
+   */
+  private syncSlotMeshes(
+    key: string,
+    center: Dim3,
+    state: SuperchunkState,
+  ): void {
+    for (const m of this.scMembers.get(key)!) {
+      this.slotCenter.set(m.index, m.center);
+      const terrainRange = state.terrainRanges.get(m.index) ?? EMPTY_RANGE;
+      const waterRange = state.waterRanges.get(m.index) ?? EMPTY_RANGE;
+      const hasTerrain = terrainRange.count > 0;
+      const hasWater = waterRange.count > 0;
+      if (hasTerrain) {
+        const mesh = this.slotMesh(this.scChunkTerrain, this.terrain, m.index);
+        this.seatSlotMesh(
+          mesh,
+          state.terrainGeometry,
+          this.triMaterial,
+          center,
+          terrainRange,
+        );
+        const probe = this.slotMesh(
+          this.scProbeTerrain,
+          this.occlusionScene,
+          m.index,
+        );
+        this.seatSlotMesh(
+          probe,
+          state.terrainGeometry,
+          this.probeTerrainMaterial,
+          center,
+          terrainRange,
+        );
+      }
+      if (hasWater) {
+        const mesh = this.slotMesh(this.scChunkWater, this.water, m.index);
+        this.seatSlotMesh(
+          mesh,
+          state.waterGeometry,
+          this.triWaterMaterial,
+          center,
+          waterRange,
+        );
+        const probe = this.slotMesh(
+          this.scProbeWater,
+          this.occlusionScene,
+          m.index,
+        );
+        this.seatSlotMesh(
+          probe,
+          state.waterGeometry,
+          this.probeWaterMaterial,
+          center,
+          waterRange,
+        );
+      }
+      this.setSlotRange(this.scChunkTerrain, m.index, terrainRange);
+      this.setSlotRange(this.scChunkWater, m.index, waterRange);
+      this.setSlotRange(this.scProbeTerrain, m.index, terrainRange);
+      this.setSlotRange(this.scProbeWater, m.index, waterRange);
+      if (hasTerrain || hasWater) {
+        this.contentSlots.add(m.index);
+      } else {
+        this.contentSlots.delete(m.index);
+      }
+    }
+  }
+
+  /** Gets a slot's mesh from `map`, creating it under `container` the first time. */
+  private slotMesh(
+    map: Map<number, Mesh>,
+    container: { add: (child: Mesh) => void },
+    slot: number,
+  ): Mesh {
+    let mesh = map.get(slot);
+    if (mesh === undefined) {
+      mesh = new Mesh();
+      container.add(mesh);
+      map.set(slot, mesh);
+    }
+    return mesh;
+  }
+
+  /** Points an existing mesh at a geometry, transform, and the draw range of its chunk slice. */
+  private seatSlotMesh(
+    mesh: Mesh,
+    geometry: BufferGeometry,
+    material: NodeMaterial,
+    center: Dim3,
+    range: { start: number; count: number },
+  ): void {
+    mesh.geometry = geometry;
+    mesh.material = material;
+    mesh.position.set(center[0], center[1], center[2]);
+    mesh.drawRange = range;
+  }
+
+  /** Shrinks a slot's existing mesh to an empty range when its data vanished. */
+  private setSlotRange(
+    map: Map<number, Mesh>,
+    slot: number,
+    range: { start: number; count: number },
+  ): void {
+    const mesh = map.get(slot);
+    if (mesh !== undefined) {
+      mesh.drawRange = range;
+    }
   }
 
   /**
@@ -702,33 +879,70 @@ export class TriangleRenderer {
 
   private updateTriCount(): void {
     let tris = 0;
-    for (const mesh of this.scTerrainMesh.values()) {
-      tris += mesh.geometry.drawCount / 3;
+    for (const mesh of this.scChunkTerrain.values()) {
+      tris += mesh.drawRange.count / 3;
     }
-    for (const mesh of this.scWaterMesh.values()) {
-      tris += mesh.geometry.drawCount / 3;
+    for (const mesh of this.scChunkWater.values()) {
+      tris += mesh.drawRange.count / 3;
     }
     this.totalTriangles = Math.round(tris);
   }
 
   /**
-   * Points every superchunk's meshes at the camera: a mesh draws when it has
-   * geometry and its box is inside the frustum. Geometry stays uploaded and
-   * the content flags keep holding, so a superchunk the camera turns onto is
-   * shown the same frame rather than rebuilt; the degree of hiding here only
-   * decides what is drawn, never what the window holds.
+   * Points every chunk mesh at the camera: a chunk draws when it carries
+   * geometry, its box is inside the frustum, and — once the occlusion pass has
+   * any result — it is near the player or a query actually saw it. Geometry
+   * stays uploaded and the content flags keep holding, so a chunk the camera
+   * turns onto is shown the same frame rather than rebuilt; the degree of
+   * hiding here only decides what is drawn, never what the window holds.
    */
-  private applyVisibility(planes: FrustumPlane[]): void {
-    for (const [key, mesh] of this.scTerrainMesh) {
-      const { center, half } = scBounds(key);
-      mesh.visible =
-        this.contentTerrain.has(key) && inFrustum(planes, center, half);
+  private applyVisibility(planes: FrustumPlane[], playerKey: string): void {
+    this.occludedCount = 0;
+    for (const [slot, mesh] of this.scChunkTerrain) {
+      mesh.visible = this.chunkVisible(slot, mesh, planes, playerKey, true);
     }
-    for (const [key, mesh] of this.scWaterMesh) {
-      const { center, half } = scBounds(key);
-      mesh.visible =
-        this.contentWater.has(key) && inFrustum(planes, center, half);
+    for (const [slot, mesh] of this.scChunkWater) {
+      mesh.visible = this.chunkVisible(slot, mesh, planes, playerKey, false);
     }
+  }
+
+  /** Whether one chunk mesh draws this frame, counting what the occlusion hides. */
+  private chunkVisible(
+    slot: number,
+    mesh: Mesh,
+    planes: FrustumPlane[],
+    playerKey: string,
+    countOccluded: boolean,
+  ): boolean {
+    const center = this.slotCenter.get(slot);
+    if (center === undefined || mesh.drawRange.count <= 0) {
+      return false;
+    }
+    if (!inFrustum(planes, center, BLOCK_HALF)) {
+      return false;
+    }
+    // A chunk the occlusion pass has never measured is never hidden by it:
+    // the query that ran before its geometry landed could not have seen it,
+    // so only the frustum and the near test decide. Once measured, a chunk
+    // draws when it is near the player (the camera can be inside its cell,
+    // and the probe cannot see the view from inside) or when the last query
+    // actually saw it; anything else the query looked at but found covered is
+    // skipped this frame.
+    if (!this.lastQueryTested.has(slot)) {
+      return true;
+    }
+    if (
+      isNearCell(this.blockSc.get(slot) ?? "", playerKey, OCCLUSION_NEAR_CELLS)
+    ) {
+      return true;
+    }
+    if (this.lastVisible !== null && this.lastVisible.has(slot)) {
+      return true;
+    }
+    if (countOccluded) {
+      this.occludedCount++;
+    }
+    return false;
   }
 
   get triangleCount(): number {
@@ -871,7 +1085,14 @@ export class TriangleRenderer {
     }
     // Hide what the camera is not looking at, now that this frame's rebuilds
     // have decided which superchunks have geometry.
-    this.applyVisibility(planes);
+    const playerKey = scKey(
+      superchunkCellOf([
+        camera.position.x,
+        camera.position.y,
+        camera.position.z,
+      ]),
+    );
+    this.applyVisibility(planes, playerKey);
     // fullscreen underwater tint when the camera dips below the sea
     if (this.seaLevel !== undefined) {
       const depth = this.seaLevel - camera.position.y;
@@ -888,6 +1109,110 @@ export class TriangleRenderer {
     } else {
       this.tintMesh.visible = false;
     }
+  }
+
+  /**
+   * Runs the hardware occlusion query this frame, when one is owed: draws the
+   * probe scene (every content slot in its flat colour) into the offscreen
+   * target and reads the pixels back, so the next `applyVisibility` can hide
+   * the chunks the last query found covered. Called just before the main
+   * render, so the probe is drawn from the same frame's geometry and the
+   * same camera view the player sees that frame; the readback it returns
+   * answers the frames after it.
+   */
+  occlusionFrame(renderer: WebGLRenderer, camera: PerspectiveCamera): void {
+    if (!this.occlusionOn) {
+      return;
+    }
+    if (this.scProbeTerrain.size === 0 && this.scProbeWater.size === 0) {
+      return;
+    }
+    const gl = renderer.gl;
+    const targetWidth = targetSizeFor(gl.drawingBufferWidth);
+    const targetHeight = targetSizeFor(gl.drawingBufferHeight);
+    camera.updateMatrixWorld(true);
+    const forward = camera.getWorldDirection();
+    const movedSquared =
+      this.lastQueryPosition === null
+        ? Number.POSITIVE_INFINITY
+        : (camera.position.x - this.lastQueryPosition[0]) ** 2 +
+          (camera.position.y - this.lastQueryPosition[1]) ** 2 +
+          (camera.position.z - this.lastQueryPosition[2]) ** 2;
+    const turnedDot =
+      this.lastQueryForward === null
+        ? -1
+        : forward.x * this.lastQueryForward[0] +
+          forward.y * this.lastQueryForward[1] +
+          forward.z * this.lastQueryForward[2];
+    if (
+      !queryIsDue(this.frame - this.lastQueryFrame, movedSquared, turnedDot, {
+        intervalFrames: this.occlusionInterval,
+        moveFastTrack: OCCLUSION_MOVE_FAST_TRACK,
+        turnFastTrack: OCCLUSION_TURN_FAST_TRACK,
+      })
+    ) {
+      return;
+    }
+    this.occlusionTarget ??= new WebGLRenderTarget();
+    this.occlusionTarget.width = targetWidth;
+    this.occlusionTarget.height = targetHeight;
+    if (
+      this.occlusionReadback === null ||
+      this.occlusionReadback.length < targetWidth * targetHeight * 4
+    ) {
+      this.occlusionReadback = new Uint8Array(targetWidth * targetHeight * 4);
+    }
+    // The canvas background is the sky, which would read back as a made-up
+    // chunk id in any pixel the probes never painted. Clear the occlusion
+    // pass to the reserved id-0 black, then hand the renderer back its own
+    // clear colour before the visible pass uses it.
+    const previousClear = gl.getParameter(gl.COLOR_CLEAR_VALUE);
+    renderer.setClearColor(new Color(0, 0, 0), 1);
+    renderer.render(this.occlusionScene, camera, this.occlusionTarget);
+    renderer.setClearColor(
+      new Color(previousClear[0], previousClear[1], previousClear[2]),
+      previousClear[3],
+    );
+    renderer.readPixels(this.occlusionTarget, this.occlusionReadback);
+    this.lastQueryTested = new Set<number>([
+      ...this.scProbeTerrain.keys(),
+      ...this.scProbeWater.keys(),
+    ]);
+    this.lastVisible = scanVisible(
+      this.occlusionReadback,
+      this.lastQueryTested,
+    );
+    this.lastQueryFrame = this.frame;
+    this.lastQueryPosition = [
+      camera.position.x,
+      camera.position.y,
+      camera.position.z,
+    ];
+    this.lastQueryForward = [forward.x, forward.y, forward.z];
+  }
+
+  /** On by default; when off, every chunk draws and no readback runs. */
+  get occlusionEnabled(): boolean {
+    return this.occlusionOn;
+  }
+
+  /** Turns the occlusion culler on or off. */
+  set occlusionEnabled(on: boolean) {
+    this.occlusionOn = on;
+  }
+
+  /** Frames a query's result is trusted before the GPU is asked again. */
+  get occlusionIntervalFrames(): number {
+    return this.occlusionInterval;
+  }
+
+  set occlusionIntervalFrames(frames: number) {
+    this.occlusionInterval = Math.max(1, frames);
+  }
+
+  /** Chunks the occlusion pass is hiding this frame, for the debug line. */
+  get occlusions(): number {
+    return this.occludedCount;
   }
 
   /**

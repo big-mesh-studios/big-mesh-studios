@@ -112,6 +112,14 @@ _Avoid_: DuckMaterial (the material is generic; a duck was its first demo), voxe
 The published drawings this world can wear (`src/atproto/models.ts`): the models somebody made in rm-stacker and published to their own atproto account, read through the public half of the protocol — a repository listing, a record fetched by the key its name makes, and the zip blob it points at. Needs no session and no account of this world's own, because none of those three calls does. `find` takes one model by the name it was published under, `list` says what an account has to offer, and `file` fetches the zip **RemoteMonsters** then reads. The record vocabulary comes from `@big-mesh-studios/stacker/lexicon`, so the editor writing these records and this reading them name the collection once between them.
 _Avoid_: asset store (nothing here stores anything — it reads what somebody else published), model loader (that's the stacker package's `load`, which turns the zip into bitmaps)
 
+**Probe**:
+A chunk's flat-colour draw inside the occlusion pass: the same geometry the chunk draws on the world pass, under `OcclusionProbeMaterial`, which writes the slot's packed id as a constant colour instead of lighting, texture, or fog. Every terrain chunk's probe shares one material instance and every water chunk another (its `depthWrite` off, so translucent water never counts as an occluder), so the whole probe scene compiles exactly two programs. Drawn into a low-resolution offscreen target and read back, it is the question the occlusion pass asks the GPU.
+_Avoid_: shadow, id render (it is the _question_; the readback is the answer), miniature (it is the same geometry at full detail, just drawn small)
+
+**Occlusion query**:
+One read of the **Probe** scene: a draw into a render target at (at most) one-eighth of the drawing buffer, the pixels read back, and the set of slots that won a pixel kept. Runs on a fixed frame interval, or immediately when the camera moves a superchunk's worth of world or turns its forward sharply.
+_Avoid_: GPU occlusion query (this is a colour readback, not a `GL_ARB_occlusion_query` object), probe pass (that's the per-chunk draw; the readback is what answers)
+
 ## Relationships
 
 - A **Sphere** holds a fixed-size ball of **WorldBlock**s, indexed by pool slot.
@@ -136,6 +144,7 @@ _Avoid_: asset store (nothing here stores anything — it reads what somebody el
 - What the monsters are drawn as is chosen at startup, in `createVoxelscape`, nearest source first: the zip at `public/models/zombie.zip` this site serves, then the model the world's model account published under `zombie` through the **ModelLibrary**, which replaces it once it arrives. Until the first of those lands there is no model, and a monster is not drawn — the material marches an empty volume to a miss. `/monsters:model` swaps it for any account's afterwards, and `/monsters:file` for a zip on this device; both arrive at `RemoteMonsters.loadModelFromBlob`.
 - **MonsterController** broadcasts its owned monsters through the mesh via the **MultiplayerController** (`broadcastMonsters`), wired to its `onBroadcast` callback in `App.tsx`; a peer's monsters arrive through `onRemoteMonsters` and `applyMonsterUpdates` — the same optimistic-path separation the edit overlay already uses. Its durable records are written and fetched by **MonsterSync**, wired through `recordsForPersistence`/`markPersisted` and `mergeFromAtproto`.
 - A zombie's swing lands on the player it attacks: the **MonsterController** reports it through `onHitPlayer` (the attacked player's DID and the damage), and the app applies it to the local **PlayerHealth** or broadcasts it over the mesh for the hit peer's client to apply — the zombie's owner and the hurt player's client are each authoritative over their own part, as with sword damage (ADR 0013).
+- A **Probe** never hides a chunk the **Occlusion query** has not measured, and the chunks near the player's own cell are always drawn, so geometry that lands mid-interval or sits beside the camera never flickers out between queries.
 
 ## Example dialogue
 
@@ -148,4 +157,5 @@ _Avoid_: asset store (nothing here stores anything — it reads what somebody el
 ## Flagged ambiguities
 
 - "tool" once meant the non-stackable items an `Inventory` held — the sword, as a thing carried — while a **Tool** is what wielding any item does, blocks included. That record is gone; the word now means only the latter.
+- "cull" now covers two different hides: the frustum deferral of ADR 0022 (geometry never merged/uploaded) and the occlusion hide (geometry merged and uploaded, but not drawn between **Occlusion query**s). Say which one a sentence means rather than leaning on the single word.
 - "renderer" was once used loosely for both a rendering strategy and the subsystem picking between two of them — resolved by there being one renderer, **TriangleRenderer**, which the word now means without ambiguity.

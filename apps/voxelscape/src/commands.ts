@@ -273,6 +273,31 @@ export const createCommands = ({
       description: "show the current triangle count",
       run: () => `triangles: ${renderer.triangleCount.toLocaleString()}`,
     },
+    "/render:occlusion": {
+      description:
+        "turn the occlusion culler on/off, or set its query interval",
+      args: "[on|off] [<frames>]",
+      run: (rest) => {
+        const argument = rest[0];
+        if (argument === "off") {
+          renderer.occlusionEnabled = false;
+          return "occlusion: off";
+        }
+        if (argument === "on") {
+          renderer.occlusionEnabled = true;
+          return `occlusion: on, query every ${renderer.occlusionIntervalFrames} frames`;
+        }
+        if (argument !== undefined) {
+          const frames = Number(argument);
+          if (Number.isFinite(frames) && frames >= 1) {
+            renderer.occlusionIntervalFrames = frames;
+            return `occlusion: on, query every ${renderer.occlusionIntervalFrames} frames`;
+          }
+          return "usage: /render:occlusion [on|off] [<frames>]";
+        }
+        return `occlusion: ${renderer.occlusionEnabled ? "on" : "off"}, query every ${renderer.occlusionIntervalFrames} frames, ${renderer.occlusions} chunks hidden`;
+      },
+    },
     "/sound:volume": {
       description: "set the sound volume (0 mutes)",
       args: "<0..1>",

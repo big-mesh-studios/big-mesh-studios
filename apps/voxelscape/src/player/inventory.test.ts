@@ -40,6 +40,7 @@ describe("Inventory", () => {
     expect(inv.selectedId).toBe("sword");
     expect(inv.items()).toEqual([
       { id: "dirt", name: "Dirt", count: 2, stackable: true },
+      { id: "stone", name: "Stone", count: 0, stackable: true },
       { id: "cloud", name: "Cloud", count: 0, stackable: true },
       { id: "sword", name: "Sword", count: 1, stackable: false },
     ]);
@@ -48,6 +49,8 @@ describe("Inventory", () => {
   it("cycles the selection with the wheel step", () => {
     const inv = new Inventory();
     expect(inv.selectedId).toBe("dirt");
+    expect(inv.selectStep(1)).toBe(true);
+    expect(inv.selectedId).toBe("stone");
     expect(inv.selectStep(1)).toBe(true);
     expect(inv.selectedId).toBe("cloud");
     expect(inv.selectStep(1)).toBe(true);
@@ -61,11 +64,11 @@ describe("Inventory", () => {
   it("selects hotbar slots in order", () => {
     const inv = new Inventory();
     expect(inv.selectSlot(1)).toBe(true);
-    expect(inv.selectedId).toBe("cloud");
+    expect(inv.selectedId).toBe("stone");
     expect(inv.selectSlot(0)).toBe(true);
     expect(inv.selectedId).toBe("dirt");
     expect(inv.selectSlot(2)).toBe(true);
-    expect(inv.selectedId).toBe("sword");
+    expect(inv.selectedId).toBe("cloud");
     expect(inv.selectSlot(ITEM_ORDER.length)).toBe(false);
   });
 

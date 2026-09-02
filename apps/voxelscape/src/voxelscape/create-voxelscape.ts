@@ -601,8 +601,10 @@ export const createVoxelscape = ({
       onDebugStats,
       onFrame: advance,
       clearColor: () => skyColor,
+      beforeRender: (renderer, camera) =>
+        world.renderer.occlusionFrame(renderer, camera),
       describeStats: () =>
-        `tris: ${world.renderer.triangleCount.toLocaleString()}`,
+        `tris: ${world.renderer.triangleCount.toLocaleString()} | occluded: ${world.renderer.occlusions}`,
     });
 
     unmount = () => {
