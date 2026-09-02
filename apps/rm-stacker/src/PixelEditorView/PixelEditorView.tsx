@@ -11,7 +11,7 @@ import * as THREE from "three";
 import { SIDE_MASK } from "../constants";
 import { StackerContext } from "../context";
 import { Bitmap, Vector2D } from "@big-mesh-studios/maths";
-import { panelLabel, panelTable } from "../panels";
+import { axisColour, panelLabel, panelTable, sectionLines } from "../panels";
 import { sideMaskToCSS } from "../utils/utils";
 import { computeGuideMasks } from "./compute-guide-masks";
 import { createPixelEditorController } from "./create-pixel-controller";
@@ -219,6 +219,29 @@ const PixelEditorView: Component = () => {
             kind: "inner",
             scale: _scale,
           });
+        }
+
+        // Every cut standing through what is drawn on this panel, in the
+        // colour of the axis it cuts across, so a panel shows where the part
+        // is cut as well as what is drawn on it.
+        for (const cut of sectionLines(
+          selectedPart(),
+          panelKind,
+          dimensions(),
+        )) {
+          ctx.strokeStyle = axisColour(cut.axis);
+          ctx.lineWidth = 2 / _scale;
+          ctx.beginPath();
+
+          if (cut.along === "x") {
+            ctx.moveTo(sidePosition.x + cut.line, sidePosition.y);
+            ctx.lineTo(sidePosition.x + cut.line, sidePosition.y + side.height);
+          } else {
+            ctx.moveTo(sidePosition.x, sidePosition.y + cut.line);
+            ctx.lineTo(sidePosition.x + side.width, sidePosition.y + cut.line);
+          }
+
+          ctx.stroke();
         }
 
         const sideColor = sideMaskToCSS(SIDE_MASK[sideKind]);

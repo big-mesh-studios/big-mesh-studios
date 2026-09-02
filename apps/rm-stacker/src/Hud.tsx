@@ -109,10 +109,16 @@ export function Hud() {
           selected={isModeSelected("Eyedrop")}
         />
         <IconTab
-          kind="scissors"
-          onClick={() => setMode("Cut")}
-          selected={isModeSelected("Cut")}
-          title="Cut the part in two along a line, so the two sides of the cut can be carved apart"
+          kind="grip-lines-vertical"
+          onClick={() => setMode("CutDown")}
+          selected={isModeSelected("CutDown")}
+          title="Cut with a line down the panel, so the two sides of the cut can be carved apart"
+        />
+        <IconTab
+          kind="grip-lines"
+          onClick={() => setMode("CutAcross")}
+          selected={isModeSelected("CutAcross")}
+          title="Cut with a line across the panel, so the two sides of the cut can be carved apart"
         />
       </Bar>
       <Bar class={styles.mirror}>

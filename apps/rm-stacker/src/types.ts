@@ -18,7 +18,14 @@ export type Alignment3D = Partial<Record<DimensionKind, AlignmentKind>>;
 /**********************************************************************************/
 
 export type ModeKind =
-  "Draw" | "Erase" | "Fill" | "Idle" | "Eyedrop" | "Rectangle" | "Cut";
+  | "Draw"
+  | "Erase"
+  | "Fill"
+  | "Idle"
+  | "Eyedrop"
+  | "Rectangle"
+  | "CutDown"
+  | "CutAcross";
 
 /**********************************************************************************/
 /*                                      Mirror                                    */

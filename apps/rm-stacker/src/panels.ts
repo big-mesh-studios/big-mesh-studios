@@ -19,8 +19,9 @@ import {
   type Section,
   type SideKind,
 } from "@big-mesh-studios/stacker/renderer";
-import { OPPOSING_SIDE, SIDE_AXES } from "./constants";
+import { OPPOSING_SIDE, SIDE_AXES, SIDE_MASK } from "./constants";
 import type { Block } from "./mirror";
+import { sideMaskToCSS } from "./utils/utils";
 
 /** The drawings of one part, and how each of them is turned. */
 export interface PanelTable {
@@ -212,6 +213,76 @@ export function cutFromPanelLine({
   const extent = dimensions[dimension];
 
   return { axis: dimension, at: flipped ? extent - line : line };
+}
+
+/**
+ * Where a cut across `axis` at `at` crosses a panel drawn like `drawnLike`:
+ * which of the panel's image axes the line runs against, and how far along that
+ * axis it lies, in cells from the panel's top left corner. Undefined for a
+ * panel the cut does not cross, which is one that does not span its axis.
+ *
+ * This is `cutFromPanelLine` the other way about: a panel counting its axis up
+ * from the end the part counts down from has the line measured from its far
+ * side.
+ */
+export function panelLineFromCut({
+  drawnLike,
+  axis,
+  at,
+  dimensions,
+}: {
+  drawnLike: SideKind;
+  axis: DimensionKind;
+  at: number;
+  dimensions: Dimensions3D;
+}): { along: keyof Vector2D; line: number } | undefined {
+  for (const along of ["x", "y"] as const) {
+    const { dimension, flipped } = SIDE_AXES[drawnLike][along];
+
+    if (dimension !== axis) {
+      continue;
+    }
+
+    return { along, line: flipped ? dimensions[axis] - at : at };
+  }
+
+  return undefined;
+}
+
+/**
+ * Where every cut across `part` crosses the panel `panel`, so that a panel
+ * shows the cuts standing through what is drawn on it.
+ */
+export function sectionLines(
+  part: Part,
+  panel: PanelKind,
+  dimensions: Dimensions3D,
+): { along: keyof Vector2D; line: number; axis: DimensionKind }[] {
+  const drawnLike = panelSide(part, panel);
+
+  if (drawnLike === undefined) {
+    return [];
+  }
+
+  return part.sections.flatMap((section) => {
+    const line = panelLineFromCut({
+      drawnLike,
+      axis: section.axis,
+      at: section.at,
+      dimensions,
+    });
+
+    return line === undefined ? [] : [{ ...line, axis: section.axis }];
+  });
+}
+
+/**
+ * The colour a cut across `axis` is drawn in: the colour of the two sides that
+ * look along it, which are the sides its faces are drawn the way of. A cut is
+ * then the colour of the direction it faces, wherever it is shown.
+ */
+export function axisColour(axis: DimensionKind): string {
+  return sideMaskToCSS(SIDE_MASK[axisSides[axis][0]]);
 }
 
 /**

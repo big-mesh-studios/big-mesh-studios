@@ -15,7 +15,9 @@ import {
   cutFromPanelLine,
   cutSection,
   panelLabel,
+  panelLineFromCut,
   panelTable,
+  sectionLines,
 } from "./panels";
 
 // A part five voxels wide, seven high and three deep, so that no two axes are
@@ -108,6 +110,88 @@ describe("cutFromPanelLine", () => {
         dimensions: DIMENSIONS,
       }),
     ).toEqual({ axis: "depth", at: 2 });
+  });
+});
+
+describe("panelLineFromCut", () => {
+  it("puts a cut back where the line that made it was drawn", () => {
+    // Whatever line a panel is cut along, reading the cut back onto that panel
+    // lands on the line it was drawn at.
+    for (const drawnLike of sideKinds) {
+      for (const along of ["x", "y"] as const) {
+        for (const line of [1, 2, 3]) {
+          const cut = cutFromPanelLine({
+            drawnLike,
+            axis: along,
+            line,
+            dimensions: DIMENSIONS,
+          });
+
+          expect(
+            panelLineFromCut({
+              drawnLike,
+              axis: cut.axis,
+              at: cut.at,
+              dimensions: DIMENSIONS,
+            }),
+            `${drawnLike} cut along ${along} at ${line}`,
+          ).toEqual({ along, line });
+        }
+      }
+    }
+  });
+
+  it("says nothing for a panel the cut does not cross", () => {
+    // The left is drawn depth across and height down, and does not span the
+    // width, so a cut across the width does not show on it.
+    expect(
+      panelLineFromCut({
+        drawnLike: "left",
+        axis: "width",
+        at: 2,
+        dimensions: DIMENSIONS,
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe("sectionLines", () => {
+  it("shows a cut on the four panels that span the axis it crosses", () => {
+    const part = partOf(acrossTheWidth(2));
+
+    // The front and the top span the width and carry the cut; the left and the
+    // right look along it and do not.
+    expect(sectionLines(part, "front", DIMENSIONS)).toEqual([
+      { along: "x", line: 2, axis: "width" },
+    ]);
+    expect(sectionLines(part, "top", DIMENSIONS)).toEqual([
+      { along: "x", line: 2, axis: "width" },
+    ]);
+    expect(sectionLines(part, "left", DIMENSIONS)).toEqual([]);
+    expect(sectionLines(part, "right", DIMENSIONS)).toEqual([]);
+  });
+
+  it("shows it on the panel looking the other way, measured from that side", () => {
+    const part = partOf(acrossTheWidth(2));
+
+    expect(sectionLines(part, "back", DIMENSIONS)).toEqual([
+      { along: "x", line: DIMENSIONS.width - 2, axis: "width" },
+    ]);
+  });
+
+  it("shows a cut across one axis on the faces of a cut across another", () => {
+    const part = partOf(acrossTheWidth(2), {
+      axis: "height",
+      at: 3,
+      before: Bitmap.create(DIMENSIONS.width, DIMENSIONS.depth),
+      after: Bitmap.create(DIMENSIONS.width, DIMENSIONS.depth),
+    });
+
+    // A cut across the height has faces drawn the way the top and bottom are,
+    // width across and depth down, so the cut across the width stands on them.
+    expect(sectionLines(part, "section-1-before", DIMENSIONS)).toEqual([
+      { along: "x", line: 2, axis: "width" },
+    ]);
   });
 });
 
