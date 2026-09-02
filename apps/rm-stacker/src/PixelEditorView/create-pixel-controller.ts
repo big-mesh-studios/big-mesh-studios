@@ -8,10 +8,7 @@ import {
 import { Command } from "../command/Command";
 import { StackerContext } from "../context";
 import { Bitmap, RGBA, Vector2D } from "@big-mesh-studios/maths";
-import {
-  readSectionFace,
-  type PanelKind,
-} from "@big-mesh-studios/stacker/renderer";
+import { type PanelKind } from "@big-mesh-studios/stacker/renderer";
 import { pointer } from "@big-mesh-studios/utils/pointer";
 import type { ModeKind } from "../types";
 import { mirrorBlocks, mirrorMarks, type Block, type Mark } from "../mirror";
@@ -248,20 +245,13 @@ export const createPixelEditorController = ({
       return withPadding(numbered.box);
     }
 
+    // A name brings the panel it names and no more, a cut's face as much as a
+    // side: the tab above is what brings the whole slice.
     const label = intersectPanelLabels(panelLabels(), worldPosition);
-
-    if (label === undefined) {
-      return undefined;
-    }
-
-    // The name of one of a cut's faces brings the whole slice into view. The
-    // two faces are one cut through the part, and they stand together.
-    const face = readSectionFace(label.panel);
-    const slice = face === undefined ? undefined : slices[face.cut];
 
     // With the space around it, so that what is brought into view arrives with
     // its name and the numbers of the cuts crossing it rather than on its own.
-    return withPadding(slice?.box ?? label.panelBox);
+    return label === undefined ? undefined : withPadding(label.panelBox);
   }
 
   /** How a block is named when it is being kept track of once only. */
