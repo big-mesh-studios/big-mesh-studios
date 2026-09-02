@@ -37,13 +37,18 @@ export const probeColor = (id: number): [number, number, number] => {
 
 /**
  * The set of `chunkIds` that appear anywhere in one flat-pass readback. Walks
- * every pixel's first three channels, so a chunk with even a corner of a pixel
- * is counted; the rest of the buffer (alpha, and ids no chunk uses) is skipped
- * by construction.
+ * the first three channels of every pixel in the first `byteCount` bytes
+ * (default: the whole buffer), so a chunk with even a corner of a pixel is
+ * counted; the rest of the buffer (alpha, and ids no chunk uses) is skipped
+ * by construction. A readback buffer is reused and only its leading
+ * `byteCount` bytes carry this target's pixels — anything past them holds an
+ * earlier, larger target and must not be read, or the stale ids it carries
+ * would look visible forever.
  */
 export const scanVisible = (
   pixels: Uint8Array,
   chunkIds: Iterable<number>,
+  byteCount = pixels.length,
 ): Set<number> => {
   let max = 0;
   for (const id of chunkIds) {
@@ -52,7 +57,8 @@ export const scanVisible = (
     }
   }
   const seen = new Uint8Array(max + 1);
-  for (let i = 0; i < pixels.length; i += 4) {
+  const end = Math.min(byteCount, pixels.length);
+  for (let i = 0; i < end; i += 4) {
     const id = unpackId(pixels[i], pixels[i + 1], pixels[i + 2]);
     if (id > 0 && id <= max) {
       seen[id] = 1;

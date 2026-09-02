@@ -548,7 +548,12 @@ export class TriangleRenderer {
   private showProbe = false;
   /** Slots the occlusion pass is hiding this frame (content, in the frustum, neither near nor seen). */
   private occludedCount = 0;
-
+  /** Content slots never measured by the occlusion readback (their mesh landed after the last query). */
+  private lastTimedOut = 0;
+  /** Content slots left visible because the player's superchunk cell is within the near ring. */
+  private lastNearExempt = 0;
+  /** Content slots the last query actually saw, left visible. */
+  private lastSaw = 0;
   // Fullscreen underwater tint (the water pass tints the view
   // in-shader instead). Drawn last with depth-testing off so it washes the
   // whole view when the camera dips below the sea.
@@ -927,6 +932,9 @@ export class TriangleRenderer {
    */
   private applyVisibility(planes: FrustumPlane[], playerKey: string): void {
     this.occludedCount = 0;
+    this.lastTimedOut = 0;
+    this.lastNearExempt = 0;
+    this.lastSaw = 0;
     for (const [slot, mesh] of this.scChunkTerrain) {
       mesh.visible = this.chunkVisible(slot, mesh, planes, playerKey, true);
     }
@@ -964,14 +972,17 @@ export class TriangleRenderer {
     // actually saw it; anything else the query looked at but found covered is
     // skipped this frame.
     if (!this.lastQueryTested.has(slot)) {
+      this.lastTimedOut++;
       return true;
     }
     if (
       isNearCell(this.blockSc.get(slot) ?? "", playerKey, OCCLUSION_NEAR_CELLS)
     ) {
+      this.lastNearExempt++;
       return true;
     }
     if (this.lastVisible !== null && this.lastVisible.has(slot)) {
+      this.lastSaw++;
       return true;
     }
     if (countOccluded) {
@@ -1191,11 +1202,14 @@ export class TriangleRenderer {
     this.occlusionTarget ??= new WebGLRenderTarget();
     this.occlusionTarget.width = targetWidth;
     this.occlusionTarget.height = targetHeight;
+    // Sized exactly, so a target that shrank does not leave stale pixels past
+    // the bytes this frame's `readPixels` overwrites.
+    const readbackBytes = targetWidth * targetHeight * 4;
     if (
       this.occlusionReadback === null ||
-      this.occlusionReadback.length < targetWidth * targetHeight * 4
+      this.occlusionReadback.length !== readbackBytes
     ) {
-      this.occlusionReadback = new Uint8Array(targetWidth * targetHeight * 4);
+      this.occlusionReadback = new Uint8Array(readbackBytes);
     }
     // The canvas background is the sky, which would read back as a made-up
     // chunk id in any pixel the probes never painted. Clear the occlusion
@@ -1216,6 +1230,7 @@ export class TriangleRenderer {
     this.lastVisible = scanVisible(
       this.occlusionReadback,
       this.lastQueryTested,
+      readbackBytes,
     );
     this.lastQueryFrame = this.frame;
     this.lastQueryPosition = [
@@ -1231,9 +1246,12 @@ export class TriangleRenderer {
     return this.occlusionOn;
   }
 
-  /** Turns the occlusion culler on or off. */
+  /** Turns the occlusion culler on or off; turning it on measures the view immediately. */
   set occlusionEnabled(on: boolean) {
     this.occlusionOn = on;
+    if (on) {
+      this.forceOcclusionQuery();
+    }
   }
 
   /** Frames a query's result is trusted before the GPU is asked again. */
@@ -1248,6 +1266,39 @@ export class TriangleRenderer {
   /** Chunks the occlusion pass is hiding this frame, for the debug line. */
   get occlusions(): number {
     return this.occludedCount;
+  }
+
+  /**
+   * Forgets when the last query ran, so the next `occlusionFrame` measures the
+   * current view immediately instead of waiting out the interval or a move or
+   * turn fast track.
+   */
+  forceOcclusionQuery(): void {
+    this.lastQueryFrame = Number.NEGATIVE_INFINITY;
+    this.lastQueryPosition = null;
+    this.lastQueryForward = null;
+  }
+
+  /** How many chunks the last probe query saw (the set it found visible). */
+  get lastVisibleCount(): number {
+    return this.lastVisible === null ? 0 : this.lastVisible.size;
+  }
+
+  /**
+   * Where the last `applyVisibility` put the chunks it could have hidden, for
+   * the debug line: some were never measured, some the player's cell let stay,
+   * some the probe actually saw, and the remainder the occlusion hid.
+   */
+  get occlusionBreakdown(): string {
+    const held = [
+      `simple ${this.lastTimedOut}`,
+      `near ${this.lastNearExempt}`,
+      `seen ${this.lastSaw}`,
+    ];
+    if (this.occludedCount > 0) {
+      held.push(`occluded ${this.occludedCount}`);
+    }
+    return held.join(", ");
   }
 
   /** Whether the world draws as its probe pass, each chunk in its slot's debug colour. */
