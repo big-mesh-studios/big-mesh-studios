@@ -205,6 +205,11 @@ export interface SliceMarker {
   number: string;
   axis: DimensionKind;
   /**
+   * Where the cut meets the edge of the panel the number stands outside, so
+   * that the line the cut is drawn as can be carried out to the number.
+   */
+  at: Vector2D;
+  /**
    * Where it stands. The number is drawn as a circle inside this, and taken
    * hold of anywhere in it, which leaves a little room around the circle for a
    * finger that lands beside it. Two of these can lie over each other where the
@@ -268,6 +273,10 @@ export function computeSliceMarkers(
           cut: crossing.cut,
           number: `${crossing.cut + 1}`,
           axis: crossing.section.axis,
+          at:
+            along === "x"
+              ? { x: middle, y: panel.y }
+              : { x: panel.x, y: middle },
           box: { min, max: { x: min.x + MARKER_SIZE, y: min.y + MARKER_SIZE } },
         });
       });

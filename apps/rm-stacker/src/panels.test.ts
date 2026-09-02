@@ -510,9 +510,18 @@ describe("computeSliceLayouts and computeSliceMarkers", () => {
     const middleOf = (box: { min: { x: number }; max: { x: number } }) =>
       (box.min.x + box.max.x) / 2;
 
-    // Neither has moved off the cut it belongs to.
+    // Neither has moved off the cut it belongs to, and each is joined to the
+    // panel's edge where that cut meets it.
     expect(middleOf(first.box)).toBe(positions.front.x + 2);
     expect(middleOf(second.box)).toBe(positions.front.x + 3);
+    expect(first.at).toEqual({
+      x: positions.front.x + 2,
+      y: positions.front.y,
+    });
+    expect(second.at).toEqual({
+      x: positions.front.x + 3,
+      y: positions.front.y,
+    });
     // The second stands a lane further out, so the circles clear each other.
     expect(first.box.max.y - second.box.max.y).toBe(2);
     expect(first.number).toBe("1");

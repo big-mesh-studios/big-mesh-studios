@@ -24,6 +24,7 @@ import {
   LABEL_HEIGHT,
   MARKER_RADIUS,
   type Box,
+  type SliceMarker,
 } from "./side-layout";
 
 interface ImageCanvasCacheData {
@@ -168,16 +169,38 @@ const PixelEditorView: Component = () => {
    * slice's number is shown beside the cut it belongs to: a thing to take hold
    * of rather than a thing drawn on, and round so it says so.
    */
+  const middleOf = (box: Box) => ({
+    x: (box.min.x + box.max.x) / 2,
+    y: (box.min.y + box.max.y) / 2,
+  });
+
+  /**
+   * The line a cut is drawn as, carried on past the edge of the panel and out
+   * to the number standing for it, so that the two are one line.
+   */
+  const strokeMarkerLine = (
+    ctx: CanvasRenderingContext2D,
+    marker: SliceMarker,
+    colour: string,
+    scale: number,
+  ) => {
+    const middle = middleOf(marker.box);
+
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 2 / scale;
+    ctx.beginPath();
+    ctx.moveTo(marker.at.x, marker.at.y);
+    ctx.lineTo(middle.x, middle.y);
+    ctx.stroke();
+  };
+
   const fillMarker = (
     ctx: CanvasRenderingContext2D,
     box: Box,
     text: string,
     colour: string,
   ) => {
-    const middle = {
-      x: (box.min.x + box.max.x) / 2,
-      y: (box.min.y + box.max.y) / 2,
-    };
+    const middle = middleOf(box);
 
     ctx.fillStyle = colour;
     ctx.beginPath();
@@ -419,7 +442,13 @@ const PixelEditorView: Component = () => {
       }
 
       // The same number again, standing outside the panels the cut crosses, so
-      // a cut seen in a drawing can be followed to the faces it reveals.
+      // a cut seen in a drawing can be followed to the faces it reveals. Every
+      // line is drawn before any number, so a line reaching a number in the far
+      // lane passes under the one in the near lane rather than over it.
+      for (const marker of sliceMarkers()) {
+        strokeMarkerLine(ctx, marker, axisColour(marker.axis), _scale);
+      }
+
       for (const marker of sliceMarkers()) {
         fillMarker(ctx, marker.box, marker.number, axisColour(marker.axis));
       }
