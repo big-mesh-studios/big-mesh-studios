@@ -514,6 +514,19 @@ interface SuperchunkState {
   waterRanges: Map<number, { start: number; count: number }>;
 }
 
+/**
+ * A superchunk's pair of upload geometries. Kept stable once handed to the
+ * renderer and recycled between superchunks: the renderer holds a GPU-buffer
+ * cache keyed by geometry object and frees nobody's individually, so a fresh
+ * geometry per visited superchunk would accumulate VRAM for as long as the
+ * player travelled. A pooled pair is re-uploaded in place by `setGeometryData`
+ * on reuse, which keeps the cache's entry count bounded by the pool size.
+ */
+interface SuperchunkGeometry {
+  terrain: BufferGeometry;
+  water: BufferGeometry;
+}
+
 /** A chunk slice that holds nothing: whatever slice a slot actually has overwrites this. */
 const EMPTY_RANGE = { start: 0, count: 0 };
 
@@ -569,6 +582,15 @@ export class TriangleRenderer {
   private readonly slotCenter = new Map<number, Dim3>();
   /** Each superchunk's merged arrays, uploaded geometry, and members' index runs. */
   private readonly scMerged = new Map<string, SuperchunkState>();
+  /**
+   * Geometry pairs returned by superchunks that left the window, handed to the
+   * next superchunk to refresh in place. Bounding a superchunk's `BufferGeometry`
+   * allocations stops the renderer's geometry-keyed cache from ratcheting up one
+   * never-freed VRAM entry per superchunk cell visited.
+   */
+  private readonly geometryPool: SuperchunkGeometry[] = [];
+  /** The most pooled geometry pairs kept: a scroll's burst is drawn from before it is discarded. */
+  private static readonly GEOMETRY_POOL_CAP = 24;
   /** Superchunks whose merged geometry must be fully re-joined (membership or data replaced). */
   private readonly scNeedsFull = new Set<string>();
   /** Superchunks whose merged geometry is stale and awaiting an upload this frame. */
@@ -703,10 +725,48 @@ export class TriangleRenderer {
       }
     }
     this.scMembers.delete(key);
+    const merged = this.scMerged.get(key);
+    if (merged !== undefined) {
+      this.recycleGeometryPair(merged);
+    }
     this.scMerged.delete(key);
     this.scNeedsFull.delete(key);
     this.dirty.delete(key);
     this.updateTriCount();
+  }
+
+  /**
+   * A fresh upload-geometry pair, drawn from the pool when one is free. The
+   * pair's identity stays constant for the life of the superchunk that took it
+   * and for each superchunk that reuses it, so the renderer re-fills the same
+   * GPU buffers it already holds rather than allocating new ones.
+   */
+  private takeGeometryPair(): SuperchunkGeometry {
+    const pooled = this.geometryPool.pop();
+    if (pooled !== undefined) {
+      return pooled;
+    }
+    return {
+      terrain: new BufferGeometry(),
+      water: new BufferGeometry(),
+    };
+  }
+
+  /**
+   * Returns a superchunk's geometry pair to the pool for the next superchunk,
+   * keeping the pair's count (and the renderer's GPU-buffer cache keyed by it)
+   * bounded instead of ratcheting up one entry per superchunk cell visited.
+   * Pairs beyond `GEOMETRY_POOL_CAP` are dropped once no superchunk holds them,
+   * bounding the pool against a fast scroll anyway.
+   */
+  private recycleGeometryPair(state: SuperchunkState): void {
+    if (this.geometryPool.length >= TriangleRenderer.GEOMETRY_POOL_CAP) {
+      return;
+    }
+    this.geometryPool.push({
+      terrain: state.terrainGeometry,
+      water: state.waterGeometry,
+    });
   }
 
   /** Unlinks one slot's world meshes and probes; the slot stays registered in `blockSc`. */
@@ -763,15 +823,23 @@ export class TriangleRenderer {
     let state: SuperchunkState;
     let appended = false;
     if (wasFull) {
+      const geometry = this.takeGeometryPair();
       state = {
         slots: new Set(),
         terrain: emptyArrays(),
         water: emptyArrays(),
-        terrainGeometry: new BufferGeometry(),
-        waterGeometry: new BufferGeometry(),
+        terrainGeometry: geometry.terrain,
+        waterGeometry: geometry.water,
         terrainRanges: new Map(),
         waterRanges: new Map(),
       };
+      // The superchunk's old merged geometry is largely stale (its data was
+      // replaced or its membership moved), so its geometry is returned to the
+      // pool for the next superchunk instead of the renderer's cache keeping
+      // it forever alongside the replacement.
+      if (existing !== undefined) {
+        this.recycleGeometryPair(existing);
+      }
       this.scMerged.set(key, state);
       this.scNeedsFull.delete(key);
       for (const m of members) {
