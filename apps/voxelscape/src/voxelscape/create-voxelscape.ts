@@ -238,6 +238,7 @@ export const createVoxelscape = ({
       ]),
     getLook: () => avatar.look(),
     getPlayerVoxels: () => avatar.occupiedVoxels(),
+    terrain,
   });
 
   const toolContext: ToolContext = {

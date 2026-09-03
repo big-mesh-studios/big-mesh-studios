@@ -15,6 +15,7 @@ import {
   VoxelStore,
   fillStore,
 } from "../world/voxel-store";
+import { LightStore, MAX_LIGHT } from "../world/light-store";
 
 const smallStore = (): VoxelStore =>
   new VoxelStore({ dims: [8, 8, 8], voxels: [4, 4, 4], scale: 2 });
@@ -412,8 +413,58 @@ describe("setGeometryData", () => {
       positions: [],
       normals: [],
       uvs: [],
+      brightness: [],
       indices: [],
     });
     expect(geometry.drawCount).toBe(0);
+  });
+});
+
+describe("brightness baking", () => {
+  /** A store ready to mesh: one grass voxel with an exposed top face. */
+  const grassStore = (): VoxelStore => {
+    const store = smallStore();
+    store.set(1, 1, 1, VOXEL_GRASS);
+    return store;
+  };
+
+  it("emits one brightness per vertex, all in range, when lit", () => {
+    const store = grassStore();
+    const light = new LightStore(store.voxels);
+    // every sky voxel at full brightness: a fully exposed surface
+    light.skylight.fill(MAX_LIGHT);
+    const mesh = buildBlockMesh(store, [], light);
+    expect(mesh.brightness.length).toBe(mesh.positions.length / 3);
+    for (const b of mesh.brightness) {
+      expect(b).toBeGreaterThan(0);
+      expect(b).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("bakes an unlit surface at zero, which the shader floors", () => {
+    const store = grassStore();
+    // no light anywhere
+    const light = new LightStore(store.voxels);
+    const mesh = buildBlockMesh(store, [], light);
+    expect(mesh.brightness.length).toBeGreaterThan(0);
+    for (const b of mesh.brightness) {
+      expect(b).toBeGreaterThanOrEqual(0);
+      expect(b).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("darkens a corner occluded by neighbouring rock", () => {
+    const store = smallStore();
+    // grass whose visible top face has a rock wall on one side, rising a full
+    // two blocks so it stands above the grass's own top and shades the corner
+    store.set(1, 1, 1, VOXEL_GRASS);
+    store.set(2, 1, 1, VOXEL_DIRT);
+    store.set(2, 2, 1, VOXEL_DIRT);
+    const light = new LightStore(store.voxels);
+    light.skylight.fill(MAX_LIGHT);
+    const mesh = buildBlockMesh(store, [], light);
+    const brightness = mesh.brightness;
+    // at least one of the grass top-face's four corners shades below full
+    expect(Math.min(...brightness)).toBeLessThan(1);
   });
 });

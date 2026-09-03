@@ -35,6 +35,7 @@ export const VOXEL_TILES: Record<number, VoxelTiles> = {
   2: { top: "dirt", side: "dirt", bottom: "dirt" },
   4: { top: "stone", side: "stone", bottom: "stone" },
   5: { top: "snow", side: "snow", bottom: "snow" },
+  6: { top: "lava", side: "lava", bottom: "lava" },
 };
 
 export const parseTileAtlasXml = (xmlText: string): Map<string, SubTexture> => {

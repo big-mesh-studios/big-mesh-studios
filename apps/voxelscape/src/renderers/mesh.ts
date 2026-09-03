@@ -12,7 +12,12 @@
 // neighbour's live store to resolve a seam.
 import { BufferAttribute, BufferGeometry } from "@random-mesh/rmsl/scene";
 import type { TileRect, VoxelTileConfig } from "./atlas";
-import { VOXEL_AIR, VOXEL_WATER, type VoxelStore } from "../world/voxel-store";
+import {
+  VOXEL_AIR,
+  VOXEL_WATER,
+  type VoxelStore,
+} from "../world/voxel-store";
+import { LIGHT_TO_UNIT, type LightStore } from "../world/light-store";
 
 /**
  * Vertex arrays for one mesh. The CPU builders produce plain arrays; the
@@ -24,6 +29,8 @@ export interface MeshArrays {
   normals: number[] | Float32Array;
   uvs: number[] | Float32Array;
   indices: number[] | Uint32Array;
+  /** One 0..1 brightness per vertex, baked from the block's light + corner occlusion. */
+  brightness: number[] | Float32Array;
 }
 
 /**
@@ -68,6 +75,114 @@ const windsOutward = (axis: number, sign: number): boolean =>
   axis === 1 ? sign === -1 : sign === 1;
 
 /**
+ * The two in-plane axis indices of a face, by the axis the face is on. The
+ * mesher uses these to read a corner's neighbours in the face plane.
+ */
+const TANGENT_AXES: Array<[number, number]> = [
+  [1, 2], // +X/-X faces lie in the YZ plane
+  [0, 2], // +Y/-Y faces lie in the XZ plane
+  [0, 1], // +Z/-Z faces lie in the XY plane
+];
+
+/**
+ * The combined, normalized light (the brighter of sky and block light, as a
+ * 0..1 fraction) that reaches a padded voxel, for shading a nearby face.
+ */
+const cellLight = (
+  light: LightStore,
+  x: number,
+  y: number,
+  z: number,
+): number =>
+  Math.max(
+    LIGHT_TO_UNIT(light.skylight[light.paddedIndex(x, y, z)]),
+    LIGHT_TO_UNIT(light.blocklight[light.paddedIndex(x, y, z)]),
+  );
+
+/**
+ * Whether a padded voxel blocks sight: anything that neither air nor water
+ * transmits, and that a face's corner occlusion therefore counts against.
+ */
+const isOpaque = (store: VoxelStore, x: number, y: number, z: number): boolean => {
+  const id = store.atPadded(x, y, z);
+  return id !== VOXEL_AIR && id !== VOXEL_WATER;
+};
+
+/**
+ * The one smooth-lighting pass in this file: the four per-vertex brightness
+ * values (0..1) of one exposed face, in `FACE_CORNERS` vertex order. Each
+ * vertex samples the 2x2 voxel patch just outside the face along its normal
+ * for light, and the three neighbours wrapping its corner (two sides and the
+ * diagonal), also just outside the face, for ambient occlusion; multiplying
+ * the two shades the face with smooth gradients and dark niches. Sampling the
+ * occluders on the air side keeps a level surface bright across its whole
+ * top — a same-height neighbour does not shade a coplanar corner — while a
+ * neighbour that rises above it does. The sphere is voxel-centred — tangents
+ * and normal stretch one voxel — so a seam face reads its neighbour's light
+ * and occluders from the block's own generated border, exactly as it reads
+ * its voxel.
+ *
+ * Returns `null` when no light store accompanies the mesh, which the caller
+ * treats as a fully bright face.
+ */
+const faceBrightness = (
+  store: VoxelStore,
+  light: LightStore | null,
+  x: number,
+  y: number,
+  z: number,
+  axis: number,
+  sign: number,
+): number[] | null => {
+  if (light === null) {
+    return null;
+  }
+  const [a1, a2] = TANGENT_AXES[axis];
+  // how far a corner and its occluders sit from the face's centre along the
+  // normal, in the block-local signed voxel coordinates the reads below use
+  const nax = [0, 0, 0] as [number, number, number];
+  nax[axis] = sign;
+  const brightness: number[] = [];
+  for (const corner of FACE_CORNERS[axis]) {
+    const c1 = corner[a1];
+    const c2 = corner[a2];
+    // the corner's light: the brightest of the 2x2 patch just outside the
+    // face, spread along both tangents by one voxel
+    let lit = 0;
+    for (const r of [c1, c1 - 1]) {
+      for (const s of [c2, c2 - 1]) {
+        const at = [x, y, z] as [number, number, number];
+        at[a1] += r;
+        at[a2] += s;
+        at[axis] += sign;
+        lit = Math.max(lit, cellLight(light, at[0], at[1], at[2]));
+      }
+    }
+    // the corner's occlusion: the three neighbours wrapping it just outside
+    // the face — offset one voxel outward along a tangent (or both, for the
+    // diagonal) and one along the normal
+    const d1 = c1 === 0 ? -1 : 1;
+    const d2 = c2 === 0 ? -1 : 1;
+    let occluded = 0;
+    const side1 = [x, y, z] as [number, number, number];
+    side1[a1] += d1;
+    side1[axis] += sign;
+    occluded += isOpaque(store, side1[0], side1[1], side1[2]) ? 1 : 0;
+    const side2 = [x, y, z] as [number, number, number];
+    side2[a2] += d2;
+    side2[axis] += sign;
+    occluded += isOpaque(store, side2[0], side2[1], side2[2]) ? 1 : 0;
+    const diag = [x, y, z] as [number, number, number];
+    diag[a1] += d1;
+    diag[a2] += d2;
+    diag[axis] += sign;
+    occluded += isOpaque(store, diag[0], diag[1], diag[2]) ? 1 : 0;
+    brightness.push(lit * ((3 - occluded) / 3));
+  }
+  return brightness;
+};
+
+/**
  * Used until the atlas loads (or for voxel ids with no tile config): a
  * full texel rect so faces still map to something sane.
  */
@@ -87,6 +202,7 @@ const DEFAULT_RECT: TileRect = [0, 0, 1, 1];
 export const buildBlockMesh = (
   store: VoxelStore,
   voxelTiles: VoxelTileConfig[],
+  light: LightStore | null = null,
 ): MeshArrays => {
   const [nx, ny, nz] = store.voxels;
   const scale = store.scale;
@@ -98,6 +214,7 @@ export const buildBlockMesh = (
   const positions: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
+  const brightness: number[] = [];
   const indices: number[] = [];
 
   const at = (x: number, y: number, z: number): number =>
@@ -110,10 +227,16 @@ export const buildBlockMesh = (
     axis: number,
     sign: number,
     rect: TileRect,
+    x: number,
+    y: number,
+    z: number,
   ): void => {
     const h = scale / 2;
     const base = positions.length / 3;
-    for (const [xo, yo, zo, u, v] of FACE_CORNERS[axis]) {
+    const corners = FACE_CORNERS[axis];
+    const cornerLight = faceBrightness(store, light, x, y, z, axis, sign);
+    for (let k = 0; k < corners.length; k++) {
+      const [xo, yo, zo, u, v] = corners[k];
       positions.push(
         axis === 0 ? wx + sign * h : wx + (xo - 0.5) * 2 * h,
         axis === 1 ? wy + sign * h : wy + (yo - 0.5) * 2 * h,
@@ -128,6 +251,7 @@ export const buildBlockMesh = (
         rect[0] + u * (rect[2] - rect[0]),
         rect[1] + v * (rect[3] - rect[1]),
       );
+      brightness.push(cornerLight === null ? 1 : cornerLight[k]);
     }
     if (windsOutward(axis, sign)) {
       indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -172,17 +296,17 @@ export const buildBlockMesh = (
         const top = tile?.top ?? DEFAULT_RECT;
         const side = tile?.side ?? DEFAULT_RECT;
         const bottom = tile?.bottom ?? DEFAULT_RECT;
-        if (exposedTop) emit(wx, wy, wz, 1, 1, top);
-        if (exposedBottom) emit(wx, wy, wz, 1, -1, bottom);
-        if (exposedLeft) emit(wx, wy, wz, 0, -1, side);
-        if (exposedRight) emit(wx, wy, wz, 0, 1, side);
-        if (exposedFront) emit(wx, wy, wz, 2, -1, side);
-        if (exposedBack) emit(wx, wy, wz, 2, 1, side);
+        if (exposedTop) emit(wx, wy, wz, 1, 1, top, x, y, z);
+        if (exposedBottom) emit(wx, wy, wz, 1, -1, bottom, x, y, z);
+        if (exposedLeft) emit(wx, wy, wz, 0, -1, side, x, y, z);
+        if (exposedRight) emit(wx, wy, wz, 0, 1, side, x, y, z);
+        if (exposedFront) emit(wx, wy, wz, 2, -1, side, x, y, z);
+        if (exposedBack) emit(wx, wy, wz, 2, 1, side, x, y, z);
       }
     }
   }
 
-  return { positions, normals, uvs, indices };
+  return { positions, normals, uvs, brightness, indices };
 };
 
 /**
@@ -192,19 +316,23 @@ export const buildBlockMesh = (
  * water material. Seam faces against adjacent blocks' water are culled by
  * the same generated `VoxelStore` border as the terrain mesh.
  */
-export const buildWaterMesh = (store: VoxelStore): MeshArrays => {
+export const buildWaterMesh = (
+  store: VoxelStore,
+  light: LightStore | null = null,
+): MeshArrays => {
   const [nx, ny, nz] = store.voxels;
   const scale = store.scale;
 
   const positions: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
+  const brightness: number[] = [];
   const indices: number[] = [];
 
   // A store whose fill reported no water voxel cannot expose a water face, and
   // sweeping a full volume to prove it is the point of this flag.
   if (!store.hasWater) {
-    return { positions, normals, uvs, indices };
+    return { positions, normals, uvs, brightness, indices };
   }
 
   const at = (x: number, y: number, z: number): number =>
@@ -216,10 +344,16 @@ export const buildWaterMesh = (store: VoxelStore): MeshArrays => {
     wz: number,
     axis: number,
     sign: number,
+    x: number,
+    y: number,
+    z: number,
   ): void => {
     const h = scale / 2;
     const base = positions.length / 3;
-    for (const [xo, yo, zo, u, v] of FACE_CORNERS[axis]) {
+    const corners = FACE_CORNERS[axis];
+    const cornerLight = faceBrightness(store, light, x, y, z, axis, sign);
+    for (let k = 0; k < corners.length; k++) {
+      const [xo, yo, zo, u, v] = corners[k];
       positions.push(
         axis === 0 ? wx + sign * h : wx + (xo - 0.5) * 2 * h,
         axis === 1 ? wy + sign * h : wy + (yo - 0.5) * 2 * h,
@@ -231,6 +365,7 @@ export const buildWaterMesh = (store: VoxelStore): MeshArrays => {
         axis === 2 ? sign : 0,
       );
       uvs.push(u, v);
+      brightness.push(cornerLight === null ? 1 : cornerLight[k]);
     }
     if (windsOutward(axis, sign)) {
       indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -270,17 +405,17 @@ export const buildWaterMesh = (store: VoxelStore): MeshArrays => {
         const wx = (x + 0.5 - nx / 2) * scale;
         const wy = (y + 0.5 - ny / 2) * scale;
         const wz = (z + 0.5 - nz / 2) * scale;
-        if (exposedTop) emit(wx, wy, wz, 1, 1);
-        if (exposedBottom) emit(wx, wy, wz, 1, -1);
-        if (exposedLeft) emit(wx, wy, wz, 0, -1);
-        if (exposedRight) emit(wx, wy, wz, 0, 1);
-        if (exposedFront) emit(wx, wy, wz, 2, -1);
-        if (exposedBack) emit(wx, wy, wz, 2, 1);
+        if (exposedTop) emit(wx, wy, wz, 1, 1, x, y, z);
+        if (exposedBottom) emit(wx, wy, wz, 1, -1, x, y, z);
+        if (exposedLeft) emit(wx, wy, wz, 0, -1, x, y, z);
+        if (exposedRight) emit(wx, wy, wz, 0, 1, x, y, z);
+        if (exposedFront) emit(wx, wy, wz, 2, -1, x, y, z);
+        if (exposedBack) emit(wx, wy, wz, 2, 1, x, y, z);
       }
     }
   }
 
-  return { positions, normals, uvs, indices };
+  return { positions, normals, uvs, brightness, indices };
 };
 
 /**
@@ -315,6 +450,9 @@ export const setGeometryData = (
   } else {
     geometry.deleteAttribute("uv");
   }
+  // The per-vertex brightness mults the surface colour; a material that does
+  // not reference it (the probe, the picker) simply never binds it.
+  attr("brightness", mesh.brightness, 1);
   // wrap as a BufferAttribute so `setIndex` keeps the Uint32 type without
   // rescanning the array for the 16-bit cutoff
   const idx =
@@ -367,6 +505,10 @@ export interface MeshBuildRequest {
   data: Uint8Array;
   /** Whether `data` holds any water voxel; an empty water sweep when false. */
   hasWater: boolean;
+  /** The block's sky light, one byte per padded voxel, matching `data`. */
+  skyLight: Uint8Array;
+  /** The block's block light, one byte per padded voxel, matching `data`. */
+  blockLight: Uint8Array;
   tileRects: VoxelTileConfig[];
 }
 

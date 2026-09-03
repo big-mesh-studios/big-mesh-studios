@@ -6,6 +6,11 @@ import {
   cloudVoxelAt,
 } from "./cloud-fill";
 import { caveFillNoise, DIRT_LAYER_DEPTH, isCaveVoxel } from "./cave-fill";
+import {
+  columnHasLava,
+  LAVA_DEPTH,
+  lavaFillNoise,
+} from "./lava-fill";
 import { heightAt, type TerrainConfig } from "./noise";
 
 export const VOXEL_AIR = 0;
@@ -14,6 +19,7 @@ export const VOXEL_DIRT = 2;
 export const VOXEL_WATER = 3;
 export const VOXEL_STONE = 4;
 export const VOXEL_CLOUD = 5;
+export const VOXEL_LAVA = 6;
 
 /**
  * How many rows of extra voxels each block stores beyond its interior volume,
@@ -373,6 +379,36 @@ export const fillStore = (
         ? -Infinity
         : cloudColumnCoverage(cloudNoise, worldX, worldZ);
     const gated = coverage >= cloud.coverageThreshold;
+    /**
+     * Which row of this column is the bottom of the deepest dry cave that dips
+     * far enough below the surface to hold lava, or `-Infinity` when the column
+     * gate (`columnHasLava`) says none of its caves pool. Found by scanning
+     * bottom-up for the lowest cave voxel whose neighbour above is also cave —
+     * the pocket floor, with room above to hold a pool — subject to the depth
+     * cut-off; water-filled caves are skipped when deciding the pool, so a
+     * cave pocket below sea level never floods with lava.
+     */
+    const lavaVy = (() => {
+      if (!columnHasLava(lavaFillNoise(config.seed), worldX, worldZ)) {
+        return -Infinity;
+      }
+      const depthCut = height - LAVA_DEPTH;
+      for (let vy2 = -p; vy2 < vyN + p - 1; vy2++) {
+        const wY = center[1] + (vy2 + 0.5 - vyN / 2) * voxelSize;
+        if (wY > depthCut) {
+          break;
+        }
+        if (!isCaveVoxel(caveNoise, worldX, wY, worldZ, height, config.amplitude)) {
+          continue;
+        }
+        const wYAbove =
+          center[1] + (vy2 + 1 + 0.5 - vyN / 2) * voxelSize;
+        if (isCaveVoxel(caveNoise, worldX, wYAbove, worldZ, height, config.amplitude)) {
+          return vy2;
+        }
+      }
+      return -Infinity;
+    })();
     /** The single-cell rule for one row: caves, surface voxel, dirt, stone, water, clouds. */
     const plainId = (vy: number, worldY: number): number => {
       const inCave = isCaveVoxel(
@@ -384,7 +420,12 @@ export const fillStore = (
         config.amplitude,
       );
       if (inCave) {
-        if (seaLevel !== undefined && vy >= top + 1 && vy <= waterBottom) {
+        const flooded =
+          seaLevel !== undefined && vy >= top + 1 && vy <= waterBottom;
+        if (vy === lavaVy && !flooded) {
+          return VOXEL_LAVA;
+        }
+        if (flooded) {
           return VOXEL_WATER;
         }
         return VOXEL_AIR;

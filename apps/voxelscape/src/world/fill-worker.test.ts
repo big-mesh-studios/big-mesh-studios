@@ -156,7 +156,10 @@ describe("fill worker protocol", () => {
       ),
     );
     const transfers = fillResultTransfers(result);
-    expect(transfers).toHaveLength(1);
-    expect(transfers[0]).toBeInstanceOf(ArrayBuffer);
+    // a store buffer, a sky-light buffer, and a block-light buffer
+    expect(transfers).toHaveLength(3);
+    for (const t of transfers) {
+      expect(t).toBeInstanceOf(ArrayBuffer);
+    }
   });
 });

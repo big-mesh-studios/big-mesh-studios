@@ -18,7 +18,7 @@
 // frustum, and by the hardware occlusion pass, which readbacks the window of
 // terrain a sampling of the view actually shows and skips the rest.
 import type { Node, UniformNode } from "@random-mesh/rmsl";
-import { float, pow, vec3, vec4 } from "@random-mesh/rmsl";
+import { float, mat3, pow, vec3, vec4 } from "@random-mesh/rmsl";
 import {
   BoxGeometry,
   Builder,
@@ -99,6 +99,8 @@ export class TriangleMaterial extends NodeMaterial {
   }
 
   protected setup(b: Builder, _scene: Scene): void {
+    void b.attribute("brightness", "float");
+    void b.varying("brightness", "float");
     this.maxDistanceUniform = b.materialUniform(
       "maxDistance",
       "float",
@@ -148,10 +150,29 @@ export class TriangleMaterial extends NodeMaterial {
     }
   }
 
+  protected buildVertexBody(b: Builder): Node<"vec4"> {
+    const brightnessVarying = b.varying("brightness", "float");
+    brightnessVarying.assign(b.attribute("brightness", "float"));
+    const position4 = vec4(b.position, 1);
+    const localPosition = b.instancing
+      ? b.instanceMatrix.mul(position4)
+      : position4;
+    const worldPosition = b.modelMatrix.mul(localPosition);
+    b.positionWorld.assign(worldPosition.xyz);
+    let normal: Node<"vec3"> = b.normal;
+    if (b.instancing) {
+      normal = mat3(b.instanceMatrix).mul(normal);
+    }
+    b.normalWorld.assign(b.normalMatrix.mul(normal).normalize());
+    b.uvVarying.assign(b.uv);
+    return b.projectionMatrix.mul(b.viewMatrix.mul(worldPosition));
+  }
+
   protected buildFragmentBody(b: Builder): Node<"vec4"> {
     const normal = b.normalWorld.normalize().toVar();
     const positionWorld = b.positionWorld.toVar();
     const uv = b.uvVarying.toVar();
+    const brightness = b.varying("brightness", "float").toVar();
 
     const lightDir =
       this.sunDirectionUniform ?? vec3(0.4, 0.7, 0.4).normalize();
@@ -175,7 +196,10 @@ export class TriangleMaterial extends NodeMaterial {
     if (this.tilesSampler !== undefined) {
       albedo = this.tilesSampler.texture(uv).rgb;
     }
-    const lit = albedo.mul(lighting).toVar();
+    // baked per-vertex light + ambient occlusion, floored so unlit niches are
+    // still a whisper of shape rather than pure black
+    const floorBright = brightness.max(float(0.1)).min(float(1)).toVar();
+    const lit = albedo.mul(lighting).mul(floorBright).toVar();
 
     const dist = positionWorld.sub(b.cameraPosition).length().toVar();
     const fogFactor = dist.smoothstep(fogNear, maxDist).toVar();
@@ -210,6 +234,8 @@ export class TriangleWaterMaterial extends NodeMaterial {
   }
 
   protected setup(b: Builder, _scene: Scene): void {
+    void b.attribute("brightness", "float");
+    void b.varying("brightness", "float");
     this.fogColorUniform = b.materialUniform(
       "fogColor",
       "vec3",
@@ -227,17 +253,37 @@ export class TriangleWaterMaterial extends NodeMaterial {
     );
   }
 
+  protected buildVertexBody(b: Builder): Node<"vec4"> {
+    const brightnessVarying = b.varying("brightness", "float");
+    brightnessVarying.assign(b.attribute("brightness", "float"));
+    const position4 = vec4(b.position, 1);
+    const localPosition = b.instancing
+      ? b.instanceMatrix.mul(position4)
+      : position4;
+    const worldPosition = b.modelMatrix.mul(localPosition);
+    b.positionWorld.assign(worldPosition.xyz);
+    let normal: Node<"vec3"> = b.normal;
+    if (b.instancing) {
+      normal = mat3(b.instanceMatrix).mul(normal);
+    }
+    b.normalWorld.assign(b.normalMatrix.mul(normal).normalize());
+    b.uvVarying.assign(b.uv);
+    return b.projectionMatrix.mul(b.viewMatrix.mul(worldPosition));
+  }
+
   protected buildFragmentBody(b: Builder): Node<"vec4"> {
     const skyColour = this.fogColorUniform ?? vec3(0.53, 0.81, 0.92);
     const waterColour = this.waterColorUniform ?? vec3(0.1, 0.35, 0.55);
     const waterOpacity = this.waterOpacityUniform ?? float(0.5);
+    const brightness = b.varying("brightness", "float").toVar();
 
     const positionWorld = b.positionWorld.toVar();
     const rayDirection = positionWorld.sub(b.cameraPosition).normalize();
     const fresnel = float(0.05)
       .add(float(0.95).mul(pow(float(1).sub(rayDirection.y.abs()), float(3))))
       .toVar();
-    const rgb = waterColour.mix(skyColour, fresnel);
+    const floorBright = brightness.max(float(0.1)).min(float(1)).toVar();
+    const rgb = waterColour.mix(skyColour, fresnel).mul(floorBright);
     const alpha = fresnel.add(waterOpacity).min(float(1));
     return vec4(rgb, alpha);
   }
@@ -419,12 +465,12 @@ type MergedArrays = {
   normals: Growable<Float32Array>;
   uvs: Growable<Float32Array>;
   indices: Growable<Uint32Array>;
-  /**
-   * Three 0..1 channels per vertex. The occlusion probe material reads this
+  /** Three 0..1 channels per vertex. The occlusion probe material reads this
    * as the chunk's flat colour, so the merged geometry carries what slot each
-   * run of its vertices belongs to.
-   */
+   * run of its vertices belongs to. */
   colors: Growable<Float32Array>;
+  /** One 0..1 brightness per vertex, carried from the per-chunk bake. */
+  brightness: Growable<Float32Array>;
 };
 
 const emptyArrays = (): MergedArrays => ({
@@ -433,6 +479,7 @@ const emptyArrays = (): MergedArrays => ({
   uvs: new Growable(Float32Array),
   indices: new Growable(Uint32Array),
   colors: new Growable(Float32Array),
+  brightness: new Growable(Float32Array),
 });
 
 /** One view-frustum plane as the `[a, b, c, d]` of `a*x + b*y + c*z + d`. */
@@ -498,6 +545,7 @@ const appendArrays = (
   into.colors.pushTris(color[0], color[1], color[2], vertices);
   into.normals.pushMany(a.normals);
   into.uvs.pushMany(a.uvs);
+  into.brightness.pushMany(a.brightness);
   into.indices.pushShifted(a.indices, base);
 };
 
@@ -883,6 +931,7 @@ export class TriangleRenderer {
       positions: state.terrain.positions.array(),
       normals: state.terrain.normals.array(),
       uvs: state.terrain.uvs.array(),
+      brightness: state.terrain.brightness.array(),
       indices: state.terrain.indices.array(),
     });
     setOcclusionColors(state.terrainGeometry, state.terrain.colors.array());
@@ -890,6 +939,7 @@ export class TriangleRenderer {
       positions: state.water.positions.array(),
       normals: state.water.normals.array(),
       uvs: state.water.uvs.array(),
+      brightness: state.water.brightness.array(),
       indices: state.water.indices.array(),
     });
     setOcclusionColors(state.waterGeometry, state.water.colors.array());

@@ -1,6 +1,7 @@
 import {
   applyLevelData,
   blockConfig,
+  fillLight,
   type Dim3,
   type WorldBlock,
 } from "./level-data";
@@ -144,8 +145,13 @@ export class FillClient {
         mightHaveVoxels: msg.mightHaveVoxels[j],
         hasWater: msg.hasWater[j],
         lod: msg.lods[j],
+        skyLight: msg.skyLight[j],
+        blockLight: msg.blockLight[j],
       });
       this.applyEdits(i);
+      // Edits can change what the block emits (lava placed or removed), so the
+      // worker's steady-state light is no longer current once the overlay land.
+      fillLight(this.blocks[i], this.terrain);
       this.onBlockChanged(i);
     }
   }
@@ -284,6 +290,7 @@ export class FillClient {
     const fill = this.customFillStore ?? fillStore;
     fill(block.store, block.center, this.terrain, borderSizes);
     this.applyEdits(i);
+    fillLight(block, this.terrain);
     this.onBlockChanged(i);
   }
 

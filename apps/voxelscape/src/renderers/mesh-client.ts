@@ -30,6 +30,7 @@ const EMPTY_MESH: MeshArrays = {
   positions: [],
   normals: [],
   uvs: [],
+  brightness: [],
   indices: [],
 };
 
@@ -243,10 +244,11 @@ export class MeshClient {
         continue;
       }
       const store = this.blocks[index].store;
+      const light = this.blocks[index].light;
       this.onMeshBuilt(
         index,
-        buildBlockMesh(store, tiles),
-        buildWaterMesh(store),
+        buildBlockMesh(store, tiles, light),
+        buildWaterMesh(store, light),
       );
     }
   }
@@ -264,17 +266,24 @@ export class MeshClient {
     this.generation[index]++;
     this.inFlight.set(index, this.generation[index]);
     const store = this.blocks[index].store;
+    const light = this.blocks[index].light;
     const request: MeshBuildRequest = {
       id: index,
       voxels: store.voxels,
       scale: store.scale,
       data: store.data.slice(),
       hasWater: store.hasWater,
+      skyLight: light.skylight.slice(),
+      blockLight: light.blocklight.slice(),
       tileRects: [...this.tilesById.values()],
     };
     const worker = this.workers[this.nextWorker % this.workers.length];
     this.nextWorker++;
-    worker?.postMessage(request, [request.data.buffer]);
+    worker?.postMessage(request, [
+      request.data.buffer,
+      request.skyLight.buffer,
+      request.blockLight.buffer,
+    ]);
   }
 
   dispose(): void {

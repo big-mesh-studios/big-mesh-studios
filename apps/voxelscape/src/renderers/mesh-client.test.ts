@@ -28,8 +28,8 @@ class FakeMeshWorker {
   deliver(sentIndex: number): void {
     const result: MeshBuildResult = {
       id: this.sent[sentIndex].id,
-      terrain: { positions: [], normals: [], uvs: [], indices: [] },
-      water: { positions: [], normals: [], uvs: [], indices: [] },
+      terrain: { positions: [], normals: [], uvs: [], brightness: [], indices: [] },
+      water: { positions: [], normals: [], uvs: [], brightness: [], indices: [] },
     };
     this.onmessage?.({ data: result } as MessageEvent);
   }

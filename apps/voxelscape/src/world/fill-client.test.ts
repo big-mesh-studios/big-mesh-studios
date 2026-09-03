@@ -40,6 +40,9 @@ class FakeFillWorker {
       lods: request.lods,
       storeData: request.indices.map(() => new Uint8Array(0)),
       mightHaveVoxels: request.indices.map(() => true),
+      hasWater: request.indices.map(() => false),
+      skyLight: request.indices.map(() => new Uint8Array(0)),
+      blockLight: request.indices.map(() => new Uint8Array(0)),
     };
     this.onmessage?.({ data: result } as MessageEvent);
   }

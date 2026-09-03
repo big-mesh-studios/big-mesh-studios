@@ -4,7 +4,11 @@
 // keyed, so it persists and syncs), then into the containing block's store.
 // A plain domain object: it knows how to edit voxels and keep the renderer
 // informed, not which item is wielded, nor that a console or network exists.
-import { type Dim3, type WorldBlock } from "../world/level-data";
+import type {
+  Dim3,
+  TerrainConfig,
+  WorldBlock,
+} from "../world/level-data";
 import {
   blockWorldVoxelRange,
   worldVoxelToLocal,
@@ -14,6 +18,8 @@ import {
 import { pickVoxel, type VoxelPick } from "../world/picker";
 import { BREAK_YIELD, ITEMS, type ItemId } from "./items";
 import { type Inventory } from "./inventory";
+import { fillBlockLight } from "../world/block-light";
+import { fillSkyLight } from "../world/sky-light";
 import {
   VOXEL_AIR,
   VOXEL_GRASS,
@@ -42,6 +48,12 @@ export interface EditingControllerParams {
   getLook: () => { origin: Dim3; direction: Dim3 };
   /** Returns the world voxels the player currently occupies, or null. */
   getPlayerVoxels: () => WorldVoxel[] | null;
+  /**
+   * The terrain config anchoring sky-light recomputation after an edit.
+   * Omitting it leaves sky light unchanged on key (block-light emission still
+   * recomputes), which is enough for edits that only move an emissive block.
+   */
+  terrain?: TerrainConfig;
 }
 
 const findBlockIndex = (blocks: WorldBlock[], w: WorldVoxel): number => {
@@ -74,6 +86,7 @@ export class EditingController {
   ) => void;
   private readonly getLook: () => { origin: Dim3; direction: Dim3 };
   private readonly getPlayerVoxels: () => WorldVoxel[] | null;
+  private readonly terrain?: TerrainConfig;
 
   constructor(params: EditingControllerParams) {
     this.blocks = params.blocks;
@@ -84,6 +97,7 @@ export class EditingController {
     this.onEdit = params.onEdit ?? (() => {});
     this.getLook = params.getLook;
     this.getPlayerVoxels = params.getPlayerVoxels;
+    this.terrain = params.terrain;
   }
 
   /** Recomputes the voxel under the crosshair from the current camera look. */
@@ -195,6 +209,13 @@ export class EditingController {
         block.store.hasWater = true;
       } else if (id !== VOXEL_AIR) {
         block.store.mightHaveVoxels = true;
+      }
+      // The edited voxel changes what the block emits (and, with terrain,
+      // what the sky reaches), so its light is recomputed before the mesh
+      // that shades it is rebuilt.
+      fillBlockLight(block.store, block.light);
+      if (this.terrain !== undefined) {
+        fillSkyLight(block.store, block.light, block.center, this.terrain);
       }
       holders.push(i);
     }

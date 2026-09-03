@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { blocksQuery, getWorldHeight } from "./level-data";
+import { LightStore } from "./light-store";
 import { DEFAULT_TERRAIN } from "./noise";
 import {
   VOXEL_AIR,
@@ -314,7 +315,9 @@ describe("getWorldHeight", () => {
         store.set(x, 3, z, VOXEL_WATER);
       }
     }
-    const blocks = [{ center: [0, 0, 0] as [number, number, number], store }];
+    const blocks = [
+      { center: [0, 0, 0] as [number, number, number], store, light: new LightStore(store.voxels) },
+    ];
     // voxel (1, vy, 1) has world xz = -1; the water row 3 would be world y 4,
     // the lakebed row 2 is world y 2 -> must return the lakebed
     expect(getWorldHeight(blocksQuery(blocks), -1, -1)).toBe(2);

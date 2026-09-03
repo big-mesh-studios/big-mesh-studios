@@ -44,6 +44,10 @@ export interface FillBatchResult {
   mightHaveVoxels: boolean[];
   /** Whether each block holds water; see `VoxelStore.hasWater`. */
   hasWater: boolean[];
+  /** Each block's sky light channel, one array per block. */
+  skyLight: Uint8Array[];
+  /** Each block's block light channel, one array per block. */
+  blockLight: Uint8Array[];
 }
 
 export type FillWorkerMessage =
@@ -89,6 +93,8 @@ export async function* buildFillResults(
       storeData: [data.storeData],
       mightHaveVoxels: [data.mightHaveVoxels],
       hasWater: [data.hasWater],
+      skyLight: [data.skyLight],
+      blockLight: [data.blockLight],
     };
   }
 }
@@ -100,6 +106,9 @@ export const fillResultTransfers = (
   const transfer: Transferable[] = [];
   for (let i = 0; i < result.storeData.length; i++) {
     transfer.push(result.storeData[i].buffer);
+  }
+  for (let i = 0; i < result.skyLight.length; i++) {
+    transfer.push(result.skyLight[i].buffer, result.blockLight[i].buffer);
   }
   return transfer;
 };
