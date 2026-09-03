@@ -14,6 +14,14 @@ import {
  */
 const MAX_BUILDS_PER_DRAIN = 12;
 
+/**
+ * Cap on pooled snapshot buffers, in buffers (not blocks): the pool never holds
+ * more than this many `Uint8Array`s, so a scroll's burst of rebuilds cannot
+ * grow main-thread memory without bound once the cap is reached and buffers
+ * are handed back to the garbage collector instead.
+ */
+const MAX_BUFFER_POOL_SOURCES = 2 * MAX_BUILDS_PER_DRAIN;
+
 /** How many mesh workers to run: a small pool parallelizes the burst of builds a sphere scroll queues. */
 const workerCount = (): number => {
   if (
@@ -84,6 +92,13 @@ export class MeshClient {
   /** The generation each block's outstanding worker request was made at. */
   private readonly inFlight = new Map<number, number>();
   /**
+   * Recycled snapshot buffers returned by the mesh workers, sized per level of
+   * detail. A `send` draws from here instead of allocating, so a scroll's
+   * burst of rebuilds reuses main-thread buffers rather than churning the
+   * garbage collector.
+   */
+  private readonly bufferPool: Uint8Array[] = [];
+  /**
    * The face tile rectangles baked into each vertex's texture coordinates,
    * empty until the atlas is read. A mesh built while it is empty is textured
    * from nothing, which is why `setTiles` invalidates every block.
@@ -135,10 +150,19 @@ export class MeshClient {
       return;
     }
     this.inFlight.delete(msg.id);
+    // The block changed after this request was sent, so the built geometry is
+    // stale and dropped — but the snapshot buffers it was built from are still
+    // disposable copies, so they go back to the pool either way.
     if (requestedAt !== this.generation[msg.id]) {
-      return; // the block changed after this request was sent
+      this.releaseBuffer(msg.data);
+      this.releaseBuffer(msg.skyLight);
+      this.releaseBuffer(msg.blockLight);
+      return;
     }
     this.onMeshBuilt(msg.id, msg.terrain, msg.water);
+    this.releaseBuffer(msg.data);
+    this.releaseBuffer(msg.skyLight);
+    this.releaseBuffer(msg.blockLight);
   }
 
   private onWorkerError(failed: Worker): void {
@@ -267,14 +291,20 @@ export class MeshClient {
     this.inFlight.set(index, this.generation[index]);
     const store = this.blocks[index].store;
     const light = this.blocks[index].light;
+    const data = this.acquireBuffer(store.data.byteLength);
+    data.set(store.data);
+    const skyLight = this.acquireBuffer(light.skylight.byteLength);
+    skyLight.set(light.skylight);
+    const blockLight = this.acquireBuffer(light.blocklight.byteLength);
+    blockLight.set(light.blocklight);
     const request: MeshBuildRequest = {
       id: index,
       voxels: store.voxels,
       scale: store.scale,
-      data: store.data.slice(),
+      data,
       hasWater: store.hasWater,
-      skyLight: light.skylight.slice(),
-      blockLight: light.blocklight.slice(),
+      skyLight,
+      blockLight,
       tileRects: [...this.tilesById.values()],
     };
     const worker = this.workers[this.nextWorker % this.workers.length];
@@ -284,6 +314,28 @@ export class MeshClient {
       request.skyLight.buffer,
       request.blockLight.buffer,
     ]);
+  }
+
+  /**
+   * Returns a snapshot buffer of exactly `size` bytes: a pooled one when the
+   * pool holds one of that size, a fresh allocation otherwise.
+   */
+  private acquireBuffer(size: number): Uint8Array {
+    const i = this.bufferPool.findIndex((buf) => buf.byteLength === size);
+    if (i >= 0) {
+      return this.bufferPool.splice(i, 1)[0];
+    }
+    return new Uint8Array(size);
+  }
+
+  /**
+   * Returns a consumed snapshot buffer to the pool, unless the pool is already
+   * at its cap, in which case the buffer is left for the garbage collector.
+   */
+  private releaseBuffer(buf: Uint8Array): void {
+    if (this.bufferPool.length < MAX_BUFFER_POOL_SOURCES) {
+      this.bufferPool.push(buf);
+    }
   }
 
   dispose(): void {

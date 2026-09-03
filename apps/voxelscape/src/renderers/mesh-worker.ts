@@ -55,6 +55,9 @@ workerSelf.onmessage = (ev: MessageEvent<MeshBuildRequest>) => {
     id,
     terrain: toTyped(buildBlockMesh(store, tileRects, light)),
     water: toTyped(buildWaterMesh(store, light)),
+    data,
+    skyLight,
+    blockLight,
   };
   const transfer: Transferable[] = [];
   for (const mesh of [result.terrain, result.water]) {
@@ -73,5 +76,12 @@ workerSelf.onmessage = (ev: MessageEvent<MeshBuildRequest>) => {
       indices.buffer,
     );
   }
+  // Forward the input buffers back so the caller can recycle them into its own
+  // pool instead of letting them be garbage-collected.
+  transfer.push(
+    store.data.buffer,
+    light.skylight.buffer,
+    light.blocklight.buffer,
+  );
   workerSelf.postMessage(result, transfer);
 };

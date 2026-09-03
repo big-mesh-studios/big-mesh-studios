@@ -12,11 +12,7 @@
 // neighbour's live store to resolve a seam.
 import { BufferAttribute, BufferGeometry } from "@random-mesh/rmsl/scene";
 import type { TileRect, VoxelTileConfig } from "./atlas";
-import {
-  VOXEL_AIR,
-  VOXEL_WATER,
-  type VoxelStore,
-} from "../world/voxel-store";
+import { VOXEL_AIR, VOXEL_WATER, type VoxelStore } from "../world/voxel-store";
 import { LIGHT_TO_UNIT, type LightStore } from "../world/light-store";
 
 /**
@@ -103,7 +99,12 @@ const cellLight = (
  * Whether a padded voxel blocks sight: anything that neither air nor water
  * transmits, and that a face's corner occlusion therefore counts against.
  */
-const isOpaque = (store: VoxelStore, x: number, y: number, z: number): boolean => {
+const isOpaque = (
+  store: VoxelStore,
+  x: number,
+  y: number,
+  z: number,
+): boolean => {
   const id = store.atPadded(x, y, z);
   return id !== VOXEL_AIR && id !== VOXEL_WATER;
 };
@@ -516,4 +517,10 @@ export interface MeshBuildResult {
   id: number;
   terrain: MeshArrays;
   water: MeshArrays;
+  /** The voxel buffer the worker read, echoed back so the caller can reuse it. */
+  data: Uint8Array;
+  /** The sky light channel the worker read, echoed back for reuse. */
+  skyLight: Uint8Array;
+  /** The block light channel the worker read, echoed back for reuse. */
+  blockLight: Uint8Array;
 }
