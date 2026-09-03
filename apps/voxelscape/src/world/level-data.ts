@@ -5,12 +5,15 @@ import { DEFAULT_TERRAIN, heightAt, type TerrainConfig } from "./noise";
 import {
   VOXEL_AIR,
   VOXEL_CLOUD,
+  VOXEL_LOG,
+  VOXEL_LEAVES,
   VOXEL_WATER,
   VoxelStore,
   fillStore,
   type BorderSizes,
   type FillStoreFn,
 } from "./voxel-store";
+import { placeTrees } from "./tree-fill";
 import { LightStore } from "./light-store";
 import { fillSkyLight } from "./sky-light";
 import { fillBlockLight } from "./block-light";
@@ -111,6 +114,13 @@ export const buildBlock = (params: {
     params.center,
     params.terrain ?? DEFAULT_TERRAIN,
     params.borderSizes,
+  );
+  placeTrees(
+    block.store,
+    params.center,
+    params.terrain ?? DEFAULT_TERRAIN,
+    VOXEL_LOG,
+    VOXEL_LEAVES,
   );
   fillLight(block, params.terrain ?? DEFAULT_TERRAIN);
   return block;

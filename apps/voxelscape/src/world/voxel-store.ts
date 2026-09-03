@@ -16,6 +16,8 @@ export const VOXEL_WATER = 3;
 export const VOXEL_STONE = 4;
 export const VOXEL_CLOUD = 5;
 export const VOXEL_LAVA = 6;
+export const VOXEL_LOG = 7;
+export const VOXEL_LEAVES = 8;
 
 /**
  * How many rows of extra voxels each block stores beyond its interior volume,
