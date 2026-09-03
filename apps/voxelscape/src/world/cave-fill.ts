@@ -9,7 +9,7 @@ export const FILL_CAVE_SEED_MIX = 0xca7e5;
 export const FILL_CAVE_FREQUENCY = 1 / 200;
 
 /** fBm octaves of cave noise. */
-export const FILL_CAVE_OCTAVES = 2;
+export const FILL_CAVE_OCTAVES = 1;
 
 /** Threshold for 3D worm noise to carve a cave. */
 /**

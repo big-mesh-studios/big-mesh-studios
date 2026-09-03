@@ -66,6 +66,7 @@ export class PerlinNoise2D {
     let maxValue = 0;
 
     for (let i = 0; i < octaves; i++) {
+      if (amplitude < 0.001) break;
       value += amplitude * this.noise(x * frequency, z * frequency);
       maxValue += amplitude;
       amplitude *= 0.5;
@@ -195,6 +196,7 @@ export class PerlinNoise3D {
     let maxValue = 0;
 
     for (let i = 0; i < octaves; i++) {
+      if (amplitude < 0.001) break;
       value +=
         amplitude * this.noise(x * frequency, y * frequency, z * frequency);
       maxValue += amplitude;
