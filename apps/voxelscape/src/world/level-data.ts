@@ -7,7 +7,9 @@ import {
   VOXEL_CLOUD,
   VOXEL_LOG,
   VOXEL_LEAVES,
-  VOXEL_WATER,
+  isFluidId,
+  isLavaId,
+  isWaterId,
   VoxelStore,
   fillStore,
   type BorderSizes,
@@ -204,7 +206,7 @@ const topSolidYInColumn = (
   );
   for (let vy = vyN - 1; vy >= 0; --vy) {
     const id = store.get(vx, vy, vz);
-    if (id !== 0 && id !== VOXEL_WATER && id !== VOXEL_CLOUD) {
+    if (id !== 0 && !isFluidId(id) && id !== VOXEL_CLOUD) {
       return block.center[1] + (vy + 1 - vyN / 2) * scale;
     }
   }
@@ -315,8 +317,8 @@ export const getGroundHeightBelow = (
     );
     for (let vy = startVy; vy >= 0; --vy) {
       const id = store.get(vx, vy, vz);
-      // skip water so the player stands on the lakebed (or shore) under water
-      if (id !== 0 && id !== VOXEL_WATER) {
+      // skip fluids so the player stands on the lakebed (or shore) under water
+      if (id !== 0 && !isFluidId(id)) {
         return block.center[1] + (vy + 1 - vyN / 2) * scale;
       }
     }
@@ -366,7 +368,9 @@ export const isSolidAt = (
   worldZ: number,
 ): boolean => {
   const id = voxelIdAt(query, worldX, worldY, worldZ);
-  return id !== VOXEL_AIR && id !== VOXEL_WATER;
+  // Water and lava are both fluids now: the player swims through water and is
+  // hurt by lava, and neither walls the player in.
+  return id !== VOXEL_AIR && !isFluidId(id);
 };
 
 /**
@@ -383,7 +387,18 @@ export const isWaterAt = (
   worldX: number,
   worldY: number,
   worldZ: number,
-): boolean => voxelIdAt(query, worldX, worldY, worldZ) === VOXEL_WATER;
+): boolean => isWaterId(voxelIdAt(query, worldX, worldY, worldZ));
+
+/**
+ * Whether the voxel at a world-space point is lava (any of its states): the
+ * hazard query the player's contact damage is resolved against.
+ */
+export const isLavaAt = (
+  query: BlockQuery,
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+): boolean => isLavaId(voxelIdAt(query, worldX, worldY, worldZ));
 
 /** The worker-facing output of one block generation, ready to transfer. */
 export interface BlockData {

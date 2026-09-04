@@ -42,6 +42,7 @@ describe("Inventory", () => {
       { id: "dirt", name: "Dirt", count: 2, stackable: true },
       { id: "stone", name: "Stone", count: 0, stackable: true },
       { id: "cloud", name: "Cloud", count: 0, stackable: true },
+      { id: "bucket", name: "Bucket", count: 1, stackable: false },
       { id: "sword", name: "Sword", count: 1, stackable: false },
     ]);
   });
@@ -53,6 +54,8 @@ describe("Inventory", () => {
     expect(inv.selectedId).toBe("stone");
     expect(inv.selectStep(1)).toBe(true);
     expect(inv.selectedId).toBe("cloud");
+    expect(inv.selectStep(1)).toBe(true);
+    expect(inv.selectedId).toBe("bucket");
     expect(inv.selectStep(1)).toBe(true);
     expect(inv.selectedId).toBe("sword");
     expect(inv.selectStep(1)).toBe(true);
@@ -70,6 +73,8 @@ describe("Inventory", () => {
     expect(inv.selectSlot(2)).toBe(true);
     expect(inv.selectedId).toBe("cloud");
     expect(inv.selectSlot(3)).toBe(true);
+    expect(inv.selectedId).toBe("bucket");
+    expect(inv.selectSlot(4)).toBe(true);
     expect(inv.selectedId).toBe("sword");
     expect(inv.selectSlot(ITEM_ORDER.length)).toBe(false);
   });

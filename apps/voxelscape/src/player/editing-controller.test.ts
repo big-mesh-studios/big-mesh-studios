@@ -4,7 +4,13 @@ import { EditingController } from "./editing-controller";
 import { Inventory } from "./inventory";
 import { buildBlock } from "../world/level-data";
 import { EditLayer } from "../world/edit-layer";
-import { VOXEL_GRASS, VOXEL_DIRT, VOXEL_AIR } from "../world/voxel-store";
+import {
+  VOXEL_GRASS,
+  VOXEL_DIRT,
+  VOXEL_AIR,
+  VOXEL_WATER,
+  VOXEL_LAVA,
+} from "../world/voxel-store";
 
 /** World voxel of local index `l` for a block at the origin (n/2 = 32 per axis). */
 const wv = (lx: number, ly: number, lz: number): [number, number, number] => [
@@ -76,6 +82,50 @@ const downOntoTarget = (): [
     [0, -1, 0],
   ];
 };
+
+describe("EditingController fluid operations (the bucket)", () => {
+  it("scoops a water source, leaving air and reporting the write", () => {
+    const h = makeHarness();
+    const w = wv(32, 40, 32);
+    h.block.store.set(32, 40, 32, VOXEL_WATER);
+    const onVoxelWritten = vi.fn();
+    h.controller = new EditingController({
+      blocks: [h.block],
+      layer: h.layer,
+      inventory: h.inventory,
+      onBlocksEdited: h.onBlocksEdited,
+      onEditRecorded: h.onEditRecorded,
+      onEdit: h.onEdit,
+      onVoxelWritten,
+      getLook: () => ({ origin: [0, 0, 0], direction: [0, -1, 0] }),
+      getPlayerVoxels: () => null,
+    });
+    expect(h.controller.isScoopable(w)).toBe(true);
+    expect(h.controller.sourceKind(w)).toBe("water");
+    expect(h.controller.scoop(w)).toBe(true);
+    expect(h.layer.get(w)?.id).toBe(VOXEL_AIR);
+    expect(onVoxelWritten).toHaveBeenCalledWith(w, VOXEL_AIR);
+  });
+
+  it("refuses to scoop flowing water or air", () => {
+    const h = makeHarness();
+    const w = wv(32, 40, 32);
+    h.block.store.set(32, 40, 32, VOXEL_LAVA);
+    expect(h.controller.sourceKind(w)).toBe("lava");
+    h.block.store.set(32, 40, 32, 9); // a flowing level-1 water cell
+    expect(h.controller.isScoopable(w)).toBe(false);
+  });
+
+  it("pours a source into an open cell and refuses an occupied one", () => {
+    const h = makeHarness();
+    const w = wv(32, 40, 32);
+    const place = wv(31, 40, 32); // open air beside the voxel under test
+    expect(h.controller.pourFluid("water", place)).toBe(true);
+    expect(h.layer.get(place)?.id).toBe(VOXEL_WATER);
+    // The cell holding the grass block is occupied: no pour.
+    expect(h.controller.pourFluid("lava", w)).toBe(false);
+  });
+});
 
 describe("EditingController.breakBlock", () => {
   it("breaks a collectable voxel into the inventory as dirt", () => {

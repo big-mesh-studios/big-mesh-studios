@@ -38,6 +38,16 @@ export const VOXEL_TILES: Record<number, VoxelTiles> = {
   6: { top: "lava", side: "lava", bottom: "lava" },
   7: { top: "trunk_top", side: "trunk_side", bottom: "trunk_bottom" },
   8: { top: "leaves", side: "leaves", bottom: "leaves" },
+  // Flowing lava is textured by the terrain mesh like its source, at whatever
+  // partial height its level calls for; water flows are drawn by the water mesh.
+  16: { top: "lava", side: "lava", bottom: "lava" },
+  17: { top: "lava", side: "lava", bottom: "lava" },
+  18: { top: "lava", side: "lava", bottom: "lava" },
+  19: { top: "lava", side: "lava", bottom: "lava" },
+  20: { top: "lava", side: "lava", bottom: "lava" },
+  21: { top: "lava", side: "lava", bottom: "lava" },
+  22: { top: "lava", side: "lava", bottom: "lava" },
+  24: { top: "lava", side: "lava", bottom: "lava" },
 };
 
 export const parseTileAtlasXml = (xmlText: string): Map<string, SubTexture> => {

@@ -19,6 +19,59 @@ export const VOXEL_LAVA = 6;
 export const VOXEL_LOG = 7;
 export const VOXEL_LEAVES = 8;
 
+// Flowing water and lava. A fluid voxel is its kind's source id at level 0
+// (a full, stationary body cell) or one of the level ids below, level k being
+// k cells of spread from a source. The water/lava falling ids mark the cells
+// of a falling column: full-height, mobile, and on landing they become source
+// cells, so the pool at the foot of a fall spreads and can be scooped.
+export const VOXEL_WATER_LEVEL_1 = 9;
+export const VOXEL_WATER_LEVEL_2 = 10;
+export const VOXEL_WATER_LEVEL_3 = 11;
+export const VOXEL_WATER_LEVEL_4 = 12;
+export const VOXEL_WATER_LEVEL_5 = 13;
+export const VOXEL_WATER_LEVEL_6 = 14;
+export const VOXEL_WATER_LEVEL_7 = 15;
+export const VOXEL_LAVA_LEVEL_1 = 16;
+export const VOXEL_LAVA_LEVEL_2 = 17;
+export const VOXEL_LAVA_LEVEL_3 = 18;
+export const VOXEL_LAVA_LEVEL_4 = 19;
+export const VOXEL_LAVA_LEVEL_5 = 20;
+export const VOXEL_LAVA_LEVEL_6 = 21;
+export const VOXEL_LAVA_LEVEL_7 = 22;
+export const VOXEL_WATER_FALLING = 23;
+export const VOXEL_LAVA_FALLING = 24;
+
+/** The greatest spread distance a fluid level encodes; see `fluid.ts`. */
+export const FLUID_MAX_LEVEL = 7;
+
+export const isWaterId = (id: number): boolean =>
+  id === VOXEL_WATER ||
+  (id >= VOXEL_WATER_LEVEL_1 && id <= VOXEL_WATER_LEVEL_7) ||
+  id === VOXEL_WATER_FALLING;
+
+export const isLavaId = (id: number): boolean =>
+  id === VOXEL_LAVA ||
+  (id >= VOXEL_LAVA_LEVEL_1 && id <= VOXEL_LAVA_LEVEL_7) ||
+  id === VOXEL_LAVA_FALLING;
+
+export const isFluidId = (id: number): boolean => isWaterId(id) || isLavaId(id);
+
+/**
+ * The spread level a fluid voxel carries: 0 for a source (or a falling cell,
+ * which carries none until it lands) and 1..`FLUID_MAX_LEVEL` for flowing
+ * cells. Non-fluids read as 0, so callers can use it unguarded.
+ */
+export const fluidLevel = (id: number): number => {
+  if (isWaterId(id) || isLavaId(id)) {
+    return id >= VOXEL_WATER_LEVEL_1 && id <= VOXEL_WATER_LEVEL_7
+      ? id - VOXEL_WATER_LEVEL_1 + 1
+      : id >= VOXEL_LAVA_LEVEL_1 && id <= VOXEL_LAVA_LEVEL_7
+        ? id - VOXEL_LAVA_LEVEL_1 + 1
+        : 0;
+  }
+  return 0;
+};
+
 /**
  * How many rows of extra voxels each block stores beyond its interior volume,
  * on all six faces. The border is generated from the same world-coordinate
@@ -72,6 +125,16 @@ export class VoxelStore {
    * it; a dry block carrying the flag only costs an empty water build.
    */
   hasWater = false;
+  /**
+   * Whether this block holds any fluid that terrain fill did not place —
+   * flowing or falling water, lava, or a fluid written by an edit. Only such
+   * a block can need a wake pass after its data is regenerated; a block of
+   * purely generated ocean water never carries this and is left asleep.
+   *
+   * Wrong only ever in the safe direction: a calm block that says it may be
+   * active only costs a wake scan that schedules nothing.
+   */
+  hasFlowing = false;
 
   constructor(params: { dims: Dim3; voxels: Dim3; scale: number }) {
     this.dims = params.dims;
@@ -146,10 +209,13 @@ export class VoxelStore {
   set(x: number, y: number, z: number, val: number): void {
     if (this.inBounds(x, y, z)) {
       this.data[this.index(x, y, z)] = val;
-      if (val === VOXEL_WATER) {
+      if (isWaterId(val)) {
         this.hasWater = true;
       } else if (val !== VOXEL_AIR) {
         this.mightHaveVoxels = true;
+      }
+      if (isFluidId(val)) {
+        this.hasFlowing = true;
       }
     }
   }
@@ -158,6 +224,7 @@ export class VoxelStore {
     this.data.fill(VOXEL_AIR);
     this.mightHaveVoxels = false;
     this.hasWater = false;
+    this.hasFlowing = false;
   }
 }
 
@@ -549,7 +616,7 @@ export const fillStore = (
               : transitionId(vy, worldY);
       }
       store.data[store.paddedIndex(vx, vy, vz)] = id;
-      if (id === VOXEL_WATER) {
+      if (isWaterId(id)) {
         store.hasWater = true;
       } else if (id !== VOXEL_AIR) {
         store.mightHaveVoxels = true;

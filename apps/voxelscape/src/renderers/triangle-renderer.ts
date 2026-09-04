@@ -227,7 +227,9 @@ export class TriangleWaterMaterial extends NodeMaterial {
   constructor() {
     super();
     this.transparent = true;
-    this.depthWrite = false;
+    // The water surface writes depth so surfaces behind it (other water, the
+    // player under the surface) resolve against it rather than drawing over.
+    this.depthWrite = true;
     // The water surface's triangle are wound toward their exposed side, and
     // its underside is never seen — the sea floor's tint covers that view.
     this.side = Side.FrontSide;

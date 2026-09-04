@@ -4,15 +4,27 @@
 // the same padded buffer as the store's voxels so the mesh builders read a
 // corner's light across the meshing border exactly as they read its voxel.
 import type { Dim3 } from "./level-data";
-import { VOXEL_LAVA, VOXEL_PADDING, type VoxelStore } from "./voxel-store";
+import {
+  VOXEL_LAVA,
+  VOXEL_LAVA_LEVEL_1,
+  VOXEL_LAVA_LEVEL_7,
+  VOXEL_LAVA_FALLING,
+  VOXEL_PADDING,
+  type VoxelStore,
+} from "./voxel-store";
 
 /** The highest light level; light falls off by one per propagated voxel. */
 export const MAX_LIGHT = 15;
 
 /** Light levels per voxel id for the emissive blocks that seed block light. */
-export const EMISSIVE_LEVEL: Record<number, number> = {
-  [VOXEL_LAVA]: MAX_LIGHT,
-};
+export const EMISSIVE_LEVEL: Record<number, number> = (() => {
+  const levels: Record<number, number> = { [VOXEL_LAVA]: MAX_LIGHT };
+  for (let id = VOXEL_LAVA_LEVEL_1; id <= VOXEL_LAVA_LEVEL_7; id++) {
+    levels[id] = MAX_LIGHT;
+  }
+  levels[VOXEL_LAVA_FALLING] = MAX_LIGHT;
+  return levels;
+})();
 
 /**
  * The rendered strength of the highest light level, so a light level `l`

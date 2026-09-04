@@ -24,7 +24,10 @@ import {
   VOXEL_AIR,
   VOXEL_GRASS,
   VOXEL_DIRT,
+  VOXEL_LAVA,
   VOXEL_WATER,
+  isFluidId,
+  isWaterId,
 } from "../world/voxel-store";
 
 export interface EditingControllerParams {
@@ -48,6 +51,11 @@ export interface EditingControllerParams {
   getLook: () => { origin: Dim3; direction: Dim3 };
   /** Returns the world voxels the player currently occupies, or null. */
   getPlayerVoxels: () => WorldVoxel[] | null;
+  /**
+   * Called with each written voxel and its new id after an edit, so the flow
+   * simulation can wake the fluid neighbours the change may set moving.
+   */
+  onVoxelWritten?: (w: WorldVoxel, id: number) => void;
   /**
    * The terrain config anchoring sky-light recomputation after an edit.
    * Omitting it leaves sky light unchanged on key (block-light emission still
@@ -86,6 +94,7 @@ export class EditingController {
   ) => void;
   private readonly getLook: () => { origin: Dim3; direction: Dim3 };
   private readonly getPlayerVoxels: () => WorldVoxel[] | null;
+  private readonly onVoxelWritten: (w: WorldVoxel, id: number) => void;
   private readonly terrain?: TerrainConfig;
 
   constructor(params: EditingControllerParams) {
@@ -97,6 +106,7 @@ export class EditingController {
     this.onEdit = params.onEdit ?? (() => {});
     this.getLook = params.getLook;
     this.getPlayerVoxels = params.getPlayerVoxels;
+    this.onVoxelWritten = params.onVoxelWritten ?? (() => {});
     this.terrain = params.terrain;
   }
 
@@ -158,7 +168,12 @@ export class EditingController {
     if (this.overlapsPlayer(place)) {
       return "can't place inside yourself";
     }
-    if (this.readVoxel(place) !== VOXEL_AIR) {
+    // A fluid cell is replaceable — dropping a block into shallow water
+    // displaces it, as in Minecraft — but a solid one is not.
+    if (
+      this.readVoxel(place) !== VOXEL_AIR &&
+      !isFluidId(this.readVoxel(place))
+    ) {
       return "that space is occupied";
     }
     const [x, y, z] = place;
@@ -168,6 +183,69 @@ export class EditingController {
     this.inventory.remove(item, 1);
     this.onEditRecorded();
     return `placed ${ITEMS[item].name} at ${x},${y},${z}`;
+  }
+
+  /**
+   * Whether the voxel under the crosshair is a scoopable fluid source — water
+   * or lava at level 0. Only a source fills a bucket, as in Minecraft: dipping
+   * into flowing water takes nothing.
+   */
+  isScoopable(target: WorldVoxel | null): boolean {
+    if (target === null) {
+      return false;
+    }
+    const id = this.readVoxel(target);
+    return id === VOXEL_WATER || id === VOXEL_LAVA;
+  }
+
+  /**
+   * Which fluid kind a scoopable source voxel holds, or null when the voxel is
+   * not a scoopable source — what a bucket fills with.
+   */
+  sourceKind(target: WorldVoxel | null): "water" | "lava" | null {
+    if (target === null) {
+      return null;
+    }
+    const id = this.readVoxel(target);
+    return id === VOXEL_WATER ? "water" : id === VOXEL_LAVA ? "lava" : null;
+  }
+
+  /**
+   * Scoops the fluid source at `target` into nothing (the bucket is the tool
+   * that then holds it), leaving the cell air so the surrounding fluid can
+   * relax around the gap.
+   *
+   * @returns True when a source was removed.
+   */
+  scoop(target: WorldVoxel | null): boolean {
+    if (!this.isScoopable(target)) {
+      return false;
+    }
+    this.applyEdit(target as WorldVoxel, VOXEL_AIR);
+    this.onEditRecorded();
+    return true;
+  }
+
+  /**
+   * Pours a fluid source of `kind` into `place`, the cell against the targeted
+   * face, recording the source as an edit so it persists and syncs. The flow
+   * simulation spreads it from there.
+   *
+   * @returns True when a source was placed.
+   */
+  pourFluid(kind: "water" | "lava", place: WorldVoxel | null): boolean {
+    if (place === null || findBlockIndex(this.blocks, place) < 0) {
+      return false;
+    }
+    if (this.overlapsPlayer(place)) {
+      return false;
+    }
+    if (this.readVoxel(place) !== VOXEL_AIR) {
+      return false;
+    }
+    this.applyEdit(place, kind === "water" ? VOXEL_WATER : VOXEL_LAVA);
+    this.onEditRecorded();
+    return true;
   }
 
   /** Reads the current voxel id at a world voxel from the containing store. */
@@ -192,6 +270,7 @@ export class EditingController {
       return;
     }
     this.onEdit(w, id, updatedAt);
+    this.onVoxelWritten(w, id);
     // A voxel on a block's boundary is held by that block and by every block
     // whose meshing border reaches it — up to eight at a corner. Each culls
     // its seam faces against its own copy, so every copy is written and every
@@ -205,10 +284,13 @@ export class EditingController {
         continue;
       }
       block.store.data[block.store.paddedIndex(x, y, z)] = id;
-      if (id === VOXEL_WATER) {
+      if (isWaterId(id)) {
         block.store.hasWater = true;
       } else if (id !== VOXEL_AIR) {
         block.store.mightHaveVoxels = true;
+      }
+      if (isFluidId(id)) {
+        block.store.hasFlowing = true;
       }
       // The edited voxel changes what the block emits (and, with terrain,
       // what the sky reaches), so its light is recomputed before the mesh

@@ -10,7 +10,7 @@ import { MAX_LIGHT, type LightChannel, type LightStore } from "./light-store";
 import {
   VOXEL_AIR,
   VOXEL_CLOUD,
-  VOXEL_WATER,
+  isWaterId,
   type VoxelStore,
 } from "./voxel-store";
 
@@ -26,7 +26,7 @@ export interface LightCursor {
 
 /** Whether light may rest in a voxel of this id: air, water and cloud transmit, every solid id blocks. */
 export const transmitsLight = (id: number): boolean =>
-  id === VOXEL_AIR || id === VOXEL_WATER || id === VOXEL_CLOUD;
+  id === VOXEL_AIR || isWaterId(id) || id === VOXEL_CLOUD;
 
 const idxOf = (light: LightStore, x: number, y: number, z: number): number =>
   light.paddedIndex(x, y, z);

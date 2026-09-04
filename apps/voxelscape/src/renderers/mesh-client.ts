@@ -280,10 +280,15 @@ export class MeshClient {
   /**
    * Whether the block holds anything at all to mesh. A slot whose voxels are
    * all air has no face to build, and asking the worker for one costs a round
-   * trip to be told nothing.
+   * trip to be told nothing. A block that holds only water (a poured pool, an
+   * open-ocean slab) has no terrain but still needs its water surface built,
+   * so the water flag counts too.
    */
   private hasSurfaceData(index: number): boolean {
-    return this.blocks[index].store.mightHaveVoxels;
+    return (
+      this.blocks[index].store.mightHaveVoxels ||
+      this.blocks[index].store.hasWater
+    );
   }
 
   private send(index: number): void {

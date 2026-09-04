@@ -23,6 +23,12 @@ export const BASE_ROTATION_ANGLE = Math.PI / 4;
 export interface SwingPose extends Vector3D {
   /** The card's roll in radians; the sprite already draws the blade diagonally. */
   roll: number;
+  /**
+   * Where the grip sits relative to the card's centre, in 24ths of the card,
+   * for a tool that is not held by a sword-shaped hilt. Defaults to the
+   * sword's hilt offset.
+   */
+  handle?: Vector3D;
 }
 
 /** Where the mesh sits and how it faces: position plus an orientation quaternion. */
@@ -45,12 +51,17 @@ export const lerpPose = (
   t: number,
 ): SwingPose => {
   const k = clamp(t, 0, 1);
-  return {
+  const handle = from.handle ?? to.handle;
+  const pose: SwingPose = {
     x: from.x + (to.x - from.x) * k,
     y: from.y + (to.y - from.y) * k,
     z: from.z + (to.z - from.z) * k,
     roll: from.roll + (to.roll - from.roll) * k,
   };
+  if (handle !== undefined) {
+    pose.handle = handle;
+  }
+  return pose;
 };
 
 /**
@@ -71,9 +82,10 @@ export const handTransform = (
   );
   const swing = Quaternion.fromAxisAngle({ x: 0, y: 0, z: 1 }, pose.roll);
   const orientation = Quaternion.multiply(swing, base);
+  const grip = pose.handle ?? HANDLE_FRACTION;
   const handleLocal = {
-    x: HANDLE_FRACTION.x * cardSize,
-    y: HANDLE_FRACTION.y * cardSize,
+    x: grip.x * cardSize,
+    y: grip.y * cardSize,
     z: 0,
   };
   const hilt = Vector3D.rotateQuaternion(handleLocal, orientation);

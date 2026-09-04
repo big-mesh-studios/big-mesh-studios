@@ -24,8 +24,11 @@ import { ITEM_ORDER, ITEMS, type ItemId } from "../player/items";
 import type { Player, PlayerConfig } from "../player/player";
 import { loadSpriteModel } from "../player/sprite-model";
 import type { Target, Tool, ToolContext } from "../player/tools/tool";
+import { BucketTool } from "../player/tools/bucket-tool";
+import type { Model } from "@big-mesh-studios/stacker/renderer";
 import { AdaptiveResolution } from "../render/adaptive";
 import { createRenderLoop } from "../render/create-render-loop";
+import { FlowController } from "../world/flow-controller";
 import {
   createVoxelWorld,
   type InitialDrawProgress,
@@ -224,6 +227,15 @@ export const createVoxelscape = ({
 
   const inventory = new Inventory();
   const hand = new Hand({ camera });
+  // The fluid simulation: wakes on player edits and on chunk fills, ticks at
+  // Minecraft's per-kind spread speeds, and reports its changed blocks to the
+  // renderer exactly as a player edit would.
+  const flow = new FlowController({
+    blocks: world.blocks,
+    resolve: (w) => world.blockIndexAtVoxel(w),
+    onBlocksEdited: (indices) => world.renderer.onBlocksChanged(indices),
+  });
+  world.onBlockFilled((i) => flow.wakeBlock(i));
   const editing = new EditingController({
     blocks: world.blocks,
     layer: world.editLayer,
@@ -236,6 +248,7 @@ export const createVoxelscape = ({
       multiplayer.broadcastEdits([
         { x: w[0], y: w[1], z: w[2], id, ts: updatedAt },
       ]),
+    onVoxelWritten: (w, id) => flow.wakeVoxel(w, id),
     getLook: () => avatar.look(),
     getPlayerVoxels: () => avatar.occupiedVoxels(),
     terrain,
@@ -389,6 +402,22 @@ export const createVoxelscape = ({
   // Every item drawn from the site's spritesheet is read once, for the mesh
   // the hand holds and the crop its hotbar icon shows; a failure to load just
   // leaves that item undrawn rather than blocking the world.
+  let bucketEmpty: { model: Model; bbox: SubTexture } | undefined;
+  const bucketFilled = new Map<
+    "water" | "lava",
+    { model: Model; bbox: SubTexture }
+  >();
+  const bucketTool = tools["bucket"] as BucketTool;
+  const applyBucketFill = (fill: "water" | "lava" | null): void => {
+    const state =
+      fill === null ? bucketEmpty : bucketFilled.get(fill);
+    if (state === undefined) {
+      return;
+    }
+    hand.setModel("bucket", state.model);
+    setIcons((current) => ({ ...current, bucket: state.bbox }));
+  };
+  bucketTool.onFillChange = () => applyBucketFill(bucketTool.fill);
   for (const id of ITEM_ORDER) {
     const sprite = ITEMS[id].sprite;
     if (sprite === null) {
@@ -396,11 +425,27 @@ export const createVoxelscape = ({
     }
     void loadSpriteModel(sprite)
       .then(({ model, bbox }) => {
+        if (id === "bucket") {
+          bucketEmpty = { model, bbox };
+          applyBucketFill(bucketTool.fill);
+        }
         hand.setModel(id, model);
         setIcons((current) => ({ ...current, [id]: bbox }));
       })
       .catch((err) =>
         console.warn(`[${id}] not drawn; the player holds nothing.`, err),
+      );
+  }
+  // The bucket's two full states swap its model and icon in as it is filled
+  // and emptied, so the held sprite matches what the tool is carrying.
+  for (const fill of ["water", "lava"] as const) {
+    void loadSpriteModel(`bucket_${fill}`)
+      .then(({ model, bbox }) => {
+        bucketFilled.set(fill, { model, bbox });
+        applyBucketFill(bucketTool.fill);
+      })
+      .catch((err) =>
+        console.warn(`[bucket_${fill}] not drawn; the fill shows empty.`, err),
       );
   }
 
@@ -500,6 +545,10 @@ export const createVoxelscape = ({
   const skyColor = new Color(SKY_BLUE);
 
   let unmount: (() => void) | null = null;
+  /** Seconds before the next lava burn may land while the player stands in it. */
+  let lavaBurnCooldown = 0;
+  /** Seconds of contact damage each lava burn deals (about a quarter of a heart per burn). */
+  const LAVA_BURN = 1;
 
   /** Advances everything by `dt` seconds, leaving the scene ready to draw. */
   const advance = (dt: number): void => {
@@ -573,7 +622,20 @@ export const createVoxelscape = ({
           avatar.firstPerson ? inventory.selectedId : null,
           tool.pose(),
         );
+        // Lava is a hazard the way water is a medium: standing in it burns,
+        // on a short cooldown so the player can hop out between ticks.
+        const p = avatar.player.position;
+        lavaBurnCooldown -= dt;
+        if (
+          (world.lavaAt(p.x, p.y, p.z) ||
+            world.lavaAt(p.x, p.y + 1.5, p.z)) &&
+          lavaBurnCooldown <= 0
+        ) {
+          health.takeDamage(LAVA_BURN);
+          lavaBurnCooldown = 0.5;
+        }
       }
+      flow.tick(dt);
       multiplayer.tick(dt);
       monsters.tick(dt);
       monsterRender.tick(dt);

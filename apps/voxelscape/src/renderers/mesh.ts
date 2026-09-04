@@ -10,9 +10,25 @@
 // from the same world-coordinate terrain function as the interior. The border
 // always matches what the neighbour will contain, so no worker needs a
 // neighbour's live store to resolve a seam.
+//
+// Fluids are drawn at the partial height their level calls for: a water or
+// lava cell resting on ground sits as thin as `1/8` of a voxel at its seventh
+// level of spread, its top surface drops one level per cell, and a cell with
+// open air below it is a falling column and draws full height. Water faces go
+// to the translucent water pass; lava, which is opaque and textured, is
+// emitted into the terrain pass so it shares the terrain material and the
+// opaque draw order.
 import { BufferAttribute, BufferGeometry } from "@random-mesh/rmsl/scene";
 import type { TileRect, VoxelTileConfig } from "./atlas";
-import { VOXEL_AIR, VOXEL_WATER, type VoxelStore } from "../world/voxel-store";
+import {
+  VOXEL_AIR,
+  isFluidId,
+  isLavaId,
+  isWaterId,
+  fluidLevel,
+  type VoxelStore,
+} from "../world/voxel-store";
+import { surfaceFractionOfLevel } from "../world/fluid";
 import { LIGHT_TO_UNIT, type LightStore } from "../world/light-store";
 
 /**
@@ -98,6 +114,7 @@ const cellLight = (
 /**
  * Whether a padded voxel blocks sight: anything that neither air nor water
  * transmits, and that a face's corner occlusion therefore counts against.
+ * Water (of any level) stays transparent to the corner shade; lava blocks it.
  */
 const isOpaque = (
   store: VoxelStore,
@@ -106,8 +123,14 @@ const isOpaque = (
   z: number,
 ): boolean => {
   const id = store.atPadded(x, y, z);
-  return id !== VOXEL_AIR && id !== VOXEL_WATER;
+  return id !== VOXEL_AIR && !isWaterId(id);
 };
+
+/**
+ * Whether a neighbour lets a solid voxel's face show: open air, or a fluid the
+ * face sits behind. A face against solid ground of any kind is culled.
+ */
+const openToFace = (id: number): boolean => id === VOXEL_AIR || isFluidId(id);
 
 /**
  * The one smooth-lighting pass in this file: the four per-vertex brightness
@@ -139,16 +162,12 @@ const faceBrightness = (
     return null;
   }
   const [a1, a2] = TANGENT_AXES[axis];
-  // how far a corner and its occluders sit from the face's centre along the
-  // normal, in the block-local signed voxel coordinates the reads below use
   const nax = [0, 0, 0] as [number, number, number];
   nax[axis] = sign;
   const brightness: number[] = [];
   for (const corner of FACE_CORNERS[axis]) {
     const c1 = corner[a1];
     const c2 = corner[a2];
-    // the corner's light: the brightest of the 2x2 patch just outside the
-    // face, spread along both tangents by one voxel
     let lit = 0;
     for (const r of [c1, c1 - 1]) {
       for (const s of [c2, c2 - 1]) {
@@ -159,9 +178,6 @@ const faceBrightness = (
         lit = Math.max(lit, cellLight(light, at[0], at[1], at[2]));
       }
     }
-    // the corner's occlusion: the three neighbours wrapping it just outside
-    // the face — offset one voxel outward along a tangent (or both, for the
-    // diagonal) and one along the normal
     const d1 = c1 === 0 ? -1 : 1;
     const d2 = c2 === 0 ? -1 : 1;
     let occluded = 0;
@@ -189,11 +205,226 @@ const faceBrightness = (
  */
 const DEFAULT_RECT: TileRect = [0, 0, 1, 1];
 
+/** The accumulators a mesh build writes into, shared by every face emitter. */
+interface QuadContext {
+  store: VoxelStore;
+  light: LightStore | null;
+  positions: number[];
+  normals: number[];
+  uvs: number[];
+  brightness: number[];
+  indices: number[];
+}
+
+const emptyQuadContext = (
+  store: VoxelStore,
+  light: LightStore | null,
+): QuadContext => ({
+  store,
+  light,
+  positions: [],
+  normals: [],
+  uvs: [],
+  brightness: [],
+  indices: [],
+});
+
+const finishQuad = (
+  ctx: QuadContext,
+  base: number,
+  axis: number,
+  sign: number,
+): void => {
+  if (windsOutward(axis, sign)) {
+    ctx.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  } else {
+    ctx.indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+  }
+};
+
 /**
- * Emits the terrain quads for every exposed face of `store`'s solid
- * voxels. `voxelTiles` maps each solid id to its top/side/bottom atlas
- * rects; when a config is missing (atlas not loaded yet) faces fall back
- * to `DEFAULT_RECT`.
+ * Emits a full-cube quad for a face of the voxel centred at `(wx, wy, wz)`,
+ * using the shared `FACE_CORNERS` winding so the face fronts its exposure.
+ */
+const emitCubeFace = (
+  ctx: QuadContext,
+  wx: number,
+  wy: number,
+  wz: number,
+  axis: number,
+  sign: number,
+  rect: TileRect,
+  x: number,
+  y: number,
+  z: number,
+): void => {
+  const { store, light } = ctx;
+  const scale = store.scale;
+  const h = scale / 2;
+  const base = ctx.positions.length / 3;
+  const corners = FACE_CORNERS[axis];
+  const cornerLight = faceBrightness(store, light, x, y, z, axis, sign);
+  for (let k = 0; k < corners.length; k++) {
+    const [xo, yo, zo, u, v] = corners[k];
+    ctx.positions.push(
+      axis === 0 ? wx + sign * h : wx + (xo - 0.5) * 2 * h,
+      axis === 1 ? wy + sign * h : wy + (yo - 0.5) * 2 * h,
+      axis === 2 ? wz + sign * h : wz + (zo - 0.5) * 2 * h,
+    );
+    ctx.normals.push(
+      axis === 0 ? sign : 0,
+      axis === 1 ? sign : 0,
+      axis === 2 ? sign : 0,
+    );
+    ctx.uvs.push(
+      rect[0] + u * (rect[2] - rect[0]),
+      rect[1] + v * (rect[3] - rect[1]),
+    );
+    ctx.brightness.push(cornerLight === null ? 1 : cornerLight[k]);
+  }
+  finishQuad(ctx, base, axis, sign);
+};
+
+/**
+ * Emits a fluid quad whose world Y sits between `bottomFraction` and
+ * `topFraction` of the voxel height (measured from its bottom): a surface at
+ * its level's height, or the wall of the drop between two surfaces. Corner
+ * order and winding are the same as `emitCubeFace`, so the quad fronts its
+ * normal.
+ */
+const emitFluidFace = (
+  ctx: QuadContext,
+  wx: number,
+  wy: number,
+  wz: number,
+  axis: number,
+  sign: number,
+  rect: TileRect,
+  x: number,
+  y: number,
+  z: number,
+  bottomFraction: number,
+  topFraction: number,
+): void => {
+  const { store, light } = ctx;
+  const scale = store.scale;
+  const h = scale / 2;
+  const base = ctx.positions.length / 3;
+  const corners = FACE_CORNERS[axis];
+  const cornerLight = faceBrightness(store, light, x, y, z, axis, sign);
+  const yAt = (fraction: number): number => wy - h + fraction * scale;
+  for (let k = 0; k < corners.length; k++) {
+    const [xo, yo, zo, u, v] = corners[k];
+    // Top/bottom faces (axis 1) sit at the plane the face asks for; a corner
+    // that lies on the top edge of a side face gets `topFraction`, the bottom
+    // edge `bottomFraction`.
+    const fy = axis === 1 ? topFraction : yo === 1 ? topFraction : bottomFraction;
+    ctx.positions.push(
+      axis === 0 ? wx + sign * h : wx + (xo - 0.5) * 2 * h,
+      yAt(fy),
+      axis === 2 ? wz + sign * h : wz + (zo - 0.5) * 2 * h,
+    );
+    ctx.normals.push(
+      axis === 0 ? sign : 0,
+      axis === 1 ? sign : 0,
+      axis === 2 ? sign : 0,
+    );
+    ctx.uvs.push(
+      rect[0] + u * (rect[2] - rect[0]),
+      rect[1] + v * (rect[3] - rect[1]),
+    );
+    ctx.brightness.push(cornerLight === null ? 1 : cornerLight[k]);
+  }
+  finishQuad(ctx, base, axis, sign);
+};
+
+/**
+ * The surface fraction a fluid voxel draws at, measured from the voxel's
+ * bottom: full when it rests on open air (falling) or on water, its level's
+ * fraction otherwise, so a flat spread steps down one eighth per cell.
+ */
+const surfaceFractionAt = (
+  store: VoxelStore,
+  x: number,
+  y: number,
+  z: number,
+): number => {
+  const id = store.atPadded(x, y, z);
+  const below = store.atPadded(x, y - 1, z);
+  if (below === VOXEL_AIR || isFluidId(below)) {
+    return 1;
+  }
+  return surfaceFractionOfLevel(fluidLevel(id));
+};
+
+/**
+ * Emits the exposed faces of one fluid voxel. A top surface is drawn only
+ * where open air sits above it; a side wall runs from the neighbour's surface
+ * down... up to this cell's own surface, appearing only when this cell stands
+ * taller (a wall never shows toward a solid neighbour, nor toward a fluid
+ * neighbour whose surface is at or above this one). A bottom face is drawn
+ * only where open air sits below. `kindRect`, when given, supplies the tile a
+ * textured fluid (lava) bakes into the face; water passes `null` and leaves
+ * UVs on the full atlas, which its material never reads.
+ */
+const emitLiquidVoxel = (
+  ctx: QuadContext,
+  x: number,
+  y: number,
+  z: number,
+  kindRect: ((id: number) => TileRect) | null,
+): void => {
+  const { store } = ctx;
+  const [nx, ny, nz] = store.voxels;
+  const scale = store.scale;
+  const at = (px: number, py: number, pz: number): number =>
+    store.atPadded(px, py, pz);
+
+  const id = at(x, y, z);
+  const sameKind = isWaterId(id) ? isWaterId : isLavaId;
+  const above = at(x, y + 1, z);
+  const below = at(x, y - 1, z);
+  const neighbours: Array<[number, number, number, number]> = [
+    [x - 1, y, z, 0],
+    [x + 1, y, z, 1],
+    [x, y, z - 1, 2],
+    [x, y, z + 1, 3],
+  ];
+
+  const topFrac = surfaceFractionAt(store, x, y, z);
+  const wx = (x + 0.5 - nx / 2) * scale;
+  const wy = (y + 0.5 - ny / 2) * scale;
+  const wz = (z + 0.5 - nz / 2) * scale;
+  const rect = kindRect === null ? DEFAULT_RECT : kindRect(id);
+
+  if (above === VOXEL_AIR) {
+    emitFluidFace(ctx, wx, wy, wz, 1, 1, rect, x, y, z, topFrac, topFrac);
+  }
+  if (below === VOXEL_AIR) {
+    emitFluidFace(ctx, wx, wy, wz, 1, -1, rect, x, y, z, 0, 0);
+  }
+  for (const [nX, nY, nZ, dir] of neighbours) {
+    const nid = at(nX, nY, nZ);
+    if (nid !== VOXEL_AIR && !sameKind(nid)) {
+      continue; // a solid wall, or a different fluid, covers the face
+    }
+    const nTop = sameKind(nid) ? surfaceFractionAt(store, nX, nY, nZ) : 0;
+    if (nTop >= topFrac) {
+      continue; // covered by a taller-or-equal same-kind neighbour
+    }
+    const axis = dir < 2 ? 0 : 2;
+    const sign = dir % 2 === 0 ? -1 : 1;
+    emitFluidFace(ctx, wx, wy, wz, axis, sign, rect, x, y, z, nTop, topFrac);
+  }
+};
+
+/**
+ * Emits the terrain quads for every exposed face of `store`'s solid and lava
+ * voxels. `voxelTiles` maps each solid id to its top/side/bottom atlas rects;
+ * when a config is missing (atlas not loaded yet) faces fall back to
+ * `DEFAULT_RECT`. Lava is meshed here, into the opaque terrain pass, at the
+ * partial height its level calls for, textured with the lava tile its atlas
+ * entry inherits; water is meshed by `buildWaterMesh`.
  *
  * Neighbours are read from `store`'s 1-voxel meshing border (`atPadded`),
  * so seam faces against the adjacent blocks' matching voxels are culled
@@ -205,67 +436,29 @@ export const buildBlockMesh = (
   voxelTiles: VoxelTileConfig[],
   light: LightStore | null = null,
 ): MeshArrays => {
+  const ctx = emptyQuadContext(store, light);
   const [nx, ny, nz] = store.voxels;
   const scale = store.scale;
   const tiles = new Map<number, VoxelTileConfig>();
   for (const t of voxelTiles) {
     tiles.set(t.id, t);
   }
-
-  const positions: number[] = [];
-  const normals: number[] = [];
-  const uvs: number[] = [];
-  const brightness: number[] = [];
-  const indices: number[] = [];
-
+  const rectOf = (id: number): TileRect => {
+    const tile = tiles.get(id);
+    return tile?.side ?? DEFAULT_RECT;
+  };
   const at = (x: number, y: number, z: number): number =>
     store.atPadded(x, y, z);
-
-  const emit = (
-    wx: number,
-    wy: number,
-    wz: number,
-    axis: number,
-    sign: number,
-    rect: TileRect,
-    x: number,
-    y: number,
-    z: number,
-  ): void => {
-    const h = scale / 2;
-    const base = positions.length / 3;
-    const corners = FACE_CORNERS[axis];
-    const cornerLight = faceBrightness(store, light, x, y, z, axis, sign);
-    for (let k = 0; k < corners.length; k++) {
-      const [xo, yo, zo, u, v] = corners[k];
-      positions.push(
-        axis === 0 ? wx + sign * h : wx + (xo - 0.5) * 2 * h,
-        axis === 1 ? wy + sign * h : wy + (yo - 0.5) * 2 * h,
-        axis === 2 ? wz + sign * h : wz + (zo - 0.5) * 2 * h,
-      );
-      normals.push(
-        axis === 0 ? sign : 0,
-        axis === 1 ? sign : 0,
-        axis === 2 ? sign : 0,
-      );
-      uvs.push(
-        rect[0] + u * (rect[2] - rect[0]),
-        rect[1] + v * (rect[3] - rect[1]),
-      );
-      brightness.push(cornerLight === null ? 1 : cornerLight[k]);
-    }
-    if (windsOutward(axis, sign)) {
-      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-    } else {
-      indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
-    }
-  };
 
   for (let z = 0; z < nz; ++z) {
     for (let y = 0; y < ny; ++y) {
       for (let x = 0; x < nx; ++x) {
         const id = at(x, y, z);
-        if (id === VOXEL_AIR || id === VOXEL_WATER) {
+        if (id === VOXEL_AIR || isWaterId(id)) {
+          continue;
+        }
+        if (isLavaId(id)) {
+          emitLiquidVoxel(ctx, x, y, z, rectOf);
           continue;
         }
         const below = at(x, y - 1, z);
@@ -274,12 +467,12 @@ export const buildBlockMesh = (
         const right = at(x + 1, y, z);
         const front = at(x, y, z - 1);
         const back = at(x, y, z + 1);
-        const exposedTop = above === VOXEL_AIR || above === VOXEL_WATER;
-        const exposedBottom = below === VOXEL_AIR || below === VOXEL_WATER;
-        const exposedLeft = left === VOXEL_AIR || left === VOXEL_WATER;
-        const exposedRight = right === VOXEL_AIR || right === VOXEL_WATER;
-        const exposedFront = front === VOXEL_AIR || front === VOXEL_WATER;
-        const exposedBack = back === VOXEL_AIR || back === VOXEL_WATER;
+        const exposedTop = openToFace(above);
+        const exposedBottom = openToFace(below);
+        const exposedLeft = openToFace(left);
+        const exposedRight = openToFace(right);
+        const exposedFront = openToFace(front);
+        const exposedBack = openToFace(back);
         if (
           !exposedTop &&
           !exposedBottom &&
@@ -297,126 +490,70 @@ export const buildBlockMesh = (
         const top = tile?.top ?? DEFAULT_RECT;
         const side = tile?.side ?? DEFAULT_RECT;
         const bottom = tile?.bottom ?? DEFAULT_RECT;
-        if (exposedTop) emit(wx, wy, wz, 1, 1, top, x, y, z);
-        if (exposedBottom) emit(wx, wy, wz, 1, -1, bottom, x, y, z);
-        if (exposedLeft) emit(wx, wy, wz, 0, -1, side, x, y, z);
-        if (exposedRight) emit(wx, wy, wz, 0, 1, side, x, y, z);
-        if (exposedFront) emit(wx, wy, wz, 2, -1, side, x, y, z);
-        if (exposedBack) emit(wx, wy, wz, 2, 1, side, x, y, z);
+        if (exposedTop) emitCubeFace(ctx, wx, wy, wz, 1, 1, top, x, y, z);
+        if (exposedBottom)
+          emitCubeFace(ctx, wx, wy, wz, 1, -1, bottom, x, y, z);
+        if (exposedLeft) emitCubeFace(ctx, wx, wy, wz, 0, -1, side, x, y, z);
+        if (exposedRight) emitCubeFace(ctx, wx, wy, wz, 0, 1, side, x, y, z);
+        if (exposedFront) emitCubeFace(ctx, wx, wy, wz, 2, -1, side, x, y, z);
+        if (exposedBack) emitCubeFace(ctx, wx, wy, wz, 2, 1, side, x, y, z);
       }
     }
   }
 
-  return { positions, normals, uvs, brightness, indices };
+  return {
+    positions: ctx.positions,
+    normals: ctx.normals,
+    uvs: ctx.uvs,
+    brightness: ctx.brightness,
+    indices: ctx.indices,
+  };
 };
 
 /**
- * Emits the water surface quads: every face of a water voxel that borders
- * air (the top surface plus cliff-side banks). Uses the same positioning
- * as the terrain mesh so the two tile up seamlessly. UVs are unused by the
- * water material. Seam faces against adjacent blocks' water are culled by
- * the same generated `VoxelStore` border as the terrain mesh.
+ * Emits the water surface quads: every face of a water voxel that borders air
+ * or a lower neighbouring surface, drawn at the height its level calls for —
+ * a source and a resting body are full cubes, while a flowing edge steps down
+ * one eighth per level. UVs are unused by the water material. Seam faces
+ * against adjacent blocks' water are culled by the same generated
+ * `VoxelStore` border as the terrain mesh.
  */
 export const buildWaterMesh = (
   store: VoxelStore,
   light: LightStore | null = null,
 ): MeshArrays => {
+  const ctx = emptyQuadContext(store, light);
   const [nx, ny, nz] = store.voxels;
-  const scale = store.scale;
-
-  const positions: number[] = [];
-  const normals: number[] = [];
-  const uvs: number[] = [];
-  const brightness: number[] = [];
-  const indices: number[] = [];
 
   // A store whose fill reported no water voxel cannot expose a water face, and
   // sweeping a full volume to prove it is the point of this flag.
   if (!store.hasWater) {
-    return { positions, normals, uvs, brightness, indices };
+    return {
+      positions: ctx.positions,
+      normals: ctx.normals,
+      uvs: ctx.uvs,
+      brightness: ctx.brightness,
+      indices: ctx.indices,
+    };
   }
-
-  const at = (x: number, y: number, z: number): number =>
-    store.atPadded(x, y, z);
-
-  const emit = (
-    wx: number,
-    wy: number,
-    wz: number,
-    axis: number,
-    sign: number,
-    x: number,
-    y: number,
-    z: number,
-  ): void => {
-    const h = scale / 2;
-    const base = positions.length / 3;
-    const corners = FACE_CORNERS[axis];
-    const cornerLight = faceBrightness(store, light, x, y, z, axis, sign);
-    for (let k = 0; k < corners.length; k++) {
-      const [xo, yo, zo, u, v] = corners[k];
-      positions.push(
-        axis === 0 ? wx + sign * h : wx + (xo - 0.5) * 2 * h,
-        axis === 1 ? wy + sign * h : wy + (yo - 0.5) * 2 * h,
-        axis === 2 ? wz + sign * h : wz + (zo - 0.5) * 2 * h,
-      );
-      normals.push(
-        axis === 0 ? sign : 0,
-        axis === 1 ? sign : 0,
-        axis === 2 ? sign : 0,
-      );
-      uvs.push(u, v);
-      brightness.push(cornerLight === null ? 1 : cornerLight[k]);
-    }
-    if (windsOutward(axis, sign)) {
-      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-    } else {
-      indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
-    }
-  };
 
   for (let z = 0; z < nz; ++z) {
     for (let y = 0; y < ny; ++y) {
       for (let x = 0; x < nx; ++x) {
-        if (at(x, y, z) !== VOXEL_WATER) {
-          continue;
+        if (isWaterId(store.atPadded(x, y, z))) {
+          emitLiquidVoxel(ctx, x, y, z, null);
         }
-        const below = at(x, y - 1, z);
-        const above = at(x, y + 1, z);
-        const left = at(x - 1, y, z);
-        const right = at(x + 1, y, z);
-        const front = at(x, y, z - 1);
-        const back = at(x, y, z + 1);
-        const exposedTop = above === VOXEL_AIR;
-        const exposedBottom = below === VOXEL_AIR;
-        const exposedLeft = left === VOXEL_AIR;
-        const exposedRight = right === VOXEL_AIR;
-        const exposedFront = front === VOXEL_AIR;
-        const exposedBack = back === VOXEL_AIR;
-        if (
-          !exposedTop &&
-          !exposedBottom &&
-          !exposedLeft &&
-          !exposedRight &&
-          !exposedFront &&
-          !exposedBack
-        ) {
-          continue;
-        }
-        const wx = (x + 0.5 - nx / 2) * scale;
-        const wy = (y + 0.5 - ny / 2) * scale;
-        const wz = (z + 0.5 - nz / 2) * scale;
-        if (exposedTop) emit(wx, wy, wz, 1, 1, x, y, z);
-        if (exposedBottom) emit(wx, wy, wz, 1, -1, x, y, z);
-        if (exposedLeft) emit(wx, wy, wz, 0, -1, x, y, z);
-        if (exposedRight) emit(wx, wy, wz, 0, 1, x, y, z);
-        if (exposedFront) emit(wx, wy, wz, 2, -1, x, y, z);
-        if (exposedBack) emit(wx, wy, wz, 2, 1, x, y, z);
       }
     }
   }
 
-  return { positions, normals, uvs, brightness, indices };
+  return {
+    positions: ctx.positions,
+    normals: ctx.normals,
+    uvs: ctx.uvs,
+    brightness: ctx.brightness,
+    indices: ctx.indices,
+  };
 };
 
 /**
