@@ -340,8 +340,13 @@ const emitFluidFace = (
 
 /**
  * The surface fraction a fluid voxel draws at, measured from the voxel's
- * bottom: full when it rests on open air (falling) or on water, its level's
- * fraction otherwise, so a flat spread steps down one eighth per cell.
+ * bottom. A cell that is genuinely airborne — open air directly below it — is
+ * a falling head and draws full. A cell with open air above it is a surface:
+ * it draws its level's fraction whether it rests on ground or on the water of
+ * a body beneath it, so the sheet that flows over an edge stays level with
+ * the water it came from instead of rearing up full where it meets the drop.
+ * Every other cell is body (part of a vertical column) and draws full, so a
+ * waterfall reads as one solid stream from its surface down to its pool.
  */
 const surfaceFractionAt = (
   store: VoxelStore,
@@ -350,11 +355,15 @@ const surfaceFractionAt = (
   z: number,
 ): number => {
   const id = store.atPadded(x, y, z);
+  const above = store.atPadded(x, y + 1, z);
   const below = store.atPadded(x, y - 1, z);
-  if (below === VOXEL_AIR || isFluidId(below)) {
+  if (below === VOXEL_AIR) {
     return 1;
   }
-  return surfaceFractionOfLevel(fluidLevel(id));
+  if (above === VOXEL_AIR) {
+    return surfaceFractionOfLevel(fluidLevel(id));
+  }
+  return 1;
 };
 
 /**
