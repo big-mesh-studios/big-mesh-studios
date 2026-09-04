@@ -18,6 +18,7 @@ const NO_INPUT: InputSnapshot = {
   lookDx: 0,
   lookDy: 0,
   primary: false,
+  tap: false,
   secondary: false,
   secondaryHeld: false,
   secondaryReleased: false,

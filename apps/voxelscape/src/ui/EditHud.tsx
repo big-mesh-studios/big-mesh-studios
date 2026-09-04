@@ -7,9 +7,11 @@ import styles from "./EditHud.module.css";
 import { Component, createSignal, For, onCleanup } from "solid-js";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
 import { spriteIconStyle } from "./item-icon";
+import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 
 export const EditHud: Component = () => {
   const { inventory, editStatus, target, icons } = useVoxelscape();
+  const coarsePointer = createMediaQuery("(any-pointer: coarse)");
   const [items, setItems] = createSignal(inventory.items());
   const [selected, setSelected] = createSignal(inventory.selectedId);
 
@@ -63,7 +65,10 @@ export const EditHud: Component = () => {
           }}
         </For>
         <div class={styles.status}>
-          {editStatus() || "tap world to strike  •  button to use"}
+          {editStatus() ||
+            (coarsePointer()
+              ? "hold world to dig  •  tap a monster to strike"
+              : "click to strike  •  right-click to use")}
         </div>
       </div>
     </div>

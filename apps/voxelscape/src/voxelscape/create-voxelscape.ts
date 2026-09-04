@@ -605,6 +605,16 @@ export const createVoxelscape = ({
             setEditStatus(result);
           }
         }
+        // A quick tap is a strike only when it landed on a monster — a voxel
+        // needs the hold that repeats `primary`, as a touch would otherwise
+        // break whatever it started dragging from. The wielded tools never
+        // pick a monster except the sword, so this call is a sword swing.
+        if (snapshot.tap && pick.primary?.kind === "monster") {
+          const result = tool.primary(pick);
+          if (result !== null) {
+            setEditStatus(result);
+          }
+        }
         if (snapshot.secondary) {
           const result = tool.secondary(pick);
           if (result !== null) {
