@@ -24,12 +24,7 @@ import {
   type WorldBlock,
 } from "./level-data";
 import { heightAt as terrainHeightAt, type TerrainConfig } from "./noise";
-import {
-  VOXEL_AIR,
-  VOXEL_LAVA,
-  VOXEL_WATER,
-  isFluidId,
-} from "./voxel-store";
+import { VOXEL_AIR, VOXEL_LAVA, VOXEL_WATER, isFluidId } from "./voxel-store";
 
 /** Padding added to each mesh's box so adjacent meshes share a thin overlap shell. */
 /** Water absorption used by the water pass and the underwater tint alike. */
@@ -206,7 +201,11 @@ export const createVoxelWorld = ({
   const snapshotSlotFluids = (slot: number): void => {
     const block = sphere.blocks[slot];
     const store = block.store;
-    if (!store.hasWater && !store.mightHaveVoxels) {
+    // Only a block whose store carries the flowing flag — one a fluid write or
+    // the flow sim ever touched — can hold the falling/flowing cells this pass
+    // keeps. Generated terrain and plain oceans never set it, so a pristine
+    // block is skipped instead of swept in full.
+    if (!store.hasFlowing) {
       return;
     }
     const { min, max } = blockWorldVoxelRange(block.center);

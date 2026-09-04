@@ -168,7 +168,13 @@ export class FlowController {
       block.center[2] / 2,
     );
     if (above !== undefined && above !== index) {
-      this.wakeBlockBottom(this.blocks[above]);
+      const aboveBlock = this.blocks[above];
+      // Only the above block that itself carries flow can hold such a head: a
+      // falling cell marks its block the moment it is written, so a pristine
+      // block above an ocean is never scanned row by row.
+      if (aboveBlock.store.hasFlowing) {
+        this.wakeBlockBottom(aboveBlock);
+      }
     }
   }
 
@@ -237,7 +243,11 @@ export class FlowController {
   }
 
   /** The slot holding a world voxel, or undefined when none is loaded. */
-  private blockIndexAtVoxel(x: number, y: number, z: number): number | undefined {
+  private blockIndexAtVoxel(
+    x: number,
+    y: number,
+    z: number,
+  ): number | undefined {
     if (this.resolve !== undefined) {
       return this.resolve([x, y, z]);
     }
@@ -516,11 +526,7 @@ export class FlowController {
       for (let dz = -1; dz <= 1; dz++) {
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
-            const index = this.resolve([
-              w[0] + dx,
-              w[1] + dy,
-              w[2] + dz,
-            ]);
+            const index = this.resolve([w[0] + dx, w[1] + dy, w[2] + dz]);
             if (index !== undefined && !seen.has(index)) {
               seen.add(index);
               holders.push(index);
