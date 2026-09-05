@@ -113,6 +113,7 @@ const pinchSpan = ([a, b]: Iterable<PointerEvent> = []) => {
 const VoxelPreviewView: Component = () => {
   const {
     posedFigure,
+    posedPart,
     selectedPart,
     selectPart,
     solvedParts,
@@ -198,18 +199,6 @@ const VoxelPreviewView: Component = () => {
   const [pickedFigure, setPickedFigure] = createSignal<
     FigurePick | undefined
   >();
-
-  /**
-   * The part being drawn on, standing as the motion poses it at the frame the
-   * editor is at. Everything the handles measure themselves against reads this
-   * rather than the part underneath, so an arm dragged at a frame is dragged
-   * from where it stands there.
-   */
-  const posedPart = createMemo(
-    () =>
-      posedFigure().parts.find((part) => part.name === selectedPart().name) ??
-      selectedPart(),
-  );
 
   /** Where every part stands, in voxels from the figure's origin. */
   const placement = createMemo(() => figurePlacement(posedFigure()));
@@ -423,6 +412,11 @@ const VoxelPreviewView: Component = () => {
     const startScale = part.scale;
     let lastRoot = startRoot;
     let lastScale = startScale;
+    // The reverse of the first command the drag lands, which is what puts the
+    // part back where it was picked up from. Where the drag is what first posed
+    // the part, that command stood the part's keys and its reverse takes them
+    // away again, which a pose put together here could not do.
+    let undoDrag: Command | undefined;
 
     widget.setHeld(grabbedArm.axis);
 
@@ -435,7 +429,9 @@ const VoxelPreviewView: Component = () => {
         }
 
         lastScale = scale;
-        doCommand(Command.scalePart(part.name, scale));
+
+        const reverse = doCommand(Command.scalePart(part.name, scale));
+        undoDrag ??= reverse;
         return;
       }
 
@@ -465,7 +461,9 @@ const VoxelPreviewView: Component = () => {
       }
 
       lastRoot = root;
-      doCommand(Command.movePart(part.name, root));
+
+      const reverse = doCommand(Command.movePart(part.name, root));
+      undoDrag ??= reverse;
     });
 
     isDraggingWidget = false;
@@ -477,12 +475,8 @@ const VoxelPreviewView: Component = () => {
     timeOffset = performance.now();
     spinOffset = spin;
 
-    if (!Vector3D.equals(startRoot, lastRoot)) {
-      pushUndo(Command.movePart(part.name, startRoot), "Move Part");
-    }
-
-    if (lastScale !== startScale) {
-      pushUndo(Command.scalePart(part.name, startScale), "Scale Part");
+    if (undoDrag !== undefined) {
+      pushUndo(undoDrag, sizing ? "Scale Part" : "Move Part");
     }
   }
 
@@ -504,6 +498,8 @@ const VoxelPreviewView: Component = () => {
     const startTurn = part.turn;
     const alongThePart = untrack(preview.handleAxes) === "part";
     let lastTurn = startTurn;
+    // The reverse of the first command the drag lands, as an arm's drag keeps.
+    let undoDrag: Command | undefined;
 
     turnWidget.setHeld(ring.axis);
 
@@ -533,7 +529,9 @@ const VoxelPreviewView: Component = () => {
       }
 
       lastTurn = turn;
-      doCommand(Command.turnPart(part.name, turn));
+
+      const reverse = doCommand(Command.turnPart(part.name, turn));
+      undoDrag ??= reverse;
     });
 
     isDraggingWidget = false;
@@ -545,8 +543,8 @@ const VoxelPreviewView: Component = () => {
     timeOffset = performance.now();
     spinOffset = spin;
 
-    if (!Vector3D.equals(startTurn, lastTurn)) {
-      pushUndo(Command.turnPart(part.name, startTurn), "Turn Part");
+    if (undoDrag !== undefined) {
+      pushUndo(undoDrag, "Turn Part");
     }
   }
 

@@ -63,7 +63,7 @@
 
 /* The frame the preview stands at, typed into the bar the motion is played from. */
 .frame {
-  width: calc(var(--size) * 1.5);
+  width: var(--size);
   padding-inline: var(--margin);
   border: 0;
   background: transparent;

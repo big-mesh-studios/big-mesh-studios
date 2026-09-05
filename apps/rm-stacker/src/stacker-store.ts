@@ -8,13 +8,18 @@ import {
 } from "@big-mesh-studios/maths";
 import {
   centrePivot,
+  keyAfter,
   keyAt,
+  keyBefore,
   keysFor,
+  lastFrame,
   NO_MOTION,
   partDimensions,
   poseAt,
   poseFigure,
   solvePart,
+  START_FRAME,
+  withoutKey,
   type DimensionKind,
   type Figure,
   type Key,
@@ -268,8 +273,6 @@ export function createStacker() {
    * however fast the screen draws.
    */
   const [frame, setFrame] = createSignal(0);
-  /** Whether posing a part writes a key rather than moving the part itself. */
-  const [recording, setRecording] = createSignal(false);
   const [playing, setPlaying] = createSignal(false);
 
   /**
@@ -279,6 +282,46 @@ export function createStacker() {
    * handles stand at the posed part rather than at the one underneath.
    */
   const posedFigure = createMemo(() => poseFigure(figure(), motion(), frame()));
+
+  /**
+   * The part being drawn on, standing as the motion poses it at this frame.
+   * Whatever draws, measures or writes the pose of that part reads this rather
+   * than the part underneath, so a handle dragged at a frame is dragged from
+   * where the part stands there and the numbers shown beside it are the ones
+   * the drag is moving.
+   */
+  const posedPart = createMemo(
+    () =>
+      posedFigure().parts.find((part) => part.name === selectedPart().name) ??
+      selectedPart(),
+  );
+
+  /** The frame the motion's last key stands at, which is where it ends. */
+  const endFrame = createMemo(() => lastFrame(motion()));
+
+  /**
+   * The key the selected part stands at at this frame, where there is one that
+   * can be taken away. The key a part starts in stays for as long as any key
+   * after it stands, so at the start of a motion there is one to take only once
+   * it is the last one left.
+   */
+  const removableKey = createMemo(() => {
+    const name = selectedPart().name;
+    const at = Math.round(frame());
+
+    return withoutKey(motion(), name, at) === motion()
+      ? undefined
+      : keyAt(motion(), name, at);
+  });
+
+  /** The key the selected part stands at before this frame, where it has one. */
+  const previousKey = createMemo(() =>
+    keyBefore(keysFor(motion(), selectedPart().name), frame()),
+  );
+  /** The key the selected part stands at after this frame, where it has one. */
+  const nextKey = createMemo(() =>
+    keyAfter(keysFor(motion(), selectedPart().name), frame()),
+  );
 
   /** Every part's volume, packed for the graphics card, in the order they are listed. */
   const [solvedParts, setSolvedParts] = createSignal<SolvedPart[]>(() =>
@@ -393,20 +436,18 @@ export function createStacker() {
   }
 
   /**
-   * `command` as it lands while a motion is being recorded: a pose put into the
-   * motion, as a key at the frame being looked at, rather than into the part
-   * itself. Everything else lands as it stands, and so does everything while
-   * nothing is being recorded.
+   * `command` as it lands in the motion: a pose put into the motion, as a key
+   * at the frame being looked at, rather than into the part itself. A command
+   * that is not a pose lands as it stands.
    *
    * A key carries a whole pose, so a command that moves a part carries the turn
    * and the size it already stands in at that frame along with it.
    */
   function recorded(command: Command): Command {
     if (
-      !recording() ||
-      (command.type !== "MovePart" &&
-        command.type !== "TurnPart" &&
-        command.type !== "ScalePart")
+      command.type !== "MovePart" &&
+      command.type !== "TurnPart" &&
+      command.type !== "ScalePart"
     ) {
       return command;
     }
@@ -429,16 +470,20 @@ export function createStacker() {
       ease: keyAt(motion(), name, at)?.ease ?? "linear",
     };
 
-    if (keysFor(motion(), name).length > 0 || at === 0) {
+    if (keysFor(motion(), name).length > 0 || at === START_FRAME) {
       return Command.keyPart(name, at, key);
     }
 
-    // The first key a part is given past the start of the motion is given one
-    // at the start as well, holding the pose it was drawn in. A part with a
-    // single key stands still in it; two are a movement, which is what somebody
-    // posing a part at a frame is asking for.
+    // The first key a part is given past the start of the motion brings one at
+    // the start as well, holding the pose it was drawn in. That key is where
+    // the part stands until this one runs it somewhere else; without it the
+    // part would stand in the pose being made here from the first frame on.
     return Command.sequence([
-      Command.keyPart(name, 0, { ...drawn, at: 0, ease: "linear" }),
+      Command.keyPart(name, START_FRAME, {
+        ...drawn,
+        at: START_FRAME,
+        ease: "linear",
+      }),
       Command.keyPart(name, at, key),
     ]);
   }
@@ -466,11 +511,12 @@ export function createStacker() {
 
   /**
    * Runs the motion on from where it stands, at the frames a second it is
-   * written in, until it is stopped: round to the start again for a motion that
-   * loops, and to a halt on its last frame for one that does not.
+   * written in, as far as its last key: round to the start again for a motion
+   * that loops, and to a halt on that key for one that does not. A motion whose
+   * keys all stand at the start has nowhere to run to and does not play.
    */
   function play() {
-    if (untrack(playing)) {
+    if (untrack(playing) || untrack(endFrame) === START_FRAME) {
       return;
     }
 
@@ -484,17 +530,15 @@ export function createStacker() {
       }
 
       const running = untrack(motion);
+      const end = untrack(endFrame);
       const advance = ((now - previous) / 1000) * running.framesPerSecond;
       const next = untrack(frame) + advance;
-      const stands =
-        running.loop && running.frames > 0
-          ? next % running.frames
-          : Math.min(next, running.frames);
+      const stands = running.loop ? next % end : Math.min(next, end);
 
       previous = now;
       setFrame(stands);
 
-      if (!running.loop && stands >= running.frames) {
+      if (!running.loop && stands >= end) {
         setPlaying(false);
         return;
       }
@@ -506,6 +550,34 @@ export function createStacker() {
   /** Leaves the motion standing at the frame it had got to. */
   function stop() {
     setPlaying(false);
+  }
+
+  /**
+   * Stands the editor at the frame `key` stands at, holding the motion still
+   * there, and leaves it where it is where the part has no such key.
+   */
+  function standAtKey(key: Key | undefined) {
+    if (key === undefined) {
+      return;
+    }
+
+    stop();
+    setFrame(key.at);
+  }
+
+  /** Takes the key the selected part stands at at this frame away, where one can be. */
+  function removeKey() {
+    const key = removableKey();
+
+    if (key === undefined) {
+      return;
+    }
+
+    doCommandAndUndo(
+      Command.keyPart(selectedPart().name, key.at, null),
+      true,
+      "Remove Key",
+    );
   }
 
   createEffect(parts, requestRender);
@@ -547,12 +619,17 @@ export function createStacker() {
     figure,
     // what the figure does over time, and where in it the editor stands
     posedFigure,
+    posedPart,
     motion,
     setMotion,
     frame,
     setFrame,
-    recording,
-    setRecording,
+    endFrame,
+    previousKey,
+    nextKey,
+    standAtKey,
+    removableKey,
+    removeKey,
     playing,
     play,
     stop,
@@ -758,10 +835,7 @@ export function createStacker() {
     },
     pushUndo(reverseCommand: Command, description: string) {
       undoRedoManager.pushUndo({
-        // Recorded as it stands rather than as it is taken back, so that the
-        // pose it puts back goes to the frame the drag was made at rather than
-        // to whichever frame the editor has moved on to since.
-        command: recorded(reverseCommand),
+        command: reverseCommand,
         description: description ?? "",
       });
     },

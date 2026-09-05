@@ -41,6 +41,11 @@
     color: var(--front);
   }
 
+  &[disabled] {
+    color: var(--dark-grey);
+    cursor: default;
+  }
+
   &.iconTab {
     justify-content: center;
     align-items: center;

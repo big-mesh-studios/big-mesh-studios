@@ -42,8 +42,12 @@ export function Hud() {
     undoRedoManager,
     frame,
     setFrame,
-    recording,
-    setRecording,
+    endFrame,
+    previousKey,
+    nextKey,
+    standAtKey,
+    removableKey,
+    removeKey,
     playing,
     play,
     stop,
@@ -280,20 +284,29 @@ export function Hud() {
         </Bar>
         <Bar>
           <IconTab
-            onClick={() => setRecording((recording) => !recording)}
-            selected={!ProfileDialog.isOpen() && recording()}
-            kind="circle"
-            title={
-              recording()
-                ? "Posing a part writes a key at this frame"
-                : "Posing a part moves the part itself"
-            }
+            kind="backward-step"
+            disabled={previousKey() === undefined}
+            onClick={() => standAtKey(previousKey())}
+            title="Stand at the part's previous key"
           />
           <IconTab
             onClick={() => (playing() ? stop() : play())}
+            disabled={endFrame() === 0}
             selected={!ProfileDialog.isOpen() && playing()}
             kind={playing() ? "pause" : "play"}
-            title="Play the motion on from the frame it stands at"
+            title="Play the motion on from the frame it stands at, as far as its last key"
+          />
+          <IconTab
+            kind="forward-step"
+            disabled={nextKey() === undefined}
+            onClick={() => standAtKey(nextKey())}
+            title="Stand at the part's next key"
+          />
+          <IconTab
+            kind="trash"
+            disabled={removableKey() === undefined}
+            onClick={removeKey}
+            title="Take the part's key at this frame away"
           />
           <input
             class={styles.frame}

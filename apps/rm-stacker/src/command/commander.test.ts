@@ -118,6 +118,18 @@ describe("KeyPart", () => {
     expect(keysFor(motion(), "body")).toHaveLength(1);
   });
 
+  it("keeps the key a part starts in while a later key stands", async () => {
+    const { doCommand, motion } = commanderOf(partOf());
+
+    await doCommand(Command.keyPart("body", 0, keyOf(0)));
+    await doCommand(Command.keyPart("body", 4, keyOf(4)));
+
+    expect((await doCommand(Command.keyPart("body", 0, null))).type).toBe(
+      "NoOperation",
+    );
+    expect(keysFor(motion(), "body")).toHaveLength(2);
+  });
+
   it("does nothing where it is asked to take away a key that is not there", async () => {
     const { doCommand } = commanderOf(partOf());
 

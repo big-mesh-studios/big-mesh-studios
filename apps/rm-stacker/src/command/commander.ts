@@ -240,16 +240,19 @@ export function createCommander({
         case "KeyPart": {
           const { part: partName, at, key } = command;
           const standing = keyAt(motion(), partName, at);
+          const next =
+            key === null
+              ? withoutKey(motion(), partName, at)
+              : withKey(motion(), partName, key);
 
-          if (key === null && standing === undefined) {
+          // A motion hands itself back where nothing stood at that frame, and
+          // where the key asked for is the one the part starts in that a later
+          // key holds in place.
+          if (next === motion()) {
             return Command.noOperation();
           }
 
-          setMotion(
-            key === null
-              ? withoutKey(motion(), partName, at)
-              : withKey(motion(), partName, key),
-          );
+          setMotion(next);
 
           // Whatever stood at that frame before, so that taking the key back
           // puts it there again — and takes the key away where there was none.

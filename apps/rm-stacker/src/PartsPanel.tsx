@@ -20,6 +20,7 @@ import styles from "./PartsPanel.module.css";
 export function PartsPanel() {
   const {
     parts,
+    posedPart,
     selectedPart,
     selectPart,
     addPart,
@@ -30,7 +31,7 @@ export function PartsPanel() {
   } = useContext(StackerContext);
 
   function moveTo(axis: WidgetAxis, to: number) {
-    const part = selectedPart();
+    const part = posedPart();
     const root = { ...part.root, [axis]: to };
 
     if (Vector3D.equals(root, part.root)) {
@@ -51,7 +52,7 @@ export function PartsPanel() {
   const shown = (value: number) => Math.round(value * 100) / 100;
 
   function turnTo(axis: WidgetAxis, degrees: number) {
-    const part = selectedPart();
+    const part = posedPart();
 
     if (Number.isNaN(degrees)) {
       return;
@@ -67,7 +68,7 @@ export function PartsPanel() {
   }
 
   function scaleTo(scale: number) {
-    const part = selectedPart();
+    const part = posedPart();
 
     if (Number.isNaN(scale) || scale === part.scale) {
       return;
@@ -147,7 +148,7 @@ export function PartsPanel() {
                 <input
                   type="number"
                   step="any"
-                  value={shown(selectedPart().root[axis])}
+                  value={shown(posedPart().root[axis])}
                   onChange={(event) =>
                     moveTo(axis, event.currentTarget.valueAsNumber)
                   }
@@ -165,7 +166,7 @@ export function PartsPanel() {
                 <input
                   type="number"
                   step="15"
-                  value={Math.round(selectedPart().turn[axis] * DEGREES)}
+                  value={Math.round(posedPart().turn[axis] * DEGREES)}
                   onChange={(event) =>
                     turnTo(axis, event.currentTarget.valueAsNumber)
                   }
@@ -182,7 +183,7 @@ export function PartsPanel() {
               type="number"
               step="0.1"
               min="0.01"
-              value={shown(selectedPart().scale)}
+              value={shown(posedPart().scale)}
               onChange={(event) => scaleTo(event.currentTarget.valueAsNumber)}
             />
           </label>
