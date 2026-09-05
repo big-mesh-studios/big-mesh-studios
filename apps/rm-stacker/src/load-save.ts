@@ -9,7 +9,7 @@ import {
   type Part,
 } from "@big-mesh-studios/stacker/renderer";
 import { Command } from "./command/Command";
-import { PreviewState, type ViewModeKind } from "./types";
+import { PreviewState } from "./types";
 
 const DB_NAME = "rm-stacker";
 const DB_VERSION = 2;
@@ -23,7 +23,6 @@ const DB_KEYS = {
   motion: "motion",
   motions: "motions",
   selectedMotion: "selectedMotion",
-  viewMode: "viewMode",
 } as const;
 
 type CommandStack = { command: Command; description: string }[];
@@ -47,8 +46,6 @@ export interface IndexedDBData {
   motions: Motion[];
   /** The name of the motion that was being edited. */
   selectedMotion: string;
-  /** What the editor was last being used for, or drawing where nothing was saved. */
-  viewMode: ViewModeKind;
 }
 
 export async function loadFromIndexedDB(
@@ -77,9 +74,6 @@ export async function loadFromIndexedDB(
 
   const motions = await loadMotions();
   const selectedMotion = (await loadTextFromDB(DB_KEYS.selectedMotion)) ?? "";
-
-  const viewMode: ViewModeKind =
-    (await loadTextFromDB(DB_KEYS.viewMode)) === "Animate" ? "Animate" : "Edit";
 
   let undoStack: CommandStack;
   let redoStack: CommandStack;
@@ -112,7 +106,6 @@ export async function loadFromIndexedDB(
     preview,
     motions,
     selectedMotion,
-    viewMode,
   };
 }
 
@@ -156,7 +149,6 @@ export async function saveToIndexedDB({
   preview,
   motions,
   selectedMotion,
-  viewMode,
 }: {
   parts: Part[];
   selectedPartName: string;
@@ -166,14 +158,12 @@ export async function saveToIndexedDB({
   preview: PreviewState;
   motions: Motion[];
   selectedMotion: string;
-  viewMode: ViewModeKind;
 }): Promise<void> {
   const blob = await saveFigure({ parts, palette });
   await saveBlobToDB(DB_KEYS.zipFileData, blob);
   await saveTextToDB(DB_KEYS.selectedPart, selectedPartName);
   await saveTextToDB(DB_KEYS.motions, JSON.stringify(motions));
   await saveTextToDB(DB_KEYS.selectedMotion, selectedMotion);
-  await saveTextToDB(DB_KEYS.viewMode, viewMode);
   const undoStackJson = [];
   for (const { command, description } of undoStack) {
     undoStackJson.push({

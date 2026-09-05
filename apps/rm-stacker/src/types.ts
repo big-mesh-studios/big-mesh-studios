@@ -30,20 +30,6 @@ export type ModeKind =
   "Draw" | "Fill" | "Idle" | "Eyedrop" | "Rectangle" | "CutDown" | "CutAcross";
 
 /**********************************************************************************/
-/*                                    View Mode                                   */
-/**********************************************************************************/
-
-/** What the editor is being used for, in the order one button steps through. */
-export const viewModeKinds = ["Edit", "Animate"] as const;
-
-/**
- * Drawing on a part's sides, or moving the parts about over the frames of a
- * motion. The two are different enough that the editor shows the controls for
- * one of them at a time.
- */
-export type ViewModeKind = (typeof viewModeKinds)[number];
-
-/**********************************************************************************/
 /*                                      Mirror                                    */
 /**********************************************************************************/
 

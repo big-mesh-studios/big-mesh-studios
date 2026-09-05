@@ -12,8 +12,6 @@ import VoxelPreviewView from "./VoxelPreviewView";
 const EditorPage: Component = () => {
   const stacker = useContext(StackerContext);
   const initiallyNarrow = stacker.narrow();
-  /** Whether the parts are being moved over the frames of a motion. */
-  const animating = () => stacker.viewMode() === "Animate";
 
   return (
     <>
@@ -38,14 +36,10 @@ const EditorPage: Component = () => {
                   </div>
                 </Split.Pane>
               );
-              // The whole of the split while the parts are being moved, since
-              // the panels are not drawn on then. Changing the size a pane asks
-              // for is what the split takes as a new arrangement, and it lets go
-              // of wherever the handle had been dragged to.
               const voxelPreviewPane = (
                 <Split.Pane
                   style={{ display: "grid" }}
-                  size={animating() ? "100%" : initiallyNarrow ? "25%" : "50%"}
+                  size={initiallyNarrow ? "25%" : "50%"}
                   max="245px"
                 >
                   <div style="flex-grow: 1; overflow: hidden;">
@@ -62,31 +56,24 @@ const EditorPage: Component = () => {
                   class={styles.handle}
                 />
               );
-              // The preview is the same element in every arrangement, so it is
-              // carried from one to another rather than drawn again: the canvas
-              // keeps its graphics context, and the view keeps where it was
-              // turned to.
+              // The preview is the same element in either arrangement, so it is
+              // carried from one to the other rather than drawn again: the
+              // canvas keeps its graphics context, and the view keeps where it
+              // was turned to.
               return (
                 <Show
-                  when={animating()}
+                  when={stacker.narrow()}
                   fallback={
-                    <Show
-                      when={stacker.narrow()}
-                      fallback={
-                        <>
-                          {pixelEditorPane}
-                          {handle}
-                          {voxelPreviewPane}
-                        </>
-                      }
-                    >
-                      {voxelPreviewPane}
-                      {handle}
+                    <>
                       {pixelEditorPane}
-                    </Show>
+                      {handle}
+                      {voxelPreviewPane}
+                    </>
                   }
                 >
                   {voxelPreviewPane}
+                  {handle}
+                  {pixelEditorPane}
                 </Show>
               );
             })()}

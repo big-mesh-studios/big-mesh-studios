@@ -1,7 +1,7 @@
-/* Out beside the button that opens it, standing on the same line, as the
-   palette opens from this corner while a part is being drawn on. The bars in
-   this column gather against the bottom of the screen, so a panel opening
-   upwards out of it would open over them. */
+/* Out beside the button that opens it, standing on the same line, towards the
+   middle of the screen where the model is. The bars in this column gather
+   against the top, so the list hangs off the top of it and stands clear of both
+   the palette and the figure's parts, which open out of the corners below. */
 .motionsPopover {
   inset: unset;
   position: absolute;
@@ -11,8 +11,8 @@
     display: grid;
     gap: var(--margin);
     background-color: transparent;
-    bottom: calc(anchor(bottom) - 1px);
-    left: calc(anchor(right) + var(--margin));
+    top: calc(anchor(top) - 1px);
+    right: calc(anchor(left) + var(--margin));
     width: 230px;
     max-width: calc(100vw - var(--margin) * 4 - var(--size) * 2 - 2px);
   }

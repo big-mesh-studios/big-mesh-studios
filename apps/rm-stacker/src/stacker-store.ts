@@ -55,8 +55,6 @@ import {
   Mirror,
   ModeKind,
   PreviewState,
-  viewModeKinds,
-  type ViewModeKind,
 } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { createEnqueue } from "./utils/utils";
@@ -298,27 +296,6 @@ export function createStacker() {
       motions()[0],
   );
   /**
-   * What the editor is being used for. Drawing on a part's sides and moving the
-   * parts over the frames of a motion each have their own controls, and the one
-   * being used is the one whose controls are up.
-   */
-  const [viewMode, setViewMode] = createSignal<ViewModeKind>(
-    () => saved()?.viewMode ?? "Edit",
-  );
-
-  /**
-   * Steps the editor on to the next of the things it can be used for, and
-   * leaves the motion standing where it had got to rather than running it on
-   * out of sight.
-   */
-  function nextViewMode() {
-    const standing = viewModeKinds.indexOf(untrack(viewMode));
-    stop();
-    setViewMode(viewModeKinds[(standing + 1) % viewModeKinds.length]);
-    requestAutoSave();
-  }
-
-  /**
    * The frame of the motion the editor stands at, which is the pose the preview
    * draws and the frame a pose is recorded at. Whole while it is scrubbed and
    * fractional while it is played, a motion running at its own frames a second
@@ -453,7 +430,6 @@ export function createStacker() {
               preview: preview.state(),
               motions: motions(),
               selectedMotion: motion().name,
-              viewMode: viewMode(),
             });
           } while (trySaveAgain);
           saving = false;
@@ -743,9 +719,6 @@ export function createStacker() {
     setHome,
     // the whole drawing, and the one part of it being drawn on
     figure,
-    // what the editor is being used for
-    viewMode,
-    nextViewMode,
     // what the figure does over time, and where in it the editor stands
     posedFigure,
     posedPart,
