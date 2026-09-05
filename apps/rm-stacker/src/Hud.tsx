@@ -189,6 +189,45 @@ export function Hud() {
           <Palette />
         </PalettePopover.PopOver>
       </Bar>
+      <Bar class={styles.transport} data-raised={PalettePopover.isOpen()}>
+        <IconTab
+          onClick={() => (playing() ? stop() : play())}
+          disabled={endFrame() === 0}
+          selected={!ProfileDialog.isOpen() && playing()}
+          kind={playing() ? "pause" : "play"}
+          title="Play the motion on from the frame it stands at, as far as its last key"
+        />
+        <IconTab
+          kind="backward-step"
+          disabled={previousKey() === undefined}
+          onClick={() => standAtKey(previousKey())}
+          title="Stand at the part's previous key"
+        />
+        <IconTab
+          kind="forward-step"
+          disabled={nextKey() === undefined}
+          onClick={() => standAtKey(nextKey())}
+          title="Stand at the part's next key"
+        />
+        <IconTab
+          kind="trash"
+          disabled={removableKey() === undefined}
+          onClick={removeKey}
+          title="Take the part's key at this frame away"
+        />
+        <input
+          class={styles.frame}
+          type="number"
+          min={0}
+          step={1}
+          value={Math.round(frame())}
+          onInput={(event) => {
+            stop();
+            setFrame(Number(event.currentTarget.value) || 0);
+          }}
+          title="The frame the preview stands at"
+        />
+      </Bar>
       <div class={styles.view}>
         <Bar>
           <IconTab
@@ -245,8 +284,6 @@ export function Hud() {
             selected={!ProfileDialog.isOpen() && !preview.unlit()}
             kind="lightbulb"
           />
-        </Bar>
-        <Bar>
           <IconTab
             onClick={() => {
               preview.setFocus((focus) => (focus === "part" ? "root" : "part"));
@@ -280,45 +317,6 @@ export function Hud() {
             selected={!ProfileDialog.isOpen() && preview.debug()}
             kind="bug"
             title="Stand every part's sides and cuts in the view as planes"
-          />
-        </Bar>
-        <Bar>
-          <IconTab
-            kind="backward-step"
-            disabled={previousKey() === undefined}
-            onClick={() => standAtKey(previousKey())}
-            title="Stand at the part's previous key"
-          />
-          <IconTab
-            onClick={() => (playing() ? stop() : play())}
-            disabled={endFrame() === 0}
-            selected={!ProfileDialog.isOpen() && playing()}
-            kind={playing() ? "pause" : "play"}
-            title="Play the motion on from the frame it stands at, as far as its last key"
-          />
-          <IconTab
-            kind="forward-step"
-            disabled={nextKey() === undefined}
-            onClick={() => standAtKey(nextKey())}
-            title="Stand at the part's next key"
-          />
-          <IconTab
-            kind="trash"
-            disabled={removableKey() === undefined}
-            onClick={removeKey}
-            title="Take the part's key at this frame away"
-          />
-          <input
-            class={styles.frame}
-            type="number"
-            min={0}
-            step={1}
-            value={Math.round(frame())}
-            onInput={(event) => {
-              stop();
-              setFrame(Number(event.currentTarget.value) || 0);
-            }}
-            title="The frame the preview stands at"
           />
         </Bar>
       </div>

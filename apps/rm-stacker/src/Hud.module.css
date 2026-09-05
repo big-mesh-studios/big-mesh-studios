@@ -46,6 +46,18 @@
     grid-area: colour;
   }
 
+  /* Along the bottom edge, between the two columns of bars: the transport is
+     read left to right like the frames it runs through, and a timeline strip
+     would lie beside it. */
+  & > .transport {
+    grid-column: 2;
+    grid-row: -2 / -1;
+    flex-direction: row;
+    justify-self: center;
+    align-self: end;
+    transition: translate 120ms ease-out;
+  }
+
   & > .view {
     display: grid;
     grid-column: 3;
@@ -118,6 +130,16 @@
 
     border: 0;
     border-radius: 0;
+  }
+}
+
+/* On a screen this narrow the palette opens as a single row of colours along
+   the bottom edge, which is the edge the transport stands on. The transport
+   steps up by that row while the palette is open, so the two share the edge
+   rather than one covering the other. */
+@media (max-width: 500px) {
+  .hud > .transport[data-raised] {
+    translate: 0 calc(-1 * (var(--size) + var(--margin) * 2));
   }
 }
 
