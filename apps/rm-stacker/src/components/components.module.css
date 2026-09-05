@@ -1,6 +1,9 @@
 .bar {
   display: flex;
-  flex-direction: column;
+  /* A bar wraps into a second column of its own rather than growing past the
+     height it is given, for a screen too short to stand even one bar in. */
+  flex-flow: column wrap;
+  max-height: 100%;
   gap: var(--margin);
   background-color: var(--back);
   border: 1px solid var(--grey);

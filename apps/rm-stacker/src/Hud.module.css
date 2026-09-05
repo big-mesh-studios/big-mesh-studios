@@ -7,68 +7,69 @@
   gap: var(--margin);
   display: grid;
   grid-template-columns: auto 1fr auto;
-  /* The second row takes whatever the bars leave, which is what holds the rows
-     after it against the bottom edge. Each bar down the left is a row of its
-     own, so they stack against each other.
-     Only the left column's bars are laid out in rows. The bars down the right
-     edge span every row instead and hold themselves to the top and the bottom,
-     so however tall they grow they never set the height of a row the left
-     column has to sit below. */
-  grid-template-rows: auto 1fr auto auto auto auto;
+  /* Three rows: what stands at the top of the screen, everything between, and
+     the row along the bottom edge. A column of bars is stretched over the rows
+     it spans rather than sized by what it holds, so it is told how much height
+     there is and can wrap into a column beside it. */
+  grid-template-rows: auto 1fr auto;
   grid-template-areas:
-    "files   . ."
-    ".       . ."
-    "history . ."
-    "tools   . ."
-    "mirror  . ."
-    "colour  . .";
+    "files .         view"
+    "left  .         view"
+    "left  transport parts";
   /* Only the bars themselves are reachable, and each asks for that for itself.
      Everything between them is the model behind, which orbits to a drag. */
   pointer-events: none;
 
   & > .files {
     grid-area: files;
+    align-self: start;
+    justify-self: start;
   }
 
-  & > .history {
-    grid-area: history;
+  /* The bars a drawing is made with, gathered against the bottom of the screen.
+     A screen too short to stand them all in spills them into another column
+     alongside, towards the middle, which holds nothing but the model. */
+  & > .left {
+    grid-area: left;
+    display: flex;
+    flex-flow: column wrap;
+    justify-content: flex-end;
+    align-content: flex-start;
+    gap: var(--margin);
   }
 
-  & > .tools {
-    grid-area: tools;
-  }
-
-  & > .mirror {
-    grid-area: mirror;
-  }
-
-  & > .colour {
-    grid-area: colour;
+  /* The bars the view is framed with, gathered against the top and spilling
+     towards the middle from the other side. */
+  & > .view {
+    grid-area: view;
+    display: flex;
+    flex-flow: column wrap-reverse;
+    justify-content: flex-start;
+    align-content: flex-start;
+    gap: var(--margin);
   }
 
   /* Along the bottom edge, between the two columns of bars: the transport is
-     read left to right like the frames it runs through, and a timeline strip
-     would lie beside it. */
+     read left to right like the frames it runs through, and a strip of the
+     motion's keys would lie beside it. */
   & > .transport {
-    grid-column: 2;
-    grid-row: -2 / -1;
+    grid-area: transport;
     flex-direction: row;
     justify-self: center;
     align-self: end;
     transition: translate 120ms ease-out;
-  }
 
-  & > .view {
-    display: grid;
-    grid-column: 3;
-    grid-row: 1 / -1;
-    align-self: start;
-    gap: var(--margin);
+    /* Where the palette cannot open beside the button it opens along this same
+       edge, as a single row of colours. A row of colours and a row of tabs are
+       the same square tall, so the transport steps up by its own height and the
+       two share the edge. */
+    &[data-raised] {
+      translate: 0 calc(-100% - var(--margin));
+    }
   }
 
   & > .partsBar {
-    grid-column: 3;
-    grid-row: 1 / -1;
+    grid-area: parts;
     align-self: end;
   }
 }
@@ -130,16 +131,6 @@
 
     border: 0;
     border-radius: 0;
-  }
-}
-
-/* On a screen this narrow the palette opens as a single row of colours along
-   the bottom edge, which is the edge the transport stands on. The transport
-   steps up by that row while the palette is open, so the two share the edge
-   rather than one covering the other. */
-@media (max-width: 500px) {
-  .hud > .transport[data-raised] {
-    translate: 0 calc(-1 * (var(--size) + var(--margin) * 2));
   }
 }
 
