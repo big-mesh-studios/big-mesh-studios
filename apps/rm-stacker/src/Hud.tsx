@@ -5,8 +5,10 @@ import {
   Colour,
   colourTabStyle,
   createDialog,
+  Icon,
   IconButton,
   IconTab,
+  iconTabStyle,
   popoverStyle,
   tabStyle,
 } from "./components/components";
@@ -65,6 +67,7 @@ export function Hud() {
   } = useContext(StackerContext);
 
   const PalettePopover = createPopover();
+  const ViewSettingsPopover = createPopover();
 
   const ProfileDialog = createDialog();
 
@@ -285,58 +288,72 @@ export function Hud() {
           </For>
         </Bar>
         <Bar>
-          <IconTab
-            onClick={() => {
-              preview.setAutorotate((rotate) => !rotate);
-              flush();
-              requestAutoSave();
-            }}
-            selected={!ProfileDialog.isOpen() && preview.autorotate()}
-            kind="rotate"
-          />
-          <IconTab
-            onClick={() => {
-              preview.setUnlit((unlit) => !unlit);
-              flush();
-              requestAutoSave();
-            }}
-            selected={!ProfileDialog.isOpen() && !preview.unlit()}
-            kind="lightbulb"
-          />
-          <IconTab
-            onClick={() => {
-              preview.setFocus((focus) => (focus === "part" ? "root" : "part"));
-              flush();
-              requestAutoSave();
-            }}
-            selected={!ProfileDialog.isOpen() && preview.focus() === "part"}
-            kind="crosshairs"
-            title={
-              preview.focus() === "part"
-                ? "Turning about the part being drawn on"
-                : "Turning about the figure's root"
-            }
-          />
-          <IconTab
-            onClick={() => {
-              preview.setAutoframe((autoframe) => !autoframe);
-              flush();
-              requestAutoSave();
-            }}
-            selected={!ProfileDialog.isOpen() && preview.autoframe()}
-            kind="expand"
-            title="Autoframe: keep the whole figure in the view as it is drawn"
-          />
-          <IconTab
-            onClick={() => {
-              preview.setDebug((debug) => !debug);
-              flush();
-              requestAutoSave();
-            }}
-            selected={!ProfileDialog.isOpen() && preview.debug()}
-            kind="bug"
-            title="Stand every part's sides and cuts in the view as planes"
-          />
+          <ViewSettingsPopover.Trigger
+            class={[tabStyle, iconTabStyle]}
+            title="How the view is drawn"
+          >
+            <Icon kind="gear" />
+          </ViewSettingsPopover.Trigger>
+          <ViewSettingsPopover.PopOver
+            class={[popoverStyle, styles.viewSettingsPopover]}
+          >
+            <IconTab
+              onClick={() => {
+                preview.setAutorotate((rotate) => !rotate);
+                flush();
+                requestAutoSave();
+              }}
+              selected={!ProfileDialog.isOpen() && preview.autorotate()}
+              kind="rotate"
+              title="Turn the figure on a turntable"
+            />
+            <IconTab
+              onClick={() => {
+                preview.setUnlit((unlit) => !unlit);
+                flush();
+                requestAutoSave();
+              }}
+              selected={!ProfileDialog.isOpen() && !preview.unlit()}
+              kind="lightbulb"
+              title="Light the figure, rather than showing its colours flat"
+            />
+            <IconTab
+              onClick={() => {
+                preview.setFocus((focus) =>
+                  focus === "part" ? "root" : "part",
+                );
+                flush();
+                requestAutoSave();
+              }}
+              selected={!ProfileDialog.isOpen() && preview.focus() === "part"}
+              kind="crosshairs"
+              title={
+                preview.focus() === "part"
+                  ? "Turning about the part being drawn on"
+                  : "Turning about the figure's root"
+              }
+            />
+            <IconTab
+              onClick={() => {
+                preview.setAutoframe((autoframe) => !autoframe);
+                flush();
+                requestAutoSave();
+              }}
+              selected={!ProfileDialog.isOpen() && preview.autoframe()}
+              kind="expand"
+              title="Autoframe: keep the whole figure in the view as it is drawn"
+            />
+            <IconTab
+              onClick={() => {
+                preview.setDebug((debug) => !debug);
+                flush();
+                requestAutoSave();
+              }}
+              selected={!ProfileDialog.isOpen() && preview.debug()}
+              kind="bug"
+              title="Stand every part's sides and cuts in the view as planes"
+            />
+          </ViewSettingsPopover.PopOver>
         </Bar>
       </div>
       <Bar class={styles.partsBar}>
