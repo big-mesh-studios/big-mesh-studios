@@ -34,6 +34,17 @@ export type {
   SideKind,
   Sides,
 } from "./data";
+export {
+  keyAt,
+  keysFor,
+  movesNothing,
+  NO_MOTION,
+  poseAt,
+  poseFigure,
+  withKey,
+  withoutKey,
+} from "./motion";
+export type { Ease, Key, Motion, PartKeys, Pose } from "./motion";
 export { solveVoxels, encodePalette } from "./solver";
 export type { ViewSpec } from "./solver";
 export { marchVolume } from "./march";
