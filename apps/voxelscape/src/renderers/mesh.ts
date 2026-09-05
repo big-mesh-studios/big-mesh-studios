@@ -318,7 +318,8 @@ const emitFluidFace = (
     // Top/bottom faces (axis 1) sit at the plane the face asks for; a corner
     // that lies on the top edge of a side face gets `topFraction`, the bottom
     // edge `bottomFraction`.
-    const fy = axis === 1 ? topFraction : yo === 1 ? topFraction : bottomFraction;
+    const fy =
+      axis === 1 ? topFraction : yo === 1 ? topFraction : bottomFraction;
     ctx.positions.push(
       axis === 0 ? wx + sign * h : wx + (xo - 0.5) * 2 * h,
       yAt(fy),

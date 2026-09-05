@@ -4,11 +4,7 @@
 // keyed, so it persists and syncs), then into the containing block's store.
 // A plain domain object: it knows how to edit voxels and keep the renderer
 // informed, not which item is wielded, nor that a console or network exists.
-import type {
-  Dim3,
-  TerrainConfig,
-  WorldBlock,
-} from "../world/level-data";
+import type { Dim3, TerrainConfig, WorldBlock } from "../world/level-data";
 import {
   blockWorldVoxelRange,
   worldVoxelToLocal,

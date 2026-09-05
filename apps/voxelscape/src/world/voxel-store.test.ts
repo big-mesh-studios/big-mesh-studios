@@ -316,7 +316,11 @@ describe("getWorldHeight", () => {
       }
     }
     const blocks = [
-      { center: [0, 0, 0] as [number, number, number], store, light: new LightStore(store.voxels) },
+      {
+        center: [0, 0, 0] as [number, number, number],
+        store,
+        light: new LightStore(store.voxels),
+      },
     ];
     // voxel (1, vy, 1) has world xz = -1; the water row 3 would be world y 4,
     // the lakebed row 2 is world y 2 -> must return the lakebed

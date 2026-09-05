@@ -52,7 +52,9 @@ export const isKind = (kind: FluidKind, id: number): boolean =>
  * source id at level 0, a level id at 1..`FLUID_MAX_LEVEL`.
  */
 export const levelIdOf = (kind: FluidKind, level: number): number =>
-  level <= 0 ? SOURCE_ID[kind] : LEVEL_BASE[kind] + Math.min(level, FLUID_MAX_LEVEL) - 1;
+  level <= 0
+    ? SOURCE_ID[kind]
+    : LEVEL_BASE[kind] + Math.min(level, FLUID_MAX_LEVEL) - 1;
 
 /**
  * The spread level a fluid voxel carries (`0` for a source; the falling ids
