@@ -13,9 +13,9 @@
      there is and can wrap into a column beside it. */
   grid-template-rows: auto 1fr auto;
   grid-template-areas:
-    "files .         view"
-    "left  .         view"
-    "left  transport parts";
+    "files . view"
+    "left  . view"
+    "left  . parts";
   /* Only the bars themselves are reachable, and each asks for that for itself.
      Everything between them is the model behind, which orbits to a drag. */
   pointer-events: none;
@@ -47,16 +47,6 @@
     justify-content: flex-start;
     align-content: flex-start;
     gap: var(--margin);
-  }
-
-  /* Along the bottom edge, between the two columns of bars: the transport is
-     read left to right like the frames it runs through, and a strip of the
-     motion's keys would lie beside it. */
-  & > .transport {
-    grid-area: transport;
-    flex-direction: row;
-    justify-self: center;
-    align-self: end;
   }
 
   & > .partsBar {
