@@ -14,6 +14,7 @@ interface ButtonProps extends ParentProps {
   disabled?: boolean;
   title?: string;
   class?: JSX.ClassValue;
+  id?: string;
 }
 
 export const buttonStyle = styles.button;
