@@ -1,0 +1,73 @@
+/* Above the button that opens it and along the same edge, the list growing
+   upwards out of the corner the motion's controls stand in. */
+.motionsPopover {
+  inset: unset;
+  position: absolute;
+  pointer-events: auto;
+
+  &:popover-open {
+    display: grid;
+    gap: var(--margin);
+    background-color: transparent;
+    bottom: calc(anchor(top) + var(--margin));
+    left: calc(anchor(left));
+    width: 230px;
+    max-width: calc(100vw - var(--margin) * 4 - var(--size) * 2 - 2px);
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--margin);
+  align-self: stretch;
+  justify-content: end;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  max-height: 40dvh;
+  overflow-y: auto;
+}
+
+/* The name takes the row, and what can be done to it comes out on the row being
+   pointed at — or, where a finger is doing the pointing and nothing hovers, on
+   the one being worked on. */
+.motion {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+
+  @media (pointer: coarse) {
+    &:not([data-selected]) .action {
+      display: none;
+    }
+  }
+
+  @media (pointer: fine) {
+    &:not(:hover) .action {
+      display: none;
+    }
+  }
+}
+
+.name {
+  justify-content: start;
+  align-items: center;
+  padding-inline: var(--margin);
+  font-size: 10pt;
+  text-align: left;
+
+  & > span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.pane {
+  background-color: var(--back);
+  border: 1px solid var(--grey);
+  border-radius: var(--margin);
+}

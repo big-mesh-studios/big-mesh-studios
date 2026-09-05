@@ -16,6 +16,7 @@ import Palette from "./components/Palette";
 import { StackerContext } from "./context";
 import styles from "./Hud.module.css";
 import type { IconKind } from "./icon-kinds";
+import { MotionsPanel } from "./MotionsPanel";
 import { PartsPanel } from "./PartsPanel";
 import { ProfileModal } from "./profile/ProfileModal";
 import { HandleKind, ModeKind } from "./types";
@@ -152,6 +153,9 @@ export function Hud() {
               }}
               title="The frame the preview stands at"
             />
+          </Bar>
+          <Bar>
+            <MotionsPanel />
           </Bar>
         </Show>
         <Show when={viewMode() === "Edit"}>

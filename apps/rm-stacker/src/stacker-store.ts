@@ -119,8 +119,18 @@ export const createInitialPart = (
  * A name like `base` that no part in `parts` is using, counting up from `base
  * 2` until one is free.
  */
-export const unusedPartName = (parts: Part[], base: string): string => {
-  const taken = new Set(parts.map((part) => part.name));
+export const unusedPartName = (parts: Part[], base: string): string =>
+  unusedName(
+    parts.map((part) => part.name),
+    base,
+  );
+
+/**
+ * A name like `base` that nothing in `names` is using, counting up from `base
+ * 2` until one is free.
+ */
+export const unusedName = (names: string[], base: string): string => {
+  const taken = new Set(names);
 
   if (!taken.has(base)) {
     return base;
@@ -265,8 +275,27 @@ export function createStacker() {
     partDimensions(selectedPart()),
   );
 
-  const [motion, setMotion] = createSignal<Motion>(
-    () => saved()?.motion ?? NO_MOTION,
+  /**
+   * Every motion the figure has. There is always at least one: a figure that
+   * has never been animated has one that moves nothing, which is the pose it
+   * stands in.
+   */
+  const [motions, setMotions] = createSignal<Motion[]>(
+    () => saved()?.motions ?? [{ ...NO_MOTION, name: "motion" }],
+  );
+  const [selectedMotionName, setSelectedMotionName] = createSignal(
+    () => saved()?.selectedMotion ?? "",
+  );
+
+  /**
+   * The motion being edited, which is the one the transport winds and a pose is
+   * recorded into: the one chosen, or the first of them where the one chosen is
+   * no longer there.
+   */
+  const motion = createMemo(
+    () =>
+      motions().find(({ name }) => name === selectedMotionName()) ??
+      motions()[0],
   );
   /**
    * What the editor is being used for. Drawing on a part's sides and moving the
@@ -430,7 +459,8 @@ export function createStacker() {
               undoStack,
               redoStack,
               preview: preview.state(),
-              motion: motion(),
+              motions: motions(),
+              selectedMotion: motion().name,
               viewMode: viewMode(),
             });
           } while (trySaveAgain);
@@ -448,8 +478,8 @@ export function createStacker() {
   const { snapshot, doCommand } = createCommander({
     parts,
     setParts,
-    motion,
-    setMotion,
+    motions,
+    setMotions,
     updateVoxels,
     requestRender,
     requestAutoSave,
@@ -507,8 +537,10 @@ export function createStacker() {
       ease: keyAt(motion(), name, at)?.ease ?? "linear",
     };
 
+    const into = motion().name;
+
     if (keysFor(motion(), name).length > 0 || at === START_FRAME) {
-      return Command.keyPart(name, at, key);
+      return Command.keyPart(into, name, at, key);
     }
 
     // The first key a part is given past the start of the motion brings one at
@@ -516,12 +548,12 @@ export function createStacker() {
     // the part stands until this one runs it somewhere else; without it the
     // part would stand in the pose being made here from the first frame on.
     return Command.sequence([
-      Command.keyPart(name, START_FRAME, {
+      Command.keyPart(into, name, START_FRAME, {
         ...drawn,
         at: START_FRAME,
         ease: "linear",
       }),
-      Command.keyPart(name, at, key),
+      Command.keyPart(into, name, at, key),
     ]);
   }
 
@@ -611,10 +643,75 @@ export function createStacker() {
     }
 
     doCommandAndUndo(
-      Command.keyPart(selectedPart().name, key.at, null),
+      Command.keyPart(motion().name, selectedPart().name, key.at, null),
       true,
       "Remove Key",
     );
+  }
+
+  /**
+   * Chooses which motion the transport winds and a pose is recorded into, and
+   * stands at the start of it, one motion's frames being nothing to do with
+   * another's.
+   */
+  function selectMotion(name: string) {
+    stop();
+    setSelectedMotionName(name);
+    setFrame(START_FRAME);
+    requestAutoSave();
+  }
+
+  /** Adds a motion that moves nothing beside the others, and chooses it. */
+  function addMotion() {
+    const name = unusedName(
+      motions().map((motion) => motion.name),
+      "motion",
+    );
+
+    setMotions([...motions(), { ...NO_MOTION, name }]);
+    selectMotion(name);
+  }
+
+  /** Calls `name` something else, unless something else is called that already. */
+  function renameMotion(name: string, to: string) {
+    if (
+      to === name ||
+      to === "" ||
+      motions().some((held) => held.name === to)
+    ) {
+      return;
+    }
+
+    setMotions(
+      motions().map((motion) =>
+        motion.name === name ? { ...motion, name: to } : motion,
+      ),
+    );
+
+    if (untrack(selectedMotionName) === name) {
+      setSelectedMotionName(to);
+    }
+
+    requestAutoSave();
+  }
+
+  /**
+   * Takes a motion away, unless it is the only one: a figure always has one
+   * motion, whether or not it moves anything.
+   */
+  function removeMotion(name: string) {
+    if (motions().length <= 1) {
+      return;
+    }
+
+    setMotions(motions().filter((motion) => motion.name !== name));
+
+    if (untrack(selectedMotionName) === name) {
+      selectMotion(motions()[0].name);
+      return;
+    }
+
+    requestAutoSave();
   }
 
   createEffect(parts, requestRender);
@@ -660,8 +757,12 @@ export function createStacker() {
     // what the figure does over time, and where in it the editor stands
     posedFigure,
     posedPart,
+    motions,
     motion,
-    setMotion,
+    selectMotion,
+    addMotion,
+    renameMotion,
+    removeMotion,
     frame,
     setFrame,
     endFrame,

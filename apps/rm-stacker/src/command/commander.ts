@@ -17,8 +17,8 @@ import { Command } from "./Command";
 export function createCommander({
   parts,
   setParts,
-  motion,
-  setMotion,
+  motions,
+  setMotions,
   updateVoxels,
   requestRender,
   requestAutoSave,
@@ -27,8 +27,8 @@ export function createCommander({
 }: {
   parts: Accessor<Part[]>;
   setParts: Setter<Part[]>;
-  motion: Accessor<Motion>;
-  setMotion: Setter<Motion>;
+  motions: Accessor<Motion[]>;
+  setMotions: Setter<Motion[]>;
   setPalette: Setter<RGBA[]>;
   updateVoxels(): void;
   requestRender(): void;
@@ -238,25 +238,33 @@ export function createCommander({
           return Command.writePixel(partName, kind, position, oldIndex);
         }
         case "KeyPart": {
-          const { part: partName, at, key } = command;
-          const standing = keyAt(motion(), partName, at);
+          const { motion: motionName, part: partName, at, key } = command;
+          const standing = motions().find(({ name }) => name === motionName);
+
+          if (standing === undefined) {
+            return Command.noOperation();
+          }
+
+          const stood = keyAt(standing, partName, at);
           const next =
             key === null
-              ? withoutKey(motion(), partName, at)
-              : withKey(motion(), partName, key);
+              ? withoutKey(standing, partName, at)
+              : withKey(standing, partName, key);
 
           // A motion hands itself back where nothing stood at that frame, and
           // where the key asked for is the one the part starts in that a later
           // key holds in place.
-          if (next === motion()) {
+          if (next === standing) {
             return Command.noOperation();
           }
 
-          setMotion(next);
+          setMotions(
+            motions().map((held) => (held === standing ? next : held)),
+          );
 
           // Whatever stood at that frame before, so that taking the key back
           // puts it there again — and takes the key away where there was none.
-          return Command.keyPart(partName, at, standing ?? null);
+          return Command.keyPart(motionName, partName, at, stood ?? null);
         }
         case "MovePart": {
           const { part: partName, root } = command;

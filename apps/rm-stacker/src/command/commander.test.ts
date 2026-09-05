@@ -48,7 +48,7 @@ const partOf = (): Part => ({
 /** A commander over one part, the part it draws on, and the motion it poses it in. */
 const commanderOf = (part: Part) => {
   let parts = [part];
-  let motion = NO_MOTION;
+  let motions = [{ ...NO_MOTION, name: "walk" }];
 
   return {
     ...createCommander({
@@ -56,17 +56,17 @@ const commanderOf = (part: Part) => {
       setParts: ((next: Part[]) => {
         parts = next;
       }) as unknown as Setter<Part[]>,
-      motion: (() => motion) as Accessor<Motion>,
-      setMotion: ((next: Motion) => {
-        motion = next;
-      }) as unknown as Setter<Motion>,
+      motions: (() => motions) as Accessor<Motion[]>,
+      setMotions: ((next: Motion[]) => {
+        motions = next;
+      }) as unknown as Setter<Motion[]>,
       palette: (() => PALETTE) as Accessor<RGBA[]>,
       setPalette: (() => {}) as unknown as Setter<RGBA[]>,
       updateVoxels() {},
       requestRender() {},
       requestAutoSave() {},
     }),
-    motion: () => motion,
+    motion: () => motions[0],
   };
 };
 
@@ -83,7 +83,7 @@ describe("KeyPart", () => {
   it("stands a key at the frame it names", async () => {
     const { doCommand, motion } = commanderOf(partOf());
 
-    await doCommand(Command.keyPart("body", 4, keyOf(4)));
+    await doCommand(Command.keyPart("walk", "body", 4, keyOf(4)));
 
     expect(keysFor(motion(), "body").map(({ at }) => at)).toEqual([4]);
   });
@@ -91,10 +91,10 @@ describe("KeyPart", () => {
   it("hands back the key that stood there, so taking it back puts it again", async () => {
     const { doCommand, motion } = commanderOf(partOf());
 
-    await doCommand(Command.keyPart("body", 4, keyOf(4)));
+    await doCommand(Command.keyPart("walk", "body", 4, keyOf(4)));
 
     const undo = await doCommand(
-      Command.keyPart("body", 4, { ...keyOf(4), scale: 2 }),
+      Command.keyPart("walk", "body", 4, { ...keyOf(4), scale: 2 }),
     );
 
     expect(keyAt(motion(), "body", 4)?.scale).toBe(2);
@@ -107,9 +107,9 @@ describe("KeyPart", () => {
   it("takes a key away, and hands back the one it took", async () => {
     const { doCommand, motion } = commanderOf(partOf());
 
-    await doCommand(Command.keyPart("body", 4, keyOf(4)));
+    await doCommand(Command.keyPart("walk", "body", 4, keyOf(4)));
 
-    const undo = await doCommand(Command.keyPart("body", 4, null));
+    const undo = await doCommand(Command.keyPart("walk", "body", 4, null));
 
     expect(keysFor(motion(), "body")).toHaveLength(0);
 
@@ -121,21 +121,21 @@ describe("KeyPart", () => {
   it("keeps the key a part starts in while a later key stands", async () => {
     const { doCommand, motion } = commanderOf(partOf());
 
-    await doCommand(Command.keyPart("body", 0, keyOf(0)));
-    await doCommand(Command.keyPart("body", 4, keyOf(4)));
+    await doCommand(Command.keyPart("walk", "body", 0, keyOf(0)));
+    await doCommand(Command.keyPart("walk", "body", 4, keyOf(4)));
 
-    expect((await doCommand(Command.keyPart("body", 0, null))).type).toBe(
-      "NoOperation",
-    );
+    expect(
+      (await doCommand(Command.keyPart("walk", "body", 0, null))).type,
+    ).toBe("NoOperation");
     expect(keysFor(motion(), "body")).toHaveLength(2);
   });
 
   it("does nothing where it is asked to take away a key that is not there", async () => {
     const { doCommand } = commanderOf(partOf());
 
-    expect((await doCommand(Command.keyPart("body", 4, null))).type).toBe(
-      "NoOperation",
-    );
+    expect(
+      (await doCommand(Command.keyPart("walk", "body", 4, null))).type,
+    ).toBe("NoOperation");
   });
 });
 

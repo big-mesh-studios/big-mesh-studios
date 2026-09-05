@@ -56,6 +56,8 @@ export type Command =
     }
   | {
       type: "KeyPart";
+      /** The name of the motion the key stands in. */
+      motion: string;
       part: string;
       /** The frame the key stands at. */
       at: number;
@@ -141,11 +143,20 @@ export namespace Command {
   }
 
   /**
-   * Stands `key` at the frame `at` of the part's motion, in place of whatever
-   * stands there — or takes that key away, for a `key` of null.
+   * Stands `key` at the frame `at` of the part's place in `motion`, in place of
+   * whatever stands there — or takes that key away, for a `key` of null.
+   *
+   * The motion is named rather than taken as whichever one is being edited, so
+   * that taking a key back puts it where it was made even after the editor has
+   * moved on to another motion.
    */
-  export function keyPart(part: string, at: number, key: Key | null): Command {
-    return { type: "KeyPart", part, at, key };
+  export function keyPart(
+    motion: string,
+    part: string,
+    at: number,
+    key: Key | null,
+  ): Command {
+    return { type: "KeyPart", motion, part, at, key };
   }
 
   export function movePart(part: string, root: Vector3D): Command {
@@ -229,8 +240,8 @@ export namespace Command {
         };
       }
       case "KeyPart": {
-        let { part, at, key } = command;
-        return { type: "KeyPart", part, at, key };
+        let { motion, part, at, key } = command;
+        return { type: "KeyPart", motion, part, at, key };
       }
       case "MovePart": {
         let { part, root } = command;
@@ -327,19 +338,28 @@ export namespace Command {
           typeof value?.y === "number" &&
           typeof value?.z === "number";
 
-        if (typeof command.part !== "string" || !(command.at >= 0)) {
+        if (
+          typeof command.motion !== "string" ||
+          typeof command.part !== "string" ||
+          !(command.at >= 0)
+        ) {
           return Command.noOperation();
         }
 
         if (key === null) {
-          return Command.keyPart(command.part, command.at, null);
+          return Command.keyPart(
+            command.motion,
+            command.part,
+            command.at,
+            null,
+          );
         }
 
         if (!vector(key?.root) || !vector(key?.turn) || !(key?.scale > 0)) {
           return Command.noOperation();
         }
 
-        return Command.keyPart(command.part, command.at, {
+        return Command.keyPart(command.motion, command.part, command.at, {
           at: command.at,
           root: { x: key.root.x, y: key.root.y, z: key.root.z },
           turn: { x: key.turn.x, y: key.turn.y, z: key.turn.z },

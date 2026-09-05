@@ -21,6 +21,8 @@ const DB_KEYS = {
   preview: "preview",
   selectedPart: "selectedPart",
   motion: "motion",
+  motions: "motions",
+  selectedMotion: "selectedMotion",
   viewMode: "viewMode",
 } as const;
 
@@ -37,8 +39,14 @@ export interface IndexedDBData {
    * that save is missing, and falls back to whatever the editor opens with.
    */
   preview: Partial<PreviewState>;
-  /** What the figure does over time, or a motion moving nothing where none was saved. */
-  motion: Motion;
+  /**
+   * Every motion the figure has, of which there is always at least one: a
+   * figure saved before it could have more than one hands back the one it had,
+   * and one saved before it could have any hands back a motion moving nothing.
+   */
+  motions: Motion[];
+  /** The name of the motion that was being edited. */
+  selectedMotion: string;
   /** What the editor was last being used for, or drawing where nothing was saved. */
   viewMode: ViewModeKind;
 }
@@ -67,11 +75,8 @@ export async function loadFromIndexedDB(
       ? savedPartName
       : parts[0].name;
 
-  const motionText = await loadTextFromDB(DB_KEYS.motion);
-  const motion: Motion =
-    motionText === null
-      ? NO_MOTION
-      : { ...NO_MOTION, ...JSON.parse(motionText) };
+  const motions = await loadMotions();
+  const selectedMotion = (await loadTextFromDB(DB_KEYS.selectedMotion)) ?? "";
 
   const viewMode: ViewModeKind =
     (await loadTextFromDB(DB_KEYS.viewMode)) === "Animate" ? "Animate" : "Edit";
@@ -105,9 +110,41 @@ export async function loadFromIndexedDB(
     redoStack,
     palette,
     preview,
-    motion,
+    motions,
+    selectedMotion,
     viewMode,
   };
+}
+
+/**
+ * The motions saved for the figure, named so that one can be told from another.
+ * A figure saved when it could hold only one motion has that one read back as
+ * the first of a list, under whatever name it was given or "motion" where it
+ * had none.
+ */
+async function loadMotions(): Promise<Motion[]> {
+  const namedOrNot = (motion: Partial<Motion>, fallback: string): Motion => ({
+    ...NO_MOTION,
+    ...motion,
+    name: motion.name || fallback,
+  });
+  const listText = await loadTextFromDB(DB_KEYS.motions);
+
+  if (listText !== null) {
+    const list: Partial<Motion>[] = JSON.parse(listText);
+
+    if (list.length > 0) {
+      return list.map((motion, index) =>
+        namedOrNot(motion, index === 0 ? "motion" : `motion ${index + 1}`),
+      );
+    }
+  }
+
+  const singleText = await loadTextFromDB(DB_KEYS.motion);
+
+  return [
+    namedOrNot(singleText === null ? {} : JSON.parse(singleText), "motion"),
+  ];
 }
 
 export async function saveToIndexedDB({
@@ -117,7 +154,8 @@ export async function saveToIndexedDB({
   redoStack,
   palette,
   preview,
-  motion,
+  motions,
+  selectedMotion,
   viewMode,
 }: {
   parts: Part[];
@@ -126,13 +164,15 @@ export async function saveToIndexedDB({
   redoStack: { command: Command; description: string }[];
   palette: RGBA[];
   preview: PreviewState;
-  motion: Motion;
+  motions: Motion[];
+  selectedMotion: string;
   viewMode: ViewModeKind;
 }): Promise<void> {
   const blob = await saveFigure({ parts, palette });
   await saveBlobToDB(DB_KEYS.zipFileData, blob);
   await saveTextToDB(DB_KEYS.selectedPart, selectedPartName);
-  await saveTextToDB(DB_KEYS.motion, JSON.stringify(motion));
+  await saveTextToDB(DB_KEYS.motions, JSON.stringify(motions));
+  await saveTextToDB(DB_KEYS.selectedMotion, selectedMotion);
   await saveTextToDB(DB_KEYS.viewMode, viewMode);
   const undoStackJson = [];
   for (const { command, description } of undoStack) {
