@@ -1,5 +1,7 @@
-/* Above the button that opens it and along the same edge, the list growing
-   upwards out of the corner the motion's controls stand in. */
+/* Out beside the button that opens it, standing on the same line, as the
+   palette opens from this corner while a part is being drawn on. The bars in
+   this column gather against the bottom of the screen, so a panel opening
+   upwards out of it would open over them. */
 .motionsPopover {
   inset: unset;
   position: absolute;
@@ -9,8 +11,8 @@
     display: grid;
     gap: var(--margin);
     background-color: transparent;
-    bottom: calc(anchor(top) + var(--margin));
-    left: calc(anchor(left));
+    bottom: calc(anchor(bottom) - 1px);
+    left: calc(anchor(right) + var(--margin));
     width: 230px;
     max-width: calc(100vw - var(--margin) * 4 - var(--size) * 2 - 2px);
   }
