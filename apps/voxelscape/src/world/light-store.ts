@@ -31,8 +31,7 @@ export const EMISSIVE_LEVEL: Record<number, number> = (() => {
  * renders as `l / MAX_LIGHT` at full energy. Kept as a named value so the
  * mesher and the tests normalize light the same way.
  */
-export const LIGHT_TO_UNIT = (level: number): number =>
-  level * (1 / MAX_LIGHT);
+export const LIGHT_TO_UNIT = (level: number): number => level * (1 / MAX_LIGHT);
 
 /**
  * A block's two light channels, `skylight` and `blocklight`, sized and padded

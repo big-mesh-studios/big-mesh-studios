@@ -17,7 +17,11 @@ const makeBucket = (): BucketTool => {
 };
 
 const voxelPick = {
-  primary: { kind: "voxel" as const, voxel: [0, 0, 0] as [number, number, number], distance: 1 },
+  primary: {
+    kind: "voxel" as const,
+    voxel: [0, 0, 0] as [number, number, number],
+    distance: 1,
+  },
   secondary: [0, 0, 0] as [number, number, number],
 };
 

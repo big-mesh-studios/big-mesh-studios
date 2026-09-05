@@ -27,8 +27,12 @@ const surface = (
     brightness?: number;
   } = {},
 ): number[] => {
-  const { normal = [0, 1, 0], distance = 0, uv = [0, 0], brightness = 1 } =
-    options;
+  const {
+    normal = [0, 1, 0],
+    distance = 0,
+    uv = [0, 0],
+    brightness = 1,
+  } = options;
   const value = shadeTerrain(material)({
     varyings: {
       normalWorld: normal,

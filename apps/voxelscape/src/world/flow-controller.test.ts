@@ -2,11 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildBlockShell, type WorldBlock } from "./level-data";
 import { FlowController } from "./flow-controller";
-import {
-  VOXEL_AIR,
-  VOXEL_WATER,
-  VOXEL_WATER_FALLING,
-} from "./voxel-store";
+import { VOXEL_AIR, VOXEL_WATER, VOXEL_WATER_FALLING } from "./voxel-store";
 import { SPREAD_SECONDS } from "./fluid";
 
 /**

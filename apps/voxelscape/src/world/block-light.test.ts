@@ -2,12 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { EMISSIVE_LEVEL, LightStore, MAX_LIGHT } from "./light-store";
 import { fillBlockLight } from "./block-light";
-import {
-  VOXEL_AIR,
-  VOXEL_DIRT,
-  VOXEL_LAVA,
-  VoxelStore,
-} from "./voxel-store";
+import { VOXEL_AIR, VOXEL_DIRT, VOXEL_LAVA, VoxelStore } from "./voxel-store";
 
 const smallStore = (): VoxelStore =>
   new VoxelStore({

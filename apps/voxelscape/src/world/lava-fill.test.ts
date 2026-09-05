@@ -2,12 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { heightAt } from "./noise";
 import { LAVA_DEPTH } from "./lava-fill";
-import {
-  fillStore,
-  VOXEL_AIR,
-  VOXEL_LAVA,
-  VoxelStore,
-} from "./voxel-store";
+import { fillStore, VOXEL_AIR, VOXEL_LAVA, VoxelStore } from "./voxel-store";
 
 /**
  * A deep block buried under a real, cave-carving terrain. `center` is offset

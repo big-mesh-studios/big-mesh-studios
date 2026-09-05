@@ -94,8 +94,7 @@ export const propagateLight = (
       // A full-sky cursor keeps full strength straight along its own column
       // (up or down through open air), so an open shaft stays bright to its
       // floor; a step sideways leaves the direct-sunlight column and decays.
-      const next =
-        sky && cur.fullSky && dy !== 0 ? MAX_LIGHT : cur.level - 1;
+      const next = sky && cur.fullSky && dy !== 0 ? MAX_LIGHT : cur.level - 1;
       if (next <= here) {
         continue;
       }
