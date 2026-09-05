@@ -8,10 +8,17 @@ import {
 } from "@big-mesh-studios/maths";
 import {
   centrePivot,
+  keyAt,
+  keysFor,
+  NO_MOTION,
   partDimensions,
+  poseAt,
+  poseFigure,
   solvePart,
   type DimensionKind,
   type Figure,
+  type Key,
+  type Motion,
   type Part,
   type Section,
   type Sides,
@@ -19,7 +26,13 @@ import {
 } from "@big-mesh-studios/stacker/renderer";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import { Accessor } from "@solidjs/signals";
-import { createEffect, createMemo, createSignal, flush } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  flush,
+  untrack,
+} from "solid-js";
 import { createAtproto } from "./atproto/create-atproto";
 import { Command } from "./command/Command";
 import { createCommander } from "./command/commander";
@@ -245,6 +258,28 @@ export function createStacker() {
     partDimensions(selectedPart()),
   );
 
+  const [motion, setMotion] = createSignal<Motion>(
+    () => saved()?.motion ?? NO_MOTION,
+  );
+  /**
+   * The frame of the motion the editor stands at, which is the pose the preview
+   * draws and the frame a pose is recorded at. Whole while it is scrubbed and
+   * fractional while it is played, a motion running at its own frames a second
+   * however fast the screen draws.
+   */
+  const [frame, setFrame] = createSignal(0);
+  /** Whether posing a part writes a key rather than moving the part itself. */
+  const [recording, setRecording] = createSignal(false);
+  const [playing, setPlaying] = createSignal(false);
+
+  /**
+   * The figure as it stands at the frame being looked at: the parts the motion
+   * moves posed where it puts them, and every other part as it was drawn. This
+   * is the figure everything that draws or measures the model reads, so the
+   * handles stand at the posed part rather than at the one underneath.
+   */
+  const posedFigure = createMemo(() => poseFigure(figure(), motion(), frame()));
+
   /** Every part's volume, packed for the graphics card, in the order they are listed. */
   const [solvedParts, setSolvedParts] = createSignal<SolvedPart[]>(() =>
     parts().map(solvePart),
@@ -316,6 +351,7 @@ export function createStacker() {
               undoStack,
               redoStack,
               preview: preview.state(),
+              motion: motion(),
             });
           } while (trySaveAgain);
           saving = false;
@@ -332,6 +368,8 @@ export function createStacker() {
   const { snapshot, doCommand } = createCommander({
     parts,
     setParts,
+    motion,
+    setMotion,
     updateVoxels,
     requestRender,
     requestAutoSave,
@@ -354,12 +392,63 @@ export function createStacker() {
     );
   }
 
+  /**
+   * `command` as it lands while a motion is being recorded: a pose put into the
+   * motion, as a key at the frame being looked at, rather than into the part
+   * itself. Everything else lands as it stands, and so does everything while
+   * nothing is being recorded.
+   *
+   * A key carries a whole pose, so a command that moves a part carries the turn
+   * and the size it already stands in at that frame along with it.
+   */
+  function recorded(command: Command): Command {
+    if (
+      !recording() ||
+      (command.type !== "MovePart" &&
+        command.type !== "TurnPart" &&
+        command.type !== "ScalePart")
+    ) {
+      return command;
+    }
+
+    const name = command.part;
+    const part = parts().find((part) => part.name === name);
+
+    if (part === undefined) {
+      return command;
+    }
+
+    const at = Math.round(frame());
+    const drawn = { root: part.root, turn: part.turn, scale: part.scale };
+    const standing = poseAt(keysFor(motion(), name), at) ?? drawn;
+    const key: Key = {
+      at,
+      root: command.type === "MovePart" ? command.root : standing.root,
+      turn: command.type === "TurnPart" ? command.turn : standing.turn,
+      scale: command.type === "ScalePart" ? command.scale : standing.scale,
+      ease: keyAt(motion(), name, at)?.ease ?? "linear",
+    };
+
+    if (keysFor(motion(), name).length > 0 || at === 0) {
+      return Command.keyPart(name, at, key);
+    }
+
+    // The first key a part is given past the start of the motion is given one
+    // at the start as well, holding the pose it was drawn in. A part with a
+    // single key stands still in it; two are a movement, which is what somebody
+    // posing a part at a frame is asking for.
+    return Command.sequence([
+      Command.keyPart(name, 0, { ...drawn, at: 0, ease: "linear" }),
+      Command.keyPart(name, at, key),
+    ]);
+  }
+
   function doCommandAndUndo(
     command: Command,
     pushUndo?: boolean,
     description?: string,
   ): Command {
-    let reverseCommand = doCommandAndUpdate(command);
+    let reverseCommand = doCommandAndUpdate(recorded(command));
 
     if (pushUndo) {
       undoRedoManager.pushUndo({
@@ -373,6 +462,50 @@ export function createStacker() {
 
   function requestRender() {
     renderSet.forEach((render) => render());
+  }
+
+  /**
+   * Runs the motion on from where it stands, at the frames a second it is
+   * written in, until it is stopped: round to the start again for a motion that
+   * loops, and to a halt on its last frame for one that does not.
+   */
+  function play() {
+    if (untrack(playing)) {
+      return;
+    }
+
+    setPlaying(true);
+
+    let previous = performance.now();
+
+    requestAnimationFrame(function step(now) {
+      if (!untrack(playing)) {
+        return;
+      }
+
+      const running = untrack(motion);
+      const advance = ((now - previous) / 1000) * running.framesPerSecond;
+      const next = untrack(frame) + advance;
+      const stands =
+        running.loop && running.frames > 0
+          ? next % running.frames
+          : Math.min(next, running.frames);
+
+      previous = now;
+      setFrame(stands);
+
+      if (!running.loop && stands >= running.frames) {
+        setPlaying(false);
+        return;
+      }
+
+      requestAnimationFrame(step);
+    });
+  }
+
+  /** Leaves the motion standing at the frame it had got to. */
+  function stop() {
+    setPlaying(false);
   }
 
   createEffect(parts, requestRender);
@@ -412,6 +545,17 @@ export function createStacker() {
     setHome,
     // the whole drawing, and the one part of it being drawn on
     figure,
+    // what the figure does over time, and where in it the editor stands
+    posedFigure,
+    motion,
+    setMotion,
+    frame,
+    setFrame,
+    recording,
+    setRecording,
+    playing,
+    play,
+    stop,
     parts,
     setParts,
     loadParts,
@@ -614,7 +758,10 @@ export function createStacker() {
     },
     pushUndo(reverseCommand: Command, description: string) {
       undoRedoManager.pushUndo({
-        command: reverseCommand,
+        // Recorded as it stands rather than as it is taken back, so that the
+        // pose it puts back goes to the frame the drag was made at rather than
+        // to whichever frame the editor has moved on to since.
+        command: recorded(reverseCommand),
         description: description ?? "",
       });
     },

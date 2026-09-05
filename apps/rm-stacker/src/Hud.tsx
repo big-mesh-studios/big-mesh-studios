@@ -40,6 +40,13 @@ const HANDLES = [
 export function Hud() {
   const {
     undoRedoManager,
+    frame,
+    setFrame,
+    recording,
+    setRecording,
+    playing,
+    play,
+    stop,
     selectedColour,
     erasing,
     setErasing,
@@ -269,6 +276,36 @@ export function Hud() {
             selected={!ProfileDialog.isOpen() && preview.debug()}
             kind="bug"
             title="Stand every part's sides and cuts in the view as planes"
+          />
+        </Bar>
+        <Bar>
+          <IconTab
+            onClick={() => setRecording((recording) => !recording)}
+            selected={!ProfileDialog.isOpen() && recording()}
+            kind="circle"
+            title={
+              recording()
+                ? "Posing a part writes a key at this frame"
+                : "Posing a part moves the part itself"
+            }
+          />
+          <IconTab
+            onClick={() => (playing() ? stop() : play())}
+            selected={!ProfileDialog.isOpen() && playing()}
+            kind={playing() ? "pause" : "play"}
+            title="Play the motion on from the frame it stands at"
+          />
+          <input
+            class={styles.frame}
+            type="number"
+            min={0}
+            step={1}
+            value={Math.round(frame())}
+            onInput={(event) => {
+              stop();
+              setFrame(Number(event.currentTarget.value) || 0);
+            }}
+            title="The frame the preview stands at"
           />
         </Bar>
       </div>

@@ -2,8 +2,13 @@
 import { Bitmap, Vector3D, type RGBA } from "@big-mesh-studios/maths";
 import {
   centrePivot,
+  keyAt,
+  keysFor,
+  NO_MOTION,
   sideAxes,
   sideKinds,
+  type Key,
+  type Motion,
   type Part,
   type Sides,
 } from "@big-mesh-studios/stacker/renderer";
@@ -40,22 +45,87 @@ const partOf = (): Part => ({
   parent: null,
 });
 
-/** A commander over one part, and the part it draws on. */
+/** A commander over one part, the part it draws on, and the motion it poses it in. */
 const commanderOf = (part: Part) => {
   let parts = [part];
+  let motion = NO_MOTION;
 
-  return createCommander({
-    parts: (() => parts) as Accessor<Part[]>,
-    setParts: ((next: Part[]) => {
-      parts = next;
-    }) as unknown as Setter<Part[]>,
-    palette: (() => PALETTE) as Accessor<RGBA[]>,
-    setPalette: (() => {}) as unknown as Setter<RGBA[]>,
-    updateVoxels() {},
-    requestRender() {},
-    requestAutoSave() {},
-  });
+  return {
+    ...createCommander({
+      parts: (() => parts) as Accessor<Part[]>,
+      setParts: ((next: Part[]) => {
+        parts = next;
+      }) as unknown as Setter<Part[]>,
+      motion: (() => motion) as Accessor<Motion>,
+      setMotion: ((next: Motion) => {
+        motion = next;
+      }) as unknown as Setter<Motion>,
+      palette: (() => PALETTE) as Accessor<RGBA[]>,
+      setPalette: (() => {}) as unknown as Setter<RGBA[]>,
+      updateVoxels() {},
+      requestRender() {},
+      requestAutoSave() {},
+    }),
+    motion: () => motion,
+  };
 };
+
+/** A key standing at `at`, as far along the width as it stands frames in. */
+const keyOf = (at: number): Key => ({
+  at,
+  root: Vector3D.create(at, 0, 0),
+  turn: Vector3D.create(),
+  scale: 1,
+  ease: "linear",
+});
+
+describe("KeyPart", () => {
+  it("stands a key at the frame it names", async () => {
+    const { doCommand, motion } = commanderOf(partOf());
+
+    await doCommand(Command.keyPart("body", 4, keyOf(4)));
+
+    expect(keysFor(motion(), "body").map(({ at }) => at)).toEqual([4]);
+  });
+
+  it("hands back the key that stood there, so taking it back puts it again", async () => {
+    const { doCommand, motion } = commanderOf(partOf());
+
+    await doCommand(Command.keyPart("body", 4, keyOf(4)));
+
+    const undo = await doCommand(
+      Command.keyPart("body", 4, { ...keyOf(4), scale: 2 }),
+    );
+
+    expect(keyAt(motion(), "body", 4)?.scale).toBe(2);
+
+    await doCommand(undo);
+
+    expect(keyAt(motion(), "body", 4)?.scale).toBe(1);
+  });
+
+  it("takes a key away, and hands back the one it took", async () => {
+    const { doCommand, motion } = commanderOf(partOf());
+
+    await doCommand(Command.keyPart("body", 4, keyOf(4)));
+
+    const undo = await doCommand(Command.keyPart("body", 4, null));
+
+    expect(keysFor(motion(), "body")).toHaveLength(0);
+
+    await doCommand(undo);
+
+    expect(keysFor(motion(), "body")).toHaveLength(1);
+  });
+
+  it("does nothing where it is asked to take away a key that is not there", async () => {
+    const { doCommand } = commanderOf(partOf());
+
+    expect((await doCommand(Command.keyPart("body", 4, null))).type).toBe(
+      "NoOperation",
+    );
+  });
+});
 
 describe("FillRectangle", () => {
   it("paints every cell of the block it covers", async () => {

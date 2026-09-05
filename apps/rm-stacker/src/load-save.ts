@@ -3,7 +3,11 @@
 // only mean anything inside this editor.
 import { RGBA } from "@big-mesh-studios/maths";
 import { loadFigure, saveFigure } from "@big-mesh-studios/stacker/format";
-import type { Part } from "@big-mesh-studios/stacker/renderer";
+import {
+  NO_MOTION,
+  type Motion,
+  type Part,
+} from "@big-mesh-studios/stacker/renderer";
 import { Command } from "./command/Command";
 import { PreviewState } from "./types";
 
@@ -16,6 +20,7 @@ const DB_KEYS = {
   undoRedoData: "undoRedoData",
   preview: "preview",
   selectedPart: "selectedPart",
+  motion: "motion",
 } as const;
 
 type CommandStack = { command: Command; description: string }[];
@@ -31,6 +36,8 @@ export interface IndexedDBData {
    * that save is missing, and falls back to whatever the editor opens with.
    */
   preview: Partial<PreviewState>;
+  /** What the figure does over time, or a motion moving nothing where none was saved. */
+  motion: Motion;
 }
 
 export async function loadFromIndexedDB(
@@ -56,6 +63,12 @@ export async function loadFromIndexedDB(
     savedPartName !== null && parts.some((part) => part.name === savedPartName)
       ? savedPartName
       : parts[0].name;
+
+  const motionText = await loadTextFromDB(DB_KEYS.motion);
+  const motion: Motion =
+    motionText === null
+      ? NO_MOTION
+      : { ...NO_MOTION, ...JSON.parse(motionText) };
 
   let undoStack: CommandStack;
   let redoStack: CommandStack;
@@ -86,6 +99,7 @@ export async function loadFromIndexedDB(
     redoStack,
     palette,
     preview,
+    motion,
   };
 }
 
@@ -96,6 +110,7 @@ export async function saveToIndexedDB({
   redoStack,
   palette,
   preview,
+  motion,
 }: {
   parts: Part[];
   selectedPartName: string;
@@ -103,10 +118,12 @@ export async function saveToIndexedDB({
   redoStack: { command: Command; description: string }[];
   palette: RGBA[];
   preview: PreviewState;
+  motion: Motion;
 }): Promise<void> {
   const blob = await saveFigure({ parts, palette });
   await saveBlobToDB(DB_KEYS.zipFileData, blob);
   await saveTextToDB(DB_KEYS.selectedPart, selectedPartName);
+  await saveTextToDB(DB_KEYS.motion, JSON.stringify(motion));
   const undoStackJson = [];
   for (const { command, description } of undoStack) {
     undoStackJson.push({

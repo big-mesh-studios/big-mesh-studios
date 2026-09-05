@@ -3,7 +3,11 @@ import { untrack } from "solid-js";
 import { loadFigure, saveFigure } from "@big-mesh-studios/stacker/format";
 import { Bitmap, RGBA, Vector3D } from "@big-mesh-studios/maths";
 import {
+  keyAt,
   panelBitmap,
+  withKey,
+  withoutKey,
+  type Motion,
   type PanelKind,
   type Part,
 } from "@big-mesh-studios/stacker/renderer";
@@ -13,6 +17,8 @@ import { Command } from "./Command";
 export function createCommander({
   parts,
   setParts,
+  motion,
+  setMotion,
   updateVoxels,
   requestRender,
   requestAutoSave,
@@ -21,6 +27,8 @@ export function createCommander({
 }: {
   parts: Accessor<Part[]>;
   setParts: Setter<Part[]>;
+  motion: Accessor<Motion>;
+  setMotion: Setter<Motion>;
   setPalette: Setter<RGBA[]>;
   updateVoxels(): void;
   requestRender(): void;
@@ -228,6 +236,24 @@ export function createCommander({
           side.data[offset] = Bitmap.EMPTY;
 
           return Command.writePixel(partName, kind, position, oldIndex);
+        }
+        case "KeyPart": {
+          const { part: partName, at, key } = command;
+          const standing = keyAt(motion(), partName, at);
+
+          if (key === null && standing === undefined) {
+            return Command.noOperation();
+          }
+
+          setMotion(
+            key === null
+              ? withoutKey(motion(), partName, at)
+              : withKey(motion(), partName, key),
+          );
+
+          // Whatever stood at that frame before, so that taking the key back
+          // puts it there again — and takes the key away where there was none.
+          return Command.keyPart(partName, at, standing ?? null);
         }
         case "MovePart": {
           const { part: partName, root } = command;

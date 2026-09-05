@@ -33,11 +33,6 @@ import {
   untrack,
   useContext,
 } from "solid-js";
-import { Command } from "./command/Command";
-import { StackerContext } from "./context";
-import { CutPlane } from "./cut-plane";
-import { DebugPlanes } from "./debug-planes";
-import { pickFigure, type FigurePick } from "./figure-picker";
 import {
   armUnderPointer,
   ArmWidget,
@@ -46,6 +41,11 @@ import {
   type ArmOnScreen,
   type WidgetAxis,
 } from "./arm-widget";
+import { Command } from "./command/Command";
+import { StackerContext } from "./context";
+import { CutPlane } from "./cut-plane";
+import { DebugPlanes } from "./debug-planes";
+import { pickFigure, type FigurePick } from "./figure-picker";
 import {
   radiansDragged,
   ringUnderPointer,
@@ -112,7 +112,7 @@ const pinchSpan = ([a, b]: Iterable<PointerEvent> = []) => {
 
 const VoxelPreviewView: Component = () => {
   const {
-    figure,
+    posedFigure,
     selectedPart,
     selectPart,
     solvedParts,
@@ -199,8 +199,20 @@ const VoxelPreviewView: Component = () => {
     FigurePick | undefined
   >();
 
+  /**
+   * The part being drawn on, standing as the motion poses it at the frame the
+   * editor is at. Everything the handles measure themselves against reads this
+   * rather than the part underneath, so an arm dragged at a frame is dragged
+   * from where it stands there.
+   */
+  const posedPart = createMemo(
+    () =>
+      posedFigure().parts.find((part) => part.name === selectedPart().name) ??
+      selectedPart(),
+  );
+
   /** Where every part stands, in voxels from the figure's origin. */
-  const placement = createMemo(() => figurePlacement(figure()));
+  const placement = createMemo(() => figurePlacement(posedFigure()));
 
   /**
    * The point of the figure drawn at the middle of the view, which is also the
@@ -213,7 +225,7 @@ const VoxelPreviewView: Component = () => {
    */
   const focus = createMemo(() =>
     preview.focus() === "part"
-      ? composeRoot(figure(), selectedPart())
+      ? composeRoot(posedFigure(), posedPart())
       : Vector3D.EMPTY,
   );
 
@@ -231,7 +243,7 @@ const VoxelPreviewView: Component = () => {
   function fitToView() {
     setVoxelSize(
       framedVoxelSize(
-        voxelReach(untrack(figure), untrack(solvedParts), untrack(focus)),
+        voxelReach(untrack(posedFigure), untrack(solvedParts), untrack(focus)),
         radius,
         camera.aspect,
       ),
@@ -245,7 +257,7 @@ const VoxelPreviewView: Component = () => {
   const selectedRoot = createMemo(() => {
     const { focus, voxelSize } = framing();
     return Vector3D.multiplyScalar(
-      Vector3D.subtract(composeRoot(figure(), selectedPart()), focus),
+      Vector3D.subtract(composeRoot(posedFigure(), posedPart()), focus),
       voxelSize,
     );
   });
@@ -255,7 +267,9 @@ const VoxelPreviewView: Component = () => {
    * through it stands as well.
    */
   const selectedPlacement = createMemo<PartPlacement | undefined>(() => {
-    const index = figure().parts.indexOf(selectedPart());
+    const index = posedFigure().parts.findIndex(
+      (part) => part.name === selectedPart().name,
+    );
     return index === -1 ? undefined : placement().placements[index];
   });
 
@@ -286,7 +300,7 @@ const VoxelPreviewView: Component = () => {
    * handles standing along the figure's axes, which is what every part shares.
    */
   const handleTurn = () =>
-    preview.handleAxes() === "part" ? selectedPart().turn : Vector3D.EMPTY;
+    preview.handleAxes() === "part" ? posedPart().turn : Vector3D.EMPTY;
 
   /** The handles standing at the part being drawn on, whichever set it is. */
   function standingWidget() {
@@ -396,7 +410,7 @@ const VoxelPreviewView: Component = () => {
       arm: ArmOnScreen;
     },
   ) {
-    const part = untrack(selectedPart);
+    const part = untrack(posedPart);
     const sizing = standingWidget() === sizeWidget;
     const widget = sizing ? sizeWidget : moveWidget;
     // Hold the figure still in its turn: an arm dragged against a turning
@@ -481,7 +495,7 @@ const VoxelPreviewView: Component = () => {
     at: Vector2D,
     ring: RingOnScreen,
   ) {
-    const part = untrack(selectedPart);
+    const part = untrack(posedPart);
     // Hold the figure still in its turn, as an arm's drag does: a ring dragged
     // against a turning model would be measured about a middle that had moved.
     spinOffset = spin;
@@ -694,7 +708,7 @@ const VoxelPreviewView: Component = () => {
   // figure the same value it was — the volumes solved from those bitmaps are
   // what says a drawing has changed.
   createEffect(
-    () => [preview.debug(), figure(), solvedParts(), placement()] as const,
+    () => [preview.debug(), posedFigure(), solvedParts(), placement()] as const,
     ([debug, figure, , placement]) => {
       debugPlanes.visible = debug;
 
@@ -716,7 +730,7 @@ const VoxelPreviewView: Component = () => {
     () =>
       [
         figureLoads(),
-        figure(),
+        posedFigure(),
         solvedParts(),
         focus(),
         preview.autoframe(),
@@ -732,7 +746,7 @@ const VoxelPreviewView: Component = () => {
   );
 
   createEffect(
-    () => [figure(), solvedParts(), placement()] as const,
+    () => [posedFigure(), solvedParts(), placement()] as const,
     ([figure, solvedParts, placement]) => {
       meshes.sync(figure, solvedParts, placement);
     },

@@ -1,5 +1,5 @@
 import { Vector2D, Vector3D } from "@big-mesh-studios/maths";
-import { type PanelKind } from "@big-mesh-studios/stacker/renderer";
+import { type Key, type PanelKind } from "@big-mesh-studios/stacker/renderer";
 import { base64ToUint8Array, uint8ArrayToBase64 } from "../utils/utils";
 
 /**
@@ -53,6 +53,14 @@ export type Command =
       part: string;
       panel: PanelKind;
       position: Vector2D;
+    }
+  | {
+      type: "KeyPart";
+      part: string;
+      /** The frame the key stands at. */
+      at: number;
+      /** The pose to stand there, or null to take away the key standing there. */
+      key: Key | null;
     }
   | {
       type: "MovePart";
@@ -130,6 +138,14 @@ export namespace Command {
     position: Vector2D,
   ): Command {
     return { type: "ErasePixel", part, panel, position };
+  }
+
+  /**
+   * Stands `key` at the frame `at` of the part's motion, in place of whatever
+   * stands there — or takes that key away, for a `key` of null.
+   */
+  export function keyPart(part: string, at: number, key: Key | null): Command {
+    return { type: "KeyPart", part, at, key };
   }
 
   export function movePart(part: string, root: Vector3D): Command {
@@ -211,6 +227,10 @@ export namespace Command {
           x: position.x,
           y: position.y,
         };
+      }
+      case "KeyPart": {
+        let { part, at, key } = command;
+        return { type: "KeyPart", part, at, key };
       }
       case "MovePart": {
         let { part, root } = command;
@@ -300,6 +320,33 @@ export namespace Command {
           x: command.x,
           y: command.y,
         });
+      case "KeyPart": {
+        const key = command.key;
+        const vector = (value: any) =>
+          typeof value?.x === "number" &&
+          typeof value?.y === "number" &&
+          typeof value?.z === "number";
+
+        if (typeof command.part !== "string" || !(command.at >= 0)) {
+          return Command.noOperation();
+        }
+
+        if (key === null) {
+          return Command.keyPart(command.part, command.at, null);
+        }
+
+        if (!vector(key?.root) || !vector(key?.turn) || !(key?.scale > 0)) {
+          return Command.noOperation();
+        }
+
+        return Command.keyPart(command.part, command.at, {
+          at: command.at,
+          root: { x: key.root.x, y: key.root.y, z: key.root.z },
+          turn: { x: key.turn.x, y: key.turn.y, z: key.turn.z },
+          scale: key.scale,
+          ease: key.ease ?? "linear",
+        });
+      }
       case "MovePart":
         if (typeof command.part !== "string") {
           return Command.noOperation();
