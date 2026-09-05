@@ -40,19 +40,22 @@ export interface PartKeys {
 /** What a figure does over time. */
 export interface Motion {
   name: string;
-  /** How many frames it runs for, which is where a looping motion comes round. */
-  frames: number;
-  /** How many of those frames stand in a second, which is how fast it is played. */
+  /** How many frames stand in a second, which is how fast it is played. */
   framesPerSecond: number;
   loop: boolean;
   /** One entry per part the motion moves, in no particular order. */
   parts: PartKeys[];
 }
 
+/**
+ * The frame a motion starts at. A part that is moved at all has a key standing
+ * here, carrying the pose it starts in.
+ */
+export const START_FRAME = 0;
+
 /** A motion that moves nothing, which is what a figure drawn but never posed has. */
 export const NO_MOTION: Motion = {
   name: "",
-  frames: 24,
   framesPerSecond: 12,
   loop: true,
   parts: [],
@@ -295,13 +298,28 @@ export function withKey(motion: Motion, part: string, key: Key): Motion {
 /**
  * `motion` with the key at `frame` taken off `part`, and the part itself taken
  * off once it has no keys left.
+ *
+ * The key at frame zero is the pose the part starts in, and it holds the part
+ * there until the key after it runs it somewhere else. It stays for as long as
+ * any key after it stands: asked to take that one away while later keys stand,
+ * or to take away a frame no key stands at, this hands back the motion it was
+ * given.
  */
 export function withoutKey(
   motion: Motion,
   part: string,
   frame: number,
 ): Motion {
-  const keys = keysFor(motion, part).filter((key) => key.at !== frame);
+  const standing = keysFor(motion, part);
+
+  if (
+    !standing.some((key) => key.at === frame) ||
+    (frame === START_FRAME && standing.length > 1)
+  ) {
+    return motion;
+  }
+
+  const keys = standing.filter((key) => key.at !== frame);
 
   return {
     ...motion,
@@ -309,6 +327,54 @@ export function withoutKey(
       held.part !== part ? [held] : keys.length === 0 ? [] : [{ part, keys }],
     ),
   };
+}
+
+/**
+ * The last key standing before `frame`, or none where `keys` stand no earlier
+ * than it.
+ */
+export function keyBefore(
+  keys: readonly Key[],
+  frame: number,
+): Key | undefined {
+  let before: Key | undefined;
+
+  for (const key of keys) {
+    if (key.at >= frame) {
+      break;
+    }
+
+    before = key;
+  }
+
+  return before;
+}
+
+/**
+ * The first key standing after `frame`, or none where `keys` stand no later
+ * than it.
+ */
+export function keyAfter(keys: readonly Key[], frame: number): Key | undefined {
+  return keys.find((key) => key.at > frame);
+}
+
+/**
+ * The frame the last key of `motion` stands at, which is where the motion ends:
+ * the start frame for a motion that moves nothing, there being nowhere to run
+ * to from there.
+ */
+export function lastFrame(motion: Motion): number {
+  let last = START_FRAME;
+
+  for (const { keys } of motion.parts) {
+    const key = keys[keys.length - 1];
+
+    if (key !== undefined && key.at > last) {
+      last = key.at;
+    }
+  }
+
+  return last;
 }
 
 /** Whether `motion` moves anything at all. */

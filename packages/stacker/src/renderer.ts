@@ -35,12 +35,16 @@ export type {
   Sides,
 } from "./data";
 export {
+  keyAfter,
   keyAt,
+  keyBefore,
   keysFor,
+  lastFrame,
   movesNothing,
   NO_MOTION,
   poseAt,
   poseFigure,
+  START_FRAME,
   withKey,
   withoutKey,
 } from "./motion";

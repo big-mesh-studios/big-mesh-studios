@@ -8,8 +8,11 @@ import {
   type Part,
 } from "./data";
 import {
+  keyAfter,
   keyAt,
+  keyBefore,
   keysFor,
+  lastFrame,
   NO_MOTION,
   poseAt,
   poseFigure,
@@ -198,6 +201,28 @@ describe("keys of a motion", () => {
     ).toHaveLength(0);
   });
 
+  it("keeps the key a part starts in while a later key stands", () => {
+    const motion = withKey(
+      withKey(NO_MOTION, "arm", keyOf(0)),
+      "arm",
+      keyOf(8),
+    );
+
+    expect(withoutKey(motion, "arm", 0)).toBe(motion);
+  });
+
+  it("takes the key a part starts in away once it is the only one left", () => {
+    const motion = withKey(NO_MOTION, "arm", keyOf(0));
+
+    expect(withoutKey(motion, "arm", 0).parts).toHaveLength(0);
+  });
+
+  it("hands the motion back where no key stands at that frame", () => {
+    const motion = withKey(NO_MOTION, "arm", keyOf(4));
+
+    expect(withoutKey(motion, "arm", 6)).toBe(motion);
+  });
+
   it("leaves the motion it was given alone", () => {
     const motion = withKey(NO_MOTION, "arm", keyOf(4));
 
@@ -206,5 +231,45 @@ describe("keys of a motion", () => {
 
     expect(keysFor(motion, "arm")).toHaveLength(1);
     expect(NO_MOTION.parts).toHaveLength(0);
+  });
+});
+
+describe("the key before and after a frame", () => {
+  const keys = [keyOf(0), keyOf(4), keyOf(10)];
+
+  it("finds the key standing before the frame", () => {
+    expect(keyBefore(keys, 10)?.at).toBe(4);
+    expect(keyBefore(keys, 4)?.at).toBe(0);
+  });
+
+  it("finds the key standing after the frame", () => {
+    expect(keyAfter(keys, 0)?.at).toBe(4);
+    expect(keyAfter(keys, 4)?.at).toBe(10);
+  });
+
+  it("finds nothing before the first key or after the last", () => {
+    expect(keyBefore(keys, 0)).toBeUndefined();
+    expect(keyAfter(keys, 10)).toBeUndefined();
+  });
+
+  it("finds the keys a frame part way between two of them falls between", () => {
+    expect(keyBefore(keys, 4.5)?.at).toBe(4);
+    expect(keyAfter(keys, 4.5)?.at).toBe(10);
+  });
+});
+
+describe("lastFrame", () => {
+  it("gives the start frame for a motion that moves nothing", () => {
+    expect(lastFrame(NO_MOTION)).toBe(0);
+  });
+
+  it("gives the frame the last key of any part stands at", () => {
+    const motion = withKey(
+      withKey(withKey(NO_MOTION, "arm", keyOf(0)), "arm", keyOf(10)),
+      "leg",
+      keyOf(4),
+    );
+
+    expect(lastFrame(motion)).toBe(10);
   });
 });
