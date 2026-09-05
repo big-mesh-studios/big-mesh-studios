@@ -1,5 +1,5 @@
 import { createPopover } from "@big-mesh-studios/utils/create-popover";
-import { flush, For, useContext } from "solid-js";
+import { flush, For, Show, useContext } from "solid-js";
 import {
   Bar,
   Colour,
@@ -39,7 +39,8 @@ const HANDLES = [
 
 export function Hud() {
   const {
-    narrow,
+    viewMode,
+    nextViewMode,
     undoRedoManager,
     frame,
     setFrame,
@@ -109,132 +110,144 @@ export function Hud() {
             kind="arrow-rotate-right"
           />
         </Bar>
-        <Bar>
-          <IconTab
-            kind="up-down-left-right"
-            onClick={() => setMode("Idle")}
-            selected={isModeSelected("Idle")}
-          />
-          <IconTab
-            kind="pen"
-            onClick={() => setMode("Draw")}
-            selected={isModeSelected("Draw")}
-          />
-          <IconTab
-            kind="fill"
-            onClick={() => setMode("Fill")}
-            selected={isModeSelected("Fill")}
-          />
-          <IconTab
-            kind="square"
-            onClick={() => setMode("Rectangle")}
-            selected={isModeSelected("Rectangle")}
-          />
-          <IconTab
-            kind="grip-lines-vertical"
-            onClick={() => setMode("CutDown")}
-            selected={isModeSelected("CutDown")}
-            title="Cut with a line down the panel, so the two sides of the cut can be carved apart"
-          />
-          <IconTab
-            kind="grip-lines"
-            onClick={() => setMode("CutAcross")}
-            selected={isModeSelected("CutAcross")}
-            title="Cut with a line across the panel, so the two sides of the cut can be carved apart"
-          />
-        </Bar>
-        <Bar>
-          <IconTab
-            kind="left-right"
-            onClick={() => togglePanelMirror("x")}
-            selected={!ProfileDialog.isOpen() && mirror().panel.x}
-            title="Mirror across the panel's vertical middle, staying on that panel"
-          />
-          <IconTab
-            kind="up-down"
-            onClick={() => togglePanelMirror("y")}
-            selected={!ProfileDialog.isOpen() && mirror().panel.y}
-            title="Mirror across the panel's horizontal middle, staying on that panel"
-          />
-          <IconTab
-            kind="clone"
-            onClick={() =>
-              setMirror((current) => ({
-                ...current,
-                opposing: !current.opposing,
-              }))
-            }
-            selected={!ProfileDialog.isOpen() && mirror().opposing}
-            title="Mirror onto the panel opposite the one drawn on: front to back, top to bottom, left to right"
-          />
-        </Bar>
-        <Bar>
-          <IconTab
-            kind="eye-dropper"
-            onClick={() => setMode("Eyedrop")}
-            selected={isModeSelected("Eyedrop")}
-          />
-          <IconTab
-            kind="eraser"
-            onClick={() => setErasing((erasing) => !erasing)}
-            selected={!ProfileDialog.isOpen() && erasing()}
-            title="Draw in nothing, which takes away what is drawn. Put it down again to draw in the colour below it."
-          />
-          <PalettePopover.Trigger class={[tabStyle, colourTabStyle]}>
-            <Colour colour={selectedColour()} />
-          </PalettePopover.Trigger>
-          <PalettePopover.PopOver
-            class={[popoverStyle, styles.palettePopover]}
-            popover="manual"
-            style={{ "anchor-name": "--palette-popover" }}
-          >
-            <Palette />
-          </PalettePopover.PopOver>
-        </Bar>
+        <Show when={viewMode() === "Edit"}>
+          <Bar>
+            <IconTab
+              kind="up-down-left-right"
+              onClick={() => setMode("Idle")}
+              selected={isModeSelected("Idle")}
+            />
+            <IconTab
+              kind="pen"
+              onClick={() => setMode("Draw")}
+              selected={isModeSelected("Draw")}
+            />
+            <IconTab
+              kind="fill"
+              onClick={() => setMode("Fill")}
+              selected={isModeSelected("Fill")}
+            />
+            <IconTab
+              kind="square"
+              onClick={() => setMode("Rectangle")}
+              selected={isModeSelected("Rectangle")}
+            />
+            <IconTab
+              kind="grip-lines-vertical"
+              onClick={() => setMode("CutDown")}
+              selected={isModeSelected("CutDown")}
+              title="Cut with a line down the panel, so the two sides of the cut can be carved apart"
+            />
+            <IconTab
+              kind="grip-lines"
+              onClick={() => setMode("CutAcross")}
+              selected={isModeSelected("CutAcross")}
+              title="Cut with a line across the panel, so the two sides of the cut can be carved apart"
+            />
+          </Bar>
+          <Bar>
+            <IconTab
+              kind="left-right"
+              onClick={() => togglePanelMirror("x")}
+              selected={!ProfileDialog.isOpen() && mirror().panel.x}
+              title="Mirror across the panel's vertical middle, staying on that panel"
+            />
+            <IconTab
+              kind="up-down"
+              onClick={() => togglePanelMirror("y")}
+              selected={!ProfileDialog.isOpen() && mirror().panel.y}
+              title="Mirror across the panel's horizontal middle, staying on that panel"
+            />
+            <IconTab
+              kind="clone"
+              onClick={() =>
+                setMirror((current) => ({
+                  ...current,
+                  opposing: !current.opposing,
+                }))
+              }
+              selected={!ProfileDialog.isOpen() && mirror().opposing}
+              title="Mirror onto the panel opposite the one drawn on: front to back, top to bottom, left to right"
+            />
+          </Bar>
+          <Bar>
+            <IconTab
+              kind="eye-dropper"
+              onClick={() => setMode("Eyedrop")}
+              selected={isModeSelected("Eyedrop")}
+            />
+            <IconTab
+              kind="eraser"
+              onClick={() => setErasing((erasing) => !erasing)}
+              selected={!ProfileDialog.isOpen() && erasing()}
+              title="Draw in nothing, which takes away what is drawn. Put it down again to draw in the colour below it."
+            />
+            <PalettePopover.Trigger class={[tabStyle, colourTabStyle]}>
+              <Colour colour={selectedColour()} />
+            </PalettePopover.Trigger>
+            <PalettePopover.PopOver
+              class={[popoverStyle, styles.palettePopover]}
+              popover="manual"
+              style={{ "anchor-name": "--palette-popover" }}
+            >
+              <Palette />
+            </PalettePopover.PopOver>
+          </Bar>
+        </Show>
       </div>
-      <Bar
-        class={styles.transport}
-        data-raised={narrow() && PalettePopover.isOpen()}
-      >
-        <IconTab
-          onClick={() => (playing() ? stop() : play())}
-          disabled={endFrame() === 0}
-          selected={!ProfileDialog.isOpen() && playing()}
-          kind={playing() ? "pause" : "play"}
-          title="Play the motion on from the frame it stands at, as far as its last key"
-        />
-        <IconTab
-          kind="backward-step"
-          disabled={previousKey() === undefined}
-          onClick={() => standAtKey(previousKey())}
-          title="Stand at the part's previous key"
-        />
-        <IconTab
-          kind="forward-step"
-          disabled={nextKey() === undefined}
-          onClick={() => standAtKey(nextKey())}
-          title="Stand at the part's next key"
-        />
-        <IconTab
-          kind="trash"
-          disabled={removableKey() === undefined}
-          onClick={removeKey}
-          title="Take the part's key at this frame away"
-        />
-        <input
-          class={styles.frame}
-          type="number"
-          min={0}
-          step={1}
-          value={Math.round(frame())}
-          onInput={(event) => {
-            stop();
-            setFrame(Number(event.currentTarget.value) || 0);
-          }}
-          title="The frame the preview stands at"
-        />
-      </Bar>
+      <Show when={viewMode() === "Animate"}>
+        <Bar class={styles.transport}>
+          <IconTab
+            onClick={() => (playing() ? stop() : play())}
+            disabled={endFrame() === 0}
+            selected={!ProfileDialog.isOpen() && playing()}
+            kind={playing() ? "pause" : "play"}
+            title="Play the motion on from the frame it stands at, as far as its last key"
+          />
+          <IconTab
+            kind="backward-step"
+            disabled={previousKey() === undefined}
+            onClick={() => standAtKey(previousKey())}
+            title="Stand at the part's previous key"
+          />
+          <IconTab
+            kind="forward-step"
+            disabled={nextKey() === undefined}
+            onClick={() => standAtKey(nextKey())}
+            title="Stand at the part's next key"
+          />
+          <IconTab
+            kind="trash"
+            disabled={removableKey() === undefined}
+            onClick={removeKey}
+            title="Take the part's key at this frame away"
+          />
+          <input
+            class={styles.frame}
+            type="number"
+            min={0}
+            step={1}
+            value={Math.round(frame())}
+            onInput={(event) => {
+              stop();
+              setFrame(Number(event.currentTarget.value) || 0);
+            }}
+            title="The frame the preview stands at"
+          />
+        </Bar>
+      </Show>
       <div class={styles.view}>
+        <Bar>
+          <IconTab
+            kind={viewMode() === "Animate" ? "film" : "pen-ruler"}
+            onClick={nextViewMode}
+            title={
+              viewMode() === "Animate"
+                ? "Moving the parts over the frames of a motion. Press to draw on a part's sides."
+                : "Drawing on a part's sides. Press to move the parts over the frames of a motion."
+            }
+          />
+        </Bar>
         <Bar>
           <IconTab
             onClick={() => {

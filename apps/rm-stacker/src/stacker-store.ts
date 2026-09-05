@@ -55,6 +55,8 @@ import {
   Mirror,
   ModeKind,
   PreviewState,
+  viewModeKinds,
+  type ViewModeKind,
 } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { createEnqueue } from "./utils/utils";
@@ -296,6 +298,22 @@ export function createStacker() {
       selectedPart(),
   );
 
+  /**
+   * What the editor is being used for. Drawing on a part's sides and moving the
+   * parts over the frames of a motion each have their own controls, and the one
+   * being used is the one whose controls are up.
+   */
+  const [viewMode, setViewMode] = createSignal<ViewModeKind>(
+    () => saved()?.viewMode ?? "Edit",
+  );
+
+  /** Steps the editor on to the next of the things it can be used for. */
+  function nextViewMode() {
+    const standing = viewModeKinds.indexOf(untrack(viewMode));
+    setViewMode(viewModeKinds[(standing + 1) % viewModeKinds.length]);
+    requestAutoSave();
+  }
+
   /** The frame the motion's last key stands at, which is where it ends. */
   const endFrame = createMemo(() => lastFrame(motion()));
 
@@ -395,6 +413,7 @@ export function createStacker() {
               redoStack,
               preview: preview.state(),
               motion: motion(),
+              viewMode: viewMode(),
             });
           } while (trySaveAgain);
           saving = false;
@@ -617,6 +636,9 @@ export function createStacker() {
     setHome,
     // the whole drawing, and the one part of it being drawn on
     figure,
+    // what the editor is being used for
+    viewMode,
+    nextViewMode,
     // what the figure does over time, and where in it the editor stands
     posedFigure,
     posedPart,

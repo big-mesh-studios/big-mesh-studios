@@ -9,7 +9,7 @@ import {
   type Part,
 } from "@big-mesh-studios/stacker/renderer";
 import { Command } from "./command/Command";
-import { PreviewState } from "./types";
+import { PreviewState, type ViewModeKind } from "./types";
 
 const DB_NAME = "rm-stacker";
 const DB_VERSION = 2;
@@ -21,6 +21,7 @@ const DB_KEYS = {
   preview: "preview",
   selectedPart: "selectedPart",
   motion: "motion",
+  viewMode: "viewMode",
 } as const;
 
 type CommandStack = { command: Command; description: string }[];
@@ -38,6 +39,8 @@ export interface IndexedDBData {
   preview: Partial<PreviewState>;
   /** What the figure does over time, or a motion moving nothing where none was saved. */
   motion: Motion;
+  /** What the editor was last being used for, or drawing where nothing was saved. */
+  viewMode: ViewModeKind;
 }
 
 export async function loadFromIndexedDB(
@@ -70,6 +73,9 @@ export async function loadFromIndexedDB(
       ? NO_MOTION
       : { ...NO_MOTION, ...JSON.parse(motionText) };
 
+  const viewMode: ViewModeKind =
+    (await loadTextFromDB(DB_KEYS.viewMode)) === "Animate" ? "Animate" : "Edit";
+
   let undoStack: CommandStack;
   let redoStack: CommandStack;
   let undoRedoJsonText = await loadTextFromDB(DB_KEYS.undoRedoData);
@@ -100,6 +106,7 @@ export async function loadFromIndexedDB(
     palette,
     preview,
     motion,
+    viewMode,
   };
 }
 
@@ -111,6 +118,7 @@ export async function saveToIndexedDB({
   palette,
   preview,
   motion,
+  viewMode,
 }: {
   parts: Part[];
   selectedPartName: string;
@@ -119,11 +127,13 @@ export async function saveToIndexedDB({
   palette: RGBA[];
   preview: PreviewState;
   motion: Motion;
+  viewMode: ViewModeKind;
 }): Promise<void> {
   const blob = await saveFigure({ parts, palette });
   await saveBlobToDB(DB_KEYS.zipFileData, blob);
   await saveTextToDB(DB_KEYS.selectedPart, selectedPartName);
   await saveTextToDB(DB_KEYS.motion, JSON.stringify(motion));
+  await saveTextToDB(DB_KEYS.viewMode, viewMode);
   const undoStackJson = [];
   for (const { command, description } of undoStack) {
     undoStackJson.push({

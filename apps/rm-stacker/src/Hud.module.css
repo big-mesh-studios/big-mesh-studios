@@ -57,15 +57,6 @@
     flex-direction: row;
     justify-self: center;
     align-self: end;
-    transition: translate 120ms ease-out;
-
-    /* Where the palette cannot open beside the button it opens along this same
-       edge, as a single row of colours. A row of colours and a row of tabs are
-       the same square tall, so the transport steps up by its own height and the
-       two share the edge. */
-    &[data-raised] {
-      translate: 0 calc(-100% - var(--margin));
-    }
   }
 
   & > .partsBar {
