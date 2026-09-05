@@ -269,12 +269,46 @@ export function createStacker() {
     () => saved()?.motion ?? NO_MOTION,
   );
   /**
-   * The frame of the motion the editor stands at, which is the pose the preview
-   * draws and the frame a pose is recorded at. Whole while it is scrubbed and
+   * What the editor is being used for. Drawing on a part's sides and moving the
+   * parts over the frames of a motion each have their own controls, and the one
+   * being used is the one whose controls are up.
+   */
+  const [viewMode, setViewMode] = createSignal<ViewModeKind>(
+    () => saved()?.viewMode ?? "Edit",
+  );
+
+  /**
+   * Steps the editor on to the next of the things it can be used for, and
+   * leaves the motion standing where it had got to rather than running it on
+   * out of sight.
+   */
+  function nextViewMode() {
+    const standing = viewModeKinds.indexOf(untrack(viewMode));
+    stop();
+    setViewMode(viewModeKinds[(standing + 1) % viewModeKinds.length]);
+    requestAutoSave();
+  }
+
+  /**
+   * The frame the motion has been wound to. Whole while it is scrubbed and
    * fractional while it is played, a motion running at its own frames a second
    * however fast the screen draws.
    */
-  const [frame, setFrame] = createSignal(0);
+  const [scrubbedFrame, setFrame] = createSignal(0);
+
+  /**
+   * The frame of the motion the editor stands at, which is the pose the preview
+   * draws and the frame a pose is recorded at.
+   *
+   * Winding a motion is done while the parts are being moved. A part drawn on
+   * is drawn on the figure as it starts, so the editor stands at the frame the
+   * motion starts at for as long as that is what it is being used for — and a
+   * part moved then is moved where the figure starts, rather than at whatever
+   * frame the motion was last left wound to.
+   */
+  const frame = createMemo(() =>
+    viewMode() === "Animate" ? scrubbedFrame() : START_FRAME,
+  );
   const [playing, setPlaying] = createSignal(false);
 
   /**
@@ -297,22 +331,6 @@ export function createStacker() {
       posedFigure().parts.find((part) => part.name === selectedPart().name) ??
       selectedPart(),
   );
-
-  /**
-   * What the editor is being used for. Drawing on a part's sides and moving the
-   * parts over the frames of a motion each have their own controls, and the one
-   * being used is the one whose controls are up.
-   */
-  const [viewMode, setViewMode] = createSignal<ViewModeKind>(
-    () => saved()?.viewMode ?? "Edit",
-  );
-
-  /** Steps the editor on to the next of the things it can be used for. */
-  function nextViewMode() {
-    const standing = viewModeKinds.indexOf(untrack(viewMode));
-    setViewMode(viewModeKinds[(standing + 1) % viewModeKinds.length]);
-    requestAutoSave();
-  }
 
   /** The frame the motion's last key stands at, which is where it ends. */
   const endFrame = createMemo(() => lastFrame(motion()));
