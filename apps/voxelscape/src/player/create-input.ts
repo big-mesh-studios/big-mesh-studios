@@ -56,6 +56,13 @@ export interface InputSnapshot {
    */
   primary: boolean;
   /**
+   * Edge-triggered: true only on the frame the mouse's primary button was
+   * pressed — the click that strikes, and the one that talks to an NPC. A
+   * touch's hold repeats `primary` but never sets this, so a hold that mines
+   * a block can never start a talk.
+   */
+  click: boolean;
+  /**
    * Edge-triggered: true only on the frame a touch or pen press lifted as a
    * tap — down and up within the hold grace, never a drag. A tap can strike
    * only what a quick touch can: a monster under the crosshair. Over a voxel
@@ -84,6 +91,7 @@ interface InputState {
   lookDx: number;
   lookDy: number;
   primaryQueued: boolean;
+  clickQueued: boolean;
   tapQueued: boolean;
   secondaryQueued: boolean;
   secondaryHeld: boolean;
@@ -192,6 +200,7 @@ export const createInput = (): InputController => {
     lookDx: 0,
     lookDy: 0,
     primaryQueued: false,
+    clickQueued: false,
     tapQueued: false,
     secondaryQueued: false,
     secondaryHeld: false,
@@ -227,6 +236,7 @@ export const createInput = (): InputController => {
       if (event.pointerType === "mouse") {
         if (event.button === 0) {
           state.primaryQueued = true;
+          state.clickQueued = true;
         } else if (event.button === 2) {
           state.secondaryQueued = true;
           state.secondaryHeld = true;
@@ -423,6 +433,7 @@ export const createInput = (): InputController => {
         lookDx: state.lookDx,
         lookDy: state.lookDy,
         primary: state.primaryQueued,
+        click: state.clickQueued,
         tap: state.tapQueued,
         secondary: state.secondaryQueued,
         secondaryHeld: state.secondaryHeld,
@@ -434,6 +445,7 @@ export const createInput = (): InputController => {
       state.lookDx = 0;
       state.lookDy = 0;
       state.primaryQueued = false;
+      state.clickQueued = false;
       state.tapQueued = false;
       state.secondaryQueued = false;
       state.secondaryReleasedQueued = false;

@@ -77,6 +77,7 @@ describe("canvas touch gestures", () => {
     const snapshot = input.consume();
     expect(snapshot.tap).toBe(true);
     expect(snapshot.primary).toBe(false);
+    expect(snapshot.click).toBe(false);
     expect(snapshot.lookDx).toBe(0);
     expect(snapshot.lookDy).toBe(0);
   });
@@ -103,6 +104,8 @@ describe("canvas touch gestures", () => {
 
     vi.advanceTimersByTime(120);
     expect(input.consume().primary).toBe(true);
+    // A touch's hold repeats `primary` but never sets the mouse `click` edge.
+    expect(input.consume().click).toBe(false);
     expect(input.consume().tap).toBe(false);
 
     press(canvas, { type: "pointerup", x: 100, y: 100 });

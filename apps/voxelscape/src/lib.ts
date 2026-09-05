@@ -191,6 +191,39 @@ export {
   type ModelLibrary,
 } from "./atproto/models";
 
+// Places: publishable worlds and the replicated facts their rules fold over
+export {
+  compareScriptEvents,
+  decodeScriptEvents,
+  encodeScriptEvents,
+  isScriptEvent,
+  type ScriptEvent,
+} from "./places/events";
+export { EventLog } from "./places/event-log";
+export {
+  isPlaceManifest,
+  isPlaceRecord,
+  makePlaceRecord,
+  parsePlaceAtUri,
+  placeAtUri,
+  PLACE_COLLECTION,
+  PLACE_MANIFEST_FILE,
+  PLACE_MIME_TYPE,
+  placeRkey,
+  placeWorld,
+  type PlaceManifest,
+  type PlaceRecord,
+  type PlaceSpawn,
+  type PublishedPlace,
+} from "./places/place";
+export { readPlaceZip } from "./places/package";
+export {
+  createPlaceLibrary,
+  createPlacePublisher,
+  type PlaceLibrary,
+  type PlacePublisher,
+} from "./atproto/places";
+
 // Multiplayer (cluster-based WebRTC mesh over atproto)
 export { MeshPeer, type MeshPeerParams } from "./multiplayer/mesh-peer";
 export {

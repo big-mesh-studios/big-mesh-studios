@@ -11,6 +11,8 @@ import type { RemoteMonsters } from "./monsters/remote-monsters";
 import type { MultiplayerController } from "./multiplayer/multiplayer-controller";
 import type { PlayerHealth } from "./player/health";
 import type { AdaptiveResolution } from "./render/adaptive";
+import type { PlaceLibrary, PlacePublisher } from "./atproto/places";
+import { placeAtUri } from "./places/place";
 
 /**
  * Declares every debug console command as a single object literal, keyed by
@@ -95,6 +97,18 @@ export interface CommandsParams {
   models: ModelLibrary;
   /** The account those drawings are read from when a command names none. */
   modelAccount: string | null;
+  /** The published places others have made, read without a session. */
+  places: PlaceLibrary;
+  /** Publishing a place of your own, to the signed-in account. */
+  placePublisher: PlacePublisher;
+  /** Driving the place script loaded for this session, over the console. */
+  script: {
+    demo(): Promise<string>;
+    state(): Promise<string>;
+    talk(id: string): Promise<string>;
+    choose(option: number): Promise<string>;
+    leave(): Promise<string>;
+  };
   resolution: AdaptiveResolution;
   /** Switches the camera between first and third person views. */
   setView: (mode: "first" | "third") => string;
@@ -145,6 +159,26 @@ const readModelRequest = (
 const describeError = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
 
+/**
+ * Which account a place command was aimed at and which place of theirs it
+ * asked for, the same shape as the model request: a first word that looks like
+ * an account names one, anything else names the place and the account falls
+ * back to the caller's (the account signed in here, for the places it owns).
+ */
+const readPlaceRequest = (
+  rest: string[],
+  fallbackAccount: string | null,
+): { account: string | null; name: string } => {
+  const first = rest[0];
+  const namesAccount =
+    first !== undefined && (first.includes(".") || first.startsWith("did:"));
+  const words = namesAccount ? rest.slice(1) : rest;
+  return {
+    account: namesAccount ? first : fallbackAccount,
+    name: words.join(" ").trim(),
+  };
+};
+
 /** Every debug console command, declared as a single object literal keyed by command name. */
 export const createCommands = ({
   renderer,
@@ -159,6 +193,9 @@ export const createCommands = ({
   health,
   models,
   modelAccount,
+  places,
+  placePublisher,
+  script,
   resolution,
   setView,
   setPlayerVisible,
@@ -530,6 +567,111 @@ export const createCommands = ({
         input.click();
         return "pick a model zip — the monsters keep their look until one loads";
       },
+    },
+    "/place:publish": {
+      description: "publish a place zip from this device to your account",
+      run: () => {
+        let settle!: (line: string) => void;
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".zip,application/zip";
+        input.style.display = "none";
+        input.onchange = () => {
+          const file = input.files?.[0];
+          input.remove();
+          if (file === undefined) {
+            settle("no zip picked");
+            return;
+          }
+          void placePublisher.publish(file).then(
+            (atUri) => settle(`published — ${atUri}`),
+            (err) => settle(`publish failed: ${describeError(err)}`),
+          );
+        };
+        input.oncancel = () => {
+          input.remove();
+          settle("publish cancelled");
+        };
+        document.body.appendChild(input);
+        input.click();
+        return new Promise<string>((resolve) => {
+          settle = resolve;
+        });
+      },
+    },
+    "/place:published": {
+      description: "list the places an account has published",
+      args: "[handle]",
+      run: async (rest) => {
+        const account = rest[0] ?? atproto.did;
+        if (account === null || account === undefined) {
+          return "name the account whose places to list, or sign in first";
+        }
+        try {
+          const published = await places.list(account);
+          if (published.length === 0) {
+            return `${account} has published no places`;
+          }
+          return published
+            .map(({ record }) => {
+              const [x, y, z] = record.spawn;
+              return `"${record.name}" — seed ${record.seed}, spawn ${x},${y},${z}`;
+            })
+            .join("\n");
+        } catch (err) {
+          return `nothing to list from ${account} — ${describeError(err)}`;
+        }
+      },
+    },
+    "/place:join": {
+      description: "join a place someone published, playing its world",
+      args: "[handle] [name]",
+      run: async (rest) => {
+        const { account, name } = readPlaceRequest(rest, atproto.did);
+        if (account === null || account === undefined) {
+          return "name the account whose place to join, or sign in first";
+        }
+        if (name === "") {
+          return "usage: /place:join [handle] [name]";
+        }
+        try {
+          const place = await places.find(account, name);
+          const url = new URL(window.location.href);
+          url.searchParams.set("place", placeAtUri(place.repo, place.rkey));
+          window.location.assign(url.toString());
+          return `joining "${place.record.name}" — reloading into its world`;
+        } catch (err) {
+          return `no "${name}" from ${account} — ${describeError(err)}`;
+        }
+      },
+    },
+    "/script:demo": {
+      description: "load and run the bundled sample place script",
+      run: async () => script.demo(),
+    },
+    "/script:state": {
+      description: "show what the loaded script is doing",
+      run: async () => script.state(),
+    },
+    "/script:talk": {
+      description: "start talking to an NPC the script placed",
+      args: "<id>",
+      run: async (rest) => script.talk(rest[0] ?? ""),
+    },
+    "/script:choose": {
+      description: "pick an option of the current conversation",
+      args: "<1..n>",
+      run: async (rest) => {
+        const option = Number(rest[0]);
+        if (!Number.isInteger(option)) {
+          return "usage: /script:choose <option number>";
+        }
+        return script.choose(option);
+      },
+    },
+    "/script:leave": {
+      description: "end the current conversation",
+      run: async () => script.leave(),
     },
     "/weather": {
       description: "set or resume the weather",
