@@ -118,11 +118,6 @@ export function Hud() {
           selected={isModeSelected("Rectangle")}
         />
         <IconTab
-          kind="eye-dropper"
-          onClick={() => setMode("Eyedrop")}
-          selected={isModeSelected("Eyedrop")}
-        />
-        <IconTab
           kind="grip-lines-vertical"
           onClick={() => setMode("CutDown")}
           selected={isModeSelected("CutDown")}
@@ -161,6 +156,11 @@ export function Hud() {
         />
       </Bar>
       <Bar class={styles.colour}>
+        <IconTab
+          kind="eye-dropper"
+          onClick={() => setMode("Eyedrop")}
+          selected={isModeSelected("Eyedrop")}
+        />
         <IconTab
           kind="eraser"
           onClick={() => setErasing((erasing) => !erasing)}

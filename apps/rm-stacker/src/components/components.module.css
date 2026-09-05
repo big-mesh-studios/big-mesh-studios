@@ -33,7 +33,7 @@
   min-width: var(--size);
   min-height: var(--size);
 
-  &:not([disabled]):hover {
+  &:not([disabled]):not([aria-selected="true"]):hover {
     color: var(--light-grey);
   }
 
@@ -61,7 +61,7 @@
   }
 
   &:not([disabled]):hover {
-    --color: white;
+    --color: var(--front);
   }
 
   &.iconButton {
