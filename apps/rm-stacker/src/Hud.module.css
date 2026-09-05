@@ -13,9 +13,9 @@
      there is and can wrap into a column beside it. */
   grid-template-rows: auto 1fr auto;
   grid-template-areas:
-    "files . view"
-    "left  . view"
-    "left  . parts";
+    "files .         view"
+    "left  .         view"
+    "left  transport parts";
   /* Only the bars themselves are reachable, and each asks for that for itself.
      Everything between them is the model behind, which orbits to a drag. */
   pointer-events: none;
@@ -40,6 +40,25 @@
 
   /* The bars the view is framed with, gathered against the top and spilling
      towards the middle from the other side. */
+  /* Along the bottom edge, between the two columns of bars: the transport is
+     read left to right like the frames it runs through, and a strip of the
+     motion's keys would lie beside it. */
+  & > .transport {
+    grid-area: transport;
+    flex-direction: row;
+    justify-self: center;
+    align-self: end;
+    transition: translate 120ms ease-out;
+
+    /* Where the palette cannot open beside the button it opens along this same
+       edge, as a single row of colours. A row of colours and a row of tabs are
+       the same square tall, so the transport steps up by its own height and the
+       two share the edge rather than one covering the other. */
+    &[data-raised] {
+      translate: 0 calc(-100% - var(--margin));
+    }
+  }
+
   & > .view {
     grid-area: view;
     display: flex;
