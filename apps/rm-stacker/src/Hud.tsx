@@ -288,6 +288,32 @@ export function Hud() {
           </For>
         </Bar>
         <Bar>
+          <IconTab
+            onClick={() => {
+              preview.setFocus((focus) => (focus === "part" ? "root" : "part"));
+              flush();
+              requestAutoSave();
+            }}
+            selected={!ProfileDialog.isOpen() && preview.focus() === "part"}
+            kind="crosshairs"
+            title={
+              preview.focus() === "part"
+                ? "Turning about the part being drawn on"
+                : "Turning about the figure's root"
+            }
+          />
+          <IconTab
+            onClick={() => {
+              preview.setAutoframe((autoframe) => !autoframe);
+              flush();
+              requestAutoSave();
+            }}
+            selected={!ProfileDialog.isOpen() && preview.autoframe()}
+            kind="expand"
+            title="Autoframe: keep the whole figure in the view as it is drawn"
+          />
+        </Bar>
+        <Bar>
           <ViewSettingsPopover.Trigger
             class={[tabStyle, iconTabStyle]}
             title="How the view is drawn"
@@ -316,32 +342,6 @@ export function Hud() {
               selected={!ProfileDialog.isOpen() && !preview.unlit()}
               kind="lightbulb"
               title="Light the figure, rather than showing its colours flat"
-            />
-            <IconTab
-              onClick={() => {
-                preview.setFocus((focus) =>
-                  focus === "part" ? "root" : "part",
-                );
-                flush();
-                requestAutoSave();
-              }}
-              selected={!ProfileDialog.isOpen() && preview.focus() === "part"}
-              kind="crosshairs"
-              title={
-                preview.focus() === "part"
-                  ? "Turning about the part being drawn on"
-                  : "Turning about the figure's root"
-              }
-            />
-            <IconTab
-              onClick={() => {
-                preview.setAutoframe((autoframe) => !autoframe);
-                flush();
-                requestAutoSave();
-              }}
-              selected={!ProfileDialog.isOpen() && preview.autoframe()}
-              kind="expand"
-              title="Autoframe: keep the whole figure in the view as it is drawn"
             />
             <IconTab
               onClick={() => {
