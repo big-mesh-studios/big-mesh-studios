@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { voxelPicker } from "./voxel-picker";
-import shaders from "./shaders";
-import { voxelCellEdges } from "./voxel-preview-scene";
+import shaders from "../shaders";
+import { voxelCellEdges } from "../voxel-preview-scene";
 
 const makeSolidTexture = (
   width: number,

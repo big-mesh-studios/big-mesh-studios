@@ -15,9 +15,9 @@ import {
   type PartPlacement,
   type SolvedPart,
 } from "@big-mesh-studios/stacker/renderer";
-import shaders from "./shaders";
+import shaders from "../shaders";
 import { voxelPicker } from "./voxel-picker";
-import { AMBIENT_COLOUR, LIGHT_COLOUR } from "./voxel-preview-scene";
+import { AMBIENT_COLOUR, LIGHT_COLOUR } from "../voxel-preview-scene";
 
 /** A voxel a ray met, and the part whose volume holds it. */
 export interface FigurePick {

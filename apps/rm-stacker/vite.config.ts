@@ -13,7 +13,7 @@ export default defineConfig(({ command }) => ({
   // the router and the sign-in which of the two they are running under.
   base: command === "build" ? "/big-mesh-studios/rm-stacker/" : "/",
   plugins: [
-    precompileJS({ include: "src/voxel-picker-cpu.ts" }),
+    precompileJS({ include: "src/picking/voxel-picker-cpu.ts" }),
     solid({ ssr: false }),
   ],
   server: {

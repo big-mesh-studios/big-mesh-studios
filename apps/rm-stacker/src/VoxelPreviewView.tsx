@@ -17,9 +17,6 @@ import {
 } from "@big-mesh-studios/utils/pointer";
 import {
   Group,
-  Line2NodeMaterial,
-  LineSegments2,
-  LineSegmentsGeometry,
   PerspectiveCamera,
   Scene,
   WebGLRenderer,
@@ -45,7 +42,8 @@ import { Command } from "./command/Command";
 import { StackerContext } from "./context";
 import { CutPlane } from "./cut-plane";
 import { DebugPlanes } from "./debug-planes";
-import { pickFigure, type FigurePick } from "./figure-picker";
+import { createFigurePicking } from "./picking/figure-picking";
+import { PickOutline } from "./picking/pick-outline";
 import {
   radiansDragged,
   ringUnderPointer,
@@ -56,11 +54,9 @@ import {
   FAR,
   FOV,
   framedVoxelSize,
-  LIGHT_DIR,
   lightFigure,
   NEAR,
   rotateFigure,
-  voxelCellEdges,
 } from "./voxel-preview-scene";
 import styles from "./VoxelPreviewView.module.css";
 
@@ -87,12 +83,6 @@ const ABOUT: Record<WidgetAxis, (angle: number) => Matrix3x3> = {
 const TURNTABLE_SECONDS_PER_REVOLUTION = 20;
 const TURNTABLE_RADIANS_PER_SECOND =
   -(2 * Math.PI) / TURNTABLE_SECONDS_PER_REVOLUTION;
-
-// The picked voxel's outline: a crisp white wireframe, a couple of device
-// pixels wide. The material's fragDepth bias (see voxel-preview-material) keeps
-// it in front of the voxel face it sits on.
-const OUTLINE_COLOUR = 0xffffff;
-const OUTLINE_LINE_WIDTH = 2;
 
 /** How far a press may wander across the canvas and still count as a tap. */
 const TAP_SLOP = 4;
@@ -142,7 +132,6 @@ const VoxelPreviewView: Component = () => {
   const inverseYawMatrix = Matrix3x3.create();
   const inversePitchMatrix = Matrix3x3.create();
   const modelToWorld = Matrix3x3.create();
-  const modelSpaceLightDirection = Vector3D.create();
 
   const scene = new Scene();
   const camera = new PerspectiveCamera(FOV, 1, NEAR, FAR);
@@ -174,17 +163,9 @@ const VoxelPreviewView: Component = () => {
   const debugPlanes = new DebugPlanes();
   framed.add(debugPlanes.group);
 
-  // The picked voxel's outline. Its geometry is in the part's own space
-  // (the same cell layout the marcher walks), so it is made a child of
-  // whichever part is picked and inherits that part's place and turn.
-  const outline = new LineSegments2(
-    new LineSegmentsGeometry(),
-    new Line2NodeMaterial({
-      color: OUTLINE_COLOUR,
-      linewidth: OUTLINE_LINE_WIDTH,
-    }),
-  );
-  outline.visible = false;
+  // The outline hangs off the part it was traced on rather than standing in the
+  // scene, so it is not added to a group here.
+  const outline = new PickOutline();
 
   // Added after the figure, and drawn without a depth test, so the handles come
   // out over whatever they reach into rather than inside it. One set of them
@@ -196,9 +177,6 @@ const VoxelPreviewView: Component = () => {
 
   /** How much of the drawn world one voxel takes up. */
   const [voxelSize, setVoxelSize] = createSignal(1);
-  const [pickedFigure, setPickedFigure] = createSignal<
-    FigurePick | undefined
-  >();
 
   /** Where every part stands, in voxels from the figure's origin. */
   const placement = createMemo(() => figurePlacement(posedFigure()));
@@ -358,39 +336,19 @@ const VoxelPreviewView: Component = () => {
     return rings.find((ring) => ring.axis === axis);
   }
 
-  // CPU voxel picking: ray-march the same volumes the fragment shader renders,
-  // from the pointer position in UV space, and hold on to the voxel met first
-  // across the whole figure. The picker is precompiled at build time by
-  // precompileJS, so this never runs the rmsl graph in the browser.
-  function pickAt(event: PointerEvent & { currentTarget: HTMLElement }) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) {
-      return;
-    }
-
-    Matrix3x3.transform(getWorldToModel(), LIGHT_DIR, modelSpaceLightDirection);
-
-    setPickedFigure(
-      pickFigure({
-        solved: solvedParts(),
-        placements: placement().placements,
-        framing: framing(),
-        palette: palette(),
-        // The drawing buffer is scaled by devicePixelRatio, but vUv spans the
-        // CSS box, so the pointer is normalized against the CSS size.
-        uv: { x: x / rect.width, y: 1 - y / rect.height },
-        resolution: { width: canvas.width, height: canvas.height },
-        cameraDistance: radius,
-        worldToModel,
-        modelToWorld: getModelToWorld(),
-        lightDirection: modelSpaceLightDirection,
-        unlit: untrack(preview.unlit),
-      }),
-    );
-  }
+  // What the pointer meets in the figure, ray-marched through the same volumes
+  // the fragment shader draws. The marcher is precompiled at build time by
+  // precompileJS, so the graph it is written as is never built in the browser.
+  const picking = createFigurePicking(() => ({
+    solved: solvedParts(),
+    placements: placement().placements,
+    framing: framing(),
+    palette: palette(),
+    cameraDistance: radius,
+    worldToModel: getWorldToModel(),
+    modelToWorld: getModelToWorld(),
+    unlit: untrack(preview.unlit),
+  }));
 
   async function handleArmDrag(
     initialEvent: PointerEvent & { currentTarget: HTMLElement },
@@ -570,7 +528,7 @@ const VoxelPreviewView: Component = () => {
         return;
       }
 
-      pickAt(initialEvent);
+      picking.at(initialEvent, canvas);
     }
 
     let isTap = initialPointerCount === 0;
@@ -589,7 +547,7 @@ const VoxelPreviewView: Component = () => {
 
             // Keep the readout in step with the cursor — including while orbiting,
             // where the model turns beneath the pointer.
-            pickAt(event);
+            picking.at(event, canvas);
             yaw += delta.x * RADIANS_PER_PIXEL;
             pitch = Math.max(
               -PITCH_LIMIT,
@@ -623,7 +581,7 @@ const VoxelPreviewView: Component = () => {
     );
 
     if (isTap && pointers.size === 0 && timespan <= TAP_HELD) {
-      const _picked = untrack(pickedFigure);
+      const _picked = untrack(picking.picked);
 
       if (_picked === undefined) {
         return;
@@ -758,41 +716,9 @@ const VoxelPreviewView: Component = () => {
     }
   });
 
-  // The outline follows the pick: trace the picked voxel's cell (in the part's
-  // own space, from the same dimensions the marcher sizes its box by) and hide
-  // it when the pick met nothing. It hangs off the part it was picked on, so it
-  // moves and turns with it.
   createEffect(
-    () => [solvedParts(), pickedFigure()] as const,
-    ([solvedParts, picked]) => {
-      if (picked === undefined) {
-        outline.visible = false;
-        return;
-      }
-
-      const on = solvedParts.find((solved) => solved.name === picked.part);
-      const host = meshes.meshFor(picked.part);
-
-      if (on === undefined || host === undefined) {
-        outline.visible = false;
-        return;
-      }
-
-      if (outline.parent !== host) {
-        outline.parent?.remove(outline);
-        host.add(outline);
-      }
-
-      const geometry = outline.geometry;
-      geometry.setPositions(voxelCellEdges(on.dimensions, picked.voxel));
-
-      // setPositions swaps in fresh instance attributes whose needsUpdate flag
-      // is false, so the renderer would keep drawing the previous pick's edges.
-      // Flag them so the next frame uploads the new cell.
-      geometry.attributes.instanceStart.needsUpdate = true;
-      geometry.attributes.instanceEnd.needsUpdate = true;
-      outline.visible = true;
-    },
+    () => [solvedParts(), picking.picked()] as const,
+    ([solvedParts, picked]) => outline.trace(solvedParts, meshes, picked),
   );
 
   onSettled(() => {

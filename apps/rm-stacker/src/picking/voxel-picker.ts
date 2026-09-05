@@ -1,4 +1,4 @@
-import shaders from "./shaders";
+import shaders from "../shaders";
 import { voxelPicker as cpuVoxelPicker } from "./voxel-picker-cpu";
 
 type Vec2 = [number, number];

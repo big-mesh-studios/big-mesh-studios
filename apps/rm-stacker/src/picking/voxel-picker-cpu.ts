@@ -1,5 +1,5 @@
 import { compileJS, compileJSFn } from "@random-mesh/rmsl";
-import { cpuVoxelPicker } from "./shaders-shared";
+import { cpuVoxelPicker } from "../shaders-shared";
 
 // This module is compiled once at build time by the precompileJS plugin from
 // @random-mesh/rmsl/vite, which replaces it with a plain callable so the rmsl
