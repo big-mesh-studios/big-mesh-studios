@@ -319,25 +319,17 @@ export function createStacker() {
   }
 
   /**
-   * The frame the motion has been wound to. Whole while it is scrubbed and
+   * The frame of the motion the editor stands at, which is the pose the preview
+   * draws and the frame a pose is recorded at. Whole while it is scrubbed and
    * fractional while it is played, a motion running at its own frames a second
    * however fast the screen draws.
-   */
-  const [scrubbedFrame, setFrame] = createSignal(0);
-
-  /**
-   * The frame of the motion the editor stands at, which is the pose the preview
-   * draws and the frame a pose is recorded at.
    *
-   * Winding a motion is done while the parts are being moved. A part drawn on
-   * is drawn on the figure as it starts, so the editor stands at the frame the
-   * motion starts at for as long as that is what it is being used for — and a
-   * part moved then is moved where the figure starts, rather than at whatever
-   * frame the motion was last left wound to.
+   * It stands where it was left, whichever of the two things the editor is
+   * being used for. Moving a part writes a key at this frame of the motion
+   * chosen, wherever that is and whichever that is, so that a part is moved the
+   * same way throughout rather than one way here and another way there.
    */
-  const frame = createMemo(() =>
-    viewMode() === "Animate" ? scrubbedFrame() : START_FRAME,
-  );
+  const [frame, setFrame] = createSignal(0);
   const [playing, setPlaying] = createSignal(false);
 
   /**
