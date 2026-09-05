@@ -4,11 +4,11 @@ import {
   composeRoot,
   FigureMeshes,
   figurePlacement,
-  type PartPlacement,
   turnAngles,
   turnMatrix,
   voxelReach,
   type FigureFraming,
+  type PartPlacement,
 } from "@big-mesh-studios/stacker/renderer";
 import {
   getPointers,
@@ -43,7 +43,6 @@ import { StackerContext } from "./context";
 import { CutPlane } from "./cut-plane";
 import { DebugPlanes } from "./debug-planes";
 import { createFigurePicking } from "./picking/figure-picking";
-import { PickOutline } from "./picking/pick-outline";
 import {
   radiansDragged,
   ringUnderPointer,
@@ -162,10 +161,6 @@ const VoxelPreviewView: Component = () => {
 
   const debugPlanes = new DebugPlanes();
   framed.add(debugPlanes.group);
-
-  // The outline hangs off the part it was traced on rather than standing in the
-  // scene, so it is not added to a group here.
-  const outline = new PickOutline();
 
   // Added after the figure, and drawn without a depth test, so the handles come
   // out over whatever they reach into rather than inside it. One set of them
@@ -715,11 +710,6 @@ const VoxelPreviewView: Component = () => {
       spinOffset = spin;
     }
   });
-
-  createEffect(
-    () => [solvedParts(), picking.picked()] as const,
-    ([solvedParts, picked]) => outline.trace(solvedParts, meshes, picked),
-  );
 
   onSettled(() => {
     const sizeToCanvas = () => {
