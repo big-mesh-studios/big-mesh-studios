@@ -6,6 +6,7 @@
 import type { MeshArrays, MeshBuildRequest, MeshBuildResult } from "./mesh";
 import { buildBlockMesh, buildWaterMesh } from "./mesh";
 import { VoxelStore } from "../world/voxel-store";
+import { LightStore } from "../world/light-store";
 
 /**
  * The DOM lib types `self` as `Window`, whose `postMessage` needs a target
@@ -17,7 +18,8 @@ const workerSelf = self as unknown as {
 };
 
 workerSelf.onmessage = (ev: MessageEvent<MeshBuildRequest>) => {
-  const { id, voxels, scale, data, tileRects } = ev.data;
+  const { id, voxels, scale, data, hasWater, skyLight, blockLight, tileRects } =
+    ev.data;
   const store = new VoxelStore({
     dims: [voxels[0] * scale, voxels[1] * scale, voxels[2] * scale],
     voxels,
@@ -26,6 +28,12 @@ workerSelf.onmessage = (ev: MessageEvent<MeshBuildRequest>) => {
   // adopt the transferred buffer instead of copying it again; it already
   // includes the block's meshing border
   store.data = data;
+  store.hasWater = hasWater;
+  const light = new LightStore(voxels);
+  // adopt the transferred light channels too, so the mesher shades each face
+  // from the same border-read light the main thread would
+  light.skylight = skyLight;
+  light.blocklight = blockLight;
   const toTyped = (m: MeshArrays): MeshArrays => ({
     positions:
       m.positions instanceof Float32Array
@@ -36,23 +44,44 @@ workerSelf.onmessage = (ev: MessageEvent<MeshBuildRequest>) => {
         ? m.normals
         : new Float32Array(m.normals),
     uvs: m.uvs instanceof Float32Array ? m.uvs : new Float32Array(m.uvs),
+    brightness:
+      m.brightness instanceof Float32Array
+        ? m.brightness
+        : new Float32Array(m.brightness),
     indices:
       m.indices instanceof Uint32Array ? m.indices : new Uint32Array(m.indices),
   });
   const result: MeshBuildResult = {
     id,
-    terrain: toTyped(buildBlockMesh(store, tileRects)),
-    water: toTyped(buildWaterMesh(store)),
+    terrain: toTyped(buildBlockMesh(store, tileRects, light)),
+    water: toTyped(buildWaterMesh(store, light)),
+    data,
+    skyLight,
+    blockLight,
   };
   const transfer: Transferable[] = [];
   for (const mesh of [result.terrain, result.water]) {
-    const { positions, normals, uvs, indices } = mesh as {
+    const { positions, normals, uvs, brightness, indices } = mesh as {
       positions: Float32Array;
       normals: Float32Array;
       uvs: Float32Array;
+      brightness: Float32Array;
       indices: Uint32Array;
     };
-    transfer.push(positions.buffer, normals.buffer, uvs.buffer, indices.buffer);
+    transfer.push(
+      positions.buffer,
+      normals.buffer,
+      uvs.buffer,
+      brightness.buffer,
+      indices.buffer,
+    );
   }
+  // Forward the input buffers back so the caller can recycle them into its own
+  // pool instead of letting them be garbage-collected.
+  transfer.push(
+    store.data.buffer,
+    light.skylight.buffer,
+    light.blocklight.buffer,
+  );
   workerSelf.postMessage(result, transfer);
 };

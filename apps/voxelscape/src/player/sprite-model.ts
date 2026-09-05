@@ -19,7 +19,7 @@ export const SPRITESHEET_URL = "./spritesheets/spritesheet_items.png";
 const SPRITESHEET_XML_URL = "./spritesheets/spritesheet_items.xml";
 
 /** The items spritesheet's size, in pixels. */
-export const SPRITESHEET_WIDTH = 896;
+export const SPRITESHEET_WIDTH = 1024;
 export const SPRITESHEET_HEIGHT = 1024;
 
 /** Alpha above which a sampled sprite pixel counts as solid drawing. */

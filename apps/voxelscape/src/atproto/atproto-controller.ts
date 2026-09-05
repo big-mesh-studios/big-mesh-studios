@@ -10,7 +10,10 @@ import {
   type IdentityLookup,
 } from "@big-mesh-studios/atproto/identity";
 import { listAllRecords } from "@big-mesh-studios/atproto/repo-client";
-import type { AtprotoRepoClient } from "@big-mesh-studios/atproto/repo-client";
+import type {
+  AtprotoBlobClient,
+  AtprotoRepoClient,
+} from "@big-mesh-studios/atproto/repo-client";
 import {
   createAtprotoSession,
   type AtprotoSession,
@@ -114,9 +117,9 @@ export class AtprotoController {
   /**
    * The signed-in account's record client, for the subsystems that read and
    * write their own collections (the multiplayer mesh's presence and signal
-   * records). Undefined while anonymous.
+   * records, a place's publish). Undefined while anonymous.
    */
-  get repoClient(): AtprotoRepoClient | undefined {
+  get repoClient(): (AtprotoRepoClient & AtprotoBlobClient) | undefined {
     return this.session.repoClient;
   }
 

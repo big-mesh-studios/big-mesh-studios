@@ -1,0 +1,76 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 4.5rem;
+}
+
+.hint {
+  margin-bottom: 1rem;
+  padding: 0.35rem 0.7rem;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  border-radius: 0.4rem;
+  font-size: 14px;
+}
+
+.bubble {
+  pointer-events: auto;
+  max-width: 34rem;
+  padding: 0.9rem 1.1rem;
+  background: rgba(10, 12, 16, 0.88);
+  color: #fff;
+  border-radius: 0.6rem;
+  position: relative;
+  user-select: none;
+}
+
+.speaker {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+  margin-bottom: 0.35rem;
+}
+
+.prompt {
+  font-size: 17px;
+  line-height: 1.45;
+  min-height: 1.45em;
+  white-space: pre-wrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+
+.option {
+  font: inherit;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+}
+
+.option:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.leave {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.55rem;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 15px;
+  cursor: pointer;
+}

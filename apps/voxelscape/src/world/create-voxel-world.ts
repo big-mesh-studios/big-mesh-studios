@@ -5,21 +5,26 @@ import { ChunkSphere } from "./chunk-sphere";
 import {
   blockWorldVoxelRange,
   EditLayer,
+  localToWorldVoxel,
   mergeIntoLayer,
+  worldVoxelToLocal,
   type VoxelEdit,
   type WorldVoxel,
 } from "./edit-layer";
 import { createEditPersistence } from "./edit-persistence";
 import {
   BLOCK_WORLD,
+  VOXEL_SIZE,
   getGroundHeightBelow,
   getWorldHeight,
+  isLavaAt,
   isSolidAt,
   isWaterAt,
   type Dim3,
   type WorldBlock,
 } from "./level-data";
 import { heightAt as terrainHeightAt, type TerrainConfig } from "./noise";
+import { VOXEL_AIR, VOXEL_LAVA, VOXEL_WATER, isFluidId } from "./voxel-store";
 
 /** Padding added to each mesh's box so adjacent meshes share a thin overlap shell. */
 /** Water absorption used by the water pass and the underwater tint alike. */
@@ -84,6 +89,8 @@ export interface VoxelWorld {
   /** Highest solid surface at or below (`x`, `y`, `z`), or `-Infinity` where the column has none. */
   groundHeightAt(x: number, y: number, z: number): number;
   inWaterAt(x: number, y: number, z: number): boolean;
+  /** Whether the voxel at a world point is lava; the contact-hazard query. */
+  lavaAt(x: number, y: number, z: number): boolean;
   solidAt(x: number, y: number, z: number): boolean;
   /** Keeps the block window centred on (`x`, `y`, `z`), streaming new blocks in off the main thread. */
   scrollTo(x: number, y: number, z: number): void;
@@ -108,6 +115,18 @@ export interface VoxelWorld {
    * merge both funnel through here. Returns the number of voxels that changed.
    */
   applyEdits(entries: Array<{ w: WorldVoxel; edit: VoxelEdit }>): number;
+  /**
+   * Registers a callback fired whenever a block's fill lands (its voxels are
+   * freshly generated and its edits re-applied). The fluid simulation wakes
+   * the cells a new block may set moving through this.
+   */
+  onBlockFilled(cb: (index: number) => void): void;
+  /**
+   * The slot whose block's interior holds a world voxel, resolved in O(1) via
+   * the window's cell map — the lookup the fluid simulation reads and writes
+   * through.
+   */
+  blockIndexAtVoxel(w: WorldVoxel): number | undefined;
   /** Writes the edit overlay to IndexedDB, batched. */
   scheduleSave(): void;
   dispose(): void;
@@ -135,7 +154,10 @@ export const createVoxelWorld = ({
 
   const editLayer = new EditLayer();
   const editPersistence = createEditPersistence(editLayer);
+  /** Callbacks run whenever a block's fill lands; the flow sim wakes through these. */
+  const filledListeners: Array<(index: number) => void> = [];
 
+  let releaseHandler: ((index: number) => void) | undefined;
   const sphere = new ChunkSphere({
     radius: chunkRadius,
     yRadius: chunkRadiusY,
@@ -147,16 +169,94 @@ export const createVoxelWorld = ({
       filled.add(i);
       ready.add(i);
       renderer.onBlockChanged(i);
+      for (const cb of filledListeners) {
+        cb(i);
+      }
     },
     onBlockReposition: (i, center) => {
       // The slot now points at a different, as-yet-unfilled cell, so it no
-      // longer answers for the terrain it last held.
+      // longer answers for the terrain it last held. Clear its voxels now,
+      // not when the new fill lands: between the reposition and that fill the
+      // slot still reads as its previous cell, so a recycled block (one whose
+      // old cell held a lava cave, say) would otherwise answer for the new
+      // coordinates with the old cell's terrain until the worker returns.
+      sphere.blocks[i].store.reset();
+      sphere.blocks[i].light.skylight.fill(0);
+      sphere.blocks[i].light.blocklight.fill(0);
       ready.delete(i);
       renderer.repositionBlock(i, center);
     },
+    onBlockRelease: (i) => releaseHandler?.(i),
     editLayer,
   });
   const blockGrid = { blocks: sphere.blocks };
+
+  /**
+   * Snapshots a released slot's moving fluid into the edit overlay so it
+   * survives the slot's data being regenerated. Only flow that was never a
+   * plain source is recorded — the ocean and placed sources keep their own
+   * persistence paths — and a cell whose fluid has drained is written as air,
+   * so a pool that dried does not come back when the block is filled again.
+   */
+  const snapshotSlotFluids = (slot: number): void => {
+    const block = sphere.blocks[slot];
+    const store = block.store;
+    // Only a block whose store carries the flowing flag — one a fluid write or
+    // the flow sim ever touched — can hold the falling/flowing cells this pass
+    // keeps. Generated terrain and plain oceans never set it, so a pristine
+    // block is skipped instead of swept in full.
+    if (!store.hasFlowing) {
+      return;
+    }
+    const { min, max } = blockWorldVoxelRange(block.center);
+    const now = Date.now();
+    let changed = false;
+    const [nx, ny, nz] = store.voxels;
+    for (let z = 0; z < nz; z++) {
+      for (let y = 0; y < ny; y++) {
+        for (let x = 0; x < nx; x++) {
+          const id = store.get(x, y, z);
+          // Plain sources persist as their own edits (a placed bucket) or not
+          // at all (the generated ocean); only flowing/falling cells are this
+          // pass's to keep.
+          if (id === VOXEL_WATER || id === VOXEL_LAVA || !isFluidId(id)) {
+            continue;
+          }
+          const w = localToWorldVoxel(store, block.center, [x, y, z]);
+          const prev = editLayer.get(w);
+          if (prev === undefined || prev.id !== id) {
+            editLayer.set(w, id, now);
+            changed = true;
+          }
+        }
+      }
+    }
+    for (const { w, edit } of editLayer.queryRange(min, max)) {
+      if (!isFluidId(edit.id)) {
+        continue;
+      }
+      const local = worldVoxelToLocal(store, block.center, w);
+      const current = store.inBounds(local[0], local[1], local[2])
+        ? store.get(local[0], local[1], local[2])
+        : VOXEL_AIR;
+      if (current === edit.id) {
+        continue;
+      }
+      if (current !== VOXEL_AIR && !isFluidId(current)) {
+        continue; // a solid replaced it and carries its own edit
+      }
+      if (isFluidId(current)) {
+        editLayer.set(w, current, now);
+      } else {
+        editLayer.set(w, VOXEL_AIR, now);
+      }
+      changed = true;
+    }
+    if (changed) {
+      editPersistence.scheduleSave();
+    }
+  };
+  releaseHandler = snapshotSlotFluids;
   /** Slots whose terrain has been generated. Fills up once, during the initial fill. */
   const filled = new Set<number>();
   /** Slots that have been both generated and drawn at least once. */
@@ -288,6 +388,9 @@ export const createVoxelWorld = ({
     inWaterAt(x, y, z) {
       return isWaterAt(sphere.query, x, y, z);
     },
+    lavaAt(x, y, z) {
+      return isLavaAt(sphere.query, x, y, z);
+    },
     solidAt(x, y, z) {
       return isSolidAt(sphere.query, x, y, z);
     },
@@ -300,6 +403,16 @@ export const createVoxelWorld = ({
     },
     scheduleSave() {
       editPersistence.scheduleSave();
+    },
+    onBlockFilled(cb) {
+      filledListeners.push(cb);
+    },
+    blockIndexAtVoxel(w) {
+      return sphere.slotAt(
+        (w[0] + 0.5) * VOXEL_SIZE,
+        (w[1] + 0.5) * VOXEL_SIZE,
+        (w[2] + 0.5) * VOXEL_SIZE,
+      );
     },
     dispose() {
       // stop the fill worker so it doesn't keep running after unmount

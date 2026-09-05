@@ -5,12 +5,20 @@ import { DEFAULT_TERRAIN, heightAt, type TerrainConfig } from "./noise";
 import {
   VOXEL_AIR,
   VOXEL_CLOUD,
-  VOXEL_WATER,
+  VOXEL_LOG,
+  VOXEL_LEAVES,
+  isFluidId,
+  isLavaId,
+  isWaterId,
   VoxelStore,
   fillStore,
   type BorderSizes,
   type FillStoreFn,
 } from "./voxel-store";
+import { placeTrees } from "./tree-fill";
+import { LightStore } from "./light-store";
+import { fillSkyLight } from "./sky-light";
+import { fillBlockLight } from "./block-light";
 
 export type { TerrainConfig };
 
@@ -57,6 +65,8 @@ export interface WorldBlock {
   center: Dim3;
   /** The voxels themselves, which an edit changes and a mesh is built from. */
   store: VoxelStore;
+  /** Per-voxel light shadowing `store`, recomputed whenever the voxels change. */
+  light: LightStore;
   /** The level of detail currently targeted or requested for this block. */
   targetLod?: number;
 }
@@ -79,6 +89,7 @@ export const buildBlockShell = (params: {
   return {
     center: params.center,
     store: new VoxelStore({ dims: dimensions, voxels, scale: voxelSize }),
+    light: new LightStore(voxels),
     targetLod: lod,
   };
 };
@@ -106,6 +117,14 @@ export const buildBlock = (params: {
     params.terrain ?? DEFAULT_TERRAIN,
     params.borderSizes,
   );
+  placeTrees(
+    block.store,
+    params.center,
+    params.terrain ?? DEFAULT_TERRAIN,
+    VOXEL_LOG,
+    VOXEL_LEAVES,
+  );
+  fillLight(block, params.terrain ?? DEFAULT_TERRAIN);
   return block;
 };
 
@@ -187,7 +206,7 @@ const topSolidYInColumn = (
   );
   for (let vy = vyN - 1; vy >= 0; --vy) {
     const id = store.get(vx, vy, vz);
-    if (id !== 0 && id !== VOXEL_WATER && id !== VOXEL_CLOUD) {
+    if (id !== 0 && !isFluidId(id) && id !== VOXEL_CLOUD) {
       return block.center[1] + (vy + 1 - vyN / 2) * scale;
     }
   }
@@ -298,8 +317,8 @@ export const getGroundHeightBelow = (
     );
     for (let vy = startVy; vy >= 0; --vy) {
       const id = store.get(vx, vy, vz);
-      // skip water so the player stands on the lakebed (or shore) under water
-      if (id !== 0 && id !== VOXEL_WATER) {
+      // skip fluids so the player stands on the lakebed (or shore) under water
+      if (id !== 0 && !isFluidId(id)) {
         return block.center[1] + (vy + 1 - vyN / 2) * scale;
       }
     }
@@ -349,7 +368,9 @@ export const isSolidAt = (
   worldZ: number,
 ): boolean => {
   const id = voxelIdAt(query, worldX, worldY, worldZ);
-  return id !== VOXEL_AIR && id !== VOXEL_WATER;
+  // Water and lava are both fluids now: the player swims through water and is
+  // hurt by lava, and neither walls the player in.
+  return id !== VOXEL_AIR && !isFluidId(id);
 };
 
 /**
@@ -366,20 +387,51 @@ export const isWaterAt = (
   worldX: number,
   worldY: number,
   worldZ: number,
-): boolean => voxelIdAt(query, worldX, worldY, worldZ) === VOXEL_WATER;
+): boolean => isWaterId(voxelIdAt(query, worldX, worldY, worldZ));
+
+/**
+ * Whether the voxel at a world-space point is lava (any of its states): the
+ * hazard query the player's contact damage is resolved against.
+ */
+export const isLavaAt = (
+  query: BlockQuery,
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+): boolean => isLavaId(voxelIdAt(query, worldX, worldY, worldZ));
 
 /** The worker-facing output of one block generation, ready to transfer. */
 export interface BlockData {
   storeData: Uint8Array;
   /** Whether these voxels are worth meshing; see `VoxelStore.mightHaveVoxels`. */
   mightHaveVoxels: boolean;
+  /** Whether these voxels hold any water; see `VoxelStore.hasWater`. */
+  hasWater: boolean;
   /** The level of detail these voxels were generated at. */
   lod: number;
+  /** The block's sky light channel, one byte per padded voxel. */
+  skyLight: Uint8Array;
+  /** The block's block light channel, one byte per padded voxel. */
+  blockLight: Uint8Array;
 }
 
 /**
- * Generates a block's voxels — the same work `buildBlock` does — into a plain
- * array that can be posted to another thread. Used by the fill worker.
+ * Fills a block's two light channels from its finished voxels: sky light from
+ * the world surface downward, block light from each emissive voxel outward.
+ * Runs after `fillStore` (and after any runtime edit) on a block that already
+ * has its voxels, so `store` and `light` always agree.
+ */
+export const fillLight = (
+  block: WorldBlock,
+  terrain: TerrainConfig = DEFAULT_TERRAIN,
+): void => {
+  fillSkyLight(block.store, block.light, block.center, terrain);
+  fillBlockLight(block.store, block.light);
+};
+
+/**
+ * Generates a block's voxels — the same work `buildBlock` does — into plain
+ * arrays that can be posted to another thread. Used by the fill worker.
  *
  * @param params - Same block-generation parameters as `buildBlock`.
  * @returns The generated arrays, ready to transfer.
@@ -392,11 +444,14 @@ export const buildBlockData = (params: {
   borderSizes?: BorderSizes;
 }): BlockData => {
   const lod = params.lod ?? 0;
-  const { store } = buildBlock({ ...params, lod });
+  const { store, light } = buildBlock({ ...params, lod });
   return {
     storeData: store.data,
     mightHaveVoxels: store.mightHaveVoxels,
+    hasWater: store.hasWater,
     lod,
+    skyLight: light.skylight,
+    blockLight: light.blocklight,
   };
 };
 
@@ -417,5 +472,9 @@ export const applyLevelData = (block: WorldBlock, data: BlockData): void => {
   block.store.scale = voxelSize;
   block.store.data = data.storeData;
   block.store.mightHaveVoxels = data.mightHaveVoxels;
+  block.store.hasWater = data.hasWater;
+  block.light.voxels = voxels;
+  block.light.skylight = data.skyLight;
+  block.light.blocklight = data.blockLight;
   block.targetLod = data.lod;
 };

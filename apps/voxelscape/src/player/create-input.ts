@@ -14,12 +14,25 @@ const MOVE_KEYS: Record<string, [number, number]> = {
   KeyD: [1, 0],
 };
 
+/** How far a press may drift and still be a tap, as a fraction of the canvas width. */
+const TAP_SLOP_FRACTION = 0.02;
+/** The floor a tap slop never falls below, in client pixels. */
+const MIN_TAP_SLOP = 6;
+/** How long a press must stay still before its held strike fires, in ms. */
+const HOLD_GRACE_MS = 120;
+/** How often a held strike repeats while the press stays still, in ms. */
+const HOLD_REPEAT_MS = 500;
+
 /**
- * Unified keyboard, pointer and touch input for the player. Each controller
- * owns its own snapshot, fed by the key listeners `install` binds to the
- * window, by the handlers `canvasHandlers` puts on the world canvas, and by
- * the touch UI (`CoarseControls.tsx`), then drained once per frame by
- * `consume`.
+ * One frame's worth of player input, gathered by the key listeners `install`
+ * binds to the window, by the handlers `canvasHandlers` puts on the world
+ * canvas, and by the touch UI (`CoarseControls.tsx`), then drained once per
+ * frame by `consume`. A non-mouse canvas press is watched until it resolves
+ * into one of three gestures before it queues anything: a drag (movement past
+ * the tap slop) turns the view and fires nothing, a hold (still past the
+ * grace) queues `primary` and keeps re-queuing it on a cadence while the
+ * finger stays put, and a quick lift is a `tap` the world acts on only when
+ * the crosshair is over a monster.
  */
 export interface InputSnapshot {
   /** Strafe input, from -1 (left) to 1 (right). */
@@ -37,8 +50,25 @@ export interface InputSnapshot {
   lookDx: number;
   /** Vertical pointer-move delta accumulated since the last frame (drag-to-look). */
   lookDy: number;
-  /** Edge-triggered: true only on the frame the primary (strike) button fired. */
+  /**
+   * Edge-triggered: true only on the frame a strike fired — a mouse press, or
+   * a touch/pen hold that has stayed still past the hold grace.
+   */
   primary: boolean;
+  /**
+   * Edge-triggered: true only on the frame the mouse's primary button was
+   * pressed — the click that strikes, and the one that talks to an NPC. A
+   * touch's hold repeats `primary` but never sets this, so a hold that mines
+   * a block can never start a talk.
+   */
+  click: boolean;
+  /**
+   * Edge-triggered: true only on the frame a touch or pen press lifted as a
+   * tap — down and up within the hold grace, never a drag. A tap can strike
+   * only what a quick touch can: a monster under the crosshair. Over a voxel
+   * or empty air it fires nothing, which is what a hold is for.
+   */
+  tap: boolean;
   /** Edge-triggered: true only on the frame the secondary (use) button fired. */
   secondary: boolean;
   /** True while the secondary button is held down, which is what raises a guard. */
@@ -61,6 +91,8 @@ interface InputState {
   lookDx: number;
   lookDy: number;
   primaryQueued: boolean;
+  clickQueued: boolean;
+  tapQueued: boolean;
   secondaryQueued: boolean;
   secondaryHeld: boolean;
   secondaryReleasedQueued: boolean;
@@ -81,7 +113,7 @@ export interface InputController {
   dispose(): void;
   /** Called once per frame: returns the latest input and clears per-frame state. */
   consume(): InputSnapshot;
-  /** Edge-triggered primary (strike) request, normally from the left mouse button. */
+  /** Edge-triggered primary (strike) request, from the left mouse button or a touch hold. */
   queuePrimary(): void;
   /** Edge-triggered secondary (use) request, normally from the right mouse button. */
   queueSecondary(): void;
@@ -102,16 +134,23 @@ export interface InputController {
      * Everything a press on the world canvas can mean, for the canvas this is
      * bound to. A mouse press takes the pointer lock the first time and, once
      * locked, strikes on the left button and uses the held item on the right;
-     * looking around is the locked pointer's job from then on. A touch or pen
-     * press fires the same action straight away and then turns the view for as
-     * long as it is dragged, which is why the returned promise settles when that
-     * drag ends — awaiting it waits for the finger to lift.
+     * looking around is the locked pointer's job from then on, so a mouse
+     * press fires straight away. A touch or pen press fires nothing yet: it is
+     * watched until it resolves into one of three gestures. Movement past the
+     * tap slop at any point makes it a look-drag that turns the view and never
+     * strikes. Staying still past the hold grace makes it a hold, which
+     * strikes once and again on the repeat cadence while the finger stays put
+     * — how a block is broken or a monster is fought by touch. Lifting within
+     * the grace makes it a tap, which the world acts on only when the
+     * crosshair is over a monster. This is why the returned promise settles
+     * when the press ends — awaiting it waits for the finger to lift.
      *
-     * Only the first drag is followed: a second finger touching down while one is
-     * already turning the view starts nothing, so the view turns at the speed of
-     * one finger however many are down. Both actions are edge-triggered per
-     * press, so holding a button doesn't repeat; the right button's hold is
-     * still tracked, so a held secondary can raise a guard.
+     * Only the first press is followed: a second finger touching down while
+     * one is already turning the view starts nothing, so the view turns at the
+     * speed of one finger however many are down. Both mouse actions are
+     * edge-triggered per press, so holding a mouse button doesn't repeat; the
+     * right button's hold is still tracked, so a held secondary can raise a
+     * guard.
      *
      * The drag delta is the difference between successive `clientX`/`clientY`
      * rather than the `movementX`/`movementY` the locked path reads. Those
@@ -161,6 +200,8 @@ export const createInput = (): InputController => {
     lookDx: 0,
     lookDy: 0,
     primaryQueued: false,
+    clickQueued: false,
+    tapQueued: false,
     secondaryQueued: false,
     secondaryHeld: false,
     secondaryReleasedQueued: false,
@@ -180,9 +221,8 @@ export const createInput = (): InputController => {
       event: PointerEvent & { currentTarget: HTMLCanvasElement },
     ) => {
       // Pointer lock is a mouse-only concept — iOS Safari doesn't implement
-      // it at all, and it isn't how touch input works anyway. A touch (or
-      // pen) tap fires the action right away; only a mouse press is gated
-      // behind acquiring the lock first.
+      // it at all, and it isn't how touch input works anyway. Only a mouse
+      // press is gated behind acquiring the lock first.
       if (
         event.pointerType === "mouse" &&
         document.pointerLockElement !== event.currentTarget
@@ -191,19 +231,84 @@ export const createInput = (): InputController => {
         return;
       }
 
-      if (event.button === 0) {
-        state.primaryQueued = true;
-      } else if (event.button === 2) {
-        state.secondaryQueued = true;
-        state.secondaryHeld = true;
+      // A locked mouse press is unambiguous: it strikes or uses, and the
+      // locked pointer does the looking. A mouse is never a drag to look at.
+      if (event.pointerType === "mouse") {
+        if (event.button === 0) {
+          state.primaryQueued = true;
+          state.clickQueued = true;
+        } else if (event.button === 2) {
+          state.secondaryQueued = true;
+          state.secondaryHeld = true;
+        }
+        return;
       }
 
-      if (dragging || event.pointerType === "mouse") {
+      if (dragging) {
         return;
       }
       dragging = true;
-      await pointer(event, ({ delta }) => addLookDelta(delta.x, delta.y));
+      const slop = Math.max(
+        MIN_TAP_SLOP,
+        event.currentTarget.clientWidth * TAP_SLOP_FRACTION,
+      );
+      // How the press resolves: exceeding the slop at any point makes it a
+      // look-drag; staying still past the grace makes it a hold; lifting
+      // before the grace makes it a tap.
+      let becameDrag = false;
+      let holdFired = false;
+      let grace: number | undefined;
+      let repeat: number | undefined;
+      const stopWatch = (): void => {
+        if (grace !== undefined) {
+          window.clearTimeout(grace);
+          grace = undefined;
+        }
+        if (repeat !== undefined) {
+          window.clearInterval(repeat);
+          repeat = undefined;
+        }
+      };
+      const fireHold = (): void => {
+        holdFired = true;
+        if (event.button === 0) {
+          state.primaryQueued = true;
+        }
+      };
+      // The strike first lands once the press has stayed still past the
+      // grace, then again on the repeat cadence for as long as it still has
+      // not moved — holding on a block breaks it, holding on a monster keeps
+      // swinging at it.
+      grace = window.setTimeout(() => {
+        fireHold();
+        repeat = window.setInterval(() => {
+          if (!becameDrag) {
+            fireHold();
+          }
+        }, HOLD_REPEAT_MS);
+      }, HOLD_GRACE_MS);
+
+      const drag = await pointer(event, ({ delta, totalDelta }) => {
+        addLookDelta(delta.x, delta.y);
+        if (!becameDrag && Math.hypot(totalDelta.x, totalDelta.y) > slop) {
+          becameDrag = true;
+          stopWatch();
+        }
+      });
       dragging = false;
+      stopWatch();
+      if (becameDrag) {
+        return;
+      }
+      if (drag.event.type === "pointercancel") {
+        return;
+      }
+      if (holdFired) {
+        return;
+      }
+      if (event.button === 0) {
+        state.tapQueued = true;
+      }
     },
     onMouseMove: (event: MouseEvent & { currentTarget: HTMLCanvasElement }) => {
       if (document.pointerLockElement !== event.currentTarget) {
@@ -328,6 +433,8 @@ export const createInput = (): InputController => {
         lookDx: state.lookDx,
         lookDy: state.lookDy,
         primary: state.primaryQueued,
+        click: state.clickQueued,
+        tap: state.tapQueued,
         secondary: state.secondaryQueued,
         secondaryHeld: state.secondaryHeld,
         secondaryReleased: state.secondaryReleasedQueued,
@@ -338,6 +445,8 @@ export const createInput = (): InputController => {
       state.lookDx = 0;
       state.lookDy = 0;
       state.primaryQueued = false;
+      state.clickQueued = false;
+      state.tapQueued = false;
       state.secondaryQueued = false;
       state.secondaryReleasedQueued = false;
       state.selectQueued = null;

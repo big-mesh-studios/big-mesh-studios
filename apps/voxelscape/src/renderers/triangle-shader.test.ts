@@ -24,11 +24,18 @@ const surface = (
     normal?: [number, number, number];
     distance?: number;
     uv?: [number, number];
+    brightness?: number;
   } = {},
 ): number[] => {
-  const { normal = [0, 1, 0], distance = 0, uv = [0, 0] } = options;
+  const { normal = [0, 1, 0], distance = 0, uv = [0, 0], brightness = 1 } =
+    options;
   const value = shadeTerrain(material)({
-    varyings: { normalWorld: normal, positionWorld: [0, 0, distance], uv },
+    varyings: {
+      normalWorld: normal,
+      positionWorld: [0, 0, distance],
+      uv,
+      brightness,
+    },
     uniforms: { cameraPosition: [0, 0, 0] },
   }).value;
   if (value === null) throw new Error("the fragment discarded");
@@ -45,7 +52,7 @@ const water = (
   positionWorld: [number, number, number],
 ): number[] => {
   const value = fromProgram(material.build(new Scene()))({
-    varyings: { positionWorld },
+    varyings: { positionWorld, brightness: 1 },
     uniforms: { cameraPosition: [0, 0, 0] },
   }).value;
   if (value === null) throw new Error("the fragment discarded");

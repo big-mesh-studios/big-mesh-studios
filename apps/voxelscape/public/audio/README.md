@@ -10,3 +10,8 @@
   (https://freesound.org/people/TRP/sounds/717890/), re-encoded and
   loudness-normalized to Ogg Vorbis. CC0 requires no attribution; this note
   records provenance only.
+- `letter-tick.ogg` — a 10 ms interface "tick", the per-letter typewriter sound
+  for NPC dialog. Source: Kenney's Interface Sounds pack, `click_002.ogg`
+  (https://kenney.nl/assets/interface-sounds), Creative Commons Zero, kept as
+  the Ogg Vorbis the pack ships. CC0 requires no attribution; this note records
+  provenance only.

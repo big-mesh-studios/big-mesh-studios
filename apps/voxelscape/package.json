@@ -57,6 +57,7 @@
     "@atcute/lexicons": "catalog:",
     "@atcute/oauth-browser-client": "catalog:",
     "@fortawesome/fontawesome-free": "catalog:",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
     "@random-mesh/rmsl": "catalog:",
     "@solidjs/signals": "catalog:",
     "@solidjs/web": "catalog:",
@@ -64,6 +65,7 @@
     "fast-png": "catalog:",
     "jszip": "catalog:",
     "peerjs": "^1.5.5",
+    "quickjs-emscripten-core": "0.32.0",
     "solid-js": "catalog:",
     "three": "catalog:"
   }

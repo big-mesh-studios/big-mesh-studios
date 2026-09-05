@@ -26,10 +26,28 @@ class FakeMeshWorker {
 
   /** Delivers a result for the request at `sentIndex`, as the worker would. */
   deliver(sentIndex: number): void {
+    const request = this.sent[sentIndex];
     const result: MeshBuildResult = {
-      id: this.sent[sentIndex].id,
-      terrain: { positions: [], normals: [], uvs: [], indices: [] },
-      water: { positions: [], normals: [], uvs: [], indices: [] },
+      id: request.id,
+      terrain: {
+        positions: [],
+        normals: [],
+        uvs: [],
+        brightness: [],
+        indices: [],
+      },
+      water: {
+        positions: [],
+        normals: [],
+        uvs: [],
+        brightness: [],
+        indices: [],
+      },
+      // A real worker transfers the input buffers it read back for reuse, so
+      // the fake does the same.
+      data: request.data,
+      skyLight: request.skyLight,
+      blockLight: request.blockLight,
     };
     this.onmessage?.({ data: result } as MessageEvent);
   }
@@ -125,6 +143,24 @@ describe("MeshClient", () => {
     client.drain();
 
     expect(worker?.sent.map((r) => r.id)).toEqual([1]);
+  });
+
+  it("recycles the snapshot buffers the worker returns instead of allocating", () => {
+    const { client, worker } = setup(2);
+    client.requestBuild(0);
+    client.drain();
+    const first = worker?.sent[0];
+    worker?.deliver(0); // returns the buffers to the pool
+
+    // A second build on another block draws the same buffers back out, so the
+    // two sends share the very same underlying ArrayBuffer.
+    client.requestBuild(1);
+    client.drain();
+    const second = worker?.sent[1];
+
+    expect(second?.data.buffer).toBe(first?.data.buffer);
+    expect(second?.skyLight.buffer).toBe(first?.skyLight.buffer);
+    expect(second?.blockLight.buffer).toBe(first?.blockLight.buffer);
   });
 
   it("builds on the calling thread when there is no worker", () => {

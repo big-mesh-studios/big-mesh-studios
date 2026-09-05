@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { blocksQuery, getWorldHeight } from "./level-data";
+import { LightStore } from "./light-store";
 import { DEFAULT_TERRAIN } from "./noise";
 import {
   VOXEL_AIR,
@@ -66,6 +67,18 @@ describe("VoxelStore", () => {
   it("sizes data with the meshing border included on every axis", () => {
     const store = smallStore();
     expect(store.data.length).toBe(6 * 6 * 6);
+  });
+
+  it("raises hasWater only on a water write and clears it on reset", () => {
+    const store = smallStore();
+    store.set(1, 1, 1, VOXEL_GRASS);
+    expect(store.hasWater).toBe(false);
+
+    store.set(2, 1, 1, VOXEL_WATER);
+    expect(store.hasWater).toBe(true);
+
+    store.reset();
+    expect(store.hasWater).toBe(false);
   });
 });
 
@@ -302,7 +315,9 @@ describe("getWorldHeight", () => {
         store.set(x, 3, z, VOXEL_WATER);
       }
     }
-    const blocks = [{ center: [0, 0, 0] as [number, number, number], store }];
+    const blocks = [
+      { center: [0, 0, 0] as [number, number, number], store, light: new LightStore(store.voxels) },
+    ];
     // voxel (1, vy, 1) has world xz = -1; the water row 3 would be world y 4,
     // the lakebed row 2 is world y 2 -> must return the lakebed
     expect(getWorldHeight(blocksQuery(blocks), -1, -1)).toBe(2);

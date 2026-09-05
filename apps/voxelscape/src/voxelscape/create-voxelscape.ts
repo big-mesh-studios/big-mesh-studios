@@ -6,6 +6,11 @@ import {
   MONSTER_MODEL_NAME,
   WORLD_MODEL_ACCOUNT,
 } from "../atproto/models";
+import { createPlaceLibrary, createPlacePublisher } from "../atproto/places";
+import type { ScriptConsole } from "../places/script-console";
+import { NpcFigures } from "../places/npc-figures";
+import { pickNpc } from "../places/npc-pick";
+import type { DialogState } from "../places/script-host";
 import type { Commander } from "../commands";
 import { createCommands } from "../commands";
 import { createEnvironment } from "../environment/create-environment";
@@ -24,8 +29,12 @@ import { ITEM_ORDER, ITEMS, type ItemId } from "../player/items";
 import type { Player, PlayerConfig } from "../player/player";
 import { loadSpriteModel } from "../player/sprite-model";
 import type { Target, Tool, ToolContext } from "../player/tools/tool";
+import { BucketTool } from "../player/tools/bucket-tool";
+import { loadFigure } from "@big-mesh-studios/stacker/format";
+import type { Model } from "@big-mesh-studios/stacker/renderer";
 import { AdaptiveResolution } from "../render/adaptive";
 import { createRenderLoop } from "../render/create-render-loop";
+import { FlowController } from "../world/flow-controller";
 import {
   createVoxelWorld,
   type InitialDrawProgress,
@@ -87,6 +96,16 @@ export interface Voxelscape {
   editStatus: Accessor<string>;
   /** What the crosshair is over, or null when the primary button would find nothing. */
   target: Accessor<Target | null>;
+  /** The NPC the crosshair is on, or null when none is in reach to talk to. */
+  npcAim: Accessor<{ id: string; name: string } | null>;
+  /** The dialog the local player is in, or null when nobody is talking. */
+  dialog: Accessor<DialogState | null>;
+  /** The player starts talking to the NPC with `id`, if a script has one. */
+  talkTo(id: string): void;
+  /** The player picks option `option` of the dialog on screen. */
+  choose(option: number): void;
+  /** The player ends the current dialog. */
+  leaveDialog(): void;
   /**
    * The spritesheet crop each item's hotbar icon is drawn from, filled in as
    * the sprites load. An item absent here is shown by name instead.
@@ -123,10 +142,16 @@ export const createVoxelscape = ({
 }: VoxelscapeConfig = {}): Voxelscape => {
   const [editStatus, setEditStatus] = createSignal("");
   const [target, setTarget] = createSignal<Target | null>(null);
+  const [npcAim, setNpcAim] = createSignal<{ id: string; name: string } | null>(
+    null,
+  );
+  const [dialog, setDialog] = createSignal<DialogState | null>(null);
   const [icons, setIcons] = createSignal<Partial<Record<ItemId, SubTexture>>>(
     {},
   );
   const [debugPerf, setDebugPerf] = createSignal(initialDebugPerf);
+  /** The id of the NPC last aimed at, so the aim signal only moves when it does. */
+  let lastAimId: string | null = null;
 
   const input = createInput();
   const environment = createEnvironment({
@@ -222,8 +247,31 @@ export const createVoxelscape = ({
     getMonsters: () => monsters.monsters.values(),
   });
 
+  // The world's scripted NPCs, drawn from whatever the console's script host
+  // has placed and wearing the bundled model their id names. Nothing draws
+  // until /script:demo loads a script that places them.
+  let scriptConsole: ScriptConsole | null = null;
+  const npcFigures = new NpcFigures({
+    getNpcs: () => scriptConsole?.npcs() ?? [],
+    modelFor: (id) =>
+      id === "sable"
+        ? "npc-sable.zip"
+        : id === "rook"
+          ? "npc-rook.zip"
+          : "zombie.zip",
+  });
+
   const inventory = new Inventory();
   const hand = new Hand({ camera });
+  // The fluid simulation: wakes on player edits and on chunk fills, ticks at
+  // Minecraft's per-kind spread speeds, and reports its changed blocks to the
+  // renderer exactly as a player edit would.
+  const flow = new FlowController({
+    blocks: world.blocks,
+    resolve: (w) => world.blockIndexAtVoxel(w),
+    onBlocksEdited: (indices) => world.renderer.onBlocksChanged(indices),
+  });
+  world.onBlockFilled((i) => flow.wakeBlock(i));
   const editing = new EditingController({
     blocks: world.blocks,
     layer: world.editLayer,
@@ -236,8 +284,10 @@ export const createVoxelscape = ({
       multiplayer.broadcastEdits([
         { x: w[0], y: w[1], z: w[2], id, ts: updatedAt },
       ]),
+    onVoxelWritten: (w, id) => flow.wakeVoxel(w, id),
     getLook: () => avatar.look(),
     getPlayerVoxels: () => avatar.occupiedVoxels(),
+    terrain,
   });
 
   const toolContext: ToolContext = {
@@ -348,6 +398,65 @@ export const createVoxelscape = ({
   });
 
   const modelLibrary = createModelLibrary();
+  const placeLibrary = createPlaceLibrary();
+  const placePublisher = createPlacePublisher({
+    getClient: () => atproto.repoClient,
+    getRepo: () => atproto.did,
+  });
+
+  // The console's place script, built only when a /script: command first needs
+  // it, so the interpreter is not loaded by every world that never runs one.
+  const scriptConsoleFor = async (): Promise<ScriptConsole> => {
+    if (scriptConsole === null) {
+      const { ScriptConsole: ScriptConsoleClass } =
+        await import("../places/script-console");
+      scriptConsole = new ScriptConsoleClass({
+        heightAt: (x, z) => world.heightAt(x, z),
+        report: (line) => onNotice?.(line),
+        onDialog: (player, state) => {
+          if (player === "") {
+            setDialog(state);
+          }
+        },
+      });
+    }
+    return scriptConsole;
+  };
+
+  /** The player starts talking to the NPC `id` names, over the script host. */
+  const npcTalk = (id: string): void => {
+    void scriptConsoleFor()
+      .then((console) => console.talkTo(id))
+      .catch(() => {});
+  };
+  /** The player picks option `option` (0-based) of the current dialog. */
+  const npcChoose = (option: number): void => {
+    if (dialog() === null) {
+      return;
+    }
+    void scriptConsoleFor()
+      .then((console) => console.chooseOption(option))
+      .catch(() => {});
+  };
+  /** The player ends the current dialog. */
+  const npcLeave = (): void => {
+    if (dialog() === null) {
+      return;
+    }
+    void scriptConsoleFor()
+      .then((console) => console.leaveTalk())
+      .catch(() => {});
+  };
+
+  const script = {
+    demo: () => scriptConsoleFor().then((console) => console.loadSample()),
+    state: () => scriptConsoleFor().then((console) => console.describe()),
+    talk: (id: string) =>
+      scriptConsoleFor().then((console) => console.talk(id)),
+    choose: (option: number) =>
+      scriptConsoleFor().then((console) => console.choose(option)),
+    leave: () => scriptConsoleFor().then((console) => console.leave()),
+  };
 
   /**
    * Puts the monsters in the best drawing this world can reach, nearest first:
@@ -385,9 +494,39 @@ export const createVoxelscape = ({
 
   void dressMonsters().then((line) => onNotice?.(line));
 
+  /** Dresses the NPC figures in the models this site bundles, best effort. */
+  const dressNpcs = async (): Promise<void> => {
+    for (const file of ["npc-sable.zip", "npc-rook.zip", "zombie.zip"]) {
+      try {
+        const response = await fetch(`./models/${file}`);
+        if (response.ok) {
+          npcFigures.setFigure(file, await loadFigure(await response.blob()));
+        }
+      } catch {
+        // An NPC whose model cannot load is simply not drawn until one does.
+      }
+    }
+  };
+  void dressNpcs();
+
   // Every item drawn from the site's spritesheet is read once, for the mesh
   // the hand holds and the crop its hotbar icon shows; a failure to load just
   // leaves that item undrawn rather than blocking the world.
+  let bucketEmpty: { model: Model; bbox: SubTexture } | undefined;
+  const bucketFilled = new Map<
+    "water" | "lava",
+    { model: Model; bbox: SubTexture }
+  >();
+  const bucketTool = tools["bucket"] as BucketTool;
+  const applyBucketFill = (fill: "water" | "lava" | null): void => {
+    const state = fill === null ? bucketEmpty : bucketFilled.get(fill);
+    if (state === undefined) {
+      return;
+    }
+    hand.setModel("bucket", state.model);
+    setIcons((current) => ({ ...current, bucket: state.bbox }));
+  };
+  bucketTool.onFillChange = () => applyBucketFill(bucketTool.fill);
   for (const id of ITEM_ORDER) {
     const sprite = ITEMS[id].sprite;
     if (sprite === null) {
@@ -395,11 +534,27 @@ export const createVoxelscape = ({
     }
     void loadSpriteModel(sprite)
       .then(({ model, bbox }) => {
+        if (id === "bucket") {
+          bucketEmpty = { model, bbox };
+          applyBucketFill(bucketTool.fill);
+        }
         hand.setModel(id, model);
         setIcons((current) => ({ ...current, [id]: bbox }));
       })
       .catch((err) =>
         console.warn(`[${id}] not drawn; the player holds nothing.`, err),
+      );
+  }
+  // The bucket's two full states swap its model and icon in as it is filled
+  // and emptied, so the held sprite matches what the tool is carrying.
+  for (const fill of ["water", "lava"] as const) {
+    void loadSpriteModel(`bucket_${fill}`)
+      .then(({ model, bbox }) => {
+        bucketFilled.set(fill, { model, bbox });
+        applyBucketFill(bucketTool.fill);
+      })
+      .catch((err) =>
+        console.warn(`[bucket_${fill}] not drawn; the fill shows empty.`, err),
       );
   }
 
@@ -415,6 +570,7 @@ export const createVoxelscape = ({
     avatar.body,
     multiplayer.avatars,
     monsterRender.group,
+    npcFigures.group,
     world.water,
     environment.weatherEffects,
     world.underwaterTint,
@@ -447,6 +603,9 @@ export const createVoxelscape = ({
     health,
     models: modelLibrary,
     modelAccount,
+    places: placeLibrary,
+    placePublisher,
+    script,
     resolution,
     setView: (mode) => {
       avatar.setFirstPerson(mode === "first");
@@ -499,6 +658,10 @@ export const createVoxelscape = ({
   const skyColor = new Color(SKY_BLUE);
 
   let unmount: (() => void) | null = null;
+  /** Seconds before the next lava burn may land while the player stands in it. */
+  let lavaBurnCooldown = 0;
+  /** Seconds of contact damage each lava burn deals (about a quarter of a heart per burn). */
+  const LAVA_BURN = 1;
 
   /** Advances everything by `dt` seconds, leaving the scene ready to draw. */
   const advance = (dt: number): void => {
@@ -544,12 +707,57 @@ export const createVoxelscape = ({
         }
         wield(inventory.selectedId);
         const tool = tools[inventory.selectedId];
+        // An NPC the crosshair is on can be talked to with the same tap or click
+        // that would otherwise strike; the aim is recomputed every frame so the
+        // hint tracks what the crosshair is over.
+        const look = avatar.look();
+        const aimed = pickNpc(
+          [look.origin[0], look.origin[1], look.origin[2]] as [
+            number,
+            number,
+            number,
+          ],
+          [look.direction[0], look.direction[1], look.direction[2]] as [
+            number,
+            number,
+            number,
+          ],
+          scriptConsole?.npcs() ?? [],
+        );
+        if (aimed?.id !== lastAimId) {
+          lastAimId = aimed?.id ?? null;
+          setNpcAim(
+            aimed === null
+              ? null
+              : {
+                  id: aimed.id,
+                  name: scriptConsole?.npc(aimed.id)?.name ?? "NPC",
+                },
+          );
+        }
+        const talked =
+          dialog() === null &&
+          aimed !== null &&
+          (snapshot.tap || snapshot.click);
+        if (talked) {
+          npcTalk(aimed.id);
+        }
         // The camera has not caught up yet, so this picks from last frame's eye
         // along this frame's look. Recomputed every frame, not just on edits, so
         // the crosshair tracks what it is over.
         const pick = tool.pick();
         setTarget(pick.primary);
-        if (snapshot.primary) {
+        if (snapshot.primary && !talked) {
+          const result = tool.primary(pick);
+          if (result !== null) {
+            setEditStatus(result);
+          }
+        }
+        // A quick tap is a strike only when it landed on a monster — a voxel
+        // needs the hold that repeats `primary`, as a touch would otherwise
+        // break whatever it started dragging from. The wielded tools never
+        // pick a monster except the sword, so this call is a sword swing.
+        if (!talked && snapshot.tap && pick.primary?.kind === "monster") {
           const result = tool.primary(pick);
           if (result !== null) {
             setEditStatus(result);
@@ -572,10 +780,23 @@ export const createVoxelscape = ({
           avatar.firstPerson ? inventory.selectedId : null,
           tool.pose(),
         );
+        // Lava is a hazard the way water is a medium: standing in it burns,
+        // on a short cooldown so the player can hop out between ticks.
+        const p = avatar.player.position;
+        lavaBurnCooldown -= dt;
+        if (
+          (world.lavaAt(p.x, p.y, p.z) || world.lavaAt(p.x, p.y + 1.5, p.z)) &&
+          lavaBurnCooldown <= 0
+        ) {
+          health.takeDamage(LAVA_BURN);
+          lavaBurnCooldown = 0.5;
+        }
       }
+      flow.tick(dt);
       multiplayer.tick(dt);
       monsters.tick(dt);
       monsterRender.tick(dt);
+      npcFigures.tick(dt);
     }
     const lighting = environment.tick(dt, camera);
     skyColor.set(
@@ -587,6 +808,7 @@ export const createVoxelscape = ({
     // The voxel-model zombies are self-lit, so they take the same day-night
     // state the renderers apply to the terrain and the standard materials.
     monsterRender.applyLighting(lighting);
+    npcFigures.applyLighting(lighting);
     hand.applyLighting(lighting);
     world.renderer.tick(dt, camera);
   };
@@ -626,17 +848,25 @@ export const createVoxelscape = ({
     debugPerf,
     editStatus,
     target,
+    npcAim,
+    dialog,
+    talkTo: npcTalk,
+    choose: npcChoose,
+    leaveDialog: npcLeave,
     icons,
     loading,
     mount,
 
     dispose() {
       unmount?.();
+      scriptConsole?.dispose();
+      scriptConsole = null;
       world.dispose();
       multiplayer.dispose();
       atproto.dispose();
       environment.dispose();
       monsterRender.clear();
+      npcFigures.clear();
       monsterSync.dispose();
       hand.dispose();
       input.dispose();

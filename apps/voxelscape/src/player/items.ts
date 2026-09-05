@@ -12,10 +12,11 @@ import {
 } from "../world/voxel-store";
 import { BlockTool } from "./tools/block-tool";
 import { SwordTool } from "./tools/sword-tool";
+import { BucketTool } from "./tools/bucket-tool";
 import type { Tool, ToolContext } from "./tools/tool";
 
 /** Everything the player can hold, one id per hotbar slot. */
-export type ItemId = "dirt" | "stone" | "cloud" | "sword";
+export type ItemId = "dirt" | "stone" | "cloud" | "bucket" | "sword";
 
 export interface ItemDefinition {
   /** The name the hotbar shows, and the one edit messages are phrased with. */
@@ -49,6 +50,12 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     stackable: true,
     sprite: null,
     tool: (ctx) => new BlockTool(ctx, "cloud", VOXEL_CLOUD),
+  },
+  bucket: {
+    name: "Bucket",
+    stackable: false,
+    sprite: "bucket",
+    tool: (ctx) => new BucketTool(ctx),
   },
   sword: {
     name: "Sword",

@@ -117,6 +117,43 @@ describe("TriangleRenderer", () => {
     expect(renderer.terrain.children.filter((m) => m.visible)).toHaveLength(0);
   });
 
+  it("defers merging a superchunk the occlusion pass has proved covered", () => {
+    // A scroll hands the renderer a lot of chunks whose superchunks sit behind
+    // terrain the culler has already seen. Merging and uploading those is the
+    // main-thread cost the gate exists to skip: a superchunk whose every
+    // content member a query found covered stays dirty, and only merges the
+    // frame a later query (or a move that re-exposes it) sees a member again.
+    const renderer = rendererFor(blockWithFloor());
+    const camera = new PerspectiveCamera(60, 1, 0.1, 1000);
+    camera.position.set(0, 0, 0);
+    camera.lookAt(512, 0, 0); // face the block so the frustum keeps its cell
+
+    renderer.repositionBlock(0, [512, 0, 0]);
+    renderer.onBlockChanged(0);
+    renderer.meshNow(0);
+    const tick = (): void => renderer.tick(0.016, camera);
+
+    // The last query measured slot 0 and never saw it win a pixel.
+    const occlusion = renderer as unknown as {
+      lastQueryTested: Set<number>;
+      lastVisible: Set<number>;
+    };
+    occlusion.lastQueryTested = new Set([0]);
+    occlusion.lastVisible = new Set();
+    for (let frame = 0; frame < 10; frame++) {
+      tick();
+    }
+
+    // Covered by occlusion, so the merged geometry never reaches the GPU even
+    // though the block is meshed and its superchunk is in the frustum.
+    expect(renderer.triangleCount).toBe(0);
+
+    // A later query sees it; the next tick merges and shows it.
+    occlusion.lastVisible = new Set([0]);
+    tick();
+    expect(renderer.triangleCount).toBeGreaterThan(0);
+  });
+
   it("gives up holding when a block of the group never comes back", () => {
     // Nothing may be kept off the screen forever. Past the stall backstop
     // whatever has landed is shown, and a straggler uploads on its own.

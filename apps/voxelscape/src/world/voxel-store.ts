@@ -6,6 +6,7 @@ import {
   cloudVoxelAt,
 } from "./cloud-fill";
 import { caveFillNoise, DIRT_LAYER_DEPTH, isCaveVoxel } from "./cave-fill";
+import { columnHasLava, LAVA_DEPTH, lavaFillNoise } from "./lava-fill";
 import { heightAt, type TerrainConfig } from "./noise";
 
 export const VOXEL_AIR = 0;
@@ -14,6 +15,62 @@ export const VOXEL_DIRT = 2;
 export const VOXEL_WATER = 3;
 export const VOXEL_STONE = 4;
 export const VOXEL_CLOUD = 5;
+export const VOXEL_LAVA = 6;
+export const VOXEL_LOG = 7;
+export const VOXEL_LEAVES = 8;
+
+// Flowing water and lava. A fluid voxel is its kind's source id at level 0
+// (a full, stationary body cell) or one of the level ids below, level k being
+// k cells of spread from a source. The water/lava falling ids mark the cells
+// of a falling column: full-height, mobile, and on landing they become source
+// cells, so the pool at the foot of a fall spreads and can be scooped.
+export const VOXEL_WATER_LEVEL_1 = 9;
+export const VOXEL_WATER_LEVEL_2 = 10;
+export const VOXEL_WATER_LEVEL_3 = 11;
+export const VOXEL_WATER_LEVEL_4 = 12;
+export const VOXEL_WATER_LEVEL_5 = 13;
+export const VOXEL_WATER_LEVEL_6 = 14;
+export const VOXEL_WATER_LEVEL_7 = 15;
+export const VOXEL_LAVA_LEVEL_1 = 16;
+export const VOXEL_LAVA_LEVEL_2 = 17;
+export const VOXEL_LAVA_LEVEL_3 = 18;
+export const VOXEL_LAVA_LEVEL_4 = 19;
+export const VOXEL_LAVA_LEVEL_5 = 20;
+export const VOXEL_LAVA_LEVEL_6 = 21;
+export const VOXEL_LAVA_LEVEL_7 = 22;
+export const VOXEL_WATER_FALLING = 23;
+export const VOXEL_LAVA_FALLING = 24;
+
+/** The greatest spread distance a fluid level encodes; see `fluid.ts`. */
+export const FLUID_MAX_LEVEL = 7;
+
+export const isWaterId = (id: number): boolean =>
+  id === VOXEL_WATER ||
+  (id >= VOXEL_WATER_LEVEL_1 && id <= VOXEL_WATER_LEVEL_7) ||
+  id === VOXEL_WATER_FALLING;
+
+export const isLavaId = (id: number): boolean =>
+  id === VOXEL_LAVA ||
+  (id >= VOXEL_LAVA_LEVEL_1 && id <= VOXEL_LAVA_LEVEL_7) ||
+  id === VOXEL_LAVA_FALLING;
+
+export const isFluidId = (id: number): boolean => isWaterId(id) || isLavaId(id);
+
+/**
+ * The spread level a fluid voxel carries: 0 for a source (or a falling cell,
+ * which carries none until it lands) and 1..`FLUID_MAX_LEVEL` for flowing
+ * cells. Non-fluids read as 0, so callers can use it unguarded.
+ */
+export const fluidLevel = (id: number): number => {
+  if (isWaterId(id) || isLavaId(id)) {
+    return id >= VOXEL_WATER_LEVEL_1 && id <= VOXEL_WATER_LEVEL_7
+      ? id - VOXEL_WATER_LEVEL_1 + 1
+      : id >= VOXEL_LAVA_LEVEL_1 && id <= VOXEL_LAVA_LEVEL_7
+        ? id - VOXEL_LAVA_LEVEL_1 + 1
+        : 0;
+  }
+  return 0;
+};
 
 /**
  * How many rows of extra voxels each block stores beyond its interior volume,
@@ -59,6 +116,25 @@ export class VoxelStore {
    * anything but air raises this wherever the voxels are written.
    */
   mightHaveVoxels = false;
+  /**
+   * Whether this block holds any water voxel. A block with none cannot expose
+   * a water face, so its water mesh is empty and the sweep that would prove it
+   * is skipped. Wrong only ever in the safe direction: a block that really has
+   * water but reports none would lose its surface, so every place water is
+   * written raises this flag alongside `mightHaveVoxels`, and nothing removes
+   * it; a dry block carrying the flag only costs an empty water build.
+   */
+  hasWater = false;
+  /**
+   * Whether this block holds any fluid that terrain fill did not place —
+   * flowing or falling water, lava, or a fluid written by an edit. Only such
+   * a block can need a wake pass after its data is regenerated; a block of
+   * purely generated ocean water never carries this and is left asleep.
+   *
+   * Wrong only ever in the safe direction: a calm block that says it may be
+   * active only costs a wake scan that schedules nothing.
+   */
+  hasFlowing = false;
 
   constructor(params: { dims: Dim3; voxels: Dim3; scale: number }) {
     this.dims = params.dims;
@@ -133,8 +209,13 @@ export class VoxelStore {
   set(x: number, y: number, z: number, val: number): void {
     if (this.inBounds(x, y, z)) {
       this.data[this.index(x, y, z)] = val;
-      if (val !== VOXEL_AIR) {
+      if (isWaterId(val)) {
+        this.hasWater = true;
+      } else if (val !== VOXEL_AIR) {
         this.mightHaveVoxels = true;
+      }
+      if (isFluidId(val)) {
+        this.hasFlowing = true;
       }
     }
   }
@@ -142,6 +223,8 @@ export class VoxelStore {
   reset(): void {
     this.data.fill(VOXEL_AIR);
     this.mightHaveVoxels = false;
+    this.hasWater = false;
+    this.hasFlowing = false;
   }
 }
 
@@ -210,6 +293,8 @@ export const fillStore = (
   const halfY = vyN / 2;
   const spanY = store.dims[1];
   const seaLevel = config.seaLevel;
+  /** Rows above the surface that still evaluate cave noise for fade-out. */
+  const CAVE_FADE_MARGIN = 8;
 
   // The still-cloud band. A block whose swept rows (meshing border included)
   // miss the band skips the cloud pass entirely, so ordinary fills cost
@@ -361,8 +446,77 @@ export const fillStore = (
         ? -Infinity
         : cloudColumnCoverage(cloudNoise, worldX, worldZ);
     const gated = coverage >= cloud.coverageThreshold;
-    /** The single-cell rule for one row: caves, surface voxel, dirt, stone, water, clouds. */
-    const plainId = (vy: number, worldY: number): number => {
+    /**
+     * Which row of this column is the bottom of the deepest dry cave that dips
+     * far enough below the surface to hold lava, or `-Infinity` when the column
+     * gate (`columnHasLava`) says none of its caves pool. Found by scanning
+     * bottom-up for the lowest cave voxel whose neighbour above is also cave —
+     * the pocket floor, with room above to hold a pool — subject to the depth
+     * cut-off; water-filled caves are skipped when deciding the pool, so a
+     * cave pocket below sea level never floods with lava.
+     */
+    const lavaVy = (() => {
+      if (!columnHasLava(lavaFillNoise(config.seed), worldX, worldZ)) {
+        return -Infinity;
+      }
+      const depthCut = height - LAVA_DEPTH;
+      for (let vy2 = -p; vy2 < vyN + p - 1; vy2++) {
+        const wY = center[1] + (vy2 + 0.5 - vyN / 2) * voxelSize;
+        if (wY > depthCut) {
+          break;
+        }
+        if (
+          !isCaveVoxel(caveNoise, worldX, wY, worldZ, height, config.amplitude)
+        ) {
+          continue;
+        }
+        const wYAbove = center[1] + (vy2 + 1 + 0.5 - vyN / 2) * voxelSize;
+        if (
+          isCaveVoxel(
+            caveNoise,
+            worldX,
+            wYAbove,
+            worldZ,
+            height,
+            config.amplitude,
+          )
+        ) {
+          return vy2;
+        }
+      }
+      return -Infinity;
+    })();
+    /**
+     * The single-cell rule for one row, split by Y phase: sky voxels skip cave
+     * noise entirely (caves cannot exist above the surface + margin), deep
+     * underground voxels skip cloud noise (the cloud band is far above), and
+     * the narrow transition band near the surface evaluates both.
+     */
+    const topRow = top;
+    const deepCutoff = topRow - DIRT_LAYER_DEPTH;
+    const skyCutoff = topRow + CAVE_FADE_MARGIN;
+    const skyId = (vy: number, worldY: number): number => {
+      if (vy === topRow) {
+        return VOXEL_GRASS;
+      }
+      if (vy < topRow) {
+        return worldY >= height - DIRT_LAYER_DEPTH ? VOXEL_DIRT : VOXEL_STONE;
+      }
+      if (seaLevel !== undefined && vy >= topRow + 1 && vy <= waterBottom) {
+        return VOXEL_WATER;
+      }
+      if (
+        gated &&
+        cloudNoise !== undefined &&
+        worldY >= bandMin &&
+        worldY <= bandMax &&
+        cloudVoxelAt(cloudNoise, worldX, worldY, worldZ, coverage)
+      ) {
+        return VOXEL_CLOUD;
+      }
+      return VOXEL_AIR;
+    };
+    const deepId = (vy: number, worldY: number): number => {
       const inCave = isCaveVoxel(
         caveNoise,
         worldX,
@@ -372,34 +526,55 @@ export const fillStore = (
         config.amplitude,
       );
       if (inCave) {
-        if (seaLevel !== undefined && vy >= top + 1 && vy <= waterBottom) {
+        if (vy === lavaVy) {
+          return VOXEL_LAVA;
+        }
+        if (seaLevel !== undefined && vy >= topRow + 1 && vy <= waterBottom) {
           return VOXEL_WATER;
         }
         return VOXEL_AIR;
       }
-      let id: number;
-      if (vy === top) {
-        id = VOXEL_GRASS;
-      } else if (vy < top) {
-        id = worldY >= height - DIRT_LAYER_DEPTH ? VOXEL_DIRT : VOXEL_STONE;
-      } else if (seaLevel !== undefined && vy >= top + 1 && vy <= waterBottom) {
-        id = VOXEL_WATER;
-      } else {
-        id = VOXEL_AIR;
-      }
-      // Clouds fill the open air of the band above the terrain; never
-      // overwrite a solid column or the water above it (the band sits well
-      // above the highest terrain, so this is defensive).
-      if (id === VOXEL_AIR && gated && cloudNoise !== undefined) {
-        if (
-          worldY >= bandMin &&
-          worldY <= bandMax &&
-          cloudVoxelAt(cloudNoise, worldX, worldY, worldZ, coverage)
-        ) {
-          return VOXEL_CLOUD;
+      return VOXEL_STONE;
+    };
+    const transitionId = (vy: number, worldY: number): number => {
+      const inCave = isCaveVoxel(
+        caveNoise,
+        worldX,
+        worldY,
+        worldZ,
+        height,
+        config.amplitude,
+      );
+      if (inCave) {
+        const flooded =
+          seaLevel !== undefined && vy >= topRow + 1 && vy <= waterBottom;
+        if (vy === lavaVy && !flooded) {
+          return VOXEL_LAVA;
         }
+        if (flooded) {
+          return VOXEL_WATER;
+        }
+        return VOXEL_AIR;
       }
-      return id;
+      if (vy === topRow) {
+        return VOXEL_GRASS;
+      }
+      if (vy < topRow) {
+        return worldY >= height - DIRT_LAYER_DEPTH ? VOXEL_DIRT : VOXEL_STONE;
+      }
+      if (seaLevel !== undefined && vy >= topRow + 1 && vy <= waterBottom) {
+        return VOXEL_WATER;
+      }
+      if (
+        gated &&
+        cloudNoise !== undefined &&
+        worldY >= bandMin &&
+        worldY <= bandMax &&
+        cloudVoxelAt(cloudNoise, worldX, worldY, worldZ, coverage)
+      ) {
+        return VOXEL_CLOUD;
+      }
+      return VOXEL_AIR;
     };
     for (let vy = -p; vy < vyN + p; ++vy) {
       const worldY = center[1] + (vy + 0.5 - vyN / 2) * voxelSize;
@@ -410,9 +585,6 @@ export const fillStore = (
             ? (borderSizes?.py ?? voxelSize)
             : undefined;
       let id: number;
-      // A border cell's rule is decided by the faces it actually sits on: an
-      // interior axis contributes nothing, so a cell on just the +X face
-      // samples against that neighbour alone, never the block's own size.
       if (
         xBorderSize !== undefined ||
         yBorderSize !== undefined ||
@@ -430,12 +602,23 @@ export const fillStore = (
         }
         id = involved.some((size) => size !== voxelSize)
           ? coarseBorderId(worldX, worldY, worldZ, Math.max(...involved))
-          : plainId(vy, worldY);
+          : vy > skyCutoff
+            ? skyId(vy, worldY)
+            : vy < deepCutoff
+              ? deepId(vy, worldY)
+              : transitionId(vy, worldY);
       } else {
-        id = plainId(vy, worldY);
+        id =
+          vy > skyCutoff
+            ? skyId(vy, worldY)
+            : vy < deepCutoff
+              ? deepId(vy, worldY)
+              : transitionId(vy, worldY);
       }
       store.data[store.paddedIndex(vx, vy, vz)] = id;
-      if (id !== VOXEL_AIR) {
+      if (isWaterId(id)) {
+        store.hasWater = true;
+      } else if (id !== VOXEL_AIR) {
         store.mightHaveVoxels = true;
       }
     }

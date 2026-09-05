@@ -126,6 +126,13 @@ export interface ChunkSphereParams {
    * new data has arrived.
    */
   onBlockReposition: (index: number, center: Dim3) => void;
+  /**
+   * Called just before a slot's current voxel data is discarded: an evicted
+   * cell, or one refilled in place at a new level of detail. The slot still
+   * answers for its old cell here, so the caller can snapshot anything worth
+   * keeping (resting fluid) into the edit overlay before it is gone.
+   */
+  onBlockRelease?: (index: number) => void;
   customFillStore?: FillStoreFn;
   customFillStoreUrl?: string;
   /** Applied to each block after its terrain is generated (see `FillClient`). */
@@ -153,6 +160,7 @@ export class ChunkSphere {
   private readonly cellIndex = new Map<string, number>();
   private readonly free: number[] = [];
   private readonly onBlockReposition: (index: number, center: Dim3) => void;
+  private readonly onBlockRelease?: (index: number) => void;
   private readonly fillClient: FillClient;
 
   private centerCell: CellCoord = { x: 0, y: 0, z: 0 };
@@ -161,6 +169,7 @@ export class ChunkSphere {
     this.radius = params.radius;
     this.yRadius = params.yRadius ?? params.radius;
     this.onBlockReposition = params.onBlockReposition;
+    this.onBlockRelease = params.onBlockRelease;
 
     const initial = sphereCells(
       { x: 0, y: 0, z: 0 },
@@ -305,6 +314,7 @@ export class ChunkSphere {
     const refill: number[] = [];
     for (const [key, slot] of this.cellIndex) {
       if (!nextKeys.has(key)) {
+        this.onBlockRelease?.(slot);
         this.cellIndex.delete(key);
         this.free.push(slot);
         continue;
@@ -314,6 +324,7 @@ export class ChunkSphere {
         desiredLod !== this.lodOf(slot) &&
         desiredLod !== this.blocks[slot].targetLod
       ) {
+        this.onBlockRelease?.(slot);
         refill.push(slot);
         this.blocks[slot].targetLod = desiredLod;
       }

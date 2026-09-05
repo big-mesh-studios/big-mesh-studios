@@ -17,7 +17,7 @@ export const FILL_CLOUD_FREQUENCY = FILL_CLOUD_PERIOD / FILL_CLOUD_TILE;
 /** How many times wider than tall the still clouds come out. */
 export const FILL_CLOUD_FLATNESS = 5;
 /** fBm octaves of the cloud noise. */
-export const FILL_CLOUD_OCTAVES = 3;
+export const FILL_CLOUD_OCTAVES = 2;
 /** The fBm value a voxel must clear to be cloud; raised to thin the cloud band and cap its triangle count. */
 export const FILL_CLOUD_THRESHOLD = 0.52;
 /** Coverage fBm value a column must clear to hold any cloud. */
