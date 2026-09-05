@@ -105,9 +105,9 @@ export function PartsPanel() {
               {(part) => {
                 const isActive = () => part.name === selectedPart().name;
                 return (
-                  <div class={styles.part}>
+                  <div class={styles.part} data-selected={isActive()}>
                     <Tab
-                      class={styles.partName}
+                      class={styles.name}
                       selected={isActive()}
                       onClick={() => selectPart(part.name)}
                       title={part.name}
@@ -115,12 +115,14 @@ export function PartsPanel() {
                       <span>{part.name}</span>
                     </Tab>
                     <IconButton
+                      class={styles.action}
                       kind="clone"
                       onClick={() => duplicatePart(selectedPart().name)}
                       title="Duplicate this part"
                     />
                     <Show when={parts().length > 1}>
                       <IconButton
+                        class={styles.action}
                         kind="trash"
                         onClick={() => removePart(selectedPart().name)}
 
@@ -175,7 +177,7 @@ export function PartsPanel() {
             class={[styles.field, styles.size]}
             title="How large the part is drawn, against the part it hangs off"
           >
-            <span>size</span>
+            <span />
             <input
               type="number"
               step="0.1"

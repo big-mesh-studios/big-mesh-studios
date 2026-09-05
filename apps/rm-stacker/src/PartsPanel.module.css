@@ -1,3 +1,19 @@
+.partsPopover {
+  inset: unset;
+  position: absolute;
+  pointer-events: auto;
+
+  &:popover-open {
+    display: grid;
+    gap: var(--margin);
+    background-color: transparent;
+    bottom: calc(anchor(top) + var(--margin));
+    right: calc(anchor(right));
+    width: 230px;
+    max-width: calc(100vw - var(--margin) * 4 - var(--size) * 2 - 2px);
+  }
+}
+
 .header {
   display: flex;
   align-items: center;
@@ -21,7 +37,24 @@
   overflow-y: auto;
 }
 
-.partName {
+.part {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+
+  @media (pointer: coarse) {
+    &:not([data-selected]) .action {
+      display: none;
+    }
+  }
+
+  @media (pointer: fine) {
+    &:not(:hover) .action {
+      display: none;
+    }
+  }
+}
+
+.name {
   justify-content: start;
   align-items: center;
   padding-inline: var(--margin);
@@ -45,10 +78,10 @@
   padding-top: var(--margin);
 }
 
-/* Across the whole row: a size is not one of the three axes and does not belong
-   in a column beside them. */
+/* Under the first of the three axes, with an empty label where the others name
+   an axis, so the box a size is typed into lines up with the boxes above it. */
 .size {
-  grid-column: 1 / -1;
+  grid-column: 1;
 }
 
 .field {
@@ -82,24 +115,4 @@
   background-color: var(--back);
   border: 1px solid var(--grey);
   border-radius: var(--margin);
-}
-.part {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-}
-
-.partsPopover {
-  inset: unset;
-  position: absolute;
-  pointer-events: auto;
-
-  &:popover-open {
-    display: grid;
-    gap: var(--margin);
-    background-color: transparent;
-    bottom: calc(anchor(top) + var(--margin));
-    right: calc(anchor(right));
-    width: 230px;
-    max-width: calc(100vw - var(--margin) * 4 - var(--size) * 2 - 2px);
-  }
 }
