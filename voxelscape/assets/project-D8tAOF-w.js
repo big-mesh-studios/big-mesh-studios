@@ -1,4 +1,4 @@
-import{r as o,J as i,P as p,a as l}from"./index-BgJpgov9.js";const r="main.ts",d=`// Your place's script. Export a bmsTick function and the world will call it
+import{r as o,J as i,P as p,a as l}from"./index-B4JD7M9m.js";const r="main.ts",d=`// Your place's script. Export a bmsTick function and the world will call it
 // each step with the shared clock and the events since the last step. The
 // TypeScript types are stripped when the script loads, so the panel's
 // squiggles are the whole of the type-check; imports may only reach this
