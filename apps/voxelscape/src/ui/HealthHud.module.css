@@ -35,3 +35,24 @@
 .heart-glint {
   fill: rgba(255, 255, 255, 0.75);
 }
+
+.hitFlash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 35%,
+    rgba(200, 0, 0, 0.55) 100%
+  );
+  animation: hit-flash-fade 500ms ease-in forwards;
+}
+
+@keyframes hit-flash-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}

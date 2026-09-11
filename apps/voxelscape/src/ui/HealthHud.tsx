@@ -3,12 +3,18 @@
 // that cuts through a heart leaving it half full. Subscribes to the shared
 // `PlayerHealth`'s change callback exactly as the hotbar subscribes to the
 // inventory, so a hit or a respawn redraws it. On coarse pointers it sits
-// above the touch joystick, which owns the same corner.
+// above the touch joystick, which owns the same corner. A hit that actually
+// took hearts away also flashes a red vignette across the screen, briefly —
+// `PlayerHealth` allows only one subscriber, so this rides the same one
+// rather than taking a second.
 import { Component, createSignal, For, onCleanup } from "solid-js";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import styles from "./HealthHud.module.css";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
 import { heartStates, type HeartFill } from "../player/health";
+
+/** How long one hit's vignette takes to fade to nothing, in milliseconds. */
+const FLASH_FADE_MS = 500;
 
 // The classic heart, split down the middle into two mirrored halves so a
 // half-heart is one filled half beside one empty one — no clip mask needed.
@@ -45,8 +51,24 @@ export const HealthHud: Component = () => {
   const [hearts, setHearts] = createSignal<HeartFill[]>(
     heartStates(health.hp, health.maxHp),
   );
+  // Each hit still fading gets its own element, freshly mounted so its
+  // animation always plays from the start even if the last hit's hasn't
+  // finished fading yet — a flurry of hits reads as a flurry, not one flash
+  // cut short and restarted.
+  const [flashes, setFlashes] = createSignal<number[]>([]);
+  let lastHp = health.hp;
+  let nextFlashId = 0;
 
   const refresh = (): void => {
+    if (health.hp < lastHp) {
+      const id = nextFlashId++;
+      setFlashes((ids) => [...ids, id]);
+      setTimeout(
+        () => setFlashes((ids) => ids.filter((existing) => existing !== id)),
+        FLASH_FADE_MS,
+      );
+    }
+    lastHp = health.hp;
     setHearts(heartStates(health.hp, health.maxHp));
   };
   health.onChange = refresh;
@@ -57,8 +79,11 @@ export const HealthHud: Component = () => {
   });
 
   return (
-    <div class={[styles.health, coarse() && styles["on-coarse"]]}>
-      <For each={hearts()}>{(fill) => <Heart fill={fill} />}</For>
-    </div>
+    <>
+      <div class={[styles.health, coarse() && styles["on-coarse"]]}>
+        <For each={hearts()}>{(fill) => <Heart fill={fill} />}</For>
+      </div>
+      <For each={flashes()}>{() => <div class={styles.hitFlash} />}</For>
+    </>
   );
 };
