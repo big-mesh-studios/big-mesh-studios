@@ -27,6 +27,7 @@ import {
   type PlaceProject,
 } from "../places/project";
 import { type PlaceManifest, type PublishedPlace } from "../places/place";
+import type { PublishedModel } from "@big-mesh-studios/stacker/lexicon";
 import styles from "./PlaceEditor.module.css";
 
 /** One persistence handle for the whole app, so a debounced save outlives a close. */
@@ -64,6 +65,10 @@ export const PlaceEditorContent: Component<{
     cachedProject,
   );
   const [active, setActive] = createSignal<string>(MAIN_SCRIPT_FILE);
+  // Whether the tab area is showing the models pane instead of a script's
+  // pane — kept apart from `active` so which script was last open is never
+  // lost just by looking at models for a moment.
+  const [showModels, setShowModels] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   const [candidates, setCandidates] = createSignal<PublishedPlace[]>([]);
   // Each tab's editor view, so switching tabs can ask the now-visible one to
@@ -112,6 +117,7 @@ export const PlaceEditorContent: Component<{
   };
 
   const selectFile = (name: string): void => {
+    setShowModels(false);
     setActive(name);
     views.get(name)?.requestMeasure();
   };
@@ -214,33 +220,40 @@ export const PlaceEditorContent: Component<{
 
   const modelNames = (): string[] => Object.keys(project()?.models ?? {});
 
-  /** Adds picked rm-stacker model files to the draft, refusing unsafe names. */
-  const addModels = async (picked: FileList | null): Promise<void> => {
+  /** Replaces one model's bytes in the draft under `name`, adding it to the
+   * manifest's list if it is new. Shared by attaching a file from disk and
+   * attaching one found by browsing an account's published models. */
+  const attachModel = (name: string, bytes: Uint8Array): void => {
     const p = project();
-    if (p === null || picked === null) {
+    if (p === null) {
       return;
     }
-    const models = { ...p.models };
+    const models = { ...p.models, [name]: bytes };
+    commit({
+      ...p,
+      manifest: { ...p.manifest, models: Object.keys(models) },
+      models,
+    });
+  };
+
+  /** Adds picked rm-stacker model files to the draft, refusing unsafe names. */
+  const addModels = async (picked: FileList | null): Promise<void> => {
+    if (picked === null) {
+      return;
+    }
     const refused: string[] = [];
+    let added = 0;
     for (const file of Array.from(picked)) {
       if (/[/\\]|\.\./.test(file.name)) {
         refused.push(file.name);
         continue;
       }
-      models[file.name] = new Uint8Array(await file.arrayBuffer());
+      attachModel(file.name, new Uint8Array(await file.arrayBuffer()));
+      added++;
     }
-    const names = Object.keys(models);
-    commit({
-      ...p,
-      manifest: {
-        ...p.manifest,
-        models: names.length > 0 ? names : undefined,
-      },
-      models,
-    });
     props.onStatus(
       refused.length === 0
-        ? `added ${Object.keys(models).length} model(s)`
+        ? `added ${added} model(s)`
         : `refused ${refused.join(", ")} — a model name cannot hold a path`,
     );
   };
@@ -261,6 +274,96 @@ export const PlaceEditorContent: Component<{
       },
       models,
     });
+  };
+
+  const [browseHandle, setBrowseHandle] = createSignal("");
+  const [browsed, setBrowsed] = createSignal<PublishedModel[]>([]);
+  const [browsing, setBrowsing] = createSignal(false);
+  // A thumbnail's address, by whatever key the card showing it is keyed
+  // on — a browsed model's `repo/rkey`, or an attached one's own draft key,
+  // so a model attached from a search result keeps the same picture. Reads
+  // as an `<img src>`, so there is nothing here to release on cleanup.
+  const [thumbnailUrls, setThumbnailUrls] = createSignal<
+    Record<string, string>
+  >({});
+  const browseKey = (model: PublishedModel): string =>
+    `${model.repo}/${model.rkey}`;
+
+  /** Looks up and caches `model`'s thumbnail under `key`, quietly leaving it
+   * unset on failure — a missing picture falls back to a placeholder, and
+   * isn't worth surfacing as a status line of its own. */
+  const loadThumbnail = async (
+    key: string,
+    model: PublishedModel,
+  ): Promise<void> => {
+    try {
+      const url = await voxelscape.placeEditor.models.thumbnailUrl(model);
+      if (url !== null) {
+        setThumbnailUrls((urls) => ({ ...urls, [key]: url }));
+      }
+    } catch {
+      // No picture is no worse than the placeholder it already shows.
+    }
+  };
+
+  /** Lists what `account` (a handle or a did) has published, replacing the
+   * current results — anyone's models are readable without signing in. */
+  const browseModels = async (account: string): Promise<void> => {
+    if (account.trim() === "") {
+      return;
+    }
+    setBrowsing(true);
+    try {
+      const published = await voxelscape.placeEditor.models.list(
+        account.trim(),
+      );
+      setBrowsed(published);
+      for (const model of published) {
+        void loadThumbnail(browseKey(model), model);
+      }
+    } catch (err) {
+      setBrowsed([]);
+      props.onStatus(
+        `could not list ${account}'s models — ${describeError(err)}`,
+      );
+    } finally {
+      setBrowsing(false);
+    }
+  };
+
+  /** Browses the signed-in account's own models — the search box shows its
+   * handle, the readable name a did is short for, rather than the did
+   * itself; the lookup itself still goes by did, which needs no resolving. */
+  const browseMine = async (did: string): Promise<void> => {
+    setBrowseHandle((await voxelscape.placeEditor.resolveHandle(did)) ?? did);
+    void browseModels(did);
+  };
+
+  /** Downloads `model`'s zip and attaches it under its published name. */
+  const attachPublishedModel = async (model: PublishedModel): Promise<void> => {
+    const name = `${model.rkey}.zip`;
+    if (project()?.models[name] !== undefined) {
+      props.onStatus(`"${model.record.name}" is already attached`);
+      return;
+    }
+    setBusy(true);
+    try {
+      const bytes = new Uint8Array(
+        await (await voxelscape.placeEditor.models.file(model)).arrayBuffer(),
+      );
+      attachModel(name, bytes);
+      const thumbnail = thumbnailUrls()[browseKey(model)];
+      if (thumbnail !== undefined) {
+        setThumbnailUrls((urls) => ({ ...urls, [name]: thumbnail }));
+      }
+      props.onStatus(`attached "${model.record.name}"`);
+    } catch (err) {
+      props.onStatus(
+        `could not attach "${model.record.name}" — ${describeError(err)}`,
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
   const newProject = (): void => {
@@ -462,7 +565,12 @@ export const PlaceEditorContent: Component<{
         <nav class={styles.tabs}>
           <For each={scriptFiles()}>
             {(name) => (
-              <div class={[styles.tab, active() === name && styles.tabActive]}>
+              <div
+                class={[
+                  styles.tab,
+                  !showModels() && active() === name && styles.tabActive,
+                ]}
+              >
                 <button
                   class={styles.tabMain}
                   title="double-click to rename"
@@ -484,50 +592,185 @@ export const PlaceEditorContent: Component<{
           <button class={styles.add} onClick={() => addScript()}>
             + script
           </button>
+          <button
+            class={[styles.modelsToggle, showModels() && styles.tabActive]}
+            onClick={() => setShowModels(true)}
+          >
+            models
+            <Show when={modelNames().length > 0}> ({modelNames().length})</Show>
+          </button>
         </nav>
 
-        <nav class={styles.tabs}>
-          <span class={styles.tabMain}>models</span>
-          <For each={modelNames()}>
-            {(name) => (
-              <div class={styles.tab}>
-                <button class={styles.tabMain} title={name}>
-                  {name}
-                </button>
+        <Show when={!showModels()}>
+          <Show when={scriptFiles().length > 0}>
+            <Loading
+              fallback={<div class={styles.loading}>loading editor…</div>}
+            >
+              <PlaceEditorPanes
+                project={project()!}
+                active={active()}
+                onEditor={(name, view) => views.set(name, view)}
+                onInput={updateScript}
+              />
+            </Loading>
+          </Show>
+        </Show>
+
+        <Show when={showModels()}>
+          <div class={styles.models}>
+            <section class={styles.modelsAttached}>
+              <h3 class={styles.modelsHeading}>attached to this place</h3>
+              <Show
+                when={modelNames().length > 0}
+                fallback={
+                  <p class={styles.modelsEmpty}>nothing attached yet</p>
+                }
+              >
+                <ul class={styles.modelsCards}>
+                  <For each={modelNames()}>
+                    {(name) => (
+                      <li class={styles.modelsCard}>
+                        <div class={styles.modelsCardPreview}>
+                          <Show
+                            when={thumbnailUrls()[name]}
+                            fallback={
+                              <span class={styles.modelsCardPlaceholder}>
+                                ▢
+                              </span>
+                            }
+                          >
+                            {(url) => (
+                              <img
+                                class={styles.modelsCardThumbnail}
+                                src={url()}
+                                alt={name}
+                                loading="lazy"
+                              />
+                            )}
+                          </Show>
+                        </div>
+                        <span class={styles.modelsCardName} title={name}>
+                          {name}
+                        </span>
+                        <button
+                          class={styles.modelsCardAction}
+                          title={`remove ${name}`}
+                          onClick={() => removeModel(name)}
+                        >
+                          remove
+                        </button>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </Show>
+              <label
+                class={styles.modelsFromFile}
+                title="add rm-stacker model files"
+              >
+                + from a file
+                <input
+                  type="file"
+                  accept=".zip,application/zip"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    void addModels(e.currentTarget.files);
+                    e.currentTarget.value = "";
+                  }}
+                />
+              </label>
+            </section>
+
+            <section class={styles.modelsBrowse}>
+              <h3 class={styles.modelsHeading}>browse published models</h3>
+              <div class={styles.modelsSearch}>
+                <input
+                  class={styles.text}
+                  placeholder="a handle, e.g. alice.bsky.social"
+                  value={browseHandle()}
+                  onInput={(e) => setBrowseHandle(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      void browseModels(browseHandle());
+                    }
+                  }}
+                />
                 <button
-                  class={styles.tabRemove}
-                  title={`remove ${name}`}
-                  onClick={() => removeModel(name)}
+                  class={styles.button}
+                  disabled={browsing()}
+                  onClick={() => void browseModels(browseHandle())}
                 >
-                  ✕
+                  Search
                 </button>
+                <Show when={voxelscape.placeEditor.accountDid}>
+                  {(did) => (
+                    <button
+                      class={styles.button}
+                      disabled={browsing()}
+                      onClick={() => void browseMine(did())}
+                    >
+                      mine
+                    </button>
+                  )}
+                </Show>
               </div>
-            )}
-          </For>
-          <label class={styles.add} title="add rm-stacker model files">
-            + model
-            <input
-              type="file"
-              accept=".zip,application/zip"
-              multiple
-              hidden
-              onChange={(e) => {
-                void addModels(e.currentTarget.files);
-                e.currentTarget.value = "";
-              }}
-            />
-          </label>
-        </nav>
-
-        <Show when={scriptFiles().length > 0}>
-          <Loading fallback={<div class={styles.loading}>loading editor…</div>}>
-            <PlaceEditorPanes
-              project={project()!}
-              active={active()}
-              onEditor={(name, view) => views.set(name, view)}
-              onInput={updateScript}
-            />
-          </Loading>
+              <Show
+                when={browsed().length > 0}
+                fallback={
+                  <p class={styles.modelsEmpty}>
+                    {browsing() ? "searching…" : "no results yet"}
+                  </p>
+                }
+              >
+                <ul class={styles.modelsCards}>
+                  <For each={browsed()}>
+                    {(model) => (
+                      <li class={styles.modelsCard}>
+                        <div class={styles.modelsCardPreview}>
+                          <Show
+                            when={thumbnailUrls()[browseKey(model)]}
+                            fallback={
+                              <span class={styles.modelsCardPlaceholder}>
+                                ▢
+                              </span>
+                            }
+                          >
+                            {(url) => (
+                              <img
+                                class={styles.modelsCardThumbnail}
+                                src={url()}
+                                alt={model.record.name}
+                                loading="lazy"
+                              />
+                            )}
+                          </Show>
+                        </div>
+                        <span
+                          class={styles.modelsCardName}
+                          title={model.record.name}
+                        >
+                          {model.record.name}
+                        </span>
+                        <span class={styles.modelsCardDims}>
+                          {model.record.dimensions.width}×
+                          {model.record.dimensions.height}×
+                          {model.record.dimensions.depth}
+                        </span>
+                        <button
+                          class={styles.modelsCardAction}
+                          disabled={busy()}
+                          onClick={() => void attachPublishedModel(model)}
+                        >
+                          attach
+                        </button>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </Show>
+            </section>
+          </div>
         </Show>
       </Show>
     </div>

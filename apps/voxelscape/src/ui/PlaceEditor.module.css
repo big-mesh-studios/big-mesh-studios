@@ -192,3 +192,244 @@
 .paneActive {
   visibility: visible;
 }
+
+/* A tab-shaped toggle, not one of the `<For>`-generated script tabs, so it
+ * keeps its own font rather than risk `.tabMain`'s `font: inherit` (meant
+ * for a tab's nested remove-button) overriding it from the cascade. It sets
+ * its own `background`/`border` too, for the same reason: combined with
+ * `.tabActive` below, those would otherwise collide with `.tabActive`'s own
+ * — same properties, same specificity — and lose to whichever is later in
+ * the file regardless of which class actually meant to win. The compound
+ * `.modelsToggle.tabActive` rule beneath settles it by specificity instead
+ * of source order. */
+.modelsToggle {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding: 5px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+  color: var(--light-grey);
+  font-family: monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.modelsToggle.tabActive {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+/* Two areas, named rather than left to column order — what's already
+ * attached, and where more comes from — stacked to one column on a touch
+ * screen by redefining the areas, not by reordering anything. No card chrome
+ * of its own — this sits directly on the panel's own background, with a 1px
+ * line between the areas standing in for the separation a box would
+ * otherwise give it. */
+.models {
+  flex: 1;
+  min-height: 0;
+  margin: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas: "attached browse";
+}
+
+@media (any-pointer: coarse) {
+  .models {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "attached"
+      "browse";
+  }
+
+  .modelsAttached {
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* Both areas share the same three-row shape — a heading, then either two
+ * fixed rows or a heading, a search bar and a row that takes what's left —
+ * laid out by name rather than by how the children happen to be ordered in
+ * the markup. */
+.modelsAttached,
+.modelsBrowse {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  padding: 10px 12px;
+}
+
+.modelsAttached {
+  grid-area: attached;
+  grid-template-rows: auto auto auto;
+  grid-template-areas:
+    "heading"
+    "chips"
+    "fromfile";
+  align-content: start;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modelsBrowse {
+  grid-area: browse;
+  grid-template-rows: auto auto 1fr;
+  grid-template-areas:
+    "heading"
+    "search"
+    "results";
+}
+
+.modelsHeading {
+  grid-area: heading;
+  margin: 0;
+  font-size: 11px;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--light-grey);
+}
+
+.modelsEmpty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--grey);
+}
+
+.modelsAttached .modelsEmpty {
+  grid-area: chips;
+}
+
+.modelsBrowse .modelsEmpty {
+  grid-area: results;
+}
+
+.modelsAttached .modelsCards {
+  grid-area: chips;
+}
+
+.modelsBrowse .modelsCards {
+  grid-area: results;
+}
+
+.modelsFromFile {
+  grid-area: fromfile;
+  justify-self: start;
+  padding: 3px 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--light-grey);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.modelsFromFile:hover {
+  border-color: #6fcf97;
+  color: #6fcf97;
+}
+
+.modelsSearch {
+  grid-area: search;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* The row that takes whatever's left of the card (`1fr` in `.modelsBrowse`);
+ * `min-height: 0` is what lets a grid track actually shrink below its
+ * content's size so this scrolls internally instead of the whole pane.
+ * `.modelsAttached`'s and `.modelsBrowse`'s own rules above give this its
+ * `grid-area`, since the same grid of cards sits in a different named row
+ * in each. */
+.modelsCards {
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+
+/* One card, shaped after rm-stacker's own model cards
+ * (`profile/ProfileModal.module.css`) — a square, letterboxed preview over
+ * a name and an action, the same picture-first shape wherever a model is
+ * shown. */
+.modelsCard {
+  display: grid;
+  grid-template-rows: auto auto auto auto;
+  gap: 4px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+}
+
+.modelsCardPreview {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  background: var(--back);
+  border: 1px solid var(--dark-grey);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.modelsCardThumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.modelsCardPlaceholder {
+  color: var(--grey);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.modelsCardName {
+  color: #fff;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelsCardDims {
+  color: var(--light-grey);
+  font-family: monospace;
+  font-size: 10px;
+}
+
+.modelsCardAction {
+  width: 100%;
+  padding: 3px 0;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.modelsCardAction:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.modelsCardAction:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

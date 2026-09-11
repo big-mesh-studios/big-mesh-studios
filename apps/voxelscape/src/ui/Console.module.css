@@ -8,12 +8,12 @@
   position: absolute;
   right: var(--margin);
   top: var(--margin);
-  width: 44px;
-  height: 44px;
-  border-radius: 22px;
+  width: 30px;
+  height: 30px;
+  border-radius: 15px;
   background: rgba(0, 0, 0, 0.5);
   color: #fff;
-  font: bold 16px monospace;
+  font: bold 12px monospace;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -66,17 +66,17 @@
 }
 
 /* Reaches down to the same margin the button sits `var(--margin)` in from
-   at the top: the panel's own top edge is `44px` (the button) plus one and
-   a half `var(--margin)`s below the viewport top (the button's own inset,
-   plus `.panel`'s `margin-top`), so subtracting that and one more margin
-   for the bottom gap leaves exactly the room down to the viewport's edge.
-   Computed rather than anchored on this edge too, since `anchor()` only
-   resolves inside an inset property, not `height` — and doing it this way
-   keeps `height` a plain animatable value instead of `auto`, which a CSS
+   at the top: the panel's own top edge is `30px` (the button, see `.anchor`)
+   plus one and a half `var(--margin)`s below the viewport top (the button's
+   own inset, plus `.panel`'s `margin-top`), so subtracting that and one more
+   margin for the bottom gap leaves exactly the room down to the viewport's
+   edge. Computed rather than anchored on this edge too, since `anchor()`
+   only resolves inside an inset property, not `height` — and doing it this
+   way keeps `height` a plain animatable value instead of `auto`, which a CSS
    transition can't interpolate to or from. */
 .editorOpen {
   width: min(880px, calc(100vw - 24px));
-  height: calc(100dvh - 44px - (var(--margin) * 2.5));
+  height: calc(100dvh - 30px - (var(--margin) * 2.5));
 }
 
 /* Scoped to just the terminal's own content, not `.panel` as a whole — the
@@ -255,6 +255,14 @@
 
 .dockHeader:hover {
   background: rgba(255, 255, 255, 0.06);
+}
+
+.dockHeader:disabled {
+  cursor: default;
+}
+
+.dockHeader:disabled:hover {
+  background: transparent;
 }
 
 .dockLabel {

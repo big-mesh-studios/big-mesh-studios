@@ -467,27 +467,36 @@ export interface ConsoleProps {
  */
 const TerminalBody: Component<{
   terminal: ConsoleState;
-  /** Whether the scrollback starts open. */
-  defaultExpanded: boolean;
+  /** Whether the scrollback is showing — owned by `Console`, not this
+   * component, so other parts of the panel (the models pane, wanting the
+   * room back) can collapse it too, not just this header's own chevron. */
+  expanded: boolean;
+  onToggle(): void;
+  /** Whether the header's chevron can collapse the scrollback at all. Solo,
+   * the terminal is the only thing on screen — there's nothing else the
+   * room would go to, so collapsing it would just hide it for no reason.
+   * Docked in the editor, collapsing actually gives the room back. */
+  minimizable: boolean;
   /** Registers the input's imperative handle, for the global "/" shortcut. */
   ref(handle: ConsoleInputHandle): void;
 }> = (props) => {
-  const [expanded, setExpanded] = createSignal(props.defaultExpanded);
-
   return (
     <>
       <button
         type="button"
         class={styles.dockHeader}
-        onClick={() => setExpanded((value) => !value)}
-        aria-expanded={expanded() ? "true" : "false"}
-        aria-label={expanded() ? "collapse terminal" : "expand terminal"}
+        disabled={!props.minimizable}
+        onClick={() => props.onToggle()}
+        aria-expanded={props.expanded ? "true" : "false"}
+        aria-label={props.expanded ? "collapse terminal" : "expand terminal"}
       >
         <span class={styles.prompt}>{">_"}</span>
         <span class={styles.dockLabel}>terminal</span>
-        <span class={styles.dockChevron}>{expanded() ? "▾" : "▸"}</span>
+        <Show when={props.minimizable}>
+          <span class={styles.dockChevron}>{props.expanded ? "▾" : "▸"}</span>
+        </Show>
       </button>
-      <Show when={expanded()}>
+      <Show when={props.expanded}>
         <ConsoleOutput entries={props.terminal.entries()} />
       </Show>
       <div class={styles["input-container"]}>
@@ -521,9 +530,16 @@ export const Console: Component<ConsoleProps> = (props) => {
   const coarsePointer = createMediaQuery("(any-pointer: coarse)");
   const editorOpen = (): boolean => voxelscape.placeEditor.open();
   const [terminalOpen, setTerminalOpen] = createSignal(false);
+  const [terminalExpanded, setTerminalExpanded] =
+    createSignal(!coarsePointer());
   const shown = (): boolean => terminalOpen() || editorOpen();
 
   let panel: HTMLDivElement = null!;
+  // The trigger button itself is outside `panel`, so a click on it would
+  // otherwise also count as the "outside" click that closes the terminal —
+  // undone a moment later by the same click's own toggle, which would leave
+  // it looking like clicking the trigger to close never did anything.
+  let anchor: HTMLButtonElement = null!;
   let input: ConsoleInputHandle = null!;
   // The editor content's own root — not the terminal's, which is a sibling
   // in the same panel — so Escape can tell "still writing a script" apart
@@ -539,6 +555,18 @@ export const Console: Component<ConsoleProps> = (props) => {
     (open) => {
       if (open && document.pointerLockElement !== null) {
         document.exitPointerLock();
+      }
+    },
+  );
+
+  // The editor's own content wants the room the scrollback was using —
+  // opening the panel collapses it, the same one-time nudge as releasing
+  // the pointer above; the chevron is still there for getting it back.
+  createEffect(
+    () => editorOpen(),
+    (open) => {
+      if (open) {
+        setTerminalExpanded(false);
       }
     },
   );
@@ -604,7 +632,11 @@ export const Console: Component<ConsoleProps> = (props) => {
       if (!terminalOpen() || editorOpen()) {
         return;
       }
-      if (event.target instanceof Node && !panel.contains(event.target)) {
+      if (
+        event.target instanceof Node &&
+        !panel.contains(event.target) &&
+        !anchor.contains(event.target)
+      ) {
         setTerminalOpen(false);
       }
     },
@@ -614,6 +646,7 @@ export const Console: Component<ConsoleProps> = (props) => {
   return (
     <div class={styles.underlay}>
       <button
+        ref={anchor}
         class={styles.anchor}
         onClick={() => setTerminalOpen((value) => !value)}
       >
@@ -649,7 +682,9 @@ export const Console: Component<ConsoleProps> = (props) => {
           <div class={styles.terminal}>
             <TerminalBody
               terminal={props.terminal}
-              defaultExpanded={!coarsePointer()}
+              expanded={editorOpen() ? terminalExpanded() : true}
+              onToggle={() => setTerminalExpanded((value) => !value)}
+              minimizable={editorOpen()}
               ref={(handle) => {
                 input = handle;
               }}
