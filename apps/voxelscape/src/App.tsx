@@ -3,7 +3,6 @@ import {
   createEffect,
   createSignal,
   For,
-  lazy,
   onCleanup,
   onSettled,
   Show,
@@ -20,10 +19,10 @@ import type { Dim3 } from "./world/level-data";
 import type { StructurePlan } from "./world/structure-fill";
 import type { PlaceBoot } from "./voxelscape/create-voxelscape";
 import CoarseControls from "./ui/CoarseControls";
-/** The place script editor, pulled in only when `/place:editor` first needs it,
- * so the code-mirror bundle is not loaded by every world. */
-const PlaceEditor = lazy(() => import("./ui/PlaceEditor"));
-import { Console } from "./ui/Console";
+// `Console` is the whole scripting surface — the terminal, and, once
+// `/place:editor` runs, the place editor's content grown into the same
+// panel alongside it (see `PlaceEditorContent`, rendered from inside it).
+import { Console, createConsole } from "./ui/Console";
 import { DialogOverlay } from "./ui/Dialog";
 import { EditHud } from "./ui/EditHud";
 import { HealthHud } from "./ui/HealthHud";
@@ -124,6 +123,15 @@ const World: Component<{
 
   onCleanup(voxelscape.dispose);
 
+  // The one terminal `Console` renders, whether or not the place editor is
+  // open, so a command's history and output are never split across two
+  // independent scrollbacks.
+  const terminal = createConsole({
+    onCommand: (line) => voxelscape.commands.run(line),
+    commands: () => voxelscape.commands.help(),
+    notice,
+  });
+
   return (
     <VoxelscapeContext value={voxelscape}>
       <div class={styles.container}>
@@ -140,15 +148,8 @@ const World: Component<{
         <HealthHud />
         <DialogOverlay />
         <EndingOverlay />
-        <Show when={voxelscape.placeEditor.open()}>
-          <PlaceEditor />
-        </Show>
         <LoadingScreen />
-        <Console
-          onCommand={(line) => voxelscape.commands.run(line)}
-          commands={voxelscape.commands.help()}
-          notice={notice()}
-        />
+        <Console terminal={terminal} />
         <toasts.Stack>
           <Show when={voxelscape.showStats()}>
             <Toast>

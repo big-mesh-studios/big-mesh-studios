@@ -1,24 +1,13 @@
-.overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
-  z-index: 3;
-}
-
-.panel {
-  width: min(880px, calc(100vw - 24px));
-  height: min(76vh, 640px);
+/* The editor's own content, filling whatever space `Console`'s panel gives
+ * it above the terminal docked at the bottom — the panel itself, and its
+ * open/closed sizing, belongs to `Console.module.css`. */
+.content {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: rgba(10, 12, 16, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
   color: #fff;
   overflow: hidden;
-  pointer-events: auto;
 }
 
 .loading {
@@ -202,14 +191,4 @@
 
 .paneActive {
   visibility: visible;
-}
-
-.status {
-  min-height: 22px;
-  padding: 4px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  color: var(--light-grey);
-  font-size: 12px;
-  font-family: monospace;
-  white-space: pre-wrap;
 }

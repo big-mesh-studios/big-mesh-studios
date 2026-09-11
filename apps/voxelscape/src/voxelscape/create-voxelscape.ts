@@ -19,7 +19,11 @@ import {
 } from "../atproto/models";
 import { createPlaceLibrary, createPlacePublisher } from "../atproto/places";
 import type { PlaceLibrary, PlacePublisher } from "../atproto/places";
-import { DEFAULT_WORLD_URL, type PlaceMode } from "../places/place";
+import {
+  DEFAULT_WORLD_URL,
+  parsePlaceAtUri,
+  type PlaceMode,
+} from "../places/place";
 import type { ScriptConsole } from "../places/script-console";
 import { VoxelFigures } from "../places/voxel-figures";
 import { createEndingLog, endingLogKey } from "../places/ending-log";
@@ -1156,6 +1160,20 @@ export const createVoxelscape = ({
     get accountDid(): string | null {
       return atproto.did;
     },
+    /**
+     * Whether the place currently loaded is safe to open the panel on:
+     * either it isn't a real published place at all (the site's own
+     * fallback world, or a demo, both `parsePlaceAtUri`-null), or this
+     * account is the one that published it. Anywhere else, Run would hand a
+     * draft script to the same host driving the place everyone else there
+     * is playing — visiting isn't publishing, and shouldn't act like it.
+     * (Collaborators and forking are their own later doors into this, not
+     * exceptions bolted onto this check.)
+     */
+    get canEdit(): boolean {
+      const parsed = parsePlaceAtUri(placeUri);
+      return parsed === null || parsed.repo === atproto.did;
+    },
     /** The seed a freshly created place starts from: the world being played. */
     defaultSeed: terrain.seed,
     places: placeLibrary,
@@ -1197,6 +1215,9 @@ export const createVoxelscape = ({
     navigate,
     togglePlaceEditor: () => {
       const next = !placeEditorOpen();
+      if (next && !placeEditor.canEdit) {
+        return "this place isn't yours to edit — visit your own place (or the site's own world) to open the panel";
+      }
       setPlaceEditorOpen(next);
       return next
         ? "place editor opened — write your place's scripts, run them, then publish"

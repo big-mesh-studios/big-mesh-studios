@@ -1,24 +1,23 @@
-// The `/place:editor` panel: one CodeMirror tab per script file in the working
-// place project, with the manifest's name, seed and spawn up top. The editor
-// only owns the draft — running a script and publishing a place go through the
-// world's script host and atproto publisher, so the draft is state the ui
-// keeps, and the world stays what it was.
-import {
-  CodeMirror,
-  darkTheme,
-  LSPProvider,
-  type CodeMirrorProps,
-} from "@big-mesh-studios/code-mirror";
+// The `/place:editor` content: one CodeMirror tab per script file in the
+// working place project, with the manifest's name, seed and spawn up top.
+// The editor only owns the draft — running a script and publishing a place
+// go through the world's script host and atproto publisher, so the draft is
+// state the ui keeps, and the world stays what it was. This is rendered
+// inside `Console`'s single panel once the place editor is open — it owns no
+// overlay, scrim, or Escape handling of its own; `Console` owns those, since
+// it owns the one surface both the terminal and this content share.
 import {
   createSignal,
   For,
+  lazy,
+  Loading,
   onCleanup,
   onSettled,
   Show,
   type Component,
 } from "solid-js";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
-import { isEditableTarget } from "../utils";
+import type { EditorView } from "./PlaceEditorPanes";
 import { createDraftPersistence } from "../places/draft-persistence";
 import {
   emptyPlaceProject,
@@ -27,19 +26,16 @@ import {
   writePlaceZip,
   type PlaceProject,
 } from "../places/project";
-import {
-  PLACE_MODES,
-  type PlaceManifest,
-  type PlaceMode,
-  type PublishedPlace,
-} from "../places/place";
+import { type PlaceManifest, type PublishedPlace } from "../places/place";
 import styles from "./PlaceEditor.module.css";
 
 /** One persistence handle for the whole app, so a debounced save outlives a close. */
 const persist = createDraftPersistence();
 
-/** The kind of editor the code-mirror package hands to `onEditor`. */
-type EditorView = Parameters<NonNullable<CodeMirrorProps["onEditor"]>>[0];
+/** The panel's CodeMirror tabs — the language-service bundle behind them is
+ * its own lazy chunk, downloaded only once a project actually has a script
+ * to show. */
+const PlaceEditorPanes = lazy(() => import("./PlaceEditorPanes"));
 
 /** What went wrong, in words a player reading the panel can act on. */
 const describeError = (err: unknown): string =>
@@ -52,14 +48,22 @@ let cachedProject: PlaceProject | null = null;
 const firstScript = (p: PlaceProject): string =>
   p.manifest.scripts?.[0] ?? Object.keys(p.scripts)[0] ?? MAIN_SCRIPT_FILE;
 
-export const PlaceEditor: Component = () => {
+export const PlaceEditorContent: Component<{
+  /** The content's own root element, so `Console` can tell a click or an
+   * Escape inside it (CodeMirror, a manifest field) apart from one in the
+   * terminal docked below it, which lives outside this element. */
+  ref?(element: HTMLDivElement): void;
+  /** Where Run/Publish/etc. feedback goes — the terminal's own scrollback,
+   * so the editor doesn't need a status strip of its own and its CodeMirror
+   * pane can reach all the way to the bottom of the space it's given. */
+  onStatus(line: string): void;
+}> = (props) => {
   const voxelscape = useVoxelscape();
 
   const [project, setProject] = createSignal<PlaceProject | null>(
     cachedProject,
   );
   const [active, setActive] = createSignal<string>(MAIN_SCRIPT_FILE);
-  const [status, setStatus] = createSignal<string>();
   const [busy, setBusy] = createSignal(false);
   const [candidates, setCandidates] = createSignal<PublishedPlace[]>([]);
   // Each tab's editor view, so switching tabs can ask the now-visible one to
@@ -100,18 +104,6 @@ export const PlaceEditor: Component = () => {
     if (p !== null) {
       void persist.saveNow(p);
     }
-  });
-
-  // Escape closes the editor; other keys belong to the panel's own inputs, so
-  // only non-editable targets close it.
-  onSettled(() => {
-    const handler = (event: KeyboardEvent): void => {
-      if (event.key === "Escape" && !isEditableTarget(event)) {
-        voxelscape.placeEditor.setOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
   });
 
   const scriptFiles = (): string[] => {
@@ -195,11 +187,11 @@ export const PlaceEditor: Component = () => {
       return;
     }
     if (/[/\\]|\.\./.test(nextName)) {
-      setStatus(`"${nextName}" cannot be a script file name`);
+      props.onStatus(`"${nextName}" cannot be a script file name`);
       return;
     }
     if (p.scripts[nextName] !== undefined) {
-      setStatus(`"${nextName}" is already a script file`);
+      props.onStatus(`"${nextName}" is already a script file`);
       return;
     }
     const scripts = { ...p.scripts };
@@ -246,7 +238,7 @@ export const PlaceEditor: Component = () => {
       },
       models,
     });
-    setStatus(
+    props.onStatus(
       refused.length === 0
         ? `added ${Object.keys(models).length} model(s)`
         : `refused ${refused.join(", ")} — a model name cannot hold a path`,
@@ -275,26 +267,28 @@ export const PlaceEditor: Component = () => {
     commit(emptyPlaceProject(voxelscape.placeEditor.defaultSeed));
     setActive(MAIN_SCRIPT_FILE);
     setCandidates([]);
-    setStatus("new place started — name it, write its script, then publish");
+    props.onStatus(
+      "new place started — name it, write its script, then publish",
+    );
   };
 
   const listMine = async (): Promise<void> => {
     const did = voxelscape.placeEditor.accountDid;
     if (did === null) {
-      setStatus("not signed in — use /account:login first");
+      props.onStatus("not signed in — use /account:login first");
       return;
     }
     setBusy(true);
     try {
       const published = await voxelscape.placeEditor.places.list(did);
       setCandidates(published);
-      setStatus(
+      props.onStatus(
         published.length === 0
           ? "you have published no places yet"
           : "pick one of your places to open and edit",
       );
     } catch (err) {
-      setStatus(`could not list your places — ${describeError(err)}`);
+      props.onStatus(`could not list your places — ${describeError(err)}`);
     } finally {
       setBusy(false);
     }
@@ -309,11 +303,11 @@ export const PlaceEditor: Component = () => {
       commit(opened);
       setActive(firstScript(opened));
       setCandidates([]);
-      setStatus(
+      props.onStatus(
         `opened "${opened.manifest.name}" — publishing again under the same name updates the place`,
       );
     } catch (err) {
-      setStatus(`could not open that place — ${describeError(err)}`);
+      props.onStatus(`could not open that place — ${describeError(err)}`);
     } finally {
       setBusy(false);
     }
@@ -326,7 +320,7 @@ export const PlaceEditor: Component = () => {
     }
     const entry = p.manifest.scripts?.[0];
     if (entry === undefined || p.scripts[entry] === undefined) {
-      setStatus("name a first script in the manifest to run it");
+      props.onStatus("name a first script in the manifest to run it");
       return;
     }
     setBusy(true);
@@ -337,9 +331,9 @@ export const PlaceEditor: Component = () => {
         p.manifest.seed,
         p.models,
       );
-      setStatus(line);
+      props.onStatus(line);
     } catch (err) {
-      setStatus(`run failed — ${describeError(err)}`);
+      props.onStatus(`run failed — ${describeError(err)}`);
     } finally {
       setBusy(false);
     }
@@ -351,7 +345,7 @@ export const PlaceEditor: Component = () => {
       return;
     }
     if (p.manifest.name.trim() === "") {
-      setStatus("name the place before publishing");
+      props.onStatus("name the place before publishing");
       return;
     }
     setBusy(true);
@@ -360,225 +354,184 @@ export const PlaceEditor: Component = () => {
         await writePlaceZip(p),
       );
       setCandidates([]);
-      setStatus(`published — ${atUri}`);
+      props.onStatus(`published — ${atUri}`);
     } catch (err) {
-      setStatus(`publish failed — ${describeError(err)}`);
+      props.onStatus(`publish failed — ${describeError(err)}`);
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div class={styles.overlay} role="dialog" aria-label="place script editor">
-      <div class={styles.panel}>
-        <Show
-          when={project()}
-          fallback={<div class={styles.loading}>loading draft…</div>}
-        >
-          <header class={styles.header}>
-            <div class={styles.fields}>
-              <label class={styles.field}>
-                name
-                <input
-                  class={styles.text}
-                  value={project()!.manifest.name}
-                  onInput={(e) =>
-                    patchManifest({ name: e.currentTarget.value })
-                  }
-                />
-              </label>
-              <label class={styles.field}>
-                seed
-                <input
-                  class={styles.number}
-                  type="number"
-                  value={project()!.manifest.seed}
-                  onInput={(e) => {
-                    const seed = Number(e.currentTarget.value);
-                    if (Number.isFinite(seed)) {
-                      patchManifest({ seed });
-                    }
-                  }}
-                />
-              </label>
-              <label class={styles.field}>
-                spawn
-                <input
-                  class={styles.text}
-                  value={project()!.manifest.spawn.join(", ")}
-                  onInput={(e) => onSpawn(e.currentTarget.value)}
-                />
-              </label>
-              <label class={styles.field}>
-                mode
-                <select
-                  class={styles.select}
-                  value={project()!.manifest.mode ?? "solo:edit"}
-                  onChange={(e) =>
-                    patchManifest({
-                      mode: e.currentTarget.value as PlaceMode,
-                    })
-                  }
-                >
-                  <For each={PLACE_MODES}>
-                    {(mode) => <option value={mode}>{mode}</option>}
-                  </For>
-                </select>
-              </label>
-            </div>
-            <div class={styles.actions}>
-              <button class={styles.button} onClick={() => newProject()}>
-                New
-              </button>
-              <Show
-                when={candidates().length === 0}
-                fallback={
-                  <select
-                    class={styles.pick}
-                    onChange={(e) => {
-                      const place = candidates()[Number(e.currentTarget.value)];
-                      if (place !== undefined) {
-                        void openPlace(place);
-                      }
-                    }}
-                  >
-                    <option value="" disabled selected>
-                      pick a place…
-                    </option>
-                    <For each={candidates()}>
-                      {(place, index) => (
-                        <option value={index()}>{place.record.name}</option>
-                      )}
-                    </For>
-                  </select>
-                }
-              >
-                <button
-                  class={styles.button}
-                  disabled={busy()}
-                  onClick={() => void listMine()}
-                >
-                  Open…
-                </button>
-              </Show>
-              <button
-                class={[styles.button, styles.primary]}
-                disabled={busy() || scriptFiles().length === 0}
-                onClick={() => void runActive()}
-              >
-                Run
-              </button>
-              <button
-                class={[styles.button, styles.primary]}
-                disabled={busy()}
-                onClick={() => void publish()}
-              >
-                Publish
-              </button>
-              <button
-                class={styles.button}
-                onClick={() => voxelscape.placeEditor.setOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-          </header>
-
-          <nav class={styles.tabs}>
-            <For each={scriptFiles()}>
-              {(name) => (
-                <div
-                  class={[styles.tab, active() === name && styles.tabActive]}
-                >
-                  <button
-                    class={styles.tabMain}
-                    title="double-click to rename"
-                    onClick={() => selectFile(name)}
-                    onDblClick={() => renameScript(name)}
-                  >
-                    {name}
-                  </button>
-                  <button
-                    class={styles.tabRemove}
-                    title={`remove ${name}`}
-                    onClick={() => removeScript(name)}
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-            </For>
-            <button class={styles.add} onClick={() => addScript()}>
-              + script
-            </button>
-          </nav>
-
-          <nav class={styles.tabs}>
-            <span class={styles.tabMain}>models</span>
-            <For each={modelNames()}>
-              {(name) => (
-                <div class={styles.tab}>
-                  <button class={styles.tabMain} title={name}>
-                    {name}
-                  </button>
-                  <button
-                    class={styles.tabRemove}
-                    title={`remove ${name}`}
-                    onClick={() => removeModel(name)}
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-            </For>
-            <label class={styles.add} title="add rm-stacker model files">
-              + model
+    <div class={styles.content} ref={(element) => props.ref?.(element)}>
+      <Show
+        when={project()}
+        fallback={<div class={styles.loading}>loading draft…</div>}
+      >
+        <header class={styles.header}>
+          <div class={styles.fields}>
+            <label class={styles.field}>
+              name
               <input
-                type="file"
-                accept=".zip,application/zip"
-                multiple
-                hidden
-                onChange={(e) => {
-                  void addModels(e.currentTarget.files);
-                  e.currentTarget.value = "";
+                class={styles.text}
+                value={project()!.manifest.name}
+                onInput={(e) => patchManifest({ name: e.currentTarget.value })}
+              />
+            </label>
+            <label class={styles.field}>
+              seed
+              <input
+                class={styles.number}
+                type="number"
+                value={project()!.manifest.seed}
+                onInput={(e) => {
+                  const seed = Number(e.currentTarget.value);
+                  if (Number.isFinite(seed)) {
+                    patchManifest({ seed });
+                  }
                 }}
               />
             </label>
-          </nav>
+            <label class={styles.field}>
+              spawn
+              <input
+                class={styles.text}
+                value={project()!.manifest.spawn.join(", ")}
+                onInput={(e) => onSpawn(e.currentTarget.value)}
+              />
+            </label>
+          </div>
+          <div class={styles.actions}>
+            <button class={styles.button} onClick={() => newProject()}>
+              New
+            </button>
+            <Show
+              when={candidates().length === 0}
+              fallback={
+                <select
+                  class={styles.pick}
+                  onChange={(e) => {
+                    const place = candidates()[Number(e.currentTarget.value)];
+                    if (place !== undefined) {
+                      void openPlace(place);
+                    }
+                  }}
+                >
+                  <option value="" disabled selected>
+                    pick a place…
+                  </option>
+                  <For each={candidates()}>
+                    {(place, index) => (
+                      <option value={index()}>{place.record.name}</option>
+                    )}
+                  </For>
+                </select>
+              }
+            >
+              <button
+                class={styles.button}
+                disabled={busy()}
+                onClick={() => void listMine()}
+              >
+                Open…
+              </button>
+            </Show>
+            <button
+              class={[styles.button, styles.primary]}
+              disabled={busy() || scriptFiles().length === 0}
+              onClick={() => void runActive()}
+            >
+              Run
+            </button>
+            <button
+              class={[styles.button, styles.primary]}
+              disabled={busy()}
+              onClick={() => void publish()}
+            >
+              Publish
+            </button>
+            <button
+              class={styles.button}
+              onClick={() => voxelscape.placeEditor.setOpen(false)}
+            >
+              Close
+            </button>
+          </div>
+        </header>
 
-          <Show when={scriptFiles().length > 0}>
-            <LSPProvider files={project()!.scripts}>
-              <div class={styles.panes}>
-                <For each={scriptFiles()}>
-                  {(name) => (
-                    <div
-                      class={[
-                        styles.pane,
-                        active() === name
-                          ? styles.paneActive
-                          : styles.paneHidden,
-                      ]}
-                    >
-                      <CodeMirror
-                        path={name}
-                        theme={darkTheme}
-                        onEditor={(view) => views.set(name, view)}
-                        onInput={({ path, source }) =>
-                          updateScript(path, source)
-                        }
-                      />
-                    </div>
-                  )}
-                </For>
+        <nav class={styles.tabs}>
+          <For each={scriptFiles()}>
+            {(name) => (
+              <div class={[styles.tab, active() === name && styles.tabActive]}>
+                <button
+                  class={styles.tabMain}
+                  title="double-click to rename"
+                  onClick={() => selectFile(name)}
+                  onDblClick={() => renameScript(name)}
+                >
+                  {name}
+                </button>
+                <button
+                  class={styles.tabRemove}
+                  title={`remove ${name}`}
+                  onClick={() => removeScript(name)}
+                >
+                  ✕
+                </button>
               </div>
-            </LSPProvider>
-          </Show>
+            )}
+          </For>
+          <button class={styles.add} onClick={() => addScript()}>
+            + script
+          </button>
+        </nav>
 
-          <footer class={styles.status}>{status()}</footer>
+        <nav class={styles.tabs}>
+          <span class={styles.tabMain}>models</span>
+          <For each={modelNames()}>
+            {(name) => (
+              <div class={styles.tab}>
+                <button class={styles.tabMain} title={name}>
+                  {name}
+                </button>
+                <button
+                  class={styles.tabRemove}
+                  title={`remove ${name}`}
+                  onClick={() => removeModel(name)}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </For>
+          <label class={styles.add} title="add rm-stacker model files">
+            + model
+            <input
+              type="file"
+              accept=".zip,application/zip"
+              multiple
+              hidden
+              onChange={(e) => {
+                void addModels(e.currentTarget.files);
+                e.currentTarget.value = "";
+              }}
+            />
+          </label>
+        </nav>
+
+        <Show when={scriptFiles().length > 0}>
+          <Loading fallback={<div class={styles.loading}>loading editor…</div>}>
+            <PlaceEditorPanes
+              project={project()!}
+              active={active()}
+              onEditor={(name, view) => views.set(name, view)}
+              onInput={updateScript}
+            />
+          </Loading>
         </Show>
-      </div>
+      </Show>
     </div>
   );
 };
 
-export default PlaceEditor;
+export default PlaceEditorContent;
