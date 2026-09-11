@@ -196,9 +196,7 @@ export {
 export {
   createModelLibrary,
   locateAccount,
-  MONSTER_MODEL_NAME,
   publishedModels,
-  WORLD_MODEL_ACCOUNT,
   type AccountLocation,
   type LocateAccount,
   type ModelLibrary,

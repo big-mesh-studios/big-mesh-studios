@@ -19,7 +19,6 @@ import type {
   QuickJSWASMModule,
 } from "quickjs-emscripten-core";
 import QuickJSReleaseSync from "@jitl/quickjs-wasmfile-release-sync";
-import { mulberry32 } from "../monsters/monster";
 import {
   VOXEL_AIR,
   VOXEL_BRICK,
@@ -60,6 +59,10 @@ class QuickJSSandbox implements ScriptSandbox {
     random: () => number;
     timeLimitMs: number;
     endings?: () => string[];
+    heightAt?: (x: number, z: number) => number;
+    solidAt?: (x: number, y: number, z: number) => boolean;
+    waterAt?: (x: number, y: number, z: number) => boolean;
+    getPlayers?: () => Array<{ did: string; x: number; y: number; z: number }>;
   }) {
     this.runtime = params.runtime;
     this.context = params.context;
@@ -175,7 +178,19 @@ class QuickJSSandbox implements ScriptSandbox {
    */
   private installEngine(
     context: QuickJSContext,
-    time: { now: () => number; endings?: () => string[] },
+    time: {
+      now: () => number;
+      endings?: () => string[];
+      heightAt?: (x: number, z: number) => number;
+      solidAt?: (x: number, y: number, z: number) => boolean;
+      waterAt?: (x: number, y: number, z: number) => boolean;
+      getPlayers?: () => Array<{
+        did: string;
+        x: number;
+        y: number;
+        z: number;
+      }>;
+    },
   ): void {
     const engine = context.newObject();
     const bind = (
@@ -200,6 +215,32 @@ class QuickJSSandbox implements ScriptSandbox {
     bind("now", () => context.newNumber(time.now()));
     bind("endings", () =>
       context.newString(JSON.stringify(time.endings?.() ?? [])),
+    );
+    bind("players", () =>
+      context.newString(JSON.stringify(time.getPlayers?.() ?? [])),
+    );
+    bind("heightAt", (x, z) =>
+      context.newNumber(
+        time.heightAt?.(context.getNumber(x), context.getNumber(z)) ?? 0,
+      ),
+    );
+    bind("solidAt", (x, y, z) =>
+      time.solidAt?.(
+        context.getNumber(x),
+        context.getNumber(y),
+        context.getNumber(z),
+      )
+        ? context.true
+        : context.false,
+    );
+    bind("waterAt", (x, y, z) =>
+      time.waterAt?.(
+        context.getNumber(x),
+        context.getNumber(y),
+        context.getNumber(z),
+      )
+        ? context.true
+        : context.false,
     );
     // The block ids a plan or effect may name, keyed by the names the starter
     // script's own `engine` type declares, so a creator never hard-codes one.
@@ -290,6 +331,17 @@ class QuickJSSandbox implements ScriptSandbox {
   }
 }
 
+/** A deterministic 32-bit PRNG (mulberry32), seeding `Math.random` for the sandbox. */
+const mulberry32 = (seed: number): (() => number) => {
+  let a = seed | 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
 /** The interpreter's own words for its failures, as our kinds. */
 const kindFor = (name: string, message: string): ScriptErrorKind => {
   if (name === "InternalError") {
@@ -365,6 +417,14 @@ export const createQuickJSSandbox = async (params: {
   timeLimitMs?: number;
   /** Most memory one interpreter may allocate, in bytes. */
   memoryLimitBytes?: number;
+  /** The terrain surface at (`x`, `z`), read live by `engine.heightAt`. */
+  heightAt?: (x: number, z: number) => number;
+  /** Whether (`x`, `y`, `z`) is solid ground, read live by `engine.solidAt`. */
+  solidAt?: (x: number, y: number, z: number) => boolean;
+  /** Whether (`x`, `y`, `z`) is water, read live by `engine.waterAt`. */
+  waterAt?: (x: number, y: number, z: number) => boolean;
+  /** Every player's live position, read live by `engine.players`. */
+  getPlayers?: () => Array<{ did: string; x: number; y: number; z: number }>;
 }): Promise<ScriptSandbox> => {
   modulePromise ??= quickjsModule();
   const module = await modulePromise;
@@ -381,5 +441,9 @@ export const createQuickJSSandbox = async (params: {
     random,
     timeLimitMs: params.timeLimitMs ?? 250,
     endings: params.endings,
+    heightAt: params.heightAt,
+    solidAt: params.solidAt,
+    waterAt: params.waterAt,
+    getPlayers: params.getPlayers,
   });
 };

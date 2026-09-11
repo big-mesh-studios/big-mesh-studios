@@ -222,8 +222,8 @@ export const blocksQuery = (blocks: WorldBlock[]): BlockQuery => {
  * The topmost solid voxel in a block's column at (`worldX`, `worldZ`), in
  * world Y, or `-Infinity` when the column in this block is empty. Water is
  * skipped so the player stands on the lakebed (or shore) under water, and the
- * still clouds are skipped so spawn, monster and weather heights read the
- * terrain — a cloud column is a floor the player can stand on, not the ground.
+ * still clouds are skipped so spawn, NPC and weather heights read the terrain
+ * — a cloud column is a floor the player can stand on, not the ground.
  */
 const topSolidYInColumn = (
   block: WorldBlock,

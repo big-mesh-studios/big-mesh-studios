@@ -5,7 +5,7 @@
 // carry batches of voxel edits. Decoding validates every field, because a
 // peer's bytes are untrusted input that gets applied straight to the local
 // edit overlay.
-import type { MonsterKind, MonsterState } from "../monsters/monster";
+import { decodeScriptEvents, type ScriptEvent } from "../places/events";
 import { round, type PoseMessage } from "./pose";
 
 /** How far from the origin a broadcast edit may lie, in voxels (sanity bound). */
@@ -14,25 +14,12 @@ export const MAX_WORLD_VOXEL = 100_000;
 export const MAX_VOXEL_ID = 255;
 /** The largest edit batch a single message may carry. */
 export const MAX_EDITS_PER_MESSAGE = 512;
-/** The largest monster batch a single message may carry. */
-export const MAX_MONSTERS_PER_MESSAGE = 32;
-/** Fastest a broadcast monster may claim to move, in world units per second. */
-const MAX_MONSTER_SPEED = 100;
-/** Largest health a broadcast monster may report. */
-const MAX_MONSTER_HP = 100;
+/** The largest script-entity batch a single message may carry. */
+export const MAX_SCRIPT_ENTITIES_PER_MESSAGE = 32;
+/** The largest script-event batch a single message may carry. */
+export const MAX_SCRIPT_EVENTS_PER_MESSAGE = 32;
 /** Largest damage a single swing may claim to deal. */
 export const MAX_DAMAGE = 100;
-
-/** The only monster kinds and states that exist; everything else is rejected. */
-const MONSTER_KINDS = new Set<MonsterKind>(["zombie"]);
-const MONSTER_STATES = new Set<MonsterState>([
-  "sleep",
-  "wander",
-  "chase",
-  "attack",
-]);
-/** The id grammar: `m<seed>_<cx>_<cz>_<slot>` with a single-digit slot. */
-const MONSTER_ID_RE = /^m-?\d+_-?\d+_-?\d+_[0-2]$/;
 
 /**
  * One voxel edit broadcast to connected peers: the world voxel's new id and
@@ -68,59 +55,9 @@ export interface EditWire {
 }
 
 /**
- * One monster state broadcast to connected peers: the pose the owner's
- * simulation put it in, plus the health and state the receiver renders.
- */
-export interface MonsterUpdate {
-  id: string;
-  kind: MonsterKind;
-  /** Cube centre, in world units. */
-  x: number;
-  y: number;
-  z: number;
-  /** Heading, in radians. */
-  yaw: number;
-  /** Horizontal velocity in world units per second, for dead reckoning. */
-  vx: number;
-  vz: number;
-  hp: number;
-  state: MonsterState;
-  /** Milliseconds since epoch when the owner last simulated it. */
-  updatedAt: number;
-}
-
-/** A batched monster-state broadcast: the owner's owned monsters at a moment. */
-export interface MonsterWire {
-  v: 1;
-  type: "monster";
-  seq: number;
-  t: number;
-  updates: MonsterUpdate[];
-}
-
-/**
- * One sword swing's damage, sent to every peer so the monster's owner applies
- * it: the receiver gates on its own ownership, so a hit lands exactly once,
- * on the client that simulates the monster.
- */
-export interface DamageWire {
-  v: 1;
-  type: "damage";
-  seq: number;
-  t: number;
-  /** The id of the monster the swing hit. */
-  id: string;
-  /** Health the swing claims to take. */
-  amount: number;
-  /** The attacker's horizontal position, so the monster's owner can knock it back. */
-  attackerX: number;
-  attackerZ: number;
-}
-
-/**
- * One zombie swing's damage, sent to every peer so the player it hit applies
- * it: the receiver gates on its own DID, so the hit is applied exactly once,
- * on the client that owns the hurt player.
+ * One player-damage broadcast, sent to the peer whose player it hit so they
+ * apply it: the receiver gates on its own DID, so the hit is applied exactly
+ * once, on the client that owns the hurt player.
  */
 export interface PlayerDamageWire {
   v: 1;
@@ -133,8 +70,46 @@ export interface PlayerDamageWire {
   amount: number;
 }
 
+/**
+ * One script-driven NPC's position, as its current owner computed it: a
+ * place script's `nearestPlayer`-style comparison decides which peer moves an
+ * entity "for real" from live sensing, and broadcasts the result so the rest
+ * do not each compute their own, slightly different guess from the same
+ * latency-skewed data.
+ */
+export interface ScriptEntityUpdate {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  /** Heading, in radians. */
+  yaw: number;
+}
+
+/** A batched script-entity broadcast: the owner's live-tracked NPCs at a moment. */
+export interface ScriptEntityWire {
+  v: 1;
+  type: "script-entity";
+  seq: number;
+  t: number;
+  updates: ScriptEntityUpdate[];
+}
+
+/**
+ * One or more facts a peer's own script authored — a talk, a use, a swing —
+ * broadcast so every other peer's copy of the shared log gains them too and
+ * folds its own script over the same set of facts.
+ */
+export interface ScriptEventWire {
+  v: 1;
+  type: "script-event";
+  seq: number;
+  t: number;
+  events: ScriptEvent[];
+}
+
 export type MeshMessage =
-  PoseWire | EditWire | MonsterWire | DamageWire | PlayerDamageWire;
+  PoseWire | EditWire | PlayerDamageWire | ScriptEntityWire | ScriptEventWire;
 
 const isPoseWire = (r: object): r is PoseWire => {
   const v = r as Record<string, unknown>;
@@ -189,44 +164,33 @@ const isEditWire = (r: object): r is EditWire => {
   );
 };
 
-const isMonsterUpdate = (u: unknown): u is MonsterUpdate => {
+const isScriptEntityUpdate = (u: unknown): u is ScriptEntityUpdate => {
   if (typeof u !== "object" || u === null) {
     return false;
   }
   const r = u as Record<string, unknown>;
   return (
     typeof r.id === "string" &&
+    r.id.length >= 1 &&
     r.id.length <= 64 &&
-    MONSTER_ID_RE.test(r.id) &&
-    typeof r.kind === "string" &&
-    MONSTER_KINDS.has(r.kind as MonsterKind) &&
     typeof r.x === "number" &&
+    Number.isFinite(r.x) &&
     Math.abs(r.x) <= MAX_WORLD_VOXEL &&
     typeof r.y === "number" &&
+    Number.isFinite(r.y) &&
     Math.abs(r.y) <= MAX_WORLD_VOXEL &&
     typeof r.z === "number" &&
+    Number.isFinite(r.z) &&
     Math.abs(r.z) <= MAX_WORLD_VOXEL &&
     typeof r.yaw === "number" &&
-    Number.isFinite(r.yaw) &&
-    typeof r.vx === "number" &&
-    Math.abs(r.vx) <= MAX_MONSTER_SPEED &&
-    typeof r.vz === "number" &&
-    Math.abs(r.vz) <= MAX_MONSTER_SPEED &&
-    Number.isInteger(r.hp) &&
-    (r.hp as number) >= 0 &&
-    (r.hp as number) <= MAX_MONSTER_HP &&
-    typeof r.state === "string" &&
-    MONSTER_STATES.has(r.state as MonsterState) &&
-    typeof r.updatedAt === "number" &&
-    Number.isFinite(r.updatedAt) &&
-    (r.updatedAt as number) >= 0
+    Number.isFinite(r.yaw)
   );
 };
 
-const isMonsterWire = (r: object): r is MonsterWire => {
+const isScriptEntityWire = (r: object): r is ScriptEntityWire => {
   const v = r as Record<string, unknown>;
   if (
-    v.type !== "monster" ||
+    v.type !== "script-entity" ||
     v.v !== 1 ||
     typeof v.seq !== "number" ||
     typeof v.t !== "number"
@@ -235,31 +199,24 @@ const isMonsterWire = (r: object): r is MonsterWire => {
   }
   return (
     Array.isArray(v.updates) &&
-    v.updates.length <= MAX_MONSTERS_PER_MESSAGE &&
-    v.updates.every(isMonsterUpdate)
+    v.updates.length <= MAX_SCRIPT_ENTITIES_PER_MESSAGE &&
+    v.updates.every(isScriptEntityUpdate)
   );
 };
 
-const isDamageWire = (r: object): r is DamageWire => {
-  const v = r as Record<string, unknown>;
-  return (
-    v.type === "damage" &&
-    v.v === 1 &&
-    typeof v.seq === "number" &&
-    typeof v.t === "number" &&
-    typeof v.id === "string" &&
-    v.id.length <= 64 &&
-    MONSTER_ID_RE.test(v.id) &&
-    Number.isInteger(v.amount) &&
-    (v.amount as number) >= 1 &&
-    (v.amount as number) <= MAX_DAMAGE &&
-    typeof v.attackerX === "number" &&
-    Number.isFinite(v.attackerX) &&
-    Math.abs(v.attackerX) <= MAX_WORLD_VOXEL &&
-    typeof v.attackerZ === "number" &&
-    Number.isFinite(v.attackerZ) &&
-    Math.abs(v.attackerZ) <= MAX_WORLD_VOXEL
-  );
+const isScriptEventWire = (candidate: object): candidate is ScriptEventWire => {
+  const wire = candidate as Record<string, unknown>;
+  if (
+    wire.type !== "script-event" ||
+    wire.v !== 1 ||
+    typeof wire.seq !== "number" ||
+    typeof wire.t !== "number" ||
+    !Array.isArray(wire.events) ||
+    wire.events.length > MAX_SCRIPT_EVENTS_PER_MESSAGE
+  ) {
+    return false;
+  }
+  return decodeScriptEvents(wire.events) !== null;
 };
 
 const isPlayerDamageWire = (r: object): r is PlayerDamageWire => {
@@ -302,18 +259,6 @@ export const encodeMessage = (m: MeshMessage): string => {
       edits: m.edits,
     });
   }
-  if (m.type === "damage") {
-    return JSON.stringify({
-      v: 1,
-      type: "damage",
-      seq: m.seq,
-      t: Math.round(m.t),
-      id: m.id,
-      amount: m.amount,
-      attackerX: round(m.attackerX, 2),
-      attackerZ: round(m.attackerZ, 2),
-    });
-  }
   if (m.type === "player-damage") {
     return JSON.stringify({
       v: 1,
@@ -324,24 +269,27 @@ export const encodeMessage = (m: MeshMessage): string => {
       amount: m.amount,
     });
   }
+  if (m.type === "script-entity") {
+    return JSON.stringify({
+      v: 1,
+      type: "script-entity",
+      seq: m.seq,
+      t: Math.round(m.t),
+      updates: m.updates.map((u) => ({
+        id: u.id,
+        x: round(u.x, 2),
+        y: round(u.y, 2),
+        z: round(u.z, 2),
+        yaw: round(u.yaw, 4),
+      })),
+    });
+  }
   return JSON.stringify({
     v: 1,
-    type: "monster",
+    type: "script-event",
     seq: m.seq,
     t: Math.round(m.t),
-    updates: m.updates.map((u) => ({
-      id: u.id,
-      kind: u.kind,
-      x: round(u.x, 2),
-      y: round(u.y, 2),
-      z: round(u.z, 2),
-      yaw: round(u.yaw, 4),
-      vx: round(u.vx, 3),
-      vz: round(u.vz, 3),
-      hp: u.hp,
-      state: u.state,
-      updatedAt: Math.round(u.updatedAt),
-    })),
+    events: m.events,
   });
 };
 
@@ -368,13 +316,13 @@ export const decodeMessage = (chunk: unknown): MeshMessage | null => {
   if (isEditWire(r)) {
     return r;
   }
-  if (isMonsterWire(r)) {
-    return r;
-  }
-  if (isDamageWire(r)) {
-    return r;
-  }
   if (isPlayerDamageWire(r)) {
+    return r;
+  }
+  if (isScriptEntityWire(r)) {
+    return r;
+  }
+  if (isScriptEventWire(r)) {
     return r;
   }
   return null;

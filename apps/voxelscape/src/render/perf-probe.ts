@@ -30,7 +30,8 @@ export const Phase = {
   scrollRequest: 6,
   flow: 7,
   multiplayer: 8,
-  monsters: 9,
+  /** Every scripted figure a place has placed: NPCs, props, fires, blasts. */
+  figures: 9,
   environment: 10,
   meshDrain: 11,
   merge: 12,

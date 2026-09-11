@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
-import type { MonsterSnapshot } from "../../monsters/monster";
-import { SWORD_DAMAGE } from "../../monsters/hit";
+import type { AimTarget } from "../../places/figure-pick";
 import type { InputSnapshot } from "../create-input";
 import type { EditingController } from "../editing-controller";
 import type { VoxelPick } from "../../world/picker";
@@ -13,24 +12,16 @@ import {
   SWING_TIME,
   swordPose,
   SwordTool,
+  SWORD_DAMAGE,
   SWUNG_POSE,
 } from "./sword-tool";
 import type { ToolContext } from "./tool";
 
-const monster = (
-  overrides: Partial<MonsterSnapshot> = {},
-): MonsterSnapshot => ({
-  id: "m1_0_0_0",
-  kind: "zombie",
-  pose: { x: 0, y: 1.1, z: -3, yaw: 0, vx: 0, vz: 0 },
-  hp: 20,
-  maxHp: 20,
-  state: "chase",
-  wanderLeft: 0,
-  cooldown: 0,
-  owner: "me",
-  authoritativeAt: 0,
-  updatedAt: 0,
+const actor = (overrides: Partial<AimTarget> = {}): AimTarget => ({
+  id: "m1",
+  x: 0,
+  y: 0,
+  z: -3,
   ...overrides,
 });
 
@@ -58,14 +49,11 @@ const buttons = (overrides: Partial<InputSnapshot> = {}): InputSnapshot => ({
 const makeContext = (
   overrides: {
     voxel?: VoxelPick;
-    monsters?: MonsterSnapshot[];
-    ownsMonster?: boolean;
+    actors?: AimTarget[];
   } = {},
 ) => {
   const breakBlock = vi.fn((): string | null => "broke Dirt at 0,0,0");
-  const damageMonster = vi.fn(() => overrides.ownsMonster ?? true);
-  const flashMonster = vi.fn();
-  const broadcastMonsterDamage = vi.fn();
+  const strike = vi.fn();
   const setGuarding = vi.fn();
   const ctx: ToolContext = {
     editing: {
@@ -74,20 +62,11 @@ const makeContext = (
     } as unknown as EditingController,
     look: () => ({ origin: [0, 1.1, 0], direction: [0, 0, -1] }),
     position: () => ({ x: 7, y: 0, z: 9 }),
-    monsters: () => overrides.monsters ?? [],
-    damageMonster,
-    flashMonster,
-    broadcastMonsterDamage,
+    strikeables: () => overrides.actors ?? [],
+    strike,
     setGuarding,
   };
-  return {
-    ctx,
-    breakBlock,
-    damageMonster,
-    flashMonster,
-    broadcastMonsterDamage,
-    setGuarding,
-  };
+  return { ctx, breakBlock, strike, setGuarding };
 };
 
 describe("swordPose", () => {
@@ -107,7 +86,7 @@ describe("swordPose", () => {
 });
 
 describe("SwordTool.pick", () => {
-  it("finds nothing when neither a monster nor a voxel is in front", () => {
+  it("finds nothing when neither an actor nor a voxel is in front", () => {
     const { ctx } = makeContext();
     expect(new SwordTool(ctx).pick()).toEqual({
       primary: null,
@@ -115,20 +94,20 @@ describe("SwordTool.pick", () => {
     });
   });
 
-  it("takes the monster when it is nearer than the voxel", () => {
+  it("takes the actor when it is nearer than the voxel", () => {
     const { ctx } = makeContext({
-      monsters: [monster()],
+      actors: [actor()],
       voxel: { target: [0, 0, -4], place: null, distance: 8 },
     });
     expect(new SwordTool(ctx).pick().primary).toMatchObject({
-      kind: "monster",
-      id: "m1_0_0_0",
+      kind: "actor",
+      id: "m1",
     });
   });
 
-  it("takes the voxel when a wall stands between the player and the monster", () => {
+  it("takes the voxel when a wall stands between the player and the actor", () => {
     const { ctx } = makeContext({
-      monsters: [monster()],
+      actors: [actor()],
       voxel: { target: [0, 0, -1], place: null, distance: 1 },
     });
     expect(new SwordTool(ctx).pick().primary).toMatchObject({
@@ -140,38 +119,20 @@ describe("SwordTool.pick", () => {
 
 describe("SwordTool.primary", () => {
   it("digs the voxel it is over", () => {
-    const { ctx, breakBlock, damageMonster } = makeContext({
+    const { ctx, breakBlock, strike } = makeContext({
       voxel: { target: [1, 2, 3], place: null, distance: 2 },
     });
     const tool = new SwordTool(ctx);
     expect(tool.primary(tool.pick())).toContain("broke");
     expect(breakBlock).toHaveBeenCalledWith([1, 2, 3]);
-    expect(damageMonster).not.toHaveBeenCalled();
+    expect(strike).not.toHaveBeenCalled();
   });
 
-  it("damages a monster this client owns without broadcasting", () => {
-    const { ctx, damageMonster, flashMonster, broadcastMonsterDamage } =
-      makeContext({ monsters: [monster()], ownsMonster: true });
+  it("strikes the actor it is over, from where the player stands", () => {
+    const { ctx, strike } = makeContext({ actors: [actor()] });
     const tool = new SwordTool(ctx);
     tool.primary(tool.pick());
-    expect(flashMonster).toHaveBeenCalledWith("m1_0_0_0");
-    expect(damageMonster).toHaveBeenCalledWith("m1_0_0_0", SWORD_DAMAGE);
-    expect(broadcastMonsterDamage).not.toHaveBeenCalled();
-  });
-
-  it("broadcasts a hit on a monster another client owns", () => {
-    const { ctx, broadcastMonsterDamage } = makeContext({
-      monsters: [monster()],
-      ownsMonster: false,
-    });
-    const tool = new SwordTool(ctx);
-    tool.primary(tool.pick());
-    expect(broadcastMonsterDamage).toHaveBeenCalledWith({
-      id: "m1_0_0_0",
-      amount: SWORD_DAMAGE,
-      attackerX: 7,
-      attackerZ: 9,
-    });
+    expect(strike).toHaveBeenCalledWith("m1", SWORD_DAMAGE, 7, 9);
   });
 
   it("swings at nothing, so the animation plays whatever the press finds", () => {

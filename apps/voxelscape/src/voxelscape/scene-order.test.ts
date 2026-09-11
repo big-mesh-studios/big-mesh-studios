@@ -57,7 +57,6 @@ describe("scene draw order", () => {
       "world.terrain",
       "avatar.body",
       "multiplayer.avatars",
-      "monsterRender.group",
       "npcFigures.group",
       "propFigures.group",
       "fireFigures.group",

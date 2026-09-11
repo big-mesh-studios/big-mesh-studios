@@ -1,8 +1,8 @@
 // CPU figure picking: the crosshair ray against each scripted figure's upright
-// body, the same way `monsters/hit.ts` picks monsters and `world/picker.ts`
-// picks voxels. A figure stands as a box from its grounded feet up its drawn
-// height, so an NPC and a placed prop are picked the same way whether the box
-// is the default body or the wider one a vending machine's model implies.
+// body, the same way `world/picker.ts` picks voxels. A figure stands as a box
+// from its grounded feet up its drawn height, so an NPC and a placed prop are
+// picked the same way whether the box is the default body or the wider one a
+// vending machine's model implies.
 export interface AimTarget {
   id: string;
   /** Feet position, in world units. */

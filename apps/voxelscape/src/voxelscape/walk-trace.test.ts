@@ -144,6 +144,68 @@ describe("recording a walk", () => {
   });
 });
 
+describe("logging what the world noticed on its own", () => {
+  it("records nothing until it is started", async () => {
+    const { probe } = fakeProbe();
+    const trace = new WalkTraceRecorder(probe, source(), 0);
+    trace.event("damage", { cause: "lava", amount: 1, hp: 5 });
+    expect(await trace.stop()).toBeUndefined();
+  });
+
+  it("says what dealt a hit and what was left after it", async () => {
+    const { probe } = fakeProbe();
+    const trace = new WalkTraceRecorder(probe, source(), 0);
+    trace.start("standing where it hurts");
+    trace.event("damage", { cause: "lava", amount: 1, hp: 5 });
+    trace.event("damage", { cause: "lava", amount: 1, hp: 4 });
+
+    const written = await trace.stop();
+    expect(written?.events).toEqual([
+      expect.objectContaining({
+        kind: "damage",
+        cause: "lava",
+        amount: 1,
+        hp: 5,
+      }),
+      expect.objectContaining({
+        kind: "damage",
+        cause: "lava",
+        amount: 1,
+        hp: 4,
+      }),
+    ]);
+    expect(written?.events[0].pose.position).toEqual([1, 2, 3]);
+  });
+
+  it("waits for a picture of a death, but not of the damage on the way to it", async () => {
+    const { probe } = fakeProbe();
+    const trace = new WalkTraceRecorder(probe, source(), 0);
+    const canvas = {
+      toDataURL: vi.fn(() => "data:image/png;base64,DEAD"),
+    } as unknown as HTMLCanvasElement;
+
+    trace.start("a walk");
+    trace.event("damage", { cause: "lava", amount: 1, hp: 1 });
+    trace.event("death", { cause: "lava", amount: 1, hp: 0 });
+    trace.takePicture(canvas);
+
+    const written = await trace.stop();
+    expect(written?.events[0].picture).toBeUndefined();
+    expect(written?.events[1].picture).toBe("data:image/png;base64,DEAD");
+  });
+
+  it("starts again from nothing, keeping no events from the walk before", async () => {
+    const { probe } = fakeProbe();
+    const trace = new WalkTraceRecorder(probe, source(), 0);
+    trace.start("first");
+    trace.event("death", { cause: "lava" });
+    await trace.stop();
+
+    trace.start("second");
+    expect((await trace.stop())?.events).toEqual([]);
+  });
+});
+
 describe("saying what a trace started with", () => {
   it("hands the setup back, so what is said is what is stored", async () => {
     const { probe } = fakeProbe();

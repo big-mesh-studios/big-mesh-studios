@@ -9,11 +9,11 @@
 import {
   decodeMessage,
   encodeMessage,
-  type DamageWire,
   type EditItem,
-  type MonsterUpdate,
   type PlayerDamageWire,
+  type ScriptEntityUpdate,
 } from "./messages";
+import type { ScriptEvent } from "../places/events";
 import type { Pose, PoseMessage } from "./pose";
 import type { PeerTransport } from "./transport";
 
@@ -37,11 +37,11 @@ export interface MeshPeerParams {
   onPose: (did: string, pose: PoseMessage) => void;
   /** One optimistic edit broadcast from the peer; applied LWW by edit time. */
   onEdits: (did: string, edits: EditItem[]) => void;
-  /** One monster-state broadcast from the peer, for monsters it owns. */
-  onMonsters: (did: string, updates: MonsterUpdate[]) => void;
-  /** One sword swing's damage from the peer, for the monster's owner to apply. */
-  onDamage: (did: string, damage: DamageWire) => void;
-  /** One zombie swing's damage from the peer, for the hit player to apply. */
+  /** One script-entity broadcast from the peer, for the NPCs it owns. */
+  onScriptEntities: (did: string, updates: ScriptEntityUpdate[]) => void;
+  /** One batch of a peer's own script facts, for this client's script to fold in too. */
+  onScriptEvents: (did: string, events: ScriptEvent[]) => void;
+  /** One swing's damage from the peer, for the hit player to apply. */
   onPlayerDamage: (did: string, damage: PlayerDamageWire) => void;
   onClose: (did: string) => void;
   /** Reports a fatal failure; `code` is the transport's `ERR_*` when there is one. */
@@ -54,8 +54,11 @@ export class MeshPeer {
   private readonly onOpen: (did: string) => void;
   private readonly onPose: (did: string, pose: PoseMessage) => void;
   private readonly onEdits: (did: string, edits: EditItem[]) => void;
-  private readonly onMonsters: (did: string, updates: MonsterUpdate[]) => void;
-  private readonly onDamage: (did: string, damage: DamageWire) => void;
+  private readonly onScriptEntities: (
+    did: string,
+    updates: ScriptEntityUpdate[],
+  ) => void;
+  private readonly onScriptEvents: (did: string, events: ScriptEvent[]) => void;
   private readonly onPlayerDamage: (
     did: string,
     damage: PlayerDamageWire,
@@ -81,8 +84,8 @@ export class MeshPeer {
     this.onOpen = params.onOpen;
     this.onPose = params.onPose;
     this.onEdits = params.onEdits;
-    this.onMonsters = params.onMonsters;
-    this.onDamage = params.onDamage;
+    this.onScriptEntities = params.onScriptEntities;
+    this.onScriptEvents = params.onScriptEvents;
     this.onPlayerDamage = params.onPlayerDamage;
     this.onClose = params.onClose;
     this.onError = params.onError;
@@ -145,8 +148,8 @@ export class MeshPeer {
     }
   }
 
-  /** Sends the owned monsters' state to the peer (no-op until open). */
-  sendMonsters(updates: MonsterUpdate[], seq: number): void {
+  /** Sends the live-tracked script entities' state to the peer (no-op until open). */
+  sendScriptEntities(updates: ScriptEntityUpdate[], seq: number): void {
     if (this.destroyed || this.phase !== "open" || updates.length === 0) {
       return;
     }
@@ -154,7 +157,7 @@ export class MeshPeer {
       this.transport?.send(
         encodeMessage({
           v: 1,
-          type: "monster",
+          type: "script-entity",
           seq,
           t: Date.now(),
           updates,
@@ -165,19 +168,27 @@ export class MeshPeer {
     }
   }
 
-  /** Sends a swing's damage to the peer (no-op until open). */
-  sendDamage(damage: DamageWire): void {
-    if (this.destroyed || this.phase !== "open") {
+  /** Sends a batch of this player's own script facts to the peer (no-op until open). */
+  sendScriptEvents(events: ScriptEvent[], seq: number): void {
+    if (this.destroyed || this.phase !== "open" || events.length === 0) {
       return;
     }
     try {
-      this.transport?.send(encodeMessage(damage));
+      this.transport?.send(
+        encodeMessage({
+          v: 1,
+          type: "script-event",
+          seq,
+          t: Date.now(),
+          events,
+        }),
+      );
     } catch (err) {
       this.fail(err instanceof Error ? err.message : String(err));
     }
   }
 
-  /** Sends a zombie's swing damage to the peer (no-op until open). */
+  /** Sends a swing's damage to the peer (no-op until open). */
   sendPlayerDamage(damage: PlayerDamageWire): void {
     if (this.destroyed || this.phase !== "open") {
       return;
@@ -262,12 +273,12 @@ export class MeshPeer {
       this.onPose(this.did, message);
     } else if (message.type === "edit") {
       this.onEdits(this.did, message.edits);
-    } else if (message.type === "damage") {
-      this.onDamage(this.did, message);
     } else if (message.type === "player-damage") {
       this.onPlayerDamage(this.did, message);
+    } else if (message.type === "script-entity") {
+      this.onScriptEntities(this.did, message.updates);
     } else {
-      this.onMonsters(this.did, message.updates);
+      this.onScriptEvents(this.did, message.events);
     }
   }
 

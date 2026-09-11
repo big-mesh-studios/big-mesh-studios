@@ -51,6 +51,6 @@ export class BlockTool implements Tool {
   stow(): void {}
 }
 
-/** The voxel a target names, or null when the target is nothing or a monster. */
+/** The voxel a target names, or null when the target is nothing or an actor. */
 const voxelOf = (target: ToolPick["primary"]): WorldVoxel | null =>
   target !== null && target.kind === "voxel" ? target.voxel : null;

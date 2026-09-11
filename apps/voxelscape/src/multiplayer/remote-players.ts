@@ -131,8 +131,8 @@ export class RemotePlayers {
 
   /**
    * Every rendered player's current target position, for callers that need to
-   * know where the connected players actually are (e.g. monsters choosing who
-   * to chase or own them).
+   * know where the connected players actually are (e.g. a script's own NPCs
+   * choosing who to chase or own them).
    */
   positions(): Array<{ did: string; x: number; y: number; z: number }> {
     const out: Array<{ did: string; x: number; y: number; z: number }> = [];

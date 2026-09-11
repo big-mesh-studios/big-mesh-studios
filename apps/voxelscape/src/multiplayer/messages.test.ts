@@ -2,191 +2,108 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_DAMAGE,
-  MAX_MONSTERS_PER_MESSAGE,
+  MAX_SCRIPT_EVENTS_PER_MESSAGE,
   decodeMessage,
   encodeMessage,
 } from "./messages";
 
-const update = (): Record<string, unknown> => ({
-  id: "m1_0_0_0",
-  kind: "zombie",
-  x: 1.23456,
-  y: 11.1,
-  z: -4.567,
-  yaw: 0.5,
-  vx: 2.4,
-  vz: -0.5,
-  hp: 20,
-  state: "chase",
-  updatedAt: 1_000,
+const scriptEvent = (
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> => ({
+  kind: "entity-hit",
+  entityId: "m1_0_0_0",
+  amount: 8,
+  attackerX: 12.3456,
+  attackerZ: -4.567,
+  id: "did:plc:abc123:1000:1",
+  at: 1_000,
+  producer: "did:plc:abc123",
+  ...overrides,
 });
 
-describe("monster message codec", () => {
-  it("round-trips a monster broadcast", () => {
+describe("script-event message codec", () => {
+  it("round-trips a batch of script facts", () => {
     const encoded = encodeMessage({
       v: 1,
-      type: "monster",
+      type: "script-event",
       seq: 3,
       t: 500,
-      updates: [update() as never],
+      events: [scriptEvent() as never],
     });
     const decoded = decodeMessage(encoded);
     expect(decoded).not.toBeNull();
-    expect(decoded!.type).toBe("monster");
-    const message = decoded as Extract<typeof decoded, { type: "monster" }>;
+    expect(decoded!.type).toBe("script-event");
+    const message = decoded as Extract<
+      typeof decoded,
+      { type: "script-event" }
+    >;
     expect(message.seq).toBe(3);
     expect(message.t).toBe(500);
-    expect(message.updates).toHaveLength(1);
-    expect(message.updates[0]).toMatchObject({
-      id: "m1_0_0_0",
-      kind: "zombie",
-      state: "chase",
-      hp: 20,
-    });
-    // coordinates are quantized to keep the payload small
-    expect(message.updates[0].x).toBeCloseTo(1.23, 2);
-    expect(message.updates[0].z).toBeCloseTo(-4.57, 2);
-    expect(message.updates[0].vx).toBeCloseTo(2.4, 2);
+    expect(message.events).toHaveLength(1);
+    expect(message.events[0]).toEqual(scriptEvent());
   });
 
-  it("accepts a valid monster broadcast", () => {
+  it("accepts a valid script-event broadcast", () => {
     const encoded = encodeMessage({
       v: 1,
-      type: "monster",
+      type: "script-event",
       seq: 1,
       t: 1,
-      updates: [update() as never],
+      events: [scriptEvent() as never],
     });
     expect(decodeMessage(encoded)).not.toBeNull();
   });
 
-  it("rejects monster updates with an out-of-grammar id", () => {
-    const encoded = encodeMessage({
-      v: 1,
-      type: "monster",
-      seq: 1,
-      t: 1,
-      updates: [{ ...update(), id: "garbage!!" } as never],
-    });
-    expect(decodeMessage(encoded)).toBeNull();
-  });
-
-  it("rejects monster updates with an unknown state", () => {
-    const encoded = encodeMessage({
-      v: 1,
-      type: "monster",
-      seq: 1,
-      t: 1,
-      updates: [{ ...update(), state: "fly" } as never],
-    });
-    expect(decodeMessage(encoded)).toBeNull();
-  });
-
-  it("rejects monster updates with impossible speed, health, or coordinates", () => {
+  it("rejects a script fact with a missing id or producer", () => {
     const cases: Array<Record<string, unknown>> = [
-      { ...update(), vx: 500 },
-      { ...update(), vz: -1_000 },
-      { ...update(), hp: -1 },
-      { ...update(), hp: 1_000 },
-      { ...update(), x: 1_000_000 },
-      { ...update(), yaw: "north" },
+      scriptEvent({ id: "" }),
+      scriptEvent({ producer: "" }),
+      scriptEvent({ producer: undefined }),
     ];
     for (const bad of cases) {
       const encoded = encodeMessage({
         v: 1,
-        type: "monster",
+        type: "script-event",
         seq: 1,
         t: 1,
-        updates: [bad as never],
+        events: [bad as never],
       });
       expect(decodeMessage(encoded), JSON.stringify(bad)).toBeNull();
     }
   });
 
-  it("rejects an oversized monster batch", () => {
+  it("rejects a script fact with an unknown kind or an impossible amount", () => {
+    const cases: Array<Record<string, unknown>> = [
+      scriptEvent({ kind: "fly" }),
+      scriptEvent({ amount: 0 }),
+      scriptEvent({ amount: -8 }),
+      scriptEvent({ amount: 1_001 }),
+      scriptEvent({ attackerX: 1_000_001 }),
+      scriptEvent({ attackerZ: "north" }),
+    ];
+    for (const bad of cases) {
+      const encoded = encodeMessage({
+        v: 1,
+        type: "script-event",
+        seq: 1,
+        t: 1,
+        events: [bad as never],
+      });
+      expect(decodeMessage(encoded), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it("rejects an oversized script-event batch", () => {
     const encoded = encodeMessage({
       v: 1,
-      type: "monster",
+      type: "script-event",
       seq: 1,
       t: 1,
-      updates: Array.from({ length: MAX_MONSTERS_PER_MESSAGE + 1 }, () =>
-        update(),
+      events: Array.from({ length: MAX_SCRIPT_EVENTS_PER_MESSAGE + 1 }, () =>
+        scriptEvent(),
       ) as never,
     });
     expect(decodeMessage(encoded)).toBeNull();
-  });
-});
-
-describe("damage message codec", () => {
-  const damage = (
-    overrides: Record<string, unknown> = {},
-  ): Record<string, unknown> => ({
-    v: 1,
-    type: "damage",
-    seq: 4,
-    t: 600,
-    id: "m1_0_0_0",
-    amount: 8,
-    attackerX: 12.3456,
-    attackerZ: -4.5,
-    ...overrides,
-  });
-
-  it("round-trips a swing's damage", () => {
-    const encoded = encodeMessage({
-      v: 1,
-      type: "damage",
-      seq: 4,
-      t: 600,
-      id: "m1_0_0_0",
-      amount: 8,
-      attackerX: 12.3456,
-      attackerZ: -4.5,
-    });
-    const decoded = decodeMessage(encoded);
-    expect(decoded).not.toBeNull();
-    expect(decoded!.type).toBe("damage");
-    const message = decoded as Extract<typeof decoded, { type: "damage" }>;
-    expect(message.seq).toBe(4);
-    expect(message.t).toBe(600);
-    expect(message.id).toBe("m1_0_0_0");
-    expect(message.amount).toBe(8);
-    // the attacker's position is quantized like the monster positions
-    expect(message.attackerX).toBeCloseTo(12.35, 2);
-    expect(message.attackerZ).toBeCloseTo(-4.5, 2);
-  });
-
-  it("accepts a valid damage message", () => {
-    const encoded = encodeMessage({
-      v: 1,
-      type: "damage",
-      seq: 1,
-      t: 1,
-      id: "m1_0_0_0",
-      amount: 1,
-      attackerX: 0,
-      attackerZ: 0,
-    });
-    expect(decodeMessage(encoded)).not.toBeNull();
-  });
-
-  it("rejects damage with an out-of-grammar id or an impossible amount", () => {
-    const cases = [
-      damage({ id: "garbage!!" }),
-      damage({ amount: 0 }),
-      damage({ amount: -8 }),
-      damage({ amount: MAX_DAMAGE + 1 }),
-      damage({ amount: 1.5 }),
-      damage({ attackerX: 1_000_000 }),
-      damage({ attackerZ: "north" }),
-      damage({ attackerX: undefined }),
-    ];
-    for (const bad of cases) {
-      expect(
-        decodeMessage(JSON.stringify(bad)),
-        JSON.stringify(bad),
-      ).toBeNull();
-    }
   });
 });
 

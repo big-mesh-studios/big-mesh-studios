@@ -2,10 +2,9 @@
 // places — as ray-marched voxel models: one group of part meshes per figure,
 // each drawn from the rm-stacker model its id wears. Reads a caller-supplied
 // list each frame, so a figure the script host places, turns, or retires
-// appears or disappears to match, the same relationship the monsters' renderer
-// has to its controller. Each model file is baked once and shared by every
-// figure wearing it; a figure stands with its feet on the entity's grounded
-// `y`, drawn at whatever height the entity asks for.
+// appears or disappears to match. Each model file is baked once and shared by
+// every figure wearing it; a figure stands with its feet on the entity's
+// grounded `y`, drawn at whatever height the entity asks for.
 import { Group } from "@random-mesh/rmsl/scene";
 import type { DayNightState } from "../environment/day-night";
 import {

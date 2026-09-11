@@ -9,12 +9,19 @@ import {
   type ScriptedExplosion,
   type ScriptedFire,
 } from "./script-host";
+import type { ScriptEvent } from "./events";
 import { SAMPLE_PLACE_SCRIPT } from "./sample";
 import { MAIN_SCRIPT_FILE } from "./project";
 
 export interface ScriptConsoleParams {
   /** The terrain surface at (`x`, `z`), where a script's NPCs are grounded. */
   heightAt: (x: number, z: number) => number;
+  /** Whether (`x`, `y`, `z`) is inside solid ground, for a script to feel its way around. */
+  solidAt?: (x: number, y: number, z: number) => boolean;
+  /** Whether (`x`, `y`, `z`) is water, for a script to keep a creature out of it. */
+  waterAt?: (x: number, y: number, z: number) => boolean;
+  /** Every player's live position: the local player first, then connected peers. */
+  getPlayers?: () => Array<{ did: string; x: number; y: number; z: number }>;
   /** Where a script's toast and error lines go — the notice channel. */
   report?: (line: string) => void;
   /** Called whenever a player's dialog changes, so the world can show it. */
@@ -45,6 +52,22 @@ export interface ScriptConsoleParams {
   onPlayerSpeed?: (player: string, multiplier: number) => void;
   /** Called when the script scales a player's jump. */
   onPlayerJump?: (player: string, multiplier: number) => void;
+  /** Called when the script takes hit points off a player, naming the
+   * entity that dealt it when the script said whose swing it was. */
+  onPlayerDamage?: (player: string, amount: number, source?: string) => void;
+  /**
+   * Called when the script's current owner of a live-tracked NPC reports its
+   * new position, to broadcast to other peers.
+   */
+  onEntityMove?: (state: {
+    id: string;
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+  }) => void;
+  /** Called with every fact the local player's own actions caused, to broadcast to other peers. */
+  onEvent?: (event: ScriptEvent) => void;
   /** Called when the script lights a fire; the world seeds its ember light. */
   onFire?: (fire: ScriptedFire) => void;
   /** Called when the script sets off a blast; the world draws the burst. */
@@ -60,6 +83,14 @@ const optionLines = (dialog: DialogState): string =>
 /** One script, loaded on demand and driven by console commands. */
 export class ScriptConsole {
   private readonly heightAt: (x: number, z: number) => number;
+  private readonly solidAt?: (x: number, y: number, z: number) => boolean;
+  private readonly waterAt?: (x: number, y: number, z: number) => boolean;
+  private readonly getPlayers?: () => Array<{
+    did: string;
+    x: number;
+    y: number;
+    z: number;
+  }>;
   private readonly report: (line: string) => void;
   private readonly onDialog: (
     player: string,
@@ -89,6 +120,19 @@ export class ScriptConsole {
   ) => void;
   private readonly onPlayerSpeed: (player: string, multiplier: number) => void;
   private readonly onPlayerJump: (player: string, multiplier: number) => void;
+  private readonly onPlayerDamage: (
+    player: string,
+    amount: number,
+    source?: string,
+  ) => void;
+  private readonly onEntityMove: (state: {
+    id: string;
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+  }) => void;
+  private readonly onEvent: (event: ScriptEvent) => void;
   private readonly onFire: (fire: ScriptedFire) => void;
   private readonly onExplosion: (explosion: ScriptedExplosion) => void;
   private readonly endings: () => string[];
@@ -102,6 +146,9 @@ export class ScriptConsole {
 
   constructor(params: ScriptConsoleParams) {
     this.heightAt = params.heightAt;
+    this.solidAt = params.solidAt;
+    this.waterAt = params.waterAt;
+    this.getPlayers = params.getPlayers;
     this.report = params.report ?? (() => {});
     this.onDialog = params.onDialog ?? (() => {});
     this.onEnding = params.onEnding ?? (() => {});
@@ -112,6 +159,9 @@ export class ScriptConsole {
     this.onPlayerFace = params.onPlayerFace ?? (() => {});
     this.onPlayerSpeed = params.onPlayerSpeed ?? (() => {});
     this.onPlayerJump = params.onPlayerJump ?? (() => {});
+    this.onPlayerDamage = params.onPlayerDamage ?? (() => {});
+    this.onEntityMove = params.onEntityMove ?? (() => {});
+    this.onEvent = params.onEvent ?? (() => {});
     this.onFire = params.onFire ?? (() => {});
     this.onExplosion = params.onExplosion ?? (() => {});
     this.endings = params.endings ?? (() => []);
@@ -170,6 +220,19 @@ export class ScriptConsole {
     await this.host?.use(id, "", item);
   }
 
+  /**
+   * The local player's weapon struck the NPC `id` for `amount` hit points,
+   * from where the local player is standing.
+   */
+  async hit(
+    id: string,
+    amount: number,
+    attackerX: number,
+    attackerZ: number,
+  ): Promise<void> {
+    await this.host?.hit(id, "", amount, attackerX, attackerZ);
+  }
+
   /** Tells the script where the local player now stands, for its zones. */
   async updatePosition(x: number, y: number, z: number): Promise<void> {
     await this.host?.movePlayer("", x, y, z);
@@ -178,6 +241,22 @@ export class ScriptConsole {
   /** Fires any timer the shared clock has reached; cheap when none is set. */
   async pump(): Promise<void> {
     await this.host?.pump();
+  }
+
+  /** A peer reported a live-tracked NPC's new position; a no-op without a loaded script. */
+  applyRemoteNpc(
+    id: string,
+    x: number,
+    y: number,
+    z: number,
+    yaw: number,
+  ): void {
+    this.host?.applyRemoteNpc(id, x, y, z, yaw);
+  }
+
+  /** A peer's own facts, folded into this script's copy of the shared log. */
+  async applyRemoteEvents(events: ScriptEvent[]): Promise<void> {
+    await this.host?.applyRemoteEvents(events);
   }
 
   /** The local player uses the item they are holding, away from any object. */
@@ -325,6 +404,9 @@ export class ScriptConsole {
       seed,
       now: () => Date.now(),
       heightAt: this.heightAt,
+      solidAt: this.solidAt,
+      waterAt: this.waterAt,
+      getPlayers: this.getPlayers,
       onToast: (player, text) => {
         if (player === "") {
           this.report(text);
@@ -342,6 +424,10 @@ export class ScriptConsole {
         this.onPlayerSpeed(player, multiplier),
       onPlayerJump: (player, multiplier) =>
         this.onPlayerJump(player, multiplier),
+      onPlayerDamage: (player, amount, source) =>
+        this.onPlayerDamage(player, amount, source),
+      onEntityMove: (state) => this.onEntityMove(state),
+      onEvent: (event) => this.onEvent(event),
       onFire: (fire) => this.onFire(fire),
       onExplosion: (explosion) => this.onExplosion(explosion),
       endings: () => this.endings(),

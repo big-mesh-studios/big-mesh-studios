@@ -42,7 +42,6 @@ const AREAS: Record<string, string> = {
   render:
     "the frame loop, the resolution scaler, and the probe that times them",
   player: "the body, its input, its tools and what they do to the world",
-  monsters: "what wanders the world and fights the player",
   multiplayer: "other players, over a peer connection",
   places:
     "a published place: its script, its people, and the sandbox they run in",
@@ -61,7 +60,6 @@ const MAY_DEPEND_ON: Record<string, readonly string[]> = {
   shell: [
     "atproto",
     "environment",
-    "monsters",
     "multiplayer",
     "places",
     "player",
@@ -74,7 +72,6 @@ const MAY_DEPEND_ON: Record<string, readonly string[]> = {
   voxelscape: [
     "atproto",
     "environment",
-    "monsters",
     "multiplayer",
     "places",
     "player",
@@ -86,12 +83,11 @@ const MAY_DEPEND_ON: Record<string, readonly string[]> = {
   world: ["render", "renderers"],
   renderers: ["environment", "render", "world"],
   render: [],
-  player: ["environment", "monsters", "renderers", "shell", "world"],
-  monsters: ["atproto", "environment", "multiplayer", "world"],
-  multiplayer: ["monsters", "player"],
-  places: ["environment", "monsters", "world"],
+  player: ["environment", "places", "renderers", "shell", "world"],
+  multiplayer: ["places", "player"],
+  places: ["environment", "world"],
   environment: [],
-  atproto: ["monsters", "places", "world"],
+  atproto: ["places", "world"],
   ui: ["places", "player", "renderers", "shell", "voxelscape"],
 };
 

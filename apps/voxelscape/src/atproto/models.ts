@@ -23,6 +23,8 @@ import {
   MODEL_COLLECTION,
   modelBlobCid,
   modelRkey,
+  parseModelAtUri,
+  thumbnailBlobCid,
   type PublishedModel,
 } from "@big-mesh-studios/stacker/lexicon";
 import {
@@ -30,16 +32,6 @@ import {
   createHandleResolver,
   pdsEndpoint,
 } from "@big-mesh-studios/atproto/identity";
-
-/**
- * The account the studio publishes its own drawings to. Anyone can point the
- * game at another account instead — the drawings are read the same way whoever
- * made them — but this is the one whose models it arrives wearing.
- */
-export const WORLD_MODEL_ACCOUNT = "bigmesh.eurosky.social";
-
-/** What the monsters are drawn as, named as it is published. */
-export const MONSTER_MODEL_NAME = "zombie";
 
 /** Where an account's records are: which account a name means, and which server holds it. */
 export interface AccountLocation {
@@ -61,8 +53,25 @@ export interface ModelLibrary {
    * something this cannot open.
    */
   find(account: string, name: string): Promise<PublishedModel>;
+  /**
+   * The model published at `uri` — the same record `find` reaches by
+   * account and name, reached instead by its own address, for a caller
+   * that already knows exactly which model it wants and nothing else about
+   * the account that published it.
+   *
+   * @throws When nothing is published at `uri`, or it is not a model this
+   * can open.
+   */
+  byUri(uri: string): Promise<PublishedModel>;
   /** The zip `model` points at, as the loader takes it. */
   file(model: PublishedModel): Promise<Blob>;
+  /**
+   * Where `model`'s small picture loads from, or null when it published
+   * none — an `<img src>`, the same public blob address `file` resolves to,
+   * not bytes fetched here: the browser loads it the way it loads any
+   * other image.
+   */
+  thumbnailUrl(model: PublishedModel): Promise<string | null>;
 }
 
 /**
@@ -143,6 +152,27 @@ export const createModelLibrary = (params?: {
       return { repo: location.did, rkey, record: response.value };
     },
 
+    async byUri(uri) {
+      const parsed = parseModelAtUri(uri);
+      if (parsed === null) {
+        throw new Error(`"${uri}" is not a model address`);
+      }
+      const { location, client } = await clientFor(parsed.repo);
+      const response = await ok(
+        client.get("com.atproto.repo.getRecord", {
+          params: {
+            repo: location.did as ActorIdentifier,
+            collection: MODEL_COLLECTION as Nsid,
+            rkey: parsed.rkey as RecordKey,
+          },
+        }),
+      );
+      if (!isModelRecord(response.value)) {
+        throw new Error(`"${uri}" is not a model this can open`);
+      }
+      return { repo: location.did, rkey: parsed.rkey, record: response.value };
+    },
+
     async file(model) {
       const { service } = await locateOnce(model.repo);
       const url = blobUrl(service, model.repo, modelBlobCid(model.record));
@@ -153,6 +183,15 @@ export const createModelLibrary = (params?: {
         );
       }
       return response.blob();
+    },
+
+    async thumbnailUrl(model) {
+      const cid = thumbnailBlobCid(model.record);
+      if (cid === null) {
+        return null;
+      }
+      const { service } = await locateOnce(model.repo);
+      return blobUrl(service, model.repo, cid);
     },
   };
 };

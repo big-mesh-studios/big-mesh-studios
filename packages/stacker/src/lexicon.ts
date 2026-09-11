@@ -142,3 +142,22 @@ export function thumbnailBlobCid(record: ModelRecord): string | null {
 export function blobUrl(service: string, did: string, cid: string): string {
   return `${service}/xrpc/com.atproto.sync.getBlob?did=${encodeURIComponent(did)}&cid=${encodeURIComponent(cid)}`;
 }
+
+/** The `at://` address a published model is read back by. */
+export function modelAtUri(repo: string, rkey: string): string {
+  return `at://${repo}/${MODEL_COLLECTION}/${rkey}`;
+}
+
+/**
+ * Parses an `at://` address back into the model it names, or null when the
+ * address is not a model in this collection.
+ */
+export function parseModelAtUri(
+  uri: string,
+): { repo: string; rkey: string } | null {
+  const match = /^at:\/\/(did:[^/]+)\/([^/]+)\/([^/]+)$/.exec(uri);
+  if (match === null || match[2] !== MODEL_COLLECTION) {
+    return null;
+  }
+  return { repo: match[1], rkey: match[3] };
+}

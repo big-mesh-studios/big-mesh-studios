@@ -351,7 +351,7 @@ describe("cluster mesh theory", () => {
     expect(b.editBatchCountFor(a.did)).toBe(0);
   });
 
-  it("broadcasts a monster's state to a connected peer, which receives it exactly", async () => {
+  it("broadcasts a batch of script facts to a connected peer, which receives it exactly", async () => {
     const sim = createSimulator({
       placements: [
         { x: 0, z: 0 },
@@ -365,44 +365,38 @@ describe("cluster mesh theory", () => {
       await sim.runUntil(25_000, () => a.controller.connections === 1),
     ).toBe(true);
 
-    a.controller.broadcastMonsters([
+    a.controller.broadcastScriptEvents([
       {
-        id: "m1_0_0_0",
-        kind: "zombie",
-        x: 10,
-        y: 11.1,
-        z: 4,
-        yaw: 1,
-        vx: 2,
-        vz: 0,
-        hp: 20,
-        state: "chase",
-        updatedAt: 5_000,
+        kind: "entity-hit",
+        entityId: "m1_0_0_0",
+        amount: 8,
+        attackerX: 1,
+        attackerZ: 2,
+        id: `${a.did}:5000:1`,
+        at: 5_000,
+        producer: a.did,
       },
     ]);
     const received = await sim.runUntil(
       2_000,
-      () => b.latestMonsters(a.did) !== undefined,
+      () => b.latestScriptEvents(a.did) !== undefined,
     );
     expect(received).toBe(true);
-    expect(b.latestMonsters(a.did)).toEqual([
+    expect(b.latestScriptEvents(a.did)).toEqual([
       {
-        id: "m1_0_0_0",
-        kind: "zombie",
-        x: 10,
-        y: 11.1,
-        z: 4,
-        yaw: 1,
-        vx: 2,
-        vz: 0,
-        hp: 20,
-        state: "chase",
-        updatedAt: 5_000,
+        kind: "entity-hit",
+        entityId: "m1_0_0_0",
+        amount: 8,
+        attackerX: 1,
+        attackerZ: 2,
+        id: `${a.did}:5000:1`,
+        at: 5_000,
+        producer: a.did,
       },
     ]);
   });
 
-  it("delivers monster broadcasts to direct peers only, never relays through the cluster", async () => {
+  it("delivers script-event broadcasts to direct peers only, never relays through the cluster", async () => {
     const sim = createSimulator({
       placements: [
         { x: 0, z: 0 }, // A
@@ -423,29 +417,29 @@ describe("cluster mesh theory", () => {
     );
     expect(linked).toBe(true);
 
-    a.controller.broadcastMonsters([
+    a.controller.broadcastScriptEvents([
       {
-        id: "m1_0_0_0",
-        kind: "zombie",
-        x: 1,
-        y: 11.1,
-        z: 2,
-        yaw: 0,
-        vx: 0,
-        vz: 0,
-        hp: 20,
-        state: "wander",
-        updatedAt: 9_000,
+        kind: "entity-hit",
+        entityId: "m1_0_0_0",
+        amount: 8,
+        attackerX: 1,
+        attackerZ: 2,
+        id: `${a.did}:9000:1`,
+        at: 9_000,
+        producer: a.did,
       },
     ]);
     expect(
-      await sim.runUntil(2_000, () => b.latestMonsters(a.did) !== undefined),
+      await sim.runUntil(
+        2_000,
+        () => b.latestScriptEvents(a.did) !== undefined,
+      ),
     ).toBe(true);
     await sim.run(2_000);
-    expect(c.monsterBatchCountFor(a.did)).toBe(0);
+    expect(c.scriptEventBatchCountFor(a.did)).toBe(0);
   });
 
-  it("rejects malformed and oversized monster broadcasts before applying them", async () => {
+  it("rejects malformed and oversized script-event broadcasts before applying them", async () => {
     const sim = createSimulator({
       placements: [
         { x: 0, z: 0 },
@@ -461,34 +455,31 @@ describe("cluster mesh theory", () => {
 
     const transport = sim.signaling.peer(a.did, b.did);
     expect(transport).toBeDefined();
-    const base = { v: 1, type: "monster", seq: 1, t: 1 };
+    const base = { v: 1, type: "script-event", seq: 1, t: 1 };
     const valid = {
-      id: "m1_0_0_0",
-      kind: "zombie",
-      x: 1,
-      y: 11.1,
-      z: 1,
-      yaw: 0,
-      vx: 0,
-      vz: 0,
-      hp: 20,
-      state: "chase",
-      updatedAt: 1,
+      kind: "entity-hit",
+      entityId: "m1_0_0_0",
+      amount: 8,
+      attackerX: 1,
+      attackerZ: 1,
+      id: `${a.did}:1:1`,
+      at: 1,
+      producer: a.did,
     };
     transport!.send(
-      JSON.stringify({ ...base, updates: [{ ...valid, id: "garbage!!" }] }),
+      JSON.stringify({ ...base, events: [{ ...valid, id: "" }] }),
     );
     transport!.send(
-      JSON.stringify({ ...base, updates: [{ ...valid, state: "fly" }] }),
+      JSON.stringify({ ...base, events: [{ ...valid, amount: -1 }] }),
     );
     transport!.send(
       JSON.stringify({
         ...base,
-        updates: Array.from({ length: 33 }, () => valid),
+        events: Array.from({ length: 33 }, () => valid),
       }),
     );
     await Promise.resolve();
     await Promise.resolve();
-    expect(b.monsterBatchCountFor(a.did)).toBe(0);
+    expect(b.scriptEventBatchCountFor(a.did)).toBe(0);
   });
 });

@@ -11,11 +11,11 @@ import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import type { AtprotoRepoClient } from "@big-mesh-studios/atproto/repo-client";
 import { MeshPeer } from "./mesh-peer";
 import type {
-  DamageWire,
   EditItem,
-  MonsterUpdate,
   PlayerDamageWire,
+  ScriptEntityUpdate,
 } from "./messages";
+import type { ScriptEvent } from "../places/events";
 import type { Pose, PoseMessage } from "./pose";
 import {
   PRESENCE_COLLECTION,
@@ -135,18 +135,19 @@ export interface MultiplayerParams {
    */
   onRemoteEdits?: (did: string, edits: EditItem[]) => void;
   /**
-   * Receives every monster-state broadcast a peer sends, for headless
-   * verification and (in the app) for handing to the monster controller.
+   * Receives every script-entity broadcast a peer sends, for headless
+   * verification and (in the app) for handing to that entity's script host.
    */
-  onRemoteMonsters?: (did: string, updates: MonsterUpdate[]) => void;
+  onRemoteScriptEntities?: (did: string, updates: ScriptEntityUpdate[]) => void;
   /**
-   * Receives a peer's swing damage, for headless verification and (in the app)
-   * for the monster controller to apply to the monsters this client owns.
+   * Receives every batch of a peer's own script facts, for headless
+   * verification and (in the app) for folding into this client's own copy of
+   * the shared script log.
    */
-  onRemoteDamage?: (did: string, damage: DamageWire) => void;
+  onRemoteScriptEvents?: (did: string, events: ScriptEvent[]) => void;
   /**
-   * Receives a peer's zombie swing aimed at this player, for headless
-   * verification and (in the app) for applying to the local player's health.
+   * Receives a peer's swing aimed at this player, for headless verification
+   * and (in the app) for applying to the local player's health.
    */
   onRemotePlayerDamage?: (did: string, damage: PlayerDamageWire) => void;
   /** Overrides for the cluster-selection tuning (tests use this to disable hysteresis). */
@@ -168,11 +169,14 @@ export class MultiplayerController {
     ((did: string) => Promise<Blob | null>) | undefined;
   private readonly onRemotePose: (did: string, pose: PoseMessage) => void;
   private readonly onRemoteEdits: (did: string, edits: EditItem[]) => void;
-  private readonly onRemoteMonsters: (
+  private readonly onRemoteScriptEntities: (
     did: string,
-    updates: MonsterUpdate[],
+    updates: ScriptEntityUpdate[],
   ) => void;
-  private readonly onRemoteDamage: (did: string, damage: DamageWire) => void;
+  private readonly onRemoteScriptEvents: (
+    did: string,
+    events: ScriptEvent[],
+  ) => void;
   private readonly onRemotePlayerDamage: (
     did: string,
     damage: PlayerDamageWire,
@@ -209,15 +213,15 @@ export class MultiplayerController {
   private peerCount = 0;
   private poseSeq = 0;
   private editSeq = 0;
-  private monsterSeq = 0;
-  private damageSeq = 0;
+  private scriptEntitySeq = 0;
+  private scriptEventSeq = 0;
   private playerDamageSeq = 0;
   private editsSent = 0;
   private editsReceived = 0;
-  private monstersSent = 0;
-  private monstersReceived = 0;
-  private damageSent = 0;
-  private damageReceived = 0;
+  private scriptEntitiesSent = 0;
+  private scriptEntitiesReceived = 0;
+  private scriptEventsSent = 0;
+  private scriptEventsReceived = 0;
   private playerDamageSent = 0;
   private playerDamageReceived = 0;
 
@@ -243,8 +247,8 @@ export class MultiplayerController {
     this.resolvePicture = params.resolvePicture;
     this.onRemotePose = params.onRemotePose ?? (() => {});
     this.onRemoteEdits = params.onRemoteEdits ?? (() => {});
-    this.onRemoteMonsters = params.onRemoteMonsters ?? (() => {});
-    this.onRemoteDamage = params.onRemoteDamage ?? (() => {});
+    this.onRemoteScriptEntities = params.onRemoteScriptEntities ?? (() => {});
+    this.onRemoteScriptEvents = params.onRemoteScriptEvents ?? (() => {});
     this.onRemotePlayerDamage = params.onRemotePlayerDamage ?? (() => {});
     this.clusterOptions = params.clusterOptions ?? {};
     this.remotePlayers =
@@ -281,7 +285,8 @@ export class MultiplayerController {
 
   /**
    * Every connected peer's live position, for callers that need to know where
-   * the other players are (monsters chase and choose owners among them).
+   * the other players are (a script's own NPCs chase and choose owners among
+   * them).
    */
   peerPositions(): Array<{ did: string; x: number; y: number; z: number }> {
     return this.remotePlayers?.positions() ?? [];
@@ -441,49 +446,39 @@ export class MultiplayerController {
   }
 
   /**
-   * Broadcasts the monsters this player simulates to every open peer. The
-   * receiver renders them optimistically, dead-reckoning between broadcasts;
-   * atproto sync (a later phase) remains the source of truth. No-op while the
-   * mesh is offline.
+   * Broadcasts the script-driven NPCs this player currently owns (per the
+   * `npc` effect's `live` flag) to every open peer, dead-reckoned between
+   * broadcasts. No-op while the mesh is offline.
    */
-  broadcastMonsters(updates: MonsterUpdate[]): void {
+  broadcastScriptEntities(updates: ScriptEntityUpdate[]): void {
     if (!this.running || updates.length === 0) {
       return;
     }
-    const seq = ++this.monsterSeq;
-    this.monstersSent += updates.length;
+    const seq = ++this.scriptEntitySeq;
+    this.scriptEntitiesSent += updates.length;
     for (const peer of this.peers.values()) {
-      peer.sendMonsters(updates, seq);
+      peer.sendScriptEntities(updates, seq);
     }
   }
 
   /**
-   * Broadcasts a sword swing's damage to every open peer. Each receiver's
-   * monster controller applies it only to the monsters that client owns, so a
-   * hit is applied exactly once, wherever the damage belongs; the owner's next
-   * monster broadcast carries the lowered health back to everyone. No-op while
-   * the mesh is offline.
+   * Broadcasts a batch of this player's own script facts to every open peer,
+   * so each one folds them into its own copy of the shared script log and
+   * steps its script to react. No-op while the mesh is offline.
    */
-  broadcastDamage(damage: Omit<DamageWire, "v" | "type" | "seq" | "t">): void {
-    if (!this.running) {
+  broadcastScriptEvents(events: ScriptEvent[]): void {
+    if (!this.running || events.length === 0) {
       return;
     }
-    const seq = ++this.damageSeq;
-    this.damageSent++;
-    const wire: DamageWire = {
-      v: 1,
-      type: "damage",
-      seq,
-      t: Date.now(),
-      ...damage,
-    };
+    const seq = ++this.scriptEventSeq;
+    this.scriptEventsSent += events.length;
     for (const peer of this.peers.values()) {
-      peer.sendDamage(wire);
+      peer.sendScriptEvents(events, seq);
     }
   }
 
   /**
-   * Broadcasts a zombie swing's damage to every open peer. Each receiver
+   * Broadcasts a swing's damage to every open peer. Each receiver
    * applies it only if the swing names that player, so a hit lands exactly
    * once, on the client that owns the hurt player. No-op while the mesh is
    * offline.
@@ -581,10 +576,10 @@ export class MultiplayerController {
     }
     lines.push(`edits: ${this.editsSent} sent, ${this.editsReceived} received`);
     lines.push(
-      `monsters: ${this.monstersSent} sent, ${this.monstersReceived} received`,
+      `script entities: ${this.scriptEntitiesSent} sent, ${this.scriptEntitiesReceived} received`,
     );
     lines.push(
-      `damage: ${this.damageSent} sent, ${this.damageReceived} received`,
+      `script events: ${this.scriptEventsSent} sent, ${this.scriptEventsReceived} received`,
     );
     lines.push(
       `player-damage: ${this.playerDamageSent} sent, ${this.playerDamageReceived} received`,
@@ -852,54 +847,54 @@ export class MultiplayerController {
    * goes onto the retry cooldown while a clean teardown does not.
    */
   private peerHandlers(): {
-    onOpen: (d: string) => void;
-    onPose: (d: string, pose: PoseMessage) => void;
-    onEdits: (d: string, edits: EditItem[]) => void;
-    onMonsters: (d: string, updates: MonsterUpdate[]) => void;
-    onDamage: (d: string, damage: DamageWire) => void;
-    onPlayerDamage: (d: string, damage: PlayerDamageWire) => void;
-    onClose: (d: string) => void;
-    onError: (d: string, message: string, code?: string) => void;
+    onOpen: (did: string) => void;
+    onPose: (did: string, pose: PoseMessage) => void;
+    onEdits: (did: string, edits: EditItem[]) => void;
+    onScriptEntities: (did: string, updates: ScriptEntityUpdate[]) => void;
+    onScriptEvents: (did: string, events: ScriptEvent[]) => void;
+    onPlayerDamage: (did: string, damage: PlayerDamageWire) => void;
+    onClose: (did: string) => void;
+    onError: (did: string, message: string, code?: string) => void;
   } {
     let opened = false;
     return {
-      onOpen: (d) => {
+      onOpen: (did) => {
         opened = true;
-        this.failedAt.delete(d);
+        this.failedAt.delete(did);
         this.peerCount++;
-        void this.nameAvatar(d);
-        void this.faceAvatar(d);
+        void this.nameAvatar(did);
+        void this.faceAvatar(did);
       },
-      onPose: (d, pose) => {
-        this.remotePlayers?.update(d, pose);
-        this.onRemotePose(d, pose);
+      onPose: (did, pose) => {
+        this.remotePlayers?.update(did, pose);
+        this.onRemotePose(did, pose);
       },
-      onEdits: (d, edits) => {
+      onEdits: (did, edits) => {
         this.editsReceived += edits.length;
-        this.onRemoteEdits(d, edits);
+        this.onRemoteEdits(did, edits);
       },
-      onMonsters: (d, updates) => {
-        this.monstersReceived += updates.length;
-        this.onRemoteMonsters(d, updates);
+      onScriptEntities: (did, updates) => {
+        this.scriptEntitiesReceived += updates.length;
+        this.onRemoteScriptEntities(did, updates);
       },
-      onDamage: (d, damage) => {
-        this.damageReceived++;
-        this.onRemoteDamage(d, damage);
+      onScriptEvents: (did, events) => {
+        this.scriptEventsReceived += events.length;
+        this.onRemoteScriptEvents(did, events);
       },
-      onPlayerDamage: (d, damage) => {
+      onPlayerDamage: (did, damage) => {
         this.playerDamageReceived++;
-        this.onRemotePlayerDamage(d, damage);
+        this.onRemotePlayerDamage(did, damage);
       },
-      onClose: (d) => {
+      onClose: (did) => {
         this.peerCount = Math.max(0, this.peerCount - 1);
-        this.remotePlayers?.remove(d);
-        this.peers.delete(d);
+        this.remotePlayers?.remove(did);
+        this.peers.delete(did);
         if (!opened) {
-          this.failedAt.set(d, Date.now());
+          this.failedAt.set(did, Date.now());
         }
       },
-      onError: (d, message, code) => {
-        this.lastError = `${d}: ${message}${
+      onError: (did, message, code) => {
+        this.lastError = `${did}: ${message}${
           code !== undefined ? ` (${code})` : ""
         }`;
       },

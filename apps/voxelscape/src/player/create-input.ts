@@ -32,7 +32,7 @@ const HOLD_REPEAT_MS = 500;
  * the tap slop) turns the view and fires nothing, a hold (still past the
  * grace) queues `primary` and keeps re-queuing it on a cadence while the
  * finger stays put, and a quick lift is a `tap` the world acts on only when
- * the crosshair is over a monster.
+ * the crosshair is over a strikeable body.
  */
 export interface InputSnapshot {
   /** Strafe input, from -1 (left) to 1 (right). */
@@ -65,8 +65,8 @@ export interface InputSnapshot {
   /**
    * Edge-triggered: true only on the frame a touch or pen press lifted as a
    * tap — down and up within the hold grace, never a drag. A tap can strike
-   * only what a quick touch can: a monster under the crosshair. Over a voxel
-   * or empty air it fires nothing, which is what a hold is for.
+   * only what a quick touch can: a strikeable body under the crosshair. Over
+   * a voxel or empty air it fires nothing, which is what a hold is for.
    */
   tap: boolean;
   /** Edge-triggered: true only on the frame the secondary (use) button fired. */
@@ -148,10 +148,10 @@ export interface InputController {
      * tap slop at any point makes it a look-drag that turns the view and never
      * strikes. Staying still past the hold grace makes it a hold, which
      * strikes once and again on the repeat cadence while the finger stays put
-     * — how a block is broken or a monster is fought by touch. Lifting within
-     * the grace makes it a tap, which the world acts on only when the
-     * crosshair is over a monster. This is why the returned promise settles
-     * when the press ends — awaiting it waits for the finger to lift.
+     * — how a block is broken or a strikeable body is fought by touch.
+     * Lifting within the grace makes it a tap, which the world acts on only
+     * when the crosshair is over one. This is why the returned promise
+     * settles when the press ends — awaiting it waits for the finger to lift.
      *
      * Only the first press is followed: a second finger touching down while
      * one is already turning the view starts nothing, so the view turns at the
@@ -286,8 +286,8 @@ export const createInput = (): InputController => {
       };
       // The strike first lands once the press has stayed still past the
       // grace, then again on the repeat cadence for as long as it still has
-      // not moved — holding on a block breaks it, holding on a monster keeps
-      // swinging at it.
+      // not moved — holding on a block breaks it, holding on a strikeable
+      // body keeps swinging at it.
       grace = window.setTimeout(() => {
         fireHold();
         repeat = window.setInterval(() => {

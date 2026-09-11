@@ -12,7 +12,7 @@ import { parseEffect, type ParsedEffect } from "./effects";
 import { ScriptInventory } from "./script-items";
 import { bundlePlaceProject } from "./bundle";
 import type { ScriptSandbox } from "./sandbox";
-import type { ScriptEventPayload } from "./events";
+import type { ScriptEvent, ScriptEventPayload } from "./events";
 
 /**
  * How long, in milliseconds on the shared clock, a blast stays in the host's
@@ -27,6 +27,11 @@ export interface ScriptedNpc {
   name: string;
   /** The place model file the NPC wears, or "" for the world's own pick. */
   model: string;
+  /**
+   * The NPC's model, read live from its own `at://` address, or "" to wear
+   * `model` instead — takes precedence over `model` when set.
+   */
+  modelUri: string;
   /** Feet position, in world units; the renderer stands a figure on it. */
   x: number;
   y: number;
@@ -86,6 +91,12 @@ export interface ScriptHostParams {
   now: () => number;
   /** The terrain surface at (`x`, `z`), where an NPC's feet are grounded. */
   heightAt: (x: number, z: number) => number;
+  /** Whether (`x`, `y`, `z`) is inside solid ground, for a script to feel its way around. */
+  solidAt?: (x: number, y: number, z: number) => boolean;
+  /** Whether (`x`, `y`, `z`) is water, for a script to keep a creature out of it. */
+  waterAt?: (x: number, y: number, z: number) => boolean;
+  /** Every player's live position: the local player first, then connected peers. */
+  getPlayers?: () => Array<{ did: string; x: number; y: number; z: number }>;
   /** Called with a line meant for `player` (empty means every local player). */
   onToast?: (player: string, text: string) => void;
   /** Called when `player`'s dialog changes; null when it closed. */
@@ -118,6 +129,29 @@ export interface ScriptHostParams {
   onPlayerSpeed?: (player: string, multiplier: number) => void;
   /** Called when the script scales a player's jump. */
   onPlayerJump?: (player: string, multiplier: number) => void;
+  /** Called when the script takes hit points off a player, naming the
+   * entity that dealt it when the script said whose swing it was. */
+  onPlayerDamage?: (player: string, amount: number, source?: string) => void;
+  /**
+   * Called when the script's current owner of a live-tracked NPC reports its
+   * new position, to broadcast to other peers rather than leave them to
+   * compute their own guess from the same live, latency-skewed data.
+   */
+  onEntityMove?: (state: {
+    id: string;
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+  }) => void;
+  /**
+   * Called with every fact this host itself authors — a player's own talk,
+   * use, or swing — so it can be broadcast to other peers. Without this, a
+   * fact this host's script folds into its NPCs and dialogs stays true only
+   * here: every other peer's own script never hears of it and quietly
+   * diverges.
+   */
+  onEvent?: (event: ScriptEvent) => void;
   /** Called when the script lights a fire; the world seeds its ember light. */
   onFire?: (fire: ScriptedFire) => void;
   /** Called when the script sets off a blast; the world draws the burst. */
@@ -165,6 +199,19 @@ export class ScriptHost {
   ) => void;
   private readonly onPlayerSpeed?: (player: string, multiplier: number) => void;
   private readonly onPlayerJump?: (player: string, multiplier: number) => void;
+  private readonly onPlayerDamage?: (
+    player: string,
+    amount: number,
+    source?: string,
+  ) => void;
+  private readonly onEntityMove?: (state: {
+    id: string;
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+  }) => void;
+  private readonly onEvent?: (event: ScriptEvent) => void;
   private readonly onFire?: (fire: ScriptedFire) => void;
   private readonly onExplosion?: (explosion: ScriptedExplosion) => void;
 
@@ -202,12 +249,19 @@ export class ScriptHost {
     this.onPlayerFace = params.onPlayerFace;
     this.onPlayerSpeed = params.onPlayerSpeed;
     this.onPlayerJump = params.onPlayerJump;
+    this.onPlayerDamage = params.onPlayerDamage;
+    this.onEntityMove = params.onEntityMove;
+    this.onEvent = params.onEvent;
     this.onFire = params.onFire;
     this.onExplosion = params.onExplosion;
     this.ready = createQuickJSSandbox({
       seed: params.seed,
       now: params.now,
       endings: params.endings,
+      heightAt: params.heightAt,
+      solidAt: params.solidAt,
+      waterAt: params.waterAt,
+      getPlayers: params.getPlayers,
     });
   }
 
@@ -216,9 +270,43 @@ export class ScriptHost {
     return [...this.npcs.values()];
   }
 
+  /**
+   * Moves an NPC to where a peer reported it, without asking the local
+   * script for a position of its own — the counterpart to the `npc` effect's
+   * `live` flag, for whichever peer is not the one currently computing it.
+   * A no-op for an id the local script has never placed, since there is
+   * nothing to move.
+   */
+  applyRemoteNpc(
+    id: string,
+    x: number,
+    y: number,
+    z: number,
+    yaw: number,
+  ): void {
+    const npc = this.npcs.get(id);
+    if (npc === undefined) {
+      return;
+    }
+    this.npcs.set(id, { ...npc, x, y, z, yaw });
+  }
+
   /** The NPC with `id`, or null when the script has not placed one. */
   npc(id: string): ScriptedNpc | null {
     return this.npcs.get(id) ?? null;
+  }
+
+  /**
+   * Merges facts a peer authored into the shared log and, when any of them
+   * are new, steps the script so it reacts to them exactly as it would to
+   * one of its own — the counterpart to `author`, so every peer's script
+   * folds over the same facts and converges on the same NPCs and dialogs.
+   */
+  async applyRemoteEvents(events: ScriptEvent[]): Promise<void> {
+    if (this.disposed || this.log.apply(events) === 0) {
+      return;
+    }
+    await this.step();
   }
 
   /** Every prop the script has placed in the world. */
@@ -315,6 +403,27 @@ export class ScriptHost {
   async use(entityId: string, player: string, item = ""): Promise<void> {
     this.assertAlive();
     this.author({ kind: "entity-used", entityId, item }, player);
+    await this.step();
+  }
+
+  /**
+   * A weapon struck the NPC `entityId` for `amount` hit points, from an
+   * attacker standing at (`attackerX`, `attackerZ`) — a fact for the
+   * script's own rules to apply, the same way a vending machine answers
+   * `entity-used`.
+   */
+  async hit(
+    entityId: string,
+    player: string,
+    amount: number,
+    attackerX: number,
+    attackerZ: number,
+  ): Promise<void> {
+    this.assertAlive();
+    this.author(
+      { kind: "entity-hit", entityId, amount, attackerX, attackerZ },
+      player,
+    );
     await this.step();
   }
 
@@ -447,31 +556,43 @@ export class ScriptHost {
     }
   }
 
-  /** A fact the local player caused, stamped and added to the shared log. */
+  /**
+   * A fact the local player caused, stamped, added to the shared log, and
+   * handed to `onEvent` so it reaches every other peer's copy of it too.
+   */
   private author(payload: ScriptEventPayload, producer: string): void {
     const at = this.now();
     this.sequence += 1;
-    this.log.add({
+    const event: ScriptEvent = {
       ...payload,
       id: `${producer === "" ? "local" : producer}:${at}:${this.sequence}`,
       at,
       producer,
-    });
+    };
+    this.log.add(event);
+    this.onEvent?.(event);
   }
 
   private apply(effect: ParsedEffect): void {
     switch (effect.tag) {
       case "npc": {
-        const { id, x, y, z, name, model, yaw } = effect.payload;
+        const { id, x, y, z, name, model, modelUri, yaw, live } =
+          effect.payload;
+        const grounded = y ?? this.heightAt(x, z);
+        const heading = yaw ?? 0;
         this.npcs.set(id, {
           id,
           name: name ?? "NPC",
           model: model ?? "",
+          modelUri: modelUri ?? "",
           x,
-          y: y ?? this.heightAt(x, z),
+          y: grounded,
           z,
-          yaw: yaw ?? 0,
+          yaw: heading,
         });
+        if (live === true) {
+          this.onEntityMove?.({ id, x, y: grounded, z, yaw: heading });
+        }
         break;
       }
       case "npc-remove":
@@ -612,6 +733,13 @@ export class ScriptHost {
         break;
       case "player-jump":
         this.onPlayerJump?.(effect.payload.player, effect.payload.multiplier);
+        break;
+      case "player-damage":
+        this.onPlayerDamage?.(
+          effect.payload.player,
+          effect.payload.amount,
+          effect.payload.source,
+        );
         break;
     }
   }

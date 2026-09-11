@@ -247,7 +247,7 @@ describe("still-cloud blocks", () => {
       },
     });
 
-  it("ignores the cloud when sampling the ground height, so spawn and monsters stay on terrain", () => {
+  it("ignores the cloud when sampling the ground height, so spawn and NPCs stay on terrain", () => {
     // the dirt top (voxel 20) is the ground; the cloud above it must not win
     expect(getWorldHeight(blocksQuery([cloudBlock()]), 0, 0)).toBe(
       (20 + 1 - 32) * 2,

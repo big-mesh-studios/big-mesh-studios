@@ -10,7 +10,8 @@ import { spriteIconStyle } from "./item-icon";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 
 export const EditHud: Component = () => {
-  const { inventory, editStatus, target, icons, scriptItem } = useVoxelscape();
+  const { inventory, editStatus, target, icons, scriptItem, npcAim } =
+    useVoxelscape();
   const coarsePointer = createMediaQuery("(any-pointer: coarse)");
   const [items, setItems] = createSignal(inventory.items());
   const [selected, setSelected] = createSignal(inventory.selectedId);
@@ -26,12 +27,17 @@ export const EditHud: Component = () => {
     }
   });
 
+  // Red reads as "the primary tap does something to what you're looking
+  // at" — a strike, or any entity you're about to use.
   const aim = (): string | undefined => {
+    if (npcAim()?.action === "use") {
+      return styles.strikeable;
+    }
     const over = target();
     if (over === null) {
       return undefined;
     }
-    return over.kind === "monster" ? styles.monster : styles.voxel;
+    return over.kind === "actor" ? styles.strikeable : styles.voxel;
   };
 
   return (
@@ -71,7 +77,7 @@ export const EditHud: Component = () => {
                   coarsePointer() ? "tap" : "press E"
                 } to use`
               : coarsePointer()
-                ? "hold world to dig  •  tap a monster to strike"
+                ? "hold world to dig  •  tap to strike"
                 : "click to strike  •  right-click to use")}
         </div>
       </div>

@@ -2,16 +2,16 @@
 // the frame loop drives whatever is held without asking which item it is: it
 // picks, hands the pick to whichever button fired, and advances the tool.
 import type { Vector3D } from "@big-mesh-studios/maths";
-import type { MonsterSnapshot } from "../../monsters/monster";
+import type { AimTarget } from "../../places/figure-pick";
 import type { WorldVoxel } from "../../world/edit-layer";
 import type { Dim3 } from "../../world/level-data";
 import type { InputSnapshot } from "../create-input";
 import type { EditingController } from "../editing-controller";
 import type { SwingPose } from "../swing";
 
-/** What the crosshair is over: a monster's body, or a voxel's near face. */
+/** What the crosshair is over: a strikeable body, or a voxel's near face. */
 export type Target =
-  | { kind: "monster"; id: string; distance: number }
+  | { kind: "actor"; id: string; distance: number }
   | { kind: "voxel"; voxel: WorldVoxel; distance: number };
 
 /** Both of a frame's targets, one per button. */
@@ -28,21 +28,26 @@ export interface ToolContext {
   editing: EditingController;
   /** The camera's world position and unit look direction. */
   look: () => { origin: Dim3; direction: Dim3 };
-  /** The player's world position, which a swing knocks a monster away from. */
+  /** The player's world position, which a swing knocks a struck body away from. */
   position: () => Vector3D;
-  /** Every monster the local simulation currently holds. */
-  monsters: () => Iterable<MonsterSnapshot>;
-  /** Deals damage to a monster this client owns; false when another owns it. */
-  damageMonster: (id: string, amount: number) => boolean;
-  /** Flashes a monster the attacker hit, whatever its owner does with the hit. */
-  flashMonster: (id: string) => void;
-  /** Sends a hit to the owner of a monster this client does not own. */
-  broadcastMonsterDamage: (damage: {
-    id: string;
-    amount: number;
-    attackerX: number;
-    attackerZ: number;
-  }) => void;
+  /**
+   * Every body in the world a swing may land on instead of a voxel — whatever
+   * a place's own script has put there. A tool never asks what one is; only
+   * where it stands and how big it is.
+   */
+  strikeables: () => Iterable<AimTarget>;
+  /**
+   * Tells the world that a weapon struck the body `id` for `amount` hit
+   * points, from an attacker standing at (`attackerX`, `attackerZ`). What
+   * that means — whether it is hurt at all, by how much, what happens at
+   * zero — is entirely the place's own rules to decide.
+   */
+  strike: (
+    id: string,
+    amount: number,
+    attackerX: number,
+    attackerZ: number,
+  ) => void;
   /** Raises or lowers the player's guard. */
   setGuarding: (raised: boolean) => void;
 }

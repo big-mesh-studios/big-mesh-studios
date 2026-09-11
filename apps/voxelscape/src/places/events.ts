@@ -49,6 +49,16 @@ export type ScriptEventPayload =
       item: string;
     }
   | {
+      kind: "entity-hit";
+      /** The id of the NPC a weapon struck. */
+      entityId: string;
+      /** Hit points the strike carried. */
+      amount: number;
+      /** Where the attacker stood when the strike landed, in world units. */
+      attackerX: number;
+      attackerZ: number;
+    }
+  | {
       kind: "item-used";
       /** The id of the item the player used on its own. */
       item: string;
@@ -108,6 +118,10 @@ export const MAX_EVENT_ITEM = 64;
 export const MAX_EVENT_PLAYER = 256;
 /** The highest option index an `npc-choose` may carry. */
 export const MAX_NPC_CHOICE = 32;
+/** The most hit points one `entity-hit` may carry. */
+export const MAX_ENTITY_HIT_AMOUNT = 1_000;
+/** The furthest an `entity-hit`'s attacker position may read, in world units. */
+export const MAX_ENTITY_HIT_COORD = 1_000_000;
 
 const isVoxel = (v: unknown): v is [number, number, number] => {
   if (!Array.isArray(v) || v.length !== 3) {
@@ -123,6 +137,11 @@ const isVoxel = (v: unknown): v is [number, number, number] => {
 
 const isShortString = (v: unknown, max: number): boolean =>
   typeof v === "string" && v.length >= 1 && v.length <= max;
+
+const isEntityCoord = (v: unknown): boolean =>
+  typeof v === "number" &&
+  Number.isFinite(v) &&
+  Math.abs(v) <= MAX_ENTITY_HIT_COORD;
 
 const isPlayer = (v: unknown): boolean => isShortString(v, MAX_EVENT_PLAYER);
 
@@ -166,6 +185,17 @@ export const isScriptEvent = (v: unknown): v is ScriptEvent => {
     return (
       isShortString(r.entityId, MAX_EVENT_ID) &&
       (r.item === "" || isShortString(r.item, MAX_EVENT_ITEM))
+    );
+  }
+  if (r.kind === "entity-hit") {
+    return (
+      isShortString(r.entityId, MAX_EVENT_ID) &&
+      typeof r.amount === "number" &&
+      Number.isFinite(r.amount) &&
+      r.amount > 0 &&
+      r.amount <= MAX_ENTITY_HIT_AMOUNT &&
+      isEntityCoord(r.attackerX) &&
+      isEntityCoord(r.attackerZ)
     );
   }
   if (r.kind === "item-used") {

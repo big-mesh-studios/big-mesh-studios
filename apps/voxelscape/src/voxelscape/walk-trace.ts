@@ -48,6 +48,34 @@ export interface WalkTraceMark {
   picture?: string;
 }
 
+/**
+ * One moment the world itself noticed, logged without anybody having to see
+ * it happen or say so — a mark nobody had to think to make. A death is worth
+ * a picture; the damage on the way to it is not, since a hazard the player
+ * stands in reports one every half second and a trace does not want a
+ * picture that often.
+ */
+export interface WalkTraceEvent {
+  /** Seconds since the trace started. */
+  at: number;
+  kind: "damage" | "death" | "respawn";
+  /** What dealt it — "lava", "script", "remote-script", and so on. */
+  cause?: string;
+  /** Hit points actually taken, after any guard lessened it. */
+  amount?: number;
+  /** Hit points left afterward. */
+  hp?: number;
+  /**
+   * Where the entity that dealt it was standing at that moment, when a
+   * script named which one — the thing a trace otherwise cannot say at all:
+   * not just that a hit landed, but whether whatever dealt it was actually
+   * anywhere near what the pose below was looking at.
+   */
+  attacker?: { id: string; position: [number, number, number] };
+  pose: WalkTracePose;
+  picture?: string;
+}
+
 /** What a trace reads from the world it is recording. */
 export interface WalkTraceSource {
   /**
@@ -73,6 +101,8 @@ export interface WalkTraceFile {
   startPicture?: string;
   endPicture?: string;
   marks: WalkTraceMark[];
+  /** Every moment the world itself logged, oldest first — see `WalkTraceEvent`. */
+  events: WalkTraceEvent[];
   /** Every frame the probe timed, oldest first; see `PerfDrain`. */
   frames: PerfDrain;
 }
@@ -87,6 +117,7 @@ export class WalkTraceRecorder {
   private startedOn = "";
   private name = "";
   private marks: WalkTraceMark[] = [];
+  private events: WalkTraceEvent[] = [];
   private startPicture: string | undefined;
   private setup: Record<string, unknown> = {};
   /**
@@ -128,6 +159,7 @@ export class WalkTraceRecorder {
     this.startedAt = performance.now();
     this.startedOn = new Date().toISOString();
     this.marks = [];
+    this.events = [];
     this.setup = jsonSafe(this.source.setup()) as Record<string, unknown>;
     this.probe.arm(TRACE_FRAMES);
     this.startPicture = undefined;
@@ -158,6 +190,38 @@ export class WalkTraceRecorder {
     void this.wantPicture().then((picture) => {
       mark.picture = picture;
     });
+  }
+
+  /**
+   * Logs one moment the world noticed on its own — a hit landing, a death, a
+   * respawn — so a trace explains a death even when nobody thought to mark
+   * it. Only `kind: "death"` waits on a picture; the rest happen too often to
+   * ask a drawing of every one.
+   */
+  event(
+    kind: WalkTraceEvent["kind"],
+    detail: {
+      cause?: string;
+      amount?: number;
+      hp?: number;
+      attacker?: { id: string; position: [number, number, number] };
+    } = {},
+  ): void {
+    if (this.startedAt === undefined) {
+      return;
+    }
+    const entry: WalkTraceEvent = {
+      at: (performance.now() - this.startedAt) / 1000,
+      kind,
+      ...detail,
+      pose: this.source.pose(),
+    };
+    this.events.push(entry);
+    if (kind === "death") {
+      void this.wantPicture().then((picture) => {
+        entry.picture = picture;
+      });
+    }
   }
 
   /**
@@ -227,6 +291,7 @@ export class WalkTraceRecorder {
       setup,
       startPicture: picture,
       marks: [{ at: 0, note, pose, picture }],
+      events: [],
       frames: this.probe.drain(),
     };
   }
@@ -253,6 +318,7 @@ export class WalkTraceRecorder {
       startPicture: this.startPicture,
       endPicture,
       marks: this.marks,
+      events: this.events,
       frames,
     };
   }

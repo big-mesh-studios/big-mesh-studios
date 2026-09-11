@@ -3,14 +3,9 @@ import type { WorldWorkerPool } from "./world/worker-pool";
 import type { VoxelWorld } from "./world/create-voxel-world";
 import { DEFAULT_LOD_BANDS, lodIsOff, LOD_OFF } from "./world/chunk-sphere";
 import type { AtprotoController } from "./atproto/atproto-controller";
-import type { ModelLibrary } from "./atproto/models";
-import { MONSTER_MODEL_NAME } from "./atproto/models";
-import type { MonsterSync } from "./atproto/monster-sync";
 import type { DayNightController } from "./environment/day-night-controller";
 import type { SoundController } from "./environment/sound-controller";
 import type { WeatherController } from "./environment/weather-controller";
-import type { MonsterController } from "./monsters/monster-controller";
-import type { RemoteMonsters } from "./monsters/remote-monsters";
 import type { MultiplayerController } from "./multiplayer/multiplayer-controller";
 import type { PlayerHealth } from "./player/health";
 import type { AdaptiveResolution } from "./render/adaptive";
@@ -154,15 +149,8 @@ export interface CommandsParams {
   sound: SoundController;
   atproto: AtprotoController;
   multiplayer: MultiplayerController;
-  monsters: MonsterController;
-  monsterSync: MonsterSync;
-  monsterRender: RemoteMonsters;
   /** The player's hearts, for a command to restore them. */
   health: PlayerHealth;
-  /** The published drawings the monsters can be dressed in. */
-  models: ModelLibrary;
-  /** The account those drawings are read from when a command names none. */
-  modelAccount: string | null;
   /** The published places others have made, read without a session. */
   places: PlaceLibrary;
   /** Publishing a place of your own, to the signed-in account. */
@@ -228,26 +216,6 @@ export interface CommandsParams {
   setMultisampling: (on?: boolean) => string;
 }
 
-/**
- * Which account a model command was aimed at and which model of theirs it
- * asked for. A handle is a domain name and an account id begins with `did:`,
- * so a first word that is neither names the model instead and the account
- * stays whichever one the world reads its own drawings from.
- */
-const readModelRequest = (
-  rest: string[],
-  fallbackAccount: string | null,
-): { account: string | null; name: string } => {
-  const first = rest[0];
-  const namesAccount =
-    first !== undefined && (first.includes(".") || first.startsWith("did:"));
-  const words = namesAccount ? rest.slice(1) : rest;
-  return {
-    account: namesAccount ? first : fallbackAccount,
-    name: words.length === 0 ? MONSTER_MODEL_NAME : words.join(" "),
-  };
-};
-
 /** What went wrong, in the words a player reading the console can act on. */
 const describeError = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
@@ -282,12 +250,7 @@ export const createCommands = ({
   sound,
   atproto,
   multiplayer,
-  monsters,
-  monsterSync,
-  monsterRender,
   health,
-  models,
-  modelAccount,
   places,
   placePublisher,
   defaultSeed,
@@ -730,95 +693,6 @@ export const createCommands = ({
     "/multiplayer:debug": {
       description: "show what every peer connection is doing",
       run: () => multiplayer.describeDebug(),
-    },
-    "/monsters:state": {
-      description: "show what the monsters are doing and what has been saved",
-      run: () =>
-        `${monsters.describe()}\n${monsterSync.describe()}\n${monsterRender.describe()}`,
-    },
-    "/monsters:spawning": {
-      description:
-        "let the world grow monsters of its own, or empty it and stop",
-      args: "[on|off]",
-      run: (rest) => {
-        const argument = rest[0];
-        if (argument === "off") {
-          monsters.spawning = false;
-          monsters.forgetAll();
-          return "monsters: spawning off, and the world emptied of them";
-        }
-        if (argument === "on") {
-          monsters.spawning = true;
-          return "monsters: spawning on";
-        }
-        if (argument !== undefined) {
-          return "usage: /monsters:spawning [on|off]";
-        }
-        return `monsters: spawning ${monsters.spawning ? "on" : "off"} — ${monsters.describe()}`;
-      },
-    },
-    "/monsters:model": {
-      description: "dress the monsters in a model an account published",
-      args: "[handle] [name]",
-      run: async (rest) => {
-        const { account, name } = readModelRequest(rest, modelAccount);
-        if (account === null) {
-          return "name the account the model was published by";
-        }
-        try {
-          const model = await models.find(account, name);
-          const line = await monsterRender.loadModelFromBlob(
-            await models.file(model),
-          );
-          return `${line} — "${model.record.name}", published by ${account}`;
-        } catch (err) {
-          return `no "${name}" from ${account} — ${describeError(err)}`;
-        }
-      },
-    },
-    "/monsters:published": {
-      description: "list the models an account has published",
-      args: "[handle]",
-      run: async (rest) => {
-        const account = rest[0] ?? modelAccount;
-        if (account === undefined || account === null) {
-          return "name the account whose models to list";
-        }
-        try {
-          const published = await models.list(account);
-          if (published.length === 0) {
-            return `${account} has published no models`;
-          }
-          return published
-            .map(({ rkey, record }) => {
-              const { width, height, depth } = record.dimensions;
-              return `${rkey} — "${record.name}", ${width}×${height}×${depth}`;
-            })
-            .join("\n");
-        } catch (err) {
-          return `nothing to list from ${account} — ${describeError(err)}`;
-        }
-      },
-    },
-    "/monsters:file": {
-      description: "take the monsters' look from a model saved on this device",
-      run: () => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".zip,application/zip";
-        input.style.display = "none";
-        input.onchange = () => {
-          const file = input.files?.[0];
-          if (file === undefined) {
-            return;
-          }
-          void monsterRender.loadModelFromBlob(file);
-          input.remove();
-        };
-        document.body.appendChild(input);
-        input.click();
-        return "pick a model zip — the monsters keep their look until one loads";
-      },
     },
     "/place:editor": {
       description: "open (or close) the place script editor",

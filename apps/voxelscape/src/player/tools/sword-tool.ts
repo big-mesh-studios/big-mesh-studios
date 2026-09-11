@@ -1,14 +1,23 @@
-// The bronze sword. Its primary strikes the nearer of a monster within swing
-// reach and a voxel within block reach, so it damages what is close and digs
-// what is not; because block reach is the longer of the two, a wall standing
-// between the player and a monster is always the nearer pick, and a swing
-// cannot land through terrain. Holding the secondary raises the sword to
-// guard, which halves what the player takes while it is up.
-import { pickMonster, SWORD_DAMAGE } from "../../monsters/hit";
+// The bronze sword. Its primary strikes the nearer of a strikeable body
+// within swing reach and a voxel within block reach, so it damages what is
+// close and digs what is not; because block reach is the longer of the two,
+// a wall standing between the player and a target is always the nearer pick,
+// and a swing cannot land through terrain. Holding the secondary raises the
+// sword to guard, which halves what the player takes while it is up. The
+// sword knows nothing about what it can strike or what a strike does to it —
+// that is the world's business, not the weapon's.
+import { pickFigure } from "../../places/figure-pick";
+import { DEFAULT_REACH } from "../../world/picker";
 import { clamp } from "../../utils";
 import type { InputSnapshot } from "../create-input";
 import { easeInOut, easeOut, lerpPose, type SwingPose } from "../swing";
 import type { Target, Tool, ToolContext, ToolPick } from "./tool";
+
+/** The sword's reach, 60% of the block placement reach. */
+export const SWORD_REACH = DEFAULT_REACH * 0.6;
+
+/** Damage one sword swing deals. */
+export const SWORD_DAMAGE = 8;
 
 /** The sword at ease, the lower right of the first-person view. */
 export const REST_POSE: SwingPose = {
@@ -94,12 +103,17 @@ export class SwordTool implements Tool {
   pick(): ToolPick {
     const { origin, direction } = this.ctx.look();
     const voxel = this.ctx.editing.pick();
-    const hit = pickMonster(origin, direction, this.ctx.monsters());
+    const actor = pickFigure(
+      origin,
+      direction,
+      this.ctx.strikeables(),
+      SWORD_REACH,
+    );
     return {
       primary: nearer(
-        hit === null
+        actor === null
           ? null
-          : { kind: "monster", id: hit.id, distance: hit.distance },
+          : { kind: "actor", id: actor.id, distance: actor.distance },
         voxel.target === null
           ? null
           : { kind: "voxel", voxel: voxel.target, distance: voxel.distance },
@@ -118,20 +132,8 @@ export class SwordTool implements Tool {
     if (target.kind === "voxel") {
       return this.ctx.editing.breakBlock(target.voxel);
     }
-    // The attacker sees the hit flash on their own client, whatever the
-    // monster's owner does with it.
-    this.ctx.flashMonster(target.id);
-    // A monster the swing landed on but this client does not own is the
-    // owner's to damage: broadcast the hit and let them apply it.
-    if (!this.ctx.damageMonster(target.id, SWORD_DAMAGE)) {
-      const position = this.ctx.position();
-      this.ctx.broadcastMonsterDamage({
-        id: target.id,
-        amount: SWORD_DAMAGE,
-        attackerX: position.x,
-        attackerZ: position.z,
-      });
-    }
+    const position = this.ctx.position();
+    this.ctx.strike(target.id, SWORD_DAMAGE, position.x, position.z);
     return null;
   }
 

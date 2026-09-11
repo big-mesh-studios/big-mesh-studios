@@ -22,7 +22,7 @@
     --color: white;
   }
 
-  &.monster {
+  &.strikeable {
     --color: #d22f35;
   }
 

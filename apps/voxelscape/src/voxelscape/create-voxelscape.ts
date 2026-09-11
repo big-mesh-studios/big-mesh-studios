@@ -12,11 +12,7 @@ import {
 } from "./walk-trace";
 import { isEditableTarget } from "../utils";
 import { AtprotoController } from "../atproto/atproto-controller";
-import {
-  createModelLibrary,
-  MONSTER_MODEL_NAME,
-  WORLD_MODEL_ACCOUNT,
-} from "../atproto/models";
+import { createModelLibrary, type ModelLibrary } from "../atproto/models";
 import { createPlaceLibrary, createPlacePublisher } from "../atproto/places";
 import type { PlaceLibrary, PlacePublisher } from "../atproto/places";
 import {
@@ -36,9 +32,6 @@ import type { ScriptItemDefinition } from "../places/effects";
 import type { Commander } from "../commands";
 import { createCommands } from "../commands";
 import { createEnvironment } from "../environment/create-environment";
-import { MonsterSync } from "../atproto/monster-sync";
-import { MonsterController } from "../monsters/monster-controller";
-import { RemoteMonsters } from "../monsters/remote-monsters";
 import { MultiplayerController } from "../multiplayer/multiplayer-controller";
 import { createPeerJSSignaling } from "../multiplayer/peerjs-transport";
 import { createInput, type InputController } from "../player/create-input";
@@ -176,12 +169,6 @@ export interface VoxelscapeConfig {
    */
   debugPerf?: boolean;
   /**
-   * The account whose published models the monsters are drawn as, named by
-   * handle or by account id. Defaults to the account this world publishes its
-   * own drawings to; `null` keeps to the model file the site serves.
-   */
-  modelAccount?: string | null;
-  /**
    * Moves the address bar to a different place or demo, for `/place:join`
    * and `/place:demo` — what that means to the browser (a real path, a hash,
    * something else) is not this module's business, nor is what happens once
@@ -245,10 +232,20 @@ export interface Voxelscape {
     setOpen(open: boolean): void;
     /** The signed-in account the editor publishes from, or null while signed out. */
     accountDid: string | null;
+    /** The handle to show for `did`, or the did itself when it has none. */
+    resolveHandle(did: string): Promise<string | null>;
+    /**
+     * Whether the place currently loaded is safe to open the panel on — see
+     * `create-voxelscape.ts`'s own `placeEditor.canEdit` for the reasoning.
+     */
+    canEdit: boolean;
     /** The seed a freshly created place starts from: the world being played. */
     defaultSeed: number;
     places: PlaceLibrary;
     publisher: PlacePublisher;
+    /** Reads any account's published rm-stacker models, for attaching one to
+     * the draft by handle instead of only by uploading its zip file. */
+    models: ModelLibrary;
     /**
      * Loads the draft's scripts into the running place host, seeded from the
      * draft, and dresses any props they place with the draft's model files.
@@ -332,7 +329,6 @@ export const createVoxelscape = ({
   mode,
   placeUri = DEFAULT_WORLD_URL,
   spawn = [0, 0, 0],
-  modelAccount = WORLD_MODEL_ACCOUNT,
   debugPerf: initialDebugPerf = __PERF__ &&
     typeof window !== "undefined" &&
     window.location.hash.includes("perf"),
@@ -415,7 +411,10 @@ export const createVoxelscape = ({
   const [multisampling, setMultisamplingSignal] = createSignal(antialias);
   /** Whether the `/place:editor` panel is showing. */
   const [placeEditorOpen, setPlaceEditorOpen] = createSignal(false);
-  /** The id of the NPC last aimed at, so the aim signal only moves when it does. */
+  /**
+   * What was last aimed at and whether a hand held anything, so the aim
+   * signal only moves when either changes.
+   */
   let lastAimId: string | null = null;
 
   const input = createInput();
@@ -493,43 +492,8 @@ export const createVoxelscape = ({
       avatar.player.onGround = false;
       avatar.player.flying = false;
       health.respawn();
+      walkTrace.event("respawn");
     },
-  });
-
-  const monsters = new MonsterController({
-    seed: terrain.seed,
-    heightAt: (x, z) => world.heightAt(x, z),
-    solidAt: (x, y, z) => world.solidAt(x, y, z),
-    waterAt: (x, y, z) => world.inWaterAt(x, y, z),
-    getDid: () => atproto.did,
-    // Monsters chase and are owned by the nearest player: the local avatar
-    // plus whoever the mesh has a live link to.
-    getPlayers: () => [
-      {
-        did: atproto.did ?? "",
-        x: avatar.player.position.x,
-        y: avatar.player.position.y,
-        z: avatar.player.position.z,
-      },
-      ...multiplayer.peerPositions(),
-    ],
-    // The optimistic path: owned monsters' state fans out over the mesh, and
-    // peers render it without waiting for atproto.
-    onBroadcast: (updates) => multiplayer.broadcastMonsters(updates),
-    // A monster this client hurt flashes red, so the hit reads on the model.
-    onHit: (id) => monsterRender.flashHit(id),
-    // A zombie's swing lands on a player: the local player takes it on their
-    // own health, a peer is told over the mesh so their client applies it.
-    onHitPlayer: (did, amount) => {
-      if (did === (atproto.did ?? "")) {
-        health.takeDamage(amount);
-      } else {
-        multiplayer.broadcastPlayerDamage({ target: did, amount });
-      }
-    },
-  });
-  const monsterRender = new RemoteMonsters({
-    getMonsters: () => monsters.monsters.values(),
   });
 
   // The world's scripted NPCs, drawn from whatever the console's script host
@@ -546,9 +510,12 @@ export const createVoxelscape = ({
   const npcFigures = new VoxelFigures({
     getFigures: () => scriptConsole?.npcs() ?? [],
     modelFor: (id) => {
-      const named = scriptConsole?.npc(id)?.model;
-      if (named !== undefined && named !== "") {
-        return named;
+      const npc = scriptConsole?.npc(id) ?? null;
+      if (npc !== null && npc.modelUri !== "") {
+        return npc.modelUri;
+      }
+      if (npc !== null && npc.model !== "") {
+        return npc.model;
       }
       return id === "sable"
         ? "npc-sable.zip"
@@ -597,6 +564,26 @@ export const createVoxelscape = ({
         maxZ: prop.z + box.half,
       });
     }
+  };
+
+  /**
+   * Every script NPC as a pickable body: the shape a strike aims at, and the
+   * hint's own aim, both read from the same list so they never drift apart.
+   */
+  const npcAimTargets = (): AimTarget[] => {
+    const targets: AimTarget[] = [];
+    for (const npc of scriptConsole?.npcs() ?? []) {
+      const box = npcFigures.aimBounds(npc.id);
+      targets.push({
+        id: npc.id,
+        x: npc.x,
+        y: npc.y,
+        z: npc.z,
+        half: box?.half,
+        height: box?.height,
+      });
+    }
+    return targets;
   };
 
   /**
@@ -665,10 +652,9 @@ export const createVoxelscape = ({
     editing,
     look: () => avatar.look(),
     position: () => avatar.player.position,
-    monsters: () => monsters.monsters.values(),
-    damageMonster: (id, amount) => monsters.damage(id, amount),
-    flashMonster: (id) => monsterRender.flashHit(id),
-    broadcastMonsterDamage: (damage) => multiplayer.broadcastDamage(damage),
+    strikeables: () => npcAimTargets(),
+    strike: (id, amount, attackerX, attackerZ) =>
+      void scriptConsole?.hit(id, amount, attackerX, attackerZ),
     setGuarding: (raised) => health.setGuarding(raised),
   };
   const tools = Object.fromEntries(
@@ -703,7 +689,6 @@ export const createVoxelscape = ({
       if (multiplayerAllowed) {
         void multiplayer.start();
       }
-      monsterSync.start();
       updateEditingEnabled();
       // Signing in unlocks the upload and self-scoped-read halves of a sync
       // that don't run without an account; the shared-read half already ran
@@ -723,7 +708,6 @@ export const createVoxelscape = ({
     },
     onSignedOut: () => {
       void multiplayer.stop();
-      monsterSync.stop();
       updateEditingEnabled();
     },
   });
@@ -757,34 +741,72 @@ export const createVoxelscape = ({
         })),
       );
     },
-    // A peer's monsters are theirs to simulate; we just display what they sent.
-    onRemoteMonsters: (_did, updates) => {
-      monsters.applyMonsterUpdates(updates);
+    // A peer's live-tracked NPC is theirs to chase with; we just display
+    // wherever they say it stands.
+    onRemoteScriptEntities: (_did, updates) => {
+      for (const update of updates) {
+        scriptConsole?.applyRemoteNpc(
+          update.id,
+          update.x,
+          update.y,
+          update.z,
+          update.yaw,
+        );
+      }
     },
-    // A peer's swing damages the monsters this client owns.
-    onRemoteDamage: (_did, damage) => {
-      monsters.applyRemoteDamage(damage);
+    // A peer's own script facts, folded into this client's copy of the
+    // shared log so both scripts converge on the same NPCs and dialogs.
+    onRemoteScriptEvents: (_did, events) => {
+      void scriptConsole?.applyRemoteEvents(events);
     },
-    // A peer's zombie swung at this player: apply it to the local health.
+    // A peer's script hurt this player: apply it to the local health.
     onRemotePlayerDamage: (_did, damage) => {
       if (damage.target === (atproto.did ?? "")) {
-        health.takeDamage(damage.amount);
+        dealDamage(damage.amount, "remote-script");
       }
     },
   });
 
-  // The durable path: owned monsters are written to atproto at a throttled
-  // cadence, and every repo's records are discovered and merged back in — the
-  // source of truth behind the optimistic broadcasts.
-  const monsterSync = new MonsterSync({
-    getRepoClient: () => atproto.repoClient,
-    getDid: () => atproto.did,
-    onRecords: (records) => monsters.mergeFromAtproto(records),
-    getRecordsToWrite: (now) => monsters.recordsForPersistence(now),
-    onPersisted: (ids) => monsters.markPersisted(ids),
-  });
-
   const modelLibrary = createModelLibrary();
+
+  // Live model addresses a script's NPCs have named, fetched once each and
+  // baked under their own `at://` address — `VoxelFigures.loadModel` bakes a
+  // figure under any string key, not only a place's own bundled files. A
+  // fetch that fails (the account's server hiccupping, say) is retried
+  // after a cooldown rather than given up on for the rest of the session —
+  // an entity a script keeps alive stays worth trying to draw.
+  const NPC_MODEL_RETRY_MS = 4_000;
+  const resolvedNpcModels = new Set<string>();
+  const pendingNpcModels = new Set<string>();
+  const failedNpcModelAt = new Map<string, number>();
+  const resolveNpcModel = (uri: string): void => {
+    if (uri === "" || resolvedNpcModels.has(uri) || pendingNpcModels.has(uri)) {
+      return;
+    }
+    const failedAt = failedNpcModelAt.get(uri);
+    if (failedAt !== undefined && Date.now() - failedAt < NPC_MODEL_RETRY_MS) {
+      return;
+    }
+    pendingNpcModels.add(uri);
+    void (async () => {
+      try {
+        const model = await modelLibrary.byUri(uri);
+        await npcFigures.loadModel(uri, await modelLibrary.file(model));
+        resolvedNpcModels.add(uri);
+        failedNpcModelAt.delete(uri);
+      } catch (err) {
+        failedNpcModelAt.set(uri, Date.now());
+        onNotice?.(
+          `model "${uri}" did not load — ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      } finally {
+        pendingNpcModels.delete(uri);
+      }
+    })();
+  };
+
   const placeLibrary = createPlaceLibrary();
   const placePublisher = createPlacePublisher({
     getClient: () => atproto.repoClient,
@@ -818,6 +840,18 @@ export const createVoxelscape = ({
         await import("../places/script-console");
       scriptConsole = new ScriptConsoleClass({
         heightAt: (x, z) => world.heightAt(x, z),
+        solidAt: (x, y, z) => world.solidAt(x, y, z),
+        waterAt: (x, y, z) => world.inWaterAt(x, y, z),
+        // The local avatar plus whoever the mesh has a live link to.
+        getPlayers: () => [
+          {
+            did: atproto.did ?? "",
+            x: avatar.player.position.x,
+            y: avatar.player.position.y,
+            z: avatar.player.position.z,
+          },
+          ...multiplayer.peerPositions(),
+        ],
         report: (line) => onNotice?.(line),
         onDialog: (player, state) => {
           if (player === "") {
@@ -846,7 +880,7 @@ export const createVoxelscape = ({
         },
         onNarrate: (_player, line) => setNarration(line),
         onPlayerPlace: (player, at) => {
-          if (player !== "") {
+          if (player !== "" && player !== (atproto.did ?? "")) {
             return;
           }
           // The script gives the player's feet; the avatar's position is the
@@ -868,7 +902,7 @@ export const createVoxelscape = ({
           avatar.place();
         },
         onPlayerFace: (player, at) => {
-          if (player !== "") {
+          if (player !== "" && player !== (atproto.did ?? "")) {
             return;
           }
           avatar.player.yaw = Math.atan2(
@@ -878,17 +912,30 @@ export const createVoxelscape = ({
           avatar.place();
         },
         onPlayerSpeed: (player, multiplier) => {
-          if (player !== "") {
+          if (player !== "" && player !== (atproto.did ?? "")) {
             return;
           }
           avatar.player.config.speed = DEFAULT_PLAYER_CONFIG.speed * multiplier;
         },
         onPlayerJump: (player, multiplier) => {
-          if (player !== "") {
+          if (player !== "" && player !== (atproto.did ?? "")) {
             return;
           }
           avatar.player.config.jumpSpeed =
             DEFAULT_PLAYER_CONFIG.jumpSpeed * multiplier;
+        },
+        onPlayerDamage: (player, amount, source) => {
+          if (player === "" || player === (atproto.did ?? "")) {
+            dealDamage(amount, "script", source);
+          } else {
+            multiplayer.broadcastPlayerDamage({ target: player, amount });
+          }
+        },
+        onEntityMove: (state) => {
+          multiplayer.broadcastScriptEntities([state]);
+        },
+        onEvent: (event) => {
+          multiplayer.broadcastScriptEvents([event]);
         },
         onFire: (fire) => {
           fireEmbers.seed(fire);
@@ -925,7 +972,7 @@ export const createVoxelscape = ({
       .then((console) => console.talkTo(id))
       .catch(() => {});
   };
-  /** The player uses the prop `id` names, over the script host. */
+  /** The player uses the entity `id` names, whatever they are holding, over the script host. */
   const npcUse = (id: string): void => {
     const held = scriptConsole?.heldItem()?.id ?? "";
     void scriptConsoleFor()
@@ -966,46 +1013,6 @@ export const createVoxelscape = ({
       scriptConsoleFor().then((console) => console.choose(option)),
     leave: () => scriptConsoleFor().then((console) => console.leave()),
   };
-
-  /**
-   * Puts the monsters in the best drawing this world can reach, nearest first:
-   * the model file this site serves, then the one the model account published
-   * under `MONSTER_MODEL_NAME` if it has one. The site's file is a small
-   * same-origin fetch and the account is a walk across the network, so taking
-   * them in that order is what gets the monsters dressed at all quickly;
-   * whatever the account publishes then replaces it. Redrawing a monster is
-   * therefore republishing it — nobody has to touch this code, this site, or
-   * wait for either to deploy.
-   */
-  const dressMonsters = async (): Promise<string> => {
-    // Served from the site's own root, the same folder every other address
-    // in this application is built from (see `vite.config.ts`'s `base`).
-    const response = await fetch(
-      `${import.meta.env.BASE_URL}models/zombie.zip`,
-    ).catch(() => null);
-    if (response !== null && response.ok) {
-      const line = await monsterRender.loadModelFromBlob(await response.blob());
-      onNotice?.(`${line} — served by this site`);
-    }
-
-    if (modelAccount === null) {
-      return "monsters wear the model this site serves";
-    }
-
-    try {
-      const model = await modelLibrary.find(modelAccount, MONSTER_MODEL_NAME);
-      const line = await monsterRender.loadModelFromBlob(
-        await modelLibrary.file(model),
-      );
-      return `${line} — published by ${modelAccount}`;
-    } catch {
-      // An account that has published nothing under that name is not a broken
-      // world: the file this site serves is already being worn.
-      return "monsters wear the model this site serves";
-    }
-  };
-
-  void dressMonsters().then((line) => onNotice?.(line));
 
   /** Dresses the NPC figures in the models this site bundles, best effort. */
   const dressNpcs = async (): Promise<void> => {
@@ -1084,7 +1091,6 @@ export const createVoxelscape = ({
     world.terrain,
     avatar.body,
     multiplayer.avatars,
-    monsterRender.group,
     npcFigures.group,
     propFigures.group,
     fireFigures.group,
@@ -1151,6 +1157,36 @@ export const createVoxelscape = ({
     },
   });
 
+  /**
+   * Takes damage on the local player and, while a walk is being recorded,
+   * logs why — a walk trace otherwise has no way to say what killed anybody,
+   * only where they were standing when it happened.
+   */
+  const dealDamage = (amount: number, cause: string, source?: string): void => {
+    const taken = health.takeDamage(amount);
+    if (taken === 0) {
+      return;
+    }
+    // The entity's own current position, read fresh rather than trusted
+    // from whatever the effect happened to carry — this is what actually
+    // answers "was the thing that hit me anywhere near what I was looking
+    // at", not just that a hit landed.
+    const attackerNpc =
+      source === undefined ? null : (scriptConsole?.npc(source) ?? null);
+    walkTrace.event(health.dead ? "death" : "damage", {
+      cause,
+      amount: taken,
+      hp: health.hp,
+      attacker:
+        attackerNpc === null
+          ? undefined
+          : {
+              id: source!,
+              position: [attackerNpc.x, attackerNpc.y, attackerNpc.z],
+            },
+    });
+  };
+
   /** The place script editor's door into the world: opening it, running the
    * draft's script, and reading and publishing places. */
   const placeEditor = {
@@ -1160,6 +1196,9 @@ export const createVoxelscape = ({
     get accountDid(): string | null {
       return atproto.did;
     },
+    /** The handle to show for `did`, or the did itself when it has none. */
+    resolveHandle: (did: string): Promise<string | null> =>
+      atproto.resolveHandle(did),
     /**
      * Whether the place currently loaded is safe to open the panel on:
      * either it isn't a real published place at all (the site's own
@@ -1178,6 +1217,9 @@ export const createVoxelscape = ({
     defaultSeed: terrain.seed,
     places: placeLibrary,
     publisher: placePublisher,
+    /** Reads any account's published rm-stacker models, for attaching one to
+     * the draft by handle instead of only by uploading its zip file. */
+    models: modelLibrary,
     runScript: (
       files: Record<string, string>,
       entry: string,
@@ -1202,12 +1244,7 @@ export const createVoxelscape = ({
     sound: environment.sound,
     atproto,
     multiplayer,
-    monsters,
-    monsterSync,
-    monsterRender,
     health,
-    models: modelLibrary,
-    modelAccount,
     places: placeLibrary,
     placePublisher,
     defaultSeed: terrain.seed,
@@ -1304,7 +1341,8 @@ export const createVoxelscape = ({
       }
       const said =
         `traced ${trace.seconds.toFixed(0)}s, ${trace.marks.length} ` +
-        `mark${trace.marks.length === 1 ? "" : "s"}`;
+        `mark${trace.marks.length === 1 ? "" : "s"}, ${trace.events.length} ` +
+        `logged event${trace.events.length === 1 ? "" : "s"}`;
       return writeTrace(trace, said);
     },
     setShowStats: (on) => {
@@ -1464,8 +1502,11 @@ export const createVoxelscape = ({
     // it is what builds the geometry this is waiting for. The world-ready
     // half holds them still while a scroll's player cell has been asked for
     // but has not landed, so physics never reads a cell that holds nothing.
+    // The place editor being open holds them still too — writing a script
+    // is not something the world it describes should be able to interrupt.
     if (
       progress.spawnDrawn &&
+      !placeEditorOpen() &&
       world.cellReady(
         avatar.player.position.x,
         avatar.player.position.y,
@@ -1513,18 +1554,7 @@ export const createVoxelscape = ({
           look.direction[1],
           look.direction[2],
         ] as [number, number, number];
-        const aimTargets: AimTarget[] = [];
-        for (const npc of scriptConsole?.npcs() ?? []) {
-          const box = npcFigures.aimBounds(npc.id);
-          aimTargets.push({
-            id: npc.id,
-            x: npc.x,
-            y: npc.y,
-            z: npc.z,
-            half: box?.half,
-            height: box?.height,
-          });
-        }
+        const aimTargets: AimTarget[] = npcAimTargets();
         for (const prop of scriptConsole?.props() ?? []) {
           const box = propFigures.aimBounds(prop.id);
           aimTargets.push({
@@ -1541,16 +1571,21 @@ export const createVoxelscape = ({
           aimed === null ? null : (scriptConsole?.npc(aimed.id) ?? null);
         const aimedProp =
           aimed === null ? null : (scriptConsole?.prop(aimed.id) ?? null);
-        if (aimed?.id !== lastAimId) {
-          lastAimId = aimed?.id ?? null;
+        // An NPC talks bare-handed and is used otherwise, the same as a prop
+        // always is — so the hint has to track the held item too, not just
+        // which figure the crosshair is over.
+        const holding = scriptConsole?.heldItem() !== null;
+        const aimKey = aimed === null ? null : `${aimed.id}:${holding}`;
+        if (aimKey !== lastAimId) {
+          lastAimId = aimKey;
           setNpcAim(
             aimed === null
               ? null
-              : aimedNpc !== null
+              : aimedNpc !== null && !holding
                 ? { id: aimed.id, name: aimedNpc.name, action: "talk" }
                 : {
                     id: aimed.id,
-                    name: aimedProp?.name ?? aimed.id,
+                    name: aimedNpc?.name ?? aimedProp?.name ?? aimed.id,
                     action: "use",
                   },
           );
@@ -1560,12 +1595,22 @@ export const createVoxelscape = ({
         // the crosshair tracks what it is over.
         const pick = tool.pick();
         setTarget(pick.primary);
+        // A click or tap that the wielded tool itself resolves to a strike is
+        // left to it below, rather than treated as a talk or a use — a sword
+        // swing and a bare touch are different gestures even when they land
+        // on the same body. The E key never means a strike, whatever is
+        // wielded, so it always reaches this path.
         const interacted =
           dialog() === null &&
           aimed !== null &&
-          (snapshot.tap || snapshot.click || snapshot.use);
+          (snapshot.use ||
+            ((snapshot.tap || snapshot.click) &&
+              pick.primary?.kind !== "actor"));
         if (interacted) {
-          if (aimedNpc !== null) {
+          // An NPC talks bare-handed, the same as ever — but holding
+          // anything at all is "used with it" instead, the same fact a prop
+          // always reports. What that means is entirely up to the script.
+          if (aimedNpc !== null && !holding) {
             npcTalk(aimed.id);
           } else {
             npcUse(aimed.id);
@@ -1573,9 +1618,9 @@ export const createVoxelscape = ({
         } else if (
           // Over empty air, E uses the held item; on touch, a quick tap does
           // too, which is what the HUD's "tap to use" promises. A tap that
-          // landed on a monster is left to strike below.
+          // landed on a strikeable body is left to strike below.
           snapshot.use ||
-          (snapshot.tap && pick.primary?.kind !== "monster")
+          (snapshot.tap && pick.primary?.kind !== "actor")
         ) {
           const held = scriptConsole?.heldItem() ?? null;
           if (held !== null) {
@@ -1588,11 +1633,12 @@ export const createVoxelscape = ({
             setEditStatus(result);
           }
         }
-        // A quick tap is a strike only when it landed on a monster — a voxel
-        // needs the hold that repeats `primary`, as a touch would otherwise
-        // break whatever it started dragging from. The wielded tools never
-        // pick a monster except the sword, so this call is a sword swing.
-        if (!interacted && snapshot.tap && pick.primary?.kind === "monster") {
+        // A quick tap is a strike only when it landed on a strikeable body —
+        // a voxel needs the hold that repeats `primary`, as a touch would
+        // otherwise break whatever it started dragging from. The wielded
+        // tools never pick a body except the sword, so this call is a sword
+        // swing.
+        if (!interacted && snapshot.tap && pick.primary?.kind === "actor") {
           const result = tool.primary(pick);
           if (result !== null) {
             setEditStatus(result);
@@ -1625,7 +1671,7 @@ export const createVoxelscape = ({
           (world.lavaAt(p.x, p.y, p.z) || world.lavaAt(p.x, p.y + 1.5, p.z)) &&
           lavaBurnCooldown <= 0
         ) {
-          health.takeDamage(LAVA_BURN);
+          dealDamage(LAVA_BURN, "lava");
           lavaBurnCooldown = 0.5;
         }
       }
@@ -1635,14 +1681,15 @@ export const createVoxelscape = ({
       probe.begin(Phase.multiplayer);
       multiplayer.tick(dt);
       probe.end(Phase.multiplayer);
-      probe.begin(Phase.monsters);
-      monsters.tick(dt);
-      monsterRender.tick(dt);
+      probe.begin(Phase.figures);
+      for (const npc of scriptConsole?.npcs() ?? []) {
+        resolveNpcModel(npc.modelUri);
+      }
       npcFigures.tick(dt);
       propFigures.tick(dt);
       fireFigures.tick(dt);
       explosionFigures.tick(dt);
-      probe.end(Phase.monsters);
+      probe.end(Phase.figures);
       setScriptItem(scriptConsole?.heldItem() ?? null);
       // The script's zones are checked against where the player stands, so a
       // step into a room is a fact the rules can fold over.
@@ -1663,9 +1710,8 @@ export const createVoxelscape = ({
       lighting.skyColor[2],
     );
     world.renderer.applyLighting(lighting);
-    // The voxel-model zombies are self-lit, so they take the same day-night
+    // The voxel-model figures are self-lit, so they take the same day-night
     // state the renderers apply to the terrain and the standard materials.
-    monsterRender.applyLighting(lighting);
     npcFigures.applyLighting(lighting);
     propFigures.applyLighting(lighting);
     hand.applyLighting(lighting);
@@ -1789,12 +1835,10 @@ export const createVoxelscape = ({
       multiplayer.dispose();
       atproto.dispose();
       environment.dispose();
-      monsterRender.clear();
       npcFigures.clear();
       propFigures.clear();
       fireFigures.clear();
       explosionFigures.clear();
-      monsterSync.dispose();
       hand.dispose();
       input.dispose();
     },

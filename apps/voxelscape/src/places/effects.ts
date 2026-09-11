@@ -31,6 +31,7 @@ export type EffectTag =
   | "player-face"
   | "player-speed"
   | "player-jump"
+  | "player-damage"
   | "explosion";
 
 /** The furthest an NPC or prop may stand from the origin, in world units. */
@@ -74,8 +75,12 @@ export const MAX_NARRATION = 500;
 export const MAX_TIMER_MS = 86_400_000;
 /** The largest multiplier a script may apply to a player's move speed or jump. */
 export const MAX_PLAYER_MULTIPLIER = 100;
+/** The most hit points one `player-damage` effect may take off. */
+export const MAX_PLAYER_DAMAGE = 1_000;
 /** The widest an explosion may read, in world units. */
 export const MAX_EXPLOSION_RADIUS = 64;
+/** The longest a model's `at://` address may be. */
+export const MAX_MODEL_URI = 256;
 
 export type ParsedEffect =
   | {
@@ -90,8 +95,21 @@ export type ParsedEffect =
         name?: string;
         /** The place model file the NPC wears; the world picks one when absent. */
         model?: string;
+        /**
+         * The NPC's model, read live from its own `at://` address instead of
+         * the place's bundled files — takes precedence over `model` when set.
+         */
+        modelUri?: string;
         /** Heading in radians, turning the figure to face somewhere. */
         yaw?: number;
+        /**
+         * Marks this update as the position a script has computed itself as
+         * the entity's current owner, to be broadcast to other peers rather
+         * than left for each of them to compute independently. Absent or
+         * false means the position is left to each peer's own deterministic
+         * replay, the way every other NPC already works.
+         */
+        live?: boolean;
       };
     }
   | { tag: "npc-remove"; payload: { id: string } }
@@ -232,6 +250,18 @@ export type ParsedEffect =
       };
     }
   | {
+      tag: "player-damage";
+      payload: {
+        player: string;
+        /** Hit points to take off, before the player's own guard reduces it. */
+        amount: number;
+        /** The entity dealing it, if any one entity is — a diagnostic trail
+         * back to what actually hit the player, not something a script's own
+         * behavior depends on. */
+        source?: string;
+      };
+    }
+  | {
       tag: "explosion";
       payload: {
         id: string;
@@ -272,7 +302,9 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
         (p.y === undefined || isCoord(p.y)) &&
         (p.name === undefined || isShort(p.name, MAX_NPC_NAME)) &&
         (p.model === undefined || isShort(p.model, MAX_PROP_MODEL)) &&
-        (p.yaw === undefined || isCoord(p.yaw))
+        (p.modelUri === undefined || isShort(p.modelUri, MAX_MODEL_URI)) &&
+        (p.yaw === undefined || isCoord(p.yaw)) &&
+        (p.live === undefined || typeof p.live === "boolean")
       );
     case "npc-remove":
       return isShort(p.id, 64);
@@ -418,6 +450,15 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
             Number.isFinite(p.radius) &&
             p.radius > 0 &&
             p.radius <= MAX_EXPLOSION_RADIUS))
+      );
+    case "player-damage":
+      return (
+        isPlayer(p.player) &&
+        typeof p.amount === "number" &&
+        Number.isFinite(p.amount) &&
+        p.amount > 0 &&
+        p.amount <= MAX_PLAYER_DAMAGE &&
+        (p.source === undefined || isShort(p.source, 64))
       );
   }
 };
