@@ -497,7 +497,7 @@ export class ScriptHost {
   /**
    * Compiles the project's scripts, loads the bundle into the sandbox, applies
    * anything it did while loading, and steps it once. The entry file is where
-   * execution starts; its module must export `bmsTick`.
+   * execution starts; it or a file it imports registers with `engine.onTick`.
    */
   async loadProject(
     files: Record<string, string>,

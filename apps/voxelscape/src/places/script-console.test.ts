@@ -108,9 +108,10 @@ describe("a script console", () => {
     expect(script.npcs()).toHaveLength(2);
     await loadProject(
       script,
-      `export function bmsTick() {
+      `import * as engine from "engine";
+      engine.onTick(function () {
         engine.dispatch("npc", JSON.stringify({ id: "ghost", x: 1, z: 2 }));
-      }`,
+      });`,
       99,
     );
     expect(script.npcs().map((npc) => npc.id)).toEqual(["ghost"]);
@@ -119,7 +120,11 @@ describe("a script console", () => {
 
   it("reports when a loaded script places no NPCs", async () => {
     const { script } = scriptConsole();
-    const line = await loadProject(script, "export function bmsTick() {}", 1);
+    const line = await loadProject(
+      script,
+      `import * as engine from "engine"; engine.onTick(function () {});`,
+      1,
+    );
     expect(line).toContain("no NPCs placed yet");
     script.dispose();
   });

@@ -1,13 +1,7 @@
 // The "Get a Snack at 4 AM" demo's place script. This file is the source a
 // creator would write: it is imported with `?raw` and handed to the sandbox as
-// text, never run as part of the world's own bundle. Its `declare const engine`
-// is the guest API the interpreter injects.
-declare const engine: {
-  dispatch(tag: string, payload: string): void;
-  log(line: string): void;
-  now(): number;
-  blocks: Record<string, number>;
-};
+// text, never run as part of the world's own bundle.
+import * as engine from "engine";
 
 /** One fact the world hands the script, as the script reads it back. */
 interface Event {
@@ -111,7 +105,7 @@ function walls(): unknown[] {
   ];
 }
 
-export function bmsPlan(): string {
+engine.onPlan(function plan(): string {
   const b = engine.blocks;
   const shapes: unknown[] = [
     { kind: "box", min: [-80, 0, -80], max: [80, GROUND - 1, 80], id: b.dirt },
@@ -159,7 +153,7 @@ export function bmsPlan(): string {
     },
   ];
   return JSON.stringify(shapes);
-}
+});
 
 function dispatch(tag: string, payload: unknown): void {
   engine.dispatch(tag, JSON.stringify(payload));
@@ -908,7 +902,7 @@ function timer(id: string): void {
   }
 }
 
-export function bmsTick(_clockMs: number, eventsJson: string): void {
+engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
   if (!started) {
     started = true;
     open();
@@ -951,4 +945,4 @@ export function bmsTick(_clockMs: number, eventsJson: string): void {
       timer(event.timerId);
     }
   }
-}
+});

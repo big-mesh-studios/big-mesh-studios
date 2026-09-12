@@ -39,7 +39,7 @@ describe("a place project", () => {
     });
     expect(fresh.scripts[MAIN_SCRIPT_FILE]).toBe(STARTER_SCRIPT);
     expect(fresh.models).toEqual({});
-    expect(STARTER_SCRIPT).toContain("function bmsTick");
+    expect(STARTER_SCRIPT).toContain("engine.onTick");
   });
 
   it("carries model files through its zip as bytes", async () => {

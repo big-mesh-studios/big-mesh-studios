@@ -7,15 +7,10 @@
 // New sections use quicksand (the muddy room that slows the player) and
 // conveyor belts (the cafeteria lunch trays that carry the player forward).
 //
-// ALL voxel coordinates × 2 = world coordinates. The bmsPlan() function
-// takes voxel coordinates; zones, props, and fields take world coordinates.
-declare const engine: {
-  dispatch(tag: string, payload: string): void;
-  log(line: string): void;
-  now(): number;
-  endings(): string;
-  blocks: Record<string, number>;
-};
+// ALL voxel coordinates × 2 = world coordinates. The plan handler registered
+// with engine.onPlan takes voxel coordinates; zones, props, and fields take
+// world coordinates.
+import * as engine from "engine";
 
 /** One fact the world hands the script, as the script reads it back. */
 interface Event {
@@ -214,7 +209,7 @@ function box(
   return { kind: "box", min: [minX, minY, minZ], max: [maxX, maxY, maxZ], id };
 }
 
-export function bmsPlan(): string {
+engine.onPlan(function plan(): string {
   const b = engine.blocks;
   const shapes: unknown[] = [
     // Ground
@@ -319,7 +314,7 @@ export function bmsPlan(): string {
     box(-4, 112, 134, 4, 113, 134, b.greystone),
   ];
   return JSON.stringify(shapes);
-}
+});
 
 // ---------------------------------------------------------------------------
 // Open (world units for props, zones, fields)
@@ -899,7 +894,7 @@ function died(cause: string): void {
 // ---------------------------------------------------------------------------
 // Main tick
 // ---------------------------------------------------------------------------
-export function bmsTick(_clockMs: number, eventsJson: string): void {
+engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
   if (!started) {
     started = true;
     open();
@@ -932,4 +927,4 @@ export function bmsTick(_clockMs: number, eventsJson: string): void {
       bladderBeat();
     }
   }
-}
+});

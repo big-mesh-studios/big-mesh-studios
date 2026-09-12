@@ -184,8 +184,9 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick(clockMs, eventsJson) {
+      engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
           engine.dispatch("prop", JSON.stringify({
@@ -200,7 +201,7 @@ describe("a script host", () => {
             }));
           }
         }
-      }
+      });
       `,
     );
     expect(host.prop("fridge")).toMatchObject({
@@ -223,15 +224,16 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick(clockMs, eventsJson) {
+      engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
           engine.dispatch("fire", JSON.stringify({
             id: "fire-0", x: 10, z: 18, height: 3.5,
           }));
         }
-      }
+      });
       `,
     );
     expect(host.fire("fire-0")).toMatchObject({
@@ -250,8 +252,9 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick(clockMs, eventsJson) {
+      engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
           engine.dispatch("item-define", JSON.stringify({
@@ -267,7 +270,7 @@ describe("a script host", () => {
             engine.dispatch("toast", JSON.stringify({ player: "", text: "ate " + events[i].item }));
           }
         }
-      }
+      });
       `,
     );
     expect(host.inventory.heldItem()).toMatchObject({
@@ -286,7 +289,8 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      export function bmsTick(clockMs, eventsJson) {
+      import * as engine from "engine";
+      engine.onTick(function (clockMs, eventsJson) {
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "item-used") {
@@ -295,7 +299,7 @@ describe("a script host", () => {
             }));
           }
         }
-      }
+      });
       `,
     );
     await host.useItem("chips", "");
@@ -308,14 +312,15 @@ describe("a script host", () => {
     await loadProject(
       again.host,
       `
-      export function bmsTick(clockMs, eventsJson) {
+      import * as engine from "engine";
+      engine.onTick(function (clockMs, eventsJson) {
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "npc-talk") {
             engine.dispatch("restart", JSON.stringify({ player: "" }));
           }
         }
-      }
+      });
       `,
     );
     await again.host.talk("sable", "");
@@ -329,8 +334,9 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick(clockMs, eventsJson) {
+      engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
           engine.dispatch("zone", JSON.stringify({
@@ -346,7 +352,7 @@ describe("a script host", () => {
             engine.dispatch("toast", JSON.stringify({ player: "", text: "out " + e.zoneId }));
           }
         }
-      }
+      });
       `,
     );
     expect(toasts).toEqual([]);
@@ -365,8 +371,9 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick(clockMs, eventsJson) {
+      engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
           engine.dispatch("field", JSON.stringify({
@@ -382,7 +389,7 @@ describe("a script host", () => {
             solid: true, conveyor: { vx: 5, vz: 0 },
           }));
         }
-      }
+      });
       `,
     );
     expect(host.field("fan")).toMatchObject({
@@ -414,9 +421,10 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
       var retract = false;
-      export function bmsTick(clockMs, eventsJson) {
+      engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
           engine.dispatch("field", JSON.stringify({
@@ -431,7 +439,7 @@ describe("a script host", () => {
             engine.dispatch("field-remove", JSON.stringify({ id: "fan" }));
           }
         }
-      }
+      });
       `,
     );
     expect(host.field("fan")).not.toBeNull();
@@ -446,15 +454,16 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick() {
+      engine.onTick(function () {
         if (!started) {
           started = true;
           engine.dispatch("narrate", JSON.stringify({
             player: "", name: "You", text: "I am so hungry.",
           }));
         }
-      }
+      });
       `,
     );
     expect(narrations).toEqual([
@@ -468,7 +477,8 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      export function bmsTick(clockMs, eventsJson) {
+      import * as engine from "engine";
+      engine.onTick(function (clockMs, eventsJson) {
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           var e = events[i];
@@ -476,7 +486,7 @@ describe("a script host", () => {
             engine.dispatch("toast", JSON.stringify({ player: "", text: e.entityId + " got " + e.item }));
           }
         }
-      }
+      });
       `,
     );
     await host.use("vending", "", "cola");
@@ -494,14 +504,15 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick() {
+      engine.onTick(function () {
         if (!started) {
           started = true;
           engine.dispatch("npc", JSON.stringify({ id: "dad", x: 0, z: 0, y: 3, name: "Dad" }));
           engine.dispatch("prop", JSON.stringify({ id: "bed", model: "bed.zip", x: 1, z: 1, y: 4, height: 1 }));
         }
-      }
+      });
       `,
     );
     expect(host.npc("dad")).toMatchObject({ y: 3 });
@@ -514,13 +525,14 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick() {
+      engine.onTick(function () {
         if (!started) {
           started = true;
           engine.dispatch("npc", JSON.stringify({ id: "dad", x: 0, z: 0, yaw: 1.25 }));
         }
-      }
+      });
       `,
     );
     expect(host.npc("dad")).toMatchObject({ yaw: 1.25 });
@@ -532,14 +544,15 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick() {
+      engine.onTick(function () {
         if (!started) {
           started = true;
           engine.dispatch("player-place", JSON.stringify({ player: "", x: 4, z: 5, yaw: 1 }));
           engine.dispatch("player-face", JSON.stringify({ player: "", x: 4, z: 9 }));
         }
-      }
+      });
       `,
     );
     expect(places).toEqual([{ player: "", at: { x: 4, z: 5, yaw: 1 } }]);
@@ -552,8 +565,9 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick(clockMs, eventsJson) {
+      engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
           engine.dispatch("timer", JSON.stringify({ id: "ding", afterMs: 1000 }));
@@ -564,7 +578,7 @@ describe("a script host", () => {
             engine.dispatch("toast", JSON.stringify({ player: "", text: "fired " + events[i].timerId }));
           }
         }
-      }
+      });
       `,
     );
     expect(toasts).toEqual([]);
@@ -641,11 +655,12 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      export function bmsTick() {
+      import * as engine from "engine";
+      engine.onTick(function () {
         engine.dispatch("npc", JSON.stringify({ id: "ghost" }));
         engine.dispatch("npc", "not json");
         engine.log("hi from the script");
-      }
+      });
     `,
     );
     expect(host.npc("ghost")).toBeNull();
@@ -655,7 +670,10 @@ describe("a script host", () => {
 
   it("reports a step that throws", async () => {
     const { host, notices } = await fresh();
-    await loadProject(host, "export function bmsTick() { missing(); }");
+    await loadProject(
+      host,
+      `import * as engine from "engine"; engine.onTick(function () { missing(); });`,
+    );
     await host.talk("sable", "");
     expect(host.lastError).toMatch(/ReferenceError/);
     expect(notices.join("\n")).toMatch(/ReferenceError/);
@@ -667,14 +685,15 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick() {
+      engine.onTick(function () {
         if (!started) {
           started = true;
           engine.dispatch("player-speed", JSON.stringify({ player: "", multiplier: 2 }));
           engine.dispatch("player-jump", JSON.stringify({ player: "", multiplier: 1.5 }));
         }
-      }
+      });
       `,
     );
     expect(speeds).toEqual([{ player: "", multiplier: 2 }]);
@@ -687,13 +706,14 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick() {
+      engine.onTick(function () {
         if (!started) {
           started = true;
           engine.dispatch("explosion", JSON.stringify({ id: "boom", x: 10, z: 18, radius: 6 }));
         }
-      }
+      });
       `,
     );
     expect(host.explosion("boom")).toMatchObject({
@@ -713,10 +733,11 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var seen = JSON.parse(engine.endings());
-      export function bmsTick() {
+      engine.onTick(function () {
         engine.dispatch("toast", JSON.stringify({ player: "", text: seen.join(",") }));
-      }
+      });
       `,
     );
     expect(toasts.at(-1)?.text).toBe("Sleep,Bullied");
@@ -728,8 +749,9 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick() {
+      engine.onTick(function () {
         if (!started) {
           started = true;
           engine.dispatch("player-checkpoint", JSON.stringify({ player: "", x: 4, z: 8, y: 62, yaw: 1 }));
@@ -737,7 +759,7 @@ describe("a script host", () => {
           engine.dispatch("player-respawn", JSON.stringify({ player: "" }));
           engine.dispatch("void", JSON.stringify({ y: 20 }));
         }
-      }
+      });
       `,
     );
     expect(checkpoints).toEqual([
@@ -755,14 +777,15 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick() {
+      engine.onTick(function () {
         if (!started) {
           started = true;
           engine.dispatch("prop", JSON.stringify({ id: "spikes", model: "spikes.zip", x: 1, z: 2, solid: true, hazard: true }));
           engine.dispatch("prop", JSON.stringify({ id: "plant", model: "plant.zip", x: 3, z: 4 }));
         }
-      }
+      });
       `,
     );
     expect(host.prop("spikes")).toMatchObject({ solid: true, hazard: true });
@@ -775,7 +798,8 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      export function bmsTick(clockMs, eventsJson) {
+      import * as engine from "engine";
+      engine.onTick(function (clockMs, eventsJson) {
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "player-touched") {
@@ -785,7 +809,7 @@ describe("a script host", () => {
             engine.dispatch("toast", JSON.stringify({ player: "", text: "died " + events[i].cause }));
           }
         }
-      }
+      });
       `,
     );
     await host.touched("", "spikes");
@@ -802,8 +826,9 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick() {
+      engine.onTick(function () {
         if (!started) {
           started = true;
           engine.dispatch("cutscene", JSON.stringify({
@@ -815,7 +840,7 @@ describe("a script host", () => {
           }));
           engine.dispatch("player-control", JSON.stringify({ player: "", locked: true }));
         }
-      }
+      });
       `,
     );
     expect(host.cutsceneFor("")?.shots).toHaveLength(2);
@@ -832,15 +857,16 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick() {
+      engine.onTick(function () {
         if (!started) {
           started = true;
           engine.dispatch("hud", JSON.stringify({ player: "", id: "meter", kind: "bar", label: "Meter", value: 2, max: 5 }));
           engine.dispatch("hud", JSON.stringify({ player: "", id: "note", kind: "text", text: "hello" }));
           engine.dispatch("hud-remove", JSON.stringify({ player: "", id: "note" }));
         }
-      }
+      });
       `,
     );
     expect(host.hudFor("")).toEqual([
@@ -854,8 +880,9 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
+      import * as engine from "engine";
       var started = false;
-      export function bmsTick() {
+      engine.onTick(function () {
         if (!started) {
           started = true;
           engine.dispatch("prop", JSON.stringify({
@@ -866,7 +893,7 @@ describe("a script host", () => {
             motion: { path: [[0, 0, 0], [0, 0, 10]], loop: "once", durationMs: 1000 },
           }));
         }
-      }
+      });
       `,
     );
     clockMs = 0;

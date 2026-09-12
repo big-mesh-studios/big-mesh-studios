@@ -1,14 +1,7 @@
 // The "Late to School" demo's place script. This file is the source a creator
 // would write: it is imported with `?raw` and handed to the sandbox as text,
-// never run as part of the world's own bundle. Its `declare const engine` is
-// the guest API the interpreter injects.
-declare const engine: {
-  dispatch(tag: string, payload: string): void;
-  log(line: string): void;
-  now(): number;
-  endings(): string;
-  blocks: Record<string, number>;
-};
+// never run as part of the world's own bundle.
+import * as engine from "engine";
 
 /** One fact the world hands the script, as the script reads it back. */
 interface Event {
@@ -242,7 +235,7 @@ function building(
   return shapes;
 }
 
-export function bmsPlan(): string {
+engine.onPlan(function plan(): string {
   const b = engine.blocks;
   const shapes: unknown[] = [
     // A flat neighborhood over the noise, razed clear above it, reaching south
@@ -286,7 +279,7 @@ export function bmsPlan(): string {
     ...building(70, CORRUPT_Z + 2, 94, CORRUPT_Z + 14, b.stone, "south"),
   );
   return JSON.stringify(shapes);
-}
+});
 
 function prop(
   id: string,
@@ -1468,7 +1461,7 @@ function timerFired(id: string): void {
   }
 }
 
-export function bmsTick(_clockMs: number, eventsJson: string): void {
+engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
   if (!started) {
     started = true;
     collected = JSON.parse(engine.endings()) as string[];
@@ -1509,4 +1502,4 @@ export function bmsTick(_clockMs: number, eventsJson: string): void {
       timerFired(event.timerId);
     }
   }
-}
+});

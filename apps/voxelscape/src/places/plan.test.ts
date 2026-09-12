@@ -124,17 +124,18 @@ describe("parseStructurePlan", () => {
 });
 
 const ENTRY = `
-export function bmsTick(): void {}
-export function bmsPlan(contextJson: string): string {
+import * as engine from "engine";
+engine.onTick(function (): void {});
+engine.onPlan(function (contextJson: string): string {
   const context = JSON.parse(contextJson) as { seed: number };
   return JSON.stringify([
     { kind: "box", min: [0, 0, 0], max: [1, 1, 1], id: context.seed },
   ]);
-}
+});
 `;
 
 describe("compilePlacePlan", () => {
-  it("runs the script's bmsPlan and returns its shapes", async () => {
+  it("runs the script's onPlan handler and returns its shapes", async () => {
     const plan = await compilePlacePlan({
       files: { "main.ts": ENTRY },
       entry: "main.ts",
@@ -146,9 +147,11 @@ describe("compilePlacePlan", () => {
     ]);
   });
 
-  it("returns no shapes for a script that defines no bmsPlan", async () => {
+  it("returns no shapes for a script that registers no onPlan handler", async () => {
     const plan = await compilePlacePlan({
-      files: { "main.ts": `export function bmsTick(): void {}` },
+      files: {
+        "main.ts": `import * as engine from "engine"; engine.onTick(function (): void {});`,
+      },
       entry: "main.ts",
       seed: 1,
       region: REGION,
@@ -161,10 +164,11 @@ describe("compilePlacePlan", () => {
       compilePlacePlan({
         files: {
           "main.ts": `
-            export function bmsTick(): void {}
-            export function bmsPlan(): string {
+            import * as engine from "engine";
+            engine.onTick(function (): void {});
+            engine.onPlan(function (): string {
               return JSON.stringify([{ kind: "box", min: [0, 0, 0], max: [0, 0, 0], id: -1 }]);
-            }
+            });
           `,
         },
         entry: "main.ts",

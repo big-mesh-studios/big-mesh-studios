@@ -48,6 +48,10 @@ class QuickJSSandbox implements ScriptSandbox {
   private readonly effects: ScriptOutput["effects"] = [];
   private readonly logs: string[] = [];
   private readonly timeLimitMs: number;
+  private readonly tickHandlers: QuickJSHandle[] = [];
+  private planHandler: QuickJSHandle | undefined;
+  /** The `engine` object, never installed on the global — a script reaches it only by receiving it. */
+  private readonly engine: QuickJSHandle;
   /** Moment the current step must end; far in the future outside a step. */
   private deadline = Infinity;
   private disposed = false;
@@ -72,14 +76,36 @@ class QuickJSSandbox implements ScriptSandbox {
     // only an overrunning step is ever stopped.
     params.runtime.setInterruptHandler(() => Date.now() > this.deadline);
 
-    this.installEngine(params.context, params);
+    this.engine = this.installEngine(params.context, params);
     this.installDeterministicGlobals(params.context, params);
   }
 
   load(source: string): void {
     this.assertAlive();
     this.withBudget(() => {
-      const result = this.context.evalCode(source, "place.js");
+      // The script runs as the body of a function taking `engine` as its one
+      // parameter, never as a property of the interpreter's global object, so
+      // a script that never reaches `engine` through an import has no way to
+      // name it at all.
+      const wrapped = this.context.evalCode(
+        `(function (engine) {\n${source}\n});`,
+        "place.js",
+      );
+      if (wrapped.error !== undefined) {
+        const { name, message } = this.describeError(wrapped.error);
+        wrapped.dispose();
+        throw new ScriptExecutionError(
+          kindFor(name, message),
+          message === "" ? name : `${name}: ${message}`,
+        );
+      }
+      const fn = wrapped.value;
+      const result = this.context.callFunction(
+        fn,
+        this.context.undefined,
+        this.engine,
+      );
+      fn.dispose();
       this.readResult(result);
     });
   }
@@ -89,11 +115,10 @@ class QuickJSSandbox implements ScriptSandbox {
     this.withBudget(() => {
       const clock = this.context.newNumber(clockMs);
       const events = this.context.newString(eventsJson);
-      const tick = this.context.getProp(this.context.global, "bmsTick");
       try {
-        if (this.context.typeof(tick) === "function") {
+        for (const handler of this.tickHandlers) {
           const result = this.context.callFunction(
-            tick,
+            handler,
             this.context.undefined,
             clock,
             events,
@@ -103,7 +128,6 @@ class QuickJSSandbox implements ScriptSandbox {
       } finally {
         // A step that throws must still release the handles it built, or the
         // interpreter aborts when its runtime is freed.
-        tick.dispose();
         events.dispose();
         clock.dispose();
       }
@@ -114,16 +138,18 @@ class QuickJSSandbox implements ScriptSandbox {
     this.assertAlive();
     let output = "";
     this.withBudget(() => {
-      const context = this.context;
-      const fn = context.getProp(context.global, "bmsPlan");
-      if (context.typeof(fn) !== "function") {
-        // A place that asks for no structures defines no `bmsPlan`.
-        fn.dispose();
+      if (this.planHandler === undefined) {
+        // A place that asks for no structures never calls `engine.onPlan`.
         return;
       }
+      const context = this.context;
       const argument = context.newString(contextJson);
       try {
-        const result = context.callFunction(fn, context.undefined, argument);
+        const result = context.callFunction(
+          this.planHandler,
+          context.undefined,
+          argument,
+        );
         if (result.error !== undefined) {
           const { name, message } = this.describeError(result.error);
           result.dispose();
@@ -138,7 +164,6 @@ class QuickJSSandbox implements ScriptSandbox {
         result.dispose();
       } finally {
         argument.dispose();
-        fn.dispose();
       }
     });
     return output;
@@ -156,6 +181,11 @@ class QuickJSSandbox implements ScriptSandbox {
       return;
     }
     this.disposed = true;
+    for (const handler of this.tickHandlers) {
+      handler.dispose();
+    }
+    this.planHandler?.dispose();
+    this.engine.dispose();
     // A context has to go before the runtime that owns it.
     this.context.dispose();
     this.runtime.dispose();
@@ -172,9 +202,11 @@ class QuickJSSandbox implements ScriptSandbox {
   }
 
   /**
-   * The one `engine` object handed to the guest. Its methods are the whole host
-   * surface; each reads its arguments as host strings and queues them, so
-   * nothing crosses the boundary as an object.
+   * Builds the one `engine` object a loaded script receives. Its methods are
+   * the whole host surface; each reads its arguments as host strings and
+   * queues them, so nothing crosses the boundary as an object — except
+   * `onTick` and `onPlan`, which keep the function handle they are given, for
+   * `tick` and `plan` to call later.
    */
   private installEngine(
     context: QuickJSContext,
@@ -191,7 +223,7 @@ class QuickJSSandbox implements ScriptSandbox {
         z: number;
       }>;
     },
-  ): void {
+  ): QuickJSHandle {
     const engine = context.newObject();
     const bind = (
       name: string,
@@ -242,6 +274,15 @@ class QuickJSSandbox implements ScriptSandbox {
         ? context.true
         : context.false,
     );
+    bind("onTick", (fn) => {
+      this.tickHandlers.push(fn.dup());
+      return context.undefined;
+    });
+    bind("onPlan", (fn) => {
+      this.planHandler?.dispose();
+      this.planHandler = fn.dup();
+      return context.undefined;
+    });
     // The block ids a plan or effect may name, keyed by the names the starter
     // script's own `engine` type declares, so a creator never hard-codes one.
     const blocks = context.newObject();
@@ -267,8 +308,7 @@ class QuickJSSandbox implements ScriptSandbox {
     }
     context.setProp(engine, "blocks", blocks);
     blocks.dispose();
-    context.setProp(context.global, "engine", engine);
-    engine.dispose();
+    return engine;
   }
 
   /**

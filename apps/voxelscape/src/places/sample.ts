@@ -3,9 +3,12 @@
 // option makes the script answer — closing the dialog, or ending with a toast.
 // It is the working example the script host is tested against, and the first
 // script a player can load with the console while the world wires its dialog
-// surface. Like every place script it is a module: it exports bmsTick, and the
-// world calls it each step with the shared clock and the events since the last.
+// surface. Like every place script it imports `engine` and calls
+// `engine.onTick`, and the world calls what it registers each step with the
+// shared clock and the events since the last.
 export const SAMPLE_PLACE_SCRIPT = String.raw`
+import * as engine from "engine";
+
 var started = false;
 var state = {};
 var SHOP = "sable";
@@ -71,7 +74,7 @@ function gateNode(player, node, option) {
   }
 }
 
-export function bmsTick(clockMs, eventsJson) {
+engine.onTick(function tick(clockMs, eventsJson) {
   if (!started) {
     started = true;
     spawn();
@@ -96,5 +99,5 @@ export function bmsTick(clockMs, eventsJson) {
       delete state[k];
     }
   }
-}
+});
 `;

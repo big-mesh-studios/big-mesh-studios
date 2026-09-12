@@ -43,29 +43,34 @@ export class ScriptExecutionError extends Error {
 export interface ScriptSandbox {
   /**
    * Loads the script's source. The code runs with the deterministic globals in
-   * place and may define `bmsTick(clockMs, eventsJson)` — called each step with
-   * the shared clock and a JSON array of the events added since the last step.
+   * place and registers its hooks by importing `engine` and calling
+   * `engine.onTick(fn)` — `fn` is then called each step with the shared clock
+   * and a JSON array of the events added since the last step — and, if it
+   * wants one, `engine.onPlan(fn)`.
    *
    * @throws {ScriptExecutionError} When the code throws, overruns its step
    * budget while loading, or exceeds its memory.
    */
   load(source: string): void;
   /**
-   * Advances the script one step: calls `bmsTick` with `clockMs` and
+   * Advances the script one step: calls every function registered with
+   * `engine.onTick`, in the order it was registered, with `clockMs` and
    * `eventsJson`. Both are supplied by the caller and must be identical on
    * every peer for the script to converge.
    *
-   * @throws {ScriptExecutionError} When `bmsTick` throws, overruns the step
-   * budget, or exceeds the memory limit.
+   * @throws {ScriptExecutionError} When a handler throws, overruns the step
+   * budget, or exceeds the memory limit. A handler after the one that threw
+   * does not run.
    */
   tick(clockMs: number, eventsJson: string): void;
   /**
-   * Runs the script's optional `bmsPlan(contextJson)` and returns the string it
-   * returns — the structure plan a world is generated with. A script that
-   * defines no `bmsPlan` returns an empty string, which the caller reads as no
+   * Runs the function most recently registered with `engine.onPlan(fn)`,
+   * called with `contextJson`, and returns the string it returns — the
+   * structure plan a world is generated with. A script that never calls
+   * `engine.onPlan` returns an empty string, which the caller reads as no
    * structures.
    *
-   * @throws {ScriptExecutionError} When `bmsPlan` throws, overruns the step
+   * @throws {ScriptExecutionError} When the handler throws, overruns the step
    * budget, or exceeds the memory limit.
    */
   plan(contextJson: string): string;

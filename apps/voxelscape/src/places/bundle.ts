@@ -3,10 +3,13 @@
 // only form the sandbox interpreter accepts (ADR 0027). Every compile round is
 // deterministic — pinned compiler options, module ids in sorted-file order, and
 // a specifier table resolved once — so two peers that run the same files and
-// the same entry produce the same bundle and converge (ADR 0026). The bundle's
-// entry module must export `bmsTick`; the bundle installs it as the global the
-// sandbox steps. Nothing here touches the interpreter: it turns a project into
-// the string a `ScriptSandbox.load` can evaluate.
+// the same entry produce the same bundle and converge (ADR 0026). A file may
+// also import from `"engine"`, resolved not to another project file but to the
+// sandbox's own host object; the entry module registers its hooks by calling
+// `engine.onTick`/`engine.onPlan` as it runs, so running it is the bundle's
+// whole handoff to the sandbox — nothing here reads its exports. Nothing here
+// touches the interpreter: it turns a project into the string a
+// `ScriptSandbox.load` can evaluate.
 import type * as TS from "typescript";
 import { loadTypeScript } from "@big-mesh-studios/code-mirror/typescript-cdn";
 import { modelDescriptorFor, resolveModelFile } from "./model-descriptor";
@@ -130,14 +133,18 @@ const importsOf = (
 
 /**
  * The project file `specifier` names, or null when it names none. Imports may
- * only reach this place's own script files: a bare name, a `./`, or an
- * extensionless or `.js`-ending name all resolve against the flat set of
- * project files, in a fixed order so a bundle never depends on map iteration.
+ * only reach this place's own script files or the sandbox's `"engine"` host
+ * object: a bare name, a `./`, or an extensionless or `.js`-ending name all
+ * resolve against the flat set of project files, in a fixed order so a bundle
+ * never depends on map iteration.
  */
 const resolveSpecifier = (
   files: Set<string>,
   specifier: string,
 ): string | null => {
+  if (specifier === "engine") {
+    return "engine";
+  }
   if (
     specifier.includes("://") ||
     specifier.startsWith("/") ||
@@ -165,11 +172,14 @@ const resolveSpecifier = (
   return null;
 };
 
+/** A specifier resolved to another project file's module id, or to the sandbox's `"engine"` object. */
+type ResolvedSpecifier = number | "engine";
+
 /** One module in the bundle: its compiled code, its name, and how its specifiers resolve. */
 interface BundledModule {
   path: string;
   code: string;
-  requires: Record<string, number>;
+  requires: Record<string, ResolvedSpecifier>;
 }
 
 /** The virtual, never-a-real-file path a model's synthetic module is kept under. */
@@ -179,13 +189,15 @@ const modelModulePath = (name: string) => `\0model:${name}`;
  * Compiles and bundles a place project into one global-scope script. Each
  * project file becomes a CommonJS module evaluated through `require`, with
  * ids assigned in sorted-file order so the output is byte-for-byte
- * reproducible; a `with { type: "model" }` import (ADR 0046) instead becomes
- * a synthetic module holding an inert `{name, parts, motions}` descriptor,
- * one per distinct model name the project's files actually import, resolved
- * against `models` (bytes already attached to the place, keyed by file name).
- * The bundle runs the entry module and installs the `bmsTick` its exports
- * carry as the global the sandbox steps; an entry that exports none fails at
- * load.
+ * reproducible. A file may also import from `"engine"`, resolved not to
+ * another project file but to a thin wrapper around the sandbox's own host
+ * object, or write a `with { type: "model" }` import (ADR 0046) that instead
+ * becomes a synthetic module holding an inert `{name, parts, motions}`
+ * descriptor, one per distinct model name the project's files actually
+ * import, resolved against `models` (bytes already attached to the place,
+ * keyed by file name). The bundle runs the entry module for its side effects
+ * and nothing else; a script that never calls `engine.onTick` loads without
+ * error but the sandbox steps nothing.
  *
  * @throws {PlaceBundleError} When a model import names a relative or
  * absolute specifier (only a bare name can be typed by the editor's ambient
@@ -244,7 +256,7 @@ export const bundlePlaceProject = async (
   const modules: BundledModule[] = [];
   for (const path of paths) {
     const code = await transpileFile(ts, path, files[path]);
-    const requires: Record<string, number> = {};
+    const requires: Record<string, ResolvedSpecifier> = {};
     for (const { specifier, isModelImport } of importsByPath.get(path)!) {
       if (isModelImport) {
         requires[specifier] = ids.get(modelModulePath(specifier))!;
@@ -253,10 +265,10 @@ export const bundlePlaceProject = async (
       const target = resolveSpecifier(fileSet, specifier);
       if (target === null) {
         throw new PlaceBundleError(
-          `${path} imports "${specifier}" — imports may only come from this place's own script files`,
+          `${path} imports "${specifier}" — imports may only come from this place's own script files, or "engine"`,
         );
       }
-      requires[specifier] = ids.get(target)!;
+      requires[specifier] = target === "engine" ? "engine" : ids.get(target)!;
     }
     modules.push({ path, code, requires });
   }
@@ -272,15 +284,15 @@ export const bundlePlaceProject = async (
   }
 
   const entryId = ids.get(entry)!;
-  return outputFor(modules, entry, entryId);
+  return outputFor(modules, entryId);
 };
 
-/** Renders the module table, the `require` shim, and the entry handoff as one script. */
-const outputFor = (
-  modules: BundledModule[],
-  entry: string,
-  entryId: number,
-): string => {
+/**
+ * Renders the module table and the `require` shim as one script, ending in a
+ * call into the entry module for its side effects — registering with `engine`
+ * is all an entry module does, so nothing here reads what it exports.
+ */
+const outputFor = (modules: BundledModule[], entryId: number): string => {
   const table = modules.map(({ path, code, requires }) => ({
     path,
     code,
@@ -289,6 +301,9 @@ const outputFor = (
   return `var __modules = ${JSON.stringify(table)};
 var __cache = [];
 function __require(id) {
+  if (id === "engine") {
+    return engine;
+  }
   var cached = __cache[id];
   if (cached !== undefined) {
     return cached.exports;
@@ -305,13 +320,6 @@ function __require(id) {
   });
   return module.exports;
 }
-(function () {
-  var entry = __require(${entryId});
-  globalThis.bmsTick = typeof entry.bmsTick === "function" ? entry.bmsTick : undefined;
-  globalThis.bmsPlan = typeof entry.bmsPlan === "function" ? entry.bmsPlan : undefined;
-  if (typeof globalThis.bmsTick !== "function") {
-    throw new Error('the entry script "${entry}" must export a bmsTick function');
-  }
-})();
+__require(${entryId});
 `;
 };

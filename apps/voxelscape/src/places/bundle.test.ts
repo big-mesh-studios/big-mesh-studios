@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { bundlePlaceProject } from "./bundle";
 import { saveFigure } from "@big-mesh-studios/stacker/format";
 import {
@@ -49,23 +49,39 @@ const modelBytes = async (
   return new Uint8Array(await blob.arrayBuffer());
 };
 
-afterEach(() => {
-  // The bundle hands its entry's exports to the globals; the tests are not the app.
-  delete (globalThis as Record<string, unknown>).bmsTick;
-  delete (globalThis as Record<string, unknown>).bmsPlan;
-});
-
-/** Evaluates the bundle in Node, returning the entry's bmsTick as the sandbox would see it. */
-const runBundle = (output: string): (() => void) => {
-  new Function(output)();
-  const fn = (globalThis as Record<string, unknown>).bmsTick;
-  if (typeof fn !== "function") {
-    throw new Error("bundle installed no bmsTick global");
-  }
-  return fn as () => void;
+/**
+ * Evaluates the bundle the way the sandbox does: `engine` is a parameter of a
+ * wrapper function, never a global, so a project file that never
+ * `require("engine")`s has no way to reach it either. Returns what a stub
+ * `engine` recorded the bundle registering.
+ */
+const runBundle = (
+  output: string,
+): {
+  ticks: Array<(...args: unknown[]) => void>;
+  plan: (() => string) | undefined;
+} => {
+  const recorded: {
+    ticks: Array<(...args: unknown[]) => void>;
+    plan: (() => string) | undefined;
+  } = { ticks: [], plan: undefined };
+  const engine = {
+    dispatch: () => {},
+    log: () => {},
+    onTick: (fn: (...args: unknown[]) => void) => {
+      recorded.ticks.push(fn);
+    },
+    onPlan: (fn: () => string) => {
+      recorded.plan = fn;
+    },
+  };
+  new Function("engine", output)(engine);
+  return recorded;
 };
 
 const MAIN_TS = `
+import * as engine from "engine";
+
 interface Npc {
   id: string;
   pos: [number, number];
@@ -73,19 +89,19 @@ interface Npc {
 
 const npcs: Array<Npc> = [{ id: "guide", pos: [8, 8] }];
 
-export function bmsTick(clockMs: number, eventsJson: string): void {
+engine.onTick(function tick(clockMs: number, eventsJson: string): void {
   const first = npcs[0];
   engine.dispatch("npc", JSON.stringify({ id: first.id, x: first.pos[0], z: first.pos[1] }));
   engine.log(String(clockMs));
-}
+});
 `;
 
 describe("the place script bundler", () => {
-  it("strips TypeScript and hands the entry's bmsTick to the global", async () => {
+  it("strips TypeScript and runs the entry, which registers with engine.onTick", async () => {
     const output = await bundlePlaceProject({ "main.ts": MAIN_TS }, "main.ts");
     expect(output).not.toContain(": number");
     expect(output).not.toContain("interface");
-    expect(runBundle(output)).toBeTypeOf("function");
+    expect(runBundle(output).ticks).toHaveLength(1);
   });
 
   it("produces identical output for identical input", async () => {
@@ -97,10 +113,11 @@ describe("the place script bundler", () => {
   it("bundles multiple project files and resolves imports between them", async () => {
     const files = {
       "main.ts": `
+        import * as engine from "engine";
         import { hello } from "./greeting";
-        export function bmsTick(clockMs: number, eventsJson: string): void {
+        engine.onTick(function tick(): void {
           engine.log(hello);
-        }
+        });
       `,
       "greeting.ts": `
         export const hello: string = "hello from the helper";
@@ -108,13 +125,12 @@ describe("the place script bundler", () => {
     };
     const output = await bundlePlaceProject(files, "main.ts");
     expect(output).toContain("hello from the helper");
-    const tick = runBundle(output);
-    expect(tick).toBeTypeOf("function");
+    expect(runBundle(output).ticks).toHaveLength(1);
   });
 
   it("resolves a .js-ending specifier to the sibling .ts file it names", async () => {
     const files = {
-      "main.ts": `import { n } from "./helper.js"; export function bmsTick() {}`,
+      "main.ts": `import { n } from "./helper.js";`,
       "helper.ts": `export const n: number = 3;`,
     };
     await expect(bundlePlaceProject(files, "main.ts")).resolves.toContain(
@@ -125,15 +141,16 @@ describe("the place script bundler", () => {
   it("keeps each module's top-level names to its own scope", async () => {
     const files = {
       "main.ts": `
+        import * as engine from "engine";
         import { value as other } from "./other";
         var value = 1;
-        export function bmsTick(): void { engine.log(String(other + value)); }
+        engine.onTick(function (): void { engine.log(String(other + value)); });
       `,
       "other.ts": `var value = 40; export { value };`,
     };
-    expect(runBundle(await bundlePlaceProject(files, "main.ts"))).toBeTypeOf(
-      "function",
-    );
+    expect(
+      runBundle(await bundlePlaceProject(files, "main.ts")).ticks,
+    ).toHaveLength(1);
   });
 
   it("does not require a type-only import to resolve", async () => {
@@ -141,27 +158,55 @@ describe("the place script bundler", () => {
       "main.ts": `
         import type { Missing } from "./missing";
         const probe: Missing | undefined = undefined;
-        export function bmsTick(): void { engine.log("ok"); }
       `,
     };
-    await expect(bundlePlaceProject(files, "main.ts")).resolves.toContain("ok");
+    await expect(bundlePlaceProject(files, "main.ts")).resolves.not.toContain(
+      "Missing",
+    );
+  });
+
+  it('resolves an import of "engine" to the sandbox\'s host object, not a project file', async () => {
+    const files = {
+      "main.ts": `
+        import * as engine from "engine";
+        engine.onPlan(function (): string { return "ok"; });
+      `,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    expect(runBundle(output).plan?.()).toBe("ok");
+  });
+
+  it('a file that never imports "engine" cannot reach it as a bare identifier', async () => {
+    const files = {
+      "main.ts": `
+        import * as engine from "engine";
+        import { helper } from "./helper";
+        engine.onTick(function () { helper(); });
+      `,
+      // No import of "engine" here — each file is wrapped in its own function
+      // scope, which closes over nothing from outside it.
+      "helper.ts": `export function helper(): void { engine.log("leaked"); }`,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    const { ticks } = runBundle(output);
+    expect(() => ticks[0]()).toThrow(/engine is not defined/);
   });
 
   it("rejects an import no project file answers", async () => {
     const files = {
-      "main.ts": `import { nope } from "./nope"; export function bmsTick() {}`,
+      "main.ts": `import { nope } from "./nope";`,
     };
     await expect(bundlePlaceProject(files, "main.ts")).rejects.toThrow(
-      'imports "./nope" — imports may only come from this place\'s own script files',
+      'imports "./nope" — imports may only come from this place\'s own script files, or "engine"',
     );
   });
 
   it("rejects a bare or network specifier", async () => {
     const files = {
-      "main.ts": `import fs from "fs"; export function bmsTick() {}`,
+      "main.ts": `import fs from "fs";`,
     };
     await expect(bundlePlaceProject(files, "main.ts")).rejects.toThrow(
-      /imports may only come from this place's own script files/,
+      /imports may only come from this place's own script files, or "engine"/,
     );
   });
 

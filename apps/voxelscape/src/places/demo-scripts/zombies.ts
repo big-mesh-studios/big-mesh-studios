@@ -2,29 +2,14 @@
 // write: it is imported with `?raw` and handed to the sandbox as text, never
 // run as part of the world's own bundle. A whole population of zombies
 // materializes procedurally around wherever players explore and fights back
-// with a sword the player starts holding; its `declare const engine` is the
-// guest API the interpreter injects.
+// with a sword the player starts holding.
 //
 // `zombie` is imported rather than named as a bare string, so the panel
 // types it against the model this place actually carries (ADR 0046) — this
 // demo's own manifest lists `zombie.zip` among its models, which is what
 // makes the specifier below resolve at all.
 import zombie from "zombie" with { type: "model" };
-
-declare const engine: {
-  dispatch(tag: string, payload: string): void;
-  log(line: string): void;
-  now(): number;
-  blocks: Record<string, number>;
-  /** Every player's live position: the local player first, then connected peers. */
-  players(): string;
-  /** The terrain surface at (x, z). */
-  heightAt(x: number, z: number): number;
-  /** Whether (x, y, z) is inside solid ground. */
-  solidAt(x: number, y: number, z: number): boolean;
-  /** Whether (x, y, z) is water. */
-  waterAt(x: number, y: number, z: number): boolean;
-};
+import * as engine from "engine";
 
 const GUIDE = "guide";
 const SWORD = "sword";
@@ -504,7 +489,7 @@ function armTick(): void {
   );
 }
 
-export function bmsTick(_clockMs: number, eventsJson: string): void {
+engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
   const now = engine.now();
   if (!started) {
     started = true;
@@ -606,4 +591,4 @@ export function bmsTick(_clockMs: number, eventsJson: string): void {
     }
     armTick();
   }
-}
+});
