@@ -108,6 +108,46 @@
   max-width: 200px;
 }
 
+/* Below this width there's no room for `.fields`' and `.actions`' flex-wrap
+ * to spill either group across extra sub-lines: each becomes a one-row grid,
+ * shrinking its cells to fit instead of wrapping them. */
+@media (max-width: 640px) {
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fields,
+  .actions {
+    display: grid;
+    gap: 6px;
+  }
+
+  .fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .actions {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .text,
+  .number,
+  .select,
+  .button,
+  .pick {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    box-sizing: border-box;
+    padding-left: 4px;
+    padding-right: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 .tabs {
   display: flex;
   align-items: stretch;
