@@ -20,8 +20,6 @@ export interface BuiltinDemo {
   manifest: Omit<PlaceManifest, "scripts">;
   /** The demo's script files, keyed by manifest-relative path. */
   scripts: Record<string, string>;
-  /** Model files under `public/models/` the scripts name, fetched when it opens. */
-  modelFiles: string[];
 }
 
 /**
@@ -67,33 +65,6 @@ const GASA4: BuiltinDemo = {
       "plate.zip",
     ],
   },
-  modelFiles: [
-    "bed.zip",
-    "bathtub.zip",
-    "sofa.zip",
-    "tv.zip",
-    "table.zip",
-    "counter.zip",
-    "stove.zip",
-    "fridge.zip",
-    "bench.zip",
-    "manhole.zip",
-    "trash.zip",
-    "register.zip",
-    "shelf.zip",
-    "vending.zip",
-    "chips.zip",
-    "orange.zip",
-    "colgate.zip",
-    "cola.zip",
-    "egg.zip",
-    "friedegg.zip",
-    "juice.zip",
-    "milk.zip",
-    "tix.zip",
-    "robux.zip",
-    "plate.zip",
-  ],
   scripts: {
     [MAIN_SCRIPT_FILE]: GASA4_SCRIPT,
   },
@@ -188,7 +159,6 @@ const LATE_TO_SCHOOL: BuiltinDemo = {
     spawn: [-12, 0, 16],
     models: LATE_TO_SCHOOL_MODELS,
   },
-  modelFiles: LATE_TO_SCHOOL_MODELS,
   scripts: {
     [MAIN_SCRIPT_FILE]: LATE_TO_SCHOOL_SCRIPT,
   },
@@ -211,7 +181,6 @@ const ZOMBIES: BuiltinDemo = {
     mode: "multi",
     models: ["zombie.zip"],
   },
-  modelFiles: ["zombie.zip"],
   scripts: {
     [MAIN_SCRIPT_FILE]: ZOMBIES_SCRIPT,
   },
@@ -254,7 +223,6 @@ const DONT_POOP: BuiltinDemo = {
     spawn: [0, 0, 0],
     models: DONT_POOP_MODELS,
   },
-  modelFiles: DONT_POOP_MODELS,
   scripts: {
     [MAIN_SCRIPT_FILE]: DONT_POOP_SCRIPT,
   },
@@ -282,7 +250,7 @@ export const loadBuiltinDemo = async (
   demo: BuiltinDemo,
 ): Promise<PlaceProject> => {
   const models: Record<string, Uint8Array> = {};
-  for (const file of demo.modelFiles) {
+  for (const file of demo.manifest.models ?? []) {
     try {
       // Served from the site's own root, the same folder every other address
       // in this application is built from (see `vite.config.ts`'s `base`).
