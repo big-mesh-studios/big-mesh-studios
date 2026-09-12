@@ -164,3 +164,64 @@ describe("player-damage message codec", () => {
     }
   });
 });
+
+describe("time message codec", () => {
+  const ping = (t1: number): Record<string, unknown> => ({
+    v: 1,
+    type: "time",
+    t1,
+  });
+  const answer = (t1: number, t2: number): Record<string, unknown> => ({
+    v: 1,
+    type: "time",
+    t1,
+    t2,
+  });
+
+  it("round-trips a clock ping", () => {
+    const decoded = decodeMessage(JSON.stringify(ping(12_345)));
+    expect(decoded).not.toBeNull();
+    expect(decoded!.type).toBe("time");
+    const message = decoded as Extract<typeof decoded, { type: "time" }>;
+    expect(message.t1).toBe(12_345);
+    expect(message.t2).toBeUndefined();
+  });
+
+  it("round-trips a clock answer", () => {
+    const decoded = decodeMessage(JSON.stringify(answer(12_345, 12_480)));
+    expect(decoded).not.toBeNull();
+    expect(decoded!.type).toBe("time");
+    const message = decoded as Extract<typeof decoded, { type: "time" }>;
+    expect(message.t1).toBe(12_345);
+    expect(message.t2).toBe(12_480);
+  });
+
+  it("encodes whole-millisecond timestamps", () => {
+    const encoded = encodeMessage({
+      v: 1,
+      type: "time",
+      t1: 12_345.6,
+      t2: 12_480.4,
+    });
+    expect(encoded).toContain('"t1":12346');
+    expect(encoded).toContain('"t2":12480');
+  });
+
+  it("rejects malformed time messages", () => {
+    const cases = [
+      { v: 1, type: "time" },
+      { v: 1, type: "time", t1: "soon" },
+      { v: 1, type: "time", t1: -1 },
+      { v: 1, type: "time", t1: 1e13 + 1 },
+      { v: 1, type: "time", t1: 1, t2: "later" },
+      { v: 2, type: "time", t1: 1 },
+      { v: 1, type: "edit", t1: 1 },
+    ];
+    for (const bad of cases) {
+      expect(
+        decodeMessage(JSON.stringify(bad)),
+        JSON.stringify(bad),
+      ).toBeNull();
+    }
+  });
+});

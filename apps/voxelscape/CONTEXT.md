@@ -128,6 +128,50 @@ _Avoid_: shadow, id render (it is the _question_; the readback is the answer), m
 One read of the **Probe** scene: a draw into a render target at (at most) one-eighth of the drawing buffer, the pixels read back, and the set of slots that won a pixel kept. Runs on a fixed frame interval, or immediately when the camera moves a superchunk's worth of world or turns its forward sharply.
 _Avoid_: GPU occlusion query (this is a colour readback, not a `GL_ARB_occlusion_query` object), probe pass (that's the per-chunk draw; the readback is what answers)
 
+**Motion**:
+The path and spin a place script gives one **Scripted figure** — a **MotionSpec** of waypoints, a loop mode, a duration, and an optional spin. The **ScriptHost** stores the spec and the trusted side samples `poseAt` from the shared clock each frame, so the figure's position is a pure function of the spec and the clock rather than something the script steps. A **Solid platform** samples the same pose into its collision box and reports its velocity, so a player standing on it rides it.
+_Avoid_: animation (that is the drawn result, not the spec), tween (the ease is one field of it, not the thing)
+
+**Scripted figure**:
+An NPC or prop a place script has placed, as the **ScriptHost** holds it: where it stands, how it faces, what model it wears, and the **Motion** it follows if any. The **VoxelFigures** renderer draws whatever the current figures are each frame, placing each at its posed feet.
+_Avoid_: entity (that is the monsters' word), actor
+
+**Cutscene**:
+A list of camera shots a place script plays for one player: where the view goes, what it looks at, and how long each move and hold lasts. It is voice-tier — the world's camera director samples it and returns the view to the player when the shots end — and while one runs the player's movement and tools are taken away.
+_Avoid_: cinematic, camera path (the sequence is shots, not one curve)
+
+**Checkpoint**:
+Where a player is put back on their feet after dying, set by a `player-checkpoint` effect in feet coordinates and remembered by the world until the place restarts. It is local to one player, like a **Cutscene**, not shared state.
+_Avoid_: spawn (that is the place's own start, which a checkpoint replaces), save point
+
+**Hazard**:
+A scripted prop marked to report when a player's cube first overlaps it, as a `player-touched` fact. The world draws no conclusion from the touch; what it means is the script's rule.
+_Avoid_: damage volume, kill brick (a hazard need not kill or even be solid)
+
+**Kill plane**:
+A height a place script sets with a `void` effect; a player whose feet fall below it is killed and returned to their **Checkpoint**. It is how a fall off a high course ends before it reaches the ground.
+_Avoid_: void (the effect's tag, not the thing), death floor
+
+**HUD readout**:
+A typed value a place script shows to one player over the world — a bar with a value and a maximum, or a line of text — set by a `hud` effect and taken away by `hud-remove`. It is voice-tier, and its value changes only when the script says so.
+_Avoid_: widget, overlay (that is the DOM layer it is drawn in)
+
+**Field**:
+A box in feet coordinates a place script fills with one movement behaviour: a **push** carries the player toward a target velocity (`vx`/`vz`/`vy`, any subset), a **quicksand** slows their walk and caps their sink. The world's trusted side samples the field standing at the player's centre once a frame (`mediumAt`), so the horizontal and vertical physics agree on what acts on them; overlapping fields compose, with pushes summed and the worst quicksand taking the walk. Set by a `field` effect and taken away by `field-remove`. Authorable but never carveable: fields are scripted, not voxels.
+_Avoid_: fan, wind tunnel (those are one script's story about a push, not the thing), zone (a zone is a prop's touch-in region; a Field is a whole volume)
+
+**Quicksand**:
+A **Field** kind that slows the player's walking toward a `speedScale` (down to zero) and clamps how fast they sink at all (`sink`). It changes how the player moves under their own power rather than pushing them, which is why it composes with (and keeps its grip against) an overlapping push.
+_Avoid_: mire, sludge (that's another script's dressing), water (water is swim physics — drag, swim up, buoyancy — not a Field)
+
+**Conveyor**:
+A sideways surface velocity a place script sets on a **Scripted prop** (`{ vx, vz }` on the `prop` payload): the standing surface carries the player's feet with that speed the way a moving **Solid platform** does, while the prop itself stays where it was placed. Mutually exclusive with the prop's own **Motion**. The player physics never knows the floor is a conveyor — it only ever reads the surface velocity, the same seam a platform rides on.
+_Avoid_: moving floor (a platform moves its own box; a Conveyor moves only what stands on it), belt (that's the drawn dressing of one)
+
+**Place clock**:
+The moment every peer in a place reads a script's `now` from: the wall-clock time of the lowest DID among the players in the place, offset-corrected per player by a one-round-trip time exchange over their link to that peer. Every peer derives the same timekeeper from the same roster by the same total rule — no election, no broadcast, ADR 0045 — and falls back to the local wall clock while alone, offline, or before a measurement lands. Scripts' **Motion**, timers, and cutscenes run off it, so a **Solid platform** a player stands on moves the same way for every peer.
+_Avoid_: shared/world clock (that's the day-night clock **DayNightController** owns and a different thing), server time (there is no server)
+
 ## Relationships
 
 - A **Sphere** holds a fixed-size ball of **WorldBlock**s, indexed by pool slot.
@@ -153,6 +197,12 @@ _Avoid_: GPU occlusion query (this is a colour readback, not a `GL_ARB_occlusion
 - **MonsterController** broadcasts its owned monsters through the mesh via the **MultiplayerController** (`broadcastMonsters`), wired to its `onBroadcast` callback in `App.tsx`; a peer's monsters arrive through `onRemoteMonsters` and `applyMonsterUpdates` — the same optimistic-path separation the edit overlay already uses. Its durable records are written and fetched by **MonsterSync**, wired through `recordsForPersistence`/`markPersisted` and `mergeFromAtproto`.
 - A zombie's swing lands on the player it attacks: the **MonsterController** reports it through `onHitPlayer` (the attacked player's DID and the damage), and the app applies it to the local **PlayerHealth** or broadcasts it over the mesh for the hit peer's client to apply — the zombie's owner and the hurt player's client are each authoritative over their own part, as with sword damage (ADR 0013).
 - A **Probe** never hides a chunk the **Occlusion query** has not measured, and the chunks near the player's own cell are always drawn, so geometry that lands mid-interval or sits beside the camera never flickers out between queries.
+- A **Scripted figure**'s **Motion** is a pure function of its spec and the shared clock, so every peer computes the same pose without the pose being replicated; a solid figure's pose reaches the player's physics through the collision box and its velocity.
+- A **Cutscene** and a **HUD readout** are voice-tier: the world samples them for one player and never shares them, the way it already treats narration and player placement.
+- A **Hazard** reports a touch and stops there; the script decides whether the touch is a death, and a `player-kill` death is authored as a fact the rules fold over.
+- A **Field** pushes and grips through the same `mediumAt` seam the way the world already hands the player ground and air; the script says where the air behaves, the physics resolves it.
+- A **Conveyor** reaches the player's feet through the same surface velocity that carries them on a moving **Solid platform**, so a conveyed prop needs no physics state of its own.
+- A **Place clock** is what one player's scripts and **Motion** sample: it is the lowest DID's wall time, so every peer's deadlines and platform poses agree without a single pose or deadline being replicated (ADR 0045).
 
 ## Example dialogue
 

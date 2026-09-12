@@ -112,6 +112,24 @@ export class PlayerHealth {
     return taken;
   }
 
+  /**
+   * Empties the hearts at once and starts the death fall, ignoring any guard. A
+   * hazard a place script sets off kills the player outright rather than
+   * chipping hearts away, so this is the entry point for that.
+   */
+  kill(): void {
+    if (this.dead) {
+      return;
+    }
+    if (this.hp !== 0) {
+      this.hp = 0;
+      this.emit();
+    }
+    this.dead = true;
+    this.fallSeconds = 0;
+    this.fallDone = false;
+  }
+
   /** Heals up to `amount`, never past the max; a full-heal command passes the max. */
   heal(amount: number): void {
     const next = Math.min(this.maxHp, this.hp + amount);

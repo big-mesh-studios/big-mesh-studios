@@ -20,7 +20,7 @@ describe("parseStructurePlan", () => {
     expect(parseStructurePlan("   ")).toEqual([]);
   });
 
-  it("accepts the three shape kinds", () => {
+  it("accepts every shape kind", () => {
     const plan = [
       BOX,
       { kind: "road", from: [0, 0, 0], to: [8, 0, 0], width: 3, id: 4 },
@@ -32,8 +32,45 @@ describe("parseStructurePlan", () => {
         roof: 26,
         floor: 4,
       },
+      {
+        kind: "stairs",
+        at: [0, 0, 0],
+        along: "x",
+        steps: 4,
+        rise: 1,
+        run: 2,
+        width: 3,
+        id: 25,
+      },
+      { kind: "ramp", from: [0, 0, 0], to: [4, 4, 0], width: 3, id: 4 },
     ];
     expect(parseStructurePlan(JSON.stringify(plan))).toEqual(plan);
+  });
+
+  it("refuses a staircase or incline the world cannot generate", () => {
+    expect(
+      parseStructurePlan(
+        JSON.stringify([
+          {
+            kind: "stairs",
+            at: [0, 0, 0],
+            along: "diagonal",
+            steps: 4,
+            rise: 1,
+            run: 2,
+            width: 3,
+            id: 25,
+          },
+        ]),
+      ),
+    ).toBeNull();
+    expect(
+      parseStructurePlan(
+        JSON.stringify([
+          { kind: "ramp", from: [0, 0, 0], to: [99999, 0, 0], width: 3, id: 4 },
+        ]),
+      ),
+    ).toBeNull();
   });
 
   it("refuses malformed JSON, a non-array, and a bad shape", () => {

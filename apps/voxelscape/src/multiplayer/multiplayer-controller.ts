@@ -9,6 +9,7 @@
 import { Group } from "@random-mesh/rmsl/scene";
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import type { AtprotoRepoClient } from "@big-mesh-studios/atproto/repo-client";
+import { PeerClock, clockRoster } from "./clock";
 import { MeshPeer } from "./mesh-peer";
 import type {
   EditItem,
@@ -84,6 +85,10 @@ const POSE_INTERVAL_IDLE_MS = 2_000;
 const POSE_MOVE_EPS = 1;
 /** How long to wait before re-attempting a peer whose handshake failed, ms. */
 const PEER_RETRY_COOLDOWN_MS = 30_000;
+/** How often open peer links re-measure the place clock, ms. */
+const CLOCK_MEASURE_INTERVAL_MS = 2_000;
+/** How long an unanswered time exchange may stay pending before it is dropped, ms. */
+const CLOCK_MEASURE_TIMEOUT_MS = 30_000;
 
 export interface MultiplayerParams {
   /** The signed-in record client, or undefined while anonymous (never captured, always asked). */
@@ -152,6 +157,12 @@ export interface MultiplayerParams {
   onRemotePlayerDamage?: (did: string, damage: PlayerDamageWire) => void;
   /** Overrides for the cluster-selection tuning (tests use this to disable hysteresis). */
   clusterOptions?: Partial<ClusterOptions>;
+  /**
+   * The local wall clock, injectable so the harness can skew one peer against
+   * another and confirm their shared-clock offsets converge. Defaults to
+   * `Date.now`, and every skewing mesh peer gets the same clock.
+   */
+  wallNow?: () => number;
 }
 
 export class MultiplayerController {
@@ -182,6 +193,8 @@ export class MultiplayerController {
     damage: PlayerDamageWire,
   ) => void;
   private readonly clusterOptions: Partial<ClusterOptions>;
+  private readonly wallNow: () => number;
+  private readonly clock: PeerClock;
   /**
    * Every connected peer's avatar, for the scene to place in its draw order.
    * Stays empty in headless runs, which have no camera to billboard labels at.
@@ -231,6 +244,12 @@ export class MultiplayerController {
   private lastSendAt = 0;
   private lastSendX = 0;
   private lastSendZ = 0;
+  private lastMeasureAt = 0;
+  /**
+   * The time exchanges currently awaiting an answer, per peer: the wall moment
+   * the ping left and the `t1` to match when the answer comes back.
+   */
+  private readonly pendingTimes = new Map<string, { t1: number; at: number }>();
   private presenceTimer: ReturnType<typeof setInterval> | undefined;
   private discoverTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -251,6 +270,8 @@ export class MultiplayerController {
     this.onRemoteScriptEvents = params.onRemoteScriptEvents ?? (() => {});
     this.onRemotePlayerDamage = params.onRemotePlayerDamage ?? (() => {});
     this.clusterOptions = params.clusterOptions ?? {};
+    this.wallNow = params.wallNow ?? (() => Date.now());
+    this.clock = new PeerClock({ wallNow: this.wallNow });
     this.remotePlayers =
       params.camera !== undefined
         ? new RemotePlayers({ camera: params.camera })
@@ -270,6 +291,15 @@ export class MultiplayerController {
   /** The number of live peer connections. */
   get connections(): number {
     return this.peerCount;
+  }
+
+  /**
+   * The place's shared-clock moment, in milliseconds: the wall time of the
+   * peer chosen as timekeeper, offset-corrected for this player. Falls back
+   * to the local wall clock while no measured peer shares the place.
+   */
+  now(): number {
+    return this.clock.now();
   }
 
   /** The DIDs of the peers this player currently has an open link to. */
@@ -308,6 +338,8 @@ export class MultiplayerController {
     this.running = true;
     this.status_ = "online";
     this.lastError = null;
+    this.clock.setSelf(did);
+    this.clock.setRoster(this.placeRoster());
 
     // One signaling registration per session. Its join code goes into this
     // player's presence, so peers can find them; incoming connections are
@@ -360,6 +392,9 @@ export class MultiplayerController {
     }
     this.pendingConnections.clear();
     this.failedAt.clear();
+    this.pendingTimes.clear();
+    this.lastMeasureAt = 0;
+    this.clock.reset();
     this.peerCount = 0;
     this.roster = [];
     this.selection = undefined;
@@ -396,6 +431,17 @@ export class MultiplayerController {
       return;
     }
     const now = Date.now();
+    if (now - this.lastMeasureAt >= CLOCK_MEASURE_INTERVAL_MS) {
+      this.lastMeasureAt = now;
+      for (const did of this.connectedDids()) {
+        this.measureClock(did);
+      }
+    }
+    for (const [did, pending] of this.pendingTimes) {
+      if (now - pending.at > CLOCK_MEASURE_TIMEOUT_MS) {
+        this.pendingTimes.delete(did);
+      }
+    }
     const pose = this.getPose();
 
     const presenceMoved =
@@ -584,6 +630,7 @@ export class MultiplayerController {
     lines.push(
       `player-damage: ${this.playerDamageSent} sent, ${this.playerDamageReceived} received`,
     );
+    lines.push(`clock: ${this.clock.describe()}`);
     lines.push(`lastError: ${this.lastError ?? "none"}`);
     return lines.join("\n");
   }
@@ -677,6 +724,7 @@ export class MultiplayerController {
       }
       this.lastDiscovery = { at: now, relayDids: dids, fetched };
       this.roster = rosterFromPresences(entries);
+      this.clock.setRoster(this.placeRoster());
       this.applySelection(now);
     } catch (err) {
       this.fail(err);
@@ -853,8 +901,10 @@ export class MultiplayerController {
     onScriptEntities: (did: string, updates: ScriptEntityUpdate[]) => void;
     onScriptEvents: (did: string, events: ScriptEvent[]) => void;
     onPlayerDamage: (did: string, damage: PlayerDamageWire) => void;
+    onTime: (did: string, t1: number, t2: number) => void;
     onClose: (did: string) => void;
     onError: (did: string, message: string, code?: string) => void;
+    wallNow: () => number;
   } {
     let opened = false;
     return {
@@ -862,6 +912,8 @@ export class MultiplayerController {
         opened = true;
         this.failedAt.delete(did);
         this.peerCount++;
+        this.clock.setRoster(this.placeRoster());
+        this.measureClock(did);
         void this.nameAvatar(did);
         void this.faceAvatar(did);
       },
@@ -885,9 +937,20 @@ export class MultiplayerController {
         this.playerDamageReceived++;
         this.onRemotePlayerDamage(did, damage);
       },
+      onTime: (did, t1, t2) => {
+        const pending = this.pendingTimes.get(did);
+        if (pending === undefined || pending.t1 !== t1) {
+          return;
+        }
+        this.pendingTimes.delete(did);
+        this.clock.observe(did, t1, t2, this.wallNow());
+      },
       onClose: (did) => {
         this.peerCount = Math.max(0, this.peerCount - 1);
         this.remotePlayers?.remove(did);
+        this.pendingTimes.delete(did);
+        this.clock.forget(did);
+        this.clock.setRoster(this.placeRoster());
         this.peers.delete(did);
         if (!opened) {
           this.failedAt.set(did, Date.now());
@@ -898,6 +961,7 @@ export class MultiplayerController {
           code !== undefined ? ` (${code})` : ""
         }`;
       },
+      wallNow: () => this.wallNow(),
     };
   }
 
@@ -1024,6 +1088,27 @@ export class MultiplayerController {
   private fail(err: unknown): void {
     this.status_ = "error";
     this.lastError = err instanceof Error ? err.message : String(err);
+  }
+
+  /**
+   * Starts one clock exchange with `did`: a ping naming the wall moment it
+   * leaves. The peer answers with its own receipt wall moment, and the next
+   * `onTime` accounts the round trip into the place clock.
+   */
+  private measureClock(did: string): void {
+    const peer = this.peers.get(did);
+    if (peer === undefined || !peer.connected) {
+      return;
+    }
+    const t1 = this.wallNow();
+    this.pendingTimes.set(did, { t1, at: t1 });
+    peer.sendTime(t1);
+  }
+
+  /** The other players sharing this place: this player plus its roster peers. */
+  private placeRoster(): string[] {
+    const self = this.getDid();
+    return self === null ? [] : [self, ...clockRoster(this.roster, this.scope)];
   }
 }
 

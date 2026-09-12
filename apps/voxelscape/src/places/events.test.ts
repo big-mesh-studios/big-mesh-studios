@@ -109,8 +109,41 @@ describe("script event validation", () => {
         kind: "timer",
         timerId: "cook",
       } as ScriptEvent,
+      {
+        ...stamp("e15", 1_000, "did:plc:bob"),
+        kind: "player-touched",
+        entityId: "spikes",
+      } as ScriptEvent,
+      {
+        ...stamp("e16", 1_000, "did:plc:bob"),
+        kind: "player-died",
+        cause: "spikes",
+      } as ScriptEvent,
+      {
+        ...stamp("e17", 1_000, "did:plc:bob"),
+        kind: "player-died",
+        cause: "",
+      } as ScriptEvent,
     ]) {
       expect(isScriptEvent(e)).toBe(true);
+    }
+  });
+
+  it("rejects a malformed touch or death event", () => {
+    const cases: Array<unknown> = [
+      { ...stamp("e1", 1, "p"), kind: "player-touched" },
+      { ...stamp("e1", 1, "p"), kind: "player-touched", entityId: "" },
+      {
+        ...stamp("e1", 1, "p"),
+        kind: "player-touched",
+        entityId: "x".repeat(65),
+      },
+      { ...stamp("e1", 1, "p"), kind: "player-died" },
+      { ...stamp("e1", 1, "p"), kind: "player-died", cause: "x".repeat(65) },
+      { ...stamp("e1", 1, "p"), kind: "player-died", cause: 7 },
+    ];
+    for (const bad of cases) {
+      expect(isScriptEvent(bad), JSON.stringify(bad)).toBe(false);
     }
   });
 

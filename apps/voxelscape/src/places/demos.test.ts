@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_DEMOS, builtinDemo, loadBuiltinDemo } from "./demos";
 import { compilePlacePlan, planRegionAround } from "./plan";
 import { ScriptHost } from "./script-host";
+import { expandShape } from "../world/structure-fill";
 
 /** The bytes of a model under `public/models/`, as the demo loader fetches them. */
 const modelBytes = (file: string): ArrayBuffer => {
@@ -15,6 +16,28 @@ const modelBytes = (file: string): ArrayBuffer => {
     bytes.byteOffset + bytes.byteLength,
   ) as ArrayBuffer;
 };
+
+/**
+ * Every surface top the plan offers at one LOD-0 voxel column, in world units.
+ * The passed boxes are the plan's expanded shapes; the two `surfaceTops`
+ * helpers below sit on top of this and guard the demo against building a
+ * course whose pads or checkpoints float in the air.
+ */
+const columnSurfaces = (
+  boxes: Array<{ id: number; min: number[]; max: number[] }>,
+  voxelX: number,
+  voxelZ: number,
+): number[] =>
+  boxes
+    .filter(
+      (box) =>
+        box.id !== 0 &&
+        voxelX >= box.min[0] &&
+        voxelX <= box.max[0] &&
+        voxelZ >= box.min[2] &&
+        voxelZ <= box.max[2],
+    )
+    .map((box) => (box.max[1] + 1) * 2);
 
 /** Answers the loader's `<base>models/...` fetches from disk. */
 const stubModels = (): void => {
@@ -686,6 +709,200 @@ describe("the Zombies demo", () => {
     });
     await advanceZombies(host, 1_200);
     expect(host.npc(NEARBY_ZOMBIE_ID)).toBeNull();
+    host.dispose();
+  });
+});
+
+/** Loads the "Don't Poop Yourself at School" demo and returns its script entry. */
+const dontPoop = async () => {
+  stubModels();
+  const project = await loadBuiltinDemo(
+    builtinDemo("dont-poop-yourself-at-school")!,
+  );
+  return { project, entry: project.manifest.scripts![0] };
+};
+
+/** Boots the obby demo, returning what its script said and heard. */
+const runDp = async () => {
+  clockMs = 0;
+  const { project, entry } = await dontPoop();
+  const endings: string[] = [];
+  const narrations: string[] = [];
+  const checkpoints: Array<number[]> = [];
+  const kills: string[] = [];
+  const voids: number[] = [];
+  const host = new ScriptHost({
+    seed: project.manifest.seed,
+    now: () => clockMs,
+    heightAt: () => 62,
+    onTime: () => {},
+    onEnding: (_player, state) => {
+      if (state !== null) {
+        endings.push(state.title);
+      }
+    },
+    onNarrate: (_player, line) => narrations.push(line.text),
+    onCheckpoint: (_player, at) => checkpoints.push([at.x, at.z, at.y ?? 0]),
+    onKill: (_player, cause) => kills.push(cause),
+    onVoid: (y) => voids.push(y),
+  });
+  await host.loadProject(project.scripts, entry);
+  return { host, endings, narrations, checkpoints, kills, voids };
+};
+
+describe("the Don't Poop Yourself at School demo", () => {
+  it("lists the demo with its models", () => {
+    const demo = builtinDemo("dont-poop-yourself-at-school");
+    expect(demo?.name).toBe("Don't Poop Yourself at School");
+    expect(demo?.manifest.models).toContain("wet-floor.zip");
+    expect(demo?.manifest.models).toContain("soap.zip");
+    expect(BUILTIN_DEMOS).toContain(demo);
+  });
+
+  it("loads its models as bytes", async () => {
+    const { project } = await dontPoop();
+    expect(Object.keys(project.models)).toContain("wet-floor.zip");
+    expect(project.models["wet-floor.zip"].length).toBeGreaterThan(0);
+  });
+
+  it("compiles a plan that includes a staircase", async () => {
+    const { project, entry } = await dontPoop();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    expect(plan.some((shape) => shape.kind === "stairs")).toBe(true);
+  });
+
+  it("attaches the staircase to the lobby floor", async () => {
+    const { project, entry } = await dontPoop();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    const boxes = plan.flatMap((shape) => expandShape(shape));
+    // The lobby floor's east edge is at voxel z=-8 (world z=-16, surface 202),
+    // and the first stair tread starts there, climbing one step to 204.
+    expect(columnSurfaces(boxes, 0, -12)).toContain(202);
+    expect(columnSurfaces(boxes, 0, -7)).toContain(204);
+  });
+
+  it("puts every checkpoint on a solid surface", async () => {
+    const { project, entry } = await dontPoop();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    const boxes = plan.flatMap((shape) => expandShape(shape));
+    const surfacesAt = (worldX: number, worldZ: number): number[] =>
+      columnSurfaces(boxes, worldX / 2, worldZ / 2);
+    expect(surfacesAt(0, -40)).toContain(202); // the lobby
+    expect(surfacesAt(0, 16)).toContain(218); // the staircase pedestal
+    expect(surfacesAt(0, 42)).toContain(218); // the hallway corridor
+    expect(surfacesAt(0, 80)).toContain(218); // the cafeteria floor
+    expect(surfacesAt(0, 210)).toContain(218); // the mud room floor
+    expect(surfacesAt(0, 270)).toContain(220); // the bathroom floor
+  });
+
+  it("opens with the staff, the soap, the hazard sign, and a kill plane", async () => {
+    const { host, voids } = await runDp();
+    // Four NPCs: Janitor, Bully, Principal, and Teacher.
+    expect(host.npcList.map((npc) => npc.id).sort()).toEqual([
+      "bully",
+      "janitor",
+      "principal",
+      "teacher",
+    ]);
+    expect(host.prop("wet-floor")).toMatchObject({ hazard: true });
+    expect(host.prop("soap")).toMatchObject({ model: "soap.zip" });
+    expect(host.voidY).toBe(150);
+    expect(voids).toEqual([150]);
+    host.dispose();
+  });
+
+  it("opens with an intro cutscene that takes the controls away", async () => {
+    const { host } = await runDp();
+    expect(host.cutsceneFor("")?.shots.length).toBeGreaterThan(1);
+    expect(host.controlsLocked("")).toBe(true);
+    host.dispose();
+  });
+
+  it("plays a camera beat when the climb begins", async () => {
+    const { host } = await runDp();
+    await host.movePlayer("", 0, 211, -18); // onto the staircase
+    expect(host.cutsceneFor("")?.shots).toEqual([
+      {
+        at: [30, 234, -8],
+        look: [0, 210, -40],
+        durationMs: 2_000,
+        holdMs: 600,
+        ease: "smooth",
+      },
+    ]);
+    host.dispose();
+  });
+
+  it("sets a checkpoint and marks it when the player reaches a pad", async () => {
+    const { host, checkpoints } = await runDp();
+    await host.movePlayer("", 0, 211, -18); // onto the staircase zone
+    expect(checkpoints).toContainEqual([0, 16, 218]);
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "checkpoint", kind: "text" }),
+    );
+    host.dispose();
+  });
+
+  it("shows a filling bladder meter and loses when it fills", async () => {
+    const { host, endings } = await runDp();
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "bladder", kind: "bar", max: 12 }),
+    );
+    expect(host.hudFor("")[0]).toMatchObject({ value: 0 });
+    for (let i = 0; i < 12; i++) {
+      clockMs += 8_000;
+      await host.pump();
+    }
+    expect(endings).toEqual(["Accident"]);
+    expect(host.hudFor("")[0]).toMatchObject({ value: 12 });
+    host.dispose();
+  });
+
+  it("samples the moving props off the shared clock", async () => {
+    const { host } = await runDp();
+    clockMs = 0;
+    const turntable0 = host.propPose("turntable");
+    const plank0 = host.propPose("moving-plank");
+    clockMs = 2_000;
+    const turntable1 = host.propPose("turntable");
+    const plank1 = host.propPose("moving-plank");
+    expect(turntable0).not.toBeNull();
+    expect(turntable1?.yaw).not.toBeCloseTo(turntable0?.yaw ?? 0, 3);
+    expect(plank1?.dz).not.toBeCloseTo(plank0?.dz ?? 0, 3);
+    expect(host.prop("toilet-roll")?.motion?.spin).toBeDefined();
+    host.dispose();
+  });
+
+  it("kills the player and counts the death when a hazard is touched", async () => {
+    const { host, kills, narrations } = await runDp();
+    await host.touched("", "wet-floor");
+    expect(kills).toEqual(["wet-floor"]);
+    expect(narrations.some((line) => line.includes("Deaths so far"))).toBe(
+      true,
+    );
+    host.dispose();
+  });
+
+  it("ends with Relieved when the player reaches the restroom", async () => {
+    const { host, endings } = await runDp();
+    // The bathroom zone now runs from world z=270 to z=310.
+    await host.movePlayer("", 0, 220, 280);
+    expect(endings).toEqual(["Relieved"]);
     host.dispose();
   });
 });

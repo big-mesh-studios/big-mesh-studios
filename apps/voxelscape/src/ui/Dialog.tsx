@@ -1,12 +1,77 @@
 import { createSignal, For, onSettled, Show, type Component } from "solid-js";
 import styles from "./Dialog.module.css";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
+import type { HudReadout } from "../places/script-host";
 import { letterAudio } from "./letter-audio";
 
 /** How long between one revealed letter and the next, in milliseconds. */
 const LETTER_MS = 36;
 /** How long a narration line stays on screen before it fades, in milliseconds. */
 const NARRATION_MS = 6_000;
+
+/** How full a bar readout is drawn, as a percentage clamped to 0..100. */
+const fillPercent = (readout: HudReadout): number => {
+  if (readout.max <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, (readout.value / readout.max) * 100));
+};
+
+/**
+ * The meters and lines a place script shows over the world — a fullness meter,
+ * a checkpoint counter. It reads the world's `hud` accessor on its own frame
+ * loop, the way the dialog overlay does, so a script that changes a readout
+ * needs no signal of its own.
+ */
+export const ScriptHud: Component = () => {
+  const voxelscape = useVoxelscape();
+  const [readouts, setReadouts] = createSignal<HudReadout[]>([]);
+
+  onSettled(() => {
+    let frame = 0;
+    let last = "";
+    const tick = (): void => {
+      const current = voxelscape.hud();
+      const key = JSON.stringify(current);
+      if (key !== last) {
+        last = key;
+        setReadouts(current);
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  });
+
+  return (
+    <Show when={readouts().length > 0}>
+      <div class={styles.hud}>
+        <For each={readouts()}>
+          {(readout) => (
+            <div class={styles["hud-item"]}>
+              <Show when={readout.label !== ""}>
+                <span class={styles["hud-label"]}>{readout.label}</span>
+              </Show>
+              <Show
+                when={readout.kind === "bar"}
+                fallback={
+                  <span class={styles["hud-text"]}>{readout.text}</span>
+                }
+              >
+                <div class={styles["hud-bar"]}>
+                  <div
+                    class={styles["hud-bar-fill"]}
+                    style={{ width: `${fillPercent(readout)}%` }}
+                  />
+                </div>
+              </Show>
+            </div>
+          )}
+        </For>
+      </div>
+    </Show>
+  );
+};
 
 /**
  * The line a script shows with no figure speaking it — the inner voice that
@@ -130,6 +195,11 @@ export const DialogOverlay: Component = () => {
 
   return (
     <div class={styles.overlay}>
+      <Show when={voxelscape.cutscene()}>
+        <div class={styles["letterbox-top"]} />
+        <div class={styles["letterbox-bottom"]} />
+      </Show>
+      <ScriptHud />
       <Narration />
       <Show when={voxelscape.dialog() === null && voxelscape.npcAim() !== null}>
         <div class={styles.hint}>

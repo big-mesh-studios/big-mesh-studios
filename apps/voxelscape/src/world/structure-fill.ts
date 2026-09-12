@@ -44,7 +44,37 @@ export interface PlanHouse {
   floor: number;
 }
 
-export type PlanShape = PlanBox | PlanRoad | PlanHouse;
+/** A solid staircase: `steps` treads climbing along one horizontal axis. */
+export interface PlanStairs {
+  kind: "stairs";
+  /** The bottom corner the first tread starts at, in LOD-0 world voxels. */
+  at: Dim3;
+  /** The horizontal axis the staircase climbs along. */
+  along: "x" | "z";
+  /** How many treads. */
+  steps: number;
+  /** How many voxels each tread rises above the one before it. */
+  rise: number;
+  /** How many voxels each tread runs along `along`. */
+  run: number;
+  /** How many voxels wide the staircase is across its run. */
+  width: number;
+  id: number;
+}
+
+/** A solid incline from one point to another, its top stepping one voxel at a time. */
+export interface PlanRamp {
+  kind: "ramp";
+  /** The base of the low end, in LOD-0 world voxels. */
+  from: Dim3;
+  /** The top of the high end. */
+  to: Dim3;
+  /** How many voxels wide the incline is across its run. */
+  width: number;
+  id: number;
+}
+
+export type PlanShape = PlanBox | PlanRoad | PlanHouse | PlanStairs | PlanRamp;
 
 /** Everything a script asks the filler to stamp, in the order it stamps it. */
 export type StructurePlan = PlanShape[];
@@ -104,6 +134,60 @@ const expandRoad = ({ from, to, width, id }: PlanRoad): PlanBox[] => {
   return [box([lx, fy, lz], [hx, fy, hz], id)];
 };
 
+/**
+ * The boxes a staircase becomes: one solid column per tread, each rising `rise`
+ * voxels above the last, so the whole staircase is solid to walk up and onto.
+ */
+const expandStairs = ({
+  at,
+  along,
+  steps,
+  rise,
+  run,
+  width,
+  id,
+}: PlanStairs): PlanBox[] => {
+  const [x0, y0, z0] = at;
+  const boxes: PlanBox[] = [];
+  for (let i = 0; i < steps; i++) {
+    const top = y0 + (i + 1) * rise - 1;
+    if (along === "x") {
+      const sx = x0 + i * run;
+      boxes.push(box([sx, y0, z0], [sx + run - 1, top, z0 + width - 1], id));
+    } else {
+      const sz = z0 + i * run;
+      boxes.push(box([x0, y0, sz], [x0 + width - 1, top, sz + run - 1], id));
+    }
+  }
+  return boxes;
+};
+
+/**
+ * The boxes an incline becomes: one column per voxel of its run, solid from the
+ * lower end's height to the top interpolated at that column, so the surface
+ * climbs one voxel at a time rather than as a single sheared slab.
+ */
+const expandRamp = ({ from, to, width, id }: PlanRamp): PlanBox[] => {
+  const [fx, fy, fz] = from;
+  const [tx, ty, tz] = to;
+  const alongX = Math.abs(tx - fx) >= Math.abs(tz - fz);
+  const length = Math.max(1, Math.abs(alongX ? tx - fx : tz - fz));
+  const base = Math.min(fy, ty);
+  const half = Math.floor(Math.max(1, width) / 2);
+  const boxes: PlanBox[] = [];
+  for (let s = 0; s <= length; s++) {
+    const top = Math.max(base, Math.round(fy + ((ty - fy) * s) / length));
+    if (alongX) {
+      const x = Math.min(fx, tx) + s;
+      boxes.push(box([x, base, fz - half], [x, top, fz + half], id));
+    } else {
+      const z = Math.min(fz, tz) + s;
+      boxes.push(box([fx - half, base, z], [fx + half, top, z], id));
+    }
+  }
+  return boxes;
+};
+
 /** Every box a shape stands for, in the order it should be stamped. */
 export const expandShape = (shape: PlanShape): PlanBox[] => {
   if (shape.kind === "box") {
@@ -111,6 +195,12 @@ export const expandShape = (shape: PlanShape): PlanBox[] => {
   }
   if (shape.kind === "road") {
     return expandRoad(shape);
+  }
+  if (shape.kind === "stairs") {
+    return expandStairs(shape);
+  }
+  if (shape.kind === "ramp") {
+    return expandRamp(shape);
   }
   return expandHouse(shape);
 };

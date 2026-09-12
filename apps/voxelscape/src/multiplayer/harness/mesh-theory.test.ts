@@ -214,6 +214,36 @@ describe("cluster mesh theory", () => {
     console.log(`[two-cluster mesh] ${sim.report()}`);
   });
 
+  it("peers converge on the same shared-clock moment despite skewed wall clocks", async () => {
+    const sim = createSimulator({
+      placements: [
+        { x: 0, z: 0 },
+        { x: 3, z: 0 },
+      ],
+      // Each player's wall clock is offset by an hour per slot; their place
+      // clocks must still line up on the lowest DID's time (player p0).
+      wallNow: (i) => () => Date.now() + i * 3_600_000,
+    });
+    await sim.startAll();
+    const a = sim.players[0];
+    expect(
+      await sim.runUntil(25_000, () => a.controller.connections === 1),
+    ).toBe(true);
+
+    const converged = await sim.runUntil(30_000, () => {
+      const [ta, tb] = sim.nows();
+      return Math.abs(ta - tb) < 100;
+    });
+    expect(converged).toBe(true);
+
+    // Both read p0's clock, which is this sim's unskewed wall: the place time
+    // sits where the timekeeper's clock does, not at either player's skew, so
+    // B's hour-long skew has been measured away.
+    const [ta, tb] = sim.nows();
+    expect(ta).toBeCloseTo(Date.now(), 2);
+    expect(tb).toBeCloseTo(Date.now(), 2);
+  });
+
   it("killing one side's transport closes the link on the survivor", async () => {
     const sim = createSimulator({
       placements: [

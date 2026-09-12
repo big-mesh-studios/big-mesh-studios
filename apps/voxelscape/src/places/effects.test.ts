@@ -132,6 +132,132 @@ describe("effect parsing", () => {
     ).toEqual({ tag: "player-jump", payload: { player: "", multiplier: 0.5 } });
     expect(
       parseEffect(
+        effect("player-checkpoint", { player: "", x: 4, z: 8, y: 62, yaw: 1 }),
+      ),
+    ).toEqual({
+      tag: "player-checkpoint",
+      payload: { player: "", x: 4, z: 8, y: 62, yaw: 1 },
+    });
+    expect(
+      parseEffect(effect("player-kill", { player: "", cause: "spikes" })),
+    ).toEqual({
+      tag: "player-kill",
+      payload: { player: "", cause: "spikes" },
+    });
+    expect(parseEffect(effect("player-kill", { player: "" }))).not.toBeNull();
+    expect(
+      parseEffect(effect("player-respawn", { player: "" })),
+    ).not.toBeNull();
+    expect(parseEffect(effect("void", { y: 20 }))).toEqual({
+      tag: "void",
+      payload: { y: 20 },
+    });
+    expect(
+      parseEffect(
+        effect("cutscene", {
+          player: "",
+          shots: [
+            { at: [0, 10, 0], durationMs: 1_000 },
+            { at: [10, 10, 0], look: [10, 0, 0], durationMs: 0, holdMs: 500 },
+          ],
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("camera", {
+          player: "",
+          at: [1, 2, 3],
+          look: [4, 5, 6],
+          durationMs: 2_000,
+          ease: "smooth",
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("player-control", { player: "", locked: true })),
+    ).toEqual({
+      tag: "player-control",
+      payload: { player: "", locked: true },
+    });
+    expect(
+      parseEffect(
+        effect("hud", {
+          player: "",
+          id: "bladder",
+          kind: "bar",
+          label: "Bladder",
+          value: 3,
+          max: 10,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("hud", {
+          player: "",
+          id: "pad",
+          kind: "text",
+          text: "Checkpoint: stairs",
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("hud-remove", { player: "", id: "bladder" })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("prop", {
+          id: "spikes",
+          model: "spikes.zip",
+          x: 0,
+          z: 0,
+          solid: true,
+          hazard: true,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("prop", {
+          id: "log",
+          model: "log.zip",
+          x: 0,
+          z: 0,
+          solid: true,
+          motion: {
+            path: [
+              [0, 0, 0],
+              [0, 0, 20],
+            ],
+            loop: "pingpong",
+            durationMs: 4_000,
+            ease: "smooth",
+            spin: { axis: [1, 0, 0], degreesPerMeter: 36 },
+          },
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("npc", {
+          id: "walker",
+          x: 0,
+          z: 0,
+          motion: {
+            path: [
+              [0, 0, 0],
+              [8, 0, 0],
+            ],
+            loop: "loop",
+            durationMs: 2_000,
+            spin: { axis: [0, 1, 0], turnsPerSecond: 0.25 },
+          },
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
         effect("explosion", { id: "boom", x: 10, z: 18, y: 62, radius: 6 }),
       ),
     ).toEqual({
@@ -162,6 +288,197 @@ describe("effect parsing", () => {
     ).not.toBeNull();
   });
 
+  it("accepts a field and a conveyor-prop", () => {
+    expect(
+      parseEffect(
+        effect("field", {
+          id: "fan",
+          kind: "push",
+          min: [-4, 0, -4],
+          max: [4, 8, 4],
+          vx: 12,
+          vy: 6,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("field", {
+          id: "fan-flat",
+          kind: "push",
+          min: [0, 0, 0],
+          max: [4, 4, 4],
+          vz: -8,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("field", {
+          id: "pit",
+          kind: "quicksand",
+          min: [0, 0, 0],
+          max: [4, 4, 4],
+          speedScale: 0.3,
+          sink: 2,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("field", {
+          id: "slow",
+          kind: "quicksand",
+          min: [0, 0, 0],
+          max: [4, 4, 4],
+          speedScale: 0.5,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(parseEffect(effect("field-remove", { id: "fan" }))).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("prop", {
+          id: "walkway",
+          model: "walkway.zip",
+          x: 0,
+          z: 0,
+          solid: true,
+          conveyor: { vx: 5, vz: 0 },
+        }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("refuses a malformed field or conveyor-prop", () => {
+    const cases: Array<[string, unknown]> = [
+      ["field", { id: "" }],
+      ["field", { id: "fan", kind: "gust", min: [0, 0, 0], max: [1, 1, 1] }],
+      ["field", { id: "fan", kind: "push", min: [0, 0, 0], max: [1, 1, 1] }],
+      [
+        "field",
+        {
+          id: "fan",
+          kind: "push",
+          min: [0, 0, 0],
+          max: [1, 1, 1],
+          vx: 0,
+          vy: 0,
+          vz: 0,
+        },
+      ],
+      [
+        "field",
+        {
+          id: "fan",
+          kind: "push",
+          min: [0, 0, 0],
+          max: [1, 1, 1],
+          vx: 101,
+        },
+      ],
+      [
+        "field",
+        {
+          id: "fan",
+          kind: "push",
+          min: [0, 0, 0],
+          max: [1, 1, 1],
+          vx: 5,
+          sink: 2,
+        },
+      ],
+      [
+        "field",
+        {
+          id: "pit",
+          kind: "quicksand",
+          min: [0, 0, 0],
+          max: [1, 1, 1],
+        },
+      ],
+      [
+        "field",
+        {
+          id: "pit",
+          kind: "quicksand",
+          min: [0, 0, 0],
+          max: [1, 1, 1],
+          vx: 5,
+        },
+      ],
+      [
+        "field",
+        {
+          id: "pit",
+          kind: "quicksand",
+          min: [0, 0, 0],
+          max: [1, 1, 1],
+          speedScale: 0,
+        },
+      ],
+      [
+        "field",
+        {
+          id: "pit",
+          kind: "quicksand",
+          min: [0, 0, 0],
+          max: [1, 1, 1],
+          sink: 101,
+        },
+      ],
+      [
+        "field",
+        { id: "fan", kind: "push", min: [2, 0, 0], max: [1, 1, 1], vx: 1 },
+      ],
+      ["field-remove", {}],
+      [
+        "prop",
+        {
+          id: "walkway",
+          model: "walkway.zip",
+          x: 0,
+          z: 0,
+          motion: {
+            path: [
+              [0, 0, 0],
+              [4, 0, 0],
+            ],
+            loop: "loop",
+            durationMs: 1_000,
+          },
+          conveyor: { vx: 5, vz: 0 },
+        },
+      ],
+      [
+        "prop",
+        {
+          id: "walkway",
+          model: "walkway.zip",
+          x: 0,
+          z: 0,
+          conveyor: { vx: 101, vz: 0 },
+        },
+      ],
+      [
+        "prop",
+        {
+          id: "walkway",
+          model: "walkway.zip",
+          x: 0,
+          z: 0,
+          conveyor: { vx: 5 },
+        },
+      ],
+    ];
+    for (const [tag, payload] of cases) {
+      expect(
+        parseEffect(effect(tag, payload)),
+        `${tag} ${JSON.stringify(payload)}`,
+      ).toBeNull();
+    }
+  });
+
   it("refuses a payload that does not fit its tag", () => {
     const cases: Array<[string, unknown]> = [
       ["npc", { id: "" }],
@@ -182,6 +499,105 @@ describe("effect parsing", () => {
       ["player-speed", { player: "", multiplier: "2" }],
       ["player-speed", { player: "" }],
       ["player-jump", { player: "", multiplier: -1 }],
+      ["player-checkpoint", { player: "", x: 4 }],
+      ["player-checkpoint", { player: "", x: 4, z: 8, yaw: "n" }],
+      ["player-kill", {}],
+      ["player-kill", { player: "", cause: "x".repeat(65) }],
+      ["player-respawn", {}],
+      ["void", { y: "down" }],
+      ["void", {}],
+      ["cutscene", { player: "", shots: [] }],
+      ["cutscene", { player: "", shots: [{ at: [0, 0, 0], ease: "bouncy" }] }],
+      ["cutscene", { player: "", shots: [{ at: [0, 0, 0], durationMs: -1 }] }],
+      ["cutscene", { player: "", shots: [{ at: [0, 0] }] }],
+      ["camera", { player: "", at: [0, 0] }],
+      ["camera", { player: "", at: [0, 0, 0], holdMs: "long" }],
+      ["player-control", { player: "" }],
+      ["player-control", { player: "", locked: "yes" }],
+      ["hud", { player: "", id: "bladder", kind: "bar" }],
+      ["hud", { player: "", id: "bladder", kind: "pie" }],
+      ["hud", { player: "", id: "bladder", kind: "bar", max: 0 }],
+      ["hud", { player: "", id: "", kind: "text" }],
+      ["hud", { player: "", id: "note", kind: "text", text: "x".repeat(201) }],
+      ["hud-remove", { player: "" }],
+      [
+        "prop",
+        { id: "spikes", model: "spikes.zip", x: 0, z: 0, hazard: "yes" },
+      ],
+      [
+        "prop",
+        {
+          id: "log",
+          model: "log.zip",
+          x: 0,
+          z: 0,
+          motion: { path: [], loop: "loop", durationMs: 1_000 },
+        },
+      ],
+      [
+        "prop",
+        {
+          id: "log",
+          model: "log.zip",
+          x: 0,
+          z: 0,
+          motion: { path: [[0, 0, 0]], loop: "spiral", durationMs: 1_000 },
+        },
+      ],
+      [
+        "prop",
+        {
+          id: "log",
+          model: "log.zip",
+          x: 0,
+          z: 0,
+          motion: { path: [[0, 0, 0]], loop: "loop", durationMs: 0 },
+        },
+      ],
+      [
+        "prop",
+        {
+          id: "log",
+          model: "log.zip",
+          x: 0,
+          z: 0,
+          motion: {
+            path: [[0, 0, 0]],
+            loop: "loop",
+            durationMs: 1_000,
+            spin: { axis: [0, 1, 0] },
+          },
+        },
+      ],
+      [
+        "prop",
+        {
+          id: "log",
+          model: "log.zip",
+          x: 0,
+          z: 0,
+          motion: {
+            path: [[0, 0, 0]],
+            loop: "loop",
+            durationMs: 1_000,
+            spin: { axis: [0, 1, 0], turnsPerSecond: 2_000 },
+          },
+        },
+      ],
+      [
+        "npc",
+        {
+          id: "walker",
+          x: 0,
+          z: 0,
+          motion: {
+            path: [[0, 0, 0]],
+            loop: "loop",
+            durationMs: 1_000,
+            ease: "bouncy",
+          },
+        },
+      ],
       ["explosion", { id: "", x: 0, z: 0 }],
       ["explosion", { id: "boom", x: 0 }],
       ["explosion", { id: "boom", x: 0, z: 0, radius: 0 }],

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   boxContains,
   boxGroundAt,
+  boxVelocityAt,
   solidBoxAt,
   type SolidBox,
 } from "./prop-collision";
@@ -35,5 +36,27 @@ describe("prop collision", () => {
     expect(boxGroundAt([bed, table], 0, 1, 0)).toBe(1);
     // Over nothing: no ground.
     expect(boxGroundAt([bed], 5, 1, 5)).toBe(-Infinity);
+  });
+
+  it("turns a box's footprint with its yaw", () => {
+    // A long, thin box along Z: a point off to the side is inside only once it
+    // has been turned a quarter turn.
+    const plank: SolidBox = {
+      minX: -0.5,
+      maxX: 0.5,
+      minY: 0,
+      maxY: 1,
+      minZ: -3,
+      maxZ: 3,
+    };
+    expect(boxContains(plank, 2, 0.5, 0)).toBe(false);
+    expect(boxContains({ ...plank, yaw: Math.PI / 2 }, 2, 0.5, 0)).toBe(true);
+    expect(boxContains({ ...plank, yaw: Math.PI / 2 }, 0, 0.5, 2)).toBe(false);
+  });
+
+  it("reports the velocity of the box that holds the player up", () => {
+    const platform: SolidBox = { ...bed, maxY: 2, vx: 3, vz: -1 };
+    expect(boxVelocityAt([platform], 0, 2, 0)).toEqual([3, 0, -1]);
+    expect(boxVelocityAt([platform], 5, 2, 5)).toBeNull();
   });
 });

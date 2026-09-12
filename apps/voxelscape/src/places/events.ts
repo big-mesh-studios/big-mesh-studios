@@ -94,6 +94,16 @@ export type ScriptEventPayload =
       kind: "timer";
       /** The id a script gave the deadline it set with a `timer` effect. */
       timerId: string;
+    }
+  | {
+      kind: "player-touched";
+      /** The id of the hazardous prop a player came into contact with. */
+      entityId: string;
+    }
+  | {
+      kind: "player-died";
+      /** The id of the hazard that killed the player, or "" for a fall or void. */
+      cause: string;
     };
 
 /** One immutable script fact, stamped with where it came from and when. */
@@ -209,6 +219,12 @@ export const isScriptEvent = (v: unknown): v is ScriptEvent => {
   }
   if (r.kind === "timer") {
     return isShortString(r.timerId, MAX_EVENT_ID);
+  }
+  if (r.kind === "player-touched") {
+    return isShortString(r.entityId, MAX_EVENT_ID);
+  }
+  if (r.kind === "player-died") {
+    return r.cause === "" || isShortString(r.cause, MAX_EVENT_ID);
   }
   if (r.kind === "npc-choose") {
     return (

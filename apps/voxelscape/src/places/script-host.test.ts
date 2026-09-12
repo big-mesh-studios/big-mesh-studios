@@ -35,6 +35,13 @@ const fresh = async (): Promise<{
   explosions: ScriptedExplosion[];
   speeds: Array<{ player: string; multiplier: number }>;
   jumps: Array<{ player: string; multiplier: number }>;
+  checkpoints: Array<{
+    player: string;
+    at: { x: number; z: number; y?: number; yaw?: number };
+  }>;
+  kills: Array<{ player: string; cause: string }>;
+  respawns: string[];
+  voids: number[];
   knownEndings: string[];
 }> => {
   clockMs = 0;
@@ -59,6 +66,13 @@ const fresh = async (): Promise<{
   const explosions: ScriptedExplosion[] = [];
   const speeds: Array<{ player: string; multiplier: number }> = [];
   const jumps: Array<{ player: string; multiplier: number }> = [];
+  const checkpoints: Array<{
+    player: string;
+    at: { x: number; z: number; y?: number; yaw?: number };
+  }> = [];
+  const kills: Array<{ player: string; cause: string }> = [];
+  const respawns: string[] = [];
+  const voids: number[] = [];
   const knownEndings: string[] = [];
   const h = new ScriptHost({
     seed: 5,
@@ -74,6 +88,10 @@ const fresh = async (): Promise<{
     onPlayerFace: (player, at) => faces.push({ player, at }),
     onPlayerSpeed: (player, multiplier) => speeds.push({ player, multiplier }),
     onPlayerJump: (player, multiplier) => jumps.push({ player, multiplier }),
+    onCheckpoint: (player, at) => checkpoints.push({ player, at }),
+    onKill: (player, cause) => kills.push({ player, cause }),
+    onRespawn: (player) => respawns.push(player),
+    onVoid: (y) => voids.push(y),
     onFire: (fire) => fires.push(fire),
     onExplosion: (explosion) => explosions.push(explosion),
     endings: () => knownEndings,
@@ -92,6 +110,10 @@ const fresh = async (): Promise<{
     explosions,
     speeds,
     jumps,
+    checkpoints,
+    kills,
+    respawns,
+    voids,
     knownEndings,
   };
 };
@@ -289,6 +311,87 @@ describe("a script host", () => {
     expect(toasts.map((t) => t.text)).toEqual(["in kitchen"]);
     await host.movePlayer("", 100, 0, 0);
     expect(toasts.map((t) => t.text)).toEqual(["in kitchen", "out kitchen"]);
+    host.dispose();
+  });
+
+  it("holds the fields a script declares and the conveyor a prop carries", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      var started = false;
+      export function bmsTick(clockMs, eventsJson) {
+        if (!started) {
+          started = true;
+          engine.dispatch("field", JSON.stringify({
+            id: "fan", kind: "push",
+            min: [-4, 0, -4], max: [4, 8, 4], vx: 12, vy: 6,
+          }));
+          engine.dispatch("field", JSON.stringify({
+            id: "pit", kind: "quicksand",
+            min: [0, 0, 0], max: [4, 4, 4], speedScale: 0.3, sink: 2,
+          }));
+          engine.dispatch("prop", JSON.stringify({
+            id: "walkway", model: "walkway.zip", x: 0, z: 0,
+            solid: true, conveyor: { vx: 5, vz: 0 },
+          }));
+        }
+      }
+      `,
+    );
+    expect(host.field("fan")).toMatchObject({
+      id: "fan",
+      kind: "push",
+      min: [-4, 0, -4],
+      max: [4, 8, 4],
+      vx: 12,
+      vy: 6,
+      vz: 0,
+    });
+    expect(host.field("pit")).toMatchObject({
+      id: "pit",
+      kind: "quicksand",
+      speedScale: 0.3,
+      sink: 2,
+    });
+    expect(host.fieldList.map((f) => f.id).sort()).toEqual(["fan", "pit"]);
+    expect(host.prop("walkway")).toMatchObject({
+      id: "walkway",
+      solid: true,
+      conveyor: { vx: 5, vz: 0 },
+    });
+    host.dispose();
+  });
+
+  it("forgets a field the script removes", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      var started = false;
+      var retract = false;
+      export function bmsTick(clockMs, eventsJson) {
+        if (!started) {
+          started = true;
+          engine.dispatch("field", JSON.stringify({
+            id: "fan", kind: "push",
+            min: [-4, 0, -4], max: [4, 8, 4], vx: 12,
+          }));
+        }
+        var events = JSON.parse(eventsJson);
+        for (var i = 0; i < events.length; i++) {
+          if (!retract && events[i].kind === "player-touched") {
+            retract = true;
+            engine.dispatch("field-remove", JSON.stringify({ id: "fan" }));
+          }
+        }
+      }
+      `,
+    );
+    expect(host.field("fan")).not.toBeNull();
+    await host.touched("", "anything");
+    expect(host.field("fan")).toBeNull();
+    expect(host.fieldList).toEqual([]);
     host.dispose();
   });
 
@@ -571,6 +674,162 @@ describe("a script host", () => {
       `,
     );
     expect(toasts.at(-1)?.text).toBe("Sleep,Bullied");
+    host.dispose();
+  });
+
+  it("sets a checkpoint, kills, respawns, and sets a kill plane on request", async () => {
+    const { host, checkpoints, kills, respawns, voids } = await fresh();
+    await loadProject(
+      host,
+      `
+      var started = false;
+      export function bmsTick() {
+        if (!started) {
+          started = true;
+          engine.dispatch("player-checkpoint", JSON.stringify({ player: "", x: 4, z: 8, y: 62, yaw: 1 }));
+          engine.dispatch("player-kill", JSON.stringify({ player: "", cause: "spikes" }));
+          engine.dispatch("player-respawn", JSON.stringify({ player: "" }));
+          engine.dispatch("void", JSON.stringify({ y: 20 }));
+        }
+      }
+      `,
+    );
+    expect(checkpoints).toEqual([
+      { player: "", at: { x: 4, z: 8, y: 62, yaw: 1 } },
+    ]);
+    expect(kills).toEqual([{ player: "", cause: "spikes" }]);
+    expect(respawns).toEqual([""]);
+    expect(voids).toEqual([20]);
+    expect(host.voidY).toBe(20);
+    host.dispose();
+  });
+
+  it("remembers which props are hazards", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      var started = false;
+      export function bmsTick() {
+        if (!started) {
+          started = true;
+          engine.dispatch("prop", JSON.stringify({ id: "spikes", model: "spikes.zip", x: 1, z: 2, solid: true, hazard: true }));
+          engine.dispatch("prop", JSON.stringify({ id: "plant", model: "plant.zip", x: 3, z: 4 }));
+        }
+      }
+      `,
+    );
+    expect(host.prop("spikes")).toMatchObject({ solid: true, hazard: true });
+    expect(host.prop("plant")).toMatchObject({ solid: false, hazard: false });
+    host.dispose();
+  });
+
+  it("hands the script a touch and the death it causes as facts", async () => {
+    const { host, toasts, kills } = await fresh();
+    await loadProject(
+      host,
+      `
+      export function bmsTick(clockMs, eventsJson) {
+        var events = JSON.parse(eventsJson);
+        for (var i = 0; i < events.length; i++) {
+          if (events[i].kind === "player-touched") {
+            engine.dispatch("toast", JSON.stringify({ player: "", text: "touched " + events[i].entityId }));
+            engine.dispatch("player-kill", JSON.stringify({ player: "", cause: events[i].entityId }));
+          } else if (events[i].kind === "player-died") {
+            engine.dispatch("toast", JSON.stringify({ player: "", text: "died " + events[i].cause }));
+          }
+        }
+      }
+      `,
+    );
+    await host.touched("", "spikes");
+    expect(toasts.map((t) => t.text)).toEqual([
+      "touched spikes",
+      "died spikes",
+    ]);
+    expect(kills).toEqual([{ player: "", cause: "spikes" }]);
+    host.dispose();
+  });
+
+  it("plays a cutscene, and keeps a separate control lock", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      var started = false;
+      export function bmsTick() {
+        if (!started) {
+          started = true;
+          engine.dispatch("cutscene", JSON.stringify({
+            player: "",
+            shots: [
+              { at: [0, 10, 0], durationMs: 1000 },
+              { at: [10, 10, 0], durationMs: 1000 },
+            ],
+          }));
+          engine.dispatch("player-control", JSON.stringify({ player: "", locked: true }));
+        }
+      }
+      `,
+    );
+    expect(host.cutsceneFor("")?.shots).toHaveLength(2);
+    expect(host.controlsLocked("")).toBe(true);
+    // Clearing the cutscene leaves the script's own lock in place.
+    host.clearCutscene("");
+    expect(host.cutsceneFor("")).toBeNull();
+    expect(host.controlsLocked("")).toBe(true);
+    host.dispose();
+  });
+
+  it("shows HUD readouts and removes the ones it is told to", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      var started = false;
+      export function bmsTick() {
+        if (!started) {
+          started = true;
+          engine.dispatch("hud", JSON.stringify({ player: "", id: "meter", kind: "bar", label: "Meter", value: 2, max: 5 }));
+          engine.dispatch("hud", JSON.stringify({ player: "", id: "note", kind: "text", text: "hello" }));
+          engine.dispatch("hud-remove", JSON.stringify({ player: "", id: "note" }));
+        }
+      }
+      `,
+    );
+    expect(host.hudFor("")).toEqual([
+      { id: "meter", kind: "bar", label: "Meter", value: 2, max: 5, text: "" },
+    ]);
+    host.dispose();
+  });
+
+  it("samples a moving prop's pose off the shared clock", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      var started = false;
+      export function bmsTick() {
+        if (!started) {
+          started = true;
+          engine.dispatch("prop", JSON.stringify({
+            id: "plank",
+            model: "platform.zip",
+            x: 0,
+            z: 0,
+            motion: { path: [[0, 0, 0], [0, 0, 10]], loop: "once", durationMs: 1000 },
+          }));
+        }
+      }
+      `,
+    );
+    clockMs = 0;
+    expect(host.propPose("plank")?.dz).toBe(0);
+    clockMs = 500;
+    expect(host.propPose("plank")?.dz).toBeCloseTo(5);
+    clockMs = 5_000;
+    expect(host.propPose("plank")?.dz).toBeCloseTo(10);
+    expect(host.propPose("nothing")).toBeNull();
     host.dispose();
   });
 });

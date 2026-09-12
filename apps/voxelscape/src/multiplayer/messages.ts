@@ -108,8 +108,29 @@ export interface ScriptEventWire {
   events: ScriptEvent[];
 }
 
+/**
+ * One leg of a clock exchange: a ping naming the initiator's wall time, which
+ * the receiver answers with the same value plus the wall time it received at.
+ * The initiator then owns `rtt = t4 - t1` and `offset = t2 - (t1 + t4) / 2`,
+ * stamping `t4` when the answer lands; the exchange needs no sequence number,
+ * because each ping is paired by its own `t1`.
+ */
+export interface TimeWire {
+  v: 1;
+  type: "time";
+  /** The initiator's wall-clock millisecond when the ping was sent. */
+  t1: number;
+  /** The responder's wall-clock millisecond when it received the ping. */
+  t2?: number;
+}
+
 export type MeshMessage =
-  PoseWire | EditWire | PlayerDamageWire | ScriptEntityWire | ScriptEventWire;
+  | PoseWire
+  | EditWire
+  | PlayerDamageWire
+  | ScriptEntityWire
+  | ScriptEventWire
+  | TimeWire;
 
 const isPoseWire = (r: object): r is PoseWire => {
   const v = r as Record<string, unknown>;
@@ -235,6 +256,22 @@ const isPlayerDamageWire = (r: object): r is PlayerDamageWire => {
   );
 };
 
+/** Bound on a wall-clock millisecond a time exchange may carry, milliseconds. */
+const TIME_MS_CEILING = 1e13;
+
+const isWallMs = (n: unknown): boolean =>
+  typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= TIME_MS_CEILING;
+
+const isTimeWire = (r: object): r is TimeWire => {
+  const v = r as Record<string, unknown>;
+  return (
+    v.type === "time" &&
+    v.v === 1 &&
+    isWallMs(v.t1) &&
+    (v.t2 === undefined || isWallMs(v.t2))
+  );
+};
+
 /** Serializes a message to its compact wire form. */
 export const encodeMessage = (m: MeshMessage): string => {
   if (m.type === "pose") {
@@ -284,6 +321,14 @@ export const encodeMessage = (m: MeshMessage): string => {
       })),
     });
   }
+  if (m.type === "time") {
+    return JSON.stringify({
+      v: 1,
+      type: "time",
+      t1: Math.round(m.t1),
+      ...(m.t2 !== undefined ? { t2: Math.round(m.t2) } : {}),
+    });
+  }
   return JSON.stringify({
     v: 1,
     type: "script-event",
@@ -323,6 +368,9 @@ export const decodeMessage = (chunk: unknown): MeshMessage | null => {
     return r;
   }
   if (isScriptEventWire(r)) {
+    return r;
+  }
+  if (isTimeWire(r)) {
     return r;
   }
   return null;

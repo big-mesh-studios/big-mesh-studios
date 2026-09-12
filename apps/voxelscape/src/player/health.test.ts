@@ -45,6 +45,19 @@ describe("PlayerHealth", () => {
     expect(h.hp).toBe(0);
   });
 
+  it("kills outright, ignoring the guard, and only once", () => {
+    const h = new PlayerHealth();
+    h.setGuarding(true);
+    let calls = 0;
+    h.onChange = () => calls++;
+    h.kill();
+    expect(h.hp).toBe(0);
+    expect(h.dead).toBe(true);
+    expect(calls).toBe(1);
+    h.kill();
+    expect(calls).toBe(1);
+  });
+
   it("calls the change callback on a hit and a heal, but not on a no-op hit", () => {
     const h = new PlayerHealth();
     let calls = 0;

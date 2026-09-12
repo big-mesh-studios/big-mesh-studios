@@ -6,11 +6,12 @@
 // every figure wearing it; a figure stands with its feet on the entity's
 // grounded `y`, drawn at whatever height the entity asks for, eased toward
 // its reported `x`/`z` rather than snapped to them (`figure-motion.ts`) since
-// a remote figure's own position can go many frames between reports. A figure
-// a caller flashes plays a moment of red, wholly independent of whatever the
-// script does with the hit; one dying plays a fall over the ground before it
-// is gone, timed off the moment the entity's own `dyingAt` names.
-import { Group } from "@random-mesh/rmsl/scene";
+// a remote figure's own position can go many frames between reports, and spun
+// about its own axis after `yaw` when the entity names one. A figure a caller
+// flashes plays a moment of red, wholly independent of whatever the script
+// does with the hit; one dying plays a fall over the ground before it is
+// gone, timed off the moment the entity's own `dyingAt` names.
+import { Group, Quaternion, Vector3 } from "@random-mesh/rmsl/scene";
 import type { DayNightState } from "../environment/day-night";
 import {
   BakedFigure,
@@ -47,6 +48,8 @@ export interface RenderedFigure {
    * notion of death itself.
    */
   dyingAt?: number;
+  /** A spin about a world axis, applied after `yaw`; absent when it does not spin. */
+  spin?: { axis: [number, number, number]; angle: number };
 }
 
 /** The upright box the crosshair ray tests a figure against, in world units. */
@@ -86,6 +89,10 @@ export class VoxelFigures {
   private readonly hurtUntil = new Map<string, number>();
   /** Where each standing figure is actually drawn, eased toward its reports. */
   private readonly motion = new Map<string, FigureMotionTrack>();
+  /** Scratch for the per-figure orientation, so drawing a frame allocates none. */
+  private readonly spinAxis = new Vector3();
+  private readonly upAxis = new Vector3(0, 1, 0);
+  private readonly yawTurn = new Quaternion();
 
   constructor(params: VoxelFiguresParams) {
     this.getFigures = params.getFigures;
@@ -206,7 +213,21 @@ export class VoxelFigures {
         }
         const drawn = track.next({ x: figure.x, z: figure.z }, now, dt);
         mesh.group.position.set(drawn.x, figure.y + height / 2, drawn.z);
-        mesh.group.rotation.set(0, yaw, 0);
+        if (figure.spin === undefined) {
+          mesh.group.rotation.set(0, yaw, 0);
+        } else {
+          // The spin turns about a world axis after the figure has been turned to
+          // its heading, so the two compose as `spin * yaw`.
+          this.spinAxis
+            .set(figure.spin.axis[0], figure.spin.axis[1], figure.spin.axis[2])
+            .normalize();
+          mesh.group.quaternion.setFromAxisAngle(
+            this.spinAxis,
+            figure.spin.angle,
+          );
+          this.yawTurn.setFromAxisAngle(this.upAxis, yaw);
+          mesh.group.quaternion.multiply(this.yawTurn);
+        }
       } else {
         // Tips backward about the feet, the same arc a player's own death
         // fall plays: the half-height offset follows the tip down to the

@@ -49,6 +49,14 @@ export const MAX_PLAN_BLOCK_ID = 255;
 export const MAX_PLAN_HOUSE_SIZE = 256;
 /** The most voxels wide a road may be. */
 export const MAX_PLAN_ROAD_WIDTH = 64;
+/** The most treads one staircase may hold. */
+export const MAX_PLAN_STEPS = 128;
+/** The tallest one staircase tread may rise. */
+export const MAX_PLAN_STAIR_RISE = 64;
+/** The longest one staircase tread may run. */
+export const MAX_PLAN_STAIR_RUN = 64;
+/** The most voxels long an incline's run may be. */
+export const MAX_PLAN_RAMP_RUN = 256;
 
 /** Where a place's plan may build: the seed it is deterministic against, and its bounds. */
 export interface PlanContext {
@@ -97,6 +105,30 @@ const isShape = (v: unknown): v is PlanShape => {
       isBlockId(shape.roof) &&
       isBlockId(shape.floor)
     );
+  }
+  if (shape.kind === "stairs") {
+    return (
+      isVector(shape.at) &&
+      (shape.along === "x" || shape.along === "z") &&
+      isInt(shape.steps, 1, MAX_PLAN_STEPS) &&
+      isInt(shape.rise, 1, MAX_PLAN_STAIR_RISE) &&
+      isInt(shape.run, 1, MAX_PLAN_STAIR_RUN) &&
+      isInt(shape.width, 1, MAX_PLAN_ROAD_WIDTH) &&
+      isBlockId(shape.id)
+    );
+  }
+  if (shape.kind === "ramp") {
+    if (
+      !isVector(shape.from) ||
+      !isVector(shape.to) ||
+      !isInt(shape.width, 1, MAX_PLAN_ROAD_WIDTH) ||
+      !isBlockId(shape.id)
+    ) {
+      return false;
+    }
+    const [fx, , fz] = shape.from;
+    const [tx, , tz] = shape.to;
+    return Math.max(Math.abs(tx - fx), Math.abs(tz - fz)) <= MAX_PLAN_RAMP_RUN;
   }
   return false;
 };

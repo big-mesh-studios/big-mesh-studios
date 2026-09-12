@@ -21,26 +21,36 @@ import {
   type PlaceMode,
 } from "../places/place";
 import type { ScriptConsole } from "../places/script-console";
-import { VoxelFigures } from "../places/voxel-figures";
+import { VoxelFigures, type RenderedFigure } from "../places/voxel-figures";
+import { cutscenePoseAt, type CameraStart } from "../places/cutscene";
 import { createEndingLog, endingLogKey } from "../places/ending-log";
 import { FireFigures } from "../renderers/fire-figures";
 import { ExplosionFigures } from "../renderers/explosion-figures";
 import { FireEmbers } from "../world/fire-ember";
 import { pickFigure, type AimTarget } from "../places/figure-pick";
-import type { DialogState } from "../places/script-host";
+import type {
+  DialogState,
+  HudReadout,
+  ScriptedField,
+} from "../places/script-host";
 import type { ScriptItemDefinition } from "../places/effects";
 import type { Commander } from "../commands";
 import { createCommands } from "../commands";
 import { createEnvironment } from "../environment/create-environment";
 import { MultiplayerController } from "../multiplayer/multiplayer-controller";
 import { createPeerJSSignaling } from "../multiplayer/peerjs-transport";
-import { createInput, type InputController } from "../player/create-input";
+import {
+  createInput,
+  type InputController,
+  type InputSnapshot,
+} from "../player/create-input";
 import {
   createPlayerAvatar,
   type AvatarTerrain,
 } from "../player/create-player-avatar";
 import {
   boxGroundAt,
+  boxVelocityAt,
   solidBoxAt,
   type SolidBox,
 } from "../player/prop-collision";
@@ -75,6 +85,28 @@ import { Field, Phase, probe } from "../render/perf-probe";
 
 /** Sky blue, matching the material's default fog color so the horizon blends. */
 const SKY_BLUE = 0x87ceeb;
+
+/**
+ * The input a cutscene gives the physics: nothing pressed. Gravity and the
+ * ground snap still run, so a player standing still in a shot stays stood.
+ */
+const CUTSCENE_INPUT: InputSnapshot = {
+  moveX: 0,
+  moveY: 0,
+  jump: false,
+  jumpHeld: false,
+  lookDx: 0,
+  lookDy: 0,
+  primary: false,
+  click: false,
+  tap: false,
+  secondary: false,
+  secondaryHeld: false,
+  secondaryReleased: false,
+  use: false,
+  select: null,
+  wheel: 0,
+};
 
 /**
  * A Blob over a model's bytes. The copy strips the `SharedArrayBuffer`
@@ -282,6 +314,10 @@ export interface Voxelscape {
   narration: Accessor<{ name: string; text: string } | null>;
   /** Clears the current narration line. */
   dismissNarration(): void;
+  /** Whether a place's script is playing a camera sequence right now. */
+  cutscene: Accessor<boolean>;
+  /** The readouts a place's script is showing in the local player's HUD. */
+  hud: () => HudReadout[];
   /** Starts the place's game over, fresh from the beginning. */
   restart(): void;
   /** The player starts talking to the NPC with `id`, if a script has one. */
@@ -375,6 +411,8 @@ export const createVoxelscape = ({
     name: string;
     text: string;
   } | null>(null);
+  /** Whether a place's script is playing a camera sequence right now. */
+  const [cutscene, setCutscene] = createSignal(false);
   const [icons, setIcons] = createSignal<Partial<Record<ItemId, SubTexture>>>(
     {},
   );
@@ -451,6 +489,18 @@ export const createVoxelscape = ({
    * physics treats a bed or a counter like terrain it walks around and onto.
    */
   const propBoxes: SolidBox[] = [];
+  /**
+   * The boxes the script marked hazardous, rebuilt each frame alongside the
+   * solid ones. A hazard need not be solid — a patch of poison on the floor is
+   * walked through — so these are collected separately.
+   */
+  const hazardBoxes: Array<{ id: string; box: SolidBox }> = [];
+  /**
+   * The fields the place's script has declared, refreshed each frame like the
+   * boxes. Each holds a box that acts on a player standing inside it — a push
+   * toward a target velocity, or a quicksand that slows and sinks them.
+   */
+  const fieldBoxes: ScriptedField[] = [];
   const playerTerrain: AvatarTerrain = {
     heightAt: (x, z) => world.heightAt(x, z),
     groundHeightAt: (x, y, z) =>
@@ -458,6 +508,48 @@ export const createVoxelscape = ({
     inWaterAt: (x, y, z) => world.inWaterAt(x, y, z),
     solidAt: (x, y, z) =>
       world.solidAt(x, y, z) || solidBoxAt(propBoxes, x, y, z),
+    surfaceVelocityAt: (x, y, z) => boxVelocityAt(propBoxes, x, y, z),
+    mediumAt: (x, y, z) => {
+      // Sums the pushes and takes the worst quicksand, so the answer is
+      // order-independent the way the rest of the shared clock is.
+      let pushVx = 0;
+      let pushVz = 0;
+      let pushVy: number | null = null;
+      let speedScale = 1;
+      let sink = 0;
+      let found = false;
+      for (const field of fieldBoxes) {
+        if (
+          x < field.min[0] ||
+          x > field.max[0] ||
+          y < field.min[1] ||
+          y > field.max[1] ||
+          z < field.min[2] ||
+          z > field.max[2]
+        ) {
+          continue;
+        }
+        found = true;
+        if (field.kind === "push") {
+          pushVx += field.vx;
+          pushVz += field.vz;
+          if (field.vy !== undefined) {
+            pushVy = (pushVy ?? 0) + field.vy;
+          }
+        } else {
+          if (field.speedScale < speedScale) {
+            speedScale = field.speedScale;
+          }
+          if (field.sink > sink) {
+            sink = field.sink;
+          }
+        }
+      }
+      if (!found) {
+        return null;
+      }
+      return { pushVx, pushVz, pushVy, speedScale, sink };
+    },
   };
   const avatar = createPlayerAvatar({
     camera,
@@ -475,26 +567,40 @@ export const createVoxelscape = ({
   const spawnY = avatar.player.position.y;
 
   /**
+   * Where the player is put back on their feet after dying: the place spawn
+   * until a script sets a checkpoint, then that. A script's `player-checkpoint`
+   * gives feet coordinates, so the cube centre is derived when it is stored.
+   */
+  const respawn = { x: spawn[0], y: spawnY, z: spawn[2], yaw: 0 };
+
+  /** Puts the player back on their feet at `respawn`, clearing the fall. */
+  const standAtRespawn = (): void => {
+    avatar.player.position.set(respawn.x, respawn.y, respawn.z);
+    avatar.player.yaw = respawn.yaw;
+    avatar.player.pitch = 0;
+    avatar.player.vx = 0;
+    avatar.player.vy = 0;
+    avatar.player.vz = 0;
+    avatar.player.onGround = false;
+    avatar.player.flying = false;
+    health.respawn();
+    walkTrace.event("respawn");
+  };
+
+  /**
    * The player's hearts and the death sequence. When a zombie's swing empties
-   * them, the camera plays the fall a corpse does, then this stands the
-   * player back up at spawn with full hearts.
+   * them, or a script kills the player, the camera plays the fall a corpse
+   * does, then this stands the player back up at the last checkpoint.
    */
   const health = new PlayerHealth({
-    onFallDone: () => {
-      // The fall has lain out: put the player back on their feet at spawn,
-      // facing the way they started, before this frame's normal placement.
-      avatar.player.position.set(spawn[0], spawnY, spawn[2]);
-      avatar.player.yaw = 0;
-      avatar.player.pitch = 0;
-      avatar.player.vx = 0;
-      avatar.player.vy = 0;
-      avatar.player.vz = 0;
-      avatar.player.onGround = false;
-      avatar.player.flying = false;
-      health.respawn();
-      walkTrace.event("respawn");
-    },
+    onFallDone: standAtRespawn,
   });
+
+  /** The height below which the script kills the player, or null when unset. */
+  let voidY: number | null = null;
+
+  /** The hazard props the player was touching last frame, so a touch fires once. */
+  const touchingHazards = new Set<string>();
 
   // The world's scripted NPCs, drawn from whatever the console's script host
   // has placed and wearing the bundled model their id names. Nothing draws
@@ -508,7 +614,25 @@ export const createVoxelscape = ({
       ? null
       : createEndingLog(endingLogKey(place.seed, place.entry));
   const npcFigures = new VoxelFigures({
-    getFigures: () => scriptConsole?.npcs() ?? [],
+    getFigures: () => {
+      const figures: RenderedFigure[] = [];
+      for (const npc of scriptConsole?.npcs() ?? []) {
+        const pose = scriptConsole?.npcPose(npc.id) ?? null;
+        figures.push(
+          pose === null
+            ? npc
+            : {
+                id: npc.id,
+                x: npc.x + pose.dx,
+                y: npc.y + pose.dy,
+                z: npc.z + pose.dz,
+                yaw: npc.yaw + pose.yaw,
+                spin: { axis: pose.spinAxis, angle: pose.spinAngle },
+              },
+        );
+      }
+      return figures;
+    },
     modelFor: (id) => {
       const npc = scriptConsole?.npc(id) ?? null;
       if (npc !== null && npc.modelUri !== "") {
@@ -526,9 +650,29 @@ export const createVoxelscape = ({
   });
   // Props are any other object a script stands in the world — a fridge, a
   // vending machine — drawn from the rm-stacker model it names, exactly as the
-  // zombies and NPCs are.
+  // zombies and NPCs are. A prop with a motion is drawn where the shared clock
+  // has carried it.
   const propFigures = new VoxelFigures({
-    getFigures: () => scriptConsole?.props() ?? [],
+    getFigures: () => {
+      const figures: RenderedFigure[] = [];
+      for (const prop of scriptConsole?.props() ?? []) {
+        const pose = scriptConsole?.propPose(prop.id) ?? null;
+        figures.push(
+          pose === null
+            ? prop
+            : {
+                id: prop.id,
+                x: prop.x + pose.dx,
+                y: prop.y + pose.dy,
+                z: prop.z + pose.dz,
+                yaw: prop.yaw + pose.yaw,
+                height: prop.height,
+                spin: { axis: pose.spinAxis, angle: pose.spinAngle },
+              },
+        );
+      }
+      return figures;
+    },
     modelFor: (id) => scriptConsole?.prop(id)?.model ?? "",
   });
   // A scripted fire is its own particle flame, drawn from the same billboard
@@ -544,25 +688,93 @@ export const createVoxelscape = ({
     world.renderer.onBlocksChanged(indices),
   );
 
-  /** Rebuilds the solid boxes the player collides with from the current props. */
+  /**
+   * Rebuilds the boxes the player collides with and the hazard boxes it touches
+   * from the current props, both refreshed each frame so a prop the script
+   * moves or retires is met where it now is.
+   */
   const refreshPropBoxes = (): void => {
     propBoxes.length = 0;
+    hazardBoxes.length = 0;
     for (const prop of scriptConsole?.props() ?? []) {
-      if (!prop.solid) {
+      if (!prop.solid && !prop.hazard) {
         continue;
       }
-      const box = propFigures.aimBounds(prop.id);
-      if (box === null) {
+      const bounds = propFigures.aimBounds(prop.id);
+      if (bounds === null) {
         continue;
       }
-      propBoxes.push({
-        minX: prop.x - box.half,
-        maxX: prop.x + box.half,
-        minY: prop.y,
-        maxY: prop.y + box.height,
-        minZ: prop.z - box.half,
-        maxZ: prop.z + box.half,
-      });
+      const pose = scriptConsole?.propPose(prop.id) ?? null;
+      const cx = prop.x + (pose?.dx ?? 0);
+      const cy = prop.y + (pose?.dy ?? 0);
+      const cz = prop.z + (pose?.dz ?? 0);
+      const box: SolidBox = {
+        minX: cx - bounds.half,
+        maxX: cx + bounds.half,
+        minY: cy,
+        maxY: cy + bounds.height,
+        minZ: cz - bounds.half,
+        maxZ: cz + bounds.half,
+        ...(pose !== null
+          ? {
+              yaw: prop.yaw + pose.yaw,
+              vx: pose.vx,
+              vy: pose.vy,
+              vz: pose.vz,
+            }
+          : prop.conveyor !== undefined
+            ? { vx: prop.conveyor.vx, vz: prop.conveyor.vz }
+            : {}),
+      };
+      if (prop.solid) {
+        propBoxes.push(box);
+      }
+      if (prop.hazard) {
+        hazardBoxes.push({ id: prop.id, box });
+      }
+    }
+  };
+
+  /**
+   * Fills the fields a script has declared into the physics sampler, so one
+   * boxed region can push a player or hold them like quicksand. Refreshed each
+   * frame alongside the prop boxes, because a script may retire a field the
+   * way it retires a prop.
+   */
+  const refreshFields = (): void => {
+    fieldBoxes.length = 0;
+    for (const field of scriptConsole?.fields() ?? []) {
+      fieldBoxes.push(field);
+    }
+  };
+
+  /**
+   * Reports each hazardous prop the player's cube newly overlaps, once per
+   * contact, so a script hears a `player-touched` fact the way it hears a
+   * `zone-entered`.
+   */
+  const checkHazardTouch = (): void => {
+    const p = avatar.player.position;
+    const half = avatar.player.config.halfSize;
+    const touching = new Set<string>();
+    for (const { id, box } of hazardBoxes) {
+      const overlaps =
+        p.x + half >= box.minX &&
+        p.x - half <= box.maxX &&
+        p.y + half >= box.minY &&
+        p.y - half <= box.maxY &&
+        p.z + half >= box.minZ &&
+        p.z - half <= box.maxZ;
+      if (overlaps) {
+        touching.add(id);
+        if (!touchingHazards.has(id)) {
+          void scriptConsole?.touched(id);
+        }
+      }
+    }
+    touchingHazards.clear();
+    for (const id of touching) {
+      touchingHazards.add(id);
     }
   };
 
@@ -819,6 +1031,54 @@ export const createVoxelscape = ({
     getRepo: () => atproto.did,
   });
 
+  /** The camera pose a running cutscene started from, and which one it is. */
+  let cutsceneFrom: CameraStart | null = null;
+  let cutsceneStart = -1;
+
+  /**
+   * Puts the camera where the local player's cutscene says it is, or returns
+   * without touching it when none runs. The starting pose is the live camera's
+   * the first frame a sequence is seen, so a shot moves out of what the player
+   * was already looking at. A sequence that has played out is cleared, and the
+   * camera snapped back to the player.
+   */
+  const applyCutsceneCamera = (): void => {
+    const state = scriptConsole?.cutsceneFor("") ?? null;
+    if (state === null) {
+      return;
+    }
+    if (state.startMs !== cutsceneStart) {
+      cutsceneStart = state.startMs;
+      const dir = camera.getWorldDirection(new Vector3());
+      cutsceneFrom = {
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z,
+        lookX: camera.position.x + dir.x,
+        lookY: camera.position.y + dir.y,
+        lookZ: camera.position.z + dir.z,
+      };
+      setCutscene(true);
+    }
+    if (cutsceneFrom === null) {
+      return;
+    }
+    const pose = cutscenePoseAt(
+      state,
+      scriptConsole?.now() ?? Date.now(),
+      cutsceneFrom,
+    );
+    camera.position.set(pose.x, pose.y, pose.z);
+    camera.lookAt(pose.lookX, pose.lookY, pose.lookZ);
+    if (pose.done) {
+      scriptConsole?.clearCutscene("");
+      cutsceneStart = -1;
+      cutsceneFrom = null;
+      setCutscene(false);
+      avatar.place();
+    }
+  };
+
   /**
    * Starts the place's game over: the player stands back up at spawn and the
    * script runs from a fresh interpreter, while the world it built stays.
@@ -826,11 +1086,23 @@ export const createVoxelscape = ({
   const restartPlace = (): void => {
     setEnding(null);
     setDialog(null);
+    setCutscene(false);
+    cutsceneStart = -1;
+    cutsceneFrom = null;
+    // A fresh run starts from the place's own spawn, not wherever the last
+    // run's checkpoints had reached.
+    respawn.x = spawn[0];
+    respawn.y = spawnY;
+    respawn.z = spawn[2];
+    respawn.yaw = 0;
+    voidY = null;
+    touchingHazards.clear();
     avatar.player.position.set(spawn[0], spawnY, spawn[2]);
     avatar.player.vx = 0;
     avatar.player.vy = 0;
     avatar.player.vz = 0;
     avatar.player.onGround = false;
+    avatar.player.flying = false;
     health.respawn();
     // The fresh script lights no fires, so the embers of the old run go back
     // to being the floor they kindled from.
@@ -858,6 +1130,7 @@ export const createVoxelscape = ({
           },
           ...multiplayer.peerPositions(),
         ],
+        now: () => multiplayer.now(),
         report: (line) => onNotice?.(line),
         onDialog: (player, state) => {
           if (player === "") {
@@ -942,6 +1215,34 @@ export const createVoxelscape = ({
         },
         onEvent: (event) => {
           multiplayer.broadcastScriptEvents([event]);
+        },
+        onCheckpoint: (player, at) => {
+          if (player !== "") {
+            return;
+          }
+          respawn.x = at.x;
+          respawn.z = at.z;
+          if (at.y !== undefined) {
+            respawn.y = at.y + avatar.player.config.halfSize;
+          }
+          if (at.yaw !== undefined) {
+            respawn.yaw = at.yaw;
+          }
+        },
+        onKill: (player) => {
+          if (player !== "") {
+            return;
+          }
+          health.kill();
+        },
+        onRespawn: (player) => {
+          if (player !== "") {
+            return;
+          }
+          standAtRespawn();
+        },
+        onVoid: (y) => {
+          voidY = y;
         },
         onFire: (fire) => {
           fireEmbers.seed(fire);
@@ -1533,128 +1834,145 @@ export const createVoxelscape = ({
       } else {
         probe.begin(Phase.player);
         const snapshot = input.consume();
+        const locked = scriptConsole?.controlsLocked("") ?? false;
         refreshPropBoxes();
-        avatar.move(dt, snapshot);
+        refreshFields();
+        avatar.move(dt, locked ? CUTSCENE_INPUT : snapshot);
+        checkHazardTouch();
         probe.end(Phase.player);
-        // Selecting first, so the rest of the frame — the pick, both buttons,
-        // and what the hand draws — all belong to the same tool.
-        if (snapshot.select !== null) {
-          inventory.selectSlot(snapshot.select);
-        }
-        if (snapshot.wheel !== 0) {
-          inventory.selectStep(snapshot.wheel);
-        }
-        wield(inventory.selectedId);
-        const tool = tools[inventory.selectedId];
-        // An NPC or prop the crosshair is on can be talked to or used with the
-        // same tap or click that would otherwise strike; the aim is recomputed
-        // every frame so the hint tracks what the crosshair is over.
-        const look = avatar.look();
-        const orbit = [look.origin[0], look.origin[1], look.origin[2]] as [
-          number,
-          number,
-          number,
-        ];
-        const heading = [
-          look.direction[0],
-          look.direction[1],
-          look.direction[2],
-        ] as [number, number, number];
-        const aimTargets: AimTarget[] = npcAimTargets();
-        for (const prop of scriptConsole?.props() ?? []) {
-          const box = propFigures.aimBounds(prop.id);
-          aimTargets.push({
-            id: prop.id,
-            x: prop.x,
-            y: prop.y,
-            z: prop.z,
-            half: box?.half,
-            height: box?.height,
-          });
-        }
-        const aimed = pickFigure(orbit, heading, aimTargets);
-        const aimedNpc =
-          aimed === null ? null : (scriptConsole?.npc(aimed.id) ?? null);
-        const aimedProp =
-          aimed === null ? null : (scriptConsole?.prop(aimed.id) ?? null);
-        // An NPC talks bare-handed and is used otherwise, the same as a prop
-        // always is — so the hint has to track the held item too, not just
-        // which figure the crosshair is over.
-        const holding = scriptConsole?.heldItem() !== null;
-        const aimKey = aimed === null ? null : `${aimed.id}:${holding}`;
-        if (aimKey !== lastAimId) {
-          lastAimId = aimKey;
-          setNpcAim(
-            aimed === null
-              ? null
-              : aimedNpc !== null && !holding
-                ? { id: aimed.id, name: aimedNpc.name, action: "talk" }
-                : {
-                    id: aimed.id,
-                    name: aimedNpc?.name ?? aimedProp?.name ?? aimed.id,
-                    action: "use",
-                  },
+        if (locked) {
+          // A cutscene owns the view and the body: no aim, no tools, and no
+          // held model, while the camera plays.
+          setTarget(null);
+          setNpcAim(null);
+          wield(null);
+          hand.show(null, null);
+        } else {
+          // Selecting first, so the rest of the frame — the pick, both buttons,
+          // and what the hand draws — all belong to the same tool.
+          if (snapshot.select !== null) {
+            inventory.selectSlot(snapshot.select);
+          }
+          if (snapshot.wheel !== 0) {
+            inventory.selectStep(snapshot.wheel);
+          }
+          wield(inventory.selectedId);
+          const tool = tools[inventory.selectedId];
+          // An NPC or prop the crosshair is on can be talked to or used with the
+          // same tap or click that would otherwise strike; the aim is recomputed
+          // every frame so the hint tracks what the crosshair is over.
+          const look = avatar.look();
+          const orbit = [look.origin[0], look.origin[1], look.origin[2]] as [
+            number,
+            number,
+            number,
+          ];
+          const heading = [
+            look.direction[0],
+            look.direction[1],
+            look.direction[2],
+          ] as [number, number, number];
+          const aimTargets: AimTarget[] = npcAimTargets();
+          for (const prop of scriptConsole?.props() ?? []) {
+            const box = propFigures.aimBounds(prop.id);
+            aimTargets.push({
+              id: prop.id,
+              x: prop.x,
+              y: prop.y,
+              z: prop.z,
+              half: box?.half,
+              height: box?.height,
+            });
+          }
+          const aimed = pickFigure(orbit, heading, aimTargets);
+          const aimedNpc =
+            aimed === null ? null : (scriptConsole?.npc(aimed.id) ?? null);
+          const aimedProp =
+            aimed === null ? null : (scriptConsole?.prop(aimed.id) ?? null);
+          // An NPC talks bare-handed and is used otherwise, the same as a prop
+          // always is — so the hint has to track the held item too, not just
+          // which figure the crosshair is over.
+          const holding = scriptConsole?.heldItem() !== null;
+          const aimKey = aimed === null ? null : `${aimed.id}:${holding}`;
+          if (aimKey !== lastAimId) {
+            lastAimId = aimKey;
+            setNpcAim(
+              aimed === null
+                ? null
+                : aimedNpc !== null && !holding
+                  ? { id: aimed.id, name: aimedNpc.name, action: "talk" }
+                  : {
+                      id: aimed.id,
+                      name: aimedNpc?.name ?? aimedProp?.name ?? aimed.id,
+                      action: "use",
+                    },
+            );
+          }
+          // The camera has not caught up yet, so this picks from last frame's eye
+          // along this frame's look. Recomputed every frame, not just on edits, so
+          // the crosshair tracks what it is over.
+          const pick = tool.pick();
+          setTarget(pick.primary);
+          // A click or tap that the wielded tool itself resolves to a strike is
+          // left to it below, rather than treated as a talk or a use — a sword
+          // swing and a bare touch are different gestures even when they land
+          // on the same body. The E key never means a strike, whatever is
+          // wielded, so it always reaches this path.
+          const interacted =
+            dialog() === null &&
+            aimed !== null &&
+            (snapshot.use ||
+              ((snapshot.tap || snapshot.click) &&
+                pick.primary?.kind !== "actor"));
+          if (interacted) {
+            // An NPC talks bare-handed, the same as ever — but holding
+            // anything at all is "used with it" instead, the same fact a prop
+            // always reports. What that means is entirely up to the script.
+            if (aimedNpc !== null && !holding) {
+              npcTalk(aimed.id);
+            } else {
+              npcUse(aimed.id);
+            }
+          } else if (
+            // Over empty air, E uses the held item; on touch, a quick tap does
+            // too, which is what the HUD's "tap to use" promises. A tap that
+            // landed on a strikeable body is left to strike below.
+            snapshot.use ||
+            (snapshot.tap && pick.primary?.kind !== "actor")
+          ) {
+            const held = scriptConsole?.heldItem() ?? null;
+            if (held !== null) {
+              itemUse(held.id);
+            }
+          }
+          if (snapshot.primary && !interacted) {
+            const result = tool.primary(pick);
+            if (result !== null) {
+              setEditStatus(result);
+            }
+          }
+          // A quick tap is a strike only when it landed on a strikeable body —
+          // a voxel needs the hold that repeats `primary`, as a touch would
+          // otherwise break whatever it started dragging from. The wielded
+          // tools never pick a body except the sword, so this call is a sword
+          // swing.
+          if (!interacted && snapshot.tap && pick.primary?.kind === "actor") {
+            const result = tool.primary(pick);
+            if (result !== null) {
+              setEditStatus(result);
+            }
+          }
+          if (snapshot.secondary) {
+            const result = tool.secondary(pick);
+            if (result !== null) {
+              setEditStatus(result);
+            }
+          }
+          tool.update(dt, snapshot);
+          hand.show(
+            avatar.firstPerson ? inventory.selectedId : null,
+            tool.pose(),
           );
-        }
-        // The camera has not caught up yet, so this picks from last frame's eye
-        // along this frame's look. Recomputed every frame, not just on edits, so
-        // the crosshair tracks what it is over.
-        const pick = tool.pick();
-        setTarget(pick.primary);
-        // A click or tap that the wielded tool itself resolves to a strike is
-        // left to it below, rather than treated as a talk or a use — a sword
-        // swing and a bare touch are different gestures even when they land
-        // on the same body. The E key never means a strike, whatever is
-        // wielded, so it always reaches this path.
-        const interacted =
-          dialog() === null &&
-          aimed !== null &&
-          (snapshot.use ||
-            ((snapshot.tap || snapshot.click) &&
-              pick.primary?.kind !== "actor"));
-        if (interacted) {
-          // An NPC talks bare-handed, the same as ever — but holding
-          // anything at all is "used with it" instead, the same fact a prop
-          // always reports. What that means is entirely up to the script.
-          if (aimedNpc !== null && !holding) {
-            npcTalk(aimed.id);
-          } else {
-            npcUse(aimed.id);
-          }
-        } else if (
-          // Over empty air, E uses the held item; on touch, a quick tap does
-          // too, which is what the HUD's "tap to use" promises. A tap that
-          // landed on a strikeable body is left to strike below.
-          snapshot.use ||
-          (snapshot.tap && pick.primary?.kind !== "actor")
-        ) {
-          const held = scriptConsole?.heldItem() ?? null;
-          if (held !== null) {
-            itemUse(held.id);
-          }
-        }
-        if (snapshot.primary && !interacted) {
-          const result = tool.primary(pick);
-          if (result !== null) {
-            setEditStatus(result);
-          }
-        }
-        // A quick tap is a strike only when it landed on a strikeable body —
-        // a voxel needs the hold that repeats `primary`, as a touch would
-        // otherwise break whatever it started dragging from. The wielded
-        // tools never pick a body except the sword, so this call is a sword
-        // swing.
-        if (!interacted && snapshot.tap && pick.primary?.kind === "actor") {
-          const result = tool.primary(pick);
-          if (result !== null) {
-            setEditStatus(result);
-          }
-        }
-        if (snapshot.secondary) {
-          const result = tool.secondary(pick);
-          if (result !== null) {
-            setEditStatus(result);
-          }
         }
         probe.begin(Phase.scroll);
         world.scrollTo(
@@ -1664,11 +1982,7 @@ export const createVoxelscape = ({
         );
         probe.end(Phase.scroll);
         avatar.place();
-        tool.update(dt, snapshot);
-        hand.show(
-          avatar.firstPerson ? inventory.selectedId : null,
-          tool.pose(),
-        );
+        applyCutsceneCamera();
         // Lava is a hazard the way water is a medium: standing in it burns,
         // on a short cooldown so the player can hop out between ticks.
         const p = avatar.player.position;
@@ -1679,6 +1993,15 @@ export const createVoxelscape = ({
         ) {
           dealDamage(LAVA_BURN, "lava");
           lavaBurnCooldown = 0.5;
+        }
+        // A place script may set a floor the player must not fall past. Feet
+        // below it is a death the world observed, so the script hears the fact.
+        if (
+          voidY !== null &&
+          avatar.player.position.y - avatar.player.config.halfSize < voidY
+        ) {
+          health.kill();
+          void scriptConsole?.died("void");
         }
       }
       probe.begin(Phase.flow);
@@ -1824,6 +2147,8 @@ export const createVoxelscape = ({
     ending,
     narration,
     dismissNarration: () => setNarration(null),
+    cutscene,
+    hud: () => scriptConsole?.hud() ?? [],
     restart: restartPlace,
     talkTo: npcTalk,
     choose: npcChoose,

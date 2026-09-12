@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   stampStructures,
   type PlanHouse,
+  type PlanRamp,
   type PlanRoad,
+  type PlanStairs,
 } from "./structure-fill";
 import {
   VOXEL_AIR,
@@ -90,6 +92,48 @@ describe("stampStructures", () => {
     expect(store.get(2, 1, 0)).toBe(VOXEL_AIR); // door gap
     expect(store.get(2, 2, 0)).toBe(VOXEL_AIR); // door gap is two tall
     expect(store.get(0, 1, 0)).toBe(VOXEL_BRICK); // wall beside the door
+  });
+
+  it("builds a staircase as solid columns that rise one tread at a time", () => {
+    const { store, center } = storeAt([16, 16, 16], 2);
+    const stairs: PlanStairs = {
+      kind: "stairs",
+      at: [0, 0, 0],
+      along: "x",
+      steps: 3,
+      rise: 1,
+      run: 2,
+      width: 3,
+      id: VOXEL_BRICK,
+    };
+    stampStructures(store, center, [stairs]);
+
+    // The first tread spans x 0..1 at y 0; the third spans x 4..5 up to y 2.
+    expect(store.get(0, 0, 1)).toBe(VOXEL_BRICK);
+    expect(store.get(2, 0, 1)).toBe(VOXEL_BRICK);
+    expect(store.get(2, 1, 1)).toBe(VOXEL_BRICK);
+    expect(store.get(4, 2, 1)).toBe(VOXEL_BRICK);
+    // Air above a tread and beyond the run's width.
+    expect(store.get(0, 1, 1)).toBe(VOXEL_AIR);
+    expect(store.get(4, 3, 1)).toBe(VOXEL_AIR);
+    expect(store.get(4, 2, 4)).toBe(VOXEL_AIR);
+  });
+
+  it("builds an incline as columns stepping from the low end to the high end", () => {
+    const { store, center } = storeAt([16, 16, 16], 2);
+    const ramp: PlanRamp = {
+      kind: "ramp",
+      from: [0, 0, 0],
+      to: [4, 4, 0],
+      width: 1,
+      id: VOXEL_STONE,
+    };
+    stampStructures(store, center, [ramp]);
+
+    expect(store.get(0, 0, 0)).toBe(VOXEL_STONE);
+    expect(store.get(4, 4, 0)).toBe(VOXEL_STONE);
+    expect(store.get(2, 2, 0)).toBe(VOXEL_STONE);
+    expect(store.get(2, 3, 0)).toBe(VOXEL_AIR);
   });
 
   it("sweeps a road along its run and no further", () => {
