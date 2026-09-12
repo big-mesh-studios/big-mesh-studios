@@ -141,7 +141,7 @@ const runLts = async (knownEndings: string[] = []) => {
 describe("the built-in demos", () => {
   it("lists the GASA4 place with its furniture and items", () => {
     const demo = builtinDemo("get-a-snack-at-4-am");
-    expect(demo?.name).toBe("Get a Snack at 4 AM");
+    expect(demo?.manifest.name).toBe("Get a Snack at 4 AM");
     expect(demo?.manifest.models).toContain("fridge.zip");
     expect(demo?.manifest.models).toContain("bed.zip");
     expect(demo?.manifest.models).toContain("chips.zip");
@@ -315,7 +315,7 @@ describe("the built-in demos", () => {
 describe("the Late to School demo", () => {
   it("lists the place with its characters and fixtures", () => {
     const demo = builtinDemo("late-to-school");
-    expect(demo?.name).toBe("Late to School");
+    expect(demo?.manifest.name).toBe("Late to School");
     expect(demo?.manifest.models).toContain("npc-laugh.zip");
     expect(demo?.manifest.models).toContain("slushie-machine.zip");
     expect(demo?.manifest.models).toContain("arcade.zip");
@@ -644,7 +644,7 @@ describe("the Zombies demo", () => {
 
   it("lists the place and bundles its zombie model", () => {
     const demo = builtinDemo("zombies");
-    expect(demo?.name).toBe("Zombies");
+    expect(demo?.manifest.name).toBe("Zombies");
     expect(demo?.manifest.models).toContain("zombie.zip");
     expect(demo?.manifest.mode).toBe("multi");
     expect(BUILTIN_DEMOS).toContain(demo);
@@ -753,7 +753,7 @@ const runDp = async () => {
 describe("the Don't Poop Yourself at School demo", () => {
   it("lists the demo with its models", () => {
     const demo = builtinDemo("dont-poop-yourself-at-school");
-    expect(demo?.name).toBe("Don't Poop Yourself at School");
+    expect(demo?.manifest.name).toBe("Don't Poop Yourself at School");
     expect(demo?.manifest.models).toContain("wet-floor.zip");
     expect(demo?.manifest.models).toContain("soap.zip");
     expect(BUILTIN_DEMOS).toContain(demo);

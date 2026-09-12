@@ -356,12 +356,12 @@ const App: Component<{}> = () => {
             return;
           }
           if (current) {
-            setJoiningLine(`opening "${demo.name}"…`);
+            setJoiningLine(`opening "${demo.manifest.name}"…`);
           }
           try {
             const config = await buildLaunch(
               await loadBuiltinDemo(demo),
-              `playing the demo "${demo.name}"`,
+              `playing the demo "${demo.manifest.name}"`,
               `${DEFAULT_WORLD_URL}#/demos/${demo.id}`,
             );
             if (current) {

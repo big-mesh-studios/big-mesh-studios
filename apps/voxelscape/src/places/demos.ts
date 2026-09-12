@@ -15,7 +15,6 @@ import DONT_POOP_SCRIPT from "./demo-scripts/dont-poop-yourself-at-school.ts?raw
 /** One built-in demo: the world it names, its scripts, and the models they wear. */
 export interface BuiltinDemo {
   id: string;
-  name: string;
   /** The manifest fields the world boots from, script list excluded. */
   manifest: Omit<PlaceManifest, "scripts">;
   /** The demo's script files, keyed by manifest-relative path. */
@@ -31,7 +30,6 @@ export interface BuiltinDemo {
  */
 const GASA4: BuiltinDemo = {
   id: "get-a-snack-at-4-am",
-  name: "Get a Snack at 4 AM",
   manifest: {
     name: "Get a Snack at 4 AM",
     seed: 4_004,
@@ -150,7 +148,6 @@ const LATE_TO_SCHOOL_MODELS = [
  */
 const LATE_TO_SCHOOL: BuiltinDemo = {
   id: "late-to-school",
-  name: "Late to School",
   manifest: {
     name: "Late to School",
     // The history book's page and the Dimensionator code, in one seed.
@@ -173,7 +170,6 @@ const LATE_TO_SCHOOL: BuiltinDemo = {
  */
 const ZOMBIES: BuiltinDemo = {
   id: "zombies",
-  name: "Zombies",
   manifest: {
     name: "Zombies",
     seed: 90_210,
@@ -215,7 +211,6 @@ const DONT_POOP_MODELS = [
  */
 const DONT_POOP: BuiltinDemo = {
   id: "dont-poop-yourself-at-school",
-  name: "Don't Poop Yourself at School",
   manifest: {
     name: "Don't Poop Yourself at School",
     seed: 4_202,

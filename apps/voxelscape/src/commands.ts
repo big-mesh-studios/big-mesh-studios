@@ -862,8 +862,9 @@ export const createCommands = ({
     "/place:demos": {
       description: "list the built-in demo places",
       run: async () =>
-        BUILTIN_DEMOS.map((demo) => `${demo.id} — ${demo.name}`).join("\n") ||
-        "no built-in demos",
+        BUILTIN_DEMOS.map((demo) => `${demo.id} — ${demo.manifest.name}`).join(
+          "\n",
+        ) || "no built-in demos",
     },
     "/place:demo": {
       description: "play a built-in demo place",
@@ -878,7 +879,7 @@ export const createCommands = ({
           return `no demo "${id}" — /place:demos lists them`;
         }
         navigate(`/demos/${demo.id}`);
-        return `opening the demo "${demo.name}" — loading its world`;
+        return `opening the demo "${demo.manifest.name}" — loading its world`;
       },
     },
     "/script:demo": {
