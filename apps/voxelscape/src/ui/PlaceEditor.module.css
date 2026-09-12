@@ -265,10 +265,10 @@
 }
 
 /* Two areas, named rather than left to column order — what's already
- * attached, and where more comes from — stacked to one column on a touch
- * screen by redefining the areas, not by reordering anything. No card chrome
- * of its own — this sits directly on the panel's own background, with a 1px
- * line between the areas standing in for the separation a box would
+ * attached, and where more comes from — stacked to one column on a narrow
+ * viewport by redefining the areas, not by reordering anything. No card
+ * chrome of its own — this sits directly on the panel's own background, with
+ * a 1px line between the areas standing in for the separation a box would
  * otherwise give it. */
 .models {
   flex: 1;
@@ -279,7 +279,7 @@
   grid-template-areas: "attached browse";
 }
 
-@media (any-pointer: coarse) {
+@media (max-width: 640px) {
   .models {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto;

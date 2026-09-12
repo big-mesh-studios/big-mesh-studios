@@ -97,12 +97,11 @@
   flex: 0 0 auto;
 }
 
-/* a touch screen has no room to spare around a fixed-size panel, so the
-   editor takes the whole viewport instead of floating below the button —
-   `inset: 0` overrides the anchor-computed `top`/`right`/`left` above
-   without switching `position` itself, so `width`/`height` still animate
-   into this rather than jumping. */
-@media (any-pointer: coarse) {
+/* Below either threshold there's no room to spare around the floating panel,
+   so the editor takes the whole viewport instead — `inset: 0` overrides the
+   anchor-computed `top`/`right`/`left` above without switching `position`
+   itself, so `width`/`height` still animate into this rather than jumping. */
+@media (max-width: 900px), (max-height: 600px) {
   .editorOpen {
     inset: 0;
     margin: 0;
