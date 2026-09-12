@@ -31,6 +31,7 @@ export function generateModelDts(
   return `declare module "${specifier}" {
   const model: {
     readonly name: ${JSON.stringify(descriptor.name)};
+    readonly file: ${JSON.stringify(descriptor.file)};
     readonly parts: readonly (${literalUnion(descriptor.parts)})[];
     readonly motions: readonly (${literalUnion(descriptor.motions)})[];
   };
@@ -58,7 +59,7 @@ export async function generateProjectModelsDts(
       }
       try {
         return generateModelDts(
-          await modelDescriptorFor(specifier, bytes),
+          await modelDescriptorFor(specifier, file, bytes),
           specifier,
         );
       } catch {

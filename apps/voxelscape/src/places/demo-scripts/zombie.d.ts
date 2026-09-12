@@ -8,6 +8,7 @@
 declare module "zombie" {
   const model: {
     readonly name: "zombie";
+    readonly file: "zombie.zip";
     readonly parts: readonly string[];
     readonly motions: readonly string[];
   };

@@ -203,6 +203,7 @@ describe("model imports", () => {
     delete globals.engine;
     expect(JSON.parse(logged[0])).toEqual({
       name: "zombie",
+      file: "zombie.zip",
       parts: ["head", "torso"],
       motions: ["walk"],
     });
@@ -263,5 +264,120 @@ describe("model imports", () => {
     await expect(bundlePlaceProject(files, "main.ts", {})).rejects.toThrow(
       /this place carries no such model/,
     );
+  });
+});
+
+describe("the scripted-figures standard library", () => {
+  const dispatched = (
+    output: string,
+  ): Array<{ tag: string; payload: unknown }> => {
+    const calls: Array<{ tag: string; payload: unknown }> = [];
+    new Function(output)();
+    const globals = globalThis as Record<string, unknown>;
+    globals.engine = {
+      dispatch: (tag: string, payload: string) =>
+        calls.push({ tag, payload: JSON.parse(payload) }),
+    };
+    (globals.bmsTick as () => void)();
+    delete globals.engine;
+    return calls;
+  };
+
+  it("constructs, moves, and removes a ScriptedNpc through the real effects", async () => {
+    const files = {
+      "main.ts": `
+        import zombie from "zombie" with { type: "model" };
+        import { ScriptedNpc } from "scripted-figures";
+        export function bmsTick(): void {
+          const npc = new ScriptedNpc(zombie, "zombie-1", { x: 0, z: 0 });
+          npc.move({ x: 1, z: 2, yaw: 0.5, live: true });
+          npc.remove();
+        }
+      `,
+    };
+    const models = { "zombie.zip": await modelBytes(["head"]) };
+    const output = await bundlePlaceProject(files, "main.ts", models);
+    const calls = dispatched(output);
+    expect(calls.map((c) => c.tag)).toEqual(["npc", "npc", "npc-remove"]);
+    expect(calls[0].payload).toMatchObject({
+      id: "zombie-1",
+      x: 0,
+      z: 0,
+      model: "zombie.zip",
+      live: true,
+    });
+    expect(calls[1].payload).toMatchObject({
+      id: "zombie-1",
+      x: 1,
+      z: 2,
+      yaw: 0.5,
+      live: true,
+    });
+    expect(calls[2].payload).toEqual({ id: "zombie-1" });
+  });
+
+  it("plays a death fall through ScriptedNpc.die, and removes a ScriptedProp through prop-remove", async () => {
+    const files = {
+      "main.ts": `
+        import zombie from "zombie" with { type: "model" };
+        import { ScriptedNpc, ScriptedProp } from "scripted-figures";
+        export function bmsTick(): void {
+          new ScriptedNpc(zombie, "zombie-1", { x: 0, z: 0 }).die();
+          new ScriptedProp(zombie, "prop-1", { x: 3, z: 4, solid: true }).remove();
+        }
+      `,
+    };
+    const models = { "zombie.zip": await modelBytes(["head"]) };
+    const output = await bundlePlaceProject(files, "main.ts", models);
+    const calls = dispatched(output);
+    expect(calls.map((c) => c.tag)).toEqual([
+      "npc",
+      "npc-die",
+      "prop",
+      "prop-remove",
+    ]);
+    expect(calls[2].payload).toMatchObject({
+      id: "prop-1",
+      model: "zombie.zip",
+      x: 3,
+      z: 4,
+      solid: true,
+    });
+  });
+
+  it("shares one synthetic module between two files importing it", async () => {
+    const files = {
+      "main.ts": `
+        import "./helper";
+        import { ScriptedNpc } from "scripted-figures";
+        export function bmsTick(): void {}
+      `,
+      "helper.ts": `
+        import { ScriptedProp } from "scripted-figures";
+        export {};
+      `,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    expect(output.match(/class ScriptedFigure/g)).toHaveLength(1);
+  });
+
+  it("is left out of the bundle entirely when no file imports it", async () => {
+    const output = await bundlePlaceProject(
+      { "main.ts": `export function bmsTick(): void {}` },
+      "main.ts",
+    );
+    expect(output).not.toContain("ScriptedFigure");
+  });
+
+  it("produces identical output for identical input", async () => {
+    const files = {
+      "main.ts": `
+        import { ScriptedNpc } from "scripted-figures";
+        export function bmsTick(): void {}
+      `,
+    };
+    const first = await bundlePlaceProject(files, "main.ts");
+    const second = await bundlePlaceProject(files, "main.ts");
+    expect(second).toBe(first);
   });
 });

@@ -179,6 +179,45 @@ describe("a script host", () => {
     host.dispose();
   });
 
+  it("constructs, moves, and removes a ScriptedNpc from a project file", async () => {
+    const { host } = await fresh();
+    const script = `
+      import zombie from "zombie" with { type: "model" };
+      import { ScriptedNpc } from "scripted-figures";
+      let npc: ScriptedNpc<typeof zombie> | undefined;
+      export function bmsTick(clockMs: number, eventsJson: string): void {
+        if (npc === undefined) {
+          npc = new ScriptedNpc(zombie, "zombie-1", { x: 0, z: 0 });
+          engine.dispatch("timer", JSON.stringify({ id: "move", afterMs: 100 }));
+          return;
+        }
+        const events = JSON.parse(eventsJson) as Array<{ kind: string; timerId?: string }>;
+        for (const e of events) {
+          if (e.kind === "timer" && e.timerId === "move") {
+            npc.move({ x: 5, z: 6 });
+            engine.dispatch("timer", JSON.stringify({ id: "remove", afterMs: 100 }));
+          } else if (e.kind === "timer" && e.timerId === "remove") {
+            npc.remove();
+          }
+        }
+      }
+    `;
+    await host.loadProject({ [MAIN_SCRIPT_FILE]: script }, MAIN_SCRIPT_FILE, {
+      "zombie.zip": await modelBytes(),
+    });
+    expect(host.npc("zombie-1")).toMatchObject({ x: 0, z: 0 });
+
+    clockMs += 150;
+    await host.pump();
+    expect(host.npc("zombie-1")).toMatchObject({ x: 5, z: 6 });
+
+    clockMs += 150;
+    await host.pump();
+    expect(host.npc("zombie-1")).toBeNull();
+
+    host.dispose();
+  });
+
   it("places a prop and answers when the player uses it", async () => {
     const { host, toasts } = await fresh();
     await loadProject(

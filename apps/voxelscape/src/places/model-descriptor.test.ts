@@ -84,25 +84,31 @@ describe("resolveModelFile", () => {
 describe("modelDescriptorFor", () => {
   it("names the descriptor after the specifier, not anything in the file", async () => {
     const bytes = await modelBytes(["head"]);
-    const descriptor = await modelDescriptorFor("zombie", bytes);
+    const descriptor = await modelDescriptorFor("zombie", "zombie.zip", bytes);
     expect(descriptor.name).toBe("zombie");
+  });
+
+  it("carries the place file name alongside the specifier", async () => {
+    const bytes = await modelBytes(["head"]);
+    const descriptor = await modelDescriptorFor("zombie", "zombie.zip", bytes);
+    expect(descriptor.file).toBe("zombie.zip");
   });
 
   it("lists the figure's real part names, in order", async () => {
     const bytes = await modelBytes(["head", "torso", "leftArm"]);
-    const descriptor = await modelDescriptorFor("zombie", bytes);
+    const descriptor = await modelDescriptorFor("zombie", "zombie.zip", bytes);
     expect(descriptor.parts).toEqual(["head", "torso", "leftArm"]);
   });
 
   it("lists the figure's real motion names, in order", async () => {
     const bytes = await modelBytes(["head"], ["idle", "walk", "attack"]);
-    const descriptor = await modelDescriptorFor("zombie", bytes);
+    const descriptor = await modelDescriptorFor("zombie", "zombie.zip", bytes);
     expect(descriptor.motions).toEqual(["idle", "walk", "attack"]);
   });
 
   it("lists no motions for a model that has none", async () => {
     const bytes = await modelBytes(["head"]);
-    const descriptor = await modelDescriptorFor("zombie", bytes);
+    const descriptor = await modelDescriptorFor("zombie", "zombie.zip", bytes);
     expect(descriptor.motions).toEqual([]);
   });
 });

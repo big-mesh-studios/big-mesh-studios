@@ -5,9 +5,17 @@
 // generated types (model-dts.ts), which describe it as one.
 import { loadFigure } from "@big-mesh-studios/stacker/format";
 
-/** A model import's runtime value: its name, and what it is made of. */
+/**
+ * A model import's runtime value: its name, and what it is made of.
+ *
+ * `name` is the bare specifier it was imported under (e.g. `"zombie"`) —
+ * `file` is the place's own file name for it (e.g. `"zombie.zip"`), which is
+ * what the effects vocabulary's `model`/`modelUri` fields still take, since
+ * they name a place file, not an import specifier.
+ */
 export interface ModelDescriptor {
   name: string;
+  file: string;
   parts: string[];
   motions: string[];
 }
@@ -35,6 +43,7 @@ export function resolveModelFile(
  */
 export async function modelDescriptorFor(
   specifier: string,
+  file: string,
   bytes: Uint8Array,
 ): Promise<ModelDescriptor> {
   // `loadFigure` reads its argument through JSZip, which accepts a typed
@@ -45,6 +54,7 @@ export async function modelDescriptorFor(
   const figure = await loadFigure(bytes as unknown as Blob);
   return {
     name: specifier,
+    file,
     parts: figure.parts.map((part) => part.name),
     motions: figure.motions.map((motion) => motion.name),
   };

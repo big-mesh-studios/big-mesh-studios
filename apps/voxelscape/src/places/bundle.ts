@@ -10,6 +10,7 @@
 import type * as TS from "typescript";
 import { loadTypeScript } from "@big-mesh-studios/code-mirror/typescript-cdn";
 import { modelDescriptorFor, resolveModelFile } from "./model-descriptor";
+import { SCRIPTED_FIGURES_SOURCE } from "./scripted-figures-lib";
 
 /** A place script that could not be compiled or bundled, in words a creator can act on. */
 export class PlaceBundleError extends Error {
@@ -176,16 +177,31 @@ interface BundledModule {
 const modelModulePath = (name: string) => `\0model:${name}`;
 
 /**
+ * The reserved, always-available specifier naming the hand-written
+ * `ScriptedNpc`/`ScriptedProp` standard library (`scripted-figures-lib.ts`).
+ * Recognized outright, the same way every other bare specifier is otherwise
+ * rejected — no `with { type: ... }` attribute needed, since this exact name
+ * never means anything else. Takes precedence over a model import of the
+ * same name, on the (deliberately unhandled) assumption that no place ever
+ * attaches a model actually called "scripted-figures".
+ */
+const STDLIB_SPECIFIER = "scripted-figures";
+const STDLIB_MODULE_PATH = "\0scripted-figures";
+
+/**
  * Compiles and bundles a place project into one global-scope script. Each
  * project file becomes a CommonJS module evaluated through `require`, with
  * ids assigned in sorted-file order so the output is byte-for-byte
- * reproducible; a `with { type: "model" }` import (ADR 0046) instead becomes
- * a synthetic module holding an inert `{name, parts, motions}` descriptor,
- * one per distinct model name the project's files actually import, resolved
- * against `models` (bytes already attached to the place, keyed by file name).
- * The bundle runs the entry module and installs the `bmsTick` its exports
- * carry as the global the sandbox steps; an entry that exports none fails at
- * load.
+ * reproducible. A `with { type: "model" }` import (ADR 0046) instead becomes
+ * a synthetic module holding an inert `{name, file, parts, motions}`
+ * descriptor, one per distinct model name the project's files actually
+ * import, resolved against `models` (bytes already attached to the place,
+ * keyed by file name). Importing the reserved `"scripted-figures"` specifier
+ * resolves to one shared synthetic module compiled from
+ * `SCRIPTED_FIGURES_SOURCE`, included at most once regardless of how many
+ * files import it. The bundle runs the entry module and installs the
+ * `bmsTick` its exports carry as the global the sandbox steps; an entry that
+ * exports none fails at load.
  *
  * @throws {PlaceBundleError} When a model import names a relative or
  * absolute specifier (only a bare name can be typed by the editor's ambient
@@ -207,15 +223,21 @@ export const bundlePlaceProject = async (
   const fileSet = new Set(paths);
 
   // A first pass over every file's imports, so every model name any of them
-  // names is known before ids are handed out to anything.
+  // names — and whether the standard library is used at all — is known
+  // before ids are handed out to anything.
   const importsByPath = new Map<string, ScriptImport[]>();
   const modelNames = new Set<string>();
+  let usesStdlib = false;
 
   for (const path of paths) {
     const imports = importsOf(ts, path, files[path]);
     importsByPath.set(path, imports);
 
     for (const { specifier, isModelImport } of imports) {
+      if (specifier === STDLIB_SPECIFIER) {
+        usesStdlib = true;
+        continue;
+      }
       if (!isModelImport) {
         continue;
       }
@@ -235,10 +257,11 @@ export const bundlePlaceProject = async (
 
   const sortedModelNames = [...modelNames].sort();
   const ids = new Map(
-    [...paths, ...sortedModelNames.map(modelModulePath)].map((path, index) => [
-      path,
-      index,
-    ]),
+    [
+      ...paths,
+      ...(usesStdlib ? [STDLIB_MODULE_PATH] : []),
+      ...sortedModelNames.map(modelModulePath),
+    ].map((path, index) => [path, index]),
   );
 
   const modules: BundledModule[] = [];
@@ -246,6 +269,10 @@ export const bundlePlaceProject = async (
     const code = await transpileFile(ts, path, files[path]);
     const requires: Record<string, number> = {};
     for (const { specifier, isModelImport } of importsByPath.get(path)!) {
+      if (specifier === STDLIB_SPECIFIER) {
+        requires[specifier] = ids.get(STDLIB_MODULE_PATH)!;
+        continue;
+      }
       if (isModelImport) {
         requires[specifier] = ids.get(modelModulePath(specifier))!;
         continue;
@@ -261,9 +288,18 @@ export const bundlePlaceProject = async (
     modules.push({ path, code, requires });
   }
 
+  if (usesStdlib) {
+    const code = await transpileFile(
+      ts,
+      STDLIB_MODULE_PATH,
+      SCRIPTED_FIGURES_SOURCE,
+    );
+    modules.push({ path: STDLIB_MODULE_PATH, code, requires: {} });
+  }
+
   for (const name of sortedModelNames) {
     const file = resolveModelFile(models, name)!;
-    const descriptor = await modelDescriptorFor(name, models[file]);
+    const descriptor = await modelDescriptorFor(name, file, models[file]);
     modules.push({
       path: modelModulePath(name),
       code: `module.exports = ${JSON.stringify(descriptor)};`,

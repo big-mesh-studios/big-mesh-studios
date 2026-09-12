@@ -13,6 +13,7 @@ import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
 
 const ZOMBIE: ModelDescriptor = {
   name: "zombie",
+  file: "zombie.zip",
   parts: ["head", "torso", "leftArm", "rightArm", "leftLeg", "rightLeg"],
   motions: ["idle", "walk", "attack"],
 };
@@ -90,6 +91,7 @@ describe("generateModelDts", () => {
   it("turns a descriptor's parts and motions into literal unions", () => {
     const dts = generateModelDts(ZOMBIE, "zombie");
     expect(dts).toContain('declare module "zombie"');
+    expect(dts).toContain('readonly file: "zombie.zip";');
     expect(dts).toContain(
       'readonly parts: readonly ("head" | "torso" | "leftArm" | "rightArm" | "leftLeg" | "rightLeg")[];',
     );
@@ -100,7 +102,7 @@ describe("generateModelDts", () => {
 
   it("falls back to never for a model with no parts or motions", () => {
     const dts = generateModelDts(
-      { name: "empty", parts: [], motions: [] },
+      { name: "empty", file: "empty.zip", parts: [], motions: [] },
       "empty",
     );
     expect(dts).toContain("readonly parts: readonly (never)[];");

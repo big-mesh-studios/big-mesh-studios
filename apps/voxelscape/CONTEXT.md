@@ -136,6 +136,18 @@ _Avoid_: animation (that is the drawn result, not the spec), tween (the ease is 
 An NPC or prop a place script has placed, as the **ScriptHost** holds it: where it stands, how it faces, what model it wears, and the **Motion** it follows if any. The **VoxelFigures** renderer draws whatever the current figures are each frame, placing each at its posed feet.
 _Avoid_: entity (that is the monsters' word), actor
 
+**Model import**:
+A place script's `import zombie from "zombie" with { type: "model" }`, naming one of the place's own attached models by a bare specifier instead of writing its file name as a string it types nothing against. The panel's language service generates real, per-model types from the model's own bytes (`model-dts.ts`) — literal unions of its actual part and motion names — and the bundler (`bundle.ts`) resolves the same import to an inert `{name, file, parts, motions}` descriptor at compile time. `file` is the place's own file name for it, which is what the effects vocabulary's `model`/`modelUri` fields still take; `name` is only ever the bare specifier the script wrote.
+_Avoid_: model (on its own, this is easily confused with **ModelLibrary**, which reads a model live from atproto for the world's own monsters — a model import instead names one of the place's own bundled files), model reference (undersells that it is typed against the model's real contents)
+
+**ScriptedNpc**:
+The guest-side handle a place script builds to place and move an NPC, from the `scripted-figures` standard library every bundle can import: `new ScriptedNpc(model, id, { x, z, ... })` dispatches the "npc" effect itself, `.move()` re-dispatches it, and `.die()`/`.remove()` end it — built from a **Model import**, generic over it so a later addition can type an animation by its real name without the class changing shape. `id` is never generated here: every peer replaying the same script must compute the exact same one independently, so it always comes from the script's own deterministic address, the way the Zombies demo derives one from its population seed and spawn cell. Owns only where the figure stands and dispatches its placement — a script's own bookkeeping (health, AI state, and the rest) stays the script's own.
+_Avoid_: NPC handle (drop "Scripted" and it reads like the world's own **Monster**, a different system entirely), wrapper (undersells that it dispatches for real, not just formats JSON)
+
+**ScriptedProp**:
+`ScriptedNpc`'s counterpart for a prop, from the same `scripted-figures` library, built the same way — but dispatching "prop"/"prop-remove" instead, which carries solidity, whether it is a hazard, and a conveyor's surface velocity, none of which an NPC has.
+_Avoid_: prop handle (same reasoning as **ScriptedNpc**)
+
 **Cutscene**:
 A list of camera shots a place script plays for one player: where the view goes, what it looks at, and how long each move and hold lasts. It is voice-tier — the world's camera director samples it and returns the view to the player when the shots end — and while one runs the player's movement and tools are taken away.
 _Avoid_: cinematic, camera path (the sequence is shots, not one curve)
@@ -198,6 +210,7 @@ _Avoid_: shared/world clock (that's the day-night clock **DayNightController** o
 - A zombie's swing lands on the player it attacks: the **MonsterController** reports it through `onHitPlayer` (the attacked player's DID and the damage), and the app applies it to the local **PlayerHealth** or broadcasts it over the mesh for the hit peer's client to apply — the zombie's owner and the hurt player's client are each authoritative over their own part, as with sword damage (ADR 0013).
 - A **Probe** never hides a chunk the **Occlusion query** has not measured, and the chunks near the player's own cell are always drawn, so geometry that lands mid-interval or sits beside the camera never flickers out between queries.
 - A **Scripted figure**'s **Motion** is a pure function of its spec and the shared clock, so every peer computes the same pose without the pose being replicated; a solid figure's pose reaches the player's physics through the collision box and its velocity.
+- A **ScriptedNpc**/**ScriptedProp** is how a script actually places the **Scripted figure** the **ScriptHost** ends up holding — it dispatches the same effects a script could write by hand, built from a **Model import** rather than a bare model file name typed against nothing.
 - A **Cutscene** and a **HUD readout** are voice-tier: the world samples them for one player and never shares them, the way it already treats narration and player placement.
 - A **Hazard** reports a touch and stops there; the script decides whether the touch is a death, and a `player-kill` death is authored as a fact the rules fold over.
 - A **Field** pushes and grips through the same `mediumAt` seam the way the world already hands the player ground and air; the script says where the air behaves, the physics resolves it.
