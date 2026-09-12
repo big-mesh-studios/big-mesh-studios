@@ -192,11 +192,23 @@ export function TooltipComponent(props: TooltipProps) {
           {(parts) => <TypeSignature parts={parts()} />}
         </Show>
 
-        <Show when={props.info.quickInfo?.documentation}>
+        <Show
+          when={
+            props.info.quickInfo?.documentation?.length
+              ? props.info.quickInfo.documentation
+              : undefined
+          }
+        >
           {(documentation) => <Documentation parts={documentation()} />}
         </Show>
 
-        <Show when={props.info.quickInfo?.tags}>
+        <Show
+          when={
+            props.info.quickInfo?.tags?.length
+              ? props.info.quickInfo.tags
+              : undefined
+          }
+        >
           {(tags) => (
             <div class="tooltip-tags" style={{ "margin-top": "8px" }}>
               <For each={tags()}>{(tag) => <JSDocTag tag={tag} />}</For>
