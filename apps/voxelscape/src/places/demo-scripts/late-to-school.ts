@@ -140,25 +140,21 @@ const ITEM_NAMES: Record<string, string> = {
 /** Every item that counts as food, for the homeless kid and the plate. */
 const FOODS = ["chips", "pizza", "hotdog", "salad", "taco", "bean"];
 
-function dispatch(tag: string, payload: unknown): void {
-  engine.dispatch(tag, JSON.stringify(payload));
-}
-
 function say(text: string): void {
-  dispatch("toast", { player: "", text });
+  engine.dispatch("toast", { player: "", text });
 }
 
 function narrate(name: string, text: string): void {
-  dispatch("narrate", { player: "", name, text });
+  engine.dispatch("narrate", { player: "", name, text });
 }
 
 function hold(item: string): void {
-  dispatch("item-hold", { player: "", item });
+  engine.dispatch("item-hold", { player: "", item });
   held = item;
 }
 
 function give(item: string, text: string): void {
-  dispatch("item-give", { player: "", item, count: 1 });
+  engine.dispatch("item-give", { player: "", item, count: 1 });
   hold(item);
   if (text !== "") {
     say(text);
@@ -166,22 +162,22 @@ function give(item: string, text: string): void {
 }
 
 function take(item: string, count: number): void {
-  dispatch("item-take", { player: "", item, count });
+  engine.dispatch("item-take", { player: "", item, count });
   if (held === item) {
     hold("");
   }
 }
 
 function ending(title: string, text: string): void {
-  dispatch("ending", { player: "", title, text });
+  engine.dispatch("ending", { player: "", title, text });
 }
 
 function timer(id: string, afterMs: number): void {
-  dispatch("timer", { id, afterMs });
+  engine.dispatch("timer", { id, afterMs });
 }
 
 function dialog(npcId: string, prompt: string, options: string[]): void {
-  dispatch("dialog", { player: "", npcId, prompt, options });
+  engine.dispatch("dialog", { player: "", npcId, prompt, options });
 }
 
 /** One filled box in LOD-0 voxel coordinates, as the plan speaks it. */
@@ -290,7 +286,7 @@ function prop(
   name: string,
   solid: boolean,
 ): void {
-  dispatch("prop", { id, model, x, z, y: FLOOR, name, height, solid });
+  engine.dispatch("prop", { id, model, x, z, y: FLOOR, name, height, solid });
 }
 
 function pickup(
@@ -302,7 +298,7 @@ function pickup(
   y: number,
   height: number,
 ): void {
-  dispatch("prop", { id, model, x, z, y, name, height, solid: false });
+  engine.dispatch("prop", { id, model, x, z, y, name, height, solid: false });
 }
 
 function npc(
@@ -313,17 +309,17 @@ function npc(
   model: string,
   yaw: number,
 ): void {
-  dispatch("npc", { id, x, z, y: FLOOR, name, model, yaw });
+  engine.dispatch("npc", { id, x, z, y: FLOOR, name, model, yaw });
 }
 
 /** Places the fixtures, pickups, NPCs, and zones the world opens with. */
 function open(): void {
-  dispatch("time", { seconds: 60, speed: 0 });
+  engine.dispatch("time", { seconds: 60, speed: 0 });
   for (const [id, name] of Object.entries(ITEM_NAMES)) {
-    dispatch("item-define", { id, name, sprite: "", stackable: true });
+    engine.dispatch("item-define", { id, name, sprite: "", stackable: true });
   }
   for (const [id, minX, minZ, maxX, maxZ] of ZONES) {
-    dispatch("zone", {
+    engine.dispatch("zone", {
       id,
       name: id,
       min: [minX, FLOOR, minZ],
@@ -911,13 +907,13 @@ function maybeStartFinale(): void {
 /** Opens the Dimensionator and drops the party into the corrupted dimension. */
 function startCorruption(): void {
   flags.portalOpen = true;
-  dispatch("explosion", { id: "portal-boom", x: 40, z: -10, radius: 5 });
+  engine.dispatch("explosion", { id: "portal-boom", x: 40, z: -10, radius: 5 });
   narrate("Laugh", "Do you realize what you have done?");
   narrate(
     "James",
     "It's the only way to stop the Anomaly. Find your history book, then run for the portal.",
   );
-  dispatch("player-place", { player: "", x: 0, z: 236, y: FLOOR });
+  engine.dispatch("player-place", { player: "", x: 0, z: 236, y: FLOOR });
   flags.corrupt = true;
   narrate("You", "The corrupted dimension. It looks like home, but ruined.");
 }
@@ -935,7 +931,7 @@ function useButton(color: string): void {
     return;
   }
   flags.gateOpen = true;
-  dispatch("prop-remove", { id: "corrupt-gate" });
+  engine.dispatch("prop-remove", { id: "corrupt-gate" });
   narrate("You", "The gate drops. The way to the school is open.");
 }
 
@@ -1017,7 +1013,12 @@ function useDumpster(item: string): void {
   }
   if (item === "litmatches") {
     take("litmatches", 1);
-    dispatch("explosion", { id: "arcade-boom", x: 24, z: -8, radius: 8 });
+    engine.dispatch("explosion", {
+      id: "arcade-boom",
+      x: 24,
+      z: -8,
+      radius: 8,
+    });
     flags.boom = true;
     if (flags.monkeArmed === true) {
       narrate("Monke", "The monkey takeover has begun. Run for the tunnel!");
@@ -1067,7 +1068,7 @@ function used(entityId: string, item: string): void {
     return;
   }
   if (entityId === "corrupt-book") {
-    dispatch("prop-remove", { id: "corrupt-book" });
+    engine.dispatch("prop-remove", { id: "corrupt-book" });
     flags.gotBook = true;
     give(
       "roaster",
@@ -1085,7 +1086,7 @@ function used(entityId: string, item: string): void {
     }
     flags.chase = false;
     flags.arena = true;
-    dispatch("player-place", { player: "", x: 280, z: 236, y: FLOOR });
+    engine.dispatch("player-place", { player: "", x: 280, z: 236, y: FLOOR });
     npc(ANOMALY, 284, 236, "The Anomaly", "npc-anomaly.zip", Math.PI);
     narrate(
       "James",
@@ -1122,7 +1123,7 @@ function used(entityId: string, item: string): void {
     }
     flags.sleepy = true;
     narrate("You", "Here's your gift, cuz. ...Why do I feel so sleepy?");
-    dispatch("player-speed", { player: "", multiplier: 0.2 });
+    engine.dispatch("player-speed", { player: "", multiplier: 0.2 });
     return;
   }
   if (entityId === "mirror") {
@@ -1192,7 +1193,7 @@ function used(entityId: string, item: string): void {
     return;
   }
   if (entityId.indexOf("cash-") === 0) {
-    dispatch("prop-remove", { id: entityId });
+    engine.dispatch("prop-remove", { id: entityId });
     money += CASH;
     say("You pocket some cash. ($" + money + ")");
     return;
@@ -1206,7 +1207,7 @@ function used(entityId: string, item: string): void {
     historybook: "historybook",
   };
   if (pickups[entityId] !== undefined) {
-    dispatch("prop-remove", { id: entityId });
+    engine.dispatch("prop-remove", { id: entityId });
     const item = pickups[entityId];
     if (item === "banana") {
       flags.hasBanana = true;
@@ -1248,7 +1249,7 @@ function usedItem(item: string): void {
       narrate("Monke", "You are now one with the monkey.");
       return;
     }
-    dispatch("player-jump", { player: "", multiplier: 1.6 });
+    engine.dispatch("player-jump", { player: "", multiplier: 1.6 });
     narrate("You", "The banana slushie gives you a jump ability.");
     return;
   }
@@ -1385,7 +1386,7 @@ function talked(npcId: string, player: string): void {
 }
 
 function chose(npcId: string, option: number, player: string): void {
-  dispatch("dialog-close", { player, npcId });
+  engine.dispatch("dialog-close", { player, npcId });
   if (npcId === "dimensionator") {
     if (option === 0) {
       startCorruption();

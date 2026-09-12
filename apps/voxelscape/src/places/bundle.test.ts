@@ -60,13 +60,17 @@ const runBundle = (
 ): {
   ticks: Array<(...args: unknown[]) => void>;
   plan: (() => string) | undefined;
+  dispatched: Array<{ tag: string; payload: string }>;
 } => {
   const recorded: {
     ticks: Array<(...args: unknown[]) => void>;
     plan: (() => string) | undefined;
-  } = { ticks: [], plan: undefined };
+    dispatched: Array<{ tag: string; payload: string }>;
+  } = { ticks: [], plan: undefined, dispatched: [] };
   const engine = {
-    dispatch: () => {},
+    dispatch: (tag: string, payload: string) => {
+      recorded.dispatched.push({ tag, payload });
+    },
     log: () => {},
     onTick: (fn: (...args: unknown[]) => void) => {
       recorded.ticks.push(fn);
@@ -91,7 +95,7 @@ const npcs: Array<Npc> = [{ id: "guide", pos: [8, 8] }];
 
 engine.onTick(function tick(clockMs: number, eventsJson: string): void {
   const first = npcs[0];
-  engine.dispatch("npc", JSON.stringify({ id: first.id, x: first.pos[0], z: first.pos[1] }));
+  engine.dispatch("npc", { id: first.id, x: first.pos[0], z: first.pos[1] });
   engine.log(String(clockMs));
 });
 `;
@@ -163,6 +167,26 @@ describe("the place script bundler", () => {
     await expect(bundlePlaceProject(files, "main.ts")).resolves.not.toContain(
       "Missing",
     );
+  });
+
+  it("stringifies a dispatch call's plain-object payload before it reaches the sandbox", async () => {
+    const files = {
+      "main.ts": `
+        import * as engine from "engine";
+        engine.onTick(function (): void {
+          engine.dispatch("npc", { id: "guide", x: 8, z: 8, name: "Guide" });
+        });
+      `,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    const { ticks, dispatched } = runBundle(output);
+    ticks[0]();
+    expect(dispatched).toEqual([
+      {
+        tag: "npc",
+        payload: JSON.stringify({ id: "guide", x: 8, z: 8, name: "Guide" }),
+      },
+    ]);
   });
 
   it('resolves an import of "engine" to the sandbox\'s host object, not a project file', async () => {

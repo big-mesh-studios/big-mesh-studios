@@ -189,16 +189,16 @@ describe("a script host", () => {
       engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
-          engine.dispatch("prop", JSON.stringify({
+          engine.dispatch("prop", {
             id: "fridge", model: "fridge.zip", x: 2, z: 3, name: "Fridge", height: 3,
-          }));
+          });
         }
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "entity-used") {
-            engine.dispatch("toast", JSON.stringify({
+            engine.dispatch("toast", {
               player: "", text: "opened " + events[i].entityId + " with " + events[i].item,
-            }));
+            });
           }
         }
       });
@@ -229,9 +229,9 @@ describe("a script host", () => {
       engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
-          engine.dispatch("fire", JSON.stringify({
+          engine.dispatch("fire", {
             id: "fire-0", x: 10, z: 18, height: 3.5,
-          }));
+          });
         }
       });
       `,
@@ -257,17 +257,17 @@ describe("a script host", () => {
       engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
-          engine.dispatch("item-define", JSON.stringify({
+          engine.dispatch("item-define", {
             id: "chips", name: "Chips", sprite: "apple", stackable: true,
-          }));
-          engine.dispatch("item-give", JSON.stringify({ player: "", item: "chips", count: 1 }));
-          engine.dispatch("item-hold", JSON.stringify({ player: "", item: "chips" }));
+          });
+          engine.dispatch("item-give", { player: "", item: "chips", count: 1 });
+          engine.dispatch("item-hold", { player: "", item: "chips" });
         }
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "item-used") {
-            engine.dispatch("item-take", JSON.stringify({ player: "", item: events[i].item, count: 1 }));
-            engine.dispatch("toast", JSON.stringify({ player: "", text: "ate " + events[i].item }));
+            engine.dispatch("item-take", { player: "", item: events[i].item, count: 1 });
+            engine.dispatch("toast", { player: "", text: "ate " + events[i].item });
           }
         }
       });
@@ -294,9 +294,9 @@ describe("a script host", () => {
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "item-used") {
-            engine.dispatch("ending", JSON.stringify({
+            engine.dispatch("ending", {
               player: "", title: "Chips", text: "You ate the chips.",
-            }));
+            });
           }
         }
       });
@@ -317,7 +317,7 @@ describe("a script host", () => {
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "npc-talk") {
-            engine.dispatch("restart", JSON.stringify({ player: "" }));
+            engine.dispatch("restart", { player: "" });
           }
         }
       });
@@ -339,17 +339,17 @@ describe("a script host", () => {
       engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
-          engine.dispatch("zone", JSON.stringify({
+          engine.dispatch("zone", {
             id: "kitchen", name: "Kitchen", min: [-5, 0, -5], max: [5, 5, 5],
-          }));
+          });
         }
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           var e = events[i];
           if (e.kind === "zone-entered") {
-            engine.dispatch("toast", JSON.stringify({ player: "", text: "in " + e.zoneId }));
+            engine.dispatch("toast", { player: "", text: "in " + e.zoneId });
           } else if (e.kind === "zone-left") {
-            engine.dispatch("toast", JSON.stringify({ player: "", text: "out " + e.zoneId }));
+            engine.dispatch("toast", { player: "", text: "out " + e.zoneId });
           }
         }
       });
@@ -376,18 +376,18 @@ describe("a script host", () => {
       engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
-          engine.dispatch("field", JSON.stringify({
+          engine.dispatch("field", {
             id: "fan", kind: "push",
             min: [-4, 0, -4], max: [4, 8, 4], vx: 12, vy: 6,
-          }));
-          engine.dispatch("field", JSON.stringify({
+          });
+          engine.dispatch("field", {
             id: "pit", kind: "quicksand",
             min: [0, 0, 0], max: [4, 4, 4], speedScale: 0.3, sink: 2,
-          }));
-          engine.dispatch("prop", JSON.stringify({
+          });
+          engine.dispatch("prop", {
             id: "walkway", model: "walkway.zip", x: 0, z: 0,
             solid: true, conveyor: { vx: 5, vz: 0 },
-          }));
+          });
         }
       });
       `,
@@ -427,16 +427,16 @@ describe("a script host", () => {
       engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
-          engine.dispatch("field", JSON.stringify({
+          engine.dispatch("field", {
             id: "fan", kind: "push",
             min: [-4, 0, -4], max: [4, 8, 4], vx: 12,
-          }));
+          });
         }
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (!retract && events[i].kind === "player-touched") {
             retract = true;
-            engine.dispatch("field-remove", JSON.stringify({ id: "fan" }));
+            engine.dispatch("field-remove", { id: "fan" });
           }
         }
       });
@@ -459,9 +459,9 @@ describe("a script host", () => {
       engine.onTick(function () {
         if (!started) {
           started = true;
-          engine.dispatch("narrate", JSON.stringify({
+          engine.dispatch("narrate", {
             player: "", name: "You", text: "I am so hungry.",
-          }));
+          });
         }
       });
       `,
@@ -483,7 +483,7 @@ describe("a script host", () => {
         for (var i = 0; i < events.length; i++) {
           var e = events[i];
           if (e.kind === "entity-used") {
-            engine.dispatch("toast", JSON.stringify({ player: "", text: e.entityId + " got " + e.item }));
+            engine.dispatch("toast", { player: "", text: e.entityId + " got " + e.item });
           }
         }
       });
@@ -509,8 +509,8 @@ describe("a script host", () => {
       engine.onTick(function () {
         if (!started) {
           started = true;
-          engine.dispatch("npc", JSON.stringify({ id: "dad", x: 0, z: 0, y: 3, name: "Dad" }));
-          engine.dispatch("prop", JSON.stringify({ id: "bed", model: "bed.zip", x: 1, z: 1, y: 4, height: 1 }));
+          engine.dispatch("npc", { id: "dad", x: 0, z: 0, y: 3, name: "Dad" });
+          engine.dispatch("prop", { id: "bed", model: "bed.zip", x: 1, z: 1, y: 4, height: 1 });
         }
       });
       `,
@@ -530,7 +530,7 @@ describe("a script host", () => {
       engine.onTick(function () {
         if (!started) {
           started = true;
-          engine.dispatch("npc", JSON.stringify({ id: "dad", x: 0, z: 0, yaw: 1.25 }));
+          engine.dispatch("npc", { id: "dad", x: 0, z: 0, yaw: 1.25 });
         }
       });
       `,
@@ -549,8 +549,8 @@ describe("a script host", () => {
       engine.onTick(function () {
         if (!started) {
           started = true;
-          engine.dispatch("player-place", JSON.stringify({ player: "", x: 4, z: 5, yaw: 1 }));
-          engine.dispatch("player-face", JSON.stringify({ player: "", x: 4, z: 9 }));
+          engine.dispatch("player-place", { player: "", x: 4, z: 5, yaw: 1 });
+          engine.dispatch("player-face", { player: "", x: 4, z: 9 });
         }
       });
       `,
@@ -570,12 +570,12 @@ describe("a script host", () => {
       engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
           started = true;
-          engine.dispatch("timer", JSON.stringify({ id: "ding", afterMs: 1000 }));
+          engine.dispatch("timer", { id: "ding", afterMs: 1000 });
         }
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "timer") {
-            engine.dispatch("toast", JSON.stringify({ player: "", text: "fired " + events[i].timerId }));
+            engine.dispatch("toast", { player: "", text: "fired " + events[i].timerId });
           }
         }
       });
@@ -657,7 +657,7 @@ describe("a script host", () => {
       `
       import * as engine from "engine";
       engine.onTick(function () {
-        engine.dispatch("npc", JSON.stringify({ id: "ghost" }));
+        engine.dispatch("npc", { id: "ghost" });
         engine.dispatch("npc", "not json");
         engine.log("hi from the script");
       });
@@ -690,8 +690,8 @@ describe("a script host", () => {
       engine.onTick(function () {
         if (!started) {
           started = true;
-          engine.dispatch("player-speed", JSON.stringify({ player: "", multiplier: 2 }));
-          engine.dispatch("player-jump", JSON.stringify({ player: "", multiplier: 1.5 }));
+          engine.dispatch("player-speed", { player: "", multiplier: 2 });
+          engine.dispatch("player-jump", { player: "", multiplier: 1.5 });
         }
       });
       `,
@@ -711,7 +711,7 @@ describe("a script host", () => {
       engine.onTick(function () {
         if (!started) {
           started = true;
-          engine.dispatch("explosion", JSON.stringify({ id: "boom", x: 10, z: 18, radius: 6 }));
+          engine.dispatch("explosion", { id: "boom", x: 10, z: 18, radius: 6 });
         }
       });
       `,
@@ -736,7 +736,7 @@ describe("a script host", () => {
       import * as engine from "engine";
       var seen = JSON.parse(engine.endings());
       engine.onTick(function () {
-        engine.dispatch("toast", JSON.stringify({ player: "", text: seen.join(",") }));
+        engine.dispatch("toast", { player: "", text: seen.join(",") });
       });
       `,
     );
@@ -754,10 +754,10 @@ describe("a script host", () => {
       engine.onTick(function () {
         if (!started) {
           started = true;
-          engine.dispatch("player-checkpoint", JSON.stringify({ player: "", x: 4, z: 8, y: 62, yaw: 1 }));
-          engine.dispatch("player-kill", JSON.stringify({ player: "", cause: "spikes" }));
-          engine.dispatch("player-respawn", JSON.stringify({ player: "" }));
-          engine.dispatch("void", JSON.stringify({ y: 20 }));
+          engine.dispatch("player-checkpoint", { player: "", x: 4, z: 8, y: 62, yaw: 1 });
+          engine.dispatch("player-kill", { player: "", cause: "spikes" });
+          engine.dispatch("player-respawn", { player: "" });
+          engine.dispatch("void", { y: 20 });
         }
       });
       `,
@@ -782,8 +782,8 @@ describe("a script host", () => {
       engine.onTick(function () {
         if (!started) {
           started = true;
-          engine.dispatch("prop", JSON.stringify({ id: "spikes", model: "spikes.zip", x: 1, z: 2, solid: true, hazard: true }));
-          engine.dispatch("prop", JSON.stringify({ id: "plant", model: "plant.zip", x: 3, z: 4 }));
+          engine.dispatch("prop", { id: "spikes", model: "spikes.zip", x: 1, z: 2, solid: true, hazard: true });
+          engine.dispatch("prop", { id: "plant", model: "plant.zip", x: 3, z: 4 });
         }
       });
       `,
@@ -803,10 +803,10 @@ describe("a script host", () => {
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "player-touched") {
-            engine.dispatch("toast", JSON.stringify({ player: "", text: "touched " + events[i].entityId }));
-            engine.dispatch("player-kill", JSON.stringify({ player: "", cause: events[i].entityId }));
+            engine.dispatch("toast", { player: "", text: "touched " + events[i].entityId });
+            engine.dispatch("player-kill", { player: "", cause: events[i].entityId });
           } else if (events[i].kind === "player-died") {
-            engine.dispatch("toast", JSON.stringify({ player: "", text: "died " + events[i].cause }));
+            engine.dispatch("toast", { player: "", text: "died " + events[i].cause });
           }
         }
       });
@@ -831,14 +831,14 @@ describe("a script host", () => {
       engine.onTick(function () {
         if (!started) {
           started = true;
-          engine.dispatch("cutscene", JSON.stringify({
+          engine.dispatch("cutscene", {
             player: "",
             shots: [
               { at: [0, 10, 0], durationMs: 1000 },
               { at: [10, 10, 0], durationMs: 1000 },
             ],
-          }));
-          engine.dispatch("player-control", JSON.stringify({ player: "", locked: true }));
+          });
+          engine.dispatch("player-control", { player: "", locked: true });
         }
       });
       `,
@@ -862,9 +862,9 @@ describe("a script host", () => {
       engine.onTick(function () {
         if (!started) {
           started = true;
-          engine.dispatch("hud", JSON.stringify({ player: "", id: "meter", kind: "bar", label: "Meter", value: 2, max: 5 }));
-          engine.dispatch("hud", JSON.stringify({ player: "", id: "note", kind: "text", text: "hello" }));
-          engine.dispatch("hud-remove", JSON.stringify({ player: "", id: "note" }));
+          engine.dispatch("hud", { player: "", id: "meter", kind: "bar", label: "Meter", value: 2, max: 5 });
+          engine.dispatch("hud", { player: "", id: "note", kind: "text", text: "hello" });
+          engine.dispatch("hud-remove", { player: "", id: "note" });
         }
       });
       `,
@@ -885,13 +885,13 @@ describe("a script host", () => {
       engine.onTick(function () {
         if (!started) {
           started = true;
-          engine.dispatch("prop", JSON.stringify({
+          engine.dispatch("prop", {
             id: "plank",
             model: "platform.zip",
             x: 0,
             z: 0,
             motion: { path: [[0, 0, 0], [0, 0, 10]], loop: "once", durationMs: 1000 },
-          }));
+          });
         }
       });
       `,

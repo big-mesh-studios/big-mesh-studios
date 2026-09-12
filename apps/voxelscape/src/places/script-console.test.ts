@@ -110,7 +110,7 @@ describe("a script console", () => {
       script,
       `import * as engine from "engine";
       engine.onTick(function () {
-        engine.dispatch("npc", JSON.stringify({ id: "ghost", x: 1, z: 2 }));
+        engine.dispatch("npc", { id: "ghost", x: 1, z: 2 });
       });`,
       99,
     );

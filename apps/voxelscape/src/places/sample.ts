@@ -17,17 +17,17 @@ var GATE = "rook";
 function key(player, npcId) { return player + "|" + npcId; }
 
 function reply(player, npcId, prompt, options) {
-  engine.dispatch("dialog", JSON.stringify({ player: player, npcId: npcId, prompt: prompt, options: options }));
+  engine.dispatch("dialog", { player: player, npcId: npcId, prompt: prompt, options: options });
 }
 
 function end(player, npcId, text) {
-  engine.dispatch("dialog-close", JSON.stringify({ player: player, npcId: npcId }));
-  engine.dispatch("toast", JSON.stringify({ player: player, text: text }));
+  engine.dispatch("dialog-close", { player: player, npcId: npcId });
+  engine.dispatch("toast", { player: player, text: text });
 }
 
 function spawn() {
-  engine.dispatch("npc", JSON.stringify({ id: SHOP, x: 40, z: 12, name: "Sable" }));
-  engine.dispatch("npc", JSON.stringify({ id: GATE, x: -40, z: 12, name: "Rook" }));
+  engine.dispatch("npc", { id: SHOP, x: 40, z: 12, name: "Sable" });
+  engine.dispatch("npc", { id: GATE, x: -40, z: 12, name: "Rook" });
 }
 
 // The shop's tree: greetings loop until an option that ends the talk.

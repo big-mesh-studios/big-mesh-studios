@@ -4,12 +4,14 @@
 // deterministic — pinned compiler options, module ids in sorted-file order, and
 // a specifier table resolved once — so two peers that run the same files and
 // the same entry produce the same bundle and converge (ADR 0026). A file may
-// also import from `"engine"`, resolved not to another project file but to the
-// sandbox's own host object; the entry module registers its hooks by calling
-// `engine.onTick`/`engine.onPlan` as it runs, so running it is the bundle's
-// whole handoff to the sandbox — nothing here reads its exports. Nothing here
-// touches the interpreter: it turns a project into the string a
-// `ScriptSandbox.load` can evaluate.
+// also import from `"engine"`, resolved not to another project file but to a
+// thin wrapper around the sandbox's own host object — `dispatch` takes the
+// plain object `engine.d.ts` types per tag and stringifies it there, so the
+// sandbox's own `dispatch` still only ever sees a string. The entry module
+// registers its hooks by calling `engine.onTick`/`engine.onPlan` as it runs,
+// so running it is the bundle's whole handoff to the sandbox — nothing here
+// reads its exports. Nothing here touches the interpreter: it turns a
+// project into the string a `ScriptSandbox.load` can evaluate.
 import type * as TS from "typescript";
 import { loadTypeScript } from "@big-mesh-studios/code-mirror/typescript-cdn";
 import { modelDescriptorFor, resolveModelFile } from "./model-descriptor";
@@ -300,9 +302,25 @@ const outputFor = (modules: BundledModule[], entryId: number): string => {
   }));
   return `var __modules = ${JSON.stringify(table)};
 var __cache = [];
+var __engineModule;
 function __require(id) {
   if (id === "engine") {
-    return engine;
+    if (__engineModule === undefined) {
+      __engineModule = {
+        dispatch: function (tag, payload) { engine.dispatch(tag, JSON.stringify(payload)); },
+        log: engine.log,
+        now: engine.now,
+        endings: engine.endings,
+        players: engine.players,
+        heightAt: engine.heightAt,
+        solidAt: engine.solidAt,
+        waterAt: engine.waterAt,
+        onTick: engine.onTick,
+        onPlan: engine.onPlan,
+        blocks: engine.blocks,
+      };
+    }
+    return __engineModule;
   }
   var cached = __cache[id];
   if (cached !== undefined) {

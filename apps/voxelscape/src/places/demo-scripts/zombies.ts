@@ -218,19 +218,16 @@ function cellsNear(x: number, z: number): string[] {
  */
 function announce(z: Zombie, live: boolean): void {
   const y = engine.heightAt(z.x, z.z);
-  engine.dispatch(
-    "npc",
-    JSON.stringify({
-      id: z.id,
-      x: z.x,
-      y,
-      z: z.z,
-      name: "Zombie",
-      model: ZOMBIE_MODEL_FILE,
-      yaw: z.yaw,
-      live,
-    }),
-  );
+  engine.dispatch("npc", {
+    id: z.id,
+    x: z.x,
+    y,
+    z: z.z,
+    name: "Zombie",
+    model: ZOMBIE_MODEL_FILE,
+    yaw: z.yaw,
+    live,
+  });
 }
 
 /** Materializes a zombie for every windowed cell that holds one and is not
@@ -299,7 +296,7 @@ function forget(players: Player[]): void {
   for (const [id, z] of zombies) {
     if (!window.has(z.cellKey)) {
       zombies.delete(id);
-      engine.dispatch("npc-remove", JSON.stringify({ id }));
+      engine.dispatch("npc-remove", { id });
     }
   }
 }
@@ -417,14 +414,11 @@ function stepZombie(z: Zombie, players: Player[], now: number): void {
     }
     if (now - z.lastAttackAt >= ATTACK_INTERVAL_MS) {
       z.lastAttackAt = now;
-      engine.dispatch(
-        "player-damage",
-        JSON.stringify({
-          player: owner.did,
-          amount: ZOMBIE_DAMAGE,
-          source: z.id,
-        }),
-      );
+      engine.dispatch("player-damage", {
+        player: owner.did,
+        amount: ZOMBIE_DAMAGE,
+        source: z.id,
+      });
     }
   } else if (state === "chase") {
     z.yaw = Math.atan2(owner.x - z.x, owner.z - z.z);
@@ -483,38 +477,26 @@ function knockback(z: Zombie, attacker: { x: number; z: number }): void {
 }
 
 function armTick(): void {
-  engine.dispatch(
-    "timer",
-    JSON.stringify({ id: "zombie-tick", afterMs: TICK_MS }),
-  );
+  engine.dispatch("timer", { id: "zombie-tick", afterMs: TICK_MS });
 }
 
 engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
   const now = engine.now();
   if (!started) {
     started = true;
-    engine.dispatch(
-      "npc",
-      JSON.stringify({ id: GUIDE, x: 8, z: 8, name: "Guide" }),
-    );
+    engine.dispatch("npc", { id: GUIDE, x: 8, z: 8, name: "Guide" });
     engine.log("your place started");
     // The sword is given and equipped once, for good: this place has nothing
     // else to hold, and a bare-handed touch stays how every other entity is
     // greeted.
-    engine.dispatch(
-      "item-define",
-      JSON.stringify({
-        id: SWORD,
-        name: "Sword",
-        sprite: "",
-        stackable: false,
-      }),
-    );
-    engine.dispatch(
-      "item-give",
-      JSON.stringify({ player: "", item: SWORD, count: 1 }),
-    );
-    engine.dispatch("item-hold", JSON.stringify({ player: "", item: SWORD }));
+    engine.dispatch("item-define", {
+      id: SWORD,
+      name: "Sword",
+      sprite: "",
+      stackable: false,
+    });
+    engine.dispatch("item-give", { player: "", item: SWORD, count: 1 });
+    engine.dispatch("item-hold", { player: "", item: SWORD });
     armTick();
   }
 
@@ -537,18 +519,18 @@ engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
       (e.kind === "npc-talk" && e.npcId === GUIDE) ||
       (e.kind === "entity-used" && e.entityId === GUIDE)
     ) {
-      engine.dispatch(
-        "toast",
-        JSON.stringify({ player: e.producer, text: "Hello, traveller." }),
-      );
+      engine.dispatch("toast", {
+        player: e.producer,
+        text: "Hello, traveller.",
+      });
     } else if (e.kind === "entity-used" && e.entityId !== undefined) {
       // A bare touch only ever gets a rise out of it — killing one takes an
       // actual swing, over the sword's own reach and reported strike.
       if (zombies.has(e.entityId)) {
-        engine.dispatch(
-          "toast",
-          JSON.stringify({ player: e.producer, text: "The zombie snarls." }),
-        );
+        engine.dispatch("toast", {
+          player: e.producer,
+          text: "The zombie snarls.",
+        });
       }
     } else if (
       e.kind === "entity-hit" &&
@@ -565,17 +547,17 @@ engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
         if (target.hp <= 0) {
           zombies.delete(target.id);
           deadIds.add(target.id);
-          engine.dispatch("npc-die", JSON.stringify({ id: target.id }));
-          engine.dispatch(
-            "toast",
-            JSON.stringify({ player: e.producer, text: "The zombie falls." }),
-          );
+          engine.dispatch("npc-die", { id: target.id });
+          engine.dispatch("toast", {
+            player: e.producer,
+            text: "The zombie falls.",
+          });
         } else {
           announce(target, true);
-          engine.dispatch(
-            "toast",
-            JSON.stringify({ player: e.producer, text: "The zombie reels." }),
-          );
+          engine.dispatch("toast", {
+            player: e.producer,
+            text: "The zombie reels.",
+          });
         }
       }
     } else if (e.kind === "timer" && e.timerId === "zombie-tick") {
