@@ -734,6 +734,7 @@ export function createStacker() {
     posedFigure,
     posedPart,
     motions,
+    setMotions,
     motion,
     selectMotion,
     addMotion,

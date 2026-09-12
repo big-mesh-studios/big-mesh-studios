@@ -4,6 +4,13 @@
 // materializes procedurally around wherever players explore and fights back
 // with a sword the player starts holding; its `declare const engine` is the
 // guest API the interpreter injects.
+//
+// `zombie` is imported rather than named as a bare string, so the panel
+// types it against the model this place actually carries (ADR 0046) — this
+// demo's own manifest lists `zombie.zip` among its models, which is what
+// makes the specifier below resolve at all.
+import zombie from "zombie" with { type: "model" };
+
 declare const engine: {
   dispatch(tag: string, payload: string): void;
   log(line: string): void;
@@ -22,8 +29,10 @@ declare const engine: {
 const GUIDE = "guide";
 const SWORD = "sword";
 
-/** The place model file the zombie's own drawing is bundled under. */
-const ZOMBIE_MODEL_FILE = "zombie.zip";
+/** The place model file the zombie's own drawing is bundled under — the
+ * effects vocabulary still takes a model by its file name, not by the bare
+ * specifier an import resolves against, so the extension is put back on. */
+const ZOMBIE_MODEL_FILE = zombie.name + ".zip";
 
 // A whole population of zombies materializes procedurally around wherever
 // players explore, rather than one fixed encounter: only the cells near a

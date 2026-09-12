@@ -32,6 +32,7 @@ import {
   type SideKind,
   type Sides,
 } from "./data";
+import { NO_MOTION, type Ease, type Motion } from "./motion";
 
 const PALETTE_FILE = "palette.png";
 const PARTS_FILE = "parts.json";
@@ -47,12 +48,13 @@ const ONLY_PART = "body";
  * Where a figure's parts sit, as `parts.json` holds it. The drawings stay in
  * the folders; this carries only what cannot be read off a png.
  *
- * Version two added the cuts across a part, and version three how a part is
- * turned and how large it is drawn. A file written before either reads as parts
- * drawn on their six sides alone, standing square and at their own size.
+ * Version two added the cuts across a part, version three how a part is
+ * turned and how large it is drawn, and version four what the figure does
+ * over time. A file written before any of them reads as parts drawn on their
+ * six sides alone, standing square, at their own size, doing nothing.
  */
 interface PartsManifest {
-  version: 3;
+  version: 4;
   parts: {
     name: string;
     root: Vector3D;
@@ -62,6 +64,22 @@ interface PartsManifest {
     parent: string | null;
     /** Where each cut across the part stands. Its faces are pngs beside the sides. */
     sections: { axis: DimensionKind; at: number }[];
+  }[];
+  /** What the figure does over time, in no particular order. */
+  motions: {
+    name: string;
+    framesPerSecond: number;
+    loop: boolean;
+    parts: {
+      part: string;
+      keys: {
+        at: number;
+        ease: Ease;
+        root: Vector3D;
+        turn: Vector3D;
+        scale: number;
+      }[];
+    }[];
   }[];
 }
 
@@ -283,6 +301,89 @@ export interface LoadedFigure extends Figure {
    * was written against that format too.
    */
   migrated: boolean;
+  /** What the figure does over time, as saved beside it. Empty for a file written before motions could be. */
+  motions: Motion[];
+}
+
+/** A vector as `parts.json` holds it, each axis defaulting to zero. */
+function readVector3D(value: unknown): Vector3D {
+  const { x, y, z } = (value ?? {}) as Record<string, unknown>;
+  return Vector3D.create(
+    typeof x === "number" ? x : 0,
+    typeof y === "number" ? y : 0,
+    typeof z === "number" ? z : 0,
+  );
+}
+
+const EASE_VALUES: Ease[] = ["linear", "in", "out", "in-out", "hold"];
+
+/**
+ * The motions `listed` holds, tolerant of a file written before motions could
+ * be saved at all (an absent or malformed list reads as none) but not of a
+ * motion whose own shape cannot be trusted: a key with no part to name, or
+ * that does not say what frame it stands at, is as unreadable as a part with
+ * no name or a cut with no axis, and is refused for the same reason.
+ *
+ * @throws When a key names no part, or does not say what frame it stands at.
+ */
+function readMotions(listed: unknown): PartsManifest["motions"] {
+  if (!Array.isArray(listed)) {
+    return [];
+  }
+
+  return listed.map((motion, index) => {
+    const name = (motion as { name?: unknown })?.name;
+    const framesPerSecond = (motion as { framesPerSecond?: unknown })
+      ?.framesPerSecond;
+    const loop = (motion as { loop?: unknown })?.loop;
+    const parts = (motion as { parts?: unknown })?.parts;
+
+    return {
+      name: typeof name === "string" ? name : NO_MOTION.name,
+      framesPerSecond:
+        typeof framesPerSecond === "number"
+          ? framesPerSecond
+          : NO_MOTION.framesPerSecond,
+      loop: typeof loop === "boolean" ? loop : NO_MOTION.loop,
+      parts: (Array.isArray(parts) ? parts : []).map((entry) => {
+        const part = (entry as { part?: unknown })?.part;
+
+        if (typeof part !== "string" || part === "") {
+          throw new Error(
+            `${PARTS_FILE} gives a key of motion ${index} no part to move`,
+          );
+        }
+
+        const keys = (entry as { keys?: unknown })?.keys;
+
+        return {
+          part,
+          keys: (Array.isArray(keys) ? keys : []).map((key) => {
+            const at = (key as { at?: unknown })?.at;
+
+            if (typeof at !== "number") {
+              throw new Error(
+                `${PARTS_FILE} gives a key of ${part} in motion ${index} no frame to stand at`,
+              );
+            }
+
+            const ease = (key as { ease?: unknown })?.ease;
+            const scale = (key as { scale?: unknown })?.scale;
+
+            return {
+              at,
+              ease: EASE_VALUES.includes(ease as Ease)
+                ? (ease as Ease)
+                : "linear",
+              root: readVector3D((key as { root?: unknown })?.root),
+              turn: readVector3D((key as { turn?: unknown })?.turn),
+              scale: typeof scale === "number" && scale > 0 ? scale : 1,
+            };
+          }),
+        };
+      }),
+    };
+  });
 }
 
 /** Reads `parts.json`, refusing anything that is not the list this format writes. */
@@ -302,7 +403,7 @@ function readManifest(text: string): PartsManifest {
   }
 
   return {
-    version: 3,
+    version: 4,
     parts: parts.map((part, index) => {
       const name = (part as { name?: unknown })?.name;
 
@@ -310,26 +411,17 @@ function readManifest(text: string): PartsManifest {
         throw new Error(`${PARTS_FILE} gives part ${index} no name`);
       }
 
-      const readVector = (value: unknown): Vector3D => {
-        const { x, y, z } = (value ?? {}) as Record<string, unknown>;
-        return Vector3D.create(
-          typeof x === "number" ? x : 0,
-          typeof y === "number" ? y : 0,
-          typeof z === "number" ? z : 0,
-        );
-      };
-
       const parent = (part as { parent?: unknown }).parent;
       const listed = (part as { sections?: unknown }).sections;
       const scale = (part as { scale?: unknown }).scale;
 
       return {
         name,
-        root: readVector((part as { root?: unknown }).root),
-        pivot: readVector((part as { pivot?: unknown }).pivot),
+        root: readVector3D((part as { root?: unknown }).root),
+        pivot: readVector3D((part as { pivot?: unknown }).pivot),
         // A file written before a part could be turned or drawn at a size of
         // its own says neither, and stands square at the size it was drawn.
-        turn: readVector((part as { turn?: unknown }).turn),
+        turn: readVector3D((part as { turn?: unknown }).turn),
         scale: typeof scale === "number" && scale > 0 ? scale : 1,
         parent: typeof parent === "string" ? parent : null,
         sections: (Array.isArray(listed) ? listed : []).map((section, cut) => {
@@ -351,6 +443,7 @@ function readManifest(text: string): PartsManifest {
         }),
       };
     }),
+    motions: readMotions((parsed as PartsManifest | null)?.motions),
   };
 }
 
@@ -549,7 +642,12 @@ export async function loadFigure(
     },
   );
 
-  return { parts, palette: palette ?? fallbackPalette, migrated };
+  return {
+    parts,
+    palette: palette ?? fallbackPalette,
+    migrated,
+    motions: manifest?.motions ?? [],
+  };
 }
 
 /**
@@ -690,12 +788,16 @@ export function isPartName(name: string): boolean {
 /**
  * Writes a figure: each part's drawings in a folder called after it — the six
  * sides, and the two faces of each cut across it — the palette they all
- * address, and the list saying where the parts sit and where their cuts stand.
+ * address, the list saying where the parts sit and where their cuts stand,
+ * and what the figure does over time.
  *
  * @throws When a part is named something that cannot be a folder, or when two
  * parts share a name and so would be written over each other.
  */
-export async function saveFigure(figure: Figure): Promise<Blob> {
+export async function saveFigure(
+  figure: Figure,
+  motions: Motion[] = [],
+): Promise<Blob> {
   const zip = new JSZip();
   const written = new Set<string>();
 
@@ -730,7 +832,7 @@ export async function saveFigure(figure: Figure): Promise<Blob> {
   }
 
   const manifest: PartsManifest = {
-    version: 3,
+    version: 4,
     parts: figure.parts.map(
       ({ name, root, pivot, turn, scale, parent, sections }) => ({
         name,
@@ -742,6 +844,21 @@ export async function saveFigure(figure: Figure): Promise<Blob> {
         sections: sections.map(({ axis, at }) => ({ axis, at })),
       }),
     ),
+    motions: motions.map(({ name, framesPerSecond, loop, parts }) => ({
+      name,
+      framesPerSecond,
+      loop,
+      parts: parts.map(({ part, keys }) => ({
+        part,
+        keys: keys.map(({ at, ease, root, turn, scale }) => ({
+          at,
+          ease,
+          root,
+          turn,
+          scale,
+        })),
+      })),
+    })),
   };
 
   zip.file(PARTS_FILE, JSON.stringify(manifest, null, 2));

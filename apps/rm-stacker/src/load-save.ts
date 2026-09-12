@@ -55,7 +55,12 @@ export async function loadFromIndexedDB(
   if (blob === null) {
     return null;
   }
-  const { parts, palette, migrated } = await loadFigure(blob, fallbackPalette);
+  const {
+    parts,
+    palette,
+    migrated,
+    motions: savedMotions,
+  } = await loadFigure(blob, fallbackPalette);
 
   const previewText = await loadTextFromDB(DB_KEYS.preview);
 
@@ -72,7 +77,11 @@ export async function loadFromIndexedDB(
       ? savedPartName
       : parts[0].name;
 
-  const motions = await loadMotions();
+  // The zip is authoritative once it carries motions of its own; the legacy
+  // text-key path is a one-time fallback for a browser whose last autosave
+  // predates motions travelling with the figure — the next autosave re-embeds
+  // them in the zip, so this is only ever read once per profile.
+  const motions = savedMotions.length > 0 ? savedMotions : await loadMotions();
   const selectedMotion = (await loadTextFromDB(DB_KEYS.selectedMotion)) ?? "";
 
   let undoStack: CommandStack;
@@ -159,10 +168,9 @@ export async function saveToIndexedDB({
   motions: Motion[];
   selectedMotion: string;
 }): Promise<void> {
-  const blob = await saveFigure({ parts, palette });
+  const blob = await saveFigure({ parts, palette }, motions);
   await saveBlobToDB(DB_KEYS.zipFileData, blob);
   await saveTextToDB(DB_KEYS.selectedPart, selectedPartName);
-  await saveTextToDB(DB_KEYS.motions, JSON.stringify(motions));
   await saveTextToDB(DB_KEYS.selectedMotion, selectedMotion);
   const undoStackJson = [];
   for (const { command, description } of undoStack) {

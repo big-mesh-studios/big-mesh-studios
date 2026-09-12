@@ -15,6 +15,7 @@ import {
   thumbnailBlobCid,
   type PublishedModel,
 } from "@big-mesh-studios/stacker/lexicon";
+import { NO_MOTION } from "@big-mesh-studios/stacker/renderer";
 import { fileOpen, fileSave, type FileWithHandle } from "browser-fs-access";
 import {
   createEffect,
@@ -87,6 +88,8 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
     setHome,
     reset,
     undoRedoManager,
+    motions,
+    setMotions,
   } = useContext(StackerContext);
 
   const [cards, setCards] = createSignal<Card[]>([]);
@@ -241,7 +244,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
   /** Writes what is on the canvas out to a file of the person's choosing. */
   function exportCurrent(): Promise<void> {
     return run("exporting…", async () => {
-      await fileSave(await saveFigure(figure()), {
+      await fileSave(await saveFigure(figure(), motions()), {
         fileName: `${shown()}.zip`,
         extensions: [".zip"],
         description: "Sprite stack",
@@ -256,7 +259,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
     return run("publishing…", async () => {
       const published = await atproto.publish({
         name: shown(),
-        file: await saveFigure(figure()),
+        file: await saveFigure(figure(), motions()),
         dimensions: dimensions(),
         thumbnail: thumbnailFromFigure(figure()),
       });
@@ -299,6 +302,11 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
       const result = await loadFigure(contents, palette());
       loadParts(result.parts);
       setPalette(result.palette);
+      setMotions(
+        result.motions.length > 0
+          ? result.motions
+          : [{ ...NO_MOTION, name: "motion" }],
+      );
       setHome(
         card.kind === "published"
           ? {
@@ -358,6 +366,11 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
 
       loadParts(result.parts);
       setPalette(result.palette);
+      setMotions(
+        result.motions.length > 0
+          ? result.motions
+          : [{ ...NO_MOTION, name: "motion" }],
+      );
       updateVoxels();
       flush();
 

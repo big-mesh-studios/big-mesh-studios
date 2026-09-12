@@ -629,7 +629,11 @@ describe("the Zombies demo", () => {
       onPlayerDamage: (_player, amount, source) =>
         onPlayerDamage?.(amount, source),
     });
-    await host.loadProject(project.scripts, project.manifest.scripts![0]);
+    await host.loadProject(
+      project.scripts,
+      project.manifest.scripts![0],
+      project.models,
+    );
     return host;
   };
 

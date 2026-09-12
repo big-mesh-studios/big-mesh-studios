@@ -1261,7 +1261,12 @@ export const createVoxelscape = ({
     void loadPlaceModels(place.models ?? {});
     void scriptConsoleFor()
       .then((console) =>
-        console.loadProject(place.files, place.entry, place.seed),
+        console.loadProject(
+          place.files,
+          place.entry,
+          place.seed,
+          place.models ?? {},
+        ),
       )
       .then((line) => onNotice?.(line))
       .catch((err) =>
@@ -1537,7 +1542,7 @@ export const createVoxelscape = ({
         void loadPlaceModels(models);
       }
       return scriptConsoleFor().then((console) =>
-        console.loadProject(files, entry, seed),
+        console.loadProject(files, entry, seed, models ?? {}),
       );
     },
   };

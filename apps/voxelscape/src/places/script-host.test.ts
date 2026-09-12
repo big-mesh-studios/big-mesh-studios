@@ -8,6 +8,37 @@ import {
 } from "./script-host";
 import { SAMPLE_PLACE_SCRIPT } from "./sample";
 import { MAIN_SCRIPT_FILE } from "./project";
+import { saveFigure } from "@big-mesh-studios/stacker/format";
+import {
+  sideKinds,
+  type Part,
+  type SideKind,
+} from "@big-mesh-studios/stacker/renderer";
+import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
+
+/** A tiny model's zip bytes, for a `with { type: "model" }` import to resolve against. */
+const modelBytes = async (): Promise<Uint8Array> => {
+  const part: Part = {
+    name: "body",
+    sides: Object.fromEntries(
+      sideKinds.map((kind) => [kind, Bitmap.create(2, 2)]),
+    ) as Record<SideKind, Bitmap>,
+    sections: [],
+    root: Vector3D.create(),
+    pivot: Vector3D.create(),
+    turn: Vector3D.create(),
+    scale: 1,
+    parent: null,
+  };
+  const palette = Array.from({ length: 32 }, (_, i) => ({
+    r: i,
+    g: i,
+    b: i,
+    a: 255,
+  }));
+  const blob = await saveFigure({ parts: [part], palette });
+  return new Uint8Array(await blob.arrayBuffer());
+};
 
 let clockMs = 0;
 const clock = () => clockMs;
@@ -130,6 +161,21 @@ describe("a script host", () => {
       z: 12,
       y: 10,
     });
+    host.dispose();
+  });
+
+  it("loads a project whose script imports an attached model", async () => {
+    const { host } = await fresh();
+    const script = `
+      import zombie from "zombie" with { type: "model" };
+      export function bmsTick(clockMs: number, eventsJson: string): void {
+        engine.dispatch("npc", JSON.stringify({ id: zombie.name, x: 0, z: 0 }));
+      }
+    `;
+    await host.loadProject({ [MAIN_SCRIPT_FILE]: script }, MAIN_SCRIPT_FILE, {
+      "zombie.zip": await modelBytes(),
+    });
+    expect(host.npcList.map((n) => n.id)).toEqual(["zombie"]);
     host.dispose();
   });
 

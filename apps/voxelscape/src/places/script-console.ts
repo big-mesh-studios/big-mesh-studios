@@ -166,6 +166,7 @@ export class ScriptConsole {
     files: Record<string, string>;
     entry: string;
     seed: number;
+    models: Record<string, Uint8Array>;
   } | null = null;
 
   constructor(params: ScriptConsoleParams) {
@@ -397,10 +398,11 @@ export class ScriptConsole {
     files: Record<string, string>,
     entry: string,
     seed: number,
+    models: Record<string, Uint8Array> = {},
   ): Promise<string> {
-    this.last = { files, entry, seed };
+    this.last = { files, entry, seed, models };
     const host = await this.freshHost(seed);
-    await host.loadProject(files, entry);
+    await host.loadProject(files, entry, models);
     return `script loaded — ${this.loadedLine()}`;
   }
 
@@ -412,7 +414,12 @@ export class ScriptConsole {
     if (this.last === null) {
       return;
     }
-    await this.loadProject(this.last.files, this.last.entry, this.last.seed);
+    await this.loadProject(
+      this.last.files,
+      this.last.entry,
+      this.last.seed,
+      this.last.models,
+    );
   }
 
   /** What the script has made so far: NPCs, dialogs, and any last problem. */

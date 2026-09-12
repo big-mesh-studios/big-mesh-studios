@@ -1,6 +1,53 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from "vitest";
 import { bundlePlaceProject } from "./bundle";
+import { saveFigure } from "@big-mesh-studios/stacker/format";
+import {
+  sideKinds,
+  type Figure,
+  type Motion,
+  type Part,
+  type SideKind,
+} from "@big-mesh-studios/stacker/renderer";
+import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
+
+/** A minimal part, all six sides square at the given size, so every axis agrees. */
+const partOf = (name: string, size: number): Part => ({
+  name,
+  sides: Object.fromEntries(
+    sideKinds.map((kind) => [kind, Bitmap.create(size, size)]),
+  ) as Record<SideKind, Bitmap>,
+  sections: [],
+  root: Vector3D.create(),
+  pivot: Vector3D.create(),
+  turn: Vector3D.create(),
+  scale: 1,
+  parent: null,
+});
+
+/** A tiny figure's zip bytes, for a model import to resolve against. */
+const modelBytes = async (
+  parts: string[],
+  motions: string[] = [],
+): Promise<Uint8Array> => {
+  const figure: Figure = {
+    parts: parts.map((name) => partOf(name, 2)),
+    palette: Array.from({ length: 32 }, (_, i) => ({
+      r: i,
+      g: i,
+      b: i,
+      a: 255,
+    })),
+  };
+  const motionList: Motion[] = motions.map((name) => ({
+    name,
+    framesPerSecond: 12,
+    loop: true,
+    parts: [],
+  }));
+  const blob = await saveFigure(figure, motionList);
+  return new Uint8Array(await blob.arrayBuffer());
+};
 
 afterEach(() => {
   // The bundle hands its entry's exports to the globals; the tests are not the app.
@@ -132,6 +179,89 @@ describe("the place script bundler", () => {
     };
     await expect(bundlePlaceProject(files, "main.ts")).rejects.toThrow(
       /^main\.ts:1:\d+ — TS/,
+    );
+  });
+});
+
+describe("model imports", () => {
+  it("compiles and evaluates to the model's real parts and motions", async () => {
+    const files = {
+      "main.ts": `
+        import zombie from "zombie" with { type: "model" };
+        export function bmsTick(): void { engine.log(JSON.stringify(zombie)); }
+      `,
+    };
+    const models = {
+      "zombie.zip": await modelBytes(["head", "torso"], ["walk"]),
+    };
+    const output = await bundlePlaceProject(files, "main.ts", models);
+    new Function(output)();
+    const logged: string[] = [];
+    const globals = globalThis as Record<string, unknown>;
+    globals.engine = { log: (s: string) => logged.push(s) };
+    (globals.bmsTick as () => void)();
+    delete globals.engine;
+    expect(JSON.parse(logged[0])).toEqual({
+      name: "zombie",
+      parts: ["head", "torso"],
+      motions: ["walk"],
+    });
+  });
+
+  it("shares one synthetic module between two files importing the same model", async () => {
+    const files = {
+      "main.ts": `
+        import { greet } from "./greeting";
+        import zombie from "zombie" with { type: "model" };
+        export function bmsTick(): void { engine.log(greet + zombie.name); }
+      `,
+      "greeting.ts": `
+        import zombie from "zombie" with { type: "model" };
+        export const greet: string = zombie.name;
+      `,
+    };
+    const models = { "zombie.zip": await modelBytes(["head"]) };
+    const output = await bundlePlaceProject(files, "main.ts", models);
+    // The descriptor's JSON is itself embedded as a string field of the
+    // `__modules` table, so its quotes come out backslash-escaped once more.
+    expect(output.match(/parts\\":\[\\"head\\"\]/g)).toHaveLength(1);
+  });
+
+  it("produces identical output for identical input, models included", async () => {
+    const files = {
+      "main.ts": `
+        import zombie from "zombie" with { type: "model" };
+        export function bmsTick(): void { engine.log(zombie.name); }
+      `,
+    };
+    const models = { "zombie.zip": await modelBytes(["head"]) };
+    const first = await bundlePlaceProject(files, "main.ts", models);
+    const second = await bundlePlaceProject(files, "main.ts", models);
+    expect(second).toBe(first);
+  });
+
+  it("rejects a relative model specifier even though it parses", async () => {
+    const files = {
+      "main.ts": `
+        import zombie from "./zombie" with { type: "model" };
+        export function bmsTick(): void {}
+      `,
+    };
+    const models = { "zombie.zip": await modelBytes(["head"]) };
+    await expect(bundlePlaceProject(files, "main.ts", models)).rejects.toThrow(
+      /imports "\.\/zombie" as a model/,
+    );
+  });
+
+  it("rejects a model name the place carries no such model for", async () => {
+    const files = {
+      "main.ts": `
+        import zombie from "zombie" with { type: "model" };
+        export function bmsTick(): void {}
+      `,
+    };
+    await expect(bundlePlaceProject(files, "main.ts", {})).rejects.toThrow(
+      /this place carries no such model/,
     );
   });
 });

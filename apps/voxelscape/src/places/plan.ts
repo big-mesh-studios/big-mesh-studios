@@ -164,6 +164,8 @@ export interface CompilePlanParams {
   files: Record<string, string>;
   /** The file execution starts from; its module may export `bmsPlan`. */
   entry: string;
+  /** The place's attached model files, keyed by name, for a `with { type: "model" }` import to resolve against. */
+  models?: Record<string, Uint8Array>;
   /** The seed every peer's plan is generated against. */
   seed: number;
   /** The LOD-0 voxel box the plan may build within. */
@@ -181,7 +183,11 @@ export interface CompilePlanParams {
 export const compilePlacePlan = async (
   params: CompilePlanParams,
 ): Promise<StructurePlan> => {
-  const code = await bundlePlaceProject(params.files, params.entry);
+  const code = await bundlePlaceProject(
+    params.files,
+    params.entry,
+    params.models ?? {},
+  );
   const sandbox = await createQuickJSSandbox({
     seed: params.seed,
     now: () => 0,

@@ -303,6 +303,7 @@ const App: Component<{}> = () => {
       structures = await compilePlacePlan({
         files: project.scripts,
         entry,
+        models: project.models,
         seed: project.manifest.seed,
         region: planRegionAround(project.manifest.spawn),
       });

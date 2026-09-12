@@ -7,6 +7,37 @@ import {
   parseStructurePlan,
 } from "./plan";
 import { PlaceBundleError } from "./bundle";
+import { saveFigure } from "@big-mesh-studios/stacker/format";
+import {
+  sideKinds,
+  type Part,
+  type SideKind,
+} from "@big-mesh-studios/stacker/renderer";
+import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
+
+/** A tiny model's zip bytes, for a `with { type: "model" }` import to resolve against. */
+const modelBytes = async (): Promise<Uint8Array> => {
+  const part: Part = {
+    name: "body",
+    sides: Object.fromEntries(
+      sideKinds.map((kind) => [kind, Bitmap.create(2, 2)]),
+    ) as Record<SideKind, Bitmap>,
+    sections: [],
+    root: Vector3D.create(),
+    pivot: Vector3D.create(),
+    turn: Vector3D.create(),
+    scale: 1,
+    parent: null,
+  };
+  const palette = Array.from({ length: 32 }, (_, i) => ({
+    r: i,
+    g: i,
+    b: i,
+    a: 255,
+  }));
+  const blob = await saveFigure({ parts: [part], palette });
+  return new Uint8Array(await blob.arrayBuffer());
+};
 
 const BOX = { kind: "box", min: [0, 0, 0], max: [1, 1, 1], id: 25 };
 const REGION = {
@@ -141,5 +172,28 @@ describe("compilePlacePlan", () => {
         region: REGION,
       }),
     ).rejects.toBeInstanceOf(PlaceBundleError);
+  });
+
+  it("threads the place's models through to a script's model import", async () => {
+    const files = {
+      "main.ts": `
+        import zombie from "zombie" with { type: "model" };
+        export function bmsTick(): void {}
+      `,
+    };
+
+    await expect(
+      compilePlacePlan({ files, entry: "main.ts", seed: 1, region: REGION }),
+    ).rejects.toThrow(/this place carries no such model/);
+
+    await expect(
+      compilePlacePlan({
+        files,
+        entry: "main.ts",
+        seed: 1,
+        region: REGION,
+        models: { "zombie.zip": await modelBytes() },
+      }),
+    ).resolves.toEqual([]);
   });
 });

@@ -14,6 +14,7 @@ import {
   type SideKind,
 } from "./data";
 import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
+import type { Motion } from "./motion";
 
 const PALETTE = Array.from({ length: 32 }, (_, i) => [i, i, i, 255]);
 
@@ -319,6 +320,101 @@ describe("a part turned or drawn at a size of its own", () => {
 
     expect(reread.parts[0].turn).toEqual(Vector3D.create());
     expect(reread.parts[0].scale).toBe(1);
+  });
+});
+
+/** A motion moving one part between two keys. */
+const motionOf = (name: string, part: string): Motion => ({
+  name,
+  framesPerSecond: 24,
+  loop: false,
+  parts: [
+    {
+      part,
+      keys: [
+        {
+          at: 0,
+          ease: "linear",
+          root: Vector3D.create(),
+          turn: Vector3D.create(),
+          scale: 1,
+        },
+        {
+          at: 12,
+          ease: "in-out",
+          root: Vector3D.create(1, 2, 3),
+          turn: Vector3D.create(0.1, 0.2, 0.3),
+          scale: 1.5,
+        },
+      ],
+    },
+  ],
+});
+
+describe("motions", () => {
+  it("survives a round trip through save and load", async () => {
+    const figure = figureOf(partOf("torso", { width: 2, height: 2, depth: 2 }));
+    const motion = motionOf("walk", "torso");
+
+    const reread = await loadFigure(await saveFigure(figure, [motion]));
+
+    expect(reread.motions).toEqual([motion]);
+  });
+
+  it("keeps several motions apart, in the order they are given", async () => {
+    const figure = figureOf(partOf("torso", { width: 2, height: 2, depth: 2 }));
+    const walk = motionOf("walk", "torso");
+    const idle = motionOf("idle", "torso");
+
+    const reread = await loadFigure(await saveFigure(figure, [walk, idle]));
+
+    expect(reread.motions.map((motion) => motion.name)).toEqual([
+      "walk",
+      "idle",
+    ]);
+  });
+
+  it("reads a file written before motions could be saved as having none", async () => {
+    const figure = figureOf(partOf("torso", { width: 2, height: 2, depth: 2 }));
+    const written = await saveFigure(figure);
+
+    const zip = await JSZip.loadAsync(written);
+    const manifest = JSON.parse(await zip.file("parts.json")!.async("text"));
+    delete manifest.motions;
+    manifest.version = 3;
+    zip.file("parts.json", JSON.stringify(manifest));
+
+    const reread = await loadFigure(await zip.generateAsync({ type: "blob" }));
+
+    expect(reread.motions).toEqual([]);
+  });
+
+  it("refuses a key that does not say what frame it stands at", async () => {
+    const figure = figureOf(partOf("torso", { width: 2, height: 2, depth: 2 }));
+    const written = await saveFigure(figure, [motionOf("walk", "torso")]);
+
+    const zip = await JSZip.loadAsync(written);
+    const manifest = JSON.parse(await zip.file("parts.json")!.async("text"));
+    delete manifest.motions[0].parts[0].keys[0].at;
+    zip.file("parts.json", JSON.stringify(manifest));
+
+    await expect(
+      loadFigure(await zip.generateAsync({ type: "blob" })),
+    ).rejects.toThrow(/gives a key of torso in motion 0 no frame to stand at/);
+  });
+
+  it("defaults an invalid ease to linear", async () => {
+    const figure = figureOf(partOf("torso", { width: 2, height: 2, depth: 2 }));
+    const written = await saveFigure(figure, [motionOf("walk", "torso")]);
+
+    const zip = await JSZip.loadAsync(written);
+    const manifest = JSON.parse(await zip.file("parts.json")!.async("text"));
+    manifest.motions[0].parts[0].keys[0].ease = "bounce";
+    zip.file("parts.json", JSON.stringify(manifest));
+
+    const reread = await loadFigure(await zip.generateAsync({ type: "blob" }));
+
+    expect(reread.motions[0].parts[0].keys[0].ease).toBe("linear");
   });
 });
 

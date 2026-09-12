@@ -9,6 +9,7 @@
 // the string a `ScriptSandbox.load` can evaluate.
 import type * as TS from "typescript";
 import { loadTypeScript } from "@big-mesh-studios/code-mirror/typescript-cdn";
+import { modelDescriptorFor, resolveModelFile } from "./model-descriptor";
 
 /** A place script that could not be compiled or bundled, in words a creator can act on. */
 export class PlaceBundleError extends Error {
@@ -81,13 +82,19 @@ const describeDiagnostic = (
   return `${path}:${position.line + 1}:${position.character + 1} — TS${code}: ${message}`;
 };
 
-/** Every module specifier `path` statically imports, in the order it writes them. */
-const specifiersOf = (
+/** One import or re-export's specifier, and whether it names a model (ADR 0046). */
+interface ScriptImport {
+  specifier: string;
+  isModelImport: boolean;
+}
+
+/** Every module specifier `path` statically imports or re-exports from, in the order it writes them. */
+const importsOf = (
   ts: typeof TS,
   path: string,
   source: string,
-): string[] => {
-  const specifiers: string[] = [];
+): ScriptImport[] => {
+  const specifiers: ScriptImport[] = [];
   const file = ts.createSourceFile(
     path,
     source,
@@ -100,10 +107,21 @@ const specifiersOf = (
       ts.isImportDeclaration(statement) &&
       !statement.importClause?.isTypeOnly
     ) {
-      specifiers.push((statement.moduleSpecifier as TS.StringLiteral).text);
+      const typeAttribute = statement.attributes?.elements.find(
+        (element) => element.name.text === "type",
+      );
+      specifiers.push({
+        specifier: (statement.moduleSpecifier as TS.StringLiteral).text,
+        isModelImport:
+          (typeAttribute?.value as TS.StringLiteral | undefined)?.text ===
+          "model",
+      });
     } else if (ts.isExportDeclaration(statement) && !statement.isTypeOnly) {
       if (statement.moduleSpecifier !== undefined) {
-        specifiers.push((statement.moduleSpecifier as TS.StringLiteral).text);
+        specifiers.push({
+          specifier: (statement.moduleSpecifier as TS.StringLiteral).text,
+          isModelImport: false,
+        });
       }
     }
   }
@@ -154,16 +172,30 @@ interface BundledModule {
   requires: Record<string, number>;
 }
 
+/** The virtual, never-a-real-file path a model's synthetic module is kept under. */
+const modelModulePath = (name: string) => `\0model:${name}`;
+
 /**
- * Compiles and bundles a place project into one global-scope script. Each file
- * becomes a CommonJS module evaluated through `require`, with ids assigned in
- * sorted-file order so the output is byte-for-byte reproducible. The bundle
- * runs the entry module and installs the `bmsTick` its exports carry as the
- * global the sandbox steps; an entry that exports none fails at load.
+ * Compiles and bundles a place project into one global-scope script. Each
+ * project file becomes a CommonJS module evaluated through `require`, with
+ * ids assigned in sorted-file order so the output is byte-for-byte
+ * reproducible; a `with { type: "model" }` import (ADR 0046) instead becomes
+ * a synthetic module holding an inert `{name, parts, motions}` descriptor,
+ * one per distinct model name the project's files actually import, resolved
+ * against `models` (bytes already attached to the place, keyed by file name).
+ * The bundle runs the entry module and installs the `bmsTick` its exports
+ * carry as the global the sandbox steps; an entry that exports none fails at
+ * load.
+ *
+ * @throws {PlaceBundleError} When a model import names a relative or
+ * absolute specifier (only a bare name can be typed by the editor's ambient
+ * declarations, so only a bare name is accepted here), or names a model
+ * `models` does not carry.
  */
 export const bundlePlaceProject = async (
   files: Record<string, string>,
   entry: string,
+  models: Record<string, Uint8Array> = {},
 ): Promise<string> => {
   const ts = await typescript();
   if (files[entry] === undefined) {
@@ -172,15 +204,53 @@ export const bundlePlaceProject = async (
     );
   }
   const paths = Object.keys(files).sort();
-  const ids = new Map(paths.map((path, index) => [path, index]));
+  const fileSet = new Set(paths);
+
+  // A first pass over every file's imports, so every model name any of them
+  // names is known before ids are handed out to anything.
+  const importsByPath = new Map<string, ScriptImport[]>();
+  const modelNames = new Set<string>();
+
+  for (const path of paths) {
+    const imports = importsOf(ts, path, files[path]);
+    importsByPath.set(path, imports);
+
+    for (const { specifier, isModelImport } of imports) {
+      if (!isModelImport) {
+        continue;
+      }
+      if (specifier.startsWith(".") || specifier.includes("://")) {
+        throw new PlaceBundleError(
+          `${path} imports "${specifier}" as a model — a model import names a bare model, not a path`,
+        );
+      }
+      if (resolveModelFile(models, specifier) === null) {
+        throw new PlaceBundleError(
+          `${path} imports "${specifier}" as a model — this place carries no such model`,
+        );
+      }
+      modelNames.add(specifier);
+    }
+  }
+
+  const sortedModelNames = [...modelNames].sort();
+  const ids = new Map(
+    [...paths, ...sortedModelNames.map(modelModulePath)].map((path, index) => [
+      path,
+      index,
+    ]),
+  );
 
   const modules: BundledModule[] = [];
   for (const path of paths) {
-    const source = files[path];
-    const code = await transpileFile(ts, path, source);
+    const code = await transpileFile(ts, path, files[path]);
     const requires: Record<string, number> = {};
-    for (const specifier of specifiersOf(ts, path, source)) {
-      const target = resolveSpecifier(new Set(paths), specifier);
+    for (const { specifier, isModelImport } of importsByPath.get(path)!) {
+      if (isModelImport) {
+        requires[specifier] = ids.get(modelModulePath(specifier))!;
+        continue;
+      }
+      const target = resolveSpecifier(fileSet, specifier);
       if (target === null) {
         throw new PlaceBundleError(
           `${path} imports "${specifier}" — imports may only come from this place's own script files`,
@@ -189,6 +259,16 @@ export const bundlePlaceProject = async (
       requires[specifier] = ids.get(target)!;
     }
     modules.push({ path, code, requires });
+  }
+
+  for (const name of sortedModelNames) {
+    const file = resolveModelFile(models, name)!;
+    const descriptor = await modelDescriptorFor(name, models[file]);
+    modules.push({
+      path: modelModulePath(name),
+      code: `module.exports = ${JSON.stringify(descriptor)};`,
+      requires: {},
+    });
   }
 
   const entryId = ids.get(entry)!;

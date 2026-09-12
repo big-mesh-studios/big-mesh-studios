@@ -502,10 +502,11 @@ export class ScriptHost {
   async loadProject(
     files: Record<string, string>,
     entry: string,
+    models: Record<string, Uint8Array> = {},
   ): Promise<void> {
     const sandbox = await this.ready;
     this.assertAlive();
-    const code = await bundlePlaceProject(files, entry);
+    const code = await bundlePlaceProject(files, entry, models);
     sandbox.load(code);
     this.loaded = true;
     await this.drain(sandbox);

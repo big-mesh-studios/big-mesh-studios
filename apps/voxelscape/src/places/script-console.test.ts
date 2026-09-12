@@ -3,6 +3,37 @@ import { describe, expect, it } from "vitest";
 import { ScriptConsole } from "./script-console";
 import { SAMPLE_PLACE_SCRIPT } from "./sample";
 import { MAIN_SCRIPT_FILE } from "./project";
+import { saveFigure } from "@big-mesh-studios/stacker/format";
+import {
+  sideKinds,
+  type Part,
+  type SideKind,
+} from "@big-mesh-studios/stacker/renderer";
+import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
+
+/** A tiny model's zip bytes, for a `with { type: "model" }` import to resolve against. */
+const modelBytes = async (): Promise<Uint8Array> => {
+  const part: Part = {
+    name: "body",
+    sides: Object.fromEntries(
+      sideKinds.map((kind) => [kind, Bitmap.create(2, 2)]),
+    ) as Record<SideKind, Bitmap>,
+    sections: [],
+    root: Vector3D.create(),
+    pivot: Vector3D.create(),
+    turn: Vector3D.create(),
+    scale: 1,
+    parent: null,
+  };
+  const palette = Array.from({ length: 32 }, (_, i) => ({
+    r: i,
+    g: i,
+    b: i,
+    a: 255,
+  }));
+  const blob = await saveFigure({ parts: [part], palette });
+  return new Uint8Array(await blob.arrayBuffer());
+};
 
 const scriptConsole = (): {
   script: ScriptConsole;
@@ -90,6 +121,29 @@ describe("a script console", () => {
     const { script } = scriptConsole();
     const line = await loadProject(script, "export function bmsTick() {}", 1);
     expect(line).toContain("no NPCs placed yet");
+    script.dispose();
+  });
+
+  it("threads a place's models through to a script's model import, and replays them on restart", async () => {
+    const { script } = scriptConsole();
+    const source = `
+      import zombie from "zombie" with { type: "model" };
+      export function bmsTick(): void {
+        engine.dispatch("npc", JSON.stringify({ id: zombie.name, x: 0, z: 0 }));
+      }
+    `;
+    await script.loadProject(
+      { [MAIN_SCRIPT_FILE]: source },
+      MAIN_SCRIPT_FILE,
+      1,
+      {
+        "zombie.zip": await modelBytes(),
+      },
+    );
+    expect(script.npcs().map((npc) => npc.id)).toEqual(["zombie"]);
+
+    await script.restart();
+    expect(script.npcs().map((npc) => npc.id)).toEqual(["zombie"]);
     script.dispose();
   });
 });
