@@ -8,6 +8,10 @@ interface LezerHighlighterProps {
 
   highlighter: Highlighter;
   class?: string;
+  /** Lets a long line (a function signature, say) wrap inside its container
+   * instead of overflowing it — wanted for a type signature, not for a code
+   * block, where wrapping would misalign the code it holds. */
+  wrap?: boolean;
 }
 
 export const LezerHighlighter: Component<LezerHighlighterProps> = (props) => {
@@ -49,7 +53,8 @@ export const LezerHighlighter: Component<LezerHighlighterProps> = (props) => {
       class={`cm-content cm-editor ${props.class}`}
       style={{
         "font-family": "monospace",
-        "white-space": "pre",
+        "white-space": props.wrap ? "pre-wrap" : "pre",
+        "overflow-wrap": props.wrap ? "break-word" : undefined,
         display: "block",
         background: "transparent",
       }}

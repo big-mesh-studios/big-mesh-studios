@@ -89,6 +89,7 @@ function TypeSignature(props: { parts: ts.SymbolDisplayPart[] }) {
         code={props.parts.map((part) => part.text).join("")}
         language="typescript"
         highlighter={createHighlighter(editorView)}
+        wrap
       />
     </div>
   );
