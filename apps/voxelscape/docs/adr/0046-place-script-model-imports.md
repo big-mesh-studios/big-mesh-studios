@@ -32,15 +32,28 @@ Without the attribute, `import zombie from "zombie"` is rejected exactly as
 it always was.
 
 Given that it has to be an exception either way, it has to be a bare name
-specifically — this part is not a style choice. TypeScript's resolver never
-consults the ambient-module table (`declare module "..."`) for a specifier
-that starts with `.` or `/`; only a bare one. A relative form
-(`import zombie from "./zombie" with { type: "model" }`) parses, and the
-bundler could in principle have accepted it, but the panel's language
-service would then have no way to type it at all — proven empirically in a
-throwaway prototype built to answer exactly this question before any of this
-was wired in. A bare specifier is the only form both halves of the feature
-can agree on.
+specifically — but not because TypeScript cannot type a relative import; it
+can, precisely, the same way `typed-css-modules` types a relative
+`import styles from "./button.module.css"`: generate a real sibling
+declaration file (`button.module.css.d.ts`) at the exact path the specifier
+resolves to, no ambient block involved. Checked against the real compiler,
+that works for a model import too — a generated `zombie.d.ts` sitting next
+to a script that writes `import zombie from "./zombie"` types it exactly,
+with no wildcard and no suffix-matching involved at all.
+
+What rules it out is specific to this project: every script in a place
+shares one flat namespace with no folders, and a model's name can collide
+outright with an authored script file of the same name. Checked directly: a
+project holding both a real `zombie.ts` (an ordinary script a creator wrote,
+sharing nothing with the model) and a generated `zombie.d.ts` resolves
+`import zombie from "./zombie"` to the real file every time — TypeScript
+prefers an actual implementation over a sibling declaration whenever both
+exist, so the generated one is silently shadowed and the import fails
+("Module has no default export") the moment a creator's own file happens to
+share the model's name. A bare, non-relative specifier cannot collide this
+way: ordinary project-file imports never use one — ADR 0029 rejects a bare
+specifier outright — so there is no existing (or future) name it could ever
+compete with.
 
 ## One ambient file typing every attached model, not one per import
 
@@ -57,10 +70,15 @@ wire up first.
 ## Considered options
 
 - **Let the bundler resolve `./zombie` relative imports as models, keyed by
-  file name.** Rejected: it reads naturally alongside the project's own
-  `./` imports, but the panel could never generate a working ambient
-  declaration for it, so the DX half of this decision — the actual point of
-  it — would not exist.
+  file name, typed by a generated sibling declaration file the way
+  `typed-css-modules` types a `.module.css` import.** Rejected: it reads
+  naturally alongside the project's own `./` imports, and the panel could
+  type it precisely — checked directly, this works with no wildcard
+  involved. What breaks it is the flat, folder-less namespace every script
+  in a place already shares: a model and an authored script file can carry
+  the same name, and TypeScript always prefers the real file over a
+  generated sibling declaration when both exist, so the model import is
+  silently shadowed the moment a creator's own file happens to match it.
 - **A distinct syntax, e.g. `import zombie from "model:zombie"`.** Rejected:
   it invents a URI scheme with no other meaning in this codebase, where the
   standard `with { type: ... }` attribute already exists to say exactly this
