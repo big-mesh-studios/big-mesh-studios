@@ -282,10 +282,11 @@
 @media (any-pointer: coarse) {
   .models {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto auto;
     grid-template-areas:
       "attached"
       "browse";
+    overflow-y: auto;
   }
 
   .modelsAttached {
