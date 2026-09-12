@@ -188,6 +188,13 @@ export interface InputController {
      * nothing.
      */
     onPointerUp: JSX.EventHandler<HTMLCanvasElement, PointerEvent>;
+    /**
+     * Steps the selected hotbar slot by the wheel's direction. Bound to the
+     * world canvas rather than the window, so scrolling the terminal's
+     * output or any other overlay never changes the held tool — only a
+     * scroll that actually lands on the canvas does.
+     */
+    onWheel: JSX.EventHandler<HTMLCanvasElement, WheelEvent>;
   };
 }
 
@@ -337,6 +344,17 @@ export const createInput = (): InputController => {
         state.secondaryReleasedQueued = true;
       }
     },
+    onWheel: (event: WheelEvent) => {
+      if (isEditableTarget(event)) {
+        return;
+      }
+      event.preventDefault();
+      if (event.deltaY < 0) {
+        state.wheelQueued = -1;
+      } else if (event.deltaY > 0) {
+        state.wheelQueued = 1;
+      }
+    },
   };
 
   const install = () => {
@@ -400,22 +418,6 @@ export const createInput = (): InputController => {
         e.preventDefault();
         state.keyMoveX -= move[0];
         state.keyMoveY -= move[1];
-      },
-      { signal },
-    );
-
-    window.addEventListener(
-      "wheel",
-      (e) => {
-        if (isEditableTarget(e)) {
-          return;
-        }
-        e.preventDefault();
-        if (e.deltaY < 0) {
-          state.wheelQueued = -1;
-        } else if (e.deltaY > 0) {
-          state.wheelQueued = 1;
-        }
       },
       { signal },
     );
