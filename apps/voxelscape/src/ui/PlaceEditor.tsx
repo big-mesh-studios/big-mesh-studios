@@ -619,7 +619,25 @@ export const PlaceEditorContent: Component<{
         <Show when={showModels()}>
           <div class={styles.models}>
             <section class={styles.modelsAttached}>
-              <h3 class={styles.modelsHeading}>attached to this place</h3>
+              <div class={styles.modelsAttachedHeader}>
+                <h3 class={styles.modelsHeading}>attached to this place</h3>
+                <label
+                  class={styles.modelsFromFile}
+                  title="add rm-stacker model files"
+                >
+                  + from a file
+                  <input
+                    type="file"
+                    accept=".zip,application/zip"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      void addModels(e.currentTarget.files);
+                      e.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+              </div>
               <Show
                 when={modelNames().length > 0}
                 fallback={
@@ -664,22 +682,6 @@ export const PlaceEditorContent: Component<{
                   </For>
                 </ul>
               </Show>
-              <label
-                class={styles.modelsFromFile}
-                title="add rm-stacker model files"
-              >
-                + from a file
-                <input
-                  type="file"
-                  accept=".zip,application/zip"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    void addModels(e.currentTarget.files);
-                    e.currentTarget.value = "";
-                  }}
-                />
-              </label>
             </section>
 
             <section class={styles.modelsBrowse}>
