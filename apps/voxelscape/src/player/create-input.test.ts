@@ -211,6 +211,70 @@ describe("canvas touch gestures", () => {
   });
 });
 
+describe("the wheel's tool step", () => {
+  /** Dispatches a wheel event at the canvas with the given `deltaY`. */
+  const scroll = (canvas: HTMLCanvasElement, deltaY: number): void => {
+    canvas.dispatchEvent(
+      new WheelEvent("wheel", { deltaY, bubbles: true, cancelable: true }),
+    );
+  };
+
+  const bindWheel = (canvas: HTMLCanvasElement): void => {
+    canvas.addEventListener(
+      "wheel",
+      input.canvasHandlers.onWheel as unknown as EventListener,
+    );
+  };
+
+  it("steps once a notch that arrived on its own is confirmed", () => {
+    const canvas = makeCanvas();
+    bindWheel(canvas);
+    scroll(canvas, 120);
+    // Not yet — it's still waiting to see whether another event follows close behind.
+    expect(input.consume().wheel).toBe(0);
+
+    vi.advanceTimersByTime(60);
+    expect(input.consume().wheel).toBe(1);
+  });
+
+  it("does nothing for a burst of closely-spaced events, as a trackpad's swipe would", () => {
+    const canvas = makeCanvas();
+    bindWheel(canvas);
+    for (let i = 0; i < 10; i++) {
+      scroll(canvas, 6);
+      vi.advanceTimersByTime(10);
+    }
+    vi.advanceTimersByTime(60);
+    expect(input.consume().wheel).toBe(0);
+  });
+
+  it("steps once per notch when notches are spaced well apart", () => {
+    const canvas = makeCanvas();
+    bindWheel(canvas);
+    scroll(canvas, 100);
+    vi.advanceTimersByTime(60);
+    expect(input.consume().wheel).toBe(1);
+
+    vi.advanceTimersByTime(200);
+    scroll(canvas, 100);
+    vi.advanceTimersByTime(60);
+    expect(input.consume().wheel).toBe(1);
+  });
+
+  it("resumes recognizing isolated notches once a swipe goes quiet", () => {
+    const canvas = makeCanvas();
+    bindWheel(canvas);
+    for (let i = 0; i < 5; i++) {
+      scroll(canvas, -6);
+      vi.advanceTimersByTime(10);
+    }
+    vi.advanceTimersByTime(200);
+    scroll(canvas, -100);
+    vi.advanceTimersByTime(60);
+    expect(input.consume().wheel).toBe(-1);
+  });
+});
+
 describe("the interact (use) edge", () => {
   it("fires once from the queued request, as a touch button would", () => {
     input.queueUse();

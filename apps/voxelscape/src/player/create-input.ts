@@ -22,6 +22,16 @@ const MIN_TAP_SLOP = 6;
 const HOLD_GRACE_MS = 120;
 /** How often a held strike repeats while the press stays still, in ms. */
 const HOLD_REPEAT_MS = 500;
+/**
+ * How long a wheel event must stand alone, with no other wheel event closer
+ * than this on either side, before it steps the selected tool. A `WheelEvent`
+ * carries no reliable way to tell a mouse's own notch from a trackpad's
+ * finger scroll — both report as plain pixel deltas — but a mouse's discrete
+ * notches arrive as isolated events, while a trackpad's swipe fires a rapid
+ * burst of them. Requiring isolation is what tells the two apart: a notch
+ * steps the tool once, a swipe steps it not at all.
+ */
+const WHEEL_ISOLATION_MS = 60;
 
 /**
  * One frame's worth of player input, gathered by the key listeners `install`
@@ -104,6 +114,10 @@ interface InputState {
   useQueued: boolean;
   selectQueued: number | null;
   wheelQueued: -1 | 0 | 1;
+  /** When the last wheel event landed, in `Date.now()` milliseconds. */
+  wheelLastEventAt: number;
+  /** The timer waiting to confirm the last wheel event was an isolated notch. */
+  wheelPendingTimer: number | undefined;
 }
 
 export interface InputController {
@@ -189,10 +203,13 @@ export interface InputController {
      */
     onPointerUp: JSX.EventHandler<HTMLCanvasElement, PointerEvent>;
     /**
-     * Steps the selected hotbar slot by the wheel's direction. Bound to the
-     * world canvas rather than the window, so scrolling the terminal's
-     * output or any other overlay never changes the held tool — only a
-     * scroll that actually lands on the canvas does.
+     * Steps the selected hotbar slot once for every wheel event that arrives
+     * on its own, isolated from the events around it — a mouse's discrete
+     * notch — and does nothing for a burst of closely-spaced events — a
+     * trackpad's swipe. Bound to the world canvas rather than the window, so
+     * scrolling the terminal's output or any other overlay never changes the
+     * held tool either — only a scroll that actually lands on the canvas
+     * can.
      */
     onWheel: JSX.EventHandler<HTMLCanvasElement, WheelEvent>;
   };
@@ -223,6 +240,8 @@ export const createInput = (): InputController => {
     useQueued: false,
     selectQueued: null,
     wheelQueued: 0,
+    wheelLastEventAt: -Infinity,
+    wheelPendingTimer: undefined,
   };
   let controller: AbortController | null = null;
 
@@ -349,11 +368,27 @@ export const createInput = (): InputController => {
         return;
       }
       event.preventDefault();
-      if (event.deltaY < 0) {
-        state.wheelQueued = -1;
-      } else if (event.deltaY > 0) {
-        state.wheelQueued = 1;
+      const direction = event.deltaY < 0 ? -1 : event.deltaY > 0 ? 1 : 0;
+      if (direction === 0) {
+        return;
       }
+      const now = Date.now();
+      const gap = now - state.wheelLastEventAt;
+      state.wheelLastEventAt = now;
+      if (state.wheelPendingTimer !== undefined) {
+        window.clearTimeout(state.wheelPendingTimer);
+        state.wheelPendingTimer = undefined;
+      }
+      if (gap < WHEEL_ISOLATION_MS) {
+        // Arrived too soon after the last one to be its own notch — this and
+        // the event before it are both part of one continuous swipe, so
+        // neither steps the tool.
+        return;
+      }
+      state.wheelPendingTimer = window.setTimeout(() => {
+        state.wheelQueued = direction;
+        state.wheelPendingTimer = undefined;
+      }, WHEEL_ISOLATION_MS);
     },
   };
 
@@ -439,6 +474,10 @@ export const createInput = (): InputController => {
     dispose() {
       controller?.abort();
       controller = null;
+      if (state.wheelPendingTimer !== undefined) {
+        window.clearTimeout(state.wheelPendingTimer);
+        state.wheelPendingTimer = undefined;
+      }
     },
 
     consume() {
