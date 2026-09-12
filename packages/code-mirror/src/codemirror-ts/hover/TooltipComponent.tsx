@@ -100,7 +100,7 @@ function Documentation(props: { parts: ts.SymbolDisplayPart[] }) {
       class="tooltip-documentation"
       style={{
         "margin-top": "8px",
-        "border-top": "1px solid rgba(128, 128, 128, 0.3)",
+        "border-top": "1px solid var(--cm-tooltip-border, rgba(128, 128, 128, 0.3))",
         "padding-top": "8px",
       }}
     >
@@ -126,7 +126,11 @@ function JSDocTag(props: { tag: any }) {
 
   return (
     <div class="tooltip-tag" style={{ "margin-bottom": "4px" }}>
-      <strong style={{ color: "#569cd6" }}>@{props.tag.name}</strong>
+      <strong
+        style={{ color: "var(--cm-keyword, #569cd6)", "margin-right": "6px" }}
+      >
+        @{props.tag.name}
+      </strong>
       <Show when={tagText()}>
         <Show
           when={isBlockTag()}

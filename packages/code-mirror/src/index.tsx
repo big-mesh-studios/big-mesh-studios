@@ -47,33 +47,57 @@ const debug = createDebug("code-mirror");
  * so a caller's own panel colour shows through while the code text stays light.
  */
 export const darkTheme: Extension = [
-  EditorView.theme({
-    "&": {
-      color: "#d6d6d6",
-      backgroundColor: "transparent",
-    },
-    ".cm-content": {
-      caretColor: "#e06c75",
-    },
-    ".cm-cursor, .cm-dropCursor": {
-      borderLeftColor: "#e06c75",
-    },
-    "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
-      {
-        backgroundColor: "rgba(111, 207, 151, 0.25)",
+  EditorView.theme(
+    {
+      "&": {
+        color: "#d6d6d6",
+        backgroundColor: "transparent",
+        // Read by the hover tooltip, autocomplete popup and twoslash widget
+        // (see packages/code-mirror/src/codemirror-ts), so every overlay
+        // this editor renders draws from this one palette instead of its own.
+        "--cm-editor-color": "#d6d6d6",
+        "--cm-keyword": "#c678dd",
+        "--cm-variable": "#61afef",
+        "--cm-variable2": "#d6d6d6",
+        "--cm-type": "#e5c07b",
+        "--cm-property": "#e06c75",
+        "--cm-comment": "#7f848e",
+        "--cm-string": "#98c379",
+        "--cm-number": "#d19a66",
+        "--cm-editor-background": "rgba(255, 255, 255, 0.06)",
+        "--cm-editor-selectionBackground": "rgba(111, 207, 151, 0.25)",
+        "--cm-tooltip-bg": "rgba(10, 12, 16, 0.98)",
+        "--cm-tooltip-border": "rgba(255, 255, 255, 0.25)",
       },
-    ".cm-gutters": {
-      backgroundColor: "transparent",
-      border: "none",
-      color: "#6b7c8c",
+      ".cm-content": {
+        caretColor: "#e06c75",
+      },
+      ".cm-cursor, .cm-dropCursor": {
+        borderLeftColor: "#e06c75",
+      },
+      "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
+        {
+          backgroundColor: "rgba(111, 207, 151, 0.25)",
+        },
+      ".cm-gutters": {
+        backgroundColor: "transparent",
+        border: "none",
+        color: "#6b7c8c",
+      },
+      ".cm-activeLine": {
+        backgroundColor: "rgba(255, 255, 255, 0.05)",
+      },
+      ".cm-activeLineGutter": {
+        backgroundColor: "rgba(255, 255, 255, 0.05)",
+      },
+      ".cm-twoslash": {
+        color: "#7f848e",
+        fontStyle: "italic",
+        marginLeft: "0.5em",
+      },
     },
-    ".cm-activeLine": {
-      backgroundColor: "rgba(255, 255, 255, 0.05)",
-    },
-    ".cm-activeLineGutter": {
-      backgroundColor: "rgba(255, 255, 255, 0.05)",
-    },
-  }),
+    { dark: true },
+  ),
   syntaxHighlighting(
     HighlightStyle.define([
       { tag: tags.keyword, color: "#c678dd" },

@@ -1,13 +1,21 @@
 import { EditorView } from "@codemirror/view";
 
 /**
- * Theme extension for TypeScript tooltips that provides consistent styling
- * and ensures tooltips inherit the editor's theme colors and fonts.
+ * Theme extension for TypeScript tooltips that matches their font and colors
+ * to the editor's own, via the `--cm-*` custom properties the editor's theme
+ * (see `darkTheme` in `packages/code-mirror/src/index.tsx`) defines.
  */
 export const tooltipTheme = EditorView.theme(
   {
-    "&": {
-      "--tooltip-font": "inherit",
+    // Set explicitly rather than inherited: a tooltip's DOM sits under
+    // CodeMirror's own `.cm-tooltip` wrapper, which is styled by CodeMirror's
+    // built-in base theme (not this one) and declares neither a font nor,
+    // outside dark mode, a text color — so `inherit` here would walk past it
+    // to the surrounding page and pick up the browser default serif font and
+    // (in dark mode) `.cm-tooltip`'s own hard-coded white instead of this
+    // editor's font and text color.
+    ".ts-tooltip, .ts-tooltip *": {
+      fontFamily: "monospace !important",
     },
 
     ".ts-tooltip": {
@@ -16,17 +24,15 @@ export const tooltipTheme = EditorView.theme(
       borderRadius: "4px",
       padding: "8px",
       maxWidth: "400px",
-      fontFamily: "inherit",
       fontSize: "inherit",
-      backgroundColor: "inherit",
-      color: "inherit",
+      backgroundColor: "var(--cm-tooltip-bg, inherit)",
+      color: "var(--cm-editor-color, inherit)",
       zIndex: "9999 !important",
       position: "relative",
     },
 
-    // Ensure tooltip inherits editor's monospace font when inside editor context
-    ".cm-editor .ts-tooltip, .cm-editor .ts-tooltip *": {
-      fontFamily: "inherit !important",
+    ".ts-autocomplete, .ts-autocomplete *": {
+      fontFamily: "monospace !important",
     },
 
     ".ts-autocomplete": {
@@ -35,10 +41,9 @@ export const tooltipTheme = EditorView.theme(
       borderRadius: "4px",
       padding: "4px 8px",
       maxWidth: "300px",
-      fontFamily: "inherit",
       fontSize: "inherit",
-      backgroundColor: "inherit",
-      color: "inherit",
+      backgroundColor: "var(--cm-tooltip-bg, inherit)",
+      color: "var(--cm-editor-color, inherit)",
     },
 
     ".tooltip-content": {
@@ -79,7 +84,6 @@ export const tooltipTheme = EditorView.theme(
     // TypeScript-specific quick info styling
     ".quick-info-keyword": {
       color: "var(--cm-keyword, #0000ff)",
-      fontWeight: "bold",
     },
 
     ".quick-info-className": {
@@ -124,65 +128,4 @@ export const tooltipTheme = EditorView.theme(
     },
   },
   { dark: false },
-);
-
-/**
- * Dark theme variant for tooltips
- */
-export const tooltipDarkTheme = EditorView.theme(
-  {
-    ".inline-code": {
-      backgroundColor: "rgba(255, 255, 255, 0.15)",
-    },
-
-    ".tooltip-code-block": {
-      backgroundColor: "rgba(255, 255, 255, 0.1)",
-      border: "1px solid rgba(255, 255, 255, 0.2)",
-    },
-
-    ".quick-info-keyword": {
-      color: "var(--cm-keyword, #569cd6)",
-    },
-
-    ".quick-info-className": {
-      color: "var(--cm-type, #4ec9b0)",
-    },
-
-    ".quick-info-interfaceName": {
-      color: "var(--cm-type, #4ec9b0)",
-    },
-
-    ".quick-info-functionName": {
-      color: "var(--cm-variable, #dcdcaa)",
-    },
-
-    ".quick-info-methodName": {
-      color: "var(--cm-variable, #dcdcaa)",
-    },
-
-    ".quick-info-propertyName": {
-      color: "var(--cm-property, #9cdcfe)",
-    },
-
-    ".quick-info-parameterName": {
-      color: "var(--cm-variable2, #9cdcfe)",
-    },
-
-    ".quick-info-typeParameterName": {
-      color: "var(--cm-type, #4ec9b0)",
-    },
-
-    ".quick-info-comment": {
-      color: "var(--cm-comment, #6a9955)",
-    },
-
-    ".quick-info-stringLiteral": {
-      color: "var(--cm-string, #ce9178)",
-    },
-
-    ".quick-info-numericLiteral": {
-      color: "var(--cm-number, #b5cea8)",
-    },
-  },
-  { dark: true },
 );

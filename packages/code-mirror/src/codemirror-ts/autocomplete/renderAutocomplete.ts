@@ -13,13 +13,13 @@ export const defaultAutocompleteRenderer: AutocompleteRenderer = (
   return () => {
     const div = document.createElement("div");
 
-    // Copy theme from editor for consistent styling
-    const editorElement = editorView.dom;
-    const editorStyle = window.getComputedStyle(editorElement);
+    // Font only: the editor's own background/color are copied by `.ts-autocomplete`
+    // itself (see tooltipTheme.ts), which reads the same `--cm-*` variables the
+    // editor's theme defines rather than the editor's (intentionally transparent)
+    // computed background.
+    const editorStyle = window.getComputedStyle(editorView.dom);
 
     div.className = "ts-autocomplete";
-    div.style.backgroundColor = editorStyle.backgroundColor;
-    div.style.color = editorStyle.color;
     div.style.fontFamily = editorStyle.fontFamily;
     div.style.fontSize = editorStyle.fontSize;
 
