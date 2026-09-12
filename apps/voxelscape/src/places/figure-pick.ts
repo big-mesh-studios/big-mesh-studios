@@ -1,8 +1,9 @@
 // CPU figure picking: the crosshair ray against each scripted figure's upright
 // body, the same way `world/picker.ts` picks voxels. A figure stands as a box
-// from its grounded feet up its drawn height, so an NPC and a placed prop are
-// picked the same way whether the box is the default body or the wider one a
-// vending machine's model implies.
+// from its grounded feet up its drawn height, turned to face `yaw` the same
+// way the figure itself is drawn, so an NPC and a placed prop are picked the
+// same way whether the box is the default body or the wider one a vending
+// machine's model implies.
 export interface AimTarget {
   id: string;
   /** Feet position, in world units. */
@@ -13,6 +14,8 @@ export interface AimTarget {
   half?: number;
   /** How tall the body stands above its feet; defaults to `FIGURE_HEIGHT`. */
   height?: number;
+  /** Heading in radians the body is turned to; defaults to 0. */
+  yaw?: number;
 }
 
 /** How close a player must aim to reach a figure, in world units. */
@@ -78,7 +81,9 @@ const rayBoxDistance = (
  * The nearest figure the crosshair ray crosses before `maxReach` world units,
  * or null when it crosses none. The origin may sit inside a figure's body — as
  * it can when one is right in the player's face — and that counts as a hit at
- * distance 0.
+ * distance 0. A figure's box is tested in its own turned frame, so a body
+ * that is not square in plan presents the same silhouette to the ray that it
+ * draws to the player.
  */
 export const pickFigure = (
   origin: [number, number, number],
@@ -90,13 +95,32 @@ export const pickFigure = (
   for (const figure of figures) {
     const half = figure.half ?? FIGURE_HALF;
     const height = figure.height ?? FIGURE_HEIGHT;
-    const distance = rayBoxDistance(origin, direction, {
-      minX: figure.x - half,
-      maxX: figure.x + half,
-      minY: figure.y,
-      maxY: figure.y + height,
-      minZ: figure.z - half,
-      maxZ: figure.z + half,
+    const yaw = figure.yaw ?? 0;
+    // Rotating the ray into the figure's own frame (undoing its yaw) tests
+    // the body as it actually faces, rather than an axis-aligned box that
+    // ignores which way it is turned; rotation preserves lengths, so the
+    // crossing distance stays a world distance.
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+    const ox = origin[0] - figure.x;
+    const oz = origin[2] - figure.z;
+    const localOrigin: [number, number, number] = [
+      ox * cos - oz * sin,
+      origin[1] - figure.y,
+      ox * sin + oz * cos,
+    ];
+    const localDirection: [number, number, number] = [
+      direction[0] * cos - direction[2] * sin,
+      direction[1],
+      direction[0] * sin + direction[2] * cos,
+    ];
+    const distance = rayBoxDistance(localOrigin, localDirection, {
+      minX: -half,
+      maxX: half,
+      minY: 0,
+      maxY: height,
+      minZ: -half,
+      maxZ: half,
     });
     if (
       distance !== null &&

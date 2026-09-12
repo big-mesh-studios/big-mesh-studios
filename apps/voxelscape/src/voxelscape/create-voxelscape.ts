@@ -581,6 +581,7 @@ export const createVoxelscape = ({
         z: npc.z,
         half: box?.half,
         height: box?.height,
+        yaw: npc.yaw,
       });
     }
     return targets;
@@ -653,8 +654,13 @@ export const createVoxelscape = ({
     look: () => avatar.look(),
     position: () => avatar.player.position,
     strikeables: () => npcAimTargets(),
-    strike: (id, amount, attackerX, attackerZ) =>
-      void scriptConsole?.hit(id, amount, attackerX, attackerZ),
+    strike: (id, amount, attackerX, attackerZ) => {
+      // The attacker sees the hit flash on their own client the instant the
+      // swing lands, whatever the place's script goes on to decide about it
+      // — the same way it never waited on a monster's owner to confirm one.
+      npcFigures.flashHit(id);
+      void scriptConsole?.hit(id, amount, attackerX, attackerZ);
+    },
     setGuarding: (raised) => health.setGuarding(raised),
   };
   const tools = Object.fromEntries(

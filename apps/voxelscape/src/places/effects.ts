@@ -10,6 +10,7 @@ import type { ScriptEffect } from "./sandbox";
 export type EffectTag =
   | "npc"
   | "npc-remove"
+  | "npc-die"
   | "prop"
   | "prop-remove"
   | "fire"
@@ -113,6 +114,13 @@ export type ParsedEffect =
       };
     }
   | { tag: "npc-remove"; payload: { id: string } }
+  | {
+      tag: "npc-die";
+      /** The NPC to play a death fall for, rather than removing outright —
+       * left standing in the world a moment longer, lying flat, before it
+       * is gone the same way `npc-remove` takes one away instantly. */
+      payload: { id: string };
+    }
   | {
       tag: "prop";
       payload: {
@@ -307,6 +315,7 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
         (p.live === undefined || typeof p.live === "boolean")
       );
     case "npc-remove":
+    case "npc-die":
       return isShort(p.id, 64);
     case "prop":
       return (

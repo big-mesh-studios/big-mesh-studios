@@ -54,4 +54,20 @@ describe("pickFigure", () => {
       pickFigure([4, 1.6, 1.1], [-1, 0, 0], [npc("npc", 2.5, 0)]),
     ).toBeNull();
   });
+
+  it("tests the body in its own turned frame, not the world axes", () => {
+    const origin: [number, number, number] = [1.3, 1, -3];
+    const direction: [number, number, number] = [0, 0, 1];
+    const facing = { id: "turned", x: 0, y: 1, z: 0, half: 1, height: 2 };
+    // The ray runs a constant 1.3 units clear of the untouched, axis-aligned
+    // body — outside its half-width of 1 on every side.
+    expect(pickFigure(origin, direction, [facing])).toBeNull();
+    // Turned a further eighth-turn, the same square body's corner swings into
+    // the ray's path.
+    const hit = pickFigure(origin, direction, [
+      { ...facing, yaw: Math.PI / 4 },
+    ]);
+    expect(hit?.id).toBe("turned");
+    expect(hit?.distance).toBeGreaterThan(0);
+  });
 });

@@ -581,3 +581,111 @@ describe("the Late to School demo", () => {
     host.dispose();
   });
 });
+
+describe("the Zombies demo", () => {
+  /** A live player position the demo's own script reads through `engine.players`. */
+  let players: Array<{ did: string; x: number; y: number; z: number }>;
+  let zombieClockMs: number;
+
+  /** Loads the Zombies demo and boots a host against the mutable `players` list. */
+  const zombies = async (
+    onPlayerDamage?: (amount: number, source: string | undefined) => void,
+  ) => {
+    stubModels();
+    zombieClockMs = 0;
+    players = [{ did: "", x: -200, y: 0, z: -8 }];
+    const demo = builtinDemo("zombies")!;
+    const project = await loadBuiltinDemo(demo);
+    const host = new ScriptHost({
+      seed: project.manifest.seed,
+      now: () => zombieClockMs,
+      heightAt: () => 0,
+      solidAt: () => false,
+      waterAt: () => false,
+      getPlayers: () => players,
+      onPlayerDamage: (_player, amount, source) =>
+        onPlayerDamage?.(amount, source),
+    });
+    await host.loadProject(project.scripts, project.manifest.scripts![0]);
+    return host;
+  };
+
+  /** Moves the shared clock forward and lets the zombie tick timer fire. */
+  const advanceZombies = async (
+    host: ScriptHost,
+    ms: number,
+  ): Promise<void> => {
+    zombieClockMs += ms;
+    await host.pump();
+  };
+
+  it("lists the place and bundles its zombie model", () => {
+    const demo = builtinDemo("zombies");
+    expect(demo?.name).toBe("Zombies");
+    expect(demo?.manifest.models).toContain("zombie.zip");
+    expect(demo?.manifest.mode).toBe("multi");
+    expect(BUILTIN_DEMOS).toContain(demo);
+  });
+
+  it("loads its zombie model as bytes", async () => {
+    stubModels();
+    const project = await loadBuiltinDemo(builtinDemo("zombies")!);
+    expect(project.models["zombie.zip"].length).toBeGreaterThan(0);
+  });
+
+  it("starts with the Guide and a held sword", async () => {
+    const host = await zombies();
+    expect(host.npc("guide")).toMatchObject({ name: "Guide" });
+    expect(host.inventory.heldItem()).toMatchObject({ id: "sword" });
+    host.dispose();
+  });
+
+  // Deterministic given the player's fixed start position: the zombie
+  // population is a pure function of the (terrain-seed-independent)
+  // population seed and the spawn cell, and (-200, -8) sits inside cell
+  // (-7, -1), which the player's own window always materializes.
+  const NEARBY_ZOMBIE_ID = "zombie--7_-1_0";
+
+  it("materializes a zombie wearing the bundled model near the player", async () => {
+    const host = await zombies();
+    await advanceZombies(host, 150);
+    expect(host.npc(NEARBY_ZOMBIE_ID)).toMatchObject({ model: "zombie.zip" });
+    host.dispose();
+  });
+
+  it("chases the player once materialized and lands an attack", async () => {
+    const damage: Array<{ amount: number; source: string | undefined }> = [];
+    const host = await zombies((amount, source) =>
+      damage.push({ amount, source }),
+    );
+    await advanceZombies(host, 150);
+    const spawned = host.npc(NEARBY_ZOMBIE_ID)!;
+    const startDistance = Math.hypot(
+      spawned.x - players[0].x,
+      spawned.z - players[0].z,
+    );
+    for (let i = 0; i < 30; i++) {
+      await advanceZombies(host, 120);
+    }
+    const chased = host.npc(NEARBY_ZOMBIE_ID)!;
+    const endDistance = Math.hypot(
+      chased.x - players[0].x,
+      chased.z - players[0].z,
+    );
+    expect(endDistance).toBeLessThan(startDistance);
+    expect(damage.some((hit) => hit.source === NEARBY_ZOMBIE_ID)).toBe(true);
+    host.dispose();
+  });
+
+  it("falls when its health reaches zero and is forgotten after its death fall", async () => {
+    const host = await zombies();
+    await advanceZombies(host, 150);
+    await host.hit(NEARBY_ZOMBIE_ID, "", 25, players[0].x, players[0].z);
+    expect(host.npc(NEARBY_ZOMBIE_ID)).toMatchObject({
+      dyingAt: expect.any(Number),
+    });
+    await advanceZombies(host, 1_200);
+    expect(host.npc(NEARBY_ZOMBIE_ID)).toBeNull();
+    host.dispose();
+  });
+});

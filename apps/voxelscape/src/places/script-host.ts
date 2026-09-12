@@ -21,6 +21,14 @@ import type { ScriptEvent, ScriptEventPayload } from "./events";
  */
 const EXPLOSION_MEMORY_MS = 5_000;
 
+/**
+ * How long an NPC dispatched as `npc-die` is kept around after it, still
+ * standing in `npcs` so the renderer has something to fall over and lie
+ * flat with, before it is forgotten the same way `npc-remove` forgets one
+ * outright.
+ */
+const DEATH_ANIMATION_MS = 1_000;
+
 /** One scripted NPC: where it stands, how it faces, and what it is called. */
 export interface ScriptedNpc {
   id: string;
@@ -38,6 +46,13 @@ export interface ScriptedNpc {
   z: number;
   /** Heading in radians; the renderer turns the figure to it. */
   yaw: number;
+  /**
+   * The clock moment `npc-die` played this NPC's death fall, or undefined
+   * while it is standing. The renderer times its fall from this rather than
+   * the host, which only uses it to know when `DEATH_ANIMATION_MS` has
+   * passed and the NPC is finally forgotten.
+   */
+  dyingAt?: number;
 }
 
 /** One scripted prop: where it stands, and which place model it wears. */
@@ -524,6 +539,12 @@ export class ScriptHost {
     if (!this.loaded) {
       return;
     }
+    const dyingCutoff = this.now() - DEATH_ANIMATION_MS;
+    for (const [id, npc] of this.npcs) {
+      if (npc.dyingAt !== undefined && npc.dyingAt < dyingCutoff) {
+        this.npcs.delete(id);
+      }
+    }
     const sandbox = await this.ready;
     const events = this.log
       .inOrder()
@@ -598,6 +619,13 @@ export class ScriptHost {
       case "npc-remove":
         this.npcs.delete(effect.payload.id);
         break;
+      case "npc-die": {
+        const npc = this.npcs.get(effect.payload.id);
+        if (npc !== undefined) {
+          this.npcs.set(npc.id, { ...npc, dyingAt: this.now() });
+        }
+        break;
+      }
       case "prop": {
         const { id, model, x, y, z, name, yaw, height, solid } = effect.payload;
         this.props.set(id, {

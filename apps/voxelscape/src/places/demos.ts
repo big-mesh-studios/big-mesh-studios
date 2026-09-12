@@ -9,6 +9,7 @@ import { MAIN_SCRIPT_FILE, type PlaceProject } from "./project";
 import type { PlaceManifest } from "./place";
 import GASA4_SCRIPT from "./demo-scripts/gasa4.ts?raw";
 import LATE_TO_SCHOOL_SCRIPT from "./demo-scripts/late-to-school.ts?raw";
+import ZOMBIES_SCRIPT from "./demo-scripts/zombies.ts?raw";
 
 /** One built-in demo: the world it names, its scripts, and the models they wear. */
 export interface BuiltinDemo {
@@ -192,8 +193,31 @@ const LATE_TO_SCHOOL: BuiltinDemo = {
   },
 };
 
+/**
+ * The "Zombies" demo: a population of zombies materializing procedurally
+ * around wherever a player explores the default terrain, fought off with a
+ * sword the player starts holding. It is the working example of a place
+ * script owning a live-tracked NPC kind end to end — spawning, chasing,
+ * fighting, and dying — rather than one built into the engine.
+ */
+const ZOMBIES: BuiltinDemo = {
+  id: "zombies",
+  name: "Zombies",
+  manifest: {
+    name: "Zombies",
+    seed: 90_210,
+    spawn: [0, 0, 0],
+    mode: "multi",
+    models: ["zombie.zip"],
+  },
+  modelFiles: ["zombie.zip"],
+  scripts: {
+    [MAIN_SCRIPT_FILE]: ZOMBIES_SCRIPT,
+  },
+};
+
 /** Every built-in demo, in the order a list shows them. */
-export const BUILTIN_DEMOS: BuiltinDemo[] = [GASA4, LATE_TO_SCHOOL];
+export const BUILTIN_DEMOS: BuiltinDemo[] = [GASA4, LATE_TO_SCHOOL, ZOMBIES];
 
 /** The built-in demo with `id`, or null when there is none. */
 export const builtinDemo = (id: string): BuiltinDemo | null =>
