@@ -5,6 +5,7 @@
 // way wherever they are asked, so a stranger's handle is held to exactly the
 // standard your own was when you typed it.
 import type { Did, Handle } from "@atcute/lexicons";
+import { cdnImageUrl } from "./cdn.ts";
 import { confirmHandle } from "./handles.ts";
 import {
   PROFILE_COLLECTION,
@@ -207,7 +208,7 @@ export function createIdentityLookup(params?: {
         if (cid === null) {
           return null;
         }
-        const blob = await get(pictureBlobUrl(service, did, cid));
+        const blob = await get(cdnImageUrl(pictureBlobUrl(service, did, cid)));
         return blob.ok ? blob.blob() : null;
       });
     },

@@ -127,8 +127,14 @@ describe("picture", () => {
     const picture = await lookup.picture(ALICE);
 
     expect(await picture?.text()).toBe("bytes");
-    expect(fetch.mock.calls[1][0]).toContain("cid=bafyPicture");
-    expect(fetch.mock.calls[1][0]).toContain("https://pds.example/xrpc/");
+    // Fetched through the CDN, which wraps the PDS address rather than being asked directly.
+    expect(fetch.mock.calls[1][0]).toContain("https://wsrv.nl/");
+    expect(decodeURIComponent(fetch.mock.calls[1][0] as string)).toContain(
+      "cid=bafyPicture",
+    );
+    expect(decodeURIComponent(fetch.mock.calls[1][0] as string)).toContain(
+      "https://pds.example/xrpc/",
+    );
   });
 
   it("needs no session, so a face shows whether or not anybody is signed in", async () => {

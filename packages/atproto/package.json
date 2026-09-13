@@ -11,6 +11,7 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./cdn": "./src/cdn.ts",
     "./handles": "./src/handles.ts",
     "./identity": "./src/identity.ts",
     "./migration": "./src/migration.ts",

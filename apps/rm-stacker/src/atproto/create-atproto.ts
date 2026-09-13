@@ -8,6 +8,7 @@
 // anybody's account, but the editor only ever asks after yours.
 import { createSignal } from "solid-js";
 import type { Dimensions3D } from "@big-mesh-studios/maths";
+import { cdnImageUrl } from "@big-mesh-studios/atproto/cdn";
 import { createIdentityLookup } from "@big-mesh-studios/atproto/identity";
 import {
   blobUrl,
@@ -242,7 +243,7 @@ export function createAtproto() {
      * listing resolves it once and builds its own image addresses.
      */
     async blobAddress(did: string, cid: string): Promise<string> {
-      return blobUrl(await identity.service(did), did, cid);
+      return cdnImageUrl(blobUrl(await identity.service(did), did, cid));
     },
 
     /** The figure `model` points at, every drawing fetched off its blobs. */

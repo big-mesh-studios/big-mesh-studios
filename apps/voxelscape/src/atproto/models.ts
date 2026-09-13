@@ -28,6 +28,7 @@ import {
   thumbnailBlobCid,
   type PublishedModel,
 } from "@big-mesh-studios/stacker/lexicon";
+import { cdnImageUrl } from "@big-mesh-studios/atproto/cdn";
 import {
   createDidDocumentResolver,
   createHandleResolver,
@@ -200,7 +201,7 @@ export const createModelLibrary = (params?: {
         return null;
       }
       const { service } = await locateOnce(model.repo);
-      return blobUrl(service, model.repo, cid);
+      return cdnImageUrl(blobUrl(service, model.repo, cid));
     },
   };
 };
