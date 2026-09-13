@@ -932,6 +932,14 @@ export const createVoxelscape = ({
     wielded = next;
   };
 
+  // `atproto.did` itself is a plain getter, not a signal, so JSX that reads
+  // `placeEditor.accountDid`/`.isMine`/`.owner` only ever sees the value as
+  // of whenever that JSX last happened to run — signing in while the place
+  // editor is already open would otherwise never be reflected there. This
+  // mirrors it into a signal from the one place both a restored session and
+  // a fresh sign-in or sign-out already report through: `AtprotoController`'s
+  // own `onConnected`/`onSignedOut` hooks.
+  const [accountDid, setAccountDid] = createSignal<string | null>(null);
   const atproto = new AtprotoController({
     layer: world.editLayer,
     seed: terrain.seed,
@@ -945,6 +953,7 @@ export const createVoxelscape = ({
       }
     },
     onConnected: (did) => {
+      setAccountDid(did);
       if (multiplayerAllowed) {
         void multiplayer.start();
       }
@@ -966,6 +975,7 @@ export const createVoxelscape = ({
         });
     },
     onSignedOut: () => {
+      setAccountDid(null);
       void multiplayer.stop();
       updateEditingEnabled();
     },
@@ -1547,7 +1557,7 @@ export const createVoxelscape = ({
     setOpen: setPlaceEditorOpen,
     /** The signed-in account the editor publishes from, or null while signed out. */
     get accountDid(): string | null {
-      return atproto.did;
+      return accountDid();
     },
     /** The handle to show for `did`, or the did itself when it has none. */
     resolveHandle: (did: string): Promise<string> => atproto.resolveHandle(did),
@@ -1563,7 +1573,7 @@ export const createVoxelscape = ({
      */
     get isMine(): boolean {
       const parsed = parsePlaceAtUri(ownedPlaceUri);
-      return parsed !== null && parsed.repo === atproto.did;
+      return parsed !== null && parsed.repo === accountDid();
     },
     get owner(): string | null {
       return parsePlaceAtUri(ownedPlaceUri)?.repo ?? null;
