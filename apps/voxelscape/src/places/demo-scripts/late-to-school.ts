@@ -2061,7 +2061,7 @@ function timerFired(id: string): void {
 onTick((_clockMs, events) => {
   if (!started) {
     started = true;
-    collected = JSON.parse(endings()) as string[];
+    collected = endings();
     open();
   }
   for (const event of events) {

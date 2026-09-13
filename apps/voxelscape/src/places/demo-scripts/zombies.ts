@@ -10,6 +10,7 @@ import {
   waterAt,
   type ModelsByName,
   type NpcHandle,
+  type Player,
 } from "voxelscape";
 
 const GUIDE = "guide";
@@ -68,13 +69,6 @@ const MIN_ATTACK_DISTANCE = 1.4;
 const WANDER_BROADCAST_INTERVAL_MS = 2000;
 
 type ZombieState = "wander" | "chase" | "attack";
-
-interface Player {
-  did: string;
-  x: number;
-  y: number;
-  z: number;
-}
 
 interface Zombie {
   npc: NpcHandle<ModelsByName["zombie"]>;
@@ -475,7 +469,7 @@ onTick((_clockMs, events) => {
     armTick();
   }
 
-  const players = JSON.parse(livePlayers()) as Player[];
+  const players = livePlayers();
 
   let ticked = false;
   for (const e of events) {

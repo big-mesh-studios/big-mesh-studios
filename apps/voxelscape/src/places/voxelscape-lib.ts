@@ -35,6 +35,18 @@ export function onTick(fn) {
   });
 }
 
+/** Every player's live position: the local player first, then connected
+ * peers — parsed here, so a script reads the array directly rather than the
+ * JSON text it crossed the sandbox boundary as. */
+export function players() {
+  return JSON.parse(host.players());
+}
+
+/** Every ending this place has defined, parsed the same way \`players\` is. */
+export function endings() {
+  return JSON.parse(host.endings());
+}
+
 function resolveModel(modelName) {
   if (modelName === undefined) {
     return undefined;

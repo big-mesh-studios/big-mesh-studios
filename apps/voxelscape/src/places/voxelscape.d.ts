@@ -46,9 +46,19 @@ declare module "voxelscape" {
   ): void;
   export function log(line: string): void;
   export function now(): number;
-  export function endings(): string;
+  /** Every ending this place has defined. */
+  export function endings(): string[];
+
+  /** One player's live position, by the did that identifies them. */
+  export interface Player {
+    readonly did: string;
+    readonly x: number;
+    readonly y: number;
+    readonly z: number;
+  }
+
   /** Every player's live position: the local player first, then connected peers. */
-  export function players(): string;
+  export function players(): Player[];
   /** The terrain surface at (x, z). */
   export function heightAt(x: number, z: number): number;
   /** Whether (x, y, z) is inside solid ground. */

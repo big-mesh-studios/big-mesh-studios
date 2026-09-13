@@ -765,7 +765,7 @@ describe("a script host", () => {
       host,
       `
       import * as engine from "voxelscape";
-      var seen = JSON.parse(engine.endings());
+      var seen = engine.endings();
       engine.onTick(function () {
         engine.dispatch("toast", { player: "", text: seen.join(",") });
       });
