@@ -32,18 +32,18 @@ export interface ClockSample {
 
 export interface PeerClockParams {
   /** The local wall clock, injectable so tests can skew peers. */
-  wallNow?: () => number;
+  getWallNow?: () => number;
 }
 
 /** Estimates one peer's clock offset over its link, with a place timekeeper. */
 export class PeerClock {
-  private readonly wallNow: () => number;
+  private readonly getWallNow: () => number;
   private self: string | null = null;
   private readonly rosterDids = new Set<string>();
   private readonly samples = new Map<string, ClockSample[]>();
 
   constructor(params: PeerClockParams = {}) {
-    this.wallNow = params.wallNow ?? (() => Date.now());
+    this.getWallNow = params.getWallNow ?? (() => Date.now());
   }
 
   /** Names this player, the one whose own clock is the implicit fallback. */
@@ -129,8 +129,8 @@ export class PeerClock {
   }
 
   /** The shared-clock moment, in milliseconds: local wall time plus offset. */
-  now(): number {
-    return this.wallNow() + this.offset;
+  getNow(): number {
+    return this.getWallNow() + this.offset;
   }
 
   /** Forgets everything measured with `did`, for when their link closes. */

@@ -7,7 +7,7 @@ import { WeatherController } from "./weather-controller";
 
 export interface EnvironmentConfig {
   /** Highest solid surface at (`x`, `z`): where rain lands and lightning strikes. */
-  groundHeightAt: (x: number, z: number) => number;
+  getGroundHeightAt: (x: number, z: number) => number;
 }
 
 export interface Environment {
@@ -43,12 +43,12 @@ export interface Environment {
  * three only ever advance together and in that order.
  */
 export const createEnvironment = ({
-  groundHeightAt,
+  getGroundHeightAt,
 }: EnvironmentConfig): Environment => {
   const dayNight = new DayNightController();
   const sound = new SoundController();
   const weather = new WeatherController({
-    groundHeight: groundHeightAt,
+    getGroundHeight: getGroundHeightAt,
     onStrike: (x, z) => sound.thunderStrike(x, z),
   });
 

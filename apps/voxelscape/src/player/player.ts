@@ -40,11 +40,11 @@ export interface PlayerWorld {
    * so it never reports a surface more than the voxel they're standing in
    * above them.
    */
-  groundHeightAt: (x: number, y: number, z: number) => number;
+  getGroundHeightAt: (x: number, y: number, z: number) => number;
   /** Whether (`x`, `y`, `z`) is inside water; asked at the player's feet. */
-  inWaterAt: (x: number, y: number, z: number) => boolean;
+  getInWaterAt: (x: number, y: number, z: number) => boolean;
   /** Whether the voxel containing (`x`, `y`, `z`) blocks movement; water doesn't. */
-  solidAt: (x: number, y: number, z: number) => boolean;
+  getSolidAt: (x: number, y: number, z: number) => boolean;
   /** Half the playable extent, in world units; horizontal movement clamps to it. */
   halfExtent: number;
   /**
@@ -52,7 +52,7 @@ export interface PlayerWorld {
    * world units per second, or null where nothing moving is under them. A
    * platform's motion is added to the player so they ride it.
    */
-  surfaceVelocityAt?: (
+  getSurfaceVelocityAt?: (
     x: number,
     y: number,
     z: number,
@@ -62,7 +62,7 @@ export interface PlayerWorld {
    * sits — a box that pushes the player's velocity toward a target, or a
    * quicksand that slows and sinks them. Sampled at the player's centre.
    */
-  mediumAt?: (x: number, y: number, z: number) => Medium | null;
+  getMediumAt?: (x: number, y: number, z: number) => Medium | null;
 }
 
 /** What a scripted field does to a player inside it, sampled once a frame. */
@@ -202,7 +202,7 @@ const FOOTPRINT_OFFSETS: ReadonlyArray<readonly [number, number]> = [
  */
 const sampleGroundHeight = (
   config: PlayerConfig,
-  groundHeightAt: (x: number, y: number, z: number) => number,
+  getGroundHeightAt: (x: number, y: number, z: number) => number,
   x: number,
   feetY: number,
   z: number,
@@ -211,7 +211,7 @@ const sampleGroundHeight = (
   let best = -Infinity;
   let bestDist = Infinity;
   for (const [ox, oz] of FOOTPRINT_OFFSETS) {
-    const h = groundHeightAt(
+    const h = getGroundHeightAt(
       x + ox * config.collisionRadius,
       feetY,
       z + oz * config.collisionRadius,
@@ -244,7 +244,7 @@ const sampleGroundHeight = (
  */
 const highestStandableSurface = (
   config: PlayerConfig,
-  groundHeightAt: (x: number, y: number, z: number) => number,
+  getGroundHeightAt: (x: number, y: number, z: number) => number,
   x: number,
   feetY: number,
   z: number,
@@ -252,7 +252,7 @@ const highestStandableSurface = (
   const limit = feetY + config.stepHeight;
   let best = -Infinity;
   for (const [ox, oz] of FOOTPRINT_OFFSETS) {
-    const h = groundHeightAt(
+    const h = getGroundHeightAt(
       x + ox * config.collisionRadius,
       feetY,
       z + oz * config.collisionRadius,
@@ -296,7 +296,7 @@ const SKIN = 1e-3;
  */
 const boxHitsSolid = (
   config: PlayerConfig,
-  solidAt: (x: number, y: number, z: number) => boolean,
+  getSolidAt: (x: number, y: number, z: number) => boolean,
   x: number,
   y: number,
   z: number,
@@ -306,7 +306,7 @@ const boxHitsSolid = (
   for (const [ox, oz] of CORNER_OFFSETS) {
     const cx = x + ox * config.collisionRadius;
     const cz = z + oz * config.collisionRadius;
-    if (solidAt(cx, low, cz) || solidAt(cx, high, cz)) {
+    if (getSolidAt(cx, low, cz) || getSolidAt(cx, high, cz)) {
       return true;
     }
   }
@@ -340,12 +340,12 @@ const moveHorizontally = (
     Math.min(world.halfExtent, from + delta),
   );
   const { x, y, z } = player.position;
-  if (!boxHitsSolid(config, world.solidAt, x, y, z)) {
+  if (!boxHitsSolid(config, world.getSolidAt, x, y, z)) {
     return false;
   }
   const surface = highestStandableSurface(
     config,
-    world.groundHeightAt,
+    world.getGroundHeightAt,
     x,
     y - config.halfSize,
     z,
@@ -354,7 +354,7 @@ const moveHorizontally = (
   if (
     Number.isFinite(surface) &&
     stepped > y &&
-    !boxHitsSolid(config, world.solidAt, x, stepped, z)
+    !boxHitsSolid(config, world.getSolidAt, x, stepped, z)
   ) {
     player.position.y = stepped;
     return false;
@@ -371,7 +371,7 @@ const moveHorizontally = (
     if (
       boxHitsSolid(
         config,
-        world.solidAt,
+        world.getSolidAt,
         player.position.x,
         y,
         player.position.z,
@@ -410,7 +410,7 @@ const moveAxis = (
   if (
     !boxHitsSolid(
       config,
-      world.solidAt,
+      world.getSolidAt,
       player.position.x,
       player.position.y,
       player.position.z,
@@ -428,7 +428,7 @@ const moveAxis = (
     if (
       boxHitsSolid(
         config,
-        world.solidAt,
+        world.getSolidAt,
         player.position.x,
         player.position.y,
         player.position.z,
@@ -566,8 +566,11 @@ export const updatePlayer = (
   // The field standing at the player's centre, read once so the horizontal and
   // vertical branches of this frame agree on what is acting on them.
   const medium =
-    world.mediumAt?.(player.position.x, player.position.y, player.position.z) ??
-    null;
+    world.getMediumAt?.(
+      player.position.x,
+      player.position.y,
+      player.position.z,
+    ) ?? null;
   let targetVx = 0;
   let targetVz = 0;
   if (mx !== 0 || my !== 0) {
@@ -594,7 +597,7 @@ export const updatePlayer = (
   const dz = player.vz * dt;
 
   // gravity + jump; underwater the gravity is weak and holding jump swims up
-  const inWater = world.inWaterAt(
+  const inWater = world.getInWaterAt(
     player.position.x,
     player.position.y - config.halfSize + SKIN,
     player.position.z,
@@ -634,8 +637,8 @@ export const updatePlayer = (
 
   // A platform the player was standing on last frame carries them: its velocity
   // for this frame is added, so they ride it rather than slide off the back.
-  if (player.onGround && world.surfaceVelocityAt !== undefined) {
-    const support = world.surfaceVelocityAt(
+  if (player.onGround && world.getSurfaceVelocityAt !== undefined) {
+    const support = world.getSurfaceVelocityAt(
       player.position.x,
       player.position.y - config.halfSize,
       player.position.z,
@@ -665,7 +668,7 @@ export const updatePlayer = (
     player.vy > 0 &&
     boxHitsSolid(
       config,
-      world.solidAt,
+      world.getSolidAt,
       player.position.x,
       risenY,
       player.position.z,
@@ -680,7 +683,7 @@ export const updatePlayer = (
   // snap to the terrain surface
   const ground = sampleGroundHeight(
     config,
-    world.groundHeightAt,
+    world.getGroundHeightAt,
     player.position.x,
     feetBefore,
     player.position.z,

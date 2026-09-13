@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { heightAt } from "./noise";
+import { getHeightAt } from "./noise";
 import { LAVA_DEPTH } from "./lava-fill";
 import { fillStore, VOXEL_AIR, VOXEL_LAVA, VoxelStore } from "./voxel-store";
 
@@ -36,7 +36,7 @@ describe("deep-pool lava in fillStore", () => {
       for (let z = 0; z < 8; z++) {
         const worldX = 2000 + (x + 0.5 - 4) * 2;
         const worldZ = -400 + (z + 0.5 - 4) * 2;
-        const height = heightAt(worldX, worldZ, buriedConfig);
+        const height = getHeightAt(worldX, worldZ, buriedConfig);
         for (let y = 0; y < 64; y++) {
           if (store.get(x, y, z) !== VOXEL_LAVA) {
             continue;

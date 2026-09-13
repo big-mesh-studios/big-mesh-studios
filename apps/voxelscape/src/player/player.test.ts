@@ -36,11 +36,11 @@ const NO_WATER = () => false;
  * given function returns, open air above it.
  */
 const terrainOf = (
-  heightAt: (x: number, z: number) => number,
+  getHeightAt: (x: number, z: number) => number,
 ): PlayerWorld => ({
-  groundHeightAt: (x, _y, z) => heightAt(x, z),
-  inWaterAt: NO_WATER,
-  solidAt: (x, y, z) => y < heightAt(x, z),
+  getGroundHeightAt: (x, _y, z) => getHeightAt(x, z),
+  getInWaterAt: NO_WATER,
+  getSolidAt: (x, y, z) => y < getHeightAt(x, z),
   halfExtent: 1e9,
 });
 
@@ -120,9 +120,9 @@ describe("updatePlayer walking into terrain it can't climb", () => {
     const SLAB_BOTTOM = 3;
     // a floor at 0 everywhere, with a slab of rock hanging over x >= 0
     const overhang: PlayerWorld = {
-      groundHeightAt: (x, y) => (x >= 0 && y >= SLAB_BOTTOM ? ROOF : 0),
-      inWaterAt: NO_WATER,
-      solidAt: (x, y) => y < 0 || (x >= 0 && y >= SLAB_BOTTOM && y < ROOF),
+      getGroundHeightAt: (x, y) => (x >= 0 && y >= SLAB_BOTTOM ? ROOF : 0),
+      getInWaterAt: NO_WATER,
+      getSolidAt: (x, y) => y < 0 || (x >= 0 && y >= SLAB_BOTTOM && y < ROOF),
       halfExtent: 1e9,
     };
     const player = createPlayer(-3, DEFAULT_PLAYER_CONFIG.halfSize, 0);
@@ -135,9 +135,9 @@ describe("updatePlayer walking into terrain it can't climb", () => {
     const ROOF = 6;
     const SLAB_BOTTOM = 3;
     const lowTunnel: PlayerWorld = {
-      groundHeightAt: (_x, y) => (y >= SLAB_BOTTOM ? ROOF : 0),
-      inWaterAt: NO_WATER,
-      solidAt: (_x, y) => y < 0 || (y >= SLAB_BOTTOM && y < ROOF),
+      getGroundHeightAt: (_x, y) => (y >= SLAB_BOTTOM ? ROOF : 0),
+      getInWaterAt: NO_WATER,
+      getSolidAt: (_x, y) => y < 0 || (y >= SLAB_BOTTOM && y < ROOF),
       halfExtent: 1e9,
     };
     const player = createPlayer(0, DEFAULT_PLAYER_CONFIG.halfSize, 0);
@@ -233,7 +233,7 @@ describe("updatePlayer falling through water and air", () => {
   };
 
   it("sinks slowly in water and falls at full gravity out of it", () => {
-    const submerged: PlayerWorld = { ...FLAT, inWaterAt: () => true };
+    const submerged: PlayerWorld = { ...FLAT, getInWaterAt: () => true };
     const dropped = fallFor(FLAT, 30);
     expect(dropped).toBeGreaterThan(fallFor(submerged, 30) * 4);
   });
@@ -400,11 +400,11 @@ describe("updatePlayer on a moving platform", () => {
   it("rides a surface that carries it along", () => {
     const player = createPlayer(0, 0, 0);
     const world: PlayerWorld = {
-      groundHeightAt: () => 0,
-      inWaterAt: NO_WATER,
-      solidAt: () => false,
+      getGroundHeightAt: () => 0,
+      getInWaterAt: NO_WATER,
+      getSolidAt: () => false,
       halfExtent: 1e9,
-      surfaceVelocityAt: () => [5, 0, 0],
+      getSurfaceVelocityAt: () => [5, 0, 0],
     };
     // The first frame lands the player; only then does the carry apply.
     updatePlayer(player, 1 / 60, NO_INPUT, world);
@@ -424,14 +424,14 @@ describe("updatePlayer on a moving platform", () => {
 
 describe("updatePlayer inside a scripted field", () => {
   const fieldWorld = (
-    mediumAt: (x: number, y: number, z: number) => Medium | null,
+    getMediumAt: (x: number, y: number, z: number) => Medium | null,
     ground: number = 0,
   ): PlayerWorld => ({
-    groundHeightAt: () => ground,
-    inWaterAt: NO_WATER,
-    solidAt: () => false,
+    getGroundHeightAt: () => ground,
+    getInWaterAt: NO_WATER,
+    getSolidAt: () => false,
     halfExtent: 1e9,
-    mediumAt,
+    getMediumAt,
   });
 
   it("ramps a standing player toward a push field's horizontal target", () => {

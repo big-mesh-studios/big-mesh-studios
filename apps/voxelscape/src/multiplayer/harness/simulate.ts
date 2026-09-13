@@ -30,7 +30,7 @@ export interface SimulatorOptions {
    * The wall clock for player `i`, so one player's clock can be skewed against
    * another. Built on the fake timer so the mesh stays synchronized.
    */
-  wallNow?: (index: number) => () => number;
+  getWallNow?: (index: number) => () => number;
 }
 
 export interface Simulator {
@@ -38,7 +38,7 @@ export interface Simulator {
   harness: AtprotoHarness;
   signaling: SignalingHarness;
   /** Each player's shared-clock moment, indexed like `players`. */
-  nows(): number[];
+  getNows(): number[];
   startAll(): Promise<void>;
   stopAll(): Promise<void>;
   /** Moves one simulated player. */
@@ -77,7 +77,7 @@ export const createSimulator = (options: SimulatorOptions): Simulator => {
       z: p.z,
       seed: options.seed ?? null,
       clusterOptions: options.clusterOptions,
-      wallNow: options.wallNow?.(i),
+      getWallNow: options.getWallNow?.(i),
     }),
   );
 
@@ -223,7 +223,7 @@ export const createSimulator = (options: SimulatorOptions): Simulator => {
     players,
     harness,
     signaling,
-    nows: () => players.map((p) => p.now()),
+    getNows: () => players.map((p) => p.getNow()),
     startAll: async () => {
       await Promise.all(players.map((p) => p.start()));
     },

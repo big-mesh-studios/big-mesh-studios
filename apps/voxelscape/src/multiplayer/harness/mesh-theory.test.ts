@@ -222,7 +222,7 @@ describe("cluster mesh theory", () => {
       ],
       // Each player's wall clock is offset by an hour per slot; their place
       // clocks must still line up on the lowest DID's time (player p0).
-      wallNow: (i) => () => Date.now() + i * 3_600_000,
+      getWallNow: (i) => () => Date.now() + i * 3_600_000,
     });
     await sim.startAll();
     const a = sim.players[0];
@@ -231,7 +231,7 @@ describe("cluster mesh theory", () => {
     ).toBe(true);
 
     const converged = await sim.runUntil(30_000, () => {
-      const [ta, tb] = sim.nows();
+      const [ta, tb] = sim.getNows();
       return Math.abs(ta - tb) < 100;
     });
     expect(converged).toBe(true);
@@ -239,7 +239,7 @@ describe("cluster mesh theory", () => {
     // Both read p0's clock, which is this sim's unskewed wall: the place time
     // sits where the timekeeper's clock does, not at either player's skew, so
     // B's hour-long skew has been measured away.
-    const [ta, tb] = sim.nows();
+    const [ta, tb] = sim.getNows();
     expect(ta).toBeCloseTo(Date.now(), 2);
     expect(tb).toBeCloseTo(Date.now(), 2);
   });

@@ -162,7 +162,7 @@ export interface MultiplayerParams {
    * another and confirm their shared-clock offsets converge. Defaults to
    * `Date.now`, and every skewing mesh peer gets the same clock.
    */
-  wallNow?: () => number;
+  getWallNow?: () => number;
 }
 
 export class MultiplayerController {
@@ -193,7 +193,7 @@ export class MultiplayerController {
     damage: PlayerDamageWire,
   ) => void;
   private readonly clusterOptions: Partial<ClusterOptions>;
-  private readonly wallNow: () => number;
+  private readonly getWallNow: () => number;
   private readonly clock: PeerClock;
   /**
    * Every connected peer's avatar, for the scene to place in its draw order.
@@ -270,8 +270,8 @@ export class MultiplayerController {
     this.onRemoteScriptEvents = params.onRemoteScriptEvents ?? (() => {});
     this.onRemotePlayerDamage = params.onRemotePlayerDamage ?? (() => {});
     this.clusterOptions = params.clusterOptions ?? {};
-    this.wallNow = params.wallNow ?? (() => Date.now());
-    this.clock = new PeerClock({ wallNow: this.wallNow });
+    this.getWallNow = params.getWallNow ?? (() => Date.now());
+    this.clock = new PeerClock({ getWallNow: this.getWallNow });
     this.remotePlayers =
       params.camera !== undefined
         ? new RemotePlayers({ camera: params.camera })
@@ -298,8 +298,8 @@ export class MultiplayerController {
    * peer chosen as timekeeper, offset-corrected for this player. Falls back
    * to the local wall clock while no measured peer shares the place.
    */
-  now(): number {
-    return this.clock.now();
+  getNow(): number {
+    return this.clock.getNow();
   }
 
   /** The DIDs of the peers this player currently has an open link to. */
@@ -904,7 +904,7 @@ export class MultiplayerController {
     onTime: (did: string, t1: number, t2: number) => void;
     onClose: (did: string) => void;
     onError: (did: string, message: string, code?: string) => void;
-    wallNow: () => number;
+    getWallNow: () => number;
   } {
     let opened = false;
     return {
@@ -943,7 +943,7 @@ export class MultiplayerController {
           return;
         }
         this.pendingTimes.delete(did);
-        this.clock.observe(did, t1, t2, this.wallNow());
+        this.clock.observe(did, t1, t2, this.getWallNow());
       },
       onClose: (did) => {
         this.peerCount = Math.max(0, this.peerCount - 1);
@@ -961,7 +961,7 @@ export class MultiplayerController {
           code !== undefined ? ` (${code})` : ""
         }`;
       },
-      wallNow: () => this.wallNow(),
+      getWallNow: () => this.getWallNow(),
     };
   }
 
@@ -1100,7 +1100,7 @@ export class MultiplayerController {
     if (peer === undefined || !peer.connected) {
       return;
     }
-    const t1 = this.wallNow();
+    const t1 = this.getWallNow();
     this.pendingTimes.set(did, { t1, at: t1 });
     peer.sendTime(t1);
   }

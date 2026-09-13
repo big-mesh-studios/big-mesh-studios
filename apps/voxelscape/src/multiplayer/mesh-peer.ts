@@ -56,7 +56,7 @@ export interface MeshPeerParams {
    * The local wall clock, injected by the harness so one peer can be skewed
    * against another; the shared mesh timestamps stay on the real clock.
    */
-  wallNow?: () => number;
+  getWallNow?: () => number;
 }
 
 export class MeshPeer {
@@ -81,7 +81,7 @@ export class MeshPeer {
     message: string,
     code?: string,
   ) => void;
-  private readonly wallNow: () => number;
+  private readonly getWallNow: () => number;
   private readonly role: "initiator" | "responder";
 
   private transport: PeerTransport | undefined;
@@ -103,7 +103,7 @@ export class MeshPeer {
     this.onTime = params.onTime;
     this.onClose = params.onClose;
     this.onError = params.onError;
-    this.wallNow = params.wallNow ?? (() => Date.now());
+    this.getWallNow = params.getWallNow ?? (() => Date.now());
     this.role = this.selfDid < this.did ? "initiator" : "responder";
 
     if (params.transport !== undefined) {
@@ -318,7 +318,7 @@ export class MeshPeer {
     } else if (message.type === "time") {
       if (message.t2 === undefined) {
         // A ping asks the receiver's wall time at receipt; answer in kind.
-        this.sendTime(message.t1, this.wallNow());
+        this.sendTime(message.t1, this.getWallNow());
       } else {
         this.onTime(this.did, message.t1, message.t2);
       }

@@ -25,7 +25,7 @@ import {
   type Dim3,
   type WorldBlock,
 } from "./level-data";
-import { heightAt as terrainHeightAt, type TerrainConfig } from "./noise";
+import { getHeightAt, type TerrainConfig } from "./noise";
 import type { StructurePlan } from "./structure-fill";
 import { VOXEL_AIR, VOXEL_LAVA, VOXEL_WATER, isFluidId } from "./voxel-store";
 
@@ -138,13 +138,13 @@ export interface VoxelWorld {
    */
   workerPool: WorldWorkerPool;
   /** Highest solid surface in the column at (`x`, `z`), for spawning and for weather. */
-  heightAt(x: number, z: number): number;
+  getHeightAt(x: number, z: number): number;
   /** Highest solid surface at or below (`x`, `y`, `z`), or `-Infinity` where the column has none. */
-  groundHeightAt(x: number, y: number, z: number): number;
-  inWaterAt(x: number, y: number, z: number): boolean;
+  getGroundHeightAt(x: number, y: number, z: number): number;
+  getInWaterAt(x: number, y: number, z: number): boolean;
   /** Whether the voxel at a world point is lava; the contact-hazard query. */
-  lavaAt(x: number, y: number, z: number): boolean;
-  solidAt(x: number, y: number, z: number): boolean;
+  getLavaAt(x: number, y: number, z: number): boolean;
+  getSolidAt(x: number, y: number, z: number): boolean;
   /** Keeps the block window centred on (`x`, `y`, `z`), streaming new blocks in off the main thread. */
   scrollTo(x: number, y: number, z: number): void;
   /**
@@ -493,25 +493,25 @@ export const createVoxelWorld = ({
     reapplyEdits,
     applyEdits,
 
-    heightAt(x, z) {
+    getHeightAt(x, z) {
       const height = getWorldHeight(sphere.query, x, z, terrain);
       // A column of air answers the same way whether its block holds no
       // terrain yet or genuinely has nothing above the void. Falling back to
       // the height field the terrain is generated from covers the first case,
       // which is every column until that block's fill lands, and agrees with
       // the voxels once it does.
-      return height === -Infinity ? terrainHeightAt(x, z, terrain) : height;
+      return height === -Infinity ? getHeightAt(x, z, terrain) : height;
     },
-    groundHeightAt(x, y, z) {
+    getGroundHeightAt(x, y, z) {
       return getGroundHeightBelow(sphere.query, x, y, z);
     },
-    inWaterAt(x, y, z) {
+    getInWaterAt(x, y, z) {
       return isWaterAt(sphere.query, x, y, z);
     },
-    lavaAt(x, y, z) {
+    getLavaAt(x, y, z) {
       return isLavaAt(sphere.query, x, y, z);
     },
-    solidAt(x, y, z) {
+    getSolidAt(x, y, z) {
       return isSolidAt(sphere.query, x, y, z);
     },
     scrollTo(x, y, z) {

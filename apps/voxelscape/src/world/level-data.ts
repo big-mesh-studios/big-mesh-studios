@@ -1,7 +1,7 @@
 // A block of the world as data: where it sits, and the voxels in it. Kept in
 // its own module so a web worker can generate blocks without pulling in
 // anything that draws them.
-import { DEFAULT_TERRAIN, heightAt, type TerrainConfig } from "./noise";
+import { DEFAULT_TERRAIN, getHeightAt, type TerrainConfig } from "./noise";
 import {
   VOXEL_AIR,
   VOXEL_CLOUD,
@@ -284,7 +284,7 @@ export const getWorldHeight = (
 ): number => {
   const anchorCellY = chunkCellOf(
     worldX,
-    heightAt(worldX, worldZ, terrain),
+    getHeightAt(worldX, worldZ, terrain),
     worldZ,
   )[1];
   for (let off = 24; off >= -32; off--) {

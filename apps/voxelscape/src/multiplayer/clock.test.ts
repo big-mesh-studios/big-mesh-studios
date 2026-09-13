@@ -37,7 +37,7 @@ describe("PeerClock", () => {
 
   it("measures a symmetric round trip as the midpoint offset", () => {
     let wall = 10_000;
-    const clock = new PeerClock({ wallNow: () => wall });
+    const clock = new PeerClock({ getWallNow: () => wall });
     clock.setSelf("did:plc:self");
     clock.setRoster(["did:plc:peer"]);
     // Self sent at 10_000 (wall 10_000), peer read its wall 10_300 (peer is
@@ -45,7 +45,7 @@ describe("PeerClock", () => {
     clock.observe("did:plc:peer", 10_000, 10_300, 10_060);
     expect(clock.offset).toBe(270);
     wall = 11_000;
-    expect(clock.now()).toBe(11_270);
+    expect(clock.getNow()).toBe(11_270);
   });
 
   it("keeps the lowest-rtt sample as the best estimate", () => {

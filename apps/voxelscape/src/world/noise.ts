@@ -278,7 +278,7 @@ export const DEFAULT_TERRAIN: TerrainConfig = {
 };
 
 /**
- * One height sampler per seed, so repeated `heightAt` calls during a fill
+ * One height sampler per seed, so repeated `getHeightAt` calls during a fill
  * don't rebuild the permutation table for every column.
  */
 const samplerCache = new Map<number, PerlinNoise2D>();
@@ -327,7 +327,7 @@ const bilinearCellField = (
 
 /**
  * The pure mountain field, with no plateau flattening applied. Exposed
- * separately so `heightAt` can sample plateau elevations from it and tests
+ * separately so `getHeightAt` can sample plateau elevations from it and tests
  * can compare against it.
  *
  * @param worldX - World-space X coordinate.
@@ -335,7 +335,7 @@ const bilinearCellField = (
  * @param config - Terrain configuration to sample from.
  * @returns The mountain-field height, in world units, at (`worldX`, `worldZ`).
  */
-export const mountainHeightAt = (
+export const getMountainHeightAt = (
   worldX: number,
   worldZ: number,
   config: TerrainConfig,
@@ -354,7 +354,7 @@ export const mountainHeightAt = (
 
 /**
  * One flatness-mask value per plain cell, cached by (seed, cx, cz) because a
- * block fill calls `heightAt` once per column and adjacent columns share
+ * block fill calls `getHeightAt` once per column and adjacent columns share
  * cells.
  */
 const flatnessCellCache = new Map<string, number>();
@@ -412,13 +412,13 @@ const flatHeightCell = (
  * @param config - Terrain configuration to sample from.
  * @returns The plateau elevation, in world units.
  */
-export const plateauHeightAt = (
+export const getPlateauHeightAt = (
   cx: number,
   cz: number,
   config: TerrainConfig,
 ): number => {
   if (config.plains === undefined) {
-    return mountainHeightAt((cx + 0.5) * 1, (cz + 0.5) * 1, config);
+    return getMountainHeightAt((cx + 0.5) * 1, (cz + 0.5) * 1, config);
   }
   return flatHeightCell(config, config.plains, cx, cz);
 };
@@ -436,12 +436,12 @@ export const plateauHeightAt = (
  * @param config - Terrain configuration to sample from; defaults to `DEFAULT_TERRAIN`.
  * @returns Terrain height, in world units, at (`worldX`, `worldZ`).
  */
-export const heightAt = (
+export const getHeightAt = (
   worldX: number,
   worldZ: number,
   config: TerrainConfig = DEFAULT_TERRAIN,
 ): number => {
-  const mountain = mountainHeightAt(worldX, worldZ, config);
+  const mountain = getMountainHeightAt(worldX, worldZ, config);
   if (config.plains === undefined) {
     return mountain;
   }

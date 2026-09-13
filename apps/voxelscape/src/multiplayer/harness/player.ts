@@ -18,7 +18,7 @@ export interface PlayerSim {
   start(): Promise<string>;
   stop(): Promise<string>;
   /** The place's shared-clock moment: the timekeeper's clock, offset-applied. */
-  now(): number;
+  getNow(): number;
   /** The latest pose message received from `from`, or undefined before any arrives. */
   latestPose(from: string): PoseMessage | undefined;
   /** How many poses were received from `from`. */
@@ -44,7 +44,7 @@ export interface PlayerSimParams {
   scope?: string;
   clusterOptions?: Partial<ClusterOptions>;
   /** The sim's wall clock, for skewing one player against another. */
-  wallNow?: () => number;
+  getWallNow?: () => number;
 }
 
 export const createPlayerSim = (params: PlayerSimParams): PlayerSim => {
@@ -72,7 +72,7 @@ export const createPlayerSim = (params: PlayerSimParams): PlayerSim => {
     fetchDirectory: (collection) =>
       Promise.resolve(params.harness.listReposByCollection(collection)),
     clusterOptions: params.clusterOptions,
-    wallNow: params.wallNow,
+    getWallNow: params.getWallNow,
     onRemotePose: (from, received) => {
       latestByPeer.set(from, received);
       counts.set(from, (counts.get(from) ?? 0) + 1);
@@ -92,7 +92,7 @@ export const createPlayerSim = (params: PlayerSimParams): PlayerSim => {
     pose,
     start: () => controller.start(),
     stop: () => controller.stop(),
-    now: () => controller.now(),
+    getNow: () => controller.getNow(),
     latestPose: (from) => latestByPeer.get(from),
     poseCountFor: (from) => counts.get(from) ?? 0,
     latestEdits: (from) => latestEditsByPeer.get(from),

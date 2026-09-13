@@ -1,4 +1,4 @@
-import { heightAt, PerlinNoise2D, type TerrainConfig } from "./noise";
+import { getHeightAt, PerlinNoise2D, type TerrainConfig } from "./noise";
 import type { VoxelStore } from "./voxel-store";
 import type { Dim3 } from "./level-data";
 
@@ -76,7 +76,7 @@ export const placeTrees = (
       const trunkWorldX = cellCenterX + dx;
       const trunkWorldZ = cellCenterZ + dz;
 
-      const surfaceY = heightAt(trunkWorldX, trunkWorldZ, config);
+      const surfaceY = getHeightAt(trunkWorldX, trunkWorldZ, config);
 
       if (seaLevel !== undefined && surfaceY < seaLevel + SEA_LEVEL_MARGIN) {
         continue;

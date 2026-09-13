@@ -362,7 +362,7 @@ function open(): void {
     });
   }
   for (const [id, model, x, z, height, name] of FURNITURE) {
-    // Every fixture stands on the floor: grounded by `heightAt` it would land
+    // Every fixture stands on the floor: grounded by `getHeightAt` it would land
     // on the roof once the house is built, which is what a restart showed.
     createProp({
       id,

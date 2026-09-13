@@ -34,18 +34,18 @@ const CUBE_COLOR = 0xff7043;
 /** What the physics asks the terrain, plus the column height used to spawn. */
 export interface AvatarTerrain {
   /** Highest solid surface in the column at (`x`, `z`). */
-  heightAt(x: number, z: number): number;
-  groundHeightAt(x: number, y: number, z: number): number;
-  inWaterAt(x: number, y: number, z: number): boolean;
-  solidAt(x: number, y: number, z: number): boolean;
+  getHeightAt(x: number, z: number): number;
+  getGroundHeightAt(x: number, y: number, z: number): number;
+  getInWaterAt(x: number, y: number, z: number): boolean;
+  getSolidAt(x: number, y: number, z: number): boolean;
   /** The velocity of a moving surface under the player's feet, or null. */
-  surfaceVelocityAt?: (
+  getSurfaceVelocityAt?: (
     x: number,
     y: number,
     z: number,
   ) => [number, number, number] | null;
   /** The field acting on the player at a point, or null where none sits. */
-  mediumAt?: (x: number, y: number, z: number) => Medium | null;
+  getMediumAt?: (x: number, y: number, z: number) => Medium | null;
 }
 
 export interface PlayerAvatarConfig {
@@ -115,21 +115,23 @@ export const createPlayerAvatar = ({
   const config = { ...DEFAULT_PLAYER_CONFIG, ...playerConfig };
   const player = createPlayer(
     spawn[0],
-    terrain.heightAt(spawn[0], spawn[2]) + config.halfSize + 0.1,
+    terrain.getHeightAt(spawn[0], spawn[2]) + config.halfSize + 0.1,
     spawn[2],
     config,
   );
 
   /** Built once rather than per frame; the samplers read the live terrain. */
   const world: PlayerWorld = {
-    groundHeightAt: (x, y, z) => terrain.groundHeightAt(x, y, z),
-    inWaterAt: (x, y, z) => terrain.inWaterAt(x, y, z),
-    solidAt: (x, y, z) => terrain.solidAt(x, y, z),
+    getGroundHeightAt: (x, y, z) => terrain.getGroundHeightAt(x, y, z),
+    getInWaterAt: (x, y, z) => terrain.getInWaterAt(x, y, z),
+    getSolidAt: (x, y, z) => terrain.getSolidAt(x, y, z),
     halfExtent: SAFE_EXTENT,
-    ...(terrain.surfaceVelocityAt !== undefined
-      ? { surfaceVelocityAt: terrain.surfaceVelocityAt }
+    ...(terrain.getSurfaceVelocityAt !== undefined
+      ? { getSurfaceVelocityAt: terrain.getSurfaceVelocityAt }
       : {}),
-    ...(terrain.mediumAt !== undefined ? { mediumAt: terrain.mediumAt } : {}),
+    ...(terrain.getMediumAt !== undefined
+      ? { getMediumAt: terrain.getMediumAt }
+      : {}),
   };
 
   const skin = createPlayerSkin(CUBE_COLOR);

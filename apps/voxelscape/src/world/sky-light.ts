@@ -5,7 +5,7 @@
 // bleeds light from the border cells, and a seam face shades against the
 // neighbour's light it holds.
 import type { Dim3 } from "./level-data";
-import { heightAt, type TerrainConfig } from "./noise";
+import { getHeightAt, type TerrainConfig } from "./noise";
 import {
   LEVEL_MASK,
   MAX_LIGHT,
@@ -148,7 +148,7 @@ export const fillSkyLight = (
     const worldZ = worldZOf(vz);
     for (let vx = -p; vx < nx + p; vx++) {
       const worldX = worldXOf(vx);
-      const surface = heightAt(worldX, worldZ, config);
+      const surface = getHeightAt(worldX, worldZ, config);
       for (let vy = -p; vy < ny + p; vy++) {
         const idx = light.paddedIndex(vx, vy, vz);
         if (light.skylightAt(idx) !== 0) {

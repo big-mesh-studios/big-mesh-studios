@@ -499,7 +499,7 @@ export const createVoxelscape = ({
 
   const input = createInput();
   const environment = createEnvironment({
-    groundHeightAt: (x, z) => world.heightAt(x, z),
+    getGroundHeightAt: (x, z) => world.getHeightAt(x, z),
   });
 
   const [loading, setLoading] = createSignal<InitialDrawProgress>({
@@ -544,14 +544,17 @@ export const createVoxelscape = ({
    */
   const fieldBoxes: ScriptedField[] = [];
   const playerTerrain: AvatarTerrain = {
-    heightAt: (x, z) => world.heightAt(x, z),
-    groundHeightAt: (x, y, z) =>
-      Math.max(world.groundHeightAt(x, y, z), boxGroundAt(propBoxes, x, y, z)),
-    inWaterAt: (x, y, z) => world.inWaterAt(x, y, z),
-    solidAt: (x, y, z) =>
-      world.solidAt(x, y, z) || solidBoxAt(propBoxes, x, y, z),
-    surfaceVelocityAt: (x, y, z) => boxVelocityAt(propBoxes, x, y, z),
-    mediumAt: (x, y, z) => {
+    getHeightAt: (x, z) => world.getHeightAt(x, z),
+    getGroundHeightAt: (x, y, z) =>
+      Math.max(
+        world.getGroundHeightAt(x, y, z),
+        boxGroundAt(propBoxes, x, y, z),
+      ),
+    getInWaterAt: (x, y, z) => world.getInWaterAt(x, y, z),
+    getSolidAt: (x, y, z) =>
+      world.getSolidAt(x, y, z) || solidBoxAt(propBoxes, x, y, z),
+    getSurfaceVelocityAt: (x, y, z) => boxVelocityAt(propBoxes, x, y, z),
+    getMediumAt: (x, y, z) => {
       // Sums the pushes and takes the worst quicksand, so the answer is
       // order-independent the way the rest of the shared clock is.
       let pushVx = 0;
@@ -602,7 +605,7 @@ export const createVoxelscape = ({
 
   /**
    * The cube centre the player starts at, kept so a respawn returns there.
-   * Reading `world.heightAt` again would not: it returns the topmost solid
+   * Reading `world.getHeightAt` again would not: it returns the topmost solid
    * voxel in the column, which is the roof once the house around spawn has
    * streamed in — the reason a restart put the player on top of it.
    */
@@ -1182,9 +1185,9 @@ export const createVoxelscape = ({
       const { ScriptConsole: ScriptConsoleClass } =
         await import("../places/script-console");
       scriptConsole = new ScriptConsoleClass({
-        getHeightAt: (x, z) => world.heightAt(x, z),
-        getSolidAt: (x, y, z) => world.solidAt(x, y, z),
-        getWaterAt: (x, y, z) => world.inWaterAt(x, y, z),
+        getHeightAt: (x, z) => world.getHeightAt(x, z),
+        getSolidAt: (x, y, z) => world.getSolidAt(x, y, z),
+        getWaterAt: (x, y, z) => world.getInWaterAt(x, y, z),
         // The local avatar plus whoever the mesh has a live link to.
         getPlayers: () => [
           {
@@ -1195,7 +1198,7 @@ export const createVoxelscape = ({
           },
           ...multiplayer.peerPositions(),
         ],
-        getNow: () => multiplayer.now(),
+        getNow: () => multiplayer.getNow(),
         report: (line) => onNotice?.(line),
         onDialog: (player, state) => {
           if (player === "") {
@@ -1866,7 +1869,7 @@ export const createVoxelscape = ({
       position.x += Math.sin(route.heading) * route.speed * dt;
       position.z += Math.cos(route.heading) * route.speed * dt;
       position.y =
-        world.heightAt(position.x, position.z) +
+        world.getHeightAt(position.x, position.z) +
         avatar.player.config.halfSize +
         0.1;
       avatar.player.vx = 0;
@@ -2170,7 +2173,8 @@ export const createVoxelscape = ({
         weaponCooldown -= dt;
         lavaBurnCooldown -= dt;
         if (
-          (world.lavaAt(p.x, p.y, p.z) || world.lavaAt(p.x, p.y + 1.5, p.z)) &&
+          (world.getLavaAt(p.x, p.y, p.z) ||
+            world.getLavaAt(p.x, p.y + 1.5, p.z)) &&
           lavaBurnCooldown <= 0
         ) {
           dealDamage(LAVA_BURN, "lava");

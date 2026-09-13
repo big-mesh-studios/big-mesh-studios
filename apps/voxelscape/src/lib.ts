@@ -45,7 +45,11 @@ export {
   type Dim3,
   type WorldBlock,
 } from "./world/level-data";
-export { DEFAULT_TERRAIN, heightAt, type TerrainConfig } from "./world/noise";
+export {
+  DEFAULT_TERRAIN,
+  getHeightAt,
+  type TerrainConfig,
+} from "./world/noise";
 export { DEFAULT_REACH, pickVoxel, type VoxelPick } from "./world/picker";
 export {
   fillStore,

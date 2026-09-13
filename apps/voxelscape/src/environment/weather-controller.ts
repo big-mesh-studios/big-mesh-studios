@@ -446,7 +446,7 @@ const setBoltGeometry = (geometry: LineGeometry, pts: number[]): void => {
 
 export interface WeatherControllerParams {
   /** Ground-height lookup at an absolute world XZ, for lightning targets. */
-  groundHeight: (x: number, z: number) => number;
+  getGroundHeight: (x: number, z: number) => number;
   /**
    * Called whenever a lightning strike spawns, with the strike's target world
    * position. A plain event — the weather controller has no idea what
@@ -467,7 +467,7 @@ export interface WeatherControllerParams {
  * renderer or a console — only scene objects it owns.
  */
 export class WeatherController {
-  private readonly groundHeight: (x: number, z: number) => number;
+  private readonly getGroundHeight: (x: number, z: number) => number;
   private readonly onStrike: ((x: number, z: number) => void) | undefined;
   private readonly seed: number;
   private readonly rampSeconds: number;
@@ -499,9 +499,9 @@ export class WeatherController {
   private tintWeather: Weather = "clear";
 
   constructor(params: WeatherControllerParams) {
-    const { groundHeight, onStrike, seed, rampSeconds, strikeInterval } =
+    const { getGroundHeight, onStrike, seed, rampSeconds, strikeInterval } =
       params;
-    this.groundHeight = groundHeight;
+    this.getGroundHeight = getGroundHeight;
     this.onStrike = onStrike;
     this.seed = seed ?? WEATHER_SEED;
     this.rampSeconds = rampSeconds ?? RAMP_SECONDS;
@@ -572,7 +572,7 @@ export class WeatherController {
   }
 
   private spawnStrike(x: number, z: number): void {
-    const groundY = this.groundHeight(x, z);
+    const groundY = this.getGroundHeight(x, z);
     if (!Number.isFinite(groundY)) {
       return;
     }

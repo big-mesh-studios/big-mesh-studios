@@ -58,7 +58,7 @@ export const solidBoxAt = (
 
 /**
  * The highest box top at or below `y` over the column at (`x`, `z`), in world
- * units, or `-Infinity` when none stands there. Mirrors `groundHeightAt`, so a
+ * units, or `-Infinity` when none stands there. Mirrors `getGroundHeightAt`, so a
  * player can stand on a bed or a counter the way they stand on a voxel.
  */
 export const boxGroundAt = (

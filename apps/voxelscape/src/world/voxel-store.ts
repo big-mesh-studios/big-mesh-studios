@@ -7,7 +7,7 @@ import {
 } from "./cloud-fill";
 import { caveFillNoise, DIRT_LAYER_DEPTH, isCaveVoxel } from "./cave-fill";
 import { columnHasLava, LAVA_DEPTH, lavaFillNoise } from "./lava-fill";
-import { heightAt, type TerrainConfig } from "./noise";
+import { getHeightAt, type TerrainConfig } from "./noise";
 
 export const VOXEL_AIR = 0;
 export const VOXEL_GRASS = 1;
@@ -381,7 +381,7 @@ export const fillStore = (
       const subWx = originX + i * fine;
       for (let l = 0; l < k; l++) {
         const subWz = originZ + l * fine;
-        const subHeight = heightAt(subWx, subWz, config);
+        const subHeight = getHeightAt(subWx, subWz, config);
         const subTop = Math.round((subHeight - center[1]) / fine + halfYAt);
         const subCoverage =
           cloudNoise === undefined
@@ -469,7 +469,7 @@ export const fillStore = (
         : vz >= vzN
           ? (borderSizes?.pz ?? voxelSize)
           : undefined;
-    const height = heightAt(worldX, worldZ, config);
+    const height = getHeightAt(worldX, worldZ, config);
     const top = rowOfY(height);
     const waterBottom = seaLevel === undefined ? -Infinity : rowOfY(seaLevel);
     // One coverage sample per column, gate: columns below the coverage floor
