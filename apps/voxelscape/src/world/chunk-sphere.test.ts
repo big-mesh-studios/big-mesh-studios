@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ChunkSphere,
   cellsInSphere,
+  cellsTouchedByPlan,
   DEFAULT_LOD_BANDS,
   lodAt,
   lodIsOff,
@@ -12,6 +13,8 @@ import {
 import { BLOCK_WORLD } from "./level-data";
 import { DEFAULT_TERRAIN } from "./noise";
 import type { BorderSizes } from "./voxel-store";
+import type { StructurePlan } from "./structure-fill";
+import type { FillBatchRequest, FillBatchResult } from "./fill-worker";
 
 /**
  * Builds a sphere whose fills are recorded rather than performed. `Worker` is
@@ -21,15 +24,110 @@ import type { BorderSizes } from "./voxel-store";
 const sphereWithRecordedFills = (radius: number, yRadius?: number) => {
   const filled: number[] = [];
   const repositioned: number[] = [];
+  const released: number[] = [];
   const sphere = new ChunkSphere({
     radius,
     yRadius,
     terrain: DEFAULT_TERRAIN,
     onBlockChanged: (index) => filled.push(index),
     onBlockReposition: (index) => repositioned.push(index),
+    onBlockRelease: (index) => released.push(index),
     customFillStore: () => {},
   });
-  return { sphere, filled, repositioned };
+  return { sphere, filled, repositioned, released };
+};
+
+/**
+ * A worker that answers every fill request by handing the lent store and light
+ * arrays straight back, so a sphere's windowing can be exercised without
+ * paying for the main-thread fallback's terrain and light generation. Speaks
+ * the pool's listener interface (`addEventListener`), like a real worker.
+ */
+class EchoFillWorker {
+  readonly messageListeners: Array<(ev: MessageEvent) => void> = [];
+
+  addEventListener(
+    type: "message" | "error",
+    listener: (ev: MessageEvent) => void,
+  ): void {
+    if (type === "message") {
+      this.messageListeners.push(listener);
+    }
+  }
+
+  removeEventListener(
+    type: "message" | "error",
+    listener: (ev: MessageEvent) => void,
+  ): void {
+    if (type === "message") {
+      const index = this.messageListeners.indexOf(listener);
+      if (index >= 0) {
+        this.messageListeners.splice(index, 1);
+      }
+    }
+  }
+
+  postMessage(request: unknown): void {
+    if (
+      typeof request !== "object" ||
+      request === null ||
+      (request as { type?: string }).type !== "fill"
+    ) {
+      return;
+    }
+    const batch = request as FillBatchRequest;
+    // One message per block, the way the real worker posts its results, so the
+    // client's per-message load accounting frees the worker for the next batch.
+    for (let at = 0; at < batch.indices.length; at++) {
+      const result: FillBatchResult = {
+        type: "fill",
+        indices: [batch.indices[at]],
+        gens: [batch.gens[at]],
+        lods: [batch.lods[at]],
+        storeData: [batch.stores![at]],
+        mightHaveVoxels: [true],
+        hasWater: [false],
+        light: [batch.lights![at]],
+      };
+      for (const listener of this.messageListeners) {
+        listener({ data: result } as MessageEvent);
+      }
+    }
+  }
+
+  terminate(): void {}
+}
+
+/**
+ * A sphere whose window fills through an `EchoFillWorker`, so a test can move
+ * and regenerate the window without the sync-fallback fill's per-cell sweep.
+ */
+const sphereWithEchoWorker = (radius: number, yRadius?: number) => {
+  const worker = new EchoFillWorker();
+  const filled: number[] = [];
+  const repositioned: number[] = [];
+  const released: number[] = [];
+  const sphere = new ChunkSphere({
+    radius,
+    yRadius,
+    terrain: DEFAULT_TERRAIN,
+    onBlockChanged: (index) => filled.push(index),
+    onBlockReposition: (index) => repositioned.push(index),
+    onBlockRelease: (index) => released.push(index),
+    createWorker: () => worker as unknown as Worker,
+  });
+  return { sphere, worker, filled, repositioned, released };
+};
+
+/**
+ * Puts a freshly built sphere's window on the origin cells: `fillFrom` claims
+ * every slot (its nearest block is filled on the calling thread — the one
+ * real sweep each test pays) and a scroll recentres the ball, so the motion
+ * and its refills all go through the echo worker.
+ */
+const populate = (sphere: ChunkSphere): void => {
+  sphere.fillFrom(2 * BLOCK_WORLD[0], 40, 0);
+  sphere.scrollTo(0, 40, 0);
 };
 
 const cellCenter = (c: {
@@ -556,5 +654,110 @@ describe("turning levels of detail off", () => {
     // of them are the finest the world has.
     const scales = new Set(sphere.blocks.map((block) => block.targetLod));
     expect([...scales]).toEqual([0]);
+  });
+});
+
+describe("cellsTouchedByPlan", () => {
+  it("maps a plan's shapes onto the chunk cells they reach", () => {
+    // The origin cell's interior holds world voxels [-32, 32).
+    expect(
+      cellsTouchedByPlan([
+        { kind: "box", min: [0, 0, 0], max: [10, 5, 5], id: 1 },
+      ]),
+    ).toEqual([{ x: 0, y: 0, z: 0 }]);
+  });
+
+  it("grows a shape that crosses a cell boundary to both cells", () => {
+    expect(
+      cellsTouchedByPlan([
+        { kind: "box", min: [30, 0, 0], max: [70, 4, 4], id: 1 },
+      ]),
+    ).toEqual([
+      { x: 0, y: 0, z: 0 },
+      { x: 1, y: 0, z: 0 },
+    ]);
+  });
+
+  it("lists each covered cell once, however the shapes overlap", () => {
+    expect(
+      cellsTouchedByPlan([
+        { kind: "box", min: [0, 0, 0], max: [10, 10, 10], id: 1 },
+        { kind: "box", min: [5, 5, 5], max: [20, 20, 20], id: 2 },
+      ]),
+    ).toEqual([{ x: 0, y: 0, z: 0 }]);
+  });
+
+  it("reports no cells for an empty plan or none at all", () => {
+    expect(cellsTouchedByPlan([])).toEqual([]);
+    expect(cellsTouchedByPlan(undefined)).toEqual([]);
+  });
+});
+
+describe("ChunkSphere.setStructures", () => {
+  const boxPlan = (
+    min: number[] = [0, 0, 0],
+    max: number[] = [5, 5, 5],
+  ): StructurePlan => [
+    {
+      kind: "box",
+      min: min as [number, number, number],
+      max: max as [number, number, number],
+      id: 1,
+    },
+  ];
+
+  it("regenerates only the cells a new plan's shapes reach", () => {
+    const { sphere, filled, released } = sphereWithEchoWorker(1);
+    populate(sphere);
+    filled.length = 0;
+    released.length = 0;
+
+    sphere.setStructures(boxPlan());
+
+    // Only the origin cell's fill landed, its resting fluid was released
+    // first, and the cells around it were left alone.
+    const originSlot = sphere.slotAt(0, 0, 0)!;
+    expect(filled).toEqual([originSlot]);
+    expect(released).toEqual([originSlot]);
+  });
+
+  it("regenerates every cell a shape straddles, nearest first", () => {
+    const { sphere, filled } = sphereWithEchoWorker(1);
+    populate(sphere);
+    filled.length = 0;
+
+    const originSlot = sphere.slotAt(0, 0, 0)!;
+    const eastSlot = sphere.slotAt(BLOCK_WORLD[0], 0, 0)!;
+    sphere.setStructures(boxPlan([30, 0, 0], [70, 4, 4]));
+
+    expect(filled).toEqual([originSlot, eastSlot]);
+  });
+
+  it("sheds a shape the next plan no longer stamps", () => {
+    const { sphere, filled } = sphereWithEchoWorker(1);
+    populate(sphere);
+    filled.length = 0;
+
+    const originSlot = sphere.slotAt(0, 0, 0)!;
+    sphere.setStructures(boxPlan());
+    // An empty plan covers nothing; the shape's own cell is regenerated again
+    // so the shape comes off the terrain it sat on.
+    sphere.setStructures([]);
+
+    expect(filled).toEqual([originSlot, originSlot]);
+  });
+
+  it("changes nothing when handed the plan already in place", () => {
+    const { sphere, filled } = sphereWithEchoWorker(1);
+    populate(sphere);
+    filled.length = 0;
+
+    const plan = boxPlan();
+    expect(sphere.setStructures(plan)).toBe(true);
+    expect(filled).toHaveLength(1);
+    filled.length = 0;
+
+    expect(sphere.setStructures(boxPlan())).toBe(false);
+    expect(filled).toEqual([]);
   });
 });

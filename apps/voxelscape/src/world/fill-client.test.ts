@@ -9,7 +9,12 @@ import { VOXEL_GRASS } from "./voxel-store";
 import type { VoxelTileConfig } from "../renderers/atlas";
 import { emptyMesh } from "../renderers/mesh";
 import type { BlockMeshes } from "../renderers/mesh";
-import type { FillBatchRequest, FillBatchResult } from "./fill-worker";
+import type {
+  FillBatchRequest,
+  FillBatchResult,
+  FillConfig,
+} from "./fill-worker";
+import type { StructurePlan } from "./structure-fill";
 
 const EMPTY_MESHES: BlockMeshes = {
   terrain: emptyMesh(),
@@ -112,6 +117,25 @@ class FakeFillWorker {
     for (const listener of this.messageListeners) {
       listener({ data: result } as MessageEvent);
     }
+  }
+}
+
+/**
+ * A `FakeFillWorker` that also records the fill configurations it is handed,
+ * so a test can watch `setStructures` re-post the world's plan to its pool.
+ */
+class ConfigRecordingWorker extends FakeFillWorker {
+  readonly configs: FillConfig[] = [];
+
+  postMessage(request: unknown): void {
+    if (
+      typeof request === "object" &&
+      request !== null &&
+      (request as { type?: string }).type === "config"
+    ) {
+      this.configs.push((request as { config: FillConfig }).config);
+    }
+    super.postMessage(request);
   }
 }
 
@@ -528,5 +552,32 @@ describe("FillClient", () => {
     // only that the block changed, and a normal rebuild is what re-draws it.
     expect(changed).toHaveBeenCalledWith(0);
     expect(changed).not.toHaveBeenCalledWith(0, EMPTY_MESHES);
+  });
+});
+
+describe("FillClient.setStructures", () => {
+  it("re-posts the fill configuration when the structures are updated", () => {
+    const worker = new ConfigRecordingWorker();
+    const pool = new WorldWorkerPool({
+      createWorker: () => worker as unknown as Worker,
+      count: 1,
+    });
+    const client = new FillClient({
+      terrain: DEFAULT_TERRAIN,
+      blocks: [buildBlockShell({ center: [0, 0, 0] })],
+      onBlockChanged: () => {},
+      pool,
+    });
+    // The client handed the pool its configuration once at startup.
+    expect(worker.configs).toHaveLength(1);
+
+    const plan: StructurePlan = [
+      { kind: "box", min: [0, 0, 0], max: [3, 3, 3], id: 1 },
+    ];
+    client.setStructures(plan);
+
+    expect(worker.configs).toHaveLength(2);
+    expect(worker.configs[1].structures).toEqual(plan);
+    client.dispose();
   });
 });

@@ -474,6 +474,7 @@ export const PlaceEditorContent: Component<{
         entry,
         p.manifest.seed,
         p.models,
+        p.manifest.spawn,
       );
       props.onStatus(line);
     } catch (err) {

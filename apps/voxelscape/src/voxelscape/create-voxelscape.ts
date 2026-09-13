@@ -25,6 +25,7 @@ import type { ScriptConsole } from "../places/script-console";
 import { VoxelFigures, type RenderedFigure } from "../places/voxel-figures";
 import { cutscenePoseAt, type CameraStart } from "../places/cutscene";
 import { createEndingLog, endingLogKey } from "../places/ending-log";
+import { compilePlacePlan, planRegionAround } from "../places/plan";
 import { FireFigures } from "../renderers/fire-figures";
 import { ExplosionFigures } from "../renderers/explosion-figures";
 import { FireEmbers } from "../world/fire-ember";
@@ -303,13 +304,17 @@ export interface Voxelscape {
     models: ModelLibrary;
     /**
      * Loads the draft's scripts into the running place host, seeded from the
-     * draft, and dresses any props they place with the draft's model files.
+     * draft, dresses any props they place with the draft's model files, and
+     * rebuilds the world's structures from the draft's recompiled plan. The
+     * player is left where they stand, so a creator can iterate on a level
+     * without being sent back to the spawn point.
      */
     runScript(
       files: Record<string, string>,
       entry: string,
       seed: number,
       models?: Record<string, Uint8Array>,
+      spawn?: Dim3,
     ): Promise<string>;
     /**
      * Records `atUri` as the place this session now owns, once a clone has
@@ -1576,13 +1581,48 @@ export const createVoxelscape = ({
       entry: string,
       seed: number,
       models?: Record<string, Uint8Array>,
+      spawnPoint?: Dim3,
     ) => {
       if (models !== undefined) {
         void loadPlaceModels(models);
       }
-      return scriptConsoleFor().then((console) =>
-        console.loadProject(files, entry, seed, models ?? {}),
-      );
+      return (async () => {
+        const scriptConsole = await scriptConsoleFor();
+        // The world's structures come from the same plan the script's own Run
+        // compiles, so a creator who edits shapes sees the change on the
+        // terrain they are standing on. The cells either plan reaches are
+        // regenerated in place; the player is not moved.
+        let structuresLine = "";
+        try {
+          const plan = await compilePlacePlan({
+            files,
+            entry,
+            models: models ?? {},
+            seed,
+            region: planRegionAround(spawnPoint ?? spawn),
+          });
+          const count = `${plan.length} structure shape${
+            plan.length === 1 ? "" : "s"
+          }`;
+          structuresLine =
+            plan.length === 0
+              ? ""
+              : world.setStructures(plan)
+                ? ` — ${count} rebuilt`
+                : ` — ${count} already in place`;
+        } catch (err) {
+          structuresLine = ` — structures unchanged (this plan did not compile: ${
+            err instanceof Error ? err.message : String(err)
+          })`;
+        }
+        const line = await scriptConsole.loadProject(
+          files,
+          entry,
+          seed,
+          models ?? {},
+        );
+        return `${line}${structuresLine}`;
+      })();
     },
     async claim(atUri: string): Promise<void> {
       ownedPlaceUri = atUri;
