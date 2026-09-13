@@ -42,12 +42,16 @@ Comlink.expose(
       return async function createEnv(compilerOptions: TS.CompilerOptions) {
         const { system, ts } = await defaultMap;
         return {
-          env: createVirtualTypeScriptEnvironment(
-            system,
-            [],
-            ts,
-            compilerOptions,
-          ),
+          env: createVirtualTypeScriptEnvironment(system, [], ts, {
+            // The same floor `createDefaultMapFromCDN` above already
+            // downloads lib files for — without it, an unset `target`
+            // defaults to a TypeScript version far older than any of this
+            // codebase's own output, and flags everyday ES2015+ standard
+            // library members (`Math.hypot`, `Array.prototype.includes`) as
+            // missing. A caller's own `target` still wins.
+            target: ts.ScriptTarget.ES2015,
+            ...compilerOptions,
+          }),
         };
       };
     }
