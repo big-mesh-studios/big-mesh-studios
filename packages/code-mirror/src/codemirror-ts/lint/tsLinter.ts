@@ -1,5 +1,6 @@
 import { type Diagnostic, type LintSource, linter } from "@codemirror/lint";
 import { tsFacet } from "../facet/tsFacet";
+import { lintTheme } from "./lintTheme";
 
 /**
  * The underlying LintSource implementation, if you
@@ -23,5 +24,5 @@ export const tsLintSource: LintSource = async (
  * to the same data.
  */
 export function tsLinter() {
-  return linter(tsLintSource);
+  return [lintTheme, linter(tsLintSource)];
 }

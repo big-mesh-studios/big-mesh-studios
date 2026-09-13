@@ -7,6 +7,7 @@ export * from "./autocomplete/types";
 
 export * from "./lint/tsLinter";
 export * from "./lint/getLints";
+export * from "./lint/lintTheme";
 
 export * from "./hover/tsHover";
 export * from "./hover/getHover";

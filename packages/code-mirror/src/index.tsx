@@ -52,6 +52,11 @@ export const darkTheme: Extension = [
       "&": {
         color: "#d6d6d6",
         backgroundColor: "transparent",
+        // Lets the "@container" query below the find/replace panel's grid
+        // react to this editor's own rendered width, not the browser
+        // viewport's — the editor can sit in a narrow column of a wide
+        // window just as easily as it can fill one.
+        containerType: "inline-size",
         // Read by the hover tooltip, autocomplete popup and twoslash widget
         // (see packages/code-mirror/src/codemirror-ts), so every overlay
         // this editor renders draws from this one palette instead of its own.
@@ -94,6 +99,117 @@ export const darkTheme: Extension = [
         color: "#7f848e",
         fontStyle: "italic",
         marginLeft: "0.5em",
+      },
+      // The find/replace panel (from `basicSetup`'s `searchKeymap`) sits
+      // outside `.cm-scroller`, the only element CodeMirror's own base theme
+      // gives a font-family to, so left alone it falls through the `all:
+      // initial` wrapper around this editor to the browser's default serif
+      // font.
+      ".cm-panels": {
+        fontFamily: "monospace",
+      },
+      // Laid out on a grid rather than the base theme's inline flow (a run
+      // of inputs, buttons and labels broken onto a second line by a bare
+      // `<br>`) so the search and replace fields, and the button pairs below
+      // them, line up in columns instead of reflowing independently.
+      ".cm-panel.cm-search": {
+        display: "grid",
+        // The field column is capped rather than `1fr`, so it doesn't
+        // stretch to fill the panel's full width; the three button columns
+        // share one fixed size (rather than each sizing to its own row's
+        // widest label) so "next"/"prev"/"all" line up with "replace"/
+        // "replace all" beneath them at the same width.
+        gridTemplateColumns:
+          "minmax(140px, 200px) repeat(3, 84px) repeat(3, auto)",
+        alignItems: "center",
+        columnGap: "6px",
+        rowGap: "4px",
+        padding: "6px 28px 6px 8px",
+        backgroundColor: "var(--cm-tooltip-bg, inherit)",
+        color: "var(--cm-editor-color, inherit)",
+        // The base theme's own line break between the search and replace
+        // rows — the grid rows below make it redundant, and left alone it
+        // claims a cell of its own.
+        "& br": {
+          display: "none",
+        },
+        "& input, & button, & label": {
+          margin: 0,
+        },
+        // Left unpinned to a column of their own (unlike the fields and
+        // buttons below), so they just fall in after the search row's
+        // buttons and size to their own text — three auto-placed grid items
+        // rather than three explicitly numbered ones.
+        "& label": {
+          gridRow: "1",
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          marginLeft: "10px",
+          justifySelf: "start",
+        },
+        "& input[name=search]": { gridColumn: "1", gridRow: "1" },
+        "& button[name=next]": { gridColumn: "2", gridRow: "1" },
+        "& button[name=prev]": { gridColumn: "3", gridRow: "1" },
+        "& button[name=select]": { gridColumn: "4", gridRow: "1" },
+        "& input[name=replace]": { gridColumn: "1", gridRow: "2" },
+        "& button[name=replace]": { gridColumn: "2", gridRow: "2" },
+        "& button[name=replaceAll]": { gridColumn: "3", gridRow: "2" },
+        "& .cm-textfield": {
+          width: "100%",
+          maxWidth: "200px",
+          minWidth: 0,
+          backgroundColor: "var(--cm-editor-background, transparent)",
+          color: "var(--cm-editor-color, inherit)",
+          border:
+            "1px solid var(--cm-tooltip-border, rgba(255, 255, 255, 0.25))",
+          borderRadius: "3px",
+          padding: "2px 6px",
+        },
+        "& .cm-button": {
+          backgroundColor: "var(--cm-editor-background, transparent)",
+          color: "var(--cm-editor-color, inherit)",
+          border:
+            "1px solid var(--cm-tooltip-border, rgba(255, 255, 255, 0.25))",
+          borderRadius: "3px",
+          backgroundImage: "none",
+        },
+        // Just the named buttons placed in the grid — not the absolutely
+        // positioned close button, which sizes to its own "×" instead.
+        "& button[name=next], & button[name=prev], & button[name=select], & button[name=replace], & button[name=replaceAll]":
+          {
+            width: "100%",
+            textAlign: "center",
+          },
+      },
+      // Below this width the wide layout's row of controls (a field, three
+      // buttons, and three checkboxes) no longer fits: the search and
+      // replace fields move onto their own shared row, their buttons follow
+      // beneath in two rows of their own, and the checkboxes last — each row
+      // a fixed number of even columns, since a container this narrow reads
+      // better as a tidy control grid than one that reflows to the width of
+      // whatever label happens to be in it.
+      "@container (max-width: 640px)": {
+        ".cm-panel.cm-search": {
+          gridTemplateColumns: "repeat(6, 1fr)",
+          "& input[name=search]": { gridColumn: "1 / span 3", gridRow: "1" },
+          "& input[name=replace]": { gridColumn: "4 / span 3", gridRow: "1" },
+          "& button[name=next]": { gridColumn: "1 / span 2", gridRow: "2" },
+          "& button[name=prev]": { gridColumn: "3 / span 2", gridRow: "2" },
+          "& button[name=select]": { gridColumn: "5 / span 2", gridRow: "2" },
+          "& button[name=replace]": { gridColumn: "1 / span 3", gridRow: "3" },
+          "& button[name=replaceAll]": {
+            gridColumn: "4 / span 3",
+            gridRow: "3",
+          },
+          "& label": {
+            gridRow: "4",
+            marginLeft: 0,
+          },
+          "& label:nth-of-type(1)": { gridColumn: "1 / span 2" },
+          "& label:nth-of-type(2)": { gridColumn: "3 / span 2" },
+          "& label:nth-of-type(3)": { gridColumn: "5 / span 2" },
+        },
       },
     },
     { dark: true },
