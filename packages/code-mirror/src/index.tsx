@@ -110,8 +110,10 @@ export const darkTheme: Extension = [
       },
       // Laid out on a grid rather than the base theme's inline flow (a run
       // of inputs, buttons and labels broken onto a second line by a bare
-      // `<br>`) so the search and replace fields, and the button pairs below
-      // them, line up in columns instead of reflowing independently.
+      // `<br>`), using named areas so each of the three breakpoints below
+      // can reshape the layout by redeclaring `gridTemplateAreas` (and the
+      // matching columns) alone — every element keeps the same `grid-area`
+      // regardless of which shape is active.
       ".cm-panel.cm-search": {
         display: "grid",
         // The field column is capped rather than `1fr`, so it doesn't
@@ -121,6 +123,10 @@ export const darkTheme: Extension = [
         // "replace all" beneath them at the same width.
         gridTemplateColumns:
           "minmax(140px, 200px) repeat(3, 84px) repeat(3, auto)",
+        gridTemplateAreas: `
+          "search next prev all case re word"
+          "rfield rep  repall .   .    .  .   "
+        `,
         alignItems: "center",
         columnGap: "6px",
         rowGap: "4px",
@@ -128,7 +134,7 @@ export const darkTheme: Extension = [
         backgroundColor: "var(--cm-tooltip-bg, inherit)",
         color: "var(--cm-editor-color, inherit)",
         // The base theme's own line break between the search and replace
-        // rows — the grid rows below make it redundant, and left alone it
+        // rows — the grid areas above make it redundant, and left alone it
         // claims a cell of its own.
         "& br": {
           display: "none",
@@ -136,25 +142,22 @@ export const darkTheme: Extension = [
         "& input, & button, & label": {
           margin: 0,
         },
-        // Left unpinned to a column of their own (unlike the fields and
-        // buttons below), so they just fall in after the search row's
-        // buttons and size to their own text — three auto-placed grid items
-        // rather than three explicitly numbered ones.
         "& label": {
-          gridRow: "1",
           display: "flex",
           alignItems: "center",
           gap: "6px",
-          marginLeft: "10px",
           justifySelf: "start",
         },
-        "& input[name=search]": { gridColumn: "1", gridRow: "1" },
-        "& button[name=next]": { gridColumn: "2", gridRow: "1" },
-        "& button[name=prev]": { gridColumn: "3", gridRow: "1" },
-        "& button[name=select]": { gridColumn: "4", gridRow: "1" },
-        "& input[name=replace]": { gridColumn: "1", gridRow: "2" },
-        "& button[name=replace]": { gridColumn: "2", gridRow: "2" },
-        "& button[name=replaceAll]": { gridColumn: "3", gridRow: "2" },
+        "& input[name=search]": { gridArea: "search" },
+        "& input[name=replace]": { gridArea: "rfield" },
+        "& button[name=next]": { gridArea: "next" },
+        "& button[name=prev]": { gridArea: "prev" },
+        "& button[name=select]": { gridArea: "all" },
+        "& button[name=replace]": { gridArea: "rep" },
+        "& button[name=replaceAll]": { gridArea: "repall" },
+        "& label:nth-of-type(1)": { gridArea: "case" },
+        "& label:nth-of-type(2)": { gridArea: "re" },
+        "& label:nth-of-type(3)": { gridArea: "word" },
         "& .cm-textfield": {
           width: "100%",
           maxWidth: "200px",
@@ -182,33 +185,35 @@ export const darkTheme: Extension = [
             textAlign: "center",
           },
       },
-      // Below this width the wide layout's row of controls (a field, three
-      // buttons, and three checkboxes) no longer fits: the search and
-      // replace fields move onto their own shared row, their buttons follow
-      // beneath in two rows of their own, and the checkboxes last — each row
-      // a fixed number of even columns, since a container this narrow reads
+      // Between the wide and narrow shapes: not wide enough for the
+      // checkboxes to share a row with the fields and buttons, but wide
+      // enough for all five buttons ("next" through "replace all") to sit
+      // on one row rather than the narrow shape's two.
+      "@container (max-width: 820px) and (min-width: 521px)": {
+        ".cm-panel.cm-search": {
+          gridTemplateColumns: "repeat(5, 1fr)",
+          gridTemplateAreas: `
+            "search search search rfield rfield"
+            "next   prev   all    rep    repall"
+            "case   case   re     re     word"
+          `,
+        },
+      },
+      // Below this width even one row of five buttons no longer fits: the
+      // search and replace fields share a row, their buttons split across
+      // two rows of their own, and the checkboxes come last — each row a
+      // fixed number of even columns, since a container this narrow reads
       // better as a tidy control grid than one that reflows to the width of
       // whatever label happens to be in it.
-      "@container (max-width: 640px)": {
+      "@container (max-width: 520px)": {
         ".cm-panel.cm-search": {
           gridTemplateColumns: "repeat(6, 1fr)",
-          "& input[name=search]": { gridColumn: "1 / span 3", gridRow: "1" },
-          "& input[name=replace]": { gridColumn: "4 / span 3", gridRow: "1" },
-          "& button[name=next]": { gridColumn: "1 / span 2", gridRow: "2" },
-          "& button[name=prev]": { gridColumn: "3 / span 2", gridRow: "2" },
-          "& button[name=select]": { gridColumn: "5 / span 2", gridRow: "2" },
-          "& button[name=replace]": { gridColumn: "1 / span 3", gridRow: "3" },
-          "& button[name=replaceAll]": {
-            gridColumn: "4 / span 3",
-            gridRow: "3",
-          },
-          "& label": {
-            gridRow: "4",
-            marginLeft: 0,
-          },
-          "& label:nth-of-type(1)": { gridColumn: "1 / span 2" },
-          "& label:nth-of-type(2)": { gridColumn: "3 / span 2" },
-          "& label:nth-of-type(3)": { gridColumn: "5 / span 2" },
+          gridTemplateAreas: `
+            "search search search rfield rfield rfield"
+            "next   next   prev   prev   all    all"
+            "rep    rep    rep    repall repall repall"
+            "case   case   re     re     word   word"
+          `,
         },
       },
     },
