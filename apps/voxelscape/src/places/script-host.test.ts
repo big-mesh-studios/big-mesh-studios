@@ -64,6 +64,7 @@ const fresh = async (): Promise<{
   faces: Array<{ player: string; at: { x: number; z: number } }>;
   fires: ScriptedFire[];
   explosions: ScriptedExplosion[];
+  sounds: Array<{ player: string; name: string }>;
   speeds: Array<{ player: string; multiplier: number }>;
   jumps: Array<{ player: string; multiplier: number }>;
   checkpoints: Array<{
@@ -222,7 +223,7 @@ describe("a script host", () => {
   });
 
   it("places a prop and answers when the player uses it", async () => {
-    const { host, toasts } = await fresh();
+    const { host, toasts, sounds } = await fresh();
     await loadProject(
       host,
       `
