@@ -160,7 +160,6 @@ export const darkTheme: Extension = [
         "& label:nth-of-type(3)": { gridArea: "word" },
         "& .cm-textfield": {
           width: "100%",
-          maxWidth: "200px",
           minWidth: 0,
           backgroundColor: "var(--cm-editor-background, transparent)",
           color: "var(--cm-editor-color, inherit)",
