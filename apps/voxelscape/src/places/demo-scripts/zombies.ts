@@ -67,16 +67,6 @@ const MIN_ATTACK_DISTANCE = 1.4;
  * other peers are told slows down. */
 const WANDER_BROADCAST_INTERVAL_MS = 2000;
 
-// This place's spawn point, and how far around it stays free of zombies
-// entirely: a population materializing wherever a player happens to be would
-// otherwise let a new arrival spawn with one already standing on top of them.
-// The radius sits well past the aggro radius, so a zombie that wanders toward
-// its edge is nowhere near close enough to notice someone standing right at
-// the line.
-const SPAWN_X = 0;
-const SPAWN_Z = 0;
-const SPAWN_SAFE_RADIUS = 48;
-
 type ZombieState = "wander" | "chase" | "attack";
 
 interface Player {
@@ -227,12 +217,6 @@ function materialize(players: Player[]): void {
         return;
       }
       const pose = spawnPose(spawn.rngSeed, cx, cz);
-      // Checked on the actual randomized-within-cell spot, not the cell's
-      // own centre: a cell just past the safe radius can still place a
-      // zombie most of a cell width closer than that.
-      if (dist2D(pose.x, pose.z, SPAWN_X, SPAWN_Z) <= SPAWN_SAFE_RADIUS) {
-        continue;
-      }
       const npc = createNpc({
         model: "zombie",
         id: spawn.id,
