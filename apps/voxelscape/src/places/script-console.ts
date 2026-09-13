@@ -208,6 +208,15 @@ export class ScriptConsole {
     return this.host?.npcList ?? [];
   }
 
+  /**
+   * Re-reads `y` for every NPC and prop the script placed with no explicit
+   * height, so one grounded before its column had streamed in settles onto
+   * the real terrain as soon as it has. Cheap enough to call every frame.
+   */
+  regroundAuto(): void {
+    this.host?.regroundAuto();
+  }
+
   /** The NPC with `id`, or null when the script has not placed one. */
   npc(id: string) {
     return this.host?.npc(id) ?? null;

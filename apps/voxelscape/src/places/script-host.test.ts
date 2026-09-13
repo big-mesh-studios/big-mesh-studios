@@ -588,6 +588,43 @@ describe("a script host", () => {
     host.dispose();
   });
 
+  it("settles an ungrounded NPC and prop onto the ground once it changes, but leaves an explicit height alone", async () => {
+    let height = -Infinity; // the column has not streamed in yet
+    const host = new ScriptHost({
+      seed: 5,
+      getNow: clock,
+      getHeightAt: () => height,
+    });
+    await host.loadProject(
+      {
+        [MAIN_SCRIPT_FILE]: `
+        import * as engine from "voxelscape";
+        var started = false;
+        engine.onTick(function () {
+          if (!started) {
+            started = true;
+            engine.dispatch("npc", { id: "cube", x: 0, z: 0 });
+            engine.dispatch("prop", { id: "chair", model: "chair.zip", x: 1, z: 1 });
+            engine.dispatch("npc", { id: "dad", x: 2, z: 2, y: 3 });
+          }
+        });
+        `,
+      },
+      MAIN_SCRIPT_FILE,
+    );
+    expect(host.npc("cube")).toMatchObject({ y: -Infinity });
+    expect(host.prop("chair")).toMatchObject({ y: -Infinity });
+
+    height = 7; // the terrain has since landed
+    host.regroundAuto();
+
+    expect(host.npc("cube")).toMatchObject({ y: 7 });
+    expect(host.prop("chair")).toMatchObject({ y: 7 });
+    // An explicit height came from the script, not an estimate, so it stays.
+    expect(host.npc("dad")).toMatchObject({ y: 3 });
+    host.dispose();
+  });
+
   it("turns an NPC to the heading the script gives it", async () => {
     const { host } = await fresh();
     await loadProject(

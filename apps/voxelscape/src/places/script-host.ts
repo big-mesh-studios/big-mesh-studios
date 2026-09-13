@@ -320,6 +320,14 @@ export class ScriptHost {
   private readonly sent = new Set<string>();
   private readonly npcs = new Map<string, ScriptedNpc>();
   private readonly props = new Map<string, ScriptedProp>();
+  /**
+   * Ids of NPCs and props the script placed with no explicit height, so their
+   * `y` is re-read from `getHeightAt` every step instead of fixed at the
+   * moment they were placed — the column under them may not have streamed in
+   * yet then, and settles on its own once it has.
+   */
+  private readonly groundedNpcs = new Set<string>();
+  private readonly groundedProps = new Set<string>();
   private readonly fires = new Map<string, ScriptedFire>();
   private readonly explosions = new Map<string, ScriptedExplosion>();
   private readonly zones = new Map<string, ScriptZone>();
@@ -405,11 +413,34 @@ export class ScriptHost {
       return;
     }
     this.npcs.set(id, { ...npc, x, y, z, yaw });
+    this.groundedNpcs.delete(id);
   }
 
   /** The NPC with `id`, or null when the script has not placed one. */
   npc(id: string): ScriptedNpc | null {
     return this.npcs.get(id) ?? null;
+  }
+
+  /**
+   * Re-reads `y` from `getHeightAt` for every NPC and prop the script placed
+   * with no explicit height. Meant to be called every frame: a figure placed
+   * on a column whose terrain had not streamed in yet is grounded against an
+   * estimate until it has, and this is what lets it settle onto the real
+   * ground the moment it does, with nothing waiting on that landing first.
+   */
+  regroundAuto(): void {
+    for (const id of this.groundedNpcs) {
+      const npc = this.npcs.get(id);
+      if (npc !== undefined) {
+        this.npcs.set(id, { ...npc, y: this.getHeightAt(npc.x, npc.z) });
+      }
+    }
+    for (const id of this.groundedProps) {
+      const prop = this.props.get(id);
+      if (prop !== undefined) {
+        this.props.set(id, { ...prop, y: this.getHeightAt(prop.x, prop.z) });
+      }
+    }
   }
 
   /**
@@ -802,6 +833,11 @@ export class ScriptHost {
           yaw: heading,
           ...(motion !== undefined ? { motion } : {}),
         });
+        if (y === undefined) {
+          this.groundedNpcs.add(id);
+        } else {
+          this.groundedNpcs.delete(id);
+        }
         if (live === true) {
           this.onEntityMove?.({ id, x, y: grounded, z, yaw: heading });
         }
@@ -809,11 +845,13 @@ export class ScriptHost {
       }
       case "npc-remove":
         this.npcs.delete(effect.payload.id);
+        this.groundedNpcs.delete(effect.payload.id);
         break;
       case "npc-die": {
         const npc = this.npcs.get(effect.payload.id);
         if (npc !== undefined) {
           this.npcs.set(npc.id, { ...npc, dyingAt: this.getNow() });
+          this.groundedNpcs.delete(effect.payload.id);
         }
         break;
       }
@@ -846,10 +884,16 @@ export class ScriptHost {
           ...(motion !== undefined ? { motion } : {}),
           ...(conveyor !== undefined ? { conveyor } : {}),
         });
+        if (y === undefined) {
+          this.groundedProps.add(id);
+        } else {
+          this.groundedProps.delete(id);
+        }
         break;
       }
       case "prop-remove":
         this.props.delete(effect.payload.id);
+        this.groundedProps.delete(effect.payload.id);
         break;
       case "field": {
         const { id, kind, min, max, vx, vy, vz, speedScale, sink } =

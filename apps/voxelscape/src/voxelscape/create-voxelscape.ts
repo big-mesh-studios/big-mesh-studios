@@ -1337,7 +1337,10 @@ export const createVoxelscape = ({
   // itself starts: a script's first tick commonly places an NPC wearing one
   // of them immediately, and a figure not yet registered when that NPC is
   // created is a figure it never picks up, not one it grows into moments
-  // later.
+  // later. An NPC or prop the script grounds itself (no explicit height) may
+  // still land on a column whose terrain has not streamed in yet — that
+  // settles on its own once it has, rather than being waited for here (see
+  // `ScriptHost`'s own re-grounding).
   if (place !== undefined) {
     void loadPlaceModels(place.models ?? {})
       .then(() => scriptConsoleFor())
@@ -2204,6 +2207,7 @@ export const createVoxelscape = ({
       multiplayer.tick(dt);
       probe.end(Phase.multiplayer);
       probe.begin(Phase.figures);
+      scriptConsole?.regroundAuto();
       for (const npc of scriptConsole?.npcs() ?? []) {
         resolveNpcModel(npc.modelUri);
       }
