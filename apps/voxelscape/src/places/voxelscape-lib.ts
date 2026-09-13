@@ -1,22 +1,27 @@
-// The hand-written source of the "voxelscape" standard library a place script
-// may import (see bundle.ts's recognition of it as a reserved specifier,
-// alongside "engine" — ADR 0050). Ordinary guest-side TypeScript, compiled
-// through the same `transpileFile` every project file goes through and
-// itself importing "engine" the normal way, so nothing here is a new sandbox
-// global and nothing changes the trust boundary the interpreter's isolation
-// already draws (ADR 0027). Every function just builds the same payload a
-// hand-written script already builds and calls `engine.dispatch` itself; see
-// `effects.ts`'s "npc"/"npc-remove"/"npc-die"/"prop"/"prop-remove" payloads,
-// which this mirrors field for field — every one of them a single
-// fully-named object, which is why every function here takes one too.
+// The hand-written source of the `"voxelscape"` module a place script
+// imports (see bundle.ts's recognition of it as a reserved specifier).
+// Re-exports the sandbox's whole host surface — `dispatch`/`onTick`/`log`/
+// `heightAt`/etc. — through its own internal-only import, alongside
+// `createNpc`/`createProp`, so a script reaches everything through one
+// dependency: `import * as engine from "voxelscape"; engine.dispatch(...);
+// engine.createNpc(...);`. Ordinary guest-side TypeScript, compiled through
+// the same `transpileFile` every project file goes through, so nothing here
+// is a new sandbox global and nothing changes the trust boundary the
+// interpreter's isolation already draws (ADR 0027). Every function just
+// builds the same payload a hand-written script already builds and calls
+// `dispatch` itself; see `effects.ts`'s
+// "npc"/"npc-remove"/"npc-die"/"prop"/"prop-remove" payloads, which this
+// mirrors field for field — every one of them a single fully-named object,
+// which is why every function here takes one too.
 //
 // Plain factory functions, not classes — `createNpc`/`createProp` hand back
 // a plain object closing over its own placement, never something a script
 // constructs with `new`. `__models` is generated and appended after this
-// source by bundle.ts's \`voxelscapeModuleSource\`, one entry per model this
+// source by bundle.ts's `voxelscapeModuleSource`, one entry per model this
 // place attaches.
 export const VOXELSCAPE_LIB_SOURCE = `
-import * as engine from "engine";
+import * as host from "engine-host";
+export * from "engine-host";
 
 function resolveModel(modelName) {
   var model = __models[modelName];
@@ -61,7 +66,7 @@ function place(model, options, announce) {
 export function createNpc(options) {
   var model = resolveModel(options.model);
   var npc = place(model, options, function (state, live) {
-    engine.dispatch("npc", {
+    host.dispatch("npc", {
       id: state.id,
       x: state.x,
       z: state.z,
@@ -75,11 +80,11 @@ export function createNpc(options) {
   });
   /** Removes the NPC outright — no death fall, just gone, like \`.remove()\` on a prop. */
   npc.remove = function () {
-    engine.dispatch("npc-remove", { id: npc.id });
+    host.dispatch("npc-remove", { id: npc.id });
   };
   /** Plays a death fall in place of an outright removal, then forgets it the same way. */
   npc.die = function () {
-    engine.dispatch("npc-die", { id: npc.id });
+    host.dispatch("npc-die", { id: npc.id });
   };
   return npc;
 }
@@ -88,7 +93,7 @@ export function createNpc(options) {
 export function createProp(options) {
   var model = resolveModel(options.model);
   var prop = place(model, options, function (state) {
-    engine.dispatch("prop", {
+    host.dispatch("prop", {
       id: state.id,
       model: model.file,
       x: state.x,
@@ -100,10 +105,11 @@ export function createProp(options) {
       solid: options.solid,
       hazard: options.hazard,
       conveyor: options.conveyor,
+      motion: options.motion,
     });
   });
   prop.remove = function () {
-    engine.dispatch("prop-remove", { id: prop.id });
+    host.dispatch("prop-remove", { id: prop.id });
   };
   return prop;
 }

@@ -88,7 +88,7 @@ const run = async (): Promise<{
     },
     onNarrate: (_player, line) => narrations.push(line.text),
   });
-  await host.loadProject(project.scripts, entry);
+  await host.loadProject(project.scripts, entry, project.models);
   return { host, endings, narrations, toasts };
 };
 
@@ -134,7 +134,7 @@ const runLts = async (knownEndings: string[] = []) => {
     onPlayerSpeed: (_player, multiplier) => speeds.push(multiplier),
     endings: () => knownEndings,
   });
-  await host.loadProject(project.scripts, entry);
+  await host.loadProject(project.scripts, entry, project.models);
   return { host, endings, narrations, toasts, jumps, speeds };
 };
 
@@ -750,7 +750,7 @@ const runDp = async () => {
     onKill: (_player, cause) => kills.push(cause),
     onVoid: (y) => voids.push(y),
   });
-  await host.loadProject(project.scripts, entry);
+  await host.loadProject(project.scripts, entry, project.models);
   return { host, endings, narrations, checkpoints, kills, voids };
 };
 

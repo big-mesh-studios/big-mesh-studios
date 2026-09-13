@@ -167,7 +167,7 @@ describe("a script host", () => {
   it("loads a project whose script places an npc wearing an attached model", async () => {
     const { host } = await fresh();
     const script = `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       import { createNpc } from "voxelscape";
       engine.onTick(function (clockMs: number, eventsJson: string): void {
         createNpc({ model: "zombie", id: "zombie", x: 0, z: 0 });
@@ -183,7 +183,7 @@ describe("a script host", () => {
   it("constructs, moves, and removes an npc from a project file", async () => {
     const { host } = await fresh();
     const script = `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       import { createNpc, type NpcHandle, type ModelsByName } from "voxelscape";
       let npc: NpcHandle<ModelsByName["zombie"]> | undefined;
       engine.onTick(function (clockMs: number, eventsJson: string): void {
@@ -224,7 +224,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
@@ -264,7 +264,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
@@ -292,7 +292,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
@@ -329,7 +329,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       engine.onTick(function (clockMs, eventsJson) {
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
@@ -352,7 +352,7 @@ describe("a script host", () => {
     await loadProject(
       again.host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       engine.onTick(function (clockMs, eventsJson) {
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
@@ -374,7 +374,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
@@ -411,7 +411,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
@@ -461,7 +461,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       var retract = false;
       engine.onTick(function (clockMs, eventsJson) {
@@ -494,7 +494,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function () {
         if (!started) {
@@ -517,7 +517,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       engine.onTick(function (clockMs, eventsJson) {
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
@@ -544,7 +544,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function () {
         if (!started) {
@@ -565,7 +565,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function () {
         if (!started) {
@@ -584,7 +584,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function () {
         if (!started) {
@@ -605,7 +605,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function (clockMs, eventsJson) {
         if (!started) {
@@ -695,7 +695,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       engine.onTick(function () {
         engine.dispatch("npc", { id: "ghost" });
         engine.dispatch("npc", "not json");
@@ -712,7 +712,7 @@ describe("a script host", () => {
     const { host, notices } = await fresh();
     await loadProject(
       host,
-      `import * as engine from "engine"; engine.onTick(function () { missing(); });`,
+      `import * as engine from "voxelscape"; engine.onTick(function () { missing(); });`,
     );
     await host.talk("sable", "");
     expect(host.lastError).toMatch(/ReferenceError/);
@@ -725,7 +725,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function () {
         if (!started) {
@@ -746,7 +746,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function () {
         if (!started) {
@@ -773,7 +773,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var seen = JSON.parse(engine.endings());
       engine.onTick(function () {
         engine.dispatch("toast", { player: "", text: seen.join(",") });
@@ -789,7 +789,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function () {
         if (!started) {
@@ -817,7 +817,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function () {
         if (!started) {
@@ -838,7 +838,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       engine.onTick(function (clockMs, eventsJson) {
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
@@ -866,7 +866,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function () {
         if (!started) {
@@ -897,7 +897,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function () {
         if (!started) {
@@ -920,7 +920,7 @@ describe("a script host", () => {
     await loadProject(
       host,
       `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       var started = false;
       engine.onTick(function () {
         if (!started) {

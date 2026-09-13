@@ -11,6 +11,12 @@ import GASA4_SCRIPT from "./demo-scripts/gasa4.ts?raw";
 import LATE_TO_SCHOOL_SCRIPT from "./demo-scripts/late-to-school.ts?raw";
 import ZOMBIES_SCRIPT from "./demo-scripts/zombies.ts?raw";
 import DONT_POOP_SCRIPT from "./demo-scripts/dont-poop-yourself-at-school.ts?raw";
+import {
+  DONT_POOP_MODELS,
+  GASA4_MODELS,
+  LATE_TO_SCHOOL_MODELS,
+  ZOMBIES_MODELS,
+} from "./demo-scripts/model-lists";
 
 /** One built-in demo: the world it names, its scripts, and the models they wear. */
 export interface BuiltinDemo {
@@ -35,108 +41,12 @@ const GASA4: BuiltinDemo = {
     seed: 4_004,
     // The player wakes in the bedroom.
     spawn: [-14, 0, -12],
-    models: [
-      "bed.zip",
-      "bathtub.zip",
-      "sofa.zip",
-      "tv.zip",
-      "table.zip",
-      "counter.zip",
-      "stove.zip",
-      "fridge.zip",
-      "bench.zip",
-      "manhole.zip",
-      "trash.zip",
-      "register.zip",
-      "shelf.zip",
-      "vending.zip",
-      "chips.zip",
-      "orange.zip",
-      "colgate.zip",
-      "cola.zip",
-      "egg.zip",
-      "friedegg.zip",
-      "juice.zip",
-      "milk.zip",
-      "tix.zip",
-      "robux.zip",
-      "plate.zip",
-    ],
+    models: GASA4_MODELS,
   },
   scripts: {
     [MAIN_SCRIPT_FILE]: GASA4_SCRIPT,
   },
 };
-
-/**
- * The models the "Late to School" demo wears: its neighborhood characters, the
- * fixtures in its houses, school, and shops, and the items its game hands out.
- */
-const LATE_TO_SCHOOL_MODELS = [
-  "npc-laugh.zip",
-  "npc-alex.zip",
-  "npc-james.zip",
-  "npc-bully.zip",
-  "npc-nerd.zip",
-  "npc-homeless.zip",
-  "npc-brit.zip",
-  "npc-brett.zip",
-  "npc-brad.zip",
-  "npc-sleepa.zip",
-  "npc-champ.zip",
-  "npc-teacher.zip",
-  "npc-lemonade.zip",
-  "npc-pothead.zip",
-  "npc-santa.zip",
-  "npc-obby.zip",
-  "npc-littlebro.zip",
-  "npc-anomaly.zip",
-  "bed.zip",
-  "phone.zip",
-  "mirror.zip",
-  "bookshelf.zip",
-  "counter.zip",
-  "fridge.zip",
-  "tv.zip",
-  "sofa.zip",
-  "door.zip",
-  "mailbox.zip",
-  "lemonade-stand.zip",
-  "bus-stop.zip",
-  "flower.zip",
-  "gate.zip",
-  "shelf.zip",
-  "vending.zip",
-  "slushie-machine.zip",
-  "arcade.zip",
-  "boarded-machine.zip",
-  "dumpster.zip",
-  "bench.zip",
-  "desk.zip",
-  "chair.zip",
-  "locker.zip",
-  "cafeteria-table.zip",
-  "plate.zip",
-  "poster.zip",
-  "plush.zip",
-  "banana.zip",
-  "chips.zip",
-  "key.zip",
-  "matches.zip",
-  "slushie.zip",
-  "pizza.zip",
-  "hotdog.zip",
-  "salad.zip",
-  "taco.zip",
-  "historybook.zip",
-  "roaster.zip",
-  "hat.zip",
-  "lemonade.zip",
-  "foodbag.zip",
-  "bean.zip",
-  "cola.zip",
-  "tix.zip",
-];
 
 /**
  * The "Late to School" demo: a flat block of four houses, a school, a corner
@@ -175,28 +85,12 @@ const ZOMBIES: BuiltinDemo = {
     seed: 90_210,
     spawn: [0, 0, 0],
     mode: "multi",
-    models: ["zombie.zip"],
+    models: ZOMBIES_MODELS,
   },
   scripts: {
     [MAIN_SCRIPT_FILE]: ZOMBIES_SCRIPT,
   },
 };
-
-/**
- * The models the "Don't Poop Yourself at School" demo wears: lobby pickup,
- * hazard props, the four school staff, and the platform models used throughout
- * the nine-section course.
- */
-const DONT_POOP_MODELS = [
-  "soap.zip",
-  "wet-floor.zip",
-  "platform.zip",
-  "toilet-roll.zip",
-  "npc-sable.zip",
-  "npc-bully.zip",
-  "npc-brad.zip",
-  "npc-teacher.zip",
-];
 
 /**
  * The "Don't Poop Yourself at School" demo: a faithful port of the Roblox

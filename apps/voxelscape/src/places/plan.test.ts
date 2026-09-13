@@ -124,7 +124,7 @@ describe("parseStructurePlan", () => {
 });
 
 const ENTRY = `
-import * as engine from "engine";
+import * as engine from "voxelscape";
 engine.onTick(function (): void {});
 engine.onPlan(function (contextJson: string): string {
   const context = JSON.parse(contextJson) as { seed: number };
@@ -150,7 +150,7 @@ describe("compilePlacePlan", () => {
   it("returns no shapes for a script that registers no onPlan handler", async () => {
     const plan = await compilePlacePlan({
       files: {
-        "main.ts": `import * as engine from "engine"; engine.onTick(function (): void {});`,
+        "main.ts": `import * as engine from "voxelscape"; engine.onTick(function (): void {});`,
       },
       entry: "main.ts",
       seed: 1,
@@ -164,7 +164,7 @@ describe("compilePlacePlan", () => {
       compilePlacePlan({
         files: {
           "main.ts": `
-            import * as engine from "engine";
+            import * as engine from "voxelscape";
             engine.onTick(function (): void {});
             engine.onPlan(function (): string {
               return JSON.stringify([{ kind: "box", min: [0, 0, 0], max: [0, 0, 0], id: -1 }]);

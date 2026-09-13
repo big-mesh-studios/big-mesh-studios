@@ -108,7 +108,7 @@ describe("a script console", () => {
     expect(script.npcs()).toHaveLength(2);
     await loadProject(
       script,
-      `import * as engine from "engine";
+      `import * as engine from "voxelscape";
       engine.onTick(function () {
         engine.dispatch("npc", { id: "ghost", x: 1, z: 2 });
       });`,
@@ -122,7 +122,7 @@ describe("a script console", () => {
     const { script } = scriptConsole();
     const line = await loadProject(
       script,
-      `import * as engine from "engine"; engine.onTick(function () {});`,
+      `import * as engine from "voxelscape"; engine.onTick(function () {});`,
       1,
     );
     expect(line).toContain("no NPCs placed yet");
@@ -132,7 +132,7 @@ describe("a script console", () => {
   it("threads a place's models through to a script's model import, and replays them on restart", async () => {
     const { script } = scriptConsole();
     const source = `
-      import * as engine from "engine";
+      import * as engine from "voxelscape";
       import { createNpc } from "voxelscape";
       engine.onTick(function (): void {
         createNpc({ model: "zombie", id: "zombie", x: 0, z: 0 });

@@ -1,7 +1,19 @@
 // The "Get a Snack at 4 AM" demo's place script. This file is the source a
 // creator would write: it is imported with `?raw` and handed to the sandbox as
-// text, never run as part of the world's own bundle.
-import * as engine from "engine";
+// text, never run as part of the world's own bundle. A data table driving
+// many props of different models (`FURNITURE`, `PICKUPS`, `ITEM_MODELS`)
+// types its model column as the whole `keyof ModelsByName` union rather than
+// one specific literal, since which model a given row names is itself the
+// data.
+import {
+  blocks,
+  createNpc,
+  createProp,
+  dispatch,
+  onPlan,
+  onTick,
+  type ModelsByName,
+} from "voxelscape";
 
 /** One fact the world hands the script, as the script reads it back. */
 interface Event {
@@ -69,7 +81,7 @@ const ROOMS: Array<[string, number, number, number, number]> = [
 
 /** The house and store: floor, walls, doorways, and a wood roof. */
 function walls(): unknown[] {
-  const b = engine.blocks;
+  const b = blocks;
   const w = (
     id: number,
     minX: number,
@@ -105,8 +117,8 @@ function walls(): unknown[] {
   ];
 }
 
-engine.onPlan(function plan(): string {
-  const b = engine.blocks;
+onPlan(function plan(): string {
+  const b = blocks;
   const shapes: unknown[] = [
     { kind: "box", min: [-80, 0, -80], max: [80, GROUND - 1, 80], id: b.dirt },
     {
@@ -156,20 +168,20 @@ engine.onPlan(function plan(): string {
 });
 
 function say(text: string): void {
-  engine.dispatch("toast", { player: "", text });
+  dispatch("toast", { player: "", text });
 }
 
 function narrate(name: string, text: string): void {
-  engine.dispatch("narrate", { player: "", name, text });
+  dispatch("narrate", { player: "", name, text });
 }
 
 function hold(item: string): void {
-  engine.dispatch("item-hold", { player: "", item });
+  dispatch("item-hold", { player: "", item });
   held = item;
 }
 
 function give(item: string, text: string): void {
-  engine.dispatch("item-give", { player: "", item, count: 1 });
+  dispatch("item-give", { player: "", item, count: 1 });
   hold(item);
   if (text !== "") {
     say(text);
@@ -177,7 +189,7 @@ function give(item: string, text: string): void {
 }
 
 function ending(title: string, text: string): void {
-  engine.dispatch("ending", { player: "", title, text });
+  dispatch("ending", { player: "", title, text });
 }
 
 function room(): string {
@@ -201,15 +213,15 @@ const ITEM_NAMES: Record<string, string> = {
 };
 
 /** The rm-stacker model each item wears when it rests somewhere. */
-const ITEM_MODELS: Record<string, string> = {
-  chips: "chips.zip",
-  orange: "orange.zip",
-  colgate: "colgate.zip",
-  cola: "cola.zip",
-  egg: "egg.zip",
-  friedegg: "friedegg.zip",
-  juice: "juice.zip",
-  milk: "milk.zip",
+const ITEM_MODELS: Record<string, keyof ModelsByName> = {
+  chips: "chips",
+  orange: "orange",
+  colgate: "colgate",
+  cola: "cola",
+  egg: "egg",
+  friedegg: "friedegg",
+  juice: "juice",
+  milk: "milk",
 };
 
 /** What the store sells, and for how much cash. */
@@ -287,73 +299,77 @@ function plateResult(a: string, b: string): [string, string] {
 }
 
 /** The furniture and fixtures: solid props the player walks around and onto. */
-const FURNITURE: Array<[string, string, number, number, number, string]> = [
-  ["bed", "bed.zip", -22, -14, 0.5, "Bed"],
-  ["bathtub", "bathtub.zip", -22, 14, 1, "Bathtub"],
-  ["sofa", "sofa.zip", 20, -20, 1.2, "Sofa"],
-  ["tv", "tv.zip", 26, -20, 1.2, "TV"],
-  ["living-table", "table.zip", 20, -8, 1, "Table"],
-  ["counter", "counter.zip", 20, 6, 1.5, "Counter"],
-  ["stove", "stove.zip", 12, 20, 1.5, "Stove"],
-  ["fridge", "fridge.zip", 26, 20, 3, "Fridge"],
-  ["kitchen-table", "table.zip", 8, 10, 1, "Table"],
-  ["bench", "bench.zip", 44, 12, 0.8, "Bench"],
-  ["vending", "vending.zip", 48, -12, 3.5, "Vending Machine"],
-  ["manhole", "manhole.zip", 30, -12, 0.2, "Manhole"],
-  ["trash", "trash.zip", 46, -8, 1.2, "Trash Can"],
-  ["register", "register.zip", 62, 2, 1, "Register"],
-  ["store-counter", "counter.zip", 60, 2, 1.5, "Counter"],
-  ["shelf-1", "shelf.zip", 68, -6, 3, "Shelf"],
-  ["shelf-2", "shelf.zip", 68, 4, 3, "Shelf"],
+const FURNITURE: Array<
+  [string, keyof ModelsByName, number, number, number, string]
+> = [
+  ["bed", "bed", -22, -14, 0.5, "Bed"],
+  ["bathtub", "bathtub", -22, 14, 1, "Bathtub"],
+  ["sofa", "sofa", 20, -20, 1.2, "Sofa"],
+  ["tv", "tv", 26, -20, 1.2, "TV"],
+  ["living-table", "table", 20, -8, 1, "Table"],
+  ["counter", "counter", 20, 6, 1.5, "Counter"],
+  ["stove", "stove", 12, 20, 1.5, "Stove"],
+  ["fridge", "fridge", 26, 20, 3, "Fridge"],
+  ["kitchen-table", "table", 8, 10, 1, "Table"],
+  ["bench", "bench", 44, 12, 0.8, "Bench"],
+  ["vending", "vending", 48, -12, 3.5, "Vending Machine"],
+  ["manhole", "manhole", 30, -12, 0.2, "Manhole"],
+  ["trash", "trash", 46, -8, 1.2, "Trash Can"],
+  ["register", "register", 62, 2, 1, "Register"],
+  ["store-counter", "counter", 60, 2, 1.5, "Counter"],
+  ["shelf-1", "shelf", 68, -6, 3, "Shelf"],
+  ["shelf-2", "shelf", 68, 4, 3, "Shelf"],
 ];
 
 /** Small things lying about: pickups and the plates, none of them solid. */
-const PICKUPS: Array<[string, string, number, number, number, number]> = [
-  ["chips", "chips.zip", 20, 6, 63.5, 0.6],
-  ["orange", "orange.zip", 8, 10, 63, 0.4],
-  ["colgate", "colgate.zip", -22, 8, FLOOR, 0.6],
-  ["cola", "cola.zip", 24, 18, FLOOR, 0.7],
-  ["plate1", "plate.zip", 19, 6, 63.5, 0.15],
-  ["plate2", "plate.zip", 21, 6, 63.5, 0.15],
-  ["buy-cola", "cola.zip", 66, -6, FLOOR, 0.7],
-  ["buy-egg", "egg.zip", 66, -4, FLOOR, 0.4],
-  ["buy-juice", "juice.zip", 66, -2, FLOOR, 0.7],
-  ["buy-milk", "milk.zip", 66, 0, FLOOR, 0.7],
+const PICKUPS: Array<
+  [string, keyof ModelsByName, number, number, number, number]
+> = [
+  ["chips", "chips", 20, 6, 63.5, 0.6],
+  ["orange", "orange", 8, 10, 63, 0.4],
+  ["colgate", "colgate", -22, 8, FLOOR, 0.6],
+  ["cola", "cola", 24, 18, FLOOR, 0.7],
+  ["plate1", "plate", 19, 6, 63.5, 0.15],
+  ["plate2", "plate", 21, 6, 63.5, 0.15],
+  ["buy-cola", "cola", 66, -6, FLOOR, 0.7],
+  ["buy-egg", "egg", 66, -4, FLOOR, 0.4],
+  ["buy-juice", "juice", 66, -2, FLOOR, 0.7],
+  ["buy-milk", "milk", 66, 0, FLOOR, 0.7],
   // cash: Tix are a dollar, Robux five. Enough here to afford an egg and a
   // full breakfast, with the hundred-cash milestone reachable by picking up all.
-  ["tix-1", "tix.zip", -24, -20, FLOOR, 0.3],
-  ["tix-2", "tix.zip", -20, -20, FLOOR, 0.3],
-  ["tix-3", "tix.zip", -2, -2, FLOOR, 0.3],
-  ["tix-4", "tix.zip", 2, -2, FLOOR, 0.3],
-  ["tix-5", "tix.zip", -2, 2, FLOOR, 0.3],
-  ["tix-6", "tix.zip", 2, 2, FLOOR, 0.3],
-  ["tix-7", "tix.zip", -24, 4, FLOOR, 0.3],
-  ["tix-8", "tix.zip", -20, 4, FLOOR, 0.3],
-  ["tix-9", "tix.zip", -16, 4, FLOOR, 0.3],
-  ["tix-10", "tix.zip", -24, 8, FLOOR, 0.3],
-  ["tix-11", "tix.zip", 4, -20, FLOOR, 0.3],
-  ["tix-12", "tix.zip", 8, -20, FLOOR, 0.3],
-  ["tix-13", "tix.zip", 12, -20, FLOOR, 0.3],
-  ["tix-14", "tix.zip", 16, -20, FLOOR, 0.3],
-  ["robux-1", "robux.zip", -8, 20, FLOOR, 0.3],
-  ["robux-2", "robux.zip", -12, 20, FLOOR, 0.3],
-  ["robux-3", "robux.zip", 4, -4, FLOOR, 0.3],
-  ["robux-4", "robux.zip", 8, -4, FLOOR, 0.3],
-  ["robux-5", "robux.zip", 12, -4, FLOOR, 0.3],
-  ["robux-6", "robux.zip", 16, -4, FLOOR, 0.3],
-  ["robux-7", "robux.zip", 4, 4, FLOOR, 0.3],
-  ["robux-8", "robux.zip", 8, 4, FLOOR, 0.3],
-  ["robux-9", "robux.zip", 12, 4, FLOOR, 0.3],
-  ["robux-10", "robux.zip", 16, 4, FLOOR, 0.3],
+  ["tix-1", "tix", -24, -20, FLOOR, 0.3],
+  ["tix-2", "tix", -20, -20, FLOOR, 0.3],
+  ["tix-3", "tix", -2, -2, FLOOR, 0.3],
+  ["tix-4", "tix", 2, -2, FLOOR, 0.3],
+  ["tix-5", "tix", -2, 2, FLOOR, 0.3],
+  ["tix-6", "tix", 2, 2, FLOOR, 0.3],
+  ["tix-7", "tix", -24, 4, FLOOR, 0.3],
+  ["tix-8", "tix", -20, 4, FLOOR, 0.3],
+  ["tix-9", "tix", -16, 4, FLOOR, 0.3],
+  ["tix-10", "tix", -24, 8, FLOOR, 0.3],
+  ["tix-11", "tix", 4, -20, FLOOR, 0.3],
+  ["tix-12", "tix", 8, -20, FLOOR, 0.3],
+  ["tix-13", "tix", 12, -20, FLOOR, 0.3],
+  ["tix-14", "tix", 16, -20, FLOOR, 0.3],
+  ["robux-1", "robux", -8, 20, FLOOR, 0.3],
+  ["robux-2", "robux", -12, 20, FLOOR, 0.3],
+  ["robux-3", "robux", 4, -4, FLOOR, 0.3],
+  ["robux-4", "robux", 8, -4, FLOOR, 0.3],
+  ["robux-5", "robux", 12, -4, FLOOR, 0.3],
+  ["robux-6", "robux", 16, -4, FLOOR, 0.3],
+  ["robux-7", "robux", 4, 4, FLOOR, 0.3],
+  ["robux-8", "robux", 8, 4, FLOOR, 0.3],
+  ["robux-9", "robux", 12, 4, FLOOR, 0.3],
+  ["robux-10", "robux", 16, 4, FLOOR, 0.3],
 ];
 
 function open(): void {
-  engine.dispatch("time", { seconds: 900, speed: 0 });
+  dispatch("time", { seconds: 900, speed: 0 });
   for (const [id, name] of Object.entries(ITEM_NAMES)) {
-    engine.dispatch("item-define", { id, name, sprite: "", stackable: true });
+    dispatch("item-define", { id, name, sprite: "", stackable: true });
   }
   for (const [id, minX, minZ, maxX, maxZ] of ROOMS) {
-    engine.dispatch("zone", {
+    dispatch("zone", {
       id,
       name: id,
       min: [minX, FLOOR, minZ],
@@ -363,7 +379,7 @@ function open(): void {
   for (const [id, model, x, z, height, name] of FURNITURE) {
     // Every fixture stands on the floor: grounded by `heightAt` it would land
     // on the roof once the house is built, which is what a restart showed.
-    engine.dispatch("prop", {
+    createProp({
       id,
       model,
       x,
@@ -375,7 +391,7 @@ function open(): void {
     });
   }
   for (const [id, model, x, z, y, height] of PICKUPS) {
-    engine.dispatch("prop", {
+    createProp({
       id,
       model,
       x,
@@ -386,27 +402,27 @@ function open(): void {
       solid: false,
     });
   }
-  engine.dispatch("npc", {
+  createNpc({
     id: DAD,
     x: -20,
     z: 16,
     y: FLOOR,
     name: "Father Figure",
-    model: "npc-sable.zip",
+    model: "npc-sable",
     yaw: Math.PI / 2,
   });
-  engine.dispatch("npc", {
+  createNpc({
     id: CASHIER,
     x: 63,
     z: 3,
     y: FLOOR,
     name: "Cashier",
-    model: "npc-rook.zip",
+    model: "npc-rook",
     yaw: Math.atan2(60 - 63, 2 - 3),
   });
   // The cashier works for a while, then takes an indefinite break outside. Once
   // he is gone the shelves are unattended and nothing counts as theft.
-  engine.dispatch("timer", { id: "cashier-break", afterMs: 120_000 });
+  dispatch("timer", { id: "cashier-break", afterMs: 120_000 });
 }
 
 function hintFor(zone: string): void {
@@ -435,7 +451,7 @@ function hintFor(zone: string): void {
 /** Picks a store good up; it is still unpaid until the cashier rings it up. */
 function takeStoreGood(entityId: string): void {
   const item = STORE_PICKUPS[entityId];
-  engine.dispatch("prop-remove", { id: entityId });
+  dispatch("prop-remove", { id: entityId });
   give(
     item,
     "You take the " + ITEM_NAMES[item] + ". Set it on the counter to pay.",
@@ -456,9 +472,9 @@ function useStoreCounter(item: string): void {
     say("There is already something on the counter.");
     return;
   }
-  engine.dispatch("item-take", { player: "", item, count: 1 });
+  dispatch("item-take", { player: "", item, count: 1 });
   hold("");
-  engine.dispatch("prop", {
+  createProp({
     id: "counter-item",
     model: ITEM_MODELS[item],
     x: 60,
@@ -482,15 +498,15 @@ function purchase(): void {
   }
   const price = STORE_PRICES[good];
   if (cash < price) {
-    engine.dispatch("dialog-close", { player: "", npcId: CASHIER });
+    dispatch("dialog-close", { player: "", npcId: CASHIER });
     say("You do not have enough cash for the " + ITEM_NAMES[good] + ".");
     return;
   }
   cash -= price;
   paid.add(good);
   counterItem = null;
-  engine.dispatch("prop-remove", { id: "counter-item" });
-  engine.dispatch("dialog-close", { player: "", npcId: CASHIER });
+  dispatch("prop-remove", { id: "counter-item" });
+  dispatch("dialog-close", { player: "", npcId: CASHIER });
   give(
     good,
     "The cashier takes your money. (-$" + price + ", $" + cash + " left)",
@@ -507,7 +523,7 @@ function usePlate(slot: number, item: string): void {
       narrate("You", "That plate is empty.");
       return;
     }
-    engine.dispatch("prop-remove", { id: propId });
+    dispatch("prop-remove", { id: propId });
     if (slot === 0) {
       plateA = null;
     } else {
@@ -520,9 +536,9 @@ function usePlate(slot: number, item: string): void {
     say("There is already " + ITEM_NAMES[current] + " on that plate.");
     return;
   }
-  engine.dispatch("item-take", { player: "", item, count: 1 });
+  dispatch("item-take", { player: "", item, count: 1 });
   hold("");
-  engine.dispatch("prop", {
+  createProp({
     id: propId,
     model: ITEM_MODELS[item],
     x,
@@ -551,9 +567,9 @@ function useStove(item: string): void {
       say("There is already something on the stove.");
       return;
     }
-    engine.dispatch("item-take", { player: "", item, count: 1 });
+    dispatch("item-take", { player: "", item, count: 1 });
     hold("");
-    engine.dispatch("prop", {
+    createProp({
       id: "stove-item",
       model: ITEM_MODELS[item],
       x: 12,
@@ -571,7 +587,7 @@ function useStove(item: string): void {
       "You set the " + ITEM_NAMES[item] + " on the stove and turn it on.",
     );
     // An egg cooks; anything else eventually catches and takes the kitchen.
-    engine.dispatch("timer", {
+    dispatch("timer", {
       id: item === "egg" ? "cook" : "fire",
       afterMs: item === "egg" ? 6_000 : 5_000,
     });
@@ -584,7 +600,7 @@ function useStove(item: string): void {
   }
   if (stoveItem !== null) {
     const picked = stoveCooked ? "friedegg" : stoveItem;
-    engine.dispatch("prop-remove", { id: "stove-item" });
+    dispatch("prop-remove", { id: "stove-item" });
     stoveItem = null;
     stoveCooked = false;
     give(picked, "You take the " + ITEM_NAMES[picked] + " off the stove.");
@@ -599,7 +615,7 @@ function cookEgg(): void {
     return;
   }
   stoveCooked = true;
-  engine.dispatch("prop", {
+  createProp({
     id: "stove-item",
     model: ITEM_MODELS.friedegg,
     x: 12,
@@ -617,12 +633,12 @@ function ignite(): void {
   if (!stoveOn || stoveItem === null || stoveItem === "egg") {
     return;
   }
-  engine.dispatch("prop-remove", { id: "stove-item" });
+  dispatch("prop-remove", { id: "stove-item" });
   stoveItem = null;
   stoveCooked = false;
   fireLit = true;
   for (const [index, [x, z, height]] of FIRE_SPOTS.entries()) {
-    engine.dispatch("fire", {
+    dispatch("fire", {
       id: "fire-" + index,
       x,
       z,
@@ -631,7 +647,7 @@ function ignite(): void {
     });
   }
   narrate("You", "The kitchen catches fire!");
-  engine.dispatch("timer", { id: "burn", afterMs: 8_000 });
+  dispatch("timer", { id: "burn", afterMs: 8_000 });
 }
 
 /** What the fire reaches depends on how far the player got. */
@@ -661,13 +677,13 @@ function burn(): void {
 /** The cashier leaves the counter for an indefinite break. */
 function cashierBreak(): void {
   cashierOnBreak = true;
-  engine.dispatch("npc", {
+  createNpc({
     id: CASHIER,
     x: 50,
     z: -14,
     y: FLOOR,
     name: "Cashier",
-    model: "npc-rook.zip",
+    model: "npc-rook",
     yaw: Math.PI / 2,
   });
   narrate(
@@ -680,18 +696,18 @@ function cashierBreak(): void {
 function wakeDad(): void {
   dadAwake = true;
   const [x, z, yaw] = DAD_SPOTS[room()] ?? DAD_SPOTS[KITCHEN];
-  engine.dispatch("npc", {
+  createNpc({
     id: DAD,
     x,
     z,
     y: FLOOR,
     name: "Father Figure",
-    model: "npc-sable.zip",
+    model: "npc-sable",
     yaw,
   });
   // The script cannot read the player's exact spot, but it can turn them to
   // face where Dad now stands — the cutscene's whole point.
-  engine.dispatch("player-face", { player: "", x, z });
+  dispatch("player-face", { player: "", x, z });
   narrate(
     "Father Figure",
     '"You woke me up. I could hear you eating those chips!"',
@@ -742,7 +758,7 @@ function used(entityId: string, item: string): void {
     return;
   }
   if (entityId === "chips") {
-    engine.dispatch("prop-remove", { id: "chips" });
+    dispatch("prop-remove", { id: "chips" });
     give("chips", "You pick up the bag of chips.");
     return;
   }
@@ -752,30 +768,30 @@ function used(entityId: string, item: string): void {
     return;
   }
   if (entityId === "colgate") {
-    engine.dispatch("prop-remove", { id: "colgate" });
+    dispatch("prop-remove", { id: "colgate" });
     give("colgate", "You take the colgate.");
     return;
   }
   if (entityId === "cola") {
-    engine.dispatch("prop-remove", { id: "cola" });
+    dispatch("prop-remove", { id: "cola" });
     give("cola", "You take the bloxy cola.");
     return;
   }
   if (entityId.startsWith("tix")) {
-    engine.dispatch("prop-remove", { id: entityId });
+    dispatch("prop-remove", { id: entityId });
     cash += 1;
     say("You pocket a Tix. ($" + cash + ")");
     return;
   }
   if (entityId.startsWith("robux")) {
-    engine.dispatch("prop-remove", { id: entityId });
+    dispatch("prop-remove", { id: entityId });
     cash += 5;
     say("You pocket some Robux. ($" + cash + ")");
     return;
   }
   if (entityId === "vending") {
     if (item === "cola") {
-      engine.dispatch("item-take", { player: "", item: "cola", count: 1 });
+      dispatch("item-take", { player: "", item: "cola", count: 1 });
       hold("");
       sodas += 1;
       say("The machine gurgles happily. (" + sodas + "/8)");
@@ -795,14 +811,14 @@ function used(entityId: string, item: string): void {
 
 /** Eats or drinks the held item, taking it out of the inventory and hand. */
 function consume(item: string, text: string): void {
-  engine.dispatch("item-take", { player: "", item, count: 1 });
+  dispatch("item-take", { player: "", item, count: 1 });
   hold("");
   narrate("You", text);
 }
 
 function usedItem(item: string): void {
   if (item === "chips") {
-    engine.dispatch("item-take", { player: "", item, count: 1 });
+    dispatch("item-take", { player: "", item, count: 1 });
     hold("");
     chipsEaten = true;
     const where = room();
@@ -844,7 +860,7 @@ function talked(npcId: string, player: string): void {
     return;
   }
   if (cashierOnBreak) {
-    engine.dispatch("dialog", {
+    dispatch("dialog", {
       player,
       npcId: CASHIER,
       prompt:
@@ -855,7 +871,7 @@ function talked(npcId: string, player: string): void {
   }
   if (counterItem !== null) {
     const price = STORE_PRICES[counterItem];
-    engine.dispatch("dialog", {
+    dispatch("dialog", {
       player,
       npcId: CASHIER,
       prompt:
@@ -868,7 +884,7 @@ function talked(npcId: string, player: string): void {
     });
     return;
   }
-  engine.dispatch("dialog", {
+  dispatch("dialog", {
     player,
     npcId: CASHIER,
     prompt: "welcome to 'a generic convenience store'. we are open 24 hours.",
@@ -884,14 +900,14 @@ function chose(npcId: string, option: number, player: string): void {
     if (option === 0) {
       purchase();
     } else {
-      engine.dispatch("dialog-close", { player, npcId: CASHIER });
+      dispatch("dialog-close", { player, npcId: CASHIER });
     }
     return;
   }
   if (option === 0) {
     say("The cashier points at the shelves on the right.");
   }
-  engine.dispatch("dialog-close", { player, npcId: CASHIER });
+  dispatch("dialog-close", { player, npcId: CASHIER });
 }
 
 /** Answers a timer the shared clock reached, by the id the script gave it. */
@@ -907,7 +923,7 @@ function timer(id: string): void {
   }
 }
 
-engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
+onTick(function tick(_clockMs: number, eventsJson: string): void {
   if (!started) {
     started = true;
     open();

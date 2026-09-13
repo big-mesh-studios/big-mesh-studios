@@ -4,19 +4,17 @@
 // deterministic — pinned compiler options, module ids in sorted-file order, and
 // a specifier table resolved once — so two peers that run the same files and
 // the same entry produce the same bundle and converge (ADR 0026). A file may
-// also import from `"engine"`, resolved not to another project file but to a
-// thin wrapper around the sandbox's own host object — `dispatch` takes the
-// plain object `engine.d.ts` types per tag and stringifies it there, so the
-// sandbox's own `dispatch` still only ever sees a string. A file may also
-// import from `"voxelscape"` (ADR 0050) — `createModel`, and the
-// `ScriptedNpc`/`ScriptedProp` classes built from it — resolved to one
-// synthetic module built from the place's own attached models plus the
-// standard library's hand-written source, included at most once regardless of
-// how many files import it. The entry module registers its hooks by calling
-// `engine.onTick`/`engine.onPlan` as it runs, so running it is the bundle's
-// whole handoff to the sandbox — nothing here reads its exports. Nothing here
-// touches the interpreter: it turns a project into the string a
-// `ScriptSandbox.load` can evaluate.
+// also import from `"voxelscape"` (ADR 0050) — `dispatch`/`onTick`/`onPlan`
+// and the rest of the sandbox's host surface, alongside `createNpc`/
+// `createProp` — resolved to one synthetic module built from the standard
+// library's hand-written source plus the place's own attached models,
+// included at most once regardless of how many files import it. That module
+// reaches the real sandbox host object through its own internal-only import,
+// never a specifier a project file's own source ever names. The entry module
+// registers its hooks by calling `engine.onTick`/`engine.onPlan` as it runs,
+// so running it is the bundle's whole handoff to the sandbox — nothing here
+// reads its exports. Nothing here touches the interpreter: it turns a
+// project into the string a `ScriptSandbox.load` can evaluate.
 import type * as TS from "typescript";
 import { loadTypeScript } from "@big-mesh-studios/code-mirror/typescript-cdn";
 import { modelDescriptorFor, modelSpecifierFor } from "./model-descriptor";
@@ -118,26 +116,31 @@ const importsOf = (ts: typeof TS, path: string, source: string): string[] => {
   return specifiers;
 };
 
-/** The virtual, never-a-real-file path the "voxelscape" synthetic module is kept under. */
+/** The virtual, never-a-real-file path the `"voxelscape"` synthetic module is kept under. */
 const VOXELSCAPE_MODULE_PATH = "\0voxelscape";
 
 /**
- * The project file `specifier` names, or `"engine"`/`VOXELSCAPE_MODULE_PATH`
- * for the two reserved specifiers every place script may otherwise-bare
- * import. Imports may only reach this place's own script files or those two:
- * a bare name, a `./`, or an extensionless or `.js`-ending name all resolve
- * against the flat set of project files, in a fixed order so a bundle never
- * depends on map iteration.
+ * The project file `specifier` names, or `VOXELSCAPE_MODULE_PATH` for the
+ * one reserved specifier every place script may otherwise-bare import,
+ * `"voxelscape"`. Imports may only reach this place's own script files or
+ * that one: a bare name, a `./`, or an extensionless or `.js`-ending name all
+ * resolve against the flat set of project files, in a fixed order so a
+ * bundle never depends on map iteration. `"engine-host"` is a second
+ * reserved name, resolved the same way `"voxelscape"` itself used to be
+ * called before this decision (a magic string `__require` bridges straight
+ * to the sandbox's host object) — the `"voxelscape"` synthetic module's own
+ * source is the only thing that ever imports it; no project file has a
+ * reason to.
  */
 const resolveSpecifier = (
   files: Set<string>,
   specifier: string,
 ): string | null => {
-  if (specifier === "engine") {
-    return "engine";
-  }
   if (specifier === "voxelscape") {
     return VOXELSCAPE_MODULE_PATH;
+  }
+  if (specifier === "engine-host") {
+    return "engine-host";
   }
   if (
     specifier.includes("://") ||
@@ -166,8 +169,8 @@ const resolveSpecifier = (
   return null;
 };
 
-/** A specifier resolved to another project file's module id, or to the sandbox's `"engine"` object. */
-type ResolvedSpecifier = number | "engine";
+/** A specifier resolved to another project file's module id, or to the sandbox's host object. */
+type ResolvedSpecifier = number | "engine-host";
 
 /** One module in the bundle: its compiled code, its name, and how its specifiers resolve. */
 interface BundledModule {
@@ -208,13 +211,12 @@ const __models = ${JSON.stringify(table)};
  * Compiles and bundles a place project into one global-scope script. Each
  * project file becomes a CommonJS module evaluated through `require`, with
  * ids assigned in sorted-file order so the output is byte-for-byte
- * reproducible. A file may also import from `"engine"`, resolved not to
- * another project file but to a thin wrapper around the sandbox's own host
- * object, or from `"voxelscape"`, resolved to one synthetic module built
- * from `models` (bytes already attached to the place, keyed by file name)
- * and included at most once. The bundle runs the entry module for its side
- * effects and nothing else; a script that never calls `engine.onTick` loads
- * without error but the sandbox steps nothing.
+ * reproducible. A file may also import from `"voxelscape"`, resolved to one
+ * synthetic module built from `models` (bytes already attached to the place,
+ * keyed by file name) and included at most once regardless of how many
+ * files import it. The bundle runs the entry module for its side effects and
+ * nothing else; a script that never calls `engine.onTick` loads without
+ * error but the sandbox steps nothing.
  */
 export const bundlePlaceProject = async (
   files: Record<string, string>,
@@ -267,10 +269,11 @@ export const bundlePlaceProject = async (
       const target = resolveSpecifier(fileSet, specifier);
       if (target === null) {
         throw new PlaceBundleError(
-          `${path} imports "${specifier}" — imports may only come from this place's own script files, "engine", or "voxelscape"`,
+          `${path} imports "${specifier}" — imports may only come from this place's own script files, or "voxelscape"`,
         );
       }
-      requires[specifier] = target === "engine" ? "engine" : ids.get(target)!;
+      requires[specifier] =
+        target === "engine-host" ? "engine-host" : ids.get(target)!;
     }
     modules.push({ path, code, requires });
   }
@@ -292,11 +295,11 @@ const outputFor = (modules: BundledModule[], entryId: number): string => {
   }));
   return `var __modules = ${JSON.stringify(table)};
 var __cache = [];
-var __engineModule;
+var __engineHost;
 function __require(id) {
-  if (id === "engine") {
-    if (__engineModule === undefined) {
-      __engineModule = {
+  if (id === "engine-host") {
+    if (__engineHost === undefined) {
+      __engineHost = {
         dispatch: function (tag, payload) { engine.dispatch(tag, JSON.stringify(payload)); },
         log: engine.log,
         now: engine.now,
@@ -310,7 +313,7 @@ function __require(id) {
         blocks: engine.blocks,
       };
     }
-    return __engineModule;
+    return __engineHost;
   }
   var cached = __cache[id];
   if (cached !== undefined) {

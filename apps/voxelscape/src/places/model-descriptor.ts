@@ -1,18 +1,19 @@
-// What `createModel("name")` (ADR 0050) resolves to: a model's bare name and
-// place file, and its real part and motion names, read once from the place's
-// own attached bytes. Shared by the bundler (bundle.ts), which builds the
-// table `createModel` reads from these, and the editor's generated types
-// (model-dts.ts), which describe the same models as a `ModelsByName`
-// interface.
+// What a place script's `createNpc`/`createProp` (ADR 0050) resolve a model
+// name to: its bare name and place file, and its real part and motion names,
+// read once from the place's own attached bytes. Shared by the bundler
+// (bundle.ts), which builds the table `createNpc`/`createProp` read these
+// descriptors from, and the editor's generated types (model-dts.ts), which
+// describe the same models as a `ModelsByName` interface.
 import { loadFigure } from "@big-mesh-studios/stacker/format";
 
 /**
  * A model's descriptor: its name and what it is made of.
  *
- * `name` is the bare name a script passes to `createModel` (e.g.
- * `"zombie"`) — `file` is the place's own file name for it (e.g.
- * `"zombie.zip"`), which is what the effects vocabulary's `model`/`modelUri`
- * fields still take, since they name a place file, not a model name.
+ * `name` is the bare name a script passes as `createNpc`/`createProp`'s
+ * `model` option (e.g. `"zombie"`) — `file` is the place's own file name for
+ * it (e.g. `"zombie.zip"`), which is what the effects vocabulary's
+ * `model`/`modelUri` fields still take, since they name a place file, not a
+ * model name.
  */
 export interface ModelDescriptor {
   name: string;
@@ -27,7 +28,7 @@ export function modelSpecifierFor(file: string): string | null {
 }
 
 /**
- * The descriptor `createModel(specifier)` evaluates to: its parts and
+ * The descriptor a model named `specifier` resolves to: its parts and
  * motions, named the way the figure itself names them, in the order it
  * lists them.
  */

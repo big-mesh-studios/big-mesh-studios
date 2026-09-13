@@ -1,7 +1,15 @@
 // The "Late to School" demo's place script. This file is the source a creator
 // would write: it is imported with `?raw` and handed to the sandbox as text,
 // never run as part of the world's own bundle.
-import * as engine from "engine";
+import {
+  blocks,
+  createNpc,
+  createProp,
+  dispatch,
+  endings,
+  onPlan,
+  onTick,
+} from "voxelscape";
 
 /** One fact the world hands the script, as the script reads it back. */
 interface Event {
@@ -141,20 +149,20 @@ const ITEM_NAMES: Record<string, string> = {
 const FOODS = ["chips", "pizza", "hotdog", "salad", "taco", "bean"];
 
 function say(text: string): void {
-  engine.dispatch("toast", { player: "", text });
+  dispatch("toast", { player: "", text });
 }
 
 function narrate(name: string, text: string): void {
-  engine.dispatch("narrate", { player: "", name, text });
+  dispatch("narrate", { player: "", name, text });
 }
 
 function hold(item: string): void {
-  engine.dispatch("item-hold", { player: "", item });
+  dispatch("item-hold", { player: "", item });
   held = item;
 }
 
 function give(item: string, text: string): void {
-  engine.dispatch("item-give", { player: "", item, count: 1 });
+  dispatch("item-give", { player: "", item, count: 1 });
   hold(item);
   if (text !== "") {
     say(text);
@@ -162,22 +170,22 @@ function give(item: string, text: string): void {
 }
 
 function take(item: string, count: number): void {
-  engine.dispatch("item-take", { player: "", item, count });
+  dispatch("item-take", { player: "", item, count });
   if (held === item) {
     hold("");
   }
 }
 
 function ending(title: string, text: string): void {
-  engine.dispatch("ending", { player: "", title, text });
+  dispatch("ending", { player: "", title, text });
 }
 
 function timer(id: string, afterMs: number): void {
-  engine.dispatch("timer", { id, afterMs });
+  dispatch("timer", { id, afterMs });
 }
 
 function dialog(npcId: string, prompt: string, options: string[]): void {
-  engine.dispatch("dialog", { player: "", npcId, prompt, options });
+  dispatch("dialog", { player: "", npcId, prompt, options });
 }
 
 /** One filled box in LOD-0 voxel coordinates, as the plan speaks it. */
@@ -205,7 +213,7 @@ function building(
   floorId: number,
   door: "north" | "south" | "east" | "west",
 ): unknown[] {
-  const b = engine.blocks;
+  const b = blocks;
   const roof = GROUND + 4;
   const w0 = GROUND + 1;
   const w1 = GROUND + 3;
@@ -231,8 +239,8 @@ function building(
   return shapes;
 }
 
-engine.onPlan(function plan(): string {
-  const b = engine.blocks;
+onPlan(function plan(): string {
+  const b = blocks;
   const shapes: unknown[] = [
     // A flat neighborhood over the noise, razed clear above it, reaching south
     // far enough to carry the corrupted dimension too.
@@ -277,49 +285,14 @@ engine.onPlan(function plan(): string {
   return JSON.stringify(shapes);
 });
 
-function prop(
-  id: string,
-  model: string,
-  x: number,
-  z: number,
-  height: number,
-  name: string,
-  solid: boolean,
-): void {
-  engine.dispatch("prop", { id, model, x, z, y: FLOOR, name, height, solid });
-}
-
-function pickup(
-  id: string,
-  model: string,
-  name: string,
-  x: number,
-  z: number,
-  y: number,
-  height: number,
-): void {
-  engine.dispatch("prop", { id, model, x, z, y, name, height, solid: false });
-}
-
-function npc(
-  id: string,
-  x: number,
-  z: number,
-  name: string,
-  model: string,
-  yaw: number,
-): void {
-  engine.dispatch("npc", { id, x, z, y: FLOOR, name, model, yaw });
-}
-
 /** Places the fixtures, pickups, NPCs, and zones the world opens with. */
 function open(): void {
-  engine.dispatch("time", { seconds: 60, speed: 0 });
+  dispatch("time", { seconds: 60, speed: 0 });
   for (const [id, name] of Object.entries(ITEM_NAMES)) {
-    engine.dispatch("item-define", { id, name, sprite: "", stackable: true });
+    dispatch("item-define", { id, name, sprite: "", stackable: true });
   }
   for (const [id, minX, minZ, maxX, maxZ] of ZONES) {
-    engine.dispatch("zone", {
+    dispatch("zone", {
       id,
       name: id,
       min: [minX, FLOOR, minZ],
@@ -328,162 +301,631 @@ function open(): void {
   }
 
   // The player's house: somewhere to sleep, a phone, and the day's things.
-  prop("bed", "bed.zip", -20, 22, 1.2, "Bed", true);
-  prop("phone", "phone.zip", -2, 10, 1.5, "Phone", false);
-  prop("mirror", "mirror.zip", -20, 6, 1.6, "Mirror", false);
-  prop("bookshelf", "bookshelf.zip", -6, 26, 2, "Bookshelf", true);
-  prop("player-counter", "counter.zip", -2, 24, 1.5, "Counter", true);
-  prop("player-fridge", "fridge.zip", -6, 24, 3, "Fridge", true);
-  prop("player-tv", "tv.zip", -16, 24, 1.4, "TV", true);
-  prop("player-sofa", "sofa.zip", -18, 18, 1.2, "Sofa", true);
-  prop("player-door", "door.zip", -6, 4.5, 2, "Door", false);
-  prop("locked-door", "door.zip", -2, 26, 2, "Locked Room", false);
-  prop("mailbox", "mailbox.zip", -12, 0, 1.4, "Mailbox", false);
-  pickup(
-    "historybook",
-    "historybook.zip",
-    "History Book",
-    -4,
-    26,
-    FLOOR + 1.5,
-    0.4,
-  );
+  createProp({
+    id: "bed",
+    model: "bed",
+    x: -20,
+    z: 22,
+    y: FLOOR,
+    name: "Bed",
+    height: 1.2,
+    solid: true,
+  });
+  createProp({
+    id: "phone",
+    model: "phone",
+    x: -2,
+    z: 10,
+    y: FLOOR,
+    name: "Phone",
+    height: 1.5,
+    solid: false,
+  });
+  createProp({
+    id: "mirror",
+    model: "mirror",
+    x: -20,
+    z: 6,
+    y: FLOOR,
+    name: "Mirror",
+    height: 1.6,
+    solid: false,
+  });
+  createProp({
+    id: "bookshelf",
+    model: "bookshelf",
+    x: -6,
+    z: 26,
+    y: FLOOR,
+    name: "Bookshelf",
+    height: 2,
+    solid: true,
+  });
+  createProp({
+    id: "player-counter",
+    model: "counter",
+    x: -2,
+    z: 24,
+    y: FLOOR,
+    name: "Counter",
+    height: 1.5,
+    solid: true,
+  });
+  createProp({
+    id: "player-fridge",
+    model: "fridge",
+    x: -6,
+    z: 24,
+    y: FLOOR,
+    name: "Fridge",
+    height: 3,
+    solid: true,
+  });
+  createProp({
+    id: "player-tv",
+    model: "tv",
+    x: -16,
+    z: 24,
+    y: FLOOR,
+    name: "TV",
+    height: 1.4,
+    solid: true,
+  });
+  createProp({
+    id: "player-sofa",
+    model: "sofa",
+    x: -18,
+    z: 18,
+    y: FLOOR,
+    name: "Sofa",
+    height: 1.2,
+    solid: true,
+  });
+  createProp({
+    id: "player-door",
+    model: "door",
+    x: -6,
+    z: 4.5,
+    y: FLOOR,
+    name: "Door",
+    height: 2,
+    solid: false,
+  });
+  createProp({
+    id: "locked-door",
+    model: "door",
+    x: -2,
+    z: 26,
+    y: FLOOR,
+    name: "Locked Room",
+    height: 2,
+    solid: false,
+  });
+  createProp({
+    id: "mailbox",
+    model: "mailbox",
+    x: -12,
+    z: 0,
+    y: FLOOR,
+    name: "Mailbox",
+    height: 1.4,
+    solid: false,
+  });
+  createProp({
+    id: "historybook",
+    model: "historybook",
+    x: -4,
+    z: 26,
+    y: FLOOR + 1.5,
+    name: "History Book",
+    height: 0.4,
+    solid: false,
+  });
 
   // Laugh's house: the fridge, the bed, and the present.
-  prop("laugh-fridge", "fridge.zip", 24, 24, 3, "Fridge", true);
-  prop("laugh-bed", "bed.zip", 6, 24, 1.2, "Bed", true);
-  prop("chair", "chair.zip", 10, 24, 1, "Chair", false);
-  prop("laugh-door", "door.zip", 8, 4.5, 2, "Door", false);
-  prop("alex-door", "door.zip", 22, 4.5, 2, "Door", false);
-  prop("james-door", "door.zip", 36, 4.5, 2, "Door", false);
+  createProp({
+    id: "laugh-fridge",
+    model: "fridge",
+    x: 24,
+    z: 24,
+    y: FLOOR,
+    name: "Fridge",
+    height: 3,
+    solid: true,
+  });
+  createProp({
+    id: "laugh-bed",
+    model: "bed",
+    x: 6,
+    z: 24,
+    y: FLOOR,
+    name: "Bed",
+    height: 1.2,
+    solid: true,
+  });
+  createProp({
+    id: "chair",
+    model: "chair",
+    x: 10,
+    z: 24,
+    y: FLOOR,
+    name: "Chair",
+    height: 1,
+    solid: false,
+  });
+  createProp({
+    id: "laugh-door",
+    model: "door",
+    x: 8,
+    z: 4.5,
+    y: FLOOR,
+    name: "Door",
+    height: 2,
+    solid: false,
+  });
+  createProp({
+    id: "alex-door",
+    model: "door",
+    x: 22,
+    z: 4.5,
+    y: FLOOR,
+    name: "Door",
+    height: 2,
+    solid: false,
+  });
+  createProp({
+    id: "james-door",
+    model: "door",
+    x: 36,
+    z: 4.5,
+    y: FLOOR,
+    name: "Door",
+    height: 2,
+    solid: false,
+  });
 
   // The street's furniture.
-  prop(
-    "lemonade-stand",
-    "lemonade-stand.zip",
-    -30,
-    2,
-    1.6,
-    "Lemonade Stand",
-    true,
-  );
-  prop("bus-stop", "bus-stop.zip", 60, 0, 1.6, "Bus Stop", false);
-  prop("flower", "flower.zip", 80, -2, 1, "Flower", false);
-  prop("gate", "gate.zip", 150, -2, 2, "Gate", true);
+  createProp({
+    id: "lemonade-stand",
+    model: "lemonade-stand",
+    x: -30,
+    z: 2,
+    y: FLOOR,
+    name: "Lemonade Stand",
+    height: 1.6,
+    solid: true,
+  });
+  createProp({
+    id: "bus-stop",
+    model: "bus-stop",
+    x: 60,
+    z: 0,
+    y: FLOOR,
+    name: "Bus Stop",
+    height: 1.6,
+    solid: false,
+  });
+  createProp({
+    id: "flower",
+    model: "flower",
+    x: 80,
+    z: -2,
+    y: FLOOR,
+    name: "Flower",
+    height: 1,
+    solid: false,
+  });
+  createProp({
+    id: "gate",
+    model: "gate",
+    x: 150,
+    z: -2,
+    y: FLOOR,
+    name: "Gate",
+    height: 2,
+    solid: true,
+  });
 
   // Bean Bros.: a counter, shelves, and the slushie machine.
-  prop("bean-counter", "counter.zip", 8, -16, 1.5, "Counter", true);
-  prop("bean-shelf-1", "shelf.zip", 2, -14, 2, "Shelf", true);
-  prop("bean-shelf-2", "shelf.zip", 14, -14, 2, "Shelf", true);
-  prop(
-    "slushie-machine",
-    "slushie-machine.zip",
-    12,
-    -16,
-    2.2,
-    "Slushie Machine",
-    true,
-  );
-  prop("bean-door", "door.zip", 8, -6.5, 2, "Door", false);
+  createProp({
+    id: "bean-counter",
+    model: "counter",
+    x: 8,
+    z: -16,
+    y: FLOOR,
+    name: "Counter",
+    height: 1.5,
+    solid: true,
+  });
+  createProp({
+    id: "bean-shelf-1",
+    model: "shelf",
+    x: 2,
+    z: -14,
+    y: FLOOR,
+    name: "Shelf",
+    height: 2,
+    solid: true,
+  });
+  createProp({
+    id: "bean-shelf-2",
+    model: "shelf",
+    x: 14,
+    z: -14,
+    y: FLOOR,
+    name: "Shelf",
+    height: 2,
+    solid: true,
+  });
+  createProp({
+    id: "slushie-machine",
+    model: "slushie-machine",
+    x: 12,
+    z: -16,
+    y: FLOOR,
+    name: "Slushie Machine",
+    height: 2.2,
+    solid: true,
+  });
+  createProp({
+    id: "bean-door",
+    model: "door",
+    x: 8,
+    z: -6.5,
+    y: FLOOR,
+    name: "Door",
+    height: 2,
+    solid: false,
+  });
 
   // The arcade: cabinets, the boarded machine, and a dumpster outside.
-  prop("arcade-1", "arcade.zip", 20, -16, 2.4, "Arcade Machine", true);
-  prop("arcade-2", "arcade.zip", 26, -16, 2.4, "Arcade Machine", true);
-  prop(
-    "broken-machine",
-    "boarded-machine.zip",
-    23,
-    -8,
-    2.4,
-    "Broken Machine",
-    true,
-  );
-  prop("token-atm", "vending.zip", 46, -16, 2.2, "Token ATM", true);
-  prop("dumpster", "dumpster.zip", 30, -4, 1.8, "Dumpster", true);
-  prop("arcade-door", "door.zip", 22, -6.5, 2, "Door", false);
-  prop("bench", "bench.zip", 50, -4, 1, "Bench", true);
+  createProp({
+    id: "arcade-1",
+    model: "arcade",
+    x: 20,
+    z: -16,
+    y: FLOOR,
+    name: "Arcade Machine",
+    height: 2.4,
+    solid: true,
+  });
+  createProp({
+    id: "arcade-2",
+    model: "arcade",
+    x: 26,
+    z: -16,
+    y: FLOOR,
+    name: "Arcade Machine",
+    height: 2.4,
+    solid: true,
+  });
+  createProp({
+    id: "broken-machine",
+    model: "boarded-machine",
+    x: 23,
+    z: -8,
+    y: FLOOR,
+    name: "Broken Machine",
+    height: 2.4,
+    solid: true,
+  });
+  createProp({
+    id: "token-atm",
+    model: "vending",
+    x: 46,
+    z: -16,
+    y: FLOOR,
+    name: "Token ATM",
+    height: 2.2,
+    solid: true,
+  });
+  createProp({
+    id: "dumpster",
+    model: "dumpster",
+    x: 30,
+    z: -4,
+    y: FLOOR,
+    name: "Dumpster",
+    height: 1.8,
+    solid: true,
+  });
+  createProp({
+    id: "arcade-door",
+    model: "door",
+    x: 22,
+    z: -6.5,
+    y: FLOOR,
+    name: "Door",
+    height: 2,
+    solid: false,
+  });
+  createProp({
+    id: "bench",
+    model: "bench",
+    x: 50,
+    z: -4,
+    y: FLOOR,
+    name: "Bench",
+    height: 1,
+    solid: true,
+  });
 
   // The school: desks, lockers, cafeteria tables, and the fighting poster.
-  prop("school-door", "door.zip", 46, -2.5, 2, "Door", false);
-  prop("classroom-door", "door.zip", 82, -20, 2, "Classroom", false);
-  prop("desk-1", "desk.zip", 76, -30, 1.2, "Desk", true);
-  prop("desk-2", "desk.zip", 82, -30, 1.2, "Desk", true);
-  prop("desk-3", "desk.zip", 88, -30, 1.2, "Desk", true);
-  prop("chair-1", "chair.zip", 76, -26, 1, "Chair", false);
-  prop("chair-2", "chair.zip", 82, -26, 1, "Chair", false);
-  prop("chair-3", "chair.zip", 88, -26, 1, "Chair", false);
-  prop("locker-1", "locker.zip", 72, -34, 2, "Locker", true);
-  prop("locker-2", "locker.zip", 76, -34, 2, "Locker", true);
-  prop("cafeteria-table-1", "cafeteria-table.zip", 98, -30, 1.2, "Table", true);
-  prop(
-    "cafeteria-table-2",
-    "cafeteria-table.zip",
-    106,
-    -30,
-    1.2,
-    "Table",
-    true,
-  );
-  prop("cafeteria-plate", "plate.zip", 102, -26, 0.15, "Plate", false);
-  prop(
-    "fighting-poster",
-    "poster.zip",
-    94,
-    -20,
-    1.4,
-    "Fighting Contest",
-    false,
-  );
+  createProp({
+    id: "school-door",
+    model: "door",
+    x: 46,
+    z: -2.5,
+    y: FLOOR,
+    name: "Door",
+    height: 2,
+    solid: false,
+  });
+  createProp({
+    id: "classroom-door",
+    model: "door",
+    x: 82,
+    z: -20,
+    y: FLOOR,
+    name: "Classroom",
+    height: 2,
+    solid: false,
+  });
+  createProp({
+    id: "desk-1",
+    model: "desk",
+    x: 76,
+    z: -30,
+    y: FLOOR,
+    name: "Desk",
+    height: 1.2,
+    solid: true,
+  });
+  createProp({
+    id: "desk-2",
+    model: "desk",
+    x: 82,
+    z: -30,
+    y: FLOOR,
+    name: "Desk",
+    height: 1.2,
+    solid: true,
+  });
+  createProp({
+    id: "desk-3",
+    model: "desk",
+    x: 88,
+    z: -30,
+    y: FLOOR,
+    name: "Desk",
+    height: 1.2,
+    solid: true,
+  });
+  createProp({
+    id: "chair-1",
+    model: "chair",
+    x: 76,
+    z: -26,
+    y: FLOOR,
+    name: "Chair",
+    height: 1,
+    solid: false,
+  });
+  createProp({
+    id: "chair-2",
+    model: "chair",
+    x: 82,
+    z: -26,
+    y: FLOOR,
+    name: "Chair",
+    height: 1,
+    solid: false,
+  });
+  createProp({
+    id: "chair-3",
+    model: "chair",
+    x: 88,
+    z: -26,
+    y: FLOOR,
+    name: "Chair",
+    height: 1,
+    solid: false,
+  });
+  createProp({
+    id: "locker-1",
+    model: "locker",
+    x: 72,
+    z: -34,
+    y: FLOOR,
+    name: "Locker",
+    height: 2,
+    solid: true,
+  });
+  createProp({
+    id: "locker-2",
+    model: "locker",
+    x: 76,
+    z: -34,
+    y: FLOOR,
+    name: "Locker",
+    height: 2,
+    solid: true,
+  });
+  createProp({
+    id: "cafeteria-table-1",
+    model: "cafeteria-table",
+    x: 98,
+    z: -30,
+    y: FLOOR,
+    name: "Table",
+    height: 1.2,
+    solid: true,
+  });
+  createProp({
+    id: "cafeteria-table-2",
+    model: "cafeteria-table",
+    x: 106,
+    z: -30,
+    y: FLOOR,
+    name: "Table",
+    height: 1.2,
+    solid: true,
+  });
+  createProp({
+    id: "cafeteria-plate",
+    model: "plate",
+    x: 102,
+    z: -26,
+    y: FLOOR,
+    name: "Plate",
+    height: 0.15,
+    solid: false,
+  });
+  createProp({
+    id: "fighting-poster",
+    model: "poster",
+    x: 94,
+    z: -20,
+    y: FLOOR,
+    name: "Fighting Contest",
+    height: 1.4,
+    solid: false,
+  });
 
   // The finale: the Dimensionator at the arcade, and the corrupted dimension's
   // four house buttons, gate, history book, and portal, far to the south.
-  prop("dimensionator", "arcade.zip", 40, -10, 2.4, "Dimensionator", false);
-  prop(
-    "corrupt-button-blue",
-    "poster.zip",
-    -12,
-    240,
-    1.4,
-    "Blue Button",
-    false,
-  );
-  prop("corrupt-button-red", "poster.zip", 16, 240, 1.4, "Red Button", false);
-  prop(
-    "corrupt-button-green",
-    "poster.zip",
-    44,
-    240,
-    1.4,
-    "Green Button",
-    false,
-  );
-  prop(
-    "corrupt-button-purple",
-    "poster.zip",
-    72,
-    240,
-    1.4,
-    "Purple Button",
-    false,
-  );
-  prop("corrupt-gate", "gate.zip", 150, 236, 2, "Gate", true);
-  pickup(
-    "corrupt-book",
-    "historybook.zip",
-    "History Book",
-    164,
-    236,
-    FLOOR,
-    0.4,
-  );
-  prop("corrupt-portal", "gate.zip", 200, 236, 2, "Portal", false);
+  createProp({
+    id: "dimensionator",
+    model: "arcade",
+    x: 40,
+    z: -10,
+    y: FLOOR,
+    name: "Dimensionator",
+    height: 2.4,
+    solid: false,
+  });
+  createProp({
+    id: "corrupt-button-blue",
+    model: "poster",
+    x: -12,
+    z: 240,
+    y: FLOOR,
+    name: "Blue Button",
+    height: 1.4,
+    solid: false,
+  });
+  createProp({
+    id: "corrupt-button-red",
+    model: "poster",
+    x: 16,
+    z: 240,
+    y: FLOOR,
+    name: "Red Button",
+    height: 1.4,
+    solid: false,
+  });
+  createProp({
+    id: "corrupt-button-green",
+    model: "poster",
+    x: 44,
+    z: 240,
+    y: FLOOR,
+    name: "Green Button",
+    height: 1.4,
+    solid: false,
+  });
+  createProp({
+    id: "corrupt-button-purple",
+    model: "poster",
+    x: 72,
+    z: 240,
+    y: FLOOR,
+    name: "Purple Button",
+    height: 1.4,
+    solid: false,
+  });
+  createProp({
+    id: "corrupt-gate",
+    model: "gate",
+    x: 150,
+    z: 236,
+    y: FLOOR,
+    name: "Gate",
+    height: 2,
+    solid: true,
+  });
+  createProp({
+    id: "corrupt-book",
+    model: "historybook",
+    x: 164,
+    z: 236,
+    y: FLOOR,
+    name: "History Book",
+    height: 0.4,
+    solid: false,
+  });
+  createProp({
+    id: "corrupt-portal",
+    model: "gate",
+    x: 200,
+    z: 236,
+    y: FLOOR,
+    name: "Portal",
+    height: 2,
+    solid: false,
+  });
 
   // The pickups the day begins with.
-  pickup("plush", "plush.zip", "Plush", -22, 18, FLOOR, 0.6);
-  pickup("banana", "banana.zip", "Banana", -20, -6, FLOOR, 0.4);
-  pickup("chips", "chips.zip", "Chips", -4, 22, FLOOR + 1.5, 0.5);
-  pickup("key", "key.zip", "Key", -22, 10, FLOOR, 0.3);
-  pickup("matches", "matches.zip", "Matches", 20, -20, FLOOR, 0.3);
+  createProp({
+    id: "plush",
+    model: "plush",
+    x: -22,
+    z: 18,
+    y: FLOOR,
+    name: "Plush",
+    height: 0.6,
+    solid: false,
+  });
+  createProp({
+    id: "banana",
+    model: "banana",
+    x: -20,
+    z: -6,
+    y: FLOOR,
+    name: "Banana",
+    height: 0.4,
+    solid: false,
+  });
+  createProp({
+    id: "chips",
+    model: "chips",
+    x: -4,
+    z: 22,
+    y: FLOOR + 1.5,
+    name: "Chips",
+    height: 0.5,
+    solid: false,
+  });
+  createProp({
+    id: "key",
+    model: "key",
+    x: -22,
+    z: 10,
+    y: FLOOR,
+    name: "Key",
+    height: 0.3,
+    solid: false,
+  });
+  createProp({
+    id: "matches",
+    model: "matches",
+    x: 20,
+    z: -20,
+    y: FLOOR,
+    name: "Matches",
+    height: 0.3,
+    solid: false,
+  });
   const cashSpots: Array<[number, number]> = [
     [-4, 22],
     [72, -34],
@@ -495,26 +937,171 @@ function open(): void {
     [2, -14],
   ];
   for (const [index, [x, z]] of cashSpots.entries()) {
-    pickup(`cash-${index + 1}`, "tix.zip", "Cash", x, z, FLOOR, 0.3);
+    createProp({
+      id: `cash-${index + 1}`,
+      model: "tix",
+      x: x,
+      z: z,
+      y: FLOOR,
+      name: "Cash",
+      height: 0.3,
+      solid: false,
+    });
   }
 
-  npc(LITTLE_BRO, -16, 20, "Little Brother", "npc-littlebro.zip", 0);
-  npc(LAUGH, 8, 20, "Laugh", "npc-laugh.zip", Math.PI);
-  npc(ALEX, 22, 20, "Alex", "npc-alex.zip", Math.PI);
-  npc(JAMES, 36, 20, "James", "npc-james.zip", Math.PI);
-  npc(BRIT, 6, -18, "Brit", "npc-brit.zip", 0);
-  npc(BRETT, 10, -18, "Brett", "npc-brett.zip", 0);
-  npc(BRAD, 24, -18, "Brad", "npc-brad.zip", 0);
-  npc(HOMELESS, -6, 2, "Homeless Kid", "npc-homeless.zip", Math.PI);
-  npc(LEMONADE, -30, 4, "Lemonade Salesperson", "npc-lemonade.zip", 0);
-  npc(SLEEPA, 50, -6, "Sleepa", "npc-sleepa.zip", Math.PI / 2);
-  npc(BULLY, 80, -20, "Bully", "npc-bully.zip", Math.PI / 2);
-  npc(NERD, 84, -20, "Nerd", "npc-nerd.zip", Math.PI / 2);
-  npc(TEACHER, 80, -32, "Teacher", "npc-teacher.zip", Math.PI);
-  npc(POTHEAD, 100, -22, "Pot Head", "npc-pothead.zip", Math.PI / 2);
-  npc(CHAMP, 106, -34, "Champ", "npc-champ.zip", Math.PI);
-  npc(SANTA, 120, -10, "Santa Claus", "npc-santa.zip", Math.PI);
-  npc(OBBY, 24, -10, "Obby Master", "npc-obby.zip", 0);
+  createNpc({
+    id: LITTLE_BRO,
+    x: -16,
+    z: 20,
+    y: FLOOR,
+    name: "Little Brother",
+    model: "npc-littlebro",
+    yaw: 0,
+  });
+  createNpc({
+    id: LAUGH,
+    x: 8,
+    z: 20,
+    y: FLOOR,
+    name: "Laugh",
+    model: "npc-laugh",
+    yaw: Math.PI,
+  });
+  createNpc({
+    id: ALEX,
+    x: 22,
+    z: 20,
+    y: FLOOR,
+    name: "Alex",
+    model: "npc-alex",
+    yaw: Math.PI,
+  });
+  createNpc({
+    id: JAMES,
+    x: 36,
+    z: 20,
+    y: FLOOR,
+    name: "James",
+    model: "npc-james",
+    yaw: Math.PI,
+  });
+  createNpc({
+    id: BRIT,
+    x: 6,
+    z: -18,
+    y: FLOOR,
+    name: "Brit",
+    model: "npc-brit",
+    yaw: 0,
+  });
+  createNpc({
+    id: BRETT,
+    x: 10,
+    z: -18,
+    y: FLOOR,
+    name: "Brett",
+    model: "npc-brett",
+    yaw: 0,
+  });
+  createNpc({
+    id: BRAD,
+    x: 24,
+    z: -18,
+    y: FLOOR,
+    name: "Brad",
+    model: "npc-brad",
+    yaw: 0,
+  });
+  createNpc({
+    id: HOMELESS,
+    x: -6,
+    z: 2,
+    y: FLOOR,
+    name: "Homeless Kid",
+    model: "npc-homeless",
+    yaw: Math.PI,
+  });
+  createNpc({
+    id: LEMONADE,
+    x: -30,
+    z: 4,
+    y: FLOOR,
+    name: "Lemonade Salesperson",
+    model: "npc-lemonade",
+    yaw: 0,
+  });
+  createNpc({
+    id: SLEEPA,
+    x: 50,
+    z: -6,
+    y: FLOOR,
+    name: "Sleepa",
+    model: "npc-sleepa",
+    yaw: Math.PI / 2,
+  });
+  createNpc({
+    id: BULLY,
+    x: 80,
+    z: -20,
+    y: FLOOR,
+    name: "Bully",
+    model: "npc-bully",
+    yaw: Math.PI / 2,
+  });
+  createNpc({
+    id: NERD,
+    x: 84,
+    z: -20,
+    y: FLOOR,
+    name: "Nerd",
+    model: "npc-nerd",
+    yaw: Math.PI / 2,
+  });
+  createNpc({
+    id: TEACHER,
+    x: 80,
+    z: -32,
+    y: FLOOR,
+    name: "Teacher",
+    model: "npc-teacher",
+    yaw: Math.PI,
+  });
+  createNpc({
+    id: POTHEAD,
+    x: 100,
+    z: -22,
+    y: FLOOR,
+    name: "Pot Head",
+    model: "npc-pothead",
+    yaw: Math.PI / 2,
+  });
+  createNpc({
+    id: CHAMP,
+    x: 106,
+    z: -34,
+    y: FLOOR,
+    name: "Champ",
+    model: "npc-champ",
+    yaw: Math.PI,
+  });
+  createNpc({
+    id: SANTA,
+    x: 120,
+    z: -10,
+    y: FLOOR,
+    name: "Santa Claus",
+    model: "npc-santa",
+    yaw: Math.PI,
+  });
+  createNpc({
+    id: OBBY,
+    x: 24,
+    z: -10,
+    y: FLOOR,
+    name: "Obby Master",
+    model: "npc-obby",
+    yaw: 0,
+  });
 
   if (collected.length > 0) {
     say("Endings found so far: " + collected.join(", ") + ".");
@@ -897,7 +1484,15 @@ function maybeStartFinale(): void {
     return;
   }
   flags.jamesAppeared = true;
-  npc(JAMES, -12, 2, "James", "npc-james.zip", Math.PI);
+  createNpc({
+    id: JAMES,
+    x: -12,
+    z: 2,
+    y: FLOOR,
+    name: "James",
+    model: "npc-james",
+    yaw: Math.PI,
+  });
   narrate(
     "James",
     "I've been expecting you. Your history book is the key to the perfect ending. Go to the arcade — something is waiting outside.",
@@ -907,13 +1502,13 @@ function maybeStartFinale(): void {
 /** Opens the Dimensionator and drops the party into the corrupted dimension. */
 function startCorruption(): void {
   flags.portalOpen = true;
-  engine.dispatch("explosion", { id: "portal-boom", x: 40, z: -10, radius: 5 });
+  dispatch("explosion", { id: "portal-boom", x: 40, z: -10, radius: 5 });
   narrate("Laugh", "Do you realize what you have done?");
   narrate(
     "James",
     "It's the only way to stop the Anomaly. Find your history book, then run for the portal.",
   );
-  engine.dispatch("player-place", { player: "", x: 0, z: 236, y: FLOOR });
+  dispatch("player-place", { player: "", x: 0, z: 236, y: FLOOR });
   flags.corrupt = true;
   narrate("You", "The corrupted dimension. It looks like home, but ruined.");
 }
@@ -931,7 +1526,7 @@ function useButton(color: string): void {
     return;
   }
   flags.gateOpen = true;
-  engine.dispatch("prop-remove", { id: "corrupt-gate" });
+  dispatch("prop-remove", { id: "corrupt-gate" });
   narrate("You", "The gate drops. The way to the school is open.");
 }
 
@@ -1013,7 +1608,7 @@ function useDumpster(item: string): void {
   }
   if (item === "litmatches") {
     take("litmatches", 1);
-    engine.dispatch("explosion", {
+    dispatch("explosion", {
       id: "arcade-boom",
       x: 24,
       z: -8,
@@ -1068,13 +1663,21 @@ function used(entityId: string, item: string): void {
     return;
   }
   if (entityId === "corrupt-book") {
-    engine.dispatch("prop-remove", { id: "corrupt-book" });
+    dispatch("prop-remove", { id: "corrupt-book" });
     flags.gotBook = true;
     give(
       "roaster",
       "You grab the history book. The Anomaly is coming — run to the portal!",
     );
-    npc(ANOMALY, 92, 236, "The Anomaly", "npc-anomaly.zip", Math.PI);
+    createNpc({
+      id: ANOMALY,
+      x: 92,
+      z: 236,
+      y: FLOOR,
+      name: "The Anomaly",
+      model: "npc-anomaly",
+      yaw: Math.PI,
+    });
     flags.chase = true;
     timer("chase", 30_000);
     return;
@@ -1086,8 +1689,16 @@ function used(entityId: string, item: string): void {
     }
     flags.chase = false;
     flags.arena = true;
-    engine.dispatch("player-place", { player: "", x: 280, z: 236, y: FLOOR });
-    npc(ANOMALY, 284, 236, "The Anomaly", "npc-anomaly.zip", Math.PI);
+    dispatch("player-place", { player: "", x: 280, z: 236, y: FLOOR });
+    createNpc({
+      id: ANOMALY,
+      x: 284,
+      z: 236,
+      y: FLOOR,
+      name: "The Anomaly",
+      model: "npc-anomaly",
+      yaw: Math.PI,
+    });
     narrate(
       "James",
       "This is his domain. Look through your memories for the key to defeating him.",
@@ -1123,7 +1734,7 @@ function used(entityId: string, item: string): void {
     }
     flags.sleepy = true;
     narrate("You", "Here's your gift, cuz. ...Why do I feel so sleepy?");
-    engine.dispatch("player-speed", { player: "", multiplier: 0.2 });
+    dispatch("player-speed", { player: "", multiplier: 0.2 });
     return;
   }
   if (entityId === "mirror") {
@@ -1193,7 +1804,7 @@ function used(entityId: string, item: string): void {
     return;
   }
   if (entityId.indexOf("cash-") === 0) {
-    engine.dispatch("prop-remove", { id: entityId });
+    dispatch("prop-remove", { id: entityId });
     money += CASH;
     say("You pocket some cash. ($" + money + ")");
     return;
@@ -1207,7 +1818,7 @@ function used(entityId: string, item: string): void {
     historybook: "historybook",
   };
   if (pickups[entityId] !== undefined) {
-    engine.dispatch("prop-remove", { id: entityId });
+    dispatch("prop-remove", { id: entityId });
     const item = pickups[entityId];
     if (item === "banana") {
       flags.hasBanana = true;
@@ -1249,7 +1860,7 @@ function usedItem(item: string): void {
       narrate("Monke", "You are now one with the monkey.");
       return;
     }
-    engine.dispatch("player-jump", { player: "", multiplier: 1.6 });
+    dispatch("player-jump", { player: "", multiplier: 1.6 });
     narrate("You", "The banana slushie gives you a jump ability.");
     return;
   }
@@ -1386,7 +1997,7 @@ function talked(npcId: string, player: string): void {
 }
 
 function chose(npcId: string, option: number, player: string): void {
-  engine.dispatch("dialog-close", { player, npcId });
+  dispatch("dialog-close", { player, npcId });
   if (npcId === "dimensionator") {
     if (option === 0) {
       startCorruption();
@@ -1462,10 +2073,10 @@ function timerFired(id: string): void {
   }
 }
 
-engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
+onTick(function tick(_clockMs: number, eventsJson: string): void {
   if (!started) {
     started = true;
-    collected = JSON.parse(engine.endings()) as string[];
+    collected = JSON.parse(endings()) as string[];
     open();
   }
   const events = JSON.parse(eventsJson) as Event[];

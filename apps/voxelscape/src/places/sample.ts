@@ -3,11 +3,11 @@
 // option makes the script answer — closing the dialog, or ending with a toast.
 // It is the working example the script host is tested against, and the first
 // script a player can load with the console while the world wires its dialog
-// surface. Like every place script it imports `engine` and calls
+// surface. Like every place script it imports `voxelscape` and calls
 // `engine.onTick`, and the world calls what it registers each step with the
 // shared clock and the events since the last.
 export const SAMPLE_PLACE_SCRIPT = String.raw`
-import * as engine from "engine";
+import * as engine from "voxelscape";
 
 var started = false;
 var state = {};

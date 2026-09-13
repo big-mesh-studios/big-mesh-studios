@@ -3,15 +3,19 @@
 // run as part of the world's own bundle. A whole population of zombies
 // materializes procedurally around wherever players explore and fights back
 // with a sword the player starts holding.
-//
-// `createNpc` takes the model's name as a literal, checked against the
-// models this place actually carries (ADR 0050) — this demo's own manifest
-// lists `zombie.zip` among its models, and `demo-scripts/zombie-model.d.ts`
-// augments `voxelscape`'s `ModelsByName` so this file's own `tsc` check sees
-// the same types the live editor would generate. `createNpc` places and
-// moves each zombie through the "npc" effects.
-import * as engine from "engine";
-import { createNpc, type ModelsByName, type NpcHandle } from "voxelscape";
+import {
+  createNpc,
+  dispatch,
+  heightAt,
+  log,
+  now as clockNow,
+  onTick,
+  players as livePlayers,
+  solidAt,
+  waterAt,
+  type ModelsByName,
+  type NpcHandle,
+} from "voxelscape";
 
 const GUIDE = "guide";
 const SWORD = "sword";
@@ -241,7 +245,7 @@ function materialize(players: Player[]): void {
         z: pose.z,
         name: "Zombie",
         yaw: pose.yaw,
-        y: engine.heightAt(pose.x, pose.z),
+        y: heightAt(pose.x, pose.z),
       });
       zombies.set(spawn.id, {
         npc,
@@ -251,7 +255,7 @@ function materialize(players: Player[]): void {
         ownerDid: "",
         wanderHeading: 0,
         wanderUntil: 0,
-        lastBroadcastAt: engine.now(),
+        lastBroadcastAt: clockNow(),
         cellKey: key,
         homeX: pose.x,
         homeZ: pose.z,
@@ -281,12 +285,12 @@ function forget(players: Player[]): void {
 /** Whether stepping from the current ground to (x, z) is walkable: not too
  * steep a rise, and neither solid nor water at body height once there. */
 function walkable(fromX: number, fromZ: number, x: number, z: number): boolean {
-  const ground = engine.heightAt(x, z);
-  if (Math.abs(ground - engine.heightAt(fromX, fromZ)) > STEP_LIMIT) {
+  const ground = heightAt(x, z);
+  if (Math.abs(ground - heightAt(fromX, fromZ)) > STEP_LIMIT) {
     return false;
   }
   const y = ground + BODY_Y;
-  return !engine.solidAt(x, y, z) && !engine.waterAt(x, y, z);
+  return !solidAt(x, y, z) && !waterAt(x, y, z);
 }
 
 /** Moves (x, z) one step toward yaw at speed, sliding along whichever axis
@@ -399,7 +403,7 @@ function stepZombie(z: Zombie, players: Player[], now: number): void {
     }
     if (now - z.lastAttackAt >= ATTACK_INTERVAL_MS) {
       z.lastAttackAt = now;
-      engine.dispatch("player-damage", {
+      dispatch("player-damage", {
         player: owner.did,
         amount: ZOMBIE_DAMAGE,
         source: z.npc.id,
@@ -443,7 +447,7 @@ function stepZombie(z: Zombie, players: Player[], now: number): void {
     x,
     z: zPos,
     yaw,
-    y: engine.heightAt(x, zPos),
+    y: heightAt(x, zPos),
     live: dueToBroadcast,
   });
 }
@@ -469,30 +473,30 @@ function knockedBack(
 }
 
 function armTick(): void {
-  engine.dispatch("timer", { id: "zombie-tick", afterMs: TICK_MS });
+  dispatch("timer", { id: "zombie-tick", afterMs: TICK_MS });
 }
 
-engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
-  const now = engine.now();
+onTick(function tick(_clockMs: number, eventsJson: string): void {
+  const now = clockNow();
   if (!started) {
     started = true;
-    engine.dispatch("npc", { id: GUIDE, x: 8, z: 8, name: "Guide" });
-    engine.log("your place started");
+    dispatch("npc", { id: GUIDE, x: 8, z: 8, name: "Guide" });
+    log("your place started");
     // The sword is given and equipped once, for good: this place has nothing
     // else to hold, and a bare-handed touch stays how every other entity is
     // greeted.
-    engine.dispatch("item-define", {
+    dispatch("item-define", {
       id: SWORD,
       name: "Sword",
       sprite: "",
       stackable: false,
     });
-    engine.dispatch("item-give", { player: "", item: SWORD, count: 1 });
-    engine.dispatch("item-hold", { player: "", item: SWORD });
+    dispatch("item-give", { player: "", item: SWORD, count: 1 });
+    dispatch("item-hold", { player: "", item: SWORD });
     armTick();
   }
 
-  const players = JSON.parse(engine.players()) as Player[];
+  const players = JSON.parse(livePlayers()) as Player[];
   const events = JSON.parse(eventsJson) as Array<{
     kind: string;
     producer: string;
@@ -511,7 +515,7 @@ engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
       (e.kind === "npc-talk" && e.npcId === GUIDE) ||
       (e.kind === "entity-used" && e.entityId === GUIDE)
     ) {
-      engine.dispatch("toast", {
+      dispatch("toast", {
         player: e.producer,
         text: "Hello, traveller.",
       });
@@ -519,7 +523,7 @@ engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
       // A bare touch only ever gets a rise out of it — killing one takes an
       // actual swing, over the sword's own reach and reported strike.
       if (zombies.has(e.entityId)) {
-        engine.dispatch("toast", {
+        dispatch("toast", {
           player: e.producer,
           text: "The zombie snarls.",
         });
@@ -540,7 +544,7 @@ engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
           zombies.delete(target.npc.id);
           deadIds.add(target.npc.id);
           target.npc.die();
-          engine.dispatch("toast", {
+          dispatch("toast", {
             player: e.producer,
             text: "The zombie falls.",
           });
@@ -548,10 +552,10 @@ engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
           target.npc.move({
             x: pushed.x,
             z: pushed.z,
-            y: engine.heightAt(pushed.x, pushed.z),
+            y: heightAt(pushed.x, pushed.z),
             live: true,
           });
-          engine.dispatch("toast", {
+          dispatch("toast", {
             player: e.producer,
             text: "The zombie reels.",
           });

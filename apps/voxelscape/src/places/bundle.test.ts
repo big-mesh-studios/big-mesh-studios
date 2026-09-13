@@ -88,7 +88,7 @@ const runBundle = (
 };
 
 const MAIN_TS = `
-import * as engine from "engine";
+import * as engine from "voxelscape";
 
 interface Npc {
   id: string;
@@ -121,7 +121,7 @@ describe("the place script bundler", () => {
   it("bundles multiple project files and resolves imports between them", async () => {
     const files = {
       "main.ts": `
-        import * as engine from "engine";
+        import * as engine from "voxelscape";
         import { hello } from "./greeting";
         engine.onTick(function tick(): void {
           engine.log(hello);
@@ -149,7 +149,7 @@ describe("the place script bundler", () => {
   it("keeps each module's top-level names to its own scope", async () => {
     const files = {
       "main.ts": `
-        import * as engine from "engine";
+        import * as engine from "voxelscape";
         import { value as other } from "./other";
         var value = 1;
         engine.onTick(function (): void { engine.log(String(other + value)); });
@@ -176,7 +176,7 @@ describe("the place script bundler", () => {
   it("stringifies a dispatch call's plain-object payload before it reaches the sandbox", async () => {
     const files = {
       "main.ts": `
-        import * as engine from "engine";
+        import * as engine from "voxelscape";
         engine.onTick(function (): void {
           engine.dispatch("npc", { id: "guide", x: 8, z: 8, name: "Guide" });
         });
@@ -193,10 +193,10 @@ describe("the place script bundler", () => {
     ]);
   });
 
-  it('resolves an import of "engine" to the sandbox\'s host object, not a project file', async () => {
+  it('resolves an import of "voxelscape" to the sandbox\'s host surface, not a project file', async () => {
     const files = {
       "main.ts": `
-        import * as engine from "engine";
+        import * as engine from "voxelscape";
         engine.onPlan(function (): string { return "ok"; });
       `,
     };
@@ -204,15 +204,15 @@ describe("the place script bundler", () => {
     expect(runBundle(output).plan?.()).toBe("ok");
   });
 
-  it('a file that never imports "engine" cannot reach it as a bare identifier', async () => {
+  it('a file that never imports "voxelscape" cannot reach it as a bare identifier', async () => {
     const files = {
       "main.ts": `
-        import * as engine from "engine";
+        import * as engine from "voxelscape";
         import { helper } from "./helper";
         engine.onTick(function () { helper(); });
       `,
-      // No import of "engine" here — each file is wrapped in its own function
-      // scope, which closes over nothing from outside it.
+      // No import of "voxelscape" here — each file is wrapped in its own
+      // function scope, which closes over nothing from outside it.
       "helper.ts": `export function helper(): void { engine.log("leaked"); }`,
     };
     const output = await bundlePlaceProject(files, "main.ts");
@@ -225,7 +225,7 @@ describe("the place script bundler", () => {
       "main.ts": `import { nope } from "./nope";`,
     };
     await expect(bundlePlaceProject(files, "main.ts")).rejects.toThrow(
-      'main.ts imports "./nope" — imports may only come from this place\'s own script files, "engine", or "voxelscape"',
+      'main.ts imports "./nope" — imports may only come from this place\'s own script files, or "voxelscape"',
     );
   });
 
@@ -234,7 +234,7 @@ describe("the place script bundler", () => {
       "main.ts": `import fs from "fs";`,
     };
     await expect(bundlePlaceProject(files, "main.ts")).rejects.toThrow(
-      /imports may only come from this place's own script files, "engine", or "voxelscape"/,
+      /imports may only come from this place's own script files, or "voxelscape"/,
     );
   });
 
@@ -260,7 +260,7 @@ describe("the voxelscape module", () => {
   it("createNpc dispatches the npc effect wearing the model's real place file", async () => {
     const files = {
       "main.ts": `
-        import * as engine from "engine";
+        import * as engine from "voxelscape";
         import { createNpc } from "voxelscape";
         engine.onTick(function (): void {
           createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0, name: "Zombie" });
@@ -287,7 +287,7 @@ describe("the voxelscape module", () => {
   it("shares one synthetic module between files using it in different ways", async () => {
     const files = {
       "main.ts": `
-        import * as engine from "engine";
+        import * as engine from "voxelscape";
         import { greet } from "./greeting";
         import { createNpc } from "voxelscape";
         const npc = createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 });
@@ -309,7 +309,7 @@ describe("the voxelscape module", () => {
   it("produces identical output for identical input, models included", async () => {
     const files = {
       "main.ts": `
-        import * as engine from "engine";
+        import * as engine from "voxelscape";
         import { createNpc } from "voxelscape";
         engine.onTick(function (): void {
           createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 });
@@ -324,9 +324,7 @@ describe("the voxelscape module", () => {
 
   it("is left out of the bundle entirely when no file imports it", async () => {
     const output = await bundlePlaceProject(
-      {
-        "main.ts": `import * as engine from "engine"; engine.onTick(function () {});`,
-      },
+      { "main.ts": `const answer = 42;` },
       "main.ts",
     );
     expect(output).not.toContain("createNpc");
@@ -335,7 +333,7 @@ describe("the voxelscape module", () => {
   it("createNpc throws at the moment a script calls it with a name this place carries no model for", async () => {
     const files = {
       "main.ts": `
-        import * as engine from "engine";
+        import * as engine from "voxelscape";
         import { createNpc } from "voxelscape";
         engine.onTick(function (): void {
           createNpc({ model: "nope", id: "x", x: 0, z: 0 });
@@ -352,7 +350,7 @@ describe("the voxelscape module", () => {
   it("moves and removes an npc through the real effects", async () => {
     const files = {
       "main.ts": `
-        import * as engine from "engine";
+        import * as engine from "voxelscape";
         import { createNpc } from "voxelscape";
         engine.onTick(function (): void {
           const npc = createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 });
@@ -390,7 +388,7 @@ describe("the voxelscape module", () => {
   it("plays a death fall through an npc's die, and removes a prop through prop-remove", async () => {
     const files = {
       "main.ts": `
-        import * as engine from "engine";
+        import * as engine from "voxelscape";
         import { createNpc, createProp } from "voxelscape";
         engine.onTick(function (): void {
           createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 }).die();

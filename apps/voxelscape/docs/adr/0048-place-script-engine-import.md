@@ -1,5 +1,13 @@
 # Reaching `engine` by import, and registering a script's hooks by calling it
 
+> Superseded by ADR 0050: a script no longer writes `import * as engine from
+> "engine"` — `"engine"` is retired as a specifier a project file may name at
+> all, folded into the single reserved `"voxelscape"` import alongside
+> `createNpc`/`createProp`. The mechanism this decision introduced —
+> resolving a reserved bare specifier in the bundler's own `require` shim,
+> not an ambient declaration — is exactly what ADR 0050 reuses; only the name
+> a script writes changed.
+
 ADR 0027 named a global `bmsTick` as the guest's one entry point and flagged
 `engine` as a bare global only because the interpreter had no module syntax
 yet. This decision retires both: a script now writes `import * as engine from

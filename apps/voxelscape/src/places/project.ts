@@ -10,56 +10,44 @@ import {
   PLACE_MIME_TYPE,
   type PlaceManifest,
 } from "./place.ts";
-import ENGINE_TYPES_SOURCE from "./engine.d.ts?raw";
+import VOXELSCAPE_TYPES_SOURCE from "./voxelscape.d.ts?raw";
 import EFFECTS_SOURCE from "./effects.ts?raw";
 import CUTSCENE_SOURCE from "./cutscene.ts?raw";
 import MOTION_SOURCE from "./motion.ts?raw";
 import SANDBOX_SOURCE from "./sandbox.ts?raw";
-import VOXELSCAPE_TYPES_SOURCE from "./voxelscape.d.ts?raw";
 
 /** The script file a freshly created place starts with. */
 export const MAIN_SCRIPT_FILE = "main.ts";
-
-/** The path the editor's checker carries {@link ENGINE_TYPES} under; never a project script or a sandbox load. */
-export const ENGINE_TYPES_FILE = "engine.d.ts";
-
-/**
- * The `"engine"` module's ambient types, fed to the editor's language worker
- * once so every script's checker sees the same host API without repeating an
- * import's shape in each file. Read back from `engine.d.ts`, the same file
- * `tsc` checks the app's own scripts against.
- */
-export const ENGINE_TYPES: string = ENGINE_TYPES_SOURCE;
 
 /** The path the editor's checker carries {@link VOXELSCAPE_TYPES} under; never a project script or a sandbox load. */
 export const VOXELSCAPE_TYPES_FILE = "voxelscape.d.ts";
 
 /**
- * The `"voxelscape"` module's ambient types — `createModel` and the
- * `ScriptedNpc`/`ScriptedProp` classes (ADR 0050) — fed to the editor's
- * language worker once, read back from `voxelscape.d.ts`, the same file
- * `tsc` checks the app's own demo scripts against. `ModelsByName` starts
- * empty here; a place's own attached models augment it live (`model-dts.ts`'s
- * generated `models.d.ts`), the same declaration-merging seam a demo script's
- * own checked-in augmentation (e.g. `demo-scripts/zombie-model.d.ts`) uses.
+ * The `"voxelscape"` module's ambient types — the sandbox's host surface
+ * (`dispatch`/`onTick`/`log`/`heightAt`/etc.) alongside `createNpc`/
+ * `createProp` (ADR 0050) — fed to the editor's language worker once so
+ * every script's checker sees the same API without repeating its shape in
+ * each file. Read back from `voxelscape.d.ts`, the same file `tsc` checks the
+ * app's own scripts against. `ModelsByName` starts empty here; a place's own
+ * attached models augment it live (`model-dts.ts`'s generated `models.d.ts`),
+ * the same declaration-merging seam a demo script's own checked-in
+ * augmentation (e.g. `demo-scripts/models.d.ts`) uses.
  */
 export const VOXELSCAPE_TYPES: string = VOXELSCAPE_TYPES_SOURCE;
 
 /**
  * Every ambient file the editor's language worker needs alongside a
- * project's own scripts, never as one of them: `engine.d.ts` and
- * `voxelscape.d.ts` themselves, plus every file `engine.d.ts`'s own import of
- * `effects.ts` needs to resolve — the module `dispatch`'s payload type comes
- * from. Keyed by the path each is served under; a creator's project can
- * never carry a file by these names.
+ * project's own scripts, never as one of them: `voxelscape.d.ts` itself,
+ * plus every file its own import of `effects.ts` needs to resolve — the
+ * module `dispatch`'s payload type comes from. Keyed by the path each is
+ * served under; a creator's project can never carry a file by these names.
  */
-export const ENGINE_TYPE_FILES: Record<string, string> = {
-  [ENGINE_TYPES_FILE]: ENGINE_TYPES,
+export const VOXELSCAPE_TYPE_FILES: Record<string, string> = {
+  [VOXELSCAPE_TYPES_FILE]: VOXELSCAPE_TYPES,
   "effects.ts": EFFECTS_SOURCE,
   "cutscene.ts": CUTSCENE_SOURCE,
   "motion.ts": MOTION_SOURCE,
   "sandbox.ts": SANDBOX_SOURCE,
-  [VOXELSCAPE_TYPES_FILE]: VOXELSCAPE_TYPES,
 };
 
 /** The source a new place begins editing from, typed the way a place script expects to be. */
@@ -71,9 +59,9 @@ export const STARTER_SCRIPT = `// Your place's script. Call engine.onTick with a
 // a JSON array of the ending titles this place has already reached. The
 // TypeScript types are stripped when the script loads, so the panel's
 // squiggles are the whole of the type-check; imports may only reach this
-// place's own script files, or "engine". Run /script:demo for a working
+// place's own script files, or "voxelscape". Run /script:demo for a working
 // sample.
-import * as engine from "engine";
+import * as engine from "voxelscape";
 
 let started = false;
 

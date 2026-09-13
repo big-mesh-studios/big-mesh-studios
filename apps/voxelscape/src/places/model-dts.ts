@@ -1,10 +1,11 @@
 // The ambient `.d.ts` a place's attached models generate for the script
 // editor: one combined `declare module "voxelscape" { interface ModelsByName
 // {...} } }` augmentation, typed from each model's real parts and motions, so
-// `createModel("name")` (ADR 0050) autocompletes and type-checks against the
-// actual figure rather than a bare `unknown`. Read only by the editor's
-// language-service worker — the bundler (bundle.ts) reaches the same data
-// through model-descriptor.ts on its own, and neither depends on the other.
+// `createNpc`/`createProp` (ADR 0050) autocomplete and type-check a model
+// name against the actual figure rather than a bare `string`. Read only by
+// the editor's language-service worker — the bundler (bundle.ts) reaches the
+// same data through model-descriptor.ts on its own, and neither depends on
+// the other.
 import {
   modelDescriptorFor,
   modelSpecifierFor,
