@@ -392,7 +392,8 @@ export class ScriptConsole {
    * fresh each load, so a creator iterating on a script starts from clean state
    * — no NPC or dialog from a previous run survives — and `seed` seeds its
    * randomness, the seed a place author means to publish. `entry` is the file
-   * execution starts from; it must export `bmsTick`.
+   * execution starts from; it or a file it imports registers with
+   * `engine.onTick`.
    */
   async loadProject(
     files: Record<string, string>,

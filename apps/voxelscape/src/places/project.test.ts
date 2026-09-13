@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
+import { bundlePlaceProject } from "./bundle";
 import {
   emptyPlaceProject,
   MAIN_SCRIPT_FILE,
@@ -10,6 +11,7 @@ import {
   type PlaceProject,
 } from "./project";
 import type { PlaceManifest } from "./place";
+import { createQuickJSSandbox } from "./quickjs-sandbox";
 
 const MANIFEST: PlaceManifest = {
   name: "The Haunted Mesa",
@@ -39,7 +41,27 @@ describe("a place project", () => {
     });
     expect(fresh.scripts[MAIN_SCRIPT_FILE]).toBe(STARTER_SCRIPT);
     expect(fresh.models).toEqual({});
-    expect(STARTER_SCRIPT).toContain("function bmsTick");
+    expect(STARTER_SCRIPT).toContain("engine.onTick");
+  });
+
+  it("bundles the starter script and dispatches the npc it promises", async () => {
+    const code = await bundlePlaceProject(
+      { [MAIN_SCRIPT_FILE]: STARTER_SCRIPT },
+      MAIN_SCRIPT_FILE,
+    );
+    const sandbox = await createQuickJSSandbox({ seed: 1, now: () => 0 });
+    sandbox.load(code);
+    sandbox.tick(0, "[]");
+    const { effects } = sandbox.drain();
+    expect(effects.map((e) => e.tag)).toContain("npc");
+    const npc = effects.find((e) => e.tag === "npc");
+    expect(JSON.parse(npc!.payload)).toEqual({
+      id: "guide",
+      x: 8,
+      z: 8,
+      name: "Guide",
+    });
+    sandbox.dispose();
   });
 
   it("carries model files through its zip as bytes", async () => {

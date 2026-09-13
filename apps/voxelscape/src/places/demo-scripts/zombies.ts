@@ -2,35 +2,22 @@
 // write: it is imported with `?raw` and handed to the sandbox as text, never
 // run as part of the world's own bundle. A whole population of zombies
 // materializes procedurally around wherever players explore and fights back
-// with a sword the player starts holding; its `declare const engine` is the
-// guest API the interpreter injects.
+// with a sword the player starts holding.
 //
 // `zombie` is imported rather than named as a bare string, so the panel
 // types it against the model this place actually carries (ADR 0046) — this
 // demo's own manifest lists `zombie.zip` among its models, which is what
-// makes the specifier below resolve at all. `ScriptedNpc` wraps the
-// "npc"/"npc-remove"/"npc-die" effects each zombie is placed and moved
-// through, so this file builds none of that JSON by hand.
+// makes the specifier below resolve at all.
 import zombie from "zombie" with { type: "model" };
-import { ScriptedNpc } from "scripted-figures";
-
-declare const engine: {
-  dispatch(tag: string, payload: string): void;
-  log(line: string): void;
-  now(): number;
-  blocks: Record<string, number>;
-  /** Every player's live position: the local player first, then connected peers. */
-  players(): string;
-  /** The terrain surface at (x, z). */
-  heightAt(x: number, z: number): number;
-  /** Whether (x, y, z) is inside solid ground. */
-  solidAt(x: number, y: number, z: number): boolean;
-  /** Whether (x, y, z) is water. */
-  waterAt(x: number, y: number, z: number): boolean;
-};
+import * as engine from "engine";
 
 const GUIDE = "guide";
 const SWORD = "sword";
+
+/** The place model file the zombie's own drawing is bundled under — the
+ * effects vocabulary still takes a model by its file name, not by the bare
+ * specifier an import resolves against, so the extension is put back on. */
+const ZOMBIE_MODEL_FILE = zombie.name + ".zip";
 
 // A whole population of zombies materializes procedurally around wherever
 // players explore, rather than one fixed encounter: only the cells near a
@@ -104,7 +91,10 @@ interface Player {
 }
 
 interface Zombie {
-  npc: ScriptedNpc<typeof zombie>;
+  id: string;
+  x: number;
+  z: number;
+  yaw: number;
   hp: number;
   lastAttackAt: number;
   state: ZombieState;
@@ -219,6 +209,27 @@ function cellsNear(x: number, z: number): string[] {
   return keys;
 }
 
+/**
+ * Sends a zombie's current position to the host — spawning it fresh, or
+ * saying where it now stands after a move. `live` decides whether the
+ * position is also broadcast to other peers; the host still applies it to
+ * this peer's own copy either way, which is what keeps the owner's own view
+ * smooth even on a tick that skips the broadcast.
+ */
+function announce(z: Zombie, live: boolean): void {
+  const y = engine.heightAt(z.x, z.z);
+  engine.dispatch("npc", {
+    id: z.id,
+    x: z.x,
+    y,
+    z: z.z,
+    name: "Zombie",
+    model: ZOMBIE_MODEL_FILE,
+    yaw: z.yaw,
+    live,
+  });
+}
+
 /** Materializes a zombie for every windowed cell that holds one and is not
  * yet tracked — the window being every cell near any current player. */
 function materialize(players: Player[]): void {
@@ -250,15 +261,11 @@ function materialize(players: Player[]): void {
       if (dist2D(pose.x, pose.z, SPAWN_X, SPAWN_Z) <= SPAWN_SAFE_RADIUS) {
         continue;
       }
-      const npc = new ScriptedNpc(zombie, spawn.id, {
+      const z: Zombie = {
+        id: spawn.id,
         x: pose.x,
         z: pose.z,
-        name: "Zombie",
         yaw: pose.yaw,
-        y: engine.heightAt(pose.x, pose.z),
-      });
-      zombies.set(spawn.id, {
-        npc,
         hp: ZOMBIE_MAX_HP,
         lastAttackAt: 0,
         state: "wander",
@@ -269,7 +276,9 @@ function materialize(players: Player[]): void {
         cellKey: key,
         homeX: pose.x,
         homeZ: pose.z,
-      });
+      };
+      zombies.set(spawn.id, z);
+      announce(z, true);
     }
   }
 }
@@ -287,7 +296,7 @@ function forget(players: Player[]): void {
   for (const [id, z] of zombies) {
     if (!window.has(z.cellKey)) {
       zombies.delete(id);
-      z.npc.remove();
+      engine.dispatch("npc-remove", { id });
     }
   }
 }
@@ -333,16 +342,11 @@ function moveStep(
  * toward it — in a wide cone, not a robotic beeline — once it has strayed
  * past the leash. Without this, a symmetric random walk has no reason not
  * to drift arbitrarily far given enough time. */
-function pickWanderHeading(
-  x: number,
-  z: number,
-  homeX: number,
-  homeZ: number,
-): number {
-  if (dist2D(x, z, homeX, homeZ) <= WANDER_LEASH_RADIUS) {
+function pickWanderHeading(z: Zombie): number {
+  if (dist2D(z.x, z.z, z.homeX, z.homeZ) <= WANDER_LEASH_RADIUS) {
     return Math.random() * Math.PI * 2;
   }
-  const towardHome = Math.atan2(homeX - x, homeZ - z);
+  const towardHome = Math.atan2(z.homeX - z.x, z.homeZ - z.z);
   return towardHome + (Math.random() - 0.5) * (Math.PI / 2);
 }
 
@@ -359,15 +363,12 @@ function stepZombie(z: Zombie, players: Player[], now: number): void {
     return;
   }
   const self = players[0].did;
-  let x = z.npc.x;
-  let zPos = z.npc.z;
-  let yaw = z.npc.yaw;
 
   let nearest = players[0];
-  let nearestDistance = dist2D(x, zPos, nearest.x, nearest.z);
+  let nearestDistance = dist2D(z.x, z.z, nearest.x, nearest.z);
   for (let i = 1; i < players.length; i++) {
     const p = players[i];
-    const d = dist2D(x, zPos, p.x, p.z);
+    const d = dist2D(z.x, z.z, p.x, p.z);
     if (d < nearestDistance) {
       nearestDistance = d;
       nearest = p;
@@ -378,7 +379,7 @@ function stepZombie(z: Zombie, players: Player[], now: number): void {
   if (z.ownerDid !== "" && z.ownerDid !== nearest.did) {
     const current = players.find((p) => p.did === z.ownerDid);
     if (current !== undefined) {
-      const currentDistance = dist2D(x, zPos, current.x, current.z);
+      const currentDistance = dist2D(z.x, z.z, current.x, current.z);
       if (currentDistance <= nearestDistance + OWNER_HYSTERESIS) {
         owner = current;
         ownerDistance = currentDistance;
@@ -399,53 +400,51 @@ function stepZombie(z: Zombie, players: Player[], now: number): void {
   z.state = state;
 
   if (state === "attack") {
-    yaw = Math.atan2(owner.x - x, owner.z - zPos);
+    z.yaw = Math.atan2(owner.x - z.x, owner.z - z.z);
     // There's a nearest range as well as a furthest one: nothing stops a
     // player walking straight into it mid-fight otherwise, and standing
     // inside its own model's geometry is indistinguishable from it not
     // being there at all. Backing off is silent — no re-dispatch here — the
-    // tick's own `move` below still sends wherever it ends up.
+    // tick's own `announce` below still sends wherever it ends up.
     if (ownerDistance < MIN_ATTACK_DISTANCE) {
-      const away = yaw + Math.PI;
-      const moved = moveStep(x, zPos, away, ZOMBIE_SPEED, TICK_MS);
-      x = moved.x;
-      zPos = moved.z;
+      const away = z.yaw + Math.PI;
+      const moved = moveStep(z.x, z.z, away, ZOMBIE_SPEED, TICK_MS);
+      z.x = moved.x;
+      z.z = moved.z;
     }
     if (now - z.lastAttackAt >= ATTACK_INTERVAL_MS) {
       z.lastAttackAt = now;
-      engine.dispatch(
-        "player-damage",
-        JSON.stringify({
-          player: owner.did,
-          amount: ZOMBIE_DAMAGE,
-          source: z.npc.id,
-        }),
-      );
+      engine.dispatch("player-damage", {
+        player: owner.did,
+        amount: ZOMBIE_DAMAGE,
+        source: z.id,
+      });
     }
   } else if (state === "chase") {
-    yaw = Math.atan2(owner.x - x, owner.z - zPos);
-    const moved = moveStep(x, zPos, yaw, ZOMBIE_SPEED, TICK_MS);
-    x = moved.x;
-    zPos = moved.z;
+    z.yaw = Math.atan2(owner.x - z.x, owner.z - z.z);
+    const moved = moveStep(z.x, z.z, z.yaw, ZOMBIE_SPEED, TICK_MS);
+    z.x = moved.x;
+    z.z = moved.z;
   } else {
     if (now >= z.wanderUntil) {
-      z.wanderHeading = pickWanderHeading(x, zPos, z.homeX, z.homeZ);
+      z.wanderHeading = pickWanderHeading(z);
       z.wanderUntil = now + WANDER_MIN_MS + Math.random() * WANDER_SPREAD_MS;
     }
     // The leash is enforced on every step, not only when a heading is
     // picked — a heading chosen while still within it can point outward, and
     // only checking at the next pick would let a full multi-second leg carry
     // it well past the leash before anything pulled it back.
-    const beyondLeash = dist2D(x, zPos, z.homeX, z.homeZ) > WANDER_LEASH_RADIUS;
+    const beyondLeash =
+      dist2D(z.x, z.z, z.homeX, z.homeZ) > WANDER_LEASH_RADIUS;
     const heading = beyondLeash
-      ? Math.atan2(z.homeX - x, z.homeZ - zPos)
+      ? Math.atan2(z.homeX - z.x, z.homeZ - z.z)
       : z.wanderHeading;
-    const moved = moveStep(x, zPos, heading, ZOMBIE_WANDER_SPEED, TICK_MS);
-    x = moved.x;
-    zPos = moved.z;
-    yaw = heading;
+    const moved = moveStep(z.x, z.z, heading, ZOMBIE_WANDER_SPEED, TICK_MS);
+    z.x = moved.x;
+    z.z = moved.z;
+    z.yaw = heading;
     if (moved.blocked) {
-      z.wanderHeading = pickWanderHeading(x, zPos, z.homeX, z.homeZ);
+      z.wanderHeading = pickWanderHeading(z);
       z.wanderUntil = now + 500 + Math.random() * 1000;
     }
   }
@@ -456,68 +455,48 @@ function stepZombie(z: Zombie, players: Player[], now: number): void {
   if (dueToBroadcast) {
     z.lastBroadcastAt = now;
   }
-  z.npc.move({
-    x,
-    z: zPos,
-    yaw,
-    y: engine.heightAt(x, zPos),
-    live: dueToBroadcast,
-  });
+  announce(z, dueToBroadcast);
 }
 
-/** Where a zombie lands after being shoved away from whoever struck it,
- * unless the shove would land it in a wall or water, which would only stick
- * it there. */
-function knockedBack(
-  x: number,
-  z: number,
-  attacker: { x: number; z: number },
-): { x: number; z: number } {
-  const dx = x - attacker.x;
-  const dz = z - attacker.z;
+/** Shoves a zombie away from wherever it was struck from, unless the shove
+ * would land it in a wall or water, which would only stick it there. */
+function knockback(z: Zombie, attacker: { x: number; z: number }): void {
+  const dx = z.x - attacker.x;
+  const dz = z.z - attacker.z;
   const distance = Math.hypot(dx, dz);
   if (distance < 1e-6) {
-    return { x, z };
+    return;
   }
   const push = Math.min(KNOCKBACK, distance);
-  const nx = x + (dx / distance) * push;
-  const nz = z + (dz / distance) * push;
-  return walkable(x, z, nx, nz) ? { x: nx, z: nz } : { x, z };
+  const nx = z.x + (dx / distance) * push;
+  const nz = z.z + (dz / distance) * push;
+  if (walkable(z.x, z.z, nx, nz)) {
+    z.x = nx;
+    z.z = nz;
+  }
 }
 
 function armTick(): void {
-  engine.dispatch(
-    "timer",
-    JSON.stringify({ id: "zombie-tick", afterMs: TICK_MS }),
-  );
+  engine.dispatch("timer", { id: "zombie-tick", afterMs: TICK_MS });
 }
 
-export function bmsTick(_clockMs: number, eventsJson: string): void {
+engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
   const now = engine.now();
   if (!started) {
     started = true;
-    engine.dispatch(
-      "npc",
-      JSON.stringify({ id: GUIDE, x: 8, z: 8, name: "Guide" }),
-    );
+    engine.dispatch("npc", { id: GUIDE, x: 8, z: 8, name: "Guide" });
     engine.log("your place started");
     // The sword is given and equipped once, for good: this place has nothing
     // else to hold, and a bare-handed touch stays how every other entity is
     // greeted.
-    engine.dispatch(
-      "item-define",
-      JSON.stringify({
-        id: SWORD,
-        name: "Sword",
-        sprite: "",
-        stackable: false,
-      }),
-    );
-    engine.dispatch(
-      "item-give",
-      JSON.stringify({ player: "", item: SWORD, count: 1 }),
-    );
-    engine.dispatch("item-hold", JSON.stringify({ player: "", item: SWORD }));
+    engine.dispatch("item-define", {
+      id: SWORD,
+      name: "Sword",
+      sprite: "",
+      stackable: false,
+    });
+    engine.dispatch("item-give", { player: "", item: SWORD, count: 1 });
+    engine.dispatch("item-hold", { player: "", item: SWORD });
     armTick();
   }
 
@@ -540,18 +519,18 @@ export function bmsTick(_clockMs: number, eventsJson: string): void {
       (e.kind === "npc-talk" && e.npcId === GUIDE) ||
       (e.kind === "entity-used" && e.entityId === GUIDE)
     ) {
-      engine.dispatch(
-        "toast",
-        JSON.stringify({ player: e.producer, text: "Hello, traveller." }),
-      );
+      engine.dispatch("toast", {
+        player: e.producer,
+        text: "Hello, traveller.",
+      });
     } else if (e.kind === "entity-used" && e.entityId !== undefined) {
       // A bare touch only ever gets a rise out of it — killing one takes an
       // actual swing, over the sword's own reach and reported strike.
       if (zombies.has(e.entityId)) {
-        engine.dispatch(
-          "toast",
-          JSON.stringify({ player: e.producer, text: "The zombie snarls." }),
-        );
+        engine.dispatch("toast", {
+          player: e.producer,
+          text: "The zombie snarls.",
+        });
       }
     } else if (
       e.kind === "entity-hit" &&
@@ -560,30 +539,25 @@ export function bmsTick(_clockMs: number, eventsJson: string): void {
     ) {
       const target = zombies.get(e.entityId);
       if (target !== undefined) {
-        const pushed = knockedBack(target.npc.x, target.npc.z, {
-          x: e.attackerX ?? target.npc.x,
-          z: e.attackerZ ?? target.npc.z,
+        knockback(target, {
+          x: e.attackerX ?? target.x,
+          z: e.attackerZ ?? target.z,
         });
         target.hp -= e.amount;
         if (target.hp <= 0) {
-          zombies.delete(target.npc.id);
-          deadIds.add(target.npc.id);
-          target.npc.die();
-          engine.dispatch(
-            "toast",
-            JSON.stringify({ player: e.producer, text: "The zombie falls." }),
-          );
-        } else {
-          target.npc.move({
-            x: pushed.x,
-            z: pushed.z,
-            y: engine.heightAt(pushed.x, pushed.z),
-            live: true,
+          zombies.delete(target.id);
+          deadIds.add(target.id);
+          engine.dispatch("npc-die", { id: target.id });
+          engine.dispatch("toast", {
+            player: e.producer,
+            text: "The zombie falls.",
           });
-          engine.dispatch(
-            "toast",
-            JSON.stringify({ player: e.producer, text: "The zombie reels." }),
-          );
+        } else {
+          announce(target, true);
+          engine.dispatch("toast", {
+            player: e.producer,
+            text: "The zombie reels.",
+          });
         }
       }
     } else if (e.kind === "timer" && e.timerId === "zombie-tick") {
@@ -599,4 +573,4 @@ export function bmsTick(_clockMs: number, eventsJson: string): void {
     }
     armTick();
   }
-}
+});

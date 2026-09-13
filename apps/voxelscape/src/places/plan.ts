@@ -1,6 +1,7 @@
 // The structure plan a place's script hands the world before its terrain is
-// generated: an optional `bmsPlan(contextJson)` export that answers with the
-// boxes, roads and houses the trusted filler stamps into every chunk. The plan
+// generated: a script may call `engine.onPlan(fn)`, and `fn(contextJson)`
+// answers with the boxes, roads and houses the trusted filler stamps into
+// every chunk. The plan
 // crosses the sandbox boundary as a JSON string and is validated here, the same
 // way `events.ts` and `effects.ts` bound what a script may say, so a broken or
 // hostile plan is refused rather than rasterized.
@@ -162,7 +163,7 @@ export const parseStructurePlan = (text: string): StructurePlan | null => {
 export interface CompilePlanParams {
   /** The place's script files, keyed by manifest-relative path. */
   files: Record<string, string>;
-  /** The file execution starts from; its module may export `bmsPlan`. */
+  /** The file execution starts from; it or a file it imports may call `engine.onPlan`. */
   entry: string;
   /** The place's attached model files, keyed by name, for a `with { type: "model" }` import to resolve against. */
   models?: Record<string, Uint8Array>;
@@ -173,9 +174,10 @@ export interface CompilePlanParams {
 }
 
 /**
- * Runs a place's `bmsPlan` in a fresh sandbox and returns the validated plan,
- * or an empty plan when the script defines none. The interpreter exists only
- * for this one call: `bmsTick` runs in the place's long-lived host, not here.
+ * Runs the plan handler a place registers with `engine.onPlan` in a fresh
+ * sandbox and returns the validated plan, or an empty plan when the script
+ * registers none. The interpreter exists only for this one call: a tick
+ * handler runs in the place's long-lived host, not here.
  *
  * @throws {PlaceBundleError} When the scripts do not compile, or when their
  * plan is malformed or larger than this world can generate.
@@ -199,7 +201,7 @@ export const compilePlacePlan = async (
     const plan = parseStructurePlan(text);
     if (plan === null) {
       throw new PlaceBundleError(
-        "bmsPlan did not return a structure plan this world can generate",
+        "the plan handler did not return a structure plan this world can generate",
       );
     }
     return plan;

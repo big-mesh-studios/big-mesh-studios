@@ -15,7 +15,7 @@ import {
   For,
   type Component,
 } from "solid-js";
-import type { PlaceProject } from "../places/project";
+import { ENGINE_TYPE_FILES, type PlaceProject } from "../places/project";
 import { generateProjectModelsDts } from "../places/model-dts";
 import { SCRIPTED_FIGURES_DTS } from "../places/scripted-figures-dts";
 import styles from "./PlaceEditor.module.css";
@@ -59,6 +59,7 @@ const PlaceEditorPanes: Component<{
 
   const files = createMemo(() => ({
     ...props.project.scripts,
+    ...ENGINE_TYPE_FILES,
     [MODELS_DTS_FILE]: modelsDts(),
     [SCRIPTED_FIGURES_DTS_FILE]: SCRIPTED_FIGURES_DTS,
   }));

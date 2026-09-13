@@ -7,15 +7,10 @@
 // New sections use quicksand (the muddy room that slows the player) and
 // conveyor belts (the cafeteria lunch trays that carry the player forward).
 //
-// ALL voxel coordinates × 2 = world coordinates. The bmsPlan() function
-// takes voxel coordinates; zones, props, and fields take world coordinates.
-declare const engine: {
-  dispatch(tag: string, payload: string): void;
-  log(line: string): void;
-  now(): number;
-  endings(): string;
-  blocks: Record<string, number>;
-};
+// ALL voxel coordinates × 2 = world coordinates. The plan handler registered
+// with engine.onPlan takes voxel coordinates; zones, props, and fields take
+// world coordinates.
+import * as engine from "engine";
 
 /** One fact the world hands the script, as the script reads it back. */
 interface Event {
@@ -131,38 +126,35 @@ const CHECKPOINTS: Record<string, [number, number, number]> = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function dispatch(tag: string, payload: unknown): void {
-  engine.dispatch(tag, JSON.stringify(payload));
-}
 function say(text: string): void {
-  dispatch("toast", { player: "", text });
+  engine.dispatch("toast", { player: "", text });
 }
 function narrate(name: string, text: string): void {
-  dispatch("narrate", { player: "", name, text });
+  engine.dispatch("narrate", { player: "", name, text });
 }
 function hold(item: string): void {
-  dispatch("item-hold", { player: "", item });
+  engine.dispatch("item-hold", { player: "", item });
   held = item;
 }
 function give(item: string, text: string): void {
-  dispatch("item-give", { player: "", item, count: 1 });
+  engine.dispatch("item-give", { player: "", item, count: 1 });
   hold(item);
   if (text !== "") {
     say(text);
   }
 }
 function take(item: string, count: number): void {
-  dispatch("item-take", { player: "", item, count });
+  engine.dispatch("item-take", { player: "", item, count });
   if (held === item) {
     hold("");
   }
 }
 function ending(title: string, text: string): void {
   flags.finished = true;
-  dispatch("ending", { player: "", title, text });
+  engine.dispatch("ending", { player: "", title, text });
 }
 function showBladder(): void {
-  dispatch("hud", {
+  engine.dispatch("hud", {
     player: "",
     id: "bladder",
     kind: "bar",
@@ -187,10 +179,10 @@ function bladderBeat(): void {
   if (bladder === Math.floor(BLADDER_MAX * 0.75)) {
     narrate("You", "Getting desperate. I need to hurry.");
   }
-  dispatch("timer", { id: "bladder", afterMs: BLADDER_STEP_MS });
+  engine.dispatch("timer", { id: "bladder", afterMs: BLADDER_STEP_MS });
 }
 function showCheckpoint(name: string): void {
-  dispatch("hud", {
+  engine.dispatch("hud", {
     player: "",
     id: "checkpoint",
     kind: "text",
@@ -214,7 +206,7 @@ function box(
   return { kind: "box", min: [minX, minY, minZ], max: [maxX, maxY, maxZ], id };
 }
 
-export function bmsPlan(): string {
+engine.onPlan(function plan(): string {
   const b = engine.blocks;
   const shapes: unknown[] = [
     // Ground
@@ -319,27 +311,27 @@ export function bmsPlan(): string {
     box(-4, 112, 134, 4, 113, 134, b.greystone),
   ];
   return JSON.stringify(shapes);
-}
+});
 
 // ---------------------------------------------------------------------------
 // Open (world units for props, zones, fields)
 // ---------------------------------------------------------------------------
 function open(): void {
-  dispatch("time", { seconds: 480, speed: 0 });
+  engine.dispatch("time", { seconds: 480, speed: 0 });
 
-  dispatch("item-define", {
+  engine.dispatch("item-define", {
     id: "soap",
     name: "Soap",
     sprite: "",
     stackable: false,
   });
-  dispatch("item-define", {
+  engine.dispatch("item-define", {
     id: "hall-pass",
     name: "Hall Pass",
     sprite: "",
     stackable: false,
   });
-  dispatch("item-define", {
+  engine.dispatch("item-define", {
     id: "toilet-paper",
     name: "Toilet Paper",
     sprite: "",
@@ -347,7 +339,7 @@ function open(): void {
   });
 
   for (const [id, minX, minY, minZ, maxX, maxY, maxZ] of ZONES) {
-    dispatch("zone", {
+    engine.dispatch("zone", {
       id,
       name: id,
       min: [minX, minY, minZ],
@@ -356,7 +348,7 @@ function open(): void {
   }
 
   // Quicksand over the Mud Room floor (world z=220..244, world y=218..226)
-  dispatch("field", {
+  engine.dispatch("field", {
     id: "mud",
     kind: "quicksand",
     min: [-14, 218, 220],
@@ -366,7 +358,7 @@ function open(): void {
   });
 
   // Soap pickup on lobby floor (world y=202)
-  dispatch("prop", {
+  engine.dispatch("prop", {
     id: "soap",
     model: "soap.zip",
     x: -10,
@@ -378,7 +370,7 @@ function open(): void {
   });
 
   // Wet-floor sign in the hallway (world z=48 = roughly mid-hallway)
-  dispatch("prop", {
+  engine.dispatch("prop", {
     id: "wet-floor",
     model: "wet-floor.zip",
     x: 3,
@@ -391,7 +383,7 @@ function open(): void {
   });
 
   // RESTROOM Sign above the bathroom doorway (world z=268, y=225)
-  dispatch("prop", {
+  engine.dispatch("prop", {
     id: "restroom-sign",
     model: "platform.zip",
     x: 0,
@@ -403,7 +395,7 @@ function open(): void {
   });
 
   // First toilet roll tumbling down the stairs (world z=14, y=220)
-  dispatch("prop", {
+  engine.dispatch("prop", {
     id: "toilet-roll",
     model: "toilet-roll.zip",
     x: 2,
@@ -425,7 +417,7 @@ function open(): void {
   });
 
   // Second toilet roll — offset 2.5s so they come in waves
-  dispatch("prop", {
+  engine.dispatch("prop", {
     id: "toilet-roll-2",
     model: "toilet-roll.zip",
     x: -2,
@@ -448,7 +440,7 @@ function open(): void {
   });
 
   // Moving plank bridging pedestal to hallway (world z=22..32, ping-pong)
-  dispatch("prop", {
+  engine.dispatch("prop", {
     id: "moving-plank",
     model: "platform.zip",
     x: 0,
@@ -469,7 +461,7 @@ function open(): void {
   });
 
   // Cafeteria: three conveyor-belt lunch trays (world z=70, 86, 102)
-  dispatch("prop", {
+  engine.dispatch("prop", {
     id: "tray-a",
     model: "platform.zip",
     x: 0,
@@ -480,7 +472,7 @@ function open(): void {
     solid: true,
     conveyor: { vx: 0, vz: 6 },
   });
-  dispatch("prop", {
+  engine.dispatch("prop", {
     id: "tray-b",
     model: "platform.zip",
     x: 0,
@@ -491,7 +483,7 @@ function open(): void {
     solid: true,
     conveyor: { vx: 0, vz: 6 },
   });
-  dispatch("prop", {
+  engine.dispatch("prop", {
     id: "tray-c",
     model: "platform.zip",
     x: 0,
@@ -504,7 +496,7 @@ function open(): void {
   });
 
   // Gym: side-sliding platform (world z=130)
-  dispatch("prop", {
+  engine.dispatch("prop", {
     id: "gym-slide",
     model: "platform.zip",
     x: 0,
@@ -525,7 +517,7 @@ function open(): void {
   });
 
   // Gym: classic spinning turntable (world z=148)
-  dispatch("prop", {
+  engine.dispatch("prop", {
     id: "turntable",
     model: "platform.zip",
     x: 0,
@@ -543,7 +535,7 @@ function open(): void {
   });
 
   // Gym: falling-rising platform (world z=166)
-  dispatch("prop", {
+  engine.dispatch("prop", {
     id: "gym-bounce",
     model: "platform.zip",
     x: 0,
@@ -564,7 +556,7 @@ function open(): void {
   });
 
   // Library: rolling globe hazard (world z=196)
-  dispatch("prop", {
+  engine.dispatch("prop", {
     id: "globe",
     model: "toilet-roll.zip",
     x: 0,
@@ -587,7 +579,7 @@ function open(): void {
   });
 
   // NPCs
-  dispatch("npc", {
+  engine.dispatch("npc", {
     id: JANITOR,
     x: -18,
     z: -50,
@@ -596,7 +588,7 @@ function open(): void {
     model: "npc-sable.zip",
     yaw: Math.PI / 2,
   });
-  dispatch("npc", {
+  engine.dispatch("npc", {
     id: BULLY,
     x: 0,
     z: 40,
@@ -605,7 +597,7 @@ function open(): void {
     model: "npc-bully.zip",
     yaw: Math.PI,
   });
-  dispatch("npc", {
+  engine.dispatch("npc", {
     id: PRINCIPAL,
     x: -14,
     z: 88,
@@ -614,7 +606,7 @@ function open(): void {
     model: "npc-brad.zip",
     yaw: Math.PI / 2,
   });
-  dispatch("npc", {
+  engine.dispatch("npc", {
     id: TEACHER,
     x: 0,
     z: 278,
@@ -624,13 +616,13 @@ function open(): void {
     yaw: Math.PI,
   });
 
-  dispatch("player-place", { player: "", x: 0, z: -50, y: LOBBY });
-  dispatch("void", { y: VOID_Y });
+  engine.dispatch("player-place", { player: "", x: 0, z: -50, y: LOBBY });
+  engine.dispatch("void", { y: VOID_Y });
 
   showBladder();
-  dispatch("timer", { id: "bladder", afterMs: BLADDER_STEP_MS });
+  engine.dispatch("timer", { id: "bladder", afterMs: BLADDER_STEP_MS });
 
-  dispatch("cutscene", {
+  engine.dispatch("cutscene", {
     player: "",
     shots: [
       { at: [-60, 268, -140], look: [0, 210, 0], durationMs: 0, holdMs: 1_200 },
@@ -704,7 +696,7 @@ function useSoap(): void {
     return;
   }
   take("soap", 1);
-  dispatch("player-jump", { player: "", multiplier: 1.5 });
+  engine.dispatch("player-jump", { player: "", multiplier: 1.5 });
   narrate("You", "Slippery! But I can jump higher now.");
 }
 
@@ -718,7 +710,7 @@ function useHallPass(): void {
 
 function used(entityId: string, _item: string): void {
   if (entityId === "soap") {
-    dispatch("prop-remove", { id: "soap" });
+    engine.dispatch("prop-remove", { id: "soap" });
     give("soap", "You pocket the soap bar.");
     return;
   }
@@ -812,7 +804,7 @@ function entered(zone: string): void {
 
   const spot = CHECKPOINTS[zone];
   if (spot !== undefined) {
-    dispatch("player-checkpoint", {
+    engine.dispatch("player-checkpoint", {
       player: "",
       x: spot[0],
       z: spot[1],
@@ -823,7 +815,7 @@ function entered(zone: string): void {
 
   if (zone === STAIRS && flags.stairBeat !== true) {
     flags.stairBeat = true;
-    dispatch("camera", {
+    engine.dispatch("camera", {
       player: "",
       at: [30, 234, -8],
       look: [0, 210, -40],
@@ -834,7 +826,7 @@ function entered(zone: string): void {
   }
   if (zone === CAFETERIA && flags.cafeBeat !== true) {
     flags.cafeBeat = true;
-    dispatch("camera", {
+    engine.dispatch("camera", {
       player: "",
       at: [30, 228, 88],
       look: [0, 218, 88],
@@ -845,7 +837,7 @@ function entered(zone: string): void {
   }
   if (zone === MUD_ROOM && flags.mudBeat !== true) {
     flags.mudBeat = true;
-    dispatch("camera", {
+    engine.dispatch("camera", {
       player: "",
       at: [20, 228, 232],
       look: [0, 218, 232],
@@ -856,7 +848,7 @@ function entered(zone: string): void {
   }
   if (zone === BATHROOM && flags.bathBeat !== true) {
     flags.bathBeat = true;
-    dispatch("camera", {
+    engine.dispatch("camera", {
       player: "",
       at: [30, 230, 280],
       look: [0, 218, 280],
@@ -872,11 +864,11 @@ function entered(zone: string): void {
 // ---------------------------------------------------------------------------
 function touched(entityId: string): void {
   if (entityId === "wet-floor") {
-    dispatch("player-kill", { player: "", cause: "wet-floor" });
+    engine.dispatch("player-kill", { player: "", cause: "wet-floor" });
     return;
   }
   if (entityId === "globe") {
-    dispatch("player-kill", { player: "", cause: "globe" });
+    engine.dispatch("player-kill", { player: "", cause: "globe" });
   }
 }
 
@@ -899,7 +891,7 @@ function died(cause: string): void {
 // ---------------------------------------------------------------------------
 // Main tick
 // ---------------------------------------------------------------------------
-export function bmsTick(_clockMs: number, eventsJson: string): void {
+engine.onTick(function tick(_clockMs: number, eventsJson: string): void {
   if (!started) {
     started = true;
     open();
@@ -932,4 +924,4 @@ export function bmsTick(_clockMs: number, eventsJson: string): void {
       bladderBeat();
     }
   }
-}
+});

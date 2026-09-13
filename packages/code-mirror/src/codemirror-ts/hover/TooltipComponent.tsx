@@ -101,7 +101,8 @@ function Documentation(props: { parts: ts.SymbolDisplayPart[] }) {
       class="tooltip-documentation"
       style={{
         "margin-top": "8px",
-        "border-top": "1px solid var(--cm-tooltip-border, rgba(128, 128, 128, 0.3))",
+        "border-top":
+          "1px solid var(--cm-tooltip-border, rgba(128, 128, 128, 0.3))",
         "padding-top": "8px",
       }}
     >

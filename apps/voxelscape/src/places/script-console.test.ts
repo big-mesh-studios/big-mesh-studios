@@ -108,9 +108,10 @@ describe("a script console", () => {
     expect(script.npcs()).toHaveLength(2);
     await loadProject(
       script,
-      `export function bmsTick() {
-        engine.dispatch("npc", JSON.stringify({ id: "ghost", x: 1, z: 2 }));
-      }`,
+      `import * as engine from "engine";
+      engine.onTick(function () {
+        engine.dispatch("npc", { id: "ghost", x: 1, z: 2 });
+      });`,
       99,
     );
     expect(script.npcs().map((npc) => npc.id)).toEqual(["ghost"]);
@@ -119,7 +120,11 @@ describe("a script console", () => {
 
   it("reports when a loaded script places no NPCs", async () => {
     const { script } = scriptConsole();
-    const line = await loadProject(script, "export function bmsTick() {}", 1);
+    const line = await loadProject(
+      script,
+      `import * as engine from "engine"; engine.onTick(function () {});`,
+      1,
+    );
     expect(line).toContain("no NPCs placed yet");
     script.dispose();
   });
@@ -127,10 +132,11 @@ describe("a script console", () => {
   it("threads a place's models through to a script's model import, and replays them on restart", async () => {
     const { script } = scriptConsole();
     const source = `
+      import * as engine from "engine";
       import zombie from "zombie" with { type: "model" };
-      export function bmsTick(): void {
-        engine.dispatch("npc", JSON.stringify({ id: zombie.name, x: 0, z: 0 }));
-      }
+      engine.onTick(function (): void {
+        engine.dispatch("npc", { id: zombie.name, x: 0, z: 0 });
+      });
     `;
     await script.loadProject(
       { [MAIN_SCRIPT_FILE]: source },

@@ -143,7 +143,7 @@ export interface BenchRoute {
 export interface PlaceBoot {
   /** The place's script files, keyed by manifest-relative path. */
   files: Record<string, string>;
-  /** The file execution starts from; its module must export `bmsTick`. */
+  /** The file execution starts from; it or a file it imports registers with `engine.onTick`. */
   entry: string;
   /** The seed the place's scripts are run against. */
   seed: number;

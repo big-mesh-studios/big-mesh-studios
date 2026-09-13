@@ -21,14 +21,14 @@ const make = (
   });
 
 describe("a QuickJS sandbox", () => {
-  it("loads a script and runs its tick against the shared clock", async () => {
+  it("loads a script and runs its onTick registration against the shared clock", async () => {
     const sandbox = await make();
     sandbox.load(`
-      function bmsTick(clockMs, eventsJson) {
+      engine.onTick(function (clockMs, eventsJson) {
         var events = JSON.parse(eventsJson);
         engine.dispatch("heartbeat", JSON.stringify({ at: clockMs, n: events.length }));
         engine.log("beat");
-      }
+      });
     `);
     sandbox.tick(1_000, "[]");
     expect(sandbox.drain()).toEqual({
@@ -42,15 +42,15 @@ describe("a QuickJS sandbox", () => {
     sandbox.dispose();
   });
 
-  it("runs an optional bmsPlan and exposes the block ids", async () => {
+  it("runs an optional onPlan registration and exposes the block ids", async () => {
     const sandbox = await make();
     sandbox.load(`
-      function bmsPlan(contextJson) {
+      engine.onPlan(function (contextJson) {
         var context = JSON.parse(contextJson);
         return JSON.stringify([
           { kind: "box", min: [0, 0, 0], max: [1, 1, 1], id: engine.blocks.brick },
         ]);
-      }
+      });
     `);
     const text = sandbox.plan(
       JSON.stringify({ seed: 3, region: { min: [0, 0, 0], max: [8, 8, 8] } }),
@@ -61,20 +61,32 @@ describe("a QuickJS sandbox", () => {
     sandbox.dispose();
   });
 
-  it("answers an empty plan when the script defines no bmsPlan", async () => {
+  it("answers an empty plan when the script registers no onPlan handler", async () => {
     const sandbox = await make();
-    sandbox.load(`function bmsTick() {}`);
+    sandbox.load(`engine.onTick(function () {});`);
     expect(sandbox.plan("{}")).toBe("");
+    sandbox.dispose();
+  });
+
+  it("runs every onTick registration, in the order the script called it", async () => {
+    const sandbox = await make();
+    sandbox.load(`
+      engine.onTick(function () { engine.log("first"); });
+      engine.onTick(function () { engine.log("second"); });
+      engine.onTick(function () { engine.log("third"); });
+    `);
+    sandbox.tick(0, "[]");
+    expect(sandbox.drain().logs).toEqual(["first", "second", "third"]);
     sandbox.dispose();
   });
 
   it("delivers the events added since the last step", async () => {
     const sandbox = await make();
     sandbox.load(`
-      function bmsTick(clockMs, eventsJson) {
+      engine.onTick(function (clockMs, eventsJson) {
         var events = JSON.parse(eventsJson);
         engine.log(events.map(function (e) { return e.kind; }).join(","));
-      }
+      });
     `);
     const events = JSON.stringify([
       { kind: "block-broken", id: "e1", at: 10, producer: "did:plc:a" },
@@ -87,7 +99,7 @@ describe("a QuickJS sandbox", () => {
 
   it("is deterministic across two sandboxes with the same seed and clock", async () => {
     const source = `
-      function bmsTick(clockMs, eventsJson) {
+      engine.onTick(function (clockMs, eventsJson) {
         var events = JSON.parse(eventsJson);
         engine.dispatch("roll", JSON.stringify({
           r: Math.random().toFixed(8),
@@ -95,7 +107,7 @@ describe("a QuickJS sandbox", () => {
           at: clockMs,
           n: events.length,
         }));
-      }
+      });
     `;
     const first = await make({ seed: 7 });
     const second = await make({ seed: 7 });
@@ -126,9 +138,9 @@ describe("a QuickJS sandbox", () => {
 
   it("seeds Math.random, so a different seed draws a different stream", async () => {
     const source = `
-      function bmsTick() {
+      engine.onTick(function () {
         engine.dispatch("roll", JSON.stringify({ r: Math.random().toFixed(6) }));
-      }
+      });
     `;
     const a = await make({ seed: 3 });
     const b = await make({ seed: 4 });
@@ -145,7 +157,7 @@ describe("a QuickJS sandbox", () => {
 
   it("interrupts a step that runs past its budget", async () => {
     const sandbox = await make({ timeLimitMs: 20 });
-    sandbox.load("function bmsTick() { while (true) {} }");
+    sandbox.load("engine.onTick(function () { while (true) {} });");
     let thrown: ScriptExecutionError | undefined;
     try {
       sandbox.tick(0, "[]");
@@ -163,10 +175,10 @@ describe("a QuickJS sandbox", () => {
       timeLimitMs: 2_000,
     });
     sandbox.load(`
-      function bmsTick() {
+      engine.onTick(function () {
         var a = [];
         while (true) { a.push("x".repeat(8 * 1024 * 1024)); }
-      }
+      });
     `);
     let thrown: ScriptExecutionError | undefined;
     try {
@@ -179,9 +191,13 @@ describe("a QuickJS sandbox", () => {
     sandbox.dispose();
   });
 
-  it("reports an exception thrown by the script", async () => {
+  it("reports an exception thrown by a tick handler, and skips the ones after it", async () => {
     const sandbox = await make();
-    sandbox.load("function bmsTick() { missingCall(); }");
+    sandbox.load(`
+      engine.onTick(function () { engine.log("first"); });
+      engine.onTick(function () { missingCall(); });
+      engine.onTick(function () { engine.log("third"); });
+    `);
     let thrown: ScriptExecutionError | undefined;
     try {
       sandbox.tick(0, "[]");
@@ -190,6 +206,7 @@ describe("a QuickJS sandbox", () => {
     }
     expect(thrown?.kind).toBe("exception");
     expect(thrown?.message).toMatch(/ReferenceError/);
+    expect(sandbox.drain().logs).toEqual(["first"]);
     sandbox.dispose();
   });
 
@@ -206,7 +223,7 @@ describe("a QuickJS sandbox", () => {
     sandbox.dispose();
   });
 
-  it("does nothing when a script never defines bmsTick", async () => {
+  it("does nothing when a script registers no onTick handler", async () => {
     const sandbox = await make();
     sandbox.load("var marker = 1;");
     expect(() => sandbox.tick(1_000, "[]")).not.toThrow();
@@ -231,13 +248,13 @@ describe("a QuickJS sandbox", () => {
     const sandbox = await make();
     sandbox.load(`
       var broken = 0;
-      function bmsTick(clockMs, eventsJson) {
+      engine.onTick(function (clockMs, eventsJson) {
         var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "block-broken") broken += 1;
         }
         engine.dispatch("score", JSON.stringify({ broken: broken }));
-      }
+      });
     `);
     sandbox.tick(1_000, JSON.stringify([{ kind: "player-joined", id: "e1" }]));
     sandbox.tick(2_000, JSON.stringify([{ kind: "block-broken", id: "e2" }]));

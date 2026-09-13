@@ -10,37 +10,62 @@ import {
   PLACE_MIME_TYPE,
   type PlaceManifest,
 } from "./place.ts";
+import ENGINE_TYPES_SOURCE from "./engine.d.ts?raw";
+import EFFECTS_SOURCE from "./effects.ts?raw";
+import CUTSCENE_SOURCE from "./cutscene.ts?raw";
+import MOTION_SOURCE from "./motion.ts?raw";
+import SANDBOX_SOURCE from "./sandbox.ts?raw";
 
 /** The script file a freshly created place starts with. */
 export const MAIN_SCRIPT_FILE = "main.ts";
 
-/** The source a new place begins editing from, typed the way a place script expects to be. */
-export const STARTER_SCRIPT = `// Your place's script. Export a bmsTick function and the world will call it
-// each step with the shared clock and the events since the last step. Export an
-// optional bmsPlan too and the world calls it once, before generating terrain,
-// to stamp roads and houses into the ground: it returns JSON shapes, and the
-// block ids it may use are on engine.blocks. engine.endings() returns a JSON
-// array of the ending titles this place has already reached. The TypeScript
-// types are stripped
-// when the script loads, so the panel's squiggles are the whole of the
-// type-check; imports may only reach this place's own script files. Run
-// /script:demo for a working sample.
-declare const engine: {
-  dispatch(tag: string, payload: string): void;
-  log(line: string): void;
-  now(): number;
-  endings(): string;
-  blocks: Record<string, number>;
+/** The path the editor's checker carries {@link ENGINE_TYPES} under; never a project script or a sandbox load. */
+export const ENGINE_TYPES_FILE = "engine.d.ts";
+
+/**
+ * The `"engine"` module's ambient types, fed to the editor's language worker
+ * once so every script's checker sees the same host API without repeating an
+ * import's shape in each file. Read back from `engine.d.ts`, the same file
+ * `tsc` checks the app's own scripts against.
+ */
+export const ENGINE_TYPES: string = ENGINE_TYPES_SOURCE;
+
+/**
+ * Every file the editor's language worker needs to resolve `engine.d.ts`'s
+ * own import of `effects.ts` — the module `dispatch`'s payload type comes
+ * from — keyed by the path it is served under. Fed to the worker alongside
+ * a project's own scripts, never as one of them: a creator's project can
+ * never carry a file by these names.
+ */
+export const ENGINE_TYPE_FILES: Record<string, string> = {
+  [ENGINE_TYPES_FILE]: ENGINE_TYPES,
+  "effects.ts": EFFECTS_SOURCE,
+  "cutscene.ts": CUTSCENE_SOURCE,
+  "motion.ts": MOTION_SOURCE,
+  "sandbox.ts": SANDBOX_SOURCE,
 };
+
+/** The source a new place begins editing from, typed the way a place script expects to be. */
+export const STARTER_SCRIPT = `// Your place's script. Call engine.onTick with a function and the world will
+// call it each step with the shared clock and the events since the last step.
+// Call engine.onPlan too and the world calls it once, before generating
+// terrain, to stamp roads and houses into the ground: it returns JSON shapes,
+// and the block ids it may use are on engine.blocks. engine.endings() returns
+// a JSON array of the ending titles this place has already reached. The
+// TypeScript types are stripped when the script loads, so the panel's
+// squiggles are the whole of the type-check; imports may only reach this
+// place's own script files, or "engine". Run /script:demo for a working
+// sample.
+import * as engine from "engine";
 
 let started = false;
 
-export function bmsTick(clockMs: number, eventsJson: string): void {
+engine.onTick(function tick(clockMs: number, eventsJson: string): void {
   if (!started) {
     started = true;
     engine.dispatch(
       "npc",
-      JSON.stringify({ id: "guide", x: 8, z: 8, name: "Guide" }),
+      { id: "guide", x: 8, z: 8, name: "Guide" },
     );
     engine.log("your place started");
   }
@@ -51,11 +76,11 @@ export function bmsTick(clockMs: number, eventsJson: string): void {
     if (event.kind === "npc-talk") {
       engine.dispatch(
         "toast",
-        JSON.stringify({ player: event.producer, text: "Hello, traveller." }),
+        { player: event.producer, text: "Hello, traveller." },
       );
     }
   }
-}
+});
 `;
 
 /**

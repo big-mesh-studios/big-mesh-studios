@@ -25,7 +25,7 @@ export interface BuiltinDemo {
  * The "Get a Snack at 4 AM" demo: a flat street of brick houses under a pinned
  * 4 AM sky, a kitchen with a stove and two plates, a store whose counter the
  * cashier rings up at, and two NPCs to talk to. It is the proof that a place's
- * script can build its world (`bmsPlan`), stand NPCs and rm-stacker props,
+ * script can build its world (`engine.onPlan`), stand NPCs and rm-stacker props,
  * define and hand out items, set timers, place the player, and end the game.
  */
 const GASA4: BuiltinDemo = {
@@ -142,7 +142,7 @@ const LATE_TO_SCHOOL_MODELS = [
  * The "Late to School" demo: a flat block of four houses, a school, a corner
  * shop, and an arcade under a pinned morning sky, with the neighborhood's
  * characters standing in it and the first few endings reachable. It is the
- * proof that a place's script can build a small town (`bmsPlan`), stand a cast
+ * proof that a place's script can build a small town (`engine.onPlan`), stand a cast
  * of NPCs, define and hand out items, remember the endings a player has reached
  * across restarts, and end the game.
  */
