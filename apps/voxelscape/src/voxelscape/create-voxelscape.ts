@@ -775,6 +775,19 @@ export const createVoxelscape = ({
         hazardBoxes.push({ id: prop.id, box });
       }
     }
+    // Barriers are boxes that block only the player, so they join the same
+    // solids a solid prop's own box does — nothing anywhere else collides with
+    // them, being script-steered or drawn on the page rather than walked in.
+    for (const barrier of scriptConsole?.barriers() ?? []) {
+      propBoxes.push({
+        minX: barrier.min[0],
+        maxX: barrier.max[0],
+        minY: barrier.min[1],
+        maxY: barrier.max[1],
+        minZ: barrier.min[2],
+        maxZ: barrier.max[2],
+      });
+    }
   };
 
   /**

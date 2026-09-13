@@ -20,6 +20,8 @@ export type EffectTag =
   | "field-remove"
   | "zone"
   | "zone-remove"
+  | "barrier"
+  | "barrier-remove"
   | "item-define"
   | "item-give"
   | "item-take"
@@ -262,6 +264,16 @@ export type ParsedEffect =
       };
     }
   | { tag: "zone-remove"; payload: { id: string } }
+  | {
+      tag: "barrier";
+      payload: {
+        id: string;
+        /** The box that blocks the player, in world units, inclusive. */
+        min: [number, number, number];
+        max: [number, number, number];
+      };
+    }
+  | { tag: "barrier-remove"; payload: { id: string } }
   | { tag: "item-define"; payload: ScriptItemDefinition }
   | {
       tag: "item-give";
@@ -708,6 +720,19 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
       );
     }
     case "zone-remove":
+      return isShort(p.id, 64);
+    case "barrier": {
+      const { min, max } = p;
+      return (
+        isShort(p.id, 64) &&
+        isVector(min) &&
+        isVector(max) &&
+        min[0] <= max[0] &&
+        min[1] <= max[1] &&
+        min[2] <= max[2]
+      );
+    }
+    case "barrier-remove":
       return isShort(p.id, 64);
     case "field":
       return isField(p) && isFieldBox(p);

@@ -132,4 +132,25 @@ export function createProp(options) {
   };
   return prop;
 }
+
+/**
+ * Stands a box the player cannot walk through, through the
+ * "barrier"/"barrier-remove" effects. A barrier is drawn nothing, so nothing
+ * script-steered — a horde's own movement, a bullet — is blocked with it; its
+ * box is added to the player's solids the way a solid prop's box is, which is
+ * the whole point: a gap a player pays to keep closed stays closed to them
+ * while the creatures still come through it.
+ */
+export function createBarrier(options) {
+  host.dispatch("barrier", {
+    id: options.id,
+    min: options.min,
+    max: options.max,
+  });
+  var barrier = { id: options.id, min: options.min, max: options.max };
+  barrier.remove = function () {
+    host.dispatch("barrier-remove", { id: barrier.id });
+  };
+  return barrier;
+}
 `;

@@ -128,6 +128,17 @@ export interface ScriptZone {
   max: [number, number, number];
 }
 
+/**
+ * One box the player cannot walk through, stood by a script and drawn
+ * nothing — a `barrier` blocks bodies but not script-steered movement or
+ * bullets, so a horde can walk through the same wall gap a player cannot.
+ */
+export interface ScriptedBarrier {
+  id: string;
+  min: [number, number, number];
+  max: [number, number, number];
+}
+
 /** One readout a place script shows in a player's HUD. */
 export interface HudReadout {
   id: string;
@@ -308,6 +319,8 @@ export class ScriptHost {
   private readonly fires = new Map<string, ScriptedFire>();
   private readonly explosions = new Map<string, ScriptedExplosion>();
   private readonly zones = new Map<string, ScriptZone>();
+  /** The barriers the script has stood, blocking players from crossing them. */
+  private readonly barriers = new Map<string, ScriptedBarrier>();
   /** The fields the script has declared, acting on players inside them. */
   private readonly fields = new Map<string, ScriptedField>();
   /** Which zones each player currently stands in, keyed by player. */
@@ -425,6 +438,16 @@ export class ScriptHost {
   /** The field with `id`, or null when the script has not declared one. */
   field(id: string): ScriptedField | null {
     return this.fields.get(id) ?? null;
+  }
+
+  /** Every barrier the script has stood in the world. */
+  get barrierList(): ScriptedBarrier[] {
+    return [...this.barriers.values()];
+  }
+
+  /** The barrier with `id`, or null when the script has not stood one. */
+  barrier(id: string): ScriptedBarrier | null {
+    return this.barriers.get(id) ?? null;
   }
 
   /** Where the NPC `id` is at the shared clock, or null when it does not move. */
@@ -672,7 +695,7 @@ export class ScriptHost {
 
   /** One line about the script and what it has created, for a debug console. */
   describe(): string {
-    return `script: ${this.loaded ? "loaded" : "not loaded"} · ${this.npcs.size} NPC(s), ${this.props.size} prop(s), ${this.fires.size} fire(s), ${this.fields.size} field(s), ${this.explosions.size} blast(s), ${this.dialogs.size} dialog(s)${
+    return `script: ${this.loaded ? "loaded" : "not loaded"} · ${this.npcs.size} NPC(s), ${this.props.size} prop(s), ${this.fires.size} fire(s), ${this.fields.size} field(s), ${this.explosions.size} blast(s), ${this.dialogs.size} dialog(s), ${this.barriers.size} barrier(s)${
       this.problem === undefined ? "" : ` — ${this.problem}`
     }`;
   }
@@ -915,6 +938,14 @@ export class ScriptHost {
       }
       case "zone-remove":
         this.zones.delete(effect.payload.id);
+        break;
+      case "barrier": {
+        const { id, min, max } = effect.payload;
+        this.barriers.set(id, { id, min, max });
+        break;
+      }
+      case "barrier-remove":
+        this.barriers.delete(effect.payload.id);
         break;
       case "narrate":
         this.onNarrate?.(effect.payload.player, {

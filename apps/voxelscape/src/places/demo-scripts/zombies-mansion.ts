@@ -11,11 +11,15 @@
 // every breach is a wall gap the structure plan leaves open and a scripted
 // prop stands in, zombies tear those props down to get in, and a route graph
 // over the rooms and the land around them decides whose path swings which way.
+// Windows are the one kind of gap a player never exits through — an invisible
+// barrier blocks the player alone, so the horde bashes in while the rooms stay
+// cage walls, doors bought open being the only way out past them.
 // The round, the money, and every open or sealed breach are all derived state —
 // every peer folds the same replicated facts over the same shared clock and
 // arrives at the same breaches, the same zombies, and the same prices.
 import {
   blocks,
+  createBarrier,
   createNpc,
   createProp,
   dispatch,
@@ -109,10 +113,12 @@ interface Gap {
 const isOpen = (gap: Gap): boolean => gap.work >= gap.thresholdMs;
 
 // A window is a one-voxel gap in the mansion's west wall — never a player's
-// way through, only theirs. A door is a one-voxel gap an interior wall spans,
-// sealed by a solid `door` prop until some player pays for it or the horde
-// chews it down. Positions are the pass-through centres, in world units, and
-// mirror the gaps the structure plan leaves open voxel for voxel.
+// way through, only theirs: an invisible barrier stands in every window from
+// boot, drawn nothing, so walls close to a player that stay open to the horde.
+// A door is a one-voxel gap an interior wall spans, sealed by a solid `door`
+// prop until some player pays for it or the horde chews it down. Positions are
+// the pass-through centres, in world units, and mirror the gaps the structure
+// plan leaves open voxel for voxel.
 const GAPS: Gap[] = [
   // Mansion windows, west wall.
   {
@@ -306,6 +312,25 @@ for (const gap of GAPS) {
 // The entrance gate is the one gap that starts standing open: its doors were
 // bolted back before the horde came, so no price buys it and no reset seals it.
 const OPEN_ENTRANCE = "d-court";
+
+/** The box of each window gap that closes to a player forever, in world units,
+ *  from the floor to well above the lintel. The wall the window pierces spans
+ *  one axis (x on the west and courtyard-east walls, z on the courtyard-north)
+ *  and the one-voxel opening spans the other, both halves of the same gap. */
+const WINDOW_BARRIERS: Record<
+  string,
+  { minX: number; maxX: number; minZ: number; maxZ: number }
+> = {
+  "w-e": { minX: -8, maxX: -6, minZ: -30, maxZ: -28 },
+  "w-d": { minX: -8, maxX: -6, minZ: -20, maxZ: -18 },
+  "w-c": { minX: -8, maxX: -6, minZ: -10, maxZ: -8 },
+  "w-b": { minX: -8, maxX: -6, minZ: -2, maxZ: 0 },
+  "w-a": { minX: -8, maxX: -6, minZ: 10, maxZ: 12 },
+  "w-n1": { minX: -6, maxX: -4, minZ: -72, maxZ: -70 },
+  "w-n2": { minX: 4, maxX: 6, minZ: -72, maxZ: -70 },
+  "w-cw": { minX: -16, maxX: -14, minZ: -62, maxZ: -60 },
+  "w-ce": { minX: 18, maxX: 20, minZ: -50, maxZ: -48 },
+};
 
 /** A damage-scaled, speed-scaled zombie alive in the arena. */
 interface Zombie {
@@ -732,6 +757,18 @@ function standTheSet(): void {
       solid: true,
       height: 3,
     });
+  }
+  // Windows the player can never slip through, whatever breaks open beside
+  // them — the horde keeps pouring through the same gaps its own side made.
+  for (const gap of GAPS) {
+    if (gap.kind === "window") {
+      const box = WINDOW_BARRIERS[gap.id];
+      createBarrier({
+        id: "bar." + gap.id,
+        min: [box.minX, FLOOR, box.minZ],
+        max: [box.maxX, 80, box.maxZ],
+      });
+    }
   }
 }
 

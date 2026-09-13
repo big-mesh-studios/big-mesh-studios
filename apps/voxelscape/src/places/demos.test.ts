@@ -855,6 +855,21 @@ describe("the Zombies: The Mansion demo", () => {
       expect(host.prop(id)).toMatchObject({ model: "door.zip" });
     }
     expect(host.prop("door.court")).toBeNull();
+    // Every window stands sealed against the player alone, so the horde can
+    // still pour through a gap no player ever exits by.
+    for (const id of [
+      "bar.w-e",
+      "bar.w-d",
+      "bar.w-c",
+      "bar.w-b",
+      "bar.w-a",
+      "bar.w-n1",
+      "bar.w-n2",
+      "bar.w-cw",
+      "bar.w-ce",
+    ]) {
+      expect(host.barrier(id)).not.toBeNull();
+    }
     // The four gun racks and the furniture are stood once.
     for (const id of [
       "rack.pistol",

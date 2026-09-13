@@ -232,6 +232,16 @@ export class ScriptConsole {
     return this.host?.field(id) ?? null;
   }
 
+  /** The barriers the loaded script has stood, for the world's collision. */
+  barriers() {
+    return this.host?.barrierList ?? [];
+  }
+
+  /** The barrier with `id`, or null when the script has not stood one. */
+  barrier(id: string) {
+    return this.host?.barrier(id) ?? null;
+  }
+
   /** Where the NPC `id` is at the shared clock, or null when it does not move. */
   npcPose(id: string) {
     return this.host?.npcPose(id) ?? null;
