@@ -11,7 +11,7 @@ import {
 } from "solid-js";
 import type { CommandHelp, CommandOutput } from "../commands";
 import { isEditableTarget } from "../utils";
-import { useVoxelscape } from "../voxelscape/voxelscape-context";
+import type { Voxelscape } from "../voxelscape/create-voxelscape";
 import { PlaceEditorContent } from "./PlaceEditor";
 import styles from "./Console.module.css";
 
@@ -455,6 +455,9 @@ export function createConsole(props: CreateConsoleProps): ConsoleState {
 
 export interface ConsoleProps {
   terminal: ConsoleState;
+  /** The place actually running, read fresh on every call — `Console` is
+   * mounted once for the whole session, so it outlives any one boot of it. */
+  voxelscape: Accessor<Voxelscape>;
 }
 
 /**
@@ -526,9 +529,9 @@ const TerminalBody: Component<{
  * position and command history all just stay where they were.
  */
 export const Console: Component<ConsoleProps> = (props) => {
-  const voxelscape = useVoxelscape();
+  const voxelscape = props.voxelscape;
   const coarsePointer = createMediaQuery("(any-pointer: coarse)");
-  const editorOpen = (): boolean => voxelscape.placeEditor.open();
+  const editorOpen = (): boolean => voxelscape().placeEditor.open();
   const [terminalOpen, setTerminalOpen] = createSignal(false);
   const [terminalExpanded, setTerminalExpanded] =
     createSignal(!coarsePointer());
@@ -608,7 +611,7 @@ export const Console: Component<ConsoleProps> = (props) => {
           event.target instanceof Node &&
           editorContent.contains(event.target);
         if (!insideEditor) {
-          voxelscape.placeEditor.setOpen(false);
+          voxelscape().placeEditor.setOpen(false);
         }
         return;
       }
@@ -659,7 +662,7 @@ export const Console: Component<ConsoleProps> = (props) => {
           class={styles.scrim}
           onClick={(event) => {
             if (event.target === event.currentTarget) {
-              voxelscape.placeEditor.setOpen(false);
+              voxelscape().placeEditor.setOpen(false);
             }
           }}
         />
@@ -676,7 +679,14 @@ export const Console: Component<ConsoleProps> = (props) => {
               ref={(element) => {
                 editorContent = element;
               }}
-              onStatus={props.terminal.print}
+              voxelscape={voxelscape}
+              // A status line matters even while the scrollback is collapsed
+              // for room — printing one re-expands the dock so it's seen
+              // rather than landing silently in history nobody is looking at.
+              onStatus={(line) => {
+                props.terminal.print(line);
+                setTerminalExpanded(true);
+              }}
             />
           </Show>
           <div class={styles.terminal}>

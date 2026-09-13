@@ -3,6 +3,7 @@ import "@fortawesome/fontawesome-free/css/fontawesome.min.css";
 import "@fortawesome/fontawesome-free/css/solid.min.css";
 import { render } from "@solidjs/web";
 import { Router } from "./routes";
+import { AppChrome } from "./App";
 import { OAuthCallbackPage } from "./atproto/oauth-callback-page";
 import { isOAuthCallback } from "./atproto/oauth";
 
@@ -31,7 +32,7 @@ if (window.location.hostname === "localhost") {
       callback ? (
         <OAuthCallbackPage />
       ) : (
-        <Router>{(props) => props.children}</Router>
+        <Router>{(props) => <AppChrome>{props.children}</AppChrome>}</Router>
       ),
     document.getElementById("root")!,
   );
