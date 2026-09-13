@@ -51,38 +51,23 @@ export const VOXELSCAPE_TYPE_FILES: Record<string, string> = {
 };
 
 /** The source a new place begins editing from, typed the way a place script expects to be. */
-export const STARTER_SCRIPT = `// Your place's script. Call engine.onTick with a function and the world will
-// call it each step with the shared clock and the events since the last step.
-// Call engine.onPlan too and the world calls it once, before generating
-// terrain, to stamp roads and houses into the ground: it returns JSON shapes,
-// and the block ids it may use are on engine.blocks. engine.endings() returns
-// a JSON array of the ending titles this place has already reached. The
-// TypeScript types are stripped when the script loads, so the panel's
-// squiggles are the whole of the type-check; imports may only reach this
-// place's own script files, or "voxelscape". Run /script:demo for a working
-// sample.
-import * as engine from "voxelscape";
+export const STARTER_SCRIPT = `import { dispatch, log, onTick } from "voxelscape";
 
 let started = false;
 
-engine.onTick(function tick(clockMs: number, eventsJson: string): void {
+onTick((clockMs: number, eventsJson: string): void => {
   if (!started) {
     started = true;
-    engine.dispatch(
-      "npc",
-      { id: "guide", x: 8, z: 8, name: "Guide" },
-    );
-    engine.log("your place started");
+    dispatch("npc", { id: "guide", x: 8, z: 8, name: "Guide" });
+    log("your place started");
   }
-  const events = JSON.parse(
-    eventsJson,
-  ) as Array<{ kind: string; producer: string }>;
+  const events = JSON.parse(eventsJson) as Array<{
+    kind: string;
+    producer: string;
+  }>;
   for (const event of events) {
     if (event.kind === "npc-talk") {
-      engine.dispatch(
-        "toast",
-        { player: event.producer, text: "Hello, traveller." },
-      );
+      dispatch("toast", { player: event.producer, text: "Hello, traveller." });
     }
   }
 });

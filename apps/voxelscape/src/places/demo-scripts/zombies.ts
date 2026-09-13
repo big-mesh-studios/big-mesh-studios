@@ -1,8 +1,3 @@
-// The "Zombies" demo's place script. This file is the source a creator would
-// write: it is imported with `?raw` and handed to the sandbox as text, never
-// run as part of the world's own bundle. A whole population of zombies
-// materializes procedurally around wherever players explore and fights back
-// with a sword the player starts holding.
 import {
   createNpc,
   dispatch,
@@ -476,7 +471,7 @@ function armTick(): void {
   dispatch("timer", { id: "zombie-tick", afterMs: TICK_MS });
 }
 
-onTick(function tick(_clockMs: number, eventsJson: string): void {
+onTick((_clockMs: number, eventsJson: string): void => {
   const now = clockNow();
   if (!started) {
     started = true;

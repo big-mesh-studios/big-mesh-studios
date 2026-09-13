@@ -213,7 +213,7 @@ function box(
   return { kind: "box", min: [minX, minY, minZ], max: [maxX, maxY, maxZ], id };
 }
 
-onPlan(function plan(): string {
+onPlan((): string => {
   const b = blocks;
   const shapes: unknown[] = [
     // Ground
@@ -898,7 +898,7 @@ function died(cause: string): void {
 // ---------------------------------------------------------------------------
 // Main tick
 // ---------------------------------------------------------------------------
-onTick(function tick(_clockMs: number, eventsJson: string): void {
+onTick((_clockMs: number, eventsJson: string): void => {
   if (!started) {
     started = true;
     open();

@@ -4,10 +4,10 @@
 // It is the working example the script host is tested against, and the first
 // script a player can load with the console while the world wires its dialog
 // surface. Like every place script it imports `voxelscape` and calls
-// `engine.onTick`, and the world calls what it registers each step with the
-// shared clock and the events since the last.
+// `onTick`, and the world calls what it registers each step with the shared
+// clock and the events since the last.
 export const SAMPLE_PLACE_SCRIPT = String.raw`
-import * as engine from "voxelscape";
+import { dispatch, onTick } from "voxelscape";
 
 var started = false;
 var state = {};
@@ -17,17 +17,17 @@ var GATE = "rook";
 function key(player, npcId) { return player + "|" + npcId; }
 
 function reply(player, npcId, prompt, options) {
-  engine.dispatch("dialog", { player: player, npcId: npcId, prompt: prompt, options: options });
+  dispatch("dialog", { player: player, npcId: npcId, prompt: prompt, options: options });
 }
 
 function end(player, npcId, text) {
-  engine.dispatch("dialog-close", { player: player, npcId: npcId });
-  engine.dispatch("toast", { player: player, text: text });
+  dispatch("dialog-close", { player: player, npcId: npcId });
+  dispatch("toast", { player: player, text: text });
 }
 
 function spawn() {
-  engine.dispatch("npc", { id: SHOP, x: 40, z: 12, name: "Sable" });
-  engine.dispatch("npc", { id: GATE, x: -40, z: 12, name: "Rook" });
+  dispatch("npc", { id: SHOP, x: 40, z: 12, name: "Sable" });
+  dispatch("npc", { id: GATE, x: -40, z: 12, name: "Rook" });
 }
 
 // The shop's tree: greetings loop until an option that ends the talk.
@@ -74,7 +74,7 @@ function gateNode(player, node, option) {
   }
 }
 
-engine.onTick(function tick(clockMs, eventsJson) {
+onTick((clockMs, eventsJson) => {
   if (!started) {
     started = true;
     spawn();

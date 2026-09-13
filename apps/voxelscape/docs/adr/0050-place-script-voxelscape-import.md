@@ -52,7 +52,9 @@ declare module "voxelscape" {
     tag: T,
     payload: PayloadFor<T>,
   ): void;
-  export function onTick(fn: (clockMs: number, eventsJson: string) => void): void;
+  export function onTick(
+    fn: (clockMs: number, eventsJson: string) => void,
+  ): void;
   // ...log, now, heightAt, and the rest of the host surface
 
   interface ModelsByName {}

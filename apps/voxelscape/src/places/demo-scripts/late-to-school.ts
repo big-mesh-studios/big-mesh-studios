@@ -1,6 +1,3 @@
-// The "Late to School" demo's place script. This file is the source a creator
-// would write: it is imported with `?raw` and handed to the sandbox as text,
-// never run as part of the world's own bundle.
 import {
   blocks,
   createNpc,
@@ -239,7 +236,7 @@ function building(
   return shapes;
 }
 
-onPlan(function plan(): string {
+onPlan((): string => {
   const b = blocks;
   const shapes: unknown[] = [
     // A flat neighborhood over the noise, razed clear above it, reaching south
@@ -2073,7 +2070,7 @@ function timerFired(id: string): void {
   }
 }
 
-onTick(function tick(_clockMs: number, eventsJson: string): void {
+onTick((_clockMs: number, eventsJson: string): void => {
   if (!started) {
     started = true;
     collected = JSON.parse(endings()) as string[];

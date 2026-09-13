@@ -1,7 +1,7 @@
 # Reaching `engine` by import, and registering a script's hooks by calling it
 
 > Superseded by ADR 0050: a script no longer writes `import * as engine from
-> "engine"` — `"engine"` is retired as a specifier a project file may name at
+"engine"` — `"engine"` is retired as a specifier a project file may name at
 > all, folded into the single reserved `"voxelscape"` import alongside
 > `createNpc`/`createProp`. The mechanism this decision introduced —
 > resolving a reserved bare specifier in the bundler's own `require` shim,

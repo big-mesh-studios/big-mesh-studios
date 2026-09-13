@@ -1,10 +1,7 @@
-// The "Get a Snack at 4 AM" demo's place script. This file is the source a
-// creator would write: it is imported with `?raw` and handed to the sandbox as
-// text, never run as part of the world's own bundle. A data table driving
-// many props of different models (`FURNITURE`, `PICKUPS`, `ITEM_MODELS`)
-// types its model column as the whole `keyof ModelsByName` union rather than
-// one specific literal, since which model a given row names is itself the
-// data.
+// A data table driving many props of different models (`FURNITURE`,
+// `PICKUPS`, `ITEM_MODELS`) types its model column as the whole
+// `keyof ModelsByName` union rather than one specific literal, since which
+// model a given row names is itself the data.
 import {
   blocks,
   createNpc,
@@ -117,7 +114,7 @@ function walls(): unknown[] {
   ];
 }
 
-onPlan(function plan(): string {
+onPlan((): string => {
   const b = blocks;
   const shapes: unknown[] = [
     { kind: "box", min: [-80, 0, -80], max: [80, GROUND - 1, 80], id: b.dirt },
@@ -923,7 +920,7 @@ function timer(id: string): void {
   }
 }
 
-onTick(function tick(_clockMs: number, eventsJson: string): void {
+onTick((_clockMs: number, eventsJson: string): void => {
   if (!started) {
     started = true;
     open();

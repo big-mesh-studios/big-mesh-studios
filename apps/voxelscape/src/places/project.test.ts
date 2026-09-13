@@ -41,7 +41,7 @@ describe("a place project", () => {
     });
     expect(fresh.scripts[MAIN_SCRIPT_FILE]).toBe(STARTER_SCRIPT);
     expect(fresh.models).toEqual({});
-    expect(STARTER_SCRIPT).toContain("engine.onTick");
+    expect(STARTER_SCRIPT).toContain("onTick");
   });
 
   it("bundles the starter script and dispatches the npc it promises", async () => {
