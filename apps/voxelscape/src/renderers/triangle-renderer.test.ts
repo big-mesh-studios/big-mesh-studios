@@ -52,7 +52,10 @@ const rendererForBudget = (
 /** Runs enough frames for a meshed block to be merged into its superchunk. */
 const settle = (renderer: TriangleRenderer): void => {
   const camera = new PerspectiveCamera(60, 1, 0.1, 1000);
-  for (let frame = 0; frame < 10; frame++) {
+  // Past the stall backstop, so a change with nothing new to append — a
+  // retired member with no rebuild of its own, say — still forces its
+  // upload rather than waiting on a merge nothing here will ever trigger.
+  for (let frame = 0; frame < 50; frame++) {
     renderer.tick(0.016, camera);
   }
 };
@@ -177,6 +180,24 @@ describe("TriangleRenderer", () => {
     expect(renderer.terrain.children.filter((m) => m.visible)).toHaveLength(0);
   });
 
+  it("keeps holding an edit's group past a lone job's own meshing time", () => {
+    // The pool's few worker threads carry both fill and mesh jobs, so a
+    // straggler queued behind a scroll's burst can take far longer to land
+    // than the block that reported back first. The hold has to outlast that
+    // queueing, not just the time a single job takes to mesh.
+    const renderer = rendererFor(blockWithFloor(), blockWithFloor());
+    const camera = new PerspectiveCamera(60, 1, 0.1, 1000);
+    renderer.repositionBlock(0, [0, 0, 0]);
+
+    renderer.onBlocksChanged([0, 1]);
+    renderer.meshNow(0);
+    for (let frame = 0; frame < 40; frame++) {
+      renderer.tick(0.016, camera);
+    }
+
+    expect(renderer.terrain.children.filter((m) => m.visible)).toHaveLength(0);
+  });
+
   it("defers merging a superchunk the occlusion pass has proved covered", () => {
     // A scroll hands the renderer a lot of chunks whose superchunks sit behind
     // terrain the culler has already seen. Merging and uploading those is the
@@ -223,7 +244,8 @@ describe("TriangleRenderer", () => {
 
     renderer.onBlocksChanged([0, 1]);
     renderer.meshNow(0);
-    for (let frame = 0; frame < 12; frame++) {
+    // Past the stall backstop's frame count, however many frames that is.
+    for (let frame = 0; frame < 50; frame++) {
       renderer.tick(0.016, camera);
     }
 

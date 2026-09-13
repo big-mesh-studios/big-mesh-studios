@@ -408,12 +408,17 @@ const SUPERCHUNK_HALF = SUPERCHUNK_WORLD / 2;
 const BLOCK_HALF = BLOCK_WORLD[0] / 2;
 /**
  * Frames a superchunk may keep gaining members before a partial upload is
- * forced. A scroll's entering cells land over many frames; without this a
- * superchunk that never settles would stay empty. Six frames (~100 ms) is
- * long enough to wait out a typical meshing window while still showing
- * something when a build is stuck.
+ * forced, and frames an edit's group of blocks may wait on each other before
+ * whatever has landed uploads alone. A scroll's entering cells land over many
+ * frames; without the first, a superchunk that never settles would stay
+ * empty. Without the second, a block whose rebuild never lands would hold its
+ * neighbours' geometry back forever, rather than the hole the grouping exists
+ * to avoid landing early instead. The shared pool's few worker threads carry
+ * both fill and mesh jobs, so a build queued behind a scroll's burst can take
+ * much longer than a lone job's own meshing time; 45 frames (~750 ms) gives
+ * that room before either backstop gives up on a straggler.
  */
-const MAX_UPLOAD_STALL_FRAMES = 6;
+const MAX_UPLOAD_STALL_FRAMES = 45;
 
 /**
  * The bytes of merged geometry one frame may mark for GPU upload. A scroll's
