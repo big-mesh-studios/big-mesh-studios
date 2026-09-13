@@ -7,11 +7,11 @@
 // overlay, scrim, or Escape handling of its own; `Console` owns those, since
 // it owns the one surface both the terminal and this content share.
 import {
+  createEffect,
   createSignal,
   For,
   lazy,
   Loading,
-  onSettled,
   Show,
   type Accessor,
   type Component,
@@ -43,6 +43,10 @@ const describeError = (err: unknown): string =>
 /** The draft from this session, held in the module so a reopened panel is
  * instant — cleared on a full page reload; nothing here outlives the tab. */
 let cachedProject: PlaceProject | null = null;
+/** Which `Voxelscape` instance `cachedProject` was seeded for — a fresh
+ * instance means a new world booted, so the draft is reseeded from it
+ * instead of carrying over whatever the previous world's draft was. */
+let cachedProjectVoxelscape: Voxelscape | null = null;
 
 /** The first script a project should open on: the manifest's order, then the map's. */
 const firstScript = (p: PlaceProject): string =>
@@ -75,6 +79,12 @@ export const PlaceEditorContent: Component<{
   const [showModels, setShowModels] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   const [candidates, setCandidates] = createSignal<PublishedPlace[]>([]);
+  // Bumped only when the project is reseeded for a new world, never by an
+  // edit — keys the editor panes so they remount and every CodeMirror
+  // instance reads the new project's content fresh. CodeMirror only ever
+  // reads a file's content once, at creation, so an in-place prop update
+  // would leave an already-mounted editor showing the old place's text.
+  const [projectGeneration, setProjectGeneration] = createSignal(0);
   // Each tab's editor view, so switching tabs can ask the now-visible one to
   // measure itself after its pane changes from display:none to display:block.
   const views = new Map<string, EditorView>();
@@ -91,38 +101,52 @@ export const PlaceEditorContent: Component<{
     null,
   );
 
-  // Resolved once, up front, so the clone popover already has a handle to
-  // show by the time a player actually opens it rather than resolving on
-  // first click.
-  onSettled(() => {
-    if (voxelscape().placeEditor.isMine) {
-      return;
-    }
-    const owner = voxelscape().placeEditor.owner;
-    if (owner === null) {
-      return;
-    }
-    void voxelscape()
-      .placeEditor.resolveHandle(owner)
-      .then(setOtherOwnerHandle);
-  });
+  // Resolved fresh for whichever world is currently running, up front, so
+  // the clone popover already has a handle to show by the time a player
+  // actually opens it rather than resolving on first click. This panel is
+  // mounted once, in `AppChrome`, above the router — a reboot replaces
+  // `voxelscape()`'s instance without remounting this component, so this has
+  // to be a real effect tracking that instance rather than one-time setup.
+  createEffect(
+    () => voxelscape(),
+    (current) => {
+      if (current.placeEditor.isMine) {
+        setOtherOwnerHandle(null);
+        return;
+      }
+      const owner = current.placeEditor.owner;
+      if (owner === null) {
+        setOtherOwnerHandle(null);
+        return;
+      }
+      void current.placeEditor.resolveHandle(owner).then(setOtherOwnerHandle);
+    },
+  );
 
-  // The first open loads whatever place is actually running — a demo, or a
-  // published place — so the panel starts on its real scripts rather than an
-  // unrelated draft. Only a world with none to show (the fallback procedural
-  // world) falls back to a fresh project. Later opens reuse the cached
-  // project straight away; nothing here outlives the tab.
-  onSettled(() => {
-    if (cachedProject !== null) {
-      return;
-    }
-    const running = voxelscape().placeEditor.activeProject;
-    const loaded =
-      running ?? emptyPlaceProject(voxelscape().placeEditor.defaultSeed);
-    cachedProject = loaded;
-    setProject(loaded);
-    setActive(firstScript(loaded));
-  });
+  // Loads whatever place is actually running — a demo, or a published
+  // place — so the panel shows its real scripts rather than an unrelated
+  // draft, the first time a world boots and again every time a later one
+  // replaces it (a navigation, or the reboot a clone's own publish
+  // triggers). Only a world with none to show (the fallback procedural
+  // world) falls back to a fresh project. Reopening the panel on the same
+  // world reuses the cached project straight away; nothing here outlives
+  // the tab.
+  createEffect(
+    () => voxelscape(),
+    (current) => {
+      if (current === cachedProjectVoxelscape) {
+        return;
+      }
+      const running = current.placeEditor.activeProject;
+      const loaded =
+        running ?? emptyPlaceProject(current.placeEditor.defaultSeed);
+      cachedProject = loaded;
+      cachedProjectVoxelscape = current;
+      setProject(loaded);
+      setActive(firstScript(loaded));
+      setProjectGeneration((generation) => generation + 1);
+    },
+  );
 
   const scriptFiles = (): string[] => {
     const p = project();
@@ -816,16 +840,21 @@ export const PlaceEditorContent: Component<{
 
         <Show when={!showModels()}>
           <Show when={scriptFiles().length > 0}>
-            <Loading
-              fallback={<div class={styles.loading}>loading editor…</div>}
-            >
-              <PlaceEditorPanes
-                project={project()!}
-                active={active()}
-                onEditor={(name, view) => views.set(name, view)}
-                onInput={updateScript}
-              />
-            </Loading>
+            {/* Keyed on `projectGeneration` so a reseeded project remounts
+                every CodeMirror instance instead of leaving one an edit
+                would otherwise have kept alive showing stale content. */}
+            <Show when={projectGeneration()} keyed>
+              <Loading
+                fallback={<div class={styles.loading}>loading editor…</div>}
+              >
+                <PlaceEditorPanes
+                  project={project()!}
+                  active={active()}
+                  onEditor={(name, view) => views.set(name, view)}
+                  onInput={updateScript}
+                />
+              </Loading>
+            </Show>
           </Show>
         </Show>
 
