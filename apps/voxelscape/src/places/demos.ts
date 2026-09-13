@@ -10,6 +10,7 @@ import type { PlaceManifest } from "./place";
 import GASA4_SCRIPT from "./demo-scripts/gasa4.ts?raw";
 import LATE_TO_SCHOOL_SCRIPT from "./demo-scripts/late-to-school.ts?raw";
 import ZOMBIES_SCRIPT from "./demo-scripts/zombies.ts?raw";
+import ZOMBIE_SCRIPT from "./demo-scripts/zombie.ts?raw";
 import DONT_POOP_SCRIPT from "./demo-scripts/dont-poop-yourself-at-school.ts?raw";
 import HOME_SCRIPT from "./demo-scripts/home.ts?raw";
 import {
@@ -90,6 +91,7 @@ const ZOMBIES: BuiltinDemo = {
   },
   scripts: {
     [MAIN_SCRIPT_FILE]: ZOMBIES_SCRIPT,
+    "zombie.ts": ZOMBIE_SCRIPT,
   },
 };
 
