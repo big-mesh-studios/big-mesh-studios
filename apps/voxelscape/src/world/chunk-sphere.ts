@@ -7,6 +7,7 @@
 // offline when the worker is available.
 import {
   BLOCK_WORLD,
+  CHUNK_VOXELS,
   VOXEL_SIZE,
   buildBlockShell,
   chunkCellOf,
@@ -17,8 +18,12 @@ import {
 import { FillClient } from "./fill-client";
 import type { EditLayer } from "./edit-layer";
 import type { TerrainConfig } from "./noise";
-import type { BorderSizes, FillStoreFn } from "./voxel-store";
-import type { StructurePlan } from "./structure-fill";
+import {
+  VOXEL_PADDING,
+  type BorderSizes,
+  type FillStoreFn,
+} from "./voxel-store";
+import { expandShape, type StructurePlan } from "./structure-fill";
 import type { VoxelTileConfig } from "../renderers/atlas";
 import type { BlockMeshes } from "../renderers/mesh";
 import type { WorldWorkerPool } from "./worker-pool";
@@ -80,6 +85,66 @@ export const cellInSphere = (
 /** How many cells a window of these `radius` and `yRadius` values holds. */
 export const cellsInSphere = (radius: number, yRadius = radius): number =>
   sphereCells({ x: 0, y: 0, z: 0 }, radius, yRadius).length;
+
+/**
+ * The chunk cell whose interior holds a LOD-0 world voxel. Mirrors
+ * `chunkCellOf`: a block's interior covers world voxels
+ * `[cell*CHUNK_VOXELS/2, cell*CHUNK_VOXELS/2 + CHUNK_VOXELS)`, so the voxel
+ * grid is the world grid shifted by half a chunk.
+ */
+const cellTouchingVoxel = (voxel: number): number =>
+  Math.floor((voxel + CHUNK_VOXELS / 2) / CHUNK_VOXELS);
+
+/**
+ * The chunk cells a plan's shapes stamp voxels into, grown by the broadest
+ * border a window block is meshed with. When a plan changes, these are the
+ * cells whose terrain has to be generated again: the cells of the replaced
+ * plan joined with those of the one that follows, so a shape that was cleared
+ * comes off the ground it sat on and a shape that was added goes down on it.
+ */
+export const cellsTouchedByPlan = (
+  plan: StructurePlan | undefined,
+): CellCoord[] => {
+  const margin = VOXEL_PADDING << 2;
+  const seen = new Set<string>();
+  const cells: CellCoord[] = [];
+  for (const shape of plan ?? []) {
+    for (const part of expandShape(shape)) {
+      const lo = cellTouchingVoxel(part.min[0] - margin);
+      const hi = cellTouchingVoxel(part.max[0] + margin);
+      const loY = cellTouchingVoxel(part.min[1] - margin);
+      const hiY = cellTouchingVoxel(part.max[1] + margin);
+      const loZ = cellTouchingVoxel(part.min[2] - margin);
+      const hiZ = cellTouchingVoxel(part.max[2] + margin);
+      for (let x = lo; x <= hi; x++) {
+        for (let y = loY; y <= hiY; y++) {
+          for (let z = loZ; z <= hiZ; z++) {
+            const key = `${x},${y},${z}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              cells.push({ x, y, z });
+            }
+          }
+        }
+      }
+    }
+  }
+  return cells;
+};
+
+/** Whether two plans stamp the same voxels, whatever order their shapes keep. */
+const plansEqual = (
+  a: StructurePlan | undefined,
+  b: StructurePlan | undefined,
+): boolean => {
+  if (a === b) {
+    return true;
+  }
+  if (a === undefined || b === undefined) {
+    return false;
+  }
+  return JSON.stringify(a) === JSON.stringify(b);
+};
 
 /**
  * How far, in chunks, each level of detail reaches. A cell within `full`
@@ -251,6 +316,8 @@ export class ChunkSphere {
   private readonly onBlockReposition: (index: number, center: Dim3) => void;
   private readonly onBlockRelease?: (index: number) => void;
   private readonly fillClient: FillClient;
+  /** The plan every block is being stamped with; `setStructures` replaces it. */
+  private structures: StructurePlan | undefined;
 
   private centerCell: CellCoord = { x: 0, y: 0, z: 0 };
 
@@ -305,6 +372,72 @@ export class ChunkSphere {
       pool: params.pool,
       createWorker: params.createWorker,
     });
+  }
+
+  /**
+   * Replaces the shapes every block is stamped with and regenerates the
+   * window's cells that either this plan or the one it replaced reaches: the
+   * cells whose ground a cleared shape sat on have to come back, and the cells
+   * a new shape lands in have to get it. Each such slot keeps the cell it
+   * stands for (as a scroll's level-of-detail refill does), so nothing outside
+   * them is disturbed and the player stays where they are.
+   *
+   * @returns Whether the plan actually changed; a no-op plan leaves the world
+   * exactly as it was.
+   */
+  setStructures(next: StructurePlan | undefined): boolean {
+    if (plansEqual(next, this.structures)) {
+      return false;
+    }
+    const prev = this.structures;
+    this.structures = next;
+    this.fillClient.setStructures(next);
+    const touched = new Set<number>();
+    for (const cell of [
+      ...cellsTouchedByPlan(prev),
+      ...cellsTouchedByPlan(next),
+    ]) {
+      const slot = this.cellIndex.get(cell.x, cell.y, cell.z);
+      if (slot !== undefined) {
+        touched.add(slot);
+      }
+    }
+    if (touched.size === 0) {
+      return true;
+    }
+    const focus: Dim3 = [
+      this.centerCell.x * BLOCK_WORLD[0],
+      this.centerCell.y * BLOCK_WORLD[1],
+      this.centerCell.z * BLOCK_WORLD[2],
+    ];
+    const order = [...touched].sort(
+      (a, b) =>
+        this.distanceSquared(a, focus[0], focus[1], focus[2]) -
+        this.distanceSquared(b, focus[0], focus[1], focus[2]),
+    );
+    for (const slot of order) {
+      // A refill regenerates the slot's voxels (its resting fluid snapshotted
+      // first); its cell and its `filled` flag stand, so queries and physics
+      // keep answering until the new terrain lands.
+      this.onBlockRelease?.(slot);
+      this.blocks[slot].targetLod = lodAt(
+        this.cells[slot],
+        this.centerCell,
+        this.bands,
+      );
+    }
+    this.fillClient.requestFill(
+      order,
+      order.map((index) => this.blocks[index].center),
+      order.map((index) =>
+        lodAt(this.cells[index], this.centerCell, this.bands),
+      ),
+      order.map((index) =>
+        borderSizesOf(this.cells[index], this.centerCell, this.bands),
+      ),
+      focus,
+    );
+    return true;
   }
 
   /**

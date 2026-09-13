@@ -168,7 +168,7 @@ export class FillClient {
   ) => void;
   private readonly customFillStore?: FillStoreFn;
   private readonly customFillStoreUrl?: string;
-  private readonly structures?: StructurePlan;
+  private structures?: StructurePlan;
   private readonly editLayer?: EditLayer;
   private readonly tileRects?: () => VoxelTileConfig[];
   /**
@@ -236,6 +236,19 @@ export class FillClient {
       structures: this.structures,
     };
     worker.postMessage({ type: "config", config: fillConfig });
+  }
+
+  /**
+   * Replaces the structures every new block is stamped with, and tells every
+   * pool worker to use them from here on. A worker that replaces its config
+   * answers later fills from the new plan; a block the caller then refills in
+   * place (see `ChunkSphere.setStructures`) regenerates with the new shapes.
+   */
+  setStructures(structures: StructurePlan | undefined): void {
+    this.structures = structures;
+    for (const worker of this.pool.workers) {
+      this.sendFillConfig(worker);
+    }
   }
 
   private onWorkerMessage(msg: FillBatchResult | FillMeshBlockResult): void {

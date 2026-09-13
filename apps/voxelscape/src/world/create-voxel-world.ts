@@ -125,6 +125,14 @@ export interface VoxelWorld {
     lodBands?: LodBands;
   }): void;
   /**
+   * Stops stamping the plan the world was built with and starts stamping
+   * `structures` instead, regenerating the cells either plan reaches so the
+   * change is visible without a reload. Returns whether the plan actually
+   * changed: a caller recompiling an identical plan gets `false` and nothing
+   * is rebuilt.
+   */
+  setStructures(structures: StructurePlan | undefined): boolean;
+  /**
    * The world's worker threads, shared by the fill and mesh clients, so the
    * console can report and resize them.
    */
@@ -477,6 +485,9 @@ export const createVoxelWorld = ({
       // member of a superchunk, which then waits for a block that is gone.
       renderer.resizeTo(cellsInSphere(wantedRadius, wantedRadiusY));
       sphere.reshape(wantedRadius, wantedRadiusY, bands ?? sphere.bands);
+    },
+    setStructures(structures) {
+      return sphere.setStructures(structures);
     },
     workerPool,
     reapplyEdits,
