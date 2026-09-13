@@ -15,6 +15,7 @@ import EFFECTS_SOURCE from "./effects.ts?raw";
 import CUTSCENE_SOURCE from "./cutscene.ts?raw";
 import MOTION_SOURCE from "./motion.ts?raw";
 import SANDBOX_SOURCE from "./sandbox.ts?raw";
+import VOXELSCAPE_TYPES_SOURCE from "./voxelscape.d.ts?raw";
 
 /** The script file a freshly created place starts with. */
 export const MAIN_SCRIPT_FILE = "main.ts";
@@ -30,11 +31,26 @@ export const ENGINE_TYPES_FILE = "engine.d.ts";
  */
 export const ENGINE_TYPES: string = ENGINE_TYPES_SOURCE;
 
+/** The path the editor's checker carries {@link VOXELSCAPE_TYPES} under; never a project script or a sandbox load. */
+export const VOXELSCAPE_TYPES_FILE = "voxelscape.d.ts";
+
 /**
- * Every file the editor's language worker needs to resolve `engine.d.ts`'s
- * own import of `effects.ts` — the module `dispatch`'s payload type comes
- * from — keyed by the path it is served under. Fed to the worker alongside
- * a project's own scripts, never as one of them: a creator's project can
+ * The `"voxelscape"` module's ambient types — `createModel` and the
+ * `ScriptedNpc`/`ScriptedProp` classes (ADR 0050) — fed to the editor's
+ * language worker once, read back from `voxelscape.d.ts`, the same file
+ * `tsc` checks the app's own demo scripts against. `ModelsByName` starts
+ * empty here; a place's own attached models augment it live (`model-dts.ts`'s
+ * generated `models.d.ts`), the same declaration-merging seam a demo script's
+ * own checked-in augmentation (e.g. `demo-scripts/zombie-model.d.ts`) uses.
+ */
+export const VOXELSCAPE_TYPES: string = VOXELSCAPE_TYPES_SOURCE;
+
+/**
+ * Every ambient file the editor's language worker needs alongside a
+ * project's own scripts, never as one of them: `engine.d.ts` and
+ * `voxelscape.d.ts` themselves, plus every file `engine.d.ts`'s own import of
+ * `effects.ts` needs to resolve — the module `dispatch`'s payload type comes
+ * from. Keyed by the path each is served under; a creator's project can
  * never carry a file by these names.
  */
 export const ENGINE_TYPE_FILES: Record<string, string> = {
@@ -43,6 +59,7 @@ export const ENGINE_TYPE_FILES: Record<string, string> = {
   "cutscene.ts": CUTSCENE_SOURCE,
   "motion.ts": MOTION_SOURCE,
   "sandbox.ts": SANDBOX_SOURCE,
+  [VOXELSCAPE_TYPES_FILE]: VOXELSCAPE_TYPES,
 };
 
 /** The source a new place begins editing from, typed the way a place script expects to be. */

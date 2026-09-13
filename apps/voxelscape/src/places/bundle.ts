@@ -7,14 +7,20 @@
 // also import from `"engine"`, resolved not to another project file but to a
 // thin wrapper around the sandbox's own host object — `dispatch` takes the
 // plain object `engine.d.ts` types per tag and stringifies it there, so the
-// sandbox's own `dispatch` still only ever sees a string. The entry module
-// registers its hooks by calling `engine.onTick`/`engine.onPlan` as it runs,
-// so running it is the bundle's whole handoff to the sandbox — nothing here
-// reads its exports. Nothing here touches the interpreter: it turns a
-// project into the string a `ScriptSandbox.load` can evaluate.
+// sandbox's own `dispatch` still only ever sees a string. A file may also
+// import from `"voxelscape"` (ADR 0050) — `createModel`, and the
+// `ScriptedNpc`/`ScriptedProp` classes built from it — resolved to one
+// synthetic module built from the place's own attached models plus the
+// standard library's hand-written source, included at most once regardless of
+// how many files import it. The entry module registers its hooks by calling
+// `engine.onTick`/`engine.onPlan` as it runs, so running it is the bundle's
+// whole handoff to the sandbox — nothing here reads its exports. Nothing here
+// touches the interpreter: it turns a project into the string a
+// `ScriptSandbox.load` can evaluate.
 import type * as TS from "typescript";
 import { loadTypeScript } from "@big-mesh-studios/code-mirror/typescript-cdn";
-import { modelDescriptorFor, resolveModelFile } from "./model-descriptor";
+import { modelDescriptorFor, modelSpecifierFor } from "./model-descriptor";
+import { VOXELSCAPE_LIB_SOURCE } from "./voxelscape-lib";
 
 /** A place script that could not be compiled or bundled, in words a creator can act on. */
 export class PlaceBundleError extends Error {
@@ -87,19 +93,9 @@ const describeDiagnostic = (
   return `${path}:${position.line + 1}:${position.character + 1} — TS${code}: ${message}`;
 };
 
-/** One import or re-export's specifier, and whether it names a model (ADR 0046). */
-interface ScriptImport {
-  specifier: string;
-  isModelImport: boolean;
-}
-
 /** Every module specifier `path` statically imports or re-exports from, in the order it writes them. */
-const importsOf = (
-  ts: typeof TS,
-  path: string,
-  source: string,
-): ScriptImport[] => {
-  const specifiers: ScriptImport[] = [];
+const importsOf = (ts: typeof TS, path: string, source: string): string[] => {
+  const specifiers: string[] = [];
   const file = ts.createSourceFile(
     path,
     source,
@@ -112,33 +108,26 @@ const importsOf = (
       ts.isImportDeclaration(statement) &&
       !statement.importClause?.isTypeOnly
     ) {
-      const typeAttribute = statement.attributes?.elements.find(
-        (element) => element.name.text === "type",
-      );
-      specifiers.push({
-        specifier: (statement.moduleSpecifier as TS.StringLiteral).text,
-        isModelImport:
-          (typeAttribute?.value as TS.StringLiteral | undefined)?.text ===
-          "model",
-      });
+      specifiers.push((statement.moduleSpecifier as TS.StringLiteral).text);
     } else if (ts.isExportDeclaration(statement) && !statement.isTypeOnly) {
       if (statement.moduleSpecifier !== undefined) {
-        specifiers.push({
-          specifier: (statement.moduleSpecifier as TS.StringLiteral).text,
-          isModelImport: false,
-        });
+        specifiers.push((statement.moduleSpecifier as TS.StringLiteral).text);
       }
     }
   }
   return specifiers;
 };
 
+/** The virtual, never-a-real-file path the "voxelscape" synthetic module is kept under. */
+const VOXELSCAPE_MODULE_PATH = "\0voxelscape";
+
 /**
- * The project file `specifier` names, or null when it names none. Imports may
- * only reach this place's own script files or the sandbox's `"engine"` host
- * object: a bare name, a `./`, or an extensionless or `.js`-ending name all
- * resolve against the flat set of project files, in a fixed order so a bundle
- * never depends on map iteration.
+ * The project file `specifier` names, or `"engine"`/`VOXELSCAPE_MODULE_PATH`
+ * for the two reserved specifiers every place script may otherwise-bare
+ * import. Imports may only reach this place's own script files or those two:
+ * a bare name, a `./`, or an extensionless or `.js`-ending name all resolve
+ * against the flat set of project files, in a fixed order so a bundle never
+ * depends on map iteration.
  */
 const resolveSpecifier = (
   files: Set<string>,
@@ -146,6 +135,9 @@ const resolveSpecifier = (
 ): string | null => {
   if (specifier === "engine") {
     return "engine";
+  }
+  if (specifier === "voxelscape") {
+    return VOXELSCAPE_MODULE_PATH;
   }
   if (
     specifier.includes("://") ||
@@ -184,8 +176,33 @@ interface BundledModule {
   requires: Record<string, ResolvedSpecifier>;
 }
 
-/** The virtual, never-a-real-file path a model's synthetic module is kept under. */
-const modelModulePath = (name: string) => `\0model:${name}`;
+/**
+ * The `"voxelscape"` synthetic module's own source: the hand-written
+ * standard library, plus a table of every model this place attaches — not
+ * only ones some script happens to import — so a name unknown to the type
+ * system but still attached still resolves. A model whose bytes will not
+ * decode is left out of the table rather than failing the whole place's
+ * load, the same tolerance `model-dts.ts` shows the editor.
+ */
+const voxelscapeModuleSource = async (
+  models: Record<string, Uint8Array>,
+): Promise<string> => {
+  const table: Record<string, unknown> = {};
+  for (const [file, bytes] of Object.entries(models)) {
+    const specifier = modelSpecifierFor(file);
+    if (specifier === null) {
+      continue;
+    }
+    try {
+      table[specifier] = await modelDescriptorFor(specifier, file, bytes);
+    } catch {
+      continue;
+    }
+  }
+  return `${VOXELSCAPE_LIB_SOURCE}
+const __models = ${JSON.stringify(table)};
+`;
+};
 
 /**
  * Compiles and bundles a place project into one global-scope script. Each
@@ -193,18 +210,11 @@ const modelModulePath = (name: string) => `\0model:${name}`;
  * ids assigned in sorted-file order so the output is byte-for-byte
  * reproducible. A file may also import from `"engine"`, resolved not to
  * another project file but to a thin wrapper around the sandbox's own host
- * object, or write a `with { type: "model" }` import (ADR 0046) that instead
- * becomes a synthetic module holding an inert `{name, parts, motions}`
- * descriptor, one per distinct model name the project's files actually
- * import, resolved against `models` (bytes already attached to the place,
- * keyed by file name). The bundle runs the entry module for its side effects
- * and nothing else; a script that never calls `engine.onTick` loads without
- * error but the sandbox steps nothing.
- *
- * @throws {PlaceBundleError} When a model import names a relative or
- * absolute specifier (only a bare name can be typed by the editor's ambient
- * declarations, so only a bare name is accepted here), or names a model
- * `models` does not carry.
+ * object, or from `"voxelscape"`, resolved to one synthetic module built
+ * from `models` (bytes already attached to the place, keyed by file name)
+ * and included at most once. The bundle runs the entry module for its side
+ * effects and nothing else; a script that never calls `engine.onTick` loads
+ * without error but the sandbox steps nothing.
  */
 export const bundlePlaceProject = async (
   files: Record<string, string>,
@@ -220,69 +230,49 @@ export const bundlePlaceProject = async (
   const paths = Object.keys(files).sort();
   const fileSet = new Set(paths);
 
-  // A first pass over every file's imports, so every model name any of them
-  // names is known before ids are handed out to anything.
-  const importsByPath = new Map<string, ScriptImport[]>();
-  const modelNames = new Set<string>();
-
+  // A first pass over every file's imports, so whether "voxelscape" is used
+  // anywhere is known before ids are handed out to anything.
+  const importsByPath = new Map<string, string[]>();
+  let usesVoxelscape = false;
   for (const path of paths) {
-    const imports = importsOf(ts, path, files[path]);
-    importsByPath.set(path, imports);
-
-    for (const { specifier, isModelImport } of imports) {
-      if (!isModelImport) {
-        continue;
-      }
-      if (specifier.startsWith(".") || specifier.includes("://")) {
-        throw new PlaceBundleError(
-          `${path} imports "${specifier}" as a model — a model import names a bare model, not a path`,
-        );
-      }
-      if (resolveModelFile(models, specifier) === null) {
-        throw new PlaceBundleError(
-          `${path} imports "${specifier}" as a model — this place carries no such model`,
-        );
-      }
-      modelNames.add(specifier);
+    const specifiers = importsOf(ts, path, files[path]);
+    importsByPath.set(path, specifiers);
+    if (specifiers.includes("voxelscape")) {
+      usesVoxelscape = true;
     }
   }
 
-  const sortedModelNames = [...modelNames].sort();
-  const ids = new Map(
-    [...paths, ...sortedModelNames.map(modelModulePath)].map((path, index) => [
-      path,
-      index,
-    ]),
-  );
+  const voxelscapeSource = usesVoxelscape
+    ? await voxelscapeModuleSource(models)
+    : "";
+  if (usesVoxelscape) {
+    importsByPath.set(
+      VOXELSCAPE_MODULE_PATH,
+      importsOf(ts, VOXELSCAPE_MODULE_PATH, voxelscapeSource),
+    );
+  }
+
+  const compilePaths = usesVoxelscape
+    ? [...paths, VOXELSCAPE_MODULE_PATH]
+    : paths;
+  const ids = new Map(compilePaths.map((path, index) => [path, index]));
 
   const modules: BundledModule[] = [];
-  for (const path of paths) {
-    const code = await transpileFile(ts, path, files[path]);
+  for (const path of compilePaths) {
+    const source =
+      path === VOXELSCAPE_MODULE_PATH ? voxelscapeSource : files[path];
+    const code = await transpileFile(ts, path, source);
     const requires: Record<string, ResolvedSpecifier> = {};
-    for (const { specifier, isModelImport } of importsByPath.get(path)!) {
-      if (isModelImport) {
-        requires[specifier] = ids.get(modelModulePath(specifier))!;
-        continue;
-      }
+    for (const specifier of importsByPath.get(path)!) {
       const target = resolveSpecifier(fileSet, specifier);
       if (target === null) {
         throw new PlaceBundleError(
-          `${path} imports "${specifier}" — imports may only come from this place's own script files, or "engine"`,
+          `${path} imports "${specifier}" — imports may only come from this place's own script files, "engine", or "voxelscape"`,
         );
       }
       requires[specifier] = target === "engine" ? "engine" : ids.get(target)!;
     }
     modules.push({ path, code, requires });
-  }
-
-  for (const name of sortedModelNames) {
-    const file = resolveModelFile(models, name)!;
-    const descriptor = await modelDescriptorFor(name, models[file]);
-    modules.push({
-      path: modelModulePath(name),
-      code: `module.exports = ${JSON.stringify(descriptor)};`,
-      requires: {},
-    });
   }
 
   const entryId = ids.get(entry)!;

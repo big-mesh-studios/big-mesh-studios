@@ -1,5 +1,11 @@
 # A model is imported by a bare name carrying a model attribute
 
+> Superseded by ADR 0050: `import zombie from "zombie" with { type: "model"
+}` is gone. A model's name is a plain string argument to `createNpc`/
+> `createProp`, imported from the reserved `"voxelscape"` module — the
+> `with { type: "model" }` attribute this decision introduced no longer
+> exists anywhere in the bundler.
+
 A place script has always been able to place an NPC or a prop wearing a
 model, but only by writing that model's file name as a string and trusting
 it — `engine.dispatch("npc", JSON.stringify({ model: "zombie", ... }))`

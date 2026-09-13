@@ -1,10 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import {
-  modelDescriptorFor,
-  modelSpecifierFor,
-  resolveModelFile,
-} from "./model-descriptor";
+import { modelDescriptorFor, modelSpecifierFor } from "./model-descriptor";
 import { saveFigure } from "@big-mesh-studios/stacker/format";
 import {
   sideKinds,
@@ -62,22 +58,6 @@ describe("modelSpecifierFor", () => {
 
   it("names no specifier for a file that is not a model zip", () => {
     expect(modelSpecifierFor("readme.txt")).toBeNull();
-  });
-});
-
-describe("resolveModelFile", () => {
-  it("resolves a bare specifier to its .zip file", () => {
-    const models = { "zombie.zip": new Uint8Array() };
-    expect(resolveModelFile(models, "zombie")).toBe("zombie.zip");
-  });
-
-  it("resolves a specifier that already names the exact file", () => {
-    const models = { "zombie.zip": new Uint8Array() };
-    expect(resolveModelFile(models, "zombie.zip")).toBe("zombie.zip");
-  });
-
-  it("names no file for a model the project does not carry", () => {
-    expect(resolveModelFile({}, "zombie")).toBeNull();
   });
 });
 

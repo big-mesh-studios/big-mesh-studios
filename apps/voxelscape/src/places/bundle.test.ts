@@ -225,7 +225,7 @@ describe("the place script bundler", () => {
       "main.ts": `import { nope } from "./nope";`,
     };
     await expect(bundlePlaceProject(files, "main.ts")).rejects.toThrow(
-      'imports "./nope" — imports may only come from this place\'s own script files, or "engine"',
+      'main.ts imports "./nope" — imports may only come from this place\'s own script files, "engine", or "voxelscape"',
     );
   });
 
@@ -234,7 +234,7 @@ describe("the place script bundler", () => {
       "main.ts": `import fs from "fs";`,
     };
     await expect(bundlePlaceProject(files, "main.ts")).rejects.toThrow(
-      /imports may only come from this place's own script files, or "engine"/,
+      /imports may only come from this place's own script files, "engine", or "voxelscape"/,
     );
   });
 
@@ -256,55 +256,64 @@ describe("the place script bundler", () => {
   });
 });
 
-describe("model imports", () => {
-  it("compiles and evaluates to the model's real parts and motions", async () => {
+describe("the voxelscape module", () => {
+  it("createNpc dispatches the npc effect wearing the model's real place file", async () => {
     const files = {
       "main.ts": `
         import * as engine from "engine";
-        import zombie from "zombie" with { type: "model" };
-        engine.onTick(function (): void { engine.log(JSON.stringify(zombie)); });
+        import { createNpc } from "voxelscape";
+        engine.onTick(function (): void {
+          createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0, name: "Zombie" });
+        });
       `,
     };
     const models = {
       "zombie.zip": await modelBytes(["head", "torso"], ["walk"]),
     };
     const output = await bundlePlaceProject(files, "main.ts", models);
-    const { ticks, logs } = runBundle(output);
+    const { ticks, dispatched } = runBundle(output);
     ticks[0]();
-    expect(JSON.parse(logs[0])).toEqual({
-      name: "zombie",
-      file: "zombie.zip",
-      parts: ["head", "torso"],
-      motions: ["walk"],
+    expect(dispatched).toHaveLength(1);
+    expect(JSON.parse(dispatched[0].payload)).toMatchObject({
+      id: "zombie-1",
+      x: 0,
+      z: 0,
+      model: "zombie.zip",
+      name: "Zombie",
+      live: true,
     });
   });
 
-  it("shares one synthetic module between two files importing the same model", async () => {
+  it("shares one synthetic module between files using it in different ways", async () => {
     const files = {
       "main.ts": `
         import * as engine from "engine";
         import { greet } from "./greeting";
-        import zombie from "zombie" with { type: "model" };
-        engine.onTick(function (): void { engine.log(greet + zombie.name); });
+        import { createNpc } from "voxelscape";
+        const npc = createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 });
+        engine.onTick(function (): void { engine.log(greet + npc.id); });
       `,
       "greeting.ts": `
-        import zombie from "zombie" with { type: "model" };
-        export const greet: string = zombie.name;
+        import { createProp } from "voxelscape";
+        export const greet: string = createProp({ model: "zombie", id: "prop-1", x: 0, z: 0 }).model.name;
       `,
     };
     const models = { "zombie.zip": await modelBytes(["head"]) };
     const output = await bundlePlaceProject(files, "main.ts", models);
     // The descriptor's JSON is itself embedded as a string field of the
     // `__modules` table, so its quotes come out backslash-escaped once more.
-    expect(output.match(/parts\\":\[\\"head\\"\]/g)).toHaveLength(1);
+    expect(output.match(/parts\\":\s\[\\"head\\"\]/g)).toHaveLength(1);
+    expect(output.match(/function createNpc/g)).toHaveLength(1);
   });
 
   it("produces identical output for identical input, models included", async () => {
     const files = {
       "main.ts": `
         import * as engine from "engine";
-        import zombie from "zombie" with { type: "model" };
-        engine.onTick(function (): void { engine.log(zombie.name); });
+        import { createNpc } from "voxelscape";
+        engine.onTick(function (): void {
+          createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 });
+        });
       `,
     };
     const models = { "zombie.zip": await modelBytes(["head"]) };
@@ -313,61 +322,53 @@ describe("model imports", () => {
     expect(second).toBe(first);
   });
 
-  it("rejects a relative model specifier even though it parses", async () => {
+  it("is left out of the bundle entirely when no file imports it", async () => {
+    const output = await bundlePlaceProject(
+      {
+        "main.ts": `import * as engine from "engine"; engine.onTick(function () {});`,
+      },
+      "main.ts",
+    );
+    expect(output).not.toContain("createNpc");
+  });
+
+  it("createNpc throws at the moment a script calls it with a name this place carries no model for", async () => {
     const files = {
       "main.ts": `
-        import zombie from "./zombie" with { type: "model" };
+        import * as engine from "engine";
+        import { createNpc } from "voxelscape";
+        engine.onTick(function (): void {
+          createNpc({ model: "nope", id: "x", x: 0, z: 0 });
+        });
       `,
     };
-    const models = { "zombie.zip": await modelBytes(["head"]) };
-    await expect(bundlePlaceProject(files, "main.ts", models)).rejects.toThrow(
-      /imports "\.\/zombie" as a model/,
+    const output = await bundlePlaceProject(files, "main.ts", {});
+    const { ticks } = runBundle(output);
+    expect(() => ticks[0]()).toThrow(
+      /this place carries no such model: "nope"/,
     );
   });
 
-  it("rejects a model name the place carries no such model for", async () => {
+  it("moves and removes an npc through the real effects", async () => {
     const files = {
       "main.ts": `
-        import zombie from "zombie" with { type: "model" };
-      `,
-    };
-    await expect(bundlePlaceProject(files, "main.ts", {})).rejects.toThrow(
-      /this place carries no such model/,
-    );
-  });
-});
-
-describe("the scripted-figures standard library", () => {
-  const dispatched = (
-    output: string,
-  ): Array<{ tag: string; payload: unknown }> => {
-    const calls: Array<{ tag: string; payload: unknown }> = [];
-    new Function(output)();
-    const globals = globalThis as Record<string, unknown>;
-    globals.engine = {
-      dispatch: (tag: string, payload: string) =>
-        calls.push({ tag, payload: JSON.parse(payload) }),
-    };
-    (globals.bmsTick as () => void)();
-    delete globals.engine;
-    return calls;
-  };
-
-  it("constructs, moves, and removes a ScriptedNpc through the real effects", async () => {
-    const files = {
-      "main.ts": `
-        import zombie from "zombie" with { type: "model" };
-        import { ScriptedNpc } from "scripted-figures";
-        export function bmsTick(): void {
-          const npc = new ScriptedNpc(zombie, "zombie-1", { x: 0, z: 0 });
+        import * as engine from "engine";
+        import { createNpc } from "voxelscape";
+        engine.onTick(function (): void {
+          const npc = createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 });
           npc.move({ x: 1, z: 2, yaw: 0.5, live: true });
           npc.remove();
-        }
+        });
       `,
     };
     const models = { "zombie.zip": await modelBytes(["head"]) };
     const output = await bundlePlaceProject(files, "main.ts", models);
-    const calls = dispatched(output);
+    const { ticks, dispatched } = runBundle(output);
+    ticks[0]();
+    const calls = dispatched.map((d) => ({
+      tag: d.tag,
+      payload: JSON.parse(d.payload),
+    }));
     expect(calls.map((c) => c.tag)).toEqual(["npc", "npc", "npc-remove"]);
     expect(calls[0].payload).toMatchObject({
       id: "zombie-1",
@@ -386,20 +387,25 @@ describe("the scripted-figures standard library", () => {
     expect(calls[2].payload).toEqual({ id: "zombie-1" });
   });
 
-  it("plays a death fall through ScriptedNpc.die, and removes a ScriptedProp through prop-remove", async () => {
+  it("plays a death fall through an npc's die, and removes a prop through prop-remove", async () => {
     const files = {
       "main.ts": `
-        import zombie from "zombie" with { type: "model" };
-        import { ScriptedNpc, ScriptedProp } from "scripted-figures";
-        export function bmsTick(): void {
-          new ScriptedNpc(zombie, "zombie-1", { x: 0, z: 0 }).die();
-          new ScriptedProp(zombie, "prop-1", { x: 3, z: 4, solid: true }).remove();
-        }
+        import * as engine from "engine";
+        import { createNpc, createProp } from "voxelscape";
+        engine.onTick(function (): void {
+          createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 }).die();
+          createProp({ model: "zombie", id: "prop-1", x: 3, z: 4, solid: true }).remove();
+        });
       `,
     };
     const models = { "zombie.zip": await modelBytes(["head"]) };
     const output = await bundlePlaceProject(files, "main.ts", models);
-    const calls = dispatched(output);
+    const { ticks, dispatched } = runBundle(output);
+    ticks[0]();
+    const calls = dispatched.map((d) => ({
+      tag: d.tag,
+      payload: JSON.parse(d.payload),
+    }));
     expect(calls.map((c) => c.tag)).toEqual([
       "npc",
       "npc-die",
@@ -413,41 +419,5 @@ describe("the scripted-figures standard library", () => {
       z: 4,
       solid: true,
     });
-  });
-
-  it("shares one synthetic module between two files importing it", async () => {
-    const files = {
-      "main.ts": `
-        import "./helper";
-        import { ScriptedNpc } from "scripted-figures";
-        export function bmsTick(): void {}
-      `,
-      "helper.ts": `
-        import { ScriptedProp } from "scripted-figures";
-        export {};
-      `,
-    };
-    const output = await bundlePlaceProject(files, "main.ts");
-    expect(output.match(/class ScriptedFigure/g)).toHaveLength(1);
-  });
-
-  it("is left out of the bundle entirely when no file imports it", async () => {
-    const output = await bundlePlaceProject(
-      { "main.ts": `export function bmsTick(): void {}` },
-      "main.ts",
-    );
-    expect(output).not.toContain("ScriptedFigure");
-  });
-
-  it("produces identical output for identical input", async () => {
-    const files = {
-      "main.ts": `
-        import { ScriptedNpc } from "scripted-figures";
-        export function bmsTick(): void {}
-      `,
-    };
-    const first = await bundlePlaceProject(files, "main.ts");
-    const second = await bundlePlaceProject(files, "main.ts");
-    expect(second).toBe(first);
   });
 });

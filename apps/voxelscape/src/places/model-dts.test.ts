@@ -1,8 +1,9 @@
 // @vitest-environment node
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { generateModelDts, generateProjectModelsDts } from "./model-dts";
-import type { ModelDescriptor } from "./model-descriptor";
+import { generateProjectModelsDts } from "./model-dts";
 import { saveFigure } from "@big-mesh-studios/stacker/format";
 import {
   sideKinds,
@@ -11,12 +12,10 @@ import {
 } from "@big-mesh-studios/stacker/renderer";
 import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
 
-const ZOMBIE: ModelDescriptor = {
-  name: "zombie",
-  file: "zombie.zip",
-  parts: ["head", "torso", "leftArm", "rightArm", "leftLeg", "rightLeg"],
-  motions: ["idle", "walk", "attack"],
-};
+const VOXELSCAPE_DTS = readFileSync(
+  fileURLToPath(new URL("./voxelscape.d.ts", import.meta.url)),
+  "utf8",
+);
 
 /**
  * Type-checks `entryPath` in `files` (plain relative names) against a real,
@@ -87,72 +86,6 @@ function checkScript(
   return { diagnostics, completions };
 }
 
-describe("generateModelDts", () => {
-  it("turns a descriptor's parts and motions into literal unions", () => {
-    const dts = generateModelDts(ZOMBIE, "zombie");
-    expect(dts).toContain('declare module "zombie"');
-    expect(dts).toContain('readonly file: "zombie.zip";');
-    expect(dts).toContain(
-      'readonly parts: readonly ("head" | "torso" | "leftArm" | "rightArm" | "leftLeg" | "rightLeg")[];',
-    );
-    expect(dts).toContain(
-      'readonly motions: readonly ("idle" | "walk" | "attack")[];',
-    );
-  });
-
-  it("falls back to never for a model with no parts or motions", () => {
-    const dts = generateModelDts(
-      { name: "empty", file: "empty.zip", parts: [], motions: [] },
-      "empty",
-    );
-    expect(dts).toContain("readonly parts: readonly (never)[];");
-    expect(dts).toContain("readonly motions: readonly (never)[];");
-  });
-
-  it("types a real import against the generated declaration", () => {
-    const dts = generateModelDts(ZOMBIE, "zombie");
-    const script = `
-      import zombie from "zombie" with { type: "model" };
-      const motion: "idle" | "walk" | "attack" = zombie.motions[0];
-      const part = zombie.parts[0];
-    `;
-    const { diagnostics } = checkScript(
-      { "entry.ts": script, "models.d.ts": dts },
-      "entry.ts",
-    );
-    expect(diagnostics).toEqual([]);
-  });
-
-  it("rejects a motion not in the real list, naming the real ones", () => {
-    const dts = generateModelDts(ZOMBIE, "zombie");
-    const script = `
-      import zombie from "zombie" with { type: "model" };
-      const motion: "sprint" = zombie.motions[0];
-    `;
-    const { diagnostics } = checkScript(
-      { "entry.ts": script, "models.d.ts": dts },
-      "entry.ts",
-    );
-    expect(diagnostics.length).toBeGreaterThan(0);
-    for (const motion of ZOMBIE.motions) {
-      expect(diagnostics[0]).toContain(`"${motion}"`);
-    }
-  });
-
-  it("offers the real part names as completions", () => {
-    const dts = generateModelDts(ZOMBIE, "zombie");
-    const script = `
-      import zombie from "zombie" with { type: "model" };
-      zombie.parts.includes("<CURSOR>");
-    `;
-    const { completions } = checkScript(
-      { "entry.ts": script, "models.d.ts": dts },
-      "entry.ts",
-    );
-    expect(completions.sort()).toEqual([...ZOMBIE.parts].sort());
-  });
-});
-
 const partOf = (name: string): Part => ({
   name,
   sides: Object.fromEntries(
@@ -166,25 +99,60 @@ const partOf = (name: string): Part => ({
   parent: null,
 });
 
-const modelBytes = async (parts: string[]): Promise<Uint8Array> => {
+const modelBytes = async (
+  parts: string[],
+  motions: string[] = [],
+): Promise<Uint8Array> => {
   const palette = Array.from({ length: 32 }, (_, i) => ({
     r: i,
     g: i,
     b: i,
     a: 255,
   }));
-  const blob = await saveFigure({ parts: parts.map(partOf), palette });
+  const blob = await saveFigure(
+    { parts: parts.map(partOf), palette },
+    motions.map((name) => ({
+      name,
+      framesPerSecond: 12,
+      loop: true,
+      parts: [],
+    })),
+  );
   return new Uint8Array(await blob.arrayBuffer());
 };
 
 describe("generateProjectModelsDts", () => {
-  it("generates one ambient block per attached model", async () => {
+  it("generates one combined ModelsByName augmentation", async () => {
     const dts = await generateProjectModelsDts({
       "zombie.zip": await modelBytes(["head"]),
       "robot.zip": await modelBytes(["chassis"]),
     });
-    expect(dts).toContain('declare module "zombie"');
-    expect(dts).toContain('declare module "robot"');
+    expect(dts).toContain('declare module "voxelscape"');
+    expect(dts).toContain('"zombie":');
+    expect(dts).toContain('"robot":');
+  });
+
+  it("turns each model's parts and motions into literal unions", async () => {
+    const dts = await generateProjectModelsDts({
+      "zombie.zip": await modelBytes(
+        ["head", "torso", "leftArm", "rightArm", "leftLeg", "rightLeg"],
+        ["idle", "walk", "attack"],
+      ),
+    });
+    expect(dts).toContain('readonly file: "zombie.zip";');
+    expect(dts).toContain(
+      'readonly parts: readonly ("head" | "torso" | "leftArm" | "rightArm" | "leftLeg" | "rightLeg")[];',
+    );
+    expect(dts).toContain(
+      'readonly motions: readonly ("idle" | "walk" | "attack")[];',
+    );
+  });
+
+  it("falls back to never for a model with no motions", async () => {
+    const dts = await generateProjectModelsDts({
+      "empty.zip": await modelBytes(["head"]),
+    });
+    expect(dts).toContain("readonly motions: readonly (never)[];");
   });
 
   it("skips a model whose bytes will not decode, without throwing", async () => {
@@ -193,10 +161,99 @@ describe("generateProjectModelsDts", () => {
       "zombie.zip": await modelBytes(["head"]),
     });
     expect(dts).not.toContain("broken");
-    expect(dts).toContain('declare module "zombie"');
+    expect(dts).toContain('"zombie":');
   });
 
   it("generates nothing for a project with no models", async () => {
     expect(await generateProjectModelsDts({})).toBe("");
+  });
+
+  it("types a real createNpc call against the generated augmentation", async () => {
+    const dts = await generateProjectModelsDts({
+      "zombie.zip": await modelBytes(
+        ["head", "torso"],
+        ["idle", "walk", "attack"],
+      ),
+    });
+    const script = `
+      import { createNpc } from "voxelscape";
+      const zombie = createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 });
+      const motion: "idle" | "walk" | "attack" = zombie.model.motions[0];
+      const part = zombie.model.parts[0];
+    `;
+    const { diagnostics } = checkScript(
+      {
+        "entry.ts": script,
+        "voxelscape.d.ts": VOXELSCAPE_DTS,
+        "models.d.ts": dts,
+      },
+      "entry.ts",
+    );
+    expect(diagnostics).toEqual([]);
+  });
+
+  it("rejects a motion not in the real list, naming the real ones", async () => {
+    const motions = ["idle", "walk", "attack"];
+    const dts = await generateProjectModelsDts({
+      "zombie.zip": await modelBytes(["head"], motions),
+    });
+    const script = `
+      import { createNpc } from "voxelscape";
+      const zombie = createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 });
+      const motion: "sprint" = zombie.model.motions[0];
+    `;
+    const { diagnostics } = checkScript(
+      {
+        "entry.ts": script,
+        "voxelscape.d.ts": VOXELSCAPE_DTS,
+        "models.d.ts": dts,
+      },
+      "entry.ts",
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+    for (const motion of motions) {
+      expect(diagnostics[0]).toContain(`"${motion}"`);
+    }
+  });
+
+  it("offers the real part names as completions", async () => {
+    const parts = ["head", "torso", "leftArm"];
+    const dts = await generateProjectModelsDts({
+      "zombie.zip": await modelBytes(parts),
+    });
+    const script = `
+      import { createNpc } from "voxelscape";
+      const zombie = createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 });
+      zombie.model.parts.includes("<CURSOR>");
+    `;
+    const { completions } = checkScript(
+      {
+        "entry.ts": script,
+        "voxelscape.d.ts": VOXELSCAPE_DTS,
+        "models.d.ts": dts,
+      },
+      "entry.ts",
+    );
+    expect(completions.sort()).toEqual([...parts].sort());
+  });
+
+  it("rejects a model name no attached model carries", async () => {
+    const dts = await generateProjectModelsDts({
+      "zombie.zip": await modelBytes(["head"]),
+    });
+    const script = `
+      import { createNpc } from "voxelscape";
+      const robot = createNpc({ model: "robot", id: "robot-1", x: 0, z: 0 });
+    `;
+    const { diagnostics } = checkScript(
+      {
+        "entry.ts": script,
+        "voxelscape.d.ts": VOXELSCAPE_DTS,
+        "models.d.ts": dts,
+      },
+      "entry.ts",
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(diagnostics[0]).toContain('"zombie"');
   });
 });

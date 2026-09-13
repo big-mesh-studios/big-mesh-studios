@@ -15,7 +15,7 @@ import {
 } from "@big-mesh-studios/stacker/renderer";
 import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
 
-/** A tiny model's zip bytes, for a `with { type: "model" }` import to resolve against. */
+/** A tiny model's zip bytes, for `createNpc`'s model lookup to resolve against. */
 const modelBytes = async (): Promise<Uint8Array> => {
   const part: Part = {
     name: "body",
@@ -181,7 +181,8 @@ describe("compilePlacePlan", () => {
   it("threads the place's models through to a script's model import", async () => {
     const files = {
       "main.ts": `
-        import zombie from "zombie" with { type: "model" };
+        import { createNpc } from "voxelscape";
+        createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 });
       `,
     };
 

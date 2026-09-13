@@ -17,7 +17,6 @@ import {
 } from "solid-js";
 import { ENGINE_TYPE_FILES, type PlaceProject } from "../places/project";
 import { generateProjectModelsDts } from "../places/model-dts";
-import { SCRIPTED_FIGURES_DTS } from "../places/scripted-figures-dts";
 import styles from "./PlaceEditor.module.css";
 
 /** The kind of editor the code-mirror package hands to `onEditor`. */
@@ -27,8 +26,6 @@ export type EditorView = Parameters<
 
 /** The non-tab file a place's attached models generate their ambient types into. */
 const MODELS_DTS_FILE = "models.d.ts";
-/** The non-tab file typing the always-available "scripted-figures" standard library. */
-const SCRIPTED_FIGURES_DTS_FILE = "scripted-figures.d.ts";
 
 const PlaceEditorPanes: Component<{
   project: PlaceProject;
@@ -61,7 +58,6 @@ const PlaceEditorPanes: Component<{
     ...props.project.scripts,
     ...ENGINE_TYPE_FILES,
     [MODELS_DTS_FILE]: modelsDts(),
-    [SCRIPTED_FIGURES_DTS_FILE]: SCRIPTED_FIGURES_DTS,
   }));
 
   return (

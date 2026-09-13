@@ -16,7 +16,7 @@ import {
 } from "@big-mesh-studios/stacker/renderer";
 import { Bitmap, Vector3D } from "@big-mesh-studios/maths";
 
-/** A tiny model's zip bytes, for a `with { type: "model" }` import to resolve against. */
+/** A tiny model's zip bytes, for the place's own attached models. */
 const modelBytes = async (): Promise<Uint8Array> => {
   const part: Part = {
     name: "body",
@@ -164,13 +164,13 @@ describe("a script host", () => {
     host.dispose();
   });
 
-  it("loads a project whose script imports an attached model", async () => {
+  it("loads a project whose script places an npc wearing an attached model", async () => {
     const { host } = await fresh();
     const script = `
       import * as engine from "engine";
-      import zombie from "zombie" with { type: "model" };
+      import { createNpc } from "voxelscape";
       engine.onTick(function (clockMs: number, eventsJson: string): void {
-        engine.dispatch("npc", { id: zombie.name, x: 0, z: 0 });
+        createNpc({ model: "zombie", id: "zombie", x: 0, z: 0 });
       });
     `;
     await host.loadProject({ [MAIN_SCRIPT_FILE]: script }, MAIN_SCRIPT_FILE, {
@@ -180,28 +180,28 @@ describe("a script host", () => {
     host.dispose();
   });
 
-  it("constructs, moves, and removes a ScriptedNpc from a project file", async () => {
+  it("constructs, moves, and removes an npc from a project file", async () => {
     const { host } = await fresh();
     const script = `
-      import zombie from "zombie" with { type: "model" };
-      import { ScriptedNpc } from "scripted-figures";
-      let npc: ScriptedNpc<typeof zombie> | undefined;
-      export function bmsTick(clockMs: number, eventsJson: string): void {
+      import * as engine from "engine";
+      import { createNpc, type NpcHandle, type ModelsByName } from "voxelscape";
+      let npc: NpcHandle<ModelsByName["zombie"]> | undefined;
+      engine.onTick(function (clockMs: number, eventsJson: string): void {
         if (npc === undefined) {
-          npc = new ScriptedNpc(zombie, "zombie-1", { x: 0, z: 0 });
-          engine.dispatch("timer", JSON.stringify({ id: "move", afterMs: 100 }));
+          npc = createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 });
+          engine.dispatch("timer", { id: "move", afterMs: 100 });
           return;
         }
         const events = JSON.parse(eventsJson) as Array<{ kind: string; timerId?: string }>;
         for (const e of events) {
           if (e.kind === "timer" && e.timerId === "move") {
             npc.move({ x: 5, z: 6 });
-            engine.dispatch("timer", JSON.stringify({ id: "remove", afterMs: 100 }));
+            engine.dispatch("timer", { id: "remove", afterMs: 100 });
           } else if (e.kind === "timer" && e.timerId === "remove") {
             npc.remove();
           }
         }
-      }
+      });
     `;
     await host.loadProject({ [MAIN_SCRIPT_FILE]: script }, MAIN_SCRIPT_FILE, {
       "zombie.zip": await modelBytes(),
