@@ -26,6 +26,8 @@
 declare module "voxelscape" {
   type EffectTag = import("./effects").EffectTag;
   type ParsedEffect = import("./effects").ParsedEffect;
+  /** One parsed fact `onTick` hands a script, exactly as the trusted side authored it. */
+  export type ScriptEvent = import("./events").ScriptEvent;
 
   /** The shape `tag` validates against, per `effects.ts`'s own `ParsedEffect`. */
   type PayloadFor<T extends EffectTag> = Extract<
@@ -53,8 +55,14 @@ declare module "voxelscape" {
   export function solidAt(x: number, y: number, z: number): boolean;
   /** Whether (x, y, z) is water. */
   export function waterAt(x: number, y: number, z: number): boolean;
+  /**
+   * Registers a handler the world calls each step with the shared clock and
+   * the facts since the last step, already parsed — `events` is the exact
+   * `ScriptEvent[]` the trusted side authored, not the JSON text it crossed
+   * the sandbox boundary as.
+   */
   export function onTick(
-    fn: (clockMs: number, eventsJson: string) => void,
+    fn: (clockMs: number, events: ScriptEvent[]) => void,
   ): void;
   export function onPlan(fn: (contextJson: string) => string): void;
   export const blocks: Record<string, number>;

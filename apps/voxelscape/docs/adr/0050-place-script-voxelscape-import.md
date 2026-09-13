@@ -53,7 +53,7 @@ declare module "voxelscape" {
     payload: PayloadFor<T>,
   ): void;
   export function onTick(
-    fn: (clockMs: number, eventsJson: string) => void,
+    fn: (clockMs: number, events: ScriptEvent[]) => void,
   ): void;
   // ...log, now, heightAt, and the rest of the host surface
 
@@ -93,6 +93,20 @@ model narrows `M` to that model's real type, and naming none narrows it to
 `undefined`, checked directly the same way the rest of this mechanism was.
 `createProp` has no such case — a prop with nothing to draw has no reason to
 exist — so its `model` option stays required.
+
+## `onTick` hands a script parsed events, not the JSON they crossed as
+
+ADR 0048's `engine.onTick` took `(clockMs: number, eventsJson: string) =>
+void` — every script parsed the same JSON text itself, each writing (and
+occasionally slightly mis-writing) its own loose local type for what came
+back, none of them as precise as the real `ScriptEvent` union
+`events.ts` already declares and `ScriptHost` already authors every fact
+from. `onTick` is typed against that real union directly instead:
+`(clockMs: number, events: ScriptEvent[]) => void`. The parsing itself
+still has to happen somewhere, since the sandbox boundary is still a
+string underneath — `voxelscape-lib.ts`'s own `onTick` is the one function
+that wraps the host's rather than re-exporting it as-is, doing
+`JSON.parse(eventsJson)` once before calling the script's handler.
 
 ## Resolving "voxelscape" to a synthetic module, and the real host object underneath it
 

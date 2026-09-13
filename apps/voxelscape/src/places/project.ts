@@ -15,6 +15,7 @@ import EFFECTS_SOURCE from "./effects.ts?raw";
 import CUTSCENE_SOURCE from "./cutscene.ts?raw";
 import MOTION_SOURCE from "./motion.ts?raw";
 import SANDBOX_SOURCE from "./sandbox.ts?raw";
+import EVENTS_SOURCE from "./events.ts?raw";
 
 /** The script file a freshly created place starts with. */
 export const MAIN_SCRIPT_FILE = "main.ts";
@@ -38,9 +39,10 @@ export const VOXELSCAPE_TYPES: string = VOXELSCAPE_TYPES_SOURCE;
 /**
  * Every ambient file the editor's language worker needs alongside a
  * project's own scripts, never as one of them: `voxelscape.d.ts` itself,
- * plus every file its own import of `effects.ts` needs to resolve — the
- * module `dispatch`'s payload type comes from. Keyed by the path each is
- * served under; a creator's project can never carry a file by these names.
+ * plus every file its own imports of `effects.ts` (`dispatch`'s payload
+ * type) and `events.ts` (`onTick`'s event type) need to resolve. Keyed by
+ * the path each is served under; a creator's project can never carry a file
+ * by these names.
  */
 export const VOXELSCAPE_TYPE_FILES: Record<string, string> = {
   [VOXELSCAPE_TYPES_FILE]: VOXELSCAPE_TYPES,
@@ -48,6 +50,7 @@ export const VOXELSCAPE_TYPE_FILES: Record<string, string> = {
   "cutscene.ts": CUTSCENE_SOURCE,
   "motion.ts": MOTION_SOURCE,
   "sandbox.ts": SANDBOX_SOURCE,
+  "events.ts": EVENTS_SOURCE,
 };
 
 /** The source a new place begins editing from, typed the way a place script expects to be. */
@@ -55,16 +58,12 @@ export const STARTER_SCRIPT = `import { createNpc, dispatch, log, onTick } from 
 
 let started = false;
 
-onTick((clockMs: number, eventsJson: string): void => {
+onTick((clockMs, events) => {
   if (!started) {
     started = true;
     createNpc({ id: "guide", x: 8, z: 8, name: "Guide" });
     log("your place started");
   }
-  const events = JSON.parse(eventsJson) as Array<{
-    kind: string;
-    producer: string;
-  }>;
   for (const event of events) {
     if (event.kind === "npc-talk") {
       dispatch("toast", { player: event.producer, text: "Hello, traveller." });

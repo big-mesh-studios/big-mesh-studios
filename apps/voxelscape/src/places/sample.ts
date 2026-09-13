@@ -74,12 +74,11 @@ function gateNode(player, node, option) {
   }
 }
 
-onTick((clockMs, eventsJson) => {
+onTick((clockMs, events) => {
   if (!started) {
     started = true;
     spawn();
   }
-  var events = JSON.parse(eventsJson);
   for (var i = 0; i < events.length; i++) {
     var e = events[i];
     var k = key(e.producer, e.npcId);

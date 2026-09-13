@@ -97,7 +97,7 @@ interface Npc {
 
 const npcs: Array<Npc> = [{ id: "guide", pos: [8, 8] }];
 
-engine.onTick(function tick(clockMs: number, eventsJson: string): void {
+engine.onTick(function tick(clockMs: number): void {
   const first = npcs[0];
   engine.dispatch("npc", { id: first.id, x: first.pos[0], z: first.pos[1] });
   engine.log(String(clockMs));
@@ -184,7 +184,7 @@ describe("the place script bundler", () => {
     };
     const output = await bundlePlaceProject(files, "main.ts");
     const { ticks, dispatched } = runBundle(output);
-    ticks[0]();
+    ticks[0](0, "[]");
     expect(dispatched).toEqual([
       {
         tag: "npc",
@@ -217,7 +217,7 @@ describe("the place script bundler", () => {
     };
     const output = await bundlePlaceProject(files, "main.ts");
     const { ticks } = runBundle(output);
-    expect(() => ticks[0]()).toThrow(/engine is not defined/);
+    expect(() => ticks[0](0, "[]")).toThrow(/engine is not defined/);
   });
 
   it("rejects an import no project file answers", async () => {
@@ -272,7 +272,7 @@ describe("the voxelscape module", () => {
     };
     const output = await bundlePlaceProject(files, "main.ts", models);
     const { ticks, dispatched } = runBundle(output);
-    ticks[0]();
+    ticks[0](0, "[]");
     expect(dispatched).toHaveLength(1);
     expect(JSON.parse(dispatched[0].payload)).toMatchObject({
       id: "zombie-1",
@@ -342,7 +342,7 @@ describe("the voxelscape module", () => {
     };
     const output = await bundlePlaceProject(files, "main.ts", {});
     const { ticks } = runBundle(output);
-    expect(() => ticks[0]()).toThrow(
+    expect(() => ticks[0](0, "[]")).toThrow(
       /this place carries no such model: "nope"/,
     );
   });
@@ -362,7 +362,7 @@ describe("the voxelscape module", () => {
     const models = { "zombie.zip": await modelBytes(["head"]) };
     const output = await bundlePlaceProject(files, "main.ts", models);
     const { ticks, dispatched } = runBundle(output);
-    ticks[0]();
+    ticks[0](0, "[]");
     const calls = dispatched.map((d) => ({
       tag: d.tag,
       payload: JSON.parse(d.payload),
@@ -399,7 +399,7 @@ describe("the voxelscape module", () => {
     const models = { "zombie.zip": await modelBytes(["head"]) };
     const output = await bundlePlaceProject(files, "main.ts", models);
     const { ticks, dispatched } = runBundle(output);
-    ticks[0]();
+    ticks[0](0, "[]");
     const calls = dispatched.map((d) => ({
       tag: d.tag,
       payload: JSON.parse(d.payload),

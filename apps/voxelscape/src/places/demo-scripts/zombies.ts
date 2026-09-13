@@ -471,7 +471,7 @@ function armTick(): void {
   dispatch("timer", { id: "zombie-tick", afterMs: TICK_MS });
 }
 
-onTick((_clockMs: number, eventsJson: string): void => {
+onTick((_clockMs, events) => {
   const now = clockNow();
   if (!started) {
     started = true;
@@ -492,17 +492,6 @@ onTick((_clockMs: number, eventsJson: string): void => {
   }
 
   const players = JSON.parse(livePlayers()) as Player[];
-  const events = JSON.parse(eventsJson) as Array<{
-    kind: string;
-    producer: string;
-    npcId?: string;
-    entityId?: string;
-    item?: string;
-    timerId?: string;
-    amount?: number;
-    attackerX?: number;
-    attackerZ?: number;
-  }>;
 
   let ticked = false;
   for (const e of events) {

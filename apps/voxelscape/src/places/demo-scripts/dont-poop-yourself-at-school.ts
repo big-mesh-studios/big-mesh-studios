@@ -19,19 +19,6 @@ import {
   onTick,
 } from "voxelscape";
 
-/** One fact the world hands the script, as the script reads it back. */
-interface Event {
-  kind: string;
-  producer: string;
-  item?: string;
-  entityId?: string;
-  npcId?: string;
-  option?: number;
-  zoneId?: string;
-  timerId?: string;
-  cause?: string;
-}
-
 // ---------------------------------------------------------------------------
 // Layout constants (voxel coordinates unless noted "W" for world units)
 // ---------------------------------------------------------------------------
@@ -213,7 +200,7 @@ function box(
   return { kind: "box", min: [minX, minY, minZ], max: [maxX, maxY, maxZ], id };
 }
 
-onPlan((): string => {
+onPlan(() => {
   const b = blocks;
   const shapes: unknown[] = [
     // Ground
@@ -898,12 +885,11 @@ function died(cause: string): void {
 // ---------------------------------------------------------------------------
 // Main tick
 // ---------------------------------------------------------------------------
-onTick((_clockMs: number, eventsJson: string): void => {
+onTick((_clockMs, events) => {
   if (!started) {
     started = true;
     open();
   }
-  const events = JSON.parse(eventsJson) as Event[];
   for (const event of events) {
     if (event.kind === "zone-entered" && event.zoneId !== undefined) {
       inZone[event.zoneId] = true;

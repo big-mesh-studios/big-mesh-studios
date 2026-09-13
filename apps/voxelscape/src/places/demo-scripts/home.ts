@@ -7,16 +7,12 @@ const GUIDE = "guide";
 
 let started = false;
 
-onTick((_clockMs: number, eventsJson: string): void => {
+onTick((_clockMs, events) => {
   if (!started) {
     started = true;
     createNpc({ id: GUIDE, x: 8, z: 8, name: "Guide" });
     log("your place started");
   }
-  const events = JSON.parse(eventsJson) as Array<{
-    kind: string;
-    producer: string;
-  }>;
   for (const event of events) {
     if (event.kind === "npc-talk") {
       dispatch("toast", {

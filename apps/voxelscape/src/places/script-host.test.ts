@@ -169,7 +169,7 @@ describe("a script host", () => {
     const script = `
       import * as engine from "voxelscape";
       import { createNpc } from "voxelscape";
-      engine.onTick(function (clockMs: number, eventsJson: string): void {
+      engine.onTick(function (clockMs: number): void {
         createNpc({ model: "zombie", id: "zombie", x: 0, z: 0 });
       });
     `;
@@ -186,13 +186,12 @@ describe("a script host", () => {
       import * as engine from "voxelscape";
       import { createNpc, type NpcHandle, type ModelsByName } from "voxelscape";
       let npc: NpcHandle<ModelsByName["zombie"]> | undefined;
-      engine.onTick(function (clockMs: number, eventsJson: string): void {
+      engine.onTick(function (clockMs: number, events: Array<{ kind: string; timerId?: string }>): void {
         if (npc === undefined) {
           npc = createNpc({ model: "zombie", id: "zombie-1", x: 0, z: 0 });
           engine.dispatch("timer", { id: "move", afterMs: 100 });
           return;
         }
-        const events = JSON.parse(eventsJson) as Array<{ kind: string; timerId?: string }>;
         for (const e of events) {
           if (e.kind === "timer" && e.timerId === "move") {
             npc.move({ x: 5, z: 6 });
@@ -226,14 +225,13 @@ describe("a script host", () => {
       `
       import * as engine from "voxelscape";
       var started = false;
-      engine.onTick(function (clockMs, eventsJson) {
+      engine.onTick(function (clockMs, events) {
         if (!started) {
           started = true;
           engine.dispatch("prop", {
             id: "fridge", model: "fridge.zip", x: 2, z: 3, name: "Fridge", height: 3,
           });
         }
-        var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "entity-used") {
             engine.dispatch("toast", {
@@ -266,7 +264,7 @@ describe("a script host", () => {
       `
       import * as engine from "voxelscape";
       var started = false;
-      engine.onTick(function (clockMs, eventsJson) {
+      engine.onTick(function (clockMs, events) {
         if (!started) {
           started = true;
           engine.dispatch("fire", {
@@ -294,7 +292,7 @@ describe("a script host", () => {
       `
       import * as engine from "voxelscape";
       var started = false;
-      engine.onTick(function (clockMs, eventsJson) {
+      engine.onTick(function (clockMs, events) {
         if (!started) {
           started = true;
           engine.dispatch("item-define", {
@@ -303,7 +301,6 @@ describe("a script host", () => {
           engine.dispatch("item-give", { player: "", item: "chips", count: 1 });
           engine.dispatch("item-hold", { player: "", item: "chips" });
         }
-        var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "item-used") {
             engine.dispatch("item-take", { player: "", item: events[i].item, count: 1 });
@@ -330,8 +327,7 @@ describe("a script host", () => {
       host,
       `
       import * as engine from "voxelscape";
-      engine.onTick(function (clockMs, eventsJson) {
-        var events = JSON.parse(eventsJson);
+      engine.onTick(function (clockMs, events) {
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "item-used") {
             engine.dispatch("ending", {
@@ -353,8 +349,7 @@ describe("a script host", () => {
       again.host,
       `
       import * as engine from "voxelscape";
-      engine.onTick(function (clockMs, eventsJson) {
-        var events = JSON.parse(eventsJson);
+      engine.onTick(function (clockMs, events) {
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "npc-talk") {
             engine.dispatch("restart", { player: "" });
@@ -376,14 +371,13 @@ describe("a script host", () => {
       `
       import * as engine from "voxelscape";
       var started = false;
-      engine.onTick(function (clockMs, eventsJson) {
+      engine.onTick(function (clockMs, events) {
         if (!started) {
           started = true;
           engine.dispatch("zone", {
             id: "kitchen", name: "Kitchen", min: [-5, 0, -5], max: [5, 5, 5],
           });
         }
-        var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           var e = events[i];
           if (e.kind === "zone-entered") {
@@ -413,7 +407,7 @@ describe("a script host", () => {
       `
       import * as engine from "voxelscape";
       var started = false;
-      engine.onTick(function (clockMs, eventsJson) {
+      engine.onTick(function (clockMs, events) {
         if (!started) {
           started = true;
           engine.dispatch("field", {
@@ -464,7 +458,7 @@ describe("a script host", () => {
       import * as engine from "voxelscape";
       var started = false;
       var retract = false;
-      engine.onTick(function (clockMs, eventsJson) {
+      engine.onTick(function (clockMs, events) {
         if (!started) {
           started = true;
           engine.dispatch("field", {
@@ -472,7 +466,6 @@ describe("a script host", () => {
             min: [-4, 0, -4], max: [4, 8, 4], vx: 12,
           });
         }
-        var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (!retract && events[i].kind === "player-touched") {
             retract = true;
@@ -518,8 +511,7 @@ describe("a script host", () => {
       host,
       `
       import * as engine from "voxelscape";
-      engine.onTick(function (clockMs, eventsJson) {
-        var events = JSON.parse(eventsJson);
+      engine.onTick(function (clockMs, events) {
         for (var i = 0; i < events.length; i++) {
           var e = events[i];
           if (e.kind === "entity-used") {
@@ -607,12 +599,11 @@ describe("a script host", () => {
       `
       import * as engine from "voxelscape";
       var started = false;
-      engine.onTick(function (clockMs, eventsJson) {
+      engine.onTick(function (clockMs, events) {
         if (!started) {
           started = true;
           engine.dispatch("timer", { id: "ding", afterMs: 1000 });
         }
-        var events = JSON.parse(eventsJson);
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "timer") {
             engine.dispatch("toast", { player: "", text: "fired " + events[i].timerId });
@@ -839,8 +830,7 @@ describe("a script host", () => {
       host,
       `
       import * as engine from "voxelscape";
-      engine.onTick(function (clockMs, eventsJson) {
-        var events = JSON.parse(eventsJson);
+      engine.onTick(function (clockMs, events) {
         for (var i = 0; i < events.length; i++) {
           if (events[i].kind === "player-touched") {
             engine.dispatch("toast", { player: "", text: "touched " + events[i].entityId });

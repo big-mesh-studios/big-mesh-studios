@@ -1,15 +1,18 @@
 // The hand-written source of the `"voxelscape"` module a place script
 // imports (see bundle.ts's recognition of it as a reserved specifier).
-// Re-exports the sandbox's whole host surface — `dispatch`/`onTick`/`log`/
-// `heightAt`/etc. — through its own internal-only import, alongside
-// `createNpc`/`createProp`, so a script reaches everything through one
-// dependency: `import * as engine from "voxelscape"; engine.dispatch(...);
-// engine.createNpc(...);`. Ordinary guest-side TypeScript, compiled through
-// the same `transpileFile` every project file goes through, so nothing here
-// is a new sandbox global and nothing changes the trust boundary the
-// interpreter's isolation already draws (ADR 0027). Every function just
-// builds the same payload a hand-written script already builds and calls
-// `dispatch` itself; see `effects.ts`'s
+// Re-exports the sandbox's whole host surface — `dispatch`/`log`/`heightAt`/
+// etc. — through its own internal-only import, alongside `createNpc`/
+// `createProp`, so a script reaches everything through one dependency:
+// `import * as engine from "voxelscape"; engine.dispatch(...);
+// engine.createNpc(...);`. `onTick` is the one function re-exported as a
+// wrapper rather than as-is: it parses the events its own `onTick` call
+// receives before handing them to the script, so a script never sees the
+// JSON text they crossed the sandbox boundary as. Ordinary guest-side
+// TypeScript, compiled through the same `transpileFile` every project file
+// goes through, so nothing here is a new sandbox global and nothing changes
+// the trust boundary the interpreter's isolation already draws (ADR 0027).
+// Every function just builds the same payload a hand-written script already
+// builds and calls `dispatch` itself; see `effects.ts`'s
 // "npc"/"npc-remove"/"npc-die"/"prop"/"prop-remove" payloads, which this
 // mirrors field for field — every one of them a single fully-named object,
 // which is why every function here takes one too.
@@ -22,6 +25,15 @@
 export const VOXELSCAPE_LIB_SOURCE = `
 import * as host from "engine-host";
 export * from "engine-host";
+
+/** Registers \`fn\` with the host's own \`onTick\`, parsing the events it
+ * hands back before \`fn\` ever sees them — a script reads real facts, never
+ * the JSON text they crossed the sandbox boundary as. */
+export function onTick(fn) {
+  host.onTick(function (clockMs, eventsJson) {
+    fn(clockMs, JSON.parse(eventsJson));
+  });
+}
 
 function resolveModel(modelName) {
   if (modelName === undefined) {

@@ -12,18 +12,6 @@ import {
   type ModelsByName,
 } from "voxelscape";
 
-/** One fact the world hands the script, as the script reads it back. */
-interface Event {
-  kind: string;
-  producer: string;
-  item?: string;
-  entityId?: string;
-  npcId?: string;
-  option?: number;
-  zoneId?: string;
-  timerId?: string;
-}
-
 // The structure plan is drawn in LOD-0 voxel coordinates, so `GROUND` is a
 // voxel row: 30 voxels down the world puts the walkable surface at world y 60
 // and the player's feet at 62. Every prop and item below is placed in world
@@ -114,7 +102,7 @@ function walls(): unknown[] {
   ];
 }
 
-onPlan((): string => {
+onPlan(() => {
   const b = blocks;
   const shapes: unknown[] = [
     { kind: "box", min: [-80, 0, -80], max: [80, GROUND - 1, 80], id: b.dirt },
@@ -920,12 +908,11 @@ function timer(id: string): void {
   }
 }
 
-onTick((_clockMs: number, eventsJson: string): void => {
+onTick((_clockMs, events) => {
   if (!started) {
     started = true;
     open();
   }
-  const events = JSON.parse(eventsJson) as Event[];
   for (const event of events) {
     if (event.kind === "zone-entered" && event.zoneId !== undefined) {
       inZone[event.zoneId] = true;
