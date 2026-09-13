@@ -55,7 +55,7 @@ own copy at the same shared-clock moment (ADR 0026's voice tier: "a message,
 sound, or HUD element aimed at one player"). A peer never re-sends the effect —
 the sound is a thing each peer does, not a fact they must agree on — so two
 peers' copies of the eerie ring at the same instant but are each their own.
-A name targeted at one named `player` is currently *not* rendered: the world's
+A name targeted at one named `player` is currently _not_ rendered: the world's
 effect handler has no table from a player string to the speaker at this peer,
 so the validation and the forward exist and the render is left to a future
 peer-name resolution.

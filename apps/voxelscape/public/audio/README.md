@@ -19,6 +19,7 @@
 The Zombies: The Mansion game sounds, all Creative Commons Zero and re-encoded
 to mono Ogg Vorbis (44.1 kHz, ~32 kbps) with loudness normalized to
 I=-16, TP=-1.5 dB LUFS, the same target the recordings above use:
+
 - `zombie-growl.ogg` — a 0.34s zombie snarl, played when a zombie swings at a
   player. Source: ianzazz's "Zombie noises and moans" pack,
   `fastzombie1.ogg` (https://opengameart.org/content/zombie-noises-and-moans).
