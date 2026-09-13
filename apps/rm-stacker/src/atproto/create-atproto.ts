@@ -123,11 +123,12 @@ export function createAtproto() {
       });
       cursor = page.cursor;
 
-      for (const { uri, value } of page.records) {
+      for (const { uri, cid, value } of page.records) {
         if (isModelRecord(value)) {
           models.push({
             repo: did,
             rkey: uri.slice(uri.lastIndexOf("/") + 1),
+            cid,
             record: value,
           });
         }
@@ -211,7 +212,7 @@ export function createAtproto() {
           ...(thumbnail === undefined ? {} : { thumbnail }),
         };
 
-        await client.putRecord({
+        const { cid } = await client.putRecord({
           repo: did,
           collection: MODEL_COLLECTION,
           rkey,
@@ -219,7 +220,7 @@ export function createAtproto() {
         });
         setError(null);
 
-        return { repo: did, rkey, record };
+        return { repo: did, rkey, cid, record };
       } catch (cause) {
         return fail(cause);
       }

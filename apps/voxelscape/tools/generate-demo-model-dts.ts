@@ -16,6 +16,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateProjectModelsDts } from "../src/places/model-dts.ts";
+import type { AttachedModel } from "../src/places/project.ts";
 import {
   DONT_POOP_MODELS,
   GASA4_MODELS,
@@ -45,9 +46,9 @@ const files = [
   ]),
 ];
 
-const models: Record<string, Uint8Array> = {};
+const models: Record<string, AttachedModel> = {};
 for (const file of files) {
-  models[file] = new Uint8Array(readFileSync(join(modelsDir, file)));
+  models[file] = { bytes: new Uint8Array(readFileSync(join(modelsDir, file))) };
 }
 
 const dts = await generateProjectModelsDts(models);

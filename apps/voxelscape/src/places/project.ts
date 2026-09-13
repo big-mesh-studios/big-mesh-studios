@@ -73,14 +73,29 @@ onTick((clockMs, events) => {
 `;
 
 /**
+ * One model a project carries, by the name its scripts attach it under.
+ * `bytes` is always here — decoded to draw it, to generate its ambient types,
+ * to spawn it — but a name attached from disk, or from an account other than
+ * the signed-in one, carries no `ref`: publishing the place is what gives it
+ * one, by publishing a copy of its own under the signed-in account. A name
+ * attached from the signed-in account's own already-published models already
+ * has a record to point at, so it carries its ref from the moment it is
+ * attached.
+ */
+export interface AttachedModel {
+  bytes: Uint8Array;
+  ref?: { uri: string; cid: string };
+}
+
+/**
  * One working place: the manifest at the top of its zip, every script file it
- * names as text, and every rm-stacker model it carries as bytes, each keyed by
- * the manifest-relative path.
+ * names as text, and every rm-stacker model it carries, each keyed by the
+ * manifest-relative path.
  */
 export interface PlaceProject {
   manifest: PlaceManifest;
   scripts: Record<string, string>;
-  models: Record<string, Uint8Array>;
+  models: Record<string, AttachedModel>;
 }
 
 /**
@@ -119,8 +134,8 @@ export const writePlaceZip = async (project: PlaceProject): Promise<Blob> => {
   for (const [name, source] of Object.entries(project.scripts)) {
     zip.file(name, source);
   }
-  for (const [name, bytes] of Object.entries(project.models)) {
-    zip.file(name, bytes);
+  for (const [name, model] of Object.entries(project.models)) {
+    zip.file(name, model.bytes);
   }
   const generated = await zip.generateAsync({ type: "arraybuffer" });
   return new Blob([generated], { type: PLACE_MIME_TYPE });
@@ -140,11 +155,14 @@ export const readPlaceProject = async (zip: Blob): Promise<PlaceProject> => {
     // file is there to read.
     scripts[name] = await loaded.file(name)!.async("text");
   }
-  const models: Record<string, Uint8Array> = {};
+  const models: Record<string, AttachedModel> = {};
   for (const name of manifest.models ?? []) {
-    models[name] = new Uint8Array(
-      await loaded.file(name)!.async("arraybuffer"),
-    );
+    // A zip read fresh off a device or a repository carries no record of
+    // whether any of its models are already published anywhere — that's
+    // resolved fresh the next time this project is published.
+    models[name] = {
+      bytes: new Uint8Array(await loaded.file(name)!.async("arraybuffer")),
+    };
   }
   return { manifest, scripts, models };
 };

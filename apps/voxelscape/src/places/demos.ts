@@ -5,7 +5,11 @@
 // `public/models/` and are read as bytes when the demo opens; its script source
 // is a real TypeScript file imported as raw text, so it is written and read the
 // way a creator's own script is.
-import { MAIN_SCRIPT_FILE, type PlaceProject } from "./project";
+import {
+  MAIN_SCRIPT_FILE,
+  type AttachedModel,
+  type PlaceProject,
+} from "./project";
 import type { PlaceManifest } from "./place";
 import GASA4_SCRIPT from "./demo-scripts/gasa4.ts?raw";
 import LATE_TO_SCHOOL_SCRIPT from "./demo-scripts/late-to-school.ts?raw";
@@ -191,14 +195,14 @@ export const builtinDemo = (id: string): BuiltinDemo | null =>
 export const loadBuiltinDemo = async (
   demo: BuiltinDemo,
 ): Promise<PlaceProject> => {
-  const models: Record<string, Uint8Array> = {};
+  const models: Record<string, AttachedModel> = {};
   for (const file of demo.manifest.models ?? []) {
     try {
       // Served from the site's own root, the same folder every other address
       // in this application is built from (see `vite.config.ts`'s `base`).
       const response = await fetch(`${import.meta.env.BASE_URL}models/${file}`);
       if (response.ok) {
-        models[file] = new Uint8Array(await response.arrayBuffer());
+        models[file] = { bytes: new Uint8Array(await response.arrayBuffer()) };
       }
     } catch {
       // A demo without one of its models is still a working demo.

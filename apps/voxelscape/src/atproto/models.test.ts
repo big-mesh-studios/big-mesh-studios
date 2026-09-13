@@ -81,10 +81,12 @@ describe("publishedModels", () => {
     const models = publishedModels(DID, [
       {
         uri: `at://${DID}/app.bms.stacker.model/zombie`,
+        cid: "bafzombierecord",
         value: modelRecord("Zombie", "bafzombie"),
       },
       {
         uri: `at://${DID}/app.bms.stacker.model/duck`,
+        cid: "bafduckrecord",
         value: modelRecord("Duck", "bafduck"),
       },
     ]);
@@ -98,14 +100,17 @@ describe("publishedModels", () => {
     const models = publishedModels(DID, [
       {
         uri: `at://${DID}/app.bms.stacker.model/half`,
+        cid: "bafhalfrecord",
         value: { $type: "app.bms.stacker.model", name: "Half" },
       },
       {
         uri: `at://${DID}/app.bms.stacker.model/post`,
+        cid: "bafpostrecord",
         value: { $type: "app.bsky.feed.post" },
       },
       {
         uri: `at://${DID}/app.bms.stacker.model/zombie`,
+        cid: "bafzombierecord",
         value: modelRecord("Zombie", "bafzombie"),
       },
     ]);
@@ -119,6 +124,7 @@ describe("a model library", () => {
     const { fetch, asked } = server({
       getRecord: {
         uri: `at://${DID}/app.bms.stacker.model/cute-zombie`,
+        cid: "bafcutezombierecord",
         value: modelRecord("Cute Zombie", "bafzombie"),
       },
     });
@@ -137,6 +143,7 @@ describe("a model library", () => {
     const { fetch } = server({
       getRecord: {
         uri: `at://${DID}/app.bms.stacker.model/zombie`,
+        cid: "bafzombierecord",
         value: { $type: "app.bms.stacker.model", name: "Zombie" },
       },
     });
@@ -161,6 +168,7 @@ describe("a model library", () => {
               records: [
                 {
                   uri: `at://${DID}/app.bms.stacker.model/zombie`,
+                  cid: "bafzombierecord",
                   value: modelRecord("Zombie", "bafzombie"),
                 },
               ],
@@ -169,6 +177,7 @@ describe("a model library", () => {
               records: [
                 {
                   uri: `at://${DID}/app.bms.stacker.model/duck`,
+                  cid: "bafduckrecord",
                   value: modelRecord("Duck", "bafduck"),
                 },
               ],
@@ -194,6 +203,7 @@ describe("a model library", () => {
     const file = await library.file({
       repo: DID,
       rkey: "zombie",
+      cid: "bafzombierecord",
       record: modelRecord("Zombie", "bafzombie") as never,
     });
 
@@ -217,6 +227,7 @@ describe("a model library", () => {
       createModelLibrary({ locate, fetch }).file({
         repo: DID,
         rkey: "zombie",
+        cid: "bafzombierecord",
         record: modelRecord("Zombie", "bafzombie") as never,
       }),
     ).rejects.toThrow(/would not serve "Zombie" \(404\)/);

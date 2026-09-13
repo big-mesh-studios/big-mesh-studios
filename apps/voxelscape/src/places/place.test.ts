@@ -12,7 +12,9 @@ import {
   placeRkey,
   placeWorld,
   type PlaceManifest,
+  type PlaceModelRef,
   type PlaceRecord,
+  type PlaceScriptRecord,
 } from "./place";
 
 const manifest = (
@@ -25,12 +27,14 @@ const manifest = (
   ...overrides,
 });
 
-const blobRef = {
-  $type: "blob",
-  ref: { $link: "bafkreigh2akiscaildc" },
-  mimeType: "application/zip",
-  size: 42,
-};
+const scripts: PlaceScriptRecord[] = [{ name: "main.js", source: "log(1);" }];
+const models: PlaceModelRef[] = [
+  {
+    name: "fridge.zip",
+    uri: "at://did:plc:abc123/app.bms.stacker.model/fridge",
+    cid: "bafkreigh2akiscaildc",
+  },
+];
 
 const record = (
   overrides: Record<string, unknown> = {},
@@ -40,7 +44,8 @@ const record = (
   seed: 12_345,
   spawn: [128, 0, -64],
   createdAt: "2026-09-05T00:00:00.000Z",
-  file: blobRef,
+  scripts,
+  models,
   ...overrides,
 });
 
@@ -89,8 +94,12 @@ describe("place record", () => {
       { ...record(), seed: null },
       { ...record(), spawn: [1, 2] },
       { ...record(), createdAt: 5 },
-      { ...record(), file: undefined },
-      { ...record(), file: { mimeType: "application/zip" } },
+      { ...record(), scripts: undefined },
+      { ...record(), scripts: [{ name: "" }] },
+      { ...record(), scripts: [{ name: "main.js" }] },
+      { ...record(), models: undefined },
+      { ...record(), models: [{ name: "fridge.zip" }] },
+      { ...record(), models: [{ name: "fridge.zip", uri: 5, cid: "baf" }] },
     ];
     for (const bad of cases) {
       expect(isPlaceRecord(bad), JSON.stringify(bad)).toBe(false);
@@ -105,11 +114,12 @@ describe("place record", () => {
 });
 
 describe("place record building", () => {
-  it("builds a record from a manifest and an uploaded blob", () => {
+  it("builds a record from a manifest, its scripts and its attached models", () => {
     const made = makePlaceRecord(
       manifest() as PlaceManifest,
       "2026-09-05T00:00:00.000Z",
-      blobRef as PlaceRecord["file"],
+      scripts,
+      models,
     );
     expect(made).toEqual(record());
   });

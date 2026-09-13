@@ -26,25 +26,26 @@ import type {
  * `createAtprotoRepoClient` is where they re-enter the validated world.
  */
 export interface AtprotoRepoClient {
+  /** Hands back the cid the record was written under, for a caller that needs to refer back to this exact write. */
   putRecord(params: {
     repo: string;
     collection: string;
     rkey: string;
     record: { [_ in string]: unknown };
-  }): Promise<void>;
+  }): Promise<{ cid: string }>;
   /** Rejects when the record does not exist, as the XRPC call does. */
   getRecord(params: {
     repo: string;
     collection: string;
     rkey: string;
-  }): Promise<{ value: unknown }>;
+  }): Promise<{ value: unknown; cid: string }>;
   listRecords(params: {
     repo: string;
     collection: string;
     cursor?: string;
     limit?: number;
   }): Promise<{
-    records: Array<{ uri: string; value: unknown }>;
+    records: Array<{ uri: string; cid: string; value: unknown }>;
     cursor?: string;
   }>;
   deleteRecord(params: {
@@ -95,7 +96,7 @@ export function createAtprotoRepoClient(params: {
   return {
     async putRecord({ repo, collection, rkey, record }) {
       const target = await forRepo(repo);
-      await ok(
+      const response = await ok(
         target.post("com.atproto.repo.putRecord", {
           input: {
             repo: repo as ActorIdentifier,
@@ -105,6 +106,7 @@ export function createAtprotoRepoClient(params: {
           },
         }),
       );
+      return { cid: response.cid };
     },
     async getRecord({ repo, collection, rkey }) {
       const target = await forRepo(repo);
@@ -117,7 +119,12 @@ export function createAtprotoRepoClient(params: {
           },
         }),
       );
-      return { value: response.value };
+      if (response.cid === undefined) {
+        throw new Error(
+          `${repo}'s server answered "${collection}/${rkey}" with no cid`,
+        );
+      }
+      return { value: response.value, cid: response.cid };
     },
     async listRecords({ repo, collection, cursor, limit }) {
       const target = await forRepo(repo);

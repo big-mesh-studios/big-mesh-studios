@@ -1,11 +1,13 @@
 // Publishing places and reading them back over atproto. The read half mirrors
-// `models.ts`: a place lives in its author's repository, its record and its zip
-// both public, so listing a place or booting its world costs nothing but the
-// author's name. The write half is what publishing is — uploading the zip and
-// putting the record it describes under a key made from its name — and needs
-// the signed-in account, unlike reading, so the two halves are separate
-// objects: `PlaceLibrary` for anyone, `PlacePublisher` for an account of one's
-// own.
+// `models.ts`: a place lives in its author's repository, its record and every
+// model it names are public, so listing a place or booting its world costs
+// nothing but the author's name and the name of whoever's model it attached.
+// The write half is what publishing is — resolving every attached model to a
+// strong reference, one already the signed-in account's own kept as is, any
+// other duplicated into a fresh record of its own first — and putting the
+// record it describes under a key made from its name — and needs the
+// signed-in account, unlike reading, so the two halves are separate objects:
+// `PlaceLibrary` for anyone, `PlacePublisher` for an account of one's own.
 import { Client, ok, simpleFetchHandler } from "@atcute/client";
 import type {
   ActorIdentifier,
@@ -23,7 +25,20 @@ import {
   createHandleResolver,
   pdsEndpoint,
 } from "@big-mesh-studios/atproto/identity";
-import { readPlaceZip } from "../places/package.ts";
+import { loadFigure, saveFigure } from "@big-mesh-studios/stacker/format";
+import { partDimensions } from "@big-mesh-studios/stacker/renderer";
+import {
+  blobUrl,
+  isModelRecord,
+  loadPublishedFigure,
+  MODEL_COLLECTION,
+  modelAtUri,
+  modelRkey,
+  parseModelAtUri,
+  publishFigure,
+  THUMBNAIL_MIME_TYPE,
+  type ModelRecord,
+} from "@big-mesh-studios/stacker/lexicon";
 import {
   isPlaceRecord,
   makePlaceRecord,
@@ -31,11 +46,12 @@ import {
   placeAtUri,
   placeRkey,
   PLACE_COLLECTION,
-  PLACE_MIME_TYPE,
+  type PlaceModelRef,
   type PlaceRecord,
+  type PlaceScriptRecord,
   type PublishedPlace,
 } from "../places/place.ts";
-import { blobUrl } from "@big-mesh-studios/stacker/lexicon";
+import type { AttachedModel, PlaceProject } from "../places/project.ts";
 
 /** Where an account's place records are: which account a name means, which server holds it. */
 export interface PlaceLibrary {
@@ -50,8 +66,15 @@ export interface PlaceLibrary {
   find(account: string, name: string): Promise<PublishedPlace>;
   /** The place an `at://` address names, wherever it lives. */
   recordAtUri(uri: string): Promise<PublishedPlace>;
-  /** The zip `place` points at. */
-  file(place: PublishedPlace): Promise<Blob>;
+  /**
+   * `place` read back into an editable project: its scripts, already inline
+   * in the record, and every attached model resolved from the
+   * `app.bms.stacker.model` record it names — fetched, decoded, and rebuilt
+   * as the bytes the rest of this world reads a model as. A model whose
+   * reference no longer resolves, or has drifted from the exact version this
+   * place named, is left out rather than failing the whole place open.
+   */
+  project(place: PublishedPlace): Promise<PlaceProject>;
 }
 
 /**
@@ -110,6 +133,55 @@ export const createPlaceLibrary = (params?: {
     return { repo: location.did, rkey, record: response.value };
   };
 
+  /** `ref` resolved into the bytes and, once confirmed unchanged, the strong ref this project carries forward. */
+  const resolveModel = async (
+    ref: PlaceModelRef,
+  ): Promise<AttachedModel | null> => {
+    const parsed = parseModelAtUri(ref.uri);
+    if (parsed === null) {
+      return null;
+    }
+    const location = await locateOnce(parsed.repo);
+    const client = new Client({
+      handler: simpleFetchHandler({
+        service: location.service,
+        fetch: fetchFile,
+      }),
+    });
+    const response = await ok(
+      client.get("com.atproto.repo.getRecord", {
+        params: {
+          repo: parsed.repo as ActorIdentifier,
+          collection: MODEL_COLLECTION as Nsid,
+          rkey: parsed.rkey as RecordKey,
+        },
+      }),
+    );
+    if (
+      !isModelRecord(response.value) ||
+      response.cid === undefined ||
+      response.cid !== ref.cid
+    ) {
+      return null;
+    }
+    const model = response.value;
+    const figure = await loadPublishedFigure(model, async (blob) => {
+      const url = blobUrl(location.service, parsed.repo, blob.ref.$link);
+      const blobResponse = await fetchFile(url);
+      if (!blobResponse.ok) {
+        throw new Error(
+          `the server holding ${parsed.repo} would not serve a drawing of "${model.name}" (${blobResponse.status})`,
+        );
+      }
+      return new Uint8Array(await blobResponse.arrayBuffer());
+    });
+    const zip = await saveFigure(figure, figure.motions);
+    return {
+      bytes: new Uint8Array(await zip.arrayBuffer()),
+      ref: { uri: ref.uri, cid: ref.cid },
+    };
+  };
+
   return {
     async list(account) {
       const { location, client } = await clientFor(account);
@@ -152,20 +224,34 @@ export const createPlaceLibrary = (params?: {
       return getPlace(location, parsed.rkey);
     },
 
-    async file(place) {
-      const location = await locateOnce(place.repo);
-      const url = blobUrl(
-        location.service,
-        place.repo,
-        place.record.file.ref.$link,
-      );
-      const response = await fetchFile(url);
-      if (!response.ok) {
-        throw new Error(
-          `the server holding ${place.repo} would not serve "${place.record.name}" (${response.status})`,
-        );
+    async project(place) {
+      const scripts: Record<string, string> = {};
+      for (const script of place.record.scripts) {
+        scripts[script.name] = script.source;
       }
-      return response.blob();
+
+      const models: Record<string, AttachedModel> = {};
+      const resolved = await Promise.all(
+        place.record.models.map(
+          async (ref) => [ref, await resolveModel(ref)] as const,
+        ),
+      );
+      for (const [ref, model] of resolved) {
+        if (model !== null) {
+          models[ref.name] = model;
+        }
+      }
+
+      return {
+        manifest: {
+          name: place.record.name,
+          seed: place.record.seed,
+          spawn: place.record.spawn,
+          mode: place.record.mode,
+        },
+        scripts,
+        models,
+      };
     },
   };
 };
@@ -173,12 +259,15 @@ export const createPlaceLibrary = (params?: {
 /** The write half of publishing, bound to one signed-in account. */
 export interface PlacePublisher {
   /**
-   * Publishes a place zip to the signed-in account's repository under a key
-   * made from the manifest's name, and hands back the place's `at://` address.
-   * Publishing under the same name again replaces what is there, which is how a
-   * place gets updated without players having to follow a new address.
+   * Publishes `project` to the signed-in account's repository under a key
+   * made from its name, and hands back the place's `at://` address. An
+   * attached model already the signed-in account's own is referenced as is;
+   * any other is published as a fresh copy of its own under this account
+   * first, so the place depends only on this account from here on. Publishing
+   * under the same name again replaces what is there, which is how a place
+   * gets updated without players having to follow a new address.
    */
-  publish(zip: Blob): Promise<string>;
+  publish(project: PlaceProject): Promise<string>;
 }
 
 export const createPlacePublisher = (params: {
@@ -187,23 +276,57 @@ export const createPlacePublisher = (params: {
   /** The signed-in account's DID, or null while signed out. */
   getRepo: () => string | null;
 }): PlacePublisher => ({
-  async publish(zip) {
+  async publish(project) {
     const client = params.getClient();
     const repo = params.getRepo();
     if (client === undefined || repo === null) {
       throw new Error("not connected — use /account:login first");
     }
-    const manifest = await readPlaceZip(zip);
-    const file = await client.uploadBlob(
-      zip.type === PLACE_MIME_TYPE
-        ? zip
-        : new Blob([zip], { type: PLACE_MIME_TYPE }),
+
+    const uploadBlob = (bytes: Uint8Array) =>
+      client.uploadBlob(
+        new Blob([bytes as BlobPart], { type: THUMBNAIL_MIME_TYPE }),
+      );
+
+    const models: PlaceModelRef[] = [];
+    for (const [name, attached] of Object.entries(project.models)) {
+      if (attached.ref !== undefined) {
+        models.push({ name, uri: attached.ref.uri, cid: attached.ref.cid });
+        continue;
+      }
+      const loaded = await loadFigure(new Blob([attached.bytes as BlobPart]));
+      const rkey = modelRkey(name);
+      const built = await publishFigure(
+        { parts: loaded.parts, palette: loaded.palette },
+        loaded.motions,
+        uploadBlob,
+      );
+      const record: ModelRecord = {
+        $type: MODEL_COLLECTION,
+        name,
+        createdAt: new Date().toISOString(),
+        dimensions: partDimensions(loaded.parts[0]),
+        ...built,
+      };
+      const { cid } = await client.putRecord({
+        repo,
+        collection: MODEL_COLLECTION,
+        rkey,
+        record,
+      });
+      models.push({ name, uri: modelAtUri(repo, rkey), cid });
+    }
+
+    const scripts: PlaceScriptRecord[] = Object.entries(project.scripts).map(
+      ([name, source]) => ({ name, source }),
     );
-    const rkey = placeRkey(manifest.name);
+
+    const rkey = placeRkey(project.manifest.name);
     const record: PlaceRecord = makePlaceRecord(
-      manifest,
+      project.manifest,
       new Date().toISOString(),
-      file,
+      scripts,
+      models,
     );
     await client.putRecord({
       repo,

@@ -1,20 +1,21 @@
 // The vocabulary of a published place, at both of its addresses: the atproto
-// record a place is listed and joined by, and the `manifest.json` its zip is
-// read by. Both describe the same thing — a world named by a seed, a spawn, and
-// the scripts that turn it into a game — so they share the fields a browser
-// needs in order to list a place or boot its world without ever downloading the
-// zip. The manifest stays in the zip because it also names the script files;
-// publishing copies its world fields into the record, and a zip is fetched only
-// when a place's scripts actually run.
-import type { Blob as LexBlob } from "@atcute/lexicons";
+// record a place is listed and joined by, and the `manifest.json` a place zip
+// exported to or read from a device is read by. A published place carries its
+// scripts inline and names each attached model by the `app.bms.stacker.model`
+// record it is a strong reference to, rather than embedding a zip's worth of
+// bytes nobody but this world could open; a zip stays the shape a place takes
+// on disk, and the manifest inside it is still what names that zip's own
+// script and model files.
 import type { Dim3 } from "../world/level-data";
 
 /** The collection published places are written to. */
 export const PLACE_COLLECTION = "app.bms.voxelscape.place";
-/** The media type a place zip is uploaded under. */
+/** The media type a place zip exported to, or read from, a device is written under. */
 export const PLACE_MIME_TYPE = "application/zip";
-/** The file inside the zip that carries a place's manifest. */
+/** The file inside a zip that carries a place's manifest. */
 export const PLACE_MANIFEST_FILE = "manifest.json";
+/** The longest one script's inlined source may run, in characters. */
+export const MAX_SCRIPT_SOURCE = 100_000;
 /** The longest a place's name may be, and so the longest its record key may grow from. */
 export const MAX_PLACE_NAME = 256;
 /** The furthest a place's spawn may lie from the origin, in world units. */
@@ -75,6 +76,27 @@ export type PlaceManifest = {
   mode?: PlaceMode;
 };
 
+/** One script of a published place, its source written straight into the record. */
+export type PlaceScriptRecord = {
+  /** The name a place's manifest and its other scripts import it by. */
+  name: string;
+  source: string;
+};
+
+/**
+ * One model a published place has attached, referenced by the
+ * `app.bms.stacker.model` record that holds it rather than a copy of its
+ * bytes — every attached model is published somewhere by the time a place
+ * naming it is, whether that publish belongs to whoever made the place or was
+ * made just to give this one a place of its own to point at.
+ */
+export type PlaceModelRef = {
+  /** The name a place's scripts attach and address it by (`createNpc({ model: name })`). */
+  name: string;
+  uri: string;
+  cid: string;
+};
+
 /**
  * One published place, as it sits in a repository. A type alias rather than an
  * interface, so it stays assignable to the `Record<string, unknown>` an atproto
@@ -86,8 +108,8 @@ export type PlaceRecord = {
   seed: number;
   spawn: PlaceSpawn;
   createdAt: string;
-  /** The place zip, byte for byte. */
-  file: LexBlob;
+  scripts: PlaceScriptRecord[];
+  models: PlaceModelRef[];
   /** How this place handles other players and their edits; unset on a place published before this existed. */
   mode?: PlaceMode;
 };
@@ -117,19 +139,6 @@ const isShortName = (v: unknown): boolean =>
 /** Whether `v` is a valid `PlaceMode`, or absent — either is fine on a manifest or record. */
 const isPlaceMode = (v: unknown): v is PlaceMode | undefined =>
   v === undefined || PLACE_MODES.includes(v as PlaceMode);
-
-const isBlob = (v: unknown): v is LexBlob => {
-  if (typeof v !== "object" || v === null) {
-    return false;
-  }
-  const { ref, mimeType } = v as Record<string, unknown>;
-  return (
-    typeof mimeType === "string" &&
-    typeof ref === "object" &&
-    ref !== null &&
-    typeof (ref as Record<string, unknown>)["$link"] === "string"
-  );
-};
 
 /**
  * Whether `v` is a place manifest this world can open. A zip picked up from a
@@ -186,10 +195,49 @@ const isFileList = (
   );
 };
 
+const isRecordScripts = (v: unknown): v is PlaceScriptRecord[] =>
+  Array.isArray(v) &&
+  v.length <= MAX_PLACE_SCRIPTS &&
+  v.every((script) => {
+    if (typeof script !== "object" || script === null) {
+      return false;
+    }
+    const { name, source } = script as Record<string, unknown>;
+    return (
+      typeof name === "string" &&
+      name.length >= 1 &&
+      name.length <= MAX_SCRIPT_FILE &&
+      !name.startsWith("/") &&
+      !name.includes("..") &&
+      typeof source === "string" &&
+      source.length <= MAX_SCRIPT_SOURCE
+    );
+  });
+
+const isRecordModels = (v: unknown): v is PlaceModelRef[] =>
+  Array.isArray(v) &&
+  v.length <= MAX_PLACE_MODELS &&
+  v.every((model) => {
+    if (typeof model !== "object" || model === null) {
+      return false;
+    }
+    const { name, uri, cid } = model as Record<string, unknown>;
+    return (
+      typeof name === "string" &&
+      name.length >= 1 &&
+      name.length <= MAX_MODEL_FILE &&
+      !name.startsWith("/") &&
+      !name.includes("..") &&
+      typeof uri === "string" &&
+      typeof cid === "string"
+    );
+  });
+
 /**
  * Whether `v` is a place record this world can open. Everything read from a
- * repository was written by somebody else's client, so a record missing the
- * blob or a world it can boot is passed over rather than listed.
+ * repository was written by somebody else's client, so a record naming a
+ * script or a model reference it cannot make sense of is passed over rather
+ * than listed.
  */
 export const isPlaceRecord = (v: unknown): v is PlaceRecord => {
   if (typeof v !== "object" || v === null) {
@@ -203,7 +251,8 @@ export const isPlaceRecord = (v: unknown): v is PlaceRecord => {
     Number.isFinite(r.seed) &&
     isSpawn(r.spawn) &&
     typeof r.createdAt === "string" &&
-    isBlob(r.file) &&
+    isRecordScripts(r.scripts) &&
+    isRecordModels(r.models) &&
     isPlaceMode(r.mode)
   );
 };
@@ -228,18 +277,20 @@ export function placeRkey(name: string): string {
   return key;
 }
 
-/** The record a zip's manifest becomes, once its file has been uploaded. */
+/** The record a place's world fields, scripts and attached models become. */
 export const makePlaceRecord = (
-  manifest: PlaceManifest,
+  manifest: Pick<PlaceManifest, "name" | "seed" | "spawn" | "mode">,
   createdAt: string,
-  file: LexBlob,
+  scripts: PlaceScriptRecord[],
+  models: PlaceModelRef[],
 ): PlaceRecord => ({
   $type: PLACE_COLLECTION,
   name: manifest.name,
   seed: manifest.seed,
   spawn: manifest.spawn,
   createdAt,
-  file,
+  scripts,
+  models,
   ...(manifest.mode !== undefined ? { mode: manifest.mode } : {}),
 });
 

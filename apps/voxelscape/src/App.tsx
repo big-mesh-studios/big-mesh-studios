@@ -17,7 +17,7 @@ import styles from "./App.module.css";
 import { createPlaceLibrary } from "./atproto/places";
 import { builtinDemo, loadBuiltinDemo } from "./places/demos";
 import { DEFAULT_WORLD_URL, placeAtUri, type PlaceMode } from "./places/place";
-import { readPlaceProject, type PlaceProject } from "./places/project";
+import type { PlaceProject } from "./places/project";
 import { compilePlacePlan, planRegionAround } from "./places/plan";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
 import type { Dim3 } from "./world/level-data";
@@ -364,13 +364,22 @@ const App: Component<{}> = () => {
         notice: `${source} names no scripts — playing its terrain`,
       };
     }
+    // The runtime — the plan compiler, the sandbox — only ever decodes a
+    // model's bytes; whether it's already a strong ref to some account's
+    // own published copy is a publishing concern, not a running one.
+    const models = Object.fromEntries(
+      Object.entries(project.models).map(([name, model]) => [
+        name,
+        model.bytes,
+      ]),
+    );
     let structures: StructurePlan | undefined;
     let planNote = "";
     try {
       structures = await compilePlacePlan({
         files: project.scripts,
         entry,
-        models: project.models,
+        models,
         seed: project.manifest.seed,
         region: planRegionAround(project.manifest.spawn),
       });
@@ -387,7 +396,7 @@ const App: Component<{}> = () => {
         files: project.scripts,
         entry,
         seed: project.manifest.seed,
-        models: project.models,
+        models,
       },
       project,
       mode: project.manifest.mode,
@@ -464,7 +473,7 @@ const App: Component<{}> = () => {
             setJoiningLine("opening the place's scripts…");
           }
           const config = await buildLaunch(
-            await readPlaceProject(await places.file(place)),
+            await places.project(place),
             `joined "${place.record.name}" — playing its world`,
             placeAtUri(place.repo, place.rkey),
           );

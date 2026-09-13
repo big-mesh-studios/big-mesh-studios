@@ -11,6 +11,7 @@ import {
   modelSpecifierFor,
   type ModelDescriptor,
 } from "./model-descriptor";
+import type { AttachedModel } from "./project";
 
 const literalUnion = (names: string[]): string =>
   names.length === 0
@@ -38,17 +39,17 @@ function modelsByNameEntry(descriptor: ModelDescriptor): string {
  * that interface exists anywhere else.
  */
 export async function generateProjectModelsDts(
-  models: Record<string, Uint8Array>,
+  models: Record<string, AttachedModel>,
 ): Promise<string> {
   const entries = await Promise.all(
-    Object.entries(models).map(async ([file, bytes]) => {
+    Object.entries(models).map(async ([file, model]) => {
       const specifier = modelSpecifierFor(file);
       if (specifier === null) {
         return "";
       }
       try {
         return modelsByNameEntry(
-          await modelDescriptorFor(specifier, file, bytes),
+          await modelDescriptorFor(specifier, file, model.bytes),
         );
       } catch {
         return "";

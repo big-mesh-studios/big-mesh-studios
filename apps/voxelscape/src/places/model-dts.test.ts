@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
 import { generateProjectModelsDts } from "./model-dts";
+import type { AttachedModel } from "./project";
 import { saveFigure } from "@big-mesh-studios/stacker/format";
 import {
   sideKinds,
@@ -102,7 +103,7 @@ const partOf = (name: string): Part => ({
 const modelBytes = async (
   parts: string[],
   motions: string[] = [],
-): Promise<Uint8Array> => {
+): Promise<AttachedModel> => {
   const palette = Array.from({ length: 32 }, (_, i) => ({
     r: i,
     g: i,
@@ -118,7 +119,7 @@ const modelBytes = async (
       parts: [],
     })),
   );
-  return new Uint8Array(await blob.arrayBuffer());
+  return { bytes: new Uint8Array(await blob.arrayBuffer()) };
 };
 
 describe("generateProjectModelsDts", () => {
@@ -157,7 +158,7 @@ describe("generateProjectModelsDts", () => {
 
   it("skips a model whose bytes will not decode, without throwing", async () => {
     const dts = await generateProjectModelsDts({
-      "broken.zip": new Uint8Array([1, 2, 3]),
+      "broken.zip": { bytes: new Uint8Array([1, 2, 3]) },
       "zombie.zip": await modelBytes(["head"]),
     });
     expect(dts).not.toContain("broken");

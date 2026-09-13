@@ -68,11 +68,15 @@ describe("a place project", () => {
     const project: PlaceProject = {
       manifest: MANIFEST,
       scripts: { "main.js": "var started = false;" },
-      models: { "fridge.zip": new Uint8Array([1, 2, 3, 4]) },
+      models: { "fridge.zip": { bytes: new Uint8Array([1, 2, 3, 4]) } },
     };
     const opened = await readPlaceProject(await writePlaceZip(project));
     expect(opened.manifest.models).toEqual(["fridge.zip"]);
-    expect(opened.models["fridge.zip"]).toEqual(new Uint8Array([1, 2, 3, 4]));
+    // A zip read fresh carries no record of whether the model is already
+    // published anywhere — only the bytes it was drawn as.
+    expect(opened.models["fridge.zip"]).toEqual({
+      bytes: new Uint8Array([1, 2, 3, 4]),
+    });
   });
 
   it("round-trips a project through its zip", async () => {

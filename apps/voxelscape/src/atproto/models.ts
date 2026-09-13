@@ -156,7 +156,12 @@ export const createModelLibrary = (params?: {
       if (!isModelRecord(response.value)) {
         throw new Error(`"${name}" is not a model this can open`);
       }
-      return { repo: location.did, rkey, record: response.value };
+      return {
+        repo: location.did,
+        rkey,
+        cid: requireCid(response.cid, name),
+        record: response.value,
+      };
     },
 
     async byUri(uri) {
@@ -177,7 +182,12 @@ export const createModelLibrary = (params?: {
       if (!isModelRecord(response.value)) {
         throw new Error(`"${uri}" is not a model this can open`);
       }
-      return { repo: location.did, rkey: parsed.rkey, record: response.value };
+      return {
+        repo: location.did,
+        rkey: parsed.rkey,
+        cid: requireCid(response.cid, uri),
+        record: response.value,
+      };
     },
 
     async file(model) {
@@ -214,14 +224,24 @@ export const createModelLibrary = (params?: {
  */
 export const publishedModels = (
   repo: string,
-  records: ReadonlyArray<{ uri: string; value: unknown }>,
+  records: ReadonlyArray<{ uri: string; cid: string; value: unknown }>,
 ): PublishedModel[] =>
-  records.flatMap(({ uri, value }) =>
-    isModelRecord(value) ? [{ repo, rkey: rkeyOf(uri), record: value }] : [],
+  records.flatMap(({ uri, cid, value }) =>
+    isModelRecord(value)
+      ? [{ repo, rkey: rkeyOf(uri), cid, record: value }]
+      : [],
   );
 
 /** The record key in an `at://` address, which is everything after its last slash. */
 const rkeyOf = (uri: string): string => uri.slice(uri.lastIndexOf("/") + 1);
+
+/** `cid`, or a refusal naming what was being fetched when the server left it out. */
+const requireCid = (cid: string | undefined, of: string): string => {
+  if (cid === undefined) {
+    throw new Error(`the server answered "${of}" with no cid`);
+  }
+  return cid;
+};
 
 const handleResolver = createHandleResolver();
 const didDocumentResolver = createDidDocumentResolver();

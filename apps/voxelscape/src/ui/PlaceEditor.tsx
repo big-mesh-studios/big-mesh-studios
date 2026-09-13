@@ -24,12 +24,14 @@ import type { EditorView } from "./PlaceEditorPanes";
 import {
   emptyPlaceProject,
   MAIN_SCRIPT_FILE,
-  readPlaceProject,
-  writePlaceZip,
+  type AttachedModel,
   type PlaceProject,
 } from "../places/project";
 import { type PlaceManifest, type PublishedPlace } from "../places/place";
-import type { PublishedModel } from "@big-mesh-studios/stacker/lexicon";
+import {
+  modelAtUri,
+  type PublishedModel,
+} from "@big-mesh-studios/stacker/lexicon";
 import styles from "./PlaceEditor.module.css";
 
 /** The panel's CodeMirror tabs — the language-service bundle behind them is
@@ -267,15 +269,15 @@ export const PlaceEditorContent: Component<{
 
   const modelNames = (): string[] => Object.keys(project()?.models ?? {});
 
-  /** Replaces one model's bytes in the draft under `name`, adding it to the
+  /** Replaces one model in the draft under `name`, adding it to the
    * manifest's list if it is new. Shared by attaching a file from disk and
    * attaching one found by browsing an account's published models. */
-  const attachModel = (name: string, bytes: Uint8Array): void => {
+  const attachModel = (name: string, model: AttachedModel): void => {
     const p = project();
     if (p === null) {
       return;
     }
-    const models = { ...p.models, [name]: bytes };
+    const models = { ...p.models, [name]: model };
     commit({
       ...p,
       manifest: { ...p.manifest, models: Object.keys(models) },
@@ -295,7 +297,9 @@ export const PlaceEditorContent: Component<{
         refused.push(file.name);
         continue;
       }
-      attachModel(file.name, new Uint8Array(await file.arrayBuffer()));
+      attachModel(file.name, {
+        bytes: new Uint8Array(await file.arrayBuffer()),
+      });
       added++;
     }
     props.onStatus(
@@ -386,7 +390,10 @@ export const PlaceEditorContent: Component<{
     void browseModels(did);
   };
 
-  /** Downloads `model`'s zip and attaches it under its published name. */
+  /** Downloads `model`'s zip and attaches it under its published name — as a
+   * strong reference straight away when it is already the signed-in
+   * account's own model, so publishing this place never republishes a copy
+   * of something that account already owns. */
   const attachPublishedModel = async (model: PublishedModel): Promise<void> => {
     const name = `${model.rkey}.zip`;
     if (project()?.models[name] !== undefined) {
@@ -398,7 +405,11 @@ export const PlaceEditorContent: Component<{
       const bytes = new Uint8Array(
         await (await voxelscape().placeEditor.models.file(model)).arrayBuffer(),
       );
-      attachModel(name, bytes);
+      const ref =
+        model.repo === voxelscape().placeEditor.accountDid
+          ? { uri: modelAtUri(model.repo, model.rkey), cid: model.cid }
+          : undefined;
+      attachModel(name, { bytes, ref });
       const thumbnail = thumbnailUrls()[browseKey(model)];
       if (thumbnail !== undefined) {
         setThumbnailUrls((urls) => ({ ...urls, [name]: thumbnail }));
@@ -448,9 +459,7 @@ export const PlaceEditorContent: Component<{
   const openPlace = async (place: PublishedPlace): Promise<void> => {
     setBusy(true);
     try {
-      const opened = await readPlaceProject(
-        await voxelscape().placeEditor.places.file(place),
-      );
+      const opened = await voxelscape().placeEditor.places.project(place);
       commit(opened);
       setActive(firstScript(opened));
       setShowModels(false);
@@ -477,11 +486,17 @@ export const PlaceEditorContent: Component<{
     }
     setBusy(true);
     try {
+      // The world only ever decodes a model's bytes to run it — whether it's
+      // already a strong ref to some account's own record is a publishing
+      // concern, not a running one.
+      const models = Object.fromEntries(
+        Object.entries(p.models).map(([name, model]) => [name, model.bytes]),
+      );
       const line = await voxelscape().placeEditor.runScript(
         p.scripts,
         entry,
         p.manifest.seed,
-        p.models,
+        models,
         p.manifest.spawn,
       );
       props.onStatus(line);
@@ -511,9 +526,7 @@ export const PlaceEditorContent: Component<{
     }
     setBusy(true);
     try {
-      const atUri = await voxelscape().placeEditor.publisher.publish(
-        await writePlaceZip(p),
-      );
+      const atUri = await voxelscape().placeEditor.publisher.publish(p);
       setCandidates([]);
       props.onStatus(`published — ${atUri}`);
       return { ok: true, atUri };

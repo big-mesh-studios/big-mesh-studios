@@ -14,9 +14,12 @@ export interface StoredRecord {
 export class AtprotoHarness {
   /** did -> collection -> rkey -> value */
   private readonly repos = new Map<string, Map<string, Map<string, unknown>>>();
+  /** did -> collection -> rkey -> a fake but write-unique cid, mirroring the real network's. */
+  private readonly cids = new Map<string, Map<string, Map<string, string>>>();
+  private nextCid = 0;
 
   /** A record write against `did`'s repo, mirroring `putRecord`. */
-  write(did: string, collection: string, rkey: string, value: unknown): void {
+  write(did: string, collection: string, rkey: string, value: unknown): string {
     let repo = this.repos.get(did);
     if (repo === undefined) {
       repo = new Map();
@@ -28,6 +31,20 @@ export class AtprotoHarness {
       repo.set(collection, col);
     }
     col.set(rkey, value);
+
+    let cidRepo = this.cids.get(did);
+    if (cidRepo === undefined) {
+      cidRepo = new Map();
+      this.cids.set(did, cidRepo);
+    }
+    let cidCol = cidRepo.get(collection);
+    if (cidCol === undefined) {
+      cidCol = new Map();
+      cidRepo.set(collection, cidCol);
+    }
+    const cid = `cid-${this.nextCid++}`;
+    cidCol.set(rkey, cid);
+    return cid;
   }
 
   /** Removes a record, mirroring `deleteRecord`. */
@@ -40,11 +57,21 @@ export class AtprotoHarness {
     if (col.size === 0) {
       this.repos.get(did)?.delete(collection);
     }
+    const cidCol = this.cids.get(did)?.get(collection);
+    cidCol?.delete(rkey);
+    if (cidCol?.size === 0) {
+      this.cids.get(did)?.delete(collection);
+    }
   }
 
   /** A raw record value, or undefined when absent. */
   read(did: string, collection: string, rkey: string): unknown {
     return this.repos.get(did)?.get(collection)?.get(rkey);
+  }
+
+  /** The cid `write` minted for a record, or undefined when absent. */
+  cidOf(did: string, collection: string, rkey: string): string | undefined {
+    return this.cids.get(did)?.get(collection)?.get(rkey);
   }
 
   /** Every record in a did's collection, for mailbox inspection. */
@@ -77,7 +104,8 @@ export class AtprotoHarness {
     const harness = this;
     return {
       async putRecord({ repo, collection, rkey, record }) {
-        harness.write(repo, collection, rkey, record);
+        const cid = harness.write(repo, collection, rkey, record);
+        return { cid };
       },
       async getRecord({ repo, collection, rkey }) {
         const value = harness.read(repo, collection, rkey);
@@ -86,7 +114,8 @@ export class AtprotoHarness {
             `record not found: at://${repo}/${collection}/${rkey}`,
           );
         }
-        return { value };
+        // A record just read exists, so `write` has already minted its cid.
+        return { value, cid: harness.cidOf(repo, collection, rkey)! };
       },
       async listRecords({ repo, collection, limit = 100 }) {
         const records = harness
@@ -94,6 +123,8 @@ export class AtprotoHarness {
           .slice(0, limit)
           .map((record) => ({
             uri: `at://${repo}/${collection}/${record.rkey}`,
+            // Every listed record exists, so `write` has already minted its cid.
+            cid: harness.cidOf(repo, collection, record.rkey)!,
             value: record.value,
           }));
         return { records };

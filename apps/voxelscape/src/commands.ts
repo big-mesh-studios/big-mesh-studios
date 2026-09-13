@@ -15,7 +15,7 @@ import { BUILTIN_DEMOS, builtinDemo, loadBuiltinDemo } from "./places/demos";
 import {
   emptyPlaceProject,
   readPlaceProject,
-  writePlaceZip,
+  type PlaceProject,
 } from "./places/project";
 
 /**
@@ -716,9 +716,7 @@ export const createCommands = ({
           project.manifest.mode = mode;
         }
         try {
-          const atUri = await placePublisher.publish(
-            await writePlaceZip(project),
-          );
+          const atUri = await placePublisher.publish(project);
           const parsed = parsePlaceAtUri(atUri);
           if (parsed === null) {
             return `created — ${atUri}`;
@@ -753,9 +751,9 @@ export const createCommands = ({
           if (place.repo !== atproto.did) {
             return "only this place's owner can change its mode";
           }
-          const project = await readPlaceProject(await places.file(place));
+          const project = await places.project(place);
           project.manifest.mode = mode;
-          await placePublisher.publish(await writePlaceZip(project));
+          await placePublisher.publish(project);
           return `"${place.record.name}" is now ${mode}`;
         } catch (err) {
           return `could not set mode: ${describeError(err)}`;
@@ -767,8 +765,8 @@ export const createCommands = ({
         "publish a place zip to your account — a file from this device, or a built-in demo by id",
       args: "[demo id]",
       run: (rest) => {
-        const publish = (zip: Blob): Promise<string> =>
-          placePublisher.publish(zip).then(
+        const publish = (project: PlaceProject): Promise<string> =>
+          placePublisher.publish(project).then(
             async (atUri) => {
               const parsed = parsePlaceAtUri(atUri);
               if (parsed === null) {
@@ -786,7 +784,7 @@ export const createCommands = ({
           if (demo === null) {
             return `no demo "${demoId}" — /place:demos lists them`;
           }
-          return loadBuiltinDemo(demo).then(writePlaceZip).then(publish);
+          return loadBuiltinDemo(demo).then(publish);
         }
 
         let settle!: (line: string) => void;
@@ -801,7 +799,7 @@ export const createCommands = ({
             settle("no zip picked");
             return;
           }
-          void publish(file).then(settle);
+          void readPlaceProject(file).then(publish).then(settle);
         };
         input.oncancel = () => {
           input.remove();

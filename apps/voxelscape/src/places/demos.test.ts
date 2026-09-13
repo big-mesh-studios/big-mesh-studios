@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_DEMOS, builtinDemo, loadBuiltinDemo } from "./demos";
 import { compilePlacePlan, planRegionAround } from "./plan";
 import { ScriptHost } from "./script-host";
+import type { PlaceProject } from "./project";
 import { expandShape } from "../world/structure-fill";
 
 /** The bytes of a model under `public/models/`, as the demo loader fetches them. */
@@ -16,6 +17,14 @@ const modelBytes = (file: string): ArrayBuffer => {
     bytes.byteOffset + bytes.byteLength,
   ) as ArrayBuffer;
 };
+
+/** A project's attached models, as the sandbox and the plan compiler read
+ * them — bytes alone, whether or not any is already a strong ref to some
+ * account's own published copy is a publishing concern, not a running one. */
+const projectModelBytes = (project: PlaceProject): Record<string, Uint8Array> =>
+  Object.fromEntries(
+    Object.entries(project.models).map(([name, model]) => [name, model.bytes]),
+  );
 
 /**
  * Every surface top the plan offers at one LOD-0 voxel column, in world units.
@@ -88,7 +97,7 @@ const run = async (): Promise<{
     },
     onNarrate: (_player, line) => narrations.push(line.text),
   });
-  await host.loadProject(project.scripts, entry, project.models);
+  await host.loadProject(project.scripts, entry, projectModelBytes(project));
   return { host, endings, narrations, toasts };
 };
 
@@ -134,7 +143,7 @@ const runLts = async (knownEndings: string[] = []) => {
     onPlayerSpeed: (_player, multiplier) => speeds.push(multiplier),
     getEndings: () => knownEndings,
   });
-  await host.loadProject(project.scripts, entry, project.models);
+  await host.loadProject(project.scripts, entry, projectModelBytes(project));
   return { host, endings, narrations, toasts, jumps, speeds };
 };
 
@@ -154,7 +163,7 @@ describe("the built-in demos", () => {
     expect(Object.keys(project.models)).toContain("fridge.zip");
     expect(Object.keys(project.models)).toContain("plate.zip");
     expect(Object.keys(project.models)).toContain("friedegg.zip");
-    expect(project.models["fridge.zip"].length).toBeGreaterThan(0);
+    expect(project.models["fridge.zip"].bytes.length).toBeGreaterThan(0);
   });
 
   it("compiles its house and store", async () => {
@@ -326,7 +335,7 @@ describe("the Late to School demo", () => {
     const { project } = await lateToSchool();
     expect(Object.keys(project.models)).toContain("npc-laugh.zip");
     expect(Object.keys(project.models)).toContain("arcade.zip");
-    expect(project.models["npc-laugh.zip"].length).toBeGreaterThan(0);
+    expect(project.models["npc-laugh.zip"].bytes.length).toBeGreaterThan(0);
   });
 
   it("compiles its street, houses, and school", async () => {
@@ -632,7 +641,7 @@ describe("the Zombies demo", () => {
     await host.loadProject(
       project.scripts,
       project.manifest.scripts![0],
-      project.models,
+      projectModelBytes(project),
     );
     return host;
   };
@@ -657,7 +666,7 @@ describe("the Zombies demo", () => {
   it("loads its zombie model as bytes", async () => {
     stubModels();
     const project = await loadBuiltinDemo(builtinDemo("zombies")!);
-    expect(project.models["zombie.zip"].length).toBeGreaterThan(0);
+    expect(project.models["zombie.zip"].bytes.length).toBeGreaterThan(0);
   });
 
   it("starts with the Guide and a held sword", async () => {
@@ -750,7 +759,7 @@ describe("the Zombies: The Mansion demo", () => {
       onCheckpoint: (_player, at) => checkpoints.push(at),
       onSound: (_player, name) => sounds.push(name),
     });
-    await host.loadProject(project.scripts, entry, project.models);
+    await host.loadProject(project.scripts, entry, projectModelBytes(project));
     return { host, checkpoints, toasts, sounds };
   };
 
@@ -801,7 +810,7 @@ describe("the Zombies: The Mansion demo", () => {
       "trash.zip",
       "poster.zip",
     ]) {
-      expect(project.models[file].length).toBeGreaterThan(0);
+      expect(project.models[file].bytes.length).toBeGreaterThan(0);
     }
   });
 
@@ -1045,7 +1054,7 @@ const runDp = async () => {
     onKill: (_player, cause) => kills.push(cause),
     onVoid: (y) => voids.push(y),
   });
-  await host.loadProject(project.scripts, entry, project.models);
+  await host.loadProject(project.scripts, entry, projectModelBytes(project));
   return { host, endings, narrations, checkpoints, kills, voids };
 };
 
@@ -1098,7 +1107,7 @@ describe("the Don't Poop Yourself at School demo", () => {
   it("loads its models as bytes", async () => {
     const { project } = await dontPoop();
     expect(Object.keys(project.models)).toContain("wet-floor.zip");
-    expect(project.models["wet-floor.zip"].length).toBeGreaterThan(0);
+    expect(project.models["wet-floor.zip"].bytes.length).toBeGreaterThan(0);
   });
 
   it("compiles a plan that includes a staircase", async () => {

@@ -106,6 +106,8 @@ export type ModelRecord = {
 export interface PublishedModel {
   repo: string;
   rkey: string;
+  /** The record's own cid, for a caller that needs to point back at this exact write. */
+  cid: string;
   record: ModelRecord;
 }
 
