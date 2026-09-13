@@ -21,14 +21,21 @@ runs inside the editor, so the two ways in — the panel and the console — can
 drift apart, and the boundary the interpreter and the publisher already enforce
 stays the whole of what a created place has to survive.
 
-## IndexedDB holds the draft between sessions
+## The draft seeds from what is running, and lives only in memory
 
-The draft is written to IndexedDB, debounced, so closing the panel (even by the
-console command that would otherwise race a pending save) never loses the last
-change. A save as the panel unmounts covers that, and one persistence handle
-for the app means a debounced save started before a close finishes anyway. The
-reload path is the one place persistence shows; a place opened from a publish
-is cached in the module, so the panel also knows it without asking twice.
+> Retracted: this section originally had the draft written to IndexedDB,
+> debounced, so it survived a reload. That was one global slot, not one per
+> place, so reopening the editor from any place or demo restored whatever
+> had last been saved there — often a draft with nothing to do with what a
+> creator meant to look at, with no way to tell from the panel alone that it
+> was showing something else entirely. Cross-session persistence is dropped
+> rather than reworked to key by place for now.
+
+The first time the panel opens, its draft seeds from the place actually
+running — a demo's real script, or an already-published place's — falling
+back to `emptyPlaceProject` only for the fallback procedural world, which has
+none. The draft is cached in the module for the life of the tab, so a
+reopened panel is instant. Nothing here survives a reload.
 
 ## The editor is loaded only when it is opened
 
@@ -55,8 +62,8 @@ panel except when focus is inside it.
   over, and its editing UI is the fields for the facts it holds.
 - **Storing the draft in the place record.** Rejected: a draft is not a fact
   about the place — it is the unpublished working copy — and writing it to
-  atproto would publish intent that has not settled. IndexedDB keeps it on the
-  author's device until a publish makes it real.
+  atproto would publish intent that has not settled. It stays on the author's
+  device, in memory, until a publish makes it real.
 
 ## Consequences
 

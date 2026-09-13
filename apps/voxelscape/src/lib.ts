@@ -236,10 +236,6 @@ export {
   type PlanContext,
 } from "./places/plan";
 export {
-  createDraftPersistence,
-  type DraftPersistence,
-} from "./places/draft-persistence";
-export {
   emptyPlaceProject,
   MAIN_SCRIPT_FILE,
   readPlaceProject,

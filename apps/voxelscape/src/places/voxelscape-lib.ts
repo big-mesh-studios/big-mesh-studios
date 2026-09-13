@@ -24,6 +24,9 @@ import * as host from "engine-host";
 export * from "engine-host";
 
 function resolveModel(modelName) {
+  if (modelName === undefined) {
+    return undefined;
+  }
   var model = __models[modelName];
   if (model === undefined) {
     throw new Error("this place carries no such model: \\"" + modelName + "\\"");
@@ -57,11 +60,12 @@ function place(model, options, announce) {
 
 /**
  * Places an NPC wearing the model named \`options.model\`, through the
- * "npc"/"npc-remove"/"npc-die" effects. \`options.id\` is never generated
- * here — every peer replaying the same script must compute the exact same
- * id independently (ADR 0026), so it has to come from the caller's own
- * deterministic address, the way \`zombies.ts\` derives one from its
- * population seed and spawn cell.
+ * "npc"/"npc-remove"/"npc-die" effects — or the world's own default figure
+ * when \`options.model\` is omitted entirely. \`options.id\` is never
+ * generated here — every peer replaying the same script must compute the
+ * exact same id independently (ADR 0026), so it has to come from the
+ * caller's own deterministic address, the way \`zombies.ts\` derives one from
+ * its population seed and spawn cell.
  */
 export function createNpc(options) {
   var model = resolveModel(options.model);
@@ -72,7 +76,10 @@ export function createNpc(options) {
       z: state.z,
       y: state.y,
       name: options.name,
-      model: options.modelUri === undefined ? model.file : undefined,
+      model:
+        options.modelUri === undefined && model !== undefined
+          ? model.file
+          : undefined,
       modelUri: options.modelUri,
       yaw: state.yaw,
       live: live,

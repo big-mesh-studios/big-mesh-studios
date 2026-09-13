@@ -475,7 +475,7 @@ onTick((_clockMs: number, eventsJson: string): void => {
   const now = clockNow();
   if (!started) {
     started = true;
-    dispatch("npc", { id: GUIDE, x: 8, z: 8, name: "Guide" });
+    createNpc({ id: GUIDE, x: 8, z: 8, name: "Guide" });
     log("your place started");
     // The sword is given and equipped once, for good: this place has nothing
     // else to hold, and a bare-handed touch stays how every other entity is

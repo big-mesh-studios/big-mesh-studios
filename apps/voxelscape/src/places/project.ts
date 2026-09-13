@@ -51,14 +51,14 @@ export const VOXELSCAPE_TYPE_FILES: Record<string, string> = {
 };
 
 /** The source a new place begins editing from, typed the way a place script expects to be. */
-export const STARTER_SCRIPT = `import { dispatch, log, onTick } from "voxelscape";
+export const STARTER_SCRIPT = `import { createNpc, dispatch, log, onTick } from "voxelscape";
 
 let started = false;
 
 onTick((clockMs: number, eventsJson: string): void => {
   if (!started) {
     started = true;
-    dispatch("npc", { id: "guide", x: 8, z: 8, name: "Guide" });
+    createNpc({ id: "guide", x: 8, z: 8, name: "Guide" });
     log("your place started");
   }
   const events = JSON.parse(eventsJson) as Array<{

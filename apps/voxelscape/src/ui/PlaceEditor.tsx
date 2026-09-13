@@ -11,7 +11,6 @@ import {
   For,
   lazy,
   Loading,
-  onCleanup,
   onSettled,
   Show,
   type Accessor,
@@ -21,7 +20,6 @@ import {
 import { createPopover } from "@big-mesh-studios/utils/create-popover";
 import type { Voxelscape } from "../voxelscape/create-voxelscape";
 import type { EditorView } from "./PlaceEditorPanes";
-import { createDraftPersistence } from "../places/draft-persistence";
 import {
   emptyPlaceProject,
   MAIN_SCRIPT_FILE,
@@ -33,9 +31,6 @@ import { type PlaceManifest, type PublishedPlace } from "../places/place";
 import type { PublishedModel } from "@big-mesh-studios/stacker/lexicon";
 import styles from "./PlaceEditor.module.css";
 
-/** One persistence handle for the whole app, so a debounced save outlives a close. */
-const persist = createDraftPersistence();
-
 /** The panel's CodeMirror tabs — the language-service bundle behind them is
  * its own lazy chunk, downloaded only once a project actually has a script
  * to show. */
@@ -45,7 +40,8 @@ const PlaceEditorPanes = lazy(() => import("./PlaceEditorPanes"));
 const describeError = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
 
-/** The draft from this session, held in the module so a reopened panel is instant. */
+/** The draft from this session, held in the module so a reopened panel is
+ * instant — cleared on a full page reload; nothing here outlives the tab. */
 let cachedProject: PlaceProject | null = null;
 
 /** The first script a project should open on: the manifest's order, then the map's. */
@@ -83,13 +79,10 @@ export const PlaceEditorContent: Component<{
   // measure itself after its pane changes from display:none to display:block.
   const views = new Map<string, EditorView>();
 
-  /** Replaces the draft, caches it for the next open, and schedules a save. */
+  /** Replaces the draft, and caches it for the next open within this tab. */
   const commit = (next: PlaceProject | null): void => {
     cachedProject = next;
     setProject(next);
-    if (next !== null) {
-      persist.scheduleSave(next);
-    }
   };
 
   /** The handle to show for the owner of a not-mine place, once resolved —
@@ -117,39 +110,18 @@ export const PlaceEditorContent: Component<{
   // The first open loads whatever place is actually running — a demo, or a
   // published place — so the panel starts on its real scripts rather than an
   // unrelated draft. Only a world with none to show (the fallback procedural
-  // world) falls back to the last working local draft, starting a fresh
-  // project when even that doesn't exist. Later opens reuse the cached
-  // project straight away.
+  // world) falls back to a fresh project. Later opens reuse the cached
+  // project straight away; nothing here outlives the tab.
   onSettled(() => {
     if (cachedProject !== null) {
       return;
     }
     const running = voxelscape().placeEditor.activeProject;
-    if (running !== null) {
-      cachedProject = running;
-      setProject(running);
-      setActive(firstScript(running));
-      return;
-    }
-    void persist.load().then((saved) => {
-      const loaded =
-        saved ?? emptyPlaceProject(voxelscape().placeEditor.defaultSeed);
-      cachedProject = loaded;
-      setProject(loaded);
-      setActive(firstScript(loaded));
-      if (saved === null) {
-        void persist.saveNow(loaded);
-      }
-    });
-  });
-
-  // The panel can be closed by the console command before a debounced save has
-  // fired, so the last draft is written on the way out either way.
-  onCleanup(() => {
-    const p = project();
-    if (p !== null) {
-      void persist.saveNow(p);
-    }
+    const loaded =
+      running ?? emptyPlaceProject(voxelscape().placeEditor.defaultSeed);
+    cachedProject = loaded;
+    setProject(loaded);
+    setActive(firstScript(loaded));
   });
 
   const scriptFiles = (): string[] => {

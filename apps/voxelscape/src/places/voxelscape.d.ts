@@ -87,9 +87,11 @@ declare module "voxelscape" {
    * An NPC placed and moved through the "npc"/"npc-remove"/"npc-die"
    * effects, as `createNpc` hands it back. Owns only where it stands and
    * dispatching its own placement — a script's own bookkeeping (health, AI
-   * state, and the rest) stays the script's own.
+   * state, and the rest) stays the script's own. `model` is `undefined` for
+   * an NPC `createNpc` placed with no `model` option, left for the world to
+   * draw with its own default figure.
    */
-  export interface NpcHandle<M extends ModelDescriptor> {
+  export interface NpcHandle<M extends ModelDescriptor | undefined> {
     readonly model: M;
     readonly id: string;
     /** Where the figure currently stands — set by `createNpc` and by `move`, never by anything else. */
@@ -108,10 +110,10 @@ declare module "voxelscape" {
   }
 
   interface CreateNpcOptions<
-    K extends keyof ModelsByName,
+    K extends keyof ModelsByName | undefined,
   > extends FigurePlacement {
-    /** Which model this NPC wears. */
-    model: K;
+    /** Which model this NPC wears; omit it to leave the world drawing its own default figure. */
+    model?: K;
     id: string;
     /** Shown to players, e.g. "Zombie" — the model it wears is a separate thing from what it is called. */
     name?: string;
@@ -123,15 +125,19 @@ declare module "voxelscape" {
    * Places an NPC wearing the model named `options.model` — a name
    * `ModelsByName` does not carry is refused at the type level; a name this
    * place does not actually attach is refused at run time, inside
-   * `createNpc` itself, the moment a script calls it. `id` is never
+   * `createNpc` itself, the moment a script calls it. Omitting `model`
+   * entirely leaves the world drawing its own default figure, the same way
+   * omitting it from a hand-written "npc" effect already does. `id` is never
    * generated: every peer replaying the same script must compute the exact
    * same id independently (ADR 0026), so it has to come from the caller's
    * own deterministic address, the way the Zombies demo derives one from its
    * population seed and spawn cell.
    */
-  export function createNpc<K extends keyof ModelsByName>(
+  export function createNpc<
+    K extends keyof ModelsByName | undefined = undefined,
+  >(
     options: CreateNpcOptions<K>,
-  ): NpcHandle<ModelsByName[K]>;
+  ): NpcHandle<K extends keyof ModelsByName ? ModelsByName[K] : undefined>;
 
   /** A prop placed through the "prop"/"prop-remove" effects, as `createProp` hands it back. */
   export interface PropHandle<M extends ModelDescriptor> {

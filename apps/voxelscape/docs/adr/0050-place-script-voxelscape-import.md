@@ -84,6 +84,16 @@ time: `bundle.ts` no longer inspects import specifiers to know which models
 are "actually used," so there is nothing left for it to validate ahead of
 time.
 
+`createNpc`'s `model` option is itself optional — omitting it leaves the
+world drawing its own default figure, the same way a hand-written "npc"
+effect without a `model` field already does. `NpcHandle<M extends
+ModelDescriptor | undefined>` and `createNpc<K extends keyof ModelsByName |
+undefined = undefined>` carry that `undefined` through the generic: naming a
+model narrows `M` to that model's real type, and naming none narrows it to
+`undefined`, checked directly the same way the rest of this mechanism was.
+`createProp` has no such case — a prop with nothing to draw has no reason to
+exist — so its `model` option stays required.
+
 ## Resolving "voxelscape" to a synthetic module, and the real host object underneath it
 
 `resolveSpecifier` recognizes exactly one bare name a project file may import,

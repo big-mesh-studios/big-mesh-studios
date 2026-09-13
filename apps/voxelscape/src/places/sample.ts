@@ -7,7 +7,7 @@
 // `onTick`, and the world calls what it registers each step with the shared
 // clock and the events since the last.
 export const SAMPLE_PLACE_SCRIPT = String.raw`
-import { dispatch, onTick } from "voxelscape";
+import { createNpc, dispatch, onTick } from "voxelscape";
 
 var started = false;
 var state = {};
@@ -26,8 +26,8 @@ function end(player, npcId, text) {
 }
 
 function spawn() {
-  dispatch("npc", { id: SHOP, x: 40, z: 12, name: "Sable" });
-  dispatch("npc", { id: GATE, x: -40, z: 12, name: "Rook" });
+  createNpc({ id: SHOP, x: 40, z: 12, name: "Sable" });
+  createNpc({ id: GATE, x: -40, z: 12, name: "Rook" });
 }
 
 // The shop's tree: greetings loop until an option that ends the talk.

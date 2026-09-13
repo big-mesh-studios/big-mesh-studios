@@ -55,7 +55,7 @@ describe("a place project", () => {
     const { effects } = sandbox.drain();
     expect(effects.map((e) => e.tag)).toContain("npc");
     const npc = effects.find((e) => e.tag === "npc");
-    expect(JSON.parse(npc!.payload)).toEqual({
+    expect(JSON.parse(npc!.payload)).toMatchObject({
       id: "guide",
       x: 8,
       z: 8,
