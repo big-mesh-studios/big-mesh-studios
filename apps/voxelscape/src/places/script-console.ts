@@ -12,16 +12,18 @@ import {
 import type { ScriptEvent } from "./events";
 import { SAMPLE_PLACE_SCRIPT } from "./sample";
 import { MAIN_SCRIPT_FILE } from "./project";
+import type { RequireOnly, WorldQuery } from "./sandbox";
 
-export interface ScriptConsoleParams {
-  /** The terrain surface at (`x`, `z`), where a script's NPCs are grounded. */
-  heightAt: (x: number, z: number) => number;
-  /** Whether (`x`, `y`, `z`) is inside solid ground, for a script to feel its way around. */
-  solidAt?: (x: number, y: number, z: number) => boolean;
-  /** Whether (`x`, `y`, `z`) is water, for a script to keep a creature out of it. */
-  waterAt?: (x: number, y: number, z: number) => boolean;
-  /** Every player's live position: the local player first, then connected peers. */
-  getPlayers?: () => Array<{ did: string; x: number; y: number; z: number }>;
+/**
+ * The shared clock and world queries the console forwards to the
+ * `ScriptHost` it drives — the same six `WorldQuery` functions, with only
+ * `getHeightAt` required; unlike `ScriptHostParams`, `getNow` defaults to
+ * `Date.now` (see the constructor) rather than demanding a caller supply it.
+ */
+export interface ScriptConsoleParams extends RequireOnly<
+  WorldQuery,
+  "getHeightAt"
+> {
   /** Where a script's toast and error lines go — the notice channel. */
   report?: (line: string) => void;
   /** Called whenever a player's dialog changes, so the world can show it. */
@@ -87,13 +89,6 @@ export interface ScriptConsoleParams {
    * fixed sound names. Empty `player` means every local peer plays its own
    * copy; a targeted name is meant for that one player alone. */
   onSound?: (player: string, name: string) => void;
-  /** The ending titles the place has already reached, read back by the script. */
-  endings?: () => string[];
-  /**
-   * The shared clock the host's deadlines, motions, and cutscenes are measured
-   * against: the place clock while multiplayer is up, `Date.now` otherwise.
-   */
-  now?: () => number;
 }
 
 /** The option a console prints for a dialog, numbered for `/script:choose`. */
@@ -102,9 +97,9 @@ const optionLines = (dialog: DialogState): string =>
 
 /** One script, loaded on demand and driven by console commands. */
 export class ScriptConsole {
-  private readonly heightAt: (x: number, z: number) => number;
-  private readonly solidAt?: (x: number, y: number, z: number) => boolean;
-  private readonly waterAt?: (x: number, y: number, z: number) => boolean;
+  private readonly getHeightAt: (x: number, z: number) => number;
+  private readonly getSolidAt?: (x: number, y: number, z: number) => boolean;
+  private readonly getWaterAt?: (x: number, y: number, z: number) => boolean;
   private readonly getPlayers?: () => Array<{
     did: string;
     x: number;
@@ -163,8 +158,8 @@ export class ScriptConsole {
   private readonly onFire: (fire: ScriptedFire) => void;
   private readonly onExplosion: (explosion: ScriptedExplosion) => void;
   private readonly onSound: (player: string, name: string) => void;
-  private readonly endings: () => string[];
-  private readonly now_: () => number;
+  private readonly getEndings: () => string[];
+  private readonly _getNow: () => number;
   private host: ScriptHost | null = null;
   /** The last project loaded, so `restart` can run it once more from scratch. */
   private last: {
@@ -175,9 +170,9 @@ export class ScriptConsole {
   } | null = null;
 
   constructor(params: ScriptConsoleParams) {
-    this.heightAt = params.heightAt;
-    this.solidAt = params.solidAt;
-    this.waterAt = params.waterAt;
+    this.getHeightAt = params.getHeightAt;
+    this.getSolidAt = params.getSolidAt;
+    this.getWaterAt = params.getWaterAt;
     this.getPlayers = params.getPlayers;
     this.report = params.report ?? (() => {});
     this.onDialog = params.onDialog ?? (() => {});
@@ -199,8 +194,8 @@ export class ScriptConsole {
     this.onFire = params.onFire ?? (() => {});
     this.onExplosion = params.onExplosion ?? (() => {});
     this.onSound = params.onSound ?? (() => {});
-    this.endings = params.endings ?? (() => []);
-    this.now_ = params.now ?? (() => Date.now());
+    this.getEndings = params.getEndings ?? (() => []);
+    this._getNow = params.getNow ?? (() => Date.now());
   }
 
   /** Whether a script is loaded and running. */
@@ -264,8 +259,8 @@ export class ScriptConsole {
   }
 
   /** The shared clock the host's deadlines and cutscenes are measured against. */
-  now(): number {
-    return this.now_();
+  getNow(): number {
+    return this._getNow();
   }
 
   /** The cutscene `player` is watching, or null when none is running. */
@@ -510,10 +505,10 @@ export class ScriptConsole {
     this.host?.dispose();
     this.host = new ScriptHost({
       seed,
-      now: this.now_,
-      heightAt: this.heightAt,
-      solidAt: this.solidAt,
-      waterAt: this.waterAt,
+      getNow: this._getNow,
+      getHeightAt: this.getHeightAt,
+      getSolidAt: this.getSolidAt,
+      getWaterAt: this.getWaterAt,
       getPlayers: this.getPlayers,
       onToast: (player, text) => {
         if (player === "") {
@@ -543,7 +538,7 @@ export class ScriptConsole {
       onFire: (fire) => this.onFire(fire),
       onExplosion: (explosion) => this.onExplosion(explosion),
       onSound: (player, name) => this.onSound(player, name),
-      endings: () => this.endings(),
+      getEndings: () => this.getEndings(),
     });
     return this.host;
   }

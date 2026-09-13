@@ -36,10 +36,17 @@ import {
 } from "../world/voxel-store";
 import {
   ScriptExecutionError,
+  type RequireOnly,
   type ScriptErrorKind,
   type ScriptOutput,
   type ScriptSandbox,
+  type WorldQuery,
 } from "./sandbox";
+
+/** The world-query surface this sandbox needs — every one of `WorldQuery`'s
+ * six functions but the shared clock is optional, since a bare interpreter
+ * (a test, or a script that never asks the world anything) can go without. */
+type SandboxWorldQuery = RequireOnly<WorldQuery, "getNow">;
 
 /** One interpreter instance, owning one script and one run of its step budget. */
 class QuickJSSandbox implements ScriptSandbox {
@@ -56,18 +63,14 @@ class QuickJSSandbox implements ScriptSandbox {
   private deadline = Infinity;
   private disposed = false;
 
-  constructor(params: {
-    runtime: QuickJSRuntime;
-    context: QuickJSContext;
-    now: () => number;
-    random: () => number;
-    timeLimitMs: number;
-    endings?: () => string[];
-    heightAt?: (x: number, z: number) => number;
-    solidAt?: (x: number, y: number, z: number) => boolean;
-    waterAt?: (x: number, y: number, z: number) => boolean;
-    getPlayers?: () => Array<{ did: string; x: number; y: number; z: number }>;
-  }) {
+  constructor(
+    params: SandboxWorldQuery & {
+      runtime: QuickJSRuntime;
+      context: QuickJSContext;
+      random: () => number;
+      timeLimitMs: number;
+    },
+  ) {
     this.runtime = params.runtime;
     this.context = params.context;
     this.timeLimitMs = params.timeLimitMs;
@@ -210,19 +213,7 @@ class QuickJSSandbox implements ScriptSandbox {
    */
   private installEngine(
     context: QuickJSContext,
-    time: {
-      now: () => number;
-      endings?: () => string[];
-      heightAt?: (x: number, z: number) => number;
-      solidAt?: (x: number, y: number, z: number) => boolean;
-      waterAt?: (x: number, y: number, z: number) => boolean;
-      getPlayers?: () => Array<{
-        did: string;
-        x: number;
-        y: number;
-        z: number;
-      }>;
-    },
+    time: SandboxWorldQuery,
   ): QuickJSHandle {
     const engine = context.newObject();
     const bind = (
@@ -244,20 +235,20 @@ class QuickJSSandbox implements ScriptSandbox {
       this.logs.push(context.getString(line));
       return context.undefined;
     });
-    bind("now", () => context.newNumber(time.now()));
-    bind("endings", () =>
-      context.newString(JSON.stringify(time.endings?.() ?? [])),
+    bind("getNow", () => context.newNumber(time.getNow()));
+    bind("getEndings", () =>
+      context.newString(JSON.stringify(time.getEndings?.() ?? [])),
     );
-    bind("players", () =>
+    bind("getPlayers", () =>
       context.newString(JSON.stringify(time.getPlayers?.() ?? [])),
     );
-    bind("heightAt", (x, z) =>
+    bind("getHeightAt", (x, z) =>
       context.newNumber(
-        time.heightAt?.(context.getNumber(x), context.getNumber(z)) ?? 0,
+        time.getHeightAt?.(context.getNumber(x), context.getNumber(z)) ?? 0,
       ),
     );
-    bind("solidAt", (x, y, z) =>
-      time.solidAt?.(
+    bind("getSolidAt", (x, y, z) =>
+      time.getSolidAt?.(
         context.getNumber(x),
         context.getNumber(y),
         context.getNumber(z),
@@ -265,8 +256,8 @@ class QuickJSSandbox implements ScriptSandbox {
         ? context.true
         : context.false,
     );
-    bind("waterAt", (x, y, z) =>
-      time.waterAt?.(
+    bind("getWaterAt", (x, y, z) =>
+      time.getWaterAt?.(
         context.getNumber(x),
         context.getNumber(y),
         context.getNumber(z),
@@ -317,7 +308,7 @@ class QuickJSSandbox implements ScriptSandbox {
    */
   private installDeterministicGlobals(
     context: QuickJSContext,
-    time: { now: () => number; random: () => number },
+    time: Pick<WorldQuery, "getNow"> & { random: () => number },
   ): void {
     const random = context.newFunction("random", () =>
       context.newNumber(time.random()),
@@ -327,7 +318,9 @@ class QuickJSSandbox implements ScriptSandbox {
     random.dispose();
     math.dispose();
 
-    const now = context.newFunction("now", () => context.newNumber(time.now()));
+    const now = context.newFunction("now", () =>
+      context.newNumber(time.getNow()),
+    );
     const date = context.getProp(context.global, "Date");
     context.setProp(date, "now", now);
     now.dispose();
@@ -446,26 +439,16 @@ const quickjsModule = (): Promise<QuickJSWASMModule> => {
  * seeded and both clocks answered by the caller, so two peers that call the
  * same steps converge to the same state.
  */
-export const createQuickJSSandbox = async (params: {
-  /** Seed for the interpreter's `Math.random`; a place's peers all pass the same one. */
-  seed: number;
-  /** The shared clock `Date.now` and `engine.now` answer from. */
-  now: () => number;
-  /** The ending titles the place has already reached, read back by the script. */
-  endings?: () => string[];
-  /** Longest one step may run before it is interrupted, in milliseconds. */
-  timeLimitMs?: number;
-  /** Most memory one interpreter may allocate, in bytes. */
-  memoryLimitBytes?: number;
-  /** The terrain surface at (`x`, `z`), read live by `engine.heightAt`. */
-  heightAt?: (x: number, z: number) => number;
-  /** Whether (`x`, `y`, `z`) is solid ground, read live by `engine.solidAt`. */
-  solidAt?: (x: number, y: number, z: number) => boolean;
-  /** Whether (`x`, `y`, `z`) is water, read live by `engine.waterAt`. */
-  waterAt?: (x: number, y: number, z: number) => boolean;
-  /** Every player's live position, read live by `engine.players`. */
-  getPlayers?: () => Array<{ did: string; x: number; y: number; z: number }>;
-}): Promise<ScriptSandbox> => {
+export const createQuickJSSandbox = async (
+  params: SandboxWorldQuery & {
+    /** Seed for the interpreter's `Math.random`; a place's peers all pass the same one. */
+    seed: number;
+    /** Longest one step may run before it is interrupted, in milliseconds. */
+    timeLimitMs?: number;
+    /** Most memory one interpreter may allocate, in bytes. */
+    memoryLimitBytes?: number;
+  },
+): Promise<ScriptSandbox> => {
   modulePromise ??= quickjsModule();
   const module = await modulePromise;
 
@@ -477,13 +460,13 @@ export const createQuickJSSandbox = async (params: {
   return new QuickJSSandbox({
     runtime,
     context,
-    now: params.now,
+    getNow: params.getNow,
     random,
     timeLimitMs: params.timeLimitMs ?? 250,
-    endings: params.endings,
-    heightAt: params.heightAt,
-    solidAt: params.solidAt,
-    waterAt: params.waterAt,
+    getEndings: params.getEndings,
+    getHeightAt: params.getHeightAt,
+    getSolidAt: params.getSolidAt,
+    getWaterAt: params.getWaterAt,
     getPlayers: params.getPlayers,
   });
 };

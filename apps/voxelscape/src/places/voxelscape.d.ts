@@ -26,6 +26,7 @@
 declare module "voxelscape" {
   type EffectTag = import("./effects").EffectTag;
   type ParsedEffect = import("./effects").ParsedEffect;
+  type WorldQuery = import("./sandbox").WorldQuery;
   /** One parsed fact `onTick` hands a script, exactly as the trusted side authored it. */
   export type ScriptEvent = import("./events").ScriptEvent;
 
@@ -45,26 +46,21 @@ declare module "voxelscape" {
     payload: PayloadFor<T>,
   ): void;
   export function log(line: string): void;
-  export function now(): number;
+  export const getNow: WorldQuery["getNow"];
   /** Every ending this place has defined. */
-  export function endings(): string[];
+  export const getEndings: WorldQuery["getEndings"];
 
   /** One player's live position, by the did that identifies them. */
-  export interface Player {
-    readonly did: string;
-    readonly x: number;
-    readonly y: number;
-    readonly z: number;
-  }
+  export type Player = import("./sandbox").LivePlayer;
 
   /** Every player's live position: the local player first, then connected peers. */
-  export function players(): Player[];
+  export const getPlayers: WorldQuery["getPlayers"];
   /** The terrain surface at (x, z). */
-  export function heightAt(x: number, z: number): number;
+  export const getHeightAt: WorldQuery["getHeightAt"];
   /** Whether (x, y, z) is inside solid ground. */
-  export function solidAt(x: number, y: number, z: number): boolean;
+  export const getSolidAt: WorldQuery["getSolidAt"];
   /** Whether (x, y, z) is water. */
-  export function waterAt(x: number, y: number, z: number): boolean;
+  export const getWaterAt: WorldQuery["getWaterAt"];
   /**
    * Registers a handler the world calls each step with the shared clock and
    * the facts since the last step, already parsed — `events` is the exact

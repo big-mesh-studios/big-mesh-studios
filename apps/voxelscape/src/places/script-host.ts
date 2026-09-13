@@ -13,7 +13,7 @@ import { ScriptInventory } from "./script-items";
 import { poseAt, type MotionPose, type MotionSpec } from "./motion";
 import type { CameraShot, CutsceneState } from "./cutscene";
 import { bundlePlaceProject } from "./bundle";
-import type { ScriptSandbox } from "./sandbox";
+import type { RequireOnly, ScriptSandbox, WorldQuery } from "./sandbox";
 import type { ScriptEvent, ScriptEventPayload } from "./events";
 
 /**
@@ -161,19 +161,18 @@ export interface DialogState {
   options: string[];
 }
 
-export interface ScriptHostParams {
+/**
+ * The shared clock and world queries a script needs — the same six
+ * `WorldQuery` functions the sandbox itself takes (`quickjs-sandbox.ts`),
+ * with the two this host cannot run without (`getNow`, `getHeightAt`) made
+ * required.
+ */
+export interface ScriptHostParams extends RequireOnly<
+  WorldQuery,
+  "getNow" | "getHeightAt"
+> {
   /** Seeds the interpreter's randomness; a place's peers all pass the same one. */
   seed: number;
-  /** The shared clock, in milliseconds, that drives steps and event timestamps. */
-  now: () => number;
-  /** The terrain surface at (`x`, `z`), where an NPC's feet are grounded. */
-  heightAt: (x: number, z: number) => number;
-  /** Whether (`x`, `y`, `z`) is inside solid ground, for a script to feel its way around. */
-  solidAt?: (x: number, y: number, z: number) => boolean;
-  /** Whether (`x`, `y`, `z`) is water, for a script to keep a creature out of it. */
-  waterAt?: (x: number, y: number, z: number) => boolean;
-  /** Every player's live position: the local player first, then connected peers. */
-  getPlayers?: () => Array<{ did: string; x: number; y: number; z: number }>;
   /** Called with a line meant for `player` (empty means every local player). */
   onToast?: (player: string, text: string) => void;
   /**
@@ -250,8 +249,6 @@ export interface ScriptHostParams {
   onFire?: (fire: ScriptedFire) => void;
   /** Called when the script sets off a blast; the world draws the burst. */
   onExplosion?: (explosion: ScriptedExplosion) => void;
-  /** The ending titles the place has already reached, read back by a collecting game. */
-  endings?: () => string[];
 }
 
 /**
@@ -261,8 +258,8 @@ export interface ScriptHostParams {
  */
 export class ScriptHost {
   private readonly ready: Promise<ScriptSandbox>;
-  private readonly heightAt: (x: number, z: number) => number;
-  private readonly now: () => number;
+  private readonly getHeightAt: (x: number, z: number) => number;
+  private readonly getNow: () => number;
   private readonly onToast?: (player: string, text: string) => void;
   private readonly onSound?: (player: string, name: string) => void;
   private readonly onDialog?: (
@@ -350,8 +347,8 @@ export class ScriptHost {
   private disposed = false;
 
   constructor(params: ScriptHostParams) {
-    this.now = params.now;
-    this.heightAt = params.heightAt;
+    this.getNow = params.getNow;
+    this.getHeightAt = params.getHeightAt;
     this.onToast = params.onToast;
     this.onSound = params.onSound;
     this.onDialog = params.onDialog;
@@ -375,11 +372,11 @@ export class ScriptHost {
     this.onExplosion = params.onExplosion;
     this.ready = createQuickJSSandbox({
       seed: params.seed,
-      now: params.now,
-      endings: params.endings,
-      heightAt: params.heightAt,
-      solidAt: params.solidAt,
-      waterAt: params.waterAt,
+      getNow: params.getNow,
+      getEndings: params.getEndings,
+      getHeightAt: params.getHeightAt,
+      getSolidAt: params.getSolidAt,
+      getWaterAt: params.getWaterAt,
       getPlayers: params.getPlayers,
     });
   }
@@ -461,13 +458,13 @@ export class ScriptHost {
   /** Where the NPC `id` is at the shared clock, or null when it does not move. */
   npcPose(id: string): MotionPose | null {
     const motion = this.npcs.get(id)?.motion;
-    return motion === undefined ? null : poseAt(motion, this.now());
+    return motion === undefined ? null : poseAt(motion, this.getNow());
   }
 
   /** Where the prop `id` is at the shared clock, or null when it does not move. */
   propPose(id: string): MotionPose | null {
     const motion = this.props.get(id)?.motion;
-    return motion === undefined ? null : poseAt(motion, this.now());
+    return motion === undefined ? null : poseAt(motion, this.getNow());
   }
 
   /** Every blaze the script has lit in the world. */
@@ -681,7 +678,7 @@ export class ScriptHost {
     if (!this.loaded || this.pendingTimers.size === 0 || this.pumping) {
       return;
     }
-    const now = this.now();
+    const now = this.getNow();
     const due = [...this.pendingTimers]
       .filter(([, at]) => at <= now)
       .map(([id]) => id)
@@ -721,7 +718,7 @@ export class ScriptHost {
     if (!this.loaded) {
       return;
     }
-    const dyingCutoff = this.now() - DEATH_ANIMATION_MS;
+    const dyingCutoff = this.getNow() - DEATH_ANIMATION_MS;
     for (const [id, npc] of this.npcs) {
       if (npc.dyingAt !== undefined && npc.dyingAt < dyingCutoff) {
         this.npcs.delete(id);
@@ -736,7 +733,7 @@ export class ScriptHost {
     }
     this.problem = undefined;
     try {
-      sandbox.tick(this.now(), JSON.stringify(events));
+      sandbox.tick(this.getNow(), JSON.stringify(events));
     } catch (cause) {
       this.problem = cause instanceof Error ? cause.message : String(cause);
       this.onNotice?.(this.problem);
@@ -775,7 +772,7 @@ export class ScriptHost {
    * handed to `onEvent` so it reaches every other peer's copy of it too.
    */
   private author(payload: ScriptEventPayload, producer: string): void {
-    const at = this.now();
+    const at = this.getNow();
     this.sequence += 1;
     const event: ScriptEvent = {
       ...payload,
@@ -792,7 +789,7 @@ export class ScriptHost {
       case "npc": {
         const { id, x, y, z, name, model, modelUri, yaw, live, motion } =
           effect.payload;
-        const grounded = y ?? this.heightAt(x, z);
+        const grounded = y ?? this.getHeightAt(x, z);
         const heading = yaw ?? 0;
         this.npcs.set(id, {
           id,
@@ -816,7 +813,7 @@ export class ScriptHost {
       case "npc-die": {
         const npc = this.npcs.get(effect.payload.id);
         if (npc !== undefined) {
-          this.npcs.set(npc.id, { ...npc, dyingAt: this.now() });
+          this.npcs.set(npc.id, { ...npc, dyingAt: this.getNow() });
         }
         break;
       }
@@ -840,7 +837,7 @@ export class ScriptHost {
           model,
           name: name ?? id,
           x,
-          y: y ?? this.heightAt(x, z),
+          y: y ?? this.getHeightAt(x, z),
           z,
           yaw: yaw ?? 0,
           height: height ?? 2,
@@ -878,7 +875,7 @@ export class ScriptHost {
         const fire: ScriptedFire = {
           id,
           x,
-          y: y ?? this.heightAt(x, z),
+          y: y ?? this.getHeightAt(x, z),
           z,
           height: height ?? 2,
         };
@@ -888,7 +885,7 @@ export class ScriptHost {
       }
       case "explosion": {
         const { id, x, y, z, radius } = effect.payload;
-        const cutoff = this.now() - EXPLOSION_MEMORY_MS;
+        const cutoff = this.getNow() - EXPLOSION_MEMORY_MS;
         for (const [held, blast] of this.explosions) {
           if (blast.at < cutoff) {
             this.explosions.delete(held);
@@ -897,10 +894,10 @@ export class ScriptHost {
         const explosion: ScriptedExplosion = {
           id,
           x,
-          y: y ?? this.heightAt(x, z),
+          y: y ?? this.getHeightAt(x, z),
           z,
           radius: radius ?? 4,
-          at: this.now(),
+          at: this.getNow(),
         };
         this.explosions.set(id, explosion);
         this.onExplosion?.(explosion);
@@ -983,7 +980,7 @@ export class ScriptHost {
       case "timer":
         this.pendingTimers.set(
           effect.payload.id,
-          this.now() + effect.payload.afterMs,
+          this.getNow() + effect.payload.afterMs,
         );
         break;
       case "player-place": {
@@ -1029,7 +1026,7 @@ export class ScriptHost {
         break;
       case "cutscene":
         this.cutscenes.set(effect.payload.player, {
-          startMs: this.now(),
+          startMs: this.getNow(),
           shots: effect.payload.shots,
         });
         break;
@@ -1042,7 +1039,7 @@ export class ScriptHost {
           ...(holdMs !== undefined ? { holdMs } : {}),
           ...(ease !== undefined ? { ease } : {}),
         };
-        this.cutscenes.set(player, { startMs: this.now(), shots: [shot] });
+        this.cutscenes.set(player, { startMs: this.getNow(), shots: [shot] });
         break;
       }
       case "player-control":

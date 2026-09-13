@@ -192,7 +192,7 @@ export const compilePlacePlan = async (
   );
   const sandbox = await createQuickJSSandbox({
     seed: params.seed,
-    now: () => 0,
+    getNow: () => 0,
   });
   try {
     sandbox.load(code);

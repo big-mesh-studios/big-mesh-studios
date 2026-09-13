@@ -80,8 +80,40 @@ export interface ScriptSandbox {
   dispose(): void;
 }
 
-/** How a sandbox is told what time it is, kept injectable for determinism. */
-export interface SandboxClock {
-  /** The shared time source for this sandbox, in milliseconds. */
-  now(): number;
+/** One player's live position, by the did that identifies them. */
+export interface LivePlayer {
+  readonly did: string;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
 }
+
+/**
+ * The world a script reads from, answered by the trusted side and kept
+ * injectable for determinism — every peer must hand a script the same
+ * answers given the same shared clock. Declared once here so a script's own
+ * "voxelscape" module (`voxelscape.d.ts`), the sandbox that binds it
+ * (`quickjs-sandbox.ts`), and the two layers above it that answer it
+ * (`ScriptHostParams`, `ScriptConsoleParams`) all reuse the same six
+ * signatures instead of each retyping them; how many of the six a given
+ * layer requires versus leaves optional is that layer's own choice, made
+ * with `RequireOnly` below.
+ */
+export interface WorldQuery {
+  /** The shared time source for this sandbox, in milliseconds. */
+  getNow(): number;
+  /** Every ending this place has defined. */
+  getEndings(): string[];
+  /** The terrain surface at (`x`, `z`). */
+  getHeightAt(x: number, z: number): number;
+  /** Whether (`x`, `y`, `z`) is inside solid ground. */
+  getSolidAt(x: number, y: number, z: number): boolean;
+  /** Whether (`x`, `y`, `z`) is water. */
+  getWaterAt(x: number, y: number, z: number): boolean;
+  /** Every player's live position: the local player first, then connected peers. */
+  getPlayers(): LivePlayer[];
+}
+
+/** `T` with only `K` required; every other property stays optional. */
+export type RequireOnly<T, K extends keyof T> = Required<Pick<T, K>> &
+  Partial<Omit<T, K>>;

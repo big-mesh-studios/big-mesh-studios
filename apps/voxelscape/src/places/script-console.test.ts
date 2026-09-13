@@ -43,7 +43,7 @@ const scriptConsole = (): {
   return {
     lines,
     script: new ScriptConsole({
-      heightAt: () => 0,
+      getHeightAt: () => 0,
       report: (line) => lines.push(line),
     }),
   };

@@ -3,7 +3,7 @@ import {
   createNpc,
   createProp,
   dispatch,
-  endings,
+  getEndings,
   onPlan,
   onTick,
 } from "voxelscape";
@@ -2061,7 +2061,7 @@ function timerFired(id: string): void {
 onTick((_clockMs, events) => {
   if (!started) {
     started = true;
-    collected = endings();
+    collected = getEndings();
     open();
   }
   for (const event of events) {

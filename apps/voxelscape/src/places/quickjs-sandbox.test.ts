@@ -3,19 +3,19 @@ import { describe, expect, it } from "vitest";
 import { createQuickJSSandbox } from "./quickjs-sandbox";
 import { ScriptExecutionError, type ScriptSandbox } from "./sandbox";
 
-const now = () => 5_000_000;
+const getNow = () => 5_000_000;
 
 const make = (
   overrides: {
     seed?: number;
-    now?: () => number;
+    getNow?: () => number;
     timeLimitMs?: number;
     memoryLimitBytes?: number;
   } = {},
 ): Promise<ScriptSandbox> =>
   createQuickJSSandbox({
     seed: overrides.seed ?? 1,
-    now: overrides.now ?? now,
+    getNow: overrides.getNow ?? getNow,
     timeLimitMs: overrides.timeLimitMs,
     memoryLimitBytes: overrides.memoryLimitBytes,
   });

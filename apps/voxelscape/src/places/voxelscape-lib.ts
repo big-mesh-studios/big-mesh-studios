@@ -1,6 +1,6 @@
 // The hand-written source of the `"voxelscape"` module a place script
 // imports (see bundle.ts's recognition of it as a reserved specifier).
-// Re-exports the sandbox's whole host surface — `dispatch`/`log`/`heightAt`/
+// Re-exports the sandbox's whole host surface — `dispatch`/`log`/`getHeightAt`/
 // etc. — through its own internal-only import, alongside `createNpc`/
 // `createProp`, so a script reaches everything through one dependency:
 // `import * as engine from "voxelscape"; engine.dispatch(...);
@@ -38,13 +38,13 @@ export function onTick(fn) {
 /** Every player's live position: the local player first, then connected
  * peers — parsed here, so a script reads the array directly rather than the
  * JSON text it crossed the sandbox boundary as. */
-export function players() {
-  return JSON.parse(host.players());
+export function getPlayers() {
+  return JSON.parse(host.getPlayers());
 }
 
-/** Every ending this place has defined, parsed the same way \`players\` is. */
-export function endings() {
-  return JSON.parse(host.endings());
+/** Every ending this place has defined, parsed the same way \`getPlayers\` is. */
+export function getEndings() {
+  return JSON.parse(host.getEndings());
 }
 
 function resolveModel(modelName) {

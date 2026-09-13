@@ -1,10 +1,10 @@
 import {
   createNpc,
   dispatch,
+  getNow,
+  getPlayers,
   log,
-  now as clockNow,
   onTick,
-  players as livePlayers,
 } from "voxelscape";
 import {
   TICK_MS,
@@ -25,7 +25,7 @@ function armTick(): void {
 }
 
 onTick((_clockMs, events) => {
-  const now = clockNow();
+  const now = getNow();
   if (!started) {
     started = true;
     createNpc({ id: GUIDE, x: 8, z: 8, name: "Guide" });
@@ -44,7 +44,7 @@ onTick((_clockMs, events) => {
     armTick();
   }
 
-  const players = livePlayers();
+  const players = getPlayers();
 
   let ticked = false;
   for (const e of events) {

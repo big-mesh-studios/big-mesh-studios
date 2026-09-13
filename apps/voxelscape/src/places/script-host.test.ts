@@ -108,8 +108,8 @@ const fresh = async (): Promise<{
   const knownEndings: string[] = [];
   const h = new ScriptHost({
     seed: 5,
-    now: clock,
-    heightAt: () => 10,
+    getNow: clock,
+    getHeightAt: () => 10,
     onToast: (player, text) => toasts.push({ player, text }),
     onDialog: (player, state) => dialogs.push({ player, state }),
     onNotice: (message) => notices.push(message),
@@ -127,7 +127,7 @@ const fresh = async (): Promise<{
     onFire: (fire) => fires.push(fire),
     onExplosion: (explosion) => explosions.push(explosion),
     onSound: (player, name) => sounds.push({ player, name }),
-    endings: () => knownEndings,
+    getEndings: () => knownEndings,
   });
   return {
     host: h,
@@ -800,7 +800,7 @@ describe("a script host", () => {
       host,
       `
       import * as engine from "voxelscape";
-      var seen = engine.endings();
+      var seen = engine.getEndings();
       engine.onTick(function () {
         engine.dispatch("toast", { player: "", text: seen.join(",") });
       });

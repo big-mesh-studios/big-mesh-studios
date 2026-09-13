@@ -2,7 +2,7 @@
 // A place's script runs in a fresh interpreter each time it restarts, so a game
 // that unlocks something after collecting endings cannot keep that collection in
 // the script; it is kept here instead, and the script reads it back through
-// `engine.endings()`.
+// `engine.getEndings()`.
 
 /** How the ending titles one place has reached are remembered. */
 export interface EndingLog {

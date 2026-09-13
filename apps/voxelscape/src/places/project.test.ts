@@ -49,7 +49,7 @@ describe("a place project", () => {
       { [MAIN_SCRIPT_FILE]: STARTER_SCRIPT },
       MAIN_SCRIPT_FILE,
     );
-    const sandbox = await createQuickJSSandbox({ seed: 1, now: () => 0 });
+    const sandbox = await createQuickJSSandbox({ seed: 1, getNow: () => 0 });
     sandbox.load(code);
     sandbox.tick(0, "[]");
     const { effects } = sandbox.drain();

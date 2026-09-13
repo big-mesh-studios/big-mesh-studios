@@ -77,8 +77,8 @@ const run = async (): Promise<{
   const toasts: string[] = [];
   const host = new ScriptHost({
     seed: project.manifest.seed,
-    now: () => clockMs,
-    heightAt: () => 62,
+    getNow: () => clockMs,
+    getHeightAt: () => 62,
     onTime: () => {},
     onToast: (_player, text) => toasts.push(text),
     onEnding: (_player, state) => {
@@ -120,8 +120,8 @@ const runLts = async (knownEndings: string[] = []) => {
   const speeds: number[] = [];
   const host = new ScriptHost({
     seed: project.manifest.seed,
-    now: () => clockMs,
-    heightAt: () => 62,
+    getNow: () => clockMs,
+    getHeightAt: () => 62,
     onTime: () => {},
     onToast: (_player, text) => toasts.push(text),
     onEnding: (_player, state) => {
@@ -132,7 +132,7 @@ const runLts = async (knownEndings: string[] = []) => {
     onNarrate: (_player, line) => narrations.push(line.text),
     onPlayerJump: (_player, multiplier) => jumps.push(multiplier),
     onPlayerSpeed: (_player, multiplier) => speeds.push(multiplier),
-    endings: () => knownEndings,
+    getEndings: () => knownEndings,
   });
   await host.loadProject(project.scripts, entry, project.models);
   return { host, endings, narrations, toasts, jumps, speeds };
@@ -606,7 +606,7 @@ describe("the Late to School demo", () => {
 });
 
 describe("the Zombies demo", () => {
-  /** A live player position the demo's own script reads through `engine.players`. */
+  /** A live player position the demo's own script reads through `engine.getPlayers`. */
   let players: Array<{ did: string; x: number; y: number; z: number }>;
   let zombieClockMs: number;
 
@@ -621,10 +621,10 @@ describe("the Zombies demo", () => {
     const project = await loadBuiltinDemo(demo);
     const host = new ScriptHost({
       seed: project.manifest.seed,
-      now: () => zombieClockMs,
-      heightAt: () => 0,
-      solidAt: () => false,
-      waterAt: () => false,
+      getNow: () => zombieClockMs,
+      getHeightAt: () => 0,
+      getSolidAt: () => false,
+      getWaterAt: () => false,
       getPlayers: () => players,
       onPlayerDamage: (_player, amount, source) =>
         onPlayerDamage?.(amount, source),
@@ -718,7 +718,7 @@ describe("the Zombies demo", () => {
 });
 
 describe("the Zombies: The Mansion demo", () => {
-  /** A live player position the demo's own script reads through `engine.players`. */
+  /** A live player position the demo's own script reads through `engine.getPlayers`. */
   let players: Array<{ did: string; x: number; y: number; z: number }>;
   let mansionClockMs: number;
 
@@ -741,10 +741,10 @@ describe("the Zombies: The Mansion demo", () => {
     const sounds: string[] = [];
     const host = new ScriptHost({
       seed: project.manifest.seed,
-      now: () => mansionClockMs,
-      heightAt: () => 62,
-      solidAt: () => false,
-      waterAt: () => false,
+      getNow: () => mansionClockMs,
+      getHeightAt: () => 62,
+      getSolidAt: () => false,
+      getWaterAt: () => false,
       getPlayers: () => players,
       onToast: (_player, text) => toasts.push(text),
       onCheckpoint: (_player, at) => checkpoints.push(at),
@@ -1028,8 +1028,8 @@ const runDp = async () => {
   const voids: number[] = [];
   const host = new ScriptHost({
     seed: project.manifest.seed,
-    now: () => clockMs,
-    heightAt: () => 62,
+    getNow: () => clockMs,
+    getHeightAt: () => 62,
     onTime: () => {},
     onEnding: (_player, state) => {
       if (state !== null) {
@@ -1052,8 +1052,8 @@ describe("the Home demo", () => {
     const toasts: string[] = [];
     const host = new ScriptHost({
       seed: project.manifest.seed,
-      now: () => 0,
-      heightAt: () => 0,
+      getNow: () => 0,
+      getHeightAt: () => 0,
       onToast: (_player, text) => toasts.push(text),
     });
     await host.loadProject(project.scripts, project.manifest.scripts![0]);

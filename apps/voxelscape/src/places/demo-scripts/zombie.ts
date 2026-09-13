@@ -1,10 +1,10 @@
 import {
   createNpc,
   dispatch,
-  heightAt,
-  now as clockNow,
-  solidAt,
-  waterAt,
+  getHeightAt,
+  getNow,
+  getSolidAt,
+  getWaterAt,
   type ModelsByName,
   type NpcHandle,
   type Player,
@@ -217,7 +217,7 @@ export function materialize(players: Player[]): void {
         z: pose.z,
         name: "Zombie",
         yaw: pose.yaw,
-        y: heightAt(pose.x, pose.z),
+        y: getHeightAt(pose.x, pose.z),
       });
       zombies.set(spawn.id, {
         npc,
@@ -227,7 +227,7 @@ export function materialize(players: Player[]): void {
         ownerDid: "",
         wanderHeading: 0,
         wanderUntil: 0,
-        lastBroadcastAt: clockNow(),
+        lastBroadcastAt: getNow(),
         cellKey: key,
         homeX: pose.x,
         homeZ: pose.z,
@@ -252,12 +252,12 @@ export function forget(players: Player[]): void {
 /** Whether stepping from the current ground to (x, z) is walkable: not too
  * steep a rise, and neither solid nor water at body height once there. */
 function walkable(fromX: number, fromZ: number, x: number, z: number): boolean {
-  const ground = heightAt(x, z);
-  if (Math.abs(ground - heightAt(fromX, fromZ)) > STEP_LIMIT) {
+  const ground = getHeightAt(x, z);
+  if (Math.abs(ground - getHeightAt(fromX, fromZ)) > STEP_LIMIT) {
     return false;
   }
   const y = ground + BODY_Y;
-  return !solidAt(x, y, z) && !waterAt(x, y, z);
+  return !getSolidAt(x, y, z) && !getWaterAt(x, y, z);
 }
 
 /** Moves (x, z) one step toward yaw at speed, sliding along whichever axis
@@ -414,7 +414,7 @@ function stepZombie(z: Zombie, players: Player[], now: number): void {
     x,
     z: zPos,
     yaw,
-    y: heightAt(x, zPos),
+    y: getHeightAt(x, zPos),
     live: dueToBroadcast,
   });
 }
@@ -485,7 +485,7 @@ export function hitZombie(
   target.npc.move({
     x: pushed.x,
     z: pushed.z,
-    y: heightAt(pushed.x, pushed.z),
+    y: getHeightAt(pushed.x, pushed.z),
     live: true,
   });
   return { fell: false };

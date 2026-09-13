@@ -23,13 +23,13 @@ import {
   createNpc,
   createProp,
   dispatch,
-  heightAt,
-  now as clockNow,
+  getHeightAt,
+  getNow,
+  getPlayers,
+  getSolidAt,
+  getWaterAt,
   onPlan,
   onTick,
-  players as livePlayers,
-  solidAt,
-  waterAt,
   type ModelsByName,
   type NpcHandle,
 } from "voxelscape";
@@ -541,12 +541,12 @@ function nextGap(from: Region, to: Region): Gap | null {
 /** Whether stepping from the current ground to (x, z) is walkable: not too
  * steep a rise, and neither solid nor water at body height once there. */
 function walkable(fromX: number, fromZ: number, x: number, z: number): boolean {
-  const ground = heightAt(x, z);
-  if (Math.abs(ground - heightAt(fromX, fromZ)) > STEP_LIMIT) {
+  const ground = getHeightAt(x, z);
+  if (Math.abs(ground - getHeightAt(fromX, fromZ)) > STEP_LIMIT) {
     return false;
   }
   const y = ground + BODY_Y;
-  return !solidAt(x, y, z) && !waterAt(x, y, z);
+  return !getSolidAt(x, y, z) && !getWaterAt(x, y, z);
 }
 
 /** Moves (x, z) one step toward yaw at speed, sliding along whichever axis
@@ -823,7 +823,7 @@ function spawnZombies(now: number): void {
       z: pose.z,
       name: "Zombie",
       yaw: pose.yaw,
-      y: heightAt(pose.x, pose.z),
+      y: getHeightAt(pose.x, pose.z),
     });
     zombies.set(id, {
       npc,
@@ -914,7 +914,7 @@ function stepZombie(
       x,
       z: zPos,
       yaw,
-      y: heightAt(x, zPos),
+      y: getHeightAt(x, zPos),
       live: true,
     });
     return;
@@ -956,7 +956,7 @@ function stepZombie(
     x,
     z: zPos,
     yaw: Math.atan2(ownerX - x, ownerZ - zPos),
-    y: heightAt(x, zPos),
+    y: getHeightAt(x, zPos),
     live: dueToBroadcast,
   });
 }
@@ -992,8 +992,8 @@ function sealBreach(gap: Gap): void {
 }
 
 onTick((_clockMs, events) => {
-  const now = clockNow();
-  const players = livePlayers();
+  const now = getNow();
+  const players = getPlayers();
   // The console stamps the local player's own facts with "" (the wire's local
   // author), which is also what the test harness feeds in — so a fact is
   // "mine" when its producer is either that local key or my own DID.
@@ -1080,7 +1080,7 @@ onTick((_clockMs, events) => {
           target.npc.move({
             x: pushed.x,
             z: pushed.z,
-            y: heightAt(pushed.x, pushed.z),
+            y: getHeightAt(pushed.x, pushed.z),
             live: true,
           });
         }

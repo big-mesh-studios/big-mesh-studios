@@ -1130,7 +1130,7 @@ export const createVoxelscape = ({
     }
     const pose = cutscenePoseAt(
       state,
-      scriptConsole?.now() ?? Date.now(),
+      scriptConsole?.getNow() ?? Date.now(),
       cutsceneFrom,
     );
     camera.position.set(pose.x, pose.y, pose.z);
@@ -1182,9 +1182,9 @@ export const createVoxelscape = ({
       const { ScriptConsole: ScriptConsoleClass } =
         await import("../places/script-console");
       scriptConsole = new ScriptConsoleClass({
-        heightAt: (x, z) => world.heightAt(x, z),
-        solidAt: (x, y, z) => world.solidAt(x, y, z),
-        waterAt: (x, y, z) => world.inWaterAt(x, y, z),
+        getHeightAt: (x, z) => world.heightAt(x, z),
+        getSolidAt: (x, y, z) => world.solidAt(x, y, z),
+        getWaterAt: (x, y, z) => world.inWaterAt(x, y, z),
         // The local avatar plus whoever the mesh has a live link to.
         getPlayers: () => [
           {
@@ -1195,7 +1195,7 @@ export const createVoxelscape = ({
           },
           ...multiplayer.peerPositions(),
         ],
-        now: () => multiplayer.now(),
+        getNow: () => multiplayer.now(),
         report: (line) => onNotice?.(line),
         onDialog: (player, state) => {
           if (player === "") {
@@ -1320,7 +1320,7 @@ export const createVoxelscape = ({
           }
           environment.sound.playSfx(name);
         },
-        endings: () => endingLog?.seen() ?? [],
+        getEndings: () => endingLog?.seen() ?? [],
       });
     }
     return scriptConsole;

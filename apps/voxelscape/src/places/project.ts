@@ -25,7 +25,7 @@ export const VOXELSCAPE_TYPES_FILE = "voxelscape.d.ts";
 
 /**
  * The `"voxelscape"` module's ambient types — the sandbox's host surface
- * (`dispatch`/`onTick`/`log`/`heightAt`/etc.) alongside `createNpc`/
+ * (`dispatch`/`onTick`/`log`/`getHeightAt`/etc.) alongside `createNpc`/
  * `createProp` (ADR 0050) — fed to the editor's language worker once so
  * every script's checker sees the same API without repeating its shape in
  * each file. Read back from `voxelscape.d.ts`, the same file `tsc` checks the
