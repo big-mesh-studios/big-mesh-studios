@@ -8,6 +8,7 @@ import {
   LSPProvider,
   type CodeMirrorProps,
 } from "@big-mesh-studios/code-mirror";
+import { Activity } from "@big-mesh-studios/utils/activity";
 import {
   createEffect,
   createMemo,
@@ -65,19 +66,21 @@ const PlaceEditorPanes: Component<{
       <div class={styles.panes}>
         <For each={Object.keys(props.project.scripts)}>
           {(name) => (
-            <div
-              class={[
-                styles.pane,
-                props.active === name ? styles.paneActive : styles.paneHidden,
-              ]}
-            >
-              <CodeMirror
-                path={name}
-                theme={darkTheme}
-                onEditor={(view) => props.onEditor(name, view)}
-                onInput={({ path, source }) => props.onInput(path, source)}
-              />
-            </div>
+            <Activity when={props.active === name}>
+              <div
+                class={styles.pane}
+                role="tabpanel"
+                id={`tabpanel-${name}`}
+                aria-labelledby={`tab-${name}`}
+              >
+                <CodeMirror
+                  path={name}
+                  theme={darkTheme}
+                  onEditor={(view) => props.onEditor(name, view)}
+                  onInput={({ path, source }) => props.onInput(path, source)}
+                />
+              </div>
+            </Activity>
           )}
         </For>
       </div>

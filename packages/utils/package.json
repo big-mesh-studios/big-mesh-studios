@@ -11,13 +11,15 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./activity": "./src/activity.tsx",
     "./combine-refs": "./src/combine-refs.ts",
     "./create-media-query": "./src/create-media-query.ts",
     "./create-popover": "./src/create-popover.tsx",
     "./pointer": "./src/pointer.ts"
   },
   "scripts": {
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@big-mesh-studios/maths": "workspace:*"
@@ -28,7 +30,10 @@
   },
   "devDependencies": {
     "@solidjs/web": "catalog:",
+    "jsdom": "catalog:",
     "solid-js": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vite-plugin-solid": "catalog:",
+    "vitest": "catalog:"
   }
 }

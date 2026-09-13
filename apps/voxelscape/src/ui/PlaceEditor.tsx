@@ -17,6 +17,7 @@ import {
   type Component,
   type Setter,
 } from "solid-js";
+import { Activity } from "@big-mesh-studios/utils/activity";
 import { createPopover } from "@big-mesh-studios/utils/create-popover";
 import type { Voxelscape } from "../voxelscape/create-voxelscape";
 import type { EditorView } from "./PlaceEditorPanes";
@@ -800,7 +801,7 @@ export const PlaceEditorContent: Component<{
           )}
         </header>
 
-        <nav class={styles.tabs}>
+        <nav class={styles.tabs} role="tablist">
           <For each={scriptFiles()}>
             {(name) => (
               <div
@@ -811,6 +812,12 @@ export const PlaceEditorContent: Component<{
               >
                 <button
                   class={styles.tabMain}
+                  role="tab"
+                  id={`tab-${name}`}
+                  aria-selected={
+                    !showModels() && active() === name ? "true" : "false"
+                  }
+                  aria-controls={`tabpanel-${name}`}
                   title="double-click to rename"
                   onClick={() => selectFile(name)}
                   onDblClick={() => renameScript(name)}
@@ -832,6 +839,10 @@ export const PlaceEditorContent: Component<{
           </button>
           <button
             class={[styles.modelsToggle, showModels() && styles.tabActive]}
+            role="tab"
+            id="tab-models"
+            aria-selected={showModels() ? "true" : "false"}
+            aria-controls="tabpanel-models"
             onClick={() => setShowModels(true)}
           >
             models
@@ -839,7 +850,11 @@ export const PlaceEditorContent: Component<{
           </button>
         </nav>
 
-        <Show when={!showModels()}>
+        {/* Each tab's panel stays mounted for as long as the editor is open —
+            switching away and back leaves its state (a CodeMirror scroll
+            position, the models panel's own state) untouched instead of
+            tearing it down and remounting from scratch. */}
+        <Activity when={!showModels()}>
           <Show when={scriptFiles().length > 0}>
             {/* Keyed on `projectGeneration` so a reseeded project remounts
                 every CodeMirror instance instead of leaving one an edit
@@ -857,10 +872,15 @@ export const PlaceEditorContent: Component<{
               </Loading>
             </Show>
           </Show>
-        </Show>
+        </Activity>
 
-        <Show when={showModels()}>
-          <div class={styles.models}>
+        <Activity when={showModels()}>
+          <div
+            class={styles.models}
+            role="tabpanel"
+            id="tabpanel-models"
+            aria-labelledby="tab-models"
+          >
             <section class={styles.modelsAttached}>
               <div class={styles.modelsAttachedHeader}>
                 <h3 class={styles.modelsHeading}>attached to this place</h3>
@@ -1131,7 +1151,7 @@ export const PlaceEditorContent: Component<{
               </Show>
             </section>
           </div>
-        </Show>
+        </Activity>
       </Show>
     </div>
   );
