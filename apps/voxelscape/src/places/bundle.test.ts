@@ -61,17 +61,21 @@ const runBundle = (
   ticks: Array<(...args: unknown[]) => void>;
   plan: (() => string) | undefined;
   dispatched: Array<{ tag: string; payload: string }>;
+  logs: string[];
 } => {
   const recorded: {
     ticks: Array<(...args: unknown[]) => void>;
     plan: (() => string) | undefined;
     dispatched: Array<{ tag: string; payload: string }>;
-  } = { ticks: [], plan: undefined, dispatched: [] };
+    logs: string[];
+  } = { ticks: [], plan: undefined, dispatched: [], logs: [] };
   const engine = {
     dispatch: (tag: string, payload: string) => {
       recorded.dispatched.push({ tag, payload });
     },
-    log: () => {},
+    log: (line: string) => {
+      recorded.logs.push(line);
+    },
     onTick: (fn: (...args: unknown[]) => void) => {
       recorded.ticks.push(fn);
     },
@@ -256,21 +260,18 @@ describe("model imports", () => {
   it("compiles and evaluates to the model's real parts and motions", async () => {
     const files = {
       "main.ts": `
+        import * as engine from "engine";
         import zombie from "zombie" with { type: "model" };
-        export function bmsTick(): void { engine.log(JSON.stringify(zombie)); }
+        engine.onTick(function (): void { engine.log(JSON.stringify(zombie)); });
       `,
     };
     const models = {
       "zombie.zip": await modelBytes(["head", "torso"], ["walk"]),
     };
     const output = await bundlePlaceProject(files, "main.ts", models);
-    new Function(output)();
-    const logged: string[] = [];
-    const globals = globalThis as Record<string, unknown>;
-    globals.engine = { log: (s: string) => logged.push(s) };
-    (globals.bmsTick as () => void)();
-    delete globals.engine;
-    expect(JSON.parse(logged[0])).toEqual({
+    const { ticks, logs } = runBundle(output);
+    ticks[0]();
+    expect(JSON.parse(logs[0])).toEqual({
       name: "zombie",
       parts: ["head", "torso"],
       motions: ["walk"],
@@ -280,9 +281,10 @@ describe("model imports", () => {
   it("shares one synthetic module between two files importing the same model", async () => {
     const files = {
       "main.ts": `
+        import * as engine from "engine";
         import { greet } from "./greeting";
         import zombie from "zombie" with { type: "model" };
-        export function bmsTick(): void { engine.log(greet + zombie.name); }
+        engine.onTick(function (): void { engine.log(greet + zombie.name); });
       `,
       "greeting.ts": `
         import zombie from "zombie" with { type: "model" };
@@ -299,8 +301,9 @@ describe("model imports", () => {
   it("produces identical output for identical input, models included", async () => {
     const files = {
       "main.ts": `
+        import * as engine from "engine";
         import zombie from "zombie" with { type: "model" };
-        export function bmsTick(): void { engine.log(zombie.name); }
+        engine.onTick(function (): void { engine.log(zombie.name); });
       `,
     };
     const models = { "zombie.zip": await modelBytes(["head"]) };
@@ -313,7 +316,6 @@ describe("model imports", () => {
     const files = {
       "main.ts": `
         import zombie from "./zombie" with { type: "model" };
-        export function bmsTick(): void {}
       `,
     };
     const models = { "zombie.zip": await modelBytes(["head"]) };
@@ -326,7 +328,6 @@ describe("model imports", () => {
     const files = {
       "main.ts": `
         import zombie from "zombie" with { type: "model" };
-        export function bmsTick(): void {}
       `,
     };
     await expect(bundlePlaceProject(files, "main.ts", {})).rejects.toThrow(

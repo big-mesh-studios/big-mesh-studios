@@ -132,10 +132,11 @@ describe("a script console", () => {
   it("threads a place's models through to a script's model import, and replays them on restart", async () => {
     const { script } = scriptConsole();
     const source = `
+      import * as engine from "engine";
       import zombie from "zombie" with { type: "model" };
-      export function bmsTick(): void {
-        engine.dispatch("npc", JSON.stringify({ id: zombie.name, x: 0, z: 0 }));
-      }
+      engine.onTick(function (): void {
+        engine.dispatch("npc", { id: zombie.name, x: 0, z: 0 });
+      });
     `;
     await script.loadProject(
       { [MAIN_SCRIPT_FILE]: source },

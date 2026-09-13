@@ -167,10 +167,11 @@ describe("a script host", () => {
   it("loads a project whose script imports an attached model", async () => {
     const { host } = await fresh();
     const script = `
+      import * as engine from "engine";
       import zombie from "zombie" with { type: "model" };
-      export function bmsTick(clockMs: number, eventsJson: string): void {
-        engine.dispatch("npc", JSON.stringify({ id: zombie.name, x: 0, z: 0 }));
-      }
+      engine.onTick(function (clockMs: number, eventsJson: string): void {
+        engine.dispatch("npc", { id: zombie.name, x: 0, z: 0 });
+      });
     `;
     await host.loadProject({ [MAIN_SCRIPT_FILE]: script }, MAIN_SCRIPT_FILE, {
       "zombie.zip": await modelBytes(),

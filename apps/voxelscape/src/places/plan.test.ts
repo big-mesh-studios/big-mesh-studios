@@ -182,7 +182,6 @@ describe("compilePlacePlan", () => {
     const files = {
       "main.ts": `
         import zombie from "zombie" with { type: "model" };
-        export function bmsTick(): void {}
       `,
     };
 

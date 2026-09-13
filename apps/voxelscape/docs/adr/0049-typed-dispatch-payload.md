@@ -30,7 +30,7 @@ export function dispatch<T extends EffectTag>(
 — rather than hand-writing a payload shape per tag inside `engine.d.ts`
 itself. `effects.ts` is the only place a tag's shape is decided; this reads
 it back instead of repeating it, so the two can never drift out of step the
-way the five copies of `declare const engine` used to (ADR 0046).
+way the five copies of `declare const engine` used to (ADR 0048).
 
 A `declare module "engine"` block that imports another file the ordinary
 way turns into a module _augmentation_ — it requires "engine" to already
@@ -47,7 +47,7 @@ reads a plain string, exactly as ADR 0027 requires of the sandbox boundary.
 per bundle, whose `dispatch` does the one `JSON.stringify` call and passes
 everything else through unchanged — the same place that already resolves
 `"engine"` to the sandbox's host object instead of a project file (ADR
-0046), so no new crossing point was added for this.
+0048), so no new crossing point was added for this.
 
 ## The editor's checker needs the same types `tsc` has
 
@@ -64,7 +64,7 @@ the same way while a creator is typing as it does for `tsc`.
 ## Considered options
 
 - **Per-tag overloads, hand-written in `engine.d.ts`.** Rejected: it
-  reintroduces exactly the copy-and-drift risk ADR 0046 just closed, one
+  reintroduces exactly the copy-and-drift risk ADR 0048 just closed, one
   layer up — `effects.ts` and `engine.d.ts` would each carry their own
   answer to "what does an `npc` effect look like."
 - **Keep `payload` a string, and let a script call `JSON.stringify` itself.**
