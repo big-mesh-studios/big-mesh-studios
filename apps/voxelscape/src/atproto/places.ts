@@ -241,12 +241,18 @@ export const createPlaceLibrary = (params?: {
           models[ref.name] = model;
         }
       }
+      const modelNames = Object.keys(models);
 
       return {
         manifest: {
           name: place.record.name,
           seed: place.record.seed,
           spawn: place.record.spawn,
+          // The order scripts run in, and which one runs first — carried
+          // separately from `scripts` itself since a plain object's key
+          // order isn't a contract anything here should lean on.
+          scripts: place.record.scripts.map((script) => script.name),
+          ...(modelNames.length > 0 ? { models: modelNames } : {}),
           mode: place.record.mode,
         },
         scripts,

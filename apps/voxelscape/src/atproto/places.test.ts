@@ -222,6 +222,11 @@ describe("a place library", () => {
       const project = await library.project(place);
 
       expect(project.scripts).toEqual({ "main.js": "var started = false;" });
+      // `runActive`/`App.tsx`'s boot path both read the first script to run
+      // off `manifest.scripts` alone, with no fallback to `scripts`'s own
+      // key order — so this has to be populated for a place to ever run.
+      expect(project.manifest.scripts).toEqual(["main.js"]);
+      expect(project.manifest.models).toEqual(["fridge.zip"]);
       expect(Object.keys(project.models)).toEqual(["fridge.zip"]);
       expect(project.models["fridge.zip"].ref).toEqual({
         uri: modelUri,
