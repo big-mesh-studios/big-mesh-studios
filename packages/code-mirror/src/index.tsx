@@ -185,17 +185,20 @@ export const darkTheme: Extension = [
             textAlign: "center",
           },
       },
-      // Between the wide and narrow shapes: not wide enough for the
-      // checkboxes to share a row with the fields and buttons, but wide
-      // enough for all five buttons ("next" through "replace all") to sit
-      // on one row rather than the narrow shape's two.
+      // Between the wide and narrow shapes: the fields stack into a column
+      // of their own (search above replace), their buttons fill two rows
+      // beside that column, and the checkboxes run underneath as one full-
+      // width row. Nine columns rather than a tidier-looking number so the
+      // fields' shared column, the two button rows' different groupings
+      // (three narrow, two wide), and the checkboxes' even thirds can all
+      // land on whole column boundaries.
       "@container (max-width: 820px) and (min-width: 521px)": {
         ".cm-panel.cm-search": {
-          gridTemplateColumns: "repeat(5, 1fr)",
+          gridTemplateColumns: "repeat(9, 1fr)",
           gridTemplateAreas: `
-            "search search search rfield rfield"
-            "next   prev   all    rep    repall"
-            "case   case   re     re     word"
+            "search search search next   next   prev   prev   all    all"
+            "rfield rfield rfield rep    rep    rep    repall repall repall"
+            "case   case   case   re     re     re     word   word   word"
           `,
         },
       },
