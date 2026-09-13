@@ -400,6 +400,34 @@ describe("a script host", () => {
     host.dispose();
   });
 
+  it("holds barriers a script stands for player collision", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      import * as engine from "voxelscape";
+      var started = false;
+      engine.onTick(function (clockMs) {
+        if (!started) {
+          started = true;
+          engine.dispatch("barrier", {
+            id: "west-window",
+            min: [-8, 62, -30],
+            max: [-6, 80, -28],
+          });
+        }
+      });
+      `,
+    );
+    expect(host.barrier("west-window")).toEqual({
+      id: "west-window",
+      min: [-8, 62, -30],
+      max: [-6, 80, -28],
+    });
+    expect(host.barrierList).toHaveLength(1);
+    host.dispose();
+  });
+
   it("holds the fields a script declares and the conveyor a prop carries", async () => {
     const { host } = await fresh();
     await loadProject(

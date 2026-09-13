@@ -11,12 +11,14 @@ import GASA4_SCRIPT from "./demo-scripts/gasa4.ts?raw";
 import LATE_TO_SCHOOL_SCRIPT from "./demo-scripts/late-to-school.ts?raw";
 import ZOMBIES_SCRIPT from "./demo-scripts/zombies.ts?raw";
 import ZOMBIE_SCRIPT from "./demo-scripts/zombie.ts?raw";
+import ZOMBIES_MANSION_SCRIPT from "./demo-scripts/zombies-mansion.ts?raw";
 import DONT_POOP_SCRIPT from "./demo-scripts/dont-poop-yourself-at-school.ts?raw";
 import HOME_SCRIPT from "./demo-scripts/home.ts?raw";
 import {
   DONT_POOP_MODELS,
   GASA4_MODELS,
   LATE_TO_SCHOOL_MODELS,
+  ZOMBIES_MANSION_MODELS,
   ZOMBIES_MODELS,
 } from "./demo-scripts/model-lists";
 
@@ -96,6 +98,32 @@ const ZOMBIES: BuiltinDemo = {
 };
 
 /**
+ * The "Zombies: The Mansion" demo: a roofless five-room mansion and its
+ * courtyard under a pinned night, breathing an endless horde in through the
+ * windows while the player opens the rooms eastward. It is the proof that a
+ * place script can steer that horde through a fixed arena whose breaches they
+ * tear down, price the doors and racks with a kill-based economy, and its
+ * weapons ride the scripting item system.
+ */
+const ZOMBIES_MANSION: BuiltinDemo = {
+  id: "zombies-mansion",
+  manifest: {
+    name: "Zombies: The Mansion",
+    seed: 77_007,
+    // The foyer, where the starter pistol is already in hand; the spawn's
+    // height is the terrain surface, so the middle entry is written at the
+    // foyer floor. The script's own checkpoint stands every later respawn
+    // on the same spot.
+    spawn: [0, 62, 8],
+    mode: "multi",
+    models: ZOMBIES_MANSION_MODELS,
+  },
+  scripts: {
+    [MAIN_SCRIPT_FILE]: ZOMBIES_MANSION_SCRIPT,
+  },
+};
+
+/**
  * The "Don't Poop Yourself at School" demo: a faithful port of the Roblox
  * obby. The player is lifted from the yard to a classroom lobby and must reach
  * the restroom at the far east end of the school before the bladder meter
@@ -145,6 +173,7 @@ export const BUILTIN_DEMOS: BuiltinDemo[] = [
   GASA4,
   LATE_TO_SCHOOL,
   ZOMBIES,
+  ZOMBIES_MANSION,
   DONT_POOP,
   HOME,
 ];

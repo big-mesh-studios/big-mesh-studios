@@ -187,4 +187,29 @@ declare module "voxelscape" {
   export function createProp<K extends keyof ModelsByName>(
     options: CreatePropOptions<K>,
   ): PropHandle<ModelsByName[K]>;
+
+  /**
+   * A box the player walks into rather than through, stood through the
+   * "barrier"/"barrier-remove" effects. Drawn nothing, so it blocks a body
+   * and none of what a script steers or a player shoots — the gap a horde
+   * bashes its way through stays a wall to whoever pays it shut.
+   */
+  export interface BarrierHandle {
+    readonly id: string;
+    /** The box that blocks the player, in world units, inclusive. */
+    readonly min: [number, number, number];
+    readonly max: [number, number, number];
+    /** Removes the barrier, opening the gap again. */
+    remove(): void;
+  }
+
+  interface CreateBarrierOptions {
+    id: string;
+    /** The box that blocks the player, in world units, inclusive. */
+    min: [number, number, number];
+    max: [number, number, number];
+  }
+
+  /** Stands a barrier; see `createProp` for why `id` is never generated. */
+  export function createBarrier(options: CreateBarrierOptions): BarrierHandle;
 }

@@ -20,6 +20,8 @@ export type EffectTag =
   | "field-remove"
   | "zone"
   | "zone-remove"
+  | "barrier"
+  | "barrier-remove"
   | "item-define"
   | "item-give"
   | "item-take"
@@ -78,6 +80,25 @@ export const MAX_ITEM_NAME = 40;
 export const MAX_ITEM_SPRITE = 64;
 /** The most of one item a `give`/`take` may move. */
 export const MAX_ITEM_COUNT = 9_999;
+/** The most hit points one weapon shot may deal. */
+export const MAX_WEAPON_DAMAGE = 1_000;
+/** The furthest a weapon shot may reach, in world units. */
+export const MAX_WEAPON_REACH = 128;
+/** The longest a weapon may ask a shot to wait before the next, in milliseconds. */
+export const MAX_WEAPON_FIRE_INTERVAL_MS = 60_000;
+
+/**
+ * What a script item means as a weapon: holding it fires the primary button
+ * instead of the wielded tool, with its own reach, rate, and damage.
+ */
+export interface WeaponSpec {
+  /** Hit points one shot deals to the body it lands on. */
+  damage: number;
+  /** How far a shot reaches, in world units. */
+  reach: number;
+  /** The gap between shots, in milliseconds. */
+  fireIntervalMs: number;
+}
 
 /** One item a place script defines for its own game. */
 export interface ScriptItemDefinition {
@@ -86,6 +107,8 @@ export interface ScriptItemDefinition {
   /** The items-spritesheet sprite the HUD shows, or "" for none. */
   sprite: string;
   stackable: boolean;
+  /** The weapon this item is when held, or none for a plain carried item. */
+  weapon?: WeaponSpec;
 }
 /** The longest a dialog prompt may be. */
 export const MAX_DIALOG_PROMPT = 500;
@@ -241,6 +264,16 @@ export type ParsedEffect =
       };
     }
   | { tag: "zone-remove"; payload: { id: string } }
+  | {
+      tag: "barrier";
+      payload: {
+        id: string;
+        /** The box that blocks the player, in world units, inclusive. */
+        min: [number, number, number];
+        max: [number, number, number];
+      };
+    }
+  | { tag: "barrier-remove"; payload: { id: string } }
   | { tag: "item-define"; payload: ScriptItemDefinition }
   | {
       tag: "item-give";
@@ -450,6 +483,19 @@ const isVector = (v: unknown): v is [number, number, number] =>
 
 const isNumberIn = (v: unknown, min: number, max: number): boolean =>
   typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
+
+/** Whether a value is a weapon spec this world can fire. */
+const isWeapon = (v: unknown): boolean => {
+  if (typeof v !== "object" || v === null) {
+    return false;
+  }
+  const w = v as Record<string, unknown>;
+  return (
+    isNumberIn(w.damage, 1, MAX_WEAPON_DAMAGE) &&
+    isNumberIn(w.reach, 1, MAX_WEAPON_REACH) &&
+    isNumberIn(w.fireIntervalMs, 1, MAX_WEAPON_FIRE_INTERVAL_MS)
+  );
+};
 
 /** Whether a value is a path and spin this world can sample. */
 const isMotion = (v: unknown): boolean => {
@@ -675,6 +721,19 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
     }
     case "zone-remove":
       return isShort(p.id, 64);
+    case "barrier": {
+      const { min, max } = p;
+      return (
+        isShort(p.id, 64) &&
+        isVector(min) &&
+        isVector(max) &&
+        min[0] <= max[0] &&
+        min[1] <= max[1] &&
+        min[2] <= max[2]
+      );
+    }
+    case "barrier-remove":
+      return isShort(p.id, 64);
     case "field":
       return isField(p) && isFieldBox(p);
     case "field-remove":
@@ -684,7 +743,8 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
         isShort(p.id, MAX_ITEM_NAME) &&
         isShort(p.name, MAX_ITEM_NAME) &&
         (p.sprite === "" || isShort(p.sprite, MAX_ITEM_SPRITE)) &&
-        typeof p.stackable === "boolean"
+        typeof p.stackable === "boolean" &&
+        (p.weapon === undefined || isWeapon(p.weapon))
       );
     case "item-give":
     case "item-take":

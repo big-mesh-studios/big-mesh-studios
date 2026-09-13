@@ -101,6 +101,14 @@ describe("effect parsing", () => {
     ).not.toBeNull();
     expect(
       parseEffect(
+        effect("barrier", { id: "gate", min: [0, 0, 0], max: [2, 8, 2] }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("barrier-remove", { id: "gate" })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
         effect("narrate", { player: "", name: "You", text: "Oh no." }),
       ),
     ).not.toBeNull();
@@ -622,6 +630,10 @@ describe("effect parsing", () => {
       ["zone", { id: "x", min: [2, 0, 0], max: [1, 1, 1] }],
       ["zone", { id: "x", min: [0, 0, 0], max: [0, 0, "z"] }],
       ["zone-remove", {}],
+      ["barrier", { id: "x", min: [0, 0, 0] }],
+      ["barrier", { id: "x", min: [2, 0, 0], max: [1, 1, 1] }],
+      ["barrier", { id: "x", min: [0, 0, 0], max: [0, 0, "z"] }],
+      ["barrier-remove", {}],
       ["narrate", { player: "", name: "You" }],
       ["narrate", { player: "", name: "", text: "x" }],
       ["time", {}],
