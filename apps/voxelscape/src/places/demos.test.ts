@@ -935,8 +935,12 @@ describe("the Zombies: The Mansion demo", () => {
 
   it("rings the wave complete chime once a whole wave falls, then eerie again", async () => {
     const { host, sounds } = await mansion();
-    // Let round one's whole wave out, then take every zombie down.
-    await pourWave(host, 180);
+    // Let round one's whole wave out, then take every zombie down. The
+    // twelfth and last of round one's zombies isn't due to spawn until
+    // shortly before tick 180 (2500ms breather + 2500ms eerie lead + eleven
+    // spawns 1500ms apart), so 180 ticks alone can leave it not yet spawned;
+    // 220 gives it comfortable room to have arrived.
+    await pourWave(host, 220);
     for (let i = 1; i <= 12; i++) {
       const id = `zombie-1-${i}`;
       if (host.npc(id) !== null) {
