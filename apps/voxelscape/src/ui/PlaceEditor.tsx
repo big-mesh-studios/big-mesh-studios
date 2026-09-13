@@ -85,7 +85,15 @@ export const PlaceEditorContent: Component<{
   // instance reads the new project's content fresh. CodeMirror only ever
   // reads a file's content once, at creation, so an in-place prop update
   // would leave an already-mounted editor showing the old place's text.
-  const [projectGeneration, setProjectGeneration] = createSignal(0);
+  //
+  // Starts already truthy when a cached project survives from a previous
+  // mount of this same component (closing and reopening the panel remounts
+  // it — `project` above is seeded from that same cache) — the effect below
+  // skips reseeding a world it already loaded, so nothing else would ever
+  // bump this away from a fresh zero and the panes would stay hidden forever.
+  const [projectGeneration, setProjectGeneration] = createSignal(
+    cachedProject === null ? 0 : 1,
+  );
   // Each tab's editor view, so switching tabs can ask the now-visible one to
   // measure itself after its pane changes from display:none to display:block.
   const views = new Map<string, EditorView>();
@@ -145,6 +153,7 @@ export const PlaceEditorContent: Component<{
       cachedProjectVoxelscape = current;
       setProject(loaded);
       setActive(firstScript(loaded));
+      setShowModels(false);
       setProjectGeneration((generation) => generation + 1);
     },
   );
@@ -407,6 +416,7 @@ export const PlaceEditorContent: Component<{
   const newProject = (): void => {
     commit(emptyPlaceProject(voxelscape().placeEditor.defaultSeed));
     setActive(MAIN_SCRIPT_FILE);
+    setShowModels(false);
     setCandidates([]);
     props.onStatus(
       "new place started — name it, write its script, then publish",
@@ -443,6 +453,7 @@ export const PlaceEditorContent: Component<{
       );
       commit(opened);
       setActive(firstScript(opened));
+      setShowModels(false);
       setCandidates([]);
       props.onStatus(
         `opened "${opened.manifest.name}" — publishing again under the same name updates the place`,
