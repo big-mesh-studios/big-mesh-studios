@@ -782,8 +782,10 @@ describe("the Zombies: The Mansion demo", () => {
       expect(demo?.manifest.models).toContain(file);
     }
     expect(BUILTIN_DEMOS).toContain(demo);
-    // demo.manifest.spawn is [x, y, z]: the foyer floor the script stands it on.
-    expect(demo?.manifest.spawn).toEqual([0, 8, 62]);
+    // demo.manifest.spawn is [x, y, z] with the height derived from terrain:
+    // x=0 in the foyer, y written at the floor, z=8 where the script's own
+    // checkpoint stands the player.
+    expect(demo?.manifest.spawn).toEqual([0, 62, 8]);
   });
 
   it("loads each of its models as bytes", async () => {

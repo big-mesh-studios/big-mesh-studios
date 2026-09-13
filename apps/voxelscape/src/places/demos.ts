@@ -108,8 +108,11 @@ const ZOMBIES_MANSION: BuiltinDemo = {
   manifest: {
     name: "Zombies: The Mansion",
     seed: 77_007,
-    // The foyer, where the starter pistol is already in hand.
-    spawn: [0, 8, 62],
+    // The foyer, where the starter pistol is already in hand; the spawn's
+    // height is the terrain surface, so the middle entry is written at the
+    // foyer floor. The script's own checkpoint stands every later respawn
+    // on the same spot.
+    spawn: [0, 62, 8],
     mode: "multi",
     models: ZOMBIES_MANSION_MODELS,
   },
