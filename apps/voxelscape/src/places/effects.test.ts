@@ -282,6 +282,12 @@ describe("effect parsing", () => {
       { tag: "toast", payload: { player: "", text: "hello" } },
     );
     expect(
+      parseEffect(effect("sound", { player: "", name: "zombie-growl" })),
+    ).toEqual({
+      tag: "sound",
+      payload: { player: "", name: "zombie-growl" },
+    });
+    expect(
       parseEffect(
         effect("dialog", {
           player: "",
@@ -641,6 +647,10 @@ describe("effect parsing", () => {
       ["time", { speed: "fast" }],
       ["toast", { text: "x" }],
       ["toast", { player: "", text: "x".repeat(301) }],
+      ["sound", { player: "" }],
+      ["sound", { name: "zombie-growl" }],
+      ["sound", { player: "", name: "" }],
+      ["sound", { player: "", name: "x".repeat(33) }],
       ["dialog", { player: "", npcId: "sable", prompt: "Hi", options: [] }],
       [
         "dialog",

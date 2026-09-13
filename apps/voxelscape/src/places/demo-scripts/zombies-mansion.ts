@@ -432,6 +432,8 @@ const WAVE_PER_ROUND = 6;
 const ROUND_START_BREATHER_MS = 2500;
 const ROUND_BETWEEN_MS = 6000;
 const SPAWN_INTERVAL_MS = 1500;
+/** How long the eerie holds before a fresh wave's first zombie materializes. */
+const WAVE_EERIE_LEAD_MS = 2500;
 
 let started = false;
 const zombies = new Map<string, Zombie>();
@@ -901,6 +903,7 @@ function stepZombie(
     }
     if (now - z.lastAttackAt >= ATTACK_INTERVAL_MS) {
       z.lastAttackAt = now;
+      dispatch("sound", { player: "", name: "zombie-growl" });
       dispatch("player-damage", {
         player: owner.did,
         amount: ZOMBIE_DAMAGE,
@@ -1060,6 +1063,10 @@ onTick((_clockMs, events) => {
           zombies.delete(target.npc.id);
           target.npc.die();
           waveAlive -= 1;
+          dispatch("sound", { player: "", name: "zombie-die" });
+          if (waveAlive === 0 && wavePending === 0) {
+            dispatch("sound", { player: "", name: "wave-complete" });
+          }
           spend(e.producer, -WIN_KILL_BOUNTY);
           if (isMine(e.producer)) {
             say(`A zombie falls — +$${WIN_KILL_BOUNTY}.`);
@@ -1192,8 +1199,9 @@ onTick((_clockMs, events) => {
         showRound();
       }
       poured = true;
+      dispatch("sound", { player: "", name: "wave-eerie" });
       wavePending = waveTarget();
-      nextSpawnAt = now + 200;
+      nextSpawnAt = now + WAVE_EERIE_LEAD_MS;
       nextWaveAt = now + ROUND_BETWEEN_MS;
     }
     if (wavePending > 0 && now >= nextSpawnAt) {

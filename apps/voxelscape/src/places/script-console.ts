@@ -83,6 +83,10 @@ export interface ScriptConsoleParams {
   onFire?: (fire: ScriptedFire) => void;
   /** Called when the script sets off a blast; the world draws the burst. */
   onExplosion?: (explosion: ScriptedExplosion) => void;
+  /** Called when the script asks for a sound effect, by one of the world's
+   * fixed sound names. Empty `player` means every local peer plays its own
+   * copy; a targeted name is meant for that one player alone. */
+  onSound?: (player: string, name: string) => void;
   /** The ending titles the place has already reached, read back by the script. */
   endings?: () => string[];
   /**
@@ -158,6 +162,7 @@ export class ScriptConsole {
   private readonly onVoid: (y: number) => void;
   private readonly onFire: (fire: ScriptedFire) => void;
   private readonly onExplosion: (explosion: ScriptedExplosion) => void;
+  private readonly onSound: (player: string, name: string) => void;
   private readonly endings: () => string[];
   private readonly now_: () => number;
   private host: ScriptHost | null = null;
@@ -193,6 +198,7 @@ export class ScriptConsole {
     this.onVoid = params.onVoid ?? (() => {});
     this.onFire = params.onFire ?? (() => {});
     this.onExplosion = params.onExplosion ?? (() => {});
+    this.onSound = params.onSound ?? (() => {});
     this.endings = params.endings ?? (() => []);
     this.now_ = params.now ?? (() => Date.now());
   }
@@ -536,6 +542,7 @@ export class ScriptConsole {
       onVoid: (y) => this.onVoid(y),
       onFire: (fire) => this.onFire(fire),
       onExplosion: (explosion) => this.onExplosion(explosion),
+      onSound: (player, name) => this.onSound(player, name),
       endings: () => this.endings(),
     });
     return this.host;

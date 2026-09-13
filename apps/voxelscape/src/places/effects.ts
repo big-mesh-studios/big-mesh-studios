@@ -27,6 +27,7 @@ export type EffectTag =
   | "item-take"
   | "item-hold"
   | "toast"
+  | "sound"
   | "dialog"
   | "dialog-close"
   | "narrate"
@@ -118,6 +119,8 @@ export const MAX_DIALOG_OPTIONS = 8;
 export const MAX_OPTION_LENGTH = 80;
 /** The longest a toast line may be. */
 export const MAX_TOAST_LENGTH = 300;
+/** The longest a sound effect's name may be. */
+export const MAX_SOUND_NAME = 32;
 /** The longest an ending's title may be. */
 export const MAX_ENDING_TITLE = 80;
 /** The longest an ending's body may be. */
@@ -288,6 +291,18 @@ export type ParsedEffect =
       payload: { player: string; item: string };
     }
   | { tag: "toast"; payload: { player: string; text: string } }
+  | {
+      tag: "sound";
+      payload: {
+        /** The player meant to hear the effect; "" means everyone locally. */
+        player: string;
+        /**
+         * One of the world's fixed sound vocabulary — an effect only names a
+         * sound the world already ships, never a file or URL of its own.
+         */
+        name: string;
+      };
+    }
   | {
       tag: "dialog";
       payload: {
@@ -762,6 +777,8 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
       );
     case "toast":
       return isPlayer(p.player) && isShort(p.text, MAX_TOAST_LENGTH);
+    case "sound":
+      return isPlayer(p.player) && isShort(p.name, MAX_SOUND_NAME);
     case "dialog":
       return (
         isPlayer(p.player) &&

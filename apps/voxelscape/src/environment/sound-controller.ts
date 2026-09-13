@@ -27,6 +27,26 @@ const RAIN_LOOP_URL = `${import.meta.env.BASE_URL}audio/rain.ogg`;
 const THUNDER_URL = `${import.meta.env.BASE_URL}audio/thunder.ogg`;
 /** How loudly the recorded thunder clap plays on top of the distance gain. */
 const THUNDER_PLAY_GAIN = 0.9;
+/** How many one-shot effects may ring out at once; a horde stays below this. */
+const SFX_MAX_POLYPHONY = 12;
+
+// Served from the site's own root, the same folder every other address in
+// this application is built from (see `vite.config.ts`'s `base`).
+/**
+ * The world's fixed sound vocabulary: the names a place script may ask for
+ * with the `sound` effect, and a weapon may fire with `gun-<id>`. Unknown
+ * names are a silent no-op, so a place can never name a file of its own.
+ */
+export const SFX_URLS: Record<string, string> = {
+  "zombie-growl": `${import.meta.env.BASE_URL}audio/zombie-growl.ogg`,
+  "zombie-die": `${import.meta.env.BASE_URL}audio/zombie-die.ogg`,
+  "wave-complete": `${import.meta.env.BASE_URL}audio/wave-complete.ogg`,
+  "wave-eerie": `${import.meta.env.BASE_URL}audio/wave-eerie.ogg`,
+  "gun-pistol": `${import.meta.env.BASE_URL}audio/gun-pistol.ogg`,
+  "gun-rifle": `${import.meta.env.BASE_URL}audio/gun-rifle.ogg`,
+  "gun-shotgun": `${import.meta.env.BASE_URL}audio/gun-shotgun.ogg`,
+  "gun-machine": `${import.meta.env.BASE_URL}audio/gun-machine.ogg`,
+};
 
 /**
  * The delay and loudness of a thunder clap as a function of how far away the
@@ -100,6 +120,8 @@ export class SoundController {
   private rainLoop: LoopLayer | null = null;
   private rainLoopLoaded = false;
   private thunderBuffer: AudioBuffer | null = null;
+  private readonly sfxBuffers = new Map<string, AudioBuffer>();
+  private sfxActive = 0;
   private lfo: OscillatorNode | null = null;
   private lastCamera: PerspectiveCamera | null = null;
   private volume = 1;
@@ -159,6 +181,9 @@ export class SoundController {
     // the recorded rain loop lands asynchronously; until then the hiss plays
     void this.loadRainLoop(ctx);
     void this.loadThunder(ctx);
+    for (const name of Object.keys(SFX_URLS)) {
+      void this.loadSfx(ctx, name);
+    }
   }
 
   /**
@@ -205,6 +230,61 @@ export class SoundController {
         err,
       );
     }
+  }
+
+  /** Fetches and decodes one effect recording into the sfx map, if needed. */
+  private async loadSfx(ctx: AudioContext, name: string): Promise<void> {
+    const url = SFX_URLS[name];
+    if (url === undefined) {
+      return;
+    }
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`${url}: ${res.status}`);
+      }
+      const buffer = await ctx.decodeAudioData(await res.arrayBuffer());
+      if (this.ctx !== ctx) {
+        return; // unlocked again or disposed while decoding
+      }
+      this.sfxBuffers.set(name, buffer);
+    } catch (err) {
+      console.warn(`[sound] ${name} effect not loaded; skipping it.`, err);
+    }
+  }
+
+  /**
+   * Plays one effect from the world's fixed sound vocabulary, once, on top of
+   * the weather. An unknown or not-yet-decoded name is silent: sfx records
+   * land lazily on the first gesture and play from then on. A slight random
+   * pitch drift keeps a horde of the same growl from sounding like a chorus.
+   */
+  playSfx(name: string): void {
+    const ctx = this.ctx;
+    if (ctx === null || this.master === null || SFX_URLS[name] === undefined) {
+      return;
+    }
+    const buffer = this.sfxBuffers.get(name);
+    if (buffer === undefined) {
+      void this.loadSfx(ctx, name);
+      return;
+    }
+    if (this.sfxActive >= SFX_MAX_POLYPHONY) {
+      return;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.playbackRate.value = 0.94 + Math.random() * 0.12;
+    const g = ctx.createGain();
+    g.gain.value = 1;
+    src.connect(g);
+    g.connect(this.master);
+    this.sfxActive += 1;
+    src.onended = () => {
+      this.sfxActive -= 1;
+    };
+    src.start();
+    src.stop(ctx.currentTime + buffer.duration + 0.05);
   }
 
   private startLoop(
@@ -412,6 +492,7 @@ export class SoundController {
     this.rainLoop = null;
     this.rainLoopLoaded = false;
     this.thunderBuffer = null;
+    this.sfxBuffers.clear();
     this.lfo = null;
     const ctx = this.ctx;
     this.ctx = null;

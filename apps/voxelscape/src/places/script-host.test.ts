@@ -95,6 +95,7 @@ const fresh = async (): Promise<{
   const faces: Array<{ player: string; at: { x: number; z: number } }> = [];
   const fires: ScriptedFire[] = [];
   const explosions: ScriptedExplosion[] = [];
+  const sounds: Array<{ player: string; name: string }> = [];
   const speeds: Array<{ player: string; multiplier: number }> = [];
   const jumps: Array<{ player: string; multiplier: number }> = [];
   const checkpoints: Array<{
@@ -125,6 +126,7 @@ const fresh = async (): Promise<{
     onVoid: (y) => voids.push(y),
     onFire: (fire) => fires.push(fire),
     onExplosion: (explosion) => explosions.push(explosion),
+    onSound: (player, name) => sounds.push({ player, name }),
     endings: () => knownEndings,
   });
   return {
@@ -139,6 +141,7 @@ const fresh = async (): Promise<{
     faces,
     fires,
     explosions,
+    sounds,
     speeds,
     jumps,
     checkpoints,
@@ -237,6 +240,9 @@ describe("a script host", () => {
             engine.dispatch("toast", {
               player: "", text: "opened " + events[i].entityId + " with " + events[i].item,
             });
+            engine.dispatch("sound", {
+              player: "", name: "zombie-growl",
+            });
           }
         }
       });
@@ -254,6 +260,7 @@ describe("a script host", () => {
     });
     await host.use("fridge", "", "cola");
     expect(toasts.map((t) => t.text)).toEqual(["opened fridge with cola"]);
+    expect(sounds).toEqual([{ player: "", name: "zombie-growl" }]);
     host.dispose();
   });
 

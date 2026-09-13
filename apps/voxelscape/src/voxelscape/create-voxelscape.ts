@@ -1312,6 +1312,14 @@ export const createVoxelscape = ({
         onFire: (fire) => {
           fireEmbers.seed(fire);
         },
+        onSound: (player, name) => {
+          // A sound aimed at one named player means that peer alone; empty
+          // means every local peer plays its own copy of the same effect.
+          if (player !== "") {
+            return;
+          }
+          environment.sound.playSfx(name);
+        },
         endings: () => endingLog?.seen() ?? [],
       });
     }
@@ -2072,7 +2080,8 @@ export const createVoxelscape = ({
           // the shot, and the press is consumed below so the tool never also
           // strikes. A touch's tap on an actor body is the same trigger the
           // tools already use for a swing.
-          const heldWeapon = scriptConsole?.heldItem()?.weapon ?? null;
+          const heldItem = scriptConsole?.heldItem() ?? null;
+          const heldWeapon = heldItem?.weapon ?? null;
           const weaponPress =
             heldWeapon !== null &&
             (snapshot.primary ||
@@ -2080,6 +2089,9 @@ export const createVoxelscape = ({
           if (weaponPress && heldWeapon !== null) {
             if (weaponCooldown <= 0) {
               weaponCooldown = heldWeapon.fireIntervalMs / 1000;
+              // The shot's report is the firing player's own, whatever the
+              // bullet then hits; unknown weapon ids are silent by name.
+              environment.sound.playSfx(`gun-${heldItem!.id}`);
               const shot = pickFigure(
                 orbit,
                 heading,

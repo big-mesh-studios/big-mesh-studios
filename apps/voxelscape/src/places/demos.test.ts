@@ -738,6 +738,7 @@ describe("the Zombies: The Mansion demo", () => {
     const { project, entry } = await mansionProject();
     const checkpoints: Array<{ x: number; z: number; y?: number }> = [];
     const toasts: string[] = [];
+    const sounds: string[] = [];
     const host = new ScriptHost({
       seed: project.manifest.seed,
       now: () => mansionClockMs,
@@ -747,9 +748,10 @@ describe("the Zombies: The Mansion demo", () => {
       getPlayers: () => players,
       onToast: (_player, text) => toasts.push(text),
       onCheckpoint: (_player, at) => checkpoints.push(at),
+      onSound: (_player, name) => sounds.push(name),
     });
     await host.loadProject(project.scripts, entry, project.models);
-    return { host, checkpoints, toasts };
+    return { host, checkpoints, toasts, sounds };
   };
 
   /** Moves the shared clock forward one mansion tick and lets its timer fire. */
@@ -896,10 +898,10 @@ describe("the Zombies: The Mansion demo", () => {
   });
 
   it("pours round one out of the spawn sites and each kill stakes the wallet", async () => {
-    const { host } = await mansion();
-    // The opening breather is 2.5s; after the wave lets out, round one pours
+    const { host, sounds } = await mansion();
+    // The opening breather is 2.5s, then the wave lets out and round one pours
     // one zombie per 1.5s from a rotating site, first from out west.
-    await pourWave(host, 30);
+    await pourWave(host, 60);
     const first = host.npc("zombie-1-1");
     expect(first).toMatchObject({ model: "zombie.zip" });
     await host.hit(first!.id, "", 100, players[0].x, players[0].z);
@@ -908,6 +910,48 @@ describe("the Zombies: The Mansion demo", () => {
     });
     expect(host.hudFor("")).toContainEqual(
       expect.objectContaining({ id: "cash", kind: "text", text: "$100" }),
+    );
+    expect(sounds).toContain("zombie-die");
+    host.dispose();
+  });
+
+  it("hangs an eerie before a wave pours and growls as the horde strikes", async () => {
+    const { host, sounds } = await mansion();
+    // Stand under the first spawn site out west so round one's horde arrives at
+    // arm's reach and its strikes ring out without a long chase.
+    players[0].x = -26;
+    players[0].z = -1;
+    await pourWave(host, 45);
+    // The eerie lands the moment the wave lets out, a beat before the first
+    // zombie materializes; with the player at hand the horde then swings and
+    // growls on every strike interval.
+    expect(sounds).toContain("wave-eerie");
+    for (let i = 0; i < 20 && !sounds.includes("zombie-growl"); i++) {
+      await tickMansion(host);
+    }
+    expect(sounds).toContain("zombie-growl");
+    host.dispose();
+  });
+
+  it("rings the wave complete chime once a whole wave falls, then eerie again", async () => {
+    const { host, sounds } = await mansion();
+    // Let round one's whole wave out, then take every zombie down.
+    await pourWave(host, 180);
+    for (let i = 1; i <= 12; i++) {
+      const id = `zombie-1-${i}`;
+      if (host.npc(id) !== null) {
+        await host.hit(id, "", 100, players[0].x, players[0].z);
+      }
+    }
+    expect(sounds).toContain("wave-complete");
+    // The breather after the clear spills round two, with its own eerie first.
+    const eerieBefore = sounds.filter((s) => s === "wave-eerie").length;
+    await pourWave(host, 30);
+    expect(sounds.filter((s) => s === "wave-eerie").length).toBeGreaterThan(
+      eerieBefore,
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "round", kind: "text", text: "ROUND 2" }),
     );
     host.dispose();
   });

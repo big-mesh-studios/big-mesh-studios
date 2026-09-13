@@ -176,6 +176,12 @@ export interface ScriptHostParams {
   getPlayers?: () => Array<{ did: string; x: number; y: number; z: number }>;
   /** Called with a line meant for `player` (empty means every local player). */
   onToast?: (player: string, text: string) => void;
+  /**
+   * Called when the place asks for a sound effect; empty `player` means every
+   * local peer plays its own copy, since an effect is never replayed on the
+   * wire. The name is one of the world's fixed sound vocabulary.
+   */
+  onSound?: (player: string, name: string) => void;
   /** Called when `player`'s dialog changes; null when it closed. */
   onDialog?: (player: string, state: DialogState | null) => void;
   /** Called when a step could not run, or the script logged a line. */
@@ -258,6 +264,7 @@ export class ScriptHost {
   private readonly heightAt: (x: number, z: number) => number;
   private readonly now: () => number;
   private readonly onToast?: (player: string, text: string) => void;
+  private readonly onSound?: (player: string, name: string) => void;
   private readonly onDialog?: (
     player: string,
     state: DialogState | null,
@@ -346,6 +353,7 @@ export class ScriptHost {
     this.now = params.now;
     this.heightAt = params.heightAt;
     this.onToast = params.onToast;
+    this.onSound = params.onSound;
     this.onDialog = params.onDialog;
     this.onNotice = params.onNotice;
     this.onEnding = params.onEnding;
@@ -914,6 +922,9 @@ export class ScriptHost {
         break;
       case "toast":
         this.onToast?.(effect.payload.player, effect.payload.text);
+        break;
+      case "sound":
+        this.onSound?.(effect.payload.player, effect.payload.name);
         break;
       case "dialog": {
         const { player, npcId, prompt, options } = effect.payload;
