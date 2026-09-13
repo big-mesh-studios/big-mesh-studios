@@ -44,19 +44,14 @@ import {
 /** How long a line the world reports on its own is left on screen. */
 const NOTICE_SECONDS = 6;
 
-/**
- * The account and place name that plays at the site's own root address —
- * so what the default world is, and who it's owned by, is a place like any
- * other rather than terrain baked into the app itself.
- */
-const HOME_PLACE_HANDLE = "bigmesh.eurosky.social";
-const HOME_PLACE_NAME = "home";
+/** The built-in demo `App.tsx` opens at the site's own root address. */
+const HOME_DEMO_ID = "home";
 
 /**
- * How the world is built this session: always a published place's world —
- * the address bar's own, or `HOME_PLACE_HANDLE`/`HOME_PLACE_NAME`'s when the
- * address bar names none — except when that place can't be reached, which
- * falls back to a procedural world with every field below left unset.
+ * How the world is built this session: a built-in demo's world, or a
+ * published place's world when the address bar names one — except when a
+ * named place can't be reached, which falls back to a procedural world with
+ * every field below left unset.
  */
 interface LaunchConfig {
   /** A place's terrain seed; omitted only on the fallback procedural world. */
@@ -419,12 +414,20 @@ const App: Component<{}> = () => {
       setJoiningLine("joining world…");
 
       void (async () => {
-        if (demoId !== undefined) {
-          const demo = builtinDemo(demoId);
+        // Root names no demo and no place of its own, so it plays the same
+        // built-in demo `/demos/home` does; `/demos/:id` and `/:handle/:worldName`
+        // both still name what they always did.
+        const resolvedDemoId =
+          handle === undefined && worldName === undefined
+            ? (demoId ?? HOME_DEMO_ID)
+            : demoId;
+
+        if (resolvedDemoId !== undefined) {
+          const demo = builtinDemo(resolvedDemoId);
           if (demo === null) {
             if (current) {
               setLaunch({
-                notice: `there is no demo "${demoId}" — /place:demos lists them`,
+                notice: `there is no demo "${resolvedDemoId}" — /place:demos lists them`,
               });
             }
             return;
@@ -452,18 +455,11 @@ const App: Component<{}> = () => {
           return;
         }
 
-        // No address bar params names the site's own home place, not a
-        // hardcoded procedural world — so root, `/:handle/:worldName`, and
-        // `/demos/:id` all boot through the same place-fetching path.
-        const [joinHandle, joinName] =
-          handle === undefined || worldName === undefined
-            ? [HOME_PLACE_HANDLE, HOME_PLACE_NAME]
-            : [handle, worldName];
         if (current) {
-          setJoiningLine(`joining ${joinHandle}/${joinName}…`);
+          setJoiningLine(`joining ${handle}/${worldName}…`);
         }
         try {
-          const place = await places.find(joinHandle, joinName);
+          const place = await places.find(handle!, worldName!);
           if (current) {
             setJoiningLine("opening the place's scripts…");
           }
@@ -480,10 +476,7 @@ const App: Component<{}> = () => {
           if (current) {
             setJoiningLine(`could not join — ${detail}`);
             setLaunch({
-              notice:
-                handle === undefined || worldName === undefined
-                  ? `could not load the default world (${detail}) — playing a procedural one instead`
-                  : `could not join ${handle}/${worldName} (${detail}) — playing this world instead`,
+              notice: `could not join ${handle}/${worldName} (${detail}) — playing this world instead`,
             });
           }
         }

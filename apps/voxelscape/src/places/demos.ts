@@ -11,6 +11,7 @@ import GASA4_SCRIPT from "./demo-scripts/gasa4.ts?raw";
 import LATE_TO_SCHOOL_SCRIPT from "./demo-scripts/late-to-school.ts?raw";
 import ZOMBIES_SCRIPT from "./demo-scripts/zombies.ts?raw";
 import DONT_POOP_SCRIPT from "./demo-scripts/dont-poop-yourself-at-school.ts?raw";
+import HOME_SCRIPT from "./demo-scripts/home.ts?raw";
 
 /** One built-in demo: the world it names, its scripts, and the models they wear. */
 export interface BuiltinDemo {
@@ -223,12 +224,33 @@ const DONT_POOP: BuiltinDemo = {
   },
 };
 
+/**
+ * The demo `App.tsx` opens at the site's own root address, in place of
+ * fetching a live place over atproto every time somebody lands there. A
+ * guide stands near the spawn and says hello — the same world the studio's
+ * own published "home" place had carried, before this stopped needing a
+ * network round trip to show it.
+ */
+const HOME: BuiltinDemo = {
+  id: "home",
+  manifest: {
+    name: "home",
+    seed: 54_321,
+    spawn: [0, 0, 0],
+    mode: "multi:edit",
+  },
+  scripts: {
+    [MAIN_SCRIPT_FILE]: HOME_SCRIPT,
+  },
+};
+
 /** Every built-in demo, in the order a list shows them. */
 export const BUILTIN_DEMOS: BuiltinDemo[] = [
   GASA4,
   LATE_TO_SCHOOL,
   ZOMBIES,
   DONT_POOP,
+  HOME,
 ];
 
 /** The built-in demo with `id`, or null when there is none. */
