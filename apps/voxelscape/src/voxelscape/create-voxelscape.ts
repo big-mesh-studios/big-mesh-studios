@@ -1333,9 +1333,14 @@ export const createVoxelscape = ({
   // that hosts them exists, so its NPCs and dialogs are live without the player
   // typing a command. Its structure plan was compiled before the world was
   // built, because the terrain it stamps has to be in place for the first fill.
+  // Every model is baked and given to the figure renderers before the script
+  // itself starts: a script's first tick commonly places an NPC wearing one
+  // of them immediately, and a figure not yet registered when that NPC is
+  // created is a figure it never picks up, not one it grows into moments
+  // later.
   if (place !== undefined) {
-    void loadPlaceModels(place.models ?? {});
-    void scriptConsoleFor()
+    void loadPlaceModels(place.models ?? {})
+      .then(() => scriptConsoleFor())
       .then((console) =>
         console.loadProject(
           place.files,
@@ -1624,10 +1629,12 @@ export const createVoxelscape = ({
       models?: Record<string, Uint8Array>,
       spawnPoint?: Dim3,
     ) => {
-      if (models !== undefined) {
-        void loadPlaceModels(models);
-      }
       return (async () => {
+        // Baked and registered before the script itself runs — see the boot
+        // path above for why an NPC's model has to already be there.
+        if (models !== undefined) {
+          await loadPlaceModels(models);
+        }
         const scriptConsole = await scriptConsoleFor();
         // The world's structures come from the same plan the script's own Run
         // compiles, so a creator who edits shapes sees the change on the
