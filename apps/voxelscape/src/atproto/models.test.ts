@@ -1,5 +1,8 @@
 // @vitest-environment node
+import { encode } from "fast-png";
+import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
+import { sideKinds } from "@big-mesh-studios/stacker/renderer";
 import {
   createModelLibrary,
   publishedModels,
@@ -11,13 +14,44 @@ const SERVICE = "https://pds.example";
 
 const locate: LocateAccount = async () => ({ did: DID, service: SERVICE });
 
+/** A one-part model whose every side and face points at `cid`, all fetched from the same blob. */
 const modelRecord = (name: string, cid: string) => ({
   $type: "app.bms.stacker.model",
   name,
   createdAt: "2026-08-27T12:00:00.000Z",
-  file: { $type: "blob", ref: { $link: cid }, mimeType: "application/zip" },
   dimensions: { width: 16, height: 24, depth: 16 },
+  palette: [{ r: 0, g: 0, b: 0, a: 255 }],
+  parts: [
+    {
+      name: "body",
+      // Every axis is a decimal string, not a number — the AT Protocol data
+      // model has no float, and a pivot in particular is genuinely fractional.
+      root: { x: "0", y: "0", z: "0" },
+      pivot: { x: "8", y: "12", z: "8" },
+      turn: { x: "0", y: "0", z: "0" },
+      scale: "1",
+      parent: null,
+      sides: Object.fromEntries(
+        sideKinds.map((side) => [
+          side,
+          { $type: "blob", ref: { $link: cid }, mimeType: "image/png" },
+        ]),
+      ),
+      sections: [],
+    },
+  ],
+  motions: [],
 });
+
+/** A png every side/face blob fetch below returns, decodable as a bitmap. */
+const sidePng = () =>
+  encode({
+    width: 1,
+    height: 1,
+    data: new Uint8Array([1]),
+    channels: 1,
+    depth: 8,
+  });
 
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -149,10 +183,13 @@ describe("a model library", () => {
     expect(models.map((model) => model.rkey)).toEqual(["zombie", "duck"]);
   });
 
-  it("fetches a model's zip from the server holding the account", async () => {
-    const { fetch, asked } = server({
-      getBlob: new Response(new Uint8Array([0x50, 0x4b, 0x03, 0x04])),
-    });
+  it("rebuilds a model's zip from the drawings its record's parts point at", async () => {
+    const asked: string[] = [];
+    const fetch = (async (input: RequestInfo | URL) => {
+      asked.push(String(input instanceof Request ? input.url : input));
+      // A fresh response each call — the same one could not be read twice.
+      return new Response(new Blob([sidePng() as BlobPart]));
+    }) as typeof globalThis.fetch;
     const library = createModelLibrary({ locate, fetch });
     const file = await library.file({
       repo: DID,
@@ -160,12 +197,17 @@ describe("a model library", () => {
       record: modelRecord("Zombie", "bafzombie") as never,
     });
 
-    expect(new Uint8Array(await file.arrayBuffer())).toEqual(
-      new Uint8Array([0x50, 0x4b, 0x03, 0x04]),
+    const zip = await JSZip.loadAsync(await file.arrayBuffer());
+    expect(Object.keys(zip.files).sort()).toEqual(
+      [
+        "body/",
+        ...sideKinds.map((side) => `body/${side}.png`),
+        "parts.json",
+        "palette.png",
+      ].sort(),
     );
-    expect(asked[0]).toBe(
-      `${SERVICE}/xrpc/com.atproto.sync.getBlob?did=${encodeURIComponent(DID)}&cid=bafzombie`,
-    );
+    expect(asked.every((url) => url.includes("cid=bafzombie"))).toBe(true);
+    expect(asked).toHaveLength(sideKinds.length);
   });
 
   it("says who would not serve a model it could not fetch", async () => {

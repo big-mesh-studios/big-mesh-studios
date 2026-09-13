@@ -17,11 +17,12 @@ import type {
   Nsid,
   RecordKey,
 } from "@atcute/lexicons";
+import { saveFigure } from "@big-mesh-studios/stacker/format";
 import {
   blobUrl,
   isModelRecord,
+  loadPublishedFigure,
   MODEL_COLLECTION,
-  modelBlobCid,
   modelRkey,
   parseModelAtUri,
   thumbnailBlobCid,
@@ -63,7 +64,12 @@ export interface ModelLibrary {
    * can open.
    */
   byUri(uri: string): Promise<PublishedModel>;
-  /** The zip `model` points at, as the loader takes it. */
+  /**
+   * The zip `model` points at, rebuilt from the drawings its record's parts
+   * point at — this editor bundles a place's attached models as zips, so the
+   * one blob shape the rest of it expects is what this hands back, whatever
+   * shape the record itself keeps them in.
+   */
   file(model: PublishedModel): Promise<Blob>;
   /**
    * Where `model`'s small picture loads from, or null when it published
@@ -175,14 +181,17 @@ export const createModelLibrary = (params?: {
 
     async file(model) {
       const { service } = await locateOnce(model.repo);
-      const url = blobUrl(service, model.repo, modelBlobCid(model.record));
-      const response = await fetchFile(url);
-      if (!response.ok) {
-        throw new Error(
-          `the server holding ${model.repo} would not serve "${model.record.name}" (${response.status})`,
-        );
-      }
-      return response.blob();
+      const figure = await loadPublishedFigure(model.record, async (blob) => {
+        const url = blobUrl(service, model.repo, blob.ref.$link);
+        const response = await fetchFile(url);
+        if (!response.ok) {
+          throw new Error(
+            `the server holding ${model.repo} would not serve "${model.record.name}" (${response.status})`,
+          );
+        }
+        return new Uint8Array(await response.arrayBuffer());
+      });
+      return saveFigure(figure, figure.motions);
     },
 
     async thumbnailUrl(model) {

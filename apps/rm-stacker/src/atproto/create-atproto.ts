@@ -12,14 +12,15 @@ import { createIdentityLookup } from "@big-mesh-studios/atproto/identity";
 import {
   blobUrl,
   isModelRecord,
+  loadPublishedFigure,
   MODEL_COLLECTION,
-  MODEL_MIME_TYPE,
-  modelBlobCid,
   modelRkey,
+  publishFigure,
   THUMBNAIL_MIME_TYPE,
   type ModelRecord,
   type PublishedModel,
 } from "@big-mesh-studios/stacker/lexicon";
+import type { Figure, Motion } from "@big-mesh-studios/stacker/renderer";
 import type {
   AtprotoBlobClient,
   AtprotoRepoClient,
@@ -163,15 +164,17 @@ export function createAtproto() {
     },
 
     /**
-     * Publishes `file` — the zip the editor saves — to the signed-in account's
-     * repository under a key made from `name`, and hands back the model as it
-     * now reads there. Publishing under the same name again replaces what is
-     * there rather than adding to it, which is how a drawing gets touched up
-     * without everyone reading it having to follow a new address.
+     * Publishes `figure` — every part's drawings uploaded as its own blob —
+     * to the signed-in account's repository under a key made from `name`, and
+     * hands back the model as it now reads there. Publishing under the same
+     * name again replaces what is there rather than adding to it, which is how
+     * a drawing gets touched up without everyone reading it having to follow a
+     * new address.
      */
     async publish(params: {
       name: string;
-      file: Blob;
+      figure: Figure;
+      motions: Motion[];
       dimensions: Dimensions3D;
       /** The small picture to list the model by, from `thumbnailFromSides`. */
       thumbnail?: Uint8Array;
@@ -179,33 +182,31 @@ export function createAtproto() {
       try {
         const { client, did } = requireSession();
         const rkey = modelRkey(params.name);
-        const file = await client.uploadBlob(
-          params.file.type === MODEL_MIME_TYPE
-            ? params.file
-            : new Blob([params.file], { type: MODEL_MIME_TYPE }),
+        const uploadBlob = (bytes: Uint8Array) =>
+          client.uploadBlob(
+            new Blob([bytes as BlobPart], { type: THUMBNAIL_MIME_TYPE }),
+          );
+        const figure = await publishFigure(
+          params.figure,
+          params.motions,
+          uploadBlob,
         );
         // A picture that will not upload is not worth failing a publish over:
         // the model still lists, just without one.
         const thumbnail =
           params.thumbnail === undefined
             ? undefined
-            : await client
-                .uploadBlob(
-                  new Blob([params.thumbnail as BlobPart], {
-                    type: THUMBNAIL_MIME_TYPE,
-                  }),
-                )
-                .catch(() => undefined);
+            : await uploadBlob(params.thumbnail).catch(() => undefined);
         const record: ModelRecord = {
           $type: MODEL_COLLECTION,
           name: params.name,
           createdAt: new Date().toISOString(),
-          file,
           dimensions: {
             width: params.dimensions.width,
             height: params.dimensions.height,
             depth: params.dimensions.depth,
           },
+          ...figure,
           ...(thumbnail === undefined ? {} : { thumbnail }),
         };
 
@@ -244,24 +245,30 @@ export function createAtproto() {
       return blobUrl(await identity.service(did), did, cid);
     },
 
-    /** The zip `model` points at, as `load` in `load-save.ts` takes it. */
-    async open(model: PublishedModel): Promise<Blob> {
+    /** The figure `model` points at, every drawing fetched off its blobs. */
+    async open(model: PublishedModel): Promise<{
+      parts: Figure["parts"];
+      palette: Figure["palette"];
+      motions: Motion[];
+    }> {
       try {
         const service = await identity.service(model.repo);
-        const response = await fetch(
-          blobUrl(service, model.repo, modelBlobCid(model.record)),
-        );
-
-        if (!response.ok) {
-          throw new Error(
-            `the file for "${model.record.name}" could not be read from ${service}`,
+        const figure = await loadPublishedFigure(model.record, async (blob) => {
+          const response = await fetch(
+            blobUrl(service, model.repo, blob.ref.$link),
           );
-        }
 
-        const file = await response.blob();
+          if (!response.ok) {
+            throw new Error(
+              `the file for "${model.record.name}" could not be read from ${service}`,
+            );
+          }
+
+          return new Uint8Array(await response.arrayBuffer());
+        });
         setError(null);
 
-        return file;
+        return figure;
       } catch (cause) {
         return fail(cause);
       }

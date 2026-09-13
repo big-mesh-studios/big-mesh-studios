@@ -10,12 +10,17 @@
 // and the files on disk this editor has seen. A card is drawn from what is
 // already known about it, so a wall of them costs one small picture each rather
 // than a zip, six panels decoded, a volume solved and a scene rendered.
+import type { RGBA } from "@big-mesh-studios/maths";
 import { loadFigure, saveFigure } from "@big-mesh-studios/stacker/format";
 import {
   thumbnailBlobCid,
   type PublishedModel,
 } from "@big-mesh-studios/stacker/lexicon";
-import { NO_MOTION } from "@big-mesh-studios/stacker/renderer";
+import {
+  NO_MOTION,
+  type Motion,
+  type Part,
+} from "@big-mesh-studios/stacker/renderer";
 import { fileOpen, fileSave, type FileWithHandle } from "browser-fs-access";
 import {
   createEffect,
@@ -211,20 +216,6 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
       : where.kind === "file" && where.id === card.file.id;
   }
 
-  /** The zip behind a card, from the account that holds it or from the disk. */
-  async function contentsOf(card: Card): Promise<Blob | null> {
-    if (card.kind === "published") {
-      return atproto.open(card.model);
-    }
-
-    if (!(await mayRead(card.file.handle))) {
-      window.alert(`"${card.file.name}" cannot be read without permission.`);
-      return null;
-    }
-
-    return card.file.handle.getFile();
-  }
-
   async function run(
     what: string,
     action: () => Promise<string | null>,
@@ -259,7 +250,8 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
     return run("publishing…", async () => {
       const published = await atproto.publish({
         name: shown(),
-        file: await saveFigure(figure(), motions()),
+        figure: figure(),
+        motions: motions(),
         dimensions: dimensions(),
         thumbnail: thumbnailFromFigure(figure()),
       });
@@ -290,16 +282,31 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
     });
   }
 
+  /** `card`'s figure, from the account that holds it or from the disk. */
+  async function figureOf(
+    card: Card,
+  ): Promise<{ parts: Part[]; palette: RGBA[]; motions: Motion[] } | null> {
+    if (card.kind === "published") {
+      return atproto.open(card.model);
+    }
+
+    if (!(await mayRead(card.file.handle))) {
+      window.alert(`"${card.file.name}" cannot be read without permission.`);
+      return null;
+    }
+
+    return loadFigure(await card.file.handle.getFile(), palette());
+  }
+
   /** Draws a model onto the canvas, makes it the drawing's home, and stands aside. */
   function open(card: Card): Promise<void> {
     return run("opening…", async () => {
-      const contents = await contentsOf(card);
+      const result = await figureOf(card);
 
-      if (contents === null) {
+      if (result === null) {
         return null;
       }
 
-      const result = await loadFigure(contents, palette());
       loadParts(result.parts);
       setPalette(result.palette);
       setMotions(

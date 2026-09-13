@@ -33,6 +33,7 @@ import {
   type Sides,
 } from "./data";
 import { NO_MOTION, type Ease, type Motion } from "./motion";
+import { encodeSidePng } from "./side-image";
 
 const PALETTE_FILE = "palette.png";
 const PARTS_FILE = "parts.json";
@@ -761,11 +762,7 @@ export async function save(sides: Sides, palette: RGBA[]): Promise<Blob> {
   const zip = new JSZip();
 
   for (const side of sideKinds) {
-    const { width, height, data } = sides[side];
-    zip.file(
-      `${side}.png`,
-      encode({ width, height, data, channels: 1, depth: 8 }),
-    );
+    zip.file(`${side}.png`, encodeSidePng(sides[side]));
   }
 
   zip.file(PALETTE_FILE, encodePalettePng(palette));
@@ -813,19 +810,14 @@ export async function saveFigure(
     written.add(part.name);
 
     for (const side of sideKinds) {
-      const { width, height, data } = part.sides[side];
-      zip.file(
-        `${part.name}/${side}.png`,
-        encode({ width, height, data, channels: 1, depth: 8 }),
-      );
+      zip.file(`${part.name}/${side}.png`, encodeSidePng(part.sides[side]));
     }
 
     part.sections.forEach((section, cut) => {
       for (const face of ["before", "after"] as const) {
-        const { width, height, data } = section[face];
         zip.file(
           `${part.name}/${sectionFileName(cut, face)}`,
-          encode({ width, height, data, channels: 1, depth: 8 }),
+          encodeSidePng(section[face]),
         );
       }
     });
