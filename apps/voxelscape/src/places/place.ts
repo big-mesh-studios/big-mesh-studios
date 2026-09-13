@@ -31,10 +31,7 @@ export const MAX_MODEL_FILE = 256;
 /**
  * This site's own address, fixed regardless of which origin is currently
  * serving it. A built-in demo isn't a published place and has no `at://`
- * address of its own, so its identity is derived from this instead. The
- * site's default world is ordinarily a published place too, owned by a real
- * account; this address only stands in for it when that place can't be
- * reached at all.
+ * address of its own, so its identity is derived from this instead.
  */
 export const DEFAULT_WORLD_URL =
   "https://big-mesh-studios.github.io/big-mesh-studios/voxelscape/";

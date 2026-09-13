@@ -4,7 +4,7 @@ import {
   Scene,
   Vector3,
 } from "@random-mesh/rmsl/scene";
-import { createSignal, type Accessor } from "solid-js";
+import { createSignal, type Accessor, type Setter } from "solid-js";
 import {
   describeSetup,
   WalkTraceRecorder,
@@ -20,6 +20,7 @@ import {
   parsePlaceAtUri,
   type PlaceMode,
 } from "../places/place";
+import type { PlaceProject } from "../places/project";
 import type { ScriptConsole } from "../places/script-console";
 import { VoxelFigures, type RenderedFigure } from "../places/voxel-figures";
 import { cutscenePoseAt, type CameraStart } from "../places/cutscene";
@@ -177,6 +178,20 @@ export interface VoxelscapeConfig {
   /** The place whose scripts this world runs from boot, if it is a published one. */
   place?: PlaceBoot;
   /**
+   * The manifest, scripts and models of the place or demo this world booted
+   * from, for `/place:editor` to open on — omitted only on the fallback
+   * procedural world, which has no place project to show.
+   */
+  activeProject?: PlaceProject;
+  /**
+   * Whether the `/place:editor` panel is showing, and how to flip it —
+   * injected so the flag survives this instance being replaced by a reboot
+   * instead of resetting closed along with it; defaults to a fresh,
+   * instance-local signal when omitted, for a bench or test harness that
+   * builds a world with no persistent UI of its own around it.
+   */
+  placeEditorOpen?: [Accessor<boolean>, Setter<boolean>];
+  /**
    * How this place handles other players and their edits; omitted for the
    * default world and for a place published before modes existed, both of
    * which keep multiplayer unscoped and edits self-only rather than being
@@ -265,12 +280,20 @@ export interface Voxelscape {
     /** The signed-in account the editor publishes from, or null while signed out. */
     accountDid: string | null;
     /** The handle to show for `did`, or the did itself when it has none. */
-    resolveHandle(did: string): Promise<string | null>;
+    resolveHandle(did: string): Promise<string>;
     /**
-     * Whether the place currently loaded is safe to open the panel on — see
-     * `create-voxelscape.ts`'s own `placeEditor.canEdit` for the reasoning.
+     * Whether the place currently loaded is a real published place owned by
+     * the signed-in account — false for a built-in demo and for anyone
+     * else's place, both of which Run has to clone before it may run them.
      */
-    canEdit: boolean;
+    isMine: boolean;
+    /** The DID that published the place actually running, or null when it
+     * has none to attribute — a built-in demo, or the site's own fallback
+     * world. */
+    owner: string | null;
+    /** The manifest, scripts and models of the place or demo actually
+     * running, or null when this world has none to seed the editor from. */
+    activeProject: PlaceProject | null;
     /** The seed a freshly created place starts from: the world being played. */
     defaultSeed: number;
     places: PlaceLibrary;
@@ -288,6 +311,12 @@ export interface Voxelscape {
       seed: number,
       models?: Record<string, Uint8Array>,
     ): Promise<string>;
+    /**
+     * Records `atUri` as the place this session now owns, once a clone has
+     * published it to the signed-in account, and moves the address bar to
+     * its `/<handle>/<name>` address.
+     */
+    claim(atUri: string): Promise<void>;
   };
   /** Whether `onDebugStats` is being called, which `/render:perf` toggles. */
   debugPerf: Accessor<boolean>;
@@ -362,6 +391,8 @@ export const createVoxelscape = ({
   customVoxelTiles,
   structures,
   place,
+  activeProject,
+  placeEditorOpen: placeEditorOpenSignal,
   mode,
   placeUri = DEFAULT_WORLD_URL,
   spawn = [0, 0, 0],
@@ -448,7 +479,12 @@ export const createVoxelscape = ({
    */
   const [multisampling, setMultisamplingSignal] = createSignal(antialias);
   /** Whether the `/place:editor` panel is showing. */
-  const [placeEditorOpen, setPlaceEditorOpen] = createSignal(false);
+  const [placeEditorOpen, setPlaceEditorOpen] =
+    placeEditorOpenSignal ?? createSignal(false);
+  // Reassigned once a clone publishes this session's place under the
+  // signed-in account, so `placeEditor.isMine` reads true right away rather
+  // than waiting for the address-bar navigation to reboot the world.
+  let ownedPlaceUri = placeUri;
   /**
    * What was last aimed at and whether a hand held anything, so the aim
    * signal only moves when either changes.
@@ -1509,22 +1545,25 @@ export const createVoxelscape = ({
       return atproto.did;
     },
     /** The handle to show for `did`, or the did itself when it has none. */
-    resolveHandle: (did: string): Promise<string | null> =>
-      atproto.resolveHandle(did),
+    resolveHandle: (did: string): Promise<string> => atproto.resolveHandle(did),
     /**
-     * Whether the place currently loaded is safe to open the panel on:
-     * either it isn't a real published place at all (the site's own
-     * fallback world, or a demo, both `parsePlaceAtUri`-null), or this
-     * account is the one that published it. Anywhere else, Run would hand a
-     * draft script to the same host driving the place everyone else there
-     * is playing — visiting isn't publishing, and shouldn't act like it.
-     * (Collaborators and forking are their own later doors into this, not
-     * exceptions bolted onto this check.)
+     * Whether the place currently loaded is a real published place, and this
+     * account is the one that published it. A built-in demo and anyone
+     * else's place both read false here, whatever `parsePlaceAtUri` makes of
+     * their address — Run would otherwise hand a draft script to the same
+     * host driving the place everyone else there is playing, or reload a
+     * demo nobody owns as if it were an edit. (Collaborators and forking are
+     * their own later doors into this, not exceptions bolted onto this
+     * check.)
      */
-    get canEdit(): boolean {
-      const parsed = parsePlaceAtUri(placeUri);
-      return parsed === null || parsed.repo === atproto.did;
+    get isMine(): boolean {
+      const parsed = parsePlaceAtUri(ownedPlaceUri);
+      return parsed !== null && parsed.repo === atproto.did;
     },
+    get owner(): string | null {
+      return parsePlaceAtUri(ownedPlaceUri)?.repo ?? null;
+    },
+    activeProject: activeProject ?? null,
     /** The seed a freshly created place starts from: the world being played. */
     defaultSeed: terrain.seed,
     places: placeLibrary,
@@ -1545,6 +1584,15 @@ export const createVoxelscape = ({
         console.loadProject(files, entry, seed, models ?? {}),
       );
     },
+    async claim(atUri: string): Promise<void> {
+      ownedPlaceUri = atUri;
+      const parsed = parsePlaceAtUri(atUri);
+      if (parsed === null) {
+        return;
+      }
+      const handle = await atproto.resolveHandle(parsed.repo);
+      navigate(`/${handle}/${parsed.rkey}`);
+    },
   };
 
   const commands = createCommands({
@@ -1564,9 +1612,6 @@ export const createVoxelscape = ({
     navigate,
     togglePlaceEditor: () => {
       const next = !placeEditorOpen();
-      if (next && !placeEditor.canEdit) {
-        return "this place isn't yours to edit — visit your own place (or the site's own world) to open the panel";
-      }
       setPlaceEditorOpen(next);
       return next
         ? "place editor opened — write your place's scripts, run them, then publish"

@@ -98,6 +98,52 @@
   background: rgba(111, 207, 151, 0.28);
 }
 
+/* Shared by the Run/Publish/model-action "this isn't yours" popovers, each
+ * anchored to its own trigger button by `createPopover`'s own generated
+ * anchor name, set as an inline style on the trigger it renders. Sits under
+ * the trigger, left edge aligned with it, and only swaps to right-edge
+ * aligned (`--clone-popover-right`) when the left alignment would overflow the
+ * viewport. `width` still floors against the viewport on top of that, since
+ * flipping the alignment is not itself a guarantee of fitting on a narrow
+ * screen. */
+@position-try --clone-popover-right {
+  left: unset;
+  right: anchor(right);
+}
+
+.clonePopover {
+  inset: unset;
+  position: absolute;
+  pointer-events: auto;
+  position-try-fallbacks: --clone-popover-right;
+
+  &:popover-open {
+    display: grid;
+    gap: 8px;
+    top: calc(anchor(bottom) + var(--margin));
+    left: anchor(left);
+    width: min(220px, calc(100vw - var(--margin) * 2));
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+  }
+}
+
+.clonePopoverText {
+  margin: 0;
+  font-size: 12px;
+  color: var(--light-grey);
+}
+
+.clonePopoverOk {
+  color: #6fcf97;
+}
+
+.clonePopoverError {
+  color: #ff6b6b;
+}
+
 .pick {
   padding: 4px 8px;
   background: rgba(255, 255, 255, 0.08);

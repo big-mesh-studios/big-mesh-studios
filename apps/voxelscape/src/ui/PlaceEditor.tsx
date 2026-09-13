@@ -14,9 +14,12 @@ import {
   onCleanup,
   onSettled,
   Show,
+  type Accessor,
   type Component,
+  type Setter,
 } from "solid-js";
-import { useVoxelscape } from "../voxelscape/voxelscape-context";
+import { createPopover } from "@big-mesh-studios/utils/create-popover";
+import type { Voxelscape } from "../voxelscape/create-voxelscape";
 import type { EditorView } from "./PlaceEditorPanes";
 import { createDraftPersistence } from "../places/draft-persistence";
 import {
@@ -58,8 +61,13 @@ export const PlaceEditorContent: Component<{
    * so the editor doesn't need a status strip of its own and its CodeMirror
    * pane can reach all the way to the bottom of the space it's given. */
   onStatus(line: string): void;
+  /** The place actually running, read fresh on every call — this panel
+   * outlives any one boot of it, surviving a reboot a clone's own publish
+   * triggers rather than closing and losing its draft along with the world
+   * that was showing when it opened. */
+  voxelscape: Accessor<Voxelscape>;
 }> = (props) => {
-  const voxelscape = useVoxelscape();
+  const voxelscape = props.voxelscape;
 
   const [project, setProject] = createSignal<PlaceProject | null>(
     cachedProject,
@@ -84,15 +92,48 @@ export const PlaceEditorContent: Component<{
     }
   };
 
-  // The first open loads the last working draft, starting a fresh project when
-  // none exists; later opens reuse the cached one straight away.
+  /** The handle to show for the owner of a not-mine place, once resolved —
+   * the did itself until then, or while there is no owner to resolve. */
+  const [otherOwnerHandle, setOtherOwnerHandle] = createSignal<string | null>(
+    null,
+  );
+
+  // Resolved once, up front, so the clone popover already has a handle to
+  // show by the time a player actually opens it rather than resolving on
+  // first click.
+  onSettled(() => {
+    if (voxelscape().placeEditor.isMine) {
+      return;
+    }
+    const owner = voxelscape().placeEditor.owner;
+    if (owner === null) {
+      return;
+    }
+    void voxelscape()
+      .placeEditor.resolveHandle(owner)
+      .then(setOtherOwnerHandle);
+  });
+
+  // The first open loads whatever place is actually running — a demo, or a
+  // published place — so the panel starts on its real scripts rather than an
+  // unrelated draft. Only a world with none to show (the fallback procedural
+  // world) falls back to the last working local draft, starting a fresh
+  // project when even that doesn't exist. Later opens reuse the cached
+  // project straight away.
   onSettled(() => {
     if (cachedProject !== null) {
       return;
     }
+    const running = voxelscape().placeEditor.activeProject;
+    if (running !== null) {
+      cachedProject = running;
+      setProject(running);
+      setActive(firstScript(running));
+      return;
+    }
     void persist.load().then((saved) => {
       const loaded =
-        saved ?? emptyPlaceProject(voxelscape.placeEditor.defaultSeed);
+        saved ?? emptyPlaceProject(voxelscape().placeEditor.defaultSeed);
       cachedProject = loaded;
       setProject(loaded);
       setActive(firstScript(loaded));
@@ -297,7 +338,7 @@ export const PlaceEditorContent: Component<{
     model: PublishedModel,
   ): Promise<void> => {
     try {
-      const url = await voxelscape.placeEditor.models.thumbnailUrl(model);
+      const url = await voxelscape().placeEditor.models.thumbnailUrl(model);
       if (url !== null) {
         setThumbnailUrls((urls) => ({ ...urls, [key]: url }));
       }
@@ -314,7 +355,7 @@ export const PlaceEditorContent: Component<{
     }
     setBrowsing(true);
     try {
-      const published = await voxelscape.placeEditor.models.list(
+      const published = await voxelscape().placeEditor.models.list(
         account.trim(),
       );
       setBrowsed(published);
@@ -335,7 +376,7 @@ export const PlaceEditorContent: Component<{
    * handle, the readable name a did is short for, rather than the did
    * itself; the lookup itself still goes by did, which needs no resolving. */
   const browseMine = async (did: string): Promise<void> => {
-    setBrowseHandle((await voxelscape.placeEditor.resolveHandle(did)) ?? did);
+    setBrowseHandle(await voxelscape().placeEditor.resolveHandle(did));
     void browseModels(did);
   };
 
@@ -349,7 +390,7 @@ export const PlaceEditorContent: Component<{
     setBusy(true);
     try {
       const bytes = new Uint8Array(
-        await (await voxelscape.placeEditor.models.file(model)).arrayBuffer(),
+        await (await voxelscape().placeEditor.models.file(model)).arrayBuffer(),
       );
       attachModel(name, bytes);
       const thumbnail = thumbnailUrls()[browseKey(model)];
@@ -367,7 +408,7 @@ export const PlaceEditorContent: Component<{
   };
 
   const newProject = (): void => {
-    commit(emptyPlaceProject(voxelscape.placeEditor.defaultSeed));
+    commit(emptyPlaceProject(voxelscape().placeEditor.defaultSeed));
     setActive(MAIN_SCRIPT_FILE);
     setCandidates([]);
     props.onStatus(
@@ -376,14 +417,14 @@ export const PlaceEditorContent: Component<{
   };
 
   const listMine = async (): Promise<void> => {
-    const did = voxelscape.placeEditor.accountDid;
+    const did = voxelscape().placeEditor.accountDid;
     if (did === null) {
       props.onStatus("not signed in — use /account:login first");
       return;
     }
     setBusy(true);
     try {
-      const published = await voxelscape.placeEditor.places.list(did);
+      const published = await voxelscape().placeEditor.places.list(did);
       setCandidates(published);
       props.onStatus(
         published.length === 0
@@ -401,7 +442,7 @@ export const PlaceEditorContent: Component<{
     setBusy(true);
     try {
       const opened = await readPlaceProject(
-        await voxelscape.placeEditor.places.file(place),
+        await voxelscape().placeEditor.places.file(place),
       );
       commit(opened);
       setActive(firstScript(opened));
@@ -428,7 +469,7 @@ export const PlaceEditorContent: Component<{
     }
     setBusy(true);
     try {
-      const line = await voxelscape.placeEditor.runScript(
+      const line = await voxelscape().placeEditor.runScript(
         p.scripts,
         entry,
         p.manifest.seed,
@@ -442,27 +483,187 @@ export const PlaceEditorContent: Component<{
     }
   };
 
-  const publish = async (): Promise<void> => {
+  /** What publishing decided: the place's own `at://` address, or the words
+   * to show for why it didn't happen — the same words already handed to
+   * `onStatus`. */
+  type PublishResult =
+    { ok: true; atUri: string } | { ok: false; error: string };
+
+  /** Publishes the draft to the signed-in account under its own name. */
+  const publish = async (): Promise<PublishResult> => {
     const p = project();
     if (p === null) {
-      return;
+      return { ok: false, error: "no draft to publish" };
     }
     if (p.manifest.name.trim() === "") {
-      props.onStatus("name the place before publishing");
-      return;
+      const error = "name the place before publishing";
+      props.onStatus(error);
+      return { ok: false, error };
     }
     setBusy(true);
     try {
-      const atUri = await voxelscape.placeEditor.publisher.publish(
+      const atUri = await voxelscape().placeEditor.publisher.publish(
         await writePlaceZip(p),
       );
       setCandidates([]);
       props.onStatus(`published — ${atUri}`);
+      return { ok: true, atUri };
     } catch (err) {
-      props.onStatus(`publish failed — ${describeError(err)}`);
+      const error = `publish failed — ${describeError(err)}`;
+      props.onStatus(error);
+      return { ok: false, error };
     } finally {
       setBusy(false);
     }
+  };
+
+  /** Whether the place actually running is a real published place owned by
+   * the signed-in account — false for a demo, and for anyone else's place. */
+  const isMine = (): boolean => voxelscape().placeEditor.isMine;
+
+  const runPopover = createPopover();
+  const publishPopover = createPopover();
+
+  /** Milliseconds a clone popover's own inline confirmation stays up before
+   * it closes itself — the same bare timeout `Toasts` dismisses itself with. */
+  const CLONE_RESULT_MS = 1400;
+
+  /** What a clone action just did, and the words to show for it in its own
+   * popover — null before anything has happened there yet. */
+  type CloneOutcome = { ok: boolean; text: string } | null;
+
+  const [runOutcome, setRunOutcome] = createSignal<CloneOutcome>(null);
+  const [publishOutcome, setPublishOutcome] = createSignal<CloneOutcome>(null);
+
+  /** Publishes the draft under the signed-in account (the same publish a
+   * place gets otherwise) and runs the clone locally, so Run on a place that
+   * isn't the player's own gets a copy of its own to run instead of
+   * reloading the console everyone else there is driven by. */
+  const cloneAndRun = async (): Promise<void> => {
+    setRunOutcome(null);
+    const result = await publish();
+    if (!result.ok) {
+      setRunOutcome({ ok: false, text: result.error });
+      return;
+    }
+    setRunOutcome({ ok: true, text: "Cloned — running your copy" });
+    await runActive();
+    await voxelscape().placeEditor.claim(result.atUri);
+    setTimeout(() => {
+      runPopover.close();
+      setRunOutcome(null);
+    }, CLONE_RESULT_MS);
+  };
+
+  /** Publishes the draft under the signed-in account, without also running
+   * it — Publish's own clone action for a place that isn't the player's own. */
+  const clonePublish = async (): Promise<void> => {
+    setPublishOutcome(null);
+    const result = await publish();
+    if (!result.ok) {
+      setPublishOutcome({ ok: false, text: result.error });
+      return;
+    }
+    setPublishOutcome({ ok: true, text: "Cloned — published" });
+    await voxelscape().placeEditor.claim(result.atUri);
+    setTimeout(() => {
+      publishPopover.close();
+      setPublishOutcome(null);
+    }, CLONE_RESULT_MS);
+  };
+
+  /** The English possessive suffix for `name`: a bare apostrophe when it
+   * already ends in "s", the usual "'s" otherwise. */
+  const possessiveSuffix = (name: string): string =>
+    name.endsWith("s") ? "'" : "'s";
+
+  /** The "this isn't yours" explanation and its confirm action, anchored to
+   * whichever button (Run or Publish) opened `popover` — the one difference
+   * between the two is what clicking through actually does. A demo has no
+   * owner to name; anyone else's place is attributed to its owner's handle.
+   * Once `onConfirm` has run, the explanation gives way to what it decided,
+   * shown in the same popover rather than only in the terminal below. */
+  const clonePopover = (
+    popover: ReturnType<typeof createPopover>,
+    verb: string,
+    label: string,
+    outcome: Accessor<CloneOutcome>,
+    setOutcome: Setter<CloneOutcome>,
+    onConfirm: () => void,
+  ) => (
+    <popover.PopOver
+      popover="auto"
+      class={styles.clonePopover}
+      onToggle={(open) => {
+        // A stale error from a previous attempt shouldn't greet the next
+        // time this popover opens.
+        if (!open) {
+          setOutcome(null);
+        }
+      }}
+    >
+      <p
+        class={[
+          styles.clonePopoverText,
+          outcome() !== null &&
+            (outcome()!.ok ? styles.clonePopoverOk : styles.clonePopoverError),
+        ]}
+      >
+        <Show
+          when={outcome()}
+          fallback={
+            <Show
+              when={voxelscape().placeEditor.owner}
+              fallback={<>This is a demo — clone it to {verb} your own copy.</>}
+            >
+              {(owner) => (
+                <>
+                  This is <i>{otherOwnerHandle() ?? owner()}</i>
+                  {possessiveSuffix(otherOwnerHandle() ?? owner())} place —
+                  clone it to {verb} your own copy.
+                </>
+              )}
+            </Show>
+          }
+        >
+          {(result) => result().text}
+        </Show>
+      </p>
+      <Show when={!outcome()?.ok}>
+        <button
+          class={[styles.button, styles.primary]}
+          disabled={busy()}
+          onClick={onConfirm}
+        >
+          {label}
+        </button>
+      </Show>
+    </popover.PopOver>
+  );
+
+  /** The hidden file input "+ from a file" opens — kept mounted regardless of
+   * ownership, so cloning can still open it once the draft is the player's own. */
+  let fileInput: HTMLInputElement | undefined;
+  const fromFilePopover = createPopover();
+  const [fromFileOutcome, setFromFileOutcome] =
+    createSignal<CloneOutcome>(null);
+
+  /** Clones the draft, then opens the file picker "+ from a file" would have
+   * opened directly on a place that was already the player's own. */
+  const cloneThenPickFiles = async (): Promise<void> => {
+    setFromFileOutcome(null);
+    const result = await publish();
+    if (!result.ok) {
+      setFromFileOutcome({ ok: false, text: result.error });
+      return;
+    }
+    setFromFileOutcome({ ok: true, text: "Cloned — choose files to attach" });
+    await voxelscape().placeEditor.claim(result.atUri);
+    setTimeout(() => {
+      fromFilePopover.close();
+      setFromFileOutcome(null);
+      fileInput?.click();
+    }, CLONE_RESULT_MS);
   };
 
   return (
@@ -539,27 +740,67 @@ export const PlaceEditorContent: Component<{
                 Open…
               </button>
             </Show>
-            <button
-              class={[styles.button, styles.primary]}
-              disabled={busy() || scriptFiles().length === 0}
-              onClick={() => void runActive()}
+            <Show
+              when={isMine()}
+              fallback={
+                <runPopover.Trigger
+                  class={[styles.button, styles.primary]}
+                  title="This place isn't yours — clone it to run your own copy"
+                >
+                  Run
+                </runPopover.Trigger>
+              }
             >
-              Run
-            </button>
-            <button
-              class={[styles.button, styles.primary]}
-              disabled={busy()}
-              onClick={() => void publish()}
+              <button
+                class={[styles.button, styles.primary]}
+                disabled={busy() || scriptFiles().length === 0}
+                onClick={() => void runActive()}
+              >
+                Run
+              </button>
+            </Show>
+            <Show
+              when={isMine()}
+              fallback={
+                <publishPopover.Trigger
+                  class={[styles.button, styles.primary]}
+                  title="This place isn't yours — clone it to publish your own copy"
+                >
+                  Publish
+                </publishPopover.Trigger>
+              }
             >
-              Publish
-            </button>
+              <button
+                class={[styles.button, styles.primary]}
+                disabled={busy()}
+                onClick={() => void publish()}
+              >
+                Publish
+              </button>
+            </Show>
             <button
               class={styles.button}
-              onClick={() => voxelscape.placeEditor.setOpen(false)}
+              onClick={() => voxelscape().placeEditor.setOpen(false)}
             >
               Close
             </button>
           </div>
+          {clonePopover(
+            runPopover,
+            "run",
+            "Clone & Run",
+            runOutcome,
+            setRunOutcome,
+            () => void cloneAndRun(),
+          )}
+          {clonePopover(
+            publishPopover,
+            "publish",
+            "Clone & Publish",
+            publishOutcome,
+            setPublishOutcome,
+            () => void clonePublish(),
+          )}
         </header>
 
         <nav class={styles.tabs}>
@@ -621,22 +862,47 @@ export const PlaceEditorContent: Component<{
             <section class={styles.modelsAttached}>
               <div class={styles.modelsAttachedHeader}>
                 <h3 class={styles.modelsHeading}>attached to this place</h3>
-                <label
-                  class={styles.modelsFromFile}
-                  title="add rm-stacker model files"
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept=".zip,application/zip"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    void addModels(e.currentTarget.files);
+                    e.currentTarget.value = "";
+                  }}
+                />
+                <Show
+                  when={isMine()}
+                  fallback={
+                    <>
+                      <fromFilePopover.Trigger
+                        class={styles.modelsFromFile}
+                        title="this place isn't yours — clone it to attach your own files"
+                      >
+                        + from a file
+                      </fromFilePopover.Trigger>
+                      {clonePopover(
+                        fromFilePopover,
+                        "attach",
+                        "Clone & Attach",
+                        fromFileOutcome,
+                        setFromFileOutcome,
+                        () => void cloneThenPickFiles(),
+                      )}
+                    </>
+                  }
                 >
-                  + from a file
-                  <input
-                    type="file"
-                    accept=".zip,application/zip"
-                    multiple
-                    hidden
-                    onChange={(e) => {
-                      void addModels(e.currentTarget.files);
-                      e.currentTarget.value = "";
-                    }}
-                  />
-                </label>
+                  <button
+                    type="button"
+                    class={styles.modelsFromFile}
+                    title="add rm-stacker model files"
+                    onClick={() => fileInput?.click()}
+                  >
+                    + from a file
+                  </button>
+                </Show>
               </div>
               <Show
                 when={modelNames().length > 0}
@@ -646,39 +912,84 @@ export const PlaceEditorContent: Component<{
               >
                 <ul class={styles.modelsCards}>
                   <For each={modelNames()}>
-                    {(name) => (
-                      <li class={styles.modelsCard}>
-                        <div class={styles.modelsCardPreview}>
+                    {(name) => {
+                      const removePopover = createPopover();
+                      const [removeOutcome, setRemoveOutcome] =
+                        createSignal<CloneOutcome>(null);
+                      const cloneAndRemove = async (): Promise<void> => {
+                        setRemoveOutcome(null);
+                        const result = await publish();
+                        if (!result.ok) {
+                          setRemoveOutcome({ ok: false, text: result.error });
+                          return;
+                        }
+                        removeModel(name);
+                        setRemoveOutcome({
+                          ok: true,
+                          text: "Cloned — removed",
+                        });
+                        await voxelscape().placeEditor.claim(result.atUri);
+                        setTimeout(() => {
+                          removePopover.close();
+                          setRemoveOutcome(null);
+                        }, CLONE_RESULT_MS);
+                      };
+                      return (
+                        <li class={styles.modelsCard}>
+                          <div class={styles.modelsCardPreview}>
+                            <Show
+                              when={thumbnailUrls()[name]}
+                              fallback={
+                                <span class={styles.modelsCardPlaceholder}>
+                                  ▢
+                                </span>
+                              }
+                            >
+                              {(url) => (
+                                <img
+                                  class={styles.modelsCardThumbnail}
+                                  src={url()}
+                                  alt={name}
+                                  loading="lazy"
+                                />
+                              )}
+                            </Show>
+                          </div>
+                          <span class={styles.modelsCardName} title={name}>
+                            {name}
+                          </span>
                           <Show
-                            when={thumbnailUrls()[name]}
+                            when={isMine()}
                             fallback={
-                              <span class={styles.modelsCardPlaceholder}>
-                                ▢
-                              </span>
+                              <>
+                                <removePopover.Trigger
+                                  class={styles.modelsCardAction}
+                                  title={`this place isn't yours — clone it to remove ${name} from your own copy`}
+                                >
+                                  remove
+                                </removePopover.Trigger>
+                                {clonePopover(
+                                  removePopover,
+                                  "remove models from",
+                                  "Clone & Remove",
+                                  removeOutcome,
+                                  setRemoveOutcome,
+                                  () => void cloneAndRemove(),
+                                )}
+                              </>
                             }
                           >
-                            {(url) => (
-                              <img
-                                class={styles.modelsCardThumbnail}
-                                src={url()}
-                                alt={name}
-                                loading="lazy"
-                              />
-                            )}
+                            <button
+                              class={styles.modelsCardAction}
+                              title={`remove ${name}`}
+                              onClick={() => removeModel(name)}
+                            >
+                              remove
+                            </button>
                           </Show>
-                        </div>
-                        <span class={styles.modelsCardName} title={name}>
-                          {name}
-                        </span>
-                        <button
-                          class={styles.modelsCardAction}
-                          title={`remove ${name}`}
-                          onClick={() => removeModel(name)}
-                        >
-                          remove
-                        </button>
-                      </li>
-                    )}
+                        </li>
+                      );
+                    }}
                   </For>
                 </ul>
               </Show>
@@ -705,7 +1016,7 @@ export const PlaceEditorContent: Component<{
                 >
                   Search
                 </button>
-                <Show when={voxelscape.placeEditor.accountDid}>
+                <Show when={voxelscape().placeEditor.accountDid}>
                   {(did) => (
                     <button
                       class={styles.button}
@@ -727,47 +1038,92 @@ export const PlaceEditorContent: Component<{
               >
                 <ul class={styles.modelsCards}>
                   <For each={browsed()}>
-                    {(model) => (
-                      <li class={styles.modelsCard}>
-                        <div class={styles.modelsCardPreview}>
+                    {(model) => {
+                      const attachPopover = createPopover();
+                      const [attachOutcome, setAttachOutcome] =
+                        createSignal<CloneOutcome>(null);
+                      const cloneAndAttach = async (): Promise<void> => {
+                        setAttachOutcome(null);
+                        const result = await publish();
+                        if (!result.ok) {
+                          setAttachOutcome({ ok: false, text: result.error });
+                          return;
+                        }
+                        await attachPublishedModel(model);
+                        setAttachOutcome({
+                          ok: true,
+                          text: "Cloned — attached",
+                        });
+                        await voxelscape().placeEditor.claim(result.atUri);
+                        setTimeout(() => {
+                          attachPopover.close();
+                          setAttachOutcome(null);
+                        }, CLONE_RESULT_MS);
+                      };
+                      return (
+                        <li class={styles.modelsCard}>
+                          <div class={styles.modelsCardPreview}>
+                            <Show
+                              when={thumbnailUrls()[browseKey(model)]}
+                              fallback={
+                                <span class={styles.modelsCardPlaceholder}>
+                                  ▢
+                                </span>
+                              }
+                            >
+                              {(url) => (
+                                <img
+                                  class={styles.modelsCardThumbnail}
+                                  src={url()}
+                                  alt={model.record.name}
+                                  loading="lazy"
+                                />
+                              )}
+                            </Show>
+                          </div>
+                          <span
+                            class={styles.modelsCardName}
+                            title={model.record.name}
+                          >
+                            {model.record.name}
+                          </span>
+                          <span class={styles.modelsCardDims}>
+                            {model.record.dimensions.width}×
+                            {model.record.dimensions.height}×
+                            {model.record.dimensions.depth}
+                          </span>
                           <Show
-                            when={thumbnailUrls()[browseKey(model)]}
+                            when={isMine()}
                             fallback={
-                              <span class={styles.modelsCardPlaceholder}>
-                                ▢
-                              </span>
+                              <>
+                                <attachPopover.Trigger
+                                  class={styles.modelsCardAction}
+                                  title="this place isn't yours — clone it to attach models to your own copy"
+                                >
+                                  attach
+                                </attachPopover.Trigger>
+                                {clonePopover(
+                                  attachPopover,
+                                  "attach",
+                                  "Clone & Attach",
+                                  attachOutcome,
+                                  setAttachOutcome,
+                                  () => void cloneAndAttach(),
+                                )}
+                              </>
                             }
                           >
-                            {(url) => (
-                              <img
-                                class={styles.modelsCardThumbnail}
-                                src={url()}
-                                alt={model.record.name}
-                                loading="lazy"
-                              />
-                            )}
+                            <button
+                              class={styles.modelsCardAction}
+                              disabled={busy()}
+                              onClick={() => void attachPublishedModel(model)}
+                            >
+                              attach
+                            </button>
                           </Show>
-                        </div>
-                        <span
-                          class={styles.modelsCardName}
-                          title={model.record.name}
-                        >
-                          {model.record.name}
-                        </span>
-                        <span class={styles.modelsCardDims}>
-                          {model.record.dimensions.width}×
-                          {model.record.dimensions.height}×
-                          {model.record.dimensions.depth}
-                        </span>
-                        <button
-                          class={styles.modelsCardAction}
-                          disabled={busy()}
-                          onClick={() => void attachPublishedModel(model)}
-                        >
-                          attach
-                        </button>
-                      </li>
-                    )}
+                        </li>
+                      );
+                    }}
                   </For>
                 </ul>
               </Show>

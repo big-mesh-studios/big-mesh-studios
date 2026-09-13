@@ -1,11 +1,16 @@
 import {
   Component,
+  createContext,
   createEffect,
   createSignal,
   For,
   onCleanup,
   onSettled,
+  ParentComponent,
   Show,
+  useContext,
+  type Accessor,
+  type Setter,
 } from "solid-js";
 import { useNavigate, useParams } from "@solidjs/router";
 import styles from "./App.module.css";
@@ -17,12 +22,12 @@ import { compilePlacePlan, planRegionAround } from "./places/plan";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
 import type { Dim3 } from "./world/level-data";
 import type { StructurePlan } from "./world/structure-fill";
-import type { PlaceBoot } from "./voxelscape/create-voxelscape";
+import type { PlaceBoot, Voxelscape } from "./voxelscape/create-voxelscape";
 import CoarseControls from "./ui/CoarseControls";
 // `Console` is the whole scripting surface — the terminal, and, once
 // `/place:editor` runs, the place editor's content grown into the same
 // panel alongside it (see `PlaceEditorContent`, rendered from inside it).
-import { Console, createConsole } from "./ui/Console";
+import { Console, createConsole, type ConsoleState } from "./ui/Console";
 import { DialogOverlay } from "./ui/Dialog";
 import { EditHud } from "./ui/EditHud";
 import { HealthHud } from "./ui/HealthHud";
@@ -39,19 +44,14 @@ import {
 /** How long a line the world reports on its own is left on screen. */
 const NOTICE_SECONDS = 6;
 
-/**
- * The account and place name that plays at the site's own root address —
- * so what the default world is, and who it's owned by, is a place like any
- * other rather than terrain baked into the app itself.
- */
-const HOME_PLACE_HANDLE = "bigmesh.eurosky.social";
-const HOME_PLACE_NAME = "home";
+/** The built-in demo `App.tsx` opens at the site's own root address. */
+const HOME_DEMO_ID = "home";
 
 /**
- * How the world is built this session: always a published place's world —
- * the address bar's own, or `HOME_PLACE_HANDLE`/`HOME_PLACE_NAME`'s when the
- * address bar names none — except when that place can't be reached, which
- * falls back to a procedural world with every field below left unset.
+ * How the world is built this session: a built-in demo's world, or a
+ * published place's world when the address bar names one — except when a
+ * named place can't be reached, which falls back to a procedural world with
+ * every field below left unset.
  */
 interface LaunchConfig {
   /** A place's terrain seed; omitted only on the fallback procedural world. */
@@ -62,6 +62,12 @@ interface LaunchConfig {
   structures?: StructurePlan;
   /** The place's scripts to run from boot; omitted only on the fallback procedural world. */
   place?: PlaceBoot;
+  /**
+   * The place's own manifest, scripts and models, for `/place:editor` to
+   * open on; omitted only on the fallback procedural world, which has no
+   * place project to show.
+   */
+  project?: PlaceProject;
   /**
    * How this place handles other players and their edits; omitted on the
    * fallback procedural world and for a place published before modes
@@ -80,13 +86,75 @@ interface LaunchConfig {
   notice?: string;
 }
 
+/**
+ * What `AppChrome` hands down to `App`: the terminal every boot prints
+ * through, how a boot records itself as the one the terminal and place
+ * editor read, and the place editor's own open flag — all owned above the
+ * route rather than by any one boot, since crossing between a demo's route
+ * and a published place's own tears down and rebuilds everything the router
+ * matched, `App` included.
+ */
+interface AppChromeState {
+  terminal: ConsoleState;
+  setCurrentVoxelscape(voxelscape: Voxelscape): void;
+  placeEditorOpen: [Accessor<boolean>, Setter<boolean>];
+}
+
+const AppChromeContext = createContext<AppChromeState>();
+
+/**
+ * The terminal and the place editor it can grow into, mounted once above
+ * every route the address bar can name. `@solidjs/router` tears down and
+ * rebuilds whatever a route matched — `App` included — each time the
+ * matched route pattern itself changes (a demo's `/demos/:id` against a
+ * published place's own `/:handle/:worldName`), not just when its params
+ * do; wrapping the routed content here, outside that boundary, is what
+ * keeps a reboot from closing the panel or resetting its scrollback.
+ */
+export const AppChrome: ParentComponent = (props) => {
+  const [currentVoxelscape, setCurrentVoxelscape] =
+    createSignal<Voxelscape | null>(null);
+  const placeEditorOpen = createSignal(false);
+  const terminal = createConsole({
+    onCommand: (line) =>
+      currentVoxelscape()?.commands.run(line) ??
+      "the world is still loading — try again in a moment",
+    commands: () => currentVoxelscape()?.commands.help() ?? [],
+  });
+
+  return (
+    <AppChromeContext
+      value={{ terminal, setCurrentVoxelscape, placeEditorOpen }}
+    >
+      {props.children}
+      {/* Waits for the first boot so `Console` always has a real instance to
+          read — once shown, it stays mounted for every boot after, since
+          `currentVoxelscape` only ever moves from one instance to the next. */}
+      <Show when={currentVoxelscape()}>
+        {(voxelscape) => (
+          <Console terminal={terminal} voxelscape={voxelscape} />
+        )}
+      </Show>
+    </AppChromeContext>
+  );
+};
+
 const World: Component<{
   launch: LaunchConfig;
   navigate: (to: string) => void;
+  /** Where a line this world reports on its own (mainly its atproto state at
+   * startup) goes — the one terminal `Console` owns for the whole session,
+   * not a scrollback of this boot's own. */
+  terminal: ConsoleState;
+  /** Records this boot's `voxelscape` as the one `Console` reads, so the
+   * terminal and place editor keep working across a reboot instead of
+   * reading whichever instance happened to exist when they last mounted. */
+  setCurrent(voxelscape: Voxelscape): void;
+  /** Whether the `/place:editor` panel is showing, owned above any one boot
+   * so opening it survives a reboot the same way the terminal does. */
+  placeEditorOpen: [Accessor<boolean>, Setter<boolean>];
 }> = (props) => {
   let hud: HTMLDivElement | undefined;
-
-  const [notice, setNotice] = createSignal<string>();
 
   const coarsePointer = createMediaQuery("(any-pointer: coarse)");
   const toasts = createToasts();
@@ -95,6 +163,8 @@ const World: Component<{
     spawn: props.launch.spawn,
     structures: props.launch.structures,
     place: props.launch.place,
+    activeProject: props.launch.project,
+    placeEditorOpen: props.placeEditorOpen,
     mode: props.launch.mode,
     placeUri: props.launch.placeUri,
     chunkRadius: radiusInUrl(),
@@ -106,11 +176,15 @@ const World: Component<{
       }
     },
     onNotice: (line) => {
-      setNotice(line);
+      props.terminal.print(line);
       // Nobody has the console open when the world reports its atproto state,
       // so the same line is put where it can be read without opening it.
       toasts.show(() => line, NOTICE_SECONDS * 1000);
     },
+  });
+
+  onSettled(() => {
+    props.setCurrent(voxelscape);
   });
 
   // A line the boot decided on — the place joined, or why that failed — goes
@@ -122,15 +196,6 @@ const World: Component<{
   });
 
   onCleanup(voxelscape.dispose);
-
-  // The one terminal `Console` renders, whether or not the place editor is
-  // open, so a command's history and output are never split across two
-  // independent scrollbacks.
-  const terminal = createConsole({
-    onCommand: (line) => voxelscape.commands.run(line),
-    commands: () => voxelscape.commands.help(),
-    notice,
-  });
 
   return (
     <VoxelscapeContext value={voxelscape}>
@@ -149,7 +214,6 @@ const World: Component<{
         <DialogOverlay />
         <EndingOverlay />
         <LoadingScreen />
-        <Console terminal={terminal} />
         <toasts.Stack>
           <Show when={voxelscape.showStats()}>
             <Toast>
@@ -251,6 +315,8 @@ const radiusInUrl = (): number | undefined => {
 };
 
 const App: Component<{}> = () => {
+  const { terminal, setCurrentVoxelscape, placeEditorOpen } =
+    useContext(AppChromeContext);
   const [launch, setLaunch] = createSignal<LaunchConfig | null>(null);
   const [joiningLine, setJoiningLine] = createSignal("joining world…");
 
@@ -292,6 +358,7 @@ const App: Component<{}> = () => {
       return {
         terrain: { ...DEFAULT_TERRAIN, seed: project.manifest.seed },
         spawn: project.manifest.spawn,
+        project,
         mode: project.manifest.mode,
         placeUri,
         notice: `${source} names no scripts — playing its terrain`,
@@ -322,6 +389,7 @@ const App: Component<{}> = () => {
         seed: project.manifest.seed,
         models: project.models,
       },
+      project,
       mode: project.manifest.mode,
       placeUri,
       notice: `${source}${planNote}`,
@@ -346,12 +414,20 @@ const App: Component<{}> = () => {
       setJoiningLine("joining world…");
 
       void (async () => {
-        if (demoId !== undefined) {
-          const demo = builtinDemo(demoId);
+        // Root names no demo and no place of its own, so it plays the same
+        // built-in demo `/demos/home` does; `/demos/:id` and `/:handle/:worldName`
+        // both still name what they always did.
+        const resolvedDemoId =
+          handle === undefined && worldName === undefined
+            ? (demoId ?? HOME_DEMO_ID)
+            : demoId;
+
+        if (resolvedDemoId !== undefined) {
+          const demo = builtinDemo(resolvedDemoId);
           if (demo === null) {
             if (current) {
               setLaunch({
-                notice: `there is no demo "${demoId}" — /place:demos lists them`,
+                notice: `there is no demo "${resolvedDemoId}" — /place:demos lists them`,
               });
             }
             return;
@@ -379,18 +455,11 @@ const App: Component<{}> = () => {
           return;
         }
 
-        // No address bar params names the site's own home place, not a
-        // hardcoded procedural world — so root, `/:handle/:worldName`, and
-        // `/demos/:id` all boot through the same place-fetching path.
-        const [joinHandle, joinName] =
-          handle === undefined || worldName === undefined
-            ? [HOME_PLACE_HANDLE, HOME_PLACE_NAME]
-            : [handle, worldName];
         if (current) {
-          setJoiningLine(`joining ${joinHandle}/${joinName}…`);
+          setJoiningLine(`joining ${handle}/${worldName}…`);
         }
         try {
-          const place = await places.find(joinHandle, joinName);
+          const place = await places.find(handle!, worldName!);
           if (current) {
             setJoiningLine("opening the place's scripts…");
           }
@@ -407,10 +476,7 @@ const App: Component<{}> = () => {
           if (current) {
             setJoiningLine(`could not join — ${detail}`);
             setLaunch({
-              notice:
-                handle === undefined || worldName === undefined
-                  ? `could not load the default world (${detail}) — playing a procedural one instead`
-                  : `could not join ${handle}/${worldName} (${detail}) — playing this world instead`,
+              notice: `could not join ${handle}/${worldName} (${detail}) — playing this world instead`,
             });
           }
         }
@@ -433,7 +499,15 @@ const App: Component<{}> = () => {
       each={launch() ? [launch()!] : []}
       fallback={<Joining line={joiningLine()} />}
     >
-      {(config) => <World launch={config} navigate={navigate} />}
+      {(config) => (
+        <World
+          launch={config}
+          navigate={navigate}
+          terminal={terminal}
+          setCurrent={setCurrentVoxelscape}
+          placeEditorOpen={placeEditorOpen}
+        />
+      )}
     </For>
   );
 };

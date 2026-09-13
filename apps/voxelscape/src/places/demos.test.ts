@@ -754,6 +754,43 @@ const runDp = async () => {
   return { host, endings, narrations, checkpoints, kills, voids };
 };
 
+describe("the Home demo", () => {
+  /** Boots the Home demo, returning its host and the toasts its script sent. */
+  const runHome = async () => {
+    const project = await loadBuiltinDemo(builtinDemo("home")!);
+    const toasts: string[] = [];
+    const host = new ScriptHost({
+      seed: project.manifest.seed,
+      now: () => 0,
+      heightAt: () => 0,
+      onToast: (_player, text) => toasts.push(text),
+    });
+    await host.loadProject(project.scripts, project.manifest.scripts![0]);
+    return { host, toasts };
+  };
+
+  it("lists the place with no models, played straight from the demo root", () => {
+    const demo = builtinDemo("home");
+    expect(demo?.manifest.name).toBe("home");
+    expect(demo?.manifest.mode).toBe("multi:edit");
+    expect(demo?.manifest.models ?? []).toEqual([]);
+    expect(BUILTIN_DEMOS).toContain(demo);
+  });
+
+  it("opens with the guide standing near the spawn", async () => {
+    const { host } = await runHome();
+    expect(host.npc("guide")).toMatchObject({ name: "Guide", x: 8, z: 8 });
+    host.dispose();
+  });
+
+  it("greets whoever talks to the guide", async () => {
+    const { host, toasts } = await runHome();
+    await host.talk("guide", "");
+    expect(toasts).toContain("Hello, traveller.");
+    host.dispose();
+  });
+});
+
 describe("the Don't Poop Yourself at School demo", () => {
   it("lists the demo with its models", () => {
     const demo = builtinDemo("dont-poop-yourself-at-school");

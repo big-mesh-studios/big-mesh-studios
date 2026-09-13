@@ -135,8 +135,8 @@ export class AtprotoController {
   }
 
   /** The handle to show for `did`, or the identifier itself when there is none. */
-  resolveHandle(did: string): Promise<string | null> {
-    return this.identity.handle(did);
+  resolveHandle(did: string): Promise<string> {
+    return this.identity.name(did);
   }
 
   /** The bytes of the picture an account shows for itself, or null when it shows none. */
