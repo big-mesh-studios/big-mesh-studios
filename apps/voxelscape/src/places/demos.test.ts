@@ -717,6 +717,236 @@ describe("the Zombies demo", () => {
   });
 });
 
+describe("the Zombies: The Mansion demo", () => {
+  /** A live player position the demo's own script reads through `engine.players`. */
+  let players: Array<{ did: string; x: number; y: number; z: number }>;
+  let mansionClockMs: number;
+
+  /** Loads the mansion demo and returns its project and script entry. */
+  const mansionProject = async () => {
+    stubModels();
+    const project = await loadBuiltinDemo(builtinDemo("zombies-mansion")!);
+    return { project, entry: project.manifest.scripts![0] };
+  };
+
+  /** Boots the mansion demo against the mutable `players` list and the shared clock. */
+  const mansion = async () => {
+    stubModels();
+    mansionClockMs = 0;
+    // The foyer, where the demo's own checkpoint stands the local player up.
+    players = [{ did: "", x: 0, y: 62, z: 8 }];
+    const { project, entry } = await mansionProject();
+    const checkpoints: Array<{ x: number; z: number; y?: number }> = [];
+    const toasts: string[] = [];
+    const host = new ScriptHost({
+      seed: project.manifest.seed,
+      now: () => mansionClockMs,
+      heightAt: () => 62,
+      solidAt: () => false,
+      waterAt: () => false,
+      getPlayers: () => players,
+      onToast: (_player, text) => toasts.push(text),
+      onCheckpoint: (_player, at) => checkpoints.push(at),
+    });
+    await host.loadProject(project.scripts, entry, project.models);
+    return { host, checkpoints, toasts };
+  };
+
+  /** Moves the shared clock forward one mansion tick and lets its timer fire. */
+  const tickMansion = async (host: ScriptHost): Promise<void> => {
+    mansionClockMs += 120;
+    await host.pump();
+  };
+
+  /** Advances the clock until the arena has poured and chased `round`'s wave. */
+  const pourWave = async (host: ScriptHost, ticks: number): Promise<void> => {
+    for (let i = 0; i < ticks; i++) {
+      await tickMansion(host);
+    }
+  };
+
+  it("lists the place with its models and the foyer spawn", () => {
+    const demo = builtinDemo("zombies-mansion");
+    expect(demo?.manifest.name).toBe("Zombies: The Mansion");
+    expect(demo?.manifest.seed).toBe(77_007);
+    expect(demo?.manifest.mode).toBe("multi");
+    for (const file of [
+      "zombie.zip",
+      "door.zip",
+      "bench.zip",
+      "shelf.zip",
+      "table.zip",
+      "trash.zip",
+      "poster.zip",
+    ]) {
+      expect(demo?.manifest.models).toContain(file);
+    }
+    expect(BUILTIN_DEMOS).toContain(demo);
+    // demo.manifest.spawn is [x, y, z]: the foyer floor the script stands it on.
+    expect(demo?.manifest.spawn).toEqual([0, 8, 62]);
+  });
+
+  it("loads each of its models as bytes", async () => {
+    const { project } = await mansionProject();
+    for (const file of [
+      "zombie.zip",
+      "door.zip",
+      "bench.zip",
+      "shelf.zip",
+      "table.zip",
+      "trash.zip",
+      "poster.zip",
+    ]) {
+      expect(project.models[file].length).toBeGreaterThan(0);
+    }
+  });
+
+  it("compiles a plan whose walls cut the once floor and leave its gaps open", async () => {
+    const { project, entry } = await mansionProject();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    const boxes = plan.flatMap((shape) => expandShape(shape));
+    // The foyer's stone floor tops out on world y 62, where every prop stands.
+    expect(columnSurfaces(boxes, 0, 2)).toContain(62);
+    // The interior wall between rooms b and c runs at voxel z=-8 (world -16),
+    // rising to world y 70 at its top — a one-voxel door gap at voxel x=0.
+    expect(columnSurfaces(boxes, -1, -8)).toContain(70);
+    expect(columnSurfaces(boxes, 1, -8)).toContain(70);
+    expect(columnSurfaces(boxes, 0, -8)).not.toContain(70);
+    // The mansion's west wall runs at voxel x=-4 (world -8) and is holed by
+    // each room's window — at voxel z=-5 (world -10) the wall reads as a hole.
+    expect(columnSurfaces(boxes, -4, -6)).toContain(70);
+    expect(columnSurfaces(boxes, -4, -5)).not.toContain(70);
+    // The courtyard gate is the mansion's own north wall's one-voxel hole.
+    expect(columnSurfaces(boxes, -2, -18)).toContain(70);
+    expect(columnSurfaces(boxes, -1, -18)).not.toContain(70);
+  });
+
+  it("starts in the foyer with a held starter pistol and the whole arena stood", async () => {
+    const { host, checkpoints, toasts } = await mansion();
+    // The starter pistol is defined as a weapon and already in hand.
+    expect(host.inventory.heldItem()).toMatchObject({ id: "pistol" });
+    const pistol = host.inventory.definition("pistol");
+    expect(pistol?.weapon).toEqual({
+      damage: 6,
+      reach: 34,
+      fireIntervalMs: 240,
+    });
+    // Every window carries its board, every interior door stands sealed, and
+    // the open courtyard gate is the one breach with no prop in it.
+    for (const id of [
+      "board.w-e",
+      "board.w-d",
+      "board.w-c",
+      "board.w-b",
+      "board.w-a",
+      "board.w-n1",
+      "board.w-n2",
+      "board.w-cw",
+      "board.w-ce",
+    ]) {
+      expect(host.prop(id)).toMatchObject({ model: "bench.zip" });
+    }
+    for (const id of ["door.de", "door.cd", "door.bc", "door.ab"]) {
+      expect(host.prop(id)).toMatchObject({ model: "door.zip" });
+    }
+    expect(host.prop("door.court")).toBeNull();
+    // The four gun racks and the furniture are stood once.
+    for (const id of [
+      "rack.pistol",
+      "rack.rifle",
+      "rack.shotgun",
+      "rack.machine",
+    ]) {
+      expect(host.prop(id)).toMatchObject({ model: "shelf.zip" });
+    }
+    expect(host.prop("table.e")).not.toBeNull();
+    expect(host.prop("bench.court")).not.toBeNull();
+    // The demo parks the respawn at the foyer floor and shows the opening HUD.
+    expect(checkpoints).toEqual([{ x: 0, z: 8, y: 62 }]);
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "cash", kind: "text", text: "$0" }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "round", kind: "text", text: "ROUND 1" }),
+    );
+    expect(toasts[0]).toContain("The horde comes in rounds");
+    host.dispose();
+  });
+
+  it("pours round one out of the spawn sites and each kill stakes the wallet", async () => {
+    const { host } = await mansion();
+    // The opening breather is 2.5s; after the wave lets out, round one pours
+    // one zombie per 1.5s from a rotating site, first from out west.
+    await pourWave(host, 30);
+    const first = host.npc("zombie-1-1");
+    expect(first).toMatchObject({ model: "zombie.zip" });
+    await host.hit(first!.id, "", 100, players[0].x, players[0].z);
+    expect(host.npc(first!.id)).toMatchObject({
+      dyingAt: expect.any(Number),
+    });
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "cash", kind: "text", text: "$100" }),
+    );
+    host.dispose();
+  });
+
+  it("sells an interior door once five kills fill the wallet, and keeps it sold", async () => {
+    const { host, toasts } = await mansion();
+    // Let round one's full wave out, then make five kills for the foyer door.
+    await pourWave(host, 180);
+    for (let i = 1; i <= 5; i++) {
+      const id = `zombie-1-${i}`;
+      const npc = host.npc(id);
+      if (npc !== null) {
+        await host.hit(id, "", 100, players[0].x, players[0].z);
+      }
+    }
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "cash", kind: "text", text: "$500" }),
+    );
+    // The foyer door costs 500: buying it removes the prop and empties the wallet.
+    await host.use("door.ab", "");
+    expect(host.prop("door.ab")).toBeNull();
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "cash", kind: "text", text: "$0" }),
+    );
+    expect(toasts).toContain("Door open.");
+    host.dispose();
+  });
+
+  it("resets the whole run when the local player dies, rebuyable doors aside", async () => {
+    const { host, toasts } = await mansion();
+    await pourWave(host, 180);
+    for (let i = 1; i <= 5; i++) {
+      const id = `zombie-1-${i}`;
+      if (host.npc(id) !== null) {
+        await host.hit(id, "", 100, players[0].x, players[0].z);
+      }
+    }
+    // Buy the foyer door, then die with the guns spent: the run resets — cash
+    // gone, every weapon taken, the door resealed, the round kept.
+    await host.use("door.ab", "");
+    expect(host.prop("door.ab")).toBeNull();
+    await host.died("", "zombie-1-1");
+    expect(host.inventory.heldItem()).toMatchObject({ id: "pistol" });
+    expect(host.inventory.count("pistol")).toBe(1);
+    expect(host.inventory.count("machine")).toBe(0);
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "cash", kind: "text", text: "$0" }),
+    );
+    expect(host.prop("door.ab")).toMatchObject({ model: "door.zip" });
+    expect(toasts.some((line) => line.includes("You died in round 1"))).toBe(
+      true,
+    );
+    host.dispose();
+  });
+});
+
 /** Loads the "Don't Poop Yourself at School" demo and returns its script entry. */
 const dontPoop = async () => {
   stubModels();

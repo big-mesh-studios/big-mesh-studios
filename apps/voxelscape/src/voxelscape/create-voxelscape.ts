@@ -30,6 +30,7 @@ import { FireFigures } from "../renderers/fire-figures";
 import { ExplosionFigures } from "../renderers/explosion-figures";
 import { FireEmbers } from "../world/fire-ember";
 import { pickFigure, type AimTarget } from "../places/figure-pick";
+import { pickVoxel } from "../world/picker";
 import type {
   DialogState,
   HudReadout,
@@ -1548,6 +1549,12 @@ export const createVoxelscape = ({
               position: [attackerNpc.x, attackerNpc.y, attackerNpc.z],
             },
     });
+    if (health.dead) {
+      // A death the world can name is a death the script hears about too, the
+      // way it already hears about the void: the last damage a player took is
+      // a fact a place's rules can fold over.
+      void scriptConsole?.died(cause);
+    }
   };
 
   /** The place script editor's door into the world: opening it, running the
@@ -1778,6 +1785,8 @@ export const createVoxelscape = ({
   let unmount: (() => void) | null = null;
   /** Seconds before the next lava burn may land while the player stands in it. */
   let lavaBurnCooldown = 0;
+  /** Seconds before the held weapon item may fire again. */
+  let weaponCooldown = 0;
   /** Seconds of contact damage each lava burn deals (about a quarter of a heart per burn). */
   const LAVA_BURN = 1;
 
@@ -2045,7 +2054,49 @@ export const createVoxelscape = ({
               itemUse(held.id);
             }
           }
-          if (snapshot.primary && !interacted) {
+          // A script item that is a weapon fires on the primary button instead
+          // of the wielded tool: the weapon's own reach, rate, and damage decide
+          // the shot, and the press is consumed below so the tool never also
+          // strikes. A touch's tap on an actor body is the same trigger the
+          // tools already use for a swing.
+          const heldWeapon = scriptConsole?.heldItem()?.weapon ?? null;
+          const weaponPress =
+            heldWeapon !== null &&
+            (snapshot.primary ||
+              (snapshot.tap && pick.primary?.kind === "actor"));
+          if (weaponPress && heldWeapon !== null) {
+            if (weaponCooldown <= 0) {
+              weaponCooldown = heldWeapon.fireIntervalMs / 1000;
+              const shot = pickFigure(
+                orbit,
+                heading,
+                npcAimTargets(),
+                heldWeapon.reach,
+              );
+              // A nearer solid voxel stands in the bullet's way the way it
+              // stands in a swing's way; a wall between the player and a
+              // zombie is a wall to a bullet too.
+              const blocked = pickVoxel(
+                world.blocks,
+                orbit,
+                heading,
+                heldWeapon.reach,
+              );
+              if (shot !== null && blocked.distance > shot.distance) {
+                const position = avatar.player.position;
+                // The shot lands the way any other strike does, so a place
+                // hears it exactly as it hears a sword swing.
+                npcFigures.flashHit(shot.id);
+                void scriptConsole?.hit(
+                  shot.id,
+                  heldWeapon.damage,
+                  position.x,
+                  position.z,
+                );
+              }
+            }
+          }
+          if (snapshot.primary && !interacted && !weaponPress) {
             const result = tool.primary(pick);
             if (result !== null) {
               setEditStatus(result);
@@ -2056,7 +2107,12 @@ export const createVoxelscape = ({
           // otherwise break whatever it started dragging from. The wielded
           // tools never pick a body except the sword, so this call is a sword
           // swing.
-          if (!interacted && snapshot.tap && pick.primary?.kind === "actor") {
+          if (
+            !interacted &&
+            !weaponPress &&
+            snapshot.tap &&
+            pick.primary?.kind === "actor"
+          ) {
             const result = tool.primary(pick);
             if (result !== null) {
               setEditStatus(result);
@@ -2086,6 +2142,7 @@ export const createVoxelscape = ({
         // Lava is a hazard the way water is a medium: standing in it burns,
         // on a short cooldown so the player can hop out between ticks.
         const p = avatar.player.position;
+        weaponCooldown -= dt;
         lavaBurnCooldown -= dt;
         if (
           (world.lavaAt(p.x, p.y, p.z) || world.lavaAt(p.x, p.y + 1.5, p.z)) &&

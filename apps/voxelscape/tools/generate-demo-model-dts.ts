@@ -20,6 +20,7 @@ import {
   DONT_POOP_MODELS,
   GASA4_MODELS,
   LATE_TO_SCHOOL_MODELS,
+  ZOMBIES_MANSION_MODELS,
   ZOMBIES_MODELS,
 } from "../src/places/demo-scripts/model-lists.ts";
 
@@ -39,6 +40,7 @@ const files = [
     ...GASA4_MODELS,
     ...LATE_TO_SCHOOL_MODELS,
     ...ZOMBIES_MODELS,
+    ...ZOMBIES_MANSION_MODELS,
     ...DONT_POOP_MODELS,
   ]),
 ];

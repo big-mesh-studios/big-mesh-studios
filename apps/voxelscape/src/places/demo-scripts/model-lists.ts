@@ -111,6 +111,21 @@ export const LATE_TO_SCHOOL_MODELS = [
 export const ZOMBIES_MODELS = ["zombie.zip"];
 
 /**
+ * The models the "Zombies: The Mansion" demo wears: the horde itself, the
+ * doors and window boards the breaches stand in, the racks the guns hang on,
+ * and the furniture the rooms and courtyard answer with.
+ */
+export const ZOMBIES_MANSION_MODELS = [
+  "zombie.zip",
+  "door.zip",
+  "bench.zip",
+  "shelf.zip",
+  "table.zip",
+  "trash.zip",
+  "poster.zip",
+];
+
+/**
  * The models the "Don't Poop Yourself at School" demo wears: lobby pickup,
  * hazard props, the four school staff, and the platform models used throughout
  * the nine-section course.
