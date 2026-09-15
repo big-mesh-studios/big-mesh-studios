@@ -1,0 +1,118 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--margin);
+  padding: var(--margin);
+  background-color: var(--back);
+  border: 1px solid var(--grey);
+  border-radius: var(--margin);
+}
+
+.heading {
+  margin: 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--light-grey);
+}
+
+.muted {
+  margin: 0;
+  color: var(--grey);
+}
+
+.notice {
+  margin: 0;
+  color: var(--light-grey);
+}
+
+.separator {
+  flex: 1 0 0.5rem;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--margin) / 2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--margin) / 2);
+  border-radius: calc(var(--margin) / 2);
+
+  &[data-selected] {
+    outline: 1px solid var(--front);
+  }
+}
+
+.itemButton {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  cursor: pointer;
+  padding: calc(var(--margin) / 2) var(--margin);
+  border: none;
+  background: transparent;
+  color: var(--front);
+  font: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.itemActions {
+  display: flex;
+  gap: calc(var(--margin) / 2);
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--margin);
+}
+
+.textarea {
+  min-height: 8rem;
+  resize: vertical;
+  padding: var(--margin);
+  border: 1px solid var(--grey);
+  border-radius: calc(var(--margin) / 2);
+  background-color: var(--dark-grey);
+  color: var(--front);
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.fileLabel {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  padding: var(--margin) calc(var(--margin) * 1.5);
+  border: 1px solid var(--grey);
+  border-radius: calc(var(--margin) / 2);
+  background-color: var(--dark-grey);
+  color: var(--front);
+
+  & input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+}
+
+.select {
+  padding: calc(var(--margin) / 2);
+  border: 1px solid var(--grey);
+  border-radius: calc(var(--margin) / 2);
+  background-color: var(--dark-grey);
+  color: var(--front);
+  font: inherit;
+}

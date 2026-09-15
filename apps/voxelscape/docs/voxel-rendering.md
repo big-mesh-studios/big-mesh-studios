@@ -1,6 +1,6 @@
 # How a voxel becomes a pixel
 
-Read out of the modules that do it at 0b06bf0 by `pnpm rendering`.
+Read out of the modules that do it at f437e82 by `pnpm rendering`.
 Every number below is the one the code declares, not a note about it.
 
 ## The path
@@ -113,7 +113,7 @@ spends against. An index costs 4 bytes on top, six to a quad.
 7. `scrollRequest`
 8. `flow`
 9. `multiplayer`
-10. `monsters`
+10. `figures`
 11. `environment`
 12. `meshDrain`
 13. `merge`
@@ -137,20 +137,20 @@ are the drawing that follows it.
 
 ## The numbers that govern it
 
-| constant                     | value                                | where                            | what it is for                                                                                                                                           |
-| ---------------------------- | ------------------------------------ | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VOXEL_SIZE`                 | `2`                                  | `world/level-data.ts`            | World units per voxel at LOD 0; each higher LOD doubles this value.                                                                                      |
-| `CHUNK_VOXELS`               | `64`                                 | `world/level-data.ts`            | The number of voxels per axis in a `WorldBlock`, the chunk the sphere streams.                                                                           |
-| `VOXEL_PADDING`              | `1`                                  | `world/voxel-store.ts`           | How many rows of extra voxels each block stores beyond its interior volume, on all six faces.                                                            |
-| `MAX_WORKERS`                | `4`                                  | `world/worker-pool.ts`           | How many world workers one pool runs at most.                                                                                                            |
-| `MAX_FILLS_PER_WORKER`       | `4`                                  | `world/fill-client.ts`           | How a drain distributes the workload: one batch per worker at a time, of at most this many slots.                                                        |
-| `MAX_SPARE_SETS`             | `MAX_FILLS_PER_WORKER * MAX_WORKERS` | `world/fill-client.ts`           | Sets of a block's three arrays kept to lend to the next fill, per array length.                                                                          |
-| `SUPERCHUNK_SPAN`            | `2`                                  | `renderers/triangle-renderer.ts` | Chunk cells per superchunk per axis: 2 chunks of 64³ voxels, 256³ world units.                                                                           |
-| `MAX_UPLOAD_STALL_FRAMES`    | `6`                                  | `renderers/triangle-renderer.ts` | Frames a superchunk may keep gaining members before a partial upload is forced.                                                                          |
-| `MAX_UPLOAD_BYTES_PER_FRAME` | `2 * 1024 * 1024`                    | `renderers/triangle-renderer.ts` | The bytes of merged geometry one frame may mark for GPU upload.                                                                                          |
-| `GEOMETRY_POOL_FRAMES`       | `8`                                  | `renderers/triangle-renderer.ts` | Frames' worth of upload the recycled geometry pool holds.                                                                                                |
-| `DEFAULT_OCCLUSION_INTERVAL` | `200`                                | `renderers/triangle-renderer.ts` | Frames between the hardware occlusion queries, each a readback that stalls the pipeline.                                                                 |
-| `INDEX_UPLOAD_BYTES`         | `4`                                  | `renderers/superchunk.ts`        | The bytes one index of merged geometry adds to an upload.                                                                                                |
-| `VERTEX_BYTES`               | `20`                                 | `renderers/vertex-format.ts`     | Bytes one vertex of merged geometry occupies, position and both lanes.                                                                                   |
-| `MAX_TILE_INDEX`             | `255`                                | `renderers/vertex-format.ts`     | The largest tile index the sheet lane can hold.                                                                                                          |
-| `MAX_BUILDS_PER_DRAIN`       | `12`                                 | `renderers/mesh-client.ts`       | How many block meshes to hand the workers per drain, in total; the workers do the heavy lifting, so the main thread only pays for wrapping the requests. |
+| constant                     | value                                | where                            | what it is for                                                                                                                                                                        |
+| ---------------------------- | ------------------------------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VOXEL_SIZE`                 | `2`                                  | `world/level-data.ts`            | World units per voxel at LOD 0; each higher LOD doubles this value.                                                                                                                   |
+| `CHUNK_VOXELS`               | `64`                                 | `world/level-data.ts`            | The number of voxels per axis in a `WorldBlock`, the chunk the sphere streams.                                                                                                        |
+| `VOXEL_PADDING`              | `1`                                  | `world/voxel-store.ts`           | How many rows of extra voxels each block stores beyond its interior volume, on all six faces.                                                                                         |
+| `MAX_WORKERS`                | `4`                                  | `world/worker-pool.ts`           | How many world workers one pool runs at most.                                                                                                                                         |
+| `MAX_FILLS_PER_WORKER`       | `4`                                  | `world/fill-client.ts`           | How a drain distributes the workload: one batch per worker at a time, of at most this many slots.                                                                                     |
+| `MAX_SPARE_SETS`             | `MAX_FILLS_PER_WORKER * MAX_WORKERS` | `world/fill-client.ts`           | Sets of a block's three arrays kept to lend to the next fill, per array length.                                                                                                       |
+| `SUPERCHUNK_SPAN`            | `2`                                  | `renderers/triangle-renderer.ts` | Chunk cells per superchunk per axis: 2 chunks of 64³ voxels, 256³ world units.                                                                                                        |
+| `MAX_UPLOAD_STALL_FRAMES`    | `45`                                 | `renderers/triangle-renderer.ts` | Frames a superchunk may keep gaining members before a partial upload is forced, and frames an edit's group of blocks may wait on each other before whatever has landed uploads alone. |
+| `MAX_UPLOAD_BYTES_PER_FRAME` | `2 * 1024 * 1024`                    | `renderers/triangle-renderer.ts` | The bytes of merged geometry one frame may mark for GPU upload.                                                                                                                       |
+| `GEOMETRY_POOL_FRAMES`       | `8`                                  | `renderers/triangle-renderer.ts` | Frames' worth of upload the recycled geometry pool holds.                                                                                                                             |
+| `DEFAULT_OCCLUSION_INTERVAL` | `200`                                | `renderers/triangle-renderer.ts` | Frames between the hardware occlusion queries, each a readback that stalls the pipeline.                                                                                              |
+| `INDEX_UPLOAD_BYTES`         | `4`                                  | `renderers/superchunk.ts`        | The bytes one index of merged geometry adds to an upload.                                                                                                                             |
+| `VERTEX_BYTES`               | `20`                                 | `renderers/vertex-format.ts`     | Bytes one vertex of merged geometry occupies, position and both lanes.                                                                                                                |
+| `MAX_TILE_INDEX`             | `255`                                | `renderers/vertex-format.ts`     | The largest tile index the sheet lane can hold.                                                                                                                                       |
+| `MAX_BUILDS_PER_DRAIN`       | `12`                                 | `renderers/mesh-client.ts`       | How many block meshes to hand the workers per drain, in total; the workers do the heavy lifting, so the main thread only pays for wrapping the requests.                              |

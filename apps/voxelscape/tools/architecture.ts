@@ -48,6 +48,8 @@ const AREAS: Record<string, string> = {
   environment: "the sky, the clock, the weather and the sound",
   atproto: "being signed in, and reading and writing published records",
   ui: "what is drawn over the world in the page",
+  "level-editor":
+    "editing the running world's structures, as an overlay on its canvas",
 };
 
 /**
@@ -60,6 +62,7 @@ const MAY_DEPEND_ON: Record<string, readonly string[]> = {
   shell: [
     "atproto",
     "environment",
+    "level-editor",
     "multiplayer",
     "places",
     "player",
@@ -72,6 +75,7 @@ const MAY_DEPEND_ON: Record<string, readonly string[]> = {
   voxelscape: [
     "atproto",
     "environment",
+    "level-editor",
     "multiplayer",
     "places",
     "player",
@@ -89,6 +93,7 @@ const MAY_DEPEND_ON: Record<string, readonly string[]> = {
   environment: [],
   atproto: ["places", "world"],
   ui: ["places", "player", "renderers", "shell", "voxelscape"],
+  "level-editor": ["places", "voxelscape", "world"],
 };
 
 /** One module of the world: where it is, which area it belongs to, and its size. */

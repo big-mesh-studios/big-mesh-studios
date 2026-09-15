@@ -1,10 +1,19 @@
 import {
+  BoxGeometry,
   Color,
+  Mesh,
+  MeshBasicMaterial,
   PerspectiveCamera,
   Scene,
+  Vector2,
   Vector3,
 } from "@random-mesh/rmsl/scene";
-import { createSignal, type Accessor, type Setter } from "solid-js";
+import {
+  createEffect,
+  createSignal,
+  type Accessor,
+  type Setter,
+} from "solid-js";
 import {
   describeSetup,
   WalkTraceRecorder,
@@ -78,7 +87,10 @@ import { FlowController } from "../world/flow-controller";
 import {
   createVoxelWorld,
   type InitialDrawProgress,
+  type VoxelWorld,
 } from "../world/create-voxel-world";
+import { KitCameraControl } from "../level-editor/camera/KitCameraControl";
+import { mouseRay, projectPtToScreen } from "../level-editor/camera/project";
 import type { SubTexture, VoxelTiles } from "../renderers/atlas";
 import { cellsInSphere } from "../world/chunk-sphere";
 import { type Dim3 } from "../world/level-data";
@@ -194,6 +206,13 @@ export interface VoxelscapeConfig {
    */
   placeEditorOpen?: [Accessor<boolean>, Setter<boolean>];
   /**
+   * Whether the `/place:level-editor` overlay is showing, and how to flip it —
+   * injected the same way `placeEditorOpen` is, so the flag survives this
+   * instance being replaced by a reboot. Defaults to a fresh, instance-local
+   * signal.
+   */
+  levelEditorOpen?: [Accessor<boolean>, Setter<boolean>];
+  /**
    * How this place handles other players and their edits; omitted for the
    * default world and for a place published before modes existed, both of
    * which keep multiplayer unscoped and edits self-only rather than being
@@ -265,6 +284,28 @@ export interface WorldStats {
 export interface Voxelscape {
   scene: Scene;
   camera: PerspectiveCamera;
+  /**
+   * The streamed voxel world itself, so the level editor can restamp its
+   * structures and read its blocks without building a second world.
+   */
+  world: VoxelWorld;
+  /** The canvas the world is mounted on, or null before `mount`. */
+  canvas: Accessor<HTMLCanvasElement | null>;
+  /**
+   * The level editor's handle on the running world: whether it is showing, the
+   * orbit camera it draws through, the camera control attached to the canvas,
+   * and the plan it edits.
+   */
+  levelEditor: {
+    open: Accessor<boolean>;
+    setOpen(open: boolean): void;
+    camera: PerspectiveCamera;
+    control: KitCameraControl;
+    structures: Accessor<StructurePlan>;
+    setStructures(plan: StructurePlan): void;
+    /** The box drawn around the selected shape; the overlay sizes and shows it. */
+    highlight: Mesh;
+  };
   player: Player;
   input: InputController;
   inventory: Inventory;
@@ -399,6 +440,7 @@ export const createVoxelscape = ({
   place,
   activeProject,
   placeEditorOpen: placeEditorOpenSignal,
+  levelEditorOpen: levelEditorOpenSignal,
   mode,
   placeUri = DEFAULT_WORLD_URL,
   spawn = [0, 0, 0],
@@ -487,6 +529,19 @@ export const createVoxelscape = ({
   /** Whether the `/place:editor` panel is showing. */
   const [placeEditorOpen, setPlaceEditorOpen] =
     placeEditorOpenSignal ?? createSignal(false);
+  /** Whether the `/place:level-editor` overlay is showing. */
+  const [levelEditorOpen, setLevelEditorOpen] =
+    levelEditorOpenSignal ?? createSignal(false);
+  /** The plan the world currently stamps, kept in step with the editor and scripts. */
+  const [levelStructures, setLevelStructures] = createSignal<StructurePlan>(
+    structures ?? [],
+  );
+  /** Where the cursor last was on the canvas, for the editor camera's aiming. */
+  const [editorMouse, setEditorMouse] = createSignal<Vector2 | undefined>(
+    undefined,
+  );
+  const [mountedCanvasEl, setMountedCanvasEl] =
+    createSignal<HTMLCanvasElement | null>(null);
   // Reassigned once a clone publishes this session's place under the
   // signed-in account, so `placeEditor.isMine` reads true right away rather
   // than waiting for the address-bar navigation to reboot the world.
@@ -513,7 +568,7 @@ export const createVoxelscape = ({
     chunkRadiusY,
     terrain,
     customVoxelTiles,
-    structures,
+    structures: levelStructures(),
     spawn,
     placeUri,
     onInitialDraw: setLoading,
@@ -525,6 +580,20 @@ export const createVoxelscape = ({
    * actual cutoff).
    */
   const camera = new PerspectiveCamera(50, 1.0, 0.1, world.ringRadius + 200);
+  /**
+   * The level editor's orbit camera. It is separate from the game camera
+   * because the player rewrites that one's pose every frame; the frame loop
+   * draws from whichever is active.
+   */
+  const editorCamera = new PerspectiveCamera(
+    50,
+    1.0,
+    0.1,
+    world.ringRadius + 200,
+  );
+  /** The camera the frame loop draws from: the editor's while it is open. */
+  const activeCamera = (): PerspectiveCamera =>
+    levelEditorOpen() ? editorCamera : camera;
   /**
    * The solid boxes the place's props present, refreshed each frame from what
    * the script has placed. The player's samplers below fold them in, so the
@@ -1482,6 +1551,19 @@ export const createVoxelscape = ({
    * puts it in front of or behind another.
    */
   const scene = new Scene();
+  /**
+   * The box drawn around the level editor's selected shape. It lives in the
+   * scene so it draws over the world, and stays hidden until one is selected.
+   */
+  const levelEditorHighlight = new Mesh(
+    new BoxGeometry(1, 1, 1),
+    new MeshBasicMaterial({
+      color: 0xffe066,
+      transparent: true,
+      opacity: 0.35,
+    }),
+  );
+  levelEditorHighlight.visible = false;
   scene.add(
     environment.sky,
     world.terrain,
@@ -1494,6 +1576,7 @@ export const createVoxelscape = ({
     world.water,
     environment.weatherEffects,
     world.underwaterTint,
+    levelEditorHighlight,
     // The camera carries the held sword, and it has to be part of the scene
     // for its children to be drawn; it also sits last so the sword draws over
     // the world when it overlaps the view.
@@ -1652,6 +1735,9 @@ export const createVoxelscape = ({
             seed,
             region: planRegionAround(spawnPoint ?? spawn),
           });
+          if (plan.length > 0) {
+            setLevelStructures(plan);
+          }
           const count = `${plan.length} structure shape${
             plan.length === 1 ? "" : "s"
           }`;
@@ -1707,6 +1793,18 @@ export const createVoxelscape = ({
       return next
         ? "place editor opened — write your place's scripts, run them, then publish"
         : "place editor closed";
+    },
+    toggleLevelEditor: () => {
+      const next = !levelEditorOpen();
+      setLevelEditorOpen(next);
+      if (next) {
+        // The editor and the script editor are two answers to the same panel;
+        // opening one puts the other away.
+        setPlaceEditorOpen(false);
+      }
+      return next
+        ? "level editor opened — build the world's structures, then /place:level-editor closes it"
+        : "level editor closed";
     },
     script,
     resolution,
@@ -1938,6 +2036,53 @@ export const createVoxelscape = ({
     probe.gauge(Field.playerZ, position.z);
   };
 
+  /**
+   * The level editor's camera control: the same toolbox-style orbit control the
+   * editor uses standalone, aimed at the world it is mounted over. It is
+   * attached to the canvas by `mount` and only acts while the editor is open.
+   */
+  const editorControl = new KitCameraControl({
+    getActiveCamera: () => editorCamera,
+    getProjection: () => "Perspective",
+    mousePos: () => editorMouse(),
+    mouseRay: () => {
+      const canvas = mountedCanvasEl();
+      const position = editorMouse();
+      if (canvas === null || position === undefined) {
+        return undefined;
+      }
+      return mouseRay(
+        editorCamera,
+        canvas.clientWidth,
+        canvas.clientHeight,
+        position.x,
+        position.y,
+      );
+    },
+    projectPtToScreen: (pt) => {
+      const canvas = mountedCanvasEl();
+      if (canvas === null) {
+        return undefined;
+      }
+      return projectPtToScreen(
+        editorCamera,
+        canvas.clientWidth,
+        canvas.clientHeight,
+      )(pt);
+    },
+    pickingDist: ({ mouseRay: ray }) => {
+      const pick = pickVoxel(
+        world.blocks,
+        [ray.origin.x, ray.origin.y, ray.origin.z],
+        [ray.direction.x, ray.direction.y, ray.direction.z],
+        256,
+      );
+      return pick.target === null
+        ? undefined
+        : { t: pick.distance, objectId: "" };
+    },
+  });
+
   const advance = (dt: number): void => {
     const progress = loading();
     if (progress.drawn < progress.total) {
@@ -1957,6 +2102,7 @@ export const createVoxelscape = ({
     if (
       progress.spawnDrawn &&
       !placeEditorOpen() &&
+      !levelEditorOpen() &&
       world.cellReady(
         avatar.player.position.x,
         avatar.player.position.y,
@@ -2228,8 +2374,14 @@ export const createVoxelscape = ({
       // tells the host time has passed even when no player action arrived.
       void scriptConsole?.pump();
     }
+    // While the level editor is open the player block above is skipped, so the
+    // window follows the editor's orbit target instead of the player.
+    if (levelEditorOpen()) {
+      const focus = editorControl.target;
+      world.scrollTo(focus.x, focus.y, focus.z);
+    }
     probe.begin(Phase.environment);
-    const lighting = environment.tick(dt, camera);
+    const lighting = environment.tick(dt, activeCamera());
     skyColor.set(
       lighting.skyColor[0],
       lighting.skyColor[1],
@@ -2243,7 +2395,7 @@ export const createVoxelscape = ({
     hand.applyLighting(lighting);
     probe.end(Phase.environment);
     probe.begin(Phase.rendererTick);
-    world.renderer.tick(dt, camera);
+    world.renderer.tick(dt, activeCamera());
     probe.end(Phase.rendererTick);
     reportGauges();
   };
@@ -2297,12 +2449,62 @@ export const createVoxelscape = ({
     }
   };
 
+  /**
+   * The level editor's handle on this world, read by its UI overlay through the
+   * `Voxelscape` object. The plan it exposes is the same one the world stamps.
+   */
+  const levelEditor = {
+    open: levelEditorOpen,
+    setOpen: (open: boolean) => setLevelEditorOpen(open),
+    camera: editorCamera,
+    control: editorControl,
+    structures: levelStructures,
+    setStructures: (plan: StructurePlan) => {
+      setLevelStructures(plan);
+      world.setStructures(plan);
+    },
+    highlight: levelEditorHighlight,
+  };
+
+  // The control is bound to the canvas once it exists and merely no-ops while
+  // the editor is closed, so opening and closing never tears listeners down and
+  // rebuilds them. Opening also hands input to the editor and seeds the orbit on
+  // the player, so the editor looks at the ground the player stands on.
+  createEffect(
+    () => ({ open: levelEditorOpen(), canvas: mountedCanvasEl() }),
+    ({ open, canvas }) => {
+      editorControl.enabled = open && canvas !== null;
+      input.setEnabled(!open);
+      if (!open || canvas === null) {
+        return;
+      }
+      const feet = avatar.player.position;
+      const target = new Vector3(feet.x, feet.y + 1, feet.z);
+      editorCamera.position.set(target.x + 32, target.y + 24, target.z + 32);
+      editorCamera.lookAt(target);
+      editorCamera.updateMatrixWorld();
+      editorControl.syncFromCamera(editorCamera, target);
+      void document.exitPointerLock?.();
+    },
+  );
+
   const mount = (canvas: HTMLCanvasElement): (() => void) => {
     mountedCanvas = canvas;
+    setMountedCanvasEl(canvas);
+    editorControl.detach();
+    editorControl.attach(canvas);
+    // The editor camera aims through the cursor, so its position over the
+    // canvas is tracked here rather than through the player's input handlers.
+    const onEditorPointerMove = (event: PointerEvent) => {
+      setEditorMouse(new Vector2(event.offsetX, event.offsetY));
+    };
+    const onEditorPointerLeave = () => setEditorMouse(undefined);
+    canvas.addEventListener("pointermove", onEditorPointerMove);
+    canvas.addEventListener("pointerleave", onEditorPointerLeave);
     const loop = createRenderLoop({
       canvas,
       scene,
-      camera,
+      camera: activeCamera,
       antialias: multisampling(),
       debugPerf,
       resolution,
@@ -2318,6 +2520,10 @@ export const createVoxelscape = ({
 
     unmount = () => {
       unmount = null;
+      editorControl.detach();
+      canvas.removeEventListener("pointermove", onEditorPointerMove);
+      canvas.removeEventListener("pointerleave", onEditorPointerLeave);
+      setMountedCanvasEl(null);
       loop.dispose();
     };
 
@@ -2327,6 +2533,9 @@ export const createVoxelscape = ({
   return {
     scene,
     camera,
+    world,
+    canvas: mountedCanvasEl,
+    levelEditor,
     player: avatar.player,
     input,
     inventory,
@@ -2368,6 +2577,7 @@ export const createVoxelscape = ({
       fireFigures.clear();
       explosionFigures.clear();
       hand.dispose();
+      editorControl.dispose();
       input.dispose();
     },
   };

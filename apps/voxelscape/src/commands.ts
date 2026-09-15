@@ -166,6 +166,8 @@ export interface CommandsParams {
   navigate: (to: string) => void;
   /** Opens whether the place script editor is showing, and reports the flip. */
   togglePlaceEditor: () => string;
+  /** Opens whether the level editor is showing, and reports the flip. */
+  toggleLevelEditor: () => string;
   /** Driving the place script loaded for this session, over the console. */
   script: {
     demo(): Promise<string>;
@@ -257,6 +259,7 @@ export const createCommands = ({
   placeUri,
   navigate,
   togglePlaceEditor,
+  toggleLevelEditor,
   script,
   resolution,
   setView,
@@ -697,6 +700,11 @@ export const createCommands = ({
     "/place:editor": {
       description: "open (or close) the place script editor",
       run: () => togglePlaceEditor(),
+    },
+    "/place:level-editor": {
+      description:
+        "open (or close) the level editor for this world's structures",
+      run: () => toggleLevelEditor(),
     },
     "/place:create": {
       description: `publish a new, empty place under your account, seeded from the world being played, and join it — modes: ${PLACE_MODES.join(", ")} (default solo:edit)`,

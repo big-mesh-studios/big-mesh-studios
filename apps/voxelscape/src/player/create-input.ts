@@ -131,6 +131,12 @@ export interface InputController {
   install(): void;
   /** Removes every listener `install` bound. The controller can be installed again after. */
   dispose(): void;
+  /**
+   * Whether the canvas and key handlers act. Set false while the level editor
+   * owns the canvas and the keyboard, so a right-drag orbits the editor camera
+   * instead of turning the player.
+   */
+  setEnabled(enabled: boolean): void;
   /** Called once per frame: returns the latest input and clears per-frame state. */
   consume(): InputSnapshot;
   /** Edge-triggered primary (strike) request, from the left mouse button or a touch hold. */
@@ -244,6 +250,8 @@ export const createInput = (): InputController => {
     wheelPendingTimer: undefined,
   };
   let controller: AbortController | null = null;
+  /** False while another UI (the level editor) owns the canvas and keyboard. */
+  let enabled = true;
 
   const addLookDelta = (dx: number, dy: number): void => {
     state.lookDx += dx;
@@ -255,6 +263,9 @@ export const createInput = (): InputController => {
     onPointerDown: async (
       event: PointerEvent & { currentTarget: HTMLCanvasElement },
     ) => {
+      if (!enabled) {
+        return;
+      }
       // Pointer lock is a mouse-only concept — iOS Safari doesn't implement
       // it at all, and it isn't how touch input works anyway. Only a mouse
       // press is gated behind acquiring the lock first.
@@ -346,6 +357,9 @@ export const createInput = (): InputController => {
       }
     },
     onMouseMove: (event: MouseEvent & { currentTarget: HTMLCanvasElement }) => {
+      if (!enabled) {
+        return;
+      }
       if (document.pointerLockElement !== event.currentTarget) {
         return;
       }
@@ -354,6 +368,9 @@ export const createInput = (): InputController => {
     onPointerUp: (
       event: PointerEvent & { currentTarget: HTMLCanvasElement },
     ) => {
+      if (!enabled) {
+        return;
+      }
       if (
         event.pointerType === "mouse" &&
         event.button === 2 &&
@@ -364,7 +381,7 @@ export const createInput = (): InputController => {
       }
     },
     onWheel: (event: WheelEvent) => {
-      if (isEditableTarget(event)) {
+      if (!enabled || isEditableTarget(event)) {
         return;
       }
       event.preventDefault();
@@ -403,7 +420,7 @@ export const createInput = (): InputController => {
     window.addEventListener(
       "keydown",
       (e) => {
-        if (isEditableTarget(e)) {
+        if (!enabled || isEditableTarget(e)) {
           return;
         }
         if (e.code === "Space") {
@@ -439,7 +456,7 @@ export const createInput = (): InputController => {
     window.addEventListener(
       "keyup",
       (e) => {
-        if (isEditableTarget(e)) {
+        if (!enabled || isEditableTarget(e)) {
           return;
         }
         if (e.code === "Space") {
@@ -470,6 +487,10 @@ export const createInput = (): InputController => {
     install,
     addLookDelta,
     canvasHandlers,
+
+    setEnabled(value: boolean) {
+      enabled = value;
+    },
 
     dispose() {
       controller?.abort();

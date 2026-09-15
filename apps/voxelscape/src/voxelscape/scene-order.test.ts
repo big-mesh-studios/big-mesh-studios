@@ -64,6 +64,7 @@ describe("scene draw order", () => {
       "world.water",
       "environment.weatherEffects",
       "world.underwaterTint",
+      "levelEditorHighlight",
       "camera",
     ]);
   });

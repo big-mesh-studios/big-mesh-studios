@@ -1,0 +1,31 @@
+.field {
+  display: flex;
+  align-items: center;
+  gap: var(--margin);
+}
+
+.label {
+  color: var(--light-grey);
+  min-width: 2.5em;
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  padding: calc(var(--margin) / 2);
+  border: 1px solid var(--grey);
+  border-radius: calc(var(--margin) / 2);
+  background-color: var(--dark-grey);
+  color: var(--front);
+  font: inherit;
+}
+
+.vec3 {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--margin) / 2);
+  margin: 0;
+  padding: var(--margin);
+  border: 1px solid var(--grey);
+  border-radius: calc(var(--margin) / 2);
+}

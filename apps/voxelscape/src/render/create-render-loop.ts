@@ -17,8 +17,12 @@ const RETURN_HOLD_FRAMES = 60;
 export interface RenderLoopConfig {
   canvas: HTMLCanvasElement;
   scene: Scene;
-  /** Its aspect ratio is kept in step with the canvas's layout size. */
-  camera: PerspectiveCamera;
+  /**
+   * What the frame is drawn from. A getter lets one loop follow whichever
+   * camera is active — the player's, or the level editor's orbit camera —
+   * without being torn down and remounted.
+   */
+  camera: PerspectiveCamera | (() => PerspectiveCamera);
   /** The colour to clear to, read once per frame after `onFrame` has run. */
   clearColor: () => Color;
   /**
@@ -98,6 +102,9 @@ export const createRenderLoop = ({
 }: RenderLoopConfig): RenderLoop => {
   const renderer = new WebGLRenderer(canvas, { antialias });
   renderer.setClearColor(clearColor(), 1);
+  /** The camera this frame draws from, resolving the config's getter if given. */
+  const viewCamera = (): PerspectiveCamera =>
+    typeof camera === "function" ? camera() : camera;
   /** Built the first frame the statistics are asked for, and kept from then on. */
   let timer: GpuTimerApi | undefined;
   /**
@@ -124,9 +131,10 @@ export const createRenderLoop = ({
    */
   const render = (): boolean => {
     const showStats = debugPerf();
+    const view = viewCamera();
     if (!showStats && !probe.armed) {
-      beforeRender?.(renderer, camera);
-      renderer.render(scene, camera);
+      beforeRender?.(renderer, view);
+      renderer.render(scene, view);
       // Handed over on this path as well as the timed one: whether a frame is
       // being measured has nothing to do with whether somebody wants a picture
       // of it, and a world nobody is measuring is the ordinary case.
@@ -137,13 +145,13 @@ export const createRenderLoop = ({
     occlusionTimer ??= createGpuTimer(renderer.gl);
     occlusionTimer.begin();
     probe.begin(Phase.occlusion);
-    beforeRender?.(renderer, camera);
+    beforeRender?.(renderer, view);
     probe.end(Phase.occlusion);
     occlusionTimer.end();
     occlusionTimer.poll();
     timer.begin();
     probe.begin(Phase.draw);
-    renderer.render(scene, camera);
+    renderer.render(scene, view);
     probe.end(Phase.draw);
     afterRender?.(canvas);
     timer.end();
@@ -248,8 +256,9 @@ export const createRenderLoop = ({
     }
     baseWidth = rect.width * window.devicePixelRatio;
     baseHeight = rect.height * window.devicePixelRatio;
-    camera.aspect = aspect;
-    camera.updateProjectionMatrix();
+    const view = viewCamera();
+    view.aspect = aspect;
+    view.updateProjectionMatrix();
     // a layout change changes the render cost, so hold adaptation while
     // the new base resolution settles
     adaptive.hold();

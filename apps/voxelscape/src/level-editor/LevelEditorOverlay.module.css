@@ -1,0 +1,59 @@
+.overlay {
+  --back: rgba(20, 24, 32, 0.92);
+  --front: #e6e9ef;
+  --grey: #5a6272;
+  --light-grey: #9aa3b5;
+  --dark-grey: #2c313c;
+  --margin: 6px;
+  --size: 32px;
+
+  position: absolute;
+  inset: 0;
+  /* Above the ending overlay, and transparent to pointers so the canvas
+     beneath keeps the camera's drag and wheel. */
+  z-index: 30;
+  pointer-events: none;
+  color: var(--front);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  font-size: 0.85rem;
+}
+
+.canvasPane {
+  pointer-events: none;
+}
+
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--light-grey);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.handle {
+  pointer-events: auto;
+  background: var(--grey);
+  cursor: col-resize;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--margin);
+  height: 100%;
+  min-height: 0;
+  padding: var(--margin);
+  overflow-y: auto;
+  box-sizing: border-box;
+  pointer-events: auto;
+  background: var(--back);
+}

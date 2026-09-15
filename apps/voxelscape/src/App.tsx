@@ -40,6 +40,7 @@ import {
   useVoxelscape,
   VoxelscapeContext,
 } from "./voxelscape/voxelscape-context";
+import { LevelEditorOverlay } from "./level-editor/LevelEditorOverlay";
 
 /** How long a line the world reports on its own is left on screen. */
 const NOTICE_SECONDS = 6;
@@ -98,6 +99,9 @@ interface AppChromeState {
   terminal: ConsoleState;
   setCurrentVoxelscape(voxelscape: Voxelscape): void;
   placeEditorOpen: [Accessor<boolean>, Setter<boolean>];
+  /** Whether the `/place:level-editor` overlay is showing, owned above any
+   * one boot the same way the place editor's flag is. */
+  levelEditorOpen: [Accessor<boolean>, Setter<boolean>];
 }
 
 const AppChromeContext = createContext<AppChromeState>();
@@ -115,6 +119,7 @@ export const AppChrome: ParentComponent = (props) => {
   const [currentVoxelscape, setCurrentVoxelscape] =
     createSignal<Voxelscape | null>(null);
   const placeEditorOpen = createSignal(false);
+  const levelEditorOpen = createSignal(false);
   const terminal = createConsole({
     onCommand: (line) =>
       currentVoxelscape()?.commands.run(line) ??
@@ -124,7 +129,12 @@ export const AppChrome: ParentComponent = (props) => {
 
   return (
     <AppChromeContext
-      value={{ terminal, setCurrentVoxelscape, placeEditorOpen }}
+      value={{
+        terminal,
+        setCurrentVoxelscape,
+        placeEditorOpen,
+        levelEditorOpen,
+      }}
     >
       {props.children}
       {/* Waits for the first boot so `Console` always has a real instance to
@@ -153,6 +163,8 @@ const World: Component<{
   /** Whether the `/place:editor` panel is showing, owned above any one boot
    * so opening it survives a reboot the same way the terminal does. */
   placeEditorOpen: [Accessor<boolean>, Setter<boolean>];
+  /** Whether the `/place:level-editor` overlay is showing, owned likewise. */
+  levelEditorOpen: [Accessor<boolean>, Setter<boolean>];
 }> = (props) => {
   let hud: HTMLDivElement | undefined;
 
@@ -165,6 +177,7 @@ const World: Component<{
     place: props.launch.place,
     activeProject: props.launch.project,
     placeEditorOpen: props.placeEditorOpen,
+    levelEditorOpen: props.levelEditorOpen,
     mode: props.launch.mode,
     placeUri: props.launch.placeUri,
     chunkRadius: radiusInUrl(),
@@ -206,32 +219,37 @@ const World: Component<{
             world onto a new one. Keying the list on the setting is what does
             that: the same value keeps the canvas, a changed one replaces it. */}
         <For each={[voxelscape.multisampling()]}>{() => <WorldCanvas />}</For>
-        <Show when={coarsePointer()}>
-          <CoarseControls />
+        <Show when={!voxelscape.levelEditor.open()}>
+          <Show when={coarsePointer()}>
+            <CoarseControls />
+          </Show>
+          <EditHud />
+          <HealthHud />
+          <DialogOverlay />
+          <EndingOverlay />
+          <toasts.Stack>
+            <Show when={voxelscape.showStats()}>
+              <Toast>
+                <StatsToast />
+              </Toast>
+            </Show>
+            <Show when={voxelscape.debugPerf()}>
+              <Toast>
+                <div
+                  ref={(el) => {
+                    hud = el;
+                  }}
+                  class={styles["debug-perf"]}
+                />
+              </Toast>
+            </Show>
+            <LoadingToast />
+          </toasts.Stack>
         </Show>
-        <EditHud />
-        <HealthHud />
-        <DialogOverlay />
-        <EndingOverlay />
         <LoadingScreen />
-        <toasts.Stack>
-          <Show when={voxelscape.showStats()}>
-            <Toast>
-              <StatsToast />
-            </Toast>
-          </Show>
-          <Show when={voxelscape.debugPerf()}>
-            <Toast>
-              <div
-                ref={(el) => {
-                  hud = el;
-                }}
-                class={styles["debug-perf"]}
-              />
-            </Toast>
-          </Show>
-          <LoadingToast />
-        </toasts.Stack>
+        <Show when={voxelscape.levelEditor.open()}>
+          <LevelEditorOverlay />
+        </Show>
       </div>
     </VoxelscapeContext>
   );
@@ -315,7 +333,7 @@ const radiusInUrl = (): number | undefined => {
 };
 
 const App: Component<{}> = () => {
-  const { terminal, setCurrentVoxelscape, placeEditorOpen } =
+  const { terminal, setCurrentVoxelscape, placeEditorOpen, levelEditorOpen } =
     useContext(AppChromeContext);
   const [launch, setLaunch] = createSignal<LaunchConfig | null>(null);
   const [joiningLine, setJoiningLine] = createSignal("joining world…");
@@ -515,6 +533,7 @@ const App: Component<{}> = () => {
           terminal={terminal}
           setCurrent={setCurrentVoxelscape}
           placeEditorOpen={placeEditorOpen}
+          levelEditorOpen={levelEditorOpen}
         />
       )}
     </For>

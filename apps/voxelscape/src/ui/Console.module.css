@@ -25,6 +25,13 @@
   anchor-name: --console;
 }
 
+/* The level editor's panel owns the right edge, so the console's button — and
+   the panel anchored to it — moves to sit just left of that panel. The width
+   is published by the level-editor overlay as it measures its split. */
+.levelEditorOpen .anchor {
+  right: calc(var(--margin) + var(--level-editor-panel-width, 0px));
+}
+
 /* Dims the world behind the panel, only while it holds the place editor —
    the bare terminal sits over the game without one. */
 .scrim {

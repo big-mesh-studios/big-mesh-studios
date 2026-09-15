@@ -532,6 +532,9 @@ export const Console: Component<ConsoleProps> = (props) => {
   const voxelscape = props.voxelscape;
   const coarsePointer = createMediaQuery("(any-pointer: coarse)");
   const editorOpen = (): boolean => voxelscape().placeEditor.open();
+  // The level editor's panel owns the right edge of the screen, so while it is
+  // open the console shifts left of it (see the stylesheet's own note).
+  const levelEditorOpen = (): boolean => voxelscape().levelEditor.open();
   const [terminalOpen, setTerminalOpen] = createSignal(false);
   const [terminalExpanded, setTerminalExpanded] =
     createSignal(!coarsePointer());
@@ -647,7 +650,7 @@ export const Console: Component<ConsoleProps> = (props) => {
   );
 
   return (
-    <div class={styles.underlay}>
+    <div class={[styles.underlay, levelEditorOpen() && styles.levelEditorOpen]}>
       <button
         ref={anchor}
         class={styles.anchor}
