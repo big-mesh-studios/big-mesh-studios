@@ -8,7 +8,6 @@ import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import { isStructurePlan, parseStructurePlan } from "../places/plan";
 import { Command } from "./command/Command";
 import { createCommander } from "./command/commander";
-import { BLOCK_CHOICES } from "./structures/blocks";
 import { cloneShape, planScript, translateShape } from "./structures/plan";
 import type { PlanShape, StructurePlan, ToolKind } from "./types";
 import { UndoRedoManager } from "./undo-redo";
