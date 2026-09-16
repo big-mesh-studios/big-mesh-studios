@@ -27,7 +27,7 @@ export const EditHud: Component = () => {
     }
   });
 
-  // Red reads as "the primary tap does something to what you're looking
+  // Red reads as "the primary button does something to what you're looking
   // at" — a strike, or any entity you're about to use.
   const aim = (): string | undefined => {
     if (npcAim()?.action === "use") {
@@ -74,10 +74,10 @@ export const EditHud: Component = () => {
           {editStatus() ||
             (scriptItem() !== null
               ? `holding ${scriptItem()!.name} — ${
-                  coarsePointer() ? "tap" : "press E"
+                  coarsePointer() ? "use button" : "press E"
                 } to use`
               : coarsePointer()
-                ? "hold world to dig  •  tap to strike"
+                ? "dig button to strike  •  use button to talk"
                 : "click to strike  •  right-click to use")}
         </div>
       </div>

@@ -80,6 +80,14 @@ _Avoid_: Item (that's the inventory row a tool is reached through), weapon (a bl
 What the crosshair is over, as the wielded **Tool** found it: a monster, or a voxel, each with the distance along the look ray it was crossed at. A tool's pick carries one of these for the primary button and the cell a placement would fill for the secondary. The distance is what lets the sword compare its two picks and take the nearer, which is why a swing cannot land on a monster through a wall — block reach exceeds sword reach, so any wall in front of a reachable monster is itself the nearer pick.
 _Avoid_: Pick (that's `pickVoxel`/`pickMonster`'s own result, which a target is built from), hit, inReach (the boolean this replaced meant either kind depending on the selection)
 
+**Touch controls**:
+What a coarse pointer gets in place of a mouse and keyboard: a joystick in the bottom-left that drives `setTouchMove`, and a cluster of circular **Action button**s in the bottom-right — dig, place/guard, jump, and use. The look area is camera-only, so a drag that turns the view never mines or builds, and the level editor's floating apply-and-toggle cluster over its canvas is the same idea. Laid out by `CoarseControls.tsx` and `level-editor/TouchControls.tsx`, each button drawing its glyph from `ui/icons.tsx`.
+_Avoid_: D-pad (only the joystick is one), HUD (that is the crosshair and hotbar, drawn the same on every pointer)
+
+**Action button**:
+One circular control on the **Touch controls**, drawn with a centred icon. A held one reports a held state (`setTouchPrimary` repeats its strike on a cadence, `setTouchSecondary` raises a guard or places, `setTouchJump` climbs) and a tapped one fires an edge (`queueJump`, `queueUse`). It knows nothing about what a press means — it reports press and release, and the wielded **Tool** decides.
+_Avoid_: Icon button (the icon is decoration, not the thing), key (that is the keyboard's own)
+
 **Hand**:
 The first-person view of what the player is holding: a ray-marched mesh per **Tool** that draws one, riding as children of the camera so they stay fixed to the lower right of the frame. Only the wielded tool's mesh is visible, sitting at whatever pose that tool returned; the hand keeps no timing of its own. Drawn only in first person. Its models and the hotbar icons come from the same items-spritesheet sprites, cropped to their drawn pixels by `sprite-model.ts`, which reports the crop it measured so the icon needs no second measurement.
 _Avoid_: HeldItem (it holds every tool's mesh, not one item), weapon view

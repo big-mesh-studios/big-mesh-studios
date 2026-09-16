@@ -125,13 +125,13 @@ export interface PlayerConfig {
 
 export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   halfSize: 1,
-  speed: 22.5,
+  speed: 15,
   acceleration: 150,
   gravity: 45,
   jumpSpeed: 14,
   swimSpeed: 10,
   climbSpeed: 10,
-  lookSensitivity: 0.0025,
+  lookSensitivity: 0.008,
   maxPitch: 1.35,
   followBack: 9,
   followUp: 2.5,

@@ -114,7 +114,6 @@ const CUTSCENE_INPUT: InputSnapshot = {
   lookDy: 0,
   primary: false,
   click: false,
-  tap: false,
   secondary: false,
   secondaryHeld: false,
   secondaryReleased: false,
@@ -540,8 +539,12 @@ export const createVoxelscape = ({
   const [editorMouse, setEditorMouse] = createSignal<Vector2 | undefined>(
     undefined,
   );
+  // The mount and its unmount are lifecycle work: `mount` runs under the
+  // canvas component's settled effect and the returned unmount runs while that
+  // owner is being disposed, so this one signal opts into writes from an owned
+  // scope.
   const [mountedCanvasEl, setMountedCanvasEl] =
-    createSignal<HTMLCanvasElement | null>(null);
+    createSignal<HTMLCanvasElement | null>(null, { ownedWrite: true });
   // Reassigned once a clone publishes this session's place under the
   // signed-in account, so `placeEditor.isMine` reads true right away rather
   // than waiting for the address-bar navigation to reboot the world.
@@ -2202,17 +2205,16 @@ export const createVoxelscape = ({
           // the crosshair tracks what it is over.
           const pick = tool.pick();
           setTarget(pick.primary);
-          // A click or tap that the wielded tool itself resolves to a strike is
-          // left to it below, rather than treated as a talk or a use — a sword
-          // swing and a bare touch are different gestures even when they land
-          // on the same body. The E key never means a strike, whatever is
-          // wielded, so it always reaches this path.
+          // A click that the wielded tool itself resolves to a strike is left
+          // to it below, rather than treated as a talk or a use — a sword
+          // swing and a bare use are different gestures even when they land on
+          // the same body. The use button and the E key never mean a strike,
+          // whatever is wielded, so they always reach this path.
           const interacted =
             dialog() === null &&
             aimed !== null &&
             (snapshot.use ||
-              ((snapshot.tap || snapshot.click) &&
-                pick.primary?.kind !== "actor"));
+              (snapshot.click && pick.primary?.kind !== "actor"));
           if (interacted) {
             // An NPC talks bare-handed, the same as ever — but holding
             // anything at all is "used with it" instead, the same fact a prop
@@ -2223,11 +2225,9 @@ export const createVoxelscape = ({
               npcUse(aimed.id);
             }
           } else if (
-            // Over empty air, E uses the held item; on touch, a quick tap does
-            // too, which is what the HUD's "tap to use" promises. A tap that
-            // landed on a strikeable body is left to strike below.
-            snapshot.use ||
-            (snapshot.tap && pick.primary?.kind !== "actor")
+            // Over empty air, or with a conversation already open, the use
+            // button uses the held item.
+            snapshot.use
           ) {
             const held = scriptConsole?.heldItem() ?? null;
             if (held !== null) {
@@ -2237,14 +2237,10 @@ export const createVoxelscape = ({
           // A script item that is a weapon fires on the primary button instead
           // of the wielded tool: the weapon's own reach, rate, and damage decide
           // the shot, and the press is consumed below so the tool never also
-          // strikes. A touch's tap on an actor body is the same trigger the
-          // tools already use for a swing.
+          // strikes.
           const heldItem = scriptConsole?.heldItem() ?? null;
           const heldWeapon = heldItem?.weapon ?? null;
-          const weaponPress =
-            heldWeapon !== null &&
-            (snapshot.primary ||
-              (snapshot.tap && pick.primary?.kind === "actor"));
+          const weaponPress = heldWeapon !== null && snapshot.primary;
           if (weaponPress && heldWeapon !== null) {
             if (weaponCooldown <= 0) {
               weaponCooldown = heldWeapon.fireIntervalMs / 1000;
@@ -2281,22 +2277,6 @@ export const createVoxelscape = ({
             }
           }
           if (snapshot.primary && !interacted && !weaponPress) {
-            const result = tool.primary(pick);
-            if (result !== null) {
-              setEditStatus(result);
-            }
-          }
-          // A quick tap is a strike only when it landed on a strikeable body —
-          // a voxel needs the hold that repeats `primary`, as a touch would
-          // otherwise break whatever it started dragging from. The wielded
-          // tools never pick a body except the sword, so this call is a sword
-          // swing.
-          if (
-            !interacted &&
-            !weaponPress &&
-            snapshot.tap &&
-            pick.primary?.kind === "actor"
-          ) {
             const result = tool.primary(pick);
             if (result !== null) {
               setEditStatus(result);

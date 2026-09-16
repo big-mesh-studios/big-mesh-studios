@@ -12,7 +12,7 @@ import { cloneShape, planScript, translateShape } from "./structures/plan";
 import type { PlanShape, StructurePlan, ToolKind } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { createEnqueue } from "./utils/utils";
-import { VOXEL_STONE } from "../lib";
+import { VOXEL_STONE } from "../world/voxel-store";
 
 /**
  * What the editor edits: the running world's structure plan. The editor keeps a

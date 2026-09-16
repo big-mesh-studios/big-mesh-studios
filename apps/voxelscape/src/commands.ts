@@ -242,6 +242,40 @@ const readPlaceRequest = (
   };
 };
 
+/**
+ * The part of the Screen Orientation API the fullscreen command uses. `lock`
+ * is absent from the DOM type declarations, so the method is reached through
+ * this shape and feature-detected before it is called.
+ */
+interface Orientable {
+  lock?(orientation: "landscape" | "portrait"): Promise<void>;
+  unlock?(): void;
+}
+
+/** The document's screen orientation, or undefined where the API is absent. */
+const screenOrientation = (): Orientable | undefined =>
+  (screen as Screen & { orientation?: Orientable }).orientation;
+
+/**
+ * Locks the screen to `wanted`, returning whether the browser allowed it.
+ * Browsers that do not implement the lock, or refuse it outside fullscreen,
+ * reject or omit the method; either way the caller still has a fullscreen.
+ */
+const lockOrientation = async (
+  wanted: "landscape" | "portrait",
+): Promise<boolean> => {
+  const api = screenOrientation();
+  if (api === undefined || api.lock === undefined) {
+    return false;
+  }
+  try {
+    await api.lock(wanted);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /** Every debug console command, declared as a single object literal keyed by command name. */
 export const createCommands = ({
   renderer,
@@ -935,26 +969,31 @@ export const createCommands = ({
       },
     },
     "/fullscreen": {
-      description: "enter or leave fullscreen",
-      args: "true|false",
-      run: async ([fullscreen]) => {
+      description: "enter or leave fullscreen, locking the screen sideways",
+      args: "true|false [landscape|portrait]",
+      run: async ([fullscreen, wanted]) => {
         const shouldRequest =
-          Boolean(fullscreen) ||
-          (fullscreen === undefined &&
-            document.fullscreenElement !== document.body);
+          fullscreen === undefined
+            ? document.fullscreenElement !== document.body
+            : fullscreen !== "false";
+        const orientation = wanted === "portrait" ? "portrait" : "landscape";
 
         if (shouldRequest) {
           try {
             await document.body.requestFullscreen();
-            return `full screen request succeeded.`;
-          } catch (error) {
-            return `full screen request failed.`;
+          } catch {
+            return "full screen request failed.";
           }
+          const locked = await lockOrientation(orientation);
+          return locked
+            ? `full screen request succeeded; ${orientation} locked.`
+            : "full screen request succeeded; orientation lock unavailable.";
         }
 
+        screenOrientation()?.unlock?.();
         try {
           document.exitFullscreen();
-          return `exit screen request succeeded.`;
+          return "exit screen request succeeded.";
         } catch {
           return "exit fullscreen failed.";
         }

@@ -4,11 +4,13 @@ import * as THREE from "three";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
 import { ActionButton } from "./ActionButton";
 import { Joystick } from "./Joystick";
+import { DigIcon, JumpIcon, PlaceIcon, UseIcon } from "./icons";
 
 const HIT = 150;
-const BUTTON = 100;
-const EDIT = 84;
+const PRIMARY = 110;
+const ACTION = 84;
 const MARGIN = 24;
+const GAP = 14;
 
 const CoarseControls: Component = () => {
   const { input } = useVoxelscape();
@@ -23,6 +25,16 @@ const CoarseControls: Component = () => {
     { signal: controller.signal },
   );
   onCleanup(() => controller.abort());
+
+  // Every action button hangs off the bottom-right corner: jump and the big
+  // dig button share the bottom row, with use and place directly above.
+  const bottom = () => viewSize().y - MARGIN;
+  const right = () => viewSize().x - MARGIN;
+  const primaryLeft = () => right() - PRIMARY;
+  const primaryTop = () => bottom() - PRIMARY;
+  const jumpLeft = () => primaryLeft() - GAP - ACTION;
+  const jumpTop = () => bottom() - ACTION;
+  const topRow = () => jumpTop() - GAP - ACTION;
 
   return (
     <div
@@ -44,9 +56,31 @@ const CoarseControls: Component = () => {
 
       <div class={styles.control}>
         <ActionButton
-          left={viewSize().x - MARGIN - BUTTON}
-          top={viewSize().y - MARGIN - BUTTON}
-          size={BUTTON}
+          left={primaryLeft()}
+          top={primaryTop()}
+          size={PRIMARY}
+          icon={<DigIcon />}
+          onPressed={(pressed) => input.setTouchPrimary(pressed)}
+        />
+      </div>
+
+      <div class={styles.control}>
+        <ActionButton
+          left={right() - ACTION}
+          top={topRow()}
+          size={ACTION}
+          colour="0x35b06b"
+          icon={<PlaceIcon />}
+          onPressed={(pressed) => input.setTouchSecondary(pressed)}
+        />
+      </div>
+
+      <div class={styles.control}>
+        <ActionButton
+          left={jumpLeft()}
+          top={jumpTop()}
+          size={ACTION}
+          icon={<JumpIcon />}
           onPressed={(pressed) => {
             input.setTouchJump(pressed);
             if (pressed) {
@@ -56,29 +90,17 @@ const CoarseControls: Component = () => {
         />
       </div>
 
-      {/* the secondary button is held as well as tapped — a held sword guards —
-          so a direct handler keeps it independent of Solid's reactive effect
-          semantics */}
-      <div
-        class={styles.control}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          input.setTouchSecondary(true);
-        }}
-        onPointerUp={(e) => {
-          e.stopPropagation();
-          input.setTouchSecondary(false);
-        }}
-        onPointerCancel={(e) => {
-          e.stopPropagation();
-          input.setTouchSecondary(false);
-        }}
-      >
+      <div class={styles.control}>
         <ActionButton
-          left={viewSize().x - MARGIN - BUTTON - EDIT - 12}
-          top={viewSize().y - MARGIN - BUTTON + (BUTTON - EDIT) / 2}
-          size={EDIT}
-          colour="0x35b06b"
+          left={jumpLeft()}
+          top={topRow()}
+          size={ACTION}
+          icon={<UseIcon />}
+          onPressed={(pressed) => {
+            if (pressed) {
+              input.queueUse();
+            }
+          }}
         />
       </div>
     </div>

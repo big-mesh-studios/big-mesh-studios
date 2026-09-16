@@ -1,0 +1,75 @@
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.vertical-stroke,
+.horizontal-stroke {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+}
+
+.vertical-stroke {
+  left: 50%;
+  width: 2px;
+  height: 100%;
+  transform: translateX(-50%);
+}
+
+.horizontal-stroke {
+  top: 50%;
+  width: 100%;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+.cluster {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+.apply,
+.toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  color: #e6e9ef;
+  background: rgba(20, 24, 32, 0.72);
+  touch-action: none;
+  user-select: none;
+}
+
+.apply {
+  width: 84px;
+  height: 84px;
+  background: rgba(53, 176, 107, 0.6);
+}
+
+.toggle {
+  width: 56px;
+  height: 56px;
+}
+
+.apply > svg {
+  width: 46%;
+  height: 46%;
+}
+
+.toggle > svg {
+  width: 50%;
+  height: 50%;
+}

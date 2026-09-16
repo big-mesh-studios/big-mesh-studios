@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal } from "solid-js";
+import type { JSX } from "@solidjs/web/jsx-runtime";
 import { RGB } from "@big-mesh-studios/maths";
 import { pointer } from "@big-mesh-studios/utils/pointer";
 import styles from "./ActionButton.module.css";
@@ -10,6 +11,8 @@ interface ActionButtonProps {
   top: number;
   size: number;
   colour?: RGB | `0x${string}`;
+  /** The glyph drawn in the button's centre. */
+  icon?: JSX.Element;
   onPressed?(pressed: boolean): void;
 }
 
@@ -60,6 +63,8 @@ export function ActionButton(props: ActionButtonProps) {
       onPointerDown={handlePointerDown}
       onContextMenu={(e) => e.preventDefault()}
       class={styles["action-button"]}
-    />
+    >
+      {props.icon}
+    </button>
   );
 }

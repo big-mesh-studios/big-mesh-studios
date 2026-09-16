@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createInput, type InputController } from "./create-input";
 
-/** The canvas width the slop is computed from: max(6, 400 * 0.02) = 8px. */
+/** The canvas width the fake element reports. */
 const WIDTH = 400;
 
 let input: InputController;
@@ -66,74 +66,7 @@ const bind = (canvas: HTMLCanvasElement): void => {
 };
 
 describe("canvas touch gestures", () => {
-  it("turns a quick lift into a tap edge and nothing else", async () => {
-    const canvas = makeCanvas();
-    bind(canvas);
-    press(canvas, { type: "pointerdown", x: 100, y: 100 });
-    await settle();
-    press(canvas, { type: "pointerup", x: 100, y: 100 });
-    await settle();
-
-    const snapshot = input.consume();
-    expect(snapshot.tap).toBe(true);
-    expect(snapshot.primary).toBe(false);
-    expect(snapshot.click).toBe(false);
-    expect(snapshot.lookDx).toBe(0);
-    expect(snapshot.lookDy).toBe(0);
-  });
-
-  it("fires nothing for a quick lift over empty air either", async () => {
-    const canvas = makeCanvas();
-    bind(canvas);
-    press(canvas, { type: "pointerdown", x: 50, y: 50 });
-    await settle();
-    press(canvas, { type: "pointerup", x: 51, y: 50 });
-    await settle();
-
-    const snapshot = input.consume();
-    expect(snapshot.tap).toBe(true);
-    expect(snapshot.primary).toBe(false);
-  });
-
-  it("strikes once a still press has outlasted the hold grace", async () => {
-    const canvas = makeCanvas();
-    bind(canvas);
-    press(canvas, { type: "pointerdown", x: 100, y: 100 });
-    await settle();
-    expect(input.consume().primary).toBe(false);
-
-    vi.advanceTimersByTime(120);
-    expect(input.consume().primary).toBe(true);
-    // A touch's hold repeats `primary` but never sets the mouse `click` edge.
-    expect(input.consume().click).toBe(false);
-    expect(input.consume().tap).toBe(false);
-
-    press(canvas, { type: "pointerup", x: 100, y: 100 });
-    await settle();
-    expect(input.consume().tap).toBe(false);
-    expect(input.consume().primary).toBe(false);
-  });
-
-  it("keeps striking on the repeat cadence while a hold stays still", async () => {
-    const canvas = makeCanvas();
-    bind(canvas);
-    press(canvas, { type: "pointerdown", x: 100, y: 100 });
-    await settle();
-    vi.advanceTimersByTime(120);
-    expect(input.consume().primary).toBe(true);
-
-    vi.advanceTimersByTime(500);
-    expect(input.consume().primary).toBe(true);
-
-    vi.advanceTimersByTime(500);
-    expect(input.consume().primary).toBe(true);
-
-    press(canvas, { type: "pointerup", x: 100, y: 100 });
-    await settle();
-    expect(input.consume().primary).toBe(false);
-  });
-
-  it("turns a press that moves past the slop into a look, firing nothing", async () => {
+  it("turns a drag into a look and fires nothing", async () => {
     const canvas = makeCanvas();
     bind(canvas);
     press(canvas, { type: "pointerdown", x: 100, y: 100 });
@@ -144,38 +77,27 @@ describe("canvas touch gestures", () => {
     await settle();
 
     const snapshot = input.consume();
-    expect(snapshot.tap).toBe(false);
-    expect(snapshot.primary).toBe(false);
     expect(snapshot.lookDx).toBe(40);
+    expect(snapshot.primary).toBe(false);
+    expect(snapshot.click).toBe(false);
   });
 
-  it("does not strike when a drag starts before the grace elapses", async () => {
+  it("does not mine a press that rests before it moves", async () => {
     const canvas = makeCanvas();
     bind(canvas);
     press(canvas, { type: "pointerdown", x: 100, y: 100 });
     await settle();
-    // The camera drag begins within the grace window.
+    // Long enough that a hold gesture would have struck, had one existed.
+    vi.advanceTimersByTime(2000);
+    expect(input.consume().primary).toBe(false);
+
     press(canvas, { type: "pointermove", x: 130, y: 100 });
     await settle();
     press(canvas, { type: "pointerup", x: 130, y: 100 });
     await settle();
-    expect(input.consume().primary).toBe(false);
-    expect(input.consume().tap).toBe(false);
-
-    // Nothing was left scheduled to fire later.
-    vi.advanceTimersByTime(2000);
-    expect(input.consume().primary).toBe(false);
-  });
-
-  it("lets a press drift within the slop and still hold", async () => {
-    const canvas = makeCanvas();
-    bind(canvas);
-    press(canvas, { type: "pointerdown", x: 100, y: 100 });
-    await settle();
-    press(canvas, { type: "pointermove", x: 104, y: 100 });
-    await settle();
-    vi.advanceTimersByTime(120);
-    expect(input.consume().primary).toBe(true);
+    const snapshot = input.consume();
+    expect(snapshot.lookDx).toBe(30);
+    expect(snapshot.primary).toBe(false);
   });
 
   it("ignores a second finger touching down while the first is still down", async () => {
@@ -185,14 +107,13 @@ describe("canvas touch gestures", () => {
     await settle();
     press(canvas, { type: "pointerdown", x: 200, y: 200, pointerId: 2 });
     await settle();
-    vi.advanceTimersByTime(120);
-    expect(input.consume().primary).toBe(true);
+    press(canvas, { type: "pointermove", x: 260, y: 260, pointerId: 2 });
+    await settle();
+    // Only the first finger is followed, so the second turns nothing.
+    expect(input.consume().lookDx).toBe(0);
 
-    // Lifting the second finger (never followed) resolves nothing of its own.
     press(canvas, { type: "pointerup", x: 200, y: 200, pointerId: 2 });
     await settle();
-    expect(input.consume().tap).toBe(false);
-
     press(canvas, { type: "pointerup", x: 100, y: 100, pointerId: 1 });
     await settle();
   });
@@ -206,8 +127,43 @@ describe("canvas touch gestures", () => {
     await settle();
 
     const snapshot = input.consume();
-    expect(snapshot.tap).toBe(false);
     expect(snapshot.primary).toBe(false);
+    expect(snapshot.lookDx).toBe(0);
+  });
+});
+
+describe("the touch buttons", () => {
+  it("strikes at once and repeats while the dig button is held", () => {
+    input.setTouchPrimary(true);
+    expect(input.consume().primary).toBe(true);
+
+    vi.advanceTimersByTime(500);
+    expect(input.consume().primary).toBe(true);
+
+    input.setTouchPrimary(false);
+    vi.advanceTimersByTime(500);
+    expect(input.consume().primary).toBe(false);
+  });
+
+  it("holds the secondary button down and queues its release", () => {
+    input.setTouchSecondary(true);
+    const pressed = input.consume();
+    expect(pressed.secondary).toBe(true);
+    expect(pressed.secondaryHeld).toBe(true);
+    expect(pressed.secondaryReleased).toBe(false);
+
+    input.setTouchSecondary(false);
+    const released = input.consume();
+    expect(released.secondaryHeld).toBe(false);
+    expect(released.secondaryReleased).toBe(true);
+  });
+
+  it("keeps the jump held while the jump button is down", () => {
+    input.setTouchJump(true);
+    expect(input.consume().jumpHeld).toBe(true);
+
+    input.setTouchJump(false);
+    expect(input.consume().jumpHeld).toBe(false);
   });
 });
 

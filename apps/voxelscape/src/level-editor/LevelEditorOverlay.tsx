@@ -1,4 +1,5 @@
-import { createEffect, onCleanup, onSettled } from "solid-js";
+import { createEffect, onCleanup, onSettled, Show } from "solid-js";
+import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import { VOXEL_SIZE } from "../world/level-data";
 import { pickVoxel } from "../world/picker";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
@@ -12,6 +13,7 @@ import { ShapePropertiesPanel } from "./panels/ShapePropertiesPanel";
 import { ToolbarPanel } from "./panels/ToolbarPanel";
 import { defaultShape, shapeBounds } from "./structures/plan";
 import { pickShape } from "./view/shape-picking";
+import { LevelEditorTouchControls } from "./TouchControls";
 import styles from "./LevelEditorOverlay.module.css";
 
 /** How far a click reaches for a voxel to build on, in world units. */
@@ -35,6 +37,8 @@ export function LevelEditorOverlay() {
   });
 
   let leftPane: HTMLSpanElement | undefined;
+
+  const coarsePointer = createMediaQuery("(any-pointer: coarse)");
 
   /** The box drawn around the selected shape, owned by the world's composer. */
   const highlight = voxelscape.levelEditor.highlight;
@@ -91,6 +95,53 @@ export function LevelEditorOverlay() {
     );
   };
 
+  /**
+   * Applies the active tool to the shape or voxel under a canvas pixel: the
+   * select tool picks the shape there, any placing tool stamps its shape
+   * against the face the ray meets.
+   */
+  const applyToolAt = (offsetX: number, offsetY: number): void => {
+    const canvas = voxelscape.canvas();
+    if (canvas === null) {
+      return;
+    }
+    const ray = mouseRay(
+      voxelscape.levelEditor.camera,
+      canvas.clientWidth,
+      canvas.clientHeight,
+      offsetX,
+      offsetY,
+    );
+    if (ray === undefined) {
+      return;
+    }
+    const tool = editor.tool();
+    if (tool === "select") {
+      const pick = pickShape(editor.structures(), ray, SELECT_REACH);
+      editor.selectShape(pick?.index);
+      return;
+    }
+    const pick = pickVoxel(
+      voxelscape.world.blocks,
+      [ray.origin.x, ray.origin.y, ray.origin.z],
+      [ray.direction.x, ray.direction.y, ray.direction.z],
+      BUILD_REACH,
+    );
+    if (pick.place === null) {
+      return;
+    }
+    editor.addShape(defaultShape(tool, pick.place, editor.activeBlockId()));
+  };
+
+  /** Applies the active tool to whatever the crosshair sits on. */
+  const applyToolAtCentre = (): void => {
+    const canvas = voxelscape.canvas();
+    if (canvas === null) {
+      return;
+    }
+    applyToolAt(canvas.clientWidth / 2, canvas.clientHeight / 2);
+  };
+
   onSettled(() => {
     applyCanvasBounds();
     const canvas = voxelscape.canvas();
@@ -101,44 +152,21 @@ export function LevelEditorOverlay() {
     const observer = new ResizeObserver(() => applyCanvasBounds());
     observer.observe(pane);
 
-    // The canvas has the game's handlers disabled, so the editor's own click
-    // places a shape with the active tool or selects one under the cursor.
-    const onClick = (event: MouseEvent): void => {
-      if (event.button !== 0 || canvas === null) {
+    // The canvas has the game's handlers disabled. On a mouse, a left press
+    // places or selects under the cursor; a touch only turns the camera, and
+    // the touch cluster's own button places, so a finger dragging to look
+    // never stamps a shape.
+    const onPointerUp = (event: PointerEvent): void => {
+      if (event.pointerType !== "mouse" || event.button !== 0) {
         return;
       }
-      const ray = mouseRay(
-        voxelscape.levelEditor.camera,
-        canvas.clientWidth,
-        canvas.clientHeight,
-        event.offsetX,
-        event.offsetY,
-      );
-      if (ray === undefined) {
-        return;
-      }
-      const tool = editor.tool();
-      if (tool === "select") {
-        const pick = pickShape(editor.structures(), ray, SELECT_REACH);
-        editor.selectShape(pick?.index);
-        return;
-      }
-      const pick = pickVoxel(
-        voxelscape.world.blocks,
-        [ray.origin.x, ray.origin.y, ray.origin.z],
-        [ray.direction.x, ray.direction.y, ray.direction.z],
-        BUILD_REACH,
-      );
-      if (pick.place === null) {
-        return;
-      }
-      editor.addShape(defaultShape(tool, pick.place, editor.activeBlockId()));
+      applyToolAt(event.offsetX, event.offsetY);
     };
-    canvas?.addEventListener("click", onClick);
+    canvas?.addEventListener("pointerup", onPointerUp);
 
     return () => {
       observer.disconnect();
-      canvas?.removeEventListener("click", onClick);
+      canvas?.removeEventListener("pointerup", onPointerUp);
     };
   });
 
@@ -166,9 +194,17 @@ export function LevelEditorOverlay() {
             ref={(element) => (leftPane = element)}
           >
             <div class={styles.hint}>
-              Right-drag orbits · Shift+right-drag pans · Wheel zooms ·
-              Left-click places
+              {coarsePointer()
+                ? "Drag orbits · Pinch zooms · Buttons place and select"
+                : "Right-drag orbits · Shift+right-drag pans · Wheel zooms · Left-click places"}
             </div>
+            <Show when={coarsePointer()}>
+              <LevelEditorTouchControls
+                tool={editor.tool}
+                setTool={editor.setTool}
+                apply={applyToolAtCentre}
+              />
+            </Show>
           </Split.Pane>
           <Split.Handle size="8px" class={styles.handle} />
           <Split.Pane size="340px" class={styles.side}>
