@@ -13,6 +13,7 @@ import { cloneShape, planScript, translateShape } from "./structures/plan";
 import type { PlanShape, StructurePlan, ToolKind } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { createEnqueue } from "./utils/utils";
+import { VOXEL_STONE } from "../lib";
 
 /**
  * What the editor edits: the running world's structure plan. The editor keeps a
@@ -36,8 +37,8 @@ export function createLevelEditor(host: LevelEditorHost) {
   const [selectedIndex, setSelectedIndex] = createSignal<number | undefined>(
     undefined,
   );
-  const [tool, setTool] = createSignal<ToolKind>("box");
-  const [activeBlockId, setActiveBlockId] = createSignal(BLOCK_CHOICES[0].id);
+  const [tool, setTool] = createSignal<ToolKind>("select");
+  const [activeBlockId, setActiveBlockId] = createSignal(VOXEL_STONE);
   const [notice, setNotice] = createSignal<string | undefined>(undefined);
   const narrow = createMediaQuery("(max-width: 720px)");
 
