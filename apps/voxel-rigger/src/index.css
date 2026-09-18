@@ -1,0 +1,98 @@
+/* The page's reset and the two surface colours everything else is measured
+   against. Kept plain rather than utility classes, the same way the stacker
+   editor keeps its own. */
+:root {
+  --front: #e8e8ef;
+  --back: #14161c;
+  --panel: #1d2029;
+  --raised: #262a35;
+  --line: #343a49;
+  --grey: #8b93a7;
+  --accent: #5fcde4;
+  --warn: #d95763;
+  --good: #6abe30;
+  --margin: 8px;
+  --radius: 6px;
+  font-family:
+    ui-monospace, "SFMono-Regular", "Cascadia Code", Menlo, monospace;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--back);
+  color: var(--front);
+  overflow: hidden;
+  /* A pull on the edge of the page must not reload it out from under a drag
+     on the viewport. */
+  overscroll-behavior: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  cursor: pointer;
+  touch-action: manipulation;
+  &:hover:not(:disabled) {
+    border-color: var(--accent);
+  }
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+input,
+select {
+  font: inherit;
+  color: inherit;
+  background: var(--back);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 4px 6px;
+  min-width: 0;
+  touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* A finger is a wider pointer than a mouse: every control is given a target
+   worth tapping, and a field is kept at the size at which a phone stops
+   zooming the page in when it takes focus. */
+@media (pointer: coarse) {
+  button,
+  select,
+  input:not([type="range"]) {
+    min-height: 44px;
+  }
+
+  button {
+    padding: 8px 12px;
+  }
+
+  input:not([type="range"]),
+  select {
+    font-size: 16px;
+  }
+
+  input[type="range"] {
+    height: 44px;
+  }
+}

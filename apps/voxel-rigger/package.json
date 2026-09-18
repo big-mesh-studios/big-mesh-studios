@@ -1,0 +1,47 @@
+{
+  "name": "@big-mesh-studios/voxel-rigger",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/big-mesh-studios/big-mesh-studios.git",
+    "directory": "apps/voxel-rigger"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview",
+    "test": "vitest run --config vitest.config.ts",
+    "check-types": "tsc --noEmit",
+    "fetch:animations": "node scripts/fetch-animations.mjs",
+    "fetch:human": "node scripts/fetch-human.mjs",
+    "make:models": "node scripts/make-models.mjs",
+    "make:assets": "pnpm fetch:animations && pnpm fetch:human && pnpm make:models"
+  },
+  "dependencies": {
+    "@big-mesh-studios/maths": "workspace:*",
+    "@big-mesh-studios/stacker": "workspace:*",
+    "@big-mesh-studios/utils": "workspace:*",
+    "@fortawesome/fontawesome-free": "catalog:",
+    "@random-mesh/rmsl": "catalog:",
+    "@solidjs/signals": "catalog:",
+    "@solidjs/web": "catalog:",
+    "browser-fs-access": "catalog:",
+    "fast-png": "catalog:",
+    "jszip": "catalog:",
+    "solid-js": "catalog:",
+    "three": "catalog:",
+    "three-stdlib": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/three": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-solid": "catalog:",
+    "vitest": "catalog:"
+  }
+}

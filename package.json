@@ -8,6 +8,7 @@
   "scripts": {
     "dev:rm-stacker": "pnpm --filter @big-mesh-studios/rm-stacker dev",
     "dev:voxelscape": "pnpm --filter @big-mesh-studios/bms-voxelscape dev",
+    "dev:voxel-rigger": "pnpm --filter @big-mesh-studios/voxel-rigger dev",
     "build": "pnpm -r build",
     "build-lib": "pnpm -r build-lib",
     "check-types": "pnpm -r check-types",

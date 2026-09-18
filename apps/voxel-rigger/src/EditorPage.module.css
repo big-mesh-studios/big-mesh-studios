@@ -1,0 +1,375 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  /* The visible height on a phone changes as its bars slide away; dvh follows
+     it so the transport is never left off the bottom. */
+  height: 100dvh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: calc(6px + env(safe-area-inset-top, 0px))
+    calc(10px + env(safe-area-inset-right, 0px)) 6px
+    calc(10px + env(safe-area-inset-left, 0px));
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.menuButton {
+  font-size: 18px;
+  line-height: 1;
+  padding: 6px 10px;
+}
+
+.title {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  margin-right: 8px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  /* The sheet is placed against this, so it covers the viewport and not the
+     transport below it. */
+  position: relative;
+}
+
+.sidebar {
+  width: 300px;
+  flex: none;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab {
+  flex: 1;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 8px;
+  color: var(--grey);
+}
+
+.tabActive {
+  color: var(--front);
+  background: var(--raised);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.panel {
+  flex: 1;
+  overflow: auto;
+  padding: var(--margin);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--grey);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-align: left;
+  background: transparent;
+  width: 100%;
+  &:hover {
+    background: var(--raised);
+  }
+}
+
+.itemActive {
+  background: var(--raised);
+  border-color: var(--accent);
+}
+
+.itemName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.depth {
+  width: 10px;
+  flex: none;
+}
+
+.empty {
+  color: var(--grey);
+  font-size: 12px;
+  padding: 6px;
+}
+
+.viewport {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  background: var(--back);
+}
+
+.canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  user-select: none;
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.sheetHandle {
+  display: none;
+}
+
+.zoom {
+  position: absolute;
+  right: calc(10px + env(safe-area-inset-right, 0px));
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 5;
+}
+
+.zoomButton {
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
+  line-height: 1;
+  background: rgba(38, 42, 53, 0.9);
+}
+
+.hint {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  font-size: 11px;
+  color: var(--grey);
+  background: rgba(20, 22, 28, 0.7);
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  pointer-events: none;
+}
+
+.mode {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  display: flex;
+  gap: 4px;
+}
+
+.modeButton {
+  background: rgba(38, 42, 53, 0.9);
+}
+
+.modeActive {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.status {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--grey);
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.scrub {
+  flex: 1;
+  min-width: 120px;
+  accent-color: var(--accent);
+}
+
+.frame {
+  min-width: 56px;
+  text-align: right;
+  color: var(--grey);
+}
+
+.tag {
+  font-size: 11px;
+  color: var(--grey);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.primary {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.danger {
+  color: var(--warn);
+}
+
+.boneRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.grow {
+  flex: 1;
+}
+
+.motions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* A touch screen or a narrow window: the panels become a sheet drawn over the
+   viewport, so the rig keeps the whole screen. */
+.compact .title {
+  display: none;
+}
+
+.compact .body {
+  overflow: hidden;
+}
+
+.compact .sidebar {
+  position: absolute;
+  z-index: 20;
+  inset: auto 0 0 0;
+  width: auto;
+  max-height: 74%;
+  border-right: none;
+  border-top: 1px solid var(--line);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5);
+  transform: translateY(105%);
+  transition: transform 0.22s ease;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.compact .sheetOpen {
+  transform: translateY(0);
+}
+
+.compact .sheetHandle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: 22px;
+  touch-action: none;
+}
+
+.compact .sheetHandle::after {
+  content: "";
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.compact .panel {
+  padding: 8px;
+}
+
+/* A sheet scrolls as one, so a list inside it is not given a height of its
+   own to scroll within. */
+.compact .list {
+  max-height: none;
+}
+
+.compact .transport {
+  padding-left: calc(10px + env(safe-area-inset-left, 0px));
+  padding-right: calc(10px + env(safe-area-inset-right, 0px));
+}
+
+.compact .status {
+  padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Held flat, a bottom sheet leaves too little room, so the panels slide in
+   from the side instead. */
+@media (orientation: landscape) {
+  .compact .sidebar {
+    inset: env(safe-area-inset-top, 0px) auto 0 0;
+    width: min(360px, 86vw);
+    max-height: none;
+    border-top: none;
+    border-right: 1px solid var(--line);
+    border-radius: 0 12px 12px 0;
+    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.5);
+    transform: translateX(-105%);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .compact .sheetOpen {
+    transform: translateX(0);
+  }
+}
