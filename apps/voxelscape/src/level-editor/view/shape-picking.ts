@@ -47,6 +47,19 @@ const rayBoxDistance = (
   return near >= 0 ? near : 0;
 };
 
+/** Whether a point sits within an inclusive world-space box. */
+const boxContainsPoint = (
+  point: Vector3,
+  boxMin: [number, number, number],
+  boxMax: [number, number, number],
+): boolean =>
+  point.x >= boxMin[0] &&
+  point.x <= boxMax[0] &&
+  point.y >= boxMin[1] &&
+  point.y <= boxMax[1] &&
+  point.z >= boxMin[2] &&
+  point.z <= boxMax[2];
+
 /** A shape the ray crossed, and how far along it the crossing was. */
 export interface ShapePick {
   index: number;
@@ -56,7 +69,9 @@ export interface ShapePick {
 /**
  * The nearest shape in `plan` the ray crosses within `reach` world units, or
  * undefined where it crosses none. Each shape is tested against the box its
- * expanded voxels fill, so a house or staircase is one hit.
+ * expanded voxels fill, so a house or staircase is one hit. A box the ray
+ * starts inside is skipped, so a creator standing in an air-filled box can
+ * select the structures built within it.
  */
 export const pickShape = (
   plan: StructurePlan,
@@ -65,7 +80,8 @@ export const pickShape = (
 ): ShapePick | undefined => {
   let best: ShapePick | undefined;
   for (let index = 0; index < plan.length; index++) {
-    const bounds = shapeBounds(plan[index]);
+    const shape = plan[index];
+    const bounds = shapeBounds(shape);
     const boxMin: [number, number, number] = [
       bounds.min[0] * VOXEL_SIZE,
       bounds.min[1] * VOXEL_SIZE,
@@ -76,6 +92,9 @@ export const pickShape = (
       (bounds.max[1] + 1) * VOXEL_SIZE,
       (bounds.max[2] + 1) * VOXEL_SIZE,
     ];
+    if (shape.kind === "box" && boxContainsPoint(ray.origin, boxMin, boxMax)) {
+      continue;
+    }
     const distance = rayBoxDistance(ray.origin, ray.direction, boxMin, boxMax);
     if (
       distance !== undefined &&
