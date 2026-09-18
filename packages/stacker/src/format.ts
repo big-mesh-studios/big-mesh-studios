@@ -224,6 +224,26 @@ function buildPalette(colours: Set<number>, fallbackPalette: RGBA[]) {
   return { palette, indexOf, dropped };
 }
 
+/**
+ * `palette` brought up to the number of colours the preview can address, the
+ * slots it does not fill seeded from `fallback`.
+ *
+ * A model saved with indices names each of its colours by the slot it sits in,
+ * so a slot the file fills cannot be moved; only the empty ones take a colour
+ * from the fallback. A file whose palette already reaches that length is left
+ * as it stands.
+ */
+function seedPalette(palette: RGBA[], fallback: RGBA[]): RGBA[] {
+  if (palette.length >= PALETTE_LENGTH) {
+    return palette;
+  }
+
+  return Array.from(
+    { length: PALETTE_LENGTH },
+    (_, i): RGBA => palette[i] ?? fallback[i] ?? { r: 0, g: 0, b: 0, a: 255 },
+  );
+}
+
 function toBitmap(image: DecodedImage, indexOf: Map<number, number>): Bitmap {
   const bitmap = Bitmap.create(image.width, image.height);
 
@@ -271,10 +291,10 @@ export interface LoadedModel extends Model {
  * checked against: a side disagreeing with another about an axis they both
  * measure is refused.
  *
- * @param fallbackPalette Colours to seed the palette slots a colour-format
- * model does not fill. Left out, the palette is exactly the colours the file
- * uses, which is what a reader wants; an editor passes its own so a model
- * opened for drawing arrives with a full palette to draw from.
+ * @param fallbackPalette Colours to seed the palette slots the file does not
+ * fill. Left out, the palette is exactly the colours the file uses, which is
+ * what a reader wants; an editor passes its own so a model opened for drawing
+ * arrives with a full palette to draw from.
  * @throws When the file is not a model this format writes, or when its sides
  * are not faces of one box.
  */
@@ -469,10 +489,10 @@ interface PartEntry {
  * its root, and is read as one part called `body` pivoting on its own middle at
  * the origin — which is where a lone model has always been drawn.
  *
- * @param fallbackPalette Colours to seed the palette slots a colour-format
- * model does not fill. Left out, the palette is exactly the colours the file
- * uses, which is what a reader wants; an editor passes its own so a model
- * opened for drawing arrives with a full palette to draw from.
+ * @param fallbackPalette Colours to seed the palette slots the file does not
+ * fill. Left out, the palette is exactly the colours the file uses, which is
+ * what a reader wants; an editor passes its own so a model opened for drawing
+ * arrives with a full palette to draw from.
  * @throws When the file is not a model this format writes, when `parts.json`
  * is not the list this format writes, or when a part's sides are not faces of
  * one box.
@@ -600,6 +620,15 @@ export async function loadFigure(
         entry.indexed[side] = toBitmap(entry.asColours[side]!, built.indexOf);
       }
     }
+  }
+
+  // An indexed model names its colours by slot, so a palette shorter than the
+  // preview can address cannot be resequenced the way a colour-format one can:
+  // the slots it fills keep their colours and the rest are seeded from the
+  // fallback. A reader that gives no fallback gets the colours the file uses,
+  // and nothing more.
+  if (!migrated && palette !== undefined && fallbackPalette.length > 0) {
+    palette = seedPalette(palette, fallbackPalette);
   }
 
   const placements: (Omit<PartsManifest["parts"][number], "pivot"> & {
