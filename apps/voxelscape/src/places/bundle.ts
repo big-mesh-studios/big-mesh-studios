@@ -16,7 +16,7 @@
 // reads its exports. Nothing here touches the interpreter: it turns a
 // project into the string a `ScriptSandbox.load` can evaluate.
 import type * as TS from "typescript";
-import { loadTypeScript } from "@big-mesh-studios/code-mirror/typescript-cdn";
+import { loadTypeScript } from "@big-mesh-studios/solid-codemirror/typescript-cdn";
 import { modelDescriptorFor, modelSpecifierFor } from "./model-descriptor";
 import { VOXELSCAPE_LIB_SOURCE } from "./voxelscape-lib";
 

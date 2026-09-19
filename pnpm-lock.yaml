@@ -269,9 +269,9 @@ importers:
       '@atcute/oauth-browser-client':
         specifier: 'catalog:'
         version: 5.0.0(@atcute/identity-resolver@2.0.1(@atcute/identity@2.0.2(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3))(@atcute/lexicons@2.1.0)(typescript@5.9.3)
-      '@big-mesh-studios/code-mirror':
+      '@big-mesh-studios/solid-codemirror':
         specifier: workspace:*
-        version: link:../../packages/code-mirror
+        version: link:../../packages/solid-codemirror
       '@fortawesome/fontawesome-free':
         specifier: 'catalog:'
         version: 7.3.1
@@ -386,7 +386,13 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(vite@7.3.6(@types/node@26.4.0))
 
-  packages/code-mirror:
+  packages/maths:
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
+  packages/solid-codemirror:
     dependencies:
       '@codemirror/autocomplete':
         specifier: ^6.19.1
@@ -443,12 +449,6 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(vite@7.3.6(@types/node@26.4.0))
-
-  packages/maths:
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
 
   packages/stacker:
     dependencies:

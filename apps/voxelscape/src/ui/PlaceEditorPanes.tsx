@@ -7,7 +7,7 @@ import {
   darkTheme,
   LSPProvider,
   type CodeMirrorProps,
-} from "@big-mesh-studios/code-mirror";
+} from "@big-mesh-studios/solid-codemirror";
 import { Activity } from "@big-mesh-studios/utils/activity";
 import {
   createEffect,

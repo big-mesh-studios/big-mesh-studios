@@ -67,7 +67,7 @@
     "@atcute/identity-resolver": "catalog:",
     "@atcute/lexicons": "catalog:",
     "@atcute/oauth-browser-client": "catalog:",
-    "@big-mesh-studios/code-mirror": "workspace:*",
+    "@big-mesh-studios/solid-codemirror": "workspace:*",
     "@fortawesome/fontawesome-free": "catalog:",
     "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
     "@random-mesh/rmsl": "catalog:",

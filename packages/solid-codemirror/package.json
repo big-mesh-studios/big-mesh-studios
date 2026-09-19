@@ -1,12 +1,12 @@
 {
-  "name": "@big-mesh-studios/code-mirror",
+  "name": "@big-mesh-studios/solid-codemirror",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/big-mesh-studios/big-mesh-studios.git",
-    "directory": "packages/code-mirror"
+    "directory": "packages/solid-codemirror"
   },
   "type": "module",
   "sideEffects": false,
