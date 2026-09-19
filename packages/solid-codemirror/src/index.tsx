@@ -377,14 +377,16 @@ export function CodeMirror(props: CodeMirrorProps) {
   const [container, setContainer] = createSignal<HTMLDivElement>();
   let editor: EditorView | undefined;
   let editorPath: string | undefined;
+  let editorInitialized: boolean | undefined;
 
   function createEditor(
     parent: HTMLDivElement,
+    source: string,
     extensions: Array<Extension>,
   ): EditorView {
     return new EditorView({
       parent,
-      doc: lsp.files()[props.path] ?? "",
+      doc: source,
       extensions: [
         basicSetup,
         EditorView.theme({
@@ -428,16 +430,37 @@ export function CodeMirror(props: CodeMirrorProps) {
   // the editor is only built once the container signal has a value. Also
   // rebuilds whenever `path` changes, so a caller can swap which file (or
   // whose VFS) this editor shows without remounting the component.
+  //
+  // `lsp.files()[props.path]` is read here, in the tracked compute phase,
+  // rather than inside `createEditor` (which only runs from the untracked
+  // apply phase below) — a caller backing `files` with an async source
+  // (e.g. a lazily-fetched demo) needs that read to happen somewhere Solid's
+  // reactivity can register it as a dependency and retry once it resolves;
+  // an apply-phase read can't do either, so a still-pending file would
+  // otherwise open as permanently empty.
+  //
+  // That same read is also how the caller's own edits reach this file: a
+  // typed keystroke normally flows out through `onInput` and back in as an
+  // update to `files`, which would otherwise be indistinguishable here from
+  // a first load — rebuilding the whole EditorView (and fighting the user's
+  // cursor) on every keystroke. `path`/`initialized` identity is what a
+  // rebuild is actually for, so once built for a given (path, initialized)
+  // pair, further `source` changes for that same pair are exactly that echo
+  // and are left for CodeMirror's own state to already reflect.
   createEffect(
     () =>
       [
         container(),
         lsp.initialized(),
         props.path,
+        lsp.files()[props.path],
         trackDeep(props.config ?? {}),
       ] as const,
-    ([target, initialized, path]) => {
-      if (!target) {
+    ([target, initialized, path, source]) => {
+      if (!target || source === undefined) {
+        return;
+      }
+      if (editor && editorPath === path && editorInitialized === initialized) {
         return;
       }
       // A same-document rebuild (LSP just became ready, or `config`
@@ -453,6 +476,7 @@ export function CodeMirror(props: CodeMirrorProps) {
 
       editor = createEditor(
         target,
+        source ?? "",
         initialized
           ? [
               autocompletion({ override: [tsAutocomplete()] }),
@@ -469,6 +493,7 @@ export function CodeMirror(props: CodeMirrorProps) {
           : [],
       );
       editorPath = path;
+      editorInitialized = initialized;
 
       if (selection) {
         editor.dispatch({ selection });
