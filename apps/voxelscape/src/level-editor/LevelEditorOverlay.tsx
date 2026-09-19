@@ -19,7 +19,10 @@ import { ShapePropertiesPanel } from "./panels/ShapePropertiesPanel";
 import { ToolbarPanel } from "./panels/ToolbarPanel";
 import { defaultShape, shapeBounds } from "./structures/plan";
 import { pickShape } from "./view/shape-picking";
-import { LevelEditorTouchControls } from "./TouchControls";
+import {
+  LevelEditorCrosshair,
+  LevelEditorTouchControls,
+} from "./TouchControls";
 import styles from "./LevelEditorOverlay.module.css";
 
 /** How far a click reaches for a voxel to build on, in world units. */
@@ -42,6 +45,8 @@ export function LevelEditorOverlay() {
   const editor = createLevelEditor({
     structures: () => voxelscape.levelEditor.structures(),
     setStructures: (plan) => voxelscape.levelEditor.setStructures(plan),
+    cameraKind: () => voxelscape.levelEditor.cameraKind(),
+    setCameraKind: (kind) => voxelscape.levelEditor.setCameraKind(kind),
   });
 
   const [leftPane, setLeftPane] = createSignal<HTMLElement>();
@@ -175,6 +180,16 @@ export function LevelEditorOverlay() {
       if (event.pointerType !== "mouse" || event.button !== 0) {
         return;
       }
+      if (editor.cameraKind() === "NoClip") {
+        // The locked pointer parks at the canvas centre, so its offset says
+        // nothing about where the crosshair is; and the first click only takes
+        // the lock, so an unlocked press places nothing.
+        if (document.pointerLockElement !== event.currentTarget) {
+          return;
+        }
+        applyToolAtCentre();
+        return;
+      }
       applyToolAt(event.offsetX, event.offsetY);
     };
     canvas?.addEventListener("pointerup", onPointerUp);
@@ -201,18 +216,32 @@ export function LevelEditorOverlay() {
     canvas.style.height = "";
   });
 
+  /** What the camera's gesture does, and how a tool is applied through it. */
+  const hint = (): string => {
+    if (editor.cameraKind() === "NoClip") {
+      return editor.coarsePointer()
+        ? "Drag looks · Joystick flies · Buttons place and select"
+        : "Click to look · WASD flies · Left-click places · Esc releases";
+    }
+    return editor.coarsePointer()
+      ? "Drag orbits · Pinch zooms · Buttons place and select"
+      : "Right-drag orbits · Shift+right-drag pans · Wheel zooms · Left-click places";
+  };
+
   const canvasContents = () => (
     <>
-      <div class={styles.hint}>
-        {editor.coarsePointer()
-          ? "Drag orbits · Pinch zooms · Buttons place and select"
-          : "Right-drag orbits · Shift+right-drag pans · Wheel zooms · Left-click places"}
-      </div>
+      <div class={styles.hint}>{hint()}</div>
+      {/* A tool applies at the crosshair whenever a finger or a no-clip camera
+          is aiming, but under the cursor when a mouse orbits. */}
+      <Show when={editor.coarsePointer() || editor.cameraKind() === "NoClip"}>
+        <LevelEditorCrosshair />
+      </Show>
       <Show when={editor.coarsePointer()}>
         <LevelEditorTouchControls
           tool={editor.tool}
           setTool={editor.setTool}
           apply={applyToolAtCentre}
+          noClip={editor.cameraKind() === "NoClip"}
         />
       </Show>
     </>

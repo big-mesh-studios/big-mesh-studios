@@ -658,7 +658,7 @@ export interface KitCameraControlParams {
  * change callbacks fire.
  */
 export class KitCameraControl implements CameraControl {
-  readonly kind: CameraControlsKind = "ToolBoxStyle";
+  readonly kind: CameraControlsKind = "Orbit";
 
   private readonly _core: KitControlsCore;
   private readonly _getActiveCamera: () => Camera;
@@ -770,7 +770,7 @@ export class KitCameraControl implements CameraControl {
     this._core.setOrbitTarget(v3(target.x, target.y, target.z));
   }
 
-  public update(): void {
+  public update(_dt: number): void {
     // The core is reactive; the camera is driven by a createEffect.
   }
 

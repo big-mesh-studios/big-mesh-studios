@@ -6,6 +6,7 @@ import {
 } from "solid-js";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import { isStructurePlan, parseStructurePlan } from "../places/plan";
+import type { CameraControlsKind } from "./camera/CameraControl";
 import { Command } from "./command/Command";
 import { createCommander } from "./command/commander";
 import { cloneShape, planScript, translateShape } from "./structures/plan";
@@ -24,6 +25,10 @@ export interface LevelEditorHost {
   structures: Accessor<StructurePlan>;
   /** Replaces the world's plan, restamping the chunks it touches. */
   setStructures(plan: StructurePlan): void;
+  /** Which style drives the editor's camera. */
+  cameraKind: Accessor<CameraControlsKind>;
+  /** Switches the editor between the orbit and no-clip cameras. */
+  setCameraKind(kind: CameraControlsKind): void;
 }
 
 /**
@@ -99,6 +104,9 @@ export function createLevelEditor(host: LevelEditorHost) {
     setTool,
     activeBlockId,
     setActiveBlockId,
+
+    cameraKind: host.cameraKind,
+    setCameraKind: host.setCameraKind,
 
     narrow,
     coarsePointer,

@@ -39,6 +39,15 @@
   pointer-events: auto;
 }
 
+.joystick {
+  position: absolute;
+  left: calc(16px + env(safe-area-inset-left));
+  bottom: 16px;
+  width: 150px;
+  height: 150px;
+  pointer-events: auto;
+}
+
 .apply,
 .toggle {
   display: flex;

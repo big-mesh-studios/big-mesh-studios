@@ -56,6 +56,21 @@ export function ToolbarPanel() {
       >
         Redo
       </Button>
+      <span class={styles.separator} />
+      <Tab
+        selected={editor.cameraKind() === "Orbit"}
+        title="orbit the camera with the cursor"
+        onClick={() => editor.setCameraKind("Orbit")}
+      >
+        Orbit
+      </Tab>
+      <Tab
+        selected={editor.cameraKind() === "NoClip"}
+        title="fly the camera through the world"
+        onClick={() => editor.setCameraKind("NoClip")}
+      >
+        No-clip
+      </Tab>
     </Bar>
   );
 }

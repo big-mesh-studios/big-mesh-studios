@@ -196,6 +196,12 @@ export interface CommandsParams {
    */
   setNoClip: (noclip?: boolean) => string;
   /**
+   * Sets which camera style drives the level editor (toggling if `kind` is
+   * omitted): an orbit camera aimed with the cursor, or a free-flying no-clip
+   * camera aimed from the crosshair.
+   */
+  setEditorCamera: (kind?: "Orbit" | "NoClip") => string;
+  /**
    * Shows or hides the per-frame performance readout, flipping it if `on` is
    * omitted.
    */
@@ -302,6 +308,7 @@ export const createCommands = ({
   setLookSensitivity,
   setFlying,
   setNoClip,
+  setEditorCamera,
   setDebugPerf,
   setShowStats,
   traceStart,
@@ -739,6 +746,23 @@ export const createCommands = ({
       description:
         "open (or close) the level editor for this world's structures",
       run: () => toggleLevelEditor(),
+    },
+    "/place:level-editor-camera": {
+      description: "set the level editor's camera: orbit, or no-clip to fly",
+      args: "[orbit|no-clip]",
+      run: (rest) => {
+        const arg = rest[0];
+        if (arg === "orbit") {
+          return setEditorCamera("Orbit");
+        }
+        if (arg === "no-clip" || arg === "noclip") {
+          return setEditorCamera("NoClip");
+        }
+        if (arg === undefined) {
+          return setEditorCamera();
+        }
+        return "usage: /place:level-editor-camera [orbit|no-clip]  (no argument flips it)";
+      },
     },
     "/place:create": {
       description: `publish a new, empty place under your account, seeded from the world being played, and join it — modes: ${PLACE_MODES.join(", ")} (default solo:edit)`,

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { createRoot, createSignal } from "solid-js";
+import { createRoot, createSignal, flush } from "solid-js";
 import { describe, expect, it } from "vitest";
 import type { PlanShape, StructurePlan } from "./types";
 import { createLevelEditor } from "./level-editor-store";
@@ -26,11 +26,16 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const makeEditor = () =>
   createRoot((dispose) => {
     const [plan, setPlan] = createSignal<StructurePlan>([]);
+    const [cameraKind, setCameraKind] = createSignal<"Orbit" | "NoClip">(
+      "Orbit",
+    );
     const editor = createLevelEditor({
       structures: plan,
       setStructures: setPlan,
+      cameraKind,
+      setCameraKind,
     });
-    return { editor, plan, dispose };
+    return { editor, plan, cameraKind, dispose };
   });
 
 const box: PlanShape = {
@@ -101,6 +106,16 @@ describe("createLevelEditor", () => {
     await settle();
     expect(JSON.parse(editor.exportJson())).toEqual([box]);
     expect(editor.script()).toContain("onPlan(");
+    dispose();
+  });
+
+  it("reads and sets the host's camera style", () => {
+    const { editor, cameraKind, dispose } = makeEditor();
+    expect(editor.cameraKind()).toBe("Orbit");
+    editor.setCameraKind("NoClip");
+    flush();
+    expect(cameraKind()).toBe("NoClip");
+    expect(editor.cameraKind()).toBe("NoClip");
     dispose();
   });
 });

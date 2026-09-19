@@ -73,14 +73,17 @@ import { Inventory } from "../player/inventory";
 import { ITEM_ORDER, ITEMS, type ItemId } from "../player/items";
 import {
   DEFAULT_PLAYER_CONFIG,
+  lookDirection,
   type Player,
   type PlayerConfig,
+  type PlayerWorld,
 } from "../player/player";
 import { loadSpriteModel } from "../player/sprite-model";
 import type { Target, Tool, ToolContext } from "../player/tools/tool";
 import { BucketTool } from "../player/tools/bucket-tool";
 import { loadFigure } from "@big-mesh-studios/stacker/format";
 import type { Model } from "@big-mesh-studios/stacker/renderer";
+import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import { AdaptiveResolution } from "../render/adaptive";
 import { createRenderLoop } from "../render/create-render-loop";
 import { FlowController } from "../world/flow-controller";
@@ -90,6 +93,11 @@ import {
   type VoxelWorld,
 } from "../world/create-voxel-world";
 import { KitCameraControl } from "../level-editor/camera/KitCameraControl";
+import { NoClipCameraControl } from "../level-editor/camera/NoClipCameraControl";
+import type {
+  CameraControl,
+  CameraControlsKind,
+} from "../level-editor/camera/CameraControl";
 import { mouseRay, projectPtToScreen } from "../level-editor/camera/project";
 import type { SubTexture, VoxelTiles } from "../renderers/atlas";
 import { cellsInSphere } from "../world/chunk-sphere";
@@ -292,14 +300,18 @@ export interface Voxelscape {
   canvas: Accessor<HTMLCanvasElement | null>;
   /**
    * The level editor's handle on the running world: whether it is showing, the
-   * orbit camera it draws through, the camera control attached to the canvas,
-   * and the plan it edits.
+   * camera it draws through, which control style drives that camera, and the
+   * plan it edits.
    */
   levelEditor: {
     open: Accessor<boolean>;
     setOpen(open: boolean): void;
     camera: PerspectiveCamera;
-    control: KitCameraControl;
+    /** Which camera style drives the editor, Orbit or NoClip. */
+    cameraKind: Accessor<CameraControlsKind>;
+    setCameraKind(kind: CameraControlsKind): void;
+    /** The control for the active camera style. */
+    control: Accessor<CameraControl>;
     structures: Accessor<StructurePlan>;
     setStructures(plan: StructurePlan): void;
     /** The box drawn around the selected shape; the overlay sizes and shows it. */
@@ -539,6 +551,15 @@ export const createVoxelscape = ({
   const [editorMouse, setEditorMouse] = createSignal<Vector2 | undefined>(
     undefined,
   );
+  /**
+   * Which style drives the level editor's camera. A device with a coarse
+   * pointer opens the editor flying through the world, where a mouse keeps the
+   * orbit control it can aim with a cursor.
+   */
+  const [editorCameraKind, setEditorCameraKind] =
+    createSignal<CameraControlsKind>(
+      createMediaQuery("(any-pointer: coarse)")() ? "NoClip" : "Orbit",
+    );
   // The mount and its unmount are lifecycle work: `mount` runs under the
   // canvas component's settled effect and the returned unmount runs while that
   // owner is being disposed, so this one signal opts into writes from an owned
@@ -1851,6 +1872,14 @@ export const createVoxelscape = ({
       }
       return next ? "no-clip" : "collisions on";
     },
+    setEditorCamera: (kind) => {
+      const next =
+        kind ?? (editorCameraKind() === "NoClip" ? "Orbit" : "NoClip");
+      setEditorCameraKind(next);
+      return next === "NoClip"
+        ? "level editor camera: no-clip"
+        : "level editor camera: orbit";
+    },
     setDebugPerf: (on) => {
       if (!__PERF__) {
         return "performance readout unavailable in this build";
@@ -2085,6 +2114,35 @@ export const createVoxelscape = ({
         : { t: pick.distance, objectId: "" };
     },
   });
+
+  /**
+   * The world the no-clip editor camera flies through: nothing blocks it, no
+   * water grips it, and it is held inside the same far extent the camera can
+   * see. The free-fly integrator is the player's own, so the terrain it would
+   * collide with is only turned off here.
+   */
+  const editorNoClipWorld: PlayerWorld = {
+    getGroundHeightAt: () => -Infinity,
+    getInWaterAt: () => false,
+    getSolidAt: () => false,
+    halfExtent: world.ringRadius,
+  };
+
+  /**
+   * The level editor's no-clip camera: free flight driven by the player's
+   * `/player:no-clip` movement, for a hand that steers a view more easily than
+   * it places a cursor.
+   */
+  const editorNoClipControl = new NoClipCameraControl({
+    input,
+    getActiveCamera: () => editorCamera,
+    world: editorNoClipWorld,
+    speed: 30,
+  });
+
+  /** The camera control the active style drives. */
+  const editorCameraControl = (): CameraControl =>
+    editorCameraKind() === "NoClip" ? editorNoClipControl : editorControl;
 
   const advance = (dt: number): void => {
     const progress = loading();
@@ -2355,9 +2413,13 @@ export const createVoxelscape = ({
       void scriptConsole?.pump();
     }
     // While the level editor is open the player block above is skipped, so the
-    // window follows the editor's orbit target instead of the player.
+    // window follows the editor camera instead of the player. The control is
+    // advanced here too: an orbit control is driven by its own effect, while a
+    // no-clip one reads the frame's input and flies.
     if (levelEditorOpen()) {
-      const focus = editorControl.target;
+      const control = editorCameraControl();
+      control.update(dt);
+      const focus = control.target;
       world.scrollTo(focus.x, focus.y, focus.z);
     }
     probe.begin(Phase.environment);
@@ -2437,7 +2499,9 @@ export const createVoxelscape = ({
     open: levelEditorOpen,
     setOpen: (open: boolean) => setLevelEditorOpen(open),
     camera: editorCamera,
-    control: editorControl,
+    cameraKind: editorCameraKind,
+    setCameraKind: setEditorCameraKind,
+    control: editorCameraControl,
     structures: levelStructures,
     setStructures: (plan: StructurePlan) => {
       setLevelStructures(plan);
@@ -2446,24 +2510,62 @@ export const createVoxelscape = ({
     highlight: levelEditorHighlight,
   };
 
-  // The control is bound to the canvas once it exists and merely no-ops while
-  // the editor is closed, so opening and closing never tears listeners down and
-  // rebuilds them. Opening also hands input to the editor and seeds the orbit on
-  // the player, so the editor looks at the ground the player stands on.
+  // Each control no-ops unless it is both enabled and the selected style, so a
+  // right-drag never fights a WASD key. Opening seeds the camera on the player;
+  // switching styles re-seats the incoming control from wherever the camera
+  // already is, so the view does not jump back to the player.
   createEffect(
-    () => ({ open: levelEditorOpen(), canvas: mountedCanvasEl() }),
-    ({ open, canvas }) => {
-      editorControl.enabled = open && canvas !== null;
-      input.setEnabled(!open);
-      if (!open || canvas === null) {
+    () => ({
+      open: levelEditorOpen(),
+      canvas: mountedCanvasEl(),
+      kind: editorCameraKind(),
+    }),
+    (value, prev) => {
+      const { open, canvas, kind } = value;
+      const active = open && canvas !== null;
+      const noClip = kind === "NoClip";
+      editorControl.enabled = active && !noClip;
+      editorNoClipControl.enabled = active && noClip;
+      input.setEnabled(!open || noClip);
+      if (!active) {
+        return;
+      }
+      const justOpened = prev === undefined || !prev.open;
+      const changedKind = prev !== undefined && prev.kind !== kind;
+      if (!justOpened && !changedKind) {
         return;
       }
       const feet = avatar.player.position;
-      const target = new Vector3(feet.x, feet.y + 1, feet.z);
-      editorCamera.position.set(target.x + 32, target.y + 24, target.z + 32);
-      editorCamera.lookAt(target);
+      const playerTarget = new Vector3(feet.x, feet.y + 1, feet.z);
+      if (justOpened && !noClip) {
+        // The orbit control starts behind and above the ground the player
+        // stands on, aimed at it.
+        editorCamera.position.set(
+          playerTarget.x + 32,
+          playerTarget.y + 24,
+          playerTarget.z + 32,
+        );
+        editorCamera.lookAt(playerTarget);
+      } else if (justOpened) {
+        // The no-clip control starts in the world, at the player's eye and
+        // facing the way the player faces.
+        const eyeY = feet.y + avatar.player.config.eyeHeight;
+        const [dx, dy, dz] = lookDirection(avatar.player);
+        editorCamera.position.set(feet.x, eyeY, feet.z);
+        editorCamera.lookAt(feet.x + dx, eyeY + dy, feet.z + dz);
+      }
       editorCamera.updateMatrixWorld();
-      editorControl.syncFromCamera(editorCamera, target);
+      // An orbit seeded on the player keeps aiming at the player; one adopted
+      // from a no-clip camera aims at a point ahead of where that camera
+      // looked, so the two styles meet without a swing.
+      const focus = justOpened
+        ? playerTarget
+        : editorCamera.position
+            .clone()
+            .add(
+              editorCamera.getWorldDirection(new Vector3()).multiplyScalar(32),
+            );
+      editorCameraControl().syncFromCamera(editorCamera, focus);
       void document.exitPointerLock?.();
     },
   );
@@ -2473,6 +2575,7 @@ export const createVoxelscape = ({
     setMountedCanvasEl(canvas);
     editorControl.detach();
     editorControl.attach(canvas);
+    editorNoClipControl.attach(canvas);
     // The editor camera aims through the cursor, so its position over the
     // canvas is tracked here rather than through the player's input handlers.
     const onEditorPointerMove = (event: PointerEvent) => {
@@ -2558,6 +2661,7 @@ export const createVoxelscape = ({
       explosionFigures.clear();
       hand.dispose();
       editorControl.dispose();
+      editorNoClipControl.dispose();
       input.dispose();
     },
   };

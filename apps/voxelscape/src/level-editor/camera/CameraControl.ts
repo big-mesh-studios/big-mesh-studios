@@ -1,6 +1,6 @@
 import type { Camera, Vector3 } from "@random-mesh/rmsl/scene";
 
-export type CameraControlsKind = "Orbit" | "ToolBoxStyle";
+export type CameraControlsKind = "Orbit" | "NoClip";
 
 export type Projection = "Perspective" | "Orthographic";
 
@@ -20,20 +20,23 @@ export interface CameraControl {
   /** Whether user input is accepted. */
   enabled: boolean;
 
-  /** The orbit point, in world space. */
+  /**
+   * The world point the streamed window should follow: the orbit point for an
+   * orbiting control, the camera's own position for a free-flying one.
+   */
   get target(): Vector3;
 
-  /** Points the control at a new orbit target. */
+  /** Points the control at a new focus, when the control has one to point. */
   setTarget(pt: Vector3): void;
 
   /** Reconfigures the control for the given camera and projection. */
   setProjection(camera: Camera, projection: Projection): void;
 
-  /** Makes the control adopt the camera's pose and orbit target. */
+  /** Makes the control adopt the camera's pose and focus. */
   syncFromCamera(camera: Camera, target: Vector3): void;
 
-  /** Advances the control a frame. */
-  update(): void;
+  /** Advances the control a frame by `dt` seconds. */
+  update(dt: number): void;
 
   /** Subscribes to camera movement; returns an unsubscribe function. */
   onChange(cb: () => void): () => void;
