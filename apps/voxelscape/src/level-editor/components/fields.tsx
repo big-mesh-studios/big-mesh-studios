@@ -9,24 +9,50 @@ interface NumberFieldProps {
   min?: number;
 }
 
-/** A labelled whole-number input. */
+/** A labelled whole-number input, with buttons that step the value. */
 export function NumberField(props: NumberFieldProps) {
+  const step = (direction: 1 | -1) => {
+    const next = props.value + direction * (props.step ?? 1);
+    if (props.min !== undefined && next < props.min) {
+      props.onChange(props.min);
+      return;
+    }
+    props.onChange(next);
+  };
   return (
     <label class={styles.field}>
       <span class={styles.label}>{props.label}</span>
-      <input
-        class={styles.input}
-        type="number"
-        value={props.value}
-        step={props.step ?? 1}
-        min={props.min}
-        onChange={(event) => {
-          const value = Number(event.currentTarget.value);
-          if (Number.isFinite(value)) {
-            props.onChange(Math.round(value));
-          }
-        }}
-      />
+      <span class={styles.stepper}>
+        <input
+          class={styles.input}
+          type="number"
+          value={props.value}
+          step={props.step ?? 1}
+          min={props.min}
+          onChange={(event) => {
+            const value = Number(event.currentTarget.value);
+            if (Number.isFinite(value)) {
+              props.onChange(Math.round(value));
+            }
+          }}
+        />
+        <button
+          type="button"
+          class={styles.stepButton}
+          aria-label={`Decrease ${props.label}`}
+          onClick={() => step(-1)}
+        >
+          −
+        </button>
+        <button
+          type="button"
+          class={styles.stepButton}
+          aria-label={`Increase ${props.label}`}
+          onClick={() => step(1)}
+        >
+          +
+        </button>
+      </span>
     </label>
   );
 }
