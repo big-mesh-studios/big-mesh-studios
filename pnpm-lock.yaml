@@ -89,6 +89,9 @@ importers:
       prettier:
         specifier: ^3.9.6
         version: 3.9.6
+      turbo:
+        specifier: ^2.5.8
+        version: 2.11.1
 
   apps/homepage:
     dependencies:
@@ -446,6 +449,12 @@ importers:
       solid-js:
         specifier: 'catalog:'
         version: 2.0.0-beta.29
+      vite:
+        specifier: 'catalog:'
+        version: 7.3.6(@types/node@26.4.0)
+      vite-plugin-solid:
+        specifier: 'catalog:'
+        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)(vite@7.3.6(@types/node@26.4.0))
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(vite@7.3.6(@types/node@26.4.0))
@@ -1100,6 +1109,36 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
+  '@turbo/darwin-64@2.11.1':
+    resolution: {integrity: sha512-hmuxQFaISY7/6X9Sn/leocFVeN2u8n8q0qjRX5dpLtRU/P5ijGeweZ9nxbYLEFImp+k0nytqJ3ROAVq1SFSEMg==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@turbo/darwin-arm64@2.11.1':
+    resolution: {integrity: sha512-ozmYSprvSh9AokcqzkkFHPQv8LjrL37ilTQt4Y4wSJdiXKcmTRt9E0zUDN5r3T5F8KR2xRnEfxYpH9z5AeQcrA==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@turbo/linux-64@2.11.1':
+    resolution: {integrity: sha512-1mudFKuWUPjC/h06RucqPw3tf538AJCJLjIYC4lvqSsd+ZNZOakQxH5m0c9uArasa/IYxA6UU8/3mdON1WIy0Q==}
+    cpu: [x64]
+    os: [android, linux]
+
+  '@turbo/linux-arm64@2.11.1':
+    resolution: {integrity: sha512-3dXa9eh8YgzqWRDcs/F8xmTAH7cZEb/FA7+hxNYQZvylu5Fu94q62LKYLrPutsAKARFvSRus29MvESHvgrdWNQ==}
+    cpu: [arm64]
+    os: [android, linux]
+
+  '@turbo/windows-64@2.11.1':
+    resolution: {integrity: sha512-WWyZfn4VtUCJFbMOxShQLu9V8O7y4yFbccRV1lliqiZJ6SMk08eraWFT+h4ZzZgE8qLS6KxnAJA+C0H1laWNcg==}
+    cpu: [x64]
+    os: [win32]
+
+  '@turbo/windows-arm64@2.11.1':
+    resolution: {integrity: sha512-7Cr9R/Q0FrRfNniLBDsb5YAR3tMRjRiqkkp/GW9KpGc4LcAeRHPJc33eCZO6RsCfUCaQhKkx655s7iRBVxfjCw==}
+    cpu: [arm64]
+    os: [win32]
+
   '@tweenjs/tween.js@23.1.3':
     resolution: {integrity: sha512-vJmvvwFxYuGnF2axRtPYocag6Clbb5YS7kLL+SO/TeVFzHqDIWrNKYtcsPMibjDx9O+bu+psAy9NKfWklassUA==}
 
@@ -1594,6 +1633,10 @@ packages:
   tr46@6.0.0:
     resolution: {integrity: sha512-bLVMLPtstlZ4iMQHpFHTR7GAGj2jxi8Dg0s2h2MafAE4uSWF98FC/3MomU51iQAMf8/qDUbKWf5GxuvvVcXEhw==}
     engines: {node: '>=20'}
+
+  turbo@2.11.1:
+    resolution: {integrity: sha512-ZmfHqh0i7bHOcFyfef4AuinI1M0/UOJ9bcwYMA/D68xAKQTng5kIH8ay9hcq5eB3ydG+DTDSmKiiEW+OWWovFw==}
+    hasBin: true
 
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
@@ -2321,6 +2364,24 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
+  '@turbo/darwin-64@2.11.1':
+    optional: true
+
+  '@turbo/darwin-arm64@2.11.1':
+    optional: true
+
+  '@turbo/linux-64@2.11.1':
+    optional: true
+
+  '@turbo/linux-arm64@2.11.1':
+    optional: true
+
+  '@turbo/windows-64@2.11.1':
+    optional: true
+
+  '@turbo/windows-arm64@2.11.1':
+    optional: true
+
   '@tweenjs/tween.js@23.1.3': {}
 
   '@types/babel__core@7.20.5':
@@ -2839,6 +2900,15 @@ snapshots:
   tr46@6.0.0:
     dependencies:
       punycode: 2.3.1
+
+  turbo@2.11.1:
+    optionalDependencies:
+      '@turbo/darwin-64': 2.11.1
+      '@turbo/darwin-arm64': 2.11.1
+      '@turbo/linux-64': 2.11.1
+      '@turbo/linux-arm64': 2.11.1
+      '@turbo/windows-64': 2.11.1
+      '@turbo/windows-arm64': 2.11.1
 
   typescript@5.9.3: {}
 

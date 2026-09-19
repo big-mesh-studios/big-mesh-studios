@@ -2,6 +2,7 @@
   "name": "big-mesh-studios",
   "type": "module",
   "license": "MIT",
+  "packageManager": "pnpm@11.3.0",
   "engines": {
     "node": ">=24"
   },
@@ -9,14 +10,15 @@
     "dev:rm-stacker": "pnpm --filter @big-mesh-studios/rm-stacker dev",
     "dev:voxelscape": "pnpm --filter @big-mesh-studios/bms-voxelscape dev",
     "dev:voxel-rigger": "pnpm --filter @big-mesh-studios/voxel-rigger dev",
-    "build": "pnpm -r build",
-    "build-lib": "pnpm -r build-lib",
-    "check-types": "pnpm -r check-types",
-    "test": "pnpm -r test",
+    "build": "turbo run build",
+    "build-lib": "turbo run build-lib",
+    "check-types": "turbo run check-types",
+    "test": "turbo run test",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "prettier": "^3.9.6"
+    "prettier": "^3.9.6",
+    "turbo": "^2.5.8"
   }
 }
