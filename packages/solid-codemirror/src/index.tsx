@@ -376,6 +376,7 @@ export function CodeMirror(props: CodeMirrorProps) {
   const lsp = useContext(LspContext);
   const [container, setContainer] = createSignal<HTMLDivElement>();
   let editor: EditorView | undefined;
+  let editorPath: string | undefined;
 
   function createEditor(
     parent: HTMLDivElement,
@@ -424,18 +425,29 @@ export function CodeMirror(props: CodeMirrorProps) {
   onSettled(() => () => editor?.destroy());
 
   // The container ref lands during render, after this effect's first run, so
-  // the editor is only built once the container signal has a value.
+  // the editor is only built once the container signal has a value. Also
+  // rebuilds whenever `path` changes, so a caller can swap which file (or
+  // whose VFS) this editor shows without remounting the component.
   createEffect(
     () =>
-      [container(), lsp.initialized(), trackDeep(props.config ?? {})] as const,
-    ([target, initialized]) => {
+      [
+        container(),
+        lsp.initialized(),
+        props.path,
+        trackDeep(props.config ?? {}),
+      ] as const,
+    ([target, initialized, path]) => {
       if (!target) {
         return;
       }
-      // A rebuild must hand selection and focus to the replacement editor.
+      // A same-document rebuild (LSP just became ready, or `config`
+      // changed) hands selection and focus to the replacement editor. A
+      // path change is a different document, so that state means nothing
+      // there and is dropped instead.
       const previous = editor;
-      const selection = previous?.state.selection;
-      const shouldFocus = previous?.hasFocus;
+      const sameDocument = previous !== undefined && editorPath === path;
+      const selection = sameDocument ? previous.state.selection : undefined;
+      const shouldFocus = sameDocument ? previous.hasFocus : false;
 
       previous?.destroy();
 
@@ -446,7 +458,7 @@ export function CodeMirror(props: CodeMirrorProps) {
               autocompletion({ override: [tsAutocomplete()] }),
               tsFacet.of({
                 worker: lsp.api,
-                path: `file:///${props.path}`,
+                path: `file:///${path}`,
               }),
               tsGoto(props.config?.tsGoto),
               tsHover(props.config?.tsHover),
@@ -456,6 +468,7 @@ export function CodeMirror(props: CodeMirrorProps) {
             ]
           : [],
       );
+      editorPath = path;
 
       if (selection) {
         editor.dispatch({ selection });
@@ -465,17 +478,6 @@ export function CodeMirror(props: CodeMirrorProps) {
       }
 
       props.onEditor?.(editor);
-    },
-  );
-
-  createEffect(
-    () => props.path,
-    (path) => {
-      const config = editor?.state.facet(tsFacet);
-      if (!config) {
-        return;
-      }
-      config.path = `file:///${path}`;
     },
   );
 
