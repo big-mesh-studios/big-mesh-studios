@@ -13,6 +13,7 @@ import type { CommandHelp, CommandOutput } from "../commands";
 import { isEditableTarget } from "../utils";
 import type { Voxelscape } from "../voxelscape/create-voxelscape";
 import { PlaceEditorContent } from "./PlaceEditor";
+import { FullscreenIcon } from "./icons";
 import styles from "./Console.module.css";
 
 export interface ConsoleInputHandle {
@@ -541,10 +542,12 @@ export const Console: Component<ConsoleProps> = (props) => {
   const shown = (): boolean => terminalOpen() || editorOpen();
 
   let panel: HTMLDivElement = null!;
-  // The trigger button itself is outside `panel`, so a click on it would
-  // otherwise also count as the "outside" click that closes the terminal —
-  // undone a moment later by the same click's own toggle, which would leave
-  // it looking like clicking the trigger to close never did anything.
+  // The button row is outside `panel`, so a click on it would otherwise also
+  // count as the "outside" click that closes the terminal — undone a moment
+  // later by the same click's own toggle, which would leave it looking like
+  // clicking the trigger to close never did anything. The fullscreen button
+  // sits in the same row, so it is excused the same way.
+  let controls: HTMLDivElement = null!;
   let anchor: HTMLButtonElement = null!;
   let input: ConsoleInputHandle = null!;
   // The editor content's own root — not the terminal's, which is a sibling
@@ -641,7 +644,7 @@ export const Console: Component<ConsoleProps> = (props) => {
       if (
         event.target instanceof Node &&
         !panel.contains(event.target) &&
-        !anchor.contains(event.target)
+        !controls.contains(event.target)
       ) {
         setTerminalOpen(false);
       }
@@ -651,13 +654,23 @@ export const Console: Component<ConsoleProps> = (props) => {
 
   return (
     <div class={[styles.underlay, levelEditorOpen() && styles.levelEditorOpen]}>
-      <button
-        ref={anchor}
-        class={styles.anchor}
-        onClick={() => setTerminalOpen((value) => !value)}
-      >
-        {">_"}
-      </button>
+      <div ref={controls} class={styles.controls}>
+        <button
+          type="button"
+          class={styles.fullscreen}
+          onClick={() => props.terminal.onCommand("/fullscreen")}
+          aria-label="toggle fullscreen"
+        >
+          <FullscreenIcon />
+        </button>
+        <button
+          ref={anchor}
+          class={styles.anchor}
+          onClick={() => setTerminalOpen((value) => !value)}
+        >
+          {">_"}
+        </button>
+      </div>
       <Show when={editorOpen()}>
         {/* A click that lands on the scrim itself — not one that started
             inside the panel and bubbled up — closes the editor. */}

@@ -4,31 +4,50 @@
   pointer-events: none;
 }
 
-.anchor {
+/* The console and fullscreen toggles, sharing the top-right corner. The panel
+   anchors to the console button's right edge, so it stays put as the row
+   grows leftward. */
+.controls {
   position: absolute;
   right: var(--margin);
   top: var(--margin);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.anchor,
+.fullscreen {
   width: 30px;
   height: 30px;
   border-radius: 15px;
   background: rgba(0, 0, 0, 0.5);
   color: #fff;
-  font: bold 12px monospace;
   display: flex;
   align-items: center;
   justify-content: center;
-  user-select: none;
-  touch-action: none;
+  border: none;
   cursor: pointer;
   pointer-events: auto;
-  border: none;
+  user-select: none;
+  touch-action: none;
+}
+
+.anchor {
+  font: bold 12px monospace;
   anchor-name: --console;
 }
 
-/* The level editor's panel owns the right edge, so the console's button — and
-   the panel anchored to it — moves to sit just left of that panel. The width
+.fullscreen svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* The level editor's panel owns the right edge, so the toggle row — and the
+   panel anchored inside it — moves to sit just left of that panel. The width
    is published by the level-editor overlay as it measures its split. */
-.levelEditorOpen .anchor {
+.levelEditorOpen .controls {
   right: calc(var(--margin) + var(--level-editor-panel-width, 0px));
 }
 
