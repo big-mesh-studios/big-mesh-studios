@@ -1,5 +1,10 @@
-import { createEffect, onCleanup, onSettled, Show } from "solid-js";
-import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
+import {
+  createEffect,
+  createSignal,
+  onCleanup,
+  onSettled,
+  Show,
+} from "solid-js";
 import { VOXEL_SIZE } from "../world/level-data";
 import { pickVoxel } from "../world/picker";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
@@ -7,6 +12,7 @@ import { mouseRay } from "./camera/project";
 import { Split } from "./components/SplitPane";
 import { LevelEditorContext } from "./context";
 import { createLevelEditor } from "./level-editor-store";
+import { LevelEditorSheet } from "./LevelEditorSheet";
 import { PlanJsonPanel } from "./panels/PlanJsonPanel";
 import { ShapeListPanel } from "./panels/ShapeListPanel";
 import { ShapePropertiesPanel } from "./panels/ShapePropertiesPanel";
@@ -22,10 +28,12 @@ const BUILD_REACH = 256;
 const SELECT_REACH = 512;
 
 /**
- * The level editor as an overlay over the running world: the panels sit on the
- * right of a resizable split, and the left pane is transparent, with the game's
- * own canvas constrained to it so the editor draws through the world the game
- * already mounted. The overlay itself ignores pointer events, so the canvas
+ * The level editor as an overlay over the running world: the panels sit on
+ * the right of a resizable split, and the left pane is transparent, with the
+ * game's own canvas constrained to it so the editor draws through the world
+ * the game already mounted. A screen with no room for the panel beside the
+ * canvas, or a hand with no mouse to aim, puts the panels in a sheet below the
+ * canvas instead. The overlay itself ignores pointer events, so the canvas
  * beneath it keeps the camera's right-drag and wheel and receives the clicks
  * that place and select shapes.
  */
@@ -36,9 +44,7 @@ export function LevelEditorOverlay() {
     setStructures: (plan) => voxelscape.levelEditor.setStructures(plan),
   });
 
-  let leftPane: HTMLSpanElement | undefined;
-
-  const coarsePointer = createMediaQuery("(any-pointer: coarse)");
+  const [leftPane, setLeftPane] = createSignal<HTMLElement>();
 
   /** The box drawn around the selected shape, owned by the world's composer. */
   const highlight = voxelscape.levelEditor.highlight;
@@ -66,13 +72,13 @@ export function LevelEditorOverlay() {
   );
 
   /**
-   * Pins the shared canvas to the left pane's box, so the render loop's
+   * Pins the shared canvas to the pane's box, so the render loop's
    * ResizeObserver sees the editor's viewport rather than the whole window and
    * keeps the camera's aspect right.
    */
   const applyCanvasBounds = (): void => {
     const canvas = voxelscape.canvas();
-    const pane = leftPane;
+    const pane = leftPane();
     if (canvas === null || pane === undefined) {
       return;
     }
@@ -88,10 +94,15 @@ export function LevelEditorOverlay() {
     canvas.style.width = `${paneRect.width}px`;
     canvas.style.height = `${paneRect.height}px`;
     // Publish how much of the right edge the panel takes, so the console —
-    // mounted outside this overlay — can move itself left of it.
+    // mounted outside this overlay — can move itself left of it. A sheet below
+    // the canvas leaves the right edge free, which measures as no width.
     document.documentElement.style.setProperty(
       "--level-editor-panel-width",
       `${containerRect.right - paneRect.right}px`,
+    );
+    document.documentElement.style.setProperty(
+      "--level-editor-panel-height",
+      `${containerRect.bottom - paneRect.bottom}px`,
     );
   };
 
@@ -142,16 +153,20 @@ export function LevelEditorOverlay() {
     applyToolAt(canvas.clientWidth / 2, canvas.clientHeight / 2);
   };
 
-  onSettled(() => {
-    applyCanvasBounds();
-    const canvas = voxelscape.canvas();
-    const pane = leftPane;
+  // The pane is a different element in the two arrangements, so the canvas is
+  // repinned to whichever one is showing rather than only the first.
+  createEffect(leftPane, (pane) => {
     if (pane === undefined) {
       return;
     }
+    applyCanvasBounds();
     const observer = new ResizeObserver(() => applyCanvasBounds());
     observer.observe(pane);
+    return () => observer.disconnect();
+  });
 
+  onSettled(() => {
+    const canvas = voxelscape.canvas();
     // The canvas has the game's handlers disabled. On a mouse, a left press
     // places or selects under the cursor; a touch only turns the camera, and
     // the touch cluster's own button places, so a finger dragging to look
@@ -165,7 +180,6 @@ export function LevelEditorOverlay() {
     canvas?.addEventListener("pointerup", onPointerUp);
 
     return () => {
-      observer.disconnect();
       canvas?.removeEventListener("pointerup", onPointerUp);
     };
   });
@@ -173,6 +187,9 @@ export function LevelEditorOverlay() {
   onCleanup(() => {
     highlight.visible = false;
     document.documentElement.style.removeProperty("--level-editor-panel-width");
+    document.documentElement.style.removeProperty(
+      "--level-editor-panel-height",
+    );
     const canvas = voxelscape.canvas();
     if (canvas === null) {
       return;
@@ -184,36 +201,54 @@ export function LevelEditorOverlay() {
     canvas.style.height = "";
   });
 
+  const canvasContents = () => (
+    <>
+      <div class={styles.hint}>
+        {editor.coarsePointer()
+          ? "Drag orbits · Pinch zooms · Buttons place and select"
+          : "Right-drag orbits · Shift+right-drag pans · Wheel zooms · Left-click places"}
+      </div>
+      <Show when={editor.coarsePointer()}>
+        <LevelEditorTouchControls
+          tool={editor.tool}
+          setTool={editor.setTool}
+          apply={applyToolAtCentre}
+        />
+      </Show>
+    </>
+  );
+
   return (
     <div class={styles.overlay}>
       <LevelEditorContext value={editor}>
-        <Split direction="column" style={{ width: "100%", height: "100%" }}>
-          <Split.Pane
-            size="1fr"
-            class={styles.canvasPane}
-            ref={(element) => (leftPane = element)}
-          >
-            <div class={styles.hint}>
-              {coarsePointer()
-                ? "Drag orbits · Pinch zooms · Buttons place and select"
-                : "Right-drag orbits · Shift+right-drag pans · Wheel zooms · Left-click places"}
+        {editor.mobile() ? (
+          <div class={styles.mobile}>
+            <div
+              class={styles.mobileCanvas}
+              ref={(element) => setLeftPane(element)}
+            >
+              {canvasContents()}
             </div>
-            <Show when={coarsePointer()}>
-              <LevelEditorTouchControls
-                tool={editor.tool}
-                setTool={editor.setTool}
-                apply={applyToolAtCentre}
-              />
-            </Show>
-          </Split.Pane>
-          <Split.Handle size="8px" class={styles.handle} />
-          <Split.Pane size="340px" class={styles.side}>
-            <ToolbarPanel />
-            <ShapeListPanel />
-            <ShapePropertiesPanel />
-            <PlanJsonPanel />
-          </Split.Pane>
-        </Split>
+            <LevelEditorSheet />
+          </div>
+        ) : (
+          <Split direction="column" style={{ width: "100%", height: "100%" }}>
+            <Split.Pane
+              size="1fr"
+              class={styles.canvasPane}
+              ref={(element) => setLeftPane(element)}
+            >
+              {canvasContents()}
+            </Split.Pane>
+            <Split.Handle size="8px" class={styles.handle} />
+            <Split.Pane size="340px" class={styles.side}>
+              <ToolbarPanel />
+              <ShapeListPanel />
+              <ShapePropertiesPanel />
+              <PlanJsonPanel />
+            </Split.Pane>
+          </Split>
+        )}
       </LevelEditorContext>
     </div>
   );

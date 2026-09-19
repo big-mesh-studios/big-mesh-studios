@@ -48,3 +48,15 @@
   border: 1px solid var(--grey);
   border-radius: calc(var(--margin) / 2);
 }
+
+/* A finger needs a taller target than a pointer does. */
+@media (any-pointer: coarse) {
+  .input {
+    min-height: 44px;
+  }
+
+  .stepButton {
+    width: 44px;
+    min-height: 44px;
+  }
+}

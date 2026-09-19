@@ -1,6 +1,6 @@
 # What voxelscape is made of
 
-Drawn from the imports under `src` at e71eb76 by `pnpm architecture`.
+Drawn from the imports under `src` at 628c6c8 by `pnpm architecture`.
 Nothing here is written by hand: change the code and run it again.
 
 ```mermaid
@@ -16,7 +16,7 @@ graph TD
   environment["environment<br/>6 files · 1879 lines"]
   atproto["atproto<br/>7 files · 1369 lines"]
   ui["ui<br/>15 files · 3097 lines"]
-  level-editor["level-editor<br/>23 files · 3425 lines"]
+  level-editor["level-editor<br/>24 files · 3606 lines"]
   atproto --> places
   atproto --> world
   level-editor --> places
@@ -80,7 +80,7 @@ graph TD
 | `environment`  | the sky, the clock, the weather and the sound                          | 6     | 1879  |
 | `atproto`      | being signed in, and reading and writing published records             | 7     | 1369  |
 | `ui`           | what is drawn over the world in the page                               | 15    | 3097  |
-| `level-editor` | editing the running world's structures, as an overlay on its canvas    | 23    | 3425  |
+| `level-editor` | editing the running world's structures, as an overlay on its canvas    | 24    | 3606  |
 
 ## What reaches into what
 

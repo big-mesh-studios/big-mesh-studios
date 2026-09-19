@@ -17,6 +17,10 @@ const download = (name: string, text: string): void => {
 export function PlanJsonPanel() {
   const editor = useContext(LevelEditorContext);
   const [text, setText] = createSignal("");
+  // The panel's own textarea takes a lot of a short screen for something read
+  // only when asked for, so on a narrow screen it waits for one of the buttons
+  // that fills it rather than standing open.
+  const [revealed, setRevealed] = createSignal(false);
 
   return (
     <div class={styles.panel}>
@@ -27,8 +31,22 @@ export function PlanJsonPanel() {
         >
           Export
         </Button>
-        <Button onClick={() => setText(editor.exportJson())}>Show JSON</Button>
-        <Button onClick={() => setText(editor.script())}>Show script</Button>
+        <Button
+          onClick={() => {
+            setText(editor.exportJson());
+            setRevealed(true);
+          }}
+        >
+          Show JSON
+        </Button>
+        <Button
+          onClick={() => {
+            setText(editor.script());
+            setRevealed(true);
+          }}
+        >
+          Show script
+        </Button>
         <label class={styles.fileLabel}>
           Import
           <input
@@ -44,12 +62,14 @@ export function PlanJsonPanel() {
           />
         </label>
       </Bar>
-      <textarea
-        class={styles.textarea}
-        value={text()}
-        spellcheck="false"
-        onInput={(event) => setText(event.currentTarget.value)}
-      />
+      <Show when={!editor.mobile() || revealed()}>
+        <textarea
+          class={styles.textarea}
+          value={text()}
+          spellcheck="false"
+          onInput={(event) => setText(event.currentTarget.value)}
+        />
+      </Show>
       <Show when={editor.notice()}>
         {(notice) => <p class={styles.notice}>{notice()}</p>}
       </Show>

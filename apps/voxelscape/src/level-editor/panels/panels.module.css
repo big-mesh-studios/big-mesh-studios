@@ -116,3 +116,11 @@
   color: var(--front);
   font: inherit;
 }
+
+/* A finger needs a taller target than a pointer does. */
+@media (any-pointer: coarse) {
+  .itemButton,
+  .select {
+    min-height: 44px;
+  }
+}

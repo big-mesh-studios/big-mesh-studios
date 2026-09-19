@@ -53,3 +53,12 @@
     border-color: var(--light-grey);
   }
 }
+
+/* A finger needs a taller target than a pointer does. */
+@media (any-pointer: coarse) {
+  .tab,
+  .button {
+    min-height: 44px;
+    padding-inline: calc(var(--margin) * 2);
+  }
+}

@@ -40,6 +40,9 @@ export function createLevelEditor(host: LevelEditorHost) {
   const [activeBlockId, setActiveBlockId] = createSignal(VOXEL_STONE);
   const [notice, setNotice] = createSignal<string | undefined>(undefined);
   const narrow = createMediaQuery("(max-width: 720px)");
+  const coarsePointer = createMediaQuery("(any-pointer: coarse)");
+  /** Whether the panels go in a sheet below the canvas rather than beside it. */
+  const mobile = createMemo(() => narrow() || coarsePointer());
 
   // Every change to the working plan reaches the world; `setStructures` diffs
   // by value, so an unchanged plan costs nothing.
@@ -98,6 +101,8 @@ export function createLevelEditor(host: LevelEditorHost) {
     setActiveBlockId,
 
     narrow,
+    coarsePointer,
+    mobile,
     notice,
     setNotice,
 

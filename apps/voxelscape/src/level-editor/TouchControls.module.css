@@ -31,7 +31,7 @@
 
 .cluster {
   position: absolute;
-  right: 16px;
+  right: calc(16px + env(safe-area-inset-right));
   bottom: 16px;
   display: flex;
   align-items: flex-end;

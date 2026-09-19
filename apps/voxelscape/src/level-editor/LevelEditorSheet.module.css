@@ -1,0 +1,66 @@
+/* The panels on a narrow screen, below the canvas. Capped so the canvas keeps
+   a share of a short landscape viewport; the content scrolls within what is
+   left. */
+.sheet {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  max-height: min(50dvh, 320px);
+  background: var(--back);
+  border-top: 1px solid var(--grey);
+  border-radius: var(--margin) var(--margin) 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  pointer-events: auto;
+}
+
+.header {
+  display: flex;
+  flex: none;
+  align-items: stretch;
+  gap: var(--margin);
+  padding: var(--margin);
+  border-bottom: 1px solid var(--grey);
+}
+
+.tabs {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: calc(var(--margin) / 2);
+  overflow-x: auto;
+}
+
+.chevron {
+  flex: none;
+  width: var(--size);
+  border: 1px solid var(--grey);
+  border-radius: calc(var(--margin) / 2);
+  background: var(--dark-grey);
+  color: var(--front);
+  font: inherit;
+  cursor: pointer;
+}
+
+.content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--margin);
+}
+
+/* The content and its panes are laid out with `display: flex`, which an
+   author stylesheet applies over the user agent's own `[hidden]` rule, so the
+   hidden state is asked for again here. */
+.content[hidden],
+.pane[hidden] {
+  display: none;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+}
