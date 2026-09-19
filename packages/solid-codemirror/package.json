@@ -1,6 +1,6 @@
 {
   "name": "@big-mesh-studios/solid-codemirror",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -31,8 +31,8 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@solidjs/web": "catalog:",
-    "solid-js": "catalog:"
+    "@solidjs/web": "^2.0.0-beta.29",
+    "solid-js": "^2.0.0-beta.29"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.19.1",
