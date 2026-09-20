@@ -196,11 +196,9 @@ export function ShapePropertiesPanel() {
     ),
   ]);
 
-  const body = () => {
-    const item = editor.selectedItem();
-    if (item === undefined) {
-      return undefined;
-    }
+  const Body = (props: {
+    item: NonNullable<ReturnType<typeof editor.selectedItem>>;
+  }) => {
     const updateItem = (next: PlanItem) => {
       const index = editor.selectedIndex();
       if (index !== undefined) {
@@ -214,251 +212,263 @@ export function ShapePropertiesPanel() {
     const updateProp = (next: PlanProp) =>
       updateItem({ type: "prop", value: next });
 
-    if (item.type === "npc") {
-      const npc = item.value;
-      return (
-        <>
-          <TextField
-            label="ID"
-            value={npc.id}
-            onChange={(id) => updateNpc({ ...npc, id })}
-          />
-          <TextField
-            label="Name"
-            value={npc.name ?? ""}
-            onChange={(name) => updateNpc({ ...npc, name })}
-          />
-          <ModelField
-            label="Model"
-            value={npc.model ?? "npc-sable.zip"}
-            models={withValue(npcModels(), npc.model ?? "npc-sable.zip")}
-            onChange={(model) => updateNpc({ ...npc, model })}
-          />
-          <PositionFields
-            x={npc.x}
-            y={npc.y}
-            z={npc.z}
-            onChange={(position) => updateNpc({ ...npc, ...position })}
-          />
-          <DecimalField
-            label="Yaw"
-            value={npc.yaw ?? 0}
-            onChange={(yaw) => updateNpc({ ...npc, yaw })}
-          />
-        </>
-      );
-    }
+    const StructureBody = (props: { shape: PlanShape }) => (
+      <>
+        <Show when={props.shape.kind === "box" ? props.shape : undefined}>
+          {(shape) => (
+            <>
+              <Vec3Field
+                label="Min"
+                value={shape().min}
+                onChange={(min) => updateShape({ ...shape(), min })}
+              />
+              <Vec3Field
+                label="Max"
+                value={shape().max}
+                onChange={(max) => updateShape({ ...shape(), max })}
+              />
+              <BlockField
+                label="Block"
+                value={shape().id}
+                onChange={(id) => updateShape({ ...shape(), id })}
+              />
+            </>
+          )}
+        </Show>
+        <Show when={props.shape.kind === "road" ? props.shape : undefined}>
+          {(shape) => (
+            <>
+              <Vec3Field
+                label="From"
+                value={shape().from}
+                onChange={(from) => updateShape({ ...shape(), from })}
+              />
+              <Vec3Field
+                label="To"
+                value={shape().to}
+                onChange={(to) => updateShape({ ...shape(), to })}
+              />
+              <NumberField
+                label="Width"
+                min={1}
+                value={shape().width}
+                onChange={(width) => updateShape({ ...shape(), width })}
+              />
+              <BlockField
+                label="Block"
+                value={shape().id}
+                onChange={(id) => updateShape({ ...shape(), id })}
+              />
+            </>
+          )}
+        </Show>
+        <Show when={props.shape.kind === "house" ? props.shape : undefined}>
+          {(shape) => (
+            <>
+              <Vec3Field
+                label="At"
+                value={shape().at}
+                onChange={(at) => updateShape({ ...shape(), at })}
+              />
+              <Vec3Field
+                label="Size"
+                value={shape().size}
+                onChange={(size) => updateShape({ ...shape(), size })}
+              />
+              <BlockField
+                label="Wall"
+                value={shape().wall}
+                onChange={(wall) => updateShape({ ...shape(), wall })}
+              />
+              <BlockField
+                label="Roof"
+                value={shape().roof}
+                onChange={(roof) => updateShape({ ...shape(), roof })}
+              />
+              <BlockField
+                label="Floor"
+                value={shape().floor}
+                onChange={(floor) => updateShape({ ...shape(), floor })}
+              />
+            </>
+          )}
+        </Show>
+        <Show when={props.shape.kind === "stairs" ? props.shape : undefined}>
+          {(shape) => (
+            <>
+              <Vec3Field
+                label="At"
+                value={shape().at}
+                onChange={(at) => updateShape({ ...shape(), at })}
+              />
+              <label class={fieldStyles.field}>
+                <span class={fieldStyles.label}>Along</span>
+                <select
+                  class={styles.select}
+                  value={shape().along}
+                  onChange={(event) =>
+                    updateShape({
+                      ...shape(),
+                      along: event.currentTarget.value === "z" ? "z" : "x",
+                    })
+                  }
+                >
+                  <option value="x">x</option>
+                  <option value="z">z</option>
+                </select>
+              </label>
+              <NumberField
+                label="Steps"
+                min={1}
+                value={shape().steps}
+                onChange={(steps) => updateShape({ ...shape(), steps })}
+              />
+              <NumberField
+                label="Rise"
+                min={1}
+                value={shape().rise}
+                onChange={(rise) => updateShape({ ...shape(), rise })}
+              />
+              <NumberField
+                label="Run"
+                min={1}
+                value={shape().run}
+                onChange={(run) => updateShape({ ...shape(), run })}
+              />
+              <NumberField
+                label="Width"
+                min={1}
+                value={shape().width}
+                onChange={(width) => updateShape({ ...shape(), width })}
+              />
+              <BlockField
+                label="Block"
+                value={shape().id}
+                onChange={(id) => updateShape({ ...shape(), id })}
+              />
+            </>
+          )}
+        </Show>
+        <Show when={props.shape.kind === "ramp" ? props.shape : undefined}>
+          {(shape) => (
+            <>
+              <Vec3Field
+                label="From"
+                value={shape().from}
+                onChange={(from) => updateShape({ ...shape(), from })}
+              />
+              <Vec3Field
+                label="To"
+                value={shape().to}
+                onChange={(to) => updateShape({ ...shape(), to })}
+              />
+              <NumberField
+                label="Width"
+                min={1}
+                value={shape().width}
+                onChange={(width) => updateShape({ ...shape(), width })}
+              />
+              <BlockField
+                label="Block"
+                value={shape().id}
+                onChange={(id) => updateShape({ ...shape(), id })}
+              />
+            </>
+          )}
+        </Show>
+      </>
+    );
 
-    if (item.type === "prop") {
-      const prop = item.value;
-      return (
-        <>
-          <TextField
-            label="ID"
-            value={prop.id}
-            onChange={(id) => updateProp({ ...prop, id })}
-          />
-          <TextField
-            label="Name"
-            value={prop.name ?? ""}
-            onChange={(name) => updateProp({ ...prop, name })}
-          />
-          <ModelField
-            label="Model"
-            value={prop.model}
-            models={withValue(propModels(), prop.model)}
-            onChange={(model) => updateProp({ ...prop, model })}
-          />
-          <PositionFields
-            x={prop.x}
-            y={prop.y}
-            z={prop.z}
-            onChange={(position) => updateProp({ ...prop, ...position })}
-          />
-          <DecimalField
-            label="Yaw"
-            value={prop.yaw ?? 0}
-            onChange={(yaw) => updateProp({ ...prop, yaw })}
-          />
-          <DecimalField
-            label="Height"
-            value={prop.height ?? 2}
-            onChange={(height) => updateProp({ ...prop, height })}
-          />
-          <BooleanField
-            label="Solid"
-            checked={prop.solid ?? false}
-            onChange={(solid) => updateProp({ ...prop, solid })}
-          />
-          <BooleanField
-            label="Hazard"
-            checked={prop.hazard ?? false}
-            onChange={(hazard) => updateProp({ ...prop, hazard })}
-          />
-        </>
-      );
-    }
-
-    const shape = item.value;
-    switch (shape.kind) {
-      case "box":
-        return (
-          <>
-            <Vec3Field
-              label="Min"
-              value={shape.min}
-              onChange={(min) => updateShape({ ...shape, min })}
-            />
-            <Vec3Field
-              label="Max"
-              value={shape.max}
-              onChange={(max) => updateShape({ ...shape, max })}
-            />
-            <BlockField
-              label="Block"
-              value={shape.id}
-              onChange={(id) => updateShape({ ...shape, id })}
-            />
-          </>
-        );
-      case "road":
-        return (
-          <>
-            <Vec3Field
-              label="From"
-              value={shape.from}
-              onChange={(from) => updateShape({ ...shape, from })}
-            />
-            <Vec3Field
-              label="To"
-              value={shape.to}
-              onChange={(to) => updateShape({ ...shape, to })}
-            />
-            <NumberField
-              label="Width"
-              min={1}
-              value={shape.width}
-              onChange={(width) => updateShape({ ...shape, width })}
-            />
-            <BlockField
-              label="Block"
-              value={shape.id}
-              onChange={(id) => updateShape({ ...shape, id })}
-            />
-          </>
-        );
-      case "house":
-        return (
-          <>
-            <Vec3Field
-              label="At"
-              value={shape.at}
-              onChange={(at) => updateShape({ ...shape, at })}
-            />
-            <Vec3Field
-              label="Size"
-              value={shape.size}
-              onChange={(size) => updateShape({ ...shape, size })}
-            />
-            <BlockField
-              label="Wall"
-              value={shape.wall}
-              onChange={(wall) => updateShape({ ...shape, wall })}
-            />
-            <BlockField
-              label="Roof"
-              value={shape.roof}
-              onChange={(roof) => updateShape({ ...shape, roof })}
-            />
-            <BlockField
-              label="Floor"
-              value={shape.floor}
-              onChange={(floor) => updateShape({ ...shape, floor })}
-            />
-          </>
-        );
-      case "stairs":
-        return (
-          <>
-            <Vec3Field
-              label="At"
-              value={shape.at}
-              onChange={(at) => updateShape({ ...shape, at })}
-            />
-            <label class={fieldStyles.field}>
-              <span class={fieldStyles.label}>Along</span>
-              <select
-                class={styles.select}
-                value={shape.along}
-                onChange={(event) =>
-                  updateShape({
-                    ...shape,
-                    along: event.currentTarget.value === "z" ? "z" : "x",
-                  })
-                }
-              >
-                <option value="x">x</option>
-                <option value="z">z</option>
-              </select>
-            </label>
-            <NumberField
-              label="Steps"
-              min={1}
-              value={shape.steps}
-              onChange={(steps) => updateShape({ ...shape, steps })}
-            />
-            <NumberField
-              label="Rise"
-              min={1}
-              value={shape.rise}
-              onChange={(rise) => updateShape({ ...shape, rise })}
-            />
-            <NumberField
-              label="Run"
-              min={1}
-              value={shape.run}
-              onChange={(run) => updateShape({ ...shape, run })}
-            />
-            <NumberField
-              label="Width"
-              min={1}
-              value={shape.width}
-              onChange={(width) => updateShape({ ...shape, width })}
-            />
-            <BlockField
-              label="Block"
-              value={shape.id}
-              onChange={(id) => updateShape({ ...shape, id })}
-            />
-          </>
-        );
-      case "ramp":
-        return (
-          <>
-            <Vec3Field
-              label="From"
-              value={shape.from}
-              onChange={(from) => updateShape({ ...shape, from })}
-            />
-            <Vec3Field
-              label="To"
-              value={shape.to}
-              onChange={(to) => updateShape({ ...shape, to })}
-            />
-            <NumberField
-              label="Width"
-              min={1}
-              value={shape.width}
-              onChange={(width) => updateShape({ ...shape, width })}
-            />
-            <BlockField
-              label="Block"
-              value={shape.id}
-              onChange={(id) => updateShape({ ...shape, id })}
-            />
-          </>
-        );
-    }
+    return (
+      <>
+        <Show when={props.item.type === "npc" ? props.item.value : undefined}>
+          {(npc) => (
+            <>
+              <TextField
+                label="ID"
+                value={npc().id}
+                onChange={(id) => updateNpc({ ...npc(), id })}
+              />
+              <TextField
+                label="Name"
+                value={npc().name ?? ""}
+                onChange={(name) => updateNpc({ ...npc(), name })}
+              />
+              <ModelField
+                label="Model"
+                value={npc().model ?? "npc-sable.zip"}
+                models={withValue(npcModels(), npc().model ?? "npc-sable.zip")}
+                onChange={(model) => updateNpc({ ...npc(), model })}
+              />
+              <PositionFields
+                x={npc().x}
+                y={npc().y}
+                z={npc().z}
+                onChange={(position) => updateNpc({ ...npc(), ...position })}
+              />
+              <DecimalField
+                label="Yaw"
+                value={npc().yaw ?? 0}
+                onChange={(yaw) => updateNpc({ ...npc(), yaw })}
+              />
+            </>
+          )}
+        </Show>
+        <Show when={props.item.type === "prop" ? props.item.value : undefined}>
+          {(prop) => (
+            <>
+              <TextField
+                label="ID"
+                value={prop().id}
+                onChange={(id) => updateProp({ ...prop(), id })}
+              />
+              <TextField
+                label="Name"
+                value={prop().name ?? ""}
+                onChange={(name) => updateProp({ ...prop(), name })}
+              />
+              <ModelField
+                label="Model"
+                value={prop().model}
+                models={withValue(propModels(), prop().model)}
+                onChange={(model) => updateProp({ ...prop(), model })}
+              />
+              <PositionFields
+                x={prop().x}
+                y={prop().y}
+                z={prop().z}
+                onChange={(position) => updateProp({ ...prop(), ...position })}
+              />
+              <DecimalField
+                label="Yaw"
+                value={prop().yaw ?? 0}
+                onChange={(yaw) => updateProp({ ...prop(), yaw })}
+              />
+              <DecimalField
+                label="Height"
+                value={prop().height ?? 2}
+                onChange={(height) => updateProp({ ...prop(), height })}
+              />
+              <BooleanField
+                label="Solid"
+                checked={prop().solid ?? false}
+                onChange={(solid) => updateProp({ ...prop(), solid })}
+              />
+              <BooleanField
+                label="Hazard"
+                checked={prop().hazard ?? false}
+                onChange={(hazard) => updateProp({ ...prop(), hazard })}
+              />
+            </>
+          )}
+        </Show>
+        <Show
+          when={props.item.type === "structure" ? props.item.value : undefined}
+        >
+          {(shape) => <StructureBody shape={shape()} />}
+        </Show>
+      </>
+    );
   };
 
   return (
@@ -468,7 +478,11 @@ export function ShapePropertiesPanel() {
         when={editor.selectedItem()}
         fallback={<p class={styles.muted}>Select an item to edit it.</p>}
       >
-        <div class={styles.fields}>{body()}</div>
+        {(item) => (
+          <div class={styles.fields}>
+            <Body item={item()} />
+          </div>
+        )}
       </Show>
     </div>
   );
