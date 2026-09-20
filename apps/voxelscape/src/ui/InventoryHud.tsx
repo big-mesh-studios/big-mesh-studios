@@ -1,13 +1,7 @@
 // Minecraft-style inventory overlay: a grid of all carried items plus the
 // current hotbar strip at the bottom. Press E / I to open and close it. Click
 // an inventory item then click a hotbar slot to place/swap it there.
-import {
-  Component,
-  createSignal,
-  For,
-  onCleanup,
-  Show,
-} from "solid-js";
+import { Component, createSignal, For, onCleanup, Show } from "solid-js";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
 import { spriteIconStyle, woolIconStyle } from "./item-icon";
 import { ITEMS, type ItemId } from "../player/items";
@@ -41,7 +35,11 @@ export const InventoryHud: Component = () => {
 
   // Keyboard: E or I toggles the inventory, Escape closes it.
   const handleKey = (e: KeyboardEvent): void => {
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (
+      e.target instanceof HTMLInputElement ||
+      e.target instanceof HTMLTextAreaElement
+    )
+      return;
     if (e.code === "KeyI" || e.code === "KeyE") {
       setOpen((v) => !v);
       setPendingItem(null);
@@ -75,7 +73,9 @@ export const InventoryHud: Component = () => {
     if (!props.item || !props.item.id) {
       return (
         <div
-          class={[styles.cell, styles.empty, props.class].filter(Boolean).join(" ")}
+          class={[styles.cell, styles.empty, props.class]
+            .filter(Boolean)
+            .join(" ")}
           onClick={props.onClick}
         />
       );
@@ -146,7 +146,10 @@ export const InventoryHud: Component = () => {
             <span class={styles.title}>Inventory</span>
             <button
               class={styles.close}
-              onClick={() => { setOpen(false); setPendingItem(null); }}
+              onClick={() => {
+                setOpen(false);
+                setPendingItem(null);
+              }}
               aria-label="Close inventory"
             >
               ✕
@@ -178,13 +181,8 @@ export const InventoryHud: Component = () => {
                     item.id !== undefined &&
                     item.id === selected()
                   }
-                  dimmed={
-                    pendingItem() !== null &&
-                    item.id === pendingItem()
-                  }
-                  onClick={() =>
-                    handleHotbarSlotClick(i(), item.id ?? null)
-                  }
+                  dimmed={pendingItem() !== null && item.id === pendingItem()}
+                  onClick={() => handleHotbarSlotClick(i(), item.id ?? null)}
                 />
               )}
             </For>

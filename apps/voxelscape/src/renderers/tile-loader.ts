@@ -39,7 +39,7 @@ export const loadVoxelTiles = async (
       throw new Error(`failed to load "${xmlUrl}": ${xmlRes.status}`);
     }
     const atlas = parseTileAtlasXml(await xmlRes.text());
-    
+
     // Inject procedural 32x32 spec wool textures for the 16 wool block colors into atlas
     const woolAtlas = await injectProceduralWoolTiles(
       loaded.bitmap,

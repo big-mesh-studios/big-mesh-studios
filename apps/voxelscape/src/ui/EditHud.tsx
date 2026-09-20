@@ -67,7 +67,10 @@ export const EditHud: Component = () => {
                 onPointerDown={() => inventory.setSelected(item.id)}
               >
                 {woolColor() !== undefined ? (
-                  <span class={styles.icon} style={woolIconStyle(woolColor()!)} />
+                  <span
+                    class={styles.icon}
+                    style={woolIconStyle(woolColor()!)}
+                  />
                 ) : icon() !== undefined ? (
                   <span class={styles.icon} style={spriteIconStyle(icon()!)} />
                 ) : (

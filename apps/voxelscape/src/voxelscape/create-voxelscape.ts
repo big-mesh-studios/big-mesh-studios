@@ -1034,10 +1034,22 @@ export const createVoxelscape = ({
   // The player begins with a sword already in hand and 64 of every wool colour
   // so they can start building straight away.
   const WOOL_IDS: ItemId[] = [
-    "wool_white", "wool_orange", "wool_magenta", "wool_light_blue",
-    "wool_yellow", "wool_lime", "wool_pink", "wool_gray",
-    "wool_light_gray", "wool_cyan", "wool_purple", "wool_blue",
-    "wool_brown", "wool_green", "wool_red", "wool_black",
+    "wool_white",
+    "wool_orange",
+    "wool_magenta",
+    "wool_light_blue",
+    "wool_yellow",
+    "wool_lime",
+    "wool_pink",
+    "wool_gray",
+    "wool_light_gray",
+    "wool_cyan",
+    "wool_purple",
+    "wool_blue",
+    "wool_brown",
+    "wool_green",
+    "wool_red",
+    "wool_black",
   ];
   inventory.add("bucket", 1);
   for (const woolId of WOOL_IDS) {

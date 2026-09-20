@@ -150,8 +150,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     stackable: true,
     sprite: null,
     woolColor: "#7dd3fc",
-    tool: (ctx) =>
-      new BlockTool(ctx, "wool_light_blue", VOXEL_WOOL_LIGHT_BLUE),
+    tool: (ctx) => new BlockTool(ctx, "wool_light_blue", VOXEL_WOOL_LIGHT_BLUE),
   },
   wool_yellow: {
     name: "Yellow Wool",
@@ -186,8 +185,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     stackable: true,
     sprite: null,
     woolColor: "#d1d5db",
-    tool: (ctx) =>
-      new BlockTool(ctx, "wool_light_gray", VOXEL_WOOL_LIGHT_GRAY),
+    tool: (ctx) => new BlockTool(ctx, "wool_light_gray", VOXEL_WOOL_LIGHT_GRAY),
   },
   wool_cyan: {
     name: "Cyan Wool",

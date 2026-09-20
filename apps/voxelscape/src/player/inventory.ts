@@ -31,7 +31,7 @@ export class Inventory {
    */
   private hotbar: Array<ItemId | null> = Array.from(
     { length: HOTBAR_SIZE },
-    (_, i) => (i < 2 ? ITEM_ORDER[i] ?? null : null),
+    (_, i) => (i < 2 ? (ITEM_ORDER[i] ?? null) : null),
   );
 
   /**
@@ -155,7 +155,12 @@ export class Inventory {
             count: this.count(id),
             stackable: ITEMS[id].stackable,
           }
-        : { id: null as unknown as ItemId, name: "", count: 0, stackable: true },
+        : {
+            id: null as unknown as ItemId,
+            name: "",
+            count: 0,
+            stackable: true,
+          },
     );
   }
 
@@ -176,9 +181,7 @@ export class Inventory {
     if (occupied.length < 2) {
       return false;
     }
-    const currentIndex = occupied.findIndex(
-      ({ id }) => id === this.selected,
-    );
+    const currentIndex = occupied.findIndex(({ id }) => id === this.selected);
     const nextIndex =
       (currentIndex + direction + occupied.length) % occupied.length;
     const next = occupied[nextIndex]!.id!;
