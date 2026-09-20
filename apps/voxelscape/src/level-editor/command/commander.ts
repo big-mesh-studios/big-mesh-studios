@@ -15,18 +15,20 @@ export const planItems = (plan: LevelPlan): PlanItem[] => [
 
 export const planFromItems = (items: PlanItem[]): LevelPlan => ({
   structures: items
-    .filter((item): item is Extract<PlanItem, { type: "structure" }> =>
-      item.type === "structure"
+    .filter(
+      (item): item is Extract<PlanItem, { type: "structure" }> =>
+        item.type === "structure",
     )
     .map((item) => item.value),
   npcs: items
-    .filter((item): item is Extract<PlanItem, { type: "npc" }> =>
-      item.type === "npc"
+    .filter(
+      (item): item is Extract<PlanItem, { type: "npc" }> => item.type === "npc",
     )
     .map((item) => item.value),
   props: items
-    .filter((item): item is Extract<PlanItem, { type: "prop" }> =>
-      item.type === "prop"
+    .filter(
+      (item): item is Extract<PlanItem, { type: "prop" }> =>
+        item.type === "prop",
     )
     .map((item) => item.value),
 });

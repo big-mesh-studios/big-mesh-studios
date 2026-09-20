@@ -136,7 +136,16 @@ describe("parseLevelPlan", () => {
   it("accepts structures, NPCs, and props in one plan object", () => {
     const plan = {
       structures: [BOX],
-      npcs: [{ id: "teacher", name: "Teacher", model: "npc-teacher.zip", x: 1, y: 2, z: 3 }],
+      npcs: [
+        {
+          id: "teacher",
+          name: "Teacher",
+          model: "npc-teacher.zip",
+          x: 1,
+          y: 2,
+          z: 3,
+        },
+      ],
       props: [{ id: "desk", model: "desk.zip", x: 4, z: 5, solid: true }],
     };
     expect(parseLevelPlan(JSON.stringify(plan))).toEqual(plan);
@@ -163,9 +172,7 @@ describe("compilePlacePlan", () => {
       region: REGION,
     });
     expect(plan).toEqual({
-      structures: [
-        { kind: "box", min: [0, 0, 0], max: [1, 1, 1], id: 7 },
-      ],
+      structures: [{ kind: "box", min: [0, 0, 0], max: [1, 1, 1], id: 7 }],
       npcs: [],
       props: [],
     });

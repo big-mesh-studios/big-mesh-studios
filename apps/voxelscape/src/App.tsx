@@ -18,7 +18,11 @@ import { createPlaceLibrary } from "./atproto/places";
 import { builtinDemo, loadBuiltinDemo } from "./places/demos";
 import { DEFAULT_WORLD_URL, placeAtUri, type PlaceMode } from "./places/place";
 import type { PlaceProject } from "./places/project";
-import { compilePlacePlan, planRegionAround, type LevelPlan } from "./places/plan";
+import {
+  compilePlacePlan,
+  planRegionAround,
+  type LevelPlan,
+} from "./places/plan";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
 import type { Dim3 } from "./world/level-data";
 import type { PlaceBoot, Voxelscape } from "./voxelscape/create-voxelscape";

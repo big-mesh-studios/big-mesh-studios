@@ -347,9 +347,9 @@ describe("the Late to School demo", () => {
       region: planRegionAround(project.manifest.spawn),
     });
     expect(plan.structures.some((shape) => shape.kind === "road")).toBe(true);
-    expect(plan.structures.filter((shape) => shape.kind === "box").length).toBeGreaterThan(
-      20,
-    );
+    expect(
+      plan.structures.filter((shape) => shape.kind === "box").length,
+    ).toBeGreaterThan(20);
   });
 
   it("opens with its cast and the day's fixtures", async () => {

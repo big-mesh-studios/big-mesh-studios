@@ -5,7 +5,11 @@ import {
   type Accessor,
 } from "solid-js";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
-import { isLevelPlan, normalizeLevelPlan, parseLevelPlan } from "../places/plan";
+import {
+  isLevelPlan,
+  normalizeLevelPlan,
+  parseLevelPlan,
+} from "../places/plan";
 import type { CameraControlsKind } from "./camera/CameraControl";
 import { Command } from "./command/Command";
 import { createCommander, planItems } from "./command/commander";
