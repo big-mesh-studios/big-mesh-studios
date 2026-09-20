@@ -1,23 +1,24 @@
 import styles from "./EditHud.module.css";
 // Editing HUD: a crosshair at the screen centre, coloured for what the primary
-// button would strike, and a bottom hotbar listing the carried items with the
-// selected one highlighted. Driven by the shared `Inventory`'s `onChange`
-// callback so counts and the selection refresh without wiring a per-item
-// signal through the domain.
+// button would strike, and a bottom hotbar listing the first HOTBAR_SIZE carried
+// items with the selected one highlighted. Driven by the shared `Inventory`'s
+// `onChange` callback so counts and the selection refresh without wiring a
+// per-item signal through the domain.
 import { Component, createSignal, For, onCleanup } from "solid-js";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
-import { spriteIconStyle } from "./item-icon";
+import { spriteIconStyle, woolIconStyle } from "./item-icon";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
+import { ITEMS } from "../player/items";
 
 export const EditHud: Component = () => {
   const { inventory, editStatus, target, icons, scriptItem, npcAim } =
     useVoxelscape();
   const coarsePointer = createMediaQuery("(any-pointer: coarse)");
-  const [items, setItems] = createSignal(inventory.items());
+  const [hotbar, setHotbar] = createSignal(inventory.hotbarItems());
   const [selected, setSelected] = createSignal(inventory.selectedId);
 
   const refresh = (): void => {
-    setItems(inventory.items());
+    setHotbar(inventory.hotbarItems());
     setSelected(inventory.selectedId);
   };
   inventory.onChange = refresh;
@@ -49,27 +50,51 @@ export const EditHud: Component = () => {
       </div>
       {/* hotbar */}
       <div class={styles.hotbar}>
-        <For each={items()}>
-          {(item) => {
+        <For each={hotbar()}>
+          {(item, slotIndex) => {
+            if (!item.id) {
+              // empty slot
+              return <div class={styles.item} data-slot={slotIndex()} />;
+            }
+            const itemDef = () => ITEMS[item.id];
             const icon = () => icons()[item.id];
+            const woolColor = () => itemDef()?.woolColor;
             return (
               <div
                 class={[styles.item, item.id === selected() && styles.active]}
                 title={item.name}
+                data-slot={slotIndex()}
                 onPointerDown={() => inventory.setSelected(item.id)}
               >
-                {icon() !== undefined ? (
+                {woolColor() !== undefined ? (
+                  <span class={styles.icon} style={woolIconStyle(woolColor()!)} />
+                ) : icon() !== undefined ? (
                   <span class={styles.icon} style={spriteIconStyle(icon()!)} />
                 ) : (
                   <span class={styles.name}>{item.name[0]}</span>
                 )}
-                {item.stackable && (
+                {item.stackable && item.count > 0 && (
                   <span class={styles.count}>{item.count}</span>
                 )}
+                <span class={styles["slot-number"]}>{slotIndex() + 1}</span>
               </div>
             );
           }}
         </For>
+        <button
+          class={styles["inventory-btn"]}
+          title="Open Inventory (I / E)"
+          aria-label="Open Inventory"
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            window.dispatchEvent(new CustomEvent("toggle-inventory"));
+          }}
+        >
+          🎒
+        </button>
         <div class={styles.status}>
           {editStatus() ||
             (scriptItem() !== null

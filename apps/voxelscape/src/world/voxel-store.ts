@@ -26,6 +26,24 @@ export const VOXEL_GREYSTONE = 28;
 // and lava-id ranges, so it never spreads, fills, or counts as a hazard.
 export const VOXEL_EMBER = 29;
 
+// Wool blocks: 16 colours matching the classic Minecraft palette (IDs 30-45).
+export const VOXEL_WOOL_WHITE = 30;
+export const VOXEL_WOOL_ORANGE = 31;
+export const VOXEL_WOOL_MAGENTA = 32;
+export const VOXEL_WOOL_LIGHT_BLUE = 33;
+export const VOXEL_WOOL_YELLOW = 34;
+export const VOXEL_WOOL_LIME = 35;
+export const VOXEL_WOOL_PINK = 36;
+export const VOXEL_WOOL_GRAY = 37;
+export const VOXEL_WOOL_LIGHT_GRAY = 38;
+export const VOXEL_WOOL_CYAN = 39;
+export const VOXEL_WOOL_PURPLE = 40;
+export const VOXEL_WOOL_BLUE = 41;
+export const VOXEL_WOOL_BROWN = 42;
+export const VOXEL_WOOL_GREEN = 43;
+export const VOXEL_WOOL_RED = 44;
+export const VOXEL_WOOL_BLACK = 45;
+
 // Flowing water and lava. A fluid voxel is its kind's source id at level 0
 // (a full, stationary body cell) or one of the level ids below, level k being
 // k cells of spread from a source. The water/lava falling ids mark the cells

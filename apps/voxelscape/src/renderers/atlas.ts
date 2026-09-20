@@ -54,6 +54,23 @@ export const VOXEL_TILES: Record<number, VoxelTiles> = {
   21: { top: "lava", side: "lava", bottom: "lava" },
   22: { top: "lava", side: "lava", bottom: "lava" },
   24: { top: "lava", side: "lava", bottom: "lava" },
+  // Wool blocks (30-45): procedurally generated 32x32 spec wool textures in the atlas.
+  30: { top: "wool_white", side: "wool_white", bottom: "wool_white" },
+  31: { top: "wool_orange", side: "wool_orange", bottom: "wool_orange" },
+  32: { top: "wool_magenta", side: "wool_magenta", bottom: "wool_magenta" },
+  33: { top: "wool_light_blue", side: "wool_light_blue", bottom: "wool_light_blue" },
+  34: { top: "wool_yellow", side: "wool_yellow", bottom: "wool_yellow" },
+  35: { top: "wool_lime", side: "wool_lime", bottom: "wool_lime" },
+  36: { top: "wool_pink", side: "wool_pink", bottom: "wool_pink" },
+  37: { top: "wool_gray", side: "wool_gray", bottom: "wool_gray" },
+  38: { top: "wool_light_gray", side: "wool_light_gray", bottom: "wool_light_gray" },
+  39: { top: "wool_cyan", side: "wool_cyan", bottom: "wool_cyan" },
+  40: { top: "wool_purple", side: "wool_purple", bottom: "wool_purple" },
+  41: { top: "wool_blue", side: "wool_blue", bottom: "wool_blue" },
+  42: { top: "wool_brown", side: "wool_brown", bottom: "wool_brown" },
+  43: { top: "wool_green", side: "wool_green", bottom: "wool_green" },
+  44: { top: "wool_red", side: "wool_red", bottom: "wool_red" },
+  45: { top: "wool_black", side: "wool_black", bottom: "wool_black" },
 };
 
 export const parseTileAtlasXml = (xmlText: string): Map<string, SubTexture> => {
@@ -181,6 +198,7 @@ export const buildVoxelTileConfig = (
 
 export interface LoadedTileTexture {
   texture: Texture;
+  bitmap: ImageBitmap;
   width: number;
   height: number;
 }
@@ -195,6 +213,7 @@ export const loadTileTexture = async (
   const bitmap = await createImageBitmap(await res.blob());
   return {
     texture: new Texture(bitmap),
+    bitmap,
     width: bitmap.width,
     height: bitmap.height,
   };

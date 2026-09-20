@@ -5,6 +5,7 @@ import {
   parseTileAtlasXml,
   type VoxelTiles,
 } from "./atlas";
+import { injectProceduralWoolTiles } from "./procedural-wool";
 import type { TriangleRenderer } from "./triangle-renderer";
 
 // Served from the site's own root, the same folder every other address in
@@ -19,10 +20,9 @@ export interface LoadVoxelTilesOptions {
 }
 
 /**
- * Loads the tile spritesheet (one 2D GPU texture) plus its atlas XML, and
- * applies the resulting per-voxel tile config to `renderer`. Failures
- * are logged and swallowed — voxels stay flat blue rather than blocking
- * startup.
+ * Loads the tile spritesheet (one 2D GPU texture) plus its atlas XML, injects
+ * procedural 32x32 wool textures for the wool voxel IDs, and applies the
+ * resulting per-voxel tile config to `renderer`.
  */
 export const loadVoxelTiles = async (
   renderer: TriangleRenderer,
@@ -39,7 +39,16 @@ export const loadVoxelTiles = async (
       throw new Error(`failed to load "${xmlUrl}": ${xmlRes.status}`);
     }
     const atlas = parseTileAtlasXml(await xmlRes.text());
-    const grid = atlasGridOf(atlas, loaded.width, loaded.height);
+    
+    // Inject procedural 32x32 spec wool textures for the 16 wool block colors into atlas
+    const woolAtlas = await injectProceduralWoolTiles(
+      loaded.bitmap,
+      loaded.width,
+      loaded.height,
+      atlas,
+    );
+
+    const grid = atlasGridOf(atlas, woolAtlas.width, woolAtlas.height);
     if (grid === null) {
       throw new Error(
         "[atlas] the sheet's tiles are not one size on a grid, which is the only layout a tile index can name",
@@ -50,7 +59,7 @@ export const loadVoxelTiles = async (
       grid,
       options?.customVoxelTiles,
     );
-    renderer.setTiles(voxelTiles, loaded.texture, grid);
+    renderer.setTiles(voxelTiles, woolAtlas.texture, grid);
   } catch (err) {
     console.warn(
       "[atlas] spritesheet not applied; voxels stay flat blue.",

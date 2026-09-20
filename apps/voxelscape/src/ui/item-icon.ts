@@ -2,6 +2,7 @@
 // items spritesheet, so the picture needs no image of its own. The keys are
 // the CSS property names Solid's style prop applies verbatim, which is why
 // they are kebab-case rather than camelCase.
+// Wool items use a procedurally generated colour swatch instead of a sprite.
 import type { SubTexture } from "../renderers/atlas";
 import {
   SPRITESHEET_HEIGHT,
@@ -24,3 +25,23 @@ export const spriteIconStyle = (bbox: SubTexture): Record<string, string> => {
     "background-position": `${(ICON_SIZE - w) / 2 - bbox.x * scale}px ${(ICON_SIZE - h) / 2 - bbox.y * scale}px`,
   };
 };
+
+/**
+ * A procedural wool-block icon: a coloured square with a subtle woven grid
+ * pattern drawn via a CSS gradient, giving it a fabric look.
+ */
+export const woolIconStyle = (color: string): Record<string, string> => ({
+  "background-color": color,
+  "background-image": [
+    // horizontal threads
+    `repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 4px)`,
+    // vertical threads
+    `repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 4px)`,
+    // light top-left sheen for a 3D feel
+    `linear-gradient(135deg, rgba(255,255,255,0.25) 0%, transparent 50%)`,
+  ].join(", "),
+  "border-radius": "3px",
+  width: `${ICON_SIZE}px`,
+  height: `${ICON_SIZE}px`,
+  display: "block",
+});

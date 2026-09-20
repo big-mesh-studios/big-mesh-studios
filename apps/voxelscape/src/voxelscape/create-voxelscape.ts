@@ -1030,6 +1030,27 @@ export const createVoxelscape = ({
   };
 
   const inventory = new Inventory();
+  // ── Starting inventory ────────────────────────────────────────────────────
+  // The player begins with a sword already in hand and 64 of every wool colour
+  // so they can start building straight away.
+  const WOOL_IDS: ItemId[] = [
+    "wool_white", "wool_orange", "wool_magenta", "wool_light_blue",
+    "wool_yellow", "wool_lime", "wool_pink", "wool_gray",
+    "wool_light_gray", "wool_cyan", "wool_purple", "wool_blue",
+    "wool_brown", "wool_green", "wool_red", "wool_black",
+  ];
+  inventory.add("bucket", 1);
+  for (const woolId of WOOL_IDS) {
+    inventory.add(woolId, 64);
+  }
+  // Place the sword in slot 0, bucket in slot 1, and leave remaining slots (2-4) blank.
+  inventory.setHotbarSlot(0, "sword");
+  inventory.setHotbarSlot(1, "bucket");
+  inventory.setHotbarSlot(2, null);
+  inventory.setHotbarSlot(3, null);
+  inventory.setHotbarSlot(4, null);
+  inventory.setSelected("sword");
+  // ─────────────────────────────────────────────────────────────────────────
   const hand = new Hand({ camera });
   // The fluid simulation: wakes on player edits and on chunk fills, ticks at
   // Minecraft's per-kind spread speeds, and reports its changed blocks to the

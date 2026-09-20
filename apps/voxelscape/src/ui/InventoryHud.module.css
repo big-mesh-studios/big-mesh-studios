@@ -1,0 +1,193 @@
+/* Minecraft-style inventory overlay */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  backdrop-filter: blur(2px);
+  animation: overlay-in 0.15s ease-out;
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.panel {
+  background: linear-gradient(160deg, #2a2a3a 0%, #1a1a28 100%);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  min-width: 460px;
+  max-width: 90vw;
+  animation: panel-in 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes panel-in {
+  from { transform: scale(0.92) translateY(8px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.title {
+  font-family: monospace;
+  font-size: 14px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.close {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+  }
+}
+
+/* ── Item grid ── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+/* ── Hotbar strip ── */
+.divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 10px 0;
+}
+
+.hotbar-strip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+/* ── Shared cell ── */
+.cell {
+  width: 46px;
+  height: 46px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: border-color 0.12s, background 0.12s, transform 0.1s;
+  box-sizing: border-box;
+
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.08);
+    transform: scale(1.06);
+  }
+
+  &.empty {
+    cursor: default;
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.25);
+      background: rgba(0, 0, 0, 0.35);
+      transform: none;
+    }
+  }
+
+  &.cell-highlighted {
+    border-color: #ffd35c;
+    background: rgba(255, 211, 92, 0.12);
+    box-shadow: 0 0 8px rgba(255, 211, 92, 0.4);
+  }
+
+  &.cell-dimmed {
+    opacity: 0.45;
+  }
+}
+
+.cell-icon {
+  display: block;
+  width: 36px;
+  height: 36px;
+  pointer-events: none;
+}
+
+.cell-letter {
+  font-family: monospace;
+  font-size: 18px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.8);
+  pointer-events: none;
+}
+
+.cell-count {
+  position: absolute;
+  bottom: 2px;
+  right: 4px;
+  font-family: monospace;
+  font-size: 9px;
+  font-weight: bold;
+  color: #9be36b;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* ── Help text ── */
+.help {
+  margin-top: 10px;
+  font-family: monospace;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: center;
+  min-height: 14px;
+}
+
+/* ── Inventory open button (touch devices) ── */
+.inv-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 44px;
+  height: 44px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  font-size: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 150;
+  pointer-events: auto;
+}

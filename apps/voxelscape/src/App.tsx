@@ -44,6 +44,7 @@ import {
   VoxelscapeContext,
 } from "./voxelscape/voxelscape-context";
 import { LevelEditorOverlay } from "./level-editor/LevelEditorOverlay";
+import { InventoryHud } from "./ui/InventoryHud";
 
 /** How long a line the world reports on its own is left on screen. */
 const NOTICE_SECONDS = 6;
@@ -228,6 +229,7 @@ const World: Component<{
           </Show>
           <EditHud />
           <HealthHud />
+          <InventoryHud />
           <DialogOverlay />
           <EndingOverlay />
           <toasts.Stack>

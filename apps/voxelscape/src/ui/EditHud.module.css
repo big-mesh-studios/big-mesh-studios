@@ -45,16 +45,16 @@
   bottom: 18px;
   transform: translateX(-50%);
   display: flex;
-  gap: 8px;
+  gap: 6px;
 
   & .item {
     --color: rgba(255, 255, 255, 0.4);
 
     pointer-events: auto;
     cursor: pointer;
-    width: 52px;
-    height: 52px;
-    background: rgba(0, 0, 0, 0.55);
+    width: 56px;
+    height: 56px;
+    background: rgba(0, 0, 0, 0.6);
     border-radius: 6px;
     border: 2px solid var(--color);
     color: #fff;
@@ -64,9 +64,11 @@
     justify-content: center;
     font: 11px monospace;
     font-size: 16px;
+    position: relative;
 
     &.active {
       --color: #ffd35c;
+      box-shadow: 0 0 8px rgba(255, 211, 92, 0.5);
     }
 
     & > .name {
@@ -78,7 +80,46 @@
       height: 46px;
     }
     & > .count {
+      position: absolute;
+      bottom: 3px;
+      right: 5px;
       color: #9be36b;
+      font-size: 10px;
+      font-weight: bold;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+      line-height: 1;
+    }
+    & > .slot-number {
+      position: absolute;
+      top: 2px;
+      left: 5px;
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 9px;
+      line-height: 1;
+    }
+  }
+
+  & .inventory-btn {
+    pointer-events: auto;
+    cursor: pointer;
+    width: 56px;
+    height: 56px;
+    background: rgba(0, 0, 0, 0.65);
+    border-radius: 6px;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    transition: transform 0.1s ease, border-color 0.1s ease, background 0.1s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+
+    &:hover, &:active {
+      border-color: #ffd35c;
+      background: rgba(35, 35, 35, 0.85);
+      transform: scale(1.05);
     }
   }
 }
