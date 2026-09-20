@@ -12,6 +12,8 @@ const TOOL_LABELS: Record<ToolKind, string> = {
   house: "House",
   stairs: "Stairs",
   ramp: "Ramp",
+  npc: "NPC",
+  prop: "Prop",
 };
 
 /** The tool row, the block palette, and undo/redo. */

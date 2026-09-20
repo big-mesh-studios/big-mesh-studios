@@ -234,10 +234,17 @@ export {
 export { readPlaceZip } from "./places/package";
 export {
   compilePlacePlan,
+  emptyLevelPlan,
+  isLevelPlan,
   isStructurePlan,
+  normalizeLevelPlan,
+  parseLevelPlan,
   parseStructurePlan,
   planRegionAround,
+  type LevelPlan,
   type PlanContext,
+  type PlanNpc,
+  type PlanProp,
 } from "./places/plan";
 export {
   emptyPlaceProject,

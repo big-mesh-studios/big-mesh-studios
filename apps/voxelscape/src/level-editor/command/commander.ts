@@ -1,16 +1,40 @@
 import { untrack, type Accessor, type Setter } from "solid-js";
-import type { StructurePlan } from "../types";
+import type { LevelPlan, PlanItem } from "../types";
 import { Command } from "./Command";
 
 export interface CommanderDeps {
-  plan: Accessor<StructurePlan>;
-  setPlan: Setter<StructurePlan>;
+  plan: Accessor<LevelPlan>;
+  setPlan: Setter<LevelPlan>;
 }
 
+export const planItems = (plan: LevelPlan): PlanItem[] => [
+  ...plan.structures.map((value) => ({ type: "structure" as const, value })),
+  ...plan.npcs.map((value) => ({ type: "npc" as const, value })),
+  ...plan.props.map((value) => ({ type: "prop" as const, value })),
+];
+
+export const planFromItems = (items: PlanItem[]): LevelPlan => ({
+  structures: items
+    .filter((item): item is Extract<PlanItem, { type: "structure" }> =>
+      item.type === "structure"
+    )
+    .map((item) => item.value),
+  npcs: items
+    .filter((item): item is Extract<PlanItem, { type: "npc" }> =>
+      item.type === "npc"
+    )
+    .map((item) => item.value),
+  props: items
+    .filter((item): item is Extract<PlanItem, { type: "prop" }> =>
+      item.type === "prop"
+    )
+    .map((item) => item.value),
+});
+
 /**
- * Applies commands to the structure plan and hands back each one's reverse, so
- * the caller can keep an undo stack. The whole apply runs untracked, so reading
- * the plan while applying never subscribes the caller.
+ * Applies commands to the level plan and hands back each one's reverse, so the
+ * caller can keep an undo stack. The whole apply runs untracked, so reading the
+ * plan while applying never subscribes the caller.
  */
 export function createCommander({ plan, setPlan }: CommanderDeps) {
   /** The plan as it stands, as a command that puts it back. */
@@ -34,52 +58,49 @@ export function createCommander({ plan, setPlan }: CommanderDeps) {
           return Command.sequence(reverseCommands);
         }
 
-        case "AddShape": {
-          const structures = plan().slice();
-          const index = command.index ?? structures.length;
-          structures.splice(index, 0, command.shape);
-          setPlan(structures);
-          return Command.removeShape(index);
+        case "AddItem": {
+          const items = planItems(plan());
+          const index = command.index ?? items.length;
+          items.splice(index, 0, command.item);
+          setPlan(planFromItems(items));
+          return Command.removeItem(index);
         }
 
-        case "RemoveShape": {
-          const structures = plan();
-          const shape = structures[command.index];
-          if (shape === undefined) {
+        case "RemoveItem": {
+          const items = planItems(plan());
+          const item = items[command.index];
+          if (item === undefined) {
             return Command.noOperation();
           }
-          const next = structures.slice();
-          next.splice(command.index, 1);
-          setPlan(next);
-          return Command.addShape(shape, command.index);
+          items.splice(command.index, 1);
+          setPlan(planFromItems(items));
+          return Command.addItem(item, command.index);
         }
 
-        case "SetShape": {
-          const structures = plan();
-          const previous = structures[command.index];
+        case "SetItem": {
+          const items = planItems(plan());
+          const previous = items[command.index];
           if (previous === undefined) {
             return Command.noOperation();
           }
-          const next = structures.slice();
-          next[command.index] = command.shape;
-          setPlan(next);
-          return Command.setShape(command.index, previous);
+          items[command.index] = command.item;
+          setPlan(planFromItems(items));
+          return Command.setItem(command.index, previous);
         }
 
-        case "ReorderShape": {
-          const structures = plan();
+        case "ReorderItem": {
+          const items = planItems(plan());
           if (
             command.from === command.to ||
-            structures[command.from] === undefined ||
-            structures[command.to] === undefined
+            items[command.from] === undefined ||
+            items[command.to] === undefined
           ) {
             return Command.noOperation();
           }
-          const next = structures.slice();
-          const [moved] = next.splice(command.from, 1);
-          next.splice(command.to, 0, moved);
-          setPlan(next);
-          return Command.reorderShape(command.to, command.from);
+          const [moved] = items.splice(command.from, 1);
+          items.splice(command.to, 0, moved);
+          setPlan(planFromItems(items));
+          return Command.reorderItem(command.to, command.from);
         }
 
         case "LoadPlan": {

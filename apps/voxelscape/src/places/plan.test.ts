@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   compilePlacePlan,
+  parseLevelPlan,
   isStructurePlan,
   MAX_PLAN_SHAPES,
   parseStructurePlan,
@@ -123,6 +124,25 @@ describe("parseStructurePlan", () => {
   });
 });
 
+describe("parseLevelPlan", () => {
+  it("converts an old structure array into the new object format", () => {
+    expect(parseLevelPlan(JSON.stringify([BOX]))).toEqual({
+      structures: [BOX],
+      npcs: [],
+      props: [],
+    });
+  });
+
+  it("accepts structures, NPCs, and props in one plan object", () => {
+    const plan = {
+      structures: [BOX],
+      npcs: [{ id: "teacher", name: "Teacher", model: "npc-teacher.zip", x: 1, y: 2, z: 3 }],
+      props: [{ id: "desk", model: "desk.zip", x: 4, z: 5, solid: true }],
+    };
+    expect(parseLevelPlan(JSON.stringify(plan))).toEqual(plan);
+  });
+});
+
 const ENTRY = `
 import * as engine from "voxelscape";
 engine.onTick(function (): void {});
@@ -142,9 +162,13 @@ describe("compilePlacePlan", () => {
       seed: 7,
       region: REGION,
     });
-    expect(plan).toEqual([
-      { kind: "box", min: [0, 0, 0], max: [1, 1, 1], id: 7 },
-    ]);
+    expect(plan).toEqual({
+      structures: [
+        { kind: "box", min: [0, 0, 0], max: [1, 1, 1], id: 7 },
+      ],
+      npcs: [],
+      props: [],
+    });
   });
 
   it("returns no shapes for a script that registers no onPlan handler", async () => {
@@ -156,7 +180,7 @@ describe("compilePlacePlan", () => {
       seed: 1,
       region: REGION,
     });
-    expect(plan).toEqual([]);
+    expect(plan).toEqual({ structures: [], npcs: [], props: [] });
   });
 
   it("refuses a plan the world cannot generate", async () => {
@@ -198,6 +222,6 @@ describe("compilePlacePlan", () => {
         region: REGION,
         models: { "zombie.zip": await modelBytes() },
       }),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual({ structures: [], npcs: [], props: [] });
   });
 });

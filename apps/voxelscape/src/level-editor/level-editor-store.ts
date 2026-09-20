@@ -5,12 +5,20 @@ import {
   type Accessor,
 } from "solid-js";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
-import { isStructurePlan, parseStructurePlan } from "../places/plan";
+import { isLevelPlan, normalizeLevelPlan, parseLevelPlan } from "../places/plan";
 import type { CameraControlsKind } from "./camera/CameraControl";
 import { Command } from "./command/Command";
-import { createCommander } from "./command/commander";
-import { cloneShape, planScript, translateShape } from "./structures/plan";
-import type { PlanShape, StructurePlan, ToolKind } from "./types";
+import { createCommander, planItems } from "./command/commander";
+import {
+  cloneItem,
+  cloneShape,
+  defaultNpc,
+  defaultProp,
+  planScript,
+  translateItem,
+  translateShape,
+} from "./structures/plan";
+import type { LevelPlan, PlanItem, PlanShape, ToolKind } from "./types";
 import { UndoRedoManager } from "./undo-redo";
 import { createEnqueue } from "./utils/utils";
 import { VOXEL_STONE } from "../world/voxel-store";
@@ -21,10 +29,10 @@ import { VOXEL_STONE } from "../world/voxel-store";
  * world restamps as shapes are added and moved.
  */
 export interface LevelEditorHost {
-  /** The plan the world currently stamps. */
-  structures: Accessor<StructurePlan>;
+  /** The plan the world currently uses. */
+  plan: Accessor<LevelPlan>;
   /** Replaces the world's plan, restamping the chunks it touches. */
-  setStructures(plan: StructurePlan): void;
+  setPlan(plan: LevelPlan): void;
   /** Which style drives the editor's camera. */
   cameraKind: Accessor<CameraControlsKind>;
   /** Switches the editor between the orbit and no-clip cameras. */
@@ -37,7 +45,7 @@ export interface LevelEditorHost {
  * `LevelEditorContext`.
  */
 export function createLevelEditor(host: LevelEditorHost) {
-  const [plan, setPlan] = createSignal<StructurePlan>(host.structures());
+  const [plan, setPlan] = createSignal<LevelPlan>(host.plan());
   const [selectedIndex, setSelectedIndex] = createSignal<number | undefined>(
     undefined,
   );
@@ -54,14 +62,20 @@ export function createLevelEditor(host: LevelEditorHost) {
   createEffect(
     () => plan(),
     (structures) => {
-      host.setStructures(structures);
+      host.setPlan(structures);
     },
   );
 
-  const structures = createMemo(() => plan());
+  const structures = createMemo(() => plan().structures);
+  const items = createMemo(() => planItems(plan()));
   const selectedShape = createMemo(() => {
     const index = selectedIndex();
-    return index === undefined ? undefined : structures()[index];
+    const item = index === undefined ? undefined : items()[index];
+    return item?.type === "structure" ? item.value : undefined;
+  });
+  const selectedItem = createMemo(() => {
+    const index = selectedIndex();
+    return index === undefined ? undefined : items()[index];
   });
 
   const { doCommand } = createCommander({ plan, setPlan });
@@ -84,16 +98,19 @@ export function createLevelEditor(host: LevelEditorHost) {
   };
 
   const reorderShape = (index: number, to: number) => {
-    if (to < 0 || to >= structures().length || index === to) {
+    if (to < 0 || to >= items().length || index === to) {
       return;
     }
-    apply(Command.reorderShape(index, to), "Reorder shape");
+    apply(Command.reorderItem(index, to), "Reorder item");
     setSelectedIndex(to);
   };
 
   return {
     structures,
+    plan,
+    items,
     selectedIndex,
+    selectedItem,
     selectedShape,
     setSelectedIndex,
     selectShape(index: number | undefined) {
@@ -115,26 +132,67 @@ export function createLevelEditor(host: LevelEditorHost) {
     setNotice,
 
     addShape(shape: PlanShape) {
-      const index = structures().length;
-      apply(Command.addShape(shape, index), "Add shape");
+      const index = items().length;
+      apply(
+        Command.addItem({ type: "structure", value: shape }, index),
+        "Add shape",
+      );
       setSelectedIndex(index);
     },
-    removeShape(index: number) {
-      apply(Command.removeShape(index), "Remove shape");
+    addNpc(at: [number, number, number]) {
+      const index = items().length;
+      apply(
+        Command.addItem({ type: "npc", value: defaultNpc(at) }, index),
+        "Add NPC",
+      );
+      setSelectedIndex(index);
+    },
+    addProp(at: [number, number, number]) {
+      const index = items().length;
+      apply(
+        Command.addItem({ type: "prop", value: defaultProp(at) }, index),
+        "Add prop",
+      );
+      setSelectedIndex(index);
+    },
+    removeItem(index: number) {
+      apply(Command.removeItem(index), "Remove item");
       if (selectedIndex() === index) {
         setSelectedIndex(undefined);
       }
     },
+    removeShape(index: number) {
+      apply(Command.removeItem(index), "Remove item");
+      if (selectedIndex() === index) {
+        setSelectedIndex(undefined);
+      }
+    },
+    setItem(index: number, item: PlanItem) {
+      apply(Command.setItem(index, cloneItem(item)), "Edit item");
+    },
     setShape(index: number, shape: PlanShape) {
-      apply(Command.setShape(index, cloneShape(shape)), "Edit shape");
+      apply(
+        Command.setItem(index, { type: "structure", value: cloneShape(shape) }),
+        "Edit shape",
+      );
+    },
+    moveItem(index: number, delta: [number, number, number]) {
+      const item = items()[index];
+      if (item === undefined) {
+        return;
+      }
+      apply(Command.setItem(index, translateItem(item, delta)), "Move item");
     },
     moveShape(index: number, delta: [number, number, number]) {
-      const shape = structures()[index];
-      if (shape === undefined) {
+      const item = items()[index];
+      if (item?.type !== "structure") {
         return;
       }
       apply(
-        Command.setShape(index, translateShape(shape, delta)),
+        Command.setItem(index, {
+          type: "structure",
+          value: translateShape(item.value, delta),
+        }),
         "Move shape",
       );
     },
@@ -166,34 +224,34 @@ export function createLevelEditor(host: LevelEditorHost) {
 
     /** The plan as pretty JSON, ready to save to a file. */
     exportJson(): string {
-      return JSON.stringify(structures(), null, 2);
+      return JSON.stringify(plan(), null, 2);
     },
 
     /** The `onPlan` snippet a place script runs to stamp this plan. */
     script(): string {
-      return planScript(structures());
+      return planScript(plan());
     },
 
     /** Replaces the plan from JSON text; returns false where it is not a plan. */
     importJson(text: string): boolean {
-      const parsed = parseStructurePlan(text);
+      const parsed = parseLevelPlan(text);
       if (parsed === null) {
-        setNotice("That is not a structure plan this world can generate.");
+        setNotice("That is not a level plan this world can generate.");
         return false;
       }
       apply(Command.loadPlan(parsed), "Import plan");
       setSelectedIndex(undefined);
       setNotice(
-        `Imported ${parsed.length} shape${parsed.length === 1 ? "" : "s"}.`,
+        `Imported ${parsed.structures.length} structure${parsed.structures.length === 1 ? "" : "s"}, ${parsed.npcs.length} NPC${parsed.npcs.length === 1 ? "" : "s"}, ${parsed.props.length} prop${parsed.props.length === 1 ? "" : "s"}.`,
       );
       return true;
     },
 
     /** Re-reads the world's plan, as when the editor opens or a script reruns. */
     reseed() {
-      const current = host.structures();
-      if (isStructurePlan(current)) {
-        setPlan(current);
+      const current = host.plan();
+      if (isLevelPlan(current)) {
+        setPlan(normalizeLevelPlan(current));
         setSelectedIndex(undefined);
         undoRedo.clear();
       }

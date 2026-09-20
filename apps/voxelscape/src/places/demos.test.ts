@@ -174,8 +174,8 @@ describe("the built-in demos", () => {
       seed: project.manifest.seed,
       region: planRegionAround(project.manifest.spawn),
     });
-    expect(plan.some((shape) => shape.kind === "road")).toBe(true);
-    expect(plan.length).toBeGreaterThan(15);
+    expect(plan.structures.some((shape) => shape.kind === "road")).toBe(true);
+    expect(plan.structures.length).toBeGreaterThan(15);
   });
 
   it("opens with Dad, the Cashier, and the store counter", async () => {
@@ -346,8 +346,8 @@ describe("the Late to School demo", () => {
       seed: project.manifest.seed,
       region: planRegionAround(project.manifest.spawn),
     });
-    expect(plan.some((shape) => shape.kind === "road")).toBe(true);
-    expect(plan.filter((shape) => shape.kind === "box").length).toBeGreaterThan(
+    expect(plan.structures.some((shape) => shape.kind === "road")).toBe(true);
+    expect(plan.structures.filter((shape) => shape.kind === "box").length).toBeGreaterThan(
       20,
     );
   });
@@ -822,7 +822,7 @@ describe("the Zombies: The Mansion demo", () => {
       seed: project.manifest.seed,
       region: planRegionAround(project.manifest.spawn),
     });
-    const boxes = plan.flatMap((shape) => expandShape(shape));
+    const boxes = plan.structures.flatMap((shape) => expandShape(shape));
     // The foyer's stone floor tops out on world y 62, where every prop stands.
     expect(columnSurfaces(boxes, 0, 2)).toContain(62);
     // The interior wall between rooms b and c runs at voxel z=-8 (world -16),
@@ -1118,7 +1118,7 @@ describe("the Don't Poop Yourself at School demo", () => {
       seed: project.manifest.seed,
       region: planRegionAround(project.manifest.spawn),
     });
-    expect(plan.some((shape) => shape.kind === "stairs")).toBe(true);
+    expect(plan.structures.some((shape) => shape.kind === "stairs")).toBe(true);
   });
 
   it("attaches the staircase to the lobby floor", async () => {
@@ -1129,7 +1129,7 @@ describe("the Don't Poop Yourself at School demo", () => {
       seed: project.manifest.seed,
       region: planRegionAround(project.manifest.spawn),
     });
-    const boxes = plan.flatMap((shape) => expandShape(shape));
+    const boxes = plan.structures.flatMap((shape) => expandShape(shape));
     // The lobby floor's east edge is at voxel z=-8 (world z=-16, surface 202),
     // and the first stair tread starts there, climbing one step to 204.
     expect(columnSurfaces(boxes, 0, -12)).toContain(202);
@@ -1144,7 +1144,7 @@ describe("the Don't Poop Yourself at School demo", () => {
       seed: project.manifest.seed,
       region: planRegionAround(project.manifest.spawn),
     });
-    const boxes = plan.flatMap((shape) => expandShape(shape));
+    const boxes = plan.structures.flatMap((shape) => expandShape(shape));
     const surfacesAt = (worldX: number, worldZ: number): number[] =>
       columnSurfaces(boxes, worldX / 2, worldZ / 2);
     expect(surfacesAt(0, -40)).toContain(202); // the lobby

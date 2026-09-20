@@ -31,10 +31,20 @@ import {
 } from "../places/place";
 import type { PlaceProject } from "../places/project";
 import type { ScriptConsole } from "../places/script-console";
-import { VoxelFigures, type RenderedFigure } from "../places/voxel-figures";
+import {
+  VoxelFigures,
+  type FigureAimBox,
+  type RenderedFigure,
+} from "../places/voxel-figures";
 import { cutscenePoseAt, type CameraStart } from "../places/cutscene";
 import { createEndingLog, endingLogKey } from "../places/ending-log";
-import { compilePlacePlan, planRegionAround } from "../places/plan";
+import {
+  compilePlacePlan,
+  emptyLevelPlan,
+  normalizeLevelPlan,
+  planRegionAround,
+  type LevelPlan,
+} from "../places/plan";
 import { FireFigures } from "../renderers/fire-figures";
 import { ExplosionFigures } from "../renderers/explosion-figures";
 import { FireEmbers } from "../world/fire-ember";
@@ -44,6 +54,8 @@ import type {
   DialogState,
   HudReadout,
   ScriptedField,
+  ScriptedNpc,
+  ScriptedProp,
 } from "../places/script-host";
 import type { ScriptItemDefinition } from "../places/effects";
 import type { Commander } from "../commands";
@@ -194,6 +206,8 @@ export interface VoxelscapeConfig {
    * their tiles here.
    */
   customVoxelTiles?: Record<number, VoxelTiles>;
+  /** The full static level plan, including structures, NPCs, and props. */
+  plan?: LevelPlan;
   /** Structures every chunk is stamped with, over its generated terrain. */
   structures?: StructurePlan;
   /** The place whose scripts this world runs from boot, if it is a published one. */
@@ -312,9 +326,14 @@ export interface Voxelscape {
     setCameraKind(kind: CameraControlsKind): void;
     /** The control for the active camera style. */
     control: Accessor<CameraControl>;
-    structures: Accessor<StructurePlan>;
-    setStructures(plan: StructurePlan): void;
-    /** The box drawn around the selected shape; the overlay sizes and shows it. */
+    plan: Accessor<LevelPlan>;
+    setPlan(plan: LevelPlan): void;
+    /**
+     * The aim box a planned NPC or prop wears, or null before its model has
+     * loaded: half the body's width and depth and the height it draws at.
+     */
+    figureAimBox(kind: "npc" | "prop", id: string): FigureAimBox | null;
+    /** The box drawn around the selected item; the overlay sizes and shows it. */
     highlight: Mesh;
   };
   player: Player;
@@ -447,6 +466,7 @@ export const createVoxelscape = ({
   chunkRadiusY = 2,
   terrain = DEFAULT_TERRAIN,
   customVoxelTiles,
+  plan,
   structures,
   place,
   activeProject,
@@ -543,9 +563,12 @@ export const createVoxelscape = ({
   /** Whether the `/place:level-editor` overlay is showing. */
   const [levelEditorOpen, setLevelEditorOpen] =
     levelEditorOpenSignal ?? createSignal(false);
-  /** The plan the world currently stamps, kept in step with the editor and scripts. */
-  const [levelStructures, setLevelStructures] = createSignal<StructurePlan>(
-    structures ?? [],
+  /** The plan the world currently uses, kept in step with the editor and scripts. */
+  const [levelPlan, setLevelPlan] = createSignal<LevelPlan>(
+    plan ??
+      (structures === undefined
+        ? emptyLevelPlan()
+        : normalizeLevelPlan(structures)),
   );
   /** Where the cursor last was on the canvas, for the editor camera's aiming. */
   const [editorMouse, setEditorMouse] = createSignal<Vector2 | undefined>(
@@ -592,7 +615,7 @@ export const createVoxelscape = ({
     chunkRadiusY,
     terrain,
     customVoxelTiles,
-    structures: levelStructures(),
+    structures: levelPlan().structures,
     spawn,
     placeUri,
     onInitialDraw: setLoading,
@@ -744,6 +767,31 @@ export const createVoxelscape = ({
   // has placed and wearing the bundled model their id names. Nothing draws
   // until /script:demo loads a script that places them.
   let scriptConsole: ScriptConsole | null = null;
+  const plannedNpcs = (): ScriptedNpc[] =>
+    levelPlan().npcs.map((npc) => ({
+      id: npc.id,
+      name: npc.name ?? "NPC",
+      model: npc.model ?? "",
+      modelUri: npc.modelUri ?? "",
+      x: npc.x,
+      y: npc.y ?? world.getHeightAt(npc.x, npc.z),
+      z: npc.z,
+      yaw: npc.yaw ?? 0,
+    }));
+  const plannedProps = (): ScriptedProp[] =>
+    levelPlan().props.map((prop) => ({
+      id: prop.id,
+      model: prop.model,
+      name: prop.name ?? prop.id,
+      x: prop.x,
+      y: prop.y ?? world.getHeightAt(prop.x, prop.z),
+      z: prop.z,
+      yaw: prop.yaw ?? 0,
+      height: prop.height ?? 2,
+      solid: prop.solid ?? false,
+      hazard: prop.hazard ?? false,
+      ...(prop.conveyor !== undefined ? { conveyor: prop.conveyor } : {}),
+    }));
   // The endings this place's game has already reached, kept in the page's own
   // storage so a collecting game remembers them across a restart. A world with
   // no place has no game to remember.
@@ -754,7 +802,7 @@ export const createVoxelscape = ({
   const npcFigures = new VoxelFigures({
     getFigures: () => {
       const figures: RenderedFigure[] = [];
-      for (const npc of scriptConsole?.npcs() ?? []) {
+      for (const npc of [...plannedNpcs(), ...(scriptConsole?.npcs() ?? [])]) {
         const pose = scriptConsole?.npcPose(npc.id) ?? null;
         figures.push(
           pose === null
@@ -772,7 +820,10 @@ export const createVoxelscape = ({
       return figures;
     },
     modelFor: (id) => {
-      const npc = scriptConsole?.npc(id) ?? null;
+      const npc =
+        scriptConsole?.npc(id) ??
+        plannedNpcs().find((planned) => planned.id === id) ??
+        null;
       if (npc !== null && npc.modelUri !== "") {
         return npc.modelUri;
       }
@@ -793,7 +844,10 @@ export const createVoxelscape = ({
   const propFigures = new VoxelFigures({
     getFigures: () => {
       const figures: RenderedFigure[] = [];
-      for (const prop of scriptConsole?.props() ?? []) {
+      for (const prop of [
+        ...plannedProps(),
+        ...(scriptConsole?.props() ?? []),
+      ]) {
         const pose = scriptConsole?.propPose(prop.id) ?? null;
         figures.push(
           pose === null
@@ -811,7 +865,10 @@ export const createVoxelscape = ({
       }
       return figures;
     },
-    modelFor: (id) => scriptConsole?.prop(id)?.model ?? "",
+    modelFor: (id) =>
+      scriptConsole?.prop(id)?.model ??
+      plannedProps().find((planned) => planned.id === id)?.model ??
+      "",
   });
   // A scripted fire is its own particle flame, drawn from the same billboard
   // shader the bomb-bloom demo uses, with its ember kindled into the floor.
@@ -834,7 +891,7 @@ export const createVoxelscape = ({
   const refreshPropBoxes = (): void => {
     propBoxes.length = 0;
     hazardBoxes.length = 0;
-    for (const prop of scriptConsole?.props() ?? []) {
+    for (const prop of [...plannedProps(), ...(scriptConsole?.props() ?? [])]) {
       if (!prop.solid && !prop.hazard) {
         continue;
       }
@@ -935,7 +992,7 @@ export const createVoxelscape = ({
    */
   const npcAimTargets = (): AimTarget[] => {
     const targets: AimTarget[] = [];
-    for (const npc of scriptConsole?.npcs() ?? []) {
+    for (const npc of [...plannedNpcs(), ...(scriptConsole?.npcs() ?? [])]) {
       const box = npcFigures.aimBounds(npc.id);
       targets.push({
         id: npc.id,
@@ -1182,6 +1239,59 @@ export const createVoxelscape = ({
         );
       } finally {
         pendingNpcModels.delete(uri);
+      }
+    })();
+  };
+
+  // A bundled model file a plan's NPC or prop has named, fetched from this
+  // site's `models/` and baked under the file name for both figure renderers.
+  // Baking again under a name `dressNpcs` or the running place's attached
+  // files already covered just replaces the figure, so the sets only stop this
+  // one source re-fetching its own names; a fetch that fails is retried after
+  // a cooldown rather than given up on, so a figure the editor just placed
+  // still comes up when its bytes are reachable.
+  const BUNDLED_MODEL_RETRY_MS = 4_000;
+  const bakedBundledModels = new Set<string>();
+  const pendingBundledModels = new Set<string>();
+  const failedBundledModelAt = new Map<string, number>();
+  const resolveBundledModel = (file: string): void => {
+    if (
+      file === "" ||
+      bakedBundledModels.has(file) ||
+      pendingBundledModels.has(file)
+    ) {
+      return;
+    }
+    const failedAt = failedBundledModelAt.get(file);
+    if (
+      failedAt !== undefined &&
+      Date.now() - failedAt < BUNDLED_MODEL_RETRY_MS
+    ) {
+      return;
+    }
+    pendingBundledModels.add(file);
+    void (async () => {
+      try {
+        const response = await fetch(
+          `${import.meta.env.BASE_URL}models/${file}`,
+        );
+        if (!response.ok) {
+          throw new Error(`fetch answered ${response.status}`);
+        }
+        const figure = await loadFigure(await response.blob());
+        npcFigures.setFigure(file, figure);
+        propFigures.setFigure(file, figure);
+        bakedBundledModels.add(file);
+        failedBundledModelAt.delete(file);
+      } catch (err) {
+        failedBundledModelAt.set(file, Date.now());
+        onNotice?.(
+          `model "${file}" did not load — ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      } finally {
+        pendingBundledModels.delete(file);
       }
     })();
   };
@@ -1576,7 +1686,7 @@ export const createVoxelscape = ({
    */
   const scene = new Scene();
   /**
-   * The box drawn around the level editor's selected shape. It lives in the
+   * The box drawn around the level editor's selected item. It lives in the
    * scene so it draws over the world, and stays hidden until one is selected.
    */
   const levelEditorHighlight = new Mesh(
@@ -1759,16 +1869,20 @@ export const createVoxelscape = ({
             seed,
             region: planRegionAround(spawnPoint ?? spawn),
           });
-          if (plan.length > 0) {
-            setLevelStructures(plan);
+          if (
+            plan.structures.length > 0 ||
+            plan.npcs.length > 0 ||
+            plan.props.length > 0
+          ) {
+            setLevelPlan(plan);
           }
-          const count = `${plan.length} structure shape${
-            plan.length === 1 ? "" : "s"
+          const count = `${plan.structures.length} structure shape${
+            plan.structures.length === 1 ? "" : "s"
           }`;
           structuresLine =
-            plan.length === 0
+            plan.structures.length === 0
               ? ""
-              : world.setStructures(plan)
+              : world.setStructures(plan.structures)
                 ? ` — ${count} rebuilt`
                 : ` — ${count} already in place`;
         } catch (err) {
@@ -2160,16 +2274,19 @@ export const createVoxelscape = ({
     // but has not landed, so physics never reads a cell that holds nothing.
     // The place editor being open holds them still too — writing a script
     // is not something the world it describes should be able to interrupt.
-    if (
+    const simulationReady =
       progress.spawnDrawn &&
       !placeEditorOpen() &&
-      !levelEditorOpen() &&
       world.cellReady(
         avatar.player.position.x,
         avatar.player.position.y,
         avatar.player.position.z,
-      )
-    ) {
+      );
+    // The player's own world holds still while the level editor is open — the
+    // camera belongs to someone designing rather than someone playing — but
+    // the figures keep reconciling, so an NPC or prop placed from the editor
+    // is drawn the moment its model reaches the browser.
+    if (simulationReady && !levelEditorOpen()) {
       health.tick(dt);
       if (health.dead) {
         // The player's body lies where it fell: no input, no editing, and no
@@ -2223,7 +2340,10 @@ export const createVoxelscape = ({
             look.direction[2],
           ] as [number, number, number];
           const aimTargets: AimTarget[] = npcAimTargets();
-          for (const prop of scriptConsole?.props() ?? []) {
+          for (const prop of [
+            ...plannedProps(),
+            ...(scriptConsole?.props() ?? []),
+          ]) {
             const box = propFigures.aimBounds(prop.id);
             aimTargets.push({
               id: prop.id,
@@ -2236,9 +2356,17 @@ export const createVoxelscape = ({
           }
           const aimed = pickFigure(orbit, heading, aimTargets);
           const aimedNpc =
-            aimed === null ? null : (scriptConsole?.npc(aimed.id) ?? null);
+            aimed === null
+              ? null
+              : (scriptConsole?.npc(aimed.id) ??
+                plannedNpcs().find((npc) => npc.id === aimed.id) ??
+                null);
           const aimedProp =
-            aimed === null ? null : (scriptConsole?.prop(aimed.id) ?? null);
+            aimed === null
+              ? null
+              : (scriptConsole?.prop(aimed.id) ??
+                plannedProps().find((prop) => prop.id === aimed.id) ??
+                null);
           // An NPC talks bare-handed and is used otherwise, the same as a prop
           // always is — so the hint has to track the held item too, not just
           // which figure the crosshair is over.
@@ -2390,16 +2518,6 @@ export const createVoxelscape = ({
       probe.begin(Phase.multiplayer);
       multiplayer.tick(dt);
       probe.end(Phase.multiplayer);
-      probe.begin(Phase.figures);
-      scriptConsole?.regroundAuto();
-      for (const npc of scriptConsole?.npcs() ?? []) {
-        resolveNpcModel(npc.modelUri);
-      }
-      npcFigures.tick(dt);
-      propFigures.tick(dt);
-      fireFigures.tick(dt);
-      explosionFigures.tick(dt);
-      probe.end(Phase.figures);
       setScriptItem(scriptConsole?.heldItem() ?? null);
       // The script's zones are checked against where the player stands, so a
       // step into a room is a fact the rules can fold over.
@@ -2411,6 +2529,32 @@ export const createVoxelscape = ({
       // A script's timers fire off the shared clock: pumping is how the world
       // tells the host time has passed even when no player action arrived.
       void scriptConsole?.pump();
+    }
+    // The figures draw in both modes, editor open or playing: a figure the
+    // level editor has just placed is reconciled the moment its model reaches
+    // the browser rather than waiting for the editor to close. The script host
+    // still holds still while the editor is open, so what it last placed keeps
+    // being drawn but does not advance.
+    if (simulationReady) {
+      probe.begin(Phase.figures);
+      scriptConsole?.regroundAuto();
+      for (const npc of scriptConsole?.npcs() ?? []) {
+        resolveNpcModel(npc.modelUri);
+      }
+      // A plan's own figures wear site-bundled models, fetched and baked as
+      // soon as the level editor names one — the same on-demand dressing the
+      // script's NPCs get for their live addresses.
+      for (const npc of plannedNpcs()) {
+        resolveBundledModel(npc.model);
+      }
+      for (const prop of plannedProps()) {
+        resolveBundledModel(prop.model);
+      }
+      npcFigures.tick(dt);
+      propFigures.tick(dt);
+      fireFigures.tick(dt);
+      explosionFigures.tick(dt);
+      probe.end(Phase.figures);
     }
     // While the level editor is open the player block above is skipped, so the
     // window follows the editor camera instead of the player. The control is
@@ -2502,11 +2646,13 @@ export const createVoxelscape = ({
     cameraKind: editorCameraKind,
     setCameraKind: setEditorCameraKind,
     control: editorCameraControl,
-    structures: levelStructures,
-    setStructures: (plan: StructurePlan) => {
-      setLevelStructures(plan);
-      world.setStructures(plan);
+    plan: levelPlan,
+    setPlan: (plan: LevelPlan) => {
+      setLevelPlan(plan);
+      world.setStructures(plan.structures);
     },
+    figureAimBox: (kind: "npc" | "prop", id: string) =>
+      (kind === "npc" ? npcFigures : propFigures).aimBounds(id),
     highlight: levelEditorHighlight,
   };
 

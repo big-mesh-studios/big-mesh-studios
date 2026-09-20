@@ -18,7 +18,12 @@ import { ShapeListPanel } from "./panels/ShapeListPanel";
 import { ShapePropertiesPanel } from "./panels/ShapePropertiesPanel";
 import { ToolbarPanel } from "./panels/ToolbarPanel";
 import { defaultShape, shapeBounds } from "./structures/plan";
-import { pickShape } from "./view/shape-picking";
+import {
+  DEFAULT_FIGURE_HEIGHT,
+  DEFAULT_FIGURE_HALF,
+  pickItem,
+  type FigureSpecFor,
+} from "./view/shape-picking";
 import {
   LevelEditorCrosshair,
   LevelEditorTouchControls,
@@ -43,34 +48,74 @@ const SELECT_REACH = 512;
 export function LevelEditorOverlay() {
   const voxelscape = useVoxelscape();
   const editor = createLevelEditor({
-    structures: () => voxelscape.levelEditor.structures(),
-    setStructures: (plan) => voxelscape.levelEditor.setStructures(plan),
+    plan: () => voxelscape.levelEditor.plan(),
+    setPlan: (plan) => voxelscape.levelEditor.setPlan(plan),
     cameraKind: () => voxelscape.levelEditor.cameraKind(),
     setCameraKind: (kind) => voxelscape.levelEditor.setCameraKind(kind),
   });
 
   const [leftPane, setLeftPane] = createSignal<HTMLElement>();
 
-  /** The box drawn around the selected shape, owned by the world's composer. */
+  /** The box drawn around the selected item, owned by the world's composer. */
   const highlight = voxelscape.levelEditor.highlight;
 
+  /**
+   * The body to draw and test a planned NPC or prop as: the half width and
+   * drawn height its model implies once that has loaded, the heading it faces,
+   * and the feet height a plan that left it to the terrain resolves to.
+   */
+  const figureSpec: FigureSpecFor = (item) => {
+    if (item.type === "structure") {
+      return undefined;
+    }
+    const value = item.value;
+    const aim = voxelscape.levelEditor.figureAimBox(item.type, value.id);
+    return {
+      half: aim?.half ?? DEFAULT_FIGURE_HALF,
+      height:
+        aim?.height ??
+        (item.type === "prop"
+          ? (item.value.height ?? DEFAULT_FIGURE_HEIGHT)
+          : DEFAULT_FIGURE_HEIGHT),
+      yaw: value.yaw ?? 0,
+      y: value.y ?? voxelscape.world.getHeightAt(value.x, value.z),
+    };
+  };
+
   createEffect(
-    () => editor.selectedShape(),
-    (shape) => {
-      if (shape === undefined) {
+    () => editor.selectedItem(),
+    (item) => {
+      if (item === undefined) {
         highlight.visible = false;
         return;
       }
-      const bounds = shapeBounds(shape);
-      highlight.scale.set(
-        (bounds.max[0] - bounds.min[0] + 1) * VOXEL_SIZE,
-        (bounds.max[1] - bounds.min[1] + 1) * VOXEL_SIZE,
-        (bounds.max[2] - bounds.min[2] + 1) * VOXEL_SIZE,
-      );
+      if (item.type === "structure") {
+        highlight.rotation.set(0, 0, 0);
+        const bounds = shapeBounds(item.value);
+        highlight.scale.set(
+          (bounds.max[0] - bounds.min[0] + 1) * VOXEL_SIZE,
+          (bounds.max[1] - bounds.min[1] + 1) * VOXEL_SIZE,
+          (bounds.max[2] - bounds.min[2] + 1) * VOXEL_SIZE,
+        );
+        highlight.position.set(
+          ((bounds.min[0] + bounds.max[0] + 1) / 2) * VOXEL_SIZE,
+          ((bounds.min[1] + bounds.max[1] + 1) / 2) * VOXEL_SIZE,
+          ((bounds.min[2] + bounds.max[2] + 1) / 2) * VOXEL_SIZE,
+        );
+        highlight.visible = true;
+        return;
+      }
+      const spec = figureSpec(item);
+      if (spec === undefined) {
+        highlight.visible = false;
+        return;
+      }
+      highlight.rotation.set(0, spec.yaw, 0);
+      highlight.scale.set(spec.half * 2, spec.height, spec.half * 2);
       highlight.position.set(
-        ((bounds.min[0] + bounds.max[0] + 1) / 2) * VOXEL_SIZE,
-        ((bounds.min[1] + bounds.max[1] + 1) / 2) * VOXEL_SIZE,
-        ((bounds.min[2] + bounds.max[2] + 1) / 2) * VOXEL_SIZE,
+        item.value.x,
+        spec.y + spec.height / 2,
+        item.value.z,
       );
       highlight.visible = true;
     },
@@ -113,7 +158,7 @@ export function LevelEditorOverlay() {
 
   /**
    * Applies the active tool to the shape or voxel under a canvas pixel: the
-   * select tool picks the shape there, any placing tool stamps its shape
+   * select tool picks the item there, any placing tool stamps its shape
    * against the face the ray meets.
    */
   const applyToolAt = (offsetX: number, offsetY: number): void => {
@@ -133,7 +178,7 @@ export function LevelEditorOverlay() {
     }
     const tool = editor.tool();
     if (tool === "select") {
-      const pick = pickShape(editor.structures(), ray, SELECT_REACH);
+      const pick = pickItem(editor.items(), ray, SELECT_REACH, figureSpec);
       editor.selectShape(pick?.index);
       return;
     }
@@ -144,6 +189,14 @@ export function LevelEditorOverlay() {
       BUILD_REACH,
     );
     if (pick.place === null) {
+      return;
+    }
+    if (tool === "npc") {
+      editor.addNpc(pick.place);
+      return;
+    }
+    if (tool === "prop") {
+      editor.addProp(pick.place);
       return;
     }
     editor.addShape(defaultShape(tool, pick.place, editor.activeBlockId()));

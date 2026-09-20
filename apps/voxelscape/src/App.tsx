@@ -18,10 +18,9 @@ import { createPlaceLibrary } from "./atproto/places";
 import { builtinDemo, loadBuiltinDemo } from "./places/demos";
 import { DEFAULT_WORLD_URL, placeAtUri, type PlaceMode } from "./places/place";
 import type { PlaceProject } from "./places/project";
-import { compilePlacePlan, planRegionAround } from "./places/plan";
+import { compilePlacePlan, planRegionAround, type LevelPlan } from "./places/plan";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
 import type { Dim3 } from "./world/level-data";
-import type { StructurePlan } from "./world/structure-fill";
 import type { PlaceBoot, Voxelscape } from "./voxelscape/create-voxelscape";
 import CoarseControls from "./ui/CoarseControls";
 // `Console` is the whole scripting surface — the terminal, and, once
@@ -59,8 +58,8 @@ interface LaunchConfig {
   terrain?: TerrainConfig;
   /** A place's spawn point; omitted only on the fallback procedural world. */
   spawn?: Dim3;
-  /** The structures a place's script asks the filler to stamp into every chunk. */
-  structures?: StructurePlan;
+  /** The structures, NPCs and props a place's script asks the world to place. */
+  plan?: LevelPlan;
   /** The place's scripts to run from boot; omitted only on the fallback procedural world. */
   place?: PlaceBoot;
   /**
@@ -173,7 +172,7 @@ const World: Component<{
   const voxelscape = createVoxelscape({
     terrain: props.launch.terrain,
     spawn: props.launch.spawn,
-    structures: props.launch.structures,
+    plan: props.launch.plan,
     place: props.launch.place,
     activeProject: props.launch.project,
     placeEditorOpen: props.placeEditorOpen,
@@ -391,17 +390,17 @@ const App: Component<{}> = () => {
         model.bytes,
       ]),
     );
-    let structures: StructurePlan | undefined;
+    let plan: LevelPlan | undefined;
     let planNote = "";
     try {
-      structures = await compilePlacePlan({
+      plan = await compilePlacePlan({
         files: project.scripts,
         entry,
         models,
         seed: project.manifest.seed,
         region: planRegionAround(project.manifest.spawn),
       });
-      planNote = ` · ${structures.length} structure shape(s)`;
+      planNote = ` · ${plan.structures.length} structure shape(s), ${plan.npcs.length} NPC(s), ${plan.props.length} prop(s)`;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       planNote = ` · its plan did not compile (${detail})`;
@@ -409,7 +408,7 @@ const App: Component<{}> = () => {
     return {
       terrain: { ...DEFAULT_TERRAIN, seed: project.manifest.seed },
       spawn: project.manifest.spawn,
-      structures,
+      plan,
       place: {
         files: project.scripts,
         entry,

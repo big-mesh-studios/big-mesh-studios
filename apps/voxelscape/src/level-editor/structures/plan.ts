@@ -1,6 +1,19 @@
+import { VOXEL_SIZE } from "../../world/level-data";
 import { expandShape } from "../../world/structure-fill";
-import type { Dim3, PlanShape, StructurePlan, ToolKind } from "../types";
+import type {
+  Dim3,
+  LevelPlan,
+  PlanItem,
+  PlanNpc,
+  PlanProp,
+  PlanShape,
+  StructurePlan,
+  ToolKind,
+} from "../types";
 import { blockName } from "./blocks";
+
+/** Converts a LOD-0 voxel index to its low-corner world unit, the geometry a figure's feet stand on. */
+const feet = (v: number): number => v * VOXEL_SIZE;
 
 /** The inclusive LOD-0 voxel box a shape reaches, its composite parts unioned. */
 export const shapeBounds = (shape: PlanShape): { min: Dim3; max: Dim3 } => {
@@ -52,9 +65,20 @@ export const shapeLabel = (shape: PlanShape): string => {
   }
 };
 
+export const itemLabel = (item: PlanItem): string => {
+  switch (item.type) {
+    case "structure":
+      return shapeLabel(item.value);
+    case "npc":
+      return `NPC ${item.value.name ?? item.value.id} (${item.value.x}, ${item.value.y ?? "ground"}, ${item.value.z})`;
+    case "prop":
+      return `Prop ${item.value.name ?? item.value.id} (${item.value.x}, ${item.value.y ?? "ground"}, ${item.value.z}) ${item.value.model}`;
+  }
+};
+
 /** A shape of `kind` starting at `at`, built from `blockId`. */
 export const defaultShape = (
-  kind: Exclude<ToolKind, "select">,
+  kind: Exclude<ToolKind, "select" | "npc" | "prop">,
   at: Dim3,
   blockId: number,
 ): PlanShape => {
@@ -106,6 +130,29 @@ export const defaultShape = (
   }
 };
 
+export const defaultNpc = (at: Dim3): PlanNpc => ({
+  id: `npc-${at[0]}-${at[1]}-${at[2]}`,
+  name: "NPC",
+  model: "npc-sable.zip",
+  x: feet(at[0]),
+  y: feet(at[1]),
+  z: feet(at[2]),
+  yaw: 0,
+});
+
+export const defaultProp = (at: Dim3): PlanProp => ({
+  id: `prop-${at[0]}-${at[1]}-${at[2]}`,
+  name: "Prop",
+  model: "chair.zip",
+  x: feet(at[0]),
+  y: feet(at[1]),
+  z: feet(at[2]),
+  yaw: 0,
+  height: 2,
+  solid: false,
+  hazard: false,
+});
+
 /** A copy of `shape` shifted by `delta` voxels on every axis. */
 export const translateShape = (shape: PlanShape, delta: Dim3): PlanShape => {
   const move = (v: Dim3): Dim3 => [
@@ -127,14 +174,33 @@ export const translateShape = (shape: PlanShape, delta: Dim3): PlanShape => {
   }
 };
 
+export const translateItem = (item: PlanItem, delta: Dim3): PlanItem => {
+  if (item.type === "structure") {
+    return { type: "structure", value: translateShape(item.value, delta) };
+  }
+  // A figure's coordinates are world units, so a voxel-step move is scaled
+  // back into them.
+  const moved = {
+    x: (item.value.x ?? 0) + feet(delta[0]),
+    y: (item.value.y ?? 0) + feet(delta[1]),
+    z: (item.value.z ?? 0) + feet(delta[2]),
+  };
+  return item.type === "npc"
+    ? { type: "npc", value: { ...item.value, ...moved } }
+    : { type: "prop", value: { ...item.value, ...moved } };
+};
+
 /** A deep copy of `shape`, so an edit never mutates the one on the undo stack. */
 export const cloneShape = (shape: PlanShape): PlanShape =>
   JSON.parse(JSON.stringify(shape)) as PlanShape;
+
+export const cloneItem = (item: PlanItem): PlanItem =>
+  JSON.parse(JSON.stringify(item)) as PlanItem;
 
 /**
  * The place-script snippet that reproduces a plan: the `onPlan` handler a place
  * script calls, returning the plan's JSON. Paste it into a place's script to
  * stamp the same structures into that world.
  */
-export const planScript = (plan: StructurePlan): string =>
+export const planScript = (plan: StructurePlan | LevelPlan): string =>
   `onPlan(() =>\n  JSON.stringify(${JSON.stringify(plan, null, 2)}),\n);\n`;
