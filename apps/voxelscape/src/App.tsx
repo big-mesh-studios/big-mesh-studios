@@ -32,6 +32,7 @@ import CoarseControls from "./ui/CoarseControls";
 // panel alongside it (see `PlaceEditorContent`, rendered from inside it).
 import { Console, createConsole, type ConsoleState } from "./ui/Console";
 import { DialogOverlay } from "./ui/Dialog";
+import { ScriptUi } from "./ui/ScriptUi";
 import { EditHud } from "./ui/EditHud";
 import { HealthHud } from "./ui/HealthHud";
 import { StatsToast } from "./ui/StatsToast";
@@ -230,6 +231,7 @@ const World: Component<{
           <EditHud />
           <HealthHud />
           <InventoryHud />
+          <ScriptUi />
           <DialogOverlay />
           <EndingOverlay />
           <toasts.Stack>

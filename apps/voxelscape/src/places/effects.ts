@@ -6,7 +6,20 @@
 // that is not a well-formed effect here is dropped, never applied.
 import type { CameraShot } from "./cutscene";
 import type { MotionSpec } from "./motion";
-import type { AttributeValue, ScriptEffect } from "./sandbox";
+import type {
+  AttributeValue,
+  DataScope,
+  DataValue,
+  ScriptEffect,
+} from "./sandbox";
+
+/** Every particle kind a script may name; the world draws each one its own way. */
+const PARTICLE_KINDS = ["spark", "flame", "smoke", "dust"] as const;
+/** Every mark shape a script may name; the world draws each one its own way. */
+const DECAL_KINDS = ["arrow", "cross", "ring", "splat"] as const;
+
+type ParticleKind = (typeof PARTICLE_KINDS)[number];
+type DecalKind = (typeof DECAL_KINDS)[number];
 
 /** Every effect tag a place script may dispatch. */
 export type EffectTag =
@@ -66,7 +79,31 @@ export type EffectTag =
   | "prompt"
   | "prompt-remove"
   | "figure-animate"
-  | "figure-stop";
+  | "figure-stop"
+  | "player-model"
+  | "light"
+  | "light-remove"
+  | "billboard"
+  | "billboard-remove"
+  | "particle"
+  | "particle-remove"
+  | "decal"
+  | "decal-remove"
+  | "entity-look"
+  | "entity-look-clear"
+  | "beam"
+  | "beam-remove"
+  | "data-set"
+  | "data-delete"
+  | "data-get"
+  | "badge-award"
+  | "teleport"
+  | "ui-panel"
+  | "ui-label"
+  | "ui-bar"
+  | "ui-button"
+  | "ui-image"
+  | "ui-remove";
 
 /** The furthest an NPC or prop may stand from the origin, in world units. */
 export const MAX_NPC_COORD = 1_000_000;
@@ -88,6 +125,8 @@ export const MAX_PROP_HEIGHT = 64;
 export const MAX_MOTION_POINTS = 64;
 /** The longest one motion traversal may take, in milliseconds. */
 export const MAX_MOTION_MS = 86_400_000;
+/** The furthest a motion's oscillation may move a figure, in world units. */
+export const MAX_MOTION_AMPLITUDE = 64;
 /** The largest spin rate a motion may ask for, per second or per metre. */
 export const MAX_SPIN_RATE = 1_000;
 /** The most shots one cutscene may hold. */
@@ -184,6 +223,64 @@ export const MAX_PROMPT_RANGE = 32;
 export const MAX_ANIMATION_NAME = 64;
 /** The largest multiple a figure may play its animation at. */
 export const MAX_ANIMATION_SPEED = 100;
+/** The furthest a scripted light reaches, in world units. */
+export const MAX_LIGHT_RANGE = 64;
+/** The brightest a scripted light may burn. */
+export const MAX_LIGHT_INTENSITY = 20;
+/** The longest a billboard's text may be. */
+export const MAX_BILLBOARD_TEXT = 64;
+/** The tallest a billboard may be drawn, in world units. */
+export const MAX_BILLBOARD_SCALE = 8;
+/** The furthest a billboard may hang above an attached figure's feet, in world units. */
+export const MAX_BILLBOARD_HEIGHT = 32;
+/** The largest one particle may be drawn, in world units. */
+export const MAX_PARTICLE_SIZE = 4;
+/** The furthest a particle may travel from its emitter, in world units. */
+export const MAX_PARTICLE_SPREAD = 32;
+/** The longest one particle may live, in milliseconds. */
+export const MAX_PARTICLE_LIFE_MS = 30_000;
+/** The widest a decal may be drawn, in world units. */
+export const MAX_DECAL_SIZE = 32;
+/** The widest a beam may be drawn, in world units. */
+export const MAX_BEAM_WIDTH = 1;
+/** The longest a data key or a badge name may be. */
+export const MAX_DATA_KEY = 64;
+/** The longest a string a place may remember. */
+export const MAX_DATA_STRING = 512;
+/** The longest a teleport address may be. */
+export const MAX_PLACE_ADDRESS = 256;
+/** The most keys one teleport may carry into the account scope. */
+export const MAX_CARRY_KEYS = 32;
+/** The most panels one player's scripted UI may show. */
+export const MAX_UI_PANELS = 8;
+/** The most items one panel may hold. */
+export const MAX_UI_ITEMS = 32;
+/** The longest a label, title, or button text may be. */
+export const MAX_UI_TEXT = 200;
+/** The longest a sprite name may be. */
+export const MAX_UI_SPRITE = 64;
+/** The longest a button's value may be. */
+export const MAX_UI_VALUE = 128;
+
+/** Which corner of the screen a scripted panel docks to. */
+export type UiAnchor =
+  "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
+const UI_ANCHORS: UiAnchor[] = [
+  "top-left",
+  "top-right",
+  "bottom-left",
+  "bottom-right",
+];
+
+const isDataValue = (v: unknown): v is DataValue =>
+  typeof v === "boolean" ||
+  (typeof v === "string" && v.length <= MAX_DATA_STRING) ||
+  (typeof v === "number" && Number.isFinite(v));
+
+/** Whether a value is one of the scopes a remembered value may belong to. */
+const isDataScope = (v: unknown): v is DataScope =>
+  v === "player" || v === "global" || v === "account";
 /** The longest a team's id or name, or a player-value's key, may be. */
 export const MAX_TEAM_NAME = 64;
 /** The largest magnitude a player-value may hold. */
@@ -269,6 +366,8 @@ export type ParsedEffect =
         solid?: boolean;
         /** Whether touching the prop counts as a hazard the script hears about. */
         hazard?: boolean;
+        /** Whether a player standing on the prop is turned to the prop's heading, as a seat. */
+        seat?: boolean;
         /** A path and spin the prop follows over the shared clock. */
         motion?: MotionSpec;
         /**
@@ -709,7 +808,263 @@ export type ParsedEffect =
         loop?: boolean;
       };
     }
-  | { tag: "figure-stop"; payload: { id: string } };
+  | { tag: "figure-stop"; payload: { id: string } }
+  | {
+      tag: "player-model";
+      payload: {
+        /** The player whose look changes; "" for the local player. */
+        player: string;
+        /** The place model file the player wears, or "" to go back to the plain cube. */
+        model?: string;
+        /** Reads the model live from its own `at://` address; takes precedence over `model`. */
+        modelUri?: string;
+      };
+    }
+  | {
+      tag: "light";
+      payload: {
+        /** Names the light, so a later `light-remove` reaches it. */
+        id: string;
+        /** The figure the light hangs over; when set, the position fields are ignored. */
+        entityId?: string;
+        /** The light's position, in world units, required when it hangs over no figure. */
+        x?: number;
+        /** The light's height in world units; docked to the ground when absent. */
+        y?: number;
+        z?: number;
+        /** Linear RGB, 0 to 1 each; defaults to warm white. */
+        color?: [number, number, number];
+        /** How far the light reaches, in world units; defaults to 12. */
+        range?: number;
+        /** How brightly it burns; defaults to 1. */
+        intensity?: number;
+      };
+    }
+  | { tag: "light-remove"; payload: { id: string } }
+  | {
+      tag: "billboard";
+      payload: {
+        /** Names the label, so a later `billboard-remove` reaches it, or a new one replaces it. */
+        id: string;
+        /** The line shown. */
+        text: string;
+        /** The figure the label hangs over; when set, the position fields are ignored. */
+        entityId?: string;
+        /** The label's position, in world units, required when it hangs over no figure. */
+        x?: number;
+        /** The label's height in world units; docked to the ground (plus `height`) when absent. */
+        y?: number;
+        z?: number;
+        /** Linear RGB, 0 to 1 each; defaults to white. */
+        color?: [number, number, number];
+        /** The drawn height of the label in world units; defaults to 0.5. */
+        scale?: number;
+        /** How far above an attached figure's feet the label hangs; defaults to 2.2. */
+        height?: number;
+      };
+    }
+  | { tag: "billboard-remove"; payload: { id: string } }
+  | {
+      tag: "particle";
+      payload: {
+        /** Names the emitter, so a later `particle-remove` reaches it. */
+        id: string;
+        /** The emitter's position, in world units, required when it hangs over no figure. */
+        x?: number;
+        /** The emitter's height in world units; docked to the ground when absent. */
+        y?: number;
+        z?: number;
+        /** The figure the emitter hangs over; when set, the position fields are ignored. */
+        entityId?: string;
+        /** One of the world's fixed particle kinds; defaults to "spark". */
+        kind?: ParticleKind;
+        /** Linear RGB, 0 to 1 each; defaults to the kind's own colour. */
+        color?: [number, number, number];
+        /** Drawn size of one particle, in world units; defaults to the kind's own. */
+        size?: number;
+        /** How far particles travel, in world units; defaults to the kind's own. */
+        spread?: number;
+        /** How long one particle lives, in milliseconds; defaults to the kind's own. */
+        lifeMs?: number;
+        /** Whether it keeps emitting until removed; defaults to false. */
+        loop?: boolean;
+      };
+    }
+  | { tag: "particle-remove"; payload: { id: string } }
+  | {
+      tag: "decal";
+      payload: {
+        /** Names the mark, so a later `decal-remove` reaches it. */
+        id: string;
+        /** One of the world's fixed mark shapes. */
+        kind: DecalKind;
+        /** The mark's position, in world units, required when it lies on no figure. */
+        x?: number;
+        /** The mark's height in world units; docked to the ground when absent. */
+        y?: number;
+        z?: number;
+        /** The figure the mark lies under; when set, the position fields are ignored. */
+        entityId?: string;
+        /** Linear RGB, 0 to 1 each; defaults to white. */
+        color?: [number, number, number];
+        /** Drawn width in world units; defaults to 2. */
+        size?: number;
+        /** Rotation about the vertical axis, in radians; defaults to 0. */
+        yaw?: number;
+      };
+    }
+  | { tag: "decal-remove"; payload: { id: string } }
+  | {
+      tag: "entity-look";
+      payload: {
+        /** The scripted figure to tint or fade. */
+        id: string;
+        /** The colour the figure is multiplied by, each channel 0 to 1; defaults to white. */
+        color?: [number, number, number];
+        /** The share of the figure's opacity kept, 0 to 1; defaults to 1. */
+        alpha?: number;
+      };
+    }
+  | { tag: "entity-look-clear"; payload: { id: string } }
+  | {
+      tag: "beam";
+      payload: {
+        /** Names the line, so a later `beam-remove` reaches it. */
+        id: string;
+        /** The figure the line starts at; exactly one of this and `from` is set. */
+        fromEntity?: string;
+        /** The world point the line starts at, in world units. */
+        from?: [number, number, number];
+        /** The figure the line ends at; exactly one of this and `to` is set. */
+        toEntity?: string;
+        /** The world point the line ends at, in world units. */
+        to?: [number, number, number];
+        /** Linear RGB, 0 to 1 each; defaults to white. */
+        color?: [number, number, number];
+        /** How wide the line is drawn, in world units; defaults to 0.1. */
+        width?: number;
+      };
+    }
+  | { tag: "beam-remove"; payload: { id: string } }
+  | {
+      tag: "data-set";
+      payload: {
+        /** Whether the value belongs to one player or to everyone. */
+        scope: DataScope;
+        /** The player the value belongs to; "" means the local player; ignored for global. */
+        player?: string;
+        /** Names the value, so it can be read back on a later run. */
+        key: string;
+        /** The value to remember. */
+        value: DataValue;
+      };
+    }
+  | {
+      tag: "data-delete";
+      payload: {
+        scope: DataScope;
+        player?: string;
+        key: string;
+      };
+    }
+  | {
+      tag: "data-get";
+      payload: {
+        scope: DataScope;
+        /** The player the value belongs to; "" means the local player; ignored for global. */
+        player?: string;
+        key: string;
+        /** Names the request, so the `data-loaded` fact can be matched to it. */
+        requestId: string;
+      };
+    }
+  | {
+      tag: "badge-award";
+      payload: {
+        /** The player to award; "" means the local player. */
+        player?: string;
+        /** Names the badge, so a later run can ask whether it was earned. */
+        badge: string;
+      };
+    }
+  | {
+      tag: "teleport";
+      payload: {
+        /** The player to send; "" means the local player. */
+        player: string;
+        /** Where to send them: a published place's `at://` address, or a built-in demo as `demo:<id>`. */
+        place: string;
+        /** The player's saved keys to copy into the account scope, so the place they go to can read them. */
+        carry?: string[];
+      };
+    }
+  | {
+      tag: "ui-panel";
+      payload: {
+        /** The player whose overlay shows it; "" for the local player. */
+        player: string;
+        /** Names the panel, so later items and a remove reach it. */
+        id: string;
+        /** The panel's heading, or "" for none. */
+        title?: string;
+        /** Which corner it docks to; defaults to top-left. */
+        anchor?: UiAnchor;
+      };
+    }
+  | {
+      tag: "ui-label";
+      payload: {
+        player: string;
+        /** The panel the label belongs to. */
+        panel: string;
+        id: string;
+        text: string;
+        /** Linear RGB, 0 to 1 each; defaults to white. */
+        color?: [number, number, number];
+      };
+    }
+  | {
+      tag: "ui-bar";
+      payload: {
+        player: string;
+        panel: string;
+        id: string;
+        /** The bar's caption, or "" for none. */
+        label?: string;
+        value: number;
+        max: number;
+      };
+    }
+  | {
+      tag: "ui-button";
+      payload: {
+        player: string;
+        panel: string;
+        id: string;
+        label: string;
+        /** Carried on the `ui-clicked` fact, so one handler can tell buttons apart. */
+        value?: string;
+      };
+    }
+  | {
+      tag: "ui-image";
+      payload: {
+        player: string;
+        panel: string;
+        id: string;
+        /** An item id whose sprite the world draws; the item's name when it has no sprite. */
+        sprite: string;
+      };
+    }
+  | {
+      tag: "ui-remove";
+      payload: {
+        player: string;
+        panel: string;
+        /** The item to take off; the whole panel when absent. */
+        item?: string;
+      };
+    };
 
 const isShort = (v: unknown, max: number): boolean =>
   typeof v === "string" && v.length >= 1 && v.length <= max;
@@ -767,6 +1122,10 @@ const isAttributeValue = (v: unknown): v is AttributeValue =>
   (typeof v === "string" && v.length <= MAX_ATTRIBUTE_STRING) ||
   (typeof v === "number" && Number.isFinite(v));
 
+/** Whether a value is a linear RGB colour, each channel from 0 to 1. */
+const isColor3 = (v: unknown): v is [number, number, number] =>
+  Array.isArray(v) && v.length === 3 && v.every((n) => isNumberIn(n, 0, 1));
+
 /** Whether a value is a list of names an entity may carry. */
 const isTags = (v: unknown): v is string[] =>
   Array.isArray(v) &&
@@ -800,7 +1159,22 @@ const isWeapon = (v: unknown): boolean => {
   );
 };
 
-/** Whether a value is a path and spin this world can sample. */
+/** Whether a value is a back-and-forth offset along an axis this world can sample. */
+const isOscillation = (v: unknown): boolean => {
+  if (typeof v !== "object" || v === null) {
+    return false;
+  }
+  const o = v as Record<string, unknown>;
+  return (
+    isNumberIn(o.amplitude, 0, MAX_MOTION_AMPLITUDE) &&
+    isNumberIn(o.periodMs, 1, MAX_MOTION_MS) &&
+    (o.axis === undefined || isVector(o.axis)) &&
+    (o.startAfterMs === undefined ||
+      isNumberIn(o.startAfterMs, 0, MAX_MOTION_MS))
+  );
+};
+
+/** Whether a value is a path, spin, and oscillation this world can sample. */
 const isMotion = (v: unknown): boolean => {
   if (typeof v !== "object" || v === null) {
     return false;
@@ -827,6 +1201,9 @@ const isMotion = (v: unknown): boolean => {
     return false;
   }
   if (m.ease !== undefined && m.ease !== "linear" && m.ease !== "smooth") {
+    return false;
+  }
+  if (m.oscillate !== undefined && !isOscillation(m.oscillate)) {
     return false;
   }
   if (m.spin === undefined) {
@@ -1010,6 +1387,7 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
             p.height <= MAX_PROP_HEIGHT)) &&
         (p.solid === undefined || typeof p.solid === "boolean") &&
         (p.hazard === undefined || typeof p.hazard === "boolean") &&
+        (p.seat === undefined || typeof p.seat === "boolean") &&
         (p.motion === undefined || isMotion(p.motion)) &&
         (p.conveyor === undefined ||
           (p.motion === undefined && isConveyor(p.conveyor))) &&
@@ -1313,6 +1691,186 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
       );
     case "figure-stop":
       return isShort(p.id, 64);
+    case "player-model":
+      return (
+        isPlayer(p.player) &&
+        (p.model === undefined ||
+          p.model === "" ||
+          isShort(p.model, MAX_PROP_MODEL)) &&
+        (p.modelUri === undefined ||
+          (p.modelUri !== "" && isShort(p.modelUri, MAX_MODEL_URI))) &&
+        (p.model !== undefined || p.modelUri !== undefined)
+      );
+    case "light":
+      return (
+        isShort(p.id, 64) &&
+        (p.entityId === undefined
+          ? isCoord(p.x) && isCoord(p.z)
+          : isShort(p.entityId, 64)) &&
+        (p.y === undefined || isCoord(p.y)) &&
+        (p.color === undefined || isColor3(p.color)) &&
+        (p.range === undefined || isNumberIn(p.range, 0, MAX_LIGHT_RANGE)) &&
+        (p.intensity === undefined ||
+          isNumberIn(p.intensity, 0, MAX_LIGHT_INTENSITY))
+      );
+    case "light-remove":
+      return isShort(p.id, 64);
+    case "billboard":
+      return (
+        isShort(p.id, 64) &&
+        isShort(p.text, MAX_BILLBOARD_TEXT) &&
+        (p.entityId === undefined
+          ? isCoord(p.x) && isCoord(p.z)
+          : isShort(p.entityId, 64)) &&
+        (p.y === undefined || isCoord(p.y)) &&
+        (p.color === undefined || isColor3(p.color)) &&
+        (p.scale === undefined ||
+          isNumberIn(p.scale, 0.05, MAX_BILLBOARD_SCALE)) &&
+        (p.height === undefined ||
+          isNumberIn(p.height, 0, MAX_BILLBOARD_HEIGHT))
+      );
+    case "billboard-remove":
+      return isShort(p.id, 64);
+    case "particle":
+      return (
+        isShort(p.id, 64) &&
+        (p.entityId === undefined
+          ? isCoord(p.x) && isCoord(p.z)
+          : isShort(p.entityId, 64)) &&
+        (p.y === undefined || isCoord(p.y)) &&
+        (p.kind === undefined ||
+          PARTICLE_KINDS.includes(p.kind as ParticleKind)) &&
+        (p.color === undefined || isColor3(p.color)) &&
+        (p.size === undefined || isNumberIn(p.size, 0.02, MAX_PARTICLE_SIZE)) &&
+        (p.spread === undefined ||
+          isNumberIn(p.spread, 0, MAX_PARTICLE_SPREAD)) &&
+        (p.lifeMs === undefined ||
+          isNumberIn(p.lifeMs, 50, MAX_PARTICLE_LIFE_MS)) &&
+        (p.loop === undefined || typeof p.loop === "boolean")
+      );
+    case "particle-remove":
+      return isShort(p.id, 64);
+    case "decal":
+      return (
+        isShort(p.id, 64) &&
+        DECAL_KINDS.includes(p.kind as DecalKind) &&
+        (p.entityId === undefined
+          ? isCoord(p.x) && isCoord(p.z)
+          : isShort(p.entityId, 64)) &&
+        (p.y === undefined || isCoord(p.y)) &&
+        (p.color === undefined || isColor3(p.color)) &&
+        (p.size === undefined || isNumberIn(p.size, 0.1, MAX_DECAL_SIZE)) &&
+        (p.yaw === undefined || isCoord(p.yaw))
+      );
+    case "decal-remove":
+      return isShort(p.id, 64);
+    case "entity-look":
+      return (
+        isShort(p.id, 64) &&
+        (p.color === undefined || isColor3(p.color)) &&
+        (p.alpha === undefined || isNumberIn(p.alpha, 0, 1))
+      );
+    case "entity-look-clear":
+      return isShort(p.id, 64);
+    case "beam":
+      return (
+        isShort(p.id, 64) &&
+        (p.fromEntity === undefined) !== (p.from === undefined) &&
+        (p.toEntity === undefined) !== (p.to === undefined) &&
+        (p.fromEntity === undefined || isShort(p.fromEntity, 64)) &&
+        (p.toEntity === undefined || isShort(p.toEntity, 64)) &&
+        (p.from === undefined || isVector(p.from)) &&
+        (p.to === undefined || isVector(p.to)) &&
+        (p.color === undefined || isColor3(p.color)) &&
+        (p.width === undefined || isNumberIn(p.width, 0.02, MAX_BEAM_WIDTH))
+      );
+    case "beam-remove":
+      return isShort(p.id, 64);
+    case "data-set":
+      return (
+        isDataScope(p.scope) &&
+        (p.player === undefined || isPlayer(p.player)) &&
+        isShort(p.key, MAX_DATA_KEY) &&
+        isDataValue(p.value)
+      );
+    case "data-delete":
+      return (
+        isDataScope(p.scope) &&
+        (p.player === undefined || isPlayer(p.player)) &&
+        isShort(p.key, MAX_DATA_KEY)
+      );
+    case "data-get":
+      return (
+        isDataScope(p.scope) &&
+        (p.player === undefined || isPlayer(p.player)) &&
+        isShort(p.key, MAX_DATA_KEY) &&
+        isShort(p.requestId, 64)
+      );
+    case "badge-award":
+      return (
+        (p.player === undefined || isPlayer(p.player)) &&
+        isShort(p.badge, MAX_DATA_KEY)
+      );
+    case "teleport":
+      return (
+        isPlayer(p.player) &&
+        isShort(p.place, MAX_PLACE_ADDRESS) &&
+        (p.carry === undefined ||
+          (Array.isArray(p.carry) &&
+            p.carry.length <= MAX_CARRY_KEYS &&
+            p.carry.every((key) => isShort(key, MAX_DATA_KEY))))
+      );
+    case "ui-panel":
+      return (
+        isPlayer(p.player) &&
+        isShort(p.id, 64) &&
+        (p.title === undefined ||
+          p.title === "" ||
+          isShort(p.title, MAX_UI_TEXT)) &&
+        (p.anchor === undefined || UI_ANCHORS.includes(p.anchor as UiAnchor))
+      );
+    case "ui-label":
+      return (
+        isPlayer(p.player) &&
+        isShort(p.panel, 64) &&
+        isShort(p.id, 64) &&
+        isShort(p.text, MAX_UI_TEXT) &&
+        (p.color === undefined || isColor3(p.color))
+      );
+    case "ui-bar":
+      return (
+        isPlayer(p.player) &&
+        isShort(p.panel, 64) &&
+        isShort(p.id, 64) &&
+        (p.label === undefined ||
+          p.label === "" ||
+          isShort(p.label, MAX_UI_TEXT)) &&
+        isNumberIn(p.value, -MAX_HUD_VALUE, MAX_HUD_VALUE) &&
+        isNumberIn(p.max, 1, MAX_HUD_VALUE)
+      );
+    case "ui-button":
+      return (
+        isPlayer(p.player) &&
+        isShort(p.panel, 64) &&
+        isShort(p.id, 64) &&
+        isShort(p.label, MAX_UI_TEXT) &&
+        (p.value === undefined ||
+          p.value === "" ||
+          isShort(p.value, MAX_UI_VALUE))
+      );
+    case "ui-image":
+      return (
+        isPlayer(p.player) &&
+        isShort(p.panel, 64) &&
+        isShort(p.id, 64) &&
+        isShort(p.sprite, MAX_UI_SPRITE)
+      );
+    case "ui-remove":
+      return (
+        isPlayer(p.player) &&
+        isShort(p.panel, 64) &&
+        (p.item === undefined || p.item === "" || isShort(p.item, 64))
+      );
   }
 };
 

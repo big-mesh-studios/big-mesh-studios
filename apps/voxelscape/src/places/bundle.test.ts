@@ -455,6 +455,25 @@ describe("the voxelscape module", () => {
     expect(calls[2].payload).toEqual({ id: "zombie-1" });
   });
 
+  it("marks a prop a seat through createProp", async () => {
+    const files = {
+      "main.ts": `
+        import { createProp } from "voxelscape";
+        createProp({
+          model: "zombie", id: "lift", x: 0, z: 0, solid: true, seat: true,
+        });
+      `,
+    };
+    const models = { "zombie.zip": await modelBytes(["head"]) };
+    const output = await bundlePlaceProject(files, "main.ts", models);
+    const { dispatched } = runBundle(output);
+    expect(JSON.parse(dispatched[0].payload)).toMatchObject({
+      id: "lift",
+      solid: true,
+      seat: true,
+    });
+  });
+
   it("walks an npc along a route the host finds, as a once motion", async () => {
     const files = {
       "main.ts": `
@@ -503,6 +522,270 @@ describe("the voxelscape module", () => {
     ]);
     expect(calls[1].payload).toEqual({ id: "z1", name: "walk", speed: 2 });
     expect(calls[2].payload).toEqual({ id: "z1" });
+  });
+
+  it("lights a point and shows a label through their handles", async () => {
+    const files = {
+      "main.ts": `
+        import { createLight, createBillboard } from "voxelscape";
+        const light = createLight({
+          id: "lamp", x: 1, z: 2, color: [1, 0.5, 0], range: 20,
+        });
+        const tag = createBillboard({ id: "tag", text: "Boss", entityId: "z1" });
+        light.remove();
+        tag.remove();
+      `,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    const { dispatched } = runBundle(output);
+    expect(dispatched.map((call) => call.tag)).toEqual([
+      "light",
+      "billboard",
+      "light-remove",
+      "billboard-remove",
+    ]);
+    expect(JSON.parse(dispatched[0].payload)).toEqual({
+      id: "lamp",
+      x: 1,
+      z: 2,
+      color: [1, 0.5, 0],
+      range: 20,
+    });
+    expect(JSON.parse(dispatched[1].payload)).toEqual({
+      id: "tag",
+      text: "Boss",
+      entityId: "z1",
+    });
+  });
+
+  it("saves account data and carries keys through their helpers", async () => {
+    const files = {
+      "main.ts": `
+        import { saveAccountData, deleteAccountData, teleport } from "voxelscape";
+        saveAccountData("pet", "cat");
+        deleteAccountData("pet");
+        teleport("demo:home", "", ["pet"]);
+      `,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    const { dispatched } = runBundle(output);
+    const calls = dispatched.map((call) => ({
+      tag: call.tag,
+      payload: JSON.parse(call.payload),
+    }));
+    expect(calls.map((call) => call.tag)).toEqual([
+      "data-set",
+      "data-delete",
+      "teleport",
+    ]);
+    expect(calls[0].payload).toEqual({
+      scope: "account",
+      key: "pet",
+      value: "cat",
+    });
+    expect(calls[1].payload).toEqual({ scope: "account", key: "pet" });
+    expect(calls[2].payload).toEqual({
+      player: "",
+      place: "demo:home",
+      carry: ["pet"],
+    });
+  });
+
+  it("dresses a player in a place model through its helper", async () => {
+    const files = {
+      "main.ts": `
+        import { setPlayerModel, clearPlayerModel } from "voxelscape";
+        setPlayerModel("zombie");
+        clearPlayerModel();
+      `,
+    };
+    const models = { "zombie.zip": await modelBytes(["head"]) };
+    const output = await bundlePlaceProject(files, "main.ts", models);
+    const { dispatched } = runBundle(output);
+    expect(dispatched.map((call) => call.tag)).toEqual([
+      "player-model",
+      "player-model",
+    ]);
+    expect(JSON.parse(dispatched[0].payload)).toEqual({
+      player: "",
+      model: "zombie.zip",
+    });
+    expect(JSON.parse(dispatched[1].payload)).toEqual({
+      player: "",
+      model: "",
+    });
+  });
+
+  it("asks for a remembered value through its helper", async () => {
+    const files = {
+      "main.ts": `
+        import { requestData } from "voxelscape";
+        requestData("player", "score", "r1");
+      `,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    const { dispatched } = runBundle(output);
+    expect(dispatched.map((call) => call.tag)).toEqual(["data-get"]);
+    expect(JSON.parse(dispatched[0].payload)).toEqual({
+      scope: "player",
+      key: "score",
+      requestId: "r1",
+    });
+  });
+
+  it("builds scripted UI through its helpers", async () => {
+    const files = {
+      "main.ts": `
+        import {
+          uiPanel, uiLabel, uiBar, uiButton, uiImage, uiRemove,
+        } from "voxelscape";
+        uiPanel({ id: "shop", title: "Shop", anchor: "bottom-right" });
+        uiLabel({ panel: "shop", id: "hint", text: "Buy a cola" });
+        uiBar({ panel: "shop", id: "cash", label: "Cash", value: 3, max: 10 });
+        uiButton({ panel: "shop", id: "buy", label: "Buy", value: "cola" });
+        uiImage({ panel: "shop", id: "icon", sprite: "cola" });
+        uiRemove({ panel: "shop", item: "hint" });
+      `,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    const { dispatched } = runBundle(output);
+    expect(dispatched.map((call) => call.tag)).toEqual([
+      "ui-panel",
+      "ui-label",
+      "ui-bar",
+      "ui-button",
+      "ui-image",
+      "ui-remove",
+    ]);
+    expect(JSON.parse(dispatched[0].payload)).toEqual({
+      player: "",
+      id: "shop",
+      title: "Shop",
+      anchor: "bottom-right",
+    });
+    expect(JSON.parse(dispatched[3].payload)).toEqual({
+      player: "",
+      panel: "shop",
+      id: "buy",
+      label: "Buy",
+      value: "cola",
+    });
+  });
+
+  it("saves data, awards a badge, and teleports through their helpers", async () => {
+    const files = {
+      "main.ts": `
+        import {
+          savePlayerData, saveGlobalData, deletePlayerData, awardBadge, teleport,
+        } from "voxelscape";
+        savePlayerData("score", 3);
+        saveGlobalData("day", 2);
+        deletePlayerData("score", "did:b");
+        awardBadge("first");
+        teleport("at://did:plc:x/app.bms/a");
+      `,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    const { dispatched } = runBundle(output);
+    const calls = dispatched.map((call) => ({
+      tag: call.tag,
+      payload: JSON.parse(call.payload),
+    }));
+    expect(calls.map((call) => call.tag)).toEqual([
+      "data-set",
+      "data-set",
+      "data-delete",
+      "badge-award",
+      "teleport",
+    ]);
+    expect(calls[0].payload).toEqual({
+      scope: "player",
+      key: "score",
+      value: 3,
+    });
+    expect(calls[1].payload).toEqual({ scope: "global", key: "day", value: 2 });
+    expect(calls[2].payload).toEqual({
+      scope: "player",
+      player: "did:b",
+      key: "score",
+    });
+    expect(calls[3].payload).toEqual({ badge: "first" });
+    expect(calls[4].payload).toEqual({
+      player: "",
+      place: "at://did:plc:x/app.bms/a",
+    });
+  });
+
+  it("tints a figure and draws a beam through their handles", async () => {
+    const files = {
+      "main.ts": `
+        import { createNpc, createBeam } from "voxelscape";
+        const npc = createNpc({ model: "zombie", id: "z1", x: 0, z: 0 })
+          .setLook({ color: [1, 0, 0], alpha: 0.5 })
+          .clearLook();
+        const beam = createBeam({
+          id: "line", from: [0, 0, 0], to: [1, 2, 3], width: 0.2,
+        });
+        beam.remove();
+      `,
+    };
+    const models = { "zombie.zip": await modelBytes(["head"]) };
+    const output = await bundlePlaceProject(files, "main.ts", models);
+    const { dispatched } = runBundle(output);
+    expect(dispatched.map((call) => call.tag)).toEqual([
+      "npc",
+      "entity-look",
+      "entity-look-clear",
+      "beam",
+      "beam-remove",
+    ]);
+    expect(JSON.parse(dispatched[1].payload)).toEqual({
+      id: "z1",
+      color: [1, 0, 0],
+      alpha: 0.5,
+    });
+    expect(JSON.parse(dispatched[3].payload)).toEqual({
+      id: "line",
+      from: [0, 0, 0],
+      to: [1, 2, 3],
+      width: 0.2,
+    });
+  });
+
+  it("runs an emitter and lays a mark through their handles", async () => {
+    const files = {
+      "main.ts": `
+        import { createParticle, createDecal } from "voxelscape";
+        const puff = createParticle({
+          id: "puff", x: 1, z: 2, kind: "smoke", loop: false,
+        });
+        const mark = createDecal({ id: "mark", kind: "cross", x: 1, z: 2, size: 3 });
+        puff.remove();
+        mark.remove();
+      `,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    const { dispatched } = runBundle(output);
+    expect(dispatched.map((call) => call.tag)).toEqual([
+      "particle",
+      "decal",
+      "particle-remove",
+      "decal-remove",
+    ]);
+    expect(JSON.parse(dispatched[0].payload)).toEqual({
+      id: "puff",
+      kind: "smoke",
+      x: 1,
+      z: 2,
+      loop: false,
+    });
+    expect(JSON.parse(dispatched[1].payload)).toEqual({
+      id: "mark",
+      kind: "cross",
+      x: 1,
+      z: 2,
+      size: 3,
+    });
   });
 
   it("plays a death fall through an npc's die, and removes a prop through prop-remove", async () => {

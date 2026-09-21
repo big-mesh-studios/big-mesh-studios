@@ -88,6 +88,164 @@ export function getLeaderboard(key, count) {
 }
 
 /**
+ * The value the place remembers under \`scope\`/\`key\` for \`player\` ("" for the
+ * local player, ignored for the global scope), or null when there is none.
+ */
+export function getData(scope, player, key) {
+  return JSON.parse(host.getData(scope, player, key));
+}
+
+/** The players whose remembered number under \`key\` ranks, highest first, at most \`count\`. */
+export function getDataLeaderboard(key, count) {
+  return JSON.parse(host.getDataLeaderboard(key, count));
+}
+
+/** Saves \`value\` for \`player\` ("" for the local player) under \`key\`. */
+export function savePlayerData(key, value, player) {
+  host.dispatch("data-set", {
+    scope: "player",
+    player: player,
+    key: key,
+    value: value,
+  });
+}
+
+/** Saves \`value\` for everyone under \`key\`. */
+export function saveGlobalData(key, value) {
+  host.dispatch("data-set", { scope: "global", key: key, value: value });
+}
+
+/** Forgets \`key\` for \`player\` ("" for the local player). */
+export function deletePlayerData(key, player) {
+  host.dispatch("data-delete", {
+    scope: "player",
+    player: player,
+    key: key,
+  });
+}
+
+/** Saves \`value\` for the signed-in account, whatever place it is read in. */
+export function saveAccountData(key, value) {
+  host.dispatch("data-set", { scope: "account", key: key, value: value });
+}
+
+/** Forgets \`key\` for the signed-in account. */
+export function deleteAccountData(key) {
+  host.dispatch("data-delete", { scope: "account", key: key });
+}
+
+/** Awards the badge \`badge\` to \`player\` ("" for the local player). */
+export function awardBadge(badge, player) {
+  host.dispatch("badge-award", { badge: badge, player: player });
+}
+
+/** Asks the world to read a remembered value; the answer arrives as a \`data-loaded\` fact. */
+export function requestData(scope, key, requestId, player) {
+  host.dispatch("data-get", {
+    scope: scope,
+    player: player,
+    key: key,
+    requestId: requestId,
+  });
+}
+
+/**
+ * Dresses \`player\` ("" for the local player) in the place model named
+ * \`modelName\`, or the plain cube when \`modelName\` is "".
+ */
+export function setPlayerModel(modelName, player) {
+  var model = modelName === "" ? undefined : resolveModel(modelName);
+  host.dispatch("player-model", {
+    player: player === undefined ? "" : player,
+    model: model === undefined ? "" : model.file,
+  });
+}
+
+/** Takes the worn model off \`player\` ("" for the local player), back to the plain cube. */
+export function clearPlayerModel(player) {
+  host.dispatch("player-model", {
+    player: player === undefined ? "" : player,
+    model: "",
+  });
+}
+
+/** Sends \`player\` ("" for the local player) to another place, carrying \`carry\` keys with them. */
+export function teleport(place, player, carry) {
+  host.dispatch("teleport", {
+    player: player === undefined ? "" : player,
+    place: place,
+    carry: carry,
+  });
+}
+
+function uiPlayer(options) {
+  return options.player === undefined ? "" : options.player;
+}
+
+/** Shows a panel docked to a corner; see \`createProp\` for why \`id\` is never generated. */
+export function uiPanel(options) {
+  host.dispatch("ui-panel", {
+    player: uiPlayer(options),
+    id: options.id,
+    title: options.title,
+    anchor: options.anchor,
+  });
+}
+
+/** Adds a line of text to a panel. */
+export function uiLabel(options) {
+  host.dispatch("ui-label", {
+    player: uiPlayer(options),
+    panel: options.panel,
+    id: options.id,
+    text: options.text,
+    color: options.color,
+  });
+}
+
+/** Adds a labelled bar to a panel. */
+export function uiBar(options) {
+  host.dispatch("ui-bar", {
+    player: uiPlayer(options),
+    panel: options.panel,
+    id: options.id,
+    label: options.label,
+    value: options.value,
+    max: options.max,
+  });
+}
+
+/** Adds a button to a panel; its press arrives as a \`ui-clicked\` fact. */
+export function uiButton(options) {
+  host.dispatch("ui-button", {
+    player: uiPlayer(options),
+    panel: options.panel,
+    id: options.id,
+    label: options.label,
+    value: options.value,
+  });
+}
+
+/** Adds an item-sprite image to a panel. */
+export function uiImage(options) {
+  host.dispatch("ui-image", {
+    player: uiPlayer(options),
+    panel: options.panel,
+    id: options.id,
+    sprite: options.sprite,
+  });
+}
+
+/** Takes an item off a panel, or the whole panel when \`item\` is omitted. */
+export function uiRemove(options) {
+  host.dispatch("ui-remove", {
+    player: uiPlayer(options),
+    panel: options.panel,
+    item: options.item,
+  });
+}
+
+/**
  * Shows a leaderboard to the local player as a HUD text readout, ranking the
  * players by the player-value \`key\`. Call it whenever the values change; the
  * readout is replaced rather than appended.
@@ -309,6 +467,20 @@ export function createNpc(options) {
     host.dispatch("figure-stop", { id: npc.id });
     return npc;
   };
+  /** Tints and fades the NPC over its model's colours. Returns the NPC. */
+  npc.setLook = function (lookOptions) {
+    host.dispatch("entity-look", {
+      id: npc.id,
+      color: lookOptions.color,
+      alpha: lookOptions.alpha,
+    });
+    return npc;
+  };
+  /** Clears the NPC's tint and fade. Returns the NPC. */
+  npc.clearLook = function () {
+    host.dispatch("entity-look-clear", { id: npc.id });
+    return npc;
+  };
   return npc;
 }
 
@@ -327,6 +499,7 @@ export function createProp(options) {
       height: options.height,
       solid: options.solid,
       hazard: options.hazard,
+      seat: options.seat,
       conveyor: options.conveyor,
       motion: options.motion,
       tags: state.tags,
@@ -351,6 +524,20 @@ export function createProp(options) {
     host.dispatch("figure-stop", { id: prop.id });
     return prop;
   };
+  /** Tints and fades the prop over its model's colours. Returns the prop. */
+  prop.setLook = function (lookOptions) {
+    host.dispatch("entity-look", {
+      id: prop.id,
+      color: lookOptions.color,
+      alpha: lookOptions.alpha,
+    });
+    return prop;
+  };
+  /** Clears the prop's tint and fade. Returns the prop. */
+  prop.clearLook = function () {
+    host.dispatch("entity-look-clear", { id: prop.id });
+    return prop;
+  };
   return prop;
 }
 
@@ -373,5 +560,110 @@ export function createBarrier(options) {
     host.dispatch("barrier-remove", { id: barrier.id });
   };
   return barrier;
+}
+
+/**
+ * Lights a point in the world — standing where it is placed, or hanging over a
+ * figure named by entityId. Returns a handle whose remove puts the light out.
+ */
+export function createLight(options) {
+  host.dispatch("light", {
+    id: options.id,
+    entityId: options.entityId,
+    x: options.x,
+    y: options.y,
+    z: options.z,
+    color: options.color,
+    range: options.range,
+    intensity: options.intensity,
+  });
+  var light = { id: options.id };
+  light.remove = function () {
+    host.dispatch("light-remove", { id: light.id });
+  };
+  return light;
+}
+
+/** Shows a world-space label over a point or a figure; returns a handle whose remove takes it down. */
+export function createBillboard(options) {
+  host.dispatch("billboard", {
+    id: options.id,
+    text: options.text,
+    entityId: options.entityId,
+    x: options.x,
+    y: options.y,
+    z: options.z,
+    color: options.color,
+    scale: options.scale,
+    height: options.height,
+  });
+  var billboard = { id: options.id };
+  billboard.remove = function () {
+    host.dispatch("billboard-remove", { id: billboard.id });
+  };
+  return billboard;
+}
+
+/**
+ * Runs a particle emitter at a point, or hanging over a figure named by
+ * entityId. Returns a handle whose remove stops it.
+ */
+export function createParticle(options) {
+  host.dispatch("particle", {
+    id: options.id,
+    kind: options.kind,
+    entityId: options.entityId,
+    x: options.x,
+    y: options.y,
+    z: options.z,
+    color: options.color,
+    size: options.size,
+    spread: options.spread,
+    lifeMs: options.lifeMs,
+    loop: options.loop,
+  });
+  var particle = { id: options.id };
+  particle.remove = function () {
+    host.dispatch("particle-remove", { id: particle.id });
+  };
+  return particle;
+}
+
+/** Lays a flat mark on the world; returns a handle whose remove lifts it. */
+export function createDecal(options) {
+  host.dispatch("decal", {
+    id: options.id,
+    kind: options.kind,
+    entityId: options.entityId,
+    x: options.x,
+    y: options.y,
+    z: options.z,
+    color: options.color,
+    size: options.size,
+    yaw: options.yaw,
+  });
+  var decal = { id: options.id };
+  decal.remove = function () {
+    host.dispatch("decal-remove", { id: decal.id });
+  };
+  return decal;
+}
+
+/** Draws a glowing line between two points or figures; returns a handle whose remove takes it down. */
+export function createBeam(options) {
+  host.dispatch("beam", {
+    id: options.id,
+    fromEntity: options.fromEntity,
+    from: options.from,
+    toEntity: options.toEntity,
+    to: options.to,
+    color: options.color,
+    width: options.width,
+  });
+  var beam = { id: options.id };
+  beam.remove = function () {
+    host.dispatch("beam-remove", { id: beam.id });
+  };
+  return beam;
 }
 `;

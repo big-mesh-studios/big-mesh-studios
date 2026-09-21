@@ -17,6 +17,8 @@ export interface SolidBox {
   vx?: number;
   vy?: number;
   vz?: number;
+  /** Whether a player standing on the box is turned to its heading, as a seat. */
+  seat?: boolean;
 }
 
 /** How far below a box's top still counts as standing on it, in world units. */
@@ -96,4 +98,31 @@ export const boxVelocityAt = (
     }
   }
   return best === null ? null : [best.vx ?? 0, best.vy ?? 0, best.vz ?? 0];
+};
+
+/**
+ * The heading of the seat whose top holds the player up over the column at
+ * (`x`, `z`), or null when no seat stands there. Mirrors `boxVelocityAt`, so
+ * the seat the ground sampler chose is the one the player is turned to.
+ */
+export const boxSeatAt = (
+  boxes: readonly SolidBox[],
+  x: number,
+  y: number,
+  z: number,
+): number | null => {
+  let best: SolidBox | null = null;
+  let bestTop = -Infinity;
+  for (const box of boxes) {
+    if (
+      box.seat === true &&
+      inFootprint(box, x, z) &&
+      box.maxY <= y + TOUCH &&
+      box.maxY > bestTop
+    ) {
+      bestTop = box.maxY;
+      best = box;
+    }
+  }
+  return best === null ? null : (best.yaw ?? 0);
 };

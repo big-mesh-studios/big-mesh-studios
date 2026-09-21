@@ -73,6 +73,121 @@ declare module "voxelscape" {
   export const getPlayerValue: WorldQuery["getPlayerValue"];
   /** The players ranked by `key`, highest first, at most `count` of them. */
   export const getLeaderboard: WorldQuery["getLeaderboard"];
+  /** Which players a remembered value belongs to: one, or everyone in the place. */
+  export type DataScope = import("./sandbox").DataScope;
+  /** A value a place may remember: a string, a finite number, or a boolean. */
+  export type DataValue = import("./sandbox").DataValue;
+  /** The value the place remembers under `scope`/`key` for `player`, or null when there is none. */
+  export function getData(
+    scope: DataScope,
+    player: string,
+    key: string,
+  ): DataValue | null;
+  /** The players whose remembered number under `key` ranks, highest first, at most `count`. */
+  export function getDataLeaderboard(
+    key: string,
+    count: number,
+  ): Array<{ player: string; value: number }>;
+  /** Saves `value` for `player` ("" for the local player) under `key`. */
+  export function savePlayerData(
+    key: string,
+    value: DataValue,
+    player?: string,
+  ): void;
+  /** Saves `value` for everyone under `key`. */
+  export function saveGlobalData(key: string, value: DataValue): void;
+  /** Forgets `key` for `player` ("" for the local player). */
+  export function deletePlayerData(key: string, player?: string): void;
+  /** Saves `value` for the signed-in account, whatever place it is read in. */
+  export function saveAccountData(key: string, value: DataValue): void;
+  /** Forgets `key` for the signed-in account. */
+  export function deleteAccountData(key: string): void;
+  /** Asks the world to read a remembered value; the answer arrives as a `data-loaded` fact. */
+  export function requestData(
+    scope: DataScope,
+    key: string,
+    requestId: string,
+    player?: string,
+  ): void;
+  /** Awards the badge `badge` to `player` ("" for the local player). */
+  export function awardBadge(badge: string, player?: string): void;
+  /** Sends `player` ("" for the local player) to another place, carrying `carry` keys into the account scope. */
+  export function teleport(
+    place: string,
+    player?: string,
+    carry?: string[],
+  ): void;
+
+  /** Dresses a player in one of the place's models; "" returns them to the plain cube. */
+  export function setPlayerModel(
+    model: keyof ModelsByName | "",
+    player?: string,
+  ): void;
+  /** Takes the worn model off a player, back to the plain cube. */
+  export function clearPlayerModel(player?: string): void;
+
+  /** Which corner of the screen a scripted panel docks to. */
+  export type UiAnchor =
+    "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
+  /** The player a scripted UI is shown to; "" means the local player. */
+  interface UiTarget {
+    player?: string;
+  }
+
+  /** A panel of scripted UI. */
+  interface UiPanelOptions extends UiTarget {
+    id: string;
+    /** The panel's heading, or "" for none. */
+    title?: string;
+    /** Which corner it docks to; defaults to top-left. */
+    anchor?: UiAnchor;
+  }
+  export function uiPanel(options: UiPanelOptions): void;
+
+  /** Where an item joins a panel. */
+  interface UiItemTarget extends UiTarget {
+    panel: string;
+    id: string;
+  }
+
+  /** A line of text. */
+  interface UiLabelOptions extends UiItemTarget {
+    text: string;
+    /** Linear RGB, 0 to 1 each; defaults to white. */
+    color?: [number, number, number];
+  }
+  export function uiLabel(options: UiLabelOptions): void;
+
+  /** A labelled bar. */
+  interface UiBarOptions extends UiItemTarget {
+    label?: string;
+    value: number;
+    max: number;
+  }
+  export function uiBar(options: UiBarOptions): void;
+
+  /** A button; its press arrives as a `ui-clicked` fact. */
+  interface UiButtonOptions extends UiItemTarget {
+    label: string;
+    /** Carried on the `ui-clicked` fact, so one handler can tell buttons apart. */
+    value?: string;
+  }
+  export function uiButton(options: UiButtonOptions): void;
+
+  /** An item-sprite image. */
+  interface UiImageOptions extends UiItemTarget {
+    /** An item id whose sprite the world draws. */
+    sprite: string;
+  }
+  export function uiImage(options: UiImageOptions): void;
+
+  /** Takes an item off a panel, or the whole panel when `item` is omitted. */
+  interface UiRemoveOptions extends UiTarget {
+    panel: string;
+    item?: string;
+  }
+  export function uiRemove(options: UiRemoveOptions): void;
   /**
    * Shows a leaderboard to the local player as a HUD text readout, ranking the
    * players by the player-value `key`; call it whenever the values change.
@@ -212,6 +327,14 @@ declare module "voxelscape" {
   /** Every model this place carries, keyed by the bare name `createNpc`/`createProp` take — empty until augmented. */
   export interface ModelsByName {}
 
+  /** How a figure is tinted and faded over the colours its model wears. */
+  interface EntityLookOptions {
+    /** The colour the figure is multiplied by, each channel 0 to 1; defaults to white. */
+    color?: [number, number, number];
+    /** The share of the figure's opacity kept, 0 to 1; defaults to 1. */
+    alpha?: number;
+  }
+
   /** How a figure plays one of its model's motions. */
   interface AnimationPlayOptions {
     /** How fast to play it; defaults to 1. */
@@ -274,6 +397,10 @@ declare module "voxelscape" {
     ): NpcHandle<M>;
     /** Stops the NPC's animation, standing it back at rest. */
     stop(): NpcHandle<M>;
+    /** Tints and fades the NPC over its model's colours. */
+    setLook(options: EntityLookOptions): NpcHandle<M>;
+    /** Clears the NPC's tint and fade. */
+    clearLook(): NpcHandle<M>;
     /** Removes the NPC outright — no death fall. */
     remove(): void;
     /** Plays a death fall in place of an outright removal, then forgets it the same way. */
@@ -341,6 +468,10 @@ declare module "voxelscape" {
     ): PropHandle<M>;
     /** Stops the prop's animation, standing it back at rest. */
     stop(): PropHandle<M>;
+    /** Tints and fades the prop over its model's colours. */
+    setLook(options: EntityLookOptions): PropHandle<M>;
+    /** Clears the prop's tint and fade. */
+    clearLook(): PropHandle<M>;
     move(options: FigureMove): void;
     remove(): void;
   }
@@ -354,6 +485,8 @@ declare module "voxelscape" {
     height?: number;
     solid?: boolean;
     hazard?: boolean;
+    /** Whether a player standing on the prop is turned to the prop's heading, as a seat. */
+    seat?: boolean;
     conveyor?: { vx: number; vz: number };
     /** A path and spin the prop follows over the shared clock, in place of `move`. */
     motion?: import("./motion").MotionSpec;
@@ -392,4 +525,148 @@ declare module "voxelscape" {
 
   /** Stands a barrier; see `createProp` for why `id` is never generated. */
   export function createBarrier(options: CreateBarrierOptions): BarrierHandle;
+
+  /** Where a point light stands, or the figure it hangs over. */
+  interface CreateLightOptions {
+    id: string;
+    /** Hangs the light over this figure; when set, the position fields are ignored. */
+    entityId?: string;
+    x?: number;
+    y?: number;
+    z?: number;
+    /** Linear RGB, 0 to 1 each; defaults to warm white. */
+    color?: [number, number, number];
+    /** How far the light reaches, in world units; defaults to 12. */
+    range?: number;
+    /** How brightly it burns; defaults to 1. */
+    intensity?: number;
+  }
+
+  /** A light a place script has lit; `remove` puts it out. */
+  export interface LightHandle {
+    readonly id: string;
+    remove(): void;
+  }
+
+  /** Lights a point or a figure; see `createProp` for why `id` is never generated. */
+  export function createLight(options: CreateLightOptions): LightHandle;
+
+  /** Where a world-space label hangs and what it says. */
+  interface CreateBillboardOptions {
+    id: string;
+    text: string;
+    /** Hangs the label over this figure; when set, the position fields are ignored. */
+    entityId?: string;
+    x?: number;
+    y?: number;
+    z?: number;
+    /** Linear RGB, 0 to 1 each; defaults to white. */
+    color?: [number, number, number];
+    /** Drawn height of the label in world units; defaults to 0.5. */
+    scale?: number;
+    /** How far above an attached figure's feet it hangs; defaults to 2.2. */
+    height?: number;
+  }
+
+  /** A label a place script shows; `remove` takes it down. */
+  export interface BillboardHandle {
+    readonly id: string;
+    remove(): void;
+  }
+
+  /** Shows a world-space label; see `createProp` for why `id` is never generated. */
+  export function createBillboard(
+    options: CreateBillboardOptions,
+  ): BillboardHandle;
+
+  /** One of the world's fixed particle kinds. */
+  export type ParticleKind = "spark" | "flame" | "smoke" | "dust";
+
+  /** Where an emitter runs and what it looks like. */
+  interface CreateParticleOptions {
+    id: string;
+    /** One of the world's fixed particle kinds; defaults to "spark". */
+    kind?: ParticleKind;
+    /** Hangs the emitter over this figure; when set, the position fields are ignored. */
+    entityId?: string;
+    x?: number;
+    y?: number;
+    z?: number;
+    /** Linear RGB, 0 to 1 each; defaults to the kind's own colour. */
+    color?: [number, number, number];
+    /** Drawn size of one particle, in world units; defaults to the kind's own. */
+    size?: number;
+    /** How far particles travel, in world units; defaults to the kind's own. */
+    spread?: number;
+    /** How long one particle lives, in milliseconds; defaults to the kind's own. */
+    lifeMs?: number;
+    /** Whether it keeps emitting until removed; defaults to false. */
+    loop?: boolean;
+  }
+
+  /** An emitter a place script runs; `remove` stops it. */
+  export interface ParticleHandle {
+    readonly id: string;
+    remove(): void;
+  }
+
+  /** Runs a particle emitter; see `createProp` for why `id` is never generated. */
+  export function createParticle(
+    options: CreateParticleOptions,
+  ): ParticleHandle;
+
+  /** One of the world's fixed mark shapes. */
+  export type DecalKind = "arrow" | "cross" | "ring" | "splat";
+
+  /** Where a flat mark lies and what it looks like. */
+  interface CreateDecalOptions {
+    id: string;
+    kind: DecalKind;
+    /** Lies the mark under this figure; when set, the position fields are ignored. */
+    entityId?: string;
+    x?: number;
+    y?: number;
+    z?: number;
+    /** Linear RGB, 0 to 1 each; defaults to white. */
+    color?: [number, number, number];
+    /** Drawn width in world units; defaults to 2. */
+    size?: number;
+    /** Rotation about the vertical axis, in radians; defaults to 0. */
+    yaw?: number;
+  }
+
+  /** A mark a place script has laid; `remove` lifts it. */
+  export interface DecalHandle {
+    readonly id: string;
+    remove(): void;
+  }
+
+  /** Lays a flat mark on the world; see `createProp` for why `id` is never generated. */
+  export function createDecal(options: CreateDecalOptions): DecalHandle;
+
+  /** Where a beam's two ends stand: a figure it follows, or a world point. */
+  interface CreateBeamOptions {
+    id: string;
+    /** The figure the line starts at; exactly one of this and `from` is set. */
+    fromEntity?: string;
+    /** The world point the line starts at, in world units. */
+    from?: [number, number, number];
+    /** The figure the line ends at; exactly one of this and `to` is set. */
+    toEntity?: string;
+    /** The world point the line ends at, in world units. */
+    to?: [number, number, number];
+    /** Linear RGB, 0 to 1 each; defaults to white. */
+    color?: [number, number, number];
+    /** How wide the line is drawn, in world units; defaults to 0.1. */
+    width?: number;
+  }
+
+  /** A line a place script draws; `remove` takes it down. */
+  export interface BeamHandle {
+    readonly id: string;
+    remove(): void;
+  }
+
+  /** Draws a glowing line between two ends; see `createProp` for why `id` is never generated. */
+  export function createBeam(options: CreateBeamOptions): BeamHandle;
 }

@@ -533,3 +533,25 @@ describe("updatePlayer inside a scripted field", () => {
     expect(player.vx).toBe(0);
   });
 });
+
+describe("a seat under the player", () => {
+  it("turns the player to the seat's heading once they are stood on it", () => {
+    const world: PlayerWorld = { ...FLAT, getSeatYawAt: () => 1.1 };
+    const player = createPlayer(0, 0, 0);
+    for (let i = 0; i < 3; i++) {
+      updatePlayer(player, 1 / 60, NO_INPUT, world);
+    }
+    expect(player.yaw).toBeCloseTo(1.1);
+  });
+
+  it("leaves the look alone when no seat stands under them", () => {
+    const world: PlayerWorld = { ...FLAT, getSeatYawAt: () => null };
+    const player = createPlayer(0, 0, 0);
+    for (let i = 0; i < 3; i++) {
+      updatePlayer(player, 1 / 60, NO_INPUT, world);
+    }
+    player.yaw = 0.5;
+    updatePlayer(player, 1 / 60, NO_INPUT, world);
+    expect(player.yaw).toBeCloseTo(0.5);
+  });
+});

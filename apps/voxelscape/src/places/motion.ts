@@ -20,7 +20,23 @@ export interface MotionSpin {
   degreesPerMeter?: number;
 }
 
-/** The path and spin a prop or NPC follows, as its script declares it. */
+/**
+ * A back-and-forth offset a motion adds to its figure along an axis: the
+ * machinery a script builds out of the clock — a bobbing platform, a swinging
+ * arm, a swaying gate — sampled as a sine rather than stepped.
+ */
+export interface MotionOscillation {
+  /** How far the figure moves from its declared position, in world units. */
+  amplitude: number;
+  /** How long one full back-and-forth takes, in milliseconds. */
+  periodMs: number;
+  /** The axis it moves along; defaults to straight up. */
+  axis?: [number, number, number];
+  /** How long the figure stands still before the oscillation begins. */
+  startAfterMs?: number;
+}
+
+/** The path, spin, and oscillation a prop or NPC follows, as its script declares it. */
 export interface MotionSpec {
   /** Offsets from the figure's declared position, in world units. */
   path: Array<[number, number, number]>;
@@ -31,6 +47,8 @@ export interface MotionSpec {
   startAfterMs?: number;
   ease?: MotionEase;
   spin?: MotionSpin;
+  /** A back-and-forth offset over the shared clock, added to the path. */
+  oscillate?: MotionOscillation;
 }
 
 /** Where a moving figure is at a moment, as an offset from its declared pose. */
@@ -128,15 +146,54 @@ const unitAxis = (
  */
 export const poseAt = (motion: MotionSpec, clockMs: number): MotionPose => {
   const u = easedAt(motion, clockMs);
-  const [dx, dy, dz] = pointAt(motion.path, u);
+  const [px, py, pz] = pointAt(motion.path, u);
 
   // A central difference over a millisecond, so a constant-speed path reports a
   // velocity and a still one reports zero.
   const before = pointAt(motion.path, easedAt(motion, clockMs - 1));
   const after = pointAt(motion.path, easedAt(motion, clockMs + 1));
-  const vx = ((after[0] - before[0]) / 2) * 1_000;
-  const vy = ((after[1] - before[1]) / 2) * 1_000;
-  const vz = ((after[2] - before[2]) / 2) * 1_000;
+  let vx = ((after[0] - before[0]) / 2) * 1_000;
+  let vy = ((after[1] - before[1]) / 2) * 1_000;
+  let vz = ((after[2] - before[2]) / 2) * 1_000;
+
+  // An oscillation is a sine over the shared clock, so it adds an offset and
+  // the offset's own velocity to whatever the path is doing.
+  let ox = 0;
+  let oy = 0;
+  let oz = 0;
+  if (motion.oscillate !== undefined) {
+    const { amplitude, periodMs } = motion.oscillate;
+    const periodSeconds = periodMs / 1_000;
+    if (amplitude > 0 && periodSeconds > 0) {
+      const elapsed = Math.max(
+        0,
+        clockMs - (motion.oscillate.startAfterMs ?? 0),
+      );
+      const omega = (Math.PI * 2) / periodSeconds;
+      const phase = (elapsed / 1_000) * omega;
+      const offset = Math.sin(phase) * amplitude;
+      const speed = Math.cos(phase) * amplitude * omega;
+      const axis = motion.oscillate.axis ?? [0, 1, 0];
+      const length = Math.hypot(axis[0], axis[1], axis[2]);
+      const unit =
+        length === 0
+          ? ([0, 1, 0] as [number, number, number])
+          : ([axis[0] / length, axis[1] / length, axis[2] / length] as [
+              number,
+              number,
+              number,
+            ]);
+      ox = unit[0] * offset;
+      oy = unit[1] * offset;
+      oz = unit[2] * offset;
+      vx += unit[0] * speed;
+      vy += unit[1] * speed;
+      vz += unit[2] * speed;
+    }
+  }
+  const dx = px + ox;
+  const dy = py + oy;
+  const dz = pz + oz;
 
   const spin = motion.spin;
   let angle = 0;

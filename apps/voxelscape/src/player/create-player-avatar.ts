@@ -44,6 +44,8 @@ export interface AvatarTerrain {
     y: number,
     z: number,
   ) => [number, number, number] | null;
+  /** The heading of a seat under the player's feet, or null where none stands. */
+  getSeatYawAt?: (x: number, y: number, z: number) => number | null;
   /** The field acting on the player at a point, or null where none sits. */
   getMediumAt?: (x: number, y: number, z: number) => Medium | null;
 }
@@ -128,6 +130,9 @@ export const createPlayerAvatar = ({
     halfExtent: SAFE_EXTENT,
     ...(terrain.getSurfaceVelocityAt !== undefined
       ? { getSurfaceVelocityAt: terrain.getSurfaceVelocityAt }
+      : {}),
+    ...(terrain.getSeatYawAt !== undefined
+      ? { getSeatYawAt: terrain.getSeatYawAt }
       : {}),
     ...(terrain.getMediumAt !== undefined
       ? { getMediumAt: terrain.getMediumAt }

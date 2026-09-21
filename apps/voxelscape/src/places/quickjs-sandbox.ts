@@ -36,6 +36,7 @@ import {
 } from "../world/voxel-store";
 import {
   ScriptExecutionError,
+  type DataScope,
   type RequireOnly,
   type ScriptErrorKind,
   type ScriptOutput,
@@ -358,6 +359,27 @@ class QuickJSSandbox implements ScriptSandbox {
       context.newString(
         JSON.stringify(
           time.getLeaderboard?.(
+            context.getString(key),
+            context.getNumber(count),
+          ) ?? [],
+        ),
+      ),
+    );
+    bind("getData", (scope, player, key) =>
+      context.newString(
+        JSON.stringify(
+          time.getData?.(
+            context.getString(scope) as DataScope,
+            context.getString(player),
+            context.getString(key),
+          ) ?? null,
+        ),
+      ),
+    );
+    bind("getDataLeaderboard", (key, count) =>
+      context.newString(
+        JSON.stringify(
+          time.getDataLeaderboard?.(
             context.getString(key),
             context.getNumber(count),
           ) ?? [],

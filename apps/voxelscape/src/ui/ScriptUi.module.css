@@ -1,0 +1,113 @@
+.layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.anchor {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 20rem;
+}
+
+.top-left {
+  top: 0.75rem;
+  left: 0.75rem;
+}
+
+.top-right {
+  top: 0.75rem;
+  right: 0.75rem;
+  align-items: flex-end;
+}
+
+.bottom-left {
+  bottom: 4.5rem;
+  left: 0.75rem;
+}
+
+.bottom-right {
+  bottom: 4.5rem;
+  right: 0.75rem;
+  align-items: flex-end;
+}
+
+.panel {
+  pointer-events: auto;
+  min-width: 10rem;
+  padding: 0.6rem 0.75rem;
+  background: rgba(10, 12, 16, 0.82);
+  color: #fff;
+  border-radius: 0.5rem;
+  user-select: none;
+}
+
+.title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+  margin-bottom: 0.4rem;
+}
+
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.label {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.bar-label {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.bar-track {
+  height: 0.6rem;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 0.3rem;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: #7fd17f;
+}
+
+.button {
+  font: inherit;
+  font-size: 14px;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.button:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.image {
+  width: 46px;
+  height: 46px;
+}
+
+.image-fallback {
+  font-size: 12px;
+  opacity: 0.8;
+}

@@ -26,7 +26,7 @@ import {
 } from "@big-mesh-studios/stacker/renderer";
 import { loadFigure } from "@big-mesh-studios/stacker/format";
 import { FigureMotionTrack } from "./figure-motion";
-import type { FigureAnimation } from "./script-host";
+import type { FigureAnimation, FigureLook } from "./script-host";
 
 /** How tall a standing figure is drawn when its entity names no height. */
 export const FIGURE_HEIGHT = 2;
@@ -76,6 +76,8 @@ export interface RenderedFigure {
   spin?: { axis: [number, number, number]; angle: number };
   /** The model motion the figure plays, or absent when it stands in its rest pose. */
   animation?: FigureAnimation;
+  /** The tint and fade over the figure's colours, or absent for its model's own. */
+  look?: FigureLook;
 }
 
 /** The upright box the crosshair ray tests a figure against, in world units. */
@@ -100,6 +102,12 @@ interface BakedModel {
   motions: Motion[];
   /** Where every part stands unposed, to restore a copy an animation stopped on. */
   restPlacement: FigurePlacement;
+  /**
+   * The material sets one look each has needed, keyed by its signature. A
+   * figure tinted or faded wears a set of its own, because a look is a uniform
+   * on the material and the model's shared set carries every other figure.
+   */
+  looks: Map<string, VoxelModelMaterial[]>;
 }
 
 export interface VoxelFiguresParams {
@@ -165,6 +173,7 @@ export class VoxelFigures {
       figure,
       motions,
       restPlacement: figurePlacement(figure),
+      looks: new Map(),
     });
     for (const [id, mesh] of this.meshes) {
       if (this.modelFor(id) === model) {
@@ -225,8 +234,9 @@ export class VoxelFigures {
       state.ambient[1],
       state.ambient[2],
     ];
-    for (const { materials, flashMaterials } of this.baked.values()) {
-      for (const material of [...materials, ...flashMaterials]) {
+    for (const { materials, flashMaterials, looks } of this.baked.values()) {
+      const looked = [...looks.values()].flat();
+      for (const material of [...materials, ...flashMaterials, ...looked]) {
         material.lightDir = sunDir;
         material.lightColour = sunLight;
         material.ambientColour = ambient;
@@ -317,13 +327,17 @@ export class VoxelFigures {
         mesh.group.rotation.set(fall, yaw, 0);
       }
       // A recently hit figure draws with the flashed materials until its
-      // flash lapses; a flash that has lapsed is forgotten rather than
-      // re-tested next frame.
+      // flash lapses, then falls back to its own look — a flash that has
+      // lapsed is forgotten rather than re-tested next frame.
       if ((this.hurtUntil.get(figure.id) ?? 0) > now) {
         mesh.wear(baked.flashMaterials);
       } else {
-        mesh.wear(baked.materials);
         this.hurtUntil.delete(figure.id);
+        mesh.wear(
+          figure.look === undefined
+            ? baked.materials
+            : this.lookMaterials(baked, figure.look),
+        );
       }
     }
     for (const [id, mesh] of this.meshes) {
@@ -336,6 +350,28 @@ export class VoxelFigures {
         this.animated.delete(id);
       }
     }
+  }
+
+  /** The material set a figure with `look` wears, made once per distinct look. */
+  private lookMaterials(
+    baked: BakedModel,
+    look: FigureLook,
+  ): VoxelModelMaterial[] {
+    const signature = `${look.color[0].toFixed(3)},${look.color[1].toFixed(3)},${look.color[2].toFixed(3)}|${look.alpha.toFixed(3)}`;
+    const existing = baked.looks.get(signature);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const set = baked.baked.createMaterials();
+    for (const material of set) {
+      material.tint = [look.color[0], look.color[1], look.color[2]];
+      material.alpha = look.alpha;
+      if (look.alpha < 1) {
+        material.transparent = true;
+      }
+    }
+    baked.looks.set(signature, set);
+    return set;
   }
 
   /** Removes every figure's meshes. */

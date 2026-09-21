@@ -5,17 +5,25 @@
 // methods return is one line-shaped answer for a console to print.
 import {
   ScriptHost,
+  type BeamPose,
+  type BillboardPose,
+  type DecalPose,
   type DialogState,
   type FigureAnimation,
+  type FigureLook,
+  type LightPose,
+  type ParticlePose,
   type ScriptedExplosion,
   type ScriptedFire,
   type ScriptPrompt,
   type SoundPlayback,
+  type UiPanel,
 } from "./script-host";
 import type { ScriptEvent } from "./events";
 import { SAMPLE_PLACE_SCRIPT } from "./sample";
 import { MAIN_SCRIPT_FILE } from "./project";
-import type { RequireOnly, WorldQuery } from "./sandbox";
+import type { PlaceData } from "./place-data";
+import type { DataScope, DataValue, RequireOnly, WorldQuery } from "./sandbox";
 
 /**
  * The shared clock and world queries the console forwards to the
@@ -106,6 +114,18 @@ export interface ScriptConsoleParams extends RequireOnly<
     max: [number, number, number];
     id: number;
   }) => void;
+  /** The data the place remembers between runs; a run-scoped table when omitted. */
+  data?: PlaceData;
+  /** Called when the script sends a player to another place. */
+  onTeleport?: (player: string, place: string) => void;
+  /** Called when the script changes what a player wears; `model` "" is the plain cube. */
+  onPlayerModel?: (player: string, model: string, modelUri: string) => void;
+  /** Called to re-read a remembered value the table does not hold. */
+  refreshData?: (
+    scope: DataScope,
+    player: string,
+    key: string,
+  ) => Promise<DataValue | null>;
 }
 
 /** The option a console prints for a dialog, numbered for `/script:choose`. */
@@ -197,6 +217,18 @@ export class ScriptConsole {
     max: [number, number, number];
     id: number;
   }) => void;
+  private readonly onTeleport: (player: string, place: string) => void;
+  private readonly onPlayerModel: (
+    player: string,
+    model: string,
+    modelUri: string,
+  ) => void;
+  private readonly refreshData?: (
+    scope: DataScope,
+    player: string,
+    key: string,
+  ) => Promise<DataValue | null>;
+  private readonly data?: PlaceData;
   private readonly getEndings: () => string[];
   private readonly _getNow: () => number;
   private host: ScriptHost | null = null;
@@ -239,6 +271,10 @@ export class ScriptConsole {
     this.onSound = params.onSound ?? (() => {});
     this.onSoundStop = params.onSoundStop ?? (() => {});
     this.onBlockEdit = params.onBlockEdit ?? (() => {});
+    this.onTeleport = params.onTeleport ?? (() => {});
+    this.onPlayerModel = params.onPlayerModel ?? (() => {});
+    this.refreshData = params.refreshData;
+    this.data = params.data;
     this.getEndings = params.getEndings ?? (() => []);
     this._getNow = params.getNow ?? (() => Date.now());
   }
@@ -312,6 +348,16 @@ export class ScriptConsole {
     return this.host?.hudFor("") ?? [];
   }
 
+  /** The scripted UI panels the loaded script shows the local player. */
+  ui(): UiPanel[] {
+    return this.host?.uiFor("") ?? [];
+  }
+
+  /** Reports the local player pressing a button on the scripted UI. */
+  async clickUi(panel: string, button: string): Promise<void> {
+    await this.host?.clickUi("", panel, button);
+  }
+
   /** The shared clock the host's deadlines and cutscenes are measured against. */
   getNow(): number {
     return this._getNow();
@@ -383,6 +429,36 @@ export class ScriptConsole {
   /** The motion the figure `id` is playing, or null when it plays none. */
   animationFor(id: string): FigureAnimation | null {
     return this.host?.animationFor(id) ?? null;
+  }
+
+  /** The point lights the loaded script has lit, for the world to draw. */
+  lights(): LightPose[] {
+    return this.host?.lightList ?? [];
+  }
+
+  /** The labels the loaded script shows, for the world to draw. */
+  billboards(): BillboardPose[] {
+    return this.host?.billboardList ?? [];
+  }
+
+  /** The particle emitters the loaded script runs, for the world to draw. */
+  particles(): ParticlePose[] {
+    return this.host?.particleList ?? [];
+  }
+
+  /** The marks the loaded script has laid, for the world to draw. */
+  decals(): DecalPose[] {
+    return this.host?.decalList ?? [];
+  }
+
+  /** The lines the loaded script draws, for the world to draw. */
+  beams(): BeamPose[] {
+    return this.host?.beamList ?? [];
+  }
+
+  /** The tint and fade the figure `id` wears, or null when it wears none. */
+  lookFor(id: string): FigureLook | null {
+    return this.host?.lookFor(id) ?? null;
   }
 
   /**
@@ -625,6 +701,11 @@ export class ScriptConsole {
       onSound: (player, name, playback) => this.onSound(player, name, playback),
       onSoundStop: (player, id) => this.onSoundStop(player, id),
       onBlockEdit: (edit) => this.onBlockEdit(edit),
+      onTeleport: (player, place) => this.onTeleport(player, place),
+      onPlayerModel: (player, model, modelUri) =>
+        this.onPlayerModel(player, model, modelUri),
+      refreshData: this.refreshData,
+      data: this.data,
       getEndings: () => this.getEndings(),
     });
     return this.host;

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ScriptHost } from "./script-host";
 import { MAIN_SCRIPT_FILE } from "./project";
 import type { ScriptEvent } from "./events";
-import type { LivePlayer } from "./sandbox";
+import type { DataScope, DataValue, LivePlayer } from "./sandbox";
 
 let clockMs = 0;
 
@@ -28,11 +28,20 @@ interface Harness {
     loop: boolean;
   }>;
   soundStops: Array<{ player: string; id: string }>;
+  teleports: Array<{ player: string; place: string }>;
+  playerModels: Array<{ player: string; model: string; modelUri: string }>;
   events: ScriptEvent[];
 }
 
 /** A host over flat ground at y 10, one local player, and every new callback recorded. */
-const makeHost = (players: LivePlayer[] = []): Harness => {
+const makeHost = (
+  players: LivePlayer[] = [],
+  refreshData?: (
+    scope: DataScope,
+    player: string,
+    key: string,
+  ) => Promise<DataValue | null>,
+): Harness => {
   clockMs = 0;
   const toasts: string[] = [];
   const notices: string[] = [];
@@ -42,6 +51,8 @@ const makeHost = (players: LivePlayer[] = []): Harness => {
   const pushes: Harness["pushes"] = [];
   const sounds: Harness["sounds"] = [];
   const soundStops: Harness["soundStops"] = [];
+  const teleports: Harness["teleports"] = [];
+  const playerModels: Harness["playerModels"] = [];
   const events: ScriptEvent[] = [];
   const host = new ScriptHost({
     seed: 5,
@@ -73,6 +84,10 @@ const makeHost = (players: LivePlayer[] = []): Harness => {
     onSound: (player, name, playback) =>
       sounds.push({ player, name, ...playback }),
     onSoundStop: (player, id) => soundStops.push({ player, id }),
+    onTeleport: (player, place) => teleports.push({ player, place }),
+    onPlayerModel: (player, model, modelUri) =>
+      playerModels.push({ player, model, modelUri }),
+    refreshData,
     onEvent: (event) => events.push(event),
   });
   return {
@@ -85,6 +100,8 @@ const makeHost = (players: LivePlayer[] = []): Harness => {
     pushes,
     sounds,
     soundStops,
+    teleports,
+    playerModels,
     events,
   };
 };
@@ -396,6 +413,459 @@ describe("script figure animation", () => {
   });
 });
 
+describe("script player model", () => {
+  it("reports a worn model and a clear", async () => {
+    const h = makeHost();
+    await load(
+      h.host,
+      `
+        import { onTick, dispatch } from "voxelscape";
+        var first = true;
+        onTick(function () {
+          if (!first) { return; }
+          first = false;
+          dispatch("player-model", { player: "", model: "zombie.zip" });
+          dispatch("player-model", { player: "", model: "" });
+        });
+      `,
+    );
+    expect(h.playerModels).toEqual([
+      { player: "", model: "zombie.zip", modelUri: "" },
+      { player: "", model: "", modelUri: "" },
+    ]);
+  });
+});
+
+describe("script UI", () => {
+  it("builds a panel, reports a button press, and removes an item", async () => {
+    const h = makeHost();
+    await load(
+      h.host,
+      `
+        import { onTick, dispatch } from "voxelscape";
+        var started = false;
+        onTick(function (_clock, events) {
+          if (!started) {
+            started = true;
+            dispatch("ui-panel", {
+              player: "", id: "shop", title: "Shop", anchor: "bottom-right",
+            });
+            dispatch("ui-label", {
+              player: "", panel: "shop", id: "hint", text: "Buy a cola",
+            });
+            dispatch("ui-button", {
+              player: "", panel: "shop", id: "buy", label: "Buy", value: "cola",
+            });
+            dispatch("ui-image", {
+              player: "", panel: "shop", id: "icon", sprite: "cola",
+            });
+            return;
+          }
+          for (var i = 0; i < events.length; i++) {
+            var event = events[i];
+            if (event.kind === "ui-clicked") {
+              dispatch("toast", { player: "", text: event.value });
+              dispatch("ui-remove", { player: "", panel: "shop", item: "hint" });
+            }
+          }
+        });
+      `,
+    );
+    expect(h.host.uiFor("")).toEqual([
+      {
+        id: "shop",
+        title: "Shop",
+        anchor: "bottom-right",
+        items: [
+          { kind: "label", id: "hint", text: "Buy a cola", color: [1, 1, 1] },
+          { kind: "button", id: "buy", label: "Buy", value: "cola" },
+          { kind: "image", id: "icon", sprite: "cola" },
+        ],
+      },
+    ]);
+
+    // A press on something that is not a button is ignored.
+    await h.host.clickUi("", "shop", "hint");
+    expect(h.events.some((event) => event.kind === "ui-clicked")).toBe(false);
+
+    await h.host.clickUi("", "shop", "buy");
+    expect(h.events).toContainEqual(
+      expect.objectContaining({
+        kind: "ui-clicked",
+        panel: "shop",
+        button: "buy",
+        value: "cola",
+      }),
+    );
+    expect(h.toasts).toEqual(["cola"]);
+    expect(h.host.uiFor("")[0].items).toEqual([
+      { kind: "button", id: "buy", label: "Buy", value: "cola" },
+      { kind: "image", id: "icon", sprite: "cola" },
+    ]);
+  });
+});
+
+describe("script data and teleport", () => {
+  it("saves player and global data, awards a badge, and reports a teleport", async () => {
+    const h = makeHost();
+    await load(
+      h.host,
+      `
+        import { onTick, dispatch, getData, getDataLeaderboard } from "voxelscape";
+        var started = false;
+        onTick(function () {
+          if (!started) {
+            started = true;
+            dispatch("data-set", { scope: "player", key: "score", value: 3 });
+            dispatch("data-set", { scope: "global", key: "day", value: 2 });
+            dispatch("data-set", {
+              scope: "player", player: "did:b", key: "score", value: 5,
+            });
+            dispatch("badge-award", { badge: "first" });
+            dispatch("teleport", { player: "", place: "at://did:plc:x/app.bms/a" });
+            return;
+          }
+          dispatch("toast", { player: "", text: JSON.stringify({
+            score: getData("player", "", "score"),
+            day: getData("global", "", "day"),
+            missing: getData("player", "", "nope"),
+            board: getDataLeaderboard("score", 5),
+          }) });
+        });
+      `,
+    );
+    expect(h.events).toContainEqual(
+      expect.objectContaining({
+        kind: "data-changed",
+        scope: "player",
+        player: "did:local",
+        key: "score",
+        deleted: false,
+        value: 3,
+      }),
+    );
+    expect(h.events).toContainEqual(
+      expect.objectContaining({
+        kind: "data-changed",
+        scope: "global",
+        player: "",
+        key: "day",
+        value: 2,
+      }),
+    );
+    expect(h.events).toContainEqual(
+      expect.objectContaining({
+        kind: "badge-earned",
+        player: "did:local",
+        badge: "first",
+      }),
+    );
+    expect(h.events).toContainEqual(
+      expect.objectContaining({
+        kind: "player-teleported",
+        place: "at://did:plc:x/app.bms/a",
+      }),
+    );
+    expect(h.teleports).toEqual([
+      { player: "did:local", place: "at://did:plc:x/app.bms/a" },
+    ]);
+    expect(lastProbe(h.toasts)).toEqual({
+      score: 3,
+      day: 2,
+      missing: null,
+      board: [
+        { player: "did:b", value: 5 },
+        { player: "did:local", value: 3 },
+      ],
+    });
+
+    await h.host.applyRemoteEvents([
+      {
+        id: "remote:1",
+        at: 1,
+        producer: "did:c",
+        kind: "data-changed",
+        scope: "player",
+        player: "did:c",
+        key: "score",
+        deleted: false,
+        value: 9,
+      },
+    ]);
+    expect(lastProbe(h.toasts).board).toEqual([
+      { player: "did:c", value: 9 },
+      { player: "did:b", value: 5 },
+      { player: "did:local", value: 3 },
+    ]);
+  });
+
+  it("answers a data-get with a data-loaded fact, refreshing a missing one", async () => {
+    const h = makeHost([], async (_scope, _player, key) =>
+      key === "remote" ? 42 : null,
+    );
+    await load(
+      h.host,
+      `
+        import { onTick, dispatch } from "voxelscape";
+        var first = true;
+        onTick(function () {
+          if (!first) { return; }
+          first = false;
+          dispatch("data-set", { scope: "player", key: "local", value: 5 });
+          dispatch("data-get", { scope: "player", key: "local", requestId: "a" });
+          dispatch("data-get", { scope: "global", key: "remote", requestId: "b" });
+          dispatch("data-get", { scope: "global", key: "missing", requestId: "c" });
+        });
+      `,
+    );
+    // A refresh is asynchronous, so its fact lands a microtask later.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(h.events).toContainEqual(
+      expect.objectContaining({
+        kind: "data-loaded",
+        requestId: "a",
+        found: true,
+        value: 5,
+      }),
+    );
+    expect(h.events).toContainEqual(
+      expect.objectContaining({
+        kind: "data-loaded",
+        requestId: "b",
+        found: true,
+        value: 42,
+      }),
+    );
+    expect(h.events).toContainEqual(
+      expect.objectContaining({
+        kind: "data-loaded",
+        requestId: "c",
+        found: false,
+      }),
+    );
+  });
+
+  it("carries saved keys into the account scope on teleport", async () => {
+    const h = makeHost();
+    await load(
+      h.host,
+      `
+        import { onTick, dispatch, getData } from "voxelscape";
+        var step = 0;
+        onTick(function () {
+          step++;
+          if (step === 1) {
+            dispatch("data-set", { scope: "player", key: "pet", value: "cat" });
+            dispatch("data-set", { scope: "player", key: "coin", value: 9 });
+            dispatch("teleport", {
+              player: "", place: "demo:home", carry: ["pet", "missing"],
+            });
+            return;
+          }
+          dispatch("toast", { player: "", text: JSON.stringify({
+            pet: getData("account", "", "pet"),
+            coin: getData("account", "", "coin"),
+          }) });
+        });
+      `,
+    );
+    expect(h.teleports).toEqual([{ player: "did:local", place: "demo:home" }]);
+    expect(h.events).toContainEqual(
+      expect.objectContaining({
+        kind: "player-teleported",
+        place: "demo:home",
+      }),
+    );
+    expect(lastProbe(h.toasts)).toEqual({ pet: "cat", coin: null });
+  });
+});
+
+describe("script entity look and beams", () => {
+  it("tints a figure, keeps it through a move, and draws a line that follows", async () => {
+    const h = makeHost();
+    await load(
+      h.host,
+      `
+        import { onTick, dispatch } from "voxelscape";
+        var step = 0;
+        onTick(function () {
+          step++;
+          if (step === 1) {
+            dispatch("npc", { id: "a", x: 3, z: 4, y: 10 });
+            dispatch("npc", { id: "b", x: 6, z: 8, y: 10 });
+            dispatch("entity-look", { id: "a", color: [1, 0, 0], alpha: 0.5 });
+            dispatch("beam", {
+              id: "line", fromEntity: "a", toEntity: "b",
+              color: [0, 1, 0], width: 0.2,
+            });
+          } else if (step === 2) {
+            dispatch("npc", { id: "a", x: 3, z: 4, y: 10 });
+            dispatch("npc", { id: "b", x: 9, z: 9, y: 10 });
+          } else if (step === 3) {
+            dispatch("entity-look-clear", { id: "a" });
+            dispatch("beam-remove", { id: "line" });
+          }
+        });
+      `,
+    );
+    expect(h.host.lookFor("a")).toEqual({ color: [1, 0, 0], alpha: 0.5 });
+    expect(h.host.lookFor("b")).toBeNull();
+    expect(h.host.beamList).toEqual([
+      {
+        id: "line",
+        ax: 3,
+        ay: 11,
+        az: 4,
+        bx: 6,
+        by: 11,
+        bz: 8,
+        color: [0, 1, 0],
+        width: 0.2,
+      },
+    ]);
+
+    await h.host.use("x", "");
+    expect(h.host.lookFor("a")).toEqual({ color: [1, 0, 0], alpha: 0.5 });
+    expect(h.host.beamList[0]).toMatchObject({ bx: 9, by: 11, bz: 9 });
+
+    await h.host.use("x", "");
+    expect(h.host.lookFor("a")).toBeNull();
+    expect(h.host.beamList).toEqual([]);
+  });
+});
+
+describe("script particles and decals", () => {
+  it("runs an emitter and lays a mark, following a figure and clearing", async () => {
+    const h = makeHost();
+    await load(
+      h.host,
+      `
+        import { onTick, dispatch } from "voxelscape";
+        var step = 0;
+        onTick(function () {
+          step++;
+          if (step === 1) {
+            dispatch("npc", { id: "z1", x: 3, z: 4, y: 10 });
+            dispatch("particle", {
+              id: "torch", entityId: "z1", kind: "flame", loop: true,
+            });
+            dispatch("decal", { id: "mark", kind: "ring", x: 1, z: 2, size: 3 });
+          } else if (step === 2) {
+            dispatch("npc", { id: "z1", x: 8, z: 9, y: 10 });
+          } else if (step === 3) {
+            dispatch("particle-remove", { id: "torch" });
+            dispatch("decal-remove", { id: "mark" });
+          }
+        });
+      `,
+    );
+    expect(h.host.particleList).toEqual([
+      {
+        id: "torch",
+        x: 3,
+        y: 10.5,
+        z: 4,
+        additive: true,
+        upward: true,
+        color: [1, 0.5, 0.12],
+        size: 0.3,
+        spread: 2,
+        lifeMs: 900,
+        loop: true,
+        at: 0,
+      },
+    ]);
+    expect(h.host.decalList).toEqual([
+      {
+        id: "mark",
+        kind: "ring",
+        x: 1,
+        y: 10.03,
+        z: 2,
+        color: [1, 1, 1],
+        size: 3,
+        yaw: 0,
+      },
+    ]);
+
+    clockMs = 1_000;
+    await h.host.use("x", "");
+    expect(h.host.particleList[0]).toMatchObject({ x: 8, y: 10.5, z: 9 });
+
+    await h.host.use("x", "");
+    expect(h.host.particleList).toEqual([]);
+    expect(h.host.decalList).toEqual([]);
+  });
+});
+
+describe("script lights and billboards", () => {
+  it("places a light and follows a figure with a hung light and label", async () => {
+    const h = makeHost();
+    await load(
+      h.host,
+      `
+        import { onTick, dispatch } from "voxelscape";
+        var step = 0;
+        onTick(function () {
+          step++;
+          if (step === 1) {
+            dispatch("npc", { id: "z1", x: 3, z: 4, y: 10 });
+            dispatch("light", {
+              id: "lamp", x: 1, z: 2, color: [1, 0.5, 0], range: 20, intensity: 3,
+            });
+            dispatch("light", { id: "torch", entityId: "z1" });
+            dispatch("billboard", { id: "tag", text: "Boss", entityId: "z1" });
+          } else if (step === 2) {
+            dispatch("npc", { id: "z1", x: 8, z: 9, y: 10 });
+          } else if (step === 3) {
+            dispatch("light-remove", { id: "torch" });
+            dispatch("billboard-remove", { id: "tag" });
+          }
+        });
+      `,
+    );
+    expect(h.host.lightList).toContainEqual({
+      id: "lamp",
+      x: 1,
+      y: 11,
+      z: 2,
+      color: [1, 0.5, 0],
+      range: 20,
+      intensity: 3,
+    });
+    expect(h.host.lightList).toContainEqual({
+      id: "torch",
+      x: 3,
+      y: 11.2,
+      z: 4,
+      color: [1, 0.9, 0.75],
+      range: 12,
+      intensity: 1,
+    });
+    expect(h.host.billboardList).toEqual([
+      {
+        id: "tag",
+        x: 3,
+        y: 12.2,
+        z: 4,
+        text: "Boss",
+        color: [1, 1, 1],
+        scale: 0.5,
+      },
+    ]);
+
+    await h.host.use("x", "");
+    expect(
+      h.host.lightList.find((light) => light.id === "torch"),
+    ).toMatchObject({ x: 8, y: 11.2, z: 9 });
+    expect(h.host.billboardList[0]).toMatchObject({ x: 8, y: 12.2, z: 9 });
+
+    await h.host.use("x", "");
+    expect(h.host.lightList.some((light) => light.id === "torch")).toBe(false);
+    expect(h.host.billboardList).toEqual([]);
+  });
+});
+
 describe("script sound depth", () => {
   it("plays a sound with its volume, pitch, and loop, then stops it", async () => {
     const h = makeHost();
@@ -430,6 +900,22 @@ describe("script sound depth", () => {
 });
 
 describe("script host effects", () => {
+  it("marks a prop as a seat", async () => {
+    const h = makeHost();
+    await load(
+      h.host,
+      `
+        import { onTick, dispatch } from "voxelscape";
+        onTick(function () {
+          dispatch("prop", {
+            id: "lift", model: "lift.zip", x: 0, z: 0, solid: true, seat: true,
+          });
+        });
+      `,
+    );
+    expect(h.host.prop("lift")?.seat).toBe(true);
+  });
+
   it("reports a block fill and clear to the world", async () => {
     const h = makeHost();
     await load(

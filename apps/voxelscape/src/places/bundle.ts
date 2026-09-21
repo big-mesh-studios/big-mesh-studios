@@ -320,6 +320,8 @@ function __require(id) {
         getLocalPlayer: engine.getLocalPlayer,
         getPlayerValue: engine.getPlayerValue,
         getLeaderboard: engine.getLeaderboard,
+        getData: engine.getData,
+        getDataLeaderboard: engine.getDataLeaderboard,
         raycast: engine.raycast,
         findPath: engine.findPath,
         getHeldItem: engine.getHeldItem,

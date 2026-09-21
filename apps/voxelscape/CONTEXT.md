@@ -144,6 +144,14 @@ _Avoid_: GPU occlusion query (this is a colour readback, not a `GL_ARB_occlusion
 The path and spin a place script gives one **Scripted figure** — a **MotionSpec** of waypoints, a loop mode, a duration, and an optional spin. The **ScriptHost** stores the spec and the trusted side samples `poseAt` from the shared clock each frame, so the figure's position is a pure function of the spec and the clock rather than something the script steps. A **Solid platform** samples the same pose into its collision box and reports its velocity, so a player standing on it rides it.
 _Avoid_: animation (that is a model's own drawn motion, a different thing), tween (the ease is one field of it, not the thing)
 
+**Oscillation**:
+A back-and-forth offset a **Motion** adds to its figure along an axis, over the shared clock — a bobbing lift, a swaying gate. Sampled as a sine, so it carries no state and every peer computes the same pose; its velocity reaches a player standing on a solid figure through the same surface seam a **Conveyor** uses.
+_Avoid_: spring (that is one use of it), bounce (that implies collision)
+
+**Seat**:
+A **Scripted prop** marked `seat` that a player stands on and is turned to face, so a turntable, a boat, or a carriage carries a rider facing the way it faces. The rider is carried by the prop's surface velocity the way any moving platform carries them; only the heading is the seat's own.
+_Avoid_: vehicle (a seat is a surface, not a simulation), chair (that is a model)
+
 **Figure animation**:
 A model's own saved motion that a place script plays on a **Scripted figure** with `figure-animate`: the host stores the chosen motion's name, speed, and loop, and **VoxelFigures** poses the figure's parts at the frame the shared clock gives. The motion itself is the stacker format's, so voxel-rigger can author one and export it in the model zip; the figure only names it.
 _Avoid_: Motion (that is the scripted path and spin of the whole figure, not its parts), tween
@@ -155,6 +163,66 @@ _Avoid_: screen shake (it moves the camera, not the drawn frame)
 **Sound playback**:
 The id, volume, pitch, and loop a place script gives a fixed-vocabulary `sound`, plus the `sound-stop` that reaches a loop by its id. The name is still one of the world's own; only how that name plays is a script's to say.
 _Avoid_: audio emitter (there is no node graph to build), track
+
+**Scripted light**:
+A point light a place script places with `light`, standing where it was put or hanging over a **Scripted figure** it names by `entityId`. Drawn by one scene `PointLight` per light in **VoxelLights**, so there is no mesh — only the renderer's shading changes. Set by a `light` effect and put out by `light-remove`.
+_Avoid_: fire (that is scenery that kindles a terrain voxel), lamp
+
+**Billboard**:
+A world-space label a place script shows with `billboard`: text drawn once onto a canvas, wrapped around a quad that faces the camera every frame, standing where it was put or hanging over a **Scripted figure**. Drawn by **VoxelBillboards**. Set by a `billboard` effect and taken down by `billboard-remove`.
+_Avoid_: HUD readout (that is drawn in the page over the world, not in it), sign
+
+**Particle emitter**:
+A fan of billboard particles a place script runs with `particle`, naming one of the world's fixed **Particle kind**s and optionally overriding its colour, size, spread, or lifetime. Drawn by **VoxelParticles** from one shader whose uniforms a kind sets; a looping emitter keeps going, a one-shot burns out. Set by a `particle` effect and stopped by `particle-remove`.
+_Avoid_: fire (that is scenery that kindles a terrain voxel), explosion (that is its own burst), sprite
+
+**Particle kind**:
+One of the looks a **Particle emitter** may name — `spark`, `flame`, `smoke`, `dust` — each a fixed set of defaults for colour, size, spread, lifetime, drift direction, and blend. A script overrides the numbers, never the look, so no place supplies a shader of its own.
+_Avoid_: preset (it is the whole look, not a starting point), effect
+
+**Decal**:
+A flat mark a place script lays on the world with `decal`, one of a fixed set of shapes — `arrow`, `cross`, `ring`, `splat` — drawn on a canvas in the mark's colour and laid on a quad in the ground plane, turned by its yaw. Drawn by **VoxelDecals**; set by a `decal` effect and lifted by `decal-remove`.
+_Avoid_: texture (that is an image on a model), paint
+
+**Entity look**:
+A tint and a fade a place script puts on one **Scripted figure** with `entity-look`: a colour the model's drawn colours are multiplied by, and the share of its opacity kept. Worn as a material set of its own, since the look is a uniform and the model's shared set carries every other figure; taken off with `entity-look-clear`. The hit flash still wins for its moment.
+_Avoid_: skin (that is the model and palette a figure wears), material (that is the renderer's object, which the look sets)
+
+**Beam**:
+A straight glowing line a place script draws with `beam` between two ends, each either a world point or a **Scripted figure** the line follows. Drawn as one wide segment in world units by **VoxelBeams**; set by a `beam` effect and taken down by `beam-remove`.
+_Avoid_: trail (a beam is one segment, not a curve behind a mover), laser (that is one use of a beam)
+
+**Place data**:
+What a place remembers between runs: a value saved for one player or for everyone, read with `getData`, written with `data-set`, and ranked across players by `getDataLeaderboard`. Held in memory so a script reads it inside a step, and persisted as a whole behind a storage seam; a write is a `data-changed` fact every peer folds, so a save and a leaderboard converge.
+_Avoid_: save file (it is a flat table of values, not a document), local storage (that is one backing for it)
+
+**Synced place data**:
+A place's data with a durable table behind the in-memory one: the player's own values are read from their atproto repository (`app.bms.voxelscape.data`, one record per place) before the script starts, and written back after a change, while the page's own storage stays the local cache. A value the table does not hold is asked for with `data-get`, answered by a `data-loaded` fact. Global values have no single owner, so they stay local.
+_Avoid_: cloud save (it is the table's backing, not a separate store), account data
+
+**Account data**:
+A place's data scope for values that belong to the signed-in player and to no one place, read with `getData("account", ...)` and written with `data-set`. Kept in one fixed record (`app.bms.voxelscape.account`, key `self`) in the player's repository, so a value saved in one place is there in the next; a **Teleport** may name keys to carry into it.
+_Avoid_: global data (that is one value everyone shares), inventory (that is one use of account data)
+
+**Badge**:
+A named thing a player has earned, awarded with `badge-award` and remembered as that player's place data under `badge:<name>`; folding it is announced to every peer as a `badge-earned` fact.
+_Avoid_: achievement (a presentation of it), trophy
+
+**Teleport**:
+What a place script does with `teleport`: sends one player to another place, named as a published place's `at://` address or a built-in demo. Only the local player's browser is moved, and only to an address this world's own router can open; the peers left behind hear a `player-teleported` fact.
+_Avoid_: portal (that is a script's prop and zone around it), redirect (it stays inside this application)
+
+**Worn player model**:
+A place model a player wears in place of the plain cube, set by `player-model` and drawn by the same figure renderer an NPC's model is. The cube stays the body the physics and camera use and is hidden while a model is worn, so a worn model is cosmetic. A player's pick travels to peers as a `player-model` mesh message, and is remembered through **Account data** / **Place data** so it survives a join.
+_Avoid_: avatar (that is the whole cube-plus-camera object), skin (that is the cube's material)
+
+**Scripted UI panel**:
+An overlay a place script shows one player with `ui-panel` — a box docked to a screen corner holding **UI item**s in the order the script set them. Voice-tier, like a **HUD readout**: shown to one player and never shared. Drawn by `ScriptUi` from the world's `ui` accessor.
+_Avoid_: GUI (too general), menu (one use of a panel)
+
+**UI item**:
+One label, bar, button, or item-sprite image inside a **Scripted UI panel**, set by `ui-label`/`ui-bar`/`ui-button`/`ui-image` and taken off by `ui-remove`. A button carries a value, and a player's press arrives as a `ui-clicked` fact.
+_Avoid_: widget, control
 An NPC or prop a place script has placed, as the **ScriptHost** holds it: where it stands, how it faces, what model it wears, and the **Motion** it follows if any. The **VoxelFigures** renderer draws whatever the current figures are each frame, placing each at its posed feet.
 _Avoid_: entity (that is the monsters' word), actor
 

@@ -49,6 +49,40 @@ describe("motion pose", () => {
     expect(poseAt(motion, 250).dx).toBeCloseTo(10 * 0.15625);
   });
 
+  it("bobs a still figure up and down over the clock", () => {
+    const motion: MotionSpec = {
+      path: [[0, 0, 0]],
+      loop: "loop",
+      durationMs: 1_000,
+      oscillate: { amplitude: 2, periodMs: 1_000 },
+    };
+    // One period is a second; a quarter of it is the peak.
+    expect(poseAt(motion, 0).dy).toBeCloseTo(0);
+    expect(poseAt(motion, 250).dy).toBeCloseTo(2);
+    expect(poseAt(motion, 500).dy).toBeCloseTo(0);
+    expect(poseAt(motion, 750).dy).toBeCloseTo(-2);
+    // Its velocity is the offset's own, for carrying a rider: A·ω at the
+    // start of the cycle.
+    expect(poseAt(motion, 0).vy).toBeCloseTo(2 * (Math.PI * 2));
+  });
+
+  it("oscillates along a given axis from a standing start", () => {
+    const motion: MotionSpec = {
+      path: [[0, 0, 0]],
+      loop: "loop",
+      durationMs: 1_000,
+      oscillate: {
+        amplitude: 3,
+        periodMs: 1_000,
+        axis: [1, 0, 0],
+        startAfterMs: 500,
+      },
+    };
+    expect(poseAt(motion, 500).dx).toBe(0);
+    expect(poseAt(motion, 750).dx).toBeCloseTo(3);
+    expect(poseAt(motion, 750).dy).toBe(0);
+  });
+
   it("spins a vertical turntable into its collision yaw", () => {
     const motion: MotionSpec = {
       path: [[0, 0, 0]],

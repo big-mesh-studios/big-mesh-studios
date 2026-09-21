@@ -99,6 +99,15 @@ export interface LivePlayer {
 /** A value a script may hang on an entity under a name. */
 export type AttributeValue = string | number | boolean;
 
+/**
+ * Which players a remembered value belongs to: one in this place, everyone in
+ * this place, or the signed-in account across every place.
+ */
+export type DataScope = "player" | "global" | "account";
+
+/** A value a place may remember: a string, a finite number, or a boolean. */
+export type DataValue = string | number | boolean;
+
 /** One player's score on a leaderboard, keyed by the player string a script's own values use. */
 export interface LeaderboardEntry {
   readonly player: string;
@@ -191,6 +200,13 @@ export interface WorldQuery {
   getLocalPlayer(): string;
   /** The value the script set for `did` under `key`, or null when there is none. */
   getPlayerValue(did: string, key: string): number | null;
+  /** The value the place remembers under `scope`/`key` for `player`, or undefined. */
+  getData(scope: DataScope, player: string, key: string): DataValue | undefined;
+  /** The players ranked by a remembered `key`, highest first, ties by player, at most `count`. */
+  getDataLeaderboard(
+    key: string,
+    count: number,
+  ): Array<{ player: string; value: DataValue }>;
   /** The players ranked by `key`, highest first, ties by player string, at most `count` of them. */
   getLeaderboard(key: string, count: number): LeaderboardEntry[];
   /** Where a ray from `origin` along `direction` first meets the world, or null within `maxDistance` world units. */

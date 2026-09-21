@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   boxContains,
   boxGroundAt,
+  boxSeatAt,
   boxVelocityAt,
   solidBoxAt,
   type SolidBox,
@@ -58,5 +59,13 @@ describe("prop collision", () => {
     const platform: SolidBox = { ...bed, maxY: 2, vx: 3, vz: -1 };
     expect(boxVelocityAt([platform], 0, 2, 0)).toEqual([3, 0, -1]);
     expect(boxVelocityAt([platform], 5, 2, 5)).toBeNull();
+  });
+
+  it("reports the heading of a seat under the player and not a plain box", () => {
+    const turntable: SolidBox = { ...bed, maxY: 2, yaw: 1.2, seat: true };
+    const plain: SolidBox = { ...bed, maxY: 2, yaw: 0.4 };
+    expect(boxSeatAt([turntable], 0, 2, 0)).toBeCloseTo(1.2);
+    expect(boxSeatAt([plain], 0, 2, 0)).toBeNull();
+    expect(boxSeatAt([turntable], 5, 2, 5)).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { parseEffect } from "./effects";
+import { PARTICLE_STYLES } from "../world/scripted-particle";
 import type { ScriptEffect } from "./sandbox";
 
 const effect = (tag: string, payload: unknown): ScriptEffect => ({
@@ -260,6 +261,24 @@ describe("effect parsing", () => {
             loop: "loop",
             durationMs: 2_000,
             spin: { axis: [0, 1, 0], turnsPerSecond: 0.25 },
+          },
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("prop", {
+          id: "lift",
+          model: "lift.zip",
+          x: 0,
+          z: 0,
+          solid: true,
+          seat: true,
+          motion: {
+            path: [[0, 0, 0]],
+            loop: "loop",
+            durationMs: 1_000,
+            oscillate: { amplitude: 3, periodMs: 2_000, axis: [0, 1, 0] },
           },
         }),
       ),
@@ -615,6 +634,37 @@ describe("effect parsing", () => {
           },
         },
       ],
+      [
+        "prop",
+        {
+          id: "lift",
+          model: "lift.zip",
+          x: 0,
+          z: 0,
+          motion: {
+            path: [[0, 0, 0]],
+            loop: "loop",
+            durationMs: 1_000,
+            oscillate: { amplitude: 3, periodMs: 0 },
+          },
+        },
+      ],
+      [
+        "prop",
+        {
+          id: "lift",
+          model: "lift.zip",
+          x: 0,
+          z: 0,
+          motion: {
+            path: [[0, 0, 0]],
+            loop: "loop",
+            durationMs: 1_000,
+            oscillate: { amplitude: 100, periodMs: 1_000 },
+          },
+        },
+      ],
+      ["prop", { id: "lift", model: "lift.zip", x: 0, z: 0, seat: "yes" }],
       ["explosion", { id: "", x: 0, z: 0 }],
       ["explosion", { id: "boom", x: 0 }],
       ["explosion", { id: "boom", x: 0, z: 0, radius: 0 }],
@@ -916,6 +966,463 @@ describe("camera depth", () => {
         JSON.stringify(payload),
       ).toBeNull();
     }
+  });
+});
+
+describe("scripted UI effects", () => {
+  it("accepts a panel, a label, a bar, a button, an image, and a remove", () => {
+    expect(
+      parseEffect(
+        effect("ui-panel", { player: "", id: "shop", title: "Shop" }),
+      ),
+    ).toEqual({
+      tag: "ui-panel",
+      payload: { player: "", id: "shop", title: "Shop" },
+    });
+    expect(
+      parseEffect(
+        effect("ui-label", {
+          player: "",
+          panel: "shop",
+          id: "hint",
+          text: "Buy",
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("ui-bar", {
+          player: "",
+          panel: "shop",
+          id: "cash",
+          label: "Cash",
+          value: 3,
+          max: 10,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("ui-button", {
+          player: "",
+          panel: "shop",
+          id: "buy",
+          label: "Buy",
+          value: "cola",
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("ui-image", {
+          player: "",
+          panel: "shop",
+          id: "icon",
+          sprite: "cola",
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("ui-remove", { player: "", panel: "shop", item: "hint" }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("ui-panel", { player: "", id: "shop", anchor: "bottom-right" }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("refuses a bad anchor, empty text, a bad bar, or a bad sprite", () => {
+    for (const payload of [
+      { player: "", id: "shop", anchor: "middle" },
+      { player: "", id: "" },
+    ]) {
+      expect(
+        parseEffect(effect("ui-panel", payload)),
+        JSON.stringify(payload),
+      ).toBeNull();
+    }
+    expect(
+      parseEffect(
+        effect("ui-label", { player: "", panel: "shop", id: "hint", text: "" }),
+      ),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("ui-bar", {
+          player: "",
+          panel: "shop",
+          id: "cash",
+          value: 1,
+          max: 0,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("ui-button", {
+          player: "",
+          panel: "shop",
+          id: "buy",
+          label: "",
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("ui-image", {
+          player: "",
+          panel: "shop",
+          id: "icon",
+          sprite: "",
+        }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("data and teleport effects", () => {
+  it("accepts a save, a delete, a badge, and a teleport", () => {
+    expect(
+      parseEffect(
+        effect("data-set", { scope: "player", key: "score", value: 3 }),
+      ),
+    ).toEqual({
+      tag: "data-set",
+      payload: { scope: "player", key: "score", value: 3 },
+    });
+    expect(
+      parseEffect(
+        effect("data-set", { scope: "global", key: "day", value: true }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("data-set", {
+          scope: "player",
+          player: "did:x",
+          key: "score",
+          value: "ten",
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("data-delete", { scope: "player", key: "score" })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("badge-award", { badge: "first" })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("data-get", { scope: "player", key: "score", requestId: "r1" }),
+      ),
+    ).toEqual({
+      tag: "data-get",
+      payload: { scope: "player", key: "score", requestId: "r1" },
+    });
+    expect(
+      parseEffect(
+        effect("teleport", { player: "", place: "at://did:plc:x/app.bms/a" }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("data-set", { scope: "account", key: "pet", value: "cat" }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("teleport", {
+          player: "",
+          place: "at://did:plc:x/app.bms/a",
+          carry: ["pet", "gear"],
+        }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("refuses a bad scope, value, key, badge, or place", () => {
+    for (const payload of [
+      { scope: "world", key: "score", value: 1 },
+      { scope: "player", key: "", value: 1 },
+      { scope: "player", key: "score", value: {} },
+      { scope: "player", key: "score", value: "x".repeat(600) },
+    ]) {
+      expect(
+        parseEffect(effect("data-set", payload)),
+        JSON.stringify(payload),
+      ).toBeNull();
+    }
+    expect(parseEffect(effect("badge-award", { badge: "" }))).toBeNull();
+    expect(
+      parseEffect(
+        effect("data-get", { scope: "player", key: "score", requestId: "" }),
+      ),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("teleport", { player: "", place: "" })),
+    ).toBeNull();
+    for (const carry of ["pet", [""], [3]]) {
+      expect(
+        parseEffect(
+          effect("teleport", {
+            player: "",
+            place: "at://did:plc:x/app.bms/a",
+            carry,
+          }),
+        ),
+        JSON.stringify(carry),
+      ).toBeNull();
+    }
+  });
+});
+
+describe("entity look and beams", () => {
+  it("accepts a tint and fade, and a line between two ends", () => {
+    expect(
+      parseEffect(
+        effect("entity-look", { id: "z1", color: [1, 0, 0], alpha: 0.5 }),
+      ),
+    ).not.toBeNull();
+    expect(parseEffect(effect("entity-look", { id: "z1" }))).toEqual({
+      tag: "entity-look",
+      payload: { id: "z1" },
+    });
+    expect(
+      parseEffect(effect("entity-look-clear", { id: "z1" })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("beam", { id: "b", fromEntity: "a", to: [1, 2, 3] })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("beam", {
+          id: "b",
+          from: [0, 0, 0],
+          to: [1, 2, 3],
+          color: [0, 1, 0],
+          width: 0.3,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(parseEffect(effect("beam-remove", { id: "b" }))).not.toBeNull();
+  });
+
+  it("refuses a bad look, or a beam with both or neither end", () => {
+    expect(
+      parseEffect(effect("entity-look", { id: "z1", color: [2, 0, 0] })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("entity-look", { id: "z1", alpha: 2 })),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("beam", {
+          id: "b",
+          fromEntity: "a",
+          from: [0, 0, 0],
+          to: [1, 2, 3],
+        }),
+      ),
+    ).toBeNull();
+    expect(parseEffect(effect("beam", { id: "b", to: [1, 2, 3] }))).toBeNull();
+    expect(
+      parseEffect(
+        effect("beam", { id: "b", from: [0, 0, 0], to: [1, 2, 3], width: 0 }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("particles and decals", () => {
+  it("accepts a placed or figure-hung emitter, and a mark", () => {
+    expect(parseEffect(effect("particle", { id: "p", x: 1, z: 2 }))).toEqual({
+      tag: "particle",
+      payload: { id: "p", x: 1, z: 2 },
+    });
+    expect(
+      parseEffect(
+        effect("particle", {
+          id: "torch",
+          entityId: "z1",
+          kind: "flame",
+          color: [1, 0.5, 0],
+          size: 0.4,
+          spread: 2,
+          lifeMs: 900,
+          loop: true,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(parseEffect(effect("particle-remove", { id: "p" }))).not.toBeNull();
+    expect(
+      parseEffect(effect("decal", { id: "d", kind: "arrow", x: 1, z: 2 })),
+    ).toEqual({
+      tag: "decal",
+      payload: { id: "d", kind: "arrow", x: 1, z: 2 },
+    });
+    expect(
+      parseEffect(
+        effect("decal", {
+          id: "d",
+          kind: "splat",
+          x: 1,
+          z: 2,
+          color: [0.8, 0, 0],
+          size: 3,
+          yaw: 1.2,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(parseEffect(effect("decal-remove", { id: "d" }))).not.toBeNull();
+  });
+
+  it("accepts every particle kind the world knows how to draw", () => {
+    for (const kind of Object.keys(PARTICLE_STYLES)) {
+      expect(
+        parseEffect(effect("particle", { id: "p", x: 0, z: 0, kind })),
+        kind,
+      ).not.toBeNull();
+    }
+  });
+
+  it("refuses a bad kind, no position, or out-of-range numbers", () => {
+    expect(
+      parseEffect(effect("particle", { id: "p", x: 0, z: 0, kind: "nope" })),
+    ).toBeNull();
+    expect(parseEffect(effect("particle", { id: "p" }))).toBeNull();
+    expect(
+      parseEffect(effect("particle", { id: "p", x: 0, z: 0, size: 5 })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("particle", { id: "p", x: 0, z: 0, spread: 33 })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("particle", { id: "p", x: 0, z: 0, lifeMs: 10 })),
+    ).toBeNull();
+    expect(parseEffect(effect("decal", { id: "d", x: 0, z: 0 }))).toBeNull();
+    expect(
+      parseEffect(effect("decal", { id: "d", kind: "star", x: 0, z: 0 })),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("decal", { id: "d", kind: "ring", x: 0, z: 0, size: 0 }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("lights and billboards", () => {
+  it("accepts a placed or figure-hung light, and a label", () => {
+    expect(parseEffect(effect("light", { id: "lamp", x: 1, z: 2 }))).toEqual({
+      tag: "light",
+      payload: { id: "lamp", x: 1, z: 2 },
+    });
+    expect(
+      parseEffect(
+        effect("light", {
+          id: "lamp",
+          x: 1,
+          z: 2,
+          y: 5,
+          color: [1, 0.5, 0],
+          range: 20,
+          intensity: 3,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("light", { id: "torch", entityId: "z1" })),
+    ).not.toBeNull();
+    expect(parseEffect(effect("light-remove", { id: "lamp" }))).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("billboard", { id: "tag", text: "Boss", entityId: "z1" }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("billboard", {
+          id: "sign",
+          text: "Shop",
+          x: 1,
+          z: 2,
+          color: [1, 1, 1],
+          scale: 1,
+          height: 3,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("billboard-remove", { id: "tag" })),
+    ).not.toBeNull();
+  });
+
+  it("refuses a light with no position and a colour outside 0..1", () => {
+    expect(parseEffect(effect("light", { id: "lamp" }))).toBeNull();
+    expect(
+      parseEffect(
+        effect("light", { id: "lamp", x: 1, z: 2, color: [2, 0, 0] }),
+      ),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("light", { id: "lamp", x: 1, z: 2, range: 65 })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("light", { id: "lamp", x: 1, z: 2, intensity: 21 })),
+    ).toBeNull();
+  });
+
+  it("refuses an empty label, a bad position, and out-of-range sizing", () => {
+    expect(
+      parseEffect(effect("billboard", { id: "tag", text: "", entityId: "z1" })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("billboard", { id: "tag", text: "Hi" })),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("billboard", { id: "tag", text: "Hi", x: 1, z: 2, scale: 0 }),
+      ),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("billboard", { id: "tag", text: "Hi", x: 1, z: 2, height: -1 }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("player model effect", () => {
+  it("accepts a worn model, a clear, or a live address, and refuses a bad one", () => {
+    expect(
+      parseEffect(effect("player-model", { player: "", model: "zombie.zip" })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("player-model", { player: "", model: "" })),
+    ).toEqual({
+      tag: "player-model",
+      payload: { player: "", model: "" },
+    });
+    expect(
+      parseEffect(
+        effect("player-model", {
+          player: "",
+          modelUri: "at://did:plc:x/app.bms.stacker.model/a",
+        }),
+      ),
+    ).not.toBeNull();
+    expect(parseEffect(effect("player-model", { player: "" }))).toBeNull();
+    expect(
+      parseEffect(
+        effect("player-model", { player: "", model: "x".repeat(129) }),
+      ),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("player-model", { player: "", modelUri: "" })),
+    ).toBeNull();
   });
 });
 

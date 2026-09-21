@@ -58,6 +58,12 @@ export interface PlayerWorld {
     z: number,
   ) => [number, number, number] | null;
   /**
+   * The heading of the seat holding the player up at (`x`, feetY, `z`), or
+   * null where no seat stands there. A player riding one is turned to face the
+   * seat rather than their own look.
+   */
+  getSeatYawAt?: (x: number, y: number, z: number) => number | null;
+  /**
    * The field a script has declared at (`x`, `y`, `z`), or null where none
    * sits — a box that pushes the player's velocity toward a target, or a
    * quicksand that slows and sinks them. Sampled at the player's centre.
@@ -647,6 +653,19 @@ export const updatePlayer = (
       player.position.x += support[0] * dt;
       player.position.y += support[1] * dt;
       player.position.z += support[2] * dt;
+    }
+  }
+
+  // A seat turns its rider to the seat's own heading, so a turntable or a boat
+  // carries them facing the way it faces rather than the way they last looked.
+  if (player.onGround && world.getSeatYawAt !== undefined) {
+    const seatYaw = world.getSeatYawAt(
+      player.position.x,
+      player.position.y - config.halfSize,
+      player.position.z,
+    );
+    if (seatYaw !== null) {
+      player.yaw = seatYaw;
     }
   }
 

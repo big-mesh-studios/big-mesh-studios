@@ -220,6 +220,161 @@ describe("script event validation", () => {
     }
   });
 
+  it("accepts a data change, a badge, and a teleport, and refuses malformed ones", () => {
+    expect(
+      isScriptEvent({
+        ...stamp("e1", 1, "p"),
+        kind: "data-changed",
+        scope: "player",
+        player: "did:x",
+        key: "score",
+        deleted: false,
+        value: 3,
+      }),
+    ).toBe(true);
+    expect(
+      isScriptEvent({
+        ...stamp("e2", 2, "p"),
+        kind: "data-changed",
+        scope: "global",
+        player: "",
+        key: "day",
+        deleted: true,
+      }),
+    ).toBe(true);
+    expect(
+      isScriptEvent({
+        ...stamp("e7", 7, "p"),
+        kind: "data-changed",
+        scope: "account",
+        player: "",
+        key: "pet",
+        deleted: false,
+        value: "cat",
+      }),
+    ).toBe(true);
+    expect(
+      isScriptEvent({
+        ...stamp("e3", 3, "p"),
+        kind: "badge-earned",
+        player: "",
+        badge: "first",
+      }),
+    ).toBe(true);
+    expect(
+      isScriptEvent({
+        ...stamp("e4", 4, "p"),
+        kind: "player-teleported",
+        place: "at://did:plc:x/app.bms/a",
+      }),
+    ).toBe(true);
+    expect(
+      isScriptEvent({
+        ...stamp("e5", 5, "p"),
+        kind: "data-loaded",
+        requestId: "r1",
+        scope: "player",
+        key: "score",
+        found: true,
+        value: 3,
+      }),
+    ).toBe(true);
+    expect(
+      isScriptEvent({
+        ...stamp("e6", 6, "p"),
+        kind: "data-loaded",
+        requestId: "r2",
+        scope: "global",
+        key: "day",
+        found: false,
+      }),
+    ).toBe(true);
+    expect(
+      isScriptEvent({
+        ...stamp("e8", 8, "p"),
+        kind: "data-loaded",
+        requestId: "r3",
+        scope: "account",
+        key: "pet",
+        found: true,
+        value: "cat",
+      }),
+    ).toBe(true);
+    for (const bad of [
+      {
+        requestId: "",
+        scope: "player",
+        key: "score",
+        found: true,
+        value: 1,
+      },
+      { requestId: "r", scope: "player", key: "score", found: true },
+      {
+        requestId: "r",
+        scope: "player",
+        key: "score",
+        found: false,
+        value: 1,
+      },
+    ]) {
+      const event = { ...stamp("e1", 1, "p"), kind: "data-loaded", ...bad };
+      expect(isScriptEvent(event), JSON.stringify(event)).toBe(false);
+    }
+
+    for (const bad of [
+      { scope: "world", player: "", key: "k", deleted: false, value: 1 },
+      { scope: "player", player: "", key: "", deleted: false, value: 1 },
+      { scope: "player", player: "", key: "k", deleted: false, value: {} },
+      { scope: "player", player: "", key: "k", deleted: true, value: 1 },
+    ]) {
+      const event = { ...stamp("e1", 1, "p"), kind: "data-changed", ...bad };
+      expect(isScriptEvent(event), JSON.stringify(event)).toBe(false);
+    }
+    expect(
+      isScriptEvent({
+        ...stamp("e1", 1, "p"),
+        kind: "badge-earned",
+        player: "",
+        badge: "",
+      }),
+    ).toBe(false);
+    expect(
+      isScriptEvent({
+        ...stamp("e1", 1, "p"),
+        kind: "player-teleported",
+        place: "",
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts a UI click and refuses a malformed one", () => {
+    expect(
+      isScriptEvent({
+        ...stamp("e1", 1, "p"),
+        kind: "ui-clicked",
+        panel: "shop",
+        button: "buy",
+        value: "cola",
+      }),
+    ).toBe(true);
+    expect(
+      isScriptEvent({
+        ...stamp("e2", 2, "p"),
+        kind: "ui-clicked",
+        panel: "shop",
+        button: "buy",
+      }),
+    ).toBe(true);
+    for (const bad of [
+      { panel: "", button: "buy" },
+      { panel: "shop", button: "" },
+      { panel: "shop", button: "buy", value: "x".repeat(129) },
+    ]) {
+      const event = { ...stamp("e1", 1, "p"), kind: "ui-clicked", ...bad };
+      expect(isScriptEvent(event), JSON.stringify(event)).toBe(false);
+    }
+  });
+
   it("rejects a malformed npc event", () => {
     const cases: Array<unknown> = [
       { ...stamp("e1", 1, "p"), kind: "npc-talk" },

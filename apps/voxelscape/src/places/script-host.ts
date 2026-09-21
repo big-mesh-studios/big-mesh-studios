@@ -8,9 +8,21 @@
 // the dialogs it reports are what a caller renders and a player acts on.
 import { createQuickJSSandbox } from "./quickjs-sandbox";
 import { EventLog } from "./event-log";
-import { parseEffect, type ParsedEffect } from "./effects";
+import {
+  MAX_UI_ITEMS,
+  MAX_UI_PANELS,
+  parseEffect,
+  type ParsedEffect,
+  type UiAnchor,
+} from "./effects";
 import { ScriptInventory } from "./script-items";
 import { poseAt, type MotionPose, type MotionSpec } from "./motion";
+import {
+  createPlaceData,
+  type DataScope,
+  type DataValue,
+  type PlaceData,
+} from "./place-data";
 import type { CameraShot, CutsceneState } from "./cutscene";
 import { bundlePlaceProject } from "./bundle";
 import { raycastAabb, raycastVoxels, unitDirection } from "./raycast";
@@ -88,6 +100,8 @@ export interface ScriptedNpc {
   attributes: Record<string, AttributeValue>;
   /** A model motion this NPC plays, sampled from the shared clock. */
   animation?: FigureAnimation;
+  /** A tint and fade over the colours this NPC's model wears. */
+  look?: FigureLook;
 }
 
 /** One scripted prop: where it stands, and which place model it wears. */
@@ -106,6 +120,8 @@ export interface ScriptedProp {
   solid: boolean;
   /** Whether touching the prop is a hazard the script hears about. */
   hazard: boolean;
+  /** Whether a player standing on the prop is turned to the prop's heading. */
+  seat: boolean;
   /** A path and spin the prop follows over the shared clock. */
   motion?: MotionSpec;
   /**
@@ -119,6 +135,8 @@ export interface ScriptedProp {
   attributes: Record<string, AttributeValue>;
   /** A model motion this prop plays, sampled from the shared clock. */
   animation?: FigureAnimation;
+  /** A tint and fade over the colours this prop's model wears. */
+  look?: FigureLook;
 }
 
 /** One scripted field: a box that acts on a player standing inside it. */
@@ -149,6 +167,21 @@ export type { ScriptedFire };
 // re-exported for the same reason.
 import type { ScriptedExplosion } from "../world/explosion-blast";
 export type { ScriptedExplosion };
+
+// The resolved light, label, particle, and mark records, kept in the world
+// area so the renderers that draw them need not reach into the place area;
+// re-exported for the same reason the blaze record is.
+import type { BillboardPose } from "../world/scripted-billboard";
+export type { BillboardPose };
+import type { LightPose } from "../world/scripted-light";
+export type { LightPose };
+import type { ParticlePose, ParticleStyle } from "../world/scripted-particle";
+import { PARTICLE_STYLES } from "../world/scripted-particle";
+export type { ParticlePose, ParticleStyle };
+import type { DecalKind, DecalPose } from "../world/scripted-decal";
+export type { DecalPose };
+import type { BeamPose } from "../world/scripted-beam";
+export type { BeamPose };
 
 /** One named box a script watches the players move through. */
 export interface ScriptZone {
@@ -201,6 +234,29 @@ export interface FigureAnimation {
   loop: boolean;
 }
 
+/** How a scripted figure is tinted and faded, over the colours the model wears. */
+export interface FigureLook {
+  /** The colour the figure is multiplied by, each channel 0 to 1. */
+  color: [number, number, number];
+  /** The share of the figure's opacity kept, 0 to 1. */
+  alpha: number;
+}
+
+/** One glowing line a place script draws between two ends. */
+export interface ScriptedBeam {
+  id: string;
+  /** The figure the line starts at, or "" to start at `from`. */
+  fromEntity: string;
+  from: [number, number, number];
+  /** The figure the line ends at, or "" to end at `to`. */
+  toEntity: string;
+  to: [number, number, number];
+  /** Linear RGB, 0 to 1 each. */
+  color: [number, number, number];
+  /** How wide the line is drawn, in world units. */
+  width: number;
+}
+
 /** One key a place script listens on, by the id the `input` fact carries. */
 export interface ScriptBinding {
   id: string;
@@ -221,6 +277,98 @@ export interface ScriptPrompt {
   range: number;
   /** Whether the prompt fires once and is then forgotten. */
   once: boolean;
+}
+
+/** One point light a place script has lit. */
+export interface ScriptedLight {
+  id: string;
+  /** The figure it hangs over, or "" to stand where it was placed. */
+  entityId: string;
+  x: number;
+  y: number;
+  z: number;
+  /** Linear RGB, 0 to 1 each. */
+  color: [number, number, number];
+  /** How far it reaches, in world units. */
+  range: number;
+  intensity: number;
+}
+
+/** One world-space label a place script shows. */
+export interface ScriptedBillboard {
+  id: string;
+  text: string;
+  /** The figure it hangs over, or "" to stand where it was placed. */
+  entityId: string;
+  x: number;
+  y: number;
+  z: number;
+  /** Linear RGB, 0 to 1 each. */
+  color: [number, number, number];
+  /** Drawn height in world units. */
+  scale: number;
+  /** How far above an attached figure's feet it hangs, in world units. */
+  height: number;
+}
+
+/** One particle emitter a place script runs. */
+export interface ScriptedParticle {
+  id: string;
+  /** The figure it hangs over, or "" to stand where it was placed. */
+  entityId: string;
+  x: number;
+  y: number;
+  z: number;
+  /** The resolved look the emitter draws with. */
+  style: ParticleStyle;
+  /** Whether it keeps emitting until removed. */
+  loop: boolean;
+  /** The shared-clock moment it was last started. */
+  at: number;
+}
+
+/** One mark a place script has laid on the world. */
+export interface ScriptedDecal {
+  id: string;
+  kind: DecalKind;
+  /** The figure it lies under, or "" to lie where it was placed. */
+  entityId: string;
+  x: number;
+  y: number;
+  z: number;
+  /** Linear RGB, 0 to 1 each. */
+  color: [number, number, number];
+  size: number;
+  yaw: number;
+}
+
+/** One item a scripted panel shows. */
+export type UiItem =
+  | {
+      kind: "label";
+      id: string;
+      text: string;
+      /** Linear RGB, 0 to 1 each. */
+      color: [number, number, number];
+    }
+  | { kind: "bar"; id: string; label: string; value: number; max: number }
+  | { kind: "button"; id: string; label: string; value: string }
+  | { kind: "image"; id: string; sprite: string };
+
+/** One panel a place script shows a player. */
+export interface UiPanel {
+  id: string;
+  title: string;
+  anchor: UiAnchor;
+  items: UiItem[];
+}
+
+/** A panel as the host holds it while the script builds it up, items in order. */
+interface UiPanelState {
+  id: string;
+  title: string;
+  anchor: UiAnchor;
+  items: Map<string, UiItem>;
 }
 
 /** The dialog one player is currently in, as the script last set it. */
@@ -338,6 +486,22 @@ export interface ScriptHostParams extends RequireOnly<
     max: [number, number, number];
     id: number;
   }) => void;
+  /** The data the place remembers between runs; a run-scoped table when omitted. */
+  data?: PlaceData;
+  /** Called when the script sends a player to another place. */
+  onTeleport?: (player: string, place: string) => void;
+  /** Called when the script changes what a player wears; `model` "" is the plain cube. */
+  onPlayerModel?: (player: string, model: string, modelUri: string) => void;
+  /**
+   * Called to re-read a remembered value the table does not hold, so a save
+   * made on another device arrives as a `data-loaded` fact. Left out, a
+   * `data-get` answers from the table alone.
+   */
+  refreshData?: (
+    scope: DataScope,
+    player: string,
+    key: string,
+  ) => Promise<DataValue | null>;
 }
 
 /**
@@ -425,6 +589,19 @@ export class ScriptHost {
     max: [number, number, number];
     id: number;
   }) => void;
+  private readonly onTeleport?: (player: string, place: string) => void;
+  private readonly onPlayerModel?: (
+    player: string,
+    model: string,
+    modelUri: string,
+  ) => void;
+  private readonly refreshData?: (
+    scope: DataScope,
+    player: string,
+    key: string,
+  ) => Promise<DataValue | null>;
+  /** The data the place remembers between runs. */
+  private readonly data: PlaceData;
 
   /** The items this place's script defines and the local player carries. */
   readonly inventory = new ScriptInventory();
@@ -457,6 +634,16 @@ export class ScriptHost {
   private readonly bindings = new Map<string, ScriptBinding>();
   /** The prompts a script stands on figures, keyed by prompt id. */
   private readonly prompts = new Map<string, ScriptPrompt>();
+  /** The point lights a script has lit, keyed by light id. */
+  private readonly lights = new Map<string, ScriptedLight>();
+  /** The labels a script shows, keyed by billboard id. */
+  private readonly billboards = new Map<string, ScriptedBillboard>();
+  /** The particle emitters a script runs, keyed by emitter id. */
+  private readonly particles = new Map<string, ScriptedParticle>();
+  /** The marks a script has laid, keyed by mark id. */
+  private readonly decals = new Map<string, ScriptedDecal>();
+  /** The lines a script draws, keyed by beam id. */
+  private readonly beams = new Map<string, ScriptedBeam>();
   /** Which zones each player currently stands in, keyed by player. */
   private readonly playerZones = new Map<string, Set<string>>();
   private readonly dialogs = new Map<string, DialogState>();
@@ -466,6 +653,8 @@ export class ScriptHost {
   private voidHeight: number | null = null;
   /** The HUD readouts each player is showing, keyed by player then readout id. */
   private readonly readouts = new Map<string, Map<string, HudReadout>>();
+  /** The scripted UI each player is showing, keyed by player then panel id. */
+  private readonly panels = new Map<string, Map<string, UiPanelState>>();
   /** The camera sequence each player is watching, keyed by player. */
   private readonly cutscenes = new Map<string, CutsceneState>();
   /** Whether each player's movement and tools are taken away, keyed by player. */
@@ -507,6 +696,10 @@ export class ScriptHost {
     this.onFire = params.onFire;
     this.onExplosion = params.onExplosion;
     this.onBlockEdit = params.onBlockEdit;
+    this.onTeleport = params.onTeleport;
+    this.onPlayerModel = params.onPlayerModel;
+    this.refreshData = params.refreshData;
+    this.data = params.data ?? createPlaceData();
     this.ready = createQuickJSSandbox({
       seed: params.seed,
       getNow: params.getNow,
@@ -526,6 +719,9 @@ export class ScriptHost {
       getLocalPlayer: () => this.localPlayer(),
       getPlayerValue: (did, key) => this.playerValue(did, key),
       getLeaderboard: (key, count) => this.leaderboard(key, count),
+      getData: (scope, player, key) =>
+        this.data.get(scope, this.dataPlayer(scope, player), key),
+      getDataLeaderboard: (key, count) => this.dataLeaderboard(key, count),
       raycast: (origin, direction, maxDistance) =>
         this.ray(origin, direction, maxDistance),
       findPath: (from, to, options) => this.findPath(from, to, options),
@@ -597,6 +793,20 @@ export class ScriptHost {
     if (this.disposed || this.log.apply(events) === 0) {
       return;
     }
+    // A remembered value a peer changed is folded into this peer's table too,
+    // so a save and a leaderboard agree wherever they are read.
+    for (const event of events) {
+      if (event.kind === "data-changed") {
+        this.data.set(
+          event.scope,
+          event.player,
+          event.key,
+          event.deleted ? null : (event.value ?? null),
+        );
+      } else if (event.kind === "badge-earned") {
+        this.data.set("player", event.player, "badge:" + event.badge, true);
+      }
+    }
     await this.step();
   }
 
@@ -615,6 +825,165 @@ export class ScriptHost {
     return (
       this.npcs.get(id)?.animation ?? this.props.get(id)?.animation ?? null
     );
+  }
+
+  /** The tint and fade the figure `id` wears, or null when it wears none. */
+  lookFor(id: string): FigureLook | null {
+    return this.npcs.get(id)?.look ?? this.props.get(id)?.look ?? null;
+  }
+
+  /** Every light the script has lit, each at the position it stands at now. */
+  get lightList(): LightPose[] {
+    const out: LightPose[] = [];
+    for (const light of this.lights.values()) {
+      if (light.entityId === "") {
+        out.push({
+          id: light.id,
+          x: light.x,
+          y: light.y,
+          z: light.z,
+          color: light.color,
+          range: light.range,
+          intensity: light.intensity,
+        });
+        continue;
+      }
+      const figure = this.entity(light.entityId);
+      if (figure === null) {
+        continue;
+      }
+      out.push({
+        id: light.id,
+        x: figure.x,
+        y: figure.y + 1.2,
+        z: figure.z,
+        color: light.color,
+        range: light.range,
+        intensity: light.intensity,
+      });
+    }
+    return out;
+  }
+
+  /** Every emitter the script runs, each at the position it stands at now. */
+  get particleList(): ParticlePose[] {
+    const out: ParticlePose[] = [];
+    for (const particle of this.particles.values()) {
+      const base = {
+        id: particle.id,
+        ...particle.style,
+        loop: particle.loop,
+        at: particle.at,
+      };
+      if (particle.entityId === "") {
+        out.push({
+          ...base,
+          x: particle.x,
+          y: particle.y,
+          z: particle.z,
+        });
+        continue;
+      }
+      const figure = this.entity(particle.entityId);
+      if (figure === null) {
+        continue;
+      }
+      out.push({ ...base, x: figure.x, y: figure.y + 0.5, z: figure.z });
+    }
+    return out;
+  }
+
+  /** Every mark the script has laid, each at the position it lies at now. */
+  get decalList(): DecalPose[] {
+    const out: DecalPose[] = [];
+    for (const decal of this.decals.values()) {
+      const base = {
+        id: decal.id,
+        kind: decal.kind,
+        color: decal.color,
+        size: decal.size,
+        yaw: decal.yaw,
+      };
+      if (decal.entityId === "") {
+        out.push({ ...base, x: decal.x, y: decal.y, z: decal.z });
+        continue;
+      }
+      const figure = this.entity(decal.entityId);
+      if (figure === null) {
+        continue;
+      }
+      out.push({ ...base, x: figure.x, y: figure.y + 0.05, z: figure.z });
+    }
+    return out;
+  }
+
+  /** Every line the script draws, each at the endpoints it spans now. */
+  get beamList(): BeamPose[] {
+    const out: BeamPose[] = [];
+    for (const beam of this.beams.values()) {
+      const a = this.beamEnd(beam.fromEntity, beam.from);
+      const b = this.beamEnd(beam.toEntity, beam.to);
+      if (a === null || b === null) {
+        continue;
+      }
+      out.push({
+        id: beam.id,
+        ax: a[0],
+        ay: a[1],
+        az: a[2],
+        bx: b[0],
+        by: b[1],
+        bz: b[2],
+        color: beam.color,
+        width: beam.width,
+      });
+    }
+    return out;
+  }
+
+  /** Where one end of a beam stands: its fixed point, or above the figure it names. */
+  private beamEnd(
+    entityId: string,
+    point: [number, number, number],
+  ): [number, number, number] | null {
+    if (entityId === "") {
+      return point;
+    }
+    const figure = this.entity(entityId);
+    return figure === null ? null : [figure.x, figure.y + 1, figure.z];
+  }
+
+  /** Every label the script shows, each at the position it hangs at now. */
+  get billboardList(): BillboardPose[] {
+    const out: BillboardPose[] = [];
+    for (const label of this.billboards.values()) {
+      if (label.entityId === "") {
+        out.push({
+          id: label.id,
+          x: label.x,
+          y: label.y,
+          z: label.z,
+          text: label.text,
+          color: label.color,
+          scale: label.scale,
+        });
+        continue;
+      }
+      const figure = this.entity(label.entityId);
+      if (figure === null) {
+        continue;
+      }
+      out.push({
+        id: label.id,
+        x: figure.x,
+        y: figure.y + label.height,
+        z: figure.z,
+        text: label.text,
+        color: label.color,
+        scale: label.scale,
+      });
+    }
+    return out;
   }
 
   /** The figure `id` names, NPC or prop, as a script's own query sees it. */
@@ -708,6 +1077,66 @@ export class ScriptHost {
   /** The value the script set for `did` under `key`, or null when none. */
   private playerValue(did: string, key: string): number | null {
     return this.playerValues.get(did)?.get(key) ?? null;
+  }
+
+  /**
+   * Answers a `data-get` with a `data-loaded` fact: from the table when it
+   * holds the value, or from `refreshData` for a save made elsewhere.
+   */
+  private async loadData(
+    scope: DataScope,
+    player: string,
+    key: string,
+    requestId: string,
+  ): Promise<void> {
+    let value = this.data.get(scope, player, key);
+    if (value === undefined && this.refreshData !== undefined) {
+      value = (await this.refreshData(scope, player, key)) ?? undefined;
+    }
+    if (this.disposed) {
+      return;
+    }
+    this.author(
+      {
+        kind: "data-loaded",
+        requestId,
+        scope,
+        key,
+        found: value !== undefined,
+        ...(value === undefined ? {} : { value }),
+      },
+      this.localPlayer(),
+    );
+    await this.step();
+  }
+
+  /** Which player a data write belongs to: the local one for "", nobody for global or account. */
+  private dataPlayer(scope: DataScope, player: string | undefined): string {
+    if (scope === "global" || scope === "account") {
+      return "";
+    }
+    return player === undefined || player === "" ? this.localPlayer() : player;
+  }
+
+  /** The players whose remembered number under `key` ranks, highest first. */
+  private dataLeaderboard(
+    key: string,
+    count: number,
+  ): Array<{ player: string; value: DataValue }> {
+    const limit = Math.max(1, Math.min(32, Math.floor(count)));
+    const entries: Array<{ player: string; value: number }> = [];
+    for (const player of this.data.players()) {
+      const value = this.data.get("player", player, key);
+      if (typeof value === "number") {
+        entries.push({ player, value });
+      }
+    }
+    entries.sort(
+      (a, b) =>
+        b.value - a.value ||
+        (a.player < b.player ? -1 : a.player > b.player ? 1 : 0),
+    );
+    return entries.slice(0, limit);
   }
 
   /** The players ranked by `key`, highest first, ties by player string, at most `count`. */
@@ -961,6 +1390,57 @@ export class ScriptHost {
   /** The readouts `player`'s HUD shows, in the order the script set them. */
   hudFor(player: string): HudReadout[] {
     return [...(this.readouts.get(player)?.values() ?? [])];
+  }
+
+  /** The panels `player`'s scripted UI shows, in the order the script made them. */
+  uiFor(player: string): UiPanel[] {
+    const panels = this.panels.get(player);
+    if (panels === undefined) {
+      return [];
+    }
+    return [...panels.values()].map((panel) => ({
+      id: panel.id,
+      title: panel.title,
+      anchor: panel.anchor,
+      items: [...panel.items.values()],
+    }));
+  }
+
+  /** Reports `player` pressing a button, authoring the `ui-clicked` fact. */
+  async clickUi(player: string, panel: string, button: string): Promise<void> {
+    this.assertAlive();
+    const item = this.panels.get(player)?.get(panel)?.items.get(button);
+    if (item === undefined || item.kind !== "button") {
+      return;
+    }
+    this.author(
+      { kind: "ui-clicked", panel, button, value: item.value },
+      player,
+    );
+    await this.step();
+  }
+
+  /** The panel with `id` for `player`, made when absent and within the caps. */
+  private panelFor(player: string, id: string): UiPanelState | null {
+    let panels = this.panels.get(player);
+    if (panels === undefined) {
+      panels = new Map();
+      this.panels.set(player, panels);
+    }
+    let panel = panels.get(id);
+    if (panel === undefined) {
+      if (panels.size >= MAX_UI_PANELS) {
+        return null;
+      }
+      panel = { id, title: "", anchor: "top-left", items: new Map() };
+      panels.set(id, panel);
+    }
+    return panel;
+  }
+
+  /** Whether adding an item under `id` would exceed the panel's cap. */
+  private panelFull(panel: UiPanelState, id: string): boolean {
+    return panel.items.size >= MAX_UI_ITEMS && !panel.items.has(id);
   }
 
   /** The cutscene `player` is watching, or null when none is running. */
@@ -1313,7 +1793,7 @@ export class ScriptHost {
         } = effect.payload;
         const grounded = y ?? this.getHeightAt(x, z);
         const heading = yaw ?? 0;
-        const playing = this.npcs.get(id)?.animation;
+        const previous = this.npcs.get(id);
         this.npcs.set(id, {
           id,
           name: name ?? "NPC",
@@ -1326,7 +1806,10 @@ export class ScriptHost {
           tags: [...(tags ?? [])],
           attributes: { ...(attributes ?? {}) },
           ...(motion !== undefined ? { motion } : {}),
-          ...(playing !== undefined ? { animation: playing } : {}),
+          ...(previous?.animation !== undefined
+            ? { animation: previous.animation }
+            : {}),
+          ...(previous?.look !== undefined ? { look: previous.look } : {}),
         });
         if (y === undefined) {
           this.groundedNpcs.add(id);
@@ -1362,12 +1845,13 @@ export class ScriptHost {
           height,
           solid,
           hazard,
+          seat,
           motion,
           conveyor,
           tags,
           attributes,
         } = effect.payload;
-        const playing = this.props.get(id)?.animation;
+        const previous = this.props.get(id);
         this.props.set(id, {
           id,
           model,
@@ -1379,11 +1863,15 @@ export class ScriptHost {
           height: height ?? 2,
           solid: solid ?? false,
           hazard: hazard ?? false,
+          seat: seat ?? false,
           tags: [...(tags ?? [])],
           attributes: { ...(attributes ?? {}) },
           ...(motion !== undefined ? { motion } : {}),
           ...(conveyor !== undefined ? { conveyor } : {}),
-          ...(playing !== undefined ? { animation: playing } : {}),
+          ...(previous?.animation !== undefined
+            ? { animation: previous.animation }
+            : {}),
+          ...(previous?.look !== undefined ? { look: previous.look } : {}),
         });
         if (y === undefined) {
           this.groundedProps.add(id);
@@ -1679,6 +2167,11 @@ export class ScriptHost {
         }
         break;
       }
+      case "player-model": {
+        const { player, model, modelUri } = effect.payload;
+        this.onPlayerModel?.(player, model ?? "", modelUri ?? "");
+        break;
+      }
       case "figure-stop": {
         const id = effect.payload.id;
         const npc = this.npcs.get(id);
@@ -1694,6 +2187,306 @@ export class ScriptHost {
           delete rest.animation;
           this.props.set(id, rest);
         }
+        break;
+      }
+      case "light": {
+        const { id, entityId, x, y, z, color, range, intensity } =
+          effect.payload;
+        const entity = entityId ?? "";
+        this.lights.set(id, {
+          id,
+          entityId: entity,
+          x: x ?? 0,
+          y: y ?? (entity === "" ? this.getHeightAt(x ?? 0, z ?? 0) + 1 : 0),
+          z: z ?? 0,
+          color: color ?? [1, 0.9, 0.75],
+          range: range ?? 12,
+          intensity: intensity ?? 1,
+        });
+        break;
+      }
+      case "light-remove":
+        this.lights.delete(effect.payload.id);
+        break;
+      case "billboard": {
+        const { id, text, entityId, x, y, z, color, scale, height } =
+          effect.payload;
+        const entity = entityId ?? "";
+        const lift = height ?? 2.2;
+        this.billboards.set(id, {
+          id,
+          text,
+          entityId: entity,
+          x: x ?? 0,
+          y: y ?? (entity === "" ? this.getHeightAt(x ?? 0, z ?? 0) + lift : 0),
+          z: z ?? 0,
+          color: color ?? [1, 1, 1],
+          scale: scale ?? 0.5,
+          height: lift,
+        });
+        break;
+      }
+      case "billboard-remove":
+        this.billboards.delete(effect.payload.id);
+        break;
+      case "particle": {
+        const {
+          id,
+          x,
+          y,
+          z,
+          entityId,
+          kind,
+          color,
+          size,
+          spread,
+          lifeMs,
+          loop,
+        } = effect.payload;
+        const style = PARTICLE_STYLES[kind ?? "spark"];
+        const entity = entityId ?? "";
+        this.particles.set(id, {
+          id,
+          entityId: entity,
+          x: x ?? 0,
+          y: y ?? (entity === "" ? this.getHeightAt(x ?? 0, z ?? 0) + 0.2 : 0),
+          z: z ?? 0,
+          style: {
+            ...style,
+            ...(color !== undefined ? { color } : {}),
+            ...(size !== undefined ? { size } : {}),
+            ...(spread !== undefined ? { spread } : {}),
+            ...(lifeMs !== undefined ? { lifeMs } : {}),
+          },
+          loop: loop ?? false,
+          at: this.getNow(),
+        });
+        break;
+      }
+      case "particle-remove":
+        this.particles.delete(effect.payload.id);
+        break;
+      case "decal": {
+        const { id, kind, x, y, z, entityId, color, size, yaw } =
+          effect.payload;
+        const entity = entityId ?? "";
+        this.decals.set(id, {
+          id,
+          kind,
+          entityId: entity,
+          x: x ?? 0,
+          y: y ?? (entity === "" ? this.getHeightAt(x ?? 0, z ?? 0) + 0.03 : 0),
+          z: z ?? 0,
+          color: color ?? [1, 1, 1],
+          size: size ?? 2,
+          yaw: yaw ?? 0,
+        });
+        break;
+      }
+      case "decal-remove":
+        this.decals.delete(effect.payload.id);
+        break;
+      case "entity-look": {
+        const { id, color, alpha } = effect.payload;
+        const look: FigureLook = {
+          color: color ?? [1, 1, 1],
+          alpha: alpha ?? 1,
+        };
+        const npc = this.npcs.get(id);
+        if (npc !== undefined) {
+          this.npcs.set(id, { ...npc, look });
+          break;
+        }
+        const prop = this.props.get(id);
+        if (prop !== undefined) {
+          this.props.set(id, { ...prop, look });
+        }
+        break;
+      }
+      case "entity-look-clear": {
+        const id = effect.payload.id;
+        const npc = this.npcs.get(id);
+        if (npc !== undefined) {
+          const rest = { ...npc };
+          delete rest.look;
+          this.npcs.set(id, rest);
+          break;
+        }
+        const prop = this.props.get(id);
+        if (prop !== undefined) {
+          const rest = { ...prop };
+          delete rest.look;
+          this.props.set(id, rest);
+        }
+        break;
+      }
+      case "beam": {
+        const { id, fromEntity, from, toEntity, to, color, width } =
+          effect.payload;
+        this.beams.set(id, {
+          id,
+          fromEntity: fromEntity ?? "",
+          from: from ?? [0, 0, 0],
+          toEntity: toEntity ?? "",
+          to: to ?? [0, 0, 0],
+          color: color ?? [1, 1, 1],
+          width: width ?? 0.1,
+        });
+        break;
+      }
+      case "beam-remove":
+        this.beams.delete(effect.payload.id);
+        break;
+      case "data-set": {
+        const { scope, player, key, value } = effect.payload;
+        const who = this.dataPlayer(scope, player);
+        this.data.set(scope, who, key, value);
+        this.author(
+          {
+            kind: "data-changed",
+            scope,
+            player: who,
+            key,
+            deleted: false,
+            value,
+          },
+          this.localPlayer(),
+        );
+        break;
+      }
+      case "data-delete": {
+        const { scope, player, key } = effect.payload;
+        const who = this.dataPlayer(scope, player);
+        this.data.set(scope, who, key, null);
+        this.author(
+          { kind: "data-changed", scope, player: who, key, deleted: true },
+          this.localPlayer(),
+        );
+        break;
+      }
+      case "data-get": {
+        const { scope, player, key, requestId } = effect.payload;
+        void this.loadData(
+          scope,
+          this.dataPlayer(scope, player),
+          key,
+          requestId,
+        );
+        break;
+      }
+      case "badge-award": {
+        const { player, badge } = effect.payload;
+        const who =
+          player === undefined || player === "" ? this.localPlayer() : player;
+        this.data.set("player", who, "badge:" + badge, true);
+        this.author(
+          { kind: "badge-earned", player: who, badge },
+          this.localPlayer(),
+        );
+        break;
+      }
+      case "teleport": {
+        const { player, place, carry } = effect.payload;
+        const who = player === "" ? this.localPlayer() : player;
+        // What the player carries goes into the account scope, which the place
+        // they arrive in reads: the value is copied, so nothing is lost here if
+        // the jump is refused.
+        if (carry !== undefined) {
+          for (const key of carry) {
+            const value = this.data.get("player", who, key);
+            if (value !== undefined) {
+              this.data.set("account", "", key, value);
+            }
+          }
+        }
+        this.author({ kind: "player-teleported", place }, who);
+        this.onTeleport?.(who, place);
+        break;
+      }
+      case "ui-panel": {
+        const { player, id, title, anchor } = effect.payload;
+        const panel = this.panelFor(player, id);
+        if (panel === null) {
+          break;
+        }
+        if (title !== undefined) {
+          panel.title = title;
+        }
+        if (anchor !== undefined) {
+          panel.anchor = anchor;
+        }
+        break;
+      }
+      case "ui-label": {
+        const { player, panel: panelId, id, text, color } = effect.payload;
+        const panel = this.panelFor(player, panelId);
+        if (panel === null || this.panelFull(panel, id)) {
+          break;
+        }
+        panel.items.set(id, {
+          kind: "label",
+          id,
+          text,
+          color: color ?? [1, 1, 1],
+        });
+        break;
+      }
+      case "ui-bar": {
+        const {
+          player,
+          panel: panelId,
+          id,
+          label,
+          value,
+          max,
+        } = effect.payload;
+        const panel = this.panelFor(player, panelId);
+        if (panel === null || this.panelFull(panel, id)) {
+          break;
+        }
+        panel.items.set(id, {
+          kind: "bar",
+          id,
+          label: label ?? "",
+          value,
+          max,
+        });
+        break;
+      }
+      case "ui-button": {
+        const { player, panel: panelId, id, label, value } = effect.payload;
+        const panel = this.panelFor(player, panelId);
+        if (panel === null || this.panelFull(panel, id)) {
+          break;
+        }
+        panel.items.set(id, {
+          kind: "button",
+          id,
+          label,
+          value: value ?? "",
+        });
+        break;
+      }
+      case "ui-image": {
+        const { player, panel: panelId, id, sprite } = effect.payload;
+        const panel = this.panelFor(player, panelId);
+        if (panel === null || this.panelFull(panel, id)) {
+          break;
+        }
+        panel.items.set(id, { kind: "image", id, sprite });
+        break;
+      }
+      case "ui-remove": {
+        const { player, panel: panelId, item } = effect.payload;
+        const panels = this.panels.get(player);
+        if (panels === undefined) {
+          break;
+        }
+        if (item === undefined) {
+          panels.delete(panelId);
+          break;
+        }
+        panels.get(panelId)?.items.delete(item);
         break;
       }
       case "player-checkpoint": {

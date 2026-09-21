@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_DAMAGE,
+  MAX_PLAYER_MODEL,
   MAX_SCRIPT_EVENTS_PER_MESSAGE,
   decodeMessage,
   encodeMessage,
@@ -155,6 +156,52 @@ describe("player-damage message codec", () => {
       hit({ amount: -2 }),
       hit({ amount: MAX_DAMAGE + 1 }),
       hit({ amount: 1.5 }),
+    ];
+    for (const bad of cases) {
+      expect(
+        decodeMessage(JSON.stringify(bad)),
+        JSON.stringify(bad),
+      ).toBeNull();
+    }
+  });
+});
+
+describe("player-model message codec", () => {
+  const wire = (
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> => ({
+    v: 1,
+    type: "player-model",
+    seq: 2,
+    t: 300,
+    model: "zombie.zip",
+    ...overrides,
+  });
+
+  it("round-trips a worn model and the plain cube", () => {
+    const decoded = decodeMessage(
+      encodeMessage({
+        v: 1,
+        type: "player-model",
+        seq: 2,
+        t: 300,
+        model: "zombie.zip",
+      }),
+    );
+    expect(decoded!.type).toBe("player-model");
+    const message = decoded as Extract<
+      typeof decoded,
+      { type: "player-model" }
+    >;
+    expect(message.model).toBe("zombie.zip");
+    expect(decodeMessage(JSON.stringify(wire({ model: "" })))).not.toBeNull();
+  });
+
+  it("rejects a model that is not a string or is too long", () => {
+    const cases = [
+      wire({ model: 3 }),
+      wire({ model: undefined }),
+      wire({ model: "x".repeat(MAX_PLAYER_MODEL + 1) }),
     ];
     for (const bad of cases) {
       expect(
