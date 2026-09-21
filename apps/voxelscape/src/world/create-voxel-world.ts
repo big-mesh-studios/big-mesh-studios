@@ -257,9 +257,7 @@ export const createVoxelWorld = ({
    * window's O(1) cell map. The fluid sim and the light engine both read cell
    * addresses through it.
    */
-  const blockIndexAtVoxel = (
-    w: WorldVoxel,
-  ): number | undefined =>
+  const blockIndexAtVoxel = (w: WorldVoxel): number | undefined =>
     sphere.slotAt(
       (w[0] + 0.5) * VOXEL_SIZE,
       (w[1] + 0.5) * VOXEL_SIZE,

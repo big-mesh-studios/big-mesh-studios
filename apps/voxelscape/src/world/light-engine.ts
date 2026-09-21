@@ -157,7 +157,13 @@ export class LightEngine {
     x: number,
     y: number,
     z: number,
-  ): { index: number; block: WorldBlock; x: number; y: number; z: number } | null {
+  ): {
+    index: number;
+    block: WorldBlock;
+    x: number;
+    y: number;
+    z: number;
+  } | null {
     const store = block.store;
     const scale = store.scale;
     const w = localToWorldVoxel(store, block.center, [x, y, z]);
@@ -289,13 +295,49 @@ export class LightEngine {
           );
           for (const shift of shifts) {
             plane[axis] = n; // minus pad
-            this.seamColumn(minus, plane[0], plane[1], plane[2], shift, mData, mPad, pInt);
+            this.seamColumn(
+              minus,
+              plane[0],
+              plane[1],
+              plane[2],
+              shift,
+              mData,
+              mPad,
+              pInt,
+            );
             plane[axis] = 0; // plus interior
-            this.seamColumn(plus, plane[0], plane[1], plane[2], shift, pData, pInt, mPad);
+            this.seamColumn(
+              plus,
+              plane[0],
+              plane[1],
+              plane[2],
+              shift,
+              pData,
+              pInt,
+              mPad,
+            );
             plane[axis] = n - 1; // minus interior
-            this.seamColumn(minus, plane[0], plane[1], plane[2], shift, mData, mInt, pPad);
+            this.seamColumn(
+              minus,
+              plane[0],
+              plane[1],
+              plane[2],
+              shift,
+              mData,
+              mInt,
+              pPad,
+            );
             plane[axis] = -1; // plus pad
-            this.seamColumn(plus, plane[0], plane[1], plane[2], shift, pData, pPad, mInt);
+            this.seamColumn(
+              plus,
+              plane[0],
+              plane[1],
+              plane[2],
+              shift,
+              pData,
+              pPad,
+              mInt,
+            );
           }
         }
       }
@@ -516,7 +558,14 @@ export class LightEngine {
       let tx = x;
       let ty = y;
       let tz = z;
-      if (x < -p || x >= n + p || y < -p || y >= n + p || z < -p || z >= n + p) {
+      if (
+        x < -p ||
+        x >= n + p ||
+        y < -p ||
+        y >= n + p ||
+        z < -p ||
+        z >= n + p
+      ) {
         const t = this.crossTarget(block, x, y, z);
         if (t === null) {
           continue;
@@ -600,7 +649,14 @@ export class LightEngine {
       let tx = x;
       let ty = y;
       let tz = z;
-      if (x < -p || x >= n + p || y < -p || y >= n + p || z < -p || z >= n + p) {
+      if (
+        x < -p ||
+        x >= n + p ||
+        y < -p ||
+        y >= n + p ||
+        z < -p ||
+        z >= n + p
+      ) {
         const t = this.crossTarget(block, x, y, z);
         if (t === null) {
           continue;

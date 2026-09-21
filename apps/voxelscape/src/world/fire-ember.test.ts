@@ -33,7 +33,11 @@ describe("fire embers", () => {
     const block = buildBlockShell({ center: [0, 0, 0] });
     const changed: number[][] = [];
     const light = lightOf([block]);
-    const embers = new FireEmbers([block], (indices) => changed.push(indices), light);
+    const embers = new FireEmbers(
+      [block],
+      (indices) => changed.push(indices),
+      light,
+    );
     embers.seed(fire(10, 18));
     light.flush();
     expect(changed).toEqual([[0]]);
@@ -72,7 +76,11 @@ describe("fire embers", () => {
     const block = buildBlockShell({ center: [0, 0, 0] });
     const changed: number[][] = [];
     const light = lightOf([block]);
-    const embers = new FireEmbers([block], (indices) => changed.push(indices), light);
+    const embers = new FireEmbers(
+      [block],
+      (indices) => changed.push(indices),
+      light,
+    );
     embers.seed(fire(500, 500));
     light.flush();
     expect(changed).toEqual([]);
