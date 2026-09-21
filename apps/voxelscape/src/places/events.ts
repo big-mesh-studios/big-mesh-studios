@@ -47,6 +47,20 @@ export type ScriptEventPayload =
       entityId: string;
       /** The item id the player used on it, or "" for a bare use. */
       item: string;
+      /** Which control the player used, or absent where the world does not say. */
+      button?: "primary" | "secondary" | "use";
+    }
+  | {
+      kind: "input";
+      /** The id a script gave the binding its key is on. */
+      bindId: string;
+      /** Whether the key went down or came up. */
+      phase: "down" | "up";
+    }
+  | {
+      kind: "prompt-triggered";
+      /** The id a script gave the prompt the player answered. */
+      promptId: string;
     }
   | {
       kind: "entity-hit";
@@ -194,8 +208,21 @@ export const isScriptEvent = (v: unknown): v is ScriptEvent => {
   if (r.kind === "entity-used") {
     return (
       isShortString(r.entityId, MAX_EVENT_ID) &&
-      (r.item === "" || isShortString(r.item, MAX_EVENT_ITEM))
+      (r.item === "" || isShortString(r.item, MAX_EVENT_ITEM)) &&
+      (r.button === undefined ||
+        r.button === "primary" ||
+        r.button === "secondary" ||
+        r.button === "use")
     );
+  }
+  if (r.kind === "input") {
+    return (
+      isShortString(r.bindId, MAX_EVENT_ID) &&
+      (r.phase === "down" || r.phase === "up")
+    );
+  }
+  if (r.kind === "prompt-triggered") {
+    return isShortString(r.promptId, MAX_EVENT_ID);
   }
   if (r.kind === "entity-hit") {
     return (

@@ -52,9 +52,68 @@ declare module "voxelscape" {
 
   /** One player's live position, by the did that identifies them. */
   export type Player = import("./sandbox").LivePlayer;
+  /** One scripted figure as a query sees it. */
+  export type EntitySnapshot = import("./sandbox").EntitySnapshot;
+  /** Where a ray first met the world, and what it met. */
+  export type RaycastHit = import("./sandbox").RaycastHit;
+  /** A value a script may hang on an entity under a name. */
+  export type AttributeValue = import("./sandbox").AttributeValue;
+  /** One player's score on a leaderboard. */
+  export type LeaderboardEntry = import("./sandbox").LeaderboardEntry;
 
   /** Every player's live position: the local player first, then connected peers. */
   export const getPlayers: WorldQuery["getPlayers"];
+  /** The player `did` names, or null when they are not in the place. */
+  export const getPlayer: WorldQuery["getPlayer"];
+  /** Every player in the box `min` to `max`, inclusive. */
+  export const getPlayersInBox: WorldQuery["getPlayersInBox"];
+  /** The DID of the player on this peer, or "" when they are not signed in. */
+  export const getLocalPlayer: WorldQuery["getLocalPlayer"];
+  /** The value set for `player` under `key`, or null when none. */
+  export const getPlayerValue: WorldQuery["getPlayerValue"];
+  /** The players ranked by `key`, highest first, at most `count` of them. */
+  export const getLeaderboard: WorldQuery["getLeaderboard"];
+  /**
+   * Shows a leaderboard to the local player as a HUD text readout, ranking the
+   * players by the player-value `key`; call it whenever the values change.
+   */
+  export function showLeaderboard(
+    id: string,
+    title: string,
+    key: string,
+    count?: number,
+  ): void;
+  /** The item id the local player is holding, or "" for none. */
+  export function getHeldItem(): string;
+  /** The block id at (`x`, `y`, `z`), or 0 for air. */
+  export const getBlockAt: WorldQuery["getBlockAt"];
+  /** The scripted figure `id` names, or null when there is none. */
+  export const getEntity: WorldQuery["getEntity"];
+  /** Every scripted figure in the box `min` to `max`, inclusive, in id order. */
+  export const getEntitiesInBox: WorldQuery["getEntitiesInBox"];
+  /** Every scripted figure within `radius` of a point, in id order. */
+  export const getEntitiesInSphere: WorldQuery["getEntitiesInSphere"];
+  /** Every scripted figure carrying `tag`, in id order. */
+  export const getEntitiesWithTag: WorldQuery["getEntitiesWithTag"];
+  /** Where a ray from `origin` along `direction` first meets the world, or null within `maxDistance` world units. */
+  export const raycast: WorldQuery["raycast"];
+  /** The walkable route from `from` to `to`, as world-unit waypoints, or null when none exists within the bounds. */
+  export function findPath(
+    from: [number, number, number],
+    to: [number, number, number],
+    options?: { maxNodes?: number; maxCells?: number },
+  ): Array<[number, number, number]> | null;
+
+  /** Where an NPC walks to, how fast, and how hard the route search tries. */
+  interface WalkToOptions {
+    x: number;
+    z: number;
+    y?: number;
+    /** World units per second; defaults to 4. */
+    speed?: number;
+    maxNodes?: number;
+    maxCells?: number;
+  }
   /** The terrain surface at (x, z). */
   export const getHeightAt: WorldQuery["getHeightAt"];
   /** Whether (x, y, z) is inside solid ground. */
@@ -73,6 +132,75 @@ declare module "voxelscape" {
   export function onPlan(fn: (contextJson: string) => string): void;
   export const blocks: Record<string, number>;
 
+  /** A three-axis vector, its arithmetic returning new vectors so a script's own value is never mutated. */
+  export class Vector3 {
+    x: number;
+    y: number;
+    z: number;
+    constructor(x: number, y: number, z: number);
+    static create(x: number, y: number, z: number): Vector3;
+    static fromArray(a: readonly number[]): Vector3;
+    static zero(): Vector3;
+    static one(): Vector3;
+    add(v: Vector3): Vector3;
+    sub(v: Vector3): Vector3;
+    scale(s: number): Vector3;
+    mul(v: Vector3): Vector3;
+    dot(v: Vector3): number;
+    cross(v: Vector3): Vector3;
+    readonly length: number;
+    unit(): Vector3;
+    distanceTo(v: Vector3): number;
+    lerp(v: Vector3, t: number): Vector3;
+    clone(): Vector3;
+    toArray(): [number, number, number];
+    equals(v: Vector3): boolean;
+  }
+
+  /** A two-axis vector, its arithmetic returning new vectors. */
+  export class Vector2 {
+    x: number;
+    y: number;
+    constructor(x: number, y: number);
+    static create(x: number, y: number): Vector2;
+    static fromArray(a: readonly number[]): Vector2;
+    static zero(): Vector2;
+    add(v: Vector2): Vector2;
+    sub(v: Vector2): Vector2;
+    scale(s: number): Vector2;
+    dot(v: Vector2): number;
+    readonly length: number;
+    unit(): Vector2;
+    lerp(v: Vector2, t: number): Vector2;
+    toArray(): [number, number];
+  }
+
+  /** A colour whose three channels run from 0 to 1. */
+  export class Color3 {
+    r: number;
+    g: number;
+    b: number;
+    constructor(r: number, g: number, b: number);
+    static create(r: number, g: number, b: number): Color3;
+    static fromRGB(r: number, g: number, b: number): Color3;
+    static fromHex(hex: string): Color3;
+    lerp(c: Color3, t: number): Color3;
+    toArray(): [number, number, number];
+  }
+
+  /** Holds `value` within `min` and `max`. */
+  export function clamp(value: number, min: number, max: number): number;
+  /** The point `t` of the way from `a` to `b`; `t` is not clamped. */
+  export function lerp(a: number, b: number, t: number): number;
+  /** Eases `t` from 0 to 1 with zero slope at each end, clamping `t` first. */
+  export function smoothstep(t: number): number;
+  /** A random integer from `min` to `max`, both included, from the seeded stream. */
+  export function randint(min: number, max: number): number;
+  /** A random real number from `min` up to but not including `max`. */
+  export function randFloat(min: number, max: number): number;
+  /** One element of `array`, chosen from the seeded stream; undefined when empty. */
+  export function choice<T>(array: readonly T[]): T | undefined;
+
   /** What a model is made of, keyed by name in `ModelsByName`. */
   export interface ModelDescriptor {
     readonly name: string;
@@ -83,6 +211,14 @@ declare module "voxelscape" {
 
   /** Every model this place carries, keyed by the bare name `createNpc`/`createProp` take — empty until augmented. */
   export interface ModelsByName {}
+
+  /** How a figure plays one of its model's motions. */
+  interface AnimationPlayOptions {
+    /** How fast to play it; defaults to 1. */
+    speed?: number;
+    /** Whether it repeats; defaults to the motion's own loop. */
+    loop?: boolean;
+  }
 
   /** Where a figure stands and faces, over the id/model a create call also takes. */
   interface FigurePlacement {
@@ -115,8 +251,29 @@ declare module "voxelscape" {
     readonly y?: number;
     /** Which way the figure currently faces, in radians. */
     readonly yaw: number;
+    /** Names this figure answers to in a query. */
+    readonly tags: readonly string[];
+    /** Values the script hangs on this figure under a name. */
+    readonly attributes: Readonly<Record<string, AttributeValue>>;
+    /** Gives this figure a value under `key`, replacing any it held there, and returns this figure. */
+    setAttribute(key: string, value: AttributeValue): NpcHandle<M>;
+    /** The value this figure holds under `key`, or undefined. */
+    getAttribute(key: string): AttributeValue | undefined;
+    /** Names this figure with `tag`, and returns this figure. */
+    addTag(tag: string): NpcHandle<M>;
+    /** Takes `tag` off this figure, and returns this figure. */
+    removeTag(tag: string): NpcHandle<M>;
     /** Moves the figure and re-dispatches its placement. */
     move(options: FigureMove): void;
+    /** Walks the figure to a point along a route the world searches for, and returns whether one exists. */
+    walkTo(options: WalkToOptions): boolean;
+    /** Plays one of the model's motions, named as the model's file names it. */
+    play(
+      name: M extends ModelDescriptor ? M["motions"][number] : string,
+      options?: AnimationPlayOptions,
+    ): NpcHandle<M>;
+    /** Stops the NPC's animation, standing it back at rest. */
+    stop(): NpcHandle<M>;
     /** Removes the NPC outright — no death fall. */
     remove(): void;
     /** Plays a death fall in place of an outright removal, then forgets it the same way. */
@@ -133,6 +290,10 @@ declare module "voxelscape" {
     name?: string;
     /** Reads the model live from its own `at://` address instead of the place's bundled files. */
     modelUri?: string;
+    /** Names this NPC answers to in a query, e.g. "enemy". */
+    tags?: string[];
+    /** Values a script hangs on this NPC under a name. */
+    attributes?: Record<string, AttributeValue>;
   }
 
   /**
@@ -161,6 +322,25 @@ declare module "voxelscape" {
     readonly z: number;
     readonly y?: number;
     readonly yaw: number;
+    /** Names this figure answers to in a query. */
+    readonly tags: readonly string[];
+    /** Values the script hangs on this figure under a name. */
+    readonly attributes: Readonly<Record<string, AttributeValue>>;
+    /** Gives this figure a value under `key`, replacing any it held there, and returns this figure. */
+    setAttribute(key: string, value: AttributeValue): PropHandle<M>;
+    /** The value this figure holds under `key`, or undefined. */
+    getAttribute(key: string): AttributeValue | undefined;
+    /** Names this figure with `tag`, and returns this figure. */
+    addTag(tag: string): PropHandle<M>;
+    /** Takes `tag` off this figure, and returns this figure. */
+    removeTag(tag: string): PropHandle<M>;
+    /** Plays one of the model's motions, named as the model's file names it. */
+    play(
+      name: M["motions"][number],
+      options?: AnimationPlayOptions,
+    ): PropHandle<M>;
+    /** Stops the prop's animation, standing it back at rest. */
+    stop(): PropHandle<M>;
     move(options: FigureMove): void;
     remove(): void;
   }
@@ -177,6 +357,10 @@ declare module "voxelscape" {
     conveyor?: { vx: number; vz: number };
     /** A path and spin the prop follows over the shared clock, in place of `move`. */
     motion?: import("./motion").MotionSpec;
+    /** Names this prop answers to in a query, e.g. "enemy". */
+    tags?: string[];
+    /** Values a script hangs on this prop under a name. */
+    attributes?: Record<string, AttributeValue>;
   }
 
   /** Places a prop wearing the model named `options.model`; see `createNpc` for how a name resolves and why `id` is never generated. */

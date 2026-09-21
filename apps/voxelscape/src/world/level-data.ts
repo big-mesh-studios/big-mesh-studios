@@ -395,6 +395,18 @@ const voxelIdAt = (
 };
 
 /**
+ * The voxel id at a world-space point, or air outside the loaded blocks — the
+ * read a script makes to tell one block from another where `isSolidAt` only
+ * answers whether the voxel blocks movement.
+ */
+export const getWorldBlockId = (
+  query: BlockQuery,
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+): number => voxelIdAt(query, worldX, worldY, worldZ);
+
+/**
  * Whether the voxel containing a world-space point blocks movement — the
  * query player collision resolves against. Water doesn't block (the player
  * swims through it), and air outside the loaded blocks means an unfilled

@@ -407,9 +407,9 @@ export interface Voxelscape {
   target: Accessor<Target | null>;
   /**
    * The NPC or prop the crosshair is on, or null when none is in reach. The
-   * action says whether a tap talks to it or uses it.
+   * action is the verb a tap means — talking, using, or a script's own prompt.
    */
-  npcAim: Accessor<{ id: string; name: string; action: "talk" | "use" } | null>;
+  npcAim: Accessor<{ id: string; name: string; action: string } | null>;
   /** The dialog the local player is in, or null when nobody is talking. */
   dialog: Accessor<DialogState | null>;
   /** The item a place script has the local player holding, or null. */
@@ -504,7 +504,7 @@ export const createVoxelscape = ({
   const [npcAim, setNpcAim] = createSignal<{
     id: string;
     name: string;
-    action: "talk" | "use";
+    action: string;
   } | null>(null);
   const [dialog, setDialog] = createSignal<DialogState | null>(null);
   /** The item the local player holds, as a place script last set it. */
@@ -600,6 +600,13 @@ export const createVoxelscape = ({
   let lastAimId: string | null = null;
 
   const input = createInput();
+  // A key edge on a key a place script has bound becomes an `input` fact; the
+  // set of bound keys is refreshed each frame from whatever the script bound.
+  const stopBoundKeys = input.onBoundKey((key, phase) => {
+    void scriptConsoleFor()
+      .then((console) => console.input(key, phase))
+      .catch(() => {});
+  });
   const environment = createEnvironment({
     getGroundHeightAt: (x, z) => world.getHeightAt(x, z),
   });
@@ -777,6 +784,8 @@ export const createVoxelscape = ({
       y: npc.y ?? world.getHeightAt(npc.x, npc.z),
       z: npc.z,
       yaw: npc.yaw ?? 0,
+      tags: [],
+      attributes: {},
     }));
   const plannedProps = (): ScriptedProp[] =>
     levelPlan().props.map((prop) => ({
@@ -790,6 +799,8 @@ export const createVoxelscape = ({
       height: prop.height ?? 2,
       solid: prop.solid ?? false,
       hazard: prop.hazard ?? false,
+      tags: [],
+      attributes: {},
       ...(prop.conveyor !== undefined ? { conveyor: prop.conveyor } : {}),
     }));
   // The endings this place's game has already reached, kept in the page's own
@@ -804,18 +815,20 @@ export const createVoxelscape = ({
       const figures: RenderedFigure[] = [];
       for (const npc of [...plannedNpcs(), ...(scriptConsole?.npcs() ?? [])]) {
         const pose = scriptConsole?.npcPose(npc.id) ?? null;
-        figures.push(
-          pose === null
-            ? npc
-            : {
-                id: npc.id,
-                x: npc.x + pose.dx,
-                y: npc.y + pose.dy,
-                z: npc.z + pose.dz,
-                yaw: npc.yaw + pose.yaw,
-                spin: { axis: pose.spinAxis, angle: pose.spinAngle },
-              },
-        );
+        const animation = scriptConsole?.animationFor(npc.id);
+        figures.push({
+          id: npc.id,
+          x: npc.x + (pose?.dx ?? 0),
+          y: npc.y + (pose?.dy ?? 0),
+          z: npc.z + (pose?.dz ?? 0),
+          yaw: npc.yaw + (pose?.yaw ?? 0),
+          ...(pose === null
+            ? {}
+            : { spin: { axis: pose.spinAxis, angle: pose.spinAngle } }),
+          ...(animation === null || animation === undefined
+            ? {}
+            : { animation }),
+        });
       }
       return figures;
     },
@@ -836,6 +849,7 @@ export const createVoxelscape = ({
           ? "npc-rook.zip"
           : "zombie.zip";
     },
+    getNow: () => multiplayer.getNow(),
   });
   // Props are any other object a script stands in the world — a fridge, a
   // vending machine — drawn from the rm-stacker model it names, exactly as the
@@ -849,19 +863,21 @@ export const createVoxelscape = ({
         ...(scriptConsole?.props() ?? []),
       ]) {
         const pose = scriptConsole?.propPose(prop.id) ?? null;
-        figures.push(
-          pose === null
-            ? prop
-            : {
-                id: prop.id,
-                x: prop.x + pose.dx,
-                y: prop.y + pose.dy,
-                z: prop.z + pose.dz,
-                yaw: prop.yaw + pose.yaw,
-                height: prop.height,
-                spin: { axis: pose.spinAxis, angle: pose.spinAngle },
-              },
-        );
+        const animation = scriptConsole?.animationFor(prop.id);
+        figures.push({
+          id: prop.id,
+          x: prop.x + (pose?.dx ?? 0),
+          y: prop.y + (pose?.dy ?? 0),
+          z: prop.z + (pose?.dz ?? 0),
+          yaw: prop.yaw + (pose?.yaw ?? 0),
+          height: prop.height,
+          ...(pose === null
+            ? {}
+            : { spin: { axis: pose.spinAxis, angle: pose.spinAngle } }),
+          ...(animation === null || animation === undefined
+            ? {}
+            : { animation }),
+        });
       }
       return figures;
     },
@@ -869,6 +885,7 @@ export const createVoxelscape = ({
       scriptConsole?.prop(id)?.model ??
       plannedProps().find((planned) => planned.id === id)?.model ??
       "",
+    getNow: () => multiplayer.getNow(),
   });
   // A scripted fire is its own particle flame, drawn from the same billboard
   // shader the bomb-bloom demo uses, with its ember kindled into the floor.
@@ -1364,6 +1381,7 @@ export const createVoxelscape = ({
         lookX: camera.position.x + dir.x,
         lookY: camera.position.y + dir.y,
         lookZ: camera.position.z + dir.z,
+        fov: camera.fov,
       };
       setCutscene(true);
     }
@@ -1375,10 +1393,26 @@ export const createVoxelscape = ({
       scriptConsole?.getNow() ?? Date.now(),
       cutsceneFrom,
     );
-    camera.position.set(pose.x, pose.y, pose.z);
+    // The shake is a voice-tier wobble about the eye, read off the shared clock
+    // so it reads the same wherever the shot is watched.
+    const seconds = (scriptConsole?.getNow() ?? Date.now()) / 1000;
+    const shake = pose.shake ?? 0;
+    camera.position.set(
+      pose.x + Math.sin(seconds * 37) * shake,
+      pose.y + Math.sin(seconds * 53 + 1) * shake * 0.6,
+      pose.z + Math.cos(seconds * 41) * shake,
+    );
     camera.lookAt(pose.lookX, pose.lookY, pose.lookZ);
+    if (pose.fov !== undefined) {
+      camera.fov = pose.fov;
+      camera.updateProjectionMatrix();
+    }
     if (pose.done) {
       scriptConsole?.clearCutscene("");
+      if (cutsceneFrom.fov !== undefined) {
+        camera.fov = cutsceneFrom.fov;
+        camera.updateProjectionMatrix();
+      }
       cutsceneStart = -1;
       cutsceneFrom = null;
       setCutscene(false);
@@ -1427,6 +1461,7 @@ export const createVoxelscape = ({
         getHeightAt: (x, z) => world.getHeightAt(x, z),
         getSolidAt: (x, y, z) => world.getSolidAt(x, y, z),
         getWaterAt: (x, y, z) => world.getInWaterAt(x, y, z),
+        getBlockAt: (x, y, z) => world.getBlockAt(x, y, z),
         // The local avatar plus whoever the mesh has a live link to.
         getPlayers: () => [
           {
@@ -1434,6 +1469,9 @@ export const createVoxelscape = ({
             x: avatar.player.position.x,
             y: avatar.player.position.y,
             z: avatar.player.position.z,
+            yaw: avatar.player.yaw,
+            health: health.hp,
+            maxHealth: health.maxHp,
           },
           ...multiplayer.peerPositions(),
         ],
@@ -1517,6 +1555,29 @@ export const createVoxelscape = ({
             multiplayer.broadcastPlayerDamage({ target: player, amount });
           }
         },
+        onPlayerHeal: (player, amount) => {
+          if (player === "" || player === (atproto.did ?? "")) {
+            health.heal(amount);
+          }
+        },
+        onPlayerMaxHealth: (player, maxHealth) => {
+          if (player === "" || player === (atproto.did ?? "")) {
+            health.setMax(maxHealth);
+          }
+        },
+        onPlayerPush: (player, vx, vy, vz) => {
+          if (player !== "" && player !== (atproto.did ?? "")) {
+            return;
+          }
+          avatar.player.vx += vx;
+          avatar.player.vz += vz;
+          if (vy > 0) {
+            avatar.player.vy = Math.max(avatar.player.vy, vy);
+            avatar.player.onGround = false;
+          } else {
+            avatar.player.vy += vy;
+          }
+        },
         onEntityMove: (state) => {
           multiplayer.broadcastScriptEntities([state]);
         },
@@ -1554,13 +1615,22 @@ export const createVoxelscape = ({
         onFire: (fire) => {
           fireEmbers.seed(fire);
         },
-        onSound: (player, name) => {
+        onSound: (player, name, playback) => {
           // A sound aimed at one named player means that peer alone; empty
           // means every local peer plays its own copy of the same effect.
           if (player !== "") {
             return;
           }
-          environment.sound.playSfx(name);
+          environment.sound.playSfx(name, playback);
+        },
+        onSoundStop: (player, id) => {
+          if (player !== "") {
+            return;
+          }
+          environment.sound.stopSfx(id);
+        },
+        onBlockEdit: (edit) => {
+          editing.fill(edit.min, edit.max, edit.id);
         },
         getEndings: () => endingLog?.seen() ?? [],
       });
@@ -1608,10 +1678,13 @@ export const createVoxelscape = ({
       .catch(() => {});
   };
   /** The player uses the entity `id` names, whatever they are holding, over the script host. */
-  const npcUse = (id: string): void => {
+  const npcUse = (
+    id: string,
+    button: "primary" | "secondary" | "use" = "use",
+  ): void => {
     const held = scriptConsole?.heldItem()?.id ?? "";
     void scriptConsoleFor()
-      .then((console) => console.use(id, held))
+      .then((console) => console.use(id, held, button))
       .catch(() => {});
   };
   /** The player uses the item `id` names on its own, over the script host. */
@@ -2336,6 +2409,7 @@ export const createVoxelscape = ({
         hand.show(null, null);
       } else {
         probe.begin(Phase.player);
+        input.setBoundKeys(scriptConsole?.bindingKeys() ?? []);
         const snapshot = input.consume();
         const locked = scriptConsole?.controlsLocked("") ?? false;
         refreshPropBoxes();
@@ -2407,19 +2481,32 @@ export const createVoxelscape = ({
           // always is — so the hint has to track the held item too, not just
           // which figure the crosshair is over.
           const holding = scriptConsole?.heldItem() !== null;
-          const aimKey = aimed === null ? null : `${aimed.id}:${holding}`;
+          const prompt =
+            aimed === null
+              ? null
+              : (scriptConsole?.promptFor(aimed.id) ?? null);
+          const aimKey =
+            aimed === null
+              ? null
+              : `${aimed.id}:${holding}:${prompt?.verb ?? ""}`;
           if (aimKey !== lastAimId) {
             lastAimId = aimKey;
             setNpcAim(
               aimed === null
                 ? null
-                : aimedNpc !== null && !holding
-                  ? { id: aimed.id, name: aimedNpc.name, action: "talk" }
-                  : {
+                : prompt !== null
+                  ? {
                       id: aimed.id,
                       name: aimedNpc?.name ?? aimedProp?.name ?? aimed.id,
-                      action: "use",
-                    },
+                      action: prompt.verb,
+                    }
+                  : aimedNpc !== null && !holding
+                    ? { id: aimed.id, name: aimedNpc.name, action: "talk" }
+                    : {
+                        id: aimed.id,
+                        name: aimedNpc?.name ?? aimedProp?.name ?? aimed.id,
+                        action: "use",
+                      },
             );
           }
           // The camera has not caught up yet, so this picks from last frame's eye
@@ -2444,7 +2531,7 @@ export const createVoxelscape = ({
             if (aimedNpc !== null && !holding) {
               npcTalk(aimed.id);
             } else {
-              npcUse(aimed.id);
+              npcUse(aimed.id, snapshot.use ? "use" : "primary");
             }
           } else if (
             // Over empty air, or with a conversation already open, the use
@@ -2850,6 +2937,7 @@ export const createVoxelscape = ({
       hand.dispose();
       editorControl.dispose();
       editorNoClipControl.dispose();
+      stopBoundKeys();
       input.dispose();
     },
   };

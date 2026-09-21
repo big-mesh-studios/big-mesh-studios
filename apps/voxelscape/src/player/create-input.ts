@@ -80,6 +80,9 @@ export interface InputSnapshot {
   wheel: -1 | 0 | 1;
 }
 
+/** One listener for a place script's bound keys. */
+type BoundKeyListener = (key: string, phase: "down" | "up") => void;
+
 interface InputState {
   keyMoveX: number;
   keyMoveY: number;
@@ -142,6 +145,14 @@ export interface InputController {
   setTouchSecondary(held: boolean): void;
   /** Accumulate drag-to-look deltas (client pixels). */
   addLookDelta(dx: number, dy: number): void;
+  /**
+   * Replaces the key codes a place script listens on. A bound key is reported
+   * in addition to whatever the world's own controls do with it, so a script
+   * choosing a movement key sees both.
+   */
+  setBoundKeys(keys: string[]): void;
+  /** Registers a listener for each bound key's down and up edges; returns a function that removes it. */
+  onBoundKey(listener: BoundKeyListener): () => void;
   canvasHandlers: {
     /**
      * Everything a press on the world canvas can mean, for the canvas this is
@@ -227,6 +238,8 @@ export const createInput = (): InputController => {
     wheelLastEventAt: -Infinity,
     wheelPendingTimer: undefined,
   };
+  const boundKeys = new Set<string>();
+  const boundListeners = new Set<BoundKeyListener>();
   let controller: AbortController | null = null;
   /** False while another UI (the level editor) owns the canvas and keyboard. */
   let enabled = true;
@@ -346,6 +359,11 @@ export const createInput = (): InputController => {
         if (!enabled || isEditableTarget(e)) {
           return;
         }
+        if (boundKeys.has(e.code) && !e.repeat) {
+          for (const listener of boundListeners) {
+            listener(e.code, "down");
+          }
+        }
         if (e.code === "Space") {
           e.preventDefault();
           state.jumpQueued = true;
@@ -382,6 +400,11 @@ export const createInput = (): InputController => {
         if (!enabled || isEditableTarget(e)) {
           return;
         }
+        if (boundKeys.has(e.code)) {
+          for (const listener of boundListeners) {
+            listener(e.code, "up");
+          }
+        }
         if (e.code === "Space") {
           state.jumpHeld = false;
           return;
@@ -410,6 +433,20 @@ export const createInput = (): InputController => {
     install,
     addLookDelta,
     canvasHandlers,
+
+    setBoundKeys(keys) {
+      boundKeys.clear();
+      for (const key of keys) {
+        boundKeys.add(key);
+      }
+    },
+
+    onBoundKey(listener) {
+      boundListeners.add(listener);
+      return () => {
+        boundListeners.delete(listener);
+      };
+    },
 
     setEnabled(value: boolean) {
       enabled = value;

@@ -103,6 +103,24 @@ describe("PlayerHealth", () => {
     expect(h.hp).toBe(FULL_HP);
     expect(h.fallProgress).toBe(0);
   });
+
+  it("raises the maximum and fills the new hearts on respawn", () => {
+    const h = new PlayerHealth();
+    h.setMax(10 * HEART_HP);
+    expect(h.maxHp).toBe(10 * HEART_HP);
+    expect(h.hp).toBe(FULL_HP);
+    h.respawn();
+    expect(h.hp).toBe(10 * HEART_HP);
+  });
+
+  it("lowers the maximum, bringing current health down to it, and never below a heart", () => {
+    const h = new PlayerHealth();
+    h.setMax(HEART_HP);
+    expect(h.maxHp).toBe(HEART_HP);
+    expect(h.hp).toBe(HEART_HP);
+    h.setMax(0);
+    expect(h.maxHp).toBe(HEART_HP);
+  });
 });
 
 describe("heartStates", () => {

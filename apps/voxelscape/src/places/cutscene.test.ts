@@ -57,6 +57,30 @@ describe("cutscene poses", () => {
     expect(cutscenePoseAt(state, 250, FROM).x).toBeCloseTo(10 * 0.15625);
   });
 
+  it("moves the field of view toward the shot's, and carries a shake", () => {
+    const state: CutsceneState = {
+      startMs: 0,
+      shots: [{ at: [0, 0, 0], durationMs: 1_000, fov: 30, shake: 2 }],
+    };
+    const start = cutscenePoseAt(state, 0, { ...FROM, fov: 50 });
+    expect(start.fov).toBeCloseTo(50);
+    expect(start.shake).toBe(2);
+    expect(cutscenePoseAt(state, 500, { ...FROM, fov: 50 }).fov).toBeCloseTo(
+      40,
+    );
+    expect(cutscenePoseAt(state, 1_000, { ...FROM, fov: 50 }).fov).toBeCloseTo(
+      30,
+    );
+  });
+
+  it("keeps the starting field of view when a shot names none", () => {
+    const state: CutsceneState = {
+      startMs: 0,
+      shots: [{ at: [0, 0, 0], durationMs: 100 }],
+    };
+    expect(cutscenePoseAt(state, 50, { ...FROM, fov: 60 }).fov).toBe(60);
+  });
+
   it("snaps a shot that asks for no move time", () => {
     const state: CutsceneState = {
       startMs: 0,

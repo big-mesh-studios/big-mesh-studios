@@ -406,4 +406,19 @@ export class FigureCopy {
       mesh.material = materials[index];
     });
   }
+
+  /**
+   * Stands every part where `placement` puts it, for a caller animating the
+   * copy: the placements come from a figure posed at a frame, so re-standing a
+   * copy each frame is what plays a motion on it. A placement with no part
+   * beside it leaves that part where it stands.
+   */
+  stand(placement: FigurePlacement): void {
+    this.meshes.forEach((mesh, index) => {
+      const part = placement.placements[index];
+      if (part !== undefined) {
+        standAs(mesh, part);
+      }
+    });
+  }
 }

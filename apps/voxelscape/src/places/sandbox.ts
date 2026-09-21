@@ -86,6 +86,56 @@ export interface LivePlayer {
   readonly x: number;
   readonly y: number;
   readonly z: number;
+  /** Heading in radians; absent where the world does not report one. */
+  readonly yaw?: number;
+  /** Hit points the player has left; absent where the world does not report them. */
+  readonly health?: number;
+  /** The most hit points the player can hold; absent where the world does not report it. */
+  readonly maxHealth?: number;
+  /** The team the player is on, or "" for none; absent where the world has no teams. */
+  readonly team?: string;
+}
+
+/** A value a script may hang on an entity under a name. */
+export type AttributeValue = string | number | boolean;
+
+/** One player's score on a leaderboard, keyed by the player string a script's own values use. */
+export interface LeaderboardEntry {
+  readonly player: string;
+  readonly value: number;
+}
+
+/** One scripted figure as a script's own queries see it. */
+export interface EntitySnapshot {
+  readonly id: string;
+  readonly kind: "npc" | "prop";
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly yaw: number;
+  /** The place model file the figure wears, or "" for the world's own pick. */
+  readonly model: string;
+  readonly name: string;
+  readonly tags: readonly string[];
+  readonly attributes: Readonly<Record<string, AttributeValue>>;
+}
+
+/** Where a ray first met the world, and what it met. */
+export interface RaycastHit {
+  /** What the ray hit first: terrain, a scripted figure, or a player. */
+  readonly kind: "block" | "npc" | "prop" | "player";
+  /** The point of first contact, in world units. */
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  /** The face normal at the contact, in world axes. */
+  readonly nx: number;
+  readonly ny: number;
+  readonly nz: number;
+  /** How far along the ray the contact lies, in world units. */
+  readonly distance: number;
+  /** The entity or player id, or "" when the contact is terrain. */
+  readonly id: string;
 }
 
 /**
@@ -112,6 +162,49 @@ export interface WorldQuery {
   getWaterAt(x: number, y: number, z: number): boolean;
   /** Every player's live position: the local player first, then connected peers. */
   getPlayers(): LivePlayer[];
+  /** The block id at (`x`, `y`, `z`), or 0 for air. */
+  getBlockAt(x: number, y: number, z: number): number;
+  /** The scripted figure `id` names, or null when there is none. */
+  getEntity(id: string): EntitySnapshot | null;
+  /** Every scripted figure in the box `min` to `max`, inclusive, each corner's components smallest first, in id order. */
+  getEntitiesInBox(
+    min: readonly [number, number, number],
+    max: readonly [number, number, number],
+  ): EntitySnapshot[];
+  /** Every scripted figure within `radius` of (`x`, `y`, `z`), in id order. */
+  getEntitiesInSphere(
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+  ): EntitySnapshot[];
+  /** Every scripted figure carrying `tag`, in id order. */
+  getEntitiesWithTag(tag: string): EntitySnapshot[];
+  /** The player `did` names, or null when they are not in the place. */
+  getPlayer(did: string): LivePlayer | null;
+  /** Every player in the box `min` to `max`, inclusive, in the order `getPlayers` gives. */
+  getPlayersInBox(
+    min: readonly [number, number, number],
+    max: readonly [number, number, number],
+  ): LivePlayer[];
+  /** The DID of the player on this peer, or "" when they are not signed in. */
+  getLocalPlayer(): string;
+  /** The value the script set for `did` under `key`, or null when there is none. */
+  getPlayerValue(did: string, key: string): number | null;
+  /** The players ranked by `key`, highest first, ties by player string, at most `count` of them. */
+  getLeaderboard(key: string, count: number): LeaderboardEntry[];
+  /** Where a ray from `origin` along `direction` first meets the world, or null within `maxDistance` world units. */
+  raycast(
+    origin: readonly [number, number, number],
+    direction: readonly [number, number, number],
+    maxDistance: number,
+  ): RaycastHit | null;
+  /** The walkable route from `from` to `to`, as world-unit waypoints, or null when none exists within the bounds. */
+  findPath(
+    from: readonly [number, number, number],
+    to: readonly [number, number, number],
+    options?: { maxNodes?: number; maxCells?: number },
+  ): Array<[number, number, number]> | null;
 }
 
 /** `T` with only `K` required; every other property stays optional. */

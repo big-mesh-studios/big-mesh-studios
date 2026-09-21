@@ -6,8 +6,11 @@
 import {
   ScriptHost,
   type DialogState,
+  type FigureAnimation,
   type ScriptedExplosion,
   type ScriptedFire,
+  type ScriptPrompt,
+  type SoundPlayback,
 } from "./script-host";
 import type { ScriptEvent } from "./events";
 import { SAMPLE_PLACE_SCRIPT } from "./sample";
@@ -57,6 +60,12 @@ export interface ScriptConsoleParams extends RequireOnly<
   /** Called when the script takes hit points off a player, naming the
    * entity that dealt it when the script said whose swing it was. */
   onPlayerDamage?: (player: string, amount: number, source?: string) => void;
+  /** Called when the script restores hit points to a player. */
+  onPlayerHeal?: (player: string, amount: number) => void;
+  /** Called when the script sets how many hit points a player may hold. */
+  onPlayerMaxHealth?: (player: string, maxHealth: number) => void;
+  /** Called when the script adds velocity to a player, for knockback or a jump pad. */
+  onPlayerPush?: (player: string, vx: number, vy: number, vz: number) => void;
   /**
    * Called when the script's current owner of a live-tracked NPC reports its
    * new position, to broadcast to other peers.
@@ -88,7 +97,15 @@ export interface ScriptConsoleParams extends RequireOnly<
   /** Called when the script asks for a sound effect, by one of the world's
    * fixed sound names. Empty `player` means every local peer plays its own
    * copy; a targeted name is meant for that one player alone. */
-  onSound?: (player: string, name: string) => void;
+  onSound?: (player: string, name: string, playback: SoundPlayback) => void;
+  /** Called when the script stops a sound it named, by that id. */
+  onSoundStop?: (player: string, id: string) => void;
+  /** Called when the script fills or clears a box of voxels, in LOD-0 voxel coordinates. */
+  onBlockEdit?: (edit: {
+    min: [number, number, number];
+    max: [number, number, number];
+    id: number;
+  }) => void;
 }
 
 /** The option a console prints for a dialog, numbered for `/script:choose`. */
@@ -100,6 +117,7 @@ export class ScriptConsole {
   private readonly getHeightAt: (x: number, z: number) => number;
   private readonly getSolidAt?: (x: number, y: number, z: number) => boolean;
   private readonly getWaterAt?: (x: number, y: number, z: number) => boolean;
+  private readonly getBlockAt?: (x: number, y: number, z: number) => number;
   private readonly getPlayers?: () => Array<{
     did: string;
     x: number;
@@ -140,6 +158,17 @@ export class ScriptConsole {
     amount: number,
     source?: string,
   ) => void;
+  private readonly onPlayerHeal: (player: string, amount: number) => void;
+  private readonly onPlayerMaxHealth: (
+    player: string,
+    maxHealth: number,
+  ) => void;
+  private readonly onPlayerPush: (
+    player: string,
+    vx: number,
+    vy: number,
+    vz: number,
+  ) => void;
   private readonly onEntityMove: (state: {
     id: string;
     x: number;
@@ -157,7 +186,17 @@ export class ScriptConsole {
   private readonly onVoid: (y: number) => void;
   private readonly onFire: (fire: ScriptedFire) => void;
   private readonly onExplosion: (explosion: ScriptedExplosion) => void;
-  private readonly onSound: (player: string, name: string) => void;
+  private readonly onSound: (
+    player: string,
+    name: string,
+    playback: SoundPlayback,
+  ) => void;
+  private readonly onSoundStop: (player: string, id: string) => void;
+  private readonly onBlockEdit: (edit: {
+    min: [number, number, number];
+    max: [number, number, number];
+    id: number;
+  }) => void;
   private readonly getEndings: () => string[];
   private readonly _getNow: () => number;
   private host: ScriptHost | null = null;
@@ -173,6 +212,7 @@ export class ScriptConsole {
     this.getHeightAt = params.getHeightAt;
     this.getSolidAt = params.getSolidAt;
     this.getWaterAt = params.getWaterAt;
+    this.getBlockAt = params.getBlockAt;
     this.getPlayers = params.getPlayers;
     this.report = params.report ?? (() => {});
     this.onDialog = params.onDialog ?? (() => {});
@@ -185,6 +225,9 @@ export class ScriptConsole {
     this.onPlayerSpeed = params.onPlayerSpeed ?? (() => {});
     this.onPlayerJump = params.onPlayerJump ?? (() => {});
     this.onPlayerDamage = params.onPlayerDamage ?? (() => {});
+    this.onPlayerHeal = params.onPlayerHeal ?? (() => {});
+    this.onPlayerMaxHealth = params.onPlayerMaxHealth ?? (() => {});
+    this.onPlayerPush = params.onPlayerPush ?? (() => {});
     this.onEntityMove = params.onEntityMove ?? (() => {});
     this.onEvent = params.onEvent ?? (() => {});
     this.onCheckpoint = params.onCheckpoint ?? (() => {});
@@ -194,6 +237,8 @@ export class ScriptConsole {
     this.onFire = params.onFire ?? (() => {});
     this.onExplosion = params.onExplosion ?? (() => {});
     this.onSound = params.onSound ?? (() => {});
+    this.onSoundStop = params.onSoundStop ?? (() => {});
+    this.onBlockEdit = params.onBlockEdit ?? (() => {});
     this.getEndings = params.getEndings ?? (() => []);
     this._getNow = params.getNow ?? (() => Date.now());
   }
@@ -309,10 +354,35 @@ export class ScriptConsole {
 
   /**
    * The local player uses the prop with `id` — a tap or click on it — with
-   * `item` the id of whatever they are holding, or "" for bare hands.
+   * `item` the id of whatever they are holding, or "" for bare hands, and
+   * `button` whichever control fired.
    */
-  async use(id: string, item = ""): Promise<void> {
-    await this.host?.use(id, "", item);
+  async use(
+    id: string,
+    item = "",
+    button: "primary" | "secondary" | "use" = "use",
+  ): Promise<void> {
+    await this.host?.use(id, "", item, button);
+  }
+
+  /** The key codes the loaded script listens on, so the input layer can report them. */
+  bindingKeys(): string[] {
+    return this.host?.bindingKeys ?? [];
+  }
+
+  /** Reports a bound key's edge to the loaded script, authoring an `input` fact. */
+  async input(key: string, phase: "down" | "up"): Promise<void> {
+    await this.host?.input(key, phase, "");
+  }
+
+  /** The prompt standing on the figure `id`, or null when there is none. */
+  promptFor(id: string): ScriptPrompt | null {
+    return this.host?.promptFor(id) ?? null;
+  }
+
+  /** The motion the figure `id` is playing, or null when it plays none. */
+  animationFor(id: string): FigureAnimation | null {
+    return this.host?.animationFor(id) ?? null;
   }
 
   /**
@@ -518,6 +588,7 @@ export class ScriptConsole {
       getHeightAt: this.getHeightAt,
       getSolidAt: this.getSolidAt,
       getWaterAt: this.getWaterAt,
+      getBlockAt: this.getBlockAt,
       getPlayers: this.getPlayers,
       onToast: (player, text) => {
         if (player === "") {
@@ -538,6 +609,11 @@ export class ScriptConsole {
         this.onPlayerJump(player, multiplier),
       onPlayerDamage: (player, amount, source) =>
         this.onPlayerDamage(player, amount, source),
+      onPlayerHeal: (player, amount) => this.onPlayerHeal(player, amount),
+      onPlayerMaxHealth: (player, maxHealth) =>
+        this.onPlayerMaxHealth(player, maxHealth),
+      onPlayerPush: (player, vx, vy, vz) =>
+        this.onPlayerPush(player, vx, vy, vz),
       onEntityMove: (state) => this.onEntityMove(state),
       onEvent: (event) => this.onEvent(event),
       onCheckpoint: (player, at) => this.onCheckpoint(player, at),
@@ -546,7 +622,9 @@ export class ScriptConsole {
       onVoid: (y) => this.onVoid(y),
       onFire: (fire) => this.onFire(fire),
       onExplosion: (explosion) => this.onExplosion(explosion),
-      onSound: (player, name) => this.onSound(player, name),
+      onSound: (player, name, playback) => this.onSound(player, name, playback),
+      onSoundStop: (player, id) => this.onSoundStop(player, id),
+      onBlockEdit: (edit) => this.onBlockEdit(edit),
       getEndings: () => this.getEndings(),
     });
     return this.host;

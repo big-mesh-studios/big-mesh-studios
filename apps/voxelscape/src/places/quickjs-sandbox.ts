@@ -44,9 +44,13 @@ import {
 } from "./sandbox";
 
 /** The world-query surface this sandbox needs — every one of `WorldQuery`'s
- * six functions but the shared clock is optional, since a bare interpreter
- * (a test, or a script that never asks the world anything) can go without. */
-type SandboxWorldQuery = RequireOnly<WorldQuery, "getNow">;
+ * functions but the shared clock is optional, since a bare interpreter
+ * (a test, or a script that never asks the world anything) can go without —
+ * plus the local player's held item, which the inventory owns rather than the
+ * world. */
+type SandboxWorldQuery = RequireOnly<WorldQuery, "getNow"> & {
+  getHeldItem?: () => string;
+};
 
 /** One interpreter instance, owning one script and one run of its step budget. */
 class QuickJSSandbox implements ScriptSandbox {
@@ -265,6 +269,145 @@ class QuickJSSandbox implements ScriptSandbox {
         ? context.true
         : context.false,
     );
+    bind("getBlockAt", (x, y, z) =>
+      context.newNumber(
+        time.getBlockAt?.(
+          context.getNumber(x),
+          context.getNumber(y),
+          context.getNumber(z),
+        ) ?? 0,
+      ),
+    );
+    bind("getEntity", (id) =>
+      context.newString(
+        JSON.stringify(time.getEntity?.(context.getString(id)) ?? null),
+      ),
+    );
+    bind("getEntitiesInBox", (ax, ay, az, bx, by, bz) =>
+      context.newString(
+        JSON.stringify(
+          time.getEntitiesInBox?.(
+            [
+              context.getNumber(ax),
+              context.getNumber(ay),
+              context.getNumber(az),
+            ],
+            [
+              context.getNumber(bx),
+              context.getNumber(by),
+              context.getNumber(bz),
+            ],
+          ) ?? [],
+        ),
+      ),
+    );
+    bind("getEntitiesInSphere", (x, y, z, radius) =>
+      context.newString(
+        JSON.stringify(
+          time.getEntitiesInSphere?.(
+            context.getNumber(x),
+            context.getNumber(y),
+            context.getNumber(z),
+            context.getNumber(radius),
+          ) ?? [],
+        ),
+      ),
+    );
+    bind("getEntitiesWithTag", (tag) =>
+      context.newString(
+        JSON.stringify(time.getEntitiesWithTag?.(context.getString(tag)) ?? []),
+      ),
+    );
+    bind("getPlayer", (did) =>
+      context.newString(
+        JSON.stringify(time.getPlayer?.(context.getString(did)) ?? null),
+      ),
+    );
+    bind("getPlayersInBox", (ax, ay, az, bx, by, bz) =>
+      context.newString(
+        JSON.stringify(
+          time.getPlayersInBox?.(
+            [
+              context.getNumber(ax),
+              context.getNumber(ay),
+              context.getNumber(az),
+            ],
+            [
+              context.getNumber(bx),
+              context.getNumber(by),
+              context.getNumber(bz),
+            ],
+          ) ?? [],
+        ),
+      ),
+    );
+    bind("getLocalPlayer", () =>
+      context.newString(time.getLocalPlayer?.() ?? ""),
+    );
+    bind("getPlayerValue", (did, key) =>
+      context.newString(
+        JSON.stringify(
+          time.getPlayerValue?.(
+            context.getString(did),
+            context.getString(key),
+          ) ?? null,
+        ),
+      ),
+    );
+    bind("getLeaderboard", (key, count) =>
+      context.newString(
+        JSON.stringify(
+          time.getLeaderboard?.(
+            context.getString(key),
+            context.getNumber(count),
+          ) ?? [],
+        ),
+      ),
+    );
+    bind("raycast", (ox, oy, oz, dx, dy, dz, maxDistance) =>
+      context.newString(
+        JSON.stringify(
+          time.raycast?.(
+            [
+              context.getNumber(ox),
+              context.getNumber(oy),
+              context.getNumber(oz),
+            ],
+            [
+              context.getNumber(dx),
+              context.getNumber(dy),
+              context.getNumber(dz),
+            ],
+            context.getNumber(maxDistance),
+          ) ?? null,
+        ),
+      ),
+    );
+    bind("findPath", (fx, fy, fz, tx, ty, tz, maxNodes, maxCells) => {
+      const nodes = context.getNumber(maxNodes);
+      const cells = context.getNumber(maxCells);
+      return context.newString(
+        JSON.stringify(
+          time.findPath?.(
+            [
+              context.getNumber(fx),
+              context.getNumber(fy),
+              context.getNumber(fz),
+            ],
+            [
+              context.getNumber(tx),
+              context.getNumber(ty),
+              context.getNumber(tz),
+            ],
+            {
+              ...(nodes > 0 ? { maxNodes: nodes } : {}),
+              ...(cells > 0 ? { maxCells: cells } : {}),
+            },
+          ) ?? null,
+        ),
+      );
+    });
+    bind("getHeldItem", () => context.newString(time.getHeldItem?.() ?? ""));
     bind("onTick", (fn) => {
       this.tickHandlers.push(fn.dup());
       return context.undefined;
@@ -458,15 +601,10 @@ export const createQuickJSSandbox = async (
 
   const random = mulberry32(params.seed | 0);
   return new QuickJSSandbox({
+    ...params,
     runtime,
     context,
-    getNow: params.getNow,
     random,
     timeLimitMs: params.timeLimitMs ?? 250,
-    getEndings: params.getEndings,
-    getHeightAt: params.getHeightAt,
-    getSolidAt: params.getSolidAt,
-    getWaterAt: params.getWaterAt,
-    getPlayers: params.getPlayers,
   });
 };

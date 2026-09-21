@@ -6,7 +6,7 @@
 // that is not a well-formed effect here is dropped, never applied.
 import type { CameraShot } from "./cutscene";
 import type { MotionSpec } from "./motion";
-import type { ScriptEffect } from "./sandbox";
+import type { AttributeValue, ScriptEffect } from "./sandbox";
 
 /** Every effect tag a place script may dispatch. */
 export type EffectTag =
@@ -15,6 +15,7 @@ export type EffectTag =
   | "npc-die"
   | "prop"
   | "prop-remove"
+  | "entity-set"
   | "fire"
   | "field"
   | "field-remove"
@@ -28,6 +29,7 @@ export type EffectTag =
   | "item-hold"
   | "toast"
   | "sound"
+  | "sound-stop"
   | "dialog"
   | "dialog-close"
   | "narrate"
@@ -40,6 +42,13 @@ export type EffectTag =
   | "player-speed"
   | "player-jump"
   | "player-damage"
+  | "player-heal"
+  | "player-max-health"
+  | "team-define"
+  | "player-team"
+  | "player-value"
+  | "player-push"
+  | "report-hit"
   | "player-checkpoint"
   | "player-kill"
   | "player-respawn"
@@ -49,12 +58,28 @@ export type EffectTag =
   | "player-control"
   | "hud"
   | "hud-remove"
-  | "explosion";
+  | "explosion"
+  | "block-set"
+  | "block-fill"
+  | "block-clear"
+  | "bind"
+  | "prompt"
+  | "prompt-remove"
+  | "figure-animate"
+  | "figure-stop";
 
 /** The furthest an NPC or prop may stand from the origin, in world units. */
 export const MAX_NPC_COORD = 1_000_000;
 /** The longest an NPC or prop's name may be. */
 export const MAX_NPC_NAME = 40;
+/** The most tags one entity may carry. */
+export const MAX_TAGS = 32;
+/** The longest a tag or an attribute's name may be. */
+export const MAX_TAG_LENGTH = 40;
+/** The most attributes one entity may carry. */
+export const MAX_ATTRIBUTES = 32;
+/** The longest a string attribute value may be. */
+export const MAX_ATTRIBUTE_STRING = 256;
 /** The longest a prop's model file name may be. */
 export const MAX_PROP_MODEL = 128;
 /** The tallest a prop may be drawn, in world units. */
@@ -69,10 +94,15 @@ export const MAX_SPIN_RATE = 1_000;
 export const MAX_CUTSCENE_SHOTS = 64;
 /** The longest one camera move or hold may last, in milliseconds. */
 export const MAX_CAMERA_MS = 86_400_000;
+/** The narrowest and widest field of view a camera shot may ask for, in degrees. */
+export const MIN_CAMERA_FOV = 1;
+export const MAX_CAMERA_FOV = 179;
+/** The furthest a camera may shake, in world units. */
+export const MAX_CAMERA_SHAKE = 16;
 /** The longest one HUD readout's id or label may be. */
 export const MAX_HUD_LABEL = 64;
-/** The longest one HUD readout's text may be. */
-export const MAX_HUD_TEXT = 200;
+/** The longest one HUD readout's text may be; long enough for a ranked list. */
+export const MAX_HUD_TEXT = 1_000;
 /** The largest HUD value or maximum may read. */
 export const MAX_HUD_VALUE = 1_000_000_000;
 /** The longest a script item's id or name may be. */
@@ -121,6 +151,11 @@ export const MAX_OPTION_LENGTH = 80;
 export const MAX_TOAST_LENGTH = 300;
 /** The longest a sound effect's name may be. */
 export const MAX_SOUND_NAME = 32;
+/** The largest volume a sound may play at. */
+export const MAX_SOUND_VOLUME = 1;
+/** The slowest and fastest a sound may be pitched. */
+export const MIN_SOUND_PITCH = 0.25;
+export const MAX_SOUND_PITCH = 4;
 /** The longest an ending's title may be. */
 export const MAX_ENDING_TITLE = 80;
 /** The longest an ending's body may be. */
@@ -131,10 +166,36 @@ export const MAX_NARRATION = 500;
 export const MAX_TIMER_MS = 86_400_000;
 /** The largest multiplier a script may apply to a player's move speed or jump. */
 export const MAX_PLAYER_MULTIPLIER = 100;
-/** The most hit points one `player-damage` effect may take off. */
+/** The most hit points one `player-damage` or `player-heal` effect may move. */
 export const MAX_PLAYER_DAMAGE = 1_000;
+/** The most hit points a player may be given with `player-max-health`. */
+export const MAX_PLAYER_MAX_HEALTH = 100_000;
+/** The fastest a `player-push` may throw a player, per axis, in units per second. */
+export const MAX_PUSH_SPEED = 100;
+/** The most hit points one `report-hit` may carry. */
+export const MAX_REPORTED_HIT = 1_000;
+/** The longest a bound key code may be. */
+export const MAX_BIND_KEY = 32;
+/** The longest a prompt's verb may be. */
+export const MAX_PROMPT_VERB = 40;
+/** How close, in world units, a player must be for a prompt to trigger. */
+export const MAX_PROMPT_RANGE = 32;
+/** The longest a model motion's name may be. */
+export const MAX_ANIMATION_NAME = 64;
+/** The largest multiple a figure may play its animation at. */
+export const MAX_ANIMATION_SPEED = 100;
+/** The longest a team's id or name, or a player-value's key, may be. */
+export const MAX_TEAM_NAME = 64;
+/** The largest magnitude a player-value may hold. */
+export const MAX_PLAYER_VALUE = 1_000_000_000_000;
 /** The widest an explosion may read, in world units. */
 export const MAX_EXPLOSION_RADIUS = 64;
+/** The furthest a script may address a voxel from the origin, in LOD-0 grid units. */
+export const MAX_BLOCK_COORD = 1_000_000;
+/** Voxel ids are a byte, so 0..255 covers every id a block effect may name. */
+export const MAX_BLOCK_ID = 255;
+/** The most voxels one `block-fill` or `block-clear` may touch. */
+export const MAX_BLOCK_FILL = 32_768;
 /** The longest a model's `at://` address may be. */
 export const MAX_MODEL_URI = 256;
 /** The furthest a field's push may pull a player, per axis, in units per second. */
@@ -174,6 +235,10 @@ export type ParsedEffect =
         live?: boolean;
         /** A path and spin the NPC follows over the shared clock. */
         motion?: MotionSpec;
+        /** Names this entity answers to in a query, e.g. "enemy". */
+        tags?: string[];
+        /** Values a script hangs on this entity under a name. */
+        attributes?: Record<string, AttributeValue>;
       };
     }
   | { tag: "npc-remove"; payload: { id: string } }
@@ -212,9 +277,22 @@ export type ParsedEffect =
          * static treadmill, a rolling walkway — so the two may not both be set.
          */
         conveyor?: { vx: number; vz: number };
+        /** Names this entity answers to in a query, e.g. "enemy". */
+        tags?: string[];
+        /** Values a script hangs on this entity under a name. */
+        attributes?: Record<string, AttributeValue>;
       };
     }
   | { tag: "prop-remove"; payload: { id: string } }
+  | {
+      tag: "entity-set";
+      /** The tags and attributes to give the NPC or prop `id`, replacing what it carried. */
+      payload: {
+        id: string;
+        tags?: string[];
+        attributes?: Record<string, AttributeValue>;
+      };
+    }
   | {
       tag: "fire";
       payload: {
@@ -301,8 +379,17 @@ export type ParsedEffect =
          * sound the world already ships, never a file or URL of its own.
          */
         name: string;
+        /** Names the playing sound, so a later `sound-stop` can reach it. Required to loop. */
+        id?: string;
+        /** How loudly to play it, 0 to 1; defaults to 1. */
+        volume?: number;
+        /** How fast to play it, a fifth-speed to four-times; defaults to 1. */
+        pitch?: number;
+        /** Whether it repeats until stopped; defaults to false. */
+        loop?: boolean;
       };
     }
+  | { tag: "sound-stop"; payload: { player: string; id: string } }
   | {
       tag: "dialog";
       payload: {
@@ -393,6 +480,72 @@ export type ParsedEffect =
       };
     }
   | {
+      tag: "player-heal";
+      payload: {
+        player: string;
+        /** Hit points to restore, never past the player's maximum. */
+        amount: number;
+      };
+    }
+  | {
+      tag: "player-max-health";
+      payload: {
+        player: string;
+        /** The most hit points the player may hold from now on, at least one heart's worth. */
+        maxHealth: number;
+      };
+    }
+  | {
+      tag: "team-define";
+      payload: {
+        /** The team's id, matched by a `player-team`. */
+        id: string;
+        /** Shown to players; defaults to the id. */
+        name?: string;
+      };
+    }
+  | {
+      tag: "player-team";
+      payload: {
+        player: string;
+        /** The team id to put the player on, or "" to take them off any team. */
+        team: string;
+      };
+    }
+  | {
+      tag: "player-value";
+      payload: {
+        player: string;
+        /** Names the value, so a leaderboard can rank players by it. */
+        key: string;
+        value: number;
+      };
+    }
+  | {
+      tag: "player-push";
+      payload: {
+        player: string;
+        /** The velocity to add to the player, per axis, in units per second. */
+        vx: number;
+        vy: number;
+        vz: number;
+      };
+    }
+  | {
+      tag: "report-hit";
+      payload: {
+        /** The player whose swing or shot this is, so the fact names them. */
+        player: string;
+        /** The NPC the strike landed on. */
+        entityId: string;
+        /** Hit points the strike carried. */
+        amount: number;
+        /** Where the attacker stood when it landed, in world units. */
+        attackerX: number;
+        attackerZ: number;
+      };
+    }
+  | {
       tag: "player-checkpoint";
       payload: {
         player: string;
@@ -442,6 +595,10 @@ export type ParsedEffect =
         /** How long to hold after arriving, in milliseconds. */
         holdMs?: number;
         ease?: "linear" | "smooth";
+        /** The field of view to move to, in degrees; the current one is kept when absent. */
+        fov?: number;
+        /** How far the view shakes, in world units; absent for a still one. */
+        shake?: number;
       };
     }
   | {
@@ -482,7 +639,77 @@ export type ParsedEffect =
         /** How wide the blast reads, in world units; defaults to 4. */
         radius?: number;
       };
-    };
+    }
+  | {
+      tag: "block-set";
+      payload: {
+        /** The LOD-0 voxel to fill, in grid units. */
+        voxel: [number, number, number];
+        /** The voxel id to put there; 0 clears the voxel. */
+        id: number;
+      };
+    }
+  | {
+      tag: "block-fill";
+      payload: {
+        /** The box to fill, in LOD-0 grid units, inclusive on both corners. */
+        min: [number, number, number];
+        max: [number, number, number];
+        /** The voxel id to put through the box; 0 clears it. */
+        id: number;
+      };
+    }
+  | {
+      tag: "block-clear";
+      payload: {
+        /** The box to clear, in LOD-0 grid units, inclusive on both corners. */
+        min: [number, number, number];
+        max: [number, number, number];
+      };
+    }
+  | {
+      tag: "bind";
+      payload: {
+        /** Names the binding, so the `input` fact can be matched to it. */
+        id: string;
+        /** The key code to listen on, or "" to remove the binding. */
+        key: string;
+        /** Shown to players; defaults to the key. */
+        label?: string;
+      };
+    }
+  | {
+      tag: "prompt";
+      payload: {
+        /** Names the prompt, so the `prompt-triggered` fact can be matched to it. */
+        id: string;
+        /** The scripted figure the prompt stands on. */
+        entityId: string;
+        /** What the prompt invites the player to do, e.g. "Open". */
+        verb: string;
+        /** A key code shown as the shortcut beside the verb, or absent. */
+        key?: string;
+        /** How close the player must be, in world units; defaults to 5. */
+        range?: number;
+        /** Whether the prompt fires once and is then forgotten. */
+        once?: boolean;
+      };
+    }
+  | { tag: "prompt-remove"; payload: { id: string } }
+  | {
+      tag: "figure-animate";
+      payload: {
+        /** The scripted figure to play a motion on. */
+        id: string;
+        /** The model motion's name, as the model's own file names it. */
+        name: string;
+        /** How fast to play it; defaults to 1. */
+        speed?: number;
+        /** Whether it repeats; defaults to the motion's own loop. */
+        loop?: boolean;
+      };
+    }
+  | { tag: "figure-stop"; payload: { id: string } };
 
 const isShort = (v: unknown, max: number): boolean =>
   typeof v === "string" && v.length >= 1 && v.length <= max;
@@ -496,8 +723,69 @@ const isCoord = (v: unknown): boolean =>
 const isVector = (v: unknown): v is [number, number, number] =>
   Array.isArray(v) && v.length === 3 && v.every(isCoord);
 
+/** Whether a value is one LOD-0 voxel coordinate this world can address. */
+const isVoxel = (v: unknown): v is [number, number, number] =>
+  Array.isArray(v) &&
+  v.length === 3 &&
+  v.every(
+    (n) =>
+      typeof n === "number" &&
+      Number.isInteger(n) &&
+      Math.abs(n) <= MAX_BLOCK_COORD,
+  );
+
+/** Whether a value is a voxel id a `Uint8Array` store can hold. */
+const isBlockId = (v: unknown): boolean =>
+  typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= MAX_BLOCK_ID;
+
+/** Whether a value is a voxel box this world can fill, its two corners ordered and its volume bounded. */
+const isBlockBox = (v: unknown): boolean => {
+  if (typeof v !== "object" || v === null) {
+    return false;
+  }
+  const p = v as Record<string, unknown>;
+  if (!isVoxel(p.min) || !isVoxel(p.max)) {
+    return false;
+  }
+  const min = p.min as [number, number, number];
+  const max = p.max as [number, number, number];
+  if (!(min[0] <= max[0] && min[1] <= max[1] && min[2] <= max[2])) {
+    return false;
+  }
+  return (
+    (max[0] - min[0] + 1) * (max[1] - min[1] + 1) * (max[2] - min[2] + 1) <=
+    MAX_BLOCK_FILL
+  );
+};
+
 const isNumberIn = (v: unknown, min: number, max: number): boolean =>
   typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
+
+/** Whether a value is a string, number, or boolean a script may hang on an entity. */
+const isAttributeValue = (v: unknown): v is AttributeValue =>
+  typeof v === "boolean" ||
+  (typeof v === "string" && v.length <= MAX_ATTRIBUTE_STRING) ||
+  (typeof v === "number" && Number.isFinite(v));
+
+/** Whether a value is a list of names an entity may carry. */
+const isTags = (v: unknown): v is string[] =>
+  Array.isArray(v) &&
+  v.length <= MAX_TAGS &&
+  v.every((tag) => isShort(tag, MAX_TAG_LENGTH));
+
+/** Whether a value is a table of named values an entity may carry. */
+const isAttributes = (v: unknown): v is Record<string, AttributeValue> => {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) {
+    return false;
+  }
+  const entries = Object.entries(v);
+  return (
+    entries.length <= MAX_ATTRIBUTES &&
+    entries.every(
+      ([key, value]) => isShort(key, MAX_TAG_LENGTH) && isAttributeValue(value),
+    )
+  );
+};
 
 /** Whether a value is a weapon spec this world can fire. */
 const isWeapon = (v: unknown): boolean => {
@@ -593,6 +881,15 @@ const isShot = (v: unknown): boolean => {
   if (s.ease !== undefined && s.ease !== "linear" && s.ease !== "smooth") {
     return false;
   }
+  if (
+    s.fov !== undefined &&
+    !isNumberIn(s.fov, MIN_CAMERA_FOV, MAX_CAMERA_FOV)
+  ) {
+    return false;
+  }
+  if (s.shake !== undefined && !isNumberIn(s.shake, 0, MAX_CAMERA_SHAKE)) {
+    return false;
+  }
   return true;
 };
 
@@ -683,11 +980,20 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
         (p.modelUri === undefined || isShort(p.modelUri, MAX_MODEL_URI)) &&
         (p.yaw === undefined || isCoord(p.yaw)) &&
         (p.live === undefined || typeof p.live === "boolean") &&
-        (p.motion === undefined || isMotion(p.motion))
+        (p.motion === undefined || isMotion(p.motion)) &&
+        (p.tags === undefined || isTags(p.tags)) &&
+        (p.attributes === undefined || isAttributes(p.attributes))
       );
     case "npc-remove":
     case "npc-die":
       return isShort(p.id, 64);
+    case "entity-set":
+      return (
+        isShort(p.id, 64) &&
+        (p.tags === undefined || isTags(p.tags)) &&
+        (p.attributes === undefined || isAttributes(p.attributes)) &&
+        (p.tags !== undefined || p.attributes !== undefined)
+      );
     case "prop":
       return (
         isShort(p.id, 64) &&
@@ -706,7 +1012,9 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
         (p.hazard === undefined || typeof p.hazard === "boolean") &&
         (p.motion === undefined || isMotion(p.motion)) &&
         (p.conveyor === undefined ||
-          (p.motion === undefined && isConveyor(p.conveyor)))
+          (p.motion === undefined && isConveyor(p.conveyor))) &&
+        (p.tags === undefined || isTags(p.tags)) &&
+        (p.attributes === undefined || isAttributes(p.attributes))
       );
     case "prop-remove":
       return isShort(p.id, 64);
@@ -778,7 +1086,18 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
     case "toast":
       return isPlayer(p.player) && isShort(p.text, MAX_TOAST_LENGTH);
     case "sound":
-      return isPlayer(p.player) && isShort(p.name, MAX_SOUND_NAME);
+      return (
+        isPlayer(p.player) &&
+        isShort(p.name, MAX_SOUND_NAME) &&
+        (p.id === undefined || isShort(p.id, 64)) &&
+        (p.volume === undefined || isNumberIn(p.volume, 0, MAX_SOUND_VOLUME)) &&
+        (p.pitch === undefined ||
+          isNumberIn(p.pitch, MIN_SOUND_PITCH, MAX_SOUND_PITCH)) &&
+        (p.loop === undefined || typeof p.loop === "boolean") &&
+        (p.loop !== true || isShort(p.id, 64))
+      );
+    case "sound-stop":
+      return isPlayer(p.player) && isShort(p.id, 64);
     case "dialog":
       return (
         isPlayer(p.player) &&
@@ -876,7 +1195,10 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
         (p.durationMs === undefined ||
           isNumberIn(p.durationMs, 0, MAX_CAMERA_MS)) &&
         (p.holdMs === undefined || isNumberIn(p.holdMs, 0, MAX_CAMERA_MS)) &&
-        (p.ease === undefined || p.ease === "linear" || p.ease === "smooth")
+        (p.ease === undefined || p.ease === "linear" || p.ease === "smooth") &&
+        (p.fov === undefined ||
+          isNumberIn(p.fov, MIN_CAMERA_FOV, MAX_CAMERA_FOV)) &&
+        (p.shake === undefined || isNumberIn(p.shake, 0, MAX_CAMERA_SHAKE))
       );
     case "player-control":
       return isPlayer(p.player) && typeof p.locked === "boolean";
@@ -919,6 +1241,78 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
         p.amount <= MAX_PLAYER_DAMAGE &&
         (p.source === undefined || isShort(p.source, 64))
       );
+    case "player-heal":
+      return isPlayer(p.player) && isNumberIn(p.amount, 1, MAX_PLAYER_DAMAGE);
+    case "player-max-health":
+      return (
+        isPlayer(p.player) && isNumberIn(p.maxHealth, 1, MAX_PLAYER_MAX_HEALTH)
+      );
+    case "team-define":
+      return (
+        isShort(p.id, MAX_TEAM_NAME) &&
+        (p.name === undefined || isShort(p.name, MAX_TEAM_NAME))
+      );
+    case "player-team":
+      return (
+        isPlayer(p.player) && (p.team === "" || isShort(p.team, MAX_TEAM_NAME))
+      );
+    case "player-value":
+      return (
+        isPlayer(p.player) &&
+        isShort(p.key, MAX_TEAM_NAME) &&
+        isNumberIn(p.value, -MAX_PLAYER_VALUE, MAX_PLAYER_VALUE)
+      );
+    case "player-push":
+      return (
+        isPlayer(p.player) &&
+        isNumberIn(p.vx, -MAX_PUSH_SPEED, MAX_PUSH_SPEED) &&
+        isNumberIn(p.vy, -MAX_PUSH_SPEED, MAX_PUSH_SPEED) &&
+        isNumberIn(p.vz, -MAX_PUSH_SPEED, MAX_PUSH_SPEED) &&
+        ((p.vx as number) !== 0 ||
+          (p.vy as number) !== 0 ||
+          (p.vz as number) !== 0)
+      );
+    case "report-hit":
+      return (
+        isPlayer(p.player) &&
+        isShort(p.entityId, 64) &&
+        isNumberIn(p.amount, 1, MAX_REPORTED_HIT) &&
+        isCoord(p.attackerX) &&
+        isCoord(p.attackerZ)
+      );
+    case "block-set":
+      return isVoxel(p.voxel) && isBlockId(p.id);
+    case "block-fill":
+      return isBlockBox(p) && isBlockId(p.id);
+    case "block-clear":
+      return isBlockBox(p);
+    case "bind":
+      return (
+        isShort(p.id, 64) &&
+        (p.key === "" || isShort(p.key, MAX_BIND_KEY)) &&
+        (p.label === undefined || isShort(p.label, MAX_PROMPT_VERB))
+      );
+    case "prompt":
+      return (
+        isShort(p.id, 64) &&
+        isShort(p.entityId, 64) &&
+        isShort(p.verb, MAX_PROMPT_VERB) &&
+        (p.key === undefined || isShort(p.key, MAX_BIND_KEY)) &&
+        (p.range === undefined || isNumberIn(p.range, 1, MAX_PROMPT_RANGE)) &&
+        (p.once === undefined || typeof p.once === "boolean")
+      );
+    case "prompt-remove":
+      return isShort(p.id, 64);
+    case "figure-animate":
+      return (
+        isShort(p.id, 64) &&
+        isShort(p.name, MAX_ANIMATION_NAME) &&
+        (p.speed === undefined ||
+          isNumberIn(p.speed, 0.01, MAX_ANIMATION_SPEED)) &&
+        (p.loop === undefined || typeof p.loop === "boolean")
+      );
+    case "figure-stop":
+      return isShort(p.id, 64);
   }
 };
 

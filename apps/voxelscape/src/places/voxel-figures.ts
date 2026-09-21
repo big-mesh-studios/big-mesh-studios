@@ -15,15 +15,39 @@ import { Group, Quaternion, Vector3 } from "@random-mesh/rmsl/scene";
 import type { DayNightState } from "../environment/day-night";
 import {
   BakedFigure,
+  figurePlacement,
+  lastFrame,
+  poseFigure,
   VoxelModelMaterial,
   type Figure,
   type FigureCopy,
+  type FigurePlacement,
+  type Motion,
 } from "@big-mesh-studios/stacker/renderer";
 import { loadFigure } from "@big-mesh-studios/stacker/format";
 import { FigureMotionTrack } from "./figure-motion";
+import type { FigureAnimation } from "./script-host";
 
 /** How tall a standing figure is drawn when its entity names no height. */
 export const FIGURE_HEIGHT = 2;
+
+/**
+ * The frame of `motion` a figure playing `animation` stands at on the shared
+ * clock: the clock's seconds times the motion's own rate and the animation's
+ * speed, wrapped into the motion's run when it loops.
+ */
+const animatedFrame = (
+  motion: Motion,
+  animation: FigureAnimation,
+  clockMs: number,
+): number => {
+  const raw = (clockMs / 1000) * motion.framesPerSecond * animation.speed;
+  const span = lastFrame(motion) + 1;
+  if (animation.loop && span > 0) {
+    return ((raw % span) + span) % span;
+  }
+  return Math.max(0, raw);
+};
 
 /** How long a dying figure takes to fall flat, in seconds. */
 const DEATH_FALL_SECONDS = 0.5;
@@ -50,6 +74,8 @@ export interface RenderedFigure {
   dyingAt?: number;
   /** A spin about a world axis, applied after `yaw`; absent when it does not spin. */
   spin?: { axis: [number, number, number]; angle: number };
+  /** The model motion the figure plays, or absent when it stands in its rest pose. */
+  animation?: FigureAnimation;
 }
 
 /** The upright box the crosshair ray tests a figure against, in world units. */
@@ -68,6 +94,12 @@ interface BakedModel {
   modelHeight: number;
   /** Half the model's widest horizontal extent relative to its height. */
   halfRatio: number;
+  /** The figure as it was drawn, for posing it at an animated frame. */
+  figure: Figure;
+  /** The motions saved beside the figure, by name. */
+  motions: Motion[];
+  /** Where every part stands unposed, to restore a copy an animation stopped on. */
+  restPlacement: FigurePlacement;
 }
 
 export interface VoxelFiguresParams {
@@ -75,14 +107,23 @@ export interface VoxelFiguresParams {
   getFigures: () => Iterable<RenderedFigure>;
   /** Which model file a figure with `id` wears, named as it is bundled. */
   modelFor?: (id: string) => string;
+  /**
+   * The shared clock an animation is sampled from, in milliseconds. Every peer
+   * passes the same one, so a figure posed at a frame stands the same way
+   * wherever it is drawn. Defaults to the wall clock for a lone caller.
+   */
+  getNow?: () => number;
 }
 
 export class VoxelFigures {
   readonly group = new Group();
   private readonly getFigures: () => Iterable<RenderedFigure>;
   private readonly modelFor: (id: string) => string;
+  private readonly getNow: () => number;
   private readonly baked = new Map<string, BakedModel>();
   private readonly meshes = new Map<string, FigureCopy>();
+  /** Figures whose copy is currently stood at an animated pose, not at rest. */
+  private readonly animated = new Set<string>();
   /** The drawn height each figure's aim box and copy were last given. */
   private readonly heights = new Map<string, number>();
   /** Ids currently flashing red, with the local moment the flash ends. */
@@ -97,6 +138,7 @@ export class VoxelFigures {
   constructor(params: VoxelFiguresParams) {
     this.getFigures = params.getFigures;
     this.modelFor = params.modelFor ?? (() => "zombie.zip");
+    this.getNow = params.getNow ?? (() => Date.now());
   }
 
   /** Number of figures currently drawn in the scene. */
@@ -104,8 +146,8 @@ export class VoxelFigures {
     return this.meshes.size;
   }
 
-  /** Makes every figure of `model` wear `figure`, rebaking any already drawn. */
-  setFigure(model: string, figure: Figure): void {
+  /** Makes every figure of `model` wear `figure`, with the motions saved beside it, rebaking any already drawn. */
+  setFigure(model: string, figure: Figure, motions: Motion[] = []): void {
     const baked = new BakedFigure(figure);
     const modelHeight = baked.size.height;
     const { width, depth } = baked.bounds.dimensions;
@@ -120,12 +162,16 @@ export class VoxelFigures {
       modelHeight,
       halfRatio:
         modelHeight > 0 ? (0.5 * Math.max(width, depth)) / modelHeight : 0,
+      figure,
+      motions,
+      restPlacement: figurePlacement(figure),
     });
     for (const [id, mesh] of this.meshes) {
       if (this.modelFor(id) === model) {
         this.group.remove(mesh.group);
         this.meshes.delete(id);
         this.heights.delete(id);
+        this.animated.delete(id);
       }
     }
   }
@@ -140,7 +186,12 @@ export class VoxelFigures {
 
   /** Reads a model zip saved from rm-stacker and remembers it under `model`. */
   async loadModel(model: string, bytes: Blob): Promise<void> {
-    this.setFigure(model, await loadFigure(bytes));
+    const loaded = await loadFigure(bytes);
+    this.setFigure(
+      model,
+      { parts: loaded.parts, palette: loaded.palette },
+      loaded.motions,
+    );
   }
 
   /**
@@ -202,6 +253,26 @@ export class VoxelFigures {
         this.group.add(mesh.group);
         this.meshes.set(figure.id, mesh);
       }
+      const animation = figure.animation;
+      const motion =
+        animation === undefined
+          ? undefined
+          : baked.motions.find((held) => held.name === animation.name);
+      if (animation !== undefined && motion !== undefined) {
+        mesh.stand(
+          figurePlacement(
+            poseFigure(
+              baked.figure,
+              motion,
+              animatedFrame(motion, animation, this.getNow()),
+            ),
+          ),
+        );
+        this.animated.add(figure.id);
+      } else if (this.animated.delete(figure.id)) {
+        // It was playing a motion and now is not: stand it back at rest.
+        mesh.stand(baked.restPlacement);
+      }
       const scale = height / baked.modelHeight;
       mesh.group.scale.set(scale, scale, scale);
       const yaw = figure.yaw ?? 0;
@@ -262,6 +333,7 @@ export class VoxelFigures {
         this.heights.delete(id);
         this.hurtUntil.delete(id);
         this.motion.delete(id);
+        this.animated.delete(id);
       }
     }
   }
@@ -275,5 +347,6 @@ export class VoxelFigures {
     this.heights.clear();
     this.hurtUntil.clear();
     this.motion.clear();
+    this.animated.clear();
   }
 }

@@ -19,6 +19,7 @@ import type * as TS from "typescript";
 import { loadTypeScript } from "@big-mesh-studios/code-mirror/typescript-cdn";
 import { modelDescriptorFor, modelSpecifierFor } from "./model-descriptor";
 import { VOXELSCAPE_LIB_SOURCE } from "./voxelscape-lib";
+import { VOXELSCAPE_MATH_SOURCE } from "./voxelscape-math";
 
 /** A place script that could not be compiled or bundled, in words a creator can act on. */
 export class PlaceBundleError extends Error {
@@ -181,11 +182,11 @@ interface BundledModule {
 
 /**
  * The `"voxelscape"` synthetic module's own source: the hand-written
- * standard library, plus a table of every model this place attaches — not
- * only ones some script happens to import — so a name unknown to the type
- * system but still attached still resolves. A model whose bytes will not
- * decode is left out of the table rather than failing the whole place's
- * load, the same tolerance `model-dts.ts` shows the editor.
+ * standard library and the guest-side math, plus a table of every model this
+ * place attaches — not only ones some script happens to import — so a name
+ * unknown to the type system but still attached still resolves. A model whose
+ * bytes will not decode is left out of the table rather than failing the
+ * whole place's load, the same tolerance `model-dts.ts` shows the editor.
  */
 const voxelscapeModuleSource = async (
   models: Record<string, Uint8Array>,
@@ -202,7 +203,8 @@ const voxelscapeModuleSource = async (
       continue;
     }
   }
-  return `${VOXELSCAPE_LIB_SOURCE}
+  return `${VOXELSCAPE_MATH_SOURCE}
+${VOXELSCAPE_LIB_SOURCE}
 const __models = ${JSON.stringify(table)};
 `;
 };
@@ -308,6 +310,19 @@ function __require(id) {
         getHeightAt: engine.getHeightAt,
         getSolidAt: engine.getSolidAt,
         getWaterAt: engine.getWaterAt,
+        getBlockAt: engine.getBlockAt,
+        getEntity: engine.getEntity,
+        getEntitiesInBox: engine.getEntitiesInBox,
+        getEntitiesInSphere: engine.getEntitiesInSphere,
+        getEntitiesWithTag: engine.getEntitiesWithTag,
+        getPlayer: engine.getPlayer,
+        getPlayersInBox: engine.getPlayersInBox,
+        getLocalPlayer: engine.getLocalPlayer,
+        getPlayerValue: engine.getPlayerValue,
+        getLeaderboard: engine.getLeaderboard,
+        raycast: engine.raycast,
+        findPath: engine.findPath,
+        getHeldItem: engine.getHeldItem,
         onTick: engine.onTick,
         onPlan: engine.onPlan,
         blocks: engine.blocks,

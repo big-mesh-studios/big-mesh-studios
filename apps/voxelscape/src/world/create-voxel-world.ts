@@ -18,6 +18,7 @@ import {
   BLOCK_WORLD,
   VOXEL_SIZE,
   getGroundHeightBelow,
+  getWorldBlockId,
   getWorldHeight,
   isLavaAt,
   isSolidAt,
@@ -146,6 +147,8 @@ export interface VoxelWorld {
   /** Whether the voxel at a world point is lava; the contact-hazard query. */
   getLavaAt(x: number, y: number, z: number): boolean;
   getSolidAt(x: number, y: number, z: number): boolean;
+  /** The voxel id at a world point, or 0 for air and for outside the loaded blocks. */
+  getBlockAt(x: number, y: number, z: number): number;
   /** Keeps the block window centred on (`x`, `y`, `z`), streaming new blocks in off the main thread. */
   scrollTo(x: number, y: number, z: number): void;
   /**
@@ -552,6 +555,9 @@ export const createVoxelWorld = ({
     },
     getSolidAt(x, y, z) {
       return isSolidAt(sphere.query, x, y, z);
+    },
+    getBlockAt(x, y, z) {
+      return getWorldBlockId(sphere.query, x, y, z);
     },
     scrollTo(x, y, z) {
       sphere.scrollTo(x, y, z);

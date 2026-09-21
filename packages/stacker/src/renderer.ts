@@ -6,6 +6,7 @@
 export {
   axisSides,
   centrePivot,
+  composePose,
   composeRoot,
   dimensionAxes,
   dimensionKinds,

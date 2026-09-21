@@ -47,6 +47,81 @@ export function getEndings() {
   return JSON.parse(host.getEndings());
 }
 
+/** The scripted figure \`id\` names, or null when there is none. */
+export function getEntity(id) {
+  return JSON.parse(host.getEntity(id));
+}
+
+/** Every scripted figure in the box \`min\` to \`max\`, inclusive, in id order. */
+export function getEntitiesInBox(min, max) {
+  return JSON.parse(host.getEntitiesInBox(min[0], min[1], min[2], max[0], max[1], max[2]));
+}
+
+/** Every scripted figure within \`radius\` of (\`x\`, \`y\`, \`z\`), in id order. */
+export function getEntitiesInSphere(x, y, z, radius) {
+  return JSON.parse(host.getEntitiesInSphere(x, y, z, radius));
+}
+
+/** Every scripted figure carrying \`tag\`, in id order. */
+export function getEntitiesWithTag(tag) {
+  return JSON.parse(host.getEntitiesWithTag(tag));
+}
+
+/** The player \`did\` names, or null when they are not in the place. */
+export function getPlayer(did) {
+  return JSON.parse(host.getPlayer(did));
+}
+
+/** Every player in the box \`min\` to \`max\`, inclusive. */
+export function getPlayersInBox(min, max) {
+  return JSON.parse(host.getPlayersInBox(min[0], min[1], min[2], max[0], max[1], max[2]));
+}
+
+/** The value set for \`player\` under \`key\`, or null when none. */
+export function getPlayerValue(player, key) {
+  return JSON.parse(host.getPlayerValue(player, key));
+}
+
+/** The players ranked by \`key\`, highest first, at most \`count\` of them. */
+export function getLeaderboard(key, count) {
+  return JSON.parse(host.getLeaderboard(key, count));
+}
+
+/**
+ * Shows a leaderboard to the local player as a HUD text readout, ranking the
+ * players by the player-value \`key\`. Call it whenever the values change; the
+ * readout is replaced rather than appended.
+ */
+export function showLeaderboard(id, title, key, count) {
+  var entries = getLeaderboard(key, count === undefined ? 10 : count);
+  var lines = entries.map(function (entry, index) {
+    return index + 1 + ". " + entry.player + "  " + entry.value;
+  });
+  host.dispatch("hud", {
+    player: "",
+    id: id,
+    kind: "text",
+    label: title,
+    text: lines.join("\\n"),
+  });
+}
+
+/** Where a ray from \`origin\` along \`direction\` first meets the world, or null within \`maxDistance\` world units. */
+export function raycast(origin, direction, maxDistance) {
+  return JSON.parse(
+    host.raycast(origin[0], origin[1], origin[2], direction[0], direction[1], direction[2], maxDistance)
+  );
+}
+
+/** The walkable route from \`from\` to \`to\`, as world-unit waypoints, or null when none exists within the bounds. */
+export function findPath(from, to, options) {
+  var maxNodes = options === undefined || options.maxNodes === undefined ? 0 : options.maxNodes;
+  var maxCells = options === undefined || options.maxCells === undefined ? 0 : options.maxCells;
+  return JSON.parse(
+    host.findPath(from[0], from[1], from[2], to[0], to[1], to[2], maxNodes, maxCells)
+  );
+}
+
 function resolveModel(modelName) {
   if (modelName === undefined) {
     return undefined;
@@ -66,6 +141,46 @@ function place(model, options, announce) {
     z: options.z,
     y: options.y,
     yaw: options.yaw === undefined ? 0 : options.yaw,
+    tags: options.tags === undefined ? [] : options.tags.slice(),
+    attributes:
+      options.attributes === undefined
+        ? {}
+        : Object.assign({}, options.attributes),
+  };
+  /** Re-sends this figure's tags and attributes after one changes. */
+  function announceShape() {
+    host.dispatch("entity-set", {
+      id: state.id,
+      tags: state.tags,
+      attributes: state.attributes,
+    });
+  }
+  /** Gives this figure a value under \`key\`, replacing any it held there, and returns this figure. */
+  state.setAttribute = function (key, value) {
+    state.attributes[key] = value;
+    announceShape();
+    return state;
+  };
+  /** The value this figure holds under \`key\`, or undefined. */
+  state.getAttribute = function (key) {
+    return state.attributes[key];
+  };
+  /** Names this figure with \`tag\`, so a query can find it by that name, and returns this figure. */
+  state.addTag = function (tag) {
+    if (state.tags.indexOf(tag) === -1) {
+      state.tags.push(tag);
+      announceShape();
+    }
+    return state;
+  };
+  /** Takes \`tag\` off this figure, and returns this figure. */
+  state.removeTag = function (tag) {
+    var at = state.tags.indexOf(tag);
+    if (at !== -1) {
+      state.tags.splice(at, 1);
+      announceShape();
+    }
+    return state;
   };
   state.move = function (moveOptions) {
     state.x = moveOptions.x;
@@ -107,6 +222,8 @@ export function createNpc(options) {
       modelUri: options.modelUri,
       yaw: state.yaw,
       live: live,
+      tags: state.tags,
+      attributes: state.attributes,
     });
   });
   /** Removes the NPC outright — no death fall, just gone, like \`.remove()\` on a prop. */
@@ -116,6 +233,81 @@ export function createNpc(options) {
   /** Plays a death fall in place of an outright removal, then forgets it the same way. */
   npc.die = function () {
     host.dispatch("npc-die", { id: npc.id });
+  };
+  /**
+   * Walks the NPC to walkOptions.x/walkOptions.z along a route the world
+   * searches for, at walkOptions.speed world units per second, through the
+   * same motion a script may declare by hand. Returns false when no route
+   * exists.
+   */
+  npc.walkTo = function (walkOptions) {
+    var targetY =
+      walkOptions.y === undefined
+        ? host.getHeightAt(walkOptions.x, walkOptions.z)
+        : walkOptions.y;
+    var fromY = npc.y === undefined ? host.getHeightAt(npc.x, npc.z) : npc.y;
+    var route = findPath(
+      [npc.x, fromY, npc.z],
+      [walkOptions.x, targetY, walkOptions.z],
+      walkOptions
+    );
+    if (route === null || route.length === 0) {
+      return false;
+    }
+    var offsets = [];
+    var length = 0;
+    for (var i = 0; i < route.length; i++) {
+      offsets.push([route[i][0] - npc.x, route[i][1] - fromY, route[i][2] - npc.z]);
+    }
+    for (var i = 1; i < route.length; i++) {
+      length += Math.hypot(
+        route[i][0] - route[i - 1][0],
+        route[i][1] - route[i - 1][1],
+        route[i][2] - route[i - 1][2]
+      );
+    }
+    var speed = walkOptions.speed === undefined ? 4 : walkOptions.speed;
+    host.dispatch("npc", {
+      id: npc.id,
+      x: npc.x,
+      z: npc.z,
+      y: npc.y,
+      name: options.name,
+      model:
+        options.modelUri === undefined && model !== undefined
+          ? model.file
+          : undefined,
+      modelUri: options.modelUri,
+      yaw: npc.yaw,
+      live: true,
+      tags: npc.tags,
+      attributes: npc.attributes,
+      motion: {
+        path: offsets,
+        loop: "once",
+        durationMs: Math.max(1, Math.round((length / speed) * 1000)),
+        ease: "linear",
+      },
+    });
+    return true;
+  };
+  /**
+   * Plays the model motion called name on the NPC, sampled from the shared
+   * clock so every peer sees the same frame. Returns the NPC.
+   */
+  npc.play = function (name, playOptions) {
+    host.dispatch("figure-animate", {
+      id: npc.id,
+      name: name,
+      speed: playOptions === undefined ? undefined : playOptions.speed,
+      loop: playOptions === undefined ? undefined : playOptions.loop,
+    });
+    return npc;
+  };
+  /** Stops the NPC's animation, standing it back at rest. Returns the NPC. */
+  npc.stop = function () {
+    host.dispatch("figure-stop", { id: npc.id });
+    return npc;
   };
   return npc;
 }
@@ -137,10 +329,27 @@ export function createProp(options) {
       hazard: options.hazard,
       conveyor: options.conveyor,
       motion: options.motion,
+      tags: state.tags,
+      attributes: state.attributes,
     });
   });
   prop.remove = function () {
     host.dispatch("prop-remove", { id: prop.id });
+  };
+  /** Plays the model motion called name on the prop, sampled from the shared clock. Returns the prop. */
+  prop.play = function (name, playOptions) {
+    host.dispatch("figure-animate", {
+      id: prop.id,
+      name: name,
+      speed: playOptions === undefined ? undefined : playOptions.speed,
+      loop: playOptions === undefined ? undefined : playOptions.loop,
+    });
+    return prop;
+  };
+  /** Stops the prop's animation, standing it back at rest. Returns the prop. */
+  prop.stop = function () {
+    host.dispatch("figure-stop", { id: prop.id });
+    return prop;
   };
   return prop;
 }

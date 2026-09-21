@@ -169,6 +169,57 @@ describe("script event validation", () => {
     }
   });
 
+  it("accepts an entity-used button and rejects a bad one", () => {
+    expect(
+      isScriptEvent({
+        ...stamp("e1", 1, "p"),
+        kind: "entity-used",
+        entityId: "door",
+        item: "",
+        button: "primary",
+      }),
+    ).toBe(true);
+    expect(
+      isScriptEvent({
+        ...stamp("e1", 1, "p"),
+        kind: "entity-used",
+        entityId: "door",
+        item: "",
+        button: "kick",
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts an input and a prompt-triggered fact and rejects malformed ones", () => {
+    expect(
+      isScriptEvent({
+        ...stamp("e1", 1, "p"),
+        kind: "input",
+        bindId: "dash",
+        phase: "down",
+      }),
+    ).toBe(true);
+    expect(
+      isScriptEvent({
+        ...stamp("e2", 2, "p"),
+        kind: "prompt-triggered",
+        promptId: "door",
+      }),
+    ).toBe(true);
+    for (const bad of [
+      {
+        ...stamp("e1", 1, "p"),
+        kind: "input",
+        bindId: "dash",
+        phase: "sideways",
+      },
+      { ...stamp("e1", 1, "p"), kind: "input", bindId: "", phase: "down" },
+      { ...stamp("e1", 1, "p"), kind: "prompt-triggered", promptId: "" },
+    ]) {
+      expect(isScriptEvent(bad), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
   it("rejects a malformed npc event", () => {
     const cases: Array<unknown> = [
       { ...stamp("e1", 1, "p"), kind: "npc-talk" },

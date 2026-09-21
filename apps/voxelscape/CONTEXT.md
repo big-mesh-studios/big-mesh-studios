@@ -142,15 +142,65 @@ _Avoid_: GPU occlusion query (this is a colour readback, not a `GL_ARB_occlusion
 
 **Motion**:
 The path and spin a place script gives one **Scripted figure** — a **MotionSpec** of waypoints, a loop mode, a duration, and an optional spin. The **ScriptHost** stores the spec and the trusted side samples `poseAt` from the shared clock each frame, so the figure's position is a pure function of the spec and the clock rather than something the script steps. A **Solid platform** samples the same pose into its collision box and reports its velocity, so a player standing on it rides it.
-_Avoid_: animation (that is the drawn result, not the spec), tween (the ease is one field of it, not the thing)
+_Avoid_: animation (that is a model's own drawn motion, a different thing), tween (the ease is one field of it, not the thing)
 
-**Scripted figure**:
+**Figure animation**:
+A model's own saved motion that a place script plays on a **Scripted figure** with `figure-animate`: the host stores the chosen motion's name, speed, and loop, and **VoxelFigures** poses the figure's parts at the frame the shared clock gives. The motion itself is the stacker format's, so voxel-rigger can author one and export it in the model zip; the figure only names it.
+_Avoid_: Motion (that is the scripted path and spin of the whole figure, not its parts), tween
+
+**Camera shake**:
+How far a camera shot wobbles about its eye, named by a shot's `shake` and offset by the shared clock when the world plays it. Voice-tier and per-player, so it is never replicated and never affects another peer's view.
+_Avoid_: screen shake (it moves the camera, not the drawn frame)
+
+**Sound playback**:
+The id, volume, pitch, and loop a place script gives a fixed-vocabulary `sound`, plus the `sound-stop` that reaches a loop by its id. The name is still one of the world's own; only how that name plays is a script's to say.
+_Avoid_: audio emitter (there is no node graph to build), track
 An NPC or prop a place script has placed, as the **ScriptHost** holds it: where it stands, how it faces, what model it wears, and the **Motion** it follows if any. The **VoxelFigures** renderer draws whatever the current figures are each frame, placing each at its posed feet.
 _Avoid_: entity (that is the monsters' word), actor
+
+**World query**:
+A read-only function a place script calls to ask the running world a question — the block underfoot, a figure's live pose, whoever stands in a box, what a ray first meets. Answers are pure functions of the shared clock and the replicated state, returned in id order, so every peer's script reads the same world at the same moment. Answered for its own figures by the **ScriptHost** and for terrain and players by the world.
+_Avoid_: getter, inspector (undersells that the answers are deterministic), API (the whole surface, not one read)
+
+**Entity tag**:
+A short name on a **Scripted figure** — `"enemy"`, `"boss"`, `"door"` — so a script can find a set of figures by what they are rather than by their deterministic id. Carried on the `npc`/`prop` effects and changed later with `entity-set`; read back by a **World query** such as `getEntitiesWithTag`.
+_Avoid_: group, class (that is an object model this API does not have)
+
+**Entity attribute**:
+A named value — string, number, or boolean — a place script hangs on a **Scripted figure** under a key, such as `health` or `awake`. Bounded and flat, so it serialises identically for every peer; written with `entity-set` and read from an **Entity snapshot**.
+_Avoid_: property (that is the general instance model this API avoids), metadata
+
+**Scripted block edit**:
+A voxel change a place script asks for during play, set with a `block-set`, `block-fill`, or `block-clear` effect and bounded in volume and coordinates. It travels the same **EditingController** path a player's own edit does — overlay record, mesh, light, save, and peer broadcast — so a scripted change persists and reconciles exactly as a dug one. Distinct from `onPlan`, which builds the place's terrain once before the first fill.
+_Avoid_: terrain write, world edit (both name the player's edit too)
+
+**Path**:
+A walkable route a place script asks the world for with `findPath`, returned as world-unit waypoints at voxel-cell centres, searched deterministically so every peer gets the same one. `NpcHandle.walkTo` turns a path into one `once` **Motion**, so the world samples the walk rather than the script stepping it.
+_Avoid_: navmesh (there is no baked graph), waypoint list (that is what a path is made of)
+
+**Team**:
+A side a place script defines with `team-define` and puts a player on with `player-team`, read back on the player a **World query** returns. Derived state: every peer computes the same assignment from the same facts and writes it locally, so no fact is authored for it.
+_Avoid_: faction, group (that is an **Entity tag**)
+
+**Player value**:
+A flat, finite number a place script keeps per player under a key with `player-value`, ranked across players by `getLeaderboard` and shown by `showLeaderboard` through the existing **HUD readout**. Derived state, like a **Team**.
+_Avoid_: score (one use of a value), stat
+
+**Input binding**:
+A key code a place script listens on, named by `bind`; the input layer reports every down and up edge on that key as an `input` fact carrying the binding's id and the player who pressed it, in addition to whatever the key already does.
+_Avoid_: hotkey (that is the world's own selection), keymap
+
+**Player prompt**:
+A labelled interaction a place script stands on a figure with `prompt`, answered when the player uses that figure: the host authors `prompt-triggered` instead of `entity-used`, and the prompt's verb is what the crosshair hint shows.
+_Avoid_: dialog (that is the conversation tree), tooltip
 
 **Voxelscape module**:
 A place script's one reserved import, `import { onTick, dispatch, createNpc, createProp, ... } from "voxelscape"` — every function `quickjs-sandbox.ts` binds (`dispatch`/`onTick`/`onPlan`/`log`/`heightAt`/and the rest) alongside `createNpc`/`createProp` for placing or moving an NPC or prop wearing one of the place's own attached models. Resolved by the bundler itself (`bundle.ts`) to one synthetic module, not a TypeScript ambient-module trick; that module reaches the sandbox's real host object through its own internal-only import, never a specifier a project file's own source ever names. `createNpc`/`createProp` take the model's bare name as a plain string option, checked at the type level against `ModelsByName` — a per-place augmentation the editor's language service generates live from a model's own bytes (`model-dts.ts`), literal unions of its actual part and motion names — and resolved at run time against every model the place actually attaches, an unknown name throwing the moment the call runs rather than at bundle time.
 _Avoid_: engine (the retired second reserved specifier this folded into itself — a script no longer imports anything by that name, only `"voxelscape"`), model import (an earlier, since-retired mechanism — a bare `with { type: "model" }` import typed nothing at the call site, only at the specifier), scripted-figures (a parked, never-merged library name this also folded into)
+
+**Guest math**:
+The small value types and helpers the `"voxelscape"` module ships to a place script — `Vector3`, `Vector2`, `Color3`, `clamp`, `lerp`, `smoothstep`, `randint`, `randFloat`, `choice`. Ordinary guest code compiled into the synthetic module, so a value never crosses the sandbox boundary and a `randint` draws from the place's seeded stream.
+_Avoid_: library (it is part of the one reserved module), engine math
 
 **NPC handle**:
 The object `createNpc` hands back to a place script: where it stands, faces, the model it wears, and `.move()`/`.remove()`/`.die()` to update or end it, each dispatching the "npc"/"npc-remove"/"npc-die" effects itself. `id` is never generated inside `createNpc` — every peer replaying the same script must compute the exact same one independently, so it always comes from the script's own deterministic address, the way the Zombies demo derives one from its population seed and spawn cell. Owns only where the figure stands and dispatching its placement — a script's own bookkeeping (health, AI state, and the rest) stays the script's own.

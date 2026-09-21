@@ -10,6 +10,7 @@ import { fileOpen, fileSave } from "browser-fs-access";
 import { createSignal, Show, useContext, type Component } from "solid-js";
 import { RigContext } from "./context";
 import { readProject, writeProject } from "./file/project";
+import { writeAnimatedModel } from "./file/bake-motion";
 import AnimationPanel from "./AnimationPanel";
 import PartsPanel from "./PartsPanel";
 import RigView from "./RigView";
@@ -94,6 +95,33 @@ const EditorPage: Component = () => {
     }
   };
 
+  const exportAnimatedModel = async () => {
+    const motion = rig.motion();
+    if (motion === undefined) {
+      rig.setStatus("Import or key a motion first.");
+      return;
+    }
+    try {
+      const blob = await writeAnimatedModel(
+        {
+          parts: rig.parts().map((held) => held.part),
+          palette: rig.palette(),
+        },
+        rig.skeleton(),
+        rig.bindings(),
+        motion,
+      );
+      await fileSave(blob, {
+        fileName: `${motion.name || "motion"}.zip`,
+        extensions: [".zip"],
+        mimeTypes: ["application/zip"],
+      });
+      rig.setStatus(`Exported ${motion.name} for the world.`);
+    } catch (error) {
+      rig.setStatus(`Could not export the animation: ${String(error)}`);
+    }
+  };
+
   return (
     <div class={[styles.shell, { [styles.compact]: compact() }]}>
       <div class={styles.topbar}>
@@ -120,6 +148,7 @@ const EditorPage: Component = () => {
           Open
         </button>
         <button onClick={saveProject}>Save</button>
+        <button onClick={exportAnimatedModel}>Export</button>
       </div>
 
       <div class={styles.body}>

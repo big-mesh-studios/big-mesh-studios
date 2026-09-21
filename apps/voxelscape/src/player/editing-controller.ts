@@ -263,6 +263,34 @@ export class EditingController {
     return true;
   }
 
+  /**
+   * Fills the inclusive voxel box `min` to `max` with `id`, 0 clearing it —
+   * how a place script builds or razes during play, recorded and broadcast the
+   * same way a player's own edit is. A voxel no loaded block covers is skipped
+   * and costs nothing.
+   *
+   * @returns How many voxels the fill wrote.
+   */
+  fill(min: WorldVoxel, max: WorldVoxel, id: number): number {
+    let changed = 0;
+    for (let x = min[0]; x <= max[0]; x++) {
+      for (let y = min[1]; y <= max[1]; y++) {
+        for (let z = min[2]; z <= max[2]; z++) {
+          const w: WorldVoxel = [x, y, z];
+          if (findBlockIndex(this.blocks, w) < 0) {
+            continue;
+          }
+          this.applyEdit(w, id);
+          changed++;
+        }
+      }
+    }
+    if (changed > 0) {
+      this.onEditRecorded();
+    }
+    return changed;
+  }
+
   /** Reads the current voxel id at a world voxel from the containing store. */
   private readVoxel(w: WorldVoxel): number {
     const i = findBlockIndex(this.blocks, w);

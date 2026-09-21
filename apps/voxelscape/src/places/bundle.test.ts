@@ -82,6 +82,15 @@ const runBundle = (
     onPlan: (fn: () => string) => {
       recorded.plan = fn;
     },
+    // The two reads `walkTo` makes before it dispatches a route; a bundle that
+    // never walks a figure never calls them.
+    getHeightAt: () => 0,
+    findPath: () =>
+      JSON.stringify([
+        [0, 0, 0],
+        [2, 0, 0],
+        [4, 0, 0],
+      ]),
   };
   new Function("engine", output)(engine);
   return recorded;
@@ -284,6 +293,33 @@ describe("the voxelscape module", () => {
     });
   });
 
+  it("exposes the guest math through the voxelscape module", async () => {
+    const files = {
+      "main.ts": `
+        import * as engine from "voxelscape";
+        import { Vector3, Color3, clamp } from "voxelscape";
+        engine.onTick(function (): void {
+          const unit = Vector3.create(0, 3, 0).unit();
+          engine.dispatch("probe", {
+            y: unit.y,
+            empty: Vector3.zero().length,
+            white: Color3.fromHex("#ffffff").toArray(),
+            held: clamp(5, 0, 3),
+          });
+        });
+      `,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    const { ticks, dispatched } = runBundle(output);
+    ticks[0](0, "[]");
+    expect(JSON.parse(dispatched[0].payload)).toEqual({
+      y: 1,
+      empty: 0,
+      white: [1, 1, 1],
+      held: 3,
+    });
+  });
+
   it("shares one synthetic module between files using it in different ways", async () => {
     const files = {
       "main.ts": `
@@ -347,6 +383,40 @@ describe("the voxelscape module", () => {
     );
   });
 
+  it("carries tags and attributes onto a figure and changes them through entity-set", async () => {
+    const files = {
+      "main.ts": `
+        import { createNpc } from "voxelscape";
+        createNpc({
+          model: "zombie",
+          id: "z1",
+          x: 0,
+          z: 0,
+          tags: ["enemy"],
+          attributes: { hp: 10 },
+        })
+          .addTag("boss")
+          .setAttribute("hp", 5)
+          .removeTag("enemy");
+      `,
+    };
+    const models = { "zombie.zip": await modelBytes(["head"]) };
+    const output = await bundlePlaceProject(files, "main.ts", models);
+    const { dispatched } = runBundle(output);
+    const calls = dispatched.map((d) => ({
+      tag: d.tag,
+      payload: JSON.parse(d.payload),
+    }));
+    expect(calls[0]).toMatchObject({
+      tag: "npc",
+      payload: { id: "z1", tags: ["enemy"], attributes: { hp: 10 } },
+    });
+    expect(calls[calls.length - 1]).toEqual({
+      tag: "entity-set",
+      payload: { id: "z1", tags: ["boss"], attributes: { hp: 5 } },
+    });
+  });
+
   it("moves and removes an npc through the real effects", async () => {
     const files = {
       "main.ts": `
@@ -383,6 +453,56 @@ describe("the voxelscape module", () => {
       live: true,
     });
     expect(calls[2].payload).toEqual({ id: "zombie-1" });
+  });
+
+  it("walks an npc along a route the host finds, as a once motion", async () => {
+    const files = {
+      "main.ts": `
+        import { createNpc } from "voxelscape";
+        const walked = createNpc({
+          model: "zombie", id: "z1", x: 0, z: 0, y: 0,
+        }).walkTo({ x: 4, z: 0, speed: 4 });
+        if (!walked) { throw new Error("expected a route"); }
+      `,
+    };
+    const models = { "zombie.zip": await modelBytes(["head"]) };
+    const output = await bundlePlaceProject(files, "main.ts", models);
+    const { dispatched } = runBundle(output);
+    const last = dispatched[dispatched.length - 1];
+    expect(last.tag).toBe("npc");
+    const payload = JSON.parse(last.payload);
+    expect(payload.motion.loop).toBe("once");
+    expect(payload.motion.durationMs).toBe(1_000);
+    expect(payload.motion.path).toEqual([
+      [0, 0, 0],
+      [2, 0, 0],
+      [4, 0, 0],
+    ]);
+  });
+
+  it("plays and stops a model motion through the handle", async () => {
+    const files = {
+      "main.ts": `
+        import { createNpc } from "voxelscape";
+        createNpc({ model: "zombie", id: "z1", x: 0, z: 0 })
+          .play("walk", { speed: 2 })
+          .stop();
+      `,
+    };
+    const models = { "zombie.zip": await modelBytes(["head"], ["walk"]) };
+    const output = await bundlePlaceProject(files, "main.ts", models);
+    const { dispatched } = runBundle(output);
+    const calls = dispatched.map((d) => ({
+      tag: d.tag,
+      payload: JSON.parse(d.payload),
+    }));
+    expect(calls.map((call) => call.tag)).toEqual([
+      "npc",
+      "figure-animate",
+      "figure-stop",
+    ]);
+    expect(calls[1].payload).toEqual({ id: "z1", name: "walk", speed: 2 });
+    expect(calls[2].payload).toEqual({ id: "z1" });
   });
 
   it("plays a death fall through an npc's die, and removes a prop through prop-remove", async () => {

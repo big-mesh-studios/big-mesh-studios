@@ -532,7 +532,10 @@ describe("effect parsing", () => {
       ["hud", { player: "", id: "bladder", kind: "pie" }],
       ["hud", { player: "", id: "bladder", kind: "bar", max: 0 }],
       ["hud", { player: "", id: "", kind: "text" }],
-      ["hud", { player: "", id: "note", kind: "text", text: "x".repeat(201) }],
+      [
+        "hud",
+        { player: "", id: "note", kind: "text", text: "x".repeat(1_001) },
+      ],
       ["hud-remove", { player: "" }],
       [
         "prop",
@@ -679,5 +682,385 @@ describe("effect parsing", () => {
 
   it("refuses a payload that is not JSON", () => {
     expect(parseEffect({ tag: "npc", payload: "{nope" })).toBeNull();
+  });
+});
+
+describe("entity tags and attributes", () => {
+  it("accepts tags and attributes on an npc or prop", () => {
+    expect(
+      parseEffect(
+        effect("npc", {
+          id: "boss",
+          x: 0,
+          z: 0,
+          tags: ["enemy", "boss"],
+          attributes: { health: 100, awake: true, title: "The Wall" },
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("prop", {
+          id: "rock",
+          model: "rock.zip",
+          x: 0,
+          z: 0,
+          tags: ["solid"],
+          attributes: {},
+        }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("accepts an entity-set that changes tags or attributes", () => {
+    expect(
+      parseEffect(effect("entity-set", { id: "boss", tags: ["enemy"] })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("entity-set", { id: "boss", attributes: { health: 50 } }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("refuses a tag that is empty, too long, or not a string", () => {
+    for (const tags of [[""], ["x".repeat(41)], [3], "enemy"]) {
+      expect(
+        parseEffect(effect("npc", { id: "boss", x: 0, z: 0, tags })),
+        JSON.stringify(tags),
+      ).toBeNull();
+    }
+  });
+
+  it("refuses an attribute that is nested, too long, or a bad key", () => {
+    for (const attributes of [
+      { nested: { a: 1 } },
+      { note: "x".repeat(257) },
+      { "": 1 },
+      [{ a: 1 }],
+    ]) {
+      expect(
+        parseEffect(effect("npc", { id: "boss", x: 0, z: 0, attributes })),
+        JSON.stringify(attributes),
+      ).toBeNull();
+    }
+  });
+
+  it("refuses an entity-set that names neither tags nor attributes", () => {
+    expect(parseEffect(effect("entity-set", { id: "boss" }))).toBeNull();
+  });
+});
+
+describe("team and value effects", () => {
+  it("accepts a team definition, an assignment, and a player value", () => {
+    expect(
+      parseEffect(effect("team-define", { id: "red", name: "Red Team" })),
+    ).toEqual({ tag: "team-define", payload: { id: "red", name: "Red Team" } });
+    expect(
+      parseEffect(effect("player-team", { player: "did:x", team: "red" })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("player-team", { player: "did:x", team: "" })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("player-value", { player: "did:x", key: "score", value: -3 }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("refuses a bad team, assignment, or value", () => {
+    expect(parseEffect(effect("team-define", { id: "" }))).toBeNull();
+    expect(
+      parseEffect(
+        effect("player-team", { player: "did:x", team: "y".repeat(65) }),
+      ),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("player-value", { player: "did:x", key: "", value: 1 }),
+      ),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("player-value", {
+          player: "did:x",
+          key: "score",
+          value: Infinity,
+        }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("physics-lite effects", () => {
+  it("accepts a push and a reported hit", () => {
+    expect(
+      parseEffect(effect("player-push", { player: "", vx: 3, vy: 5, vz: 0 })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("report-hit", {
+          player: "did:x",
+          entityId: "boss",
+          amount: 4,
+          attackerX: 1,
+          attackerZ: 2,
+        }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("refuses a still push or an out-of-range one", () => {
+    expect(
+      parseEffect(effect("player-push", { player: "", vx: 0, vy: 0, vz: 0 })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("player-push", { player: "", vx: 101, vy: 0, vz: 0 })),
+    ).toBeNull();
+  });
+
+  it("refuses a reported hit with no target or too much damage", () => {
+    expect(
+      parseEffect(
+        effect("report-hit", {
+          player: "",
+          entityId: "",
+          amount: 4,
+          attackerX: 1,
+          attackerZ: 2,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("report-hit", {
+          player: "",
+          entityId: "boss",
+          amount: 1_001,
+          attackerX: 1,
+          attackerZ: 2,
+        }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("sound depth", () => {
+  it("accepts a sound with an id, volume, pitch, and loop", () => {
+    expect(
+      parseEffect(
+        effect("sound", {
+          player: "",
+          name: "zombie-growl",
+          id: "growl",
+          volume: 0.5,
+          pitch: 2,
+          loop: true,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("sound-stop", { player: "", id: "growl" })),
+    ).not.toBeNull();
+  });
+
+  it("refuses a loop with no id, a bad volume, or a bad pitch", () => {
+    for (const payload of [
+      { player: "", name: "zombie-growl", loop: true },
+      { player: "", name: "zombie-growl", volume: 2 },
+      { player: "", name: "zombie-growl", pitch: 0.1 },
+      { player: "", name: "zombie-growl", pitch: 5 },
+    ]) {
+      expect(
+        parseEffect(effect("sound", payload)),
+        JSON.stringify(payload),
+      ).toBeNull();
+    }
+  });
+});
+
+describe("camera depth", () => {
+  it("accepts a camera shot with a field of view and a shake", () => {
+    expect(
+      parseEffect(
+        effect("camera", {
+          player: "",
+          at: [1, 2, 3],
+          look: [4, 5, 6],
+          durationMs: 500,
+          fov: 70,
+          shake: 0.4,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("cutscene", {
+          player: "",
+          shots: [{ at: [1, 2, 3], durationMs: 0, fov: 30, shake: 1 }],
+        }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("refuses a field of view or shake outside its bounds", () => {
+    for (const payload of [
+      { player: "", at: [1, 2, 3], fov: 0 },
+      { player: "", at: [1, 2, 3], fov: 180 },
+      { player: "", at: [1, 2, 3], shake: 17 },
+      { player: "", at: [1, 2, 3], shake: -1 },
+    ]) {
+      expect(
+        parseEffect(effect("camera", payload)),
+        JSON.stringify(payload),
+      ).toBeNull();
+    }
+  });
+});
+
+describe("figure animation", () => {
+  it("accepts playing a motion and stopping it", () => {
+    expect(
+      parseEffect(effect("figure-animate", { id: "z1", name: "walk" })),
+    ).toEqual({
+      tag: "figure-animate",
+      payload: { id: "z1", name: "walk" },
+    });
+    expect(
+      parseEffect(
+        effect("figure-animate", {
+          id: "z1",
+          name: "walk",
+          speed: 2,
+          loop: false,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(parseEffect(effect("figure-stop", { id: "z1" }))).not.toBeNull();
+  });
+
+  it("refuses an unnamed motion or an out-of-range speed", () => {
+    expect(
+      parseEffect(effect("figure-animate", { id: "z1", name: "" })),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("figure-animate", { id: "z1", name: "walk", speed: 0 }),
+      ),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("figure-animate", { id: "z1", name: "x".repeat(65) })),
+    ).toBeNull();
+  });
+});
+
+describe("input bindings and prompts", () => {
+  it("accepts a bind, an unbind, and a prompt", () => {
+    expect(
+      parseEffect(effect("bind", { id: "dash", key: "KeyQ", label: "Dash" })),
+    ).toEqual({
+      tag: "bind",
+      payload: { id: "dash", key: "KeyQ", label: "Dash" },
+    });
+    expect(parseEffect(effect("bind", { id: "dash", key: "" }))).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("prompt", { id: "door", entityId: "door", verb: "Open" }),
+      ),
+    ).toEqual({
+      tag: "prompt",
+      payload: { id: "door", entityId: "door", verb: "Open" },
+    });
+    expect(parseEffect(effect("prompt-remove", { id: "door" }))).not.toBeNull();
+  });
+
+  it("refuses a malformed bind or prompt", () => {
+    expect(parseEffect(effect("bind", { id: "", key: "KeyQ" }))).toBeNull();
+    expect(
+      parseEffect(effect("bind", { id: "dash", key: "x".repeat(33) })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("prompt", { id: "door", entityId: "", verb: "Open" })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("prompt", { id: "door", entityId: "door", verb: "" })),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("prompt", {
+          id: "door",
+          entityId: "door",
+          verb: "Open",
+          range: 0,
+        }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("player health effects", () => {
+  it("accepts a heal and a new maximum", () => {
+    expect(
+      parseEffect(effect("player-heal", { player: "", amount: 2 })),
+    ).toEqual({ tag: "player-heal", payload: { player: "", amount: 2 } });
+    expect(
+      parseEffect(
+        effect("player-max-health", { player: "did:x", maxHealth: 20 }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("refuses a heal or maximum outside its bounds", () => {
+    expect(
+      parseEffect(effect("player-heal", { player: "", amount: 0 })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("player-heal", { player: "", amount: 1_001 })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("player-max-health", { player: "", maxHealth: 0 })),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("player-max-health", { player: "", maxHealth: 100_001 }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("block effects", () => {
+  it("accepts a set, a fill, and a clear", () => {
+    expect(
+      parseEffect(effect("block-set", { voxel: [1, 2, 3], id: 25 })),
+    ).toEqual({ tag: "block-set", payload: { voxel: [1, 2, 3], id: 25 } });
+    expect(
+      parseEffect(
+        effect("block-fill", { min: [0, 0, 0], max: [1, 1, 1], id: 0 }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("block-clear", { min: [0, 0, 0], max: [3, 3, 3] })),
+    ).not.toBeNull();
+  });
+
+  it("refuses a fractional voxel, a bad id, an inverted box, or too large a fill", () => {
+    expect(
+      parseEffect(effect("block-set", { voxel: [0.5, 0, 0], id: 1 })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("block-set", { voxel: [0, 0, 0], id: 256 })),
+    ).toBeNull();
+    expect(
+      parseEffect(
+        effect("block-fill", { min: [3, 0, 0], max: [0, 0, 0], id: 1 }),
+      ),
+    ).toBeNull();
+    // 33 cubed is one over the fill cap.
+    expect(
+      parseEffect(
+        effect("block-fill", { min: [0, 0, 0], max: [32, 32, 32], id: 1 }),
+      ),
+    ).toBeNull();
   });
 });
