@@ -30,6 +30,7 @@ import {
   type PlaceMode,
 } from "../places/place";
 import type { PlaceProject } from "../places/project";
+import type { LocalInput } from "../places/sandbox";
 import type { ScriptConsole } from "../places/script-console";
 import {
   VoxelFigures,
@@ -142,6 +143,7 @@ const CUTSCENE_INPUT: InputSnapshot = {
   lookDx: 0,
   lookDy: 0,
   primary: false,
+  primaryHeld: false,
   click: false,
   secondary: false,
   secondaryHeld: false,
@@ -788,6 +790,9 @@ export const createVoxelscape = ({
   // has placed and wearing the bundled model their id names. Nothing draws
   // until /script:demo loads a script that places them.
   let scriptConsole: ScriptConsole | null = null;
+  // The frame's raw input, kept for a script to drive something itself — the
+  // same snapshot the player's own mover gets, before a cutscene zeroes it.
+  let playerInput: LocalInput | null = null;
   const plannedNpcs = (): ScriptedNpc[] =>
     levelPlan().npcs.map((npc) => ({
       id: npc.id,
@@ -1501,6 +1506,38 @@ export const createVoxelscape = ({
   };
 
   /**
+   * Puts the camera behind the figure a script is following, unless a cutscene
+   * owns the view. A body a script moves itself each step has no clock-sampled
+   * pose a shot could name, so its camera is read off the figure's live pose.
+   */
+  const applyFollowCamera = (): void => {
+    const follow = scriptConsole?.followCameraFor("") ?? null;
+    if (follow === null || cutscene()) {
+      return;
+    }
+    const pose = scriptConsole?.figurePose(follow.entityId) ?? null;
+    if (pose === null) {
+      return;
+    }
+    const sinYaw = Math.sin(pose.yaw);
+    const cosYaw = Math.cos(pose.yaw);
+    camera.position.set(
+      pose.x - sinYaw * follow.back,
+      pose.y + follow.up,
+      pose.z - cosYaw * follow.back,
+    );
+    camera.lookAt(
+      pose.x + sinYaw * follow.lookAhead,
+      pose.y + follow.up * 0.4,
+      pose.z + cosYaw * follow.lookAhead,
+    );
+    if (follow.fov !== null && camera.fov !== follow.fov) {
+      camera.fov = follow.fov;
+      camera.updateProjectionMatrix();
+    }
+  };
+
+  /**
    * Starts the place's game over: the player stands back up at spawn and the
    * script runs from a fresh interpreter, while the world it built stays.
    */
@@ -1570,6 +1607,7 @@ export const createVoxelscape = ({
           },
           ...multiplayer.peerPositions(),
         ],
+        getInput: () => playerInput,
         getNow: () => multiplayer.getNow(),
         report: (line) => onNotice?.(line),
         onDialog: (player, state) => {
@@ -2548,6 +2586,7 @@ export const createVoxelscape = ({
         probe.begin(Phase.player);
         input.setBoundKeys(scriptConsole?.bindingKeys() ?? []);
         const snapshot = input.consume();
+        playerInput = snapshot;
         const locked = scriptConsole?.controlsLocked("") ?? false;
         refreshPropBoxes();
         refreshFields();
@@ -2749,6 +2788,7 @@ export const createVoxelscape = ({
         probe.end(Phase.scroll);
         avatar.place();
         applyCutsceneCamera();
+        applyFollowCamera();
         // Lava is a hazard the way water is a medium: standing in it burns,
         // on a short cooldown so the player can hop out between ticks.
         const p = avatar.player.position;

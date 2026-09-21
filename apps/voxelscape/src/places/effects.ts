@@ -68,6 +68,8 @@ export type EffectTag =
   | "void"
   | "cutscene"
   | "camera"
+  | "camera-follow"
+  | "camera-follow-clear"
   | "player-control"
   | "hud"
   | "hud-remove"
@@ -138,6 +140,8 @@ export const MIN_CAMERA_FOV = 1;
 export const MAX_CAMERA_FOV = 179;
 /** The furthest a camera may shake, in world units. */
 export const MAX_CAMERA_SHAKE = 16;
+/** The furthest a followed camera may sit behind or above its figure, in world units. */
+export const MAX_CAMERA_DISTANCE = 200;
 /** The longest one HUD readout's id or label may be. */
 export const MAX_HUD_LABEL = 64;
 /** The longest one HUD readout's text may be; long enough for a ranked list. */
@@ -376,6 +380,14 @@ export type ParsedEffect =
          * static treadmill, a rolling walkway — so the two may not both be set.
          */
         conveyor?: { vx: number; vz: number };
+        /**
+         * The velocity the prop's own body is moving at, in units per second,
+         * set by the script each time it moves the prop. Unlike a `motion`,
+         * the pose is not sampled from a path: the prop stands where `x`/`y`/
+         * `z` put it and this only says how fast its surface is going, so a
+         * rider is carried. Takes the place of a `motion` and a `conveyor`.
+         */
+        velocity?: { vx: number; vy: number; vz: number };
         /** Names this entity answers to in a query, e.g. "enemy". */
         tags?: string[];
         /** Values a script hangs on this entity under a name. */
@@ -700,6 +712,23 @@ export type ParsedEffect =
         shake?: number;
       };
     }
+  | {
+      tag: "camera-follow";
+      payload: {
+        player: string;
+        /** The scripted figure the camera follows until it is cleared. */
+        entityId: string;
+        /** How far behind the figure the camera sits, in world units; defaults to 8. */
+        back?: number;
+        /** How far above the figure the camera sits, in world units; defaults to 3. */
+        up?: number;
+        /** How far ahead of the figure the camera looks, in world units; defaults to 4. */
+        lookAhead?: number;
+        /** The field of view to hold, in degrees; the current one is kept when absent. */
+        fov?: number;
+      };
+    }
+  | { tag: "camera-follow-clear"; payload: { player: string } }
   | {
       tag: "player-control";
       payload: {
@@ -1282,6 +1311,19 @@ const isConveyor = (v: unknown): boolean => {
   );
 };
 
+/** Whether a value is the velocity a script-driven prop moves its own body at. */
+const isBodyVelocity = (v: unknown): boolean => {
+  if (typeof v !== "object" || v === null) {
+    return false;
+  }
+  const c = v as Record<string, unknown>;
+  return (
+    isNumberIn(c.vx, -MAX_CONVEYOR_SPEED, MAX_CONVEYOR_SPEED) &&
+    isNumberIn(c.vy, -MAX_CONVEYOR_SPEED, MAX_CONVEYOR_SPEED) &&
+    isNumberIn(c.vz, -MAX_CONVEYOR_SPEED, MAX_CONVEYOR_SPEED)
+  );
+};
+
 /** Whether a value is a field box this world can sample on a player. */
 const isField = (v: unknown): boolean => {
   if (typeof v !== "object" || v === null) {
@@ -1391,6 +1433,10 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
         (p.motion === undefined || isMotion(p.motion)) &&
         (p.conveyor === undefined ||
           (p.motion === undefined && isConveyor(p.conveyor))) &&
+        (p.velocity === undefined ||
+          (p.motion === undefined &&
+            p.conveyor === undefined &&
+            isBodyVelocity(p.velocity))) &&
         (p.tags === undefined || isTags(p.tags)) &&
         (p.attributes === undefined || isAttributes(p.attributes))
       );
@@ -1578,6 +1624,20 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
           isNumberIn(p.fov, MIN_CAMERA_FOV, MAX_CAMERA_FOV)) &&
         (p.shake === undefined || isNumberIn(p.shake, 0, MAX_CAMERA_SHAKE))
       );
+    case "camera-follow":
+      return (
+        isPlayer(p.player) &&
+        isShort(p.entityId, 64) &&
+        (p.back === undefined || isNumberIn(p.back, 0, MAX_CAMERA_DISTANCE)) &&
+        (p.up === undefined ||
+          isNumberIn(p.up, -MAX_CAMERA_DISTANCE, MAX_CAMERA_DISTANCE)) &&
+        (p.lookAhead === undefined ||
+          isNumberIn(p.lookAhead, -MAX_CAMERA_DISTANCE, MAX_CAMERA_DISTANCE)) &&
+        (p.fov === undefined ||
+          isNumberIn(p.fov, MIN_CAMERA_FOV, MAX_CAMERA_FOV))
+      );
+    case "camera-follow-clear":
+      return isPlayer(p.player);
     case "player-control":
       return isPlayer(p.player) && typeof p.locked === "boolean";
     case "hud":

@@ -75,8 +75,32 @@ describe("parseStructurePlan", () => {
         id: 25,
       },
       { kind: "ramp", from: [0, 0, 0], to: [4, 4, 0], width: 3, id: 4 },
+      { kind: "surface", min: [0, 0, 0], max: [8, 0, 8], depth: 2, id: 46 },
     ];
     expect(parseStructurePlan(JSON.stringify(plan))).toEqual(plan);
+  });
+
+  it("refuses a surface the world cannot generate", () => {
+    expect(
+      parseStructurePlan(
+        JSON.stringify([
+          { kind: "surface", min: [0, 0, 0], max: [8, 0, 8], depth: 0, id: 46 },
+        ]),
+      ),
+    ).toBeNull();
+    expect(
+      parseStructurePlan(
+        JSON.stringify([
+          {
+            kind: "surface",
+            min: [0, 0, 0],
+            max: [8, 0, 8],
+            depth: 1,
+            id: 999,
+          },
+        ]),
+      ),
+    ).toBeNull();
   });
 
   it("refuses a staircase or incline the world cannot generate", () => {

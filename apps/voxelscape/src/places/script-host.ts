@@ -129,6 +129,12 @@ export interface ScriptedProp {
    * it, in units per second — a conveyor, standing in where a motion would.
    */
   conveyor?: { vx: number; vz: number };
+  /**
+   * The velocity the prop's own body moves at, in units per second, set by the
+   * script each time it moves the prop, so a rider is carried by a body the
+   * script drives rather than by a `motion` sampled over the clock.
+   */
+  velocity?: { vx: number; vy: number; vz: number };
   /** Names this prop answers to in a query, e.g. "enemy". */
   tags: string[];
   /** Values the script hangs on this prop under a name. */
@@ -213,6 +219,23 @@ export interface HudReadout {
   max: number;
   /** A text readout's body; "" for a bar. */
   text: string;
+}
+
+/**
+ * A figure a place script holds the camera behind until it is cleared: where
+ * the camera sits relative to the figure, and where ahead of it the view
+ * looks. Only the local peer's own player camera is driven by it.
+ */
+export interface FollowCamera {
+  entityId: string;
+  /** How far behind the figure the camera sits, in world units. */
+  back: number;
+  /** How far above the figure the camera sits, in world units. */
+  up: number;
+  /** How far ahead of the figure the camera looks, in world units. */
+  lookAhead: number;
+  /** The field of view to hold, or null to leave the current one. */
+  fov: number | null;
 }
 
 /** How a script asked for a sound to play, beyond the fixed name it chose. */
@@ -657,6 +680,8 @@ export class ScriptHost {
   private readonly panels = new Map<string, Map<string, UiPanelState>>();
   /** The camera sequence each player is watching, keyed by player. */
   private readonly cutscenes = new Map<string, CutsceneState>();
+  /** The figure each player's camera follows, keyed by player. */
+  private readonly follows = new Map<string, FollowCamera>();
   /** Whether each player's movement and tools are taken away, keyed by player. */
   private readonly controlLocks = new Map<string, boolean>();
   private pumping = false;
@@ -717,6 +742,7 @@ export class ScriptHost {
       getPlayer: (did) => this.player(did),
       getPlayersInBox: (min, max) => this.playersInBox(min, max),
       getLocalPlayer: () => this.localPlayer(),
+      getInput: () => params.getInput?.() ?? null,
       getPlayerValue: (did, key) => this.playerValue(did, key),
       getLeaderboard: (key, count) => this.leaderboard(key, count),
       getData: (scope, player, key) =>
@@ -1351,10 +1377,34 @@ export class ScriptHost {
     return motion === undefined ? null : poseAt(motion, this.getNow());
   }
 
-  /** Where the prop `id` is at the shared clock, or null when it does not move. */
+  /**
+   * Where the prop `id` is and how fast it is going at the shared clock, or
+   * null when it neither moves by a motion nor is driven by the script. A
+   * script-driven prop stands at its declared pose and reports the velocity
+   * the script last set, so a rider is carried the way a platform carries one.
+   */
   propPose(id: string): MotionPose | null {
-    const motion = this.props.get(id)?.motion;
-    return motion === undefined ? null : poseAt(motion, this.getNow());
+    const prop = this.props.get(id);
+    if (prop === undefined) {
+      return null;
+    }
+    if (prop.motion !== undefined) {
+      return poseAt(prop.motion, this.getNow());
+    }
+    if (prop.velocity === undefined) {
+      return null;
+    }
+    return {
+      dx: 0,
+      dy: 0,
+      dz: 0,
+      yaw: 0,
+      spinAxis: [0, 1, 0],
+      spinAngle: 0,
+      vx: prop.velocity.vx,
+      vy: prop.velocity.vy,
+      vz: prop.velocity.vz,
+    };
   }
 
   /** Every blaze the script has lit in the world. */
@@ -1451,6 +1501,11 @@ export class ScriptHost {
   /** Clears `player`'s cutscene, called once the world has played it out. */
   clearCutscene(player: string): void {
     this.cutscenes.delete(player);
+  }
+
+  /** The figure `player`'s camera follows, or null when it follows nothing. */
+  followCameraFor(player: string): FollowCamera | null {
+    return this.follows.get(player) ?? null;
   }
 
   /** Whether the script has taken `player`'s movement and tools away. */
@@ -1848,6 +1903,7 @@ export class ScriptHost {
           seat,
           motion,
           conveyor,
+          velocity,
           tags,
           attributes,
         } = effect.payload;
@@ -1868,6 +1924,7 @@ export class ScriptHost {
           attributes: { ...(attributes ?? {}) },
           ...(motion !== undefined ? { motion } : {}),
           ...(conveyor !== undefined ? { conveyor } : {}),
+          ...(velocity !== undefined ? { velocity } : {}),
           ...(previous?.animation !== undefined
             ? { animation: previous.animation }
             : {}),
@@ -2528,6 +2585,20 @@ export class ScriptHost {
         this.cutscenes.set(player, { startMs: this.getNow(), shots: [shot] });
         break;
       }
+      case "camera-follow": {
+        const { player, entityId, back, up, lookAhead, fov } = effect.payload;
+        this.follows.set(player, {
+          entityId,
+          back: back ?? 8,
+          up: up ?? 3,
+          lookAhead: lookAhead ?? 4,
+          fov: fov ?? null,
+        });
+        break;
+      }
+      case "camera-follow-clear":
+        this.follows.delete(effect.payload.player);
+        break;
       case "player-control":
         this.controlLocks.set(effect.payload.player, effect.payload.locked);
         break;

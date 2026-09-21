@@ -42,6 +42,12 @@ export function getPlayers() {
   return JSON.parse(host.getPlayers());
 }
 
+/** The local player's live movement and tool input, or null where the world
+ * reports none — parsed here, so a script drives off real numbers. */
+export function getInput() {
+  return JSON.parse(host.getInput());
+}
+
 /** Every ending this place has defined, parsed the same way \`getPlayers\` is. */
 export function getEndings() {
   return JSON.parse(host.getEndings());
@@ -349,6 +355,11 @@ function place(model, options, announce) {
     if (moveOptions.yaw !== undefined) {
       state.yaw = moveOptions.yaw;
     }
+    if (moveOptions.vx !== undefined || moveOptions.vy !== undefined || moveOptions.vz !== undefined) {
+      state.vx = moveOptions.vx === undefined ? 0 : moveOptions.vx;
+      state.vy = moveOptions.vy === undefined ? 0 : moveOptions.vy;
+      state.vz = moveOptions.vz === undefined ? 0 : moveOptions.vz;
+    }
     announce(state, moveOptions.live === undefined ? true : moveOptions.live);
   };
   announce(state, true);
@@ -502,6 +513,10 @@ export function createProp(options) {
       seat: options.seat,
       conveyor: options.conveyor,
       motion: options.motion,
+      velocity:
+        state.vx === undefined
+          ? undefined
+          : { vx: state.vx, vy: state.vy, vz: state.vz },
       tags: state.tags,
       attributes: state.attributes,
     });

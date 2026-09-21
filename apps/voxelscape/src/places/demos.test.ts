@@ -1251,3 +1251,160 @@ describe("the Don't Poop Yourself at School demo", () => {
     host.dispose();
   });
 });
+
+describe("the A Dusty Trip demo", () => {
+  /** The local player's held input the demo's own script reads through `engine.getInput`. */
+  let input: {
+    moveX: number;
+    moveY: number;
+    jumpHeld: boolean;
+    lookDx: number;
+    lookDy: number;
+    primary: boolean;
+    primaryHeld: boolean;
+    secondaryHeld: boolean;
+    use: boolean;
+  };
+  let tripClockMs: number;
+
+  /** Loads the demo and boots a host against the mutable `input`. */
+  const trip = async () => {
+    stubModels();
+    tripClockMs = 0;
+    input = {
+      moveX: 0,
+      moveY: 0,
+      jumpHeld: false,
+      lookDx: 0,
+      lookDy: 0,
+      primary: false,
+      primaryHeld: false,
+      secondaryHeld: false,
+      use: false,
+    };
+    const demo = builtinDemo("a-dusty-trip")!;
+    const project = await loadBuiltinDemo(demo);
+    const damage: number[] = [];
+    const host = new ScriptHost({
+      seed: project.manifest.seed,
+      getNow: () => tripClockMs,
+      getHeightAt: () => 0,
+      getSolidAt: () => false,
+      getInput: () => input,
+      getPlayers: () => [{ did: "", x: 0, y: 0, z: 0 }],
+      onPlayerDamage: (_player, amount) => damage.push(amount),
+    });
+    await host.loadProject(
+      project.scripts,
+      project.manifest.scripts![0],
+      projectModelBytes(project),
+    );
+    return { host, project, damage };
+  };
+
+  /** Moves the shared clock forward and lets the trip's tick timer fire. */
+  const advanceTrip = async (host: ScriptHost, ms: number): Promise<void> => {
+    tripClockMs += ms;
+    await host.pump();
+  };
+
+  it("lists the place and bundles its models", () => {
+    const demo = builtinDemo("a-dusty-trip");
+    expect(demo?.manifest.name).toBe("A Dusty Trip");
+    expect(demo?.manifest.mode).toBe("solo");
+    expect(demo?.manifest.models).toContain("platform.zip");
+    expect(BUILTIN_DEMOS).toContain(demo);
+  });
+
+  it("compiles a plan that skims the terrain with sand and a road", async () => {
+    const { project } = await trip();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry: project.manifest.scripts![0],
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    expect(plan.structures.some((shape) => shape.kind === "surface")).toBe(
+      true,
+    );
+  });
+
+  it("starts with a solid seat car, gas stations, and its readouts", async () => {
+    const { host } = await trip();
+    expect(host.prop("car")).toMatchObject({
+      model: "platform.zip",
+      solid: true,
+      seat: true,
+    });
+    expect(
+      host.propList.filter((prop) => prop.id.startsWith("station-")).length,
+    ).toBe(6);
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "fuel", kind: "bar", max: 60 }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "trip", kind: "text" }),
+    );
+    host.dispose();
+  });
+
+  it("gets in on use and hands over the wheel and a follow camera", async () => {
+    const { host } = await trip();
+    await host.use("car", "", "");
+    expect(host.controlsLocked("")).toBe(true);
+    expect(host.followCameraFor("")).toMatchObject({ entityId: "car" });
+    host.dispose();
+  });
+
+  it("drives the car from held input and burns fuel as it goes", async () => {
+    const { host } = await trip();
+    await host.use("car", "", "");
+    input.moveY = 1;
+    for (let i = 0; i < 20; i++) {
+      await advanceTrip(host, 40);
+    }
+    const car = host.prop("car")!;
+    expect(car.z).toBeGreaterThan(0);
+    expect(host.propPose("car")?.vz).toBeGreaterThan(0);
+    const fuel = host.hudFor("").find((readout) => readout.id === "fuel");
+    expect(fuel?.value).toBeLessThan(60);
+    expect(host.controlsLocked("")).toBe(true);
+    host.dispose();
+  });
+
+  it("gets out on the bound key and gives the body back", async () => {
+    const { host } = await trip();
+    await host.use("car", "", "");
+    await host.input("KeyR", "down", "");
+    expect(host.controlsLocked("")).toBe(false);
+    expect(host.followCameraFor("")).toBeNull();
+    host.dispose();
+  });
+
+  it("leaves a new player unharmed while they find the car", async () => {
+    const { host, damage } = await trip();
+    for (let i = 0; i < 250; i++) {
+      await advanceTrip(host, 40); // ten seconds, with the player standing still
+    }
+    expect(damage).toEqual([]);
+    host.dispose();
+  });
+
+  it("accelerates from the held dig button with the stick left to steer", async () => {
+    const { host } = await trip();
+    await host.use("car", "", "");
+    input.primaryHeld = true;
+    for (let i = 0; i < 20; i++) {
+      await advanceTrip(host, 40);
+    }
+    expect(host.prop("car")!.z).toBeGreaterThan(0);
+    // Steering still reads the stick's horizontal axis.
+    const beforeYaw = host.prop("car")!.yaw;
+    input.moveX = 1;
+    for (let i = 0; i < 10; i++) {
+      await advanceTrip(host, 40);
+    }
+    expect(host.prop("car")!.yaw).not.toBeCloseTo(beforeYaw, 3);
+    host.dispose();
+  });
+});

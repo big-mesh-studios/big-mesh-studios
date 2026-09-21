@@ -79,6 +79,8 @@ export const VOXEL_TILES: Record<number, VoxelTiles> = {
   43: { top: "wool_green", side: "wool_green", bottom: "wool_green" },
   44: { top: "wool_red", side: "wool_red", bottom: "wool_red" },
   45: { top: "wool_black", side: "wool_black", bottom: "wool_black" },
+  // Sand wears the sheet's own tile on every face.
+  46: { top: "sand", side: "sand", bottom: "sand" },
 };
 
 export const parseTileAtlasXml = (xmlText: string): Map<string, SubTexture> => {

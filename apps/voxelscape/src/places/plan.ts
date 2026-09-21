@@ -68,6 +68,8 @@ export const MAX_PLAN_STAIR_RISE = 64;
 export const MAX_PLAN_STAIR_RUN = 64;
 /** The most voxels long an incline's run may be. */
 export const MAX_PLAN_RAMP_RUN = 256;
+/** The most voxels deep a surface shape may replace below the terrain top. */
+export const MAX_PLAN_SURFACE_DEPTH = 64;
 
 /** Where a place's plan may build: the seed it is deterministic against, and its bounds. */
 export interface PlanContext {
@@ -179,6 +181,16 @@ const isShape = (v: unknown): v is PlanShape => {
     const [fx, , fz] = shape.from;
     const [tx, , tz] = shape.to;
     return Math.max(Math.abs(tx - fx), Math.abs(tz - fz)) <= MAX_PLAN_RAMP_RUN;
+  }
+  if (shape.kind === "surface") {
+    return (
+      isVector(shape.min) &&
+      isVector(shape.max) &&
+      shape.min[0] <= shape.max[0] &&
+      shape.min[2] <= shape.max[2] &&
+      isInt(shape.depth, 1, MAX_PLAN_SURFACE_DEPTH) &&
+      isBlockId(shape.id)
+    );
   }
   return false;
 };

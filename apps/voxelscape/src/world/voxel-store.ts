@@ -25,6 +25,9 @@ export const VOXEL_GREYSTONE = 28;
 // Fire embers: a solid block that shines like lava but stays out of the fluid
 // and lava-id ranges, so it never spreads, fills, or counts as a hazard.
 export const VOXEL_EMBER = 29;
+// Sand: the dry surface a desert place paints over its terrain, drawn with the
+// sheet's own sand tile.
+export const VOXEL_SAND = 46;
 
 // Wool blocks: 16 colours matching the classic Minecraft palette (IDs 30-45).
 export const VOXEL_WOOL_WHITE = 30;

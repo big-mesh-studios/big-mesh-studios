@@ -135,14 +135,17 @@ describe("canvas touch gestures", () => {
 describe("the touch buttons", () => {
   it("strikes at once and repeats while the dig button is held", () => {
     input.setTouchPrimary(true);
-    expect(input.consume().primary).toBe(true);
+    expect(input.consume()).toMatchObject({ primary: true, primaryHeld: true });
 
     vi.advanceTimersByTime(500);
-    expect(input.consume().primary).toBe(true);
+    expect(input.consume()).toMatchObject({ primary: true, primaryHeld: true });
 
     input.setTouchPrimary(false);
     vi.advanceTimersByTime(500);
-    expect(input.consume().primary).toBe(false);
+    expect(input.consume()).toMatchObject({
+      primary: false,
+      primaryHeld: false,
+    });
   });
 
   it("holds the secondary button down and queues its release", () => {

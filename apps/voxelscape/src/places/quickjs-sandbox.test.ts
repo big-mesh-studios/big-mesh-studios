@@ -266,4 +266,41 @@ describe("a QuickJS sandbox", () => {
     ]);
     sandbox.dispose();
   });
+
+  it("answers the local player's input, or null when the world reports none", async () => {
+    const input = {
+      moveX: 0.5,
+      moveY: -1,
+      jumpHeld: true,
+      lookDx: 2,
+      lookDy: -3,
+      primary: false,
+      primaryHeld: false,
+      secondaryHeld: true,
+      use: false,
+    };
+    const sandbox = await createQuickJSSandbox({
+      seed: 1,
+      getNow,
+      getInput: () => input,
+    });
+    sandbox.load(`
+      engine.onTick(function () {
+        engine.log(engine.getInput());
+      });
+    `);
+    sandbox.tick(0, "[]");
+    expect(JSON.parse(sandbox.drain().logs[0])).toEqual(input);
+    sandbox.dispose();
+
+    const bare = await make();
+    bare.load(`
+      engine.onTick(function () {
+        engine.log(engine.getInput());
+      });
+    `);
+    bare.tick(0, "[]");
+    expect(bare.drain().logs).toEqual(["null"]);
+    bare.dispose();
+  });
 });

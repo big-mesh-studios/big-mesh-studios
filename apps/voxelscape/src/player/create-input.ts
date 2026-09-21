@@ -58,6 +58,12 @@ export interface InputSnapshot {
    */
   primary: boolean;
   /**
+   * True while the touch dig button is held down. A touch-only signal, since
+   * a mouse strike is an edge; a script driving something from held input
+   * reads it as the touch accelerator.
+   */
+  primaryHeld: boolean;
+  /**
    * Edge-triggered: true only on the frame the mouse's primary button was
    * pressed — the click that strikes, and the one that talks to an NPC. Touch
    * input never sets this: a touch talks through the use button instead.
@@ -93,6 +99,7 @@ interface InputState {
   lookDx: number;
   lookDy: number;
   primaryQueued: boolean;
+  primaryHeld: boolean;
   clickQueued: boolean;
   secondaryQueued: boolean;
   secondaryHeld: boolean;
@@ -228,6 +235,7 @@ export const createInput = (): InputController => {
     lookDx: 0,
     lookDy: 0,
     primaryQueued: false,
+    primaryHeld: false,
     clickQueued: false,
     secondaryQueued: false,
     secondaryHeld: false,
@@ -474,6 +482,7 @@ export const createInput = (): InputController => {
         lookDx: state.lookDx,
         lookDy: state.lookDy,
         primary: state.primaryQueued,
+        primaryHeld: state.primaryHeld,
         click: state.clickQueued,
         secondary: state.secondaryQueued,
         secondaryHeld: state.secondaryHeld,
@@ -521,6 +530,7 @@ export const createInput = (): InputController => {
     },
 
     setTouchPrimary(held) {
+      state.primaryHeld = held;
       if (primaryRepeat !== undefined) {
         window.clearInterval(primaryRepeat);
         primaryRepeat = undefined;

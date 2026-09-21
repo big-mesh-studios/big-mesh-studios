@@ -69,6 +69,9 @@ declare module "voxelscape" {
   export const getPlayersInBox: WorldQuery["getPlayersInBox"];
   /** The DID of the player on this peer, or "" when they are not signed in. */
   export const getLocalPlayer: WorldQuery["getLocalPlayer"];
+  /** The local player's live movement and tool input, or null where the world reports none. */
+  export type LocalInput = import("./sandbox").LocalInput;
+  export const getInput: WorldQuery["getInput"];
   /** The value set for `player` under `key`, or null when none. */
   export const getPlayerValue: WorldQuery["getPlayerValue"];
   /** The players ranked by `key`, highest first, at most `count` of them. */
@@ -351,9 +354,12 @@ declare module "voxelscape" {
     yaw?: number;
   }
 
-  /** A figure's placement, re-sent on `move`. `live` marks a position the script computed itself as the figure's current owner, to broadcast to other peers rather than leave for each of them to compute independently — see the "npc" effect's own `live` field, which this passes straight through, and defaults to true. A prop, which has no such field, ignores it. */
+  /** A figure's placement, re-sent on `move`. `live` marks a position the script computed itself as the figure's current owner, to broadcast to other peers rather than leave for each of them to compute independently — see the "npc" effect's own `live` field, which this passes straight through, and defaults to true. A prop, which has no such field, ignores it. `vx`/`vy`/`vz` say how fast a driven prop's own body is moving, in world units per second, so a player standing on it is carried. */
   interface FigureMove extends FigurePlacement {
     live?: boolean;
+    vx?: number;
+    vy?: number;
+    vz?: number;
   }
 
   /**

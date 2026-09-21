@@ -144,6 +144,7 @@ export class ScriptConsole {
     y: number;
     z: number;
   }>;
+  private readonly getInput?: WorldQuery["getInput"];
   private readonly report: (line: string) => void;
   private readonly onDialog: (
     player: string,
@@ -246,6 +247,7 @@ export class ScriptConsole {
     this.getWaterAt = params.getWaterAt;
     this.getBlockAt = params.getBlockAt;
     this.getPlayers = params.getPlayers;
+    this.getInput = params.getInput;
     this.report = params.report ?? (() => {});
     this.onDialog = params.onDialog ?? (() => {});
     this.onEnding = params.onEnding ?? (() => {});
@@ -371,6 +373,42 @@ export class ScriptConsole {
   /** Clears `player`'s cutscene once the world has played it out. */
   clearCutscene(player: string): void {
     this.host?.clearCutscene(player);
+  }
+
+  /** The figure `player`'s camera follows, or null when it follows none. */
+  followCameraFor(player: string) {
+    return this.host?.followCameraFor(player) ?? null;
+  }
+
+  /**
+   * Where the scripted figure `id` stands now, in world units, or null when
+   * the script has placed none. The same pose the queries answer with, read by
+   * a camera that tracks a figure the script is moving each step.
+   */
+  figurePose(
+    id: string,
+  ): { x: number; y: number; z: number; yaw: number } | null {
+    const npc = this.host?.npc(id) ?? null;
+    if (npc !== null) {
+      const pose = this.host?.npcPose(id) ?? null;
+      return {
+        x: npc.x + (pose?.dx ?? 0),
+        y: npc.y + (pose?.dy ?? 0),
+        z: npc.z + (pose?.dz ?? 0),
+        yaw: npc.yaw + (pose?.yaw ?? 0),
+      };
+    }
+    const prop = this.host?.prop(id) ?? null;
+    if (prop !== null) {
+      const pose = this.host?.propPose(id) ?? null;
+      return {
+        x: prop.x + (pose?.dx ?? 0),
+        y: prop.y + (pose?.dy ?? 0),
+        z: prop.z + (pose?.dz ?? 0),
+        yaw: prop.yaw + (pose?.yaw ?? 0),
+      };
+    }
+    return null;
   }
 
   /** Whether the script has taken `player`'s movement and tools away. */
@@ -666,6 +704,7 @@ export class ScriptConsole {
       getWaterAt: this.getWaterAt,
       getBlockAt: this.getBlockAt,
       getPlayers: this.getPlayers,
+      getInput: this.getInput,
       onToast: (player, text) => {
         if (player === "") {
           this.report(text);

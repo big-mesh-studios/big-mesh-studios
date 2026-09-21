@@ -16,6 +16,10 @@ _Avoid_: Chunk data, padded store (the border lives in the same `data` array, no
 The white voxel (`VOXEL_CLOUD`) the fill scatters through the cloud band centred on `FILL_CLOUD_Y`, sampled from a seeded 3D Perlin field (`world/cloud-fill.ts`), so the clouds are deterministic per world and tile over the noise's lattice period. Solid to the player — it is the secret floor they can stand on — but skipped by the ground-height samplers, so spawn, monster and weather heights still read the terrain; it breaks into a Cloud inventory item like any collectable block.
 _Avoid_: sky block
 
+**Sand**:
+The dry block (`VOXEL_SAND`) a desert place paints over its terrain with a `surface` plan shape; it is an ordinary solid voxel drawn with the tile sheet's own sand tile, with no behaviour of its own. A place with no sand block still has one — it is in every world's block list — so a desert is a place that skims its terrain with sand, not a special kind of world.
+_Avoid_: desert (that is the place, not the block), dirt (a different block)
+
 **Sphere**:
 The set of `WorldBlock`s the window keeps loaded: every chunk cell within `chunkRadius` (default 4) chunks of the player's cell horizontally and `chunkRadiusY` (default 2) chunks above and below it — a ball flattened in Y, since the terrain, its caves, and the clouds span only a couple of chunks of height and the full round ball's upper and lower caps were stone that cost fill, mesh, and draw time for nothing the player could see. (The name is a legacy of when the window was round in every axis.) When the player crosses a chunk boundary, cells that leave the ball are evicted and cells that enter teleport a freed slot to the leading cell and refill its `WorldBlock` in place (same slot, new data) rather than allocating a new one. Owned and managed by **ChunkSphere**.
 _Avoid_: Chunk grid, world grid (the sphere's per-slot integer coordinates are an internal `ChunkSphere` implementation detail — don't confuse with **Sphere** itself)
@@ -152,6 +156,14 @@ _Avoid_: spring (that is one use of it), bounce (that implies collision)
 A **Scripted prop** marked `seat` that a player stands on and is turned to face, so a turntable, a boat, or a carriage carries a rider facing the way it faces. The rider is carried by the prop's surface velocity the way any moving platform carries them; only the heading is the seat's own.
 _Avoid_: vehicle (a seat is a surface, not a simulation), chair (that is a model)
 
+**Driven prop**:
+A **Scripted prop** a place script moves itself each tick, setting the body's velocity alongside its placement (`PropHandle.move`'s `vx`/`vy`/`vz`) rather than following a **Motion** sampled from the clock. The host stores that velocity and reports it through the same pose read a motion's velocity comes from, so a player standing on the prop is carried by it. Its controls, collision, and fuel are the script's own code over the world queries; it is a car, a boat, or a cart built from a solid seat prop.
+_Avoid_: vehicle (there is no engine body — a vehicle is one place's use of a driven prop), physics object (nothing integrates it but the script)
+
+**Follow camera**:
+A chase view a place script holds on a **Scripted figure** with `camera-follow`: how far behind and above the figure the eye sits, and how far ahead of it the view looks, sampled from the figure's live pose each frame until `camera-follow-clear`. Voice-tier and per-player, so every peer follows its own player's body.
+_Avoid_: cutscene (that is a fixed sequence of shots, not a view held on a mover), seat view
+
 **Figure animation**:
 A model's own saved motion that a place script plays on a **Scripted figure** with `figure-animate`: the host stores the chosen motion's name, speed, and loop, and **VoxelFigures** poses the figure's parts at the frame the shared clock gives. The motion itself is the stacker format's, so voxel-rigger can author one and export it in the model zip; the figure only names it.
 _Avoid_: Motion (that is the scripted path and spin of the whole figure, not its parts), tween
@@ -257,6 +269,10 @@ _Avoid_: score (one use of a value), stat
 **Input binding**:
 A key code a place script listens on, named by `bind`; the input layer reports every down and up edge on that key as an `input` fact carrying the binding's id and the player who pressed it, in addition to whatever the key already does.
 _Avoid_: hotkey (that is the world's own selection), keymap
+
+**Local input**:
+The local player's live movement and tool state a place script reads with `getInput` — the forward/back and strafe axes, whether jump is held, the look delta, the button edges, and the touch dig button's held state — so it can drive something itself. Only the peer's own player has one; another player's input reaches a script as a fact, never as a read.
+_Avoid_: input state (too general), controls
 
 **Player prompt**:
 A labelled interaction a place script stands on a figure with `prompt`, answered when the player uses that figure: the host authors `prompt-triggered` instead of `entity-used`, and the prompt's verb is what the crosshair hint shows.

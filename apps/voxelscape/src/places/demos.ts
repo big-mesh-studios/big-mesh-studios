@@ -17,9 +17,11 @@ import ZOMBIES_SCRIPT from "./demo-scripts/zombies.ts?raw";
 import ZOMBIE_SCRIPT from "./demo-scripts/zombie.ts?raw";
 import ZOMBIES_MANSION_SCRIPT from "./demo-scripts/zombies-mansion.ts?raw";
 import DONT_POOP_SCRIPT from "./demo-scripts/dont-poop-yourself-at-school.ts?raw";
+import DUSTY_TRIP_SCRIPT from "./demo-scripts/dusty-trip.ts?raw";
 import HOME_SCRIPT from "./demo-scripts/home.ts?raw";
 import {
   DONT_POOP_MODELS,
+  DUSTY_TRIP_MODELS,
   GASA4_MODELS,
   LATE_TO_SCHOOL_MODELS,
   ZOMBIES_MANSION_MODELS,
@@ -153,6 +155,28 @@ const DONT_POOP: BuiltinDemo = {
 };
 
 /**
+ * The "A Dusty Trip" demo: a sand plain and a road under the default sky, a
+ * drivable car a player gets into and steers, gas stations down the road, a
+ * dust storm closing from behind, and mutants that chase the driver. It is the
+ * proof that a place script can drive a solid prop with its own physics from
+ * the local player's held input, carry a rider on it, hold a follow camera, and
+ * run a chase-and-survive loop.
+ */
+const DUSTY_TRIP: BuiltinDemo = {
+  id: "a-dusty-trip",
+  manifest: {
+    name: "A Dusty Trip",
+    seed: 42_069,
+    spawn: [0, 0, 0],
+    mode: "solo",
+    models: DUSTY_TRIP_MODELS,
+  },
+  scripts: {
+    [MAIN_SCRIPT_FILE]: DUSTY_TRIP_SCRIPT,
+  },
+};
+
+/**
  * The demo `App.tsx` opens at the site's own root address, in place of
  * fetching a live place over atproto every time somebody lands there. A
  * guide stands near the spawn and says hello — the same world the studio's
@@ -179,6 +203,7 @@ export const BUILTIN_DEMOS: BuiltinDemo[] = [
   ZOMBIES,
   ZOMBIES_MANSION,
   DONT_POOP,
+  DUSTY_TRIP,
   HOME,
 ];
 

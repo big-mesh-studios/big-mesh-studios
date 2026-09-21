@@ -10,6 +10,7 @@ import {
 import {
   VOXEL_AIR,
   VOXEL_BRICK,
+  VOXEL_SAND,
   VOXEL_STONE,
   VOXEL_WOOD,
   VoxelStore,
@@ -150,5 +151,49 @@ describe("stampStructures", () => {
     expect(store.get(5, 0, 1)).toBe(VOXEL_STONE);
     expect(store.get(5, 0, 3)).toBe(VOXEL_AIR);
     expect(store.get(5, 1, 0)).toBe(VOXEL_AIR);
+  });
+
+  it("skins the top of each terrain column with a surface shape", () => {
+    const { store, center } = storeAt([8, 8, 8], 2);
+    // A floor one voxel deep, with a two-voxel mound at (2, 2).
+    for (let z = 0; z < 8; z++) {
+      for (let x = 0; x < 8; x++) {
+        store.set(x, 0, z, VOXEL_STONE);
+      }
+    }
+    store.set(2, 1, 2, VOXEL_STONE);
+    stampStructures(store, center, [
+      {
+        kind: "surface",
+        min: [0, 0, 0],
+        max: [3, 0, 3],
+        depth: 1,
+        id: VOXEL_SAND,
+      },
+    ]);
+    expect(store.get(0, 0, 0)).toBe(VOXEL_SAND);
+    expect(store.get(2, 1, 2)).toBe(VOXEL_SAND); // the mound's top
+    expect(store.get(2, 0, 2)).toBe(VOXEL_STONE); // below the skinned layer
+    expect(store.get(5, 0, 5)).toBe(VOXEL_STONE); // outside the footprint
+    expect(store.get(1, 1, 1)).toBe(VOXEL_AIR);
+  });
+
+  it("replaces every voxel a surface's depth covers", () => {
+    const { store, center } = storeAt([8, 8, 8], 2);
+    for (let y = 0; y < 3; y++) {
+      store.set(1, y, 1, VOXEL_STONE);
+    }
+    stampStructures(store, center, [
+      {
+        kind: "surface",
+        min: [1, 0, 1],
+        max: [1, 0, 1],
+        depth: 2,
+        id: VOXEL_SAND,
+      },
+    ]);
+    expect(store.get(1, 2, 1)).toBe(VOXEL_SAND);
+    expect(store.get(1, 1, 1)).toBe(VOXEL_SAND);
+    expect(store.get(1, 0, 1)).toBe(VOXEL_STONE);
   });
 });

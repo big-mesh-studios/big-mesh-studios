@@ -318,6 +318,7 @@ function __require(id) {
         getPlayer: engine.getPlayer,
         getPlayersInBox: engine.getPlayersInBox,
         getLocalPlayer: engine.getLocalPlayer,
+        getInput: engine.getInput,
         getPlayerValue: engine.getPlayerValue,
         getLeaderboard: engine.getLeaderboard,
         getData: engine.getData,

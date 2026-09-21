@@ -129,6 +129,33 @@ export interface EntitySnapshot {
   readonly attributes: Readonly<Record<string, AttributeValue>>;
 }
 
+/**
+ * The local player's live movement and tool input, as a place script reads it
+ * to drive something itself — a car's throttle and steering, a turret's aim.
+ * Only the peer's own player has one: a script that needs another player's
+ * input hears it as a fact instead.
+ */
+export interface LocalInput {
+  /** Strafe input, from -1 (left) to 1 (right). */
+  readonly moveX: number;
+  /** Forward/back input, from -1 (backward) to 1 (forward). */
+  readonly moveY: number;
+  /** Whether the jump input is held down. */
+  readonly jumpHeld: boolean;
+  /** Horizontal pointer-move delta accumulated since the last frame. */
+  readonly lookDx: number;
+  /** Vertical pointer-move delta accumulated since the last frame. */
+  readonly lookDy: number;
+  /** Whether the primary (strike or dig) button fired this frame. */
+  readonly primary: boolean;
+  /** Whether the touch dig button is held down, which a script may read as an accelerator. */
+  readonly primaryHeld: boolean;
+  /** Whether the secondary (place or guard) button is held down. */
+  readonly secondaryHeld: boolean;
+  /** Whether the interact input fired this frame. */
+  readonly use: boolean;
+}
+
 /** Where a ray first met the world, and what it met. */
 export interface RaycastHit {
   /** What the ray hit first: terrain, a scripted figure, or a player. */
@@ -198,6 +225,8 @@ export interface WorldQuery {
   ): LivePlayer[];
   /** The DID of the player on this peer, or "" when they are not signed in. */
   getLocalPlayer(): string;
+  /** The local player's held movement and tool input, or null where the world reports none. */
+  getInput(): LocalInput | null;
   /** The value the script set for `did` under `key`, or null when there is none. */
   getPlayerValue(did: string, key: string): number | null;
   /** The value the place remembers under `scope`/`key` for `player`, or undefined. */

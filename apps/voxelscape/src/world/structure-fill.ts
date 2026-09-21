@@ -65,7 +65,7 @@ export interface PlanStairs {
 /** A solid incline from one point to another, its top stepping one voxel at a time. */
 export interface PlanRamp {
   kind: "ramp";
-  /** The base of the low end, in LOD-0 world voxels. */
+  /** The base of the low end, in LOD-0 voxels. */
   from: Dim3;
   /** The top of the high end. */
   to: Dim3;
@@ -74,7 +74,29 @@ export interface PlanRamp {
   id: number;
 }
 
-export type PlanShape = PlanBox | PlanRoad | PlanHouse | PlanStairs | PlanRamp;
+/**
+ * A skin over the terrain: the top `depth` voxels of every column in the
+ * footprint are replaced with `id`, following whatever height the generated
+ * terrain reached there. This is how a place paints a desert floor, a grass
+ * plain, or a roadbed over hills without knowing the height in advance; it
+ * cannot carve, since it only writes where a voxel already stands.
+ */
+export interface PlanSurface {
+  kind: "surface";
+  /**
+   * The footprint's corners, in LOD-0 voxels. The x and z axes bound the
+   * columns painted; y is ignored by the paint and only widens the region a
+   * plan change refills.
+   */
+  min: Dim3;
+  max: Dim3;
+  /** How many voxels below each column's top surface to replace. */
+  depth: number;
+  id: number;
+}
+
+export type PlanShape =
+  PlanBox | PlanRoad | PlanHouse | PlanStairs | PlanRamp | PlanSurface;
 
 /** Everything a script asks the filler to stamp, in the order it stamps it. */
 export type StructurePlan = PlanShape[];
@@ -202,7 +224,70 @@ export const expandShape = (shape: PlanShape): PlanBox[] => {
   if (shape.kind === "ramp") {
     return expandRamp(shape);
   }
+  if (shape.kind === "surface") {
+    // A surface follows the terrain height, which a box list cannot express;
+    // its declared corners stand in for bounding and picking it.
+    return [box(shape.min, shape.max, shape.id)];
+  }
   return expandHouse(shape);
+};
+
+/**
+ * Paints a surface shape into `store`: for every column in the footprint,
+ * finds the topmost voxel the generated terrain left and replaces up to
+ * `depth` voxels below it with the shape's id. Reads only this block's own
+ * voxels, so every block reaches the same answer from its own terrain.
+ */
+const stampSurface = (
+  store: VoxelStore,
+  center: Dim3,
+  shape: PlanSurface,
+): void => {
+  const scale = store.scale;
+  const [nx, ny, nz] = store.voxels;
+  const n: Dim3 = [nx, ny, nz];
+  const p = store.padding;
+  const depth = Math.max(1, Math.round((shape.depth * VOXEL_SIZE) / scale));
+  const lo: Dim3 = [0, 0, 0];
+  const hi: Dim3 = [0, 0, 0];
+  for (let axis = 0; axis < 3; axis++) {
+    const worldLo = shape.min[axis] * VOXEL_SIZE;
+    const worldHi = (shape.max[axis] + 1) * VOXEL_SIZE;
+    lo[axis] = Math.max(
+      -p,
+      Math.floor((worldLo - center[axis]) / scale + n[axis] / 2),
+    );
+    hi[axis] = Math.min(
+      n[axis] + p - 1,
+      Math.ceil((worldHi - center[axis]) / scale + n[axis] / 2) - 1,
+    );
+  }
+  const id = shape.id;
+  if (!Number.isInteger(id) || id < 0 || id > 255 || id === VOXEL_AIR) {
+    return;
+  }
+  for (let vz = lo[2]; vz <= hi[2]; vz++) {
+    for (let vx = lo[0]; vx <= hi[0]; vx++) {
+      let top = -1;
+      for (let vy = n[1] - 1; vy >= -p; vy--) {
+        if (store.atPadded(vx, vy, vz) !== VOXEL_AIR) {
+          top = vy;
+          break;
+        }
+      }
+      if (top < 0) {
+        continue;
+      }
+      for (let d = 0; d < depth && top - d >= -p; d++) {
+        store.data[store.paddedIndex(vx, top - d, vz)] = id;
+      }
+    }
+  }
+  if (isWaterId(id)) {
+    store.hasWater = true;
+  } else {
+    store.mightHaveVoxels = true;
+  }
 };
 
 /**
@@ -226,6 +311,10 @@ export const stampStructures = (
   const p = store.padding;
 
   for (const shape of plan) {
+    if (shape.kind === "surface") {
+      stampSurface(store, center, shape);
+      continue;
+    }
     for (const part of expandShape(shape)) {
       const id = part.id;
       if (!Number.isInteger(id) || id < 0 || id > 255) {

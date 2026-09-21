@@ -30,6 +30,7 @@ import {
   VOXEL_LAVA,
   VOXEL_LEAVES,
   VOXEL_LOG,
+  VOXEL_SAND,
   VOXEL_STONE,
   VOXEL_WATER,
   VOXEL_WOOD,
@@ -345,6 +346,9 @@ class QuickJSSandbox implements ScriptSandbox {
     bind("getLocalPlayer", () =>
       context.newString(time.getLocalPlayer?.() ?? ""),
     );
+    bind("getInput", () =>
+      context.newString(JSON.stringify(time.getInput?.() ?? null)),
+    );
     bind("getPlayerValue", (did, key) =>
       context.newString(
         JSON.stringify(
@@ -456,6 +460,7 @@ class QuickJSSandbox implements ScriptSandbox {
       wood: VOXEL_WOOD,
       ice: VOXEL_ICE,
       greystone: VOXEL_GREYSTONE,
+      sand: VOXEL_SAND,
     };
     for (const [name, id] of Object.entries(ids)) {
       const value = context.newNumber(id);

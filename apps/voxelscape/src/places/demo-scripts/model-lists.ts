@@ -140,3 +140,13 @@ export const DONT_POOP_MODELS = [
   "npc-brad.zip",
   "npc-teacher.zip",
 ];
+
+/**
+ * The models the "A Dusty Trip" demo wears: the car's placeholder body, the
+ * mutants that chase it, and the gas stations along the road.
+ */
+export const DUSTY_TRIP_MODELS = [
+  "platform.zip",
+  "zombie.zip",
+  "lemonade-stand.zip",
+];

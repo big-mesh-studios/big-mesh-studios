@@ -955,6 +955,40 @@ describe("a script host", () => {
     host.dispose();
   });
 
+  it("holds the figure a camera follows until it is cleared", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      import * as engine from "voxelscape";
+      var started = false;
+      engine.onTick(function (clockMs, events) {
+        if (!started) {
+          started = true;
+          engine.dispatch("prop", { id: "car", model: "car.zip", x: 0, z: 0, solid: true });
+          engine.dispatch("camera-follow", {
+            player: "", entityId: "car", back: 10, up: 4,
+          });
+        }
+        for (var i = 0; i < events.length; i++) {
+          if (events[i].kind === "player-touched") {
+            engine.dispatch("camera-follow-clear", { player: "" });
+          }
+        }
+      });
+      `,
+    );
+    expect(host.followCameraFor("")).toMatchObject({
+      entityId: "car",
+      back: 10,
+      up: 4,
+      lookAhead: 4,
+    });
+    await host.touched("", "car");
+    expect(host.followCameraFor("")).toBeNull();
+    host.dispose();
+  });
+
   it("shows HUD readouts and removes the ones it is told to", async () => {
     const { host } = await fresh();
     await loadProject(
@@ -1005,6 +1039,46 @@ describe("a script host", () => {
     expect(host.propPose("plank")?.dz).toBeCloseTo(5);
     clockMs = 5_000;
     expect(host.propPose("plank")?.dz).toBeCloseTo(10);
+    expect(host.propPose("nothing")).toBeNull();
+    host.dispose();
+  });
+
+  it("reports a driven prop's velocity at its declared pose, and null when it stills", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      import * as engine from "voxelscape";
+      var started = false;
+      engine.onTick(function (clockMs, events) {
+        if (!started) {
+          started = true;
+          engine.dispatch("prop", {
+            id: "car", model: "car.zip", x: 4, z: 0,
+            solid: true, seat: true, velocity: { vx: 3, vy: 0, vz: 12 },
+          });
+        }
+        for (var i = 0; i < events.length; i++) {
+          if (events[i].kind === "player-touched") {
+            engine.dispatch("prop", {
+              id: "car", model: "car.zip", x: 4, z: 0,
+              solid: true, seat: true, velocity: { vx: 0, vy: 0, vz: 0 },
+            });
+          }
+        }
+      });
+      `,
+    );
+    expect(host.propPose("car")).toMatchObject({
+      dx: 0,
+      dy: 0,
+      dz: 0,
+      vx: 3,
+      vy: 0,
+      vz: 12,
+    });
+    await host.touched("", "car");
+    expect(host.propPose("car")).toMatchObject({ vx: 0, vy: 0, vz: 0 });
     expect(host.propPose("nothing")).toBeNull();
     host.dispose();
   });

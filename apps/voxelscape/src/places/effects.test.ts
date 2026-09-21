@@ -184,6 +184,20 @@ describe("effect parsing", () => {
       ),
     ).not.toBeNull();
     expect(
+      parseEffect(
+        effect("camera-follow", {
+          player: "",
+          entityId: "car",
+          back: 10,
+          up: 4,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(parseEffect(effect("camera-follow-clear", { player: "" }))).toEqual({
+      tag: "camera-follow-clear",
+      payload: { player: "" },
+    });
+    expect(
       parseEffect(effect("player-control", { player: "", locked: true })),
     ).toEqual({
       tag: "player-control",
@@ -381,6 +395,19 @@ describe("effect parsing", () => {
         }),
       ),
     ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("prop", {
+          id: "car",
+          model: "car.zip",
+          x: 0,
+          z: 0,
+          solid: true,
+          seat: true,
+          velocity: { vx: 3, vy: 0, vz: 12 },
+        }),
+      ),
+    ).not.toBeNull();
   });
 
   it("refuses a malformed field or conveyor-prop", () => {
@@ -503,6 +530,55 @@ describe("effect parsing", () => {
           conveyor: { vx: 5 },
         },
       ],
+      [
+        "prop",
+        {
+          id: "car",
+          model: "car.zip",
+          x: 0,
+          z: 0,
+          motion: {
+            path: [
+              [0, 0, 0],
+              [4, 0, 0],
+            ],
+            loop: "loop",
+            durationMs: 1_000,
+          },
+          velocity: { vx: 3, vy: 0, vz: 12 },
+        },
+      ],
+      [
+        "prop",
+        {
+          id: "car",
+          model: "car.zip",
+          x: 0,
+          z: 0,
+          conveyor: { vx: 3, vz: 0 },
+          velocity: { vx: 3, vy: 0, vz: 12 },
+        },
+      ],
+      [
+        "prop",
+        {
+          id: "car",
+          model: "car.zip",
+          x: 0,
+          z: 0,
+          velocity: { vx: 3, vy: 0 },
+        },
+      ],
+      [
+        "prop",
+        {
+          id: "car",
+          model: "car.zip",
+          x: 0,
+          z: 0,
+          velocity: { vx: 3, vy: 0, vz: 101 },
+        },
+      ],
     ];
     for (const [tag, payload] of cases) {
       expect(
@@ -545,6 +621,10 @@ describe("effect parsing", () => {
       ["cutscene", { player: "", shots: [{ at: [0, 0] }] }],
       ["camera", { player: "", at: [0, 0] }],
       ["camera", { player: "", at: [0, 0, 0], holdMs: "long" }],
+      ["camera-follow", { player: "" }],
+      ["camera-follow", { player: "", entityId: "car", back: -1 }],
+      ["camera-follow", { player: "", entityId: "car", fov: 0 }],
+      ["camera-follow-clear", {}],
       ["player-control", { player: "" }],
       ["player-control", { player: "", locked: "yes" }],
       ["hud", { player: "", id: "bladder", kind: "bar" }],

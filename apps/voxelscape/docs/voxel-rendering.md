@@ -1,6 +1,6 @@
 # How a voxel becomes a pixel
 
-Read out of the modules that do it at f437e82 by `pnpm rendering`.
+Read out of the modules that do it at 124b240 by `pnpm rendering`.
 Every number below is the one the code declares, not a note about it.
 
 ## The path
@@ -121,6 +121,7 @@ spends against. An index costs 4 bytes on top, six to a quad.
 15. `advance`
 16. `occlusion`
 17. `draw`
+18. `light`
 
 `advance` holds every stage above it except the last two: what the probe
 reports as advance is the world's whole update, and `occlusion` and `draw`
