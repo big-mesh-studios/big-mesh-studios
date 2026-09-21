@@ -362,6 +362,11 @@ export class ChunkSphere {
       blocks: this.blocks,
       onBlockChanged: (index, meshes) => {
         this.filled[index] = true;
+        // A block lights itself from its own store alone, so a block's
+        // near-seam columns only agree with a neighbour's copies if that
+        // neighbour's light already reached them. The world's light engine
+        // raises the shared seam columns and reports the raises to the
+        // renderer outside this callback.
         params.onBlockChanged(index, meshes);
       },
       editLayer: params.editLayer,

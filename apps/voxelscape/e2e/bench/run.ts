@@ -707,7 +707,7 @@ const main = async (): Promise<void> => {
     }
     const url =
       `http://127.0.0.1:${options.port}/?radius=${options.radius}` +
-      `${options.antialias ? "&antialias=1" : ""}#bench`;
+      `${options.antialias ? "&antialias=1" : ""}#/?bench=1`;
     console.log(`loading ${url}`);
     await page.goto(url, { waitUntil: "load", timeout: 60000 });
     await waitForWindow(page);

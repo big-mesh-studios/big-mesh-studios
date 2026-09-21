@@ -14,9 +14,7 @@ import {
   type WorldVoxel,
 } from "./edit-layer";
 import type { WorldBlock } from "./level-data";
-import { fillBlockLight } from "./block-light";
-import { EMISSIVE_LEVEL } from "./light-store";
-import { propagateLight } from "./sky-light";
+import { LightEngine } from "./light-engine";
 import { isFluidId, isWaterId, VOXEL_AIR, VOXEL_EMBER } from "./voxel-store";
 
 /**
@@ -129,13 +127,15 @@ export class FireEmbers {
   constructor(
     private readonly blocks: WorldBlock[],
     private readonly onBlocksChanged: (indices: number[]) => void,
+    private readonly light: LightEngine,
   ) {}
 
   /**
    * Kindles the floor voxel under `fire`, remembering what it replaces. The
-   * ember is the one voxel that changed, so its light is seeded and spread from
-   * there rather than rescanning the whole block for every emitter, which is
-   * what the fill-time pass does and is far more work than one new source needs.
+   * ember is the one voxel that changed, so its light is seeded and spread
+   * from there rather than rescanning the whole block for every emitter, which
+   * is what the fill-time pass does and is far more work than one new source
+   * needs.
    */
   seed(fire: ScriptedFire): void {
     const w = fireFloorVoxel(fire);
@@ -144,18 +144,11 @@ export class FireEmbers {
       return;
     }
     const was = readVoxel(this.blocks, w);
-    const level = EMISSIVE_LEVEL[VOXEL_EMBER];
     const holders: number[] = [];
     eachHolder(this.blocks, w, (block, index, x, y, z) => {
       block.store.data[block.store.paddedIndex(x, y, z)] = VOXEL_EMBER;
       noteVoxel(block, VOXEL_EMBER);
-      propagateLight(
-        block.store,
-        block.light,
-        [{ x, y, z, level, fullSky: false }],
-        "blocklight",
-        false,
-      );
+      this.light.setVoxel(index, x, y, z, was, VOXEL_EMBER);
       holders.push(index);
     });
     if (holders.length === 0) {
@@ -169,8 +162,8 @@ export class FireEmbers {
    * Puts every kindled voxel back the way it was, so a restart leaves the floor
    * as it was built rather than glowing under a fire that is gone. Removing a
    * source cannot be done by spreading from it — light from several emitters
-   * combines, so the block is recomputed whole; a restart is rare enough that
-   * the full pass is the right price.
+   * combines — but the incremental engine walks the cells that depended on the
+   * ember's light instead of recomputing the block.
    */
   clear(): void {
     const holders = new Set<number>();
@@ -178,7 +171,7 @@ export class FireEmbers {
       eachHolder(this.blocks, voxel, (block, index, x, y, z) => {
         block.store.data[block.store.paddedIndex(x, y, z)] = was;
         noteVoxel(block, was);
-        fillBlockLight(block.store, block.light);
+        this.light.setVoxel(index, x, y, z, VOXEL_EMBER, was);
         holders.add(index);
       });
     }

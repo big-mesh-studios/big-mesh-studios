@@ -4,7 +4,7 @@
 // keyed, so it persists and syncs), then into the containing block's store.
 // A plain domain object: it knows how to edit voxels and keep the renderer
 // informed, not which item is wielded, nor that a console or network exists.
-import type { Dim3, TerrainConfig, WorldBlock } from "../world/level-data";
+import type { Dim3, WorldBlock } from "../world/level-data";
 import {
   blockWorldVoxelRange,
   worldVoxelToLocal,
@@ -14,8 +14,7 @@ import {
 import { pickVoxel, type VoxelPick } from "../world/picker";
 import { BREAK_YIELD, ITEMS, type ItemId } from "./items";
 import { type Inventory } from "./inventory";
-import { fillBlockLight } from "../world/block-light";
-import { fillSkyLight } from "../world/sky-light";
+import { LightEngine } from "../world/light-engine";
 import {
   VOXEL_AIR,
   VOXEL_GRASS,
@@ -53,11 +52,11 @@ export interface EditingControllerParams {
    */
   onVoxelWritten?: (w: WorldVoxel, id: number) => void;
   /**
-   * The terrain config anchoring sky-light recomputation after an edit.
-   * Omitting it leaves sky light unchanged on key (block-light emission still
-   * recomputes), which is enough for edits that only move an emissive block.
+   * The world's incremental light engine, seeded with each edited voxel so the
+   * seams around it re-light without a whole-block pass. Omitting it leaves
+   * the light untouched by edits, which is what the small test harnesses want.
    */
-  terrain?: TerrainConfig;
+  light?: LightEngine;
 }
 
 const findBlockIndex = (blocks: WorldBlock[], w: WorldVoxel): number => {
@@ -91,7 +90,7 @@ export class EditingController {
   private readonly getLook: () => { origin: Dim3; direction: Dim3 };
   private readonly getPlayerVoxels: () => WorldVoxel[] | null;
   private readonly onVoxelWritten: (w: WorldVoxel, id: number) => void;
-  private readonly terrain?: TerrainConfig;
+  private readonly light?: LightEngine;
   /** Whether breaking, placing, scooping, or pouring is allowed right now. */
   private enabled = true;
 
@@ -105,7 +104,7 @@ export class EditingController {
     this.getLook = params.getLook;
     this.getPlayerVoxels = params.getPlayerVoxels;
     this.onVoxelWritten = params.onVoxelWritten ?? (() => {});
-    this.terrain = params.terrain;
+    this.light = params.light;
   }
 
   /**
@@ -299,7 +298,9 @@ export class EditingController {
       if (!block.store.inBoundsPadded(x, y, z)) {
         continue;
       }
-      block.store.data[block.store.paddedIndex(x, y, z)] = id;
+      const at = block.store.paddedIndex(x, y, z);
+      const before = block.store.data[at];
+      block.store.data[at] = id;
       if (isWaterId(id)) {
         block.store.hasWater = true;
       } else if (id !== VOXEL_AIR) {
@@ -308,16 +309,16 @@ export class EditingController {
       if (isFluidId(id)) {
         block.store.hasFlowing = true;
       }
-      // The edited voxel changes what the block emits (and, with terrain,
-      // what the sky reaches), so its light is recomputed before the mesh
-      // that shades it is rebuilt.
-      fillBlockLight(block.store, block.light);
-      if (this.terrain !== undefined) {
-        fillSkyLight(block.store, block.light, block.center, this.terrain);
-      }
+      // The edited voxel changes what the block emits and what the sky
+      // reaches, so the engine re-lights from this cell; the seams the change
+      // bleeds over are raised in the same flood, no whole-block refill.
+      this.light?.setVoxel(i, x, y, z, before, id);
       holders.push(i);
     }
     if (holders.length > 0) {
+      // The holders mesh with the new voxel now; the light engine reports the
+      // blocks the re-light actually changed on its own flush, so the
+      // renderer rebuilds exactly those.
       this.onBlocksEdited(holders);
     }
   }

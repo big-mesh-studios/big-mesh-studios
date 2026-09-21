@@ -39,6 +39,8 @@ export const Phase = {
   advance: 14,
   occlusion: 15,
   draw: 16,
+  /** The incremental light engine's budgeted seam and edit flood. */
+  light: 17,
 } as const;
 
 /** Each phase's name, at the index that phase is timed under. */

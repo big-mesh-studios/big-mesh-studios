@@ -879,8 +879,10 @@ export const createVoxelscape = ({
     () => scriptConsole?.explosions() ?? [],
   );
   // The embers the fires kindle, kept so a restart can put the floor back.
-  const fireEmbers = new FireEmbers(world.blocks, (indices) =>
-    world.renderer.onBlocksChanged(indices),
+  const fireEmbers = new FireEmbers(
+    world.blocks,
+    (indices) => world.renderer.onBlocksChanged(indices),
+    world.light,
   );
 
   /**
@@ -1071,6 +1073,7 @@ export const createVoxelscape = ({
     blocks: world.blocks,
     resolve: (w) => world.blockIndexAtVoxel(w),
     onBlocksEdited: (indices) => world.renderer.onBlocksChanged(indices),
+    light: world.light,
   });
   world.onBlockFilled((i) => flow.wakeBlock(i));
   const editing = new EditingController({
@@ -1088,7 +1091,7 @@ export const createVoxelscape = ({
     onVoxelWritten: (w, id) => flow.wakeVoxel(w, id),
     getLook: () => avatar.look(),
     getPlayerVoxels: () => avatar.occupiedVoxels(),
-    terrain,
+    light: world.light,
   });
 
   /**
@@ -2613,6 +2616,12 @@ export const createVoxelscape = ({
     propFigures.applyLighting(lighting);
     hand.applyLighting(lighting);
     probe.end(Phase.environment);
+    // The light engine catches up on the seam and edit work the frame queued,
+    // under a small budget, before the renderer turns its changed blocks back
+    // into geometry.
+    probe.begin(Phase.light);
+    world.light.flush();
+    probe.end(Phase.light);
     probe.begin(Phase.rendererTick);
     world.renderer.tick(dt, activeCamera());
     probe.end(Phase.rendererTick);

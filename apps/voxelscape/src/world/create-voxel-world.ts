@@ -26,6 +26,7 @@ import {
   type WorldBlock,
 } from "./level-data";
 import { getHeightAt, type TerrainConfig } from "./noise";
+import { LightEngine } from "./light-engine";
 import type { StructurePlan } from "./structure-fill";
 import { VOXEL_AIR, VOXEL_LAVA, VOXEL_WATER, isFluidId } from "./voxel-store";
 
@@ -175,6 +176,13 @@ export interface VoxelWorld {
    */
   onBlockFilled(cb: (index: number) => void): void;
   /**
+   * Keeps the light of runtime voxel changes and freshly landed seams in step
+   * with their stores, budgeted so an edit or a burst of streaming washes over
+   * a few frames instead of stalling one. The frame loop flushes it every
+   * frame; the editing and flow controllers seed it as they write voxels.
+   */
+  readonly light: LightEngine;
+  /**
    * The slot whose block's interior holds a world voxel, resolved in O(1) via
    * the window's cell map — the lookup the fluid simulation reads and writes
    * through.
@@ -237,13 +245,37 @@ export const createVoxelWorld = ({
     createWorker === undefined ? {} : { createWorker, count: 1 },
   );
 
+  /**
+   * The world's incremental light engine, held back from its construction so
+   * the streaming callbacks below can queue seam work on it; fills land only
+   * after this function returns, so nothing observes the gap.
+   */
+  let light: LightEngine | undefined;
   let releaseHandler: ((index: number) => void) | undefined;
+  /**
+   * Resolves a world voxel to the slot whose cell holds it, through the
+   * window's O(1) cell map. The fluid sim and the light engine both read cell
+   * addresses through it.
+   */
+  const blockIndexAtVoxel = (
+    w: WorldVoxel,
+  ): number | undefined =>
+    sphere.slotAt(
+      (w[0] + 0.5) * VOXEL_SIZE,
+      (w[1] + 0.5) * VOXEL_SIZE,
+      (w[2] + 0.5) * VOXEL_SIZE,
+    );
   const sphere: ChunkSphere = new ChunkSphere({
     radius: chunkRadius,
     yRadius: chunkRadiusY,
     terrain,
     structures,
     onBlockChanged: (i, meshes) => {
+      // A block lights itself from its own store alone, so its seam pairs only
+      // agree with a neighbour's copies if the neighbour's light already
+      // reached them; the seam work is queued before the mesh is adopted so
+      // the light it bakes already holds the raise.
+      light?.enqueueFaces(i);
       // Recorded before the renderer is told, because a block only counts as
       // drawn once its geometry is built and `onBlockMeshed` fires from
       // inside this call.
@@ -359,6 +391,14 @@ export const createVoxelWorld = ({
     },
   });
 
+  const lightEngine = new LightEngine({
+    blocks: blockGrid.blocks,
+    resolve: blockIndexAtVoxel,
+    isFilled: (i) => sphere.hasTerrain(i),
+    onChanged: (indices) => renderer.onBlocksChanged(indices),
+  });
+  light = lightEngine;
+
   const reapplyEdits = () => {
     const affected: number[] = [];
     for (let i = 0; i < blockGrid.blocks.length; i++) {
@@ -446,6 +486,7 @@ export const createVoxelWorld = ({
   return {
     blocks: blockGrid.blocks,
     renderer,
+    light: lightEngine,
     get voxelBytes() {
       let bytes = 0;
       for (const block of blockGrid.blocks) {
@@ -527,11 +568,7 @@ export const createVoxelWorld = ({
       filledListeners.push(cb);
     },
     blockIndexAtVoxel(w) {
-      return sphere.slotAt(
-        (w[0] + 0.5) * VOXEL_SIZE,
-        (w[1] + 0.5) * VOXEL_SIZE,
-        (w[2] + 0.5) * VOXEL_SIZE,
-      );
+      return blockIndexAtVoxel(w);
     },
     dispose() {
       // stop the fill worker so it doesn't keep running after unmount
