@@ -6,6 +6,7 @@
 // that is not a well-formed effect here is dropped, never applied.
 import type { CameraShot } from "./cutscene";
 import type { MotionSpec } from "./motion";
+import { STORM_KINDS, type StormKind } from "../world/scripted-storm";
 import type {
   AttributeValue,
   DataScope,
@@ -89,6 +90,8 @@ export type EffectTag =
   | "billboard-remove"
   | "particle"
   | "particle-remove"
+  | "storm"
+  | "storm-remove"
   | "decal"
   | "decal-remove"
   | "entity-look"
@@ -243,6 +246,10 @@ export const MAX_PARTICLE_SIZE = 4;
 export const MAX_PARTICLE_SPREAD = 32;
 /** The longest one particle may live, in milliseconds. */
 export const MAX_PARTICLE_LIFE_MS = 30_000;
+/** The widest or tallest a storm may be drawn, in world units. */
+export const MAX_STORM_SIZE = 256;
+/** The most turns per second a funnel may spin. */
+export const MAX_STORM_SPIN = 1;
 /** The widest a decal may be drawn, in world units. */
 export const MAX_DECAL_SIZE = 32;
 /** The widest a beam may be drawn, in world units. */
@@ -920,6 +927,35 @@ export type ParsedEffect =
       };
     }
   | { tag: "particle-remove"; payload: { id: string } }
+  | {
+      tag: "storm";
+      payload: {
+        /** Names the storm, so a later `storm-remove` reaches it, or a new one replaces it. */
+        id: string;
+        /** One of the world's fixed storm shapes; defaults to "wall". */
+        kind?: StormKind;
+        /** The storm's centre, in world units; the host grounds it when `y` is absent. */
+        x: number;
+        z: number;
+        /** The storm's base height in world units; defaults to the ground. */
+        y?: number;
+        /** Heading the storm travels toward, in radians; defaults to 0. */
+        yaw?: number;
+        /** A wall's half-width across the heading, or a funnel's base radius; defaults to 40. */
+        width?: number;
+        /** Drawn height of the storm in world units; defaults to 30. */
+        height?: number;
+        /** How far a wall runs front to back, in world units; defaults to 30. */
+        depth?: number;
+        /** How thick the dust reads, 0 to 1; defaults to 1. */
+        intensity?: number;
+        /** Linear RGB dust colour, 0 to 1 each; defaults to a sand tan. */
+        color?: [number, number, number];
+        /** Turns per second a funnel spins about its axis; defaults to a slow spin. */
+        spin?: number;
+      };
+    }
+  | { tag: "storm-remove"; payload: { id: string } }
   | {
       tag: "decal";
       payload: {
@@ -1809,6 +1845,24 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
         (p.loop === undefined || typeof p.loop === "boolean")
       );
     case "particle-remove":
+      return isShort(p.id, 64);
+    case "storm":
+      return (
+        isShort(p.id, 64) &&
+        (p.kind === undefined || STORM_KINDS.includes(p.kind as StormKind)) &&
+        isCoord(p.x) &&
+        isCoord(p.z) &&
+        (p.y === undefined || isCoord(p.y)) &&
+        (p.yaw === undefined || isCoord(p.yaw)) &&
+        (p.width === undefined || isNumberIn(p.width, 0.5, MAX_STORM_SIZE)) &&
+        (p.height === undefined || isNumberIn(p.height, 0.5, MAX_STORM_SIZE)) &&
+        (p.depth === undefined || isNumberIn(p.depth, 0.5, MAX_STORM_SIZE)) &&
+        (p.intensity === undefined || isNumberIn(p.intensity, 0, 1)) &&
+        (p.color === undefined || isColor3(p.color)) &&
+        (p.spin === undefined ||
+          isNumberIn(p.spin, -MAX_STORM_SPIN, MAX_STORM_SPIN))
+      );
+    case "storm-remove":
       return isShort(p.id, 64);
     case "decal":
       return (

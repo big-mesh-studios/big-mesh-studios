@@ -51,6 +51,7 @@ import { ExplosionFigures } from "../renderers/explosion-figures";
 import { VoxelLights } from "../renderers/voxel-lights";
 import { VoxelBillboards } from "../renderers/voxel-billboards";
 import { VoxelParticles } from "../renderers/voxel-particles";
+import { VoxelStorm } from "../renderers/voxel-storm";
 import { VoxelDecals } from "../renderers/voxel-decals";
 import { VoxelBeams } from "../renderers/voxel-beams";
 import { createSyncedPlaceData, placeDataKey } from "../places/place-data";
@@ -975,6 +976,8 @@ export const createVoxelscape = ({
   const voxelParticles = new VoxelParticles(
     () => scriptConsole?.particles() ?? [],
   );
+  // The dust storms a script drives: one billboard shader, a wall or a funnel.
+  const voxelStorm = new VoxelStorm(() => scriptConsole?.storms() ?? []);
   const voxelDecals = new VoxelDecals(() => scriptConsole?.decals() ?? []);
   // The glowing lines a script draws between two ends.
   const voxelBeams = new VoxelBeams(() => scriptConsole?.beams() ?? []);
@@ -1990,6 +1993,7 @@ export const createVoxelscape = ({
     voxelLights.group,
     voxelBillboards.group,
     voxelParticles.group,
+    voxelStorm.group,
     voxelDecals.group,
     voxelBeams.group,
     world.water,
@@ -2859,6 +2863,7 @@ export const createVoxelscape = ({
       voxelLights.tick();
       voxelBillboards.tick();
       voxelParticles.tick(dt);
+      voxelStorm.tick(dt);
       voxelDecals.tick();
       voxelBeams.tick();
       probe.end(Phase.figures);

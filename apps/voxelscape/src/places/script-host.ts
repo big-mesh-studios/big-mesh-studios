@@ -189,6 +189,12 @@ export type { DecalPose };
 import type { BeamPose } from "../world/scripted-beam";
 export type { BeamPose };
 
+// The storm record, kept in the world area so the renderer that draws it need
+// not reach into the place area; re-exported for the same reason the others are.
+import type { ScriptedStorm, StormKind } from "../world/scripted-storm";
+import { STORM_DUST_COLOR } from "../world/scripted-storm";
+export type { ScriptedStorm, StormKind };
+
 /** One named box a script watches the players move through. */
 export interface ScriptZone {
   id: string;
@@ -663,6 +669,8 @@ export class ScriptHost {
   private readonly billboards = new Map<string, ScriptedBillboard>();
   /** The particle emitters a script runs, keyed by emitter id. */
   private readonly particles = new Map<string, ScriptedParticle>();
+  /** The dust storms a script drives, keyed by storm id. */
+  private readonly storms = new Map<string, ScriptedStorm>();
   /** The marks a script has laid, keyed by mark id. */
   private readonly decals = new Map<string, ScriptedDecal>();
   /** The lines a script draws, keyed by beam id. */
@@ -917,6 +925,11 @@ export class ScriptHost {
       out.push({ ...base, x: figure.x, y: figure.y + 0.5, z: figure.z });
     }
     return out;
+  }
+
+  /** Every dust storm the script drives, each as it stands now. */
+  get stormList(): ScriptedStorm[] {
+    return [...this.storms.values()];
   }
 
   /** Every mark the script has laid, each at the position it lies at now. */
@@ -2322,6 +2335,44 @@ export class ScriptHost {
       }
       case "particle-remove":
         this.particles.delete(effect.payload.id);
+        break;
+      case "storm": {
+        const {
+          id,
+          kind,
+          x,
+          y,
+          z,
+          yaw,
+          width,
+          height,
+          depth,
+          intensity,
+          color,
+          spin,
+        } = effect.payload;
+        this.storms.set(id, {
+          id,
+          kind: (kind ?? "wall") as StormKind,
+          x,
+          y: y ?? this.getHeightAt(x, z),
+          z,
+          yaw: yaw ?? 0,
+          width: width ?? 40,
+          height: height ?? 30,
+          depth: depth ?? 30,
+          intensity: intensity ?? 1,
+          color: color ?? [
+            STORM_DUST_COLOR[0],
+            STORM_DUST_COLOR[1],
+            STORM_DUST_COLOR[2],
+          ],
+          spin: spin ?? 0.6,
+        });
+        break;
+      }
+      case "storm-remove":
+        this.storms.delete(effect.payload.id);
         break;
       case "decal": {
         const { id, kind, x, y, z, entityId, color, size, yaw } =

@@ -192,6 +192,14 @@ _Avoid_: fire (that is scenery that kindles a terrain voxel), explosion (that is
 One of the looks a **Particle emitter** may name — `spark`, `flame`, `smoke`, `dust` — each a fixed set of defaults for colour, size, spread, lifetime, drift direction, and blend. A script overrides the numbers, never the look, so no place supplies a shader of its own.
 _Avoid_: preset (it is the whole look, not a starting point), effect
 
+**Dust storm**:
+A wall or funnel of blowing dust a place script drives with `storm`, drawn by **VoxelStorm** from one billboard shader that samples a seamless fBm texture. The script sets where it stands, how it is turned and sized, and how thick its dust reads; dispatching it again with the same id moves it rather than restarting it. It is scenery the script positions, not the environment's **Weather**, and it carries no force of its own — a script that wants one to shove a player stands a **Field** with it. Set by a `storm` effect and taken away by `storm-remove`.
+_Avoid_: weather storm (that is the environment schedule, not a placed thing), tornado (that is the `funnel` shape, one kind of it)
+
+**Storm shape**:
+One of the two looks a **Dust storm** may name — `wall` (a broad advancing front) or `funnel` (a tapering, spinning column) — each a fixed way of laying out its billboards. A script overrides the numbers, never the look, so no place supplies a shader of its own.
+_Avoid_: kind (spell it shape), preset
+
 **Decal**:
 A flat mark a place script lays on the world with `decal`, one of a fixed set of shapes — `arrow`, `cross`, `ring`, `splat` — drawn on a canvas in the mark's colour and laid on a quad in the ground plane, turned by its yaw. Drawn by **VoxelDecals**; set by a `decal` effect and lifted by `decal-remove`.
 _Avoid_: texture (that is an image on a model), paint

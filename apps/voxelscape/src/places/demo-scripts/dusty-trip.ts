@@ -17,6 +17,7 @@ import {
   createNpc,
   createProp,
   createDecal,
+  createStorm,
   dispatch,
   getHeightAt,
   getInput,
@@ -29,6 +30,7 @@ import {
   type ModelsByName,
   type NpcHandle,
   type PropHandle,
+  type StormHandle,
 } from "voxelscape";
 
 // ---------------------------------------------------------------------------
@@ -47,6 +49,8 @@ const FUEL_MAX = 60;
 /** Litres burned per world unit travelled. */
 const FUEL_PER_UNIT = 0.02;
 const STORM_SPEED = 16;
+/** Half the storm front's width, in world units; the span it bites across. */
+const STORM_HALF_WIDTH = 40;
 /** How close the storm front must be to sting, in world units. */
 const STORM_REACH = 6;
 const STORM_DAMAGE = 2;
@@ -54,6 +58,8 @@ const STORM_DAMAGE = 2;
 const STORM_BITE_MS = 700;
 /** Where the storm front begins, far enough behind that a stationary player has time to set off. */
 const STORM_START_Z = -200;
+/** How far behind the car the dust wall is invisible, in world units. */
+const STORM_VISIBLE = 180;
 const ZOMBIE_CAP = 8;
 const ZOMBIE_SPEED = 3.2;
 const ZOMBIE_DAMAGE = 2;
@@ -85,6 +91,7 @@ let travelled = 0;
 let driving = false;
 let lastUseHeld = false;
 let stormZ = STORM_START_Z;
+let storm: StormHandle | null = null;
 let lastBiteAt = 0;
 let nextZombieAt = 0;
 let zombieSeq = 0;
@@ -209,7 +216,7 @@ const driveTick = (dt: number): void => {
   }
 };
 
-/** Advances the storm and bites the driver if it has caught the car. */
+/** Advances the storm and bites a player the front has caught. */
 const stormTick = (dt: number, now: number): void => {
   // The front only ever moves forward: a driver who outruns it keeps their
   // lead, and one who stops is eventually overtaken.
@@ -217,11 +224,32 @@ const stormTick = (dt: number, now: number): void => {
   dispatch("field", {
     id: "storm",
     kind: "push",
-    min: [x - 40, y - 8, stormZ - 30],
-    max: [x + 40, y + 12, stormZ],
+    min: [x - STORM_HALF_WIDTH, y - 8, stormZ - 30],
+    max: [x + STORM_HALF_WIDTH, y + 12, stormZ],
     vz: STORM_SPEED,
   });
-  if (z - stormZ < STORM_REACH && now - lastBiteAt >= STORM_BITE_MS) {
+  // The wall stays centred on the car and fades in as the front closes, so a
+  // driver who outruns it sees the dust settle back over the horizon.
+  const intensity = Math.max(0, Math.min(1, 1 - (z - stormZ) / STORM_VISIBLE));
+  storm?.move({
+    x,
+    z: stormZ - 15,
+    y: getHeightAt(x, stormZ),
+    yaw: 0,
+    width: STORM_HALF_WIDTH,
+    height: 20,
+    depth: 30,
+    intensity,
+  });
+  // The bite follows the player, not the car: a driver whose car is swallowed
+  // while they stand clear is not in the dust, and a passenger on foot inside
+  // the front is.
+  const me = getPlayers()[0];
+  const inStorm =
+    me !== undefined &&
+    me.z - stormZ < STORM_REACH &&
+    Math.abs(me.x - x) < STORM_HALF_WIDTH;
+  if (inStorm && now - lastBiteAt >= STORM_BITE_MS) {
     lastBiteAt = now;
     dispatch("player-damage", {
       player: "",
@@ -341,6 +369,20 @@ onTick((_clockMs, events) => {
       solid: true,
       seat: true,
       name: "Car",
+    });
+    // The dust wall itself: a broad billboard storm the ticks steer behind the
+    // car, starting invisible far over the horizon.
+    storm = createStorm({
+      id: "storm",
+      kind: "wall",
+      x,
+      z: STORM_START_Z - 15,
+      y,
+      yaw: 0,
+      width: STORM_HALF_WIDTH,
+      height: 20,
+      depth: 30,
+      intensity: 0,
     });
     dispatch("item-define", {
       id: FUEL_ITEM,

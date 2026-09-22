@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { parseEffect } from "./effects";
 import { PARTICLE_STYLES } from "../world/scripted-particle";
+import { STORM_KINDS } from "../world/scripted-storm";
 import type { ScriptEffect } from "./sandbox";
 
 const effect = (tag: string, payload: unknown): ScriptEffect => ({
@@ -1391,6 +1392,63 @@ describe("particles and decals", () => {
         effect("decal", { id: "d", kind: "ring", x: 0, z: 0, size: 0 }),
       ),
     ).toBeNull();
+  });
+});
+
+describe("storms", () => {
+  it("accepts a placed storm and its remove, with defaults filled by the host", () => {
+    expect(parseEffect(effect("storm", { id: "s", x: 1, z: 2 }))).toEqual({
+      tag: "storm",
+      payload: { id: "s", x: 1, z: 2 },
+    });
+    expect(
+      parseEffect(
+        effect("storm", {
+          id: "s",
+          kind: "funnel",
+          x: 1,
+          y: 3,
+          z: 2,
+          yaw: 1.5,
+          width: 20,
+          height: 80,
+          depth: 10,
+          intensity: 0.6,
+          color: [0.7, 0.6, 0.4],
+          spin: 0.5,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(parseEffect(effect("storm-remove", { id: "s" }))).not.toBeNull();
+  });
+
+  it("accepts every storm kind the world knows how to draw", () => {
+    for (const kind of STORM_KINDS) {
+      expect(
+        parseEffect(effect("storm", { id: "s", x: 0, z: 0, kind })),
+        kind,
+      ).not.toBeNull();
+    }
+  });
+
+  it("refuses a bad kind, no position, or out-of-range numbers", () => {
+    expect(
+      parseEffect(effect("storm", { id: "s", x: 0, z: 0, kind: "nope" })),
+    ).toBeNull();
+    expect(parseEffect(effect("storm", { id: "s" }))).toBeNull();
+    expect(
+      parseEffect(effect("storm", { id: "s", x: 0, z: 0, width: 0 })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("storm", { id: "s", x: 0, z: 0, height: 300 })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("storm", { id: "s", x: 0, z: 0, intensity: 2 })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("storm", { id: "s", x: 0, z: 0, spin: 2 })),
+    ).toBeNull();
+    expect(parseEffect(effect("storm-remove", { id: "" }))).toBeNull();
   });
 });
 

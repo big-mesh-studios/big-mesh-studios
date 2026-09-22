@@ -621,6 +621,59 @@ declare module "voxelscape" {
     options: CreateParticleOptions,
   ): ParticleHandle;
 
+  /** One of the world's fixed storm shapes. */
+  export type StormKind = "wall" | "funnel";
+
+  /** Where a dust storm stands and how it is sized. */
+  interface CreateStormOptions {
+    id: string;
+    /** One of the world's fixed storm shapes; defaults to "wall". */
+    kind?: StormKind;
+    x: number;
+    z: number;
+    /** The storm's base height in world units; defaults to the ground. */
+    y?: number;
+    /** Heading the storm travels toward, in radians; defaults to 0. */
+    yaw?: number;
+    /** A wall's half-width across the heading, or a funnel's base radius; defaults to 40. */
+    width?: number;
+    /** Drawn height of the storm in world units; defaults to 30. */
+    height?: number;
+    /** How far a wall runs front to back, in world units; defaults to 30. */
+    depth?: number;
+    /** How thick the dust reads, 0 to 1; defaults to 1. */
+    intensity?: number;
+    /** Linear RGB dust colour, 0 to 1 each; defaults to a sand tan. */
+    color?: [number, number, number];
+    /** Turns per second a funnel spins about its axis; defaults to a slow spin. */
+    spin?: number;
+  }
+
+  /** The changes a storm handle's `move` may apply to the storm it drives. */
+  interface MoveStormOptions {
+    kind?: StormKind;
+    x?: number;
+    z?: number;
+    y?: number;
+    yaw?: number;
+    width?: number;
+    height?: number;
+    depth?: number;
+    intensity?: number;
+    color?: [number, number, number];
+    spin?: number;
+  }
+
+  /** A dust storm a place script drives; `move` re-places it and `remove` takes it down. */
+  export interface StormHandle {
+    readonly id: string;
+    move(options: MoveStormOptions): StormHandle;
+    remove(): void;
+  }
+
+  /** Drives a dust storm; see `createProp` for why `id` is never generated. */
+  export function createStorm(options: CreateStormOptions): StormHandle;
+
   /** One of the world's fixed mark shapes. */
   export type DecalKind = "arrow" | "cross" | "ring" | "splat";
 

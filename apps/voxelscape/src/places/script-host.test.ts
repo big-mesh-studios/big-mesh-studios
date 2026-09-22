@@ -518,6 +518,84 @@ describe("a script host", () => {
     host.dispose();
   });
 
+  it("stands a storm with its defaults and moves it by id", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      import * as engine from "voxelscape";
+      var started = false;
+      engine.onTick(function (clockMs, events) {
+        if (!started) {
+          started = true;
+          engine.dispatch("storm", { id: "dust", x: 2, z: 4 });
+          engine.dispatch("timer", { id: "move", afterMs: 40 });
+        }
+        for (var i = 0; i < events.length; i++) {
+          if (events[i].kind === "timer" && events[i].timerId === "move") {
+            engine.dispatch("storm", {
+              id: "dust", kind: "funnel", x: 2, z: 40,
+              width: 8, height: 60, intensity: 0.5,
+            });
+          }
+        }
+      });
+      `,
+    );
+    expect(host.stormList).toHaveLength(1);
+    expect(host.stormList[0]).toMatchObject({
+      id: "dust",
+      kind: "wall",
+      x: 2,
+      z: 4,
+      width: 40,
+      height: 30,
+      depth: 30,
+      intensity: 1,
+    });
+    clockMs += 40;
+    await host.pump();
+    expect(host.stormList).toHaveLength(1);
+    expect(host.stormList[0]).toMatchObject({
+      id: "dust",
+      kind: "funnel",
+      x: 2,
+      z: 40,
+      width: 8,
+      height: 60,
+      intensity: 0.5,
+    });
+    host.dispose();
+  });
+
+  it("forgets a storm the script takes down", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      import * as engine from "voxelscape";
+      var started = false;
+      engine.onTick(function (clockMs, events) {
+        if (!started) {
+          started = true;
+          engine.dispatch("storm", { id: "dust", x: 0, z: 0 });
+          engine.dispatch("timer", { id: "remove", afterMs: 40 });
+        }
+        for (var i = 0; i < events.length; i++) {
+          if (events[i].kind === "timer" && events[i].timerId === "remove") {
+            engine.dispatch("storm-remove", { id: "dust" });
+          }
+        }
+      });
+      `,
+    );
+    expect(host.stormList).toHaveLength(1);
+    clockMs += 40;
+    await host.pump();
+    expect(host.stormList).toEqual([]);
+    host.dispose();
+  });
+
   it("shows a narration line with no figure speaking it", async () => {
     const { host, narrations } = await fresh();
     await loadProject(

@@ -15,6 +15,7 @@ import {
   type ParticlePose,
   type ScriptedExplosion,
   type ScriptedFire,
+  type ScriptedStorm,
   type ScriptPrompt,
   type SoundPlayback,
   type UiPanel,
@@ -482,6 +483,11 @@ export class ScriptConsole {
   /** The particle emitters the loaded script runs, for the world to draw. */
   particles(): ParticlePose[] {
     return this.host?.particleList ?? [];
+  }
+
+  /** The dust storms the loaded script drives, for the world to draw. */
+  storms(): ScriptedStorm[] {
+    return this.host?.stormList ?? [];
   }
 
   /** The marks the loaded script has laid, for the world to draw. */

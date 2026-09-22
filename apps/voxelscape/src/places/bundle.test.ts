@@ -788,6 +788,39 @@ describe("the voxelscape module", () => {
     });
   });
 
+  it("drives a dust storm through its handle", async () => {
+    const files = {
+      "main.ts": `
+        import { createStorm } from "voxelscape";
+        const storm = createStorm({ id: "storm", kind: "wall", x: 0, z: 0, width: 40 });
+        storm.move({ z: 12, intensity: 0.5 });
+        storm.remove();
+      `,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    const { dispatched } = runBundle(output);
+    expect(dispatched.map((call) => call.tag)).toEqual([
+      "storm",
+      "storm",
+      "storm-remove",
+    ]);
+    expect(JSON.parse(dispatched[0].payload)).toEqual({
+      id: "storm",
+      kind: "wall",
+      x: 0,
+      z: 0,
+      width: 40,
+    });
+    expect(JSON.parse(dispatched[1].payload)).toEqual({
+      id: "storm",
+      kind: "wall",
+      x: 0,
+      z: 12,
+      width: 40,
+      intensity: 0.5,
+    });
+  });
+
   it("plays a death fall through an npc's die, and removes a prop through prop-remove", async () => {
     const files = {
       "main.ts": `

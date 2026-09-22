@@ -644,6 +644,68 @@ export function createParticle(options) {
   return particle;
 }
 
+/**
+ * Drives a dust storm — a wall of blowing sand or a spinning funnel — through
+ * the "storm"/"storm-remove" effects. Returns a handle whose \`move\` re-places
+ * it and whose \`remove\` takes it away, so a script can walk one across the
+ * world every tick.
+ */
+export function createStorm(options) {
+  var state = {
+    id: options.id,
+    kind: options.kind,
+    x: options.x,
+    z: options.z,
+    y: options.y,
+    yaw: options.yaw,
+    width: options.width,
+    height: options.height,
+    depth: options.depth,
+    intensity: options.intensity,
+    color: options.color,
+    spin: options.spin,
+  };
+  /** Re-sends this storm's whole pose to the host. */
+  function announce() {
+    host.dispatch("storm", {
+      id: state.id,
+      kind: state.kind,
+      x: state.x,
+      z: state.z,
+      y: state.y,
+      yaw: state.yaw,
+      width: state.width,
+      height: state.height,
+      depth: state.depth,
+      intensity: state.intensity,
+      color: state.color,
+      spin: state.spin,
+    });
+  }
+  announce();
+  var storm = { id: options.id };
+  /** Moves the storm, or changes how it reads, and returns the storm. */
+  storm.move = function (next) {
+    state.x = next.x === undefined ? state.x : next.x;
+    state.z = next.z === undefined ? state.z : next.z;
+    if (next.y !== undefined) state.y = next.y;
+    if (next.yaw !== undefined) state.yaw = next.yaw;
+    if (next.kind !== undefined) state.kind = next.kind;
+    if (next.width !== undefined) state.width = next.width;
+    if (next.height !== undefined) state.height = next.height;
+    if (next.depth !== undefined) state.depth = next.depth;
+    if (next.intensity !== undefined) state.intensity = next.intensity;
+    if (next.color !== undefined) state.color = next.color;
+    if (next.spin !== undefined) state.spin = next.spin;
+    announce();
+    return storm;
+  };
+  storm.remove = function () {
+    host.dispatch("storm-remove", { id: storm.id });
+  };
+  return storm;
+}
+
 /** Lays a flat mark on the world; returns a handle whose remove lifts it. */
 export function createDecal(options) {
   host.dispatch("decal", {

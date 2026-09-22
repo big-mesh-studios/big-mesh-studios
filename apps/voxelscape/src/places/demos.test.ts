@@ -1267,11 +1267,14 @@ describe("the A Dusty Trip demo", () => {
     useHeld: boolean;
   };
   let tripClockMs: number;
+  /** The local player's live position the demo's own script reads. */
+  let player: { x: number; z: number };
 
-  /** Loads the demo and boots a host against the mutable `input`. */
+  /** Loads the demo and boots a host against the mutable `input` and `player`. */
   const trip = async () => {
     stubModels();
     tripClockMs = 0;
+    player = { x: 0, z: 0 };
     input = {
       moveX: 0,
       moveY: 0,
@@ -1293,7 +1296,7 @@ describe("the A Dusty Trip demo", () => {
       getHeightAt: () => 0,
       getSolidAt: () => false,
       getInput: () => input,
-      getPlayers: () => [{ did: "", x: 0, y: 0, z: 0 }],
+      getPlayers: () => [{ did: "", x: player.x, y: 0, z: player.z }],
       onPlayerDamage: (_player, amount) => damage.push(amount),
     });
     await host.loadProject(
@@ -1464,6 +1467,43 @@ describe("the A Dusty Trip demo", () => {
       await advanceTrip(host, 40);
     }
     expect(host.prop("car")!.x).toBeLessThan(0);
+    host.dispose();
+  });
+
+  it("drives a dust wall behind the car, centred on it as the front advances", async () => {
+    const { host } = await trip();
+    const start = host.stormList;
+    expect(start).toHaveLength(1);
+    expect(start[0]).toMatchObject({ id: "storm", kind: "wall", intensity: 0 });
+    await host.use("car", "", "");
+    input.moveY = 1;
+    for (let i = 0; i < 20; i++) {
+      await advanceTrip(host, 40);
+    }
+    const now = host.stormList;
+    expect(now).toHaveLength(1);
+    expect(now[0].z).toBeGreaterThan(start[0].z);
+    // The wall tracks the car side to side, so a turn never lets it slip past.
+    expect(now[0].x).toBeCloseTo(host.prop("car")!.x, 5);
+    host.dispose();
+  });
+
+  it("bites only a player the dust has caught, not merely the car", async () => {
+    const { host, damage } = await trip();
+    // The storm closes on the origin while the player stands there, so it bites.
+    for (let i = 0; i < 340; i++) {
+      await advanceTrip(host, 40);
+    }
+    expect(damage.length).toBeGreaterThan(0);
+
+    // The player steps well clear; the storm grinds on over the empty car, and
+    // a bite that followed the car would keep landing.
+    player.z = 400;
+    const before = damage.length;
+    for (let i = 0; i < 40; i++) {
+      await advanceTrip(host, 40);
+    }
+    expect(damage.length).toBe(before);
     host.dispose();
   });
 });
