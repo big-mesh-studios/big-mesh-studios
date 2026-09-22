@@ -25,6 +25,7 @@ const NO_INPUT: InputSnapshot = {
   secondaryHeld: false,
   secondaryReleased: false,
   use: false,
+  useHeld: false,
   select: null,
   wheel: 0,
 };

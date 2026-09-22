@@ -691,6 +691,20 @@ describe("cellsTouchedByPlan", () => {
     expect(cellsTouchedByPlan([])).toEqual([]);
     expect(cellsTouchedByPlan(undefined)).toEqual([]);
   });
+
+  it("leaves a surface to the window, whose cells bound its footprint", () => {
+    expect(
+      cellsTouchedByPlan([
+        {
+          kind: "surface",
+          reachX: "infinite",
+          reachZ: "infinite",
+          depth: 1,
+          id: 1,
+        },
+      ]),
+    ).toEqual([]);
+  });
 });
 
 describe("ChunkSphere.setStructures", () => {
@@ -759,5 +773,49 @@ describe("ChunkSphere.setStructures", () => {
 
     expect(sphere.setStructures(boxPlan())).toBe(false);
     expect(filled).toEqual([]);
+  });
+
+  it("regenerates every loaded cell an infinite surface covers", () => {
+    const { sphere, filled } = sphereWithEchoWorker(1);
+    populate(sphere);
+    filled.length = 0;
+
+    sphere.setStructures([
+      {
+        kind: "surface",
+        reachX: "infinite",
+        reachZ: "infinite",
+        depth: 1,
+        id: 1,
+      },
+    ]);
+
+    expect([...filled].sort((a, b) => a - b)).toEqual(
+      sphere.blocks.map((_, index) => index).sort((a, b) => a - b),
+    );
+  });
+
+  it("regenerates only the columns a bounded surface covers", () => {
+    const { sphere, filled } = sphereWithEchoWorker(1);
+    populate(sphere);
+    filled.length = 0;
+
+    sphere.setStructures([
+      {
+        kind: "surface",
+        min: [-4, 0, 0],
+        max: [4, 0, 0],
+        reachZ: "infinite",
+        depth: 1,
+        id: 1,
+      },
+    ]);
+
+    const covered = sphere.blocks
+      .map((block, index) => ({ block, index }))
+      .filter(({ block }) => block.center[0] === 0)
+      .map(({ index }) => index)
+      .sort((a, b) => a - b);
+    expect([...filled].sort((a, b) => a - b)).toEqual(covered);
   });
 });

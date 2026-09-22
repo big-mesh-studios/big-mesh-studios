@@ -8,7 +8,11 @@
 import { PlaceBundleError, bundlePlaceProject } from "./bundle";
 import { createQuickJSSandbox } from "./quickjs-sandbox";
 import { CHUNK_VOXELS, VOXEL_SIZE, type Dim3 } from "../world/level-data";
-import type { PlanShape, StructurePlan } from "../world/structure-fill";
+import type {
+  PlanShape,
+  StructurePlan,
+  SurfaceReach,
+} from "../world/structure-fill";
 import {
   MAX_CONVEYOR_SPEED,
   MAX_MODEL_URI,
@@ -129,6 +133,12 @@ const isVector = (v: unknown): v is Dim3 =>
 
 const isBlockId = (v: unknown): v is number => isInt(v, 0, MAX_PLAN_BLOCK_ID);
 
+const isReach = (v: unknown): v is SurfaceReach | undefined =>
+  v === undefined || v === "bounds" || v === "infinite";
+
+const isOptionalCoord = (v: unknown): v is number | undefined =>
+  v === undefined || isCoord(v);
+
 const isShape = (v: unknown): v is PlanShape => {
   if (typeof v !== "object" || v === null) {
     return false;
@@ -183,14 +193,32 @@ const isShape = (v: unknown): v is PlanShape => {
     return Math.max(Math.abs(tx - fx), Math.abs(tz - fz)) <= MAX_PLAN_RAMP_RUN;
   }
   if (shape.kind === "surface") {
-    return (
-      isVector(shape.min) &&
-      isVector(shape.max) &&
-      shape.min[0] <= shape.max[0] &&
-      shape.min[2] <= shape.max[2] &&
-      isInt(shape.depth, 1, MAX_PLAN_SURFACE_DEPTH) &&
-      isBlockId(shape.id)
-    );
+    if (
+      !isReach(shape.reachX) ||
+      !isReach(shape.reachZ) ||
+      !isInt(shape.depth, 1, MAX_PLAN_SURFACE_DEPTH) ||
+      !isOptionalCoord(shape.level) ||
+      !isBlockId(shape.id)
+    ) {
+      return false;
+    }
+    const reachX = shape.reachX ?? "bounds";
+    const reachZ = shape.reachZ ?? "bounds";
+    if (
+      (reachX === "bounds" || reachZ === "bounds") &&
+      (!isVector(shape.min) || !isVector(shape.max))
+    ) {
+      return false;
+    }
+    if (isVector(shape.min) && isVector(shape.max)) {
+      if (
+        (reachX === "bounds" && shape.min[0] > shape.max[0]) ||
+        (reachZ === "bounds" && shape.min[2] > shape.max[2])
+      ) {
+        return false;
+      }
+    }
+    return true;
   }
   return false;
 };

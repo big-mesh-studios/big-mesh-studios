@@ -1264,6 +1264,7 @@ describe("the A Dusty Trip demo", () => {
     primaryHeld: boolean;
     secondaryHeld: boolean;
     use: boolean;
+    useHeld: boolean;
   };
   let tripClockMs: number;
 
@@ -1281,6 +1282,7 @@ describe("the A Dusty Trip demo", () => {
       primaryHeld: false,
       secondaryHeld: false,
       use: false,
+      useHeld: false,
     };
     const demo = builtinDemo("a-dusty-trip")!;
     const project = await loadBuiltinDemo(demo);
@@ -1316,7 +1318,7 @@ describe("the A Dusty Trip demo", () => {
     expect(BUILTIN_DEMOS).toContain(demo);
   });
 
-  it("compiles a plan that skims the terrain with sand and a road", async () => {
+  it("compiles an endless desert with a road graded flat", async () => {
     const { project } = await trip();
     const plan = await compilePlacePlan({
       files: project.scripts,
@@ -1324,9 +1326,19 @@ describe("the A Dusty Trip demo", () => {
       seed: project.manifest.seed,
       region: planRegionAround(project.manifest.spawn),
     });
-    expect(plan.structures.some((shape) => shape.kind === "surface")).toBe(
-      true,
+    const surfaces = plan.structures.flatMap((shape) =>
+      shape.kind === "surface" ? [shape] : [],
     );
+    expect(surfaces).toHaveLength(2);
+    const sand = surfaces.find((shape) => shape.reachX === "infinite");
+    expect(sand).toMatchObject({ reachZ: "infinite", depth: 2 });
+    const road = surfaces.find((shape) => shape.level !== undefined);
+    expect(road).toMatchObject({
+      min: [-4, 0, 0],
+      max: [4, 0, 0],
+      reachZ: "infinite",
+      depth: 1,
+    });
   });
 
   it("starts with a solid seat car, gas stations, and its readouts", async () => {
@@ -1381,6 +1393,35 @@ describe("the A Dusty Trip demo", () => {
     host.dispose();
   });
 
+  it("gets out on the touch use button", async () => {
+    const { host } = await trip();
+    await host.use("car", "", "");
+    input.useHeld = true;
+    await advanceTrip(host, 40);
+    expect(host.controlsLocked("")).toBe(false);
+    expect(host.followCameraFor("")).toBeNull();
+    input.useHeld = false;
+    host.dispose();
+  });
+
+  it("stays in on the press that got the driver in", async () => {
+    const { host } = await trip();
+    // The touch button is already down as the car is entered.
+    input.useHeld = true;
+    await host.use("car", "", "");
+    await advanceTrip(host, 40);
+    expect(host.controlsLocked("")).toBe(true);
+    input.useHeld = false;
+    await advanceTrip(host, 40);
+    expect(host.controlsLocked("")).toBe(true);
+    // Releasing and pressing again is what gets them out.
+    input.useHeld = true;
+    await advanceTrip(host, 40);
+    expect(host.controlsLocked("")).toBe(false);
+    input.useHeld = false;
+    host.dispose();
+  });
+
   it("leaves a new player unharmed while they find the car", async () => {
     const { host, damage } = await trip();
     for (let i = 0; i < 250; i++) {
@@ -1405,6 +1446,24 @@ describe("the A Dusty Trip demo", () => {
       await advanceTrip(host, 40);
     }
     expect(host.prop("car")!.yaw).not.toBeCloseTo(beforeYaw, 3);
+    host.dispose();
+  });
+
+  it("steers the way the stick points, with the right input turning right", async () => {
+    const { host } = await trip();
+    await host.use("car", "", "");
+    input.moveY = 1;
+    for (let i = 0; i < 20; i++) {
+      await advanceTrip(host, 40);
+    }
+    // Straight along +z, the driver's right is -x — the side the follow camera
+    // puts on their right. A right push must carry the car that way.
+    expect(host.prop("car")!.x).toBeCloseTo(0, 5);
+    input.moveX = 1;
+    for (let i = 0; i < 20; i++) {
+      await advanceTrip(host, 40);
+    }
+    expect(host.prop("car")!.x).toBeLessThan(0);
     host.dispose();
   });
 });

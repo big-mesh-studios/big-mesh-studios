@@ -63,6 +63,8 @@ const ZOMBIE_ATTACK_RANGE = 3;
 const ZOMBIE_GRACE_MS = 15_000;
 /** How far ahead of the car a mutant materializes, in world units. */
 const ZOMBIE_SPAWN_AHEAD = 40;
+/** The flat LOD-0 voxel top the road is graded to, near the terrain's base. */
+const ROAD_LEVEL = 32;
 
 // ---------------------------------------------------------------------------
 // State
@@ -81,6 +83,7 @@ let speed = 0;
 let fuel = FUEL_MAX;
 let travelled = 0;
 let driving = false;
+let lastUseHeld = false;
 let stormZ = STORM_START_Z;
 let lastBiteAt = 0;
 let nextZombieAt = 0;
@@ -111,7 +114,7 @@ const showReadouts = (): void => {
     kind: "text",
     label: "Controls",
     text: driving
-      ? "Dig / W to accelerate · A D or stick to steer · R to get out"
+      ? "Dig / W to accelerate · A D or stick to steer · R or use to get out"
       : "Walk to the car and use it to drive",
   });
   dispatch("hud", {
@@ -178,7 +181,9 @@ const driveTick = (dt: number): void => {
   speed = Math.max(-REVERSE_SPEED, Math.min(MAX_SPEED, speed));
 
   const grip = 0.25 + Math.min(1, Math.abs(speed) / 8);
-  yaw += steer * TURN_RATE * grip * dt;
+  // A positive `moveX` is the driver's right, but the follow camera puts +x on
+  // their left, so a right turn is the way yaw decreases.
+  yaw -= steer * TURN_RATE * grip * dt;
 
   const nx = x + Math.sin(yaw) * speed * dt;
   const nz = z + Math.cos(yaw) * speed * dt;
@@ -284,23 +289,26 @@ const armTick = (): void => {
 };
 
 // ---------------------------------------------------------------------------
-// The desert the trip drives across: a sand skin over the region's terrain,
-// with a road-width strip of greystone laid along it.
+// The desert the trip drives across: an endless sand skin over the region's
+// terrain, with an endless road-width strip of greystone graded flat through
+// it so the car never climbs a hill.
 // ---------------------------------------------------------------------------
 onPlan(() => {
   const b = blocks;
   return JSON.stringify([
     {
       kind: "surface",
-      min: [-512, 0, -512],
-      max: [512, 0, 512],
+      reachX: "infinite",
+      reachZ: "infinite",
       depth: 2,
       id: b.sand,
     },
     {
       kind: "surface",
-      min: [-4, 0, -512],
-      max: [4, 0, 512],
+      min: [-4, 0, 0],
+      max: [4, 0, 0],
+      reachZ: "infinite",
+      level: ROAD_LEVEL,
       depth: 1,
       id: b.greystone,
     },
@@ -309,6 +317,8 @@ onPlan(() => {
 
 onTick((_clockMs, events) => {
   const now = getNow();
+  const input = getInput();
+  const wasDriving = driving;
   if (!started) {
     started = true;
     x = 0;
@@ -396,6 +406,16 @@ onTick((_clockMs, events) => {
       ticked = true;
     }
   }
+
+  // A touch player has no key to press, so the on-screen use button is the way
+  // out of the seat. Its held state is read rather than the one-frame edge,
+  // which a step between timer ticks would miss, and the rising edge keeps the
+  // one press that got them in from also carrying them back out.
+  const useHeld = input !== null && input.useHeld;
+  if (wasDriving && driving && useHeld && !lastUseHeld) {
+    exitCar();
+  }
+  lastUseHeld = useHeld;
 
   if (ticked) {
     const dt = TICK_MS / 1000;

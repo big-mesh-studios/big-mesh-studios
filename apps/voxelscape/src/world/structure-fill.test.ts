@@ -6,6 +6,7 @@ import {
   type PlanRamp,
   type PlanRoad,
   type PlanStairs,
+  type StructurePlan,
 } from "./structure-fill";
 import {
   VOXEL_AIR,
@@ -35,6 +36,14 @@ const storeAt = (
     center,
   };
 };
+
+/** A voxel-size block the size of `storeAt`'s, centred wherever a stack needs it. */
+const storeCenteredAt = (
+  center: [number, number, number],
+): { store: VoxelStore; center: [number, number, number] } => ({
+  store: new VoxelStore({ dims: [16, 16, 16], voxels: [8, 8, 8], scale: 2 }),
+  center,
+});
 
 describe("stampStructures", () => {
   it("fills a box's block voxels and leaves the rest air", () => {
@@ -195,5 +204,93 @@ describe("stampStructures", () => {
     expect(store.get(1, 2, 1)).toBe(VOXEL_SAND);
     expect(store.get(1, 1, 1)).toBe(VOXEL_SAND);
     expect(store.get(1, 0, 1)).toBe(VOXEL_STONE);
+  });
+
+  it("grades a surface flat, filling a hollow up to its level", () => {
+    const { store, center } = storeAt([8, 8, 8], 2);
+    for (let z = 0; z < 8; z++) {
+      for (let x = 0; x < 8; x++) {
+        store.set(x, 0, z, VOXEL_STONE);
+      }
+    }
+    stampStructures(store, center, [
+      {
+        kind: "surface",
+        min: [0, 0, 0],
+        max: [7, 0, 7],
+        level: 2,
+        depth: 1,
+        id: VOXEL_SAND,
+      },
+    ]);
+    expect(store.get(0, 2, 0)).toBe(VOXEL_SAND); // the graded top
+    expect(store.get(0, 1, 0)).toBe(VOXEL_SAND); // filled down to the terrain
+    expect(store.get(0, 0, 0)).toBe(VOXEL_STONE); // the terrain below stays
+    expect(store.get(0, 3, 0)).toBe(VOXEL_AIR);
+  });
+
+  it("grades a surface flat, cutting a hill down to its level", () => {
+    const { store, center } = storeAt([8, 8, 8], 2);
+    for (let y = 0; y < 5; y++) {
+      store.set(3, y, 3, VOXEL_STONE);
+    }
+    stampStructures(store, center, [
+      {
+        kind: "surface",
+        min: [0, 0, 0],
+        max: [7, 0, 7],
+        level: 2,
+        depth: 1,
+        id: VOXEL_SAND,
+      },
+    ]);
+    expect(store.get(3, 2, 3)).toBe(VOXEL_SAND); // the cut is capped at the level
+    expect(store.get(3, 3, 3)).toBe(VOXEL_AIR); // the hill above is removed
+    expect(store.get(3, 4, 3)).toBe(VOXEL_AIR);
+    expect(store.get(3, 1, 3)).toBe(VOXEL_STONE); // below the cap stays
+  });
+
+  it("meets a graded column across a block seam", () => {
+    // The lower block covers LOD-0 voxels 0..7, the upper 8..15.
+    const lower = storeCenteredAt([8, 8, 8]);
+    const upper = storeCenteredAt([8, 24, 8]);
+    lower.store.set(0, 1, 0, VOXEL_STONE); // terrain top at voxel 1
+    const plan: StructurePlan = [
+      {
+        kind: "surface",
+        min: [-64, 0, -64],
+        max: [64, 0, 64],
+        level: 10,
+        depth: 1,
+        id: VOXEL_SAND,
+      },
+    ];
+    stampStructures(lower.store, lower.center, plan);
+    stampStructures(upper.store, upper.center, plan);
+    expect(lower.store.get(0, 7, 0)).toBe(VOXEL_SAND); // fills to the seam
+    expect(upper.store.get(0, 2, 0)).toBe(VOXEL_SAND); // the level in the upper block
+    expect(upper.store.get(0, 3, 0)).toBe(VOXEL_AIR); // nothing above the level
+  });
+
+  it("reaches every block on an infinite axis, whatever the bounds say", () => {
+    const { store, center } = storeAt([8, 8, 8], 2);
+    for (let z = 0; z < 8; z++) {
+      for (let x = 0; x < 8; x++) {
+        store.set(x, 0, z, VOXEL_STONE);
+      }
+    }
+    stampStructures(store, center, [
+      {
+        kind: "surface",
+        min: [1000, 0, 1000],
+        max: [1001, 0, 1001],
+        reachX: "infinite",
+        reachZ: "infinite",
+        depth: 1,
+        id: VOXEL_SAND,
+      },
+    ]);
+    expect(store.get(0, 0, 0)).toBe(VOXEL_SAND);
+    expect(store.get(7, 0, 7)).toBe(VOXEL_SAND);
   });
 });

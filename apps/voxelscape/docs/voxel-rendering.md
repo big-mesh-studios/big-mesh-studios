@@ -1,6 +1,6 @@
 # How a voxel becomes a pixel
 
-Read out of the modules that do it at 124b240 by `pnpm rendering`.
+Read out of the modules that do it at d5a375d by `pnpm rendering`.
 Every number below is the one the code declares, not a note about it.
 
 ## The path

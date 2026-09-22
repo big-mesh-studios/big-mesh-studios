@@ -103,6 +103,77 @@ describe("parseStructurePlan", () => {
     ).toBeNull();
   });
 
+  it("accepts a surface that grades flat or reaches infinitely", () => {
+    const plan = [
+      {
+        kind: "surface",
+        min: [0, 0, 0],
+        max: [8, 0, 8],
+        level: 12,
+        depth: 1,
+        id: 46,
+      },
+      {
+        kind: "surface",
+        min: [-4, 0, 0],
+        max: [4, 0, 0],
+        reachZ: "infinite",
+        depth: 1,
+        id: 46,
+      },
+      {
+        kind: "surface",
+        reachX: "infinite",
+        reachZ: "infinite",
+        depth: 2,
+        id: 46,
+      },
+    ];
+    expect(parseStructurePlan(JSON.stringify(plan))).toEqual(plan);
+  });
+
+  it("refuses a surface that bounds an axis without corners", () => {
+    // The z axis is still bounded by default, so its corners are required.
+    expect(
+      parseStructurePlan(
+        JSON.stringify([
+          { kind: "surface", reachX: "infinite", depth: 1, id: 46 },
+        ]),
+      ),
+    ).toBeNull();
+  });
+
+  it("refuses a surface with a bad level or reach", () => {
+    expect(
+      parseStructurePlan(
+        JSON.stringify([
+          {
+            kind: "surface",
+            min: [0, 0, 0],
+            max: [8, 0, 8],
+            level: 1.5,
+            depth: 1,
+            id: 46,
+          },
+        ]),
+      ),
+    ).toBeNull();
+    expect(
+      parseStructurePlan(
+        JSON.stringify([
+          {
+            kind: "surface",
+            min: [0, 0, 0],
+            max: [8, 0, 8],
+            reachX: "everywhere",
+            depth: 1,
+            id: 46,
+          },
+        ]),
+      ),
+    ).toBeNull();
+  });
+
   it("refuses a staircase or incline the world cannot generate", () => {
     expect(
       parseStructurePlan(

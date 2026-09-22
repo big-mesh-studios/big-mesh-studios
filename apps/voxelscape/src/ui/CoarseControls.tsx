@@ -96,11 +96,7 @@ const CoarseControls: Component = () => {
           top={topRow()}
           size={ACTION}
           icon={<UseIcon />}
-          onPressed={(pressed) => {
-            if (pressed) {
-              input.queueUse();
-            }
-          }}
+          onPressed={(pressed) => input.setTouchUse(pressed)}
         />
       </div>
     </div>

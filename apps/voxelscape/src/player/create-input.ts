@@ -80,6 +80,13 @@ export interface InputSnapshot {
    * which uses whatever the crosshair is on or the held item.
    */
   use: boolean;
+  /**
+   * True while the interact input is held down — the E key or the touch use
+   * button. A place script steps on its own timers rather than every frame, so
+   * a one-frame `use` edge can pass between steps; a script reading the
+   * interact action reads this instead.
+   */
+  useHeld: boolean;
   /** Edge-triggered: the selected hotbar slot changed this frame, or null. */
   select: number | null;
   /** Edge-triggered: the mouse wheel's direction this frame, or 0. */
@@ -105,6 +112,7 @@ interface InputState {
   secondaryHeld: boolean;
   secondaryReleasedQueued: boolean;
   useQueued: boolean;
+  useHeld: boolean;
   selectQueued: number | null;
   wheelQueued: -1 | 0 | 1;
   /** When the last wheel event landed, in `Date.now()` milliseconds. */
@@ -136,8 +144,10 @@ export interface InputController {
   queuePrimary(): void;
   /** Edge-triggered secondary (use) request, normally from the right mouse button. */
   queueSecondary(): void;
-  /** Edge-triggered interact request, from the E key or the touch interact button. */
+  /** Edge-triggered interact request, from the E key or a UI that only needs the edge. */
   queueUse(): void;
+  /** Touch use button held state: queues `use` on press and holds it for scripts. */
+  setTouchUse(held: boolean): void;
   /** Selects a hotbar slot by index (0-based) on the next frame. */
   queueSelect(slot: number): void;
   /** Edge-triggered jump request from the touch button. */
@@ -241,6 +251,7 @@ export const createInput = (): InputController => {
     secondaryHeld: false,
     secondaryReleasedQueued: false,
     useQueued: false,
+    useHeld: false,
     selectQueued: null,
     wheelQueued: 0,
     wheelLastEventAt: -Infinity,
@@ -379,6 +390,7 @@ export const createInput = (): InputController => {
           return;
         }
         if (e.code === "KeyE") {
+          state.useHeld = true;
           if (!e.repeat) {
             state.useQueued = true;
           }
@@ -415,6 +427,10 @@ export const createInput = (): InputController => {
         }
         if (e.code === "Space") {
           state.jumpHeld = false;
+          return;
+        }
+        if (e.code === "KeyE") {
+          state.useHeld = false;
           return;
         }
         const move = MOVE_KEYS[e.code];
@@ -488,6 +504,7 @@ export const createInput = (): InputController => {
         secondaryHeld: state.secondaryHeld,
         secondaryReleased: state.secondaryReleasedQueued,
         use: state.useQueued,
+        useHeld: state.useHeld,
         select: state.selectQueued,
         wheel: state.wheelQueued,
       };
@@ -514,6 +531,13 @@ export const createInput = (): InputController => {
 
     queueUse() {
       state.useQueued = true;
+    },
+
+    setTouchUse(held) {
+      state.useHeld = held;
+      if (held) {
+        state.useQueued = true;
+      }
     },
 
     queueSelect(slot) {

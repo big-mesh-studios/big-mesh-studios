@@ -74,22 +74,37 @@ export interface PlanRamp {
   id: number;
 }
 
+/** How far one horizontal axis of a surface's footprint reaches. */
+export type SurfaceReach = "bounds" | "infinite";
+
 /**
  * A skin over the terrain: the top `depth` voxels of every column in the
- * footprint are replaced with `id`, following whatever height the generated
- * terrain reached there. This is how a place paints a desert floor, a grass
- * plain, or a roadbed over hills without knowing the height in advance; it
- * cannot carve, since it only writes where a voxel already stands.
+ * footprint are replaced with `id`. Without a `level` it follows whatever
+ * height the generated terrain reached there, which is how a place paints a
+ * desert floor or a grass plain without knowing the height in advance. With a
+ * `level` it grades instead: every column's top is brought to that flat voxel,
+ * filling the air below it and cutting the terrain above it, so a road runs
+ * level through hills and hollows. A `reach` of `"infinite"` on an axis
+ * extends the footprint across every streamed chunk on that axis.
  */
 export interface PlanSurface {
   kind: "surface";
   /**
-   * The footprint's corners, in LOD-0 voxels. The x and z axes bound the
-   * columns painted; y is ignored by the paint and only widens the region a
-   * plan change refills.
+   * The footprint's corners, in LOD-0 voxels, required on an axis bounded by
+   * `reach` and ignored on an infinite one. y is ignored by the paint and only
+   * widens the region a plan change refills.
    */
-  min: Dim3;
-  max: Dim3;
+  min?: Dim3;
+  max?: Dim3;
+  /** How far the x axis reaches; defaults to `"bounds"`. */
+  reachX?: SurfaceReach;
+  /** How far the z axis reaches; defaults to `"bounds"`. */
+  reachZ?: SurfaceReach;
+  /**
+   * The flat LOD-0 voxel top every column is graded to. Absent, the surface
+   * follows the terrain height instead.
+   */
+  level?: number;
   /** How many voxels below each column's top surface to replace. */
   depth: number;
   id: number;
@@ -226,17 +241,23 @@ export const expandShape = (shape: PlanShape): PlanBox[] => {
   }
   if (shape.kind === "surface") {
     // A surface follows the terrain height, which a box list cannot express;
-    // its declared corners stand in for bounding and picking it.
-    return [box(shape.min, shape.max, shape.id)];
+    // its declared corners stand in for bounding and picking it, defaulting to
+    // the origin on an axis it reaches infinitely.
+    const min: Dim3 = shape.min ?? [0, 0, 0];
+    const max: Dim3 = shape.max ?? [0, 0, 0];
+    return [box(min, max, shape.id)];
   }
   return expandHouse(shape);
 };
 
 /**
- * Paints a surface shape into `store`: for every column in the footprint,
- * finds the topmost voxel the generated terrain left and replaces up to
- * `depth` voxels below it with the shape's id. Reads only this block's own
- * voxels, so every block reaches the same answer from its own terrain.
+ * Paints a surface shape into `store`. A surface without a `level` replaces the
+ * top `depth` voxels of every column in the footprint, following the terrain. A
+ * surface with a `level` grades each column to that flat top instead: it fills
+ * the air between the terrain and the level and cuts away the terrain above it.
+ * An infinite reach on an axis ignores that axis's bounds and spans the whole
+ * block. Reads only this block's own voxels, so every block reaches the same
+ * answer from its own terrain.
  */
 const stampSurface = (
   store: VoxelStore,
@@ -248,11 +269,24 @@ const stampSurface = (
   const n: Dim3 = [nx, ny, nz];
   const p = store.padding;
   const depth = Math.max(1, Math.round((shape.depth * VOXEL_SIZE) / scale));
+  const id = shape.id;
+  if (!Number.isInteger(id) || id < 0 || id > 255 || id === VOXEL_AIR) {
+    return;
+  }
+  const min: Dim3 = shape.min ?? [0, 0, 0];
+  const max: Dim3 = shape.max ?? [0, 0, 0];
+  const reach = (axis: 0 | 2): SurfaceReach =>
+    axis === 0 ? (shape.reachX ?? "bounds") : (shape.reachZ ?? "bounds");
   const lo: Dim3 = [0, 0, 0];
   const hi: Dim3 = [0, 0, 0];
-  for (let axis = 0; axis < 3; axis++) {
-    const worldLo = shape.min[axis] * VOXEL_SIZE;
-    const worldHi = (shape.max[axis] + 1) * VOXEL_SIZE;
+  for (const axis of [0, 2] as const) {
+    if (reach(axis) === "infinite") {
+      lo[axis] = -p;
+      hi[axis] = n[axis] + p - 1;
+      continue;
+    }
+    const worldLo = min[axis] * VOXEL_SIZE;
+    const worldHi = (max[axis] + 1) * VOXEL_SIZE;
     lo[axis] = Math.max(
       -p,
       Math.floor((worldLo - center[axis]) / scale + n[axis] / 2),
@@ -262,10 +296,16 @@ const stampSurface = (
       Math.ceil((worldHi - center[axis]) / scale + n[axis] / 2) - 1,
     );
   }
-  const id = shape.id;
-  if (!Number.isInteger(id) || id < 0 || id > 255 || id === VOXEL_AIR) {
-    return;
-  }
+  const yLo = -p;
+  const yHi = n[1] + p - 1;
+  // The grade is declared in LOD-0 voxels; this block reads its own voxels at
+  // its own scale, so the level has to be mapped into the block's own index.
+  const level =
+    shape.level === undefined
+      ? undefined
+      : Math.round(
+          ((shape.level + 1) * VOXEL_SIZE - center[1]) / scale + ny / 2 - 1,
+        );
   for (let vz = lo[2]; vz <= hi[2]; vz++) {
     for (let vx = lo[0]; vx <= hi[0]; vx++) {
       let top = -1;
@@ -275,11 +315,32 @@ const stampSurface = (
           break;
         }
       }
-      if (top < 0) {
+      if (level === undefined) {
+        if (top < 0) {
+          continue;
+        }
+        for (let d = 0; d < depth && top - d >= yLo; d++) {
+          store.data[store.paddedIndex(vx, top - d, vz)] = id;
+        }
         continue;
       }
-      for (let d = 0; d < depth && top - d >= -p; d++) {
-        store.data[store.paddedIndex(vx, top - d, vz)] = id;
+      if (top < level) {
+        // Grade up: fill the air between the terrain top and the level.
+        const to = Math.min(level, yHi);
+        for (let vy = Math.max(top + 1, yLo); vy <= to; vy++) {
+          store.data[store.paddedIndex(vx, vy, vz)] = id;
+        }
+        continue;
+      }
+      // Grade down: cut the terrain above the level and cap it at the level.
+      for (let vy = Math.max(level + 1, yLo); vy <= top; vy++) {
+        store.data[store.paddedIndex(vx, vy, vz)] = VOXEL_AIR;
+      }
+      for (let d = 0; d < depth; d++) {
+        const vy = level - d;
+        if (vy >= yLo && vy <= yHi) {
+          store.data[store.paddedIndex(vx, vy, vz)] = id;
+        }
       }
     }
   }

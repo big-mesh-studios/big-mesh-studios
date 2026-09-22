@@ -154,6 +154,12 @@ export interface LocalInput {
   readonly secondaryHeld: boolean;
   /** Whether the interact input fired this frame. */
   readonly use: boolean;
+  /**
+   * Whether the interact input is held down — the E key or the touch use
+   * button. A script's step runs on its timers, not every frame, so this is the
+   * form to read when a one-frame `use` edge could pass between steps.
+   */
+  readonly useHeld: boolean;
 }
 
 /** Where a ray first met the world, and what it met. */

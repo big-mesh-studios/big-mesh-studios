@@ -62,8 +62,14 @@ export const shapeLabel = (shape: PlanShape): string => {
       return `Stairs (${coord(shape.at)}) ${shape.steps}×${shape.rise}/${shape.run} ${shape.along}`;
     case "ramp":
       return `Ramp (${coord(shape.from)})→(${coord(shape.to)}) w${shape.width} ${blockName(shape.id)}`;
-    case "surface":
-      return `Surface (${coord(shape.min)})–(${coord(shape.max)}) d${shape.depth} ${blockName(shape.id)}`;
+    case "surface": {
+      const min = shape.min ?? [0, 0, 0];
+      const max = shape.max ?? [0, 0, 0];
+      const x = shape.reachX === "infinite" ? "x∞" : `x${min[0]}–${max[0]}`;
+      const z = shape.reachZ === "infinite" ? "z∞" : `z${min[2]}–${max[2]}`;
+      const level = shape.level === undefined ? "" : ` y${shape.level}`;
+      return `Surface ${x} ${z}${level} d${shape.depth} ${blockName(shape.id)}`;
+    }
   }
 };
 
@@ -174,7 +180,11 @@ export const translateShape = (shape: PlanShape, delta: Dim3): PlanShape => {
     case "ramp":
       return { ...shape, from: move(shape.from), to: move(shape.to) };
     case "surface":
-      return { ...shape, min: move(shape.min), max: move(shape.max) };
+      return {
+        ...shape,
+        ...(shape.min === undefined ? {} : { min: move(shape.min) }),
+        ...(shape.max === undefined ? {} : { max: move(shape.max) }),
+      };
   }
 };
 

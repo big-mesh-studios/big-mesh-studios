@@ -41,6 +41,7 @@ const buttons = (overrides: Partial<InputSnapshot> = {}): InputSnapshot => ({
   secondaryHeld: false,
   secondaryReleased: false,
   use: false,
+  useHeld: false,
   select: null,
   wheel: 0,
   ...overrides,

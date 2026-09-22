@@ -168,6 +168,17 @@ describe("the touch buttons", () => {
     input.setTouchJump(false);
     expect(input.consume().jumpHeld).toBe(false);
   });
+
+  it("holds the use button for scripts after its edge has gone", () => {
+    input.setTouchUse(true);
+    expect(input.consume()).toMatchObject({ use: true, useHeld: true });
+
+    // The one-frame edge is spent, but the held state survives for a later step.
+    expect(input.consume()).toMatchObject({ use: false, useHeld: true });
+
+    input.setTouchUse(false);
+    expect(input.consume().useHeld).toBe(false);
+  });
 });
 
 describe("the wheel's tool step", () => {
@@ -235,7 +246,7 @@ describe("the wheel's tool step", () => {
 });
 
 describe("the interact (use) edge", () => {
-  it("fires once from the queued request, as a touch button would", () => {
+  it("fires once from a queued request", () => {
     input.queueUse();
     expect(input.consume().use).toBe(true);
     expect(input.consume().use).toBe(false);
@@ -248,5 +259,14 @@ describe("the interact (use) edge", () => {
       new KeyboardEvent("keydown", { code: "KeyE", repeat: true }),
     );
     expect(input.consume().use).toBe(false);
+  });
+
+  it("holds the E key for scripts until it comes up", () => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyE" }));
+    expect(input.consume()).toMatchObject({ use: true, useHeld: true });
+    expect(input.consume()).toMatchObject({ use: false, useHeld: true });
+
+    window.dispatchEvent(new KeyboardEvent("keyup", { code: "KeyE" }));
+    expect(input.consume()).toMatchObject({ use: false, useHeld: false });
   });
 });

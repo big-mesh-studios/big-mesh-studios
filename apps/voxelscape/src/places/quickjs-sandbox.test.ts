@@ -278,6 +278,7 @@ describe("a QuickJS sandbox", () => {
       primaryHeld: false,
       secondaryHeld: true,
       use: false,
+      useHeld: false,
     };
     const sandbox = await createQuickJSSandbox({
       seed: 1,
