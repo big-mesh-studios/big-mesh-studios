@@ -33,14 +33,14 @@ export const InventoryHud: Component = () => {
     inventory.onChange = previousOnChange;
   });
 
-  // Keyboard: E or I toggles the inventory, Escape closes it.
+  // Keyboard: I toggles the inventory, Escape closes it.
   const handleKey = (e: KeyboardEvent): void => {
     if (
       e.target instanceof HTMLInputElement ||
       e.target instanceof HTMLTextAreaElement
     )
       return;
-    if (e.code === "KeyI" || e.code === "KeyE") {
+    if (e.code === "KeyI") {
       setOpen((v) => !v);
       setPendingItem(null);
       e.preventDefault();
@@ -192,7 +192,7 @@ export const InventoryHud: Component = () => {
           <div class={styles.help}>
             {pendingItem() !== null
               ? `Click a hotbar slot to place "${ITEMS[pendingItem()!]?.name}"`
-              : "Click an item, then a hotbar slot to assign it · Press I or E to close"}
+              : "Click an item, then a hotbar slot to assign it · Press I to close"}
           </div>
         </div>
       </div>
