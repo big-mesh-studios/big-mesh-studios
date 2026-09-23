@@ -532,6 +532,35 @@ declare module "voxelscape" {
   /** Stands a barrier; see `createProp` for why `id` is never generated. */
   export function createBarrier(options: CreateBarrierOptions): BarrierHandle;
 
+  /** One shape a structure plan is written in, in LOD-0 world voxels. */
+  export type PlanShape = import("../world/plan-shapes").PlanShape;
+
+  /**
+   * A named group of structure shapes a script places at run time, stood
+   * through the "structure"/"structure-remove" effects. The world stamps the
+   * group's shapes over the plan the world was built with, and taking the
+   * group down regenerates the cells it reached, so the ground beneath it
+   * comes back.
+   */
+  export interface StructureHandle {
+    readonly id: string;
+    /** Replaces the group's shapes, re-stamping the cells either set reaches. */
+    setShapes(shapes: PlanShape[]): StructureHandle;
+    /** Takes the whole group down. */
+    remove(): void;
+  }
+
+  interface CreateStructureOptions {
+    id: string;
+    /** The plan shapes to stamp, in LOD-0 world voxels. */
+    shapes: PlanShape[];
+  }
+
+  /** Places a named group of structure shapes; see `createProp` for why `id` is never generated. */
+  export function createStructure(
+    options: CreateStructureOptions,
+  ): StructureHandle;
+
   /** Where a point light stands, or the figure it hangs over. */
   interface CreateLightOptions {
     id: string;

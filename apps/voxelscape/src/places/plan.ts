@@ -8,11 +8,8 @@
 import { PlaceBundleError, bundlePlaceProject } from "./bundle";
 import { createQuickJSSandbox } from "./quickjs-sandbox";
 import { CHUNK_VOXELS, VOXEL_SIZE, type Dim3 } from "../world/level-data";
-import type {
-  PlanShape,
-  StructurePlan,
-  SurfaceReach,
-} from "../world/structure-fill";
+import type { StructurePlan } from "../world/plan-shapes";
+import { isStructurePlan } from "../world/plan-shapes";
 import {
   MAX_CONVEYOR_SPEED,
   MAX_MODEL_URI,
@@ -21,6 +18,25 @@ import {
   MAX_PROP_HEIGHT,
   MAX_PROP_MODEL,
 } from "./effects";
+
+// A plan's shape bounds and its validator live with the shape vocabulary, so
+// the effect validator can share them without reaching the bundler or the
+// sandbox this module pulls in. Re-exported here for the callers that have
+// always found them on the plan module.
+export {
+  MAX_PLAN_SHAPES,
+  MAX_PLAN_COORD,
+  MAX_PLAN_BLOCK_ID,
+  MAX_PLAN_HOUSE_SIZE,
+  MAX_PLAN_ROAD_WIDTH,
+  MAX_PLAN_STEPS,
+  MAX_PLAN_STAIR_RISE,
+  MAX_PLAN_STAIR_RUN,
+  MAX_PLAN_RAMP_RUN,
+  MAX_PLAN_SURFACE_DEPTH,
+  isPlanShape,
+  isStructurePlan,
+} from "../world/plan-shapes";
 
 /** How many chunks either side of a place's spawn its plan may build within. */
 export const PLAN_REGION_CHUNKS = 8;
@@ -52,28 +68,8 @@ export const planRegionAround = (
   };
 };
 
-/** The most shapes one plan may hold, bounding the work a block's fill can owe it. */
-export const MAX_PLAN_SHAPES = 4096;
 /** The most static NPCs or props a plan may place. */
 export const MAX_PLAN_ENTITIES = 1024;
-/** The furthest from the origin a plan's voxel coordinates may reach. */
-export const MAX_PLAN_COORD = 1_000_000;
-/** Voxel ids live in a `Uint8Array`, so 0..255 is every id a shape may name. */
-export const MAX_PLAN_BLOCK_ID = 255;
-/** The most voxels a house may reach along one axis. */
-export const MAX_PLAN_HOUSE_SIZE = 256;
-/** The most voxels wide a road may be. */
-export const MAX_PLAN_ROAD_WIDTH = 64;
-/** The most treads one staircase may hold. */
-export const MAX_PLAN_STEPS = 128;
-/** The tallest one staircase tread may rise. */
-export const MAX_PLAN_STAIR_RISE = 64;
-/** The longest one staircase tread may run. */
-export const MAX_PLAN_STAIR_RUN = 64;
-/** The most voxels long an incline's run may be. */
-export const MAX_PLAN_RAMP_RUN = 256;
-/** The most voxels deep a surface shape may replace below the terrain top. */
-export const MAX_PLAN_SURFACE_DEPTH = 64;
 
 /** Where a place's plan may build: the seed it is deterministic against, and its bounds. */
 export interface PlanContext {
@@ -121,107 +117,6 @@ export const emptyLevelPlan = (): LevelPlan => ({
   npcs: [],
   props: [],
 });
-
-const isInt = (v: unknown, min: number, max: number): v is number =>
-  typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
-
-const isCoord = (v: unknown): v is number =>
-  isInt(v, -MAX_PLAN_COORD, MAX_PLAN_COORD);
-
-const isVector = (v: unknown): v is Dim3 =>
-  Array.isArray(v) && v.length === 3 && v.every(isCoord);
-
-const isBlockId = (v: unknown): v is number => isInt(v, 0, MAX_PLAN_BLOCK_ID);
-
-const isReach = (v: unknown): v is SurfaceReach | undefined =>
-  v === undefined || v === "bounds" || v === "infinite";
-
-const isOptionalCoord = (v: unknown): v is number | undefined =>
-  v === undefined || isCoord(v);
-
-const isShape = (v: unknown): v is PlanShape => {
-  if (typeof v !== "object" || v === null) {
-    return false;
-  }
-  const shape = v as Record<string, unknown>;
-  if (shape.kind === "box") {
-    if (!isVector(shape.min) || !isVector(shape.max) || !isBlockId(shape.id)) {
-      return false;
-    }
-    return shape.min.every((lo, axis) => lo <= (shape.max as Dim3)[axis]);
-  }
-  if (shape.kind === "road") {
-    return (
-      isVector(shape.from) &&
-      isVector(shape.to) &&
-      isInt(shape.width, 1, MAX_PLAN_ROAD_WIDTH) &&
-      isBlockId(shape.id)
-    );
-  }
-  if (shape.kind === "house") {
-    return (
-      isVector(shape.at) &&
-      isVector(shape.size) &&
-      shape.size.every((n) => isInt(n, 1, MAX_PLAN_HOUSE_SIZE)) &&
-      isBlockId(shape.wall) &&
-      isBlockId(shape.roof) &&
-      isBlockId(shape.floor)
-    );
-  }
-  if (shape.kind === "stairs") {
-    return (
-      isVector(shape.at) &&
-      (shape.along === "x" || shape.along === "z") &&
-      isInt(shape.steps, 1, MAX_PLAN_STEPS) &&
-      isInt(shape.rise, 1, MAX_PLAN_STAIR_RISE) &&
-      isInt(shape.run, 1, MAX_PLAN_STAIR_RUN) &&
-      isInt(shape.width, 1, MAX_PLAN_ROAD_WIDTH) &&
-      isBlockId(shape.id)
-    );
-  }
-  if (shape.kind === "ramp") {
-    if (
-      !isVector(shape.from) ||
-      !isVector(shape.to) ||
-      !isInt(shape.width, 1, MAX_PLAN_ROAD_WIDTH) ||
-      !isBlockId(shape.id)
-    ) {
-      return false;
-    }
-    const [fx, , fz] = shape.from;
-    const [tx, , tz] = shape.to;
-    return Math.max(Math.abs(tx - fx), Math.abs(tz - fz)) <= MAX_PLAN_RAMP_RUN;
-  }
-  if (shape.kind === "surface") {
-    if (
-      !isReach(shape.reachX) ||
-      !isReach(shape.reachZ) ||
-      !isInt(shape.depth, 1, MAX_PLAN_SURFACE_DEPTH) ||
-      !isOptionalCoord(shape.level) ||
-      !isBlockId(shape.id)
-    ) {
-      return false;
-    }
-    const reachX = shape.reachX ?? "bounds";
-    const reachZ = shape.reachZ ?? "bounds";
-    if (
-      (reachX === "bounds" || reachZ === "bounds") &&
-      (!isVector(shape.min) || !isVector(shape.max))
-    ) {
-      return false;
-    }
-    if (isVector(shape.min) && isVector(shape.max)) {
-      if (
-        (reachX === "bounds" && shape.min[0] > shape.max[0]) ||
-        (reachZ === "bounds" && shape.min[2] > shape.max[2])
-      ) {
-        return false;
-      }
-    }
-    return true;
-  }
-  return false;
-};
 
 const isName = (v: unknown, max: number): v is string =>
   typeof v === "string" && v.length > 0 && v.length <= max;
@@ -287,14 +182,6 @@ export const isPlanProp = (v: unknown): v is PlanProp => {
         Math.abs(conveyor.vz) <= MAX_CONVEYOR_SPEED))
   );
 };
-
-/**
- * Whether `v` is a plan this world can generate. Every shape's coordinates,
- * sizes, and block ids are bounded, so a peer's plan bytes never reach the
- * filler unchecked.
- */
-export const isStructurePlan = (v: unknown): v is StructurePlan =>
-  Array.isArray(v) && v.length <= MAX_PLAN_SHAPES && v.every(isShape);
 
 export const isLevelPlan = (v: unknown): v is LevelPlan => {
   if (isStructurePlan(v)) {

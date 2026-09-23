@@ -125,7 +125,7 @@ import { mouseRay, projectPtToScreen } from "../level-editor/camera/project";
 import type { SubTexture, VoxelTiles } from "../renderers/atlas";
 import { cellsInSphere } from "../world/chunk-sphere";
 import { type Dim3 } from "../world/level-data";
-import type { StructurePlan } from "../world/structure-fill";
+import type { PlanShape, StructurePlan } from "../world/structure-fill";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "../world/noise";
 import { Field, Phase, probe } from "../render/perf-probe";
 
@@ -792,6 +792,19 @@ export const createVoxelscape = ({
   // has placed and wearing the bundled model their id names. Nothing draws
   // until /script:demo loads a script that places them.
   let scriptConsole: ScriptConsole | null = null;
+  // Structure groups a place script has placed at run time, keyed by the group
+  // id its `structure` effect named. Held apart from `levelPlan` so the
+  // editor's plan never shows the script's buildings, and flushed whole to the
+  // world whenever a group is placed or removed.
+  const runtimeStructures = new Map<string, PlanShape[]>();
+  /** Sends the whole run-time structure overlay to the world to be stamped. */
+  const applyRuntimeStructures = (): void => {
+    const shapes: PlanShape[] = [];
+    for (const group of runtimeStructures.values()) {
+      shapes.push(...group);
+    }
+    world.setRuntimeStructures(shapes.length === 0 ? undefined : shapes);
+  };
   // The frame's raw input, kept for a script to drive something itself — the
   // same snapshot the player's own mover gets, before a cutscene zeroes it.
   let playerInput: LocalInput | null = null;
@@ -1569,6 +1582,9 @@ export const createVoxelscape = ({
     // The fresh script lights no fires, so the embers of the old run go back
     // to being the floor they kindled from.
     fireEmbers.clear();
+    // Nor does it start with the old run's buildings standing.
+    runtimeStructures.clear();
+    applyRuntimeStructures();
     void scriptConsole?.restart();
   };
 
@@ -1768,6 +1784,14 @@ export const createVoxelscape = ({
         },
         onBlockEdit: (edit) => {
           editing.fill(edit.min, edit.max, edit.id);
+        },
+        onStructureEdit: ({ id, shapes }) => {
+          if (shapes === null) {
+            runtimeStructures.delete(id);
+          } else {
+            runtimeStructures.set(id, shapes);
+          }
+          applyRuntimeStructures();
         },
         onTeleport: (player, address) => {
           if (player !== "" && player !== (atproto.did ?? "")) {
@@ -2145,6 +2169,10 @@ export const createVoxelscape = ({
           await loadPlaceModels(models);
         }
         const scriptConsole = await scriptConsoleFor();
+        // A run begins with no run-time structures: whatever the last script
+        // placed is taken back down before this one starts.
+        runtimeStructures.clear();
+        applyRuntimeStructures();
         // The world's structures come from the same plan the script's own Run
         // compiles, so a creator who edits shapes sees the change on the
         // terrain they are standing on. The cells either plan reaches are

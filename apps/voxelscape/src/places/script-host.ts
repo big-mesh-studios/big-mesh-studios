@@ -38,6 +38,7 @@ import type {
   WorldQuery,
 } from "./sandbox";
 import type { ScriptEvent, ScriptEventPayload } from "./events";
+import type { PlanShape } from "../world/plan-shapes";
 
 /**
  * How long, in milliseconds on the shared clock, a blast stays in the host's
@@ -515,6 +516,15 @@ export interface ScriptHostParams extends RequireOnly<
     max: [number, number, number];
     id: number;
   }) => void;
+  /**
+   * Called when the script places or replaces a named group of structure
+   * shapes, or — with `shapes: null` — takes one away, in LOD-0 world voxels.
+   * The world stamps the groups over the plan it was built with.
+   */
+  onStructureEdit?: (edit: {
+    id: string;
+    shapes: PlanShape[] | null;
+  }) => void;
   /** The data the place remembers between runs; a run-scoped table when omitted. */
   data?: PlaceData;
   /** Called when the script sends a player to another place. */
@@ -617,6 +627,10 @@ export class ScriptHost {
     min: [number, number, number];
     max: [number, number, number];
     id: number;
+  }) => void;
+  private readonly onStructureEdit?: (edit: {
+    id: string;
+    shapes: PlanShape[] | null;
   }) => void;
   private readonly onTeleport?: (player: string, place: string) => void;
   private readonly onPlayerModel?: (
@@ -729,6 +743,7 @@ export class ScriptHost {
     this.onFire = params.onFire;
     this.onExplosion = params.onExplosion;
     this.onBlockEdit = params.onBlockEdit;
+    this.onStructureEdit = params.onStructureEdit;
     this.onTeleport = params.onTeleport;
     this.onPlayerModel = params.onPlayerModel;
     this.refreshData = params.refreshData;
@@ -2699,6 +2714,15 @@ export class ScriptHost {
           max: effect.payload.max,
           id: 0,
         });
+        break;
+      case "structure":
+        this.onStructureEdit?.({
+          id: effect.payload.id,
+          shapes: effect.payload.shapes,
+        });
+        break;
+      case "structure-remove":
+        this.onStructureEdit?.({ id: effect.payload.id, shapes: null });
         break;
     }
   }

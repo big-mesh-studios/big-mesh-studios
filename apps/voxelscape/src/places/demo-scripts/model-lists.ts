@@ -143,10 +143,14 @@ export const DONT_POOP_MODELS = [
 
 /**
  * The models the "A Dusty Trip" demo wears: the car's placeholder body, the
- * mutants that chase it, and the gas stations along the road.
+ * mutants that chase it, the pumps at its petrol stations, and the food its
+ * roadside buildings hold.
  */
 export const DUSTY_TRIP_MODELS = [
   "platform.zip",
   "zombie.zip",
-  "lemonade-stand.zip",
+  "gas-pump.zip",
+  "chips.zip",
+  "cola.zip",
+  "egg.zip",
 ];

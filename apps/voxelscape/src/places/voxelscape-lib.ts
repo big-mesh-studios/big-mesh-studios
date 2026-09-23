@@ -578,6 +578,31 @@ export function createBarrier(options) {
 }
 
 /**
+ * Places a named group of structure shapes — the same vocabulary a place's
+ * \`onPlan\` answers with, in LOD-0 world voxels — through the
+ * "structure"/"structure-remove" effects. The world stamps the group over the
+ * plan it was built with and regenerates only the cells the group reaches, so
+ * a script may put a building down and take it away while the world runs, and
+ * the ground under it comes back when it goes. Dispatching the same id again
+ * replaces the group's shapes rather than laying a second one.
+ */
+export function createStructure(options) {
+  host.dispatch("structure", { id: options.id, shapes: options.shapes });
+  var structure = { id: options.id, shapes: options.shapes };
+  /** Replaces the group's shapes, re-stamping the cells either set reaches. */
+  structure.setShapes = function (shapes) {
+    structure.shapes = shapes;
+    host.dispatch("structure", { id: structure.id, shapes: shapes });
+    return structure;
+  };
+  /** Takes the whole group down. */
+  structure.remove = function () {
+    host.dispatch("structure-remove", { id: structure.id });
+  };
+  return structure;
+}
+
+/**
  * Lights a point in the world — standing where it is placed, or hanging over a
  * figure named by entityId. Returns a handle whose remove puts the light out.
  */

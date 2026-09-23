@@ -7,6 +7,11 @@
 import type { CameraShot } from "./cutscene";
 import type { MotionSpec } from "./motion";
 import { STORM_KINDS, type StormKind } from "../world/scripted-storm";
+import {
+  MAX_PLAN_SHAPES,
+  isPlanShape,
+  type PlanShape,
+} from "../world/plan-shapes";
 import type {
   AttributeValue,
   DataScope,
@@ -78,6 +83,8 @@ export type EffectTag =
   | "block-set"
   | "block-fill"
   | "block-clear"
+  | "structure"
+  | "structure-remove"
   | "bind"
   | "prompt"
   | "prompt-remove"
@@ -802,6 +809,16 @@ export type ParsedEffect =
         max: [number, number, number];
       };
     }
+  | {
+      tag: "structure";
+      payload: {
+        /** Names the group, so a later `structure-remove` reaches it, or a new one replaces it. */
+        id: string;
+        /** The plan shapes to stamp, in LOD-0 world voxels. */
+        shapes: PlanShape[];
+      };
+    }
+  | { tag: "structure-remove"; payload: { id: string } }
   | {
       tag: "bind";
       payload: {
@@ -1760,6 +1777,18 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
       return isBlockBox(p) && isBlockId(p.id);
     case "block-clear":
       return isBlockBox(p);
+    case "structure": {
+      const shapes = p.shapes;
+      return (
+        isShort(p.id, MAX_NPC_NAME) &&
+        Array.isArray(shapes) &&
+        shapes.length > 0 &&
+        shapes.length <= MAX_PLAN_SHAPES &&
+        shapes.every(isPlanShape)
+      );
+    }
+    case "structure-remove":
+      return isShort(p.id, MAX_NPC_NAME);
     case "bind":
       return (
         isShort(p.id, 64) &&

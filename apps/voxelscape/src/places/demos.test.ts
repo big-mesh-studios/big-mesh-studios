@@ -7,6 +7,7 @@ import { compilePlacePlan, planRegionAround } from "./plan";
 import { ScriptHost } from "./script-host";
 import type { PlaceProject } from "./project";
 import { expandShape } from "../world/structure-fill";
+import type { PlanShape } from "../world/plan-shapes";
 
 /** The bytes of a model under `public/models/`, as the demo loader fetches them. */
 const modelBytes = (file: string): ArrayBuffer => {
@@ -1290,6 +1291,8 @@ describe("the A Dusty Trip demo", () => {
     const demo = builtinDemo("a-dusty-trip")!;
     const project = await loadBuiltinDemo(demo);
     const damage: number[] = [];
+    /** The group a structure edit placed, last write per id; null when removed. */
+    const structureEdits = new Map<string, PlanShape[] | null>();
     const host = new ScriptHost({
       seed: project.manifest.seed,
       getNow: () => tripClockMs,
@@ -1298,13 +1301,14 @@ describe("the A Dusty Trip demo", () => {
       getInput: () => input,
       getPlayers: () => [{ did: "", x: player.x, y: 0, z: player.z }],
       onPlayerDamage: (_player, amount) => damage.push(amount),
+      onStructureEdit: ({ id, shapes }) => structureEdits.set(id, shapes),
     });
     await host.loadProject(
       project.scripts,
       project.manifest.scripts![0],
       projectModelBytes(project),
     );
-    return { host, project, damage };
+    return { host, project, damage, structureEdits };
   };
 
   /** Moves the shared clock forward and lets the trip's tick timer fire. */
@@ -1344,22 +1348,43 @@ describe("the A Dusty Trip demo", () => {
     });
   });
 
-  it("starts with a solid seat car, gas stations, and its readouts", async () => {
-    const { host } = await trip();
+  it("starts with a solid seat car, a petrol station, and its readouts", async () => {
+    const { host, structureEdits } = await trip();
     expect(host.prop("car")).toMatchObject({
       model: "platform.zip",
       solid: true,
       seat: true,
     });
-    expect(
-      host.propList.filter((prop) => prop.id.startsWith("station-")).length,
-    ).toBe(6);
+    // Site 0 is the guaranteed petrol station, so its pumps and pads are up.
+    const pumps = host.propList.filter((prop) => prop.tags.includes("fuel"));
+    expect(pumps.length).toBeGreaterThanOrEqual(2);
+    expect(pumps[0].model).toBe("gas-pump.zip");
+    const site = structureEdits.get("structure-0");
+    expect(site).toBeTruthy();
+    expect(site?.some((shape) => shape.kind === "house")).toBe(true);
+    expect(site?.some((shape) => shape.kind === "surface")).toBe(true);
     expect(host.hudFor("")).toContainEqual(
       expect.objectContaining({ id: "fuel", kind: "bar", max: 60 }),
     );
     expect(host.hudFor("")).toContainEqual(
       expect.objectContaining({ id: "trip", kind: "text" }),
     );
+    host.dispose();
+  });
+
+  it("builds sites ahead as the car drives and drops the ones left behind", async () => {
+    const { host, structureEdits } = await trip();
+    await host.use("car", "", "");
+    input.moveY = 1;
+    for (let i = 0; i < 500; i++) {
+      await advanceTrip(host, 40);
+    }
+    const lastWrites = [...structureEdits.values()];
+    const live = lastWrites.filter((shapes) => shapes !== null);
+    expect(live.length).toBeGreaterThan(0);
+    expect(live.length).toBeLessThanOrEqual(4);
+    // At least one site the car has passed has been taken back down.
+    expect(lastWrites.some((shapes) => shapes === null)).toBe(true);
     host.dispose();
   });
 

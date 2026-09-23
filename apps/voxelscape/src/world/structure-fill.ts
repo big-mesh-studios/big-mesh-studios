@@ -8,113 +8,32 @@
 // behind the same boundary as the rest of its script (ADR 0027).
 import { VOXEL_SIZE, type Dim3 } from "./level-data";
 import { VOXEL_AIR, isWaterId, type VoxelStore } from "./voxel-store";
+import type {
+  PlanBox,
+  PlanHouse,
+  PlanRamp,
+  PlanRoad,
+  PlanShape,
+  PlanStairs,
+  PlanSurface,
+  StructurePlan,
+  SurfaceReach,
+} from "./plan-shapes";
 
-/** A filled axis-aligned box, bounds inclusive, in LOD-0 world voxel indices. */
-export interface PlanBox {
-  kind: "box";
-  min: Dim3;
-  max: Dim3;
-  id: number;
-}
-
-/** A road: a straight, axis-aligned street `width` voxels wide. */
-export interface PlanRoad {
-  kind: "road";
-  /** One end of the road's centreline, in LOD-0 world voxels. */
-  from: Dim3;
-  /** The other end; only one horizontal axis may differ from `from`. */
-  to: Dim3;
-  /** How many voxels wide the road is across its run. */
-  width: number;
-  id: number;
-}
-
-/**
- * A hollow house: a solid floor, a shell of walls up to a roof, and a two-voxel
- * door gap in the middle of the wall facing -Z.
- */
-export interface PlanHouse {
-  kind: "house";
-  /** The corner the house starts at, in LOD-0 world voxels. */
-  at: Dim3;
-  /** How far the house reaches along each axis, in voxels. */
-  size: Dim3;
-  wall: number;
-  roof: number;
-  floor: number;
-}
-
-/** A solid staircase: `steps` treads climbing along one horizontal axis. */
-export interface PlanStairs {
-  kind: "stairs";
-  /** The bottom corner the first tread starts at, in LOD-0 world voxels. */
-  at: Dim3;
-  /** The horizontal axis the staircase climbs along. */
-  along: "x" | "z";
-  /** How many treads. */
-  steps: number;
-  /** How many voxels each tread rises above the one before it. */
-  rise: number;
-  /** How many voxels each tread runs along `along`. */
-  run: number;
-  /** How many voxels wide the staircase is across its run. */
-  width: number;
-  id: number;
-}
-
-/** A solid incline from one point to another, its top stepping one voxel at a time. */
-export interface PlanRamp {
-  kind: "ramp";
-  /** The base of the low end, in LOD-0 voxels. */
-  from: Dim3;
-  /** The top of the high end. */
-  to: Dim3;
-  /** How many voxels wide the incline is across its run. */
-  width: number;
-  id: number;
-}
-
-/** How far one horizontal axis of a surface's footprint reaches. */
-export type SurfaceReach = "bounds" | "infinite";
-
-/**
- * A skin over the terrain: the top `depth` voxels of every column in the
- * footprint are replaced with `id`. Without a `level` it follows whatever
- * height the generated terrain reached there, which is how a place paints a
- * desert floor or a grass plain without knowing the height in advance. With a
- * `level` it grades instead: every column's top is brought to that flat voxel,
- * filling the air below it and cutting the terrain above it, so a road runs
- * level through hills and hollows. A `reach` of `"infinite"` on an axis
- * extends the footprint across every streamed chunk on that axis.
- */
-export interface PlanSurface {
-  kind: "surface";
-  /**
-   * The footprint's corners, in LOD-0 voxels, required on an axis bounded by
-   * `reach` and ignored on an infinite one. y is ignored by the paint and only
-   * widens the region a plan change refills.
-   */
-  min?: Dim3;
-  max?: Dim3;
-  /** How far the x axis reaches; defaults to `"bounds"`. */
-  reachX?: SurfaceReach;
-  /** How far the z axis reaches; defaults to `"bounds"`. */
-  reachZ?: SurfaceReach;
-  /**
-   * The flat LOD-0 voxel top every column is graded to. Absent, the surface
-   * follows the terrain height instead.
-   */
-  level?: number;
-  /** How many voxels below each column's top surface to replace. */
-  depth: number;
-  id: number;
-}
-
-export type PlanShape =
-  PlanBox | PlanRoad | PlanHouse | PlanStairs | PlanRamp | PlanSurface;
-
-/** Everything a script asks the filler to stamp, in the order it stamps it. */
-export type StructurePlan = PlanShape[];
+// The shape vocabulary lives in `plan-shapes.ts`, where a reader that must not
+// reach the voxel store — the effect validator — can share it. Re-exported so
+// every existing importer keeps finding it here.
+export type {
+  PlanBox,
+  PlanHouse,
+  PlanRamp,
+  PlanRoad,
+  PlanShape,
+  PlanStairs,
+  PlanSurface,
+  StructurePlan,
+  SurfaceReach,
+} from "./plan-shapes";
 
 /** A box with its bounds sorted and being the box a shape expands into. */
 const box = (min: Dim3, max: Dim3, id: number): PlanBox => ({

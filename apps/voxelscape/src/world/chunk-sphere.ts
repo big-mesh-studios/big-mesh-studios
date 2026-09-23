@@ -25,7 +25,6 @@ import {
 } from "./voxel-store";
 import {
   expandShape,
-  type PlanShape,
   type PlanSurface,
   type StructurePlan,
 } from "./structure-fill";
@@ -356,11 +355,18 @@ export class ChunkSphere {
   private readonly fillClient: FillClient;
   /** The plan every block is being stamped with; `setStructures` replaces it. */
   private structures: StructurePlan | undefined;
+  /** Shapes a place script placed at run time, stamped after the base plan. */
+  private runtimeStructures: StructurePlan | undefined;
 
   private centerCell: CellCoord = { x: 0, y: 0, z: 0 };
 
   constructor(params: ChunkSphereParams) {
     this.radius = params.radius;
+    // A world can be built with its plan in place from the start (a demo's
+    // baked surfaces, say) and never call `setStructures`. Remembering it here
+    // keeps `combinedStructures` stamping it after the run-time overlay,
+    // instead of dropping the base plan on the first script-built structure.
+    this.structures = params.structures;
     this.yRadius = params.yRadius ?? params.radius;
     this.onBlockReposition = params.onBlockReposition;
     this.onBlockRelease = params.onBlockRelease;
@@ -434,35 +440,76 @@ export class ChunkSphere {
     }
     const prev = this.structures;
     this.structures = next;
-    this.fillClient.setStructures(next);
-    const touched = new Set<number>();
-    const boxes: PlanShape[] = [];
-    const surfaces: PlanSurface[] = [];
-    for (const shape of [...(prev ?? []), ...(next ?? [])]) {
-      if (shape.kind === "surface") {
-        surfaces.push(shape);
-      } else {
-        boxes.push(shape);
-      }
+    this.fillClient.setStructures(this.combinedStructures());
+    this.refillCells(this.cellsReachedBy([...(prev ?? []), ...(next ?? [])]));
+    return true;
+  }
+
+  /**
+   * Places or replaces the structures a place script asks for at run time,
+   * holding them apart from the plan the world was built with. Only the cells
+   * the changed run-time shapes reach are regenerated, so an infinite surface
+   * in the base plan — which a base plan change re-tests over the whole window
+   * — costs nothing on a structure the script puts down or takes away.
+   *
+   * @returns Whether the overlay actually changed.
+   */
+  setRuntimeStructures(next: StructurePlan | undefined): boolean {
+    if (plansEqual(next, this.runtimeStructures)) {
+      return false;
     }
-    for (const cell of cellsTouchedByPlan(boxes)) {
+    const prev = this.runtimeStructures;
+    this.runtimeStructures = next;
+    this.fillClient.setStructures(this.combinedStructures());
+    this.refillCells(this.cellsReachedBy([...(prev ?? []), ...(next ?? [])]));
+    return true;
+  }
+
+  /** The base plan and the run-time overlay as one plan, in stamping order. */
+  private combinedStructures(): StructurePlan | undefined {
+    const base = this.structures ?? [];
+    const runtime = this.runtimeStructures ?? [];
+    if (base.length === 0 && runtime.length === 0) {
+      return undefined;
+    }
+    return [...base, ...runtime];
+  }
+
+  /** The loaded slots the box shapes stamp, and the columns a surface reaches. */
+  private cellsReachedBy(shapes: StructurePlan): Set<number> {
+    const touched = new Set<number>();
+    for (const cell of cellsTouchedByPlan(shapes)) {
       const slot = this.cellIndex.get(cell.x, cell.y, cell.z);
       if (slot !== undefined) {
         touched.add(slot);
       }
     }
-    // A surface can reach any loaded cell in its footprint's columns, so those
-    // cells are found by testing the window rather than enumerating the
-    // footprint, which an infinite axis leaves unbounded.
-    for (const surface of surfaces) {
-      for (let slot = 0; slot < this.blocks.length; slot++) {
+    // A surface is not a box: it paints whatever terrain a cell already holds,
+    // so its cells are found by testing the window. An infinite axis leaves no
+    // footprint to enumerate, which is why the base plan's surfaces are swept
+    // over every loaded cell and why a run-time shape should keep its own
+    // footprint bounded.
+    const surfaces = shapes.filter(
+      (shape): shape is PlanSurface => shape.kind === "surface",
+    );
+    if (surfaces.length === 0) {
+      return touched;
+    }
+    for (let slot = 0; slot < this.blocks.length; slot++) {
+      for (const surface of surfaces) {
         if (cellReachesSurface(surface, this.cells[slot])) {
           touched.add(slot);
+          break;
         }
       }
     }
+    return touched;
+  }
+
+  /** Regenerates the loaded cells a plan change touched, nearest first. */
+  private refillCells(touched: Set<number>): void {
     if (touched.size === 0) {
-      return true;
+      return;
     }
     const focus: Dim3 = [
       this.centerCell.x * BLOCK_WORLD[0],
@@ -496,7 +543,6 @@ export class ChunkSphere {
       ),
       focus,
     );
-    return true;
   }
 
   /**

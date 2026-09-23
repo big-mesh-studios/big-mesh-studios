@@ -25,6 +25,7 @@ import { SAMPLE_PLACE_SCRIPT } from "./sample";
 import { MAIN_SCRIPT_FILE } from "./project";
 import type { PlaceData } from "./place-data";
 import type { DataScope, DataValue, RequireOnly, WorldQuery } from "./sandbox";
+import type { PlanShape } from "../world/plan-shapes";
 
 /**
  * The shared clock and world queries the console forwards to the
@@ -114,6 +115,11 @@ export interface ScriptConsoleParams extends RequireOnly<
     min: [number, number, number];
     max: [number, number, number];
     id: number;
+  }) => void;
+  /** Called when the script places, replaces, or removes a named structure group. */
+  onStructureEdit?: (edit: {
+    id: string;
+    shapes: PlanShape[] | null;
   }) => void;
   /** The data the place remembers between runs; a run-scoped table when omitted. */
   data?: PlaceData;
@@ -219,6 +225,10 @@ export class ScriptConsole {
     max: [number, number, number];
     id: number;
   }) => void;
+  private readonly onStructureEdit: (edit: {
+    id: string;
+    shapes: PlanShape[] | null;
+  }) => void;
   private readonly onTeleport: (player: string, place: string) => void;
   private readonly onPlayerModel: (
     player: string,
@@ -274,6 +284,7 @@ export class ScriptConsole {
     this.onSound = params.onSound ?? (() => {});
     this.onSoundStop = params.onSoundStop ?? (() => {});
     this.onBlockEdit = params.onBlockEdit ?? (() => {});
+    this.onStructureEdit = params.onStructureEdit ?? (() => {});
     this.onTeleport = params.onTeleport ?? (() => {});
     this.onPlayerModel = params.onPlayerModel ?? (() => {});
     this.refreshData = params.refreshData;
@@ -746,6 +757,7 @@ export class ScriptConsole {
       onSound: (player, name, playback) => this.onSound(player, name, playback),
       onSoundStop: (player, id) => this.onSoundStop(player, id),
       onBlockEdit: (edit) => this.onBlockEdit(edit),
+      onStructureEdit: (edit) => this.onStructureEdit(edit),
       onTeleport: (player, place) => this.onTeleport(player, place),
       onPlayerModel: (player, model, modelUri) =>
         this.onPlayerModel(player, model, modelUri),

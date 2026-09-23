@@ -135,6 +135,14 @@ export interface VoxelWorld {
    */
   setStructures(structures: StructurePlan | undefined): boolean;
   /**
+   * Places or replaces the structures a place script asks for at run time,
+   * stamped after the plan the world was built with. Only the cells the
+   * changed run-time shapes reach are regenerated, so a script putting a
+   * building down or taking it away never re-tests the base plan's surfaces
+   * over the whole window. Returns whether the overlay actually changed.
+   */
+  setRuntimeStructures(structures: StructurePlan | undefined): boolean;
+  /**
    * The world's worker threads, shared by the fill and mesh clients, so the
    * console can report and resize them.
    */
@@ -530,6 +538,9 @@ export const createVoxelWorld = ({
     },
     setStructures(structures) {
       return sphere.setStructures(structures);
+    },
+    setRuntimeStructures(structures) {
+      return sphere.setRuntimeStructures(structures);
     },
     workerPool,
     reapplyEdits,
