@@ -3,13 +3,14 @@
 // an inventory item then click a hotbar slot to place/swap it there.
 import { Component, createSignal, For, onCleanup, Show } from "solid-js";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
+import { isEditableTarget } from "../utils";
 import { spriteIconStyle, woolIconStyle } from "./item-icon";
 import { ITEMS, type ItemId } from "../player/items";
 import type { InventoryItem } from "../player/inventory";
 import styles from "./InventoryHud.module.css";
 
 export const InventoryHud: Component = () => {
-  const { inventory, icons } = useVoxelscape();
+  const { inventory, icons, placeEditor } = useVoxelscape();
   const [open, setOpen] = createSignal(false);
   const [items, setItems] = createSignal(inventory.items());
   const [hotbar, setHotbar] = createSignal(inventory.hotbarItems());
@@ -35,12 +36,8 @@ export const InventoryHud: Component = () => {
 
   // Keyboard: I toggles the inventory, Escape closes it.
   const handleKey = (e: KeyboardEvent): void => {
-    if (
-      e.target instanceof HTMLInputElement ||
-      e.target instanceof HTMLTextAreaElement
-    )
-      return;
-    if (e.code === "KeyI") {
+    if (isEditableTarget(e)) return;
+    if (e.code === "KeyI" && !placeEditor.open()) {
       setOpen((v) => !v);
       setPendingItem(null);
       e.preventDefault();
