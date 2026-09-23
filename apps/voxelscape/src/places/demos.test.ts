@@ -1532,3 +1532,312 @@ describe("the A Dusty Trip demo", () => {
     host.dispose();
   });
 });
+
+describe("the Baldi's Basics in Education and Learning demo", () => {
+  /** The local player's live position the demo's own script reads. */
+  let player: { x: number; y: number; z: number };
+  let baldiClockMs: number;
+
+  /** Loads the demo and returns its script entry, ready to run. */
+  const baldiProject = async () => {
+    stubModels();
+    const project = await loadBuiltinDemo(builtinDemo("baldi-basics")!);
+    return { project, entry: project.manifest.scripts![0] };
+  };
+
+  /** Boots the demo's host against the mutable `player`, recording what it said. */
+  const runBaldi = async () => {
+    baldiClockMs = 0;
+    player = { x: -100, y: 62, z: 0 };
+    const { project, entry } = await baldiProject();
+    const endings: string[] = [];
+    const narrations: string[] = [];
+    const kills: string[] = [];
+    const host = new ScriptHost({
+      seed: project.manifest.seed,
+      getNow: () => baldiClockMs,
+      getHeightAt: () => 62,
+      getPlayers: () => [{ did: "", x: player.x, y: player.y, z: player.z }],
+      onEnding: (_player, state) => {
+        if (state !== null) {
+          endings.push(state.title);
+        }
+      },
+      onNarrate: (_player, line) => narrations.push(line.text),
+      onKill: (_player, cause) => kills.push(cause),
+    });
+    await host.loadProject(project.scripts, entry, projectModelBytes(project));
+    return { host, project, endings, narrations, kills };
+  };
+
+  /** Plays the open quiz out, answering and continuing, until the panel goes. */
+  const solveQuiz = async (host: ScriptHost): Promise<void> => {
+    for (let i = 0; i < 60; i++) {
+      const panel = host.uiFor("").find((p) => p.id === "quiz");
+      if (panel === undefined) {
+        return;
+      }
+      const answer = panel.items.find(
+        (item) => item.kind === "button" && item.id.startsWith("option-"),
+      );
+      await host.clickUi(
+        "",
+        "quiz",
+        answer === undefined ? "continue" : answer.id,
+      );
+    }
+  };
+
+  /** Steps the shared clock past `ms` in chase beats so the loop can move. */
+  const advanceBaldi = async (host: ScriptHost, ms: number): Promise<void> => {
+    const beats = Math.ceil(ms / 100);
+    for (let i = 0; i < beats; i++) {
+      baldiClockMs += 100;
+      await host.pump();
+    }
+  };
+
+  it("lists the school place with its models", () => {
+    const demo = builtinDemo("baldi-basics");
+    expect(demo?.manifest.name).toBe(
+      "Baldi's Basics in Education and Learning",
+    );
+    expect(demo?.manifest.mode).toBe("solo");
+    // The spawn stands on the entrance side of the school, outside the west
+    // doorway, so the player walks straight in instead of around the building.
+    expect(demo?.manifest.spawn).toEqual([-100, 62, 0]);
+    for (const model of [
+      "npc-teacher.zip",
+      "historybook.zip",
+      "platform.zip",
+      "door.zip",
+    ]) {
+      expect(demo?.manifest.models).toContain(model);
+    }
+    expect(BUILTIN_DEMOS).toContain(demo);
+  });
+
+  it("loads the demo's models as bytes", async () => {
+    const { project } = await baldiProject();
+    for (const file of [
+      "npc-teacher.zip",
+      "historybook.zip",
+      "platform.zip",
+      "door.zip",
+      "desk.zip",
+      "bookshelf.zip",
+    ]) {
+      expect(project.models[file].bytes.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("compiles a school on grass with perimeter walls, rooms, and door gaps", async () => {
+    const { project, entry } = await baldiProject();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    const boxes = plan.structures.flatMap((shape) => expandShape(shape));
+    // The ground under the plaza is graded flat to the school's floor row, so
+    // the generated mountains are cut down and never rise through the building.
+    expect(
+      plan.structures.some(
+        (shape) => shape.kind === "surface" && shape.level === 30,
+      ),
+    ).toBe(true);
+    // The plaza grass tops out on world y 62 where every prop stands, both
+    // under the spawn (voxel x=-50) and under the school's courtyard.
+    expect(columnSurfaces(boxes, -50, 0)).toContain(62);
+    expect(columnSurfaces(boxes, 0, 0)).toContain(62);
+    // The perimeter's north wall runs at voxel z=-42 and rises to world y 68.
+    expect(columnSurfaces(boxes, 0, -42)).toContain(68);
+    // The west perimeter opens at the entrance gap, walled away above it.
+    expect(columnSurfaces(boxes, -42, 0)).not.toContain(68);
+    expect(columnSurfaces(boxes, -42, 10)).toContain(68);
+    // The office's own west doorway sits across that same gap, so the
+    // entrance runs straight through both walls into the room instead.
+    expect(columnSurfaces(boxes, -41, 0)).not.toContain(68);
+    expect(columnSurfaces(boxes, -41, 5)).toContain(68);
+    // Classroom A's south wall at voxel z=-25 leaves its doorway at x=18 open.
+    expect(columnSurfaces(boxes, 12, -25)).toContain(68);
+    expect(columnSurfaces(boxes, 18, -25)).not.toContain(68);
+    // A classroom stands floor-and-roofed: 62 on top of the slab, 70 on the roof.
+    expect(columnSurfaces(boxes, 16, -33)).toContain(62);
+    expect(columnSurfaces(boxes, 16, -33)).toContain(70);
+  });
+
+  it("opens with Baldi, seven hazard notebooks, a gated exit, and a kill plane", async () => {
+    const { host, narrations } = await runBaldi();
+    expect(host.npcList.map((npc) => npc.id).sort()).toEqual(["baldi"]);
+    expect(host.npc("baldi")).toMatchObject({
+      name: "Baldi",
+      model: "npc-teacher.zip",
+      x: -70,
+      z: 0,
+    });
+    const books = host.propList.filter((prop) =>
+      prop.tags.includes("notebook"),
+    );
+    expect(books).toHaveLength(7);
+    for (const book of books) {
+      expect(book.model).toBe("historybook.zip");
+      expect(book.solid).toBe(false);
+      expect(book.hazard).toBe(true);
+    }
+    // A drawn exit door stands in the east mouth, sealed by the invisible gate.
+    expect(host.prop("exit")).toMatchObject({
+      model: "door.zip",
+      hazard: false,
+    });
+    expect(host.barrier("exit-gate")).not.toBeNull();
+    expect(host.voidY).toBe(40);
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "0 / 7" }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({
+        id: "objective",
+        kind: "text",
+        text: "Find all 7 notebooks",
+      }),
+    );
+    expect(host.controlsLocked("")).toBe(false);
+    expect(narrations[0]).toBe(
+      "WELCOME TO MY SCHOOL IN EDUCATION AND LEARNING!",
+    );
+    host.dispose();
+  });
+
+  it("locks the player into a notebook's quiz when it is touched", async () => {
+    const { host } = await runBaldi();
+    await host.touched("", "book-0");
+    expect(host.controlsLocked("")).toBe(true);
+    const quiz = host.uiFor("")[0];
+    expect(quiz).toMatchObject({ id: "quiz", title: "BALDI'S NOTEBOOK 1" });
+    const answers = quiz.items.filter((item) => item.kind === "button");
+    expect(answers).toHaveLength(4);
+    // The exit is not yet the escape: touching it does nothing in this phase.
+    await host.touched("", "exit");
+    expect(host.uiFor("")[0]).toMatchObject({ id: "quiz" });
+    host.dispose();
+  });
+
+  it("collects a notebook after its quiz and counts it on the HUD", async () => {
+    const { host } = await runBaldi();
+    await host.touched("", "book-0");
+    await solveQuiz(host);
+    expect(host.uiFor("")).toHaveLength(0);
+    expect(host.controlsLocked("")).toBe(false);
+    expect(host.prop("book-0")).toBeNull();
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "1 / 7" }),
+    );
+    host.dispose();
+  });
+
+  it("takes a notebook with the use button as well as the touch", async () => {
+    const { host } = await runBaldi();
+    await host.use("book-0", "");
+    expect(host.controlsLocked("")).toBe(true);
+    await solveQuiz(host);
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "1 / 7" }),
+    );
+    // The same button on a piece of furniture takes nothing.
+    await host.use("desk-cla", "");
+    expect(host.uiFor("")).toHaveLength(0);
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "1 / 7" }),
+    );
+    host.dispose();
+  });
+
+  it("starts the chase after two notebooks and catches the player who stays put", async () => {
+    const { host, kills } = await runBaldi();
+    for (const id of ["book-0", "book-1"]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "2 / 7" }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({
+        id: "objective",
+        kind: "text",
+        text: "Baldi is chasing you — keep collecting!",
+      }),
+    );
+    // The player never moves: Baldi covers the plaza at 12 × aggression.
+    await advanceBaldi(host, 8000);
+    expect(kills).toContain("baldi");
+    host.dispose();
+  });
+
+  it("clears the east exit for the escape and ends with VICTORY on all seven", async () => {
+    const { host, endings } = await runBaldi();
+    for (const id of [
+      "book-0",
+      "book-1",
+      "book-2",
+      "book-3",
+      "book-4",
+      "book-5",
+      "book-6",
+    ]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "7 / 7" }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({
+        id: "objective",
+        kind: "text",
+        text: "ESCAPE through the east door!",
+      }),
+    );
+    // The exit stands open: the gate is gone and the door itself is the hazard.
+    expect(host.barrier("exit-gate")).toBeNull();
+    expect(host.prop("exit")).toMatchObject({ hazard: true });
+    await host.touched("", "exit");
+    expect(endings).toEqual(["VICTORY!"]);
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({
+        id: "objective",
+        kind: "text",
+        text: "Escaped!",
+      }),
+    );
+    host.dispose();
+  });
+
+  it("restarts the run from zero when the chase catches the player", async () => {
+    const { host, kills } = await runBaldi();
+    for (const id of ["book-0", "book-1"]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    await advanceBaldi(host, 8000);
+    expect(kills).toContain("baldi");
+    await host.died("", "baldi");
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "0 / 7" }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({
+        id: "objective",
+        kind: "text",
+        text: "Find all 7 notebooks",
+      }),
+    );
+    expect(host.npc("baldi")).toMatchObject({ x: -70, z: 0 });
+    expect(host.prop("book-0")).not.toBeNull();
+    expect(host.prop("exit")).toMatchObject({ hazard: false });
+    expect(host.barrier("exit-gate")).not.toBeNull();
+    host.dispose();
+  });
+});

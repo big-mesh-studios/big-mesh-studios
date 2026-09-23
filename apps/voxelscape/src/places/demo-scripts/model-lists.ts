@@ -146,6 +146,24 @@ export const DONT_POOP_MODELS = [
  * mutants that chase it, the pumps at its petrol stations, and the food its
  * roadside buildings hold.
  */
+/**
+ * The models the "Baldi's Basics in Education and Learning" demo wears: the
+ * teacher who teaches it, the notebooks and furniture in the school, and the
+ * ruler and exit door props.
+ */
+export const BALDI_MODELS = [
+  "npc-teacher.zip",
+  "historybook.zip",
+  "platform.zip",
+  "door.zip",
+  "desk.zip",
+  "chair.zip",
+  "locker.zip",
+  "bookshelf.zip",
+  "cafeteria-table.zip",
+  "poster.zip",
+];
+
 export const DUSTY_TRIP_MODELS = [
   "platform.zip",
   "zombie.zip",

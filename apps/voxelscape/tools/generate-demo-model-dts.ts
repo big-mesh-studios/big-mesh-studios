@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { generateProjectModelsDts } from "../src/places/model-dts.ts";
 import type { AttachedModel } from "../src/places/project.ts";
 import {
+  BALDI_MODELS,
   DONT_POOP_MODELS,
   DUSTY_TRIP_MODELS,
   GASA4_MODELS,
@@ -45,6 +46,7 @@ const files = [
     ...ZOMBIES_MANSION_MODELS,
     ...DONT_POOP_MODELS,
     ...DUSTY_TRIP_MODELS,
+    ...BALDI_MODELS,
   ]),
 ];
 

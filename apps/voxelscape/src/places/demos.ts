@@ -18,8 +18,10 @@ import ZOMBIE_SCRIPT from "./demo-scripts/zombie.ts?raw";
 import ZOMBIES_MANSION_SCRIPT from "./demo-scripts/zombies-mansion.ts?raw";
 import DONT_POOP_SCRIPT from "./demo-scripts/dont-poop-yourself-at-school.ts?raw";
 import DUSTY_TRIP_SCRIPT from "./demo-scripts/dusty-trip.ts?raw";
+import BALDI_SCRIPT from "./demo-scripts/baldi.ts?raw";
 import HOME_SCRIPT from "./demo-scripts/home.ts?raw";
 import {
+  BALDI_MODELS,
   DONT_POOP_MODELS,
   DUSTY_TRIP_MODELS,
   GASA4_MODELS,
@@ -177,6 +179,33 @@ const DUSTY_TRIP: BuiltinDemo = {
 };
 
 /**
+ * The "Baldi's Basics in Education and Learning" demo: a faithful port of the
+ * original's core loop. Seven notebooks hide in a one-building school, each
+ * opens a multiple-choice math quiz, and every notebook and wrong answer
+ * raises Baldi's aggression, with it his speed. The second notebook or the
+ * first wrong answer starts the chase; all seven open the east exit for the
+ * escape. It is the proof that a place script can ask a player questions
+ * through scripted UI mid-place, tune an enemy's speed to the player's own
+ * record, and run a loop of quarry-and-escape rather than a fixed beginning
+ * and end.
+ */
+const BALDI: BuiltinDemo = {
+  id: "baldi-basics",
+  manifest: {
+    name: "Baldi's Basics in Education and Learning",
+    seed: 6_115,
+    // Outside the school's west entrance, on the plaza grass; 62 is the
+    // plaza surface in world units (the row-30 slab's top, times two).
+    spawn: [-100, 62, 0],
+    mode: "solo",
+    models: BALDI_MODELS,
+  },
+  scripts: {
+    [MAIN_SCRIPT_FILE]: BALDI_SCRIPT,
+  },
+};
+
+/**
  * The demo `App.tsx` opens at the site's own root address, in place of
  * fetching a live place over atproto every time somebody lands there. A
  * guide stands near the spawn and says hello — the same world the studio's
@@ -204,6 +233,7 @@ export const BUILTIN_DEMOS: BuiltinDemo[] = [
   ZOMBIES_MANSION,
   DONT_POOP,
   DUSTY_TRIP,
+  BALDI,
   HOME,
 ];
 
