@@ -521,10 +521,7 @@ export interface ScriptHostParams extends RequireOnly<
    * shapes, or — with `shapes: null` — takes one away, in LOD-0 world voxels.
    * The world stamps the groups over the plan it was built with.
    */
-  onStructureEdit?: (edit: {
-    id: string;
-    shapes: PlanShape[] | null;
-  }) => void;
+  onStructureEdit?: (edit: { id: string; shapes: PlanShape[] | null }) => void;
   /** The data the place remembers between runs; a run-scoped table when omitted. */
   data?: PlaceData;
   /** Called when the script sends a player to another place. */

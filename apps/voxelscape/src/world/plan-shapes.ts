@@ -111,12 +111,7 @@ export interface PlanSurface {
 }
 
 export type PlanShape =
-  | PlanBox
-  | PlanRoad
-  | PlanHouse
-  | PlanStairs
-  | PlanRamp
-  | PlanSurface;
+  PlanBox | PlanRoad | PlanHouse | PlanStairs | PlanRamp | PlanSurface;
 
 /** Everything a script asks the filler to stamp, in the order it stamps it. */
 export type StructurePlan = PlanShape[];

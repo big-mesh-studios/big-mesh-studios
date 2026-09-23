@@ -117,10 +117,7 @@ export interface ScriptConsoleParams extends RequireOnly<
     id: number;
   }) => void;
   /** Called when the script places, replaces, or removes a named structure group. */
-  onStructureEdit?: (edit: {
-    id: string;
-    shapes: PlanShape[] | null;
-  }) => void;
+  onStructureEdit?: (edit: { id: string; shapes: PlanShape[] | null }) => void;
   /** The data the place remembers between runs; a run-scoped table when omitted. */
   data?: PlaceData;
   /** Called when the script sends a player to another place. */

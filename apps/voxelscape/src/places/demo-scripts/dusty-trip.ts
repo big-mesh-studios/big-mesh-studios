@@ -483,16 +483,16 @@ const structurePad = (
   const b = structureX(x1, side);
   return {
     kind: "surface",
-    min: [
-      Math.min(a, b) - PAD_MARGIN,
-      ROAD_LEVEL,
-      z0 - PAD_MARGIN,
-    ] as [number, number, number],
-    max: [
-      Math.max(a, b) + PAD_MARGIN,
-      ROAD_LEVEL,
-      z1 + PAD_MARGIN,
-    ] as [number, number, number],
+    min: [Math.min(a, b) - PAD_MARGIN, ROAD_LEVEL, z0 - PAD_MARGIN] as [
+      number,
+      number,
+      number,
+    ],
+    max: [Math.max(a, b) + PAD_MARGIN, ROAD_LEVEL, z1 + PAD_MARGIN] as [
+      number,
+      number,
+      number,
+    ],
     level: ROAD_LEVEL,
     depth: 2,
     id: blocks.greystone,
@@ -500,10 +500,7 @@ const structurePad = (
 };
 
 /** One to three pieces of food inside a building, from its own stream. */
-const structureLoot = (
-  z0: number,
-  rng: () => number,
-): StructureProp[] => {
+const structureLoot = (z0: number, rng: () => number): StructureProp[] => {
   const items: Array<"chips" | "cola" | "egg"> = ["chips", "cola", "egg"];
   const props: StructureProp[] = [];
   const count = 1 + Math.floor(rng() * 3);
@@ -558,7 +555,16 @@ function structurePlan(
       }
     }
     shapes.push(
-      structureBox(side, 9, 15, FLOOR_Y + 4, FLOOR_Y + 4, z0 + 1, z0 + 9, stone),
+      structureBox(
+        side,
+        9,
+        15,
+        FLOOR_Y + 4,
+        FLOOR_Y + 4,
+        z0 + 1,
+        z0 + 9,
+        stone,
+      ),
     );
     props.push({
       model: "gas-pump",
@@ -601,7 +607,16 @@ function structurePlan(
       }
     }
     shapes.push(
-      structureBox(side, 1, 6, FLOOR_Y + 8, FLOOR_Y + 11, z0 + 1, z0 + 6, stone),
+      structureBox(
+        side,
+        1,
+        6,
+        FLOOR_Y + 8,
+        FLOOR_Y + 11,
+        z0 + 1,
+        z0 + 6,
+        stone,
+      ),
     );
     return { shapes, props };
   }
@@ -783,7 +798,12 @@ onTick((_clockMs, events) => {
     });
     dispatch("bind", { id: EXIT_BIND, key: "KeyR", label: "Exit car" });
     for (const item of ["chips", "cola", "egg"]) {
-      dispatch("item-define", { id: item, name: item, sprite: "", stackable: true });
+      dispatch("item-define", {
+        id: item,
+        name: item,
+        sprite: "",
+        stackable: true,
+      });
     }
     // The first sites around the car; the rest appear as it drives.
     structuresTick();
@@ -812,10 +832,7 @@ onTick((_clockMs, events) => {
       driving
     ) {
       exitCar();
-    } else if (
-      event.kind === "entity-used" &&
-      event.entityId !== undefined
-    ) {
+    } else if (event.kind === "entity-used" && event.entityId !== undefined) {
       // What the used prop is comes from its own attributes, so a pump and a
       // piece of food are told apart without the script holding a second list.
       const used = getEntity(event.entityId);
@@ -830,7 +847,10 @@ onTick((_clockMs, events) => {
           count: 1,
         });
         dispatch("prop-remove", { id: event.entityId });
-        dispatch("toast", { player: event.producer, text: "Supplies picked up." });
+        dispatch("toast", {
+          player: event.producer,
+          text: "Supplies picked up.",
+        });
       }
     } else if (event.kind === "player-died") {
       if (driving) {

@@ -10,509 +10,509 @@
 // conflict only because both demos read the exact same file.
 declare module "voxelscape" {
   interface ModelsByName {
-    "bed": {
+    bed: {
       readonly name: "bed";
       readonly file: "bed.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "bathtub": {
+    bathtub: {
       readonly name: "bathtub";
       readonly file: "bathtub.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "sofa": {
+    sofa: {
       readonly name: "sofa";
       readonly file: "sofa.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "tv": {
+    tv: {
       readonly name: "tv";
       readonly file: "tv.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "table": {
+    table: {
       readonly name: "table";
       readonly file: "table.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "counter": {
+    counter: {
       readonly name: "counter";
       readonly file: "counter.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "stove": {
+    stove: {
       readonly name: "stove";
       readonly file: "stove.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "fridge": {
+    fridge: {
       readonly name: "fridge";
       readonly file: "fridge.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "bench": {
+    bench: {
       readonly name: "bench";
       readonly file: "bench.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "manhole": {
+    manhole: {
       readonly name: "manhole";
       readonly file: "manhole.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "trash": {
+    trash: {
       readonly name: "trash";
       readonly file: "trash.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "register": {
+    register: {
       readonly name: "register";
       readonly file: "register.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "shelf": {
+    shelf: {
       readonly name: "shelf";
       readonly file: "shelf.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "vending": {
+    vending: {
       readonly name: "vending";
       readonly file: "vending.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "chips": {
+    chips: {
       readonly name: "chips";
       readonly file: "chips.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "orange": {
+    orange: {
       readonly name: "orange";
       readonly file: "orange.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "colgate": {
+    colgate: {
       readonly name: "colgate";
       readonly file: "colgate.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "cola": {
+    cola: {
       readonly name: "cola";
       readonly file: "cola.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "egg": {
+    egg: {
       readonly name: "egg";
       readonly file: "egg.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "friedegg": {
+    friedegg: {
       readonly name: "friedegg";
       readonly file: "friedegg.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "juice": {
+    juice: {
       readonly name: "juice";
       readonly file: "juice.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "milk": {
+    milk: {
       readonly name: "milk";
       readonly file: "milk.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "tix": {
+    tix: {
       readonly name: "tix";
       readonly file: "tix.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "robux": {
+    robux: {
       readonly name: "robux";
       readonly file: "robux.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "plate": {
+    plate: {
       readonly name: "plate";
       readonly file: "plate.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-sable": {
       readonly name: "npc-sable";
       readonly file: "npc-sable.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-rook": {
       readonly name: "npc-rook";
       readonly file: "npc-rook.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-laugh": {
       readonly name: "npc-laugh";
       readonly file: "npc-laugh.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-alex": {
       readonly name: "npc-alex";
       readonly file: "npc-alex.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-james": {
       readonly name: "npc-james";
       readonly file: "npc-james.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-bully": {
       readonly name: "npc-bully";
       readonly file: "npc-bully.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-nerd": {
       readonly name: "npc-nerd";
       readonly file: "npc-nerd.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-homeless": {
       readonly name: "npc-homeless";
       readonly file: "npc-homeless.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-brit": {
       readonly name: "npc-brit";
       readonly file: "npc-brit.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-brett": {
       readonly name: "npc-brett";
       readonly file: "npc-brett.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-brad": {
       readonly name: "npc-brad";
       readonly file: "npc-brad.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-sleepa": {
       readonly name: "npc-sleepa";
       readonly file: "npc-sleepa.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-champ": {
       readonly name: "npc-champ";
       readonly file: "npc-champ.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-teacher": {
       readonly name: "npc-teacher";
       readonly file: "npc-teacher.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-lemonade": {
       readonly name: "npc-lemonade";
       readonly file: "npc-lemonade.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-pothead": {
       readonly name: "npc-pothead";
       readonly file: "npc-pothead.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-santa": {
       readonly name: "npc-santa";
       readonly file: "npc-santa.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-obby": {
       readonly name: "npc-obby";
       readonly file: "npc-obby.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-littlebro": {
       readonly name: "npc-littlebro";
       readonly file: "npc-littlebro.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "npc-anomaly": {
       readonly name: "npc-anomaly";
       readonly file: "npc-anomaly.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "phone": {
+    phone: {
       readonly name: "phone";
       readonly file: "phone.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "mirror": {
+    mirror: {
       readonly name: "mirror";
       readonly file: "mirror.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "bookshelf": {
+    bookshelf: {
       readonly name: "bookshelf";
       readonly file: "bookshelf.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "door": {
+    door: {
       readonly name: "door";
       readonly file: "door.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "mailbox": {
+    mailbox: {
       readonly name: "mailbox";
       readonly file: "mailbox.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "lemonade-stand": {
       readonly name: "lemonade-stand";
       readonly file: "lemonade-stand.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "bus-stop": {
       readonly name: "bus-stop";
       readonly file: "bus-stop.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "flower": {
+    flower: {
       readonly name: "flower";
       readonly file: "flower.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "gate": {
+    gate: {
       readonly name: "gate";
       readonly file: "gate.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "slushie-machine": {
       readonly name: "slushie-machine";
       readonly file: "slushie-machine.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "arcade": {
+    arcade: {
       readonly name: "arcade";
       readonly file: "arcade.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "boarded-machine": {
       readonly name: "boarded-machine";
       readonly file: "boarded-machine.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "dumpster": {
+    dumpster: {
       readonly name: "dumpster";
       readonly file: "dumpster.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "desk": {
+    desk: {
       readonly name: "desk";
       readonly file: "desk.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "chair": {
+    chair: {
       readonly name: "chair";
       readonly file: "chair.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "locker": {
+    locker: {
       readonly name: "locker";
       readonly file: "locker.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "cafeteria-table": {
       readonly name: "cafeteria-table";
       readonly file: "cafeteria-table.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "poster": {
+    poster: {
       readonly name: "poster";
       readonly file: "poster.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "plush": {
+    plush: {
       readonly name: "plush";
       readonly file: "plush.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "banana": {
+    banana: {
       readonly name: "banana";
       readonly file: "banana.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "key": {
+    key: {
       readonly name: "key";
       readonly file: "key.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "matches": {
+    matches: {
       readonly name: "matches";
       readonly file: "matches.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "slushie": {
+    slushie: {
       readonly name: "slushie";
       readonly file: "slushie.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "pizza": {
+    pizza: {
       readonly name: "pizza";
       readonly file: "pizza.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "hotdog": {
+    hotdog: {
       readonly name: "hotdog";
       readonly file: "hotdog.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "salad": {
+    salad: {
       readonly name: "salad";
       readonly file: "salad.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "taco": {
+    taco: {
       readonly name: "taco";
       readonly file: "taco.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "historybook": {
+    historybook: {
       readonly name: "historybook";
       readonly file: "historybook.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "roaster": {
+    roaster: {
       readonly name: "roaster";
       readonly file: "roaster.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "hat": {
+    hat: {
       readonly name: "hat";
       readonly file: "hat.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "lemonade": {
+    lemonade: {
       readonly name: "lemonade";
       readonly file: "lemonade.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "foodbag": {
+    foodbag: {
       readonly name: "foodbag";
       readonly file: "foodbag.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "bean": {
+    bean: {
       readonly name: "bean";
       readonly file: "bean.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "zombie": {
+    zombie: {
       readonly name: "zombie";
       readonly file: "zombie.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "soap": {
+    soap: {
       readonly name: "soap";
       readonly file: "soap.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "wet-floor": {
       readonly name: "wet-floor";
       readonly file: "wet-floor.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
-    "platform": {
+    platform: {
       readonly name: "platform";
       readonly file: "platform.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "toilet-roll": {
       readonly name: "toilet-roll";
       readonly file: "toilet-roll.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
     "gas-pump": {
       readonly name: "gas-pump";
       readonly file: "gas-pump.zip";
-      readonly parts: readonly ("body")[];
-      readonly motions: readonly (never)[];
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
     };
   }
 }
