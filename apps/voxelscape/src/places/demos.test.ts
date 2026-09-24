@@ -1959,3 +1959,237 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
     host.dispose();
   });
 });
+
+describe("the Cube Cavern demo", () => {
+  /** The local player's live position the demo's own script reads. */
+  let player: { x: number; y: number; z: number };
+  let ccClockMs: number;
+
+  /** Loads the demo and returns its script entry, ready to run. */
+  const ccProject = async () => {
+    stubModels();
+    const project = await loadBuiltinDemo(builtinDemo("cube-cavern")!);
+    return { project, entry: project.manifest.scripts![0] };
+  };
+
+  /** Boots the demo's host against the mutable player, recording what it said. */
+  const runCC = async () => {
+    ccClockMs = 0;
+    player = { x: 0, y: 62, z: 0 };
+    const { project, entry } = await ccProject();
+    const endings: string[] = [];
+    const toasts: string[] = [];
+    const notices: string[] = [];
+    const structures = new Map<string, unknown>();
+    const host = new ScriptHost({
+      seed: project.manifest.seed,
+      getNow: () => ccClockMs,
+      getHeightAt: () => 62,
+      getSolidAt: () => false,
+      getWaterAt: () => false,
+      getPlayers: () => [{ did: "", x: player.x, y: player.y, z: player.z }],
+      onEnding: (_player, state) => {
+        if (state !== null) {
+          endings.push(state.title);
+        }
+      },
+      onToast: (_player, text) => toasts.push(text),
+      onStructureEdit: (edit) => structures.set(edit.id, edit.shapes),
+      onNotice: (message) => notices.push(message),
+    });
+    await host.loadProject(project.scripts, entry, projectModelBytes(project));
+    return { host, project, endings, toasts, notices, structures };
+  };
+
+  /** Moves the shared clock forward and lets the cavern's own tick fire. */
+  const advance = async (host: ScriptHost, ms: number): Promise<void> => {
+    ccClockMs += ms;
+    await host.pump();
+  };
+
+  it("lists the place, its models, and its solo mode", () => {
+    const demo = builtinDemo("cube-cavern");
+    expect(demo?.manifest.name).toBe("Cube Cavern");
+    expect(demo?.manifest.mode).toBe("solo");
+    expect(demo?.manifest.spawn).toEqual([0, 62, 0]);
+    for (const file of [
+      "cave-yellowhand.zip",
+      "cave-wormle.zip",
+      "cave-poopie.zip",
+      "cave-chik.zip",
+      "cave-megachik.zip",
+      "cave-ninja.zip",
+      "cave-chest.zip",
+      "cave-torch.zip",
+      "cave-craft.zip",
+      "door.zip",
+      "platform.zip",
+    ]) {
+      expect(demo?.manifest.models).toContain(file);
+    }
+    expect(BUILTIN_DEMOS).toContain(demo);
+  });
+
+  it("loads its models as bytes", async () => {
+    const { project } = await ccProject();
+    for (const file of [
+      "cave-yellowhand.zip",
+      "cave-ninja.zip",
+      "cave-chest.zip",
+      "cave-boss-chest.zip",
+      "cave-torch.zip",
+      "cave-craft.zip",
+    ]) {
+      expect(project.models[file].bytes.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("compiles the hub's floor and walls", async () => {
+    const { project, entry } = await ccProject();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    expect(
+      plan.structures.some(
+        (shape) => shape.kind === "surface" && shape.level === 30,
+      ),
+    ).toBe(true);
+    const boxes = plan.structures.flatMap((shape) => expandShape(shape));
+    // The hub floor tops out at world y 62 where the player stands.
+    expect(columnSurfaces(boxes, 0, 0)).toContain(62);
+    // Its east wall runs at voxel x=24 and rises to world y 70.
+    expect(columnSurfaces(boxes, 24, 0)).toContain(70);
+  });
+
+  it("opens in the hub with its keeper, bench, sign, door and readouts", async () => {
+    const { host, notices } = await runCC();
+    expect(notices).toEqual([]);
+    expect(host.npc("keeper-hub")).toMatchObject({
+      name: "Shopkeeper",
+      model: "npc-teacher.zip",
+    });
+    expect(host.prop("craft-table")).toMatchObject({ model: "cave-craft.zip" });
+    expect(host.prop("shop-sign")).toMatchObject({ model: "cave-sign.zip" });
+    expect(host.prop("cavern-door")).toMatchObject({ model: "door.zip" });
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "hp", kind: "bar", max: 6, value: 6 }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "floor", kind: "text", text: "Hub" }),
+    );
+    expect(host.voidY).toBe(-200);
+    host.dispose();
+  });
+
+  it("opens the shop on talking to the keeper and sells a key", async () => {
+    const { host } = await runCC();
+    await host.talk("keeper-hub", "");
+    expect(host.uiFor("")).toContainEqual(
+      expect.objectContaining({ id: "shop" }),
+    );
+    await host.clickUi("", "shop", "buy-0");
+    await host.clickUi("", "shop", "buy-0");
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "keys", kind: "text", text: "2" }),
+    );
+    host.dispose();
+  });
+
+  it("starts a run on the door: a cavern structure, monsters, and an exit", async () => {
+    const { host, structures } = await runCC();
+    await host.use("cavern-door", "");
+    expect(structures.get("cavern")).toBeTruthy();
+    expect(
+      host.npcList.filter((npc) => npc.id.startsWith("mob-")).length,
+    ).toBeGreaterThan(0);
+    expect(host.prop("exit")).not.toBeNull();
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "floor", kind: "text", text: "Floor 1/3" }),
+    );
+    host.dispose();
+  });
+
+  it("fells a monster when its health is spent", async () => {
+    const { host } = await runCC();
+    await host.use("cavern-door", "");
+    const mob = host.npcList.find((npc) => npc.id.startsWith("mob-"))!;
+    await host.hit(mob.id, "", 1_000, mob.x, mob.z);
+    expect(host.npc(mob.id)).toMatchObject({ dyingAt: expect.any(Number) });
+    host.dispose();
+  });
+
+  it("has a monster close on the player and take a heart", async () => {
+    const { host } = await runCC();
+    await host.use("cavern-door", "");
+    const mob = host.npcList.find((npc) => npc.id.startsWith("mob-"))!;
+    // Stand the player on the monster, so its first strike lands on the tick.
+    player.x = mob.x;
+    player.z = mob.z;
+    await advance(host, 150);
+    const hp = host.hudFor("").find((readout) => readout.id === "hp");
+    expect(hp?.value).toBeLessThan(6);
+    host.dispose();
+  });
+
+  it("keeps the hatch locked without a key", async () => {
+    const { host, toasts } = await runCC();
+    await host.use("cavern-door", "");
+    await host.use("exit", "");
+    expect(toasts.some((line) => line.includes("locked"))).toBe(true);
+    expect(host.prop("exit")).not.toBeNull();
+    host.dispose();
+  });
+
+  it("buys two keys, descends to the ninja, and breaks it", async () => {
+    const { host, endings } = await runCC();
+    // The keeper's first stock is a key; buy two, then open the cavern.
+    await host.talk("keeper-hub", "");
+    await host.clickUi("", "shop", "buy-0");
+    await host.clickUi("", "shop", "buy-0");
+    await host.use("cavern-door", "");
+    await host.use("exit", ""); // floor 1 -> 2
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "floor", kind: "text", text: "Floor 2/3" }),
+    );
+    await host.use("exit", ""); // floor 2 -> 3, the boss
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "floor", kind: "text", text: "Floor 3/3" }),
+    );
+    expect(host.npc("boss")).toMatchObject({ model: "cave-ninja.zip" });
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "boss", kind: "bar" }),
+    );
+    // A form-one blow only forces the second form; the next one ends it.
+    await host.hit("boss", "", 1_000, 0, 0);
+    expect(host.npc("boss")).not.toBeNull();
+    await host.hit("boss", "", 1_000, 0, 0);
+    expect(endings).toContain("The Ninja Falls");
+    host.dispose();
+  });
+
+  it("loses a max heart and returns to the hub on death", async () => {
+    const { host } = await runCC();
+    await host.use("cavern-door", "");
+    await host.died("", "cavern");
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "hp", kind: "bar", max: 5, value: 5 }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "floor", kind: "text", text: "Hub" }),
+    );
+    host.dispose();
+  });
+
+  it("walks the cavern's monsters without a step failing", async () => {
+    const { host, notices } = await runCC();
+    await host.use("cavern-door", "");
+    for (let i = 0; i < 20; i++) {
+      await advance(host, 150);
+    }
+    expect(notices).toEqual([]);
+    host.dispose();
+  });
+});

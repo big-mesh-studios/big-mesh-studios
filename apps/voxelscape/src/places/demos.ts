@@ -23,8 +23,13 @@ import BALDI_LEVEL_SCRIPT from "./demo-scripts/baldi-level.ts?raw";
 import BALDI_NAV_SCRIPT from "./demo-scripts/baldi-nav.ts?raw";
 import BALDI_QUIZ_SCRIPT from "./demo-scripts/baldi-quiz.ts?raw";
 import HOME_SCRIPT from "./demo-scripts/home.ts?raw";
+import CUBE_CAVERN_SCRIPT from "./demo-scripts/cube-cavern.ts?raw";
+import CUBE_CAVERN_LEVEL_SCRIPT from "./demo-scripts/cube-cavern-level.ts?raw";
+import CUBE_CAVERN_ITEMS_SCRIPT from "./demo-scripts/cube-cavern-items.ts?raw";
+import CUBE_CAVERN_MOBS_SCRIPT from "./demo-scripts/cube-cavern-mobs.ts?raw";
 import {
   BALDI_MODELS,
+  CUBE_CAVERN_MODELS,
   DONT_POOP_MODELS,
   DUSTY_TRIP_MODELS,
   GASA4_MODELS,
@@ -236,6 +241,36 @@ const HOME: BuiltinDemo = {
   },
 };
 
+/**
+ * The "Cube Cavern" demo: a port of zKevin and ClicheChloe's randomly
+ * generated dungeon crawler. A walled hub holds a shopkeeper, a crafting
+ * bench and a cavern door; a run descends three floors of a themed grid of
+ * rooms, each floor paved with its theme's monsters, chests and torches and
+ * left through a key-locked hatch, until the last floor's two-form ninja
+ * falls. It is the proof that a place script can generate a floor of rooms at
+ * run time (`engine.createStructure`), walk a themed bestiary through it,
+ * price a shop out of coins and crafting stock, and remember a run's loot
+ * across restarts with the data helpers.
+ */
+const CUBE_CAVERN: BuiltinDemo = {
+  id: "cube-cavern",
+  manifest: {
+    name: "Cube Cavern",
+    // The original place's own Roblox id, for the seed.
+    seed: 47_989_659,
+    // The hub floor's own surface height: the row-30 slab's top, times two.
+    spawn: [0, 62, 0],
+    mode: "solo",
+    models: CUBE_CAVERN_MODELS,
+  },
+  scripts: {
+    [MAIN_SCRIPT_FILE]: CUBE_CAVERN_SCRIPT,
+    "cube-cavern-level.ts": CUBE_CAVERN_LEVEL_SCRIPT,
+    "cube-cavern-items.ts": CUBE_CAVERN_ITEMS_SCRIPT,
+    "cube-cavern-mobs.ts": CUBE_CAVERN_MOBS_SCRIPT,
+  },
+};
+
 /** Every built-in demo, in the order a list shows them. */
 export const BUILTIN_DEMOS: BuiltinDemo[] = [
   GASA4,
@@ -245,6 +280,7 @@ export const BUILTIN_DEMOS: BuiltinDemo[] = [
   DONT_POOP,
   DUSTY_TRIP,
   BALDI,
+  CUBE_CAVERN,
   HOME,
 ];
 

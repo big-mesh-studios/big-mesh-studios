@@ -178,3 +178,30 @@ export const DUSTY_TRIP_MODELS = [
   "cola.zip",
   "egg.zip",
 ];
+
+/**
+ * The models the "Cube Cavern" demo wears: the yellow dungeon's bestiary and
+ * its ninja boss, the chests, coins, keys, torches, crafting bench, life
+ * plant, cap and sign the caverns and hub stand, and the existing keeper,
+ * door and platform models it borrows.
+ */
+export const CUBE_CAVERN_MODELS = [
+  "cave-yellowhand.zip",
+  "cave-wormle.zip",
+  "cave-poopie.zip",
+  "cave-chik.zip",
+  "cave-megachik.zip",
+  "cave-ninja.zip",
+  "cave-chest.zip",
+  "cave-boss-chest.zip",
+  "cave-coin.zip",
+  "cave-key.zip",
+  "cave-torch.zip",
+  "cave-craft.zip",
+  "cave-lifeplant.zip",
+  "cave-hat.zip",
+  "cave-sign.zip",
+  "npc-teacher.zip",
+  "door.zip",
+  "platform.zip",
+];
