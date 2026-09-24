@@ -20,6 +20,7 @@ import DONT_POOP_SCRIPT from "./demo-scripts/dont-poop-yourself-at-school.ts?raw
 import DUSTY_TRIP_SCRIPT from "./demo-scripts/dusty-trip.ts?raw";
 import BALDI_SCRIPT from "./demo-scripts/baldi.ts?raw";
 import BALDI_LEVEL_SCRIPT from "./demo-scripts/baldi-level.ts?raw";
+import BALDI_NAV_SCRIPT from "./demo-scripts/baldi-nav.ts?raw";
 import BALDI_QUIZ_SCRIPT from "./demo-scripts/baldi-quiz.ts?raw";
 import HOME_SCRIPT from "./demo-scripts/home.ts?raw";
 import {
@@ -210,6 +211,7 @@ const BALDI: BuiltinDemo = {
   scripts: {
     [MAIN_SCRIPT_FILE]: BALDI_SCRIPT,
     "baldi-level.ts": BALDI_LEVEL_SCRIPT,
+    "baldi-nav.ts": BALDI_NAV_SCRIPT,
     "baldi-quiz.ts": BALDI_QUIZ_SCRIPT,
   },
 };

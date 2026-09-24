@@ -1760,6 +1760,21 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
     host.dispose();
   });
 
+  it("swings a door open for the cast as it passes", async () => {
+    const { host } = await runBaldi();
+    for (const id of ["book-0", "book-1"]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    // Put the player beyond the north yellow door, so Baldi's run up the hall
+    // passes the shut door and swings it open on the way — without holding any
+    // notebooks, which the player would need, but Baldi does not.
+    player = { x: 0, y: 62, z: -60 };
+    await advanceBaldi(host, 2000);
+    expect(host.prop("door-hall-north")?.motion?.spin?.turns).toBe(0.25);
+    host.dispose();
+  });
+
   it("locks the player into a notebook's quiz when it is touched", async () => {
     const { host } = await runBaldi();
     await host.touched("", "book-0");

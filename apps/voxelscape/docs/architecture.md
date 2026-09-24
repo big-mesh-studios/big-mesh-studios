@@ -1,6 +1,6 @@
 # What voxelscape is made of
 
-Drawn from the imports under `src` at e025c6a by `pnpm architecture`.
+Drawn from the imports under `src` at 19efcbd by `pnpm architecture`.
 Nothing here is written by hand: change the code and run it again.
 
 ```mermaid
@@ -12,7 +12,7 @@ graph TD
   render["render<br/>4 files · 1145 lines"]
   player["player<br/>16 files · 3910 lines"]
   multiplayer["multiplayer<br/>14 files · 3663 lines"]
-  places["places<br/>40 files · 20229 lines"]
+  places["places<br/>41 files · 20465 lines"]
   environment["environment<br/>6 files · 1952 lines"]
   atproto["atproto<br/>8 files · 1613 lines"]
   ui["ui<br/>17 files · 3504 lines"]
@@ -77,7 +77,7 @@ graph TD
 | `render`       | the frame loop, the resolution scaler, and the probe that times them   | 4     | 1145  |
 | `player`       | the body, its input, its tools and what they do to the world           | 16    | 3910  |
 | `multiplayer`  | other players, over a peer connection                                  | 14    | 3663  |
-| `places`       | a published place: its script, its people, and the sandbox they run in | 40    | 20229 |
+| `places`       | a published place: its script, its people, and the sandbox they run in | 41    | 20465 |
 | `environment`  | the sky, the clock, the weather and the sound                          | 6     | 1952  |
 | `atproto`      | being signed in, and reading and writing published records             | 8     | 1613  |
 | `ui`           | what is drawn over the world in the page                               | 17    | 3504  |

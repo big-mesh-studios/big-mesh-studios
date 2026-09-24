@@ -17,11 +17,11 @@ import {
   createNpc,
   createProp,
   dispatch,
-  findPath,
   getHeldItem,
   getPlayers,
   onPlan,
   onTick,
+  raycast,
   uiButton,
   uiLabel,
   uiPanel,
@@ -49,6 +49,7 @@ import {
   planShapes,
   type Doorway,
 } from "./baldi-level";
+import { NAV_NODES, navPath, nearestNavNode } from "./baldi-nav";
 import { buildQuiz, TAUNTS, type QuizStep } from "./baldi-quiz";
 
 // ---------------------------------------------------------------------------
@@ -87,6 +88,19 @@ const PUPPET_SPEED = 7;
 const PUPPET_CHASE_SPEED = 16;
 const PRIZE_SPEED = 11;
 
+/** Where a figure is along its walk between navigation nodes. */
+interface Course {
+  /** The node indices left to visit, from the node it started at. */
+  path: number[];
+  /** The next index in `path` to walk toward. */
+  index: number;
+  /** The node the path was built to reach, so it is only rebuilt when that changes. */
+  goal: number;
+}
+
+/** A course with nowhere to go yet. */
+const newCourse = (): Course => ({ path: [], index: 0, goal: -1 });
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -104,8 +118,7 @@ let baldi: NpcHandle<ModelsByName["npc-teacher"]> | null = null;
 let baldiX = BALDI_SPAWN.x;
 let baldiZ = BALDI_SPAWN.z;
 let baldiYaw = 0;
-let baldiRoute: Array<[number, number]> | null = null;
-let baldiRouteIndex = 0;
+let baldiCourse: Course = newCourse();
 
 interface Runner {
   readonly id: string;
@@ -120,8 +133,10 @@ interface Runner {
   x: number;
   z: number;
   yaw: number;
-  route: Array<[number, number]> | null;
-  index: number;
+  course: Course;
+  /** Where a wandering runner is headed, in world units. */
+  targetX: number;
+  targetZ: number;
   mode: "wander" | "chase" | "idle";
   cooldownMs: number;
   speed: number;
@@ -201,63 +216,88 @@ function dist(ax: number, az: number, bx: number, bz: number): number {
   return Math.hypot(ax - bx, az - bz);
 }
 
-/** A walkable route from a figure to a world point, as [x, z] pairs. */
-function routeTo(
-  from: { x: number; z: number },
+/** How close counts as having reached a navigation node, in world units. */
+const ARRIVE = 2;
+
+/**
+ * Whether the straight line from one point to another is clear of terrain. A
+ * scripted figure or prop is not an obstruction; a wall is.
+ */
+function losClear(ax: number, az: number, bx: number, bz: number): boolean {
+  const length = dist(ax, az, bx, bz);
+  if (length < 0.5) {
+    return true;
+  }
+  const hit = raycast([ax, FLOOR + 1, az], [bx - ax, 0, bz - az], length);
+  return hit === null || hit.kind !== "block" || hit.distance >= length - 0.5;
+}
+
+/** Steps a figure toward a point, turning it to face the way, and says whether it arrived. */
+function moveToward(
+  figure: { x: number; z: number; yaw: number },
   tx: number,
   tz: number,
-): Array<[number, number]> | null {
-  const route = findPath([from.x, FLOOR, from.z], [tx, FLOOR, tz], {
-    maxCells: 512,
-    maxNodes: 8192,
-  });
-  if (route === null || route.length === 0) {
-    return null;
+  speed: number,
+  dtMs: number,
+): boolean {
+  const dx = tx - figure.x;
+  const dz = tz - figure.z;
+  const togo = Math.hypot(dx, dz);
+  if (togo < 1e-6) {
+    return true;
   }
-  const points = route.map((point) => [point[0], point[2]] as [number, number]);
-  if (
-    points.length > 0 &&
-    Math.hypot(points[0][0] - from.x, points[0][1] - from.z) < 1
-  ) {
-    points.shift();
+  figure.yaw = Math.atan2(dx, dz);
+  const step = (speed * dtMs) / 1000;
+  if (step >= togo) {
+    figure.x = tx;
+    figure.z = tz;
+    return true;
   }
-  return points;
+  figure.x += (dx / togo) * step;
+  figure.z += (dz / togo) * step;
+  return false;
 }
 
 /**
- * Advances a figure along its route by `speed * dtMs`, taking as many
- * waypoints as the budget reaches and leaving the rest for later beats.
+ * Moves a figure toward a target point: straight at it while the line of sight
+ * is clear, and otherwise along the school's navigation graph from the node it
+ * is nearest to the node the target is nearest to. The graph keeps the walk
+ * inside the halls, where `findPath` would climb the walls.
  */
-function advance(
+function navigate(
   figure: { x: number; z: number; yaw: number },
-  route: Array<[number, number]>,
-  index: number,
+  course: Course,
+  targetX: number,
+  targetZ: number,
   speed: number,
   dtMs: number,
-): number {
-  let budget = (speed * dtMs) / 1000;
-  let i = index;
-  while (budget > 0 && i < route.length) {
-    const [tx, tz] = route[i];
-    const dx = tx - figure.x;
-    const dz = tz - figure.z;
-    const step = Math.hypot(dx, dz);
-    if (step <= budget) {
-      figure.x = tx;
-      figure.z = tz;
-      budget -= step;
-      i++;
-    } else {
-      figure.x += (dx / step) * budget;
-      figure.z += (dz / step) * budget;
-      budget = 0;
-    }
+): void {
+  if (losClear(figure.x, figure.z, targetX, targetZ)) {
+    course.path = [];
+    course.goal = -1;
+    moveToward(figure, targetX, targetZ, speed, dtMs);
+    return;
   }
-  const next = route[Math.min(i, route.length - 1)];
-  if (next !== undefined) {
-    figure.yaw = Math.atan2(next[0] - figure.x, next[1] - figure.z);
+  const goal = nearestNavNode(targetX, targetZ);
+  if (course.goal !== goal || course.path.length === 0) {
+    const from = nearestNavNode(figure.x, figure.z);
+    const path = navPath(from, goal);
+    course.path = path;
+    course.goal = goal;
+    // Start at the node after the one the figure is nearest, so it never
+    // backtracks to the node behind it.
+    course.index = path.length > 1 ? 1 : 0;
   }
-  return i;
+  const path = course.path;
+  if (course.index >= path.length - 1) {
+    // Standing on (or bound for) the goal node: close on the target itself.
+    moveToward(figure, targetX, targetZ, speed, dtMs);
+    return;
+  }
+  const node = NAV_NODES[path[course.index]];
+  if (moveToward(figure, node.x, node.z, speed, dtMs)) {
+    course.index += 1;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -343,6 +383,29 @@ function swingDoor(state: DoorState): void {
     id: `door-${state.def.id}`,
     volume: 0.4,
   });
+}
+
+/** How near a scripted figure opens a shut door it is walking through. */
+const DOOR_REACH = 5;
+
+/**
+ * Swings open any shut door a scripted figure has reached, whatever its
+ * notebooks: the cast opens doors as it passes them, so nothing is walked
+ * through. Exit doors are left to the escape handling.
+ */
+function openDoorsNear(x: number, z: number): void {
+  for (const state of doors.values()) {
+    if (state.open) {
+      continue;
+    }
+    const kind = state.def.kind;
+    if (kind === "exit" || kind === "fake-exit") {
+      continue;
+    }
+    if (dist(x, z, state.def.x, state.def.z) <= DOOR_REACH) {
+      swingDoor(state);
+    }
+  }
 }
 
 /** Handles a door the player reaches: yellow ones check notebooks first. */
@@ -645,8 +708,9 @@ function spawnRunner(
     x: at[0],
     z: at[1],
     yaw: 0,
-    route: null,
-    index: 0,
+    course: newCourse(),
+    targetX: at[0],
+    targetZ: at[1],
     mode: "wander",
     cooldownMs: 0,
     speed,
@@ -673,8 +737,7 @@ function startChase(): void {
   });
   baldiX = BALDI_SPAWN.x;
   baldiZ = BALDI_SPAWN.z;
-  baldiRoute = null;
-  baldiRouteIndex = 0;
+  baldiCourse = newCourse();
 
   spawnRunner("playtime", "npc-playtime", [-168, -96], PLAYTIME_SPEED);
   spawnRunner("sweep", "npc-sweep", [168, 96], SWEEP_SPEED);
@@ -789,8 +852,8 @@ function restartGame(opening: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// The chase: on every beat, Baldi re-steps toward the player along a fresh
-// route, from his own tracked position, the way the original re-paths.
+// The chase: on every beat, Baldi re-steps toward the player along the hall
+// graph, closing straight in whenever the way between them is clear.
 // ---------------------------------------------------------------------------
 function stepBaldi(dtMs: number): void {
   if (finished || caught || quizOpen || baldi === null) {
@@ -800,30 +863,13 @@ function stepBaldi(dtMs: number): void {
   if (player === undefined || player === null) {
     return;
   }
-  baldiRoute = routeTo({ x: baldiX, z: baldiZ }, player.x, player.z);
-  if (baldiRoute !== null) {
-    baldiRouteIndex = 0;
-  }
-  if (baldiRoute !== null) {
-    const figure = { x: baldiX, z: baldiZ, yaw: baldiYaw };
-    baldiRouteIndex = advance(
-      figure,
-      baldiRoute,
-      baldiRouteIndex,
-      baldiSpeed(),
-      dtMs,
-    );
-    baldiX = figure.x;
-    baldiZ = figure.z;
-    baldiYaw = figure.yaw;
-    baldi.move({
-      x: baldiX,
-      z: baldiZ,
-      y: FLOOR,
-      yaw: baldiYaw,
-      live: true,
-    });
-  }
+  const figure = { x: baldiX, z: baldiZ, yaw: baldiYaw };
+  navigate(figure, baldiCourse, player.x, player.z, baldiSpeed(), dtMs);
+  baldiX = figure.x;
+  baldiZ = figure.z;
+  baldiYaw = figure.yaw;
+  baldi.move({ x: baldiX, z: baldiZ, y: FLOOR, yaw: baldiYaw, live: true });
+  openDoorsNear(baldiX, baldiZ);
   if (dist(baldiX, baldiZ, player.x, player.z) <= CATCH_DIST) {
     catchPlayer();
   }
@@ -853,10 +899,12 @@ function stepRunner(
         } else {
           narrate("BULLY", "Give me something GREATTTT!");
         }
-        const next =
-          BULLY_POINTS[Math.floor(Math.random() * BULLY_POINTS.length)];
-        runner.route = routeTo(runner, next[0], next[1]);
-        runner.index = 0;
+        const next = choice(BULLY_POINTS);
+        if (next !== undefined) {
+          runner.targetX = next[0];
+          runner.targetZ = next[1];
+          runner.course = newCourse();
+        }
       }
       break;
     }
@@ -864,14 +912,13 @@ function stepRunner(
       if (playtimeActive) {
         break;
       }
-      if (runner.mode === "wander" && away <= 14) {
+      if (runner.mode === "wander" && away <= 14 && runner.cooldownMs === 0) {
         runner.mode = "chase";
       }
       if (runner.mode === "chase" && away <= CATCH_DIST + 1) {
         startPlaytime();
-      } else if (runner.mode === "chase" && runner.route === null) {
         runner.mode = "wander";
-        runner.cooldownMs = 8000;
+        runner.cooldownMs = 12_000;
       }
       break;
     }
@@ -931,19 +978,22 @@ function stepRunner(
 
   const chasing = runner.mode === "chase";
   const speed = chasing ? chaseSpeed(runner.id) : runner.speed;
-  if (runner.route === null || runner.index >= runner.route.length) {
-    if (chasing) {
-      runner.route = routeTo(runner, player.x, player.z);
-    } else {
-      const mark = HALL_POINTS[Math.floor(Math.random() * HALL_POINTS.length)];
-      runner.route = routeTo(runner, mark[0], mark[1]);
+  if (chasing) {
+    runner.targetX = player.x;
+    runner.targetZ = player.z;
+  } else if (
+    dist(runner.x, runner.z, runner.targetX, runner.targetZ) <= ARRIVE
+  ) {
+    // Reached the mark it was headed for: take a fresh hall point.
+    const mark = choice(HALL_POINTS);
+    if (mark !== undefined) {
+      runner.targetX = mark[0];
+      runner.targetZ = mark[1];
+      runner.course = newCourse();
     }
-    runner.index = 0;
   }
-  if (runner.route === null) {
-    return;
-  }
-  runner.index = advance(runner, runner.route, runner.index, speed, dtMs);
+  navigate(runner, runner.course, runner.targetX, runner.targetZ, speed, dtMs);
+  openDoorsNear(runner.x, runner.z);
   runner.handle.move({
     x: runner.x,
     z: runner.z,
