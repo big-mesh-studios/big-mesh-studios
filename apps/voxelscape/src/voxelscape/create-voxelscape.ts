@@ -875,7 +875,15 @@ export const createVoxelscape = ({
           yaw: npc.yaw + (pose?.yaw ?? 0),
           ...(pose === null
             ? {}
-            : { spin: { axis: pose.spinAxis, angle: pose.spinAngle } }),
+            : {
+                spin: {
+                  axis: pose.spinAxis,
+                  angle: pose.spinAngle,
+                  ...(pose.spinPivot !== undefined
+                    ? { pivot: pose.spinPivot }
+                    : {}),
+                },
+              }),
           ...(animation === null || animation === undefined
             ? {}
             : { animation }),
@@ -926,7 +934,15 @@ export const createVoxelscape = ({
           height: prop.height,
           ...(pose === null
             ? {}
-            : { spin: { axis: pose.spinAxis, angle: pose.spinAngle } }),
+            : {
+                spin: {
+                  axis: pose.spinAxis,
+                  angle: pose.spinAngle,
+                  ...(pose.spinPivot !== undefined
+                    ? { pivot: pose.spinPivot }
+                    : {}),
+                },
+              }),
           ...(animation === null || animation === undefined
             ? {}
             : { animation }),

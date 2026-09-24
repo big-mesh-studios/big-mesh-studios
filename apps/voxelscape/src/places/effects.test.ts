@@ -280,6 +280,23 @@ describe("effect parsing", () => {
         }),
       ),
     ).not.toBeNull();
+    // A hinged, bounded turn: a door swinging a quarter turn about its edge.
+    expect(
+      parseEffect(
+        effect("prop", {
+          id: "swing",
+          model: "door.zip",
+          x: 0,
+          z: 0,
+          motion: {
+            path: [[0, 0, 0]],
+            loop: "once",
+            durationMs: 400,
+            spin: { axis: [0, 1, 0], turns: 0.25, pivot: [-1, 0, 0] },
+          },
+        }),
+      ),
+    ).not.toBeNull();
     expect(
       parseEffect(
         effect("prop", {
@@ -698,6 +715,37 @@ describe("effect parsing", () => {
             loop: "loop",
             durationMs: 1_000,
             spin: { axis: [0, 1, 0], turnsPerSecond: 2_000 },
+          },
+        },
+      ],
+      [
+        "prop",
+        {
+          id: "log",
+          model: "log.zip",
+          x: 0,
+          z: 0,
+          motion: {
+            path: [[0, 0, 0]],
+            loop: "loop",
+            durationMs: 1_000,
+            // A bounded turn may not also carry a rate.
+            spin: { axis: [0, 1, 0], turns: 0.25, turnsPerSecond: 0.25 },
+          },
+        },
+      ],
+      [
+        "prop",
+        {
+          id: "log",
+          model: "log.zip",
+          x: 0,
+          z: 0,
+          motion: {
+            path: [[0, 0, 0]],
+            loop: "loop",
+            durationMs: 1_000,
+            spin: { axis: [0, 1, 0], turns: 0.25, pivot: [0, 0, 999] },
           },
         },
       ],

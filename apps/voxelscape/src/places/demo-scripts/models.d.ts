@@ -514,5 +514,35 @@ declare module "voxelscape" {
       readonly parts: readonly "body"[];
       readonly motions: readonly never[];
     };
+    "npc-sweep": {
+      readonly name: "npc-sweep";
+      readonly file: "npc-sweep.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "npc-playtime": {
+      readonly name: "npc-playtime";
+      readonly file: "npc-playtime.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "npc-principal": {
+      readonly name: "npc-principal";
+      readonly file: "npc-principal.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "npc-puppet": {
+      readonly name: "npc-puppet";
+      readonly file: "npc-puppet.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "npc-prize": {
+      readonly name: "npc-prize";
+      readonly file: "npc-prize.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
   }
 }

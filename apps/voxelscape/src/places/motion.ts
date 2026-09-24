@@ -14,10 +14,22 @@ export type MotionEase = "linear" | "smooth";
 export interface MotionSpin {
   /** The axis the figure turns about; it need not be normalized. */
   axis: [number, number, number];
+  /**
+   * A whole turn applied over the motion's eased progress, from 0 to `turns`,
+   * so a `once` motion comes to rest at exactly that angle. Takes the place of
+   * a rate; a door swinging 90 degrees asks for `0.25`.
+   */
+  turns?: number;
   /** Revolutions per second, or absent when the spin is driven by distance. */
   turnsPerSecond?: number;
   /** Degrees of turn per world unit travelled, or absent when driven by time. */
   degreesPerMeter?: number;
+  /**
+   * The point the figure turns about, in world units, relative to its own
+   * feet-centre origin and before its heading is applied — the hinge edge of a
+   * door. Absent turns the figure about its own origin, as before.
+   */
+  pivot?: [number, number, number];
 }
 
 /**
@@ -62,6 +74,8 @@ export interface MotionPose {
   spinAxis: [number, number, number];
   /** The full visual spin, in radians. */
   spinAngle: number;
+  /** The hinge the spin turns about, in world units from the figure's origin, or absent for its own origin. */
+  spinPivot?: [number, number, number];
   /** How fast the offset is changing, in world units per second. */
   vx: number;
   vy: number;
@@ -203,7 +217,9 @@ export const poseAt = (motion: MotionSpec, clockMs: number): MotionPose => {
     const unit = unitAxis(spin.axis);
     if (unit !== null) {
       axis = unit;
-      if (spin.turnsPerSecond !== undefined) {
+      if (spin.turns !== undefined) {
+        angle = spin.turns * Math.PI * 2 * u;
+      } else if (spin.turnsPerSecond !== undefined) {
         const elapsed = Math.max(0, clockMs - (motion.startAfterMs ?? 0));
         angle = (elapsed / 1_000) * spin.turnsPerSecond * Math.PI * 2;
       } else if (spin.degreesPerMeter !== undefined) {
@@ -222,6 +238,7 @@ export const poseAt = (motion: MotionSpec, clockMs: number): MotionPose => {
     yaw,
     spinAxis: axis,
     spinAngle: angle,
+    ...(spin?.pivot !== undefined ? { spinPivot: spin.pivot } : {}),
     vx,
     vy,
     vz,

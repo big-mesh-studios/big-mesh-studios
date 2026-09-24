@@ -19,6 +19,8 @@ import ZOMBIES_MANSION_SCRIPT from "./demo-scripts/zombies-mansion.ts?raw";
 import DONT_POOP_SCRIPT from "./demo-scripts/dont-poop-yourself-at-school.ts?raw";
 import DUSTY_TRIP_SCRIPT from "./demo-scripts/dusty-trip.ts?raw";
 import BALDI_SCRIPT from "./demo-scripts/baldi.ts?raw";
+import BALDI_LEVEL_SCRIPT from "./demo-scripts/baldi-level.ts?raw";
+import BALDI_QUIZ_SCRIPT from "./demo-scripts/baldi-quiz.ts?raw";
 import HOME_SCRIPT from "./demo-scripts/home.ts?raw";
 import {
   BALDI_MODELS,
@@ -179,29 +181,36 @@ const DUSTY_TRIP: BuiltinDemo = {
 };
 
 /**
- * The "Baldi's Basics in Education and Learning" demo: a faithful port of the
- * original's core loop. Seven notebooks hide in a one-building school, each
- * opens a multiple-choice math quiz, and every notebook and wrong answer
- * raises Baldi's aggression, with it his speed. The second notebook or the
- * first wrong answer starts the chase; all seven open the east exit for the
- * escape. It is the proof that a place script can ask a player questions
- * through scripted UI mid-place, tune an enemy's speed to the player's own
- * record, and run a loop of quarry-and-escape rather than a fixed beginning
- * and end.
+ * The "Baldi's Basics in Education and Learning" demo: a port of the
+ * original's core loop on a rebuild of its school. Seven notebooks hide in a
+ * grid of classrooms and special rooms off a crossing of halls, each opens a
+ * multiple-choice math quiz, and every notebook and wrong answer raises
+ * Baldi's aggression, with it his speed. A friendly Baldi greets the player
+ * until the second notebook or the first wrong answer turns him hostile and
+ * brings out his cast; all seven notebooks arm the escape, whose three fake
+ * exits must be tried before the east door wins. It is the proof that a place
+ * script can ask a player questions through scripted UI mid-place, tune an
+ * enemy's speed to the player's own record, swing a door on its hinge, and run
+ * a loop of quarry-and-escape rather than a fixed beginning and end.
  */
 const BALDI: BuiltinDemo = {
   id: "baldi-basics",
   manifest: {
     name: "Baldi's Basics in Education and Learning",
     seed: 6_115,
-    // Outside the school's west entrance, on the plaza grass; 62 is the
-    // plaza surface in world units (the row-30 slab's top, times two).
-    spawn: [-100, 62, 0],
+    // The school's centre, on the plaza grass; 62 is the plaza surface in
+    // world units (the row-30 slab's top, times two). The plan may only build
+    // within a limited region around the spawn, so it sits at the centre of
+    // the school the script raises; the script then walks the player to the
+    // west entrance.
+    spawn: [0, 62, 0],
     mode: "solo",
     models: BALDI_MODELS,
   },
   scripts: {
     [MAIN_SCRIPT_FILE]: BALDI_SCRIPT,
+    "baldi-level.ts": BALDI_LEVEL_SCRIPT,
+    "baldi-quiz.ts": BALDI_QUIZ_SCRIPT,
   },
 };
 

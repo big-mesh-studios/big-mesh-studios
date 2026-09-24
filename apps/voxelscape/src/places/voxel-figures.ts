@@ -72,8 +72,17 @@ export interface RenderedFigure {
    * notion of death itself.
    */
   dyingAt?: number;
-  /** A spin about a world axis, applied after `yaw`; absent when it does not spin. */
-  spin?: { axis: [number, number, number]; angle: number };
+  /**
+   * A spin about a world axis, applied after `yaw`; absent when it does not
+   * spin. `pivot`, when set, is the hinge the figure turns about — an offset
+   * from its feet-centre origin in its own frame, before `yaw` — so a door
+   * swings on its edge instead of about its middle.
+   */
+  spin?: {
+    axis: [number, number, number];
+    angle: number;
+    pivot?: [number, number, number];
+  };
   /** The model motion the figure plays, or absent when it stands in its rest pose. */
   animation?: FigureAnimation;
   /** The tint and fade over the figure's colours, or absent for its model's own. */
@@ -142,6 +151,9 @@ export class VoxelFigures {
   private readonly spinAxis = new Vector3();
   private readonly upAxis = new Vector3(0, 1, 0);
   private readonly yawTurn = new Quaternion();
+  /** Scratch for holding a hinged figure's pivot still while it turns. */
+  private readonly pivotWorld = new Vector3();
+  private readonly pivotSpin = new Vector3();
 
   constructor(params: VoxelFiguresParams) {
     this.getFigures = params.getFigures;
@@ -308,6 +320,19 @@ export class VoxelFigures {
           );
           this.yawTurn.setFromAxisAngle(this.upAxis, yaw);
           mesh.group.quaternion.multiply(this.yawTurn);
+          const pivot = figure.spin.pivot;
+          if (pivot !== undefined) {
+            // Shift the group so the hinge, not the model's middle, is the
+            // fixed point: the point turns to `spin * yaw * pivot`, so the
+            // group moves by the difference between that and where the pivot
+            // already stood.
+            this.pivotWorld
+              .set(pivot[0], pivot[1], pivot[2])
+              .applyQuaternion(this.yawTurn);
+            this.pivotSpin.copy(this.pivotWorld);
+            this.pivotSpin.applyQuaternion(mesh.group.quaternion);
+            mesh.group.position.add(this.pivotWorld.sub(this.pivotSpin));
+          }
         }
       } else {
         // Tips backward about the feet, the same arc a player's own death

@@ -153,6 +153,12 @@ export const DONT_POOP_MODELS = [
  */
 export const BALDI_MODELS = [
   "npc-teacher.zip",
+  "npc-sweep.zip",
+  "npc-playtime.zip",
+  "npc-principal.zip",
+  "npc-puppet.zip",
+  "npc-prize.zip",
+  "npc-bully.zip",
   "historybook.zip",
   "platform.zip",
   "door.zip",

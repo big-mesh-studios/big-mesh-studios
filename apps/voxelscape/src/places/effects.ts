@@ -141,6 +141,10 @@ export const MAX_MOTION_MS = 86_400_000;
 export const MAX_MOTION_AMPLITUDE = 64;
 /** The largest spin rate a motion may ask for, per second or per metre. */
 export const MAX_SPIN_RATE = 1_000;
+/** The most whole turns a bounded spin may ask for. */
+export const MAX_SPIN_TURNS = 1_000;
+/** The furthest a motion's hinge may sit from its figure's origin, in world units. */
+export const MAX_MOTION_PIVOT = 64;
 /** The most shots one cutscene may hold. */
 export const MAX_CUTSCENE_SHOTS = 64;
 /** The longest one camera move or hold may last, in milliseconds. */
@@ -1298,7 +1302,16 @@ const isMotion = (v: unknown): boolean => {
   if (!isVector(s.axis)) {
     return false;
   }
-  if (s.turnsPerSecond === undefined && s.degreesPerMeter === undefined) {
+  const rates = [s.turns, s.turnsPerSecond, s.degreesPerMeter].filter(
+    (rate) => rate !== undefined,
+  );
+  if (rates.length !== 1) {
+    return false;
+  }
+  if (
+    s.turns !== undefined &&
+    !isNumberIn(s.turns, -MAX_SPIN_TURNS, MAX_SPIN_TURNS)
+  ) {
     return false;
   }
   if (
@@ -1310,6 +1323,13 @@ const isMotion = (v: unknown): boolean => {
   if (
     s.degreesPerMeter !== undefined &&
     !isNumberIn(s.degreesPerMeter, -MAX_SPIN_RATE, MAX_SPIN_RATE)
+  ) {
+    return false;
+  }
+  if (
+    s.pivot !== undefined &&
+    (!isVector(s.pivot) ||
+      s.pivot.some((v) => !isNumberIn(v, -MAX_MOTION_PIVOT, MAX_MOTION_PIVOT)))
   ) {
     return false;
   }

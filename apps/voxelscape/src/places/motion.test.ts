@@ -95,6 +95,32 @@ describe("motion pose", () => {
     expect(pose.spinAngle).toBeCloseTo(Math.PI / 2);
   });
 
+  it("swings a hinge a bounded turn and comes to rest", () => {
+    const motion: MotionSpec = {
+      path: [[0, 0, 0]],
+      loop: "once",
+      durationMs: 1_000,
+      spin: { axis: [0, 1, 0], turns: 0.25, pivot: [-1, 0, 0] },
+    };
+    expect(poseAt(motion, 500).spinAngle).toBeCloseTo(Math.PI / 4);
+    expect(poseAt(motion, 1_000).spinAngle).toBeCloseTo(Math.PI / 2);
+    // A once motion holds its final angle rather than winding on.
+    expect(poseAt(motion, 9_000).spinAngle).toBeCloseTo(Math.PI / 2);
+    expect(poseAt(motion, 500).spinPivot).toEqual([-1, 0, 0]);
+  });
+
+  it("swings a bounded turn back and forth when pingponging", () => {
+    const motion: MotionSpec = {
+      path: [[0, 0, 0]],
+      loop: "pingpong",
+      durationMs: 1_000,
+      spin: { axis: [0, 1, 0], turns: 0.25 },
+    };
+    expect(poseAt(motion, 1_500).spinAngle).toBeCloseTo(Math.PI / 4);
+    expect(poseAt(motion, 2_000).spinAngle).toBeCloseTo(0);
+    expect(poseAt(motion, 2_500).spinAngle).toBeCloseTo(Math.PI / 4);
+  });
+
   it("rolls by distance about an off-vertical axis", () => {
     const motion: MotionSpec = {
       path: [

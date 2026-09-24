@@ -1,46 +1,59 @@
-// The "Baldi's Basics in Education and Learning" demo's place script — a
-// faithful port of the original's core loop. Seven notebooks are hidden in a
-// one-building school; touching one opens a multiple-choice math quiz, and
-// every notebook collected and every problem answered wrong raises Baldi's
-// aggression, with it his speed. The second notebook or the first wrong
-// answer starts the chase; all seven open the east exit for the escape, and
-// Baldi catches anyone he reaches.
+// The "Baldi's Basics in Education and Learning" demo's place script — a port
+// of the original place's core loop on a rebuild of its school. Seven
+// notebooks are hidden in a grid school whose halls and rooms follow the
+// original's own module; touching one opens a multiple-choice math quiz. Every
+// notebook collected and every problem answered wrong raises Baldi's
+// aggression, and with it his speed. A friendly Baldi greets the player in the
+// first phase; the second notebook or the first wrong answer turns him hostile
+// and brings his whole cast out. Three fake exits must be tried before the
+// east door opens the escape, and Baldi catches anyone he reaches.
 //
-// ALL voxel coordinates × 2 = world coordinates. The plan handler registered
-// with onPlan takes voxel coordinates; props, NPCs, zones, and fields take
-// world coordinates.
+// The layout handler registered with onPlan takes voxel coordinates; props,
+// NPCs, and effects take world coordinates, which are voxel coordinates times
+// two.
 import {
-  blocks,
   choice,
   createBarrier,
   createNpc,
   createProp,
   dispatch,
   findPath,
-  getHeightAt,
+  getHeldItem,
   getPlayers,
   onPlan,
   onTick,
-  randint,
   uiButton,
   uiLabel,
   uiPanel,
   uiRemove,
+  type BarrierHandle,
   type ModelsByName,
   type NpcHandle,
+  type PropHandle,
 } from "voxelscape";
+import {
+  BALDI_SPAWN,
+  BULLY_POINTS,
+  DETENTION_SPAWN,
+  DOORWAYS,
+  DOOR_HINGE,
+  DOOR_SWING_MS,
+  FIXTURES,
+  FLOOR,
+  GAME_SPAWN,
+  HALL_POINTS,
+  NOTEBOOKS,
+  NORMAL_BALDI_SPAWN,
+  SPAWN,
+  VOID_Y,
+  planShapes,
+  type Doorway,
+} from "./baldi-level";
+import { buildQuiz, TAUNTS, type QuizStep } from "./baldi-quiz";
 
 // ---------------------------------------------------------------------------
-// Layout constants (voxel coordinates unless noted "W" for world units)
+// Constants
 // ---------------------------------------------------------------------------
-const GROUND = 30;
-// Walls run from GROUND+1 through GROUND+3; roofs sit at GROUND+4.
-const WALL_TOP = GROUND + 3;
-const ROOF = GROUND + 4;
-// Floor feet height: the top surface of the row-30 slab, in world units.
-const FLOOR = (GROUND + 1) * 2; // 62 W
-const VOID_Y = 40; // W — below this is fatal
-
 const NOTEBOOK_TOTAL = 7;
 
 // Phases, numbered the way the original's "game phase" value counts them.
@@ -49,170 +62,30 @@ const PHASE_CHASE = 2;
 const PHASE_ESCAPE = 3;
 const PHASE_DONE = 4;
 
-const CHASE_MS = 100; // how often Baldi re-steps toward the player
-const CATCH_DIST = 2; // W — the reach at which Baldi catches the player
-const BALDI_BASE_SPEED = 12; // W/s before aggression multiplies it
+const CHASE_MS = 100; // how often the cast re-steps
+const CATCH_DIST = 3; // W — the reach at which Baldi catches the player
+// Slower than the player's own 15 units a second to start, so a fresh chase
+// can still be outrun; aggression carries him past it.
+const BALDI_BASE_SPEED = 13; // W/s before aggression multiplies it
+const AGGRO_BASE = 0.8;
+const AGGRO_PER_BOOK = 0.1;
+const AGGRO_PER_WRONG = 0.1;
 
 // Entity ids.
 const BALDI = "baldi";
-const EXIT = "exit";
-const EXIT_GATE = "exit-gate";
+const NORMAL_BALDI = "normal-baldi";
 const QUIZ = "quiz";
+const PLAYTIME_UI = "playtime";
 
-const SPAWN: readonly [number, number, number] = [-100, FLOOR, 0]; // x, y, z
-const BALDI_SPAWN = { x: -70, z: 0 };
-const BALDI_FACING_ENTRANCE = -Math.PI / 2;
-
-/** The seven notebooks: where each one stands and which room hides it. */
-const BOOKS: ReadonlyArray<{ id: string; room: string; x: number; z: number }> =
-  [
-    { id: "book-0", room: "Library", x: -8, z: -64 },
-    { id: "book-1", room: "Classroom A", x: 48, z: -64 },
-    { id: "book-2", room: "Classroom B", x: -48, z: -64 },
-    { id: "book-3", room: "Classroom C", x: 48, z: 64 },
-    { id: "book-4", room: "Classroom D", x: -32, z: 68 },
-    { id: "book-5", room: "Cafeteria", x: 8, z: 64 },
-    { id: "book-6", room: "Office", x: -64, z: 14 },
-  ];
-
-/** Furniture and doorways the school stands up on top of the plan. */
-interface Fixture {
-  readonly id: string;
-  readonly model: keyof ModelsByName;
-  readonly x: number;
-  readonly z: number;
-  readonly yaw: number;
-  readonly height: number;
-  readonly y?: number;
-}
-
-const FIXTURES: readonly Fixture[] = [
-  // Classrooms: one desk and chair each, facing the doorway side.
-  { id: "desk-cla", model: "desk", x: 40, z: -60, yaw: 0, height: 2 },
-  { id: "chair-cla", model: "chair", x: 40, z: -54, yaw: Math.PI, height: 1.5 },
-  { id: "desk-clb", model: "desk", x: -40, z: -60, yaw: 0, height: 2 },
-  {
-    id: "chair-clb",
-    model: "chair",
-    x: -40,
-    z: -54,
-    yaw: Math.PI,
-    height: 1.5,
-  },
-  { id: "desk-clc", model: "desk", x: 36, z: 60, yaw: Math.PI, height: 2 },
-  { id: "chair-clc", model: "chair", x: 36, z: 54, yaw: 0, height: 1.5 },
-  { id: "desk-cld", model: "desk", x: -36, z: 60, yaw: Math.PI, height: 2 },
-  { id: "chair-cld", model: "chair", x: -36, z: 54, yaw: 0, height: 1.5 },
-  // Library: four shelves against the back wall and a desk in the middle.
-  { id: "shelf-lib-1", model: "bookshelf", x: -12, z: -76, yaw: 0, height: 3 },
-  { id: "shelf-lib-2", model: "bookshelf", x: 12, z: -76, yaw: 0, height: 3 },
-  { id: "shelf-lib-3", model: "bookshelf", x: -12, z: -56, yaw: 0, height: 3 },
-  { id: "shelf-lib-4", model: "bookshelf", x: 12, z: -56, yaw: 0, height: 3 },
-  { id: "desk-lib", model: "desk", x: 0, z: -66, yaw: 0, height: 2 },
-  // Cafeteria: three long tables.
-  {
-    id: "table-caf-1",
-    model: "cafeteria-table",
-    x: -12,
-    z: 60,
-    yaw: Math.PI / 2,
-    height: 2,
-  },
-  {
-    id: "table-caf-2",
-    model: "cafeteria-table",
-    x: 0,
-    z: 60,
-    yaw: Math.PI / 2,
-    height: 2,
-  },
-  {
-    id: "table-caf-3",
-    model: "cafeteria-table",
-    x: 12,
-    z: 60,
-    yaw: Math.PI / 2,
-    height: 2,
-  },
-  // Office: Baldi's desk, his chair, and his ruler lying on top of it.
-  {
-    id: "desk-off",
-    model: "desk",
-    x: -68,
-    z: 0,
-    yaw: Math.PI / 2,
-    height: 2,
-  },
-  {
-    id: "chair-off",
-    model: "chair",
-    x: -64,
-    z: 0,
-    yaw: -Math.PI / 2,
-    height: 1.5,
-  },
-  {
-    id: "ruler",
-    model: "platform",
-    x: -68,
-    z: 0,
-    y: FLOOR + 0.9,
-    yaw: Math.PI / 2,
-    height: 0.5,
-  },
-  // Courtyard dressing: lockers along both room rows, two posters.
-  { id: "locker-n1", model: "locker", x: -18, z: -48, yaw: 0, height: 2.5 },
-  { id: "locker-n2", model: "locker", x: 18, z: -48, yaw: 0, height: 2.5 },
-  {
-    id: "locker-s1",
-    model: "locker",
-    x: -16,
-    z: 48,
-    yaw: Math.PI,
-    height: 2.5,
-  },
-  { id: "locker-s2", model: "locker", x: 20, z: 48, yaw: Math.PI, height: 2.5 },
-  { id: "poster-lib", model: "poster", x: 14, z: -48, yaw: 0, height: 2.5 },
-  {
-    id: "poster-lob",
-    model: "poster",
-    x: 78,
-    z: 6,
-    yaw: -Math.PI / 2,
-    height: 2.5,
-  },
-  // Doorways: a door standing in each room's gap, decor only.
-  { id: "door-lib", model: "door", x: 0, z: -50, yaw: 0, height: 5 },
-  { id: "door-cla", model: "door", x: 36, z: -50, yaw: 0, height: 5 },
-  { id: "door-clb", model: "door", x: -36, z: -50, yaw: 0, height: 5 },
-  { id: "door-clc", model: "door", x: 44, z: 50, yaw: Math.PI, height: 5 },
-  { id: "door-cld", model: "door", x: -32, z: 50, yaw: Math.PI, height: 5 },
-  { id: "door-caf", model: "door", x: 0, z: 50, yaw: Math.PI, height: 5 },
-  { id: "door-off", model: "door", x: -50, z: 0, yaw: Math.PI / 2, height: 5 },
-  {
-    id: "door-entrance",
-    model: "door",
-    x: -84,
-    z: 0,
-    yaw: Math.PI / 2,
-    height: 5,
-  },
-  { id: "door-lob", model: "door", x: 50, z: 0, yaw: Math.PI / 2, height: 5 },
-];
-
-const TAUNTS: readonly string[] = [
-  "I'M GOING TO BEAT YOU!",
-  "TOO FAST, TOO SOON.",
-  "DID YOU EAT MY DAD'S 175$ DART BOARD?!",
-  "I CAN'T BELIEVE YOU HAVE DONE THIS!",
-  "EVERY WRONG ANSWER MAKES ME FASTER.",
-];
-
-const GLITCH_LINES: readonly string[] = [
-  "GERE 5TA 4HAM A 1USBEKEN",
-  "EEREREEREKEEKERE",
-  "ANSWER THE QUESTION. ANSWER THE QUESTION.",
-];
+// How far each of the cast will notice the player, in world units.
+const SWEEP_SPEED = 11;
+const PLAYTIME_SPEED = 7;
+const PLAYTIME_CHASE_SPEED = 15;
+const PRINCIPAL_SPEED = 9;
+const PRINCIPAL_CHASE_SPEED = 13;
+const PUPPET_SPEED = 7;
+const PUPPET_CHASE_SPEED = 16;
+const PRIZE_SPEED = 11;
 
 // ---------------------------------------------------------------------------
 // State
@@ -223,38 +96,65 @@ let books = 0;
 let wrongs = 0;
 let caught = false;
 let finished = false;
+let exitTaken = 0;
+let clock = 0;
 
+let normalBaldi: NpcHandle<ModelsByName["npc-teacher"]> | null = null;
 let baldi: NpcHandle<ModelsByName["npc-teacher"]> | null = null;
 let baldiX = BALDI_SPAWN.x;
 let baldiZ = BALDI_SPAWN.z;
-let baldiY = FLOOR;
+let baldiYaw = 0;
+let baldiRoute: Array<[number, number]> | null = null;
+let baldiRouteIndex = 0;
 
-/** Structural handle: every notebook and the exit are only ever removed. */
+interface Runner {
+  readonly id: string;
+  handle: NpcHandle<
+    | ModelsByName["npc-sweep"]
+    | ModelsByName["npc-playtime"]
+    | ModelsByName["npc-principal"]
+    | ModelsByName["npc-puppet"]
+    | ModelsByName["npc-bully"]
+    | ModelsByName["npc-prize"]
+  >;
+  x: number;
+  z: number;
+  yaw: number;
+  route: Array<[number, number]> | null;
+  index: number;
+  mode: "wander" | "chase" | "idle";
+  cooldownMs: number;
+  speed: number;
+}
+
+const runners = new Map<string, Runner>();
+
+/** Structural handle: every notebook is only ever removed. */
 interface Removable {
   remove(): void;
 }
 const bookHandles = new Map<string, Removable>();
-let exitHandle: Removable | null = null;
-let exitGate: Removable | null = null;
+
+interface DoorState {
+  readonly def: Doorway;
+  prop: PropHandle<ModelsByName["door"]> | null;
+  barrier: BarrierHandle | null;
+  open: boolean;
+}
+const doors = new Map<string, DoorState>();
 
 /** One multiple-choice problem the quiz asks, or a taunt shown after a wrong one. */
-type QuizStep =
-  { kind: "question"; question: Question } | { kind: "taunt"; line: string };
-
-interface Question {
-  readonly prompt: string;
-  readonly answer: number;
-  readonly choices: readonly number[];
-  /** A question no answer satisfies: every button reads wrong. */
-  readonly glitch: boolean;
-}
-
 let quizOpen = false;
 let quizBook = "";
 let quizSteps: QuizStep[] = [];
 let quizStep = 0;
 let quizWrong = 0;
 let quizReadout = "";
+
+let playtimeActive = false;
+let playtimeJumps = 0;
+let playtimeBeated = false;
+let principalDetained = false;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -283,167 +183,225 @@ function showObjective(text: string): void {
   });
 }
 
-/** Baldi's current anger: one tenth added per notebook and per wrong answer. */
+/** Baldi's current anger, starting where the original's own model begins. */
 function aggression(): number {
-  return 1 + 0.1 * (books + wrongs);
+  return AGGRO_BASE + AGGRO_PER_BOOK * books + AGGRO_PER_WRONG * wrongs;
 }
 
 function baldiSpeed(): number {
   return BALDI_BASE_SPEED * aggression();
 }
 
+function playerAt(): { x: number; y: number; z: number } | null {
+  const player = getPlayers()[0];
+  return player === undefined ? null : player;
+}
+
 function dist(ax: number, az: number, bx: number, bz: number): number {
   return Math.hypot(ax - bx, az - bz);
 }
 
-// ---------------------------------------------------------------------------
-// Plan (voxel coordinates)
-// ---------------------------------------------------------------------------
-onPlan(() => {
-  const b = blocks;
-  const shapes: unknown[] = [];
-  const box = (
-    x0: number,
-    y0: number,
-    z0: number,
-    x1: number,
-    y1: number,
-    z1: number,
-    id: number,
-  ): void => {
-    shapes.push({ kind: "box", min: [x0, y0, z0], max: [x1, y1, z1], id });
-  };
-  // A wall running along X at row `z`, from `ax` to `bx`, minus its gaps.
-  const wallX = (
-    z: number,
-    ax: number,
-    bx: number,
-    gaps: ReadonlyArray<readonly [number, number]>,
-  ): void => {
-    const start = Math.min(ax, bx);
-    const end = Math.max(ax, bx);
-    const ordered = [...gaps].sort((g, h) => g[0] - h[0]);
-    let cursor = start;
-    for (const gap of ordered) {
-      if (gap[0] > cursor) {
-        box(cursor, GROUND + 1, z, gap[0] - 1, WALL_TOP, z, b.greystone);
-      }
-      cursor = Math.max(cursor, gap[1] + 1);
-    }
-    if (cursor <= end) {
-      box(cursor, GROUND + 1, z, end, WALL_TOP, z, b.greystone);
-    }
-  };
-  // A wall running along Z at column `x`, from `az` to `bz`, minus its gaps.
-  const wallZ = (
-    x: number,
-    az: number,
-    bz: number,
-    gaps: ReadonlyArray<readonly [number, number]>,
-  ): void => {
-    const start = Math.min(az, bz);
-    const end = Math.max(az, bz);
-    const ordered = [...gaps].sort((g, h) => g[0] - h[0]);
-    let cursor = start;
-    for (const gap of ordered) {
-      if (gap[0] > cursor) {
-        box(x, GROUND + 1, cursor, x, WALL_TOP, gap[0] - 1, b.greystone);
-      }
-      cursor = Math.max(cursor, gap[1] + 1);
-    }
-    if (cursor <= end) {
-      box(x, GROUND + 1, cursor, x, WALL_TOP, end, b.greystone);
-    }
-  };
-  // A standalone room: wood floor, greystone roof, four walls, door gaps.
-  const room = (
-    x0: number,
-    z0: number,
-    x1: number,
-    z1: number,
-    doors: ReadonlyArray<{
-      side: "N" | "S" | "E" | "W";
-      at: number;
-      half?: number;
-    }>,
-  ): void => {
-    box(x0, GROUND, z0, x1, GROUND, z1, b.wood);
-    box(x0 - 1, ROOF, z0 - 1, x1 + 1, ROOF, z1 + 1, b.greystone);
-    const gapsFor = (
-      side: "N" | "S" | "E" | "W",
-    ): ReadonlyArray<readonly [number, number]> =>
-      doors
-        .filter((door) => door.side === side)
-        .map((door) => {
-          const half = door.half ?? 2;
-          return [door.at - half, door.at + half] as const;
-        });
-    wallX(z0 - 1, x0 - 1, x1 + 1, gapsFor("N"));
-    wallX(z1 + 1, x0 - 1, x1 + 1, gapsFor("S"));
-    wallZ(x0 - 1, z0 - 1, z1 + 1, gapsFor("W"));
-    wallZ(x1 + 1, z0 - 1, z1 + 1, gapsFor("E"));
-  };
-
-  // The plaza the school stands on. Graded flat to the school's floor level
-  // first, so the surrounding mountains are cut down and never rise through
-  // the building; the dirt and grass boxes below then skin the flat top.
-  shapes.push({
-    kind: "surface",
-    min: [-64, 0, -64],
-    max: [64, 0, 64],
-    level: GROUND,
-    depth: 2,
-    id: b.grass,
+/** A walkable route from a figure to a world point, as [x, z] pairs. */
+function routeTo(
+  from: { x: number; z: number },
+  tx: number,
+  tz: number,
+): Array<[number, number]> | null {
+  const route = findPath([from.x, FLOOR, from.z], [tx, FLOOR, tz], {
+    maxCells: 512,
+    maxNodes: 8192,
   });
-  box(-64, 0, -64, 64, GROUND - 1, 64, b.dirt);
-  box(-64, GROUND, -64, 64, GROUND, 64, b.grass);
+  if (route === null || route.length === 0) {
+    return null;
+  }
+  const points = route.map((point) => [point[0], point[2]] as [number, number]);
+  if (
+    points.length > 0 &&
+    Math.hypot(points[0][0] - from.x, points[0][1] - from.z) < 1
+  ) {
+    points.shift();
+  }
+  return points;
+}
 
-  // School slab and roof, then the perimeter with its two openings: the west
-  // doorway the player walks in through and the east mouth the exit blocks.
-  box(-42, GROUND, -42, 42, GROUND, 42, b.wood);
-  box(-42, ROOF, -42, 42, ROOF, 42, b.greystone);
-  wallX(-42, -42, 42, []);
-  wallX(42, -42, 42, []);
-  // The west doorway faces the office's own west doorway straight across the
-  // one-voxel slot between the two walls, so the entrance opens into the room.
-  wallZ(-42, -42, 42, [[-2, 2]]);
-  wallZ(42, -42, 42, [[-10, 10]]);
-
-  // Seven rooms around the courtyard, each with a single doorway facing it.
-  room(-8, -40, 8, -26, [{ side: "S", at: 0 }]); // Library
-  room(12, -40, 28, -26, [{ side: "S", at: 18 }]); // Classroom A
-  room(-28, -40, -12, -26, [{ side: "S", at: -18 }]); // Classroom B
-  room(12, 26, 28, 40, [{ side: "N", at: 22 }]); // Classroom C
-  room(-28, 26, -12, 40, [{ side: "N", at: -16 }]); // Classroom D
-  room(-8, 26, 8, 40, [{ side: "N", at: 0 }]); // Cafeteria
-  room(-40, -10, -26, 10, [
-    { side: "E", at: 0 },
-    { side: "W", at: 0 },
-  ]); // Office — its west doorway is the school's entrance
-  // The lobby's east gap matches the perimeter mouth exactly, so the exit
-  // prop and its gate span the whole way out.
-  room(26, -10, 40, 10, [
-    { side: "W", at: 0 },
-    { side: "E", at: 0, half: 10 },
-  ]); // Lobby
-
-  // Two pillars to weave between on the courtyard's west-to-east line.
-  box(-1, GROUND + 1, -9, 1, WALL_TOP, -7, b.greystone);
-  box(-21, GROUND + 1, 7, -19, WALL_TOP, 9, b.greystone);
-
-  return JSON.stringify(shapes);
-});
+/**
+ * Advances a figure along its route by `speed * dtMs`, taking as many
+ * waypoints as the budget reaches and leaving the rest for later beats.
+ */
+function advance(
+  figure: { x: number; z: number; yaw: number },
+  route: Array<[number, number]>,
+  index: number,
+  speed: number,
+  dtMs: number,
+): number {
+  let budget = (speed * dtMs) / 1000;
+  let i = index;
+  while (budget > 0 && i < route.length) {
+    const [tx, tz] = route[i];
+    const dx = tx - figure.x;
+    const dz = tz - figure.z;
+    const step = Math.hypot(dx, dz);
+    if (step <= budget) {
+      figure.x = tx;
+      figure.z = tz;
+      budget -= step;
+      i++;
+    } else {
+      figure.x += (dx / step) * budget;
+      figure.z += (dz / step) * budget;
+      budget = 0;
+    }
+  }
+  const next = route[Math.min(i, route.length - 1)];
+  if (next !== undefined) {
+    figure.yaw = Math.atan2(next[0] - figure.x, next[1] - figure.z);
+  }
+  return i;
+}
 
 // ---------------------------------------------------------------------------
-// Boot
+// Plan
 // ---------------------------------------------------------------------------
-function placeBook(book: (typeof BOOKS)[number]): Removable {
+onPlan(() => JSON.stringify(planShapes()));
+
+// ---------------------------------------------------------------------------
+// Doors
+// ---------------------------------------------------------------------------
+/** The box that seals a doorway while its door stands shut, in world units. */
+function doorBarrierBox(door: Doorway): {
+  min: [number, number, number];
+  max: [number, number, number];
+} {
+  const across = Math.abs(Math.cos(door.yaw)) < 0.5 ? "z" : "x";
+  const half = door.half;
+  if (across === "x") {
+    return {
+      min: [door.x - half, FLOOR, door.z - 1],
+      max: [door.x + half, FLOOR + 6, door.z + 1],
+    };
+  }
+  return {
+    min: [door.x - 1, FLOOR, door.z - half],
+    max: [door.x + 1, FLOOR + 6, door.z + half],
+  };
+}
+
+function placeDoor(state: DoorState, swinging: boolean, atMs: number): void {
+  state.prop?.remove();
+  state.barrier?.remove();
+  state.barrier = null;
+  const door = state.def;
+  state.prop = createProp({
+    id: door.id,
+    model: "door",
+    x: door.x,
+    z: door.z,
+    y: FLOOR,
+    yaw: door.yaw,
+    height: 5,
+    solid: false,
+    hazard: true,
+    name: door.id,
+    tags: [door.kind],
+    ...(swinging
+      ? {
+          motion: {
+            path: [[0, 0, 0]] as Array<[number, number, number]>,
+            loop: "once" as const,
+            durationMs: DOOR_SWING_MS,
+            ease: "smooth" as const,
+            startAfterMs: atMs,
+            spin: {
+              axis: [0, 1, 0] as [number, number, number],
+              turns: 0.25,
+              pivot: [DOOR_HINGE, 0, 0] as [number, number, number],
+            },
+          },
+        }
+      : {}),
+  });
+  if (!swinging) {
+    const box = doorBarrierBox(door);
+    state.barrier = createBarrier({
+      id: `${door.id}-gate`,
+      min: box.min,
+      max: box.max,
+    });
+  }
+}
+
+function swingDoor(state: DoorState): void {
+  if (state.open) {
+    return;
+  }
+  state.open = true;
+  placeDoor(state, true, clock);
+  dispatch("sound", {
+    player: "",
+    name: "door-open",
+    id: `door-${state.def.id}`,
+    volume: 0.4,
+  });
+}
+
+/** Handles a door the player reaches: yellow ones check notebooks first. */
+function touchDoor(state: DoorState): void {
+  const door = state.def;
+  if (door.kind === "exit" || door.kind === "fake-exit") {
+    handleExitDoor(state);
+    return;
+  }
+  if (door.kind === "yellow" && books < door.books) {
+    narrate("BALDI", `You need ${door.books} notebooks before this one opens!`);
+    return;
+  }
+  swingDoor(state);
+}
+
+function handleExitDoor(state: DoorState): void {
+  const door = state.def;
+  if (phase !== PHASE_ESCAPE) {
+    narrate("YOU", "The exit is sealed until the notebooks are all in.");
+    return;
+  }
+  if (door.kind === "fake-exit") {
+    if (state.open) {
+      return;
+    }
+    state.open = true;
+    exitTaken += 1;
+    placeDoor(state, true, clock);
+    dispatch("sound", {
+      player: "",
+      name: "wave-eerie",
+      id: `fake-${door.id}`,
+      volume: 0.6,
+    });
+    narrate("BALDI", "WRONG WAY! THAT ISN'T THE REAL EXIT!");
+    return;
+  }
+  if (exitTaken < 3) {
+    narrate(
+      "YOU",
+      `Only ${exitTaken} of the 3 fake exits found — keep looking.`,
+    );
+    return;
+  }
+  swingDoor(state);
+  win();
+}
+
+// ---------------------------------------------------------------------------
+// Notebooks
+// ---------------------------------------------------------------------------
+function placeBook(book: (typeof NOTEBOOKS)[number]): Removable {
   return createProp({
     id: book.id,
     model: "historybook",
     x: book.x,
     z: book.z,
-    y: FLOOR,
+    y: book.y,
     yaw: 0,
     height: 0.6,
     solid: false,
@@ -453,30 +411,19 @@ function placeBook(book: (typeof BOOKS)[number]): Removable {
   });
 }
 
-function placeClosedExit(): Removable {
-  return createProp({
-    id: EXIT,
-    model: "door",
-    x: 83,
-    z: 0,
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+function spawnNormalBaldi(): void {
+  normalBaldi = createNpc({
+    id: NORMAL_BALDI,
+    x: NORMAL_BALDI_SPAWN.x,
+    z: NORMAL_BALDI_SPAWN.z,
     y: FLOOR,
     yaw: Math.PI / 2,
-    height: 5,
-    solid: false,
-    hazard: false,
-    name: "Exit",
-  });
-}
-
-/** The east mouth stood up shut: a drawn door plus an invisible gate across it. */
-function gateExit(): void {
-  exitHandle?.remove();
-  exitHandle = placeClosedExit();
-  exitGate?.remove();
-  exitGate = createBarrier({
-    id: EXIT_GATE,
-    min: [81, FLOOR, -4],
-    max: [84, FLOOR + 6, 4],
+    name: "Baldi",
+    model: "npc-teacher",
+    tags: ["friend"],
   });
 }
 
@@ -492,20 +439,7 @@ function boot(): void {
   showBooks();
   showObjective("Find all 7 notebooks");
 
-  baldi = createNpc({
-    id: BALDI,
-    x: BALDI_SPAWN.x,
-    z: BALDI_SPAWN.z,
-    y: FLOOR,
-    yaw: BALDI_FACING_ENTRANCE,
-    name: "Baldi",
-    model: "npc-teacher",
-    tags: ["enemy"],
-  });
-  baldiX = BALDI_SPAWN.x;
-  baldiZ = BALDI_SPAWN.z;
-  baldiY = FLOOR;
-
+  spawnNormalBaldi();
   for (const fixture of FIXTURES) {
     createProp({
       id: fixture.id,
@@ -519,16 +453,20 @@ function boot(): void {
       name: fixture.id,
     });
   }
-  for (const book of BOOKS) {
+  for (const book of NOTEBOOKS) {
     bookHandles.set(book.id, placeBook(book));
   }
-  gateExit();
+  for (const def of DOORWAYS) {
+    const state: DoorState = { def, prop: null, barrier: null, open: false };
+    doors.set(def.id, state);
+    placeDoor(state, false, 0);
+  }
 
-  // The chase loop re-arms itself on every fire, so its first beat lands one
-  // CHASE_MS after the run starts and Baldi is always on the clock.
+  // The beat re-arms itself on every fire, so the cast is always on the clock.
   dispatch("timer", { id: "chase", afterMs: CHASE_MS });
 
-  narrate("BALDI", "WELCOME TO MY SCHOOL IN EDUCATION AND LEARNING!");
+  narrate("BALDI", "Oh, hi! Welcome to my schoolhouse!");
+  narrate("BALDI", "First, you need to take exams in the classrooms!");
   narrate(
     "YOU",
     "Seven notebooks are hidden in this school. Collect them all, then get out.",
@@ -538,86 +476,6 @@ function boot(): void {
 // ---------------------------------------------------------------------------
 // Quiz
 // ---------------------------------------------------------------------------
-/** Four distinct answers around `answer`, shuffled from the seeded stream. */
-function makeChoices(answer: number): number[] {
-  const picked = [answer];
-  for (const candidate of [
-    answer + 1,
-    answer - 1,
-    answer + 2,
-    answer - 2,
-    answer + 3,
-  ]) {
-    if (picked.length === 4) {
-      break;
-    }
-    if (candidate >= 0 && !picked.includes(candidate)) {
-      picked.push(candidate);
-    }
-  }
-  for (let i = picked.length - 1; i > 0; i--) {
-    const j = randint(0, i);
-    const swap = picked[i];
-    picked[i] = picked[j];
-    picked[j] = swap;
-  }
-  return picked;
-}
-
-/**
- * One problem for a notebook's quiz: the first notebook asks three +/-
- * problems, later notebooks ask two of +,-,*,/ with even operands, and the
- * last slot of a later quiz is the glitch no answer satisfies.
- */
-function makeQuestion(first: boolean, glitch: boolean): Question {
-  if (glitch) {
-    const answer = randint(1, 9);
-    return {
-      prompt: choice(GLITCH_LINES) ?? "WRONG?WRONG?",
-      answer,
-      choices: makeChoices(answer),
-      glitch: true,
-    };
-  }
-  const kind = first ? randint(0, 1) : randint(0, 3);
-  let prompt: string;
-  let answer: number;
-  if (kind === 0) {
-    const a = randint(1, 9);
-    const b = randint(1, 9);
-    prompt = `${a} + ${b} = ?`;
-    answer = a + b;
-  } else if (kind === 1) {
-    const a = randint(0, 9);
-    const b = randint(0, a);
-    prompt = `${a} - ${b} = ?`;
-    answer = a - b;
-  } else if (kind === 2) {
-    const a = 2 * randint(1, 4);
-    const b = 2 * randint(1, 4);
-    prompt = `${a} * ${b} = ?`;
-    answer = a * b;
-  } else {
-    const a = 2 * randint(1, 4);
-    const b = 2 * randint(1, 4);
-    prompt = `${a * b} / ${a} = ?`;
-    answer = b;
-  }
-  return { prompt, answer, choices: makeChoices(answer), glitch: false };
-}
-
-function buildQuiz(first: boolean): QuizStep[] {
-  const steps: QuizStep[] = [];
-  const plainCount = first ? 3 : 2;
-  for (let i = 0; i < plainCount; i++) {
-    steps.push({ kind: "question", question: makeQuestion(first, false) });
-  }
-  if (!first) {
-    steps.push({ kind: "question", question: makeQuestion(first, true) });
-  }
-  return steps;
-}
-
 function startQuiz(bookId: string): void {
   quizOpen = true;
   quizBook = bookId;
@@ -716,8 +574,12 @@ function handleQuizClick(button: string): void {
     renderStep();
     return;
   }
-  wrongs += 1;
-  quizWrong += 1;
+  // A wrong answer raises the anger; the glitch problem is unwinnable, so it
+  // marks the quiz wrong without also feeding Baldi.
+  if (!step.question.glitch) {
+    wrongs += 1;
+    quizWrong += 1;
+  }
   const line = choice(TAUNTS) ?? "WRONG.";
   narrate("BALDI", line);
   quizSteps.splice(quizStep + 1, 0, { kind: "taunt", line });
@@ -755,11 +617,72 @@ function finishQuiz(): void {
 // ---------------------------------------------------------------------------
 // Phases
 // ---------------------------------------------------------------------------
+function spawnRunner(
+  id: string,
+  model:
+    | "npc-sweep"
+    | "npc-playtime"
+    | "npc-principal"
+    | "npc-puppet"
+    | "npc-bully"
+    | "npc-prize",
+  at: [number, number],
+  speed: number,
+): void {
+  const handle = createNpc({
+    id,
+    x: at[0],
+    z: at[1],
+    y: FLOOR,
+    yaw: 0,
+    name: id,
+    model,
+    tags: ["cast"],
+  });
+  runners.set(id, {
+    id,
+    handle,
+    x: at[0],
+    z: at[1],
+    yaw: 0,
+    route: null,
+    index: 0,
+    mode: "wander",
+    cooldownMs: 0,
+    speed,
+  });
+}
+
 function startChase(): void {
   if (phase >= PHASE_CHASE) {
     return;
   }
   phase = PHASE_CHASE;
+  normalBaldi?.remove();
+  normalBaldi = null;
+
+  baldi = createNpc({
+    id: BALDI,
+    x: BALDI_SPAWN.x,
+    z: BALDI_SPAWN.z,
+    y: FLOOR,
+    yaw: 0,
+    name: "Baldi",
+    model: "npc-teacher",
+    tags: ["enemy"],
+  });
+  baldiX = BALDI_SPAWN.x;
+  baldiZ = BALDI_SPAWN.z;
+  baldiRoute = null;
+  baldiRouteIndex = 0;
+
+  spawnRunner("playtime", "npc-playtime", [-168, -96], PLAYTIME_SPEED);
+  spawnRunner("sweep", "npc-sweep", [168, 96], SWEEP_SPEED);
+  spawnRunner("principal", "npc-principal", [168, -96], PRINCIPAL_SPEED);
+  spawnRunner("puppet", "npc-puppet", [-168, 96], PUPPET_SPEED);
+  spawnRunner("bully", "npc-bully", BULLY_POINTS[0], 5);
+  spawnRunner("prize", "npc-prize", [-84, -96], PRIZE_SPEED);
+
   showObjective("Baldi is chasing you — keep collecting!");
   narrate("BALDI", "NOWHERE TO HIDE!");
   dispatch("sound", {
@@ -773,23 +696,12 @@ function startChase(): void {
 
 function startEscape(): void {
   phase = PHASE_ESCAPE;
-  exitHandle?.remove();
-  exitHandle = createProp({
-    id: EXIT,
-    model: "door",
-    x: 83,
-    z: 0,
-    y: FLOOR,
-    yaw: Math.PI / 2,
-    height: 5,
-    solid: false,
-    hazard: true,
-    name: "Exit",
-  });
-  exitGate?.remove();
-  exitGate = null;
-  baldi?.setLook({ color: [1, 0.55, 0.55] });
-  showObjective("ESCAPE through the east door!");
+  for (const state of doors.values()) {
+    if (state.def.kind === "exit" || state.def.kind === "fake-exit") {
+      state.open = false;
+    }
+  }
+  showObjective("ESCAPE through the east door — the fakes won't open it!");
   narrate("BALDI", "YOU COLLECTED THEM ALL! NOW GET OUT!");
 }
 
@@ -806,6 +718,9 @@ function win(): void {
     title: "VICTORY!",
     text: "You escaped Baldi's school with all seven notebooks.",
   });
+  // The original counts the game down and restarts it; so does this, once the
+  // ending has been read.
+  dispatch("timer", { id: "restart", afterMs: 20_000 });
 }
 
 function catchPlayer(): void {
@@ -816,45 +731,51 @@ function catchPlayer(): void {
   dispatch("player-kill", { player: "", cause: BALDI });
 }
 
-// ---------------------------------------------------------------------------
-// Reset: the run starts over the way the original restarts after a death
-// ---------------------------------------------------------------------------
-function resetRun(cause: string): void {
-  if (finished) {
-    return;
+/**
+ * Puts the run back the way a fresh school starts: notebooks restored, the
+ * cast sent home, the phase back to roaming, and the player at the entrance.
+ * `opening` is the line Baldi calls it out with — a catch and a victory reach
+ * the same reset by different words.
+ */
+function restartGame(opening: string): void {
+  for (const book of NOTEBOOKS) {
+    bookHandles.get(book.id)?.remove();
+    bookHandles.delete(book.id);
   }
+  for (const runner of runners.values()) {
+    runner.handle.remove();
+  }
+  runners.clear();
+  baldi?.remove();
+  baldi = null;
+  normalBaldi?.remove();
+  normalBaldi = null;
+
   phase = PHASE_ROAM;
   books = 0;
   wrongs = 0;
   caught = false;
+  finished = false;
+  exitTaken = 0;
   quizOpen = false;
-  quizBook = "";
-  quizSteps = [];
-  quizStep = 0;
-  quizWrong = 0;
-  quizReadout = "";
+  playtimeActive = false;
+  principalDetained = false;
 
   uiRemove({ panel: QUIZ });
+  uiRemove({ panel: PLAYTIME_UI });
   dispatch("player-control", { player: "", locked: false });
   dispatch("sound-stop", { player: "", id: "baldi-static" });
 
-  for (const book of BOOKS) {
-    bookHandles.get(book.id)?.remove();
-    bookHandles.delete(book.id);
+  for (const book of NOTEBOOKS) {
     bookHandles.set(book.id, placeBook(book));
   }
-  gateExit();
-  baldi?.clearLook();
+  for (const state of doors.values()) {
+    state.open = false;
+    placeDoor(state, false, 0);
+  }
+  spawnNormalBaldi();
   baldiX = BALDI_SPAWN.x;
   baldiZ = BALDI_SPAWN.z;
-  baldiY = FLOOR;
-  baldi?.move({
-    x: baldiX,
-    z: baldiZ,
-    y: baldiY,
-    yaw: BALDI_FACING_ENTRANCE,
-    live: true,
-  });
 
   showBooks();
   showObjective("Find all 7 notebooks");
@@ -864,45 +785,42 @@ function resetRun(cause: string): void {
     y: SPAWN[1],
     z: SPAWN[2],
   });
-  narrate("BALDI", cause === BALDI ? "HAHAHA! GOT YOU!" : "YOU FELL!");
-  narrate("YOU", "Back to zero notebooks. Try again.");
+  narrate("BALDI", opening);
 }
 
 // ---------------------------------------------------------------------------
 // The chase: on every beat, Baldi re-steps toward the player along a fresh
-// route the way a new motion each beat would, from his own tracked position
+// route, from his own tracked position, the way the original re-paths.
 // ---------------------------------------------------------------------------
-function stepBaldi(): void {
-  if (finished || caught || quizOpen || phase < PHASE_CHASE || baldi === null) {
+function stepBaldi(dtMs: number): void {
+  if (finished || caught || quizOpen || baldi === null) {
     return;
   }
-  const player = getPlayers()[0];
-  if (player === undefined) {
+  const player = playerAt();
+  if (player === undefined || player === null) {
     return;
   }
-  const route = findPath(
-    [baldiX, baldiY, baldiZ],
-    [player.x, player.y, player.z],
-  );
-  let tx = player.x;
-  let tz = player.z;
-  if (route !== null && route.length > 1) {
-    tx = route[1][0];
-    tz = route[1][2];
+  baldiRoute = routeTo({ x: baldiX, z: baldiZ }, player.x, player.z);
+  if (baldiRoute !== null) {
+    baldiRouteIndex = 0;
   }
-  const dx = tx - baldiX;
-  const dz = tz - baldiZ;
-  const heading = Math.hypot(dx, dz);
-  if (heading > 0.001) {
-    const advance = Math.min((baldiSpeed() * CHASE_MS) / 1000, heading);
-    baldiX += (dx / heading) * advance;
-    baldiZ += (dz / heading) * advance;
-    baldiY = getHeightAt(baldiX, baldiZ);
+  if (baldiRoute !== null) {
+    const figure = { x: baldiX, z: baldiZ, yaw: baldiYaw };
+    baldiRouteIndex = advance(
+      figure,
+      baldiRoute,
+      baldiRouteIndex,
+      baldiSpeed(),
+      dtMs,
+    );
+    baldiX = figure.x;
+    baldiZ = figure.z;
+    baldiYaw = figure.yaw;
     baldi.move({
       x: baldiX,
       z: baldiZ,
-      y: baldiY,
-      yaw: Math.atan2(dx, dz),
+      y: FLOOR,
+      yaw: baldiYaw,
       live: true,
     });
   }
@@ -911,31 +829,221 @@ function stepBaldi(): void {
   }
 }
 
-/**
- * Opens the quiz a notebook carries, when one is still on the floor. Both a
- * notebook walked into and one used with the use button reach this.
- */
+// ---------------------------------------------------------------------------
+// The cast
+// ---------------------------------------------------------------------------
+function stepRunner(
+  runner: Runner,
+  player: { x: number; z: number },
+  dtMs: number,
+): void {
+  if (runner.cooldownMs > 0) {
+    runner.cooldownMs = Math.max(0, runner.cooldownMs - dtMs);
+  }
+  const away = dist(runner.x, runner.z, player.x, player.z);
+
+  switch (runner.id) {
+    case "bully": {
+      if (away <= 4 && runner.cooldownMs === 0) {
+        runner.cooldownMs = 6000;
+        const held = getHeldItem();
+        if (held !== "") {
+          dispatch("item-take", { player: "", item: held, count: 1 });
+          narrate("BULLY", "I'll take that! It's mine NOWWWW!");
+        } else {
+          narrate("BULLY", "Give me something GREATTTT!");
+        }
+        const next =
+          BULLY_POINTS[Math.floor(Math.random() * BULLY_POINTS.length)];
+        runner.route = routeTo(runner, next[0], next[1]);
+        runner.index = 0;
+      }
+      break;
+    }
+    case "playtime": {
+      if (playtimeActive) {
+        break;
+      }
+      if (runner.mode === "wander" && away <= 14) {
+        runner.mode = "chase";
+      }
+      if (runner.mode === "chase" && away <= CATCH_DIST + 1) {
+        startPlaytime();
+      } else if (runner.mode === "chase" && runner.route === null) {
+        runner.mode = "wander";
+        runner.cooldownMs = 8000;
+      }
+      break;
+    }
+    case "principal": {
+      if (principalDetained) {
+        return;
+      }
+      if (away <= 14) {
+        runner.mode = "chase";
+      }
+      if (runner.mode === "chase" && away <= CATCH_DIST + 1) {
+        detainPlayer();
+        runner.mode = "wander";
+        runner.cooldownMs = 10000;
+      }
+      break;
+    }
+    case "puppet": {
+      if (books >= 6 && away <= 14) {
+        runner.mode = "chase";
+      }
+      if (runner.mode === "chase" && away <= CATCH_DIST + 1) {
+        dispatch("player-place", {
+          player: "",
+          x: GAME_SPAWN[0],
+          y: GAME_SPAWN[1],
+          z: GAME_SPAWN[2],
+        });
+        narrate("PUPPET", "WHOOSH!");
+        runner.mode = "wander";
+        runner.cooldownMs = 12000;
+      }
+      break;
+    }
+    case "prize": {
+      if (away <= 4 && runner.cooldownMs === 0) {
+        runner.cooldownMs = 4000;
+        dispatch("player-push", { player: "", vx: 12, vy: 0, vz: 12 });
+        narrate("1ST PRIZE", "PUSH!");
+      }
+      break;
+    }
+    default:
+      break;
+  }
+
+  // Sweep always pushes anyone it walks through.
+  if (runner.id === "sweep" && away <= 4 && runner.cooldownMs === 0) {
+    runner.cooldownMs = 600;
+    dispatch("player-push", {
+      player: "",
+      vx: Math.sin(runner.yaw) * 18,
+      vy: 0,
+      vz: Math.cos(runner.yaw) * 18,
+    });
+  }
+
+  const chasing = runner.mode === "chase";
+  const speed = chasing ? chaseSpeed(runner.id) : runner.speed;
+  if (runner.route === null || runner.index >= runner.route.length) {
+    if (chasing) {
+      runner.route = routeTo(runner, player.x, player.z);
+    } else {
+      const mark = HALL_POINTS[Math.floor(Math.random() * HALL_POINTS.length)];
+      runner.route = routeTo(runner, mark[0], mark[1]);
+    }
+    runner.index = 0;
+  }
+  if (runner.route === null) {
+    return;
+  }
+  runner.index = advance(runner, runner.route, runner.index, speed, dtMs);
+  runner.handle.move({
+    x: runner.x,
+    z: runner.z,
+    y: FLOOR,
+    yaw: runner.yaw,
+    live: true,
+  });
+}
+
+function chaseSpeed(id: string): number {
+  switch (id) {
+    case "playtime":
+      return PLAYTIME_CHASE_SPEED;
+    case "principal":
+      return PRINCIPAL_CHASE_SPEED;
+    case "puppet":
+      return PUPPET_CHASE_SPEED;
+    default:
+      return PRIZE_SPEED;
+  }
+}
+
+function startPlaytime(): void {
+  if (playtimeActive) {
+    return;
+  }
+  playtimeActive = true;
+  playtimeJumps = 0;
+  playtimeBeated = false;
+  dispatch("player-control", { player: "", locked: true });
+  renderPlaytime();
+  dispatch("timer", { id: "playtime-beat", afterMs: 700 });
+}
+
+function renderPlaytime(): void {
+  uiRemove({ panel: PLAYTIME_UI });
+  uiPanel({ id: PLAYTIME_UI, title: "PLAYTIME!", anchor: "bottom-left" });
+  uiLabel({
+    panel: PLAYTIME_UI,
+    id: "jumps",
+    text: `Jumps: ${playtimeJumps} / 3`,
+  });
+  uiButton({
+    panel: PLAYTIME_UI,
+    id: "jump",
+    label: "JUMP!",
+    value: "jump",
+  });
+}
+
+function beatPlaytime(): void {
+  if (!playtimeActive) {
+    return;
+  }
+  if (!playtimeBeated) {
+    playtimeJumps = 0;
+  }
+  playtimeBeated = false;
+  if (playtimeJumps >= 3) {
+    playtimeActive = false;
+    uiRemove({ panel: PLAYTIME_UI });
+    dispatch("player-control", { player: "", locked: false });
+    narrate("PLAYTIME", "YAY! THAT WAS FUN!");
+    return;
+  }
+  renderPlaytime();
+  dispatch("timer", { id: "playtime-beat", afterMs: 700 });
+}
+
+function detainPlayer(): void {
+  principalDetained = true;
+  dispatch("player-place", {
+    player: "",
+    x: DETENTION_SPAWN[0],
+    y: DETENTION_SPAWN[1],
+    z: DETENTION_SPAWN[2],
+  });
+  dispatch("player-control", { player: "", locked: true });
+  narrate("PRINCIPAL", "Detention for you. 15 seconds.");
+  dispatch("timer", { id: "detention", afterMs: 5000 });
+}
+
+// ---------------------------------------------------------------------------
+// Books and exits
+// ---------------------------------------------------------------------------
 function openBook(bookId: string): void {
   if (finished || caught || quizOpen) {
     return;
   }
-  const book = BOOKS.find((entry) => entry.id === bookId);
+  const book = NOTEBOOKS.find((entry) => entry.id === bookId);
   if (book !== undefined && bookHandles.has(book.id)) {
     startQuiz(book.id);
-  }
-}
-
-/** The exit the player walks or uses in the escape phase ends the run. */
-function openExit(): void {
-  if (!finished && !caught && phase === PHASE_ESCAPE) {
-    win();
   }
 }
 
 // ---------------------------------------------------------------------------
 // Ticks
 // ---------------------------------------------------------------------------
-onTick((_clockMs, events) => {
+onTick((clockMs, events) => {
+  clock = clockMs;
   if (!started) {
     started = true;
     boot();
@@ -943,21 +1051,50 @@ onTick((_clockMs, events) => {
   }
   for (const event of events) {
     if (event.kind === "timer" && event.timerId === "chase") {
-      stepBaldi();
+      stepBaldi(CHASE_MS);
+      const player = playerAt();
+      if (player !== null && phase >= PHASE_CHASE && !finished) {
+        for (const runner of runners.values()) {
+          stepRunner(runner, player, CHASE_MS);
+        }
+      }
       dispatch("timer", { id: "chase", afterMs: CHASE_MS });
+    } else if (event.kind === "timer" && event.timerId === "playtime-beat") {
+      beatPlaytime();
+    } else if (event.kind === "timer" && event.timerId === "detention") {
+      principalDetained = false;
+      dispatch("player-control", { player: "", locked: false });
+      narrate("PRINCIPAL", "You may go now.");
+    } else if (event.kind === "timer" && event.timerId === "restart") {
+      restartGame("THE SCHOOL BELL RINGS! LET'S TRY THAT AGAIN!");
     } else if (
       event.kind === "player-touched" ||
       event.kind === "entity-used"
     ) {
-      if (event.entityId === EXIT) {
-        openExit();
+      const door = doors.get(event.entityId);
+      if (door !== undefined) {
+        touchDoor(door);
         continue;
       }
       openBook(event.entityId);
-    } else if (event.kind === "ui-clicked" && event.panel === QUIZ) {
-      handleQuizClick(event.button);
+    } else if (event.kind === "ui-clicked") {
+      if (event.panel === QUIZ) {
+        handleQuizClick(event.button);
+      } else if (event.panel === PLAYTIME_UI && event.button === "jump") {
+        playtimeJumps += 1;
+        playtimeBeated = true;
+        renderPlaytime();
+      }
     } else if (event.kind === "player-died") {
-      resetRun(event.cause);
+      // A catch, or a fall, ends the run: notebooks back to zero, the cast
+      // sent home, and the player at the entrance for a fresh start.
+      if (!finished) {
+        restartGame(
+          event.cause === BALDI
+            ? "HAHAHA! GOT YOU! BACK TO ZERO NOTEBOOKS!"
+            : "YOU FELL! START OVER!",
+        );
+      }
     }
   }
 });

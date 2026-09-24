@@ -1548,11 +1548,12 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
   /** Boots the demo's host against the mutable `player`, recording what it said. */
   const runBaldi = async () => {
     baldiClockMs = 0;
-    player = { x: -100, y: 62, z: 0 };
+    player = { x: -200, y: 62, z: 0 };
     const { project, entry } = await baldiProject();
     const endings: string[] = [];
     const narrations: string[] = [];
     const kills: string[] = [];
+    const notices: string[] = [];
     const host = new ScriptHost({
       seed: project.manifest.seed,
       getNow: () => baldiClockMs,
@@ -1565,9 +1566,10 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
       },
       onNarrate: (_player, line) => narrations.push(line.text),
       onKill: (_player, cause) => kills.push(cause),
+      onNotice: (message) => notices.push(message),
     });
     await host.loadProject(project.scripts, entry, projectModelBytes(project));
-    return { host, project, endings, narrations, kills };
+    return { host, project, endings, narrations, kills, notices };
   };
 
   /** Plays the open quiz out, answering and continuing, until the panel goes. */
@@ -1603,17 +1605,26 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
       "Baldi's Basics in Education and Learning",
     );
     expect(demo?.manifest.mode).toBe("solo");
-    // The spawn stands on the entrance side of the school, outside the west
-    // doorway, so the player walks straight in instead of around the building.
-    expect(demo?.manifest.spawn).toEqual([-100, 62, 0]);
+    // The spawn sits at the school's centre so the plan's fixed build region
+    // covers the whole grid; the script walks the player to the west entrance.
+    expect(demo?.manifest.spawn).toEqual([0, 62, 0]);
     for (const model of [
       "npc-teacher.zip",
+      "npc-sweep.zip",
+      "npc-playtime.zip",
+      "npc-principal.zip",
+      "npc-puppet.zip",
+      "npc-prize.zip",
+      "npc-bully.zip",
       "historybook.zip",
       "platform.zip",
       "door.zip",
     ]) {
       expect(demo?.manifest.models).toContain(model);
     }
+    // The level and quiz live in sibling project files the entry imports.
+    expect(demo?.scripts).toHaveProperty("baldi-level.ts");
+    expect(demo?.scripts).toHaveProperty("baldi-quiz.ts");
     expect(BUILTIN_DEMOS).toContain(demo);
   });
 
@@ -1621,6 +1632,12 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
     const { project } = await baldiProject();
     for (const file of [
       "npc-teacher.zip",
+      "npc-sweep.zip",
+      "npc-playtime.zip",
+      "npc-principal.zip",
+      "npc-puppet.zip",
+      "npc-prize.zip",
+      "npc-bully.zip",
       "historybook.zip",
       "platform.zip",
       "door.zip",
@@ -1647,34 +1664,37 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
         (shape) => shape.kind === "surface" && shape.level === 30,
       ),
     ).toBe(true);
-    // The plaza grass tops out on world y 62 where every prop stands, both
-    // under the spawn (voxel x=-50) and under the school's courtyard.
-    expect(columnSurfaces(boxes, -50, 0)).toContain(62);
+    // The plaza grass and slab top out on world y 62 where every prop stands,
+    // and the roof closes the building at y 70.
+    expect(columnSurfaces(boxes, -100, 0)).toContain(62);
     expect(columnSurfaces(boxes, 0, 0)).toContain(62);
-    // The perimeter's north wall runs at voxel z=-42 and rises to world y 68.
-    expect(columnSurfaces(boxes, 0, -42)).toContain(68);
-    // The west perimeter opens at the entrance gap, walled away above it.
-    expect(columnSurfaces(boxes, -42, 0)).not.toContain(68);
-    expect(columnSurfaces(boxes, -42, 10)).toContain(68);
-    // The office's own west doorway sits across that same gap, so the
-    // entrance runs straight through both walls into the room instead.
-    expect(columnSurfaces(boxes, -41, 0)).not.toContain(68);
-    expect(columnSurfaces(boxes, -41, 5)).toContain(68);
-    // Classroom A's south wall at voxel z=-25 leaves its doorway at x=18 open.
-    expect(columnSurfaces(boxes, 12, -25)).toContain(68);
-    expect(columnSurfaces(boxes, 18, -25)).not.toContain(68);
-    // A classroom stands floor-and-roofed: 62 on top of the slab, 70 on the roof.
-    expect(columnSurfaces(boxes, 16, -33)).toContain(62);
-    expect(columnSurfaces(boxes, 16, -33)).toContain(70);
+    expect(columnSurfaces(boxes, 0, 0)).toContain(70);
+    // The east outer wall runs at voxel x=91 and rises to world y 68.
+    expect(columnSurfaces(boxes, 91, 0)).toContain(68);
+    // The west wall opens at the entrance gap, walled away above it.
+    expect(columnSurfaces(boxes, -91, 0)).not.toContain(68);
+    expect(columnSurfaces(boxes, -91, 10)).toContain(68);
+    // A room's doorway is a gap in the wall at voxel z=-6: Library's at
+    // x=-60, walled between them.
+    expect(columnSurfaces(boxes, -60, -6)).not.toContain(68);
+    expect(columnSurfaces(boxes, -50, -6)).toContain(68);
+    // The central crossing passes through the same wall line, so it is open.
+    expect(columnSurfaces(boxes, 0, -6)).not.toContain(68);
+    // A room stands floor-and-roofed: 62 on top of the slab, 70 on the roof.
+    expect(columnSurfaces(boxes, -60, -24)).toContain(62);
+    expect(columnSurfaces(boxes, -60, -24)).toContain(70);
+    // The north wall opens only at the fake exit at voxel x=0.
+    expect(columnSurfaces(boxes, 10, -55)).toContain(68);
+    expect(columnSurfaces(boxes, 0, -55)).not.toContain(68);
   });
 
-  it("opens with Baldi, seven hazard notebooks, a gated exit, and a kill plane", async () => {
-    const { host, narrations } = await runBaldi();
-    expect(host.npcList.map((npc) => npc.id).sort()).toEqual(["baldi"]);
-    expect(host.npc("baldi")).toMatchObject({
+  it("opens with a friendly Baldi, seven hazard notebooks, and sealed doors", async () => {
+    const { host, narrations, notices } = await runBaldi();
+    expect(host.npcList.map((npc) => npc.id).sort()).toEqual(["normal-baldi"]);
+    expect(host.npc("normal-baldi")).toMatchObject({
       name: "Baldi",
       model: "npc-teacher.zip",
-      x: -70,
+      x: -168,
       z: 0,
     });
     const books = host.propList.filter((prop) =>
@@ -1686,12 +1706,15 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
       expect(book.solid).toBe(false);
       expect(book.hazard).toBe(true);
     }
-    // A drawn exit door stands in the east mouth, sealed by the invisible gate.
-    expect(host.prop("exit")).toMatchObject({
+    // The true exit stands in the east wall, sealed by its gate.
+    expect(host.prop("door-exit")).toMatchObject({
       model: "door.zip",
-      hazard: false,
+      hazard: true,
     });
-    expect(host.barrier("exit-gate")).not.toBeNull();
+    expect(host.barrier("door-exit-gate")).not.toBeNull();
+    // Three fake exits and two yellow doors are in place too.
+    expect(host.prop("door-fake-1")).not.toBeNull();
+    expect(host.prop("door-hall-north")).toMatchObject({ model: "door.zip" });
     expect(host.voidY).toBe(40);
     expect(host.hudFor("")).toContainEqual(
       expect.objectContaining({ id: "books", kind: "text", text: "0 / 7" }),
@@ -1704,9 +1727,36 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
       }),
     );
     expect(host.controlsLocked("")).toBe(false);
-    expect(narrations[0]).toBe(
-      "WELCOME TO MY SCHOOL IN EDUCATION AND LEARNING!",
-    );
+    expect(narrations[0]).toBe("Oh, hi! Welcome to my schoolhouse!");
+    expect(notices).toEqual([]);
+    host.dispose();
+  });
+
+  it("swings a door open on its hinge when the player reaches it", async () => {
+    const { host } = await runBaldi();
+    expect(host.barrier("door-library-gate")).not.toBeNull();
+    await host.touched("", "door-library");
+    // The door is re-issued with a bounded turn about its hinge edge.
+    const spun = host.prop("door-library")?.motion?.spin;
+    expect(spun).toBeDefined();
+    expect(spun?.turns).toBe(0.25);
+    expect(spun?.pivot).toBeDefined();
+    // The gap is open now.
+    expect(host.barrier("door-library-gate")).toBeNull();
+    host.dispose();
+  });
+
+  it("keeps a yellow door shut until two notebooks are held", async () => {
+    const { host } = await runBaldi();
+    await host.touched("", "door-hall-north");
+    expect(host.prop("door-hall-north")?.motion).toBeUndefined();
+    expect(host.barrier("door-hall-north-gate")).not.toBeNull();
+    for (const id of ["book-0", "book-1"]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    await host.touched("", "door-hall-north");
+    expect(host.prop("door-hall-north")?.motion?.spin?.turns).toBe(0.25);
     host.dispose();
   });
 
@@ -1719,7 +1769,7 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
     const answers = quiz.items.filter((item) => item.kind === "button");
     expect(answers).toHaveLength(4);
     // The exit is not yet the escape: touching it does nothing in this phase.
-    await host.touched("", "exit");
+    await host.touched("", "door-exit");
     expect(host.uiFor("")[0]).toMatchObject({ id: "quiz" });
     host.dispose();
   });
@@ -1770,13 +1820,31 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
         text: "Baldi is chasing you — keep collecting!",
       }),
     );
-    // The player never moves: Baldi covers the plaza at 12 × aggression.
-    await advanceBaldi(host, 8000);
+    // The player never moves: Baldi crosses the school at his new speed.
+    await advanceBaldi(host, 25000);
     expect(kills).toContain("baldi");
     host.dispose();
   });
 
-  it("clears the east exit for the escape and ends with VICTORY on all seven", async () => {
+  it("turns hostile, spawning the whole cast, once the chase begins", async () => {
+    const { host } = await runBaldi();
+    for (const id of ["book-0", "book-1"]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    const ids = host.npcList.map((npc) => npc.id).sort();
+    expect(ids).toContain("baldi");
+    expect(ids).toContain("playtime");
+    expect(ids).toContain("sweep");
+    expect(ids).toContain("principal");
+    expect(ids).toContain("puppet");
+    expect(ids).toContain("bully");
+    expect(ids).toContain("prize");
+    expect(ids).not.toContain("normal-baldi");
+    host.dispose();
+  });
+
+  it("clears the exit only after all three fake exits, then wins", async () => {
     const { host, endings } = await runBaldi();
     for (const id of [
       "book-0",
@@ -1797,13 +1865,16 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
       expect.objectContaining({
         id: "objective",
         kind: "text",
-        text: "ESCAPE through the east door!",
+        text: "ESCAPE through the east door — the fakes won't open it!",
       }),
     );
-    // The exit stands open: the gate is gone and the door itself is the hazard.
-    expect(host.barrier("exit-gate")).toBeNull();
-    expect(host.prop("exit")).toMatchObject({ hazard: true });
-    await host.touched("", "exit");
+    // The true exit refuses the player while fakes remain untried.
+    await host.touched("", "door-exit");
+    expect(endings).toEqual([]);
+    for (const id of ["door-fake-1", "door-fake-2", "door-fake-3"]) {
+      await host.touched("", id);
+    }
+    await host.touched("", "door-exit");
     expect(endings).toEqual(["VICTORY!"]);
     expect(host.hudFor("")).toContainEqual(
       expect.objectContaining({
@@ -1815,15 +1886,17 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
     host.dispose();
   });
 
-  it("restarts the run from zero when the chase catches the player", async () => {
+  it("resets the run to zero when the chase catches the player", async () => {
     const { host, kills } = await runBaldi();
     for (const id of ["book-0", "book-1"]) {
       await host.touched("", id);
       await solveQuiz(host);
     }
-    await advanceBaldi(host, 8000);
+    await advanceBaldi(host, 25000);
     expect(kills).toContain("baldi");
     await host.died("", "baldi");
+    // A catch starts the run over: zero notebooks, the cast gone, and the
+    // friendly Baldi back at the entrance.
     expect(host.hudFor("")).toContainEqual(
       expect.objectContaining({ id: "books", kind: "text", text: "0 / 7" }),
     );
@@ -1834,10 +1907,40 @@ describe("the Baldi's Basics in Education and Learning demo", () => {
         text: "Find all 7 notebooks",
       }),
     );
-    expect(host.npc("baldi")).toMatchObject({ x: -70, z: 0 });
     expect(host.prop("book-0")).not.toBeNull();
-    expect(host.prop("exit")).toMatchObject({ hazard: false });
-    expect(host.barrier("exit-gate")).not.toBeNull();
+    expect(host.npc("baldi")).toBeNull();
+    expect(host.npc("normal-baldi")).not.toBeNull();
+    host.dispose();
+  });
+
+  it("rebuilds the school into a fresh run after a victory", async () => {
+    const { host } = await runBaldi();
+    for (const id of [
+      "book-0",
+      "book-1",
+      "book-2",
+      "book-3",
+      "book-4",
+      "book-5",
+      "book-6",
+    ]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    for (const id of ["door-fake-1", "door-fake-2", "door-fake-3"]) {
+      await host.touched("", id);
+    }
+    await host.touched("", "door-exit");
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "7 / 7" }),
+    );
+    await advanceBaldi(host, 21000);
+    // The run came back around: notebooks restored, Baldi friendly again.
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "0 / 7" }),
+    );
+    expect(host.prop("book-0")).not.toBeNull();
+    expect(host.npc("normal-baldi")).not.toBeNull();
     host.dispose();
   });
 });
