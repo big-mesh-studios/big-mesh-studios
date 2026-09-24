@@ -128,6 +128,19 @@
   }
 }
 
+.controller {
+  position: absolute;
+  bottom: 108px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font: 10px monospace;
+  white-space: nowrap;
+}
+
 .status {
   position: absolute;
   bottom: 82px;

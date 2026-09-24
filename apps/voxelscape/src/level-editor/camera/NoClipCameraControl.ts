@@ -115,6 +115,7 @@ export class NoClipCameraControl implements CameraControl {
     if (!this._enabled) {
       return;
     }
+    this._input.poll(dt);
     const snapshot = this._input.consume();
     updatePlayer(this._player, dt, snapshot, this._world);
     placeCamera(this._getActiveCamera(), this._player, true);

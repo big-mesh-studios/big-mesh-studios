@@ -2634,6 +2634,7 @@ export const createVoxelscape = ({
       } else {
         probe.begin(Phase.player);
         input.setBoundKeys(scriptConsole?.bindingKeys() ?? []);
+        input.poll(dt);
         const snapshot = input.consume();
         playerInput = snapshot;
         const locked = scriptConsole?.controlsLocked("") ?? false;

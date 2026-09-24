@@ -88,6 +88,10 @@ _Avoid_: Pick (that's `pickVoxel`/`pickMonster`'s own result, which a target is 
 What a coarse pointer gets in place of a mouse and keyboard: a joystick in the bottom-left that drives `setTouchMove`, and a cluster of circular **Action button**s in the bottom-right — dig, place/guard, jump, and use. The look area is camera-only, so a drag that turns the view never mines or builds, and the level editor's floating apply-and-toggle cluster over its canvas is the same idea. Laid out by `CoarseControls.tsx` and `level-editor/TouchControls.tsx`, each button drawing its glyph from `ui/icons.tsx`.
 _Avoid_: D-pad (only the joystick is one), HUD (that is the crosshair and hotbar, drawn the same on every pointer)
 
+**Gamepad controls**:
+What a controller reporting the standard mapping drives, read by polling `navigator.getGamepads()` once a frame beside the input drain (`src/player/gamepad.ts`): the left stick moves, the right stick turns the view, A jumps, X or the right trigger digs, B uses, the left trigger places or raises a guard, and the horizontal d-pad steps the hotbar. A pad that reports any other mapping is ignored. Each button's held state is tracked per source, so releasing the controller never clears a hold the touch buttons or keyboard still have.
+_Avoid_: joypad, game controller (the platform's own term is gamepad)
+
 **Camera style**:
 Which control drives the level editor's `editorCamera`: **Orbit**, the toolbox-style control that right-drag orbits and shift+right-drag pans with the cursor, or **NoClip**, the player's own `/player:no-clip` free flight run first-person, placing the active tool at the crosshair. Chosen from the Tools panel or `/place:level-editor-camera`; a coarse pointer opens in NoClip, a fine one in Orbit. The two are implementations of the `CameraControl` seam in `level-editor/camera/`.
 _Avoid_: camera mode (that is first/third person, `/player:view`), orbit point (that is one control's focus, not the style)

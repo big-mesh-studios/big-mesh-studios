@@ -1,22 +1,22 @@
 # What voxelscape is made of
 
-Drawn from the imports under `src` at a900e08 by `pnpm architecture`.
+Drawn from the imports under `src` at 44c4e3c by `pnpm architecture`.
 Nothing here is written by hand: change the code and run it again.
 
 ```mermaid
 graph TD
   shell["shell<br/>6 files · 2011 lines"]
-  voxelscape["voxelscape<br/>3 files · 3571 lines"]
+  voxelscape["voxelscape<br/>3 files · 3572 lines"]
   world["world<br/>34 files · 8377 lines"]
   renderers["renderers<br/>22 files · 6970 lines"]
   render["render<br/>4 files · 1145 lines"]
-  player["player<br/>16 files · 3910 lines"]
+  player["player<br/>17 files · 4218 lines"]
   multiplayer["multiplayer<br/>14 files · 3663 lines"]
   places["places<br/>49 files · 25237 lines"]
   environment["environment<br/>6 files · 1952 lines"]
   atproto["atproto<br/>8 files · 1613 lines"]
-  ui["ui<br/>17 files · 3504 lines"]
-  level-editor["level-editor<br/>25 files · 4420 lines"]
+  ui["ui<br/>17 files · 3512 lines"]
+  level-editor["level-editor<br/>25 files · 4421 lines"]
   atproto --> places
   atproto --> world
   level-editor --> places
@@ -71,17 +71,17 @@ graph TD
 | area           | what it is for                                                         | files | lines |
 | -------------- | ---------------------------------------------------------------------- | ----- | ----- |
 | `shell`        | the page, the console, and what wires a world into them                | 6     | 2011  |
-| `voxelscape`   | one world: its frame, and every part below it                          | 3     | 3571  |
+| `voxelscape`   | one world: its frame, and every part below it                          | 3     | 3572  |
 | `world`        | voxels, light, the streaming window, and the workers that fill it      | 34    | 8377  |
 | `renderers`    | turning voxels into geometry, and drawing it                           | 22    | 6970  |
 | `render`       | the frame loop, the resolution scaler, and the probe that times them   | 4     | 1145  |
-| `player`       | the body, its input, its tools and what they do to the world           | 16    | 3910  |
+| `player`       | the body, its input, its tools and what they do to the world           | 17    | 4218  |
 | `multiplayer`  | other players, over a peer connection                                  | 14    | 3663  |
 | `places`       | a published place: its script, its people, and the sandbox they run in | 49    | 25237 |
 | `environment`  | the sky, the clock, the weather and the sound                          | 6     | 1952  |
 | `atproto`      | being signed in, and reading and writing published records             | 8     | 1613  |
-| `ui`           | what is drawn over the world in the page                               | 17    | 3504  |
-| `level-editor` | editing the running world's structures, as an overlay on its canvas    | 25    | 4420  |
+| `ui`           | what is drawn over the world in the page                               | 17    | 3512  |
+| `level-editor` | editing the running world's structures, as an overlay on its canvas    | 25    | 4421  |
 
 ## What reaches into what
 

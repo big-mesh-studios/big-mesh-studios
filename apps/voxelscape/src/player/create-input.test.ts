@@ -270,3 +270,74 @@ describe("the interact (use) edge", () => {
     expect(input.consume()).toMatchObject({ use: false, useHeld: false });
   });
 });
+
+describe("the gamepad", () => {
+  /** A standard-mapped gamepad with the given stick axes and pressed buttons. */
+  const pad = (axes: number[], pressed: number[] = []): Gamepad =>
+    ({
+      id: "Backbone One",
+      index: 0,
+      connected: true,
+      mapping: "standard",
+      timestamp: 0,
+      axes,
+      buttons: Array.from({ length: 16 }, (_, i) => ({
+        pressed: pressed.includes(i),
+        touched: pressed.includes(i),
+        value: pressed.includes(i) ? 1 : 0,
+      })),
+    }) as unknown as Gamepad;
+
+  const stubPads = (pads: (Gamepad | null)[]): void => {
+    Object.defineProperty(navigator, "getGamepads", {
+      configurable: true,
+      value: () => pads,
+    });
+  };
+
+  afterEach(() => {
+    delete (navigator as { getGamepads?: unknown }).getGamepads;
+  });
+
+  it("folds the sticks into movement and look", () => {
+    stubPads([pad([1, 0, 0, 1])]);
+    input.poll(0.5);
+    const snapshot = input.consume();
+    expect(snapshot.moveX).toBeCloseTo(1);
+    expect(snapshot.moveY).toBeCloseTo(0);
+    expect(snapshot.lookDy).toBeCloseTo(180);
+  });
+
+  it("presses and holds the face buttons", () => {
+    stubPads([pad([0, 0, 0, 0], [0, 1, 2, 6])]);
+    input.poll(1 / 60);
+    expect(input.consume()).toMatchObject({
+      jump: true,
+      jumpHeld: true,
+      use: true,
+      useHeld: true,
+      primary: true,
+      primaryHeld: true,
+      secondary: true,
+      secondaryHeld: true,
+    });
+  });
+
+  it("releases the controller's held buttons when it disconnects", () => {
+    stubPads([pad([0, 0, 0, 0], [0, 2])]);
+    input.poll(1 / 60);
+    input.consume();
+    stubPads([null]);
+    input.poll(1 / 60);
+    expect(input.consume()).toMatchObject({
+      jumpHeld: false,
+      primaryHeld: false,
+    });
+  });
+
+  it("steps the hotbar from the d-pad", () => {
+    stubPads([pad([0, 0, 0, 0], [15])]);
+    input.poll(1 / 60);
+    expect(input.consume().wheel).toBe(1);
+  });
+});

@@ -25,7 +25,7 @@ const EMPTY_INPUT: InputSnapshot = {
 
 /** An input controller that always reports `snapshot` and records nothing. */
 const stubInput = (snapshot: InputSnapshot): InputController =>
-  ({ consume: () => snapshot }) as unknown as InputController;
+  ({ poll: () => {}, consume: () => snapshot }) as unknown as InputController;
 
 /** A world the free-fly integrator never needs to read: nothing blocks it. */
 const openWorld: PlayerWorld = {

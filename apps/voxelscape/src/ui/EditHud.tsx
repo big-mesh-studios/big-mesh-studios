@@ -11,11 +11,15 @@ import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import { ITEMS } from "../player/items";
 
 export const EditHud: Component = () => {
-  const { inventory, editStatus, target, icons, scriptItem, npcAim } =
+  const { inventory, editStatus, target, icons, scriptItem, npcAim, input } =
     useVoxelscape();
   const coarsePointer = createMediaQuery("(any-pointer: coarse)");
   const [hotbar, setHotbar] = createSignal(inventory.hotbarItems());
   const [selected, setSelected] = createSignal(inventory.selectedId);
+  const [controllerConnected, setControllerConnected] = createSignal(
+    input.gamepadConnected(),
+  );
+  const stopControllerListener = input.onGamepadChange(setControllerConnected);
 
   const refresh = (): void => {
     setHotbar(inventory.hotbarItems());
@@ -26,6 +30,7 @@ export const EditHud: Component = () => {
     if (inventory.onChange === refresh) {
       inventory.onChange = null;
     }
+    stopControllerListener();
   });
 
   // Red reads as "the primary button does something to what you're looking
@@ -98,6 +103,9 @@ export const EditHud: Component = () => {
         >
           🎒
         </button>
+        {controllerConnected() && (
+          <div class={styles.controller}>controller connected</div>
+        )}
         <div class={styles.status}>
           {editStatus() ||
             (scriptItem() !== null

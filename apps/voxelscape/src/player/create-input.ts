@@ -1,6 +1,7 @@
 import { pointer } from "@big-mesh-studios/utils/pointer";
 import { JSX } from "@solidjs/web/jsx-runtime";
 import { clamp, isEditableTarget } from "../utils";
+import { createGamepad } from "./gamepad";
 
 /** Maps a `KeyboardEvent` code to its [strafe, forward] contribution. */
 const MOVE_KEYS: Record<string, [number, number]> = {
@@ -89,7 +90,7 @@ export interface InputSnapshot {
   useHeld: boolean;
   /** Edge-triggered: the selected hotbar slot changed this frame, or null. */
   select: number | null;
-  /** Edge-triggered: the mouse wheel's direction this frame, or 0. */
+  /** Edge-triggered: the mouse wheel's or controller d-pad's tool-step direction this frame, or 0. */
   wheel: -1 | 0 | 1;
 }
 
@@ -101,6 +102,8 @@ interface InputState {
   keyMoveY: number;
   touchMoveX: number;
   touchMoveY: number;
+  padMoveX: number;
+  padMoveY: number;
   jumpQueued: boolean;
   jumpHeld: boolean;
   lookDx: number;
@@ -170,6 +173,16 @@ export interface InputController {
   setBoundKeys(keys: string[]): void;
   /** Registers a listener for each bound key's down and up edges; returns a function that removes it. */
   onBoundKey(listener: BoundKeyListener): () => void;
+  /**
+   * Reads the connected gamepad for one frame. Called beside `consume` rather
+   * than from it, so a frame that consumes nothing — a dead player, the
+   * editor's orbit camera — leaves no gamepad movement to apply late.
+   */
+  poll(dt: number): void;
+  /** Whether a standard-mapped gamepad is connected, for the HUD to report. */
+  gamepadConnected(): boolean;
+  /** Subscribes to gamepad connection changes; returns a function that removes the listener. */
+  onGamepadChange(listener: (connected: boolean) => void): () => void;
   canvasHandlers: {
     /**
      * Everything a press on the world canvas can mean, for the canvas this is
@@ -240,6 +253,8 @@ export const createInput = (): InputController => {
     keyMoveY: 0,
     touchMoveX: 0,
     touchMoveY: 0,
+    padMoveX: 0,
+    padMoveY: 0,
     jumpQueued: false,
     jumpHeld: false,
     lookDx: 0,
@@ -259,9 +274,79 @@ export const createInput = (): InputController => {
   };
   const boundKeys = new Set<string>();
   const boundListeners = new Set<BoundKeyListener>();
+  const gamepadListeners = new Set<(connected: boolean) => void>();
   let controller: AbortController | null = null;
   /** False while another UI (the level editor) owns the canvas and keyboard. */
   let enabled = true;
+  /** The timer re-queuing `primary` while the dig button is held, if any. */
+  let primaryRepeat: number | undefined;
+
+  /**
+   * Which sources hold each button, so releasing one source never clears a
+   * hold another source still has: a controller trigger and the touch dig
+   * button raise the same `primary`, and either can be the one that lets go
+   * second.
+   */
+  const sources = {
+    jump: { key: false, touch: false, pad: false },
+    use: { key: false, touch: false, pad: false },
+    primary: { touch: false, pad: false },
+    secondary: { mouse: false, touch: false, pad: false },
+  };
+
+  const syncJump = (): void => {
+    const next = sources.jump.key || sources.jump.touch || sources.jump.pad;
+    if (next && !state.jumpHeld) {
+      state.jumpQueued = true;
+    }
+    state.jumpHeld = next;
+  };
+
+  const syncUse = (): void => {
+    const next = sources.use.key || sources.use.touch || sources.use.pad;
+    if (next && !state.useHeld) {
+      state.useQueued = true;
+    }
+    state.useHeld = next;
+  };
+
+  const syncPrimary = (): void => {
+    const next = sources.primary.touch || sources.primary.pad;
+    if (next && !state.primaryHeld) {
+      state.primaryQueued = true;
+    }
+    state.primaryHeld = next;
+    if (!next) {
+      if (primaryRepeat !== undefined) {
+        window.clearInterval(primaryRepeat);
+        primaryRepeat = undefined;
+      }
+    } else if (primaryRepeat === undefined) {
+      primaryRepeat = window.setInterval(() => {
+        state.primaryQueued = true;
+      }, HOLD_REPEAT_MS);
+    }
+  };
+
+  const syncSecondary = (): void => {
+    const next =
+      sources.secondary.mouse ||
+      sources.secondary.touch ||
+      sources.secondary.pad;
+    if (next && !state.secondaryHeld) {
+      state.secondaryQueued = true;
+    }
+    if (!next && state.secondaryHeld) {
+      state.secondaryReleasedQueued = true;
+    }
+    state.secondaryHeld = next;
+  };
+
+  const gamepad = createGamepad((connected) => {
+    for (const listener of gamepadListeners) {
+      listener(connected);
+    }
+  });
 
   const addLookDelta = (dx: number, dy: number): void => {
     state.lookDx += dx;
@@ -269,8 +354,6 @@ export const createInput = (): InputController => {
   };
 
   let dragging = false;
-  /** The timer re-queuing `primary` while the dig button is held, if any. */
-  let primaryRepeat: number | undefined;
   const canvasHandlers = {
     onPointerDown: async (
       event: PointerEvent & { currentTarget: HTMLCanvasElement },
@@ -296,8 +379,8 @@ export const createInput = (): InputController => {
           state.primaryQueued = true;
           state.clickQueued = true;
         } else if (event.button === 2) {
-          state.secondaryQueued = true;
-          state.secondaryHeld = true;
+          sources.secondary.mouse = true;
+          syncSecondary();
         }
         return;
       }
@@ -326,13 +409,9 @@ export const createInput = (): InputController => {
       if (!enabled) {
         return;
       }
-      if (
-        event.pointerType === "mouse" &&
-        event.button === 2 &&
-        state.secondaryHeld
-      ) {
-        state.secondaryHeld = false;
-        state.secondaryReleasedQueued = true;
+      if (event.pointerType === "mouse" && event.button === 2) {
+        sources.secondary.mouse = false;
+        syncSecondary();
       }
     },
     onWheel: (event: WheelEvent) => {
@@ -385,15 +464,17 @@ export const createInput = (): InputController => {
         }
         if (e.code === "Space") {
           e.preventDefault();
+          sources.jump.key = true;
           state.jumpQueued = true;
-          state.jumpHeld = true;
+          syncJump();
           return;
         }
         if (e.code === "KeyE") {
-          state.useHeld = true;
+          sources.use.key = true;
           if (!e.repeat) {
             state.useQueued = true;
           }
+          syncUse();
           return;
         }
         if (e.code.startsWith("Digit")) {
@@ -426,11 +507,13 @@ export const createInput = (): InputController => {
           }
         }
         if (e.code === "Space") {
-          state.jumpHeld = false;
+          sources.jump.key = false;
+          syncJump();
           return;
         }
         if (e.code === "KeyE") {
-          state.useHeld = false;
+          sources.use.key = false;
+          syncUse();
           return;
         }
         const move = MOVE_KEYS[e.code];
@@ -479,6 +562,7 @@ export const createInput = (): InputController => {
     dispose() {
       controller?.abort();
       controller = null;
+      gamepad.dispose();
       if (primaryRepeat !== undefined) {
         window.clearInterval(primaryRepeat);
         primaryRepeat = undefined;
@@ -489,10 +573,61 @@ export const createInput = (): InputController => {
       }
     },
 
+    poll(dt) {
+      const frame = gamepad.poll(dt);
+      if (!enabled || frame === null) {
+        sources.jump.pad = false;
+        sources.primary.pad = false;
+        sources.secondary.pad = false;
+        sources.use.pad = false;
+        state.padMoveX = 0;
+        state.padMoveY = 0;
+        syncJump();
+        syncPrimary();
+        syncSecondary();
+        syncUse();
+        return;
+      }
+      state.padMoveX = frame.moveX;
+      state.padMoveY = frame.moveY;
+      state.lookDx += frame.lookDx;
+      state.lookDy += frame.lookDy;
+      if (sources.jump.pad !== frame.jumpHeld) {
+        sources.jump.pad = frame.jumpHeld;
+        syncJump();
+      }
+      if (sources.primary.pad !== frame.primaryHeld) {
+        sources.primary.pad = frame.primaryHeld;
+        syncPrimary();
+      }
+      if (sources.secondary.pad !== frame.secondaryHeld) {
+        sources.secondary.pad = frame.secondaryHeld;
+        syncSecondary();
+      }
+      if (sources.use.pad !== frame.useHeld) {
+        sources.use.pad = frame.useHeld;
+        syncUse();
+      }
+      if (frame.step !== 0) {
+        state.wheelQueued = frame.step;
+      }
+    },
+
+    gamepadConnected() {
+      return gamepad.connected();
+    },
+
+    onGamepadChange(listener) {
+      gamepadListeners.add(listener);
+      return () => {
+        gamepadListeners.delete(listener);
+      };
+    },
+
     consume() {
       const snap: InputSnapshot = {
-        moveX: clamp(state.keyMoveX + state.touchMoveX, -1, 1),
-        moveY: clamp(state.keyMoveY + state.touchMoveY, -1, 1),
+        moveX: clamp(state.keyMoveX + state.touchMoveX + state.padMoveX, -1, 1),
+        moveY: clamp(state.keyMoveY + state.touchMoveY + state.padMoveY, -1, 1),
         jump: state.jumpQueued,
         jumpHeld: state.jumpHeld,
         lookDx: state.lookDx,
@@ -533,11 +668,12 @@ export const createInput = (): InputController => {
       state.useQueued = true;
     },
 
-    setTouchUse(held) {
-      state.useHeld = held;
-      if (held) {
+    setTouchUse(value) {
+      sources.use.touch = value;
+      if (value) {
         state.useQueued = true;
       }
+      syncUse();
     },
 
     queueSelect(slot) {
@@ -553,33 +689,19 @@ export const createInput = (): InputController => {
       state.touchMoveY = y;
     },
 
-    setTouchPrimary(held) {
-      state.primaryHeld = held;
-      if (primaryRepeat !== undefined) {
-        window.clearInterval(primaryRepeat);
-        primaryRepeat = undefined;
-      }
-      if (!held) {
-        return;
-      }
-      state.primaryQueued = true;
-      primaryRepeat = window.setInterval(() => {
-        state.primaryQueued = true;
-      }, HOLD_REPEAT_MS);
+    setTouchPrimary(value) {
+      sources.primary.touch = value;
+      syncPrimary();
     },
 
-    setTouchJump(held) {
-      state.jumpHeld = held;
+    setTouchJump(value) {
+      sources.jump.touch = value;
+      syncJump();
     },
 
-    setTouchSecondary(held) {
-      if (held) {
-        state.secondaryQueued = true;
-        state.secondaryHeld = true;
-      } else if (state.secondaryHeld) {
-        state.secondaryHeld = false;
-        state.secondaryReleasedQueued = true;
-      }
+    setTouchSecondary(value) {
+      sources.secondary.touch = value;
+      syncSecondary();
     },
   };
 };
