@@ -542,6 +542,9 @@ function buy(id: string): void {
     money -= meal.price;
     saveMoney();
     dispatch("item-give", { player: "", item: id, count: 1 });
+    // A bought meal is put in the player's hand, so it is the item the world
+    // reports when they use it on Floppa or the bowl.
+    dispatch("item-hold", { player: "", item: id });
     toast(`Bought ${meal.name}. Feed it to Floppa or drop it in the bowl.`);
     updateHud();
     showShop();
@@ -1475,6 +1478,7 @@ onTick((_clockMs, events) => {
         toast(`The roommate pays $${rent / 2} in rent.`);
       } else if (id === "harvest" || id.startsWith("harvest-")) {
         dispatch("item-give", { player: "", item: "catnip", count: 1 });
+        dispatch("item-hold", { player: "", item: "catnip" });
         toast("Harvested catnip.");
       }
     } else if (event.kind === "ui-clicked" && event.panel !== undefined) {

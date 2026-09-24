@@ -2345,11 +2345,13 @@ describe("the Raise a Floppa demo", () => {
       expect.objectContaining({ id: "shop" }),
     );
     await host.clickUi("", "shop", "buy-milk");
+    // The bought meal is put in the player's hand, as the world reports it.
+    expect(host.inventory.heldItem()?.id).toBe("milk");
     // The cat is hungry enough to go to the bowl.
     for (let i = 0; i < 12; i++) {
       await advance(host, 4_000);
     }
-    await host.use("bowl", "", "milk");
+    await useHeld(host, "bowl");
     for (let i = 0; i < 30; i++) {
       await advance(host, 500);
     }
@@ -2374,7 +2376,7 @@ describe("the Raise a Floppa demo", () => {
     });
     await host.use("computer", "");
     await host.clickUi("", "shop", "buy-milk");
-    await host.use("floppa", "", "milk");
+    await useHeld(host, "floppa");
     await advance(host, 4_000);
     const poop = host.propList.find((prop) => prop.id.startsWith("poop-"));
     expect(poop).toBeTruthy();
