@@ -634,5 +634,131 @@ declare module "voxelscape" {
       readonly parts: readonly "body"[];
       readonly motions: readonly never[];
     };
+    floppa: {
+      readonly name: "floppa";
+      readonly file: "floppa.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "ms-floppa": {
+      readonly name: "ms-floppa";
+      readonly file: "ms-floppa.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "baby-floppa": {
+      readonly name: "baby-floppa";
+      readonly file: "baby-floppa.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "elder-floppa": {
+      readonly name: "elder-floppa";
+      readonly file: "elder-floppa.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "soldier-floppa": {
+      readonly name: "soldier-floppa";
+      readonly file: "soldier-floppa.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    bandit: {
+      readonly name: "bandit";
+      readonly file: "bandit.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    bingus: {
+      readonly name: "bingus";
+      readonly file: "bingus.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "neko-maid": {
+      readonly name: "neko-maid";
+      readonly file: "neko-maid.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    ooga: {
+      readonly name: "ooga";
+      readonly file: "ooga.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "food-bowl": {
+      readonly name: "food-bowl";
+      readonly file: "food-bowl.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "litter-box": {
+      readonly name: "litter-box";
+      readonly file: "litter-box.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    computer: {
+      readonly name: "computer";
+      readonly file: "computer.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "cat-bed": {
+      readonly name: "cat-bed";
+      readonly file: "cat-bed.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "scratching-post": {
+      readonly name: "scratching-post";
+      readonly file: "scratching-post.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "catnip-plant": {
+      readonly name: "catnip-plant";
+      readonly file: "catnip-plant.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "money-bag": {
+      readonly name: "money-bag";
+      readonly file: "money-bag.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    poop: {
+      readonly name: "poop";
+      readonly file: "poop.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    altar: {
+      readonly name: "altar";
+      readonly file: "altar.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "time-machine": {
+      readonly name: "time-machine";
+      readonly file: "time-machine.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "dark-web-stall": {
+      readonly name: "dark-web-stall";
+      readonly file: "dark-web-stall.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    "backroom-door": {
+      readonly name: "backroom-door";
+      readonly file: "backroom-door.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
   }
 }

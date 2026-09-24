@@ -205,3 +205,43 @@ export const CUBE_CAVERN_MODELS = [
   "door.zip",
   "platform.zip",
 ];
+
+/**
+ * The models the "Raise a Floppa" demo wears: the cats it is about, the
+ * raiders and the backrooms' Bingus, its helpers, and the props the house, the
+ * yard, the Interwebs and the time machine stand on, over the furniture and
+ * townsfolk the other demos already carry.
+ */
+export const RAISE_A_FLOPPA_MODELS = [
+  "floppa.zip",
+  "ms-floppa.zip",
+  "baby-floppa.zip",
+  "elder-floppa.zip",
+  "soldier-floppa.zip",
+  "bandit.zip",
+  "bingus.zip",
+  "neko-maid.zip",
+  "ooga.zip",
+  "food-bowl.zip",
+  "litter-box.zip",
+  "computer.zip",
+  "cat-bed.zip",
+  "scratching-post.zip",
+  "catnip-plant.zip",
+  "money-bag.zip",
+  "poop.zip",
+  "altar.zip",
+  "time-machine.zip",
+  "dark-web-stall.zip",
+  "backroom-door.zip",
+  "bed.zip",
+  "sofa.zip",
+  "tv.zip",
+  "table.zip",
+  "chair.zip",
+  "stove.zip",
+  "fridge.zip",
+  "npc-alex.zip",
+  "npc-rook.zip",
+  "npc-brit.zip",
+];

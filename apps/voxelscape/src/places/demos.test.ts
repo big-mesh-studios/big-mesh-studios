@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_DEMOS, builtinDemo, loadBuiltinDemo } from "./demos";
 import { compilePlacePlan, planRegionAround } from "./plan";
+import { createPlaceData, type PlaceData } from "./place-data";
 import { ScriptHost } from "./script-host";
 import type { PlaceProject } from "./project";
 import { expandShape } from "../world/structure-fill";
@@ -2190,6 +2191,269 @@ describe("the Cube Cavern demo", () => {
       await advance(host, 150);
     }
     expect(notices).toEqual([]);
+    host.dispose();
+  });
+});
+
+describe("the Raise a Floppa demo", () => {
+  /** The local player's live position the demo's own script reads. */
+  let player: { x: number; y: number; z: number };
+  let rfClock: number;
+
+  /** Loads the demo and returns its script entry, ready to run. */
+  const rfProject = async () => {
+    stubModels();
+    const project = await loadBuiltinDemo(builtinDemo("raise-a-floppa")!);
+    return { project, entry: project.manifest.scripts![0] };
+  };
+
+  /** Boots the demo with `fill` seeding the place's remembered data. */
+  const runRF = async (fill?: (data: PlaceData) => void) => {
+    rfClock = 0;
+    player = { x: 0, y: 62, z: 0 };
+    const { project, entry } = await rfProject();
+    const data = createPlaceData();
+    fill?.(data);
+    const endings: string[] = [];
+    const toasts: string[] = [];
+    const notices: string[] = [];
+    const narrations: string[] = [];
+    const structures = new Map<string, unknown>();
+    const host = new ScriptHost({
+      seed: project.manifest.seed,
+      getNow: () => rfClock,
+      getHeightAt: () => 62,
+      getSolidAt: () => false,
+      getWaterAt: () => false,
+      getPlayers: () => [{ did: "", x: player.x, y: player.y, z: player.z }],
+      data,
+      onEnding: (_player, state) => {
+        if (state !== null) {
+          endings.push(state.title);
+        }
+      },
+      onToast: (_player, text) => toasts.push(text),
+      onNarrate: (_player, line) => narrations.push(line.text),
+      onStructureEdit: (edit) => structures.set(edit.id, edit.shapes),
+      onNotice: (message) => notices.push(message),
+    });
+    await host.loadProject(project.scripts, entry, projectModelBytes(project));
+    await host.pump();
+    return { host, project, endings, toasts, notices, narrations, structures };
+  };
+
+  /** Moves the shared clock forward and lets the demo's own tick fire. */
+  const advance = async (host: ScriptHost, ms: number): Promise<void> => {
+    rfClock += ms;
+    await host.pump();
+  };
+
+  const hud = (host: ScriptHost, id: string) =>
+    host.hudFor("").find((readout) => readout.id === id);
+
+  it("lists the place, its models, and its solo mode", () => {
+    const demo = builtinDemo("raise-a-floppa");
+    expect(demo?.manifest.name).toBe("Raise a Floppa");
+    expect(demo?.manifest.mode).toBe("solo");
+    expect(demo?.manifest.spawn).toEqual([0, 62, 0]);
+    for (const file of [
+      "floppa.zip",
+      "ms-floppa.zip",
+      "bandit.zip",
+      "bingus.zip",
+      "altar.zip",
+      "time-machine.zip",
+      "backroom-door.zip",
+    ]) {
+      expect(demo?.manifest.models).toContain(file);
+    }
+    expect(BUILTIN_DEMOS).toContain(demo);
+  });
+
+  it("loads its models as bytes", async () => {
+    const { project } = await rfProject();
+    for (const file of [
+      "floppa.zip",
+      "ms-floppa.zip",
+      "baby-floppa.zip",
+      "bingus.zip",
+      "altar.zip",
+      "time-machine.zip",
+      "computer.zip",
+    ]) {
+      expect(project.models[file].bytes.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("compiles the house, the yard and the backrooms", async () => {
+    const { project, entry } = await rfProject();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    expect(plan.structures.some((shape) => shape.kind === "house")).toBe(true);
+    expect(
+      plan.structures.some(
+        (shape) => shape.kind === "surface" && shape.id === 34,
+      ),
+    ).toBe(true);
+    const boxes = plan.structures.flatMap((shape) => expandShape(shape));
+    // The house floor tops out at world y 62 where the player stands.
+    expect(columnSurfaces(boxes, 0, -8)).toContain(62);
+    // The house's north wall rises to world y 76 at voxel z=-8.
+    expect(columnSurfaces(boxes, 0, -8)).toContain(76);
+    // The backrooms floor is graded level at the same height.
+    expect(columnSurfaces(boxes, 60, 0)).toContain(62);
+  });
+
+  it("opens with Floppa, the Interwebs, the bowl and the readouts", async () => {
+    const { host, notices } = await runRF();
+    expect(notices).toEqual([]);
+    expect(host.npc("floppa")).toMatchObject({
+      name: "Floppa",
+      model: "floppa.zip",
+    });
+    expect(host.prop("computer")).toMatchObject({ model: "computer.zip" });
+    expect(host.prop("bowl")).toMatchObject({ model: "food-bowl.zip" });
+    expect(host.prop("backroom-door")).toMatchObject({
+      model: "backroom-door.zip",
+    });
+    expect(hud(host, "hunger")).toMatchObject({ kind: "bar", max: 100 });
+    expect(hud(host, "happy")).toMatchObject({ kind: "bar", max: 100 });
+    expect(hud(host, "money")).toMatchObject({ kind: "text", text: "$0" });
+    expect(hud(host, "day")).toMatchObject({ kind: "text", text: "0" });
+    host.dispose();
+  });
+
+  it("pets Floppa for money and happiness", async () => {
+    const { host } = await runRF();
+    await host.use("floppa", "");
+    await host.use("floppa", "");
+    await host.use("floppa", "");
+    expect(hud(host, "money")?.text).toBe("$3");
+    host.dispose();
+  });
+
+  it("buys a meal, fills the bowl, and feeds a hungry cat", async () => {
+    const { host, toasts } = await runRF((data) => {
+      data.set("player", "", "rf-money", 200);
+    });
+    await host.use("computer", "");
+    expect(host.uiFor("")).toContainEqual(
+      expect.objectContaining({ id: "shop" }),
+    );
+    await host.clickUi("", "shop", "buy-milk");
+    // The cat is hungry enough to go to the bowl.
+    for (let i = 0; i < 12; i++) {
+      await advance(host, 4_000);
+    }
+    await host.use("bowl", "", "milk");
+    for (let i = 0; i < 30; i++) {
+      await advance(host, 500);
+    }
+    expect(toasts.some((line) => line.includes("eats from the bowl"))).toBe(
+      true,
+    );
+    host.dispose();
+  });
+
+  it("starves a neglected cat to the You Monster ending", async () => {
+    const { host, endings } = await runRF();
+    for (let i = 0; i < 80; i++) {
+      await advance(host, 4_000);
+    }
+    expect(endings).toContain("You Monster");
+    host.dispose();
+  });
+
+  it("drops a mess after a meal and cleans it up", async () => {
+    const { host } = await runRF((data) => {
+      data.set("player", "", "rf-money", 200);
+    });
+    await host.use("computer", "");
+    await host.clickUi("", "shop", "buy-milk");
+    await host.use("floppa", "", "milk");
+    await advance(host, 4_000);
+    const poop = host.propList.find((prop) => prop.id.startsWith("poop-"));
+    expect(poop).toBeTruthy();
+    await host.use(poop!.id, "");
+    expect(host.prop(poop!.id)).toBeNull();
+    host.dispose();
+  });
+
+  it("buys Ms. Floppa, the litter box, and the sword from the Interwebs", async () => {
+    const { host } = await runRF((data) => {
+      data.set("player", "", "rf-money", 1_000);
+    });
+    await host.use("computer", "");
+    await host.clickUi("", "shop", "buy-ms-floppa");
+    await host.clickUi("", "shop", "buy-litter-box");
+    await host.clickUi("", "shop", "buy-sword");
+    expect(host.npc("ms-floppa")).toMatchObject({ model: "ms-floppa.zip" });
+    expect(host.prop("litter-box")).toMatchObject({ model: "litter-box.zip" });
+    expect(host.inventory.heldItem()?.id).toBe("sword");
+    host.dispose();
+  });
+
+  it("raids at dawn, and a sword blow fells a bandit", async () => {
+    const { host } = await runRF((data) => {
+      data.set("player", "", "rf-money", 1_000);
+    });
+    // Three day boundaries bring the first bandits.
+    await advance(host, 90_000); // day 1
+    await advance(host, 45_001); // night ends
+    await advance(host, 90_000); // day 2
+    await advance(host, 45_001); // night ends
+    await advance(host, 90_000); // day 3, the raid
+    const bandit = host.npcList.find((npc) => npc.id.startsWith("bandit-"));
+    expect(bandit).toBeTruthy();
+    await host.hit(bandit!.id, "", 1_000, bandit!.x, bandit!.z);
+    expect(host.npc(bandit!.id)?.dyingAt).toEqual(expect.any(Number));
+    host.dispose();
+  });
+
+  it("opens the backrooms at night and leaves again", async () => {
+    const { host } = await runRF();
+    await advance(host, 90_000); // day 1 turns to night
+    expect(hud(host, "day")?.text).toBe("1");
+    await host.use("backroom-door", "");
+    expect(hud(host, "sanity")).toBeTruthy();
+    await host.use("back-exit", "");
+    expect(hud(host, "sanity")).toBeUndefined();
+    host.dispose();
+  });
+
+  it("offers at the altar and ascends at full faith", async () => {
+    const { host, endings } = await runRF((data) => {
+      data.set("player", "", "rf-money", 5_000);
+      data.set("player", "", "rf-owned", 1 << 10);
+    });
+    await host.use("altar", "");
+    expect(host.uiFor("")).toContainEqual(
+      expect.objectContaining({ id: "altar" }),
+    );
+    await host.clickUi("", "altar", "tier-0");
+    await host.clickUi("", "altar", "tier-1");
+    await host.clickUi("", "altar", "tier-2");
+    expect(hud(host, "faith")?.value).toBe(100);
+    await host.clickUi("", "altar", "ascend");
+    expect(endings).toContain("Ascension");
+    host.dispose();
+  });
+
+  it("rides the Time Machine through its three stops", async () => {
+    const { host, endings, narrations } = await runRF((data) => {
+      data.set("player", "", "rf-money", 5_000);
+      data.set("player", "", "rf-owned", 1 << 11);
+      data.set("player", "", "rf-cubes", 1);
+    });
+    await host.use("time-machine", "");
+    await host.use("time-machine", "");
+    await host.use("time-machine", "");
+    expect(narrations.some((line) => line.includes("Ooga"))).toBe(true);
+    expect(endings).toContain("Time Traveler");
     host.dispose();
   });
 });

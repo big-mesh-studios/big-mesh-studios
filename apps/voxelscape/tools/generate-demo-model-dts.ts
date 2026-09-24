@@ -24,6 +24,7 @@ import {
   DUSTY_TRIP_MODELS,
   GASA4_MODELS,
   LATE_TO_SCHOOL_MODELS,
+  RAISE_A_FLOPPA_MODELS,
   ZOMBIES_MANSION_MODELS,
   ZOMBIES_MODELS,
 } from "../src/places/demo-scripts/model-lists.ts";
@@ -49,6 +50,7 @@ const files = [
     ...DUSTY_TRIP_MODELS,
     ...BALDI_MODELS,
     ...CUBE_CAVERN_MODELS,
+    ...RAISE_A_FLOPPA_MODELS,
   ]),
 ];
 

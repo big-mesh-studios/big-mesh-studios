@@ -27,6 +27,10 @@ import CUBE_CAVERN_SCRIPT from "./demo-scripts/cube-cavern.ts?raw";
 import CUBE_CAVERN_LEVEL_SCRIPT from "./demo-scripts/cube-cavern-level.ts?raw";
 import CUBE_CAVERN_ITEMS_SCRIPT from "./demo-scripts/cube-cavern-items.ts?raw";
 import CUBE_CAVERN_MOBS_SCRIPT from "./demo-scripts/cube-cavern-mobs.ts?raw";
+import RAISE_A_FLOPPA_SCRIPT from "./demo-scripts/raise-a-floppa.ts?raw";
+import RAISE_A_FLOPPA_LEVEL_SCRIPT from "./demo-scripts/raise-a-floppa-level.ts?raw";
+import RAISE_A_FLOPPA_CARE_SCRIPT from "./demo-scripts/raise-a-floppa-care.ts?raw";
+import RAISE_A_FLOPPA_SHOP_SCRIPT from "./demo-scripts/raise-a-floppa-shop.ts?raw";
 import {
   BALDI_MODELS,
   CUBE_CAVERN_MODELS,
@@ -34,6 +38,7 @@ import {
   DUSTY_TRIP_MODELS,
   GASA4_MODELS,
   LATE_TO_SCHOOL_MODELS,
+  RAISE_A_FLOPPA_MODELS,
   ZOMBIES_MANSION_MODELS,
   ZOMBIES_MODELS,
 } from "./demo-scripts/model-lists";
@@ -271,6 +276,36 @@ const CUBE_CAVERN: BuiltinDemo = {
   },
 };
 
+/**
+ * The "Raise a Floppa" demo: a port of the Roblox game of the same name. The
+ * player wakes in a one-room house with a stray caracal to feed, pet, and
+ * clean up after, shops the Interwebs for food, helpers and a Time Machine,
+ * fends off the bandits that raid each dawn, slips into the yellow backrooms
+ * when the west door opens at night, and reaches either the Faith Altar's
+ * ascension or the Time Machine's eternity. It is the proof that a place
+ * script can run a long care-and-economy loop across many timers, price a
+ * shelf of helpers out of coins, stand and step its own raiders, keep a
+ * day-night clock, and remember a player's money, purchases and faith across
+ * restarts with the data helpers.
+ */
+const RAISE_A_FLOPPA: BuiltinDemo = {
+  id: "raise-a-floppa",
+  manifest: {
+    name: "Raise a Floppa",
+    seed: 133_700,
+    // The living room floor's own surface height, times two.
+    spawn: [0, 62, 0],
+    mode: "solo",
+    models: RAISE_A_FLOPPA_MODELS,
+  },
+  scripts: {
+    [MAIN_SCRIPT_FILE]: RAISE_A_FLOPPA_SCRIPT,
+    "raise-a-floppa-level.ts": RAISE_A_FLOPPA_LEVEL_SCRIPT,
+    "raise-a-floppa-care.ts": RAISE_A_FLOPPA_CARE_SCRIPT,
+    "raise-a-floppa-shop.ts": RAISE_A_FLOPPA_SHOP_SCRIPT,
+  },
+};
+
 /** Every built-in demo, in the order a list shows them. */
 export const BUILTIN_DEMOS: BuiltinDemo[] = [
   GASA4,
@@ -281,6 +316,7 @@ export const BUILTIN_DEMOS: BuiltinDemo[] = [
   DUSTY_TRIP,
   BALDI,
   CUBE_CAVERN,
+  RAISE_A_FLOPPA,
   HOME,
 ];
 
