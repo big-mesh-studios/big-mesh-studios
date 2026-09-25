@@ -28,6 +28,9 @@ export const VOXEL_EMBER = 29;
 // Sand: the dry surface a desert place paints over its terrain, drawn with the
 // sheet's own sand tile.
 export const VOXEL_SAND = 46;
+// Obsidian: the near-black, violet-flecked block a portal frame is built from,
+// drawn from a procedurally generated tile at load.
+export const VOXEL_OBSIDIAN = 47;
 
 // Wool blocks: 16 colours matching the classic Minecraft palette (IDs 30-45).
 export const VOXEL_WOOL_WHITE = 30;

@@ -591,6 +591,28 @@ describe("the voxelscape module", () => {
     });
   });
 
+  it("opens the catalog through its helper", async () => {
+    const files = {
+      "main.ts": `
+        import { openCatalog } from "voxelscape";
+        openCatalog();
+        openCatalog({ query: "big-mesh-studios.bsky.social" });
+      `,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    const { dispatched } = runBundle(output);
+    const calls = dispatched.map((call) => ({
+      tag: call.tag,
+      payload: JSON.parse(call.payload),
+    }));
+    expect(calls.map((call) => call.tag)).toEqual(["catalog", "catalog"]);
+    expect(calls[0].payload).toEqual({ player: "" });
+    expect(calls[1].payload).toEqual({
+      player: "",
+      query: "big-mesh-studios.bsky.social",
+    });
+  });
+
   it("dresses a player in a place model through its helper", async () => {
     const files = {
       "main.ts": `
@@ -785,6 +807,26 @@ describe("the voxelscape module", () => {
       x: 1,
       z: 2,
       size: 3,
+    });
+  });
+
+  it("opens a rift through its handle", async () => {
+    const files = {
+      "main.ts": `
+        import { createRift } from "voxelscape";
+        const rift = createRift({ id: "gate", x: 0, y: 66, z: 0, yaw: 1.5 });
+        rift.remove();
+      `,
+    };
+    const output = await bundlePlaceProject(files, "main.ts");
+    const { dispatched } = runBundle(output);
+    expect(dispatched.map((call) => call.tag)).toEqual(["rift", "rift-remove"]);
+    expect(JSON.parse(dispatched[0].payload)).toEqual({
+      id: "gate",
+      x: 0,
+      y: 66,
+      z: 0,
+      yaw: 1.5,
     });
   });
 

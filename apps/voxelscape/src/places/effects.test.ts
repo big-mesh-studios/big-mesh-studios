@@ -1308,6 +1308,38 @@ describe("data and teleport effects", () => {
   });
 });
 
+describe("catalog effects", () => {
+  it("accepts a catalog opening, with or without a seed query", () => {
+    expect(parseEffect(effect("catalog", { player: "" }))).toEqual({
+      tag: "catalog",
+      payload: { player: "" },
+    });
+    expect(
+      parseEffect(effect("catalog", { player: "did:plc:x" })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("catalog", { player: "", query: "" })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(
+        effect("catalog", {
+          player: "",
+          query: "big-mesh-studios.bsky.social",
+        }),
+      ),
+    ).toEqual({
+      tag: "catalog",
+      payload: { player: "", query: "big-mesh-studios.bsky.social" },
+    });
+  });
+
+  it("refuses an overlong query", () => {
+    expect(
+      parseEffect(effect("catalog", { player: "", query: "?".repeat(257) })),
+    ).toBeNull();
+  });
+});
+
 describe("entity look and beams", () => {
   it("accepts a tint and fade, and a line between two ends", () => {
     expect(
@@ -1497,6 +1529,51 @@ describe("storms", () => {
       parseEffect(effect("storm", { id: "s", x: 0, z: 0, spin: 2 })),
     ).toBeNull();
     expect(parseEffect(effect("storm-remove", { id: "" }))).toBeNull();
+  });
+});
+
+describe("rifts", () => {
+  it("accepts a placed rift and its remove, with defaults filled by the host", () => {
+    expect(parseEffect(effect("rift", { id: "r", x: 1, y: 66, z: 2 }))).toEqual(
+      {
+        tag: "rift",
+        payload: { id: "r", x: 1, y: 66, z: 2 },
+      },
+    );
+    expect(
+      parseEffect(
+        effect("rift", {
+          id: "r",
+          x: 1,
+          y: 66,
+          z: 2,
+          width: 6,
+          height: 8,
+          yaw: 1.5,
+          color: [0.55, 0.16, 0.9],
+          intensity: 0.8,
+          spin: 0.5,
+        }),
+      ),
+    ).not.toBeNull();
+    expect(parseEffect(effect("rift-remove", { id: "r" }))).not.toBeNull();
+  });
+
+  it("refuses a bad position or out-of-range numbers", () => {
+    expect(parseEffect(effect("rift", { id: "r", x: 1, z: 2 }))).toBeNull();
+    expect(
+      parseEffect(effect("rift", { id: "r", x: 1, y: 66, z: 2, width: 0 })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("rift", { id: "r", x: 1, y: 66, z: 2, height: 100 })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("rift", { id: "r", x: 1, y: 66, z: 2, intensity: 2 })),
+    ).toBeNull();
+    expect(
+      parseEffect(effect("rift", { id: "r", x: 1, y: 66, z: 2, spin: 3 })),
+    ).toBeNull();
+    expect(parseEffect(effect("rift-remove", { id: "" }))).toBeNull();
   });
 });
 

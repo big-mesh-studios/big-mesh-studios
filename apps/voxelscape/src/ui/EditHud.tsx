@@ -103,6 +103,20 @@ export const EditHud: Component = () => {
         >
           🎒
         </button>
+        <button
+          class={styles["places-btn"]}
+          title="Open Places (B)"
+          aria-label="Open Places"
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            window.dispatchEvent(new CustomEvent("toggle-catalog"));
+          }}
+        >
+          🧭
+        </button>
         {controllerConnected() && (
           <div class={styles.controller}>controller connected</div>
         )}

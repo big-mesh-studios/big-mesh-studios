@@ -245,3 +245,9 @@ export const RAISE_A_FLOPPA_MODELS = [
   "npc-rook.zip",
   "npc-brit.zip",
 ];
+
+/**
+ * The model the "Lobby" demo wears: the arcade machine whose use prompt opens
+ * the place catalog.
+ */
+export const LOBBY_MODELS = ["arcade.zip"];

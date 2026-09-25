@@ -20,6 +20,10 @@ _Avoid_: sky block
 The dry block (`VOXEL_SAND`) a desert place paints over its terrain with a `surface` plan shape; it is an ordinary solid voxel drawn with the tile sheet's own sand tile, with no behaviour of its own. A place with no sand block still has one — it is in every world's block list — so a desert is a place that skims its terrain with sand, not a special kind of world.
 _Avoid_: desert (that is the place, not the block), dirt (a different block)
 
+**Obsidian**:
+The near-black, violet-flecked block (`VOXEL_OBSIDIAN`) a **Portal** frame is built from; its tile is generated at load and injected onto the end of the sheet the way the wool colours are, because it is one block's look rather than a shipped drawing. An ordinary solid voxel a plan may paint, with no behaviour of its own.
+_Avoid_: portal block (the block is not a portal), bedrock
+
 **Sphere**:
 The set of `WorldBlock`s the window keeps loaded: every chunk cell within `chunkRadius` (default 4) chunks of the player's cell horizontally and `chunkRadiusY` (default 2) chunks above and below it — a ball flattened in Y, since the terrain, its caves, and the clouds span only a couple of chunks of height and the full round ball's upper and lower caps were stone that cost fill, mesh, and draw time for nothing the player could see. (The name is a legacy of when the window was round in every axis.) When the player crosses a chunk boundary, cells that leave the ball are evicted and cells that enter teleport a freed slot to the leading cell and refill its `WorldBlock` in place (same slot, new data) rather than allocating a new one. Owned and managed by **ChunkSphere**.
 _Avoid_: Chunk grid, world grid (the sphere's per-slot integer coordinates are an internal `ChunkSphere` implementation detail — don't confuse with **Sphere** itself)
@@ -342,9 +346,21 @@ _Avoid_: moving floor (a platform moves its own box; a Conveyor moves only what 
 A box in world units (`min` to `max`, like a **Field**) a place script stands that only the player's body collides with: its box is added to the player's solids the same way a solid **Scripted prop**'s box is, and nothing else — no NPC, no bullet, nothing script-steered — ever hits it. Drawn nothing, so it reads as an open gap the player still cannot walk through: the wall a window that only the horde uses turns out to be. Set by a `barrier` effect and taken away by `barrier-remove`; a script author says in world units which route a player may or may not take, and the arena's own inhabitants walk straight past it.
 _Avoid_: invisible wall (that's a presentation of one region a Barrier closes, not the thing), force field (a Field pushes; a Barrier only blocks), portal (a door is a prop)
 
+**Place catalog**:
+The search over published places a player enters one from, opened by a script's `catalog` effect or by the player's own `B` key and drawn by `PlacesBrowser` over the world's `catalog` accessor. It answers the account a handle or DID names (`PlaceLibrary.list`), showing each published place by its name, its mode, and how many scripts it ships; choosing one routes to it the way a **Teleport** does. Seeded with the handle or DID the script names, so the arcade prop of the Lobby opens on the player's own account.
+_Avoid_: portal (that is the Lobby's doorway to a demo), browser (that is the atom — this is the whole search), teleport (that is the routing behind a pick)
+
 **Place clock**:
 The moment every peer in a place reads a script's `now` from: the wall-clock time of the lowest DID among the players in the place, offset-corrected per player by a one-round-trip time exchange over their link to that peer. Every peer derives the same timekeeper from the same roster by the same total rule — no election, no broadcast, ADR 0045 — and falls back to the local wall clock while alone, offline, or before a measurement lands. Scripts' **Motion**, timers, and cutscenes run off it, so a **Solid platform** a player stands on moves the same way for every peer.
 _Avoid_: shared/world clock (that's the day-night clock **DayNightController** owns and a different thing), server time (there is no server)
+
+**Portal**:
+A walk-in doorway the Lobby builds from the world into a built-in demo: a one-voxel-thick frame of **Obsidian** with a walk-through hole, filled by a **Rift** and labelled with the demo's name overhead. A zone reaching a player who stands in the hole has the script **Teleport** that player to the demo; the frame is scenery, the **Rift** is its surface, the zone is its touch region, and the routing behind it is the same **Teleport** every place uses.
+_Avoid_: gateway, mirror (that would echo the world back, not carry a player to a demo), door (the frame is voxels, not a Barrier), nether portal (that is one look a Portal wears)
+
+**Rift**:
+A flat, translucent, animated sheet a place script stands in the world with `rift` — the surface a **Portal** shows. Its colour churns across the sheet on the shared clock, swirling about its centre the way a nether portal does; a script sizes it, turns it, tints it, and says how fast it turns, never what the churn is made of. Drawn by `VoxelRifts` from one shader that samples the same seamless fBm texture the dust storms use; set by a `rift` effect and taken down by `rift-remove`.
+_Avoid_: portal (that is the doorway a Rift fills), portal frame (that is the **Obsidian** around it)
 
 ## Relationships
 
@@ -378,6 +394,8 @@ _Avoid_: shared/world clock (that's the day-night clock **DayNightController** o
 - A **Field** pushes and grips through the same `mediumAt` seam the way the world already hands the player ground and air; the script says where the air behaves, the physics resolves it.
 - A **Conveyor** reaches the player's feet through the same surface velocity that carries them on a moving **Solid platform**, so a conveyed prop needs no physics state of its own.
 - A **Place clock** is what one player's scripts and **Motion** sample: it is the lowest DID's wall time, so every peer's deadlines and platform poses agree without a single pose or deadline being replicated (ADR 0045).
+- A **Portal**'s zone reaches a **Teleport** the same way a prop's own touch region reaches a script's use rule, and a pick in the **Place catalog** routes like a cloud one, so the Lobby's doorways and the arcade's list are the two faces of the same navigation.
+- A **Portal** is an **Obsidian** frame around a **Rift**: the frame is ordinary voxels the plan paints and the player's body meets, while the **Rift** is a scripted sheet that carries nothing — so the doorway is walked through, not collided with.
 
 ## Example dialogue
 

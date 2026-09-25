@@ -196,6 +196,11 @@ import type { ScriptedStorm, StormKind } from "../world/scripted-storm";
 import { STORM_DUST_COLOR } from "../world/scripted-storm";
 export type { ScriptedStorm, StormKind };
 
+// The rift record, kept in the world area for the same reason the storm's is.
+import type { RiftPose } from "../world/scripted-rift";
+import { RIFT_COLOR } from "../world/scripted-rift";
+export type { RiftPose };
+
 /** One named box a script watches the players move through. */
 export interface ScriptZone {
   id: string;
@@ -526,6 +531,12 @@ export interface ScriptHostParams extends RequireOnly<
   data?: PlaceData;
   /** Called when the script sends a player to another place. */
   onTeleport?: (player: string, place: string) => void;
+  /**
+   * Called when the script asks for the place catalog, to search and enter
+   * published places; `query` is the handle or DID to start the search on,
+   * or "" when the script named none.
+   */
+  onCatalog?: (player: string, query: string) => void;
   /** Called when the script changes what a player wears; `model` "" is the plain cube. */
   onPlayerModel?: (player: string, model: string, modelUri: string) => void;
   /**
@@ -630,6 +641,7 @@ export class ScriptHost {
     shapes: PlanShape[] | null;
   }) => void;
   private readonly onTeleport?: (player: string, place: string) => void;
+  private readonly onCatalog?: (player: string, query: string) => void;
   private readonly onPlayerModel?: (
     player: string,
     model: string,
@@ -684,6 +696,8 @@ export class ScriptHost {
   private readonly storms = new Map<string, ScriptedStorm>();
   /** The marks a script has laid, keyed by mark id. */
   private readonly decals = new Map<string, ScriptedDecal>();
+  /** The rifts a script has opened, keyed by rift id. */
+  private readonly rifts = new Map<string, RiftPose>();
   /** The lines a script draws, keyed by beam id. */
   private readonly beams = new Map<string, ScriptedBeam>();
   /** Which zones each player currently stands in, keyed by player. */
@@ -742,6 +756,7 @@ export class ScriptHost {
     this.onBlockEdit = params.onBlockEdit;
     this.onStructureEdit = params.onStructureEdit;
     this.onTeleport = params.onTeleport;
+    this.onCatalog = params.onCatalog;
     this.onPlayerModel = params.onPlayerModel;
     this.refreshData = params.refreshData;
     this.data = params.data ?? createPlaceData();
@@ -942,6 +957,11 @@ export class ScriptHost {
   /** Every dust storm the script drives, each as it stands now. */
   get stormList(): ScriptedStorm[] {
     return [...this.storms.values()];
+  }
+
+  /** Every rift the script has opened, each as it stands now. */
+  get riftList(): RiftPose[] {
+    return [...this.rifts.values()];
   }
 
   /** Every mark the script has laid, each at the position it lies at now. */
@@ -2406,6 +2426,26 @@ export class ScriptHost {
       case "decal-remove":
         this.decals.delete(effect.payload.id);
         break;
+      case "rift": {
+        const { id, x, y, z, width, height, yaw, color, intensity, spin } =
+          effect.payload;
+        this.rifts.set(id, {
+          id,
+          x,
+          y,
+          z,
+          width: width ?? 6,
+          height: height ?? 8,
+          yaw: yaw ?? 0,
+          color: color ?? [RIFT_COLOR[0], RIFT_COLOR[1], RIFT_COLOR[2]],
+          intensity: intensity ?? 1,
+          spin: spin ?? 0.5,
+        });
+        break;
+      }
+      case "rift-remove":
+        this.rifts.delete(effect.payload.id);
+        break;
       case "entity-look": {
         const { id, color, alpha } = effect.payload;
         const look: FigureLook = {
@@ -2521,6 +2561,12 @@ export class ScriptHost {
         }
         this.author({ kind: "player-teleported", place }, who);
         this.onTeleport?.(who, place);
+        break;
+      }
+      case "catalog": {
+        const { player, query } = effect.payload;
+        const who = player === "" ? this.localPlayer() : player;
+        this.onCatalog?.(who, query ?? "");
         break;
       }
       case "ui-panel": {

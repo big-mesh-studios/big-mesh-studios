@@ -6,6 +6,7 @@ import {
   type VoxelTiles,
 } from "./atlas";
 import { injectProceduralWoolTiles } from "./procedural-wool";
+import { injectProceduralObsidianTile } from "./procedural-obsidian";
 import type { TriangleRenderer } from "./triangle-renderer";
 
 // Served from the site's own root, the same folder every other address in
@@ -47,8 +48,19 @@ export const loadVoxelTiles = async (
       loaded.height,
       atlas,
     );
+    // Inject the procedurally drawn obsidian tile a portal frame is built from.
+    const atlasWithObsidian = await injectProceduralObsidianTile(
+      woolAtlas.bitmap,
+      woolAtlas.width,
+      woolAtlas.height,
+      atlas,
+    );
 
-    const grid = atlasGridOf(atlas, woolAtlas.width, woolAtlas.height);
+    const grid = atlasGridOf(
+      atlas,
+      atlasWithObsidian.width,
+      atlasWithObsidian.height,
+    );
     if (grid === null) {
       throw new Error(
         "[atlas] the sheet's tiles are not one size on a grid, which is the only layout a tile index can name",
@@ -59,7 +71,7 @@ export const loadVoxelTiles = async (
       grid,
       options?.customVoxelTiles,
     );
-    renderer.setTiles(voxelTiles, woolAtlas.texture, grid);
+    renderer.setTiles(voxelTiles, atlasWithObsidian.texture, grid);
   } catch (err) {
     console.warn(
       "[atlas] spritesheet not applied; voxels stay flat blue.",

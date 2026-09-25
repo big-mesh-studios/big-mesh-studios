@@ -57,6 +57,7 @@ const fresh = async (): Promise<{
   }>;
   restarts: string[];
   narrations: Array<{ player: string; line: { name: string; text: string } }>;
+  catalog: Array<{ player: string; query: string }>;
   places: Array<{
     player: string;
     at: { x: number; z: number; y?: number; yaw?: number };
@@ -89,6 +90,7 @@ const fresh = async (): Promise<{
     player: string;
     line: { name: string; text: string };
   }> = [];
+  const catalog: Array<{ player: string; query: string }> = [];
   const places: Array<{
     player: string;
     at: { x: number; z: number; y?: number; yaw?: number };
@@ -117,6 +119,7 @@ const fresh = async (): Promise<{
     onEnding: (player, state) => endings.push({ player, state }),
     onRestart: (player) => restarts.push(player),
     onNarrate: (player, line) => narrations.push({ player, line }),
+    onCatalog: (player, query) => catalog.push({ player, query }),
     onPlayerPlace: (player, at) => places.push({ player, at }),
     onPlayerFace: (player, at) => faces.push({ player, at }),
     onPlayerSpeed: (player, multiplier) => speeds.push({ player, multiplier }),
@@ -138,6 +141,7 @@ const fresh = async (): Promise<{
     endings,
     restarts,
     narrations,
+    catalog,
     places,
     faces,
     fires,
@@ -408,6 +412,28 @@ describe("a script host", () => {
     host.dispose();
   });
 
+  it("reports a catalog opening with the query it was seeded", async () => {
+    const { host, catalog } = await fresh();
+    await loadProject(
+      host,
+      `
+      import * as engine from "voxelscape";
+      engine.onTick(function (clockMs) {
+        engine.dispatch("catalog", { player: "" });
+        engine.dispatch("catalog", {
+          player: "",
+          query: "big-mesh-studios.bsky.social",
+        });
+      });
+      `,
+    );
+    expect(catalog).toEqual([
+      { player: "", query: "" },
+      { player: "", query: "big-mesh-studios.bsky.social" },
+    ]);
+    host.dispose();
+  });
+
   it("holds barriers a script stands for player collision", async () => {
     const { host } = await fresh();
     await loadProject(
@@ -593,6 +619,44 @@ describe("a script host", () => {
     clockMs += 40;
     await host.pump();
     expect(host.stormList).toEqual([]);
+    host.dispose();
+  });
+
+  it("opens a rift with its defaults and forgets it when taken down", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      import * as engine from "voxelscape";
+      var started = false;
+      engine.onTick(function (clockMs, events) {
+        if (!started) {
+          started = true;
+          engine.dispatch("rift", { id: "gate", x: 1, y: 66, z: 2 });
+          engine.dispatch("timer", { id: "remove", afterMs: 40 });
+        }
+        for (var i = 0; i < events.length; i++) {
+          if (events[i].kind === "timer" && events[i].timerId === "remove") {
+            engine.dispatch("rift-remove", { id: "gate" });
+          }
+        }
+      });
+      `,
+    );
+    expect(host.riftList).toHaveLength(1);
+    expect(host.riftList[0]).toMatchObject({
+      id: "gate",
+      x: 1,
+      y: 66,
+      z: 2,
+      width: 6,
+      height: 8,
+      yaw: 0,
+      intensity: 1,
+    });
+    clockMs += 40;
+    await host.pump();
+    expect(host.riftList).toEqual([]);
     host.dispose();
   });
 

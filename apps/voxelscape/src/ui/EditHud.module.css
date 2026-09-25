@@ -99,7 +99,8 @@
     }
   }
 
-  & .inventory-btn {
+  & .inventory-btn,
+  & .places-btn {
     pointer-events: auto;
     cursor: pointer;
     width: 56px;

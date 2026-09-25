@@ -120,8 +120,22 @@ export class VoxelBillboards {
     });
     material.depthWrite = false;
 
+    // A canvas uploads without a vertical flip, so a quad's own V runs opposite
+    // the canvas rows: invert it once here so the label's first line sits at its
+    // top rather than hanging under it.
+    const geometry = new PlaneGeometry(1, 1);
+    const uv = geometry.uv;
+    if (uv !== undefined) {
+      const values = Float32Array.from(uv.array);
+      for (let i = 1; i < values.length; i += 2) {
+        values[i] = 1 - values[i];
+      }
+      uv.setArray(values);
+      uv.needsUpdate = true;
+    }
+
     return {
-      mesh: new Mesh(new PlaneGeometry(1, 1), material),
+      mesh: new Mesh(geometry, material),
       texture,
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,

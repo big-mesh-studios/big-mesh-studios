@@ -13,6 +13,7 @@ import {
   type FigureLook,
   type LightPose,
   type ParticlePose,
+  type RiftPose,
   type ScriptedExplosion,
   type ScriptedFire,
   type ScriptedStorm,
@@ -122,6 +123,12 @@ export interface ScriptConsoleParams extends RequireOnly<
   data?: PlaceData;
   /** Called when the script sends a player to another place. */
   onTeleport?: (player: string, place: string) => void;
+  /**
+   * Called when the script asks for the place catalog, to search and enter
+   * published places; `query` is the handle or DID to start the search on,
+   * or "" when the script named none.
+   */
+  onCatalog?: (player: string, query: string) => void;
   /** Called when the script changes what a player wears; `model` "" is the plain cube. */
   onPlayerModel?: (player: string, model: string, modelUri: string) => void;
   /** Called to re-read a remembered value the table does not hold. */
@@ -227,6 +234,7 @@ export class ScriptConsole {
     shapes: PlanShape[] | null;
   }) => void;
   private readonly onTeleport: (player: string, place: string) => void;
+  private readonly onCatalog: (player: string, query: string) => void;
   private readonly onPlayerModel: (
     player: string,
     model: string,
@@ -283,6 +291,7 @@ export class ScriptConsole {
     this.onBlockEdit = params.onBlockEdit ?? (() => {});
     this.onStructureEdit = params.onStructureEdit ?? (() => {});
     this.onTeleport = params.onTeleport ?? (() => {});
+    this.onCatalog = params.onCatalog ?? (() => {});
     this.onPlayerModel = params.onPlayerModel ?? (() => {});
     this.refreshData = params.refreshData;
     this.data = params.data;
@@ -501,6 +510,11 @@ export class ScriptConsole {
   /** The marks the loaded script has laid, for the world to draw. */
   decals(): DecalPose[] {
     return this.host?.decalList ?? [];
+  }
+
+  /** The rifts the loaded script has opened, for the world to draw. */
+  rifts(): RiftPose[] {
+    return this.host?.riftList ?? [];
   }
 
   /** The lines the loaded script draws, for the world to draw. */
@@ -756,6 +770,7 @@ export class ScriptConsole {
       onBlockEdit: (edit) => this.onBlockEdit(edit),
       onStructureEdit: (edit) => this.onStructureEdit(edit),
       onTeleport: (player, place) => this.onTeleport(player, place),
+      onCatalog: (player, query) => this.onCatalog(player, query),
       onPlayerModel: (player, model, modelUri) =>
         this.onPlayerModel(player, model, modelUri),
       refreshData: this.refreshData,

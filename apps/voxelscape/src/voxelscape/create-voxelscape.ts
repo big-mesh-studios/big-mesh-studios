@@ -53,6 +53,7 @@ import { VoxelBillboards } from "../renderers/voxel-billboards";
 import { VoxelParticles } from "../renderers/voxel-particles";
 import { VoxelStorm } from "../renderers/voxel-storm";
 import { VoxelDecals } from "../renderers/voxel-decals";
+import { VoxelRifts } from "../renderers/voxel-rifts";
 import { VoxelBeams } from "../renderers/voxel-beams";
 import { createSyncedPlaceData, placeDataKey } from "../places/place-data";
 import { createAtprotoDataSource } from "../atproto/data";
@@ -433,6 +434,16 @@ export interface Voxelscape {
   narration: Accessor<{ name: string; text: string } | null>;
   /** Clears the current narration line. */
   dismissNarration(): void;
+  /**
+   * The published-place catalog the local player has open, or null while it
+   * is closed. When open, `query` is the handle or DID the search is seeded
+   * with; opening without one leaves the search empty.
+   */
+  catalog: Accessor<{ query: string } | null>;
+  /** Opens the published-place catalog for the local player. */
+  openCatalog(): void;
+  /** Closes the published-place catalog, if it is open. */
+  closeCatalog(): void;
   /** Whether a place's script is playing a camera sequence right now. */
   cutscene: Accessor<boolean>;
   /** The readouts a place's script is showing in the local player's HUD. */
@@ -538,6 +549,12 @@ export const createVoxelscape = ({
     name: string;
     text: string;
   } | null>(null);
+  /**
+   * The published-place catalog the local player has open, or null while it
+   * is closed. A script opens it through the "catalog" effect; the world's
+   * own HUD button opens it the same way.
+   */
+  const [catalog, setCatalog] = createSignal<{ query: string } | null>(null);
   /** Whether a place's script is playing a camera sequence right now. */
   const [cutscene, setCutscene] = createSignal(false);
   const [icons, setIcons] = createSignal<Partial<Record<ItemId, SubTexture>>>(
@@ -1008,6 +1025,8 @@ export const createVoxelscape = ({
   // The dust storms a script drives: one billboard shader, a wall or a funnel.
   const voxelStorm = new VoxelStorm(() => scriptConsole?.storms() ?? []);
   const voxelDecals = new VoxelDecals(() => scriptConsole?.decals() ?? []);
+  // The rifts a script opens: one churning translucent sheet a portal shows.
+  const voxelRifts = new VoxelRifts(() => scriptConsole?.rifts() ?? []);
   // The glowing lines a script draws between two ends.
   const voxelBeams = new VoxelBeams(() => scriptConsole?.beams() ?? []);
   // The embers the fires kindle, kept so a restart can put the floor back.
@@ -1822,6 +1841,12 @@ export const createVoxelscape = ({
           }
           navigate?.(route);
         },
+        onCatalog: (player, query) => {
+          if (player !== "" && player !== (atproto.did ?? "")) {
+            return;
+          }
+          setCatalog({ query });
+        },
         onPlayerModel: (player, model) => {
           // only this peer changes its own look; a peer that owns another
           // player broadcasts it, and that arrives over the mesh
@@ -2035,6 +2060,7 @@ export const createVoxelscape = ({
     voxelParticles.group,
     voxelStorm.group,
     voxelDecals.group,
+    voxelRifts.group,
     voxelBeams.group,
     world.water,
     environment.weatherEffects,
@@ -2910,6 +2936,7 @@ export const createVoxelscape = ({
       voxelParticles.tick(dt);
       voxelStorm.tick(dt);
       voxelDecals.tick();
+      voxelRifts.tick(dt);
       voxelBeams.tick();
       probe.end(Phase.figures);
     }
@@ -3145,6 +3172,9 @@ export const createVoxelscape = ({
     ending,
     narration,
     dismissNarration: () => setNarration(null),
+    catalog,
+    openCatalog: () => setCatalog({ query: "" }),
+    closeCatalog: () => setCatalog(null),
     cutscene,
     hud: () => scriptConsole?.hud() ?? [],
     ui: () => scriptConsole?.ui() ?? [],
@@ -3179,6 +3209,7 @@ export const createVoxelscape = ({
       voxelBillboards.clear();
       voxelParticles.clear();
       voxelDecals.clear();
+      voxelRifts.clear();
       voxelBeams.clear();
       hand.dispose();
       editorControl.dispose();

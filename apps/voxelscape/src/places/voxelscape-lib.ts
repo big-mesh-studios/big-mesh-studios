@@ -184,6 +184,18 @@ export function teleport(place, player, carry) {
   });
 }
 
+/**
+ * Opens the place catalog for \`player\` ("" for the local player), the world's
+ * search over published places. \`options\` may seed the search with the
+ * handle or DID to list; the player searches by hand once it is open.
+ */
+export function openCatalog(options) {
+  host.dispatch("catalog", {
+    player: options === undefined || options.player === undefined ? "" : options.player,
+    query: options === undefined ? undefined : options.query,
+  });
+}
+
 function uiPlayer(options) {
   return options.player === undefined ? "" : options.player;
 }
@@ -749,6 +761,31 @@ export function createDecal(options) {
     host.dispatch("decal-remove", { id: decal.id });
   };
   return decal;
+}
+
+/**
+ * Opens a rift — a flat, translucent, animated sheet a player walks through —
+ * at a point, turned about the vertical axis. Returns a handle whose \`remove\`
+ * closes it.
+ */
+export function createRift(options) {
+  host.dispatch("rift", {
+    id: options.id,
+    x: options.x,
+    y: options.y,
+    z: options.z,
+    width: options.width,
+    height: options.height,
+    yaw: options.yaw,
+    color: options.color,
+    intensity: options.intensity,
+    spin: options.spin,
+  });
+  var rift = { id: options.id };
+  rift.remove = function () {
+    host.dispatch("rift-remove", { id: rift.id });
+  };
+  return rift;
 }
 
 /** Draws a glowing line between two points or figures; returns a handle whose remove takes it down. */

@@ -30,6 +30,7 @@ import {
   VOXEL_LAVA,
   VOXEL_LEAVES,
   VOXEL_LOG,
+  VOXEL_OBSIDIAN,
   VOXEL_SAND,
   VOXEL_STONE,
   VOXEL_WATER,
@@ -461,6 +462,7 @@ class QuickJSSandbox implements ScriptSandbox {
       ice: VOXEL_ICE,
       greystone: VOXEL_GREYSTONE,
       sand: VOXEL_SAND,
+      obsidian: VOXEL_OBSIDIAN,
     };
     for (const [name, id] of Object.entries(ids)) {
       const value = context.newNumber(id);

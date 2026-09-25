@@ -81,6 +81,8 @@ export const VOXEL_TILES: Record<number, VoxelTiles> = {
   45: { top: "wool_black", side: "wool_black", bottom: "wool_black" },
   // Sand wears the sheet's own tile on every face.
   46: { top: "sand", side: "sand", bottom: "sand" },
+  // Obsidian wears the procedurally generated portal-frame tile on every face.
+  47: { top: "obsidian", side: "obsidian", bottom: "obsidian" },
 };
 
 export const parseTileAtlasXml = (xmlText: string): Map<string, SubTexture> => {

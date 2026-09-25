@@ -121,6 +121,23 @@ declare module "voxelscape" {
     carry?: string[],
   ): void;
 
+  /** Who the catalog opens for, and what it starts the search on. */
+  interface CatalogOptions {
+    /** The player the catalog is shown to; "" for the local player. */
+    player?: string;
+    /**
+     * The handle or DID to seed the search with — the account whose
+     * published places are listed first. Omit it to leave the search empty.
+     */
+    query?: string;
+  }
+
+  /**
+   * Opens the world's place catalog — the search over published places a
+   * player enters by picking one — through the "catalog" effect.
+   */
+  export function openCatalog(options?: CatalogOptions): void;
+
   /** Dresses a player in one of the place's models; "" returns them to the plain cube. */
   export function setPlayerModel(
     model: keyof ModelsByName | "",
@@ -731,6 +748,36 @@ declare module "voxelscape" {
 
   /** Lays a flat mark on the world; see `createProp` for why `id` is never generated. */
   export function createDecal(options: CreateDecalOptions): DecalHandle;
+
+  /** Where a rift stands and how it reads. */
+  interface CreateRiftOptions {
+    id: string;
+    /** The rift's centre, in world units. */
+    x: number;
+    y: number;
+    z: number;
+    /** Drawn width across the sheet in world units; defaults to 6. */
+    width?: number;
+    /** Drawn height of the sheet in world units; defaults to 8. */
+    height?: number;
+    /** Rotation about the vertical axis, in radians; defaults to 0. */
+    yaw?: number;
+    /** Linear RGB, 0 to 1 each; defaults to a portal violet. */
+    color?: [number, number, number];
+    /** How strongly the rift reads, 0 to 1; defaults to 1. */
+    intensity?: number;
+    /** Turns per second the sheet churns; defaults to a slow churn. */
+    spin?: number;
+  }
+
+  /** A rift a place script has opened; `remove` closes it. */
+  export interface RiftHandle {
+    readonly id: string;
+    remove(): void;
+  }
+
+  /** Opens a rift; see `createProp` for why `id` is never generated. */
+  export function createRift(options: CreateRiftOptions): RiftHandle;
 
   /** Where a beam's two ends stand: a figure it follows, or a world point. */
   interface CreateBeamOptions {

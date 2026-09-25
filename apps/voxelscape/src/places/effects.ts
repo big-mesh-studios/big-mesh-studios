@@ -101,6 +101,8 @@ export type EffectTag =
   | "storm-remove"
   | "decal"
   | "decal-remove"
+  | "rift"
+  | "rift-remove"
   | "entity-look"
   | "entity-look-clear"
   | "beam"
@@ -110,6 +112,7 @@ export type EffectTag =
   | "data-get"
   | "badge-award"
   | "teleport"
+  | "catalog"
   | "ui-panel"
   | "ui-label"
   | "ui-bar"
@@ -263,6 +266,10 @@ export const MAX_STORM_SIZE = 256;
 export const MAX_STORM_SPIN = 1;
 /** The widest a decal may be drawn, in world units. */
 export const MAX_DECAL_SIZE = 32;
+/** The widest or tallest a rift may be drawn, in world units. */
+export const MAX_RIFT_SIZE = 64;
+/** The most turns per second a rift may churn. */
+export const MAX_RIFT_SPIN = 2;
 /** The widest a beam may be drawn, in world units. */
 export const MAX_BEAM_WIDTH = 1;
 /** The longest a data key or a badge name may be. */
@@ -271,6 +278,8 @@ export const MAX_DATA_KEY = 64;
 export const MAX_DATA_STRING = 512;
 /** The longest a teleport address may be. */
 export const MAX_PLACE_ADDRESS = 256;
+/** The longest an account handle or DID that seeds the place catalog may be. */
+export const MAX_CATALOG_QUERY = 256;
 /** The most keys one teleport may carry into the account scope. */
 export const MAX_CARRY_KEYS = 32;
 /** The most panels one player's scripted UI may show. */
@@ -1001,6 +1010,30 @@ export type ParsedEffect =
     }
   | { tag: "decal-remove"; payload: { id: string } }
   | {
+      tag: "rift";
+      payload: {
+        /** Names the rift, so a later `rift-remove` reaches it, or a new one replaces it. */
+        id: string;
+        /** The rift's centre, in world units. */
+        x: number;
+        y: number;
+        z: number;
+        /** Drawn width across the sheet in world units; defaults to 6. */
+        width?: number;
+        /** Drawn height of the sheet in world units; defaults to 8. */
+        height?: number;
+        /** Rotation about the vertical axis, in radians; defaults to 0. */
+        yaw?: number;
+        /** Linear RGB, 0 to 1 each; defaults to a portal violet. */
+        color?: [number, number, number];
+        /** How strongly the rift reads, 0 to 1; defaults to 1. */
+        intensity?: number;
+        /** Turns per second the sheet churns; defaults to a slow churn. */
+        spin?: number;
+      };
+    }
+  | { tag: "rift-remove"; payload: { id: string } }
+  | {
       tag: "entity-look";
       payload: {
         /** The scripted figure to tint or fade. */
@@ -1082,6 +1115,18 @@ export type ParsedEffect =
         place: string;
         /** The player's saved keys to copy into the account scope, so the place they go to can read them. */
         carry?: string[];
+      };
+    }
+  | {
+      tag: "catalog";
+      payload: {
+        /** The player to show the catalog to; "" means the local player. */
+        player: string;
+        /**
+         * The handle or DID to seed the search with, or "" to leave the search
+         * empty. The world opens the place catalog for the account named here.
+         */
+        query?: string;
       };
     }
   | {
@@ -1927,6 +1972,22 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
       );
     case "decal-remove":
       return isShort(p.id, 64);
+    case "rift":
+      return (
+        isShort(p.id, 64) &&
+        isCoord(p.x) &&
+        isCoord(p.y) &&
+        isCoord(p.z) &&
+        (p.width === undefined || isNumberIn(p.width, 0.5, MAX_RIFT_SIZE)) &&
+        (p.height === undefined || isNumberIn(p.height, 0.5, MAX_RIFT_SIZE)) &&
+        (p.yaw === undefined || isCoord(p.yaw)) &&
+        (p.color === undefined || isColor3(p.color)) &&
+        (p.intensity === undefined || isNumberIn(p.intensity, 0, 1)) &&
+        (p.spin === undefined ||
+          isNumberIn(p.spin, -MAX_RIFT_SPIN, MAX_RIFT_SPIN))
+      );
+    case "rift-remove":
+      return isShort(p.id, 64);
     case "entity-look":
       return (
         isShort(p.id, 64) &&
@@ -1982,6 +2043,13 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
           (Array.isArray(p.carry) &&
             p.carry.length <= MAX_CARRY_KEYS &&
             p.carry.every((key) => isShort(key, MAX_DATA_KEY))))
+      );
+    case "catalog":
+      return (
+        isPlayer(p.player) &&
+        (p.query === undefined ||
+          p.query === "" ||
+          isShort(p.query, MAX_CATALOG_QUERY))
       );
     case "ui-panel":
       return (

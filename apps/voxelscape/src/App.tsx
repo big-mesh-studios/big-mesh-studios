@@ -46,12 +46,13 @@ import {
 } from "./voxelscape/voxelscape-context";
 import { LevelEditorOverlay } from "./level-editor/LevelEditorOverlay";
 import { InventoryHud } from "./ui/InventoryHud";
+import { PlacesBrowser } from "./ui/PlacesBrowser";
 
 /** How long a line the world reports on its own is left on screen. */
 const NOTICE_SECONDS = 6;
 
 /** The built-in demo `App.tsx` opens at the site's own root address. */
-const HOME_DEMO_ID = "home";
+const HOME_DEMO_ID = "lobby";
 
 /**
  * How the world is built this session: a built-in demo's world, or a
@@ -231,6 +232,7 @@ const World: Component<{
           <EditHud />
           <HealthHud />
           <InventoryHud />
+          <PlacesBrowser />
           <ScriptUi />
           <DialogOverlay />
           <EndingOverlay />

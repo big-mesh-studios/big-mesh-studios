@@ -139,7 +139,12 @@ export async function injectProceduralWoolTiles(
   width: number,
   height: number,
   atlas: Map<string, SubTexture>,
-): Promise<{ texture: Texture; width: number; height: number }> {
+): Promise<{
+  texture: Texture;
+  bitmap: ImageBitmap;
+  width: number;
+  height: number;
+}> {
   const firstSub = atlas.values().next().value as SubTexture | undefined;
   const tileW = firstSub?.w ?? 128;
   const tileH = firstSub?.h ?? 128;
@@ -153,7 +158,12 @@ export async function injectProceduralWoolTiles(
   canvas.height = newHeight;
   const ctx = canvas.getContext("2d");
   if (!ctx) {
-    return { texture: new Texture(sourceBitmap), width, height };
+    return {
+      texture: new Texture(sourceBitmap),
+      bitmap: sourceBitmap,
+      width,
+      height,
+    };
   }
 
   // Copy original atlas bitmap
@@ -196,6 +206,7 @@ export async function injectProceduralWoolTiles(
   const bitmap = await createImageBitmap(canvas);
   return {
     texture: new Texture(bitmap),
+    bitmap,
     width,
     height: newHeight,
   };

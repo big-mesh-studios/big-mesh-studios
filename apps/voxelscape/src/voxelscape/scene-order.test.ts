@@ -67,6 +67,7 @@ describe("scene draw order", () => {
       "voxelParticles.group",
       "voxelStorm.group",
       "voxelDecals.group",
+      "voxelRifts.group",
       "voxelBeams.group",
       "world.water",
       "environment.weatherEffects",

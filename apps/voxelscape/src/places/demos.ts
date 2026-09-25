@@ -23,6 +23,7 @@ import BALDI_LEVEL_SCRIPT from "./demo-scripts/baldi-level.ts?raw";
 import BALDI_NAV_SCRIPT from "./demo-scripts/baldi-nav.ts?raw";
 import BALDI_QUIZ_SCRIPT from "./demo-scripts/baldi-quiz.ts?raw";
 import HOME_SCRIPT from "./demo-scripts/home.ts?raw";
+import LOBBY_SCRIPT from "./demo-scripts/lobby.ts?raw";
 import CUBE_CAVERN_SCRIPT from "./demo-scripts/cube-cavern.ts?raw";
 import CUBE_CAVERN_LEVEL_SCRIPT from "./demo-scripts/cube-cavern-level.ts?raw";
 import CUBE_CAVERN_ITEMS_SCRIPT from "./demo-scripts/cube-cavern-items.ts?raw";
@@ -38,6 +39,7 @@ import {
   DUSTY_TRIP_MODELS,
   GASA4_MODELS,
   LATE_TO_SCHOOL_MODELS,
+  LOBBY_MODELS,
   RAISE_A_FLOPPA_MODELS,
   ZOMBIES_MANSION_MODELS,
   ZOMBIES_MODELS,
@@ -227,11 +229,9 @@ const BALDI: BuiltinDemo = {
 };
 
 /**
- * The demo `App.tsx` opens at the site's own root address, in place of
- * fetching a live place over atproto every time somebody lands there. A
- * guide stands near the spawn and says hello — the same world the studio's
- * own published "home" place had carried, before this stopped needing a
- * network round trip to show it.
+ * The "Home" demo: a guide standing near the spawn who says hello back once
+ * talked to — the world a first-time visitor used to land on, kept as a demo
+ * the way any place can be.
  */
 const HOME: BuiltinDemo = {
   id: "home",
@@ -243,6 +243,27 @@ const HOME: BuiltinDemo = {
   },
   scripts: {
     [MAIN_SCRIPT_FILE]: HOME_SCRIPT,
+  },
+};
+
+/**
+ * The "Lobby" demo: a flat terrace ringed by walk-in portals to every other
+ * built-in demo and holding an arcade machine whose use prompt opens the
+ * place catalog. It is the world `App.tsx` opens at the site's own root, so a
+ * newcomer reaches any demo by walking through an arch and any published
+ * place by searching at the arcade, with no command or account.
+ */
+const LOBBY: BuiltinDemo = {
+  id: "lobby",
+  manifest: {
+    name: "Lobby",
+    seed: 202_604,
+    spawn: [0, 0, 0],
+    mode: "multi:edit",
+    models: LOBBY_MODELS,
+  },
+  scripts: {
+    [MAIN_SCRIPT_FILE]: LOBBY_SCRIPT,
   },
 };
 
@@ -308,6 +329,7 @@ const RAISE_A_FLOPPA: BuiltinDemo = {
 
 /** Every built-in demo, in the order a list shows them. */
 export const BUILTIN_DEMOS: BuiltinDemo[] = [
+  LOBBY,
   GASA4,
   LATE_TO_SCHOOL,
   ZOMBIES,
