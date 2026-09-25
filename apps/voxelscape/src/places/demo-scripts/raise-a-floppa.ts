@@ -18,6 +18,7 @@
 // coordinates; props, NPCs, and the player take world coordinates.
 import {
   awardBadge,
+  deletePlayerData,
   dispatch,
   getNow,
   getPlayers,
@@ -225,6 +226,21 @@ function saveProgress(): void {
   savePlayerData(K_RENT, rent);
   savePlayerData(K_CUBES, cubes);
   savePlayerData(K_TRAVEL, travelMask);
+}
+
+/**
+ * Forgets the wallet, the shelf, the faith, the days, the rent, the Time Cube
+ * and the time-stops a run remembers.
+ */
+function forgetRun(): void {
+  deletePlayerData(K_MONEY);
+  deletePlayerData(K_OWNED);
+  deletePlayerData(K_FAITH);
+  deletePlayerData(K_DAYS);
+  deletePlayerData(K_RENT);
+  deletePlayerData(K_CUBES);
+  deletePlayerData(K_FARMS);
+  deletePlayerData(K_TRAVEL);
 }
 
 /** The most money one pet drops once Ms. Floppa and catnip are counted in. */
@@ -848,8 +864,11 @@ function catnip(): void {
   );
 }
 
-/** Damages the cat, ending the game in the original's own way when it empties. */
-function hurtFloppa(amount: number, cause: string): void {
+/**
+ * Damages the cat, ending the game in the original's own way when it empties;
+ * true when this blow was the end.
+ */
+function hurtFloppa(amount: number, cause: string): boolean {
   hunger = clampStat(hunger - amount, STAT_MIN, STAT_MAX);
   happiness = clampStat(happiness - amount / 2, STAT_MIN, STAT_MAX);
   updateHud();
@@ -871,7 +890,10 @@ function hurtFloppa(amount: number, cause: string): void {
       `You let Floppa starve to ${cause}. There was a small, sad explosion.`,
       "you-monster",
     );
+    forgetRun();
+    return true;
   }
+  return false;
 }
 
 /** Schedules the mess a meal makes a few seconds later. */
@@ -1283,7 +1305,9 @@ function step(now: number, dtMs: number): void {
     nextHungerAt += HUNGER_TICK_MS;
     hunger = clampStat(hunger - 1, STAT_MIN, STAT_MAX);
     if (hunger <= 0) {
-      hurtFloppa(1, "in a quiet room");
+      if (hurtFloppa(1, "in a quiet room")) {
+        return;
+      }
     } else {
       updateHud();
     }

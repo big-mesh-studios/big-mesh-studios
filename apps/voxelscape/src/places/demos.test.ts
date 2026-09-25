@@ -2239,7 +2239,17 @@ describe("the Raise a Floppa demo", () => {
     });
     await host.loadProject(project.scripts, entry, projectModelBytes(project));
     await host.pump();
-    return { host, project, endings, toasts, notices, narrations, structures };
+    return {
+      host,
+      project,
+      entry,
+      data,
+      endings,
+      toasts,
+      notices,
+      narrations,
+      structures,
+    };
   };
 
   /** Moves the shared clock forward and lets the demo's own tick fire. */
@@ -2368,6 +2378,66 @@ describe("the Raise a Floppa demo", () => {
     }
     expect(endings).toContain("You Monster");
     host.dispose();
+  });
+
+  it("forgets a dead cat's run so the next run starts over", async () => {
+    const { host, project, entry, data, endings } = await runRF((place) => {
+      place.set("player", "", "rf-money", 900);
+      place.set("player", "", "rf-owned", 1 << 5);
+      place.set("player", "", "rf-faith", 60);
+      place.set("player", "", "rf-days", 7);
+      place.set("player", "", "rf-rent", 320);
+      place.set("player", "", "rf-cubes", 1);
+      place.set("player", "", "rf-travel", 1);
+      place.set("player", "", "rf-best", 7);
+    });
+    // The seeded run is live: the wallet is full and Ms. Floppa stands.
+    expect(data.get("player", "", "rf-money")).toBe(900);
+    expect(host.npc("ms-floppa")).toMatchObject({ model: "ms-floppa.zip" });
+    for (let i = 0; i < 80; i++) {
+      await advance(host, 4_000);
+    }
+    expect(endings).toContain("You Monster");
+    // The death forgot the run, keeping only the best day count.
+    for (const key of [
+      "rf-money",
+      "rf-owned",
+      "rf-faith",
+      "rf-days",
+      "rf-rent",
+      "rf-cubes",
+      "rf-farms",
+      "rf-travel",
+    ]) {
+      expect(data.get("player", "", key)).toBeUndefined();
+    }
+    expect(data.get("player", "", "rf-best")).toBeGreaterThanOrEqual(7);
+    host.dispose();
+
+    // Play again: the fresh interpreter boots from the wiped table.
+    const notices: string[] = [];
+    const revived = new ScriptHost({
+      seed: project.manifest.seed,
+      getNow: () => rfClock,
+      getHeightAt: () => 62,
+      getSolidAt: () => false,
+      getWaterAt: () => false,
+      getPlayers: () => [{ did: "", x: player.x, y: player.y, z: player.z }],
+      data,
+      onNotice: (message) => notices.push(message),
+    });
+    await revived.loadProject(
+      project.scripts,
+      entry,
+      projectModelBytes(project),
+    );
+    await revived.pump();
+    expect(notices).toEqual([]);
+    expect(revived.npc("ms-floppa")).toBeNull();
+    expect(hud(revived, "money")?.text).toBe("$0");
+    expect(hud(revived, "day")?.text).toBe("0");
+    expect(hud(revived, "hunger")?.value).toBe(80);
+    revived.dispose();
   });
 
   it("drops a mess after a meal and cleans it up", async () => {

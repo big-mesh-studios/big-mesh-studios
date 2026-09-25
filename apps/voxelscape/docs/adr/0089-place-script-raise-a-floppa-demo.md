@@ -50,17 +50,20 @@ sword through the same `entity-hit` fact a dungeon monster answers. A bought
 Guard Doge bites whatever comes near. A raid begins only from the third day,
 so a new player meets the loop before it meets a threat.
 
-## The cat's care falls faster than the original's, and only the wallet persists
+## The cat's care falls faster than the original's, and a lost run is forgotten
 
 Hunger and happiness fall on their own timers, so a session is minutes rather
 than hours, and the backrooms' sanity drains in seconds. Money, the shelf
 purchases, faith, the Time Cube, the days survived, the roommate's rent and the
-time-stops already visited are remembered through the data helpers and survive
-a restart; the cat's current hunger and happiness do not, and begin full each
-time. The split is the most visible bend from the source, where a save carries
-the pet's whole state: a demo that reopened a starved cat would punish the
-player for closing the tab, and a demo whose wallet reset would make the shop
-unreachable in one sitting.
+time-stops already visited are remembered through the data helpers, so closing
+the tab and reopening resumes the run; the cat's current hunger and happiness
+are not remembered, and begin full each time. A cat that starves or falls to a
+raid ends the run with the source's own "You Monster", and that death forgets
+the run's remembered values, so the next run starts from nothing but the best
+day count. The split is the most visible bend from the source, where a save
+carries the pet's whole state: a demo that reopened a starved cat would punish
+the player for closing the tab, and a demo that let a dead cat keep the wallet
+would have no game over at all.
 
 ## The day-night clock is pinned, and night opens the backrooms
 
