@@ -1,6 +1,6 @@
 # Gamepad controls are polled once a frame
 
-A Backbone One, or any controller reporting the standard mapping, is an
+A Backbone One, or any controller using the standard button layout, is an
 additional way to play: the movement, look, dig, place, jump, and use actions
 the mouse, keyboard, and touch buttons already reach.
 
@@ -15,11 +15,14 @@ stick's deflection scaled by the frame's elapsed time, so it arrives in the
 same pointer-pixel units and passes through the same look sensitivity a drag
 does.
 
-A pad that reports anything but the standard mapping is ignored rather than
+A pad whose mapping is neither `"standard"` nor empty is ignored rather than
 guessed at by button index, so a controller with a different layout cannot
-strike with the wrong button. A pad that arrives or leaves is reported both by
-polling and by the `gamepadconnected`/`gamepaddisconnected` events, so the HUD
-can say so even while no frame is reading input.
+strike with the wrong button. An empty mapping is read, because browsers leave
+it empty for controllers whose layout they have not confirmed — the Backbone One
+among them — while those controllers index their buttons the standard way. A pad
+that arrives or leaves is reported both by polling and by the
+`gamepadconnected`/`gamepaddisconnected` events, so the HUD can say so even
+while no frame is reading input.
 
 ## Considered options
 

@@ -12,7 +12,7 @@ const STICK_DEADZONE = 0.15;
 const LOOK_PIXELS_PER_SECOND = 360;
 
 /**
- * The standard-mapping buttons this module reads: the face buttons, the two
+ * The standard-layout buttons this module reads: the face buttons, the two
  * triggers, and the horizontal d-pad directions.
  */
 const BUTTON = {
@@ -112,16 +112,24 @@ export const readGamepad = (
 export interface GamepadController {
   /** Reads the connected gamepad for one frame, or null when none is connected. */
   poll(dt: number): GamepadFrame | null;
-  /** Whether a standard-mapped gamepad is connected. */
+  /** Whether a gamepad this module can read is connected. */
   connected(): boolean;
   /** Removes the connection listeners `createGamepad` bound. */
   dispose(): void;
 }
 
 /**
- * Finds the connected standard-mapped gamepad and reads it a frame at a time.
- * A controller that arrives or leaves is reported through `onConnectionChange`,
- * including while nothing is polling.
+ * Whether a pad indexes its buttons the way this module reads them: the
+ * standard mapping, or the empty mapping a browser gives a controller whose
+ * layout it has not confirmed but which still uses the standard index.
+ */
+const hasStandardLayout = (mapping: string): boolean =>
+  mapping === "standard" || mapping === "";
+
+/**
+ * Finds the connected gamepad this module can read and reads it a frame at a
+ * time. A controller that arrives or leaves is reported through
+ * `onConnectionChange`, including while nothing is polling.
  */
 export const createGamepad = (
   onConnectionChange?: (connected: boolean) => void,
@@ -130,7 +138,7 @@ export const createGamepad = (
   let memory: GamepadMemory = { left: false, right: false };
   let connected = false;
 
-  const standardPad = (): Gamepad | null => {
+  const readablePad = (): Gamepad | null => {
     if (
       typeof navigator === "undefined" ||
       typeof navigator.getGamepads !== "function"
@@ -138,7 +146,7 @@ export const createGamepad = (
       return null;
     }
     for (const pad of navigator.getGamepads()) {
-      if (pad !== null && pad.connected && pad.mapping === "standard") {
+      if (pad !== null && pad.connected && hasStandardLayout(pad.mapping)) {
         return pad;
       }
     }
@@ -158,18 +166,18 @@ export const createGamepad = (
 
   window.addEventListener(
     "gamepadconnected",
-    () => setConnected(standardPad() !== null),
+    () => setConnected(readablePad() !== null),
     { signal: abort.signal },
   );
   window.addEventListener(
     "gamepaddisconnected",
-    () => setConnected(standardPad() !== null),
+    () => setConnected(readablePad() !== null),
     { signal: abort.signal },
   );
 
   return {
     poll(dt) {
-      const pad = standardPad();
+      const pad = readablePad();
       if (pad === null) {
         setConnected(false);
         return null;

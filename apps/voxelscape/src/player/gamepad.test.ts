@@ -120,8 +120,15 @@ describe("finding the connected gamepad", () => {
     controller.dispose();
   });
 
-  it("ignores a pad that does not report the standard mapping", () => {
+  it("reads a controller that reports an empty mapping", () => {
     stubPads([pad({ mapping: "" })]);
+    const controller = createGamepad();
+    expect(controller.poll(1)).not.toBeNull();
+    controller.dispose();
+  });
+
+  it("ignores a pad that reports a non-standard mapping", () => {
+    stubPads([pad({ mapping: "xr-standard" })]);
     const controller = createGamepad();
     expect(controller.poll(1)).toBeNull();
     controller.dispose();
