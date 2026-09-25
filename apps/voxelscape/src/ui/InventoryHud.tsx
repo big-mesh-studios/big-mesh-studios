@@ -1,7 +1,14 @@
 // Minecraft-style inventory overlay: a grid of all carried items plus the
-// current hotbar strip at the bottom. Press E / I to open and close it. Click
-// an inventory item then click a hotbar slot to place/swap it there.
-import { Component, createSignal, For, onCleanup, Show } from "solid-js";
+// current hotbar strip at the bottom. Click an inventory item then click a
+// hotbar slot to place or swap it there.
+import {
+  Component,
+  createEffect,
+  createSignal,
+  For,
+  onCleanup,
+  Show,
+} from "solid-js";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
 import { isEditableTarget } from "../utils";
 import { spriteIconStyle, woolIconStyle } from "./item-icon";
@@ -10,13 +17,19 @@ import type { InventoryItem } from "../player/inventory";
 import styles from "./InventoryHud.module.css";
 
 export const InventoryHud: Component = () => {
-  const { inventory, icons, placeEditor } = useVoxelscape();
+  const { inventory, icons, input, placeEditor } = useVoxelscape();
   const [open, setOpen] = createSignal(false);
   const [items, setItems] = createSignal(inventory.items());
   const [hotbar, setHotbar] = createSignal(inventory.hotbarItems());
   const [selected, setSelected] = createSignal(inventory.selectedId);
   /** The item the player clicked on first (waiting to be placed in hotbar). */
   const [pendingItem, setPendingItem] = createSignal<ItemId | null>(null);
+
+  createEffect(open, (isOpen) => {
+    if (isOpen) {
+      return input.suspendPointerLock();
+    }
+  });
 
   const refresh = (): void => {
     setItems(inventory.items());

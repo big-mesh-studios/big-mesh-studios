@@ -1,4 +1,11 @@
-import { createSignal, For, onSettled, Show, type Component } from "solid-js";
+import {
+  createEffect,
+  createSignal,
+  For,
+  onSettled,
+  Show,
+  type Component,
+} from "solid-js";
 import styles from "./Dialog.module.css";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
 import type { HudReadout } from "../places/script-host";
@@ -136,6 +143,12 @@ export const DialogOverlay: Component = () => {
   const [done, setDone] = createSignal(false);
   const [options, setOptions] = createSignal<string[]>([]);
   const [full, setFull] = createSignal("");
+
+  createEffect(voxelscape.dialog, (dialog) => {
+    if (dialog !== null) {
+      return voxelscape.input.suspendPointerLock();
+    }
+  });
 
   onSettled(() => {
     let frame = 0;

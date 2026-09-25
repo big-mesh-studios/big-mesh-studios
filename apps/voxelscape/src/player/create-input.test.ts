@@ -7,13 +7,28 @@ const WIDTH = 400;
 
 let input: InputController;
 
+const setPointerLock = (target: Element | null): void => {
+  Object.defineProperty(document, "pointerLockElement", {
+    configurable: true,
+    value: target,
+  });
+  document.dispatchEvent(new Event("pointerlockchange"));
+};
+
 beforeEach(() => {
   vi.useFakeTimers();
+  setPointerLock(null);
+  Object.defineProperty(document, "exitPointerLock", {
+    configurable: true,
+    value: vi.fn(() => setPointerLock(null)),
+  });
   input = createInput();
 });
 
 afterEach(() => {
   input.dispose();
+  document.body.replaceChildren();
+  setPointerLock(null);
   vi.useRealTimers();
 });
 
@@ -27,6 +42,10 @@ const makeCanvas = (): HTMLCanvasElement => {
   canvas.setPointerCapture = () => {};
   canvas.hasPointerCapture = () => true;
   canvas.releasePointerCapture = () => {};
+  canvas.requestPointerLock = vi.fn(() => {
+    setPointerLock(canvas);
+    return Promise.resolve();
+  });
   return canvas;
 };
 
@@ -35,13 +54,14 @@ interface Press {
   x: number;
   y: number;
   pointerId?: number;
+  pointerType?: "mouse" | "touch" | "pen";
 }
 
 /** Dispatches pointer events at a canvas that is listening through `canvasHandlers`. */
 const press = (canvas: HTMLCanvasElement, p: Press): void => {
   canvas.dispatchEvent(
     new PointerEvent(p.type, {
-      pointerType: "touch",
+      pointerType: p.pointerType ?? "touch",
       pointerId: p.pointerId ?? 1,
       button: 0,
       clientX: p.x,
@@ -64,6 +84,149 @@ const bind = (canvas: HTMLCanvasElement): void => {
     input.canvasHandlers.onPointerDown as unknown as EventListener,
   );
 };
+
+describe("pointer lock state", () => {
+  it("tracks the world canvas lock without counting capture as play", async () => {
+    const canvas = makeCanvas();
+    bind(canvas);
+    const listener = vi.fn();
+    const stop = input.onPointerLockChange(listener);
+
+    expect(input.pointerLocked()).toBe(false);
+    press(canvas, {
+      type: "pointerdown",
+      x: 100,
+      y: 100,
+      pointerType: "mouse",
+    });
+    await settle();
+
+    expect(canvas.requestPointerLock).toHaveBeenCalledOnce();
+    expect(input.pointerLocked()).toBe(true);
+    expect(input.hasActivity()).toBe(false);
+    expect(listener).toHaveBeenLastCalledWith(true);
+
+    setPointerLock(null);
+    expect(input.pointerLocked()).toBe(false);
+    expect(listener).toHaveBeenLastCalledWith(false);
+    stop();
+  });
+});
+
+describe("pointer lock suspension", () => {
+  it("keeps a replacement overlay from restoring between questions", async () => {
+    const canvas = makeCanvas();
+    document.body.append(canvas);
+    bind(canvas);
+    press(canvas, {
+      type: "pointerdown",
+      x: 100,
+      y: 100,
+      pointerType: "mouse",
+    });
+    await settle();
+
+    const listener = vi.fn();
+    const stop = input.onPointerLockSuspensionChange(listener);
+    const releaseFirst = input.suspendPointerLock();
+    const releaseSecond = input.suspendPointerLock();
+
+    expect(document.exitPointerLock).toHaveBeenCalledOnce();
+    expect(input.pointerLocked()).toBe(false);
+    expect(input.pointerLockSuspended()).toBe(true);
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenLastCalledWith(true);
+
+    releaseFirst();
+    releaseFirst();
+    expect(input.pointerLockSuspended()).toBe(true);
+    expect(canvas.requestPointerLock).toHaveBeenCalledOnce();
+
+    releaseSecond();
+    vi.advanceTimersByTime(50);
+    expect(input.pointerLockSuspended()).toBe(true);
+    expect(canvas.requestPointerLock).toHaveBeenCalledOnce();
+
+    const releaseReplacement = input.suspendPointerLock();
+    releaseReplacement();
+    vi.advanceTimersByTime(99);
+    expect(input.pointerLockSuspended()).toBe(true);
+    expect(canvas.requestPointerLock).toHaveBeenCalledOnce();
+
+    vi.advanceTimersByTime(1);
+    expect(input.pointerLockSuspended()).toBe(false);
+    expect(input.pointerLocked()).toBe(true);
+    expect(canvas.requestPointerLock).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenLastCalledWith(false);
+    stop();
+  });
+
+  it("does not capture a pointer that was already free", async () => {
+    const canvas = makeCanvas();
+    canvas.requestPointerLock = vi.fn(() => Promise.resolve());
+    document.body.append(canvas);
+    bind(canvas);
+    press(canvas, {
+      type: "pointerdown",
+      x: 100,
+      y: 100,
+      pointerType: "mouse",
+    });
+    await settle();
+    const requests = vi.mocked(canvas.requestPointerLock).mock.calls.length;
+
+    const release = input.suspendPointerLock();
+    expect(input.pointerLockSuspended()).toBe(true);
+    expect(document.exitPointerLock).not.toHaveBeenCalled();
+
+    release();
+    expect(input.pointerLockSuspended()).toBe(false);
+    expect(input.pointerLocked()).toBe(false);
+    expect(canvas.requestPointerLock).toHaveBeenCalledTimes(requests);
+  });
+
+  it("keeps the game unlocked when the browser rejects restoration", async () => {
+    const canvas = makeCanvas();
+    document.body.append(canvas);
+    bind(canvas);
+    press(canvas, {
+      type: "pointerdown",
+      x: 100,
+      y: 100,
+      pointerType: "mouse",
+    });
+    await settle();
+    canvas.requestPointerLock = vi.fn(() =>
+      Promise.reject(new Error("pointer lock denied")),
+    );
+
+    const release = input.suspendPointerLock();
+    release();
+    vi.advanceTimersByTime(100);
+    await settle();
+
+    expect(input.pointerLockSuspended()).toBe(false);
+    expect(input.pointerLocked()).toBe(false);
+    expect(canvas.requestPointerLock).toHaveBeenCalledOnce();
+  });
+});
+
+describe("first gameplay activity", () => {
+  it("reports only the first movement or action", () => {
+    const listener = vi.fn();
+    const stop = input.onActivity(listener);
+
+    expect(input.hasActivity()).toBe(false);
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW" }));
+    expect(input.hasActivity()).toBe(true);
+    expect(listener).toHaveBeenCalledOnce();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyD" }));
+    expect(listener).toHaveBeenCalledOnce();
+    stop();
+  });
+});
 
 describe("canvas touch gestures", () => {
   it("turns a drag into a look and fires nothing", async () => {

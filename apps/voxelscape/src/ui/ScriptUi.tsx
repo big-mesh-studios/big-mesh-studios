@@ -3,7 +3,14 @@
 // world's `ui` accessor on its own frame loop, the way the HUD and dialog
 // overlays do, so a script that changes a panel needs no signal of its own. A
 // press on a button is reported straight back to the world.
-import { createSignal, For, onSettled, Show, type Component } from "solid-js";
+import {
+  createEffect,
+  createSignal,
+  For,
+  onSettled,
+  Show,
+  type Component,
+} from "solid-js";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
 import type { UiItem, UiPanel } from "../places/script-host";
 import type { ItemId } from "../player/items";
@@ -88,6 +95,15 @@ const Panel: Component<{ panel: UiPanel }> = (props) => (
 export const ScriptUi: Component = () => {
   const voxelscape = useVoxelscape();
   const [panels, setPanels] = createSignal<UiPanel[]>([]);
+
+  createEffect(
+    () => panels().length > 0,
+    (shown) => {
+      if (shown) {
+        return voxelscape.input.suspendPointerLock();
+      }
+    },
+  );
 
   onSettled(() => {
     let frame = 0;

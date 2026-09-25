@@ -287,6 +287,11 @@ const WorldCanvas: Component = () => {
 /** The screen a place's script shows when its game ends, with a way to start over. */
 const EndingOverlay: Component = () => {
   const voxelscape = useVoxelscape();
+  createEffect(voxelscape.ending, (ending) => {
+    if (ending !== null) {
+      return voxelscape.input.suspendPointerLock();
+    }
+  });
   return (
     <Show when={voxelscape.ending() !== null}>
       <div class={styles.ending} role="dialog" aria-label="ending">

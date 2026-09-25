@@ -18,7 +18,8 @@ import type { PublishedPlace } from "../places/place";
 import styles from "./PlacesBrowser.module.css";
 
 export const PlacesBrowser: Component = () => {
-  const { catalog, openCatalog, closeCatalog, placeEditor } = useVoxelscape();
+  const { catalog, input, openCatalog, closeCatalog, placeEditor } =
+    useVoxelscape();
   const [query, setQuery] = createSignal("");
   const [places, setPlaces] = createSignal<PublishedPlace[]>([]);
   const [searched, setSearched] = createSignal(false);
@@ -39,6 +40,12 @@ export const PlacesBrowser: Component = () => {
       }
     },
   );
+
+  createEffect(catalog, (open) => {
+    if (open !== null) {
+      return input.suspendPointerLock();
+    }
+  });
 
   const search = async (): Promise<void> => {
     const who = query().trim();

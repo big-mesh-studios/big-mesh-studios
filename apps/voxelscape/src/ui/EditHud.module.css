@@ -26,6 +26,10 @@
     --color: #d22f35;
   }
 
+  &.paused {
+    opacity: 0.35;
+  }
+
   & > .vertical-stroke {
     width: 2px;
     height: 14px;
@@ -37,6 +41,21 @@
     height: 2px;
     background-color: var(--color);
   }
+}
+
+.pointer-hint {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 18px);
+  transform: translateX(-50%);
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: white;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  font: 12px monospace;
+  white-space: nowrap;
 }
 
 .hotbar {
@@ -151,6 +170,15 @@
   background: rgba(0, 0, 0, 0.45);
   padding: 3px 8px;
   border-radius: 4px;
+  max-width: calc(100vw - 24px);
   font: 11px monospace;
-  white-space: pre;
+  line-height: 1.35;
+  text-align: center;
+  white-space: normal;
+
+  &.guide {
+    border: 1px solid rgba(255, 211, 92, 0.55);
+    background: rgba(20, 16, 5, 0.72);
+    color: #fff3c4;
+  }
 }

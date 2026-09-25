@@ -4,7 +4,7 @@ import styles from "./EditHud.module.css";
 // items with the selected one highlighted. Driven by the shared `Inventory`'s
 // `onChange` callback so counts and the selection refresh without wiring a
 // per-item signal through the domain.
-import { Component, createSignal, For, onCleanup } from "solid-js";
+import { Component, createSignal, For, onCleanup, Show } from "solid-js";
 import { useVoxelscape } from "../voxelscape/voxelscape-context";
 import { spriteIconStyle, woolIconStyle } from "./item-icon";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
@@ -19,7 +19,19 @@ export const EditHud: Component = () => {
   const [controllerConnected, setControllerConnected] = createSignal(
     input.gamepadConnected(),
   );
+  const [pointerLocked, setPointerLocked] = createSignal(input.pointerLocked());
+  const [pointerLockSuspended, setPointerLockSuspended] = createSignal(
+    input.pointerLockSuspended(),
+  );
+  const [activityStarted, setActivityStarted] = createSignal(
+    input.hasActivity(),
+  );
   const stopControllerListener = input.onGamepadChange(setControllerConnected);
+  const stopPointerLockListener = input.onPointerLockChange(setPointerLocked);
+  const stopPointerLockSuspensionListener = input.onPointerLockSuspensionChange(
+    setPointerLockSuspended,
+  );
+  const stopActivityListener = input.onActivity(() => setActivityStarted(true));
 
   const refresh = (): void => {
     setHotbar(inventory.hotbarItems());
@@ -31,6 +43,9 @@ export const EditHud: Component = () => {
       inventory.onChange = null;
     }
     stopControllerListener();
+    stopPointerLockListener();
+    stopPointerLockSuspensionListener();
+    stopActivityListener();
   });
 
   // Red reads as "the primary button does something to what you're looking
@@ -46,13 +61,63 @@ export const EditHud: Component = () => {
     return over.kind === "actor" ? styles.strikeable : styles.voxel;
   };
 
+  const mousePaused = (): boolean =>
+    !coarsePointer() &&
+    !controllerConnected() &&
+    !pointerLockSuspended() &&
+    !pointerLocked();
+  const showControlGuide = (): boolean =>
+    !activityStarted() && editStatus() === "";
+  const statusText = (): string => {
+    const status = editStatus();
+    if (status !== "") {
+      return status;
+    }
+    if (!activityStarted()) {
+      if (coarsePointer()) {
+        return "left stick to move  •  drag to look  •  buttons to act";
+      }
+      if (controllerConnected()) {
+        return "left stick to move  •  right stick to look  •  buttons to act";
+      }
+      return "WASD to move  •  Space to jump  •  mouse to look  •  click to strike  •  E to use  •  I for inventory  •  B for places  •  Esc for the mouse";
+    }
+    if (scriptItem() !== null) {
+      return `holding ${scriptItem()!.name} — ${
+        coarsePointer()
+          ? "use button"
+          : controllerConnected()
+            ? "press B"
+            : "press E"
+      } to use`;
+    }
+    if (coarsePointer()) {
+      return "dig button to strike  •  use button to talk";
+    }
+    if (controllerConnected()) {
+      return "A to jump  •  B to use  •  X to dig  •  LT to place or guard";
+    }
+    return "click to strike  •  right-click to use";
+  };
+
   return (
     <div class={styles.hud}>
       {/* crosshair */}
-      <div class={[styles.crosshair, aim()]}>
+      <div
+        class={[
+          styles.crosshair,
+          aim(),
+          mousePaused() ? styles.paused : undefined,
+        ]}
+      >
         <div class={styles["vertical-stroke"]} />
         <div class={styles["horizontal-stroke"]} />
       </div>
+      <Show when={mousePaused()}>
+        <div class={styles["pointer-hint"]} role="status">
+          Click to play
+        </div>
+      </Show>
       {/* hotbar */}
       <div class={styles.hotbar}>
         <For each={hotbar()}>
@@ -91,7 +156,7 @@ export const EditHud: Component = () => {
         </For>
         <button
           class={styles["inventory-btn"]}
-          title="Open Inventory (I / E)"
+          title="Open Inventory (I)"
           aria-label="Open Inventory"
           onPointerDown={(e) => e.stopPropagation()}
           onPointerUp={(e) => e.stopPropagation()}
@@ -120,15 +185,11 @@ export const EditHud: Component = () => {
         {controllerConnected() && (
           <div class={styles.controller}>controller connected</div>
         )}
-        <div class={styles.status}>
-          {editStatus() ||
-            (scriptItem() !== null
-              ? `holding ${scriptItem()!.name} — ${
-                  coarsePointer() ? "use button" : "press E"
-                } to use`
-              : coarsePointer()
-                ? "dig button to strike  •  use button to talk"
-                : "click to strike  •  right-click to use")}
+        <div
+          class={[styles.status, showControlGuide() && styles.guide]}
+          aria-live="polite"
+        >
+          {statusText()}
         </div>
       </div>
     </div>

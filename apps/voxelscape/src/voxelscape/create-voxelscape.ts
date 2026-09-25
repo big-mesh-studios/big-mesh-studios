@@ -3102,9 +3102,14 @@ export const createVoxelscape = ({
               editorCamera.getWorldDirection(new Vector3()).multiplyScalar(32),
             );
       editorCameraControl().syncFromCamera(editorCamera, focus);
-      void document.exitPointerLock?.();
     },
   );
+
+  createEffect(levelEditor.open, (open) => {
+    if (open) {
+      return input.suspendPointerLock();
+    }
+  });
 
   const mount = (canvas: HTMLCanvasElement): (() => void) => {
     mountedCanvas = canvas;
