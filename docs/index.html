@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Writing a place — voxelscape</title>
+    <meta name="description" content="How to write a place script for voxelscape, from the first one to terrain, figures, and data." />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>📖</text></svg>"
+    />
+    <style>
+/* One stylesheet for both pages, inlined into each document by the prerender so
+   that a page is a single request and nothing is sent to the browser to run.
+   The palette is the world's own: the two applications' accents, over a dark
+   ground, so the documentation sits beside the thing it documents. */
+
+:root {
+  --ground: #14161a;
+  --panel: #1b1e24;
+  --raised: #232730;
+  --edge: #2f343f;
+  --ink: #e8eaed;
+  --dim: #9aa3b2;
+  /* The dimmest ink still has to clear 4.5:1 on every ground it is text on —
+     ground, panel, and raised — or the captions and section headings that use
+     it are the least readable text on the page. */
+  --quiet: #8791a2;
+  --world: #4a8fe7;
+  --editor: #6abe30;
+  --warn: #e7a34a;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-text-size-adjust: 100%;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+
+/* The masthead ------------------------------------------------------- */
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 1.2rem;
+  padding: 0.8rem clamp(1rem, 4vw, 3rem);
+  background: color-mix(in srgb, var(--ground) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--edge);
+}
+
+header .wordmark {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+header nav {
+  display: flex;
+  gap: 1rem;
+}
+
+header nav a {
+  color: var(--dim);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+header nav a:hover {
+  color: var(--ink);
+  border-bottom-color: var(--world);
+}
+
+header .where {
+  margin: 0 0 0 auto;
+  color: var(--quiet);
+  font-size: 0.85rem;
+}
+
+main {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 0 clamp(1rem, 4vw, 3rem) 5rem;
+}
+
+footer {
+  border-top: 1px solid var(--edge);
+  padding: 1.6rem clamp(1rem, 4vw, 3rem) 3rem;
+  color: var(--quiet);
+  font-size: 0.85rem;
+}
+
+footer p {
+  max-width: 62rem;
+  margin: 0 auto;
+}
+
+a {
+  color: var(--world);
+}
+
+/* Headings and prose -------------------------------------------------- */
+
+h1 {
+  font-size: clamp(1.9rem, 4vw, 2.6rem);
+  line-height: 1.15;
+  margin: 2.5rem 0 0.4rem;
+  letter-spacing: -0.01em;
+}
+
+.lede > p {
+  color: var(--dim);
+  max-width: 46rem;
+  margin: 0.6rem 0;
+}
+
+h2 {
+  font-size: 1.5rem;
+  margin: 3.5rem 0 0;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--edge);
+  scroll-margin-top: 5rem;
+}
+
+h3 {
+  font-size: 1.15rem;
+  margin: 2.2rem 0 0.2rem;
+  color: var(--editor);
+}
+
+h4 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+  margin: 1.4rem 0 0.3rem;
+  font-weight: 500;
+}
+
+p {
+  margin: 0.7rem 0;
+}
+
+.intro {
+  color: var(--dim);
+  max-width: 46rem;
+  margin: 0.3rem 0 1.2rem;
+}
+
+/* The filter ---------------------------------------------------------- */
+
+.filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  position: sticky;
+  top: 3.4rem;
+  z-index: 5;
+  margin: 1.6rem 0 0;
+  padding: 0.7rem 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+}
+
+.filter label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--quiet);
+}
+
+.filter input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  padding: 0.45rem 0.7rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+}
+
+.filter input:focus-visible {
+  outline: 2px solid var(--world);
+  outline-offset: 1px;
+}
+
+.filter button {
+  padding: 0.45rem 0.8rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--dim);
+  background: var(--raised);
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.filter button:hover {
+  color: var(--ink);
+}
+
+.filter .shown {
+  color: var(--quiet);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.filter .jump {
+  font-size: 0.8rem;
+}
+
+.hidden {
+  display: none;
+}
+
+/* Shown only when a filter matches nothing, where every section is hidden and
+   without it the page would end at the sticky filter bar with no explanation. */
+.empty {
+  margin: 2.5rem 0 0;
+  padding: 1rem 1.1rem;
+  max-width: 30rem;
+  border: 1px solid var(--edge);
+  border-left: 3px solid var(--quiet);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--dim);
+  font-size: 0.9rem;
+}
+
+/* Entries ------------------------------------------------------------- */
+
+.entry {
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--panel);
+  margin: 0.4rem 0;
+  scroll-margin-top: 8rem;
+}
+
+.entry > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.8rem;
+  padding: 0.55rem 0.85rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.entry > summary::-webkit-details-marker {
+  display: none;
+}
+
+.entry > summary::before {
+  content: "▸";
+  color: var(--quiet);
+  font-size: 0.7rem;
+  transition: transform 0.12s ease;
+}
+
+.entry[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.entry > summary:hover {
+  background: var(--raised);
+}
+
+.entry .name {
+  color: var(--world);
+  font-weight: 600;
+}
+
+.entry .what {
+  color: var(--dim);
+  flex: 1 1 20rem;
+  font-size: 0.9rem;
+}
+
+.entry[open] > summary {
+  border-bottom: 1px solid var(--edge);
+}
+
+.entry > p,
+.entry > table,
+.entry > .alternative {
+  margin: 0.8rem 0.9rem;
+}
+
+.alternative h4 .what {
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+
+.signature code {
+  color: var(--editor);
+  word-break: break-word;
+}
+
+.returns,
+.union {
+  color: var(--dim);
+  font-size: 0.9rem;
+}
+
+.undone {
+  color: var(--quiet);
+  font-size: 0.85rem;
+}
+
+.optional {
+  margin-left: 0.5rem;
+  color: var(--quiet);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Field tables -------------------------------------------------------- */
+
+.fields {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.fields caption {
+  text-align: left;
+  color: var(--quiet);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding-bottom: 0.4rem;
+}
+
+.fields th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--quiet);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--edge);
+  padding: 0.2rem 0.6rem 0.3rem 0;
+}
+
+.fields td {
+  padding: 0.35rem 0.6rem 0.35rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--edge) 55%, transparent);
+  vertical-align: top;
+}
+
+.fields tr:last-child td {
+  border-bottom: none;
+}
+
+.fields td:first-child {
+  white-space: nowrap;
+}
+
+.fields .type {
+  color: var(--editor);
+  word-break: break-word;
+}
+
+.fields .doc {
+  color: var(--dim);
+}
+
+.limits td:first-child code {
+  color: var(--world);
+}
+
+/* A limit's name is a constant, and the longer ones are one unbreakable word.
+   The first column is nowrap above so a field's name keeps its "optional" tag
+   beside it, which for a constant would instead widen the table past a phone. */
+.limits td:first-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* The guides ---------------------------------------------------------- */
+
+.guide {
+  margin: 3rem 0 0;
+  padding-top: 0.5rem;
+}
+
+/* Prose in a guide takes the body colour and a measure. A note is a callout
+   rather than prose, and carries its own — without the exclusion this rule's
+   higher specificity wins and the note reads at full body brightness. */
+.guide > p:not(.note),
+.guide li {
+  max-width: 46rem;
+  color: var(--ink);
+}
+
+.guide ol,
+.guide ul {
+  padding-left: 1.3rem;
+}
+
+.guide li {
+  margin: 0.35rem 0;
+}
+
+.sample {
+  position: relative;
+  margin: 1.1rem 0;
+  padding: 0.9rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-left: 3px solid var(--editor);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.sample pre {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.sample .caption {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--quiet);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.note {
+  margin: 1.1rem 0;
+  padding: 0.8rem 1rem;
+  background: color-mix(in srgb, var(--warn) 8%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--edge));
+  border-radius: 8px;
+  color: var(--dim);
+  font-size: 0.9rem;
+}
+
+.note strong {
+  color: var(--warn);
+}
+
+.contents {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.8rem;
+  margin: 1.6rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.contents li {
+  margin: 0;
+}
+
+.contents a {
+  display: block;
+  height: 100%;
+  padding: 0.8rem 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.contents a:hover {
+  border-color: var(--world);
+}
+
+.contents .step {
+  display: block;
+  color: var(--quiet);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.contents .blurb {
+  display: block;
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 40rem) {
+  header .where {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .filter {
+    top: 6.6rem;
+  }
+}
+
+@media print {
+  header,
+  .filter {
+    position: static;
+  }
+
+  .entry {
+    break-inside: avoid;
+  }
+}
+    </style>
+  </head>
+  <body>
+<header><a class="wordmark" href="/big-mesh-studios/docs/">big mesh studios</a><nav><a href="index.html">Guides</a><a href="reference.html">Reference</a></nav><p class="where">Writing a place for <a href="/big-mesh-studios/docs/voxelscape/">voxelscape</a></p></header><main><h1>Writing a place</h1><div class="lede"><p>A place is a piece of the world with a script attached to it. This is how to write one, in six steps, from a single toast to a place that remembers you.</p><p>Every sample here is drawn from a demo place in this repository, trimmed to the part under discussion. Every function, effect, fact, and bound they use is listed in the <a href="reference.html">reference</a>, which is read out of the world&rsquo;s own declarations and is the same artifact <code>/place:docs</code> opens in the world.</p></div><ol class="contents"><li><a href="#first-place"><span class="step">One</span>Your first place<span class="blurb">The one import, the one handler, and how a script changes the world.</span></a></li><li><a href="#editor-and-console"><span class="step">Two</span>The editor and the console<span class="blurb">Where a place is written, where it is poked at, and where the reference lives in the world.</span></a></li><li><a href="#terrain-with-onplan"><span class="step">Three</span>Terrain, with onPlan<span class="blurb">The six shapes a place's land is built from, and the coordinate that catches everyone.</span></a></li><li><a href="#figures-and-models"><span class="step">Four</span>Figures and models<span class="blurb">NPCs, props, and the models rm-stacker published and this place attached.</span></a></li><li><a href="#presentation"><span class="step">Five</span>Presentation<span class="blurb">The HUD, the scripted interface, and the light and sound of the land.</span></a></li><li><a href="#rules-and-data"><span class="step">Six</span>Rules and data<span class="blurb">Scoring, teams, items, and the three scopes of what a place remembers.</span></a></li></ol><section class="guide" id="first-place"><h2>Your first place</h2><p>A <strong>place</strong> is a piece of the world with a script attached to it. The script is ordinary JavaScript that runs in a sandbox, and it reaches the world through exactly one import. Everything this documentation describes hangs off that:</p><figure class="sample"><figcaption class="caption">src/main.ts — the whole of a first place</figcaption><pre><code data-language="ts">import { dispatch, onTick } from "voxelscape";
+
+// The world calls this every step with the shared clock and the facts since
+// the last one. Everything a script does happens inside a handler it registers.
+onTick((clockMs, events) => {
+  for (const event of events) {
+    // Say hello to whoever broke a block.
+    if (event.kind === "block-broken") {
+      dispatch("toast", { player: event.producer, text: "Careful with that." });
+    }
+  }
+});</code></pre></figure><h3>Opening the editor</h3><p>Type <code>/place:editor</code> in the console. It is the same console every other command lives in — press <kbd>Escape</kbd> to close it. The editor is where scripts are written and where a place&rsquo;s models are attached; this documentation is what the editor&rsquo;s own language service checks a script against, so anything below that type-checks in the editor will type-check here.</p><h3>What the sandbox gives you</h3><p>The script has no DOM, no network, no filesystem, and no clock of its own. What it has is the <code>voxelscape</code> module and a shared clock every peer in the place agrees on. That is deliberate: two peers running the same script must reach the same answer, so anything that would let them disagree is absent rather than discouraged.</p><h3>Reading and writing</h3><p>Reading is a <strong>world query</strong> — a function in the module that answers a question about the running world, as a pure function of the clock and the replicated state. Writing is an <strong>effect</strong> — a call to <code>dispatch</code> naming a tag and a payload, which the trusted side validates and then applies.</p><figure class="sample"><figcaption class="caption">A query and an effect, side by side</figcaption><pre><code data-language="ts">import { dispatch, getHeightAt, onTick } from "voxelscape";
+
+onTick((clockMs) => {
+  // A read: what is under the player, answered without changing anything.
+  const ground = getHeightAt(0, 0);
+
+  // A write: ask the world to change something. The payload is typed against
+  // the tag itself, so a misspelled field will not compile.
+  dispatch("toast", { player: "", text: `The ground here is at ${ground}` });
+});</code></pre></figure><p class="note"><strong>Careful.</strong> Every effect and every fact has a fixed vocabulary, and the<!--!$--> <a href="reference.html#effects">reference</a> lists all of them with the bounds the trusted side enforces. A payload outside those bounds is dropped rather than clamped, so a script that dispatches an oversized fill does nothing at all — it does not fill part of the box.</p><h3>Where to go next</h3><p>A place that is only a toast is not much of a place. The guides below build one up in the order the world itself does: the terrain it stands on, the figures that walk it, the things a player sees, and the rules and data that make it a game.</p></section><section class="guide" id="editor-and-console"><h2>The editor and the console</h2><p>Two ways in, and they are not interchangeable. The <strong>editor</strong> is where a place is authored: its scripts, its models, its name. The <strong>console</strong> is where the running world is poked at, by whoever is holding the keyboard.</p><h3>The editor</h3><figure class="sample"><figcaption class="caption">the two commands that open it</figcaption><pre><code data-language="ts">/place:editor            the script editor
+/place:level-editor     the terrain editor, for the shape of the land</code></pre></figure><p>The script editor lists the files a place ships and lets you edit them with the same editor everything else in this project uses. Underneath, it runs a TypeScript language service over your scripts with the <code>voxelscape</code> module in scope — the same declaration this site&rsquo;s reference is read from. That means completion, hover documentation, and an inline error all come from the world&rsquo;s own types rather than from anything written here, and a script that type-checks in the editor is a script the world can run.</p><h3>Attaching models</h3><p>A place carries its own models: voxel figures published from <a href="../rm-stacker/">rm-stacker</a> and attached to this place. They are not imported by name into a script; they are attached to the place, and the editor generates a declaration from the attached files&rsquo; own bytes. <code>createNpc</code> then checks the model name you pass against exactly those, so a typo in a model name is a compile error rather than a figure that never appears.</p><p class="note"><strong>Careful.</strong> The model name is checked at two different moments on purpose. At build time the name is checked against the models the place has attached; at run time it is checked against the models actually loaded, and an unknown one throws the moment the call runs. Attaching a model after a script is written is therefore safe, and removing one the script names is not.</p><h3>The console</h3><p>Press <kbd>Escape</kbd> for the console. Every command in the world is declared in one place and named for what the player has rather than what the code is built on, which is why the account commands are <code>/account:*</code>. A few are worth knowing while writing a place:</p><figure class="sample"><figcaption class="caption">the commands a creator reaches for</figcaption><pre><code data-language="ts">/place:docs                this reference, in the world
+/place:editor               the script editor
+/place:level-editor        the terrain editor
+/clock:speed 4             run the day-night clock four times as fast
+/weather snow               pin the weather
+/place:demos               list the built-in demo places
+/place:demo &lt;id>           play one of them</code></pre></figure><p><code>/place:demos</code> and <code>/place:demo &lt;id&gt;</code> are the quickest way to see one of the built-in demos running. Those demos are ordinary place scripts in this repository, and every sample in these guides is drawn from one of them.</p><h3>The reference, in the world</h3><p><code>/place:docs</code> opens the same reference this site serves, rendered from the same committed artifact. It is the whole vocabulary: every function, effect, fact, and bound. Having it open in a second window or on a second monitor while writing a script is the intended way to work — it is searchable, and it needs no connection to anything.</p></section><section class="guide" id="terrain-with-onplan"><h2>Terrain, with onPlan</h2><p>Everything else in a place script happens during play. One thing does not: the terrain. A place&rsquo;s terrain is built once, before the first fill, by a handler registered with <code>onPlan</code>. The world calls it exactly once, with the place&rsquo;s seed and the region it may build in, and whatever plan string it returns becomes the land.</p><figure class="sample"><figcaption class="caption">A plan handler, from the Cube Cavern demo</figcaption><pre><code data-language="ts">import { onPlan } from "voxelscape";
+import { hubShapes } from "./hub-level";
+
+onPlan(() => JSON.stringify(hubShapes()));</code></pre></figure><h3>What it is given</h3><p>The argument is a JSON string, not an object, because it crosses the sandbox boundary as text. It parses to a <code>PlanContext</code>: the <code>seed</code> the place&rsquo;s world is generated from, and the <code>region</code> — a voxel box, inclusive at both corners — the plan may address. The return value is the same: a JSON string, parsing to a <code>LevelPlan</code>, or a bare array of shapes.</p><p>Seed from the context rather than from anything else. Every peer generating this place has the same seed, so a plan that uses it lays the same land in every peer&rsquo;s world, and a plan that ignores it lays down whatever the local machine&rsquo;s <code>Math.random</code> produced.</p><h3>The six shapes</h3><p>A plan is a list of <strong>plan shapes</strong>, and there are six. Each carries a <code>kind</code> and its own fields, and the <a href="reference.html#shape-box">reference</a> draws every one of them:</p><ul><li><code>box</code> — an axis-aligned voxel box, the workhorse.</li><li><code>road</code> — a flat strip between two points, for a path.</li><li><code>house</code> — a box with wall, roof, and floor depths, so a building gets a shell and an interior in one shape.</li><li><code>stairs</code> — a flight along one axis, with its own step, rise, and run.</li><li><code>ramp</code> — a walkable slope between two points.</li><li><code>surface</code> — a box skimmed with a different block, which is how a place gets a desert without becoming a different world.</li></ul><figure class="sample"><figcaption class="caption">A ground, a building, and a road — the shapes side by side</figcaption><pre><code data-language="ts">import { blocks, onPlan } from "voxelscape";
+
+onPlan((contextJson) => {
+  const { region } = JSON.parse(contextJson);
+  const b = blocks;
+  const y = region.min[1];
+  return JSON.stringify({
+    structures: [
+      // The ground: a slab of dirt, with a skin of grass skimmed over it.
+      { kind: "box", min: [region.min[0], y - 2, region.min[2]], max: [region.max[0], y - 1, region.max[2]], id: b.dirt },
+      { kind: "surface", min: [region.min[0], y, region.min[2]], max: [region.max[0], y, region.max[2]], depth: 1, id: b.grass },
+      // A house, which brings its own walls, roof, and floor.
+      { kind: "house", at: [8, y + 1, 8], size: [6, 5, 6], wall: 1, roof: 1, floor: 1 },
+    ],
+  });
+});</code></pre></figure><p class="note"><strong>Careful.</strong> A plan is in <strong>voxel</strong> coordinates; everything after it is in <strong>world feet</strong>. One voxel is two feet, so a plan coordinate is a world coordinate halved. Getting this wrong is the single most common way a place ends up floating in the sky or buried, and it is worth writing the conversion down at the top of the file — the demos do exactly that.</p><h3>Shaping the same land after the fact</h3><p>A plan is not the only way to build. The <code>structure</code> effect stamps the same shapes into the running world during play, which is how a demo builds a floor per run rather than per place, and <code>block-set</code>, <code>block-fill</code>, and <code>block-clear</code> move single voxels and boxes. A scripted block edit travels the same path a player&rsquo;s own edit does — overlay, mesh, light, save, and broadcast — so it persists and reconciles exactly as a dug one does.</p><p>The <strong>level editor</strong> (/place:level-editor) is a third route: a place can ship voxel edits made by hand, the same ones a player would make, and they are loaded before the plan is asked for anything.</p></section><section class="guide" id="figures-and-models"><h2>Figures and models</h2><p>A place is inhabited by <strong>figures</strong> — the NPCs a script places, the props it sets down, and the players themselves. Every figure wears a voxel model, and the models a place may wear are the ones <a href="../rm-stacker/">rm-stacker</a> published and the editor attached to it.</p><h3>Placing an NPC</h3><figure class="sample"><figcaption class="caption">Two NPCs, from the sample place script</figcaption><pre><code data-language="ts">import { createNpc, dispatch, onTick } from "voxelscape";
+
+function spawn() {
+  createNpc({ id: "sable", x: 40, z: 12, name: "Sable" });
+  createNpc({ id: "rook", x: -40, z: 12, name: "Rook" });
+}</code></pre></figure><p>The <code>id</code> is the one field that has no default, and it is not an oversight. Every peer in a place runs the same script against the same clock, so each must independently compute the identical id for the identical figure — a random one would place a different figure in every peer&rsquo;s world. Derive it from something deterministic, the way the Zombies demo derives an id from its population seed and spawn cell.</p><p class="note"><strong>Careful.</strong> <code>createNpc</code> throws if a model name is not one the place actually attaches. Omitting <code>model</code> entirely is not the same as an unknown one: the world draws its own default figure, exactly as a hand-written <code>npc</code> effect with no model does.</p><h3>Dressing a player</h3><p>A player can be dressed in one of the place&rsquo;s models, which is how a place gives a costume or a form. The empty string is a real value rather than a null, and means the plain cube:</p><figure class="sample"><figcaption class="caption">costume and undress</figcaption><pre><code data-language="ts">setPlayerModel("wolf", player);   // dress them
+clearPlayerModel(player);        // take it off again</code></pre></figure><h3>Standing figures in a plan</h3><p>A plan may also stand figures among its shapes, so the land and its occupants are built in the same pass. Those take world <em>feet</em>, not voxels — the same coordinates a script&rsquo;s <code>npc</code> effect takes, and the opposite of the shapes beside them. Both are written out in full in the <a href="reference.html#plan-PlanNpc">reference</a>.</p><h3>Talking to a figure</h3><p>An NPC is not interactive on its own. Talking is a dialog you dispatch, and the reply arrives back as a fact on a later tick, which is where the figure&rsquo;s state lives:</p><figure class="sample"><figcaption class="caption">A dialog tree, from the sample place script</figcaption><pre><code data-language="ts">dispatch("dialog", {
+  player: player,
+  npcId: "sable",
+  prompt: "Welcome, traveller. My wares are humble.",
+  options: ["Buy a potion.", "Goodbye."],
+});
+
+// ...later, on a fact:
+if (event.kind === "npc-choose" &amp;&amp; event.npcId === "sable") {
+  // event.option is the index the player picked
+}</code></pre></figure><p>The round trip through a fact is the pattern for anything a player does to a figure, and the reason a dialog handler keeps a little state: the script is told <em>which option was chosen</em>, not what the question was, so it has to remember where in the tree the conversation is.</p><h3>Behaviours</h3><p>A figure moves on its own only if a script tells it to. The <code>entity-set</code> effect sets a figure&rsquo;s attributes and the <code>figure-animate</code> effect drives a motion, while <code>zone</code> marks out an area a figure acts within. The <code>npc-remove</code> and <code>prop-remove</code> effects take a figure away again, by the same id it was placed with.</p></section><section class="guide" id="presentation"><h2>Presentation</h2><p>A place that changes nothing the player can see is a place nobody remembers. The presentation effects come in two families: the <strong>scripted interface</strong>, which a place builds out of named panels and items, and <strong>world dressing</strong>, the light and sound and weather that make the land feel like somewhere.</p><h3>The HUD</h3><p>A HUD readout is a line in a player&rsquo;s overlay. It is named, so a later <code>hud</code> with the same id replaces it, and <code>hud-remove</code> takes it away. The empty player string means everyone locally, which is the usual case for a single-player place.</p><figure class="sample"><figcaption class="caption">A health bar and a count, from the Cube Cavern demo</figcaption><pre><code data-language="ts">dispatch("hud", { player: "", id: "hp", kind: "bar", label: "Health", value: health, max: maxHealth });
+dispatch("hud", { player: "", id: "coins", kind: "text", label: "Coins", text: `${coins}` });</code></pre></figure><p>A bar needs a <code>max</code>; a text readout needs a <code>text</code>. Dispatch the same id every time the value changes rather than creating a new readout each time — a bar with a fresh id every tick is a bar the player watches multiply.</p><h3>Panels, and what goes in them</h3><p>Anything more than a readout is a <strong>panel</strong>: a docked box that items are added to. A panel is opened once by id, items are added and updated under that id, and <code>ui-remove</code> closes it.</p><figure class="sample"><figcaption class="caption">A panel, a label, a bar, and a button</figcaption><pre><code data-language="ts">dispatch("ui-panel", { player: "", id: "hud", title: "Status", anchor: "bottom-left" });
+dispatch("ui-label", { player: "", panel: "hud", id: "hp-label", text: "Health" });
+dispatch("ui-bar",   { player: "", panel: "hud", id: "hp", value: 80, max: 100 });
+dispatch("ui-button", { player: "", panel: "hud", id: "heal", text: "Rest", onClick: "heal" });</code></pre></figure><p>The five item effects are <code>ui-label</code>, <code>ui-bar</code>, <code>ui-button</code>, <code>ui-image</code>, and <code>ui-remove</code>; every one takes the panel it belongs to, and every one is named so a later dispatch can update it in place. A button&rsquo;s <code>onClick</code> is a tag, not a function: the sandbox has no way to call back into a script, so the click arrives as a fact and the script answers it on the next tick.</p><h3>Light, sound, and weather</h3><p>The land itself is dressed with the same vocabulary: <code>createLight</code> places a light and <code>light-remove</code> takes it away; <code>createStorm</code> sets the weather; <code>createBillboard</code>, <code>createDecal</code>, and <code>createParticle</code> add the scenery.</p><figure class="sample"><figcaption class="caption">A sound with an id, and the stop that reaches it</figcaption><pre><code data-language="ts">dispatch("sound", { player: "", name: "ambience", id: "wind", loop: true, volume: 0.4 });
+// ...and much later, in another tick:
+dispatch("sound-stop", { player: "", id: "wind" });</code></pre></figure><p class="note"><strong>Careful.</strong> A sound names one of the world’s own fixed sounds, never a file or a URL — a place cannot ship audio of its own. The same goes for billboard images. <code>id</code> is required to loop, and a loop with no<code>sound-stop</code> left behind is a sound that plays until the place is left.</p><h3>Talking to the player</h3><p>Two smaller surfaces round it out. <code>toast</code> is a short message in the corner, for something that does not deserve a panel, and <code>narrate</code> is a line of prose for a moment that deserves one.</p></section><section class="guide" id="rules-and-data"><h2>Rules and data</h2><p>Everything so far has been a place that <em>exists</em>. This is the part that makes it a game: what a player has done, what it earned, and what the place remembers between visits.</p><h3>Scoring</h3><p>Scoring is a script&rsquo;s own arithmetic. A strike arrives as a fact and the script decides what it is worth — there is no built-in score, because what a hit means differs from place to place.</p><figure class="sample"><figcaption class="caption">A strike reported, and scored by the place</figcaption><pre><code data-language="ts">onTick((clockMs, events) => {
+  for (const event of events) {
+    if (event.kind === "entity-hit") {
+      // The place decides what a hit is worth; the world only reports it.
+      score[event.producer] = (score[event.producer] ?? 0) + event.amount;
+    }
+  }
+});</code></pre></figure><p>A number kept per player under a key is what the world can rank across players, which is what a leaderboard is: <code>player-value</code> writes it, <code>showLeaderboard</code> displays it, and it should be written whenever it changes.</p><h3>Teams</h3><p><code>team-define</code> declares the teams a place has and <code>player-team</code> puts a player on one. Teams are a name and a colour, and nothing more — what a team <em>does</em> is still the script&rsquo;s, driven by the same facts.</p><h3>Items</h3><p>An item is declared with <code>item-define</code>, handed out with <code>item-give</code>, and taken with <code>item-take</code>. What happens when one is used arrives as an <code>item-used</code> fact, so the item is a name the world tracks and the meaning is the script&rsquo;s.</p><h3>Ending</h3><p>Every ending a place defines is listed by <code>getEndings</code>, and <code>ending</code> is how one is reached for a player — a title and the text it ends on. <code>restart</code> puts them back at the start, and <code>teleport</code> sends them to another place, optionally carrying data across with it.</p><h3>What a place remembers</h3><p>A place remembers a <strong>data value</strong> — a string, a finite number, or a boolean — under a key, at one of three <strong>scopes</strong>. The scope is the whole decision:</p><ul><li><code>player</code> — one player&rsquo;s own value, kept with them wherever they play the place.</li><li><code>global</code> — one value shared by everyone in the place, for something a run changes for everybody at once.</li><li><code>account</code> — one value for the signed-in account, readable across places.</li></ul><figure class="sample"><figcaption class="caption">A coin count per player, and a leaderboard from it</figcaption><pre><code data-language="ts">import { dispatch, getData, onTick, savePlayerData } from "voxelscape";
+
+const coins = getData("player", player, "coins") ?? 0;
+
+savePlayerData("coins", coins + 5, player);
+dispatch("player-value", { player, key: "coins", value: coins + 5 });</code></pre></figure><p>A read is <code>getData</code>, a write is <code>savePlayerData</code>, <code>saveGlobalData</code>, or <code>saveAccountData</code>, and a deletion is <code>deletePlayerData</code> or <code>deleteAccountData</code>. A missing value reads as <code>null</code> rather than throwing, so a place can ask for something it has never written.</p><p class="note"><strong>Careful.</strong> <code>requestData</code> is the asynchronous form: it asks the world to read, and the answer arrives as a <code>data-loaded</code> fact on a later tick rather than in the return value. Use it when the read is across the network and the script should not block; <code>getData</code> <!--!$-->is the one that answers now.</p><h3>Badges and the catalog</h3><p><code>awardBadge</code> awards a badge, remembered as that player&rsquo;s place data, and comes back as a <code>badge-earned</code> fact so a place can mark the moment. <code>openCatalog</code> opens the world&rsquo;s catalog — the search over published places a player enters a new one from — and <code>teleport</code> is how a script sends them there.</p></section></main><footer><p>The reference is read out of the world's own sources by <code>pnpm place-reference</code>, so it cannot drift from the code it describes. Both are open source, in one repository: <a href="https://github.com/big-mesh-studios/big-mesh-studios">github.com/big-mesh-studios/big-mesh-studios</a>.</p></footer>
+  </body>
+</html>
