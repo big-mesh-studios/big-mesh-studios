@@ -411,12 +411,12 @@
     },
     {
       "name": "onPlan",
-      "signature": "(fn: (contextJson: string) => string): void",
-      "doc": "Registers the handler that builds this place's terrain, called once before the first fill with the place's seed and the region a plan may build in. Whatever string it returns is the plan, parsed as a `LevelPlan`.",
+      "signature": "(answer: string | ((contextJson: string) => string)): void",
+      "doc": "Registers what builds this place's terrain, called once before the first fill. Either a plan already written out, as `plan` hands one back, or a function answering with one when the world calls it with this place's seed and the region a plan may build in — whichever it is, the plan is read as a `LevelPlan`.",
       "params": [
         {
-          "name": "fn",
-          "type": "(contextJson: string) => string",
+          "name": "answer",
+          "type": "string | ((contextJson: string) => string)",
           "optional": false,
           "doc": ""
         }
@@ -450,6 +450,20 @@
         }
       ],
       "returns": "void"
+    },
+    {
+      "name": "plan",
+      "signature": "(name: never): string",
+      "doc": "The level plan this place carries under `name`, as `onPlan` answers one.",
+      "params": [
+        {
+          "name": "name",
+          "type": "never",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "string"
     },
     {
       "name": "randFloat",
@@ -1960,6 +1974,14 @@
           "doc": ""
         }
       ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "LevelsByName",
+      "doc": "Every level this place carries, keyed by the bare name `plan` takes — empty until augmented. A level is its plan as text, so every entry is the string an `onPlan` call answers with.",
+      "members": [],
       "union": [],
       "alternatives": [],
       "type": ""
