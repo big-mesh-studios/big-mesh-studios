@@ -1,6 +1,6 @@
 # How a voxel becomes a pixel
 
-Read out of the modules that do it at d5a375d by `pnpm rendering`.
+Read out of the modules that do it at 4759ddc by `pnpm rendering`.
 Every number below is the one the code declares, not a note about it.
 
 ## The path
@@ -115,13 +115,13 @@ spends against. An index costs 4 bytes on top, six to a quad.
 9. `multiplayer`
 10. `figures`
 11. `environment`
-12. `meshDrain`
-13. `merge`
-14. `rendererTick`
-15. `advance`
-16. `occlusion`
-17. `draw`
-18. `light`
+12. `light`
+13. `meshDrain`
+14. `merge`
+15. `rendererTick`
+16. `advance`
+17. `occlusion`
+18. `draw`
 
 `advance` holds every stage above it except the last two: what the probe
 reports as advance is the world's whole update, and `occlusion` and `draw`

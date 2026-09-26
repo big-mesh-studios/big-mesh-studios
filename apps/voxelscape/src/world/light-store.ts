@@ -14,6 +14,7 @@ import {
   VOXEL_LAVA_LEVEL_7,
   VOXEL_LAVA_FALLING,
   VOXEL_EMBER,
+  VOXEL_GLOWSTONE,
   VOXEL_PADDING,
   type VoxelStore,
 } from "./voxel-store";
@@ -32,14 +33,16 @@ const BLOCK_SHIFT = 4;
 
 /**
  * Light levels per voxel id for the emissive blocks that seed block light.
- * Lava and fire embers both shine at full strength; a place can lower an
- * ember's light by re-lighting the block around an edited copy, or this table
- * can grow torches and glowstone as their ids land.
+ * Lava, fire embers, and glowstone all shine at full strength. A block that
+ * glows but does not burn, like a glowstone set into a ceiling, is a solid id
+ * of its own rather than one of the two, so it never spreads, flows, or burns
+ * the place it lights.
  */
 export const EMISSIVE_LEVEL: Record<number, number> = (() => {
   const levels: Record<number, number> = {
     [VOXEL_LAVA]: MAX_LIGHT,
     [VOXEL_EMBER]: MAX_LIGHT,
+    [VOXEL_GLOWSTONE]: MAX_LIGHT,
   };
   for (let id = VOXEL_LAVA_LEVEL_1; id <= VOXEL_LAVA_LEVEL_7; id++) {
     levels[id] = MAX_LIGHT;

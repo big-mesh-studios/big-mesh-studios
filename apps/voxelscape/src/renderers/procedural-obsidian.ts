@@ -22,14 +22,20 @@ const pick = (x: number, y: number, seed: number): number =>
 
 /**
  * Extends the loaded atlas with a procedurally generated obsidian tile,
- * returning the texture and dimensions that now include it.
+ * returning the texture, bitmap and dimensions that now include it. The bitmap
+ * is handed back so a further generated tile can be chained onto this one.
  */
 export async function injectProceduralObsidianTile(
   sourceBitmap: ImageBitmap,
   width: number,
   height: number,
   atlas: Map<string, SubTexture>,
-): Promise<{ texture: Texture; width: number; height: number }> {
+): Promise<{
+  texture: Texture;
+  bitmap: ImageBitmap;
+  width: number;
+  height: number;
+}> {
   const firstSub = atlas.values().next().value as SubTexture | undefined;
   const tileW = firstSub?.w ?? 128;
   const tileH = firstSub?.h ?? 128;
@@ -39,7 +45,12 @@ export async function injectProceduralObsidianTile(
   canvas.height = height + tileH;
   const ctx = canvas.getContext("2d");
   if (!ctx) {
-    return { texture: new Texture(sourceBitmap), width, height };
+    return {
+      texture: new Texture(sourceBitmap),
+      bitmap: sourceBitmap,
+      width,
+      height,
+    };
   }
   ctx.drawImage(sourceBitmap, 0, 0);
 
@@ -79,5 +90,10 @@ export async function injectProceduralObsidianTile(
   }
 
   const bitmap = await createImageBitmap(canvas);
-  return { texture: new Texture(bitmap), width, height: height + tileH };
+  return {
+    texture: new Texture(bitmap),
+    bitmap,
+    width,
+    height: height + tileH,
+  };
 }

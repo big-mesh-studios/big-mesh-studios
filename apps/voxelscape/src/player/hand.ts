@@ -14,6 +14,7 @@ import {
 } from "@big-mesh-studios/stacker/renderer";
 import { BoxGeometry, Mesh, PerspectiveCamera } from "@random-mesh/rmsl/scene";
 import type { DayNightState } from "../environment/day-night";
+import { LIGHT_TO_UNIT, MAX_LIGHT } from "../world/light-store";
 import type { ItemId } from "./items";
 import { handTransform, type SwingPose } from "./swing";
 
@@ -102,6 +103,18 @@ export class Hand {
         state.ambient[1],
         state.ambient[2],
       ];
+    }
+  }
+
+  /**
+   * The block light standing where the player is, 0 to 15, fed to every held
+   * model so the item in their hand is lit by the room they are standing in
+   * rather than by the sun alone.
+   */
+  applyBlockLight(level: number): void {
+    const blockLight = LIGHT_TO_UNIT(Math.min(Math.max(level, 0), MAX_LIGHT));
+    for (const { material } of this.models.values()) {
+      material.blockLight = blockLight;
     }
   }
 

@@ -83,6 +83,8 @@ export const VOXEL_TILES: Record<number, VoxelTiles> = {
   46: { top: "sand", side: "sand", bottom: "sand" },
   // Obsidian wears the procedurally generated portal-frame tile on every face.
   47: { top: "obsidian", side: "obsidian", bottom: "obsidian" },
+  // Glowstone wears the procedurally generated tile of warm lumps on every face.
+  48: { top: "glowstone", side: "glowstone", bottom: "glowstone" },
 };
 
 export const parseTileAtlasXml = (xmlText: string): Map<string, SubTexture> => {

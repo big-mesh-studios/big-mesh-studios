@@ -13,13 +13,20 @@ import {
 } from "voxelscape";
 
 // The structure plan is drawn in LOD-0 voxel coordinates, and a voxel is two
-// world units on every axis, so `GROUND` is a voxel row: 30 voxels down the
-// world puts the walkable surface at world y 60 and the player's feet at 62.
+// world units on every axis, so `GROUND` is a voxel row: 32 voxels down the
+// world puts the walkable surface at world y 64 and the player's feet at 66.
 // Every room, prop, and item below is placed in world units instead, which is
-// why `FLOOR` is 62 and why the plan's x and z are half of theirs: the house
+// why `FLOOR` is 66 and why the plan's x and z are half of theirs: the house
 // the plan draws is fourteen voxels across and twenty-eight units.
-const GROUND = 30;
-const FLOOR = 62;
+//
+// A block of voxels is 64 on a side and the one the spawn sits in covers rows
+// -32 to 31, so row 32 is the first row of the next block up and the whole
+// neighbourhood stands inside it. That is what makes the store's ceiling
+// panels light its floor: block light is filled a block at a time, seeded from
+// the emitters inside that block's own padding, so a building straddling row 32
+// has a lit ceiling and an unlit floor. See ADR 0094.
+const GROUND = 32;
+const FLOOR = 66;
 
 const BEDROOM = "bedroom";
 const BATHROOM = "bathroom";
@@ -176,6 +183,33 @@ onPlan(() => {
       min: [24, GROUND + 4, -6],
       max: [34, GROUND + 4, 6],
       id: b.wood,
+    },
+    // The store's four ceiling panels, set into the roof over the freezer, the
+    // counter and the two shelf bays. They come after the roof because a plan
+    // is stamped in order and the last box over a voxel is the one that holds.
+    {
+      kind: "box",
+      min: [27, GROUND + 4, -3],
+      max: [27, GROUND + 4, -3],
+      id: b.glowstone,
+    },
+    {
+      kind: "box",
+      min: [27, GROUND + 4, 3],
+      max: [27, GROUND + 4, 3],
+      id: b.glowstone,
+    },
+    {
+      kind: "box",
+      min: [31, GROUND + 4, -3],
+      max: [31, GROUND + 4, -3],
+      id: b.glowstone,
+    },
+    {
+      kind: "box",
+      min: [31, GROUND + 4, 3],
+      max: [31, GROUND + 4, 3],
+      id: b.glowstone,
     },
   ];
   return JSON.stringify(shapes);
@@ -544,14 +578,14 @@ const PICKUPS: Array<
   [string, keyof ModelsByName, number, number, number, number]
 > = [
   // the kitchen, and the bedroom wall the sword hangs on
-  ["chips", "chips", -22, 8, 63.5, 0.6],
-  ["orange", "orange", -12, 6, 63, 0.4],
+  ["chips", "chips", -22, 8, 67.5, 0.6],
+  ["orange", "orange", -12, 6, 67, 0.4],
   ["cola", "cola", -4, 22, FLOOR, 0.7],
   ["sword", "sword", -26, -8, FLOOR, 1.6],
   // the bathroom shelf
   ["colgate", "colgate", 6, -8, FLOOR, 0.6],
   // a sandvich somebody left on the bench
-  ["sandvich", "sandvich", 32, 20, 62.8, 0.4],
+  ["sandvich", "sandvich", 32, 20, 66.8, 0.4],
   // the store's shelf, one of each good it sells
   ["buy-cola", "cola", 64, -6, FLOOR, 0.7],
   ["buy-witchbrew", "witchbrew", 64, -4, FLOOR, 0.7],
@@ -791,7 +825,7 @@ function useMachine(item: string): void {
     model: ITEM_MODELS[item],
     x: -13.4 + free * 0.8,
     z: 18,
-    y: 63.5,
+    y: 67.5,
     name: ITEM_NAMES[item],
     height: 0.5,
     solid: false,
@@ -822,7 +856,7 @@ function useStove(item: string): void {
       model: ITEM_MODELS[item],
       x: -20,
       z: 18,
-      y: 63.5,
+      y: 67.5,
       name: ITEM_NAMES[item],
       height: 0.5,
       solid: false,
@@ -877,7 +911,7 @@ function cookEgg(): void {
     model: ITEM_MODELS[cooked],
     x: -20,
     z: 18,
-    y: 63.5,
+    y: 67.5,
     name: ITEM_NAMES[cooked],
     height: 0.5,
     solid: false,

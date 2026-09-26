@@ -33,14 +33,14 @@ export const Phase = {
   /** Every scripted figure a place has placed: NPCs, props, fires, blasts. */
   figures: 9,
   environment: 10,
-  meshDrain: 11,
-  merge: 12,
-  rendererTick: 13,
-  advance: 14,
-  occlusion: 15,
-  draw: 16,
   /** The incremental light engine's budgeted seam and edit flood. */
-  light: 17,
+  light: 11,
+  meshDrain: 12,
+  merge: 13,
+  rendererTick: 14,
+  advance: 15,
+  occlusion: 16,
+  draw: 17,
 } as const;
 
 /** Each phase's name, at the index that phase is timed under. */

@@ -31,6 +31,11 @@ export const VOXEL_SAND = 46;
 // Obsidian: the near-black, violet-flecked block a portal frame is built from,
 // drawn from a procedurally generated tile at load.
 export const VOXEL_OBSIDIAN = 47;
+// Glowstone: a solid block that shines at full strength, drawn from a
+// procedurally generated tile at load. A sealed room is lit by setting one into
+// its ceiling or its walls, which is why it sits outside the fluid and lava id
+// ranges and never spreads, flows, or counts as a hazard.
+export const VOXEL_GLOWSTONE = 48;
 
 // Wool blocks: 16 colours matching the classic Minecraft palette (IDs 30-45).
 export const VOXEL_WOOL_WHITE = 30;

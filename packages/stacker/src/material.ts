@@ -25,6 +25,15 @@ export class VoxelModelMaterial extends NodeMaterial {
   lightDir: [number, number, number] = [0, 0, 1];
   lightColour: [number, number, number] = [1, 1, 1];
   ambientColour: [number, number, number] = [0, 0, 0];
+  /**
+   * How much light a world has cast onto the model, 0 to 1 — the block light
+   * standing at the model's own position. It is spent as a light arriving from
+   * straight above, the way a ceiling fitting lights a room, wrapping around
+   * the form rather than stopping at the angle. Zero wherever nothing emissive
+   * is in reach, which leaves the surface lit by the directional and ambient
+   * colours alone.
+   */
+  blockLight = 0;
   unlit = false;
   /**
    * How strongly the surface mixes toward red, 0 to 1. A caller flashes a hit
@@ -59,6 +68,7 @@ export class VoxelModelMaterial extends NodeMaterial {
   private lightDirUniform?: UniformNode<"vec3">;
   private lightColourUniform?: UniformNode<"vec3">;
   private ambientColourUniform?: UniformNode<"vec3">;
+  private blockLightUniform?: UniformNode<"float">;
   private unlitUniform?: UniformNode<"bool">;
   private flashUniform?: UniformNode<"float">;
   private tintUniform?: UniformNode<"vec3">;
@@ -106,6 +116,11 @@ export class VoxelModelMaterial extends NodeMaterial {
       "uAmbientColour",
       "vec3",
       () => this.ambientColour,
+    );
+    this.blockLightUniform = b.materialUniform(
+      "uBlockLight",
+      "float",
+      () => this.blockLight,
     );
     this.unlitUniform = b.materialUniform("uUnlit", "bool", () =>
       this.unlit ? 1 : 0,
@@ -203,6 +218,7 @@ export class VoxelModelMaterial extends NodeMaterial {
       lightDir: b.varying("vLightVolume", "vec3"),
       lightColour: this.lightColourUniform!,
       ambientColour: this.ambientColourUniform!,
+      blockLight: this.blockLightUniform!,
       unlit: this.unlitUniform!,
     });
 

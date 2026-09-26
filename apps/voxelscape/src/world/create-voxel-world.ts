@@ -19,6 +19,7 @@ import {
   VOXEL_SIZE,
   getGroundHeightBelow,
   getWorldBlockId,
+  getWorldBlockLight,
   getWorldHeight,
   isLavaAt,
   isSolidAt,
@@ -157,6 +158,12 @@ export interface VoxelWorld {
   getSolidAt(x: number, y: number, z: number): boolean;
   /** The voxel id at a world point, or 0 for air and for outside the loaded blocks. */
   getBlockAt(x: number, y: number, z: number): number;
+  /**
+   * The block light reaching a world point, 0 to 15, or 0 outside the loaded
+   * blocks. The renderer reads it to light the models a place has placed
+   * against the same channel the terrain is meshed from.
+   */
+  getBlockLightAt(x: number, y: number, z: number): number;
   /** Keeps the block window centred on (`x`, `y`, `z`), streaming new blocks in off the main thread. */
   scrollTo(x: number, y: number, z: number): void;
   /**
@@ -569,6 +576,9 @@ export const createVoxelWorld = ({
     },
     getBlockAt(x, y, z) {
       return getWorldBlockId(sphere.query, x, y, z);
+    },
+    getBlockLightAt(x, y, z) {
+      return getWorldBlockLight(sphere.query, x, y, z);
     },
     scrollTo(x, y, z) {
       sphere.scrollTo(x, y, z);

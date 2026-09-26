@@ -1,22 +1,22 @@
 # What voxelscape is made of
 
-Drawn from the imports under `src` at 44c4e3c by `pnpm architecture`.
+Drawn from the imports under `src` at b38ad63 by `pnpm architecture`.
 Nothing here is written by hand: change the code and run it again.
 
 ```mermaid
 graph TD
-  shell["shell<br/>6 files · 2011 lines"]
-  voxelscape["voxelscape<br/>3 files · 3572 lines"]
-  world["world<br/>34 files · 8377 lines"]
-  renderers["renderers<br/>22 files · 6970 lines"]
+  shell["shell<br/>6 files · 2018 lines"]
+  voxelscape["voxelscape<br/>3 files · 3626 lines"]
+  world["world<br/>35 files · 8467 lines"]
+  renderers["renderers<br/>25 files · 7426 lines"]
   render["render<br/>4 files · 1145 lines"]
-  player["player<br/>17 files · 4218 lines"]
+  player["player<br/>17 files · 4441 lines"]
   multiplayer["multiplayer<br/>14 files · 3663 lines"]
-  places["places<br/>49 files · 25237 lines"]
+  places["places<br/>50 files · 26199 lines"]
   environment["environment<br/>6 files · 1952 lines"]
   atproto["atproto<br/>8 files · 1613 lines"]
-  ui["ui<br/>17 files · 3512 lines"]
-  level-editor["level-editor<br/>25 files · 4421 lines"]
+  ui["ui<br/>18 files · 3840 lines"]
+  level-editor["level-editor<br/>25 files · 4425 lines"]
   atproto --> places
   atproto --> world
   level-editor --> places
@@ -70,18 +70,18 @@ graph TD
 
 | area           | what it is for                                                         | files | lines |
 | -------------- | ---------------------------------------------------------------------- | ----- | ----- |
-| `shell`        | the page, the console, and what wires a world into them                | 6     | 2011  |
-| `voxelscape`   | one world: its frame, and every part below it                          | 3     | 3572  |
-| `world`        | voxels, light, the streaming window, and the workers that fill it      | 34    | 8377  |
-| `renderers`    | turning voxels into geometry, and drawing it                           | 22    | 6970  |
+| `shell`        | the page, the console, and what wires a world into them                | 6     | 2018  |
+| `voxelscape`   | one world: its frame, and every part below it                          | 3     | 3626  |
+| `world`        | voxels, light, the streaming window, and the workers that fill it      | 35    | 8467  |
+| `renderers`    | turning voxels into geometry, and drawing it                           | 25    | 7426  |
 | `render`       | the frame loop, the resolution scaler, and the probe that times them   | 4     | 1145  |
-| `player`       | the body, its input, its tools and what they do to the world           | 17    | 4218  |
+| `player`       | the body, its input, its tools and what they do to the world           | 17    | 4441  |
 | `multiplayer`  | other players, over a peer connection                                  | 14    | 3663  |
-| `places`       | a published place: its script, its people, and the sandbox they run in | 49    | 25237 |
+| `places`       | a published place: its script, its people, and the sandbox they run in | 50    | 26199 |
 | `environment`  | the sky, the clock, the weather and the sound                          | 6     | 1952  |
 | `atproto`      | being signed in, and reading and writing published records             | 8     | 1613  |
-| `ui`           | what is drawn over the world in the page                               | 17    | 3512  |
-| `level-editor` | editing the running world's structures, as an overlay on its canvas    | 25    | 4421  |
+| `ui`           | what is drawn over the world in the page                               | 18    | 3840  |
+| `level-editor` | editing the running world's structures, as an overlay on its canvas    | 25    | 4425  |
 
 ## What reaches into what
 
@@ -97,15 +97,15 @@ graph TD
 | `multiplayer`  | `places`       | 4                |
 | `multiplayer`  | `player`       | 1                |
 | `places`       | `environment`  | 1                |
-| `places`       | `world`        | 11               |
+| `places`       | `world`        | 12               |
 | `player`       | `environment`  | 1                |
 | `player`       | `places`       | 2                |
 | `player`       | `renderers`    | 1                |
 | `player`       | `shell`        | 4                |
-| `player`       | `world`        | 8                |
+| `player`       | `world`        | 9                |
 | `renderers`    | `environment`  | 1                |
 | `renderers`    | `render`       | 2                |
-| `renderers`    | `world`        | 13               |
+| `renderers`    | `world`        | 14               |
 | `shell`        | `atproto`      | 4                |
 | `shell`        | `environment`  | 2                |
 | `shell`        | `level-editor` | 1                |
@@ -117,11 +117,11 @@ graph TD
 | `shell`        | `ui`           | 2                |
 | `shell`        | `voxelscape`   | 2                |
 | `shell`        | `world`        | 3                |
-| `ui`           | `places`       | 4                |
+| `ui`           | `places`       | 5                |
 | `ui`           | `player`       | 5                |
 | `ui`           | `renderers`    | 1                |
-| `ui`           | `shell`        | 2                |
-| `ui`           | `voxelscape`   | 10               |
+| `ui`           | `shell`        | 3                |
+| `ui`           | `voxelscape`   | 11               |
 | `voxelscape`   | `atproto`      | 1                |
 | `voxelscape`   | `environment`  | 1                |
 | `voxelscape`   | `level-editor` | 1                |

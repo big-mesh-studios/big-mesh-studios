@@ -8,7 +8,9 @@ import { createPlaceData, type PlaceData } from "./place-data";
 import { ScriptHost } from "./script-host";
 import type { PlaceProject } from "./project";
 import { expandShape } from "../world/structure-fill";
-import type { PlanShape } from "../world/plan-shapes";
+import type { PlanBox, PlanShape } from "../world/plan-shapes";
+import { VOXEL_GLOWSTONE } from "../world/voxel-store";
+import { chunkCellOf, VOXEL_SIZE } from "../world/level-data";
 
 /** The bytes of a model under `public/models/`, as the demo loader fetches them. */
 const modelBytes = (file: string): ArrayBuffer => {
@@ -89,7 +91,7 @@ const run = async (): Promise<{
   const host = new ScriptHost({
     seed: project.manifest.seed,
     getNow: () => clockMs,
-    getHeightAt: () => 62,
+    getHeightAt: () => 66,
     onTime: () => {},
     onToast: (_player, text) => toasts.push(text),
     onEnding: (_player, state) => {
@@ -200,10 +202,10 @@ describe("the built-in demos", () => {
     // The rooms and the props are placed in world units and a voxel is two of
     // them, so the house the four rooms share is fourteen voxels by thirteen
     // and the store is five by six.
-    expect(floor([-14, 30, -13], [14, 30, 13])).toBe(true);
-    expect(floor([24, 30, -6], [34, 30, 6])).toBe(true);
+    expect(floor([-14, 32, -13], [14, 32, 13])).toBe(true);
+    expect(floor([24, 32, -6], [34, 32, 6])).toBe(true);
     const walls = boxes.filter(
-      (shape) => shape.min[1] === 31 && shape.max[1] === 33,
+      (shape) => shape.min[1] === 33 && shape.max[1] === 35,
     );
     expect([
       Math.min(...walls.map((shape) => shape.min[0])),
@@ -213,6 +215,80 @@ describe("the built-in demos", () => {
       Math.min(...walls.map((shape) => shape.min[2])),
       Math.max(...walls.map((shape) => shape.max[2])),
     ]).toEqual([-13, 13]);
+  });
+
+  it("lights the store from four glowstone panels set into its roof", async () => {
+    const { project, entry } = await gasa4();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    const boxes = plan.structures.filter(
+      (shape): shape is PlanBox => shape.kind === "box",
+    );
+    const panels = boxes
+      .map((shape, at) => ({ shape, at }))
+      .filter(({ shape }) => shape.id === VOXEL_GLOWSTONE);
+    expect(panels).toHaveLength(4);
+    // Each panel is a single voxel in the roof row, over the freezer, the
+    // counter and the two shelf bays.
+    for (const { shape } of panels) {
+      expect(shape.min).toEqual([shape.max[0], 36, shape.max[2]]);
+      expect(shape.min[2]).toBeGreaterThanOrEqual(-3);
+      expect(shape.min[2]).toBeLessThanOrEqual(3);
+    }
+    // A plan is stamped in order and the last box over a voxel is the one that
+    // holds, so a panel listed before the roof would be wood by the time the
+    // world generated it, and the store would go back to being unlit.
+    const roof = boxes.findIndex(
+      (shape) =>
+        shape.min[0] === 24 &&
+        shape.min[1] === 36 &&
+        shape.min[2] === -6 &&
+        shape.max[0] === 34 &&
+        shape.max[2] === 6,
+    );
+    expect(roof).toBeGreaterThanOrEqual(0);
+    expect(panels.every(({ at }) => at > roof)).toBe(true);
+  });
+
+  it("stands the whole neighbourhood inside one block, so a panel reaches the floor", async () => {
+    // Block light is filled one block at a time and seeded only from the
+    // emitters inside that block's own padding, so a building whose floor and
+    // roof fall either side of a block boundary gets a lit ceiling and an
+    // unlit floor, and nothing about the plan says so. Reading the compiled
+    // plan back is the only place that shows up.
+    const { project, entry } = await gasa4();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    const boxes = plan.structures.filter(
+      (shape): shape is PlanBox => shape.kind === "box",
+    );
+    const ground = boxes.find(
+      (shape) =>
+        shape.min[0] === 24 && shape.min[2] === -6 && shape.max[2] === 6,
+    );
+    const panels = boxes.filter((shape) => shape.id === VOXEL_GLOWSTONE);
+    expect(ground).toBeDefined();
+    expect(panels).toHaveLength(4);
+
+    const cellOf = (row: number): number =>
+      chunkCellOf(0, row * VOXEL_SIZE, 0)[1];
+    // The ground row is the first row of a block, so everything the demo
+    // builds above it is filled its light in the same pass.
+    const groundRow = ground!.min[1];
+    expect(chunkCellOf(0, (groundRow - 1) * VOXEL_SIZE, 0)[1]).not.toBe(
+      cellOf(groundRow),
+    );
+    for (const panel of panels) {
+      expect(cellOf(panel.min[1])).toBe(cellOf(groundRow));
+    }
   });
 
   it("opens with Dad, the Cashier, and the store counter", async () => {
@@ -232,12 +308,12 @@ describe("the built-in demos", () => {
 
   it("hints each of the house's four rooms and the store's forecourt", async () => {
     const { host, narrations } = await run();
-    await host.movePlayer("", -14, 62, -12); // the bedroom
-    await host.movePlayer("", 14, 62, -12); // the bathroom
-    await host.movePlayer("", -10, 62, 10); // the kitchen
-    await host.movePlayer("", 14, 62, 10); // the living room
-    await host.movePlayer("", 40, 62, 18); // the parking lot
-    await host.movePlayer("", 58, 62, 0); // the store
+    await host.movePlayer("", -14, 66, -12); // the bedroom
+    await host.movePlayer("", 14, 66, -12); // the bathroom
+    await host.movePlayer("", -10, 66, 10); // the kitchen
+    await host.movePlayer("", 14, 66, 10); // the living room
+    await host.movePlayer("", 40, 66, 18); // the parking lot
+    await host.movePlayer("", 58, 66, 0); // the store
     expect(narrations).toEqual([
       "It is 4 AM and I am starving. Find a snack... and try not to wake Dad.",
       "Dad is asleep in the bathtub. Keep it down.",
@@ -251,7 +327,7 @@ describe("the built-in demos", () => {
 
   it("ends with Sleep when the chips are eaten in the bedroom", async () => {
     const { host, endings } = await run();
-    await host.movePlayer("", -14, 62, -12); // the bedroom
+    await host.movePlayer("", -14, 66, -12); // the bedroom
     await host.use("chips", ""); // pick them up
     await host.useItem("chips", ""); // eat them quietly there
     await host.use("bed", ""); // go back to sleep
@@ -261,7 +337,7 @@ describe("the built-in demos", () => {
 
   it("ends with Chips when they are eaten where Dad can hear", async () => {
     const { host, endings } = await run();
-    await host.movePlayer("", -10, 62, 10); // the kitchen
+    await host.movePlayer("", -10, 66, 10); // the kitchen
     await host.use("chips", "");
     await host.useItem("chips", "");
     // Dad wakes at once and comes into the room.
@@ -344,10 +420,10 @@ describe("the built-in demos", () => {
 
   it("only steals once the player leaves the store with an unpaid good", async () => {
     const { host, endings } = await run();
-    await host.movePlayer("", 60, 62, 0); // into the store
+    await host.movePlayer("", 60, 66, 0); // into the store
     await host.use("buy-cola", "");
     expect(endings).toEqual([]);
-    await host.movePlayer("", 30, 62, 0); // out the door
+    await host.movePlayer("", 30, 66, 0); // out the door
     expect(endings).toEqual(["Shoplifting"]);
     host.dispose();
   });
@@ -418,7 +494,7 @@ describe("the built-in demos", () => {
     for (let i = 1; i <= 10; i++) {
       await host.use(`robux-${i}`, "");
     }
-    await host.movePlayer("", 60, 62, 0); // into the store
+    await host.movePlayer("", 60, 66, 0); // into the store
     for (let i = 1; i <= 7; i++) {
       await host.use("buy-cola", "");
       await useHeld(host, "store-counter");
@@ -451,7 +527,7 @@ describe("the built-in demos", () => {
 
   it("burns the house down when a non-egg is left on the stove", async () => {
     const { host, endings } = await run();
-    await host.movePlayer("", -10, 62, 10); // the kitchen
+    await host.movePlayer("", -10, 66, 10); // the kitchen
     await host.use("cola", "");
     await useHeld(host, "stove");
     await advance(host, 5_000);
@@ -465,9 +541,9 @@ describe("the built-in demos", () => {
     const { host, endings } = await run();
     await advance(host, 231_000);
     expect(host.npc("cashier")).toMatchObject({ x: 44, z: 18 });
-    await host.movePlayer("", 60, 62, 0);
+    await host.movePlayer("", 60, 66, 0);
     await host.use("buy-cola", "");
-    await host.movePlayer("", 30, 62, 0);
+    await host.movePlayer("", 30, 66, 0);
     expect(endings).toEqual([]);
     await host.talk("cashier", "");
     expect(host.dialogFor("")?.prompt).toContain("break");

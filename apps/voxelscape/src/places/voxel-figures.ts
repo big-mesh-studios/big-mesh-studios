@@ -3,14 +3,16 @@
 // each drawn from the rm-stacker model its id wears. Reads a caller-supplied
 // list each frame, so a figure the script host places, turns, or retires
 // appears or disappears to match. Each model file is baked once and shared by
-// every figure wearing it; a figure stands with its feet on the entity's
-// grounded `y`, drawn at whatever height the entity asks for, eased toward
-// its reported `x`/`z` rather than snapped to them (`figure-motion.ts`) since
-// a remote figure's own position can go many frames between reports, and spun
-// about its own axis after `yaw` when the entity names one. A figure a caller
-// flashes plays a moment of red, wholly independent of whatever the script
-// does with the hit; one dying plays a fall over the ground before it is
-// gone, timed off the moment the entity's own `dyingAt` names.
+// every figure wearing it, which is why a figure's look and the block light it
+// is standing in each cost a material set of their own; a figure stands with
+// its feet on the entity's grounded `y`, drawn at whatever height the entity
+// asks for, eased toward its reported `x`/`z` rather than snapped to them
+// (`figure-motion.ts`) since a remote figure's own position can go many frames
+// between reports, and spun about its own axis after `yaw` when the entity
+// names one. A figure a caller flashes plays a moment of red, wholly
+// independent of whatever the script does with the hit; one dying plays a fall
+// over the ground before it is gone, timed off the moment the entity's own
+// `dyingAt` names.
 import { Group, Quaternion, Vector3 } from "@random-mesh/rmsl/scene";
 import type { DayNightState } from "../environment/day-night";
 import {
@@ -25,6 +27,7 @@ import {
   type Motion,
 } from "@big-mesh-studios/stacker/renderer";
 import { loadFigure } from "@big-mesh-studios/stacker/format";
+import { LIGHT_TO_UNIT, MAX_LIGHT } from "../world/light-store";
 import { FigureMotionTrack } from "./figure-motion";
 import type { FigureAnimation, FigureLook } from "./script-host";
 
@@ -54,6 +57,12 @@ const DEATH_FALL_SECONDS = 0.5;
 
 /** How long a hit figure is drawn flashed red for, in milliseconds. */
 const HURT_FLASH_MS = 180;
+
+/** What a look comes to as a string, so an identical one finds its set again. */
+const lookSignature = (look: FigureLook | undefined): string =>
+  look === undefined
+    ? ""
+    : `${look.color[0].toFixed(3)},${look.color[1].toFixed(3)},${look.color[2].toFixed(3)}|${look.alpha.toFixed(3)}`;
 
 /** What the renderer needs to know about one figure, whatever provides it. */
 export interface RenderedFigure {
@@ -98,9 +107,15 @@ export interface FigureAimBox {
 
 interface BakedModel {
   baked: BakedFigure;
-  materials: VoxelModelMaterial[];
-  /** The same figure, wholly flashed red, worn while a hit is still fresh. */
-  flashMaterials: VoxelModelMaterial[];
+  /**
+   * The material sets one combination of look and light has needed, keyed by
+   * their signature. A look and a light level are both uniforms on the
+   * material, and the model has one shared set that carries every other
+   * figure, so a figure asking for either wears a set of its own. Made as each
+   * combination is first drawn rather than up front, because a place's figures
+   * rarely all stand in the same light.
+   */
+  sets: Map<string, FigureMaterials>;
   /** Voxels the model is tall; the divisor turning a world height into a scale. */
   modelHeight: number;
   /** Half the model's widest horizontal extent relative to its height. */
@@ -111,12 +126,15 @@ interface BakedModel {
   motions: Motion[];
   /** Where every part stands unposed, to restore a copy an animation stopped on. */
   restPlacement: FigurePlacement;
-  /**
-   * The material sets one look each has needed, keyed by its signature. A
-   * figure tinted or faded wears a set of its own, because a look is a uniform
-   * on the material and the model's shared set carries every other figure.
-   */
-  looks: Map<string, VoxelModelMaterial[]>;
+}
+
+/** One such set: a figure as it stands, and the same figure wholly flashed red. */
+interface FigureMaterials {
+  /** The look and light level the set was made for, so a hit can be made to match them. */
+  look: FigureLook | undefined;
+  level: number;
+  worn: VoxelModelMaterial[];
+  flash?: VoxelModelMaterial[];
 }
 
 export interface VoxelFiguresParams {
@@ -124,6 +142,13 @@ export interface VoxelFiguresParams {
   getFigures: () => Iterable<RenderedFigure>;
   /** Which model file a figure with `id` wears, named as it is bundled. */
   modelFor?: (id: string) => string;
+  /**
+   * The block light standing at a world point, 0 to 15, so a figure is shaded
+   * by the glowstone and lava around it rather than by the sun alone. Read once
+   * per figure per frame, where it stands; defaults to a world with nothing
+   * emissive in it.
+   */
+  lightAt?: (x: number, y: number, z: number) => number;
   /**
    * The shared clock an animation is sampled from, in milliseconds. Every peer
    * passes the same one, so a figure posed at a frame stands the same way
@@ -136,6 +161,7 @@ export class VoxelFigures {
   readonly group = new Group();
   private readonly getFigures: () => Iterable<RenderedFigure>;
   private readonly modelFor: (id: string) => string;
+  private readonly lightAt: (x: number, y: number, z: number) => number;
   private readonly getNow: () => number;
   private readonly baked = new Map<string, BakedModel>();
   private readonly meshes = new Map<string, FigureCopy>();
@@ -158,6 +184,7 @@ export class VoxelFigures {
   constructor(params: VoxelFiguresParams) {
     this.getFigures = params.getFigures;
     this.modelFor = params.modelFor ?? (() => "zombie.zip");
+    this.lightAt = params.lightAt ?? (() => 0);
     this.getNow = params.getNow ?? (() => Date.now());
   }
 
@@ -171,21 +198,15 @@ export class VoxelFigures {
     const baked = new BakedFigure(figure);
     const modelHeight = baked.size.height;
     const { width, depth } = baked.bounds.dimensions;
-    const flashMaterials = baked.createMaterials();
-    for (const material of flashMaterials) {
-      material.flash = 1;
-    }
     this.baked.set(model, {
       baked,
-      materials: baked.createMaterials(),
-      flashMaterials,
       modelHeight,
       halfRatio:
         modelHeight > 0 ? (0.5 * Math.max(width, depth)) / modelHeight : 0,
       figure,
       motions,
       restPlacement: figurePlacement(figure),
-      looks: new Map(),
+      sets: new Map(),
     });
     for (const [id, mesh] of this.meshes) {
       if (this.modelFor(id) === model) {
@@ -229,7 +250,7 @@ export class VoxelFigures {
     return { half: baked.halfRatio * height, height };
   }
 
-  /** Feeds the day-night lighting into the shared materials of every model. */
+  /** Feeds the day-night lighting into every material set any of its models has made. */
   applyLighting(state: DayNightState): void {
     const sunDir: [number, number, number] = [
       state.sunDir[0],
@@ -246,12 +267,18 @@ export class VoxelFigures {
       state.ambient[1],
       state.ambient[2],
     ];
-    for (const { materials, flashMaterials, looks } of this.baked.values()) {
-      const looked = [...looks.values()].flat();
-      for (const material of [...materials, ...flashMaterials, ...looked]) {
-        material.lightDir = sunDir;
-        material.lightColour = sunLight;
-        material.ambientColour = ambient;
+    /** Hands one material the sun's direction and both of the day's colours. */
+    const lit = (material: VoxelModelMaterial): void => {
+      material.lightDir = sunDir;
+      material.lightColour = sunLight;
+      material.ambientColour = ambient;
+    };
+    for (const { sets } of this.baked.values()) {
+      for (const { worn, flash } of sets.values()) {
+        worn.forEach(lit);
+        // A set made for a hit is only worn alongside one of these, so it
+        // stands or falls with the set beside it.
+        flash?.forEach(lit);
       }
     }
   }
@@ -269,9 +296,17 @@ export class VoxelFigures {
       }
       const height = figure.height ?? FIGURE_HEIGHT;
       this.heights.set(figure.id, height);
+      // Sampled where the figure is reported to stand, at the height its mesh
+      // is centred on, so a figure that walks out from under a fitting is
+      // relit on the frame it steps out.
+      const materials = this.materialsFor(
+        baked,
+        figure.look,
+        this.lightAt(figure.x, figure.y + height / 2, figure.z),
+      );
       let mesh = this.meshes.get(figure.id);
       if (mesh === undefined) {
-        mesh = baked.baked.copy(baked.materials);
+        mesh = baked.baked.copy(materials.worn);
         this.group.add(mesh.group);
         this.meshes.set(figure.id, mesh);
       }
@@ -352,17 +387,15 @@ export class VoxelFigures {
         mesh.group.rotation.set(fall, yaw, 0);
       }
       // A recently hit figure draws with the flashed materials until its
-      // flash lapses, then falls back to its own look — a flash that has
-      // lapsed is forgotten rather than re-tested next frame.
+      // flash lapses, then falls back to its own set — a flash that has lapsed
+      // is forgotten rather than re-tested next frame. The flashed set is keyed
+      // by the same look and light as the one it replaces, so hitting a figure
+      // does not also move it out of the light it is standing in.
       if ((this.hurtUntil.get(figure.id) ?? 0) > now) {
-        mesh.wear(baked.flashMaterials);
+        mesh.wear(this.flashed(baked, materials));
       } else {
         this.hurtUntil.delete(figure.id);
-        mesh.wear(
-          figure.look === undefined
-            ? baked.materials
-            : this.lookMaterials(baked, figure.look),
-        );
+        mesh.wear(materials.worn);
       }
     }
     for (const [id, mesh] of this.meshes) {
@@ -377,25 +410,69 @@ export class VoxelFigures {
     }
   }
 
-  /** The material set a figure with `look` wears, made once per distinct look. */
-  private lookMaterials(
+  /**
+   * The material set a figure wearing `look` and standing in `level` of block
+   * light draws with, made once per distinct combination.
+   */
+  private materialsFor(
     baked: BakedModel,
-    look: FigureLook,
-  ): VoxelModelMaterial[] {
-    const signature = `${look.color[0].toFixed(3)},${look.color[1].toFixed(3)},${look.color[2].toFixed(3)}|${look.alpha.toFixed(3)}`;
-    const existing = baked.looks.get(signature);
+    look: FigureLook | undefined,
+    level: number,
+  ): FigureMaterials {
+    const signature = `${lookSignature(look)}|${level}`;
+    const existing = baked.sets.get(signature);
     if (existing !== undefined) {
       return existing;
     }
+    const entry: FigureMaterials = {
+      look,
+      level,
+      worn: this.buildSet(baked, look, level),
+    };
+    baked.sets.set(signature, entry);
+    return entry;
+  }
+
+  /**
+   * The set the same figure wears wholly flashed red, made the first time a
+   * figure in this combination of look and light is hit — a place nobody hits
+   * never pays for a second set it will not draw.
+   */
+  private flashed(
+    baked: BakedModel,
+    entry: FigureMaterials,
+  ): VoxelModelMaterial[] {
+    if (entry.flash === undefined) {
+      const flash = this.buildSet(baked, entry.look, entry.level);
+      for (const material of flash) {
+        material.flash = 1;
+      }
+      entry.flash = flash;
+    }
+    return entry.flash;
+  }
+
+  /**
+   * A set of materials for one part each, carrying the tint and opacity of
+   * `look` and the normalized `level` of block light the figure stands in.
+   */
+  private buildSet(
+    baked: BakedModel,
+    look: FigureLook | undefined,
+    level: number,
+  ): VoxelModelMaterial[] {
     const set = baked.baked.createMaterials();
+    const blockLight = LIGHT_TO_UNIT(Math.min(Math.max(level, 0), MAX_LIGHT));
     for (const material of set) {
-      material.tint = [look.color[0], look.color[1], look.color[2]];
-      material.alpha = look.alpha;
-      if (look.alpha < 1) {
-        material.transparent = true;
+      material.blockLight = blockLight;
+      if (look !== undefined) {
+        material.tint = [look.color[0], look.color[1], look.color[2]];
+        material.alpha = look.alpha;
+        if (look.alpha < 1) {
+          material.transparent = true;
+        }
       }
     }
-    baked.looks.set(signature, set);
     return set;
   }
 

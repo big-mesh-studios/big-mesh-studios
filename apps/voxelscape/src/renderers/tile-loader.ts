@@ -7,6 +7,7 @@ import {
 } from "./atlas";
 import { injectProceduralWoolTiles } from "./procedural-wool";
 import { injectProceduralObsidianTile } from "./procedural-obsidian";
+import { injectProceduralGlowstoneTile } from "./procedural-glowstone";
 import type { TriangleRenderer } from "./triangle-renderer";
 
 // Served from the site's own root, the same folder every other address in
@@ -55,11 +56,18 @@ export const loadVoxelTiles = async (
       woolAtlas.height,
       atlas,
     );
+    // Inject the procedurally drawn glowstone tile that lights a sealed room.
+    const atlasWithGlowstone = await injectProceduralGlowstoneTile(
+      atlasWithObsidian.bitmap,
+      atlasWithObsidian.width,
+      atlasWithObsidian.height,
+      atlas,
+    );
 
     const grid = atlasGridOf(
       atlas,
-      atlasWithObsidian.width,
-      atlasWithObsidian.height,
+      atlasWithGlowstone.width,
+      atlasWithGlowstone.height,
     );
     if (grid === null) {
       throw new Error(
@@ -71,7 +79,7 @@ export const loadVoxelTiles = async (
       grid,
       options?.customVoxelTiles,
     );
-    renderer.setTiles(voxelTiles, atlasWithObsidian.texture, grid);
+    renderer.setTiles(voxelTiles, atlasWithGlowstone.texture, grid);
   } catch (err) {
     console.warn(
       "[atlas] spritesheet not applied; voxels stay flat blue.",

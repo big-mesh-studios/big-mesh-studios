@@ -877,6 +877,11 @@ export const createVoxelscape = ({
       place: placeUri,
     }),
   });
+  // Every figure a place has placed is shaded by the light standing where it
+  // stands, so a prop in a lit room and the floor under it are read from the
+  // same channel rather than two that only agree by construction.
+  const blockLightAt = (x: number, y: number, z: number): number =>
+    world.getBlockLightAt(x, y, z);
   const npcFigures = new VoxelFigures({
     getFigures: () => {
       const figures: RenderedFigure[] = [];
@@ -927,6 +932,7 @@ export const createVoxelscape = ({
           : "zombie.zip";
     },
     getNow: () => multiplayer.getNow(),
+    lightAt: blockLightAt,
   });
   // Props are any other object a script stands in the world — a fridge, a
   // vending machine — drawn from the rm-stacker model it names, exactly as the
@@ -973,6 +979,7 @@ export const createVoxelscape = ({
       plannedProps().find((planned) => planned.id === id)?.model ??
       "",
     getNow: () => multiplayer.getNow(),
+    lightAt: blockLightAt,
   });
   // A player's worn model is drawn by the same figure renderer an NPC's model
   // is: the cube stays the body physics and the camera use, and is hidden while
@@ -1002,6 +1009,7 @@ export const createVoxelscape = ({
         ? localPlayerModel
         : (multiplayer.remoteModelOf(id) ?? ""),
     getNow: () => multiplayer.getNow(),
+    lightAt: blockLightAt,
   });
   // A scripted fire is its own particle flame, drawn from the same billboard
   // shader the bomb-bloom demo uses, with its ember kindled into the floor.
@@ -2959,10 +2967,20 @@ export const createVoxelscape = ({
     );
     world.renderer.applyLighting(lighting);
     // The voxel-model figures are self-lit, so they take the same day-night
-    // state the renderers apply to the terrain and the standard materials.
+    // state the renderers apply to the terrain and the standard materials. The
+    // held item is one model rather than a set of figures, so it reads the
+    // light at the player directly.
     npcFigures.applyLighting(lighting);
     propFigures.applyLighting(lighting);
+    playerFigures.applyLighting(lighting);
     hand.applyLighting(lighting);
+    hand.applyBlockLight(
+      blockLightAt(
+        avatar.player.position.x,
+        avatar.player.position.y,
+        avatar.player.position.z,
+      ),
+    );
     probe.end(Phase.environment);
     // The light engine catches up on the seam and edit work the frame queued,
     // under a small budget, before the renderer turns its changed blocks back

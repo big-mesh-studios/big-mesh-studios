@@ -367,6 +367,29 @@ export const getGroundHeightBelow = (
 };
 
 /**
+ * The interior voxel index of the voxel containing a world-space point, in
+ * whichever block holds it. A point beyond the block's own voxels lands on an
+ * index outside them, which is left unclamped so a caller reading the padded
+ * buffer picks up the block's generated border and a caller reading the
+ * interior picks up air.
+ */
+const localVoxelAt = (
+  block: WorldBlock,
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+): Dim3 => {
+  const store = block.store;
+  const scale = store.scale;
+  const [vxN, vyN, vzN] = store.voxels;
+  return [
+    Math.floor((worldX - block.center[0]) / scale + vxN / 2),
+    Math.floor((worldY - block.center[1]) / scale + vyN / 2),
+    Math.floor((worldZ - block.center[2]) / scale + vzN / 2),
+  ];
+};
+
+/**
  * The voxel that contains a world-space point, read from the live store so
  * it reflects every edit made to it. Anywhere outside the loaded blocks
  * reads as air.
@@ -381,17 +404,11 @@ const voxelIdAt = (
   if (block === undefined) {
     return VOXEL_AIR;
   }
-  const store = block.store;
-  const scale = store.scale;
-  const [vxN, vyN, vzN] = store.voxels;
   // `store.get` reads out-of-range cells as air, so unlike the height
-  // samplers this deliberately doesn't clamp: clamping would smear the
-  // block's edge voxels outward across everything beyond them.
-  return store.get(
-    Math.floor((worldX - block.center[0]) / scale + vxN / 2),
-    Math.floor((worldY - block.center[1]) / scale + vyN / 2),
-    Math.floor((worldZ - block.center[2]) / scale + vzN / 2),
-  );
+  // samplers the index is deliberately not clamped here: clamping would smear
+  // the block's edge voxels outward across everything beyond them.
+  const [x, y, z] = localVoxelAt(block, worldX, worldY, worldZ);
+  return block.store.get(x, y, z);
 };
 
 /**
@@ -405,6 +422,29 @@ export const getWorldBlockId = (
   worldY: number,
   worldZ: number,
 ): number => voxelIdAt(query, worldX, worldY, worldZ);
+
+/**
+ * The block light reaching the voxel at a world-space point, 0 to 15, or 0
+ * outside the loaded blocks. This is the channel a mesh builder bakes a face's
+ * brightness from, read for something standing in the world instead of for a
+ * face — a prop, an NPC, a held item — so a model and the floor beneath it are
+ * shaded from one set of numbers rather than two that only agree by
+ * construction. Sky light is not read here: a model's daylight arrives as the
+ * sun and ambient its material is already given.
+ */
+export const getWorldBlockLight = (
+  query: BlockQuery,
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+): number => {
+  const block = query(worldX, worldY, worldZ);
+  if (block === undefined) {
+    return 0;
+  }
+  const [x, y, z] = localVoxelAt(block, worldX, worldY, worldZ);
+  return block.light.blocklightAt(block.light.paddedIndex(x, y, z));
+};
 
 /**
  * Whether the voxel containing a world-space point blocks movement — the
