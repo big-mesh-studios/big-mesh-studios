@@ -2,12 +2,16 @@
 // `models.ts`: a place lives in its author's repository, its record and every
 // model it names are public, so listing a place or booting its world costs
 // nothing but the author's name and the name of whoever's model it attached.
-// The write half is what publishing is — resolving every attached model to a
-// strong reference, one already the signed-in account's own kept as is, any
-// other duplicated into a fresh record of its own first — and putting the
-// record it describes under a key made from its name — and needs the
-// signed-in account, unlike reading, so the two halves are separate objects:
-// `PlaceLibrary` for anyone, `PlacePublisher` for an account of one's own.
+// Asked for one account by name it needs only that account; asked for the
+// whole network it starts from the public relay's directory of which accounts
+// hold a place at all, and reads each of them (`PlaceLibrary.listAll`), which
+// is what the catalog's network-wide view is drawn from. The write half is
+// what publishing is — resolving every attached model to a strong reference,
+// one already the signed-in account's own kept as is, any other duplicated
+// into a fresh record of its own first — and putting the record it describes
+// under a key made from its name — and needs the signed-in account, unlike
+// reading, so the two halves are separate objects: `PlaceLibrary` for anyone,
+// `PlacePublisher` for an account of one's own.
 import { Client, ok, simpleFetchHandler } from "@atcute/client";
 import type {
   ActorIdentifier,
@@ -49,14 +53,32 @@ import {
   type PlaceModelRef,
   type PlaceRecord,
   type PlaceScriptRecord,
+  type PlaceListing,
   type PublishedPlace,
 } from "../places/place.ts";
 import type { AttachedModel, PlaceProject } from "../places/project.ts";
 
 /** Where an account's place records are: which account a name means, which server holds it. */
 export interface PlaceLibrary {
-  /** Every place `account` has published, in the order its server lists them. */
+  /**
+   * Every place `account` has published, in the order its server lists them,
+   * up to {@link ListingLimits.bytes} of response.
+   */
   list(account: string): Promise<PublishedPlace[]>;
+  /**
+   * Every published place on the network, as far as the relay's directory of
+   * which accounts hold one reaches: at most {@link ListingLimits.repos}
+   * accounts read, {@link ListingLimits.placesPerAccount} places taken from any
+   * one of them, {@link ListingLimits.places} returned, and
+   * {@link ListingLimits.deadlineMs} spent starting accounts. An account that
+   * cannot be read — slow, gone, or refusing — is passed over rather than
+   * failing the listing, and a place is here because its author published it,
+   * not because anything listed it.
+   *
+   * @returns The places found, ordered by name, and whether the listing stopped
+   * at one of its ceilings with places or accounts left unread.
+   */
+  listAll(): Promise<PlaceListing>;
   /**
    * The place `account` published under `name`.
    *
@@ -77,6 +99,51 @@ export interface PlaceLibrary {
   project(place: PublishedPlace): Promise<PlaceProject>;
 }
 
+/** The public relay, whose record directory names every account holding a place. */
+const DEFAULT_RELAY = "https://bsky.network";
+/** Records asked for per page, the most a server and the relay both accept. */
+const PAGE_LIMIT = 100;
+
+/**
+ * What one listing may spend. Every ceiling is here rather than scattered,
+ * because a listing reads accounts it did not choose — some slow, some gone,
+ * one malicious — and the answer a page gets back has to be bounded whatever
+ * the network does. Overridable so a test can narrow them.
+ */
+export interface ListingLimits {
+  /** Accounts read, whatever the network goes on to hold. */
+  repos: number;
+  /** Places one account may contribute, so no one account spends the listing. */
+  placesPerAccount: number;
+  /** Places the listing returns. */
+  places: number;
+  /**
+   * Response the listing reads before it stops. A place record carries its
+   * scripts inline, so how many records it has read says nothing about how
+   * much they weighed.
+   */
+  bytes: number;
+  /** Accounts read at once, so a listing spreads its requests instead of firing two hundred at a relay. */
+  concurrent: number;
+  /** Pages one account may hand over, for a server whose cursor never reaches its end. */
+  pagesPerAccount: number;
+  /** How long one request may take before the listing treats the account as gone. */
+  requestMs: number;
+  /** How long the listing keeps starting new accounts before it answers with what it has. */
+  deadlineMs: number;
+}
+
+const LISTING_LIMITS: ListingLimits = {
+  repos: 200,
+  placesPerAccount: 20,
+  places: 200,
+  bytes: 8_000_000,
+  concurrent: 8,
+  pagesPerAccount: 20,
+  requestMs: 10_000,
+  deadlineMs: 20_000,
+};
+
 /**
  * Reads published places over the public half of atproto, with `locate` and
  * `fetch` injectable so a test can answer for a repository that does not exist.
@@ -84,28 +151,19 @@ export interface PlaceLibrary {
 export const createPlaceLibrary = (params?: {
   locate?: (identifier: string) => Promise<{ did: string; service: string }>;
   fetch?: typeof globalThis.fetch;
+  relay?: string;
+  limits?: Partial<ListingLimits>;
 }): PlaceLibrary => {
   const locate = params?.locate ?? locateAccount;
   const fetchFile = params?.fetch ?? globalThis.fetch.bind(globalThis);
+  const relay = params?.relay ?? DEFAULT_RELAY;
+  const limits = { ...LISTING_LIMITS, ...params?.limits };
   const located = new Map<string, Promise<{ did: string; service: string }>>();
 
   const locateOnce = (identifier: string) => {
     const pending = located.get(identifier) ?? locate(identifier);
     located.set(identifier, pending);
     return pending;
-  };
-
-  const clientFor = async (account: string) => {
-    const location = await locateOnce(account);
-    return {
-      location,
-      client: new Client({
-        handler: simpleFetchHandler({
-          service: location.service,
-          fetch: fetchFile,
-        }),
-      }),
-    };
   };
 
   const getPlace = async (
@@ -182,32 +240,209 @@ export const createPlaceLibrary = (params?: {
     };
   };
 
+  /**
+   * `url` answered, or a refusal naming what it was. A listing reads servers it
+   * did not choose, and a connection that is accepted and never answered would
+   * otherwise hold the whole listing open for as long as the browser feels
+   * patient — every worker in the pool waiting on one that will not return.
+   */
+  const fetchWithin = async (url: string): Promise<Response> => {
+    const abort = new AbortController();
+    const giveUp = setTimeout(
+      () => abort.abort(new Error("the request was given up on")),
+      limits.requestMs,
+    );
+    try {
+      return await fetchFile(url, { signal: abort.signal });
+    } catch (err) {
+      if (abort.signal.aborted) {
+        throw new Error(`${url} did not answer within ${limits.requestMs}ms`, {
+          cause: err,
+        });
+      }
+      throw err;
+    } finally {
+      clearTimeout(giveUp);
+    }
+  };
+
+  /**
+   * Every account the relay holds a place record in, at most `limits.repos` of
+   * them, and whether the relay named more than it returned. The relay's
+   * directory is the one view of the whole network a page can read without
+   * being told an account's name first, and an account it names twice is one
+   * account, not two.
+   */
+  const listRepos = async (): Promise<{
+    accounts: string[];
+    more: boolean;
+  }> => {
+    const accounts: string[] = [];
+    const seen = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const params = new URLSearchParams({
+        collection: PLACE_COLLECTION,
+        limit: String(PAGE_LIMIT),
+      });
+      if (cursor !== undefined) {
+        params.set("cursor", cursor);
+      }
+      const response = await fetchWithin(
+        `${relay}/xrpc/com.atproto.sync.listReposByCollection?${params.toString()}`,
+      );
+      if (!response.ok) {
+        throw new Error(
+          `the relay answered ${response.status} for its directory`,
+        );
+      }
+      const body = (await response.json()) as {
+        repos?: { did: string }[];
+        cursor?: string;
+      };
+      for (const repo of body.repos ?? []) {
+        if (seen.has(repo.did)) {
+          continue;
+        }
+        seen.add(repo.did);
+        accounts.push(repo.did);
+      }
+      cursor = body.cursor;
+    } while (cursor !== undefined && accounts.length < limits.repos);
+    return {
+      accounts: accounts.slice(0, limits.repos),
+      more: cursor !== undefined,
+    };
+  };
+
+  /**
+   * One account's place records, its pages walked until the account holds no
+   * more of them, `limit` of them have been read, `pages` of them have been
+   * asked for, or `read` has reached `limits.bytes` — along with whether
+   * stopping left any of that account's places unread. What each page weighed
+   * is added to `read`, so one counter bounds every account a network-wide
+   * listing goes on to read.
+   *
+   * @throws When the account cannot be located, or its server will not answer.
+   */
+  const readAccount = async (
+    account: string,
+    limit: number,
+    pages: number,
+    read: { bytes: number },
+  ): Promise<{ places: PublishedPlace[]; more: boolean }> => {
+    const location = await locateOnce(account);
+    const found: PublishedPlace[] = [];
+    let cursor: string | undefined;
+    let asked = 0;
+    let more = false;
+    while (cursor !== undefined || asked === 0) {
+      if (asked >= pages || read.bytes >= limits.bytes) {
+        break;
+      }
+      asked += 1;
+      const params = new URLSearchParams({
+        repo: location.did,
+        collection: PLACE_COLLECTION,
+        limit: String(PAGE_LIMIT),
+      });
+      if (cursor !== undefined) {
+        params.set("cursor", cursor);
+      }
+      const response = await fetchWithin(
+        `${location.service}/xrpc/com.atproto.repo.listRecords?${params.toString()}`,
+      );
+      if (!response.ok) {
+        throw new Error(
+          `the server holding ${location.did} answered ${response.status} for its places`,
+        );
+      }
+      const page = await response.arrayBuffer();
+      read.bytes += page.byteLength;
+      const body = JSON.parse(new TextDecoder().decode(page)) as {
+        records?: { uri: string; value: unknown }[];
+        cursor?: string;
+      };
+      for (const { uri, value } of body.records ?? []) {
+        if (found.length >= limit) {
+          more = true;
+          break;
+        }
+        if (!isPlaceRecord(value)) {
+          continue;
+        }
+        found.push({
+          repo: location.did,
+          rkey: uri.slice(uri.lastIndexOf("/") + 1),
+          record: value,
+        });
+      }
+      if (found.length >= limit && body.cursor !== undefined) {
+        more = true;
+      }
+      cursor = found.length >= limit ? undefined : body.cursor;
+    }
+    return { places: found, more: more || cursor !== undefined };
+  };
+
   return {
     async list(account) {
-      const { location, client } = await clientFor(account);
-      const places: PublishedPlace[] = [];
-      let cursor: string | undefined;
-      do {
-        const page = await ok(
-          client.get("com.atproto.repo.listRecords", {
-            params: {
-              repo: location.did as ActorIdentifier,
-              collection: PLACE_COLLECTION as Nsid,
-              cursor,
-              limit: 100,
-            },
-          }),
-        );
-        cursor = page.cursor;
-        for (const { uri, value } of page.records) {
-          if (!isPlaceRecord(value)) {
-            continue;
+      return (
+        await readAccount(account, Infinity, Number.POSITIVE_INFINITY, {
+          bytes: 0,
+        })
+      ).places;
+    },
+
+    async listAll(): Promise<PlaceListing> {
+      const directory = await listRepos();
+      const read = { bytes: 0 };
+      const found: PublishedPlace[] = [];
+      const deadline = Date.now() + limits.deadlineMs;
+      let next = 0;
+      let capped = directory.more;
+      // Accounts already being read when the listing reaches its ceiling are
+      // still counted, so the returned count can sit a few reads past it.
+      const readNext = async (): Promise<void> => {
+        while (
+          next < directory.accounts.length &&
+          found.length < limits.places
+        ) {
+          if (Date.now() >= deadline) {
+            capped = true;
+            return;
           }
-          const rkey = uri.slice(uri.lastIndexOf("/") + 1);
-          places.push({ repo: location.did, rkey, record: value });
+          const account = directory.accounts[next++]!;
+          try {
+            const page = await readAccount(
+              account,
+              limits.placesPerAccount,
+              limits.pagesPerAccount,
+              read,
+            );
+            capped = capped || page.more;
+            found.push(...page.places);
+          } catch (err) {
+            console.warn(`[places] passed over the places of ${account}.`, err);
+          }
         }
-      } while (cursor !== undefined);
-      return places;
+      };
+      await Promise.all(
+        Array.from(
+          {
+            length: Math.min(limits.concurrent, directory.accounts.length),
+          },
+          readNext,
+        ),
+      );
+      return {
+        places: found.sort(
+          (a, b) =>
+            a.record.name.localeCompare(b.record.name) ||
+            a.repo.localeCompare(b.repo),
+        ),
+        capped,
+      };
     },
 
     async find(account, name) {

@@ -982,7 +982,7 @@
           "name": "query",
           "type": "string",
           "optional": true,
-          "doc": "The handle or DID to seed the search with — the account whose published places are listed first. Omit it to leave the search empty."
+          "doc": "The handle or DID to seed the search with — the account whose published places are listed. Omit it to list every published place instead."
         }
       ],
       "union": [],
@@ -5959,7 +5959,7 @@
         },
         {
           "tag": "catalog",
-          "doc": "Opens the place catalog for one player, seeded with the handle or DID the effect names.",
+          "doc": "Opens the place catalog for one player: every published place, or the account the effect names.",
           "fields": [
             {
               "name": "player",
@@ -5971,7 +5971,7 @@
               "name": "query",
               "type": "string",
               "optional": true,
-              "doc": "The handle or DID to seed the search with, or \"\" to leave the search empty. The world opens the place catalog for the account named here."
+              "doc": "The handle or DID to seed the search with, naming the account whose places are listed. The world opens the place catalog on every published place when this is left out or empty."
             }
           ],
           "removedBy": ""

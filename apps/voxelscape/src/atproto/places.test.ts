@@ -7,7 +7,7 @@ import { saveFigure } from "@big-mesh-studios/stacker/format";
 import { sideKinds } from "@big-mesh-studios/stacker/renderer";
 import { encode } from "fast-png";
 import JSZip from "jszip";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createPlaceLibrary, createPlacePublisher } from "./places";
 import {
   PLACE_COLLECTION,
@@ -259,6 +259,320 @@ describe("a place library", () => {
 
       expect(project.models).toEqual({});
     });
+  });
+});
+
+describe("a network-wide place listing", () => {
+  const RELAY = "https://relay.example";
+
+  /** A place record of this world's own shape, named `name`. */
+  const place = (
+    name: string,
+    scripts: PlaceRecord["scripts"] = [],
+  ): PlaceRecord => ({
+    ...placeRecord(name, scripts),
+    $type: PLACE_COLLECTION,
+    spawn: [128, 0, -64],
+  });
+
+  /**
+   * A whole network to list: a relay whose directory is `directory`, a list of
+   * pages of account ids answered one page per request, and a server holding
+   * `places` for each account, two records to a page. An account named in
+   * `refusing` answers with a server error instead.
+   */
+  const network = (options: {
+    directory: string[][];
+    places: Record<string, PlaceRecord[]>;
+    refusing?: string[];
+  }): { fetch: typeof globalThis.fetch; asked: string[] } => {
+    const asked: string[] = [];
+    const fetch = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      asked.push(url.href);
+      if (url.pathname.endsWith("listReposByCollection")) {
+        const at = Number(url.searchParams.get("cursor") ?? "0");
+        return json({
+          repos: (options.directory[at] ?? []).map((did) => ({ did })),
+          ...(at + 1 < options.directory.length
+            ? { cursor: String(at + 1) }
+            : {}),
+        });
+      }
+      const repo = url.searchParams.get("repo") ?? "";
+      if (options.refusing?.includes(repo)) {
+        return new Response("no", { status: 500 });
+      }
+      const held = options.places[repo] ?? [];
+      const at = Number(url.searchParams.get("cursor") ?? "0");
+      return json({
+        records: held.slice(at * 2, at * 2 + 2).map((record) => ({
+          uri: `at://${repo}/${PLACE_COLLECTION}/${record.name}`,
+          value: record,
+        })),
+        ...(at * 2 + 2 < held.length ? { cursor: String(at + 1) } : {}),
+      });
+    }) as typeof globalThis.fetch;
+    return { fetch, asked };
+  };
+
+  it("lists what every account the relay's directory names published, ordered by name", async () => {
+    const { fetch, asked } = network({
+      directory: [[DID, OWNER_DID]],
+      places: {
+        [DID]: [place("The Haunted Mesa")],
+        [OWNER_DID]: [place("An Apple Orchard")],
+      },
+    });
+
+    const listing = await createPlaceLibrary({
+      locate,
+      fetch,
+      relay: RELAY,
+    }).listAll();
+
+    expect(listing.places.map((found) => found.record.name)).toEqual([
+      "An Apple Orchard",
+      "The Haunted Mesa",
+    ]);
+    expect(listing.places[1]?.repo).toBe(DID);
+    expect(listing.capped).toBe(false);
+    const reads = asked.map((url) => new URL(url));
+    expect(reads[0]?.pathname).toContain("listReposByCollection");
+    // Each account's own server, not the relay, is where its places are read.
+    expect(
+      reads
+        .slice(1)
+        .map((url) => url.searchParams.get("repo"))
+        .sort(),
+    ).toEqual([DID, OWNER_DID].sort());
+    expect(reads.slice(1).every((url) => url.origin === SERVICE)).toBe(true);
+  });
+
+  it("follows the relay's directory through every page of accounts", async () => {
+    const { fetch, asked } = network({
+      directory: [[DID], [OWNER_DID]],
+      places: { [DID]: [place("The Haunted Mesa")], [OWNER_DID]: [] },
+    });
+
+    const listing = await createPlaceLibrary({
+      locate,
+      fetch,
+      relay: RELAY,
+    }).listAll();
+
+    expect(listing.places.map((found) => found.repo)).toEqual([DID]);
+    expect(
+      asked.filter((url) => url.includes("listReposByCollection")),
+    ).toHaveLength(2);
+  });
+
+  it("passes over an account it cannot read rather than failing the listing", async () => {
+    const { fetch } = network({
+      directory: [[DID, OWNER_DID]],
+      places: {
+        [DID]: [place("The Haunted Mesa")],
+        [OWNER_DID]: [place("An Apple Orchard")],
+      },
+      refusing: [OWNER_DID],
+    });
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const listing = await createPlaceLibrary({
+      locate,
+      fetch,
+      relay: RELAY,
+    }).listAll();
+
+    expect(listing.places.map((found) => found.record.name)).toEqual([
+      "The Haunted Mesa",
+    ]);
+    warnings.mockRestore();
+  });
+
+  it("takes no more than its share of one account's places, and says the listing stopped short", async () => {
+    const { fetch } = network({
+      directory: [[DID]],
+      places: {
+        [DID]: Array.from({ length: 30 }, (_, i) => place(`Mesa ${i}`)),
+      },
+    });
+
+    const listing = await createPlaceLibrary({
+      locate,
+      fetch,
+      relay: RELAY,
+    }).listAll();
+
+    expect(listing.places).toHaveLength(20);
+    expect(listing.capped).toBe(true);
+  });
+
+  it("stops paging an account once the response has weighed enough", async () => {
+    /** A place carrying as much script as a record's own limits allow. */
+    const heavy = (name: string): PlaceRecord =>
+      place(
+        name,
+        Array.from({ length: 20 }, (_, i) => ({
+          name: `part-${i}.js`,
+          source: "x".repeat(100_000),
+        })),
+      );
+    const { fetch } = network({
+      directory: [[DID]],
+      places: {
+        [DID]: ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"].map(
+          heavy,
+        ),
+      },
+    });
+
+    const listing = await createPlaceLibrary({
+      locate,
+      fetch,
+      relay: RELAY,
+    }).listAll();
+
+    // Two of those places to a page, two megabytes each: the second page fills
+    // the listing's ceiling, and the account held two more behind it.
+    expect(listing.places.map((found) => found.record.name)).toEqual([
+      "Alpha",
+      "Bravo",
+      "Charlie",
+      "Delta",
+    ]);
+    expect(listing.capped).toBe(true);
+  });
+
+  it("reports a relay that will not answer rather than listing nothing", async () => {
+    const { fetch } = server({});
+    await expect(
+      createPlaceLibrary({ locate, fetch, relay: RELAY }).listAll(),
+    ).rejects.toThrow(/directory/);
+  });
+
+  it("gives up on a server that accepts the connection and never answers", async () => {
+    // A request left open: no answer, no failure, nothing but a browser's own
+    // patience ending it. The listing has to answer without it.
+    const hanging: typeof globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("listReposByCollection")) {
+        return json({ repos: [{ did: DID }, { did: OWNER_DID }] });
+      }
+      if (url.searchParams.get("repo") === OWNER_DID) {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new Error("aborted")),
+          );
+        });
+      }
+      return json({
+        records: [
+          {
+            uri: `at://${DID}/${PLACE_COLLECTION}/the-haunted-mesa`,
+            value: place("The Haunted Mesa"),
+          },
+        ],
+      });
+    }) as typeof globalThis.fetch;
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const listing = await createPlaceLibrary({
+      locate,
+      fetch: hanging,
+      relay: RELAY,
+      limits: { requestMs: 50 },
+    }).listAll();
+
+    expect(listing.places.map((found) => found.record.name)).toEqual([
+      "The Haunted Mesa",
+    ]);
+    expect(warnings).toHaveBeenCalledWith(
+      expect.stringContaining(OWNER_DID),
+      expect.any(Error),
+    );
+    warnings.mockRestore();
+  });
+
+  it("stops starting accounts once its time is up, and says so", async () => {
+    const { fetch } = network({
+      directory: [[DID, OWNER_DID]],
+      places: { [DID]: [place("The Haunted Mesa")] },
+    });
+
+    const listing = await createPlaceLibrary({
+      locate,
+      fetch,
+      relay: RELAY,
+      limits: { deadlineMs: 0 },
+    }).listAll();
+
+    expect(listing.places).toEqual([]);
+    expect(listing.capped).toBe(true);
+  });
+
+  it("stops after so many pages of one account, for a server whose cursor never ends", async () => {
+    let pages = 0;
+    // The same page handed back over and over, its cursor and all.
+    const repeating: typeof globalThis.fetch = (async (
+      input: RequestInfo | URL,
+    ) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("listReposByCollection")) {
+        return json({ repos: [{ did: DID }] });
+      }
+      pages += 1;
+      return json({
+        cursor: "home",
+        records: [
+          {
+            uri: `at://${DID}/${PLACE_COLLECTION}/the-haunted-mesa`,
+            value: place("The Haunted Mesa"),
+          },
+        ],
+      });
+    }) as typeof globalThis.fetch;
+
+    const listing = await createPlaceLibrary({
+      locate,
+      fetch: repeating,
+      relay: RELAY,
+      limits: { placesPerAccount: 2, pagesPerAccount: 3 },
+    }).listAll();
+
+    expect(listing.places).toHaveLength(2);
+    expect(pages).toBe(3);
+    expect(listing.capped).toBe(true);
+  });
+
+  it("reads one account named once in the directory once, however many times the relay repeats it", async () => {
+    let reads = 0;
+    const repeated: typeof globalThis.fetch = (async (
+      input: RequestInfo | URL,
+    ) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("listReposByCollection")) {
+        return json({
+          repos: [{ did: DID }, { did: DID }],
+          cursor: "more",
+        });
+      }
+      reads += 1;
+      return json({ records: [] });
+    }) as typeof globalThis.fetch;
+
+    const listing = await createPlaceLibrary({
+      locate,
+      fetch: repeated,
+      relay: RELAY,
+      limits: { pagesPerAccount: 1 },
+    }).listAll();
+
+    expect(reads).toBe(1);
+    expect(listing.capped).toBe(true);
   });
 });
 

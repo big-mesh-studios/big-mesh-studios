@@ -1,5 +1,9 @@
 # The root lands on a Lobby whose portals open built-in demos, and whose arcade opens the place catalog
 
+> The catalog's unseeded default is superseded by ADR 0097: the lobby's arcade
+> no longer falls back to the player's own account, it lists every published
+> place on the network.
+
 The world's own root address, which used to serve the `home` demo, now serves a
 new `lobby` demo: a flat plaza ringed by walk-in portals, one per built-in demo,
 with an arcade prop in the middle that opens the place catalog — the search over

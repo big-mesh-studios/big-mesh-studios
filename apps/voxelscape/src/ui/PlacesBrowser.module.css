@@ -146,12 +146,61 @@
   }
 }
 
+/* ── What the network-wide listing found ── */
+.summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  font-family: monospace;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.refresh {
+  background: none;
+  border: none;
+  color: rgba(255, 211, 92, 0.75);
+  font-family: monospace;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+
+  &:hover {
+    color: #ffd35c;
+    text-decoration: underline;
+  }
+}
+
 /* ── Results ── */
 .body {
   min-height: 120px;
   max-height: 40vh;
   overflow-y: auto;
   margin-top: 4px;
+}
+
+.more {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  font-family: monospace;
+  font-size: 12px;
+  padding: 8px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+  }
 }
 
 .row {

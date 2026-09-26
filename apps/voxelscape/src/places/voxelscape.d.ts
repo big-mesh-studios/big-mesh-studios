@@ -148,8 +148,8 @@ declare module "voxelscape" {
     /** The player the catalog is shown to; "" for the local player. */
     player?: string;
     /**
-     * The handle or DID to seed the search with — the account whose
-     * published places are listed first. Omit it to leave the search empty.
+     * The handle or DID to seed the search with — the account whose published
+     * places are listed. Omit it to list every published place instead.
      */
     query?: string;
   }

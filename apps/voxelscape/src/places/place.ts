@@ -121,6 +121,12 @@ export interface PublishedPlace {
   record: PlaceRecord;
 }
 
+/** What a network-wide listing answered: the places it found, and whether it stopped at one of its ceilings with places or accounts left unread. */
+export interface PlaceListing {
+  places: PublishedPlace[];
+  capped: boolean;
+}
+
 const isSpawn = (v: unknown): v is PlaceSpawn => {
   if (!Array.isArray(v) || v.length !== 3) {
     return false;

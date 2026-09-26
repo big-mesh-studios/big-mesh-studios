@@ -336,7 +336,7 @@ const EFFECT_MEANING: Readonly<Record<string, string>> = {
   teleport:
     "Sends one player to another place, named as a published place or a built-in demo.",
   catalog:
-    "Opens the place catalog for one player, seeded with the handle or DID the effect names.",
+    "Opens the place catalog for one player: every published place, or the account the effect names.",
 };
 
 /** The same account of every fact, which shares one name with the effects. */

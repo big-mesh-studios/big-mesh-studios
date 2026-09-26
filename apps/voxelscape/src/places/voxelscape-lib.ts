@@ -187,7 +187,8 @@ export function teleport(place, player, carry) {
 /**
  * Opens the place catalog for \`player\` ("" for the local player), the world's
  * search over published places. \`options\` may seed the search with the
- * handle or DID to list; the player searches by hand once it is open.
+ * handle or DID to list; seeded with none, the catalog lists every published
+ * place instead.
  */
 export function openCatalog(options) {
   host.dispatch("catalog", {

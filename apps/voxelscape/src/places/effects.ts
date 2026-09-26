@@ -1125,8 +1125,9 @@ export type ParsedEffect =
         /** The player to show the catalog to; "" means the local player. */
         player: string;
         /**
-         * The handle or DID to seed the search with, or "" to leave the search
-         * empty. The world opens the place catalog for the account named here.
+         * The handle or DID to seed the search with, naming the account whose
+         * places are listed. The world opens the place catalog on every
+         * published place when this is left out or empty.
          */
         query?: string;
       };
