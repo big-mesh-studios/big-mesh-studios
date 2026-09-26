@@ -423,6 +423,7 @@ const App: Component<{}> = () => {
         files: project.scripts,
         entry,
         models,
+        levels: project.levels,
         seed: project.manifest.seed,
         region: planRegionAround(project.manifest.spawn),
       });
@@ -440,6 +441,7 @@ const App: Component<{}> = () => {
         entry,
         seed: project.manifest.seed,
         models,
+        levels: project.levels,
       },
       project,
       mode: project.manifest.mode,

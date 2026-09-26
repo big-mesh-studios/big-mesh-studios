@@ -1,4 +1,5 @@
 import { createSignal, Show, useContext } from "solid-js";
+import { useVoxelscape } from "../../voxelscape/voxelscape-context";
 import { Bar, Button } from "../components/components";
 import { LevelEditorContext } from "../context";
 import styles from "./panels.module.css";
@@ -13,19 +14,45 @@ const download = (name: string, text: string): void => {
   URL.revokeObjectURL(url);
 };
 
-/** Import/export of the plan as JSON, and the `onPlan` snippet a place runs. */
+/** Import/export of the plan as JSON, the `onPlan` snippet a place runs, and
+ * the one tap that carries the plan into the place editor. */
 export function PlanJsonPanel() {
   const editor = useContext(LevelEditorContext);
+  const voxelscape = useVoxelscape();
   const [text, setText] = createSignal("");
   // The panel's own textarea takes a lot of a short screen for something read
   // only when asked for, so on a narrow screen it waits for one of the buttons
   // that fills it rather than standing open.
   const [revealed, setRevealed] = createSignal(false);
+  const [copied, setCopied] = createSignal(false);
+
+  /** Puts `snippet` on the clipboard, saying so where the panel can be seen. */
+  const copy = async (snippet: string): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+    } catch {
+      setText(snippet);
+      setRevealed(true);
+      editor.setNotice(
+        "this browser would not put it on the clipboard — it is below to select",
+      );
+    }
+  };
 
   return (
     <div class={styles.panel}>
       <h2 class={styles.heading}>Plan</h2>
       <Bar>
+        <Button
+          onClick={() => {
+            voxelscape.placeEditor.requestLevelPlan();
+            voxelscape.placeEditor.setOpen(true);
+            editor.setNotice("attached — Run in the place editor builds it");
+          }}
+        >
+          Add to place
+        </Button>
         <Button
           onClick={() => download("level-plan.json", editor.exportJson())}
         >
@@ -47,6 +74,7 @@ export function PlanJsonPanel() {
         >
           Show script
         </Button>
+        <Button onClick={() => void copy(editor.script())}>Copy</Button>
         <label class={styles.fileLabel}>
           Import
           <input
@@ -70,8 +98,8 @@ export function PlanJsonPanel() {
           onInput={(event) => setText(event.currentTarget.value)}
         />
       </Show>
-      <Show when={editor.notice()}>
-        {(notice) => <p class={styles.notice}>{notice()}</p>}
+      <Show when={editor.notice() || copied()}>
+        <p class={styles.notice}>{editor.notice() ?? "copied"}</p>
       </Show>
     </div>
   );

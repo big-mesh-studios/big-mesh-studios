@@ -48,8 +48,12 @@ import {
 /** One built-in demo: the world it names, its scripts, and the models they wear. */
 export interface BuiltinDemo {
   id: string;
-  /** The manifest fields the world boots from, script list excluded. */
-  manifest: Omit<PlaceManifest, "scripts">;
+  /**
+   * The manifest fields the world boots from, script and level lists excluded:
+   * a demo's scripts are its own checked-in source, and a level would have to
+   * be fetched like a model, which none is.
+   */
+  manifest: Omit<PlaceManifest, "scripts" | "levels">;
   /** The demo's script files, keyed by manifest-relative path. */
   scripts: Record<string, string>;
 }
@@ -372,6 +376,7 @@ export const loadBuiltinDemo = async (
   return {
     manifest: { ...demo.manifest, scripts: Object.keys(demo.scripts) },
     scripts: demo.scripts,
+    levels: {},
     models,
   };
 };

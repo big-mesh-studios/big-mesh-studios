@@ -197,6 +197,8 @@ export interface PlaceBoot {
   seed: number;
   /** The rm-stacker models the place carries, keyed by manifest-relative path. */
   models?: Record<string, Uint8Array>;
+  /** The place's level plans, keyed by the bare name `plan` takes them by. */
+  levels?: Record<string, string>;
 }
 
 export interface VoxelscapeConfig {
@@ -227,8 +229,8 @@ export interface VoxelscapeConfig {
   /** The place whose scripts this world runs from boot, if it is a published one. */
   place?: PlaceBoot;
   /**
-   * The manifest, scripts and models of the place or demo this world booted
-   * from, for `/place:editor` to open on — omitted only on the fallback
+   * The manifest, scripts, levels and models of the place or demo this world
+   * booted from, for `/place:editor` to open on — omitted only on the fallback
    * procedural world, which has no place project to show.
    */
   activeProject?: PlaceProject;
@@ -378,6 +380,15 @@ export interface Voxelscape {
     /** Whether the `/place:editor` panel is showing. */
     open: Accessor<boolean>;
     setOpen(open: boolean): void;
+    /**
+     * How many times the level editor has asked for the world's own plan to be
+     * written into the place editor's draft. The draft is the editor panel's
+     * own state, so the panel is what answers, and a world with no panel
+     * mounted leaves the count unread.
+     */
+    levelPlanRequests: Accessor<number>;
+    /** Asks for the world's own plan to be written into the draft as a level. */
+    requestLevelPlan(): void;
     /** The signed-in account the editor publishes from, or null while signed out. */
     accountDid: string | null;
     /** The handle to show for `did`, or the did itself when it has none. */
@@ -615,6 +626,13 @@ export const createVoxelscape = ({
   /** Whether the `/place:docs` overlay is showing. */
   const [placeDocsOpen, setPlaceDocsOpen] =
     placeDocsOpenSignal ?? createSignal(false);
+  /**
+   * How many times the level editor has asked the place editor to write the
+   * world's own plan into its draft. A count rather than a flag, so asking
+   * twice writes the plan twice — which is what replacing an attached level
+   * with the one being edited is.
+   */
+  const [levelPlanRequests, setLevelPlanRequests] = createSignal(0);
   /** The plan the world currently uses, kept in step with the editor and scripts. */
   const [levelPlan, setLevelPlan] = createSignal<LevelPlan>(
     plan ??
@@ -1921,6 +1939,7 @@ export const createVoxelscape = ({
           place.entry,
           place.seed,
           place.models ?? {},
+          place.levels ?? {},
         ),
       )
       .then((line) => onNotice?.(line))
@@ -2197,6 +2216,15 @@ export const createVoxelscape = ({
   const placeEditor = {
     open: placeEditorOpen,
     setOpen: setPlaceEditorOpen,
+    /**
+     * The level editor's standing request for the world's own plan to be
+     * written into the place editor's draft, as the level plan and the script
+     * that registers it. The draft is the editor panel's own state, so the
+     * panel is what answers; a world with no place editor mounted has nobody
+     * to answer and the request goes unread.
+     */
+    levelPlanRequests,
+    requestLevelPlan: () => setLevelPlanRequests((count) => count + 1),
     /** The signed-in account the editor publishes from, or null while signed out. */
     get accountDid(): string | null {
       return accountDid();
@@ -2234,6 +2262,7 @@ export const createVoxelscape = ({
       seed: number,
       models?: Record<string, Uint8Array>,
       spawnPoint?: Dim3,
+      levels?: Record<string, string>,
     ) => {
       return (async () => {
         // Baked and registered before the script itself runs — see the boot
@@ -2256,6 +2285,7 @@ export const createVoxelscape = ({
             files,
             entry,
             models: models ?? {},
+            levels: levels ?? {},
             seed,
             region: planRegionAround(spawnPoint ?? spawn),
           });
@@ -2285,6 +2315,7 @@ export const createVoxelscape = ({
           entry,
           seed,
           models ?? {},
+          levels ?? {},
         );
         return `${line}${structuresLine}`;
       })();

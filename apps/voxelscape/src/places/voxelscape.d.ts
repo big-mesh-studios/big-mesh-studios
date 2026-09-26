@@ -15,8 +15,10 @@
 // (never a project file a creator can open); this app's own demo scripts
 // augment it with a small checked-in file per model they use (e.g.
 // `demo-scripts/models.d.ts`), so `tsc` can check them the same way.
-// Declaration merging is what makes both of those additive rather than
-// something this file has to know about in advance.
+// `LevelsByName` is filled the first of those two ways only, by
+// `levels-dts.ts` from a place's own attached levels. Declaration merging is
+// what makes all of that additive rather than something this file has to know
+// about in advance.
 //
 // This file carries no top-level `import` of its own — an inline
 // `import("./effects")` type reaches the same file without one — because a
@@ -293,11 +295,15 @@ declare module "voxelscape" {
     fn: (clockMs: number, events: ScriptEvent[]) => void,
   ): void;
   /**
-   * Registers the handler that builds this place's terrain, called once before
-   * the first fill with the place's seed and the region a plan may build in.
-   * Whatever string it returns is the plan, parsed as a `LevelPlan`.
+   * Registers what builds this place's terrain, called once before the first
+   * fill. Either a plan already written out, as `plan` hands one back, or a
+   * function answering with one when the world calls it with this place's seed
+   * and the region a plan may build in — whichever it is, the plan is read as a
+   * `LevelPlan`.
    */
-  export function onPlan(fn: (contextJson: string) => string): void;
+  export function onPlan(
+    answer: string | ((contextJson: string) => string),
+  ): void;
   /** Every block id a script may name, by name, so no voxel id is ever written by hand. */
   export const blocks: Record<string, number>;
 
@@ -380,6 +386,16 @@ declare module "voxelscape" {
 
   /** Every model this place carries, keyed by the bare name `createNpc`/`createProp` take — empty until augmented. */
   export interface ModelsByName {}
+
+  /**
+   * Every level this place carries, keyed by the bare name `plan` takes — empty
+   * until augmented. A level is its plan as text, so every entry is the string
+   * an `onPlan` call answers with.
+   */
+  export interface LevelsByName {}
+
+  /** The level plan this place carries under `name`, as `onPlan` answers one. */
+  export function plan(name: keyof LevelsByName): string;
 
   /** How a figure is tinted and faded over the colours its model wears. */
   export interface EntityLookOptions {

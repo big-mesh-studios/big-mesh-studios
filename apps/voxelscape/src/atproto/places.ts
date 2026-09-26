@@ -49,10 +49,12 @@ import {
   parsePlaceAtUri,
   placeAtUri,
   placeRkey,
+  levelFileFor,
   PLACE_COLLECTION,
   type PlaceModelRef,
   type PlaceRecord,
   type PlaceScriptRecord,
+  type PlaceLevelRecord,
   type PlaceListing,
   type PublishedPlace,
 } from "../places/place.ts";
@@ -477,6 +479,11 @@ export const createPlaceLibrary = (params?: {
         }
       }
       const modelNames = Object.keys(models);
+      const levels: Record<string, string> = {};
+      for (const level of place.record.levels ?? []) {
+        levels[level.name] = level.source;
+      }
+      const levelNames = Object.keys(levels);
 
       return {
         manifest: {
@@ -487,10 +494,14 @@ export const createPlaceLibrary = (params?: {
           // separately from `scripts` itself since a plain object's key
           // order isn't a contract anything here should lean on.
           scripts: place.record.scripts.map((script) => script.name),
+          ...(levelNames.length > 0
+            ? { levels: levelNames.map(levelFileFor) }
+            : {}),
           ...(modelNames.length > 0 ? { models: modelNames } : {}),
           mode: place.record.mode,
         },
         scripts,
+        levels,
         models,
       };
     },
@@ -561,6 +572,9 @@ export const createPlacePublisher = (params: {
     const scripts: PlaceScriptRecord[] = Object.entries(project.scripts).map(
       ([name, source]) => ({ name, source }),
     );
+    const levels: PlaceLevelRecord[] = Object.entries(project.levels).map(
+      ([name, source]) => ({ name, source }),
+    );
 
     const rkey = placeRkey(project.manifest.name);
     const record: PlaceRecord = makePlaceRecord(
@@ -568,6 +582,7 @@ export const createPlacePublisher = (params: {
       new Date().toISOString(),
       scripts,
       models,
+      levels,
     );
     await client.putRecord({
       repo,

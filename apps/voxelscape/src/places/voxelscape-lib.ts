@@ -4,13 +4,15 @@
 // etc. — through its own internal-only import, alongside `createNpc`/
 // `createProp`, so a script reaches everything through one dependency:
 // `import * as engine from "voxelscape"; engine.dispatch(...);
-// engine.createNpc(...);`. `onTick` is the one function re-exported as a
-// wrapper rather than as-is: it parses the events its own `onTick` call
-// receives before handing them to the script, so a script never sees the
-// JSON text they crossed the sandbox boundary as. Ordinary guest-side
-// TypeScript, compiled through the same `transpileFile` every project file
-// goes through, so nothing here is a new sandbox global and nothing changes
-// the trust boundary the interpreter's isolation already draws (ADR 0027).
+// engine.createNpc(...);`. `onTick` and `onPlan` are the two functions
+// re-exported as wrappers rather than as-is: `onTick` parses the events its
+// own call receives before handing them to the script, so a script never sees
+// the JSON text they crossed the sandbox boundary as, and `onPlan` accepts a
+// plan already written out as well as a function that answers with one.
+// Ordinary guest-side TypeScript, compiled through the same `transpileFile`
+// every project file goes through, so nothing here is a new sandbox global
+// and nothing changes the trust boundary the interpreter's isolation already
+// draws (ADR 0027).
 // Every function just builds the same payload a hand-written script already
 // builds and calls `dispatch` itself; see `effects.ts`'s
 // "npc"/"npc-remove"/"npc-die"/"prop"/"prop-remove" payloads, which this
@@ -19,9 +21,9 @@
 //
 // Plain factory functions, not classes — `createNpc`/`createProp` hand back
 // a plain object closing over its own placement, never something a script
-// constructs with `new`. `__models` is generated and appended after this
-// source by bundle.ts's `voxelscapeModuleSource`, one entry per model this
-// place attaches.
+// constructs with `new`. `__models` and `__levels` are generated and appended
+// after this source by bundle.ts's `voxelscapeModuleSource`, one entry per
+// model and per level this place attaches.
 export const VOXELSCAPE_LIB_SOURCE = `
 import * as host from "engine-host";
 export * from "engine-host";
@@ -33,6 +35,31 @@ export function onTick(fn) {
   host.onTick(function (clockMs, eventsJson) {
     fn(clockMs, JSON.parse(eventsJson));
   });
+}
+
+/** The level plan this place carries under \`name\`, as the JSON text an
+ * \`onPlan\` handler returns its own answer as. A name this place carries no
+ * level under throws, naming the level, the way \`createNpc\` throws on a model
+ * whose bytes the place does not hold. */
+export function plan(name) {
+  var level = __levels[name];
+  if (level === undefined) {
+    throw new Error("this place carries no such level: \\"" + name + "\\"");
+  }
+  return level;
+}
+
+/** Registers the plan this place builds its terrain from: either one already
+ * written out, as \`plan\` hands it back, or a function that answers with one
+ * when the world calls it before the first fill. */
+export function onPlan(answer) {
+  if (typeof answer === "string") {
+    host.onPlan(function () {
+      return answer;
+    });
+    return;
+  }
+  host.onPlan(answer);
 }
 
 /** Every player's live position: the local player first, then connected

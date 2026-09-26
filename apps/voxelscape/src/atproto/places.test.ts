@@ -607,6 +607,7 @@ describe("a place publisher", () => {
       spawn: [128, 0, -64],
     },
     scripts: { "main.js": "export default {}" },
+    levels: {},
     models,
   });
 

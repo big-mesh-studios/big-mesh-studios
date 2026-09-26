@@ -255,6 +255,7 @@ export class ScriptConsole {
     entry: string;
     seed: number;
     models: Record<string, Uint8Array>;
+    levels: Record<string, string>;
   } | null = null;
 
   constructor(params: ScriptConsoleParams) {
@@ -632,10 +633,11 @@ export class ScriptConsole {
     entry: string,
     seed: number,
     models: Record<string, Uint8Array> = {},
+    levels: Record<string, string> = {},
   ): Promise<string> {
-    this.last = { files, entry, seed, models };
+    this.last = { files, entry, seed, models, levels };
     const host = await this.freshHost(seed);
-    await host.loadProject(files, entry, models);
+    await host.loadProject(files, entry, models, levels);
     return `script loaded — ${this.loadedLine()}`;
   }
 
@@ -652,6 +654,7 @@ export class ScriptConsole {
       this.last.entry,
       this.last.seed,
       this.last.models,
+      this.last.levels,
     );
   }
 

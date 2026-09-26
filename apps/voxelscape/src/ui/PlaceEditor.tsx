@@ -28,6 +28,16 @@ import {
   type PlaceProject,
 } from "../places/project";
 import { type PlaceManifest, type PublishedPlace } from "../places/place";
+import { levelSpecifierFor } from "../places/place";
+import {
+  attachLevel as attachLevelToProject,
+  attachLevelFile,
+  DEFAULT_LEVEL_NAME,
+  LEVEL_SCRIPT_FILE,
+  removeLevel as removeLevelFromProject,
+} from "../places/attach-level";
+import type { LevelPlan } from "../places/plan";
+import { parseLevelPlan } from "../places/plan";
 import {
   modelAtUri,
   type PublishedModel,
@@ -55,6 +65,16 @@ let cachedProjectVoxelscape: Voxelscape | null = null;
 const firstScript = (p: PlaceProject): string =>
   p.manifest.scripts?.[0] ?? Object.keys(p.scripts)[0] ?? MAIN_SCRIPT_FILE;
 
+/** What a level holds, in the counts the level editor itself reports, or the
+ * words for a plan this world cannot generate. */
+const describeLevel = (source: string): string => {
+  const plan = parseLevelPlan(source);
+  if (plan === null) {
+    return "not a plan this world can generate";
+  }
+  return `${plan.structures.length} shapes, ${plan.npcs.length} NPCs, ${plan.props.length} props`;
+};
+
 export const PlaceEditorContent: Component<{
   /** The content's own root element, so `Console` can tell a click or an
    * Escape inside it (CodeMirror, a manifest field) apart from one in the
@@ -76,10 +96,12 @@ export const PlaceEditorContent: Component<{
     cachedProject,
   );
   const [active, setActive] = createSignal<string>(MAIN_SCRIPT_FILE);
-  // Whether the tab area is showing the models pane instead of a script's
-  // pane — kept apart from `active` so which script was last open is never
-  // lost just by looking at models for a moment.
-  const [showModels, setShowModels] = createSignal(false);
+  // Which pane the tab area is showing besides a script's — kept apart from
+  // `active` so which script was last open is never lost just by looking at a
+  // place's models or levels for a moment.
+  const [pane, setPane] = createSignal<"script" | "models" | "levels">(
+    "script",
+  );
   const [busy, setBusy] = createSignal(false);
   const [candidates, setCandidates] = createSignal<PublishedPlace[]>([]);
   // Bumped only when the project is reseeded for a new world, never by an
@@ -155,8 +177,19 @@ export const PlaceEditorContent: Component<{
       cachedProjectVoxelscape = current;
       setProject(loaded);
       setActive(firstScript(loaded));
-      setShowModels(false);
+      setPane("script");
       setProjectGeneration((generation) => generation + 1);
+    },
+  );
+
+  // The level editor's own plan, written into the draft as a level, each time
+  // it asks. The draft is this panel's own state, so this panel is what
+  // answers — the request crosses as a count on the world's own seam, which a
+  // world with no place editor mounted leaves simply unanswered.
+  createEffect(
+    () => voxelscape().placeEditor.levelPlanRequests(),
+    () => {
+      attachLevel(DEFAULT_LEVEL_NAME, voxelscape().levelEditor.plan());
     },
   );
 
@@ -166,7 +199,7 @@ export const PlaceEditorContent: Component<{
   };
 
   const selectFile = (name: string): void => {
-    setShowModels(false);
+    setPane("script");
     setActive(name);
     views.get(name)?.requestMeasure();
   };
@@ -327,6 +360,63 @@ export const PlaceEditorContent: Component<{
     });
   };
 
+  const levelNames = (): string[] => Object.keys(project()?.levels ?? {});
+
+  /**
+   * Writes `plan` into the draft as the level `name` and leaves the editor on
+   * the script registering it, or reports why it did not. The one door every
+   * way of adding a level goes through, so a plan from the level editor and one
+   * from a file reach the draft the same way.
+   */
+  const attachLevel = (name: string, plan: LevelPlan): void => {
+    const p = project();
+    if (p === null) {
+      return;
+    }
+    const result = attachLevelToProject(p, name, plan);
+    if (!result.ok) {
+      props.onStatus(result.reason);
+      return;
+    }
+    commit(result.project);
+    setPane("script");
+    setActive(LEVEL_SCRIPT_FILE);
+    props.onStatus(
+      `${result.added ? "attached" : "replaced"} the level "${name}" — Run to build it`,
+    );
+  };
+
+  const dropLevel = (name: string): void => {
+    const p = project();
+    if (p === null) {
+      return;
+    }
+    commit(removeLevelFromProject(p, name));
+    props.onStatus(`removed the level "${name}"`);
+  };
+
+  /** The level a picked `.json` file holds, attached under the file's own name. */
+  const addLevelFromFile = async (picked: FileList | null): Promise<void> => {
+    const file = picked?.item(0) ?? null;
+    if (file === null) {
+      return;
+    }
+    const p = project();
+    if (p === null) {
+      return;
+    }
+    const name = levelSpecifierFor(file.name) ?? file.name;
+    const result = await attachLevelFile(p, file);
+    if (!result.ok) {
+      props.onStatus(result.reason);
+      return;
+    }
+    commit(result.project);
+    setPane("script");
+    setActive(LEVEL_SCRIPT_FILE);
+    props.onStatus(`attached the level "${name}" — Run to build it`);
+  };
+
   const [browseHandle, setBrowseHandle] = createSignal("");
   const [browsed, setBrowsed] = createSignal<PublishedModel[]>([]);
   const [browsing, setBrowsing] = createSignal(false);
@@ -427,7 +517,7 @@ export const PlaceEditorContent: Component<{
   const newProject = (): void => {
     commit(emptyPlaceProject(voxelscape().placeEditor.defaultSeed));
     setActive(MAIN_SCRIPT_FILE);
-    setShowModels(false);
+    setPane("script");
     setCandidates([]);
     props.onStatus(
       "new place started — name it, write its script, then publish",
@@ -462,7 +552,7 @@ export const PlaceEditorContent: Component<{
       const opened = await voxelscape().placeEditor.places.project(place);
       commit(opened);
       setActive(firstScript(opened));
-      setShowModels(false);
+      setPane("script");
       setCandidates([]);
       props.onStatus(
         `opened "${opened.manifest.name}" — publishing again under the same name updates the place`,
@@ -670,6 +760,10 @@ export const PlaceEditorContent: Component<{
   const [fromFileOutcome, setFromFileOutcome] =
     createSignal<CloneOutcome>(null);
 
+  /** The hidden file input "+ level" opens for a level picked off the device. */
+  let levelFileInput: HTMLInputElement | undefined;
+  const levelPopover = createPopover();
+
   /** Clones the draft, then opens the file picker "+ from a file" would have
    * opened directly on a place that was already the player's own. */
   const cloneThenPickFiles = async (): Promise<void> => {
@@ -823,6 +917,46 @@ export const PlaceEditorContent: Component<{
             setPublishOutcome,
             () => void clonePublish(),
           )}
+          <input
+            ref={levelFileInput}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={(e) => {
+              void addLevelFromFile(e.currentTarget.files);
+              e.currentTarget.value = "";
+            }}
+          />
+          <levelPopover.PopOver popover="auto" class={styles.clonePopover}>
+            <p class={styles.clonePopoverText}>
+              Attach the plan this world is standing on, or a level file you
+              saved earlier. Either way <code>{LEVEL_SCRIPT_FILE}</code> is
+              written to register it.
+            </p>
+            <button
+              type="button"
+              class={styles.button}
+              onClick={() => {
+                levelPopover.close();
+                attachLevel(
+                  DEFAULT_LEVEL_NAME,
+                  voxelscape().levelEditor.plan(),
+                );
+              }}
+            >
+              from the level editor
+            </button>
+            <button
+              type="button"
+              class={styles.button}
+              onClick={() => {
+                levelPopover.close();
+                levelFileInput?.click();
+              }}
+            >
+              from a file
+            </button>
+          </levelPopover.PopOver>
         </header>
 
         <nav class={styles.tabs} role="tablist">
@@ -831,7 +965,7 @@ export const PlaceEditorContent: Component<{
               <div
                 class={[
                   styles.tab,
-                  !showModels() && active() === name && styles.tabActive,
+                  pane() === "script" && active() === name && styles.tabActive,
                 ]}
               >
                 <button
@@ -839,7 +973,7 @@ export const PlaceEditorContent: Component<{
                   role="tab"
                   id={`tab-${name}`}
                   aria-selected={
-                    !showModels() && active() === name ? "true" : "false"
+                    pane() === "script" && active() === name ? "true" : "false"
                   }
                   aria-controls={`tabpanel-${name}`}
                   title="double-click to rename"
@@ -861,16 +995,36 @@ export const PlaceEditorContent: Component<{
           <button class={styles.add} onClick={() => addScript()}>
             + script
           </button>
+          <levelPopover.Trigger class={styles.add} title="attach a level plan">
+            + level
+          </levelPopover.Trigger>
           <button
-            class={[styles.modelsToggle, showModels() && styles.tabActive]}
+            class={[
+              styles.modelsToggle,
+              pane() === "models" && styles.tabActive,
+            ]}
             role="tab"
             id="tab-models"
-            aria-selected={showModels() ? "true" : "false"}
+            aria-selected={pane() === "models" ? "true" : "false"}
             aria-controls="tabpanel-models"
-            onClick={() => setShowModels(true)}
+            onClick={() => setPane("models")}
           >
             models
             <Show when={modelNames().length > 0}> ({modelNames().length})</Show>
+          </button>
+          <button
+            class={[
+              styles.modelsToggle,
+              pane() === "levels" && styles.tabActive,
+            ]}
+            role="tab"
+            id="tab-levels"
+            aria-selected={pane() === "levels" ? "true" : "false"}
+            aria-controls="tabpanel-levels"
+            onClick={() => setPane("levels")}
+          >
+            levels
+            <Show when={levelNames().length > 0}> ({levelNames().length})</Show>
           </button>
         </nav>
 
@@ -878,7 +1032,7 @@ export const PlaceEditorContent: Component<{
             switching away and back leaves its state (a CodeMirror scroll
             position, the models panel's own state) untouched instead of
             tearing it down and remounting from scratch. */}
-        <Activity when={!showModels()}>
+        <Activity when={pane() === "script"}>
           <Show when={scriptFiles().length > 0}>
             {/* Keyed on `projectGeneration` so a reseeded project remounts
                 every CodeMirror instance instead of leaving one an edit
@@ -898,7 +1052,7 @@ export const PlaceEditorContent: Component<{
           </Show>
         </Activity>
 
-        <Activity when={showModels()}>
+        <Activity when={pane() === "models"}>
           <div
             class={styles.models}
             role="tabpanel"
@@ -1174,6 +1328,51 @@ export const PlaceEditorContent: Component<{
                 </ul>
               </Show>
             </section>
+          </div>
+        </Activity>
+
+        <Activity when={pane() === "levels"}>
+          <div
+            class={styles.levels}
+            role="tabpanel"
+            id="tabpanel-levels"
+            aria-labelledby="tab-levels"
+          >
+            <h3 class={styles.modelsHeading}>the levels this place carries</h3>
+            <p class={styles.levelsNote}>
+              A level is a plan, kept beside the script rather than inside it.
+              <code>{LEVEL_SCRIPT_FILE}</code> registers every one of them, and
+              your first script brings that in.
+            </p>
+            <Show
+              when={levelNames().length > 0}
+              fallback={
+                <p class={styles.modelsEmpty}>
+                  no levels yet — add one, or draw one in the level editor
+                </p>
+              }
+            >
+              <ul class={styles.levelsList}>
+                <For each={levelNames()}>
+                  {(name) => (
+                    <li class={styles.levelsRow}>
+                      <span class={styles.levelsName}>{name}</span>
+                      <span class={styles.levelsCounts}>
+                        {describeLevel(project()?.levels[name] ?? "")}
+                      </span>
+                      <button
+                        type="button"
+                        class={styles.modelsCardAction}
+                        title={`remove the level ${name}`}
+                        onClick={() => dropLevel(name)}
+                      >
+                        remove
+                      </button>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
           </div>
         </Activity>
       </Show>

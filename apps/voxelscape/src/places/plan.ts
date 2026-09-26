@@ -255,8 +255,10 @@ export interface CompilePlanParams {
   files: Record<string, string>;
   /** The file execution starts from; it or a file it imports may call `engine.onPlan`. */
   entry: string;
-  /** The place's attached model files, keyed by name, for a `with { type: "model" }` import to resolve against. */
+  /** The place's attached model files, keyed by the bare name `createNpc`/`createProp` take. */
   models?: Record<string, Uint8Array>;
+  /** The place's level plans, keyed by the bare name `plan` takes them by. */
+  levels?: Record<string, string>;
   /** The seed every peer's plan is generated against. */
   seed: number;
   /** The LOD-0 voxel box the plan may build within. */
@@ -279,6 +281,7 @@ export const compilePlacePlan = async (
     params.files,
     params.entry,
     params.models ?? {},
+    params.levels ?? {},
   );
   const sandbox = await createQuickJSSandbox({
     seed: params.seed,

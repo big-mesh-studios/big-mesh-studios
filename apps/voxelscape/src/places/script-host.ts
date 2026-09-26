@@ -1572,10 +1572,11 @@ export class ScriptHost {
     files: Record<string, string>,
     entry: string,
     models: Record<string, Uint8Array> = {},
+    levels: Record<string, string> = {},
   ): Promise<void> {
     const sandbox = await this.ready;
     this.assertAlive();
-    const code = await bundlePlaceProject(files, entry, models);
+    const code = await bundlePlaceProject(files, entry, models, levels);
     sandbox.load(code);
     this.loaded = true;
     await this.drain(sandbox);
