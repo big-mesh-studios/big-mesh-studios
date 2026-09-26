@@ -58,6 +58,36 @@ declare module "voxelscape" {
       readonly parts: readonly "body"[];
       readonly motions: readonly never[];
     };
+    breakfastmachine: {
+      readonly name: "breakfastmachine";
+      readonly file: "breakfastmachine.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    freezer: {
+      readonly name: "freezer";
+      readonly file: "freezer.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    car: {
+      readonly name: "car";
+      readonly file: "car.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    toilet: {
+      readonly name: "toilet";
+      readonly file: "toilet.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    tree: {
+      readonly name: "tree";
+      readonly file: "tree.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
     bench: {
       readonly name: "bench";
       readonly file: "bench.zip";
@@ -142,6 +172,54 @@ declare module "voxelscape" {
       readonly parts: readonly "body"[];
       readonly motions: readonly never[];
     };
+    witchbrew: {
+      readonly name: "witchbrew";
+      readonly file: "witchbrew.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    hotbrew: {
+      readonly name: "hotbrew";
+      readonly file: "hotbrew.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    icecream: {
+      readonly name: "icecream";
+      readonly file: "icecream.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    candy: {
+      readonly name: "candy";
+      readonly file: "candy.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    fuel: {
+      readonly name: "fuel";
+      readonly file: "fuel.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    patty: {
+      readonly name: "patty";
+      readonly file: "patty.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    sandvich: {
+      readonly name: "sandvich";
+      readonly file: "sandvich.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    sword: {
+      readonly name: "sword";
+      readonly file: "sword.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
     tix: {
       readonly name: "tix";
       readonly file: "tix.zip";
@@ -151,12 +229,6 @@ declare module "voxelscape" {
     robux: {
       readonly name: "robux";
       readonly file: "robux.zip";
-      readonly parts: readonly "body"[];
-      readonly motions: readonly never[];
-    };
-    plate: {
-      readonly name: "plate";
-      readonly file: "plate.zip";
       readonly parts: readonly "body"[];
       readonly motions: readonly never[];
     };
@@ -379,6 +451,12 @@ declare module "voxelscape" {
     "cafeteria-table": {
       readonly name: "cafeteria-table";
       readonly file: "cafeteria-table.zip";
+      readonly parts: readonly "body"[];
+      readonly motions: readonly never[];
+    };
+    plate: {
+      readonly name: "plate";
+      readonly file: "plate.zip";
       readonly parts: readonly "body"[];
       readonly motions: readonly never[];
     };

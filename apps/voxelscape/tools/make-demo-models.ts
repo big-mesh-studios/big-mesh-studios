@@ -216,6 +216,63 @@ const MODELS: Model[] = [
     top: 2,
     bottom: 4,
   },
+  {
+    name: "breakfastmachine",
+    size: [12, 10, 8],
+    palette: [BLACK, [225, 228, 232], [60, 64, 70], [90, 175, 95]],
+    front: (x, y) => {
+      if (y === 0) return 3; // the green lip
+      if (x >= 2 && x <= 8 && y >= 2 && y <= 6) return 2; // the window
+      if (x === 10 && y >= 3 && y <= 6) return 3; // the button
+      return 1;
+    },
+    top: 3,
+    bottom: 2,
+  },
+  {
+    name: "freezer",
+    size: [14, 8, 10],
+    palette: [BLACK, [200, 210, 220], [90, 130, 170], [60, 70, 80]],
+    front: (x, y) => {
+      if (y >= 5) return 2; // the lid
+      if (x >= 5 && x <= 8 && y >= 1 && y <= 3) return 3; // the out of order sticker
+      return 1;
+    },
+    top: 2,
+    bottom: 3,
+  },
+  {
+    name: "car",
+    size: [14, 7, 28],
+    palette: [BLACK, [185, 60, 60], [140, 40, 40], [30, 34, 40]],
+    front: (x, y) => {
+      if (y <= 1) return 2; // the sill
+      if (y >= 3 && x >= 2 && x <= 11) return 3; // the glass
+      return 1;
+    },
+    top: 1,
+    bottom: 2,
+  },
+  {
+    name: "toilet",
+    size: [8, 9, 10],
+    palette: [BLACK, [238, 240, 242], [200, 205, 210], [170, 175, 180]],
+    front: (_x, y) => (y <= 3 ? 2 : 1),
+    top: 2,
+    bottom: 3,
+  },
+  {
+    name: "tree",
+    size: [12, 20, 12],
+    palette: [BLACK, [95, 70, 45], [60, 125, 55], [45, 100, 45]],
+    front: (x, y) => {
+      if (y >= 7 && (x === 1 || x === 2 || x === 9 || x === 10)) return 2;
+      if (y <= 6 && x >= 4 && x <= 7) return 1;
+      return 3;
+    },
+    top: 2,
+    bottom: 1,
+  },
 
   // --- small items lying around ---
   {
@@ -276,6 +333,93 @@ const MODELS: Model[] = [
     palette: [BLACK, [240, 242, 245], [90, 150, 210], [200, 205, 210]],
     front: (_x, y) => (y >= 5 ? 2 : 1),
     top: 3,
+  },
+  {
+    name: "witchbrew",
+    size: [4, 8, 4],
+    palette: [BLACK, [60, 40, 90], [120, 60, 190], [90, 60, 30]],
+    front: (_x, y) => (y >= 5 ? 2 : 1),
+    top: 3,
+  },
+  {
+    name: "hotbrew",
+    size: [4, 8, 4],
+    palette: [BLACK, [110, 70, 40], [190, 130, 60], [90, 60, 30]],
+    front: (_x, y) => (y >= 5 ? 2 : 1),
+    top: 3,
+  },
+  {
+    name: "icecream",
+    size: [6, 6, 6],
+    palette: [BLACK, [235, 235, 240], [255, 200, 210], [120, 90, 160]],
+    front: (_x, y) => (y >= 4 ? 2 : 3),
+    top: 2,
+    bottom: 3,
+  },
+  {
+    name: "candy",
+    size: [6, 4, 3],
+    palette: [BLACK, [240, 120, 40], [200, 80, 30], [250, 200, 80]],
+    front: (x) => (x <= 1 || x >= 4 ? 3 : 1),
+  },
+  {
+    name: "fuel",
+    size: [7, 8, 4],
+    palette: [BLACK, [190, 50, 45], [140, 35, 32], [40, 40, 44]],
+    front: (x, y) => {
+      if (y >= 6) return 2; // the cap
+      if (x >= 1 && x <= 5 && y >= 1 && y <= 4) return 3; // the label
+      return 1;
+    },
+    top: 2,
+  },
+  {
+    name: "patty",
+    size: [8, 6, 8],
+    palette: [
+      BLACK,
+      [215, 160, 70],
+      [120, 70, 40],
+      [90, 150, 60],
+      [240, 230, 200],
+    ],
+    front: (_x, y) => {
+      if (y >= 4) return 1; // the top bun
+      if (y === 3) return 3; // the lettuce
+      if (y === 2) return 2; // the patty
+      return 4; // the bottom bun
+    },
+    top: 1,
+    bottom: 4,
+  },
+  {
+    name: "sandvich",
+    size: [8, 6, 8],
+    palette: [BLACK, [235, 205, 140], [90, 140, 60], [200, 90, 60]],
+    front: (_x, y) => {
+      if (y >= 4) return 1; // the top slice
+      if (y === 3) return 2; // the lettuce
+      if (y === 2) return 3; // the tomato
+      return 1; // the bottom slice
+    },
+    top: 1,
+    bottom: 1,
+  },
+  {
+    name: "sword",
+    size: [3, 14, 1],
+    palette: [
+      BLACK,
+      [200, 205, 215],
+      [140, 145, 155],
+      [110, 70, 40],
+      [220, 190, 70],
+    ],
+    front: (x, y) => {
+      if (y >= 3) return x === 1 ? 2 : 1; // the blade
+      if (y === 2) return 4; // the guard
+      return 3; // the grip
+    },
   },
 ];
 

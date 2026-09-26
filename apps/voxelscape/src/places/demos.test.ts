@@ -157,18 +157,20 @@ describe("the built-in demos", () => {
     expect(demo?.manifest.models).toContain("bed.zip");
     expect(demo?.manifest.models).toContain("chips.zip");
     expect(demo?.manifest.models).toContain("friedegg.zip");
+    expect(demo?.manifest.models).toContain("breakfastmachine.zip");
+    expect(demo?.manifest.models).toContain("witchbrew.zip");
     expect(BUILTIN_DEMOS).toContain(demo);
   });
 
   it("loads the GASA4 demo's models as bytes", async () => {
     const { project } = await gasa4();
     expect(Object.keys(project.models)).toContain("fridge.zip");
-    expect(Object.keys(project.models)).toContain("plate.zip");
+    expect(Object.keys(project.models)).toContain("breakfastmachine.zip");
     expect(Object.keys(project.models)).toContain("friedegg.zip");
     expect(project.models["fridge.zip"].bytes.length).toBeGreaterThan(0);
   });
 
-  it("compiles its house and store", async () => {
+  it("compiles its house, its road, and its store", async () => {
     const { project, entry } = await gasa4();
     const plan = await compilePlacePlan({
       files: project.scripts,
@@ -180,6 +182,39 @@ describe("the built-in demos", () => {
     expect(plan.structures.length).toBeGreaterThan(15);
   });
 
+  it("draws its walls around the rooms its props stand in", async () => {
+    const { project, entry } = await gasa4();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    const boxes = plan.structures.filter((shape) => shape.kind === "box");
+    const floor = (min: number[], max: number[]): boolean =>
+      boxes.some(
+        (shape) =>
+          shape.min.every((at, axis) => at === min[axis]) &&
+          shape.max.every((at, axis) => at === max[axis]),
+      );
+    // The rooms and the props are placed in world units and a voxel is two of
+    // them, so the house the four rooms share is fourteen voxels by thirteen
+    // and the store is five by six.
+    expect(floor([-14, 30, -13], [14, 30, 13])).toBe(true);
+    expect(floor([24, 30, -6], [34, 30, 6])).toBe(true);
+    const walls = boxes.filter(
+      (shape) => shape.min[1] === 31 && shape.max[1] === 33,
+    );
+    expect([
+      Math.min(...walls.map((shape) => shape.min[0])),
+      Math.max(...walls.map((shape) => shape.max[0])),
+    ]).toEqual([-14, 34]);
+    expect([
+      Math.min(...walls.map((shape) => shape.min[2])),
+      Math.max(...walls.map((shape) => shape.max[2])),
+    ]).toEqual([-13, 13]);
+  });
+
   it("opens with Dad, the Cashier, and the store counter", async () => {
     const { host } = await run();
     expect(host.npcList.map((npc) => npc.id).sort()).toEqual([
@@ -188,6 +223,29 @@ describe("the built-in demos", () => {
     ]);
     expect(host.propList.some((prop) => prop.model === "bed.zip")).toBe(true);
     expect(host.prop("store-counter")).toMatchObject({ model: "counter.zip" });
+    expect(host.prop("breakfast-machine")).toMatchObject({
+      model: "breakfastmachine.zip",
+    });
+    expect(host.prop("car")).toMatchObject({ model: "car.zip" });
+    host.dispose();
+  });
+
+  it("hints each of the house's four rooms and the store's forecourt", async () => {
+    const { host, narrations } = await run();
+    await host.movePlayer("", -14, 62, -12); // the bedroom
+    await host.movePlayer("", 14, 62, -12); // the bathroom
+    await host.movePlayer("", -10, 62, 10); // the kitchen
+    await host.movePlayer("", 14, 62, 10); // the living room
+    await host.movePlayer("", 40, 62, 18); // the parking lot
+    await host.movePlayer("", 58, 62, 0); // the store
+    expect(narrations).toEqual([
+      "It is 4 AM and I am starving. Find a snack... and try not to wake Dad.",
+      "Dad is asleep in the bathtub. Keep it down.",
+      "The kitchen. Chips on the counter, an orange on the table, a stove, and the breakfast machine.",
+      "The front door is open. The store is down the road.",
+      'The cashier\'s car, with a note on the window: "this is my car."',
+      "Welcome to a generic convenience store. We are open 24 hours.",
+    ]);
     host.dispose();
   });
 
@@ -203,11 +261,11 @@ describe("the built-in demos", () => {
 
   it("ends with Chips when they are eaten where Dad can hear", async () => {
     const { host, endings } = await run();
-    await host.movePlayer("", 10, 62, 10); // the kitchen
+    await host.movePlayer("", -10, 62, 10); // the kitchen
     await host.use("chips", "");
     await host.useItem("chips", "");
     // Dad wakes at once and comes into the room.
-    expect(host.npc("dad")).toMatchObject({ x: 8, z: 14 });
+    expect(host.npc("dad")).toMatchObject({ x: -8, z: 14 });
     await host.use("bed", "");
     expect(endings).toEqual(["Chips"]);
     host.dispose();
@@ -217,6 +275,23 @@ describe("the built-in demos", () => {
     const { host, endings } = await run();
     await host.use("orange", "");
     expect(endings).toEqual(["Orange"]);
+    host.dispose();
+  });
+
+  it("ends with Sword when the sword off the bedroom wall is used", async () => {
+    const { host, endings } = await run();
+    await host.use("sword", "");
+    expect(host.inventory.heldItem()).toMatchObject({ id: "sword" });
+    await host.useItem("sword", "");
+    expect(endings).toEqual(["Sword"]);
+    host.dispose();
+  });
+
+  it("ends with Sandvich over the one left on the bench", async () => {
+    const { host, endings } = await run();
+    await host.use("sandvich", "");
+    await host.useItem("sandvich", "");
+    expect(endings).toEqual(["Sandvich"]);
     host.dispose();
   });
 
@@ -231,6 +306,27 @@ describe("the built-in demos", () => {
     await host.choose("cashier", 0, "");
     expect(host.inventory.heldItem()).toMatchObject({ id: "cola" });
     expect(host.prop("counter-item")).toBeNull();
+    // The shelf is filled again, so the shop never runs out.
+    expect(host.prop("buy-cola")).not.toBeNull();
+    host.dispose();
+  });
+
+  it("sells the witch brew, the patty, the fuel, and the ice cream", async () => {
+    const { host } = await run();
+    expect(host.prop("buy-witchbrew")).toMatchObject({
+      model: "witchbrew.zip",
+    });
+    expect(host.prop("buy-patty")).toMatchObject({ model: "patty.zip" });
+    expect(host.prop("buy-fuel")).toMatchObject({ model: "fuel.zip" });
+    expect(host.prop("buy-icecream")).toMatchObject({ model: "icecream.zip" });
+    host.dispose();
+  });
+
+  it("ends with Patty over a patty eaten straight off the shelf", async () => {
+    const { host, endings } = await run();
+    await host.use("buy-patty", "");
+    await host.useItem("patty", "");
+    expect(endings).toEqual(["Patty"]);
     host.dispose();
   });
 
@@ -256,19 +352,19 @@ describe("the built-in demos", () => {
     host.dispose();
   });
 
-  it("sits an item on a plate and takes it back off", async () => {
+  it("feeds the breakfast machine an item and takes it back out", async () => {
     const { host } = await run();
     await host.use("cola", "");
-    await useHeld(host, "plate1");
-    expect(host.prop("plate-item-0")).toMatchObject({ model: "cola.zip" });
+    await useHeld(host, "breakfast-machine");
+    expect(host.prop("machine-item-0")).toMatchObject({ model: "cola.zip" });
     expect(host.inventory.count("cola")).toBe(0);
-    await useHeld(host, "plate1"); // empty hands take it back
-    expect(host.prop("plate-item-0")).toBeNull();
+    await useHeld(host, "breakfast-machine"); // empty hands take it back
+    expect(host.prop("machine-item-0")).toBeNull();
     expect(host.inventory.heldItem()).toMatchObject({ id: "cola" });
     host.dispose();
   });
 
-  it("cooks an egg and plates it with juice for a Perfect Breakfast", async () => {
+  it("cooks an egg and makes the perfect breakfast with milk", async () => {
     const { host, endings } = await run();
     await host.use("buy-egg", "");
     await useHeld(host, "stove");
@@ -278,16 +374,84 @@ describe("the built-in demos", () => {
     await useHeld(host, "stove"); // off
     await useHeld(host, "stove"); // take the fried egg
     expect(host.inventory.heldItem()).toMatchObject({ id: "friedegg" });
-    await useHeld(host, "plate1");
-    await host.use("buy-juice", "");
-    await useHeld(host, "plate2");
+    await useHeld(host, "breakfast-machine");
+    await host.use("buy-milk", "");
+    await useHeld(host, "breakfast-machine");
     expect(endings).toEqual(["Breakfast"]);
+    expect(host.prop("machine-item-0")).toBeNull();
+    host.dispose();
+  });
+
+  it("heats a witch brew and balances it against a cold soda", async () => {
+    const { host, endings } = await run();
+    await host.use("buy-witchbrew", "");
+    await useHeld(host, "stove");
+    await advance(host, 6_000);
+    expect(host.prop("stove-item")).toMatchObject({ model: "hotbrew.zip" });
+    await useHeld(host, "stove"); // off
+    await useHeld(host, "stove"); // take the hot brew
+    expect(host.inventory.heldItem()).toMatchObject({ id: "hotbrew" });
+    await useHeld(host, "breakfast-machine");
+    await host.use("buy-cola", "");
+    await useHeld(host, "breakfast-machine");
+    expect(endings).toEqual(["Breakfast"]);
+    host.dispose();
+  });
+
+  it("takes the egg off the car when the player is holding one", async () => {
+    const { host, narrations } = await run();
+    await host.use("car", "");
+    expect(narrations).toContain("This is my car. - cashier");
+    await host.use("buy-egg", "");
+    await useHeld(host, "car");
+    expect(narrations).toContain(
+      "You deploy the egg onto the car. It is not my car.",
+    );
+    host.dispose();
+  });
+
+  it("floods the shop on the eighth soda fed to the machine", async () => {
+    const { host, endings, toasts } = await run();
+    for (let i = 1; i <= 14; i++) {
+      await host.use(`tix-${i}`, "");
+    }
+    for (let i = 1; i <= 10; i++) {
+      await host.use(`robux-${i}`, "");
+    }
+    await host.movePlayer("", 60, 62, 0); // into the store
+    for (let i = 1; i <= 7; i++) {
+      await host.use("buy-cola", "");
+      await useHeld(host, "store-counter");
+      await host.talk("cashier", "");
+      await host.choose("cashier", 0, "");
+      await useHeld(host, "vending");
+      expect(toasts.at(-1)).toBe(`The machine gurgles happily. (${i}/8)`);
+    }
+    expect(endings).toEqual([]);
+    await host.use("buy-cola", "");
+    await useHeld(host, "store-counter");
+    await host.talk("cashier", "");
+    await host.choose("cashier", 0, "");
+    await useHeld(host, "vending");
+    expect(endings).toEqual(["Flood"]);
+    host.dispose();
+  });
+
+  it("ends with Freezer over an ice cream put back in the freezer", async () => {
+    const { host, endings, toasts } = await run();
+    await host.use("tix-1", "");
+    await host.use("buy-icecream", "");
+    await useHeld(host, "freezer");
+    expect(endings).toEqual(["Freezer"]);
+    expect(toasts).not.toContain(
+      "The freezer is out of order. It is very cold in there.",
+    );
     host.dispose();
   });
 
   it("burns the house down when a non-egg is left on the stove", async () => {
     const { host, endings } = await run();
-    await host.movePlayer("", 10, 62, 10); // the kitchen
+    await host.movePlayer("", -10, 62, 10); // the kitchen
     await host.use("cola", "");
     await useHeld(host, "stove");
     await advance(host, 5_000);
@@ -299,8 +463,8 @@ describe("the built-in demos", () => {
 
   it("frees the goods once the cashier goes on break", async () => {
     const { host, endings } = await run();
-    await advance(host, 120_000);
-    expect(host.npc("cashier")).toMatchObject({ x: 50, z: -14 });
+    await advance(host, 231_000);
+    expect(host.npc("cashier")).toMatchObject({ x: 44, z: 18 });
     await host.movePlayer("", 60, 62, 0);
     await host.use("buy-cola", "");
     await host.movePlayer("", 30, 62, 0);

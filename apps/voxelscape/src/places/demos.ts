@@ -55,11 +55,12 @@ export interface BuiltinDemo {
 }
 
 /**
- * The "Get a Snack at 4 AM" demo: a flat street of brick houses under a pinned
- * 4 AM sky, a kitchen with a stove and two plates, a store whose counter the
- * cashier rings up at, and two NPCs to talk to. It is the proof that a place's
- * script can build its world (`engine.onPlan`), stand NPCs and rm-stacker props,
- * define and hand out items, set timers, place the player, and end the game.
+ * The "Get a Snack at 4 AM" demo: a two-by-two house of brick rooms under a
+ * pinned 4 AM sky, a kitchen with a stove and a breakfast machine, a store
+ * across the road whose counter the cashier rings up at, and two NPCs to talk
+ * to. It is the proof that a place's script can build its world
+ * (`engine.onPlan`), stand NPCs and rm-stacker props, define and hand out
+ * items, set timers, place the player, and end the game.
  */
 const GASA4: BuiltinDemo = {
   id: "get-a-snack-at-4-am",

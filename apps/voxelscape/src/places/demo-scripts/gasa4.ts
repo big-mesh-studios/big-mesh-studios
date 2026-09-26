@@ -12,10 +12,12 @@ import {
   type ModelsByName,
 } from "voxelscape";
 
-// The structure plan is drawn in LOD-0 voxel coordinates, so `GROUND` is a
-// voxel row: 30 voxels down the world puts the walkable surface at world y 60
-// and the player's feet at 62. Every prop and item below is placed in world
-// units, which is why `FLOOR` is 62.
+// The structure plan is drawn in LOD-0 voxel coordinates, and a voxel is two
+// world units on every axis, so `GROUND` is a voxel row: 30 voxels down the
+// world puts the walkable surface at world y 60 and the player's feet at 62.
+// Every room, prop, and item below is placed in world units instead, which is
+// why `FLOOR` is 62 and why the plan's x and z are half of theirs: the house
+// the plan draws is fourteen voxels across and twenty-eight units.
 const GROUND = 30;
 const FLOOR = 62;
 
@@ -24,9 +26,13 @@ const BATHROOM = "bathroom";
 const LIVING = "living";
 const KITCHEN = "kitchen";
 const STORE = "store";
+const PARKING = "parking";
 
 const DAD = "dad";
 const CASHIER = "cashier";
+
+const BREAK_MS = 231_000;
+const SODAS_TO_FLOOD = 8;
 
 let started = false;
 let cash = 0;
@@ -35,11 +41,9 @@ let chipsEaten = false;
 let dadAwake = false;
 let fridgeUsed = false;
 let sodas = 0;
-let plateA: string | null = null;
-let plateB: string | null = null;
-/** The item the script last told the world the player is holding. */
-let held = "";
-/** What rests on the stove, whether it is on, and whether the egg is cooked. */
+/** What the breakfast machine is holding, one slot per item. */
+const machine: Array<string | null> = [null, null];
+// What rests on the stove, whether it is on, and whether it is cooked.
 let stoveItem: string | null = null;
 let stoveOn = false;
 let stoveCooked = false;
@@ -47,24 +51,35 @@ let fireLit = false;
 /** The store good sitting on the counter waiting to be bought. */
 let counterItem: string | null = null;
 let cashierOnBreak = false;
-/** The store goods the player has paid for, so they are no longer stolen. */
+/** The store goods the player has legitimately got hold of. */
 const paid = new Set<string>();
 const inZone: Record<string, boolean> = {};
 const hinted: Record<string, boolean> = {};
+/** The item the script last told the world the player is holding. */
+let held = "";
 
 /**
  * The rooms as `[id, minX, minZ, maxX, maxZ]` in world units, in the order the
  * script declares their zones. The first the player stands in is their room.
+ * The house is the two by two the original place is built as, with the bedroom
+ * and the bathroom along its north wall, the kitchen and the living room along
+ * its south wall, and the store across the road to the east.
  */
 const ROOMS: Array<[string, number, number, number, number]> = [
-  [BEDROOM, -28, -24, 0, 0],
-  [BATHROOM, -28, 0, 0, 24],
-  [LIVING, 0, -24, 28, 0],
-  [KITCHEN, 0, 0, 28, 24],
-  [STORE, 52, -16, 72, 16],
+  [BEDROOM, -28, -26, 0, 0],
+  [BATHROOM, 0, -26, 28, 0],
+  [KITCHEN, -28, 0, 0, 26],
+  [LIVING, 0, 0, 28, 26],
+  [STORE, 48, -12, 68, 12],
+  [PARKING, 30, 2, 48, 24],
 ];
 
-/** The house and store: floor, walls, doorways, and a wood roof. */
+/**
+ * The house and the store: their outer walls, with a doorway in each. Every
+ * coordinate here is a voxel, so a wall a voxel thick is two world units and
+ * the house this draws is `x` -28 to 28 and `z` -26 to 26 in the world units
+ * the rooms and props above are placed in.
+ */
 function walls(): unknown[] {
   const b = blocks;
   const w = (
@@ -80,72 +95,86 @@ function walls(): unknown[] {
     id,
   });
   return [
-    // house shell in red brick, front door on the east wall
-    w(b.brick, -14, -12, -14, 12),
-    w(b.brick, -14, 12, 14, 12),
-    w(b.brick, -14, -12, 14, -12),
-    w(b.brick, 14, -12, 14, -8),
-    w(b.brick, 14, -5, 14, 12),
-    // interior cross in a lighter stone, a doorway on each arm
-    w(b.greystone, 0, -12, 0, -7),
-    w(b.greystone, 0, -5, 0, 5),
-    w(b.greystone, 0, 7, 0, 12),
-    w(b.greystone, -14, 0, -7, 0),
-    w(b.greystone, -5, 0, 5, 0),
-    w(b.greystone, 7, 0, 14, 0),
-    // store shell in grey stone, door on the west wall
-    w(b.greystone, 26, -8, 26, -7),
-    w(b.greystone, 26, -5, 26, 8),
-    w(b.greystone, 36, -8, 36, 8),
-    w(b.greystone, 26, -8, 36, -8),
-    w(b.greystone, 26, 8, 36, 8),
+    // house shell in red brick, front door on the east wall onto the drive
+    w(b.brick, -14, -13, -14, 13),
+    w(b.brick, -14, -13, 14, -13),
+    w(b.brick, -14, 13, 14, 13),
+    w(b.brick, 14, -13, 14, 2),
+    w(b.brick, 14, 6, 14, 13),
+    // interior cross in a lighter stone, a two-voxel doorway on each arm
+    w(b.greystone, 0, -13, 0, -11),
+    w(b.greystone, 0, -9, 0, 9),
+    w(b.greystone, 0, 11, 0, 13),
+    w(b.greystone, -14, 0, -11, 0),
+    w(b.greystone, -9, 0, 9, 0),
+    w(b.greystone, 11, 0, 14, 0),
+    // store shell in grey stone, door on the west wall facing the drive
+    w(b.greystone, 24, -6, 24, 2),
+    w(b.greystone, 24, 6, 24, 6),
+    w(b.greystone, 34, -6, 34, 6),
+    w(b.greystone, 24, -6, 34, -6),
+    w(b.greystone, 24, 6, 34, 6),
   ];
 }
 
 onPlan(() => {
   const b = blocks;
   const shapes: unknown[] = [
-    { kind: "box", min: [-80, 0, -80], max: [80, GROUND - 1, 80], id: b.dirt },
+    { kind: "box", min: [-96, 0, -96], max: [96, GROUND - 1, 96], id: b.dirt },
     {
       kind: "box",
-      min: [-80, GROUND, -80],
-      max: [80, GROUND, 80],
+      min: [-96, GROUND, -96],
+      max: [96, GROUND, 96],
       id: b.grass,
     },
     // raze whatever the terrain raised over the neighbourhood
-    { kind: "box", min: [-80, GROUND + 1, -80], max: [80, 160, 80], id: 0 },
-    // floors and the path from the house to the store
+    { kind: "box", min: [-96, GROUND + 1, -96], max: [96, 176, 96], id: 0 },
+    // the house floor, the store floor, and the drive between them
     {
       kind: "box",
-      min: [-14, GROUND, -12],
-      max: [14, GROUND, 12],
+      min: [-14, GROUND, -13],
+      max: [14, GROUND, 13],
       id: b.ice,
     },
     {
       kind: "box",
-      min: [26, GROUND, -8],
-      max: [36, GROUND, 8],
+      min: [24, GROUND, -6],
+      max: [34, GROUND, 6],
       id: b.greystone,
     },
     {
       kind: "road",
-      from: [14, GROUND, -6],
-      to: [26, GROUND, -6],
-      width: 5,
+      from: [14, GROUND, 4],
+      to: [24, GROUND, 4],
+      width: 4,
       id: b.greystone,
+    },
+    // the parking lot south of the drive, where the cashier's car stands
+    {
+      kind: "box",
+      min: [15, GROUND, 7],
+      max: [23, GROUND, 11],
+      id: b.greystone,
+    },
+    // the bare earth the trees stand on, north of the drive
+    {
+      kind: "box",
+      min: [15, GROUND, -11],
+      max: [24, GROUND, -7],
+      id: b.dirt,
     },
     ...walls(),
     // roofs
     {
       kind: "box",
-      min: [-14, GROUND + 4, -12],
-      max: [14, GROUND + 4, 12],
+      min: [-14, GROUND + 4, -13],
+      max: [14, GROUND + 4, 13],
       id: b.wood,
     },
     {
       kind: "box",
-      min: [26, GROUND + 4, -8],
-      max: [36, GROUND + 4, 8],
+      min: [24, GROUND + 4, -6],
+      max: [34, GROUND + 4, 6],
       id: b.wood,
     },
   ];
@@ -195,6 +224,14 @@ const ITEM_NAMES: Record<string, string> = {
   friedegg: "Fried Egg",
   juice: "Orange Juice",
   milk: "Milk",
+  witchbrew: "Witch Brew",
+  hotbrew: "Hot Witch Brew",
+  icecream: "Ice Cream",
+  candy: "Halloween Candy",
+  fuel: "Fuel",
+  patty: "Patty",
+  sandvich: "Sandvich",
+  sword: "Sword",
 };
 
 /** The rm-stacker model each item wears when it rests somewhere. */
@@ -207,45 +244,70 @@ const ITEM_MODELS: Record<string, keyof ModelsByName> = {
   friedegg: "friedegg",
   juice: "juice",
   milk: "milk",
+  witchbrew: "witchbrew",
+  hotbrew: "hotbrew",
+  icecream: "icecream",
+  candy: "candy",
+  fuel: "fuel",
+  patty: "patty",
+  sandvich: "sandvich",
+  sword: "sword",
 };
 
 /** What the store sells, and for how much cash. */
 const STORE_PRICES: Record<string, number> = {
   cola: 5,
+  witchbrew: 20,
+  patty: 15,
   egg: 25,
-  juice: 30,
   milk: 30,
+  juice: 30,
+  fuel: 10,
+  icecream: 12,
 };
 const STORE_GOODS = new Set(Object.keys(STORE_PRICES));
 
 /** The store pickup props, and which good each one puts in the player's hands. */
 const STORE_PICKUPS: Record<string, string> = {
   "buy-cola": "cola",
+  "buy-witchbrew": "witchbrew",
+  "buy-patty": "patty",
   "buy-egg": "egg",
-  "buy-juice": "juice",
   "buy-milk": "milk",
+  "buy-juice": "juice",
+  "buy-fuel": "fuel",
+  "buy-icecream": "icecream",
 };
 
 /** Where Dad comes to when the chips wake him, per room, as `[x, z, yaw]`. */
 const DAD_SPOTS: Record<string, [number, number, number]> = {
-  [KITCHEN]: [8, 14, Math.PI],
-  [BATHROOM]: [-22, 10, Math.PI],
-  [LIVING]: [8, -6, Math.PI],
+  [KITCHEN]: [-8, 14, Math.PI],
+  [BATHROOM]: [16, -12, Math.PI],
+  [LIVING]: [8, 16, Math.PI],
+  [BEDROOM]: [-10, -8, 0],
+  [STORE]: [58, 0, Math.PI],
+  [PARKING]: [44, 20, Math.PI],
 };
 
 /** Where fire climbs the kitchen once something on the stove catches. */
 const FIRE_SPOTS: Array<[number, number, number]> = [
-  [10, 18, 3.5],
-  [14, 18, 3],
-  [12, 22, 4],
-  [8, 20, 2.5],
-  [16, 20, 3],
-  [12, 16, 2.5],
+  [-18, 20, 3.5],
+  [-22, 20, 3],
+  [-20, 22, 4],
+  [-24, 18, 2.5],
+  [-16, 18, 3],
+  [-20, 16, 2.5],
 ];
 
 /** The good a store item is a form of, so a cooked egg is still "the egg". */
 function goodOf(item: string): string {
-  return item === "friedegg" ? "egg" : item;
+  if (item === "friedegg") {
+    return "egg";
+  }
+  if (item === "hotbrew") {
+    return "witchbrew";
+  }
+  return item;
 }
 
 /** Whether the player is carrying a store good they never paid for. */
@@ -253,91 +315,270 @@ function stealing(item: string): boolean {
   return item !== "" && STORE_GOODS.has(item) && !paid.has(goodOf(item));
 }
 
-/** What a full pair of plates means, as `[ending title, ending text]`. */
-function plateResult(a: string, b: string): [string, string] {
-  const pair = [a, b].sort().join("+");
-  if (pair === "friedegg+juice") {
-    return [
-      "Breakfast",
-      "Perfect Breakfast. A fried egg with a glass of orange juice.",
-    ];
+/**
+ * What the breakfast machine makes of a pair of items, as
+ * `[first, second, name, comment]`, taken from the pair table the original
+ * place ships in its `BreakfastCombos` module. Which of the two is first does
+ * not matter.
+ */
+const COMBOS: Array<[string, string, string, string]> = [
+  [
+    "friedegg",
+    "milk",
+    "Perfect Breakfast",
+    "Wow. This is it. This is the perfect breakfast. You did it.",
+  ],
+  [
+    "egg",
+    "milk",
+    "Pergfect Breakfast",
+    "What? Trying to make cake? You're making breakfast, not dessert. Cook the egg.",
+  ],
+  ["chips", "milk", "Soggy Chips", "Milk and chips. Kinda has a ring to it."],
+  [
+    "chips",
+    "cola",
+    "Stomach-aching Breakfast",
+    "You ever try pilk? Well, Bloxy Colas aren't that.",
+  ],
+  [
+    "chips",
+    "witchbrew",
+    "Stomach-aching Breakfast",
+    "You ever try pilk? Well, Witch Brews aren't that.",
+  ],
+  [
+    "hotbrew",
+    "cola",
+    "Balanced Beverages",
+    "One cold drink. One hot drink. It cancels out.",
+  ],
+  ["milk", "colgate", "Dairy Mint", "At least it isn't orange juice."],
+  ["milk", "icecream", "Lotta Dairy", "That's a lot of dairy."],
+  [
+    "fuel",
+    "milk",
+    "Fuel Just Isn't Good",
+    "I don't have anything funny to say. You just put fuel in your breakfast.",
+  ],
+  [
+    "fuel",
+    "candy",
+    "This Isn't Any Better",
+    "Just because this is a limited time item does not mean it mixes well with fuel.",
+  ],
+  ["candy", "milk", "Spooky", "Milk, but spooky."],
+  [
+    "chips",
+    "friedegg",
+    "Chips and Eggs",
+    "Weird combination, but at least you had the decency to cook the egg.",
+  ],
+  ["chips", "egg", "Chips and Eggs", "Weird combination. But okay."],
+  [
+    "colgate",
+    "chips",
+    "Mint Flavored Chips",
+    "Toothpaste isn't a good appetizer.",
+  ],
+  [
+    "chips",
+    "icecream",
+    "Chips and Ice Cream",
+    "I knew two imps named Chips and Ice Cream.",
+  ],
+  ["juice", "chips", "Orange Flavored Chips", "Now it's soggy and orange."],
+  [
+    "candy",
+    "chips",
+    "Halloween Treats",
+    "Looks like you came back from trick or treating.",
+  ],
+  ["candy", "chips", "Sugar Rush", "You're never going to sleep at this rate."],
+  [
+    "cola",
+    "colgate",
+    "Rotting Teeth",
+    "I would say something scientific about why you shouldn't brush your teeth after drinking soda, but I kinda don't want to.",
+  ],
+  ["patty", "milk", "Epic Breakfast", "A breakfast for gamers."],
+  [
+    "icecream",
+    "cola",
+    "Ice Cream Soda",
+    "Hey, not a bad dessert. Not a breakfast though.",
+  ],
+  [
+    "candy",
+    "hotbrew",
+    "Unhealthy Halloween Snack",
+    "What are you trying to do? Witchcraft? Hot!",
+  ],
+  [
+    "icecream",
+    "hotbrew",
+    "Melted Ice Cream",
+    "Well now that hot drink is gonna melt the ice cream.",
+  ],
+  [
+    "egg",
+    "hotbrew",
+    "That's Not How That Works",
+    "You can't just pour a hot drink onto an egg to cook it.",
+  ],
+  [
+    "egg",
+    "juice",
+    "Alternative Pergfect Breakfast",
+    "The egg isn't cooked, but orange juice is a good alternative to milk. I'll give you that.",
+  ],
+  [
+    "friedegg",
+    "juice",
+    "Alternative Perfect Breakfast",
+    "Okay, orange juice is a good alternative. I'll give you this one.",
+  ],
+  [
+    "juice",
+    "icecream",
+    "Orange Ice Cream",
+    "Hey, that actually kinda sounds good.",
+  ],
+  [
+    "juice",
+    "cola",
+    "Orange Soda",
+    "Okay, no, you can't just put orange juice into a soda that already has flavor to make orange soda.",
+  ],
+  [
+    "candy",
+    "juice",
+    "Orange Candy",
+    "The sweetness of the candy and the sour of the juice? No thanks.",
+  ],
+  [
+    "icecream",
+    "colgate",
+    "Not So Mint Ice Cream",
+    "This isn't how you make mint ice cream. I mean, the toothpaste isn't good either, but...",
+  ],
+  [
+    "egg",
+    "colgate",
+    "Toothpasted Egg",
+    "Please stop smearing the toothpaste on the egg like ketchup.",
+  ],
+  [
+    "candy",
+    "colgate",
+    "Mint Candy",
+    "It's a good idea to brush your teeth after eating some Halloween candy. The problem here is that you drank the toothpaste.",
+  ],
+  [
+    "icecream",
+    "egg",
+    "Egged Ice Cream",
+    "The ice cream already has eggs as one of its ingredients!",
+  ],
+];
+
+// What the machine can name as the food half of a pair, and as the drink half.
+const FOOD = new Set(["friedegg", "egg", "patty", "sandvich", "chips"]);
+const DRINK = new Set(["milk", "cola", "juice", "witchbrew", "hotbrew"]);
+
+/** The breakfast a full pair makes, as `[text, ending title]`. */
+function machineResult(a: string, b: string): [string, string] {
+  for (const [first, second, name, comment] of COMBOS) {
+    if ((a === first && b === second) || (a === second && b === first)) {
+      return [name + ". " + comment, "Breakfast"];
+    }
   }
-  if (pair === "egg+juice") {
-    return [
-      "Breakfast",
-      "Decent Breakfast. A raw egg and orange juice. The notes said to cook it.",
-    ];
+  if (DRINK.has(a) && DRINK.has(b)) {
+    return ["Food? You got the drinks. But where's the food?", "Breakfast"];
   }
-  if (pair === "chips+cola") {
-    return ["Breakfast", "Epic Breakfast. Chips and a soda."];
+  if (FOOD.has(a) || FOOD.has(b)) {
+    return ["Breakfast? ...It is food, at least.", "Breakfast"];
   }
-  if (pair === "cola+friedegg") {
-    return ["Breakfast", "Almost Breakfast. A fried egg and a soda."];
-  }
-  if (pair === "colgate+juice") {
-    return ["Breakfast", "NO!!! Toothpaste and orange juice."];
-  }
-  if (pair === "cola+cola") {
-    return ["Breakfast", "Literally just sodas."];
-  }
-  return ["Breakfast", "Breakfast? ...It is food, at least."];
+  return ["Breakfast? ...It is food, technically.", "Breakfast"];
 }
 
 /** The furniture and fixtures: solid props the player walks around and onto. */
 const FURNITURE: Array<
   [string, keyof ModelsByName, number, number, number, string]
 > = [
-  ["bed", "bed", -22, -14, 0.5, "Bed"],
-  ["bathtub", "bathtub", -22, 14, 1, "Bathtub"],
-  ["sofa", "sofa", 20, -20, 1.2, "Sofa"],
-  ["tv", "tv", 26, -20, 1.2, "TV"],
-  ["living-table", "table", 20, -8, 1, "Table"],
-  ["counter", "counter", 20, 6, 1.5, "Counter"],
-  ["stove", "stove", 12, 20, 1.5, "Stove"],
-  ["fridge", "fridge", 26, 20, 3, "Fridge"],
-  ["kitchen-table", "table", 8, 10, 1, "Table"],
-  ["bench", "bench", 44, 12, 0.8, "Bench"],
-  ["vending", "vending", 48, -12, 3.5, "Vending Machine"],
-  ["manhole", "manhole", 30, -12, 0.2, "Manhole"],
-  ["trash", "trash", 46, -8, 1.2, "Trash Can"],
-  ["register", "register", 62, 2, 1, "Register"],
-  ["store-counter", "counter", 60, 2, 1.5, "Counter"],
-  ["shelf-1", "shelf", 68, -6, 3, "Shelf"],
-  ["shelf-2", "shelf", 68, 4, 3, "Shelf"],
+  // the bedroom, where the player wakes
+  ["bed", "bed", -20, -20, 0.5, "Bed"],
+  // the bathroom, where Dad is asleep
+  ["bathtub", "bathtub", 20, -20, 1, "Bathtub"],
+  ["toilet", "toilet", 6, -20, 1, "Toilet"],
+  // the kitchen, where the stove and the breakfast machine stand
+  ["stove", "stove", -20, 18, 1.5, "Stove"],
+  ["breakfast-machine", "breakfastmachine", -13, 18, 1.5, "Breakfast Machine"],
+  ["fridge", "fridge", -8, 22, 3, "Fridge"],
+  ["kitchen-counter", "counter", -22, 8, 1.5, "Counter"],
+  ["kitchen-table", "table", -12, 6, 1, "Table"],
+  // the living room
+  ["sofa", "sofa", 12, 8, 1.2, "Sofa"],
+  ["tv", "tv", 24, 6, 1.2, "TV"],
+  ["coffee-table", "table", 14, 18, 1, "Table"],
+  ["shelf", "shelf", 24, 20, 3, "Shelf"],
+  // the store
+  ["store-counter", "counter", 56, 6, 1.5, "Counter"],
+  ["register", "register", 58, 8, 1, "Register"],
+  ["shelf-1", "shelf", 66, -4, 3, "Shelf"],
+  ["shelf-2", "shelf", 66, 2, 3, "Shelf"],
+  ["freezer", "freezer", 52, -6, 2, "Freezer"],
+  ["trash", "trash", 58, -10, 1.2, "Trash Can"],
+  // the drive, the parking lot, and the yard
+  ["bench", "bench", 32, 20, 0.8, "Bench"],
+  ["vending", "vending", 44, 14, 3.5, "Vending Machine"],
+  ["manhole", "manhole", 34, 8, 0.2, "Manhole"],
+  ["car", "car", 38, 18, 1.2, "Cashier's Car"],
+  ["tree-1", "tree", 32, -18, 4, "Tree"],
+  ["tree-2", "tree", 40, -18, 5, "Tree"],
+  ["tree-3", "tree", 46, -18, 4.5, "Tree"],
 ];
 
-/** Small things lying about: pickups and the plates, none of them solid. */
+/** Small things lying about: pickups, the store's shelves, and the loose cash. */
 const PICKUPS: Array<
   [string, keyof ModelsByName, number, number, number, number]
 > = [
-  ["chips", "chips", 20, 6, 63.5, 0.6],
-  ["orange", "orange", 8, 10, 63, 0.4],
-  ["colgate", "colgate", -22, 8, FLOOR, 0.6],
-  ["cola", "cola", 24, 18, FLOOR, 0.7],
-  ["plate1", "plate", 19, 6, 63.5, 0.15],
-  ["plate2", "plate", 21, 6, 63.5, 0.15],
-  ["buy-cola", "cola", 66, -6, FLOOR, 0.7],
-  ["buy-egg", "egg", 66, -4, FLOOR, 0.4],
-  ["buy-juice", "juice", 66, -2, FLOOR, 0.7],
-  ["buy-milk", "milk", 66, 0, FLOOR, 0.7],
-  // cash: Tix are a dollar, Robux five. Enough here to afford an egg and a
-  // full breakfast, with the hundred-cash milestone reachable by picking up all.
-  ["tix-1", "tix", -24, -20, FLOOR, 0.3],
-  ["tix-2", "tix", -20, -20, FLOOR, 0.3],
-  ["tix-3", "tix", -2, -2, FLOOR, 0.3],
-  ["tix-4", "tix", 2, -2, FLOOR, 0.3],
-  ["tix-5", "tix", -2, 2, FLOOR, 0.3],
-  ["tix-6", "tix", 2, 2, FLOOR, 0.3],
+  // the kitchen, and the bedroom wall the sword hangs on
+  ["chips", "chips", -22, 8, 63.5, 0.6],
+  ["orange", "orange", -12, 6, 63, 0.4],
+  ["cola", "cola", -4, 22, FLOOR, 0.7],
+  ["sword", "sword", -26, -8, FLOOR, 1.6],
+  // the bathroom shelf
+  ["colgate", "colgate", 6, -8, FLOOR, 0.6],
+  // a sandvich somebody left on the bench
+  ["sandvich", "sandvich", 32, 20, 62.8, 0.4],
+  // the store's shelf, one of each good it sells
+  ["buy-cola", "cola", 64, -6, FLOOR, 0.7],
+  ["buy-witchbrew", "witchbrew", 64, -4, FLOOR, 0.7],
+  ["buy-patty", "patty", 64, -2, FLOOR, 0.5],
+  ["buy-egg", "egg", 64, 0, FLOOR, 0.4],
+  ["buy-milk", "milk", 64, 2, FLOOR, 0.7],
+  ["buy-juice", "juice", 64, 4, FLOOR, 0.7],
+  ["buy-fuel", "fuel", 64, 6, FLOOR, 0.7],
+  ["buy-icecream", "icecream", 64, 8, FLOOR, 0.5],
+  // cash: Tix are a dollar, Robux five. Enough here to afford the egg and a
+  // full breakfast, and a crate of sodas for the machine on the wall.
+  ["tix-1", "tix", -24, -24, FLOOR, 0.3],
+  ["tix-2", "tix", -20, -24, FLOOR, 0.3],
+  ["tix-3", "tix", -2, -24, FLOOR, 0.3],
+  ["tix-4", "tix", 2, -24, FLOOR, 0.3],
+  ["tix-5", "tix", 24, -24, FLOOR, 0.3],
+  ["tix-6", "tix", 10, -10, FLOOR, 0.3],
   ["tix-7", "tix", -24, 4, FLOOR, 0.3],
   ["tix-8", "tix", -20, 4, FLOOR, 0.3],
   ["tix-9", "tix", -16, 4, FLOOR, 0.3],
-  ["tix-10", "tix", -24, 8, FLOOR, 0.3],
-  ["tix-11", "tix", 4, -20, FLOOR, 0.3],
-  ["tix-12", "tix", 8, -20, FLOOR, 0.3],
-  ["tix-13", "tix", 12, -20, FLOOR, 0.3],
-  ["tix-14", "tix", 16, -20, FLOOR, 0.3],
-  ["robux-1", "robux", -8, 20, FLOOR, 0.3],
-  ["robux-2", "robux", -12, 20, FLOOR, 0.3],
+  ["tix-10", "tix", -24, 24, FLOOR, 0.3],
+  ["tix-11", "tix", 4, 24, FLOOR, 0.3],
+  ["tix-12", "tix", 8, 24, FLOOR, 0.3],
+  ["tix-13", "tix", 12, 24, FLOOR, 0.3],
+  ["tix-14", "tix", 16, 24, FLOOR, 0.3],
+  ["robux-1", "robux", -8, 24, FLOOR, 0.3],
+  ["robux-2", "robux", -12, 24, FLOOR, 0.3],
   ["robux-3", "robux", 4, -4, FLOOR, 0.3],
   ["robux-4", "robux", 8, -4, FLOOR, 0.3],
   ["robux-5", "robux", 12, -4, FLOOR, 0.3],
@@ -389,25 +630,26 @@ function open(): void {
   }
   createNpc({
     id: DAD,
-    x: -20,
-    z: 16,
+    x: 18,
+    z: -18,
     y: FLOOR,
     name: "Father Figure",
     model: "npc-sable",
-    yaw: Math.PI / 2,
+    yaw: Math.PI,
   });
   createNpc({
     id: CASHIER,
-    x: 63,
-    z: 3,
+    x: 60,
+    z: 7,
     y: FLOOR,
     name: "Cashier",
     model: "npc-rook",
-    yaw: Math.atan2(60 - 63, 2 - 3),
+    yaw: Math.atan2(56 - 60, 6 - 7),
   });
-  // The cashier works for a while, then takes an indefinite break outside. Once
-  // he is gone the shelves are unattended and nothing counts as theft.
-  dispatch("timer", { id: "cashier-break", afterMs: 120_000 });
+  // The cashier works for a while, then an alarm sends him outside on an
+  // indefinite break. Once he is gone the shelves are unattended and nothing
+  // counts as theft.
+  dispatch("timer", { id: "cashier-break", afterMs: BREAK_MS });
 }
 
 function hintFor(zone: string): void {
@@ -421,10 +663,15 @@ function hintFor(zone: string): void {
   } else if (zone === KITCHEN) {
     narrate(
       "You",
-      "The kitchen. Chips on the counter, an orange on the table, and a stove.",
+      "The kitchen. Chips on the counter, an orange on the table, a stove, and the breakfast machine.",
     );
   } else if (zone === LIVING) {
-    narrate("You", "The front door is open. The store is down the path.");
+    narrate("You", "The front door is open. The store is down the road.");
+  } else if (zone === PARKING) {
+    narrate(
+      "You",
+      'The cashier\'s car, with a note on the window: "this is my car."',
+    );
   } else if (zone === STORE) {
     narrate(
       "Cashier",
@@ -441,6 +688,25 @@ function takeStoreGood(entityId: string): void {
     item,
     "You take the " + ITEM_NAMES[item] + ". Set it on the counter to pay.",
   );
+}
+
+/** Puts a sold good back on the shelf: the shop never runs out of anything. */
+function restock(entityId: string): void {
+  for (const [id, model, x, z, y, height] of PICKUPS) {
+    if (id === entityId) {
+      createProp({
+        id,
+        model,
+        x,
+        z,
+        y,
+        name: ITEM_NAMES[STORE_PICKUPS[id]] ?? id,
+        height,
+        solid: false,
+      });
+      return;
+    }
+  }
 }
 
 /** Sets the held store good on the counter, ready for the cashier to ring up. */
@@ -462,8 +728,8 @@ function useStoreCounter(item: string): void {
   createProp({
     id: "counter-item",
     model: ITEM_MODELS[item],
-    x: 60,
-    z: 2,
+    x: 56,
+    z: 6,
     y: FLOOR + 1.5,
     name: ITEM_NAMES[item],
     height: 0.5,
@@ -492,57 +758,54 @@ function purchase(): void {
   counterItem = null;
   dispatch("prop-remove", { id: "counter-item" });
   dispatch("dialog-close", { player: "", npcId: CASHIER });
+  restock("buy-" + good);
   give(
     good,
     "The cashier takes your money. (-$" + price + ", $" + cash + " left)",
   );
 }
 
-/** Places a held item on a plate, or takes one back off an empty plate. */
-function usePlate(slot: number, item: string): void {
-  const current = slot === 0 ? plateA : plateB;
-  const propId = "plate-item-" + slot;
-  const x = slot === 0 ? 19 : 21;
+/** Feeds the breakfast machine: two items in, one breakfast out. */
+function useMachine(item: string): void {
+  const filled = machine.findIndex((what) => what !== null);
   if (item === "") {
-    if (current === null) {
-      narrate("You", "That plate is empty.");
+    if (filled === -1) {
+      narrate("You", "The machine is empty. It really does work.");
       return;
     }
-    dispatch("prop-remove", { id: propId });
-    if (slot === 0) {
-      plateA = null;
-    } else {
-      plateB = null;
-    }
-    give(current, "You take the " + ITEM_NAMES[current] + " off the plate.");
+    const taken = machine[filled] as string;
+    dispatch("prop-remove", { id: "machine-item-" + filled });
+    machine[filled] = null;
+    give(taken, "You take the " + ITEM_NAMES[taken] + " back out.");
     return;
   }
-  if (current !== null) {
-    say("There is already " + ITEM_NAMES[current] + " on that plate.");
+  const free = machine.findIndex((what) => what === null);
+  if (free === -1) {
+    narrate("You", "The machine is full. Take something out first.");
     return;
   }
   dispatch("item-take", { player: "", item, count: 1 });
   hold("");
   createProp({
-    id: propId,
+    id: "machine-item-" + free,
     model: ITEM_MODELS[item],
-    x,
-    z: 6,
-    y: 63.6,
+    x: -13.4 + free * 0.8,
+    z: 18,
+    y: 63.5,
     name: ITEM_NAMES[item],
     height: 0.5,
     solid: false,
   });
-  if (slot === 0) {
-    plateA = item;
-  } else {
-    plateB = item;
+  machine[free] = item;
+  if (filled === -1) {
+    say("You put the " + ITEM_NAMES[item] + " in. One more to go.");
+    return;
   }
-  say("You set the " + ITEM_NAMES[item] + " on the plate.");
-  if (plateA !== null && plateB !== null) {
-    const [title, text] = plateResult(plateA, plateB);
-    ending(title, text);
-  }
+  const first = machine[filled] as string;
+  machine[filled] = null;
+  dispatch("prop-remove", { id: "machine-item-" + filled });
+  const [text, title] = machineResult(first, item);
+  ending(title, text);
 }
 
 /** Puts a held item on the stove, turns it on, or takes a cooked one back. */
@@ -557,8 +820,8 @@ function useStove(item: string): void {
     createProp({
       id: "stove-item",
       model: ITEM_MODELS[item],
-      x: 12,
-      z: 20,
+      x: -20,
+      z: 18,
       y: 63.5,
       name: ITEM_NAMES[item],
       height: 0.5,
@@ -571,10 +834,11 @@ function useStove(item: string): void {
       "You",
       "You set the " + ITEM_NAMES[item] + " on the stove and turn it on.",
     );
-    // An egg cooks; anything else eventually catches and takes the kitchen.
+    // An egg fries and a brew steams; anything else catches and takes the
+    // kitchen.
     dispatch("timer", {
-      id: item === "egg" ? "cook" : "fire",
-      afterMs: item === "egg" ? 6_000 : 5_000,
+      id: item === "egg" || item === "witchbrew" ? "cook" : "fire",
+      afterMs: item === "egg" || item === "witchbrew" ? 6_000 : 5_000,
     });
     return;
   }
@@ -584,7 +848,11 @@ function useStove(item: string): void {
     return;
   }
   if (stoveItem !== null) {
-    const picked = stoveCooked ? "friedegg" : stoveItem;
+    const picked = stoveCooked
+      ? stoveItem === "egg"
+        ? "friedegg"
+        : "hotbrew"
+      : stoveItem;
     dispatch("prop-remove", { id: "stove-item" });
     stoveItem = null;
     stoveCooked = false;
@@ -594,28 +862,40 @@ function useStove(item: string): void {
   narrate("You", "The stove is off and empty.");
 }
 
-/** The egg has been on long enough: swap it for the cooked model. */
+/** What was on the stove has been on long enough: it is cooked. */
 function cookEgg(): void {
-  if (!stoveOn || stoveItem !== "egg" || stoveCooked) {
+  if (!stoveOn || stoveCooked || stoveItem === null) {
     return;
   }
+  if (stoveItem !== "egg" && stoveItem !== "witchbrew") {
+    return;
+  }
+  const cooked = stoveItem === "egg" ? "friedegg" : "hotbrew";
   stoveCooked = true;
   createProp({
     id: "stove-item",
-    model: ITEM_MODELS.friedegg,
-    x: 12,
-    z: 20,
+    model: ITEM_MODELS[cooked],
+    x: -20,
+    z: 18,
     y: 63.5,
-    name: ITEM_NAMES.friedegg,
+    name: ITEM_NAMES[cooked],
     height: 0.5,
     solid: false,
   });
-  narrate("You", "The egg sizzles and fries.");
+  narrate(
+    "You",
+    stoveItem === "egg"
+      ? "The egg sizzles and fries."
+      : "The brew starts to steam, and goes hot.",
+  );
 }
 
 /** The stove has been on long enough: the kitchen catches fire. */
 function ignite(): void {
-  if (!stoveOn || stoveItem === null || stoveItem === "egg") {
+  if (!stoveOn || stoveItem === null) {
+    return;
+  }
+  if (stoveItem === "egg" || stoveItem === "witchbrew") {
     return;
   }
   dispatch("prop-remove", { id: "stove-item" });
@@ -640,7 +920,7 @@ function burn(): void {
   if (!fireLit) {
     return;
   }
-  if (inZone[STORE]) {
+  if (inZone[STORE] || inZone[PARKING]) {
     narrate(
       "Cashier",
       "Is that smoke? Did you leave the stove on? ...Of course you did.",
@@ -659,13 +939,13 @@ function burn(): void {
   ending("Fire", "You watched the house burn down from outside.");
 }
 
-/** The cashier leaves the counter for an indefinite break. */
+/** The alarm sounds and the cashier leaves the counter for an endless break. */
 function cashierBreak(): void {
   cashierOnBreak = true;
   createNpc({
     id: CASHIER,
-    x: 50,
-    z: -14,
+    x: 44,
+    z: 18,
     y: FLOOR,
     name: "Cashier",
     model: "npc-rook",
@@ -718,6 +998,9 @@ function used(entityId: string, item: string): void {
       say("The fridge is empty now.");
     } else {
       fridgeUsed = true;
+      // The fridge cola is the player's own, so carrying it out of the shop is
+      // not shoplifting.
+      paid.add("cola");
       give("cola", "You take a bloxy cola from the fridge.");
     }
     return;
@@ -726,12 +1009,8 @@ function used(entityId: string, item: string): void {
     useStove(item);
     return;
   }
-  if (entityId === "plate1") {
-    usePlate(0, item);
-    return;
-  }
-  if (entityId === "plate2") {
-    usePlate(1, item);
+  if (entityId === "breakfast-machine") {
+    useMachine(item);
     return;
   }
   if (entityId === "store-counter") {
@@ -750,6 +1029,16 @@ function used(entityId: string, item: string): void {
   if (entityId === "orange") {
     narrate("You", "This isn't an ordinary orange...");
     ending("Orange", "uh oh.");
+    return;
+  }
+  if (entityId === "sword") {
+    dispatch("prop-remove", { id: "sword" });
+    give("sword", "You take the sword off the bedroom wall.");
+    return;
+  }
+  if (entityId === "sandvich") {
+    dispatch("prop-remove", { id: "sandvich" });
+    give("sandvich", "You take the sandvich off the bench.");
     return;
   }
   if (entityId === "colgate") {
@@ -779,10 +1068,38 @@ function used(entityId: string, item: string): void {
       dispatch("item-take", { player: "", item: "cola", count: 1 });
       hold("");
       sodas += 1;
-      say("The machine gurgles happily. (" + sodas + "/8)");
+      if (sodas >= SODAS_TO_FLOOD) {
+        ending(
+          "Flood",
+          "The machine gurgles happily for the eighth time, and the shop floods.",
+        );
+        return;
+      }
+      say(
+        "The machine gurgles happily. (" + sodas + "/" + SODAS_TO_FLOOD + ")",
+      );
     } else {
       say('The broken machine has a sign taped to it: "feed me sodas".');
     }
+    return;
+  }
+  if (entityId === "freezer") {
+    if (item === "icecream") {
+      ending(
+        "Freezer",
+        "You put the ice cream in. The sticker says OUT OF ORDER DUE TO BEING TOO COLD, and it is very cold in there.",
+      );
+      return;
+    }
+    say("The freezer is out of order. It is very cold in there.");
+    return;
+  }
+  if (entityId === "car") {
+    if (item === "egg") {
+      narrate("You", "You deploy the egg onto the car. It is not my car.");
+      return;
+    }
+    narrate("You", "This is my car. - cashier");
     return;
   }
   if (entityId === "manhole") {
@@ -818,6 +1135,21 @@ function usedItem(item: string): void {
     ending("Toothpaste", "You consumed the colgate. Do not do that.");
     return;
   }
+  if (item === "sword") {
+    ending("Sword", "You drew the sword. In your own house. At 4 AM.");
+    return;
+  }
+  if (item === "patty") {
+    ending(
+      "Patty",
+      "You ate the patty. It was not on a plate. It did not matter.",
+    );
+    return;
+  }
+  if (item === "sandvich") {
+    ending("Sandvich", "You ate the sandvich. Midnight snacks club.");
+    return;
+  }
   if (item === "cola") {
     consume("cola", "Cold, sweet, and full of regret.");
     return;
@@ -830,8 +1162,27 @@ function usedItem(item: string): void {
     consume("milk", "You drink the milk. It was a long walk for this.");
     return;
   }
+  if (item === "witchbrew" || item === "hotbrew") {
+    consume(item, "It tastes like a wet cellar. You drink it anyway.");
+    return;
+  }
+  if (item === "candy") {
+    consume("candy", "Halloween candy in April. You eat it all of it.");
+    return;
+  }
+  if (item === "fuel") {
+    consume("fuel", "It tastes exactly like it sounds.");
+    return;
+  }
+  if (item === "icecream") {
+    consume("icecream", "Ice cream, alone, at 4 AM. No notes.");
+    return;
+  }
   if (item === "egg" || item === "friedegg") {
-    narrate("You", "I should put that on a plate, not in my mouth.");
+    narrate(
+      "You",
+      "I should put that in the breakfast machine, not in my mouth.",
+    );
   }
 }
 
@@ -872,8 +1223,9 @@ function talked(npcId: string, player: string): void {
   dispatch("dialog", {
     player,
     npcId: CASHIER,
-    prompt: "welcome to 'a generic convenience store'. we are open 24 hours.",
-    options: ["Where is the food?", "Just looking."],
+    prompt:
+      "welcome to 'a generic convenience store'. we are open 24 hours. i go on break in a bit.",
+    options: ["How long until your break?", "Just looking."],
   });
 }
 
@@ -890,7 +1242,8 @@ function chose(npcId: string, option: number, player: string): void {
     return;
   }
   if (option === 0) {
-    say("The cashier points at the shelves on the right.");
+    say("He checks his watch. A few minutes, give or take a few minutes.");
+    return;
   }
   dispatch("dialog-close", { player, npcId: CASHIER });
 }
