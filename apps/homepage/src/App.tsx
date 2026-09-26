@@ -90,11 +90,17 @@ export function App() {
       </main>
 
       <footer>
-        Both are open source, in one repository:{" "}
-        <a href="https://github.com/big-mesh-studios/big-mesh-studios">
-          github.com/big-mesh-studios/big-mesh-studios
-        </a>
-        .
+        <p>
+          Both are open source, in one repository:{" "}
+          <a href="https://github.com/big-mesh-studios/big-mesh-studios">
+            github.com/big-mesh-studios/big-mesh-studios
+          </a>
+          .
+        </p>
+        <p>
+          To put something of your own in the world, read the{" "}
+          <a href={`${base}docs/`}>place guides and API reference</a>.
+        </p>
       </footer>
     </>
   );

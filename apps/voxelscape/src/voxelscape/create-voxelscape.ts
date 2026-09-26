@@ -248,6 +248,12 @@ export interface VoxelscapeConfig {
    */
   levelEditorOpen?: [Accessor<boolean>, Setter<boolean>];
   /**
+   * Whether the `/place:docs` overlay is showing, and how to flip it — injected
+   * the same way `levelEditorOpen` is, so the flag survives this instance being
+   * replaced by a reboot. Defaults to a fresh, instance-local signal.
+   */
+  placeDocsOpen?: [Accessor<boolean>, Setter<boolean>];
+  /**
    * How this place handles other players and their edits; omitted for the
    * default world and for a place published before modes existed, both of
    * which keep multiplayer unscoped and edits self-only rather than being
@@ -356,6 +362,14 @@ export interface Voxelscape {
   /** The player's hearts and the death fall that empties them. */
   health: PlayerHealth;
   commands: Commander;
+  /**
+   * The place reference: the overlay the `/place:docs` command opens.
+   */
+  placeDocs: {
+    /** Whether the `/place:docs` overlay is showing. */
+    open: Accessor<boolean>;
+    setOpen(open: boolean): void;
+  };
   /**
    * The place script editor: opening it, running the draft's script, and
    * reading and publishing places.
@@ -500,6 +514,7 @@ export const createVoxelscape = ({
   activeProject,
   placeEditorOpen: placeEditorOpenSignal,
   levelEditorOpen: levelEditorOpenSignal,
+  placeDocsOpen: placeDocsOpenSignal,
   mode,
   placeUri = DEFAULT_WORLD_URL,
   spawn = [0, 0, 0],
@@ -597,6 +612,9 @@ export const createVoxelscape = ({
   /** Whether the `/place:level-editor` overlay is showing. */
   const [levelEditorOpen, setLevelEditorOpen] =
     levelEditorOpenSignal ?? createSignal(false);
+  /** Whether the `/place:docs` overlay is showing. */
+  const [placeDocsOpen, setPlaceDocsOpen] =
+    placeDocsOpenSignal ?? createSignal(false);
   /** The plan the world currently uses, kept in step with the editor and scripts. */
   const [levelPlan, setLevelPlan] = createSignal<LevelPlan>(
     plan ??
@@ -2169,6 +2187,11 @@ export const createVoxelscape = ({
     }
   };
 
+  const placeDocs = {
+    open: placeDocsOpen,
+    setOpen: setPlaceDocsOpen,
+  };
+
   /** The place script editor's door into the world: opening it, running the
    * draft's script, and reading and publishing places. */
   const placeEditor = {
@@ -2298,6 +2321,20 @@ export const createVoxelscape = ({
       return next
         ? "place editor opened — write your place's scripts, run them, then publish"
         : "place editor closed";
+    },
+    togglePlaceDocs: () => {
+      const next = !placeDocsOpen();
+      setPlaceDocsOpen(next);
+      if (next) {
+        // The reference and the script editor are both things read while
+        // writing; opening one puts the other away, and the level editor is an
+        // overlay of its own that would sit on top of this one.
+        setPlaceEditorOpen(false);
+        setLevelEditorOpen(false);
+      }
+      return next
+        ? "place reference opened — every function, effect, fact, and bound a place script has"
+        : "place reference closed";
     },
     toggleLevelEditor: () => {
       const next = !levelEditorOpen();
@@ -3183,6 +3220,7 @@ export const createVoxelscape = ({
     inventory,
     health,
     commands,
+    placeDocs,
     placeEditor,
     debugPerf,
     showStats,

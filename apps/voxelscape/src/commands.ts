@@ -168,6 +168,7 @@ export interface CommandsParams {
   togglePlaceEditor: () => string;
   /** Opens whether the level editor is showing, and reports the flip. */
   toggleLevelEditor: () => string;
+  togglePlaceDocs: () => string;
   /** Driving the place script loaded for this session, over the console. */
   script: {
     demo(): Promise<string>;
@@ -300,6 +301,7 @@ export const createCommands = ({
   navigate,
   togglePlaceEditor,
   toggleLevelEditor,
+  togglePlaceDocs,
   script,
   resolution,
   setView,
@@ -741,6 +743,11 @@ export const createCommands = ({
     "/place:editor": {
       description: "open (or close) the place script editor",
       run: () => togglePlaceEditor(),
+    },
+    "/place:docs": {
+      description:
+        "open (or close) the place reference: every function, effect, fact, and bound",
+      run: () => togglePlaceDocs(),
     },
     "/place:level-editor": {
       description:

@@ -109,6 +109,28 @@ importers:
         specifier: 'catalog:'
         version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)(vite@7.3.6(@types/node@26.4.0))
 
+  apps/place-docs:
+    dependencies:
+      '@big-mesh-studios/place-reference':
+        specifier: workspace:*
+        version: link:../../packages/place-reference
+      '@solidjs/web':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.29(solid-js@2.0.0-beta.29)
+      solid-js:
+        specifier: 'catalog:'
+        version: 2.0.0-beta.29
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 7.3.6(@types/node@26.4.0)
+      vite-plugin-solid:
+        specifier: 'catalog:'
+        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)(vite@7.3.6(@types/node@26.4.0))
+
   apps/rm-stacker:
     dependencies:
       '@atcute/lexicons':
@@ -318,6 +340,9 @@ importers:
       '@big-mesh-studios/maths':
         specifier: workspace:*
         version: link:../../packages/maths
+      '@big-mesh-studios/place-reference':
+        specifier: workspace:*
+        version: link:../../packages/place-reference
       '@big-mesh-studios/stacker':
         specifier: workspace:*
         version: link:../../packages/stacker
@@ -449,6 +474,15 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
+
+  packages/place-reference:
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(vite@7.3.6(@types/node@26.4.0))
 
   packages/stacker:
     dependencies:

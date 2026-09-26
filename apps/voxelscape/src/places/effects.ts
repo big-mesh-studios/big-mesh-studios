@@ -152,8 +152,9 @@ export const MAX_MOTION_PIVOT = 64;
 export const MAX_CUTSCENE_SHOTS = 64;
 /** The longest one camera move or hold may last, in milliseconds. */
 export const MAX_CAMERA_MS = 86_400_000;
-/** The narrowest and widest field of view a camera shot may ask for, in degrees. */
+/** The narrowest field of view a camera shot may ask for, in degrees. */
 export const MIN_CAMERA_FOV = 1;
+/** The widest field of view a camera shot may ask for, in degrees. */
 export const MAX_CAMERA_FOV = 179;
 /** The furthest a camera may shake, in world units. */
 export const MAX_CAMERA_SHAKE = 16;
@@ -213,8 +214,9 @@ export const MAX_TOAST_LENGTH = 300;
 export const MAX_SOUND_NAME = 32;
 /** The largest volume a sound may play at. */
 export const MAX_SOUND_VOLUME = 1;
-/** The slowest and fastest a sound may be pitched. */
+/** The slowest a sound may be pitched. */
 export const MIN_SOUND_PITCH = 0.25;
+/** The fastest a sound may be pitched. */
 export const MAX_SOUND_PITCH = 4;
 /** The longest an ending's title may be. */
 export const MAX_ENDING_TITLE = 80;

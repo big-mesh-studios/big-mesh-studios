@@ -106,6 +106,11 @@ export interface PlanProp {
   conveyor?: { vx: number; vz: number };
 }
 
+/**
+ * The place a plan handler builds: the shapes to stamp, and the figures to stand
+ * among them. A handler may also return a bare shape list, which this world
+ * reads as a plan of nothing but structures.
+ */
 export interface LevelPlan {
   structures: StructurePlan;
   npcs: PlanNpc[];

@@ -24,14 +24,30 @@
 // fresh ambient module declaration into an augmentation of one that would
 // then need to already exist elsewhere.
 declare module "voxelscape" {
-  type EffectTag = import("./effects").EffectTag;
+  /**
+   * Every effect tag a place script may dispatch, in the order the world lists
+   * them. A script never needs to name it — `dispatch` infers the tag from the
+   * string it is given — but it is the union the effects section of the
+   * reference is built from.
+   */
+  export type EffectTag = import("./effects").EffectTag;
   type ParsedEffect = import("./effects").ParsedEffect;
-  type WorldQuery = import("./sandbox").WorldQuery;
+  /**
+   * The read side of the world, as a set of functions. Each is written to be a
+   * pure function of the shared clock and the replicated state, so every peer's
+   * script reads the same world at the same moment.
+   */
+  export type WorldQuery = import("./sandbox").WorldQuery;
   /** One parsed fact `onTick` hands a script, exactly as the trusted side authored it. */
   export type ScriptEvent = import("./events").ScriptEvent;
 
-  /** The shape `tag` validates against, per `effects.ts`'s own `ParsedEffect`. */
-  type PayloadFor<T extends EffectTag> = Extract<
+  /**
+   * The shape `tag` validates against, per `effects.ts`'s own `ParsedEffect`.
+   * Naming it lets a script type the payload it builds before dispatching it,
+   * which is how a payload gets its fields checked at the point it is written
+   * rather than at the point it is sent.
+   */
+  export type PayloadFor<T extends EffectTag> = Extract<
     ParsedEffect,
     { tag: T }
   >["payload"];
@@ -45,7 +61,9 @@ declare module "voxelscape" {
     tag: T,
     payload: PayloadFor<T>,
   ): void;
+  /** Writes a line to the terminal the place editor keeps under its scripts. */
   export function log(line: string): void;
+  /** Milliseconds on the clock every peer in the place shares. */
   export const getNow: WorldQuery["getNow"];
   /** Every ending this place has defined. */
   export const getEndings: WorldQuery["getEndings"];
@@ -71,6 +89,10 @@ declare module "voxelscape" {
   export const getLocalPlayer: WorldQuery["getLocalPlayer"];
   /** The local player's live movement and tool input, or null where the world reports none. */
   export type LocalInput = import("./sandbox").LocalInput;
+  /**
+   * The local player's live movement and tool input, or null where the world
+   * reports none. Only the player on this peer has one.
+   */
   export const getInput: WorldQuery["getInput"];
   /** The value set for `player` under `key`, or null when none. */
   export const getPlayerValue: WorldQuery["getPlayerValue"];
@@ -122,7 +144,7 @@ declare module "voxelscape" {
   ): void;
 
   /** Who the catalog opens for, and what it starts the search on. */
-  interface CatalogOptions {
+  export interface CatalogOptions {
     /** The player the catalog is shown to; "" for the local player. */
     player?: string;
     /**
@@ -151,62 +173,68 @@ declare module "voxelscape" {
     "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
   /** The player a scripted UI is shown to; "" means the local player. */
-  interface UiTarget {
+  export interface UiTarget {
     player?: string;
   }
 
   /** A panel of scripted UI. */
-  interface UiPanelOptions extends UiTarget {
+  export interface UiPanelOptions extends UiTarget {
     id: string;
     /** The panel's heading, or "" for none. */
     title?: string;
     /** Which corner it docks to; defaults to top-left. */
     anchor?: UiAnchor;
   }
+  /** Shows one player a panel of items, docked to a screen corner. */
   export function uiPanel(options: UiPanelOptions): void;
 
   /** Where an item joins a panel. */
-  interface UiItemTarget extends UiTarget {
+  export interface UiItemTarget extends UiTarget {
     panel: string;
     id: string;
   }
 
   /** A line of text. */
-  interface UiLabelOptions extends UiItemTarget {
+  export interface UiLabelOptions extends UiItemTarget {
     text: string;
     /** Linear RGB, 0 to 1 each; defaults to white. */
     color?: [number, number, number];
   }
+  /** Puts a line of text into a panel the script showed. */
   export function uiLabel(options: UiLabelOptions): void;
 
   /** A labelled bar. */
-  interface UiBarOptions extends UiItemTarget {
+  export interface UiBarOptions extends UiItemTarget {
     label?: string;
     value: number;
     max: number;
   }
+  /** Puts a labelled bar into a panel the script showed. */
   export function uiBar(options: UiBarOptions): void;
 
   /** A button; its press arrives as a `ui-clicked` fact. */
-  interface UiButtonOptions extends UiItemTarget {
+  export interface UiButtonOptions extends UiItemTarget {
     label: string;
     /** Carried on the `ui-clicked` fact, so one handler can tell buttons apart. */
     value?: string;
   }
+  /** Puts a button into a panel the script showed; its press arrives as a `ui-clicked` fact. */
   export function uiButton(options: UiButtonOptions): void;
 
   /** An item-sprite image. */
-  interface UiImageOptions extends UiItemTarget {
+  export interface UiImageOptions extends UiItemTarget {
     /** An item id whose sprite the world draws. */
     sprite: string;
   }
+  /** Puts an item-sprite image into a panel the script showed. */
   export function uiImage(options: UiImageOptions): void;
 
   /** Takes an item off a panel, or the whole panel when `item` is omitted. */
-  interface UiRemoveOptions extends UiTarget {
+  export interface UiRemoveOptions extends UiTarget {
     panel: string;
     item?: string;
   }
+  /** Takes an item off a panel, or the whole panel when `item` is omitted. */
   export function uiRemove(options: UiRemoveOptions): void;
   /**
    * Shows a leaderboard to the local player as a HUD text readout, ranking the
@@ -240,7 +268,7 @@ declare module "voxelscape" {
   ): Array<[number, number, number]> | null;
 
   /** Where an NPC walks to, how fast, and how hard the route search tries. */
-  interface WalkToOptions {
+  export interface WalkToOptions {
     x: number;
     z: number;
     y?: number;
@@ -264,7 +292,13 @@ declare module "voxelscape" {
   export function onTick(
     fn: (clockMs: number, events: ScriptEvent[]) => void,
   ): void;
+  /**
+   * Registers the handler that builds this place's terrain, called once before
+   * the first fill with the place's seed and the region a plan may build in.
+   * Whatever string it returns is the plan, parsed as a `LevelPlan`.
+   */
   export function onPlan(fn: (contextJson: string) => string): void;
+  /** Every block id a script may name, by name, so no voxel id is ever written by hand. */
   export const blocks: Record<string, number>;
 
   /** A three-axis vector, its arithmetic returning new vectors so a script's own value is never mutated. */
@@ -348,7 +382,7 @@ declare module "voxelscape" {
   export interface ModelsByName {}
 
   /** How a figure is tinted and faded over the colours its model wears. */
-  interface EntityLookOptions {
+  export interface EntityLookOptions {
     /** The colour the figure is multiplied by, each channel 0 to 1; defaults to white. */
     color?: [number, number, number];
     /** The share of the figure's opacity kept, 0 to 1; defaults to 1. */
@@ -356,7 +390,7 @@ declare module "voxelscape" {
   }
 
   /** How a figure plays one of its model's motions. */
-  interface AnimationPlayOptions {
+  export interface AnimationPlayOptions {
     /** How fast to play it; defaults to 1. */
     speed?: number;
     /** Whether it repeats; defaults to the motion's own loop. */
@@ -364,7 +398,7 @@ declare module "voxelscape" {
   }
 
   /** Where a figure stands and faces, over the id/model a create call also takes. */
-  interface FigurePlacement {
+  export interface FigurePlacement {
     x: number;
     z: number;
     y?: number;
@@ -372,7 +406,7 @@ declare module "voxelscape" {
   }
 
   /** A figure's placement, re-sent on `move`. `live` marks a position the script computed itself as the figure's current owner, to broadcast to other peers rather than leave for each of them to compute independently — see the "npc" effect's own `live` field, which this passes straight through, and defaults to true. A prop, which has no such field, ignores it. `vx`/`vy`/`vz` say how fast a driven prop's own body is moving, in world units per second, so a player standing on it is carried. */
-  interface FigureMove extends FigurePlacement {
+  export interface FigureMove extends FigurePlacement {
     live?: boolean;
     vx?: number;
     vy?: number;
@@ -430,7 +464,12 @@ declare module "voxelscape" {
     die(): void;
   }
 
-  interface CreateNpcOptions<
+  /**
+   * An NPC's whole address: where it stands, which model it wears, and what a
+   * script hangs on it. `id` and the placement are required because every peer
+   * replaying the script has to compute the same address for the same figure.
+   */
+  export interface CreateNpcOptions<
     K extends keyof ModelsByName | undefined,
   > extends FigurePlacement {
     /** Which model this NPC wears; omit it to leave the world drawing its own default figure. */
@@ -499,7 +538,12 @@ declare module "voxelscape" {
     remove(): void;
   }
 
-  interface CreatePropOptions<
+  /**
+   * A prop's whole address, as `createNpc` hands it back. A prop is a figure
+   * with no mind: the same placement and model, and the handles a script moves
+   * it with rather than talks to.
+   */
+  export interface CreatePropOptions<
     K extends keyof ModelsByName,
   > extends FigurePlacement {
     model: K;
@@ -539,7 +583,8 @@ declare module "voxelscape" {
     remove(): void;
   }
 
-  interface CreateBarrierOptions {
+  /** A box that blocks the player until it is taken down, in world units. */
+  export interface CreateBarrierOptions {
     id: string;
     /** The box that blocks the player, in world units, inclusive. */
     min: [number, number, number];
@@ -551,6 +596,8 @@ declare module "voxelscape" {
 
   /** One shape a structure plan is written in, in LOD-0 world voxels. */
   export type PlanShape = import("../world/plan-shapes").PlanShape;
+  /** How far one horizontal axis of a surface's footprint reaches. */
+  export type SurfaceReach = import("../world/plan-shapes").SurfaceReach;
 
   /**
    * A named group of structure shapes a script places at run time, stood
@@ -567,7 +614,8 @@ declare module "voxelscape" {
     remove(): void;
   }
 
-  interface CreateStructureOptions {
+  /** The shapes one named group stands, to be re-stamped or taken down as a unit. */
+  export interface CreateStructureOptions {
     id: string;
     /** The plan shapes to stamp, in LOD-0 world voxels. */
     shapes: PlanShape[];
@@ -579,7 +627,7 @@ declare module "voxelscape" {
   ): StructureHandle;
 
   /** Where a point light stands, or the figure it hangs over. */
-  interface CreateLightOptions {
+  export interface CreateLightOptions {
     id: string;
     /** Hangs the light over this figure; when set, the position fields are ignored. */
     entityId?: string;
@@ -604,7 +652,7 @@ declare module "voxelscape" {
   export function createLight(options: CreateLightOptions): LightHandle;
 
   /** Where a world-space label hangs and what it says. */
-  interface CreateBillboardOptions {
+  export interface CreateBillboardOptions {
     id: string;
     text: string;
     /** Hangs the label over this figure; when set, the position fields are ignored. */
@@ -635,7 +683,7 @@ declare module "voxelscape" {
   export type ParticleKind = "spark" | "flame" | "smoke" | "dust";
 
   /** Where an emitter runs and what it looks like. */
-  interface CreateParticleOptions {
+  export interface CreateParticleOptions {
     id: string;
     /** One of the world's fixed particle kinds; defaults to "spark". */
     kind?: ParticleKind;
@@ -671,7 +719,7 @@ declare module "voxelscape" {
   export type StormKind = "wall" | "funnel";
 
   /** Where a dust storm stands and how it is sized. */
-  interface CreateStormOptions {
+  export interface CreateStormOptions {
     id: string;
     /** One of the world's fixed storm shapes; defaults to "wall". */
     kind?: StormKind;
@@ -696,7 +744,7 @@ declare module "voxelscape" {
   }
 
   /** The changes a storm handle's `move` may apply to the storm it drives. */
-  interface MoveStormOptions {
+  export interface MoveStormOptions {
     kind?: StormKind;
     x?: number;
     z?: number;
@@ -724,7 +772,7 @@ declare module "voxelscape" {
   export type DecalKind = "arrow" | "cross" | "ring" | "splat";
 
   /** Where a flat mark lies and what it looks like. */
-  interface CreateDecalOptions {
+  export interface CreateDecalOptions {
     id: string;
     kind: DecalKind;
     /** Lies the mark under this figure; when set, the position fields are ignored. */
@@ -750,7 +798,7 @@ declare module "voxelscape" {
   export function createDecal(options: CreateDecalOptions): DecalHandle;
 
   /** Where a rift stands and how it reads. */
-  interface CreateRiftOptions {
+  export interface CreateRiftOptions {
     id: string;
     /** The rift's centre, in world units. */
     x: number;
@@ -780,7 +828,7 @@ declare module "voxelscape" {
   export function createRift(options: CreateRiftOptions): RiftHandle;
 
   /** Where a beam's two ends stand: a figure it follows, or a world point. */
-  interface CreateBeamOptions {
+  export interface CreateBeamOptions {
     id: string;
     /** The figure the line starts at; exactly one of this and `from` is set. */
     fromEntity?: string;

@@ -4,6 +4,8 @@ import {
   createEffect,
   createSignal,
   For,
+  lazy,
+  Loading,
   onCleanup,
   onSettled,
   ParentComponent,
@@ -45,6 +47,10 @@ import {
   VoxelscapeContext,
 } from "./voxelscape/voxelscape-context";
 import { LevelEditorOverlay } from "./level-editor/LevelEditorOverlay";
+
+/** The place reference overlay — the whole vocabulary as its own lazy chunk,
+ * downloaded only once a reader actually asks for it with `/place:docs`. */
+const PlaceDocsPanel = lazy(() => import("./ui/PlaceDocsPanel"));
 import { InventoryHud } from "./ui/InventoryHud";
 import { PlacesBrowser } from "./ui/PlacesBrowser";
 
@@ -258,6 +264,11 @@ const World: Component<{
         <LoadingScreen />
         <Show when={voxelscape.levelEditor.open()}>
           <LevelEditorOverlay />
+        </Show>
+        <Show when={voxelscape.placeDocs.open()}>
+          <Loading fallback={null}>
+            <PlaceDocsPanel />
+          </Loading>
         </Show>
       </div>
     </VoxelscapeContext>

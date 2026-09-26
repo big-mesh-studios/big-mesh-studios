@@ -29,6 +29,13 @@ jobs:
       - name: Check types
         run: pnpm check-types
 
+      # The place reference is read out of the world's own declarations and
+      # committed, so a signature that has drifted from the source it was read
+      # from is a reference that is quietly wrong. This is the check that says so
+      # rather than leaving it to be noticed.
+      - name: Check the place reference is drawn from the current sources
+        run: pnpm --filter @big-mesh-studios/bms-voxelscape place-reference:check
+
       - name: Check formatting
         if: github.event_name == 'pull_request'
         run: pnpm format:check
