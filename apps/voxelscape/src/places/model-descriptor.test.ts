@@ -1,6 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { modelDescriptorFor, modelSpecifierFor } from "./model-descriptor";
+import {
+  modelDescriptorFor,
+  modelFileFor,
+  modelSpecifierFor,
+} from "./model-descriptor";
 import { saveFigure } from "@big-mesh-studios/stacker/format";
 import {
   sideKinds,
@@ -58,6 +62,24 @@ describe("modelSpecifierFor", () => {
 
   it("names no specifier for a file that is not a model zip", () => {
     expect(modelSpecifierFor("readme.txt")).toBeNull();
+  });
+});
+
+describe("modelFileFor", () => {
+  it("adds the extension to a bare name", () => {
+    expect(modelFileFor("zombie")).toBe("zombie.zip");
+  });
+
+  it("leaves a name that already carries the extension alone", () => {
+    expect(modelFileFor("zombie.zip")).toBe("zombie.zip");
+  });
+
+  it("leaves an extension in another case alone", () => {
+    expect(modelFileFor("zombie.ZIP")).toBe("zombie.ZIP");
+  });
+
+  it("gives one name for the bare and the extended spelling of a model", () => {
+    expect(modelFileFor("zombie.zip")).toBe(modelFileFor("zombie"));
   });
 });
 

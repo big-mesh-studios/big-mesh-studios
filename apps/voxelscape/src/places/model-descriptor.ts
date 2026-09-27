@@ -27,6 +27,11 @@ export function modelSpecifierFor(file: string): string | null {
   return file.toLowerCase().endsWith(".zip") ? file.slice(0, -4) : null;
 }
 
+/** The file name a model named `name` is stored under. */
+export function modelFileFor(name: string): string {
+  return modelSpecifierFor(name) === null ? `${name}.zip` : name;
+}
+
 /**
  * The descriptor a model named `specifier` resolves to: its parts and
  * motions, named the way the figure itself names them, in the order it

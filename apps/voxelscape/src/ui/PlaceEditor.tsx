@@ -29,6 +29,7 @@ import {
 } from "../places/project";
 import { type PlaceManifest, type PublishedPlace } from "../places/place";
 import { levelSpecifierFor } from "../places/place";
+import { modelFileFor } from "../places/model-descriptor";
 import {
   attachLevel as attachLevelToProject,
   attachLevelFile,
@@ -485,7 +486,7 @@ export const PlaceEditorContent: Component<{
    * account's own model, so publishing this place never republishes a copy
    * of something that account already owns. */
   const attachPublishedModel = async (model: PublishedModel): Promise<void> => {
-    const name = `${model.rkey}.zip`;
+    const name = modelFileFor(model.rkey);
     if (project()?.models[name] !== undefined) {
       props.onStatus(`"${model.record.name}" is already attached`);
       return;

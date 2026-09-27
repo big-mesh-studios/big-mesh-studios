@@ -1206,6 +1206,9 @@ export const createVoxelscape = ({
     return targets;
   };
 
+  /** Every name a place's own models are filed under, whether or not their bytes read. */
+  const attachedModelNames = new Set<string>();
+
   /**
    * Bakes each model a place carries once and gives it to both figure
    * renderers, so an NPC or a prop can wear whichever the script names.
@@ -1213,6 +1216,9 @@ export const createVoxelscape = ({
   const loadPlaceModels = async (
     models: Record<string, Uint8Array>,
   ): Promise<void> => {
+    for (const name of Object.keys(models)) {
+      attachedModelNames.add(name);
+    }
     for (const [name, bytes] of Object.entries(models)) {
       try {
         const figure = await loadFigure(modelBlob(bytes));
@@ -1479,8 +1485,10 @@ export const createVoxelscape = ({
 
   // A bundled model file a plan's NPC or prop has named, fetched from this
   // site's `models/` and baked under the file name for both figure renderers.
-  // Baking again under a name `dressNpcs` or the running place's attached
-  // files already covered just replaces the figure, so the sets only stop this
+  // A name the running place carries is already baked under it from the
+  // place's own copy, and this site answering for the same name reports a
+  // model missing that is on screen and drawing. Baking over a name
+  // `dressNpcs` covered just replaces the figure, so the sets stop only this
   // one source re-fetching its own names; a fetch that fails is retried after
   // a cooldown rather than given up on, so a figure the editor just placed
   // still comes up when its bytes are reachable.
@@ -1491,6 +1499,7 @@ export const createVoxelscape = ({
   const resolveBundledModel = (file: string): void => {
     if (
       file === "" ||
+      attachedModelNames.has(file) ||
       bakedBundledModels.has(file) ||
       pendingBundledModels.has(file)
     ) {
