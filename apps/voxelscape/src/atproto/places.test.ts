@@ -540,11 +540,13 @@ describe("a network-wide place listing", () => {
       locate,
       fetch: repeating,
       relay: RELAY,
-      limits: { placesPerAccount: 2, pagesPerAccount: 3 },
+      limits: { placesPerAccount: 20, pagesPerAccount: 3 },
     }).listAll();
 
-    expect(listing.places).toHaveLength(2);
+    // One place to a page, so the account's own share of them is never reached
+    // and the page ceiling is what ends the walk.
     expect(pages).toBe(3);
+    expect(listing.places).toHaveLength(3);
     expect(listing.capped).toBe(true);
   });
 

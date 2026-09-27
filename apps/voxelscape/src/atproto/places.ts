@@ -273,7 +273,9 @@ export const createPlaceLibrary = (params?: {
    * them, and whether the relay named more than it returned. The relay's
    * directory is the one view of the whole network a page can read without
    * being told an account's name first, and an account it names twice is one
-   * account, not two.
+   * account, not two. The walk ends on a page naming nothing new as well as on
+   * the account ceiling, since a relay repeating the accounts it already named
+   * never reaches a count of its own.
    */
   const listRepos = async (): Promise<{
     accounts: string[];
@@ -302,6 +304,7 @@ export const createPlaceLibrary = (params?: {
         repos?: { did: string }[];
         cursor?: string;
       };
+      const before = accounts.length;
       for (const repo of body.repos ?? []) {
         if (seen.has(repo.did)) {
           continue;
@@ -310,6 +313,9 @@ export const createPlaceLibrary = (params?: {
         accounts.push(repo.did);
       }
       cursor = body.cursor;
+      if (accounts.length === before) {
+        break;
+      }
     } while (cursor !== undefined && accounts.length < limits.repos);
     return {
       accounts: accounts.slice(0, limits.repos),

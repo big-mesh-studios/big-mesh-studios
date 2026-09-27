@@ -46,10 +46,11 @@ open for as long as the browser felt patient, and the listing waits for its
 workers. So a listing is bounded in time as well as in weight — a request is
 given ten seconds before its account counts as gone, an account is asked for at
 most twenty pages before a server whose cursor never reaches its end is left
-behind, and the listing stops starting new accounts after twenty seconds and
-answers with what it found. What the ceilings are is gathered in one place
-rather than scattered through the walk, so a test narrows them and a reader
-sees the whole budget at once.
+behind, the relay's directory is left once a page of it names no account the
+listing has not read, and the listing stops starting new accounts after twenty
+seconds and answers with what it found. What the ceilings are is gathered in
+one place rather than scattered through the walk, so a test narrows them and a
+reader sees the whole budget at once.
 
 The relay's directory order is not stable, so the listing does not hand a cursor
 onward for a second call to resume from. It is a single pass that stops at a
