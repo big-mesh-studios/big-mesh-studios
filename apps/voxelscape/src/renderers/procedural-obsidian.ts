@@ -20,6 +20,54 @@ function hash(x: number, y: number, seed: number): number {
 const pick = (x: number, y: number, seed: number): number =>
   (hash(x, y, seed) % 1000) / 1000;
 
+/** How many source pixels one side of the tile is drawn at. */
+const GRID = 32;
+
+/**
+ * Draws the obsidian tile's veined body into a square `size` pixels across at
+ * (`x`, `y`).
+ *
+ * @param ctx Where to draw, already sized to the sheet being extended.
+ * @param x The tile's left edge, in the context's pixels.
+ * @param y The tile's top edge, in the context's pixels.
+ * @param size How wide and tall one side of the tile is drawn, in pixels.
+ */
+export function paintObsidianTile(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+): void {
+  // A coarse 8x8 field makes clustered veins; a fine field dusts them with
+  // brighter specks, so the tile does not read as flat noise.
+  const scale = size / GRID;
+  for (let py = 0; py < GRID; py++) {
+    for (let px = 0; px < GRID; px++) {
+      const vein = pick(Math.floor(px / 4), Math.floor(py / 4), 11);
+      const speck = pick(px, py, 5);
+      let shade = OBSIDIAN_SHADES[0];
+      if (vein > 0.78) {
+        shade = OBSIDIAN_SHADES[2];
+      } else if (vein > 0.6) {
+        shade = OBSIDIAN_SHADES[1];
+      }
+      if (speck > 0.9) {
+        shade = OBSIDIAN_SHADES[3];
+      }
+      if (speck > 0.975) {
+        shade = OBSIDIAN_SHADES[4];
+      }
+      ctx.fillStyle = shade;
+      ctx.fillRect(
+        x + px * scale,
+        y + py * scale,
+        Math.ceil(scale),
+        Math.ceil(scale),
+      );
+    }
+  }
+}
+
 /**
  * Extends the loaded atlas with a procedurally generated obsidian tile,
  * returning the texture, bitmap and dimensions that now include it. The bitmap
@@ -59,35 +107,7 @@ export async function injectProceduralObsidianTile(
   const tileY = Math.floor(index / Math.round(width / tileW)) * tileH;
   atlas.set("obsidian", { x: tileX, y: tileY, w: tileW, h: tileH });
 
-  // A coarse 8x8 field makes clustered veins; a fine field dusts them with
-  // brighter specks, so the tile does not read as flat noise.
-  const gridSize = 32;
-  const scale = tileW / gridSize;
-  for (let py = 0; py < gridSize; py++) {
-    for (let px = 0; px < gridSize; px++) {
-      const vein = pick(Math.floor(px / 4), Math.floor(py / 4), 11);
-      const speck = pick(px, py, 5);
-      let shade = OBSIDIAN_SHADES[0];
-      if (vein > 0.78) {
-        shade = OBSIDIAN_SHADES[2];
-      } else if (vein > 0.6) {
-        shade = OBSIDIAN_SHADES[1];
-      }
-      if (speck > 0.9) {
-        shade = OBSIDIAN_SHADES[3];
-      }
-      if (speck > 0.975) {
-        shade = OBSIDIAN_SHADES[4];
-      }
-      ctx.fillStyle = shade;
-      ctx.fillRect(
-        tileX + px * scale,
-        tileY + py * scale,
-        Math.ceil(scale),
-        Math.ceil(scale),
-      );
-    }
-  }
+  paintObsidianTile(ctx, tileX, tileY, tileW);
 
   const bitmap = await createImageBitmap(canvas);
   return {

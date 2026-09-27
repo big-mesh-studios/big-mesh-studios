@@ -4,9 +4,9 @@ import {
   atlasGridOf,
   buildVoxelTileConfig,
   tileIndexOf,
-  VOXEL_TILES,
   type SubTexture,
 } from "./atlas";
+import { VOXEL_TILES } from "../world/voxel-tiles";
 import { VOXEL_BRICK, VOXEL_WOOD } from "../world/voxel-store";
 
 /** A 128×128 sheet holding every named built-in tile on a 16-pixel grid. */

@@ -77,12 +77,26 @@ export {
 
 // Renderers and Atlas
 export {
-  VOXEL_TILES,
   type SubTexture,
   type TileRect,
   type VoxelTileConfig,
-  type VoxelTiles,
 } from "./renderers/atlas";
+export {
+  VOXEL_BLOCKS,
+  blockIconTile,
+  blockName,
+  blocksOfGroup,
+  type VoxelBlock,
+  type VoxelBlockGroup,
+} from "./world/voxel-blocks";
+export {
+  TILE_ATLAS_URL,
+  TILE_SHEET_HEIGHT,
+  TILE_SHEET_URL,
+  TILE_SHEET_WIDTH,
+  VOXEL_TILES,
+  type VoxelTiles,
+} from "./world/voxel-tiles";
 export {
   loadVoxelTiles,
   type LoadVoxelTilesOptions,

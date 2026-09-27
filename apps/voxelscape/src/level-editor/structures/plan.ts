@@ -10,7 +10,7 @@ import type {
   StructurePlan,
   ToolKind,
 } from "../types";
-import { blockName } from "./blocks";
+import { blockName } from "../../world/voxel-blocks";
 
 /** Converts a LOD-0 voxel index to its low-corner world unit, the geometry a figure's feet stand on. */
 const feet = (v: number): number => v * VOXEL_SIZE;

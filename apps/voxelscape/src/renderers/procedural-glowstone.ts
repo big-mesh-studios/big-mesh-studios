@@ -32,6 +32,49 @@ const pick = (x: number, y: number, seed: number): number =>
   (hash(x, y, seed) % 1000) / 1000;
 
 /**
+ * Draws the glowstone tile's clustered lumps into a square `size` pixels across
+ * at (`x`, `y`).
+ *
+ * @param ctx Where to draw, already sized to the sheet being extended.
+ * @param x The tile's left edge, in the context's pixels.
+ * @param y The tile's top edge, in the context's pixels.
+ * @param size How wide and tall one side of the tile is drawn, in pixels.
+ */
+export function paintGlowstoneTile(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+): void {
+  // A coarse hashed field fixes one shade per lump and so clusters the tile
+  // into cells; brightening towards each lump's centre domes it, and a fine
+  // field dusts the whole tile with the occasional brilliant core.
+  const scale = size / GRID;
+  for (let py = 0; py < GRID; py++) {
+    for (let px = 0; px < GRID; px++) {
+      const lump = pick(Math.floor(px / LUMP), Math.floor(py / LUMP), 23);
+      const lx = (px % LUMP) / (LUMP - 1) - 0.5;
+      const ly = (py % LUMP) / (LUMP - 1) - 0.5;
+      const dome = 1 - Math.min(1, Math.hypot(lx, ly) * 1.4);
+      let shade = lump < 0.28 ? 0 : lump < 0.58 ? 1 : lump < 0.84 ? 2 : 3;
+      if (dome > 0.72) {
+        shade = Math.min(GLOWSTONE_SHADES.length - 1, shade + 1);
+      }
+      if (pick(px, py, 7) > 0.96) {
+        shade = GLOWSTONE_SHADES.length - 1;
+      }
+      ctx.fillStyle = GLOWSTONE_SHADES[shade];
+      ctx.fillRect(
+        x + px * scale,
+        y + py * scale,
+        Math.ceil(scale),
+        Math.ceil(scale),
+      );
+    }
+  }
+}
+
+/**
  * Extends the loaded atlas with a procedurally generated glowstone tile,
  * returning the texture and dimensions that now include it.
  */
@@ -60,32 +103,7 @@ export async function injectProceduralGlowstoneTile(
   const tileY = Math.floor(index / columns) * tileH;
   atlas.set("glowstone", { x: tileX, y: tileY, w: tileW, h: tileH });
 
-  // A coarse hashed field fixes one shade per lump and so clusters the tile
-  // into cells; brightening towards each lump's centre domes it, and a fine
-  // field dusts the whole tile with the occasional brilliant core.
-  const scale = tileW / GRID;
-  for (let py = 0; py < GRID; py++) {
-    for (let px = 0; px < GRID; px++) {
-      const lump = pick(Math.floor(px / LUMP), Math.floor(py / LUMP), 23);
-      const lx = (px % LUMP) / (LUMP - 1) - 0.5;
-      const ly = (py % LUMP) / (LUMP - 1) - 0.5;
-      const dome = 1 - Math.min(1, Math.hypot(lx, ly) * 1.4);
-      let shade = lump < 0.28 ? 0 : lump < 0.58 ? 1 : lump < 0.84 ? 2 : 3;
-      if (dome > 0.72) {
-        shade = Math.min(GLOWSTONE_SHADES.length - 1, shade + 1);
-      }
-      if (pick(px, py, 7) > 0.96) {
-        shade = GLOWSTONE_SHADES.length - 1;
-      }
-      ctx.fillStyle = GLOWSTONE_SHADES[shade];
-      ctx.fillRect(
-        tileX + px * scale,
-        tileY + py * scale,
-        Math.ceil(scale),
-        Math.ceil(scale),
-      );
-    }
-  }
+  paintGlowstoneTile(ctx, tileX, tileY, tileW);
 
   const bitmap = await createImageBitmap(canvas);
   return { texture: new Texture(bitmap), width, height: height + tileH };

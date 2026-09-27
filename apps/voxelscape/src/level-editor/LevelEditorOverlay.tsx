@@ -13,6 +13,7 @@ import { Split } from "./components/SplitPane";
 import { LevelEditorContext } from "./context";
 import { createLevelEditor } from "./level-editor-store";
 import { LevelEditorSheet } from "./LevelEditorSheet";
+import { BlockPalettePanel } from "./panels/BlockPalettePanel";
 import { PlanJsonPanel } from "./panels/PlanJsonPanel";
 import { ShapeListPanel } from "./panels/ShapeListPanel";
 import { ShapePropertiesPanel } from "./panels/ShapePropertiesPanel";
@@ -325,6 +326,7 @@ export function LevelEditorOverlay() {
             <Split.Handle size="8px" class={styles.handle} />
             <Split.Pane size="340px" class={styles.side}>
               <ToolbarPanel />
+              <BlockPalettePanel />
               <ShapeListPanel />
               <ShapePropertiesPanel />
               <PlanJsonPanel />

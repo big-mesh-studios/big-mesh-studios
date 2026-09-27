@@ -1,7 +1,8 @@
 import type { Group } from "@random-mesh/rmsl/scene";
 import { TriangleRenderer } from "../renderers/triangle-renderer";
 import { loadVoxelTiles } from "../renderers/tile-loader";
-import type { VoxelTileConfig, VoxelTiles } from "../renderers/atlas";
+import type { VoxelTileConfig } from "../renderers/atlas";
+import type { VoxelTiles } from "./voxel-tiles";
 import { cellsInSphere, ChunkSphere, type LodBands } from "./chunk-sphere";
 import { WorldWorkerPool } from "./worker-pool";
 import {

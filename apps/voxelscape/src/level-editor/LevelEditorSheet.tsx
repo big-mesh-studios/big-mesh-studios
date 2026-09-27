@@ -1,5 +1,6 @@
 import { createSignal, For } from "solid-js";
 import { Tab } from "./components/components";
+import { BlockPalettePanel } from "./panels/BlockPalettePanel";
 import { PlanJsonPanel } from "./panels/PlanJsonPanel";
 import { ShapeListPanel } from "./panels/ShapeListPanel";
 import { ShapePropertiesPanel } from "./panels/ShapePropertiesPanel";
@@ -9,6 +10,7 @@ import styles from "./LevelEditorSheet.module.css";
 /** The panels the sheet shows, in the order its tabs list them. */
 const PANELS = [
   { id: "tools", label: "Tools" },
+  { id: "blocks", label: "Blocks" },
   { id: "shapes", label: "Shapes" },
   { id: "properties", label: "Properties" },
   { id: "plan", label: "Plan" },
@@ -59,6 +61,9 @@ export function LevelEditorSheet() {
       <div class={styles.content} hidden={!expanded()}>
         <div class={styles.pane} hidden={active() !== "tools"}>
           <ToolbarPanel />
+        </div>
+        <div class={styles.pane} hidden={active() !== "blocks"}>
+          <BlockPalettePanel />
         </div>
         <div class={styles.pane} hidden={active() !== "shapes"}>
           <ShapeListPanel />

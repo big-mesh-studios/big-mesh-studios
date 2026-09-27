@@ -123,7 +123,8 @@ import type {
   CameraControlsKind,
 } from "../level-editor/camera/CameraControl";
 import { mouseRay, projectPtToScreen } from "../level-editor/camera/project";
-import type { SubTexture, VoxelTiles } from "../renderers/atlas";
+import type { SubTexture } from "../renderers/atlas";
+import type { VoxelTiles } from "../world/voxel-tiles";
 import { cellsInSphere } from "../world/chunk-sphere";
 import { type Dim3 } from "../world/level-data";
 import type { PlanShape, StructurePlan } from "../world/structure-fill";

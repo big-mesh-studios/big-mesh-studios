@@ -30,6 +30,7 @@ import {
   VOXEL_WOOL_RED,
   VOXEL_WOOL_BLACK,
 } from "../world/voxel-store";
+import { woolTileColor } from "../renderers/procedural-wool";
 import { BlockTool } from "./tools/block-tool";
 import { SwordTool } from "./tools/sword-tool";
 import { BucketTool } from "./tools/bucket-tool";
@@ -74,8 +75,8 @@ export interface ItemDefinition {
   /** Builds what wielding this item means, once the world it acts on exists. */
   tool: (ctx: ToolContext) => Tool;
   /**
-   * For wool blocks: the CSS colour used to draw the item icon procedurally.
-   * Absent for non-wool items.
+   * For wool blocks: the colour its tile is drawn in, which the item icon
+   * wears so the two agree. Absent for non-wool items.
    */
   woolColor?: string;
 }
@@ -128,113 +129,113 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
     name: "White Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#f9fafb",
     tool: (ctx) => new BlockTool(ctx, "wool_white", VOXEL_WOOL_WHITE),
+    woolColor: woolTileColor(VOXEL_WOOL_WHITE),
   },
   wool_orange: {
     name: "Orange Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#f97316",
     tool: (ctx) => new BlockTool(ctx, "wool_orange", VOXEL_WOOL_ORANGE),
+    woolColor: woolTileColor(VOXEL_WOOL_ORANGE),
   },
   wool_magenta: {
     name: "Magenta Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#d946ef",
     tool: (ctx) => new BlockTool(ctx, "wool_magenta", VOXEL_WOOL_MAGENTA),
+    woolColor: woolTileColor(VOXEL_WOOL_MAGENTA),
   },
   wool_light_blue: {
     name: "Light Blue Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#7dd3fc",
     tool: (ctx) => new BlockTool(ctx, "wool_light_blue", VOXEL_WOOL_LIGHT_BLUE),
+    woolColor: woolTileColor(VOXEL_WOOL_LIGHT_BLUE),
   },
   wool_yellow: {
     name: "Yellow Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#fde047",
     tool: (ctx) => new BlockTool(ctx, "wool_yellow", VOXEL_WOOL_YELLOW),
+    woolColor: woolTileColor(VOXEL_WOOL_YELLOW),
   },
   wool_lime: {
     name: "Lime Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#84cc16",
     tool: (ctx) => new BlockTool(ctx, "wool_lime", VOXEL_WOOL_LIME),
+    woolColor: woolTileColor(VOXEL_WOOL_LIME),
   },
   wool_pink: {
     name: "Pink Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#f9a8d4",
     tool: (ctx) => new BlockTool(ctx, "wool_pink", VOXEL_WOOL_PINK),
+    woolColor: woolTileColor(VOXEL_WOOL_PINK),
   },
   wool_gray: {
     name: "Gray Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#6b7280",
     tool: (ctx) => new BlockTool(ctx, "wool_gray", VOXEL_WOOL_GRAY),
+    woolColor: woolTileColor(VOXEL_WOOL_GRAY),
   },
   wool_light_gray: {
     name: "Light Gray Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#d1d5db",
     tool: (ctx) => new BlockTool(ctx, "wool_light_gray", VOXEL_WOOL_LIGHT_GRAY),
+    woolColor: woolTileColor(VOXEL_WOOL_LIGHT_GRAY),
   },
   wool_cyan: {
     name: "Cyan Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#06b6d4",
     tool: (ctx) => new BlockTool(ctx, "wool_cyan", VOXEL_WOOL_CYAN),
+    woolColor: woolTileColor(VOXEL_WOOL_CYAN),
   },
   wool_purple: {
     name: "Purple Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#9333ea",
     tool: (ctx) => new BlockTool(ctx, "wool_purple", VOXEL_WOOL_PURPLE),
+    woolColor: woolTileColor(VOXEL_WOOL_PURPLE),
   },
   wool_blue: {
     name: "Blue Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#3b82f6",
     tool: (ctx) => new BlockTool(ctx, "wool_blue", VOXEL_WOOL_BLUE),
+    woolColor: woolTileColor(VOXEL_WOOL_BLUE),
   },
   wool_brown: {
     name: "Brown Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#92400e",
     tool: (ctx) => new BlockTool(ctx, "wool_brown", VOXEL_WOOL_BROWN),
+    woolColor: woolTileColor(VOXEL_WOOL_BROWN),
   },
   wool_green: {
     name: "Green Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#166534",
     tool: (ctx) => new BlockTool(ctx, "wool_green", VOXEL_WOOL_GREEN),
+    woolColor: woolTileColor(VOXEL_WOOL_GREEN),
   },
   wool_red: {
     name: "Red Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#dc2626",
     tool: (ctx) => new BlockTool(ctx, "wool_red", VOXEL_WOOL_RED),
+    woolColor: woolTileColor(VOXEL_WOOL_RED),
   },
   wool_black: {
     name: "Black Wool",
     stackable: true,
     sprite: null,
-    woolColor: "#1f2937",
     tool: (ctx) => new BlockTool(ctx, "wool_black", VOXEL_WOOL_BLACK),
+    woolColor: woolTileColor(VOXEL_WOOL_BLACK),
   },
 };
 

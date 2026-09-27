@@ -3,7 +3,7 @@ import type { PlanItem, PlanNpc, PlanProp, PlanShape } from "../types";
 import { NumberField, Vec3Field } from "../components/fields";
 import fieldStyles from "../components/fields.module.css";
 import { LevelEditorContext } from "../context";
-import { BLOCK_CHOICES } from "../structures/blocks";
+import { blocksOfGroup, type VoxelBlockGroup } from "../../world/voxel-blocks";
 import { useVoxelscape } from "../../voxelscape/voxelscape-context";
 import styles from "./panels.module.css";
 
@@ -37,6 +37,9 @@ const PROP_MODELS = [
   "lemonade-stand.zip",
 ];
 
+/** The block families the block dropdown groups its options under, in order. */
+const BLOCK_GROUPS: VoxelBlockGroup[] = ["Terrain", "Nature", "Built", "Wool"];
+
 function BlockField(props: {
   label: string;
   value: number;
@@ -50,8 +53,14 @@ function BlockField(props: {
         value={props.value}
         onChange={(event) => props.onChange(Number(event.currentTarget.value))}
       >
-        <For each={BLOCK_CHOICES}>
-          {(block) => <option value={block.id}>{block.name}</option>}
+        <For each={BLOCK_GROUPS}>
+          {(group) => (
+            <optgroup label={group}>
+              <For each={blocksOfGroup(group)}>
+                {(block) => <option value={block.id}>{block.name}</option>}
+              </For>
+            </optgroup>
+          )}
         </For>
       </select>
     </label>
