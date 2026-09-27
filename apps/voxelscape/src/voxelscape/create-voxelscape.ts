@@ -799,6 +799,16 @@ export const createVoxelscape = ({
   });
 
   /**
+   * The camera the local player sees the world through: at their own eye in
+   * first person, swung out on a boom behind them in third. Both `/player:view`
+   * and a place script's `player-view` go through here, so the two cannot say
+   * different things about what a view is.
+   */
+  const setView = (mode: "first" | "third"): void => {
+    avatar.setFirstPerson(mode === "first");
+  };
+
+  /**
    * The cube centre the player starts at, kept so a respawn returns there.
    * Reading `world.getHeightAt` again would not: it returns the topmost solid
    * voxel in the column, which is the roof once the house around spawn has
@@ -1557,7 +1567,7 @@ export const createVoxelscape = ({
    * was already looking at. A sequence that has played out is cleared, and the
    * camera snapped back to the player.
    */
-  const applyCutsceneCamera = (): void => {
+  const applyCutsceneCamera = (dt: number): void => {
     const state = scriptConsole?.cutsceneFor("") ?? null;
     if (state === null) {
       return;
@@ -1607,7 +1617,7 @@ export const createVoxelscape = ({
       cutsceneStart = -1;
       cutsceneFrom = null;
       setCutscene(false);
-      avatar.place();
+      avatar.place(dt);
     }
   };
 
@@ -1667,6 +1677,9 @@ export const createVoxelscape = ({
     avatar.player.vz = 0;
     avatar.player.onGround = false;
     avatar.player.flying = false;
+    // The old run's camera is not the new run's, and a fresh script gets to
+    // set its own view when it wants one.
+    setView("first");
     health.respawn();
     // The fresh script lights no fires, so the embers of the old run go back
     // to being the floor they kindled from.
@@ -1765,7 +1778,7 @@ export const createVoxelscape = ({
           avatar.player.vy = 0;
           avatar.player.vz = 0;
           avatar.player.onGround = false;
-          avatar.place();
+          avatar.snapView();
         },
         onPlayerFace: (player, at) => {
           if (player !== "" && player !== (atproto.did ?? "")) {
@@ -1775,7 +1788,7 @@ export const createVoxelscape = ({
             at.x - avatar.player.position.x,
             at.z - avatar.player.position.z,
           );
-          avatar.place();
+          avatar.snapView();
         },
         onPlayerSpeed: (player, multiplier) => {
           if (player !== "" && player !== (atproto.did ?? "")) {
@@ -1913,6 +1926,14 @@ export const createVoxelscape = ({
             resolveBundledModel(model);
           }
           multiplayer.broadcastPlayerModel(model);
+        },
+        onPlayerView: (player, view) => {
+          // A camera belongs to the one peer looking through it, so a peer that
+          // owns another player has nothing to change and nothing to send.
+          if (player !== "" && player !== (atproto.did ?? "")) {
+            return;
+          }
+          setView(view);
         },
         data: placeData,
         refreshData: async (scope, player, key) => {
@@ -2392,7 +2413,7 @@ export const createVoxelscape = ({
     script,
     resolution,
     setView: (mode) => {
-      avatar.setFirstPerson(mode === "first");
+      setView(mode);
       return `camera: ${mode}-person view`;
     },
     setPlayerVisible: (visible) => {
@@ -2579,7 +2600,7 @@ export const createVoxelscape = ({
     if (route.turn !== 0) {
       avatar.player.yaw += route.turn * dt;
     }
-    avatar.place();
+    avatar.snapView();
     // Under the same phase the frame's own scroll is timed under: a benchmark
     // drives the player from here instead, and the window's work — evicting
     // slots, teleporting them onto entering cells, asking for their fills — is
@@ -2847,9 +2868,8 @@ export const createVoxelscape = ({
                       },
             );
           }
-          // The camera has not caught up yet, so this picks from last frame's eye
-          // along this frame's look. Recomputed every frame, not just on edits, so
-          // the crosshair tracks what it is over.
+          // Recomputed every frame, not just on edits, so the crosshair tracks
+          // what it is over.
           const pick = tool.pick();
           setTarget(pick.primary);
           // A click that the wielded tool itself resolves to a strike is left
@@ -2948,8 +2968,8 @@ export const createVoxelscape = ({
           avatar.player.position.z,
         );
         probe.end(Phase.scroll);
-        avatar.place();
-        applyCutsceneCamera();
+        avatar.place(dt);
+        applyCutsceneCamera(dt);
         applyFollowCamera();
         // Lava is a hazard the way water is a medium: standing in it burns,
         // on a short cooldown so the player can hop out between ticks.

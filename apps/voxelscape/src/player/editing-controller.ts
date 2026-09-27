@@ -116,7 +116,7 @@ export class EditingController {
     this.enabled = enabled;
   }
 
-  /** Recomputes the voxel under the crosshair from the current camera look. */
+  /** Recomputes the voxel under the crosshair from the player's current aim. */
   pick(): VoxelPick {
     const { origin, direction } = this.getLook();
     return pickVoxel(this.blocks, origin, direction);

@@ -131,6 +131,12 @@ export interface ScriptConsoleParams extends RequireOnly<
   onCatalog?: (player: string, query: string) => void;
   /** Called when the script changes what a player wears; `model` "" is the plain cube. */
   onPlayerModel?: (player: string, model: string, modelUri: string) => void;
+  /**
+   * Called when the script changes which camera a player sees the world
+   * through. Nobody else can see a player's camera, so this reaches only the
+   * player it names and empty means every local player on their own.
+   */
+  onPlayerView?: (player: string, view: "first" | "third") => void;
   /** Called to re-read a remembered value the table does not hold. */
   refreshData?: (
     scope: DataScope,
@@ -240,6 +246,10 @@ export class ScriptConsole {
     model: string,
     modelUri: string,
   ) => void;
+  private readonly onPlayerView: (
+    player: string,
+    view: "first" | "third",
+  ) => void;
   private readonly refreshData?: (
     scope: DataScope,
     player: string,
@@ -294,6 +304,7 @@ export class ScriptConsole {
     this.onTeleport = params.onTeleport ?? (() => {});
     this.onCatalog = params.onCatalog ?? (() => {});
     this.onPlayerModel = params.onPlayerModel ?? (() => {});
+    this.onPlayerView = params.onPlayerView ?? (() => {});
     this.refreshData = params.refreshData;
     this.data = params.data;
     this.getEndings = params.getEndings ?? (() => []);
@@ -776,6 +787,7 @@ export class ScriptConsole {
       onCatalog: (player, query) => this.onCatalog(player, query),
       onPlayerModel: (player, model, modelUri) =>
         this.onPlayerModel(player, model, modelUri),
+      onPlayerView: (player, view) => this.onPlayerView(player, view),
       refreshData: this.refreshData,
       data: this.data,
       getEndings: () => this.getEndings(),

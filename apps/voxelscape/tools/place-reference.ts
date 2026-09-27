@@ -113,6 +113,7 @@ const EFFECT_GROUPS: readonly { name: string; doc: string; tags: string[] }[] =
         "player-respawn",
         "player-checkpoint",
         "player-control",
+        "player-view",
         "player-model",
       ],
     },
@@ -264,6 +265,8 @@ const EFFECT_MEANING: Readonly<Record<string, string>> = {
     "Remembers where one player is put back on their feet after dying.",
   "player-control":
     "Takes a player's movement and tools away, or gives them back.",
+  "player-view":
+    "Chooses which camera a player sees the world through, at their eye or swung out behind them.",
   "player-model": "Gives a player a model to wear in place of the plain cube.",
   "team-define": "Defines a team a player may be put on.",
   "player-team": "Puts a player on a team.",

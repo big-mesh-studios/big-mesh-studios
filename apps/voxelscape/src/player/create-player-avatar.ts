@@ -12,12 +12,14 @@ import {
   deathCameraPose,
   lookDirection,
   placeCamera,
+  playerEye,
   updatePlayer,
   type Medium,
   type Player,
   type PlayerConfig,
   type PlayerWorld,
 } from "./player";
+import { createCameraOrbit } from "./orbit-camera";
 import type { WorldVoxel } from "../world/edit-layer";
 import { VOXEL_SIZE, type Dim3 } from "../world/level-data";
 
@@ -74,7 +76,14 @@ export interface PlayerAvatar {
    */
   move(dt: number, input: InputSnapshot): void;
   /** Moves the cube and the camera onto the player's current position. */
-  place(): void;
+  place(dt: number): void;
+  /**
+   * Moves the cube and the camera onto the player's current position at once,
+   * with the third person view snapped in behind them. For wherever the player
+   * has been put rather than walked, where easing the view across the distance
+   * would be a long pan through the world instead.
+   */
+  snapView(): void;
   /**
    * Moves the cube and the camera into the death fall's pose at `progress`
    * (0 standing, 1 fallen flat): in first person the eye sweeps down the
@@ -82,7 +91,13 @@ export interface PlayerAvatar {
    * tips backward over its feet like a corpse.
    */
   placeDeath(progress: number): void;
-  /** The ray the crosshair points along, from the camera's eye. */
+  /**
+   * The ray a tool picks along. In first person it runs from the player's eye
+   * along their look direction. In third person the origin is still the eye,
+   * because a reach measured from anywhere else would be a reach from a place
+   * the player is not standing, and the direction is the line the view is
+   * drawn on, so the crosshair is exactly on what it selects.
+   */
   look(): { origin: Dim3; direction: Dim3 };
   /** Every world voxel the player's cube overlaps, so an edit can't bury them. */
   occupiedVoxels(): WorldVoxel[];
@@ -102,7 +117,8 @@ export interface PlayerAvatar {
 /**
  * The player: their physics, the cube drawn for them, and the camera that
  * follows them. Owns the two pieces of view state the console can change,
- * which camera it is and whether the cube is drawn.
+ * which camera it is and whether the cube is drawn, and the third person
+ * boom that camera swings on.
  */
 export const createPlayerAvatar = ({
   camera,
@@ -152,22 +168,63 @@ export const createPlayerAvatar = ({
   cube.visible = cubeVisible;
   const body = new Group();
   body.add(cube);
-  placeCamera(camera, player, firstPerson);
+  /**
+   * The third person view, swung on a boom around the player's eye. Free
+   * flight is steered by the look direction itself, so the boom stands aside
+   * for it and the rigid chase view behind the cube takes over.
+   */
+  const boomActive = (): boolean => !player.flying && !player.noclip;
+  const orbit = createCameraOrbit((x, y, z) => world.getSolidAt(x, y, z));
+  orbit.snap(player);
+
+  /** Puts the cube and the camera where the player is, advancing the boom. */
+  const place = (dt: number): void => {
+    cube.position.copy(player.position);
+    // the cube's local +Z faces the heading; a Y rotation by `yaw` aligns it
+    cube.rotation.y = player.yaw;
+    cube.visible = cubeVisible;
+    if (firstPerson) {
+      placeCamera(camera, player, true);
+      return;
+    }
+    if (!boomActive()) {
+      placeCamera(camera, player, false);
+      return;
+    }
+    const { position, direction } = orbit.pose(player, dt);
+    camera.position.set(position[0], position[1], position[2]);
+    camera.lookAt(
+      position[0] + direction[0],
+      position[1] + direction[1],
+      position[2] + direction[2],
+    );
+  };
 
   return {
     body,
     player,
 
     move(dt, input) {
-      updatePlayer(player, dt, input, world);
+      if (firstPerson || !boomActive()) {
+        updatePlayer(player, dt, input, world);
+        return;
+      }
+      // The boom takes the look deltas, so the physics is stepped without
+      // them; what comes back is the stick as it reads against the camera.
+      const axes = orbit.applyControls(player, dt, input);
+      updatePlayer(
+        player,
+        dt,
+        { ...input, ...axes, lookDx: 0, lookDy: 0 },
+        world,
+      );
     },
 
-    place() {
-      cube.position.copy(player.position);
-      // the cube's local +Z faces the heading; a Y rotation by `yaw` aligns it
-      cube.rotation.y = player.yaw;
-      cube.visible = cubeVisible;
-      placeCamera(camera, player, firstPerson);
+    place,
+
+    snapView() {
+      orbit.snap(player);
+      place(0);
     },
 
     placeDeath(progress) {
@@ -207,12 +264,14 @@ export const createPlayerAvatar = ({
     },
 
     look() {
-      const eye = camera.position;
-      const [dx, dy, dz] = lookDirection(player);
-      return {
-        origin: [eye.x, eye.y, eye.z],
-        direction: [dx, dy, dz],
-      };
+      const origin = playerEye(player);
+      if (firstPerson || !boomActive()) {
+        const [dx, dy, dz] = lookDirection(player);
+        return { origin, direction: [dx, dy, dz] };
+      }
+      // The boom's pivot is the eye, so the view line out of the eye is the
+      // line the screen is drawn on and the crosshair is on what it selects.
+      return { origin, direction: orbit.aim() };
     },
 
     occupiedVoxels() {
@@ -237,6 +296,11 @@ export const createPlayerAvatar = ({
 
     setFirstPerson(next) {
       firstPerson = next;
+      if (!next) {
+        // Every entry into the third person view starts from behind the
+        // player, rather than from wherever the last one left the boom.
+        orbit.snap(player);
+      }
     },
 
     get firstPerson() {

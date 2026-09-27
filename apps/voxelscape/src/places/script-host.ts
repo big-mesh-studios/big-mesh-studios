@@ -540,6 +540,12 @@ export interface ScriptHostParams extends RequireOnly<
   /** Called when the script changes what a player wears; `model` "" is the plain cube. */
   onPlayerModel?: (player: string, model: string, modelUri: string) => void;
   /**
+   * Called when the script changes which camera a player sees the world
+   * through. Nobody else can see a player's camera, so this reaches only the
+   * player it names and empty means every local player on their own.
+   */
+  onPlayerView?: (player: string, view: "first" | "third") => void;
+  /**
    * Called to re-read a remembered value the table does not hold, so a save
    * made on another device arrives as a `data-loaded` fact. Left out, a
    * `data-get` answers from the table alone.
@@ -646,6 +652,10 @@ export class ScriptHost {
     player: string,
     model: string,
     modelUri: string,
+  ) => void;
+  private readonly onPlayerView?: (
+    player: string,
+    view: "first" | "third",
   ) => void;
   private readonly refreshData?: (
     scope: DataScope,
@@ -758,6 +768,7 @@ export class ScriptHost {
     this.onTeleport = params.onTeleport;
     this.onCatalog = params.onCatalog;
     this.onPlayerModel = params.onPlayerModel;
+    this.onPlayerView = params.onPlayerView;
     this.refreshData = params.refreshData;
     this.data = params.data ?? createPlaceData();
     this.ready = createQuickJSSandbox({
@@ -2712,6 +2723,11 @@ export class ScriptHost {
       case "player-control":
         this.controlLocks.set(effect.payload.player, effect.payload.locked);
         break;
+      case "player-view": {
+        const { player, view } = effect.payload;
+        this.onPlayerView?.(player, view);
+        break;
+      }
       case "hud": {
         const { player, id, kind, label, value, max, text } = effect.payload;
         let readouts = this.readouts.get(player);

@@ -77,6 +77,7 @@ export type EffectTag =
   | "camera-follow"
   | "camera-follow-clear"
   | "player-control"
+  | "player-view"
   | "hud"
   | "hud-remove"
   | "explosion"
@@ -764,6 +765,17 @@ export type ParsedEffect =
         player: string;
         /** Whether the script takes the player's movement and tools away. */
         locked: boolean;
+      };
+    }
+  | {
+      tag: "player-view";
+      payload: {
+        player: string;
+        /**
+         * Which camera the player sees the world through: `"first"` puts it at
+         * the player's eye, `"third"` swings it out on a boom behind them.
+         */
+        view: "first" | "third";
       };
     }
   | {
@@ -1761,6 +1773,8 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
       return isPlayer(p.player);
     case "player-control":
       return isPlayer(p.player) && typeof p.locked === "boolean";
+    case "player-view":
+      return isPlayer(p.player) && (p.view === "first" || p.view === "third");
     case "hud":
       return (
         isPlayer(p.player) &&

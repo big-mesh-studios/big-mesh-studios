@@ -740,10 +740,24 @@ export const lookDirection = (player: Player): [number, number, number] => {
 };
 
 /**
+ * The point the player's view radiates from: the eye, `eyeHeight` above the
+ * cube's centre. Every reach the player has — a block they break, a figure
+ * they strike or use — is measured from here, so it stays the eye whichever
+ * view the camera is drawing.
+ */
+export const playerEye = (player: Player): Dim3 => [
+  player.position.x,
+  player.position.y + player.config.eyeHeight,
+  player.position.z,
+];
+
+/**
  * Places the camera. In first person (the default) it sits at the player's
  * eye looking along the player's yaw/pitch, so the crosshair lines up with
  * where the player aims (and where voxel editing picks). In third person it
- * hovers behind and above the cube, looking at it.
+ * hovers behind and above the cube, looking at it; where the camera stands
+ * does not move what the player can reach, which is measured from their eye
+ * either way.
  */
 export const placeCamera = (
   camera: PerspectiveCamera,
@@ -752,17 +766,10 @@ export const placeCamera = (
 ): void => {
   const config = player.config;
   if (firstPerson) {
-    camera.position.set(
-      player.position.x,
-      player.position.y + config.eyeHeight,
-      player.position.z,
-    );
+    const [x, y, z] = playerEye(player);
+    camera.position.set(x, y, z);
     const [dx, dy, dz] = lookDirection(player);
-    camera.lookAt(
-      camera.position.x + dx,
-      camera.position.y + dy,
-      camera.position.z + dz,
-    );
+    camera.lookAt(x + dx, y + dy, z + dz);
     return;
   }
   const sinYaw = Math.sin(player.yaw);

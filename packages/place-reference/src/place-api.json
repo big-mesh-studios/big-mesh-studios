@@ -1755,6 +1755,7 @@
         "camera-follow",
         "camera-follow-clear",
         "player-control",
+        "player-view",
         "hud",
         "hud-remove",
         "explosion",
@@ -4265,6 +4266,25 @@
               "type": "boolean",
               "optional": false,
               "doc": "Whether the script takes the player's movement and tools away."
+            }
+          ],
+          "removedBy": ""
+        },
+        {
+          "tag": "player-view",
+          "doc": "Chooses which camera a player sees the world through, at their eye or swung out behind them.",
+          "fields": [
+            {
+              "name": "player",
+              "type": "string",
+              "optional": false,
+              "doc": ""
+            },
+            {
+              "name": "view",
+              "type": "\"first\" | \"third\"",
+              "optional": false,
+              "doc": "Which camera the player sees the world through: `\"first\"` puts it at the player's eye, `\"third\"` swings it out on a boom behind them."
             }
           ],
           "removedBy": ""
