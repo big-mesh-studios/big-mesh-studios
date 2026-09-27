@@ -16,7 +16,10 @@ const FLAT_TERRAIN: AvatarTerrain = {
 
 const makeAvatar = (spawn: [number, number, number]) => {
   const camera = new PerspectiveCamera(50, 1, 0.1, 1000);
-  return { camera, avatar: createPlayerAvatar({ camera, terrain: FLAT_TERRAIN, spawn }) };
+  return {
+    camera,
+    avatar: createPlayerAvatar({ camera, terrain: FLAT_TERRAIN, spawn }),
+  };
 };
 
 /** How far the camera stands from a point, which is what "moved" means here. */
@@ -79,9 +82,7 @@ describe("PlayerAvatar.look", () => {
     // The direction is the line the view is drawn on rather than the player's
     // own look, which is what puts the crosshair on the target.
     expect(avatar.look().direction).not.toEqual(firstPerson.direction);
-    expect(avatar.look().direction).toEqual(
-      unit(camera.position, eye),
-    );
+    expect(avatar.look().direction).toEqual(unit(camera.position, eye));
 
     // The camera really did move, or the two assertions above pass vacuously.
     expect(distance(camera, eye)).toBeGreaterThan(

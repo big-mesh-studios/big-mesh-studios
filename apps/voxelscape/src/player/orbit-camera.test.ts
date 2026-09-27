@@ -172,7 +172,9 @@ describe("CameraOrbit.pose", () => {
     player.yaw = Math.PI;
     runFrames(orbit, player, 1 / 60, () => noInput());
     // Facing -Z, so behind them is the +Z side.
-    expect(orbit.pose(player, 0).position[2] - player.position.z).toBeGreaterThan(6);
+    expect(
+      orbit.pose(player, 0).position[2] - player.position.z,
+    ).toBeGreaterThan(6);
   });
 
   it("stands the eye behind the pivot on the resting boom", () => {
