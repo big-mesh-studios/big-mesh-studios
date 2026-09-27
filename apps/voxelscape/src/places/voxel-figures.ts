@@ -26,7 +26,10 @@ import {
   type FigurePlacement,
   type Motion,
 } from "@big-mesh-studios/stacker/renderer";
-import { loadFigure } from "@big-mesh-studios/stacker/format";
+import {
+  loadFigure,
+  type LoadedFigure,
+} from "@big-mesh-studios/stacker/format";
 import { LIGHT_TO_UNIT, MAX_LIGHT } from "../world/light-store";
 import { FigureMotionTrack } from "./figure-motion";
 import type { FigureAnimation, FigureLook } from "./script-host";
@@ -43,13 +46,101 @@ const animatedFrame = (
   motion: Motion,
   animation: FigureAnimation,
   clockMs: number,
-): number => {
-  const raw = (clockMs / 1000) * motion.framesPerSecond * animation.speed;
+): number =>
+  wrapped(
+    (clockMs / 1000) * motion.framesPerSecond * animation.speed,
+    motion,
+    animation.loop,
+  );
+
+/** A raw frame folded into a motion's run, or held at its start. */
+const wrapped = (raw: number, motion: Motion, loop: boolean): number => {
   const span = lastFrame(motion) + 1;
-  if (animation.loop && span > 0) {
-    return ((raw % span) + span) % span;
+  return loop && span > 0 ? ((raw % span) + span) % span : Math.max(0, raw);
+};
+
+/** Which of a moving figure's own motions it is playing. */
+export type GaitRole = "idle" | "walk" | "run";
+
+/** The role a figure plays when its model carries no motion for the one it asked for. */
+const GAIT_FALLBACK: Record<GaitRole, readonly GaitRole[]> = {
+  idle: [],
+  walk: ["idle"],
+  run: ["walk", "idle"],
+};
+
+/** A figure's own motions, each named by the role it plays. */
+export interface FigureGaitMotions {
+  idle: string;
+  walk: string;
+  run: string;
+}
+
+/** The role a moving figure is playing, and how far through it it stands. */
+export interface FigureGait {
+  role: GaitRole;
+  /** Cycles through the motion, so 1 is one whole stride. */
+  phase: number;
+}
+
+/**
+ * The motion and frame `role` stands at, read off a model's own motions, or
+ * undefined where the model carries none of the roles. A role the model is
+ * missing falls to the one below it that it does carry, so a model with a walk
+ * and no run walks at any speed, and one with no idle stands still rather than
+ * marching on the spot.
+ *
+ * `phase` is in cycles of the chosen motion, so one whole stride lands exactly
+ * on the motion's first key however long its run is. Scaling by the motion's
+ * own frame count rather than its rate is what makes that hold: a clip keyed
+ * 33 frames at 30 a second is 1.1 seconds long, not one second, and counting in
+ * seconds would leave the last stride hanging past the loop.
+ */
+export const gaitPose = (
+  motions: Motion[],
+  names: FigureGaitMotions,
+  role: GaitRole,
+  phase: number,
+): { motion: Motion; frame: number } | undefined => {
+  for (const wanted of [role, ...GAIT_FALLBACK[role]]) {
+    const motion = motions.find((held) => held.name === names[wanted]);
+    if (motion !== undefined) {
+      return {
+        motion,
+        frame: wrapped(phase * (lastFrame(motion) + 1), motion, motion.loop),
+      };
+    }
   }
-  return Math.max(0, raw);
+  return undefined;
+};
+
+/**
+ * The motion a figure stands at and the frame of it, or undefined for a figure
+ * in its rest pose. A gait is read off the figure's own speed and named by
+ * `names`; an animation is named outright by a script and sampled off the
+ * shared clock, so two peers watching the same figure see the same pose.
+ */
+const posed = (
+  figure: RenderedFigure,
+  baked: BakedModel,
+  names: FigureGaitMotions | undefined,
+  now: number,
+): { motion: Motion; frame: number } | undefined => {
+  const gait = figure.gait;
+  if (gait !== undefined && names !== undefined) {
+    const found = gaitPose(baked.motions, names, gait.role, gait.phase);
+    if (found !== undefined) {
+      return found;
+    }
+  }
+  const animation = figure.animation;
+  if (animation === undefined) {
+    return undefined;
+  }
+  const motion = baked.motions.find((held) => held.name === animation.name);
+  return motion === undefined
+    ? undefined
+    : { motion, frame: animatedFrame(motion, animation, now) };
 };
 
 /** How long a dying figure takes to fall flat, in seconds. */
@@ -94,6 +185,8 @@ export interface RenderedFigure {
   };
   /** The model motion the figure plays, or absent when it stands in its rest pose. */
   animation?: FigureAnimation;
+  /** The locomotion motion a moving figure plays, and how far through it. */
+  gait?: FigureGait;
   /** The tint and fade over the figure's colours, or absent for its model's own. */
   look?: FigureLook;
 }
@@ -155,6 +248,12 @@ export interface VoxelFiguresParams {
    * wherever it is drawn. Defaults to the wall clock for a lone caller.
    */
   getNow?: () => number;
+  /**
+   * The locomotion motions the model file `model` carries, by the role each
+   * plays, or undefined for a model that is not a walking figure. A figure
+   * reporting a gait on a model with no answer stands in its rest pose.
+   */
+  gaitMotions?: (model: string) => FigureGaitMotions | undefined;
 }
 
 export class VoxelFigures {
@@ -163,6 +262,9 @@ export class VoxelFigures {
   private readonly modelFor: (id: string) => string;
   private readonly lightAt: (x: number, y: number, z: number) => number;
   private readonly getNow: () => number;
+  private readonly gaitMotions: (
+    model: string,
+  ) => FigureGaitMotions | undefined;
   private readonly baked = new Map<string, BakedModel>();
   private readonly meshes = new Map<string, FigureCopy>();
   /** Figures whose copy is currently stood at an animated pose, not at rest. */
@@ -186,6 +288,7 @@ export class VoxelFigures {
     this.modelFor = params.modelFor ?? (() => "zombie.zip");
     this.lightAt = params.lightAt ?? (() => 0);
     this.getNow = params.getNow ?? (() => Date.now());
+    this.gaitMotions = params.gaitMotions ?? (() => undefined);
   }
 
   /** Number of figures currently drawn in the scene. */
@@ -193,8 +296,20 @@ export class VoxelFigures {
     return this.meshes.size;
   }
 
-  /** Makes every figure of `model` wear `figure`, with the motions saved beside it, rebaking any already drawn. */
-  setFigure(model: string, figure: Figure, motions: Motion[] = []): void {
+  /**
+   * Makes every figure of `model` wear it, with the motions its file saved
+   * beside it, rebaking any already drawn. The figure and its motions arrive
+   * as one `LoadedFigure` because a `LoadedFigure` also answers to a plain
+   * `Figure` — handing over the figure alone would compile and leave the model
+   * with nothing to play, and a model with nothing to play is a figure that
+   * stands still however it is moved.
+   */
+  setFigure(model: string, loaded: LoadedFigure): void {
+    const figure: Figure = {
+      parts: loaded.parts,
+      palette: loaded.palette,
+    };
+    const motions = loaded.motions;
     const baked = new BakedFigure(figure);
     const modelHeight = baked.size.height;
     const { width, depth } = baked.bounds.dimensions;
@@ -228,12 +343,7 @@ export class VoxelFigures {
 
   /** Reads a model zip saved from rm-stacker and remembers it under `model`. */
   async loadModel(model: string, bytes: Blob): Promise<void> {
-    const loaded = await loadFigure(bytes);
-    this.setFigure(
-      model,
-      { parts: loaded.parts, palette: loaded.palette },
-      loaded.motions,
-    );
+    this.setFigure(model, await loadFigure(bytes));
   }
 
   /**
@@ -310,20 +420,13 @@ export class VoxelFigures {
         this.group.add(mesh.group);
         this.meshes.set(figure.id, mesh);
       }
-      const animation = figure.animation;
-      const motion =
-        animation === undefined
-          ? undefined
-          : baked.motions.find((held) => held.name === animation.name);
-      if (animation !== undefined && motion !== undefined) {
+      // A figure that moves itself is playing a gait and a script that names a
+      // motion is playing an animation; a gait wins, since it is what the
+      // figure's own speed says it is doing.
+      const pose = posed(figure, baked, this.gaitMotions(model), this.getNow());
+      if (pose !== undefined) {
         mesh.stand(
-          figurePlacement(
-            poseFigure(
-              baked.figure,
-              motion,
-              animatedFrame(motion, animation, this.getNow()),
-            ),
-          ),
+          figurePlacement(poseFigure(baked.figure, pose.motion, pose.frame)),
         );
         this.animated.add(figure.id);
       } else if (this.animated.delete(figure.id)) {

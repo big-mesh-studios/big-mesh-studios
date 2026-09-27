@@ -114,6 +114,7 @@ const EFFECT_GROUPS: readonly { name: string; doc: string; tags: string[] }[] =
         "player-checkpoint",
         "player-control",
         "player-view",
+        "player-avatar",
         "player-model",
       ],
     },
@@ -267,6 +268,8 @@ const EFFECT_MEANING: Readonly<Record<string, string>> = {
     "Takes a player's movement and tools away, or gives them back.",
   "player-view":
     "Chooses which camera a player sees the world through, at their eye or swung out behind them.",
+  "player-avatar":
+    "Chooses which of the world's own avatars a player is drawn as, the cube or a walking human.",
   "player-model": "Gives a player a model to wear in place of the plain cube.",
   "team-define": "Defines a team a player may be put on.",
   "player-team": "Puts a player on a team.",

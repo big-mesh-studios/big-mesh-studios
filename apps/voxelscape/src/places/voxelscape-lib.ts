@@ -183,6 +183,18 @@ export function requestData(scope, key, requestId, player) {
 }
 
 /**
+ * Draws \`player\` ("" for the local player) as the world avatar named \`kind\` —
+ * "cube" or "human" — and remembers it as the avatar they carry into other
+ * places, so it is the player's own choice rather than this place's.
+ */
+export function setPlayerAvatar(kind, player) {
+  host.dispatch("player-avatar", {
+    player: player === undefined ? "" : player,
+    kind: kind,
+  });
+}
+
+/**
  * Dresses \`player\` ("" for the local player) in the place model named
  * \`modelName\`, or the plain cube when \`modelName\` is "".
  */

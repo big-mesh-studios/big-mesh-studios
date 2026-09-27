@@ -10,7 +10,7 @@ import {
   type SideKind,
 } from "@big-mesh-studios/stacker/renderer";
 import { loadFigure } from "@big-mesh-studios/stacker/format";
-import { bakeMotion, writeAnimatedModel } from "./bake-motion";
+import { bakeMotion, bakeMotions, writeAnimatedModel } from "./bake-motion";
 import { DEFAULT_PALETTE } from "../rig/palette";
 import { bindingFrom } from "../rig/rig";
 import { posedWorld, restWorld } from "../skeleton/pose";
@@ -177,5 +177,43 @@ describe("baking a rig motion into a model motion", () => {
     // The turn is a quarter about x, whichever way it is read back.
     closeTo(actual.turn[4], 0);
     closeTo(actual.turn[5], 1);
+  });
+});
+
+describe("baking a whole set of motions at once", () => {
+  it("gives every motion its own name, and writes them all into one zip", async () => {
+    const model = figure();
+    const skel = skeleton();
+    const binds = bindings(skel, model);
+    const walk = { ...wave(), name: "walk" };
+    const run = { ...wave(), name: "run", framesPerSecond: 24 };
+    const baked = bakeMotions(model, skel, binds, [walk, run]);
+
+    expect(baked.map((motion) => motion.name)).toEqual(["walk", "run"]);
+    // Each motion keeps its own rate, since the frames its keys land on are
+    // read at that rate.
+    expect(baked.map((motion) => motion.framesPerSecond)).toEqual([12, 24]);
+
+    const blob = await writeAnimatedModel(model, skel, binds, [walk, run]);
+    const loaded = await loadFigure(blob);
+    expect(loaded.motions.map((motion) => motion.name)).toEqual([
+      "walk",
+      "run",
+    ]);
+  });
+
+  it("bakes a set to the same poses it bakes each motion to on its own", () => {
+    const model = figure();
+    const skel = skeleton();
+    const binds = bindings(skel, model);
+    const walk = { ...wave(), name: "walk" };
+    const run = { ...wave(), name: "run" };
+    const [bakedWalk, bakedRun] = bakeMotions(model, skel, binds, [walk, run]);
+
+    // The one thing a shared flatten could get wrong is a part posed from the
+    // figure rather than the flattened one, so each motion is held to the bake
+    // it would have had on its own.
+    expect(bakedRun.parts).toEqual(bakeMotion(model, skel, binds, run).parts);
+    expect(bakedWalk.parts).toEqual(bakeMotion(model, skel, binds, walk).parts);
   });
 });

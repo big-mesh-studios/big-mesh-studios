@@ -19,6 +19,7 @@
     "fetch:animations": "node scripts/fetch-animations.mjs",
     "fetch:human": "node scripts/fetch-human.mjs",
     "make:models": "node scripts/make-models.mjs",
+    "make:human": "vite build --config vite.config.node.ts && node dist-node/make-human-model.js",
     "make:assets": "pnpm fetch:animations && pnpm fetch:human && pnpm make:models"
   },
   "dependencies": {

@@ -91,6 +91,16 @@ import {
   type SolidBox,
 } from "../player/prop-collision";
 import { EditingController } from "../player/editing-controller";
+import {
+  AVATAR_KINDS,
+  AVATAR_TYPES,
+  avatarOfModel,
+  isAvatarKind,
+  readStoredAvatar,
+  storeAvatar,
+  type AvatarKind,
+} from "../player/avatars";
+import { PlayerGait } from "../player/gait";
 import { Hand } from "../player/hand";
 import { PlayerHealth } from "../player/health";
 import { Inventory } from "../player/inventory";
@@ -105,7 +115,10 @@ import {
 import { loadSpriteModel } from "../player/sprite-model";
 import type { Target, Tool, ToolContext } from "../player/tools/tool";
 import { BucketTool } from "../player/tools/bucket-tool";
-import { loadFigure } from "@big-mesh-studios/stacker/format";
+import {
+  loadFigure,
+  type LoadedFigure,
+} from "@big-mesh-studios/stacker/format";
 import type { Model } from "@big-mesh-studios/stacker/renderer";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import { AdaptiveResolution } from "../render/adaptive";
@@ -169,6 +182,17 @@ const modelBlob = (bytes: Uint8Array): Blob =>
       bytes.byteOffset + bytes.byteLength,
     ) as ArrayBuffer,
   ]);
+
+/** Bakes one loaded model under `name` into every figure renderer drawing it. */
+const bakeModel = (
+  name: string,
+  loaded: LoadedFigure,
+  into: readonly VoxelFigures[],
+): void => {
+  for (const figures of into) {
+    figures.setFigure(name, loaded);
+  }
+};
 
 /**
  * A movement a benchmark drives the player along in place of the keyboard.
@@ -360,6 +384,10 @@ export interface Voxelscape {
     highlight: Mesh;
   };
   player: Player;
+  /** The kind of avatar the player is drawn as. */
+  avatar: () => AvatarKind;
+  /** Draws the player as `kind` and remembers it for their next visit. */
+  setAvatar: (kind: AvatarKind) => void;
   input: InputController;
   inventory: Inventory;
   /** The player's hearts and the death fall that empties them. */
@@ -1030,20 +1058,35 @@ export const createVoxelscape = ({
   });
   // A player's worn model is drawn by the same figure renderer an NPC's model
   // is: the cube stays the body physics and the camera use, and is hidden while
-  // a model is worn. The local player's model is set by a script; a remote
-  // player's arrives over the mesh.
+  // a model is worn. The local player's model is the avatar they chose, until a
+  // script dresses them for the place they are in; a remote player's arrives
+  // over the mesh.
   const PLAYER_FIGURE_ID = "self";
+  let localAvatar = readStoredAvatar();
   let localPlayerModel = "";
+  let localHeight = AVATAR_TYPES[localAvatar].height;
+  /**
+   * The local player's legs, held across frames so the phase they accumulate is
+   * what puts their feet on the ground, and rebuilt when the model changes
+   * because the motions it is counted against are that model's.
+   */
+  let localGait = new PlayerGait(AVATAR_TYPES[localAvatar].gait);
+  /** The pose the local player is drawn at, stepped once per frame in `advance`. */
+  let localGaitPose = localGait.update(0, 0, false);
   const playerFigures = new VoxelFigures({
     getFigures: () => {
       const figures: RenderedFigure[] = [];
-      if (localPlayerModel !== "") {
+      // A worn avatar stands where the player is, which is where the first
+      // person eye is, so it is the third person view that draws it.
+      if (localPlayerModel !== "" && !avatar.firstPerson) {
         figures.push({
           id: PLAYER_FIGURE_ID,
           x: avatar.player.position.x,
           y: avatar.player.position.y - avatar.player.config.halfSize,
           z: avatar.player.position.z,
           yaw: avatar.player.yaw,
+          height: localHeight,
+          gait: localGaitPose,
         });
       }
       for (const figure of multiplayer.remoteFigures()) {
@@ -1055,6 +1098,7 @@ export const createVoxelscape = ({
       id === PLAYER_FIGURE_ID
         ? localPlayerModel
         : (multiplayer.remoteModelOf(id) ?? ""),
+    gaitMotions: (model) => avatarOfModel(model)?.motions,
     getNow: () => multiplayer.getNow(),
     lightAt: blockLightAt,
   });
@@ -1231,10 +1275,8 @@ export const createVoxelscape = ({
     }
     for (const [name, bytes] of Object.entries(models)) {
       try {
-        const figure = await loadFigure(modelBlob(bytes));
-        npcFigures.setFigure(name, figure);
-        propFigures.setFigure(name, figure);
-        playerFigures.setFigure(name, figure);
+        const loaded = await loadFigure(modelBlob(bytes));
+        bakeModel(name, loaded, [npcFigures, propFigures, playerFigures]);
       } catch (err) {
         onNotice?.(
           `model "${name}" did not load — ${
@@ -1531,10 +1573,8 @@ export const createVoxelscape = ({
         if (!response.ok) {
           throw new Error(`fetch answered ${response.status}`);
         }
-        const figure = await loadFigure(await response.blob());
-        npcFigures.setFigure(file, figure);
-        propFigures.setFigure(file, figure);
-        playerFigures.setFigure(file, figure);
+        const loaded = await loadFigure(await response.blob());
+        bakeModel(file, loaded, [npcFigures, propFigures, playerFigures]);
         bakedBundledModels.add(file);
         failedBundledModelAt.delete(file);
       } catch (err) {
@@ -1549,6 +1589,40 @@ export const createVoxelscape = ({
       }
     })();
   };
+
+  /**
+   * Draws the local player as the model in `model`, with "" for their own cube.
+   * The avatar kind a change came from is remembered where the change did not:
+   * a place script dressing its players for one place does not become the look
+   * the player carries into the next.
+   */
+  const wearModel = (model: string, kind?: AvatarKind): void => {
+    if (kind !== undefined) {
+      localAvatar = kind;
+      localHeight = AVATAR_TYPES[kind].height;
+      localGait = new PlayerGait(AVATAR_TYPES[kind].gait);
+    }
+    localPlayerModel = model;
+    avatar.body.visible = model === "";
+    if (model !== "") {
+      resolveBundledModel(model);
+    }
+    multiplayer.broadcastPlayerModel(model);
+  };
+
+  /**
+   * The kind the player is drawn as, remembered for their next visit, and
+   * applied over whatever a place script had dressed them in.
+   */
+  const setAvatar = (kind: AvatarKind): void => {
+    storeAvatar(kind);
+    wearModel(AVATAR_TYPES[kind].model, kind);
+  };
+
+  // The world comes up wearing the avatar the page last chose. Every peer in a
+  // place is told by the one that wears it, so a peer joining later is drawn
+  // the same as everyone else without a handshake of its own.
+  wearModel(AVATAR_TYPES[localAvatar].model, localAvatar);
 
   const placeLibrary = createPlaceLibrary();
   const placePublisher = createPlacePublisher({
@@ -1914,18 +1988,25 @@ export const createVoxelscape = ({
           }
           setCatalog({ query });
         },
+        onPlayerAvatar: (player, kind) => {
+          // only this peer changes its own look; a peer that owns another
+          // player broadcasts it, and that arrives over the mesh
+          if (player !== "" && player !== (atproto.did ?? "")) {
+            return;
+          }
+          if (!isAvatarKind(kind)) {
+            onNotice?.(`no avatar named "${kind}"`);
+            return;
+          }
+          setAvatar(kind);
+        },
         onPlayerModel: (player, model) => {
           // only this peer changes its own look; a peer that owns another
           // player broadcasts it, and that arrives over the mesh
           if (player !== "" && player !== (atproto.did ?? "")) {
             return;
           }
-          localPlayerModel = model;
-          avatar.body.visible = model === "";
-          if (model !== "") {
-            resolveBundledModel(model);
-          }
-          multiplayer.broadcastPlayerModel(model);
+          wearModel(model);
         },
         onPlayerView: (player, view) => {
           // A camera belongs to the one peer looking through it, so a peer that
@@ -2042,9 +2123,8 @@ export const createVoxelscape = ({
           `${import.meta.env.BASE_URL}models/${file}`,
         );
         if (response.ok) {
-          const figure = await loadFigure(await response.blob());
-          npcFigures.setFigure(file, figure);
-          playerFigures.setFigure(file, figure);
+          const loaded = await loadFigure(await response.blob());
+          bakeModel(file, loaded, [npcFigures, playerFigures]);
         }
       } catch {
         // An NPC whose model cannot load is simply not drawn until one does.
@@ -2420,6 +2500,16 @@ export const createVoxelscape = ({
       avatar.setCubeVisible(visible);
       return visible ? "player cube shown" : "player cube hidden";
     },
+    setAvatar: (kind) => {
+      if (kind === undefined) {
+        return `avatar: ${localAvatar}`;
+      }
+      if (!isAvatarKind(kind)) {
+        return `usage: /player:avatar ${AVATAR_KINDS.join("|")}`;
+      }
+      setAvatar(kind);
+      return `avatar: ${kind}`;
+    },
     setMoveSpeed: (n) => {
       if (n !== undefined) {
         avatar.player.config.speed = n;
@@ -2774,6 +2864,11 @@ export const createVoxelscape = ({
         refreshPropBoxes();
         refreshFields();
         avatar.move(dt, locked ? CUTSCENE_INPUT : snapshot);
+        localGaitPose = localGait.update(
+          dt,
+          Math.hypot(avatar.player.vx, avatar.player.vz),
+          avatar.player.onGround,
+        );
         checkHazardTouch();
         probe.end(Phase.player);
         if (locked) {
@@ -3277,6 +3372,8 @@ export const createVoxelscape = ({
     canvas: mountedCanvasEl,
     levelEditor,
     player: avatar.player,
+    avatar: () => localAvatar,
+    setAvatar,
     input,
     inventory,
     health,

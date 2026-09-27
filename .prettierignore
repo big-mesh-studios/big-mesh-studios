@@ -3,5 +3,6 @@ pnpm-workspace.yaml
 dist
 dist-bench
 dist-lib
+dist-node
 .ssr
 **/.session.json

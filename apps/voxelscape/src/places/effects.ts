@@ -91,6 +91,7 @@ export type EffectTag =
   | "prompt-remove"
   | "figure-animate"
   | "figure-stop"
+  | "player-avatar"
   | "player-model"
   | "light"
   | "light-remove"
@@ -135,6 +136,8 @@ export const MAX_ATTRIBUTES = 32;
 export const MAX_ATTRIBUTE_STRING = 256;
 /** The longest a prop's model file name may be. */
 export const MAX_PROP_MODEL = 128;
+/** The longest an avatar kind's name may be. */
+export const MAX_AVATAR_KIND = 16;
 /** The tallest a prop may be drawn, in world units. */
 export const MAX_PROP_HEIGHT = 64;
 /** The most waypoints one motion's path may hold. */
@@ -889,6 +892,15 @@ export type ParsedEffect =
       };
     }
   | { tag: "figure-stop"; payload: { id: string } }
+  | {
+      tag: "player-avatar";
+      payload: {
+        /** The player whose avatar changes; "" for the local player. */
+        player: string;
+        /** Which of the world's avatars the player is drawn as. */
+        kind: string;
+      };
+    }
   | {
       tag: "player-model";
       payload: {
@@ -1898,6 +1910,10 @@ const isPayload = (tag: EffectTag, value: unknown): boolean => {
       );
     case "figure-stop":
       return isShort(p.id, 64);
+    case "player-avatar":
+      // Which kind is a question the world answers, the same way the model file
+      // beside it is one it resolves; a name it does not carry changes nothing.
+      return isPlayer(p.player) && isShort(p.kind, MAX_AVATAR_KIND);
     case "player-model":
       return (
         isPlayer(p.player) &&

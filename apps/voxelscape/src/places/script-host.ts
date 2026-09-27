@@ -537,6 +537,8 @@ export interface ScriptHostParams extends RequireOnly<
    * or "" when the script named none.
    */
   onCatalog?: (player: string, query: string) => void;
+  /** Called when the script changes which avatar a player is drawn as. */
+  onPlayerAvatar?: (player: string, kind: string) => void;
   /** Called when the script changes what a player wears; `model` "" is the plain cube. */
   onPlayerModel?: (player: string, model: string, modelUri: string) => void;
   /**
@@ -648,6 +650,7 @@ export class ScriptHost {
   }) => void;
   private readonly onTeleport?: (player: string, place: string) => void;
   private readonly onCatalog?: (player: string, query: string) => void;
+  private readonly onPlayerAvatar?: (player: string, kind: string) => void;
   private readonly onPlayerModel?: (
     player: string,
     model: string,
@@ -767,6 +770,7 @@ export class ScriptHost {
     this.onStructureEdit = params.onStructureEdit;
     this.onTeleport = params.onTeleport;
     this.onCatalog = params.onCatalog;
+    this.onPlayerAvatar = params.onPlayerAvatar;
     this.onPlayerModel = params.onPlayerModel;
     this.onPlayerView = params.onPlayerView;
     this.refreshData = params.refreshData;
@@ -2284,6 +2288,11 @@ export class ScriptHost {
       case "player-model": {
         const { player, model, modelUri } = effect.payload;
         this.onPlayerModel?.(player, model ?? "", modelUri ?? "");
+        break;
+      }
+      case "player-avatar": {
+        const { player, kind } = effect.payload;
+        this.onPlayerAvatar?.(player, kind);
         break;
       }
       case "figure-stop": {

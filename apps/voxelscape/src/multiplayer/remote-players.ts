@@ -16,6 +16,13 @@ import {
   type PerspectiveCamera,
 } from "@random-mesh/rmsl/scene";
 import { createPlayerSkin, type PlayerSkin } from "../player/player-skin";
+import { avatarOfModel } from "../player/avatars";
+import { PlayerGait } from "../player/gait";
+import type { FigureGait } from "../places/voxel-figures";
+import {
+  speedBetween,
+  MAX_EXTRAPOLATION_SECONDS,
+} from "../places/figure-motion";
 import { hashDid } from "./presence";
 import type { Pose } from "./pose";
 
@@ -42,6 +49,14 @@ interface RemotePlayer {
   updatedAt: number;
   /** The place model file the player wears, or null for the plain cube. */
   model: string | null;
+  /** Where this player was last reported and when, to read a speed from. */
+  reported: { x: number; z: number; at: number } | null;
+  /** How fast the last two poses said this player was going. */
+  speed: number;
+  /** The legs of a peer whose avatar can walk. */
+  gait: PlayerGait;
+  /** The pose this player is drawn at, stepped once a frame in `tick`. */
+  gaitPose: FigureGait;
 }
 
 /** The readable tail of a DID (e.g. `did:plc:abc123` -> `abc123`). */
@@ -156,6 +171,13 @@ export class RemotePlayers {
     const player = this.players.get(did) ?? this.createPlayer(did);
     player.target = pose;
     player.updatedAt = now;
+    // A pose is a position and a moment, and only two of them say how fast
+    // this peer is going: a peer broadcasts a pose when it moves, not once a
+    // frame, so the speed is read here where both are in hand.
+    const from = player.reported;
+    player.reported = { x: pose.x, z: pose.z, at: now };
+    player.speed =
+      from === null ? 0 : (speedBetween(from, player.reported) ?? 0);
     // A player wearing a model draws the model, not the cube behind it.
     player.cube.visible = player.model === null;
     player.label.visible = true;
@@ -209,6 +231,9 @@ export class RemotePlayers {
     if (player !== undefined) {
       player.model = model;
       player.cube.visible = model === null;
+      // A different model is a different set of legs: whether it can walk at
+      // all, and at what stride, is that model's to say.
+      player.gait = new PlayerGait(avatarOfModel(model ?? "")?.gait);
     } else if (model !== null) {
       this.models.set(did, model);
     } else {
@@ -223,7 +248,8 @@ export class RemotePlayers {
 
   /**
    * Every rendered player wearing a model, as figures for the model renderer:
-   * where the eased cube stands, how it faces, and which model it wears.
+   * where the eased cube stands, how it faces, which model it wears, and how
+   * far through its walk it is.
    */
   figures(): Array<{
     id: string;
@@ -232,6 +258,7 @@ export class RemotePlayers {
     z: number;
     yaw: number;
     model: string;
+    gait: FigureGait;
   }> {
     const out: Array<{
       id: string;
@@ -240,6 +267,7 @@ export class RemotePlayers {
       z: number;
       yaw: number;
       model: string;
+      gait: FigureGait;
     }> = [];
     for (const [did, player] of this.players) {
       if (player.model === null) {
@@ -252,6 +280,7 @@ export class RemotePlayers {
         z: player.cube.position.z,
         yaw: player.cube.rotation.y,
         model: player.model,
+        gait: player.gaitPose,
       });
     }
     return out;
@@ -282,6 +311,7 @@ export class RemotePlayers {
   tick(dt: number): void {
     const alpha = 1 - Math.exp(-SMOOTH_RATE * dt);
     const scratch = new Vector3();
+    const now = Date.now();
     for (const player of this.players.values()) {
       const { cube, label, target } = player;
       cube.visible = player.model === null;
@@ -291,6 +321,12 @@ export class RemotePlayers {
       label.position.copy(cube.position);
       label.position.y += AVATAR_HALF + LABEL_OFFSET;
       label.lookAt(this.camera.position);
+      // A peer that has stopped sends no further poses, so a speed read from
+      // the last two of them goes stale; past the window the drawn position
+      // stops extrapolating too, and both mean the same thing — the peer is
+      // standing still.
+      const moving = now - player.updatedAt <= MAX_EXTRAPOLATION_SECONDS * 1000;
+      player.gaitPose = player.gait.update(dt, moving ? player.speed : 0, true);
     }
   }
 
@@ -322,6 +358,10 @@ export class RemotePlayers {
       target: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 },
       updatedAt: 0,
       model,
+      reported: null,
+      speed: 0,
+      gait: new PlayerGait(avatarOfModel(model ?? "")?.gait),
+      gaitPose: { role: "idle", phase: 0 },
     };
     this.players.set(did, player);
     return player;

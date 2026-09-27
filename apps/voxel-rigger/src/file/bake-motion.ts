@@ -1,10 +1,11 @@
-// Turning a rig's motion into the motion format a voxel model carries, so a
+// Turning a rig's motions into the motion format a voxel model carries, so a
 // figure animated here can be played in a world that only knows the model zip.
 // A rig moves bones and hangs parts off them; a model motion moves parts
-// directly. Baking samples every bone at each key of the motion, reads the
-// world transform of each bound part from its bone, and writes that part's
-// local pose as a key — so playing the baked motion poses the parts exactly
-// where the rig did.
+// directly. Baking samples every bone at each key of a motion, reads the world
+// transform of each bound part from its bone, and writes that part's local pose
+// as a key — so playing the baked motion poses the parts exactly where the rig
+// did. A model may carry a whole set of them, and a set is baked in one go so
+// the figure is flattened once and every motion read onto the same parts.
 import { Matrix3x3, Vector3D, type Quaternion } from "@big-mesh-studios/maths";
 import {
   composePose,
@@ -77,24 +78,21 @@ function keyMoments(motion: BoneMotion): number[] {
 }
 
 /**
- * `motion` baked into the model motion that plays the same poses on `figure`.
+ * `motion` baked onto a figure whose hierarchy is already flattened, which is
+ * what lets a run of motions share one flatten.
  *
  * Each part bound to a bone gets a key at every moment the rig had one,
  * standing where that bone carried the part then. The part's own rest is
  * ignored between keys and read fresh at each, because the figure has been
  * flattened: what a key says is the part's whole pose, not an offset from its
  * rest.
- *
- * @param figure The model the parts belong to. Its hierarchy is flattened, so
- * the figure passed to `writeAnimatedModel` is the one that must be saved.
  */
-export function bakeMotion(
-  figure: Figure,
+function bakeOnto(
+  flattened: Figure,
   skeleton: Skeleton,
   bindings: Binding[],
   motion: BoneMotion,
 ): Motion {
-  const flattened = flattenFigure(figure);
   const framesPerSecond =
     motion.framesPerSecond > 0 ? motion.framesPerSecond : 12;
   const moments = keyMoments(motion);
@@ -151,18 +149,49 @@ export function bakeMotion(
 }
 
 /**
- * `figure` written as a model zip carrying `motion` baked for it, so the world
- * a script draws it in can play it. The figure that is written is the flattened
- * one baking produced, which is the figure the motion's keys pose.
+ * `motion` baked into the model motion that plays the same poses on `figure`.
+ *
+ * @param figure The model the parts belong to. Its hierarchy is flattened, so
+ * the figure passed to `writeAnimatedModel` is the one that must be saved.
+ */
+export function bakeMotion(
+  figure: Figure,
+  skeleton: Skeleton,
+  bindings: Binding[],
+  motion: BoneMotion,
+): Motion {
+  return bakeOnto(flattenFigure(figure), skeleton, bindings, motion);
+}
+
+/**
+ * Every motion of `motions` baked onto `figure`, each under its own name. The
+ * figure is flattened once and every motion read onto the same parts, so a
+ * model carrying a whole set of them costs one flatten rather than one each.
+ */
+export function bakeMotions(
+  figure: Figure,
+  skeleton: Skeleton,
+  bindings: Binding[],
+  motions: BoneMotion[],
+): Motion[] {
+  const flattened = flattenFigure(figure);
+  return motions.map((motion) =>
+    bakeOnto(flattened, skeleton, bindings, motion),
+  );
+}
+
+/**
+ * `figure` written as a model zip carrying `motions` baked for it, so the world
+ * a script draws it in can play them. The figure that is written is the
+ * flattened one baking produced, which is the figure the motions' keys pose.
  */
 export async function writeAnimatedModel(
   figure: Figure,
   skeleton: Skeleton,
   bindings: Binding[],
-  motion: BoneMotion,
+  motions: BoneMotion | BoneMotion[],
 ): Promise<Blob> {
   const flattened = flattenFigure(figure);
-  return saveFigure(flattened, [
-    bakeMotion(figure, skeleton, bindings, motion),
-  ]);
+  const held = Array.isArray(motions) ? motions : [motions];
+  return saveFigure(flattened, bakeMotions(figure, skeleton, bindings, held));
 }

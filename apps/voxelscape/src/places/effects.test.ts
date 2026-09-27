@@ -1689,6 +1689,38 @@ describe("player model effect", () => {
   });
 });
 
+describe("player avatar effect", () => {
+  it("accepts a named kind, and refuses one that is not a name", () => {
+    // Which kinds exist is the world's question; the boundary only decides
+    // that the payload is well-formed, the way the model file beside it is.
+    expect(
+      parseEffect(effect("player-avatar", { player: "", kind: "human" })),
+    ).toEqual({
+      tag: "player-avatar",
+      payload: { player: "", kind: "human" },
+    });
+    expect(
+      parseEffect(effect("player-avatar", { player: "", kind: "cube" })),
+    ).not.toBeNull();
+    expect(
+      parseEffect(effect("player-avatar", { player: "", kind: "" })),
+    ).toBeNull();
+    expect(parseEffect(effect("player-avatar", { player: "" }))).toBeNull();
+    expect(
+      parseEffect(
+        effect("player-avatar", { player: "", kind: "x".repeat(17) }),
+      ),
+    ).toBeNull();
+    // The player is bounded but not resolved here: who the name is, and
+    // whether it is this peer's, is the world's answer.
+    expect(
+      parseEffect(
+        effect("player-avatar", { player: "a".repeat(257), kind: "human" }),
+      ),
+    ).toBeNull();
+  });
+});
+
 describe("figure animation", () => {
   it("accepts playing a motion and stopping it", () => {
     expect(

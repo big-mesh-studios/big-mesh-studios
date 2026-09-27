@@ -180,6 +180,14 @@ _Avoid_: cutscene (that is a fixed sequence of shots, not a view held on a mover
 A model's own saved motion that a place script plays on a **Scripted figure** with `figure-animate`: the host stores the chosen motion's name, speed, and loop, and **VoxelFigures** poses the figure's parts at the frame the shared clock gives. The motion itself is the stacker format's, so voxel-rigger can author one and export it in the model zip; the figure only names it.
 _Avoid_: Motion (that is the scripted path and spin of the whole figure, not its parts), tween
 
+**Avatar kind**:
+Which of the world's avatars a player is drawn as — `cube` or `human` — chosen with `/player:avatar` or a script's `setPlayerAvatar` and remembered in the page's own storage, so it follows the player into every place. A kind is a look, not a body: it names the model file drawn at the player's feet, how tall that is drawn, and which of the model's motions play for which role, and the cube stays the volume the physics, the camera and the collision use either way. The cube is the model file of no name, which is what makes it the default. A kind is who a player is, so a script that changes it is remembered as theirs; a place script's `player-model` dresses its players for the place they are in and is forgotten on the way out.
+_Avoid_: Avatar (that's a **PlayerAvatar**, the local player's whole cube-plus-camera object), costume, skin (that's a **PlayerSkin**), body (the cube is the body whichever kind is drawn)
+
+**Gait**:
+The locomotion a moving figure plays of its own accord: a role — `idle`, `walk` or `run` — and a phase in cycles of the motion filling that role. Read off horizontal speed by `PlayerGait`, which counts the phase by ground covered over a stride rather than by elapsed time, so a figure's feet keep step with the ground however fast it goes; **VoxelFigures** turns the phase into a frame by the chosen motion's own run, and a role the model does not carry falls to the one below it that it does. A local player's gait comes from its own velocity and a remote peer's from the last two poses that arrived, so a peer that stops moving stands still. A gait is what a figure does by itself; a **Figure animation** is one a script named.
+_Avoid_: Figure animation (that is the script's choice, sampled off the shared clock), walk cycle (one clip of a gait), animation, locomotion state machine (the role is one of three, chosen by speed)
+
 **Camera shake**:
 How far a camera shot wobbles about its eye, named by a shot's `shake` and offset by the shared clock when the world plays it. Voice-tier and per-player, so it is never replicated and never affects another peer's view.
 _Avoid_: screen shake (it moves the camera, not the drawn frame)

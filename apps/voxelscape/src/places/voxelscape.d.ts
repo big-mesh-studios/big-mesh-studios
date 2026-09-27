@@ -162,6 +162,15 @@ declare module "voxelscape" {
    */
   export function openCatalog(options?: CatalogOptions): void;
 
+  /** Which of the world's own avatars a player may be drawn as. */
+  export type AvatarKind = "cube" | "human";
+
+  /**
+   * Draws a player as one of the world's own avatars — the cube or a walking
+   * human — and remembers it as the avatar they carry into other places.
+   */
+  export function setPlayerAvatar(kind: AvatarKind, player?: string): void;
+
   /** Dresses a player in one of the place's models; "" returns them to the plain cube. */
   export function setPlayerModel(
     model: keyof ModelsByName | "",

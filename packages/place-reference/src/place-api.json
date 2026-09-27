@@ -604,6 +604,26 @@
       "returns": "void"
     },
     {
+      "name": "setPlayerAvatar",
+      "signature": "(kind: AvatarKind, player?: string | undefined): void",
+      "doc": "Draws a player as one of the world's own avatars — the cube or a walking human — and remembers it as the avatar they carry into other places.",
+      "params": [
+        {
+          "name": "kind",
+          "type": "AvatarKind",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "player",
+          "type": "string | undefined",
+          "optional": true,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "setPlayerModel",
       "signature": "(model: \"\" | keyof ModelsByName, player?: string | undefined): void",
       "doc": "Dresses a player in one of the place's models; \"\" returns them to the plain cube.",
@@ -904,6 +924,14 @@
       "doc": "A value a script may hang on an entity under a name.",
       "members": [],
       "union": ["string", "number", "boolean"],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "AvatarKind",
+      "doc": "Which of the world's own avatars a player may be drawn as.",
+      "members": [],
+      "union": ["cube", "human"],
       "alternatives": [],
       "type": ""
     },
@@ -1769,6 +1797,7 @@
         "prompt-remove",
         "figure-animate",
         "figure-stop",
+        "player-avatar",
         "player-model",
         "light",
         "light-remove",
@@ -4290,6 +4319,25 @@
           "removedBy": ""
         },
         {
+          "tag": "player-avatar",
+          "doc": "Chooses which of the world's own avatars a player is drawn as, the cube or a walking human.",
+          "fields": [
+            {
+              "name": "player",
+              "type": "string",
+              "optional": false,
+              "doc": "The player whose avatar changes; \"\" for the local player."
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "optional": false,
+              "doc": "Which of the world's avatars the player is drawn as."
+            }
+          ],
+          "removedBy": ""
+        },
+        {
           "tag": "player-model",
           "doc": "Gives a player a model to wear in place of the plain cube.",
           "fields": [
@@ -6465,6 +6513,11 @@
       "name": "MAX_ATTRIBUTES",
       "value": "32",
       "doc": "The most attributes one entity may carry."
+    },
+    {
+      "name": "MAX_AVATAR_KIND",
+      "value": "16",
+      "doc": "The longest an avatar kind's name may be."
     },
     {
       "name": "MAX_BEAM_WIDTH",

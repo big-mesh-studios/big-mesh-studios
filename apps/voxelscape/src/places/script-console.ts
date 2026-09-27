@@ -129,6 +129,8 @@ export interface ScriptConsoleParams extends RequireOnly<
    * or "" when the script named none.
    */
   onCatalog?: (player: string, query: string) => void;
+  /** Called when the script changes which avatar a player is drawn as. */
+  onPlayerAvatar?: (player: string, kind: string) => void;
   /** Called when the script changes what a player wears; `model` "" is the plain cube. */
   onPlayerModel?: (player: string, model: string, modelUri: string) => void;
   /**
@@ -241,6 +243,7 @@ export class ScriptConsole {
   }) => void;
   private readonly onTeleport: (player: string, place: string) => void;
   private readonly onCatalog: (player: string, query: string) => void;
+  private readonly onPlayerAvatar: (player: string, kind: string) => void;
   private readonly onPlayerModel: (
     player: string,
     model: string,
@@ -303,6 +306,7 @@ export class ScriptConsole {
     this.onStructureEdit = params.onStructureEdit ?? (() => {});
     this.onTeleport = params.onTeleport ?? (() => {});
     this.onCatalog = params.onCatalog ?? (() => {});
+    this.onPlayerAvatar = params.onPlayerAvatar ?? (() => {});
     this.onPlayerModel = params.onPlayerModel ?? (() => {});
     this.onPlayerView = params.onPlayerView ?? (() => {});
     this.refreshData = params.refreshData;
@@ -785,6 +789,7 @@ export class ScriptConsole {
       onStructureEdit: (edit) => this.onStructureEdit(edit),
       onTeleport: (player, place) => this.onTeleport(player, place),
       onCatalog: (player, query) => this.onCatalog(player, query),
+      onPlayerAvatar: (player, kind) => this.onPlayerAvatar(player, kind),
       onPlayerModel: (player, model, modelUri) =>
         this.onPlayerModel(player, model, modelUri),
       onPlayerView: (player, view) => this.onPlayerView(player, view),

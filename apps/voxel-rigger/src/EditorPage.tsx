@@ -96,8 +96,8 @@ const EditorPage: Component = () => {
   };
 
   const exportAnimatedModel = async () => {
-    const motion = rig.motion();
-    if (motion === undefined) {
+    const motions = rig.motions();
+    if (motions.length === 0) {
       rig.setStatus("Import or key a motion first.");
       return;
     }
@@ -109,14 +109,20 @@ const EditorPage: Component = () => {
         },
         rig.skeleton(),
         rig.bindings(),
-        motion,
+        motions,
       );
+      // Named after the skeleton rather than one clip: the whole set goes into
+      // the one file, so a name per clip would collide with itself.
+      const name =
+        rig.skeleton().name.replace(/[^A-Za-z0-9._-]/g, "") || "model";
       await fileSave(blob, {
-        fileName: `${motion.name || "motion"}.zip`,
+        fileName: `${name}.zip`,
         extensions: [".zip"],
         mimeTypes: ["application/zip"],
       });
-      rig.setStatus(`Exported ${motion.name} for the world.`);
+      rig.setStatus(
+        `Exported ${motions.length} motion${motions.length === 1 ? "" : "s"} for the world.`,
+      );
     } catch (error) {
       rig.setStatus(`Could not export the animation: ${String(error)}`);
     }
