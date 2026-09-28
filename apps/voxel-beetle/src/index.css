@@ -1,0 +1,151 @@
+/*
+ * The reset these interfaces are built on. It was Tailwind's preflight until
+ * nothing else of Tailwind was used: no utility class, and no theme beyond the
+ * two surface colours below, against a stylesheet that shipped whole.
+ *
+ * What is kept is what the components here actually lean on — every element
+ * sized by its border box and carrying no margin or padding of its own, form
+ * controls that inherit their font and colour instead of the browser's, and
+ * media laid out as blocks.
+ */
+*,
+*::before,
+*::after,
+::backdrop {
+  box-sizing: border-box;
+  border: 0 solid;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  line-height: 1.5;
+  tab-size: 4;
+  -webkit-text-size-adjust: 100%;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+button,
+input,
+select,
+optgroup,
+textarea {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background-color: transparent;
+  border-radius: 0;
+  opacity: 1;
+}
+
+button,
+input[type="button"],
+input[type="reset"],
+input[type="submit"] {
+  appearance: button;
+}
+
+::placeholder {
+  color: color-mix(in oklab, currentcolor 50%, transparent);
+  opacity: 1;
+}
+
+textarea {
+  resize: vertical;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: inherit;
+}
+
+img,
+svg,
+video,
+canvas,
+audio,
+iframe,
+embed,
+object {
+  display: block;
+  vertical-align: middle;
+}
+
+img,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+html {
+  color-scheme: dark;
+
+  --margin: 5px;
+  --size: 36px;
+
+  --front: white;
+  --back: oklch(23.26% 0.014 253.1);
+
+  --grey: #707070;
+  --light-grey: #a9a9a9;
+  --dark-grey: #343434;
+}
+
+* {
+  scrollbar-color: var(--grey) transparent;
+  scrollbar-width: thin;
+  overscroll-behavior: none;
+}
+
+/* A finger is a wider pointer than a mouse, so every control is given a target
+   worth tapping. A field is also kept at the size at which a phone stops
+   zooming the page in when it takes focus, which it does below sixteen pixels
+   and which nothing else here would prevent. */
+@media (any-pointer: coarse) {
+  html {
+    --margin: 8px;
+    --size: 44px;
+  }
+
+  button,
+  input,
+  select {
+    min-height: 44px;
+    /* Long enough that a second tap is not read as the tail of a double tap,
+       without stopping a double tap being read as one where it should be. */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button {
+    padding: 4px 8px;
+  }
+
+  input,
+  select {
+    font-size: 16px;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--front);
+  outline-offset: 2px;
+}
+
+/* The split between the two views is dragged with a finger as often as with a
+   mouse, and a five pixel divider is not a target. */
+.handle {
+  touch-action: none;
+}

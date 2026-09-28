@@ -1,6 +1,6 @@
 import type { JSX } from "@solidjs/web/jsx-runtime";
 
-// Both applications are folders beside this page on the same site, so their
+// The applications are folders beside this page on the same site, so their
 // addresses are the site root with a name after it.
 const base = import.meta.env.BASE_URL;
 
@@ -13,7 +13,7 @@ interface AppCardProps {
   children: JSX.Element;
 }
 
-/** One of the two applications, as a panel that links to it. */
+/** One of the applications, as a panel that links to it. */
 function AppCard(props: AppCardProps) {
   return (
     <a class="card" href={props.href} style={{ "--accent": props.accent }}>
@@ -47,7 +47,7 @@ export function App() {
     <>
       <header>
         <h1>big mesh studios</h1>
-        <p>A voxel editor, and a world that wears what it draws.</p>
+        <p>Two voxel editors, and a world that wears what they draw.</p>
       </header>
 
       <main>
@@ -87,11 +87,29 @@ export function App() {
           share with whoever else is in it. Its monsters wear models drawn next
           door.
         </AppCard>
+
+        <AppCard
+          name="voxel-beetle"
+          href={`${base}voxel-beetle/`}
+          accent="#f5a623"
+          call="Open the editor"
+          mark={
+            <Mark
+              colour="#f5a623"
+              top="M24 4 44 15v11L24 15 4 26V15Z"
+              left="M4 26 24 15v11L4 37Z"
+              right="M44 26 24 15v11l20 11Z"
+            />
+          }
+        >
+          Draw the voxels themselves, one slice at a time, and keep every shape
+          six flat faces cannot hold. Saved as a compressed voxel file.
+        </AppCard>
       </main>
 
       <footer>
         <p>
-          Both are open source, in one repository:{" "}
+          They are open source, in one repository:{" "}
           <a href="https://github.com/big-mesh-studios/big-mesh-studios">
             github.com/big-mesh-studios/big-mesh-studios
           </a>

@@ -1,0 +1,17 @@
+.container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* A drag turns the model and a pinch steps away from it, so the canvas takes
+     every gesture itself rather than letting one also scroll the page. */
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}

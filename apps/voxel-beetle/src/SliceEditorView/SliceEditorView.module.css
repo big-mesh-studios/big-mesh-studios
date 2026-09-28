@@ -1,0 +1,20 @@
+.container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Every gesture on the canvas is the editor's own: a drag draws, a pinch
+     moves the view, and neither may also scroll the page or zoom it. */
+  touch-action: none;
+  /* The long press that opens a context menu on a canvas is never wanted, and
+     on a phone it is what a two-finger press turns into. */
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}

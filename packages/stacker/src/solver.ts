@@ -17,6 +17,7 @@ import {
   type Section,
   type Sides,
 } from "./data";
+import type { Volume } from "./volume";
 
 export type ViewSpec = {
   kind: keyof Sides;
@@ -273,6 +274,47 @@ const faceColourIndex = (side: Bitmap, px: number, py: number): number => {
   const index = side.data[py * side.width + px];
   return index === Bitmap.EMPTY ? 0 : index;
 };
+
+/**
+ * A box of voxels packed into the format its material reads, with no carving:
+ * every voxel that has a palette index in it is solid, and all six of its faces
+ * take that one index, because a volume gives a voxel one colour rather than a
+ * colour for each face.
+ *
+ * The bit layout is the one `solveVoxels` writes, so a voxel reads the same
+ * whichever of the two a model was built by.
+ */
+export function packVolume(volume: Volume): Uint8Array {
+  const { dimensions, voxels } = volume;
+  const { width, height, depth } = dimensions;
+  const out = new Uint8Array(width * height * depth * 4);
+
+  for (let z = 0; z < depth; z++) {
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const index = voxels[z * width * height + y * width + x];
+        if (index === Bitmap.EMPTY) {
+          continue;
+        }
+
+        // Every face takes the voxel's one index, so the same value is written
+        // into all six fields rather than read from six drawings.
+        const offset = (z * width * height + y * width + x) << 2;
+
+        out[offset + 0] = index | ((index & 0b111) << 5);
+        out[offset + 1] =
+          ((index >> 3) & 0b11) |
+          ((index & 0b11111) << 2) |
+          ((index & 0b1) << 7);
+        out[offset + 2] = ((index >> 1) & 0b1111) | ((index & 0b1111) << 4);
+        out[offset + 3] =
+          ((index >> 4) & 0b1) | ((index & 0b11111) << 1) | 0b11000000;
+      }
+    }
+  }
+
+  return out;
+}
 
 /** The palette as the material wants it: one row of texels, RGBA, in order. */
 export function encodePalette(palette: RGBA[]): Uint8Array {
