@@ -50,6 +50,9 @@ Things this codebase already relies on that a 1.x reflex gets wrong:
 - [`apps/voxel-beetle/`](./apps/voxel-beetle) — the other editor: the same model
   is instead a box of voxels, drawn by editing one XY, YZ or ZX slice at a time.
   Saved as `.cvox` and not published.
+- [`apps/voxel-rigger/`](./apps/voxel-rigger) — the rigger: a model from either
+  editor is hung on a skeleton, the skeleton is bound to the model's parts, and
+  the motions are baked back into the same zip the stacker editor writes.
 - [`apps/voxelscape/`](./apps/voxelscape) — the world: an infinite scrolling
   grid of procedurally generated terrain, whose monsters wear a model read back
   from the first editor.

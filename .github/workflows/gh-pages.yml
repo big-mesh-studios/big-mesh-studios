@@ -48,10 +48,11 @@ jobs:
       # nothing is sent to a browser to run it.
       - name: Gather the front page, the builds, and the docs into one site
         run: |
-          mkdir -p site/rm-stacker site/voxel-beetle site/voxelscape site/docs
+          mkdir -p site/rm-stacker site/voxel-beetle site/voxel-rigger site/voxelscape site/docs
           cp -r apps/homepage/dist/. site/
           cp -r apps/rm-stacker/dist/. site/rm-stacker/
           cp -r apps/voxel-beetle/dist/. site/voxel-beetle/
+          cp -r apps/voxel-rigger/dist/. site/voxel-rigger/
           cp -r apps/voxelscape/dist/. site/voxelscape/
           cp -r apps/place-docs/dist/. site/docs/
 
@@ -59,9 +60,11 @@ jobs:
       # file on disk. GitHub Pages serves `404.html` for anything it cannot
       # find, so handing it the application means a page opened directly,
       # reloaded, or followed from a link arrives at the application, which then
-      # reads the address and shows the right page. Voxelscape needs no such
-      # copy: its own addresses live after a `#`, which a browser never sends
-      # to the server at all, so GitHub Pages never has to answer for one.
+      # reads the address and shows the right page. The rigger needs no such
+      # copy either: it is one page with no addresses of its own. Voxelscape
+      # needs none because its own addresses live after a `#`, which a browser
+      # never sends to the server at all, so GitHub Pages never has to answer
+      # for one.
       - name: Answer unknown addresses with the editors
         run: |
           cp site/rm-stacker/index.html site/rm-stacker/404.html

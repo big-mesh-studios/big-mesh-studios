@@ -25,7 +25,11 @@ function AppCard(props: AppCardProps) {
   );
 }
 
-/** A stack of three faces, drawn in the colour the panel is keyed to. */
+/**
+ * The faces of a solid seen from a corner, drawn in the colour the panel is
+ * keyed to. A path can carry more than one face, for a solid of more than one
+ * box.
+ */
 function Mark(props: {
   colour: string;
   top: string;
@@ -47,7 +51,10 @@ export function App() {
     <>
       <header>
         <h1>big mesh studios</h1>
-        <p>Two voxel editors, and a world that wears what they draw.</p>
+        <p>
+          Two voxel editors, a rigger to move them, and a world that wears what
+          they draw.
+        </p>
       </header>
 
       <main>
@@ -104,6 +111,25 @@ export function App() {
         >
           Draw the voxels themselves, one slice at a time, and keep every shape
           six flat faces cannot hold. Saved as a compressed voxel file.
+        </AppCard>
+
+        <AppCard
+          name="voxel-rigger"
+          href={`${base}voxel-rigger/`}
+          accent="#5fcde4"
+          call="Open the rigger"
+          mark={
+            <Mark
+              colour="#5fcde4"
+              top="M24 4 34 10 24 16 14 10Z M24 12 42 22 24 32 6 22Z"
+              left="M14 10 24 16v6L14 16Z M6 22 24 32v10L6 32Z"
+              right="M34 10 24 16v6l10-6Z M42 22 24 32v10l18-10Z"
+            />
+          }
+        >
+          Build a skeleton, hang the parts of a voxel model on it, and set it
+          walking. The motions are baked back into the model, ready for a world
+          to wear.
         </AppCard>
       </main>
 

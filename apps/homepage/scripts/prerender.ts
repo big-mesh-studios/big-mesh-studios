@@ -24,7 +24,7 @@ const document = `<!doctype html>
     <title>big mesh studios</title>
     <meta
       name="description"
-      content="Two voxel editors, and a world that wears what they draw."
+      content="Two voxel editors, a rigger to move them, and a world that wears what they draw."
     />
     <link
       rel="icon"
