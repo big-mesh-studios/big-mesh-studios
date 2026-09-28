@@ -9,10 +9,11 @@
 // asks for, eased toward its reported `x`/`z` rather than snapped to them
 // (`figure-motion.ts`) since a remote figure's own position can go many frames
 // between reports, and spun about its own axis after `yaw` when the entity
-// names one. A figure a caller flashes plays a moment of red, wholly
-// independent of whatever the script does with the hit; one dying plays a fall
-// over the ground before it is gone, timed off the moment the entity's own
-// `dyingAt` names.
+// names one. A figure whose position the caller already holds exactly says so
+// and is drawn on it rather than eased toward it. A figure a caller flashes
+// plays a moment of red, wholly independent of whatever the script does with
+// the hit; one dying plays a fall over the ground before it is gone, timed off
+// the moment the entity's own `dyingAt` names.
 import { Group, Quaternion, Vector3 } from "@random-mesh/rmsl/scene";
 import type { DayNightState } from "../environment/day-night";
 import {
@@ -31,7 +32,7 @@ import {
   type LoadedFigure,
 } from "@big-mesh-studios/stacker/format";
 import { LIGHT_TO_UNIT, MAX_LIGHT } from "../world/light-store";
-import { FigureMotionTrack } from "./figure-motion";
+import { FigureMotionTrack, type Position2 } from "./figure-motion";
 import type { FigureAnimation, FigureLook } from "./script-host";
 
 /** How tall a standing figure is drawn when its entity names no height. */
@@ -167,6 +168,17 @@ export interface RenderedFigure {
   /** Drawn height in world units; defaults to `FIGURE_HEIGHT`. */
   height?: number;
   /**
+   * Whether the drawn position eases toward the position this figure was last
+   * given, or stands exactly on the one it is given now. Absent eases, which is
+   * what a figure a script step or a network broadcast places wants: its
+   * reported position can be many frames old, and drawing it on the last report
+   * alone would make it step between them. A figure the world owns outright —
+   * a player's own worn model, a level editor's placement — reports a position
+   * that is already current, and easing it only makes it trail or sail past
+   * the body it is drawn on.
+   */
+  eased?: boolean;
+  /**
    * The clock moment this figure started falling, or undefined while it is
    * standing — the renderer times the fall from this rather than owning any
    * notion of death itself.
@@ -273,7 +285,10 @@ export class VoxelFigures {
   private readonly heights = new Map<string, number>();
   /** Ids currently flashing red, with the local moment the flash ends. */
   private readonly hurtUntil = new Map<string, number>();
-  /** Where each standing figure is actually drawn, eased toward its reports. */
+  /**
+   * The eased position of each standing figure that eases, one track per id.
+   * A figure drawn exactly is in none of them.
+   */
   private readonly motion = new Map<string, FigureMotionTrack>();
   /** Scratch for the per-figure orientation, so drawing a frame allocates none. */
   private readonly spinAxis = new Vector3();
@@ -437,12 +452,7 @@ export class VoxelFigures {
       mesh.group.scale.set(scale, scale, scale);
       const yaw = figure.yaw ?? 0;
       if (figure.dyingAt === undefined) {
-        let track = this.motion.get(figure.id);
-        if (track === undefined) {
-          track = new FigureMotionTrack({ x: figure.x, z: figure.z }, now);
-          this.motion.set(figure.id, track);
-        }
-        const drawn = track.next({ x: figure.x, z: figure.z }, now, dt);
+        const drawn = this.drawnAt(figure, now, dt);
         mesh.group.position.set(drawn.x, figure.y + height / 2, drawn.z);
         if (figure.spin === undefined) {
           mesh.group.rotation.set(0, yaw, 0);
@@ -511,6 +521,24 @@ export class VoxelFigures {
         this.animated.delete(id);
       }
     }
+  }
+
+  /**
+   * Where `figure` is drawn this frame: on the position it was given when that
+   * is exact, and eased toward it when it is a report a step or a broadcast may
+   * be many frames old. A figure drawn exactly keeps no track, so it has no
+   * last velocity of its own to carry it past where it stands.
+   */
+  private drawnAt(figure: RenderedFigure, now: number, dt: number): Position2 {
+    if (figure.eased === false) {
+      return { x: figure.x, z: figure.z };
+    }
+    let track = this.motion.get(figure.id);
+    if (track === undefined) {
+      track = new FigureMotionTrack({ x: figure.x, z: figure.z }, now);
+      this.motion.set(figure.id, track);
+    }
+    return track.next({ x: figure.x, z: figure.z }, now, dt);
   }
 
   /**

@@ -253,7 +253,7 @@ What a place script does with `teleport`: sends one player to another place, nam
 _Avoid_: portal (that is a script's prop and zone around it), redirect (it stays inside this application)
 
 **Worn player model**:
-A place model a player wears in place of the plain cube, set by `player-model` and drawn by the same figure renderer an NPC's model is. The cube stays the body the physics and camera use and is hidden while a model is worn, so a worn model is cosmetic. A player's pick travels to peers as a `player-model` mesh message, and is remembered through **Account data** / **Place data** so it survives a join.
+A place model a player wears in place of the plain cube, set by `player-model` and drawn by the same figure renderer an NPC's model is. The cube stays the body the physics and camera use and is hidden while a model is worn, so a worn model is cosmetic. It is drawn on the position the player is standing at, rather than eased toward it the way a **Scripted figure**'s and a peer's are. A player's pick travels to peers as a `player-model` mesh message, and is remembered through **Account data** / **Place data** so it survives a join.
 _Avoid_: avatar (that is the whole cube-plus-camera object), skin (that is the cube's material)
 
 **Scripted UI panel**:

@@ -1,18 +1,18 @@
 # What voxelscape is made of
 
-Drawn from the imports under `src` at 254f059 by `pnpm architecture`.
+Drawn from the imports under `src` at 32fa7ee by `pnpm architecture`.
 Nothing here is written by hand: change the code and run it again.
 
 ```mermaid
 graph TD
   shell["shell<br/>6 files · 2064 lines"]
-  voxelscape["voxelscape<br/>3 files · 3822 lines"]
+  voxelscape["voxelscape<br/>3 files · 3849 lines"]
   world["world<br/>37 files · 8679 lines"]
   renderers["renderers<br/>25 files · 7460 lines"]
   render["render<br/>4 files · 1145 lines"]
   player["player<br/>20 files · 5012 lines"]
   multiplayer["multiplayer<br/>14 files · 3703 lines"]
-  places["places<br/>52 files · 26869 lines"]
+  places["places<br/>52 files · 26897 lines"]
   environment["environment<br/>6 files · 1952 lines"]
   atproto["atproto<br/>8 files · 1869 lines"]
   ui["ui<br/>19 files · 4583 lines"]
@@ -72,13 +72,13 @@ graph TD
 | area           | what it is for                                                         | files | lines |
 | -------------- | ---------------------------------------------------------------------- | ----- | ----- |
 | `shell`        | the page, the console, and what wires a world into them                | 6     | 2064  |
-| `voxelscape`   | one world: its frame, and every part below it                          | 3     | 3822  |
+| `voxelscape`   | one world: its frame, and every part below it                          | 3     | 3849  |
 | `world`        | voxels, light, the streaming window, and the workers that fill it      | 37    | 8679  |
 | `renderers`    | turning voxels into geometry, and drawing it                           | 25    | 7460  |
 | `render`       | the frame loop, the resolution scaler, and the probe that times them   | 4     | 1145  |
 | `player`       | the body, its input, its tools and what they do to the world           | 20    | 5012  |
 | `multiplayer`  | other players, over a peer connection                                  | 14    | 3703  |
-| `places`       | a published place: its script, its people, and the sandbox they run in | 52    | 26869 |
+| `places`       | a published place: its script, its people, and the sandbox they run in | 52    | 26897 |
 | `environment`  | the sky, the clock, the weather and the sound                          | 6     | 1952  |
 | `atproto`      | being signed in, and reading and writing published records             | 8     | 1869  |
 | `ui`           | what is drawn over the world in the page                               | 19    | 4583  |

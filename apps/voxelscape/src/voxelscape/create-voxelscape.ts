@@ -960,7 +960,21 @@ export const createVoxelscape = ({
   const npcFigures = new VoxelFigures({
     getFigures: () => {
       const figures: RenderedFigure[] = [];
-      for (const npc of [...plannedNpcs(), ...(scriptConsole?.npcs() ?? [])]) {
+      // The two sources of an NPC stand in their own terms. A level plan's is
+      // a placement the world holds, so it is drawn exactly where the plan puts
+      // it; a script's is a figure a step or a peer's report moves, so it eases.
+      // Where both name one id the script's is drawn over the plan's.
+      for (const npc of plannedNpcs()) {
+        figures.push({
+          id: npc.id,
+          x: npc.x,
+          y: npc.y,
+          z: npc.z,
+          yaw: npc.yaw,
+          eased: false,
+        });
+      }
+      for (const npc of scriptConsole?.npcs() ?? []) {
         const pose = scriptConsole?.npcPose(npc.id) ?? null;
         const animation = scriptConsole?.animationFor(npc.id);
         const look = scriptConsole?.lookFor(npc.id);
@@ -1016,10 +1030,20 @@ export const createVoxelscape = ({
   const propFigures = new VoxelFigures({
     getFigures: () => {
       const figures: RenderedFigure[] = [];
-      for (const prop of [
-        ...plannedProps(),
-        ...(scriptConsole?.props() ?? []),
-      ]) {
+      // A plan's prop is a placement the world holds and a script's is a figure
+      // something moves, so they are drawn in their own terms as the NPCs' are.
+      for (const prop of plannedProps()) {
+        figures.push({
+          id: prop.id,
+          x: prop.x,
+          y: prop.y,
+          z: prop.z,
+          yaw: prop.yaw,
+          height: prop.height,
+          eased: false,
+        });
+      }
+      for (const prop of scriptConsole?.props() ?? []) {
         const pose = scriptConsole?.propPose(prop.id) ?? null;
         const animation = scriptConsole?.animationFor(prop.id);
         const look = scriptConsole?.lookFor(prop.id);
@@ -1077,7 +1101,9 @@ export const createVoxelscape = ({
     getFigures: () => {
       const figures: RenderedFigure[] = [];
       // A worn avatar stands where the player is, which is where the first
-      // person eye is, so it is the third person view that draws it.
+      // person eye is, so it is the third person view that draws it. The player
+      // is stepped on this frame, so the model is drawn on the position it is
+      // given rather than eased toward it the way a peer's is.
       if (localPlayerModel !== "" && !avatar.firstPerson) {
         figures.push({
           id: PLAYER_FIGURE_ID,
@@ -1087,6 +1113,7 @@ export const createVoxelscape = ({
           yaw: avatar.player.yaw,
           height: localHeight,
           gait: localGaitPose,
+          eased: false,
         });
       }
       for (const figure of multiplayer.remoteFigures()) {
