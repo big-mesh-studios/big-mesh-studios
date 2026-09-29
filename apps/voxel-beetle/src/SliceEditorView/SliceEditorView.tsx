@@ -57,7 +57,12 @@ const SliceEditorView: Component = () => {
    * model a cached picture could be known to still match.
    */
   let picture:
-    | { width: number; height: number; image: ImageData; canvas: HTMLCanvasElement }
+    | {
+        width: number;
+        height: number;
+        image: ImageData;
+        canvas: HTMLCanvasElement;
+      }
     | undefined;
 
   const pictureFor = (at: Slice): HTMLCanvasElement => {

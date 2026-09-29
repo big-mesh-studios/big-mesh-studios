@@ -134,7 +134,8 @@ export function createSliceController({
   let block: { from: Vector2D; to: Vector2D } | undefined;
   let hovered: Vector2D | undefined;
   let panning = false;
-  let pinch: { span: number; at: { clientX: number; clientY: number } } | undefined;
+  let pinch:
+    { span: number; at: { clientX: number; clientY: number } } | undefined;
 
   // How far the view has been zoomed and moved away from the fit to the canvas.
   // Both are signals rather than remembered numbers because the drawing is read
