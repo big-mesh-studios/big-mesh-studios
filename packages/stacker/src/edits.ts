@@ -16,7 +16,12 @@
 // solver has written it, so that everything downstream — the mesher, the picker,
 // whatever measures how far a part reaches — reads the corrected volume without
 // knowing any of this.
-import { Bitmap, type Dimensions3D, type RGBA } from "@big-mesh-studios/maths";
+import {
+  Bitmap,
+  type Dimensions3D,
+  type RGBA,
+  type Vector3D,
+} from "@big-mesh-studios/maths";
 import type { LoadedVolume } from "./cvox";
 import { packedFaces, writePackedVoxel } from "./solver";
 import { createVolume, volumeOffset, type Volume } from "./volume";
@@ -82,6 +87,35 @@ export function editVolumeFor(
   }
 
   return edits;
+}
+
+/**
+ * The value an edit holds at one cell for the volume to be made of `wanted`
+ * there, or nothing where the six drawings already make it that way.
+ *
+ * A cell that needs no edit says nothing, so a part with nothing the drawings
+ * cannot say has no edits at all — and a voxel put there by hand that the
+ * drawings would have put there themselves is not remembered as a hand edit, and
+ * does not keep contradicting a drawing made there afterwards.
+ *
+ * @param drawings The packed volume the six drawings give, before any edits.
+ * @param cell Which cell of the part, which must be within `dimensions`.
+ * @param wanted What that voxel is to be: `Bitmap.EMPTY` for nothing there, or a
+ * palette index.
+ */
+export function editFor(
+  dimensions: Dimensions3D,
+  drawings: Uint8Array,
+  cell: Vector3D,
+  wanted: number,
+): number {
+  const { x, y, z } = cell;
+
+  if (agrees(packedFaces(dimensions, drawings), x, y, z, wanted)) {
+    return Bitmap.EMPTY;
+  }
+
+  return wanted === Bitmap.EMPTY ? REMOVED : wanted;
 }
 
 /**

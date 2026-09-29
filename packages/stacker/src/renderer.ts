@@ -62,6 +62,7 @@ export { solveVoxels, encodePalette, packedFaces } from "./solver";
 export {
   applyEdits,
   editFileFor,
+  editFor,
   editVolumeFor,
   editsFrom,
   editsHaveSomething,

@@ -5,12 +5,14 @@ import { Bitmap, RGBA, Vector2D, Vector3D } from "@big-mesh-studios/maths";
 import {
   keyAt,
   panelBitmap,
+  partDimensions,
   withKey,
   withoutKey,
   type Motion,
   type PanelKind,
   type Part,
 } from "@big-mesh-studios/stacker/renderer";
+import { createVolume, volumeOffset } from "@big-mesh-studios/stacker/volume";
 import { intersectSide } from "../utils/utils";
 import { Command } from "./Command";
 
@@ -289,6 +291,52 @@ export function createCommander({
           side.data[offset] = Bitmap.EMPTY;
 
           return Command.writePixel(partName, kind, position, oldIndex);
+        }
+        case "EditVoxel": {
+          const { part: partName, voxel, value } = command;
+          const edited = parts().find((part) => part.name === partName);
+
+          if (edited === undefined) {
+            return Command.noOperation();
+          }
+
+          const dimensions = partDimensions(edited);
+
+          if (
+            voxel.x < 0 ||
+            voxel.y < 0 ||
+            voxel.z < 0 ||
+            voxel.x >= dimensions.width ||
+            voxel.y >= dimensions.height ||
+            voxel.z >= dimensions.depth
+          ) {
+            return Command.noOperation();
+          }
+
+          const at = volumeOffset(dimensions, voxel.x, voxel.y, voxel.z);
+          const held = edited.edits?.voxels[at] ?? Bitmap.EMPTY;
+
+          if (held === value) {
+            return Command.noOperation();
+          }
+
+          // A part that has never held an edit is given a box to hold them in.
+          // The voxels are written into the box it already has rather than a
+          // copy of it, but the box and the part are new objects: everything
+          // that reads the figure asks its parts what they hold, and a part
+          // written into in place would go on answering with what it held
+          // before.
+          const box = edited.edits ?? createVolume(dimensions);
+
+          box.voxels[at] = value;
+
+          setParts((current) =>
+            current.map((part) =>
+              part.name === partName ? { ...part, edits: { ...box } } : part,
+            ),
+          );
+
+          return Command.editVoxel(partName, voxel, held);
         }
         case "KeyPart": {
           const { motion: motionName, part: partName, at, key } = command;

@@ -55,6 +55,18 @@ export type Command =
       position: Vector2D;
     }
   | {
+      type: "EditVoxel";
+      part: string;
+      /** The cell of the part's own box, in voxels from its low corner. */
+      voxel: Vector3D;
+      /**
+       * What the part's edits hold at that cell: a palette index, `REMOVED` to
+       * take the voxel away, or `Bitmap.EMPTY` to hold nothing there and leave
+       * the cell to the six drawings.
+       */
+      value: number;
+    }
+  | {
       type: "KeyPart";
       /** The name of the motion the key stands in. */
       motion: string;
@@ -140,6 +152,21 @@ export namespace Command {
     position: Vector2D,
   ): Command {
     return { type: "ErasePixel", part, panel, position };
+  }
+
+  /**
+   * Holds `value` in the part's edits at one cell of its own box.
+   *
+   * A voxel is named by its own coordinates rather than by a panel and a cell
+   * of that panel, because a voxel is a cell of the box rather than of any one
+   * drawing: six drawings and an edit disagree about it at once.
+   */
+  export function editVoxel(
+    part: string,
+    voxel: Vector3D,
+    value: number,
+  ): Command {
+    return { type: "EditVoxel", part, voxel, value };
   }
 
   /**
@@ -239,6 +266,17 @@ export namespace Command {
           y: position.y,
         };
       }
+      case "EditVoxel": {
+        let { part, voxel, value } = command;
+        return {
+          type: "EditVoxel",
+          part,
+          x: voxel.x,
+          y: voxel.y,
+          z: voxel.z,
+          value,
+        };
+      }
       case "KeyPart": {
         let { motion, part, at, key } = command;
         return { type: "KeyPart", motion, part, at, key };
@@ -331,6 +369,23 @@ export namespace Command {
           x: command.x,
           y: command.y,
         });
+      case "EditVoxel":
+        if (
+          typeof command.part !== "string" ||
+          !Number.isInteger(command.x) ||
+          !Number.isInteger(command.y) ||
+          !Number.isInteger(command.z) ||
+          !Number.isInteger(command.value) ||
+          !(command.value >= 0) ||
+          command.value > 255
+        ) {
+          return Command.noOperation();
+        }
+        return Command.editVoxel(
+          command.part,
+          { x: command.x, y: command.y, z: command.z },
+          command.value,
+        );
       case "KeyPart": {
         const key = command.key;
         const vector = (value: any) =>

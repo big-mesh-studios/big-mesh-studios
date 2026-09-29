@@ -1,0 +1,17 @@
+.button {
+  position: absolute;
+  user-select: none;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background-color: color-mix(in srgb, var(--front) 25%, transparent);
+  color: var(--front);
+}
+
+.button[data-pressed] {
+  background-color: color-mix(in srgb, var(--front) 55%, transparent);
+}

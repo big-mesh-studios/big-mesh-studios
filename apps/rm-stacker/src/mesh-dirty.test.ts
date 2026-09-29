@@ -276,3 +276,40 @@ describe("changedGeometry", () => {
     expect(partDimensions(BODY)).toEqual(DIMS);
   });
 });
+
+describe("EditVoxel", () => {
+  it("dirties the one cell the edit is in", () => {
+    expect(
+      changedGeometry(Command.editVoxel("body", { x: 1, y: 2, z: 3 }, 5), find),
+    ).toEqual({
+      parts: [
+        {
+          part: "body",
+          box: {
+            low: { x: 1, y: 2, z: 3 },
+            high: { x: 1, y: 2, z: 3 },
+          },
+        },
+      ],
+    });
+  });
+
+  it("dirties the same cell off an edit and off the edit that takes it back", () => {
+    const drawn = changedGeometry(
+      Command.editVoxel("body", { x: 1, y: 2, z: 3 }, 5),
+      find,
+    );
+    const undone = changedGeometry(
+      Command.editVoxel("body", { x: 1, y: 2, z: 3 }, 1),
+      find,
+    );
+
+    expect(undone).toEqual(drawn);
+  });
+
+  it("dirties nothing for a part the figure no longer holds", () => {
+    expect(
+      changedGeometry(Command.editVoxel("gone", { x: 0, y: 0, z: 0 }, 5), find),
+    ).toBeUndefined();
+  });
+});

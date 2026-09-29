@@ -18,6 +18,7 @@ import {
   type PanelRect,
   type Part,
 } from "@big-mesh-studios/stacker/renderer";
+import type { Vector3D } from "@big-mesh-studios/maths";
 import type { Command } from "./command/Command";
 
 /** One part's drawing changed, over the cells of its box that could have changed. */
@@ -62,6 +63,11 @@ export const changedGeometry = (
         min: command.min,
         max: command.max,
       });
+
+    // An edit is one cell of the part's own box, and both corners of a box of
+    // one cell are that cell.
+    case "EditVoxel":
+      return drawnOverCell(command.part, command.voxel, find);
 
     // A stroke across several panels is several commands, and the figure has to
     // be drawn again for all of them. Their boxes are gathered per part rather
@@ -117,6 +123,16 @@ const drawnOn = (
     ? undefined
     : { parts: [{ part, box: panelCellBounds(on, panel, rect) }] };
 };
+
+/** As `drawnOn`, for a change to one cell of a part's own box. */
+const drawnOverCell = (
+  part: string,
+  voxel: Vector3D,
+  find: (name: string) => Part | undefined,
+): ChangedGeometry | undefined =>
+  find(part) === undefined
+    ? undefined
+    : { parts: [{ part, box: { low: voxel, high: voxel } }] };
 
 /** As `drawnOn`, for a change that can have covered every cell of a drawing. */
 const drawnOver = (

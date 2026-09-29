@@ -62,6 +62,8 @@ export function Hud() {
     setMode,
     mirror,
     setMirror,
+    flying,
+    setFlying,
     preview,
     requestAutoSave,
     isEyeDropping,
@@ -279,6 +281,14 @@ export function Hud() {
               />
             )}
           </For>
+        </Bar>
+        <Bar>
+          <IconTab
+            onClick={() => setFlying((flying) => !flying)}
+            selected={!ProfileDialog.isOpen() && flying()}
+            kind="person-walking"
+            title="Edit the model from inside the 3D view, which then fills the window. Press it again to bring the panels back."
+          />
         </Bar>
         <Bar>
           <IconTab
