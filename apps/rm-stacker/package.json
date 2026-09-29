@@ -28,7 +28,8 @@
     "@atcute/lexicons": "catalog:",
     "@solidjs/router": "2.0.0-next.13",
     "fast-png": "catalog:",
-    "jszip": "catalog:"
+    "jszip": "catalog:",
+    "three": "catalog:"
   },
   "devDependencies": {
     "@atcute/atproto": "catalog:",
@@ -48,7 +49,6 @@
     "browser-fs-access": "catalog:",
     "esbuild": "catalog:",
     "solid-js": "catalog:",
-    "three": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plugin-solid": "catalog:",

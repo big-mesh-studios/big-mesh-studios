@@ -108,4 +108,37 @@ describe("voxel preview scene", () => {
       expect(count).toBe(3);
     }
   });
+
+  it("traces the same cell it does when the box is drawn outside it", () => {
+    // The outline is drawn a little larger than the cell so that its edges stand
+    // in front of the surface they bound, a mesh having no depth bias to win the
+    // depth test with. It is still the same cell: the box grows by the same
+    // amount on each of its six faces, so its centre does not move.
+    const dimensions = { width: 10, height: 10, depth: 10 };
+    const cell = 0.1;
+    const oversize = 0.02;
+    const plain = voxelCellEdges(dimensions, [3, 4, 5]);
+    const grown = voxelCellEdges(dimensions, [3, 4, 5], oversize);
+
+    expect(grown.length).toBe(plain.length);
+
+    for (let axis = 0; axis < 3; axis++) {
+      const at = (edges: Float32Array) =>
+        edges.filter((_, i) => i % 3 === axis);
+      const spread = (edges: Float32Array) => {
+        const on = at(edges);
+        return Math.max(...on) - Math.min(...on);
+      };
+
+      // Two cells of oversize added to the span, which is one on each side.
+      expect(spread(grown)).toBeCloseTo(spread(plain) + oversize * cell * 2, 5);
+
+      // And the same amount off the near face as off the far one, so the box has
+      // not slid: its middle is where the cell's middle was.
+      const near = (edges: Float32Array) => Math.min(...at(edges));
+      const far = (edges: Float32Array) => Math.max(...at(edges));
+      expect(near(grown) - near(plain)).toBeCloseTo(-oversize * cell, 5);
+      expect(far(grown) - far(plain)).toBeCloseTo(oversize * cell, 5);
+    }
+  });
 });

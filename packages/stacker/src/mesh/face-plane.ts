@@ -8,10 +8,11 @@
 // built, not merged, not sent to the graphics card and not transformed while
 // drawing.
 //
-// A voxel in this editor carries one colour rather than a colour a face, so
-// unlike a lit terrain mesher there is nothing else for a face to disagree
-// about: the palette index is the whole of what a face shows, and matching it is
-// the whole of the merge.
+// A voxel in this editor may carry one colour or a colour a face, and either
+// way the palette index is the whole of what a face can disagree about, so
+// matching it is the whole of the merge. A plane holds one direction of face
+// only, so a source free to give each face a colour of its own still sweeps a
+// plane whose cells all read the same way.
 
 /** What one rectangle of merged faces covers, and what it shows. */
 export interface MergedRectangle {

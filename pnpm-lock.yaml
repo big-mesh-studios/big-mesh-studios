@@ -145,6 +145,9 @@ importers:
       jszip:
         specifier: 'catalog:'
         version: 3.10.2
+      three:
+        specifier: 'catalog:'
+        version: 0.183.2
     devDependencies:
       '@atcute/atproto':
         specifier: 'catalog:'
@@ -197,9 +200,6 @@ importers:
       solid-js:
         specifier: 'catalog:'
         version: 2.0.0-beta.29
-      three:
-        specifier: 'catalog:'
-        version: 0.183.2
       typescript:
         specifier: 'catalog:'
         version: 5.9.3

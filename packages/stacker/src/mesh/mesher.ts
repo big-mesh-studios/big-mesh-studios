@@ -6,8 +6,8 @@
 // face, and then merges most of those away.
 //
 // The whole model is one volume in memory, which is what makes cutting it into
-// chunks cheap here: a chunk reads the voxels one outside its own bounds straight
-// out of the same array, so a face on a chunk boundary is culled by the chunk
+// chunks cheap here: a chunk reads the cells one outside its own bounds straight
+// out of the same source, so a face on a chunk boundary is culled by the chunk
 // that owns the voxel and neither chunk draws it twice. There is no generated
 // border, no padding to keep in step with a neighbour, and no second copy to
 // reconcile.
@@ -154,6 +154,25 @@ export const createMeshBuilder = (): MeshBuilder => ({
 });
 
 /**
+ * A box of voxels read one cell at a time, giving a colour for each face.
+ *
+ * A model is described either as a volume, where a voxel carries one colour and
+ * every face shows it, or as six drawings, where a voxel carries a colour per
+ * face and each face shows the drawing that looks at it. Which of the two a model
+ * is only settles when a face is read, so a source answers both questions and
+ * the sweep above stays the same either way.
+ */
+export interface FaceSource {
+  /** Whether the cell holds a voxel. A cell outside the box is not solid. */
+  solid: (x: number, y: number, z: number) => boolean;
+  /**
+   * The palette index the cell's face in `face` shows, where `face` counts a
+   * face by `faceIndexOf`.
+   */
+  colour: (x: number, y: number, z: number, face: number) => number;
+}
+
+/**
  * Meshes the chunk at `origin`, `extent` cells across, of a volume `dimensions`
  * long whose voxels are laid out a plane at a time — a voxel at `(x, y, z)` sits
  * at `z * width * height + y * width + x`.
@@ -168,14 +187,49 @@ export const meshChunk = (
   extent: ChunkSize,
   into: MeshBuilder = createMeshBuilder(),
 ): ChunkMesh => {
+  const { width, height } = dimensions;
+  const at = (x: number, y: number, z: number) =>
+    voxels[z * width * height + y * width + x];
+
+  return meshChunkFaces(
+    dimensions,
+    {
+      solid: (x, y, z) => at(x, y, z) !== Bitmap.EMPTY,
+      colour: (x, y, z) => at(x, y, z),
+    },
+    origin,
+    extent,
+    into,
+  );
+};
+
+/**
+ * Meshes the chunk at `origin`, `extent` cells across, of the box `source`
+ * describes as being `dimensions` long.
+ *
+ * The sweep is partitioned by face direction — one plane per axis, sign and
+ * slice — so every face merged into a rectangle is a face read the same way, and
+ * matching the palette index is the whole of the merge. That is what lets a
+ * source give one face a different colour from another: two cells only merge
+ * when the colours they show on the face being swept are equal, and a face of
+ * another direction is never in the same plane to begin with.
+ *
+ * Empties `into` first, so a builder that has met the largest chunk a model has
+ * allocates nothing again.
+ */
+export const meshChunkFaces = (
+  dimensions: Dimensions3D,
+  source: FaceSource,
+  origin: ChunkIndex,
+  extent: ChunkSize,
+  into: MeshBuilder = createMeshBuilder(),
+): ChunkMesh => {
   const { positions, packed, indices } = into;
   positions.clear();
   packed.clear();
   indices.clear();
 
   const { width, height, depth } = dimensions;
-  const at = (x: number, y: number, z: number) =>
-    voxels[z * width * height + y * width + x];
   const inside = (x: number, y: number, z: number) =>
     x >= 0 && y >= 0 && z >= 0 && x < width && y < height && z < depth;
 
@@ -192,6 +246,8 @@ export const meshChunk = (
     const plane = new FacePlane(size[a1], size[a2]);
 
     for (const sign of [-1, 1]) {
+      const face = faceIndexOf(axis, sign);
+
       for (let slice = 0; slice < size[axis]; slice++) {
         plane.clear();
         for (let second = 0; second < size[a2]; second++) {
@@ -200,8 +256,7 @@ export const meshChunk = (
             cell[a1] = low[a1] + first;
             cell[a2] = low[a2] + second;
 
-            const index = at(cell[0], cell[1], cell[2]);
-            if (index === Bitmap.EMPTY) {
+            if (!source.solid(cell[0], cell[1], cell[2])) {
               continue;
             }
 
@@ -214,18 +269,21 @@ export const meshChunk = (
             neighbour[a2] = cell[a2];
             if (
               inside(neighbour[0], neighbour[1], neighbour[2]) &&
-              at(neighbour[0], neighbour[1], neighbour[2]) !== Bitmap.EMPTY
+              source.solid(neighbour[0], neighbour[1], neighbour[2])
             ) {
               continue;
             }
 
-            plane.set(first, second, index);
+            plane.set(
+              first,
+              second,
+              source.colour(cell[0], cell[1], cell[2], face),
+            );
           }
         }
 
         plane.eachRectangle((rectangle) => {
           const base = positions.length / 3;
-          const face = faceIndexOf(axis, sign);
           // The plane of the face in cells: the top of the slice it belongs to
           // facing up, that slice's bottom facing down.
           const facing = low[axis] + slice + (sign > 0 ? 1 : 0);

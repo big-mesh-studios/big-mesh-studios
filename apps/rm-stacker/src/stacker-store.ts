@@ -28,6 +28,7 @@ import {
   type Section,
   type Sides,
   type SolvedPart,
+  wholeModel,
 } from "@big-mesh-studios/stacker/renderer";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import { Accessor } from "@solidjs/signals";
@@ -43,6 +44,7 @@ import { Command } from "./command/Command";
 import { createCommander } from "./command/commander";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 import { Home } from "./home";
+import { changedGeometry, type ChangedGeometry } from "./mesh-dirty";
 import { IndexedDBData, loadFromIndexedDB, saveToIndexedDB } from "./load-save";
 import { NO_MIRROR } from "./mirror";
 import { cutSection } from "./panels";
@@ -372,6 +374,8 @@ export function createStacker() {
   const [solvedParts, setSolvedParts] = createSignal<SolvedPart[]>(() =>
     parts().map(solvePart),
   );
+  /** Whoever draws the figure, told which parts of it have been drawn differently. */
+  const geometryListeners = new Set<(changed: ChangedGeometry) => void>();
   const voxels = createMemo(
     () =>
       solvedParts().find((solved) => solved.name === selectedPart().name)
@@ -449,9 +453,63 @@ export function createStacker() {
     };
   })();
 
-  function updateVoxels() {
+  /**
+   * Packs each part into the volume a material draws it from, for the parts a
+   * change has actually reached.
+   *
+   * A part that came through unchanged keeps the volume it had, which is the
+   * point: a figure of several parts is re-packed whole on every stroke, and for
+   * a model of any size that is the most work an edit does. A part is matched to
+   * the volume it had by name, so a part added, removed or renamed since is packed
+   * afresh rather than inheriting a neighbour's.
+   *
+   * Whoever draws the figure is told what to draw again in the same breath, since
+   * the two are the same fact: a change to a part's drawings is a change to the
+   * volume built from them and to the triangles built from that. The volumes are
+   * committed before the telling, so that whoever rebuilds from them cannot read
+   * the ones a moment ago.
+   *
+   * @param changed Which parts' drawings the change reached, and where in their
+   * boxes. Left out, the whole figure has changed and every part is packed again.
+   */
+  function updateVoxels(changed?: ChangedGeometry) {
     flush();
-    setSolvedParts(parts().map(solvePart));
+
+    const named =
+      changed === undefined || "everything" in changed
+        ? undefined
+        : new Set(changed.parts.map((one) => one.part));
+
+    setSolvedParts((before) =>
+      parts().map((part, index) => {
+        const was = before[index];
+        const settled =
+          was !== undefined && was.name === part.name && !named?.has(part.name);
+        return settled ? was : solvePart(part);
+      }),
+    );
+
+    flush();
+
+    for (const listener of geometryListeners) {
+      listener(changed ?? { everything: true });
+    }
+  }
+
+  /**
+   * Adds a listener told which parts of the figure have been drawn differently.
+   * Returns what takes it off again.
+   */
+  function onGeometryChange(listener: (changed: ChangedGeometry) => void) {
+    geometryListeners.add(listener);
+    return () => {
+      geometryListeners.delete(listener);
+    };
+  }
+
+  /** The part called `name`, for a change that names one. */
+  function findPart(name: string): Part | undefined {
+    return parts().find((part) => part.name === name);
   }
 
   const { snapshot, doCommand } = createCommander({
@@ -472,7 +530,11 @@ export function createStacker() {
         const result = await doCommand(command);
 
         if (result.type !== "NoOperation") {
-          updateVoxels();
+          // The reverse says what was undone, which is what the figure now holds
+          // and so what has to be drawn again. A pose changes none of it: the
+          // part stands somewhere else with the same drawings, and the triangles
+          // are the ones it was already drawn with.
+          updateVoxels(changedGeometry(result, findPart));
           requestRender();
         }
 
@@ -771,6 +833,7 @@ export function createStacker() {
     voxels,
     solvedParts,
     updateVoxels,
+    onGeometryChange,
     // Palette
     palette,
     setPalette,
@@ -820,7 +883,14 @@ export function createStacker() {
             : part,
         ),
       );
-      updateVoxels();
+      // Only this part's box has changed, and every cell of it is somewhere the
+      // new size put it, so its own geometry is the whole of what is stale.
+      const on = findPart(name);
+      updateVoxels(
+        on === undefined
+          ? undefined
+          : { parts: [{ part: name, box: wholeModel(partDimensions(on)) }] },
+      );
       requestRender();
       requestAutoSave();
     },

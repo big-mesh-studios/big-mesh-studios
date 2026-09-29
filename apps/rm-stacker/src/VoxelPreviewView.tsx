@@ -2,8 +2,9 @@ import { Matrix3x3, Vector2D, Vector3D } from "@big-mesh-studios/maths";
 import {
   applyFraming,
   composeRoot,
-  FigureMeshes,
   figurePlacement,
+  MeshFigureMeshes,
+  partDimensions,
   turnAngles,
   turnMatrix,
   voxelReach,
@@ -53,7 +54,7 @@ import {
   FAR,
   FOV,
   framedVoxelSize,
-  lightFigure,
+  lightMeshFigure,
   NEAR,
   rotateFigure,
 } from "./voxel-preview-scene";
@@ -101,11 +102,13 @@ const pinchSpan = ([a, b]: Iterable<PointerEvent> = []) => {
 
 const VoxelPreviewView: Component = () => {
   const {
+    parts,
     posedFigure,
     posedPart,
     selectedPart,
     selectPart,
     solvedParts,
+    onGeometryChange,
     palette,
     preview,
     doCommand,
@@ -152,7 +155,7 @@ const VoxelPreviewView: Component = () => {
   const framed = new Group();
   turntable.add(framed);
 
-  const meshes = new FigureMeshes();
+  const meshes = new MeshFigureMeshes();
   framed.add(meshes.group);
 
   // Added after the meshes, so a plane standing among a part's voxels is drawn
@@ -623,7 +626,12 @@ const VoxelPreviewView: Component = () => {
     }
     rotateFigure(turntable, yaw, pitch, spin);
 
-    lightFigure(meshes, untrack(preview.unlit));
+    lightMeshFigure(meshes, untrack(preview.unlit));
+
+    // Whatever a change has left out of date is built before the frame is drawn,
+    // and only for as long as the budget allows, so a large model fills in over
+    // the frames after it is opened rather than holding one of them up.
+    meshes.drain(untrack(solvedParts));
 
     // The handles stand inside the figure, turned by the same turntable, so
     // they stay pointing along the axes a drag works along.
@@ -705,11 +713,40 @@ const VoxelPreviewView: Component = () => {
   );
 
   createEffect(
-    () => [posedFigure(), solvedParts(), placement()] as const,
-    ([figure, solvedParts, placement]) => {
-      meshes.sync(figure, solvedParts, placement);
+    () => [posedFigure(), placement()] as const,
+    ([figure, placement]) => {
+      // Stands every part's chunks where the figure has it. A pose reaches this
+      // and nothing else: the part is somewhere else with the same drawings, and
+      // the triangles are the ones it was already drawn with.
+      meshes.place(figure, placement);
     },
   );
+
+  // A change to a drawing is a change to the volume built from it and to the
+  // triangles built from that, so the store says which parts it reached and the
+  // chunks holding those parts are marked for rebuilding.
+  onSettled(() =>
+    onGeometryChange((changed) => {
+      if ("everything" in changed) {
+        meshes.dirtyEverything();
+        return;
+      }
+
+      for (const { part, box } of changed.parts) {
+        const on = parts().find((one) => one.name === part);
+
+        if (on !== undefined) {
+          meshes.dirty(part, box, partDimensions(on));
+        }
+      }
+    }),
+  );
+
+  // Changing a colour re-uploads a row of texels rather than re-meshing the
+  // figure: what a vertex carries is which colour it shows, not the colour.
+  createEffect(palette, (colours) => {
+    meshes.bakePalette(colours);
+  });
 
   createEffect(preview.autorotate, (autoRotate) => {
     if (autoRotate) {

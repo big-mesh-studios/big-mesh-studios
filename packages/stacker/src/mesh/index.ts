@@ -16,8 +16,11 @@ export {
   chunkOrigin,
   createMeshBuilder,
   meshChunk,
+  meshChunkFaces,
+  type ChunkIndex,
   type ChunkMesh,
   type ChunkSize,
+  type FaceSource,
   type MeshBuilder,
 } from "./mesher";
 export { faceIndexOf, normalOfFaceIndex, VERTEX_BYTES } from "./vertex-format";
@@ -27,3 +30,4 @@ export {
   wholeModel,
   type CellBounds,
 } from "./dirty-bounds";
+export { panelCellBounds, type PanelRect } from "./panel-bounds";

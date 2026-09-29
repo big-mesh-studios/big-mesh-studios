@@ -18,7 +18,8 @@ import {
 } from "@random-mesh/rmsl/scene";
 import {
   applyFraming,
-  FigureMeshes,
+  figurePlacement,
+  MeshFigureMeshes,
   type Figure,
   type FigureFraming,
   type SolvedPart,
@@ -26,7 +27,7 @@ import {
 import {
   FAR,
   FOV,
-  lightFigure,
+  lightMeshFigure,
   NEAR,
   rotateFigure,
 } from "./voxel-preview-scene";
@@ -50,7 +51,7 @@ interface OffscreenScene {
   renderer: WebGLRenderer;
   scene: Scene;
   camera: PerspectiveCamera;
-  meshes: FigureMeshes;
+  meshes: MeshFigureMeshes;
   /** The group the figure is turned by, holding the one it is framed by. */
   turned: Group;
   /** The group the figure is framed by, holding the parts in their voxels. */
@@ -91,7 +92,7 @@ function offscreenScene(): OffscreenScene | undefined {
     // than sitting on a colour that will not suit wherever it ends up shown.
     renderer.setClearColor(0x000000, 0);
 
-    const meshes = new FigureMeshes();
+    const meshes = new MeshFigureMeshes();
     const scene = new Scene();
     // The figure is framed inside what turns it, so it turns about the point it
     // is framed on rather than about the figure's own origin.
@@ -139,9 +140,14 @@ export function renderVoxelImage(
     camera.position.set(0, 0, request.radius);
     camera.lookAt(0, 0, 0);
 
-    meshes.sync(request.figure, request.solved);
+    meshes.place(request.figure, figurePlacement(request.figure));
+    meshes.bakePalette(request.figure.palette);
+    // A picture is drawn once and read back at once, so there is no frame here
+    // for the figure to fill in over: everything is built before the pixels are
+    // asked for, which is what stops a large model being published half drawn.
+    meshes.buildAll(request.solved);
     applyFraming(framed, request.framing);
-    lightFigure(meshes, false);
+    lightMeshFigure(meshes, false);
 
     // The figure is turned to the orientation the light is measured against, so
     // that what lands on a face here is what would land on it in the preview.
