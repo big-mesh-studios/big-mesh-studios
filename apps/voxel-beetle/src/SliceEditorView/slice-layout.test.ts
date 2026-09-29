@@ -10,6 +10,7 @@ import {
   computeLayout,
   computeStripRows,
   drawingCell,
+  drawingRow,
   layoutSize,
   nearestDrawingCell,
   pressAt,
@@ -74,6 +75,17 @@ describe("layoutSize", () => {
   });
 });
 
+describe("drawingRow", () => {
+  const layout = computeLayout(sliceAt(box(4, 3, 4), "xy", 0));
+
+  it("puts the top of the model at the top of the drawing", () => {
+    // The plane's own down axis is y, which counts up, while a drawing's rows
+    // count down: the highest cell of the model is the first row.
+    expect(drawingRow(layout, 2)).toBe(0);
+    expect(drawingRow(layout, 0)).toBe(2);
+  });
+});
+
 describe("drawingCell", () => {
   const layout = computeLayout(sliceAt(box(4, 3, 4), "xy", 0));
 
@@ -82,26 +94,41 @@ describe("drawingCell", () => {
     expect(drawingCell(layout, inside)).toEqual(Vector2D.create(2, 1));
   });
 
+  it("is the cell the point lands in from the top of the model, not from its foot", () => {
+    expect(drawingCell(layout, layout.drawing)).toEqual(Vector2D.create(0, 2));
+    expect(
+      drawingCell(
+        layout,
+        Vector2D.add(layout.drawing, Vector2D.create(0, layout.size.y - 1)),
+      ),
+    ).toEqual(Vector2D.create(0, 0));
+  });
+
   it("is a whole cell for a point between cells, which is where a pointer stands", () => {
     // A pointer on a canvas lands at a fractional number of cells, and every
-    // point within one cell is that cell and not the one beside it.
+    // point within one row is that row and not the one beside it.
     for (const within of [0, 0.25, 0.5, 0.75, 0.999]) {
       expect(
         drawingCell(
           layout,
-          Vector2D.add(layout.drawing, Vector2D.create(2 + within, 1 + within)),
+          Vector2D.add(layout.drawing, Vector2D.create(2 + within, within)),
         ),
-      ).toEqual(Vector2D.create(2, 1));
+      ).toEqual(Vector2D.create(2, 2));
     }
   });
 
   it("is nothing where a point lands outside the drawing", () => {
-    expect(drawingCell(layout, layout.drawing)).toEqual(Vector2D.create(0, 0));
     expect(
       drawingCell(layout, Vector2D.add(layout.drawing, Vector2D.create(-1, 0))),
     ).toBeUndefined();
     expect(
       drawingCell(layout, Vector2D.add(layout.drawing, Vector2D.create(4, 0))),
+    ).toBeUndefined();
+    expect(
+      drawingCell(
+        layout,
+        Vector2D.add(layout.drawing, Vector2D.create(0, layout.size.y)),
+      ),
     ).toBeUndefined();
   });
 });
@@ -110,10 +137,12 @@ describe("nearestDrawingCell", () => {
   const layout = computeLayout(sliceAt(box(4, 4, 4), "xy", 0));
 
   it("is the same cell a press on the point lands in, so a stroke starts where it was pressed", () => {
-    const point = Vector2D.add(layout.drawing, Vector2D.create(2.6, 1.4));
+    const point = Vector2D.add(layout.drawing, Vector2D.create(2.6, 2.4));
     expect(nearestDrawingCell(layout, point)).toEqual(
       drawingCell(layout, point),
     );
+    // The third row down is the second cell of the model's own down axis, which
+    // counts up while the rows count down.
     expect(nearestDrawingCell(layout, point)).toEqual(Vector2D.create(2, 1));
   });
 
@@ -201,13 +230,15 @@ describe("pressAt", () => {
 
   it("is a cell where a press lands on the drawing", () => {
     const layout = computeLayout(sliceAt(volume.dimensions, "xy", 0));
+    // The top row of the drawing is the top of the model, which is the far end of
+    // the plane's own down axis.
     const press = pressAt(
       volume,
       "xy",
       0,
-      Vector2D.add(layout.drawing, Vector2D.create(1, 1)),
+      Vector2D.add(layout.drawing, Vector2D.create(1, 0)),
     );
-    expect(press).toEqual({ kind: "cell", cell: Vector2D.create(1, 1) });
+    expect(press).toEqual({ kind: "cell", cell: Vector2D.create(1, 3) });
   });
 
   it("is a slice to go to where a press lands on a row of the strip", () => {

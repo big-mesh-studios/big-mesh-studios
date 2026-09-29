@@ -5,8 +5,8 @@
 // them, and nothing on it needs a network to work.
 import { fileOpen, fileSave, type FileWithHandle } from "browser-fs-access";
 import { createSignal, For, onSettled, Show, useContext } from "solid-js";
-import { writeCvox } from "@big-mesh-studios/stacker/cvox";
 import { BeetleContext } from "./context";
+import { writeModel } from "./cvox-io";
 import { fileName, homeName } from "./home";
 import {
   forgetFile,
@@ -116,7 +116,7 @@ export function FilesDialog() {
     setBusy("saving…");
     setError(undefined);
     try {
-      const bytes = writeCvox(volume(), palette());
+      const bytes = writeModel(volume(), palette());
       const current = home();
 
       if (current.kind === "file") {

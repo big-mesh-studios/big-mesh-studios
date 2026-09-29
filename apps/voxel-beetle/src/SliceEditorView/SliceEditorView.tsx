@@ -17,7 +17,9 @@ import {
   cellWorld,
   computeLayout,
   computeStripRows,
+  drawingRow,
   sliceOccupancy,
+  type Layout,
 } from "./slice-layout";
 import styles from "./SliceEditorView.module.css";
 
@@ -65,7 +67,7 @@ const SliceEditorView: Component = () => {
       }
     | undefined;
 
-  const pictureFor = (at: Slice): HTMLCanvasElement => {
+  const pictureFor = (at: Slice, layout: Layout): HTMLCanvasElement => {
     if (
       picture === undefined ||
       picture.width !== at.width ||
@@ -90,7 +92,7 @@ const SliceEditorView: Component = () => {
       for (let u = 0; u < at.width; u++) {
         const index = readSlice(model, at, u, v);
         const colour = index === Bitmap.EMPTY ? undefined : colours[index];
-        const offset = (v * at.width + u) * 4;
+        const offset = (drawingRow(layout, v) * at.width + u) * 4;
         data[offset] = colour?.r ?? 0;
         data[offset + 1] = colour?.g ?? 0;
         data[offset + 2] = colour?.b ?? 0;
@@ -152,7 +154,11 @@ const SliceEditorView: Component = () => {
     context.imageSmoothingEnabled = false;
 
     /* The slice itself. */
-    context.drawImage(pictureFor(at), layout.drawing.x, layout.drawing.y);
+    context.drawImage(
+      pictureFor(at, layout),
+      layout.drawing.x,
+      layout.drawing.y,
+    );
 
     /* A cell grid, once a cell is wide enough for a line to be worth drawing. */
     if (scale >= GRID_FROM) {

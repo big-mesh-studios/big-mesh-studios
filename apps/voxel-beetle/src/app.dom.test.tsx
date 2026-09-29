@@ -322,11 +322,16 @@ describe("the store", () => {
     expect(beetle.sliceAt()).toBe(3);
   });
 
-  it("packs the box for the graphics card, and repacks when a voxel is written", () => {
+  it("marks the preview's chunks for rebuilding, and forgets them once built", () => {
     const beetle = makeStore();
-    const empty = beetle.packed();
-    expect(empty).toHaveLength(32 * 32 * 32 * 4);
-    expect(empty.every((byte) => byte === 0)).toBe(true);
+    // A 32-cube model is one chunk, and a model that has never been drawn has no
+    // geometry at all, so it opens with that chunk waiting to be built.
+    expect([...beetle.dirtyChunks()]).toEqual([0]);
+
+    beetle.clearDirtyChunks(new Set([0]));
+    // A setter's value reaches a read after a microtask, not at once.
+    flush();
+    expect(beetle.dirtyChunks().size).toBe(0);
   });
 
   it("erases when the empty swatch is chosen, and draws again when a colour is", () => {

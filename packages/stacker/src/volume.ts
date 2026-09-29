@@ -228,6 +228,64 @@ export function resizeVolume(
   return resized;
 }
 
+/**
+ * The same box stood on another of its axes, for a model whose file and the
+ * program reading it disagree about which way is up.
+ *
+ * This is a quarter turn of the box and not a reflection of it, so which way a
+ * model faces is carried through rather than turned inside out. The axis the box
+ * was standing on takes the place of `to`, the axis it is to stand on takes the
+ * other place turned end for end, and the third axis keeps the place it had.
+ *
+ * A quarter turn is about the axis that holds still, so that is the third one: a
+ * model stood on `y` from `z` keeps the same left on the same left, and the depth
+ * it was drawn in becomes the new depth the other way up.
+ *
+ * @param from the axis the box is standing on
+ * @param to the axis the box is to stand on
+ * @throws when `from` and `to` are one axis, which is no turn at all
+ */
+export function standOn(volume: Volume, from: Axis, to: Axis): Volume {
+  if (from === to) {
+    throw new Error(
+      `a box cannot be stood on ${to} from ${to}: it is already there`,
+    );
+  }
+
+  const axes: Axis[] = ["x", "y", "z"];
+  const held: Axis = axes.find((axis) => axis !== from && axis !== to)!;
+
+  const dimensions = volume.dimensions;
+  const extentAlong = (axis: Axis) => dimensionCount[axis](dimensions);
+  const extentAfter = (axis: Axis) =>
+    extentAlong(axis === to ? from : axis === from ? to : held);
+
+  const stood = createVolume({
+    width: extentAfter("x"),
+    height: extentAfter("y"),
+    depth: extentAfter("z"),
+  });
+
+  for (let z = 0; z < dimensions.depth; z++) {
+    for (let y = 0; y < dimensions.height; y++) {
+      for (let x = 0; x < dimensions.width; x++) {
+        const index = volume.voxels[volumeOffset(dimensions, x, y, z)];
+        if (index === Bitmap.EMPTY) {
+          continue;
+        }
+        const at = Vector3D.create(x, y, z);
+        const moved = Vector3D.create(0, 0, 0);
+        moved[to] = at[from];
+        moved[from] = extentAlong(to) - 1 - at[to];
+        moved[held] = at[held];
+        writeVoxel(stood, moved.x, moved.y, moved.z, index);
+      }
+    }
+  }
+
+  return stood;
+}
+
 /**********************************************************************************/
 /*                                     Slices                                     */
 /**********************************************************************************/

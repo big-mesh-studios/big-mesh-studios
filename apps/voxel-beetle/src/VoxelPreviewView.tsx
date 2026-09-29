@@ -1,9 +1,7 @@
 import { Vector3D } from "@big-mesh-studios/maths";
 import {
   applyFraming,
-  bakeVolume,
-  boxSize,
-  VoxelModelMaterial,
+  encodePalette,
 } from "@big-mesh-studios/stacker/renderer";
 import { filledBounds, volumeReach } from "@big-mesh-studios/stacker/volume";
 import {
@@ -12,9 +10,7 @@ import {
   pointer,
 } from "@big-mesh-studios/utils/pointer";
 import {
-  BoxGeometry,
   Group,
-  Mesh,
   PerspectiveCamera,
   Quaternion,
   Scene,
@@ -30,7 +26,8 @@ import {
   useContext,
 } from "solid-js";
 import { BeetleContext } from "./context";
-import { pickModel, type VoxelPick } from "./picking/model-picker";
+import { ModelMeshes } from "./model-meshes";
+import { pickModel, type VoxelPick } from "./picking/volume-picker";
 import { PickOutline } from "./picking/pick-outline";
 import { SlicePlane } from "./slice-plane";
 import {
@@ -41,6 +38,7 @@ import {
   NEAR,
   rotateModel,
 } from "./voxel-preview-scene";
+import { bakePalette, VoxelMeshMaterial } from "./voxel-mesh-material";
 import styles from "./VoxelPreviewView.module.css";
 
 /**
@@ -76,8 +74,16 @@ const pinchSpan = ([a, b]: Iterable<PointerEvent> = []) => {
 };
 
 const VoxelPreviewView: Component = () => {
-  const { packed, volume, dimensions, palette, slice, preview, showVoxel } =
-    useContext(BeetleContext);
+  const {
+    volume,
+    dimensions,
+    palette,
+    slice,
+    preview,
+    showVoxel,
+    dirtyChunks,
+    clearDirtyChunks,
+  } = useContext(BeetleContext);
 
   const [picked, setPicked] = createSignal<VoxelPick | undefined>(undefined);
   const [hovered, setHovered] = createSignal<VoxelPick | undefined>(undefined);
@@ -90,23 +96,23 @@ const VoxelPreviewView: Component = () => {
 
   const turntable = new Group();
   const framed = new Group();
-  const model = new Mesh(new BoxGeometry(1, 1, 1), new VoxelModelMaterial());
+  const material = new VoxelMeshMaterial();
+  const meshes = new ModelMeshes(material);
   const slicePlane = new SlicePlane();
   const outline = new PickOutline();
-  framed.add(model, slicePlane.group);
+  framed.add(meshes.group, slicePlane.group);
   turntable.add(framed);
 
-  const material = model.material as VoxelModelMaterial;
   const scene = new Scene();
   scene.add(turntable);
   const camera = new PerspectiveCamera(FOV, 1, NEAR, FAR);
 
   /**
-   * The model as the mesh draws it, rather than as the volume holds it.
+   * The model as it is drawn, rather than as the volume holds it.
    *
-   * The box the ray marcher walks is built with the model's own longest axis made
-   * one, and it is that box the framing scales — which is what keeps a model
-   * eight voxels across and one twenty voxels across from being drawn at wildly
+   * The geometry is built in a box with the model's own longest axis made one,
+   * and it is that box the framing scales — which is what keeps a model eight
+   * voxels across and one twenty voxels across from being drawn at wildly
    * different sizes for no reason. So the two things a framing is measured
    * against are read in the box's own units: the point the camera looks at,
    * measured from the middle of the box rather than from one of its corners,
@@ -178,18 +184,19 @@ const VoxelPreviewView: Component = () => {
   }
 
   createEffect(dimensions, () => {
-    const size = boxSize(dimensions());
-    model.geometry.dispose();
-    model.geometry = new BoxGeometry(size.width, size.height, size.depth);
+    // A box of a different size is a different set of chunks, and its vertices
+    // are laid out against its own cell size.
+    meshes.place(dimensions());
+    meshes.release();
     fit();
   });
 
-  createEffect(
-    () => [packed(), palette()],
-    () => {
-      bakeVolume(material, dimensions(), packed(), palette());
-    },
-  );
+  createEffect(palette, () => {
+    // Changing a colour re-uploads a texture of thirty-two texels rather than
+    // re-meshing the model: what a vertex carries is which colour it shows, not
+    // the colour itself.
+    bakePalette(material, encodePalette(palette()), palette().length);
+  });
 
   createEffect(
     () => [preview.unlit(), preview.showSlice(), slice()],
@@ -201,6 +208,16 @@ const VoxelPreviewView: Component = () => {
   );
 
   const render = () => {
+    // A bounded number of the chunks waiting to be rebuilt is built before the
+    // frame is drawn, so a model just loaded appears at once and fills in rather
+    // than holding up the first frame that would show it. The ones built are
+    // taken off the list, and whatever is left stays for the next frame.
+    const waiting = untrack(dirtyChunks);
+    if (waiting.size > 0) {
+      const { built } = meshes.drain(waiting, untrack(volume));
+      clearDirtyChunks(built);
+    }
+
     if (preview.autorotate()) {
       spin =
         ((performance.now() - timeOffset) / 1000) *
@@ -208,7 +225,7 @@ const VoxelPreviewView: Component = () => {
     }
     rotateModel(turntable, yaw, pitch, spin);
     camera.position.set(0, 0, radius);
-    outline.trace(dimensions(), model, hovered() ?? picked());
+    outline.trace(dimensions(), meshes.group, hovered() ?? picked());
     renderer.render(scene, camera);
   };
 
@@ -240,8 +257,7 @@ const VoxelPreviewView: Component = () => {
 
     const rect = canvas.getBoundingClientRect();
     return pickModel({
-      voxels: untrack(packed),
-      dimensions: untrack(dimensions),
+      volume: untrack(volume),
       worldToModel,
       // In world space the camera stands on the +z axis at the radius; in the
       // model's own space it stands wherever that turn has put it.

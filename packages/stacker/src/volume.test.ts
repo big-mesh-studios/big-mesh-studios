@@ -16,6 +16,7 @@ import {
   readSlice,
   readVoxel,
   resizeVolume,
+  standOn,
   sliceAt,
   sliceCell,
   cellSlice,
@@ -170,6 +171,147 @@ describe("resizeVolume", () => {
   it("leaves the array the size of the new box", () => {
     const volume = filled(box(2, 2, 2), [[0, 0, 0]]);
     expect(resizeVolume(volume, box(5, 6, 7), {}).voxels).toHaveLength(210);
+  });
+});
+
+describe("standOn", () => {
+  /** Every solid voxel of a box, as a set of its coordinates. */
+  const solidOf = (volume: Volume) => {
+    const { width, height, depth } = volume.dimensions;
+    const solid = new Set<string>();
+    for (let z = 0; z < depth; z++) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (readVoxel(volume, x, y, z) !== Bitmap.EMPTY) {
+            solid.add(`${x},${y},${z}`);
+          }
+        }
+      }
+    }
+    return solid;
+  };
+
+  it("exchanges the two extents the turn is about, and leaves the third", () => {
+    expect(standOn(createVolume(box(3, 5, 7)), "z", "y").dimensions).toEqual(
+      box(3, 7, 5),
+    );
+    expect(standOn(createVolume(box(3, 5, 7)), "y", "z").dimensions).toEqual(
+      box(3, 7, 5),
+    );
+  });
+
+  it("stands the axis the model was standing on up from the low end", () => {
+    // A stub at the foot of a model, which is where a model stands on the ground.
+    const foot = filled(box(1, 1, 4), [[0, 0, 0]]);
+    const stood = standOn(foot, "z", "y");
+    expect(stood.dimensions).toEqual(box(1, 4, 1));
+    expect(readVoxel(stood, 0, 0, 0)).toBe(1);
+    expect(readVoxel(stood, 0, 3, 0)).toBe(Bitmap.EMPTY);
+  });
+
+  it("keeps the left of a model on the left, rather than turning it inside out", () => {
+    const left = filled(box(4, 1, 1), [[0, 0, 0]]);
+    expect(readVoxel(standOn(left, "z", "y"), 0, 0, 0)).toBe(1);
+
+    const right = filled(box(4, 1, 1), [[3, 0, 0]]);
+    expect(readVoxel(standOn(right, "z", "y"), 3, 0, 0)).toBe(1);
+  });
+
+  it("makes the depth it stood in the depth of the new box, turned end for end", () => {
+    // The old z stands up as the new y, and the old y becomes the new z the other
+    // way up, so the low end of one is the high end of the other.
+    const low = filled(box(1, 3, 1), [[0, 0, 0]]);
+    const stood = standOn(low, "z", "y");
+    expect(stood.dimensions).toEqual(box(1, 1, 3));
+    expect(readVoxel(stood, 0, 0, 2)).toBe(1);
+  });
+
+  it("is a turn and not a reflection, so which way a model faces is kept", () => {
+    // A centre with one neighbour along each axis, each in a colour of its own so
+    // that where each one has gone can be read back off the result rather than
+    // worked out from the rule being tested. The three offsets are right-handed
+    // where they stand, and a reflection would hand them back left-handed.
+    const corner = createVolume(box(3, 3, 3));
+    writeVoxel(corner, 2, 1, 1, 1);
+    writeVoxel(corner, 1, 2, 1, 2);
+    writeVoxel(corner, 1, 1, 2, 3);
+    writeVoxel(corner, 1, 1, 1, 4);
+
+    /** Where the voxel in a colour of its own stands in a box of any size. */
+    const at = (volume: Volume, index: number) => {
+      const offset = volume.voxels.indexOf(index);
+      if (offset === -1) {
+        throw new Error(`no voxel is in colour ${index}`);
+      }
+      const { width, height } = volume.dimensions;
+      return Vector3D.create(
+        offset % width,
+        Math.floor(offset / width) % height,
+        Math.floor(offset / (width * height)),
+      );
+    };
+
+    /** The sign of the volume the three neighbours span about the centre. */
+    const handedness = (volume: Volume) => {
+      const dot = (a: Vector3D, b: Vector3D) =>
+        a.x * b.x + a.y * b.y + a.z * b.z;
+      const centre = at(volume, 4);
+      const [first, second, third] = [1, 2, 3].map((index) =>
+        Vector3D.subtract(at(volume, index), centre),
+      );
+      return Math.sign(dot(first, Vector3D.cross(second, third)));
+    };
+
+    expect(handedness(corner)).toBe(1);
+    expect(handedness(standOn(corner, "z", "y"))).toBe(1);
+    expect(handedness(standOn(standOn(corner, "z", "y"), "y", "x"))).toBe(1);
+  });
+
+  it("loses no voxel and gains none", () => {
+    const volume = filled(
+      box(3, 4, 5),
+      [
+        [0, 0, 0],
+        [2, 3, 4],
+        [1, 1, 1],
+      ],
+      7,
+    );
+    for (const [from, to] of [
+      ["z", "y"],
+      ["z", "x"],
+      ["y", "x"],
+    ] as const) {
+      expect(solidOf(standOn(volume, from, to)).size).toBe(3);
+    }
+  });
+
+  it("is taken back by the turn the other way, for every pair of axes", () => {
+    const volume = filled(
+      box(3, 4, 5),
+      [
+        [0, 0, 0],
+        [2, 3, 4],
+      ],
+      7,
+    );
+    const axes = ["x", "y", "z"] as const;
+    for (const from of axes) {
+      for (const to of axes) {
+        if (from === to) {
+          continue;
+        }
+        const back = standOn(standOn(volume, from, to), to, from);
+        expect(back.dimensions).toEqual(volume.dimensions);
+        expect(solidOf(back)).toEqual(solidOf(volume));
+      }
+    }
+  });
+
+  it("refuses to stand a box on the axis it is already on", () => {
+    expect(() => standOn(createVolume(box(2, 2, 2)), "y", "y")).toThrow(
+      /cannot be stood on y from y/,
+    );
   });
 });
 

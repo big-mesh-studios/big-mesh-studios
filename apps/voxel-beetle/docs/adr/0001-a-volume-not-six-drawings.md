@@ -32,7 +32,11 @@ agreement with anything else, and there is no shape the box cannot hold.
   `FigureMeshes` and `solvePart` are shaped around parts and are not used here.
 - A voxel takes one colour rather than a colour per face. The packed format the
   ray marcher reads has six five-bit face slots, so `packVolume` writes the same
-  index into all six and `march.ts` and `material.ts` are untouched.
+  index into all six and `march.ts` and `material.ts` are untouched by that. The
+  preview does not read the packed form at all any more
+  ([ADR 0008](./0008-the-preview-is-a-mesh-not-a-march.md)), but the other three
+  programs still draw with the ray marcher and the packing it reads, so
+  `packVolume` stays.
 - Mirroring a stroke reflects it within the slice being drawn, which is an
   index transform, rather than reaching across to the face on the other side of
   the run.

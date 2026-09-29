@@ -14,20 +14,32 @@ The format does allow application-specific chunks, and readers are told to step
 over the ones they do not know, so an extension would be safe. It would also be
 the only part of the file another tool could not read.
 
-## The coordinates are the file's own
+## The coordinates are the file's own, and the file is z-up
 
-A `.cvox` file stores `.vox` coordinates unchanged, so it inherits that format's
-convention: x to the right, y up, z toward the viewer. That is already the
-convention the ray marcher in this repository uses, so a model is written and
-read back with no conversion at all. This was checked rather than assumed: the
-format's own `3x3x3` and `chr_knight` examples were read and compared against the
-matching `.vox` files, and all three hundred and ninety-eight of the knight's
-coordinates agree with no axis flipped, where a z-flip would have agreed with
-about half.
+A `.cvox` file stores `.vox` coordinates unchanged. What that inherits is not what
+the specification says: the format annotates the size of z as its "gravity
+direction", and its author's own files are the other way round. A model in a
+`.cvox` file stands on its z, with its foot at z = 0.
 
-Note that the format's own specification annotates the size of z as "gravity
-direction", which would imply z counts down rather than toward the viewer. The
-files its author wrote disagree with that, and the files are followed.
+This was checked by reading the three published files and projecting each one
+through its own three axes rather than by comparing one file with another. The
+chess knight is eighteen voxels from nose to tail along x, fifteen on its z and
+only eight across on its y, and along z it opens with three slices of three voxels
+each — a foot and a stem — and tapers to a point of one voxel at the far end. The
+castle is symmetrical about x and about y and is not symmetrical about z, and the
+axis a model is not symmetrical about is the one it stands on. Those facts are
+pinned in the tests that read the fixtures.
+
+An earlier version of this file claimed the opposite, on the strength of
+comparing the knight against a matching `.vox` file and finding that all three
+hundred and ninety-eight coordinates agreed with no axis flipped. The files
+disagree with that, and the comparison is not what settled it: the tests beside
+the reader assert the orientation directly, from the shape of the model, and would
+have caught the claim being wrong.
+
+So the reader and the writer are left alone and the file's coordinates are the
+file's own. What a model does with them is a separate question, answered in
+[0007](./0007-a-file-is-stood-on-y.md).
 
 ## Consequences
 

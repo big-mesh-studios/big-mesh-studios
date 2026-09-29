@@ -88,6 +88,20 @@ export function blockContains(block: Block, cell: Vector2D): boolean {
 }
 
 /**
+ * The row of the drawing a cell is drawn in, counting down the screen.
+ *
+ * A plane's own `down` axis counts up from the low end of the box — for the `xy`
+ * plane that is y, for the `zx` plane it is x — while a drawing's rows count down.
+ * The drawing is held the right way up, with the top of the model at the top of
+ * the screen, so a cell's row is the distance from the top of the drawing rather
+ * than its coordinate: the two agree in the middle of the box and part company
+ * either side of it.
+ */
+export function drawingRow(layout: Layout, v: number): number {
+  return layout.size.y - 1 - v;
+}
+
+/**
  * The cell of the drawing a world position lands in, or undefined where it lands
  * outside it. A world position is a point on the canvas measured in cells from
  * the drawing's own top-left corner, which is the way a drawing's rows run: down
@@ -102,7 +116,7 @@ export function drawingCell(
 ): Vector2D | undefined {
   const cell = Vector2D.create(
     Math.floor(world.x - layout.drawing.x),
-    Math.floor(world.y - layout.drawing.y),
+    drawingRow(layout, Math.floor(world.y - layout.drawing.y)),
   );
   return cell.x >= 0 &&
     cell.y >= 0 &&
@@ -126,14 +140,20 @@ export function nearestDrawingCell(layout: Layout, world: Vector2D): Vector2D {
     ),
     Math.max(
       0,
-      Math.min(layout.size.y - 1, Math.floor(world.y - layout.drawing.y)),
+      Math.min(
+        layout.size.y - 1,
+        drawingRow(layout, Math.floor(world.y - layout.drawing.y)),
+      ),
     ),
   );
 }
 
 /** The world position of a cell of the drawing, for a preview drawn over it. */
 export function cellWorld(layout: Layout, cell: Vector2D): Vector2D {
-  return Vector2D.create(layout.drawing.x + cell.x, layout.drawing.y + cell.y);
+  return Vector2D.create(
+    layout.drawing.x + cell.x,
+    layout.drawing.y + drawingRow(layout, cell.y),
+  );
 }
 
 /**

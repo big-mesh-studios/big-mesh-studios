@@ -13,7 +13,6 @@ import {
   type Vector3D,
   Vector3D as V3,
 } from "@big-mesh-studios/maths";
-import { readCvox, writeCvox } from "@big-mesh-studios/stacker/cvox";
 import {
   readVoxel,
   resizeVolume,
@@ -22,6 +21,7 @@ import {
   type Plane,
   type Volume,
 } from "@big-mesh-studios/stacker/volume";
+import { readModel, writeModel } from "../cvox-io";
 import { Command, type Alignment } from "./Command";
 import type { Accessor } from "solid-js";
 
@@ -65,7 +65,7 @@ export function createCommander({
   requestAutoSave,
 }: CommanderParams): Commander {
   const snapshot = (): Command =>
-    Command.loadVolume(writeCvox(volume(), palette()).buffer as ArrayBuffer);
+    Command.loadVolume(writeModel(volume(), palette()).buffer as ArrayBuffer);
 
   /**
    * The cells of a plane that are joined to `voxel` by an unbroken run of
@@ -286,7 +286,7 @@ export function createCommander({
         );
         setVolume(resized);
         return done(
-          Command.loadVolume(writeCvox(from, palette()).buffer as ArrayBuffer),
+          Command.loadVolume(writeModel(from, palette()).buffer as ArrayBuffer),
         );
       }
 
@@ -296,14 +296,14 @@ export function createCommander({
         // microtask, so the model as it stands now is the only one to hand back.
         const from = volume();
         const fromPalette = palette();
-        const { volume: loaded, palette: loadedPalette } = readCvox(
+        const { volume: loaded, palette: loadedPalette } = readModel(
           new Uint8Array(command.data),
         );
         setPalette(loadedPalette);
         setVolume(loaded);
         return done(
           Command.loadVolume(
-            writeCvox(from, fromPalette).buffer as ArrayBuffer,
+            writeModel(from, fromPalette).buffer as ArrayBuffer,
           ),
         );
       }

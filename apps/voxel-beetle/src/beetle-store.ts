@@ -12,14 +12,16 @@ import {
   createMemo,
   createSignal,
   flush,
-  untrack,
   type Accessor,
 } from "solid-js";
 import { Bitmap, type Dimensions3D, type RGBA } from "@big-mesh-studios/maths";
+import {
+  allChunks,
+  dirtyChunks as chunksOfBounds,
+} from "@big-mesh-studios/stacker/mesh";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import {
   createVolume,
-  packVolume,
   planeSliceCount,
   planeSlicedAxis,
   sliceAt,
@@ -27,13 +29,14 @@ import {
   type Slice,
   type Volume,
 } from "@big-mesh-studios/stacker/volume";
-import { writeCvox } from "@big-mesh-studios/stacker/cvox";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
 import { INITIAL_DIMENSIONS, INITIAL_PALETTE_INDEX } from "./constants";
 import { Command } from "./command/Command";
 import { createCommander } from "./command/commander";
 import { UndoRedoManager, type CommandEntry } from "./undo-redo";
 import { loadFromIndexedDB, saveToIndexedDB } from "./load-save";
+import { writeModel } from "./cvox-io";
+import { changedCells, type ChangedCells } from "./mesh-dirty";
 import { createEnqueue } from "./utils/utils";
 import type { Home } from "./home";
 import type { Alignment3D, ModeKind, Mirror, PreviewState } from "./types";
@@ -215,7 +218,7 @@ export function createBeetle() {
             trySaveAgain = false;
             const { undoStack, redoStack } = undoRedoManager.getStacks();
             await saveToIndexedDB({
-              volume: writeCvox(volume(), palette()).buffer as ArrayBuffer,
+              volume: writeModel(volume(), palette()).buffer as ArrayBuffer,
               undoStack,
               redoStack,
               preview: preview.state(),
@@ -227,17 +230,47 @@ export function createBeetle() {
     };
   })();
 
-  /* The bytes the ray marcher walks, packed. A stroke writes one voxel at a
-     time, so this is repacked when a change has been read back rather than on
-     the write itself: a read does not see a value until the next microtask, and
-     packing a box per voxel of a stroke would cost more than the stroke does. */
-  const [packed, setPacked] = createSignal<Uint8Array>(
-    packVolume(untrack(volume)),
+  /* The chunks of the preview whose geometry no longer matches the model. A
+     stroke writes one voxel at a time, so these are marked when a change has
+     been read back rather than on the write itself: a read does not see a value
+     until the next microtask, and marking a chunk per voxel of a stroke would
+     cost more than the stroke does. The preview drains the set as it builds.
+
+     A model that has never been drawn has no geometry at all, so it opens with
+     every chunk of it waiting. */
+  const [dirtyChunks, setDirtyChunks] = createSignal<Set<number>>(
+    new Set(allChunks(INITIAL_DIMENSIONS)),
   );
 
-  function repack() {
-    flush();
-    setPacked(packVolume(volume()));
+  function markDirty(changed: ChangedCells | undefined) {
+    if (changed === undefined) {
+      return;
+    }
+    const box = volume().dimensions;
+    setDirtyChunks((before) => {
+      const after = new Set(before);
+      const chunks =
+        "everything" in changed
+          ? allChunks(box)
+          : chunksOfBounds(changed.box, box);
+      for (const chunk of chunks) {
+        after.add(chunk);
+      }
+      return after.size === before.size ? before : after;
+    });
+  }
+
+  function clearDirtyChunks(built: Set<number>) {
+    setDirtyChunks((before) => {
+      if (![...built].some((chunk) => before.has(chunk))) {
+        return before;
+      }
+      const after = new Set(before);
+      for (const chunk of built) {
+        after.delete(chunk);
+      }
+      return after;
+    });
   }
 
   const enqueue = createEnqueue<Command>();
@@ -256,7 +289,10 @@ export function createBeetle() {
       enqueue(async () => {
         const reverse = await doCommand(command);
         if (reverse.type !== "NoOperation") {
-          repack();
+          // The reverse names the cells the change moved, which is the same cells
+          // either way round: an undo of a stroke dirties what the stroke did.
+          flush();
+          markDirty(changedCells(reverse));
           requestRender();
         }
         return reverse;
@@ -314,7 +350,7 @@ export function createBeetle() {
           setHome(to);
           undoRedoManager.clear();
           undoRedoManager.clearRedo();
-          repack();
+          markDirty({ everything: true });
           requestRender();
           requestAutoSave();
         }
@@ -334,7 +370,7 @@ export function createBeetle() {
     setChosenPaletteIndex(INITIAL_PALETTE_INDEX);
     setErasing(false);
     setHome({ kind: "nowhere" });
-    repack();
+    markDirty({ everything: true });
     requestRender();
     requestAutoSave();
   }
@@ -372,7 +408,8 @@ export function createBeetle() {
     dimensions,
     palette,
     setPalette,
-    packed,
+    dirtyChunks,
+    clearDirtyChunks,
 
     /* the tool */
     mode,
@@ -413,7 +450,7 @@ export function createBeetle() {
     pushUndo,
     undoRedoManager,
     snapshot,
-    repack,
+    markDirty,
     resize,
     loadVolume: loadVolumeFrom,
     reset,

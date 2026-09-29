@@ -1,6 +1,5 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vite";
-import { precompileJS } from "@random-mesh/rmsl/vite";
 import solid from "vite-plugin-solid";
 
 export default defineConfig(({ command }) => ({
@@ -12,10 +11,7 @@ export default defineConfig(({ command }) => ({
   // keeps the root, and `import.meta.env.BASE_URL` tells the router which of the
   // two it is running under.
   base: command === "build" ? "/big-mesh-studios/voxel-beetle/" : "/",
-  plugins: [
-    precompileJS({ include: "src/picking/voxel-picker-cpu.ts" }),
-    solid({ ssr: false }),
-  ],
+  plugins: [solid({ ssr: false })],
   server: {
     // Named rather than left to the default, which listens on the version six
     // loopback address alone. A browser resolves `localhost` to the version

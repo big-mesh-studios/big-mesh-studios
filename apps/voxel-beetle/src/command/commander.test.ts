@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Bitmap, type RGBA, Vector3D } from "@big-mesh-studios/maths";
 import { createVolume, type Volume } from "@big-mesh-studios/stacker/volume";
-import { writeCvox } from "@big-mesh-studios/stacker/cvox";
+import { writeModel } from "../cvox-io";
 import { Command } from "./Command";
 import { createCommander } from "./commander";
 
@@ -250,7 +250,7 @@ describe("loadVolume", () => {
     other.voxels.fill(0);
     const reverse = await h.doCommand(
       Command.loadVolume(
-        writeCvox(other, [BLUE]).buffer as ArrayBuffer,
+        writeModel(other, [BLUE]).buffer as ArrayBuffer,
       ) as never,
     );
 
@@ -273,7 +273,7 @@ describe("snapshot", () => {
       return;
     }
     expect(new Uint8Array(snapshot.data)).toEqual(
-      writeCvox(h.volume(), h.palette()),
+      writeModel(h.volume(), h.palette()),
     );
   });
 });

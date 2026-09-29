@@ -49,6 +49,34 @@ function solidOf(loaded: LoadedVolume) {
 const countSolid = (volume: Volume) =>
   volume.voxels.filter((index) => index !== Bitmap.EMPTY).length;
 
+/**
+ * How many solid voxels a model has in each slice across one axis, from the low
+ * end of the axis.
+ */
+function profile(volume: Volume, axis: 0 | 1 | 2) {
+  const { width, height, depth } = volume.dimensions;
+  const counts: number[] = [];
+  for (
+    let at = 0;
+    at < (axis === 0 ? width : axis === 1 ? height : depth);
+    at++
+  ) {
+    let count = 0;
+    for (let z = 0; z < depth; z++) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const at3 = axis === 0 ? x : axis === 1 ? y : z;
+          if (at3 === at && readVoxel(volume, x, y, z) !== Bitmap.EMPTY) {
+            count++;
+          }
+        }
+      }
+    }
+    counts.push(count);
+  }
+  return counts;
+}
+
 describe("readCvox", () => {
   it("reads a file the format's author published", () => {
     const { volume, palette, dropped } = readCvox(fixture("3x3x3"));
@@ -283,6 +311,70 @@ describe("writeCvox", () => {
     const { palette: read } = readCvox(writeCvox(volume, palette));
     // The green is drawn nowhere, and is still on the palette afterwards.
     expect(read).toEqual(palette);
+  });
+});
+
+/**
+ * How far a model reaches along one axis, counting the voxels that are in it and
+ * not the space the box leaves empty.
+ */
+function used(volume: Volume, axis: 0 | 1 | 2) {
+  const { width, height, depth } = volume.dimensions;
+  let least = Infinity;
+  let most = -1;
+  for (let z = 0; z < depth; z++) {
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (readVoxel(volume, x, y, z) === Bitmap.EMPTY) {
+          continue;
+        }
+        const at = axis === 0 ? x : axis === 1 ? y : z;
+        least = Math.min(least, at);
+        most = Math.max(most, at);
+      }
+    }
+  }
+  return most - least + 1;
+}
+
+describe("which way up a file is", () => {
+  // The format's specification describes the size of z as its "gravity
+  // direction", which would have a model lying down. Its author's files are the
+  // other way round, and the files are what a reader has to agree with.
+  it("stands the knight on its z, foot at z = 0 and head at the far end", () => {
+    const { volume } = readCvox(fixture("chr_knight"));
+
+    // A chess piece is taller than it is wide and taller than it is deep, and this
+    // one is eighteen from nose to tail along x, fifteen on its z and only eight
+    // across on its y. Of the two axes it is not long on, the one it stands on is
+    // the longer of them.
+    expect(used(volume, 0)).toBeGreaterThan(used(volume, 2));
+    expect(used(volume, 2)).toBeGreaterThan(used(volume, 1));
+
+    // A chess piece stands on a foot. Along z the model opens with three slices of
+    // a few voxels each, which is a foot and a stem, and tapers to a point of one
+    // or two voxels at the far end, which is the top of a horse's head.
+    const alongZ = profile(volume, 2);
+    const occupied = alongZ.slice(0, alongZ.findLastIndex((c) => c > 0) + 1);
+    expect(occupied.slice(0, 3).every((count) => count < 8)).toBe(true);
+    expect(occupied[occupied.length - 1]).toBeLessThan(8);
+    expect(Math.max(...occupied)).toBeGreaterThan(40);
+  });
+
+  it("stands the castle on its z, the one axis it is not symmetrical about", () => {
+    const { volume } = readCvox(fixture("castle"));
+    const reversed = (axis: 0 | 1 | 2) => {
+      const along = profile(volume, axis);
+      return [...along].reverse();
+    };
+
+    // A castle is as much one way as the other across itself and down each of its
+    // two faces, and comes to a different shape from the front than from the back
+    // because its gate is in one of them. The axis it is not symmetrical about is
+    // the axis it is standing on.
+    expect(profile(volume, 0)).toEqual(reversed(0));
+    expect(profile(volume, 1)).toEqual(reversed(1));
+    expect(profile(volume, 2)).not.toEqual(reversed(2));
   });
 });
 

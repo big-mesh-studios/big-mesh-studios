@@ -6,8 +6,8 @@
 // than a snapshot of it — is what sits in the history and what a stroke's undo
 // puts back.
 import { type RGBA } from "@big-mesh-studios/maths";
-import { readCvox } from "@big-mesh-studios/stacker/cvox";
 import type { Volume } from "@big-mesh-studios/stacker/volume";
+import { readModel } from "./cvox-io";
 import { fromJSON, toJSON, type Command } from "./command/Command";
 import type { CommandEntry } from "./undo-redo";
 import type { PreviewState } from "./types";
@@ -87,7 +87,7 @@ export async function loadFromIndexedDB(
     throw new Error("this browser has no model saved");
   }
 
-  const { volume, palette } = readCvox(new Uint8Array(bytes));
+  const { volume, palette } = readModel(new Uint8Array(bytes));
 
   return {
     volume,
