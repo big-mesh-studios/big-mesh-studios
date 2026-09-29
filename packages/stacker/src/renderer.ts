@@ -59,6 +59,25 @@ export {
 } from "./motion";
 export type { Ease, Key, Motion, PartKeys, Pose } from "./motion";
 export { solveVoxels, encodePalette, packedFaces } from "./solver";
+export {
+  applyEdits,
+  editFileFor,
+  editVolumeFor,
+  editsFrom,
+  editsHaveSomething,
+  REMOVED,
+  REMOVED_COLOUR,
+  type EditsFile,
+} from "./edits";
+export { sidesOfVolume } from "./sides";
+export {
+  paletteSlotsInUse,
+  partFromCvox,
+  partFromVolume,
+  placePart,
+  type ImportedVolume,
+  type PlacedPart,
+} from "./import-volume";
 export type { ViewSpec } from "./solver";
 export { marchVolume } from "./march";
 export type { MarchVolumeNodes } from "./march";

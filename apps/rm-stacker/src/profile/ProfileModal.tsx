@@ -95,6 +95,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
     undoRedoManager,
     motions,
     setMotions,
+    importCvox,
   } = useContext(StackerContext);
 
   const [cards, setCards] = createSignal<Card[]>([]);
@@ -104,6 +105,7 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
   const [handle, setHandle] = createSignal("");
   const [name, setName] = createSignal("");
   const [note, setNote] = createSignal<string | null>(null);
+  const [failure, setFailure] = createSignal<string | null>(null);
 
   const working = createMemo(() => busy() || atproto.status() === "connecting");
 
@@ -216,17 +218,32 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
       : where.kind === "file" && where.id === card.file.id;
   }
 
+  /**
+   * An action with the modal's buttons held while it goes on, and whatever it
+   * went wrong saying underneath it.
+   *
+   * What went wrong is said rather than swallowed, because these actions open a
+   * file somebody chose and there is nothing else standing between a file that is
+   * not what it claims to be and a model silently not arriving. A picker the
+   * person closed is the one failure that is not one: `fileOpen` rejects it as an
+   * `AbortError`, and that is the person deciding not to, not a file being wrong.
+   */
   async function run(
     what: string,
     action: () => Promise<string | null>,
   ): Promise<void> {
     setBusy(true);
     setNote(what);
+    setFailure(null);
 
     try {
       setNote(await action());
-    } catch {
+    } catch (cause) {
       setNote(null);
+
+      if ((cause as { name?: string })?.name !== "AbortError") {
+        setFailure(cause instanceof Error ? cause.message : String(cause));
+      }
     } finally {
       setBusy(false);
     }
@@ -361,6 +378,35 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
     });
   }
 
+  /**
+   * Brings a `.cvox` in as a part of the figure being drawn on, and says what
+   * happened to it.
+   *
+   * A `.cvox` is a model where a file of this editor is six drawings, so it
+   * arrives as a part whose six drawings are what the model looks like from each
+   * side, with everything those six cannot say kept beside them. The figure keeps
+   * its own part, its own motion and its own undo history, and the new part joins
+   * them.
+   */
+  function importFromDisk(): Promise<void> {
+    return run("importing…", async () => {
+      const file = (await fileOpen<false>({
+        extensions: [".cvox"],
+        description: "Voxel model",
+        mimeTypes: ["application/octet-stream"],
+      })) as FileWithHandle;
+
+      const result = importCvox(new Uint8Array(await file.arrayBuffer()));
+      props.onClose();
+
+      return result.dropped.length === 0
+        ? `Imported "${result.part}".`
+        : `Imported "${result.part}", with ${result.dropped.length} colour${
+            result.dropped.length === 1 ? "" : "s"
+          } it has no room for drawn in the nearest it has.`;
+    });
+  }
+
   /** Opens a file from disk, remembering it so it shows here from now on. */
   function openFromDisk(): Promise<void> {
     return run("opening…", async () => {
@@ -439,6 +485,14 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
           title="Open a file from disk"
           disabled={working()}
           onClick={() => void openFromDisk()}
+        />
+        <IconButton
+          class={styles.import}
+          kind="file-import"
+          label="Import"
+          title="Bring a .cvox in as another part"
+          disabled={working()}
+          onClick={() => void importFromDisk()}
         />
         <IconButton
           class={styles.export}
@@ -570,6 +624,11 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
 
         <Show when={note()}>
           <div class={styles.note}>{note()}</div>
+        </Show>
+        <Show when={failure()}>
+          <div class={styles.error}>
+            <Icon kind="triangle-exclamation" /> {failure()}
+          </div>
         </Show>
         <Show when={atproto.error()}>
           <div class={styles.error}>

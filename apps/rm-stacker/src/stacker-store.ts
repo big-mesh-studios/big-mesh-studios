@@ -15,6 +15,9 @@ import {
   lastFrame,
   NO_MOTION,
   partDimensions,
+  partFromCvox,
+  paletteSlotsInUse,
+  placePart,
   poseAt,
   poseFigure,
   solvePart,
@@ -30,6 +33,7 @@ import {
   type SolvedPart,
   wholeModel,
 } from "@big-mesh-studios/stacker/renderer";
+import { resizeVolume } from "@big-mesh-studios/stacker/volume";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import { Accessor } from "@solidjs/signals";
 import {
@@ -879,6 +883,18 @@ export function createStacker() {
                 ...part,
                 sides: resized,
                 sections: resizeSections(options),
+                // The edits are re-framed with the drawings rather than dropped, so
+                // a voxel someone put there by hand stays on the voxel it was put
+                // on. An edit on a cell the new size no longer reaches goes with
+                // the cell, which is the same answer the drawings give.
+                edits:
+                  part.edits === undefined
+                    ? undefined
+                    : resizeVolume(
+                        part.edits,
+                        options.to.dimensions,
+                        options.to.alignment,
+                      ),
               }
             : part,
         ),
@@ -950,6 +966,35 @@ export function createStacker() {
             : candidate,
         ),
       );
+    },
+    /**
+     * Brings a box of voxels in from a `.cvox` as a part of this figure, and
+     * selects it.
+     *
+     * The file is a model rather than six drawings, so it is projected onto six
+     * drawings and what that lost is kept beside them as the part's edits. What
+     * the file is drawn in is its own colours, which the figure may number
+     * differently, so those are moved onto the figure's palette before anything is
+     * drawn — a colour the figure has keeps its slot, one it lacks takes a slot
+     * nothing is drawn in, and one it has no room for is drawn in the nearest it
+     * has and named in what is returned.
+     *
+     * @returns The name the part joined under, and the colours that had no slot of
+     * their own to be drawn in.
+     */
+    importCvox(bytes: Uint8Array) {
+      const name = unusedPartName(parts(), "import");
+      const brought = partFromCvox(bytes, name);
+      const placed = placePart(brought, palette(), paletteSlotsInUse(parts()));
+
+      setPalette(placed.palette);
+      changeParts("Import Model", (current) => [...current, placed.part]);
+      selectPart(placed.part.name);
+
+      return {
+        part: placed.part.name,
+        dropped: [...brought.dropped, ...placed.dropped],
+      };
     },
     duplicatePart(name: string) {
       const source = parts().find((part) => part.name === name);

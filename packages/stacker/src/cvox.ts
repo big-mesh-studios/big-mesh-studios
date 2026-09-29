@@ -495,8 +495,12 @@ function buildPalette(models: PackedModel[]): {
   };
 }
 
-/** The colour of a palette nearest to `colour`, by how far each channel is from it. */
-const nearestIndex = (palette: RGBA[], colour: RGBA): number => {
+/**
+ * Where in a palette the colour nearest to `colour` is, by how far each of its
+ * channels is from it — so that a colour with no slot of its own can be drawn in
+ * the one that stands closest to it rather than dropped.
+ */
+export const nearestIndex = (palette: RGBA[], colour: RGBA): number => {
   let nearest = 0;
   let nearestDistance = Infinity;
   palette.forEach((kept, i) => {

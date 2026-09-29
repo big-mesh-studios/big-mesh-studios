@@ -11,21 +11,21 @@
 
 .bar {
   display: grid;
-  grid-template-columns: repeat(4, 100px) minmax(0, 1fr) auto auto;
-  grid-template-areas: "new open export publish account auth close";
+  grid-template-columns: repeat(5, 100px) minmax(0, 1fr) auto auto;
+  grid-template-areas: "new open import export publish account auth close";
   align-items: center;
   gap: var(--margin);
   border-bottom: 1px solid var(--dark-grey);
 
   @container (max-width: 620px) {
-    grid-template-columns: repeat(4, auto) minmax(0, 1fr) auto auto;
+    grid-template-columns: repeat(5, auto) minmax(0, 1fr) auto auto;
   }
 
   @container (max-width: 400px) {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     grid-template-areas:
-      "new     open    export  publish close"
-      "account account account account auth ";
+      "new     open    import  export  publish close"
+      "account account account account account auth ";
 
     & button {
       justify-content: center;
@@ -45,6 +45,10 @@
   grid-area: open;
 }
 
+.import {
+  grid-area: import;
+}
+
 .export {
   grid-area: export;
 }
@@ -55,6 +59,7 @@
 
 .new,
 .open,
+.import,
 .export,
 .publish {
   padding: var(--margin) calc(var(--margin) * 2);
@@ -315,6 +320,7 @@
 
   .new,
   .open,
+  .import,
   .export,
   .publish {
     border-right: 0;

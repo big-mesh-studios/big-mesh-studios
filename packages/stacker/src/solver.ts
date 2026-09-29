@@ -277,6 +277,30 @@ const faceColourIndex = (side: Bitmap, px: number, py: number): number => {
 };
 
 /**
+ * Writes the one palette index a voxel carries into all six of its faces, and
+ * marks it solid.
+ *
+ * Six five-bit fields in four bytes leaves room for two whole and four split, so
+ * this is where the layout lives rather than at each of the callers that need a
+ * voxel to show one colour: a volume's own packing and an edit overriding a voxel
+ * are the same write, and a second copy of the shifts is a second thing to be
+ * wrong.
+ *
+ * @param offset Where the voxel's four bytes start.
+ */
+export const writePackedVoxel = (
+  out: Uint8Array,
+  offset: number,
+  index: number,
+): void => {
+  out[offset + 0] = index | ((index & 0b111) << 5);
+  out[offset + 1] =
+    ((index >> 3) & 0b11) | ((index & 0b11111) << 2) | ((index & 0b1) << 7);
+  out[offset + 2] = ((index >> 1) & 0b1111) | ((index & 0b1111) << 4);
+  out[offset + 3] = ((index >> 4) & 0b1) | ((index & 0b11111) << 1) | SOLID;
+};
+
+/**
  * A box of voxels packed into the format its material reads, with no carving:
  * every voxel that has a palette index in it is solid, and all six of its faces
  * take that one index, because a volume gives a voxel one colour rather than a
@@ -298,18 +322,7 @@ export function packVolume(volume: Volume): Uint8Array {
           continue;
         }
 
-        // Every face takes the voxel's one index, so the same value is written
-        // into all six fields rather than read from six drawings.
-        const offset = (z * width * height + y * width + x) << 2;
-
-        out[offset + 0] = index | ((index & 0b111) << 5);
-        out[offset + 1] =
-          ((index >> 3) & 0b11) |
-          ((index & 0b11111) << 2) |
-          ((index & 0b1) << 7);
-        out[offset + 2] = ((index >> 1) & 0b1111) | ((index & 0b1111) << 4);
-        out[offset + 3] =
-          ((index >> 4) & 0b1) | ((index & 0b11111) << 1) | 0b11000000;
+        writePackedVoxel(out, (z * width * height + y * width + x) << 2, index);
       }
     }
   }
