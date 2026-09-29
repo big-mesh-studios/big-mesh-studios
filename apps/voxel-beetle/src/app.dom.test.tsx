@@ -11,6 +11,8 @@
 // ends in a loop rather than in a drawing. Everything else the editor is made of
 // is here, and every one of it reads a context.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render } from "@solidjs/web";
 import { createRoot, flush } from "solid-js";
 import { createBeetle } from "./beetle-store";
@@ -18,6 +20,7 @@ import { BeetleContext } from "./context";
 import { Split } from "./components/SplitPane";
 import SliceEditorView from "./SliceEditorView/SliceEditorView";
 import { Hud } from "./Hud";
+import Palette from "./components/Palette";
 
 /** The browser's own stand-ins, one per thing the editor asks of one. */
 function stubBrowser() {
@@ -179,9 +182,15 @@ afterEach(() => {
   unstub?.();
 });
 
-/** The editor as it is laid out, with the 3D preview left out. */
-const Editor = () => {
-  const beetle = createBeetle();
+/**
+ * The editor as it is laid out, with the 3D preview left out.
+ *
+ * Given a store, it is drawn over that one — which is how a test loads a file
+ * first and then builds the tree over what the file brought in, the order the
+ * application does it in.
+ */
+const Editor = (props: { store?: ReturnType<typeof createBeetle> }) => {
+  const beetle = props.store ?? createBeetle();
   return (
     <BeetleContext value={beetle}>
       <Split direction="row">
@@ -196,6 +205,21 @@ const Editor = () => {
     </BeetleContext>
   );
 };
+
+/**
+ * A published `.cvox` file, read from the package's own fixtures. These are the
+ * format author's files, byte for byte, so a loader that reads them is reading
+ * the format rather than a file of this repository's own making.
+ *
+ * Named from the working directory rather than from `import.meta.url`, which the
+ * Solid plugin rewrites on the way past in a module it transforms.
+ */
+const fixtureBytes = (name: string): ArrayBuffer =>
+  Uint8Array.from(
+    readFileSync(
+      resolve(process.cwd(), "../../packages/stacker/fixtures", `${name}.cvox`),
+    ),
+  ).buffer as ArrayBuffer;
 
 describe("the editor, mounted", () => {
   it("builds the split, the slice canvas and the controls over them", async () => {
@@ -344,5 +368,81 @@ describe("the store", () => {
     beetle.choosePaletteIndex(5);
     flush();
     expect(beetle.selectedPaletteIndex()).toBe(5);
+  });
+
+  it("keeps the brush on a colour the model brought with it", async () => {
+    // castle.cvox is a real file from the format's author: a model in a single
+    // colour. The editor starts its brush on the sixth swatch, which a one-colour
+    // palette does not have, and everything that asked the palette for the brush's
+    // colour was asking past its end.
+    const beetle = makeStore();
+    await beetle.loadVolume(fixtureBytes("castle"), { kind: "nowhere" });
+    flush();
+
+    expect(beetle.palette()).toHaveLength(1);
+    // The brush lands on a colour that exists, whatever the palette's length.
+    expect(beetle.chosenPaletteIndex()).toBeLessThan(beetle.palette().length);
+    expect(beetle.selectedColour()).toBeDefined();
+  });
+
+  it.each([
+    ["3x3x3", 1],
+    ["castle", 1],
+    ["chr_knight", 21],
+  ])("keeps the brush inside the palette of %s", async (name, colours) => {
+    const beetle = makeStore();
+    await beetle.loadVolume(fixtureBytes(name), { kind: "nowhere" });
+    flush();
+    expect(beetle.palette()).toHaveLength(colours);
+    expect(beetle.chosenPaletteIndex()).toBeLessThan(colours);
+    expect(beetle.selectedColour()).toBeDefined();
+  });
+
+  it("keeps the brush inside a palette that shrinks under it", () => {
+    // Not only a file's palette: taking a colour away with the picker shortens
+    // it too, and the brush follows it down rather than staying on a swatch that
+    // is no longer there.
+    const beetle = makeStore();
+    flush();
+    expect(beetle.chosenPaletteIndex()).toBe(5);
+
+    beetle.setPalette(beetle.palette().slice(0, 2));
+    flush();
+    expect(beetle.chosenPaletteIndex()).toBe(1);
+    expect(beetle.selectedColour()).toBeDefined();
+  });
+
+  it("shows a model in fewer colours than the editor starts with", async () => {
+    // The same file, with the tree actually built over it: the palette strip asks
+    // whether each swatch is the chosen one, which used to be a comparison
+    // between a colour and whatever the brush was on — and the brush was past
+    // the end of a one-colour palette, so there was nothing there to compare.
+    const beetle = makeStore();
+    await beetle.loadVolume(fixtureBytes("castle"), { kind: "nowhere" });
+    flush();
+
+    const host = mount(() => <Editor store={beetle} />);
+    await settle(host);
+    flush();
+    expect(host.querySelectorAll("button").length).toBeGreaterThan(0);
+  });
+
+  it("builds a palette strip over a one-colour model", async () => {
+    // The strip itself, which the editor keeps in a popover and so does not build
+    // until it is opened. This is the piece that read past the end of the
+    // palette, so it is built here rather than left to a popover.
+    const beetle = makeStore();
+    await beetle.loadVolume(fixtureBytes("castle"), { kind: "nowhere" });
+    flush();
+
+    const host = mount(() => (
+      <BeetleContext value={beetle}>
+        <Palette />
+      </BeetleContext>
+    ));
+    await settle(host);
+    flush();
+    // One swatch, for the one colour the castle is drawn in.
+    expect(host.querySelectorAll("button")).toHaveLength(1);
   });
 });

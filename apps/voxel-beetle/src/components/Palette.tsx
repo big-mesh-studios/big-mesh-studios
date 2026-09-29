@@ -12,7 +12,7 @@ function Palette(props: { class?: string }) {
   const {
     palette,
     setPalette,
-    chosenColour,
+    chosenPaletteIndex,
     choosePaletteIndex,
     compact,
     requestRender,
@@ -90,8 +90,12 @@ function Palette(props: { class?: string }) {
       <div class={[styles.palette, compact() && styles.narrow, props.class]}>
         <For each={palette()}>
           {(colour, index) => {
-            const isSelected = createMemo(() =>
-              RGBA.equals(colour, chosenColour()),
+            // Which swatch the brush is on, by the swatch's own number rather
+            // than by its colour. Two entries can hold the same colour, and
+            // asking which of them is chosen is a question about the model
+            // rather than about the colour.
+            const isSelected = createMemo(
+              () => index() === chosenPaletteIndex(),
             );
 
             async function onPointerDown(

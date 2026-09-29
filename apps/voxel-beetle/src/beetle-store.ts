@@ -79,9 +79,7 @@ export function createBeetle() {
     INITIAL_DIMENSIONS.depth >> 1,
   );
 
-  const [chosenPaletteIndex, setChosenPaletteIndex] = createSignal(
-    INITIAL_PALETTE_INDEX,
-  );
+  const [chosenAt, setChosenAt] = createSignal(INITIAL_PALETTE_INDEX);
   const [erasing, setErasing] = createSignal(false);
 
   const [home, setHome] = createSignal<Home>({ kind: "nowhere" });
@@ -126,6 +124,21 @@ export function createBeetle() {
     const held = Math.max(0, Math.min(sliceIndex(), sliceCount() - 1));
     return sliceAt(dimensions(), plane(), held);
   });
+  /**
+   * Which swatch the brush is on, held inside the palette.
+   *
+   * A model read from a file brings that file's palette with it, and a file is
+   * under no obligation to carry as many colours as the editor opens with:
+   * `castle.cvox` from the format's own examples is a castle in a single one,
+   * and the editor starts its brush on the sixth. A number past the end of the
+   * palette stands for the last swatch rather than for nothing at all, which is
+   * the same holding the slice does inside the box above — and without it the
+   * brush was left naming a colour the palette did not have, which is a colour
+   * nobody could draw, name or compare against.
+   */
+  const chosenPaletteIndex = createMemo(() =>
+    Math.max(0, Math.min(chosenAt(), palette().length - 1)),
+  );
   const chosenColour = createMemo(() => palette()[chosenPaletteIndex()]);
   const selectedPaletteIndex = createMemo(() =>
     erasing() ? Bitmap.EMPTY : chosenPaletteIndex(),
@@ -171,7 +184,7 @@ export function createBeetle() {
   }
 
   function choosePaletteIndex(index: number) {
-    setChosenPaletteIndex(index);
+    setChosenAt(index);
     setErasing(false);
   }
 
@@ -367,7 +380,7 @@ export function createBeetle() {
     setSliceIndex(INITIAL_DIMENSIONS.depth >> 1);
     setMode("Draw");
     setMirror({ across: false, down: false });
-    setChosenPaletteIndex(INITIAL_PALETTE_INDEX);
+    setChosenAt(INITIAL_PALETTE_INDEX);
     setErasing(false);
     setHome({ kind: "nowhere" });
     markDirty({ everything: true });
