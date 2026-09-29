@@ -11,6 +11,7 @@
 // runs, or may have been replaced while it waited its turn; its reverse says what
 // was actually undone, which is what the geometry now has to agree with.
 import {
+  panelBitmap,
   panelCellBounds,
   type CellBounds,
   type PanelKind,
@@ -43,12 +44,18 @@ export const changedGeometry = (
 ): ChangedGeometry | undefined => {
   switch (command.type) {
     case "WritePixel":
-    case "FillPixel":
     case "ErasePixel":
       return drawnOn(command.part, command.panel, find, {
         min: command.position,
         max: command.position,
       });
+
+    // A flood fill spreads from the cell it was pressed on through every cell of
+    // the drawing holding the colour it started from, so where it stops is not
+    // the pressed cell and cannot be read from the command. The whole of the
+    // drawing is what it may have covered.
+    case "FillPixel":
+      return drawnOver(command.part, command.panel, find);
 
     case "FillRectangle":
       return drawnOn(command.part, command.panel, find, {
@@ -109,6 +116,36 @@ const drawnOn = (
   return on === undefined
     ? undefined
     : { parts: [{ part, box: panelCellBounds(on, panel, rect) }] };
+};
+
+/** As `drawnOn`, for a change that can have covered every cell of a drawing. */
+const drawnOver = (
+  part: string,
+  panel: PanelKind,
+  find: (name: string) => Part | undefined,
+): ChangedGeometry | undefined => {
+  const on = find(part);
+
+  if (on === undefined) {
+    return undefined;
+  }
+
+  const drawing = panelBitmap(on, panel);
+
+  return {
+    parts: [
+      {
+        part,
+        box: panelCellBounds(on, panel, {
+          min: { x: 0, y: 0 },
+          max:
+            drawing === undefined
+              ? { x: 0, y: 0 }
+              : { x: drawing.width - 1, y: drawing.height - 1 },
+        }),
+      },
+    ],
+  };
 };
 
 /** The boxes covering each part named, as one box holding all of that part's. */

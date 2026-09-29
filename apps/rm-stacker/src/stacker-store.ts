@@ -479,6 +479,8 @@ export function createStacker() {
   function updateVoxels(changed?: ChangedGeometry) {
     flush();
 
+    // A change that names no part has reached every part, so none of them is
+    // settled and each is packed again.
     const named =
       changed === undefined || "everything" in changed
         ? undefined
@@ -488,7 +490,10 @@ export function createStacker() {
       parts().map((part, index) => {
         const was = before[index];
         const settled =
-          was !== undefined && was.name === part.name && !named?.has(part.name);
+          named !== undefined &&
+          was !== undefined &&
+          was.name === part.name &&
+          !named.has(part.name);
         return settled ? was : solvePart(part);
       }),
     );

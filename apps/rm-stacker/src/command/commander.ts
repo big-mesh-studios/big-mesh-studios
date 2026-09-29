@@ -1,7 +1,7 @@
 import { Accessor, Setter } from "@solidjs/signals";
 import { untrack } from "solid-js";
 import { loadFigure, saveFigure } from "@big-mesh-studios/stacker/format";
-import { Bitmap, RGBA, Vector3D } from "@big-mesh-studios/maths";
+import { Bitmap, RGBA, Vector2D, Vector3D } from "@big-mesh-studios/maths";
 import {
   keyAt,
   panelBitmap,
@@ -55,6 +55,34 @@ export function createCommander({
     return part === undefined ? undefined : panelBitmap(part, panel);
   }
 
+  /**
+   * The commands putting `painted` back to what each cell held, as one command
+   * to run them in turn — or a no-op where a fill changed nothing, so that a
+   * stroke over ground already the colour it draws in leaves nothing to undo.
+   *
+   * Naming the cells rather than the whole figure is what lets a change say
+   * which part of the box it drew on: a part's geometry is rebuilt from the
+   * cells a command covered, and a whole-figure snapshot covers every part of
+   * every figure, which is the whole model to mesh again for one filled region.
+   */
+  function restored(
+    partName: string,
+    kind: PanelKind,
+    painted: { at: Vector2D; was: number }[],
+  ): Command {
+    if (painted.length === 0) {
+      return Command.noOperation();
+    }
+
+    return Command.sequence(
+      painted.map(({ at, was }) =>
+        was === Bitmap.EMPTY
+          ? Command.erasePixel(partName, kind, at)
+          : Command.writePixel(partName, kind, at, was),
+      ),
+    );
+  }
+
   async function doCommand(command: Command): Promise<Command> {
     queueMicrotask(() => requestAutoSave());
 
@@ -102,11 +130,18 @@ export function createCommander({
 
           side.data[offset] = paletteIndex;
 
+          // Every cell the flood reaches held the colour it started from, so the
+          // whole of it goes back to that one index.
+          const painted: { at: Vector2D; was: number }[] = [
+            {
+              at: { x: Math.floor(position.x), y: Math.floor(position.y) },
+              was: oldIndex,
+            },
+          ];
+
           const stack: number[] = [];
           stack.push(position.y);
           stack.push(position.x);
-
-          const undo = snapshot();
 
           // preallocated to lower GC-pressue
           let neighbors: { x: number; y: number }[] = [
@@ -147,6 +182,13 @@ export function createCommander({
 
               if (intersection.index === oldIndex) {
                 side.data[intersection.offset] = paletteIndex;
+                painted.push({
+                  at: {
+                    x: Math.floor(neighbor.x),
+                    y: Math.floor(neighbor.y),
+                  },
+                  was: oldIndex,
+                });
                 // `neighbors` is reused every iteration, so push the coordinates, not the object.
                 stack.push(neighbor.y);
                 stack.push(neighbor.x);
@@ -154,7 +196,7 @@ export function createCommander({
             }
           }
 
-          return undo;
+          return restored(partName, kind, painted);
         }
         case "FillRectangle": {
           const {
@@ -171,19 +213,30 @@ export function createCommander({
             return Command.noOperation();
           }
 
-          const _snapshot = snapshot(parts());
+          const painted: { at: Vector2D; was: number }[] = [];
 
           for (let x = min.x; x <= max.x; x++) {
             for (let y = min.y; y <= max.y; y++) {
+              if (!Bitmap.contains(side, x, y)) {
+                continue;
+              }
+
               if (onlyWhereEmpty && !Bitmap.isEmpty(side, x, y)) {
                 continue;
               }
 
+              const was = Bitmap.get(side, x, y);
+
+              if (was === paletteIndex) {
+                continue;
+              }
+
               Bitmap.set(side, x, y, paletteIndex);
+              painted.push({ at: { x, y }, was });
             }
           }
 
-          return _snapshot;
+          return restored(partName, kind, painted);
         }
         case "WritePixel": {
           const {
