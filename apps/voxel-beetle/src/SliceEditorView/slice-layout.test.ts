@@ -82,6 +82,19 @@ describe("drawingCell", () => {
     expect(drawingCell(layout, inside)).toEqual(Vector2D.create(2, 1));
   });
 
+  it("is a whole cell for a point between cells, which is where a pointer stands", () => {
+    // A pointer on a canvas lands at a fractional number of cells, and every
+    // point within one cell is that cell and not the one beside it.
+    for (const within of [0, 0.25, 0.5, 0.75, 0.999]) {
+      expect(
+        drawingCell(
+          layout,
+          Vector2D.add(layout.drawing, Vector2D.create(2 + within, 1 + within)),
+        ),
+      ).toEqual(Vector2D.create(2, 1));
+    }
+  });
+
   it("is nothing where a point lands outside the drawing", () => {
     expect(drawingCell(layout, layout.drawing)).toEqual(Vector2D.create(0, 0));
     expect(
@@ -96,9 +109,12 @@ describe("drawingCell", () => {
 describe("nearestDrawingCell", () => {
   const layout = computeLayout(sliceAt(box(4, 4, 4), "xy", 0));
 
-  it("is the cell a point is nearest, for a drag that has moved faster than the grid", () => {
+  it("is the same cell a press on the point lands in, so a stroke starts where it was pressed", () => {
     const point = Vector2D.add(layout.drawing, Vector2D.create(2.6, 1.4));
-    expect(nearestDrawingCell(layout, point)).toEqual(Vector2D.create(3, 1));
+    expect(nearestDrawingCell(layout, point)).toEqual(
+      drawingCell(layout, point),
+    );
+    expect(nearestDrawingCell(layout, point)).toEqual(Vector2D.create(2, 1));
   });
 
   it("stays on the drawing for a point that has left it entirely", () => {

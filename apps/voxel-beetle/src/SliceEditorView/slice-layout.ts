@@ -92,14 +92,17 @@ export function blockContains(block: Block, cell: Vector2D): boolean {
  * outside it. A world position is a point on the canvas measured in cells from
  * the drawing's own top-left corner, which is the way a drawing's rows run: down
  * and to the right.
+ *
+ * The point a pointer stands at is almost never on a cell boundary, so this is
+ * the cell that contains the point rather than the distance to a cell's corner.
  */
 export function drawingCell(
   layout: Layout,
   world: Vector2D,
 ): Vector2D | undefined {
   const cell = Vector2D.create(
-    world.x - layout.drawing.x,
-    world.y - layout.drawing.y,
+    Math.floor(world.x - layout.drawing.x),
+    Math.floor(world.y - layout.drawing.y),
   );
   return cell.x >= 0 &&
     cell.y >= 0 &&
@@ -109,16 +112,21 @@ export function drawingCell(
     : undefined;
 }
 
-/** The cell of the drawing a world position lands nearest, for a drag in flight. */
+/**
+ * The cell of the drawing a world position lands in, for a drag in flight, held
+ * on the drawing where the point has left it entirely. This is the same cell a
+ * press on the same point lands in, so that a stroke begins where it was pressed
+ * and a press and a release in the same place are one cell rather than two.
+ */
 export function nearestDrawingCell(layout: Layout, world: Vector2D): Vector2D {
   return Vector2D.create(
     Math.max(
       0,
-      Math.min(layout.size.x - 1, Math.round(world.x - layout.drawing.x)),
+      Math.min(layout.size.x - 1, Math.floor(world.x - layout.drawing.x)),
     ),
     Math.max(
       0,
-      Math.min(layout.size.y - 1, Math.round(world.y - layout.drawing.y)),
+      Math.min(layout.size.y - 1, Math.floor(world.y - layout.drawing.y)),
     ),
   );
 }

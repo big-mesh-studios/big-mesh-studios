@@ -4,14 +4,19 @@ import {
   readSlice,
   type Slice,
 } from "@big-mesh-studios/stacker/volume";
-import { Component, createEffect, onSettled, useContext } from "solid-js";
+import {
+  Component,
+  createEffect,
+  createSignal,
+  onSettled,
+  useContext,
+} from "solid-js";
 import { BeetleContext } from "../context";
 import { createSliceController } from "./create-slice-controller";
 import {
   cellWorld,
   computeLayout,
   computeStripRows,
-  layoutSize,
   sliceOccupancy,
 } from "./slice-layout";
 import styles from "./SliceEditorView.module.css";
@@ -39,24 +44,47 @@ const SliceEditorView: Component = () => {
     doCommandAndUndo,
     choosePaletteIndex,
     setSliceAt,
+    onRender,
   } = beetle;
 
   let canvas!: HTMLCanvasElement;
 
-  /** The slice as a picture: one RGBA texel a cell, rows running down. */
-  let cached:
-    { slice: Slice; image: ImageData; canvas: HTMLCanvasElement } | undefined;
+  /**
+   * The slice as a picture, on a canvas of its own a texel a cell, so that it can
+   * be put down in one piece at the cell size and turned off. The texels are
+   * written afresh on every pass rather than kept and patched: a stroke changes
+   * the model inside the one object holding it, so there is no identity of the
+   * model a cached picture could be known to still match.
+   */
+  let picture:
+    | { width: number; height: number; image: ImageData; canvas: HTMLCanvasElement }
+    | undefined;
 
-  const pictureFor = (at: Slice): ImageData => {
-    if (cached?.slice === at) {
-      return cached.image;
+  const pictureFor = (at: Slice): HTMLCanvasElement => {
+    if (
+      picture === undefined ||
+      picture.width !== at.width ||
+      picture.height !== at.height
+    ) {
+      const offscreen = document.createElement("canvas");
+      offscreen.width = at.width;
+      offscreen.height = at.height;
+      picture = {
+        width: at.width,
+        height: at.height,
+        image: new ImageData(at.width, at.height),
+        canvas: offscreen,
+      };
     }
-    const image = new ImageData(at.width, at.height);
+
+    const { image } = picture;
     const { data } = image;
+    const model = volume();
+    const colours = palette();
     for (let v = 0; v < at.height; v++) {
       for (let u = 0; u < at.width; u++) {
-        const index = readSlice(volume(), at, u, v);
-        const colour = index === Bitmap.EMPTY ? undefined : palette()[index];
+        const index = readSlice(model, at, u, v);
+        const colour = index === Bitmap.EMPTY ? undefined : colours[index];
         const offset = (v * at.width + u) * 4;
         data[offset] = colour?.r ?? 0;
         data[offset + 1] = colour?.g ?? 0;
@@ -64,19 +92,15 @@ const SliceEditorView: Component = () => {
         data[offset + 3] = colour === undefined ? 0 : colour.a;
       }
     }
-
-    const offscreen = document.createElement("canvas");
-    offscreen.width = at.width;
-    offscreen.height = at.height;
-    cached = { slice: at, image, canvas: offscreen };
-    return image;
+    picture.canvas.getContext("2d")!.putImageData(image, 0, 0);
+    return picture.canvas;
   };
 
-  let viewPan = Vector2D.create(0, 0);
-  let viewZoom = 1;
+  const [canvasSize, setCanvasSize] = createSignal<Vector2D>();
 
   const controller = createSliceController({
     canvas: () => canvas,
+    size: canvasSize,
     volume,
     slice,
     plane,
@@ -88,9 +112,6 @@ const SliceEditorView: Component = () => {
     onPick: choosePaletteIndex,
     doCommand: (command, description) =>
       doCommandAndUndo(command, true, description),
-    onView: (pan) => {
-      viewPan = pan;
-    },
     onDraw: () => draw(),
   });
 
@@ -102,7 +123,6 @@ const SliceEditorView: Component = () => {
 
     const at = slice();
     const layout = computeLayout(at);
-    const whole = layoutSize(layout);
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const width = Math.max(1, canvas.clientWidth);
@@ -117,23 +137,17 @@ const SliceEditorView: Component = () => {
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.clearRect(0, 0, width, height);
 
-    // The drawing is centred in whatever room the canvas has, at a whole number
-    // of pixels a cell so that a cell is the same size as its neighbours and
-    // the grid lines up with the picture.
-    const fit = Math.min(width / whole.x, height / whole.y) * 0.94;
-    const scale = Math.max(1, Math.min(64, fit * viewZoom));
-    const originX = (width - whole.x * scale) / 2 + viewPan.x;
-    const originY = (height - whole.y * scale) / 2 + viewPan.y;
+    // The controller works out where the drawing stands, and a press is turned
+    // back into a cell by inverting exactly that, so a cell and the place it is
+    // drawn at cannot come apart.
+    const { scale, at: origin } = controller.transform();
 
-    context.translate(originX, originY);
+    context.translate(origin.x, origin.y);
     context.scale(scale, scale);
     context.imageSmoothingEnabled = false;
 
     /* The slice itself. */
-    const image = pictureFor(at);
-    const offscreen = cached!.canvas;
-    offscreen.getContext("2d")!.putImageData(image, 0, 0);
-    context.drawImage(offscreen, layout.drawing.x, layout.drawing.y);
+    context.drawImage(pictureFor(at), layout.drawing.x, layout.drawing.y);
 
     /* A cell grid, once a cell is wide enough for a line to be worth drawing. */
     if (scale >= GRID_FROM) {
@@ -233,9 +247,7 @@ const SliceEditorView: Component = () => {
       slice();
       plane();
       sliceAt();
-      mode();
-      mirror();
-      selectedPaletteIndex();
+      controller.transform();
       controller.stroke();
       return undefined;
     },
@@ -244,13 +256,37 @@ const SliceEditorView: Component = () => {
     },
   );
 
-  // The canvas is measured by the browser rather than asked, and the watching
-  // starts once the tree has settled and there is something to watch.
   onSettled(() => {
-    const observer = new ResizeObserver(draw);
+    // The model says when it has been changed, which is the only account of it
+    // a change made inside the model itself can give: a stroke writes into the
+    // voxels of the one object holding them rather than replacing it, so
+    // nothing the picture is read from here has moved by the time it is read.
+    const stopListening = onRender(draw);
+
+    // The canvas is measured by the browser rather than asked, and the watching
+    // starts once the tree has settled and there is something to watch.
+    const observer = new ResizeObserver(() => {
+      setCanvasSize(
+        Vector2D.create(
+          Math.max(1, canvas.clientWidth),
+          Math.max(1, canvas.clientHeight),
+        ),
+      );
+      draw();
+    });
     observer.observe(canvas);
+    setCanvasSize(
+      Vector2D.create(
+        Math.max(1, canvas.clientWidth),
+        Math.max(1, canvas.clientHeight),
+      ),
+    );
     draw();
-    return () => observer.disconnect();
+
+    return () => {
+      stopListening();
+      observer.disconnect();
+    };
   });
 
   return (
@@ -264,6 +300,7 @@ const SliceEditorView: Component = () => {
         }}
         onPointerMove={controller.onPointerMove}
         onPointerUp={() => draw()}
+        onPointerCancel={() => draw()}
         onPointerOut={() => {
           controller.onPointerOut();
           draw();

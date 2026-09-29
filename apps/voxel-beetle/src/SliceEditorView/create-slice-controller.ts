@@ -5,6 +5,7 @@
 // run of cells joined to the one pressed, and both end up as one command the
 // history can take back as a single thing however many cells they cover.
 import { Bitmap, Vector2D } from "@big-mesh-studios/maths";
+import { createMemo, createSignal } from "solid-js";
 import {
   mirrorCells,
   sliceCell,
@@ -18,6 +19,7 @@ import { Command, type Command as CommandType } from "../command/Command";
 import { gestureFor } from "../touch";
 import {
   computeLayout,
+  layoutSize,
   nearestDrawingCell,
   pressAt,
   type Layout,
@@ -31,8 +33,25 @@ interface Stroke {
   drawn: Set<string>;
 }
 
+/**
+ * Where the drawing stands on the canvas: how many pixels a cell is drawn across,
+ * and where the top-left corner of the layout is put down. A press is turned back
+ * into a point of the layout by inverting exactly this, so what is drawn and what
+ * is pressed on are the same picture seen from two ends.
+ */
+export interface Transform {
+  /** How many pixels a cell is drawn across. */
+  scale: number;
+  /** Where the fit to the canvas alone would put the drawing. */
+  centre: Vector2D;
+  /** Where the drawing is put down, the fit and the view's own move apart. */
+  at: Vector2D;
+}
+
 export interface SliceControllerParams {
   canvas(): HTMLCanvasElement | undefined;
+  /** How large the canvas is in CSS pixels, or nothing before it has been measured. */
+  size(): Vector2D | undefined;
   volume(): Volume;
   slice(): Slice;
   plane(): Plane;
@@ -47,14 +66,12 @@ export interface SliceControllerParams {
   /** A colour taken off a cell by the eyedropper. */
   onPick(index: number): void;
   doCommand(command: CommandType, description: string): void;
-  onView(pan: Vector2D, scale: number): void;
   onDraw(): void;
 }
 
 export interface SliceController {
   layout(): Layout;
-  pan(): Vector2D;
-  scale(): number;
+  transform(): Transform;
   onPointerDown(
     event: PointerEvent & { currentTarget: HTMLCanvasElement },
   ): Promise<void>;
@@ -67,9 +84,28 @@ export interface SliceController {
   stroke(): { from: Vector2D; cells: Vector2D[] } | undefined;
   /** The block a rectangle in flight has covered, or nothing. */
   block(): { from: Vector2D; to: Vector2D } | undefined;
-  /** Whether a drag is moving the view rather than drawing. */
-  panning(): boolean;
 }
+
+/** How many pixels a cell is across with the drawing fitted to the canvas. */
+const fitScale = (whole: Vector2D, size: Vector2D) =>
+  Math.min(size.x / whole.x, size.y / whole.y) * 0.94;
+
+/**
+ * How many pixels a cell is across at a zoom, held between the one pixel that
+ * still shows a cell at all and the largest a cell is worth being drawn.
+ */
+const cellScale = (whole: Vector2D, size: Vector2D, zoom: number) =>
+  Math.max(1, Math.min(64, fitScale(whole, size) * zoom));
+
+/** Where the fit alone would put the drawing, with nothing zoomed or moved. */
+const fittedAt = (whole: Vector2D, size: Vector2D, scale: number) =>
+  Vector2D.create(
+    (size.x - whole.x * scale) / 2,
+    (size.y - whole.y * scale) / 2,
+  );
+
+/** How far the view may be zoomed in either direction from the fit. */
+const ZOOM_LIMITS = { from: 0.5, to: 64 } as const;
 
 const cellKey = ({ x, y }: Vector2D) => `${x},${y}`;
 
@@ -81,6 +117,7 @@ const cellsOf = (drawn: Set<string>) =>
 
 export function createSliceController({
   canvas,
+  size: canvasSize,
   volume,
   slice,
   plane,
@@ -91,34 +128,83 @@ export function createSliceController({
   onSlice,
   onPick,
   doCommand,
-  onView,
   onDraw,
 }: SliceControllerParams): SliceController {
-  let pan = Vector2D.create(0, 0);
-  let scale = 8;
   let stroke: Stroke | undefined;
   let block: { from: Vector2D; to: Vector2D } | undefined;
   let hovered: Vector2D | undefined;
   let panning = false;
-  let panFrom: Vector2D | undefined;
-  let previousSpan: number | undefined;
+  let pinch: { span: number; at: { clientX: number; clientY: number } } | undefined;
+
+  // How far the view has been zoomed and moved away from the fit to the canvas.
+  // Both are signals rather than remembered numbers because the drawing is read
+  // back out of them to be painted: a zoom or a move that changed only what a
+  // press meant, and not what is on the canvas, would be a view that cannot be
+  // looked at.
+  const [zoom, setZoom] = createSignal(1);
+  const [pan, setPan] = createSignal(Vector2D.create(0, 0));
 
   const layout = () => computeLayout(slice());
 
-  /** The point on the canvas a press stands at, in cells from the drawing. */
+  const transform = createMemo<Transform>(() => {
+    const size = canvasSize();
+    const whole = layoutSize(layout());
+    if (size === undefined) {
+      return {
+        scale: 1,
+        centre: Vector2D.create(0, 0),
+        at: Vector2D.create(0, 0),
+      };
+    }
+    const scale = cellScale(whole, size, zoom());
+    const centre = fittedAt(whole, size, scale);
+    return { scale, centre, at: Vector2D.add(centre, pan()) };
+  });
+
+  /** The point of the layout a press stands at. */
   const worldAt = (event: { clientX: number; clientY: number }): Vector2D => {
     const element = canvas();
     if (element === undefined) {
       return Vector2D.create(0, 0);
     }
     const rect = element.getBoundingClientRect();
+    const { scale, at } = transform();
     return Vector2D.create(
-      (event.clientX - rect.left - pan.x) / scale,
-      (event.clientY - rect.top - pan.y) / scale,
+      (event.clientX - rect.left - at.x) / scale,
+      (event.clientY - rect.top - at.y) / scale,
     );
   };
 
-  const view = () => onView(pan, scale);
+  /**
+   * The view put `from` of the layout back under `point` of the canvas, at a
+   * zoom of `to`. This is what a drag carries the drawing along by, and what
+   * keeps a cell under the wheel or under the middle of two fingers while the
+   * view is being moved and changed in size about it, so that what is being
+   * looked at does not slide out from under the thing looking at it.
+   */
+  const hold = (
+    from: Vector2D,
+    point: { clientX: number; clientY: number },
+    to: number,
+  ) => {
+    const element = canvas();
+    const size = canvasSize();
+    if (element === undefined || size === undefined) {
+      setZoom(to);
+      return;
+    }
+    const rect = element.getBoundingClientRect();
+    const whole = layoutSize(layout());
+    const scale = cellScale(whole, size, to);
+    const centre = fittedAt(whole, size, scale);
+    setZoom(to);
+    setPan(
+      Vector2D.create(
+        point.clientX - rect.left - from.x * scale - centre.x,
+        point.clientY - rect.top - from.y * scale - centre.y,
+      ),
+    );
+  };
 
   /** The cells a mark is also drawn at, for the mirroring in hand. */
   const marksFor = (cell: Vector2D): Vector2D[] =>
@@ -167,37 +253,50 @@ export function createSliceController({
         x
     ];
 
+  /**
+   * A drag that is moving the view rather than drawing on it. One pointer carries
+   * the drawing along under itself, and two fingers open it apart about the middle
+   * of the two, each holding the point of the drawing that was under the gesture
+   * still under it.
+   */
   async function panAndZoom(
     event: PointerEvent & { currentTarget: HTMLCanvasElement },
   ) {
     panning = true;
-    panFrom = Vector2D.create(event.clientX - pan.x, event.clientY - pan.y);
-    previousSpan = undefined;
+    const grabbed = worldAt(event);
+    pinch = undefined;
 
     await pointer(event, ({ event: move, pointers }) => {
       if (pointers.size > 1) {
         const [first, second] = [...pointers.values()];
         if (first !== undefined && second !== undefined) {
-          const span = Math.hypot(first.x - second.x, first.y - second.y);
-          if (span > 0) {
-            scale = Math.max(
-              0.5,
-              Math.min(64, scale * (span / (previousSpan ?? span))),
+          const between = {
+            clientX: (first.x + second.x) / 2,
+            clientY: (first.y + second.y) / 2,
+          };
+          const span = Math.hypot(second.x - first.x, second.y - first.y);
+          const previous = pinch;
+          pinch = { span, at: between };
+          if (previous !== undefined && previous.span > 0 && span > 0) {
+            hold(
+              worldAt(previous.at),
+              between,
+              Math.max(
+                ZOOM_LIMITS.from,
+                Math.min(ZOOM_LIMITS.to, zoom() * (span / previous.span)),
+              ),
             );
-            previousSpan = span;
+            onDraw();
           }
+          return;
         }
       }
-      pan = Vector2D.create(
-        move.clientX - panFrom!.x,
-        move.clientY - panFrom!.y,
-      );
-      view();
+      hold(grabbed, move, zoom());
+      onDraw();
     });
 
     panning = false;
-    panFrom = undefined;
-    previousSpan = undefined;
+    pinch = undefined;
   }
 
   async function drawRectangle(
@@ -257,8 +356,7 @@ export function createSliceController({
 
   return {
     layout,
-    pan: () => pan,
-    scale: () => scale,
+    transform,
 
     stroke: () =>
       stroke === undefined
@@ -266,8 +364,6 @@ export function createSliceController({
         : { from: stroke.from, cells: cellsOf(stroke.drawn) },
 
     block: () => block,
-
-    panning: () => panning,
 
     onPointerOut: () => {
       hovered = undefined;
@@ -282,11 +378,18 @@ export function createSliceController({
         onSlice(slice().at + (event.deltaY < 0 ? 1 : -1));
         return;
       }
-      scale = Math.max(
-        0.5,
-        Math.min(64, scale * Math.pow(1.1, -Math.sign(event.deltaY))),
+      hold(
+        worldAt(event),
+        event,
+        Math.max(
+          ZOOM_LIMITS.from,
+          Math.min(
+            ZOOM_LIMITS.to,
+            zoom() * Math.pow(1.1, -Math.sign(event.deltaY)),
+          ),
+        ),
       );
-      view();
+      onDraw();
     },
 
     onPointerMove: (event) => {
