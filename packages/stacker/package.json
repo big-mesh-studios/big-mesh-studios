@@ -16,7 +16,8 @@
     "./lexicon": "./src/lexicon.ts",
     "./volume": "./src/volume.ts",
     "./cvox": "./src/cvox.ts",
-    "./mesh": "./src/mesh/index.ts"
+    "./mesh": "./src/mesh/index.ts",
+    "./print": "./src/print/index.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",

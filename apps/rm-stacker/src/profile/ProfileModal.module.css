@@ -53,6 +53,37 @@
   grid-area: export;
 }
 
+/* Hangs below the button that opens it and lines up with that button's own left
+   edge, so the choices in it read as belonging to the word they came out of. The
+   panel the bar supplies is drawn for a column of icons and has no padding of
+   its own, so both are given here. */
+.exportPopover {
+  inset: unset;
+  position: absolute;
+  pointer-events: auto;
+
+  &:popover-open {
+    top: calc(anchor(bottom) + var(--margin));
+    left: anchor(left);
+    width: 210px;
+    padding: var(--margin);
+  }
+}
+
+/* The height a printed model is measured to, in the units a slicer reads. */
+.exportSize {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--margin);
+  width: 100%;
+  color: var(--grey);
+
+  & > input {
+    min-width: 0;
+  }
+}
+
 .publish {
   grid-area: publish;
 }

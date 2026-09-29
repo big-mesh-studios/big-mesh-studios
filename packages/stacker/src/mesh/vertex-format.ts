@@ -17,6 +17,16 @@
 /** Bytes one vertex of merged geometry occupies: a position and the lanes. */
 export const VERTEX_BYTES = 16;
 
+/** The lane of `packed` holding the face index, counted from the vertex's first. */
+export const FACE_LANE = 0;
+
+/** The lane of `packed` holding the palette index. */
+export const COLOUR_LANE = 1;
+
+/** The lane of `packed` holding a face's palette index, one vertex on. */
+export const colourLaneAt = (vertex: number): number =>
+  vertex * 4 + COLOUR_LANE;
+
 /**
  * Which of the six axis-aligned directions a face points, as the byte the
  * `packed` lane holds: two per axis, the positive direction first.

@@ -23,7 +23,14 @@ export {
   type FaceSource,
   type MeshBuilder,
 } from "./mesher";
-export { faceIndexOf, normalOfFaceIndex, VERTEX_BYTES } from "./vertex-format";
+export {
+  COLOUR_LANE,
+  FACE_LANE,
+  colourLaneAt,
+  faceIndexOf,
+  normalOfFaceIndex,
+  VERTEX_BYTES,
+} from "./vertex-format";
 export {
   allChunks,
   dirtyChunks,

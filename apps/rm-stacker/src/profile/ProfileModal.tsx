@@ -16,11 +16,13 @@ import {
   thumbnailBlobCid,
   type PublishedModel,
 } from "@big-mesh-studios/stacker/lexicon";
+import { encodeThreeMf, printFigure } from "@big-mesh-studios/stacker/print";
 import {
   NO_MOTION,
   type Motion,
   type Part,
 } from "@big-mesh-studios/stacker/renderer";
+import { createPopover } from "@big-mesh-studios/utils/create-popover";
 import { fileOpen, fileSave, type FileWithHandle } from "browser-fs-access";
 import {
   createEffect,
@@ -34,7 +36,14 @@ import {
   type Accessor,
 } from "solid-js";
 import { thumbnailFromFigure } from "../atproto/thumbnail";
-import { Button, Icon, IconButton } from "../components/components";
+import {
+  Button,
+  buttonStyle,
+  Icon,
+  iconButtonStyle,
+  IconButton,
+  popoverStyle,
+} from "../components/components";
 import { StackerContext } from "../context";
 import { homeName } from "../home";
 import {
@@ -108,6 +117,19 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
   const [failure, setFailure] = createSignal<string | null>(null);
 
   const working = createMemo(() => busy() || atproto.status() === "connecting");
+
+  // Not drawn through a portal: the trigger is inside a modal dialogue, and a
+  // panel in the body of the document is outside that dialogue, which a modal
+  // dialogue sits on top of — the panel would open in the right place and take
+  // no clicks at all.
+  const ExportPopover = createPopover({ portal: false });
+  /**
+   * How tall the model is to be printed, as it is typed.
+   *
+   * Kept as what was typed rather than as a number, so that a field cleared or
+   * half filled is not written over with a reading of itself.
+   */
+  const [heightMm, setHeightMm] = createSignal("100");
 
   // Every picture drawn from bytes is an address this modal made, and the
   // browser holds what is behind it until it is handed back.
@@ -257,6 +279,41 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
         extensions: [".zip"],
         description: "Sprite stack",
       });
+
+      ExportPopover.close();
+
+      return null;
+    });
+  }
+
+  /**
+   * Writes what is on the canvas out as a model somebody can print.
+   *
+   * The figure goes out as it was drawn rather than as the preview is standing:
+   * a model is a thing with a size, and a size taken from whichever frame of a
+   * motion the timeline happened to be left on would depend on nothing in the
+   * figure itself. The motions are not lost by this — they are in the sprite
+   * stack beside it, and printing an animation is not a thing.
+   */
+  function printCurrent(): Promise<void> {
+    return run("writing…", async () => {
+      const drawing = figure();
+      const written = await encodeThreeMf(
+        printFigure(drawing, { height: Number.parseFloat(heightMm()) }),
+        palette(),
+        {
+          title: shown(),
+          thumbnail: thumbnailFromFigure(drawing),
+        },
+      );
+
+      await fileSave(written, {
+        fileName: `${shown()}.3mf`,
+        extensions: [".3mf"],
+        description: "3D print model",
+      });
+
+      ExportPopover.close();
 
       return null;
     });
@@ -494,14 +551,13 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
           disabled={working()}
           onClick={() => void importFromDisk()}
         />
-        <IconButton
-          class={styles.export}
-          kind="file-arrow-down"
-          label="Export"
+        <ExportPopover.Trigger
+          class={[styles.export, buttonStyle, iconButtonStyle]}
           title="Write this model out to a file"
-          disabled={working()}
-          onClick={() => void exportCurrent()}
-        />
+        >
+          <Icon kind="file-arrow-down" />
+          <span>Export</span>
+        </ExportPopover.Trigger>
         <IconButton
           class={styles.publish}
           kind="cloud-arrow-up"
@@ -561,6 +617,37 @@ export function ProfileModal(props: { open: boolean; onClose: () => void }) {
           onClick={() => props.onClose()}
         />
       </div>
+
+      <ExportPopover.PopOver class={[popoverStyle, styles.exportPopover]}>
+        <IconButton
+          kind="file-zipper"
+          label="Sprite stack"
+          title="Write the six drawings out, to open and edit again"
+          disabled={working()}
+          onClick={() => void exportCurrent()}
+        />
+        <div class={styles.exportSize}>
+          <label for="print-height">Height</label>
+          <input
+            id="print-height"
+            class={styles.input}
+            type="number"
+            min="1"
+            step="1"
+            value={heightMm()}
+            disabled={working()}
+            onInput={(event) => setHeightMm(event.currentTarget.value)}
+          />
+          <span>mm</span>
+        </div>
+        <IconButton
+          kind="cube"
+          label="3D print"
+          title="Write the model out as a solid, standing on a bed at that height"
+          disabled={working()}
+          onClick={() => void printCurrent()}
+        />
+      </ExportPopover.PopOver>
 
       <div class={styles.current}>
         <div class={styles.currentPreview}>

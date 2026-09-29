@@ -60,6 +60,13 @@ export class Growable<T extends Float32Array | Uint32Array | Uint8Array> {
     this.length += 4;
   }
 
+  /** Appends one, which is a palette index or anything else a byte holds. */
+  push(value: number): void {
+    this.growBy(1);
+    this.buf[this.length] = value;
+    this.length += 1;
+  }
+
   /** Forgets everything written, keeping the buffer for what is written next. */
   clear(): void {
     this.length = 0;

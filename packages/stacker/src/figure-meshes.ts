@@ -1,5 +1,5 @@
-// Drawing a figure: solving each part into a volume, handing a volume to a
-// material, and the group of boxes a whole figure is drawn as.
+// Drawing a figure: handing a solved volume to a material, and the group of
+// boxes a whole figure is drawn as.
 //
 // Nothing here decides how a figure looks. Light, flat colour, the red of a hit
 // and the depth bias under an outline are the caller's, because the same figure
@@ -26,42 +26,15 @@ import {
   type FigurePlacement,
   type PartPlacement,
 } from "./box";
-import { composePose, partDimensions, type Figure, type Part } from "./data";
+import { composePose, type Figure } from "./data";
 import { VoxelModelMaterial } from "./material";
-import { applyEdits } from "./edits";
-import { encodePalette, solveVoxels } from "./solver";
+import { solvePart, type SolvedPart } from "./solved";
+import { encodePalette } from "./solver";
 
-/** One part's volume as the graphics card reads it, and the box it fills. */
-export interface SolvedPart {
-  name: string;
-  dimensions: Dimensions3D;
-  voxels: Uint8Array;
-}
-
-/** `part`'s drawings packed into the volume a material marches. */
-export function solvePart(part: Part): SolvedPart {
-  const dimensions = partDimensions(part);
-  const voxels = solveVoxels(dimensions, part.sides, part.sections);
-
-  // What the six drawings cannot say is said here, once, so that everything
-  // reading the packed box — the marcher, the mesher, the picker, whatever
-  // measures how far a part reaches — reads the model as it is rather than as
-  // its drawings describe it.
-  if (part.edits !== undefined) {
-    applyEdits(voxels, dimensions, part.edits);
-  }
-
-  return {
-    name: part.name,
-    dimensions,
-    voxels,
-  };
-}
-
-/** Every part of `figure`, in the order it holds them. */
-export function solveFigure(figure: Figure): SolvedPart[] {
-  return figure.parts.map(solvePart);
-}
+// The volumes a figure is drawn from are solved apart from the drawing, so that
+// a caller wanting only the shape of a model does not pull in a scene graph to
+// get at them.
+export { solveFigure, solvePart, type SolvedPart } from "./solved";
 
 /**
  * How far the voxels drawn in `figure` reach from `from`, in the voxels the

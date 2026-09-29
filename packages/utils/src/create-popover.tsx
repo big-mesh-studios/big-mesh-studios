@@ -17,6 +17,17 @@ export interface PopoverProps extends ParentProps {
   onToggle?(popover: boolean): void;
 }
 
+export interface PopoverOptions {
+  /**
+   * Whether the panel is drawn through a portal into the body of the document,
+   * which is what lets it escape the clipping and the stacking of whatever the
+   * trigger sits in. Turn it off where the panel has to stay a descendant of its
+   * trigger's own branch of the tree — a trigger inside a modal dialogue, whose
+   * panel a portal would put outside the dialogue and so underneath it.
+   */
+  portal?: boolean;
+}
+
 let counter = 0;
 
 /**
@@ -25,7 +36,7 @@ let counter = 0;
  * through a portal, and carries no styling of its own — a caller passes the
  * classes it should be drawn with.
  */
-export function createPopover() {
+export function createPopover(options: PopoverOptions = {}) {
   let element: HTMLDivElement = null!;
   const id = `popover-${counter++}`;
   const [isOpen, setIsOpen] = createSignal(false);
@@ -56,27 +67,27 @@ export function createPopover() {
       );
     },
     PopOver(props: PopoverProps) {
-      return (
-        <Portal>
-          <div
-            style={{
-              "position-anchor": `--${id}`,
-              ...props.style,
-            }}
-            ref={combineRefs(props.ref, (_element) => (element = _element))}
-            id={id}
-            popover={props.popover ?? "auto"}
-            class={props.class}
-            onToggle={(event) => {
-              const toggle = event.newState === "open";
-              setIsOpen(toggle);
-              props.onToggle?.(toggle);
-            }}
-          >
-            {props.children}
-          </div>
-        </Portal>
+      const panel = (
+        <div
+          style={{
+            "position-anchor": `--${id}`,
+            ...props.style,
+          }}
+          ref={combineRefs(props.ref, (_element) => (element = _element))}
+          id={id}
+          popover={props.popover ?? "auto"}
+          class={props.class}
+          onToggle={(event) => {
+            const toggle = event.newState === "open";
+            setIsOpen(toggle);
+            props.onToggle?.(toggle);
+          }}
+        >
+          {props.children}
+        </div>
       );
+
+      return options.portal === false ? panel : <Portal>{panel}</Portal>;
     },
   };
 }
