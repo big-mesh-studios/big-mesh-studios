@@ -24,7 +24,9 @@
       "import": "./dist/typescript-cdn.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "vite build --config vite.config.lib.ts && tsc -p tsconfig.lib.json",
     "check-types": "tsc --noEmit",
