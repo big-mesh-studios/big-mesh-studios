@@ -52,8 +52,8 @@ export function App() {
       <header>
         <h1>big mesh studios</h1>
         <p>
-          Two voxel editors, a rigger to move them, and a world that wears what
-          they draw.
+          A voxel editor, a rigger to move what it draws, and a world that wears
+          it.
         </p>
       </header>
 
@@ -93,24 +93,6 @@ export function App() {
           An endless world of generated terrain to walk through, build in, and
           share with whoever else is in it. Its monsters wear models drawn next
           door.
-        </AppCard>
-
-        <AppCard
-          name="voxel-beetle"
-          href={`${base}voxel-beetle/`}
-          accent="#f5a623"
-          call="Open the editor"
-          mark={
-            <Mark
-              colour="#f5a623"
-              top="M24 4 44 15v11L24 15 4 26V15Z"
-              left="M4 26 24 15v11L4 37Z"
-              right="M44 26 24 15v11l20 11Z"
-            />
-          }
-        >
-          Draw the voxels themselves, one slice at a time, and keep every shape
-          six flat faces cannot hold. Saved as a compressed voxel file.
         </AppCard>
 
         <AppCard

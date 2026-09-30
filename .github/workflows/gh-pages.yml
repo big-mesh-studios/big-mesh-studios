@@ -48,10 +48,9 @@ jobs:
       # nothing is sent to a browser to run it.
       - name: Gather the front page, the builds, and the docs into one site
         run: |
-          mkdir -p site/rm-stacker site/voxel-beetle site/voxel-rigger site/voxelscape site/docs
+          mkdir -p site/rm-stacker site/voxel-rigger site/voxelscape site/docs
           cp -r apps/homepage/dist/. site/
           cp -r apps/rm-stacker/dist/. site/rm-stacker/
-          cp -r apps/voxel-beetle/dist/. site/voxel-beetle/
           cp -r apps/voxel-rigger/dist/. site/voxel-rigger/
           cp -r apps/voxelscape/dist/. site/voxelscape/
           cp -r apps/place-docs/dist/. site/docs/
@@ -65,10 +64,9 @@ jobs:
       # needs none because its own addresses live after a `#`, which a browser
       # never sends to the server at all, so GitHub Pages never has to answer
       # for one.
-      - name: Answer unknown addresses with the editors
+      - name: Answer unknown addresses with the editor
         run: |
           cp site/rm-stacker/index.html site/rm-stacker/404.html
-          cp site/voxel-beetle/index.html site/voxel-beetle/404.html
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4

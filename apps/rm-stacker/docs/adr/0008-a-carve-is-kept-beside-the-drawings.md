@@ -33,13 +33,11 @@ nowhere to record.
 
 - **Back onto the six drawings.** Rejected above: it rewrites a description
   rather than adding to it, and it cannot hold a carve inside a hollow at all.
-- **The whole figure becomes a volume, as the other editor has it.** Rejected: that
-  is voxel-beetle's decision, recorded in voxel-beetle/docs/adr/0001-a-volume-not-six-drawings.md,
-  and it turned down keeping a volume beside the sides precisely because the
-  sides would be a second description that could disagree. This is not a claim
-  that six drawings are a good way to hold a model — that file says the opposite
-  for itself, and holds it well. The panels are the drawing surface this editor
-  is built around, and a flight camera is not a reason to replace them.
+- **The whole figure becomes a volume instead of six drawings.** Rejected: the
+  six drawings are what the panels edit, so the panels are the drawing surface
+  this editor is built around, and a flight camera is not a reason to replace
+  them. A part is a set of drawings, and the file, the published record and the
+  rigger all read it that way.
 - **Each carve as a part of its own.** Rejected: a part carries a box, a root and
   a pose, so one voxel added from inside would become a transform somebody has to
   keep still, and a hollow would be a part with a hole in the middle of its own

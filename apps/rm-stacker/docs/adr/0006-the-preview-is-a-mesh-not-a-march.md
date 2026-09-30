@@ -2,8 +2,8 @@
 
 The preview of a model was drawn by marching a ray at a time through a packed
 volume: one `usampler3D` texel a step, a DDA to decide which step, and a palette
-lookup wherever the ray landed. It is now drawn as triangles — the same mesher
-the other editor uses, run over the same packed volume the marcher read.
+lookup wherever the ray landed. It is now drawn as triangles — the mesher
+`packages/stacker` ships, run over the same packed volume the marcher read.
 
 The reason is what each costs and when. A marcher's cost is the area the model
 covers on screen, times the frame rate, paid whether or not the model changed. A
@@ -12,10 +12,8 @@ is not the thing that makes a preview slow; looking at a large one is, and looki
 at one is most of the time spent in an editor. For a model of any size that is the
 difference between a figure that turns smoothly and one that does not.
 
-[ADR 0008 of the other editor](../voxel-beetle/docs/adr/0008-the-preview-is-a-mesh-not-a-march.md)
-makes the same decision for the same reason. What follows is what is specific to
-drawing a figure this way, which is that a voxel here has six colours rather than
-one.
+What follows is what is specific to drawing a figure this way, which is that a
+voxel here has six colours rather than one.
 
 ## A voxel here has a colour per face, and a plane is one face
 
@@ -118,8 +116,8 @@ hairline of overlap on the two faces it stands away from.
 **Interior faces are culled.** A face whose neighbour is solid is not drawn, so the
 inside of a thick or hollow model is not drawn either, and a camera _inside_ a
 model would see through it. The editor's nearest camera stands 1.4 box-widths out,
-so this cannot happen in practice, and the other editor's mesher has the same
-property.
+so this cannot happen in practice, and the mesher culls the same way wherever
+else it runs.
 
 Two further differences are worth knowing rather than worrying about. Overlapping
 parts now resolve by the real depth buffer rather than a marcher's per-pixel depth
@@ -134,9 +132,9 @@ packed volumes, once per part, on click. That is deliberate and it was left alon
 It costs once per click rather than once per frame, and reusing it is what keeps
 the pointer and the drawing from being able to disagree — the earlier arrangement
 ran one marcher's source for both precisely so that a point on the canvas and the
-voxel drawn under it could not come apart. Porting the other editor's DDA would
-need a single-index volume a figure of six drawings does not have, and would give
-up that guarantee for a cost nobody is currently paying.
+voxel drawn under it could not come apart. Porting a single-index marcher's
+source would give up that guarantee for a cost nobody is currently paying, and a
+figure of six drawings has no single index to march over in the first place.
 
 `voxelCellEdges` is what the two agree through, so it is worth saying that the
 anchoring is checked rather than assumed: `mesh-figure-anchoring.test.ts` places

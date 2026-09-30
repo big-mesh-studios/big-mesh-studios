@@ -219,67 +219,6 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(vite@7.3.6(@types/node@26.4.0))
 
-  apps/voxel-beetle:
-    dependencies:
-      '@big-mesh-studios/maths':
-        specifier: workspace:*
-        version: link:../../packages/maths
-      '@big-mesh-studios/stacker':
-        specifier: workspace:*
-        version: link:../../packages/stacker
-      '@big-mesh-studios/utils':
-        specifier: workspace:*
-        version: link:../../packages/utils
-      '@fortawesome/fontawesome-free':
-        specifier: 'catalog:'
-        version: 7.3.1
-      '@random-mesh/rmsl':
-        specifier: 'catalog:'
-        version: 1.14.0(vite@7.3.6(@types/node@26.4.0))
-      '@solidjs/signals':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.29
-      '@solidjs/web':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.29(solid-js@2.0.0-beta.29)
-      browser-fs-access:
-        specifier: 'catalog:'
-        version: 0.38.0
-      fast-png:
-        specifier: 'catalog:'
-        version: 8.0.0
-      solid-js:
-        specifier: 'catalog:'
-        version: 2.0.0-beta.29
-      three:
-        specifier: 'catalog:'
-        version: 0.183.2
-    devDependencies:
-      '@solidjs/router':
-        specifier: 2.0.0-next.13
-        version: 2.0.0-next.13(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)
-      '@types/node':
-        specifier: 'catalog:'
-        version: 26.4.0
-      '@types/three':
-        specifier: 'catalog:'
-        version: 0.183.1
-      jsdom:
-        specifier: 'catalog:'
-        version: 30.0.1
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      vite:
-        specifier: 'catalog:'
-        version: 7.3.6(@types/node@26.4.0)
-      vite-plugin-solid:
-        specifier: 'catalog:'
-        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.29(solid-js@2.0.0-beta.29))(solid-js@2.0.0-beta.29)(vite@7.3.6(@types/node@26.4.0))
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(vite@7.3.6(@types/node@26.4.0))
-
   apps/voxel-rigger:
     dependencies:
       '@big-mesh-studios/maths':
