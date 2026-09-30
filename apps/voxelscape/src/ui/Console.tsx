@@ -555,15 +555,20 @@ export const Console: Component<ConsoleProps> = (props) => {
   // from "just ran a command and hit Escape out of habit".
   let editorContent: HTMLDivElement | null = null;
 
-  // A locked pointer is hidden and captured by the world's look controls —
-  // none of the editor's fields or buttons are clickable under it, so
-  // opening the editor releases it the same way the browser's own Escape
-  // gesture would.
   createEffect(
-    () => editorOpen(),
-    (open) => {
-      if (open && document.pointerLockElement !== null) {
-        document.exitPointerLock();
+    () => (terminalOpen() ? voxelscape().input : null),
+    (input) => {
+      if (input !== null) {
+        return input.suspendPointerLock();
+      }
+    },
+  );
+
+  createEffect(
+    () => (editorOpen() ? voxelscape().input : null),
+    (input) => {
+      if (input !== null) {
+        return input.suspendPointerLock();
       }
     },
   );

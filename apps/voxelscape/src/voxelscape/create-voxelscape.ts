@@ -30,13 +30,33 @@ import {
   type PlaceMode,
 } from "../places/place";
 import type { PlaceProject } from "../places/project";
+import type { LocalInput } from "../places/sandbox";
 import type { ScriptConsole } from "../places/script-console";
-import { VoxelFigures, type RenderedFigure } from "../places/voxel-figures";
+import {
+  VoxelFigures,
+  type FigureAimBox,
+  type RenderedFigure,
+} from "../places/voxel-figures";
 import { cutscenePoseAt, type CameraStart } from "../places/cutscene";
 import { createEndingLog, endingLogKey } from "../places/ending-log";
-import { compilePlacePlan, planRegionAround } from "../places/plan";
+import {
+  compilePlacePlan,
+  emptyLevelPlan,
+  normalizeLevelPlan,
+  planRegionAround,
+  type LevelPlan,
+} from "../places/plan";
 import { FireFigures } from "../renderers/fire-figures";
 import { ExplosionFigures } from "../renderers/explosion-figures";
+import { VoxelLights } from "../renderers/voxel-lights";
+import { VoxelBillboards } from "../renderers/voxel-billboards";
+import { VoxelParticles } from "../renderers/voxel-particles";
+import { VoxelStorm } from "../renderers/voxel-storm";
+import { VoxelDecals } from "../renderers/voxel-decals";
+import { VoxelRifts } from "../renderers/voxel-rifts";
+import { VoxelBeams } from "../renderers/voxel-beams";
+import { createSyncedPlaceData, placeDataKey } from "../places/place-data";
+import { createAtprotoDataSource } from "../atproto/data";
 import { FireEmbers } from "../world/fire-ember";
 import { pickFigure, type AimTarget } from "../places/figure-pick";
 import { pickVoxel } from "../world/picker";
@@ -44,6 +64,9 @@ import type {
   DialogState,
   HudReadout,
   ScriptedField,
+  ScriptedNpc,
+  ScriptedProp,
+  UiPanel,
 } from "../places/script-host";
 import type { ScriptItemDefinition } from "../places/effects";
 import type { Commander } from "../commands";
@@ -62,11 +85,22 @@ import {
 } from "../player/create-player-avatar";
 import {
   boxGroundAt,
+  boxSeatAt,
   boxVelocityAt,
   solidBoxAt,
   type SolidBox,
 } from "../player/prop-collision";
 import { EditingController } from "../player/editing-controller";
+import {
+  AVATAR_KINDS,
+  AVATAR_TYPES,
+  avatarOfModel,
+  isAvatarKind,
+  readStoredAvatar,
+  storeAvatar,
+  type AvatarKind,
+} from "../player/avatars";
+import { PlayerGait } from "../player/gait";
 import { Hand } from "../player/hand";
 import { PlayerHealth } from "../player/health";
 import { Inventory } from "../player/inventory";
@@ -81,7 +115,10 @@ import {
 import { loadSpriteModel } from "../player/sprite-model";
 import type { Target, Tool, ToolContext } from "../player/tools/tool";
 import { BucketTool } from "../player/tools/bucket-tool";
-import { loadFigure } from "@big-mesh-studios/stacker/format";
+import {
+  loadFigure,
+  type LoadedFigure,
+} from "@big-mesh-studios/stacker/format";
 import type { Model } from "@big-mesh-studios/stacker/renderer";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import { AdaptiveResolution } from "../render/adaptive";
@@ -99,10 +136,11 @@ import type {
   CameraControlsKind,
 } from "../level-editor/camera/CameraControl";
 import { mouseRay, projectPtToScreen } from "../level-editor/camera/project";
-import type { SubTexture, VoxelTiles } from "../renderers/atlas";
+import type { SubTexture } from "../renderers/atlas";
+import type { VoxelTiles } from "../world/voxel-tiles";
 import { cellsInSphere } from "../world/chunk-sphere";
 import { type Dim3 } from "../world/level-data";
-import type { StructurePlan } from "../world/structure-fill";
+import type { PlanShape, StructurePlan } from "../world/structure-fill";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "../world/noise";
 import { Field, Phase, probe } from "../render/perf-probe";
 
@@ -121,11 +159,13 @@ const CUTSCENE_INPUT: InputSnapshot = {
   lookDx: 0,
   lookDy: 0,
   primary: false,
+  primaryHeld: false,
   click: false,
   secondary: false,
   secondaryHeld: false,
   secondaryReleased: false,
   use: false,
+  useHeld: false,
   select: null,
   wheel: 0,
 };
@@ -142,6 +182,17 @@ const modelBlob = (bytes: Uint8Array): Blob =>
       bytes.byteOffset + bytes.byteLength,
     ) as ArrayBuffer,
   ]);
+
+/** Bakes one loaded model under `name` into every figure renderer drawing it. */
+const bakeModel = (
+  name: string,
+  loaded: LoadedFigure,
+  into: readonly VoxelFigures[],
+): void => {
+  for (const figures of into) {
+    figures.setFigure(name, loaded);
+  }
+};
 
 /**
  * A movement a benchmark drives the player along in place of the keyboard.
@@ -171,6 +222,8 @@ export interface PlaceBoot {
   seed: number;
   /** The rm-stacker models the place carries, keyed by manifest-relative path. */
   models?: Record<string, Uint8Array>;
+  /** The place's level plans, keyed by the bare name `plan` takes them by. */
+  levels?: Record<string, string>;
 }
 
 export interface VoxelscapeConfig {
@@ -194,13 +247,15 @@ export interface VoxelscapeConfig {
    * their tiles here.
    */
   customVoxelTiles?: Record<number, VoxelTiles>;
+  /** The full static level plan, including structures, NPCs, and props. */
+  plan?: LevelPlan;
   /** Structures every chunk is stamped with, over its generated terrain. */
   structures?: StructurePlan;
   /** The place whose scripts this world runs from boot, if it is a published one. */
   place?: PlaceBoot;
   /**
-   * The manifest, scripts and models of the place or demo this world booted
-   * from, for `/place:editor` to open on — omitted only on the fallback
+   * The manifest, scripts, levels and models of the place or demo this world
+   * booted from, for `/place:editor` to open on — omitted only on the fallback
    * procedural world, which has no place project to show.
    */
   activeProject?: PlaceProject;
@@ -219,6 +274,12 @@ export interface VoxelscapeConfig {
    * signal.
    */
   levelEditorOpen?: [Accessor<boolean>, Setter<boolean>];
+  /**
+   * Whether the `/place:docs` overlay is showing, and how to flip it — injected
+   * the same way `levelEditorOpen` is, so the flag survives this instance being
+   * replaced by a reboot. Defaults to a fresh, instance-local signal.
+   */
+  placeDocsOpen?: [Accessor<boolean>, Setter<boolean>];
   /**
    * How this place handles other players and their edits; omitted for the
    * default world and for a place published before modes existed, both of
@@ -312,17 +373,34 @@ export interface Voxelscape {
     setCameraKind(kind: CameraControlsKind): void;
     /** The control for the active camera style. */
     control: Accessor<CameraControl>;
-    structures: Accessor<StructurePlan>;
-    setStructures(plan: StructurePlan): void;
-    /** The box drawn around the selected shape; the overlay sizes and shows it. */
+    plan: Accessor<LevelPlan>;
+    setPlan(plan: LevelPlan): void;
+    /**
+     * The aim box a planned NPC or prop wears, or null before its model has
+     * loaded: half the body's width and depth and the height it draws at.
+     */
+    figureAimBox(kind: "npc" | "prop", id: string): FigureAimBox | null;
+    /** The box drawn around the selected item; the overlay sizes and shows it. */
     highlight: Mesh;
   };
   player: Player;
+  /** The kind of avatar the player is drawn as. */
+  avatar: () => AvatarKind;
+  /** Draws the player as `kind` and remembers it for their next visit. */
+  setAvatar: (kind: AvatarKind) => void;
   input: InputController;
   inventory: Inventory;
   /** The player's hearts and the death fall that empties them. */
   health: PlayerHealth;
   commands: Commander;
+  /**
+   * The place reference: the overlay the `/place:docs` command opens.
+   */
+  placeDocs: {
+    /** Whether the `/place:docs` overlay is showing. */
+    open: Accessor<boolean>;
+    setOpen(open: boolean): void;
+  };
   /**
    * The place script editor: opening it, running the draft's script, and
    * reading and publishing places.
@@ -331,6 +409,15 @@ export interface Voxelscape {
     /** Whether the `/place:editor` panel is showing. */
     open: Accessor<boolean>;
     setOpen(open: boolean): void;
+    /**
+     * How many times the level editor has asked for the world's own plan to be
+     * written into the place editor's draft. The draft is the editor panel's
+     * own state, so the panel is what answers, and a world with no panel
+     * mounted leaves the count unread.
+     */
+    levelPlanRequests: Accessor<number>;
+    /** Asks for the world's own plan to be written into the draft as a level. */
+    requestLevelPlan(): void;
     /** The signed-in account the editor publishes from, or null while signed out. */
     accountDid: string | null;
     /** The handle to show for `did`, or the did itself when it has none. */
@@ -388,9 +475,9 @@ export interface Voxelscape {
   target: Accessor<Target | null>;
   /**
    * The NPC or prop the crosshair is on, or null when none is in reach. The
-   * action says whether a tap talks to it or uses it.
+   * action is the verb a tap means — talking, using, or a script's own prompt.
    */
-  npcAim: Accessor<{ id: string; name: string; action: "talk" | "use" } | null>;
+  npcAim: Accessor<{ id: string; name: string; action: string } | null>;
   /** The dialog the local player is in, or null when nobody is talking. */
   dialog: Accessor<DialogState | null>;
   /** The item a place script has the local player holding, or null. */
@@ -401,10 +488,24 @@ export interface Voxelscape {
   narration: Accessor<{ name: string; text: string } | null>;
   /** Clears the current narration line. */
   dismissNarration(): void;
+  /**
+   * The published-place catalog the local player has open, or null while it
+   * is closed. When open, `query` is the handle or DID the search is seeded
+   * with; opening without one leaves the search empty.
+   */
+  catalog: Accessor<{ query: string } | null>;
+  /** Opens the published-place catalog for the local player. */
+  openCatalog(): void;
+  /** Closes the published-place catalog, if it is open. */
+  closeCatalog(): void;
   /** Whether a place's script is playing a camera sequence right now. */
   cutscene: Accessor<boolean>;
   /** The readouts a place's script is showing in the local player's HUD. */
   hud: () => HudReadout[];
+  /** The scripted UI panels a place's script is showing the local player. */
+  ui: () => UiPanel[];
+  /** Reports the local player pressing a button on the scripted UI. */
+  clickUi(panel: string, button: string): void;
   /** Starts the place's game over, fresh from the beginning. */
   restart(): void;
   /** The player starts talking to the NPC with `id`, if a script has one. */
@@ -447,11 +548,13 @@ export const createVoxelscape = ({
   chunkRadiusY = 2,
   terrain = DEFAULT_TERRAIN,
   customVoxelTiles,
+  plan,
   structures,
   place,
   activeProject,
   placeEditorOpen: placeEditorOpenSignal,
   levelEditorOpen: levelEditorOpenSignal,
+  placeDocsOpen: placeDocsOpenSignal,
   mode,
   placeUri = DEFAULT_WORLD_URL,
   spawn = [0, 0, 0],
@@ -484,7 +587,7 @@ export const createVoxelscape = ({
   const [npcAim, setNpcAim] = createSignal<{
     id: string;
     name: string;
-    action: "talk" | "use";
+    action: string;
   } | null>(null);
   const [dialog, setDialog] = createSignal<DialogState | null>(null);
   /** The item the local player holds, as a place script last set it. */
@@ -501,6 +604,12 @@ export const createVoxelscape = ({
     name: string;
     text: string;
   } | null>(null);
+  /**
+   * The published-place catalog the local player has open, or null while it
+   * is closed. A script opens it through the "catalog" effect; the world's
+   * own HUD button opens it the same way.
+   */
+  const [catalog, setCatalog] = createSignal<{ query: string } | null>(null);
   /** Whether a place's script is playing a camera sequence right now. */
   const [cutscene, setCutscene] = createSignal(false);
   const [icons, setIcons] = createSignal<Partial<Record<ItemId, SubTexture>>>(
@@ -543,9 +652,22 @@ export const createVoxelscape = ({
   /** Whether the `/place:level-editor` overlay is showing. */
   const [levelEditorOpen, setLevelEditorOpen] =
     levelEditorOpenSignal ?? createSignal(false);
-  /** The plan the world currently stamps, kept in step with the editor and scripts. */
-  const [levelStructures, setLevelStructures] = createSignal<StructurePlan>(
-    structures ?? [],
+  /** Whether the `/place:docs` overlay is showing. */
+  const [placeDocsOpen, setPlaceDocsOpen] =
+    placeDocsOpenSignal ?? createSignal(false);
+  /**
+   * How many times the level editor has asked the place editor to write the
+   * world's own plan into its draft. A count rather than a flag, so asking
+   * twice writes the plan twice — which is what replacing an attached level
+   * with the one being edited is.
+   */
+  const [levelPlanRequests, setLevelPlanRequests] = createSignal(0);
+  /** The plan the world currently uses, kept in step with the editor and scripts. */
+  const [levelPlan, setLevelPlan] = createSignal<LevelPlan>(
+    plan ??
+      (structures === undefined
+        ? emptyLevelPlan()
+        : normalizeLevelPlan(structures)),
   );
   /** Where the cursor last was on the canvas, for the editor camera's aiming. */
   const [editorMouse, setEditorMouse] = createSignal<Vector2 | undefined>(
@@ -577,6 +699,13 @@ export const createVoxelscape = ({
   let lastAimId: string | null = null;
 
   const input = createInput();
+  // A key edge on a key a place script has bound becomes an `input` fact; the
+  // set of bound keys is refreshed each frame from whatever the script bound.
+  const stopBoundKeys = input.onBoundKey((key, phase) => {
+    void scriptConsoleFor()
+      .then((console) => console.input(key, phase))
+      .catch(() => {});
+  });
   const environment = createEnvironment({
     getGroundHeightAt: (x, z) => world.getHeightAt(x, z),
   });
@@ -592,7 +721,7 @@ export const createVoxelscape = ({
     chunkRadiusY,
     terrain,
     customVoxelTiles,
-    structures: levelStructures(),
+    structures: levelPlan().structures,
     spawn,
     placeUri,
     onInitialDraw: setLoading,
@@ -647,6 +776,7 @@ export const createVoxelscape = ({
     getSolidAt: (x, y, z) =>
       world.getSolidAt(x, y, z) || solidBoxAt(propBoxes, x, y, z),
     getSurfaceVelocityAt: (x, y, z) => boxVelocityAt(propBoxes, x, y, z),
+    getSeatYawAt: (x, y, z) => boxSeatAt(propBoxes, x, y, z),
     getMediumAt: (x, y, z) => {
       // Sums the pushes and takes the worst quicksand, so the answer is
       // order-independent the way the rest of the shared clock is.
@@ -697,6 +827,16 @@ export const createVoxelscape = ({
   });
 
   /**
+   * The camera the local player sees the world through: at their own eye in
+   * first person, swung out on a boom behind them in third. Both `/player:view`
+   * and a place script's `player-view` go through here, so the two cannot say
+   * different things about what a view is.
+   */
+  const setView = (mode: "first" | "third"): void => {
+    avatar.setFirstPerson(mode === "first");
+  };
+
+  /**
    * The cube centre the player starts at, kept so a respawn returns there.
    * Reading `world.getHeightAt` again would not: it returns the topmost solid
    * voxel in the column, which is the roof once the house around spawn has
@@ -744,6 +884,52 @@ export const createVoxelscape = ({
   // has placed and wearing the bundled model their id names. Nothing draws
   // until /script:demo loads a script that places them.
   let scriptConsole: ScriptConsole | null = null;
+  // Structure groups a place script has placed at run time, keyed by the group
+  // id its `structure` effect named. Held apart from `levelPlan` so the
+  // editor's plan never shows the script's buildings, and flushed whole to the
+  // world whenever a group is placed or removed.
+  const runtimeStructures = new Map<string, PlanShape[]>();
+  /** Sends the whole run-time structure overlay to the world to be stamped. */
+  const applyRuntimeStructures = (): void => {
+    const shapes: PlanShape[] = [];
+    for (const group of runtimeStructures.values()) {
+      shapes.push(...group);
+    }
+    world.setRuntimeStructures(shapes.length === 0 ? undefined : shapes);
+  };
+  // The frame's raw input, kept for a script to drive something itself — the
+  // same snapshot the player's own mover gets, before a cutscene zeroes it.
+  let playerInput: LocalInput | null = null;
+  const plannedNpcs = (): ScriptedNpc[] =>
+    levelPlan().npcs.map((npc) => ({
+      id: npc.id,
+      name: npc.name ?? "NPC",
+      model: npc.model ?? "",
+      modelUri: npc.modelUri ?? "",
+      x: npc.x,
+      y: npc.y ?? world.getHeightAt(npc.x, npc.z),
+      z: npc.z,
+      yaw: npc.yaw ?? 0,
+      tags: [],
+      attributes: {},
+    }));
+  const plannedProps = (): ScriptedProp[] =>
+    levelPlan().props.map((prop) => ({
+      id: prop.id,
+      model: prop.model,
+      name: prop.name ?? prop.id,
+      x: prop.x,
+      y: prop.y ?? world.getHeightAt(prop.x, prop.z),
+      z: prop.z,
+      yaw: prop.yaw ?? 0,
+      height: prop.height ?? 2,
+      solid: prop.solid ?? false,
+      hazard: prop.hazard ?? false,
+      seat: false,
+      tags: [],
+      attributes: {},
+      ...(prop.conveyor !== undefined ? { conveyor: prop.conveyor } : {}),
+    }));
   // The endings this place's game has already reached, kept in the page's own
   // storage so a collecting game remembers them across a restart. A world with
   // no place has no game to remember.
@@ -751,28 +937,77 @@ export const createVoxelscape = ({
     place === undefined
       ? null
       : createEndingLog(endingLogKey(place.seed, place.entry));
+  // The data a place's script saves between runs, kept in the page's own
+  // storage under the place's own key so two places never share a table.
+  const placeData = createSyncedPlaceData({
+    localKey:
+      place === undefined
+        ? "bms-voxelscape:data:default"
+        : placeDataKey(place.seed, place.entry),
+    // A player's own save lives in their repository, so it follows the account
+    // across devices; global data has no single owner and stays in the page.
+    remote: createAtprotoDataSource({
+      getClient: () => atproto.repoClient,
+      getRepo: () => atproto.did ?? null,
+      place: placeUri,
+    }),
+  });
+  // Every figure a place has placed is shaded by the light standing where it
+  // stands, so a prop in a lit room and the floor under it are read from the
+  // same channel rather than two that only agree by construction.
+  const blockLightAt = (x: number, y: number, z: number): number =>
+    world.getBlockLightAt(x, y, z);
   const npcFigures = new VoxelFigures({
     getFigures: () => {
       const figures: RenderedFigure[] = [];
+      // The two sources of an NPC stand in their own terms. A level plan's is
+      // a placement the world holds, so it is drawn exactly where the plan puts
+      // it; a script's is a figure a step or a peer's report moves, so it eases.
+      // Where both name one id the script's is drawn over the plan's.
+      for (const npc of plannedNpcs()) {
+        figures.push({
+          id: npc.id,
+          x: npc.x,
+          y: npc.y,
+          z: npc.z,
+          yaw: npc.yaw,
+          eased: false,
+        });
+      }
       for (const npc of scriptConsole?.npcs() ?? []) {
         const pose = scriptConsole?.npcPose(npc.id) ?? null;
-        figures.push(
-          pose === null
-            ? npc
+        const animation = scriptConsole?.animationFor(npc.id);
+        const look = scriptConsole?.lookFor(npc.id);
+        figures.push({
+          id: npc.id,
+          x: npc.x + (pose?.dx ?? 0),
+          y: npc.y + (pose?.dy ?? 0),
+          z: npc.z + (pose?.dz ?? 0),
+          yaw: npc.yaw + (pose?.yaw ?? 0),
+          ...(pose === null
+            ? {}
             : {
-                id: npc.id,
-                x: npc.x + pose.dx,
-                y: npc.y + pose.dy,
-                z: npc.z + pose.dz,
-                yaw: npc.yaw + pose.yaw,
-                spin: { axis: pose.spinAxis, angle: pose.spinAngle },
-              },
-        );
+                spin: {
+                  axis: pose.spinAxis,
+                  angle: pose.spinAngle,
+                  ...(pose.spinPivot !== undefined
+                    ? { pivot: pose.spinPivot }
+                    : {}),
+                },
+              }),
+          ...(animation === null || animation === undefined
+            ? {}
+            : { animation }),
+          ...(look === null || look === undefined ? {} : { look }),
+        });
       }
       return figures;
     },
     modelFor: (id) => {
-      const npc = scriptConsole?.npc(id) ?? null;
+      const npc =
+        scriptConsole?.npc(id) ??
+        plannedNpcs().find((planned) => planned.id === id) ??
+        null;
       if (npc !== null && npc.modelUri !== "") {
         return npc.modelUri;
       }
@@ -785,6 +1020,8 @@ export const createVoxelscape = ({
           ? "npc-rook.zip"
           : "zombie.zip";
     },
+    getNow: () => multiplayer.getNow(),
+    lightAt: blockLightAt,
   });
   // Props are any other object a script stands in the world — a fridge, a
   // vending machine — drawn from the rm-stacker model it names, exactly as the
@@ -793,25 +1030,104 @@ export const createVoxelscape = ({
   const propFigures = new VoxelFigures({
     getFigures: () => {
       const figures: RenderedFigure[] = [];
+      // A plan's prop is a placement the world holds and a script's is a figure
+      // something moves, so they are drawn in their own terms as the NPCs' are.
+      for (const prop of plannedProps()) {
+        figures.push({
+          id: prop.id,
+          x: prop.x,
+          y: prop.y,
+          z: prop.z,
+          yaw: prop.yaw,
+          height: prop.height,
+          eased: false,
+        });
+      }
       for (const prop of scriptConsole?.props() ?? []) {
         const pose = scriptConsole?.propPose(prop.id) ?? null;
-        figures.push(
-          pose === null
-            ? prop
+        const animation = scriptConsole?.animationFor(prop.id);
+        const look = scriptConsole?.lookFor(prop.id);
+        figures.push({
+          id: prop.id,
+          x: prop.x + (pose?.dx ?? 0),
+          y: prop.y + (pose?.dy ?? 0),
+          z: prop.z + (pose?.dz ?? 0),
+          yaw: prop.yaw + (pose?.yaw ?? 0),
+          height: prop.height,
+          ...(pose === null
+            ? {}
             : {
-                id: prop.id,
-                x: prop.x + pose.dx,
-                y: prop.y + pose.dy,
-                z: prop.z + pose.dz,
-                yaw: prop.yaw + pose.yaw,
-                height: prop.height,
-                spin: { axis: pose.spinAxis, angle: pose.spinAngle },
-              },
-        );
+                spin: {
+                  axis: pose.spinAxis,
+                  angle: pose.spinAngle,
+                  ...(pose.spinPivot !== undefined
+                    ? { pivot: pose.spinPivot }
+                    : {}),
+                },
+              }),
+          ...(animation === null || animation === undefined
+            ? {}
+            : { animation }),
+          ...(look === null || look === undefined ? {} : { look }),
+        });
       }
       return figures;
     },
-    modelFor: (id) => scriptConsole?.prop(id)?.model ?? "",
+    modelFor: (id) =>
+      scriptConsole?.prop(id)?.model ??
+      plannedProps().find((planned) => planned.id === id)?.model ??
+      "",
+    getNow: () => multiplayer.getNow(),
+    lightAt: blockLightAt,
+  });
+  // A player's worn model is drawn by the same figure renderer an NPC's model
+  // is: the cube stays the body physics and the camera use, and is hidden while
+  // a model is worn. The local player's model is the avatar they chose, until a
+  // script dresses them for the place they are in; a remote player's arrives
+  // over the mesh.
+  const PLAYER_FIGURE_ID = "self";
+  let localAvatar = readStoredAvatar();
+  let localPlayerModel = "";
+  let localHeight = AVATAR_TYPES[localAvatar].height;
+  /**
+   * The local player's legs, held across frames so the phase they accumulate is
+   * what puts their feet on the ground, and rebuilt when the model changes
+   * because the motions it is counted against are that model's.
+   */
+  let localGait = new PlayerGait(AVATAR_TYPES[localAvatar].gait);
+  /** The pose the local player is drawn at, stepped once per frame in `advance`. */
+  let localGaitPose = localGait.update(0, 0, false);
+  const playerFigures = new VoxelFigures({
+    getFigures: () => {
+      const figures: RenderedFigure[] = [];
+      // A worn avatar stands where the player is, which is where the first
+      // person eye is, so it is the third person view that draws it. The player
+      // is stepped on this frame, so the model is drawn on the position it is
+      // given rather than eased toward it the way a peer's is.
+      if (localPlayerModel !== "" && !avatar.firstPerson) {
+        figures.push({
+          id: PLAYER_FIGURE_ID,
+          x: avatar.player.position.x,
+          y: avatar.player.position.y - avatar.player.config.halfSize,
+          z: avatar.player.position.z,
+          yaw: avatar.player.yaw,
+          height: localHeight,
+          gait: localGaitPose,
+          eased: false,
+        });
+      }
+      for (const figure of multiplayer.remoteFigures()) {
+        figures.push(figure);
+      }
+      return figures;
+    },
+    modelFor: (id) =>
+      id === PLAYER_FIGURE_ID
+        ? localPlayerModel
+        : (multiplayer.remoteModelOf(id) ?? ""),
+    gaitMotions: (model) => avatarOfModel(model)?.motions,
+    getNow: () => multiplayer.getNow(),
+    lightAt: blockLightAt,
   });
   // A scripted fire is its own particle flame, drawn from the same billboard
   // shader the bomb-bloom demo uses, with its ember kindled into the floor.
@@ -821,9 +1137,29 @@ export const createVoxelscape = ({
   const explosionFigures = new ExplosionFigures(
     () => scriptConsole?.explosions() ?? [],
   );
+  // The point lights a script has lit, and the labels it shows — the one
+  // drawn straight into the scene and the other as camera-facing quads.
+  const voxelLights = new VoxelLights(() => scriptConsole?.lights() ?? []);
+  const voxelBillboards = new VoxelBillboards(
+    () => scriptConsole?.billboards() ?? [],
+    () => camera,
+  );
+  // The particle emitters a script runs, and the flat marks it lays.
+  const voxelParticles = new VoxelParticles(
+    () => scriptConsole?.particles() ?? [],
+  );
+  // The dust storms a script drives: one billboard shader, a wall or a funnel.
+  const voxelStorm = new VoxelStorm(() => scriptConsole?.storms() ?? []);
+  const voxelDecals = new VoxelDecals(() => scriptConsole?.decals() ?? []);
+  // The rifts a script opens: one churning translucent sheet a portal shows.
+  const voxelRifts = new VoxelRifts(() => scriptConsole?.rifts() ?? []);
+  // The glowing lines a script draws between two ends.
+  const voxelBeams = new VoxelBeams(() => scriptConsole?.beams() ?? []);
   // The embers the fires kindle, kept so a restart can put the floor back.
-  const fireEmbers = new FireEmbers(world.blocks, (indices) =>
-    world.renderer.onBlocksChanged(indices),
+  const fireEmbers = new FireEmbers(
+    world.blocks,
+    (indices) => world.renderer.onBlocksChanged(indices),
+    world.light,
   );
 
   /**
@@ -834,7 +1170,7 @@ export const createVoxelscape = ({
   const refreshPropBoxes = (): void => {
     propBoxes.length = 0;
     hazardBoxes.length = 0;
-    for (const prop of scriptConsole?.props() ?? []) {
+    for (const prop of [...plannedProps(), ...(scriptConsole?.props() ?? [])]) {
       if (!prop.solid && !prop.hazard) {
         continue;
       }
@@ -853,6 +1189,7 @@ export const createVoxelscape = ({
         maxY: cy + bounds.height,
         minZ: cz - bounds.half,
         maxZ: cz + bounds.half,
+        seat: prop.seat,
         ...(pose !== null
           ? {
               yaw: prop.yaw + pose.yaw,
@@ -935,7 +1272,7 @@ export const createVoxelscape = ({
    */
   const npcAimTargets = (): AimTarget[] => {
     const targets: AimTarget[] = [];
-    for (const npc of scriptConsole?.npcs() ?? []) {
+    for (const npc of [...plannedNpcs(), ...(scriptConsole?.npcs() ?? [])]) {
       const box = npcFigures.aimBounds(npc.id);
       targets.push({
         id: npc.id,
@@ -950,6 +1287,9 @@ export const createVoxelscape = ({
     return targets;
   };
 
+  /** Every name a place's own models are filed under, whether or not their bytes read. */
+  const attachedModelNames = new Set<string>();
+
   /**
    * Bakes each model a place carries once and gives it to both figure
    * renderers, so an NPC or a prop can wear whichever the script names.
@@ -957,11 +1297,13 @@ export const createVoxelscape = ({
   const loadPlaceModels = async (
     models: Record<string, Uint8Array>,
   ): Promise<void> => {
+    for (const name of Object.keys(models)) {
+      attachedModelNames.add(name);
+    }
     for (const [name, bytes] of Object.entries(models)) {
       try {
-        const figure = await loadFigure(modelBlob(bytes));
-        npcFigures.setFigure(name, figure);
-        propFigures.setFigure(name, figure);
+        const loaded = await loadFigure(modelBlob(bytes));
+        bakeModel(name, loaded, [npcFigures, propFigures, playerFigures]);
       } catch (err) {
         onNotice?.(
           `model "${name}" did not load — ${
@@ -973,6 +1315,39 @@ export const createVoxelscape = ({
   };
 
   const inventory = new Inventory();
+  // ── Starting inventory ────────────────────────────────────────────────────
+  // The player begins with a sword already in hand and 64 of every wool colour
+  // so they can start building straight away.
+  const WOOL_IDS: ItemId[] = [
+    "wool_white",
+    "wool_orange",
+    "wool_magenta",
+    "wool_light_blue",
+    "wool_yellow",
+    "wool_lime",
+    "wool_pink",
+    "wool_gray",
+    "wool_light_gray",
+    "wool_cyan",
+    "wool_purple",
+    "wool_blue",
+    "wool_brown",
+    "wool_green",
+    "wool_red",
+    "wool_black",
+  ];
+  inventory.add("bucket", 1);
+  for (const woolId of WOOL_IDS) {
+    inventory.add(woolId, 64);
+  }
+  // Place the sword in slot 0, bucket in slot 1, and leave remaining slots (2-4) blank.
+  inventory.setHotbarSlot(0, "sword");
+  inventory.setHotbarSlot(1, "bucket");
+  inventory.setHotbarSlot(2, null);
+  inventory.setHotbarSlot(3, null);
+  inventory.setHotbarSlot(4, null);
+  inventory.setSelected("sword");
+  // ─────────────────────────────────────────────────────────────────────────
   const hand = new Hand({ camera });
   // The fluid simulation: wakes on player edits and on chunk fills, ticks at
   // Minecraft's per-kind spread speeds, and reports its changed blocks to the
@@ -981,6 +1356,7 @@ export const createVoxelscape = ({
     blocks: world.blocks,
     resolve: (w) => world.blockIndexAtVoxel(w),
     onBlocksEdited: (indices) => world.renderer.onBlocksChanged(indices),
+    light: world.light,
   });
   world.onBlockFilled((i) => flow.wakeBlock(i));
   const editing = new EditingController({
@@ -998,7 +1374,7 @@ export const createVoxelscape = ({
     onVoxelWritten: (w, id) => flow.wakeVoxel(w, id),
     getLook: () => avatar.look(),
     getPlayerVoxels: () => avatar.occupiedVoxels(),
-    terrain,
+    light: world.light,
   });
 
   /**
@@ -1186,6 +1562,95 @@ export const createVoxelscape = ({
     })();
   };
 
+  // A bundled model file a plan's NPC or prop has named, fetched from this
+  // site's `models/` and baked under the file name for both figure renderers.
+  // A name the running place carries is already baked under it from the
+  // place's own copy, and this site answering for the same name reports a
+  // model missing that is on screen and drawing. Baking over a name
+  // `dressNpcs` covered just replaces the figure, so the sets stop only this
+  // one source re-fetching its own names; a fetch that fails is retried after
+  // a cooldown rather than given up on, so a figure the editor just placed
+  // still comes up when its bytes are reachable.
+  const BUNDLED_MODEL_RETRY_MS = 4_000;
+  const bakedBundledModels = new Set<string>();
+  const pendingBundledModels = new Set<string>();
+  const failedBundledModelAt = new Map<string, number>();
+  const resolveBundledModel = (file: string): void => {
+    if (
+      file === "" ||
+      attachedModelNames.has(file) ||
+      bakedBundledModels.has(file) ||
+      pendingBundledModels.has(file)
+    ) {
+      return;
+    }
+    const failedAt = failedBundledModelAt.get(file);
+    if (
+      failedAt !== undefined &&
+      Date.now() - failedAt < BUNDLED_MODEL_RETRY_MS
+    ) {
+      return;
+    }
+    pendingBundledModels.add(file);
+    void (async () => {
+      try {
+        const response = await fetch(
+          `${import.meta.env.BASE_URL}models/${file}`,
+        );
+        if (!response.ok) {
+          throw new Error(`fetch answered ${response.status}`);
+        }
+        const loaded = await loadFigure(await response.blob());
+        bakeModel(file, loaded, [npcFigures, propFigures, playerFigures]);
+        bakedBundledModels.add(file);
+        failedBundledModelAt.delete(file);
+      } catch (err) {
+        failedBundledModelAt.set(file, Date.now());
+        onNotice?.(
+          `model "${file}" did not load — ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      } finally {
+        pendingBundledModels.delete(file);
+      }
+    })();
+  };
+
+  /**
+   * Draws the local player as the model in `model`, with "" for their own cube.
+   * The avatar kind a change came from is remembered where the change did not:
+   * a place script dressing its players for one place does not become the look
+   * the player carries into the next.
+   */
+  const wearModel = (model: string, kind?: AvatarKind): void => {
+    if (kind !== undefined) {
+      localAvatar = kind;
+      localHeight = AVATAR_TYPES[kind].height;
+      localGait = new PlayerGait(AVATAR_TYPES[kind].gait);
+    }
+    localPlayerModel = model;
+    avatar.body.visible = model === "";
+    if (model !== "") {
+      resolveBundledModel(model);
+    }
+    multiplayer.broadcastPlayerModel(model);
+  };
+
+  /**
+   * The kind the player is drawn as, remembered for their next visit, and
+   * applied over whatever a place script had dressed them in.
+   */
+  const setAvatar = (kind: AvatarKind): void => {
+    storeAvatar(kind);
+    wearModel(AVATAR_TYPES[kind].model, kind);
+  };
+
+  // The world comes up wearing the avatar the page last chose. Every peer in a
+  // place is told by the one that wears it, so a peer joining later is drawn
+  // the same as everyone else without a handshake of its own.
+  wearModel(AVATAR_TYPES[localAvatar].model, localAvatar);
+
   const placeLibrary = createPlaceLibrary();
   const placePublisher = createPlacePublisher({
     getClient: () => atproto.repoClient,
@@ -1203,7 +1668,7 @@ export const createVoxelscape = ({
    * was already looking at. A sequence that has played out is cleared, and the
    * camera snapped back to the player.
    */
-  const applyCutsceneCamera = (): void => {
+  const applyCutsceneCamera = (dt: number): void => {
     const state = scriptConsole?.cutsceneFor("") ?? null;
     if (state === null) {
       return;
@@ -1218,6 +1683,7 @@ export const createVoxelscape = ({
         lookX: camera.position.x + dir.x,
         lookY: camera.position.y + dir.y,
         lookZ: camera.position.z + dir.z,
+        fov: camera.fov,
       };
       setCutscene(true);
     }
@@ -1229,14 +1695,62 @@ export const createVoxelscape = ({
       scriptConsole?.getNow() ?? Date.now(),
       cutsceneFrom,
     );
-    camera.position.set(pose.x, pose.y, pose.z);
+    // The shake is a voice-tier wobble about the eye, read off the shared clock
+    // so it reads the same wherever the shot is watched.
+    const seconds = (scriptConsole?.getNow() ?? Date.now()) / 1000;
+    const shake = pose.shake ?? 0;
+    camera.position.set(
+      pose.x + Math.sin(seconds * 37) * shake,
+      pose.y + Math.sin(seconds * 53 + 1) * shake * 0.6,
+      pose.z + Math.cos(seconds * 41) * shake,
+    );
     camera.lookAt(pose.lookX, pose.lookY, pose.lookZ);
+    if (pose.fov !== undefined) {
+      camera.fov = pose.fov;
+      camera.updateProjectionMatrix();
+    }
     if (pose.done) {
       scriptConsole?.clearCutscene("");
+      if (cutsceneFrom.fov !== undefined) {
+        camera.fov = cutsceneFrom.fov;
+        camera.updateProjectionMatrix();
+      }
       cutsceneStart = -1;
       cutsceneFrom = null;
       setCutscene(false);
-      avatar.place();
+      avatar.place(dt);
+    }
+  };
+
+  /**
+   * Puts the camera behind the figure a script is following, unless a cutscene
+   * owns the view. A body a script moves itself each step has no clock-sampled
+   * pose a shot could name, so its camera is read off the figure's live pose.
+   */
+  const applyFollowCamera = (): void => {
+    const follow = scriptConsole?.followCameraFor("") ?? null;
+    if (follow === null || cutscene()) {
+      return;
+    }
+    const pose = scriptConsole?.figurePose(follow.entityId) ?? null;
+    if (pose === null) {
+      return;
+    }
+    const sinYaw = Math.sin(pose.yaw);
+    const cosYaw = Math.cos(pose.yaw);
+    camera.position.set(
+      pose.x - sinYaw * follow.back,
+      pose.y + follow.up,
+      pose.z - cosYaw * follow.back,
+    );
+    camera.lookAt(
+      pose.x + sinYaw * follow.lookAhead,
+      pose.y + follow.up * 0.4,
+      pose.z + cosYaw * follow.lookAhead,
+    );
+    if (follow.fov !== null && camera.fov !== follow.fov) {
+      camera.fov = follow.fov;
+      camera.updateProjectionMatrix();
     }
   };
 
@@ -1264,11 +1778,32 @@ export const createVoxelscape = ({
     avatar.player.vz = 0;
     avatar.player.onGround = false;
     avatar.player.flying = false;
+    // The old run's camera is not the new run's, and a fresh script gets to
+    // set its own view when it wants one.
+    setView("first");
     health.respawn();
     // The fresh script lights no fires, so the embers of the old run go back
     // to being the floor they kindled from.
     fireEmbers.clear();
+    // Nor does it start with the old run's buildings standing.
+    runtimeStructures.clear();
+    applyRuntimeStructures();
     void scriptConsole?.restart();
+  };
+
+  /** The route a teleport address names, or null when it is not one this world opens. */
+  const teleportRoute = (address: string): string | null => {
+    if (address.startsWith("at://")) {
+      const parts = address.slice(5).split("/");
+      return parts.length === 3 && parts[0] !== "" && parts[2] !== ""
+        ? `/${parts[0]}/${parts[2]}`
+        : null;
+    }
+    if (address.startsWith("demo:")) {
+      const id = address.slice(5);
+      return id === "" ? null : `/demos/${id}`;
+    }
+    return /^[\w.:-]+\/[\w.-]+$/.test(address) ? `/${address}` : null;
   };
 
   // The console's place script, built only when a /script: command first needs
@@ -1281,6 +1816,7 @@ export const createVoxelscape = ({
         getHeightAt: (x, z) => world.getHeightAt(x, z),
         getSolidAt: (x, y, z) => world.getSolidAt(x, y, z),
         getWaterAt: (x, y, z) => world.getInWaterAt(x, y, z),
+        getBlockAt: (x, y, z) => world.getBlockAt(x, y, z),
         // The local avatar plus whoever the mesh has a live link to.
         getPlayers: () => [
           {
@@ -1288,9 +1824,13 @@ export const createVoxelscape = ({
             x: avatar.player.position.x,
             y: avatar.player.position.y,
             z: avatar.player.position.z,
+            yaw: avatar.player.yaw,
+            health: health.hp,
+            maxHealth: health.maxHp,
           },
           ...multiplayer.peerPositions(),
         ],
+        getInput: () => playerInput,
         getNow: () => multiplayer.getNow(),
         report: (line) => onNotice?.(line),
         onDialog: (player, state) => {
@@ -1339,7 +1879,7 @@ export const createVoxelscape = ({
           avatar.player.vy = 0;
           avatar.player.vz = 0;
           avatar.player.onGround = false;
-          avatar.place();
+          avatar.snapView();
         },
         onPlayerFace: (player, at) => {
           if (player !== "" && player !== (atproto.did ?? "")) {
@@ -1349,7 +1889,7 @@ export const createVoxelscape = ({
             at.x - avatar.player.position.x,
             at.z - avatar.player.position.z,
           );
-          avatar.place();
+          avatar.snapView();
         },
         onPlayerSpeed: (player, multiplier) => {
           if (player !== "" && player !== (atproto.did ?? "")) {
@@ -1369,6 +1909,29 @@ export const createVoxelscape = ({
             dealDamage(amount, "script", source);
           } else {
             multiplayer.broadcastPlayerDamage({ target: player, amount });
+          }
+        },
+        onPlayerHeal: (player, amount) => {
+          if (player === "" || player === (atproto.did ?? "")) {
+            health.heal(amount);
+          }
+        },
+        onPlayerMaxHealth: (player, maxHealth) => {
+          if (player === "" || player === (atproto.did ?? "")) {
+            health.setMax(maxHealth);
+          }
+        },
+        onPlayerPush: (player, vx, vy, vz) => {
+          if (player !== "" && player !== (atproto.did ?? "")) {
+            return;
+          }
+          avatar.player.vx += vx;
+          avatar.player.vz += vz;
+          if (vy > 0) {
+            avatar.player.vy = Math.max(avatar.player.vy, vy);
+            avatar.player.onGround = false;
+          } else {
+            avatar.player.vy += vy;
           }
         },
         onEntityMove: (state) => {
@@ -1408,13 +1971,82 @@ export const createVoxelscape = ({
         onFire: (fire) => {
           fireEmbers.seed(fire);
         },
-        onSound: (player, name) => {
+        onSound: (player, name, playback) => {
           // A sound aimed at one named player means that peer alone; empty
           // means every local peer plays its own copy of the same effect.
           if (player !== "") {
             return;
           }
-          environment.sound.playSfx(name);
+          environment.sound.playSfx(name, playback);
+        },
+        onSoundStop: (player, id) => {
+          if (player !== "") {
+            return;
+          }
+          environment.sound.stopSfx(id);
+        },
+        onBlockEdit: (edit) => {
+          editing.fill(edit.min, edit.max, edit.id);
+        },
+        onStructureEdit: ({ id, shapes }) => {
+          if (shapes === null) {
+            runtimeStructures.delete(id);
+          } else {
+            runtimeStructures.set(id, shapes);
+          }
+          applyRuntimeStructures();
+        },
+        onTeleport: (player, address) => {
+          if (player !== "" && player !== (atproto.did ?? "")) {
+            return;
+          }
+          const route = teleportRoute(address);
+          if (route === null) {
+            onNotice?.(
+              `the script asked to teleport to "${address}", which is not a place this world can open`,
+            );
+            return;
+          }
+          navigate?.(route);
+        },
+        onCatalog: (player, query) => {
+          if (player !== "" && player !== (atproto.did ?? "")) {
+            return;
+          }
+          setCatalog({ query });
+        },
+        onPlayerAvatar: (player, kind) => {
+          // only this peer changes its own look; a peer that owns another
+          // player broadcasts it, and that arrives over the mesh
+          if (player !== "" && player !== (atproto.did ?? "")) {
+            return;
+          }
+          if (!isAvatarKind(kind)) {
+            onNotice?.(`no avatar named "${kind}"`);
+            return;
+          }
+          setAvatar(kind);
+        },
+        onPlayerModel: (player, model) => {
+          // only this peer changes its own look; a peer that owns another
+          // player broadcasts it, and that arrives over the mesh
+          if (player !== "" && player !== (atproto.did ?? "")) {
+            return;
+          }
+          wearModel(model);
+        },
+        onPlayerView: (player, view) => {
+          // A camera belongs to the one peer looking through it, so a peer that
+          // owns another player has nothing to change and nothing to send.
+          if (player !== "" && player !== (atproto.did ?? "")) {
+            return;
+          }
+          setView(view);
+        },
+        data: placeData,
+        refreshData: async (scope, player, key) => {
+          await placeData.refresh();
+          return placeData.get(scope, player, key) ?? null;
         },
         getEndings: () => endingLog?.seen() ?? [],
       });
@@ -1436,6 +2068,9 @@ export const createVoxelscape = ({
   // `ScriptHost`'s own re-grounding).
   if (place !== undefined) {
     void loadPlaceModels(place.models ?? {})
+      // The player's saved data is read before the script starts, so its first
+      // tick sees what was saved on another device.
+      .then(() => placeData.ready())
       .then(() => scriptConsoleFor())
       .then((console) =>
         console.loadProject(
@@ -1443,6 +2078,7 @@ export const createVoxelscape = ({
           place.entry,
           place.seed,
           place.models ?? {},
+          place.levels ?? {},
         ),
       )
       .then((line) => onNotice?.(line))
@@ -1462,10 +2098,13 @@ export const createVoxelscape = ({
       .catch(() => {});
   };
   /** The player uses the entity `id` names, whatever they are holding, over the script host. */
-  const npcUse = (id: string): void => {
+  const npcUse = (
+    id: string,
+    button: "primary" | "secondary" | "use" = "use",
+  ): void => {
     const held = scriptConsole?.heldItem()?.id ?? "";
     void scriptConsoleFor()
-      .then((console) => console.use(id, held))
+      .then((console) => console.use(id, held, button))
       .catch(() => {});
   };
   /** The player uses the item `id` names on its own, over the script host. */
@@ -1511,7 +2150,8 @@ export const createVoxelscape = ({
           `${import.meta.env.BASE_URL}models/${file}`,
         );
         if (response.ok) {
-          npcFigures.setFigure(file, await loadFigure(await response.blob()));
+          const loaded = await loadFigure(await response.blob());
+          bakeModel(file, loaded, [npcFigures, playerFigures]);
         }
       } catch {
         // An NPC whose model cannot load is simply not drawn until one does.
@@ -1576,7 +2216,7 @@ export const createVoxelscape = ({
    */
   const scene = new Scene();
   /**
-   * The box drawn around the level editor's selected shape. It lives in the
+   * The box drawn around the level editor's selected item. It lives in the
    * scene so it draws over the world, and stays hidden until one is selected.
    */
   const levelEditorHighlight = new Mesh(
@@ -1593,10 +2233,18 @@ export const createVoxelscape = ({
     world.terrain,
     avatar.body,
     multiplayer.avatars,
+    playerFigures.group,
     npcFigures.group,
     propFigures.group,
     fireFigures.group,
     explosionFigures.group,
+    voxelLights.group,
+    voxelBillboards.group,
+    voxelParticles.group,
+    voxelStorm.group,
+    voxelDecals.group,
+    voxelRifts.group,
+    voxelBeams.group,
     world.water,
     environment.weatherEffects,
     world.underwaterTint,
@@ -1696,11 +2344,25 @@ export const createVoxelscape = ({
     }
   };
 
+  const placeDocs = {
+    open: placeDocsOpen,
+    setOpen: setPlaceDocsOpen,
+  };
+
   /** The place script editor's door into the world: opening it, running the
    * draft's script, and reading and publishing places. */
   const placeEditor = {
     open: placeEditorOpen,
     setOpen: setPlaceEditorOpen,
+    /**
+     * The level editor's standing request for the world's own plan to be
+     * written into the place editor's draft, as the level plan and the script
+     * that registers it. The draft is the editor panel's own state, so the
+     * panel is what answers; a world with no place editor mounted has nobody
+     * to answer and the request goes unread.
+     */
+    levelPlanRequests,
+    requestLevelPlan: () => setLevelPlanRequests((count) => count + 1),
     /** The signed-in account the editor publishes from, or null while signed out. */
     get accountDid(): string | null {
       return accountDid();
@@ -1738,6 +2400,7 @@ export const createVoxelscape = ({
       seed: number,
       models?: Record<string, Uint8Array>,
       spawnPoint?: Dim3,
+      levels?: Record<string, string>,
     ) => {
       return (async () => {
         // Baked and registered before the script itself runs — see the boot
@@ -1746,6 +2409,10 @@ export const createVoxelscape = ({
           await loadPlaceModels(models);
         }
         const scriptConsole = await scriptConsoleFor();
+        // A run begins with no run-time structures: whatever the last script
+        // placed is taken back down before this one starts.
+        runtimeStructures.clear();
+        applyRuntimeStructures();
         // The world's structures come from the same plan the script's own Run
         // compiles, so a creator who edits shapes sees the change on the
         // terrain they are standing on. The cells either plan reaches are
@@ -1756,19 +2423,24 @@ export const createVoxelscape = ({
             files,
             entry,
             models: models ?? {},
+            levels: levels ?? {},
             seed,
             region: planRegionAround(spawnPoint ?? spawn),
           });
-          if (plan.length > 0) {
-            setLevelStructures(plan);
+          if (
+            plan.structures.length > 0 ||
+            plan.npcs.length > 0 ||
+            plan.props.length > 0
+          ) {
+            setLevelPlan(plan);
           }
-          const count = `${plan.length} structure shape${
-            plan.length === 1 ? "" : "s"
+          const count = `${plan.structures.length} structure shape${
+            plan.structures.length === 1 ? "" : "s"
           }`;
           structuresLine =
-            plan.length === 0
+            plan.structures.length === 0
               ? ""
-              : world.setStructures(plan)
+              : world.setStructures(plan.structures)
                 ? ` — ${count} rebuilt`
                 : ` — ${count} already in place`;
         } catch (err) {
@@ -1781,6 +2453,7 @@ export const createVoxelscape = ({
           entry,
           seed,
           models ?? {},
+          levels ?? {},
         );
         return `${line}${structuresLine}`;
       })();
@@ -1818,6 +2491,20 @@ export const createVoxelscape = ({
         ? "place editor opened — write your place's scripts, run them, then publish"
         : "place editor closed";
     },
+    togglePlaceDocs: () => {
+      const next = !placeDocsOpen();
+      setPlaceDocsOpen(next);
+      if (next) {
+        // The reference and the script editor are both things read while
+        // writing; opening one puts the other away, and the level editor is an
+        // overlay of its own that would sit on top of this one.
+        setPlaceEditorOpen(false);
+        setLevelEditorOpen(false);
+      }
+      return next
+        ? "place reference opened — every function, effect, fact, and bound a place script has"
+        : "place reference closed";
+    },
     toggleLevelEditor: () => {
       const next = !levelEditorOpen();
       setLevelEditorOpen(next);
@@ -1833,12 +2520,22 @@ export const createVoxelscape = ({
     script,
     resolution,
     setView: (mode) => {
-      avatar.setFirstPerson(mode === "first");
+      setView(mode);
       return `camera: ${mode}-person view`;
     },
     setPlayerVisible: (visible) => {
       avatar.setCubeVisible(visible);
       return visible ? "player cube shown" : "player cube hidden";
+    },
+    setAvatar: (kind) => {
+      if (kind === undefined) {
+        return `avatar: ${localAvatar}`;
+      }
+      if (!isAvatarKind(kind)) {
+        return `usage: /player:avatar ${AVATAR_KINDS.join("|")}`;
+      }
+      setAvatar(kind);
+      return `avatar: ${kind}`;
     },
     setMoveSpeed: (n) => {
       if (n !== undefined) {
@@ -2020,7 +2717,7 @@ export const createVoxelscape = ({
     if (route.turn !== 0) {
       avatar.player.yaw += route.turn * dt;
     }
-    avatar.place();
+    avatar.snapView();
     // Under the same phase the frame's own scroll is timed under: a benchmark
     // drives the player from here instead, and the window's work — evicting
     // slots, teleporting them onto entering cells, asking for their fills — is
@@ -2160,16 +2857,19 @@ export const createVoxelscape = ({
     // but has not landed, so physics never reads a cell that holds nothing.
     // The place editor being open holds them still too — writing a script
     // is not something the world it describes should be able to interrupt.
-    if (
+    const simulationReady =
       progress.spawnDrawn &&
       !placeEditorOpen() &&
-      !levelEditorOpen() &&
       world.cellReady(
         avatar.player.position.x,
         avatar.player.position.y,
         avatar.player.position.z,
-      )
-    ) {
+      );
+    // The player's own world holds still while the level editor is open — the
+    // camera belongs to someone designing rather than someone playing — but
+    // the figures keep reconciling, so an NPC or prop placed from the editor
+    // is drawn the moment its model reaches the browser.
+    if (simulationReady && !levelEditorOpen()) {
       health.tick(dt);
       if (health.dead) {
         // The player's body lies where it fell: no input, no editing, and no
@@ -2183,11 +2883,19 @@ export const createVoxelscape = ({
         hand.show(null, null);
       } else {
         probe.begin(Phase.player);
+        input.setBoundKeys(scriptConsole?.bindingKeys() ?? []);
+        input.poll(dt);
         const snapshot = input.consume();
+        playerInput = snapshot;
         const locked = scriptConsole?.controlsLocked("") ?? false;
         refreshPropBoxes();
         refreshFields();
         avatar.move(dt, locked ? CUTSCENE_INPUT : snapshot);
+        localGaitPose = localGait.update(
+          dt,
+          Math.hypot(avatar.player.vx, avatar.player.vz),
+          avatar.player.onGround,
+        );
         checkHazardTouch();
         probe.end(Phase.player);
         if (locked) {
@@ -2223,7 +2931,10 @@ export const createVoxelscape = ({
             look.direction[2],
           ] as [number, number, number];
           const aimTargets: AimTarget[] = npcAimTargets();
-          for (const prop of scriptConsole?.props() ?? []) {
+          for (const prop of [
+            ...plannedProps(),
+            ...(scriptConsole?.props() ?? []),
+          ]) {
             const box = propFigures.aimBounds(prop.id);
             aimTargets.push({
               id: prop.id,
@@ -2236,31 +2947,51 @@ export const createVoxelscape = ({
           }
           const aimed = pickFigure(orbit, heading, aimTargets);
           const aimedNpc =
-            aimed === null ? null : (scriptConsole?.npc(aimed.id) ?? null);
+            aimed === null
+              ? null
+              : (scriptConsole?.npc(aimed.id) ??
+                plannedNpcs().find((npc) => npc.id === aimed.id) ??
+                null);
           const aimedProp =
-            aimed === null ? null : (scriptConsole?.prop(aimed.id) ?? null);
+            aimed === null
+              ? null
+              : (scriptConsole?.prop(aimed.id) ??
+                plannedProps().find((prop) => prop.id === aimed.id) ??
+                null);
           // An NPC talks bare-handed and is used otherwise, the same as a prop
           // always is — so the hint has to track the held item too, not just
           // which figure the crosshair is over.
           const holding = scriptConsole?.heldItem() !== null;
-          const aimKey = aimed === null ? null : `${aimed.id}:${holding}`;
+          const prompt =
+            aimed === null
+              ? null
+              : (scriptConsole?.promptFor(aimed.id) ?? null);
+          const aimKey =
+            aimed === null
+              ? null
+              : `${aimed.id}:${holding}:${prompt?.verb ?? ""}`;
           if (aimKey !== lastAimId) {
             lastAimId = aimKey;
             setNpcAim(
               aimed === null
                 ? null
-                : aimedNpc !== null && !holding
-                  ? { id: aimed.id, name: aimedNpc.name, action: "talk" }
-                  : {
+                : prompt !== null
+                  ? {
                       id: aimed.id,
                       name: aimedNpc?.name ?? aimedProp?.name ?? aimed.id,
-                      action: "use",
-                    },
+                      action: prompt.verb,
+                    }
+                  : aimedNpc !== null && !holding
+                    ? { id: aimed.id, name: aimedNpc.name, action: "talk" }
+                    : {
+                        id: aimed.id,
+                        name: aimedNpc?.name ?? aimedProp?.name ?? aimed.id,
+                        action: "use",
+                      },
             );
           }
-          // The camera has not caught up yet, so this picks from last frame's eye
-          // along this frame's look. Recomputed every frame, not just on edits, so
-          // the crosshair tracks what it is over.
+          // Recomputed every frame, not just on edits, so the crosshair tracks
+          // what it is over.
           const pick = tool.pick();
           setTarget(pick.primary);
           // A click that the wielded tool itself resolves to a strike is left
@@ -2280,7 +3011,7 @@ export const createVoxelscape = ({
             if (aimedNpc !== null && !holding) {
               npcTalk(aimed.id);
             } else {
-              npcUse(aimed.id);
+              npcUse(aimed.id, snapshot.use ? "use" : "primary");
             }
           } else if (
             // Over empty air, or with a conversation already open, the use
@@ -2359,8 +3090,9 @@ export const createVoxelscape = ({
           avatar.player.position.z,
         );
         probe.end(Phase.scroll);
-        avatar.place();
-        applyCutsceneCamera();
+        avatar.place(dt);
+        applyCutsceneCamera(dt);
+        applyFollowCamera();
         // Lava is a hazard the way water is a medium: standing in it burns,
         // on a short cooldown so the player can hop out between ticks.
         const p = avatar.player.position;
@@ -2390,16 +3122,6 @@ export const createVoxelscape = ({
       probe.begin(Phase.multiplayer);
       multiplayer.tick(dt);
       probe.end(Phase.multiplayer);
-      probe.begin(Phase.figures);
-      scriptConsole?.regroundAuto();
-      for (const npc of scriptConsole?.npcs() ?? []) {
-        resolveNpcModel(npc.modelUri);
-      }
-      npcFigures.tick(dt);
-      propFigures.tick(dt);
-      fireFigures.tick(dt);
-      explosionFigures.tick(dt);
-      probe.end(Phase.figures);
       setScriptItem(scriptConsole?.heldItem() ?? null);
       // The script's zones are checked against where the player stands, so a
       // step into a room is a fact the rules can fold over.
@@ -2411,6 +3133,40 @@ export const createVoxelscape = ({
       // A script's timers fire off the shared clock: pumping is how the world
       // tells the host time has passed even when no player action arrived.
       void scriptConsole?.pump();
+    }
+    // The figures draw in both modes, editor open or playing: a figure the
+    // level editor has just placed is reconciled the moment its model reaches
+    // the browser rather than waiting for the editor to close. The script host
+    // still holds still while the editor is open, so what it last placed keeps
+    // being drawn but does not advance.
+    if (simulationReady) {
+      probe.begin(Phase.figures);
+      scriptConsole?.regroundAuto();
+      for (const npc of scriptConsole?.npcs() ?? []) {
+        resolveNpcModel(npc.modelUri);
+      }
+      // A plan's own figures wear site-bundled models, fetched and baked as
+      // soon as the level editor names one — the same on-demand dressing the
+      // script's NPCs get for their live addresses.
+      for (const npc of plannedNpcs()) {
+        resolveBundledModel(npc.model);
+      }
+      for (const prop of plannedProps()) {
+        resolveBundledModel(prop.model);
+      }
+      npcFigures.tick(dt);
+      propFigures.tick(dt);
+      playerFigures.tick(dt);
+      fireFigures.tick(dt);
+      explosionFigures.tick(dt);
+      voxelLights.tick();
+      voxelBillboards.tick();
+      voxelParticles.tick(dt);
+      voxelStorm.tick(dt);
+      voxelDecals.tick();
+      voxelRifts.tick(dt);
+      voxelBeams.tick();
+      probe.end(Phase.figures);
     }
     // While the level editor is open the player block above is skipped, so the
     // window follows the editor camera instead of the player. The control is
@@ -2431,11 +3187,27 @@ export const createVoxelscape = ({
     );
     world.renderer.applyLighting(lighting);
     // The voxel-model figures are self-lit, so they take the same day-night
-    // state the renderers apply to the terrain and the standard materials.
+    // state the renderers apply to the terrain and the standard materials. The
+    // held item is one model rather than a set of figures, so it reads the
+    // light at the player directly.
     npcFigures.applyLighting(lighting);
     propFigures.applyLighting(lighting);
+    playerFigures.applyLighting(lighting);
     hand.applyLighting(lighting);
+    hand.applyBlockLight(
+      blockLightAt(
+        avatar.player.position.x,
+        avatar.player.position.y,
+        avatar.player.position.z,
+      ),
+    );
     probe.end(Phase.environment);
+    // The light engine catches up on the seam and edit work the frame queued,
+    // under a small budget, before the renderer turns its changed blocks back
+    // into geometry.
+    probe.begin(Phase.light);
+    world.light.flush();
+    probe.end(Phase.light);
     probe.begin(Phase.rendererTick);
     world.renderer.tick(dt, activeCamera());
     probe.end(Phase.rendererTick);
@@ -2502,11 +3274,13 @@ export const createVoxelscape = ({
     cameraKind: editorCameraKind,
     setCameraKind: setEditorCameraKind,
     control: editorCameraControl,
-    structures: levelStructures,
-    setStructures: (plan: StructurePlan) => {
-      setLevelStructures(plan);
-      world.setStructures(plan);
+    plan: levelPlan,
+    setPlan: (plan: LevelPlan) => {
+      setLevelPlan(plan);
+      world.setStructures(plan.structures);
     },
+    figureAimBox: (kind: "npc" | "prop", id: string) =>
+      (kind === "npc" ? npcFigures : propFigures).aimBounds(id),
     highlight: levelEditorHighlight,
   };
 
@@ -2566,9 +3340,14 @@ export const createVoxelscape = ({
               editorCamera.getWorldDirection(new Vector3()).multiplyScalar(32),
             );
       editorCameraControl().syncFromCamera(editorCamera, focus);
-      void document.exitPointerLock?.();
     },
   );
+
+  createEffect(levelEditor.open, (open) => {
+    if (open) {
+      return input.suspendPointerLock();
+    }
+  });
 
   const mount = (canvas: HTMLCanvasElement): (() => void) => {
     mountedCanvas = canvas;
@@ -2620,10 +3399,13 @@ export const createVoxelscape = ({
     canvas: mountedCanvasEl,
     levelEditor,
     player: avatar.player,
+    avatar: () => localAvatar,
+    setAvatar,
     input,
     inventory,
     health,
     commands,
+    placeDocs,
     placeEditor,
     debugPerf,
     showStats,
@@ -2636,8 +3418,15 @@ export const createVoxelscape = ({
     ending,
     narration,
     dismissNarration: () => setNarration(null),
+    catalog,
+    openCatalog: () => setCatalog({ query: "" }),
+    closeCatalog: () => setCatalog(null),
     cutscene,
     hud: () => scriptConsole?.hud() ?? [],
+    ui: () => scriptConsole?.ui() ?? [],
+    clickUi: (panel: string, button: string) => {
+      void scriptConsole?.clickUi(panel, button);
+    },
     restart: restartPlace,
     talkTo: npcTalk,
     choose: npcChoose,
@@ -2651,17 +3440,27 @@ export const createVoxelscape = ({
       unmount?.();
       scriptConsole?.dispose();
       scriptConsole = null;
+      // A change still waiting on its debounce is written out on the way down.
+      placeData.flush();
       world.dispose();
       multiplayer.dispose();
       atproto.dispose();
       environment.dispose();
       npcFigures.clear();
       propFigures.clear();
+      playerFigures.clear();
       fireFigures.clear();
       explosionFigures.clear();
+      voxelLights.clear();
+      voxelBillboards.clear();
+      voxelParticles.clear();
+      voxelDecals.clear();
+      voxelRifts.clear();
+      voxelBeams.clear();
       hand.dispose();
       editorControl.dispose();
       editorNoClipControl.dispose();
+      stopBoundKeys();
       input.dispose();
     },
   };

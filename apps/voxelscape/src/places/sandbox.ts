@@ -86,6 +86,98 @@ export interface LivePlayer {
   readonly x: number;
   readonly y: number;
   readonly z: number;
+  /** Heading in radians; absent where the world does not report one. */
+  readonly yaw?: number;
+  /** Hit points the player has left; absent where the world does not report them. */
+  readonly health?: number;
+  /** The most hit points the player can hold; absent where the world does not report it. */
+  readonly maxHealth?: number;
+  /** The team the player is on, or "" for none; absent where the world has no teams. */
+  readonly team?: string;
+}
+
+/** A value a script may hang on an entity under a name. */
+export type AttributeValue = string | number | boolean;
+
+/**
+ * Which players a remembered value belongs to: one in this place, everyone in
+ * this place, or the signed-in account across every place.
+ */
+export type DataScope = "player" | "global" | "account";
+
+/** A value a place may remember: a string, a finite number, or a boolean. */
+export type DataValue = string | number | boolean;
+
+/** One player's score on a leaderboard, keyed by the player string a script's own values use. */
+export interface LeaderboardEntry {
+  readonly player: string;
+  readonly value: number;
+}
+
+/** One scripted figure as a script's own queries see it. */
+export interface EntitySnapshot {
+  readonly id: string;
+  readonly kind: "npc" | "prop";
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly yaw: number;
+  /** The place model file the figure wears, or "" for the world's own pick. */
+  readonly model: string;
+  readonly name: string;
+  readonly tags: readonly string[];
+  readonly attributes: Readonly<Record<string, AttributeValue>>;
+}
+
+/**
+ * The local player's live movement and tool input, as a place script reads it
+ * to drive something itself — a car's throttle and steering, a turret's aim.
+ * Only the peer's own player has one: a script that needs another player's
+ * input hears it as a fact instead.
+ */
+export interface LocalInput {
+  /** Strafe input, from -1 (left) to 1 (right). */
+  readonly moveX: number;
+  /** Forward/back input, from -1 (backward) to 1 (forward). */
+  readonly moveY: number;
+  /** Whether the jump input is held down. */
+  readonly jumpHeld: boolean;
+  /** Horizontal pointer-move delta accumulated since the last frame. */
+  readonly lookDx: number;
+  /** Vertical pointer-move delta accumulated since the last frame. */
+  readonly lookDy: number;
+  /** Whether the primary (strike or dig) button fired this frame. */
+  readonly primary: boolean;
+  /** Whether the touch dig button is held down, which a script may read as an accelerator. */
+  readonly primaryHeld: boolean;
+  /** Whether the secondary (place or guard) button is held down. */
+  readonly secondaryHeld: boolean;
+  /** Whether the interact input fired this frame. */
+  readonly use: boolean;
+  /**
+   * Whether the interact input is held down — the E key or the touch use
+   * button. A script's step runs on its timers, not every frame, so this is the
+   * form to read when a one-frame `use` edge could pass between steps.
+   */
+  readonly useHeld: boolean;
+}
+
+/** Where a ray first met the world, and what it met. */
+export interface RaycastHit {
+  /** What the ray hit first: terrain, a scripted figure, or a player. */
+  readonly kind: "block" | "npc" | "prop" | "player";
+  /** The point of first contact, in world units. */
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  /** The face normal at the contact, in world axes. */
+  readonly nx: number;
+  readonly ny: number;
+  readonly nz: number;
+  /** How far along the ray the contact lies, in world units. */
+  readonly distance: number;
+  /** The entity or player id, or "" when the contact is terrain. */
+  readonly id: string;
 }
 
 /**
@@ -112,6 +204,58 @@ export interface WorldQuery {
   getWaterAt(x: number, y: number, z: number): boolean;
   /** Every player's live position: the local player first, then connected peers. */
   getPlayers(): LivePlayer[];
+  /** The block id at (`x`, `y`, `z`), or 0 for air. */
+  getBlockAt(x: number, y: number, z: number): number;
+  /** The scripted figure `id` names, or null when there is none. */
+  getEntity(id: string): EntitySnapshot | null;
+  /** Every scripted figure in the box `min` to `max`, inclusive, each corner's components smallest first, in id order. */
+  getEntitiesInBox(
+    min: readonly [number, number, number],
+    max: readonly [number, number, number],
+  ): EntitySnapshot[];
+  /** Every scripted figure within `radius` of (`x`, `y`, `z`), in id order. */
+  getEntitiesInSphere(
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+  ): EntitySnapshot[];
+  /** Every scripted figure carrying `tag`, in id order. */
+  getEntitiesWithTag(tag: string): EntitySnapshot[];
+  /** The player `did` names, or null when they are not in the place. */
+  getPlayer(did: string): LivePlayer | null;
+  /** Every player in the box `min` to `max`, inclusive, in the order `getPlayers` gives. */
+  getPlayersInBox(
+    min: readonly [number, number, number],
+    max: readonly [number, number, number],
+  ): LivePlayer[];
+  /** The DID of the player on this peer, or "" when they are not signed in. */
+  getLocalPlayer(): string;
+  /** The local player's held movement and tool input, or null where the world reports none. */
+  getInput(): LocalInput | null;
+  /** The value the script set for `did` under `key`, or null when there is none. */
+  getPlayerValue(did: string, key: string): number | null;
+  /** The value the place remembers under `scope`/`key` for `player`, or undefined. */
+  getData(scope: DataScope, player: string, key: string): DataValue | undefined;
+  /** The players ranked by a remembered `key`, highest first, ties by player, at most `count`. */
+  getDataLeaderboard(
+    key: string,
+    count: number,
+  ): Array<{ player: string; value: DataValue }>;
+  /** The players ranked by `key`, highest first, ties by player string, at most `count` of them. */
+  getLeaderboard(key: string, count: number): LeaderboardEntry[];
+  /** Where a ray from `origin` along `direction` first meets the world, or null within `maxDistance` world units. */
+  raycast(
+    origin: readonly [number, number, number],
+    direction: readonly [number, number, number],
+    maxDistance: number,
+  ): RaycastHit | null;
+  /** The walkable route from `from` to `to`, as world-unit waypoints, or null when none exists within the bounds. */
+  findPath(
+    from: readonly [number, number, number],
+    to: readonly [number, number, number],
+    options?: { maxNodes?: number; maxCells?: number },
+  ): Array<[number, number, number]> | null;
 }
 
 /** `T` with only `K` required; every other property stays optional. */

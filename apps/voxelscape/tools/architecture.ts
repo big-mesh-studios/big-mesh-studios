@@ -93,7 +93,14 @@ const MAY_DEPEND_ON: Record<string, readonly string[]> = {
   environment: [],
   atproto: ["places", "world"],
   ui: ["places", "player", "renderers", "shell", "voxelscape"],
-  "level-editor": ["places", "player", "ui", "voxelscape", "world"],
+  "level-editor": [
+    "places",
+    "player",
+    "renderers",
+    "ui",
+    "voxelscape",
+    "world",
+  ],
 };
 
 /** One module of the world: where it is, which area it belongs to, and its size. */

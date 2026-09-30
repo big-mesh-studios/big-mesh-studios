@@ -17,6 +17,7 @@ import {
   type Component,
 } from "solid-js";
 import { VOXELSCAPE_TYPE_FILES, type PlaceProject } from "../places/project";
+import { generateProjectLevelsDts } from "../places/levels-dts";
 import { generateProjectModelsDts } from "../places/model-dts";
 import styles from "./PlaceEditor.module.css";
 
@@ -27,6 +28,9 @@ export type EditorView = Parameters<
 
 /** The non-tab file a place's attached models generate their ambient types into. */
 const MODELS_DTS_FILE = "models.d.ts";
+
+/** The non-tab file a place's attached levels generate their ambient types into. */
+const LEVELS_DTS_FILE = "levels.d.ts";
 
 const PlaceEditorPanes: Component<{
   project: PlaceProject;
@@ -55,10 +59,18 @@ const PlaceEditorPanes: Component<{
     },
   );
 
+  // A level's ambient types are one line per name and read from the project
+  // alone, so they are a memo rather than the effect a model's generated
+  // declarations need — those have to decode a model's bytes first.
+  const levelsDts = createMemo(() =>
+    generateProjectLevelsDts(props.project.levels),
+  );
+
   const files = createMemo(() => ({
     ...props.project.scripts,
     ...VOXELSCAPE_TYPE_FILES,
     [MODELS_DTS_FILE]: modelsDts(),
+    [LEVELS_DTS_FILE]: levelsDts(),
   }));
 
   return (

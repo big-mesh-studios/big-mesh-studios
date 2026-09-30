@@ -34,15 +34,10 @@ export interface LightCursor {
 export const transmitsLight = (id: number): boolean =>
   id === VOXEL_AIR || isWaterId(id) || id === VOXEL_CLOUD;
 
-const idxOf = (light: LightStore, x: number, y: number, z: number): number =>
-  light.paddedIndex(x, y, z);
-
 /**
- * Broadcasts one channel outward from `seeds`, a voxel at a time, against the
- * block's own `store` for opacity. Shared by sky and block light: sky seeds
- * full at the surface and a full-sky cursor floods straight down at full
- * strength, while block cursors always decay by one step and never carry the
- * downward exemption.
+ * Broadcasts one channel outward from `seeds` through one block's own stores,
+ * the shape the fill workers and the per-block re-lights call. See
+ * `propagateLevels` for the flood itself.
  *
  * @param store - The block's voxels; the opacity each voxel propagation tests.
  * @param light - The block's two channels; the one named by `channel` is read and written.
@@ -57,21 +52,75 @@ export const propagateLight = (
   channel: LightChannel,
   sky: boolean,
 ): void => {
-  const [nx, ny, nz] = store.voxels;
-  const p = store.padding;
-  // The two channels share a byte, so a level is read and written through the
-  // four bits this one occupies. Held as plain numbers rather than reached for
-  // through the store on every one of the millions of visits below.
-  const data = light.data;
+  propagateLevels(
+    {
+      voxels: store.voxels,
+      padding: store.padding,
+      atPadded: (x, y, z) => store.atPadded(x, y, z),
+      data: light.data,
+      paddedIndex: (x, y, z) => light.paddedIndex(x, y, z),
+    },
+    seeds,
+    channel,
+    sky,
+  );
+};
+
+/**
+ * The parts of a voxel store and a light store a flood reads: the signed voxel
+ * address space, its opacity, and the channel it writes. `fillSkyLight` satisfies
+ * it with the block's own stores, so a single block ever floods its own volume;
+ * the window's light engine reads the pair of copies a block keeps of each shared
+ * world column and raises them to the brighter, so light never forks as callers
+ * find new surfaces to run it over.
+ */
+export interface LightFloodSurface {
+  /** Interior voxel count per axis, like a `VoxelStore`'s. */
+  voxels: Dim3;
+  /** Border rows on each face the surface is padded with, like `VOXEL_PADDING`. */
+  padding: number;
+  /** Reads the voxel at signed coordinates, border included. */
+  atPadded(x: number, y: number, z: number): number;
+  /** The two light channels, laid out as a `LightStore` holds them. */
+  data: Uint8Array;
+  /** The flat index of a signed voxel, border included. */
+  paddedIndex(x: number, y: number, z: number): number;
+}
+
+/**
+ * Broadcasts one channel outward from `seeds`, a voxel at a time, against
+ * `surface` for opacity. Shared by sky and block light: sky seeds full at the
+ * surface and a full-sky cursor floods straight down at full strength, while
+ * block cursors always decay by one step and never carry the downward
+ * exemption. Monotonic in what it writes: a level only ever rises to what the
+ * flood reaches, so a caller can re-run it over a surface that already holds
+ * light without extinguishing anything.
+ *
+ * @param surface - The voxels and light the flood reads and writes.
+ * @param seeds - The starting cursors, already holding their levels.
+ * @param channel - Which channel to write into.
+ * @param sky - Whether this is the sky channel, granting the straight-down rule.
+ */
+export const propagateLevels = (
+  surface: LightFloodSurface,
+  seeds: LightCursor[],
+  channel: LightChannel,
+  sky: boolean,
+): void => {
+  const [nx, ny, nz] = surface.voxels;
+  const p = surface.padding;
+  const data = surface.data;
   const shift = shiftOfChannel(channel);
   const keep = ~(LEVEL_MASK << shift);
   const levelAt = (at: number): number => (data[at] >>> shift) & LEVEL_MASK;
   const writeLevel = (at: number, level: number): void => {
     data[at] = (data[at] & keep) | (level << shift);
   };
+  const idxOf = (x: number, y: number, z: number): number =>
+    surface.paddedIndex(x, y, z);
   const queue: LightCursor[] = [];
   for (const s of seeds) {
-    const at = idxOf(light, s.x, s.y, s.z);
+    const at = idxOf(s.x, s.y, s.z);
     if (s.level > levelAt(at)) {
       writeLevel(at, s.level);
     }
@@ -101,10 +150,10 @@ export const propagateLight = (
       ) {
         continue;
       }
-      if (!transmitsLight(store.atPadded(x, y, z))) {
+      if (!transmitsLight(surface.atPadded(x, y, z))) {
         continue;
       }
-      const hereIdx = idxOf(light, x, y, z);
+      const hereIdx = idxOf(x, y, z);
       const here = levelAt(hereIdx);
       // A full-sky cursor keeps full strength straight along its own column
       // (up or down through open air), so an open shaft stays bright to its

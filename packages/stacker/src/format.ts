@@ -32,11 +32,26 @@ import {
   type SideKind,
   type Sides,
 } from "./data";
+import { readCvox, writeCvox } from "./cvox";
+import { editFileFor, editsFrom, editsHaveSomething } from "./edits";
 import { NO_MOTION, type Ease, type Motion } from "./motion";
 import { encodeSidePng } from "./side-image";
+import type { Volume } from "./volume";
 
 const PALETTE_FILE = "palette.png";
 const PARTS_FILE = "parts.json";
+
+/**
+ * What a part's edits are written to its folder as: the voxels the six drawings
+ * cannot say, as a `.cvox` of its own.
+ *
+ * Not a png on purpose. The loop that finds the drawings claims anything named
+ * after a side or a cut's face, and decodes and checks whatever it claims, so a
+ * file this format does not read has to be named something else to be stepped
+ * over without being looked at. A model written by a version that has no edits
+ * opens in one that has, without its edits, rather than refusing to open.
+ */
+const EDITS_FILE = "edits.cvox";
 
 /**
  * What the one part of a file written before figures is called. Such a file
@@ -51,11 +66,13 @@ const ONLY_PART = "body";
  *
  * Version two added the cuts across a part, version three how a part is
  * turned and how large it is drawn, and version four what the figure does
- * over time. A file written before any of them reads as parts drawn on their
- * six sides alone, standing square, at their own size, doing nothing.
+ * over time. Version five added a part's edits, which a part's own folder says
+ * by holding a file and this list has no room to point at. A file written
+ * before any of them reads as parts drawn on their six sides alone, standing
+ * square, at their own size, doing nothing.
  */
 interface PartsManifest {
-  version: 4;
+  version: 5;
   parts: {
     name: string;
     root: Vector3D;
@@ -424,7 +441,7 @@ function readManifest(text: string): PartsManifest {
   }
 
   return {
-    version: 4,
+    version: 5,
     parts: parts.map((part, index) => {
       const name = (part as { name?: unknown })?.name;
 
@@ -471,6 +488,8 @@ function readManifest(text: string): PartsManifest {
 /** The drawings of one part, as the zip carries them before they are read. */
 interface PartEntry {
   indexed: Partial<Sides>;
+  /** The bytes of a part's `edits.cvox`, turned into a volume once the figure's palette is known. */
+  edits: Uint8Array | undefined;
   /** A section's faces, keyed by the cut they belong to as `parts.json` lists them. */
   sectionFaces: Map<number, Partial<Record<"before" | "after", Bitmap>>>;
   /**
@@ -512,7 +531,12 @@ export async function loadFigure(
     let entry = entries.get(folder);
 
     if (entry === undefined) {
-      entry = { indexed: {}, asColours: {}, sectionFaces: new Map() };
+      entry = {
+        indexed: {},
+        edits: undefined,
+        asColours: {},
+        sectionFaces: new Map(),
+      };
       entries.set(folder, entry);
     }
 
@@ -531,6 +555,17 @@ export async function loadFigure(
 
     if (lowercased === PARTS_FILE) {
       manifest = readManifest(await entry.async("text"));
+      continue;
+    }
+
+    // A part's edits, which are a volume rather than a picture, and are read
+    // before the drawings because nothing else in the loop knows about them.
+    const overrides = /^(?:(.+)\/)?edits\.cvox$/i.exec(entry.name);
+
+    if (overrides !== null) {
+      entryFor(overrides[1] ?? "").edits = new Uint8Array(
+        await (await entry.async("blob")).arrayBuffer(),
+      );
       continue;
     }
 
@@ -631,6 +666,11 @@ export async function loadFigure(
     palette = seedPalette(palette, fallbackPalette);
   }
 
+  // The palette every part's drawings and edits are read against, worked out
+  // before any part is built because an edit is written in a palette of its own
+  // and has to be looked up in this one.
+  const figurePalette = palette ?? fallbackPalette;
+
   const placements: (Omit<PartsManifest["parts"][number], "pivot"> & {
     pivot?: Vector3D;
   })[] = manifest?.parts ?? [
@@ -668,13 +708,19 @@ export async function loadFigure(
         turn,
         scale,
         parent,
+        edits: readPartEdits(
+          entries.get(folder),
+          dimensions,
+          figurePalette,
+          name,
+        ),
       };
     },
   );
 
   return {
     parts,
-    palette: palette ?? fallbackPalette,
+    palette: figurePalette,
     migrated,
     motions: manifest?.motions ?? [],
   };
@@ -746,6 +792,48 @@ const UNMEASURED = 32;
  * root.
  * @throws When two sides give an axis different extents.
  */
+/**
+ * A part's edits as the figure's palette addresses them, or undefined where the
+ * part carries none.
+ *
+ * A file is written in a palette of its own, because a figure's palette may be
+ * reordered or gain an entry without a file written against the old one being
+ * able to tell. So its indices mean nothing here until each has been looked up as
+ * a colour, and a colour this figure has no entry for is said so rather than
+ * drawn in whichever one landed nearest.
+ *
+ * An edit over a box of another shape than the part's drawings measure is not
+ * applied either. It is a file written against a part that was a different size,
+ * and the part's box is what the rest of the format is built on.
+ *
+ * @param palette The colours the whole figure is drawn in.
+ * @param name The part's name, for what to say if its file is wrong.
+ */
+function readPartEdits(
+  entry: PartEntry | undefined,
+  dimensions: Dimensions3D,
+  palette: RGBA[],
+  name: string,
+): Volume | undefined {
+  if (entry?.edits === undefined) {
+    return undefined;
+  }
+
+  const loaded = readCvox(entry.edits);
+
+  if (
+    loaded.volume.dimensions.width !== dimensions.width ||
+    loaded.volume.dimensions.height !== dimensions.height ||
+    loaded.volume.dimensions.depth !== dimensions.depth
+  ) {
+    throw new Error(
+      `"${name}" has edits over a ${loaded.volume.dimensions.width} by ${loaded.volume.dimensions.height} by ${loaded.volume.dimensions.depth} box and its drawings measure ${dimensions.width} by ${dimensions.height} by ${dimensions.depth}`,
+    );
+  }
+
+  return editsFrom(loaded, palette);
+}
+
 function readDimensions(sides: Partial<Sides>, folder: string): Dimensions3D {
   const measured: Partial<Record<DimensionKind, { by: SideKind; of: number }>> =
     {};
@@ -842,6 +930,17 @@ export async function saveFigure(
       zip.file(`${part.name}/${side}.png`, encodeSidePng(part.sides[side]));
     }
 
+    // Written only where there is something to say, so the file's being there is
+    // the whole of what says a part has edits: no entry in `parts.json` to fall
+    // out of step with the folder beside it.
+    if (part.edits !== undefined && editsHaveSomething(part.edits)) {
+      const edits = editFileFor(part.edits, figure.palette);
+      zip.file(
+        `${part.name}/${EDITS_FILE}`,
+        writeCvox(edits.volume, edits.palette),
+      );
+    }
+
     part.sections.forEach((section, cut) => {
       for (const face of ["before", "after"] as const) {
         zip.file(
@@ -853,7 +952,7 @@ export async function saveFigure(
   }
 
   const manifest: PartsManifest = {
-    version: 4,
+    version: 5,
     parts: figure.parts.map(
       ({ name, root, pivot, turn, scale, parent, sections }) => ({
         name,

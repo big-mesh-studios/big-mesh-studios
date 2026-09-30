@@ -4,9 +4,13 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_DEMOS, builtinDemo, loadBuiltinDemo } from "./demos";
 import { compilePlacePlan, planRegionAround } from "./plan";
+import { createPlaceData, type PlaceData } from "./place-data";
 import { ScriptHost } from "./script-host";
 import type { PlaceProject } from "./project";
 import { expandShape } from "../world/structure-fill";
+import type { PlanBox, PlanShape } from "../world/plan-shapes";
+import { VOXEL_GLOWSTONE } from "../world/voxel-store";
+import { chunkCellOf, VOXEL_SIZE } from "../world/level-data";
 
 /** The bytes of a model under `public/models/`, as the demo loader fetches them. */
 const modelBytes = (file: string): ArrayBuffer => {
@@ -87,7 +91,7 @@ const run = async (): Promise<{
   const host = new ScriptHost({
     seed: project.manifest.seed,
     getNow: () => clockMs,
-    getHeightAt: () => 62,
+    getHeightAt: () => 66,
     onTime: () => {},
     onToast: (_player, text) => toasts.push(text),
     onEnding: (_player, state) => {
@@ -155,18 +159,20 @@ describe("the built-in demos", () => {
     expect(demo?.manifest.models).toContain("bed.zip");
     expect(demo?.manifest.models).toContain("chips.zip");
     expect(demo?.manifest.models).toContain("friedegg.zip");
+    expect(demo?.manifest.models).toContain("breakfastmachine.zip");
+    expect(demo?.manifest.models).toContain("witchbrew.zip");
     expect(BUILTIN_DEMOS).toContain(demo);
   });
 
   it("loads the GASA4 demo's models as bytes", async () => {
     const { project } = await gasa4();
     expect(Object.keys(project.models)).toContain("fridge.zip");
-    expect(Object.keys(project.models)).toContain("plate.zip");
+    expect(Object.keys(project.models)).toContain("breakfastmachine.zip");
     expect(Object.keys(project.models)).toContain("friedegg.zip");
     expect(project.models["fridge.zip"].bytes.length).toBeGreaterThan(0);
   });
 
-  it("compiles its house and store", async () => {
+  it("compiles its house, its road, and its store", async () => {
     const { project, entry } = await gasa4();
     const plan = await compilePlacePlan({
       files: project.scripts,
@@ -174,8 +180,115 @@ describe("the built-in demos", () => {
       seed: project.manifest.seed,
       region: planRegionAround(project.manifest.spawn),
     });
-    expect(plan.some((shape) => shape.kind === "road")).toBe(true);
-    expect(plan.length).toBeGreaterThan(15);
+    expect(plan.structures.some((shape) => shape.kind === "road")).toBe(true);
+    expect(plan.structures.length).toBeGreaterThan(15);
+  });
+
+  it("draws its walls around the rooms its props stand in", async () => {
+    const { project, entry } = await gasa4();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    const boxes = plan.structures.filter((shape) => shape.kind === "box");
+    const floor = (min: number[], max: number[]): boolean =>
+      boxes.some(
+        (shape) =>
+          shape.min.every((at, axis) => at === min[axis]) &&
+          shape.max.every((at, axis) => at === max[axis]),
+      );
+    // The rooms and the props are placed in world units and a voxel is two of
+    // them, so the house the four rooms share is fourteen voxels by thirteen
+    // and the store is five by six.
+    expect(floor([-14, 32, -13], [14, 32, 13])).toBe(true);
+    expect(floor([24, 32, -6], [34, 32, 6])).toBe(true);
+    const walls = boxes.filter(
+      (shape) => shape.min[1] === 33 && shape.max[1] === 35,
+    );
+    expect([
+      Math.min(...walls.map((shape) => shape.min[0])),
+      Math.max(...walls.map((shape) => shape.max[0])),
+    ]).toEqual([-14, 34]);
+    expect([
+      Math.min(...walls.map((shape) => shape.min[2])),
+      Math.max(...walls.map((shape) => shape.max[2])),
+    ]).toEqual([-13, 13]);
+  });
+
+  it("lights the store from four glowstone panels set into its roof", async () => {
+    const { project, entry } = await gasa4();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    const boxes = plan.structures.filter(
+      (shape): shape is PlanBox => shape.kind === "box",
+    );
+    const panels = boxes
+      .map((shape, at) => ({ shape, at }))
+      .filter(({ shape }) => shape.id === VOXEL_GLOWSTONE);
+    expect(panels).toHaveLength(4);
+    // Each panel is a single voxel in the roof row, over the freezer, the
+    // counter and the two shelf bays.
+    for (const { shape } of panels) {
+      expect(shape.min).toEqual([shape.max[0], 36, shape.max[2]]);
+      expect(shape.min[2]).toBeGreaterThanOrEqual(-3);
+      expect(shape.min[2]).toBeLessThanOrEqual(3);
+    }
+    // A plan is stamped in order and the last box over a voxel is the one that
+    // holds, so a panel listed before the roof would be wood by the time the
+    // world generated it, and the store would go back to being unlit.
+    const roof = boxes.findIndex(
+      (shape) =>
+        shape.min[0] === 24 &&
+        shape.min[1] === 36 &&
+        shape.min[2] === -6 &&
+        shape.max[0] === 34 &&
+        shape.max[2] === 6,
+    );
+    expect(roof).toBeGreaterThanOrEqual(0);
+    expect(panels.every(({ at }) => at > roof)).toBe(true);
+  });
+
+  it("stands the whole neighbourhood inside one block, so a panel reaches the floor", async () => {
+    // Block light is filled one block at a time and seeded only from the
+    // emitters inside that block's own padding, so a building whose floor and
+    // roof fall either side of a block boundary gets a lit ceiling and an
+    // unlit floor, and nothing about the plan says so. Reading the compiled
+    // plan back is the only place that shows up.
+    const { project, entry } = await gasa4();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    const boxes = plan.structures.filter(
+      (shape): shape is PlanBox => shape.kind === "box",
+    );
+    const ground = boxes.find(
+      (shape) =>
+        shape.min[0] === 24 && shape.min[2] === -6 && shape.max[2] === 6,
+    );
+    const panels = boxes.filter((shape) => shape.id === VOXEL_GLOWSTONE);
+    expect(ground).toBeDefined();
+    expect(panels).toHaveLength(4);
+
+    const cellOf = (row: number): number =>
+      chunkCellOf(0, row * VOXEL_SIZE, 0)[1];
+    // The ground row is the first row of a block, so everything the demo
+    // builds above it is filled its light in the same pass.
+    const groundRow = ground!.min[1];
+    expect(chunkCellOf(0, (groundRow - 1) * VOXEL_SIZE, 0)[1]).not.toBe(
+      cellOf(groundRow),
+    );
+    for (const panel of panels) {
+      expect(cellOf(panel.min[1])).toBe(cellOf(groundRow));
+    }
   });
 
   it("opens with Dad, the Cashier, and the store counter", async () => {
@@ -186,12 +299,35 @@ describe("the built-in demos", () => {
     ]);
     expect(host.propList.some((prop) => prop.model === "bed.zip")).toBe(true);
     expect(host.prop("store-counter")).toMatchObject({ model: "counter.zip" });
+    expect(host.prop("breakfast-machine")).toMatchObject({
+      model: "breakfastmachine.zip",
+    });
+    expect(host.prop("car")).toMatchObject({ model: "car.zip" });
+    host.dispose();
+  });
+
+  it("hints each of the house's four rooms and the store's forecourt", async () => {
+    const { host, narrations } = await run();
+    await host.movePlayer("", -14, 66, -12); // the bedroom
+    await host.movePlayer("", 14, 66, -12); // the bathroom
+    await host.movePlayer("", -10, 66, 10); // the kitchen
+    await host.movePlayer("", 14, 66, 10); // the living room
+    await host.movePlayer("", 40, 66, 18); // the parking lot
+    await host.movePlayer("", 58, 66, 0); // the store
+    expect(narrations).toEqual([
+      "It is 4 AM and I am starving. Find a snack... and try not to wake Dad.",
+      "Dad is asleep in the bathtub. Keep it down.",
+      "The kitchen. Chips on the counter, an orange on the table, a stove, and the breakfast machine.",
+      "The front door is open. The store is down the road.",
+      'The cashier\'s car, with a note on the window: "this is my car."',
+      "Welcome to a generic convenience store. We are open 24 hours.",
+    ]);
     host.dispose();
   });
 
   it("ends with Sleep when the chips are eaten in the bedroom", async () => {
     const { host, endings } = await run();
-    await host.movePlayer("", -14, 62, -12); // the bedroom
+    await host.movePlayer("", -14, 66, -12); // the bedroom
     await host.use("chips", ""); // pick them up
     await host.useItem("chips", ""); // eat them quietly there
     await host.use("bed", ""); // go back to sleep
@@ -201,11 +337,11 @@ describe("the built-in demos", () => {
 
   it("ends with Chips when they are eaten where Dad can hear", async () => {
     const { host, endings } = await run();
-    await host.movePlayer("", 10, 62, 10); // the kitchen
+    await host.movePlayer("", -10, 66, 10); // the kitchen
     await host.use("chips", "");
     await host.useItem("chips", "");
     // Dad wakes at once and comes into the room.
-    expect(host.npc("dad")).toMatchObject({ x: 8, z: 14 });
+    expect(host.npc("dad")).toMatchObject({ x: -8, z: 14 });
     await host.use("bed", "");
     expect(endings).toEqual(["Chips"]);
     host.dispose();
@@ -215,6 +351,23 @@ describe("the built-in demos", () => {
     const { host, endings } = await run();
     await host.use("orange", "");
     expect(endings).toEqual(["Orange"]);
+    host.dispose();
+  });
+
+  it("ends with Sword when the sword off the bedroom wall is used", async () => {
+    const { host, endings } = await run();
+    await host.use("sword", "");
+    expect(host.inventory.heldItem()).toMatchObject({ id: "sword" });
+    await host.useItem("sword", "");
+    expect(endings).toEqual(["Sword"]);
+    host.dispose();
+  });
+
+  it("ends with Sandvich over the one left on the bench", async () => {
+    const { host, endings } = await run();
+    await host.use("sandvich", "");
+    await host.useItem("sandvich", "");
+    expect(endings).toEqual(["Sandvich"]);
     host.dispose();
   });
 
@@ -229,6 +382,27 @@ describe("the built-in demos", () => {
     await host.choose("cashier", 0, "");
     expect(host.inventory.heldItem()).toMatchObject({ id: "cola" });
     expect(host.prop("counter-item")).toBeNull();
+    // The shelf is filled again, so the shop never runs out.
+    expect(host.prop("buy-cola")).not.toBeNull();
+    host.dispose();
+  });
+
+  it("sells the witch brew, the patty, the fuel, and the ice cream", async () => {
+    const { host } = await run();
+    expect(host.prop("buy-witchbrew")).toMatchObject({
+      model: "witchbrew.zip",
+    });
+    expect(host.prop("buy-patty")).toMatchObject({ model: "patty.zip" });
+    expect(host.prop("buy-fuel")).toMatchObject({ model: "fuel.zip" });
+    expect(host.prop("buy-icecream")).toMatchObject({ model: "icecream.zip" });
+    host.dispose();
+  });
+
+  it("ends with Patty over a patty eaten straight off the shelf", async () => {
+    const { host, endings } = await run();
+    await host.use("buy-patty", "");
+    await host.useItem("patty", "");
+    expect(endings).toEqual(["Patty"]);
     host.dispose();
   });
 
@@ -246,27 +420,27 @@ describe("the built-in demos", () => {
 
   it("only steals once the player leaves the store with an unpaid good", async () => {
     const { host, endings } = await run();
-    await host.movePlayer("", 60, 62, 0); // into the store
+    await host.movePlayer("", 60, 66, 0); // into the store
     await host.use("buy-cola", "");
     expect(endings).toEqual([]);
-    await host.movePlayer("", 30, 62, 0); // out the door
+    await host.movePlayer("", 30, 66, 0); // out the door
     expect(endings).toEqual(["Shoplifting"]);
     host.dispose();
   });
 
-  it("sits an item on a plate and takes it back off", async () => {
+  it("feeds the breakfast machine an item and takes it back out", async () => {
     const { host } = await run();
     await host.use("cola", "");
-    await useHeld(host, "plate1");
-    expect(host.prop("plate-item-0")).toMatchObject({ model: "cola.zip" });
+    await useHeld(host, "breakfast-machine");
+    expect(host.prop("machine-item-0")).toMatchObject({ model: "cola.zip" });
     expect(host.inventory.count("cola")).toBe(0);
-    await useHeld(host, "plate1"); // empty hands take it back
-    expect(host.prop("plate-item-0")).toBeNull();
+    await useHeld(host, "breakfast-machine"); // empty hands take it back
+    expect(host.prop("machine-item-0")).toBeNull();
     expect(host.inventory.heldItem()).toMatchObject({ id: "cola" });
     host.dispose();
   });
 
-  it("cooks an egg and plates it with juice for a Perfect Breakfast", async () => {
+  it("cooks an egg and makes the perfect breakfast with milk", async () => {
     const { host, endings } = await run();
     await host.use("buy-egg", "");
     await useHeld(host, "stove");
@@ -276,16 +450,84 @@ describe("the built-in demos", () => {
     await useHeld(host, "stove"); // off
     await useHeld(host, "stove"); // take the fried egg
     expect(host.inventory.heldItem()).toMatchObject({ id: "friedegg" });
-    await useHeld(host, "plate1");
-    await host.use("buy-juice", "");
-    await useHeld(host, "plate2");
+    await useHeld(host, "breakfast-machine");
+    await host.use("buy-milk", "");
+    await useHeld(host, "breakfast-machine");
     expect(endings).toEqual(["Breakfast"]);
+    expect(host.prop("machine-item-0")).toBeNull();
+    host.dispose();
+  });
+
+  it("heats a witch brew and balances it against a cold soda", async () => {
+    const { host, endings } = await run();
+    await host.use("buy-witchbrew", "");
+    await useHeld(host, "stove");
+    await advance(host, 6_000);
+    expect(host.prop("stove-item")).toMatchObject({ model: "hotbrew.zip" });
+    await useHeld(host, "stove"); // off
+    await useHeld(host, "stove"); // take the hot brew
+    expect(host.inventory.heldItem()).toMatchObject({ id: "hotbrew" });
+    await useHeld(host, "breakfast-machine");
+    await host.use("buy-cola", "");
+    await useHeld(host, "breakfast-machine");
+    expect(endings).toEqual(["Breakfast"]);
+    host.dispose();
+  });
+
+  it("takes the egg off the car when the player is holding one", async () => {
+    const { host, narrations } = await run();
+    await host.use("car", "");
+    expect(narrations).toContain("This is my car. - cashier");
+    await host.use("buy-egg", "");
+    await useHeld(host, "car");
+    expect(narrations).toContain(
+      "You deploy the egg onto the car. It is not my car.",
+    );
+    host.dispose();
+  });
+
+  it("floods the shop on the eighth soda fed to the machine", async () => {
+    const { host, endings, toasts } = await run();
+    for (let i = 1; i <= 14; i++) {
+      await host.use(`tix-${i}`, "");
+    }
+    for (let i = 1; i <= 10; i++) {
+      await host.use(`robux-${i}`, "");
+    }
+    await host.movePlayer("", 60, 66, 0); // into the store
+    for (let i = 1; i <= 7; i++) {
+      await host.use("buy-cola", "");
+      await useHeld(host, "store-counter");
+      await host.talk("cashier", "");
+      await host.choose("cashier", 0, "");
+      await useHeld(host, "vending");
+      expect(toasts.at(-1)).toBe(`The machine gurgles happily. (${i}/8)`);
+    }
+    expect(endings).toEqual([]);
+    await host.use("buy-cola", "");
+    await useHeld(host, "store-counter");
+    await host.talk("cashier", "");
+    await host.choose("cashier", 0, "");
+    await useHeld(host, "vending");
+    expect(endings).toEqual(["Flood"]);
+    host.dispose();
+  });
+
+  it("ends with Freezer over an ice cream put back in the freezer", async () => {
+    const { host, endings, toasts } = await run();
+    await host.use("tix-1", "");
+    await host.use("buy-icecream", "");
+    await useHeld(host, "freezer");
+    expect(endings).toEqual(["Freezer"]);
+    expect(toasts).not.toContain(
+      "The freezer is out of order. It is very cold in there.",
+    );
     host.dispose();
   });
 
   it("burns the house down when a non-egg is left on the stove", async () => {
     const { host, endings } = await run();
-    await host.movePlayer("", 10, 62, 10); // the kitchen
+    await host.movePlayer("", -10, 66, 10); // the kitchen
     await host.use("cola", "");
     await useHeld(host, "stove");
     await advance(host, 5_000);
@@ -297,11 +539,11 @@ describe("the built-in demos", () => {
 
   it("frees the goods once the cashier goes on break", async () => {
     const { host, endings } = await run();
-    await advance(host, 120_000);
-    expect(host.npc("cashier")).toMatchObject({ x: 50, z: -14 });
-    await host.movePlayer("", 60, 62, 0);
+    await advance(host, 231_000);
+    expect(host.npc("cashier")).toMatchObject({ x: 44, z: 18 });
+    await host.movePlayer("", 60, 66, 0);
     await host.use("buy-cola", "");
-    await host.movePlayer("", 30, 62, 0);
+    await host.movePlayer("", 30, 66, 0);
     expect(endings).toEqual([]);
     await host.talk("cashier", "");
     expect(host.dialogFor("")?.prompt).toContain("break");
@@ -346,10 +588,10 @@ describe("the Late to School demo", () => {
       seed: project.manifest.seed,
       region: planRegionAround(project.manifest.spawn),
     });
-    expect(plan.some((shape) => shape.kind === "road")).toBe(true);
-    expect(plan.filter((shape) => shape.kind === "box").length).toBeGreaterThan(
-      20,
-    );
+    expect(plan.structures.some((shape) => shape.kind === "road")).toBe(true);
+    expect(
+      plan.structures.filter((shape) => shape.kind === "box").length,
+    ).toBeGreaterThan(20);
   });
 
   it("opens with its cast and the day's fixtures", async () => {
@@ -822,7 +1064,7 @@ describe("the Zombies: The Mansion demo", () => {
       seed: project.manifest.seed,
       region: planRegionAround(project.manifest.spawn),
     });
-    const boxes = plan.flatMap((shape) => expandShape(shape));
+    const boxes = plan.structures.flatMap((shape) => expandShape(shape));
     // The foyer's stone floor tops out on world y 62, where every prop stands.
     expect(columnSurfaces(boxes, 0, 2)).toContain(62);
     // The interior wall between rooms b and c runs at voxel z=-8 (world -16),
@@ -1118,7 +1360,7 @@ describe("the Don't Poop Yourself at School demo", () => {
       seed: project.manifest.seed,
       region: planRegionAround(project.manifest.spawn),
     });
-    expect(plan.some((shape) => shape.kind === "stairs")).toBe(true);
+    expect(plan.structures.some((shape) => shape.kind === "stairs")).toBe(true);
   });
 
   it("attaches the staircase to the lobby floor", async () => {
@@ -1129,7 +1371,7 @@ describe("the Don't Poop Yourself at School demo", () => {
       seed: project.manifest.seed,
       region: planRegionAround(project.manifest.spawn),
     });
-    const boxes = plan.flatMap((shape) => expandShape(shape));
+    const boxes = plan.structures.flatMap((shape) => expandShape(shape));
     // The lobby floor's east edge is at voxel z=-8 (world z=-16, surface 202),
     // and the first stair tread starts there, climbing one step to 204.
     expect(columnSurfaces(boxes, 0, -12)).toContain(202);
@@ -1144,7 +1386,7 @@ describe("the Don't Poop Yourself at School demo", () => {
       seed: project.manifest.seed,
       region: planRegionAround(project.manifest.spawn),
     });
-    const boxes = plan.flatMap((shape) => expandShape(shape));
+    const boxes = plan.structures.flatMap((shape) => expandShape(shape));
     const surfacesAt = (worldX: number, worldZ: number): number[] =>
       columnSurfaces(boxes, worldX / 2, worldZ / 2);
     expect(surfacesAt(0, -40)).toContain(202); // the lobby
@@ -1248,6 +1490,1282 @@ describe("the Don't Poop Yourself at School demo", () => {
     // The bathroom zone now runs from world z=270 to z=310.
     await host.movePlayer("", 0, 220, 280);
     expect(endings).toEqual(["Relieved"]);
+    host.dispose();
+  });
+});
+
+describe("the A Dusty Trip demo", () => {
+  /** The local player's held input the demo's own script reads through `engine.getInput`. */
+  let input: {
+    moveX: number;
+    moveY: number;
+    jumpHeld: boolean;
+    lookDx: number;
+    lookDy: number;
+    primary: boolean;
+    primaryHeld: boolean;
+    secondaryHeld: boolean;
+    use: boolean;
+    useHeld: boolean;
+  };
+  let tripClockMs: number;
+  /** The local player's live position the demo's own script reads. */
+  let player: { x: number; z: number };
+
+  /** Loads the demo and boots a host against the mutable `input` and `player`. */
+  const trip = async () => {
+    stubModels();
+    tripClockMs = 0;
+    player = { x: 0, z: 0 };
+    input = {
+      moveX: 0,
+      moveY: 0,
+      jumpHeld: false,
+      lookDx: 0,
+      lookDy: 0,
+      primary: false,
+      primaryHeld: false,
+      secondaryHeld: false,
+      use: false,
+      useHeld: false,
+    };
+    const demo = builtinDemo("a-dusty-trip")!;
+    const project = await loadBuiltinDemo(demo);
+    const damage: number[] = [];
+    /** The group a structure edit placed, last write per id; null when removed. */
+    const structureEdits = new Map<string, PlanShape[] | null>();
+    const host = new ScriptHost({
+      seed: project.manifest.seed,
+      getNow: () => tripClockMs,
+      getHeightAt: () => 0,
+      getSolidAt: () => false,
+      getInput: () => input,
+      getPlayers: () => [{ did: "", x: player.x, y: 0, z: player.z }],
+      onPlayerDamage: (_player, amount) => damage.push(amount),
+      onStructureEdit: ({ id, shapes }) => structureEdits.set(id, shapes),
+    });
+    await host.loadProject(
+      project.scripts,
+      project.manifest.scripts![0],
+      projectModelBytes(project),
+    );
+    return { host, project, damage, structureEdits };
+  };
+
+  /** Moves the shared clock forward and lets the trip's tick timer fire. */
+  const advanceTrip = async (host: ScriptHost, ms: number): Promise<void> => {
+    tripClockMs += ms;
+    await host.pump();
+  };
+
+  it("lists the place and bundles its models", () => {
+    const demo = builtinDemo("a-dusty-trip");
+    expect(demo?.manifest.name).toBe("A Dusty Trip");
+    expect(demo?.manifest.mode).toBe("solo");
+    expect(demo?.manifest.models).toContain("platform.zip");
+    expect(BUILTIN_DEMOS).toContain(demo);
+  });
+
+  it("compiles an endless desert with a road graded flat", async () => {
+    const { project } = await trip();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry: project.manifest.scripts![0],
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    const surfaces = plan.structures.flatMap((shape) =>
+      shape.kind === "surface" ? [shape] : [],
+    );
+    expect(surfaces).toHaveLength(2);
+    const sand = surfaces.find((shape) => shape.reachX === "infinite");
+    expect(sand).toMatchObject({ reachZ: "infinite", depth: 2 });
+    const road = surfaces.find((shape) => shape.level !== undefined);
+    expect(road).toMatchObject({
+      min: [-4, 0, 0],
+      max: [4, 0, 0],
+      reachZ: "infinite",
+      depth: 1,
+    });
+  });
+
+  it("starts with a solid seat car, a petrol station, and its readouts", async () => {
+    const { host, structureEdits } = await trip();
+    expect(host.prop("car")).toMatchObject({
+      model: "platform.zip",
+      solid: true,
+      seat: true,
+    });
+    // Site 0 is the guaranteed petrol station, so its pumps and pads are up.
+    const pumps = host.propList.filter((prop) => prop.tags.includes("fuel"));
+    expect(pumps.length).toBeGreaterThanOrEqual(2);
+    expect(pumps[0].model).toBe("gas-pump.zip");
+    const site = structureEdits.get("structure-0");
+    expect(site).toBeTruthy();
+    expect(site?.some((shape) => shape.kind === "house")).toBe(true);
+    expect(site?.some((shape) => shape.kind === "surface")).toBe(true);
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "fuel", kind: "bar", max: 60 }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "trip", kind: "text" }),
+    );
+    host.dispose();
+  });
+
+  it("builds sites ahead as the car drives and drops the ones left behind", async () => {
+    const { host, structureEdits } = await trip();
+    await host.use("car", "", "");
+    input.moveY = 1;
+    for (let i = 0; i < 500; i++) {
+      await advanceTrip(host, 40);
+    }
+    const lastWrites = [...structureEdits.values()];
+    const live = lastWrites.filter((shapes) => shapes !== null);
+    expect(live.length).toBeGreaterThan(0);
+    expect(live.length).toBeLessThanOrEqual(4);
+    // At least one site the car has passed has been taken back down.
+    expect(lastWrites.some((shapes) => shapes === null)).toBe(true);
+    host.dispose();
+  });
+
+  it("gets in on use and hands over the wheel and a follow camera", async () => {
+    const { host } = await trip();
+    await host.use("car", "", "");
+    expect(host.controlsLocked("")).toBe(true);
+    expect(host.followCameraFor("")).toMatchObject({ entityId: "car" });
+    host.dispose();
+  });
+
+  it("drives the car from held input and burns fuel as it goes", async () => {
+    const { host } = await trip();
+    await host.use("car", "", "");
+    input.moveY = 1;
+    for (let i = 0; i < 20; i++) {
+      await advanceTrip(host, 40);
+    }
+    const car = host.prop("car")!;
+    expect(car.z).toBeGreaterThan(0);
+    expect(host.propPose("car")?.vz).toBeGreaterThan(0);
+    const fuel = host.hudFor("").find((readout) => readout.id === "fuel");
+    expect(fuel?.value).toBeLessThan(60);
+    expect(host.controlsLocked("")).toBe(true);
+    host.dispose();
+  });
+
+  it("gets out on the bound key and gives the body back", async () => {
+    const { host } = await trip();
+    await host.use("car", "", "");
+    await host.input("KeyR", "down", "");
+    expect(host.controlsLocked("")).toBe(false);
+    expect(host.followCameraFor("")).toBeNull();
+    host.dispose();
+  });
+
+  it("gets out on the touch use button", async () => {
+    const { host } = await trip();
+    await host.use("car", "", "");
+    input.useHeld = true;
+    await advanceTrip(host, 40);
+    expect(host.controlsLocked("")).toBe(false);
+    expect(host.followCameraFor("")).toBeNull();
+    input.useHeld = false;
+    host.dispose();
+  });
+
+  it("stays in on the press that got the driver in", async () => {
+    const { host } = await trip();
+    // The touch button is already down as the car is entered.
+    input.useHeld = true;
+    await host.use("car", "", "");
+    await advanceTrip(host, 40);
+    expect(host.controlsLocked("")).toBe(true);
+    input.useHeld = false;
+    await advanceTrip(host, 40);
+    expect(host.controlsLocked("")).toBe(true);
+    // Releasing and pressing again is what gets them out.
+    input.useHeld = true;
+    await advanceTrip(host, 40);
+    expect(host.controlsLocked("")).toBe(false);
+    input.useHeld = false;
+    host.dispose();
+  });
+
+  it("leaves a new player unharmed while they find the car", async () => {
+    const { host, damage } = await trip();
+    for (let i = 0; i < 250; i++) {
+      await advanceTrip(host, 40); // ten seconds, with the player standing still
+    }
+    expect(damage).toEqual([]);
+    host.dispose();
+  });
+
+  it("accelerates from the held dig button with the stick left to steer", async () => {
+    const { host } = await trip();
+    await host.use("car", "", "");
+    input.primaryHeld = true;
+    for (let i = 0; i < 20; i++) {
+      await advanceTrip(host, 40);
+    }
+    expect(host.prop("car")!.z).toBeGreaterThan(0);
+    // Steering still reads the stick's horizontal axis.
+    const beforeYaw = host.prop("car")!.yaw;
+    input.moveX = 1;
+    for (let i = 0; i < 10; i++) {
+      await advanceTrip(host, 40);
+    }
+    expect(host.prop("car")!.yaw).not.toBeCloseTo(beforeYaw, 3);
+    host.dispose();
+  });
+
+  it("steers the way the stick points, with the right input turning right", async () => {
+    const { host } = await trip();
+    await host.use("car", "", "");
+    input.moveY = 1;
+    for (let i = 0; i < 20; i++) {
+      await advanceTrip(host, 40);
+    }
+    // Straight along +z, the driver's right is -x — the side the follow camera
+    // puts on their right. A right push must carry the car that way.
+    expect(host.prop("car")!.x).toBeCloseTo(0, 5);
+    input.moveX = 1;
+    for (let i = 0; i < 20; i++) {
+      await advanceTrip(host, 40);
+    }
+    expect(host.prop("car")!.x).toBeLessThan(0);
+    host.dispose();
+  });
+
+  it("drives a dust wall behind the car, centred on it as the front advances", async () => {
+    const { host } = await trip();
+    const start = host.stormList;
+    expect(start).toHaveLength(1);
+    expect(start[0]).toMatchObject({ id: "storm", kind: "wall", intensity: 0 });
+    await host.use("car", "", "");
+    input.moveY = 1;
+    for (let i = 0; i < 20; i++) {
+      await advanceTrip(host, 40);
+    }
+    const now = host.stormList;
+    expect(now).toHaveLength(1);
+    expect(now[0].z).toBeGreaterThan(start[0].z);
+    // The wall tracks the car side to side, so a turn never lets it slip past.
+    expect(now[0].x).toBeCloseTo(host.prop("car")!.x, 5);
+    host.dispose();
+  });
+
+  it("bites only a player the dust has caught, not merely the car", async () => {
+    const { host, damage } = await trip();
+    // The storm closes on the origin while the player stands there, so it bites.
+    for (let i = 0; i < 340; i++) {
+      await advanceTrip(host, 40);
+    }
+    expect(damage.length).toBeGreaterThan(0);
+
+    // The player steps well clear; the storm grinds on over the empty car, and
+    // a bite that followed the car would keep landing.
+    player.z = 400;
+    const before = damage.length;
+    for (let i = 0; i < 40; i++) {
+      await advanceTrip(host, 40);
+    }
+    expect(damage.length).toBe(before);
+    host.dispose();
+  });
+});
+
+describe("the Baldi's Basics in Education and Learning demo", () => {
+  /** The local player's live position the demo's own script reads. */
+  let player: { x: number; y: number; z: number };
+  let baldiClockMs: number;
+
+  /** Loads the demo and returns its script entry, ready to run. */
+  const baldiProject = async () => {
+    stubModels();
+    const project = await loadBuiltinDemo(builtinDemo("baldi-basics")!);
+    return { project, entry: project.manifest.scripts![0] };
+  };
+
+  /** Boots the demo's host against the mutable `player`, recording what it said. */
+  const runBaldi = async () => {
+    baldiClockMs = 0;
+    player = { x: -200, y: 62, z: 0 };
+    const { project, entry } = await baldiProject();
+    const endings: string[] = [];
+    const narrations: string[] = [];
+    const kills: string[] = [];
+    const notices: string[] = [];
+    const host = new ScriptHost({
+      seed: project.manifest.seed,
+      getNow: () => baldiClockMs,
+      getHeightAt: () => 62,
+      getPlayers: () => [{ did: "", x: player.x, y: player.y, z: player.z }],
+      onEnding: (_player, state) => {
+        if (state !== null) {
+          endings.push(state.title);
+        }
+      },
+      onNarrate: (_player, line) => narrations.push(line.text),
+      onKill: (_player, cause) => kills.push(cause),
+      onNotice: (message) => notices.push(message),
+    });
+    await host.loadProject(project.scripts, entry, projectModelBytes(project));
+    return { host, project, endings, narrations, kills, notices };
+  };
+
+  /** Plays the open quiz out, answering and continuing, until the panel goes. */
+  const solveQuiz = async (host: ScriptHost): Promise<void> => {
+    for (let i = 0; i < 60; i++) {
+      const panel = host.uiFor("").find((p) => p.id === "quiz");
+      if (panel === undefined) {
+        return;
+      }
+      const answer = panel.items.find(
+        (item) => item.kind === "button" && item.id.startsWith("option-"),
+      );
+      await host.clickUi(
+        "",
+        "quiz",
+        answer === undefined ? "continue" : answer.id,
+      );
+    }
+  };
+
+  /** Steps the shared clock past `ms` in chase beats so the loop can move. */
+  const advanceBaldi = async (host: ScriptHost, ms: number): Promise<void> => {
+    const beats = Math.ceil(ms / 100);
+    for (let i = 0; i < beats; i++) {
+      baldiClockMs += 100;
+      await host.pump();
+    }
+  };
+
+  it("lists the school place with its models", () => {
+    const demo = builtinDemo("baldi-basics");
+    expect(demo?.manifest.name).toBe(
+      "Baldi's Basics in Education and Learning",
+    );
+    expect(demo?.manifest.mode).toBe("solo");
+    // The spawn sits at the school's centre so the plan's fixed build region
+    // covers the whole grid; the script walks the player to the west entrance.
+    expect(demo?.manifest.spawn).toEqual([0, 62, 0]);
+    for (const model of [
+      "npc-teacher.zip",
+      "npc-sweep.zip",
+      "npc-playtime.zip",
+      "npc-principal.zip",
+      "npc-puppet.zip",
+      "npc-prize.zip",
+      "npc-bully.zip",
+      "historybook.zip",
+      "platform.zip",
+      "door.zip",
+    ]) {
+      expect(demo?.manifest.models).toContain(model);
+    }
+    // The level and quiz live in sibling project files the entry imports.
+    expect(demo?.scripts).toHaveProperty("baldi-level.ts");
+    expect(demo?.scripts).toHaveProperty("baldi-quiz.ts");
+    expect(BUILTIN_DEMOS).toContain(demo);
+  });
+
+  it("loads the demo's models as bytes", async () => {
+    const { project } = await baldiProject();
+    for (const file of [
+      "npc-teacher.zip",
+      "npc-sweep.zip",
+      "npc-playtime.zip",
+      "npc-principal.zip",
+      "npc-puppet.zip",
+      "npc-prize.zip",
+      "npc-bully.zip",
+      "historybook.zip",
+      "platform.zip",
+      "door.zip",
+      "desk.zip",
+      "bookshelf.zip",
+    ]) {
+      expect(project.models[file].bytes.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("compiles a school on grass with perimeter walls, rooms, and door gaps", async () => {
+    const { project, entry } = await baldiProject();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    const boxes = plan.structures.flatMap((shape) => expandShape(shape));
+    // The ground under the plaza is graded flat to the school's floor row, so
+    // the generated mountains are cut down and never rise through the building.
+    expect(
+      plan.structures.some(
+        (shape) => shape.kind === "surface" && shape.level === 30,
+      ),
+    ).toBe(true);
+    // The plaza grass and slab top out on world y 62 where every prop stands,
+    // and the roof closes the building at y 70.
+    expect(columnSurfaces(boxes, -100, 0)).toContain(62);
+    expect(columnSurfaces(boxes, 0, 0)).toContain(62);
+    expect(columnSurfaces(boxes, 0, 0)).toContain(70);
+    // The east outer wall runs at voxel x=91 and rises to world y 68.
+    expect(columnSurfaces(boxes, 91, 0)).toContain(68);
+    // The west wall opens at the entrance gap, walled away above it.
+    expect(columnSurfaces(boxes, -91, 0)).not.toContain(68);
+    expect(columnSurfaces(boxes, -91, 10)).toContain(68);
+    // A room's doorway is a gap in the wall at voxel z=-6: Library's at
+    // x=-60, walled between them.
+    expect(columnSurfaces(boxes, -60, -6)).not.toContain(68);
+    expect(columnSurfaces(boxes, -50, -6)).toContain(68);
+    // The central crossing passes through the same wall line, so it is open.
+    expect(columnSurfaces(boxes, 0, -6)).not.toContain(68);
+    // A room stands floor-and-roofed: 62 on top of the slab, 70 on the roof.
+    expect(columnSurfaces(boxes, -60, -24)).toContain(62);
+    expect(columnSurfaces(boxes, -60, -24)).toContain(70);
+    // The north wall opens only at the fake exit at voxel x=0.
+    expect(columnSurfaces(boxes, 10, -55)).toContain(68);
+    expect(columnSurfaces(boxes, 0, -55)).not.toContain(68);
+  });
+
+  it("opens with a friendly Baldi, seven hazard notebooks, and sealed doors", async () => {
+    const { host, narrations, notices } = await runBaldi();
+    expect(host.npcList.map((npc) => npc.id).sort()).toEqual(["normal-baldi"]);
+    expect(host.npc("normal-baldi")).toMatchObject({
+      name: "Baldi",
+      model: "npc-teacher.zip",
+      x: -168,
+      z: 0,
+    });
+    const books = host.propList.filter((prop) =>
+      prop.tags.includes("notebook"),
+    );
+    expect(books).toHaveLength(7);
+    for (const book of books) {
+      expect(book.model).toBe("historybook.zip");
+      expect(book.solid).toBe(false);
+      expect(book.hazard).toBe(true);
+    }
+    // The true exit stands in the east wall, sealed by its gate.
+    expect(host.prop("door-exit")).toMatchObject({
+      model: "door.zip",
+      hazard: true,
+    });
+    expect(host.barrier("door-exit-gate")).not.toBeNull();
+    // Three fake exits and two yellow doors are in place too.
+    expect(host.prop("door-fake-1")).not.toBeNull();
+    expect(host.prop("door-hall-north")).toMatchObject({ model: "door.zip" });
+    expect(host.voidY).toBe(40);
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "0 / 7" }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({
+        id: "objective",
+        kind: "text",
+        text: "Find all 7 notebooks",
+      }),
+    );
+    expect(host.controlsLocked("")).toBe(false);
+    expect(narrations[0]).toBe("Oh, hi! Welcome to my schoolhouse!");
+    expect(notices).toEqual([]);
+    host.dispose();
+  });
+
+  it("swings a door open on its hinge when the player reaches it", async () => {
+    const { host } = await runBaldi();
+    expect(host.barrier("door-library-gate")).not.toBeNull();
+    await host.touched("", "door-library");
+    // The door is re-issued with a bounded turn about its hinge edge.
+    const spun = host.prop("door-library")?.motion?.spin;
+    expect(spun).toBeDefined();
+    expect(spun?.turns).toBe(0.25);
+    expect(spun?.pivot).toBeDefined();
+    // The gap is open now.
+    expect(host.barrier("door-library-gate")).toBeNull();
+    host.dispose();
+  });
+
+  it("keeps a yellow door shut until two notebooks are held", async () => {
+    const { host } = await runBaldi();
+    await host.touched("", "door-hall-north");
+    expect(host.prop("door-hall-north")?.motion).toBeUndefined();
+    expect(host.barrier("door-hall-north-gate")).not.toBeNull();
+    for (const id of ["book-0", "book-1"]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    await host.touched("", "door-hall-north");
+    expect(host.prop("door-hall-north")?.motion?.spin?.turns).toBe(0.25);
+    host.dispose();
+  });
+
+  it("swings a door open for the cast as it passes", async () => {
+    const { host } = await runBaldi();
+    for (const id of ["book-0", "book-1"]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    // Put the player beyond the north yellow door, so Baldi's run up the hall
+    // passes the shut door and swings it open on the way — without holding any
+    // notebooks, which the player would need, but Baldi does not.
+    player = { x: 0, y: 62, z: -60 };
+    await advanceBaldi(host, 2000);
+    expect(host.prop("door-hall-north")?.motion?.spin?.turns).toBe(0.25);
+    host.dispose();
+  });
+
+  it("locks the player into a notebook's quiz when it is touched", async () => {
+    const { host } = await runBaldi();
+    await host.touched("", "book-0");
+    expect(host.controlsLocked("")).toBe(true);
+    const quiz = host.uiFor("")[0];
+    expect(quiz).toMatchObject({ id: "quiz", title: "BALDI'S NOTEBOOK 1" });
+    const answers = quiz.items.filter((item) => item.kind === "button");
+    expect(answers).toHaveLength(4);
+    // The exit is not yet the escape: touching it does nothing in this phase.
+    await host.touched("", "door-exit");
+    expect(host.uiFor("")[0]).toMatchObject({ id: "quiz" });
+    host.dispose();
+  });
+
+  it("collects a notebook after its quiz and counts it on the HUD", async () => {
+    const { host } = await runBaldi();
+    await host.touched("", "book-0");
+    await solveQuiz(host);
+    expect(host.uiFor("")).toHaveLength(0);
+    expect(host.controlsLocked("")).toBe(false);
+    expect(host.prop("book-0")).toBeNull();
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "1 / 7" }),
+    );
+    host.dispose();
+  });
+
+  it("takes a notebook with the use button as well as the touch", async () => {
+    const { host } = await runBaldi();
+    await host.use("book-0", "");
+    expect(host.controlsLocked("")).toBe(true);
+    await solveQuiz(host);
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "1 / 7" }),
+    );
+    // The same button on a piece of furniture takes nothing.
+    await host.use("desk-cla", "");
+    expect(host.uiFor("")).toHaveLength(0);
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "1 / 7" }),
+    );
+    host.dispose();
+  });
+
+  it("starts the chase after two notebooks and catches the player who stays put", async () => {
+    const { host, kills } = await runBaldi();
+    for (const id of ["book-0", "book-1"]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "2 / 7" }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({
+        id: "objective",
+        kind: "text",
+        text: "Baldi is chasing you — keep collecting!",
+      }),
+    );
+    // The player never moves: Baldi crosses the school at his new speed.
+    await advanceBaldi(host, 25000);
+    expect(kills).toContain("baldi");
+    host.dispose();
+  });
+
+  it("turns hostile, spawning the whole cast, once the chase begins", async () => {
+    const { host } = await runBaldi();
+    for (const id of ["book-0", "book-1"]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    const ids = host.npcList.map((npc) => npc.id).sort();
+    expect(ids).toContain("baldi");
+    expect(ids).toContain("playtime");
+    expect(ids).toContain("sweep");
+    expect(ids).toContain("principal");
+    expect(ids).toContain("puppet");
+    expect(ids).toContain("bully");
+    expect(ids).toContain("prize");
+    expect(ids).not.toContain("normal-baldi");
+    host.dispose();
+  });
+
+  it("clears the exit only after all three fake exits, then wins", async () => {
+    const { host, endings } = await runBaldi();
+    for (const id of [
+      "book-0",
+      "book-1",
+      "book-2",
+      "book-3",
+      "book-4",
+      "book-5",
+      "book-6",
+    ]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "7 / 7" }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({
+        id: "objective",
+        kind: "text",
+        text: "ESCAPE through the east door — the fakes won't open it!",
+      }),
+    );
+    // The true exit refuses the player while fakes remain untried.
+    await host.touched("", "door-exit");
+    expect(endings).toEqual([]);
+    for (const id of ["door-fake-1", "door-fake-2", "door-fake-3"]) {
+      await host.touched("", id);
+    }
+    await host.touched("", "door-exit");
+    expect(endings).toEqual(["VICTORY!"]);
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({
+        id: "objective",
+        kind: "text",
+        text: "Escaped!",
+      }),
+    );
+    host.dispose();
+  });
+
+  it("resets the run to zero when the chase catches the player", async () => {
+    const { host, kills } = await runBaldi();
+    for (const id of ["book-0", "book-1"]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    await advanceBaldi(host, 25000);
+    expect(kills).toContain("baldi");
+    await host.died("", "baldi");
+    // A catch starts the run over: zero notebooks, the cast gone, and the
+    // friendly Baldi back at the entrance.
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "0 / 7" }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({
+        id: "objective",
+        kind: "text",
+        text: "Find all 7 notebooks",
+      }),
+    );
+    expect(host.prop("book-0")).not.toBeNull();
+    expect(host.npc("baldi")).toBeNull();
+    expect(host.npc("normal-baldi")).not.toBeNull();
+    host.dispose();
+  });
+
+  it("rebuilds the school into a fresh run after a victory", async () => {
+    const { host } = await runBaldi();
+    for (const id of [
+      "book-0",
+      "book-1",
+      "book-2",
+      "book-3",
+      "book-4",
+      "book-5",
+      "book-6",
+    ]) {
+      await host.touched("", id);
+      await solveQuiz(host);
+    }
+    for (const id of ["door-fake-1", "door-fake-2", "door-fake-3"]) {
+      await host.touched("", id);
+    }
+    await host.touched("", "door-exit");
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "7 / 7" }),
+    );
+    await advanceBaldi(host, 21000);
+    // The run came back around: notebooks restored, Baldi friendly again.
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "books", kind: "text", text: "0 / 7" }),
+    );
+    expect(host.prop("book-0")).not.toBeNull();
+    expect(host.npc("normal-baldi")).not.toBeNull();
+    host.dispose();
+  });
+});
+
+describe("the Cube Cavern demo", () => {
+  /** The local player's live position the demo's own script reads. */
+  let player: { x: number; y: number; z: number };
+  let ccClockMs: number;
+
+  /** Loads the demo and returns its script entry, ready to run. */
+  const ccProject = async () => {
+    stubModels();
+    const project = await loadBuiltinDemo(builtinDemo("cube-cavern")!);
+    return { project, entry: project.manifest.scripts![0] };
+  };
+
+  /** Boots the demo's host against the mutable player, recording what it said. */
+  const runCC = async () => {
+    ccClockMs = 0;
+    player = { x: 0, y: 62, z: 0 };
+    const { project, entry } = await ccProject();
+    const endings: string[] = [];
+    const toasts: string[] = [];
+    const notices: string[] = [];
+    const structures = new Map<string, unknown>();
+    const host = new ScriptHost({
+      seed: project.manifest.seed,
+      getNow: () => ccClockMs,
+      getHeightAt: () => 62,
+      getSolidAt: () => false,
+      getWaterAt: () => false,
+      getPlayers: () => [{ did: "", x: player.x, y: player.y, z: player.z }],
+      onEnding: (_player, state) => {
+        if (state !== null) {
+          endings.push(state.title);
+        }
+      },
+      onToast: (_player, text) => toasts.push(text),
+      onStructureEdit: (edit) => structures.set(edit.id, edit.shapes),
+      onNotice: (message) => notices.push(message),
+    });
+    await host.loadProject(project.scripts, entry, projectModelBytes(project));
+    return { host, project, endings, toasts, notices, structures };
+  };
+
+  /** Moves the shared clock forward and lets the cavern's own tick fire. */
+  const advance = async (host: ScriptHost, ms: number): Promise<void> => {
+    ccClockMs += ms;
+    await host.pump();
+  };
+
+  it("lists the place, its models, and its solo mode", () => {
+    const demo = builtinDemo("cube-cavern");
+    expect(demo?.manifest.name).toBe("Cube Cavern");
+    expect(demo?.manifest.mode).toBe("solo");
+    expect(demo?.manifest.spawn).toEqual([0, 62, 0]);
+    for (const file of [
+      "cave-yellowhand.zip",
+      "cave-wormle.zip",
+      "cave-poopie.zip",
+      "cave-chik.zip",
+      "cave-megachik.zip",
+      "cave-ninja.zip",
+      "cave-chest.zip",
+      "cave-torch.zip",
+      "cave-craft.zip",
+      "door.zip",
+      "platform.zip",
+    ]) {
+      expect(demo?.manifest.models).toContain(file);
+    }
+    expect(BUILTIN_DEMOS).toContain(demo);
+  });
+
+  it("loads its models as bytes", async () => {
+    const { project } = await ccProject();
+    for (const file of [
+      "cave-yellowhand.zip",
+      "cave-ninja.zip",
+      "cave-chest.zip",
+      "cave-boss-chest.zip",
+      "cave-torch.zip",
+      "cave-craft.zip",
+    ]) {
+      expect(project.models[file].bytes.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("compiles the hub's floor and walls", async () => {
+    const { project, entry } = await ccProject();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    expect(
+      plan.structures.some(
+        (shape) => shape.kind === "surface" && shape.level === 30,
+      ),
+    ).toBe(true);
+    const boxes = plan.structures.flatMap((shape) => expandShape(shape));
+    // The hub floor tops out at world y 62 where the player stands.
+    expect(columnSurfaces(boxes, 0, 0)).toContain(62);
+    // Its east wall runs at voxel x=24 and rises to world y 70.
+    expect(columnSurfaces(boxes, 24, 0)).toContain(70);
+  });
+
+  it("opens in the hub with its keeper, bench, sign, door and readouts", async () => {
+    const { host, notices } = await runCC();
+    expect(notices).toEqual([]);
+    expect(host.npc("keeper-hub")).toMatchObject({
+      name: "Shopkeeper",
+      model: "npc-teacher.zip",
+    });
+    expect(host.prop("craft-table")).toMatchObject({ model: "cave-craft.zip" });
+    expect(host.prop("shop-sign")).toMatchObject({ model: "cave-sign.zip" });
+    expect(host.prop("cavern-door")).toMatchObject({ model: "door.zip" });
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "hp", kind: "bar", max: 6, value: 6 }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "floor", kind: "text", text: "Hub" }),
+    );
+    expect(host.voidY).toBe(-200);
+    host.dispose();
+  });
+
+  it("opens the shop on talking to the keeper and sells a key", async () => {
+    const { host } = await runCC();
+    await host.talk("keeper-hub", "");
+    expect(host.uiFor("")).toContainEqual(
+      expect.objectContaining({ id: "shop" }),
+    );
+    await host.clickUi("", "shop", "buy-0");
+    await host.clickUi("", "shop", "buy-0");
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "keys", kind: "text", text: "2" }),
+    );
+    host.dispose();
+  });
+
+  it("starts a run on the door: a cavern structure, monsters, and an exit", async () => {
+    const { host, structures } = await runCC();
+    await host.use("cavern-door", "");
+    expect(structures.get("cavern")).toBeTruthy();
+    expect(
+      host.npcList.filter((npc) => npc.id.startsWith("mob-")).length,
+    ).toBeGreaterThan(0);
+    expect(host.prop("exit")).not.toBeNull();
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "floor", kind: "text", text: "Floor 1/3" }),
+    );
+    host.dispose();
+  });
+
+  it("fells a monster when its health is spent", async () => {
+    const { host } = await runCC();
+    await host.use("cavern-door", "");
+    const mob = host.npcList.find((npc) => npc.id.startsWith("mob-"))!;
+    await host.hit(mob.id, "", 1_000, mob.x, mob.z);
+    expect(host.npc(mob.id)).toMatchObject({ dyingAt: expect.any(Number) });
+    host.dispose();
+  });
+
+  it("has a monster close on the player and take a heart", async () => {
+    const { host } = await runCC();
+    await host.use("cavern-door", "");
+    const mob = host.npcList.find((npc) => npc.id.startsWith("mob-"))!;
+    // Stand the player on the monster, so its first strike lands on the tick.
+    player.x = mob.x;
+    player.z = mob.z;
+    await advance(host, 150);
+    const hp = host.hudFor("").find((readout) => readout.id === "hp");
+    expect(hp?.value).toBeLessThan(6);
+    host.dispose();
+  });
+
+  it("keeps the hatch locked without a key", async () => {
+    const { host, toasts } = await runCC();
+    await host.use("cavern-door", "");
+    await host.use("exit", "");
+    expect(toasts.some((line) => line.includes("locked"))).toBe(true);
+    expect(host.prop("exit")).not.toBeNull();
+    host.dispose();
+  });
+
+  it("buys two keys, descends to the ninja, and breaks it", async () => {
+    const { host, endings } = await runCC();
+    // The keeper's first stock is a key; buy two, then open the cavern.
+    await host.talk("keeper-hub", "");
+    await host.clickUi("", "shop", "buy-0");
+    await host.clickUi("", "shop", "buy-0");
+    await host.use("cavern-door", "");
+    await host.use("exit", ""); // floor 1 -> 2
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "floor", kind: "text", text: "Floor 2/3" }),
+    );
+    await host.use("exit", ""); // floor 2 -> 3, the boss
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "floor", kind: "text", text: "Floor 3/3" }),
+    );
+    expect(host.npc("boss")).toMatchObject({ model: "cave-ninja.zip" });
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "boss", kind: "bar" }),
+    );
+    // A form-one blow only forces the second form; the next one ends it.
+    await host.hit("boss", "", 1_000, 0, 0);
+    expect(host.npc("boss")).not.toBeNull();
+    await host.hit("boss", "", 1_000, 0, 0);
+    expect(endings).toContain("The Ninja Falls");
+    host.dispose();
+  });
+
+  it("loses a max heart and returns to the hub on death", async () => {
+    const { host } = await runCC();
+    await host.use("cavern-door", "");
+    await host.died("", "cavern");
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "hp", kind: "bar", max: 5, value: 5 }),
+    );
+    expect(host.hudFor("")).toContainEqual(
+      expect.objectContaining({ id: "floor", kind: "text", text: "Hub" }),
+    );
+    host.dispose();
+  });
+
+  it("walks the cavern's monsters without a step failing", async () => {
+    const { host, notices } = await runCC();
+    await host.use("cavern-door", "");
+    for (let i = 0; i < 20; i++) {
+      await advance(host, 150);
+    }
+    expect(notices).toEqual([]);
+    host.dispose();
+  });
+});
+
+describe("the Raise a Floppa demo", () => {
+  /** The local player's live position the demo's own script reads. */
+  let player: { x: number; y: number; z: number };
+  let rfClock: number;
+
+  /** Loads the demo and returns its script entry, ready to run. */
+  const rfProject = async () => {
+    stubModels();
+    const project = await loadBuiltinDemo(builtinDemo("raise-a-floppa")!);
+    return { project, entry: project.manifest.scripts![0] };
+  };
+
+  /** Boots the demo with `fill` seeding the place's remembered data. */
+  const runRF = async (fill?: (data: PlaceData) => void) => {
+    rfClock = 0;
+    player = { x: 0, y: 62, z: 0 };
+    const { project, entry } = await rfProject();
+    const data = createPlaceData();
+    fill?.(data);
+    const endings: string[] = [];
+    const toasts: string[] = [];
+    const notices: string[] = [];
+    const narrations: string[] = [];
+    const structures = new Map<string, unknown>();
+    const host = new ScriptHost({
+      seed: project.manifest.seed,
+      getNow: () => rfClock,
+      getHeightAt: () => 62,
+      getSolidAt: () => false,
+      getWaterAt: () => false,
+      getPlayers: () => [{ did: "", x: player.x, y: player.y, z: player.z }],
+      data,
+      onEnding: (_player, state) => {
+        if (state !== null) {
+          endings.push(state.title);
+        }
+      },
+      onToast: (_player, text) => toasts.push(text),
+      onNarrate: (_player, line) => narrations.push(line.text),
+      onStructureEdit: (edit) => structures.set(edit.id, edit.shapes),
+      onNotice: (message) => notices.push(message),
+    });
+    await host.loadProject(project.scripts, entry, projectModelBytes(project));
+    await host.pump();
+    return {
+      host,
+      project,
+      entry,
+      data,
+      endings,
+      toasts,
+      notices,
+      narrations,
+      structures,
+    };
+  };
+
+  /** Moves the shared clock forward and lets the demo's own tick fire. */
+  const advance = async (host: ScriptHost, ms: number): Promise<void> => {
+    rfClock += ms;
+    await host.pump();
+  };
+
+  const hud = (host: ScriptHost, id: string) =>
+    host.hudFor("").find((readout) => readout.id === id);
+
+  it("lists the place, its models, and its solo mode", () => {
+    const demo = builtinDemo("raise-a-floppa");
+    expect(demo?.manifest.name).toBe("Raise a Floppa");
+    expect(demo?.manifest.mode).toBe("solo");
+    expect(demo?.manifest.spawn).toEqual([0, 62, 0]);
+    for (const file of [
+      "floppa.zip",
+      "ms-floppa.zip",
+      "bandit.zip",
+      "bingus.zip",
+      "altar.zip",
+      "time-machine.zip",
+      "backroom-door.zip",
+    ]) {
+      expect(demo?.manifest.models).toContain(file);
+    }
+    expect(BUILTIN_DEMOS).toContain(demo);
+  });
+
+  it("loads its models as bytes", async () => {
+    const { project } = await rfProject();
+    for (const file of [
+      "floppa.zip",
+      "ms-floppa.zip",
+      "baby-floppa.zip",
+      "bingus.zip",
+      "altar.zip",
+      "time-machine.zip",
+      "computer.zip",
+    ]) {
+      expect(project.models[file].bytes.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("compiles the house, the yard and the backrooms", async () => {
+    const { project, entry } = await rfProject();
+    const plan = await compilePlacePlan({
+      files: project.scripts,
+      entry,
+      seed: project.manifest.seed,
+      region: planRegionAround(project.manifest.spawn),
+    });
+    expect(plan.structures.some((shape) => shape.kind === "house")).toBe(true);
+    expect(
+      plan.structures.some(
+        (shape) => shape.kind === "surface" && shape.id === 34,
+      ),
+    ).toBe(true);
+    const boxes = plan.structures.flatMap((shape) => expandShape(shape));
+    // The house floor tops out at world y 62 where the player stands.
+    expect(columnSurfaces(boxes, 0, -8)).toContain(62);
+    // The house's north wall rises to world y 76 at voxel z=-8.
+    expect(columnSurfaces(boxes, 0, -8)).toContain(76);
+    // The backrooms floor is graded level at the same height.
+    expect(columnSurfaces(boxes, 60, 0)).toContain(62);
+  });
+
+  it("opens with Floppa, the Interwebs, the bowl and the readouts", async () => {
+    const { host, notices } = await runRF();
+    expect(notices).toEqual([]);
+    expect(host.npc("floppa")).toMatchObject({
+      name: "Floppa",
+      model: "floppa.zip",
+    });
+    expect(host.prop("computer")).toMatchObject({ model: "computer.zip" });
+    expect(host.prop("bowl")).toMatchObject({ model: "food-bowl.zip" });
+    expect(host.prop("backroom-door")).toMatchObject({
+      model: "backroom-door.zip",
+    });
+    expect(hud(host, "hunger")).toMatchObject({ kind: "bar", max: 100 });
+    expect(hud(host, "happy")).toMatchObject({ kind: "bar", max: 100 });
+    expect(hud(host, "money")).toMatchObject({ kind: "text", text: "$0" });
+    expect(hud(host, "day")).toMatchObject({ kind: "text", text: "0" });
+    host.dispose();
+  });
+
+  it("pets Floppa for money and happiness", async () => {
+    const { host } = await runRF();
+    await host.use("floppa", "");
+    await host.use("floppa", "");
+    await host.use("floppa", "");
+    expect(hud(host, "money")?.text).toBe("$3");
+    host.dispose();
+  });
+
+  it("buys a meal, fills the bowl, and feeds a hungry cat", async () => {
+    const { host, toasts } = await runRF((data) => {
+      data.set("player", "", "rf-money", 200);
+    });
+    await host.use("computer", "");
+    expect(host.uiFor("")).toContainEqual(
+      expect.objectContaining({ id: "shop" }),
+    );
+    await host.clickUi("", "shop", "buy-milk");
+    // The bought meal is put in the player's hand, as the world reports it.
+    expect(host.inventory.heldItem()?.id).toBe("milk");
+    // The cat is hungry enough to go to the bowl.
+    for (let i = 0; i < 12; i++) {
+      await advance(host, 4_000);
+    }
+    await useHeld(host, "bowl");
+    for (let i = 0; i < 30; i++) {
+      await advance(host, 500);
+    }
+    expect(toasts.some((line) => line.includes("eats from the bowl"))).toBe(
+      true,
+    );
+    host.dispose();
+  });
+
+  it("starves a neglected cat to the You Monster ending", async () => {
+    const { host, endings } = await runRF();
+    for (let i = 0; i < 80; i++) {
+      await advance(host, 4_000);
+    }
+    expect(endings).toContain("You Monster");
+    host.dispose();
+  });
+
+  it("forgets a dead cat's run so the next run starts over", async () => {
+    const { host, project, entry, data, endings } = await runRF((place) => {
+      place.set("player", "", "rf-money", 900);
+      place.set("player", "", "rf-owned", 1 << 5);
+      place.set("player", "", "rf-faith", 60);
+      place.set("player", "", "rf-days", 7);
+      place.set("player", "", "rf-rent", 320);
+      place.set("player", "", "rf-cubes", 1);
+      place.set("player", "", "rf-travel", 1);
+      place.set("player", "", "rf-best", 7);
+    });
+    // The seeded run is live: the wallet is full and Ms. Floppa stands.
+    expect(data.get("player", "", "rf-money")).toBe(900);
+    expect(host.npc("ms-floppa")).toMatchObject({ model: "ms-floppa.zip" });
+    for (let i = 0; i < 80; i++) {
+      await advance(host, 4_000);
+    }
+    expect(endings).toContain("You Monster");
+    // The death forgot the run, keeping only the best day count.
+    for (const key of [
+      "rf-money",
+      "rf-owned",
+      "rf-faith",
+      "rf-days",
+      "rf-rent",
+      "rf-cubes",
+      "rf-farms",
+      "rf-travel",
+    ]) {
+      expect(data.get("player", "", key)).toBeUndefined();
+    }
+    expect(data.get("player", "", "rf-best")).toBeGreaterThanOrEqual(7);
+    host.dispose();
+
+    // Play again: the fresh interpreter boots from the wiped table.
+    const notices: string[] = [];
+    const revived = new ScriptHost({
+      seed: project.manifest.seed,
+      getNow: () => rfClock,
+      getHeightAt: () => 62,
+      getSolidAt: () => false,
+      getWaterAt: () => false,
+      getPlayers: () => [{ did: "", x: player.x, y: player.y, z: player.z }],
+      data,
+      onNotice: (message) => notices.push(message),
+    });
+    await revived.loadProject(
+      project.scripts,
+      entry,
+      projectModelBytes(project),
+    );
+    await revived.pump();
+    expect(notices).toEqual([]);
+    expect(revived.npc("ms-floppa")).toBeNull();
+    expect(hud(revived, "money")?.text).toBe("$0");
+    expect(hud(revived, "day")?.text).toBe("0");
+    expect(hud(revived, "hunger")?.value).toBe(80);
+    revived.dispose();
+  });
+
+  it("drops a mess after a meal and cleans it up", async () => {
+    const { host } = await runRF((data) => {
+      data.set("player", "", "rf-money", 200);
+    });
+    await host.use("computer", "");
+    await host.clickUi("", "shop", "buy-milk");
+    await useHeld(host, "floppa");
+    await advance(host, 4_000);
+    const poop = host.propList.find((prop) => prop.id.startsWith("poop-"));
+    expect(poop).toBeTruthy();
+    await host.use(poop!.id, "");
+    expect(host.prop(poop!.id)).toBeNull();
+    host.dispose();
+  });
+
+  it("buys Ms. Floppa, the litter box, and the sword from the Interwebs", async () => {
+    const { host } = await runRF((data) => {
+      data.set("player", "", "rf-money", 1_000);
+    });
+    await host.use("computer", "");
+    await host.clickUi("", "shop", "buy-ms-floppa");
+    await host.clickUi("", "shop", "buy-litter-box");
+    await host.clickUi("", "shop", "buy-sword");
+    expect(host.npc("ms-floppa")).toMatchObject({ model: "ms-floppa.zip" });
+    expect(host.prop("litter-box")).toMatchObject({ model: "litter-box.zip" });
+    expect(host.inventory.heldItem()?.id).toBe("sword");
+    host.dispose();
+  });
+
+  it("raids at dawn, and a sword blow fells a bandit", async () => {
+    const { host } = await runRF((data) => {
+      data.set("player", "", "rf-money", 1_000);
+    });
+    // Three day boundaries bring the first bandits.
+    await advance(host, 90_000); // day 1
+    await advance(host, 45_001); // night ends
+    await advance(host, 90_000); // day 2
+    await advance(host, 45_001); // night ends
+    await advance(host, 90_000); // day 3, the raid
+    const bandit = host.npcList.find((npc) => npc.id.startsWith("bandit-"));
+    expect(bandit).toBeTruthy();
+    await host.hit(bandit!.id, "", 1_000, bandit!.x, bandit!.z);
+    expect(host.npc(bandit!.id)?.dyingAt).toEqual(expect.any(Number));
+    host.dispose();
+  });
+
+  it("opens the backrooms at night and leaves again", async () => {
+    const { host } = await runRF();
+    await advance(host, 90_000); // day 1 turns to night
+    expect(hud(host, "day")?.text).toBe("1");
+    await host.use("backroom-door", "");
+    expect(hud(host, "sanity")).toBeTruthy();
+    await host.use("back-exit", "");
+    expect(hud(host, "sanity")).toBeUndefined();
+    host.dispose();
+  });
+
+  it("offers at the altar and ascends at full faith", async () => {
+    const { host, endings } = await runRF((data) => {
+      data.set("player", "", "rf-money", 5_000);
+      data.set("player", "", "rf-owned", 1 << 10);
+    });
+    await host.use("altar", "");
+    expect(host.uiFor("")).toContainEqual(
+      expect.objectContaining({ id: "altar" }),
+    );
+    await host.clickUi("", "altar", "tier-0");
+    await host.clickUi("", "altar", "tier-1");
+    await host.clickUi("", "altar", "tier-2");
+    expect(hud(host, "faith")?.value).toBe(100);
+    await host.clickUi("", "altar", "ascend");
+    expect(endings).toContain("Ascension");
+    host.dispose();
+  });
+
+  it("rides the Time Machine through its three stops", async () => {
+    const { host, endings, narrations } = await runRF((data) => {
+      data.set("player", "", "rf-money", 5_000);
+      data.set("player", "", "rf-owned", 1 << 11);
+      data.set("player", "", "rf-cubes", 1);
+    });
+    await host.use("time-machine", "");
+    await host.use("time-machine", "");
+    await host.use("time-machine", "");
+    expect(narrations.some((line) => line.includes("Ooga"))).toBe(true);
+    expect(endings).toContain("Time Traveler");
     host.dispose();
   });
 });

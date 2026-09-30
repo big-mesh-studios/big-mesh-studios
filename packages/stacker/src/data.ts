@@ -4,6 +4,7 @@
 // `@big-mesh-studios/maths`, which knows nothing about models.
 import type { Bitmap, Dimensions3D, RGBA } from "@big-mesh-studios/maths";
 import { Matrix3x3, Vector3D } from "@big-mesh-studios/maths";
+import type { Volume } from "./volume";
 
 /**
  * Every side of the box a model is drawn on. Declared as an object rather than
@@ -231,8 +232,19 @@ export interface Part {
    * hanging off another is scaled by that one as well.
    */
   scale: number;
-  /** The name of the part this one hangs off, or null for one hanging off the figure. */
+  /**
+   * The name of the part this one hangs off, or null for one hanging off the figure.
+   */
   parent: string | null;
+  /**
+   * The voxels the six drawings cannot say: what is taken away from the volume
+   * they solve to, and what is put back that they carved away.
+   *
+   * Almost every cell has nothing in it, so this is sparse, and its box is the
+   * same shape as the one the part's own drawings measure. A part with nothing
+   * this could not draw has none, which is the same as a box of nothing to say.
+   */
+  edits?: Volume;
 }
 
 /**

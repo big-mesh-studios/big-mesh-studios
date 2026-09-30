@@ -45,7 +45,11 @@ export const readPlaceZip = async (blob: Blob): Promise<PlaceManifest> => {
     );
   }
 
-  for (const file of [...(parsed.scripts ?? []), ...(parsed.models ?? [])]) {
+  for (const file of [
+    ...(parsed.scripts ?? []),
+    ...(parsed.levels ?? []),
+    ...(parsed.models ?? []),
+  ]) {
     if (zip.file(file) === null) {
       throw new Error(
         `the manifest names "${file}", which the zip does not hold`,

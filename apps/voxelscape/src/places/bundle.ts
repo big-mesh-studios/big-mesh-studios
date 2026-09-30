@@ -6,19 +6,21 @@
 // the same entry produce the same bundle and converge (ADR 0026). A file may
 // also import from `"voxelscape"` (ADR 0050) — `dispatch`/`onTick`/`onPlan`
 // and the rest of the sandbox's host surface, alongside `createNpc`/
-// `createProp` — resolved to one synthetic module built from the standard
-// library's hand-written source plus the place's own attached models,
-// included at most once regardless of how many files import it. That module
-// reaches the real sandbox host object through its own internal-only import,
-// never a specifier a project file's own source ever names. The entry module
-// registers its hooks by calling `engine.onTick`/`engine.onPlan` as it runs,
-// so running it is the bundle's whole handoff to the sandbox — nothing here
-// reads its exports. Nothing here touches the interpreter: it turns a
-// project into the string a `ScriptSandbox.load` can evaluate.
+// `createProp` and `plan` — resolved to one synthetic module built from the
+// standard library's hand-written source plus the place's own attached models
+// and levels, included at most once regardless of how many files import it.
+// That module reaches the real sandbox host object through its own
+// internal-only import, never a specifier a project file's own source ever
+// names. The entry module registers its hooks by calling
+// `engine.onTick`/`engine.onPlan` as it runs, so running it is the bundle's
+// whole handoff to the sandbox — nothing here reads its exports. Nothing here
+// touches the interpreter: it turns a project into the string a
+// `ScriptSandbox.load` can evaluate.
 import type * as TS from "typescript";
 import { loadTypeScript } from "@big-mesh-studios/solid-codemirror/typescript-cdn";
 import { modelDescriptorFor, modelSpecifierFor } from "./model-descriptor";
 import { VOXELSCAPE_LIB_SOURCE } from "./voxelscape-lib";
+import { VOXELSCAPE_MATH_SOURCE } from "./voxelscape-math";
 
 /** A place script that could not be compiled or bundled, in words a creator can act on. */
 export class PlaceBundleError extends Error {
@@ -181,14 +183,16 @@ interface BundledModule {
 
 /**
  * The `"voxelscape"` synthetic module's own source: the hand-written
- * standard library, plus a table of every model this place attaches — not
- * only ones some script happens to import — so a name unknown to the type
- * system but still attached still resolves. A model whose bytes will not
- * decode is left out of the table rather than failing the whole place's
- * load, the same tolerance `model-dts.ts` shows the editor.
+ * standard library and the guest-side math, plus a table of every model and
+ * every level this place attaches — not only ones some script happens to
+ * import — so a name unknown to the type system but still attached still
+ * resolves. A model whose bytes will not decode is left out of its table
+ * rather than failing the whole place's load, the same tolerance `model-dts.ts`
+ * shows the editor. A level is plain text, so it always fits.
  */
 const voxelscapeModuleSource = async (
   models: Record<string, Uint8Array>,
+  levels: Record<string, string>,
 ): Promise<string> => {
   const table: Record<string, unknown> = {};
   for (const [file, bytes] of Object.entries(models)) {
@@ -202,8 +206,10 @@ const voxelscapeModuleSource = async (
       continue;
     }
   }
-  return `${VOXELSCAPE_LIB_SOURCE}
+  return `${VOXELSCAPE_MATH_SOURCE}
+${VOXELSCAPE_LIB_SOURCE}
 const __models = ${JSON.stringify(table)};
+const __levels = ${JSON.stringify(levels)};
 `;
 };
 
@@ -213,7 +219,8 @@ const __models = ${JSON.stringify(table)};
  * ids assigned in sorted-file order so the output is byte-for-byte
  * reproducible. A file may also import from `"voxelscape"`, resolved to one
  * synthetic module built from `models` (bytes already attached to the place,
- * keyed by file name) and included at most once regardless of how many
+ * keyed by file name), `levels` (plan text already attached to the place, keyed
+ * by the name `plan` takes), and included at most once regardless of how many
  * files import it. The bundle runs the entry module for its side effects and
  * nothing else; a script that never calls `engine.onTick` loads without
  * error but the sandbox steps nothing.
@@ -222,6 +229,7 @@ export const bundlePlaceProject = async (
   files: Record<string, string>,
   entry: string,
   models: Record<string, Uint8Array> = {},
+  levels: Record<string, string> = {},
 ): Promise<string> => {
   const ts = await typescript();
   if (files[entry] === undefined) {
@@ -245,7 +253,7 @@ export const bundlePlaceProject = async (
   }
 
   const voxelscapeSource = usesVoxelscape
-    ? await voxelscapeModuleSource(models)
+    ? await voxelscapeModuleSource(models, levels)
     : "";
   if (usesVoxelscape) {
     importsByPath.set(
@@ -308,6 +316,22 @@ function __require(id) {
         getHeightAt: engine.getHeightAt,
         getSolidAt: engine.getSolidAt,
         getWaterAt: engine.getWaterAt,
+        getBlockAt: engine.getBlockAt,
+        getEntity: engine.getEntity,
+        getEntitiesInBox: engine.getEntitiesInBox,
+        getEntitiesInSphere: engine.getEntitiesInSphere,
+        getEntitiesWithTag: engine.getEntitiesWithTag,
+        getPlayer: engine.getPlayer,
+        getPlayersInBox: engine.getPlayersInBox,
+        getLocalPlayer: engine.getLocalPlayer,
+        getInput: engine.getInput,
+        getPlayerValue: engine.getPlayerValue,
+        getLeaderboard: engine.getLeaderboard,
+        getData: engine.getData,
+        getDataLeaderboard: engine.getDataLeaderboard,
+        raycast: engine.raycast,
+        findPath: engine.findPath,
+        getHeldItem: engine.getHeldItem,
         onTick: engine.onTick,
         onPlan: engine.onPlan,
         blocks: engine.blocks,

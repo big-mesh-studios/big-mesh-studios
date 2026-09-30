@@ -47,6 +47,20 @@ export type ScriptEventPayload =
       entityId: string;
       /** The item id the player used on it, or "" for a bare use. */
       item: string;
+      /** Which control the player used, or absent where the world does not say. */
+      button?: "primary" | "secondary" | "use";
+    }
+  | {
+      kind: "input";
+      /** The id a script gave the binding its key is on. */
+      bindId: string;
+      /** Whether the key went down or came up. */
+      phase: "down" | "up";
+    }
+  | {
+      kind: "prompt-triggered";
+      /** The id a script gave the prompt the player answered. */
+      promptId: string;
     }
   | {
       kind: "entity-hit";
@@ -104,6 +118,53 @@ export type ScriptEventPayload =
       kind: "player-died";
       /** The id of the hazard that killed the player, or "" for a fall or void. */
       cause: string;
+    }
+  | {
+      kind: "data-changed";
+      /** Which players the value belongs to: one in this place, everyone, or the account. */
+      scope: "player" | "global" | "account";
+      /** The player the value belongs to, or "" for the global or account scope. */
+      player: string;
+      /** The key that changed. */
+      key: string;
+      /** Whether the key was forgotten rather than set. */
+      deleted: boolean;
+      /** The value set, or absent when the key was forgotten. */
+      value?: string | number | boolean;
+    }
+  | {
+      kind: "data-loaded";
+      /** The id the script gave the `data-get` this answers. */
+      requestId: string;
+      /** The scope the value was read from. */
+      scope: "player" | "global" | "account";
+      /** The key the value was read under. */
+      key: string;
+      /** Whether the place remembered a value for it. */
+      found: boolean;
+      /** The value, present exactly when `found` is. */
+      value?: string | number | boolean;
+    }
+  | {
+      kind: "badge-earned";
+      /** The player who earned it, or "" for the local player. */
+      player: string;
+      /** The badge earned. */
+      badge: string;
+    }
+  | {
+      kind: "player-teleported";
+      /** The place the player went to. */
+      place: string;
+    }
+  | {
+      kind: "ui-clicked";
+      /** The panel the button belongs to. */
+      panel: string;
+      /** The button the player pressed. */
+      button: string;
+      /** The button's value, or "" when it named none. */
+      value?: string;
     };
 
 /** One immutable script fact, stamped with where it came from and when. */
@@ -130,6 +191,12 @@ export const MAX_EVENT_PLAYER = 256;
 export const MAX_NPC_CHOICE = 32;
 /** The most hit points one `entity-hit` may carry. */
 export const MAX_ENTITY_HIT_AMOUNT = 1_000;
+/** The longest a string value one `data-changed` may carry. */
+export const MAX_EVENT_DATA_VALUE = 512;
+/** The longest a teleport address one `player-teleported` may carry. */
+export const MAX_EVENT_PLACE = 256;
+/** The longest a button value one `ui-clicked` may carry. */
+export const MAX_EVENT_UI_VALUE = 128;
 /** The furthest an `entity-hit`'s attacker position may read, in world units. */
 export const MAX_ENTITY_HIT_COORD = 1_000_000;
 
@@ -194,8 +261,21 @@ export const isScriptEvent = (v: unknown): v is ScriptEvent => {
   if (r.kind === "entity-used") {
     return (
       isShortString(r.entityId, MAX_EVENT_ID) &&
-      (r.item === "" || isShortString(r.item, MAX_EVENT_ITEM))
+      (r.item === "" || isShortString(r.item, MAX_EVENT_ITEM)) &&
+      (r.button === undefined ||
+        r.button === "primary" ||
+        r.button === "secondary" ||
+        r.button === "use")
     );
+  }
+  if (r.kind === "input") {
+    return (
+      isShortString(r.bindId, MAX_EVENT_ID) &&
+      (r.phase === "down" || r.phase === "up")
+    );
+  }
+  if (r.kind === "prompt-triggered") {
+    return isShortString(r.promptId, MAX_EVENT_ID);
   }
   if (r.kind === "entity-hit") {
     return (
@@ -225,6 +305,52 @@ export const isScriptEvent = (v: unknown): v is ScriptEvent => {
   }
   if (r.kind === "player-died") {
     return r.cause === "" || isShortString(r.cause, MAX_EVENT_ID);
+  }
+  if (r.kind === "data-changed") {
+    return (
+      (r.scope === "player" || r.scope === "global" || r.scope === "account") &&
+      (r.player === "" || isPlayer(r.player)) &&
+      isShortString(r.key, MAX_EVENT_ID) &&
+      typeof r.deleted === "boolean" &&
+      (r.deleted
+        ? r.value === undefined
+        : typeof r.value === "boolean" ||
+          (typeof r.value === "string" &&
+            r.value.length <= MAX_EVENT_DATA_VALUE) ||
+          (typeof r.value === "number" && Number.isFinite(r.value)))
+    );
+  }
+  if (r.kind === "data-loaded") {
+    return (
+      isShortString(r.requestId, MAX_EVENT_ID) &&
+      (r.scope === "player" || r.scope === "global" || r.scope === "account") &&
+      isShortString(r.key, MAX_EVENT_ID) &&
+      typeof r.found === "boolean" &&
+      (r.found
+        ? typeof r.value === "boolean" ||
+          (typeof r.value === "string" &&
+            r.value.length <= MAX_EVENT_DATA_VALUE) ||
+          (typeof r.value === "number" && Number.isFinite(r.value))
+        : r.value === undefined)
+    );
+  }
+  if (r.kind === "badge-earned") {
+    return (
+      (r.player === "" || isPlayer(r.player)) &&
+      isShortString(r.badge, MAX_EVENT_ID)
+    );
+  }
+  if (r.kind === "player-teleported") {
+    return isShortString(r.place, MAX_EVENT_PLACE);
+  }
+  if (r.kind === "ui-clicked") {
+    return (
+      isShortString(r.panel, MAX_EVENT_ID) &&
+      isShortString(r.button, MAX_EVENT_ID) &&
+      (r.value === undefined ||
+        r.value === "" ||
+        isShortString(r.value, MAX_EVENT_UI_VALUE))
+    );
   }
   if (r.kind === "npc-choose") {
     return (

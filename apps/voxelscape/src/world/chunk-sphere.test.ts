@@ -691,6 +691,20 @@ describe("cellsTouchedByPlan", () => {
     expect(cellsTouchedByPlan([])).toEqual([]);
     expect(cellsTouchedByPlan(undefined)).toEqual([]);
   });
+
+  it("leaves a surface to the window, whose cells bound its footprint", () => {
+    expect(
+      cellsTouchedByPlan([
+        {
+          kind: "surface",
+          reachX: "infinite",
+          reachZ: "infinite",
+          depth: 1,
+          id: 1,
+        },
+      ]),
+    ).toEqual([]);
+  });
 });
 
 describe("ChunkSphere.setStructures", () => {
@@ -759,5 +773,80 @@ describe("ChunkSphere.setStructures", () => {
 
     expect(sphere.setStructures(boxPlan())).toBe(false);
     expect(filled).toEqual([]);
+  });
+
+  it("regenerates every loaded cell an infinite surface covers", () => {
+    const { sphere, filled } = sphereWithEchoWorker(1);
+    populate(sphere);
+    filled.length = 0;
+
+    sphere.setStructures([
+      {
+        kind: "surface",
+        reachX: "infinite",
+        reachZ: "infinite",
+        depth: 1,
+        id: 1,
+      },
+    ]);
+
+    expect([...filled].sort((a, b) => a - b)).toEqual(
+      sphere.blocks.map((_, index) => index).sort((a, b) => a - b),
+    );
+  });
+
+  it("regenerates only the columns a bounded surface covers", () => {
+    const { sphere, filled } = sphereWithEchoWorker(1);
+    populate(sphere);
+    filled.length = 0;
+
+    sphere.setStructures([
+      {
+        kind: "surface",
+        min: [-4, 0, 0],
+        max: [4, 0, 0],
+        reachZ: "infinite",
+        depth: 1,
+        id: 1,
+      },
+    ]);
+
+    const covered = sphere.blocks
+      .map((block, index) => ({ block, index }))
+      .filter(({ block }) => block.center[0] === 0)
+      .map(({ index }) => index)
+      .sort((a, b) => a - b);
+    expect([...filled].sort((a, b) => a - b)).toEqual(covered);
+  });
+
+  it("stamps the plan the world was built with over runtime structures", () => {
+    // The world here is constructed with its base plan already in place — the
+    // way a demo boots with its baked road and sand surfaces — and no
+    // `setStructures` call. A runtime structure placed afterwards must come
+    // out stamped on top of that base, not in place of it.
+    const base = boxPlan();
+    const worker = new EchoFillWorker();
+    const sphere = new ChunkSphere({
+      radius: 1,
+      terrain: DEFAULT_TERRAIN,
+      structures: base,
+      onBlockChanged: () => {},
+      onBlockReposition: () => {},
+      createWorker: () => worker as unknown as Worker,
+    });
+    populate(sphere);
+
+    const runtime: StructurePlan = [
+      { kind: "box", min: [10, 0, 10], max: [15, 5, 15], id: 2 },
+    ];
+    expect(sphere.setRuntimeStructures(runtime)).toBe(true);
+
+    // The fill client was told the base and the overlay together, never the
+    // overlay alone, so a refilled or freshly streamed block still gets the
+    // road and sand under the building.
+    const client = sphere["fillClient"] as unknown as {
+      structures: StructurePlan | undefined;
+    };
+    expect(client.structures).toEqual([...base, ...runtime]);
   });
 });

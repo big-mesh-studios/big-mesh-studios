@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { Bitmap } from "@big-mesh-studios/maths";
 import { sideAxes, sideKinds, type Section, type Sides } from "./data";
-import { encodePalette, solveVoxels } from "./solver";
+import { encodePalette, packedFaces, solveVoxels } from "./solver";
 
 const DIMS = { width: 3, height: 3, depth: 3 };
 
@@ -207,6 +207,91 @@ describe("solveVoxels across a section", () => {
     expect(frontFace(0, 0, 0)).toBe(3);
     // the slice in front of it still looks forward at the front side
     expect(frontFace(0, 0, 1)).toBe(1);
+  });
+});
+
+describe("packedFaces", () => {
+  /** The six sides painted in six different colours, so a face reads its own. */
+  const eachSideAColour = (): Sides => {
+    const sides = {} as Sides;
+    sideKinds.forEach((kind, at) => {
+      const bitmap = Bitmap.create(3, 3);
+      bitmap.data.fill(at + 1);
+      sides[kind] = bitmap;
+    });
+    return sides;
+  };
+
+  it("gives every face the colour of the drawing that looks at it", () => {
+    const sides = eachSideAColour();
+    const read = packedFaces(DIMS, solveVoxels(DIMS, sides));
+
+    // A voxel's faces are numbered +x, −x, +y, −y, +z and −z, which are the
+    // right, left, top, bottom, front and back sides in that order.
+    const looking = [
+      "right",
+      "left",
+      "top",
+      "bottom",
+      "front",
+      "back",
+    ] as const;
+
+    for (let face = 0; face < 6; face++) {
+      const painted = sideKinds.indexOf(looking[face]) + 1;
+      expect(read.colour(1, 1, 1, face)).toBe(painted);
+    }
+  });
+
+  it("reads every index a five-bit field holds back as itself", () => {
+    for (let index = 0; index < 32; index++) {
+      const sides = eachSideAColour();
+      for (const kind of sideKinds) {
+        sides[kind].data.fill(index === 0 ? Bitmap.EMPTY : index);
+      }
+
+      // Index zero is the palette's black rather than a cell with nothing drawn
+      // in it, so it is not something a side can be painted: a solid voxel with
+      // an empty cell facing it takes index zero, which is what this reads back.
+      const read = packedFaces(DIMS, solveVoxels(DIMS, sides));
+
+      for (let face = 0; face < 6; face++) {
+        expect(read.colour(1, 1, 1, face)).toBe(index);
+      }
+    }
+  });
+
+  it("reads a voxel the silhouettes carved away as not solid", () => {
+    const sides = solidSides();
+    sides.front.data[1 * 3 + 1] = Bitmap.EMPTY;
+    const read = packedFaces(DIMS, solveVoxels(DIMS, sides));
+
+    // The front looks along z, so the empty cell took the middle of that run.
+    expect(read.solid(1, 1, 1)).toBe(false);
+    expect(read.solid(0, 1, 1)).toBe(true);
+    expect(read.solid(1, 0, 1)).toBe(true);
+  });
+
+  it("reads a section's own colour on the faces a cut reveals", () => {
+    const sides = eachSideAColour();
+    const revealed = Bitmap.create(3, 3);
+    revealed.data.fill(30);
+    const sections: Section[] = [
+      { axis: "depth", at: 1, before: revealed, after: revealed },
+    ];
+
+    const read = packedFaces(DIMS, solveVoxels(DIMS, sides, sections));
+    const front = sideKinds.indexOf("front") + 1;
+
+    // The cut divides the run of z into [0, 1) closed by the face before it and
+    // [1, 3) closed by the front side, so the slice before the cut looks forward
+    // at the face the cut reveals.
+    expect(read.colour(0, 0, 0, 4)).toBe(30);
+    expect(read.colour(0, 0, 1, 4)).toBe(front);
+    // and that slice looks backward at the face opening the run after it.
+    expect(read.colour(0, 0, 1, 5)).toBe(30);
+    // while the slice before the cut still looks backward at the back side.
+    expect(read.colour(0, 0, 0, 5)).toBe(sideKinds.indexOf("back") + 1);
   });
 });
 

@@ -25,10 +25,12 @@ install. Try it in the **[live demo](https://big-mesh-studios.github.io/big-mesh
 - **Draw, erase, and pan tools** - switch between pen, eraser, and idle
   (pan/zoom) modes with the toolbar.
 - **DawnBringer 32 palette** - a curated 32-colour retro palette, ready to pick.
-- **Live 3D preview** - the voxel volume is raymarched in WebGL2 and auto-rotates
-  as you draw, so you see the result instantly.
+- **Live 3D preview** - the model is meshed from its solved volume and drawn in
+  WebGL2, and auto-rotates as you draw, so you see the result instantly.
 - **Portable file format** - save your model as a `.zip` containing one PNG per
   face, and load any existing sprite stack back in.
+- **3D printing** - export the whole figure as a `.3mf` solid, standing on the
+  build plate at a height you choose, in the colours you drew it in.
 - **Publish to your own repository** - sign in with an atproto account and put a
   model where anyone can read it, or open one somebody else has published.
 
@@ -62,6 +64,26 @@ Each image's opaque pixels define the silhouette of the model; the solver carves
 the volume from the overlapping faces and colours the remaining voxels from the
 nearest face. Missing faces load as empty.
 
+## Printing
+
+The **Export** button offers the model in two forms. A sprite stack is the model
+as it is drawn — every part, every cut, and any motion attached to it — and is
+what an editor opens again. A **3D print** is the same figure as a solid: it goes
+out as a `.3mf` file, which a slicer opens directly.
+
+A print is measured, and the model you drew has no size in it — a voxel is a cell
+in a drawing, not a millimetre. So the export asks how tall the whole figure
+should stand, in millimetres, and measures everything else from that. The figure
+is stood up on the build plate the way a slicer expects, with its underside flat
+on the bed, and each of its parts is a separate object you can turn on the plate
+before printing.
+
+Two things about a print are worth knowing. The figure is printed as drawn, so a
+shape drawn as a closed shell prints hollow and a solid block prints solid —
+nothing here can tell the difference. And parts are never joined: two parts that
+overlap are two overlapping solids, which a slicer unions for you, usually
+without a seam.
+
 ## Publishing
 
 Models can be published to an [atproto](https://atproto.com/) account, so that
@@ -80,8 +102,8 @@ and open what that artist has published.
 What the editor writes is read through `@big-mesh-studios/stacker`, in
 `packages/stacker`, so that a game or a tool can read it without
 reimplementing either half. Its entry points each stand alone - reading a
-record does not pull in a zip decoder, and reading a file does not pull in a
-lexicon:
+record does not pull in a zip decoder, reading a file does not pull in a
+lexicon, and neither pulls in a scene graph:
 
 ```ts
 import { load, save } from "@big-mesh-studios/stacker/format";
@@ -98,6 +120,23 @@ if (isModelRecord(value)) {
 }
 ```
 
+A tool that only wants a figure as a solid - a command line, a renderer, a test -
+reads `./print`, which sweeps the same mesher the preview draws and needs no
+graphics card at all:
+
+```ts
+import { encodeThreeMf, printFigure } from "@big-mesh-studios/stacker/print";
+
+const figure = { parts, palette };
+const solid = printFigure(figure, { height: 100 });
+const file = await encodeThreeMf(solid, palette, { title: "a monster" });
+```
+
+`printFigure` is the geometry on its own - each part as a vertex list and a
+triangle list, in millimetres, standing on the bed at the origin - and
+`encodeThreeMf` is one file format over it. Anything that reads triangles and
+millimetres will do, including an STL writer of about a hundred lines.
+
 [rmsl](https://www.npmjs.com/package/@random-mesh/rmsl) is a peer dependency of
 that package rather than bundled into it, so an application drawing a model
 ends up with one copy of it rather than two.
@@ -108,9 +147,9 @@ ends up with one copy of it rather than two.
 | ---------- | ------------------------------------------------------------------------------------------------------------------- |
 | UI         | [SolidJS](https://www.solidjs.com/) + TypeScript                                                                    |
 | Styling    | [Tailwind CSS](https://tailwindcss.com/) + [daisyUI](https://daisyui.com/)                                          |
-| Rendering  | WebGL2 raymarching via [rmsl](https://www.npmjs.com/package/@random-mesh/rmsl)                                      |
-| Build      | [Vite](https://vitejs.dev/)                                                                                         |
+| Rendering  | WebGL2 meshing via [rmsl](https://www.npmjs.com/package/@random-mesh/rmsl)                                          |
 | Files      | [JSZip](https://stuk.github.io/jszip/) + [browser-fs-access](https://github.com/GoogleChromeLabs/browser-fs-access) |
+| Build      | [Vite](https://vitejs.dev/)                                                                                         |
 | Publishing | [atcute](https://github.com/mary-ext/atcute) against [atproto](https://atproto.com/)                                |
 
 ## Development

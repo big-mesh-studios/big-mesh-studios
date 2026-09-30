@@ -26,7 +26,7 @@ export interface ToolPick {
 export interface ToolContext {
   /** Voxel picking and every voxel mutation. */
   editing: EditingController;
-  /** The camera's world position and unit look direction. */
+  /** The player's eye, and the unit look direction they are aiming along. */
   look: () => { origin: Dim3; direction: Dim3 };
   /** The player's world position, which a swing knocks a struck body away from. */
   position: () => Vector3D;

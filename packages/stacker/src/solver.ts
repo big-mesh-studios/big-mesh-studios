@@ -17,6 +17,8 @@ import {
   type Section,
   type Sides,
 } from "./data";
+import type { FaceSource } from "./mesh/mesher";
+import type { Volume } from "./volume";
 
 export type ViewSpec = {
   kind: keyof Sides;
@@ -274,8 +276,62 @@ const faceColourIndex = (side: Bitmap, px: number, py: number): number => {
   return index === Bitmap.EMPTY ? 0 : index;
 };
 
+/**
+ * Writes the one palette index a voxel carries into all six of its faces, and
+ * marks it solid.
+ *
+ * Six five-bit fields in four bytes leaves room for two whole and four split, so
+ * this is where the layout lives rather than at each of the callers that need a
+ * voxel to show one colour: a volume's own packing and an edit overriding a voxel
+ * are the same write, and a second copy of the shifts is a second thing to be
+ * wrong.
+ *
+ * @param offset Where the voxel's four bytes start.
+ */
+export const writePackedVoxel = (
+  out: Uint8Array,
+  offset: number,
+  index: number,
+): void => {
+  out[offset + 0] = index | ((index & 0b111) << 5);
+  out[offset + 1] =
+    ((index >> 3) & 0b11) | ((index & 0b11111) << 2) | ((index & 0b1) << 7);
+  out[offset + 2] = ((index >> 1) & 0b1111) | ((index & 0b1111) << 4);
+  out[offset + 3] = ((index >> 4) & 0b1) | ((index & 0b11111) << 1) | SOLID;
+};
+
+/**
+ * A box of voxels packed into the format its material reads, with no carving:
+ * every voxel that has a palette index in it is solid, and all six of its faces
+ * take that one index, because a volume gives a voxel one colour rather than a
+ * colour for each face.
+ *
+ * The bit layout is the one `solveVoxels` writes, so a voxel reads the same
+ * whichever of the two a model was built by.
+ */
+export function packVolume(volume: Volume): Uint8Array {
+  const { dimensions, voxels } = volume;
+  const { width, height, depth } = dimensions;
+  const out = new Uint8Array(width * height * depth * 4);
+
+  for (let z = 0; z < depth; z++) {
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const index = voxels[z * width * height + y * width + x];
+        if (index === Bitmap.EMPTY) {
+          continue;
+        }
+
+        writePackedVoxel(out, (z * width * height + y * width + x) << 2, index);
+      }
+    }
+  }
+
+  return out;
+}
+
 /** The palette as the material wants it: one row of texels, RGBA, in order. */
-export function encodePalette(palette: RGBA[]): Uint8Array {
+export function encodePalette(palette: readonly RGBA[]): Uint8Array {
   const data = new Uint8Array(palette.length * 4);
   palette.forEach(({ r, g, b, a }, i) => {
     const offset = i << 2;
@@ -285,4 +341,88 @@ export function encodePalette(palette: RGBA[]): Uint8Array {
     data[offset + 3] = a;
   });
   return data;
+}
+
+/** The two alpha bits marking a voxel solid, which nothing else reads. */
+const SOLID = 0b11000000;
+
+/**
+ * Where each face's five bits sit in a packed voxel, as the stretches of the
+ * four bytes they run through: which byte, how far into it, and how many bits.
+ *
+ * A face is written as more than one stretch wherever its five bits do not fit
+ * in a byte, and they are listed from the low end of the index upwards: three of
+ * the six faces straddle two bytes, because six five-bit fields in four bytes
+ * leaves room for two of them whole and the other four must share.
+ *
+ * The order the faces are named in is the order the six sides are written in, and
+ * it is not the order `faceIndexOf` numbers them: a front face looks along +z and
+ * so is face four, a left face along −x and so is face one. A table rather than
+ * arithmetic is what makes that a lookup rather than a derivation nobody can
+ * check by reading it.
+ */
+const FACE_FIELDS: ReadonlyArray<
+  ReadonlyArray<readonly [byte: number, shift: number, width: number]>
+> = [
+  // 0, +x, the right side: one bit at the top of the second byte, four at the
+  // bottom of the third
+  [
+    [1, 7, 1],
+    [2, 0, 4],
+  ],
+  // 1, −x, the left side: five bits in the second
+  [[1, 2, 5]],
+  // 2, +y, the top side: four bits high in the third byte, one in the fourth
+  [
+    [2, 4, 4],
+    [3, 0, 1],
+  ],
+  // 3, −y, the bottom side: five bits in the fourth
+  [[3, 1, 5]],
+  // 4, +z, the front side: five bits in the first
+  [[0, 0, 5]],
+  // 5, −z, the back side: three bits at the top of the first, two at the bottom
+  // of the second
+  [
+    [0, 5, 3],
+    [1, 0, 2],
+  ],
+];
+
+/** The `width` bits at `shift` into a byte, which is the only mask there is. */
+const maskAt = (shift: number, width: number): number =>
+  (((1 << width) - 1) << shift) & 0xff;
+
+/**
+ * The packed volume read the way a mesher wants a box of voxels: a cell is solid
+ * or it is not, and each of its faces has a colour of its own.
+ *
+ * The layout is the one this file writes, so a reader sits beside its writer
+ * rather than restating the bits somewhere the writer does not reach.
+ */
+export function packedFaces(
+  dimensions: Dimensions3D,
+  voxels: Uint8Array,
+): FaceSource {
+  const { width, height } = dimensions;
+  const offsetAt = (x: number, y: number, z: number) =>
+    (z * width * height + y * width + x) << 2;
+
+  return {
+    solid: (x, y, z) => (voxels[offsetAt(x, y, z) + 3] & SOLID) !== 0,
+
+    colour: (x, y, z, face) => {
+      const offset = offsetAt(x, y, z);
+      let index = 0;
+      let placed = 0;
+
+      for (const [byte, shift, width] of FACE_FIELDS[face]) {
+        index |=
+          ((voxels[offset + byte] & maskAt(shift, width)) >>> shift) << placed;
+        placed += width;
+      }
+
+      return index;
+    },
+  };
 }

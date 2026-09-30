@@ -1,6 +1,7 @@
 import { pointer } from "@big-mesh-studios/utils/pointer";
 import { JSX } from "@solidjs/web/jsx-runtime";
 import { clamp, isEditableTarget } from "../utils";
+import { createGamepad } from "./gamepad";
 
 /** Maps a `KeyboardEvent` code to its [strafe, forward] contribution. */
 const MOVE_KEYS: Record<string, [number, number]> = {
@@ -26,6 +27,7 @@ const HOLD_REPEAT_MS = 500;
  * steps the tool once, a swipe steps it not at all.
  */
 const WHEEL_ISOLATION_MS = 60;
+const POINTER_LOCK_RESUME_DELAY_MS = 100;
 
 /**
  * One frame's worth of player input, gathered by the key listeners `install`
@@ -58,6 +60,12 @@ export interface InputSnapshot {
    */
   primary: boolean;
   /**
+   * True while the touch dig button is held down. A touch-only signal, since
+   * a mouse strike is an edge; a script driving something from held input
+   * reads it as the touch accelerator.
+   */
+  primaryHeld: boolean;
+  /**
    * Edge-triggered: true only on the frame the mouse's primary button was
    * pressed — the click that strikes, and the one that talks to an NPC. Touch
    * input never sets this: a touch talks through the use button instead.
@@ -74,27 +82,41 @@ export interface InputSnapshot {
    * which uses whatever the crosshair is on or the held item.
    */
   use: boolean;
+  /**
+   * True while the interact input is held down — the E key or the touch use
+   * button. A place script steps on its own timers rather than every frame, so
+   * a one-frame `use` edge can pass between steps; a script reading the
+   * interact action reads this instead.
+   */
+  useHeld: boolean;
   /** Edge-triggered: the selected hotbar slot changed this frame, or null. */
   select: number | null;
-  /** Edge-triggered: the mouse wheel's direction this frame, or 0. */
+  /** Edge-triggered: the mouse wheel's or controller d-pad's tool-step direction this frame, or 0. */
   wheel: -1 | 0 | 1;
 }
+
+/** One listener for a place script's bound keys. */
+type BoundKeyListener = (key: string, phase: "down" | "up") => void;
 
 interface InputState {
   keyMoveX: number;
   keyMoveY: number;
   touchMoveX: number;
   touchMoveY: number;
+  padMoveX: number;
+  padMoveY: number;
   jumpQueued: boolean;
   jumpHeld: boolean;
   lookDx: number;
   lookDy: number;
   primaryQueued: boolean;
+  primaryHeld: boolean;
   clickQueued: boolean;
   secondaryQueued: boolean;
   secondaryHeld: boolean;
   secondaryReleasedQueued: boolean;
   useQueued: boolean;
+  useHeld: boolean;
   selectQueued: number | null;
   wheelQueued: -1 | 0 | 1;
   /** When the last wheel event landed, in `Date.now()` milliseconds. */
@@ -126,8 +148,10 @@ export interface InputController {
   queuePrimary(): void;
   /** Edge-triggered secondary (use) request, normally from the right mouse button. */
   queueSecondary(): void;
-  /** Edge-triggered interact request, from the E key or the touch interact button. */
+  /** Edge-triggered interact request, from the E key or a UI that only needs the edge. */
   queueUse(): void;
+  /** Touch use button held state: queues `use` on press and holds it for scripts. */
+  setTouchUse(held: boolean): void;
   /** Selects a hotbar slot by index (0-based) on the next frame. */
   queueSelect(slot: number): void;
   /** Edge-triggered jump request from the touch button. */
@@ -142,6 +166,33 @@ export interface InputController {
   setTouchSecondary(held: boolean): void;
   /** Accumulate drag-to-look deltas (client pixels). */
   addLookDelta(dx: number, dy: number): void;
+  /**
+   * Replaces the key codes a place script listens on. A bound key is reported
+   * in addition to whatever the world's own controls do with it, so a script
+   * choosing a movement key sees both.
+   */
+  setBoundKeys(keys: string[]): void;
+  /** Registers a listener for each bound key's down and up edges; returns a function that removes it. */
+  onBoundKey(listener: BoundKeyListener): () => void;
+  /**
+   * Reads the connected gamepad for one frame. Called beside `consume` rather
+   * than from it, so a frame that consumes nothing — a dead player, the
+   * editor's orbit camera — leaves no gamepad movement to apply late.
+   */
+  poll(dt: number): void;
+  /** Whether a standard-mapped gamepad is connected, for the HUD to report. */
+  gamepadConnected(): boolean;
+  /** Subscribes to gamepad connection changes; returns a function that removes the listener. */
+  onGamepadChange(listener: (connected: boolean) => void): () => void;
+  pointerLocked(): boolean;
+  onPointerLockChange(listener: (locked: boolean) => void): () => void;
+  pointerLockSuspended(): boolean;
+  onPointerLockSuspensionChange(
+    listener: (suspended: boolean) => void,
+  ): () => void;
+  suspendPointerLock(): () => void;
+  hasActivity(): boolean;
+  onActivity(listener: () => void): () => void;
   canvasHandlers: {
     /**
      * Everything a press on the world canvas can mean, for the canvas this is
@@ -212,33 +263,213 @@ export const createInput = (): InputController => {
     keyMoveY: 0,
     touchMoveX: 0,
     touchMoveY: 0,
+    padMoveX: 0,
+    padMoveY: 0,
     jumpQueued: false,
     jumpHeld: false,
     lookDx: 0,
     lookDy: 0,
     primaryQueued: false,
+    primaryHeld: false,
     clickQueued: false,
     secondaryQueued: false,
     secondaryHeld: false,
     secondaryReleasedQueued: false,
     useQueued: false,
+    useHeld: false,
     selectQueued: null,
     wheelQueued: 0,
     wheelLastEventAt: -Infinity,
     wheelPendingTimer: undefined,
   };
+  const boundKeys = new Set<string>();
+  const boundListeners = new Set<BoundKeyListener>();
+  const gamepadListeners = new Set<(connected: boolean) => void>();
+  const pointerLockListeners = new Set<(locked: boolean) => void>();
+  const pointerLockSuspensionListeners = new Set<
+    (suspended: boolean) => void
+  >();
+  const activityListeners = new Set<() => void>();
   let controller: AbortController | null = null;
   /** False while another UI (the level editor) owns the canvas and keyboard. */
   let enabled = true;
+  /** The timer re-queuing `primary` while the dig button is held, if any. */
+  let primaryRepeat: number | undefined;
+  let worldCanvas: HTMLCanvasElement | undefined;
+  let pointerLocked = false;
+  let pointerLockSuspensionCount = 0;
+  let pointerLockSuspended = false;
+  let restorePointerLockAfterSuspension = false;
+  let pointerLockResumeTimer: number | undefined;
+  let activityStarted = false;
+
+  /**
+   * Which sources hold each button, so releasing one source never clears a
+   * hold another source still has: a controller trigger and the touch dig
+   * button raise the same `primary`, and either can be the one that lets go
+   * second.
+   */
+  const sources = {
+    jump: { key: false, touch: false, pad: false },
+    use: { key: false, touch: false, pad: false },
+    primary: { touch: false, pad: false },
+    secondary: { mouse: false, touch: false, pad: false },
+  };
+
+  const syncJump = (): void => {
+    const next = sources.jump.key || sources.jump.touch || sources.jump.pad;
+    if (next && !state.jumpHeld) {
+      state.jumpQueued = true;
+    }
+    state.jumpHeld = next;
+  };
+
+  const syncUse = (): void => {
+    const next = sources.use.key || sources.use.touch || sources.use.pad;
+    if (next && !state.useHeld) {
+      state.useQueued = true;
+    }
+    state.useHeld = next;
+  };
+
+  const syncPrimary = (): void => {
+    const next = sources.primary.touch || sources.primary.pad;
+    if (next && !state.primaryHeld) {
+      state.primaryQueued = true;
+    }
+    state.primaryHeld = next;
+    if (!next) {
+      if (primaryRepeat !== undefined) {
+        window.clearInterval(primaryRepeat);
+        primaryRepeat = undefined;
+      }
+    } else if (primaryRepeat === undefined) {
+      primaryRepeat = window.setInterval(() => {
+        state.primaryQueued = true;
+      }, HOLD_REPEAT_MS);
+    }
+  };
+
+  const syncSecondary = (): void => {
+    const next =
+      sources.secondary.mouse ||
+      sources.secondary.touch ||
+      sources.secondary.pad;
+    if (next && !state.secondaryHeld) {
+      state.secondaryQueued = true;
+    }
+    if (!next && state.secondaryHeld) {
+      state.secondaryReleasedQueued = true;
+    }
+    state.secondaryHeld = next;
+  };
+
+  const gamepad = createGamepad((connected) => {
+    for (const listener of gamepadListeners) {
+      listener(connected);
+    }
+  });
+
+  const markActivity = (): void => {
+    if (activityStarted) {
+      return;
+    }
+    activityStarted = true;
+    for (const listener of activityListeners) {
+      listener();
+    }
+  };
+
+  const syncPointerLock = (): void => {
+    const next =
+      worldCanvas !== undefined && document.pointerLockElement === worldCanvas;
+    if (next === pointerLocked) {
+      return;
+    }
+    pointerLocked = next;
+    for (const listener of pointerLockListeners) {
+      listener(pointerLocked);
+    }
+  };
+
+  const notifyPointerLockSuspension = (): void => {
+    for (const listener of pointerLockSuspensionListeners) {
+      listener(pointerLockSuspended);
+    }
+  };
+
+  const suspendPointerLock = (): (() => void) => {
+    const first = pointerLockSuspensionCount === 0;
+    pointerLockSuspensionCount += 1;
+    if (first) {
+      if (pointerLockResumeTimer !== undefined) {
+        window.clearTimeout(pointerLockResumeTimer);
+        pointerLockResumeTimer = undefined;
+      }
+      const restorePending = restorePointerLockAfterSuspension;
+      const wasSuspended = pointerLockSuspended;
+      pointerLockSuspended = true;
+      restorePointerLockAfterSuspension = restorePending || pointerLocked;
+      if (!wasSuspended) {
+        notifyPointerLockSuspension();
+      }
+      if (pointerLocked) {
+        void document.exitPointerLock?.();
+      }
+    }
+
+    let active = true;
+    return () => {
+      if (!active || pointerLockSuspensionCount === 0) {
+        return;
+      }
+      active = false;
+      pointerLockSuspensionCount -= 1;
+      if (pointerLockSuspensionCount > 0) {
+        return;
+      }
+
+      if (!restorePointerLockAfterSuspension) {
+        pointerLockSuspended = false;
+        notifyPointerLockSuspension();
+        return;
+      }
+
+      pointerLockResumeTimer = window.setTimeout(() => {
+        pointerLockResumeTimer = undefined;
+        if (pointerLockSuspensionCount > 0) {
+          return;
+        }
+        const restore = restorePointerLockAfterSuspension;
+        restorePointerLockAfterSuspension = false;
+        pointerLockSuspended = false;
+        notifyPointerLockSuspension();
+        if (
+          !restore ||
+          pointerLockSuspensionCount > 0 ||
+          worldCanvas === undefined ||
+          !worldCanvas.isConnected
+        ) {
+          return;
+        }
+        try {
+          void worldCanvas.requestPointerLock().catch(() => undefined);
+        } catch {
+          return;
+        }
+      }, POINTER_LOCK_RESUME_DELAY_MS);
+    };
+  };
 
   const addLookDelta = (dx: number, dy: number): void => {
+    if (dx !== 0 || dy !== 0) {
+      markActivity();
+    }
     state.lookDx += dx;
     state.lookDy += dy;
   };
 
   let dragging = false;
-  /** The timer re-queuing `primary` while the dig button is held, if any. */
-  let primaryRepeat: number | undefined;
   const canvasHandlers = {
     onPointerDown: async (
       event: PointerEvent & { currentTarget: HTMLCanvasElement },
@@ -246,6 +477,7 @@ export const createInput = (): InputController => {
       if (!enabled) {
         return;
       }
+      worldCanvas = event.currentTarget;
       // Pointer lock is a mouse-only concept — iOS Safari doesn't implement
       // it at all, and it isn't how touch input works anyway. Only a mouse
       // press is gated behind acquiring the lock first.
@@ -257,6 +489,8 @@ export const createInput = (): InputController => {
         return;
       }
 
+      markActivity();
+
       // A locked mouse press is unambiguous: it strikes or uses, and the
       // locked pointer does the looking. A mouse is never a drag to look at.
       if (event.pointerType === "mouse") {
@@ -264,8 +498,8 @@ export const createInput = (): InputController => {
           state.primaryQueued = true;
           state.clickQueued = true;
         } else if (event.button === 2) {
-          state.secondaryQueued = true;
-          state.secondaryHeld = true;
+          sources.secondary.mouse = true;
+          syncSecondary();
         }
         return;
       }
@@ -294,13 +528,9 @@ export const createInput = (): InputController => {
       if (!enabled) {
         return;
       }
-      if (
-        event.pointerType === "mouse" &&
-        event.button === 2 &&
-        state.secondaryHeld
-      ) {
-        state.secondaryHeld = false;
-        state.secondaryReleasedQueued = true;
+      if (event.pointerType === "mouse" && event.button === 2) {
+        sources.secondary.mouse = false;
+        syncSecondary();
       }
     },
     onWheel: (event: WheelEvent) => {
@@ -312,6 +542,7 @@ export const createInput = (): InputController => {
       if (direction === 0) {
         return;
       }
+      markActivity();
       const now = Date.now();
       const gap = now - state.wheelLastEventAt;
       state.wheelLastEventAt = now;
@@ -346,16 +577,25 @@ export const createInput = (): InputController => {
         if (!enabled || isEditableTarget(e)) {
           return;
         }
+        markActivity();
+        if (boundKeys.has(e.code) && !e.repeat) {
+          for (const listener of boundListeners) {
+            listener(e.code, "down");
+          }
+        }
         if (e.code === "Space") {
           e.preventDefault();
+          sources.jump.key = true;
           state.jumpQueued = true;
-          state.jumpHeld = true;
+          syncJump();
           return;
         }
         if (e.code === "KeyE") {
+          sources.use.key = true;
           if (!e.repeat) {
             state.useQueued = true;
           }
+          syncUse();
           return;
         }
         if (e.code.startsWith("Digit")) {
@@ -382,8 +622,19 @@ export const createInput = (): InputController => {
         if (!enabled || isEditableTarget(e)) {
           return;
         }
+        if (boundKeys.has(e.code)) {
+          for (const listener of boundListeners) {
+            listener(e.code, "up");
+          }
+        }
         if (e.code === "Space") {
-          state.jumpHeld = false;
+          sources.jump.key = false;
+          syncJump();
+          return;
+        }
+        if (e.code === "KeyE") {
+          sources.use.key = false;
+          syncUse();
           return;
         }
         const move = MOVE_KEYS[e.code];
@@ -396,6 +647,11 @@ export const createInput = (): InputController => {
       },
       { signal },
     );
+
+    document.addEventListener("pointerlockchange", syncPointerLock, {
+      signal,
+    });
+    syncPointerLock();
 
     // The right mouse button uses the held item, so the browser's menu is
     // suppressed across the whole page rather than over the canvas alone: a
@@ -411,6 +667,20 @@ export const createInput = (): InputController => {
     addLookDelta,
     canvasHandlers,
 
+    setBoundKeys(keys) {
+      boundKeys.clear();
+      for (const key of keys) {
+        boundKeys.add(key);
+      }
+    },
+
+    onBoundKey(listener) {
+      boundListeners.add(listener);
+      return () => {
+        boundListeners.delete(listener);
+      };
+    },
+
     setEnabled(value: boolean) {
       enabled = value;
     },
@@ -418,6 +688,16 @@ export const createInput = (): InputController => {
     dispose() {
       controller?.abort();
       controller = null;
+      pointerLocked = false;
+      pointerLockSuspensionCount = 0;
+      pointerLockSuspended = false;
+      restorePointerLockAfterSuspension = false;
+      if (pointerLockResumeTimer !== undefined) {
+        window.clearTimeout(pointerLockResumeTimer);
+        pointerLockResumeTimer = undefined;
+      }
+      worldCanvas = undefined;
+      gamepad.dispose();
       if (primaryRepeat !== undefined) {
         window.clearInterval(primaryRepeat);
         primaryRepeat = undefined;
@@ -428,20 +708,120 @@ export const createInput = (): InputController => {
       }
     },
 
+    poll(dt) {
+      const frame = gamepad.poll(dt);
+      if (!enabled || frame === null) {
+        sources.jump.pad = false;
+        sources.primary.pad = false;
+        sources.secondary.pad = false;
+        sources.use.pad = false;
+        state.padMoveX = 0;
+        state.padMoveY = 0;
+        syncJump();
+        syncPrimary();
+        syncSecondary();
+        syncUse();
+        return;
+      }
+      if (
+        frame.moveX !== 0 ||
+        frame.moveY !== 0 ||
+        frame.lookDx !== 0 ||
+        frame.lookDy !== 0 ||
+        frame.jumpHeld ||
+        frame.primaryHeld ||
+        frame.secondaryHeld ||
+        frame.useHeld ||
+        frame.step !== 0
+      ) {
+        markActivity();
+      }
+      state.padMoveX = frame.moveX;
+      state.padMoveY = frame.moveY;
+      addLookDelta(frame.lookDx, frame.lookDy);
+      if (sources.jump.pad !== frame.jumpHeld) {
+        sources.jump.pad = frame.jumpHeld;
+        syncJump();
+      }
+      if (sources.primary.pad !== frame.primaryHeld) {
+        sources.primary.pad = frame.primaryHeld;
+        syncPrimary();
+      }
+      if (sources.secondary.pad !== frame.secondaryHeld) {
+        sources.secondary.pad = frame.secondaryHeld;
+        syncSecondary();
+      }
+      if (sources.use.pad !== frame.useHeld) {
+        sources.use.pad = frame.useHeld;
+        syncUse();
+      }
+      if (frame.step !== 0) {
+        state.wheelQueued = frame.step;
+      }
+    },
+
+    gamepadConnected() {
+      return gamepad.connected();
+    },
+
+    onGamepadChange(listener) {
+      gamepadListeners.add(listener);
+      return () => {
+        gamepadListeners.delete(listener);
+      };
+    },
+
+    pointerLocked() {
+      return pointerLocked;
+    },
+
+    onPointerLockChange(listener) {
+      pointerLockListeners.add(listener);
+      return () => {
+        pointerLockListeners.delete(listener);
+      };
+    },
+
+    pointerLockSuspended() {
+      return pointerLockSuspended;
+    },
+
+    onPointerLockSuspensionChange(listener) {
+      pointerLockSuspensionListeners.add(listener);
+      return () => {
+        pointerLockSuspensionListeners.delete(listener);
+      };
+    },
+
+    suspendPointerLock,
+
+    hasActivity() {
+      return activityStarted;
+    },
+
+    onActivity(listener) {
+      activityListeners.add(listener);
+      return () => {
+        activityListeners.delete(listener);
+      };
+    },
+
     consume() {
       const snap: InputSnapshot = {
-        moveX: clamp(state.keyMoveX + state.touchMoveX, -1, 1),
-        moveY: clamp(state.keyMoveY + state.touchMoveY, -1, 1),
+        moveX: clamp(state.keyMoveX + state.touchMoveX + state.padMoveX, -1, 1),
+        moveY: clamp(state.keyMoveY + state.touchMoveY + state.padMoveY, -1, 1),
         jump: state.jumpQueued,
         jumpHeld: state.jumpHeld,
         lookDx: state.lookDx,
         lookDy: state.lookDy,
         primary: state.primaryQueued,
+        primaryHeld: state.primaryHeld,
         click: state.clickQueued,
         secondary: state.secondaryQueued,
         secondaryHeld: state.secondaryHeld,
         secondaryReleased: state.secondaryReleasedQueued,
         use: state.useQueued,
+        useHeld: state.useHeld,
         select: state.selectQueued,
         wheel: state.wheelQueued,
       };
@@ -459,56 +839,71 @@ export const createInput = (): InputController => {
     },
 
     queuePrimary() {
+      markActivity();
       state.primaryQueued = true;
     },
 
     queueSecondary() {
+      markActivity();
       state.secondaryQueued = true;
     },
 
     queueUse() {
+      markActivity();
       state.useQueued = true;
     },
 
+    setTouchUse(value) {
+      if (value) {
+        markActivity();
+      }
+      sources.use.touch = value;
+      if (value) {
+        state.useQueued = true;
+      }
+      syncUse();
+    },
+
     queueSelect(slot) {
+      markActivity();
       state.selectQueued = slot;
     },
 
     queueJump() {
+      markActivity();
       state.jumpQueued = true;
     },
 
     setTouchMove(x, y) {
+      if (x !== 0 || y !== 0) {
+        markActivity();
+      }
       state.touchMoveX = x;
       state.touchMoveY = y;
     },
 
-    setTouchPrimary(held) {
-      if (primaryRepeat !== undefined) {
-        window.clearInterval(primaryRepeat);
-        primaryRepeat = undefined;
+    setTouchPrimary(value) {
+      if (value) {
+        markActivity();
       }
-      if (!held) {
-        return;
-      }
-      state.primaryQueued = true;
-      primaryRepeat = window.setInterval(() => {
-        state.primaryQueued = true;
-      }, HOLD_REPEAT_MS);
+      sources.primary.touch = value;
+      syncPrimary();
     },
 
-    setTouchJump(held) {
-      state.jumpHeld = held;
+    setTouchJump(value) {
+      if (value) {
+        markActivity();
+      }
+      sources.jump.touch = value;
+      syncJump();
     },
 
-    setTouchSecondary(held) {
-      if (held) {
-        state.secondaryQueued = true;
-        state.secondaryHeld = true;
-      } else if (state.secondaryHeld) {
-        state.secondaryHeld = false;
-        state.secondaryReleasedQueued = true;
+    setTouchSecondary(value) {
+      if (value) {
+        markActivity();
       }
+      sources.secondary.touch = value;
+      syncSecondary();
     },
   };
 };

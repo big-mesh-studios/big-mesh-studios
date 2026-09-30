@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   compilePlacePlan,
+  parseLevelPlan,
   isStructurePlan,
   MAX_PLAN_SHAPES,
   parseStructurePlan,
@@ -74,8 +75,103 @@ describe("parseStructurePlan", () => {
         id: 25,
       },
       { kind: "ramp", from: [0, 0, 0], to: [4, 4, 0], width: 3, id: 4 },
+      { kind: "surface", min: [0, 0, 0], max: [8, 0, 8], depth: 2, id: 46 },
     ];
     expect(parseStructurePlan(JSON.stringify(plan))).toEqual(plan);
+  });
+
+  it("refuses a surface the world cannot generate", () => {
+    expect(
+      parseStructurePlan(
+        JSON.stringify([
+          { kind: "surface", min: [0, 0, 0], max: [8, 0, 8], depth: 0, id: 46 },
+        ]),
+      ),
+    ).toBeNull();
+    expect(
+      parseStructurePlan(
+        JSON.stringify([
+          {
+            kind: "surface",
+            min: [0, 0, 0],
+            max: [8, 0, 8],
+            depth: 1,
+            id: 999,
+          },
+        ]),
+      ),
+    ).toBeNull();
+  });
+
+  it("accepts a surface that grades flat or reaches infinitely", () => {
+    const plan = [
+      {
+        kind: "surface",
+        min: [0, 0, 0],
+        max: [8, 0, 8],
+        level: 12,
+        depth: 1,
+        id: 46,
+      },
+      {
+        kind: "surface",
+        min: [-4, 0, 0],
+        max: [4, 0, 0],
+        reachZ: "infinite",
+        depth: 1,
+        id: 46,
+      },
+      {
+        kind: "surface",
+        reachX: "infinite",
+        reachZ: "infinite",
+        depth: 2,
+        id: 46,
+      },
+    ];
+    expect(parseStructurePlan(JSON.stringify(plan))).toEqual(plan);
+  });
+
+  it("refuses a surface that bounds an axis without corners", () => {
+    // The z axis is still bounded by default, so its corners are required.
+    expect(
+      parseStructurePlan(
+        JSON.stringify([
+          { kind: "surface", reachX: "infinite", depth: 1, id: 46 },
+        ]),
+      ),
+    ).toBeNull();
+  });
+
+  it("refuses a surface with a bad level or reach", () => {
+    expect(
+      parseStructurePlan(
+        JSON.stringify([
+          {
+            kind: "surface",
+            min: [0, 0, 0],
+            max: [8, 0, 8],
+            level: 1.5,
+            depth: 1,
+            id: 46,
+          },
+        ]),
+      ),
+    ).toBeNull();
+    expect(
+      parseStructurePlan(
+        JSON.stringify([
+          {
+            kind: "surface",
+            min: [0, 0, 0],
+            max: [8, 0, 8],
+            reachX: "everywhere",
+            depth: 1,
+            id: 46,
+          },
+        ]),
+      ),
+    ).toBeNull();
   });
 
   it("refuses a staircase or incline the world cannot generate", () => {
@@ -123,6 +219,34 @@ describe("parseStructurePlan", () => {
   });
 });
 
+describe("parseLevelPlan", () => {
+  it("converts an old structure array into the new object format", () => {
+    expect(parseLevelPlan(JSON.stringify([BOX]))).toEqual({
+      structures: [BOX],
+      npcs: [],
+      props: [],
+    });
+  });
+
+  it("accepts structures, NPCs, and props in one plan object", () => {
+    const plan = {
+      structures: [BOX],
+      npcs: [
+        {
+          id: "teacher",
+          name: "Teacher",
+          model: "npc-teacher.zip",
+          x: 1,
+          y: 2,
+          z: 3,
+        },
+      ],
+      props: [{ id: "desk", model: "desk.zip", x: 4, z: 5, solid: true }],
+    };
+    expect(parseLevelPlan(JSON.stringify(plan))).toEqual(plan);
+  });
+});
+
 const ENTRY = `
 import * as engine from "voxelscape";
 engine.onTick(function (): void {});
@@ -142,9 +266,11 @@ describe("compilePlacePlan", () => {
       seed: 7,
       region: REGION,
     });
-    expect(plan).toEqual([
-      { kind: "box", min: [0, 0, 0], max: [1, 1, 1], id: 7 },
-    ]);
+    expect(plan).toEqual({
+      structures: [{ kind: "box", min: [0, 0, 0], max: [1, 1, 1], id: 7 }],
+      npcs: [],
+      props: [],
+    });
   });
 
   it("returns no shapes for a script that registers no onPlan handler", async () => {
@@ -156,7 +282,7 @@ describe("compilePlacePlan", () => {
       seed: 1,
       region: REGION,
     });
-    expect(plan).toEqual([]);
+    expect(plan).toEqual({ structures: [], npcs: [], props: [] });
   });
 
   it("refuses a plan the world cannot generate", async () => {
@@ -198,6 +324,6 @@ describe("compilePlacePlan", () => {
         region: REGION,
         models: { "zombie.zip": await modelBytes() },
       }),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual({ structures: [], npcs: [], props: [] });
   });
 });

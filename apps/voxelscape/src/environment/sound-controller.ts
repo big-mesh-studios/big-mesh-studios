@@ -29,6 +29,21 @@ const THUNDER_URL = `${import.meta.env.BASE_URL}audio/thunder.ogg`;
 const THUNDER_PLAY_GAIN = 0.9;
 /** How many one-shot effects may ring out at once; a horde stays below this. */
 const SFX_MAX_POLYPHONY = 12;
+/** The slowest and fastest a place-script sound may be pitched. */
+const SFX_MIN_PITCH = 0.25;
+const SFX_MAX_PITCH = 4;
+
+/** How a place script asked a fixed-vocabulary sound to play, beyond its name. */
+export interface SfxOptions {
+  /** Names the playing sound, so `stopSfx` can reach it. Required to loop. */
+  id?: string;
+  /** How loudly to play it, 0 to 1; defaults to 1. */
+  volume?: number;
+  /** How fast to play it; defaults to 1. */
+  pitch?: number;
+  /** Whether it repeats until stopped; defaults to false. */
+  loop?: boolean;
+}
 
 // Served from the site's own root, the same folder every other address in
 // this application is built from (see `vite.config.ts`'s `base`).
@@ -121,6 +136,8 @@ export class SoundController {
   private rainLoopLoaded = false;
   private thunderBuffer: AudioBuffer | null = null;
   private readonly sfxBuffers = new Map<string, AudioBuffer>();
+  /** The looping place-script sounds, by the id the script named. */
+  private readonly sfxLoops = new Map<string, AudioBufferSourceNode>();
   private sfxActive = 0;
   private lfo: OscillatorNode | null = null;
   private lastCamera: PerspectiveCamera | null = null;
@@ -259,7 +276,7 @@ export class SoundController {
    * land lazily on the first gesture and play from then on. A slight random
    * pitch drift keeps a horde of the same growl from sounding like a chorus.
    */
-  playSfx(name: string): void {
+  playSfx(name: string, options: SfxOptions = {}): void {
     const ctx = this.ctx;
     if (ctx === null || this.master === null || SFX_URLS[name] === undefined) {
       return;
@@ -269,14 +286,27 @@ export class SoundController {
       void this.loadSfx(ctx, name);
       return;
     }
+    const volume = Math.max(0, Math.min(1, options.volume ?? 1));
+    const pitch = Math.max(
+      SFX_MIN_PITCH,
+      Math.min(SFX_MAX_PITCH, options.pitch ?? 1),
+    );
+    if (
+      options.loop === true &&
+      options.id !== undefined &&
+      options.id !== ""
+    ) {
+      this.startSfxLoop(ctx, buffer, options.id, volume, pitch);
+      return;
+    }
     if (this.sfxActive >= SFX_MAX_POLYPHONY) {
       return;
     }
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-    src.playbackRate.value = 0.94 + Math.random() * 0.12;
+    src.playbackRate.value = pitch * (0.94 + Math.random() * 0.12);
     const g = ctx.createGain();
-    g.gain.value = 1;
+    g.gain.value = volume;
     src.connect(g);
     g.connect(this.master);
     this.sfxActive += 1;
@@ -284,7 +314,42 @@ export class SoundController {
       this.sfxActive -= 1;
     };
     src.start();
-    src.stop(ctx.currentTime + buffer.duration + 0.05);
+    src.stop(ctx.currentTime + buffer.duration / pitch + 0.05);
+  }
+
+  /** Starts `name` as a loop under `id`, replacing any loop already playing under it. */
+  private startSfxLoop(
+    ctx: AudioContext,
+    buffer: AudioBuffer,
+    id: string,
+    volume: number,
+    pitch: number,
+  ): void {
+    this.stopSfx(id);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.loop = true;
+    src.playbackRate.value = pitch;
+    const g = ctx.createGain();
+    g.gain.value = volume;
+    src.connect(g);
+    g.connect(this.master!);
+    src.start();
+    this.sfxLoops.set(id, src);
+  }
+
+  /** Stops a looping sound a script started, by the id it named; a no-op for an unknown id. */
+  stopSfx(id: string): void {
+    const held = this.sfxLoops.get(id);
+    if (held === undefined) {
+      return;
+    }
+    this.sfxLoops.delete(id);
+    try {
+      held.stop();
+    } catch {
+      // Already stopped when the buffer ended or the context closed.
+    }
   }
 
   private startLoop(
@@ -481,6 +546,14 @@ export class SoundController {
 
   /** Stops the loops and releases the audio hardware. Safe to call multiple times. */
   dispose(): void {
+    for (const source of this.sfxLoops.values()) {
+      try {
+        source.stop();
+      } catch {
+        // Already stopped when its buffer ended or the context closed.
+      }
+    }
+    this.sfxLoops.clear();
     this.rain?.source.stop();
     this.rainBody?.source.stop();
     this.wind?.source.stop();

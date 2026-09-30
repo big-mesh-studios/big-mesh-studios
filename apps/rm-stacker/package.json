@@ -16,6 +16,7 @@
     "serve": "vite preview",
     "test": "vitest run",
     "generate:icon-kinds": "node scripts/generate-icon-kinds.ts",
+    "e2e:fly": "node --experimental-transform-types e2e/fly-check.ts",
     "check-types": "tsc --noEmit"
   },
   "peerDependencies": {
@@ -28,7 +29,8 @@
     "@atcute/lexicons": "catalog:",
     "@solidjs/router": "2.0.0-next.13",
     "fast-png": "catalog:",
-    "jszip": "catalog:"
+    "jszip": "catalog:",
+    "three": "catalog:"
   },
   "devDependencies": {
     "@atcute/atproto": "catalog:",
@@ -47,8 +49,8 @@
     "@types/three": "catalog:",
     "browser-fs-access": "catalog:",
     "esbuild": "catalog:",
+    "playwright": "catalog:",
     "solid-js": "catalog:",
-    "three": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plugin-solid": "catalog:",

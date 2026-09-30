@@ -1,5 +1,5 @@
 // Block light propagation for one block: the diamond of light an emissive
-// voxel (lava, and later torches and glowstone) sheds onto its neighbours.
+// voxel (lava, a fire ember, a glowstone) sheds onto its neighbours.
 // Seeded at each emitter's own level and spread through the open air, so the
 // light pool widens and flattens with distance from the source and stops at
 // solid voxels. Runs per block against its own `VoxelStore`, border included.

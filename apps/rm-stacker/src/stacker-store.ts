@@ -8,6 +8,7 @@ import {
 } from "@big-mesh-studios/maths";
 import {
   centrePivot,
+  editsHaveSomething,
   keyAfter,
   keyAt,
   keyBefore,
@@ -15,6 +16,9 @@ import {
   lastFrame,
   NO_MOTION,
   partDimensions,
+  partFromCvox,
+  paletteSlotsInUse,
+  placePart,
   poseAt,
   poseFigure,
   solvePart,
@@ -28,7 +32,9 @@ import {
   type Section,
   type Sides,
   type SolvedPart,
+  wholeModel,
 } from "@big-mesh-studios/stacker/renderer";
+import { resizeVolume } from "@big-mesh-studios/stacker/volume";
 import { createMediaQuery } from "@big-mesh-studios/utils/create-media-query";
 import { Accessor } from "@solidjs/signals";
 import {
@@ -36,17 +42,22 @@ import {
   createMemo,
   createSignal,
   flush,
+  onSettled,
   untrack,
 } from "solid-js";
 import { createAtproto } from "./atproto/create-atproto";
 import { Command } from "./command/Command";
 import { createCommander } from "./command/commander";
 import { DAWNBRINGER_32_PALETTE } from "./default_palette";
+import { createFlyInput } from "./fly-input";
 import { Home } from "./home";
+import { changedGeometry, type ChangedGeometry } from "./mesh-dirty";
 import { IndexedDBData, loadFromIndexedDB, saveToIndexedDB } from "./load-save";
 import { NO_MIRROR } from "./mirror";
 import { cutSection } from "./panels";
 import { ResizeOptions, resizeSections, resizeSides } from "./resize-sides";
+import { sameCrosshair, type Crosshair } from "./picking/fly-picker";
+import { editAt } from "./voxel-edit";
 import {
   Cut,
   FocusKind,
@@ -240,6 +251,16 @@ export function createStacker() {
    */
   const [erasing, setErasing] = createSignal(false);
   const [isEyeDropping, setIsEyeDropping] = createSignal(false);
+  /**
+   * Whether the model is being edited from inside the 3D view, with that view
+   * filling the window and the camera free of the model rather than turned about
+   * it.
+   *
+   * Held apart from the drawing tools because it is not one: it says where the
+   * model is being edited from rather than what is being drawn, so a tool chosen
+   * while it is up is the one a press does once it is put down.
+   */
+  const [flying, setFlying] = createSignal(false);
 
   /**
    * Puts the editor in a tool, and puts the eyedropper down if it was raised.
@@ -372,6 +393,8 @@ export function createStacker() {
   const [solvedParts, setSolvedParts] = createSignal<SolvedPart[]>(() =>
     parts().map(solvePart),
   );
+  /** Whoever draws the figure, told which parts of it have been drawn differently. */
+  const geometryListeners = new Set<(changed: ChangedGeometry) => void>();
   const voxels = createMemo(
     () =>
       solvedParts().find((solved) => solved.name === selectedPart().name)
@@ -379,7 +402,63 @@ export function createStacker() {
   );
   const narrow = createMediaQuery("(max-width: 500px)");
 
+  /**
+   * Whether the device is driven by touch rather than a mouse, which is what
+   * decides whether a camera in flight is given the thumb controls and what it
+   * says about how to fly.
+   */
+  const coarsePointer = createMediaQuery("(any-pointer: coarse)");
+
   const preview = createPreviewStore(saved);
+
+  const flyInput = createFlyInput();
+
+  const [crosshair, setCrosshairHeld] = createSignal<Crosshair | undefined>();
+
+  /**
+   * Holds what a camera in flight's crosshair is over, and nothing else.
+   *
+   * The crosshair is read on every frame, and what it reads is put together afresh
+   * each time, so a value taken as it stands would have everything drawing it
+   * redrawn sixty times a second over a crosshair that had not moved.
+   */
+  function setCrosshair(met: Crosshair | undefined) {
+    if (!sameCrosshair(untrack(crosshair), met)) {
+      setCrosshairHeld(met);
+    }
+  }
+
+  /**
+   * The parts of the figure holding voxels somebody put there by hand, which its
+   * six drawings do not say and the panels therefore do not show.
+   */
+  const handEdited = createMemo(
+    () =>
+      new Set(
+        parts()
+          .filter(
+            (part) =>
+              part.edits !== undefined && editsHaveSomething(part.edits),
+          )
+          .map((part) => part.name),
+      ),
+  );
+
+  // The turntable has the keyboard and the canvas's presses whenever the model is
+  // not being flown, so that flying is the only thing either of them means.
+  createEffect(flying, (inFlight) => flyInput.setEnabled(inFlight));
+
+  // The browser gives the pointer back on the escape key without being asked, so
+  // the lock letting go is how leaving a flight is undone. Flight entered
+  // without the lock — on a device with none — has nothing to give back, and is
+  // left through the toolbar instead.
+  onSettled(() =>
+    flyInput.onPointerLockChange((locked) => {
+      if (!locked && flying()) {
+        setFlying(false);
+      }
+    }),
+  );
 
   /** What a stroke puts in a cell: nothing, or the chosen colour. */
   const selectedPaletteIndex = createMemo(() =>
@@ -449,9 +528,68 @@ export function createStacker() {
     };
   })();
 
-  function updateVoxels() {
+  /**
+   * Packs each part into the volume a material draws it from, for the parts a
+   * change has actually reached.
+   *
+   * A part that came through unchanged keeps the volume it had, which is the
+   * point: a figure of several parts is re-packed whole on every stroke, and for
+   * a model of any size that is the most work an edit does. A part is matched to
+   * the volume it had by name, so a part added, removed or renamed since is packed
+   * afresh rather than inheriting a neighbour's.
+   *
+   * Whoever draws the figure is told what to draw again in the same breath, since
+   * the two are the same fact: a change to a part's drawings is a change to the
+   * volume built from them and to the triangles built from that. The volumes are
+   * committed before the telling, so that whoever rebuilds from them cannot read
+   * the ones a moment ago.
+   *
+   * @param changed Which parts' drawings the change reached, and where in their
+   * boxes. Left out, the whole figure has changed and every part is packed again.
+   */
+  function updateVoxels(changed?: ChangedGeometry) {
     flush();
-    setSolvedParts(parts().map(solvePart));
+
+    // A change that names no part has reached every part, so none of them is
+    // settled and each is packed again.
+    const named =
+      changed === undefined || "everything" in changed
+        ? undefined
+        : new Set(changed.parts.map((one) => one.part));
+
+    setSolvedParts((before) =>
+      parts().map((part, index) => {
+        const was = before[index];
+        const settled =
+          named !== undefined &&
+          was !== undefined &&
+          was.name === part.name &&
+          !named.has(part.name);
+        return settled ? was : solvePart(part);
+      }),
+    );
+
+    flush();
+
+    for (const listener of geometryListeners) {
+      listener(changed ?? { everything: true });
+    }
+  }
+
+  /**
+   * Adds a listener told which parts of the figure have been drawn differently.
+   * Returns what takes it off again.
+   */
+  function onGeometryChange(listener: (changed: ChangedGeometry) => void) {
+    geometryListeners.add(listener);
+    return () => {
+      geometryListeners.delete(listener);
+    };
+  }
+
+  /** The part called `name`, for a change that names one. */
+  function findPart(name: string): Part | undefined {
+    return parts().find((part) => part.name === name);
   }
 
   const { snapshot, doCommand } = createCommander({
@@ -472,7 +610,11 @@ export function createStacker() {
         const result = await doCommand(command);
 
         if (result.type !== "NoOperation") {
-          updateVoxels();
+          // The reverse says what was undone, which is what the figure now holds
+          // and so what has to be drawn again. A pose changes none of it: the
+          // part stands somewhere else with the same drawings, and the triangles
+          // are the ones it was already drawn with.
+          updateVoxels(changedGeometry(result, findPart));
           requestRender();
         }
 
@@ -771,6 +913,7 @@ export function createStacker() {
     voxels,
     solvedParts,
     updateVoxels,
+    onGeometryChange,
     // Palette
     palette,
     setPalette,
@@ -783,6 +926,17 @@ export function createStacker() {
     // mode
     mode,
     setMode,
+    // whether the model is being edited from inside the 3D view
+    flying,
+    setFlying,
+    /** The keyboard, pointer and thumb controls a camera in flight listens through. */
+    flyInput,
+    /** What a camera in flight's crosshair is over, and what a press would do there. */
+    crosshair,
+    setCrosshair,
+    coarsePointer,
+    /** The names of the parts holding voxels put there by hand. */
+    handEdited,
     // the cut a knife in hand would make where it stands
     knifeCut,
     setKnifeCut,
@@ -816,11 +970,30 @@ export function createStacker() {
                 ...part,
                 sides: resized,
                 sections: resizeSections(options),
+                // The edits are re-framed with the drawings rather than dropped, so
+                // a voxel someone put there by hand stays on the voxel it was put
+                // on. An edit on a cell the new size no longer reaches goes with
+                // the cell, which is the same answer the drawings give.
+                edits:
+                  part.edits === undefined
+                    ? undefined
+                    : resizeVolume(
+                        part.edits,
+                        options.to.dimensions,
+                        options.to.alignment,
+                      ),
               }
             : part,
         ),
       );
-      updateVoxels();
+      // Only this part's box has changed, and every cell of it is somewhere the
+      // new size put it, so its own geometry is the whole of what is stale.
+      const on = findPart(name);
+      updateVoxels(
+        on === undefined
+          ? undefined
+          : { parts: [{ part: name, box: wholeModel(partDimensions(on)) }] },
+      );
       requestRender();
       requestAutoSave();
     },
@@ -881,6 +1054,63 @@ export function createStacker() {
         ),
       );
     },
+    /**
+     * Brings a box of voxels in from a `.cvox` as a part of this figure, and
+     * selects it.
+     *
+     * The file is a model rather than six drawings, so it is projected onto six
+     * drawings and what that lost is kept beside them as the part's edits. What
+     * the file is drawn in is its own colours, which the figure may number
+     * differently, so those are moved onto the figure's palette before anything is
+     * drawn — a colour the figure has keeps its slot, one it lacks takes a slot
+     * nothing is drawn in, and one it has no room for is drawn in the nearest it
+     * has and named in what is returned.
+     *
+     * @returns The name the part joined under, and the colours that had no slot of
+     * their own to be drawn in.
+     */
+    importCvox(bytes: Uint8Array) {
+      const name = unusedPartName(parts(), "import");
+      const brought = partFromCvox(bytes, name);
+      const placed = placePart(brought, palette(), paletteSlotsInUse(parts()));
+
+      setPalette(placed.palette);
+      changeParts("Import Model", (current) => [...current, placed.part]);
+      selectPart(placed.part.name);
+
+      return {
+        part: placed.part.name,
+        dropped: [...brought.dropped, ...placed.dropped],
+      };
+    },
+    /**
+     * Puts one voxel of a part where `wanted` says, as a change that can be taken
+     * back on its own rather than as a copy of the whole figure.
+     *
+     * `wanted` is what the voxel is to be — `Bitmap.EMPTY` for nothing there, or
+     * a palette index — and the part's drawings are asked what they already say
+     * about that cell, so that an edit is only held where one is needed.
+     */
+    editVoxel(partName: string, voxel: Vector3D, wanted: number) {
+      const part = findPart(partName);
+      const edit = part === undefined ? undefined : editAt(part, voxel, wanted);
+
+      // The part has gone, or the cell is outside its box, or the drawings
+      // already say what was asked for: nothing to change and nothing to undo.
+      if (
+        part === undefined ||
+        edit === undefined ||
+        edit.value === edit.held
+      ) {
+        return;
+      }
+
+      doCommandAndUndo(
+        Command.editVoxel(partName, voxel, edit.value),
+        true,
+        wanted === Bitmap.EMPTY ? "Take Voxel Away" : "Place Voxel",
+      );
+    },
     duplicatePart(name: string) {
       const source = parts().find((part) => part.name === name);
 
@@ -905,6 +1135,15 @@ export function createStacker() {
             before: Bitmap.clone(section.before),
             after: Bitmap.clone(section.after),
           })),
+          // A copy that shared the voxels somebody put there by hand would have
+          // its own edits land on the part it was copied from.
+          edits:
+            source.edits === undefined
+              ? undefined
+              : {
+                  dimensions: source.edits.dimensions,
+                  voxels: new Uint8Array(source.edits.voxels),
+                },
         },
       ]);
       selectPart(copyName);

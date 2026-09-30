@@ -1,4 +1,5 @@
 import { Texture } from "@random-mesh/rmsl/scene";
+import { VOXEL_TILES, type VoxelTiles } from "../world/voxel-tiles";
 
 /**
  * Subtexture rectangle read from a TexturePacker-style atlas XML file. All
@@ -19,42 +20,6 @@ export interface SubTexture {
  * on top of side faces.
  */
 export type TileRect = [number, number, number, number];
-
-export interface VoxelTiles {
-  top: string;
-  side: string;
-  bottom: string;
-}
-
-/**
- * Which tile faces each voxel id uses. Voxel 0 is empty air and is never
- * textured. Adding a new voxel id requires an entry here.
- */
-export const VOXEL_TILES: Record<number, VoxelTiles> = {
-  1: { top: "grass_top", side: "dirt_grass", bottom: "dirt" },
-  2: { top: "dirt", side: "dirt", bottom: "dirt" },
-  4: { top: "stone", side: "stone", bottom: "stone" },
-  5: { top: "snow", side: "snow", bottom: "snow" },
-  6: { top: "lava", side: "lava", bottom: "lava" },
-  7: { top: "trunk_top", side: "trunk_side", bottom: "trunk_bottom" },
-  8: { top: "leaves", side: "leaves", bottom: "leaves" },
-  25: { top: "brick_red", side: "brick_red", bottom: "brick_red" },
-  26: { top: "wood", side: "wood", bottom: "wood" },
-  27: { top: "ice", side: "ice", bottom: "ice" },
-  28: { top: "greystone", side: "greystone", bottom: "greystone" },
-  // Fire embers wear the lava glow, since they light exactly the same way.
-  29: { top: "lava", side: "lava", bottom: "lava" },
-  // Flowing lava is textured by the terrain mesh like its source, at whatever
-  // partial height its level calls for; water flows are drawn by the water mesh.
-  16: { top: "lava", side: "lava", bottom: "lava" },
-  17: { top: "lava", side: "lava", bottom: "lava" },
-  18: { top: "lava", side: "lava", bottom: "lava" },
-  19: { top: "lava", side: "lava", bottom: "lava" },
-  20: { top: "lava", side: "lava", bottom: "lava" },
-  21: { top: "lava", side: "lava", bottom: "lava" },
-  22: { top: "lava", side: "lava", bottom: "lava" },
-  24: { top: "lava", side: "lava", bottom: "lava" },
-};
 
 export const parseTileAtlasXml = (xmlText: string): Map<string, SubTexture> => {
   const doc = new DOMParser().parseFromString(xmlText, "application/xml");
@@ -181,6 +146,7 @@ export const buildVoxelTileConfig = (
 
 export interface LoadedTileTexture {
   texture: Texture;
+  bitmap: ImageBitmap;
   width: number;
   height: number;
 }
@@ -195,6 +161,7 @@ export const loadTileTexture = async (
   const bitmap = await createImageBitmap(await res.blob());
   return {
     texture: new Texture(bitmap),
+    bitmap,
     width: bitmap.width,
     height: bitmap.height,
   };

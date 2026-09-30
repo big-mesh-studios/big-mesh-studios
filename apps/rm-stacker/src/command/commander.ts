@@ -1,16 +1,18 @@
 import { Accessor, Setter } from "@solidjs/signals";
 import { untrack } from "solid-js";
 import { loadFigure, saveFigure } from "@big-mesh-studios/stacker/format";
-import { Bitmap, RGBA, Vector3D } from "@big-mesh-studios/maths";
+import { Bitmap, RGBA, Vector2D, Vector3D } from "@big-mesh-studios/maths";
 import {
   keyAt,
   panelBitmap,
+  partDimensions,
   withKey,
   withoutKey,
   type Motion,
   type PanelKind,
   type Part,
 } from "@big-mesh-studios/stacker/renderer";
+import { createVolume, volumeOffset } from "@big-mesh-studios/stacker/volume";
 import { intersectSide } from "../utils/utils";
 import { Command } from "./Command";
 
@@ -53,6 +55,34 @@ export function createCommander({
   function panelOf(name: string, panel: PanelKind): Bitmap | undefined {
     const part = parts().find((part) => part.name === name);
     return part === undefined ? undefined : panelBitmap(part, panel);
+  }
+
+  /**
+   * The commands putting `painted` back to what each cell held, as one command
+   * to run them in turn — or a no-op where a fill changed nothing, so that a
+   * stroke over ground already the colour it draws in leaves nothing to undo.
+   *
+   * Naming the cells rather than the whole figure is what lets a change say
+   * which part of the box it drew on: a part's geometry is rebuilt from the
+   * cells a command covered, and a whole-figure snapshot covers every part of
+   * every figure, which is the whole model to mesh again for one filled region.
+   */
+  function restored(
+    partName: string,
+    kind: PanelKind,
+    painted: { at: Vector2D; was: number }[],
+  ): Command {
+    if (painted.length === 0) {
+      return Command.noOperation();
+    }
+
+    return Command.sequence(
+      painted.map(({ at, was }) =>
+        was === Bitmap.EMPTY
+          ? Command.erasePixel(partName, kind, at)
+          : Command.writePixel(partName, kind, at, was),
+      ),
+    );
   }
 
   async function doCommand(command: Command): Promise<Command> {
@@ -102,11 +132,18 @@ export function createCommander({
 
           side.data[offset] = paletteIndex;
 
+          // Every cell the flood reaches held the colour it started from, so the
+          // whole of it goes back to that one index.
+          const painted: { at: Vector2D; was: number }[] = [
+            {
+              at: { x: Math.floor(position.x), y: Math.floor(position.y) },
+              was: oldIndex,
+            },
+          ];
+
           const stack: number[] = [];
           stack.push(position.y);
           stack.push(position.x);
-
-          const undo = snapshot();
 
           // preallocated to lower GC-pressue
           let neighbors: { x: number; y: number }[] = [
@@ -147,6 +184,13 @@ export function createCommander({
 
               if (intersection.index === oldIndex) {
                 side.data[intersection.offset] = paletteIndex;
+                painted.push({
+                  at: {
+                    x: Math.floor(neighbor.x),
+                    y: Math.floor(neighbor.y),
+                  },
+                  was: oldIndex,
+                });
                 // `neighbors` is reused every iteration, so push the coordinates, not the object.
                 stack.push(neighbor.y);
                 stack.push(neighbor.x);
@@ -154,7 +198,7 @@ export function createCommander({
             }
           }
 
-          return undo;
+          return restored(partName, kind, painted);
         }
         case "FillRectangle": {
           const {
@@ -171,19 +215,30 @@ export function createCommander({
             return Command.noOperation();
           }
 
-          const _snapshot = snapshot(parts());
+          const painted: { at: Vector2D; was: number }[] = [];
 
           for (let x = min.x; x <= max.x; x++) {
             for (let y = min.y; y <= max.y; y++) {
+              if (!Bitmap.contains(side, x, y)) {
+                continue;
+              }
+
               if (onlyWhereEmpty && !Bitmap.isEmpty(side, x, y)) {
                 continue;
               }
 
+              const was = Bitmap.get(side, x, y);
+
+              if (was === paletteIndex) {
+                continue;
+              }
+
               Bitmap.set(side, x, y, paletteIndex);
+              painted.push({ at: { x, y }, was });
             }
           }
 
-          return _snapshot;
+          return restored(partName, kind, painted);
         }
         case "WritePixel": {
           const {
@@ -236,6 +291,52 @@ export function createCommander({
           side.data[offset] = Bitmap.EMPTY;
 
           return Command.writePixel(partName, kind, position, oldIndex);
+        }
+        case "EditVoxel": {
+          const { part: partName, voxel, value } = command;
+          const edited = parts().find((part) => part.name === partName);
+
+          if (edited === undefined) {
+            return Command.noOperation();
+          }
+
+          const dimensions = partDimensions(edited);
+
+          if (
+            voxel.x < 0 ||
+            voxel.y < 0 ||
+            voxel.z < 0 ||
+            voxel.x >= dimensions.width ||
+            voxel.y >= dimensions.height ||
+            voxel.z >= dimensions.depth
+          ) {
+            return Command.noOperation();
+          }
+
+          const at = volumeOffset(dimensions, voxel.x, voxel.y, voxel.z);
+          const held = edited.edits?.voxels[at] ?? Bitmap.EMPTY;
+
+          if (held === value) {
+            return Command.noOperation();
+          }
+
+          // A part that has never held an edit is given a box to hold them in.
+          // The voxels are written into the box it already has rather than a
+          // copy of it, but the box and the part are new objects: everything
+          // that reads the figure asks its parts what they hold, and a part
+          // written into in place would go on answering with what it held
+          // before.
+          const box = edited.edits ?? createVolume(dimensions);
+
+          box.voxels[at] = value;
+
+          setParts((current) =>
+            current.map((part) =>
+              part.name === partName ? { ...part, edits: { ...box } } : part,
+            ),
+          );
+
+          return Command.editVoxel(partName, voxel, held);
         }
         case "KeyPart": {
           const { motion: motionName, part: partName, at, key } = command;

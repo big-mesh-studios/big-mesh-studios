@@ -12,18 +12,20 @@ const EMPTY_INPUT: InputSnapshot = {
   lookDx: 0,
   lookDy: 0,
   primary: false,
+  primaryHeld: false,
   click: false,
   secondary: false,
   secondaryHeld: false,
   secondaryReleased: false,
   use: false,
+  useHeld: false,
   select: null,
   wheel: 0,
 };
 
 /** An input controller that always reports `snapshot` and records nothing. */
 const stubInput = (snapshot: InputSnapshot): InputController =>
-  ({ consume: () => snapshot }) as unknown as InputController;
+  ({ poll: () => {}, consume: () => snapshot }) as unknown as InputController;
 
 /** A world the free-fly integrator never needs to read: nothing blocks it. */
 const openWorld: PlayerWorld = {

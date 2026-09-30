@@ -30,11 +30,18 @@ bone, drawn where that bone rests — so it can be hung off the skeleton with
 "Auto-bind". No third-party art is used in them beyond the joint positions of
 the CC0 rigs above.
 
+`pnpm make:human` writes a third copy of the human — its motions baked onto the
+same boxes — to `apps/voxelscape/public/models/player-human.zip`, which the
+world wears as its human avatar. It is the same figure as
+`public/models/human.zip` with `Idle`, `Walking_A` and `Running_A` baked on and
+renamed `idle`, `walk` and `run`, and carries the same CC0 provenance.
+
 ## Regenerating
 
 ```sh
 pnpm fetch:animations   # RobotExpressive.glb and Fox.glb
 pnpm fetch:human        # downloads and trims KayKit Barbarian -> human.glb
 pnpm make:models        # builds public/models/human.zip and fox.zip
-pnpm make:assets        # all of the above, in order
+pnpm make:human         # bakes the human's motions into the world's player-human.zip
+pnpm make:assets        # the three fetches and makes, in order
 ```

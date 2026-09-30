@@ -21,7 +21,7 @@ to it. The short version, which is not a substitute for reading it:
 
 ## Solid 2.x
 
-Both applications run Solid 2.0 (`solid-js@2.0.0-beta`, with `@solidjs/web`
+The applications run Solid 2.0 (`solid-js@2.0.0-beta`, with `@solidjs/web`
 and `@solidjs/signals`). **Read
 [`apps/voxelscape/node_modules/solid-js/CHEATSHEET.md`](./apps/voxelscape/node_modules/solid-js/CHEATSHEET.md)
 before writing or editing any reactive or JSX code**, and re-read its closing
@@ -47,13 +47,16 @@ Things this codebase already relies on that a 1.x reflex gets wrong:
 - [`apps/rm-stacker/`](./apps/rm-stacker) — the editor: somebody draws a voxel
   model by painting the six faces of a box, and publishes it to their own
   atproto account.
+- [`apps/voxel-rigger/`](./apps/voxel-rigger) — the rigger: a model from the
+  editor is hung on a skeleton, the skeleton is bound to the model's parts, and
+  the motions are baked back into the same zip the stacker editor writes.
 - [`apps/voxelscape/`](./apps/voxelscape) — the world: an infinite scrolling
   grid of procedurally generated terrain, whose monsters wear a model read back
   from the editor.
 - [`apps/homepage/`](./apps/homepage) — the front page the site root serves,
-  naming the other two and linking to each. One page, written in Solid like
-  the other two and rendered to a file at build time, so nothing is sent to
-  the browser to run.
+  naming the applications and linking to each. One page, written in Solid like
+  the editor and rendered to a file at build time, so nothing is sent to the
+  browser to run.
 
 ## What is under `packages`
 
@@ -94,4 +97,4 @@ Formatting is settled once at the root for all of them: one `.prettierrc`, and
 - [`apps/voxelscape/CONTEXT.md`](./apps/voxelscape/CONTEXT.md) — the world's
   domain language: what to call things, and what not to call them.
 - [`apps/voxelscape/docs/adr/`](./apps/voxelscape/docs/adr) — one file per
-  non-obvious architectural decision in the world.
+  non-obvious architectural decision.

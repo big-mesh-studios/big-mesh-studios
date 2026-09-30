@@ -16,6 +16,11 @@ export const GASA4_MODELS = [
   "counter.zip",
   "stove.zip",
   "fridge.zip",
+  "breakfastmachine.zip",
+  "freezer.zip",
+  "car.zip",
+  "toilet.zip",
+  "tree.zip",
   "bench.zip",
   "manhole.zip",
   "trash.zip",
@@ -30,9 +35,16 @@ export const GASA4_MODELS = [
   "friedegg.zip",
   "juice.zip",
   "milk.zip",
+  "witchbrew.zip",
+  "hotbrew.zip",
+  "icecream.zip",
+  "candy.zip",
+  "fuel.zip",
+  "patty.zip",
+  "sandvich.zip",
+  "sword.zip",
   "tix.zip",
   "robux.zip",
-  "plate.zip",
   "npc-sable.zip",
   "npc-rook.zip",
 ];
@@ -140,3 +152,114 @@ export const DONT_POOP_MODELS = [
   "npc-brad.zip",
   "npc-teacher.zip",
 ];
+
+/**
+ * The models the "A Dusty Trip" demo wears: the car's placeholder body, the
+ * mutants that chase it, the pumps at its petrol stations, and the food its
+ * roadside buildings hold.
+ */
+/**
+ * The models the "Baldi's Basics in Education and Learning" demo wears: the
+ * teacher who teaches it, the notebooks and furniture in the school, and the
+ * ruler and exit door props.
+ */
+export const BALDI_MODELS = [
+  "npc-teacher.zip",
+  "npc-sweep.zip",
+  "npc-playtime.zip",
+  "npc-principal.zip",
+  "npc-puppet.zip",
+  "npc-prize.zip",
+  "npc-bully.zip",
+  "historybook.zip",
+  "platform.zip",
+  "door.zip",
+  "desk.zip",
+  "chair.zip",
+  "locker.zip",
+  "bookshelf.zip",
+  "cafeteria-table.zip",
+  "poster.zip",
+];
+
+export const DUSTY_TRIP_MODELS = [
+  "platform.zip",
+  "zombie.zip",
+  "gas-pump.zip",
+  "chips.zip",
+  "cola.zip",
+  "egg.zip",
+];
+
+/**
+ * The models the "Cube Cavern" demo wears: the yellow dungeon's bestiary and
+ * its ninja boss, the chests, coins, keys, torches, crafting bench, life
+ * plant, cap and sign the caverns and hub stand, and the existing keeper,
+ * door and platform models it borrows.
+ */
+export const CUBE_CAVERN_MODELS = [
+  "cave-yellowhand.zip",
+  "cave-wormle.zip",
+  "cave-poopie.zip",
+  "cave-chik.zip",
+  "cave-megachik.zip",
+  "cave-ninja.zip",
+  "cave-chest.zip",
+  "cave-boss-chest.zip",
+  "cave-coin.zip",
+  "cave-key.zip",
+  "cave-torch.zip",
+  "cave-craft.zip",
+  "cave-lifeplant.zip",
+  "cave-hat.zip",
+  "cave-sign.zip",
+  "npc-teacher.zip",
+  "door.zip",
+  "platform.zip",
+];
+
+/**
+ * The models the "Raise a Floppa" demo wears: the cats it is about, the
+ * raiders and the backrooms' Bingus, its helpers, and the props the house, the
+ * yard, the Interwebs and the time machine stand on, over the furniture and
+ * townsfolk the other demos already carry.
+ */
+export const RAISE_A_FLOPPA_MODELS = [
+  "floppa.zip",
+  "ms-floppa.zip",
+  "baby-floppa.zip",
+  "elder-floppa.zip",
+  "soldier-floppa.zip",
+  "bandit.zip",
+  "bingus.zip",
+  "neko-maid.zip",
+  "ooga.zip",
+  "food-bowl.zip",
+  "litter-box.zip",
+  "computer.zip",
+  "cat-bed.zip",
+  "scratching-post.zip",
+  "catnip-plant.zip",
+  "money-bag.zip",
+  "poop.zip",
+  "altar.zip",
+  "time-machine.zip",
+  "dark-web-stall.zip",
+  "backroom-door.zip",
+  "bed.zip",
+  "sofa.zip",
+  "tv.zip",
+  "table.zip",
+  "chair.zip",
+  "stove.zip",
+  "fridge.zip",
+  "npc-alex.zip",
+  "npc-rook.zip",
+  "npc-brit.zip",
+];
+
+/**
+ * The model the "Lobby" demo wears: the arcade machine whose use prompt opens
+ * the place catalog.
+ */
+export const LOBBY_MODELS = ["arcade.zip"];

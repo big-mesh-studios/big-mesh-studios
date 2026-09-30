@@ -12,6 +12,17 @@
   overflow: hidden;
 }
 
+.editorPane {
+  position: relative;
+  overflow: hidden;
+}
+
+.editorScroll {
+  position: absolute;
+  inset: 0;
+  overflow-x: auto;
+}
+
 .handle {
   background: var(--dark-grey);
   z-index: 2;
@@ -31,6 +42,25 @@
   [data-direction="row"] & {
     cursor: ns-resize;
   }
+}
+
+/* A model being edited from inside the 3D view is edited with the whole window
+   in front of it, so the preview is spread across every track the split made
+   rather than taken out of it. Nothing is unmounted on the way: the preview
+   keeps its graphics context and where it was turned to, and the panels keep
+   where they were scrolled to, so putting the split back puts it back where it
+   was rather than where it began. */
+.shell[data-flying] .editorPane,
+.shell[data-flying] .handle {
+  display: none;
+}
+
+.shell[data-flying] [data-direction="column"] .previewPane {
+  grid-column: 1 / -1;
+}
+
+.shell[data-flying] [data-direction="row"] .previewPane {
+  grid-row: 1 / -1;
 }
 
 .colourPicker {

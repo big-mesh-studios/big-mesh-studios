@@ -1,6 +1,7 @@
 import type { Vector3 } from "@random-mesh/rmsl/scene";
 import { VOXEL_SIZE } from "../../world/level-data";
-import type { StructurePlan } from "../types";
+import { pickFigure, type AimTarget } from "../../places/figure-pick";
+import type { PlanItem, StructurePlan } from "../types";
 import type { CameraRay } from "../camera/rig";
 import { shapeBounds } from "../structures/plan";
 
@@ -67,35 +68,102 @@ export interface ShapePick {
 }
 
 /**
- * The nearest shape in `plan` the ray crosses within `reach` world units, or
- * undefined where it crosses none. Each shape is tested against the box its
- * expanded voxels fill, so a house or staircase is one hit. A box the ray
- * starts inside is skipped, so a creator standing in an air-filled box can
- * select the structures built within it.
+ * The standing box a select click tests a planned NPC or prop against. `half`
+ * and `height` are the body its model drew when that has loaded, `yaw` the
+ * heading it faces, and `y` the feet height a plan that left it to the
+ * terrain resolves to.
  */
-export const pickShape = (
-  plan: StructurePlan,
+export interface FigureSpec {
+  half: number;
+  height: number;
+  yaw: number;
+  y: number;
+}
+
+/**
+ * Reads the body to test a planned NPC or prop against, or undefined to test
+ * the default body. A structure always returns undefined, meaning no figure
+ * box competes with its own.
+ */
+export type FigureSpecFor = (item: PlanItem) => FigureSpec | undefined;
+
+/** The body a figure is tested against before its model has loaded. */
+export const DEFAULT_FIGURE_HALF = 0.6;
+export const DEFAULT_FIGURE_HEIGHT = 2;
+
+/** An item the ray crossed, and how far along it the crossing was. */
+export interface ItemPick {
+  /** The index into the items array the crossing belongs to. */
+  index: number;
+  distance: number;
+}
+
+/**
+ * The nearest item in `plan` the ray crosses within `reach` world units, or
+ * undefined where it crosses none. A structure is tested against the box its
+ * expanded voxels fill — a house or staircase is one hit, and a box at the
+ * ray's origin is skipped so a creator standing inside one can select the
+ * structures built within it. An NPC or a prop is tested against the upright
+ * box its figure stands as, turned to face the heading it draws with, exactly
+ * the body the player's own crosshair aims at.
+ */
+export const pickItem = (
+  items: PlanItem[],
   ray: CameraRay,
   reach: number,
-): ShapePick | undefined => {
-  let best: ShapePick | undefined;
-  for (let index = 0; index < plan.length; index++) {
-    const shape = plan[index];
-    const bounds = shapeBounds(shape);
-    const boxMin: [number, number, number] = [
-      bounds.min[0] * VOXEL_SIZE,
-      bounds.min[1] * VOXEL_SIZE,
-      bounds.min[2] * VOXEL_SIZE,
-    ];
-    const boxMax: [number, number, number] = [
-      (bounds.max[0] + 1) * VOXEL_SIZE,
-      (bounds.max[1] + 1) * VOXEL_SIZE,
-      (bounds.max[2] + 1) * VOXEL_SIZE,
-    ];
-    if (shape.kind === "box" && boxContainsPoint(ray.origin, boxMin, boxMax)) {
-      continue;
+  figureFor: FigureSpecFor = () => undefined,
+): ItemPick | undefined => {
+  const origin: [number, number, number] = [
+    ray.origin.x,
+    ray.origin.y,
+    ray.origin.z,
+  ];
+  const direction: [number, number, number] = [
+    ray.direction.x,
+    ray.direction.y,
+    ray.direction.z,
+  ];
+  let best: ItemPick | undefined;
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
+    let distance: number | undefined;
+    if (item.type === "structure") {
+      const bounds = shapeBounds(item.value);
+      const boxMin: [number, number, number] = [
+        bounds.min[0] * VOXEL_SIZE,
+        bounds.min[1] * VOXEL_SIZE,
+        bounds.min[2] * VOXEL_SIZE,
+      ];
+      const boxMax: [number, number, number] = [
+        (bounds.max[0] + 1) * VOXEL_SIZE,
+        (bounds.max[1] + 1) * VOXEL_SIZE,
+        (bounds.max[2] + 1) * VOXEL_SIZE,
+      ];
+      if (
+        item.value.kind === "box" &&
+        boxContainsPoint(ray.origin, boxMin, boxMax)
+      ) {
+        continue;
+      }
+      distance = rayBoxDistance(ray.origin, ray.direction, boxMin, boxMax);
+    } else {
+      const value = item.value;
+      const spec = figureFor(item);
+      const target: AimTarget = {
+        id: value.id,
+        x: value.x,
+        y: spec?.y ?? value.y ?? 0,
+        z: value.z,
+        yaw: spec?.yaw ?? value.yaw ?? 0,
+        half: spec?.half ?? DEFAULT_FIGURE_HALF,
+        height:
+          spec?.height ??
+          (item.type === "prop"
+            ? (item.value.height ?? DEFAULT_FIGURE_HEIGHT)
+            : DEFAULT_FIGURE_HEIGHT),
+      };
+      distance = pickFigure(origin, direction, [target], reach)?.distance;
     }
-    const distance = rayBoxDistance(ray.origin, ray.direction, boxMin, boxMax);
     if (
       distance !== undefined &&
       distance <= reach &&
@@ -106,3 +174,20 @@ export const pickShape = (
   }
   return best;
 };
+
+/**
+ * The nearest shape in `plan` the ray crosses within `reach` world units, or
+ * undefined where it crosses none. Tested as the shapes of a plan of items,
+ * so a select that cares only for structures names the same boxes `pickItem`
+ * does.
+ */
+export const pickShape = (
+  plan: StructurePlan,
+  ray: CameraRay,
+  reach: number,
+): ShapePick | undefined =>
+  pickItem(
+    plan.map((value) => ({ type: "structure" as const, value })),
+    ray,
+    reach,
+  );

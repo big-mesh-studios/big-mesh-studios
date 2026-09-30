@@ -1,6 +1,9 @@
 import { Object3D, Quaternion, Side, Vector3 } from "@random-mesh/rmsl/scene";
 import { Dimensions3D, Vector3D } from "@big-mesh-studios/maths";
-import type { FigureMeshes } from "@big-mesh-studios/stacker/renderer";
+import type {
+  FigureMeshes,
+  MeshFigureMeshes,
+} from "@big-mesh-studios/stacker/renderer";
 
 // The CPU voxel picker builds its ray with a pinhole camera whose focal length
 // is 2 (see rayMarcher in shaders-shared). A perspective camera with this
@@ -101,19 +104,52 @@ export const lightFigure = (meshes: FigureMeshes, unlit: boolean) => {
   }
 };
 
+/**
+ * Lights a meshed figure the way this editor lights a marched one, from the same
+ * three constants, so that a model looks the same drawn either way.
+ *
+ * Every part is drawn with one material between them, so there is one set of
+ * uniforms to fill rather than a set per part. There is no depth bias to set: a
+ * marched model pushed its surface towards the camera to let the outline of the
+ * picked voxel win the depth test, and a mesh has no such push — the outline is
+ * instead drawn a little outside the cell it bounds, so every edge of it stands
+ * in front of the surface it belongs to.
+ *
+ * @param unlit Whether to show the colours flat rather than lit.
+ */
+export const lightMeshFigure = (meshes: MeshFigureMeshes, unlit: boolean) => {
+  const material = meshes.drawingMaterial;
+
+  material.lightDir = [LIGHT_DIR.x, LIGHT_DIR.y, LIGHT_DIR.z];
+  material.lightColour = [LIGHT_COLOUR[0], LIGHT_COLOUR[1], LIGHT_COLOUR[2]];
+  material.ambientColour = [
+    AMBIENT_COLOUR[0],
+    AMBIENT_COLOUR[1],
+    AMBIENT_COLOUR[2],
+  ];
+  material.unlit = unlit;
+};
+
 const X_AXIS = new Vector3(1, 0, 0);
 const Y_AXIS = new Vector3(0, 1, 0);
 
 /**
  * The 12 edges of a voxel's cell in model space, as `LineSegmentsGeometry`
- * positions (one `(xyz xyz)` start/end pair per edge). The cell layout matches
- * the ray marcher in shaders-shared, which anchors cell 0 at `-dimensions / 2`
- * (see its `cellOrigin` mapping), so the outline encloses exactly the voxel
- * the marcher renders and the CPU picker returns.
+ * positions (one `(xyz xyz)` start/end pair per edge). The cell layout anchors
+ * cell 0 at `-dimensions / 2`, which is where the mesher puts it as well, so the
+ * outline encloses exactly the voxel the model is drawn with and the CPU picker
+ * returns.
+ *
+ * @param oversize How much larger than the cell to draw the box, as a fraction of
+ * a cell on each side. A box drawn at the cell exactly has its edges inside the
+ * solid and loses the depth test against the surface drawn there, and geometry
+ * has no depth bias to win with; growing the box puts the edges in front of that
+ * surface instead.
  */
 export const voxelCellEdges = (
   dimensions: Dimensions3D,
   voxel: [number, number, number],
+  oversize = 0,
 ): Float32Array => {
   const normalized = Dimensions3D.normalize(dimensions);
   const half = {
@@ -126,15 +162,20 @@ export const voxelCellEdges = (
     y: normalized.height / dimensions.height,
     z: normalized.depth / dimensions.depth,
   };
+  const grow = {
+    x: cellSize.x * oversize,
+    y: cellSize.y * oversize,
+    z: cellSize.z * oversize,
+  };
   const min = {
-    x: cellSize.x * voxel[0] - half.x,
-    y: cellSize.y * voxel[1] - half.y,
-    z: cellSize.z * voxel[2] - half.z,
+    x: cellSize.x * voxel[0] - half.x - grow.x,
+    y: cellSize.y * voxel[1] - half.y - grow.y,
+    z: cellSize.z * voxel[2] - half.z - grow.z,
   };
   const max = {
-    x: min.x + cellSize.x,
-    y: min.y + cellSize.y,
-    z: min.z + cellSize.z,
+    x: min.x + cellSize.x + grow.x * 2,
+    y: min.y + cellSize.y + grow.y * 2,
+    z: min.z + cellSize.z + grow.z * 2,
   };
   const corners = [
     [min.x, min.y, min.z],

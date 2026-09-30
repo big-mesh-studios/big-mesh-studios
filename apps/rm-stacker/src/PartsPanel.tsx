@@ -23,6 +23,7 @@ export function PartsPanel() {
     parts,
     posedPart,
     selectedPart,
+    handEdited,
     selectPart,
     addPart,
     duplicatePart,
@@ -115,6 +116,14 @@ export function PartsPanel() {
                     >
                       <span>{part.name}</span>
                     </Tab>
+                    <Show when={handEdited().has(part.name)}>
+                      <span
+                        class={styles.hand}
+                        title="This part holds voxels put in by hand, which its six drawings do not say and the panels do not show"
+                      >
+                        <Icon kind="hand-pointer" />
+                      </span>
+                    </Show>
                     <IconButton
                       class={styles.action}
                       kind="pen"

@@ -1,5 +1,10 @@
 import { Dimensions3D, Matrix3x3, Vector3D } from "@big-mesh-studios/maths";
-import { composePose, partDimensions, type Figure } from "./data";
+import {
+  composePose,
+  partDimensions,
+  type Figure,
+  type PartPose,
+} from "./data";
 
 /**
  * The size of the box bounding the volume, matching the box the ray marcher
@@ -85,6 +90,38 @@ const AXES = [
 ] as const;
 
 /**
+ * Where a point of one part's own voxel space stands in the figure, in voxels
+ * from the figure's origin: the part turned about its pivot, drawn at its own
+ * size, and its pivot placed where its roots put it.
+ *
+ * The point is in cells from the part's box's low corner, which is where the
+ * mesher writes a vertex, and a box's middle is the point at half its own
+ * extents.
+ *
+ * @param pose How the part stands, as `composePose` reports it.
+ * @param pivot The point of the part's own box that `pose` places, in cells from
+ * that box's low corner.
+ */
+export function standingPoint(
+  pose: PartPose,
+  pivot: Vector3D,
+  x: number,
+  y: number,
+  z: number,
+): Vector3D {
+  return Vector3D.add(
+    pose.at,
+    Matrix3x3.transform(
+      pose.turn,
+      Vector3D.multiplyScalar(
+        Vector3D.subtract(Vector3D.create(x, y, z), pivot),
+        pose.scale,
+      ),
+    ),
+  );
+}
+
+/**
  * Where each of a figure's parts stands, in voxels from the figure's origin.
  *
  * A part's box is built in the space the marcher walks, where `Dimensions3D`'s
@@ -107,16 +144,7 @@ export function figurePlacement(figure: Figure): FigurePlacement {
 
     /** Where a point of the part's own voxel space stands in the figure. */
     const standing = (x: number, y: number, z: number) =>
-      Vector3D.add(
-        pose.at,
-        Matrix3x3.transform(
-          pose.turn,
-          Vector3D.multiplyScalar(
-            Vector3D.subtract(Vector3D.create(x, y, z), part.pivot),
-            pose.scale,
-          ),
-        ),
-      );
+      standingPoint(pose, part.pivot, x, y, z);
 
     return {
       dimensions,

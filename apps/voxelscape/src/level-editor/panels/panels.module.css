@@ -117,10 +117,132 @@
   font: inherit;
 }
 
+.palette {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--margin) * 1.5);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--margin) / 2);
+}
+
+.groupHeading {
+  margin: 0;
+  font-size: 0.65rem;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--grey);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: calc(var(--margin) / 2);
+}
+
+.chip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  padding: calc(var(--margin) / 2);
+  border: 1px solid var(--grey);
+  border-radius: calc(var(--margin) / 2);
+  background: var(--dark-grey);
+  color: var(--front);
+  font: inherit;
+
+  &:hover {
+    border-color: var(--light-grey);
+  }
+
+  &[aria-checked="true"] {
+    border-color: var(--front);
+    box-shadow: inset 0 0 0 1px var(--front);
+  }
+}
+
+.swatch {
+  display: grid;
+  place-items: center;
+  width: var(--block-icon-size, 36px);
+  height: var(--block-icon-size, 36px);
+  border-radius: 2px;
+  background-color: var(--dark-grey);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.45);
+
+  /* Air is the nothing a box of it carves, drawn as the two-tone grid an empty
+     cell is shown as everywhere else. A tile the sheet could not be read for is
+     left as the plain well it sits in, which no block's own tile resembles. */
+  &[data-icon="empty"] {
+    background-image:
+      linear-gradient(
+        45deg,
+        var(--grey) 25%,
+        transparent 25% 75%,
+        var(--grey) 75%
+      ),
+      linear-gradient(
+        45deg,
+        var(--grey) 25%,
+        transparent 25% 75%,
+        var(--grey) 75%
+      );
+    background-position:
+      0 0,
+      5px 5px;
+    background-size: 10px 10px;
+  }
+
+  &[data-icon="pending"] {
+    background-color: var(--grey);
+  }
+}
+
+.tile {
+  display: block;
+  width: 100%;
+  height: 100%;
+
+  & > canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+  }
+}
+
+.chipLabel {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.65rem;
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chipTick {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: var(--front);
+  text-shadow: 0 0 3px rgb(0 0 0 / 0.9);
+}
+
 /* A finger needs a taller target than a pointer does. */
 @media (any-pointer: coarse) {
   .itemButton,
-  .select {
+  .select,
+  .chip {
     min-height: 44px;
   }
 }

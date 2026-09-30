@@ -1,11 +1,14 @@
 // A place as something a creator works on: the manifest that names the world,
-// plus the script files it carries, held together as one project. A place zip
-// is the project's single artifact — a draft is saved, an opened place is
-// read back, and a publish happens, all through the same manifest + scripts
-// shape — so nothing outside this module needs to know how the two relate.
+// plus the script files it carries and the level plans its scripts build their
+// terrain from, held together as one project. A place zip is the project's
+// single artifact — a draft is saved, an opened place is read back, and a
+// publish happens, all through the same manifest + scripts + levels shape — so
+// nothing outside this module needs to know how the two relate.
 import JSZip from "jszip";
 import { readPlaceZip } from "./package.ts";
 import {
+  levelFileFor,
+  levelSpecifierFor,
   PLACE_MANIFEST_FILE,
   PLACE_MIME_TYPE,
   type PlaceManifest,
@@ -89,12 +92,20 @@ export interface AttachedModel {
 
 /**
  * One working place: the manifest at the top of its zip, every script file it
- * names as text, and every rm-stacker model it carries, each keyed by the
- * manifest-relative path.
+ * names as text, every level plan its scripts build terrain from, and every
+ * rm-stacker model it carries, each keyed by the manifest-relative path or the
+ * bare name a script addresses it under.
  */
 export interface PlaceProject {
   manifest: PlaceManifest;
   scripts: Record<string, string>;
+  /**
+   * The level plans a place carries, keyed by the bare name `plan` takes them
+   * by. A level is a plan, not code: the text is exactly what an `onPlan`
+   * handler would have returned, and it is validated by the same parser at the
+   * moment the place's plan is compiled.
+   */
+  levels: Record<string, string>;
   models: Record<string, AttachedModel>;
 }
 
@@ -112,13 +123,15 @@ export const emptyPlaceProject = (seed: number): PlaceProject => ({
     mode: "solo:edit",
   },
   scripts: { [MAIN_SCRIPT_FILE]: STARTER_SCRIPT },
+  levels: {},
   models: {},
 });
 
-/** The zip a project is published as: the manifest plus each script and model file. */
+/** The zip a project is published as: the manifest plus each script, level, and model file. */
 export const writePlaceZip = async (project: PlaceProject): Promise<Blob> => {
   const zip = new JSZip();
   const scriptNames = Object.keys(project.scripts);
+  const levelNames = Object.keys(project.levels);
   const modelNames = Object.keys(project.models);
   const manifest: PlaceManifest = {
     ...project.manifest,
@@ -127,12 +140,18 @@ export const writePlaceZip = async (project: PlaceProject): Promise<Blob> => {
     // model list at all, so an older reader sees exactly the manifest it did.
     scripts: scriptNames,
   };
+  if (levelNames.length > 0) {
+    manifest.levels = levelNames.map(levelFileFor);
+  }
   if (modelNames.length > 0) {
     manifest.models = modelNames;
   }
   zip.file(PLACE_MANIFEST_FILE, JSON.stringify(manifest));
   for (const [name, source] of Object.entries(project.scripts)) {
     zip.file(name, source);
+  }
+  for (const [name, source] of Object.entries(project.levels)) {
+    zip.file(levelFileFor(name), source);
   }
   for (const [name, model] of Object.entries(project.models)) {
     zip.file(name, model.bytes);
@@ -164,5 +183,14 @@ export const readPlaceProject = async (zip: Blob): Promise<PlaceProject> => {
       bytes: new Uint8Array(await loaded.file(name)!.async("arraybuffer")),
     };
   }
-  return { manifest, scripts, models };
+  const levels: Record<string, string> = {};
+  for (const file of manifest.levels ?? []) {
+    // readPlaceZip has already refused a zip missing a named level, so this
+    // file is there to read. Its plan is validated where the place's plan is
+    // compiled, by the same parser that reads a handler's own return value.
+    levels[levelSpecifierFor(file) ?? file] = await loaded
+      .file(file)!
+      .async("text");
+  }
+  return { manifest, scripts, levels, models };
 };

@@ -1,18 +1,17 @@
-import type { PlanShape, StructurePlan } from "../types";
+import type { LevelPlan, PlanItem } from "../types";
 
 /**
- * A change to the level's structures, in a form that can be applied, reversed,
- * and written to the undo history. `AddShape` and `RemoveShape` are inverses of
- * one another, as are `SetShape`/`SetShape` and `ReorderShape`/`ReorderShape`.
+ * A change to the level plan, in a form that can be applied, reversed, and
+ * written to the undo history.
  */
 export type Command =
   | { type: "NoOperation" }
   | { type: "Sequence"; commands: Command[] }
-  | { type: "AddShape"; shape: PlanShape; index?: number }
-  | { type: "RemoveShape"; index: number }
-  | { type: "SetShape"; index: number; shape: PlanShape }
-  | { type: "ReorderShape"; from: number; to: number }
-  | { type: "LoadPlan"; plan: StructurePlan }
+  | { type: "AddItem"; item: PlanItem; index?: number }
+  | { type: "RemoveItem"; index: number }
+  | { type: "SetItem"; index: number; item: PlanItem }
+  | { type: "ReorderItem"; from: number; to: number }
+  | { type: "LoadPlan"; plan: LevelPlan }
   | { type: "Async"; command: Promise<Command> };
 
 export namespace Command {
@@ -24,23 +23,23 @@ export namespace Command {
     return { type: "Sequence", commands };
   }
 
-  export function addShape(shape: PlanShape, index?: number): Command {
-    return { type: "AddShape", shape, index };
+  export function addItem(item: PlanItem, index?: number): Command {
+    return { type: "AddItem", item, index };
   }
 
-  export function removeShape(index: number): Command {
-    return { type: "RemoveShape", index };
+  export function removeItem(index: number): Command {
+    return { type: "RemoveItem", index };
   }
 
-  export function setShape(index: number, shape: PlanShape): Command {
-    return { type: "SetShape", index, shape };
+  export function setItem(index: number, item: PlanItem): Command {
+    return { type: "SetItem", index, item };
   }
 
-  export function reorderShape(from: number, to: number): Command {
-    return { type: "ReorderShape", from, to };
+  export function reorderItem(from: number, to: number): Command {
+    return { type: "ReorderItem", from, to };
   }
 
-  export function loadPlan(plan: StructurePlan): Command {
+  export function loadPlan(plan: LevelPlan): Command {
     return { type: "LoadPlan", plan };
   }
 
@@ -58,13 +57,13 @@ export namespace Command {
           type: "Sequence",
           commands: command.commands.map(toJSON),
         };
-      case "AddShape":
-        return { type: "AddShape", shape: command.shape, index: command.index };
-      case "RemoveShape":
+      case "AddItem":
+        return { type: "AddItem", item: command.item, index: command.index };
+      case "RemoveItem":
         return command;
-      case "SetShape":
-        return { type: "SetShape", index: command.index, shape: command.shape };
-      case "ReorderShape":
+      case "SetItem":
+        return { type: "SetItem", index: command.index, item: command.item };
+      case "ReorderItem":
         return command;
       case "LoadPlan":
         return command;
@@ -90,31 +89,31 @@ export namespace Command {
         return Array.isArray(command.commands)
           ? Command.sequence(command.commands.map(fromJSON))
           : Command.noOperation();
-      case "AddShape":
-        return typeof command.shape === "object" && command.shape !== null
-          ? Command.addShape(
-              command.shape as PlanShape,
+      case "AddItem":
+        return typeof command.item === "object" && command.item !== null
+          ? Command.addItem(
+              command.item as PlanItem,
               typeof command.index === "number" ? command.index : undefined,
             )
           : Command.noOperation();
-      case "RemoveShape":
+      case "RemoveItem":
         return typeof command.index === "number"
-          ? Command.removeShape(command.index)
+          ? Command.removeItem(command.index)
           : Command.noOperation();
-      case "SetShape":
+      case "SetItem":
         return typeof command.index === "number" &&
-          typeof command.shape === "object" &&
-          command.shape !== null
-          ? Command.setShape(command.index, command.shape as PlanShape)
+          typeof command.item === "object" &&
+          command.item !== null
+          ? Command.setItem(command.index, command.item as PlanItem)
           : Command.noOperation();
-      case "ReorderShape":
+      case "ReorderItem":
         return typeof command.from === "number" &&
           typeof command.to === "number"
-          ? Command.reorderShape(command.from, command.to)
+          ? Command.reorderItem(command.from, command.to)
           : Command.noOperation();
       case "LoadPlan":
-        return Array.isArray(command.plan)
-          ? Command.loadPlan(command.plan as StructurePlan)
+        return typeof command.plan === "object" && command.plan !== null
+          ? Command.loadPlan(command.plan as LevelPlan)
           : Command.noOperation();
       default:
         return Command.noOperation();

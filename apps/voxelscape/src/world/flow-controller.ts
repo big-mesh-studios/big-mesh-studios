@@ -44,7 +44,6 @@ import {
   VOXEL_STONE,
   FLUID_MAX_LEVEL,
   isFluidId,
-  isLavaId,
   isWaterId,
   fluidLevel,
 } from "./voxel-store";
@@ -57,7 +56,7 @@ import {
   levelIdOf,
   type FluidKind,
 } from "./fluid";
-import { fillBlockLight } from "./block-light";
+import { LightEngine } from "./light-engine";
 
 /** Most fluid cells to act on per frame, so a burst of pours cannot stall the mesh. */
 const MAX_STEPS_PER_FRAME = 512;
@@ -96,6 +95,13 @@ export interface FlowControllerParams {
    * exactly as player edits are reported, so the renderer rebuilds them.
    */
   onBlocksEdited: (indices: number[]) => void;
+  /**
+   * The world's incremental light engine, seeded with each moved voxel so a
+   * lava cell keeps shining where it reaches and its removal darkens what it
+   * lit. Water only ever moves between cells that both carry light, so it
+   * queues no light work at all.
+   */
+  light?: LightEngine;
 }
 
 /**
@@ -108,18 +114,18 @@ export class FlowController {
   private readonly blocks: WorldBlock[];
   private readonly resolve?: (w: WorldVoxel) => number | undefined;
   private readonly onBlocksEdited: (indices: number[]) => void;
+  private readonly light?: LightEngine;
   /** World-voxel keys whose cells are due, to the second they may act. A key present means scheduled. */
   private readonly due = new Map<string, number>();
   private now = 0;
   /** Blocks holding a fluid write since the last renderer report. */
   private readonly touched = new Set<number>();
-  /** Blocks whose lava (an emitter) changed and whose block light is stale. */
-  private readonly emissive = new Set<number>();
 
   constructor(params: FlowControllerParams) {
     this.blocks = params.blocks;
     this.resolve = params.resolve;
     this.onBlocksEdited = params.onBlocksEdited;
+    this.light = params.light;
   }
 
   /**
@@ -562,9 +568,9 @@ export class FlowController {
         block.store.hasFlowing = true;
       }
       this.touched.add(index);
-      if (isLavaId(before) || isLavaId(id)) {
-        this.emissive.add(index);
-      }
+      // Lava moving is the only fluid write that changes what light a cell
+      // emits or carries, so the engine is seeded only for those moves.
+      this.light?.setVoxel(index, x, y, z, before, id);
       wroteAny = true;
     }
     if (!wroteAny) {
@@ -577,15 +583,8 @@ export class FlowController {
     }
   }
 
-  /** Recomputes the light only where lava moved, and reports the touched blocks once per frame. */
+  /** Reports the touched blocks once per frame; the light engine flushes on its own. */
   private flush(): void {
-    if (this.emissive.size > 0) {
-      for (const i of this.emissive) {
-        const block = this.blocks[i];
-        fillBlockLight(block.store, block.light);
-      }
-      this.emissive.clear();
-    }
     if (this.touched.size === 0) {
       return;
     }

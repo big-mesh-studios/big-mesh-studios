@@ -29,6 +29,12 @@ const minVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
 const maxVec3 = (a: Node<"vec3">, b: Node<"vec3">): Node<"vec3"> =>
   a.add(b).add(a.sub(b).abs()).mul(float(0.5));
 
+// The share of a ceiling's light that reaches even a face pointing straight down
+// from it: a room lit from a bright ceiling bounces enough of that light back up
+// onto whatever stands under it that nothing reads as a hole. The rest of it
+// falls off with the angle, so a form still has a lit top and shaded sides.
+const BLOCK_BOUNCE = 0.3;
+
 // The voxel texture is an integer (usampler3D) so the lookup compiles to
 // texelFetch, which takes integer texel coordinates — one texel per voxel.
 // .texture() takes those integer texel coordinates directly, not a normalized
@@ -126,6 +132,12 @@ export type MarchVolumeNodes = {
   lightDir: Node<"vec3">;
   lightColour: Node<"vec3">;
   ambientColour: Node<"vec3">;
+  /**
+   * How much light a world has cast onto the model, 0 to 1, arriving from
+   * straight above. Omitted by a caller with no world behind it — the editor's
+   * picker reads which voxel a ray lands on and nothing about its colour.
+   */
+  blockLight?: Node<"float">;
   unlit: Node<"bool">;
 };
 
@@ -155,6 +167,7 @@ export const marchVolume = (
     lightDir,
     lightColour,
     ambientColour,
+    blockLight,
     unlit,
   } = nodes;
 
@@ -350,9 +363,23 @@ export const marchVolume = (
       }).Else(() => {
         normal.assign(mask.mul(rayStep.toVec3()).negate());
         const diffuse = normal.dot(lightDir).max(float(0));
+        // The world's own light comes from a light fitting, which is put in a
+        // ceiling, so it arrives from straight above — but it wraps around the
+        // form rather than stopping at the angle, or a model's sides and a
+        // shelf's front would take none of it and a lit store would still hold
+        // figures with black faces. Shading it against the marched normal is
+        // what keeps a model standing under a fitting from reading as a
+        // silhouette.
+        const reach = normal
+          .dot(vec3(0, 1, 0))
+          .mul(0.5)
+          .add(0.5)
+          .mul(1 - BLOCK_BOUNCE)
+          .add(BLOCK_BOUNCE);
+        const thrown = (blockLight ?? float(0)).mul(reach);
         colour.rgb.assign(
           colourIndexToColour(palette, faceColourIndex).rgb.mul(
-            ambientColour.add(lightColour.mul(diffuse)),
+            ambientColour.add(lightColour.mul(diffuse)).add(vec3(thrown)),
           ),
         );
       });

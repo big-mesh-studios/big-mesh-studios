@@ -26,8 +26,13 @@ const PROJECT: PlaceProject = {
     "main.js": "var started = false;",
     "extra.js": "function bmsTick() {}",
   },
+  levels: {},
   models: {},
 };
+
+/** One level's plan, as the text a script's `onPlan` answers with. */
+const TERRACE =
+  '{"structures":[{"kind":"box","min":[0,0,0],"max":[2,2,2],"id":3}],"npcs":[],"props":[]}';
 
 describe("a place project", () => {
   it("starts a fresh place from a starter script with the given seed", () => {
@@ -68,6 +73,7 @@ describe("a place project", () => {
     const project: PlaceProject = {
       manifest: MANIFEST,
       scripts: { "main.js": "var started = false;" },
+      levels: {},
       models: { "fridge.zip": { bytes: new Uint8Array([1, 2, 3, 4]) } },
     };
     const opened = await readPlaceProject(await writePlaceZip(project));
@@ -83,6 +89,45 @@ describe("a place project", () => {
     const blob = await writePlaceZip(PROJECT);
     expect(blob.type).toBe("application/zip");
     await expect(readPlaceProject(blob)).resolves.toEqual(PROJECT);
+  });
+
+  it("carries a level through its zip as a .json file under its bare name", async () => {
+    const blob = await writePlaceZip({
+      ...PROJECT,
+      levels: { terrace: TERRACE },
+    });
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    const manifest = JSON.parse(
+      await zip.file("manifest.json")!.async("text"),
+    ) as PlaceManifest;
+    expect(manifest.levels).toEqual(["terrace.json"]);
+    expect(await zip.file("terrace.json")!.async("text")).toBe(TERRACE);
+    const opened = await readPlaceProject(blob);
+    expect(opened.levels).toEqual({ terrace: TERRACE });
+  });
+
+  it("names no level at all in the manifest when a place carries none", async () => {
+    const blob = await writePlaceZip(PROJECT);
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    const manifest = JSON.parse(
+      await zip.file("manifest.json")!.async("text"),
+    ) as PlaceManifest;
+    expect(manifest.levels).toBeUndefined();
+    expect((await readPlaceProject(blob)).levels).toEqual({});
+  });
+
+  it("refuses a zip whose manifest names a level it does not carry", async () => {
+    const { scripts: _scripts, ...bare } = MANIFEST;
+    const zip = new JSZip();
+    zip.file(
+      "manifest.json",
+      JSON.stringify({ ...bare, levels: ["hub.json"] }),
+    );
+    await expect(
+      readPlaceProject(await zip.generateAsync({ type: "blob" })),
+    ).rejects.toThrow(
+      'the manifest names "hub.json", which the zip does not hold',
+    );
   });
 
   it("writes every script the manifest names, in the map's order", async () => {
@@ -105,6 +150,7 @@ describe("a place project", () => {
     const zip = await writePlaceZip({
       manifest: bare,
       scripts: { "main.js": "var started = false;" },
+      levels: {},
       models: {},
     });
     const opened = await readPlaceProject(zip);

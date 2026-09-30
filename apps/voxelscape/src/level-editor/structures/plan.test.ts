@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { VOXEL_SIZE } from "../../world/level-data";
 import type { PlanShape } from "../../world/structure-fill";
 import {
+  defaultNpc,
+  defaultProp,
   defaultShape,
   planScript,
   shapeBounds,
   shapeLabel,
+  translateItem,
   translateShape,
 } from "./plan";
 
@@ -62,6 +66,47 @@ describe("planScript", () => {
     expect(script).toContain("onPlan(");
     expect(script).toContain("JSON.stringify(");
     expect(script).toContain('"kind": "box"');
+  });
+});
+
+describe("defaultNpc and defaultProp", () => {
+  it("stand a figure at the world feet of the voxel it was placed at", () => {
+    expect(defaultNpc([4, 30, -8])).toMatchObject({
+      x: 4 * VOXEL_SIZE,
+      y: 30 * VOXEL_SIZE,
+      z: -8 * VOXEL_SIZE,
+    });
+    expect(defaultProp([4, 30, -8])).toMatchObject({
+      x: 4 * VOXEL_SIZE,
+      y: 30 * VOXEL_SIZE,
+      z: -8 * VOXEL_SIZE,
+    });
+  });
+});
+
+describe("translateItem", () => {
+  it("shifts a plan's NPC by voxel steps in world units", () => {
+    const moved = translateItem(
+      { type: "npc", value: defaultNpc([4, 30, -8]) },
+      [1, 0, 1],
+    );
+    expect(moved.type).toBe("npc");
+    if (moved.type === "npc") {
+      expect(moved.value.x).toBe(5 * VOXEL_SIZE);
+      expect(moved.value.y).toBe(30 * VOXEL_SIZE);
+      expect(moved.value.z).toBe(-7 * VOXEL_SIZE);
+    }
+  });
+
+  it("shifts a plan's prop by voxel steps in world units", () => {
+    const moved = translateItem(
+      { type: "prop", value: defaultProp([4, 30, -8]) },
+      [0, 1, 0],
+    );
+    expect(moved.type).toBe("prop");
+    if (moved.type === "prop") {
+      expect(moved.value.y).toBe(31 * VOXEL_SIZE);
+    }
   });
 });
 

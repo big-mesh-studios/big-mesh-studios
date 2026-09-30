@@ -4,6 +4,8 @@ import {
   createEffect,
   createSignal,
   For,
+  lazy,
+  Loading,
   onCleanup,
   onSettled,
   ParentComponent,
@@ -18,10 +20,13 @@ import { createPlaceLibrary } from "./atproto/places";
 import { builtinDemo, loadBuiltinDemo } from "./places/demos";
 import { DEFAULT_WORLD_URL, placeAtUri, type PlaceMode } from "./places/place";
 import type { PlaceProject } from "./places/project";
-import { compilePlacePlan, planRegionAround } from "./places/plan";
+import {
+  compilePlacePlan,
+  planRegionAround,
+  type LevelPlan,
+} from "./places/plan";
 import { DEFAULT_TERRAIN, type TerrainConfig } from "./world/noise";
 import type { Dim3 } from "./world/level-data";
-import type { StructurePlan } from "./world/structure-fill";
 import type { PlaceBoot, Voxelscape } from "./voxelscape/create-voxelscape";
 import CoarseControls from "./ui/CoarseControls";
 // `Console` is the whole scripting surface — the terminal, and, once
@@ -29,6 +34,7 @@ import CoarseControls from "./ui/CoarseControls";
 // panel alongside it (see `PlaceEditorContent`, rendered from inside it).
 import { Console, createConsole, type ConsoleState } from "./ui/Console";
 import { DialogOverlay } from "./ui/Dialog";
+import { ScriptUi } from "./ui/ScriptUi";
 import { EditHud } from "./ui/EditHud";
 import { HealthHud } from "./ui/HealthHud";
 import { StatsToast } from "./ui/StatsToast";
@@ -42,11 +48,17 @@ import {
 } from "./voxelscape/voxelscape-context";
 import { LevelEditorOverlay } from "./level-editor/LevelEditorOverlay";
 
+/** The place reference overlay — the whole vocabulary as its own lazy chunk,
+ * downloaded only once a reader actually asks for it with `/place:docs`. */
+const PlaceDocsPanel = lazy(() => import("./ui/PlaceDocsPanel"));
+import { InventoryHud } from "./ui/InventoryHud";
+import { PlacesBrowser } from "./ui/PlacesBrowser";
+
 /** How long a line the world reports on its own is left on screen. */
 const NOTICE_SECONDS = 6;
 
 /** The built-in demo `App.tsx` opens at the site's own root address. */
-const HOME_DEMO_ID = "home";
+const HOME_DEMO_ID = "lobby";
 
 /**
  * How the world is built this session: a built-in demo's world, or a
@@ -59,8 +71,8 @@ interface LaunchConfig {
   terrain?: TerrainConfig;
   /** A place's spawn point; omitted only on the fallback procedural world. */
   spawn?: Dim3;
-  /** The structures a place's script asks the filler to stamp into every chunk. */
-  structures?: StructurePlan;
+  /** The structures, NPCs and props a place's script asks the world to place. */
+  plan?: LevelPlan;
   /** The place's scripts to run from boot; omitted only on the fallback procedural world. */
   place?: PlaceBoot;
   /**
@@ -173,7 +185,7 @@ const World: Component<{
   const voxelscape = createVoxelscape({
     terrain: props.launch.terrain,
     spawn: props.launch.spawn,
-    structures: props.launch.structures,
+    plan: props.launch.plan,
     place: props.launch.place,
     activeProject: props.launch.project,
     placeEditorOpen: props.placeEditorOpen,
@@ -225,6 +237,9 @@ const World: Component<{
           </Show>
           <EditHud />
           <HealthHud />
+          <InventoryHud />
+          <PlacesBrowser />
+          <ScriptUi />
           <DialogOverlay />
           <EndingOverlay />
           <toasts.Stack>
@@ -249,6 +264,11 @@ const World: Component<{
         <LoadingScreen />
         <Show when={voxelscape.levelEditor.open()}>
           <LevelEditorOverlay />
+        </Show>
+        <Show when={voxelscape.placeDocs.open()}>
+          <Loading fallback={null}>
+            <PlaceDocsPanel />
+          </Loading>
         </Show>
       </div>
     </VoxelscapeContext>
@@ -278,6 +298,11 @@ const WorldCanvas: Component = () => {
 /** The screen a place's script shows when its game ends, with a way to start over. */
 const EndingOverlay: Component = () => {
   const voxelscape = useVoxelscape();
+  createEffect(voxelscape.ending, (ending) => {
+    if (ending !== null) {
+      return voxelscape.input.suspendPointerLock();
+    }
+  });
   return (
     <Show when={voxelscape.ending() !== null}>
       <div class={styles.ending} role="dialog" aria-label="ending">
@@ -391,17 +416,18 @@ const App: Component<{}> = () => {
         model.bytes,
       ]),
     );
-    let structures: StructurePlan | undefined;
+    let plan: LevelPlan | undefined;
     let planNote = "";
     try {
-      structures = await compilePlacePlan({
+      plan = await compilePlacePlan({
         files: project.scripts,
         entry,
         models,
+        levels: project.levels,
         seed: project.manifest.seed,
         region: planRegionAround(project.manifest.spawn),
       });
-      planNote = ` · ${structures.length} structure shape(s)`;
+      planNote = ` · ${plan.structures.length} structure shape(s), ${plan.npcs.length} NPC(s), ${plan.props.length} prop(s)`;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       planNote = ` · its plan did not compile (${detail})`;
@@ -409,12 +435,13 @@ const App: Component<{}> = () => {
     return {
       terrain: { ...DEFAULT_TERRAIN, seed: project.manifest.seed },
       spawn: project.manifest.spawn,
-      structures,
+      plan,
       place: {
         files: project.scripts,
         entry,
         seed: project.manifest.seed,
         models,
+        levels: project.levels,
       },
       project,
       mode: project.manifest.mode,

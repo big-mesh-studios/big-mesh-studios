@@ -1,0 +1,21 @@
+{
+  "name": "@big-mesh-studios/place-docs",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --ssr --outDir .ssr && node scripts/prerender.ts",
+    "serve": "vite preview",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@big-mesh-studios/place-reference": "workspace:*",
+    "@solidjs/web": "catalog:",
+    "solid-js": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-solid": "catalog:"
+  }
+}

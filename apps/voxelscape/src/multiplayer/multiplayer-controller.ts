@@ -155,6 +155,11 @@ export interface MultiplayerParams {
    * and (in the app) for applying to the local player's health.
    */
   onRemotePlayerDamage?: (did: string, damage: PlayerDamageWire) => void;
+  /**
+   * Receives the model a peer's player now wears, for headless verification
+   * and (in the app) for drawing it in place of that peer's cube.
+   */
+  onRemotePlayerModel?: (did: string, model: string) => void;
   /** Overrides for the cluster-selection tuning (tests use this to disable hysteresis). */
   clusterOptions?: Partial<ClusterOptions>;
   /**
@@ -192,6 +197,7 @@ export class MultiplayerController {
     did: string,
     damage: PlayerDamageWire,
   ) => void;
+  private readonly onRemotePlayerModel: (did: string, model: string) => void;
   private readonly clusterOptions: Partial<ClusterOptions>;
   private readonly getWallNow: () => number;
   private readonly clock: PeerClock;
@@ -229,6 +235,7 @@ export class MultiplayerController {
   private scriptEntitySeq = 0;
   private scriptEventSeq = 0;
   private playerDamageSeq = 0;
+  private playerModelSeq = 0;
   private editsSent = 0;
   private editsReceived = 0;
   private scriptEntitiesSent = 0;
@@ -269,6 +276,7 @@ export class MultiplayerController {
     this.onRemoteScriptEntities = params.onRemoteScriptEntities ?? (() => {});
     this.onRemoteScriptEvents = params.onRemoteScriptEvents ?? (() => {});
     this.onRemotePlayerDamage = params.onRemotePlayerDamage ?? (() => {});
+    this.onRemotePlayerModel = params.onRemotePlayerModel ?? (() => {});
     this.clusterOptions = params.clusterOptions ?? {};
     this.getWallNow = params.getWallNow ?? (() => Date.now());
     this.clock = new PeerClock({ getWallNow: this.getWallNow });
@@ -320,6 +328,26 @@ export class MultiplayerController {
    */
   peerPositions(): Array<{ did: string; x: number; y: number; z: number }> {
     return this.remotePlayers?.positions() ?? [];
+  }
+
+  /**
+   * Every connected peer wearing a model, as figures for the model renderer:
+   * where their cube is drawn, how it faces, and which model they wear.
+   */
+  remoteFigures(): Array<{
+    id: string;
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+    model: string;
+  }> {
+    return this.remotePlayers?.figures() ?? [];
+  }
+
+  /** The model the peer with `id` wears, or null for the plain cube. */
+  remoteModelOf(id: string): string | null {
+    return this.remotePlayers?.modelOf(id) ?? null;
   }
 
   /**
@@ -546,6 +574,20 @@ export class MultiplayerController {
     };
     for (const peer of this.peers.values()) {
       peer.sendPlayerDamage(wire);
+    }
+  }
+
+  /**
+   * Broadcasts the model this player now wears to every open peer, or "" to go
+   * back to the plain cube. No-op while the mesh is offline.
+   */
+  broadcastPlayerModel(model: string): void {
+    if (!this.running) {
+      return;
+    }
+    const seq = ++this.playerModelSeq;
+    for (const peer of this.peers.values()) {
+      peer.sendPlayerModel(model, seq);
     }
   }
 
@@ -901,6 +943,7 @@ export class MultiplayerController {
     onScriptEntities: (did: string, updates: ScriptEntityUpdate[]) => void;
     onScriptEvents: (did: string, events: ScriptEvent[]) => void;
     onPlayerDamage: (did: string, damage: PlayerDamageWire) => void;
+    onPlayerModel: (did: string, model: string) => void;
     onTime: (did: string, t1: number, t2: number) => void;
     onClose: (did: string) => void;
     onError: (did: string, message: string, code?: string) => void;
@@ -936,6 +979,10 @@ export class MultiplayerController {
       onPlayerDamage: (did, damage) => {
         this.playerDamageReceived++;
         this.onRemotePlayerDamage(did, damage);
+      },
+      onPlayerModel: (did, model) => {
+        this.remotePlayers?.setModel(did, model === "" ? null : model);
+        this.onRemotePlayerModel(did, model);
       },
       onTime: (did, t1, t2) => {
         const pending = this.pendingTimes.get(did);

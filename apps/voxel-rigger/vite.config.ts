@@ -1,7 +1,13 @@
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // The folder GitHub Pages serves this application from. A built asset
+  // addresses itself from the site root, and the bundled samples are fetched
+  // through `import.meta.env.BASE_URL`, which Vite sets to this same value, so
+  // a build under a folder and a development server at the root both find what
+  // they ask for.
+  base: command === "build" ? "/big-mesh-studios/voxel-rigger/" : "/",
   plugins: [solid({ ssr: false })],
   server: {
     // Named rather than left to the default, which listens on the version six
@@ -16,4 +22,4 @@ export default defineConfig({
     // crawling them fails the scan.
     entries: ["index.html"],
   },
-});
+}));

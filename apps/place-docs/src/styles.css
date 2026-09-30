@@ -1,0 +1,528 @@
+/* One stylesheet for both pages, inlined into each document by the prerender so
+   that a page is a single request and nothing is sent to the browser to run.
+   The palette is the world's own: the two applications' accents, over a dark
+   ground, so the documentation sits beside the thing it documents. */
+
+:root {
+  --ground: #14161a;
+  --panel: #1b1e24;
+  --raised: #232730;
+  --edge: #2f343f;
+  --ink: #e8eaed;
+  --dim: #9aa3b2;
+  /* The dimmest ink still has to clear 4.5:1 on every ground it is text on —
+     ground, panel, and raised — or the captions and section headings that use
+     it are the least readable text on the page. */
+  --quiet: #8791a2;
+  --world: #4a8fe7;
+  --editor: #6abe30;
+  --warn: #e7a34a;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-text-size-adjust: 100%;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+
+/* The masthead ------------------------------------------------------- */
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 1.2rem;
+  padding: 0.8rem clamp(1rem, 4vw, 3rem);
+  background: color-mix(in srgb, var(--ground) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--edge);
+}
+
+header .wordmark {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+header nav {
+  display: flex;
+  gap: 1rem;
+}
+
+header nav a {
+  color: var(--dim);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+header nav a:hover {
+  color: var(--ink);
+  border-bottom-color: var(--world);
+}
+
+header .where {
+  margin: 0 0 0 auto;
+  color: var(--quiet);
+  font-size: 0.85rem;
+}
+
+main {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 0 clamp(1rem, 4vw, 3rem) 5rem;
+}
+
+footer {
+  border-top: 1px solid var(--edge);
+  padding: 1.6rem clamp(1rem, 4vw, 3rem) 3rem;
+  color: var(--quiet);
+  font-size: 0.85rem;
+}
+
+footer p {
+  max-width: 62rem;
+  margin: 0 auto;
+}
+
+a {
+  color: var(--world);
+}
+
+/* Headings and prose -------------------------------------------------- */
+
+h1 {
+  font-size: clamp(1.9rem, 4vw, 2.6rem);
+  line-height: 1.15;
+  margin: 2.5rem 0 0.4rem;
+  letter-spacing: -0.01em;
+}
+
+.lede > p {
+  color: var(--dim);
+  max-width: 46rem;
+  margin: 0.6rem 0;
+}
+
+h2 {
+  font-size: 1.5rem;
+  margin: 3.5rem 0 0;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--edge);
+  scroll-margin-top: 5rem;
+}
+
+h3 {
+  font-size: 1.15rem;
+  margin: 2.2rem 0 0.2rem;
+  color: var(--editor);
+}
+
+h4 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+  margin: 1.4rem 0 0.3rem;
+  font-weight: 500;
+}
+
+p {
+  margin: 0.7rem 0;
+}
+
+.intro {
+  color: var(--dim);
+  max-width: 46rem;
+  margin: 0.3rem 0 1.2rem;
+}
+
+/* The filter ---------------------------------------------------------- */
+
+.filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  position: sticky;
+  top: 3.4rem;
+  z-index: 5;
+  margin: 1.6rem 0 0;
+  padding: 0.7rem 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+}
+
+.filter label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--quiet);
+}
+
+.filter input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  padding: 0.45rem 0.7rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+}
+
+.filter input:focus-visible {
+  outline: 2px solid var(--world);
+  outline-offset: 1px;
+}
+
+.filter button {
+  padding: 0.45rem 0.8rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--dim);
+  background: var(--raised);
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.filter button:hover {
+  color: var(--ink);
+}
+
+.filter .shown {
+  color: var(--quiet);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.filter .jump {
+  font-size: 0.8rem;
+}
+
+.hidden {
+  display: none;
+}
+
+/* Shown only when a filter matches nothing, where every section is hidden and
+   without it the page would end at the sticky filter bar with no explanation. */
+.empty {
+  margin: 2.5rem 0 0;
+  padding: 1rem 1.1rem;
+  max-width: 30rem;
+  border: 1px solid var(--edge);
+  border-left: 3px solid var(--quiet);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--dim);
+  font-size: 0.9rem;
+}
+
+/* Entries ------------------------------------------------------------- */
+
+.entry {
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--panel);
+  margin: 0.4rem 0;
+  scroll-margin-top: 8rem;
+}
+
+.entry > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.8rem;
+  padding: 0.55rem 0.85rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.entry > summary::-webkit-details-marker {
+  display: none;
+}
+
+.entry > summary::before {
+  content: "▸";
+  color: var(--quiet);
+  font-size: 0.7rem;
+  transition: transform 0.12s ease;
+}
+
+.entry[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.entry > summary:hover {
+  background: var(--raised);
+}
+
+.entry .name {
+  color: var(--world);
+  font-weight: 600;
+}
+
+.entry .what {
+  color: var(--dim);
+  flex: 1 1 20rem;
+  font-size: 0.9rem;
+}
+
+.entry[open] > summary {
+  border-bottom: 1px solid var(--edge);
+}
+
+.entry > p,
+.entry > table,
+.entry > .alternative {
+  margin: 0.8rem 0.9rem;
+}
+
+.alternative h4 .what {
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+
+.signature code {
+  color: var(--editor);
+  word-break: break-word;
+}
+
+.returns,
+.union {
+  color: var(--dim);
+  font-size: 0.9rem;
+}
+
+.undone {
+  color: var(--quiet);
+  font-size: 0.85rem;
+}
+
+.optional {
+  margin-left: 0.5rem;
+  color: var(--quiet);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Field tables -------------------------------------------------------- */
+
+.fields {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.fields caption {
+  text-align: left;
+  color: var(--quiet);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding-bottom: 0.4rem;
+}
+
+.fields th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--quiet);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--edge);
+  padding: 0.2rem 0.6rem 0.3rem 0;
+}
+
+.fields td {
+  padding: 0.35rem 0.6rem 0.35rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--edge) 55%, transparent);
+  vertical-align: top;
+}
+
+.fields tr:last-child td {
+  border-bottom: none;
+}
+
+.fields td:first-child {
+  white-space: nowrap;
+}
+
+.fields .type {
+  color: var(--editor);
+  word-break: break-word;
+}
+
+.fields .doc {
+  color: var(--dim);
+}
+
+.limits td:first-child code {
+  color: var(--world);
+}
+
+/* A limit's name is a constant, and the longer ones are one unbreakable word.
+   The first column is nowrap above so a field's name keeps its "optional" tag
+   beside it, which for a constant would instead widen the table past a phone. */
+.limits td:first-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* The guides ---------------------------------------------------------- */
+
+.guide {
+  margin: 3rem 0 0;
+  padding-top: 0.5rem;
+}
+
+/* Prose in a guide takes the body colour and a measure. A note is a callout
+   rather than prose, and carries its own — without the exclusion this rule's
+   higher specificity wins and the note reads at full body brightness. */
+.guide > p:not(.note),
+.guide li {
+  max-width: 46rem;
+  color: var(--ink);
+}
+
+.guide ol,
+.guide ul {
+  padding-left: 1.3rem;
+}
+
+.guide li {
+  margin: 0.35rem 0;
+}
+
+.sample {
+  position: relative;
+  margin: 1.1rem 0;
+  padding: 0.9rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-left: 3px solid var(--editor);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.sample pre {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.sample .caption {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--quiet);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.note {
+  margin: 1.1rem 0;
+  padding: 0.8rem 1rem;
+  background: color-mix(in srgb, var(--warn) 8%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--edge));
+  border-radius: 8px;
+  color: var(--dim);
+  font-size: 0.9rem;
+}
+
+.note strong {
+  color: var(--warn);
+}
+
+.contents {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.8rem;
+  margin: 1.6rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.contents li {
+  margin: 0;
+}
+
+.contents a {
+  display: block;
+  height: 100%;
+  padding: 0.8rem 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.contents a:hover {
+  border-color: var(--world);
+}
+
+.contents .step {
+  display: block;
+  color: var(--quiet);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.contents .blurb {
+  display: block;
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 40rem) {
+  header .where {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .filter {
+    top: 6.6rem;
+  }
+}
+
+@media print {
+  header,
+  .filter {
+    position: static;
+  }
+
+  .entry {
+    break-inside: avoid;
+  }
+}

@@ -43,6 +43,8 @@ export interface MeshPeerParams {
   onScriptEvents: (did: string, events: ScriptEvent[]) => void;
   /** One swing's damage from the peer, for the hit player to apply. */
   onPlayerDamage: (did: string, damage: PlayerDamageWire) => void;
+  /** The model the peer's player now wears, or "" for the plain cube. */
+  onPlayerModel: (did: string, model: string) => void;
   /**
    * One clock-exchange answer from the peer: `t1`-`t2` names the leg that
    * came back, so the receiver can pair it with its own send and account the
@@ -74,6 +76,7 @@ export class MeshPeer {
     did: string,
     damage: PlayerDamageWire,
   ) => void;
+  private readonly onPlayerModel: (did: string, model: string) => void;
   private readonly onTime: (did: string, t1: number, t2: number) => void;
   private readonly onClose: (did: string) => void;
   private readonly onError: (
@@ -100,6 +103,7 @@ export class MeshPeer {
     this.onScriptEntities = params.onScriptEntities;
     this.onScriptEvents = params.onScriptEvents;
     this.onPlayerDamage = params.onPlayerDamage;
+    this.onPlayerModel = params.onPlayerModel;
     this.onTime = params.onTime;
     this.onClose = params.onClose;
     this.onError = params.onError;
@@ -215,6 +219,26 @@ export class MeshPeer {
     }
   }
 
+  /** Sends the model this player now wears to the peer (no-op until open). */
+  sendPlayerModel(model: string, seq: number): void {
+    if (this.destroyed || this.phase !== "open") {
+      return;
+    }
+    try {
+      this.transport?.send(
+        encodeMessage({
+          v: 1,
+          type: "player-model",
+          seq,
+          t: Date.now(),
+          model,
+        }),
+      );
+    } catch (err) {
+      this.fail(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   /**
    * Sends one clock exchange leg: a ping naming `t1` (local wall time when
    * sent), or an answer that also carries `t2`, the wall time the ping was
@@ -315,6 +339,8 @@ export class MeshPeer {
       this.onPlayerDamage(this.did, message);
     } else if (message.type === "script-entity") {
       this.onScriptEntities(this.did, message.updates);
+    } else if (message.type === "player-model") {
+      this.onPlayerModel(this.did, message.model);
     } else if (message.type === "time") {
       if (message.t2 === undefined) {
         // A ping asks the receiver's wall time at receipt; answer in kind.

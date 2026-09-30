@@ -18,9 +18,13 @@ import { fileURLToPath } from "node:url";
 import { generateProjectModelsDts } from "../src/places/model-dts.ts";
 import type { AttachedModel } from "../src/places/project.ts";
 import {
+  BALDI_MODELS,
+  CUBE_CAVERN_MODELS,
   DONT_POOP_MODELS,
+  DUSTY_TRIP_MODELS,
   GASA4_MODELS,
   LATE_TO_SCHOOL_MODELS,
+  RAISE_A_FLOPPA_MODELS,
   ZOMBIES_MANSION_MODELS,
   ZOMBIES_MODELS,
 } from "../src/places/demo-scripts/model-lists.ts";
@@ -43,6 +47,10 @@ const files = [
     ...ZOMBIES_MODELS,
     ...ZOMBIES_MANSION_MODELS,
     ...DONT_POOP_MODELS,
+    ...DUSTY_TRIP_MODELS,
+    ...BALDI_MODELS,
+    ...CUBE_CAVERN_MODELS,
+    ...RAISE_A_FLOPPA_MODELS,
   ]),
 ];
 

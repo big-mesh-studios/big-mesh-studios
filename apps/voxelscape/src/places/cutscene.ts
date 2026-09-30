@@ -14,6 +14,10 @@ export interface CameraShot {
   /** How long the view holds on the shot after arriving, in milliseconds. */
   holdMs?: number;
   ease?: "linear" | "smooth";
+  /** The field of view to move to, in degrees; the previous one is kept when absent. */
+  fov?: number;
+  /** How far the view shakes while this shot runs, in world units; absent for a still one. */
+  shake?: number;
 }
 
 /** A camera sequence a script has started, with the moment it began. */
@@ -23,7 +27,7 @@ export interface CutsceneState {
   shots: CameraShot[];
 }
 
-/** Where a camera is before a sequence begins: its eye and what it looks at. */
+/** Where a camera is before a sequence begins: its eye, what it looks at, and how wide its view is. */
 export interface CameraStart {
   x: number;
   y: number;
@@ -31,11 +35,15 @@ export interface CameraStart {
   lookX: number;
   lookY: number;
   lookZ: number;
+  /** The field of view it starts at, in degrees, or undefined to leave it alone. */
+  fov?: number;
 }
 
 /** Where a camera is at a moment: its eye, what it looks at, and whether it is done. */
 export interface CameraPose extends CameraStart {
   done: boolean;
+  /** How far the view shakes about the eye, in world units, while the shot runs. */
+  shake?: number;
 }
 
 const smooth = (u: number): number => u * u * (3 - 2 * u);
@@ -54,6 +62,7 @@ export const cutsceneDuration = (state: CutsceneState): number =>
 const poseOf = (
   at: [number, number, number],
   look: [number, number, number],
+  fov?: number,
 ): CameraStart => ({
   x: at[0],
   y: at[1],
@@ -61,6 +70,7 @@ const poseOf = (
   lookX: look[0],
   lookY: look[1],
   lookZ: look[2],
+  ...(fov === undefined ? {} : { fov }),
 });
 
 /**
@@ -85,6 +95,8 @@ export const cutscenePoseAt = (
       previous.lookY,
       previous.lookZ,
     ];
+    const fov = shot.fov ?? previous.fov;
+    const shake = shot.shake === undefined ? {} : { shake: shot.shake };
     if (elapsed < cursor + move) {
       const raw = move <= 0 ? 1 : (elapsed - cursor) / move;
       const t = shot.ease === "smooth" ? smooth(Math.min(1, raw)) : raw;
@@ -95,12 +107,19 @@ export const cutscenePoseAt = (
         lookX: lerp(previous.lookX, look[0], t),
         lookY: lerp(previous.lookY, look[1], t),
         lookZ: lerp(previous.lookZ, look[2], t),
+        ...(fov === undefined
+          ? {}
+          : {
+              fov:
+                previous.fov === undefined ? fov : lerp(previous.fov, fov, t),
+            }),
+        ...shake,
         done: false,
       };
     }
-    const arrived = poseOf(shot.at, look);
+    const arrived = poseOf(shot.at, look, fov);
     if (elapsed < cursor + move + hold) {
-      return { ...arrived, done: false };
+      return { ...arrived, done: false, ...shake };
     }
     cursor += move + hold;
     previous = arrived;

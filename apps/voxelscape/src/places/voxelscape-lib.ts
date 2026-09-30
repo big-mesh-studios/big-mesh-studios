@@ -4,13 +4,15 @@
 // etc. — through its own internal-only import, alongside `createNpc`/
 // `createProp`, so a script reaches everything through one dependency:
 // `import * as engine from "voxelscape"; engine.dispatch(...);
-// engine.createNpc(...);`. `onTick` is the one function re-exported as a
-// wrapper rather than as-is: it parses the events its own `onTick` call
-// receives before handing them to the script, so a script never sees the
-// JSON text they crossed the sandbox boundary as. Ordinary guest-side
-// TypeScript, compiled through the same `transpileFile` every project file
-// goes through, so nothing here is a new sandbox global and nothing changes
-// the trust boundary the interpreter's isolation already draws (ADR 0027).
+// engine.createNpc(...);`. `onTick` and `onPlan` are the two functions
+// re-exported as wrappers rather than as-is: `onTick` parses the events its
+// own call receives before handing them to the script, so a script never sees
+// the JSON text they crossed the sandbox boundary as, and `onPlan` accepts a
+// plan already written out as well as a function that answers with one.
+// Ordinary guest-side TypeScript, compiled through the same `transpileFile`
+// every project file goes through, so nothing here is a new sandbox global
+// and nothing changes the trust boundary the interpreter's isolation already
+// draws (ADR 0027).
 // Every function just builds the same payload a hand-written script already
 // builds and calls `dispatch` itself; see `effects.ts`'s
 // "npc"/"npc-remove"/"npc-die"/"prop"/"prop-remove" payloads, which this
@@ -19,9 +21,9 @@
 //
 // Plain factory functions, not classes — `createNpc`/`createProp` hand back
 // a plain object closing over its own placement, never something a script
-// constructs with `new`. `__models` is generated and appended after this
-// source by bundle.ts's `voxelscapeModuleSource`, one entry per model this
-// place attaches.
+// constructs with `new`. `__models` and `__levels` are generated and appended
+// after this source by bundle.ts's `voxelscapeModuleSource`, one entry per
+// model and per level this place attaches.
 export const VOXELSCAPE_LIB_SOURCE = `
 import * as host from "engine-host";
 export * from "engine-host";
@@ -35,6 +37,31 @@ export function onTick(fn) {
   });
 }
 
+/** The level plan this place carries under \`name\`, as the JSON text an
+ * \`onPlan\` handler returns its own answer as. A name this place carries no
+ * level under throws, naming the level, the way \`createNpc\` throws on a model
+ * whose bytes the place does not hold. */
+export function plan(name) {
+  var level = __levels[name];
+  if (level === undefined) {
+    throw new Error("this place carries no such level: \\"" + name + "\\"");
+  }
+  return level;
+}
+
+/** Registers the plan this place builds its terrain from: either one already
+ * written out, as \`plan\` hands it back, or a function that answers with one
+ * when the world calls it before the first fill. */
+export function onPlan(answer) {
+  if (typeof answer === "string") {
+    host.onPlan(function () {
+      return answer;
+    });
+    return;
+  }
+  host.onPlan(answer);
+}
+
 /** Every player's live position: the local player first, then connected
  * peers — parsed here, so a script reads the array directly rather than the
  * JSON text it crossed the sandbox boundary as. */
@@ -42,9 +69,273 @@ export function getPlayers() {
   return JSON.parse(host.getPlayers());
 }
 
+/** The local player's live movement and tool input, or null where the world
+ * reports none — parsed here, so a script drives off real numbers. */
+export function getInput() {
+  return JSON.parse(host.getInput());
+}
+
 /** Every ending this place has defined, parsed the same way \`getPlayers\` is. */
 export function getEndings() {
   return JSON.parse(host.getEndings());
+}
+
+/** The scripted figure \`id\` names, or null when there is none. */
+export function getEntity(id) {
+  return JSON.parse(host.getEntity(id));
+}
+
+/** Every scripted figure in the box \`min\` to \`max\`, inclusive, in id order. */
+export function getEntitiesInBox(min, max) {
+  return JSON.parse(host.getEntitiesInBox(min[0], min[1], min[2], max[0], max[1], max[2]));
+}
+
+/** Every scripted figure within \`radius\` of (\`x\`, \`y\`, \`z\`), in id order. */
+export function getEntitiesInSphere(x, y, z, radius) {
+  return JSON.parse(host.getEntitiesInSphere(x, y, z, radius));
+}
+
+/** Every scripted figure carrying \`tag\`, in id order. */
+export function getEntitiesWithTag(tag) {
+  return JSON.parse(host.getEntitiesWithTag(tag));
+}
+
+/** The player \`did\` names, or null when they are not in the place. */
+export function getPlayer(did) {
+  return JSON.parse(host.getPlayer(did));
+}
+
+/** Every player in the box \`min\` to \`max\`, inclusive. */
+export function getPlayersInBox(min, max) {
+  return JSON.parse(host.getPlayersInBox(min[0], min[1], min[2], max[0], max[1], max[2]));
+}
+
+/** The value set for \`player\` under \`key\`, or null when none. */
+export function getPlayerValue(player, key) {
+  return JSON.parse(host.getPlayerValue(player, key));
+}
+
+/** The players ranked by \`key\`, highest first, at most \`count\` of them. */
+export function getLeaderboard(key, count) {
+  return JSON.parse(host.getLeaderboard(key, count));
+}
+
+/**
+ * The value the place remembers under \`scope\`/\`key\` for \`player\` ("" for the
+ * local player, ignored for the global scope), or null when there is none.
+ */
+export function getData(scope, player, key) {
+  return JSON.parse(host.getData(scope, player, key));
+}
+
+/** The players whose remembered number under \`key\` ranks, highest first, at most \`count\`. */
+export function getDataLeaderboard(key, count) {
+  return JSON.parse(host.getDataLeaderboard(key, count));
+}
+
+/** Saves \`value\` for \`player\` ("" for the local player) under \`key\`. */
+export function savePlayerData(key, value, player) {
+  host.dispatch("data-set", {
+    scope: "player",
+    player: player,
+    key: key,
+    value: value,
+  });
+}
+
+/** Saves \`value\` for everyone under \`key\`. */
+export function saveGlobalData(key, value) {
+  host.dispatch("data-set", { scope: "global", key: key, value: value });
+}
+
+/** Forgets \`key\` for \`player\` ("" for the local player). */
+export function deletePlayerData(key, player) {
+  host.dispatch("data-delete", {
+    scope: "player",
+    player: player,
+    key: key,
+  });
+}
+
+/** Saves \`value\` for the signed-in account, whatever place it is read in. */
+export function saveAccountData(key, value) {
+  host.dispatch("data-set", { scope: "account", key: key, value: value });
+}
+
+/** Forgets \`key\` for the signed-in account. */
+export function deleteAccountData(key) {
+  host.dispatch("data-delete", { scope: "account", key: key });
+}
+
+/** Awards the badge \`badge\` to \`player\` ("" for the local player). */
+export function awardBadge(badge, player) {
+  host.dispatch("badge-award", { badge: badge, player: player });
+}
+
+/** Asks the world to read a remembered value; the answer arrives as a \`data-loaded\` fact. */
+export function requestData(scope, key, requestId, player) {
+  host.dispatch("data-get", {
+    scope: scope,
+    player: player,
+    key: key,
+    requestId: requestId,
+  });
+}
+
+/**
+ * Draws \`player\` ("" for the local player) as the world avatar named \`kind\` —
+ * "cube" or "human" — and remembers it as the avatar they carry into other
+ * places, so it is the player's own choice rather than this place's.
+ */
+export function setPlayerAvatar(kind, player) {
+  host.dispatch("player-avatar", {
+    player: player === undefined ? "" : player,
+    kind: kind,
+  });
+}
+
+/**
+ * Dresses \`player\` ("" for the local player) in the place model named
+ * \`modelName\`, or the plain cube when \`modelName\` is "".
+ */
+export function setPlayerModel(modelName, player) {
+  var model = modelName === "" ? undefined : resolveModel(modelName);
+  host.dispatch("player-model", {
+    player: player === undefined ? "" : player,
+    model: model === undefined ? "" : model.file,
+  });
+}
+
+/** Takes the worn model off \`player\` ("" for the local player), back to the plain cube. */
+export function clearPlayerModel(player) {
+  host.dispatch("player-model", {
+    player: player === undefined ? "" : player,
+    model: "",
+  });
+}
+
+/** Sends \`player\` ("" for the local player) to another place, carrying \`carry\` keys with them. */
+export function teleport(place, player, carry) {
+  host.dispatch("teleport", {
+    player: player === undefined ? "" : player,
+    place: place,
+    carry: carry,
+  });
+}
+
+/**
+ * Opens the place catalog for \`player\` ("" for the local player), the world's
+ * search over published places. \`options\` may seed the search with the
+ * handle or DID to list; seeded with none, the catalog lists every published
+ * place instead.
+ */
+export function openCatalog(options) {
+  host.dispatch("catalog", {
+    player: options === undefined || options.player === undefined ? "" : options.player,
+    query: options === undefined ? undefined : options.query,
+  });
+}
+
+function uiPlayer(options) {
+  return options.player === undefined ? "" : options.player;
+}
+
+/** Shows a panel docked to a corner; see \`createProp\` for why \`id\` is never generated. */
+export function uiPanel(options) {
+  host.dispatch("ui-panel", {
+    player: uiPlayer(options),
+    id: options.id,
+    title: options.title,
+    anchor: options.anchor,
+  });
+}
+
+/** Adds a line of text to a panel. */
+export function uiLabel(options) {
+  host.dispatch("ui-label", {
+    player: uiPlayer(options),
+    panel: options.panel,
+    id: options.id,
+    text: options.text,
+    color: options.color,
+  });
+}
+
+/** Adds a labelled bar to a panel. */
+export function uiBar(options) {
+  host.dispatch("ui-bar", {
+    player: uiPlayer(options),
+    panel: options.panel,
+    id: options.id,
+    label: options.label,
+    value: options.value,
+    max: options.max,
+  });
+}
+
+/** Adds a button to a panel; its press arrives as a \`ui-clicked\` fact. */
+export function uiButton(options) {
+  host.dispatch("ui-button", {
+    player: uiPlayer(options),
+    panel: options.panel,
+    id: options.id,
+    label: options.label,
+    value: options.value,
+  });
+}
+
+/** Adds an item-sprite image to a panel. */
+export function uiImage(options) {
+  host.dispatch("ui-image", {
+    player: uiPlayer(options),
+    panel: options.panel,
+    id: options.id,
+    sprite: options.sprite,
+  });
+}
+
+/** Takes an item off a panel, or the whole panel when \`item\` is omitted. */
+export function uiRemove(options) {
+  host.dispatch("ui-remove", {
+    player: uiPlayer(options),
+    panel: options.panel,
+    item: options.item,
+  });
+}
+
+/**
+ * Shows a leaderboard to the local player as a HUD text readout, ranking the
+ * players by the player-value \`key\`. Call it whenever the values change; the
+ * readout is replaced rather than appended.
+ */
+export function showLeaderboard(id, title, key, count) {
+  var entries = getLeaderboard(key, count === undefined ? 10 : count);
+  var lines = entries.map(function (entry, index) {
+    return index + 1 + ". " + entry.player + "  " + entry.value;
+  });
+  host.dispatch("hud", {
+    player: "",
+    id: id,
+    kind: "text",
+    label: title,
+    text: lines.join("\\n"),
+  });
+}
+
+/** Where a ray from \`origin\` along \`direction\` first meets the world, or null within \`maxDistance\` world units. */
+export function raycast(origin, direction, maxDistance) {
+  return JSON.parse(
+    host.raycast(origin[0], origin[1], origin[2], direction[0], direction[1], direction[2], maxDistance)
+  );
+}
+
+/** The walkable route from \`from\` to \`to\`, as world-unit waypoints, or null when none exists within the bounds. */
+export function findPath(from, to, options) {
+  var maxNodes = options === undefined || options.maxNodes === undefined ? 0 : options.maxNodes;
+  var maxCells = options === undefined || options.maxCells === undefined ? 0 : options.maxCells;
+  return JSON.parse(
+    host.findPath(from[0], from[1], from[2], to[0], to[1], to[2], maxNodes, maxCells)
+  );
 }
 
 function resolveModel(modelName) {
@@ -66,6 +357,46 @@ function place(model, options, announce) {
     z: options.z,
     y: options.y,
     yaw: options.yaw === undefined ? 0 : options.yaw,
+    tags: options.tags === undefined ? [] : options.tags.slice(),
+    attributes:
+      options.attributes === undefined
+        ? {}
+        : Object.assign({}, options.attributes),
+  };
+  /** Re-sends this figure's tags and attributes after one changes. */
+  function announceShape() {
+    host.dispatch("entity-set", {
+      id: state.id,
+      tags: state.tags,
+      attributes: state.attributes,
+    });
+  }
+  /** Gives this figure a value under \`key\`, replacing any it held there, and returns this figure. */
+  state.setAttribute = function (key, value) {
+    state.attributes[key] = value;
+    announceShape();
+    return state;
+  };
+  /** The value this figure holds under \`key\`, or undefined. */
+  state.getAttribute = function (key) {
+    return state.attributes[key];
+  };
+  /** Names this figure with \`tag\`, so a query can find it by that name, and returns this figure. */
+  state.addTag = function (tag) {
+    if (state.tags.indexOf(tag) === -1) {
+      state.tags.push(tag);
+      announceShape();
+    }
+    return state;
+  };
+  /** Takes \`tag\` off this figure, and returns this figure. */
+  state.removeTag = function (tag) {
+    var at = state.tags.indexOf(tag);
+    if (at !== -1) {
+      state.tags.splice(at, 1);
+      announceShape();
+    }
+    return state;
   };
   state.move = function (moveOptions) {
     state.x = moveOptions.x;
@@ -75,6 +406,11 @@ function place(model, options, announce) {
     }
     if (moveOptions.yaw !== undefined) {
       state.yaw = moveOptions.yaw;
+    }
+    if (moveOptions.vx !== undefined || moveOptions.vy !== undefined || moveOptions.vz !== undefined) {
+      state.vx = moveOptions.vx === undefined ? 0 : moveOptions.vx;
+      state.vy = moveOptions.vy === undefined ? 0 : moveOptions.vy;
+      state.vz = moveOptions.vz === undefined ? 0 : moveOptions.vz;
     }
     announce(state, moveOptions.live === undefined ? true : moveOptions.live);
   };
@@ -107,6 +443,8 @@ export function createNpc(options) {
       modelUri: options.modelUri,
       yaw: state.yaw,
       live: live,
+      tags: state.tags,
+      attributes: state.attributes,
     });
   });
   /** Removes the NPC outright — no death fall, just gone, like \`.remove()\` on a prop. */
@@ -116,6 +454,95 @@ export function createNpc(options) {
   /** Plays a death fall in place of an outright removal, then forgets it the same way. */
   npc.die = function () {
     host.dispatch("npc-die", { id: npc.id });
+  };
+  /**
+   * Walks the NPC to walkOptions.x/walkOptions.z along a route the world
+   * searches for, at walkOptions.speed world units per second, through the
+   * same motion a script may declare by hand. Returns false when no route
+   * exists.
+   */
+  npc.walkTo = function (walkOptions) {
+    var targetY =
+      walkOptions.y === undefined
+        ? host.getHeightAt(walkOptions.x, walkOptions.z)
+        : walkOptions.y;
+    var fromY = npc.y === undefined ? host.getHeightAt(npc.x, npc.z) : npc.y;
+    var route = findPath(
+      [npc.x, fromY, npc.z],
+      [walkOptions.x, targetY, walkOptions.z],
+      walkOptions
+    );
+    if (route === null || route.length === 0) {
+      return false;
+    }
+    var offsets = [];
+    var length = 0;
+    for (var i = 0; i < route.length; i++) {
+      offsets.push([route[i][0] - npc.x, route[i][1] - fromY, route[i][2] - npc.z]);
+    }
+    for (var i = 1; i < route.length; i++) {
+      length += Math.hypot(
+        route[i][0] - route[i - 1][0],
+        route[i][1] - route[i - 1][1],
+        route[i][2] - route[i - 1][2]
+      );
+    }
+    var speed = walkOptions.speed === undefined ? 4 : walkOptions.speed;
+    host.dispatch("npc", {
+      id: npc.id,
+      x: npc.x,
+      z: npc.z,
+      y: npc.y,
+      name: options.name,
+      model:
+        options.modelUri === undefined && model !== undefined
+          ? model.file
+          : undefined,
+      modelUri: options.modelUri,
+      yaw: npc.yaw,
+      live: true,
+      tags: npc.tags,
+      attributes: npc.attributes,
+      motion: {
+        path: offsets,
+        loop: "once",
+        durationMs: Math.max(1, Math.round((length / speed) * 1000)),
+        ease: "linear",
+      },
+    });
+    return true;
+  };
+  /**
+   * Plays the model motion called name on the NPC, sampled from the shared
+   * clock so every peer sees the same frame. Returns the NPC.
+   */
+  npc.play = function (name, playOptions) {
+    host.dispatch("figure-animate", {
+      id: npc.id,
+      name: name,
+      speed: playOptions === undefined ? undefined : playOptions.speed,
+      loop: playOptions === undefined ? undefined : playOptions.loop,
+    });
+    return npc;
+  };
+  /** Stops the NPC's animation, standing it back at rest. Returns the NPC. */
+  npc.stop = function () {
+    host.dispatch("figure-stop", { id: npc.id });
+    return npc;
+  };
+  /** Tints and fades the NPC over its model's colours. Returns the NPC. */
+  npc.setLook = function (lookOptions) {
+    host.dispatch("entity-look", {
+      id: npc.id,
+      color: lookOptions.color,
+      alpha: lookOptions.alpha,
+    });
+    return npc;
+  };
+  /** Clears the NPC's tint and fade. Returns the NPC. */
+  npc.clearLook = function () {
+    host.dispatch("entity-look-clear", { id: npc.id });
+    return npc;
   };
   return npc;
 }
@@ -135,12 +562,48 @@ export function createProp(options) {
       height: options.height,
       solid: options.solid,
       hazard: options.hazard,
+      seat: options.seat,
       conveyor: options.conveyor,
       motion: options.motion,
+      velocity:
+        state.vx === undefined
+          ? undefined
+          : { vx: state.vx, vy: state.vy, vz: state.vz },
+      tags: state.tags,
+      attributes: state.attributes,
     });
   });
   prop.remove = function () {
     host.dispatch("prop-remove", { id: prop.id });
+  };
+  /** Plays the model motion called name on the prop, sampled from the shared clock. Returns the prop. */
+  prop.play = function (name, playOptions) {
+    host.dispatch("figure-animate", {
+      id: prop.id,
+      name: name,
+      speed: playOptions === undefined ? undefined : playOptions.speed,
+      loop: playOptions === undefined ? undefined : playOptions.loop,
+    });
+    return prop;
+  };
+  /** Stops the prop's animation, standing it back at rest. Returns the prop. */
+  prop.stop = function () {
+    host.dispatch("figure-stop", { id: prop.id });
+    return prop;
+  };
+  /** Tints and fades the prop over its model's colours. Returns the prop. */
+  prop.setLook = function (lookOptions) {
+    host.dispatch("entity-look", {
+      id: prop.id,
+      color: lookOptions.color,
+      alpha: lookOptions.alpha,
+    });
+    return prop;
+  };
+  /** Clears the prop's tint and fade. Returns the prop. */
+  prop.clearLook = function () {
+    host.dispatch("entity-look-clear", { id: prop.id });
+    return prop;
   };
   return prop;
 }
@@ -164,5 +627,222 @@ export function createBarrier(options) {
     host.dispatch("barrier-remove", { id: barrier.id });
   };
   return barrier;
+}
+
+/**
+ * Places a named group of structure shapes — the same vocabulary a place's
+ * \`onPlan\` answers with, in LOD-0 world voxels — through the
+ * "structure"/"structure-remove" effects. The world stamps the group over the
+ * plan it was built with and regenerates only the cells the group reaches, so
+ * a script may put a building down and take it away while the world runs, and
+ * the ground under it comes back when it goes. Dispatching the same id again
+ * replaces the group's shapes rather than laying a second one.
+ */
+export function createStructure(options) {
+  host.dispatch("structure", { id: options.id, shapes: options.shapes });
+  var structure = { id: options.id, shapes: options.shapes };
+  /** Replaces the group's shapes, re-stamping the cells either set reaches. */
+  structure.setShapes = function (shapes) {
+    structure.shapes = shapes;
+    host.dispatch("structure", { id: structure.id, shapes: shapes });
+    return structure;
+  };
+  /** Takes the whole group down. */
+  structure.remove = function () {
+    host.dispatch("structure-remove", { id: structure.id });
+  };
+  return structure;
+}
+
+/**
+ * Lights a point in the world — standing where it is placed, or hanging over a
+ * figure named by entityId. Returns a handle whose remove puts the light out.
+ */
+export function createLight(options) {
+  host.dispatch("light", {
+    id: options.id,
+    entityId: options.entityId,
+    x: options.x,
+    y: options.y,
+    z: options.z,
+    color: options.color,
+    range: options.range,
+    intensity: options.intensity,
+  });
+  var light = { id: options.id };
+  light.remove = function () {
+    host.dispatch("light-remove", { id: light.id });
+  };
+  return light;
+}
+
+/** Shows a world-space label over a point or a figure; returns a handle whose remove takes it down. */
+export function createBillboard(options) {
+  host.dispatch("billboard", {
+    id: options.id,
+    text: options.text,
+    entityId: options.entityId,
+    x: options.x,
+    y: options.y,
+    z: options.z,
+    color: options.color,
+    scale: options.scale,
+    height: options.height,
+  });
+  var billboard = { id: options.id };
+  billboard.remove = function () {
+    host.dispatch("billboard-remove", { id: billboard.id });
+  };
+  return billboard;
+}
+
+/**
+ * Runs a particle emitter at a point, or hanging over a figure named by
+ * entityId. Returns a handle whose remove stops it.
+ */
+export function createParticle(options) {
+  host.dispatch("particle", {
+    id: options.id,
+    kind: options.kind,
+    entityId: options.entityId,
+    x: options.x,
+    y: options.y,
+    z: options.z,
+    color: options.color,
+    size: options.size,
+    spread: options.spread,
+    lifeMs: options.lifeMs,
+    loop: options.loop,
+  });
+  var particle = { id: options.id };
+  particle.remove = function () {
+    host.dispatch("particle-remove", { id: particle.id });
+  };
+  return particle;
+}
+
+/**
+ * Drives a dust storm — a wall of blowing sand or a spinning funnel — through
+ * the "storm"/"storm-remove" effects. Returns a handle whose \`move\` re-places
+ * it and whose \`remove\` takes it away, so a script can walk one across the
+ * world every tick.
+ */
+export function createStorm(options) {
+  var state = {
+    id: options.id,
+    kind: options.kind,
+    x: options.x,
+    z: options.z,
+    y: options.y,
+    yaw: options.yaw,
+    width: options.width,
+    height: options.height,
+    depth: options.depth,
+    intensity: options.intensity,
+    color: options.color,
+    spin: options.spin,
+  };
+  /** Re-sends this storm's whole pose to the host. */
+  function announce() {
+    host.dispatch("storm", {
+      id: state.id,
+      kind: state.kind,
+      x: state.x,
+      z: state.z,
+      y: state.y,
+      yaw: state.yaw,
+      width: state.width,
+      height: state.height,
+      depth: state.depth,
+      intensity: state.intensity,
+      color: state.color,
+      spin: state.spin,
+    });
+  }
+  announce();
+  var storm = { id: options.id };
+  /** Moves the storm, or changes how it reads, and returns the storm. */
+  storm.move = function (next) {
+    state.x = next.x === undefined ? state.x : next.x;
+    state.z = next.z === undefined ? state.z : next.z;
+    if (next.y !== undefined) state.y = next.y;
+    if (next.yaw !== undefined) state.yaw = next.yaw;
+    if (next.kind !== undefined) state.kind = next.kind;
+    if (next.width !== undefined) state.width = next.width;
+    if (next.height !== undefined) state.height = next.height;
+    if (next.depth !== undefined) state.depth = next.depth;
+    if (next.intensity !== undefined) state.intensity = next.intensity;
+    if (next.color !== undefined) state.color = next.color;
+    if (next.spin !== undefined) state.spin = next.spin;
+    announce();
+    return storm;
+  };
+  storm.remove = function () {
+    host.dispatch("storm-remove", { id: storm.id });
+  };
+  return storm;
+}
+
+/** Lays a flat mark on the world; returns a handle whose remove lifts it. */
+export function createDecal(options) {
+  host.dispatch("decal", {
+    id: options.id,
+    kind: options.kind,
+    entityId: options.entityId,
+    x: options.x,
+    y: options.y,
+    z: options.z,
+    color: options.color,
+    size: options.size,
+    yaw: options.yaw,
+  });
+  var decal = { id: options.id };
+  decal.remove = function () {
+    host.dispatch("decal-remove", { id: decal.id });
+  };
+  return decal;
+}
+
+/**
+ * Opens a rift — a flat, translucent, animated sheet a player walks through —
+ * at a point, turned about the vertical axis. Returns a handle whose \`remove\`
+ * closes it.
+ */
+export function createRift(options) {
+  host.dispatch("rift", {
+    id: options.id,
+    x: options.x,
+    y: options.y,
+    z: options.z,
+    width: options.width,
+    height: options.height,
+    yaw: options.yaw,
+    color: options.color,
+    intensity: options.intensity,
+    spin: options.spin,
+  });
+  var rift = { id: options.id };
+  rift.remove = function () {
+    host.dispatch("rift-remove", { id: rift.id });
+  };
+  return rift;
+}
+
+/** Draws a glowing line between two points or figures; returns a handle whose remove takes it down. */
+export function createBeam(options) {
+  host.dispatch("beam", {
+    id: options.id,
+    fromEntity: options.fromEntity,
+    from: options.from,
+    toEntity: options.toEntity,
+    to: options.to,
+    color: options.color,
+    width: options.width,
+  });
+  var beam = { id: options.id };
+  beam.remove = function () {
+    host.dispatch("beam-remove", { id: beam.id });
+  };
+  return beam;
 }
 `;

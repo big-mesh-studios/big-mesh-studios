@@ -19,23 +19,10 @@ import type {
   QuickJSWASMModule,
 } from "quickjs-emscripten-core";
 import QuickJSReleaseSync from "@jitl/quickjs-wasmfile-release-sync";
-import {
-  VOXEL_AIR,
-  VOXEL_BRICK,
-  VOXEL_CLOUD,
-  VOXEL_DIRT,
-  VOXEL_GRASS,
-  VOXEL_GREYSTONE,
-  VOXEL_ICE,
-  VOXEL_LAVA,
-  VOXEL_LEAVES,
-  VOXEL_LOG,
-  VOXEL_STONE,
-  VOXEL_WATER,
-  VOXEL_WOOD,
-} from "../world/voxel-store";
+import { VOXEL_BLOCKS } from "../world/voxel-blocks";
 import {
   ScriptExecutionError,
+  type DataScope,
   type RequireOnly,
   type ScriptErrorKind,
   type ScriptOutput,
@@ -44,9 +31,13 @@ import {
 } from "./sandbox";
 
 /** The world-query surface this sandbox needs — every one of `WorldQuery`'s
- * six functions but the shared clock is optional, since a bare interpreter
- * (a test, or a script that never asks the world anything) can go without. */
-type SandboxWorldQuery = RequireOnly<WorldQuery, "getNow">;
+ * functions but the shared clock is optional, since a bare interpreter
+ * (a test, or a script that never asks the world anything) can go without —
+ * plus the local player's held item, which the inventory owns rather than the
+ * world. */
+type SandboxWorldQuery = RequireOnly<WorldQuery, "getNow"> & {
+  getHeldItem?: () => string;
+};
 
 /** One interpreter instance, owning one script and one run of its step budget. */
 class QuickJSSandbox implements ScriptSandbox {
@@ -265,6 +256,169 @@ class QuickJSSandbox implements ScriptSandbox {
         ? context.true
         : context.false,
     );
+    bind("getBlockAt", (x, y, z) =>
+      context.newNumber(
+        time.getBlockAt?.(
+          context.getNumber(x),
+          context.getNumber(y),
+          context.getNumber(z),
+        ) ?? 0,
+      ),
+    );
+    bind("getEntity", (id) =>
+      context.newString(
+        JSON.stringify(time.getEntity?.(context.getString(id)) ?? null),
+      ),
+    );
+    bind("getEntitiesInBox", (ax, ay, az, bx, by, bz) =>
+      context.newString(
+        JSON.stringify(
+          time.getEntitiesInBox?.(
+            [
+              context.getNumber(ax),
+              context.getNumber(ay),
+              context.getNumber(az),
+            ],
+            [
+              context.getNumber(bx),
+              context.getNumber(by),
+              context.getNumber(bz),
+            ],
+          ) ?? [],
+        ),
+      ),
+    );
+    bind("getEntitiesInSphere", (x, y, z, radius) =>
+      context.newString(
+        JSON.stringify(
+          time.getEntitiesInSphere?.(
+            context.getNumber(x),
+            context.getNumber(y),
+            context.getNumber(z),
+            context.getNumber(radius),
+          ) ?? [],
+        ),
+      ),
+    );
+    bind("getEntitiesWithTag", (tag) =>
+      context.newString(
+        JSON.stringify(time.getEntitiesWithTag?.(context.getString(tag)) ?? []),
+      ),
+    );
+    bind("getPlayer", (did) =>
+      context.newString(
+        JSON.stringify(time.getPlayer?.(context.getString(did)) ?? null),
+      ),
+    );
+    bind("getPlayersInBox", (ax, ay, az, bx, by, bz) =>
+      context.newString(
+        JSON.stringify(
+          time.getPlayersInBox?.(
+            [
+              context.getNumber(ax),
+              context.getNumber(ay),
+              context.getNumber(az),
+            ],
+            [
+              context.getNumber(bx),
+              context.getNumber(by),
+              context.getNumber(bz),
+            ],
+          ) ?? [],
+        ),
+      ),
+    );
+    bind("getLocalPlayer", () =>
+      context.newString(time.getLocalPlayer?.() ?? ""),
+    );
+    bind("getInput", () =>
+      context.newString(JSON.stringify(time.getInput?.() ?? null)),
+    );
+    bind("getPlayerValue", (did, key) =>
+      context.newString(
+        JSON.stringify(
+          time.getPlayerValue?.(
+            context.getString(did),
+            context.getString(key),
+          ) ?? null,
+        ),
+      ),
+    );
+    bind("getLeaderboard", (key, count) =>
+      context.newString(
+        JSON.stringify(
+          time.getLeaderboard?.(
+            context.getString(key),
+            context.getNumber(count),
+          ) ?? [],
+        ),
+      ),
+    );
+    bind("getData", (scope, player, key) =>
+      context.newString(
+        JSON.stringify(
+          time.getData?.(
+            context.getString(scope) as DataScope,
+            context.getString(player),
+            context.getString(key),
+          ) ?? null,
+        ),
+      ),
+    );
+    bind("getDataLeaderboard", (key, count) =>
+      context.newString(
+        JSON.stringify(
+          time.getDataLeaderboard?.(
+            context.getString(key),
+            context.getNumber(count),
+          ) ?? [],
+        ),
+      ),
+    );
+    bind("raycast", (ox, oy, oz, dx, dy, dz, maxDistance) =>
+      context.newString(
+        JSON.stringify(
+          time.raycast?.(
+            [
+              context.getNumber(ox),
+              context.getNumber(oy),
+              context.getNumber(oz),
+            ],
+            [
+              context.getNumber(dx),
+              context.getNumber(dy),
+              context.getNumber(dz),
+            ],
+            context.getNumber(maxDistance),
+          ) ?? null,
+        ),
+      ),
+    );
+    bind("findPath", (fx, fy, fz, tx, ty, tz, maxNodes, maxCells) => {
+      const nodes = context.getNumber(maxNodes);
+      const cells = context.getNumber(maxCells);
+      return context.newString(
+        JSON.stringify(
+          time.findPath?.(
+            [
+              context.getNumber(fx),
+              context.getNumber(fy),
+              context.getNumber(fz),
+            ],
+            [
+              context.getNumber(tx),
+              context.getNumber(ty),
+              context.getNumber(tz),
+            ],
+            {
+              ...(nodes > 0 ? { maxNodes: nodes } : {}),
+              ...(cells > 0 ? { maxCells: cells } : {}),
+            },
+          ) ?? null,
+        ),
+      );
+    });
+    bind("getHeldItem", () => context.newString(time.getHeldItem?.() ?? ""));
     bind("onTick", (fn) => {
       this.tickHandlers.push(fn.dup());
       return context.undefined;
@@ -276,25 +430,12 @@ class QuickJSSandbox implements ScriptSandbox {
     });
     // The block ids a plan or effect may name, keyed by the names the starter
     // script's own `engine` type declares, so a creator never hard-codes one.
+    // Every block the level editor can build with is among them, so a plan
+    // exported from there writes as a script that names the same blocks.
     const blocks = context.newObject();
-    const ids: Record<string, number> = {
-      air: VOXEL_AIR,
-      grass: VOXEL_GRASS,
-      dirt: VOXEL_DIRT,
-      water: VOXEL_WATER,
-      stone: VOXEL_STONE,
-      cloud: VOXEL_CLOUD,
-      lava: VOXEL_LAVA,
-      log: VOXEL_LOG,
-      leaves: VOXEL_LEAVES,
-      brick: VOXEL_BRICK,
-      wood: VOXEL_WOOD,
-      ice: VOXEL_ICE,
-      greystone: VOXEL_GREYSTONE,
-    };
-    for (const [name, id] of Object.entries(ids)) {
+    for (const { script, id } of VOXEL_BLOCKS) {
       const value = context.newNumber(id);
-      context.setProp(blocks, name, value);
+      context.setProp(blocks, script, value);
       value.dispose();
     }
     context.setProp(engine, "blocks", blocks);
@@ -458,15 +599,10 @@ export const createQuickJSSandbox = async (
 
   const random = mulberry32(params.seed | 0);
   return new QuickJSSandbox({
+    ...params,
     runtime,
     context,
-    getNow: params.getNow,
     random,
     timeLimitMs: params.timeLimitMs ?? 250,
-    getEndings: params.getEndings,
-    getHeightAt: params.getHeightAt,
-    getSolidAt: params.getSolidAt,
-    getWaterAt: params.getWaterAt,
-    getPlayers: params.getPlayers,
   });
 };

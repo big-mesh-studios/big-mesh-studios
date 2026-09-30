@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
-import { Inventory } from "./inventory";
+import { Inventory, HOTBAR_SIZE } from "./inventory";
 import { BREAK_YIELD, ITEM_ORDER } from "./items";
 import {
   VOXEL_BRICK,
@@ -13,11 +13,12 @@ import {
 } from "../world/voxel-store";
 
 describe("Inventory", () => {
-  it("starts carrying the sword and defaults to dirt selected", () => {
+  it("starts with the sword count of 1 (non-stackable) and defaults to first item selected", () => {
     const inv = new Inventory();
     expect(inv.count("sword")).toBe(1);
     expect(inv.count("dirt")).toBe(0);
-    expect(inv.selectedId).toBe("dirt");
+    // selectedId is the first item in ITEM_ORDER
+    expect(inv.selectedId).toBe(ITEM_ORDER[0]);
   });
 
   it("adds and removes dirt", () => {
@@ -39,62 +40,76 @@ describe("Inventory", () => {
     expect(inv.count("sword")).toBe(1);
   });
 
-  it("selects items and reports them in hotbar order", () => {
+  it("items() returns only items with count > 0", () => {
     const inv = new Inventory();
     inv.add("dirt", 2);
-    // dirt is selected by default; re-selecting it is a no-op
-    expect(inv.setSelected("dirt")).toBe(false);
-    expect(inv.setSelected("sword")).toBe(true);
-    expect(inv.selectedId).toBe("sword");
-    expect(inv.items()).toEqual([
-      { id: "dirt", name: "Dirt", count: 2, stackable: true },
-      { id: "stone", name: "Stone", count: 0, stackable: true },
-      { id: "cloud", name: "Cloud", count: 0, stackable: true },
-      { id: "brick", name: "Brick", count: 0, stackable: true },
-      { id: "wood", name: "Wood", count: 0, stackable: true },
-      { id: "bucket", name: "Bucket", count: 1, stackable: false },
-      { id: "sword", name: "Sword", count: 1, stackable: false },
-    ]);
+    const items = inv.items();
+    // Only items with count > 0 are returned
+    // sword (non-stackable) always has count 1; dirt has 2; all others are 0.
+    expect(items.some((i) => i.id === "dirt")).toBe(true);
+    expect(items.some((i) => i.id === "sword")).toBe(true);
+    expect(items.every((i) => i.count > 0)).toBe(true);
+    // stone has count 0 and should be absent
+    expect(items.some((i) => i.id === "stone")).toBe(false);
   });
 
-  it("cycles the selection with the wheel step", () => {
+  it("selects items by id", () => {
     const inv = new Inventory();
-    expect(inv.selectedId).toBe("dirt");
+    inv.add("dirt", 2);
+    // re-selecting the same item is a no-op
+    expect(inv.setSelected(inv.selectedId)).toBe(false);
+    expect(inv.setSelected("sword")).toBe(true);
+    expect(inv.selectedId).toBe("sword");
+  });
+
+  it("cycles the selection among hotbar items with the wheel step", () => {
+    const inv = new Inventory();
+    // Default hotbar: first HOTBAR_SIZE items of ITEM_ORDER
+    // Set up a known hotbar
+    inv.setHotbarSlot(0, "dirt");
+    inv.setHotbarSlot(1, "stone");
+    inv.setHotbarSlot(2, "cloud");
+    inv.setHotbarSlot(3, "brick");
+    inv.setHotbarSlot(4, "wood");
+    inv.setSelected("dirt");
     expect(inv.selectStep(1)).toBe(true);
     expect(inv.selectedId).toBe("stone");
     expect(inv.selectStep(1)).toBe(true);
     expect(inv.selectedId).toBe("cloud");
-    expect(inv.selectStep(1)).toBe(true);
-    expect(inv.selectedId).toBe("brick");
-    expect(inv.selectStep(1)).toBe(true);
-    expect(inv.selectedId).toBe("wood");
-    expect(inv.selectStep(1)).toBe(true);
-    expect(inv.selectedId).toBe("bucket");
-    expect(inv.selectStep(1)).toBe(true);
-    expect(inv.selectedId).toBe("sword");
-    expect(inv.selectStep(1)).toBe(true);
-    expect(inv.selectedId).toBe("dirt");
     expect(inv.selectStep(-1)).toBe(true);
-    expect(inv.selectedId).toBe("sword");
+    expect(inv.selectedId).toBe("stone");
+    expect(inv.selectStep(-1)).toBe(true);
+    expect(inv.selectedId).toBe("dirt");
+    // wrap backwards
+    expect(inv.selectStep(-1)).toBe(true);
+    expect(inv.selectedId).toBe("wood");
   });
 
   it("selects hotbar slots in order", () => {
     const inv = new Inventory();
+    // set up a simple hotbar
+    inv.setHotbarSlot(0, "dirt");
+    inv.setHotbarSlot(1, "stone");
+    inv.setHotbarSlot(2, "cloud");
+    inv.setHotbarSlot(3, "brick");
+    inv.setHotbarSlot(4, "wood");
     expect(inv.selectSlot(1)).toBe(true);
     expect(inv.selectedId).toBe("stone");
     expect(inv.selectSlot(0)).toBe(true);
     expect(inv.selectedId).toBe("dirt");
     expect(inv.selectSlot(2)).toBe(true);
     expect(inv.selectedId).toBe("cloud");
-    expect(inv.selectSlot(3)).toBe(true);
-    expect(inv.selectedId).toBe("brick");
-    expect(inv.selectSlot(4)).toBe(true);
-    expect(inv.selectedId).toBe("wood");
-    expect(inv.selectSlot(5)).toBe(true);
-    expect(inv.selectedId).toBe("bucket");
-    expect(inv.selectSlot(6)).toBe(true);
-    expect(inv.selectedId).toBe("sword");
-    expect(inv.selectSlot(ITEM_ORDER.length)).toBe(false);
+    expect(inv.selectSlot(HOTBAR_SIZE)).toBe(false);
+  });
+
+  it("setHotbarSlot swaps items between slots", () => {
+    const inv = new Inventory();
+    inv.setHotbarSlot(0, "dirt");
+    inv.setHotbarSlot(1, "stone");
+    // placing stone into slot 0 should swap: stone→0, dirt→1
+    inv.setHotbarSlot(0, "stone");
+    expect(inv.hotbarSlots()[0]).toBe("stone");
+    expect(inv.hotbarSlots()[1]).toBe("dirt");
   });
 
   it("notifies onChange when a count changes", () => {
@@ -113,6 +128,29 @@ describe("Inventory", () => {
     inv.onChange = spy;
     inv.setSelected("sword");
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("notifies onChange when a hotbar slot changes", () => {
+    const inv = new Inventory();
+    const spy = vi.fn();
+    inv.onChange = spy;
+    inv.setHotbarSlot(0, "sword");
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("automatically assigns mined items to blank hotbar slots and selects them", () => {
+    const inv = new Inventory();
+    inv.setHotbarSlot(2, null);
+    inv.setHotbarSlot(3, null);
+    inv.setHotbarSlot(4, null);
+
+    inv.add("cloud", 1);
+    expect(inv.hotbarSlots()[2]).toBe("cloud");
+    expect(inv.selectedId).toBe("cloud");
+
+    inv.add("brick", 1);
+    expect(inv.hotbarSlots()[3]).toBe("brick");
+    expect(inv.selectedId).toBe("brick");
   });
 });
 

@@ -3,33 +3,158 @@
 // each drawn from the rm-stacker model its id wears. Reads a caller-supplied
 // list each frame, so a figure the script host places, turns, or retires
 // appears or disappears to match. Each model file is baked once and shared by
-// every figure wearing it; a figure stands with its feet on the entity's
-// grounded `y`, drawn at whatever height the entity asks for, eased toward
-// its reported `x`/`z` rather than snapped to them (`figure-motion.ts`) since
-// a remote figure's own position can go many frames between reports, and spun
-// about its own axis after `yaw` when the entity names one. A figure a caller
-// flashes plays a moment of red, wholly independent of whatever the script
-// does with the hit; one dying plays a fall over the ground before it is
-// gone, timed off the moment the entity's own `dyingAt` names.
+// every figure wearing it, which is why a figure's look and the block light it
+// is standing in each cost a material set of their own; a figure stands with
+// its feet on the entity's grounded `y`, drawn at whatever height the entity
+// asks for, eased toward its reported `x`/`z` rather than snapped to them
+// (`figure-motion.ts`) since a remote figure's own position can go many frames
+// between reports, and spun about its own axis after `yaw` when the entity
+// names one. A figure whose position the caller already holds exactly says so
+// and is drawn on it rather than eased toward it. A figure a caller flashes
+// plays a moment of red, wholly independent of whatever the script does with
+// the hit; one dying plays a fall over the ground before it is gone, timed off
+// the moment the entity's own `dyingAt` names.
 import { Group, Quaternion, Vector3 } from "@random-mesh/rmsl/scene";
 import type { DayNightState } from "../environment/day-night";
 import {
   BakedFigure,
+  figurePlacement,
+  lastFrame,
+  poseFigure,
   VoxelModelMaterial,
   type Figure,
   type FigureCopy,
+  type FigurePlacement,
+  type Motion,
 } from "@big-mesh-studios/stacker/renderer";
-import { loadFigure } from "@big-mesh-studios/stacker/format";
-import { FigureMotionTrack } from "./figure-motion";
+import {
+  loadFigure,
+  type LoadedFigure,
+} from "@big-mesh-studios/stacker/format";
+import { LIGHT_TO_UNIT, MAX_LIGHT } from "../world/light-store";
+import { FigureMotionTrack, type Position2 } from "./figure-motion";
+import type { FigureAnimation, FigureLook } from "./script-host";
 
 /** How tall a standing figure is drawn when its entity names no height. */
 export const FIGURE_HEIGHT = 2;
+
+/**
+ * The frame of `motion` a figure playing `animation` stands at on the shared
+ * clock: the clock's seconds times the motion's own rate and the animation's
+ * speed, wrapped into the motion's run when it loops.
+ */
+const animatedFrame = (
+  motion: Motion,
+  animation: FigureAnimation,
+  clockMs: number,
+): number =>
+  wrapped(
+    (clockMs / 1000) * motion.framesPerSecond * animation.speed,
+    motion,
+    animation.loop,
+  );
+
+/** A raw frame folded into a motion's run, or held at its start. */
+const wrapped = (raw: number, motion: Motion, loop: boolean): number => {
+  const span = lastFrame(motion) + 1;
+  return loop && span > 0 ? ((raw % span) + span) % span : Math.max(0, raw);
+};
+
+/** Which of a moving figure's own motions it is playing. */
+export type GaitRole = "idle" | "walk" | "run";
+
+/** The role a figure plays when its model carries no motion for the one it asked for. */
+const GAIT_FALLBACK: Record<GaitRole, readonly GaitRole[]> = {
+  idle: [],
+  walk: ["idle"],
+  run: ["walk", "idle"],
+};
+
+/** A figure's own motions, each named by the role it plays. */
+export interface FigureGaitMotions {
+  idle: string;
+  walk: string;
+  run: string;
+}
+
+/** The role a moving figure is playing, and how far through it it stands. */
+export interface FigureGait {
+  role: GaitRole;
+  /** Cycles through the motion, so 1 is one whole stride. */
+  phase: number;
+}
+
+/**
+ * The motion and frame `role` stands at, read off a model's own motions, or
+ * undefined where the model carries none of the roles. A role the model is
+ * missing falls to the one below it that it does carry, so a model with a walk
+ * and no run walks at any speed, and one with no idle stands still rather than
+ * marching on the spot.
+ *
+ * `phase` is in cycles of the chosen motion, so one whole stride lands exactly
+ * on the motion's first key however long its run is. Scaling by the motion's
+ * own frame count rather than its rate is what makes that hold: a clip keyed
+ * 33 frames at 30 a second is 1.1 seconds long, not one second, and counting in
+ * seconds would leave the last stride hanging past the loop.
+ */
+export const gaitPose = (
+  motions: Motion[],
+  names: FigureGaitMotions,
+  role: GaitRole,
+  phase: number,
+): { motion: Motion; frame: number } | undefined => {
+  for (const wanted of [role, ...GAIT_FALLBACK[role]]) {
+    const motion = motions.find((held) => held.name === names[wanted]);
+    if (motion !== undefined) {
+      return {
+        motion,
+        frame: wrapped(phase * (lastFrame(motion) + 1), motion, motion.loop),
+      };
+    }
+  }
+  return undefined;
+};
+
+/**
+ * The motion a figure stands at and the frame of it, or undefined for a figure
+ * in its rest pose. A gait is read off the figure's own speed and named by
+ * `names`; an animation is named outright by a script and sampled off the
+ * shared clock, so two peers watching the same figure see the same pose.
+ */
+const posed = (
+  figure: RenderedFigure,
+  baked: BakedModel,
+  names: FigureGaitMotions | undefined,
+  now: number,
+): { motion: Motion; frame: number } | undefined => {
+  const gait = figure.gait;
+  if (gait !== undefined && names !== undefined) {
+    const found = gaitPose(baked.motions, names, gait.role, gait.phase);
+    if (found !== undefined) {
+      return found;
+    }
+  }
+  const animation = figure.animation;
+  if (animation === undefined) {
+    return undefined;
+  }
+  const motion = baked.motions.find((held) => held.name === animation.name);
+  return motion === undefined
+    ? undefined
+    : { motion, frame: animatedFrame(motion, animation, now) };
+};
 
 /** How long a dying figure takes to fall flat, in seconds. */
 const DEATH_FALL_SECONDS = 0.5;
 
 /** How long a hit figure is drawn flashed red for, in milliseconds. */
 const HURT_FLASH_MS = 180;
+
+/** What a look comes to as a string, so an identical one finds its set again. */
+const lookSignature = (look: FigureLook | undefined): string =>
+  look === undefined
+    ? ""
+    : `${look.color[0].toFixed(3)},${look.color[1].toFixed(3)},${look.color[2].toFixed(3)}|${look.alpha.toFixed(3)}`;
 
 /** What the renderer needs to know about one figure, whatever provides it. */
 export interface RenderedFigure {
@@ -43,13 +168,39 @@ export interface RenderedFigure {
   /** Drawn height in world units; defaults to `FIGURE_HEIGHT`. */
   height?: number;
   /**
+   * Whether the drawn position eases toward the position this figure was last
+   * given, or stands exactly on the one it is given now. Absent eases, which is
+   * what a figure a script step or a network broadcast places wants: its
+   * reported position can be many frames old, and drawing it on the last report
+   * alone would make it step between them. A figure the world owns outright —
+   * a player's own worn model, a level editor's placement — reports a position
+   * that is already current, and easing it only makes it trail or sail past
+   * the body it is drawn on.
+   */
+  eased?: boolean;
+  /**
    * The clock moment this figure started falling, or undefined while it is
    * standing — the renderer times the fall from this rather than owning any
    * notion of death itself.
    */
   dyingAt?: number;
-  /** A spin about a world axis, applied after `yaw`; absent when it does not spin. */
-  spin?: { axis: [number, number, number]; angle: number };
+  /**
+   * A spin about a world axis, applied after `yaw`; absent when it does not
+   * spin. `pivot`, when set, is the hinge the figure turns about — an offset
+   * from its feet-centre origin in its own frame, before `yaw` — so a door
+   * swings on its edge instead of about its middle.
+   */
+  spin?: {
+    axis: [number, number, number];
+    angle: number;
+    pivot?: [number, number, number];
+  };
+  /** The model motion the figure plays, or absent when it stands in its rest pose. */
+  animation?: FigureAnimation;
+  /** The locomotion motion a moving figure plays, and how far through it. */
+  gait?: FigureGait;
+  /** The tint and fade over the figure's colours, or absent for its model's own. */
+  look?: FigureLook;
 }
 
 /** The upright box the crosshair ray tests a figure against, in world units. */
@@ -61,13 +212,34 @@ export interface FigureAimBox {
 
 interface BakedModel {
   baked: BakedFigure;
-  materials: VoxelModelMaterial[];
-  /** The same figure, wholly flashed red, worn while a hit is still fresh. */
-  flashMaterials: VoxelModelMaterial[];
+  /**
+   * The material sets one combination of look and light has needed, keyed by
+   * their signature. A look and a light level are both uniforms on the
+   * material, and the model has one shared set that carries every other
+   * figure, so a figure asking for either wears a set of its own. Made as each
+   * combination is first drawn rather than up front, because a place's figures
+   * rarely all stand in the same light.
+   */
+  sets: Map<string, FigureMaterials>;
   /** Voxels the model is tall; the divisor turning a world height into a scale. */
   modelHeight: number;
   /** Half the model's widest horizontal extent relative to its height. */
   halfRatio: number;
+  /** The figure as it was drawn, for posing it at an animated frame. */
+  figure: Figure;
+  /** The motions saved beside the figure, by name. */
+  motions: Motion[];
+  /** Where every part stands unposed, to restore a copy an animation stopped on. */
+  restPlacement: FigurePlacement;
+}
+
+/** One such set: a figure as it stands, and the same figure wholly flashed red. */
+interface FigureMaterials {
+  /** The look and light level the set was made for, so a hit can be made to match them. */
+  look: FigureLook | undefined;
+  level: number;
+  worn: VoxelModelMaterial[];
+  flash?: VoxelModelMaterial[];
 }
 
 export interface VoxelFiguresParams {
@@ -75,28 +247,63 @@ export interface VoxelFiguresParams {
   getFigures: () => Iterable<RenderedFigure>;
   /** Which model file a figure with `id` wears, named as it is bundled. */
   modelFor?: (id: string) => string;
+  /**
+   * The block light standing at a world point, 0 to 15, so a figure is shaded
+   * by the glowstone and lava around it rather than by the sun alone. Read once
+   * per figure per frame, where it stands; defaults to a world with nothing
+   * emissive in it.
+   */
+  lightAt?: (x: number, y: number, z: number) => number;
+  /**
+   * The shared clock an animation is sampled from, in milliseconds. Every peer
+   * passes the same one, so a figure posed at a frame stands the same way
+   * wherever it is drawn. Defaults to the wall clock for a lone caller.
+   */
+  getNow?: () => number;
+  /**
+   * The locomotion motions the model file `model` carries, by the role each
+   * plays, or undefined for a model that is not a walking figure. A figure
+   * reporting a gait on a model with no answer stands in its rest pose.
+   */
+  gaitMotions?: (model: string) => FigureGaitMotions | undefined;
 }
 
 export class VoxelFigures {
   readonly group = new Group();
   private readonly getFigures: () => Iterable<RenderedFigure>;
   private readonly modelFor: (id: string) => string;
+  private readonly lightAt: (x: number, y: number, z: number) => number;
+  private readonly getNow: () => number;
+  private readonly gaitMotions: (
+    model: string,
+  ) => FigureGaitMotions | undefined;
   private readonly baked = new Map<string, BakedModel>();
   private readonly meshes = new Map<string, FigureCopy>();
+  /** Figures whose copy is currently stood at an animated pose, not at rest. */
+  private readonly animated = new Set<string>();
   /** The drawn height each figure's aim box and copy were last given. */
   private readonly heights = new Map<string, number>();
   /** Ids currently flashing red, with the local moment the flash ends. */
   private readonly hurtUntil = new Map<string, number>();
-  /** Where each standing figure is actually drawn, eased toward its reports. */
+  /**
+   * The eased position of each standing figure that eases, one track per id.
+   * A figure drawn exactly is in none of them.
+   */
   private readonly motion = new Map<string, FigureMotionTrack>();
   /** Scratch for the per-figure orientation, so drawing a frame allocates none. */
   private readonly spinAxis = new Vector3();
   private readonly upAxis = new Vector3(0, 1, 0);
   private readonly yawTurn = new Quaternion();
+  /** Scratch for holding a hinged figure's pivot still while it turns. */
+  private readonly pivotWorld = new Vector3();
+  private readonly pivotSpin = new Vector3();
 
   constructor(params: VoxelFiguresParams) {
     this.getFigures = params.getFigures;
     this.modelFor = params.modelFor ?? (() => "zombie.zip");
+    this.lightAt = params.lightAt ?? (() => 0);
+    this.getNow = params.getNow ?? (() => Date.now());
+    this.gaitMotions = params.gaitMotions ?? (() => undefined);
   }
 
   /** Number of figures currently drawn in the scene. */
@@ -104,28 +311,39 @@ export class VoxelFigures {
     return this.meshes.size;
   }
 
-  /** Makes every figure of `model` wear `figure`, rebaking any already drawn. */
-  setFigure(model: string, figure: Figure): void {
+  /**
+   * Makes every figure of `model` wear it, with the motions its file saved
+   * beside it, rebaking any already drawn. The figure and its motions arrive
+   * as one `LoadedFigure` because a `LoadedFigure` also answers to a plain
+   * `Figure` — handing over the figure alone would compile and leave the model
+   * with nothing to play, and a model with nothing to play is a figure that
+   * stands still however it is moved.
+   */
+  setFigure(model: string, loaded: LoadedFigure): void {
+    const figure: Figure = {
+      parts: loaded.parts,
+      palette: loaded.palette,
+    };
+    const motions = loaded.motions;
     const baked = new BakedFigure(figure);
     const modelHeight = baked.size.height;
     const { width, depth } = baked.bounds.dimensions;
-    const flashMaterials = baked.createMaterials();
-    for (const material of flashMaterials) {
-      material.flash = 1;
-    }
     this.baked.set(model, {
       baked,
-      materials: baked.createMaterials(),
-      flashMaterials,
       modelHeight,
       halfRatio:
         modelHeight > 0 ? (0.5 * Math.max(width, depth)) / modelHeight : 0,
+      figure,
+      motions,
+      restPlacement: figurePlacement(figure),
+      sets: new Map(),
     });
     for (const [id, mesh] of this.meshes) {
       if (this.modelFor(id) === model) {
         this.group.remove(mesh.group);
         this.meshes.delete(id);
         this.heights.delete(id);
+        this.animated.delete(id);
       }
     }
   }
@@ -157,7 +375,7 @@ export class VoxelFigures {
     return { half: baked.halfRatio * height, height };
   }
 
-  /** Feeds the day-night lighting into the shared materials of every model. */
+  /** Feeds the day-night lighting into every material set any of its models has made. */
   applyLighting(state: DayNightState): void {
     const sunDir: [number, number, number] = [
       state.sunDir[0],
@@ -174,11 +392,18 @@ export class VoxelFigures {
       state.ambient[1],
       state.ambient[2],
     ];
-    for (const { materials, flashMaterials } of this.baked.values()) {
-      for (const material of [...materials, ...flashMaterials]) {
-        material.lightDir = sunDir;
-        material.lightColour = sunLight;
-        material.ambientColour = ambient;
+    /** Hands one material the sun's direction and both of the day's colours. */
+    const lit = (material: VoxelModelMaterial): void => {
+      material.lightDir = sunDir;
+      material.lightColour = sunLight;
+      material.ambientColour = ambient;
+    };
+    for (const { sets } of this.baked.values()) {
+      for (const { worn, flash } of sets.values()) {
+        worn.forEach(lit);
+        // A set made for a hit is only worn alongside one of these, so it
+        // stands or falls with the set beside it.
+        flash?.forEach(lit);
       }
     }
   }
@@ -196,22 +421,38 @@ export class VoxelFigures {
       }
       const height = figure.height ?? FIGURE_HEIGHT;
       this.heights.set(figure.id, height);
+      // Sampled where the figure is reported to stand, at the height its mesh
+      // is centred on, so a figure that walks out from under a fitting is
+      // relit on the frame it steps out.
+      const materials = this.materialsFor(
+        baked,
+        figure.look,
+        this.lightAt(figure.x, figure.y + height / 2, figure.z),
+      );
       let mesh = this.meshes.get(figure.id);
       if (mesh === undefined) {
-        mesh = baked.baked.copy(baked.materials);
+        mesh = baked.baked.copy(materials.worn);
         this.group.add(mesh.group);
         this.meshes.set(figure.id, mesh);
+      }
+      // A figure that moves itself is playing a gait and a script that names a
+      // motion is playing an animation; a gait wins, since it is what the
+      // figure's own speed says it is doing.
+      const pose = posed(figure, baked, this.gaitMotions(model), this.getNow());
+      if (pose !== undefined) {
+        mesh.stand(
+          figurePlacement(poseFigure(baked.figure, pose.motion, pose.frame)),
+        );
+        this.animated.add(figure.id);
+      } else if (this.animated.delete(figure.id)) {
+        // It was playing a motion and now is not: stand it back at rest.
+        mesh.stand(baked.restPlacement);
       }
       const scale = height / baked.modelHeight;
       mesh.group.scale.set(scale, scale, scale);
       const yaw = figure.yaw ?? 0;
       if (figure.dyingAt === undefined) {
-        let track = this.motion.get(figure.id);
-        if (track === undefined) {
-          track = new FigureMotionTrack({ x: figure.x, z: figure.z }, now);
-          this.motion.set(figure.id, track);
-        }
-        const drawn = track.next({ x: figure.x, z: figure.z }, now, dt);
+        const drawn = this.drawnAt(figure, now, dt);
         mesh.group.position.set(drawn.x, figure.y + height / 2, drawn.z);
         if (figure.spin === undefined) {
           mesh.group.rotation.set(0, yaw, 0);
@@ -227,6 +468,19 @@ export class VoxelFigures {
           );
           this.yawTurn.setFromAxisAngle(this.upAxis, yaw);
           mesh.group.quaternion.multiply(this.yawTurn);
+          const pivot = figure.spin.pivot;
+          if (pivot !== undefined) {
+            // Shift the group so the hinge, not the model's middle, is the
+            // fixed point: the point turns to `spin * yaw * pivot`, so the
+            // group moves by the difference between that and where the pivot
+            // already stood.
+            this.pivotWorld
+              .set(pivot[0], pivot[1], pivot[2])
+              .applyQuaternion(this.yawTurn);
+            this.pivotSpin.copy(this.pivotWorld);
+            this.pivotSpin.applyQuaternion(mesh.group.quaternion);
+            mesh.group.position.add(this.pivotWorld.sub(this.pivotSpin));
+          }
         }
       } else {
         // Tips backward about the feet, the same arc a player's own death
@@ -246,13 +500,15 @@ export class VoxelFigures {
         mesh.group.rotation.set(fall, yaw, 0);
       }
       // A recently hit figure draws with the flashed materials until its
-      // flash lapses; a flash that has lapsed is forgotten rather than
-      // re-tested next frame.
+      // flash lapses, then falls back to its own set — a flash that has lapsed
+      // is forgotten rather than re-tested next frame. The flashed set is keyed
+      // by the same look and light as the one it replaces, so hitting a figure
+      // does not also move it out of the light it is standing in.
       if ((this.hurtUntil.get(figure.id) ?? 0) > now) {
-        mesh.wear(baked.flashMaterials);
+        mesh.wear(this.flashed(baked, materials));
       } else {
-        mesh.wear(baked.materials);
         this.hurtUntil.delete(figure.id);
+        mesh.wear(materials.worn);
       }
     }
     for (const [id, mesh] of this.meshes) {
@@ -262,8 +518,93 @@ export class VoxelFigures {
         this.heights.delete(id);
         this.hurtUntil.delete(id);
         this.motion.delete(id);
+        this.animated.delete(id);
       }
     }
+  }
+
+  /**
+   * Where `figure` is drawn this frame: on the position it was given when that
+   * is exact, and eased toward it when it is a report a step or a broadcast may
+   * be many frames old. A figure drawn exactly keeps no track, so it has no
+   * last velocity of its own to carry it past where it stands.
+   */
+  private drawnAt(figure: RenderedFigure, now: number, dt: number): Position2 {
+    if (figure.eased === false) {
+      return { x: figure.x, z: figure.z };
+    }
+    let track = this.motion.get(figure.id);
+    if (track === undefined) {
+      track = new FigureMotionTrack({ x: figure.x, z: figure.z }, now);
+      this.motion.set(figure.id, track);
+    }
+    return track.next({ x: figure.x, z: figure.z }, now, dt);
+  }
+
+  /**
+   * The material set a figure wearing `look` and standing in `level` of block
+   * light draws with, made once per distinct combination.
+   */
+  private materialsFor(
+    baked: BakedModel,
+    look: FigureLook | undefined,
+    level: number,
+  ): FigureMaterials {
+    const signature = `${lookSignature(look)}|${level}`;
+    const existing = baked.sets.get(signature);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const entry: FigureMaterials = {
+      look,
+      level,
+      worn: this.buildSet(baked, look, level),
+    };
+    baked.sets.set(signature, entry);
+    return entry;
+  }
+
+  /**
+   * The set the same figure wears wholly flashed red, made the first time a
+   * figure in this combination of look and light is hit — a place nobody hits
+   * never pays for a second set it will not draw.
+   */
+  private flashed(
+    baked: BakedModel,
+    entry: FigureMaterials,
+  ): VoxelModelMaterial[] {
+    if (entry.flash === undefined) {
+      const flash = this.buildSet(baked, entry.look, entry.level);
+      for (const material of flash) {
+        material.flash = 1;
+      }
+      entry.flash = flash;
+    }
+    return entry.flash;
+  }
+
+  /**
+   * A set of materials for one part each, carrying the tint and opacity of
+   * `look` and the normalized `level` of block light the figure stands in.
+   */
+  private buildSet(
+    baked: BakedModel,
+    look: FigureLook | undefined,
+    level: number,
+  ): VoxelModelMaterial[] {
+    const set = baked.baked.createMaterials();
+    const blockLight = LIGHT_TO_UNIT(Math.min(Math.max(level, 0), MAX_LIGHT));
+    for (const material of set) {
+      material.blockLight = blockLight;
+      if (look !== undefined) {
+        material.tint = [look.color[0], look.color[1], look.color[2]];
+        material.alpha = look.alpha;
+        if (look.alpha < 1) {
+          material.transparent = true;
+        }
+      }
+    }
+    return set;
   }
 
   /** Removes every figure's meshes. */
@@ -275,5 +616,6 @@ export class VoxelFigures {
     this.heights.clear();
     this.hurtUntil.clear();
     this.motion.clear();
+    this.animated.clear();
   }
 }

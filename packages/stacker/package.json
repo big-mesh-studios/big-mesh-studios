@@ -13,7 +13,11 @@
   "exports": {
     "./renderer": "./src/renderer.ts",
     "./format": "./src/format.ts",
-    "./lexicon": "./src/lexicon.ts"
+    "./lexicon": "./src/lexicon.ts",
+    "./volume": "./src/volume.ts",
+    "./cvox": "./src/cvox.ts",
+    "./mesh": "./src/mesh/index.ts",
+    "./print": "./src/print/index.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",

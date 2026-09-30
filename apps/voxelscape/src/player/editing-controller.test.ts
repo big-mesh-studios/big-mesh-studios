@@ -127,6 +127,34 @@ describe("EditingController fluid operations (the bucket)", () => {
   });
 });
 
+describe("EditingController.fill", () => {
+  it("writes an inclusive box once, records, and reports the count", () => {
+    const h = makeHarness();
+    const count = h.controller.fill(wv(30, 30, 30), wv(33, 33, 33), VOXEL_DIRT);
+    expect(count).toBe(64);
+    expect(h.layer.get(wv(30, 30, 30))?.id).toBe(VOXEL_DIRT);
+    expect(h.layer.get(wv(33, 33, 33))?.id).toBe(VOXEL_DIRT);
+    expect(h.onEditRecorded).toHaveBeenCalledTimes(1);
+    expect(h.onEdit).toHaveBeenCalled();
+  });
+
+  it("clears an inclusive box to air", () => {
+    const h = makeHarness();
+    expect(h.controller.fill(wv(30, 30, 30), wv(30, 30, 30), VOXEL_AIR)).toBe(
+      1,
+    );
+    expect(h.layer.get(wv(30, 30, 30))?.id).toBe(VOXEL_AIR);
+  });
+
+  it("skips voxels no loaded block covers", () => {
+    const h = makeHarness();
+    expect(
+      h.controller.fill([-100, -100, -100], [-99, -99, -99], VOXEL_DIRT),
+    ).toBe(0);
+    expect(h.onEditRecorded).not.toHaveBeenCalled();
+  });
+});
+
 describe("EditingController.breakBlock", () => {
   it("breaks a collectable voxel into the inventory as dirt", () => {
     const h = makeHarness();

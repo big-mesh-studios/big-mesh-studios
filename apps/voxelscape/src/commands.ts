@@ -7,6 +7,7 @@ import type { DayNightController } from "./environment/day-night-controller";
 import type { SoundController } from "./environment/sound-controller";
 import type { WeatherController } from "./environment/weather-controller";
 import type { MultiplayerController } from "./multiplayer/multiplayer-controller";
+import { AVATAR_KINDS } from "./player/avatars";
 import type { PlayerHealth } from "./player/health";
 import type { AdaptiveResolution } from "./render/adaptive";
 import type { PlaceLibrary, PlacePublisher } from "./atproto/places";
@@ -168,6 +169,7 @@ export interface CommandsParams {
   togglePlaceEditor: () => string;
   /** Opens whether the level editor is showing, and reports the flip. */
   toggleLevelEditor: () => string;
+  togglePlaceDocs: () => string;
   /** Driving the place script loaded for this session, over the console. */
   script: {
     demo(): Promise<string>;
@@ -181,6 +183,11 @@ export interface CommandsParams {
   setView: (mode: "first" | "third") => string;
   /** Shows or hides the player cube (hidden in first person). */
   setPlayerVisible: (visible: boolean) => string;
+  /**
+   * Draws the player as one of the world's avatars, or reports which one they
+   * are drawn as when `kind` is omitted.
+   */
+  setAvatar: (kind?: string) => string;
   /** Sets the player's move speed (units/sec), or reports it if `n` is omitted. */
   setMoveSpeed: (n?: number) => string;
   /** Sets the look sensitivity (radians/pixel), or reports it if `n` is omitted. */
@@ -300,10 +307,12 @@ export const createCommands = ({
   navigate,
   togglePlaceEditor,
   toggleLevelEditor,
+  togglePlaceDocs,
   script,
   resolution,
   setView,
   setPlayerVisible,
+  setAvatar,
   setMoveSpeed,
   setLookSensitivity,
   setFlying,
@@ -640,6 +649,11 @@ export const createCommands = ({
         return "usage: /player:cube show|hide";
       },
     },
+    "/player:avatar": {
+      description: "choose which avatar the player is drawn as",
+      args: AVATAR_KINDS.join("|"),
+      run: (rest) => setAvatar(rest[0]),
+    },
     "/player:speed": {
       description: "set (or show) the player's move speed, in units per second",
       args: "[n]",
@@ -741,6 +755,11 @@ export const createCommands = ({
     "/place:editor": {
       description: "open (or close) the place script editor",
       run: () => togglePlaceEditor(),
+    },
+    "/place:docs": {
+      description:
+        "open (or close) the place reference: every function, effect, fact, and bound",
+      run: () => togglePlaceDocs(),
     },
     "/place:level-editor": {
       description:

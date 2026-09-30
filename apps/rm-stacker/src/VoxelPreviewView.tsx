@@ -1,9 +1,10 @@
-import { Matrix3x3, Vector2D, Vector3D } from "@big-mesh-studios/maths";
+import { Bitmap, Matrix3x3, Vector2D, Vector3D } from "@big-mesh-studios/maths";
 import {
   applyFraming,
   composeRoot,
-  FigureMeshes,
   figurePlacement,
+  MeshFigureMeshes,
+  partDimensions,
   turnAngles,
   turnMatrix,
   voxelReach,
@@ -42,7 +43,24 @@ import { Command } from "./command/Command";
 import { StackerContext } from "./context";
 import { CutPlane } from "./cut-plane";
 import { DebugPlanes } from "./debug-planes";
+import {
+  createFlyCamera,
+  flightEntry,
+  flightReach,
+  flightExtent,
+  lookDirection,
+  orbitFromFlyCamera,
+  stepFlyCamera,
+  type FlyCamera,
+} from "./fly-camera";
 import { createFigurePicking } from "./picking/figure-picking";
+import {
+  crosshairOf,
+  pickCrosshair,
+  type FlyNormal,
+  type FlyPick,
+} from "./picking/fly-picker";
+import type { FlySnapshot } from "./fly-input";
 import {
   radiansDragged,
   ringUnderPointer,
@@ -53,7 +71,7 @@ import {
   FAR,
   FOV,
   framedVoxelSize,
-  lightFigure,
+  lightMeshFigure,
   NEAR,
   rotateFigure,
 } from "./voxel-preview-scene";
@@ -92,6 +110,13 @@ const TAP_HELD = 300;
 const RADIANS_PER_PIXEL = 0.005;
 const PITCH_LIMIT = Math.PI / 2 - 0.01;
 
+/**
+ * How far in front of a camera in flight the near plane stands, in voxels. The
+ * camera can be inside the figure, and a near plane a whole world unit out
+ * would cut a hole straight through it at the camera's own face.
+ */
+const FLY_NEAR_IN_VOXELS = 0.05;
+
 const pinchSpan = ([a, b]: Iterable<PointerEvent> = []) => {
   if (a === undefined || b === undefined) {
     return undefined;
@@ -101,13 +126,21 @@ const pinchSpan = ([a, b]: Iterable<PointerEvent> = []) => {
 
 const VoxelPreviewView: Component = () => {
   const {
+    parts,
     posedFigure,
     posedPart,
     selectedPart,
     selectPart,
     solvedParts,
+    onGeometryChange,
     palette,
     preview,
+    flying,
+    flyInput,
+    setCrosshair,
+    editVoxel,
+    selectedPaletteIndex,
+    undoRedoManager,
     doCommand,
     pushUndo,
     figureLoads,
@@ -118,6 +151,9 @@ const VoxelPreviewView: Component = () => {
   let yaw = Math.PI / 4;
   let pitch = Math.PI / 6;
   let radius = 3;
+
+  /** The camera in flight, or undefined while the turntable has the figure. */
+  let fly: FlyCamera | undefined;
 
   let timeOffset = 0;
   let spinOffset = 0;
@@ -152,7 +188,7 @@ const VoxelPreviewView: Component = () => {
   const framed = new Group();
   turntable.add(framed);
 
-  const meshes = new FigureMeshes();
+  const meshes = new MeshFigureMeshes();
   framed.add(meshes.group);
 
   // Added after the meshes, so a plane standing among a part's voxels is drawn
@@ -184,12 +220,15 @@ const VoxelPreviewView: Component = () => {
    *
    * The root stays where it is however the parts are moved, so a part carried
    * away from the others moves that part alone and leaves the rest of the
-   * figure standing still under the pointer.
+   * figure standing still under the pointer. A camera in flight is held at the
+   * root whatever the focus says, because the figure moves under a camera that
+   * is inside it: following the selection would carry the whole figure out from
+   * under the crosshair as soon as it selected a part of its own.
    */
   const focus = createMemo(() =>
-    preview.focus() === "part"
-      ? composeRoot(posedFigure(), posedPart())
-      : Vector3D.EMPTY,
+    flying() || preview.focus() !== "part"
+      ? Vector3D.EMPTY
+      : composeRoot(posedFigure(), posedPart()),
   );
 
   /** How the figure's voxels are drawn in the world the camera stands in. */
@@ -197,6 +236,17 @@ const VoxelPreviewView: Component = () => {
     focus: focus(),
     voxelSize: voxelSize(),
   }));
+
+  /**
+   * How far the figure reaches from the point it is turned about, in voxels.
+   *
+   * Both how far off a camera in flight opens and how far its crosshair reaches
+   * are measured against it, so that a figure however large it is drawn is
+   * worked on from outside rather than only at its near corners.
+   */
+  const figureReach = createMemo(() =>
+    voxelReach(posedFigure(), solvedParts(), Vector3D.EMPTY),
+  );
 
   /**
    * Draws the figure at the size that brings the whole of it into the view,
@@ -265,8 +315,18 @@ const VoxelPreviewView: Component = () => {
   const handleTurn = () =>
     preview.handleAxes() === "part" ? posedPart().turn : Vector3D.EMPTY;
 
-  /** The handles standing at the part being drawn on, whichever set it is. */
+  /**
+   * The handles standing at the part being drawn on, whichever set it is.
+   *
+   * A camera in flight is inside the figure, and the handles stand at the
+   * middle of the turntable the flight took away — so there is nothing there to
+   * take hold of, and what is stood on the figure is not what a drag would move.
+   */
   function standingWidget() {
+    if (fly !== undefined) {
+      return undefined;
+    }
+
     switch (preview.handles()) {
       case "move":
         return moveWidget;
@@ -503,9 +563,19 @@ const VoxelPreviewView: Component = () => {
   }
 
   async function handlePointer(
-    initialEvent: PointerEvent & { currentTarget: HTMLElement },
+    initialEvent: PointerEvent & { currentTarget: HTMLCanvasElement },
   ) {
     const element = initialEvent.currentTarget;
+
+    // A press on the canvas while a camera is in flight is the flight's own: it
+    // takes the pointer lock the first time, and after that places a voxel or
+    // takes one away. None of the turntable's own presses — an arm, a ring, a
+    // tap to select — mean anything to a camera that is inside the figure.
+    if (fly !== undefined) {
+      void flyInput.canvasHandlers.onPointerDown(initialEvent);
+      return;
+    }
+
     const initialPointerCount = getPointerSize(element);
 
     if (initialPointerCount === 0) {
@@ -598,7 +668,16 @@ const VoxelPreviewView: Component = () => {
     <canvas
       class={styles.canvas}
       onPointerDown={handlePointer}
+      // Both are the flight's own and do nothing while the turntable has the
+      // figure, so they are bound for the canvas's whole life rather than
+      // swapped in and out as the mode changes.
+      onMouseMove={flyInput.canvasHandlers.onMouseMove}
+      onPointerUp={flyInput.canvasHandlers.onPointerUp}
       onWheel={(event) => {
+        if (fly !== undefined) {
+          return;
+        }
+
         const sign = Math.sign(event.deltaY);
         radius = Math.min(MAX_RADIUS, radius * Math.pow(1.1, sign));
       }}
@@ -614,35 +693,199 @@ const VoxelPreviewView: Component = () => {
   // shows through the pixels no voxel ray lands on.
   renderer.setClearColor(0x000000, 0);
 
-  const render = () => {
-    if (untrack(preview.autorotate) && !isDraggingWidget) {
-      spin =
-        ((performance.now() - timeOffset) / 1000) *
-          TURNTABLE_RADIANS_PER_SECOND +
-        spinOffset;
+  /**
+   * What the frame's presses do to the part the crosshair is over.
+   *
+   * The left button puts a voxel down against the face looked at, or takes one
+   * away where the eraser is up, and the right button takes one away either way —
+   * which is the arrangement a hand already knows from building things out of
+   * cubes, and it means both of them are useful without reaching for a toolbar.
+   *
+   * Each press is one voxel and so is one thing to take back: a run of them put
+   * down by holding the button down is undone a voxel at a time, which is the
+   * only way to say which of them was the mistake.
+   *
+   * @param met What the crosshair is over, or undefined where it is over nothing.
+   * @param input The frame's edges, already drained.
+   */
+  function editAtCrosshair(met: FlyPick | undefined, input: FlySnapshot): void {
+    if (met === undefined) {
+      return;
     }
-    rotateFigure(turntable, yaw, pitch, spin);
 
-    lightFigure(meshes, untrack(preview.unlit));
+    // A part is edited through the crosshair rather than through the panels, so
+    // the part being looked at is the part being drawn on: coming back to the
+    // panels leaves them on what was being worked on.
+    if (untrack(selectedPart).name !== met.part) {
+      selectPart(met.part);
+    }
 
-    // The handles stand inside the figure, turned by the same turntable, so
-    // they stay pointing along the axes a drag works along.
-    standingWidget()?.place(untrack(selectedRoot), radius, untrack(handleTurn));
+    const at = (cell: FlyNormal): Vector3D =>
+      Vector3D.create(cell[0], cell[1], cell[2]);
+    const drawn = untrack(selectedPaletteIndex);
 
-    camera.position.set(0, 0, radius);
+    if (input.place) {
+      if (drawn === Bitmap.EMPTY) {
+        editVoxel(met.part, at(met.voxel), Bitmap.EMPTY);
+        return;
+      }
+
+      // A face on the part's own edge has no cell outside the box to grow into,
+      // so there is nowhere for a voxel to be put against it.
+      if (met.face?.place !== undefined) {
+        editVoxel(met.part, at(met.face.place), drawn);
+      }
+    }
+
+    if (input.remove) {
+      editVoxel(met.part, at(met.voxel), Bitmap.EMPTY);
+    }
+  }
+
+  const render = (dt: number) => {
+    if (fly === undefined) {
+      if (untrack(preview.autorotate) && !isDraggingWidget) {
+        spin =
+          ((performance.now() - timeOffset) / 1000) *
+            TURNTABLE_RADIANS_PER_SECOND +
+          spinOffset;
+      }
+      rotateFigure(turntable, yaw, pitch, spin);
+
+      // The handles stand inside the figure, turned by the same turntable, so
+      // they stay pointing along the axes a drag works along.
+      standingWidget()?.place(
+        untrack(selectedRoot),
+        radius,
+        untrack(handleTurn),
+      );
+
+      camera.position.set(0, 0, radius);
+    } else {
+      // The turntable is left unturned while a camera flies, so the figure
+      // stands where the framing puts it and the camera looks about freely.
+      const input = flyInput.consume();
+
+      stepFlyCamera(fly, input, dt);
+
+      const look = lookDirection(fly);
+      const { x, y, z } = fly.position;
+
+      camera.position.set(x, y, z);
+      camera.lookAt(x + look.x, y + look.y, z + look.z);
+
+      // The crosshair is read after the camera has moved, so what it is over is
+      // what this frame draws under it rather than where the figure was when the
+      // last one was read.
+      const met = pickCrosshair({
+        solved: untrack(solvedParts),
+        placements: untrack(placement).placements,
+        origin: fly.position,
+        direction: look,
+        reach: flightReach(untrack(figureReach)),
+        voxelSize: untrack(voxelSize),
+        focus: Vector3D.EMPTY,
+      });
+
+      setCrosshair(crosshairOf(met));
+      editAtCrosshair(met, input);
+
+      // A camera in flight holds the pointer, so the history is reached from the
+      // keys rather than from a button that cannot be pressed.
+      if (input.undo) {
+        undoRedoManager.undo();
+      }
+
+      if (input.redo) {
+        undoRedoManager.redo();
+      }
+    }
+
+    lightMeshFigure(meshes, untrack(preview.unlit));
+
+    // Whatever a change has left out of date is built before the frame is drawn,
+    // and only for as long as the budget allows, so a large model fills in over
+    // the frames after it is opened rather than holding one of them up.
+    meshes.drain(untrack(solvedParts));
 
     renderer.render(scene, camera);
   };
 
-  createEffect(preview.handles, (handles) => {
-    moveWidget.visible = handles === "move";
-    sizeWidget.visible = handles === "size";
-    turnWidget.visible = handles === "turn";
+  createEffect(
+    () => [preview.handles(), flying()] as const,
+    ([handles, inFlight]) => {
+      const standing = inFlight ? "none" : handles;
+      moveWidget.visible = standing === "move";
+      sizeWidget.visible = standing === "size";
+      turnWidget.visible = standing === "turn";
+    },
+  );
+
+  // A camera in flight stands where the turntable's camera stood and looks back
+  // at the figure, so the two views are one view with the turning taken away
+  // rather than two. Coming back the other way reads the camera's own place and
+  // builds a turntable to match it, which is what makes leaving flight land on
+  // the view that was just flown around rather than on the one it set off from.
+  createEffect(flying, (inFlight) => {
+    if (!inFlight) {
+      if (fly === undefined) {
+        return;
+      }
+
+      const back = orbitFromFlyCamera(fly);
+
+      yaw = back.yaw;
+      pitch = back.pitch;
+      radius = Math.min(MAX_RADIUS, back.radius);
+      spin = 0;
+      spinOffset = 0;
+      timeOffset = performance.now();
+      fly = undefined;
+
+      // Whatever the crosshair was over belonged to a view that has gone.
+      setCrosshair(undefined);
+
+      // A flight put down through the toolbar while the pointer was still held
+      // would otherwise leave the cursor captured over the panels, where there
+      // is nothing to click.
+      if (flyInput.pointerLocked()) {
+        void document.exitPointerLock?.();
+      }
+
+      return;
+    }
+
+    const voxels = voxelSize();
+
+    fly = createFlyCamera({
+      heading: yaw + spin,
+      pitch,
+      distance: flightEntry(untrack(figureReach), radius, voxels),
+      voxelSize: voxels,
+      extent: flightExtent(placement().size, voxels),
+    });
+
+    // The turntable is only ever held unturned while a camera is in flight, so
+    // the figure is drawn the way the turntable was last seen only until the
+    // first frame of it.
+    rotateFigure(turntable, 0, 0, 0);
   });
 
   createEffect(framing, (framing) => {
     applyFraming(framed, framing);
   });
+
+  // The near plane a turntable needs is set by how big the figure is drawn,
+  // which is what keeps a camera outside it from seeing through the figure's
+  // own far side. A camera in flight is measured against the figure instead,
+  // since it is inside it.
+  createEffect(
+    () => [flying(), voxelSize()] as const,
+    ([inFlight, voxels]) => {
+      camera.near = inFlight ? voxels * FLY_NEAR_IN_VOXELS : NEAR;
+      camera.updateProjectionMatrix();
+    },
+  );
 
   // The plane follows the knife: it stands through the part being drawn on
   // wherever the cut in hand would divide it, and is nowhere at all while no
@@ -683,7 +926,10 @@ const VoxelPreviewView: Component = () => {
   // size alone, so drawing on a part or moving one does not resize what is
   // under the pointer. The drawing is tracked as well as the count of loads,
   // because the model kept in the browser is restored after the first run and
-  // there is nothing to measure until it arrives.
+  // there is nothing to measure until it arrives. A camera in flight is fitted
+  // against the turntable's distance, which is not the distance anything is
+  // measuring once the turntable is gone, so a change to the figure leaves the
+  // size it was entered at.
   let fittedFor = -1;
   createEffect(
     () =>
@@ -693,9 +939,10 @@ const VoxelPreviewView: Component = () => {
         solvedParts(),
         focus(),
         preview.autoframe(),
+        flying(),
       ] as const,
-    ([loads, , , , autoframe]) => {
-      if (!autoframe && loads === fittedFor) {
+    ([loads, , , , autoframe, inFlight]) => {
+      if (inFlight || (!autoframe && loads === fittedFor)) {
         return;
       }
 
@@ -705,11 +952,40 @@ const VoxelPreviewView: Component = () => {
   );
 
   createEffect(
-    () => [posedFigure(), solvedParts(), placement()] as const,
-    ([figure, solvedParts, placement]) => {
-      meshes.sync(figure, solvedParts, placement);
+    () => [posedFigure(), placement()] as const,
+    ([figure, placement]) => {
+      // Stands every part's chunks where the figure has it. A pose reaches this
+      // and nothing else: the part is somewhere else with the same drawings, and
+      // the triangles are the ones it was already drawn with.
+      meshes.place(figure, placement);
     },
   );
+
+  // A change to a drawing is a change to the volume built from it and to the
+  // triangles built from that, so the store says which parts it reached and the
+  // chunks holding those parts are marked for rebuilding.
+  onSettled(() =>
+    onGeometryChange((changed) => {
+      if ("everything" in changed) {
+        meshes.dirtyEverything();
+        return;
+      }
+
+      for (const { part, box } of changed.parts) {
+        const on = parts().find((one) => one.name === part);
+
+        if (on !== undefined) {
+          meshes.dirty(part, box, partDimensions(on));
+        }
+      }
+    }),
+  );
+
+  // Changing a colour re-uploads a row of texels rather than re-meshing the
+  // figure: what a vertex carries is which colour it shows, not the colour.
+  createEffect(palette, (colours) => {
+    meshes.bakePalette(colours);
+  });
 
   createEffect(preview.autorotate, (autoRotate) => {
     if (autoRotate) {
@@ -733,19 +1009,23 @@ const VoxelPreviewView: Component = () => {
       // A canvas that has changed shape has changed how much room there is to
       // frame the figure in, which is the other half of what a framing is
       // measured against.
-      if (untrack(preview.autoframe)) {
+      if (untrack(preview.autoframe) && !untrack(flying)) {
         fitToView();
       }
 
-      render();
+      render(0);
     };
     sizeToCanvas();
 
     const resizeObserver = new ResizeObserver(sizeToCanvas);
     resizeObserver.observe(canvas);
 
-    let rafId = requestAnimationFrame(function renderLoop() {
-      render();
+    let lastFrameTime = 0;
+    let rafId = requestAnimationFrame(function renderLoop(time: number) {
+      const dt = lastFrameTime > 0 ? (time - lastFrameTime) / 1000 : 1 / 60;
+      lastFrameTime = time;
+
+      render(dt);
       rafId = requestAnimationFrame(renderLoop);
     });
 

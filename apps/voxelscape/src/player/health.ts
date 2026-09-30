@@ -65,8 +65,8 @@ export class PlayerHealth {
   /** Called whenever the current health changes, so the hearts HUD can refresh. */
   onChange: (() => void) | null = null;
 
-  /** Hit points the player has when unhurt. */
-  readonly maxHp = START_HEARTS * HEART_HP;
+  /** Hit points the player has when unhurt; a place script may raise or lower it. */
+  maxHp = START_HEARTS * HEART_HP;
 
   /** Current hit points, floored at zero. */
   hp = this.maxHp;
@@ -137,6 +137,23 @@ export class PlayerHealth {
       this.hp = next;
       this.emit();
     }
+  }
+
+  /**
+   * Sets the most hit points the player may hold, at least one heart's worth,
+   * bringing the current health down to it when it was above. A later respawn
+   * fills the new maximum.
+   */
+  setMax(amount: number): void {
+    const next = Math.max(HEART_HP, Math.floor(amount));
+    if (next === this.maxHp) {
+      return;
+    }
+    this.maxHp = next;
+    if (this.hp > next) {
+      this.hp = next;
+    }
+    this.emit();
   }
 
   /** How far the death fall has run, 0 standing to 1 lying flat, for the camera. */

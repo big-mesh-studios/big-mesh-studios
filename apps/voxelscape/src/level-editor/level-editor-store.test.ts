@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { createRoot, createSignal, flush } from "solid-js";
 import { describe, expect, it } from "vitest";
-import type { PlanShape, StructurePlan } from "./types";
+import type { LevelPlan, PlanShape } from "./types";
 import { createLevelEditor } from "./level-editor-store";
 
 // jsdom does not implement `matchMedia`, which the store's narrow-layout query
@@ -25,13 +25,17 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const makeEditor = () =>
   createRoot((dispose) => {
-    const [plan, setPlan] = createSignal<StructurePlan>([]);
+    const [plan, setPlan] = createSignal<LevelPlan>({
+      structures: [],
+      npcs: [],
+      props: [],
+    });
     const [cameraKind, setCameraKind] = createSignal<"Orbit" | "NoClip">(
       "Orbit",
     );
     const editor = createLevelEditor({
-      structures: plan,
-      setStructures: setPlan,
+      plan,
+      setPlan,
       cameraKind,
       setCameraKind,
     });
@@ -55,7 +59,7 @@ describe("createLevelEditor", () => {
     expect(editor.selectedIndex()).toBe(0);
     expect(editor.hasUndo()).toBe(true);
     // The change reached the host world's plan.
-    expect(plan()).toHaveLength(1);
+    expect(plan().structures).toHaveLength(1);
 
     editor.undo();
     await settle();
@@ -104,7 +108,11 @@ describe("createLevelEditor", () => {
     const { editor, dispose } = makeEditor();
     editor.addShape(box);
     await settle();
-    expect(JSON.parse(editor.exportJson())).toEqual([box]);
+    expect(JSON.parse(editor.exportJson())).toEqual({
+      structures: [box],
+      npcs: [],
+      props: [],
+    });
     expect(editor.script()).toContain("onPlan(");
     dispose();
   });

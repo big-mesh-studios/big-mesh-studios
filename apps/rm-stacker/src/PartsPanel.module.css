@@ -39,7 +39,8 @@
 
 .part {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: 1fr auto auto auto auto;
+  align-items: center;
 
   @media (pointer: coarse) {
     &:not([data-selected]) .action {
@@ -52,6 +53,13 @@
       display: none;
     }
   }
+}
+
+/* Unlike the buttons beside it, this one is not for pressing, so it stands for
+   the part whatever the pointer is doing rather than waiting to be looked at. */
+.hand {
+  padding-inline: var(--margin);
+  color: var(--light-grey);
 }
 
 .name {

@@ -17,11 +17,30 @@ import ZOMBIES_SCRIPT from "./demo-scripts/zombies.ts?raw";
 import ZOMBIE_SCRIPT from "./demo-scripts/zombie.ts?raw";
 import ZOMBIES_MANSION_SCRIPT from "./demo-scripts/zombies-mansion.ts?raw";
 import DONT_POOP_SCRIPT from "./demo-scripts/dont-poop-yourself-at-school.ts?raw";
+import DUSTY_TRIP_SCRIPT from "./demo-scripts/dusty-trip.ts?raw";
+import BALDI_SCRIPT from "./demo-scripts/baldi.ts?raw";
+import BALDI_LEVEL_SCRIPT from "./demo-scripts/baldi-level.ts?raw";
+import BALDI_NAV_SCRIPT from "./demo-scripts/baldi-nav.ts?raw";
+import BALDI_QUIZ_SCRIPT from "./demo-scripts/baldi-quiz.ts?raw";
 import HOME_SCRIPT from "./demo-scripts/home.ts?raw";
+import LOBBY_SCRIPT from "./demo-scripts/lobby.ts?raw";
+import CUBE_CAVERN_SCRIPT from "./demo-scripts/cube-cavern.ts?raw";
+import CUBE_CAVERN_LEVEL_SCRIPT from "./demo-scripts/cube-cavern-level.ts?raw";
+import CUBE_CAVERN_ITEMS_SCRIPT from "./demo-scripts/cube-cavern-items.ts?raw";
+import CUBE_CAVERN_MOBS_SCRIPT from "./demo-scripts/cube-cavern-mobs.ts?raw";
+import RAISE_A_FLOPPA_SCRIPT from "./demo-scripts/raise-a-floppa.ts?raw";
+import RAISE_A_FLOPPA_LEVEL_SCRIPT from "./demo-scripts/raise-a-floppa-level.ts?raw";
+import RAISE_A_FLOPPA_CARE_SCRIPT from "./demo-scripts/raise-a-floppa-care.ts?raw";
+import RAISE_A_FLOPPA_SHOP_SCRIPT from "./demo-scripts/raise-a-floppa-shop.ts?raw";
 import {
+  BALDI_MODELS,
+  CUBE_CAVERN_MODELS,
   DONT_POOP_MODELS,
+  DUSTY_TRIP_MODELS,
   GASA4_MODELS,
   LATE_TO_SCHOOL_MODELS,
+  LOBBY_MODELS,
+  RAISE_A_FLOPPA_MODELS,
   ZOMBIES_MANSION_MODELS,
   ZOMBIES_MODELS,
 } from "./demo-scripts/model-lists";
@@ -29,18 +48,23 @@ import {
 /** One built-in demo: the world it names, its scripts, and the models they wear. */
 export interface BuiltinDemo {
   id: string;
-  /** The manifest fields the world boots from, script list excluded. */
-  manifest: Omit<PlaceManifest, "scripts">;
+  /**
+   * The manifest fields the world boots from, script and level lists excluded:
+   * a demo's scripts are its own checked-in source, and a level would have to
+   * be fetched like a model, which none is.
+   */
+  manifest: Omit<PlaceManifest, "scripts" | "levels">;
   /** The demo's script files, keyed by manifest-relative path. */
   scripts: Record<string, string>;
 }
 
 /**
- * The "Get a Snack at 4 AM" demo: a flat street of brick houses under a pinned
- * 4 AM sky, a kitchen with a stove and two plates, a store whose counter the
- * cashier rings up at, and two NPCs to talk to. It is the proof that a place's
- * script can build its world (`engine.onPlan`), stand NPCs and rm-stacker props,
- * define and hand out items, set timers, place the player, and end the game.
+ * The "Get a Snack at 4 AM" demo: a two-by-two house of brick rooms under a
+ * pinned 4 AM sky, a kitchen with a stove and a breakfast machine, a store
+ * across the road whose counter the cashier rings up at, and two NPCs to talk
+ * to. It is the proof that a place's script can build its world
+ * (`engine.onPlan`), stand NPCs and rm-stacker props, define and hand out
+ * items, set timers, place the player, and end the game.
  */
 const GASA4: BuiltinDemo = {
   id: "get-a-snack-at-4-am",
@@ -153,11 +177,66 @@ const DONT_POOP: BuiltinDemo = {
 };
 
 /**
- * The demo `App.tsx` opens at the site's own root address, in place of
- * fetching a live place over atproto every time somebody lands there. A
- * guide stands near the spawn and says hello — the same world the studio's
- * own published "home" place had carried, before this stopped needing a
- * network round trip to show it.
+ * The "A Dusty Trip" demo: a sand plain and a road under the default sky, a
+ * drivable car a player gets into and steers, gas stations down the road, a
+ * dust storm closing from behind, and mutants that chase the driver. It is the
+ * proof that a place script can drive a solid prop with its own physics from
+ * the local player's held input, carry a rider on it, hold a follow camera, and
+ * run a chase-and-survive loop.
+ */
+const DUSTY_TRIP: BuiltinDemo = {
+  id: "a-dusty-trip",
+  manifest: {
+    name: "A Dusty Trip",
+    seed: 42_069,
+    spawn: [0, 0, 0],
+    mode: "solo",
+    models: DUSTY_TRIP_MODELS,
+  },
+  scripts: {
+    [MAIN_SCRIPT_FILE]: DUSTY_TRIP_SCRIPT,
+  },
+};
+
+/**
+ * The "Baldi's Basics in Education and Learning" demo: a port of the
+ * original's core loop on a rebuild of its school. Seven notebooks hide in a
+ * grid of classrooms and special rooms off a crossing of halls, each opens a
+ * multiple-choice math quiz, and every notebook and wrong answer raises
+ * Baldi's aggression, with it his speed. A friendly Baldi greets the player
+ * until the second notebook or the first wrong answer turns him hostile and
+ * brings out his cast; all seven notebooks arm the escape, whose three fake
+ * exits must be tried before the east door wins. It is the proof that a place
+ * script can ask a player questions through scripted UI mid-place, tune an
+ * enemy's speed to the player's own record, swing a door on its hinge, and run
+ * a loop of quarry-and-escape rather than a fixed beginning and end.
+ */
+const BALDI: BuiltinDemo = {
+  id: "baldi-basics",
+  manifest: {
+    name: "Baldi's Basics in Education and Learning",
+    seed: 6_115,
+    // The school's centre, on the plaza grass; 62 is the plaza surface in
+    // world units (the row-30 slab's top, times two). The plan may only build
+    // within a limited region around the spawn, so it sits at the centre of
+    // the school the script raises; the script then walks the player to the
+    // west entrance.
+    spawn: [0, 62, 0],
+    mode: "solo",
+    models: BALDI_MODELS,
+  },
+  scripts: {
+    [MAIN_SCRIPT_FILE]: BALDI_SCRIPT,
+    "baldi-level.ts": BALDI_LEVEL_SCRIPT,
+    "baldi-nav.ts": BALDI_NAV_SCRIPT,
+    "baldi-quiz.ts": BALDI_QUIZ_SCRIPT,
+  },
+};
+
+/**
+ * The "Home" demo: a guide standing near the spawn who says hello back once
+ * talked to — the world a first-time visitor used to land on, kept as a demo
+ * the way any place can be.
  */
 const HOME: BuiltinDemo = {
   id: "home",
@@ -172,13 +251,99 @@ const HOME: BuiltinDemo = {
   },
 };
 
+/**
+ * The "Lobby" demo: a flat terrace ringed by walk-in portals to every other
+ * built-in demo and holding an arcade machine whose use prompt opens the
+ * place catalog. It is the world `App.tsx` opens at the site's own root, so a
+ * newcomer reaches any demo by walking through an arch and any published
+ * place by searching at the arcade, with no command or account.
+ */
+const LOBBY: BuiltinDemo = {
+  id: "lobby",
+  manifest: {
+    name: "Lobby",
+    seed: 202_604,
+    spawn: [0, 0, 0],
+    mode: "multi:edit",
+    models: LOBBY_MODELS,
+  },
+  scripts: {
+    [MAIN_SCRIPT_FILE]: LOBBY_SCRIPT,
+  },
+};
+
+/**
+ * The "Cube Cavern" demo: a port of zKevin and ClicheChloe's randomly
+ * generated dungeon crawler. A walled hub holds a shopkeeper, a crafting
+ * bench and a cavern door; a run descends three floors of a themed grid of
+ * rooms, each floor paved with its theme's monsters, chests and torches and
+ * left through a key-locked hatch, until the last floor's two-form ninja
+ * falls. It is the proof that a place script can generate a floor of rooms at
+ * run time (`engine.createStructure`), walk a themed bestiary through it,
+ * price a shop out of coins and crafting stock, and remember a run's loot
+ * across restarts with the data helpers.
+ */
+const CUBE_CAVERN: BuiltinDemo = {
+  id: "cube-cavern",
+  manifest: {
+    name: "Cube Cavern",
+    // The original place's own Roblox id, for the seed.
+    seed: 47_989_659,
+    // The hub floor's own surface height: the row-30 slab's top, times two.
+    spawn: [0, 62, 0],
+    mode: "solo",
+    models: CUBE_CAVERN_MODELS,
+  },
+  scripts: {
+    [MAIN_SCRIPT_FILE]: CUBE_CAVERN_SCRIPT,
+    "cube-cavern-level.ts": CUBE_CAVERN_LEVEL_SCRIPT,
+    "cube-cavern-items.ts": CUBE_CAVERN_ITEMS_SCRIPT,
+    "cube-cavern-mobs.ts": CUBE_CAVERN_MOBS_SCRIPT,
+  },
+};
+
+/**
+ * The "Raise a Floppa" demo: a port of the Roblox game of the same name. The
+ * player wakes in a one-room house with a stray caracal to feed, pet, and
+ * clean up after, shops the Interwebs for food, helpers and a Time Machine,
+ * fends off the bandits that raid each dawn, slips into the yellow backrooms
+ * when the west door opens at night, and reaches either the Faith Altar's
+ * ascension or the Time Machine's eternity. It is the proof that a place
+ * script can run a long care-and-economy loop across many timers, price a
+ * shelf of helpers out of coins, stand and step its own raiders, keep a
+ * day-night clock, and remember a player's money, purchases and faith across
+ * restarts with the data helpers.
+ */
+const RAISE_A_FLOPPA: BuiltinDemo = {
+  id: "raise-a-floppa",
+  manifest: {
+    name: "Raise a Floppa",
+    seed: 133_700,
+    // The living room floor's own surface height, times two.
+    spawn: [0, 62, 0],
+    mode: "solo",
+    models: RAISE_A_FLOPPA_MODELS,
+  },
+  scripts: {
+    [MAIN_SCRIPT_FILE]: RAISE_A_FLOPPA_SCRIPT,
+    "raise-a-floppa-level.ts": RAISE_A_FLOPPA_LEVEL_SCRIPT,
+    "raise-a-floppa-care.ts": RAISE_A_FLOPPA_CARE_SCRIPT,
+    "raise-a-floppa-shop.ts": RAISE_A_FLOPPA_SHOP_SCRIPT,
+  },
+};
+
 /** Every built-in demo, in the order a list shows them. */
 export const BUILTIN_DEMOS: BuiltinDemo[] = [
+  LOBBY,
   GASA4,
   LATE_TO_SCHOOL,
   ZOMBIES,
   ZOMBIES_MANSION,
   DONT_POOP,
+  DUSTY_TRIP,
+  BALDI,
+  CUBE_CAVERN,
+  RAISE_A_FLOPPA,
   HOME,
 ];
 
@@ -211,6 +376,7 @@ export const loadBuiltinDemo = async (
   return {
     manifest: { ...demo.manifest, scripts: Object.keys(demo.scripts) },
     scripts: demo.scripts,
+    levels: {},
     models,
   };
 };

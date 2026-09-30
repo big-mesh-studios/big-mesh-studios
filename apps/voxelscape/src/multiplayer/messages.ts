@@ -20,6 +20,8 @@ export const MAX_SCRIPT_ENTITIES_PER_MESSAGE = 32;
 export const MAX_SCRIPT_EVENTS_PER_MESSAGE = 32;
 /** Largest damage a single swing may claim to deal. */
 export const MAX_DAMAGE = 100;
+/** The longest a player-model file name a peer may wear. */
+export const MAX_PLAYER_MODEL = 128;
 
 /**
  * One voxel edit broadcast to connected peers: the world voxel's new id and
@@ -109,6 +111,20 @@ export interface ScriptEventWire {
 }
 
 /**
+ * One player's worn model, as the player's own peer broadcast it: the place
+ * model file the avatar wears, or "" for the plain cube. Every peer in the
+ * place shares the attached models, so a file name resolves on the receiver.
+ */
+export interface PlayerModelWire {
+  v: 1;
+  type: "player-model";
+  seq: number;
+  t: number;
+  /** The place model file the player wears, or "" for the plain cube. */
+  model: string;
+}
+
+/**
  * One leg of a clock exchange: a ping naming the initiator's wall time, which
  * the receiver answers with the same value plus the wall time it received at.
  * The initiator then owns `rtt = t4 - t1` and `offset = t2 - (t1 + t4) / 2`,
@@ -130,6 +146,7 @@ export type MeshMessage =
   | PlayerDamageWire
   | ScriptEntityWire
   | ScriptEventWire
+  | PlayerModelWire
   | TimeWire;
 
 const isPoseWire = (r: object): r is PoseWire => {
@@ -256,6 +273,18 @@ const isPlayerDamageWire = (r: object): r is PlayerDamageWire => {
   );
 };
 
+const isPlayerModelWire = (r: object): r is PlayerModelWire => {
+  const v = r as Record<string, unknown>;
+  return (
+    v.type === "player-model" &&
+    v.v === 1 &&
+    typeof v.seq === "number" &&
+    typeof v.t === "number" &&
+    typeof v.model === "string" &&
+    v.model.length <= MAX_PLAYER_MODEL
+  );
+};
+
 /** Bound on a wall-clock millisecond a time exchange may carry, milliseconds. */
 const TIME_MS_CEILING = 1e13;
 
@@ -321,6 +350,15 @@ export const encodeMessage = (m: MeshMessage): string => {
       })),
     });
   }
+  if (m.type === "player-model") {
+    return JSON.stringify({
+      v: 1,
+      type: "player-model",
+      seq: m.seq,
+      t: Math.round(m.t),
+      model: m.model,
+    });
+  }
   if (m.type === "time") {
     return JSON.stringify({
       v: 1,
@@ -368,6 +406,9 @@ export const decodeMessage = (chunk: unknown): MeshMessage | null => {
     return r;
   }
   if (isScriptEventWire(r)) {
+    return r;
+  }
+  if (isPlayerModelWire(r)) {
     return r;
   }
   if (isTimeWire(r)) {

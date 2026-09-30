@@ -33,6 +33,9 @@ gitignore
 # Design docs
 docs/superpowers
 
+# Screenshots and console logs written by the checks in e2e
+e2e/out
+
 # System Files
 .DS_Store
 Thumbs.db

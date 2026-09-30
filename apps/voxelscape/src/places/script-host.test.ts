@@ -57,6 +57,7 @@ const fresh = async (): Promise<{
   }>;
   restarts: string[];
   narrations: Array<{ player: string; line: { name: string; text: string } }>;
+  catalog: Array<{ player: string; query: string }>;
   places: Array<{
     player: string;
     at: { x: number; z: number; y?: number; yaw?: number };
@@ -89,6 +90,7 @@ const fresh = async (): Promise<{
     player: string;
     line: { name: string; text: string };
   }> = [];
+  const catalog: Array<{ player: string; query: string }> = [];
   const places: Array<{
     player: string;
     at: { x: number; z: number; y?: number; yaw?: number };
@@ -117,6 +119,7 @@ const fresh = async (): Promise<{
     onEnding: (player, state) => endings.push({ player, state }),
     onRestart: (player) => restarts.push(player),
     onNarrate: (player, line) => narrations.push({ player, line }),
+    onCatalog: (player, query) => catalog.push({ player, query }),
     onPlayerPlace: (player, at) => places.push({ player, at }),
     onPlayerFace: (player, at) => faces.push({ player, at }),
     onPlayerSpeed: (player, multiplier) => speeds.push({ player, multiplier }),
@@ -138,6 +141,7 @@ const fresh = async (): Promise<{
     endings,
     restarts,
     narrations,
+    catalog,
     places,
     faces,
     fires,
@@ -408,6 +412,28 @@ describe("a script host", () => {
     host.dispose();
   });
 
+  it("reports a catalog opening with the query it was seeded", async () => {
+    const { host, catalog } = await fresh();
+    await loadProject(
+      host,
+      `
+      import * as engine from "voxelscape";
+      engine.onTick(function (clockMs) {
+        engine.dispatch("catalog", { player: "" });
+        engine.dispatch("catalog", {
+          player: "",
+          query: "big-mesh-studios.bsky.social",
+        });
+      });
+      `,
+    );
+    expect(catalog).toEqual([
+      { player: "", query: "" },
+      { player: "", query: "big-mesh-studios.bsky.social" },
+    ]);
+    host.dispose();
+  });
+
   it("holds barriers a script stands for player collision", async () => {
     const { host } = await fresh();
     await loadProject(
@@ -515,6 +541,122 @@ describe("a script host", () => {
     await host.touched("", "anything");
     expect(host.field("fan")).toBeNull();
     expect(host.fieldList).toEqual([]);
+    host.dispose();
+  });
+
+  it("stands a storm with its defaults and moves it by id", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      import * as engine from "voxelscape";
+      var started = false;
+      engine.onTick(function (clockMs, events) {
+        if (!started) {
+          started = true;
+          engine.dispatch("storm", { id: "dust", x: 2, z: 4 });
+          engine.dispatch("timer", { id: "move", afterMs: 40 });
+        }
+        for (var i = 0; i < events.length; i++) {
+          if (events[i].kind === "timer" && events[i].timerId === "move") {
+            engine.dispatch("storm", {
+              id: "dust", kind: "funnel", x: 2, z: 40,
+              width: 8, height: 60, intensity: 0.5,
+            });
+          }
+        }
+      });
+      `,
+    );
+    expect(host.stormList).toHaveLength(1);
+    expect(host.stormList[0]).toMatchObject({
+      id: "dust",
+      kind: "wall",
+      x: 2,
+      z: 4,
+      width: 40,
+      height: 30,
+      depth: 30,
+      intensity: 1,
+    });
+    clockMs += 40;
+    await host.pump();
+    expect(host.stormList).toHaveLength(1);
+    expect(host.stormList[0]).toMatchObject({
+      id: "dust",
+      kind: "funnel",
+      x: 2,
+      z: 40,
+      width: 8,
+      height: 60,
+      intensity: 0.5,
+    });
+    host.dispose();
+  });
+
+  it("forgets a storm the script takes down", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      import * as engine from "voxelscape";
+      var started = false;
+      engine.onTick(function (clockMs, events) {
+        if (!started) {
+          started = true;
+          engine.dispatch("storm", { id: "dust", x: 0, z: 0 });
+          engine.dispatch("timer", { id: "remove", afterMs: 40 });
+        }
+        for (var i = 0; i < events.length; i++) {
+          if (events[i].kind === "timer" && events[i].timerId === "remove") {
+            engine.dispatch("storm-remove", { id: "dust" });
+          }
+        }
+      });
+      `,
+    );
+    expect(host.stormList).toHaveLength(1);
+    clockMs += 40;
+    await host.pump();
+    expect(host.stormList).toEqual([]);
+    host.dispose();
+  });
+
+  it("opens a rift with its defaults and forgets it when taken down", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      import * as engine from "voxelscape";
+      var started = false;
+      engine.onTick(function (clockMs, events) {
+        if (!started) {
+          started = true;
+          engine.dispatch("rift", { id: "gate", x: 1, y: 66, z: 2 });
+          engine.dispatch("timer", { id: "remove", afterMs: 40 });
+        }
+        for (var i = 0; i < events.length; i++) {
+          if (events[i].kind === "timer" && events[i].timerId === "remove") {
+            engine.dispatch("rift-remove", { id: "gate" });
+          }
+        }
+      });
+      `,
+    );
+    expect(host.riftList).toHaveLength(1);
+    expect(host.riftList[0]).toMatchObject({
+      id: "gate",
+      x: 1,
+      y: 66,
+      z: 2,
+      width: 6,
+      height: 8,
+      yaw: 0,
+      intensity: 1,
+    });
+    clockMs += 40;
+    await host.pump();
+    expect(host.riftList).toEqual([]);
     host.dispose();
   });
 
@@ -955,6 +1097,40 @@ describe("a script host", () => {
     host.dispose();
   });
 
+  it("holds the figure a camera follows until it is cleared", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      import * as engine from "voxelscape";
+      var started = false;
+      engine.onTick(function (clockMs, events) {
+        if (!started) {
+          started = true;
+          engine.dispatch("prop", { id: "car", model: "car.zip", x: 0, z: 0, solid: true });
+          engine.dispatch("camera-follow", {
+            player: "", entityId: "car", back: 10, up: 4,
+          });
+        }
+        for (var i = 0; i < events.length; i++) {
+          if (events[i].kind === "player-touched") {
+            engine.dispatch("camera-follow-clear", { player: "" });
+          }
+        }
+      });
+      `,
+    );
+    expect(host.followCameraFor("")).toMatchObject({
+      entityId: "car",
+      back: 10,
+      up: 4,
+      lookAhead: 4,
+    });
+    await host.touched("", "car");
+    expect(host.followCameraFor("")).toBeNull();
+    host.dispose();
+  });
+
   it("shows HUD readouts and removes the ones it is told to", async () => {
     const { host } = await fresh();
     await loadProject(
@@ -1005,6 +1181,46 @@ describe("a script host", () => {
     expect(host.propPose("plank")?.dz).toBeCloseTo(5);
     clockMs = 5_000;
     expect(host.propPose("plank")?.dz).toBeCloseTo(10);
+    expect(host.propPose("nothing")).toBeNull();
+    host.dispose();
+  });
+
+  it("reports a driven prop's velocity at its declared pose, and null when it stills", async () => {
+    const { host } = await fresh();
+    await loadProject(
+      host,
+      `
+      import * as engine from "voxelscape";
+      var started = false;
+      engine.onTick(function (clockMs, events) {
+        if (!started) {
+          started = true;
+          engine.dispatch("prop", {
+            id: "car", model: "car.zip", x: 4, z: 0,
+            solid: true, seat: true, velocity: { vx: 3, vy: 0, vz: 12 },
+          });
+        }
+        for (var i = 0; i < events.length; i++) {
+          if (events[i].kind === "player-touched") {
+            engine.dispatch("prop", {
+              id: "car", model: "car.zip", x: 4, z: 0,
+              solid: true, seat: true, velocity: { vx: 0, vy: 0, vz: 0 },
+            });
+          }
+        }
+      });
+      `,
+    );
+    expect(host.propPose("car")).toMatchObject({
+      dx: 0,
+      dy: 0,
+      dz: 0,
+      vx: 3,
+      vy: 0,
+      vz: 12,
+    });
+    await host.touched("", "car");
+    expect(host.propPose("car")).toMatchObject({ vx: 0, vy: 0, vz: 0 });
     expect(host.propPose("nothing")).toBeNull();
     host.dispose();
   });

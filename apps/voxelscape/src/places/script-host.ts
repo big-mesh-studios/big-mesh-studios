@@ -8,13 +8,37 @@
 // the dialogs it reports are what a caller renders and a player acts on.
 import { createQuickJSSandbox } from "./quickjs-sandbox";
 import { EventLog } from "./event-log";
-import { parseEffect, type ParsedEffect } from "./effects";
+import {
+  MAX_UI_ITEMS,
+  MAX_UI_PANELS,
+  parseEffect,
+  type ParsedEffect,
+  type UiAnchor,
+} from "./effects";
 import { ScriptInventory } from "./script-items";
 import { poseAt, type MotionPose, type MotionSpec } from "./motion";
+import {
+  createPlaceData,
+  type DataScope,
+  type DataValue,
+  type PlaceData,
+} from "./place-data";
 import type { CameraShot, CutsceneState } from "./cutscene";
 import { bundlePlaceProject } from "./bundle";
-import type { RequireOnly, ScriptSandbox, WorldQuery } from "./sandbox";
+import { raycastAabb, raycastVoxels, unitDirection } from "./raycast";
+import { findVoxelPath, type PathfindOptions } from "./pathfind";
+import type {
+  AttributeValue,
+  EntitySnapshot,
+  LeaderboardEntry,
+  LivePlayer,
+  RaycastHit,
+  RequireOnly,
+  ScriptSandbox,
+  WorldQuery,
+} from "./sandbox";
 import type { ScriptEvent, ScriptEventPayload } from "./events";
+import type { PlanShape } from "../world/plan-shapes";
 
 /**
  * How long, in milliseconds on the shared clock, a blast stays in the host's
@@ -37,6 +61,13 @@ const DEATH_ANIMATION_MS = 1_000;
  * instead of stepping forever.
  */
 const MAX_CASCADE_STEPS = 8;
+
+/** Half the width and depth a scripted figure's query box is tested as, in world units. */
+const ENTITY_HALF = 0.6;
+/** How tall a figure with no declared height is tested in a query, in world units. */
+const ENTITY_HEIGHT = 2;
+/** Half the width, depth, and height a player's query box is tested as, in world units. */
+const PLAYER_HALF = 0.5;
 
 /** One scripted NPC: where it stands, how it faces, and what it is called. */
 export interface ScriptedNpc {
@@ -64,6 +95,14 @@ export interface ScriptedNpc {
   dyingAt?: number;
   /** A path and spin the NPC follows over the shared clock. */
   motion?: MotionSpec;
+  /** Names this NPC answers to in a query, e.g. "enemy". */
+  tags: string[];
+  /** Values the script hangs on this NPC under a name. */
+  attributes: Record<string, AttributeValue>;
+  /** A model motion this NPC plays, sampled from the shared clock. */
+  animation?: FigureAnimation;
+  /** A tint and fade over the colours this NPC's model wears. */
+  look?: FigureLook;
 }
 
 /** One scripted prop: where it stands, and which place model it wears. */
@@ -82,6 +121,8 @@ export interface ScriptedProp {
   solid: boolean;
   /** Whether touching the prop is a hazard the script hears about. */
   hazard: boolean;
+  /** Whether a player standing on the prop is turned to the prop's heading. */
+  seat: boolean;
   /** A path and spin the prop follows over the shared clock. */
   motion?: MotionSpec;
   /**
@@ -89,6 +130,20 @@ export interface ScriptedProp {
    * it, in units per second — a conveyor, standing in where a motion would.
    */
   conveyor?: { vx: number; vz: number };
+  /**
+   * The velocity the prop's own body moves at, in units per second, set by the
+   * script each time it moves the prop, so a rider is carried by a body the
+   * script drives rather than by a `motion` sampled over the clock.
+   */
+  velocity?: { vx: number; vy: number; vz: number };
+  /** Names this prop answers to in a query, e.g. "enemy". */
+  tags: string[];
+  /** Values the script hangs on this prop under a name. */
+  attributes: Record<string, AttributeValue>;
+  /** A model motion this prop plays, sampled from the shared clock. */
+  animation?: FigureAnimation;
+  /** A tint and fade over the colours this prop's model wears. */
+  look?: FigureLook;
 }
 
 /** One scripted field: a box that acts on a player standing inside it. */
@@ -119,6 +174,32 @@ export type { ScriptedFire };
 // re-exported for the same reason.
 import type { ScriptedExplosion } from "../world/explosion-blast";
 export type { ScriptedExplosion };
+
+// The resolved light, label, particle, and mark records, kept in the world
+// area so the renderers that draw them need not reach into the place area;
+// re-exported for the same reason the blaze record is.
+import type { BillboardPose } from "../world/scripted-billboard";
+export type { BillboardPose };
+import type { LightPose } from "../world/scripted-light";
+export type { LightPose };
+import type { ParticlePose, ParticleStyle } from "../world/scripted-particle";
+import { PARTICLE_STYLES } from "../world/scripted-particle";
+export type { ParticlePose, ParticleStyle };
+import type { DecalKind, DecalPose } from "../world/scripted-decal";
+export type { DecalPose };
+import type { BeamPose } from "../world/scripted-beam";
+export type { BeamPose };
+
+// The storm record, kept in the world area so the renderer that draws it need
+// not reach into the place area; re-exported for the same reason the others are.
+import type { ScriptedStorm, StormKind } from "../world/scripted-storm";
+import { STORM_DUST_COLOR } from "../world/scripted-storm";
+export type { ScriptedStorm, StormKind };
+
+// The rift record, kept in the world area for the same reason the storm's is.
+import type { RiftPose } from "../world/scripted-rift";
+import { RIFT_COLOR } from "../world/scripted-rift";
+export type { RiftPose };
 
 /** One named box a script watches the players move through. */
 export interface ScriptZone {
@@ -152,6 +233,179 @@ export interface HudReadout {
   text: string;
 }
 
+/**
+ * A figure a place script holds the camera behind until it is cleared: where
+ * the camera sits relative to the figure, and where ahead of it the view
+ * looks. Only the local peer's own player camera is driven by it.
+ */
+export interface FollowCamera {
+  entityId: string;
+  /** How far behind the figure the camera sits, in world units. */
+  back: number;
+  /** How far above the figure the camera sits, in world units. */
+  up: number;
+  /** How far ahead of the figure the camera looks, in world units. */
+  lookAhead: number;
+  /** The field of view to hold, or null to leave the current one. */
+  fov: number | null;
+}
+
+/** How a script asked for a sound to play, beyond the fixed name it chose. */
+export interface SoundPlayback {
+  /** The id a later `sound-stop` reaches it by, or "" for a one-shot. */
+  id: string;
+  volume: number;
+  pitch: number;
+  loop: boolean;
+}
+
+/** One model motion a script plays on a figure, sampled from the shared clock. */
+export interface FigureAnimation {
+  /** The motion's name, as the model's own file names it. */
+  name: string;
+  /** How fast to play it; 1 is the motion's own rate. */
+  speed: number;
+  /** Whether it repeats. */
+  loop: boolean;
+}
+
+/** How a scripted figure is tinted and faded, over the colours the model wears. */
+export interface FigureLook {
+  /** The colour the figure is multiplied by, each channel 0 to 1. */
+  color: [number, number, number];
+  /** The share of the figure's opacity kept, 0 to 1. */
+  alpha: number;
+}
+
+/** One glowing line a place script draws between two ends. */
+export interface ScriptedBeam {
+  id: string;
+  /** The figure the line starts at, or "" to start at `from`. */
+  fromEntity: string;
+  from: [number, number, number];
+  /** The figure the line ends at, or "" to end at `to`. */
+  toEntity: string;
+  to: [number, number, number];
+  /** Linear RGB, 0 to 1 each. */
+  color: [number, number, number];
+  /** How wide the line is drawn, in world units. */
+  width: number;
+}
+
+/** One key a place script listens on, by the id the `input` fact carries. */
+export interface ScriptBinding {
+  id: string;
+  /** The key code the binding listens on. */
+  key: string;
+  /** Shown to players; the key code when the script named no label. */
+  label: string;
+}
+
+/** One prompt a place script stands on a figure for a player to answer. */
+export interface ScriptPrompt {
+  id: string;
+  entityId: string;
+  verb: string;
+  /** A key code shown beside the verb, or "" for none. */
+  key: string;
+  /** How close the player must be, in world units. */
+  range: number;
+  /** Whether the prompt fires once and is then forgotten. */
+  once: boolean;
+}
+
+/** One point light a place script has lit. */
+export interface ScriptedLight {
+  id: string;
+  /** The figure it hangs over, or "" to stand where it was placed. */
+  entityId: string;
+  x: number;
+  y: number;
+  z: number;
+  /** Linear RGB, 0 to 1 each. */
+  color: [number, number, number];
+  /** How far it reaches, in world units. */
+  range: number;
+  intensity: number;
+}
+
+/** One world-space label a place script shows. */
+export interface ScriptedBillboard {
+  id: string;
+  text: string;
+  /** The figure it hangs over, or "" to stand where it was placed. */
+  entityId: string;
+  x: number;
+  y: number;
+  z: number;
+  /** Linear RGB, 0 to 1 each. */
+  color: [number, number, number];
+  /** Drawn height in world units. */
+  scale: number;
+  /** How far above an attached figure's feet it hangs, in world units. */
+  height: number;
+}
+
+/** One particle emitter a place script runs. */
+export interface ScriptedParticle {
+  id: string;
+  /** The figure it hangs over, or "" to stand where it was placed. */
+  entityId: string;
+  x: number;
+  y: number;
+  z: number;
+  /** The resolved look the emitter draws with. */
+  style: ParticleStyle;
+  /** Whether it keeps emitting until removed. */
+  loop: boolean;
+  /** The shared-clock moment it was last started. */
+  at: number;
+}
+
+/** One mark a place script has laid on the world. */
+export interface ScriptedDecal {
+  id: string;
+  kind: DecalKind;
+  /** The figure it lies under, or "" to lie where it was placed. */
+  entityId: string;
+  x: number;
+  y: number;
+  z: number;
+  /** Linear RGB, 0 to 1 each. */
+  color: [number, number, number];
+  size: number;
+  yaw: number;
+}
+
+/** One item a scripted panel shows. */
+export type UiItem =
+  | {
+      kind: "label";
+      id: string;
+      text: string;
+      /** Linear RGB, 0 to 1 each. */
+      color: [number, number, number];
+    }
+  | { kind: "bar"; id: string; label: string; value: number; max: number }
+  | { kind: "button"; id: string; label: string; value: string }
+  | { kind: "image"; id: string; sprite: string };
+
+/** One panel a place script shows a player. */
+export interface UiPanel {
+  id: string;
+  title: string;
+  anchor: UiAnchor;
+  items: UiItem[];
+}
+
+/** A panel as the host holds it while the script builds it up, items in order. */
+interface UiPanelState {
+  id: string;
+  title: string;
+  anchor: UiAnchor;
+  items: Map<string, UiItem>;
+}
+
 /** The dialog one player is currently in, as the script last set it. */
 export interface DialogState {
   npcId: string;
@@ -180,7 +434,9 @@ export interface ScriptHostParams extends RequireOnly<
    * local peer plays its own copy, since an effect is never replayed on the
    * wire. The name is one of the world's fixed sound vocabulary.
    */
-  onSound?: (player: string, name: string) => void;
+  onSound?: (player: string, name: string, playback: SoundPlayback) => void;
+  /** Called when the script stops a sound it named, by that id. */
+  onSoundStop?: (player: string, id: string) => void;
   /** Called when `player`'s dialog changes; null when it closed. */
   onDialog?: (player: string, state: DialogState | null) => void;
   /** Called when a step could not run, or the script logged a line. */
@@ -214,6 +470,12 @@ export interface ScriptHostParams extends RequireOnly<
   /** Called when the script takes hit points off a player, naming the
    * entity that dealt it when the script said whose swing it was. */
   onPlayerDamage?: (player: string, amount: number, source?: string) => void;
+  /** Called when the script restores hit points to a player. */
+  onPlayerHeal?: (player: string, amount: number) => void;
+  /** Called when the script sets how many hit points a player may hold. */
+  onPlayerMaxHealth?: (player: string, maxHealth: number) => void;
+  /** Called when the script adds velocity to a player, for knockback or a jump pad. */
+  onPlayerPush?: (player: string, vx: number, vy: number, vz: number) => void;
   /**
    * Called when the script's current owner of a live-tracked NPC reports its
    * new position, to broadcast to other peers rather than leave them to
@@ -249,6 +511,52 @@ export interface ScriptHostParams extends RequireOnly<
   onFire?: (fire: ScriptedFire) => void;
   /** Called when the script sets off a blast; the world draws the burst. */
   onExplosion?: (explosion: ScriptedExplosion) => void;
+  /**
+   * Called when the script fills a box of voxels, `id` 0 clearing them, in
+   * LOD-0 voxel coordinates — the world writes it into the shared edit layer
+   * so the change reaches every peer the way a player's own edit does.
+   */
+  onBlockEdit?: (edit: {
+    min: [number, number, number];
+    max: [number, number, number];
+    id: number;
+  }) => void;
+  /**
+   * Called when the script places or replaces a named group of structure
+   * shapes, or — with `shapes: null` — takes one away, in LOD-0 world voxels.
+   * The world stamps the groups over the plan it was built with.
+   */
+  onStructureEdit?: (edit: { id: string; shapes: PlanShape[] | null }) => void;
+  /** The data the place remembers between runs; a run-scoped table when omitted. */
+  data?: PlaceData;
+  /** Called when the script sends a player to another place. */
+  onTeleport?: (player: string, place: string) => void;
+  /**
+   * Called when the script asks for the place catalog, to search and enter
+   * published places; `query` is the handle or DID to start the search on,
+   * or "" when the script named none.
+   */
+  onCatalog?: (player: string, query: string) => void;
+  /** Called when the script changes which avatar a player is drawn as. */
+  onPlayerAvatar?: (player: string, kind: string) => void;
+  /** Called when the script changes what a player wears; `model` "" is the plain cube. */
+  onPlayerModel?: (player: string, model: string, modelUri: string) => void;
+  /**
+   * Called when the script changes which camera a player sees the world
+   * through. Nobody else can see a player's camera, so this reaches only the
+   * player it names and empty means every local player on their own.
+   */
+  onPlayerView?: (player: string, view: "first" | "third") => void;
+  /**
+   * Called to re-read a remembered value the table does not hold, so a save
+   * made on another device arrives as a `data-loaded` fact. Left out, a
+   * `data-get` answers from the table alone.
+   */
+  refreshData?: (
+    scope: DataScope,
+    player: string,
+    key: string,
+  ) => Promise<DataValue | null>;
 }
 
 /**
@@ -260,8 +568,15 @@ export class ScriptHost {
   private readonly ready: Promise<ScriptSandbox>;
   private readonly getHeightAt: (x: number, z: number) => number;
   private readonly getNow: () => number;
+  private readonly getSolidAt?: (x: number, y: number, z: number) => boolean;
+  private readonly getPlayers?: () => LivePlayer[];
   private readonly onToast?: (player: string, text: string) => void;
-  private readonly onSound?: (player: string, name: string) => void;
+  private readonly onSound?: (
+    player: string,
+    name: string,
+    playback: SoundPlayback,
+  ) => void;
+  private readonly onSoundStop?: (player: string, id: string) => void;
   private readonly onDialog?: (
     player: string,
     state: DialogState | null,
@@ -296,6 +611,17 @@ export class ScriptHost {
     amount: number,
     source?: string,
   ) => void;
+  private readonly onPlayerHeal?: (player: string, amount: number) => void;
+  private readonly onPlayerMaxHealth?: (
+    player: string,
+    maxHealth: number,
+  ) => void;
+  private readonly onPlayerPush?: (
+    player: string,
+    vx: number,
+    vy: number,
+    vz: number,
+  ) => void;
   private readonly onEntityMove?: (state: {
     id: string;
     x: number;
@@ -313,6 +639,34 @@ export class ScriptHost {
   private readonly onVoid?: (y: number) => void;
   private readonly onFire?: (fire: ScriptedFire) => void;
   private readonly onExplosion?: (explosion: ScriptedExplosion) => void;
+  private readonly onBlockEdit?: (edit: {
+    min: [number, number, number];
+    max: [number, number, number];
+    id: number;
+  }) => void;
+  private readonly onStructureEdit?: (edit: {
+    id: string;
+    shapes: PlanShape[] | null;
+  }) => void;
+  private readonly onTeleport?: (player: string, place: string) => void;
+  private readonly onCatalog?: (player: string, query: string) => void;
+  private readonly onPlayerAvatar?: (player: string, kind: string) => void;
+  private readonly onPlayerModel?: (
+    player: string,
+    model: string,
+    modelUri: string,
+  ) => void;
+  private readonly onPlayerView?: (
+    player: string,
+    view: "first" | "third",
+  ) => void;
+  private readonly refreshData?: (
+    scope: DataScope,
+    player: string,
+    key: string,
+  ) => Promise<DataValue | null>;
+  /** The data the place remembers between runs. */
+  private readonly data: PlaceData;
 
   /** The items this place's script defines and the local player carries. */
   readonly inventory = new ScriptInventory();
@@ -335,6 +689,30 @@ export class ScriptHost {
   private readonly barriers = new Map<string, ScriptedBarrier>();
   /** The fields the script has declared, acting on players inside them. */
   private readonly fields = new Map<string, ScriptedField>();
+  /** The teams the script has defined, by id to the name shown for it. */
+  private readonly teams = new Map<string, string>();
+  /** Which team each player is on, keyed by the player string a script uses. */
+  private readonly playerTeams = new Map<string, string>();
+  /** The named values the script keeps per player, player then key. */
+  private readonly playerValues = new Map<string, Map<string, number>>();
+  /** The keys a script listens on, keyed by binding id. */
+  private readonly bindings = new Map<string, ScriptBinding>();
+  /** The prompts a script stands on figures, keyed by prompt id. */
+  private readonly prompts = new Map<string, ScriptPrompt>();
+  /** The point lights a script has lit, keyed by light id. */
+  private readonly lights = new Map<string, ScriptedLight>();
+  /** The labels a script shows, keyed by billboard id. */
+  private readonly billboards = new Map<string, ScriptedBillboard>();
+  /** The particle emitters a script runs, keyed by emitter id. */
+  private readonly particles = new Map<string, ScriptedParticle>();
+  /** The dust storms a script drives, keyed by storm id. */
+  private readonly storms = new Map<string, ScriptedStorm>();
+  /** The marks a script has laid, keyed by mark id. */
+  private readonly decals = new Map<string, ScriptedDecal>();
+  /** The rifts a script has opened, keyed by rift id. */
+  private readonly rifts = new Map<string, RiftPose>();
+  /** The lines a script draws, keyed by beam id. */
+  private readonly beams = new Map<string, ScriptedBeam>();
   /** Which zones each player currently stands in, keyed by player. */
   private readonly playerZones = new Map<string, Set<string>>();
   private readonly dialogs = new Map<string, DialogState>();
@@ -344,8 +722,12 @@ export class ScriptHost {
   private voidHeight: number | null = null;
   /** The HUD readouts each player is showing, keyed by player then readout id. */
   private readonly readouts = new Map<string, Map<string, HudReadout>>();
+  /** The scripted UI each player is showing, keyed by player then panel id. */
+  private readonly panels = new Map<string, Map<string, UiPanelState>>();
   /** The camera sequence each player is watching, keyed by player. */
   private readonly cutscenes = new Map<string, CutsceneState>();
+  /** The figure each player's camera follows, keyed by player. */
+  private readonly follows = new Map<string, FollowCamera>();
   /** Whether each player's movement and tools are taken away, keyed by player. */
   private readonly controlLocks = new Map<string, boolean>();
   private pumping = false;
@@ -357,8 +739,11 @@ export class ScriptHost {
   constructor(params: ScriptHostParams) {
     this.getNow = params.getNow;
     this.getHeightAt = params.getHeightAt;
+    this.getSolidAt = params.getSolidAt;
+    this.getPlayers = params.getPlayers;
     this.onToast = params.onToast;
     this.onSound = params.onSound;
+    this.onSoundStop = params.onSoundStop;
     this.onDialog = params.onDialog;
     this.onNotice = params.onNotice;
     this.onEnding = params.onEnding;
@@ -370,6 +755,9 @@ export class ScriptHost {
     this.onPlayerSpeed = params.onPlayerSpeed;
     this.onPlayerJump = params.onPlayerJump;
     this.onPlayerDamage = params.onPlayerDamage;
+    this.onPlayerHeal = params.onPlayerHeal;
+    this.onPlayerMaxHealth = params.onPlayerMaxHealth;
+    this.onPlayerPush = params.onPlayerPush;
     this.onEntityMove = params.onEntityMove;
     this.onEvent = params.onEvent;
     this.onCheckpoint = params.onCheckpoint;
@@ -378,6 +766,15 @@ export class ScriptHost {
     this.onVoid = params.onVoid;
     this.onFire = params.onFire;
     this.onExplosion = params.onExplosion;
+    this.onBlockEdit = params.onBlockEdit;
+    this.onStructureEdit = params.onStructureEdit;
+    this.onTeleport = params.onTeleport;
+    this.onCatalog = params.onCatalog;
+    this.onPlayerAvatar = params.onPlayerAvatar;
+    this.onPlayerModel = params.onPlayerModel;
+    this.onPlayerView = params.onPlayerView;
+    this.refreshData = params.refreshData;
+    this.data = params.data ?? createPlaceData();
     this.ready = createQuickJSSandbox({
       seed: params.seed,
       getNow: params.getNow,
@@ -386,6 +783,25 @@ export class ScriptHost {
       getSolidAt: params.getSolidAt,
       getWaterAt: params.getWaterAt,
       getPlayers: params.getPlayers,
+      getBlockAt: params.getBlockAt,
+      getEntity: (id) => this.entity(id),
+      getEntitiesInBox: (min, max) => this.entitiesInBox(min, max),
+      getEntitiesInSphere: (x, y, z, radius) =>
+        this.entitiesInSphere(x, y, z, radius),
+      getEntitiesWithTag: (tag) => this.entitiesWithTag(tag),
+      getPlayer: (did) => this.player(did),
+      getPlayersInBox: (min, max) => this.playersInBox(min, max),
+      getLocalPlayer: () => this.localPlayer(),
+      getInput: () => params.getInput?.() ?? null,
+      getPlayerValue: (did, key) => this.playerValue(did, key),
+      getLeaderboard: (key, count) => this.leaderboard(key, count),
+      getData: (scope, player, key) =>
+        this.data.get(scope, this.dataPlayer(scope, player), key),
+      getDataLeaderboard: (key, count) => this.dataLeaderboard(key, count),
+      raycast: (origin, direction, maxDistance) =>
+        this.ray(origin, direction, maxDistance),
+      findPath: (from, to, options) => this.findPath(from, to, options),
+      getHeldItem: () => this.inventory.heldItem()?.id ?? "",
     });
   }
 
@@ -453,6 +869,20 @@ export class ScriptHost {
     if (this.disposed || this.log.apply(events) === 0) {
       return;
     }
+    // A remembered value a peer changed is folded into this peer's table too,
+    // so a save and a leaderboard agree wherever they are read.
+    for (const event of events) {
+      if (event.kind === "data-changed") {
+        this.data.set(
+          event.scope,
+          event.player,
+          event.key,
+          event.deleted ? null : (event.value ?? null),
+        );
+      } else if (event.kind === "badge-earned") {
+        this.data.set("player", event.player, "badge:" + event.badge, true);
+      }
+    }
     await this.step();
   }
 
@@ -464,6 +894,521 @@ export class ScriptHost {
   /** The prop with `id`, or null when the script has not placed one. */
   prop(id: string): ScriptedProp | null {
     return this.props.get(id) ?? null;
+  }
+
+  /** The motion the figure `id` is playing, or null when it plays none. */
+  animationFor(id: string): FigureAnimation | null {
+    return (
+      this.npcs.get(id)?.animation ?? this.props.get(id)?.animation ?? null
+    );
+  }
+
+  /** The tint and fade the figure `id` wears, or null when it wears none. */
+  lookFor(id: string): FigureLook | null {
+    return this.npcs.get(id)?.look ?? this.props.get(id)?.look ?? null;
+  }
+
+  /** Every light the script has lit, each at the position it stands at now. */
+  get lightList(): LightPose[] {
+    const out: LightPose[] = [];
+    for (const light of this.lights.values()) {
+      if (light.entityId === "") {
+        out.push({
+          id: light.id,
+          x: light.x,
+          y: light.y,
+          z: light.z,
+          color: light.color,
+          range: light.range,
+          intensity: light.intensity,
+        });
+        continue;
+      }
+      const figure = this.entity(light.entityId);
+      if (figure === null) {
+        continue;
+      }
+      out.push({
+        id: light.id,
+        x: figure.x,
+        y: figure.y + 1.2,
+        z: figure.z,
+        color: light.color,
+        range: light.range,
+        intensity: light.intensity,
+      });
+    }
+    return out;
+  }
+
+  /** Every emitter the script runs, each at the position it stands at now. */
+  get particleList(): ParticlePose[] {
+    const out: ParticlePose[] = [];
+    for (const particle of this.particles.values()) {
+      const base = {
+        id: particle.id,
+        ...particle.style,
+        loop: particle.loop,
+        at: particle.at,
+      };
+      if (particle.entityId === "") {
+        out.push({
+          ...base,
+          x: particle.x,
+          y: particle.y,
+          z: particle.z,
+        });
+        continue;
+      }
+      const figure = this.entity(particle.entityId);
+      if (figure === null) {
+        continue;
+      }
+      out.push({ ...base, x: figure.x, y: figure.y + 0.5, z: figure.z });
+    }
+    return out;
+  }
+
+  /** Every dust storm the script drives, each as it stands now. */
+  get stormList(): ScriptedStorm[] {
+    return [...this.storms.values()];
+  }
+
+  /** Every rift the script has opened, each as it stands now. */
+  get riftList(): RiftPose[] {
+    return [...this.rifts.values()];
+  }
+
+  /** Every mark the script has laid, each at the position it lies at now. */
+  get decalList(): DecalPose[] {
+    const out: DecalPose[] = [];
+    for (const decal of this.decals.values()) {
+      const base = {
+        id: decal.id,
+        kind: decal.kind,
+        color: decal.color,
+        size: decal.size,
+        yaw: decal.yaw,
+      };
+      if (decal.entityId === "") {
+        out.push({ ...base, x: decal.x, y: decal.y, z: decal.z });
+        continue;
+      }
+      const figure = this.entity(decal.entityId);
+      if (figure === null) {
+        continue;
+      }
+      out.push({ ...base, x: figure.x, y: figure.y + 0.05, z: figure.z });
+    }
+    return out;
+  }
+
+  /** Every line the script draws, each at the endpoints it spans now. */
+  get beamList(): BeamPose[] {
+    const out: BeamPose[] = [];
+    for (const beam of this.beams.values()) {
+      const a = this.beamEnd(beam.fromEntity, beam.from);
+      const b = this.beamEnd(beam.toEntity, beam.to);
+      if (a === null || b === null) {
+        continue;
+      }
+      out.push({
+        id: beam.id,
+        ax: a[0],
+        ay: a[1],
+        az: a[2],
+        bx: b[0],
+        by: b[1],
+        bz: b[2],
+        color: beam.color,
+        width: beam.width,
+      });
+    }
+    return out;
+  }
+
+  /** Where one end of a beam stands: its fixed point, or above the figure it names. */
+  private beamEnd(
+    entityId: string,
+    point: [number, number, number],
+  ): [number, number, number] | null {
+    if (entityId === "") {
+      return point;
+    }
+    const figure = this.entity(entityId);
+    return figure === null ? null : [figure.x, figure.y + 1, figure.z];
+  }
+
+  /** Every label the script shows, each at the position it hangs at now. */
+  get billboardList(): BillboardPose[] {
+    const out: BillboardPose[] = [];
+    for (const label of this.billboards.values()) {
+      if (label.entityId === "") {
+        out.push({
+          id: label.id,
+          x: label.x,
+          y: label.y,
+          z: label.z,
+          text: label.text,
+          color: label.color,
+          scale: label.scale,
+        });
+        continue;
+      }
+      const figure = this.entity(label.entityId);
+      if (figure === null) {
+        continue;
+      }
+      out.push({
+        id: label.id,
+        x: figure.x,
+        y: figure.y + label.height,
+        z: figure.z,
+        text: label.text,
+        color: label.color,
+        scale: label.scale,
+      });
+    }
+    return out;
+  }
+
+  /** The figure `id` names, NPC or prop, as a script's own query sees it. */
+  private entity(id: string): EntitySnapshot | null {
+    const npc = this.npcs.get(id);
+    if (npc !== undefined) {
+      return this.npcSnapshot(npc);
+    }
+    const prop = this.props.get(id);
+    return prop === undefined ? null : this.propSnapshot(prop);
+  }
+
+  /** Every figure whose box overlaps the world-unit box `min` to `max`, in id order. */
+  private entitiesInBox(
+    min: readonly [number, number, number],
+    max: readonly [number, number, number],
+  ): EntitySnapshot[] {
+    const inside = (snapshot: EntitySnapshot, height: number): boolean =>
+      snapshot.x + ENTITY_HALF >= min[0] &&
+      snapshot.x - ENTITY_HALF <= max[0] &&
+      snapshot.y + height >= min[1] &&
+      snapshot.y <= max[1] &&
+      snapshot.z + ENTITY_HALF >= min[2] &&
+      snapshot.z - ENTITY_HALF <= max[2];
+    return this.snapshots()
+      .filter((entry) => inside(entry.snapshot, entry.height))
+      .map((entry) => entry.snapshot);
+  }
+
+  /** Every figure whose box comes within `radius` of a world-unit point, in id order. */
+  private entitiesInSphere(
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+  ): EntitySnapshot[] {
+    const near = (snapshot: EntitySnapshot, height: number): boolean => {
+      const dx = Math.max(0, Math.abs(x - snapshot.x) - ENTITY_HALF);
+      const dy = Math.max(0, snapshot.y - y, y - (snapshot.y + height));
+      const dz = Math.max(0, Math.abs(z - snapshot.z) - ENTITY_HALF);
+      return dx * dx + dy * dy + dz * dz <= radius * radius;
+    };
+    return this.snapshots()
+      .filter((entry) => near(entry.snapshot, entry.height))
+      .map((entry) => entry.snapshot);
+  }
+
+  /** Every figure carrying `tag`, in id order. */
+  private entitiesWithTag(tag: string): EntitySnapshot[] {
+    return this.snapshots()
+      .filter((entry) => entry.snapshot.tags.includes(tag))
+      .map((entry) => entry.snapshot);
+  }
+
+  /** The player `did` names, with the team this script put them on, or null. */
+  private player(did: string): LivePlayer | null {
+    const found = this.getPlayers?.().find((entry) => entry.did === did);
+    if (found === undefined) {
+      return null;
+    }
+    const team = this.playerTeams.get(did);
+    return team === undefined ? found : { ...found, team };
+  }
+
+  /** Every player standing in the world-unit box `min` to `max`, each with their team. */
+  private playersInBox(
+    min: readonly [number, number, number],
+    max: readonly [number, number, number],
+  ): LivePlayer[] {
+    return (this.getPlayers?.() ?? [])
+      .filter(
+        (entry) =>
+          entry.x >= min[0] &&
+          entry.x <= max[0] &&
+          entry.y >= min[1] &&
+          entry.y <= max[1] &&
+          entry.z >= min[2] &&
+          entry.z <= max[2],
+      )
+      .map((entry) => {
+        const team = this.playerTeams.get(entry.did);
+        return team === undefined ? entry : { ...entry, team };
+      });
+  }
+
+  /** The DID of the player on this peer, or "" when they are not signed in. */
+  private localPlayer(): string {
+    return this.getPlayers?.()[0]?.did ?? "";
+  }
+
+  /** The value the script set for `did` under `key`, or null when none. */
+  private playerValue(did: string, key: string): number | null {
+    return this.playerValues.get(did)?.get(key) ?? null;
+  }
+
+  /**
+   * Answers a `data-get` with a `data-loaded` fact: from the table when it
+   * holds the value, or from `refreshData` for a save made elsewhere.
+   */
+  private async loadData(
+    scope: DataScope,
+    player: string,
+    key: string,
+    requestId: string,
+  ): Promise<void> {
+    let value = this.data.get(scope, player, key);
+    if (value === undefined && this.refreshData !== undefined) {
+      value = (await this.refreshData(scope, player, key)) ?? undefined;
+    }
+    if (this.disposed) {
+      return;
+    }
+    this.author(
+      {
+        kind: "data-loaded",
+        requestId,
+        scope,
+        key,
+        found: value !== undefined,
+        ...(value === undefined ? {} : { value }),
+      },
+      this.localPlayer(),
+    );
+    await this.step();
+  }
+
+  /** Which player a data write belongs to: the local one for "", nobody for global or account. */
+  private dataPlayer(scope: DataScope, player: string | undefined): string {
+    if (scope === "global" || scope === "account") {
+      return "";
+    }
+    return player === undefined || player === "" ? this.localPlayer() : player;
+  }
+
+  /** The players whose remembered number under `key` ranks, highest first. */
+  private dataLeaderboard(
+    key: string,
+    count: number,
+  ): Array<{ player: string; value: DataValue }> {
+    const limit = Math.max(1, Math.min(32, Math.floor(count)));
+    const entries: Array<{ player: string; value: number }> = [];
+    for (const player of this.data.players()) {
+      const value = this.data.get("player", player, key);
+      if (typeof value === "number") {
+        entries.push({ player, value });
+      }
+    }
+    entries.sort(
+      (a, b) =>
+        b.value - a.value ||
+        (a.player < b.player ? -1 : a.player > b.player ? 1 : 0),
+    );
+    return entries.slice(0, limit);
+  }
+
+  /** The players ranked by `key`, highest first, ties by player string, at most `count`. */
+  private leaderboard(key: string, count: number): LeaderboardEntry[] {
+    const limit = Math.max(1, Math.min(32, Math.floor(count)));
+    const entries: LeaderboardEntry[] = [];
+    for (const [player, values] of this.playerValues) {
+      const value = values.get(key);
+      if (value !== undefined) {
+        entries.push({ player, value });
+      }
+    }
+    entries.sort(
+      (a, b) =>
+        b.value - a.value ||
+        (a.player < b.player ? -1 : a.player > b.player ? 1 : 0),
+    );
+    return entries.slice(0, limit);
+  }
+
+  /**
+   * The first thing a ray meets: terrain, a scripted figure, or a player. The
+   * figure and player boxes are tested in world axes, the approximation the
+   * crosshair pick also makes for a body it does not turn.
+   */
+  private ray(
+    origin: readonly [number, number, number],
+    direction: readonly [number, number, number],
+    maxDistance: number,
+  ): RaycastHit | null {
+    const unit = unitDirection(direction[0], direction[1], direction[2]);
+    if (unit === null) {
+      return null;
+    }
+    let best: RaycastHit | null = null;
+    const consider = (
+      contact: { distance: number; nx: number; ny: number; nz: number } | null,
+      kind: RaycastHit["kind"],
+      id: string,
+    ): void => {
+      if (
+        contact === null ||
+        (best !== null && contact.distance >= best.distance)
+      ) {
+        return;
+      }
+      best = {
+        kind,
+        x: origin[0] + unit[0] * contact.distance,
+        y: origin[1] + unit[1] * contact.distance,
+        z: origin[2] + unit[2] * contact.distance,
+        nx: contact.nx,
+        ny: contact.ny,
+        nz: contact.nz,
+        distance: contact.distance,
+        id,
+      };
+    };
+    if (this.getSolidAt !== undefined) {
+      consider(
+        raycastVoxels(
+          origin,
+          unit[0],
+          unit[1],
+          unit[2],
+          maxDistance,
+          this.getSolidAt,
+        ),
+        "block",
+        "",
+      );
+    }
+    for (const entry of this.snapshots()) {
+      const snapshot = entry.snapshot;
+      consider(
+        raycastAabb(
+          origin,
+          unit[0],
+          unit[1],
+          unit[2],
+          {
+            min: [
+              snapshot.x - ENTITY_HALF,
+              snapshot.y,
+              snapshot.z - ENTITY_HALF,
+            ],
+            max: [
+              snapshot.x + ENTITY_HALF,
+              snapshot.y + entry.height,
+              snapshot.z + ENTITY_HALF,
+            ],
+          },
+          maxDistance,
+        ),
+        snapshot.kind,
+        snapshot.id,
+      );
+    }
+    for (const entry of this.getPlayers?.() ?? []) {
+      consider(
+        raycastAabb(
+          origin,
+          unit[0],
+          unit[1],
+          unit[2],
+          {
+            min: [
+              entry.x - PLAYER_HALF,
+              entry.y - PLAYER_HALF,
+              entry.z - PLAYER_HALF,
+            ],
+            max: [
+              entry.x + PLAYER_HALF,
+              entry.y + PLAYER_HALF,
+              entry.z + PLAYER_HALF,
+            ],
+          },
+          maxDistance,
+        ),
+        "player",
+        entry.did,
+      );
+    }
+    return best;
+  }
+
+  /** The walkable route from one world point to another, or null when none exists. */
+  private findPath(
+    from: readonly [number, number, number],
+    to: readonly [number, number, number],
+    options?: PathfindOptions,
+  ): Array<[number, number, number]> | null {
+    return findVoxelPath(
+      from,
+      to,
+      this.getHeightAt,
+      this.getSolidAt ?? (() => false),
+      options,
+    );
+  }
+
+  /** Every scripted figure and the height its query box stands, in id order. */
+  private snapshots(): Array<{ snapshot: EntitySnapshot; height: number }> {
+    const entries: Array<{ snapshot: EntitySnapshot; height: number }> = [];
+    for (const npc of this.npcs.values()) {
+      entries.push({ snapshot: this.npcSnapshot(npc), height: ENTITY_HEIGHT });
+    }
+    for (const prop of this.props.values()) {
+      entries.push({ snapshot: this.propSnapshot(prop), height: prop.height });
+    }
+    entries.sort((a, b) => (a.snapshot.id < b.snapshot.id ? -1 : 1));
+    return entries;
+  }
+
+  private npcSnapshot(npc: ScriptedNpc): EntitySnapshot {
+    const pose =
+      npc.motion === undefined ? null : poseAt(npc.motion, this.getNow());
+    return {
+      id: npc.id,
+      kind: "npc",
+      x: npc.x + (pose?.dx ?? 0),
+      y: npc.y + (pose?.dy ?? 0),
+      z: npc.z + (pose?.dz ?? 0),
+      yaw: npc.yaw + (pose?.yaw ?? 0),
+      model: npc.model,
+      name: npc.name,
+      tags: npc.tags,
+      attributes: npc.attributes,
+    };
+  }
+
+  private propSnapshot(prop: ScriptedProp): EntitySnapshot {
+    const pose =
+      prop.motion === undefined ? null : poseAt(prop.motion, this.getNow());
+    return {
+      id: prop.id,
+      kind: "prop",
+      x: prop.x + (pose?.dx ?? 0),
+      y: prop.y + (pose?.dy ?? 0),
+      z: prop.z + (pose?.dz ?? 0),
+      yaw: prop.yaw + (pose?.yaw ?? 0),
+      model: prop.model,
+      name: prop.name,
+      tags: prop.tags,
+      attributes: prop.attributes,
+    };
   }
 
   /** Every field the script has declared in the world. */
@@ -492,10 +1437,34 @@ export class ScriptHost {
     return motion === undefined ? null : poseAt(motion, this.getNow());
   }
 
-  /** Where the prop `id` is at the shared clock, or null when it does not move. */
+  /**
+   * Where the prop `id` is and how fast it is going at the shared clock, or
+   * null when it neither moves by a motion nor is driven by the script. A
+   * script-driven prop stands at its declared pose and reports the velocity
+   * the script last set, so a rider is carried the way a platform carries one.
+   */
   propPose(id: string): MotionPose | null {
-    const motion = this.props.get(id)?.motion;
-    return motion === undefined ? null : poseAt(motion, this.getNow());
+    const prop = this.props.get(id);
+    if (prop === undefined) {
+      return null;
+    }
+    if (prop.motion !== undefined) {
+      return poseAt(prop.motion, this.getNow());
+    }
+    if (prop.velocity === undefined) {
+      return null;
+    }
+    return {
+      dx: 0,
+      dy: 0,
+      dz: 0,
+      yaw: 0,
+      spinAxis: [0, 1, 0],
+      spinAngle: 0,
+      vx: prop.velocity.vx,
+      vy: prop.velocity.vy,
+      vz: prop.velocity.vz,
+    };
   }
 
   /** Every blaze the script has lit in the world. */
@@ -533,6 +1502,57 @@ export class ScriptHost {
     return [...(this.readouts.get(player)?.values() ?? [])];
   }
 
+  /** The panels `player`'s scripted UI shows, in the order the script made them. */
+  uiFor(player: string): UiPanel[] {
+    const panels = this.panels.get(player);
+    if (panels === undefined) {
+      return [];
+    }
+    return [...panels.values()].map((panel) => ({
+      id: panel.id,
+      title: panel.title,
+      anchor: panel.anchor,
+      items: [...panel.items.values()],
+    }));
+  }
+
+  /** Reports `player` pressing a button, authoring the `ui-clicked` fact. */
+  async clickUi(player: string, panel: string, button: string): Promise<void> {
+    this.assertAlive();
+    const item = this.panels.get(player)?.get(panel)?.items.get(button);
+    if (item === undefined || item.kind !== "button") {
+      return;
+    }
+    this.author(
+      { kind: "ui-clicked", panel, button, value: item.value },
+      player,
+    );
+    await this.step();
+  }
+
+  /** The panel with `id` for `player`, made when absent and within the caps. */
+  private panelFor(player: string, id: string): UiPanelState | null {
+    let panels = this.panels.get(player);
+    if (panels === undefined) {
+      panels = new Map();
+      this.panels.set(player, panels);
+    }
+    let panel = panels.get(id);
+    if (panel === undefined) {
+      if (panels.size >= MAX_UI_PANELS) {
+        return null;
+      }
+      panel = { id, title: "", anchor: "top-left", items: new Map() };
+      panels.set(id, panel);
+    }
+    return panel;
+  }
+
+  /** Whether adding an item under `id` would exceed the panel's cap. */
+  private panelFull(panel: UiPanelState, id: string): boolean {
+    return panel.items.size >= MAX_UI_ITEMS && !panel.items.has(id);
+  }
+
   /** The cutscene `player` is watching, or null when none is running. */
   cutsceneFor(player: string): CutsceneState | null {
     return this.cutscenes.get(player) ?? null;
@@ -541,6 +1561,11 @@ export class ScriptHost {
   /** Clears `player`'s cutscene, called once the world has played it out. */
   clearCutscene(player: string): void {
     this.cutscenes.delete(player);
+  }
+
+  /** The figure `player`'s camera follows, or null when it follows nothing. */
+  followCameraFor(player: string): FollowCamera | null {
+    return this.follows.get(player) ?? null;
   }
 
   /** Whether the script has taken `player`'s movement and tools away. */
@@ -562,10 +1587,11 @@ export class ScriptHost {
     files: Record<string, string>,
     entry: string,
     models: Record<string, Uint8Array> = {},
+    levels: Record<string, string> = {},
   ): Promise<void> {
     const sandbox = await this.ready;
     this.assertAlive();
-    const code = await bundlePlaceProject(files, entry, models);
+    const code = await bundlePlaceProject(files, entry, models, levels);
     sandbox.load(code);
     this.loaded = true;
     await this.drain(sandbox);
@@ -600,14 +1626,63 @@ export class ScriptHost {
     await this.step();
   }
 
+  /** The key codes scripts are listening on, so the input layer can report them. */
+  get bindingKeys(): string[] {
+    return [...new Set([...this.bindings.values()].map((b) => b.key))];
+  }
+
+  /**
+   * Reports a bound key's edge, authoring the `input` fact a script folds over.
+   * A key no script has bound is ignored, so the input layer may report every
+   * key without the world having to know which ones matter.
+   */
+  async input(
+    key: string,
+    phase: "down" | "up",
+    player: string,
+  ): Promise<void> {
+    this.assertAlive();
+    const binding = [...this.bindings.values()].find((b) => b.key === key);
+    if (binding === undefined) {
+      return;
+    }
+    this.author({ kind: "input", bindId: binding.id, phase }, player);
+    await this.step();
+  }
+
+  /** The prompt standing on the figure `entityId`, or null when there is none. */
+  promptFor(entityId: string): ScriptPrompt | null {
+    for (const prompt of this.prompts.values()) {
+      if (prompt.entityId === entityId) {
+        return prompt;
+      }
+    }
+    return null;
+  }
+
   /**
    * The player used the NPC or prop with `entityId`, optionally while holding
    * `item` — a fact the script's rules answer, such as a vending machine taking
-   * a soda.
+   * a soda. A prompt standing on the same figure answers with its own fact
+   * instead, so a script can give the same figure a labelled interaction.
    */
-  async use(entityId: string, player: string, item = ""): Promise<void> {
+  async use(
+    entityId: string,
+    player: string,
+    item = "",
+    button: "primary" | "secondary" | "use" = "use",
+  ): Promise<void> {
     this.assertAlive();
-    this.author({ kind: "entity-used", entityId, item }, player);
+    const prompt = this.promptFor(entityId);
+    if (prompt !== null) {
+      this.author({ kind: "prompt-triggered", promptId: prompt.id }, player);
+      if (prompt.once) {
+        this.prompts.delete(prompt.id);
+      }
+      await this.step();
+      return;
+    }
+    this.author({ kind: "entity-used", entityId, item, button }, player);
     await this.step();
   }
 
@@ -818,10 +1893,23 @@ export class ScriptHost {
   private apply(effect: ParsedEffect): void {
     switch (effect.tag) {
       case "npc": {
-        const { id, x, y, z, name, model, modelUri, yaw, live, motion } =
-          effect.payload;
+        const {
+          id,
+          x,
+          y,
+          z,
+          name,
+          model,
+          modelUri,
+          yaw,
+          live,
+          motion,
+          tags,
+          attributes,
+        } = effect.payload;
         const grounded = y ?? this.getHeightAt(x, z);
         const heading = yaw ?? 0;
+        const previous = this.npcs.get(id);
         this.npcs.set(id, {
           id,
           name: name ?? "NPC",
@@ -831,7 +1919,13 @@ export class ScriptHost {
           y: grounded,
           z,
           yaw: heading,
+          tags: [...(tags ?? [])],
+          attributes: { ...(attributes ?? {}) },
           ...(motion !== undefined ? { motion } : {}),
+          ...(previous?.animation !== undefined
+            ? { animation: previous.animation }
+            : {}),
+          ...(previous?.look !== undefined ? { look: previous.look } : {}),
         });
         if (y === undefined) {
           this.groundedNpcs.add(id);
@@ -867,9 +1961,14 @@ export class ScriptHost {
           height,
           solid,
           hazard,
+          seat,
           motion,
           conveyor,
+          velocity,
+          tags,
+          attributes,
         } = effect.payload;
+        const previous = this.props.get(id);
         this.props.set(id, {
           id,
           model,
@@ -881,8 +1980,16 @@ export class ScriptHost {
           height: height ?? 2,
           solid: solid ?? false,
           hazard: hazard ?? false,
+          seat: seat ?? false,
+          tags: [...(tags ?? [])],
+          attributes: { ...(attributes ?? {}) },
           ...(motion !== undefined ? { motion } : {}),
           ...(conveyor !== undefined ? { conveyor } : {}),
+          ...(velocity !== undefined ? { velocity } : {}),
+          ...(previous?.animation !== undefined
+            ? { animation: previous.animation }
+            : {}),
+          ...(previous?.look !== undefined ? { look: previous.look } : {}),
         });
         if (y === undefined) {
           this.groundedProps.add(id);
@@ -895,6 +2002,31 @@ export class ScriptHost {
         this.props.delete(effect.payload.id);
         this.groundedProps.delete(effect.payload.id);
         break;
+      case "entity-set": {
+        const { id, tags, attributes } = effect.payload;
+        const npc = this.npcs.get(id);
+        if (npc !== undefined) {
+          this.npcs.set(id, {
+            ...npc,
+            ...(tags !== undefined ? { tags: [...tags] } : {}),
+            ...(attributes !== undefined
+              ? { attributes: { ...attributes } }
+              : {}),
+          });
+          break;
+        }
+        const prop = this.props.get(id);
+        if (prop !== undefined) {
+          this.props.set(id, {
+            ...prop,
+            ...(tags !== undefined ? { tags: [...tags] } : {}),
+            ...(attributes !== undefined
+              ? { attributes: { ...attributes } }
+              : {}),
+          });
+        }
+        break;
+      }
       case "field": {
         const { id, kind, min, max, vx, vy, vz, speedScale, sink } =
           effect.payload;
@@ -964,8 +2096,18 @@ export class ScriptHost {
       case "toast":
         this.onToast?.(effect.payload.player, effect.payload.text);
         break;
-      case "sound":
-        this.onSound?.(effect.payload.player, effect.payload.name);
+      case "sound": {
+        const { player, name, id, volume, pitch, loop } = effect.payload;
+        this.onSound?.(player, name, {
+          id: id ?? "",
+          volume: volume ?? 1,
+          pitch: pitch ?? 1,
+          loop: loop ?? false,
+        });
+        break;
+      }
+      case "sound-stop":
+        this.onSoundStop?.(effect.payload.player, effect.payload.id);
         break;
       case "dialog": {
         const { player, npcId, prompt, options } = effect.payload;
@@ -1050,6 +2192,490 @@ export class ScriptHost {
           effect.payload.source,
         );
         break;
+      case "player-heal":
+        this.onPlayerHeal?.(effect.payload.player, effect.payload.amount);
+        break;
+      case "player-max-health":
+        this.onPlayerMaxHealth?.(
+          effect.payload.player,
+          effect.payload.maxHealth,
+        );
+        break;
+      case "team-define":
+        this.teams.set(
+          effect.payload.id,
+          effect.payload.name ?? effect.payload.id,
+        );
+        break;
+      case "player-team": {
+        const { player, team } = effect.payload;
+        if (team === "") {
+          this.playerTeams.delete(player);
+        } else {
+          this.playerTeams.set(player, team);
+        }
+        break;
+      }
+      case "player-value": {
+        const { player, key, value } = effect.payload;
+        let values = this.playerValues.get(player);
+        if (values === undefined) {
+          values = new Map();
+          this.playerValues.set(player, values);
+        }
+        values.set(key, value);
+        break;
+      }
+      case "player-push":
+        this.onPlayerPush?.(
+          effect.payload.player,
+          effect.payload.vx,
+          effect.payload.vy,
+          effect.payload.vz,
+        );
+        break;
+      case "report-hit": {
+        const { player, entityId, amount, attackerX, attackerZ } =
+          effect.payload;
+        this.author(
+          { kind: "entity-hit", entityId, amount, attackerX, attackerZ },
+          player,
+        );
+        break;
+      }
+      case "bind": {
+        const { id, key, label } = effect.payload;
+        if (key === "") {
+          this.bindings.delete(id);
+        } else {
+          this.bindings.set(id, { id, key, label: label ?? key });
+        }
+        break;
+      }
+      case "prompt": {
+        const { id, entityId, verb, key, range, once } = effect.payload;
+        this.prompts.set(id, {
+          id,
+          entityId,
+          verb,
+          key: key ?? "",
+          range: range ?? 5,
+          once: once ?? false,
+        });
+        break;
+      }
+      case "prompt-remove":
+        this.prompts.delete(effect.payload.id);
+        break;
+      case "figure-animate": {
+        const { id, name, speed, loop } = effect.payload;
+        const animation: FigureAnimation = {
+          name,
+          speed: speed ?? 1,
+          loop: loop ?? true,
+        };
+        const npc = this.npcs.get(id);
+        if (npc !== undefined) {
+          this.npcs.set(id, { ...npc, animation });
+          break;
+        }
+        const prop = this.props.get(id);
+        if (prop !== undefined) {
+          this.props.set(id, { ...prop, animation });
+        }
+        break;
+      }
+      case "player-model": {
+        const { player, model, modelUri } = effect.payload;
+        this.onPlayerModel?.(player, model ?? "", modelUri ?? "");
+        break;
+      }
+      case "player-avatar": {
+        const { player, kind } = effect.payload;
+        this.onPlayerAvatar?.(player, kind);
+        break;
+      }
+      case "figure-stop": {
+        const id = effect.payload.id;
+        const npc = this.npcs.get(id);
+        if (npc !== undefined) {
+          const rest = { ...npc };
+          delete rest.animation;
+          this.npcs.set(id, rest);
+          break;
+        }
+        const prop = this.props.get(id);
+        if (prop !== undefined) {
+          const rest = { ...prop };
+          delete rest.animation;
+          this.props.set(id, rest);
+        }
+        break;
+      }
+      case "light": {
+        const { id, entityId, x, y, z, color, range, intensity } =
+          effect.payload;
+        const entity = entityId ?? "";
+        this.lights.set(id, {
+          id,
+          entityId: entity,
+          x: x ?? 0,
+          y: y ?? (entity === "" ? this.getHeightAt(x ?? 0, z ?? 0) + 1 : 0),
+          z: z ?? 0,
+          color: color ?? [1, 0.9, 0.75],
+          range: range ?? 12,
+          intensity: intensity ?? 1,
+        });
+        break;
+      }
+      case "light-remove":
+        this.lights.delete(effect.payload.id);
+        break;
+      case "billboard": {
+        const { id, text, entityId, x, y, z, color, scale, height } =
+          effect.payload;
+        const entity = entityId ?? "";
+        const lift = height ?? 2.2;
+        this.billboards.set(id, {
+          id,
+          text,
+          entityId: entity,
+          x: x ?? 0,
+          y: y ?? (entity === "" ? this.getHeightAt(x ?? 0, z ?? 0) + lift : 0),
+          z: z ?? 0,
+          color: color ?? [1, 1, 1],
+          scale: scale ?? 0.5,
+          height: lift,
+        });
+        break;
+      }
+      case "billboard-remove":
+        this.billboards.delete(effect.payload.id);
+        break;
+      case "particle": {
+        const {
+          id,
+          x,
+          y,
+          z,
+          entityId,
+          kind,
+          color,
+          size,
+          spread,
+          lifeMs,
+          loop,
+        } = effect.payload;
+        const style = PARTICLE_STYLES[kind ?? "spark"];
+        const entity = entityId ?? "";
+        this.particles.set(id, {
+          id,
+          entityId: entity,
+          x: x ?? 0,
+          y: y ?? (entity === "" ? this.getHeightAt(x ?? 0, z ?? 0) + 0.2 : 0),
+          z: z ?? 0,
+          style: {
+            ...style,
+            ...(color !== undefined ? { color } : {}),
+            ...(size !== undefined ? { size } : {}),
+            ...(spread !== undefined ? { spread } : {}),
+            ...(lifeMs !== undefined ? { lifeMs } : {}),
+          },
+          loop: loop ?? false,
+          at: this.getNow(),
+        });
+        break;
+      }
+      case "particle-remove":
+        this.particles.delete(effect.payload.id);
+        break;
+      case "storm": {
+        const {
+          id,
+          kind,
+          x,
+          y,
+          z,
+          yaw,
+          width,
+          height,
+          depth,
+          intensity,
+          color,
+          spin,
+        } = effect.payload;
+        this.storms.set(id, {
+          id,
+          kind: (kind ?? "wall") as StormKind,
+          x,
+          y: y ?? this.getHeightAt(x, z),
+          z,
+          yaw: yaw ?? 0,
+          width: width ?? 40,
+          height: height ?? 30,
+          depth: depth ?? 30,
+          intensity: intensity ?? 1,
+          color: color ?? [
+            STORM_DUST_COLOR[0],
+            STORM_DUST_COLOR[1],
+            STORM_DUST_COLOR[2],
+          ],
+          spin: spin ?? 0.6,
+        });
+        break;
+      }
+      case "storm-remove":
+        this.storms.delete(effect.payload.id);
+        break;
+      case "decal": {
+        const { id, kind, x, y, z, entityId, color, size, yaw } =
+          effect.payload;
+        const entity = entityId ?? "";
+        this.decals.set(id, {
+          id,
+          kind,
+          entityId: entity,
+          x: x ?? 0,
+          y: y ?? (entity === "" ? this.getHeightAt(x ?? 0, z ?? 0) + 0.03 : 0),
+          z: z ?? 0,
+          color: color ?? [1, 1, 1],
+          size: size ?? 2,
+          yaw: yaw ?? 0,
+        });
+        break;
+      }
+      case "decal-remove":
+        this.decals.delete(effect.payload.id);
+        break;
+      case "rift": {
+        const { id, x, y, z, width, height, yaw, color, intensity, spin } =
+          effect.payload;
+        this.rifts.set(id, {
+          id,
+          x,
+          y,
+          z,
+          width: width ?? 6,
+          height: height ?? 8,
+          yaw: yaw ?? 0,
+          color: color ?? [RIFT_COLOR[0], RIFT_COLOR[1], RIFT_COLOR[2]],
+          intensity: intensity ?? 1,
+          spin: spin ?? 0.5,
+        });
+        break;
+      }
+      case "rift-remove":
+        this.rifts.delete(effect.payload.id);
+        break;
+      case "entity-look": {
+        const { id, color, alpha } = effect.payload;
+        const look: FigureLook = {
+          color: color ?? [1, 1, 1],
+          alpha: alpha ?? 1,
+        };
+        const npc = this.npcs.get(id);
+        if (npc !== undefined) {
+          this.npcs.set(id, { ...npc, look });
+          break;
+        }
+        const prop = this.props.get(id);
+        if (prop !== undefined) {
+          this.props.set(id, { ...prop, look });
+        }
+        break;
+      }
+      case "entity-look-clear": {
+        const id = effect.payload.id;
+        const npc = this.npcs.get(id);
+        if (npc !== undefined) {
+          const rest = { ...npc };
+          delete rest.look;
+          this.npcs.set(id, rest);
+          break;
+        }
+        const prop = this.props.get(id);
+        if (prop !== undefined) {
+          const rest = { ...prop };
+          delete rest.look;
+          this.props.set(id, rest);
+        }
+        break;
+      }
+      case "beam": {
+        const { id, fromEntity, from, toEntity, to, color, width } =
+          effect.payload;
+        this.beams.set(id, {
+          id,
+          fromEntity: fromEntity ?? "",
+          from: from ?? [0, 0, 0],
+          toEntity: toEntity ?? "",
+          to: to ?? [0, 0, 0],
+          color: color ?? [1, 1, 1],
+          width: width ?? 0.1,
+        });
+        break;
+      }
+      case "beam-remove":
+        this.beams.delete(effect.payload.id);
+        break;
+      case "data-set": {
+        const { scope, player, key, value } = effect.payload;
+        const who = this.dataPlayer(scope, player);
+        this.data.set(scope, who, key, value);
+        this.author(
+          {
+            kind: "data-changed",
+            scope,
+            player: who,
+            key,
+            deleted: false,
+            value,
+          },
+          this.localPlayer(),
+        );
+        break;
+      }
+      case "data-delete": {
+        const { scope, player, key } = effect.payload;
+        const who = this.dataPlayer(scope, player);
+        this.data.set(scope, who, key, null);
+        this.author(
+          { kind: "data-changed", scope, player: who, key, deleted: true },
+          this.localPlayer(),
+        );
+        break;
+      }
+      case "data-get": {
+        const { scope, player, key, requestId } = effect.payload;
+        void this.loadData(
+          scope,
+          this.dataPlayer(scope, player),
+          key,
+          requestId,
+        );
+        break;
+      }
+      case "badge-award": {
+        const { player, badge } = effect.payload;
+        const who =
+          player === undefined || player === "" ? this.localPlayer() : player;
+        this.data.set("player", who, "badge:" + badge, true);
+        this.author(
+          { kind: "badge-earned", player: who, badge },
+          this.localPlayer(),
+        );
+        break;
+      }
+      case "teleport": {
+        const { player, place, carry } = effect.payload;
+        const who = player === "" ? this.localPlayer() : player;
+        // What the player carries goes into the account scope, which the place
+        // they arrive in reads: the value is copied, so nothing is lost here if
+        // the jump is refused.
+        if (carry !== undefined) {
+          for (const key of carry) {
+            const value = this.data.get("player", who, key);
+            if (value !== undefined) {
+              this.data.set("account", "", key, value);
+            }
+          }
+        }
+        this.author({ kind: "player-teleported", place }, who);
+        this.onTeleport?.(who, place);
+        break;
+      }
+      case "catalog": {
+        const { player, query } = effect.payload;
+        const who = player === "" ? this.localPlayer() : player;
+        this.onCatalog?.(who, query ?? "");
+        break;
+      }
+      case "ui-panel": {
+        const { player, id, title, anchor } = effect.payload;
+        const panel = this.panelFor(player, id);
+        if (panel === null) {
+          break;
+        }
+        if (title !== undefined) {
+          panel.title = title;
+        }
+        if (anchor !== undefined) {
+          panel.anchor = anchor;
+        }
+        break;
+      }
+      case "ui-label": {
+        const { player, panel: panelId, id, text, color } = effect.payload;
+        const panel = this.panelFor(player, panelId);
+        if (panel === null || this.panelFull(panel, id)) {
+          break;
+        }
+        panel.items.set(id, {
+          kind: "label",
+          id,
+          text,
+          color: color ?? [1, 1, 1],
+        });
+        break;
+      }
+      case "ui-bar": {
+        const {
+          player,
+          panel: panelId,
+          id,
+          label,
+          value,
+          max,
+        } = effect.payload;
+        const panel = this.panelFor(player, panelId);
+        if (panel === null || this.panelFull(panel, id)) {
+          break;
+        }
+        panel.items.set(id, {
+          kind: "bar",
+          id,
+          label: label ?? "",
+          value,
+          max,
+        });
+        break;
+      }
+      case "ui-button": {
+        const { player, panel: panelId, id, label, value } = effect.payload;
+        const panel = this.panelFor(player, panelId);
+        if (panel === null || this.panelFull(panel, id)) {
+          break;
+        }
+        panel.items.set(id, {
+          kind: "button",
+          id,
+          label,
+          value: value ?? "",
+        });
+        break;
+      }
+      case "ui-image": {
+        const { player, panel: panelId, id, sprite } = effect.payload;
+        const panel = this.panelFor(player, panelId);
+        if (panel === null || this.panelFull(panel, id)) {
+          break;
+        }
+        panel.items.set(id, { kind: "image", id, sprite });
+        break;
+      }
+      case "ui-remove": {
+        const { player, panel: panelId, item } = effect.payload;
+        const panels = this.panels.get(player);
+        if (panels === undefined) {
+          break;
+        }
+        if (item === undefined) {
+          panels.delete(panelId);
+          break;
+        }
+        panels.get(panelId)?.items.delete(item);
+        break;
+      }
       case "player-checkpoint": {
         const { player, x, z, y, yaw } = effect.payload;
         this.onCheckpoint?.(player, { x, z, y, yaw });
@@ -1075,20 +2701,42 @@ export class ScriptHost {
         });
         break;
       case "camera": {
-        const { player, at, look, durationMs, holdMs, ease } = effect.payload;
+        const { player, at, look, durationMs, holdMs, ease, fov, shake } =
+          effect.payload;
         const shot: CameraShot = {
           at,
           ...(look !== undefined ? { look } : {}),
           ...(durationMs !== undefined ? { durationMs } : {}),
           ...(holdMs !== undefined ? { holdMs } : {}),
           ...(ease !== undefined ? { ease } : {}),
+          ...(fov !== undefined ? { fov } : {}),
+          ...(shake !== undefined ? { shake } : {}),
         };
         this.cutscenes.set(player, { startMs: this.getNow(), shots: [shot] });
         break;
       }
+      case "camera-follow": {
+        const { player, entityId, back, up, lookAhead, fov } = effect.payload;
+        this.follows.set(player, {
+          entityId,
+          back: back ?? 8,
+          up: up ?? 3,
+          lookAhead: lookAhead ?? 4,
+          fov: fov ?? null,
+        });
+        break;
+      }
+      case "camera-follow-clear":
+        this.follows.delete(effect.payload.player);
+        break;
       case "player-control":
         this.controlLocks.set(effect.payload.player, effect.payload.locked);
         break;
+      case "player-view": {
+        const { player, view } = effect.payload;
+        this.onPlayerView?.(player, view);
+        break;
+      }
       case "hud": {
         const { player, id, kind, label, value, max, text } = effect.payload;
         let readouts = this.readouts.get(player);
@@ -1115,6 +2763,36 @@ export class ScriptHost {
         }
         break;
       }
+      case "block-set":
+        this.onBlockEdit?.({
+          min: effect.payload.voxel,
+          max: effect.payload.voxel,
+          id: effect.payload.id,
+        });
+        break;
+      case "block-fill":
+        this.onBlockEdit?.({
+          min: effect.payload.min,
+          max: effect.payload.max,
+          id: effect.payload.id,
+        });
+        break;
+      case "block-clear":
+        this.onBlockEdit?.({
+          min: effect.payload.min,
+          max: effect.payload.max,
+          id: 0,
+        });
+        break;
+      case "structure":
+        this.onStructureEdit?.({
+          id: effect.payload.id,
+          shapes: effect.payload.shapes,
+        });
+        break;
+      case "structure-remove":
+        this.onStructureEdit?.({ id: effect.payload.id, shapes: null });
+        break;
     }
   }
 

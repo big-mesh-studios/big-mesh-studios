@@ -15,8 +15,10 @@
 // (never a project file a creator can open); this app's own demo scripts
 // augment it with a small checked-in file per model they use (e.g.
 // `demo-scripts/models.d.ts`), so `tsc` can check them the same way.
-// Declaration merging is what makes both of those additive rather than
-// something this file has to know about in advance.
+// `LevelsByName` is filled the first of those two ways only, by
+// `levels-dts.ts` from a place's own attached levels. Declaration merging is
+// what makes all of that additive rather than something this file has to know
+// about in advance.
 //
 // This file carries no top-level `import` of its own — an inline
 // `import("./effects")` type reaches the same file without one — because a
@@ -24,14 +26,30 @@
 // fresh ambient module declaration into an augmentation of one that would
 // then need to already exist elsewhere.
 declare module "voxelscape" {
-  type EffectTag = import("./effects").EffectTag;
+  /**
+   * Every effect tag a place script may dispatch, in the order the world lists
+   * them. A script never needs to name it — `dispatch` infers the tag from the
+   * string it is given — but it is the union the effects section of the
+   * reference is built from.
+   */
+  export type EffectTag = import("./effects").EffectTag;
   type ParsedEffect = import("./effects").ParsedEffect;
-  type WorldQuery = import("./sandbox").WorldQuery;
+  /**
+   * The read side of the world, as a set of functions. Each is written to be a
+   * pure function of the shared clock and the replicated state, so every peer's
+   * script reads the same world at the same moment.
+   */
+  export type WorldQuery = import("./sandbox").WorldQuery;
   /** One parsed fact `onTick` hands a script, exactly as the trusted side authored it. */
   export type ScriptEvent = import("./events").ScriptEvent;
 
-  /** The shape `tag` validates against, per `effects.ts`'s own `ParsedEffect`. */
-  type PayloadFor<T extends EffectTag> = Extract<
+  /**
+   * The shape `tag` validates against, per `effects.ts`'s own `ParsedEffect`.
+   * Naming it lets a script type the payload it builds before dispatching it,
+   * which is how a payload gets its fields checked at the point it is written
+   * rather than at the point it is sent.
+   */
+  export type PayloadFor<T extends EffectTag> = Extract<
     ParsedEffect,
     { tag: T }
   >["payload"];
@@ -45,16 +63,231 @@ declare module "voxelscape" {
     tag: T,
     payload: PayloadFor<T>,
   ): void;
+  /** Writes a line to the terminal the place editor keeps under its scripts. */
   export function log(line: string): void;
+  /** Milliseconds on the clock every peer in the place shares. */
   export const getNow: WorldQuery["getNow"];
   /** Every ending this place has defined. */
   export const getEndings: WorldQuery["getEndings"];
 
   /** One player's live position, by the did that identifies them. */
   export type Player = import("./sandbox").LivePlayer;
+  /** One scripted figure as a query sees it. */
+  export type EntitySnapshot = import("./sandbox").EntitySnapshot;
+  /** Where a ray first met the world, and what it met. */
+  export type RaycastHit = import("./sandbox").RaycastHit;
+  /** A value a script may hang on an entity under a name. */
+  export type AttributeValue = import("./sandbox").AttributeValue;
+  /** One player's score on a leaderboard. */
+  export type LeaderboardEntry = import("./sandbox").LeaderboardEntry;
 
   /** Every player's live position: the local player first, then connected peers. */
   export const getPlayers: WorldQuery["getPlayers"];
+  /** The player `did` names, or null when they are not in the place. */
+  export const getPlayer: WorldQuery["getPlayer"];
+  /** Every player in the box `min` to `max`, inclusive. */
+  export const getPlayersInBox: WorldQuery["getPlayersInBox"];
+  /** The DID of the player on this peer, or "" when they are not signed in. */
+  export const getLocalPlayer: WorldQuery["getLocalPlayer"];
+  /** The local player's live movement and tool input, or null where the world reports none. */
+  export type LocalInput = import("./sandbox").LocalInput;
+  /**
+   * The local player's live movement and tool input, or null where the world
+   * reports none. Only the player on this peer has one.
+   */
+  export const getInput: WorldQuery["getInput"];
+  /** The value set for `player` under `key`, or null when none. */
+  export const getPlayerValue: WorldQuery["getPlayerValue"];
+  /** The players ranked by `key`, highest first, at most `count` of them. */
+  export const getLeaderboard: WorldQuery["getLeaderboard"];
+  /** Which players a remembered value belongs to: one, or everyone in the place. */
+  export type DataScope = import("./sandbox").DataScope;
+  /** A value a place may remember: a string, a finite number, or a boolean. */
+  export type DataValue = import("./sandbox").DataValue;
+  /** The value the place remembers under `scope`/`key` for `player`, or null when there is none. */
+  export function getData(
+    scope: DataScope,
+    player: string,
+    key: string,
+  ): DataValue | null;
+  /** The players whose remembered number under `key` ranks, highest first, at most `count`. */
+  export function getDataLeaderboard(
+    key: string,
+    count: number,
+  ): Array<{ player: string; value: number }>;
+  /** Saves `value` for `player` ("" for the local player) under `key`. */
+  export function savePlayerData(
+    key: string,
+    value: DataValue,
+    player?: string,
+  ): void;
+  /** Saves `value` for everyone under `key`. */
+  export function saveGlobalData(key: string, value: DataValue): void;
+  /** Forgets `key` for `player` ("" for the local player). */
+  export function deletePlayerData(key: string, player?: string): void;
+  /** Saves `value` for the signed-in account, whatever place it is read in. */
+  export function saveAccountData(key: string, value: DataValue): void;
+  /** Forgets `key` for the signed-in account. */
+  export function deleteAccountData(key: string): void;
+  /** Asks the world to read a remembered value; the answer arrives as a `data-loaded` fact. */
+  export function requestData(
+    scope: DataScope,
+    key: string,
+    requestId: string,
+    player?: string,
+  ): void;
+  /** Awards the badge `badge` to `player` ("" for the local player). */
+  export function awardBadge(badge: string, player?: string): void;
+  /** Sends `player` ("" for the local player) to another place, carrying `carry` keys into the account scope. */
+  export function teleport(
+    place: string,
+    player?: string,
+    carry?: string[],
+  ): void;
+
+  /** Who the catalog opens for, and what it starts the search on. */
+  export interface CatalogOptions {
+    /** The player the catalog is shown to; "" for the local player. */
+    player?: string;
+    /**
+     * The handle or DID to seed the search with — the account whose published
+     * places are listed. Omit it to list every published place instead.
+     */
+    query?: string;
+  }
+
+  /**
+   * Opens the world's place catalog — the search over published places a
+   * player enters by picking one — through the "catalog" effect.
+   */
+  export function openCatalog(options?: CatalogOptions): void;
+
+  /** Which of the world's own avatars a player may be drawn as. */
+  export type AvatarKind = "cube" | "human";
+
+  /**
+   * Draws a player as one of the world's own avatars — the cube or a walking
+   * human — and remembers it as the avatar they carry into other places.
+   */
+  export function setPlayerAvatar(kind: AvatarKind, player?: string): void;
+
+  /** Dresses a player in one of the place's models; "" returns them to the plain cube. */
+  export function setPlayerModel(
+    model: keyof ModelsByName | "",
+    player?: string,
+  ): void;
+  /** Takes the worn model off a player, back to the plain cube. */
+  export function clearPlayerModel(player?: string): void;
+
+  /** Which corner of the screen a scripted panel docks to. */
+  export type UiAnchor =
+    "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
+  /** The player a scripted UI is shown to; "" means the local player. */
+  export interface UiTarget {
+    player?: string;
+  }
+
+  /** A panel of scripted UI. */
+  export interface UiPanelOptions extends UiTarget {
+    id: string;
+    /** The panel's heading, or "" for none. */
+    title?: string;
+    /** Which corner it docks to; defaults to top-left. */
+    anchor?: UiAnchor;
+  }
+  /** Shows one player a panel of items, docked to a screen corner. */
+  export function uiPanel(options: UiPanelOptions): void;
+
+  /** Where an item joins a panel. */
+  export interface UiItemTarget extends UiTarget {
+    panel: string;
+    id: string;
+  }
+
+  /** A line of text. */
+  export interface UiLabelOptions extends UiItemTarget {
+    text: string;
+    /** Linear RGB, 0 to 1 each; defaults to white. */
+    color?: [number, number, number];
+  }
+  /** Puts a line of text into a panel the script showed. */
+  export function uiLabel(options: UiLabelOptions): void;
+
+  /** A labelled bar. */
+  export interface UiBarOptions extends UiItemTarget {
+    label?: string;
+    value: number;
+    max: number;
+  }
+  /** Puts a labelled bar into a panel the script showed. */
+  export function uiBar(options: UiBarOptions): void;
+
+  /** A button; its press arrives as a `ui-clicked` fact. */
+  export interface UiButtonOptions extends UiItemTarget {
+    label: string;
+    /** Carried on the `ui-clicked` fact, so one handler can tell buttons apart. */
+    value?: string;
+  }
+  /** Puts a button into a panel the script showed; its press arrives as a `ui-clicked` fact. */
+  export function uiButton(options: UiButtonOptions): void;
+
+  /** An item-sprite image. */
+  export interface UiImageOptions extends UiItemTarget {
+    /** An item id whose sprite the world draws. */
+    sprite: string;
+  }
+  /** Puts an item-sprite image into a panel the script showed. */
+  export function uiImage(options: UiImageOptions): void;
+
+  /** Takes an item off a panel, or the whole panel when `item` is omitted. */
+  export interface UiRemoveOptions extends UiTarget {
+    panel: string;
+    item?: string;
+  }
+  /** Takes an item off a panel, or the whole panel when `item` is omitted. */
+  export function uiRemove(options: UiRemoveOptions): void;
+  /**
+   * Shows a leaderboard to the local player as a HUD text readout, ranking the
+   * players by the player-value `key`; call it whenever the values change.
+   */
+  export function showLeaderboard(
+    id: string,
+    title: string,
+    key: string,
+    count?: number,
+  ): void;
+  /** The item id the local player is holding, or "" for none. */
+  export function getHeldItem(): string;
+  /** The block id at (`x`, `y`, `z`), or 0 for air. */
+  export const getBlockAt: WorldQuery["getBlockAt"];
+  /** The scripted figure `id` names, or null when there is none. */
+  export const getEntity: WorldQuery["getEntity"];
+  /** Every scripted figure in the box `min` to `max`, inclusive, in id order. */
+  export const getEntitiesInBox: WorldQuery["getEntitiesInBox"];
+  /** Every scripted figure within `radius` of a point, in id order. */
+  export const getEntitiesInSphere: WorldQuery["getEntitiesInSphere"];
+  /** Every scripted figure carrying `tag`, in id order. */
+  export const getEntitiesWithTag: WorldQuery["getEntitiesWithTag"];
+  /** Where a ray from `origin` along `direction` first meets the world, or null within `maxDistance` world units. */
+  export const raycast: WorldQuery["raycast"];
+  /** The walkable route from `from` to `to`, as world-unit waypoints, or null when none exists within the bounds. */
+  export function findPath(
+    from: [number, number, number],
+    to: [number, number, number],
+    options?: { maxNodes?: number; maxCells?: number },
+  ): Array<[number, number, number]> | null;
+
+  /** Where an NPC walks to, how fast, and how hard the route search tries. */
+  export interface WalkToOptions {
+    x: number;
+    z: number;
+    y?: number;
+    /** World units per second; defaults to 4. */
+    speed?: number;
+    maxNodes?: number;
+    maxCells?: number;
+  }
   /** The terrain surface at (x, z). */
   export const getHeightAt: WorldQuery["getHeightAt"];
   /** Whether (x, y, z) is inside solid ground. */
@@ -70,8 +303,87 @@ declare module "voxelscape" {
   export function onTick(
     fn: (clockMs: number, events: ScriptEvent[]) => void,
   ): void;
-  export function onPlan(fn: (contextJson: string) => string): void;
+  /**
+   * Registers what builds this place's terrain, called once before the first
+   * fill. Either a plan already written out, as `plan` hands one back, or a
+   * function answering with one when the world calls it with this place's seed
+   * and the region a plan may build in — whichever it is, the plan is read as a
+   * `LevelPlan`.
+   */
+  export function onPlan(
+    answer: string | ((contextJson: string) => string),
+  ): void;
+  /** Every block id a script may name, by name, so no voxel id is ever written by hand. */
   export const blocks: Record<string, number>;
+
+  /** A three-axis vector, its arithmetic returning new vectors so a script's own value is never mutated. */
+  export class Vector3 {
+    x: number;
+    y: number;
+    z: number;
+    constructor(x: number, y: number, z: number);
+    static create(x: number, y: number, z: number): Vector3;
+    static fromArray(a: readonly number[]): Vector3;
+    static zero(): Vector3;
+    static one(): Vector3;
+    add(v: Vector3): Vector3;
+    sub(v: Vector3): Vector3;
+    scale(s: number): Vector3;
+    mul(v: Vector3): Vector3;
+    dot(v: Vector3): number;
+    cross(v: Vector3): Vector3;
+    readonly length: number;
+    unit(): Vector3;
+    distanceTo(v: Vector3): number;
+    lerp(v: Vector3, t: number): Vector3;
+    clone(): Vector3;
+    toArray(): [number, number, number];
+    equals(v: Vector3): boolean;
+  }
+
+  /** A two-axis vector, its arithmetic returning new vectors. */
+  export class Vector2 {
+    x: number;
+    y: number;
+    constructor(x: number, y: number);
+    static create(x: number, y: number): Vector2;
+    static fromArray(a: readonly number[]): Vector2;
+    static zero(): Vector2;
+    add(v: Vector2): Vector2;
+    sub(v: Vector2): Vector2;
+    scale(s: number): Vector2;
+    dot(v: Vector2): number;
+    readonly length: number;
+    unit(): Vector2;
+    lerp(v: Vector2, t: number): Vector2;
+    toArray(): [number, number];
+  }
+
+  /** A colour whose three channels run from 0 to 1. */
+  export class Color3 {
+    r: number;
+    g: number;
+    b: number;
+    constructor(r: number, g: number, b: number);
+    static create(r: number, g: number, b: number): Color3;
+    static fromRGB(r: number, g: number, b: number): Color3;
+    static fromHex(hex: string): Color3;
+    lerp(c: Color3, t: number): Color3;
+    toArray(): [number, number, number];
+  }
+
+  /** Holds `value` within `min` and `max`. */
+  export function clamp(value: number, min: number, max: number): number;
+  /** The point `t` of the way from `a` to `b`; `t` is not clamped. */
+  export function lerp(a: number, b: number, t: number): number;
+  /** Eases `t` from 0 to 1 with zero slope at each end, clamping `t` first. */
+  export function smoothstep(t: number): number;
+  /** A random integer from `min` to `max`, both included, from the seeded stream. */
+  export function randint(min: number, max: number): number;
+  /** A random real number from `min` up to but not including `max`. */
+  export function randFloat(min: number, max: number): number;
+  /** One element of `array`, chosen from the seeded stream; undefined when empty. */
+  export function choice<T>(array: readonly T[]): T | undefined;
 
   /** What a model is made of, keyed by name in `ModelsByName`. */
   export interface ModelDescriptor {
@@ -84,17 +396,46 @@ declare module "voxelscape" {
   /** Every model this place carries, keyed by the bare name `createNpc`/`createProp` take — empty until augmented. */
   export interface ModelsByName {}
 
+  /**
+   * Every level this place carries, keyed by the bare name `plan` takes — empty
+   * until augmented. A level is its plan as text, so every entry is the string
+   * an `onPlan` call answers with.
+   */
+  export interface LevelsByName {}
+
+  /** The level plan this place carries under `name`, as `onPlan` answers one. */
+  export function plan(name: keyof LevelsByName): string;
+
+  /** How a figure is tinted and faded over the colours its model wears. */
+  export interface EntityLookOptions {
+    /** The colour the figure is multiplied by, each channel 0 to 1; defaults to white. */
+    color?: [number, number, number];
+    /** The share of the figure's opacity kept, 0 to 1; defaults to 1. */
+    alpha?: number;
+  }
+
+  /** How a figure plays one of its model's motions. */
+  export interface AnimationPlayOptions {
+    /** How fast to play it; defaults to 1. */
+    speed?: number;
+    /** Whether it repeats; defaults to the motion's own loop. */
+    loop?: boolean;
+  }
+
   /** Where a figure stands and faces, over the id/model a create call also takes. */
-  interface FigurePlacement {
+  export interface FigurePlacement {
     x: number;
     z: number;
     y?: number;
     yaw?: number;
   }
 
-  /** A figure's placement, re-sent on `move`. `live` marks a position the script computed itself as the figure's current owner, to broadcast to other peers rather than leave for each of them to compute independently — see the "npc" effect's own `live` field, which this passes straight through, and defaults to true. A prop, which has no such field, ignores it. */
-  interface FigureMove extends FigurePlacement {
+  /** A figure's placement, re-sent on `move`. `live` marks a position the script computed itself as the figure's current owner, to broadcast to other peers rather than leave for each of them to compute independently — see the "npc" effect's own `live` field, which this passes straight through, and defaults to true. A prop, which has no such field, ignores it. `vx`/`vy`/`vz` say how fast a driven prop's own body is moving, in world units per second, so a player standing on it is carried. */
+  export interface FigureMove extends FigurePlacement {
     live?: boolean;
+    vx?: number;
+    vy?: number;
+    vz?: number;
   }
 
   /**
@@ -115,15 +456,45 @@ declare module "voxelscape" {
     readonly y?: number;
     /** Which way the figure currently faces, in radians. */
     readonly yaw: number;
+    /** Names this figure answers to in a query. */
+    readonly tags: readonly string[];
+    /** Values the script hangs on this figure under a name. */
+    readonly attributes: Readonly<Record<string, AttributeValue>>;
+    /** Gives this figure a value under `key`, replacing any it held there, and returns this figure. */
+    setAttribute(key: string, value: AttributeValue): NpcHandle<M>;
+    /** The value this figure holds under `key`, or undefined. */
+    getAttribute(key: string): AttributeValue | undefined;
+    /** Names this figure with `tag`, and returns this figure. */
+    addTag(tag: string): NpcHandle<M>;
+    /** Takes `tag` off this figure, and returns this figure. */
+    removeTag(tag: string): NpcHandle<M>;
     /** Moves the figure and re-dispatches its placement. */
     move(options: FigureMove): void;
+    /** Walks the figure to a point along a route the world searches for, and returns whether one exists. */
+    walkTo(options: WalkToOptions): boolean;
+    /** Plays one of the model's motions, named as the model's file names it. */
+    play(
+      name: M extends ModelDescriptor ? M["motions"][number] : string,
+      options?: AnimationPlayOptions,
+    ): NpcHandle<M>;
+    /** Stops the NPC's animation, standing it back at rest. */
+    stop(): NpcHandle<M>;
+    /** Tints and fades the NPC over its model's colours. */
+    setLook(options: EntityLookOptions): NpcHandle<M>;
+    /** Clears the NPC's tint and fade. */
+    clearLook(): NpcHandle<M>;
     /** Removes the NPC outright — no death fall. */
     remove(): void;
     /** Plays a death fall in place of an outright removal, then forgets it the same way. */
     die(): void;
   }
 
-  interface CreateNpcOptions<
+  /**
+   * An NPC's whole address: where it stands, which model it wears, and what a
+   * script hangs on it. `id` and the placement are required because every peer
+   * replaying the script has to compute the same address for the same figure.
+   */
+  export interface CreateNpcOptions<
     K extends keyof ModelsByName | undefined,
   > extends FigurePlacement {
     /** Which model this NPC wears; omit it to leave the world drawing its own default figure. */
@@ -133,6 +504,10 @@ declare module "voxelscape" {
     name?: string;
     /** Reads the model live from its own `at://` address instead of the place's bundled files. */
     modelUri?: string;
+    /** Names this NPC answers to in a query, e.g. "enemy". */
+    tags?: string[];
+    /** Values a script hangs on this NPC under a name. */
+    attributes?: Record<string, AttributeValue>;
   }
 
   /**
@@ -161,11 +536,39 @@ declare module "voxelscape" {
     readonly z: number;
     readonly y?: number;
     readonly yaw: number;
+    /** Names this figure answers to in a query. */
+    readonly tags: readonly string[];
+    /** Values the script hangs on this figure under a name. */
+    readonly attributes: Readonly<Record<string, AttributeValue>>;
+    /** Gives this figure a value under `key`, replacing any it held there, and returns this figure. */
+    setAttribute(key: string, value: AttributeValue): PropHandle<M>;
+    /** The value this figure holds under `key`, or undefined. */
+    getAttribute(key: string): AttributeValue | undefined;
+    /** Names this figure with `tag`, and returns this figure. */
+    addTag(tag: string): PropHandle<M>;
+    /** Takes `tag` off this figure, and returns this figure. */
+    removeTag(tag: string): PropHandle<M>;
+    /** Plays one of the model's motions, named as the model's file names it. */
+    play(
+      name: M["motions"][number],
+      options?: AnimationPlayOptions,
+    ): PropHandle<M>;
+    /** Stops the prop's animation, standing it back at rest. */
+    stop(): PropHandle<M>;
+    /** Tints and fades the prop over its model's colours. */
+    setLook(options: EntityLookOptions): PropHandle<M>;
+    /** Clears the prop's tint and fade. */
+    clearLook(): PropHandle<M>;
     move(options: FigureMove): void;
     remove(): void;
   }
 
-  interface CreatePropOptions<
+  /**
+   * A prop's whole address, as `createNpc` hands it back. A prop is a figure
+   * with no mind: the same placement and model, and the handles a script moves
+   * it with rather than talks to.
+   */
+  export interface CreatePropOptions<
     K extends keyof ModelsByName,
   > extends FigurePlacement {
     model: K;
@@ -174,9 +577,15 @@ declare module "voxelscape" {
     height?: number;
     solid?: boolean;
     hazard?: boolean;
+    /** Whether a player standing on the prop is turned to the prop's heading, as a seat. */
+    seat?: boolean;
     conveyor?: { vx: number; vz: number };
     /** A path and spin the prop follows over the shared clock, in place of `move`. */
     motion?: import("./motion").MotionSpec;
+    /** Names this prop answers to in a query, e.g. "enemy". */
+    tags?: string[];
+    /** Values a script hangs on this prop under a name. */
+    attributes?: Record<string, AttributeValue>;
   }
 
   /** Places a prop wearing the model named `options.model`; see `createNpc` for how a name resolves and why `id` is never generated. */
@@ -199,7 +608,8 @@ declare module "voxelscape" {
     remove(): void;
   }
 
-  interface CreateBarrierOptions {
+  /** A box that blocks the player until it is taken down, in world units. */
+  export interface CreateBarrierOptions {
     id: string;
     /** The box that blocks the player, in world units, inclusive. */
     min: [number, number, number];
@@ -208,4 +618,263 @@ declare module "voxelscape" {
 
   /** Stands a barrier; see `createProp` for why `id` is never generated. */
   export function createBarrier(options: CreateBarrierOptions): BarrierHandle;
+
+  /** One shape a structure plan is written in, in LOD-0 world voxels. */
+  export type PlanShape = import("../world/plan-shapes").PlanShape;
+  /** How far one horizontal axis of a surface's footprint reaches. */
+  export type SurfaceReach = import("../world/plan-shapes").SurfaceReach;
+
+  /**
+   * A named group of structure shapes a script places at run time, stood
+   * through the "structure"/"structure-remove" effects. The world stamps the
+   * group's shapes over the plan the world was built with, and taking the
+   * group down regenerates the cells it reached, so the ground beneath it
+   * comes back.
+   */
+  export interface StructureHandle {
+    readonly id: string;
+    /** Replaces the group's shapes, re-stamping the cells either set reaches. */
+    setShapes(shapes: PlanShape[]): StructureHandle;
+    /** Takes the whole group down. */
+    remove(): void;
+  }
+
+  /** The shapes one named group stands, to be re-stamped or taken down as a unit. */
+  export interface CreateStructureOptions {
+    id: string;
+    /** The plan shapes to stamp, in LOD-0 world voxels. */
+    shapes: PlanShape[];
+  }
+
+  /** Places a named group of structure shapes; see `createProp` for why `id` is never generated. */
+  export function createStructure(
+    options: CreateStructureOptions,
+  ): StructureHandle;
+
+  /** Where a point light stands, or the figure it hangs over. */
+  export interface CreateLightOptions {
+    id: string;
+    /** Hangs the light over this figure; when set, the position fields are ignored. */
+    entityId?: string;
+    x?: number;
+    y?: number;
+    z?: number;
+    /** Linear RGB, 0 to 1 each; defaults to warm white. */
+    color?: [number, number, number];
+    /** How far the light reaches, in world units; defaults to 12. */
+    range?: number;
+    /** How brightly it burns; defaults to 1. */
+    intensity?: number;
+  }
+
+  /** A light a place script has lit; `remove` puts it out. */
+  export interface LightHandle {
+    readonly id: string;
+    remove(): void;
+  }
+
+  /** Lights a point or a figure; see `createProp` for why `id` is never generated. */
+  export function createLight(options: CreateLightOptions): LightHandle;
+
+  /** Where a world-space label hangs and what it says. */
+  export interface CreateBillboardOptions {
+    id: string;
+    text: string;
+    /** Hangs the label over this figure; when set, the position fields are ignored. */
+    entityId?: string;
+    x?: number;
+    y?: number;
+    z?: number;
+    /** Linear RGB, 0 to 1 each; defaults to white. */
+    color?: [number, number, number];
+    /** Drawn height of the label in world units; defaults to 0.5. */
+    scale?: number;
+    /** How far above an attached figure's feet it hangs; defaults to 2.2. */
+    height?: number;
+  }
+
+  /** A label a place script shows; `remove` takes it down. */
+  export interface BillboardHandle {
+    readonly id: string;
+    remove(): void;
+  }
+
+  /** Shows a world-space label; see `createProp` for why `id` is never generated. */
+  export function createBillboard(
+    options: CreateBillboardOptions,
+  ): BillboardHandle;
+
+  /** One of the world's fixed particle kinds. */
+  export type ParticleKind = "spark" | "flame" | "smoke" | "dust";
+
+  /** Where an emitter runs and what it looks like. */
+  export interface CreateParticleOptions {
+    id: string;
+    /** One of the world's fixed particle kinds; defaults to "spark". */
+    kind?: ParticleKind;
+    /** Hangs the emitter over this figure; when set, the position fields are ignored. */
+    entityId?: string;
+    x?: number;
+    y?: number;
+    z?: number;
+    /** Linear RGB, 0 to 1 each; defaults to the kind's own colour. */
+    color?: [number, number, number];
+    /** Drawn size of one particle, in world units; defaults to the kind's own. */
+    size?: number;
+    /** How far particles travel, in world units; defaults to the kind's own. */
+    spread?: number;
+    /** How long one particle lives, in milliseconds; defaults to the kind's own. */
+    lifeMs?: number;
+    /** Whether it keeps emitting until removed; defaults to false. */
+    loop?: boolean;
+  }
+
+  /** An emitter a place script runs; `remove` stops it. */
+  export interface ParticleHandle {
+    readonly id: string;
+    remove(): void;
+  }
+
+  /** Runs a particle emitter; see `createProp` for why `id` is never generated. */
+  export function createParticle(
+    options: CreateParticleOptions,
+  ): ParticleHandle;
+
+  /** One of the world's fixed storm shapes. */
+  export type StormKind = "wall" | "funnel";
+
+  /** Where a dust storm stands and how it is sized. */
+  export interface CreateStormOptions {
+    id: string;
+    /** One of the world's fixed storm shapes; defaults to "wall". */
+    kind?: StormKind;
+    x: number;
+    z: number;
+    /** The storm's base height in world units; defaults to the ground. */
+    y?: number;
+    /** Heading the storm travels toward, in radians; defaults to 0. */
+    yaw?: number;
+    /** A wall's half-width across the heading, or a funnel's base radius; defaults to 40. */
+    width?: number;
+    /** Drawn height of the storm in world units; defaults to 30. */
+    height?: number;
+    /** How far a wall runs front to back, in world units; defaults to 30. */
+    depth?: number;
+    /** How thick the dust reads, 0 to 1; defaults to 1. */
+    intensity?: number;
+    /** Linear RGB dust colour, 0 to 1 each; defaults to a sand tan. */
+    color?: [number, number, number];
+    /** Turns per second a funnel spins about its axis; defaults to a slow spin. */
+    spin?: number;
+  }
+
+  /** The changes a storm handle's `move` may apply to the storm it drives. */
+  export interface MoveStormOptions {
+    kind?: StormKind;
+    x?: number;
+    z?: number;
+    y?: number;
+    yaw?: number;
+    width?: number;
+    height?: number;
+    depth?: number;
+    intensity?: number;
+    color?: [number, number, number];
+    spin?: number;
+  }
+
+  /** A dust storm a place script drives; `move` re-places it and `remove` takes it down. */
+  export interface StormHandle {
+    readonly id: string;
+    move(options: MoveStormOptions): StormHandle;
+    remove(): void;
+  }
+
+  /** Drives a dust storm; see `createProp` for why `id` is never generated. */
+  export function createStorm(options: CreateStormOptions): StormHandle;
+
+  /** One of the world's fixed mark shapes. */
+  export type DecalKind = "arrow" | "cross" | "ring" | "splat";
+
+  /** Where a flat mark lies and what it looks like. */
+  export interface CreateDecalOptions {
+    id: string;
+    kind: DecalKind;
+    /** Lies the mark under this figure; when set, the position fields are ignored. */
+    entityId?: string;
+    x?: number;
+    y?: number;
+    z?: number;
+    /** Linear RGB, 0 to 1 each; defaults to white. */
+    color?: [number, number, number];
+    /** Drawn width in world units; defaults to 2. */
+    size?: number;
+    /** Rotation about the vertical axis, in radians; defaults to 0. */
+    yaw?: number;
+  }
+
+  /** A mark a place script has laid; `remove` lifts it. */
+  export interface DecalHandle {
+    readonly id: string;
+    remove(): void;
+  }
+
+  /** Lays a flat mark on the world; see `createProp` for why `id` is never generated. */
+  export function createDecal(options: CreateDecalOptions): DecalHandle;
+
+  /** Where a rift stands and how it reads. */
+  export interface CreateRiftOptions {
+    id: string;
+    /** The rift's centre, in world units. */
+    x: number;
+    y: number;
+    z: number;
+    /** Drawn width across the sheet in world units; defaults to 6. */
+    width?: number;
+    /** Drawn height of the sheet in world units; defaults to 8. */
+    height?: number;
+    /** Rotation about the vertical axis, in radians; defaults to 0. */
+    yaw?: number;
+    /** Linear RGB, 0 to 1 each; defaults to a portal violet. */
+    color?: [number, number, number];
+    /** How strongly the rift reads, 0 to 1; defaults to 1. */
+    intensity?: number;
+    /** Turns per second the sheet churns; defaults to a slow churn. */
+    spin?: number;
+  }
+
+  /** A rift a place script has opened; `remove` closes it. */
+  export interface RiftHandle {
+    readonly id: string;
+    remove(): void;
+  }
+
+  /** Opens a rift; see `createProp` for why `id` is never generated. */
+  export function createRift(options: CreateRiftOptions): RiftHandle;
+
+  /** Where a beam's two ends stand: a figure it follows, or a world point. */
+  export interface CreateBeamOptions {
+    id: string;
+    /** The figure the line starts at; exactly one of this and `from` is set. */
+    fromEntity?: string;
+    /** The world point the line starts at, in world units. */
+    from?: [number, number, number];
+    /** The figure the line ends at; exactly one of this and `to` is set. */
+    toEntity?: string;
+    /** The world point the line ends at, in world units. */
+    to?: [number, number, number];
+    /** Linear RGB, 0 to 1 each; defaults to white. */
+    color?: [number, number, number];
+    /** How wide the line is drawn, in world units; defaults to 0.1. */
+    width?: number;
+  }
+
+  /** A line a place script draws; `remove` takes it down. */
+  export interface BeamHandle {
+    readonly id: string;
+    remove(): void;
+  }
+
+  /** Draws a glowing line between two ends; see `createProp` for why `id` is never generated. */
+  export function createBeam(options: CreateBeamOptions): BeamHandle;
 }

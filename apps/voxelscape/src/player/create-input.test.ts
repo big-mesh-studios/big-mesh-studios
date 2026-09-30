@@ -7,13 +7,28 @@ const WIDTH = 400;
 
 let input: InputController;
 
+const setPointerLock = (target: Element | null): void => {
+  Object.defineProperty(document, "pointerLockElement", {
+    configurable: true,
+    value: target,
+  });
+  document.dispatchEvent(new Event("pointerlockchange"));
+};
+
 beforeEach(() => {
   vi.useFakeTimers();
+  setPointerLock(null);
+  Object.defineProperty(document, "exitPointerLock", {
+    configurable: true,
+    value: vi.fn(() => setPointerLock(null)),
+  });
   input = createInput();
 });
 
 afterEach(() => {
   input.dispose();
+  document.body.replaceChildren();
+  setPointerLock(null);
   vi.useRealTimers();
 });
 
@@ -27,6 +42,10 @@ const makeCanvas = (): HTMLCanvasElement => {
   canvas.setPointerCapture = () => {};
   canvas.hasPointerCapture = () => true;
   canvas.releasePointerCapture = () => {};
+  canvas.requestPointerLock = vi.fn(() => {
+    setPointerLock(canvas);
+    return Promise.resolve();
+  });
   return canvas;
 };
 
@@ -35,13 +54,14 @@ interface Press {
   x: number;
   y: number;
   pointerId?: number;
+  pointerType?: "mouse" | "touch" | "pen";
 }
 
 /** Dispatches pointer events at a canvas that is listening through `canvasHandlers`. */
 const press = (canvas: HTMLCanvasElement, p: Press): void => {
   canvas.dispatchEvent(
     new PointerEvent(p.type, {
-      pointerType: "touch",
+      pointerType: p.pointerType ?? "touch",
       pointerId: p.pointerId ?? 1,
       button: 0,
       clientX: p.x,
@@ -64,6 +84,149 @@ const bind = (canvas: HTMLCanvasElement): void => {
     input.canvasHandlers.onPointerDown as unknown as EventListener,
   );
 };
+
+describe("pointer lock state", () => {
+  it("tracks the world canvas lock without counting capture as play", async () => {
+    const canvas = makeCanvas();
+    bind(canvas);
+    const listener = vi.fn();
+    const stop = input.onPointerLockChange(listener);
+
+    expect(input.pointerLocked()).toBe(false);
+    press(canvas, {
+      type: "pointerdown",
+      x: 100,
+      y: 100,
+      pointerType: "mouse",
+    });
+    await settle();
+
+    expect(canvas.requestPointerLock).toHaveBeenCalledOnce();
+    expect(input.pointerLocked()).toBe(true);
+    expect(input.hasActivity()).toBe(false);
+    expect(listener).toHaveBeenLastCalledWith(true);
+
+    setPointerLock(null);
+    expect(input.pointerLocked()).toBe(false);
+    expect(listener).toHaveBeenLastCalledWith(false);
+    stop();
+  });
+});
+
+describe("pointer lock suspension", () => {
+  it("keeps a replacement overlay from restoring between questions", async () => {
+    const canvas = makeCanvas();
+    document.body.append(canvas);
+    bind(canvas);
+    press(canvas, {
+      type: "pointerdown",
+      x: 100,
+      y: 100,
+      pointerType: "mouse",
+    });
+    await settle();
+
+    const listener = vi.fn();
+    const stop = input.onPointerLockSuspensionChange(listener);
+    const releaseFirst = input.suspendPointerLock();
+    const releaseSecond = input.suspendPointerLock();
+
+    expect(document.exitPointerLock).toHaveBeenCalledOnce();
+    expect(input.pointerLocked()).toBe(false);
+    expect(input.pointerLockSuspended()).toBe(true);
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenLastCalledWith(true);
+
+    releaseFirst();
+    releaseFirst();
+    expect(input.pointerLockSuspended()).toBe(true);
+    expect(canvas.requestPointerLock).toHaveBeenCalledOnce();
+
+    releaseSecond();
+    vi.advanceTimersByTime(50);
+    expect(input.pointerLockSuspended()).toBe(true);
+    expect(canvas.requestPointerLock).toHaveBeenCalledOnce();
+
+    const releaseReplacement = input.suspendPointerLock();
+    releaseReplacement();
+    vi.advanceTimersByTime(99);
+    expect(input.pointerLockSuspended()).toBe(true);
+    expect(canvas.requestPointerLock).toHaveBeenCalledOnce();
+
+    vi.advanceTimersByTime(1);
+    expect(input.pointerLockSuspended()).toBe(false);
+    expect(input.pointerLocked()).toBe(true);
+    expect(canvas.requestPointerLock).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenLastCalledWith(false);
+    stop();
+  });
+
+  it("does not capture a pointer that was already free", async () => {
+    const canvas = makeCanvas();
+    canvas.requestPointerLock = vi.fn(() => Promise.resolve());
+    document.body.append(canvas);
+    bind(canvas);
+    press(canvas, {
+      type: "pointerdown",
+      x: 100,
+      y: 100,
+      pointerType: "mouse",
+    });
+    await settle();
+    const requests = vi.mocked(canvas.requestPointerLock).mock.calls.length;
+
+    const release = input.suspendPointerLock();
+    expect(input.pointerLockSuspended()).toBe(true);
+    expect(document.exitPointerLock).not.toHaveBeenCalled();
+
+    release();
+    expect(input.pointerLockSuspended()).toBe(false);
+    expect(input.pointerLocked()).toBe(false);
+    expect(canvas.requestPointerLock).toHaveBeenCalledTimes(requests);
+  });
+
+  it("keeps the game unlocked when the browser rejects restoration", async () => {
+    const canvas = makeCanvas();
+    document.body.append(canvas);
+    bind(canvas);
+    press(canvas, {
+      type: "pointerdown",
+      x: 100,
+      y: 100,
+      pointerType: "mouse",
+    });
+    await settle();
+    canvas.requestPointerLock = vi.fn(() =>
+      Promise.reject(new Error("pointer lock denied")),
+    );
+
+    const release = input.suspendPointerLock();
+    release();
+    vi.advanceTimersByTime(100);
+    await settle();
+
+    expect(input.pointerLockSuspended()).toBe(false);
+    expect(input.pointerLocked()).toBe(false);
+    expect(canvas.requestPointerLock).toHaveBeenCalledOnce();
+  });
+});
+
+describe("first gameplay activity", () => {
+  it("reports only the first movement or action", () => {
+    const listener = vi.fn();
+    const stop = input.onActivity(listener);
+
+    expect(input.hasActivity()).toBe(false);
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW" }));
+    expect(input.hasActivity()).toBe(true);
+    expect(listener).toHaveBeenCalledOnce();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyD" }));
+    expect(listener).toHaveBeenCalledOnce();
+    stop();
+  });
+});
 
 describe("canvas touch gestures", () => {
   it("turns a drag into a look and fires nothing", async () => {
@@ -135,14 +298,17 @@ describe("canvas touch gestures", () => {
 describe("the touch buttons", () => {
   it("strikes at once and repeats while the dig button is held", () => {
     input.setTouchPrimary(true);
-    expect(input.consume().primary).toBe(true);
+    expect(input.consume()).toMatchObject({ primary: true, primaryHeld: true });
 
     vi.advanceTimersByTime(500);
-    expect(input.consume().primary).toBe(true);
+    expect(input.consume()).toMatchObject({ primary: true, primaryHeld: true });
 
     input.setTouchPrimary(false);
     vi.advanceTimersByTime(500);
-    expect(input.consume().primary).toBe(false);
+    expect(input.consume()).toMatchObject({
+      primary: false,
+      primaryHeld: false,
+    });
   });
 
   it("holds the secondary button down and queues its release", () => {
@@ -164,6 +330,17 @@ describe("the touch buttons", () => {
 
     input.setTouchJump(false);
     expect(input.consume().jumpHeld).toBe(false);
+  });
+
+  it("holds the use button for scripts after its edge has gone", () => {
+    input.setTouchUse(true);
+    expect(input.consume()).toMatchObject({ use: true, useHeld: true });
+
+    // The one-frame edge is spent, but the held state survives for a later step.
+    expect(input.consume()).toMatchObject({ use: false, useHeld: true });
+
+    input.setTouchUse(false);
+    expect(input.consume().useHeld).toBe(false);
   });
 });
 
@@ -232,7 +409,7 @@ describe("the wheel's tool step", () => {
 });
 
 describe("the interact (use) edge", () => {
-  it("fires once from the queued request, as a touch button would", () => {
+  it("fires once from a queued request", () => {
     input.queueUse();
     expect(input.consume().use).toBe(true);
     expect(input.consume().use).toBe(false);
@@ -245,5 +422,85 @@ describe("the interact (use) edge", () => {
       new KeyboardEvent("keydown", { code: "KeyE", repeat: true }),
     );
     expect(input.consume().use).toBe(false);
+  });
+
+  it("holds the E key for scripts until it comes up", () => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyE" }));
+    expect(input.consume()).toMatchObject({ use: true, useHeld: true });
+    expect(input.consume()).toMatchObject({ use: false, useHeld: true });
+
+    window.dispatchEvent(new KeyboardEvent("keyup", { code: "KeyE" }));
+    expect(input.consume()).toMatchObject({ use: false, useHeld: false });
+  });
+});
+
+describe("the gamepad", () => {
+  /** A standard-mapped gamepad with the given stick axes and pressed buttons. */
+  const pad = (axes: number[], pressed: number[] = []): Gamepad =>
+    ({
+      id: "Backbone One",
+      index: 0,
+      connected: true,
+      mapping: "standard",
+      timestamp: 0,
+      axes,
+      buttons: Array.from({ length: 16 }, (_, i) => ({
+        pressed: pressed.includes(i),
+        touched: pressed.includes(i),
+        value: pressed.includes(i) ? 1 : 0,
+      })),
+    }) as unknown as Gamepad;
+
+  const stubPads = (pads: (Gamepad | null)[]): void => {
+    Object.defineProperty(navigator, "getGamepads", {
+      configurable: true,
+      value: () => pads,
+    });
+  };
+
+  afterEach(() => {
+    delete (navigator as { getGamepads?: unknown }).getGamepads;
+  });
+
+  it("folds the sticks into movement and look", () => {
+    stubPads([pad([1, 0, 0, 1])]);
+    input.poll(0.5);
+    const snapshot = input.consume();
+    expect(snapshot.moveX).toBeCloseTo(1);
+    expect(snapshot.moveY).toBeCloseTo(0);
+    expect(snapshot.lookDy).toBeCloseTo(180);
+  });
+
+  it("presses and holds the face buttons", () => {
+    stubPads([pad([0, 0, 0, 0], [0, 1, 2, 6])]);
+    input.poll(1 / 60);
+    expect(input.consume()).toMatchObject({
+      jump: true,
+      jumpHeld: true,
+      use: true,
+      useHeld: true,
+      primary: true,
+      primaryHeld: true,
+      secondary: true,
+      secondaryHeld: true,
+    });
+  });
+
+  it("releases the controller's held buttons when it disconnects", () => {
+    stubPads([pad([0, 0, 0, 0], [0, 2])]);
+    input.poll(1 / 60);
+    input.consume();
+    stubPads([null]);
+    input.poll(1 / 60);
+    expect(input.consume()).toMatchObject({
+      jumpHeld: false,
+      primaryHeld: false,
+    });
+  });
+
+  it("steps the hotbar from the d-pad", () => {
+    stubPads([pad([0, 0, 0, 0], [15])]);
+    input.poll(1 / 60);
+    expect(input.consume().wheel).toBe(1);
   });
 });

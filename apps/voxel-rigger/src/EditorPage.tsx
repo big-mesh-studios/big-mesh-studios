@@ -10,6 +10,7 @@ import { fileOpen, fileSave } from "browser-fs-access";
 import { createSignal, Show, useContext, type Component } from "solid-js";
 import { RigContext } from "./context";
 import { readProject, writeProject } from "./file/project";
+import { writeAnimatedModel } from "./file/bake-motion";
 import AnimationPanel from "./AnimationPanel";
 import PartsPanel from "./PartsPanel";
 import RigView from "./RigView";
@@ -94,6 +95,39 @@ const EditorPage: Component = () => {
     }
   };
 
+  const exportAnimatedModel = async () => {
+    const motions = rig.motions();
+    if (motions.length === 0) {
+      rig.setStatus("Import or key a motion first.");
+      return;
+    }
+    try {
+      const blob = await writeAnimatedModel(
+        {
+          parts: rig.parts().map((held) => held.part),
+          palette: rig.palette(),
+        },
+        rig.skeleton(),
+        rig.bindings(),
+        motions,
+      );
+      // Named after the skeleton rather than one clip: the whole set goes into
+      // the one file, so a name per clip would collide with itself.
+      const name =
+        rig.skeleton().name.replace(/[^A-Za-z0-9._-]/g, "") || "model";
+      await fileSave(blob, {
+        fileName: `${name}.zip`,
+        extensions: [".zip"],
+        mimeTypes: ["application/zip"],
+      });
+      rig.setStatus(
+        `Exported ${motions.length} motion${motions.length === 1 ? "" : "s"} for the world.`,
+      );
+    } catch (error) {
+      rig.setStatus(`Could not export the animation: ${String(error)}`);
+    }
+  };
+
   return (
     <div class={[styles.shell, { [styles.compact]: compact() }]}>
       <div class={styles.topbar}>
@@ -120,6 +154,7 @@ const EditorPage: Component = () => {
           Open
         </button>
         <button onClick={saveProject}>Save</button>
+        <button onClick={exportAnimatedModel}>Export</button>
       </div>
 
       <div class={styles.body}>

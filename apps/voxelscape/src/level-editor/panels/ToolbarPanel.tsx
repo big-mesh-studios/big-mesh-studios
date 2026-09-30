@@ -1,7 +1,6 @@
 import { For, useContext } from "solid-js";
 import { Bar, Button, Tab } from "../components/components";
 import { LevelEditorContext } from "../context";
-import { BLOCK_CHOICES } from "../structures/blocks";
 import { TOOL_KINDS, type ToolKind } from "../types";
 import styles from "./panels.module.css";
 
@@ -12,9 +11,11 @@ const TOOL_LABELS: Record<ToolKind, string> = {
   house: "House",
   stairs: "Stairs",
   ramp: "Ramp",
+  npc: "NPC",
+  prop: "Prop",
 };
 
-/** The tool row, the block palette, and undo/redo. */
+/** The tool row, with undo/redo and the camera style. */
 export function ToolbarPanel() {
   const editor = useContext(LevelEditorContext);
   return (
@@ -26,18 +27,6 @@ export function ToolbarPanel() {
             onClick={() => editor.setTool(tool)}
           >
             {TOOL_LABELS[tool]}
-          </Tab>
-        )}
-      </For>
-      <span class={styles.separator} />
-      <For each={BLOCK_CHOICES}>
-        {(block) => (
-          <Tab
-            selected={editor.activeBlockId() === block.id}
-            title={`Block ${block.id}`}
-            onClick={() => editor.setActiveBlockId(block.id)}
-          >
-            {block.name}
           </Tab>
         )}
       </For>

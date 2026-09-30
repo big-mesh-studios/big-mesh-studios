@@ -5,14 +5,28 @@
 // methods return is one line-shaped answer for a console to print.
 import {
   ScriptHost,
+  type BeamPose,
+  type BillboardPose,
+  type DecalPose,
   type DialogState,
+  type FigureAnimation,
+  type FigureLook,
+  type LightPose,
+  type ParticlePose,
+  type RiftPose,
   type ScriptedExplosion,
   type ScriptedFire,
+  type ScriptedStorm,
+  type ScriptPrompt,
+  type SoundPlayback,
+  type UiPanel,
 } from "./script-host";
 import type { ScriptEvent } from "./events";
 import { SAMPLE_PLACE_SCRIPT } from "./sample";
 import { MAIN_SCRIPT_FILE } from "./project";
-import type { RequireOnly, WorldQuery } from "./sandbox";
+import type { PlaceData } from "./place-data";
+import type { DataScope, DataValue, RequireOnly, WorldQuery } from "./sandbox";
+import type { PlanShape } from "../world/plan-shapes";
 
 /**
  * The shared clock and world queries the console forwards to the
@@ -57,6 +71,12 @@ export interface ScriptConsoleParams extends RequireOnly<
   /** Called when the script takes hit points off a player, naming the
    * entity that dealt it when the script said whose swing it was. */
   onPlayerDamage?: (player: string, amount: number, source?: string) => void;
+  /** Called when the script restores hit points to a player. */
+  onPlayerHeal?: (player: string, amount: number) => void;
+  /** Called when the script sets how many hit points a player may hold. */
+  onPlayerMaxHealth?: (player: string, maxHealth: number) => void;
+  /** Called when the script adds velocity to a player, for knockback or a jump pad. */
+  onPlayerPush?: (player: string, vx: number, vy: number, vz: number) => void;
   /**
    * Called when the script's current owner of a live-tracked NPC reports its
    * new position, to broadcast to other peers.
@@ -88,7 +108,43 @@ export interface ScriptConsoleParams extends RequireOnly<
   /** Called when the script asks for a sound effect, by one of the world's
    * fixed sound names. Empty `player` means every local peer plays its own
    * copy; a targeted name is meant for that one player alone. */
-  onSound?: (player: string, name: string) => void;
+  onSound?: (player: string, name: string, playback: SoundPlayback) => void;
+  /** Called when the script stops a sound it named, by that id. */
+  onSoundStop?: (player: string, id: string) => void;
+  /** Called when the script fills or clears a box of voxels, in LOD-0 voxel coordinates. */
+  onBlockEdit?: (edit: {
+    min: [number, number, number];
+    max: [number, number, number];
+    id: number;
+  }) => void;
+  /** Called when the script places, replaces, or removes a named structure group. */
+  onStructureEdit?: (edit: { id: string; shapes: PlanShape[] | null }) => void;
+  /** The data the place remembers between runs; a run-scoped table when omitted. */
+  data?: PlaceData;
+  /** Called when the script sends a player to another place. */
+  onTeleport?: (player: string, place: string) => void;
+  /**
+   * Called when the script asks for the place catalog, to search and enter
+   * published places; `query` is the handle or DID to start the search on,
+   * or "" when the script named none.
+   */
+  onCatalog?: (player: string, query: string) => void;
+  /** Called when the script changes which avatar a player is drawn as. */
+  onPlayerAvatar?: (player: string, kind: string) => void;
+  /** Called when the script changes what a player wears; `model` "" is the plain cube. */
+  onPlayerModel?: (player: string, model: string, modelUri: string) => void;
+  /**
+   * Called when the script changes which camera a player sees the world
+   * through. Nobody else can see a player's camera, so this reaches only the
+   * player it names and empty means every local player on their own.
+   */
+  onPlayerView?: (player: string, view: "first" | "third") => void;
+  /** Called to re-read a remembered value the table does not hold. */
+  refreshData?: (
+    scope: DataScope,
+    player: string,
+    key: string,
+  ) => Promise<DataValue | null>;
 }
 
 /** The option a console prints for a dialog, numbered for `/script:choose`. */
@@ -100,12 +156,14 @@ export class ScriptConsole {
   private readonly getHeightAt: (x: number, z: number) => number;
   private readonly getSolidAt?: (x: number, y: number, z: number) => boolean;
   private readonly getWaterAt?: (x: number, y: number, z: number) => boolean;
+  private readonly getBlockAt?: (x: number, y: number, z: number) => number;
   private readonly getPlayers?: () => Array<{
     did: string;
     x: number;
     y: number;
     z: number;
   }>;
+  private readonly getInput?: WorldQuery["getInput"];
   private readonly report: (line: string) => void;
   private readonly onDialog: (
     player: string,
@@ -140,6 +198,17 @@ export class ScriptConsole {
     amount: number,
     source?: string,
   ) => void;
+  private readonly onPlayerHeal: (player: string, amount: number) => void;
+  private readonly onPlayerMaxHealth: (
+    player: string,
+    maxHealth: number,
+  ) => void;
+  private readonly onPlayerPush: (
+    player: string,
+    vx: number,
+    vy: number,
+    vz: number,
+  ) => void;
   private readonly onEntityMove: (state: {
     id: string;
     x: number;
@@ -157,7 +226,39 @@ export class ScriptConsole {
   private readonly onVoid: (y: number) => void;
   private readonly onFire: (fire: ScriptedFire) => void;
   private readonly onExplosion: (explosion: ScriptedExplosion) => void;
-  private readonly onSound: (player: string, name: string) => void;
+  private readonly onSound: (
+    player: string,
+    name: string,
+    playback: SoundPlayback,
+  ) => void;
+  private readonly onSoundStop: (player: string, id: string) => void;
+  private readonly onBlockEdit: (edit: {
+    min: [number, number, number];
+    max: [number, number, number];
+    id: number;
+  }) => void;
+  private readonly onStructureEdit: (edit: {
+    id: string;
+    shapes: PlanShape[] | null;
+  }) => void;
+  private readonly onTeleport: (player: string, place: string) => void;
+  private readonly onCatalog: (player: string, query: string) => void;
+  private readonly onPlayerAvatar: (player: string, kind: string) => void;
+  private readonly onPlayerModel: (
+    player: string,
+    model: string,
+    modelUri: string,
+  ) => void;
+  private readonly onPlayerView: (
+    player: string,
+    view: "first" | "third",
+  ) => void;
+  private readonly refreshData?: (
+    scope: DataScope,
+    player: string,
+    key: string,
+  ) => Promise<DataValue | null>;
+  private readonly data?: PlaceData;
   private readonly getEndings: () => string[];
   private readonly _getNow: () => number;
   private host: ScriptHost | null = null;
@@ -167,13 +268,16 @@ export class ScriptConsole {
     entry: string;
     seed: number;
     models: Record<string, Uint8Array>;
+    levels: Record<string, string>;
   } | null = null;
 
   constructor(params: ScriptConsoleParams) {
     this.getHeightAt = params.getHeightAt;
     this.getSolidAt = params.getSolidAt;
     this.getWaterAt = params.getWaterAt;
+    this.getBlockAt = params.getBlockAt;
     this.getPlayers = params.getPlayers;
+    this.getInput = params.getInput;
     this.report = params.report ?? (() => {});
     this.onDialog = params.onDialog ?? (() => {});
     this.onEnding = params.onEnding ?? (() => {});
@@ -185,6 +289,9 @@ export class ScriptConsole {
     this.onPlayerSpeed = params.onPlayerSpeed ?? (() => {});
     this.onPlayerJump = params.onPlayerJump ?? (() => {});
     this.onPlayerDamage = params.onPlayerDamage ?? (() => {});
+    this.onPlayerHeal = params.onPlayerHeal ?? (() => {});
+    this.onPlayerMaxHealth = params.onPlayerMaxHealth ?? (() => {});
+    this.onPlayerPush = params.onPlayerPush ?? (() => {});
     this.onEntityMove = params.onEntityMove ?? (() => {});
     this.onEvent = params.onEvent ?? (() => {});
     this.onCheckpoint = params.onCheckpoint ?? (() => {});
@@ -194,6 +301,16 @@ export class ScriptConsole {
     this.onFire = params.onFire ?? (() => {});
     this.onExplosion = params.onExplosion ?? (() => {});
     this.onSound = params.onSound ?? (() => {});
+    this.onSoundStop = params.onSoundStop ?? (() => {});
+    this.onBlockEdit = params.onBlockEdit ?? (() => {});
+    this.onStructureEdit = params.onStructureEdit ?? (() => {});
+    this.onTeleport = params.onTeleport ?? (() => {});
+    this.onCatalog = params.onCatalog ?? (() => {});
+    this.onPlayerAvatar = params.onPlayerAvatar ?? (() => {});
+    this.onPlayerModel = params.onPlayerModel ?? (() => {});
+    this.onPlayerView = params.onPlayerView ?? (() => {});
+    this.refreshData = params.refreshData;
+    this.data = params.data;
     this.getEndings = params.getEndings ?? (() => []);
     this._getNow = params.getNow ?? (() => Date.now());
   }
@@ -267,6 +384,16 @@ export class ScriptConsole {
     return this.host?.hudFor("") ?? [];
   }
 
+  /** The scripted UI panels the loaded script shows the local player. */
+  ui(): UiPanel[] {
+    return this.host?.uiFor("") ?? [];
+  }
+
+  /** Reports the local player pressing a button on the scripted UI. */
+  async clickUi(panel: string, button: string): Promise<void> {
+    await this.host?.clickUi("", panel, button);
+  }
+
   /** The shared clock the host's deadlines and cutscenes are measured against. */
   getNow(): number {
     return this._getNow();
@@ -280,6 +407,42 @@ export class ScriptConsole {
   /** Clears `player`'s cutscene once the world has played it out. */
   clearCutscene(player: string): void {
     this.host?.clearCutscene(player);
+  }
+
+  /** The figure `player`'s camera follows, or null when it follows none. */
+  followCameraFor(player: string) {
+    return this.host?.followCameraFor(player) ?? null;
+  }
+
+  /**
+   * Where the scripted figure `id` stands now, in world units, or null when
+   * the script has placed none. The same pose the queries answer with, read by
+   * a camera that tracks a figure the script is moving each step.
+   */
+  figurePose(
+    id: string,
+  ): { x: number; y: number; z: number; yaw: number } | null {
+    const npc = this.host?.npc(id) ?? null;
+    if (npc !== null) {
+      const pose = this.host?.npcPose(id) ?? null;
+      return {
+        x: npc.x + (pose?.dx ?? 0),
+        y: npc.y + (pose?.dy ?? 0),
+        z: npc.z + (pose?.dz ?? 0),
+        yaw: npc.yaw + (pose?.yaw ?? 0),
+      };
+    }
+    const prop = this.host?.prop(id) ?? null;
+    if (prop !== null) {
+      const pose = this.host?.propPose(id) ?? null;
+      return {
+        x: prop.x + (pose?.dx ?? 0),
+        y: prop.y + (pose?.dy ?? 0),
+        z: prop.z + (pose?.dz ?? 0),
+        yaw: prop.yaw + (pose?.yaw ?? 0),
+      };
+    }
+    return null;
   }
 
   /** Whether the script has taken `player`'s movement and tools away. */
@@ -309,10 +472,75 @@ export class ScriptConsole {
 
   /**
    * The local player uses the prop with `id` — a tap or click on it — with
-   * `item` the id of whatever they are holding, or "" for bare hands.
+   * `item` the id of whatever they are holding, or "" for bare hands, and
+   * `button` whichever control fired.
    */
-  async use(id: string, item = ""): Promise<void> {
-    await this.host?.use(id, "", item);
+  async use(
+    id: string,
+    item = "",
+    button: "primary" | "secondary" | "use" = "use",
+  ): Promise<void> {
+    await this.host?.use(id, "", item, button);
+  }
+
+  /** The key codes the loaded script listens on, so the input layer can report them. */
+  bindingKeys(): string[] {
+    return this.host?.bindingKeys ?? [];
+  }
+
+  /** Reports a bound key's edge to the loaded script, authoring an `input` fact. */
+  async input(key: string, phase: "down" | "up"): Promise<void> {
+    await this.host?.input(key, phase, "");
+  }
+
+  /** The prompt standing on the figure `id`, or null when there is none. */
+  promptFor(id: string): ScriptPrompt | null {
+    return this.host?.promptFor(id) ?? null;
+  }
+
+  /** The motion the figure `id` is playing, or null when it plays none. */
+  animationFor(id: string): FigureAnimation | null {
+    return this.host?.animationFor(id) ?? null;
+  }
+
+  /** The point lights the loaded script has lit, for the world to draw. */
+  lights(): LightPose[] {
+    return this.host?.lightList ?? [];
+  }
+
+  /** The labels the loaded script shows, for the world to draw. */
+  billboards(): BillboardPose[] {
+    return this.host?.billboardList ?? [];
+  }
+
+  /** The particle emitters the loaded script runs, for the world to draw. */
+  particles(): ParticlePose[] {
+    return this.host?.particleList ?? [];
+  }
+
+  /** The dust storms the loaded script drives, for the world to draw. */
+  storms(): ScriptedStorm[] {
+    return this.host?.stormList ?? [];
+  }
+
+  /** The marks the loaded script has laid, for the world to draw. */
+  decals(): DecalPose[] {
+    return this.host?.decalList ?? [];
+  }
+
+  /** The rifts the loaded script has opened, for the world to draw. */
+  rifts(): RiftPose[] {
+    return this.host?.riftList ?? [];
+  }
+
+  /** The lines the loaded script draws, for the world to draw. */
+  beams(): BeamPose[] {
+    return this.host?.beamList ?? [];
+  }
+
+  /** The tint and fade the figure `id` wears, or null when it wears none. */
+  lookFor(id: string): FigureLook | null {
+    return this.host?.lookFor(id) ?? null;
   }
 
   /**
@@ -420,10 +648,11 @@ export class ScriptConsole {
     entry: string,
     seed: number,
     models: Record<string, Uint8Array> = {},
+    levels: Record<string, string> = {},
   ): Promise<string> {
-    this.last = { files, entry, seed, models };
+    this.last = { files, entry, seed, models, levels };
     const host = await this.freshHost(seed);
-    await host.loadProject(files, entry, models);
+    await host.loadProject(files, entry, models, levels);
     return `script loaded — ${this.loadedLine()}`;
   }
 
@@ -440,6 +669,7 @@ export class ScriptConsole {
       this.last.entry,
       this.last.seed,
       this.last.models,
+      this.last.levels,
     );
   }
 
@@ -518,7 +748,9 @@ export class ScriptConsole {
       getHeightAt: this.getHeightAt,
       getSolidAt: this.getSolidAt,
       getWaterAt: this.getWaterAt,
+      getBlockAt: this.getBlockAt,
       getPlayers: this.getPlayers,
+      getInput: this.getInput,
       onToast: (player, text) => {
         if (player === "") {
           this.report(text);
@@ -538,6 +770,11 @@ export class ScriptConsole {
         this.onPlayerJump(player, multiplier),
       onPlayerDamage: (player, amount, source) =>
         this.onPlayerDamage(player, amount, source),
+      onPlayerHeal: (player, amount) => this.onPlayerHeal(player, amount),
+      onPlayerMaxHealth: (player, maxHealth) =>
+        this.onPlayerMaxHealth(player, maxHealth),
+      onPlayerPush: (player, vx, vy, vz) =>
+        this.onPlayerPush(player, vx, vy, vz),
       onEntityMove: (state) => this.onEntityMove(state),
       onEvent: (event) => this.onEvent(event),
       onCheckpoint: (player, at) => this.onCheckpoint(player, at),
@@ -546,7 +783,18 @@ export class ScriptConsole {
       onVoid: (y) => this.onVoid(y),
       onFire: (fire) => this.onFire(fire),
       onExplosion: (explosion) => this.onExplosion(explosion),
-      onSound: (player, name) => this.onSound(player, name),
+      onSound: (player, name, playback) => this.onSound(player, name, playback),
+      onSoundStop: (player, id) => this.onSoundStop(player, id),
+      onBlockEdit: (edit) => this.onBlockEdit(edit),
+      onStructureEdit: (edit) => this.onStructureEdit(edit),
+      onTeleport: (player, place) => this.onTeleport(player, place),
+      onCatalog: (player, query) => this.onCatalog(player, query),
+      onPlayerAvatar: (player, kind) => this.onPlayerAvatar(player, kind),
+      onPlayerModel: (player, model, modelUri) =>
+        this.onPlayerModel(player, model, modelUri),
+      onPlayerView: (player, view) => this.onPlayerView(player, view),
+      refreshData: this.refreshData,
+      data: this.data,
       getEndings: () => this.getEndings(),
     });
     return this.host;

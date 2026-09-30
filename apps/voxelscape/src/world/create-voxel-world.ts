@@ -1,7 +1,8 @@
 import type { Group } from "@random-mesh/rmsl/scene";
 import { TriangleRenderer } from "../renderers/triangle-renderer";
 import { loadVoxelTiles } from "../renderers/tile-loader";
-import type { VoxelTileConfig, VoxelTiles } from "../renderers/atlas";
+import type { VoxelTileConfig } from "../renderers/atlas";
+import type { VoxelTiles } from "./voxel-tiles";
 import { cellsInSphere, ChunkSphere, type LodBands } from "./chunk-sphere";
 import { WorldWorkerPool } from "./worker-pool";
 import {
@@ -18,6 +19,8 @@ import {
   BLOCK_WORLD,
   VOXEL_SIZE,
   getGroundHeightBelow,
+  getWorldBlockId,
+  getWorldBlockLight,
   getWorldHeight,
   isLavaAt,
   isSolidAt,
@@ -26,6 +29,7 @@ import {
   type WorldBlock,
 } from "./level-data";
 import { getHeightAt, type TerrainConfig } from "./noise";
+import { LightEngine } from "./light-engine";
 import type { StructurePlan } from "./structure-fill";
 import { VOXEL_AIR, VOXEL_LAVA, VOXEL_WATER, isFluidId } from "./voxel-store";
 
@@ -133,6 +137,14 @@ export interface VoxelWorld {
    */
   setStructures(structures: StructurePlan | undefined): boolean;
   /**
+   * Places or replaces the structures a place script asks for at run time,
+   * stamped after the plan the world was built with. Only the cells the
+   * changed run-time shapes reach are regenerated, so a script putting a
+   * building down or taking it away never re-tests the base plan's surfaces
+   * over the whole window. Returns whether the overlay actually changed.
+   */
+  setRuntimeStructures(structures: StructurePlan | undefined): boolean;
+  /**
    * The world's worker threads, shared by the fill and mesh clients, so the
    * console can report and resize them.
    */
@@ -145,6 +157,14 @@ export interface VoxelWorld {
   /** Whether the voxel at a world point is lava; the contact-hazard query. */
   getLavaAt(x: number, y: number, z: number): boolean;
   getSolidAt(x: number, y: number, z: number): boolean;
+  /** The voxel id at a world point, or 0 for air and for outside the loaded blocks. */
+  getBlockAt(x: number, y: number, z: number): number;
+  /**
+   * The block light reaching a world point, 0 to 15, or 0 outside the loaded
+   * blocks. The renderer reads it to light the models a place has placed
+   * against the same channel the terrain is meshed from.
+   */
+  getBlockLightAt(x: number, y: number, z: number): number;
   /** Keeps the block window centred on (`x`, `y`, `z`), streaming new blocks in off the main thread. */
   scrollTo(x: number, y: number, z: number): void;
   /**
@@ -174,6 +194,13 @@ export interface VoxelWorld {
    * the cells a new block may set moving through this.
    */
   onBlockFilled(cb: (index: number) => void): void;
+  /**
+   * Keeps the light of runtime voxel changes and freshly landed seams in step
+   * with their stores, budgeted so an edit or a burst of streaming washes over
+   * a few frames instead of stalling one. The frame loop flushes it every
+   * frame; the editing and flow controllers seed it as they write voxels.
+   */
+  readonly light: LightEngine;
   /**
    * The slot whose block's interior holds a world voxel, resolved in O(1) via
    * the window's cell map — the lookup the fluid simulation reads and writes
@@ -237,13 +264,35 @@ export const createVoxelWorld = ({
     createWorker === undefined ? {} : { createWorker, count: 1 },
   );
 
+  /**
+   * The world's incremental light engine, held back from its construction so
+   * the streaming callbacks below can queue seam work on it; fills land only
+   * after this function returns, so nothing observes the gap.
+   */
+  let light: LightEngine | undefined;
   let releaseHandler: ((index: number) => void) | undefined;
+  /**
+   * Resolves a world voxel to the slot whose cell holds it, through the
+   * window's O(1) cell map. The fluid sim and the light engine both read cell
+   * addresses through it.
+   */
+  const blockIndexAtVoxel = (w: WorldVoxel): number | undefined =>
+    sphere.slotAt(
+      (w[0] + 0.5) * VOXEL_SIZE,
+      (w[1] + 0.5) * VOXEL_SIZE,
+      (w[2] + 0.5) * VOXEL_SIZE,
+    );
   const sphere: ChunkSphere = new ChunkSphere({
     radius: chunkRadius,
     yRadius: chunkRadiusY,
     terrain,
     structures,
     onBlockChanged: (i, meshes) => {
+      // A block lights itself from its own store alone, so its seam pairs only
+      // agree with a neighbour's copies if the neighbour's light already
+      // reached them; the seam work is queued before the mesh is adopted so
+      // the light it bakes already holds the raise.
+      light?.enqueueFaces(i);
       // Recorded before the renderer is told, because a block only counts as
       // drawn once its geometry is built and `onBlockMeshed` fires from
       // inside this call.
@@ -359,6 +408,14 @@ export const createVoxelWorld = ({
     },
   });
 
+  const lightEngine = new LightEngine({
+    blocks: blockGrid.blocks,
+    resolve: blockIndexAtVoxel,
+    isFilled: (i) => sphere.hasTerrain(i),
+    onChanged: (indices) => renderer.onBlocksChanged(indices),
+  });
+  light = lightEngine;
+
   const reapplyEdits = () => {
     const affected: number[] = [];
     for (let i = 0; i < blockGrid.blocks.length; i++) {
@@ -446,6 +503,7 @@ export const createVoxelWorld = ({
   return {
     blocks: blockGrid.blocks,
     renderer,
+    light: lightEngine,
     get voxelBytes() {
       let bytes = 0;
       for (const block of blockGrid.blocks) {
@@ -489,6 +547,9 @@ export const createVoxelWorld = ({
     setStructures(structures) {
       return sphere.setStructures(structures);
     },
+    setRuntimeStructures(structures) {
+      return sphere.setRuntimeStructures(structures);
+    },
     workerPool,
     reapplyEdits,
     applyEdits,
@@ -514,6 +575,12 @@ export const createVoxelWorld = ({
     getSolidAt(x, y, z) {
       return isSolidAt(sphere.query, x, y, z);
     },
+    getBlockAt(x, y, z) {
+      return getWorldBlockId(sphere.query, x, y, z);
+    },
+    getBlockLightAt(x, y, z) {
+      return getWorldBlockLight(sphere.query, x, y, z);
+    },
     scrollTo(x, y, z) {
       sphere.scrollTo(x, y, z);
     },
@@ -527,11 +594,7 @@ export const createVoxelWorld = ({
       filledListeners.push(cb);
     },
     blockIndexAtVoxel(w) {
-      return sphere.slotAt(
-        (w[0] + 0.5) * VOXEL_SIZE,
-        (w[1] + 0.5) * VOXEL_SIZE,
-        (w[2] + 0.5) * VOXEL_SIZE,
-      );
+      return blockIndexAtVoxel(w);
     },
     dispose() {
       // stop the fill worker so it doesn't keep running after unmount

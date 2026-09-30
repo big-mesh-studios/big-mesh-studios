@@ -20,7 +20,7 @@ interface Sample extends Position2 {
 }
 
 /** How long a correction keeps extrapolating before the figure holds still at the extrapolated point. */
-const MAX_EXTRAPOLATION_SECONDS = 1;
+export const MAX_EXTRAPOLATION_SECONDS = 1;
 /** How fast the drawn position eases toward the extrapolated target. */
 const BLEND_RATE = 12;
 /** A correction larger than this, in world units, is snapped to rather than eased toward. */
@@ -37,6 +37,27 @@ const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
 const clampSpeed = (v: number): number =>
   Math.max(-MAX_INFERRED_SPEED, Math.min(MAX_INFERRED_SPEED, v));
+
+/**
+ * How fast a figure travelled between two reports, in world units per second,
+ * or undefined where the two say nothing about a speed: the same moment twice,
+ * or two reports read together. Clamped to the same ceiling the extrapolation
+ * assumes, so a figure cannot read as travelling faster than anything the world
+ * moves.
+ */
+export const speedBetween = (
+  from: { x: number; z: number; at: number },
+  to: { x: number; z: number; at: number },
+): number | undefined => {
+  const elapsed = (to.at - from.at) / 1000;
+  if (elapsed <= 0) {
+    return undefined;
+  }
+  return Math.hypot(
+    clampSpeed((to.x - from.x) / elapsed),
+    clampSpeed((to.z - from.z) / elapsed),
+  );
+};
 
 /**
  * The drawn position of one figure: the last two positions it was actually
@@ -93,5 +114,17 @@ export class FigureMotionTrack {
       MAX_EXTRAPOLATION_SECONDS,
     );
     return { x: this.current.x + vx * age, z: this.current.z + vz * age };
+  }
+
+  /**
+   * How fast this figure is being drawn as moving, in world units per second,
+   * read from the last two positions it was given. Undefined until a second one
+   * arrives, since one report says where a figure is and not which way it is
+   * going.
+   */
+  speed(): number | undefined {
+    return this.previous === null
+      ? undefined
+      : speedBetween(this.previous, this.current);
   }
 }

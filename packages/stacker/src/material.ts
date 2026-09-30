@@ -25,6 +25,15 @@ export class VoxelModelMaterial extends NodeMaterial {
   lightDir: [number, number, number] = [0, 0, 1];
   lightColour: [number, number, number] = [1, 1, 1];
   ambientColour: [number, number, number] = [0, 0, 0];
+  /**
+   * How much light a world has cast onto the model, 0 to 1 — the block light
+   * standing at the model's own position. It is spent as a light arriving from
+   * straight above, the way a ceiling fitting lights a room, wrapping around
+   * the form rather than stopping at the angle. Zero wherever nothing emissive
+   * is in reach, which leaves the surface lit by the directional and ambient
+   * colours alone.
+   */
+  blockLight = 0;
   unlit = false;
   /**
    * How strongly the surface mixes toward red, 0 to 1. A caller flashes a hit
@@ -32,6 +41,18 @@ export class VoxelModelMaterial extends NodeMaterial {
    * mixed so transparent fragments stay transparent.
    */
   flash = 0;
+  /**
+   * The colour the shaded surface is multiplied by, each channel 0 to 1. A
+   * caller tinting one figure gives it a set of its own with this set; the
+   * shared default leaves the drawn colours untouched.
+   */
+  tint: [number, number, number] = [1, 1, 1];
+  /**
+   * The share of the surface's opacity kept, 0 to 1. A caller fading a figure
+   * draws it with `transparent` on and this below one; the shared default is
+   * fully opaque.
+   */
+  alpha = 1;
   /**
    * How far to push the voxel surface away from the camera when writing depth,
    * in window-depth units. A caller drawing a line on a voxel's surface raises
@@ -47,8 +68,11 @@ export class VoxelModelMaterial extends NodeMaterial {
   private lightDirUniform?: UniformNode<"vec3">;
   private lightColourUniform?: UniformNode<"vec3">;
   private ambientColourUniform?: UniformNode<"vec3">;
+  private blockLightUniform?: UniformNode<"float">;
   private unlitUniform?: UniformNode<"bool">;
   private flashUniform?: UniformNode<"float">;
+  private tintUniform?: UniformNode<"vec3">;
+  private alphaUniform?: UniformNode<"float">;
   private depthBiasUniform?: UniformNode<"float">;
 
   constructor() {
@@ -93,10 +117,17 @@ export class VoxelModelMaterial extends NodeMaterial {
       "vec3",
       () => this.ambientColour,
     );
+    this.blockLightUniform = b.materialUniform(
+      "uBlockLight",
+      "float",
+      () => this.blockLight,
+    );
     this.unlitUniform = b.materialUniform("uUnlit", "bool", () =>
       this.unlit ? 1 : 0,
     );
     this.flashUniform = b.materialUniform("uFlash", "float", () => this.flash);
+    this.tintUniform = b.materialUniform("uTint", "vec3", () => this.tint);
+    this.alphaUniform = b.materialUniform("uAlpha", "float", () => this.alpha);
     this.depthBiasUniform = b.materialUniform(
       "uDepthBias",
       "float",
@@ -187,23 +218,29 @@ export class VoxelModelMaterial extends NodeMaterial {
       lightDir: b.varying("vLightVolume", "vec3"),
       lightColour: this.lightColourUniform!,
       ambientColour: this.ambientColourUniform!,
+      blockLight: this.blockLightUniform!,
       unlit: this.unlitUniform!,
     });
 
-    // A hit monster flashes red: mix the shaded colour toward red by `flash`,
-    // leaving the alpha alone so empty fragments stay empty and the depth
-    // test below still sees the voxel surface.
+    // A caller tinting or fading one figure multiplies the shaded colour and
+    // its opacity by the material's own; the shared defaults leave both alone.
+    // A hit then mixes the result toward red by `flash`.
+    const looked = vec4(
+      colour.xyz.mul(this.tintUniform!),
+      colour.a.mul(this.alphaUniform!),
+    ).toVar();
+
     const tinted = vec4(
       mix(
-        colour.xyz,
+        looked.xyz,
         vec3(float(1), float(0.15), float(0.15)),
         this.flashUniform!,
       ),
-      colour.a,
+      looked.a,
     );
 
     const fragDepth = builtinFragDepth();
-    If(colour.a.greaterThan(float(0.5)), () => {
+    If(looked.a.greaterThan(float(0.5)), () => {
       // Write the depth of the true voxel surface, so models occlude each other
       // and the terrain by their geometry. The vertex stage passed the
       // box-entry clip z/w and the rows of projection·view·model·instance;

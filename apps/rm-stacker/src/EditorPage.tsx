@@ -5,6 +5,8 @@ import { Component, Loading, Show, useContext } from "solid-js";
 import styles from "./App.module.css";
 import { Split } from "./components/SplitPane";
 import { StackerContext } from "./context";
+import FlyControls from "./fly/FlyControls";
+import { FlyHud } from "./FlyHud";
 import { Hud } from "./Hud";
 import PixelEditorView from "./PixelEditorView/PixelEditorView";
 import VoxelPreviewView from "./VoxelPreviewView";
@@ -20,18 +22,16 @@ const EditorPage: Component = () => {
           shows an empty pane in their place. That is what keeps the fresh model
           the editor opens on meanwhile from ever being seen. */}
       <Loading fallback={<div class={styles.shell} />}>
-        <div class={styles.shell}>
+        <div class={styles.shell} data-flying={stacker.flying() || undefined}>
           <Split direction={stacker.narrow() ? "row" : "column"}>
             {(() => {
               const pixelEditorPane = (
-                <Split.Pane size={initiallyNarrow ? "75%" : "50%"} max="245px">
-                  <div
-                    style={{
-                      "overflow-x": "auto",
-                      position: "absolute",
-                      inset: 0,
-                    }}
-                  >
+                <Split.Pane
+                  class={styles.editorPane}
+                  size={initiallyNarrow ? "75%" : "50%"}
+                  max="245px"
+                >
+                  <div class={styles.editorScroll}>
                     <PixelEditorView />
                   </div>
                 </Split.Pane>
@@ -39,6 +39,7 @@ const EditorPage: Component = () => {
               const voxelPreviewPane = (
                 <Split.Pane
                   style={{ display: "grid" }}
+                  class={styles.previewPane}
                   size={initiallyNarrow ? "25%" : "50%"}
                   max="245px"
                 >
@@ -80,6 +81,20 @@ const EditorPage: Component = () => {
           </Split>
         </div>
       </Loading>
+      {/* What a camera in flight is told with, laid under the toolbar so that the
+          bars are still over it. The thumb controls go in with it: a camera in
+          flight holds the pointer, so on a device that has one they are the only
+          controls a thumb can reach at all. */}
+      <Show when={stacker.flying()}>
+        <FlyHud />
+        <Show when={stacker.coarsePointer()}>
+          <FlyControls
+            input={stacker.flyInput}
+            undo={() => stacker.undoRedoManager.undo()}
+            redo={() => stacker.undoRedoManager.redo()}
+          />
+        </Show>
+      </Show>
       <Hud />
     </>
   );
