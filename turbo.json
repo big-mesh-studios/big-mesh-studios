@@ -3,7 +3,8 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "dist-lib/**", ".ssr/**"]
+      "outputs": ["dist/**", "dist-lib/**", ".ssr/**"],
+      "env": ["VOXELSCAPE_BASE_PATH"]
     },
     "build-lib": {
       "outputs": ["dist-lib/**"]
