@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { compileGLSL } from "@random-mesh/rmsl";
+import { compileGlsl } from "@random-mesh/rmsl/glsl";
 import { Line2NodeMaterial, Scene } from "@random-mesh/rmsl/scene";
 import { fromProgram, render } from "@random-mesh/rmsl/test";
 import { ParticleMaterial } from "./weather-controller";
@@ -279,8 +279,8 @@ describe("weather shader compilation", () => {
   it("compiles the rain and snow materials to GLSL", () => {
     for (const material of [rain(), snow()]) {
       const program = material.build(new Scene());
-      expect(compileGLSL.vertex(program.vertexRoot)).toContain("viewMatrix");
-      expect(compileGLSL.fragment(program.fragmentRoot)).toContain("tint");
+      expect(compileGlsl.vertex(program.vertexRoot)).toContain("viewMatrix");
+      expect(compileGlsl.fragment(program.fragmentRoot)).toContain("tint");
     }
   });
 
@@ -293,7 +293,7 @@ describe("weather shader compilation", () => {
       opacity: 1,
     });
     const program = bolt.build(new Scene());
-    expect(() => compileGLSL.vertex(program.vertexRoot)).not.toThrow();
-    expect(() => compileGLSL.fragment(program.fragmentRoot)).not.toThrow();
+    expect(() => compileGlsl.vertex(program.vertexRoot)).not.toThrow();
+    expect(() => compileGlsl.fragment(program.fragmentRoot)).not.toThrow();
   });
 });

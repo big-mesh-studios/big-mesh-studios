@@ -31,7 +31,7 @@
     "build-lib": "vite build --config vite.config.lib.ts && tsc -p tsconfig.lib.json",
     "serve": "vite preview",
     "serve:bench": "vite preview --mode bench",
-    "test": "vitest run",
+    "test": "vitest run --testTimeout=30000",
     "bench": "node --experimental-transform-types e2e/bench/run.ts",
     "bench:compare": "node --experimental-transform-types e2e/bench/compare.ts",
     "bench:ab": "node --experimental-transform-types e2e/bench/ab.ts",

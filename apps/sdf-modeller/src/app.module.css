@@ -1,0 +1,598 @@
+/*
+ * The shell: a canvas with panels over it.
+ *
+ * **Every overlay here is `pointer-events: none` with its own controls taking them
+ * back.** A header that stretches across the top of the model and takes presses is a
+ * strip of the screen that cannot be orbited, and on a phone that strip is a third of
+ * the view.
+ */
+
+.root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #111114;
+  color: #e6e6ea;
+
+  /*
+   * ## The top-left chain, written once
+   *
+   * **Four overlays go into the same corner and nothing in CSS relates one absolute box to
+   * another**, so each needs to be told where the one above it ended. That is what these
+   * four numbers are, and the reason they are here rather than as four literals in three
+   * stylesheets is that they are a *chain*: change the control height and all four have to
+   * move together or the rows draw through each other.
+   *
+   * **The step is `--ui-size + --ui-margin`, and it has to be.** The offsets this replaced
+   * were 4.25rem, 6.5rem and 8.75rem — a 2.25rem (36px) step, which is `rm-stacker`'s
+   * `--size`. This application deliberately raised `--ui-size` to 44px for touch, so every
+   * one of those numbers was 13px short of where the row above actually ended: the mesher
+   * row drew through the bottom of the tool row, and the tool row drew through the second
+   * line of the status readout. Nothing about that announces itself in review, which is why
+   * the step is derived from the token rather than measured once and written down.
+   *
+   * `--header-h` is the one number here that is not derived, because the header's height is
+   * its content's. It is stable because `.status` is a single line (see its own rule), so a
+   * long readout ellipsises instead of pushing the chain down.
+   */
+  --header-h: 5rem;
+  --tools-top: calc(var(--header-h) + var(--ui-margin));
+  --render-top: calc(var(--tools-top) + var(--ui-size) + var(--ui-margin));
+  --parts-top: calc(var(--render-top) + var(--ui-size) + var(--ui-margin));
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+
+  /* **The element owns its gestures, and this is the one rule that makes touch work.**
+     Without it a drag on the canvas is a gesture the page is free to interpret, which on
+     a touch device means the viewport scrolls halfway through an orbit — and
+     `overscroll-behavior` in the baseline stops the *page* from bouncing but cannot stop
+     this, because this gesture belongs to the canvas. */
+  touch-action: none;
+
+  cursor: grab;
+}
+
+.canvas:active {
+  cursor: grabbing;
+}
+
+.header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: 22rem;
+  padding: max(1rem, var(--ui-safe-top, 0px)) 1rem 1rem;
+  padding-left: max(1rem, var(--ui-safe-left, 0px));
+
+  /* Only the text is selectable; the empty space around it is not a target. */
+  pointer-events: none;
+  user-select: none;
+}
+
+.title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.status {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  color: #a9a9a9;
+  font-variant-numeric: tabular-nums;
+
+  /*
+   * **One line, always, and that is a layout decision as much as a typographic one.**
+   *
+   * This readout is the longest string in the shell — `6 parts · 788 triangles · 11k samples
+   * · 40 ms · watertight · 788 triangles · 5u³` — and at `22rem` it wraps to two lines on any
+   * ordinary screen. A second line pushed the header's bottom edge down through the tool row,
+   * because the tool row is positioned from a fixed offset (see `.root`). Ellipsising keeps
+   * `--header-h` honest for every model; the full string is in the `title`, and the part that
+   * decides whether the model can be printed is in the export popover in any case.
+   */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * The tool chooser.
+ *
+ * **Positioned rather than in the flow, because on a wide screen the canvas is.** The canvas
+ * fills its box in normal flow, so anything after it in the source is pushed below the
+ * window and clipped by the root's `overflow: hidden` — which is exactly where the tool
+ * buttons went the first time. The header and both panels are absolutely positioned for
+ * their own reasons; this joins them.
+ */
+.tools {
+  position: absolute;
+  /* **Below the header block, from the chain on `.root`** rather than from a number here.
+     See the note there for why this offset is derived rather than written down. */
+  top: var(--tools-top);
+  left: 0;
+  display: flex;
+  gap: var(--ui-margin);
+  padding-left: max(1rem, var(--ui-safe-left, 0px));
+}
+
+.tool {
+  min-height: var(--ui-size);
+  padding: 0 calc(var(--ui-margin) * 1.25);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: calc(var(--ui-size) / 4);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tool[aria-checked="true"] {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.45);
+  font-weight: 600;
+}
+
+.tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/*
+ * ## The mesher controls, on their own row under the tools
+ *
+ * **A row of their own rather than more buttons in `.tools`, because `.tools` is a single
+ * row of `--ui-size` buttons and four of them plus a slider is more than fits across a
+ * phone.** So they go below it and the parts panel moves down to match — the same bargain
+ * `.tools` already struck with that panel, and the reason its comment says the panel is
+ * "pushed down to match" is that this is a chain and not a coincidence.
+ *
+ * It is `pointer-events: none` with the controls taking them back, for the reason the root
+ * has: a strip of screen across the top of the model that takes presses is a strip of the
+ * view that cannot be orbited.
+ */
+.render {
+  position: absolute;
+  top: var(--render-top);
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--ui-margin);
+  padding-left: max(1rem, var(--ui-safe-left, 0px));
+
+  pointer-events: none;
+}
+
+.render > * {
+  pointer-events: all;
+}
+
+/*
+ * **The mesher chooser reuses `.tool` rather than having its own button style.** They are
+ * the same control with a different question — which mesher rather than which tool — and
+ * two styles for one shape is one more thing to keep in step.
+ */
+.mesher {
+  display: flex;
+  gap: var(--ui-margin);
+}
+
+.resolution {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--ui-margin) / 2);
+  min-height: var(--ui-size);
+  padding: 0 calc(var(--ui-margin) * 1.25);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: calc(var(--ui-size) / 4);
+  background: rgba(20, 20, 26, 0.82);
+
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.resolutionLabel {
+  font-size: 0.7rem;
+  color: #a0a0a8;
+  white-space: nowrap;
+}
+
+/* **The slider itself is left mostly to the platform.** It is the one control here whose
+   appearance a person has an opinion about — a thumb sized for a finger, a track that is
+   visible in sunlight — and there is no version of that written once in a stylesheet that
+   agrees with the platform they are on. Only the width is set, because it is the one thing
+   that has to be the same everywhere for the row's layout to hold. */
+.resolution input {
+  width: 6rem;
+  margin: 0;
+  touch-action: manipulation;
+}
+
+.footer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  gap: var(--ui-margin);
+  align-items: center;
+
+  /* **The row along the bottom edge, so it is the row a home indicator sits on.** The
+     `max()` keeps the baseline margin from being replaced by a zero inset on a device
+     that has one. */
+  padding: var(--ui-margin);
+  padding-bottom: max(var(--ui-margin), var(--ui-safe-bottom, 0px));
+  padding-left: max(var(--ui-margin), var(--ui-safe-left, 0px));
+  padding-right: max(var(--ui-margin), var(--ui-safe-right, 0px));
+
+  pointer-events: none;
+}
+
+.action {
+  pointer-events: all;
+  min-height: var(--ui-size);
+  padding: 0 calc(var(--ui-margin) * 2);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: calc(var(--ui-size) / 4);
+  background: rgba(20, 20, 26, 0.82);
+  color: inherit;
+  cursor: pointer;
+
+  /* Nothing here is text to select, and a double-tap that selects a button instead of
+     pressing it is the classic mobile misfire. Paired with `touch-action: none` on the
+     element that owns a gesture — this one owns no gesture, so it keeps `manipulation`
+     rather than `none` so a tap is still delivered promptly. */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/*
+ * ## The "Your files" dialogue
+ *
+ * **All of its positioning lives here rather than in `ui/files-panel.module.css`**, and that is
+ * the arrangement worth copying: one stylesheet owns the whole screen's composition instead of
+ * each component owning a piece of it. The sibling does the same thing, and the reason is that a
+ * dialogue that positions itself has to know what is around it, and what is around it is the
+ * shell.
+ */
+.filesDialog {
+  /*
+   * **The room given away to the shell**, so the tools and the panels stay visible around the
+   * dialogue rather than being covered by it. Expressed in the same tokens as everything else, so
+   * it tracks `--ui-size` when that changes.
+   */
+  --clearance: calc(var(--ui-size) * 2 + var(--ui-margin) * 4);
+
+  /*
+   * **`margin: auto` and it is not optional.** A modal dialogue is centred by the browser using
+   * exactly that, and the baseline stylesheet zeroes every margin — so it has to be asked for
+   * again here rather than left to have been taken away.
+   *
+   * **`max-width`/`max-height: none` and `padding: 0`** for the same reason in the other
+   * direction: the UA's defaults are `fit-content` and a padding, and a dialogue sized by its
+   * content is a dialogue that cannot hold a grid of cards.
+   */
+  position: fixed;
+  inset: 0;
+  margin: auto;
+
+  width: calc(100vw - var(--clearance));
+  height: calc(100dvh - var(--clearance));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+
+  overflow: hidden;
+  color: var(--ui-front);
+  background: var(--ui-back);
+  border: 1px solid var(--ui-grey);
+  border-radius: calc(var(--ui-size) / 3);
+
+  /*
+   * **A flat scrim and no blur.** A backdrop that blurs the model behind it costs a filter over
+   * the whole viewport every frame it is shown, on a canvas application where the frame is the
+   * expensive thing.
+   */
+  &::backdrop {
+    background: rgb(0 0 0 / 40%);
+  }
+}
+
+/*
+ * ## On a screen this narrow the dialogue takes the whole window
+ *
+ * **One variable flipping changes both dimensions**, because `width` and `height` are written
+ * against it. There is no room to give away to a backdrop at this size, and no point in a click
+ * outside that has nowhere to land — so the dialogue's own close button stands in for it.
+ *
+ * The 500px is the same number the sibling uses, and the same one its `narrow()` reports to
+ * Solid: one breakpoint expressed twice, once for layout and once for behaviour, because a media
+ * query cannot tell a component what to do.
+ */
+@media (max-width: 500px) {
+  .filesDialog {
+    --clearance: 0px;
+
+    border: 0;
+    border-radius: 0;
+  }
+}
+
+.hint {
+  font-size: 0.7rem;
+  color: #707070;
+  user-select: none;
+}
+
+/*
+ * ## The narrow layout, and why the panels cannot overlap in it
+ *
+ * **Above this width the panels are positioned over the canvas, which is right on a wide
+ * screen: the model should fill the window and the panels sit on top of it.**
+ *
+ * Below it, that stops working — and the symptom is worth naming, because it is not "the
+ * panels are too big". It is that two absolutely-positioned boxes on opposite edges of a
+ * short screen **have no relationship to each other at all**, so on a phone in portrait the
+ * top-right transform panel grows down into the bottom-left parts panel and the two occupy
+ * the same pixels. Neither is clipped, neither scrolls away, and no adjustment to either
+ * one fixes it, because nothing in CSS is relating them.
+ *
+ * So the narrow layout changes the *kind* of layout rather than the sizes: **the root
+ * becomes a flex column, the canvas is a child that flexes, and the panels are siblings
+ * below it.** Two siblings in a flex column cannot overlap — the column gives each a share
+ * of the height and the canvas takes what is left. The tab bar keeps it to one panel at a
+ * time: two panels side by side on a phone is neither of them, since the parts list wants a
+ * list's height and the transform wants a form's width.
+ *
+ * This is the arrangement `big-mesh-studios`'s voxelscape level editor uses for the same
+ * reason, and the reason to copy an arrangement rather than invent one is that this class of
+ * bug does not announce itself in review.
+ */
+.tabs {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .root {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /*
+   * **The canvas is a flex child, not an absolutely-positioned full-bleed layer.**
+   * `min-height: 0` is load-bearing and easy to drop: without it a flex item's default
+   * `min-height: auto` refuses to shrink below its content, so the canvas keeps its
+   * intrinsic height and pushes the panels off the bottom of the window instead of taking
+   * height from it.
+   */
+  .canvas {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    height: auto;
+    order: 1;
+  }
+
+  .header {
+    order: 0;
+    /* **The tool chooser joins the header band**, see the note on `.tools`. It is a flex
+       child of the root like everything else here, so it needs its own order rather than
+       being nested inside the header — which is absolute on a wide screen and would take the
+       buttons with it. */
+    max-width: none;
+    right: 0;
+    padding: max(0.5rem, var(--ui-safe-top, 0px)) 0.75rem 0.5rem;
+    padding-left: max(0.75rem, var(--ui-safe-left, 0px));
+  }
+
+  /*
+   * **The sheet sits between the canvas and the tab bar, and says so.**
+   *
+   * An `order` on the tab bar and the header is not enough: a flex item with no `order` is
+   * `0`, which ties with the header and is then resolved by source order, so the sheet came
+   * out directly under the title and overlapped it. Everything in a column layout that is
+   * not in source order has to be numbered, and a `0` is a number.
+   *
+   * **Bounded height and its own scroll, because the canvas needs to keep some.** The shape
+   * grid plus the part list is taller than a phone once a few parts exist, and an unbounded
+   * sheet would take the window and leave the model nothing to be seen in.
+   */
+  .sheet {
+    order: 2;
+    min-height: 0;
+    max-height: 45%;
+    overflow-y: auto;
+    /* **Containment, not chaining.** Without this a flick that reaches the end of the sheet
+       scrolls the page behind it, which on a phone reads as the model jumping. */
+    overscroll-behavior: contain;
+  }
+
+  .tabs {
+    order: 3;
+    display: flex;
+    flex-flow: row wrap;
+    gap: var(--ui-margin);
+    align-items: center;
+    padding: var(--ui-margin);
+    padding-left: max(var(--ui-margin), var(--ui-safe-left, 0px));
+    padding-right: max(var(--ui-margin), var(--ui-safe-right, 0px));
+    background: rgba(17, 17, 20, 0.95);
+    pointer-events: all;
+  }
+
+  /*
+   * **The inactive panel leaves the layout entirely** rather than hiding behind the other.
+   * `display: none` and not `visibility: hidden`, because a visibility-hidden panel still
+   * takes its height and the point of the tab bar is that the canvas gets that height back.
+   */
+  [data-hidden] {
+    display: none;
+  }
+
+  /*
+   * **The tool chooser's own appearance is not repeated here.** There used to be a second
+   * copy of `.tools`, `.tool`, `.tool[aria-checked]` and `.tool:disabled` inside this query,
+   * carried over from the wide layout with a stale `top: 4.25rem` in it. It was dead — the
+   * `.tools { position: static }` rule further down overrides the positioning, and the
+   * button rules were character-for-character the ones above — but it is where the wrong
+   * offset survived longest, and a control that differs between layouts should say so here
+   * rather than by accident.
+   */
+
+  .footer {
+    order: 4;
+    position: static;
+    padding-left: max(var(--ui-margin), var(--ui-safe-left, 0px));
+    padding-right: max(var(--ui-margin), var(--ui-safe-right, 0px));
+    /* **The bottom safe-area inset belongs here** — this is the row along the bottom edge,
+       and it is the row a home indicator sits on. */
+    padding-bottom: max(var(--ui-margin), var(--ui-safe-bottom, 0px));
+  }
+
+  /*
+   * **Last, above the footer, and back in the flow.**
+   *
+   * `static` because on a narrow screen the root is a flex column and this is one more item
+   * in it; `order: 4` because a tool a thumb has to reach past the model to find is a tool
+   * that gets left on `select`. It sits under the tab bar rather than in the header because
+   * the top of a phone screen is the one part of it nobody can reach one-handed.
+   */
+  .tools {
+    position: static;
+    order: 4;
+    padding: 0 var(--ui-margin);
+    padding-left: max(var(--ui-margin), var(--ui-safe-left, 0px));
+    padding-right: max(var(--ui-margin), var(--ui-safe-right, 0px));
+  }
+
+  /*
+   * **The mesher row joins the tool row in the flow, rather than sitting under it.**
+   *
+   * `order: 4` as well, so the two arrive together — and `flex-wrap`, because on a phone this
+   * row is as wide as the tool row was and the two of them do not fit on one line.
+   */
+  .render {
+    position: static;
+    order: 4;
+    flex-wrap: wrap;
+    padding-left: max(var(--ui-margin), var(--ui-safe-left, 0px));
+    padding-right: max(var(--ui-margin), var(--ui-safe-right, 0px));
+  }
+
+  /*
+ * ## The "Your files" dialogue
+ *
+ * **All of its positioning lives here rather than in `ui/files-panel.module.css`**, and that is
+ * the arrangement worth copying: one stylesheet owns the whole screen's composition instead of
+ * each component owning a piece of it. The sibling does the same thing, and the reason is that a
+ * dialogue that positions itself has to know what is around it, and what is around it is the
+ * shell.
+ */
+  .filesDialog {
+    /*
+   * **The room given away to the shell**, so the tools and the panels stay visible around the
+   * dialogue rather than being covered by it. Expressed in the same tokens as everything else, so
+   * it tracks `--ui-size` when that changes.
+   */
+    --clearance: calc(var(--ui-size) * 2 + var(--ui-margin) * 4);
+
+    /*
+   * **`margin: auto` and it is not optional.** A modal dialogue is centred by the browser using
+   * exactly that, and the baseline stylesheet zeroes every margin — so it has to be asked for
+   * again here rather than left to have been taken away.
+   *
+   * **`max-width`/`max-height: none` and `padding: 0`** for the same reason in the other
+   * direction: the UA's defaults are `fit-content` and a padding, and a dialogue sized by its
+   * content is a dialogue that cannot hold a grid of cards.
+   */
+    position: fixed;
+    inset: 0;
+    margin: auto;
+
+    width: calc(100vw - var(--clearance));
+    height: calc(100dvh - var(--clearance));
+    max-width: none;
+    max-height: none;
+    padding: 0;
+
+    overflow: hidden;
+    color: var(--ui-front);
+    background: var(--ui-back);
+    border: 1px solid var(--ui-grey);
+    border-radius: calc(var(--ui-size) / 3);
+
+    /*
+   * **A flat scrim and no blur.** A backdrop that blurs the model behind it costs a filter over
+   * the whole viewport every frame it is shown, on a canvas application where the frame is the
+   * expensive thing.
+   */
+    &::backdrop {
+      background: rgb(0 0 0 / 40%);
+    }
+  }
+
+  /*
+ * ## On a screen this narrow the dialogue takes the whole window
+ *
+ * **One variable flipping changes both dimensions**, because `width` and `height` are written
+ * against it. There is no room to give away to a backdrop at this size, and no point in a click
+ * outside that has nowhere to land — so the dialogue's own close button stands in for it.
+ *
+ * The 500px is the same number the sibling uses, and the same one its `narrow()` reports to
+ * Solid: one breakpoint expressed twice, once for layout and once for behaviour, because a media
+ * query cannot tell a component what to do.
+ */
+  @media (max-width: 500px) {
+    .filesDialog {
+      --clearance: 0px;
+
+      border: 0;
+      border-radius: 0;
+    }
+  }
+
+  .hint {
+    display: none;
+  }
+}
+
+/*
+ * **A tab is `--ui-size` tall, which is 44px under a coarse pointer** — from the same token
+ * as everything else rather than a number written here, which is the reason the token exists.
+ */
+.tab {
+  min-height: var(--ui-size);
+  padding: 0 calc(var(--ui-margin) * 1.5);
+  border: 1px solid transparent;
+  border-radius: calc(var(--ui-size) / 4);
+  background: transparent;
+  color: #707070;
+  font: inherit;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.tab[aria-selected="true"] {
+  color: #e6e6ea;
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tab:disabled {
+  color: #343434;
+  cursor: default;
+}

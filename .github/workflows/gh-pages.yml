@@ -48,11 +48,13 @@ jobs:
       # nothing is sent to a browser to run it.
       - name: Gather the front page, the builds, and the docs into one site
         run: |
-          mkdir -p site/rm-stacker site/voxel-rigger site/voxelscape site/docs
+          mkdir -p site/rm-stacker site/voxel-rigger site/voxelscape site/spacescape site/sdf-modeller site/docs
           cp -r apps/homepage/dist/. site/
           cp -r apps/rm-stacker/dist/. site/rm-stacker/
           cp -r apps/voxel-rigger/dist/. site/voxel-rigger/
           cp -r apps/voxelscape/dist/. site/voxelscape/
+          cp -r apps/spacescape/dist/. site/spacescape/
+          cp -r apps/sdf-modeller/dist/. site/sdf-modeller/
           cp -r apps/place-docs/dist/. site/docs/
 
       # Every address other than the site root is a page an editor draws, not a

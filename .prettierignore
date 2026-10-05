@@ -6,3 +6,5 @@ dist-lib
 dist-node
 .ssr
 **/.session.json
+node_modules
+*.tsbuildinfo

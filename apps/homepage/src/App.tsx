@@ -113,6 +113,41 @@ export function App() {
           walking. The motions are baked back into the model, ready for a world
           to wear.
         </AppCard>
+        <AppCard
+          name="spacescape"
+          href={`${base}spacescape/`}
+          accent="#c9a227"
+          call="Enter the landscape"
+          mark={
+            <Mark
+              colour="#c9a227"
+              top="M24 6 42 16 24 26 6 16Z"
+              left="M6 16v10l18 10V26Z"
+              right="M42 16v10L24 36V26Z"
+            />
+          }
+        >
+          An endless signed distance field to walk through and cut into. Paint
+          it, script it, and save places that anybody can open.
+        </AppCard>
+
+        <AppCard
+          name="sdf-modeller"
+          href={`${base}sdf-modeller/`}
+          accent="#9a6ae8"
+          call="Open the modeller"
+          mark={
+            <Mark
+              colour="#9a6ae8"
+              top="M24 4 44 15v11L24 15 4 26V15Z"
+              left="M4 26 24 15v11L4 37Z"
+              right="M44 26 24 15v11l20 11Z"
+            />
+          }
+        >
+          Build a figure out of placed primitives. Union them, subtract from
+          them, colour them, and move them with the handles.
+        </AppCard>
       </main>
 
       <footer>

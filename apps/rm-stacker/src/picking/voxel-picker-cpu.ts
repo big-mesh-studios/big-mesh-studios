@@ -1,4 +1,4 @@
-import { compileJS, compileJSFn } from "@random-mesh/rmsl";
+import { compileJSFn, compileJSRoutine } from "@random-mesh/rmsl/js";
 import { cpuVoxelPicker } from "../shaders-shared";
 
 // This module is compiled once at build time by the precompileJS plugin from
@@ -12,7 +12,7 @@ export const __RMSL_JS_CODE = {
   }),
 };
 
-export const voxelPicker = compileJS(() => cpuVoxelPicker(), {
+export const voxelPicker = compileJSRoutine(() => cpuVoxelPicker(), {
   name: "voxelPicker",
   params: [],
-});
+}).run;

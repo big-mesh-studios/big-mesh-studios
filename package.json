@@ -10,10 +10,12 @@
     "dev:rm-stacker": "pnpm --filter @big-mesh-studios/rm-stacker dev",
     "dev:voxelscape": "pnpm --filter @big-mesh-studios/bms-voxelscape dev",
     "dev:voxel-rigger": "pnpm --filter @big-mesh-studios/voxel-rigger dev",
+    "dev:spacescape": "pnpm --filter @big-mesh-studios/spacescape dev",
+    "dev:sdf-modeller": "pnpm --filter @big-mesh-studios/sdf-modeller dev",
     "build": "turbo run build",
     "build-lib": "turbo run build-lib",
     "check-types": "turbo run check-types",
-    "test": "turbo run test",
+    "test": "turbo run test --concurrency=2",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

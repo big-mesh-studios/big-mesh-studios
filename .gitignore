@@ -1,6 +1,11 @@
 node_modules
 .turbo
+dist
+dist-*
+*.tsbuildinfo
 .DS_Store
 .worktrees
 .claude
+.vscode
+.idea
 apps/voxelscape/e2e/.out

@@ -3,7 +3,7 @@
 // palette. Written as rmsl nodes, so the same traversal compiles into the GPU
 // fragment shader that renders a model and into the editor's CPU voxel picker,
 // and the two can never drift apart.
-import type { Node } from "@random-mesh/rmsl";
+import type { Node, Var } from "@random-mesh/rmsl";
 import {
   bool,
   Break,
@@ -153,7 +153,7 @@ export const marchVolume = (
   nodes: MarchVolumeNodes,
 ): {
   colour: Node<"vec4">;
-  voxelPos: Node<"ivec3">;
+  voxelPos: Var<"ivec3">;
   normal: Node<"vec3">;
   hitPoint: Node<"vec3">;
 } => {
