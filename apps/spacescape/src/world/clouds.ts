@@ -105,7 +105,11 @@ import { DEFAULT_PLANET, reachOf } from "@big-mesh-studios/csg";
 import { DEFAULT_PLANET_RADIUS } from "../render/atmosphere";
 import { equirectUV } from "../render/globe";
 import { SkyLight } from "../render/sky-light";
-import { bakeCloudField, type CloudField } from "./cloud-field";
+import {
+  bakeCloudField,
+  type CloudField,
+  type CloudSliceOptions,
+} from "./cloud-field";
 import { shapeTexture, weatherTexture } from "./cloud-textures";
 import type { DayNightState } from "./day-night";
 
@@ -136,7 +140,7 @@ export const CLOUD_THICKNESS = CLOUD_TOP - CLOUD_BOTTOM;
  * plane. Nothing about the number matters beyond that: it is a carrier for a ray
  * direction, not a place clouds are.
  */
-const CLOUD_EXTENT = 40000;
+export const CLOUD_EXTENT = 40000;
 
 /**
  * World units of the planet's surface one repeat of the shape volume covers.
@@ -175,6 +179,45 @@ const CLOUD_EXTENT = 40000;
  * across — six and a half skies — so that the entire planet was a single cloud.
  */
 export const CLOUD_FEATURE = DEFAULT_PLANET_RADIUS * 0.12;
+
+/**
+ * Where along the shell's span the cheap layer takes its one sample, 0 at the base, 1 at the top.
+ *
+ * The layer's height profile is thickest low and tapers upward, so the distance-midpoint of a
+ * ray through the shell is *above* the densest air. Sampling there read a cloud already fading
+ * out, which is most of why the first version of the cheap layer drew almost nothing overhead.
+ * A third of the way up from the base sits in the body of the layer instead of at its top.
+ */
+export const CHEAP_SAMPLE_FRACTION = 0.3;
+
+/**
+ * The cheap slice's resolution, and the price of matching the raymarch's positioning.
+ *
+ * The slice is cut from the shape volume at the raymarch's own scale, and at that scale the
+ * sphere sweeps a *lot* of volume: the finest detail channel repeats some seven hundred times
+ * around the equator, so a map that resolved all of it would be several thousand texels wide
+ * — and, because the cut is 8 trilinear fetches per texel, seconds of CPU. Five hundred and
+ * twelve by two hundred and fifty-six resolves the base shape, which is what places a cloud,
+ * and softens the finest erosion; on the hardware the cheap layer exists for, that is the
+ * right end of the trade. It is a one-time bake on the first switch to low, not a per-frame
+ * cost, and the layer is empty until it lands.
+ */
+export const CHEAP_SLICE_WIDTH = 512;
+export const CHEAP_SLICE_HEIGHT = 256;
+
+/**
+ * How the cheap slice is cut from a baked field.
+ *
+ * Here rather than at the call site because the scale, the altitude and the warp are the
+ * shader's own numbers and the slice's whole job is to agree with them.
+ */
+export const cloudSliceOptions = (seaRadius: number): CloudSliceOptions => ({
+  width: CHEAP_SLICE_WIDTH,
+  height: CHEAP_SLICE_HEIGHT,
+  shapeScale: seaRadius / CLOUD_FEATURE,
+  sliceHeight: CHEAP_SAMPLE_FRACTION,
+  warpStrength: WARP_STRENGTH,
+});
 
 /** How far the march goes at most, and therefore where the layer fades out. */
 const MAX_DISTANCE = 17000;
@@ -340,6 +383,24 @@ interface Field {
   readonly shapeScale: Node<"float">;
 }
 
+/**
+ * What the cheap layer reads: the baked 2D slice instead of the volume.
+ *
+ * The slice is the shape volume sampled at the raymarch's own scale and a fixed altitude,
+ * projected into an equirectangular map — so the cheap layer reads the *same* cloud shapes
+ * in the *same* places, for one two-dimensional fetch, with no `sampler3D` and no warp to
+ * recompute. Everything else is shared with the raymarch's `Field`.
+ */
+interface SliceField {
+  readonly slice: UniformNode<"sampler2D">;
+  readonly weather: UniformNode<"sampler2D">;
+  readonly sky: SkyLight;
+  readonly coverage: UniformNode<"float">;
+  readonly density: UniformNode<"float">;
+  readonly seaRadius: UniformNode<"float">;
+  readonly driftAngle: UniformNode<"float">;
+}
+
 /** The drift rotation's cosine and sine, computed once a frame and carried about as a pair. */
 interface Turn {
   readonly cos: Node<"float">;
@@ -369,8 +430,10 @@ const spun = (turn: Turn, v: Node<"vec3">): Node<"vec3"> =>
  * the globe's own albedo has, and acceptable for a coverage field this low-frequency. The
  * direction arrives already spun, so the drift is the caller's business.
  */
-const weatherAt = (f: Field, direction: Node<"vec3">): Node<"vec4"> =>
-  f.weather.texture(equirectUV(direction));
+const weatherAt = (
+  f: { readonly weather: UniformNode<"sampler2D"> },
+  direction: Node<"vec3">,
+): Node<"vec4"> => f.weather.texture(equirectUV(direction));
 
 /**
  * Where a sample falls in the shape volume, before the warp: **direction, plus altitude.**
@@ -412,7 +475,10 @@ const shapeAt = (
  * spellings of a number that have to agree. It goes negative below the layer and past one above
  * it, which is fine: the volume wraps on every axis.
  */
-const heightAt = (f: Field, world: Node<"vec3">): Node<"float"> =>
+const heightAt = (
+  f: { readonly seaRadius: UniformNode<"float"> },
+  world: Node<"vec3">,
+): Node<"float"> =>
   world
     .length()
     .sub(f.seaRadius)
@@ -548,7 +614,7 @@ const heightGradient = (
  * fetch the compiler cannot see it has already made is a fetch it will make.
  */
 const shapeUnderCoverage = (
-  f: Field,
+  f: { readonly coverage: UniformNode<"float"> },
   base: Node<"float">,
   height: Node<"float">,
   weather: Node<"vec4">,
@@ -1035,6 +1101,212 @@ export class CloudMaterial extends NodeMaterial {
    * a cost anyone would notice, but the carrier covers most of the frame, so it is a cost
    * on most of the frame for nothing.
    */
+  protected override buildVertexBody(b: Builder): Node<"vec4"> {
+    const world = b.modelMatrix.mul(vec4(b.position, float(1)));
+    b.positionWorld.assign(world.xyz);
+    return b.projectionMatrix.mul(b.viewMatrix.mul(world));
+  }
+}
+
+/**
+ * The low-quality cloud layer: **one sample through the shell**, off a 2D slice of the field.
+ *
+ * This is the other honest answer to "what does the sky cost", and it exists because the
+ * raymarch is a modern-hardware budget: up to a hundred and twenty-eight steps, each of the
+ * near ones paying five more toward the light. The number this trades away is everything
+ * comfortable about the march — the interior, the self-shadowing, the silhouette — for a
+ * cost of two texture fetches a pixel and no loop at all.
+ *
+ * It is not a different sky, and that is the point of the slice. `bakeCloudSlice` cuts the
+ * *same* shape volume at the *same* scale and a fixed altitude and projects it into an
+ * equirectangular map, so `uSlice` carries the shapes the march would have found at the same
+ * places. The weather map is read live for the coverage threshold, because coverage and
+ * density are knobs a player can move after the bake. What the layer gives up is that a
+ * single sample has no *third* dimension: a cloud here is a stencil on a shell, lit and
+ * faded, rather than a volume you look through. That is the whole of the trade, and it is why
+ * this layer is only ever selected on the hardware the raymarch is too expensive for.
+ *
+ * **Because the slice wraps the planet exactly once, the layer cannot repeat.** That is the
+ * property the stretched earlier version was reaching for with a larger feature size; a map
+ * indexed by direction gets it for free and keeps the march's own placement.
+ */
+export class CheapCloudMaterial extends NodeMaterial {
+  /** The day this is lit by, shared with every other lit material. See `CloudMaterial.sky`. */
+  readonly sky = new SkyLight();
+
+  /** Clock seconds, which the layer drifts on. */
+  time = 0;
+
+  /** How far the whole field has turned about the planet's axis, in radians. */
+  driftAngle = 0;
+
+  /** How much of the sky is cloud, 0 to 1. The one knob worth having. */
+  coverage = 0.52;
+
+  /** How opaque a cloud is where it has fully formed. */
+  density = 1;
+
+  private field!: SliceField;
+
+  constructor(
+    private readonly sliceSource: DataTexture,
+    private readonly weatherSource: DataTexture,
+    /** The planet's sea radius, which fixes the two shells and the field's scale on them. */
+    readonly seaRadius: number = DEFAULT_PLANET_RADIUS,
+  ) {
+    super();
+    this.transparent = true;
+    this.side = Side.BackSide;
+    this.depthWrite = false;
+  }
+
+  protected override setup(b: Builder): void {
+    this.sky.declare(b);
+    this.field = {
+      // The 2D slice of the shape volume, addressed by direction. See `bakeCloudSlice`.
+      slice: b.sampler("uSlice", () => this.sliceSource),
+      weather: b.sampler("uWeather", () => this.weatherSource),
+      sky: this.sky,
+      coverage: b.materialUniform("uCoverage", "float", () => this.coverage),
+      density: b.materialUniform("uDensity", "float", () => this.density),
+      seaRadius: b.materialUniform("uSeaRadius", "float", () => this.seaRadius),
+      driftAngle: b.materialUniform(
+        "uDriftAngle",
+        "float",
+        () => this.driftAngle,
+      ),
+    };
+  }
+
+  protected override buildFragmentBody(b: Builder): Node<"vec4"> {
+    const f = this.field;
+    const eye = b.cameraPosition;
+    const ray = b.positionWorld.sub(eye).normalize().toVar();
+
+    const turn: Turn = {
+      cos: f.driftAngle.cos().toVar(),
+      sin: f.driftAngle.sin().toVar(),
+    };
+
+    // ---- where the ray enters and leaves the shell ----
+    // The same near-span solve as the raymarch, term for term, so the cheap shell sits on
+    // the planet in the same place and the terrain's depth rejects it identically. See
+    // `CloudMaterial.buildFragmentBody` for what each case is; none of it changes here.
+    const innerRadius = f.seaRadius.add(float(CLOUD_BOTTOM));
+    const outerRadius = f.seaRadius.add(float(CLOUD_TOP));
+    const bq = eye.dot(ray);
+    const eyeSquared = eye.dot(eye);
+
+    const outerDisc = max(
+      bq.mul(bq).sub(eyeSquared.sub(outerRadius.mul(outerRadius))),
+      float(0),
+    );
+    const outerRoot = sqrt(outerDisc);
+    const outerNear = bq.negate().sub(outerRoot).toVar();
+    const outerFar = bq.negate().add(outerRoot).toVar();
+
+    const innerDisc = max(
+      bq.mul(bq).sub(eyeSquared.sub(innerRadius.mul(innerRadius))),
+      float(0),
+    );
+    const innerRoot = sqrt(innerDisc);
+    const innerNear = bq.negate().sub(innerRoot).toVar();
+    const innerFar = bq.negate().add(innerRoot).toVar();
+    const crossesInner = innerDisc.greaterThan(float(0)).toVar();
+
+    const enter = outerNear.max(float(0)).toVar();
+    enter.assign(
+      select(
+        crossesInner
+          .and(enter.greaterThanEqual(innerNear))
+          .and(enter.lessThanEqual(innerFar)),
+        innerFar,
+        enter,
+      ),
+    );
+    const exit = min(outerFar, float(MAX_DISTANCE)).toVar();
+    exit.assign(
+      select(
+        crossesInner
+          .and(innerNear.greaterThan(enter))
+          .and(innerNear.lessThan(exit)),
+        innerNear,
+        exit,
+      ),
+    );
+    exit.assign(
+      select(
+        eyeSquared
+          .lessThan(innerRadius.mul(innerRadius))
+          .and(bq.lessThan(float(0))),
+        enter,
+        exit,
+      ),
+    );
+
+    // ---- the one sample ----
+    // One point along the span, read once. There is no cheap test off the base shape here
+    // because there is no second sample to skip: the whole material is that test's saving.
+    // A ray that misses the shell entirely is emptied by `hit` at the bottom rather than by
+    // a march that never starts.
+    const distance = enter
+      .add(exit.sub(enter).mul(float(CHEAP_SAMPLE_FRACTION)))
+      .toVar();
+    const world = eye.add(ray.mul(distance)).toVar();
+    const here = spun(turn, world.normalize()).toVar();
+    const uv = equirectUV(here).toVar();
+    const weather = f.weather.texture(uv).toVar();
+    const height = heightAt(f, world).toVar();
+
+    // **One fetch, and it is the expensive layer's own shape.** The slice was cut at the
+    // raymarch's `shapeScale`, at a fixed altitude, and projected into an equirectangular map,
+    // so this returns the base shape and detail the march would have found at the same place —
+    // no volume, no warp and no scale to recompute. The weather is still read live for the
+    // coverage threshold, because coverage and density are knobs the player can move after the
+    // bake.
+    const sampled = f.slice.texture(uv).toVar();
+    const shape = sampled.r;
+    const detail = sampled.g
+      .mul(0.55)
+      .add(sampled.b.mul(0.3))
+      .add(sampled.a.mul(0.15));
+    const shaped = shapeUnderCoverage(f, shape, height, weather);
+    const density = erosionNode(shaped, detail).mul(f.density).pow(float(0.42));
+
+    // The shading is one step of the raymarch's, with the light march collapsed. With no
+    // optical depth toward the light, `multiScatter`'s three octaves all evaluate at
+    // transmittance one — `1 + 0.5 + 0.25 = 1.75` — so the sum is written as that constant
+    // and the cheap material emits no loop of its own.
+    const sun = f.sky.sunDirection.normalize().toVar();
+    const phase = henyeyGreenstein(ray.dot(sun), PHASE_FORWARD)
+      .mul(1 - PHASE_MIX)
+      .add(henyeyGreenstein(ray.dot(sun), PHASE_BACKWARD).mul(PHASE_MIX))
+      .mul(2);
+    const powder = float(1).sub(exp(density.mul(float(-POWDER))));
+    const upward = saturate(height.div(float(0.8)));
+    const lit = f.sky.sunLight
+      .mul(float(1.75))
+      .add(f.sky.moonLight.mul(float(0.4)))
+      .mul(powder)
+      .mul(phase)
+      .mul(1.35)
+      .add(f.sky.ambient.mul(upward.mul(0.6).add(0.4)));
+    const fade = float(1).sub(exp(distance.mul(float(-AERIAL_PERSPECTIVE))));
+
+    // One step through the layer's own thickness, not the span: the span can run to the
+    // march's reach and a single exponential over it would make the shell opaque to the
+    // horizon. The thickness is the volume a dense cloud actually occupies.
+    const covered = float(1).sub(
+      exp(density.mul(float(EXTINCTION)).mul(float(CLOUD_THICKNESS)).negate()),
+    );
+
+    // Empty where the ray missed the shell — below the layer looking down, or past the
+    // planet. `select` rather than a branch because there is nothing to branch away from
+    // once the sample is taken.
+    const hit = exit.greaterThan(enter);
+    return vec4(lit.mix(f.sky.skyColour, fade), select(hit, covered, float(0)));
+  }
+
   protected override buildVertexBody(b: Builder): Node<"vec4"> {
     const world = b.modelMatrix.mul(vec4(b.position, float(1)));
     b.positionWorld.assign(world.xyz);

@@ -58,6 +58,7 @@ const commands = () =>
     cloud: {
       coverage: () => "coverage 0.520",
       density: () => "density 1.000",
+      quality: () => "quality high",
       state: () => "built",
     },
   });

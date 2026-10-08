@@ -16,6 +16,7 @@
  */
 
 import { CYCLE_SECONDS, phasePreset, type Phase } from "../world/day-night";
+import type { CloudQuality } from "../world/cloud-layer";
 
 /**
  * Declares a command, keyed by the name that runs it. Every entry's `run`
@@ -191,6 +192,14 @@ export interface CloudCommands {
   coverage(value?: number): string;
   /** Reports or sets density. */
   density(value?: number): string;
+  /**
+   * Reports or sets the rendering technique.
+   *
+   * `high` is the raymarched volume; `low` is the single-sample shell for hardware the march
+   * is too expensive for. Bare — no argument — reports which is live. The two names are a
+   * choice rather than a dial, so unlike coverage and density this takes a word, not a number.
+   */
+  quality(value?: CloudQuality): string;
   /** One line saying whether the layer exists and what it is set to. */
   state(): string;
 }
@@ -359,6 +368,23 @@ export const createCommands = ({
         if (typeof value === "string") return value;
         if (value < 0) return "usage: /cloud:density [multiplier]  (0 or more)";
         return cloud.density(value);
+      },
+    },
+    "/cloud:quality": {
+      description:
+        "report or set the cloud technique (high = raymarch, low = fast shell)",
+      args: "[high|low]",
+      run: (rest) => {
+        // **A bare argument reports; it does not flip.** The two techniques are a choice a
+        // player makes once for their hardware, not a toggle to feel out — and there is a
+        // wrong answer, which `low` on a capable machine is. `readToggle` exists for the
+        // two-state setters that are genuinely a flip; this is not one of them.
+        const argument = rest[0];
+        if (argument === undefined) return cloud.quality();
+        if (argument !== "high" && argument !== "low") {
+          return "usage: /cloud:quality [high|low]";
+        }
+        return cloud.quality(argument);
       },
     },
     "/cloud:state": {

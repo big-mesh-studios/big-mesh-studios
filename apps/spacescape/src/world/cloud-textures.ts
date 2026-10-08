@@ -8,13 +8,14 @@
  */
 
 import {
+  ClampToEdgeWrapping,
   DataTexture,
   RGBAFormat,
   RepeatWrapping,
   UnsignedByteType,
 } from "@random-mesh/rmsl/scene";
 
-import type { PackedField } from "./cloud-field";
+import type { CloudSlice, PackedField } from "./cloud-field";
 
 /**
  * Uploads a packed field, repeating on every axis.
@@ -53,3 +54,27 @@ export const shapeTexture = (field: PackedField): DataTexture =>
 /** The weather map: `sampler2D`, coverage, a divergence-free warp, and a streak. */
 export const weatherTexture = (field: PackedField): DataTexture =>
   upload(field, "uWeather");
+
+/**
+ * The cheap layer's slice: `sampler2D`, the shape volume cut at one altitude and wrapped once.
+ *
+ * **Wrapped in `u` and clamped in `v`, unlike the other two.** The map is equirectangular, so
+ * its left and right edges meet at the antimeridian and must repeat or there is a seam down
+ * the middle of the sky; its top and bottom rows are the poles, which continue nowhere, so
+ * clamping is the honest choice — the same split the globe's own maps use.
+ */
+export const sliceTexture = (slice: CloudSlice): DataTexture => {
+  const texture = new DataTexture(
+    slice.data,
+    slice.width,
+    slice.height,
+    1,
+    RGBAFormat,
+    UnsignedByteType,
+  );
+  texture.name = "uSlice";
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
+  texture.needsUpdate = true;
+  return texture;
+};

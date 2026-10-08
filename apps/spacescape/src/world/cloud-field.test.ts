@@ -13,6 +13,7 @@ import {
   STREAK_STRETCH_Y,
   WEATHER_SIZE,
   bakeCloudField,
+  bakeCloudSlice,
   perlinFbm,
   saturate,
   worleyFbm,
@@ -683,6 +684,46 @@ describe("the small helpers", () => {
     // Four is what takes the warp off the shape volume's own grid; two would give
     // a single smooth displacement that bends the tile rather than scrambling it.
     expect(CURL_PERIODS.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+/**
+ * The 2D slice the cheap cloud layer reads.
+ *
+ * A small field and a small map: this is about the shape of the output and its purity, not
+ * about whether the sky looks right — that is what the browser and `clouds.test.ts` are for.
+ * The slice's whole job is to be a function of direction cut from the same volume, so it must
+ * be the requested size, carry a varied field, and depend on nothing but its inputs.
+ */
+describe("the cheap slice", () => {
+  const small = bakeCloudField(SEED, 20, 40);
+  const options = {
+    width: 32,
+    height: 16,
+    shapeScale: 2,
+    sliceHeight: 0.3,
+    warpStrength: 0.1,
+  };
+  const slice = bakeCloudSlice(small, options);
+
+  it("is the requested size with four channels a texel", () => {
+    expect(slice.width).toBe(32);
+    expect(slice.height).toBe(16);
+    expect(slice.data).toHaveLength(32 * 16 * 4);
+  });
+
+  it("holds a varied field rather than a flat or empty map", () => {
+    const base = new Uint8Array(32 * 16);
+    for (let i = 0; i < base.length; i++) base[i] = slice.data[i * 4]!;
+    const m = mean(base);
+    expect(m).toBeGreaterThan(5);
+    expect(m).toBeLessThan(250);
+    // Not one value repeated: the volume beneath it varies across the sphere.
+    expect(new Set(base).size).toBeGreaterThan(1);
+  });
+
+  it("is pure in the field and options it is given", () => {
+    expect(bakeCloudSlice(small, options).data).toEqual(slice.data);
   });
 });
 

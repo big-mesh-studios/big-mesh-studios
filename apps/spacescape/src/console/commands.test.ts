@@ -26,6 +26,7 @@ type ClockCalls =
 type CloudCalls =
   | { kind: "coverage"; value: number | undefined }
   | { kind: "density"; value: number | undefined }
+  | { kind: "quality"; value: "high" | "low" | undefined }
   | { kind: "state" };
 
 interface Table {
@@ -52,6 +53,7 @@ const table = (): Table => {
   // prints are the numbers a real material would hold.
   let coverage = 0.52;
   let density = 1;
+  let quality: "high" | "low" = "high";
   const absent = "no cloud layer yet — the field is still baking";
   const commander = createCommands({
     setFlying: (value) => {
@@ -91,10 +93,16 @@ const table = (): Table => {
         if (value !== undefined) density = value;
         return `density ${density.toFixed(3)}`;
       },
+      quality: (value) => {
+        cloud.push({ kind: "quality", value });
+        if (!built.value) return absent;
+        if (value !== undefined) quality = value;
+        return `quality ${quality}`;
+      },
       state: () => {
         cloud.push({ kind: "state" });
         return built.value
-          ? `built | coverage ${coverage.toFixed(3)} | density ${density.toFixed(3)}`
+          ? `built | quality ${quality} | coverage ${coverage.toFixed(3)} | density ${density.toFixed(3)}`
           : absent;
       },
     },
@@ -130,6 +138,7 @@ describe("the command table", () => {
       "/clock:state",
       "/cloud:coverage",
       "/cloud:density",
+      "/cloud:quality",
       "/cloud:state",
       "/player:fly",
       "/player:no-clip",
@@ -419,7 +428,7 @@ describe("the cloud commands", () => {
     expect(text(recorder, "/cloud:coverage")).toBe("coverage 0.800");
     expect(text(recorder, "/cloud:density 2")).toBe("density 2.000");
     expect(text(recorder, "/cloud:state")).toBe(
-      "built | coverage 0.800 | density 2.000",
+      "built | quality high | coverage 0.800 | density 2.000",
     );
   });
 
@@ -463,7 +472,9 @@ describe("the cloud commands", () => {
     for (const line of [
       "/cloud:coverage",
       "/cloud:density",
+      "/cloud:quality",
       "/cloud:coverage 0.9",
+      "/cloud:quality low",
       "/cloud:state",
     ]) {
       expect(text(recorder, line), line).toBe(
@@ -475,9 +486,48 @@ describe("the cloud commands", () => {
   it("reports the whole layer at once with /cloud:state", () => {
     const recorder = table();
     expect(text(recorder, "/cloud:state")).toBe(
-      "built | coverage 0.520 | density 1.000",
+      "built | quality high | coverage 0.520 | density 1.000",
     );
     expect(recorder.cloud).toEqual([{ kind: "state" }]);
+  });
+});
+
+describe("/cloud:quality", () => {
+  it("reports the technique when given nothing", () => {
+    const recorder = table();
+    expect(text(recorder, "/cloud:quality")).toBe("quality high");
+    // A read reaches the layer with `undefined`, which is how it tells "report this" from
+    // "set this" — the same convention the other two cloud commands use.
+    expect(recorder.cloud).toEqual([{ kind: "quality", value: undefined }]);
+  });
+
+  it("switches to the cheap shell and back, and reports what is live", () => {
+    const recorder = table();
+    expect(text(recorder, "/cloud:quality low")).toBe("quality low");
+    expect(text(recorder, "/cloud:quality")).toBe("quality low");
+    expect(text(recorder, "/cloud:quality high")).toBe("quality high");
+    expect(recorder.cloud).toEqual([
+      { kind: "quality", value: "low" },
+      { kind: "quality", value: undefined },
+      { kind: "quality", value: "high" },
+    ]);
+  });
+
+  it("refuses anything that is not one of the two names", () => {
+    // There is a wrong answer here — `low` on a capable machine — so unlike the toggles
+    // this command does not flip on a bare word, and it does not guess at `fast`, `on`
+    // or `1` either.
+    const recorder = table();
+    for (const line of [
+      "/cloud:quality fast",
+      "/cloud:quality on",
+      "/cloud:quality 1",
+    ]) {
+      expect(text(recorder, line), line).toBe(
+        "usage: /cloud:quality [high|low]",
+      );
+    }
+    expect(recorder.cloud).toEqual([]);
   });
 });
 

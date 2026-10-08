@@ -33,8 +33,11 @@ const snapshot = (over: Partial<InputSnapshot> = {}): InputSnapshot => ({
   jumpHeld: false,
   lookDx: 0,
   lookDy: 0,
+  primary: false,
   primaryHeld: false,
+  secondary: false,
   secondaryHeld: false,
+  secondaryReleased: false,
   ...over,
 });
 

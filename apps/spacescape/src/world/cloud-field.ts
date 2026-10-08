@@ -51,6 +51,8 @@
  * rather than from that project.
  */
 
+import { directionAtEquirect } from "@big-mesh-studios/csg";
+
 /**
  * The shape volume's edge, in texels. Cubic because a `DataTexture` volume is.
  *
@@ -981,6 +983,169 @@ export const bakeCloudField = (
   shape: bakeShape(seed, shapeSize),
   weather: bakeWeather(seed, weatherSize),
 });
+
+/** A baked equirectangular slice of the cloud field: RGBA, row-major, `v = 0` first. */
+export interface CloudSlice {
+  readonly width: number;
+  readonly height: number;
+  readonly data: Uint8Array;
+}
+
+/**
+ * Everything the slice bake needs that is not in the field itself.
+ *
+ * These are the shader's own numbers — the volume's scale on the planet, the altitude the
+ * slice is cut at, and how far the weather's curl pushes it — passed in rather than imported,
+ * because `cloud-field.ts` knows nothing of the planet or the renderer and this is the one
+ * function here that has to agree with them.
+ */
+export interface CloudSliceOptions {
+  readonly width: number;
+  readonly height: number;
+  /** World radius of the shape volume's sphere: `seaRadius / featureSize`. */
+  readonly shapeScale: number;
+  /** The volume's vertical address the slice is cut at, 0 at the layer's base. */
+  readonly sliceHeight: number;
+  /** How far the weather's curl displaces the lookup, in tiles of the shape volume. */
+  readonly warpStrength: number;
+}
+
+const wrapIndex = (i: number, n: number): number => ((i % n) + n) % n;
+
+/**
+ * Trilinear, wrapping, into a reused four-float scratch. The shader's own `texture()` on a
+ * volume, reproduced on the host so the slice is cut from the same field the march reads.
+ */
+const sampleVolume = (
+  field: PackedField,
+  x: number,
+  y: number,
+  z: number,
+  out: Float32Array,
+): void => {
+  const n = field.size;
+  const d = field.data;
+  const px = x * n - 0.5;
+  const py = y * n - 0.5;
+  const pz = z * n - 0.5;
+  const x0 = Math.floor(px);
+  const y0 = Math.floor(py);
+  const z0 = Math.floor(pz);
+  const tx = px - x0;
+  const ty = py - y0;
+  const tz = pz - z0;
+  const xi0 = wrapIndex(x0, n);
+  const xi1 = wrapIndex(x0 + 1, n);
+  const yi0 = wrapIndex(y0, n);
+  const yi1 = wrapIndex(y0 + 1, n);
+  const zi0 = wrapIndex(z0, n);
+  const zi1 = wrapIndex(z0 + 1, n);
+  const b000 = ((zi0 * n + yi0) * n + xi0) * 4;
+  const b100 = ((zi0 * n + yi0) * n + xi1) * 4;
+  const b010 = ((zi0 * n + yi1) * n + xi0) * 4;
+  const b110 = ((zi0 * n + yi1) * n + xi1) * 4;
+  const b001 = ((zi1 * n + yi0) * n + xi0) * 4;
+  const b101 = ((zi1 * n + yi0) * n + xi1) * 4;
+  const b011 = ((zi1 * n + yi1) * n + xi0) * 4;
+  const b111 = ((zi1 * n + yi1) * n + xi1) * 4;
+  for (let c = 0; c < 4; c++) {
+    const v000 = d[b000 + c]! / 255;
+    const v100 = d[b100 + c]! / 255;
+    const v010 = d[b010 + c]! / 255;
+    const v110 = d[b110 + c]! / 255;
+    const v001 = d[b001 + c]! / 255;
+    const v101 = d[b101 + c]! / 255;
+    const v011 = d[b011 + c]! / 255;
+    const v111 = d[b111 + c]! / 255;
+    const v00 = v000 + (v100 - v000) * tx;
+    const v10 = v010 + (v110 - v010) * tx;
+    const v01 = v001 + (v101 - v001) * tx;
+    const v11 = v011 + (v111 - v011) * tx;
+    const v0 = v00 + (v10 - v00) * ty;
+    const v1 = v01 + (v11 - v01) * ty;
+    out[c] = v0 + (v1 - v0) * tz;
+  }
+};
+
+/** Bilinear, wrapping, for the two-dimensional weather map. */
+const sampleMap = (
+  field: PackedField,
+  u: number,
+  v: number,
+  out: Float32Array,
+): void => {
+  const n = field.size;
+  const d = field.data;
+  const px = u * n - 0.5;
+  const py = v * n - 0.5;
+  const x0 = Math.floor(px);
+  const y0 = Math.floor(py);
+  const tx = px - x0;
+  const ty = py - y0;
+  const xi0 = wrapIndex(x0, n);
+  const xi1 = wrapIndex(x0 + 1, n);
+  const yi0 = wrapIndex(y0, n);
+  const yi1 = wrapIndex(y0 + 1, n);
+  const b00 = (yi0 * n + xi0) * 4;
+  const b10 = (yi0 * n + xi1) * 4;
+  const b01 = (yi1 * n + xi0) * 4;
+  const b11 = (yi1 * n + xi1) * 4;
+  for (let c = 0; c < 4; c++) {
+    const v00 = d[b00 + c]! / 255;
+    const v10 = d[b10 + c]! / 255;
+    const v01 = d[b01 + c]! / 255;
+    const v11 = d[b11 + c]! / 255;
+    const v0 = v00 + (v10 - v00) * tx;
+    const v1 = v01 + (v11 - v01) * tx;
+    out[c] = v0 + (v1 - v0) * ty;
+  }
+};
+
+/**
+ * Cuts a two-dimensional equirectangular slice of the shape volume.
+ *
+ * **This is what lets the cheap layer put its clouds where the raymarch puts them without
+ * marching.** The volume is addressed by `direction · shapeScale + height`, so a fixed height
+ * turns it into a function of direction alone — and a function of direction is an
+ * equirectangular map, which wraps the planet exactly once and so cannot repeat. The cheap
+ * layer samples this map by direction and gets the expensive layer's own shape detail at the
+ * expensive layer's own scale, for one fetch, with no `sampler3D` and no march.
+ *
+ * The weather's curl is baked in, so the runtime lookup needs only the map and the rotation
+ * of the drift — the warp does not have to be recomputed per pixel. The weather *channels*
+ * are still read at runtime for the coverage threshold, because coverage and density are
+ * live knobs the player can move after the bake.
+ */
+export const bakeCloudSlice = (
+  field: CloudField,
+  options: CloudSliceOptions,
+): CloudSlice => {
+  const { width, height, shapeScale, sliceHeight, warpStrength } = options;
+  const data = new Uint8Array(width * height * 4);
+  const weather = new Float32Array(4);
+  const shape = new Float32Array(4);
+  let at = 0;
+  for (let y = 0; y < height; y++) {
+    const v = (y + 0.5) / height;
+    for (let x = 0; x < width; x++) {
+      const u = (x + 0.5) / width;
+      const direction = directionAtEquirect(u, v);
+      sampleMap(field.weather, u, v, weather);
+      sampleVolume(
+        field.shape,
+        direction.x * shapeScale + (weather[1]! - 0.5) * warpStrength,
+        direction.y * shapeScale + sliceHeight,
+        direction.z * shapeScale + (weather[2]! - 0.5) * warpStrength,
+        shape,
+      );
+      data[at++] = toByte(shape[0]!);
+      data[at++] = toByte(shape[1]!);
+      data[at++] = toByte(shape[2]!);
+      data[at++] = toByte(shape[3]!);
+    }
+  }
+  return { width, height, data };
+};
 
 /**
  * Subtracts high-frequency detail from the bounds of a low-frequency shape, and

@@ -57,7 +57,7 @@ import { TouchControls } from "./player/touch-controls";
 import { Game } from "./engine/game";
 import { createWaterMaterial, sphericalWater } from "./world/water";
 import { sphericalFrame } from "./world/up";
-import { createClouds, type Clouds } from "./world/clouds";
+import { createCloudLayer, type CloudLayer } from "./world/cloud-layer";
 import { createZoneLines, type ZoneLines } from "./places/zones";
 import { PlaceHost } from "./places/host";
 import { MAX_DRAWN_LIGHTS } from "./render/point-lights";
@@ -788,7 +788,7 @@ export default function App() {
     );
 
     const cloudBake = bakeCloudFieldOffThread(DEFAULT_TERRAIN.seed);
-    let layer: Clouds | null = null;
+    let layer: CloudLayer | null = null;
     let cloudsDisposed = false;
 
     void cloudBake.field.then(
@@ -797,7 +797,7 @@ export default function App() {
         // down — and a mesh added to a disposed scene is a leak with no owner.
         if (cloudsDisposed) return;
         try {
-          layer = createClouds(
+          layer = createCloudLayer(
             viewport.scene,
             DEFAULT_TERRAIN.seed,
             field,
@@ -1205,10 +1205,16 @@ export default function App() {
             if (value !== undefined) material.density = value;
             return `density ${material.density.toFixed(3)}`;
           },
+          quality: (value) => {
+            if (layer === null)
+              return "no cloud layer yet — the field is still baking";
+            if (value !== undefined) layer.setQuality(value);
+            return `quality ${layer.quality}`;
+          },
           state: () =>
             layer === null
               ? `no cloud layer yet — ${describeCloudStatus(cloudStatus())}`
-              : `built | coverage ${layer.material.coverage.toFixed(3)} | density ${layer.material.density.toFixed(3)} | ${describeCloudStatus(cloudStatus())}`,
+              : `built | quality ${layer.quality} | coverage ${layer.material.coverage.toFixed(3)} | density ${layer.material.density.toFixed(3)} | ${describeCloudStatus(cloudStatus())}`,
         },
       })
         .with(placeCommands(places))

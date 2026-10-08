@@ -10,7 +10,9 @@ import {
   CLOUD_TOP,
   LIGHT_STEPS,
   MAX_STEPS,
+  CheapCloudMaterial,
   CloudMaterial,
+  cloudSliceOptions,
   cloudSpan,
   driftAngleAt,
 } from "./clouds";
@@ -20,8 +22,9 @@ import {
   SHAPE_DETAIL_PERIODS,
   SHAPE_SIZE,
   bakeCloudField,
+  bakeCloudSlice,
 } from "./cloud-field";
-import { shapeTexture, weatherTexture } from "./cloud-textures";
+import { shapeTexture, sliceTexture, weatherTexture } from "./cloud-textures";
 
 /**
  * Compiling a material needs no graphics device.
@@ -1083,5 +1086,86 @@ describe("the drift", () => {
     const small = driftAngleAt(1, 1000) * 1000;
     const large = driftAngleAt(1, 8000) * 8000;
     expect(small).toBeCloseTo(large, 9);
+  });
+});
+
+/**
+ * The cheap layer.
+ *
+ * Same harness as the raymarch above, and for the same reason: the questions a shader can
+ * be asked without a graphics device are "does it compile", "what does it bind" and "what
+ * is its per-pixel budget". The last is the one that matters here — the whole point of the
+ * cheap material is that it has no march — so the fetch count is held to a handful and the
+ * loop count to zero.
+ */
+describe("the cheap cloud material compiles", () => {
+  // One slice for the whole block: the bake is the expensive part and every test here reads
+  // the same one. The field is small, so this is a fraction of a second.
+  const slice = sliceTexture(
+    bakeCloudSlice(field, cloudSliceOptions(DEFAULT_PLANET_RADIUS)),
+  );
+  const cheap = (): CheapCloudMaterial =>
+    new CheapCloudMaterial(slice, weatherTexture(field.weather));
+
+  const compileCheap = (material: CheapCloudMaterial) => {
+    const program = material.build(new Scene());
+    return {
+      program,
+      vertex: compileGlsl.vertex(program.vertexRoot, { precision: "highp" }),
+      fragment: compileGlsl.fragment(program.fragmentRoot, {
+        precision: "highp",
+      }),
+    };
+  };
+
+  it("emits version 300 es stages with a main", () => {
+    const { vertex, fragment } = compileCheap(cheap());
+    expect(vertex).toContain("#version 300 es");
+    expect(vertex).toContain("gl_Position");
+    expect(fragment).toContain("#version 300 es");
+    expect(fragment).toMatch(/void\s+main\s*\(/);
+  });
+
+  it("reads a two-dimensional slice and the weather map, and no volume", () => {
+    // **This is the whole change.** The cheap layer used to sample the 3D volume at a
+    // stretched scale, which put its clouds in different places than the raymarch. It now
+    // reads a 2D slice of that same volume, cut at the raymarch's own scale and a fixed
+    // altitude — so it binds two `sampler2D`s and never a `sampler3D`.
+    const { fragment, program } = compileCheap(cheap());
+    expect(fragment).not.toContain("sampler3D");
+    expect(program.samplers.find((s) => s.name === "uSlice")?.type).toBe(
+      "sampler2D",
+    );
+    expect(program.samplers.find((s) => s.name === "uWeather")?.type).toBe(
+      "sampler2D",
+    );
+  });
+
+  it("emits no NaN anywhere", () => {
+    const { vertex, fragment } = compileCheap(cheap());
+    expect(vertex).not.toContain("NaN");
+    expect(fragment).not.toContain("NaN");
+    expect(vertex).not.toContain("undefined");
+    expect(fragment).not.toContain("undefined");
+  });
+
+  it("has no loop at all, and a handful of fetches", () => {
+    // **The assertion the whole class exists for.** One weather read and one slice read,
+    // taken once, is two fetches a pixel — against the raymarch's ceiling of hundreds. If a
+    // later change reintroduces a march here, this is what catches it.
+    const { fragment } = compileCheap(cheap());
+    expect(loopsIn(fragment)).toHaveLength(0);
+    expect(countSites(fragment, "texture(")).toBe(2);
+    expect(fetchesPerPixel(fragment)).toBe(0);
+  });
+
+  it("still reads the sea radius, the knobs and the drift", () => {
+    // Everything shared with the raymarch that a player can move, plus the two uniforms the
+    // shell solve needs. The slice replaced the volume, not the live controls.
+    const { fragment } = compileCheap(cheap());
+    expect(fragment).toMatch(/uSeaRadius/);
+    expect(fragment).toMatch(/uCoverage/);
+    expect(fragment).toMatch(/uDensity/);
+    expect(fragment).toMatch(/uDriftAngle/);
   });
 });
