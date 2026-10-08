@@ -61,9 +61,12 @@ const blobOf = async (zip: JSZip): Promise<Blob> => {
  * **`manifest.json` is added automatically** so that a test about the other files does not have to
  * carry a valid manifest, and a test about the manifest passes `null` to leave it out. A `null`
  * file value is a directory entry, which is what two of the tests below need.
+ *
+ * **Bytes are accepted as well as text**, because a place carries attachments and a loader test
+ * that could only ever hold strings would not be able to say whether those bytes arrive intact.
  */
 const zipOf = async (
-  files: Record<string, string | null>,
+  files: Record<string, string | Uint8Array | null>,
   over: Record<string, unknown> | null = manifest(),
 ): Promise<Blob> => {
   const zip = new JSZip();
@@ -75,6 +78,7 @@ const zipOf = async (
     // union straight through was a type error that `pnpm check-types` had been reporting
     // since Phase F, behind a gate nobody was reading the whole output of.
     if (body === null) zip.file(name, null);
+    else if (typeof body === "string") zip.file(name, body);
     else zip.file(name, body);
   }
   return blobOf(zip);
@@ -186,6 +190,32 @@ describe("a place that opens", () => {
     );
     expect(Object.keys(place.files)).toEqual(["main.ts"]);
   });
+
+  it("carries an attachment's bytes without reading them", async () => {
+    // **Bytes, and nothing else** — no decoding, no interpreting, no opinion. A place may carry a
+    // file this engine cannot read, and what it owes the reader is that the file arrives intact
+    // and under the name the manifest gave it.
+    const bytes = new Uint8Array([0, 1, 2, 250, 251, 252, 253, 254, 255]);
+    const place = await readPlaceZip(
+      await zipOf(
+        { "main.ts": "// m", "assets/lantern.sdfmod": bytes },
+        manifest({ scripts: ["main.ts"], models: ["assets/lantern.sdfmod"] }),
+      ),
+    );
+
+    expect(Object.keys(place.models)).toEqual(["assets/lantern.sdfmod"]);
+    // **Every byte, including the ones that are not printable text** — a round trip through the
+    // archive's own text handling would mangle them, which is what this asserts against.
+    expect(place.models["assets/lantern.sdfmod"]).toEqual(bytes);
+    expect(place.files["main.ts"]).toBe("// m");
+  });
+
+  it("reports no attachments for a place that names none", async () => {
+    // **An absent field and an empty list are the same place**, so the answer is an empty map
+    // rather than null — a caller should never have to ask which of the two it got.
+    const place = await readPlaceZip(await zipOf({ "main.ts": "// m" }));
+    expect(place.models).toEqual({});
+  });
 });
 
 describe("a place that does not open", () => {
@@ -229,6 +259,21 @@ describe("a place that does not open", () => {
         ),
       ),
     ).rejects.toThrow(/names "span\.ts", which the zip does not hold/);
+  });
+
+  it("says which attachment the manifest names and the zip does not hold", async () => {
+    // **The same refusal for a file nothing reads yet.** A manifest that promises a file the
+    // archive does not carry is a place whose contents cannot be stated, and the reason has to
+    // name the file — the same way the script case does, because whoever packed it wants to know
+    // which one they left out.
+    await expect(
+      readPlaceZip(
+        await zipOf(
+          { "main.ts": "// m" },
+          manifest({ scripts: ["main.ts"], models: ["lantern.sdfmod"] }),
+        ),
+      ),
+    ).rejects.toThrow(/names "lantern\.sdfmod", which the zip does not hold/);
   });
 
   it("refuses a path that walks out of the root", async () => {

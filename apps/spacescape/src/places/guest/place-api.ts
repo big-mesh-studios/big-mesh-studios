@@ -112,6 +112,7 @@ const askAbout = (name: string, args: unknown[]): unknown => {
 type ParametersOf<K extends ShapeType> =
   (typeof PRIMITIVES)[K]["parameters"][number];
 
+/** One SDF primitive a place may add, named by its `type` and sized by the primitive's own parameters. */
 export type PlaceShape = {
   readonly [K in ShapeType]: {
     readonly type: K;
@@ -147,6 +148,7 @@ export type PlaceVec3 = {
 /** How a shape changes the field. */
 export type Combine = "Add" | "Subtract" | "Paint";
 
+/** What `createShape` takes: which place and id the operation belongs to, where it sits, what it is, and how it joins the fold. */
 export interface CreateShapeOptions {
   /** Which place it belongs to. Created if it does not exist. */
   readonly place: string;
@@ -223,6 +225,7 @@ export const clearPlace = (place: string): void => {
  * that starts, a line that says you have arrived. There is no entity system in v1, so this
  * is the whole of a place's reactivity.
  */
+/** What `createZone` takes: an id, the box it fills, and the label a script sees in the event. */
 export interface CreateZoneOptions {
   /** Its name. Never generated, for the same reason a shape's id is not. */
   readonly id: string;
@@ -230,6 +233,7 @@ export interface CreateZoneOptions {
   readonly box: readonly [Vec3Like, Vec3Like];
 }
 
+/** Creates a zone: a box the place is told the player entered and left. Replaces any zone with the same id. */
 export const createZone = (options: CreateZoneOptions): void => {
   ask("zone-add", {
     id: options.id,
@@ -238,12 +242,14 @@ export const createZone = (options: CreateZoneOptions): void => {
   });
 };
 
+/** Takes a zone away. Doing nothing when there is none, so a place need not remember what it made. */
 export const removeZone = (id: string): void => {
   ask("zone-remove", { id });
 };
 
 /* ------------------------------------------------------------------- lights */
 
+/** What `createLight` takes: an id, where it is, its colour, how far it reaches, and how bright it is where it stops. */
 export interface CreateLightOptions {
   /** Its name, and how it is referred to when removed. Never generated. */
   readonly id: string;
@@ -273,6 +279,7 @@ export interface CreateLightOptions {
   readonly intensity: number;
 }
 
+/** Creates a light. Replaces any light with the same id, so re-running a script does not stack lamps. */
 export const createLight = (options: CreateLightOptions): void => {
   ask("light-add", {
     id: options.id,
@@ -283,12 +290,14 @@ export const createLight = (options: CreateLightOptions): void => {
   });
 };
 
+/** Takes a light away. Doing nothing when there is none. */
 export const removeLight = (id: string): void => {
   ask("light-remove", { id });
 };
 
 /* ------------------------------------------------------------------ fields */
 
+/** What `createMedium` takes: an id, the box it fills, and how it pushes, slows or sinks whatever is inside it. */
 export interface CreateMediumOptions {
   /** Its name, and how it is referred to when removed. Never generated. */
   readonly id: string;
@@ -317,6 +326,7 @@ export interface CreateMediumOptions {
   readonly sink?: number;
 }
 
+/** Creates a medium: a box the player is pushed, slowed or sunk by. Replaces any medium with the same id. */
 export const createMedium = (options: CreateMediumOptions): void => {
   ask("medium-add", {
     id: options.id,
@@ -329,6 +339,7 @@ export const createMedium = (options: CreateMediumOptions): void => {
   });
 };
 
+/** Takes a medium away. Doing nothing when there is none. */
 export const removeMedium = (id: string): void => {
   ask("medium-remove", { id });
 };
@@ -399,6 +410,7 @@ export const setTimeSpeed = (multiplier: number): void => {
 
 /* ------------------------------------------------------------------- player */
 
+/** Places the player at a world position, optionally facing a heading. For a spawn point, a teleport or a trapdoor. */
 export const movePlayer = (
   x: number,
   y: number,
@@ -408,20 +420,24 @@ export const movePlayer = (
   ask("player-place", { at: [x, y, z], ...(yaw === undefined ? {} : { yaw }) });
 };
 
+/** Scales how fast the player moves, as a multiplier on their ordinary speed. */
 export const setPlayerSpeed = (multiplier: number): void => {
   ask("player-speed", { multiplier });
 };
 
+/** Scales how high the player jumps, as a multiplier on their ordinary jump. */
 export const setPlayerJump = (multiplier: number): void => {
   ask("player-jump", { multiplier });
 };
 
+/** Lets the player fly, or stops them doing so. The one movement verb a place owns outright. */
 export const setFlying = (on: boolean): void => {
   ask("player-fly", { on });
 };
 
 /* ------------------------------------------------------------------- camera */
 
+/** Points the camera at a world position until `clearCamera` is called, optionally with a field of view. */
 export const lookAt = (x: number, y: number, z: number, fov?: number): void => {
   ask("camera-look", { at: [x, y, z], ...(fov === undefined ? {} : { fov }) });
 };
@@ -433,10 +449,12 @@ export const clearCamera = (): void => {
 
 /* ------------------------------------------------------------------ output */
 
+/** Prints a line to the console's scrollback, which is where a place's own account of itself is read. */
 export const log = (text: string): void => {
   ask("log", { text });
 };
 
+/** Shows a line briefly over the world, for something the player should see rather than the console. */
 export const toast = (text: string): void => {
   ask("toast", { text });
 };
@@ -485,6 +503,7 @@ export const loadData = (key: string): string | undefined => {
   return typeof value === "string" ? value : undefined;
 };
 
+/** Forgets a stored value, so a later `loadData` finds nothing. */
 export const deleteData = (key: string): void => {
   ask("data-delete", { scope: "global", key });
 };
@@ -673,9 +692,11 @@ const parseTick = (clockJson: string, eventsJson: string): TickInfo => {
 
 /* --------------------------------------------------------------- small maths */
 
+/** Holds `value` between `low` and `high`. */
 export const clamp = (value: number, low: number, high: number): number =>
   value < low ? low : value > high ? high : value;
 
+/** The value `t` of the way from `a` to `b`, for interpolating a number. */
 export const lerp = (a: number, b: number, t: number): number =>
   a + (b - a) * t;
 

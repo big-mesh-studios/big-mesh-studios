@@ -1,0 +1,183 @@
+/*
+ * The place editor panel, docked into the console.
+ *
+ * **Plain class names rather than CSS modules.** The panel is mounted inside `console.module.css`'s
+ * panel, and a module's hashed names would have to be threaded through two files for one visual
+ * panel; the prefix is what keeps these findable.
+ *
+ * Sized to leave the world visible above it, because the panel is docked *beside* a running place
+ * and a panel that took the whole screen would hide the thing Run is for.
+ */
+
+.place-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  font: 12px monospace;
+  color: #c8d6e5;
+}
+
+/* The manifest's own fields, in one row above the tabs. `name` takes the room
+   and `seed` is the width a number needs, because the seed is a number and a
+   text field wide enough for one invites a typo that reads as a different
+   place. */
+.place-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.place-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.place-field > span {
+  color: #7f8fa3;
+}
+
+.place-field > input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  padding: 3px 6px;
+}
+
+.place-field > input[type="text"] {
+  min-width: 12ch;
+  flex: 1;
+}
+
+.place-field > input[type="number"] {
+  width: 9ch;
+}
+
+/* The draft's own state, at the end of the row. Stated rather than implied:
+   a person relying on a draft surviving a reload needs to know it is being
+   kept, and needs to know when it is not. */
+.place-draft {
+  margin-left: auto;
+  color: #7f8fa3;
+  white-space: nowrap;
+}
+
+.place-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 6px 0;
+  overflow-x: auto;
+}
+
+.place-tab {
+  display: flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+}
+
+.place-tab-active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* The file that runs is marked on its tab rather than in a dropdown, because
+   "which of these five files does the world load" is a question a person asks
+   constantly and should not have to ask the manifest to answer. */
+.place-tab-entry > .place-tab-name {
+  color: #ffd68c;
+}
+
+.place-tab-name,
+.place-tab-remove,
+.place-tab-add {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.place-tab-remove {
+  color: #7f8fa3;
+  padding: 4px 6px 4px 0;
+}
+
+.place-tab-add:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.place-tab-name:focus-visible,
+.place-tab-add:focus-visible,
+.place-actions > button:focus-visible,
+.place-field > input:focus-visible {
+  outline: 2px solid #6fb3ff;
+  outline-offset: 1px;
+}
+
+/* The editor's own height, which CodeMirror fills rather than growing into. */
+.cm-pane {
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.place-models {
+  padding: 6px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.place-models h3 {
+  margin: 0 0 4px;
+  font: inherit;
+  font-weight: normal;
+  color: #7f8fa3;
+}
+
+.place-models ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.place-model-note {
+  color: #7f8fa3;
+}
+
+.place-actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.place-actions > button {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 5px;
+  color: inherit;
+  font: inherit;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+/* Run is the button a person presses twenty times, so it is the one that reads
+   as the primary action. */
+.place-run {
+  margin-left: auto;
+  background: rgba(111, 179, 255, 0.2);
+  border-color: rgba(111, 179, 255, 0.5);
+}
+
+.place-run:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

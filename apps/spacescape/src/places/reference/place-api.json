@@ -1,0 +1,1302 @@
+{
+  "sources": [
+    "src/places/guest/place-api.ts",
+    "src/places/events.ts",
+    "src/places/limits.ts"
+  ],
+  "functions": [
+    {
+      "name": "after",
+      "signature": "(id: string, delayMs: number): void",
+      "doc": "Schedules a `timer` event. **The delay and the id are separate parameters, id first**, so a script can build a name from something it already has. Timers fire in sorted id order, so the order a script's timers arrive in is the order they were *named* in rather than the order they were set — which is what makes two peers agree about which of two that came due together came first. **Setting an id that is already pending does nothing.** Not \"resets it\", not \"queues a second\": nothing. That is what makes the obvious pattern work — ```ts let fired = false; onTick((info) => { if (info.events.some((e) => e.kind === \"timer\")) { fired = true; openTheDoor(); } if (!fired) after(\"door\", 3000); // arms once, and fires once }); ``` — and it is the opposite of what a \"reset the deadline\" reading would suggest. A place that wants a repeating timer re-arms it when the event arrives, by which point the id is free.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "delayMs",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "choice",
+      "signature": "<T>(items: readonly T[]): T | undefined",
+      "doc": "One of the entries, or undefined for an empty array. From the seeded generator.",
+      "params": [
+        {
+          "name": "items",
+          "type": "readonly T[]",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "T | undefined"
+    },
+    {
+      "name": "clamp",
+      "signature": "(value: number, low: number, high: number): number",
+      "doc": "Holds `value` between `low` and `high`.",
+      "params": [
+        {
+          "name": "value",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "low",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "high",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "number"
+    },
+    {
+      "name": "clearCamera",
+      "signature": "(): void",
+      "doc": "Gives the camera back to the player.",
+      "params": [],
+      "returns": "void"
+    },
+    {
+      "name": "clearPlace",
+      "signature": "(place: string): void",
+      "doc": "Empties a place but leaves the place itself, so its name stays valid.",
+      "params": [
+        {
+          "name": "place",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "createLight",
+      "signature": "(options: CreateLightOptions): void",
+      "doc": "Creates a light. Replaces any light with the same id, so re-running a script does not stack lamps.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateLightOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "createMedium",
+      "signature": "(options: CreateMediumOptions): void",
+      "doc": "Creates a medium: a box the player is pushed, slowed or sunk by. Replaces any medium with the same id.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateMediumOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "createShape",
+      "signature": "(options: CreateShapeOptions): void",
+      "doc": "Adds one operation to a place. **Returns nothing.** A handle would be a second identity for a thing the script already has a name for, and the id *is* the handle — which is what `removeShape` takes. An object identity across the boundary is exactly what ADR 0015 forbids, so a handle here could only be a number, and a number the script chose is a name.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateShapeOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "createZone",
+      "signature": "(options: CreateZoneOptions): void",
+      "doc": "Creates a zone: a box the place is told the player entered and left. Replaces any zone with the same id.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateZoneOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "deleteData",
+      "signature": "(key: string): void",
+      "doc": "Forgets a stored value, so a later `loadData` finds nothing.",
+      "params": [
+        {
+          "name": "key",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "getHeightAt",
+      "signature": "(x: number, z: number): number",
+      "doc": "The terrain's surface height at a column.",
+      "params": [
+        {
+          "name": "x",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "z",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "number"
+    },
+    {
+      "name": "getMediumAt",
+      "signature": "(x: number, y: number, z: number): Medium | undefined",
+      "doc": "What a scripted field at a point does to whoever is inside it, or `undefined` where none sits. **A query about a place rather than about the player.** \"Am I standing on my belt\" is a question about a box and a position, and asking it that way means the answer does not change when there is more than one player. There is one today (`MAX_PLAYERS`), so the two would agree; they would not after.",
+      "params": [
+        {
+          "name": "x",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "y",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "z",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "Medium | undefined"
+    },
+    {
+      "name": "getSolidAt",
+      "signature": "(x: number, y: number, z: number): boolean",
+      "doc": "Whether a point is inside material. Water is not material.",
+      "params": [
+        {
+          "name": "x",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "y",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "z",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "boolean"
+    },
+    {
+      "name": "getWaterAt",
+      "signature": "(x: number, y: number, z: number): boolean",
+      "doc": "Whether a point is underwater.",
+      "params": [
+        {
+          "name": "x",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "y",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "z",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "boolean"
+    },
+    {
+      "name": "lerp",
+      "signature": "(a: number, b: number, t: number): number",
+      "doc": "The value `t` of the way from `a` to `b`, for interpolating a number.",
+      "params": [
+        {
+          "name": "a",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "b",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "t",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "number"
+    },
+    {
+      "name": "loadData",
+      "signature": "(key: string): string | undefined",
+      "doc": "Reads a stored value, or undefined when there is none.",
+      "params": [
+        {
+          "name": "key",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "string | undefined"
+    },
+    {
+      "name": "log",
+      "signature": "(text: string): void",
+      "doc": "Prints a line to the console's scrollback, which is where a place's own account of itself is read.",
+      "params": [
+        {
+          "name": "text",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "lookAt",
+      "signature": "(x: number, y: number, z: number, fov?: number | undefined): void",
+      "doc": "Points the camera at a world position until `clearCamera` is called, optionally with a field of view.",
+      "params": [
+        {
+          "name": "x",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "y",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "z",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "fov",
+          "type": "number | undefined",
+          "optional": true,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "movePlayer",
+      "signature": "(x: number, y: number, z: number, yaw?: number | undefined): void",
+      "doc": "Places the player at a world position, optionally facing a heading. For a spawn point, a teleport or a trapdoor.",
+      "params": [
+        {
+          "name": "x",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "y",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "z",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "yaw",
+          "type": "number | undefined",
+          "optional": true,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "onTick",
+      "signature": "(handler: (info: TickInfo) => void): void",
+      "doc": "Registers a function to run on every step. Called during load, before the first step, so a place builds itself from its handlers rather than from something that has to ask to be run. **The handler receives an object, not positional arguments**, because the event list grows and a script written against two positional arguments would break silently when a third appeared. It is also the only place in the library where a structured value exists, and it is built *inside* the interpreter from two strings — so the object a script sees never crossed the boundary.",
+      "params": [
+        {
+          "name": "handler",
+          "type": "(info: TickInfo) => void",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "randFloat",
+      "signature": "(low: number, high: number): number",
+      "doc": "A number in `[low, high)`, from the seeded generator.",
+      "params": [
+        {
+          "name": "low",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "high",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "number"
+    },
+    {
+      "name": "randint",
+      "signature": "(low: number, high: number): number",
+      "doc": "A whole number in `[low, high]`, from the seeded generator.",
+      "params": [
+        {
+          "name": "low",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "high",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "number"
+    },
+    {
+      "name": "random",
+      "signature": "(): number",
+      "doc": "A number from the seeded generator, so two peers drawing the same place agree.",
+      "params": [],
+      "returns": "number"
+    },
+    {
+      "name": "raycast",
+      "signature": "(origin: Vec3Like, direction: Vec3Like, maxDistance: number): RayHit | undefined",
+      "doc": "Casts a ray against the world and reports what it hit. **Traces the same field the picker does** (ADR 0009), which is why this is a query and not a grid walk: there is no voxel DDA here, and no step cap, because a surface is found by the sign of a distance function.",
+      "params": [
+        {
+          "name": "origin",
+          "type": "Vec3Like",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "direction",
+          "type": "Vec3Like",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "maxDistance",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "RayHit | undefined"
+    },
+    {
+      "name": "removeLight",
+      "signature": "(id: string): void",
+      "doc": "Takes a light away. Doing nothing when there is none.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "removeMedium",
+      "signature": "(id: string): void",
+      "doc": "Takes a medium away. Doing nothing when there is none.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "removePlace",
+      "signature": "(place: string): void",
+      "doc": "Removes a whole place, its shapes with it. Nothing it added is in the undo history.",
+      "params": [
+        {
+          "name": "place",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "removeShape",
+      "signature": "(place: string, id: string): void",
+      "doc": "Takes one shape out of a place by the id `createShape` was given.",
+      "params": [
+        {
+          "name": "place",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "removeZone",
+      "signature": "(id: string): void",
+      "doc": "Takes a zone away. Doing nothing when there is none, so a place need not remember what it made.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "saveData",
+      "signature": "(key: string, value: string): void",
+      "doc": "Writes a value the place can read on a later visit. Global rather than per-player: v1 has no accounts and one local player, and `scope` is an enum precisely so that adding accounts is a data change rather than a format change.",
+      "params": [
+        {
+          "name": "key",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "setFlying",
+      "signature": "(on: boolean): void",
+      "doc": "Lets the player fly, or stops them doing so. The one movement verb a place owns outright.",
+      "params": [
+        {
+          "name": "on",
+          "type": "boolean",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "setPlayerJump",
+      "signature": "(multiplier: number): void",
+      "doc": "Scales how high the player jumps, as a multiplier on their ordinary jump.",
+      "params": [
+        {
+          "name": "multiplier",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "setPlayerSpeed",
+      "signature": "(multiplier: number): void",
+      "doc": "Scales how fast the player moves, as a multiplier on their ordinary speed.",
+      "params": [
+        {
+          "name": "multiplier",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "setTime",
+      "signature": "(seconds: number): void",
+      "doc": "Jumps the clock to a mark in its cycle. The cycle is 1,200 seconds.",
+      "params": [
+        {
+          "name": "seconds",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "setTimeSpeed",
+      "signature": "(multiplier: number): void",
+      "doc": "Scales how fast the cycle runs. Zero stops time.",
+      "params": [
+        {
+          "name": "multiplier",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "toast",
+      "signature": "(text: string): void",
+      "doc": "Shows a line briefly over the world, for something the player should see rather than the console.",
+      "params": [
+        {
+          "name": "text",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    }
+  ],
+  "values": [
+    {
+      "name": "EVENT_KINDS",
+      "type": "readonly [\"player-joined\", \"player-left\", \"player-died\", \"zone-entered\", \"zone-left\", \"timer\", \"data-changed\"]",
+      "doc": "The kinds, so a place author can write a `switch` that the compiler will check."
+    }
+  ],
+  "types": [
+    {
+      "name": "Combine",
+      "doc": "How a shape changes the field.",
+      "members": [],
+      "union": ["Add", "Subtract", "Paint"],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "CreateLightOptions",
+      "doc": "What `createLight` takes: an id, where it is, its colour, how far it reaches, and how bright it is where it stops.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": "Its name, and how it is referred to when removed. Never generated."
+        },
+        {
+          "name": "at",
+          "type": "Vec3Like",
+          "optional": false,
+          "doc": "Where it is, in world units."
+        },
+        {
+          "name": "colour",
+          "type": "{ readonly r: number; readonly g: number; readonly b: number; }",
+          "optional": false,
+          "doc": "Its colour, each channel 0 to 255 — as everywhere else in this library."
+        },
+        {
+          "name": "radius",
+          "type": "number",
+          "optional": false,
+          "doc": "How far it reaches, in world units. **The same number says how bright it is**, which is what makes it worth stating plainly: the falloff is scaled so that `intensity` is the brightness *at the edge of this radius*. A light of radius 100 at intensity 1 is as bright at 100 units as one of radius 20 is at 20. Neither is bright in the middle — a lamp is hottest at its own centre — and the choice is made so a place author tunes one number instead of reconciling brightness against whatever distance the light happens to land on."
+        },
+        {
+          "name": "intensity",
+          "type": "number",
+          "optional": false,
+          "doc": "How bright, up to 10. **Read alongside `radius`, not instead of it**: `1` is a bright light, and what it looks like from somewhere depends on how far away that somewhere is."
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "CreateMediumOptions",
+      "doc": "What `createMedium` takes: an id, the box it fills, and how it pushes, slows or sinks whatever is inside it.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": "Its name, and how it is referred to when removed. Never generated."
+        },
+        {
+          "name": "box",
+          "type": "readonly [Vec3Like, Vec3Like]",
+          "optional": false,
+          "doc": "Two opposite corners, in any order — the field sorts them."
+        },
+        {
+          "name": "pushVx",
+          "type": "number",
+          "optional": false,
+          "doc": "Sideways pull, in world units per second. **Zero on one axis makes it a one-way belt.**"
+        },
+        {
+          "name": "pushVz",
+          "type": "number",
+          "optional": false,
+          "doc": "Forward pull, in world units per second."
+        },
+        {
+          "name": "pushVy",
+          "type": "number",
+          "optional": true,
+          "doc": "Upward pull, positive is up. **Left out, the field does not touch falling at all** — which is what makes one conveyor definition also a floor, rather than also being an updraft."
+        },
+        {
+          "name": "speedScale",
+          "type": "number",
+          "optional": false,
+          "doc": "What walking speed becomes while inside. **0 is quicksand**: the player moves at a fraction of their own speed, or not at all, and `sink` decides how fast they go down."
+        },
+        {
+          "name": "sink",
+          "type": "number",
+          "optional": true,
+          "doc": "The fastest this field lets a player fall, in world units per second. Left out or zero, they fall at their own gravity — so a slow belt is `speedScale` alone and quicksand is this too."
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "CreateShapeOptions",
+      "doc": "What `createShape` takes: which place and id the operation belongs to, where it sits, what it is, and how it joins the fold.",
+      "members": [
+        {
+          "name": "place",
+          "type": "string",
+          "optional": false,
+          "doc": "Which place it belongs to. Created if it does not exist."
+        },
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": "Its name within that place. **Never optional and never generated.** Two peers run the same script and derive the same operations rather than receiving them (ADR 0016), so an id this peer invented would be a different id on every peer and every shape would appear once per peer."
+        },
+        {
+          "name": "at",
+          "type": "Vec3Like",
+          "optional": false,
+          "doc": "Where it is."
+        },
+        {
+          "name": "shape",
+          "type": "PlaceShape",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "combine",
+          "type": "Combine",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "softness",
+          "type": "number",
+          "optional": true,
+          "doc": "How far the edge blends. Above 0.25 the stored box is smaller than the shape's reach."
+        },
+        {
+          "name": "orientation",
+          "type": "readonly [number, number, number, number]",
+          "optional": true,
+          "doc": "A unit quaternion."
+        },
+        {
+          "name": "colour",
+          "type": "{ readonly r: number; readonly g: number; readonly b: number; }",
+          "optional": true,
+          "doc": "A colour, 0 to 255 per channel."
+        },
+        {
+          "name": "opacity",
+          "type": "number",
+          "optional": true,
+          "doc": ""
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "CreateZoneOptions",
+      "doc": "A box that reports the player entering and leaving it. Zones are how a place built out of shapes reacts to anything: a door that opens, a lift that starts, a line that says you have arrived. There is no entity system in v1, so this is the whole of a place's reactivity.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": "Its name. Never generated, for the same reason a shape's id is not."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": true,
+          "doc": ""
+        },
+        {
+          "name": "box",
+          "type": "readonly [Vec3Like, Vec3Like]",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "Medium",
+      "doc": "What a field does to a player inside it. The same five numbers the physics reads.",
+      "members": [
+        {
+          "name": "pushVx",
+          "type": "number",
+          "optional": false,
+          "doc": "Sideways pull, in world units per second."
+        },
+        {
+          "name": "pushVz",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "pushVy",
+          "type": "number | null",
+          "optional": false,
+          "doc": "Upward pull, positive is up. `null` when the field does not touch falling."
+        },
+        {
+          "name": "speedScale",
+          "type": "number",
+          "optional": false,
+          "doc": "What walking speed becomes."
+        },
+        {
+          "name": "sink",
+          "type": "number",
+          "optional": false,
+          "doc": "The fastest this field lets a player fall. Zero does not hold them down."
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "PlaceError",
+      "doc": "Thrown when the host refuses an effect. A place is code, and code that is told nothing about its own failures fails somewhere else. A script that adds a two-thousand-and-first shape gets a `PlaceError` naming the limit at the line that caused it, rather than a world with a bridge missing from it.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "PlaceEvent",
+      "doc": "A fact the host delivered, as the guest sees it. **A union over `kind`, not one type with an index signature.** The first version had `[field: string]: unknown`, which meant `event.zoneId` compiled and was `unknown` — so a place author had to cast every field of every event, and the type checker could not tell them that `event.timerId` does not exist on a `zone-entered`. The host's own payload types are the ones to reuse, since they are what the wire format is validated against.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": "PlaceEventUnion"
+    },
+    {
+      "name": "PlaceShape",
+      "doc": "One SDF primitive a place may add, named by its `type` and sized by the primitive's own parameters.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": "{ readonly [K in ShapeType]: { readonly type: K; } & { readonly [P in ParametersOf<K> as P[\"name\"]]: P[\"arity\"] extends 3 ? PlaceVec3 : number; }; }[ShapeType]"
+    },
+    {
+      "name": "PlaceVec3",
+      "doc": "A shape's own dimensions, as an object. **Which is not the same as `Vec3Like`, and the asymmetry is a trap worth naming.** A position crosses the boundary as an array, so `at` is `[x, y, z]`. A shape's dimensions are part of the CSG type (`OperationShape` in `@big-mesh-studios/sdf`) where they are objects, and the host copies them straight through rather than converting — so `len` is `{ x, y, z }`. The first version of this file typed both as arrays, and the demos under `demo/` — which are type-checked, which is the whole point of ADR 0018 — refused every box they wrote. It would have reached a place author as a compile error with nothing saying which of the two was wrong.",
+      "members": [
+        {
+          "name": "x",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "y",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "z",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "RayHit",
+      "doc": "What a ray found, or undefined for nothing.",
+      "members": [
+        {
+          "name": "kind",
+          "type": "\"shape\" | \"terrain\" | \"water\"",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "point",
+          "type": "Vec3Like",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "normal",
+          "type": "Vec3Like",
+          "optional": false,
+          "doc": "Which way the surface faced, as a unit vector."
+        },
+        {
+          "name": "distance",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "TickInfo",
+      "doc": "What a tick is given: the shared clock, and whatever arrived.",
+      "members": [
+        {
+          "name": "now",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "events",
+          "type": "readonly PlaceEventUnion[]",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "Vec3Like",
+      "doc": "A position, as three plain numbers — an array, because that is what JSON makes of it.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": "readonly [number, number, number]"
+    },
+    {
+      "name": "Vector3",
+      "doc": "A three-component vector, for a place that is mostly arithmetic on positions. **Guest-side only and never crosses the boundary**: every function that takes a position takes a `Vec3Like`, which a `Vector3` converts into with `toArray`. A vector object sent to the host would be object identity crossing (ADR 0015), and would have to be re-validated there — the same numbers, checked twice.",
+      "members": [],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    }
+  ],
+  "events": [
+    {
+      "kind": "player-joined",
+      "doc": "A peer arrived in this place.",
+      "fields": [
+        {
+          "name": "player",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "kind": "player-left",
+      "doc": "A peer left.",
+      "fields": [
+        {
+          "name": "player",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "kind": "player-died",
+      "doc": "A player died, for whatever reason a place or the world decided.",
+      "fields": [
+        {
+          "name": "player",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "cause",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "kind": "zone-entered",
+      "doc": "The player entered a zone this place placed.",
+      "fields": [
+        {
+          "name": "zoneId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "kind": "zone-left",
+      "doc": "…and left it.",
+      "fields": [
+        {
+          "name": "zoneId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "kind": "timer",
+      "doc": "A timer a place set came due.",
+      "fields": [
+        {
+          "name": "timerId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "kind": "data-changed",
+      "doc": "A stored value changed, locally or on another peer.",
+      "fields": [
+        {
+          "name": "scope",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "player",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "key",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "deleted",
+          "type": "boolean",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "optional": true,
+          "doc": ""
+        }
+      ]
+    }
+  ],
+  "eventCommon": [
+    {
+      "name": "kind",
+      "type": "K",
+      "optional": false,
+      "doc": ""
+    },
+    {
+      "name": "producer",
+      "type": "string",
+      "optional": false,
+      "doc": "Who caused it. `\"local\"` for a peer acting on itself."
+    }
+  ],
+  "limits": [
+    {
+      "name": "MAX_CAUSE_LENGTH",
+      "value": "64",
+      "doc": "The longest a cause of death may be, for the same reason: it is peer-supplied and ends up in a log and in an event payload."
+    },
+    {
+      "name": "MAX_CHANNEL",
+      "value": "255",
+      "doc": "A colour channel's ceiling, and the only place 255 is written down."
+    },
+    {
+      "name": "MAX_CLOCK_MULTIPLIER",
+      "value": "100",
+      "doc": "The largest a clock multiplier may be. Separate from `MAX_MOVEMENT_MULTIPLIER` because they are different quantities with different reasons to be bounded, and sharing one bound between them would mean raising the speed of a sprint also raises how fast a day passes. A hundred times is a day in twelve seconds, which is as fast as a cycle is usefully watchable; beyond that a script is not animating a sky, it is trying to skip it."
+    },
+    {
+      "name": "MAX_COORDINATE",
+      "value": "10000000",
+      "doc": "How far from the origin a place's geometry may reach, in world units. **Ten million, and the reason is the chunk window rather than the world.** The window is five chunks of 320 units (`GAME_WINDOW`), so geometry beyond a few thousand units is never meshed — but it is still folded, because the operation's box is tested per sample and a box a long way out is cheap. The real reason to bound it is that a coordinate is used in arithmetic, and at `1e9` a distance stops being representable in the float the field carries. Ten million is four orders of magnitude beyond anything reachable and comfortably inside the range where `x - y` is still exact to the millimetre."
+    },
+    {
+      "name": "MAX_DATA_KEY",
+      "value": "64",
+      "doc": "The longest a data key may be."
+    },
+    {
+      "name": "MAX_DATA_KEYS",
+      "value": "256",
+      "doc": "The most key/value pairs a place may hold, across every scope."
+    },
+    {
+      "name": "MAX_DATA_STRING",
+      "value": "512",
+      "doc": "The longest a data value's string form may be."
+    },
+    {
+      "name": "MAX_EVENT_ID_LENGTH",
+      "value": "128",
+      "doc": "The longest an event's own id may be, and the longest a producer's may be. An event id is `producer:at:sequence` and has to be unique across peers without a coordinator, so it is assembled rather than generated (see `events.ts`). Bounded because it crosses the wire on every fact and because the log keys on it."
+    },
+    {
+      "name": "MAX_EVENT_LIFETIME_MS",
+      "value": "86400000",
+      "doc": "How long a peer may keep an event, in milliseconds. A day."
+    },
+    {
+      "name": "MAX_EVENTS",
+      "value": "4000",
+      "doc": "The most events the log holds. **Facts are never forgotten** — a peer joining late still needs the whole history for the log to be the same log — so this is not a ring buffer and exceeding it is a refusal rather than an eviction. Four thousand is a long session of a place emitting a fact every few seconds, and a place that needs more is a place that needs summaries."
+    },
+    {
+      "name": "MAX_LIGHT_INTENSITY",
+      "value": "10",
+      "doc": "How bright one light may be. **Ten, which is about three stops above unity.** Intensity is a multiplier on a falloff already normalised to the light's own radius (`render/point-lights.ts`), so one is a bright light and the useful range is small. Ten exists so a place can make a bonfire rather than being told its fire is exactly as bright as its candle — and no more, because a term that brightens a surface past one stops being a light and becomes a hole in the image."
+    },
+    {
+      "name": "MAX_LIGHT_RADIUS",
+      "value": "100000",
+      "doc": "How far one light may reach, in world units. **A hundred thousand, well inside the four-hundred-thousand far plane.** A light reaching further than anything sensible is a light that costs a term in every fragment of the world and reaches no fragment that is not already past the fog. The same bound as `MAX_ZONE_SIZE`'s cousin `MAX_COORDINATE`, and chosen so that \"a light that covers everything\" is expressible without being unbounded."
+    },
+    {
+      "name": "MAX_LIGHTS",
+      "value": "256",
+      "doc": "How many lights may exist at once, across every place. **Far more than are drawn.** `MAX_DRAWN_LIGHTS` in `render/point-lights.ts` is eight, and this is 256 — so a place may keep a far larger set than any frame can show and the host picks the nearest few. The gap is deliberate and it is the same reasoning as `MAX_ZONES`: the cost of a light nobody can see is a sort, while the cost of a limit low enough to need no selection would be a place that cannot light a corridor and a courtyard at once. A cap on the *held* count rather than on lights ever created, for the same reason as `MAX_PENDING_TIMERS`: only the ones currently existing cost anything."
+    },
+    {
+      "name": "MAX_MEDIUM_PUSH",
+      "value": "200",
+      "doc": "How fast a medium may push, in world units per second, on any axis. **Two hundred, which is a little over three times a walking player.** `DEFAULT_PLAYER_CONFIG` walks at 60, so this is a fast belt rather than a gentle one — and it is a ceiling on the *target velocity* the field pulls toward, not on the player's speed, so a place cannot use a medium to make someone move faster than the cap by combining it with a large `speedScale`."
+    },
+    {
+      "name": "MAX_MEDIUM_SPEED_SCALE",
+      "value": "10",
+      "doc": "What a medium may multiply a walking player's speed by. **Ten, and the floor is zero.** Zero is the quicksand case and is the reason the field is separate from a push at all: a slow medium and a fast one differ only in this number, and clamping the floor at something above zero would make \"slow\" mean \"slightly slow\"."
+    },
+    {
+      "name": "MAX_MEDIUMS",
+      "value": "64",
+      "doc": "How many mediums may exist at once, across every place. **Sixty-four, a quarter of `MAX_ZONES`, and the difference is what a medium does.** A zone is read and produces an event; a medium is read and *moves the player*, so two overlapping ones are not merely ambiguous but produce a frame the person in them has to feel. Sixty-four is far more than a conveyor network needs, and the resolution rule below (\"the first whose box holds the point\") only stays cheap while the count is small enough that \"first\" is obvious."
+    },
+    {
+      "name": "MAX_MOVEMENT_MULTIPLIER",
+      "value": "10",
+      "doc": "The largest a speed or jump multiplier may be. The player's own `PlayerConfig` has no multiplier field — a script's `player-speed` becomes a host-side override — but ten is already faster than anything a player can react to, and an unbounded one is a NaN waiting for a division."
+    },
+    {
+      "name": "MAX_NAME_LENGTH",
+      "value": "64",
+      "doc": "The longest a name may be: a place's name, or a shape's id inside one. Names are map keys, appear in every log line, and travel over the wire in every event that mentions them, so an unbounded name is memory and bandwidth a peer can ask for. Sixty-four is the same bound the sibling project uses and is longer than anything a person types."
+    },
+    {
+      "name": "MAX_OPACITY",
+      "value": "1",
+      "doc": "How opaque an operation may be. Above 1 is meaningless; `makeOperation` defaults to 1."
+    },
+    {
+      "name": "MAX_PENDING_TIMERS",
+      "value": "10000",
+      "doc": "How many timers a place may have outstanding at once. A cap on *live* timers rather than on timers ever created, because a script in a loop could otherwise make millions that are never pending: the ones that have fired are gone, and only the ones waiting are held. Ten thousand is far more than a place needs to express and few enough that the host's table stays small."
+    },
+    {
+      "name": "MAX_PLACE_SOURCE",
+      "value": "1000000",
+      "doc": "How much source one place may carry altogether, in characters. **A total, and `load-place.ts` is the only thing that enforces it** — `MAX_SCRIPT_SOURCE` above bounds one file, and `MAX_PLACE_FILES` bounds how many there are, so the product is forty million characters of TypeScript arriving into a browser tab that then compiles it with a real `Program` per file. That is not a large place, it is a hang. A million is ten full-size files, which is far more than any place needs and far less than the cap would be if the intent were \"whatever fits\". It is read from the *decompressed* bytes as each file is read, so the loader never retains more than this however large the archive claims to be — which is also why it is a character count and not a compressed one: a number read off the zip's own header would be a number the zip wrote about itself."
+    },
+    {
+      "name": "MAX_PLAYER_ID_LENGTH",
+      "value": "128",
+      "doc": "The longest a player's identity may be. A player's identity is a peer-supplied identifier, so it is the most untrusted string in the system. It is bounded here and, more importantly, it is only ever compared for equality and never interpolated into a selector, a filename, or a command."
+    },
+    {
+      "name": "MAX_PLAYERS",
+      "value": "1",
+      "doc": "How many players a place's notion of \"which player\" may name. There is one local player in this build (`src/player/`), and a place running on a peer acts on the player that peer is running. The cap is 1 for now and the field exists so that raising it is a data change rather than a format change."
+    },
+    {
+      "name": "MAX_PRODUCER_LENGTH",
+      "value": "128",
+      "doc": "How long the account that caused an event may be, in characters. A producer is a peer's identity, arriving from the wire, so it is bounded like one."
+    },
+    {
+      "name": "MAX_SCRIPT_SOURCE",
+      "value": "100000",
+      "doc": "The longest one of a place's script files may be, in characters. **A file, not a whole place.** A place is several files and there is no bound on how many there are, which is deliberate — the number of files is the person's decision and each one is small. This is the bound on a single file, so that one enormous file cannot arrive as a payload from a peer and be transpiled into an enormous program inside an interpreter with a step budget. A hundred thousand characters is roughly three thousand lines, which is a large module by any measure and comfortably more than any of the demo places."
+    },
+    {
+      "name": "MAX_SHAPE_SIZE",
+      "value": "1000000",
+      "doc": "The largest a shape's own dimension may be. Smaller than `MAX_COORDINATE` deliberately: a shape ten million units across is not a shape, it is a number, and it defeats the candidate cache in `csg/bvh.ts` because its box overlaps every chunk. A kilometre is larger than the fog's far distance (`FOG_FAR` = four chunks) by a factor of eight, so nothing visible is lost."
+    },
+    {
+      "name": "MAX_SOFTNESS",
+      "value": "0.25",
+      "doc": "How soft an operation's edge may be. `MAX_SOFTNESS` in `csg/operations.ts` is 0.25 and is not advisory: an operation's box is padded by `SOFTNESS_REACH * softness`, and `operationBounds` reads that constant rather than the operation. A softness above 0.25 would make the stored box smaller than the shape's real reach, so a chunk at the boundary would mesh differently from its neighbour — a LOD crack that follows the script rather than the terrain."
+    },
+    {
+      "name": "MAX_STEP_MS",
+      "value": "250",
+      "doc": "How long one step may run, in milliseconds — the same budget as ADR 0015's sandbox. Repeated here rather than imported so that the *limits* of a place are readable in one file, and so that `effects.ts` can be read without following an import into the interpreter. `interpreter.test.ts` asserts the two agree, so they cannot drift."
+    },
+    {
+      "name": "MAX_TEXT_LENGTH",
+      "value": "512",
+      "doc": "The longest text a script may put in the log, a toast, or a billboard. A line of text on a screen. Long enough for a paragraph, short enough that a peer cannot use the console scrollback as a place to put something."
+    },
+    {
+      "name": "MAX_TIMER_MS",
+      "value": "86400000",
+      "doc": "How long a timer may be set for, in milliseconds — about a day. A timer longer than this is a place asking to be woken by something that will not happen in any session anybody will sit through, and the host holds pending timers in memory keyed by id, so an unbounded delay is an unbounded number of live records."
+    },
+    {
+      "name": "MAX_ZONE_NAME_LENGTH",
+      "value": "64",
+      "doc": "The longest a zone's name may be, which is text *and* an identity: a zone is addressed by id and labelled by name, and the two are the same string in the payload."
+    },
+    {
+      "name": "MAX_ZONE_SIZE",
+      "value": "100000",
+      "doc": "The largest a zone's box may be on any axis, in world units. A zone is meant to be a doorway or a platform — tens of units — so this is generous by two orders of magnitude. It bounds the number because the host tests the player's position against every zone and a zone spanning the whole world makes every zone's answer depend on every other."
+    },
+    {
+      "name": "MAX_ZONES",
+      "value": "256",
+      "doc": "The most zones a place may have. A zone is a box tested against the player's position once a frame, so the cost is proportional to the count: a thousand zones is a thousand box tests per player per frame. A place that wants a thousand triggers is a place that wants a spatial index, and the number here is low enough that no index is needed yet."
+    },
+    {
+      "name": "MIN_SHAPE_SIZE",
+      "value": "0.001",
+      "doc": "The smallest a shape's own dimension may be. `csg/shapes.ts` has `MIN_RADIUS = 1e-3` and says a shape smaller than that is not a shape. The same floor is used here so a script cannot create an operation the field would treat as degenerate, which would be an operation that costs a box test per sample and produces no surface."
+    }
+  ]
+}

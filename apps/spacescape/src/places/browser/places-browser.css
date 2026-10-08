@@ -1,0 +1,153 @@
+/*
+ * The published-place catalog overlay.
+ *
+ * **Plain class names rather than a CSS module**, matching the editor panel: both are mounted at the
+ * application root beside the console, and the prefix is what keeps them findable.
+ *
+ * The panel is centred and capped to the viewport, because the thing behind it is the world a
+ * "load" button is about to replace — a full-bleed catalog would hide the choice being made.
+ */
+
+.place-browser-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 4;
+  /* The cursor has to be usable: the pointer lock is released while this is open, and a list of
+     buttons under a hidden cursor is a list nobody can press. */
+  cursor: auto;
+}
+
+.place-browser-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  background: rgba(10, 12, 16, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  color: #c8d6e5;
+  font: 13px monospace;
+  overflow: hidden;
+}
+
+.place-browser-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.place-browser-title {
+  color: #7f8fa3;
+}
+
+.place-browser-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.place-browser-search {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.place-browser-field {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 5px;
+  color: inherit;
+  font: inherit;
+  padding: 4px 8px;
+}
+
+.place-browser-search-btn,
+.place-browser-mine,
+.place-browser-play,
+.place-browser-refresh,
+.place-browser-more {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 5px;
+  color: inherit;
+  font: inherit;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.place-browser-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 10px;
+}
+
+.place-browser-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.place-browser-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.place-browser-name {
+  color: #e8eef7;
+}
+
+.place-browser-meta {
+  color: #7f8fa3;
+  /* A long DID in the account column wraps rather than widening the row. */
+  overflow-wrap: anywhere;
+}
+
+.place-browser-play {
+  margin-left: auto;
+  flex: none;
+  background: rgba(111, 179, 255, 0.2);
+  border-color: rgba(111, 179, 255, 0.5);
+}
+
+.place-browser-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: #7f8fa3;
+}
+
+.place-browser-more {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.place-browser-help,
+.place-browser-error {
+  margin: 4px 0;
+}
+
+.place-browser-error {
+  color: #ff9a9a;
+}

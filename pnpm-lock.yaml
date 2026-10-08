@@ -288,6 +288,18 @@ importers:
 
   apps/spacescape:
     dependencies:
+      '@atcute/atproto':
+        specifier: 'catalog:'
+        version: 4.0.4(@atcute/lexicons@2.1.0)
+      '@atcute/client':
+        specifier: 'catalog:'
+        version: 5.1.1(@atcute/lexicons@2.1.0)(typescript@5.9.3)
+      '@atcute/lexicons':
+        specifier: 'catalog:'
+        version: 2.1.0
+      '@big-mesh-studios/atproto':
+        specifier: workspace:*
+        version: link:../../packages/atproto
       '@big-mesh-studios/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -303,6 +315,9 @@ importers:
       '@big-mesh-studios/sdf':
         specifier: workspace:*
         version: link:../../packages/sdf
+      '@big-mesh-studios/solid-codemirror':
+        specifier: workspace:*
+        version: link:../../packages/solid-codemirror
       '@big-mesh-studios/ui':
         specifier: workspace:*
         version: link:../../packages/ui

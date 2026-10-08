@@ -13,6 +13,9 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
+    // So `/place:docs` can read the generated drawing: `place-api.json` is imported by
+    // `src/places/reference/index.ts`, and without this a JSON import is not a module.
+    "resolveJsonModule": true,
     // `exactOptionalPropertyTypes` is off, and the reason is worth keeping in the file
     // rather than in a memory: it is correct, and it makes every optional field that is
     // genuinely optional — half of the worker protocol — a `{ field?: T | undefined }`
@@ -54,7 +57,7 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
 
-    "types": ["vite/client"]
+    "types": ["vite/client", "@atcute/atproto"]
   },
   "include": ["src"]
 }

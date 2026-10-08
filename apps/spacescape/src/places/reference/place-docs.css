@@ -1,0 +1,133 @@
+/*
+ * The place reference panel.
+ *
+ * **Plain class names rather than a CSS module**, matching the editor and the catalog: all three are
+ * mounted at the application root, and the prefix is what keeps them findable.
+ *
+ * Wider and taller than the catalog, because this is read rather than picked from — a signature and
+ * its sentence need a line each, and a narrow panel wraps every one of them.
+ */
+
+.place-docs-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 4;
+  cursor: auto;
+}
+
+.place-docs-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(82vh, 680px);
+  background: rgba(10, 12, 16, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  color: #c8d6e5;
+  font: 13px monospace;
+  overflow: hidden;
+}
+
+.place-docs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.place-docs-title {
+  color: #7f8fa3;
+}
+
+.place-docs-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.place-docs-toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.place-docs-tab {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #7f8fa3;
+  font: inherit;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.place-docs-tab-active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #e8eef7;
+}
+
+.place-docs-search {
+  flex: 1;
+  min-width: 0;
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 5px;
+  color: inherit;
+  font: inherit;
+  padding: 3px 8px;
+}
+
+.place-docs-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px;
+}
+
+.place-docs-entry {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.place-docs-signature {
+  color: #ffd68c;
+  overflow-wrap: anywhere;
+}
+
+.place-docs-doc {
+  margin: 4px 0;
+  color: #c8d6e5;
+}
+
+.place-docs-note {
+  color: #7f8fa3;
+}
+
+.place-docs-returns {
+  margin: 2px 0 0;
+  color: #7f8fa3;
+}
+
+.place-docs-field {
+  margin: 2px 0;
+}
+
+.place-docs-field code {
+  color: #9fc6ff;
+}
+
+.place-docs-variant {
+  margin: 6px 0 0 12px;
+}

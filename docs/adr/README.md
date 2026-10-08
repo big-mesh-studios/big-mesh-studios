@@ -61,6 +61,8 @@ recorded cost is a decision nobody thought about.
 | [0041](0041-the-planet-is-thirty-four-times-larger.md)                   | The planet is 34× larger, and its body scales with it                                  | superseded in part by `0042` |
 | [0042](0042-the-cloud-volume-is-addressed-by-direction-and-altitude.md)  | The cloud volume is addressed by direction **and** altitude                            | accepted                     |
 | [0043](0043-water-is-a-field-and-the-landscape-gates-it.md)              | Water is a field, and the **landscape** gates it                                       | accepted                     |
+| [0044](0044-a-place-is-published-as-a-spacescape-place-record.md)        | A place is published as `app.bms.spacescape.place`, versioned from the first record    | accepted                     |
+| [0045](0045-a-published-place-is-public.md)                              | A published place is public, and the catalog is an overlay                             | accepted                     |
 
 ## What is decided so far
 
@@ -197,6 +199,38 @@ and `updatePlayer` consumes all three — speed scaling, both pushes, the sink, 
 velocity, a seat's heading. `GameWorld implements PlayerWorld` and supplied none of them. So the
 phase was a wiring job, not a feature, and what it added was three functions between a place's box
 and physics that was already written and already correct.
+
+**0044 is two irreversible commitments and one non-obvious repair.** Publishing under
+`app.bms.spacescape.place` is a public promise: a record written under an NSID can only change if
+its owner republishes it, so a collection that turns out to be wrong is an orphan problem and not a
+rename. Putting `version: 1` on the **first** record is the same reasoning one field earlier — a
+version absent from every record already written cannot be added to them, which is why
+`versionedRecord` is deliberately _not_ used yet: a chain of one schema is a version check spelled
+at length, and the `.upgradesTo` call is the whole of the difference when the second version
+arrives.
+
+The repair is the one worth carrying forward. **0021 omitted a `models` field from the manifest
+because voxelscape's models are figures and there are no figures here** — and that reasoning is now
+wrong for a narrower reason, because a manifest's job is to say what a place's _files_ are, and a
+project may carry files that are not part of its program. `manifest.json` is itself such a file. So
+the field is back, holding bytes nothing decodes, and the line the record draws is that
+**describing is not promising**: the loader reads an attachment and no renderer exists for it,
+whereas a field promising a figure system would be exactly what 0021's rules exist to prevent.
+Carrying models in the _published_ record is a different question and is still open — that needs a
+publisher, and it needs an identity `apps/sdf-modeller`'s project files do not have (0033).
+
+**0045 is where the other half of sharing is decided, and its most interesting sentence is about a
+sentence.** ADR 0017 said _the console is the only overlay_ when it left scripted UI out of the
+effect vocabulary — and a catalog of places is the first thing that wanted to be more than a line of
+text, which reads as a contradiction. It is not one, and the distinction is worth keeping: **0017
+was a decision about scripted UI, and it is still true of that.** A place cannot draw a pixel, ask
+for a HUD, or open a dialog; the application now draws three panels instead of one. What makes browse
+possible before anybody signs in is 0044's other half — a published place is public, so the read path
+takes no token and no account, and the write path is a separate object precisely because it does.
+And the part of the port worth trusting is the part with no natural pull towards correctness:
+`ListingLimits` and the `capped` flag, because a listing reads accounts it did not choose and a list
+that showed the first two hundred while saying nothing is indistinguishable from a world holding two
+hundred.
 
 Two things follow that are worth carrying forward. **A reader rather than a stored collection**,
 because a place adds and removes fields while the game runs and a world holding a snapshot would

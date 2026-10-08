@@ -21,8 +21,6 @@
  * - **`levels`** — `.json` level plans, read by its `onPlan` handler. A smooth-landscape engine
  *   has no levels and no plan handler, and a manifest naming one would be naming a file nothing
  *   opens.
- * - **`models`** — rm-stacker `.zip` models, attached to NPCs. There are no figures in v1, so
- *   there is nothing for a model to attach to.
  * - **`mode`** — `solo` / `multi` / `:edit`, which decides whether a place starts multiplayer.
  *   Multiplayer is not built (see the README's remaining work), and a manifest that could
  *   switch it on would be a switch wired to nothing.
@@ -31,12 +29,23 @@
  * a field this accepts is a promise, and a promise about a level plan is one nothing here keeps.
  * Each is one line to add when the thing it names exists.
  *
- * ## And the one field this has that the reference does not
+ * ## And the one field this has that the reference does not, and the one it has differently
  *
  * **`entry`.** voxelscape's manifest names `scripts[]` and lets its runtime decide which one is
  * the program; `PlaceHost` is handed an explicit `entry` and refuses one that is not among the
  * place's files. Keeping that means the entry is stated in the artefact rather than inferred,
  * and that `/place:list` can say what a place runs without opening it.
+ *
+ * **`models`, carrying the reference's name but not its meaning.** voxelscape's models are
+ * rm-stacker `.zip` figures attached to NPCs, and this is the field that names them — which is
+ * why it was left out while there were no figures. It is here now for a narrower reason: **a
+ * manifest's job is to say what a place's files are**, and a project may carry files that are not
+ * part of its program. `manifest.json` is itself such a file — described, carried, and run by
+ * nothing — and an attachment is the same case.
+ *
+ * What that does **not** do is promise a figure system. These bytes are read out of the zip and
+ * carried, and nothing decodes them, because nothing can attach one to anything yet. A field that
+ * promised a renderer would be the thing this file's rules exist to prevent.
  */
 
 /** The file inside a zip that carries a place's manifest. */
@@ -60,6 +69,31 @@ export const MAX_PLACE_FILE_NAME = 256;
 
 /** The longest a place's name may be. Matches `MAX_NAME_LENGTH` in spirit and not in value. */
 export const MAX_PLACE_NAME = 256;
+
+/**
+ * The most attachments one place may name.
+ *
+ * **Small, and low because nothing reads them yet.** Sixty-four would match `MAX_PLACE_FILES` and
+ * read as a decision; the honest number for a field that carries bytes no engine feature consumes
+ * is one nobody has needed yet. Raising it when the feature lands is a one-line change, and raising
+ * it now is a promise about scale made by a placeholder.
+ */
+export const MAX_PLACE_MODELS = 8;
+
+/**
+ * How many bytes one attachment may be.
+ *
+ * **Bytes rather than characters**, because these are not source: `MAX_PLACE_SOURCE` counts
+ * characters because it is bounding what the TypeScript compiler will be handed, and none of this
+ * is compiled. What it does bound is how much a browser tab holds at once after a zip has been
+ * decompressed.
+ *
+ * Four megabytes is a large SDF model — `sdf-modeller` allows 512 parts at roughly 50 bytes each,
+ * so a model is kilobytes — and is far below what an image or a mesh would be, which is the point:
+ * this is a ceiling on a file whose contents this engine cannot interpret, and a file nobody can
+ * interpret should not be able to fill a tab.
+ */
+export const MAX_PLACE_MODEL_BYTES = 4 * 1024 * 1024;
 
 /**
  * How far a place's spawn may lie from the origin, in world units.
@@ -104,6 +138,16 @@ export interface PlaceManifest {
    * manifest that does not name its own program is one whose entry cannot be checked.
    */
   readonly scripts: readonly string[];
+  /**
+   * The attachment files in the zip, relative to its root. Absent when there are none.
+   *
+   * **A second list rather than an extension check on the archive**, for the reason `scripts` is
+   * a list: declaring a file is what makes it part of the place, and the loader refuses an
+   * undeclared one rather than guessing. The two lists share **one flat namespace** — a name in
+   * both is refused — because a zip holds one file per path and two claims to it is a place whose
+   * contents cannot be stated.
+   */
+  readonly models?: readonly string[];
 }
 
 /**
@@ -134,7 +178,46 @@ export const isPlaceManifest = (value: unknown): value is PlaceManifest => {
 
   if (record.spawn !== undefined && !isSpawn(record.spawn)) return false;
 
-  return isFileList(record.scripts) && isEntryOf(record.entry, record.scripts);
+  if (!isFileList(record.scripts)) return false;
+  if (!isAttachmentList(record.models)) return false;
+
+  // **One flat namespace, checked across both lists rather than within each.** Two lists that are
+  // each internally distinct can still name the same path, and a zip has one file per path.
+  if (!isDisjoint(record.scripts, record.models)) return false;
+
+  return isEntryOf(record.entry, record.scripts);
+};
+
+/** Whether the two lists share a name, which a zip cannot represent. */
+const isDisjoint = (scripts: unknown, models: unknown): boolean =>
+  !Array.isArray(models) ||
+  !Array.isArray(scripts) ||
+  !models.some((name) => scripts.includes(name as string));
+
+/**
+ * Whether `models` is a list of attachment names this engine can carry.
+ *
+ * **The same rules as `isFileList`, and the same reasons.** These names come out of a stranger's
+ * zip and become keys somebody will read bytes under, so they must be safe paths, and two entries
+ * that are the same string are one file whose owner would be decided by iteration order.
+ *
+ * Unlike `isFileList`, an empty list is allowed and an absent one is allowed: a place with no
+ * attachments says nothing rather than carrying an empty list, and the two are the same place.
+ */
+const isAttachmentList = (
+  value: unknown,
+): value is readonly string[] | undefined => {
+  if (value === undefined) return true;
+  if (!Array.isArray(value)) return false;
+  if (value.length > MAX_PLACE_MODELS) return false;
+
+  const seen = new Set<string>();
+  for (const name of value) {
+    if (typeof name !== "string" || !isSafePathName(name)) return false;
+    if (seen.has(name)) return false;
+    seen.add(name);
+  }
+  return true;
 };
 
 /** Whether a value is a spawn this engine can stand a player at. */

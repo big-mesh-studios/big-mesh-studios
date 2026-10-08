@@ -45,6 +45,7 @@ import { MAX_PLACE_SOURCE } from "./limits";
 import {
   isPlaceManifest,
   isSafePathName,
+  MAX_PLACE_MODEL_BYTES,
   PLACE_MANIFEST_FILE,
   type PlaceManifest,
 } from "./place-file";
@@ -55,6 +56,12 @@ export interface LoadedPlace {
   readonly manifest: PlaceManifest;
   /** The script files, as the bundler takes them. Every path is safe and relative to the root. */
   readonly files: PlaceFiles;
+  /**
+   * The attachment files, as the manifest named them. **Nothing decodes these** — see
+   * `place-file.ts` for why a manifest names files the engine cannot read, and `project.ts` for
+   * why they exist in a project at all.
+   */
+  readonly models: Readonly<Record<string, Uint8Array>>;
   /** The file that runs. Copied out of the manifest so a caller need not re-validate it. */
   readonly entry: string;
 }
@@ -96,7 +103,7 @@ export const readPlaceZip = async (blob: Blob): Promise<LoadedPlace> => {
   // by a tool that records folders carries them for every file), and anything else undeclared is
   // refused too — there is no file in a place that is neither the manifest nor a declared script,
   // and a `.md` somebody left in the folder is not a reason to refuse the place.
-  const declared = new Set(manifest.scripts);
+  const declared = new Set([...manifest.scripts, ...(manifest.models ?? [])]);
   for (const name of Object.keys(zip.files)) {
     if (name === PLACE_MANIFEST_FILE) continue;
     const entry = zip.files[name];
@@ -117,6 +124,7 @@ export const readPlaceZip = async (blob: Blob): Promise<LoadedPlace> => {
   }
 
   const files: Record<string, string> = {};
+  const models: Record<string, Uint8Array> = {};
   let characters = 0;
 
   for (const name of manifest.scripts) {
@@ -143,7 +151,30 @@ export const readPlaceZip = async (blob: Blob): Promise<LoadedPlace> => {
     files[name] = source;
   }
 
-  return { manifest, files, entry: manifest.entry };
+  for (const name of manifest.models ?? []) {
+    if (!isSafePathName(name)) {
+      throw new Error(
+        `the manifest names "${name}", which is not a path this can read`,
+      );
+    }
+
+    const entry = zip.file(name);
+    if (entry === null) {
+      throw new Error(
+        `the manifest names "${name}", which the zip does not hold`,
+      );
+    }
+
+    const bytes = await entry.async("uint8array");
+    if (bytes.byteLength > MAX_PLACE_MODEL_BYTES) {
+      throw new Error(
+        `"${name}" is over the ${MAX_PLACE_MODEL_BYTES} byte limit on one attachment`,
+      );
+    }
+    models[name] = bytes;
+  }
+
+  return { manifest, files, models, entry: manifest.entry };
 };
 
 /** Opens the archive, or says what the bytes were not. */

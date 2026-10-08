@@ -17,6 +17,7 @@ import {
   isSafePathName,
   MAX_PLACE_FILES,
   MAX_PLACE_FILE_NAME,
+  MAX_PLACE_MODELS,
   MAX_PLACE_NAME,
   MAX_PLACE_SPAWN,
   PLACE_MANIFEST_FILE,
@@ -99,6 +100,32 @@ const refuses: readonly (readonly [string, unknown])[] = [
     "a spawn beyond the world",
     { ...good(), spawn: [MAX_PLACE_SPAWN + 1, 0, 0] },
   ],
+  // The attachment list, which shares every rule a script list is held to — and shares its
+  // namespace with it, so the two rows below are the ones a second list could have got wrong.
+  ["models that is not a list", { ...good(), models: "lantern.sdfmod" }],
+  [
+    "more attachments than a place may hold",
+    {
+      ...good(),
+      models: Array.from({ length: MAX_PLACE_MODELS + 1 }, (_, at) => `m${at}`),
+    },
+  ],
+  ["a duplicate attachment name", { ...good(), models: ["a.zip", "a.zip"] }],
+  ["an attachment name that is not a string", { ...good(), models: [3] }],
+  [
+    "an attachment name walking out of the root",
+    { ...good(), models: ["../evil.zip"] },
+  ],
+  [
+    "an attachment name with a backslash",
+    { ...good(), models: ["..\\evil.zip"] },
+  ],
+  [
+    "a name claimed by both the scripts and the attachments",
+    // **A zip holds one file per path**, so two claims to it is a place whose contents cannot be
+    // stated — and this is the one refusal that cannot live inside either list's own check.
+    { ...good(), models: ["main.ts"] },
+  ],
 ];
 
 describe("a manifest this can open", () => {
@@ -132,6 +159,27 @@ describe("a manifest this can open", () => {
 
   it("accepts a spawn", () => {
     expect(isPlaceManifest({ ...good(), spawn: [1, 2, 3] })).toBe(true);
+  });
+
+  it("accepts a place that names no attachments at all", () => {
+    // **Two spellings of the same place.** A place with nothing attached says nothing rather than
+    // carrying an empty list, so the absent and the empty are both the absence of attachments.
+    expect(isPlaceManifest({ ...good(), models: undefined })).toBe(true);
+    expect(isPlaceManifest({ ...good(), models: [] })).toBe(true);
+  });
+
+  it("accepts attachments nested in folders, at the count limit", () => {
+    // **A nested name and the boundary, together** — the two things a second list's own check
+    // could plausibly get wrong while reusing the first one's rules.
+    expect(
+      isPlaceManifest({
+        ...good(),
+        models: Array.from(
+          { length: MAX_PLACE_MODELS },
+          (_, at) => `assets/m${at}.sdfmod`,
+        ),
+      }),
+    ).toBe(true);
   });
 
   it("accepts a spawn exactly at the limit", () => {

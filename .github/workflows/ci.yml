@@ -34,7 +34,9 @@ jobs:
       # from is a reference that is quietly wrong. This is the check that says so
       # rather than leaving it to be noticed.
       - name: Check the place reference is drawn from the current sources
-        run: pnpm --filter @big-mesh-studios/bms-voxelscape place-reference:check
+        run: |
+          pnpm --filter @big-mesh-studios/bms-voxelscape place-reference:check
+          pnpm --filter @big-mesh-studios/spacescape place-reference:check
 
       # Likewise the world's own shape and its voxel pipeline: both are drawn
       # from the sources by a tool that fails when the drawing has drifted.

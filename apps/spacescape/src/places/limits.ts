@@ -286,6 +286,11 @@ export const MAX_CAUSE_LENGTH = 64;
  * it crosses the wire on every fact and because the log keys on it.
  */
 export const MAX_EVENT_ID_LENGTH = 128;
+/**
+ * How long the account that caused an event may be, in characters.
+ *
+ * A producer is a peer's identity, arriving from the wire, so it is bounded like one.
+ */
 export const MAX_PRODUCER_LENGTH = MAX_PLAYER_ID_LENGTH;
 
 /**

@@ -279,3 +279,57 @@
   background: rgba(111, 207, 151, 0.16);
   color: #6fcf97;
 }
+
+/*
+ * The place editor's second size.
+ *
+ * **Taller, wider, and the same panel** — the console's own rule was that a change to this
+ * element must reach the editor too, so there is one panel and two sizes rather than a panel and
+ * a sibling. The transition is on width and height only; anything else would animate the text
+ * inside it, which reads as the world flickering.
+ *
+ * Width and height rather than `inset` because the panel is CSS-anchored to the console button
+ * (see above), and an anchored element's size is what has to grow.
+ */
+.panel {
+  transition:
+    width 180ms ease,
+    height 180ms ease;
+}
+
+.panelEditor {
+  width: min(720px, calc(100vw - 24px));
+  /* **Tall enough for a person to see code and the world at once**, which is the whole reason the
+     editor is docked rather than full-screen: Run changes the thing behind the panel. */
+  height: min(560px, calc(100vh - 96px));
+}
+
+/*
+ * Behind the grown panel, and click-through everywhere except itself.
+ *
+ * **Present only while the editor is open**, so the bare terminal's outside-click rule is
+ * untouched by it — two overlays answering the same click would close the wrong one.
+ */
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  z-index: 2;
+}
+
+/*
+ * The terminal under the editor, sharing the panel rather than replacing it.
+ *
+ * **Capped and scrollable, and the cap is a flex-basis rather than a height** so it gives way
+ * before the editor does: a person typing should never lose the code to read a log line.
+ */
+.terminalSplit {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 0 1 34%;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  font: 12px monospace;
+  color: #c8d6e5;
+}

@@ -65,7 +65,27 @@ import { demoPlace } from "./places/demos";
 import { PLACE_MIME_TYPE, type PlaceSpawn } from "./places/place-file";
 import type { LoadedPlace } from "./places/load-place";
 import type { PlaceFiles } from "./places/bundle";
-import { placeCommands, NO_PLACE_LOADED } from "./console/place-commands";
+import {
+  placeCommands,
+  NO_PLACE_LOADED,
+  type PlaceCommands,
+} from "./console/place-commands";
+import { createAtproto } from "./atproto/atproto";
+import { createPlaceLibrary, createPlacePublisher } from "./atproto/places";
+import {
+  accountCommands,
+  type AccountCommands,
+} from "./console/account-commands";
+import {
+  createPlaceEditor,
+  type PlaceEditorState,
+} from "./places/editor/create-place-editor";
+import type { PlaceEditorProps } from "./places/editor/PlaceEditor";
+import { readDraft } from "./places/editor/drafts";
+import { projectFromZip, type PlaceProject } from "./places/project";
+import type { PublishedPlace } from "./places/place-record";
+import { PlacesBrowser } from "./places/browser/PlacesBrowser";
+import { PlaceDocs } from "./places/reference/PlaceDocs";
 import { MAX_OPERATIONS_PER_PLACE } from "./places/place-registry";
 import { MAX_ZONES } from "./places/limits";
 import {
@@ -358,6 +378,136 @@ export default function App() {
       commander()?.run(line) ??
       "the world is still loading — try again shortly",
     commands: () => commander()?.help() ?? [],
+  });
+
+  /**
+   * Whether the place editor is open, and the place it is editing.
+   *
+   * **Both above the game branch**, for the reason the console's own state is (its ADR 0010): the
+   * editor has to survive the panel unmounting and the scene being torn down and rebuilt, because
+   * a person closes it to look at the world and comes back to the file they were in. The editor's
+   * state is created once here rather than per scene for the same reason — a project that was reset
+   * on every rebuild would lose an afternoon's work to a resize.
+   */
+  /** What the editor's slot renders: a component, or prose until the chunk lands. */
+  type EditorPanel = (
+    props: PlaceEditorProps,
+  ) => import("@solidjs/web/jsx-runtime").JSX.Element;
+
+  /**
+   * How the editor's Run button reaches the world, and a bridge to it from out here.
+   *
+   * **A holder rather than a direct call**, because `startPlace` belongs to the game branch and the
+   * editor's panel is rendered from the application root — the console does the same with
+   * `commander`, which is `null` until the scene exists. So Run before the world is ready prints
+   * the same line every other command prints in that state, rather than reaching into a `Game`
+   * that is not there.
+   */
+  let runPlace: ((project: PlaceProject) => Promise<string>) | undefined;
+  /** How the catalog loads a place, set by the game branch for the same reason `runPlace` is. */
+  let openPublished: ((place: PublishedPlace) => Promise<void>) | undefined;
+  const runEditedPlace = (project: PlaceProject): Promise<string> =>
+    runPlace?.(project) ??
+    Promise.resolve("the world is still loading — try again shortly");
+
+  const [editorOpen, setEditorOpen] = createSignal(false);
+  /** Whether the published-place catalog is showing. Owned here for the same reason as the editor. */
+  const [browserOpen, setBrowserOpen] = createSignal(false);
+  /** Whether the place API reference is showing. */
+  const [docsOpen, setDocsOpen] = createSignal(false);
+  const placeEditor: PlaceEditorState = createPlaceEditor(DEFAULT_TERRAIN.seed);
+
+  /**
+   * The atproto account this browser is holding.
+   *
+   * **Built here rather than in the game branch**, so that signing in survives the scene being
+   * torn down and rebuilt — a page that reloads the world should not sign a person out. It holds no
+   * resource until somebody asks it to restore or sign in, which is why constructing it is free
+   * even though nothing uses it until Phase 4's Publish button does.
+   */
+  const account = createAtproto();
+
+  /**
+   * Reading and writing published places.
+   *
+   * **Built once, above the game branch, and stateless until used.** The library holds no account
+   * and no token — a published place is public (ADR 0044) — and the publisher takes getters rather
+   * than a client so that signing in later needs no re-wiring. Both are cheap constructors; nothing
+   * here touches the network until a command runs.
+   */
+  const placeLibrary = createPlaceLibrary();
+  const placePublisher = createPlacePublisher({
+    getClient: () => account.repoClient(),
+    getRepo: () => account.account()?.did ?? null,
+  });
+
+  /**
+   * Publishes whatever the editor is holding.
+   *
+   * **At application scope rather than in the game branch**, because it needs neither the world nor
+   * the running place: a project, the signed-in account, and the publisher. That is also what lets
+   * the editor's own Publish button and `/place:publish` be the same function rather than two
+   * copies of the same three lines — and a refusal is a line rather than a throw, since the console
+   * prints whatever comes back under the command's echo.
+   */
+  const publishEditedPlace = async (): Promise<string> => {
+    try {
+      const project = placeEditor.project();
+      const address = await placePublisher.publish(project);
+      return `published ${project.manifest.name} at ${address}`;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  };
+
+  /**
+   * The account, as the console's commands take it.
+   *
+   * **`describe()` after acting, rather than a sentence written here.** `Atproto.signIn` reports a
+   * failure by setting its state rather than by throwing, precisely so the state is the one place
+   * that knows — so asking it for the line is what keeps one wording for "signed in as", "signing
+   * in as", and "not signed in — …".
+   */
+  const accountConsole: AccountCommands = {
+    login: async (handle) => {
+      await account.signIn(handle);
+      return account.describe();
+    },
+    logout: async () => {
+      await account.signOut();
+      return "signed out";
+    },
+    describe: () => account.describe(),
+  };
+
+  /**
+   * Whatever the editor's panel renders, which is nothing until its chunk lands.
+   *
+   * **A dynamic import rather than a static one**, so CodeMirror and its language worker are not
+   * in the first frame of a session that never opens the editor. Until it resolves the editor is a
+   * line of prose, which is a degraded editor rather than a broken one — see `PlaceEditorPanes`
+   * for the other half of that, which is that authoring needs a network at all.
+   */
+  // **Null rather than a placeholder component as the initial value**, because a bare function
+  // given to `createSignal` is read as a compute and this is a value — the same subtlety the
+  // editor's own state has to work around.
+  const [placeEditorPanel, setPlaceEditorPanel] =
+    createSignal<EditorPanel | null>(null);
+
+  void import("./places/editor/PlaceEditor").then((module) =>
+    setPlaceEditorPanel(() => module.PlaceEditor),
+  );
+
+  /**
+   * A draft a reload found, adopted into the editor.
+   *
+   * **Once, on the first frame that has a console to adopt it into**, and a refusal is silent
+   * because there is nothing to refuse — a person with no draft and a person whose draft could not
+   * be read are in the same position, which is the same rule `drafts.ts` states about a read
+   * failure.
+   */
+  void readDraft().then((draft) => {
+    if (draft !== null) placeEditor.adopt(draft);
   });
 
   // A memo rather than a `<Show>` with a narrowed child, because `<Show>` calls its children
@@ -772,6 +922,12 @@ export default function App() {
         return error instanceof Error ? error.message : String(error);
       }
 
+      // **Adopted into the editor as well as run.** A place somebody opened off disk is one they
+      // will want to change and send back, and `/place:open` is the only way a place arrives that
+      // was not typed in this editor — so without this it would be the one place Save cannot save.
+      const refused = placeEditor.adopt(projectFromZip(place));
+      if (refused !== null) return refused;
+
       const report = await startPlace(
         place.files,
         place.entry,
@@ -914,8 +1070,9 @@ export default function App() {
     };
 
     // The place commands, as the same interface the table in `place-commands.ts` takes — so
-    // that file's tests can stand a host in and never touch a `Game`.
-    const places = {
+    // that file's tests can stand a host in and never touch a `Game`. Annotated rather than
+    // inferred, so a parameter the table hands over is typed here without a second declaration.
+    const places: PlaceCommands = {
       loadDemo,
       openFromDisk,
       unload: () => {
@@ -929,7 +1086,96 @@ export default function App() {
           ? NO_PLACE_LOADED
           : describePlace(loadedName ?? "place", host),
       notices: () => notices,
+      toggleEditor: () => {
+        setEditorOpen((open) => !open);
+        return editorOpen()
+          ? "editor closed"
+          : "editor open — write a place, then run it";
+      },
+
+      /**
+       * Opens or closes the catalog.
+       *
+       * **A line rather than a listing**, because the catalog is an overlay: two hundred names and
+       * addresses in a scrollback is a list nobody scans, and the overlay is where a load button,
+       * a search and the listing's own ceilings belong.
+       */
+      toggleBrowser: () => {
+        setBrowserOpen((open) => !open);
+        return browserOpen() ? "catalog closed" : "catalog open";
+      },
+      toggleDocs: () => {
+        setDocsOpen((open) => !open);
+        return docsOpen() ? "reference closed" : "reference open";
+      },
+
+      /**
+       * Loads a published place by its address, and adopts it into the editor.
+       *
+       * **Adopted as well as run**, so a place somebody loaded can be edited and republished under
+       * their own account — the whole point of a place being open. The same two steps `/place:open`
+       * takes, over a record instead of a zip.
+       */
+      loadAddress: async (uri) => {
+        try {
+          return await openRecord(await placeLibrary.recordAtUri(uri));
+        } catch (error) {
+          return `could not open "${uri}": ${error instanceof Error ? error.message : String(error)}`;
+        }
+      },
+
+      publish: publishEditedPlace,
     };
+
+    /**
+     * Loads a place already read from a repository, and adopts it into the editor.
+     *
+     * **Adopted as well as run**, so a place somebody loaded can be edited and republished under
+     * their own account — the whole point of a place being open. Both `/place:load at://…` and the
+     * catalog reach this, which is why it takes a record rather than an address: the catalog already
+     * has the record it drew the row from and should not fetch it twice.
+     */
+    const openRecord = async (place: PublishedPlace): Promise<string> => {
+      const project = await placeLibrary.project(place);
+      const refused = placeEditor.adopt(project);
+      if (refused !== null) return refused;
+      return startPlace(
+        project.scripts,
+        project.manifest.entry,
+        project.manifest.seed,
+        project.manifest.name,
+        project.manifest.spawn,
+      );
+    };
+
+    /**
+     * Lets the catalog load a place.
+     *
+     * **A holder rather than a direct call**, for the same reason the editor's Run is: the overlay
+     * is rendered from the application root and `startPlace` belongs to the game branch. The result
+     * goes to the scrollback, because the overlay has already closed by the time a place that will
+     * not open can say so.
+     */
+    openPublished = async (place) => {
+      runConsoleLine(await openRecord(place));
+    };
+
+    /**
+     * Hands the editor's Run button the real runner.
+     *
+     * **The one place `startPlace` is wrapped as a project**, and it wraps rather than calling
+     * directly so that `manifest.scripts` is derived from the files rather than trusted — a
+     * manifest edited independently of its files is exactly what `isPlaceProject` refuses, and
+     * Run is the last gate before the interpreter.
+     */
+    runPlace = async (project: PlaceProject) =>
+      startPlace(
+        project.scripts,
+        project.manifest.entry,
+        project.manifest.seed,
+        project.manifest.name,
+        project.manifest.spawn,
+      );
 
     // The console's commands are the game's own methods by another name, so the
     // game is what they are built over. It exists here, and nowhere earlier,
@@ -964,7 +1210,9 @@ export default function App() {
               ? `no cloud layer yet — ${describeCloudStatus(cloudStatus())}`
               : `built | coverage ${layer.material.coverage.toFixed(3)} | density ${layer.material.density.toFixed(3)} | ${describeCloudStatus(cloudStatus())}`,
         },
-      }).with(placeCommands(places)),
+      })
+        .with(placeCommands(places))
+        .with(accountCommands(accountConsole)),
     );
 
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -1353,7 +1601,44 @@ export default function App() {
           commands are the player's, and an editor with no player to fly would
           be a console of usage errors. */}
       <Show when={isGame()}>
-        <Console terminal={terminal} input={input} />
+        <PlaceDocs
+          open={docsOpen()}
+          onClose={() => setDocsOpen(false)}
+          input={input}
+        />
+        <PlacesBrowser
+          open={browserOpen()}
+          onClose={() => setBrowserOpen(false)}
+          library={placeLibrary}
+          accountDid={account.account()?.did ?? null}
+          resolveHandle={(did) => account.resolveHandle(did)}
+          onPlay={async (place) => {
+            await openPublished?.(place);
+          }}
+          input={input}
+        />
+        <Console
+          terminal={terminal}
+          input={input}
+          editor={{
+            open: editorOpen,
+            setOpen: setEditorOpen,
+            content: () => {
+              const Panel = placeEditorPanel();
+              return Panel === null ? (
+                <p class="place-loading">loading the editor…</p>
+              ) : (
+                <Panel
+                  state={placeEditor}
+                  onRun={runEditedPlace}
+                  onPublish={publishEditedPlace}
+                  onStatus={terminal.print}
+                />
+              );
+            },
+            run: runEditedPlace,
+          }}
+        />
       </Show>
     </div>
   );

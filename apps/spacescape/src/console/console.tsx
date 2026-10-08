@@ -40,6 +40,9 @@ import {
 } from "solid-js";
 
 import { isEditableTarget, type InputController } from "../player/input";
+import type { JSX } from "@solidjs/web/jsx-runtime";
+import type { PlaceProject } from "../places/project";
+import "../places/editor/place-editor.css";
 import { candidatesFor, toScopeBoundary } from "./completion";
 import type { CommandHelp, CommandOutput } from "./commands";
 import { FullscreenIcon } from "./icons";
@@ -474,6 +477,27 @@ export function createConsole(props: CreateConsoleProps): ConsoleState {
 export interface ConsoleProps {
   terminal: ConsoleState;
   /**
+   * Whether the place editor is open, and how it is opened and closed.
+   *
+   * **Owned outside this component** because the editor has to survive the panel unmounting: a
+   * person closes the editor to look at the world and comes back to the file they were in. The
+   * application owns the pair for the same reason voxelscape's router does (its ADR 0039).
+   */
+  editor?: {
+    open: Accessor<boolean>;
+    setOpen(open: boolean): void;
+    /**
+     * The editor's own markup, or a placeholder while its chunk is in flight.
+     *
+     * **Rendered by the caller rather than imported here**, so the CodeMirror and language-worker
+     * chunk is reached by exactly one dynamic import and the console keeps no opinion about it. A
+     * line of prose is what the caller passes until the module lands, which is why this is a
+     * function and not a component reference.
+     */
+    content(): JSX.Element;
+    run(project: PlaceProject): Promise<string>;
+  };
+  /**
    * The game's own input, read only for the pointer lock: opening the console
    * releases it, so the cursor is somewhere the player can aim it at a button.
    */
@@ -610,16 +634,58 @@ export function Console(props: ConsoleProps) {
           {">_"}
         </button>
       </div>
-      <Show when={terminalOpen()}>
-        <div ref={panel} class={styles.panel}>
-          <div class={styles.terminal}>
-            <TerminalBody
-              terminal={props.terminal}
-              ref={(handle) => {
-                input = handle;
-              }}
-            />
-          </div>
+      <Show when={props.editor?.open() ?? false}>
+        {/* **A scrim, because the grown panel is a dialog.** The editor is modal over the world —
+            the pointer lock is released, the escape key closes it — and clicking the world behind
+            it should not be one of the ways to keep editing. It closes the *editor*, not the bare
+            terminal, which has its own outside-click rule below. */}
+        <div
+          class={styles.scrim}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              props.editor?.setOpen(false);
+            }
+          }}
+        />
+      </Show>
+      <Show when={terminalOpen() || (props.editor?.open() ?? false)}>
+        <div
+          ref={panel}
+          class={[
+            styles.panel,
+            (props.editor?.open() ?? false) && styles.panelEditor,
+          ]}
+          role={props.editor?.open() ? "dialog" : undefined}
+          aria-label={props.editor?.open() ? "place script editor" : undefined}
+        >
+          {/* **The editor above the terminal, not instead of it.** Run's output is the terminal,
+              and an editor that hid the place's own `log` lines would leave the person with no way
+              to read what their script just said. */}
+          <Show when={props.editor?.open() && props.editor}>
+            {props.editor && (
+              <>
+                {props.editor.content()}
+                <div class={styles.terminalSplit}>
+                  <TerminalBody
+                    terminal={props.terminal}
+                    ref={(handle) => {
+                      input = handle;
+                    }}
+                  />
+                </div>
+              </>
+            )}
+          </Show>
+          <Show when={!(props.editor?.open() ?? false)}>
+            <div class={styles.terminal}>
+              <TerminalBody
+                terminal={props.terminal}
+                ref={(handle) => {
+                  input = handle;
+                }}
+              />
+            </div>
+          </Show>
         </div>
       </Show>
     </div>

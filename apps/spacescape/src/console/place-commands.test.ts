@@ -22,6 +22,12 @@ interface Recorder extends PlaceCommands {
   unloaded: number;
   /** Every file the table asked to open, in order. */
   opened: number;
+  /** Every address the table asked to load, in order. */
+  addresses: string[];
+  browsed: number;
+  published: number;
+  /** Whether the reference was asked to open. */
+  docs: number;
 }
 
 const table = (
@@ -32,6 +38,10 @@ const table = (
     loaded,
     unloaded: 0,
     opened: 0,
+    addresses: [],
+    browsed: 0,
+    published: 0,
+    docs: 0,
     loadDemo: (id) => {
       loaded.push(id);
       return Promise.resolve(`loaded ${id}`);
@@ -46,6 +56,23 @@ const table = (
     },
     describe: () => "bridge\nshapes   7 of 2000",
     notices: () => [],
+    toggleEditor: () => "",
+    loadAddress: (uri) => {
+      recorder.addresses.push(uri);
+      return Promise.resolve(`opened ${uri}`);
+    },
+    toggleBrowser: () => {
+      recorder.browsed++;
+      return "catalog open";
+    },
+    publish: () => {
+      recorder.published++;
+      return Promise.resolve("published bridge");
+    },
+    toggleDocs: () => {
+      recorder.docs++;
+      return "reference open";
+    },
     ...answers,
   };
   return { commander: new Commander(placeCommands(recorder)), recorder };
@@ -61,9 +88,13 @@ describe("the place commands exist under the prefix", () => {
     // command nobody can reach: `Commander` looks names up in its record and an
     // entry missing from that record simply does not exist.
     expect(names).toEqual([
-      "/place:list",
+      "/place:demos",
       "/place:load",
+      "/place:browse",
+      "/place:publish",
       "/place:open",
+      "/place:docs",
+      "/place:editor",
       "/place:unload",
       "/place:state",
       "/place:notices",
@@ -77,24 +108,26 @@ describe("the place commands exist under the prefix", () => {
     }
   });
 
-  it("takes the id /place:load needs", () => {
+  it("names both things /place:load takes: an id and an address", () => {
+    // **Both, because they are different sources.** A usage line showing only the demo ids tells a
+    // person with an `at://` address that this command is something other than what it is.
     const load = table()
       .commander.help()
       .find((command) => command.name === "/place:load");
-    expect(load?.args).toBe("<id>");
+    expect(load?.args).toBe("<id | at://…>");
   });
 });
 
-describe("/place:list", () => {
+describe("/place:demos", () => {
   it("names every shipped place", () => {
-    const listed = table().commander.run("/place:list") as string;
+    const listed = table().commander.run("/place:demos") as string;
     for (const id of ["bridge", "lanterns", "lookout"]) {
       expect(listed).toContain(id);
     }
   });
 
   it("says what each one is for, not just its name", () => {
-    const listed = table().commander.run("/place:list") as string;
+    const listed = table().commander.run("/place:demos") as string;
     expect(listed).toContain("doorway");
   });
 
@@ -104,7 +137,7 @@ describe("/place:list", () => {
     const { recorder, commander } = table({
       describe: () => NO_PLACE_LOADED,
     });
-    expect(commander.run("/place:list")).toContain("bridge");
+    expect(commander.run("/place:demos")).toContain("bridge");
     expect(recorder.loaded).toEqual([]);
   });
 });
@@ -138,11 +171,11 @@ describe("/place:load", () => {
     expect(answer).toContain("lookout");
   });
 
-  it("says there is no such place, and points at /place:list", async () => {
+  it("says there is no such place, and points at /place:demos", async () => {
     const { commander, recorder } = table();
     const answer = (await commander.run("/place:load castle")) as string;
-    expect(answer).toContain('no place called "castle"');
-    expect(answer).toContain("/place:list");
+    expect(answer).toContain('no shipped place called "castle"');
+    expect(answer).toContain("/place:demos");
     expect(recorder.loaded).toEqual([]);
   });
 
@@ -153,6 +186,65 @@ describe("/place:load", () => {
     const { commander, recorder } = table();
     await commander.run("/place:load bridge now");
     expect(recorder.loaded).toEqual(["bridge"]);
+  });
+});
+
+describe("/place:load by address", () => {
+  it("reads a published place over the network rather than a shipped one", async () => {
+    // **The address form and the id form are different sources**, and the table tells them apart
+    // by the `at://` prefix rather than by trying one and falling back — a fallback would ask the
+    // network about a demo id every time somebody mistyped one.
+    const { commander, recorder } = table();
+    const uri = "at://did:plc:abc/app.bms.spacescape.place/harbour";
+
+    await commander.run(`/place:load ${uri}`);
+
+    expect(recorder.addresses).toEqual([uri]);
+    expect(recorder.loaded).toEqual([]);
+  });
+
+  it("still loads a demo by id", async () => {
+    const { commander, recorder } = table();
+    await commander.run("/place:load bridge");
+    expect(recorder.loaded).toEqual(["bridge"]);
+    expect(recorder.addresses).toEqual([]);
+  });
+});
+
+describe("/place:browse", () => {
+  it("toggles the catalog rather than printing a list", async () => {
+    // **An overlay, not a scrollback line.** Two hundred names and addresses in a console is a list
+    // nobody reads, which is the whole reason this is not the text listing the other commands are.
+    const { commander, recorder } = table();
+
+    const answer = await commander.run("/place:browse");
+
+    expect(recorder.browsed).toBe(1);
+    expect(answer).toContain("catalog");
+  });
+});
+
+describe("/place:docs", () => {
+  it("toggles the reference rather than printing it", async () => {
+    // **An overlay, like the catalog and the editor.** A reference read in a scrollback is a
+    // reference nobody reads, and a person writing a place wants it beside the world.
+    const { commander, recorder } = table();
+
+    const answer = await commander.run("/place:docs");
+
+    expect(recorder.docs).toBe(1);
+    expect(answer).toContain("reference");
+  });
+});
+
+describe("/place:publish", () => {
+  it("asks the caller to publish the place in the editor", async () => {
+    const { commander, recorder } = table();
+
+    const answer = await commander.run("/place:publish");
+
+    expect(recorder.published).toBe(1);
+    expect(answer).toContain("published");
   });
 });
 
@@ -275,7 +367,7 @@ describe("/place:notices", () => {
 
 describe("what this table does not know", () => {
   it("never reaches past its caller for anything", () => {
-    // Every command resolves through the five functions in `PlaceCommands` — no
+    // Every command resolves through the functions in `PlaceCommands` — no
     // import of a host, a renderer, a scene or a `File` anywhere in the file. That is
     // the property that lets `host.test.ts` and this file stand in for each other,
     // and it is worth asserting because a `PlaceHost` import here would type-check
@@ -287,12 +379,22 @@ describe("what this table does not know", () => {
       unload: () => "unloaded",
       describe: () => "nothing",
       notices: () => [],
+      toggleEditor: () => "",
+      loadAddress: () => Promise.resolve("opened"),
+      toggleBrowser: () => "catalog",
+      publish: () => Promise.resolve("published"),
+      toggleDocs: () => "reference",
     };
     expect(Object.keys(answers).sort()).toEqual([
       "describe",
+      "loadAddress",
       "loadDemo",
       "notices",
       "openFromDisk",
+      "publish",
+      "toggleBrowser",
+      "toggleDocs",
+      "toggleEditor",
       "unload",
     ]);
   });
