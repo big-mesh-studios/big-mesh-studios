@@ -314,6 +314,84 @@ describe("whether a box could hold a surface", () => {
     const field = new Field(new OperationBVH([elsewhere]), { extent });
     expect(field.couldHoldSurface(SKY)).toBe(false);
   });
+
+  describe("in a box the base field calls all air", () => {
+    // The base field distinguishing air from solid, which is what `couldHoldAir` exists to say.
+    const airExtent = {
+      ...extent,
+      couldHoldAir: (b: Bounds) => b.min.y > 2000,
+    };
+    /** A subtraction the size of the world, so its box overlaps every box here. */
+    const cavern = (combine: "Add" | "Subtract" | "Paint") =>
+      makeOperation(
+        0,
+        { x: 0, y: 5600, z: 0 },
+        { type: "Capsule", len: 40_000, radius: 30 },
+        combine,
+      );
+
+    it("ignores a subtraction, which cannot lower a positive field", () => {
+      // **The proof, as a test.** `smoothMax(a, b, k) >= max(a, b) >= a`, so folding a
+      // `Subtract` into a field that is already positive everywhere leaves it positive. No
+      // sign change is possible, whatever the cutter reaches, so the chunk is empty and the
+      // gate may say so.
+      const field = new Field(new OperationBVH([cavern("Subtract")]), {
+        extent: airExtent,
+      });
+      expect(field.couldHoldSurface(SKY)).toBe(false);
+    });
+
+    it("keeps the box for an addition, which lowers the field", () => {
+      // **The asymmetry, and the reason the filter is not "ignore everything".** `Add` folds
+      // in as a minimum, so a shape inside the sky box puts material there.
+      const field = new Field(new OperationBVH([cavern("Add")]), {
+        extent: airExtent,
+      });
+      expect(field.couldHoldSurface(SKY)).toBe(true);
+    });
+
+    it("keeps the box for a paint, which is not in the tree to begin with", () => {
+      // A `Paint` carries a colour and changes no distance, so it cannot create geometry —
+      // and `OperationBVH.set` already excludes it from the tree this query walks. Pinned
+      // because it is the third case a reader would otherwise have to reason about.
+      const field = new Field(new OperationBVH([cavern("Paint")]), {
+        extent: airExtent,
+      });
+      expect(field.couldHoldSurface(SKY)).toBe(false);
+    });
+
+    it("still consults a subtraction in a box the base field calls solid", () => {
+      // **The other half of the asymmetry, and the reason `couldHoldAir` exists at all.** The
+      // same subtraction in `BELOW` is a cave, and a cave in deep rock is the whole reason a
+      // world would own one. A gate that ignored subtractions everywhere would delete every
+      // cave and report nothing wrong.
+      const field = new Field(new OperationBVH([cavern("Subtract")]), {
+        extent: airExtent,
+      });
+      expect(field.couldHoldSurface(BELOW)).toBe(true);
+    });
+
+    it("falls back to asking about everything when the base field cannot tell air from solid", () => {
+      // `couldHoldAir` is optional and absent means "cannot tell", which has to mean the
+      // behaviour this whole test block is changing — or a base field written before it
+      // existed would silently get a stricter gate.
+      const field = new Field(new OperationBVH([cavern("Subtract")]), {
+        extent,
+      });
+      expect(field.couldHoldSurface(SKY)).toBe(true);
+    });
+
+    it("leaves the field's value untouched, not just its sign", () => {
+      // The gate is a question about geometry and the fold is a question about distance. A
+      // test that only checked the sign would pass if the gate were implemented by making the
+      // field wrong, which would be a worse bug than the one it fixes.
+      const field = new Field(new OperationBVH([cavern("Subtract")]), {
+        base: () => 40,
+        extent: airExtent,
+      });
+      expect(field.distance(0, 5600, 0)).toBe(40);
+    });
+  });
 });
 
 describe("gradients", () => {

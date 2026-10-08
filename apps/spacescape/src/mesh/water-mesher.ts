@@ -219,7 +219,14 @@ export class WaterChunkMesher implements ChunkMesher {
     this.gate = outOfTheGround(WATER_OVERLAP);
     // Bound once, because it is called 34,304 times a chunk and a property read on a
     // `this` per call is a cost this does not need to pay.
-    this.ground = (x, y, z) => base(x, y, z);
+    //
+    // **`base.ground` rather than `base`, and this is the whole of what caves changed here.**
+    // The gate asks "is there material at this point", and a cave is a hole in the material, so
+    // the composed field answers "no material" inside one and the sea would be meshed filling it.
+    // Asking the ground instead — the same function object the game's `inSea` predicate gets, so
+    // the geometry and the physics cannot disagree — keeps a sea out of caves entirely, which is
+    // the behaviour this file's own header already claimed for a shaft dug through a hill.
+    this.ground = (x, y, z) => (base.ground ?? base)(x, y, z);
   }
 
   /** See `SurfaceNetsChunkMesher.couldHaveMesh`; this is the sea's version of it. */
@@ -251,9 +258,17 @@ export class WaterChunkMesher implements ChunkMesher {
       out: this.builder,
       scratch: this.scratch,
       onVertex: (index, x, y, z) => {
-        // The outward radial, which is the normal the material computes per fragment
+        // The outward radial, which is the material computes per fragment
         // anyway — written because the layout is shared and the builder will not take a
         // vertex without one, not because anything reads it.
+        //
+        // **Not averaged from the mesh's own faces, where the ground's are.** The ground
+        // spends six field evaluations a vertex on a central difference, and replacing that
+        // with one pass over the index buffer was worth it; the sea's normal is a division
+        // and a square root over numbers already in hand, so there is nothing to replace,
+        // and an averaged normal would be a worse approximation of a sphere than the exact
+        // one. What averaging would buy — a continuous fan rather than one clipped by the
+        // chunk edge — the radial already has, being a function of position alone.
         const length = Math.sqrt(x * x + y * y + z * z);
         if (length > 1e-9)
           this.builder.setNormal(index, x / length, y / length, z / length);

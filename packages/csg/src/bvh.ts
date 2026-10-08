@@ -32,6 +32,7 @@ import {
 import {
   boundsContain,
   CANDIDATE_MARGIN,
+  type Combine,
   emptyField,
   foldOperations,
   indexOperation,
@@ -280,15 +281,26 @@ export class OperationBVH {
    * Fine for "is this operation anywhere near here", which is what a caller
    * usually wants, and wrong for anything that folds them — see `candidatesAt` for
    * why the order is part of the field's definition.
+   *
+   * `only` narrows the answer to one combine mode, for the one caller that can prove a mode
+   * is irrelevant to its question — `Field.couldHoldSurface` on a box the base field calls all
+   * air, where a `Subtract` cannot create a sign change. **Default is everything**, because the
+   * candidate cache calls this to build a list it must fold in full: a fold that silently
+   * dropped subtractions would carve nothing and report no error.
    */
-  query(bounds: Bounds, out: IndexedOperation[] = []): IndexedOperation[] {
+  query(
+    bounds: Bounds,
+    only?: Combine,
+    out: IndexedOperation[] = [],
+  ): IndexedOperation[] {
     out.length = 0;
     if (this.root.items.length > 0) {
-      for (const item of this.root.items)
-        if (overlaps(item.bounds, bounds)) out.push(item);
+      for (const item of this.root.items) {
+        if (overlaps(item.bounds, bounds) && keeps(item, only)) out.push(item);
+      }
       return out;
     }
-    queryNode(this.root, bounds, out);
+    queryNode(this.root, bounds, only, out);
     return out;
   }
 
@@ -648,18 +660,29 @@ const overlaps = (a: Bounds, b: Bounds): boolean =>
 const queryNode = (
   node: BvhNode,
   bounds: Bounds,
+  only: Combine | undefined,
   out: IndexedOperation[],
 ): void => {
   if (node.items.length > 0) {
-    for (const item of node.items)
-      if (overlaps(item.bounds, bounds)) out.push(item);
+    for (const item of node.items) {
+      if (overlaps(item.bounds, bounds) && keeps(item, only)) out.push(item);
+    }
     return;
   }
   if (node.left !== null && overlaps(node.left.bounds, bounds))
-    queryNode(node.left, bounds, out);
+    queryNode(node.left, bounds, only, out);
   if (node.right !== null && overlaps(node.right.bounds, bounds))
-    queryNode(node.right, bounds, out);
+    queryNode(node.right, bounds, only, out);
 };
+
+/**
+ * Whether an operation survives a query's combine filter.
+ *
+ * **`undefined` keeps everything**, and that is the overwhelmingly common case: the filter
+ * exists for one caller and the fold needs all of them.
+ */
+const keeps = (item: IndexedOperation, only: Combine | undefined): boolean =>
+  only === undefined || item.operation.combine === only;
 
 /** Bounds that contain every item, computed once per node. */
 const boundsOf = (items: readonly IndexedOperation[]): Bounds => {

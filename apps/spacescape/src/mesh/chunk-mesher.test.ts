@@ -12,11 +12,13 @@ import {
   OVERLAP_X_NEG,
   OVERLAP_X_POS,
   OVERLAP_Z_NEG,
+  OVERLAP_Y_NEG,
   OVERLAP_Z_POS,
 } from "../world";
 
 import { type ChunkMesh } from "@big-mesh-studios/meshing";
 import {
+  boundaryCells,
   chunkOriginOn,
   chunkRegion,
   chunkSpan,
@@ -26,6 +28,7 @@ import {
   sampleSizeAt,
   SurfaceNetsChunkMesher,
 } from "./chunk-mesher";
+import { overlapCells } from "./overlap";
 
 const LOD0: Lod = 0;
 
@@ -232,8 +235,104 @@ describe("meshing a chunk through the field", () => {
     expect(mesh.positions.length).toBe(mesh.vertexCount * 3);
     expect(mesh.normalOct.length).toBe(mesh.vertexCount * 2);
     expect(mesh.colours.length).toBe(mesh.vertexCount * 4);
-    expect(calls.gradient).toBe(mesh.vertexCount);
+    // **Zero gradients**, because a chunk with no coarser neighbour shades every vertex
+    // from its own faces. This is the assertion that pins the optimisation: it used to be
+    // `toBe(mesh.vertexCount)`, six field folds a vertex, and a change that quietly put it
+    // back would cost 2.34 ms a chunk without failing anything else here.
+    expect(calls.gradient).toBe(0);
     expect(calls.colour).toBe(mesh.vertexCount);
+  });
+
+  it("spends a gradient on the chunk's outer layer and nowhere else", () => {
+    // The optimisation, pinned from both sides. A gradient on every vertex is the code
+    // this replaced, at 2.34 ms a chunk; a gradient on none is a 72-degree shading seam
+    // along every chunk boundary in the world. So the count is asserted to be both
+    // non-zero and a small minority of the vertices.
+    const { field, calls } = at({ x: 140, y: -10, z: 5 });
+    const mesh = new SurfaceNetsChunkMesher(field).mesh({
+      cell: { x: 0, y: 0, z: 0 },
+      lod: LOD0,
+    });
+
+    expect(mesh.vertexCount).toBeGreaterThan(0);
+    expect(calls.gradient).toBeGreaterThan(0);
+    expect(calls.gradient).toBeLessThan(mesh.vertexCount / 2);
+    expect(calls.colour).toBe(mesh.vertexCount);
+  });
+
+  it("names the cells touching a face, both of them", () => {
+    // `boundaryCells` is arithmetic over `ChunkRegion` and an integration test can only
+    // infer it — a sphere placed to cross one face cannot tell a correct predicate from one
+    // that happens to agree there. So it is asked directly.
+    //
+    // **Two cells per face, not one.** A face's plane is shared, and the cell holding the
+    // surface is not the same cell of each chunk: on a low face the neighbour's is its
+    // *padding* cell. And cell zero is the padding cell, because `uniformLane` puts sample
+    // `s` at `origin + (s - 1) * size`.
+    const plain = chunkRegion({ x: 0, y: 0, z: 0 }, LOD0);
+    const seam = boundaryCells(plain);
+
+    // 32 samples a side, no overlap: cells 0, 1 and 32 touch a face; 2 to 31 are whole.
+    // Cell 31 is whole because the chunk's high plane is where cell 32 *ends*.
+    for (const cell of [
+      [0, 0, 0],
+      [1, 5, 5],
+      [0, 16, 16],
+      [32, 5, 5],
+      [16, 0, 16],
+      [16, 32, 16],
+      [16, 16, 1],
+      [16, 16, 32],
+    ]) {
+      expect(seam(cell[0]!, cell[1]!, cell[2]!), `cell ${cell}`).toBe(true);
+    }
+    for (const cell of [
+      [2, 16, 16],
+      [30, 16, 16],
+      [31, 16, 16],
+      [16, 2, 16],
+      [16, 30, 16],
+      [16, 16, 2],
+      [16, 16, 30],
+    ]) {
+      expect(seam(cell[0]!, cell[1]!, cell[2]!), `cell ${cell}`).toBe(false);
+    }
+
+    // The overlap case, which is the one a test written against the mask would get wrong:
+    // a chunk reaching *below* its own extent runs from one cell lower, so its own cells
+    // are 2..33 and the cell below them is padding rather than the chunk's low face.
+    const overlapping = chunkRegion(
+      { x: 0, y: 0, z: 0 },
+      LOD0,
+      overlapCells(OVERLAP_Y_NEG),
+    );
+    expect(overlapping.origin.y).toBeLessThan(overlapping.bounds.min.y);
+    const shifted = boundaryCells(overlapping);
+    expect(shifted(16, 0, 16)).toBe(true);
+    expect(shifted(16, 1, 16)).toBe(true);
+    expect(shifted(16, 2, 16)).toBe(true);
+    expect(shifted(16, 33, 16)).toBe(true);
+    expect(shifted(16, 3, 16)).toBe(false);
+    expect(shifted(16, 32, 16)).toBe(false);
+  });
+
+  it("leaves no vertex at the builder's placeholder normal", () => {
+    // Both sources meet at the boundary, and a vertex there is written by whichever claims
+    // it. A normal left at `[0, 0]` decodes to a black triangle, and the vertices that
+    // could be left are the ones on a chunk boundary, which is where nobody looks during a
+    // smoke test.
+    const mesh = new SurfaceNetsChunkMesher(
+      at({ x: 140, y: -10, z: 5 }).field,
+    ).mesh({
+      cell: { x: 0, y: 0, z: 0 },
+      lod: LOD0,
+    });
+    expect(mesh.vertexCount).toBeGreaterThan(0);
+    for (let i = 0; i < mesh.vertexCount; i++) {
+      const u = mesh.normalOct[i * 2] as number;
+      const v = mesh.normalOct[i * 2 + 1] as number;
+      expect(u === 0 && v === 0, `vertex ${i}`).toBe(false);
+    }
   });
 
   it("points every normal away from the sphere's centre", () => {
@@ -629,6 +728,99 @@ describe("the seam, through the field", () => {
       bad,
       `${bad} of ${total} edges are not shared by two triangles`,
     ).toBe(0);
+  });
+});
+
+describe("shading across a seam between same-level chunks", () => {
+  /**
+   * How far apart two chunks' normals are at one shared world position, in degrees.
+   *
+   * Reads the octahedral pair back the way the shader does, because the question is what
+   * reaches the screen and the quantisation is four orders of magnitude coarser than the
+   * float it was folded from — a disagreement smaller than that is not a disagreement.
+   */
+  const angleBetween = (
+    one: ChunkMesh,
+    at: number,
+    two: ChunkMesh,
+    bt: number,
+  ): number => {
+    // **Two meshes and one index each.** Taking one mesh and two indices reads past the end
+    // of the first for the second's vertex, and an `Int16Array` read past its end is
+    // `undefined` rather than zero — which arrives as a NaN angle and a failing assertion
+    // that reads as a mesher fault rather than a test one.
+    const decode = (mesh: ChunkMesh, index: number) => {
+      const x = (mesh.normalOct[index * 2] as number) / 32767;
+      const y = (mesh.normalOct[index * 2 + 1] as number) / 32767;
+      const z = 1 - Math.abs(x) - Math.abs(y);
+      const len = Math.hypot(x, y, z) || 1;
+      return [x / len, y / len, z / len] as const;
+    };
+    const [ax, ay, az] = decode(one, at);
+    const [bx, by, bz] = decode(two, bt);
+    const dot = Math.min(1, Math.max(-1, ax * bx + ay * by + az * bz));
+    return (Math.acos(dot) * 180) / Math.PI;
+  };
+
+  /**
+   * Every pair of vertices, one from each chunk, at the same world position.
+   *
+   * Keyed by position rather than by index, because the two chunks share no index for a
+   * shared position — that is the consequence ADR 0003 records, and an index-wise
+   * comparison would find nothing at all and report agreement.
+   */
+  const coincidentPairs = (a: ChunkMesh, b: ChunkMesh): [number, number][] => {
+    const inB = new Map<string, number>();
+    for (let i = 0; i < b.vertexCount; i++) {
+      inB.set(positionOf(b, i), i);
+    }
+    const pairs: [number, number][] = [];
+    for (let i = 0; i < a.vertexCount; i++) {
+      const found = inB.get(positionOf(a, i));
+      if (found !== undefined) pairs.push([i, found]);
+    }
+    return pairs;
+  };
+
+  it("finds vertices the two chunks hold at the same place, so the question is real", () => {
+    // A guard on the two tests below. If `coincidentPairs` found nothing then "the two
+    // chunks agree across the seam" would be vacuously true and would stay true if the
+    // mesher started emitting duplicated vertices everywhere.
+    const centre = { x: BLOCK_WORLD / 2, y: 0, z: 0 };
+    const mesher = new SurfaceNetsChunkMesher(at(centre, 90).field);
+    const pairs = coincidentPairs(
+      mesher.mesh({ cell: { x: 0, y: 0, z: 0 }, lod: LOD0 }),
+      mesher.mesh({ cell: { x: 1, y: 0, z: 0 }, lod: LOD0 }),
+    );
+    expect(pairs.length).toBeGreaterThan(0);
+  });
+
+  it("agrees across a same-level seam", () => {
+    // **At the same level**, which is the case that decided the carve-out is
+    // unconditional. The reasoning had been that same-level chunks tessellate the shared
+    // plane identically and so must clip the same fans; measurement said otherwise, at 72
+    // degrees, because each chunk clips the fan against its own cells and the two sets of
+    // faces differ. So the boundary keeps the field's gradient and this asserts it agrees.
+    //
+    // The threshold is one degree. That is the question being asked rather than a tolerance
+    // chosen to pass: both sides compute six central differences of the same field at the
+    // same point, so the honest answer is zero and anything under a degree is a float32
+    // quantisation artefact of `snorm16x2`. A visible seam is tens of degrees.
+    const centre = { x: BLOCK_WORLD / 2, y: 0, z: 0 };
+    const mesher = new SurfaceNetsChunkMesher(at(centre, 90).field);
+    const low = mesher.mesh({ cell: { x: 0, y: 0, z: 0 }, lod: LOD0 });
+    const high = mesher.mesh({ cell: { x: 1, y: 0, z: 0 }, lod: LOD0 });
+
+    const pairs = coincidentPairs(low, high);
+    expect(pairs.length).toBeGreaterThan(0);
+    let worst = 0;
+    for (const [a, b] of pairs) {
+      worst = Math.max(worst, angleBetween(low, a, high, b));
+    }
+    expect(
+      worst,
+      `worst disagreement ${worst.toFixed(2)} degrees`,
+    ).toBeLessThan(1);
   });
 });
 

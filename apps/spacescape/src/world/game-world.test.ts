@@ -200,6 +200,44 @@ describe("water", () => {
     expect(dugShaft.getInWaterAt(vec3(0, -2, 0))).toBe(false);
   });
 
+  it("treats a cave as air the player is not swimming in", () => {
+    // **The bug caves introduced, and the reference case is the shaft test above.** A cave is a
+    // hole in the rock, so the *field* calls its air "outside material" — which is true, and the
+    // wrong question. Below sea level that read as flooded, while the sea's geometry exists only
+    // in a shell at its own level, so the player was swimming in nothing under the underwater
+    // tint.
+    //
+    // The `waterAt` predicate is what the game supplies for exactly this reason, and this pins
+    // what it has to be built from: `ground`, which calls the same air "underground".
+    const carved: PickField & {
+      ground?: (x: number, y: number, z: number) => number;
+    } = {
+      ...heightField(() => 0),
+      // A cave between -40 and -10 at this column: **positive** inside it, because a cave is
+      // air — the sign is the whole of what makes it a cave rather than a pocket of rock.
+      distance: (_x, y, _z) =>
+        y < -10 && y > -40 ? Math.min(y + 40, -10 - y) : y,
+      ground: (_x, y, _z) => y,
+    };
+    const world = new GameWorld({
+      field: () => carved,
+      seaRadius: 5,
+      waterAt: (p) =>
+        p.y < 5 && (carved.ground ?? carved.distance)(p.x, p.y, p.z) > 0,
+    });
+
+    // Inside the cave: air, well below sea level, and not water.
+    expect(world.getSolidAt(vec3(0, -20, 0))).toBe(false);
+    expect(world.getInWaterAt(vec3(0, -20, 0))).toBe(false);
+    // Above ground, above the sea: air and no water either, because the sea is below.
+    expect(world.getInWaterAt(vec3(0, 20, 0))).toBe(false);
+    // **The split itself, stated directly**: the composed field calls the cave air (positive,
+    // which is why it said "in water") and the ground calls it rock (negative, which is why the
+    // predicate does not). Both are true; only one of them is the question water asks.
+    expect(carved.distance(0, -20, 0)).toBeGreaterThan(0);
+    expect((carved.ground ?? carved.distance)(0, -20, 0)).toBeLessThan(0);
+  });
+
   it("does not consult the sea level when a predicate is supplied", () => {
     // **The two are not merged.** A world with a sea material has a predicate and a sea level,
     // and the predicate is the one that describes the water it is drawing — the level is what

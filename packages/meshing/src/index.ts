@@ -21,6 +21,14 @@
  * `ChunkMeshBuilder` is the output implementation this repository uses: a twenty-bytes-per-vertex
  * packed layout, which a caller hands straight to a renderer.
  *
+ * **Vertex normals are a separate concern and live beside them rather than inside them.**
+ * `vertex-normals` averages a finished mesh's own face normals, which costs one pass over
+ * the index buffer instead of six field evaluations a vertex. It is not automatic, because
+ * the answer is wrong along a chunk boundary — where a vertex's face fan is clipped by the
+ * chunk edge — and how far from the boundary it stays correct is the caller's decision, not
+ * this package's: `apps/spacescape` spends a field gradient on the faces bordering a
+ * different level of detail and lets everything inside average.
+ *
  * **The chunk pipeline is not here.** Region arithmetic, the worker protocol, the LOD ladder and the
  * paint-tile addressing are all in `apps/spacescape/src/mesh/`, because they are that application's
  * rather than meshing's (ADR 0024). For the same reason `marchingCubes` does not define a cell
@@ -59,9 +67,17 @@ export {
 
 export {
   ChunkMeshBuilder,
+  CHUNK_VERTEX_CAPACITY,
   meshBytes,
   VERTEX_BYTES,
   type ChunkMesh,
 } from "./chunk-mesh";
+
+export {
+  FaceNormalScratch,
+  FaceNormalWriter,
+  accumulateFaceNormals,
+  resolveFaceNormal,
+} from "./vertex-normals";
 
 export { Growable } from "./growable";

@@ -26,54 +26,101 @@
  * `FieldOptions.lipschitz` is the property that carries it. This is the first consumer of
  * that option and the reason it exists.
  *
- * ## The bound, and why it is loose on purpose
+ * ## The bound, and where each factor comes from
  *
  * The surface is a base fBm plus a ridged term confined by a mask:
  *
- *     h = origin + scale · ( base + R · ridge · mask )
+ *     h = origin + scale · ( base + R · ridge · range )
  *     base  = fbm(x/F,  z/F,  octaves)
  *     ridge = max(0, 1 - |fbm(x/Fm, z/Fm, octaves)|)   in [0, 1]
- *     mask  = clamp01(0.5 + 0.5 · fbm(x/Fk, z/Fk, maskOctaves))  in [0, 1]
+ *     range = clamp11(fbm(x/Fk, z/Fk, maskOctaves))    in [-1, 1]
  *
- * With the usual fBm — amplitude halved and frequency doubled per octave — each octave
- * contributes the *same* gradient, because `0.5^i · 2^i = 1`. A single axis is therefore
- * bounded by the sum of the parts' gradients:
+ * **`range`, not `mask`.** The mask's mean is taken out — `range` is `2·mask − 1` with no
+ * rescaling, and it is signed, which is what makes a sea at height zero meet real ground
+ * (see `RIDGE_STRENGTH`). An earlier version of this header still described the unsigned
+ * `mask ∈ [0,1]` form, and the bound below happened to survive the change because both forms
+ * have unit magnitude and the same gradient; the document was wrong and the number was not,
+ * which is the worst combination available.
  *
- *     d(base)/dx  ≤ octaves · G / F
- *     d(ridge)/dx ≤ octaves · G / Fm
- *     d(mask)/dx  ≤ maskOctaves · G / Fk
- *     |∂h/∂x|     ≤ scale · ( d(base) + R · (d(ridge)·mask + ridge·d(mask)) )
- *                 ≤ scale · ( octaves·G/F + R · (octaves·G/Fm + maskOctaves·G/Fk) )
+ * With the usual fBm — amplitude halved and frequency doubled per octave — octave `i` carries
+ * amplitude `aᵢ = 2⁻ⁱ` at frequency `fᵢ = 2ⁱ`, so `aᵢ·fᵢ = 1` and **every octave contributes the
+ * same gradient**. `fbm` then divides the whole sum by `Σa`, which is the piece this derivation
+ * used to omit:
  *
- * where `G` bounds `|∂noise/∂u|` and the products are bounded because `ridge` and `mask`
- * are in `[0, 1]`. Bounding the two axes separately and combining gives
+ *     ∂(fbm)/∂u = (1 / Σa) · Σᵢ aᵢ·fᵢ · ∂noise/∂u = (octaves / Σa) · ∂noise/∂u
+ *
+ * so with `G` bounding `|∂noise/∂u|`, and `Σa = 2(1 − 2⁻ⁿ)` exact for any octave count:
+ *
+ *     d(base)/dx  ≤ octaves · G / (Σa · F)
+ *     d(ridge)/dx ≤ octaves · G / (Σa · Fm)        (ridge is max(0, 1 − |·|), which is 1-Lipschitz in fbm)
+ *     d(range)/dx ≤ maskOctaves · G / (Σa_mask · Fk)
+ *     |∂h/∂x|     ≤ scale · ( d(base) + R · (d(ridge)·|range| + |ridge|·d(range)) )
+ *                 ≤ scale · ( octaves·G/(Σa·F) + R · (octaves·G/(Σa·Fm) + maskOctaves·G/(Σa_mask·Fk)) )
+ *
+ * The products are bounded because `|ridge| ≤ 1` and `|range| ≤ 1`. Bounding the two axes
+ * separately and combining gives
  *
  *     |∇h| ≤ √2 · A   and so   lipschitz = 1 / sqrt(1 + 2A²)
  *
- * with `A` the per-axis bound above. `G` is `NOISE_GRADIENT_BOUND` below, and it is
- * deliberately pessimistic: it is the worst case of a corner gradient difference times the
- * peak of the quintic's derivative, and the two corner gradients are chosen by independent
- * hashes, so nothing rules that combination out. Being wrong in the pessimistic direction
- * costs the picker a few more steps. Being wrong the other way costs it the surface.
+ * with `A` the per-axis bound above.
  *
- * A consequence worth stating plainly, because it looks alarming and is not: with default
- * parameters `lipschitz` lands near 0.2, so the picker takes roughly five times as many
- * steps as it would over operations alone. It still converges — the step shrinks
- * geometrically near a surface, so a ray crossing a thousand units of air costs on the
- * order of forty steps — and `maxSteps` is 512.
+ * **What omitting `Σa` cost.** At four octaves `Σa = 1.875`, so the old `A` was 17.87 where the
+ * field's true gradient never exceeded 0.95 in measurement — a factor of 18.8, and the reason
+ * three separate optimisations were each fighting the same wall: the lattice gate's margin was
+ * 380 units instead of 20, the picker took five times the steps it needed, and a distance-driven
+ * hierarchy could certify no cell at all at any resolution. `NOISE_GRADIENT_BOUND` itself is the
+ * next loose term and is **not** corrected here — see its own comment.
  *
- * ## Why the surface extent is global rather than sampled
+ * `G` is `NOISE_GRADIENT_BOUND` below, and it is deliberately pessimistic: it is the worst case of
+ * a corner gradient difference times the peak of the quintic's derivative, and the two corner
+ * gradients are chosen by independent hashes, so nothing rules that combination out. Being wrong
+ * in the pessimistic direction costs the picker a few more steps. Being wrong the other way costs
+ * it the surface.
  *
- * `couldHoldSurface` is the mesher's first gate, and it is answered here in constant time
- * from the extremes of the height range. The tempting refinement is to sample the noise
- * across the box and tighten the answer, and it is not worth doing: the margin such a bound
- * needs is `L · spacing`, and with `L` near 9 and a 320-unit chunk that margin exceeds the
- * chunk. It would cost samples and change nothing. The global range is the answer that is
- * both cheap and actually tight enough to skip air and deep rock.
+ * A consequence worth stating plainly, because it looks alarming and is not: `lipschitz` is small
+ * enough that the picker takes several times as many steps as it would over operations alone. It
+ * still converges — the step shrinks geometrically near a surface, so a ray crossing a thousand
+ * units of air costs on the order of forty steps — and `maxSteps` is 512.
+ *
+ * ## Why the surface extent is sampled rather than global
+ *
+ * `couldHoldSurface` is the mesher's first gate, and it used to be answered in constant time
+ * from the extremes of the height range. That was rejected once on the grounds that the
+ * margin a local bound needs is `L · spacing`, and with `L` near 18 and a 340-unit box that
+ * margin exceeds the box — so it would cost samples and change nothing.
+ *
+ * **The margin does exceed the box, and it changes plenty.** What it does not do is exceed the
+ * *thing being skipped*, because what it has to beat is not a box but a chunk's own relief,
+ * and a chunk's relief is a fraction of a chunk's height. Measured on this landscape, over
+ * 400 chunks: the height across one chunk's own columns is 89 units at the median and 204 at
+ * the 99th percentile, against a 320-unit chunk. A margin of 380 units fits between those,
+ * and a margin of 5,719 units — the constant-width reading — fits between nothing.
+ *
+ * So the gate samples a lattice of columns across the box, takes their extremes, and widens
+ * them by the Lipschitz margin for the lattice spacing. **The global band is still tested
+ * first**, because it is two comparisons and it is the whole answer for anything far from the
+ * landscape; the lattice is the refinement, not a replacement.
+ *
+ * What it buys, measured over a seven-layer window where 986 of 1,183 chunks are genuinely
+ * empty: the global band alone skips **none** of them, and a 17-by-17 lattice skips 576 —
+ * 58 per cent of the waste for 289 `heightAt` calls, which is 0.74 per cent of one chunk's
+ * 39,304-sample grid. The gate stops being free and becomes cheap, which is the trade worth
+ * making when it is buying back two thirds of the work it guards.
+ *
+ * The sibling's gate is exact and stays exact (`planet.ts`): a radial graph over direction
+ * means the radius range over a box is a distance-to-AABB and eight corners. Only a height
+ * field has to sample, because `heightAt` is not monotone along anything.
  */
 
 import type { Bounds } from "@big-mesh-studios/core";
 import type { BaseField, SurfaceExtent } from "./field";
+import {
+  caveCeilingRise,
+  caveField,
+  caveFloorDrop,
+  caveNoise,
+  type CaveParams,
+} from "./caves";
 
 /**
  * World units per noise cell, horizontally, for the rolling base.
@@ -187,6 +234,57 @@ export const landscapeShape = (
  * independent corners therefore differ by at most 4, and the quintic's derivative peaks at
  * `30/16 = 1.875`. Multiplying gives 7.5, and the interpolated derivative is a convex
  * combination of the corner derivatives, so it cannot exceed it.
+ *
+ * ## The next loose term, and why it is left alone
+ *
+ * With `Σa` restored this is now the largest overstatement in the file: measured, the height's
+ * per-axis gradient peaks at **0.95** against the 9.98 this constant produces, so roughly 10× of
+ * slack remains — a tenth of what it was, and still the largest term.
+ *
+ * **It has not been tightened here, deliberately.** The obvious re-derivation does not get
+ * tighter — taking the corner difference as at most 4 and the fade peak as 1.875 gives
+ * `1.875 · 4 + 1 = 8.5`, *above* 7.5 — which means the argument above is subtler than the
+ * obvious one and replacing it with a cruder version would make the bound worse, not better.
+ * A tighter one is worth having, and it wants the same treatment `Σa` just got: derive it,
+ * then measure it against dense finite differences before believing it.
+ *
+ * ## What `grad` actually emits, since it is not four diagonals
+ *
+ * The comment on `grad` says four, and there are four hash cases but only **three distinct
+ * vectors**: `h = 0` and `h = 2` both evaluate to `x + z`. All three have length √2 and components
+ * `±1`. Two consequences, one of which corrects a bound elsewhere and one of which does not:
+ *
+ * - **Corner values reach ±2, not ±1.** `|±x ± z| ≤ 2` on a unit cell, and the quintic
+ *   interpolation is a convex combination, so `|noise| ≤ 2`. That makes `FBM_AMPLITUDE_BOUND = 2`
+ *   **exact** rather than, as its own comment says, deliberately generous — worth knowing, because
+ *   `reach` and therefore the global height band are derived from it and there is nothing spare in
+ *   it.
+ * - **Every corner's partial derivatives are exactly ±1**, so the "convex combination of the
+ *   corner derivatives" step in the argument above bounds the non-fade part by 1 per axis. That is
+ *   already the tighter of the two contributions, and is why the naive 8.5 does not apply.
+ *
+ * ## An unresolved 13 per cent, in the other direction
+ *
+ * Differentiating the two-stage interpolation term by term gives **8.5, not 7.5**:
+ *
+ *     ∂P/∂x = u'·(B − A) + [ (1−u)·Aₓ + u·Bₓ ]
+ *
+ * and the second bracket is a convex combination of two values in `{−1, +1}`, so it is a real term
+ * of up to 1 on top of `1.875 · 4`. This constant is 7.5, so on that reading it is **13 per cent
+ * optimistic** — which would put the honest `perAxis` at about 13.3 rather than 9.98.
+ *
+ * **It is probably sound anyway, and the reason is a correlation neither derivation states.** The
+ * first term peaks at `t = ½`, where the fade is also `½`, and the second is then `(Aₓ + Bₓ)/2` —
+ * which is 1 only when the two corner gradients *agree* in x. But `|B − A| = 4` needs them to
+ * disagree maximally. The two cannot both be at their maximum at once, so the true worst case is
+ * somewhere between 7.5 and 8.5 and the sum-over-terms is not the right bound.
+ *
+ * **Left unresolved rather than guessed in either direction**, because it is 13 per cent either
+ * way and the argument that settles it is a joint one worth writing down properly. It does not
+ * change what was corrected above: restoring `Σa` was sound independently of this, and even if
+ * `G` were really 8.5 the honest `perAxis` would be 13.3 against the 17.87 this file used to
+ * declare — so the correction is a real improvement either way, and this uncertainty is on top of
+ * a number that was previously far looser.
  */
 export const NOISE_GRADIENT_BOUND = 7.5;
 
@@ -198,8 +296,37 @@ export const NOISE_GRADIENT_BOUND = 7.5;
  * average is too. Used for the height range, where being too small would let
  * `couldHoldSurface` skip a chunk that has surface in it — the one failure this whole
  * module cannot be allowed to make.
+ *
+ * **Exactly 2, not generously 2** — `NOISE_GRADIENT_BOUND`'s comment works this through: `grad`
+ * emits gradients of length √2 with components `±1`, so a corner value on a unit cell reaches 2,
+ * and the interpolation is convex. There is no slack here, which matters because `reach` is
+ * `FBM_AMPLITUDE_BOUND · scale` and so is the entire global height band the gate tests first.
  */
 export const FBM_AMPLITUDE_BOUND = 2;
+
+/**
+ * The sum `fbm` divides by, for a given octave count — the normaliser that makes its output
+ * range independent of how many octaves it was given.
+ *
+ * **Every octave contributes the same gradient only up to this divide**, and that is the whole
+ * correction. `fbm` computes `(Σ aᵢ·noise(2ⁱ·u)) / (Σ aᵢ)` with `aᵢ = 2⁻ⁱ`, so octave `i`'s share
+ * of the output's gradient is `aᵢ·2ⁱ·∇noise / Σa = ∇noise / Σa`. The frequency doubling and the
+ * amplitude halving cancel exactly — that much was already in the header — and what was missing
+ * is the `/ Σa` that `fbm` then applies to the whole sum. Omitting it overstated the bound by
+ * `Σa`, which is 1.875 at this world's four octaves and approaches 2 as octaves grow.
+ *
+ * **The closed form, and why it is not a loop.** `Σ 2⁻ⁱ` is `2(1 − 2⁻ⁿ)`, and every term is a power
+ * of two, so the result is exact in floating point for any integer octave count — no
+ * accumulation drift, and it cannot drift out of step with `fbm` because it does not reimplement
+ * `fbm`'s loop. Clamped to one octave for the same reason `fbm`'s loop effectively is: a zero-octave
+ * fBm has no gradient to bound, and dividing by zero is not an answer.
+ *
+ * Shared with `planet.ts`, which omits the same divide for the same reason.
+ */
+export const fbmAmplitudeSum = (octaves: number): number => {
+  const n = Math.max(1, Math.floor(octaves));
+  return 2 * (1 - Math.pow(2, -n));
+};
 
 /** The parameters a terrain is built from, and the four a `ModelMessage` carries. */
 export interface TerrainParams {
@@ -209,6 +336,20 @@ export interface TerrainParams {
   readonly scale: number;
   readonly octaves: number;
   readonly seed: number;
+  /**
+   * Tunnels through the landscape, or absent for a solid one.
+   *
+   * **Optional rather than defaulted, because "no caves" must be a thing a caller can say.**
+   * `DEFAULT_CAVES` exists to be spread into a parameters object that wants them; having the
+   * field read that constant as a fallback would make every landscape in the repository — the
+   * sculpting tests, the picker tests, the planet comparisons — quietly acquire a second noise
+   * stream and a different surface, and the differences would show up as failures nobody could
+   * attribute.
+   *
+   * See `caves.ts` for the construction and for why these belong in the base field rather than in
+   * the operation list.
+   */
+  readonly caves?: CaveParams;
 }
 
 /**
@@ -380,21 +521,58 @@ export const terrainField = (params: TerrainParams): TerrainField => {
   // `A` is the per-axis bound on the height's gradient; see the file header for where each
   // factor comes from. The √2 combines two axes bounded separately, and the `1` under the
   // square root is the vertical term of the distance function's own gradient.
+  //
+  // **Each `fbmAmplitudeSum` is `fbm`'s own normaliser**, and dropping it is what made this
+  // bound 1.79× larger than the field it bounds. The mask's is separate because it runs two
+  // octaves, not four.
+  const baseSum = fbmAmplitudeSum(octaves);
+  const maskSum = fbmAmplitudeSum(MOUNTAIN_MASK_OCTAVES);
   const gradientPerAxis =
-    octaves * NOISE_GRADIENT_BOUND * (1 / TERRAIN_FEATURE) +
+    (octaves * NOISE_GRADIENT_BOUND) / (baseSum * TERRAIN_FEATURE) +
     RIDGE_STRENGTH *
-      (octaves * NOISE_GRADIENT_BOUND * (1 / MOUNTAIN_FEATURE) +
-        MOUNTAIN_MASK_OCTAVES *
-          NOISE_GRADIENT_BOUND *
-          (1 / MOUNTAIN_MASK_FEATURE));
+      ((octaves * NOISE_GRADIENT_BOUND) / (baseSum * MOUNTAIN_FEATURE) +
+        (MOUNTAIN_MASK_OCTAVES * NOISE_GRADIENT_BOUND) /
+          (maskSum * MOUNTAIN_MASK_FEATURE));
   const perAxis = Math.abs(scale) * gradientPerAxis;
   const lipschitz = 1 / Math.sqrt(1 + 2 * perAxis * perAxis);
 
-  const distance = (x: number, y: number, z: number): number =>
+  // **With caves, the surface is no longer a graph over `xz`.** A cave is a hole in the rock, so
+  // a chunk deep inside stone can hold surface while every one of its column heights sits above
+  // it. That is why the composition is a maximum and not a subtraction applied afterwards, and it
+  // is why `couldHoldSurface` below changes shape when `caves` is present.
+  //
+  // **The ceiling and floor shortcuts return +Infinity rather than a large number**, and that is
+  // deliberate: `max(a, +∞)` is `+∞`, so a cave outside its depth range contributes exactly
+  // nothing to the maximum instead of contributing a merely-large term. `Math.max(a, Infinity)`
+  // is `Infinity`, and no arithmetic follows it that would produce a sign.
+  const caves = params.caves;
+  const cave =
+    caves === undefined
+      ? undefined
+      : caveField(caves, caveNoise(caves, params.seed));
+  const caveRise = caves === undefined ? 0 : caveCeilingRise(caves);
+  const caveDrop = caves === undefined ? 0 : caveFloorDrop(caves);
+
+  // **The ground without the caves**, which is a different question from the field's own value
+  // and is what water asks — see `BuiltBaseField.ground`. Built from the same `heightAt` the
+  // composed field uses, so the two cannot drift.
+  const ground = (x: number, y: number, z: number): number =>
     y - heightAt(x, z);
+
+  const distance = (x: number, y: number, z: number): number => {
+    const surface = heightAt(x, z);
+    const ground = y - surface;
+    // `heightAt` is asked once and both terms use it, so the ceiling the cave is measured
+    // against is the same landscape the ground term is — a second call could disagree by a
+    // float and put the mouth band a fraction of a unit off the surface it is damping.
+    return cave === undefined
+      ? ground
+      : Math.max(ground, -cave(surface - y, x, y, z));
+  };
 
   return Object.assign(distance, {
     lipschitz,
+    ground,
     /**
      * `origin`, because on a height field a sea is an altitude and the altitude a height of zero
      * sits at is the one a sea covers where the base noise is negative. See
@@ -405,15 +583,147 @@ export const terrainField = (params: TerrainParams): TerrainField => {
     lowest,
     highest,
     /**
-     * A box entirely above the highest possible surface is all air; one entirely below the
-     * lowest is all solid. Both hold no sign change, and both are answered from two
-     * comparisons — no noise evaluated at all, which is the entire point of the gate.
+     * Whether a box could hold any surface at all.
      *
-     * The comparisons are strict, so a box whose face lands exactly on the extreme is
-     * *not* ruled out: that face is the surface, and skipping it would drop a surface on
-     * the seam with nothing to re-mesh it.
+     * **The global band first, then a lattice of the box's own columns.** A box entirely
+     * above `highest` is all air and one entirely below `lowest` is all solid, both answered
+     * from two comparisons with no noise evaluated — which is the whole answer for anything
+     * far from the landscape, and the whole answer for a planet, whose gate is exact.
+     *
+     * Inside that band the height range is 1,536 units tall, or 4.8 chunks, and a window
+     * around a standing player is 5 chunks tall, so the band cannot tell a chunk of open air
+     * from a chunk of surface. That is where most of a streamed world's sampling went:
+     * measured, 986 of 1,183 chunks in a seven-layer window are empty, and this test caught
+     * none of them.
+     *
+     * So it samples `GATE_COLUMNS` columns a side across the box, takes their extremes, and
+     * widens them by the Lipschitz margin for that spacing. Seventeen a side catches 576 of
+     * those 986 for 289 calls — 0.74 per cent of one chunk's grid — and **the margin is
+     * derived from `perAxis`, not from anything measured**, because an unsound answer here
+     * deletes a surface with nothing to re-mesh it. The margin's arithmetic is
+     * `latticeMargin` below and the measurement that says 17 is the right number is in the
+     * file header.
+     *
+     * **Strict, so a face landing exactly on the bound is not ruled out**: that face is the
+     * surface, and skipping it would drop a surface on a seam with nothing to bring it back.
      */
-    couldHoldSurface: (bounds: Bounds): boolean =>
-      bounds.min.y <= highest && bounds.max.y >= lowest,
+    couldHoldSurface: (bounds: Bounds): boolean => {
+      if (bounds.min.y > highest || bounds.max.y < lowest) return false;
+
+      // **With caves, this test is not sound and must not be used.** A cave is a hole in the
+      // rock, so a box deep inside stone can hold surface while every one of its column
+      // heights sits above it — the columns are all above the box, the lattice says "solid,
+      // nothing here", and the cave is deleted with nothing to re-mesh it. The landscape's
+      // surface is a graph over `xz` and a cave's is not, so the question "does a column's
+      // height fall in this box's y span" is the wrong question the moment there is one.
+      //
+      // **So the band is widened to the caves' own reach and the lattice is skipped
+      // entirely.** Two comparisons instead of 289 calls, and as coarse as the band the lattice
+      // replaced — which is the honest price of a surface with holes in it. It is a real loss:
+      // the lattice caught 58 per cent of the empty chunks in a seven-layer window, and this
+      // catches only what falls outside the band.
+      //
+      // **What would recover it, and why it is not here.** The lattice's power comes entirely
+      // from the field being *anisotropic* — `∂f/∂y` is exactly 1 while `∂f/∂x` is `perAxis`,
+      // and the vertical direction needs no margin at all because the column heights do not
+      // depend on `y`. A cave removes that: the composed field's gradient bound is about
+      // `√(1 + 2·perAxis²)` in every direction, so a three-dimensional lattice over the composed
+      // field needs a margin of roughly `s · 24` at a 21-unit spacing — wider than the box it
+      // is testing, and no spacing that fits inside a chunk is any better. A distance-driven
+      // hierarchy hits the same wall for the same reason. The fix is a tighter
+      // `NOISE_GRADIENT_BOUND`, not a better test.
+      if (cave !== undefined) {
+        return (
+          bounds.min.y <= highest + caveRise &&
+          bounds.max.y >= lowest - caveDrop
+        );
+      }
+
+      const spanX = bounds.max.x - bounds.min.x;
+      const spanZ = bounds.max.z - bounds.min.z;
+      const step = GATE_COLUMNS - 1;
+
+      let lowestHere = Infinity;
+      let highestHere = -Infinity;
+      for (let i = 0; i < GATE_COLUMNS; i++) {
+        const x = bounds.min.x + (spanX * i) / step;
+        for (let j = 0; j < GATE_COLUMNS; j++) {
+          const y = heightAt(x, bounds.min.z + (spanZ * j) / step);
+          if (y < lowestHere) lowestHere = y;
+          if (y > highestHere) highestHere = y;
+        }
+      }
+
+      const margin = latticeMargin(perAxis, spanX, spanZ, step);
+      return (
+        highestHere + margin >= bounds.min.y &&
+        lowestHere - margin <= bounds.max.y
+      );
+    },
+    /**
+     * Whether a box is entirely above everything this landscape can produce.
+     *
+     * **The global band, not the sampled one** — deliberately. The sampled test exists to catch
+     * boxes the global band cannot rule out, and this question is the other way round: a box
+     * that the global band already calls air should be reported as air in constant time, and a
+     * lattice of 289 `heightAt` calls to answer it would cost more than the chunk it might save.
+     *
+     * **`>` and not `>=`,** for the same reason the gate's own comparisons are strict: a face
+     * landing exactly on `highest` *is* the surface, and calling that air would drop it.
+     *
+     * What this buys is narrow and specific: it is what stops one unbounded *operation* — a cave
+     * system with no end — from answering "maybe" to every box above ground. See
+     * `SurfaceExtent.couldHoldAir`.
+     *
+     * **Unchanged by the base field's own caves, and that is the point of composing them as a
+     * maximum.** Above `highest` the ground term is already positive, and `max(positive, −cave)`
+     * cannot be lowered — so a cave up there contributes nothing to the sign however far it
+     * reaches. The ceiling that stops caves rising above the surface is an aesthetic measure
+     * about cave mouths, not a soundness one, and this answer does not have to consult it.
+     */
+    couldHoldAir: (bounds: Bounds): boolean => bounds.min.y > highest,
   });
 };
+
+/**
+ * Columns a side in the local extent test.
+ *
+ * **Seventeen, and the measurements that chose it** are in the file header: at this world's
+ * chunk width it catches 58 per cent of the chunks a seven-layer window wastes, for 0.74 per
+ * cent of a chunk's grid sampling. Nine costs 0.21 per cent and catches 21 per cent; thirty-
+ * three costs 2.77 per cent and catches 62 per cent.
+ *
+ * It is also the resolution at which the gate stays cheaper than what it replaces at *every*
+ * level of detail. A coarse chunk's grid is 1,000 samples, so a 33-by-33 lattice would spend
+ * more `heightAt` calls than the chunk has samples — a gate that costs more than the mesh is
+ * the wrong shape however good its hit rate, because the chunks it saves least are the ones
+ * where it is proportionally dearest.
+ */
+const GATE_COLUMNS = 17;
+
+/**
+ * How far the height can stray from the nearest sampled column, over a box's own lattice.
+ *
+ * **`perAxis` bounds each partial derivative separately**, so `|grad h| <= perAxis · √2`, and
+ * by the mean value theorem the height moves at most that times the distance travelled. A
+ * point in the box is at most half a lattice cell's diagonal from the nearest sample — the
+ * lattice cell is `spanX/step` by `spanZ/step` — so:
+ *
+ *     margin = perAxis · √2 · ½ · hypot(spanX, spanZ) / step
+ *
+ * For a square box that reduces to `perAxis · spanX / step`, which is the number the header's
+ * measurements use.
+ *
+ * **Soundness rests entirely on `perAxis` being a bound.** Getting this wrong by a factor of
+ * √2 was the first version of it, and it would have been invisible: the false-skip count
+ * stayed at zero over a thousand chunks, because the margin was still wide enough for the
+ * relief it was measuring. An unsound margin does not announce itself by skipping the wrong
+ * chunk on average; it skips the wrong chunk on the one piece of terrain with a cliff in it.
+ */
+const latticeMargin = (
+  perAxis: number,
+  spanX: number,
+  spanZ: number,
+  step: number,
+): number =>
+  ((perAxis * Math.SQRT2) / 2) * (Math.hypot(spanX, spanZ) / Math.max(1, step));

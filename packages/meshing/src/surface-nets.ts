@@ -305,8 +305,22 @@ export interface SurfaceNetsParams {
   /**
    * Told each emitted vertex's world position, so a caller can fill in its normal and
    * colour without walking the positions array again.
+   *
+   * **The owning cell comes with it, because a caller cannot work it out.** Which cells a
+   * chunk owns on its outer layer is what decides whether a vertex's face fan is clipped
+   * by the chunk edge, and a clipped fan averages to a normal tilted towards whichever
+   * faces survived — so a caller shading from the mesh's own faces rather than from the
+   * field's gradient has to know the boundary from somewhere, and the mesher is the only
+   * thing that knows where the cell walk is. The cell is the loop's own `(cx, cy, cz)`,
+   * counted from zero on every axis including where an overlap has shifted the run.
    */
-  onVertex?: (index: number, x: number, y: number, z: number) => void;
+  onVertex?: (
+    index: number,
+    x: number,
+    y: number,
+    z: number,
+    cell: readonly [number, number, number],
+  ) => void;
   /**
    * Asked, for every cell whose corners disagree, whether that cell may carry a vertex
    * at all. Receives the cell's eight corner samples and, when a `marker` was given, the
@@ -654,6 +668,7 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
           worldX,
           worldY,
           worldZ,
+          [cx, cy, cz],
         );
       }
     }

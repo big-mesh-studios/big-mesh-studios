@@ -54,6 +54,14 @@
 import type { Bounds, Vec3 } from "@big-mesh-studios/core";
 import type { BaseField, SurfaceExtent } from "./field";
 import {
+  caveCeilingRise,
+  caveField,
+  caveFloorDrop,
+  caveNoise,
+  type CaveParams,
+} from "./caves";
+import {
+  fbmAmplitudeSum,
   landscapeShape,
   MOUNTAIN_FEATURE,
   MOUNTAIN_MASK_FEATURE,
@@ -85,6 +93,20 @@ export const reachOf = (params: PlanetParams): number =>
 
 /** The parameters a planet is built from, and the four a `ModelMessage` carries. */
 export interface PlanetParams {
+  /**
+   * Tunnels through the planet, or absent for a solid one.
+   *
+   * **Optional and defaulted nowhere — including here.** A default planet with caves in it cannot
+   * state any property of the *surface*: `∂f/∂r` is exactly 1 and a normal's radial component is
+   * exactly 1, and both stop being true within a few units of a cave, which is three tests'
+   * worth of the planet's own correctness. So the game's world builds its own spec with
+   * `DEFAULT_CAVES` spread in — see `app.tsx` — and this constant stays the plain planet every
+   * other caller and every other test means by it.
+   *
+   * See `caves.ts` for the construction.
+   */
+  readonly caves?: CaveParams;
+
   /**
    * The distance from the origin to mean sea level.
    *
@@ -223,14 +245,43 @@ export const planetField = (params: PlanetParams): PlanetField => {
   // for the same reasons — see that file's header for where each factor comes from. The three
   // rather than the two is three noise axes; the `r` that would otherwise appear does not, which
   // is the property the file header is about.
+  //
+  // **Each `fbmAmplitudeSum` is `fbm`'s own normaliser**, for the reason the height field's
+  // header sets out at length: every octave contributes the same gradient only once the sum is
+  // divided by `Σ 2⁻ⁱ`. This file omitted it exactly as that one did, so the planet's bound was
+  // overstated by the same 1.79× and its `lipschitz` understated by the same factor.
+  const baseSum = fbmAmplitudeSum(octaves);
+  const maskSum = fbmAmplitudeSum(MOUNTAIN_MASK_OCTAVES);
   const gradientPerAxis =
-    (octaves * NOISE_GRADIENT_BOUND_3D) / TERRAIN_FEATURE +
+    (octaves * NOISE_GRADIENT_BOUND_3D) / (baseSum * TERRAIN_FEATURE) +
     RIDGE_STRENGTH *
-      ((octaves * NOISE_GRADIENT_BOUND_3D) / MOUNTAIN_FEATURE +
+      ((octaves * NOISE_GRADIENT_BOUND_3D) / (baseSum * MOUNTAIN_FEATURE) +
         (MOUNTAIN_MASK_OCTAVES * NOISE_GRADIENT_BOUND_3D) /
-          MOUNTAIN_MASK_FEATURE);
+          (maskSum * MOUNTAIN_MASK_FEATURE));
   const perAxis = Math.abs(scale) * gradientPerAxis;
   const lipschitz = 1 / Math.sqrt(1 + 3 * perAxis * perAxis);
+
+  // **Caves fold in as the second term of a maximum**, exactly as on a height field, and the
+  // safety argument is the same and does not depend on the world's shape: where the ground term is
+  // already positive — outside the planet — a maximum cannot be lowered, so a cave out there
+  // creates no geometry however far it reaches.
+  const caves = params.caves;
+  const cave =
+    caves === undefined
+      ? undefined
+      : caveField(caves, caveNoise(caves, params.seed));
+  const caveRise = caves === undefined ? 0 : caveCeilingRise(caves);
+  const caveDrop = caves === undefined ? 0 : caveFloorDrop(caves);
+
+  // **The ground without the caves** — see `BuiltBaseField.ground` for why water needs a
+  // different question from the field's own value, and why it must be handed the same one of the
+  // two that the mesher's gate uses.
+  const ground = (x: number, y: number, z: number): number => {
+    const r = Math.sqrt(x * x + y * y + z * z);
+    if (r < 1e-9) return -reach;
+    const inv = 1 / r;
+    return r - radiusAt({ x: x * inv, y: y * inv, z: z * inv });
+  };
 
   const distance = (x: number, y: number, z: number): number => {
     const r = Math.sqrt(x * x + y * y + z * z);
@@ -239,11 +290,19 @@ export const planetField = (params: PlanetParams): PlanetField => {
     // `NaN` in every sample that reached it.
     if (r < 1e-9) return -reach;
     const inv = 1 / r;
-    return r - radiusAt({ x: x * inv, y: y * inv, z: z * inv });
+    const surface = radiusAt({ x: x * inv, y: y * inv, z: z * inv });
+    const ground = r - surface;
+    if (cave === undefined) return ground;
+    // `surface − r` is the depth below the local surface, which on a sphere is the only
+    // meaningful measure of "underground" — there is no world axis to compare against. The
+    // radius is asked once and both terms use it, so the cave's ceiling is measured against the
+    // same landscape the ground term is.
+    return Math.max(ground, -cave(surface - r, x, y, z));
   };
 
   return Object.assign(distance, {
     lipschitz,
+    ground,
     /**
      * `radius`, because `radiusAt` is `radius + scale · shape` and a shape of zero happens at the
      * radius — so the radius is where the noise's own zero is, which is what a sea at a given
@@ -264,7 +323,29 @@ export const planetField = (params: PlanetParams): PlanetField => {
      */
     couldHoldSurface: (bounds: Bounds): boolean => {
       const [min, max] = radiusRangeOf(bounds);
-      return min <= highestRadius && max >= lowestRadius;
+      // **Exact without caves, and deliberately not with them.** The radius range over a box says
+      // exactly where the *surface* can be, which is the whole answer while the surface is the
+      // only zero set. A cave is a second one, inside the rock, and no radius range can see it: a
+      // box deep in the mantle holding a cave answers "solid throughout" here and would be
+      // skipped, taking the cave with it and leaving nothing to re-mesh it.
+      //
+      // So the band is widened by the caves' own reach. It stays exact in the sense that matters
+      // — it never rules out a box that holds surface — and it costs the two extra comparisons
+      // the exact test did not need.
+      return min <= highestRadius + caveRise && max >= lowestRadius - caveDrop;
     },
+    /**
+     * **Exact, and cheaper than the gate it sits beside** — a box whose *nearest* point is
+     * already beyond `highestRadius` is entirely outside the planet and therefore entirely air,
+     * and `radiusRangeOf` has that distance as its first element.
+     *
+     * A planet needs this more than a height field does, because it is the world with a far
+     * field: the chunks above the horizon are exactly the ones worth skipping, and without this
+     * an operation with no end would keep all of them alive. It is also the one base field where
+     * the answer needs no sampling at all, which is what makes it the clearest statement of what
+     * `couldHoldAir` is for.
+     */
+    couldHoldAir: (bounds: Bounds): boolean =>
+      radiusRangeOf(bounds)[0] > highestRadius + caveRise,
   });
 };

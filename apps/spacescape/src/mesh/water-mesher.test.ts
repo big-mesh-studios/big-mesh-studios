@@ -19,11 +19,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   baseFieldFor,
+  DEFAULT_CAVES,
   DEFAULT_PLANET,
   isPlanetField,
   seaLevelOf,
 } from "@big-mesh-studios/csg";
 import type { BaseFieldSpec, BuiltBaseField } from "@big-mesh-studios/csg";
+import type { Vec3 } from "@big-mesh-studios/core";
 import { length, scale, vec3 } from "@big-mesh-studios/core";
 
 import { chunkCellOf } from "../world";
@@ -87,6 +89,62 @@ describe("the sea's field", () => {
     const sea = seaDistanceOf(planet());
     expect(fieldAt(sea, atRadius([1, 0, 0], 3900))).toBeLessThan(0);
     expect(fieldAt(sea, atRadius([1, 0, 0], 4100))).toBeGreaterThan(0);
+  });
+
+  it("keeps the sea out of a cave, because its gate asks the ground", () => {
+    // **The mesher's half of the split, and it has to be the same half the player's predicate
+    // is.** Getting this wrong in one place and not the other is what put a player in water with
+    // no water around them: the composed field calls a cave air, and the sea's geometry exists
+    // only in a shell at sea level.
+    //
+    // **Stated on the gate rather than on a chunk**, because a chunk-level assertion is
+    // vacuous more easily than it looks — the first version of this meshed a chunk whose cave sat
+    // below sea level, found zero triangles, and passed with the gate reverted, because that
+    // chunk happened to contain no ocean to gate out in the first place. The gate itself has no
+    // such luck available.
+    const params = { origin: -70, scale: 96, octaves: 4, seed: 20260901 };
+    const carved = baseFieldFor({
+      kind: "terrain",
+      params: { ...params, caves: DEFAULT_CAVES },
+    });
+    if (carved === undefined) throw new Error("the landscape did not build");
+    const ground = carved.ground ?? carved;
+    const gate = outOfTheGround(WATER_OVERLAP);
+
+    // Find a point that is air to the composed field and **more than `WATER_OVERLAP` inside the
+    // rock** to the ground, below sea level — the disagreement, at a real location rather than a
+    // chosen one.
+    //
+    // The depth matters and the first version of this omitted it: the gate refuses a corner only
+    // past `-overlap`, which is the shoreline margin doing its job, so a cave's air a few units
+    // inside the rock is legitimately accepted and the test asserted the margin was broken.
+    let found: Vec3 | undefined;
+    for (let i = 0; i < 60_000 && found === undefined; i++) {
+      const x = (i * 7919) % 6000;
+      const z = (i * 4409) % 6000;
+      for (let y = carved.seaLevel - 10; y > carved.seaLevel - 400; y -= 10) {
+        if (carved(x, y, z) > 0 && ground(x, y, z) < -WATER_OVERLAP) {
+          found = vec3(x, y, z);
+          break;
+        }
+      }
+    }
+    expect(found, "no cave below sea level was found").toBeDefined();
+    const at = found as Vec3;
+
+    // The gate, asked both ways. All eight corners deep in the cave: the ground refuses the
+    // cell, the composed field accepts it, and the difference is the whole bug.
+    const marks = new Float32Array(8);
+    marks.fill(ground(at.x, at.y, at.z));
+    expect(
+      gate(new Float32Array(8), marks),
+      "the ground should refuse a cave",
+    ).toBe(false);
+    marks.fill(carved(at.x, at.y, at.z));
+    expect(
+      gate(new Float32Array(8), marks),
+      "the composed field is what would have let the sea in",
+    ).toBe(true);
   });
 
   it("reads a height field's sea as an altitude", () => {

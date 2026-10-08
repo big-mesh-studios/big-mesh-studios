@@ -64,6 +64,35 @@ export interface SurfaceExtent {
    * nothing else.
    */
   couldHoldSurface(bounds: Bounds): boolean;
+
+  /**
+   * Whether a box is **entirely air** by this base field's own account — no ground anywhere
+   * in it — when this base field can tell. Optional, and `undefined` or `true` means "cannot
+   * tell", which is the safe answer.
+   *
+   * ## What it is for, and why `couldHoldSurface` alone cannot say it
+   *
+   * `couldHoldSurface` answers `false` for two opposite reasons: a box above everything this
+   * field can produce is all air, and a box below everything is all solid. **Only the first is
+   * safe to combine with the operation list the way `Field.couldHoldSurface` combines them.**
+   * In an all-air box the field starts positive everywhere, and a `Subtract` folds in as a
+   * maximum — `smoothMax(a, b, k) ≥ max(a, b) ≥ a`, because `smoothMin` only ever dips below
+   * `min` — so the field stays positive however far the operation list reaches. No sign change,
+   * no mesh, whatever the operations are. In an all-solid box the same `Subtract` is exactly
+   * what carves the cave.
+   *
+   * So the two cases need opposite treatment, and a single boolean cannot express that. This
+   * is the piece that tells `Field` which case it is in.
+   *
+   * ## Why a world with an unbounded operation needs it
+   *
+   * `OperationBVH.query` tests an operation's **box**, so one operation with no end — a cave
+   * system that runs for thousands of chunks — overlaps every box in the world and answers
+   * "maybe" to all of them. Measured: a single long capsule restored the sampling waste the
+   * base gate exists to remove, from none of it to all of it. Ignoring `Subtract` on the
+   * all-air path is what keeps a cave from costing anything above ground.
+   */
+  couldHoldAir?(bounds: Bounds): boolean;
 }
 
 /** The colour a surface takes where nothing has been painted. */
@@ -252,7 +281,16 @@ export class Field {
   couldHoldSurface(bounds: Bounds): boolean {
     if (this.extent === undefined) return true;
     if (this.extent.couldHoldSurface(bounds)) return true;
-    return this.bvh.query(bounds).length > 0;
+    // **Only `Add` can put a surface in a box the base field calls all air.** A `Subtract`
+    // folds in as a maximum and a maximum cannot lower a positive field, so in a box that is
+    // already air everywhere a `Subtract` is a no-op on the sign — whatever its shape reaches,
+    // and however far. `Paint` is not in the tree to begin with, since it changes no distance.
+    //
+    // The filter is what makes this gate survive an unbounded operation. A cave that runs for
+    // thousands of chunks has a box that overlaps every chunk in the world, so asking it
+    // without this line asks a question no chunk can ever answer "no" to.
+    const air = this.extent.couldHoldAir?.(bounds) === true;
+    return this.bvh.query(bounds, air ? "Add" : undefined).length > 0;
   }
 
   /**

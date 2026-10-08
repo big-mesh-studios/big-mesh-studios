@@ -45,6 +45,34 @@ export interface BuiltBaseField extends BaseField, SurfaceExtent {
   readonly kind: BaseFieldKind;
   readonly lipschitz: number;
   /**
+   * The landscape **without** any caves or other interior structure, as a field in its own right.
+   *
+   * Absent means the same function as the field itself, which is what a solid world's landscape
+   * is. It is a separate member rather than a flag because the question it answers is genuinely a
+   * different one from the field's, and the field's own value is the wrong answer to it:
+   *
+   * - **`f(q) > 0` means "outside material".** A cave is material with a hole in it, so a cave is
+   *   outside material and its air is reported as such.
+   * - **`ground(q) > 0` means "not underground at all".** A cave is underground whatever the hole
+   *   in it says, so its air is reported as rock.
+   *
+   * ## What this is for
+   *
+   * **Water.** A sea is water below its level and outside material — but that rule was written
+   *   when "outside material" and "not underground" were the same sentence, and caves take them
+   *   apart. A cave below sea level is outside material, so the composed field says "in water",
+   *   while the sea's *mesh* only exists in a shell at that level, so there is no water to be in:
+   *   a player in a deep cave swims in nothing, under the underwater tint. Asking `ground` closes
+   *   that, and the codebase had already asked it for the same reason — a shaft dug through a hill
+   *   is air, below sea level, and dry, and the comment that says so is still true only because
+   *   "air" was read as "not underground".
+   *
+   * The mesher's gate and the physics' predicate **must** be given the same one of the two, or a
+   * chunk gets water geometry the player is not in and the two disagree in both directions. Handing
+   *   them the same function object is what makes that impossible rather than merely unlikely.
+   */
+  readonly ground?: BaseField;
+  /**
    * Where this world's water settles: an altitude for a height field, a distance from the
    * centre for a planet.
    *

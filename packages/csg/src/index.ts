@@ -76,6 +76,16 @@ export type {
 } from "./field";
 export { DEFAULT_COLOUR, Field } from "./field";
 
+export type { CaveParams } from "./caves";
+export {
+  CAVE_SEED_MIX,
+  caveCeilingRise,
+  caveField,
+  caveFloorDrop,
+  caveNoise,
+  DEFAULT_CAVES,
+} from "./caves";
+
 export type { TerrainField, TerrainParams } from "./terrain";
 export {
   DEFAULT_TERRAIN,
@@ -83,6 +93,7 @@ export {
   MOUNTAIN_FEATURE,
   MOUNTAIN_MASK_FEATURE,
   MOUNTAIN_MASK_OCTAVES,
+  fbmAmplitudeSum,
   landscapeShape,
   NOISE_GRADIENT_BOUND,
   PerlinNoise2D,

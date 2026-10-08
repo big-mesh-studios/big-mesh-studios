@@ -42,6 +42,7 @@ import {
 } from "./session";
 import {
   baseFieldFor,
+  DEFAULT_CAVES,
   DEFAULT_PLANET,
   DEFAULT_TERRAIN,
   seaLevelOf,
@@ -138,7 +139,18 @@ const isGame = (): boolean => !isSpike() && !isEdit();
  */
 const GAME_BASE_FIELD: BaseFieldSpec = {
   kind: "planet",
-  params: DEFAULT_PLANET,
+  // **`DEFAULT_PLANET` spread rather than used whole**, and the caves are the reason. A default
+  // planet with caves in it cannot state any property of its *surface* — `∂f/∂r` is exactly 1 and
+  // a normal's radial component is exactly 1, and both stop being true within a few units of a
+  // cave — so `planet.test.ts` would lose three of its own correctness checks. The library's
+  // default stays the plain planet; the game's world says what it wants.
+  //
+  // **Why this world has caves at all.** A planet here is 272,000 units across with a 1,280-unit
+  // horizon, so a player sees nothing but the ground under a sky with no depth to it. The caves
+  // are the only thing underfoot that is not sky, and they are what gives a shaft somewhere to
+  // go. A height field's caves can be optional because a landscape is already three-dimensional;
+  // a sphere's surface is not.
+  params: { ...DEFAULT_PLANET, caves: DEFAULT_CAVES },
 };
 const GAME_FRAME = sphericalFrame({ x: 0, y: 0, z: 0 });
 
@@ -151,6 +163,24 @@ const GAME_FRAME = sphericalFrame({ x: 0, y: 0, z: 0 });
  * a field they cannot reach without building it would mean a message per query.
  */
 const GAME_LANDSCAPE = baseFieldFor(GAME_BASE_FIELD)!;
+
+/**
+ * The landscape without its caves, which is what "is this water" has to ask.
+ *
+ * **A second field over the same spec, not a rebuilt one.** `baseFieldFor` is called once and the
+ * result carries both answers on it, so there is no second construction to keep in step and
+ * nothing for ADR 0009's two-threads-must-agree rule to catch: the mesher's gate and this
+ * predicate are handed *the same function object*.
+ *
+ * **Why two answers are needed at all.** `GAME_LANDSCAPE(p) > 0` means "outside material", and a
+ * cave is material with a hole in it — so its air reads as outside material and a cave below sea
+ * level reported the player as swimming, in a place the sea's mesh never reaches. The sea exists
+ * only in a shell at its own level; everything below that and outside material is rock the sea has
+ * not reached, and a deep cave is exactly that. `GAME_GROUND(p) > 0` means "not underground",
+ * which a cave never satisfies, and it is the same question the water mesher's gate now asks.
+ */
+const GAME_GROUND: (x: number, y: number, z: number) => number =
+  GAME_LANDSCAPE.ground ?? ((x, y, z) => GAME_LANDSCAPE(x, y, z));
 
 /**
  * The game's water.
@@ -182,10 +212,16 @@ const GAME_SEA = seaLevelOf(GAME_BASE_FIELD);
 /**
  * Whether a point is in water, as the sea is actually meshed.
  *
- * **Two terms and both of them are the ones the mesher uses.** Below the sea, and outside
- * the ground — the ground being the *landscape*, not the model, which is what keeps a shaft
- * dug through a hill dry: the landscape says solid there, so there is no water to be in
- * even though the shaft is below sea level and full of air.
+ * **Two terms, and the second one is `GAME_GROUND` rather than `GAME_LANDSCAPE`.** Below the sea,
+ * and not underground. It is the ground — the *landscape* without its caves, not the model — which
+ * is what keeps a shaft dug through a hill dry: the landscape says solid there, so there is no
+ * water to be in even though the shaft is below sea level and full of air.
+ *
+ * **And caves are the same case, which is why the word is `ground` and not `landscape`.** A cave is
+ * material with a hole in it, so `GAME_LANDSCAPE` calls its air "outside material" and a cave
+ * below sea level reported the player as swimming — in water that is not there, because the sea's
+ * geometry is only a shell at sea level and nothing meshes the rest of it. `GAME_GROUND` calls the
+ * same air "underground", which is what it is.
  *
  * The physics asked the same question before with `radiusAt < seaRadius && !getSolidAt`,
  * and the difference is `getSolidAt`, which asks the *edited* model. That mismatch is what
@@ -194,7 +230,7 @@ const GAME_SEA = seaLevelOf(GAME_BASE_FIELD);
 const inSea = (p: { x: number; y: number; z: number }): boolean => {
   if (GAME_FRAME.spherical && GAME_FRAME.radiusAt(p) >= GAME_SEA) return false;
   if (!GAME_FRAME.spherical && p.y >= GAME_SEA) return false;
-  return GAME_LANDSCAPE(p.x, p.y, p.z) > 0;
+  return GAME_GROUND(p.x, p.y, p.z) > 0;
 };
 
 /** Whether this device points with something coarse, so the touch UI shows. */
