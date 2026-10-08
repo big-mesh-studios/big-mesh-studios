@@ -1088,3 +1088,150 @@ describe("the pool", () => {
     expect(fake.posted).toEqual([]);
   });
 });
+
+/**
+ * The queue's urgent end.
+ *
+ * **A block, not a stack, and that is the whole design.** The window hands over the cells
+ * it wants nearest-first and relies on the pool draining in order, so inserting each of
+ * them at position zero would mesh the farthest chunk the player just walked into first —
+ * a worse version of the problem the urgent end exists to solve. These tests pin the order,
+ * because the ordering is invisible in the code and only shows up as a chunk that takes
+ * seconds to appear on a machine nobody is looking at.
+ */
+describe("an urgent request", () => {
+  /** Records nothing; the ordering is all this block is about. */
+  const quiet = () => ({
+    onMesh: () => {},
+    onEmpty: () => {},
+    onFailed: () => {},
+  });
+
+  /** The mesh requests a worker has been given, in the order it was given them. */
+  const meshes = (
+    fake: ReturnType<typeof fakeWorker>,
+  ): Array<Extract<ToWorker, { kind: "meshChunk" }>> =>
+    fake.posted.filter(
+      (m): m is Extract<ToWorker, { kind: "meshChunk" }> =>
+        m.kind === "meshChunk",
+    );
+
+  /** The cells the worker was given, in order. */
+  const dispatched = (fake: ReturnType<typeof fakeWorker>): string[] =>
+    meshes(fake).map((m) => `${m.cell.x},${m.cell.y},${m.cell.z}`);
+
+  /**
+   * Answers everything the worker is given until the queue is empty.
+   *
+   * A loop rather than one answer, because a pool with one worker dispatches one chunk per
+   * free slot — so a single answer shows the head of the queue and nothing else, and every
+   * assertion about what follows would be about a queue that has not been walked yet.
+   */
+  const drain = (fake: ReturnType<typeof fakeWorker>, rounds = 40): void => {
+    const answered = new Set<string>();
+    for (let round = 0; round < rounds; round++) {
+      const pending = meshes(fake).filter((m) => {
+        const key = `${m.cell.x},${m.cell.y},${m.cell.z}#${m.generation}`;
+        if (answered.has(key)) return false;
+        answered.add(key);
+        return true;
+      });
+      if (pending.length === 0) return;
+      for (const m of pending) {
+        fake.answer({
+          kind: "meshReady",
+          cell: m.cell,
+          lod: m.lod,
+          generation: m.generation,
+          ground: meshOf(9),
+          empty: false,
+        });
+      }
+    }
+  };
+
+  /**
+   * A pool with one worker, already holding a chunk, so everything else queues behind it.
+   *
+   * The held chunk is the point. A free worker takes whatever is at the front the moment
+   * it is asked, leaving nothing to be in front of — which is how a test for this passes
+   * whatever the ordering happens to be.
+   */
+  const busyPool = () => {
+    const fake = fakeWorker();
+    const pool = new WorldWorkerPool({
+      workers: 1,
+      create: () => fake.worker,
+      handlers: quiet(),
+    });
+    pool.request(cell(99), 0);
+    return { pool, fake };
+  };
+
+  it("goes ahead of a backlog already queued", () => {
+    const { pool, fake } = busyPool();
+    pool.request(cell(1), 0);
+    pool.request(cell(2), 0);
+
+    pool.request(cell(7), 0, undefined, true);
+
+    drain(fake);
+    // The held chunk is first because it was asked for first; the urgent one is next, and
+    // the backlog the player is not looking at is behind both.
+    expect(dispatched(fake).slice(1)).toEqual(["7,0,0", "1,0,0", "2,0,0"]);
+    pool.dispose();
+  });
+
+  it("keeps a batch in the order it was given", () => {
+    // The window's nearest-first batch, which is the case a per-cell insert at the front
+    // would reverse.
+    const { pool, fake } = busyPool();
+    for (const x of [1, 2, 3]) pool.request(cell(x), 0, undefined, true);
+
+    drain(fake);
+    expect(dispatched(fake).slice(1)).toEqual(["1,0,0", "2,0,0", "3,0,0"]);
+    pool.dispose();
+  });
+
+  it("still goes ahead of the backlog after one of the batch is dropped", () => {
+    // Dropping a queued cell shortens the urgent block when it removed from it. If it did
+    // not, the block would keep claiming entries that are no longer urgent, and the next
+    // urgent insert would land behind the backlog — the defect arriving late, and only on
+    // the second edit into the same chunk.
+    const { pool, fake } = busyPool();
+    pool.request(cell(1), 0, undefined, true);
+    pool.request(cell(2), 0, undefined, true);
+    pool.request(cell(3), 0);
+
+    // Superseded by a plain request, so it leaves the urgent block and rejoins the queue.
+    pool.request(cell(2), 0);
+    pool.request(cell(7), 0, undefined, true);
+
+    drain(fake);
+    // The urgent block is `1` then `7`, in the order they were marked, and the two
+    // demoted or plain requests are behind both. That `7` lands second and not third is
+    // the assertion: had the drop left the block claiming an entry it no longer held, `7`
+    // would have been inserted past `3` and the backlog would have kept its place.
+    expect(dispatched(fake).slice(1)).toEqual([
+      "1,0,0",
+      "7,0,0",
+      "3,0,0",
+      "2,0,0",
+    ]);
+    pool.dispose();
+  });
+
+  it("starts a fresh block after a model change clears the queue", () => {
+    // The case that puts the chunk under the brush on its own at the front: a model change
+    // empties the queue, so an edit's urgent chunk is not behind a scroll's arrivals.
+    const { pool, fake } = busyPool();
+    pool.request(cell(1), 0, undefined, true);
+
+    pool.setModel(model(2));
+
+    drain(fake);
+    // Nothing queued survives, so nothing is dispatched but what a caller asks for next.
+    expect(dispatched(fake).slice(1)).toEqual([]);
+    pool.dispose();
+  });
+});

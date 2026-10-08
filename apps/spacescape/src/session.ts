@@ -364,7 +364,12 @@ export class Session {
       this.store.markOutOfDate(slot);
       this.window.markStale(slot);
       this.forgetSlot(slot);
-      this.requestSlot(slot);
+      // Urgent, and this is the only place that says so. `setOperations` has just run
+      // `requestAll`, which put every unfilled slot back on the queue near-to-far — so
+      // without this the chunk under the brush is meshed last, behind every chunk of
+      // scrolling backlog, and the edit's latency is the pool's whole backlog rather than
+      // the one chunk the player is looking at.
+      this.requestSlot(slot, true);
       invalidated++;
     }
     return invalidated;
@@ -392,10 +397,33 @@ export class Session {
     // A scan of the window's slots on a scroll, where a scroll is a discrete movement of
     // the focus cell rather than a per-frame event: `scrollTo` returns false — and so
     // costs nothing — for every frame in which the focus cell has not changed.
+    //
+    // **Nearest first, and urgent, and both because this scan is the hole.** Every unfilled
+    // slot on a scroll is a chunk the player can see is missing: an arrived cell whose slot
+    // was standing for somewhere else has no geometry at all. Filling them in slot order
+    // fills whichever corner of the window the pool happens to reach first, which is not
+    // the corner anyone is looking at, and filling them at the back of the queue fills them
+    // after work for chunks behind the camera. The measure is the same one
+    // `ChunkWindow.scrollTo` sorts its own arrivals by, so the two agree about what
+    // "nearest" means — one distance for the window's ordering and another for the pool's
+    // would be two answers to one question.
+    const unfilled: number[] = [];
     for (let slot = 0; slot < this.window.slots.length; slot++) {
       const entry = this.window.slots[slot];
-      if (entry !== undefined && !entry.filled) this.requestSlot(slot);
+      if (entry !== undefined && !entry.filled) unfilled.push(slot);
     }
+    const distanceFrom = (entry: { centre: Vec3 }): number =>
+      Math.hypot(
+        entry.centre.x - world.x,
+        entry.centre.y - world.y,
+        entry.centre.z - world.z,
+      );
+    unfilled.sort(
+      (a, b) =>
+        distanceFrom(this.window.slots[a]!) -
+        distanceFrom(this.window.slots[b]!),
+    );
+    for (const slot of unfilled) this.requestSlot(slot, true);
   }
 
   /** Reports what is on screen. */
@@ -435,13 +463,26 @@ export class Session {
    * A slot that is already `filled` is skipped, which is what stops the window re-requesting
    * every chunk every frame: the window asks for anything invalidated, not for anything
    * absent.
+   *
+   * **Urgent, because these are the chunks that are missing.** The window asks for two
+   * kinds: a cell that has arrived, whose geometry was dropped because the slot now stands
+   * for a different cell, and a cell whose level of detail moved, whose geometry is the
+   * right cell at the wrong resolution. The first is a hole in the world and the second is
+   * a seam along the horizon, and both are open for as long as the mesher takes — which on
+   * a slow machine is long enough to read as a bug rather than as streaming.
+   *
+   * The window sorts them nearest-first (`ChunkWindow.scrollTo`) and the pool keeps an
+   * urgent batch in the order it was given, so the chunk under the pointer is still the
+   * first one asked for. It matters that this is a batch rather than one urgent request per
+   * cell: unshifting each in turn would reverse that ordering and mesh the farthest chunk
+   * the player just walked into first.
    */
   private onSlotsWanted(slots: readonly number[]): void {
     if (!this.windowReady) return;
     for (const slot of slots) {
       const entry = this.window.slots[slot];
       if (entry === undefined || entry.filled) continue;
-      this.requestSlot(slot);
+      this.requestSlot(slot, true);
     }
   }
 
@@ -479,8 +520,12 @@ export class Session {
    * The record is keyed by cell and holds the slot and the revision captured *now*.
    * Looking the slot up again when the answer arrives would find whichever cell holds
    * that slot number by then, which after a scroll is a different cell entirely.
+   *
+   * `urgent` is the difference between an edit appearing and an edit waiting. It is set by
+   * `invalidateBox` alone, because that is the only caller whose chunk a player is
+   * watching change, and it costs nothing when the queue is empty.
    */
-  private requestSlot(slot: number): void {
+  private requestSlot(slot: number, urgent = false): void {
     const entry = this.window.slots[slot];
     if (entry === undefined) return;
 
@@ -500,6 +545,7 @@ export class Session {
       cell,
       entry.targetLod,
       entry.targetOverlap,
+      urgent,
     );
     this.inFlight.set(key, { slot, revision, wanted });
   }

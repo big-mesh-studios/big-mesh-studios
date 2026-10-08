@@ -381,6 +381,83 @@ describe("a session scrolling", () => {
     expect(fakes[0].requests().length).toBe(asked);
     session.dispose();
   });
+
+  it("fills the holes a scroll opened nearest-first", () => {
+    // The blank-hole case, and the one a slow machine makes obvious. A chunk the window
+    // has just arrived at has no geometry at all — the slot it landed in was standing for
+    // somewhere else — so the time before it appears is time the player is looking at a
+    // hole. Filling them in slot order fills whichever corner of the window the pool
+    // reaches first, which is not the corner anyone is looking at.
+    const { session, fakes } = newSession({ radius: 2, workers: 1 });
+    drain(fakes);
+
+    // Two cells east of the origin, so the window is centred on cell 3 and the chunks
+    // around it have never been asked for.
+    session.follow({ x: 960, y: 0, z: 0 });
+
+    const held = fakes[0].requests().at(-1);
+    expect(held).toBeDefined();
+
+    // So the first chunk meshed after the scroll is the one the player is standing on.
+    replyWith(fakes[0], held!);
+    expect(fakes[0].requests().at(-1)?.cell).toBe("3,0,0");
+    session.dispose();
+  });
+
+  it("orders the whole unfilled window by distance, not slot order", () => {
+    // The general form of the above, and the property worth holding rather than the one
+    // example. Slot order is the pool's business and means nothing to a player; distance
+    // from where they are standing is the order holes should close in, whether a chunk
+    // arrived on this scroll or was asked for on the last one and never answered.
+    const { session, fakes } = newSession({ radius: 2, workers: 1 });
+    drain(fakes);
+
+    const before = fakes[0].requests().length;
+    session.follow({ x: 960, y: 0, z: 0 });
+
+    const held = fakes[0].requests().at(-1);
+    expect(held).toBeDefined();
+
+    // Answer everything, in whatever order the pool hands it out.
+    const answered = new Set<string>();
+    for (let round = 0; round < 40; round++) {
+      const pending = fakes[0].requests().filter((r) => {
+        const key = `${r.cell}#${r.generation}`;
+        if (answered.has(key)) return false;
+        answered.add(key);
+        return true;
+      });
+      if (pending.length === 0) break;
+      for (const request of pending) replyWith(fakes[0], request);
+    }
+
+    const focus = { x: 960, y: 0, z: 0 };
+    const distance = (cell: string): number => {
+      const [x, y, z] = cell.split(",").map(Number);
+      return Math.hypot(x * 320 - focus.x, y * 320, z * 320);
+    };
+    // Only the requests made by the scroll. A fake's log is its whole history, and the
+    // drain ordered its chunks around where the window *was*, so distance from the new
+    // focus says nothing about those.
+    const order = fakes[0]
+      .requests()
+      .slice(before)
+      .map((r) => distance(r.cell));
+    expect(order.length).toBeGreaterThan(2);
+
+    for (let i = 1; i < order.length; i++) {
+      expect(
+        order[i],
+        `chunk ${i} of ${order.length}: ${JSON.stringify(
+          fakes[0]
+            .requests()
+            .slice(before)
+            .map((r) => r.cell),
+        )}`,
+      ).toBeGreaterThanOrEqual(order[i - 1] - 1e-6);
+    }
+    session.dispose();
+  });
 });
 
 describe("changing the model", () => {
@@ -421,6 +498,92 @@ describe("changing the model", () => {
     session.setOperations(model());
     replyWith(fakes[0], request);
     expect(stats().drawn).toBe(0);
+    session.dispose();
+  });
+});
+
+/**
+ * A dab, and how long the chunk under the brush waits for it.
+ *
+ * **These two tests are the reason a slow machine is not needed to find this.** A dab's
+ * latency is not a property of the hardware — it is a property of *the order the pool is
+ * asked for things in*, and that order is a list a fake worker can read back. The slow
+ * machine only multiplies whatever the order already costs by its per-chunk mesh time, so
+ * a defect visible here as an ordering is a defect that machine turns into seconds.
+ *
+ * `setOperations(model, bounds)` is the exact call `SculptSession.flushPreview` makes, so
+ * these exercise the sculpt path rather than a paraphrase of it.
+ */
+describe("a dab on a chunk the player is already looking at", () => {
+  /**
+   * A dab's own box, on the cell the session starts focused on.
+   *
+   * Small, because the box is only ever turned into the cells it touches — and one cell,
+   * so the test says which chunk it means without depending on box-to-cell rounding.
+   */
+  const dabBounds = {
+    min: { x: 0, y: 0, z: 0 },
+    max: { x: 10, y: 10, z: 10 },
+  };
+
+  it("asks for the dab's own chunk before the chunks queued behind it", () => {
+    const { session, fakes } = newSession({ radius: 2, workers: 1 });
+    drain(fakes);
+
+    // A scroll of one cell, which leaves the focus resident and filled while giving the
+    // window real work to do. Without a backlog there is nothing to be behind, and the
+    // edit would be dispatched immediately however the queue were ordered — so such a
+    // test would pass whatever the code did and prove nothing.
+    session.follow({ x: 320, y: 0, z: 0 });
+
+    // The chunk the single worker was mid-way through when the dab arrived. It is now
+    // superseded, but meshing does not stop half way, so the worker finishes it before it
+    // can be given anything else — and that answer is what frees it.
+    const inFlight = fakes[0].requests().at(-1);
+    expect(inFlight).toBeDefined();
+
+    session.setOperations(model(), dabBounds);
+
+    // Nothing can be dispatched yet: the only worker is still finishing the chunk above.
+    expect(fakes[0].requests().at(-1)).toEqual(inFlight);
+
+    replyWith(fakes[0], inFlight!);
+
+    // So the chunk it takes next is the one the pool had at the front of its queue, and
+    // the question is whether that is the chunk under the brush.
+    expect(
+      fakes[0].requests().at(-1)?.cell,
+      "the dab's chunk went behind the streaming backlog",
+    ).toBe("0,0,0");
+    session.dispose();
+  });
+
+  it("is not gated on chunks the dab did not touch", () => {
+    // `flushPreview` sends nothing at all unless `session.idle`, and `idle` is the whole
+    // pool — so this is the assertion that decides whether an edit can be made to wait
+    // for a backlog at all. A worker mid-chunk on a cell ten chunks away still holds the
+    // dab hostage, and on a slow machine that is the second between the brush moving and
+    // the ground changing.
+    const { session, fakes } = newSession({ radius: 2, workers: 2 });
+    drain(fakes);
+
+    // Counted before the scroll, because a fake's request log is its whole history: the
+    // drain asked for every cell in the window, including the one below the brush, and
+    // what matters is what is in flight *now*.
+    const before = fakes[0].requests().length + fakes[1].requests().length;
+    session.follow({ x: 320, y: 0, z: 0 });
+
+    // Both workers are mid-chunk on the scroll's backlog, and neither is anywhere near
+    // the dab: `invalidateBox` has not run, so nothing has asked for the cell below.
+    const busy = fakes
+      .flatMap((fake) => fake.requests())
+      .slice(before)
+      .map((r) => r.cell);
+    expect(busy.length).toBeGreaterThan(0);
+    expect(busy).not.toContain("0,0,0");
+
+    // And the pool is therefore not idle, which is the whole of the gate.
+    expect(session.idle).toBe(false);
     session.dispose();
   });
 });

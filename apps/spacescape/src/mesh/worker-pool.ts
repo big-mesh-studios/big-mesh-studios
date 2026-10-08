@@ -96,6 +96,15 @@ export class WorldWorkerPool {
   private readonly slots: Slot[] = [];
   /** Chunks asked for but not yet given to a worker, in request order. */
   private readonly queue: CellCoord[] = [];
+  /**
+   * How many entries at the front of {@link queue} are urgent.
+   *
+   * The urgent entries are a block rather than a stack so a caller can hand over a batch
+   * in the order it wants meshed and have that order survive; `enqueue` says why. Read
+   * only through `enqueue`, `pump` and `dropQueued`, which are the three places the queue
+   * changes length at either end.
+   */
+  private urgentCount = 0;
   /** How many times each cell has been declined, so a retry can be bounded. */
   private readonly declinedFor = new Map<string, number>();
   /** What has been asked for, by cell. The authority on staleness. */
@@ -187,9 +196,15 @@ export class WorldWorkerPool {
    *
    * Split from `request` so that a retry can be a real re-request — new generation, new
    * queue entry — without also clearing the decline history, which is what a call from
-   * outside means.
+   * outside means. A retry is never urgent: it is the same work the pool already wanted,
+   * coming back after a refusal, and it must not jump the chunks asked for since.
    */
-  private issue(cell: CellCoord, lod: number, overlap?: OverlapMask): Wanted {
+  private issue(
+    cell: CellCoord,
+    lod: number,
+    overlap?: OverlapMask,
+    urgent = false,
+  ): Wanted {
     const wanted: Wanted = {
       cell: { ...cell },
       lod,
@@ -198,7 +213,7 @@ export class WorldWorkerPool {
     };
     this.wantedByCell.set(this.key(cell), wanted);
     this.dropQueued(cell);
-    this.enqueue(cell);
+    this.enqueue(cell, urgent);
     this.pump();
     return wanted;
   }
@@ -215,10 +230,20 @@ export class WorldWorkerPool {
    * because "wanted" is not the same as "being built": a stroke can touch a chunk whose
    * mesh has not arrived yet, and the answer to the earlier request is then built from a
    * model that no longer exists.
+   *
+   * `urgent` puts the request at the front of the queue rather than the back, and belongs
+   * to the one caller whose chunk a player is waiting to see — see `enqueue`. It is not
+   * a hint: an urgent request is dispatched before any queued ahead of it, whatever they
+   * are.
    */
-  request(cell: CellCoord, lod: Lod, overlap?: OverlapMask): Wanted {
+  request(
+    cell: CellCoord,
+    lod: Lod,
+    overlap?: OverlapMask,
+    urgent = false,
+  ): Wanted {
     this.forgetDeclines(cell);
-    return this.issue(cell, lod, overlap);
+    return this.issue(cell, lod, overlap, urgent);
   }
 
   /** Gives up on a chunk: it has left the window. */
@@ -262,6 +287,7 @@ export class WorldWorkerPool {
     // chunks at generations above the line.
     this.wantedByCell.clear();
     this.queue.length = 0;
+    this.urgentCount = 0;
     this.declinedFor.clear();
   }
 
@@ -272,6 +298,7 @@ export class WorldWorkerPool {
     for (const slot of this.slots) slot.worker.terminate();
     this.slots.length = 0;
     this.queue.length = 0;
+    this.urgentCount = 0;
     this.wantedByCell.clear();
     this.declinedFor.clear();
   }
@@ -348,14 +375,46 @@ export class WorldWorkerPool {
 
   // ---- queueing
 
-  private enqueue(cell: CellCoord): void {
-    this.queue.push(cell);
+  /**
+   * Puts a cell on the queue, ahead of the backlog when it is urgent.
+   *
+   * **Which end is the difference between a chunk that appears and a chunk that waits.**
+   * A worker meshes one chunk at a time, so every cell in front of the one a player is
+   * looking at is a cell of delay. On a machine that takes a second to mesh one chunk,
+   * a backlog ahead of the chunk under the brush is the second between the brush moving
+   * and the ground changing; the same backlog ahead of a chunk the player has just walked
+   * into is a hole in the world sitting there for a second.
+   *
+   * **Urgent entries occupy the front of the queue as one ordered block, not as a stack.**
+   * `unshift` per cell would be simpler and would be wrong: the window sorts the cells it
+   * asks for nearest-first (`ChunkWindow.scrollTo`) precisely because the pool drains its
+   * queue in order, so unshifting each of them in turn would reverse that and mesh the
+   * farthest chunk the player just walked into first. Inserting at the end of the urgent
+   * block instead means a caller that hands over a nearest-first batch gets a
+   * nearest-first block.
+   *
+   * FIFO within the block, deliberately, and a later urgent batch queues behind an earlier
+   * one. That is not a tie-break anybody chose: a model change clears the whole queue
+   * before an edit's own chunk is marked urgent, so the chunk under the brush is on its own
+   * at the front rather than behind a scroll's arrivals.
+   */
+  private enqueue(cell: CellCoord, urgent: boolean): void {
+    if (!urgent) {
+      this.queue.push(cell);
+      return;
+    }
+    this.queue.splice(this.urgentCount, 0, cell);
+    this.urgentCount++;
   }
 
   /** Removes every queued request for a cell, wherever it sits. */
   private dropQueued(cell: CellCoord): void {
     for (let i = this.queue.length - 1; i >= 0; i--) {
-      if (sameCell(this.queue[i], cell)) this.queue.splice(i, 1);
+      if (!sameCell(this.queue[i], cell)) continue;
+      this.queue.splice(i, 1);
+      // Removing from the urgent block shortens it. The loop runs backwards, so the
+      // indices already walked are unaffected by this removal.
+      if (i < this.urgentCount) this.urgentCount--;
     }
   }
 
@@ -396,7 +455,12 @@ export class WorldWorkerPool {
       });
     }
 
-    if (take > 0) this.queue.splice(0, take);
+    if (take > 0) {
+      this.queue.splice(0, take);
+      // Dispatched from the front, so however many of those `take` were urgent have left
+      // the block with them.
+      this.urgentCount = Math.max(0, this.urgentCount - take);
+    }
   }
 
   /**
