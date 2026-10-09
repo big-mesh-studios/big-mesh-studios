@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { decodeOctahedral, SNORM16_MAX } from "@big-mesh-studios/core";
 import { DEFAULT_COLOUR } from "@big-mesh-studios/csg";
 import { describeReport } from "@big-mesh-studios/meshing";
 
@@ -380,7 +381,12 @@ describe("meshing a model", () => {
     for (let i = 0; i < result.mesh.vertexCount; i++) {
       const nx = result.mesh.normalOct[i * 2]!;
       const ny = result.mesh.normalOct[i * 2 + 1]!;
-      // Octahedral-encoded, so a pair of zeroes is the `+Y` placeholder.
+      // Octahedral-encoded, so a pair of zeroes is the builder's placeholder — which is
+      // **`+Z`, not `+Y`.** The octahedron's `+Y` pole is the pair `(0, 32767)`; `(0, 0)` is
+      // the pair for `+Z`, which is what `ChunkMeshBuilder.vertex` pushes. It reads as an
+      // unfilled normal because a sphere has no vertex facing exactly `+Z`, but on a box it
+      // is a real and correct answer, so this cannot be used to count unfilled vertices in
+      // general — only here, where nothing faces `+Z` exactly.
       if (nx !== 0 || ny !== 0) allUp = false;
       // **Not white, and that is the point.** A part with no colour of its own takes the
       // field's default — a warm grey — rather than the builder's white placeholder, so a
@@ -393,7 +399,7 @@ describe("meshing a model", () => {
         allDefault = false;
       }
     }
-    expect(allUp, "some normals are not the +Y placeholder").toBe(false);
+    expect(allUp, "some normals are not the placeholder pair").toBe(false);
     expect(allDefault, "every vertex took the field's default colour").toBe(
       true,
     );
@@ -1083,5 +1089,231 @@ describe("colour, through the mesh", () => {
         `colour ${colour.r},${colour.g},${colour.b}`,
       ).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * The normals, and where they come from.
+ *
+ * **Both of the tests here are about agreement with a surface whose correct normal is not in
+ * dispute**, because that is the only thing a normal can be wrong about. A lone sphere and a
+ * box's flat face both have an exact answer at every vertex, so an angle between them is a
+ * measurement rather than an opinion — and neither needs a raymarched reference to say which
+ * of two methods is closer to the surface.
+ */
+describe("vertex normals", () => {
+  /** A vertex's normal, out of the packed pair and back to a direction. */
+  const normalAt = (
+    mesh: NonNullable<ReturnType<typeof meshModel>>,
+    index: number,
+  ): { x: number; y: number; z: number } =>
+    decodeOctahedral({
+      x: mesh.mesh.normalOct[index * 2]! / SNORM16_MAX,
+      y: mesh.mesh.normalOct[index * 2 + 1]! / SNORM16_MAX,
+    });
+
+  /** The position of a vertex, out of the packed float triples. */
+  const positionAt = (
+    mesh: NonNullable<ReturnType<typeof meshModel>>,
+    index: number,
+  ): { x: number; y: number; z: number } => ({
+    x: mesh.mesh.positions[index * 3]!,
+    y: mesh.mesh.positions[index * 3 + 1]!,
+    z: mesh.mesh.positions[index * 3 + 2]!,
+  });
+
+  /** The angle in degrees between two directions. */
+  const degrees = (
+    a: { x: number; y: number; z: number },
+    b: { x: number; y: number; z: number },
+  ): number =>
+    (Math.acos(Math.max(-1, Math.min(1, a.x * b.x + a.y * b.y + a.z * b.z))) *
+      180) /
+    Math.PI;
+
+  const sphere = (radius: number) => [
+    placedPart("a", { type: "Sphere", radius }, { x: 0, y: 0, z: 0 }),
+  ];
+
+  it("get closer to a sphere's true normal as the mesh gets finer", () => {
+    /**
+     * **The property, not a threshold.** A lone sphere is an exact distance function here —
+     * one `Add` with softness 0 against a base of infinity — so the radial at a vertex *is*
+     * its true normal and every degree between the two is error.
+     *
+     * **What the gradient could not do, and the reason this is the test that matters.** It took
+     * six central differences at `±step`, and `step` defaulted to a whole world unit however
+     * fine the mesh was, so the same neighbourhood was being sampled at every resolution: mean
+     * error 2.1°, 1.9°, 2.1°, 2.1° from the coarsest voxel to the finest. Averaging the faces
+     * around each vertex is first-order in the voxel, so it is the worse of the two at the
+     * coarse end — and it converges, which is what a resolution control is for.
+     */
+    const errorAt = (voxelSize: number): number => {
+      const mesh = meshModel(sphere(0.7), budgetFor(voxelSize))!;
+      let total = 0;
+      for (let i = 0; i < mesh.mesh.vertexCount; i++) {
+        const p = positionAt(mesh, i);
+        const length = Math.hypot(p.x, p.y, p.z);
+        total += degrees(normalAt(mesh, i), {
+          x: p.x / length,
+          y: p.y / length,
+          z: p.z / length,
+        });
+      }
+      return total / mesh.mesh.vertexCount;
+    };
+
+    const coarsest = errorAt(RESOLUTIONS[0]);
+    const finest = errorAt(RESOLUTIONS[RESOLUTIONS.length - 1]!);
+
+    expect(finest, "a sphere at the finest voxel offered").toBeLessThan(3);
+    // **An order of the accuracy, not merely "less".** A method whose error does not shrink
+    // with the mesh would pass the assertion above on the coarse end too, and that is the
+    // failure this replaces.
+    expect(finest, "converging rather than stuck").toBeLessThan(coarsest / 3);
+  });
+
+  it("give a flat face its own normal, right up to the edge", () => {
+    /**
+     * **The case that cannot be argued about.** A box's face is planar, so the correct normal
+     * at every point of its interior is that face's axis, and anything else is a rounding
+     * error of somebody's method.
+     *
+     * **And it is the case the two-unit stencil got wrong.** `Field.gradient` sampled at
+     * `±1` about the vertex, so on a box two units across a vertex a unit from an edge had
+     * that edge inside its own stencil and picked up the neighbouring face — measured up to 50°
+     * off, *growing* as the mesh got finer because the mesh was never the thing at fault. The
+     * averaged normal is exactly the face's own at every one of these vertices, including the
+     * ones right at the edge, because every triangle naming it lies in that face.
+     */
+    const len = 2;
+    const voxelSize = 0.125;
+    const mesh = meshModel(
+      [
+        placedPart(
+          "a",
+          { type: "Box", len: { x: len, y: len, z: len } },
+          { x: 0, y: 0, z: 0 },
+        ),
+      ],
+      budgetFor(voxelSize),
+    )!;
+
+    let counted = 0;
+    let worst = 0;
+    let nearestEdge = Infinity;
+    for (let i = 0; i < mesh.mesh.vertexCount; i++) {
+      const p = positionAt(mesh, i);
+      const axes = [Math.abs(p.x), Math.abs(p.y), Math.abs(p.z)];
+      const face = axes.findIndex((v) => Math.abs(v - len) < 1e-3);
+      if (face < 0) continue;
+      // **Strictly interior**, so every triangle naming it is in that one face. A vertex on
+      // an edge has triangles in two faces and no single correct answer, which is a different
+      // test and is not this one.
+      const others = [0, 1, 2].filter((a) => a !== face);
+      // **A whole voxel in, not merely in.** The vertices this catches include the ones sitting
+      // a fraction of a cell from the edge, whose fan straddles two faces and which are the
+      // point of the test — but they are still *on* the edge as far as the triangles go, so
+      // the ones being measured are those with a full cell of face behind them.
+      const distanceToEdge = Math.min(...others.map((a) => len - axes[a]!));
+      if (distanceToEdge <= voxelSize) continue;
+      nearestEdge = Math.min(nearestEdge, distanceToEdge);
+
+      const truth = [0, 0, 0];
+      truth[face] = Math.sign([p.x, p.y, p.z][face]!);
+      const deg = degrees(normalAt(mesh, i), {
+        x: truth[0]!,
+        y: truth[1]!,
+        z: truth[2]!,
+      });
+      worst = Math.max(worst, deg);
+      counted++;
+    }
+
+    expect(
+      counted,
+      "the mesh had face-interior vertices to check",
+    ).toBeGreaterThan(100);
+    // **And the check reached the vertices that used to fail**, rather than passing on the
+    // middle of a face where a two-unit stencil happens to stay on it.
+    expect(
+      nearestEdge,
+      "checked a vertex within the old stencil's reach",
+    ).toBeLessThan(1);
+    expect(
+      nearestEdge,
+      "and a margin of a voxel is enough to keep the fan inside one face",
+    ).toBeGreaterThan(voxelSize);
+    expect(
+      worst,
+      "the largest angle off a flat face's own normal",
+    ).toBeLessThan(0.1);
+  });
+
+  it("stay continuous across a colour boundary, which the order is what buys", () => {
+    /**
+     * **The ordering constraint, tested through what it would look like if it were got wrong.**
+     *
+     * `splitColourBoundaries` puts two vertices in one place, each holding the triangles on its
+     * own side of the cut, and gives both the same normal — interpolated from the two endpoints
+     * of the edge they were cut from. So on a mesh that has been through it, coincident
+     * vertices agree exactly, and there is no seam in the shading along a colour boundary.
+     *
+     * **That is precisely what averaging *after* the pass would destroy.** Each copy's fan would
+     * then be the triangles of one colour only, and averaging a clipped fan leans towards the
+     * faces that survived — the same failure `vertex-normals` documents for a chunk edge. The
+     * two copies would disagree by however much the two sides tilt apart, on every boundary in
+     * the model, which is the one thing the pass exists to remove.
+     *
+     * **So the assertion is on the copies rather than on the originals.** A smooth surface
+     * shaded from two different one-sided averages has a visible line along the cut; the same
+     * surface shaded from one average has none, whatever the colours either side are doing.
+     */
+    const parts = [
+      placedPart(
+        "a",
+        { type: "Sphere", radius: 0.7 },
+        { x: 0, y: 0, z: 0 },
+        { colour: { r: 220, g: 30, b: 40 }, opacity: 1 },
+      ),
+      placedPart(
+        "b",
+        { type: "Box", len: { x: 1, y: 1, z: 1 } },
+        { x: 1.4, y: 0, z: 0 },
+        { colour: { r: 30, g: 60, b: 220 }, opacity: 1 },
+      ),
+    ];
+    const mesh = meshModel(parts, budgetFor(0.125), "marching-cubes")!;
+
+    // **Vertices in one place, found by rounding a world position** — the same welding
+    // `mesh-report` does, and for the same reason: the pass is *supposed* to produce two
+    // vertices at one position, so counting by index would find nothing to compare.
+    const at = new Map<string, number>();
+    for (let i = 0; i < mesh.mesh.vertexCount; i++) {
+      const key = [0, 1, 2]
+        .map((a) => Math.round(mesh.mesh.positions[i * 3 + a]! * 1e4))
+        .join(",");
+      const seen = at.get(key);
+      if (seen === undefined) at.set(key, i);
+      else {
+        // **A pair, and the check is that they shade identically.**
+        expect(degrees(normalAt(mesh, seen), normalAt(mesh, i))).toBeLessThan(
+          0.1,
+        );
+      }
+    }
+
+    // **And the pass really ran**, or the assertion above compared nothing. Surface nets
+    // meshes the same field over the same grid and does *not* get the pass, so it is the
+    // control: two modes, one region, and the extra vertices are the cut.
+    const nets = meshModel(parts, budgetFor(0.125), "surface-nets")!;
+    expect(mesh.region).toEqual(nets.region);
+    expect(mesh.mesh.vertexCount, "the pass added vertices").toBeGreaterThan(
+      nets.mesh.vertexCount,
+    );
+    // Which means there really were coincident pairs to compare, rather than none.
+    expect(at.size, "distinct positions among the vertices").toBeLessThan(
+      mesh.mesh.vertexCount,
+    );
   });
 });

@@ -70,10 +70,11 @@ export class ChunkMeshBuilder implements SurfaceOutput {
     this.positions.push(x);
     this.positions.push(y);
     this.positions.push(z);
-    // The normal is filled in by `setNormal` from the field gradient, which the mesher
-    // computes once per vertex. A placeholder of +Y would be a real direction rather
-    // than an obvious sentinel, so a vertex whose normal is never set would shade as
-    // if it were right.
+    // The normal is filled in by the caller, which is `setNormal` from a field gradient or
+    // from the mesh's own averaged faces — see `vertex-normals` for which and why. A
+    // placeholder that reads as a real direction rather than an obvious sentinel means a
+    // vertex whose normal is never set shades as if it were right. **`(0, 0)` is `+Z`**, so
+    // the mesh reads as if it were facing that way rather than as if it were unset.
     this.normalOct.push(0);
     this.normalOct.push(0);
     // A colour of white and an opaque alpha, for the same reason.

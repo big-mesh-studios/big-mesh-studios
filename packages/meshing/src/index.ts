@@ -34,6 +34,14 @@
  * chunk edge — and how far from the boundary it stays correct is the caller's decision, not
  * this package's: `apps/spacescape` spends a field gradient on the faces bordering a
  * different level of detail and lets everything inside average.
+ * **A mesh with no chunk boundaries has none of that caveat, and `apps/sdf-modeller` takes
+ * the whole of it.** Its model is one bounded box, so every vertex's fan is complete and the
+ * average is right everywhere — and it must run before `split-colour-boundaries`, because
+ * that pass duplicates each vertex on a colour boundary and gives each copy one side's
+ * triangles, which is the same clipping this paragraph is about. Measured on a sphere, where
+ * the field is exact and so the error is measurable rather than arguable, averaging converges
+ * as the mesh is refined (1.1° mean at its finest voxel) where a gradient taken at
+ * `Field`'s default step does not (2.1° at every one).
  *
  * **The chunk pipeline is not here.** Region arithmetic, the worker protocol, the LOD ladder and the
  * paint-tile addressing are all in `apps/spacescape/src/mesh/`, because they are that application's

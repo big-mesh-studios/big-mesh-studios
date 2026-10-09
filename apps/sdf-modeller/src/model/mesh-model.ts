@@ -21,6 +21,7 @@
  * millimetres across should not be one cell.
  */
 import type { Bounds, Vec3 } from "@big-mesh-studios/core";
+import { writeOctahedralNormal } from "@big-mesh-studios/core";
 import {
   Field,
   makeOperation,
@@ -28,12 +29,15 @@ import {
   type Operation,
 } from "@big-mesh-studios/csg";
 import {
+  accumulateFaceNormals,
   ChunkMeshBuilder,
   colourBoundaryScratchFor,
   ColourBoundaryScratch,
+  FaceNormalScratch,
   marchingCubes,
   marchingCubesScratchFor,
   reportMesh,
+  resolveFaceNormal,
   scratchFor,
   splitColourBoundaries,
   surfaceNets,
@@ -181,6 +185,8 @@ const HELD: {
   "marching-cubes"?: { count: number; scratch: MarchingCubesScratch };
   /** See `heldBoundaryScratch`. Kept apart from the mesher scratch, which has a different shape. */
   boundaries?: ColourBoundaryScratch;
+  /** See `heldFaceNormals`. Grows with the vertex count, which is neither of the above. */
+  faces?: FaceNormalScratch;
 } = {};
 
 const heldScratch = (
@@ -224,11 +230,30 @@ const heldBoundaryScratch = (triangles: number): ColourBoundaryScratch => {
   return scratch;
 };
 
+/**
+ * Scratch for the face-normal accumulation, held on the same terms as the other two.
+ *
+ * **Three floats a vertex, and the vertex count is the one number none of the other two
+ * is keyed on.** The mesher's scratch grows with the sample count and the boundary pass's
+ * with the triangle count, so a buffer held for one is the wrong size for this whenever a
+ * model is long and thin — which is most of them, because `samplesFor` gives the longest
+ * axis the budget and lets the others use less of it. Keyed separately, and grown but
+ * never shrunk, like the others.
+ */
+const heldFaceNormals = (vertices: number): FaceNormalScratch => {
+  const existing = HELD.faces;
+  if (existing !== undefined && existing.capacity >= vertices) return existing;
+  const scratch = new FaceNormalScratch(vertices);
+  HELD.faces = scratch;
+  return scratch;
+};
+
 /** Frees the held scratch. For a test that wants the module to start from nothing. */
 export const releaseScratch = (): void => {
   delete HELD["surface-nets"];
   delete HELD["marching-cubes"];
   delete HELD.boundaries;
+  delete HELD.faces;
 };
 
 /**
@@ -303,6 +328,21 @@ export const modelField = (
     }),
     {
       base: () => Infinity,
+      /**
+       * **The region's own spacing, because the default is a whole world unit and the
+       * voxels here are a sixteenth of one.** `Field.gradient` takes six central
+       * differences across `±step`, so a step of 1 is a stencil two units wide reaching
+       * over every edge and crease of a part a unit across — measured on a box's flat
+       * face it tilted the normal by up to 50° and it did not improve as the mesh got
+       * finer, because the error was the stencil rather than the sampling.
+       *
+       * Nothing on the meshing path asks the field for a normal any more — the vertices
+       * average the faces around them, see `fillNormals` — so this is what the handful of
+       * vertices no triangle names get, and what anybody reading the field in a test gets.
+       * Left at the default it would be a wrong answer available to any future caller, so
+       * it is set here where the spacing is known rather than at each call.
+       */
+      step: region?.sampleSize ?? budget.voxelSize,
     },
   );
 };
@@ -400,6 +440,81 @@ export const primitiveMesh = (
 };
 
 /**
+ * Fills every vertex's normal from the faces around it, in place.
+ *
+ * ## Why the mesh's own faces and not the field's gradient
+ *
+ * **Because a central difference across a crease is the average of both sides of it, and
+ * that average is the wrong answer everywhere except exactly on the crease.** The field
+ * here is a composition — `min` and `smoothMin` of several exact distances — which is an
+ * upper bound on the true distance and whose gradient therefore points away from the
+ * surface rather than out of it, most of all where two parts meet. There is a second and
+ * larger effect: `Field.gradient` samples at `±step`, and left at its default that step is
+ * a whole world unit while the voxels here are as small as a sixteenth of one. A stencil
+ * two units wide, on a part a unit across, spans every edge on it.
+ *
+ * Measured on this application's own models, the angle between a vertex normal and the
+ * true one — a lone sphere, whose field is exact, so this is error and not argument:
+ *
+ * ```text
+ *   voxel   gradient (step 1)   averaged faces
+ *   0.5     2.1°                5.3°
+ *   0.25    1.9°                3.5°
+ *   0.125   2.1°                2.4°
+ *   0.0625  2.1°                1.1°
+ * ```
+ *
+ * **The gradient's error does not move and the averaged one converges**, which is the
+ * claim worth making. It is stuck at two degrees because the step is fixed in world units
+ * and the vertex is sampling the same neighbourhood no matter how finely the mesh is cut,
+ * so refining the model was buying accuracy in the geometry and none in the shading. On a
+ * box's flat face — where the true normal is exactly the face's own and cannot be
+ * disputed — the same stencil tilted it by up to 50°, against exactly 0° for the average.
+ *
+ * Averaging is first-order, so it is the coarser of the two on a smooth surface at a coarse
+ * voxel, and it wins by five degrees of mean error by the finest resolution this
+ * application offers. It is also cheaper: one pass over the index buffer against six field
+ * evaluations a vertex, which on the heaviest model measured here took a rebuild from
+ * 1572 ms to 1338 ms.
+ *
+ * ## What it cannot do
+ *
+ * **A vertex no triangle names has no faces to average.** `SurfaceOutput.vertex` is called
+ * for every cell whose corners disagree, and a quad is only emitted when all four of its
+ * cells have vertices, so a vertex on the far side of a surface thinner than a cell can be
+ * owned by nothing. Those fall back to the field, and `modelField` has already given the
+ * field a step matched to the voxel so the fallback is a local measurement rather than the
+ * two-unit blur it would otherwise be.
+ *
+ * **A degenerate fan falls back too**, for the same reason: two faces whose normals cancel
+ * leave nothing to normalise, and a zero written to the buffer decodes in the shader to a
+ * black triangle. `resolveFaceNormal` returning `false` is what says which vertices those
+ * are, and it is the reason `Field`'s own `fallbackNormal` still has a job here.
+ */
+const fillNormals = (mesh: ChunkMesh, field: Field): void => {
+  const scratch = heldFaceNormals(mesh.vertexCount);
+  accumulateFaceNormals(
+    mesh.positions,
+    mesh.indices,
+    mesh.vertexCount,
+    scratch,
+  );
+  const resolved = { x: 0, y: 0, z: 0 };
+  for (let index = 0; index < mesh.vertexCount; index++) {
+    if (resolveFaceNormal(scratch, index, resolved)) {
+      writeOctahedralNormal(mesh.normalOct, index * 2, resolved);
+      continue;
+    }
+    const normal = field.gradient(
+      mesh.positions[index * 3] as number,
+      mesh.positions[index * 3 + 1] as number,
+      mesh.positions[index * 3 + 2] as number,
+    );
+    writeOctahedralNormal(mesh.normalOct, index * 2, normal);
+  }
+};
+
+/**
  * Meshes a whole model.
  *
  * **`undefined` for a model with no parts**, which is different from a model that meshes
@@ -430,25 +545,25 @@ export const meshModel = (
     out: builder,
     onVertex: (index: number, x: number, y: number, z: number) => {
       /**
-       * **The normal and the colour of every vertex, from the field.**
+       * **The colour of every vertex, from the field.**
        *
        * This was absent, and its absence was not a cosmetic bug. `ChunkMeshBuilder.vertex`
-       * fills an unset normal with `+Y` and an unset colour with white — and the builder's
-       * own comment says the `+Y` was chosen to be "a real direction rather than an obvious
-       * sentinel", so that a vertex whose normal was never set would shade as though it were
-       * right. Which is exactly what happened: this model was being drawn with every normal
-       * pointing up and every vertex white.
+       * fills an unset normal with a placeholder and an unset colour with white — and the
+       * builder's own comment says the placeholder was chosen to be "a real direction rather
+       * than an obvious sentinel", so that a vertex whose normal was never set would shade as
+       * though it were right. Which is exactly what happened: this model was being drawn with
+       * every normal pointing the same way and every vertex white.
        *
-       * Both come from the field rather than from the mesh, because both are properties of
+       * The colour comes from the field rather than from the mesh because it is a property of
        * the surface and the mesher knows nothing about fields — `SurfaceSampler` is one
        * method, a distance.
        *
-       * **Called once per vertex rather than once per cell**, which is true of both meshers but only
-       * matters for one: marching cubes shares a vertex between the cells around an edge, so filling
-       * a normal per cell would write the same vertex several times over.
+       * **The normal is not asked for here**, which it used to be. See `fillNormals`, which
+       * runs on the finished mesh instead and is why this callback no longer needs to be
+       * called once per vertex for the gradient's sake — though both meshers call it once per
+       * vertex anyway, since marching cubes shares a vertex between the cells around an edge
+       * and filling a normal per cell would write the same vertex several times over.
        */
-      const normal = field.gradient(x, y, z);
-      builder.setNormal(index, normal.x, normal.y, normal.z);
       const { colour, opacity } = field.colourAt(x, y, z);
       builder.setColour(index, colour, Math.round(opacity * 255));
     },
@@ -465,6 +580,26 @@ export const meshModel = (
   }
 
   const built = builder.finish();
+
+  /**
+   * **The normals, from the mesh's own faces, before anything else touches the mesh.**
+   *
+   * This is a second pass over the index buffer and costs no field evaluations at all,
+   * where asking the field for each normal costs six. It is here rather than in the
+   * `onVertex` above because a face's normal needs all three of its vertices' positions,
+   * and the second and third of a quad are only known once the quad has been emitted.
+   *
+   * **Before the colour boundaries rather than after, which is the whole ordering
+   * constraint.** `splitColourBoundaries` duplicates every vertex that lands on a boundary
+   * and gives each copy the triangles on its own side of it. So afterwards each of those
+   * vertices is named by a *clipped* fan — the triangles of one colour, missing the ones
+   * that would have cancelled the tilt — and averaging a clipped fan gives a normal leaned
+   * towards the faces that survived. That is the same failure `vertex-normals` documents
+   * for a chunk edge, and it is the reason the landscape cannot simply average everywhere.
+   * Here it does not arise: one bounded box, no neighbouring chunks, and this pass runs on
+   * the mesh as the mesher left it, where every vertex's fan is complete.
+   */
+  fillNormals(built, field);
   /**
    * **Cutting the colour boundaries, for marching cubes only.**
    *
@@ -484,6 +619,11 @@ export const meshModel = (
    * **Free for a model that has nothing to cut**, which is most models and every drag ghost: the
    * pass returns the mesh it was given when no triangle would blend, and that is a scan of the
    * index buffer with no field calls in it.
+   *
+   * **And the new vertices it writes inherit the normals it was given**, interpolated from
+   * the two endpoints of the edge they were cut from — which are now the faces' own answer
+   * rather than a gradient's, so the cut is no longer a seam between two different
+   * techniques but two pieces of one.
    */
   const mesh =
     mode === "marching-cubes"

@@ -32,6 +32,16 @@
  * So a caller that needs the boundary to shade as one surface asks for the gradient on the
  * chunk's outer layer and averages everywhere else, and `resolveFaceNormal` returning
  * nothing is what tells it which vertices those are.
+ *
+ * ## The other thing that clips a fan
+ *
+ * **`split-colour-boundaries` clips one too, and it is easier to walk into.** That pass puts
+ * two vertices where there was one, each holding the triangles on its own side of the colour
+ * boundary, so averaging after it gives each copy a fan missing the faces that would have
+ * cancelled its tilt — the same failure as a chunk edge, produced by a pass that has nothing
+ * to do with chunks. So the order is not a preference: **average on the mesh as the mesher
+ * left it, before anything duplicates a vertex.** `apps/sdf-modeller` does, and its reason
+ * for being able to is that it has one bounded box and therefore no chunk boundary at all.
  */
 
 import { writeOctahedralNormal } from "@big-mesh-studios/core";
