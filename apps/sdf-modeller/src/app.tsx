@@ -30,6 +30,7 @@ import { pointer } from "@big-mesh-studios/ui/pointer";
 import {
   budgetFor,
   DEFAULT_BUDGET,
+  DEFAULT_MESH_MODE,
   MESH_MODES,
   meshModel,
   primitiveMesh,
@@ -188,11 +189,15 @@ export function App() {
    * Which mesher a rebuild uses.
    *
    * **A signal because it changes the mesh and nothing else**, and it is the one setting here
-   * that alters what the model *is* rather than how it is drawn. Surface nets by default: it is
-   * what this application was, and while a finger is down a mesh that arrives promptly and is
-   * not quite closed beats one that is closed and late.
+   * that alters what the model *is* rather than how it is drawn — which is why it is saved with
+   * the project rather than with the camera.
+   *
+   * **`DEFAULT_MESH_MODE` rather than a literal here**, because this is the one default a person
+   * ever actually sees and the one `meshModel` has its own argument default for, and two literals
+   * that are allowed to disagree is a way of shipping the wrong one without noticing. See that
+   * constant for the measurement behind the change and the three things it bought.
    */
-  const [mode, setMode] = createSignal<MeshMode>("surface-nets");
+  const [mode, setMode] = createSignal<MeshMode>(DEFAULT_MESH_MODE);
 
   /**
    * How fine to mesh, as one of `RESOLUTIONS`.

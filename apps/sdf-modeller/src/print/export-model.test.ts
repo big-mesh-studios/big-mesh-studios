@@ -220,3 +220,73 @@ describe("exportThreeMf", () => {
     expect(model).toContain('<metadata name="s:solid:2">my monster</metadata>');
   });
 });
+
+/**
+ * What the print path no longer has to do to a model's colours.
+ *
+ * **`quantise` exists because colours arrive per vertex and a printer has filaments** — its own
+ * header says so, and the consequence was that a model of two painted parts meeting carried a
+ * *hundreds* of distinct corner colours, every one of them correct and none of them printable,
+ * so the reduction snapped them all to the nearest of four. Splitting the colour boundaries means
+ * the corners carry the parts' own colours and nothing in between, which is a different claim:
+ * the palette is the model's colours rather than an approximation of them.
+ *
+ * `printedMesh` is always marching cubes (`print-problem.ts`), so this needs no arrangement of
+ * modes to reach the export path — it is what the export already does.
+ */
+describe("a printed model's colours", () => {
+  const RED = { r: 220, g: 20, b: 30 };
+  const BLUE = { r: 20, g: 40, b: 220 };
+  const twoColours = () => [
+    placedPart(
+      "a",
+      { type: "Sphere", radius: 0.7 },
+      { x: 0, y: 0, z: 0 },
+      { colour: RED, opacity: 1 },
+    ),
+    placedPart(
+      "b",
+      { type: "Box", len: { x: 1, y: 1, z: 1 } },
+      { x: 1.4, y: 0, z: 0 },
+      { colour: BLUE, opacity: 1 },
+    ),
+  ];
+
+  it("reduces to the model's own colours rather than to an approximation of them", () => {
+    const mesh = meshOf(twoColours());
+    const reduced = quantiseColours(mesh.mesh.colours, mesh.mesh.indices, 4);
+
+    // **Two, and exactly the two the parts were given.** Not "at most four" and not "nearest":
+    // the whole point of the boundary pass is that a corner's colour is a part's colour, so the
+    // reduction has nothing left to do and the colours it hands a four-filament machine are the
+    // ones the modeller drew.
+    expect(reduced.distinct).toBe(2);
+    expect(
+      reduced.palette.map((c) => [c.r, c.g, c.b]).sort(),
+      "the palette is the model's two colours",
+    ).toEqual(
+      [
+        [RED.r, RED.g, RED.b],
+        [BLUE.r, BLUE.g, BLUE.b],
+      ].sort(),
+    );
+  });
+
+  it("gives a whole triangle one slot, so a corner never disagrees with its own face", () => {
+    /**
+     * **What `three-mf.ts` writes, and the reason its `p1`/`p2`/`p3` machinery stops firing.**
+     *
+     * The 3MF writer may name a colour per corner, and falls back to the group's first for a
+     * corner the group does not hold. Before the pass, every triangle across a join named three
+     * different slots and the file was a gradient in three numbers a corner. Now a triangle names
+     * one, and the fallback is never reached.
+     */
+    const mesh = meshOf(twoColours());
+    const reduced = quantiseColours(mesh.mesh.colours, mesh.mesh.indices, 4);
+    for (let t = 0; t + 2 < reduced.slots.length; t += 3) {
+      const first = reduced.slots[t] as number;
+      expect(reduced.slots[t + 1]).toBe(first);
+      expect(reduced.slots[t + 2]).toBe(first);
+    }
+  });
+});

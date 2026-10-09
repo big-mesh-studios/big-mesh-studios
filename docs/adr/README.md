@@ -63,6 +63,7 @@ recorded cost is a decision nobody thought about.
 | [0043](0043-water-is-a-field-and-the-landscape-gates-it.md)              | Water is a field, and the **landscape** gates it                                       | accepted                     |
 | [0044](0044-a-place-is-published-as-a-spacescape-place-record.md)        | A place is published as `app.bms.spacescape.place`, versioned from the first record    | accepted                     |
 | [0045](0045-a-published-place-is-public.md)                              | A published place is public, and the catalog is an overlay                             | accepted                     |
+| [0046](0046-a-triangle-carries-one-colour.md)                            | A triangle carries one colour, and the mesh is cut to put it there                     | accepted                     |
 
 ## What is decided so far
 
@@ -436,3 +437,29 @@ what a value does over the range you actually use, not only what it is at the en
 feature size is now chosen from the ground rather than from the radius — because a cloud's
 angular size and the volume's wrap count are the _same number_, and 0041's "the body scales" rule
 is right about the body and wrong about a cloud.
+
+**0046 is where a figure's colours stop being an interpolation.** ADR 0028 put a colour on an
+operation, 0031 decided which operation's colour a point gets, and neither of them said what
+happens between two points that disagree — because a mesh does not store points, it stores
+vertices, and the rasteriser blends between them. So a red sphere unioned with a blue box came out
+with a gradient across every triangle spanning the crease, and the three places that had to cope
+with it had all written a workaround rather than a fix: `quantise.ts` snaps to the nearest of four
+filaments, `three-mf.ts` has a per-corner colour with a fallback, and the viewport just showed the
+ramp.
+
+The fix is geometry, not storage, and the interesting part is what it cost to be sure it was safe.
+**De-indexing a mesh looks like it opens it**, and the reason it does not is ADR 0003's: chunking a
+landscape already produces two vertices at one place on purpose, so `meshReport` counts edges by
+rounded position rather than by index, and a triangle that now shares an edge with three others
+instead of two is invisible to it. Two failures during the work were the same mistake twice — a
+crossing refused as a sliver, and then a third piece dropped — and both showed up as the same
+number, **112 open edges on a sphere**, which is a shape that is watertight by construction and so
+has nothing to apologise for.
+
+What is worth carrying forward is the pass, not the answer: **it already knew the colour at every
+vertex and asked the field only where two vertices disagreed.** Everything the boundary needed was
+already on the geometry, and the work was finding the seams in the partitioning that let a hole
+through. And the reason it runs on marching cubes only is not closure — that was the first guess,
+and it is wrong, because a position-keyed report does not care how vertices are shared — but that
+an edge has to lie **on** the surface for a cut along it to mean anything, which a surface nets edge
+does not and a marching cubes edge does.

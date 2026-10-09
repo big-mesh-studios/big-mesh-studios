@@ -29,10 +29,13 @@ import {
 } from "@big-mesh-studios/csg";
 import {
   ChunkMeshBuilder,
+  colourBoundaryScratchFor,
+  ColourBoundaryScratch,
   marchingCubes,
   marchingCubesScratchFor,
   reportMesh,
   scratchFor,
+  splitColourBoundaries,
   surfaceNets,
   type ChunkMesh,
   type MarchingCubesScratch,
@@ -80,19 +83,48 @@ export const DEFAULT_BUDGET: MeshBudget = {
  * The two meshers, and which one a rebuild uses.
  *
  * **A choice rather than a quality setting, because the two make different promises rather than
- * different sizes.** Surface nets is faster and lighter and is what an edit wants while a finger is
- * down; it is closed wherever the surface is well resolved, which is nearly always and is what makes
- * it a reasonable default. Marching cubes places every vertex on a real crossing of the surface and
- * is closed and manifold at every resolution — a guarantee rather than an observation — which is what
- * a model bound for a slicer wants. ADR 0003 rejected marching cubes for the landscape; the reasons
- * it gives are about streamed chunks at varying levels of detail, and none of them apply to one
- * bounded box.
+ * different sizes.** Surface nets is closed wherever the surface is well resolved, which is
+ * nearly always and is not a promise. Marching cubes places every vertex on a real crossing of
+ * the surface and is closed and manifold at every resolution — a guarantee rather than an
+ * observation. ADR 0003 rejected marching cubes for the landscape; the reasons it gives are about
+ * streamed chunks at varying levels of detail, and none of them apply to one bounded box.
  *
- * `surfaceNets` is the default because that is what this application was, and because a mesher that
- * arrives a few tens of milliseconds late is more annoying than one that is not quite closed. The
- * status line reports what the mesh actually is either way, so choosing wrong is visible.
+ * **The status line reports what the mesh actually is either way**, so choosing wrong is visible
+ * and neither is a trap.
  */
 export type MeshMode = "surface-nets" | "marching-cubes";
+
+/**
+ * Marching cubes, and why it is the one a person gets without asking.
+ *
+ * **It used to be surface nets, on the reasoning that a mesher arriving a few tens of
+ * milliseconds late is worse than one that is not quite closed.** That reasoning was a guess
+ * about the cost, and it was the wrong way round. Measured on this application's own models, the
+ * two are within noise of each other on time — surface nets' cell loop is cheaper, but both modes
+ * spend nearly all their time in the sampling pass and in the six field evaluations per vertex
+ * that fill the normals, and marching cubes wins that share back at the finer resolutions. The
+ * triangles are three to twenty per cent more depending on the model, which is not what "the
+ * fewest triangles and the fastest" was supposed to mean.
+ *
+ * So the thing the default was trading away was given away for nothing: a guarantee of being
+ * closed rather than an observation that it is, at every resolution the control offers. Three
+ * things follow from making it the default and all three were reasons to.
+ *
+ * - **The colour boundaries are only cut for marching cubes.** `splitColourBoundaries` runs on
+ *   edges that lie *on* the surface, which is true of a marching cubes edge and not of a surface
+ *   nets one. Two coloured shapes meeting therefore get a boundary the field agrees with, and
+ *   only on this mesher.
+ * - **The export already used it.** `printedMesh` forces marching cubes whichever mode the
+ *   viewport is on, so a model previewed on nets and exported on cubes is not the model that was
+ *   approved.
+ * - **The preview is the same geometry as the print.** Same mesher, same boundaries, same
+ *   closure, so what a person signs off on is what a slicer receives.
+ *
+ * **One constant for both the interface and this function's own argument default**, because they
+ * were two literals that were allowed to disagree, and the one that matters is the one in the
+ * signal in `app.tsx` — which is the only one anybody ever sees.
+ */
+export const DEFAULT_MESH_MODE: MeshMode = "marching-cubes";
 
 /** The modes, with what a control needs to offer each one. */
 export const MESH_MODES: ReadonlyArray<{
@@ -101,14 +133,14 @@ export const MESH_MODES: ReadonlyArray<{
   readonly hint: string;
 }> = [
   {
-    value: "surface-nets",
-    label: "Nets",
-    hint: "One vertex per cell. The fewest triangles and the fastest. Closed wherever the surface is well resolved — which is nearly always, but is not a promise.",
-  },
-  {
     value: "marching-cubes",
     label: "Cubes",
-    hint: "Vertices on the true surface, so it follows the model more closely. Closed and manifold at every resolution — this is the one to print.",
+    hint: "Vertices on the true surface, so it follows the model more closely. Closed and manifold at every resolution, and the only one whose colour boundaries can be cut — this is the one to print.",
+  },
+  {
+    value: "surface-nets",
+    label: "Nets",
+    hint: "One vertex per cell. The fewest triangles. Closed wherever the surface is well resolved — which is nearly always, but is not a promise, and its edges float off the surface, so a boundary cannot be cut along them.",
   },
 ];
 
@@ -147,6 +179,8 @@ export const budgetFor = (
 const HELD: {
   "surface-nets"?: { count: number; scratch: SurfaceNetsScratch };
   "marching-cubes"?: { count: number; scratch: MarchingCubesScratch };
+  /** See `heldBoundaryScratch`. Kept apart from the mesher scratch, which has a different shape. */
+  boundaries?: ColourBoundaryScratch;
 } = {};
 
 const heldScratch = (
@@ -166,10 +200,35 @@ const heldScratch = (
   return scratch;
 };
 
+/**
+ * Scratch for the colour-boundary pass, held for the same reason and on the same terms as the
+ * mesher's own.
+ *
+ * **Separate from `HELD[mode]` because it grows with a different number** — the triangle count
+ * rather than the sample count — and because it is only ever wanted on one of the two modes. A
+ * second key in the same record would have been a `triangles` field that only one value of
+ * `mode` ever set, which is a way of saying the two are unrelated that the type system could
+ * have said for nothing.
+ *
+ * **Not shrunk, like the mesher's.** A region that has got smaller uses less of a larger buffer
+ * without reallocating.
+ */
+const heldBoundaryScratch = (triangles: number): ColourBoundaryScratch => {
+  const existing = HELD.boundaries;
+  if (existing !== undefined && existing.slots.length >= triangles * 4) {
+    existing.reset(triangles);
+    return existing;
+  }
+  const scratch = colourBoundaryScratchFor(triangles);
+  HELD.boundaries = scratch;
+  return scratch;
+};
+
 /** Frees the held scratch. For a test that wants the module to start from nothing. */
 export const releaseScratch = (): void => {
   delete HELD["surface-nets"];
   delete HELD["marching-cubes"];
+  delete HELD.boundaries;
 };
 
 /**
@@ -351,7 +410,7 @@ export const primitiveMesh = (
 export const meshModel = (
   parts: readonly Part[],
   budget: MeshBudget = DEFAULT_BUDGET,
-  mode: MeshMode = "surface-nets",
+  mode: MeshMode = DEFAULT_MESH_MODE,
 ): MeshResult | undefined => {
   const region = meshRegion(parts, budget);
   if (region === undefined) return undefined;
@@ -405,12 +464,48 @@ export const meshModel = (
     surfaceNets({ ...params, scratch: scratch as SurfaceNetsScratch });
   }
 
-  const mesh = builder.finish();
+  const built = builder.finish();
+  /**
+   * **Cutting the colour boundaries, for marching cubes only.**
+   *
+   * Every vertex already holds the colour the field gives it, and that is enough to say where
+   * the boundary is: what a triangle between two coloured shapes looks like is a ramp across its
+   * width, because a per-vertex colour is blended by whatever draws it. `splitColourBoundaries`
+   * finds where the field actually changes along each disagreeing edge and cuts the triangles
+   * there, so the boundary is a line on the geometry rather than an interpolation.
+   *
+   * **Marching cubes and not surface nets, because an edge has to be lying on the surface for a
+   * cut along it to mean anything.** Marching cubes puts every vertex on a true crossing, so an
+   * edge between two of them runs along the surface. Surface nets places one vertex per cell at
+   * the average of that cell's crossings — inside the cell, and so off the surface by up to half
+   * a cell — which means a cut found along such an edge is a crossing somewhere near the surface
+   * rather than on it.
+   *
+   * **Free for a model that has nothing to cut**, which is most models and every drag ghost: the
+   * pass returns the mesh it was given when no triangle would blend, and that is a scan of the
+   * index buffer with no field calls in it.
+   */
+  const mesh =
+    mode === "marching-cubes"
+      ? splitColourBoundaries(
+          built,
+          {
+            /**
+             * **The same rule the vertices were filled with**, and `field.colourAt` as it stands
+             * rather than a wrapper of it. The pass brackets each of its searches by asking at an
+             * endpoint and expecting the answer already written there, so anything but this very
+             * function leaves every search unbracketed and finds nothing.
+             */
+            colourAt: (x, y, z) => field.colourAt(x, y, z),
+          },
+          heldBoundaryScratch(builder.triangleCount),
+        )
+      : built;
   return {
     mesh,
     region,
     samples: (region.samples + 2) ** 3,
-    triangles: builder.triangleCount,
+    triangles: mesh.triangleCount,
     report: reportMesh(mesh),
   };
 };

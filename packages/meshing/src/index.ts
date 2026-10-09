@@ -17,6 +17,12 @@
  * - **`mesh-report`** — the reader that says which of those a finished mesh actually is. A separate
  *   reader rather than a check inside a mesher, because a mesher validating its own output shares a
  *   premise with its own bugs.
+ * - **`split-colour-boundaries`** — the reader's companion, cutting triangles so that each carries
+ *   one colour, because a per-vertex colour is blended across a triangle by anything that draws
+ *   it. It turns a model's colour gradient into a boundary on the geometry rather than a ramp in
+ *   the interpolator, and it is here rather than in an application because it is the same seam and
+ *   because what preserves a mesh through it — counting edges by position rather than by index —
+ *   is `mesh-report`'s property rather than its own.
  *
  * `ChunkMeshBuilder` is the output implementation this repository uses: a twenty-bytes-per-vertex
  * packed layout, which a caller hands straight to a renderer.
@@ -64,6 +70,28 @@ export {
   type MeshReport,
   type MeshReportOptions,
 } from "./mesh-report";
+
+/**
+ * **`split-colour-boundaries` is here because it is the same seam as the rest of this package.**
+ * It takes a finished mesh and one callback — the colour of the surface at a point, which
+ * `Field.colourAt` satisfies as it stands — and it knows nothing about chunks, colours or CSG,
+ * exactly as `reportMesh` does not. What it shares with `reportMesh` specifically is the reason
+ * it can do what it does: both count edges by position rather than by index, so a mesh holding
+ * two vertices in one place is still one closed solid to them.
+ *
+ * It is a separate concern from the meshers and not inside them, for the same reason
+ * `vertex-normals` is: a mesher produces a surface and has no opinion about how that surface is
+ * presented, and which colours a model's parts are is not a thing `SurfaceSampler` can be asked.
+ */
+export {
+  colourBoundaryScratchFor,
+  ColourBoundaryScratch,
+  CROSSING_MAX_STEPS,
+  CROSSING_TOLERANCE,
+  splitColourBoundaries,
+  type BoundaryColour,
+  type ColourBoundaryOptions,
+} from "./split-colour-boundaries";
 
 export {
   ChunkMeshBuilder,

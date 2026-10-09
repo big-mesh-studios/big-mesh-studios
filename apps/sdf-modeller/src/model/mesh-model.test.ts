@@ -6,6 +6,8 @@ import { describeReport } from "@big-mesh-studios/meshing";
 import {
   budgetFor,
   DEFAULT_BUDGET,
+  DEFAULT_MESH_MODE,
+  MESH_MODES,
   meshModel,
   meshRegion,
   primitiveMesh,
@@ -526,6 +528,280 @@ describe("meshing one part for a preview", () => {
  * interchangeable at the seam and different in what they produce.** A test that exercised only one
  * would pass whether or not the seam held, since `meshModel`'s signature is what holds it.
  */
+/**
+ * Sharpening the boundary, which is what stops two coloured shapes meeting in a gradient.
+ *
+ * **The rule under test is `splitColourBoundaries`'s and is pinned in `packages/meshing`**, on a
+ * sphere whose colour is a plane and so has a crossing at a known place. What is covered here is
+ * that it survives the journey from a real model: the field is a fold of real operations, the
+ * colours come from ADR 0031's nearest-surface rule rather than from a plane, and the mesh is
+ * the one the print gate reads.
+ */
+describe("colour boundaries, through the model", () => {
+  const RED = { r: 255, g: 0, b: 0 };
+  const BLUE = { r: 0, g: 0, b: 255 };
+
+  /** A red sphere and a blue box overlapping, which is a figure and a crease. */
+  const pair = () => [
+    placedPart(
+      "a",
+      { type: "Sphere", radius: 0.7 },
+      { x: 0, y: 0, z: 0 },
+      { colour: RED, opacity: 1 },
+    ),
+    placedPart(
+      "b",
+      { type: "Box", len: { x: 1, y: 1, z: 1 } },
+      { x: 1.4, y: 0, z: 0 },
+      { colour: BLUE, opacity: 1 },
+    ),
+  ];
+
+  /** Every distinct colour among a mesh's corners, as `r,g,b`. */
+  const distinct = (
+    mesh: NonNullable<ReturnType<typeof meshModel>>,
+  ): number => {
+    const seen = new Set<string>();
+    for (const vertex of mesh.mesh.indices) {
+      const at = vertex * 4;
+      seen.add(
+        `${mesh.mesh.colours[at]},${mesh.mesh.colours[at + 1]},${mesh.mesh.colours[at + 2]}`,
+      );
+    }
+    return seen.size;
+  };
+
+  /** How many triangles hold three corners of one colour. */
+  const flat = (mesh: NonNullable<ReturnType<typeof meshModel>>): number => {
+    const { colours, indices } = mesh.mesh;
+    const at = (v: number): string =>
+      `${colours[v * 4]},${colours[v * 4 + 1]},${colours[v * 4 + 2]}`;
+    let count = 0;
+    for (let t = 0; t + 2 < indices.length; t += 3) {
+      const first = at(indices[t] as number);
+      if (
+        first === at(indices[t + 1] as number) &&
+        first === at(indices[t + 2] as number)
+      ) {
+        count++;
+      }
+    }
+    return count;
+  };
+
+  it("leaves two coloured shapes as two colours rather than a gradient of them", () => {
+    /**
+     * **Counted, not sampled.**
+     *
+     * A vertex-colour blend across the join produces a *third* colour at every step between
+     * red and blue, so a mesh whose corners hold only the two the parts were given is one whose
+     * boundary the rasteriser cannot smear. Before the pass this model's corners hold dozens of
+     * distinct values; the count is the whole assertion.
+     */
+    const mesh = meshModel(pair(), budgetFor(0.125), "marching-cubes")!;
+    expect(distinct(mesh), "only the colours the parts were given").toBe(2);
+    expect(flat(mesh), "every triangle is one colour").toBe(mesh.triangles);
+  });
+
+  it("keeps the model watertight, which is the reason the mode is the one it is", () => {
+    /**
+     * **The pass duplicates vertices, and the instinct is that this opens the mesh.** It does
+     * not, and this is the test that says so: `reportMesh` counts edges by rounded world
+     * position rather than by index, precisely because it expects a mesh to hold two vertices in
+     * one place — which is what chunking produces on purpose and what a cut produces here. A
+     * vertex is now in two triangles more than it was, and every edge is in exactly two
+     * triangles still.
+     */
+    const mesh = meshModel(pair(), budgetFor(0.125), "marching-cubes")!;
+    expect(mesh.report.watertight, describeReport(mesh.report)).toBe(true);
+    expect(mesh.report.degenerateTriangles).toBe(0);
+  });
+
+  it("is still closed at every resolution the control offers", () => {
+    // **Walked rather than checked once**, for the reason the mesher's own guarantee test gives:
+    // a resolution control is where a promise is most likely to quietly stop holding, and the
+    // fine end is where a cell gets small enough to hold three colours at once.
+    for (const voxelSize of RESOLUTIONS) {
+      const mesh = meshModel(pair(), budgetFor(voxelSize), "marching-cubes")!;
+      expect(flat(mesh), `at ${voxelSize}`).toBe(mesh.triangles);
+      expect(mesh.report.watertight, `at ${voxelSize}`).toBe(true);
+    }
+  });
+
+  it("leaves surface nets blending where marching cubes does not", () => {
+    /**
+     * **The gate, made observable — and it is a closer comparison than expected.**
+     *
+     * Surface nets also comes out with exactly the two colours the parts were given: its
+     * vertices sit at cell centres, which are grid-aligned, so ADR 0031's rule already answers
+     * for each of them and no gradient is baked into the vertices. What it does not have is the
+     * pass, so its boundary runs *along* the edges of the triangulation and every triangle
+     * spanning it still blends across its width — a sharp edge in the data and a ramp on screen.
+     *
+     * So the two modes agree about the colours and differ about whether they are flat, and only
+     * one of them has anything done about it. That is the gate: the pass is not merely unused on
+     * the other mode, it is *wrong* there, because a surface nets edge floats up to half a cell
+     * off the surface and a cut found along it is a crossing near the surface rather than on it.
+     */
+    const nets = meshModel(pair(), budgetFor(0.125), "surface-nets")!;
+    expect(distinct(nets), "surface nets has the same two colours").toBe(2);
+    expect(
+      flat(nets),
+      "surface nets is left blending across its boundary triangles",
+    ).toBeLessThan(nets.triangles);
+  });
+
+  it("costs a model with one colour nothing at all", () => {
+    // **Every model nobody has painted, and every drag ghost.** The pass returns the mesh it was
+    // given when no triangle would blend, so switching it on costs a scan of the index buffer
+    // and nothing more — which is the only thing that makes leaving it on the right answer.
+    const plain = [
+      placedPart("a", { type: "Sphere", radius: 0.7 }, { x: 0, y: 0, z: 0 }),
+    ];
+    const mesh = meshModel(plain, budgetFor(0.125), "marching-cubes")!;
+    expect(distinct(mesh)).toBe(1);
+    expect(flat(mesh)).toBe(mesh.triangles);
+
+    const ghost = primitiveMesh(
+      placedPart(
+        "body",
+        { type: "Capsule", len: 2.2, radius: 0.7 },
+        { x: 0, y: 1.1, z: 0 },
+      ),
+      budgetFor(0.125),
+    )!;
+    expect(flat(ghost)).toBe(ghost.triangles);
+  });
+
+  it("separates a chain of three coloured parts into three", () => {
+    // **Three, not two**, because three parts means a cell can hold three colours at once and
+    // the pass has a fourth piece to emit for that. Three is also where a naive cut that paired
+    // the chords two at a time would leave a hole, so the count and the watertightness are the
+    // same assertion seen twice.
+    const parts = [
+      placedPart(
+        "a",
+        { type: "Sphere", radius: 0.5 },
+        { x: 0, y: 0, z: 0 },
+        { colour: { r: 255, g: 0, b: 0 }, opacity: 1 },
+      ),
+      placedPart(
+        "b",
+        { type: "Sphere", radius: 0.5 },
+        { x: 0.9, y: 0, z: 0 },
+        { colour: { r: 0, g: 255, b: 0 }, opacity: 1 },
+      ),
+      placedPart(
+        "c",
+        { type: "Sphere", radius: 0.5 },
+        { x: 1.8, y: 0, z: 0 },
+        { colour: { r: 0, g: 0, b: 255 }, opacity: 1 },
+      ),
+    ];
+    const mesh = meshModel(parts, budgetFor(0.125), "marching-cubes")!;
+    expect(distinct(mesh)).toBe(3);
+    expect(flat(mesh)).toBe(mesh.triangles);
+    expect(mesh.report.watertight, describeReport(mesh.report)).toBe(true);
+  });
+
+  it("holds across a rebuild, rather than only the first one", () => {
+    /**
+     * **The scratch is held across rebuilds, so this is the test that it is reset rather than
+     * accumulated.** A carry-over would make a model look right the first time it is built and
+     * wrong every rebuild after, which on a ninety-millisecond debounce is a shape that changes
+     * as soon as it is not touched.
+     */
+    const parts = pair();
+    const first = meshModel(parts, budgetFor(0.125), "marching-cubes")!;
+    const second = meshModel(parts, budgetFor(0.125), "marching-cubes")!;
+    expect(second.mesh.vertexCount).toBe(first.mesh.vertexCount);
+    expect(second.triangles).toBe(first.triangles);
+    expect([...second.mesh.indices]).toEqual([...first.mesh.indices]);
+    expect([...second.mesh.colours]).toEqual([...first.mesh.colours]);
+
+    // And a coarser region afterwards, which is the case a buffer held at the larger size has to
+    // get right by using less of itself.
+    const coarse = meshModel(parts, budgetFor(0.5), "marching-cubes")!;
+    expect(flat(coarse)).toBe(coarse.triangles);
+    expect(coarse.report.watertight, describeReport(coarse.report)).toBe(true);
+  });
+});
+
+describe("the default mesher", () => {
+  /**
+   * Marching cubes, and the three things that made it the default rather than the survivor of
+   * habit. See `DEFAULT_MESH_MODE` for the measurement.
+   */
+  it("is marching cubes, and the control offers it first", () => {
+    // **The list order is part of the claim**, because a control that leads with the mode it
+    // did not default to is asking a person to make a choice about something they did not
+    // choose.
+    expect(DEFAULT_MESH_MODE).toBe("marching-cubes");
+    expect(MESH_MODES[0]?.value).toBe(DEFAULT_MESH_MODE);
+  });
+
+  it("is what a rebuild gets when the caller does not say", () => {
+    // **The parameter default and the interface's default are one value**, and this is what holds
+    // them together. They were two literals before, which is a way of shipping the wrong one
+    // without noticing.
+    const parts = [
+      placedPart("a", { type: "Sphere", radius: 0.7 }, { x: 0, y: 0, z: 0 }),
+    ];
+    const assumed = meshModel(parts)!;
+    const asked = meshModel(parts, DEFAULT_BUDGET, DEFAULT_MESH_MODE)!;
+    expect([...assumed.mesh.indices]).toEqual([...asked.mesh.indices]);
+    expect(assumed.mesh.vertexCount).toBe(asked.mesh.vertexCount);
+  });
+
+  it("gives a model the colour boundaries the other mesher cannot", () => {
+    /**
+     * **The reason the default is not merely a preference.**
+     *
+     * `splitColourBoundaries` cuts along edges that lie on the surface. A marching cubes edge
+     * does; a surface nets edge does not, because a surface nets vertex is the average of its
+     * cell's crossings and is therefore inside the cell. So the same two-colour model is sharp
+     * on one mesher and blended on the other, and a default that shipped the wrong one would
+     * quietly ship a gradient.
+     */
+    const red = { r: 220, g: 30, b: 40 };
+    const blue = { r: 30, g: 60, b: 220 };
+    const parts = [
+      placedPart(
+        "a",
+        { type: "Sphere", radius: 0.7 },
+        { x: 0, y: 0, z: 0 },
+        { colour: red, opacity: 1 },
+      ),
+      placedPart(
+        "b",
+        { type: "Box", len: { x: 1, y: 1, z: 1 } },
+        { x: 1.4, y: 0, z: 0 },
+        { colour: blue, opacity: 1 },
+      ),
+    ];
+    const flat = (
+      result: NonNullable<ReturnType<typeof meshModel>>,
+    ): boolean => {
+      const { colours, indices } = result.mesh;
+      const at = (v: number): number =>
+        (colours[v * 4]! << 16) |
+        (colours[v * 4 + 1]! << 8) |
+        colours[v * 4 + 2]!;
+      for (let t = 0; t + 2 < indices.length; t += 3) {
+        const first = at(indices[t]!);
+        if (first !== at(indices[t + 1]!) || first !== at(indices[t + 2]!)) {
+          return false;
+        }
+      }
+      return true;
+    };
+    expect(flat(meshModel(parts, budgetFor(0.125))!)).toBe(true);
+    expect(flat(meshModel(parts, budgetFor(0.125), "surface-nets")!)).toBe(
+      false,
+    );
+  });
+});
+
 describe("choosing a mesher", () => {
   const capsule = placedPart(
     "a",
