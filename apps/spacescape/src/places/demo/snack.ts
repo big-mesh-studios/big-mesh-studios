@@ -318,12 +318,18 @@ const buildNeighbourhood = (): void => {
     voxelBox(`panel-${index}`, [x, ROW + 4, z], [x, ROW + 4, z], GLOWSTONE);
     // **A light where the sibling had a block that glowed.** The panel is a surface and this is
     // what actually reaches the floor, and it is the whole of what replaced voxel block-light.
+    //
+    // **A small intensity, because the falloff is `(radius / distance)²`.** The ceiling is thirty
+    // units above the floor and the panel reaches a hundred and sixty, so the floor is lit by
+    // `(160/30)² ≈ 28` times the intensity before the window — and four panels overlap. `0.03`
+    // puts the worst-lit patch near one instead of the white-out that `2.4` produced, which is
+    // what the store shipped with. `lanterns.ts` records the same arithmetic.
     createLight({
       id: `store-panel-${index}`,
       at: [at(x), row(ROW + 3) + 10, at(z)],
       colour: { r: 255, g: 236, b: 170 },
       radius: at(16),
-      intensity: 2.4,
+      intensity: 0.03,
     });
   }
 };
@@ -693,8 +699,12 @@ const ignite = (): void => {
       id: `fire-${index}`,
       at: [x * LAYOUT_SCALE, FLOOR + height * LAYOUT_SCALE, z * LAYOUT_SCALE],
       colour: { r: 255, g: 140, b: 40 },
-      radius: 30 * LAYOUT_SCALE,
-      intensity: 3,
+      // **In the same small-intensity vocabulary as the store panels.** A fire sits twelve to
+      // twenty units off the floor, so even a modest radius reaches it with a large ratio; `0.1`
+      // is bright enough to read as fire without the white-out `3` gave. `flicker` scales around
+      // this same number.
+      radius: 16 * LAYOUT_SCALE,
+      intensity: 0.1,
     });
   }
   narrate("You", "The kitchen catches fire!");
@@ -1030,8 +1040,8 @@ const flicker = (now: number): void => {
         fire.z * LAYOUT_SCALE,
       ],
       colour: { r: 255, g: Math.round(120 + wobble * 70), b: 40 },
-      radius: 30 * LAYOUT_SCALE,
-      intensity: 2.4 + wobble * 1.6,
+      radius: 16 * LAYOUT_SCALE,
+      intensity: 0.08 + wobble * 0.06,
     });
   }
 };

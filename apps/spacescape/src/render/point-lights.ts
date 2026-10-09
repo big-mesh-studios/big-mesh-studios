@@ -79,7 +79,9 @@ export interface PointLight {
   /** How far it reaches, in world units. Zero means it contributes nothing at all. */
   readonly radius: number;
   /**
-   * How bright, as a multiplier on the colour **at distance `radius`**. Zero also means nothing.
+   * The scale of the falloff. **Not a brightness at `radius`** — the window is zero there, which
+   * the file header explains. What it multiplies is `r²/d²`, so a surface close to the light is
+   * much brighter than this number. Zero also means nothing.
    */
   readonly intensity: number;
 }

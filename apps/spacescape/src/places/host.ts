@@ -243,7 +243,15 @@ export interface Light {
   readonly colour: readonly [number, number, number];
   /** How far it reaches. Zero means it lights nothing. */
   readonly radius: number;
-  /** How bright, at the edge of its own radius. Zero means it lights nothing. */
+  /**
+   * The scale of the falloff, not a brightness at the edge of the radius.
+   *
+   * **Because the surface brightness is roughly `intensity × (radius / distance)²`**, windowed to
+   * zero at the radius — so a light close to a surface is much brighter than this number and the
+   * edge is exactly dark. `0.1` lights a surface thirty units from a radius-ninety lamp to about
+   * one; the demos' lights use the same small scale. `render/point-lights.ts` has the exact term.
+   * Zero means it lights nothing.
+   */
   readonly intensity: number;
 }
 

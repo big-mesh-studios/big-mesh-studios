@@ -19,11 +19,17 @@
  *
  * ## The one number worth reading twice
  *
- * `radius` and `intensity` are not independent, and the documentation says so twice because it is
- * the thing a place author gets wrong: the falloff is scaled so that `intensity` is the brightness
- * **at the edge of its own radius**. A lantern of radius 90 at intensity 1 is as bright at 90 units
- * as one of radius 20 is at 20 — neither bright in the middle, because a lamp is hottest at its own
- * centre. So `radius` is how far it reaches and `intensity` is how bright it is where it stops.
+ * `radius` and `intensity` are not independent, and the thing a place author gets wrong is the
+ * **scale** of intensity. The shader's term is `intensity · (radius / distance)² · window ·
+ * cosine` — inverse-square, normalised so a wider radius is brighter at the same distance rather
+ * than merely reaching further. So intensity is not "brightness at the edge"; the window is zero
+ * there by construction. It is the scale of a falloff that is largest at the lamp.
+ *
+ * **That makes a small room need a small number.** A lantern thirty units above the ground with a
+ * radius of ninety has `(90/30)² = 9`, so intensity 1 lights the ground nine times over — white,
+ * which is the bug this demo shipped with. `0.1` puts the ground it stands over near one, which is
+ * what a lantern is for. `point-lights.test.ts` measures the falloff; this is the number chosen
+ * against it.
  */
 
 import {
@@ -45,9 +51,9 @@ const FIRST_X = -((COUNT - 1) * SPACING) / 2;
 const GROUND_Y = getHeightAt(0, 0) + 30;
 const EVERY_MS = 400;
 
-/** How far each lantern reaches, and how bright it is where it stops. */
+/** How far each lantern reaches, and the scale of its falloff. See the note above. */
 const RADIUS = 90;
-const INTENSITY = 1;
+const INTENSITY = 0.1;
 
 /**
  * The light itself.
