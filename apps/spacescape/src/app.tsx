@@ -1363,7 +1363,11 @@ export default function App() {
         demo.entry,
         DEFAULT_TERRAIN.seed,
         demo.id,
-        demo.spawn ?? [0, groundHeightAt(0, 0) + half + 1, 0],
+        demo.spawn ?? [
+          0,
+          groundHeightAt(0, 0) + (demo.spawnLift ?? 0) + half + 1,
+          0,
+        ],
         // **A demo's models are URLs and are fetched here rather than at module scope**, so a
         // demo with none costs nothing to open and a model that is not there costs a notice
         // rather than a thrown 404.

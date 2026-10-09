@@ -17,6 +17,7 @@ import { PlaceRegistry } from "../place-registry";
 import type { ClockCommands } from "../../console/commands";
 import type { FigureModel } from "../model-library";
 import { demoPlace } from "../demos";
+import { PLATFORM_LIFT } from "./snack-tables";
 
 /**
  * The behaviour of "Get a Snack at 4 AM", one ending and one machine at a time.
@@ -183,17 +184,23 @@ const start = async (): Promise<Running> => {
 };
 
 /**
- * A point inside each room, in this port's world units: the sibling's gasa4 coordinates times
- * five, at the floor the stub world reports (zero) plus a voxel.
+ * The floor the demo builds at when the stub world reports ground zero: `PLATFORM_LIFT` above it,
+ * plus a voxel, which is where a player standing in a room is.
  */
-const BEDROOM: readonly [number, number, number] = [-70, 10, -60];
-const BATHROOM: readonly [number, number, number] = [70, 10, -60];
-const KITCHEN: readonly [number, number, number] = [-70, 10, 60];
-const LIVING: readonly [number, number, number] = [70, 10, 60];
-const PARKING: readonly [number, number, number] = [200, 10, 60];
-const STORE: readonly [number, number, number] = [300, 10, 0];
+const PLAY = PLATFORM_LIFT + 10;
+
+/**
+ * A point inside each room, in this port's world units: the sibling's gasa4 coordinates times
+ * five, at `PLAY`.
+ */
+const BEDROOM: readonly [number, number, number] = [-70, PLAY, -60];
+const BATHROOM: readonly [number, number, number] = [70, PLAY, -60];
+const KITCHEN: readonly [number, number, number] = [-70, PLAY, 60];
+const LIVING: readonly [number, number, number] = [70, PLAY, 60];
+const PARKING: readonly [number, number, number] = [200, PLAY, 60];
+const STORE: readonly [number, number, number] = [300, PLAY, 0];
 /** Outside every zone, which is what makes a `zone-left` happen. */
-const OUTSIDE: readonly [number, number, number] = [150, 10, -300];
+const OUTSIDE: readonly [number, number, number] = [150, PLAY, -300];
 
 describe("the snack demo", () => {
   it("opens with Dad, the Cashier, and the store counter", async () => {

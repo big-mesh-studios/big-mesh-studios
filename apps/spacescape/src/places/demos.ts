@@ -38,7 +38,10 @@ import type { PlaceSpawn } from "./place-file";
 import SNACK_SOURCE from "./demo/snack.ts?raw";
 import SNACK_COMBOS_SOURCE from "./demo/snack-combos.ts?raw";
 import SNACK_TABLES_SOURCE from "./demo/snack-tables.ts?raw";
-import { MODELS as SNACK_MODELS } from "./demo/snack-tables";
+import {
+  MODELS as SNACK_MODELS,
+  PLATFORM_LIFT as SNACK_LIFT,
+} from "./demo/snack-tables";
 import BRIDGE_SOURCE from "./demo/bridge.ts?raw";
 import SPAN_SOURCE from "./demo/span.ts?raw";
 import LANTERN_SOURCE from "./demo/lanterns.ts?raw";
@@ -83,6 +86,17 @@ export interface DemoPlace {
    * gets, so the two cannot disagree about where the ground is.
    */
   readonly spawn?: PlaceSpawn;
+
+  /**
+   * How far above that fallback ground to put the player, when `spawn` is not given.
+   *
+   * **For a demo whose own floor is raised above the ground**, which is `snack`: it builds on a
+   * flat platform above the sea, so a spawn on the raw ground would land in the platform's side
+   * or in the water. The value is the same one the script raises its floor by — imported from
+   * the tables both share — so the spawn the app computes and the floor the script builds move
+   * together. Absent is zero, which is every other demo.
+   */
+  readonly spawnLift?: number;
 }
 
 /**
@@ -132,6 +146,8 @@ export const DEMO_PLACES: readonly DemoPlace[] = [
       "snack-tables.ts": SNACK_TABLES_SOURCE,
     },
     entry: "snack.ts",
+    // **The player starts on the platform, not the ground under it.** See `PLATFORM_LIFT`.
+    spawnLift: SNACK_LIFT,
     // **Thirty-nine models, named exactly as the script asks for them.** A name here that the
     // script does not use is a wasted download; a name the script uses and this omits is a prop
     // that never appears, reported by `ModelLibrary` as a problem against the place's name.

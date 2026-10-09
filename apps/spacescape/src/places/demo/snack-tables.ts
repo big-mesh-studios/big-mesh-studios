@@ -77,6 +77,21 @@ export const LAYOUT_SCALE = 5;
 /** The gasa4 floor height, which every `y` in these tables is measured from. */
 export const SIBLING_FLOOR = 66;
 
+/**
+ * How far above `getHeightAt(0, 0)` the whole neighbourhood is built.
+ *
+ * **Because the origin is underwater.** The game's planet has its sea at `136000` and the ground
+ * over the origin at `135990`, so a house built on the queried surface and a player spawned six
+ * units above it both sat in the sea: the demo opened with the player swimming. The sibling was a
+ * flat voxel world with no sea, so this is the port's number to choose.
+ *
+ * **The platform is a thick box** — the plan's own row-0-to-32 ground slab in `snack.ts` — so a
+ * lift does not leave the house floating: the slab reaches far below the terrain and the two
+ * overlap. `demos.ts` gives the demo a `spawnLift` of the same value, so the spawn the app
+ * computes rises with the floor and the two cannot drift apart.
+ */
+export const PLATFORM_LIFT = 60;
+
 export const BEDROOM = "bedroom";
 export const BATHROOM = "bathroom";
 export const LIVING = "living";

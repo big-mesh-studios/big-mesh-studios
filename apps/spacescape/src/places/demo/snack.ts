@@ -79,6 +79,7 @@ import {
   LIVING,
   PARKING,
   PICKUPS,
+  PLATFORM_LIFT,
   ROOMS,
   SIBLING_FLOOR,
   SODAS_TO_FLOOD,
@@ -90,24 +91,24 @@ import {
 /* ------------------------------------------------------------------ geometry */
 
 /**
- * The port's floor, one voxel above whatever the world's ground is.
+ * The world's ground over the origin, which the platform is raised above.
  *
  * **Asked rather than assumed**, because the built-in places run on the world's own ground and a
- * number written here would be right for exactly one terrain. In the running game the base field
- * is a planet and this asks the host, which falls back to zero; on a height field it is the
- * surface. Either way the house is not in the floor.
+ * number written here would be right for exactly one terrain. On a height field it is the
+ * surface; on the game's planet it is the surface over the origin, which here is a few units
+ * below sea level — see `PLATFORM_LIFT` for why the build does not sit on it.
  */
 const GROUND_Y = getHeightAt(0, 0);
 /**
- * The walkable floor, which is the terrain's own surface.
+ * The walkable floor: the ground, raised onto a flat platform clear of the sea.
  *
- * **Not one voxel above it.** The sibling's plan puts its floor at the *top of the row-32 slab*
- * — `FLOOR = 66` is the grass row's top edge, and the walls start there — so the house floor and
- * the outdoor ground are the same height. Raising this by a voxel put the floor ten units above
- * the ground the app spawns the player on, which is four units above the player's own feet: the
- * demo started with the player standing in the floor slab.
+ * **The sibling's plan puts its floor at the top of the row-32 slab** — `FLOOR = 66` is the grass
+ * row's top edge and the walls start there — so the house floor and the outdoor ground are the
+ * same height, and here that height is the platform's top. The platform is the plan's own
+ * row-0-to-32 ground slab, which reaches three hundred and thirty units down and so overlaps the
+ * terrain wherever it is built; see `PLATFORM_LIFT` for why it is raised at all.
  */
-const FLOOR = GROUND_Y;
+const FLOOR = GROUND_Y + PLATFORM_LIFT;
 /** Row zero of the sibling's plan, so that row `n` is at `FLOOR + (n - 33) * 10`. */
 const BASE = FLOOR - 330;
 
@@ -232,8 +233,22 @@ const buildShells = (): void => {
     minZ: number,
     maxX: number,
     maxZ: number,
-  ): void =>
-    voxelBox(id, [minX, GROUND + 1, minZ], [maxX, GROUND + 3, maxZ], block);
+  ): void => {
+    // **Two voxels thick, not one, or the mesher loses the wall.** A plan wall is a single
+    // voxel — ten world units, exactly `VOXEL_SIZE` — and a feature one sample wide can fall
+    // between the chunk mesher's samples and never be drawn. Growing it half a voxel either side
+    // keeps the wall centred on the row the sibling put it on while making it two samples
+    // across. A doorway is a gap along the *long* axis, so the gaps are untouched.
+    const half = 0.5;
+    const thinX = minX === maxX;
+    const thinZ = minZ === maxZ;
+    voxelBox(
+      id,
+      [thinX ? minX - half : minX, GROUND + 1, thinZ ? minZ - half : minZ],
+      [thinX ? maxX + half : maxX, GROUND + 3, thinZ ? maxZ + half : maxZ],
+      block,
+    );
+  };
 
   // The house shell, in red brick, with the front door on the east wall.
   wall("house-nw", BRICK, -14, -13, -14, 13);
