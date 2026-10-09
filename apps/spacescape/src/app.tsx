@@ -508,9 +508,14 @@ export default function App() {
    * which asks the host for its lights and steps it every frame, and the overlay's "play again",
    * which has to call `startPlace` again rather than making the player type a command to start
    * over.
+   *
+   * **`restartPlace`, not `startPlace`, because the branch defines its own `startPlace`.** A
+   * holder with the same name would be shadowed by that local, so it would stay `undefined` and
+   * "play again" would return without doing anything. The branch publishes its runner here after
+   * defining it; the button reads this holder.
    */
   let placeHost: PlaceHost | undefined;
-  let startPlace:
+  let restartPlace:
     | ((
         files: PlaceFiles,
         entry: string,
@@ -1332,6 +1337,11 @@ export default function App() {
         : `${summary}\n— with ${notices.length} problem(s):\n${notices.map((line) => `  ${line}`).join("\n")}`;
     };
 
+    // **Published for the overlay's "play again".** The button is rendered from the application
+    // root, outside this branch, and reads the holder declared beside `placeHost`. Assigning
+    // here closes the loop; without it the holder stays `undefined` and the button no-ops.
+    restartPlace = startPlace;
+
     /**
      * Loads one of the places in the tree.
      *
@@ -1832,7 +1842,7 @@ export default function App() {
           onChoose={(entityId, option) => placeHost?.choose(entityId, option)}
           onRestart={() => {
             const again = loadedForRestart;
-            const start = startPlace;
+            const start = restartPlace;
             if (again === undefined || start === undefined) return;
             // **`void`, deliberately: the report goes to the console** like every other load,
             // and the ending panel is already gone by the time this resolves because
