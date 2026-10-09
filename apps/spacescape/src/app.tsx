@@ -54,7 +54,11 @@ import { SculptSession } from "./sculpt";
 import { DEFAULT_BRUSH } from "./edit/brush";
 import { buildSpikeScene, type SpikeScene } from "./spike-scene";
 import { createInput } from "./player/input";
-import { DEFAULT_PLAYER_CONFIG, type Medium } from "./player/player";
+import {
+  DEFAULT_PLAYER_CONFIG,
+  playerEye,
+  type Medium,
+} from "./player/player";
 import { TouchControls } from "./player/touch-controls";
 import { Game } from "./engine/game";
 import { createWaterMaterial, sphericalWater } from "./world/water";
@@ -907,7 +911,12 @@ export default function App() {
         if (!input.use || host === undefined) return;
         const camera = viewport.camera;
         const forward = camera.getWorldDirection(TMP_FORWARD);
-        const aimed = figures.pick(game.player.position, {
+        // **The eye, not the body.** `player.position` is the cube's centre, so tracing from
+        // it with the camera's forward put the pick ray `eyeHeight` below the drawn crosshair
+        // and made a player aim above a prop to use it. The eye is the point the crosshair
+        // radiates from, it is above the player rather than behind them, and the direction is
+        // still the camera's — the same ray, just starting where the crosshair does.
+        const aimed = figures.pick(playerEye(game.player), {
           x: forward.x,
           y: forward.y,
           z: forward.z,
@@ -1565,8 +1574,11 @@ export default function App() {
       if (figures.size > 0) {
         const camera = viewport.camera;
         const forward = camera.getWorldDirection(TMP_FORWARD);
+        // **The eye, not the body.** The same correction as `onUse` above; the tint and the
+        // use have to answer from one ray, or a prop lights up when aimed at and then refuses
+        // the press.
         figures.aim(
-          figures.pick(game.player.position, {
+          figures.pick(playerEye(game.player), {
             x: forward.x,
             y: forward.y,
             z: forward.z,
