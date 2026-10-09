@@ -260,6 +260,16 @@ export const patternNode = (
   // black.
   let result: Node<"float"> = float(1).toVar();
 
+  // **The id is rounded to the nearest whole number before it is compared.** The vertex stage
+  // scales the material byte back to 0…255 (`surface-material.ts`), so the value here is a whole
+  // number only at a triangle's own vertices; across a triangle it is interpolated, and
+  // `1/255 * 255` is not exactly `1` on a float GPU. A chain of `equal`s against those would
+  // drop every patterned surface to plain, so the id is snapped to the integer it stands for. A
+  // point between two materials — which surface nets does not cut, only marching cubes does (ADR
+  // 0048) — then resolves to whichever of the two it is nearer, rather than to a third material
+  // that happens to be one of the ids it is interpolating between.
+  const material = id.add(float(0.5)).floor().toVar();
+
   /**
    * Use `pattern` where this fragment wears `material`, and otherwise leave the total alone.
    *
@@ -282,11 +292,8 @@ export const patternNode = (
    * disagree about which side they were on — the seam would appear. That is why `wantsPattern`
    * exists, to turn the whole chain off where it cannot be wanted.
    */
-  const wears = (
-    material: MaterialName,
-    pattern: Node<"float">,
-  ): Node<"float"> =>
-    select(id.equal(requireMaterialId(material)), pattern, result.toVar());
+  const wears = (name: MaterialName, pattern: Node<"float">): Node<"float"> =>
+    select(material.equal(requireMaterialId(name)), pattern, result.toVar());
 
   result = wears("brick", brickNode(p));
   result = wears("plaster", plasterNode(p));

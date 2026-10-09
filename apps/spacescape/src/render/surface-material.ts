@@ -234,7 +234,15 @@ export class SurfaceMaterial extends NodeMaterial {
     // the interpolated fold, which is both cheaper than a fourth attribute and
     // smoother across a triangle than interpolating three floats and
     // renormalizing them.
-    b.varying("vColour", "vec4").assign(colour);
+    //
+    // **The fourth byte is a material id, and it has to be put back to 0…255.** The
+    // attribute is `unorm8x4`, so the GPU divides every byte by 255 on the way in and the
+    // id crosses as `id / 255`. `patternNode` compares that lane against the integer ids
+    // `materialId` returns, so without this a fragment wearing brick would read `1/255`
+    // and match nothing — every patterned surface in the world would draw plain, which is
+    // exactly the "walls look like the floor" a material silently failing produces. The
+    // colour channels are already the 0…1 the fragment wants, so only `.w` is scaled.
+    b.varying("vColour", "vec4").assign(vec4(colour.xyz, colour.w.mul(255)));
     b.normalWorld.assign(b.normalMatrix.mul(octahedralNode(oct)).normalize());
 
     const world = b.modelMatrix.mul(vec4(b.position, float(1)));

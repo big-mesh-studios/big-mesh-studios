@@ -117,6 +117,49 @@ describe("a material on a surface", () => {
     expect(saturated).toEqual(plain);
   });
 
+  it("scales a normalised material byte back to its id, so a real vertex wears its material", () => {
+    // **The regression every test above is blind to, because they all inject the varying.**
+    // `colour` is `unorm8x4`, so on a GPU the vertex stage is handed `id / 255`. If that crosses
+    // to the fragment unchanged the id matches no material in the chain and every patterned
+    // surface — the snack demo's brick walls included — draws as plain. This runs the *attribute*
+    // path and feeds its varying on, which is the only place the normalisation happens.
+    const material = new SurfaceMaterial();
+    material.sky.lighting = dayNightState(NOON_SECONDS);
+    const program = material.build(new Scene());
+    const vertex = fromProgram(program, { stage: "vertex" });
+    const fragment = fromProgram(program);
+
+    const throughAttribute = (
+      id: number,
+      world: readonly [number, number, number],
+    ): number => {
+      const out = vertex({
+        attributes: {
+          position: [world[0], world[1], world[2]],
+          normalOct: [0, 1],
+          colour: [0.8, 0.8, 0.8, id / 255],
+        },
+      });
+      const image = render(fragment, {
+        width: 1,
+        height: 1,
+        inputs: () => ({
+          varyings: {
+            positionWorld: [world[0], world[1], world[2]],
+            normalWorld: [0, 1, 0],
+            vColour: out.varyings["vColour"],
+          },
+        }),
+      });
+      return image.at(0, 0)[0];
+    };
+
+    expect(throughAttribute(1, BRICK_FACE)).not.toBeCloseTo(
+      throughAttribute(0, BRICK_FACE),
+      3,
+    );
+  });
+
   it("varies brick across a wall rather than uniformly", () => {
     // **Two points a brick apart in the same course.** With the running bond, one is on a
     // vertical joint and the other is mid-brick, so a wall has a pattern in it at all.
