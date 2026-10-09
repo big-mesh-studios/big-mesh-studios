@@ -331,8 +331,10 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
           // what it looks like when the fallback silently eats the answer it was a
           // fallback for.
           if (seam(cell[0], cell[1], cell[2])) this.boundary[index] = 1;
-          const { colour, opacity } = this.field.colourAt(x, y, z);
-          this.builder.setColour(index, colour, Math.round(opacity * 255));
+          // **The material goes in the colour's fourth byte**, which is the byte the layout
+          // reserved and which nothing read (ADR 0048).
+          const { colour, material } = this.field.colourAt(x, y, z);
+          this.builder.setColour(index, colour, material);
         },
       });
 

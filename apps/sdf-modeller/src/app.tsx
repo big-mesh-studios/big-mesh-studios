@@ -32,8 +32,8 @@ import {
   DEFAULT_BUDGET,
   DEFAULT_MESH_MODE,
   MESH_MODES,
-  meshModel,
-  primitiveMesh,
+  meshParts,
+  primitivePartMesh,
   RESOLUTIONS,
   type MeshMode,
 } from "./model/mesh-model";
@@ -193,7 +193,7 @@ export function App() {
    * the project rather than with the camera.
    *
    * **`DEFAULT_MESH_MODE` rather than a literal here**, because this is the one default a person
-   * ever actually sees and the one `meshModel` has its own argument default for, and two literals
+   * ever actually sees and the one `meshParts` has its own argument default for, and two literals
    * that are allowed to disagree is a way of shipping the wrong one without noticing. See that
    * constant for the measurement behind the change and the three things it bought.
    */
@@ -338,7 +338,7 @@ export function App() {
     pending = setTimeout(() => {
       pending = undefined;
       const started = performance.now();
-      const result = meshModel(parts, budget, mesher);
+      const result = meshParts(parts, budget, mesher);
       // **Kept for the export controls to read**, which is the only reason it is here: the
       // popover has to say whether the model is printable without meshing it again. See the
       // signal's own note about this being the viewport's mesh and not the export's.
@@ -462,10 +462,10 @@ export function App() {
     controller.setInteractive(false);
     arrows.setHeld(axis);
 
-    // **The primitive on its own, built once.** See `primitiveMesh`: a drag changes where a
+    // **The primitive on its own, built once.** See `primitivePartMesh`: a drag changes where a
     // part is and never what it is shaped like, so every frame after the first would
     // produce identical vertices.
-    copy.show(primitiveMesh(part, DEFAULT_BUDGET)?.mesh, part.origin);
+    copy.show(primitivePartMesh(part, DEFAULT_BUDGET)?.mesh, part.origin);
 
     const start = part.origin;
     const arm = arms.find((candidate) => candidate.axis === axis);

@@ -12,11 +12,21 @@
  * file called `main.ts` that is entirely `createShape` calls is a file whose name is a lie.
  */
 
-import { createShape } from "voxelscape";
+import { createShape, getHeightAt } from "voxelscape";
+
+/**
+ * The ground the bridge stands on, which is the world's own surface.
+ *
+ * **Asked rather than assumed to be zero.** This was `24` on a height field whose surface was
+ * `y = 0`, and when the world became a planet the surface moved to `y ≈ 136000` and the bridge
+ * stayed at `y = 24` — a hundred and thirty-five thousand units inside the ground. See
+ * `surfaceHeightAt` in `app.tsx`.
+ */
+const GROUND = getHeightAt(0, 0);
 
 /** Where the bridge is and how big. Half-extents, so the deck is 400 units across. */
 export const SPAN = 200;
-export const DECK_Y = 24;
+export const DECK_Y = GROUND + 24;
 export const WIDTH = 10;
 
 /**
@@ -56,8 +66,8 @@ const box = (
 export const buildSpan = (): void => {
   // The deck, and the two towers it stands on.
   box("deck", [0, DECK_Y, 0], { x: SPAN, y: 1.5, z: WIDTH });
-  box("tower-west", [-SPAN, 0, 0], { x: 4, y: 24, z: WIDTH + 4 });
-  box("tower-east", [SPAN, 0, 0], { x: 4, y: 24, z: WIDTH + 4 });
+  box("tower-west", [-SPAN, GROUND, 0], { x: 4, y: 24, z: WIDTH + 4 });
+  box("tower-east", [SPAN, GROUND, 0], { x: 4, y: 24, z: WIDTH + 4 });
 
   // A rail along each side, so the deck reads as a bridge rather than a slab.
   box("rail-west", [0, DECK_Y + 4, -WIDTH], { x: SPAN, y: 2.5, z: 0.4 });

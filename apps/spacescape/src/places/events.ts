@@ -56,6 +56,14 @@ export const EVENT_KINDS = [
   "zone-entered",
   /** …and left it. */
   "zone-left",
+  /** The player used something standing in the world. */
+  "entity-used",
+  /** The player used the thing in their hands on nothing in particular. */
+  "item-used",
+  /** The player spoke to something. */
+  "npc-talk",
+  /** …and chose an option from what it said. */
+  "npc-choose",
   /** A timer a place set came due. */
   "timer",
   /** A stored value changed, locally or on another peer. */
@@ -93,6 +101,36 @@ const playerField = (): FieldRule => ({
   about: `a peer's identity, at most ${MAX_PLAYER_ID_LENGTH} characters`,
 });
 
+/**
+ * The item an event is about.
+ *
+ * **Required here and optional on `entity-used`, and the difference is the routing rule.** By the
+ * time `item-used` is authored the player has pressed use with something in their hands, so
+ * there is nothing sensible for the field to be absent. On `entity-used` it can be: empty hands
+ * on a character is a conversation rather than a use, and the absent field is what says so.
+ */
+const itemField = (): FieldRule => ({
+  name: "item",
+  kind: "name",
+  required: true,
+  about: "what the player was holding",
+});
+
+/**
+ * The figure an event is about.
+ *
+ * **`entityId` and not `npcId` or `propId`, because there is one id space.** `entity-add` puts
+ * both kinds of figure under the same namespace, so a crosshair reports what it hit the same
+ * way whichever it was. An event that could only ever be about a character still says
+ * `entityId`, for the same reason a visitor's badge says the same thing as a resident's.
+ */
+const entityField = (): FieldRule => ({
+  name: "entityId",
+  kind: "name",
+  required: true,
+  about: "the figure, by the id `entity-add` gave it",
+});
+
 /** The fields each kind's payload is checked against. */
 export const EVENT_FIELDS: Readonly<Record<EventKind, readonly FieldRule[]>> = {
   "player-joined": [playerField()],
@@ -120,6 +158,35 @@ export const EVENT_FIELDS: Readonly<Record<EventKind, readonly FieldRule[]>> = {
       kind: "name",
       required: true,
       about: "the zone that was left",
+    },
+  ],
+  /**
+   * The player pressed use on a figure, carrying whatever they were holding.
+   *
+   * **The held item rides on the event rather than the host having to know what is held**, so a
+   * place's conditional vocabulary — *put a soda in the machine, not a sandwich* — is the
+   * script's and not the host's. **Empty hands is an absent `item`**, which is the rule every
+   * other name in this vocabulary already follows: a name is a non-empty string, and a second
+   * way to say "nothing" would be a second answer for the same state.
+   */
+  "entity-used": [
+    entityField(),
+    {
+      name: "item",
+      kind: "name",
+      about:
+        "what the player was holding, or empty when they were holding nothing",
+    },
+  ],
+  "item-used": [itemField()],
+  "npc-talk": [entityField()],
+  "npc-choose": [
+    entityField(),
+    {
+      name: "option",
+      kind: "count",
+      required: true,
+      about: "which option was chosen, counting from zero",
     },
   ],
   timer: [

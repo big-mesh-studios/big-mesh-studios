@@ -73,12 +73,18 @@ export const MAX_PLACE_NAME = 256;
 /**
  * The most attachments one place may name.
  *
- * **Small, and low because nothing reads them yet.** Sixty-four would match `MAX_PLACE_FILES` and
- * read as a decision; the honest number for a field that carries bytes no engine feature consumes
- * is one nobody has needed yet. Raising it when the feature lands is a one-line change, and raising
- * it now is a promise about scale made by a placeholder.
+ * **Sixty-four, matching `MAX_PLACE_FILES`, and for a reason that is now true rather than
+ * hoped for.** A prop is a model, and a place with a house in it has one attachment per
+ * piece of furniture — the demo this format was opened up for names thirty-nine on its own.
+ * A cap of eight was a placeholder for a field nothing read, and a placeholder cap is the
+ * kind of number that survives into the format because raising it felt like a decision
+ * nobody had made yet.
+ *
+ * What it does *not* bound is the cost, and it is worth being clear that it is not
+ * supposed to: the expensive part of an attachment is meshing it, and that happens **once
+ * per model** no matter how many times it is placed. See `model-library.ts`.
  */
-export const MAX_PLACE_MODELS = 8;
+export const MAX_PLACE_MODELS = 64;
 
 /**
  * How many bytes one attachment may be.
@@ -90,8 +96,7 @@ export const MAX_PLACE_MODELS = 8;
  *
  * Four megabytes is a large SDF model — `sdf-modeller` allows 512 parts at roughly 50 bytes each,
  * so a model is kilobytes — and is far below what an image or a mesh would be, which is the point:
- * this is a ceiling on a file whose contents this engine cannot interpret, and a file nobody can
- * interpret should not be able to fill a tab.
+ * a file nobody has decoded yet should not be able to fill a tab.
  */
 export const MAX_PLACE_MODEL_BYTES = 4 * 1024 * 1024;
 

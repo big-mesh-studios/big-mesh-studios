@@ -272,7 +272,11 @@ export class WaterChunkMesher implements ChunkMesher {
         const length = Math.sqrt(x * x + y * y + z * z);
         if (length > 1e-9)
           this.builder.setNormal(index, x / length, y / length, z / length);
-        this.builder.setColour(index, { r: 255, g: 255, b: 255 }, 255);
+        // **White and material zero, where `255` used to be the alpha.** The fourth byte is a
+        // material id (ADR 0048) and 255 would be id 1 — brick — so water would have been laid
+        // in courses. White is what a water surface has always been; the pattern is what the
+        // byte now means and water wears none.
+        this.builder.setColour(index, { r: 255, g: 255, b: 255 });
       },
     });
     return this.builder.finish();

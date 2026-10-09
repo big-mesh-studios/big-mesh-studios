@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import { decodeOctahedral, SNORM16_MAX } from "@big-mesh-studios/core";
-import { DEFAULT_COLOUR } from "@big-mesh-studios/csg";
-import { describeReport } from "@big-mesh-studios/meshing";
+import type { Quat, Rgb8, Vec3 } from "@big-mesh-studios/core";
+import {
+  DEFAULT_COLOUR,
+  makeOperation,
+  type Combine,
+  type Operation,
+} from "@big-mesh-studios/csg";
+import type { OperationShape } from "@big-mesh-studios/sdf";
 
+import { describeReport } from "./mesh-report";
 import {
   budgetFor,
   DEFAULT_BUDGET,
@@ -12,11 +19,58 @@ import {
   meshModel,
   meshRegion,
   primitiveMesh,
-  modelField,
+  operationsField,
   RESOLUTIONS,
   samplesFor,
-} from "./mesh-model";
-import { fromEuler, placedPart } from "./part";
+} from "./model-mesh";
+
+/**
+ * The minimum a part needs to become an operation, which is what this file meshes.
+ *
+ * **The `id` argument is ignored and the index is always zero.** It is kept because every
+ * call below was written against an application type that carries one, and a test file
+ * that read `add("a", ...)` instead of `placedPart("a", ...)` would be a diff with no
+ * meaning in it. The index is not what a single-primitive model is folded by — the fold
+ * order only matters once there are two — and every test that cares passes a list.
+ */
+const placedPart = (
+  _id: string,
+  shape: OperationShape,
+  origin: Vec3,
+  overrides: {
+    readonly orientation?: Quat;
+    readonly combine?: Exclude<Combine, "Paint">;
+    readonly softness?: number;
+    readonly colour?: Rgb8;
+    readonly opacity?: number;
+  } = {},
+): Operation =>
+  makeOperation(0, origin, shape, overrides.combine ?? "Add", {
+    orientation: overrides.orientation,
+    softness: overrides.softness,
+    // **Colour and opacity together or neither**, which is the rule the modeller's own
+    // conversion follows: an opacity with no colour is a number nothing reads, and passing
+    // it alone would make a part claim an appearance it does not have.
+    ...(overrides.colour === undefined
+      ? {}
+      : { colour: overrides.colour, opacity: overrides.opacity ?? 1 }),
+  });
+
+/** An orientation from three Euler angles, as the modeller's gizmo produces. */
+const fromEuler = (yaw: number, pitch: number, roll: number): Quat => {
+  const cy = Math.cos(yaw / 2);
+  const sy = Math.sin(yaw / 2);
+  const cp = Math.cos(pitch / 2);
+  const sp = Math.sin(pitch / 2);
+  const cr = Math.cos(roll / 2);
+  const sr = Math.sin(roll / 2);
+  return {
+    x: sp * cy * cr + cp * sy * sr,
+    y: cp * sy * cr - sp * cy * sr,
+    z: cp * cy * sr - sp * sy * cr,
+    w: cp * cy * cr + sp * sy * sr,
+  };
+};
 
 describe("meshing a model", () => {
   it("produces triangles for one sphere", () => {
@@ -34,6 +88,59 @@ describe("meshing a model", () => {
     // has no parts would be hiding a model that merely has nothing visible in the box.
     expect(meshModel([])).toBeUndefined();
     expect(meshRegion([])).toBeUndefined();
+  });
+
+  it("puts no sample on the model's own surface, because a crossing cannot be resolved there", () => {
+    // **The half-sample offset in `meshRegion`, tested as the arithmetic it is.** A sample
+    // exactly on a crossing has an ambiguous sign, and the samples land on `origin + k·s`.
+    // With the region's origin at the bound itself they land on `min + k·s`, and a model whose
+    // own size is a whole number of voxels puts every flat face exactly on one of them. This
+    // is not a coincidence that needs a rare model: a cube two units across at a quarter-unit
+    // voxel is the most ordinary object there is, and it is the one that broke.
+    const voxelSize = 0.125;
+    // **A box whose faces are whole multiples of the voxel size**, which is the case the
+    // offset has to survive. Two units is sixteen voxels.
+    const len = 2;
+    const budget = budgetFor(voxelSize);
+    const region = meshRegion(
+      [
+        placedPart(
+          "a",
+          { type: "Box", len: { x: len, y: len, z: len } },
+          { x: 0, y: 0, z: 0 },
+        ),
+      ],
+      budget,
+    )!;
+
+    const onSurface = (p: number): boolean =>
+      Math.abs(Math.abs(p) - len) < 1e-9;
+    for (const axis of [region.origin.x, region.origin.y, region.origin.z]) {
+      for (let k = 0; k < region.samples + 2; k++) {
+        const p = axis + k * region.sampleSize;
+        expect(
+          onSurface(p),
+          `a sample at ${p} sits on the face at ±${len}`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("still brackets the whole model, so nothing is shaved off its extremities", () => {
+    // **The other half of the same claim, and the one a bound-only test would miss.** Offsetting
+    // the samples is only safe if the grid still reaches past the surface on both sides, which
+    // is what the grid's two extra rows are for and what a sample count cannot show.
+    const region = meshRegion(
+      [placedPart("a", { type: "Sphere", radius: 1 }, { x: 0, y: 0, z: 0 })],
+      budgetFor(0.125),
+    )!;
+    // The grid runs `0 .. samples + 1` and sample `k` sits at `origin + (k - 1) · s`, so the
+    // outermost grid rows are one sample outside the owned run at each end. Along x, which is
+    // the axis the sphere is not degenerate on.
+    const low = region.origin.x - region.sampleSize;
+    const high = region.origin.x + region.samples * region.sampleSize;
+    expect(low, "the grid reaches below the sphere").toBeLessThan(-1);
+    expect(high, "and above it").toBeGreaterThan(1);
   });
 
   it("puts every vertex inside the region it meshed", () => {
@@ -222,7 +329,7 @@ describe("meshing a model", () => {
 
     // The subtracted box removes material, so the middle of the solid is no longer
     // inside: the field at the origin is positive where the box alone made it negative.
-    const field = modelField([
+    const field = operationsField([
       placedPart(
         "big",
         { type: "Box", len: { x: 4, y: 4, z: 4 } },
@@ -235,7 +342,7 @@ describe("meshing a model", () => {
         { combine: "Subtract" },
       ),
     ]);
-    const plainField = modelField([
+    const plainField = operationsField([
       placedPart(
         "big",
         { type: "Box", len: { x: 4, y: 4, z: 4 } },
@@ -278,8 +385,8 @@ describe("meshing a model", () => {
       ),
     ];
 
-    const hard = modelField(pair(0));
-    const soft = modelField(pair(1));
+    const hard = operationsField(pair(0));
+    const soft = operationsField(pair(1));
 
     expect(hard.distance(1.5, 0, 0), "a hard union leaves the gap").toBeCloseTo(
       0.5,
@@ -300,7 +407,7 @@ describe("meshing a model", () => {
     // This is the direction most people expect to be the other way round, so it is
     // asserted rather than left to be discovered.
     const shell = (softness: number) =>
-      modelField([
+      operationsField([
         placedPart(
           "big",
           { type: "Box", len: { x: 4, y: 4, z: 4 } },
@@ -354,8 +461,8 @@ describe("meshing a model", () => {
       { combine: "Subtract" },
     );
 
-    const cutLast = modelField([a, b, cut]);
-    const cutFirst = modelField([cut, a, b]);
+    const cutLast = operationsField([a, b, cut]);
+    const cutFirst = operationsField([cut, a, b]);
 
     // The cut is a slab through the middle of the joined spheres in one order and a
     // groove through nothing much in the other, so a point inside the spheres differs.
@@ -428,20 +535,26 @@ describe("meshing a model", () => {
     expect(sawRed, "the part's colour reached the mesh").toBe(true);
   });
 
-  it("carries a part's opacity into the alpha of its vertices", () => {
+  it("carries an operation's material into the fourth byte of its vertices", () => {
+    // **Which is what that byte is for now.** It was an opacity, which ADR 0028 records as
+    // "carried in the file, not read by the field" and which no shader read either; it is a
+    // material id (ADR 0048). The test is the same shape as the one it replaces — look for the
+    // value arriving at every vertex — because what is being checked is the same thing: that the
+    // field's answer reaches the packed layout.
     const result = meshModel([
-      placedPart(
-        "a",
-        { type: "Sphere", radius: 1 },
+      makeOperation(
+        0,
         { x: 0, y: 0, z: 0 },
-        { colour: { r: 10, g: 20, b: 30 }, opacity: 0.5 },
+        { type: "Sphere", radius: 1 },
+        "Add",
+        { colour: { r: 10, g: 20, b: 30 }, material: 3 },
       ),
     ])!;
-    let sawHalf = false;
+    let sawMaterial = false;
     for (let i = 0; i < result.mesh.vertexCount; i++) {
-      if (Math.abs(result.mesh.colours[i * 4 + 3]! - 128) <= 1) sawHalf = true;
+      if (result.mesh.colours[i * 4 + 3] === 3) sawMaterial = true;
     }
-    expect(sawHalf, "opacity reached the vertex alpha").toBe(true);
+    expect(sawMaterial, "the material reached the vertex").toBe(true);
   });
 
   it("reports how many field evaluations a rebuild cost", () => {
@@ -936,7 +1049,7 @@ describe("the resolution control", () => {
     // sampling depend on a resolution the caller never asked for. Read back off the field rather
     // than off the mesh, because the mesh is identical either way — the bug was invisible from here.
     const fine = budgetFor(0.0625);
-    const field = modelField(
+    const field = operationsField(
       [placedPart("a", { type: "Sphere", radius: 1 }, { x: 0, y: 0, z: 0 })],
       fine,
     );

@@ -130,8 +130,16 @@ const EDGES = 3;
  */
 export interface BoundaryColour {
   readonly colour: Rgb8;
-  /** 0 to 1, where 1 is opaque. */
-  readonly opacity: number;
+  /**
+   * The fourth byte, whatever it currently means.
+   *
+   * **Named for the byte and not for its use, because the use changed and the pass did not.**
+   * This was `opacity`, which no shader read; it is now a material id (ADR 0048). The pass
+   * already keyed its boundary test on all four bytes and already cut where they disagreed, so a
+   * material boundary is cut for free — which is the whole reason the byte was the place to put
+   * one, and it costs this file nothing.
+   */
+  readonly material: number;
 }
 
 export interface ColourBoundaryOptions {
@@ -290,12 +298,19 @@ const packed = (mesh: ChunkMesh, vertex: number): number =>
     (mesh.colours[vertex * 4 + 3] as number)) >>>
   0;
 
-/** The key a `BoundaryColour` packs to. Alpha is a byte, as `setColour` writes it. */
-const keyOf = ({ colour, opacity }: BoundaryColour): number =>
+/**
+ * The key a `BoundaryColour` packs to: all four bytes, as `setColour` writes them.
+ *
+ * **Every byte counts and it always did.** The fourth was an opacity no shader read and is now a
+ * material id (ADR 0048), so a wall of brick meeting a wall of plaster is cut here on exactly
+ * the same terms as a red sphere meeting a blue box — which is the point of having put the
+ * material in this byte rather than in a fourth attribute.
+ */
+const keyOf = ({ colour, material }: BoundaryColour): number =>
   ((colour.r << 24) |
     (colour.g << 16) |
     (colour.b << 8) |
-    Math.round(opacity * 255)) >>>
+    material) >>>
   0;
 
 /**

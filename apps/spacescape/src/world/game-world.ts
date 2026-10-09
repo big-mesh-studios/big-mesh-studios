@@ -101,6 +101,21 @@ export interface GameWorldOptions {
    * there are none here". The physics reads both as null today and would not tomorrow.
    */
   readonly mediumAt?: (p: Vec3) => Medium | undefined;
+  /**
+   * The distance from a point to the nearest scripted solid — a figure a place has placed.
+   *
+   * **A signed distance rather than a yes/no, and that is what lets one addition serve both
+   * questions the physics asks.** `getSolidAt` wants the sign; `getGroundDistanceAt` is a march
+   * and wants a length it can step by. Handing it a distance is what lets the player stand on a
+   * bed: the search walks out of the figure's box and stops on its top, exactly as it stops on
+   * the terrain's.
+   *
+   * **Optional, for the reason `mediumAt` is**, and read through a reader rather than held:
+   * the figures do not exist when this world is built, and a snapshot would be a frame old
+   * before the first one was placed. `undefined` means "this world has no figures", which is a
+   * different claim from "there are none at this point".
+   */
+  readonly figureDistanceAt?: (p: Vec3) => number | undefined;
 }
 
 /** How close a step counts as reaching the surface, in world units. */
@@ -120,6 +135,9 @@ export class GameWorld implements PlayerWorld {
   private readonly field: () => GameField;
   private readonly seaRadius: number | undefined;
   private readonly waterAt: ((p: Vec3) => boolean) | undefined;
+  /** See `GameWorldOptions.figureDistanceAt`. Held the same way `waterAt` is. */
+  private readonly figureDistanceAt:
+    ((p: Vec3) => number | undefined) | undefined;
 
   constructor(options: GameWorldOptions) {
     this.field = options.field;
@@ -129,6 +147,7 @@ export class GameWorld implements PlayerWorld {
     // `waterAt` is read once here rather than per query, so the predicate a caller supplied
     // is the predicate every frame runs — the same reason the samplers are arrow properties.
     this.waterAt = options.waterAt;
+    this.figureDistanceAt = options.figureDistanceAt;
     this.halfExtent = options.halfExtent ?? 1e9;
     // **`undefined` stays `undefined`.** Assigning a reader that always answered "none" would make
     // every world's `getMediumAt` defined, and the physics would pay an optional call and a null
@@ -148,8 +167,28 @@ export class GameWorld implements PlayerWorld {
    */
 
   /** Whether a point is inside material. Water is not material. */
-  readonly getSolidAt = (p: Vec3): boolean =>
-    this.field().distance(p.x, p.y, p.z) < 0;
+  readonly getSolidAt = (p: Vec3): boolean => this.solidDistance(p) < 0;
+
+  /**
+   * The nearest material at a point, whether that material is the landscape or a figure.
+   *
+   * **A `min` over the two fields, and it is the whole of what a second solid costs.** The fold
+   * is one signed distance function over the terrain and every operation in every place
+   * (ADR 0009), and a figure is not in that fold — it is its own mesh (ADR 0047). So there are
+   * two functions here, and their union is the smaller of the two, because the union of two
+   * solids is the minimum of their distances.
+   *
+   * **Both are called through the reader rather than detached**, which is why they are arrow
+   * properties throughout this file: a prototype method taken off its object and called bare
+   * has a `this` of `undefined` and reads the field off it on the first frame.
+   */
+  private readonly solidDistance = (p: Vec3): number => {
+    const terrain = this.field().distance(p.x, p.y, p.z);
+    // **`undefined` is not a distance**, so a world with no figures reads `terrain` unchanged
+    // rather than being handed a sentinel that has to be tested for on every call.
+    const figure = this.figureDistanceAt?.(p);
+    return figure === undefined ? terrain : Math.min(terrain, figure);
+  };
 
   /**
    * The field standing at a point, or null where none does — **absent entirely when the world was
@@ -185,14 +224,13 @@ export class GameWorld implements PlayerWorld {
    * Euclidean distance, which is a lower bound and cannot overshoot.
    */
   readonly getGroundDistanceAt = (feet: Vec3, up: Vec3): number => {
-    const field = this.field();
-    const inside = field.distance(feet.x, feet.y, feet.z) < 0;
+    const inside = this.solidDistance(feet) < 0;
     const sign = inside ? 1 : -1;
     let travelled = 0;
     let p = feet;
 
     for (let step = 0; step < SURFACE_MAX_STEPS; step++) {
-      const d = field.distance(p.x, p.y, p.z);
+      const d = this.solidDistance(p);
       // A non-finite distance is a ray with no surface in either direction.
       if (!Number.isFinite(d)) return -Infinity;
       // Outside the material on the way out, or at/through it on the way in.

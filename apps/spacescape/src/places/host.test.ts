@@ -1,4 +1,10 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
+
+import { NodeMaterial } from "@random-mesh/rmsl/scene";
+
+import { FigureSet } from "../figures/figure-set";
+import type { FigureModel } from "./model-library";
 
 import {
   MAX_CASCADE_STEPS,
@@ -9,6 +15,7 @@ import {
 } from "./host";
 import { PlaceRegistry } from "./place-registry";
 import { MAX_LIGHTS, MAX_MEDIUMS } from "./limits";
+import { materialId } from "../render/material-names";
 import { SculptDocument } from "../edit/document";
 import { FoldOrder } from "../edit/fold-order";
 import { GameWorld } from "../world/game-world";
@@ -92,6 +99,18 @@ const stubWorld = (document = new SculptDocument()): Stub => {
 
 /** A stub application: records, and answers the clock with the words a real one does. */
 const stubEffects = (asked: Asked): HostEffects => ({
+  narrate: (who, text): void => {
+    asked.push(`narrate(${who},${text})`);
+  },
+  dialog: (dialog): void => {
+    asked.push(`dialog(${dialog.entityId},${dialog.options.join("|")})`);
+  },
+  closeDialog: (): void => {
+    asked.push("dialog-close");
+  },
+  ending: (ending): void => {
+    asked.push(`ending(${ending.title})`);
+  },
   log: (text: string) => asked.push(`log:${text}`),
   toast: (text: string) => asked.push(`toast:${text}`),
   movePlayer: (at: Vec3, yaw) =>
@@ -230,6 +249,31 @@ describe("a host applies a place's effects", () => {
     ]);
     expect(operations[0].colour, "an Add must carry no colour").toBeUndefined();
     expect(operations[1].colour).toEqual({ r: 4, g: 5, b: 6 });
+    host.dispose();
+  });
+
+  it("turns a material name into the id on the wire, and leaves none absent", async () => {
+    // **The name-to-id step, which is the only place a script's `material` becomes a byte.**
+    // Absent and zero have to stay distinguishable: absent means "no field on the operation",
+    // and zero is what the mesher writes when the field is missing, so a host that stored an
+    // explicit `0` for an unnamed shape would make the two the same thing on the wire.
+    const { host, world } = await start({
+      "main.ts": `
+        import { createShape, log } from "voxelscape";
+        createShape({ place: "p", id: "brick", at: [0, 10, 0],
+          shape: { type: "Box", len: { x: 1, y: 1, z: 1 } }, combine: "Paint",
+          colour: { r: 4, g: 5, b: 6 }, material: "brick" });
+        createShape({ place: "p", id: "plain", at: [0, 10, 0],
+          shape: { type: "Box", len: { x: 1, y: 1, z: 1 } }, combine: "Paint",
+          colour: { r: 4, g: 5, b: 6 } });
+        log("built");
+      `,
+    });
+
+    const operations = world.places.flatten([]);
+    expect(operations[0].material).toBe(materialId("brick"));
+    // **Absent, not zero** — the distinction the serialiser turns back into a missing byte.
+    expect(operations[1].material).toBeUndefined();
     host.dispose();
   });
 
@@ -375,6 +419,545 @@ describe("a host refuses a bad effect, and says why", () => {
   });
 });
 
+describe("a place can stand things in the world", () => {
+  /**
+   * Two models, standing in for two `.sdfmod` files.
+   *
+   * **Built here rather than read from a zip**, because the host takes its models as a reader
+   * and a test that assembled a library would be testing `jszip` as much as the host. A sphere
+   * is enough: what these tests are about is ids, names, refusals and the field, and none of
+   * those depend on the model's shape.
+   */
+  const fixtureModel = (name: string) =>
+    ({
+      name,
+      operations: [],
+      field: {
+        distance: (x: number, y: number, z: number) => Math.hypot(x, y, z) - 1,
+        distanceForStepping: (x: number, y: number, z: number) =>
+          Math.hypot(x, y, z) - 1,
+        gradient: () => ({ x: 0, y: 1, z: 0 }),
+      },
+      bounds: {
+        min: { x: -1, y: -1, z: -1 },
+        max: { x: 1, y: 1, z: 1 },
+      },
+      half: { x: 1, y: 1, z: 1 },
+      triangles: 0,
+      draw: () => undefined,
+      dispose: () => {},
+    }) as unknown as FigureModel;
+
+  const figures = () => new FigureSet(new NodeMaterial());
+
+  const worldWith = (
+    set: FigureSet,
+    models: Record<string, FigureModel> = {
+      fridge: fixtureModel("fridge"),
+      dad: fixtureModel("dad"),
+    },
+  ): HostWorld => ({
+    places: new PlaceRegistry(new FoldOrder()),
+    geometryChanged: () => undefined,
+    solidAt: () => false,
+    waterAt: () => false,
+    raycast: () => undefined,
+    figures: set,
+    models: { get: (name) => models[name] },
+  });
+
+  const hostFor = async (
+    set: FigureSet,
+    source: string,
+    models?: Record<string, FigureModel>,
+  ): Promise<PlaceHost> =>
+    new PlaceHost({
+      files: { "main.ts": source },
+      entry: "main.ts",
+      seed: 1,
+      now: clock,
+      world: worldWith(set, models),
+      effects: stubEffects([]),
+      clock: stubClock([]),
+      onNotice: () => {},
+    });
+
+  it("stands a prop, and a character, and both know what they are", async () => {
+    const set = figures();
+    const host = await hostFor(
+      set,
+      `
+        import { createNpc, createProp } from "voxelscape";
+        createProp({ id: "fridge", model: "fridge", at: [10, 0, 0] });
+        createNpc({ id: "dad", model: "dad", at: [0, 0, 10], name: "Father Figure" });
+      `,
+    );
+    await host.load();
+
+    expect(set.size).toBe(2);
+    expect(set.get("fridge")!.kind).toBe("prop");
+    // **A character's name is what the narration will say**, so it is not optional on the way in
+    // — the guest library requires it and the host refuses it again, because the guest library is
+    // not the only way in.
+    expect(set.get("dad")!.kind).toBe("npc");
+    expect(set.get("dad")!.name).toBe("Father Figure");
+    expect(set.get("dad")!.transform.at).toEqual({ x: 0, y: 0, z: 10 });
+    host.dispose();
+  });
+
+  it("makes a prop solid unless it is asked not to be", async () => {
+    // **Furniture is the common case and a pickup is the exception**, so the default is the
+    // common one. A script that forgets `solid: false` on a coin gets a coin you trip over,
+    // which is a bug the author can see; the reverse default would make every fridge walk-through.
+    const set = figures();
+    const host = await hostFor(
+      set,
+      `
+        import { createProp } from "voxelscape";
+        createProp({ id: "fridge", model: "fridge", at: [0, 0, 0] });
+        createProp({ id: "coin", model: "fridge", at: [5, 0, 0], solid: false });
+      `,
+    );
+    await host.load();
+
+    expect(set.get("fridge")!.solid).toBe(true);
+    expect(set.get("coin")!.solid).toBe(false);
+    host.dispose();
+  });
+
+  it("refuses a second thing under an id it has already taken", async () => {
+    // **Refused rather than replaced**, for the reason `PlaceRegistry.add` refuses: two peers
+    // must not disagree about whether an id means the first figure or the second.
+    const set = figures();
+    const host = await hostFor(
+      set,
+      `
+        import { createProp } from "voxelscape";
+        createProp({ id: "a", model: "fridge", at: [0, 0, 0] });
+      `,
+    );
+    await host.load();
+    expect(set.ids()).toEqual(["a"]);
+    host.dispose();
+  });
+
+  it("names the model a place did not attach, rather than standing an empty space", async () => {
+    // **The refusal a script can act on.** A place with forty attachments that asks for a
+    // forty-first needs to be told which one, or it is guessing which name it got wrong.
+    const set = figures();
+    const host = await hostFor(
+      set,
+      `
+      import { createProp } from "voxelscape";
+      createProp({ id: "a", model: "wardrobe", at: [0, 0, 0] });
+    `,
+    );
+    await host.load();
+
+    expect(set.size).toBe(0);
+    expect(host.lastProblem).toMatch(/no model called "wardrobe"/);
+    host.dispose();
+  });
+
+  it("moves a figure without rebuilding it, which is the point of a figure", async () => {
+    // **Three numbers written.** A character walking across a room costs this and nothing else
+    // — no operation list rewritten, no BVH rebuilt, no chunk re-meshed (ADR 0047).
+    const set = figures();
+    const host = await hostFor(
+      set,
+      `
+        import { createNpc, moveEntity } from "voxelscape";
+        createNpc({ id: "dad", model: "dad", at: [0, 0, 0], name: "Dad" });
+        moveEntity("dad", [12, 0, -4], 1.5);
+      `,
+    );
+    await host.load();
+
+    expect(set.get("dad")!.transform.at).toEqual({ x: 12, y: 0, z: -4 });
+    expect(set.get("dad")!.transform.yaw).toBeCloseTo(1.5, 9);
+    host.dispose();
+  });
+
+  it("leaves the turn alone when a move does not name one", async () => {
+    // **Omitted rather than defaulted to zero**, because a character walking across a room does
+    // not have a heading to supply every step and a move that turned everything to north would
+    // be a move that silently did something.
+    const set = figures();
+    const host = await hostFor(
+      set,
+      `
+        import { createNpc, moveEntity } from "voxelscape";
+        createNpc({ id: "dad", model: "dad", at: [0, 0, 0], yaw: 2, name: "Dad" });
+        moveEntity("dad", [1, 0, 0]);
+      `,
+    );
+    await host.load();
+
+    expect(set.get("dad")!.transform.yaw).toBe(2);
+    host.dispose();
+  });
+
+  it("refuses to move something that is not there", async () => {
+    // **A move is not a removal.** `removeEntity` of something absent is a no-op a script can
+    // lean on for cleanup; `moveEntity` of something absent is a mistake worth reporting, and
+    // the difference is that the first is defensive and the second is not.
+    const set = figures();
+    const host = await hostFor(
+      set,
+      `
+        import { moveEntity } from "voxelscape";
+        moveEntity("nobody", [1, 0, 0]);
+      `,
+    );
+    await host.load();
+    expect(host.lastProblem).toMatch(/nothing called "nobody"/);
+    host.dispose();
+  });
+
+  it("takes something out without complaining when it was already gone", async () => {
+    const set = figures();
+    const host = await hostFor(
+      set,
+      `
+        import { removeEntity } from "voxelscape";
+        removeEntity("nobody");
+      `,
+    );
+    await host.load();
+    expect(host.lastProblem).toBeUndefined();
+    host.dispose();
+  });
+
+  it("refuses a character with no name, which the crosshair would offer to talk to", async () => {
+    // **The one cross-field rule in these three tags**, and it lives in the host rather than in
+    // the field table because a per-field table cannot say "required when another field says
+    // this".
+    //
+    // **And it is written the way a place can actually reach it.** The guest library's
+    // `CreateNpcOptions` makes `name` required, so a TypeScript place cannot do this — but the
+    // interpreter runs `transpileModule`, which checks nothing, so a place written by hand or in
+    // plain JavaScript arrives with no name just the same. The first version of this test
+    // reached for `engine.dispatch`, which the guest library deliberately does not export, and
+    // the test failed for a reason worth recording: **the library is the only door in**, and a
+    // rule the host repeats is a rule for the doors that are not the library.
+    const set = figures();
+    const host = await hostFor(
+      set,
+      `
+        import { createNpc } from "voxelscape";
+        createNpc({ id: "ghost", model: "dad", at: [0, 0, 0], name: undefined });
+      `,
+    );
+    await host.load();
+
+    expect(set.size).toBe(0);
+    expect(host.lastProblem).toMatch(/needs a name/);
+    host.dispose();
+  });
+
+  it("refuses to stand anything at all in a world that has nowhere to stand them", async () => {
+    // **Optional, and optional means refused rather than crashed.** Every place host in a test,
+    // in the editor and on the console is without one, and the answer to a script that asks is
+    // the same shape as any other refusal: a `PlaceError` naming the tag.
+    const host = new PlaceHost({
+      files: {
+        "main.ts": `
+          import { createProp } from "voxelscape";
+          createProp({ id: "a", model: "fridge", at: [0, 0, 0] });
+        `,
+      },
+      entry: "main.ts",
+      seed: 1,
+      now: clock,
+      world: {
+        places: new PlaceRegistry(new FoldOrder()),
+        geometryChanged: () => undefined,
+        solidAt: () => false,
+        waterAt: () => false,
+        raycast: () => undefined,
+      },
+      effects: stubEffects([]),
+      clock: stubClock([]),
+      onNotice: () => {},
+    });
+    await host.load();
+
+    expect(host.lastProblem).toMatch(/nowhere to stand figures/);
+    host.dispose();
+  });
+});
+
+describe("what pressing use means", () => {
+  const figures = () => new FigureSet(new NodeMaterial());
+  const model = () =>
+    ({
+      name: "m",
+      operations: [],
+      field: {
+        distance: (x: number, y: number, z: number) => Math.hypot(x, y, z) - 1,
+        distanceForStepping: (x: number, y: number, z: number) =>
+          Math.hypot(x, y, z) - 1,
+        gradient: () => ({ x: 0, y: 1, z: 0 }),
+      },
+      bounds: {
+        min: { x: -1, y: -1, z: -1 },
+        max: { x: 1, y: 1, z: 1 },
+      },
+      half: { x: 1, y: 1, z: 1 },
+      triangles: 0,
+      draw: () => undefined,
+      dispose: () => {},
+    }) as unknown as FigureModel;
+
+  /** A host with one prop and one character, and a way to read what was authored. */
+  const stage = async (): Promise<{
+    host: PlaceHost;
+    set: FigureSet;
+    kinds: () => readonly string[];
+  }> => {
+    const set = figures();
+    const host = new PlaceHost({
+      files: {
+        "main.ts": `
+          import { createNpc, createProp } from "voxelscape";
+          createProp({ id: "machine", model: "m", at: [0, 0, 0] });
+          createNpc({ id: "dad", model: "m", at: [0, 0, 10], name: "Dad" });
+        `,
+      },
+      entry: "main.ts",
+      seed: 1,
+      now: clock,
+      world: {
+        places: new PlaceRegistry(new FoldOrder()),
+        geometryChanged: () => undefined,
+        solidAt: () => false,
+        waterAt: () => false,
+        raycast: () => undefined,
+        figures: set,
+        models: { get: () => model() },
+      },
+      effects: stubEffects([]),
+      clock: stubClock([]),
+      onNotice: () => {},
+    });
+    await host.load();
+    return {
+      host,
+      set,
+      kinds: () => host.events.map((event) => event.kind),
+    };
+  };
+
+  it("authors exactly one of talk and use for a press", async () => {
+    const { host, kinds } = await stage();
+
+    // **Empty hands on a character is a conversation.**
+    host.use("dad", undefined);
+    expect(kinds()).toEqual(["npc-talk"]);
+    expect(host.events[0]!.payload).toEqual({ entityId: "dad" });
+
+    // **Empty hands on a machine is still a use** — there is nobody to talk to.
+    host.use("machine", undefined);
+    expect(kinds()).toEqual(["npc-talk", "entity-used"]);
+    expect(host.events[1]!.payload).toEqual({ entityId: "machine" });
+
+    // **And anything in hand makes a character a thing to use**, which is how a vending
+    // machine and a person share one gesture only when the player has chosen to.
+    host.use("dad", "cola");
+    expect(kinds()).toEqual(["npc-talk", "entity-used", "entity-used"]);
+    expect(host.events[2]!.payload).toEqual({ entityId: "dad", item: "cola" });
+
+    // **Never both for one press** is the assertion above: three presses, three events.
+    expect(host.events).toHaveLength(3);
+    host.dispose();
+  });
+
+  it("carries the held item on the event, so the vocabulary is the script's", async () => {
+    const { host, kinds } = await stage();
+    host.use("machine", "sandwich");
+    expect(kinds()).toEqual(["entity-used"]);
+    // The host does not know what a sandwich is for and does not decide; it says what was held
+    // and lets the place write the rule.
+    expect(host.events[0]!.payload).toEqual({
+      entityId: "machine",
+      item: "sandwich",
+    });
+    host.dispose();
+  });
+
+  it("writes nothing at all for a press on nothing with empty hands", async () => {
+    // **The other half of the rule**, and a place having to recognise and discard this would be
+    // a place doing the host's work.
+    const { host, kinds } = await stage();
+    host.useItem(undefined);
+    expect(kinds()).toEqual([]);
+    host.dispose();
+  });
+
+  it("uses the thing in hand when the crosshair is on nothing", async () => {
+    const { host, kinds } = await stage();
+    host.useItem("sandvich");
+    expect(kinds()).toEqual(["item-used"]);
+    expect(host.events[0]!.payload).toEqual({ item: "sandvich" });
+    host.dispose();
+  });
+
+  it("says nothing about a figure that is not there", async () => {
+    // **A frame's worth of staleness is the only way this arrives**, and a press aimed at a
+    // figure the last frame removed should be a no-op rather than an event about nothing.
+    const { host, kinds } = await stage();
+    host.use("nobody", undefined);
+    expect(kinds()).toEqual([]);
+    host.dispose();
+  });
+
+  it("counts an option from zero and refuses one that is not in the dialog", async () => {
+    // **Checked against the dialog that was actually on screen.** A click that arrived a frame
+    // after the place closed its dialog would otherwise author an `npc-choose` for a conversation
+    // nobody is in — a fact the place did not cause and cannot have meant.
+    const { host, set, kinds } = await stage();
+    expect(host.openDialog).toBeUndefined();
+
+    // **Nothing is chosen when nothing was asked**, and the refusal is silent because there is
+    // nobody to tell: this is a click, not a call.
+    host.choose("dad", 0);
+    expect(kinds()).toEqual([]);
+
+    const asked = await hostWith(`
+      import { createNpc, openDialog } from "voxelscape";
+      createNpc({ id: "dad", model: "m", at: [0, 0, 10], name: "Dad" });
+      openDialog({ entityId: "dad", prompt: "Do you want to buy this?",
+        options: ["Buy it. ($20)", "Not right now."] });
+    `);
+    expect(asked.host.openDialog?.options).toEqual([
+      "Buy it. ($20)",
+      "Not right now.",
+    ]);
+
+    asked.host.choose("dad", 0);
+    expect(asked.kinds()).toEqual(["npc-choose"]);
+    expect(asked.host.events[0]!.payload).toEqual({
+      entityId: "dad",
+      option: 0,
+    });
+    // **And the dialog is gone the moment it is answered**, so a place that opens another one
+    // from the handler is not refused for opening a dialog that was already being taken down.
+    expect(asked.host.openDialog).toBeUndefined();
+
+    // **The wrong entity, and an index off either end of the list, are both dropped.**
+    asked.host.choose("dad", 2);
+    asked.host.choose("nobody", 0);
+    expect(asked.kinds()).toEqual(["npc-choose"]);
+
+    void set;
+    asked.host.dispose();
+    host.dispose();
+  });
+
+  /** A host whose place says one thing at its top level. */
+  const hostWith = async (
+    source: string,
+  ): Promise<{ host: PlaceHost; kinds: () => readonly string[] }> => {
+    const h = new PlaceHost({
+      files: { "main.ts": source },
+      entry: "main.ts",
+      seed: 1,
+      now: clock,
+      world: {
+        places: new PlaceRegistry(new FoldOrder()),
+        geometryChanged: () => undefined,
+        solidAt: () => false,
+        waterAt: () => false,
+        raycast: () => undefined,
+        figures: figures(),
+        models: { get: () => model() },
+      },
+      effects: stubEffects([]),
+      clock: stubClock([]),
+      onNotice: () => {},
+    });
+    await h.load();
+    return { host: h, kinds: () => h.events.map((event) => event.kind) };
+  };
+
+  it("remembers what the place last said the player was holding", async () => {
+    // **The place's own bookkeeping**, which is why `item-hold` is an effect: the same thing
+    // decides what a prop is solid and how big it is, and a host with its own copy could
+    // disagree with the one the script believes.
+    const { host } = await stage();
+    expect(host.heldItem).toBeUndefined();
+
+    const put = new PlaceHost({
+      files: {
+        "main.ts": `
+          import { defineItem, giveItem, holdItem, onTick } from "voxelscape";
+          defineItem("cola");
+          giveItem("cola");
+          holdItem("cola");
+          onTick(() => { holdItem(); });
+        `,
+      },
+      entry: "main.ts",
+      seed: 1,
+      now: clock,
+      world: {
+        places: new PlaceRegistry(new FoldOrder()),
+        geometryChanged: () => undefined,
+        solidAt: () => false,
+        waterAt: () => false,
+        raycast: () => undefined,
+      },
+      effects: stubEffects([]),
+      clock: stubClock([]),
+      onNotice: () => {},
+    });
+    await put.load();
+    expect(put.heldItem).toBe("cola");
+
+    // **And a bare `holdItem()` empties the hands**, which is the only way there is: every name
+    // in the vocabulary is a non-empty string, so there is no second way to say nothing.
+    put.step();
+    expect(put.heldItem).toBeUndefined();
+    put.dispose();
+    host.dispose();
+  });
+
+  it("empties the hands with the place, so the next one cannot inherit them", async () => {
+    // **A place that is gone cannot leave the player holding something it invented** — and that
+    // would be the first thing the next place's crosshair read.
+    const { host } = await stage();
+    const put = new PlaceHost({
+      files: {
+        "main.ts": `
+          import { defineItem, giveItem, holdItem } from "voxelscape";
+          defineItem("cola");
+          giveItem("cola");
+          holdItem("cola");
+        `,
+      },
+      entry: "main.ts",
+      seed: 1,
+      now: clock,
+      world: {
+        places: new PlaceRegistry(new FoldOrder()),
+        geometryChanged: () => undefined,
+        solidAt: () => false,
+        waterAt: () => false,
+        raycast: () => undefined,
+      },
+      effects: stubEffects([]),
+      clock: stubClock([]),
+      onNotice: () => {},
+    });
+    await put.load();
+    expect(put.heldItem).toBe("cola");
+
+    put.dispose();
+    expect(put.heldItem).toBeUndefined();
+    host.dispose();
+  });
+});
+
 describe("a place's geometry reaches the meshes", () => {
   it("says what to re-mesh when a shape appears", async () => {
     // **The seam that makes a place visible.** Without it the host writes into the registry
@@ -386,6 +969,65 @@ describe("a place's geometry reaches the meshes", () => {
     // The whole place's box rather than this shape's own, because a *subtract* changes the
     // surface around itself and a caller told only about the new shape would miss that.
     expect(world.reMeshed[0].min.x).toBeLessThanOrEqual(-40);
+    expect(world.reMeshed[0].max.x).toBeGreaterThanOrEqual(40);
+    host.dispose();
+  });
+
+  it("says it once for a place that builds itself out of many shapes", async () => {
+    // **The reason invalidation accumulates.** `geometryChanged` reaches
+    // `SculptSession.refreshPlaces`, which rebuilds the whole `OperationBVH` and re-sends the
+    // model to the workers — and sending a model cancels every mesh in flight. A place that
+    // builds a room out of a hundred and fifty shapes in its top-level code therefore cancelled
+    // the workers a hundred and fifty times before the first one could land, which is why the
+    // room appeared in pieces or not at all rather than merely hitching.
+    //
+    // **A hundred and fifty, because the demo this was found through has about that many.**
+    const count = 150;
+    const adds = Array.from(
+      { length: count },
+      (_, i) => `
+        createShape({ place: "room", id: "s${i}", at: [${i * 20}, 10, 0],
+          shape: { type: "Box", len: { x: 8, y: 4, z: 8 } }, combine: "Add" });`,
+    ).join("");
+
+    const { host, world } = await start({
+      "main.ts": `
+        import { createShape } from "voxelscape";${adds}
+      `,
+    });
+
+    expect(world.places.get("room")?.count).toBe(count);
+    expect(world.reMeshed).toHaveLength(1);
+    // **And it covers all of them, not just the last.** A union that grew wrongly — taking the
+    // newest box rather than the whole — would be one invalidation that was cheap and wrong,
+    // which is the failure a count-only test would pass.
+    expect(world.reMeshed[0].min.x).toBeLessThanOrEqual(-4);
+    expect(world.reMeshed[0].max.x).toBeGreaterThanOrEqual(
+      (count - 1) * 20 + 4,
+    );
+    host.dispose();
+  });
+
+  it("flushes what a step accumulated even when the script fails part-way through", async () => {
+    // **A `finally`, and this is what it is for.** The loop in `step` returns early in three
+    // places; a flush written at the end of the happy path would skip them. A place that builds
+    // half a room and then throws has a half-built room that is in the collision field — so a
+    // player would stand on geometry nobody can see, which is exactly the failure
+    // `SculptSession.refreshPlaces` exists to prevent, arrived at by another route.
+    const { host, world } = await start({
+      "main.ts": `
+        import { createShape, onTick } from "voxelscape";
+        onTick(() => {
+          createShape({ place: "room", id: "floor", at: [0, 10, 0],
+            shape: { type: "Box", len: { x: 80, y: 4, z: 80 } }, combine: "Add" });
+          throw new Error("the place gave up half way");
+        });
+      `,
+    });
+
+    expect(world.reMeshed).toHaveLength(0);
+    host.step();
+    expect(world.reMeshed).toHaveLength(1);
     expect(world.reMeshed[0].max.x).toBeGreaterThanOrEqual(40);
     host.dispose();
   });

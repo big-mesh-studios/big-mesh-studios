@@ -47,8 +47,16 @@ export type Combine = "Add" | "Subtract" | "Paint";
  */
 export interface SurfaceColour {
   readonly colour: Rgb8;
-  /** 0 to 1, where 1 is opaque. */
-  readonly opacity: number;
+  /**
+   * Which procedural material the surface here wears, as an index into the renderer's table.
+   * Zero is "none" and means the colour is the whole story.
+   *
+   * **This replaced an `opacity`, which was carried and never read.** `Operation.opacity` is
+   * still carried on the wire — it is a `Paint`'s strength and a future soft blend wants it — but
+   * nothing below this line has ever used it, and the byte it was written into on the mesh is
+   * now this. See ADR 0048 for why the free byte was the right place for a material at all.
+   */
+  readonly material: number;
 }
 
 /** The combine modes, as the numbers the file format writes. */
@@ -84,6 +92,24 @@ export interface Operation {
    * colour would need an answer this design does not have.
    */
   opacity: number;
+  /**
+   * Which procedural material the surface here wears, as an index into the renderer's
+   * material table. Zero is "none" and means the vertex colour is the whole story.
+   *
+   * **A number rather than a name, because this crosses the wire into a meshing worker
+   * and the table it indexes lives in a renderer.** A string would put two vocabularies
+   * in one format and make a disagreement between them a parse failure rather than a
+   * wrong colour. `0` is reserved for "none" so that a default of `undefined` and an
+   * explicit zero mean the same thing, which is what lets it be optional on the type and
+   * absent from an old file's bytes rather than being written as a third state.
+   *
+   * **Carried and not yet read by the field**, like `opacity` above it and for a shorter
+   * reason: the fold is a signed distance function and a material is a decision about
+   * how a surface is drawn. It is on the operation because that is where a property of
+   * one part has to live to survive a save, and it is read by the mesher rather than by
+   * `Field.distance`. See ADR 0048.
+   */
+  material?: number;
 }
 
 /** An operation and the things derived from it once, when it is added. */
@@ -121,9 +147,27 @@ export const indexOperation = (operation: Operation): IndexedOperation => ({
  * tightest one obtainable without solving a rotated-box minimum, and it is only
  * ever used to reject candidates.
  */
-export const operationBounds = (operation: Operation): Bounds => {
+export const operationBounds = (operation: Operation): Bounds =>
+  operationBoundsOf(
+    operation,
+    shapePadding(operation.shape, operation.softness),
+  );
+
+/**
+ * The same box, with the padding stated rather than assumed.
+ *
+ * **`operationBounds` above is this with `shapePadding`, which is `softness * 4 + 1`.**
+ * The extra whole unit is there for the BVH's own use — a candidate test that rejects
+ * slightly too much only costs a missed candidate inside a cell nobody is standing in —
+ * and it is a poor default for a caller that wants the box an operation *can change the
+ * surface within*, which is what an invalidation box is. At this repository's
+ * `VOXEL_SIZE` of ten, a hard-edged operation's true reach is its own extent and a
+ * one-unit pad is a tenth of a voxel of nothing.
+ *
+ * So the softness reach is included by both and the flat unit is included only by one.
+ */
+const operationBoundsOf = (operation: Operation, pad: number): Bounds => {
   const half = shapeHalfExtents(operation.shape);
-  const pad = shapePadding(operation.shape, operation.softness);
   const min = { x: Infinity, y: Infinity, z: Infinity };
   const max = { x: -Infinity, y: -Infinity, z: -Infinity };
 
@@ -467,7 +511,65 @@ export const CANDIDATE_MARGIN = FAR_DISTANCE + MAX_SOFTNESS * SOFTNESS_REACH;
 /** A blank field: everything outside, by enough to be outside of anything. */
 export const emptyField = (): number => FAR_DISTANCE;
 
-/** A fresh operation with the identity rotation and no paint. */
+/**
+ * The world box containing a set of operations, or `undefined` when there are none.
+ *
+ * **The union of each operation's rotated extent plus its softness reach**, and rotation
+ * is the point: the eight corners of the shape's own box are turned into world space
+ * rather than trusting its half-extents to be axis-aligned. Three callers want this and
+ * two of them had their own version:
+ *
+ * - `OperationBVH`, which computes the same thing per node internally.
+ * - `apps/sdf-modeller`, whose `modelBounds` bounds every part by its half-**diagonal**,
+ *   a sphere rather than a box, because a part's own bounds come from a table lookup
+ *   that knows only the shape and not the orientation.
+ * - `apps/spacescape`'s `SculptDocument`, whose copy was `origin ± halfExtents` and so
+ *   **ignored the orientation entirely**. That is the one worth naming: a rotated brush
+ *   dab reported a box a rotation turns out to be wider than, so the chunks holding its
+ *   far corners were never invalidated and an edit's edge stayed stale until something
+ *   else re-meshed it.
+ *
+ * **The softness reach is in and `shapePadding`'s flat unit is out.** A soft edge moves
+ * the surface past the primitive that caused it, so a box that leaves it out is wrong;
+ * `operationBounds` adds a further whole unit for the BVH's benefit, which is a tenth of
+ * a voxel here and nothing a caller invalidating chunks needs. `padding` is there for one
+ * that does.
+ */
+export const boundsOf = (
+  operations: readonly Operation[],
+  padding = 0,
+): Bounds | undefined => {
+  if (operations.length === 0) return undefined;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+
+  for (const operation of operations) {
+    const bounds = operationBoundsOf(
+      operation,
+      operation.softness * SOFTNESS_REACH + padding,
+    );
+    minX = Math.min(minX, bounds.min.x);
+    minY = Math.min(minY, bounds.min.y);
+    minZ = Math.min(minZ, bounds.min.z);
+    maxX = Math.max(maxX, bounds.max.x);
+    maxY = Math.max(maxY, bounds.max.y);
+    maxZ = Math.max(maxZ, bounds.max.z);
+  }
+
+  return {
+    min: { x: minX, y: minY, z: minZ },
+    max: { x: maxX, y: maxY, z: maxZ },
+  };
+};
+
+/**
+ * A fresh operation with the identity rotation and no paint.
+ */
 export const makeOperation = (
   index: number,
   origin: Vec3,
@@ -478,6 +580,8 @@ export const makeOperation = (
     orientation?: Quat;
     colour?: { r: number; g: number; b: number };
     opacity?: number;
+    /** See `Operation.material`. Omitted rather than defaulted to a number, for the reason there. */
+    material?: number;
   } = {},
 ): Operation => ({
   index,
@@ -499,4 +603,9 @@ export const makeOperation = (
   // bytes are unchanged.
   colour: options.colour,
   opacity: options.opacity ?? 1,
+  // **Conditional, like `colour` above it and for the same reason.** A material of zero
+  // is "no material", so writing the field unconditionally would make every operation
+  // claim to have decided something it did not, and a reader could not tell an
+  // operation that chose plain from one that never asked.
+  ...(options.material === undefined ? {} : { material: options.material }),
 });

@@ -454,7 +454,7 @@ describe("colour", () => {
     const field = new Field(new OperationBVH([]));
     expect(field.colourAt(0, 0, 0)).toEqual({
       colour: DEFAULT_COLOUR,
-      opacity: 1,
+      material: 0,
     });
   });
 
@@ -481,7 +481,7 @@ describe("colour", () => {
     // is nowhere in that layout for a fourth.
     expect(field.colourAt(0, 0, 0)).toEqual({
       colour: { r: 1, g: 2, b: 3 },
-      opacity: 1,
+      material: 0,
     });
   });
 
@@ -501,11 +501,11 @@ describe("colour", () => {
     );
     expect(field.colourAt(0, 0, 0)).toEqual({
       colour: { r: 200, g: 100, b: 50 },
-      opacity: 1,
+      material: 0,
     });
     expect(field.colourAt(500, 0, 0)).toEqual({
       colour: DEFAULT_COLOUR,
-      opacity: 1,
+      material: 0,
     });
   });
 
@@ -521,13 +521,13 @@ describe("colour", () => {
           { x: 0, y: 0, z: 0 },
           { type: "Box", len: { x: 50, y: 50, z: 50 } },
           "Add",
-          { colour: { r: 12, g: 34, b: 56 }, opacity: 0.5 },
+          { colour: { r: 12, g: 34, b: 56 }, material: 0 },
         ),
       ]),
     );
     expect(field.colourAt(0, 0, 0)).toEqual({
       colour: { r: 12, g: 34, b: 56 },
-      opacity: 0.5,
+      material: 0,
     });
     // And it is still solid, which is the part `Paint` could not do.
     expect(field.distance(0, 0, 0)).toBeLessThan(0);
@@ -549,7 +549,7 @@ describe("colour", () => {
     );
     expect(field.colourAt(0, 0, 0)).toEqual({
       colour: DEFAULT_COLOUR,
-      opacity: 1,
+      material: 0,
     });
   });
 

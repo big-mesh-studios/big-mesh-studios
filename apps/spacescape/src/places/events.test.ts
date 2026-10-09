@@ -42,6 +42,10 @@ const event = (
     "player-died": { player: "did:plc:one", cause: "fell" },
     "zone-entered": { zoneId: "door" },
     "zone-left": { zoneId: "door" },
+    "entity-used": { entityId: "fridge" },
+    "item-used": { item: "sandvich" },
+    "npc-talk": { entityId: "dad" },
+    "npc-choose": { entityId: "dad", option: 0 },
     timer: { timerId: "later" },
     "data-changed": {
       scope: "global",
@@ -105,10 +109,17 @@ describe("an event carries what it needs to be ordered and de-duplicated", () =>
 
   it("refuses a kind it does not know", () => {
     // A fact from a newer build. Refusing is what makes the wire format safe to extend.
-    expect(parseEvent({ ...event("timer"), kind: "npc-talk" })).toBeUndefined();
+    //
+    // **The example used to be `npc-talk`, which is now a real kind** — and the test failed,
+    // which is the whole value of a test that names its examples rather than asserting over a
+    // list. A kind that cannot become real is a poor place to hang the claim that an unknown one
+    // is refused.
+    expect(
+      parseEvent({ ...event("timer"), kind: "figure-waved" }),
+    ).toBeUndefined();
     expect(parseEvent({ ...event("timer"), kind: 7 })).toBeUndefined();
     expect(isEventKind("timer")).toBe(true);
-    expect(isEventKind("npc-talk")).toBe(false);
+    expect(isEventKind("figure-waved")).toBe(false);
     expect(isEventKind(undefined)).toBe(false);
   });
 
@@ -116,6 +127,37 @@ describe("an event carries what it needs to be ordered and de-duplicated", () =>
     for (const bad of ["a string", 42, null, undefined, [1, 2]]) {
       expect(parseEvent(bad), String(bad)).toBeUndefined();
     }
+  });
+
+  it("carries which figure an interaction was about, and what was in hand", () => {
+    // **The held item rides on the event rather than the host having to know what is held**, so
+    // a place's conditional vocabulary — a soda goes in the machine, a sandwich does not — is
+    // the script's to write. **Empty hands is an absent `item` and not an empty one**, which is
+    // the rule every other name in the vocabulary already follows and the one this joins.
+    expect(
+      parseEvent(
+        event("entity-used", {}, { entityId: "fridge", item: "cola" }),
+      ),
+    ).toBeDefined();
+    expect(
+      parseEvent(event("entity-used", {}, { entityId: "fridge" })),
+    ).toBeDefined();
+    // **And the id is required**, because an event about nothing cannot be routed.
+    expect(
+      parseEvent(event("entity-used", {}, { item: "cola" })),
+    ).toBeUndefined();
+    // A character talked to, and an option chosen from what it said.
+    expect(
+      parseEvent(event("npc-choose", {}, { entityId: "dad", option: 0 })),
+    ).toBeDefined();
+    expect(
+      parseEvent(event("npc-choose", {}, { entityId: "dad" })),
+    ).toBeUndefined();
+    // **An option counts from zero**, so a negative one is a payload that has lost its meaning
+    // somewhere rather than an option to mean something by.
+    expect(
+      parseEvent(event("npc-choose", {}, { entityId: "dad", option: -1 })),
+    ).toBeUndefined();
   });
 
   it("refuses a payload that does not satisfy its kind", () => {

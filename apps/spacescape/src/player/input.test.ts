@@ -57,6 +57,66 @@ describe("jump", () => {
   });
 });
 
+describe("use", () => {
+  it("is an edge on the frame it is pressed, and never a hold", () => {
+    // **A use is a gesture rather than a mode.** Digging and placing are held so that a drag
+    // keeps carving; a use at a single instant held down would fire the same interaction every
+    // frame while the button was down, which for a conversation means opening and closing a
+    // dialog sixty times a second.
+    const input = attach();
+    key("keydown", "KeyE");
+    expect(input.consume().use).toBe(true);
+    // **The edge is gone and there is nothing behind it.** No `useHeld` exists, because there is
+    // no held state to report.
+    expect(input.consume().use).toBe(false);
+    expect(input.consume().use).toBe(false);
+    key("keyup", "KeyE");
+    expect(input.consume().use).toBe(false);
+  });
+
+  it("fires once for a key held down, rather than once per repeat", () => {
+    // **The `repeat` guard is what stops a held key from being a machine gun**, and it is the
+    // reason the edge is behind a `sources` flag rather than just being the raw keydown.
+    const input = attach();
+    key("keydown", "KeyE");
+    expect(input.consume().use).toBe(true);
+    key("keydown", "KeyE");
+    key("keydown", "KeyE");
+    expect(input.consume().use).toBe(false);
+    key("keyup", "KeyE");
+    key("keydown", "KeyE");
+    expect(input.consume().use).toBe(true);
+  });
+
+  it("is on E and F, and neither conflicts with the movement keys", () => {
+    // **Two keys rather than one, and both beside the movement keys**, so the hand already on
+    // WASD does not have to leave it. Neither is a movement key and neither is a browser
+    // shortcut a page has to fight for.
+    const input = attach();
+    key("keydown", "KeyF");
+    const snapshot = input.consume();
+    expect(snapshot.use).toBe(true);
+    expect(snapshot.moveX).toBe(0);
+    expect(snapshot.moveY).toBe(0);
+  });
+
+  it("does not fire while the player is typing into a field", () => {
+    // **The console's command input above all**, and the reason `isEditableTarget` is shared by
+    // every listener rather than reimplemented per key: a place whose whole world is written at a
+    // console would otherwise use something every time somebody typed an `e`.
+    const input = attach();
+    const field = document.createElement("input");
+    document.body.appendChild(field);
+    field.focus();
+    field.dispatchEvent(
+      new KeyboardEvent("keydown", { code: "KeyE", bubbles: true }),
+    );
+    expect(input.consume().use).toBe(false);
+    field.remove();
+    field.blur();
+  });
+});
+
 describe("touch", () => {
   it("reports the joystick direction", () => {
     const input = attach();

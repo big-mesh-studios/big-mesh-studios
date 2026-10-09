@@ -330,9 +330,9 @@ describe("the file format's size", () => {
         "Add",
       ),
     );
-    // Fifty-three bytes an ellipsoid, fifty-three for a box, forty-nine for a
+    // Fifty-four bytes an ellipsoid, fifty-four for a box, fifty for a
     // capsule, plus six for the header.
-    expect(serialisedSize(thousand)).toBe(1000 * 53 + 6);
+    expect(serialisedSize(thousand)).toBe(1000 * 54 + 6);
   });
 });
 
@@ -374,23 +374,58 @@ describe("refusing a malformed file", () => {
     }
   });
 
+  it("round-trips a material, and reads an absent one as absent", () => {
+    // **The byte is new at version 4, so it is the one field with no older file behind
+    // it and therefore nothing to have caught a mistake.** Two cases and both matter:
+    // a material that was asked for has to survive, and an operation that never asked
+    // has to come back *absent* rather than as a material zero — because a reader that
+    // treated the two alike would make every operation in a model claim to have chosen
+    // something, which is the same defect the colour field documents about itself.
+    const shape = sampleShape("Box");
+    const roundTrip = (material?: number): Operation => {
+      const written = [
+        makeOperation(0, { x: 0, y: 0, z: 0 }, shape, "Add", {
+          ...(material === undefined ? {} : { material }),
+        }),
+      ];
+      const back = deserialiseOperations(serialiseOperations(written));
+      expect(back).toHaveLength(1);
+      return back[0];
+    };
+
+    expect(roundTrip(7).material).toBe(7);
+
+    // **Zero and absent are the same claim, and both come back absent.** The byte has
+    // only 256 values and "no material" is one of them, so the writer stores a missing
+    // material as zero and the reader turns a stored zero back into a missing one. What
+    // that buys is that `operation.material === 0` and `operation.material === undefined`
+    // cannot mean different things to two readers — the alternative is a third state
+    // that only ever means what the first two already mean.
+    expect(roundTrip(0).material).toBeUndefined();
+    expect(roundTrip().material).toBeUndefined();
+    expect("material" in roundTrip()).toBe(false);
+  });
+
   it("writes the version it reads, and refuses an earlier file", () => {
-    // **The version went to 3 because a colour now counts on any operation**, so a
-    // version 2 file — whose `Add` operations carry the brush's colour, whether or not
-    // it was meant to — would paint a whole model on load. The version went to 2
-    // before that because the capsule's axis changed, and a version 1 file read as a
-    // version 2 one would have put a capsule's length where its radius was.
+    // **The version is now 4, because an operation says which procedural material its
+    // surface wears** — one byte after the opacity, and the difference between a brick
+    // wall and a flat-coloured one. It went to 3 before that because a colour counts on
+    // any operation now, so a version 2 file — whose `Add` operations carry the brush's
+    // colour, whether or not it was meant to — would paint a whole model on load. It
+    // went to 2 before that because the capsule's axis changed, and a version 1 file read
+    // as a version 2 one would have put a capsule's length where its radius was.
     //
-    // The refusal is the whole mechanism both times; this is the test that it is still
-    // in place.
-    expect(FORMAT_VERSION).toBe(3);
+    // The refusal is the whole mechanism every time; this is the test that it is still
+    // in place. Version 4 is in that list because a byte appended to a fixed-width
+    // record is exactly the case where a lenient reader does the most damage: every
+    // operation's parameters would slide by one and arrive as plausible numbers.
+    expect(FORMAT_VERSION).toBe(4);
     const buffer = serialiseOperations([randomOperation(0)]);
-    expect(new DataView(buffer).getUint16(0, true)).toBe(3);
+    expect(new DataView(buffer).getUint16(0, true)).toBe(4);
 
     // A file stamped with each earlier version, whose bytes are otherwise perfectly
-    // well formed. Both have to be refused: version 2 would paint the model with the
-    // brush colour, and version 1 would misread a capsule.
-    for (const earlier of [1, 2]) {
+    // well formed. All have to be refused.
+    for (const earlier of [1, 2, 3]) {
       const stamped = serialiseOperations([randomOperation(0)]);
       new DataView(stamped).setUint16(0, earlier, true);
       expect(

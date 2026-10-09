@@ -44,12 +44,12 @@ import type { RGBA } from "@big-mesh-studios/core";
 import { MAX_PARTS } from "../model/model-store";
 import type { Part } from "../model/part";
 import {
-  isProjectManifest,
+  isSaveableProject,
   PROJECT_MANIFEST_FILE,
   PROJECT_MODEL_FILE,
-  PROJECT_VERSION,
-  type ProjectManifest,
+  projectManifest,
   type ProjectView,
+  type SaveableProjectManifest,
 } from "./project-file";
 
 /** The model as a file, plus the things about it that are not the model. */
@@ -85,10 +85,20 @@ export const writeProject = async (
     // carries `coloured`.
     opacity: part.opacity ?? 1,
     ...(part.colour === undefined ? {} : { colour: part.colour }),
+    // **Conditional, and for the same reason the colour is.** Zero on the wire is read back as
+    // absent, so storing an explicit `0` for a part that has no material would make the two
+    // the same thing on disk — and `0` is `plain`, so it would be right by accident rather
+    // than by meaning. See `Part.material`.
+    ...(part.material === undefined || part.material === 0
+      ? {}
+      : { material: part.material }),
   }));
 
-  const manifest: ProjectManifest = {
-    version: PROJECT_VERSION,
+  // **Through `projectManifest`, not as a literal.** That constructor checks the manifest
+  // against the same `isSaveableProject` the reader uses, so the writer cannot produce a file
+  // this application would then refuse to open — and it means the empty-model defaults and
+  // the version live in one place rather than at every call site that builds a manifest.
+  const manifest = projectManifest(view, {
     ids: parts.map((part) => part.id),
     // **Positions, not colours.** The colour is in the binary; this is only the fact that a
     // part did not fall through to the default the serialiser writes.
@@ -96,8 +106,7 @@ export const writeProject = async (
       part.colour === undefined ? [] : [index],
     ),
     palette: palette.map(({ r, g, b, a }) => ({ r, g, b, a })),
-    view,
-  };
+  });
 
   const zip = new JSZip();
   const add = (path: string, data: string | ArrayBuffer) =>
@@ -212,7 +221,7 @@ const openZip = async (blob: Blob): Promise<JSZip> => {
  * on bytes from a file is the one genuinely untrusted parse in this file, and everything after
  * it is a check on a value of known shape.
  */
-const readManifest = async (zip: JSZip): Promise<ProjectManifest> => {
+const readManifest = async (zip: JSZip): Promise<SaveableProjectManifest> => {
   const entry = zip.file(PROJECT_MANIFEST_FILE);
   if (entry === null) {
     throw new Error(`no ${PROJECT_MANIFEST_FILE} at the file's root`);
@@ -225,7 +234,12 @@ const readManifest = async (zip: JSZip): Promise<ProjectManifest> => {
     throw new Error(`${PROJECT_MANIFEST_FILE} is not valid JSON`);
   }
 
-  if (!isProjectManifest(parsed)) {
+  // **`isSaveableProject` rather than the shared `isProjectManifest`.** The shared one asks
+  // whether the file is well formed; this asks whether it is well formed *and* names a mesher
+  // and a resolution this build has. A file that fails only the second is a file written by a
+  // build with a different viewport, and the message has to say that rather than blame the
+  // bytes.
+  if (!isSaveableProject(parsed)) {
     throw new Error(
       `${PROJECT_MANIFEST_FILE} is not a model manifest this build can open`,
     );

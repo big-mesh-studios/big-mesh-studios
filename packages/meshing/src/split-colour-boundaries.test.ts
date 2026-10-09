@@ -23,7 +23,7 @@ const opaque = (colour: {
   b: number;
 }): BoundaryColour => ({
   colour,
-  opacity: 1,
+  material: 0,
 });
 
 /**
@@ -100,8 +100,8 @@ const sphereMesh = (
     out,
     scratch: marchingCubesScratchFor(samples),
     onVertex: (index, x, y, z) => {
-      const { colour, opacity } = colourAt(x, y, z);
-      out.setColour(index, colour, Math.round(opacity * 255));
+      const { colour, material } = colourAt(x, y, z);
+      out.setColour(index, colour, material);
       out.setNormal(index, x / radius, y / radius, z / radius);
     },
   });
@@ -144,15 +144,15 @@ const handmade = (
   triangles: readonly (readonly [number, number, number])[],
   colourOf: (vertex: number) => {
     colour: { r: number; g: number; b: number };
-    opacity: number;
+    material: number;
   },
 ): ChunkMesh => {
   const out = new ChunkMeshBuilder();
   for (const [x, y, z] of positions) out.vertex(x, y, z);
   for (const [a, b, c] of triangles) out.triangle(a, b, c);
   for (let v = 0; v < positions.length; v++) {
-    const { colour, opacity } = colourOf(v);
-    out.setColour(v, colour, Math.round(opacity * 255));
+    const { colour, material } = colourOf(v);
+    out.setColour(v, colour, material);
     out.setNormal(v, 0, 1, 0);
   }
   return out.finish();
@@ -163,8 +163,8 @@ describe("splitting colour boundaries", () => {
     // **The bail, and it is what makes this safe to leave switched on.** A single-colour model
     // is most models, and the drag ghost is one of them; returning the argument rather than a
     // copy of it means neither pays for anything.
-    const mesh = sphereMesh(() => ({ colour: WHITE, opacity: 1 }));
-    expect(split(mesh, () => ({ colour: WHITE, opacity: 1 }))).toBe(mesh);
+    const mesh = sphereMesh(() => ({ colour: WHITE, material: 1 }));
+    expect(split(mesh, () => ({ colour: WHITE, material: 1 }))).toBe(mesh);
   });
 
   it("leaves a mesh with no surface alone", () => {
@@ -192,7 +192,7 @@ describe("splitting colour boundaries", () => {
     const cut = split(mesh, leftRed);
     for (const [key, uses] of cornerColours(cut)) {
       expect(
-        [`${RED.r},${RED.g},${RED.b},255`, `${BLUE.r},${BLUE.g},${BLUE.b},255`],
+        [`${RED.r},${RED.g},${RED.b},0`, `${BLUE.r},${BLUE.g},${BLUE.b},0`],
         `colour ${key} with ${uses} corners`,
       ).toContain(key);
     }
@@ -552,13 +552,15 @@ describe("the awkward triangles", () => {
     const rule = (
       x: number,
       y: number,
-    ): { colour: { r: number; g: number; b: number }; opacity: number } =>
+    ): { colour: { r: number; g: number; b: number }; material: number } =>
       opaque(x + y < 0 ? RED : x - y < 0 ? GREEN : BLUE);
     const cut = split(mesh, rule);
     expect(uniformTriangles(cut)).toBe(cut.triangleCount);
     for (const key of cornerColours(cut).keys()) {
       expect(
-        [RED, GREEN, BLUE].map((c) => `${c.r},${c.g},${c.b},255`),
+        // **Zero and not 255**: the fourth byte is a material now (ADR 0048), and these
+        // fixtures set no material on the colours they hand the builder.
+        [RED, GREEN, BLUE].map((c) => `${c.r},${c.g},${c.b},0`),
       ).toContain(key);
     }
     // **Three crossings is four pieces, not three** — the three corner wedges plus the middle

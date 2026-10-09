@@ -105,6 +105,21 @@ export interface Part {
   readonly colour?: Rgb8;
   /** How opaque this part is, `0..1`. Only read where `colour` is set. */
   readonly opacity?: number;
+  /**
+   * Which procedural material the surface here wears, as an index into the renderer's table.
+   *
+   * **A number rather than a name, and that is the wire talking.** The application that *draws*
+   * these files is the one with the table (`render/material-names.ts` in the world application),
+   * and this application has no opinion about what a plank looks like — so the id is stored and
+   * the palette entry is what a person picks. It arrived in ADR 0048 on the operation and this
+   * is the authoring half of that, which was missing: a model saved before this could not
+   * carry a material at all, and every surface in it was the plain vertex colour.
+   *
+   * **Absent means plain, and `0` means the same thing.** The serialiser writes an absent
+   * material as a zero byte and reads it back as absent, so the two cannot come to mean
+   * different things — which is why this is optional rather than defaulted to zero.
+   */
+  readonly material?: number;
 }
 
 /** The identity rotation, named because it is asked for constantly. */

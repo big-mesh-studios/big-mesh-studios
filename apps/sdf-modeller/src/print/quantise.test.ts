@@ -200,18 +200,21 @@ describe("quantiseColours", () => {
     expect(once.palette).toEqual([BLUE, GREEN]);
   });
 
-  it("counts a translucent colour as its own colour while there is room", () => {
-    // **Alpha is in the distance, not out of it.** A printer has no use for alpha, so the
-    // argument for ignoring it is real — but ignoring it merges a translucent part of a model
-    // with the opaque part beside it on the strength of a channel nothing can act on.
+  it("counts a material id in the fourth byte as no colour at all", () => {
+    // **The fourth byte is a material and not an alpha**, so two corners differing only in it
+    // are the *same* colour to a printer — and they used to be counted as two. Printing a
+    // material as transparency would have given two parts of a model that differ only in
+    // material two different filaments, and would print every part with no material as fully
+    // transparent.
     const mesh = oneTriangle([
-      [255, 0, 0, 255],
-      [255, 0, 0, 128],
-      [255, 0, 0, 255],
+      [255, 0, 0, 0],
+      [255, 0, 0, 3],
+      [255, 0, 0, 0],
     ]);
-    const reduced = quantiseColours(mesh.colours, mesh.indices, 2);
+    const reduced = quantiseColours(mesh.colours, mesh.indices, 4);
 
-    expect(reduced.palette).toEqual([RED, { r: 255, g: 0, b: 0, a: 128 }]);
+    expect(reduced.distinct, "one colour, whatever the materials").toBe(1);
+    expect(reduced.palette).toEqual([{ r: 255, g: 0, b: 0, a: 255 }]);
   });
 
   it("merges colours only when the limit leaves it no choice", () => {

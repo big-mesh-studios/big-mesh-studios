@@ -98,6 +98,10 @@ const stubWorld = (): HostWorld => {
 };
 
 const stubEffects = (): HostEffects => ({
+  narrate: () => {},
+  dialog: () => {},
+  closeDialog: () => {},
+  ending: () => {},
   log: () => {},
   toast: () => {},
   movePlayer: (_at: Vec3, _yaw?: number) => {},

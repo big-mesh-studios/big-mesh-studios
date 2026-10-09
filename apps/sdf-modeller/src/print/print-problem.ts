@@ -21,7 +21,7 @@ import { describeReport, type MeshReport } from "@big-mesh-studios/meshing";
 
 import {
   budgetFor,
-  meshModel,
+  meshParts,
   type MeshBudget,
   type MeshResult,
 } from "../model/mesh-model";
@@ -58,7 +58,7 @@ export const printedMesh = (
   parts: readonly Part[],
   budget?: MeshBudget,
 ): MeshResult | undefined =>
-  meshModel(parts, budget ?? budgetFor(PRINT_VOXEL_SIZE), "marching-cubes");
+  meshParts(parts, budget ?? budgetFor(PRINT_VOXEL_SIZE), "marching-cubes");
 
 /**
  * Why this model cannot be printed, or `undefined` when it can.

@@ -38,6 +38,17 @@ const consumers = async (): Promise<string> =>
       import("./events.ts?raw"),
       import("./event-log.ts?raw"),
       import("./place-registry.ts?raw"),
+      // **The inventory, for the reason the host is here.** `MAX_ITEMS` is enforced by
+      // `ScriptInventory.define` and reachable by no payload field — it counts what a place has
+      // already declared — so a scan that omitted this file would report a limit nothing
+      // enforces, which is the false version of the failure this file exists to catch.
+      import("./script-inventory.ts?raw"),
+      // **The host, because "the code that applies it" is mostly here.** `MAX_ENTITIES` is
+      // enforced by a check in `PlaceHost.apply` and is reachable by no payload field at all —
+      // it counts what a place has already stood up — so a scan that omitted this file would
+      // report a limit nothing enforces, which is precisely the failure this file exists to
+      // catch and would itself be a false one.
+      import("./host.ts?raw"),
       import("./interpreter.ts?raw"),
       import("./bundle.ts?raw"),
       import("./load-place.ts?raw"),
@@ -270,13 +281,14 @@ describe("every limit is exercised at its edge", () => {
       tag: "shape-add",
       build: (n) => ({ ...shapeAdd, softness: n }),
     },
-    {
-      limit: limits.MAX_OPACITY,
-      name: "MAX_OPACITY",
-      end: "max",
-      tag: "shape-add",
-      build: (n) => ({ ...shapeAdd, opacity: n }),
-    },
+    // **`MAX_OPACITY` is deliberately absent from this table**, and it is the one edge a limit
+    // in `limits.ts` no longer has. `shape-add` offered an `opacity` until the fourth byte of a
+    // vertex became a material id (ADR 0048); the operation still carries an opacity for the
+    // file format's sake but no payload can set one and nothing reads the value it would carry.
+    // A row here would be testing a field the vocabulary does not have.
+    //
+    // **The row that replaced it is `MATERIAL_NAMES`,** which is an enum rather than a number
+    // and so is checked by `effects.test.ts` refusing a name that is not one of the six.
     {
       limit: limits.MAX_CHANNEL,
       name: "MAX_CHANNEL",
@@ -356,6 +368,34 @@ describe("every limit is exercised at its edge", () => {
       // A host's own collection, like `MAX_LIGHTS` — checked at the limit and one past it in
       // `host.test.ts`, by a place that fills it.
       "MAX_MEDIUMS",
+      // A host's own collection, like `MAX_ZONES` and `MAX_LIGHTS` — how many figures a place
+      // has standing rather than anything a payload can say. Checked at the limit and one past
+      // it in `host.test.ts`, by a place that fills it.
+      "MAX_ENTITIES",
+      // A host's own collection, like `MAX_ZONES` — how many items a place has declared, which
+      // no payload can say. Checked at the limit and one past it in `script-inventory.test.ts`.
+      "MAX_ITEMS",
+      // **Reachable by a payload, and checked there** — `narrate`'s `text`, `dialog`'s `prompt`,
+      // `ending`'s `title` and `text`, and `dialog`'s `options` both per entry and as a count.
+      // They are listed here only because the edges table exercises the *pair* bound on
+      // `options` through `fields.ts` rather than through the inventory's own arithmetic.
+      "MAX_NARRATION",
+      "MAX_DIALOG_PROMPT",
+      "MAX_OPTION_LABEL",
+      "MAX_DIALOG_OPTIONS",
+      "MAX_ENDING_TITLE",
+      "MAX_ENDING_TEXT",
+      // **The other half of the pair, and unlike `MAX_ITEMS` this one *is* reachable by a
+      // payload** — `item-give`'s count field carries `max: MAX_ITEM_COUNT`. It is listed here
+      // because the edges table exercises it through the inventory's own arithmetic rather than
+      // through a refused payload: `MAX_ITEM_COUNT` is a cap on a total, and a `give` that would
+      // carry past it is refused by the inventory rather than by the field.
+      "MAX_ITEM_COUNT",
+      // **No payload can set it any more** — `shape-add`'s `opacity` became `material` (ADR
+      // 0048) and `Operation.opacity` is carried for the file format rather than for anyone.
+      // It stays exported because the operation still has the field and a soft paint blend will
+      // want to bound it, but there is nothing left to exercise it with.
+      "MAX_OPACITY",
       "MAX_EVENTS",
       "MAX_EVENT_ID_LENGTH",
       "MAX_PRODUCER_LENGTH",

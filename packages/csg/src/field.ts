@@ -251,10 +251,14 @@ export class Field {
    * carry a value nothing ever wrote.
    */
   colourAt(x: number, y: number, z: number): SurfaceColour {
+    // **Material zero everywhere the field answers on its own.** A painted tile is a colour with
+    // no material — `PaintTiles` is exactly that, and a tile that suddenly acquired a procedural
+    // pattern would be a bug with no way to express. A surface that no paint operation claims has
+    // whatever the winning operation said, which is usually nothing.
     const painted = this.paint?.at(x, y, z);
-    if (painted !== undefined) return { colour: painted, opacity: 1 };
+    if (painted !== undefined) return { colour: painted, material: 0 };
     return (
-      this.bvh.evalPaint(x, y, z) ?? { colour: DEFAULT_COLOUR, opacity: 1 }
+      this.bvh.evalPaint(x, y, z) ?? { colour: DEFAULT_COLOUR, material: 0 }
     );
   }
 

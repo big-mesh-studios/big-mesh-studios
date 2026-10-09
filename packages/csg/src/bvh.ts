@@ -598,7 +598,12 @@ export class OperationBVH {
       // `<=`, so a tie is the later operation's — see the note on ties above.
       if (away <= nearest) {
         nearest = away;
-        found = { colour: operation.colour, opacity: operation.opacity };
+        found = {
+          colour: operation.colour,
+          // **`?? 0` rather than the operation's own optional**, because zero and absent are the
+          // same claim and the reader here compares against a number.
+          material: operation.material ?? 0,
+        };
       }
     }
     return found;

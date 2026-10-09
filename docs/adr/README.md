@@ -64,6 +64,8 @@ recorded cost is a decision nobody thought about.
 | [0044](0044-a-place-is-published-as-a-spacescape-place-record.md)        | A place is published as `app.bms.spacescape.place`, versioned from the first record    | accepted                     |
 | [0045](0045-a-published-place-is-public.md)                              | A published place is public, and the catalog is an overlay                             | accepted                     |
 | [0046](0046-a-triangle-carries-one-colour.md)                            | A triangle carries one colour, and the mesh is cut to put it there                     | accepted                     |
+| [0047](0047-a-figure-is-its-own-mesh.md)                                 | A figure is its own mesh, and it is not in the fold                                    | accepted                     |
+| [0048](0048-a-material-in-the-free-byte.md)                              | The colour's free byte carries a material, and materials are procedural                | accepted                     |
 
 ## What is decided so far
 
@@ -463,3 +465,42 @@ through. And the reason it runs on marching cubes only is not closure — that w
 and it is wrong, because a position-keyed report does not care how vertices are shared — but that
 an edge has to lie **on** the surface for a cut along it to mean anything, which a surface nets edge
 does not and a marching cubes edge does.
+
+**0047 and 0048 are the two the port asked for, and they answer different halves of the same
+question.** A place script wants to stand a fridge in a room and move it later. Every piece of
+geometry this engine had ever drawn was a set of operations folded into one field, so "stand a
+fridge in a room" had exactly one possible meaning — put the fridge's primitives in the list — and
+moving it meant taking them out and writing them again somewhere else. The three questions that
+made that untenable were all recorded rather than settled: `.sdfmod` has no identity of its own
+(ADR 0033), `Operation` has no transform field so an instance cannot be a pointer, and fold order
+_is_ the model.
+
+**A figure is therefore a mesh, meshed once per model and placed many times.** The property that
+made the fold the only option — fold order is the model — is exactly the property that makes it
+the wrong shape for an instance. One geometry, many `Mesh`es, and a transform is three numbers on
+one of them; a character walks across a room by moving, which is the thing the fold could not do
+at any price. The mechanism is enforced rather than documented: `FigureModel` hands out
+`draw(material)` and keeps the geometry itself, because a readable `BufferGeometry` is a
+`BufferGeometry` somebody will `clone()`, and that copies every buffer and undoes the entire
+mechanism quietly. Sixty-three props and two characters cost forty models' worth of meshing.
+
+The cost is honest and worth stating: **a figure cannot be dug.** In an engine whose primary verb
+is digging, that is a real limitation, and it is the price of the movement.
+
+**And a figure needs a brick wall, which is what 0048 is for.** A brick wall is not geometry and
+it is not a colour; it is a colour that varies across a surface according to where the surface is
+in the world. The engine has no UV channel — ADR 0033's twenty bytes a vertex are position, an
+octahedral normal and four colour bytes — and a surface nets mesh of a smooth field has no
+parameterisation to project one from anyway.
+
+The fact that decided it is in a comment that has been there since `chunk-mesh.ts` was written:
+the colour attribute is documented as **"its colour, plus a lane kept for a face index"**, and the
+fourth byte carries an opacity that ADR 0028 calls "carried in the file, not read by the field"
+and that the shader does not read either. So the byte is free, a material id rides it, and the
+vertex stays at twenty bytes. Adding a fourth attribute would have cost four percent of every
+chunk buffer in the world to re-derive a number the format already reserves.
+
+What that buys is procedural materials with no UVs and no textures: brick is twenty lines of
+`fract` and `smoothstep` over world position and world normal. And because the id is a fourth
+byte of the colour, **a material boundary is a colour boundary**, so ADR 0046's mesh-cutting pass
+already handles it — for free, and on marching cubes, which is the mesher figures are built with.

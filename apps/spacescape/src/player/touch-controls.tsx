@@ -48,6 +48,16 @@ export function TouchControls(props: TouchControlsProps) {
           "align-items": "flex-end",
         }}
       >
+        {/* **Use is above the rest and it is not a `HoldButton`.** A use is a gesture rather
+            than a mode, so there is no held state to report and nothing to release; the two
+            below it carve and build continuously while they are down. It also goes first in
+            reading order because it is the one a place's world is played with, and the one a
+            thumb reaches for rather than rests on. */}
+        <HoldButton
+          label="Use"
+          onDown={() => props.input.setTouchUse()}
+          onUp={() => {}}
+        />
         <HoldButton
           label="Place"
           onDown={() => props.input.setTouchSecondary(true)}

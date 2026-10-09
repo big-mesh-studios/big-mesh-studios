@@ -99,7 +99,16 @@ export type FieldKind =
   /** One of a fixed set of words. */
   | "enum"
   /** A boolean, and nothing else. Not 1, not "true", not null. */
-  | "boolean";
+  | "boolean"
+  /**
+   * A list of short strings, each bounded.
+   *
+   * **Added for a dialog's options**, which is the first payload field that is a list of
+   * anything. The alternatives were all worse: `text` with a separator breaks on an option that
+   * contains the separator, and a repeated field (`option0`, `option1`) is a variable-length
+   * payload, which ADR 0017's whole-or-nothing rule cannot check.
+   */
+  | "text-list";
 
 /** One field of one payload: what it is, what it may be, and whether it must be there. */
 export interface FieldRule {
@@ -111,6 +120,14 @@ export interface FieldRule {
   readonly values?: readonly string[];
   /** For `count`: the most. Defaults to `MAX_*` for the kind. */
   readonly max?: number;
+  /**
+   * For `text-list`: how many entries at most.
+   *
+   * **A separate number from `max`, because `max` is about one entry and this is about how many
+   * there are** — and a dialog with eight options of twenty characters and a dialog with eight
+   * options of eight thousand words are different problems, bounded in different places.
+   */
+  readonly maxCount?: number;
   /** For `number`-like kinds: the floor. */
   readonly min?: number;
   /** Documentation, carried so the generated reference can use it. */
@@ -205,6 +222,25 @@ export const checkField = (
       if (typeof value !== "boolean") return bad("is not a boolean");
       return null;
 
+    case "text-list": {
+      // **Every entry checked, and the whole list refused if any one fails.** ADR 0017's rule is
+      // that a payload is accepted whole or refused whole, and a list where the fifth entry is
+      // too long is a list that is not valid rather than a list with five good options.
+      if (!Array.isArray(value)) return bad("is not a list of strings");
+      if (rule.maxCount !== undefined && value.length > rule.maxCount) {
+        return bad(`has more than ${rule.maxCount} entries`);
+      }
+      for (const entry of value) {
+        if (typeof entry !== "string")
+          return bad("has an entry that is not a string");
+        if (entry.length === 0) return bad("has an empty entry");
+        if (rule.max !== undefined && entry.length > rule.max) {
+          return bad(`has an entry longer than ${rule.max} characters`);
+        }
+      }
+      return null;
+    }
+
     case "enum": {
       if (typeof value !== "string") return bad("is not a string");
       if (rule.values?.includes(value) !== true) {
@@ -228,8 +264,23 @@ export const checkField = (
         return bad("is not a pair of corners");
       }
       for (let i = 0; i < 2; i++) {
-        const refusal = checkVec3(value[i], bad, MAX_ZONE_SIZE);
+        // **A corner is a coordinate, so it is bounded like every other coordinate** —
+        // `MAX_COORDINATE`, not the box's own size. Bounding it by `MAX_ZONE_SIZE` was a flat
+        // world's assumption, and the world is a sphere: its surface is at `y ≈ 136000`, so a
+        // zone two hundred units across had corners a hundred and thirty-six thousand units from
+        // the origin and was refused whole. A place on the planet could not have a zone at all.
+        const refusal = checkVec3(value[i], bad, MAX_COORDINATE);
         if (refusal !== null) return refusal;
+      }
+      // **And the extent is what `MAX_ZONE_SIZE` is actually for** — the bound its own comment
+      // describes. Corner magnitudes only enforced it by accident, and only for a box near the
+      // origin; this enforces it for a box anywhere.
+      const min = value[0] as readonly number[];
+      const max = value[1] as readonly number[];
+      for (let axis = 0; axis < 3; axis += 1) {
+        if (Math.abs(max[axis] - min[axis]) > MAX_ZONE_SIZE) {
+          return bad(`is more than ${MAX_ZONE_SIZE} units across on one axis`);
+        }
       }
       return null;
     }
@@ -491,6 +542,15 @@ export const PLAYER_LIMITS = {
 /** Re-exported for the same reason. */
 export const CAUSE_LIMIT = MAX_CAUSE_LENGTH;
 /** Re-exported for the same reason. */
+/**
+ * Kept because `Operation.opacity` is still carried on the wire.
+ *
+ * **And nothing offers it.** It was a payload field until the fourth byte of a vertex became a
+ * material id (ADR 0048), at which point the only way a script could set it was to write a
+ * value nothing read. It stays exported because the operation still carries it and a future soft
+ * paint blend will want to bound it; it is no longer reachable from a script, and an export
+ * nothing offers would be a field nothing validates.
+ */
 export const OPACITY_LIMIT = MAX_OPACITY;
 /** Re-exported for the same reason. */
 export const SOFTNESS_LIMIT = MAX_SOFTNESS;
@@ -508,6 +568,16 @@ export const COMBINES: readonly Combine[] = ["Add", "Subtract", "Paint"];
  * and no way for the two lists to disagree.
  */
 export const SHAPE_TYPES: readonly ShapeType[] = PRIMITIVE_NAMES;
+
+/**
+ * The materials a surface can wear, in the order that fixes their ids.
+ *
+ * **Re-exported from `render/material-names.ts` rather than written here**, because that list is
+ * the wire's vocabulary and the renderer's implementations of it have to agree with it exactly.
+ * Two lists would be two things to update when a material is added, and the failure would be a
+ * material that validates and then draws something else.
+ */
+export { MATERIAL_NAMES } from "../render/material-names";
 
 /** Whether a string names a primitive this build has. */
 export const isShapeType = (type: string): type is ShapeType =>

@@ -24,18 +24,27 @@
  * walk onto it.
  */
 
-import { createMedium, createShape, log, onTick } from "voxelscape";
+import {
+  createMedium,
+  createShape,
+  getHeightAt,
+  log,
+  onTick,
+} from "voxelscape";
+
+/** The world's surface, which is where this demo stands. See `surfaceHeightAt` in `app.tsx`. */
+const GROUND = getHeightAt(0, 0);
 
 /** The belt: long in z, thin in y, so it reads as a floor rather than a room. */
 const BELT = {
-  min: [-30, 0, -80] as const,
-  max: [30, 2, 80] as const,
+  min: [-30, GROUND, -80] as const,
+  max: [30, GROUND + 2, 80] as const,
 };
 
 /** The quicksand, off to one side and low enough to fall into. */
 const QUICKSAND = {
-  min: [60, -6, -40] as const,
-  max: [140, 2, 40] as const,
+  min: [60, GROUND - 6, -40] as const,
+  max: [140, GROUND + 2, 40] as const,
 };
 
 /** A deck to stand on while the fields are being made, and to see them from. */
@@ -86,8 +95,8 @@ createMedium({
 
 // Somewhere to watch it from, and something solid under the belt so the conveyor has a floor to
 // push along rather than being a slab in mid-air.
-platform("belt-floor", [0, -1, 0], 30);
-platform("quicksand-floor", [100, -7, 0], 40);
+platform("belt-floor", [0, GROUND - 1, 0], 30);
+platform("quicksand-floor", [100, GROUND - 7, 0], 40);
 
 onTick((info) => {
   for (const event of info.events) {

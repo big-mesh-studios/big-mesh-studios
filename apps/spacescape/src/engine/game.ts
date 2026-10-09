@@ -99,6 +99,29 @@ export interface GameOptions {
    * application spends its whole life in before anyone loads a place.
    */
   readonly mediumAt?: (p: Vec3) => Medium | undefined;
+  /**
+   * The distance from a point to the nearest scripted solid — a figure a place has placed.
+   *
+   * **A reader rather than the set itself, for the reason `mediumAt` takes one.** The figures
+   * live in a `FigureSet` that belongs to the scene rather than to the world, and the world is
+   * built before any of them exist. `undefined` means "this world has no figures", which is a
+   * different claim from "there are none at this point".
+   */
+  readonly figureDistanceAt?: (p: Vec3) => number | undefined;
+  /**
+   * Told what the player pressed, once a frame, after the camera has been placed.
+   *
+   * **A hook rather than an action `Game` performs**, because everything a use needs belongs to
+   * somebody else: the ray is this camera's but the figures are a place's, and the held item is
+   * the place's own bookkeeping. `Game` is the only place that knows when the input happened
+   * relative to the camera being in its final position for the frame, and it is the wrong place
+   * to decide what pressing use means.
+   *
+   * **Given the whole snapshot rather than a flag**, so a caller can read the look delta or the
+   * jump in the same frame it reads the use, and so this does not grow a parameter every time
+   * somebody wants one more thing from the same moment.
+   */
+  readonly onUse?: (input: InputSnapshot) => void;
 }
 
 /** What `Game.raycast` reports, and what a place's guest library receives. */
@@ -178,6 +201,8 @@ export class Game {
    * setup twice left the player at four times their speed with no way back.
    */
   private readonly baseConfig: PlayerConfig;
+  /** See `GameOptions.onUse`. Held so it can be optional-callable every frame. */
+  private readonly onUse: ((input: InputSnapshot) => void) | undefined;
 
   constructor(options: GameOptions) {
     this.session = options.session;
@@ -187,6 +212,10 @@ export class Game {
     this.playerConfig = options.player ?? {};
     this.spawnRadius = options.spawnRadius;
     this.seaRadius = options.seaRadius;
+    // **`undefined` rather than a function that does nothing**, for the reason `mediumAt` and
+    // `figureDistanceAt` are both held this way: a caller that does not want the hook should
+    // not pay a call per frame to not be called.
+    this.onUse = options.onUse;
 
     this.world = new GameWorld({
       field: () => this.sculpt.collisionField,
@@ -246,6 +275,12 @@ export class Game {
     // On the frame, not per dab, so a fast drag sends one model rather than one
     // per dab and cannot cancel its own mesh in flight.
     this.sculpt.flushPreview();
+
+    // **Last, and after everything else in the frame.** The camera was placed at the top, so a
+    // use traced against an earlier camera would hit something the player stopped looking at a
+    // frame ago — which is the sort of thing that reads as the game being wrong rather than as
+    // a frame late.
+    this.onUse?.(input);
   }
 
   /**

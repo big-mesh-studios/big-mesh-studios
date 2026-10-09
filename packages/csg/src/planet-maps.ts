@@ -91,7 +91,7 @@ export interface PlanetMapSource {
     x: number,
     y: number,
     z: number,
-  ) => { colour: Rgb8; opacity: number };
+  ) => { colour: Rgb8 };
 }
 
 /**
@@ -141,7 +141,12 @@ export const bakePlanetMaps = (
       albedo[at] = c.colour.r;
       albedo[at + 1] = c.colour.g;
       albedo[at + 2] = c.colour.b;
-      albedo[at + 3] = Math.round(c.opacity * 255);
+      // **Opaque, because a baked albedo map has no material and no transparency.** It used to
+      // write `SurfaceColour.opacity` here, which is the clearest sign that field was borrowed:
+      // `planet-maps` bakes an image, and an image's alpha is its own. `SurfaceColour` stopped
+      // carrying one when its fourth field became a material id (ADR 0048), and the only honest
+      // answer for a map is that the map is opaque.
+      albedo[at + 3] = 255;
     }
   }
 

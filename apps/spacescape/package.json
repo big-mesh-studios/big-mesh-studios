@@ -13,6 +13,7 @@
     "build": "vite build",
     "serve": "vite preview",
     "check-types": "tsc --noEmit",
+    "snack-models": "node --experimental-transform-types tools/run.ts tools/make-snack-models.ts",
     "place-reference": "node --experimental-transform-types tools/place-reference.ts",
     "place-reference:check": "node --experimental-transform-types tools/place-reference.ts --check",
     "test": "vitest run --testTimeout=30000",

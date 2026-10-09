@@ -339,7 +339,7 @@ describe("flatten is the only fold order", () => {
     // with it so that a reader is not asked a second time.
     expect(field.colourAt(0, 0, 0)).toEqual({
       colour: { r: 0, g: 0, b: 200 },
-      opacity: 1,
+      material: 0,
     });
   });
 

@@ -272,6 +272,10 @@ const stubWorld = (): HostWorld & { places: PlaceRegistry } => {
 };
 
 const stubEffects = (asked: string[]): HostEffects => ({
+  narrate: () => {},
+  dialog: () => {},
+  closeDialog: () => {},
+  ending: () => {},
   log: (text) => asked.push(`log:${text}`),
   toast: (text) => asked.push(`toast:${text}`),
   movePlayer: (at: Vec3, yaw) =>

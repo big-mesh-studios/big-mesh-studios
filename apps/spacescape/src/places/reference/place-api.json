@@ -87,6 +87,13 @@
       "returns": "void"
     },
     {
+      "name": "closeDialog",
+      "signature": "(): void",
+      "doc": "Closes the dialog, and does nothing when there is none. **Which is the point.** A place that closes on the way out of a conversation should not have to know whether one was open, and a `dialog-close` with no dialog behind it is the same answer as one with.",
+      "params": [],
+      "returns": "void"
+    },
+    {
       "name": "createLight",
       "signature": "(options: CreateLightOptions): void",
       "doc": "Creates a light. Replaces any light with the same id, so re-running a script does not stack lamps.",
@@ -108,6 +115,34 @@
         {
           "name": "options",
           "type": "CreateMediumOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "createNpc",
+      "signature": "(options: CreateNpcOptions): void",
+      "doc": "Stands a character in the world, from one of the place's attached models.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreateNpcOptions",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "createProp",
+      "signature": "(options: CreatePropOptions): void",
+      "doc": "Stands a prop in the world, from one of the place's attached models.",
+      "params": [
+        {
+          "name": "options",
+          "type": "CreatePropOptions",
           "optional": false,
           "doc": ""
         }
@@ -143,6 +178,20 @@
       "returns": "void"
     },
     {
+      "name": "defineItem",
+      "signature": "(item: string): void",
+      "doc": "Declares an item, so the place can hand it out. **A declaration and not a definition, because there is nothing to define.** An item in this engine is a name and a count; it has no sprite and no slot, because there is no inventory panel to put either in. The sibling engine gives every item a `stackable` flag and an empty sprite, and neither means anything there either — so this takes a name and nothing else, and a field that nothing can act on reads as a feature and is not one. **It exists for the refusal it makes possible.** `giveItem` refuses a name this has not declared, and in the shop this was built for the difference between \"the player has a cola\" and \"the player has a cloa\" is the entire puzzle. One declaration per item is a cheap price for a misspelling being an error at the line it was written. Declaring the same item again changes nothing and is not an error, so a place that declares from a loop reloading it is not a failure.",
+      "params": [
+        {
+          "name": "item",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "deleteData",
       "signature": "(key: string): void",
       "doc": "Forgets a stored value, so a later `loadData` finds nothing.",
@@ -150,6 +199,20 @@
         {
           "name": "key",
           "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "endGame",
+      "signature": "(options: { readonly title: string; readonly text: string; }): void",
+      "doc": "Ends the game, with a title and a card, and offers to play again. **There is no way to take it back**, and there is deliberately no `unend`: an ending is a statement about the run that just finished, and a place that could undo one would be a place whose end could be undone, which is the one thing an ending is for. The card's only way on is to start again, which reloads the place from the beginning rather than undoing the run.",
+      "params": [
+        {
+          "name": "options",
+          "type": "{ readonly title: string; readonly text: string; }",
           "optional": false,
           "doc": ""
         }
@@ -255,6 +318,40 @@
       "returns": "boolean"
     },
     {
+      "name": "giveItem",
+      "signature": "(item: string, count?: number | undefined): void",
+      "doc": "Puts items in what the player is carrying. **The item must have been declared**, which is what makes a typo a typo.",
+      "params": [
+        {
+          "name": "item",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "count",
+          "type": "number | undefined",
+          "optional": true,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "holdItem",
+      "signature": "(item?: string | undefined): void",
+      "doc": "Puts an item in the player's hands, or empties them. **Omitting the item is how a place says \"put that down\", and there is no other way.** Every name in this API is a non-empty string, so an empty string is not available as a second way to say nothing and the absence is the only one. **What a hand changes is the interaction, not the world.** A crosshair on a character is a conversation with empty hands and a use with anything in them; a crosshair on nothing does nothing at all with empty hands. So the whole of what holding a thing does is to change which of those happens, and a place that never reads `item` can hold things all day without consequence.",
+      "params": [
+        {
+          "name": "item",
+          "type": "string | undefined",
+          "optional": true,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "lerp",
       "signature": "(a: number, b: number, t: number): number",
       "doc": "The value `t` of the way from `a` to `b`, for interpolating a number.",
@@ -341,6 +438,32 @@
       "returns": "void"
     },
     {
+      "name": "moveEntity",
+      "signature": "(id: string, at: Vec3Like, yaw?: number | undefined): void",
+      "doc": "Moves whatever is standing under `id`, and optionally turns it. **One function for both kinds, because there is one id space.** `moveProp` and `moveNpc` would be the same function twice, and the pair would be a place for them to differ by accident. **`yaw` is omitted rather than defaulted to zero**, so a character walking across a room keeps the way it was facing. A move that turned everything to north would be a move that silently did something.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "at",
+          "type": "Vec3Like",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "yaw",
+          "type": "number | undefined",
+          "optional": true,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "movePlayer",
       "signature": "(x: number, y: number, z: number, yaw?: number | undefined): void",
       "doc": "Places the player at a world position, optionally facing a heading. For a spawn point, a teleport or a trapdoor.",
@@ -373,6 +496,26 @@
       "returns": "void"
     },
     {
+      "name": "narrate",
+      "signature": "(who: string, text: string): void",
+      "doc": "Says a line, with a name to attribute it to. **A name and not just text**, because a line with no speaker is a line nobody acts on: \"Dad: go to bed. Now.\" and the same words said by a vending machine are different scenes, and the name is the whole of the difference. **It replaces the last one rather than queueing**, because two lines at once is a conversation nobody is having.",
+      "params": [
+        {
+          "name": "who",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "onTick",
       "signature": "(handler: (info: TickInfo) => void): void",
       "doc": "Registers a function to run on every step. Called during load, before the first step, so a place builds itself from its handlers rather than from something that has to ask to be run. **The handler receives an object, not positional arguments**, because the event list grows and a script written against two positional arguments would break silently when a third appeared. It is also the only place in the library where a structured value exists, and it is built *inside* the interpreter from two strings — so the object a script sees never crossed the boundary.",
@@ -380,6 +523,20 @@
         {
           "name": "handler",
           "type": "(info: TickInfo) => void",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "openDialog",
+      "signature": "(options: { readonly entityId: string; readonly prompt: string; readonly options: readonly string[]; }): void",
+      "doc": "As the player a question with answers to click. **Opening a second dialog replaces the first.** A place that opened one on top of another would leave the player looking at one and unable to reach the other, and the only way out would be whichever one the place happened to remember to close. **The pointer lock is released while it is up**, which is this function's most consequential side effect and the reason it exists rather than a panel the place draws itself: a locked pointer swallows every click aimed anywhere but the crosshair, so a dialog nobody can click is a dialog that does not exist (ADR 0010). **The answer arrives as `npc-choose` with an index counting from zero**, and a place that wants to know which option was picked matches on it.",
+      "params": [
+        {
+          "name": "options",
+          "type": "{ readonly entityId: string; readonly prompt: string; readonly options: readonly string[]; }",
           "optional": false,
           "doc": ""
         }
@@ -458,6 +615,20 @@
         }
       ],
       "returns": "RayHit | undefined"
+    },
+    {
+      "name": "removeEntity",
+      "signature": "(id: string): void",
+      "doc": "Takes whatever is standing under `id` out of the world. **Removing something that is not there does nothing and is not an error**, which is what a script that cleans up defensively needs.",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
     },
     {
       "name": "removeLight",
@@ -626,6 +797,26 @@
       "returns": "void"
     },
     {
+      "name": "takeItem",
+      "signature": "(item: string, count?: number | undefined): void",
+      "doc": "Takes items out of what the player is carrying, and never fails. **Takes whatever is there, up to `count`.** A player who has already drunk the milk has none, and that is an ordinary state rather than a failure — so this does not throw, and a script that wanted to know how much it got keeps its own count in `saveData`. **A held item that runs out is dropped**, which is the reason the held slot lives inside the inventory: a hand holding something the count says is gone is a hand the crosshair reads as occupied.",
+      "params": [
+        {
+          "name": "item",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "count",
+          "type": "number | undefined",
+          "optional": true,
+          "doc": ""
+        }
+      ],
+      "returns": "void"
+    },
+    {
       "name": "toast",
       "signature": "(text: string): void",
       "doc": "Shows a line briefly over the world, for something the player should see rather than the console.",
@@ -643,7 +834,7 @@
   "values": [
     {
       "name": "EVENT_KINDS",
-      "type": "readonly [\"player-joined\", \"player-left\", \"player-died\", \"zone-entered\", \"zone-left\", \"timer\", \"data-changed\"]",
+      "type": "readonly [\"player-joined\", \"player-left\", \"player-died\", \"zone-entered\", \"zone-left\", \"entity-used\", \"item-used\", \"npc-talk\", \"npc-choose\", \"timer\", \"data-changed\"]",
       "doc": "The kinds, so a place author can write a `switch` that the compiler will check."
     }
   ],
@@ -653,6 +844,45 @@
       "doc": "How a shape changes the field.",
       "members": [],
       "union": ["Add", "Subtract", "Paint"],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "CreateEntityOptions",
+      "doc": "Stands something in the world, and it is **one** operation for a prop or a character. **`createProp` and `createNpc` rather than one function with a `kind`, because the difference between them is not expressible as a field and the script is the one place it can be held to.** A character has to be given a name, because the crosshair will offer to talk to it and the dialog will have to say what it is talking to; a prop has no name and offering one would be a name nothing uses. `entity-add` is one tag underneath because the wire carries one id space and one crosshair event — but the two functions are how the difference gets enforced rather than documented.",
+      "members": [
+        {
+          "name": "id",
+          "type": "string",
+          "optional": false,
+          "doc": "What the script calls it, which is the only handle there is. **Never generated**, for the reason a shape's id is never generated: every peer runs every place and derives the same figures rather than receiving them, so an id this peer invented would be a different id on every peer."
+        },
+        {
+          "name": "model",
+          "type": "string",
+          "optional": false,
+          "doc": "One of the place's attached models, by the name in its manifest. **Not a path and not a file.** A `.sdfmod` has no id of its own (ADR 0033), so the name it is asked for by is the name the manifest gave it, and a name the place does not attach is refused by name."
+        },
+        {
+          "name": "at",
+          "type": "Vec3Like",
+          "optional": false,
+          "doc": "Where it is. This is the model's own origin, not its base and not its middle."
+        },
+        {
+          "name": "yaw",
+          "type": "number",
+          "optional": true,
+          "doc": "A turn about up, in radians. Omitted means no turn."
+        },
+        {
+          "name": "scale",
+          "type": "number",
+          "optional": true,
+          "doc": "Uniform, about its own origin. **Not a resize.** A figure's shape is baked into its model, so this is for a place that wants a small copy of a thing rather than for one redrawing its own art."
+        }
+      ],
+      "union": [],
       "alternatives": [],
       "type": ""
     },
@@ -747,6 +977,36 @@
       "type": ""
     },
     {
+      "name": "CreateNpcOptions",
+      "doc": "Stands a character in the world. **A name is required and not optional**, which is the one thing that distinguishes a character from a prop in this vocabulary. Everything else — the id, the model, the place, the turn, the size — is identical, and the host enforces the same rule again on the way in.",
+      "members": [
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "doc": "What to call it, in the narration and the dialog."
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
+      "name": "CreatePropOptions",
+      "doc": "A prop, which is anything the player uses rather than talks to.",
+      "members": [
+        {
+          "name": "solid",
+          "type": "boolean",
+          "optional": true,
+          "doc": "Whether the player walks into it. **True unless a script says otherwise**, because the common case is furniture: a fridge, a counter, a bed. The exception worth naming is a pickup, which a player should be able to walk through, and which therefore has to say so."
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
+    },
+    {
       "name": "CreateShapeOptions",
       "doc": "What `createShape` takes: which place and id the operation belongs to, where it sits, what it is, and how it joins the fold.",
       "members": [
@@ -799,10 +1059,10 @@
           "doc": "A colour, 0 to 255 per channel."
         },
         {
-          "name": "opacity",
-          "type": "number",
+          "name": "material",
+          "type": "string",
           "optional": true,
-          "doc": ""
+          "doc": "The procedural material, by name — one of `MATERIAL_NAMES`. **A string, and the field table is what makes it safe.** The id that goes on the wire is an index into that list, so the name is checked against it before anything is built and an unknown one is refused whole rather than becoming an operation that draws the wrong pattern."
         }
       ],
       "union": [],
@@ -1065,6 +1325,66 @@
       ]
     },
     {
+      "kind": "entity-used",
+      "doc": "The player pressed use on a figure, carrying whatever they were holding. **The held item rides on the event rather than the host having to know what is held**, so a place's conditional vocabulary — *put a soda in the machine, not a sandwich* — is the script's and not the host's. **Empty hands is an absent `item`**, which is the rule every other name in this vocabulary already follows: a name is a non-empty string, and a second way to say \"nothing\" would be a second answer for the same state.",
+      "fields": [
+        {
+          "name": "entityId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "item",
+          "type": "string",
+          "optional": true,
+          "doc": "What the player was holding, and absent when they were holding nothing. **On the event rather than asked for**, so a place's conditional vocabulary — a soda goes in the machine, a sandwich does not — is written here and nowhere else. Empty hands is an absent `item`, which is what every other name in this API does."
+        }
+      ]
+    },
+    {
+      "kind": "item-used",
+      "doc": "The player used the thing in their hands on nothing in particular.",
+      "fields": [
+        {
+          "name": "item",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "kind": "npc-talk",
+      "doc": "The player spoke to something.",
+      "fields": [
+        {
+          "name": "entityId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "kind": "npc-choose",
+      "doc": "…and chose an option from what it said.",
+      "fields": [
+        {
+          "name": "entityId",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "option",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ]
+    },
+    {
       "kind": "timer",
       "doc": "A timer a place set came due.",
       "fields": [
@@ -1164,6 +1484,31 @@
       "doc": "The longest a data value's string form may be."
     },
     {
+      "name": "MAX_DIALOG_OPTIONS",
+      "value": "8",
+      "doc": "The most options one dialog may offer. **Eight, and it is a layout bound rather than a semantic one.** Options are a vertical list in the middle of the screen, and eight is what fits above the crosshair without the panel reaching the corners of a phone. A dialog with more than eight answers is a menu, and a menu is not what this is."
+    },
+    {
+      "name": "MAX_DIALOG_PROMPT",
+      "value": "500",
+      "doc": "The most words one dialog's question may be. **Five hundred, and the same reasoning as `MAX_NARRATION`**: a question is spoken aloud by the character and answered by clicking, so it has to be short enough to finish."
+    },
+    {
+      "name": "MAX_ENDING_TEXT",
+      "value": "1000",
+      "doc": "The most words an ending's text may be. **A thousand, and it is the one long-form bound here**, because an ending is the last thing a place says and it is allowed to take a moment: it is what the player reads after thirteen endings' worth of play, and a card that flashes past is a card nobody read."
+    },
+    {
+      "name": "MAX_ENDING_TITLE",
+      "value": "80",
+      "doc": "The most words an ending's title may be. **Eighty, and a title is a title.** The sibling engine's thirteen endings are named in a word or two — `Sleep`, `Shoplifting`, `Not so mint ice cream` — and the bound is generous enough for the longest of them several times over."
+    },
+    {
+      "name": "MAX_ENTITIES",
+      "value": "256",
+      "doc": "The most entities — figures, of either kind — one place may have standing in the world. **Two hundred and fifty-six, and it is a memory bound rather than a frame one.** A figure is a `Mesh` over a geometry it shares with every other instance of its model, so a place at this limit draws a few hundred draw calls and holds a few hundred transforms — the shapes, the colours and the buffers behind them are paid for once per *model*, not once per entity (ADR 0047). What a place cannot have is more entities than it has models to give them distinct shapes, and a model is bounded by `MAX_PLACE_MODELS` (64). **The same number as `MAX_ZONES` and for the same kind of reason**: both are a place's standing population rather than a per-frame cost, and both are checked against the number of things a person could actually see at once."
+    },
+    {
       "name": "MAX_EVENT_ID_LENGTH",
       "value": "128",
       "doc": "The longest an event's own id may be, and the longest a producer's may be. An event id is `producer:at:sequence` and has to be unique across peers without a coordinator, so it is assembled rather than generated (see `events.ts`). Bounded because it crosses the wire on every fact and because the log keys on it."
@@ -1177,6 +1522,16 @@
       "name": "MAX_EVENTS",
       "value": "4000",
       "doc": "The most events the log holds. **Facts are never forgotten** — a peer joining late still needs the whole history for the log to be the same log — so this is not a ring buffer and exceeding it is a refusal rather than an eviction. Four thousand is a long session of a place emitting a fact every few seconds, and a place that needs more is a place that needs summaries."
+    },
+    {
+      "name": "MAX_ITEM_COUNT",
+      "value": "999",
+      "doc": "The most of one item a player may be carrying. **Nine hundred and ninety-nine, and it is a number rather than a kind.** Nothing in this engine has a use for a thousand of anything — the thing a player holds, they hold — so the bound is here to catch a place multiplying a count into a million, not to describe a capacity anybody reaches."
+    },
+    {
+      "name": "MAX_ITEMS",
+      "value": "64",
+      "doc": "The most distinct items one place may declare. **Sixty-four, and it is a naming bound rather than a memory one.** An item is a name and a count; there is no sprite and no slot, so what sixty-four items cost is sixty-four strings. The number is here so that a place has to say what it is carrying rather than accumulating names in a loop, which is the failure a `Set` of unbounded size does not report. **And there is no flag on an item, deliberately.** The sibling engine's inventory carries a `stackable` field and every one of its items sets it, and nothing reads it here or there: this engine has no inventory panel to show a slot in. A field nothing can act on reads as a feature and is not one, so `item-define` takes a name and nothing else and the flag arrives with the panel that would act on it."
     },
     {
       "name": "MAX_LIGHT_INTENSITY",
@@ -1219,9 +1574,19 @@
       "doc": "The longest a name may be: a place's name, or a shape's id inside one. Names are map keys, appear in every log line, and travel over the wire in every event that mentions them, so an unbounded name is memory and bandwidth a peer can ask for. Sixty-four is the same bound the sibling project uses and is longer than anything a person types."
     },
     {
+      "name": "MAX_NARRATION",
+      "value": "500",
+      "doc": "The most words one narration line may be. **Five hundred, and it is the length of a sentence rather than a paragraph.** A narration is something a character says when you look at them; past a few sentences the player has stopped reading and started closing the game. The bound is here so that a place looping its own text cannot build a string nobody will ever see the end of."
+    },
+    {
       "name": "MAX_OPACITY",
       "value": "1",
       "doc": "How opaque an operation may be. Above 1 is meaningless; `makeOperation` defaults to 1."
+    },
+    {
+      "name": "MAX_OPTION_LABEL",
+      "value": "80",
+      "doc": "The most words one option's label may be. **Eighty, and it is about fitting.** An option is one line in that list; a label that wrapped would make two options of different heights and the list would be harder to read than a longer single line would have been."
     },
     {
       "name": "MAX_PENDING_TIMERS",

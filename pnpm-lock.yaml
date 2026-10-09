@@ -596,6 +596,9 @@ importers:
       '@big-mesh-studios/core':
         specifier: workspace:*
         version: link:../core
+      '@big-mesh-studios/csg':
+        specifier: workspace:*
+        version: link:../csg
     devDependencies:
       '@big-mesh-studios/sdf':
         specifier: workspace:*

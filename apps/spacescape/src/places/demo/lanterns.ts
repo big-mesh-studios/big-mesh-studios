@@ -26,13 +26,23 @@
  * centre. So `radius` is how far it reaches and `intensity` is how bright it is where it stops.
  */
 
-import { createLight, createShape, log, after, onTick } from "voxelscape";
+import {
+  after,
+  createLight,
+  createShape,
+  getHeightAt,
+  log,
+  onTick,
+} from "voxelscape";
 
 /** How many, how far apart, and where. */
 const COUNT = 8;
 const SPACING = 60;
 const FIRST_X = -((COUNT - 1) * SPACING) / 2;
-const GROUND_Y = 30;
+// **A height above the world's ground rather than an absolute one.** The demos used to
+// build at `y ≈ 0`, which was the surface when this engine was a height field and is the
+// planet's core now; see `surfaceHeightAt` in `app.tsx`.
+const GROUND_Y = getHeightAt(0, 0) + 30;
 const EVERY_MS = 400;
 
 /** How far each lantern reaches, and how bright it is where it stops. */

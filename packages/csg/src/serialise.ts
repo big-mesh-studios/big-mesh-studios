@@ -23,6 +23,7 @@
  *   ...  shape parameters, three f32 for Ellipsoid and Box, two for Capsule
  *   u8   colour r, g, b
  *   f32  opacity
+ *   u8   material     0 none, otherwise an index into the renderer's material table
  * ```
  */
 
@@ -40,18 +41,32 @@ import {
 /**
  * The version this build writes, and the only one it can read.
  *
- * ## Why 3
+ * ## Why 4
  *
- * **Because a colour now means something on any operation, not only on a `Paint`.**
- * Every operation this build wrote before version 3 carries a `colour` field, and on
- * the brush that produced it was the brush's current colour — set on `Add` and
- * `Subtract` operations as well, with a comment saying the other modes ignored it.
- * They did ignore it. Under version 3 they do not, so **opening a version 2 file
- * would paint the entire model with whatever colour the brush happened to be
- * holding.** The bytes are all still there and all still parse; what changed is what
- * they mean, which is the one thing a version byte cannot leave ambiguous.
+ * **Because an operation now carries which procedural material its surface wears.**
+ * One byte, appended after the opacity, and it is the difference between a house whose
+ * walls are brick and a house whose walls are one flat colour — which is the whole of
+ * what a fragment shader can do with a per-vertex colour and the whole of what it
+ * cannot do without being told which pattern to evaluate. See ADR 0048.
  *
- * ## The two earlier bumps
+ * **The bump is needed rather than merely tidy because the byte has no safe default
+ * position.** Reading a version 3 file's bytes at version 4's widths would slide every
+ * operation's shape parameters by one byte and produce a list of plausible-looking
+ * primitives at plausible-looking positions, which is the exact failure this reader
+ * refuses unknown versions to avoid. Zero is the written default, so a version 4 file
+ * whose operations name no material is a file that draws as it did before the bump —
+ * but a version 3 file cannot be read as one.
+ *
+ * ## The three earlier bumps
+ *
+ * **Version 3 was a colour that means something on any operation, not only on a
+ * `Paint`.** Every operation this build wrote before version 3 carries a `colour`
+ * field, and on the brush that produced it was the brush's current colour — set on `Add`
+ * and `Subtract` operations as well, with a comment saying the other modes ignored it.
+ * They did ignore it. Under version 3 they do not, so **opening a version 2 file would
+ * paint the entire model with whatever colour the brush happened to be holding.** The
+ * bytes are all still there and all still parse; what changed is what they mean, which
+ * is the one thing a version byte cannot leave ambiguous.
  *
  * **Version 2 was six new primitives and one changed one.** The six needed type bytes
  * version 1 did not have. The changed one was the capsule: it was `lenX`, along X, and
@@ -66,13 +81,14 @@ import {
  * operation. Keeping the bytes means a reader can be told what the numbers meant, not
  * that the files are interchangeable.
  */
-export const FORMAT_VERSION = 3;
+export const FORMAT_VERSION = 4;
 
 /**
  * Bytes one operation takes, apart from its shape's parameters: the combine mode,
- * the shape type, an origin, an orientation, a softness, a colour and an opacity.
+ * the shape type, an origin, an orientation, a softness, a colour, an opacity and
+ * a material.
  */
-const FIXED_BYTES = 1 + 1 + 3 * 4 + 4 * 4 + 4 + 3 + 4;
+const FIXED_BYTES = 1 + 1 + 3 * 4 + 4 * 4 + 4 + 3 + 4 + 1;
 
 /** The colour written when an operation somehow has none, matching the default. */
 const WHITE = { r: 255, g: 255, b: 255 };
@@ -207,7 +223,8 @@ export const serialiseOperations = (
     view.setUint8(at + 1, colour.g);
     view.setUint8(at + 2, colour.b);
     view.setFloat32(at + 3, operation.opacity, true);
-    at += 7;
+    view.setUint8(at + 7, operation.material ?? 0);
+    at += 8;
   }
   return buffer;
 };
@@ -273,7 +290,8 @@ export const deserialiseOperations = (buffer: ArrayBuffer): Operation[] => {
       b: view.getUint8(at + 2),
     };
     const opacity = view.getFloat32(at + 3, true);
-    at += 7;
+    const material = view.getUint8(at + 7);
+    at += 8;
 
     operations.push({
       // Indexed by position in the file rather than stored, so that a list loaded
@@ -289,6 +307,11 @@ export const deserialiseOperations = (buffer: ArrayBuffer): Operation[] => {
       combine,
       colour,
       opacity,
+      // **Zero becomes absent rather than a material named "none".** The field is optional
+      // and zero already means no material, so writing the zero into every operation would
+      // make an operation that never asked look as though it had chosen something — the
+      // same reason `makeOperation` leaves `colour` off rather than defaulting it white.
+      ...(material === 0 ? {} : { material }),
     });
   }
 

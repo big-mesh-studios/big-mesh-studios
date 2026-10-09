@@ -29,6 +29,7 @@
  * it produced when something comes out wrong.
  */
 
+import type { Rgb8 } from "@big-mesh-studios/core";
 import type { Node, UniformNode } from "@random-mesh/rmsl";
 import { float, select, vec3, vec4 } from "@random-mesh/rmsl";
 import type { Builder } from "@random-mesh/rmsl/scene";
@@ -40,6 +41,7 @@ import {
 } from "@random-mesh/rmsl/scene";
 
 import { Fog } from "./fog";
+import { patternNode } from "./material-nodes";
 import { PointLights, type PointLightBindings } from "./point-lights";
 import { SkyLight } from "./sky-light";
 
@@ -74,6 +76,21 @@ export class SurfaceMaterial extends NodeMaterial {
    * what makes a volume swappable at runtime rather than fixed at construction.
    */
   volume: DataTexture | null = null;
+
+  /**
+   * Whether this material evaluates the procedural pattern at all.
+   *
+   * **False for a material with no vertex colours to read an id out of.** A figure's tint
+   * material and the sky are `SurfaceMaterial`s for the lighting they share, not because they
+   * have a surface to paint — and the sky is a full-screen background that would otherwise
+   * evaluate four lattices across every pixel of it. This is `false` for the second of those
+   * reasons and the first; a figure would be harmless at `true` and wrong at it, since figure
+   * models carry no material and every fragment would read zero.
+   *
+   * **Set at construction by the caller that knows, not inferred.** Guessing from whether a
+   * tint exists would mean the terrain and a figure differed by accident of configuration.
+   */
+  wantsPattern = true;
 
   /**
    * How many world units the volume spans, edge to edge.
@@ -115,6 +132,28 @@ export class SurfaceMaterial extends NodeMaterial {
   volumeStrength = 0.75;
 
   /**
+   * A colour washed over the surface, and how strongly.
+   *
+   * **A wash and not a multiply, and the reason is that a multiply can only darken.** A
+   * selection has to read on a white fridge in daylight and on a black coat at four in the
+   * morning, and a multiply toward a bright colour moves a dark surface *less* than a light
+   * one — the opposite of what "make this one obvious" needs. Mixing toward the tint at a
+   * fixed strength moves both by the same amount.
+   *
+   * **It is applied after the lighting and before the fog.** After, because a multiply into
+   * the albedo would put the selection's colour under the light and a figure in shadow would
+   * not show it at all; before the fog, because fog is what is between the surface and the eye
+   * and a selection that faded into the haze before the figure did would be reading backwards.
+   *
+   * **Zero by default, so every surface that is not a selected figure costs exactly what it
+   * cost before this existed** — which is the case for the terrain, the water and every figure
+   * the crosshair is not on. The uniform is declared unconditionally for the reason
+   * `point-lights.ts` gives: a uniform appearing must never rebuild a program.
+   */
+  tint: Rgb8 = { r: 255, g: 220, b: 140 };
+  tintStrength = 0;
+
+  /**
    * How opaque the chunks are, 0 to 1.
    *
    * **Driven by altitude, so the streamed terrain can fade out as the far-field globe fades in.**
@@ -126,6 +165,8 @@ export class SurfaceMaterial extends NodeMaterial {
   override opacity = 1;
 
   private opacityUniform?: UniformNode<"float">;
+  private tintUniform?: UniformNode<"vec3">;
+  private tintStrengthUniform?: UniformNode<"float">;
   private volumeSampler?: UniformNode<"sampler3D">;
   private volumeScaleUniform?: UniformNode<"float">;
   private volumeStrengthUniform?: UniformNode<"float">;
@@ -165,6 +206,16 @@ export class SurfaceMaterial extends NodeMaterial {
       "float",
       () => this.opacity,
     );
+    this.tintUniform = b.materialUniform("uTint", "vec3", () => [
+      this.tint.r / 255,
+      this.tint.g / 255,
+      this.tint.b / 255,
+    ]);
+    this.tintStrengthUniform = b.materialUniform(
+      "uTintStrength",
+      "float",
+      () => this.tintStrength,
+    );
 
     // Only bound when there is a volume. The sampler has to be named for the
     // renderer to find a value for it, so a material with no volume leaves the
@@ -193,7 +244,23 @@ export class SurfaceMaterial extends NodeMaterial {
 
   protected override buildFragmentBody(b: Builder): Node<"vec4"> {
     const normal = b.normalWorld.normalize().toVar();
-    const albedo = b.varying("vColour", "vec4").xyz.toVar();
+    const vColour = b.varying("vColour", "vec4").toVar();
+    const albedo = vColour.xyz.toVar();
+
+    // The procedural pattern, from the material id the mesher wrote into the fourth byte.
+    //
+    // **Before anything else touches the albedo, and that is the whole of its placement.** A
+    // pattern is a property of the surface, so it has to be multiplied in before the sun, the
+    // moon and the lanterns have their say — otherwise the pattern would be lit as though it
+    // were the flat colour underneath it, and a mortar line in shadow would glow. It is a
+    // multiplier on a colour the script chose rather than a colour of its own, which is what
+    // lets one brick be a red wall and a blue one without a second entry in MATERIAL_NAMES.
+    //
+    // **Only if this material can have one.** See `wantsPattern`: a tint material or a sky one
+    // has no use for a lattice, and paying for four of them on the sky would be absurd.
+    if (this.wantsPattern) {
+      albedo.mulAssign(patternNode(vColour.w, b.positionWorld));
+    }
 
     // The volume's contribution, addressed in world space so it stays put while the
     // surface moves. Mapped into the unit cube and clamped: the volume is a single
@@ -242,8 +309,13 @@ export class SurfaceMaterial extends NodeMaterial {
 
     const shaded = albedo.mul(lighting).clamp(vec3(0, 0, 0), vec3(1, 1, 1));
 
-    // Fog last, after the lighting and the volume, because it is what the air between
+    // The selection wash. `mix` with a strength uniform rather than a branch, so that a
+    // material with `tintStrength` 0 compiles to the same program as one that has never heard
+    // of a tint — which is every material in the world except the one a place has aimed at.
+    const washed = shaded.mix(this.tintUniform!, this.tintStrengthUniform!);
+
+    // Fog last, after the lighting, the volume and the tint, because it is what the air between
     // the surface and the eye does to it rather than anything the surface is.
-    return vec4(this.fog.apply(b, shaded), this.opacityUniform!);
+    return vec4(this.fog.apply(b, washed), this.opacityUniform!);
   }
 }

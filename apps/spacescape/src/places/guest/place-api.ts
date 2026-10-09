@@ -174,7 +174,14 @@ export interface CreateShapeOptions {
     readonly g: number;
     readonly b: number;
   };
-  readonly opacity?: number;
+  /**
+   * The procedural material, by name — one of `MATERIAL_NAMES`.
+   *
+   * **A string, and the field table is what makes it safe.** The id that goes on the wire is an
+   * index into that list, so the name is checked against it before anything is built and an
+   * unknown one is refused whole rather than becoming an operation that draws the wrong pattern.
+   */
+  readonly material?: string;
 }
 
 /**
@@ -197,8 +204,276 @@ export const createShape = (options: CreateShapeOptions): void => {
       ? {}
       : { orientation: options.orientation }),
     ...(options.colour === undefined ? {} : { colour: options.colour }),
-    ...(options.opacity === undefined ? {} : { opacity: options.opacity }),
+    ...(options.material === undefined ? {} : { material: options.material }),
   });
+};
+
+/* --------------------------------------------------------------------- items */
+
+/**
+ * Declares an item, so the place can hand it out.
+ *
+ * **A declaration and not a definition, because there is nothing to define.** An item in this
+ * engine is a name and a count; it has no sprite and no slot, because there is no inventory
+ * panel to put either in. The sibling engine gives every item a `stackable` flag and an empty
+ * sprite, and neither means anything there either — so this takes a name and nothing else, and
+ * a field that nothing can act on reads as a feature and is not one.
+ *
+ * **It exists for the refusal it makes possible.** `giveItem` refuses a name this has not
+ * declared, and in the shop this was built for the difference between "the player has a cola"
+ * and "the player has a cloa" is the entire puzzle. One declaration per item is a cheap price for
+ * a misspelling being an error at the line it was written.
+ *
+ * Declaring the same item again changes nothing and is not an error, so a place that declares
+ * from a loop reloading it is not a failure.
+ */
+export const defineItem = (item: string): void => {
+  ask("item-define", { item });
+};
+
+/**
+ * Puts items in what the player is carrying.
+ *
+ * **The item must have been declared**, which is what makes a typo a typo.
+ */
+export const giveItem = (item: string, count?: number): void => {
+  ask("item-give", {
+    item,
+    ...(count === undefined ? {} : { count }),
+  });
+};
+
+/**
+ * Takes items out of what the player is carrying, and never fails.
+ *
+ * **Takes whatever is there, up to `count`.** A player who has already drunk the milk has none,
+ * and that is an ordinary state rather than a failure — so this does not throw, and a script that
+ * wanted to know how much it got keeps its own count in `saveData`.
+ *
+ * **A held item that runs out is dropped**, which is the reason the held slot lives inside the
+ * inventory: a hand holding something the count says is gone is a hand the crosshair reads as
+ * occupied.
+ */
+export const takeItem = (item: string, count?: number): void => {
+  ask("item-take", {
+    item,
+    ...(count === undefined ? {} : { count }),
+  });
+};
+
+/* ----------------------------------------------------------------------- talk */
+
+/**
+ * Says a line, with a name to attribute it to.
+ *
+ * **A name and not just text**, because a line with no speaker is a line nobody acts on: "Dad: go
+ * to bed. Now." and the same words said by a vending machine are different scenes, and the name
+ * is the whole of the difference.
+ *
+ * **It replaces the last one rather than queueing**, because two lines at once is a conversation
+ * nobody is having.
+ */
+export const narrate = (who: string, text: string): void => {
+  ask("narrate", { who, text });
+};
+
+/**
+ * As the player a question with answers to click.
+ *
+ * **Opening a second dialog replaces the first.** A place that opened one on top of another would
+ * leave the player looking at one and unable to reach the other, and the only way out would be
+ * whichever one the place happened to remember to close.
+ *
+ * **The pointer lock is released while it is up**, which is this function's most consequential
+ * side effect and the reason it exists rather than a panel the place draws itself: a locked
+ * pointer swallows every click aimed anywhere but the crosshair, so a dialog nobody can click is a
+ * dialog that does not exist (ADR 0010).
+ *
+ * **The answer arrives as `npc-choose` with an index counting from zero**, and a place that wants
+ * to know which option was picked matches on it.
+ */
+export const openDialog = (options: {
+  /** Who is asking, by the id `createNpc` gave them. */
+  readonly entityId: string;
+  /** The question. */
+  readonly prompt: string;
+  /** The answers, in the order they should be offered. */
+  readonly options: readonly string[];
+}): void => {
+  ask("dialog", {
+    entityId: options.entityId,
+    prompt: options.prompt,
+    options: options.options,
+  });
+};
+
+/**
+ * Closes the dialog, and does nothing when there is none.
+ *
+ * **Which is the point.** A place that closes on the way out of a conversation should not have to
+ * know whether one was open, and a `dialog-close` with no dialog behind it is the same answer as
+ * one with.
+ */
+export const closeDialog = (): void => {
+  ask("dialog-close", {});
+};
+
+/**
+ * Ends the game, with a title and a card, and offers to play again.
+ *
+ * **There is no way to take it back**, and there is deliberately no `unend`: an ending is a
+ * statement about the run that just finished, and a place that could undo one would be a place
+ * whose end could be undone, which is the one thing an ending is for. The card's only way on is to
+ * start again, which reloads the place from the beginning rather than undoing the run.
+ */
+export const endGame = (options: {
+  /** What to call it. */
+  readonly title: string;
+  /** What to say about it. */
+  readonly text: string;
+}): void => {
+  ask("ending", { title: options.title, text: options.text });
+};
+
+/* --------------------------------------------------------------------- hands */
+
+/**
+ * Puts an item in the player's hands, or empties them.
+ *
+ * **Omitting the item is how a place says "put that down", and there is no other way.** Every
+ * name in this API is a non-empty string, so an empty string is not available as a second way to
+ * say nothing and the absence is the only one.
+ *
+ * **What a hand changes is the interaction, not the world.** A crosshair on a character is a
+ * conversation with empty hands and a use with anything in them; a crosshair on nothing does
+ * nothing at all with empty hands. So the whole of what holding a thing does is to change which
+ * of those happens, and a place that never reads `item` can hold things all day without
+ * consequence.
+ */
+export const holdItem = (item?: string): void => {
+  ask("item-hold", item === undefined ? {} : { item });
+};
+
+/* ------------------------------------------------------------------- figures */
+
+/**
+ * Stands something in the world, and it is **one** operation for a prop or a character.
+ *
+ * **`createProp` and `createNpc` rather than one function with a `kind`, because the difference
+ * between them is not expressible as a field and the script is the one place it can be held to.**
+ * A character has to be given a name, because the crosshair will offer to talk to it and the
+ * dialog will have to say what it is talking to; a prop has no name and offering one would be
+ * a name nothing uses. `entity-add` is one tag underneath because the wire carries one id space
+ * and one crosshair event — but the two functions are how the difference gets enforced rather
+ * than documented.
+ */
+export interface CreateEntityOptions {
+  /**
+   * What the script calls it, which is the only handle there is.
+   *
+   * **Never generated**, for the reason a shape's id is never generated: every peer runs every
+   * place and derives the same figures rather than receiving them, so an id this peer invented
+   * would be a different id on every peer.
+   */
+  readonly id: string;
+  /**
+   * One of the place's attached models, by the name in its manifest.
+   *
+   * **Not a path and not a file.** A `.sdfmod` has no id of its own (ADR 0033), so the name it
+   * is asked for by is the name the manifest gave it, and a name the place does not attach is
+   * refused by name.
+   */
+  readonly model: string;
+  /** Where it is. This is the model's own origin, not its base and not its middle. */
+  readonly at: Vec3Like;
+  /** A turn about up, in radians. Omitted means no turn. */
+  readonly yaw?: number;
+  /**
+   * Uniform, about its own origin.
+   *
+   * **Not a resize.** A figure's shape is baked into its model, so this is for a place that
+   * wants a small copy of a thing rather than for one redrawing its own art.
+   */
+  readonly scale?: number;
+}
+
+/** A prop, which is anything the player uses rather than talks to. */
+export interface CreatePropOptions extends CreateEntityOptions {
+  /**
+   * Whether the player walks into it.
+   *
+   * **True unless a script says otherwise**, because the common case is furniture: a fridge,
+   * a counter, a bed. The exception worth naming is a pickup, which a player should be able to
+   * walk through, and which therefore has to say so.
+   */
+  readonly solid?: boolean;
+}
+
+/**
+ * Stands a character in the world.
+ *
+ * **A name is required and not optional**, which is the one thing that distinguishes a
+ * character from a prop in this vocabulary. Everything else — the id, the model, the place, the
+ * turn, the size — is identical, and the host enforces the same rule again on the way in.
+ */
+export interface CreateNpcOptions extends CreateEntityOptions {
+  /** What to call it, in the narration and the dialog. */
+  readonly name: string;
+}
+
+/** Stands a prop in the world, from one of the place's attached models. */
+export const createProp = (options: CreatePropOptions): void => {
+  ask("entity-add", {
+    id: options.id,
+    model: options.model,
+    kind: "prop",
+    at: options.at,
+    ...(options.yaw === undefined ? {} : { yaw: options.yaw }),
+    ...(options.scale === undefined ? {} : { scale: options.scale }),
+    ...(options.solid === undefined ? {} : { solid: options.solid }),
+  });
+};
+
+/** Stands a character in the world, from one of the place's attached models. */
+export const createNpc = (options: CreateNpcOptions): void => {
+  ask("entity-add", {
+    id: options.id,
+    model: options.model,
+    kind: "npc",
+    at: options.at,
+    name: options.name,
+    ...(options.yaw === undefined ? {} : { yaw: options.yaw }),
+    ...(options.scale === undefined ? {} : { scale: options.scale }),
+  });
+};
+
+/**
+ * Moves whatever is standing under `id`, and optionally turns it.
+ *
+ * **One function for both kinds, because there is one id space.** `moveProp` and `moveNpc`
+ * would be the same function twice, and the pair would be a place for them to differ by
+ * accident.
+ *
+ * **`yaw` is omitted rather than defaulted to zero**, so a character walking across a room
+ * keeps the way it was facing. A move that turned everything to north would be a move that
+ * silently did something.
+ */
+export const moveEntity = (id: string, at: Vec3Like, yaw?: number): void => {
+  ask("entity-move", {
+    id,
+    at,
+    ...(yaw === undefined ? {} : { yaw }),
+  });
+};
+
+/**
+ * Takes whatever is standing under `id` out of the world.
+ *
+ * **Removing something that is not there does nothing and is not an error**, which is what a
+ * script that cleans up defensively needs.
+ */
+export const removeEntity = (id: string): void => {
+  ask("entity-remove", { id });
 };
 
 /** Takes one shape out of a place by the id `createShape` was given. */
@@ -588,6 +863,40 @@ type PlaceEventUnion =
     })
   | (PlaceEventBase<"zone-entered"> & { readonly zoneId: string })
   | (PlaceEventBase<"zone-left"> & { readonly zoneId: string })
+  /**
+   * The player pressed use on something standing in the world.
+   *
+   * **`entityId` and not `propId` or `npcId`, because there is one id space.** `createProp` and
+   * `createNpc` put both under the same namespace and the crosshair reports what it hit the
+   * same way whichever it was, so a script branches on what it finds rather than on which of
+   * two lists it is looking through.
+   */
+  | (PlaceEventBase<"entity-used"> & {
+      readonly entityId: string;
+      /**
+       * What the player was holding, and absent when they were holding nothing.
+       *
+       * **On the event rather than asked for**, so a place's conditional vocabulary — a soda
+       * goes in the machine, a sandwich does not — is written here and nowhere else. Empty hands
+       * is an absent `item`, which is what every other name in this API does.
+       */
+      readonly item?: string;
+    })
+  /**
+   * The player used the thing in their hands on nothing in particular.
+   *
+   * **Authored only when there is something in hand**, which is what makes it different from
+   * `entity-used`'s optional `item`: by the time the crosshair is on nothing, empty hands mean
+   * there was nothing to do and no event was written at all.
+   */
+  | (PlaceEventBase<"item-used"> & { readonly item: string })
+  /** The player spoke to a character. */
+  | (PlaceEventBase<"npc-talk"> & { readonly entityId: string })
+  /** …and chose one of the options it offered, counting from zero. */
+  | (PlaceEventBase<"npc-choose"> & {
+      readonly entityId: string;
+      readonly option: number;
+    })
   | (PlaceEventBase<"timer"> & { readonly timerId: string })
   | (PlaceEventBase<"data-changed"> & {
       readonly scope: string;
@@ -604,6 +913,10 @@ export const EVENT_KINDS = [
   "player-died",
   "zone-entered",
   "zone-left",
+  "entity-used",
+  "item-used",
+  "npc-talk",
+  "npc-choose",
   "timer",
   "data-changed",
 ] as const;

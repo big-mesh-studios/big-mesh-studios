@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MeshReport } from "@big-mesh-studios/meshing";
 
-import { budgetFor, meshModel, type MeshResult } from "../model/mesh-model";
+import { budgetFor, meshParts, type MeshResult } from "../model/mesh-model";
 import { placedPart } from "../model/part";
 import {
   PRINT_VOXEL_SIZE,
@@ -106,7 +106,7 @@ describe("printedMesh", () => {
     // the measurable consequence.
     expect(PRINT_VOXEL_SIZE).toBeLessThan(budgetFor(0.25).voxelSize);
 
-    const coarse = meshModel([body()], budgetFor(0.25), "marching-cubes");
+    const coarse = meshParts([body()], budgetFor(0.25), "marching-cubes");
 
     expect(meshOf([body()]).triangles).toBeGreaterThan(coarse?.triangles ?? 0);
   });

@@ -161,6 +161,103 @@ export const MAX_PENDING_TIMERS = 10_000;
 export const MAX_ZONES = 256;
 
 /**
+ * The most distinct items one place may declare.
+ *
+ * **Sixty-four, and it is a naming bound rather than a memory one.** An item is a name and a
+ * count; there is no sprite and no slot, so what sixty-four items cost is sixty-four strings. The
+ * number is here so that a place has to say what it is carrying rather than accumulating names
+ * in a loop, which is the failure a `Set` of unbounded size does not report.
+ *
+ * **And there is no flag on an item, deliberately.** The sibling engine's inventory carries a
+ * `stackable` field and every one of its items sets it, and nothing reads it here or there: this
+ * engine has no inventory panel to show a slot in. A field nothing can act on reads as a feature
+ * and is not one, so `item-define` takes a name and nothing else and the flag arrives with the
+ * panel that would act on it.
+ */
+export const MAX_ITEMS = 64;
+
+/**
+ * The most of one item a player may be carrying.
+ *
+ * **Nine hundred and ninety-nine, and it is a number rather than a kind.** Nothing in this engine
+ * has a use for a thousand of anything — the thing a player holds, they hold — so the bound is
+ * here to catch a place multiplying a count into a million, not to describe a capacity anybody
+ * reaches.
+ */
+export const MAX_ITEM_COUNT = 999;
+
+/**
+ * The most entities — figures, of either kind — one place may have standing in the world.
+ *
+ * **Two hundred and fifty-six, and it is a memory bound rather than a frame one.** A figure is a
+ * `Mesh` over a geometry it shares with every other instance of its model, so a place at this
+ * limit draws a few hundred draw calls and holds a few hundred transforms — the shapes, the
+ * colours and the buffers behind them are paid for once per *model*, not once per entity
+ * (ADR 0047). What a place cannot have is more entities than it has models to give them
+ * distinct shapes, and a model is bounded by `MAX_PLACE_MODELS` (64).
+ *
+ * **The same number as `MAX_ZONES` and for the same kind of reason**: both are a place's standing
+ * population rather than a per-frame cost, and both are checked against the number of things a
+ * person could actually see at once.
+ */
+export const MAX_ENTITIES = 256;
+
+/**
+ * The most words one narration line may be.
+ *
+ * **Five hundred, and it is the length of a sentence rather than a paragraph.** A narration is
+ * something a character says when you look at them; past a few sentences the player has stopped
+ * reading and started closing the game. The bound is here so that a place looping its own text
+ * cannot build a string nobody will ever see the end of.
+ */
+export const MAX_NARRATION = 500;
+
+/**
+ * The most words one dialog's question may be.
+ *
+ * **Five hundred, and the same reasoning as `MAX_NARRATION`**: a question is spoken aloud by the
+ * character and answered by clicking, so it has to be short enough to finish.
+ */
+export const MAX_DIALOG_PROMPT = 500;
+
+/**
+ * The most options one dialog may offer.
+ *
+ * **Eight, and it is a layout bound rather than a semantic one.** Options are a vertical list in
+ * the middle of the screen, and eight is what fits above the crosshair without the panel reaching
+ * the corners of a phone. A dialog with more than eight answers is a menu, and a menu is not what
+ * this is.
+ */
+export const MAX_DIALOG_OPTIONS = 8;
+
+/**
+ * The most words one option's label may be.
+ *
+ * **Eighty, and it is about fitting.** An option is one line in that list; a label that wrapped
+ * would make two options of different heights and the list would be harder to read than a longer
+ * single line would have been.
+ */
+export const MAX_OPTION_LABEL = 80;
+
+/**
+ * The most words an ending's title may be.
+ *
+ * **Eighty, and a title is a title.** The sibling engine's thirteen endings are named in a word
+ * or two — `Sleep`, `Shoplifting`, `Not so mint ice cream` — and the bound is generous enough for
+ * the longest of them several times over.
+ */
+export const MAX_ENDING_TITLE = 80;
+
+/**
+ * The most words an ending's text may be.
+ *
+ * **A thousand, and it is the one long-form bound here**, because an ending is the last thing a
+ * place says and it is allowed to take a moment: it is what the player reads after thirteen
+ * endings' worth of play, and a card that flashes past is a card nobody read.
+ */
+export const MAX_ENDING_TEXT = 1000;
+
+/**
  * How many lights may exist at once, across every place.
  *
  * **Far more than are drawn.** `MAX_DRAWN_LIGHTS` in `render/point-lights.ts` is eight, and this

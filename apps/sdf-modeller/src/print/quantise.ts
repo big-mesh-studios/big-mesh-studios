@@ -66,12 +66,19 @@ export interface QuantisedColours {
   readonly distinct: number;
 }
 
-/** The colour a corner is counted under. */
+/**
+ * The colour a corner is counted under.
+ *
+ * **Three channels, and the fourth byte of the mesh is not one of them.** It is a material id
+ * (ADR 0048), and a printer has no use for a material: printing it as transparency would give
+ * two parts of a model that differ only in material two different filaments, and would print
+ * every part with no material at all as fully transparent.
+ */
 const colourOf = (colours: Uint8Array, vertex: number): Packed => ({
   r: colours[vertex * 4] as number,
   g: colours[vertex * 4 + 1] as number,
   b: colours[vertex * 4 + 2] as number,
-  a: colours[vertex * 4 + 3] as number,
+  a: 255,
 });
 
 /**
@@ -79,28 +86,26 @@ const colourOf = (colours: Uint8Array, vertex: number): Packed => ({
  *
  * **A number rather than a string**, because this runs once per corner of a mesh that can be
  * half a million triangles and building a string per corner would be the largest cost in the
- * export. `0xRRGGBBAA` is 32 bits and every channel is a byte already, so it packs exactly.
+ * export. **Three channels, so the low byte is always zero** — it was the alpha once and is
+ * unused now, and leaving it zero keeps the key a plain `0xRRGGBB00`.
  */
-const keyOf = ({ r, g, b, a }: Packed): number =>
-  ((r << 24) | (g << 16) | (b << 8) | a) >>> 0;
+const keyOf = ({ r, g, b }: Packed): number => ((r << 24) | (g << 16) | (b << 8)) >>> 0;
 
-/** The colour a packed key stands for. */
+/** The colour a packed key stands for. Always opaque, because nothing else can be printed. */
 const fromKey = (key: number): RGBA => ({
   r: (key >>> 24) & 0xff,
   g: (key >>> 16) & 0xff,
   b: (key >>> 8) & 0xff,
-  a: key & 0xff,
+  a: 255,
 });
 
 /**
  * How far apart two colours are.
  *
- * **Over all four channels, alpha included.** A printer has no use for alpha, so the argument
- * for ignoring it is real — but ignoring it merges a translucent part of a model with the
- * opaque part next to it on the strength of a channel nothing can act on, and the cost of
- * keeping them apart is only that they may not both survive the reduction. Alpha is the last
- * tie-break, not the first: it is weighted by the same one as the others, so two colours
- * differing only in alpha are the closest pair there is and merge first.
+ * **Over the three channels a printer has.** The fourth byte of a mesh vertex is a material id
+ * (ADR 0048) and no longer an alpha, so counting it here would be counting something a slicer
+ * cannot act on — and this function used to count it, because it used to be an alpha the mesh
+ * genuinely carried.
  */
 const distance = (a: Packed, b: RGBA): number => {
   const dr = a.r - b.r;

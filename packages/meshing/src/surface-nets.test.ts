@@ -803,14 +803,26 @@ describe("the mesh's layout", () => {
     }
   });
 
-  it("writes a colour into its three lanes and leaves the fourth opaque", () => {
+  it("writes a colour into its three lanes and the fourth into no material by default", () => {
+    // **Zero and not 255, and the change is deliberate.** The fourth byte was an opacity no
+    // shader read and is now a material id (ADR 0048); zero is "no material", so an operation
+    // that never asked for one must not arrive at the shader as material 255, which would be a
+    // material nobody has written.
     const out = new ChunkMeshBuilder();
     const index = out.vertex(0, 0, 0);
     out.setColour(index, { r: 12, g: 34, b: 56 });
     expect(out.colours.at(index * 4)).toBe(12);
     expect(out.colours.at(index * 4 + 1)).toBe(34);
     expect(out.colours.at(index * 4 + 2)).toBe(56);
-    expect(out.colours.at(index * 4 + 3)).toBe(255);
+    expect(out.colours.at(index * 4 + 3)).toBe(0);
+  });
+
+  it("puts a material in the fourth byte without touching the colour", () => {
+    const out = new ChunkMeshBuilder();
+    const index = out.vertex(0, 0, 0);
+    out.setColour(index, { r: 12, g: 34, b: 56 }, 7);
+    expect(out.colours.at(index * 4)).toBe(12);
+    expect(out.colours.at(index * 4 + 3)).toBe(7);
   });
 
   it("refuses to set a value past what has been written", () => {

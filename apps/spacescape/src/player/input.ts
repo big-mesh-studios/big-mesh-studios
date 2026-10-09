@@ -40,6 +40,16 @@ export interface InputSnapshot {
   secondaryHeld: boolean;
   /** Edge-triggered: true only on the frame the place button went up. */
   secondaryReleased: boolean;
+  /**
+   * Edge-triggered: true only on the frame the use action fired.
+   *
+   * **A third action rather than a mode of the two there are, and never held.** Digging and
+   * placing are things you *do to the world* and they are held so that a drag keeps carving;
+   * using something is a single gesture at a single instant, and a hold would fire the same
+   * interaction every frame while the button was down. It is also the only one of the three a
+   * place reads — `Game` hands it to whoever owns the figures rather than acting on it.
+   */
+  use: boolean;
 }
 
 /** A snapshot with nothing pressed, for a frame that has no input. */
@@ -55,6 +65,7 @@ export const neutralInput = (): InputSnapshot => ({
   secondary: false,
   secondaryHeld: false,
   secondaryReleased: false,
+  use: false,
 });
 
 /** Maps a keydown `KeyboardEvent.code` to its [strafe, forward] contribution. */
@@ -68,6 +79,20 @@ const MOVE_KEYS: Record<string, readonly [number, number]> = {
   KeyA: [-1, 0],
   KeyD: [1, 0],
 };
+
+/**
+ * The keys that use whatever the crosshair is on.
+ *
+ * **Two, because a place is not the only thing that ever wants a "use" key** and one of them
+ * has to keep working whatever else a place adds. `E` is the one to reach for; `F` is beside it
+ * for the hand that is on the mouse rather than the movement keys.
+ *
+ * **Not a mouse button, and the reason is the pointer lock.** Left and right are already dig and
+ * place, and a middle click is the one button a browser will not deliver to a locked pointer
+ * reliably — so the only remaining buttons would be ones the page has to intercept, and a
+ * browser's own shortcut on one of them would fight it.
+ */
+const USE_KEYS: ReadonlySet<string> = new Set(["KeyE", "KeyF"]);
 
 /**
  * Whether the event target is a field a player is typing into, which must keep
@@ -110,6 +135,8 @@ export interface InputController {
   setTouchSecondary(held: boolean): void;
   /** The on-screen jump button's held state. */
   setTouchJump(held: boolean): void;
+  /** The on-screen use button. Edge-triggered: a press is a use. */
+  setTouchUse(): void;
   /** Edge-triggered jump, for a button that only needs the press. */
   queueJump(): void;
   /** Accumulates a drag-to-look delta, in client pixels. */
@@ -151,6 +178,7 @@ export const createInput = (): InputController => {
   let primaryQueued = false;
   let secondaryQueued = false;
   let secondaryReleasedQueued = false;
+  let useQueued = false;
 
   /** Which sources hold each action, so releasing one never clears another. */
   const sources = {
@@ -160,6 +188,7 @@ export const createInput = (): InputController => {
     primaryTouch: false,
     secondaryMouse: false,
     secondaryTouch: false,
+    useKey: false,
   };
   let enabled = true;
   let canvas: HTMLCanvasElement | undefined;
@@ -241,6 +270,14 @@ export const createInput = (): InputController => {
           }
           return;
         }
+        if (USE_KEYS.has(event.code)) {
+          event.preventDefault();
+          if (!sources.useKey) {
+            sources.useKey = true;
+            useQueued = true;
+          }
+          return;
+        }
         const move = MOVE_KEYS[event.code];
         if (move === undefined || event.repeat) return;
         event.preventDefault();
@@ -256,6 +293,11 @@ export const createInput = (): InputController => {
         if (!enabled || isEditableTarget(event)) return;
         if (event.code === "Space") {
           sources.jumpKey = false;
+          return;
+        }
+        if (USE_KEYS.has(event.code)) {
+          event.preventDefault();
+          sources.useKey = false;
           return;
         }
         const move = MOVE_KEYS[event.code];
@@ -419,6 +461,7 @@ export const createInput = (): InputController => {
         secondary: secondaryQueued,
         secondaryHeld: nextSecondary,
         secondaryReleased: secondaryReleasedQueued,
+        use: useQueued,
       };
 
       jumpQueued = false;
@@ -427,6 +470,7 @@ export const createInput = (): InputController => {
       primaryQueued = false;
       secondaryQueued = false;
       secondaryReleasedQueued = false;
+      useQueued = false;
       return snapshot;
     },
 
@@ -444,6 +488,13 @@ export const createInput = (): InputController => {
       if (held && !sources.secondaryTouch) secondaryQueued = true;
       if (!held && sources.secondaryTouch) secondaryReleasedQueued = true;
       sources.secondaryTouch = held;
+    },
+
+    setTouchUse() {
+      // **Edge-triggered with no held state at all**, because a use is a gesture rather than a
+      // mode. There is nothing to hold down and nothing to release, so there is nothing here to
+      // remember between frames either.
+      useQueued = true;
     },
 
     setTouchJump(held) {

@@ -5,7 +5,7 @@
  *
  *   position   float32x3    12 B  where the vertex is
  *   normalOct  snorm16x2     4 B  its normal, folded onto the octahedron
- *   colour     unorm8x4      4 B  its colour, plus a lane kept for a face index
+ *   colour     unorm8x4      4 B  its colour, plus a lane for its material
  *
  * This is the layout ADR 0003 settled on and Phase 0 proved reaches the GPU, so the
  * mesher writes into something already known to work rather than something that has
@@ -35,7 +35,7 @@ export interface ChunkMesh {
   positions: Float32Array;
   /** Two signed 16-bit channels a vertex, holding its octahedral normal. */
   normalOct: Int16Array;
-  /** Four bytes a vertex: the colour, and a lane left free. */
+  /** Four bytes a vertex: the colour, and a lane for the material id. */
   colours: Uint8Array;
   /** Three indices a triangle. */
   indices: Uint32Array;
@@ -117,17 +117,23 @@ export class ChunkMeshBuilder implements SurfaceOutput {
    * Sets one vertex's colour, and optionally how opaque it is.
    *
    * **Alpha is a separate argument with a default of 255 rather than part of
-   * `Rgb8`, and that is deliberate.** The packed vertex is four bytes and the third
-   * of them has always been the alpha, but `Rgb8` is what `Operation.colour` is and
-   * what every caller has in hand. Widening the colour type to carry alpha would
-   * have made every colour in the repository four-wide to serve one of them, so the
-   * default keeps the two-argument call meaning exactly what it meant before.
+   * `Rgb8`, and that is deliberate.** The packed vertex is four bytes and the fourth
+   * of them is not a colour channel, but `Rgb8` is what `Operation.colour` is and what
+   * every caller has in hand. Widening the colour type to carry a fourth field would have
+   * made every colour in the repository four-wide to serve one of them, so the third
+   * argument stays separate and defaults to no material.
+   *
+   * **The fourth byte was alpha and is now a material id** (ADR 0048). It was documented from
+   * the first as "a lane kept for a face index" and carried an opacity that ADR 0028 records as
+   * "carried in the file, not read by the field" and which no shader read either. So nothing
+   * that reads this vertex sees a different value: the byte was already free, and the material
+   * costs no bytes at all rather than `VERTEX_BYTES` going from 20 to 21.
    */
-  setColour(index: number, colour: Rgb8, alpha = 255): void {
+  setColour(index: number, colour: Rgb8, material = 0): void {
     this.colours.setAt(index * 4, colour.r);
     this.colours.setAt(index * 4 + 1, colour.g);
     this.colours.setAt(index * 4 + 2, colour.b);
-    this.colours.setAt(index * 4 + 3, alpha);
+    this.colours.setAt(index * 4 + 3, material);
   }
 
   /** Reads a vertex's position. */

@@ -461,8 +461,12 @@ describe("a chunk, meshed as water", () => {
     });
     expect(mesh.normalOct.length).toBe(mesh.vertexCount * 2);
     expect(mesh.colours.length).toBe(mesh.vertexCount * 4);
+    // **The fourth byte is a material id now, and water's is zero** (ADR 0048). It was 255,
+    // which as an id is "brick" — so water would have been laid in courses, from a field that
+    // also wrote it. The assertion is here rather than dropped because the byte is written even
+    // though nothing reads it, and "nothing reads it" is exactly how a wrong value survives.
     for (let v = 0; v < mesh.vertexCount; v++)
-      expect(mesh.colours[v * 4 + 3]).toBe(255);
+      expect(mesh.colours[v * 4 + 3]).toBe(0);
   });
 
   it("reuses one buffer for a second chunk without leaking between them", () => {

@@ -492,7 +492,13 @@ describe("the terrain, lit by a place", () => {
         varyings: {
           positionWorld: [world[0] + x, world[1] + y, world[2]],
           normalWorld: normal,
-          vColour: [0.8, 0.8, 0.8, 1],
+          // **The fourth byte is a material id, and this is id zero** (ADR 0048). It was `1`
+          // for "opaque" and is now "brick", which is why this fixture made a lantern test fail
+          // for a reason that had nothing to do with lanterns: a grey wall of brick with a
+          // mortar joint through the middle of it, so the lit and unlit pixels of a one-pixel
+          // frame stopped being comparable. These tests are about point lights and want the
+          // flattest surface this material can draw.
+          vColour: [0.8, 0.8, 0.8, 0],
         },
       }),
     });

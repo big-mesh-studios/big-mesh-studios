@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import type { RGBA } from "@big-mesh-studios/core";
 import { parametersToFloats, type OperationShape } from "@big-mesh-studios/sdf";
+import { serialiseOperations } from "@big-mesh-studios/csg";
 
 import { MAX_PARTS } from "../model/model-store";
 import { IDENTITY, placedPart, type Part } from "../model/part";
@@ -9,6 +10,7 @@ import {
   PROJECT_MANIFEST_FILE,
   PROJECT_MODEL_FILE,
   PROJECT_VERSION,
+  projectManifest,
   type ProjectView,
 } from "./project-file";
 import { readProject, writeProject } from "./project";
@@ -434,7 +436,13 @@ describe("readProject refusals", () => {
   });
 
   it("refuses a manifest naming two parts with one id, before reading the model", async () => {
-    const written = await writeProject([body(), body("body")], PALETTE, view);
+    // **The base is a one-part model and the damage is only to the manifest.** The obvious
+    // way to write this test was to save a two-part model with two parts sharing an id — and
+    // `writeProject` no longer lets that past, because `projectManifest` checks what it is
+    // about to write against the same validator the reader uses. That is the point of the
+    // constructor, and the cost is that a fixture this application cannot produce has to be
+    // put together by hand.
+    const written = await writeProject([body()], PALETTE, view);
     const damaged = await withManifest(written, (manifest) => ({
       ...manifest,
       ids: ["same", "same"],
@@ -450,19 +458,44 @@ describe("readProject refusals", () => {
     // reach this check: `isProjectManifest` bounds a manifest's own ids to `MAX_PARTS`, so a
     // file whose manifest was over the limit would have been refused with a different sentence
     // and this test would pass for the wrong reason.
+    //
+    // **Written by hand rather than through `writeProject`**, for the reason the test above
+    // gives: the writer now refuses to build a manifest its own reader would reject, so a
+    // model with more parts than the manifest may name is a file this application cannot
+    // produce. Which is exactly the kind of file this check is for.
     const parts = Array.from({ length: MAX_PARTS + 1 }, (_, i) =>
       body(`p${i}`),
     );
-    const written = await writeProject(parts, PALETTE, view);
-    const legalIds = parts.slice(0, MAX_PARTS).map((part) => part.id);
+    const zip = new JSZip();
+    zip.file(
+      PROJECT_MANIFEST_FILE,
+      JSON.stringify(
+        projectManifest(view, {
+          ids: parts.slice(0, MAX_PARTS).map((part) => part.id),
+          coloured: [],
+        }),
+      ),
+      { createFolders: false },
+    );
+    zip.file(
+      PROJECT_MODEL_FILE,
+      serialiseOperations(
+        parts.map((part, index) => ({
+          index,
+          origin: part.origin,
+          orientation: part.orientation,
+          shape: part.shape,
+          softness: part.softness,
+          combine: part.combine,
+          opacity: 1,
+        })),
+      ),
+      { createFolders: false },
+    );
 
-    const damaged = await withManifest(written, (manifest) => ({
-      ...manifest,
-      ids: legalIds,
-      coloured: [],
-    }));
-
-    await expect(readProject(damaged)).rejects.toThrow(
+    await expect(
+      readProject(await zip.generateAsync({ type: "blob" })),
+    ).rejects.toThrow(
       new RegExp(`holds ${MAX_PARTS + 1} parts and the limit is`),
     );
   });

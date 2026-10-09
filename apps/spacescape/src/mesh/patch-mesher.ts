@@ -64,7 +64,7 @@ export interface PatchMeshParams {
     x: number,
     y: number,
     z: number,
-  ) => { colour: Rgb8; opacity: number };
+  ) => { colour: Rgb8; material: number };
   /**
    * Told the box the patch's samples occupy, before they are taken, so a field with a candidate
    * cache can build it once — as `chunk-mesher.ts` does for chunks, for the same reason.
@@ -320,8 +320,8 @@ export class PatchMesher {
           // have to know about fields at all.
           const normal = params.gradientAt(x, y, z);
           this.builder.setNormal(index, normal.x, normal.y, normal.z);
-          const { colour, opacity } = params.colourAt(x, y, z);
-          this.builder.setColour(index, colour, Math.round(opacity * 255));
+          const { colour, material } = params.colourAt(x, y, z);
+          this.builder.setColour(index, colour, material);
         },
       });
     } finally {

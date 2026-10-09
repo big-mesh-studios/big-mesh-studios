@@ -36,7 +36,10 @@ import { MAX_OPERATIONS_PER_PLACE } from "./place-registry";
 import { PlaceRegistry } from "./place-registry";
 import { FoldOrder } from "../edit/fold-order";
 import { SculptDocument } from "../edit/document";
+import { NodeMaterial } from "@random-mesh/rmsl/scene";
 import { Field, OperationBVH } from "@big-mesh-studios/csg";
+import { FigureSet } from "../figures/figure-set";
+import type { FigureModel } from "./model-library";
 import type { Vec3 } from "@big-mesh-studios/core";
 import type { ClockCommands } from "../console/commands";
 
@@ -52,13 +55,45 @@ const NOW = 1_700_000_000_000;
  */
 const STEP_MS = 1000;
 
-/** A flat floor at `y = 0` and nothing else, so a demo's own geometry is what is walked on. */
-const stubWorld = (): HostWorld & { places: PlaceRegistry } => {
+/**
+ * A figure model with no geometry, for the demos that stand props and characters.
+ *
+ * **A real model is 39 files and a mesh each**, and none of the checks below look at a prop's
+ * triangles — they count operations, zones and timers. What they *do* need is for `createProp`
+ * not to be refused, because a refusal is a notice and "loads without a single refusal" is the
+ * first thing this file asserts. Meshing the real library once per load, twenty loads deep, would
+ * be a slow test of the wrong thing.
+ */
+const fixtureModel = (name: string): FigureModel =>
+  ({
+    name,
+    operations: [],
+    field: undefined,
+    bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+    half: { x: 1, y: 1, z: 1 },
+    triangles: 0,
+    draw: () => undefined,
+    dispose: () => {},
+  }) as unknown as FigureModel;
+
+/**
+ * A flat floor at `groundY` and nothing else, so a demo's own geometry is what is walked on.
+ *
+ * **The ground is a parameter because zero is the value that hid a bug.** Every demo builds from
+ * `getHeightAt(0, 0)`, and this stub used to answer zero — which is what the demos assumed and
+ * what the running game is not. The world is a planet whose surface is at `y ≈ 135990`, so the
+ * demos built at its core and this suite agreed with them. Passing the real number is the test.
+ */
+const stubWorld = (groundY: number): HostWorld & { places: PlaceRegistry } => {
   const places = new PlaceRegistry(new FoldOrder());
   const document = new SculptDocument();
   return {
     places,
-    terrainHeight: () => 0,
+    // **A figure set and a model for every name a demo asks for**, so a prop or a character is
+    // stood rather than refused. See `fixtureModel`.
+    figures: new FigureSet(new NodeMaterial()),
+    models: { get: (name: string) => fixtureModel(name) },
+    terrainHeight: () => groundY,
     geometryChanged: () => {},
     solidAt: (x, y, z) =>
       new Field(new OperationBVH(places.flatten(document.list))).distance(
@@ -72,6 +107,10 @@ const stubWorld = (): HostWorld & { places: PlaceRegistry } => {
 };
 
 const stubEffects = (asked: string[]): HostEffects => ({
+  narrate: () => {},
+  dialog: () => {},
+  closeDialog: () => {},
+  ending: () => {},
   log: (text) => asked.push(`log:${text}`),
   toast: (text) => asked.push(`toast:${text}`),
   movePlayer: (at: Vec3, yaw) =>
@@ -95,6 +134,8 @@ interface Loaded {
   readonly host: PlaceHost;
   readonly notices: string[];
   readonly asked: string[];
+  /** The figures the place stood, so a test can ask where they are. */
+  readonly figures: FigureSet;
   /**
    * Steps the place, advancing its clock.
    *
@@ -105,18 +146,19 @@ interface Loaded {
   run(frames: number, dt?: number): void;
 }
 
-const load = async (id: string): Promise<Loaded> => {
+const load = async (id: string, groundY = 0): Promise<Loaded> => {
   const demo = demoPlace(id);
   if (demo === undefined) throw new Error(`no demo called ${id}`);
   const asked: string[] = [];
   const notices: string[] = [];
   let elapsed = 0;
+  const world = stubWorld(groundY);
   const host = new PlaceHost({
     files: demo.files,
     entry: demo.entry,
     seed: 20260901,
     now: () => NOW + elapsed,
-    world: stubWorld(),
+    world,
     effects: stubEffects(asked),
     clock: stubClock(asked),
     onNotice: (message) => notices.push(message),
@@ -126,6 +168,7 @@ const load = async (id: string): Promise<Loaded> => {
     host,
     notices,
     asked,
+    figures: world.figures as FigureSet,
     run: (frames, dt = STEP_MS) => {
       for (let frame = 0; frame < frames; frame++) {
         elapsed += dt;
@@ -140,8 +183,14 @@ describe("the shipped places", () => {
     // **The number, because the console lists them by iteration.** A fourth demo
     // that forgot its `DemoPlace` entry would be invisible to this file and
     // visible to a person, which is backwards.
-    expect(DEMO_PLACES).toHaveLength(4);
-    expect(demoIds()).toEqual(["bridge", "lanterns", "conveyor", "lookout"]);
+    expect(DEMO_PLACES).toHaveLength(5);
+    expect(demoIds()).toEqual([
+      "bridge",
+      "lanterns",
+      "conveyor",
+      "lookout",
+      "snack",
+    ]);
   });
 
   it("each have an entry that is one of their own files", () => {
@@ -265,6 +314,49 @@ describe.each(DEMO_PLACES.map((demo) => [demo.id, demo] as const))(
     });
   },
 );
+
+/**
+ * Every shipped place, on the ground the running world actually has.
+ *
+ * **The test the suite was missing, and the reason two bugs shipped.** The loop above loads each
+ * demo against a floor at `y = 0`, which is what the demos used to assume and is not the world:
+ * the game is a planet whose surface is at `y ≈ 135990`. Loading at zero made every demo build at
+ * the planet's core — invisible from the surface — and it made their zones, whose corners are
+ * then at the origin rather than a hundred and thirty-six thousand units out, pass a bound that
+ * refused them in the real world. `zone-add refused: has a part outside -100000 to 100000` is
+ * what a person saw on `/place:load snack`.
+ *
+ * **So this loads each one where it is really loaded**, at the planet's own surface height, and
+ * asks for the same two things the loop above asks for: no refusals, and something built.
+ */
+describe("the shipped places, on the planet's own ground", () => {
+  /** The surface over the origin, to the unit. See `app.tsx`'s `GAME_SEA` and `DEFAULT_PLANET`. */
+  const SURFACE = 135_990;
+
+  it.each(DEMO_PLACES.map((demo) => demo.id))(
+    "the %s demo builds with no refusals",
+    async (id) => {
+      const { host, notices, figures, run } = await load(id, SURFACE);
+      expect(notices).toEqual([]);
+      // **And it built where it was told to.** A place that reported no refusals and then built
+      // at zero would pass the line above and be exactly as broken as before — and a place that
+      // builds on a timer, as `lanterns` does, is given the twenty seconds the loop above gives
+      // it rather than being failed for not having arrived yet.
+      run(20);
+      expect(host.places.operationCount).toBeGreaterThan(0);
+
+      // Every figure it stood is up in the sky with the ground, not at the origin. A prop's
+      // origin is its centre, so "above the surface" and not "at the surface" is the assertion.
+      for (const figure of figures.ids()) {
+        const at = figures.get(figure)!.transform.at;
+        expect(at.y, `${id}: ${figure} is not on the ground`).toBeGreaterThan(
+          SURFACE,
+        );
+      }
+      host.dispose();
+    },
+  );
+});
 
 /**
  * The parts of each demo that its summary claims, checked one by one.

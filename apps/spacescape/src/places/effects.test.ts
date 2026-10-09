@@ -8,7 +8,12 @@ import {
   parseEffectJson,
   type EffectTag,
 } from "./effects";
-import { checkField, checkPayload, SHAPE_TYPES } from "./fields";
+import {
+  checkField,
+  checkPayload,
+  MATERIAL_NAMES,
+  SHAPE_TYPES,
+} from "./fields";
 import {
   MAX_CLOCK_MULTIPLIER,
   MAX_NAME_LENGTH,
@@ -52,6 +57,18 @@ const validFor = (tag: EffectTag): Record<string, unknown> => {
       ],
     },
     "zone-remove": { id: "door" },
+    "entity-add": {
+      id: "fridge",
+      model: "fridge.sdfmod",
+      kind: "prop",
+      at: [12, 0, -4],
+      yaw: 0.5,
+      scale: 1,
+      solid: true,
+      name: "the fridge",
+    },
+    "entity-remove": { id: "fridge" },
+    "entity-move": { id: "fridge", at: [0, 0, 8] },
     "light-add": {
       id: "lamp",
       at: [4, 5, 6],
@@ -82,6 +99,20 @@ const validFor = (tag: EffectTag): Record<string, unknown> => {
     log: { text: "hello" },
     toast: { text: "hello" },
     timer: { id: "later", afterMs: 1000 },
+    // **No `item`**, because a bare `item-hold` is how a place empties the player's hands and
+    // that has to be a well-formed payload rather than an error.
+    narrate: { who: "Dad", text: "Go to bed. Now." },
+    dialog: {
+      entityId: "dad",
+      prompt: "Do you want to buy this?",
+      options: ["Buy it. ($20)", "Not right now."],
+    },
+    "dialog-close": {},
+    ending: { title: "Shoplifting", text: "You left with it." },
+    "item-define": { item: "cola" },
+    "item-give": { item: "cola", count: 1 },
+    "item-take": { item: "cola", count: 1 },
+    "item-hold": {},
     "data-set": { scope: "global", key: "seen", value: "yes" },
     "data-delete": { scope: "global", key: "seen" },
   };
@@ -196,6 +227,45 @@ describe("every field is bounded", () => {
         colour: { r: 1, g: 2 },
       }),
     ).toBeNull();
+  });
+
+  it("accepts a material the vocabulary names and refuses every other word", () => {
+    // **A closed enum, refused whole** (ADR 0017). The material is a name in a script and an
+    // index into `MATERIAL_NAMES` on the wire, and those two have to be the same table or a
+    // rename draws the wrong pattern. So a typo is refused here rather than becoming an
+    // `undefined` that the host turns into material zero — a wall of plain plaster, which is a
+    // thing nobody would report.
+    for (const name of MATERIAL_NAMES) {
+      expect(
+        parseEffect("shape-add", {
+          ...validFor("shape-add"),
+          material: name,
+        })?.tag,
+        name,
+      ).toBe("shape-add");
+    }
+
+    for (const name of [
+      "marble",
+      "Brick",
+      "BRICK",
+      "",
+      " brick",
+      1,
+      null,
+      [],
+    ]) {
+      expect(
+        parseEffect("shape-add", { ...validFor("shape-add"), material: name }),
+        String(name),
+      ).toBeNull();
+    }
+
+    // **And no material is a valid shape**, which is what makes it optional rather than merely
+    // defaulted: an operation that names none is left without the field on the operation.
+    expect(parseEffect("shape-add", validFor("shape-add"))?.tag).toBe(
+      "shape-add",
+    );
   });
 
   it("refuses a multiplier over its own bound, and not a walking speed for a clock", () => {

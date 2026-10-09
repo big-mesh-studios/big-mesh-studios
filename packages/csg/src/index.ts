@@ -51,6 +51,7 @@ export {
   boundsContain,
   boundsDistance,
   boundsDistanceSquared,
+  boundsOf,
   conjugate,
   emptyField,
   foldOperations,
@@ -161,3 +162,25 @@ export {
   serialisedSize,
   serialiseOperations,
 } from "./serialise";
+
+/**
+ * The model file's manifest — `.sdfmod`, a zip of `manifest.json` and `model.bin`.
+ *
+ * Here rather than in the application that writes it, because `apps/spacescape` reads these
+ * as a place's prop and NPC models and two copies of a format's rules is two things to keep
+ * in step. What is *not* here is the mesher vocabulary: `ProjectView.mode` is checked as a
+ * name and not against a list, because this package does not know what a mesher is.
+ */
+export type { ProjectManifest, ProjectView } from "./model-file";
+export {
+  MAX_MANIFEST_COLOURS,
+  MAX_MANIFEST_PARTS,
+  MAX_PART_ID,
+  PROJECT_EXTENSION,
+  PROJECT_MANIFEST_FILE,
+  PROJECT_MIME_TYPE,
+  PROJECT_MODEL_FILE,
+  PROJECT_VERSION,
+  isProjectManifest,
+  projectName,
+} from "./model-file";

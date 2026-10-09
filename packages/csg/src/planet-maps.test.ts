@@ -30,7 +30,7 @@ import type { Rgb8 } from "@big-mesh-studios/core";
 const field = planetField(DEFAULT_PLANET);
 
 const flatColour = {
-  colourAt: () => ({ colour: { r: 190, g: 186, b: 176 } as Rgb8, opacity: 1 }),
+  colourAt: () => ({ colour: { r: 190, g: 186, b: 176 } as Rgb8 }),
 };
 
 describe("the equirectangular mapping", () => {
@@ -141,7 +141,7 @@ describe("the baked maps", () => {
       {
         colourAt: () => ({
           colour: { r: 12, g: 200, b: 90 } as Rgb8,
-          opacity: 0.5,
+          material: 0,
         }),
       },
       8,
@@ -150,7 +150,10 @@ describe("the baked maps", () => {
     expect(maps.albedo[0]).toBe(12);
     expect(maps.albedo[1]).toBe(200);
     expect(maps.albedo[2]).toBe(90);
-    expect(maps.albedo[3]).toBe(128);
+    // **Opaque, and this assertion is why the baked map's alpha is 255.** It used to be
+    // whatever `SurfaceColour.opacity` said, which meant a caller who set an opacity for its own
+    // reasons changed the globe's transparency without the terrain's — and neither reads it.
+    expect(maps.albedo[3]).toBe(255);
   });
 
   it("is sized as asked, and not one texel off", () => {
@@ -175,7 +178,7 @@ describe("the baked maps", () => {
     const flat = {
       colourAt: () => ({
         colour: { r: 190, g: 186, b: 176 } as Rgb8,
-        opacity: 1,
+        material: 0,
       }),
     };
     const started = performance.now();

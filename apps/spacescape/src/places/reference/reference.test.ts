@@ -33,7 +33,11 @@ describe("the drawn reference", () => {
     // engine had nothing to offer.
     expect(placeReference.functions.length).toBeGreaterThan(20);
     expect(placeReference.types.length).toBeGreaterThan(8);
-    expect(placeReference.events).toHaveLength(7);
+    // **An exact count, and that is the claim: the drawing names every event kind the guest
+    // library declares.** It was 7 before the figure events and 10 now; a count that drifted
+    // either way would mean the generator had started reading a different source than the one
+    // the API is written in.
+    expect(placeReference.events).toHaveLength(11);
     expect(placeReference.limits.length).toBeGreaterThan(20);
   });
 
@@ -105,6 +109,10 @@ describe("the drawn reference", () => {
       "player-died",
       "zone-entered",
       "zone-left",
+      "entity-used",
+      "item-used",
+      "npc-talk",
+      "npc-choose",
       "timer",
       "data-changed",
     ]);

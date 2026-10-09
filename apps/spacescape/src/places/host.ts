@@ -79,6 +79,11 @@ import type { Bounds } from "../edit/document";
 import type { Quat, Vec3 } from "@big-mesh-studios/core";
 import type { ClockCommands } from "../console/commands";
 import type { Medium } from "../player/player";
+import { MAX_ENTITIES } from "./limits";
+import type { FigureSet } from "../figures/figure-set";
+import type { FigureModel } from "./model-library";
+import { ScriptInventory, type InventoryRefusal } from "./script-inventory";
+import { materialId } from "../render/material-names";
 
 /**
  * How deep one step may cascade.
@@ -130,6 +135,27 @@ export interface HostWorld {
    * `undefined` means nothing was added, so a remove need not re-mesh anything.
    */
   geometryChanged(bounds: Bounds | undefined): void;
+  /**
+   * The figures a place has put in the world.
+   *
+   * **Held rather than created, for the reason `places` is:** the fold indices have to come from
+   * the session's own counter, and the same is true of the figures — a `FigureSet` built over a
+   * different scene would be one the renderer never draws. So the host writes into a set the
+   * session owns, and `startPlace` hands it the same object `app.tsx` put in the scene.
+   *
+   * **Optional**, because every place host in a test, in the editor and on the console is
+   * without one. Absent means "this place cannot stand anything", which is a refusal a script
+   * gets from `entity-add` rather than a crash — the same shape as `mediumAt` being absent.
+   */
+  figures?: FigureSet;
+  /**
+   * Where an entity's model comes from, by name.
+   *
+   * **A reader rather than the library itself**, so the host can be stood up in a test with a
+   * map of two names and two fixtures and never touch a zip. A name that is not in it is
+   * refused by name, which is the answer a script can act on.
+   */
+  models?: { get(name: string): FigureModel | undefined };
   /** The terrain's own surface height at a column, or undefined with no height field. */
   readonly terrainHeight?: ((x: number, z: number) => number) | undefined;
   /** Whether a point is inside material. Water is not material. */
@@ -165,6 +191,22 @@ export interface HostEffects {
   log(text: string): void;
   /** A line on the player's screen. */
   toast(text: string): void;
+  /**
+   * A line somebody said, to be drawn and then faded by the application.
+   *
+   * **The lifetime is not the place's to choose**, and that is the whole reason this is a
+   * callback rather than an event the script fires and forgets: a narration is a thing that has
+   * just been said, and leaving how long it stays to the script would make a place whose
+   * narration never went away one bug away from covering the crosshair for the rest of the
+   * session.
+   */
+  narrate(who: string, text: string): void;
+  /** A dialog to draw, replacing whatever was open. */
+  dialog(dialog: Dialog): void;
+  /** Takes the dialog away. A no-op on the application's side when none was open. */
+  closeDialog(): void;
+  /** The game ended, with a title and a card. */
+  ending(ending: Ending): void;
   movePlayer(at: Vec3, yaw?: number): void;
   setPlayerSpeed(multiplier: number): void;
   setPlayerJump(multiplier: number): void;
@@ -215,6 +257,33 @@ export interface Light {
  * the compiler checks that the host really does produce what the physics consumes.
  */
 export type HostMedium = Medium;
+
+/**
+ * A dialog the host owns: who is asking, the question, and the answers.
+ *
+ * **One at a time, and it is the host's rather than the application's.** A second dialog would
+ * leave the player looking at one and unable to reach the other, and the only way out would be
+ * whichever one the place happened to remember to close. The application draws it; it does not
+ * decide what is in it.
+ */
+export interface Dialog {
+  readonly entityId: string;
+  readonly prompt: string;
+  /** What to draw, in order. The index is what `npc-choose` reports. */
+  readonly options: readonly string[];
+}
+
+/**
+ * How a place's game ended.
+ *
+ * **There is no way back out of one**, and that is what makes it an ending: the panel's only
+ * route on is to play again, which reloads the place from the beginning rather than undoing the
+ * run that just finished.
+ */
+export interface Ending {
+  readonly title: string;
+  readonly text: string;
+}
 
 /** A box the host owns that the player is inside, as the physics asks for it. */
 interface OwnedMedium {
@@ -301,6 +370,58 @@ export class PlaceHost {
    * question that is a single integer.
    */
   private authoredCount = 0;
+  /**
+   * The box of everything whose geometry has changed since the last flush.
+   *
+   * **An accumulator rather than an immediate call, and the reason is a number.** `geometryChanged`
+   * reaches `SculptSession.refreshPlaces`, which rebuilds the whole `OperationBVH` *and* re-sends
+   * the model to the mesh workers — and sending a model cancels every mesh in flight. A place that
+   * builds a room out of a hundred and fifty `shape-add`s in its top-level code therefore did a
+   * hundred and fifty BVH rebuilds and cancelled the workers a hundred and fifty times before
+   * the first one could land. The result was not a stutter on one frame: the room appeared in
+   * pieces, or not at all.
+   *
+   * **The union, and `undefined` is kept distinct.** A caller passing nothing is asking for the
+   * whole model to be re-meshed — that is `refreshPlaces(undefined)`'s contract — so "everything
+   * changed" is a different request from "these boxes changed" and the two cannot be collapsed
+   * into one number.
+   */
+  private pendingBounds: Bounds | undefined;
+  /** Whether something asked for the whole model rather than a box. See `pendingBounds`. */
+  private pendingEverything = false;
+
+  /**
+   * What the player is holding, as the place last said.
+   *
+   * **The place's own bookkeeping and not the host's**, which is why `item-hold` is an effect and
+   * not something the host tracks from a gesture: the same thing decides what a prop is solid
+   * and how big it is, and a host that kept its own copy could disagree with the one the script
+   * believes. `undefined` is empty hands, and it is the whole of the routing rule below.
+   *
+   * **Read off the inventory rather than held beside it**, so that the held slot and the count
+   * cannot disagree — a hand holding something the inventory says is gone is a state the
+   * interaction routing would read as occupied.
+   */
+  get heldItem(): string | undefined {
+    return this.inventory.heldItem;
+  }
+
+  /** What the player is carrying. See `script-inventory.ts`. */
+  private readonly inventory = new ScriptInventory();
+
+  /**
+   * The dialog open, if any, and what the panel should be drawing.
+   *
+   * **Held as well as handed out, because `choose` has to check it.** A click on an option the
+   * place has already closed would otherwise author an `npc-choose` for a dialog that is not on
+   * screen — which is a fact the place did not cause and cannot have meant.
+   */
+  private dialog: Dialog | undefined;
+
+  /** The dialog open, or `undefined`. Read by the panel. */
+  get openDialog(): Dialog | undefined {
+    return this.dialog;
+  }
   /** The most recent failure, for a readout. `undefined` when the place is clean. */
   private problem: string | undefined;
 
@@ -452,6 +573,12 @@ export class PlaceHost {
             ? error.message
             : String(error);
       this.report(`the place failed while loading: ${detail}`);
+    } finally {
+      // **A place's top-level code dispatches effects, and that is a run just as much as a
+      // step is.** Building a world in the module body — which is what every demo that has
+      // geometry does — happens here, so the coalescing has to be flushed here too or the
+      // world would not be in the mesh until the first frame after load.
+      this.flushGeometry();
     }
   }
 
@@ -465,6 +592,20 @@ export class PlaceHost {
    * *part* of, which is the self-feeding field ADR 0009 warns about in a different place.
    */
   step(): void {
+    try {
+      this.runStep();
+    } finally {
+      // **Every exit, and that is the point of the `finally`.** The loop below returns early
+      // when there is nothing to deliver, returns early on a fatal failure and falls out of the
+      // loop otherwise; a flush written at the end of the happy path would skip the other two,
+      // and a script that fails halfway through building a room is exactly the one whose
+      // half-built room should still be visible.
+      this.flushGeometry();
+    }
+  }
+
+  /** What `step` does, with the invalidation flushed by the `finally` above. */
+  private runStep(): void {
     if (this.interpreter === undefined) return;
     this.problem = undefined;
 
@@ -533,6 +674,81 @@ export class PlaceHost {
     }
   }
 
+  /* ----------------------------------------------------------------- interaction */
+
+  /**
+   * The player pressed use on a figure.
+   *
+   * **The caller has already decided what is under the crosshair and what is in hand; this
+   * records the outcome.** Which is the right way round: the rule below is small and testable,
+   * and the thing it needs — a ray, a figure set and a clock — belongs to the application.
+   *
+   * **Never both `npc-talk` and `entity-used` for one press.** That is the whole rule and it is
+   * stated here rather than left to the caller because a caller that got it wrong would give a
+   * character two answers to one gesture.
+   */
+  use(entityId: string, item: string | undefined): void {
+    const figure = this.options.world.figures?.get(entityId);
+    if (figure === undefined) return;
+    const now = this.options.now();
+
+    // **Empty hands on a character is a conversation; everything else is a use.** The sibling
+    // engine's rule, and the reason it exists is that "press E on the thing you are looking at"
+    // cannot tell a player whether they are about to talk to someone or operate a machine, and a
+    // world where both are the same gesture is a world where the game decides for them.
+    if (item === undefined && figure.kind === "npc") {
+      this.author("npc-talk", { entityId }, now);
+      return;
+    }
+    // **The item rides on the event, present or not**, so a place's conditional vocabulary is
+    // written once in the script rather than twice in the host and the script.
+    this.author(
+      "entity-used",
+      item === undefined ? { entityId } : { entityId, item },
+      now,
+    );
+  }
+
+  /**
+   * The player pressed use with something in hand and the crosshair on nothing.
+   *
+   * **Nothing is authored for empty hands**, and that is the other half of the rule above: use
+   * with nothing on nothing in front of you is a gesture that means nothing, and writing an
+   * event for it would be a place having to recognise and discard it.
+   */
+  useItem(item: string | undefined): void {
+    if (item === undefined) return;
+    this.author("item-used", { item }, this.options.now());
+  }
+
+  /**
+   * The player chose an option from a character's dialog.
+   *
+   * **Written by the application rather than by the place**, because the dialog is something the
+   * place asked for and something the application drew, and the click is the application's. The
+   * option is a count from zero because that is what a dialog's list is indexed by.
+   */
+  choose(entityId: string, option: number): void {
+    // **Checked against the dialog that was actually shown, and refused silently if it does not
+    // * match.** A click that arrived a frame after the place closed its dialog would otherwise
+    // author an `npc-choose` for a conversation that is not on screen — a fact the place did not
+    // * cause and cannot have meant. This is the one place an input is dropped rather than refused,
+    // and it is dropped because there is nobody to tell: it is a click, not a call.
+    const dialog = this.dialog;
+    if (dialog === undefined || dialog.entityId !== entityId) return;
+    if (
+      !Number.isInteger(option) ||
+      option < 0 ||
+      option >= dialog.options.length
+    )
+      return;
+    // **Closed before the event is authored**, so a place whose handler opens another dialog is
+    // not refused for opening a dialog that was already being taken down.
+    this.dialog = undefined;
+    this.options.effects.closeDialog();
+    this.author("npc-choose", { entityId, option }, this.options.now());
+  }
+
   /** Forgets the host. The interpreter's memory is not reclaimed without this. */
   dispose(): void {
     this.interpreter?.dispose();
@@ -542,6 +758,13 @@ export class PlaceHost {
     this.mediums.clear();
     this.inside.clear();
     this.timers = [];
+    // **The whole inventory with everything else**, for the same reason and the same reason it
+    // takes the hands: a place that is gone cannot leave the player carrying what it invented,
+    // which would be the first thing the next place's crosshair read.
+    this.inventory.clear();
+    // **The dialog with everything else**, for the same reason: a place that is gone must not
+    // leave a question on screen that nothing can answer.
+    this.dialog = undefined;
   }
 
   /* ------------------------------------------------------------- dispatching */
@@ -632,10 +855,19 @@ export class PlaceHost {
           shape: shape("shape"),
           softness: optionalNumber("softness") ?? 0,
           combine,
-          // Opacity is carried either way — it is a number every operation has and the
-          // serialiser always writes it — but it only means anything where a colour is
-          // painted, and an unpainted operation's opacity is read and discarded.
-          opacity: optionalNumber("opacity") ?? 1,
+          // **The material, and it is conditional.** Zero and absent are the same claim — the
+          // wire stores an absent material as a zero byte and reads it back as absent — so an
+          // operation that named none is left without the field rather than given material zero.
+          // The name was already checked against `MATERIAL_NAMES` by the field table, so the
+          // lookup here cannot fail; `?? 0` is there so a future field rule cannot make it.
+          ...(payload["material"] === undefined
+            ? {}
+            : { material: materialId(String(payload["material"])) ?? 0 }),
+          // **The default, and deliberately not from the payload.** `Operation.opacity` is a
+          // required field the serialiser always writes and nothing below the wire has ever read
+          // (ADR 0048), so the only honest value for an operation a script made is the one
+          // `makeOperation` would have given it.
+          opacity: 1,
           // **The colour only where the effect is painting**, and this is the same rule
           // the brush follows. A colour on any operation decides the colour of the surface
           // there, so a bridge built with `combine: "Add"` and the default white would paint
@@ -694,6 +926,92 @@ export class PlaceHost {
         const was = place.bounds;
         if (this.options.world.places.clear(name("place")))
           this.geometryChanged(was);
+        return;
+      }
+
+      /**
+       * One tag for both a prop and a character, because there is one id space and the two
+       * differ in exactly one field. See the table entry for the whole argument.
+       */
+      case "entity-add": {
+        const figures = this.options.world.figures;
+        if (figures === undefined) {
+          throw new Error("this world has nowhere to stand figures");
+        }
+        const id = name("id");
+        if (figures.has(id)) {
+          // **Refused rather than replaced**, for the reason `PlaceRegistry.add` refuses: two
+          // peers must not disagree about whether an id means the first thing or the second.
+          throw new Error(`there is already something called "${id}"`);
+        }
+        if (figures.size >= MAX_ENTITIES) {
+          throw new Error(
+            `there are already ${MAX_ENTITIES} figures, which is the most a place may have`,
+          );
+        }
+
+        const modelName = name("model");
+        const model = this.options.world.models?.get(modelName);
+        if (model === undefined) {
+          // **By name, because a script's next step is to add the model to its manifest** and a
+          // refusal that said only "not found" would leave it guessing which of forty names.
+          throw new Error(
+            `there is no model called "${modelName}" among this place's attachments`,
+          );
+        }
+
+        const isNpc = name("kind") === "npc";
+        // **A character without a name is refused here rather than accepted and unnamed.** It is
+        // the one cross-field rule in these three tags, and it lives in `apply` rather than in
+        // `fields.ts` because a per-field table cannot express "required when another field
+        // says this". An unnamed character would be something the crosshair offers to talk to
+        // and the dialog has no name for.
+        const displayName = payload["name"];
+        if (
+          isNpc &&
+          (typeof displayName !== "string" || displayName.length === 0)
+        ) {
+          throw new Error("a character needs a name to be called");
+        }
+
+        const at = vec3("at");
+        const added = figures.add({
+          id,
+          kind: isNpc ? "npc" : "prop",
+          model,
+          at,
+          yaw: optionalNumber("yaw") ?? 0,
+          scale: optionalNumber("scale") ?? 1,
+          // **Solid by default**, because the common case is furniture and a pickup is the
+          // exception a script has to ask for.
+          solid:
+            payload["solid"] === undefined ? true : Boolean(payload["solid"]),
+          name: typeof displayName === "string" ? displayName : undefined,
+        });
+        if (added === undefined) {
+          throw new Error(
+            `could not add "${id}": the id is taken or the world is full`,
+          );
+        }
+        return;
+      }
+
+      case "entity-remove": {
+        const figures = this.options.world.figures;
+        // **No error for an absent id**, matching `shape-remove`: removing something that is
+        // not there changed nothing, and a script that removes defensively should not be told
+        // off for it.
+        figures?.remove(name("id"));
+        return;
+      }
+
+      case "entity-move": {
+        const figures = this.options.world.figures;
+        const at = vec3("at");
+        const yaw = optionalNumber("yaw");
+        if (figures === undefined || !figures.move(name("id"), at, yaw)) {
+          throw new Error(`there is nothing called "${name("id")}" to move`);
+        }
         return;
       }
 
@@ -847,6 +1165,83 @@ export class PlaceHost {
       case "timer":
         this.setTimer(name("id"), number("afterMs"));
         return;
+
+      case "narrate": {
+        this.options.effects.narrate(name("who"), String(payload["text"]));
+        return;
+      }
+
+      case "dialog": {
+        const entityId = name("entityId");
+        const options = payload["options"];
+        // **The table checked that it is a list; this is the one cast in the file.**
+        //
+        // `text-list` guarantees an array of non-empty strings within both bounds, and a cast
+        // here is cheaper and clearer than re-checking what the table has already said. It is
+        // written as `unknown as` so that a change to the table and a change to this cannot drift
+        // apart silently — if the field stopped being a list, this would not compile.
+        const open: Dialog = {
+          entityId,
+          prompt: String(payload["prompt"]),
+          options: options as readonly string[],
+        };
+        this.dialog = open;
+        this.options.effects.dialog(open);
+        return;
+      }
+
+      case "dialog-close": {
+        // **A no-op on the application's side too**, so a place can close on the way out of a
+        // conversation without having to know whether one was open.
+        this.dialog = undefined;
+        this.options.effects.closeDialog();
+        return;
+      }
+
+      case "ending": {
+        // **Authored after the panel is told, not before.** The card is what the player reads,
+        // and the event is the place's own record that the run finished; the card arriving first
+        // means a peer that folds the event is never ahead of a player who can see it.
+        this.options.effects.ending({
+          title: String(payload["title"]),
+          text: String(payload["text"]),
+        });
+        return;
+      }
+
+      case "item-define": {
+        const refusal = this.inventory.define(name("item"));
+        if (refusal !== undefined) throw new Error(inventoryRefusal(refusal));
+        return;
+      }
+
+      case "item-give": {
+        const refusal = this.inventory.give(
+          name("item"),
+          optionalNumber("count") ?? 1,
+        );
+        if (refusal !== undefined) throw new Error(inventoryRefusal(refusal));
+        return;
+      }
+
+      case "item-take": {
+        // **No refusal, and the throwing shape is why.** Taking is best-effort by design: a
+        // player who has already drunk the milk has none, and that is an ordinary state.
+        this.inventory.take(name("item"), optionalNumber("count") ?? 1);
+        return;
+      }
+
+      case "item-hold": {
+        // **An absent item empties the hands**, which is the rule `item-used` quotes when it
+        // says why its own `item` is required and this one's is not. Every name in the
+        // vocabulary is a non-empty string, so there is no second way to say nothing.
+        const item = payload["item"];
+        const refusal = this.inventory.hold(
+          typeof item === "string" ? item : undefined,
+        );
+        if (refusal !== undefined) throw new Error(inventoryRefusal(refusal));
+        return;
+      }
 
       case "data-set":
         this.setData(name("key"), name("value"));
@@ -1074,9 +1469,51 @@ export class PlaceHost {
     return this.options.world.places.create(name);
   }
 
-  /** Hands the caller the box a place's geometry now covers, so it can re-mesh that much. */
+  /**
+   * Notes that a place's geometry now covers `bounds`, so it can re-mesh that much.
+   *
+   * **Accumulates rather than calling through, and is flushed at the end of every run** — see
+   * `pendingBounds` for what that is worth. The union is cheap and exact, so the coalesced
+   * invalidation covers precisely the same chunks the uncounted series would have.
+   */
   private geometryChanged(bounds: Bounds | undefined): void {
-    this.options.world.geometryChanged(bounds);
+    if (bounds === undefined) {
+      // **Absorbing, and not overwritten.** Everything-always-beats-a-box because the caller is
+      // asking for a full re-mesh and a narrower one cannot satisfy it.
+      this.pendingEverything = true;
+      return;
+    }
+    if (this.pendingEverything) return;
+    this.pendingBounds = unionOfBounds(this.pendingBounds, bounds);
+  }
+
+  /**
+   * Sends whatever has accumulated, once.
+   *
+   * **Called from the end of `step` and from the end of `load`, on every exit including the
+   * error ones.** Both are places where a script can run and therefore dispatch effects, and a
+   * flush that only happened on the happy path would leave a place that threw halfway through
+   * building itself with half its geometry in the collision field and in no mesh — which is
+   * exactly the failure `SculptSession.refreshPlaces` exists to prevent, arrived at by another
+   * route.
+   *
+   * **Not called from `dispose`.** A place being dropped takes its operations with it, and
+   * `app.tsx` clears the registry and refreshes in full immediately afterwards; re-meshing the
+   * chunks a place that is no longer there touched would be work for a state nobody will see.
+   */
+  private flushGeometry(): void {
+    const everything = this.pendingEverything;
+    const bounds = this.pendingBounds;
+    this.pendingEverything = false;
+    this.pendingBounds = undefined;
+    // **Both fields cleared before the call, not after**, so that an effect dispatched from
+    // inside `geometryChanged` — a caller that re-enters the host — is accumulated into the next
+    // flush rather than being lost by being cleared under it.
+    if (everything) {
+      this.options.world.geometryChanged(undefined);
+      return;
+    }
+    if (bounds !== undefined) this.options.world.geometryChanged(bounds);
   }
 
   /** Reports a problem and returns it, so `dispatch` can hand it back to the script. */
@@ -1092,6 +1529,51 @@ export class PlaceHost {
     this.options.onNotice?.(message);
   }
 }
+
+/**
+ * An inventory refusal as a sentence a script's author can act on.
+ *
+ * **Every case names the item.** A refusal that said only "not declared" would leave a place
+ * that declared sixty items guessing which of them it got wrong, which is the whole cost the
+ * declaration was being paid to avoid.
+ */
+const inventoryRefusal = (refusal: InventoryRefusal): string => {
+  switch (refusal.why) {
+    case "too many items":
+      return `this place declares too many items already`;
+    case "undeclared":
+      return `"${refusal.item}" was never declared with item-define`;
+    case "count too large":
+      return `that would carry more than the limit of "${refusal.item}"`;
+    case "not a count":
+      return `${refusal.count} is not a number of things`;
+  }
+};
+
+/**
+ * The box holding both, and `b` when there is nothing to hold.
+ *
+ * **Null-and-`undefined` both mean "nothing yet"**, because the accumulator's initial value and
+ * a caller that genuinely changed nothing are the same state as far as a union is concerned.
+ */
+const unionOfBounds = (
+  a: Bounds | undefined,
+  b: Bounds,
+): Bounds | undefined => {
+  if (a === undefined) return b;
+  return {
+    min: {
+      x: Math.min(a.min.x, b.min.x),
+      y: Math.min(a.min.y, b.min.y),
+      z: Math.min(a.min.z, b.min.z),
+    },
+    max: {
+      x: Math.max(a.max.x, b.max.x),
+      y: Math.max(a.max.y, b.max.y),
+      z: Math.max(a.max.z, b.max.z),
+    },
+  };
+};
 
 /** The unit rotation every operation starts from, and the one a payload without one means. */
 const IDENTITY = { x: 0, y: 0, z: 0, w: 1 };

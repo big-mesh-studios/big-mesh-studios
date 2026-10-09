@@ -21,6 +21,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   SphereGeometry,
+  Vector3,
 } from "@random-mesh/rmsl/scene";
 
 import { Console, createConsole, type ConsoleState } from "./console/console";
@@ -53,16 +54,20 @@ import { SculptSession } from "./sculpt";
 import { DEFAULT_BRUSH } from "./edit/brush";
 import { buildSpikeScene, type SpikeScene } from "./spike-scene";
 import { createInput } from "./player/input";
-import type { Medium } from "./player/player";
+import { DEFAULT_PLAYER_CONFIG, type Medium } from "./player/player";
 import { TouchControls } from "./player/touch-controls";
 import { Game } from "./engine/game";
 import { createWaterMaterial, sphericalWater } from "./world/water";
 import { sphericalFrame } from "./world/up";
 import { createCloudLayer, type CloudLayer } from "./world/cloud-layer";
 import { createZoneLines, type ZoneLines } from "./places/zones";
-import { PlaceHost } from "./places/host";
+import { PlaceHost, type Dialog, type Ending } from "./places/host";
+import { ModelLibrary } from "./places/model-library";
+import { FigureSet } from "./figures/figure-set";
+import { PlaceOverlay } from "./places/ui/PlaceOverlay";
 import { MAX_DRAWN_LIGHTS } from "./render/point-lights";
-import { demoPlace } from "./places/demos";
+import { demoPlace, loadDemoModels } from "./places/demos";
+import { surfaceHeightAt } from "./world/surface-height";
 import { PLACE_MIME_TYPE, type PlaceSpawn } from "./places/place-file";
 import type { LoadedPlace } from "./places/load-place";
 import type { PlaceFiles } from "./places/bundle";
@@ -198,6 +203,41 @@ const GAME_GROUND: (x: number, y: number, z: number) => number =
  * read out of the radius.
  */
 const GAME_WATER = { material: createWaterMaterial(sphericalWater) };
+
+/**
+ * The material the figure under the crosshair is drawn with.
+ *
+ * **Built at module scope and not per frame, because a material is a GL object** — the same
+ * reason `GAME_WATER` is above, and it is written down there. One instance for every aimed
+ * figure in the world, because uniforms live on the material and every figure shares one: a
+ * figure is tinted by being *given a different material*, and its geometry is still the
+ * model's, still shared with every other placement of it. See ADR 0047 and `figure-set.ts`.
+ *
+ * **`tintStrength` is a number rather than a flag** so that the frame loop can hold it at one
+ * while a figure is aimed at and let a future change fade it, without a second material or a
+ * shader rebuild — the uniform is declared whatever its value, for the reason
+ * `point-lights.ts` gives.
+ */
+/**
+ * Somewhere to put a camera's forward direction, so the frame loop allocates nothing.
+ *
+ * **A module-level scratch rather than a local**, because `getWorldDirection` writes into
+ * whatever it is handed and a frame that allocated a `Vector3` for it would be the only
+ * allocation on a path that is otherwise allocation-free by design. Nothing here holds it past
+ * the statement that fills it.
+ */
+const TMP_FORWARD = new Vector3();
+
+const FIGURE_TINT = {
+  material: Object.assign(new SurfaceMaterial(), {
+    tint: { r: 255, g: 224, b: 150 },
+    tintStrength: 0.45,
+    // **No pattern**, and the flag is the whole reason. A figure model carries no material, so
+    // every one of its fragments would read id zero — which is correct, and free only because
+    // saying so skips four lattices per pixel on the nearest thing to the camera in the scene.
+    wantsPattern: false,
+  }),
+};
 
 /**
  * The altitude or radius water settles at, read from the landscape rather than repeated.
@@ -362,6 +402,46 @@ export default function App() {
   /** A toast a place asked for, since there is no HUD to show it in. */
   const [placeToast, setPlaceToast] = createSignal<string | undefined>();
   /**
+   * The last thing a place said, and who said it.
+   *
+   * **Beside the toast because it is the same kind of thing**, and because there should be one
+   * answer to "how long does a line from a place stay on screen" rather than one per component.
+   * A narration replaces the last one rather than queueing: two lines at once is a conversation
+   * nobody is having.
+   */
+  const [narration, setNarration] = createSignal<
+    { who: string; text: string } | undefined
+  >();
+  /**
+   * The dialog and the ending on screen, as the overlay reads them.
+   *
+   * **Signals rather than a call through to the host**, because a Solid component reads its props
+   * as signals and the host holds no reactive state. The host keeps the dialog too — `choose`
+   * checks it against what was actually shown — so these are a mirror of it and not a second copy
+   * of the truth.
+   */
+  const [placeDialog, setPlaceDialog] = createSignal<Dialog | undefined>();
+  const [placeEnding, setPlaceEnding] = createSignal<Ending | undefined>();
+  /**
+   * What is loaded, kept so an ending's "play again" can run it again.
+   *
+   * **Held rather than re-derived from the console**, because an ending is the last thing a place
+   * does and making the player type a command to start over would turn the button into a lie. It
+   * is exactly the argument `startPlace` takes, passed straight through — so restarting is calling
+   * that function again with the values it was called with, and there is no second code path for
+   * it to disagree with the first.
+   */
+  let loadedForRestart:
+    | {
+        files: PlaceFiles;
+        entry: string;
+        seed: number;
+        name: string;
+        spawn?: PlaceSpawn;
+        models?: Readonly<Record<string, Uint8Array>>;
+      }
+    | undefined;
+  /**
    * The hidden file input `/place:open` clicks.
    *
    * **A signal rather than a document query, because the console owns its own input** and a
@@ -415,6 +495,27 @@ export default function App() {
       "the world is still loading — try again shortly",
     commands: () => commander()?.help() ?? [],
   });
+
+  /**
+   * The running place's host, and the call that made it — holders rather than direct references,
+   * for the reason the console's state is a holder.
+   *
+   * **Two things need these from outside the branch the place is built in**: the frame loop,
+   * which asks the host for its lights and steps it every frame, and the overlay's "play again",
+   * which has to call `startPlace` again rather than making the player type a command to start
+   * over.
+   */
+  let placeHost: PlaceHost | undefined;
+  let startPlace:
+    | ((
+        files: PlaceFiles,
+        entry: string,
+        seed: number,
+        name: string,
+        spawn?: PlaceSpawn,
+        models?: Readonly<Record<string, Uint8Array>>,
+      ) => Promise<string>)
+    | undefined;
 
   /**
    * Whether the place editor is open, and the place it is editing.
@@ -600,6 +701,20 @@ export default function App() {
     const sky = isGame() ? createSky(viewport.scene) : null;
 
     const material = new SurfaceMaterial();
+
+    /**
+     * The figures a place has put in the world, and the ones it has not yet.
+     *
+     * **Built here rather than in the place section below, because `Game` needs it** and `Game`
+     * is built before the place exists — the same problem `mediumAt` has, solved the same way:
+     * the reader below reaches into this rather than holding a snapshot.
+     *
+     * **Always present rather than sometimes**, because the frame loop asks it every frame what
+     * the crosshair is on, and a null check there is a branch on a hot path for a state that is
+     * the empty set. It is built over the terrain's own material, so an ordinary figure is lit
+     * by the same shader, sky, fog and point lights as the ground it stands on.
+     */
+    const figures = new FigureSet(material, FIGURE_TINT.material);
     const previewMaterial = new MeshBasicMaterial({
       color: new Color(1, 0.85, 0.4),
     });
@@ -774,6 +889,34 @@ export default function App() {
       // reads that as "this world has no fields" — the honest answer, and cheaper than a reader
       // that always returns null. See `GameOptions.mediumAt`.
       mediumAt: (p) => placeMedium()?.(p.x, p.y, p.z),
+      // **The other half of the same shape, and the same reason.** A figure is not in the fold
+      // — it is its own mesh (ADR 0047) — so the only way the player collides with one is if
+      // the world asks the figures as well as the field, and it does it with one `min`, which is
+      // what lets the player stand on a figure rather than through it.
+      figureDistanceAt: (p) => figures.solidDistanceAt(p),
+      /**
+       * What a press of use means, which is the whole of this application's interaction with
+       * anything a place has put in the world.
+       *
+       * **A callback rather than an action `Game` performs**, because everything a use needs is
+       * owned by somebody else: the ray is the camera's, the figures are a place's, and the held
+       * item is the place's own bookkeeping. `Game` knows *when* — after the camera has settled
+       * for the frame — and nothing about what it is for.
+       */
+      onUse: (input) => {
+        if (!input.use || host === undefined) return;
+        const camera = viewport.camera;
+        const forward = camera.getWorldDirection(TMP_FORWARD);
+        const aimed = figures.pick(game.player.position, {
+          x: forward.x,
+          y: forward.y,
+          z: forward.z,
+        });
+
+        const held = host.heldItem;
+        if (aimed !== undefined) host.use(aimed.figure.id, held);
+        else host.useItem(held);
+      },
     });
     // The clouds, built once their field has been baked — on a worker, because the bake
     // is two and a half seconds of arithmetic and the only reason to move it is that it
@@ -876,11 +1019,27 @@ export default function App() {
     // the frame loop has no place to step and the console has nothing to report, which is the
     // state the application spends its whole life in before anyone types `/place:load`.
     const zoneLines: ZoneLines = createZoneLines(viewport.scene);
+    // **Added after the session and after the zone lines**, because rmsl has no render-order
+    // key — draw order is scene traversal order (ADR 0014). A figure drawn behind the terrain
+    // is a figure that only shows through the gaps, which is the same argument `zones.ts`
+    // makes about its own wireframes.
+    figures.attach(viewport.scene);
     /** The loaded place's problems, newest last, for `/place:notices`. */
     const notices: string[] = [];
     /** What is loaded — a demo's id, or a zip's own name — for `/place:state`. */
     let loadedName: string | undefined;
     let host: PlaceHost | undefined;
+
+    /**
+     * The loaded place's models, meshed once each.
+     *
+     * **Held beside the host rather than inside it, because it owns GPU buffers and the host
+     * owns no renderer.** A place's geometry is operations in a registry the session already
+     * owns, so dropping a place is dropping a name from a map; a model is a `BufferGeometry`
+     * that has to be disposed, and the only thing that can dispose it is the one that made it.
+     * `dropPlace` takes it away for the same reason it takes away `zoneLines`.
+     */
+    let modelLibrary: ModelLibrary | undefined;
 
     const notice = (message: string): void => {
       notices.push(message);
@@ -970,6 +1129,10 @@ export default function App() {
         place.manifest.seed,
         place.manifest.name,
         place.manifest.spawn,
+        // **The bytes the loader already carried.** Phase 1 put `models` in the manifest and
+        // the loader read them, and the one thing it did not do was hand them to anything —
+        // which made a whole field of the format decorative. This is where it stops being that.
+        place.models,
       );
       return report.startsWith("could not load")
         ? report
@@ -979,6 +1142,16 @@ export default function App() {
     const dropPlace = (): void => {
       host?.dispose();
       host = undefined;
+      placeHost = undefined;
+      figures.clear();
+      figures.aim(undefined);
+      // **The overlay with everything else**, for the same reason: a question left on screen with
+      // nothing left to answer it, and an ending for a place that has gone.
+      setPlaceDialog(undefined);
+      setPlaceEnding(undefined);
+      setNarration(undefined);
+      modelLibrary?.dispose();
+      modelLibrary = undefined;
       loadedName = undefined;
       // **Taken away with the place, not left behind.** A reader closing over a disposed host would
       // answer from an empty collection — which is right by luck — and keep the whole host
@@ -991,6 +1164,23 @@ export default function App() {
       sculpt.places.clearAll();
       sculpt.refreshPlaces();
     };
+
+    /**
+     * The height of the world's surface above `(x, z)`, for a place that means to build on it.
+     *
+     * **A height field answers this itself and a planet is traced**, which is why this is a
+     * function rather than `sculpt.terrainHeight` passed through: that returns `undefined` on a
+     * sphere and the host falls back to zero, so every shipped place — authored against
+     * `getHeightAt(0, 0)` — built at the planet's core, a hundred and thirty-five thousand units
+     * inside the ground. `world/surface-height.ts` owns the trace and its test; this binds it to
+     * this world's own field and sea.
+     */
+    const groundHeightAt = (x: number, z: number): number =>
+      surfaceHeightAt(x, z, {
+        seaRadius: GAME_SEA,
+        heightAt: sculpt.terrainHeight,
+        solidAt: (sx, sy, sz) => game.world.getSolidAt({ x: sx, y: sy, z: sz }),
+      });
 
     /**
      * Builds a host over a place's files and runs it, reporting what happened.
@@ -1007,11 +1197,31 @@ export default function App() {
       seed: number,
       name: string,
       spawn?: PlaceSpawn,
+      /** Models this place stands its props and NPCs out of. See `model-library.ts`. */
+      models?: Readonly<Record<string, Uint8Array>>,
     ): Promise<string> => {
       // **Dropped before the new one is built, not after.** Two places at once would both
       // write into one registry, and the operation indices from the first would be spent under
       // the second's fold order.
       dropPlace();
+
+      // **Remembered, so the ending's "play again" can mean something.** This is the same
+      // argument `startPlace` takes, passed straight through — so restarting is calling this
+      // function again with the values it was called with, and there is no second code path for
+      // it to disagree with the first. Set before anything can fail, so a place that fails to
+      // load is still restartable into the same failure rather than into nothing.
+      loadedForRestart = { files, entry, seed, name, spawn, models };
+
+      // **The models, read and meshed before the host exists**, so a place that names a model
+      // it does not attach finds out at load rather than at the moment it stands the first
+      // prop. A model that will not read is a notice and not a failure: one unreadable file
+      // among forty should not decide whether the place runs.
+      if (models !== undefined && Object.keys(models).length > 0) {
+        modelLibrary = await ModelLibrary.from(models);
+        for (const problem of modelLibrary.problems) {
+          notice(`model "${problem.name}": ${problem.reason}`);
+        }
+      }
 
       // **Annotated, because the initializer now mentions `next`.** `mediumAt` below closes over
       // `next.mediumAt` so that a script's top-level code can ask what field it is standing in,
@@ -1025,7 +1235,15 @@ export default function App() {
         now: () => clock.nowMs(),
         world: {
           places: sculpt.places,
-          terrainHeight: sculpt.terrainHeight,
+          // **The figures and the models they are placed from, handed in rather than built
+          // here.** The host writes into a `FigureSet` the session already put in the scene, for
+          // the reason `places` is handed in: the fold indices come from the session's own
+          // counter and a figure set built anywhere else is one the renderer never draws. The
+          // model reader is the same seam — a host can be stood up in a test with two fixtures
+          // and never touch a zip.
+          figures,
+          models: modelLibrary,
+          terrainHeight: groundHeightAt,
           solidAt: (x, y, z) => game.world.getSolidAt({ x, y, z }),
           waterAt: (x, y, z) => inSea({ x, y, z }),
           // **The same answer the physics gets**, by the same method, so a place asking "what am
@@ -1041,6 +1259,19 @@ export default function App() {
         effects: {
           log: (text) => runConsoleLine(text),
           toast: (text) => setPlaceToast(text),
+          narrate: (who, text) => setNarration({ who, text }),
+          dialog: (dialog) => {
+            setPlaceDialog(dialog);
+            // **A line under a dialog is a line nobody is reading**, so opening one takes the
+            // narration away rather than leaving it under the panel until the dialog closes.
+            setNarration(undefined);
+          },
+          closeDialog: () => setPlaceDialog(undefined),
+          ending: (ending) => {
+            setPlaceEnding(ending);
+            setPlaceDialog(undefined);
+            setNarration(undefined);
+          },
           movePlayer: (at, yaw) => game.teleportPlayer(at, yaw),
           setPlayerSpeed: (multiplier) => game.setPlayerSpeed(multiplier),
           setPlayerJump: (multiplier) => game.setPlayerJump(multiplier),
@@ -1062,6 +1293,7 @@ export default function App() {
       }
 
       host = next;
+      placeHost = next;
       loadedName = name;
       // **The physics can now feel this place.** One assignment, and every frame's collision run
       // asks the host directly rather than being handed a snapshot that could be a frame old.
@@ -1102,7 +1334,24 @@ export default function App() {
     const loadDemo = async (id: string): Promise<string> => {
       const demo = demoPlace(id);
       if (demo === undefined) return `no place called "${id}"`;
-      return startPlace(demo.files, demo.entry, DEFAULT_TERRAIN.seed, demo.id);
+      // **A demo is placed on the ground rather than left where the player is.** A demo builds
+      // at `getHeightAt(0, 0)` — the surface above the origin — so the player has to be put
+      // there, or a person who had walked to the far side of the planet would load a place and
+      // never see it. The height is the same one the script asks for, from the same function.
+      const half = DEFAULT_PLAYER_CONFIG.halfSize ?? 5;
+      return startPlace(
+        demo.files,
+        demo.entry,
+        DEFAULT_TERRAIN.seed,
+        demo.id,
+        demo.spawn ?? [0, groundHeightAt(0, 0) + half + 1, 0],
+        // **A demo's models are URLs and are fetched here rather than at module scope**, so a
+        // demo with none costs nothing to open and a model that is not there costs a notice
+        // rather than a thrown 404.
+        demo.models === undefined
+          ? undefined
+          : await loadDemoModels(demo.models),
+      );
     };
 
     // The place commands, as the same interface the table in `place-commands.ts` takes — so
@@ -1302,6 +1551,31 @@ export default function App() {
       // places that each hold a copy and are each right on a different afternoon.
       host?.step();
 
+      // ---- The crosshair ----
+      //
+      // **After `game.tick` and after the place has stepped**, because the camera was placed in
+      // the first and the world was changed in the second, and a crosshair traced against either
+      // of them would be a frame behind the thing it is pointing at. The ray is the camera's own
+      // forward direction rather than a rebuilt one from the player's basis, because the camera is
+      // what the player sees and can be somewhere else entirely — `/place:open` and `lookAt` both
+      // move it without moving the body.
+      //
+      // **And it is a tint, not a hit.** Nothing is pressed here: the aim only says which figure
+      // is under the crosshair, and Phase 4 is what turns a press into a talk or a use.
+      if (figures.size > 0) {
+        const camera = viewport.camera;
+        const forward = camera.getWorldDirection(TMP_FORWARD);
+        figures.aim(
+          figures.pick(game.player.position, {
+            x: forward.x,
+            y: forward.y,
+            z: forward.z,
+          })?.figure.id,
+        );
+      } else {
+        figures.aim(undefined);
+      }
+
       // ---- The lights, once a frame ----
       //
       // **One call, one array, three materials.** The host picks the nearest `MAX_DRAWN_LIGHTS`
@@ -1317,6 +1591,11 @@ export default function App() {
       // module scope because a material is a GL object and building it per frame would be a leak;
       // it is handed to the session as the sea's material only in the game.
       GAME_WATER.material.lights.lights = lights;
+      // **The tint material is in the list for the same reason the water is.** It is the
+      // material an aimed figure is drawn with, and an aimed figure has to be lit by *this*
+      // frame's sun and *this* frame's lanterns — a selection glowing in last frame's light is
+      // a selection that cannot be trusted. One assignment, because there is exactly one of it.
+      FIGURE_TINT.material.lights.lights = lights;
 
       // A place that changes its zones mid-step has just redrawn the terrain by way of
       // `geometryChanged`, so the overlay is rebuilt after the step rather than before it —
@@ -1331,6 +1610,11 @@ export default function App() {
       // every water mesh, so this one pair is all of it.
       GAME_WATER.material.sky.lighting = light;
       GAME_WATER.material.fog.colour = light.skyColor;
+      // **And so does the tint material, which is the fourth surface sharing this sky.** The
+      // whole of ADR 0023's argument is that every lit thing answers from one `SkyLight`, and a
+      // figure the player is looking straight at is the most obviously lit thing on screen.
+      FIGURE_TINT.material.sky.lighting = light;
+      FIGURE_TINT.material.fog.colour = light.skyColor;
       // **The same two assignments the terrain and the water get, every frame.** That is the whole
       // reason the swap is invisible: the globe is lit by this sun and hazed by this air, from the
       // same `SkyLight` and the same `Fog`, so at the altitude the two overlap they cannot disagree
@@ -1529,6 +1813,30 @@ export default function App() {
             </div>
           )}
         </Show>
+        <PlaceOverlay
+          narration={narration}
+          dialog={placeDialog}
+          ending={placeEnding}
+          onChoose={(entityId, option) => placeHost?.choose(entityId, option)}
+          onRestart={() => {
+            const again = loadedForRestart;
+            const start = startPlace;
+            if (again === undefined || start === undefined) return;
+            // **`void`, deliberately: the report goes to the console** like every other load,
+            // and the ending panel is already gone by the time this resolves because
+            // `startPlace` drops the place first. A failure here lands in `/place:notices`
+            // rather than on a screen nobody is looking at any more.
+            void start(
+              again.files,
+              again.entry,
+              again.seed,
+              again.name,
+              again.spawn,
+              again.models,
+            );
+          }}
+          suspendPointerLock={() => input.suspendPointerLock()}
+        />
         <Show when={coarse()}>
           <TouchControls input={input} />
         </Show>

@@ -26,8 +26,7 @@
  * document owns the list and the history; something above decides what to re-mesh.
  */
 
-import { Operation } from "@big-mesh-studios/csg";
-import { primitiveHalfExtents } from "@big-mesh-studios/sdf";
+import { Operation, boundsOf } from "@big-mesh-studios/csg";
 import { FoldOrder } from "./fold-order";
 
 /** A contiguous run of operations, which is what a stroke adds and undo removes. */
@@ -205,51 +204,19 @@ export class SculptDocument {
   }
 }
 
-/** The world bounds of a set of operations, or undefined when there are none. */
-export const boundsOf = (
-  operations: readonly Operation[],
-): Bounds | undefined => {
-  if (operations.length === 0) return undefined;
-
-  let minX = Infinity;
-  let minY = Infinity;
-  let minZ = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  let maxZ = -Infinity;
-
-  for (const operation of operations) {
-    // The operation's origin plus its half extents, padded by the blend band so a soft
-    // edge's influence is inside the box rather than straddling its edge.
-    const half = shapeHalfExtentsOf(operation);
-    minX = Math.min(minX, operation.origin.x - half.x);
-    minY = Math.min(minY, operation.origin.y - half.y);
-    minZ = Math.min(minZ, operation.origin.z - half.z);
-    maxX = Math.max(maxX, operation.origin.x + half.x);
-    maxY = Math.max(maxY, operation.origin.y + half.y);
-    maxZ = Math.max(maxZ, operation.origin.z + half.z);
-  }
-
-  return {
-    min: { x: minX, y: minY, z: minZ },
-    max: { x: maxX, y: maxY, z: maxZ },
-  };
-};
-
 /**
- * An operation's half extents, from its own shape.
+ * The world bounds of a set of operations, or undefined when there are none.
  *
- * **This was a copy of `csg`'s `shapeHalfExtents`, written out again here**, and its
- * comment argued against a table: "a table in this file is a second place to update
- * when a shape is added and the wrong place to be wrong". The reasoning was sound and
- * the conclusion has since inverted — the table is now in `packages/sdf`, it is the
- * only copy, and this file's version was one of seven places that had to be found.
+ * **Re-exported from `@big-mesh-studios/csg` rather than written here, which is a fix and
+ * not only a deduplication.** The copy this replaces read each operation's half-extents
+ * off its shape and added and subtracted them from its origin — which is the shape's
+ * extent in *its own* frame, applied as though it were in the world's. A rotated brush
+ * dab therefore reported a box narrower than the operation's reach, the chunks holding
+ * its far corners were never invalidated, and an edit's edge stayed stale on screen until
+ * something else re-meshed it. `csg`'s `boundsOf` rotates the eight corners instead.
  *
- * A duplicate like this is worse than the second place the comment feared. It was not
- * merely a second place: it was a second place whose error would be *small and silent*,
- * because a half-extent box that is too small does not throw. An edit would half
- * appear, once, for one primitive, and only on the axis it was wrong about.
+ * The name and the signature are the same so that the callers in this application did
+ * not have to change, which is the point of leaving the fix to the smallest edit that
+ * makes it.
  */
-const shapeHalfExtentsOf = (
-  operation: Operation,
-): { x: number; y: number; z: number } => primitiveHalfExtents(operation.shape);
+export { boundsOf };

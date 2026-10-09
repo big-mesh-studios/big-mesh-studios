@@ -116,4 +116,36 @@ export {
   resolveFaceNormal,
 } from "./vertex-normals";
 
+/**
+ * **`model-mesh` is the one file here that composes rather than sampling.** Everything above
+ * takes a `SurfaceSampler` — one method, a distance — and knows nothing about operations;
+ * this takes a list of them, builds the `Field` they fold into, decides how finely to sample
+ * it, meshes it, cuts the colour boundaries and reports on what came out.
+ *
+ * **Two applications need that composition and neither could write it as a call to the rest
+ * of this package.** `apps/sdf-modeller` previews and prints a model. `apps/spacescape`
+ * meshes the props and NPCs a place script stands in the world — once per model, so that
+ * every instance of a fridge shares one geometry and an NPC can be moved without being
+ * re-meshed at all. That is also why the `MeshBudget` below is a value and not a set of
+ * constants: the two applications work at world scales an order of magnitude apart.
+ *
+ * **It is why this package depends on `@big-mesh-studios/csg`**, which nothing else here
+ * does. The dependency runs one way — `csg` has no knowledge of this package — and it is
+ * confined to this one file.
+ */
+export {
+  budgetFor,
+  DEFAULT_BUDGET,
+  DEFAULT_MESH_MODE,
+  MESH_MODES,
+  RESOLUTIONS,
+  meshModel,
+  meshRegion,
+  operationsField,
+  primitiveMesh,
+  releaseScratch,
+  samplesFor,
+} from "./model-mesh";
+export type { MeshBudget, MeshMode, MeshResult } from "./model-mesh";
+
 export { Growable } from "./growable";

@@ -13,6 +13,7 @@
 
 import {
   createShape,
+  getHeightAt,
   log,
   lookAt,
   movePlayer,
@@ -21,7 +22,13 @@ import {
 } from "voxelscape";
 
 /** Where the platform is, and where a player standing on it would be. */
-const CENTRE: readonly [number, number, number] = [0, 90, -160];
+// **`getHeightAt` because the ground is the planet's surface**, which is 136000 units above
+// where this used to build. See `surfaceHeightAt` in `app.tsx`.
+const CENTRE: readonly [number, number, number] = [
+  0,
+  getHeightAt(0, 0) + 90,
+  -160,
+];
 const HALF = 24;
 
 const box = (

@@ -18,7 +18,8 @@
     "test": "vitest run --testTimeout=30000"
   },
   "dependencies": {
-    "@big-mesh-studios/core": "workspace:*"
+    "@big-mesh-studios/core": "workspace:*",
+    "@big-mesh-studios/csg": "workspace:*"
   },
   "devDependencies": {
     "@big-mesh-studios/sdf": "workspace:*",
