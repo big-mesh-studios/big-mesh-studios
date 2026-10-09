@@ -62,6 +62,12 @@
   position: absolute;
   inset: 0;
   background: rgba(6, 8, 12, 0.45);
+  /* **`auto` here re-enables the pointer the container switched off**, and it is the whole
+     reason a dialog is clickable. `pointer-events` is inherited, so `none` on `.place-overlay`
+     reaches every descendant that does not override it — including the option buttons. The
+     scrim is the sibling behind the panel, so turning it on also makes the modal block the
+     world, and the panel sitting after it in the DOM takes the clicks over itself. */
+  pointer-events: auto;
 }
 
 .place-overlay-dialog {
@@ -77,6 +83,8 @@
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color: #e6edf3;
+  /* The panel's own copy of the override; the buttons then inherit `auto` from here. */
+  pointer-events: auto;
 }
 
 .place-overlay-speaker {
@@ -135,6 +143,10 @@
   display: grid;
   place-items: center;
   background: rgba(6, 8, 12, 0.78);
+  /* **The ending's "Play again" has the same problem the dialog's buttons did**: `none` on
+     `.place-overlay` inherits to the card and the button, so nothing in here was pressable.
+     `auto` on the full-bleed backdrop covers the world and is inherited by the button. */
+  pointer-events: auto;
 }
 
 .place-overlay-card {
