@@ -41,6 +41,7 @@ import SNACK_TABLES_SOURCE from "./demo/snack-tables.ts?raw";
 import {
   MODELS as SNACK_MODELS,
   PLATFORM_LIFT as SNACK_LIFT,
+  SPAWN as SNACK_SPAWN,
 } from "./demo/snack-tables";
 import BRIDGE_SOURCE from "./demo/bridge.ts?raw";
 import SPAN_SOURCE from "./demo/span.ts?raw";
@@ -86,6 +87,18 @@ export interface DemoPlace {
    * gets, so the two cannot disagree about where the ground is.
    */
   readonly spawn?: PlaceSpawn;
+
+  /**
+   * Where the fallback spawn sits in plan, in world units, when `spawn` is not given.
+   *
+   * **Because a demo's floor is not always over the origin.** The fallback is the ground above
+   * `(0, 0)`, and `snack` puts the corner where its interior walls cross there: the ground over
+   * the origin is inside that wall, so the player starts stuck in it. The bedroom the player
+   * wakes in is one quadrant over, so the demo states its own `[x, z]` and the app keeps
+   * computing the `y` from the surface and `spawnLift`. Absent is `[0, 0]`, which is every other
+   * demo.
+   */
+  readonly spawnAt?: readonly [number, number];
 
   /**
    * How far above that fallback ground to put the player, when `spawn` is not given.
@@ -146,8 +159,10 @@ export const DEMO_PLACES: readonly DemoPlace[] = [
       "snack-tables.ts": SNACK_TABLES_SOURCE,
     },
     entry: "snack.ts",
-    // **The player starts on the platform, not the ground under it.** See `PLATFORM_LIFT`.
+    // **The player starts on the platform, not the ground under it, and in the bedroom rather
+    // than on the origin the interior walls cross.** See `PLATFORM_LIFT` and `SPAWN`.
     spawnLift: SNACK_LIFT,
+    spawnAt: SNACK_SPAWN,
     // **Thirty-nine models, named exactly as the script asks for them.** A name here that the
     // script does not use is a wasted download; a name the script uses and this omits is a prop
     // that never appears, reported by `ModelLibrary` as a problem against the place's name.

@@ -224,8 +224,55 @@ const worldBox = (
  * **Every coordinate is the sibling's**, voxel for voxel, so this can be read against
  * `walls()` over there. The front door is a gap in the house's east wall and the store's door is
  * a gap in its west wall, both facing the drive that joins them.
+ *
+ * **A doorway is a gap in a run, and a run is a wall's full height**, so a gap alone reaches the
+ * ceiling and reads as a slot rather than a door. A `lintel` closes the gap's top, which leaves the
+ * opening touching the floor and stopping short of the ceiling.
+ *
+ * **A run reaches into the roof row, not up to it.** A wall ending on the row a roof begins leaves
+ * a plane where both are exactly zero, and the signed-distance mesher reads that zero as a surface —
+ * the same rule as the ground in `buildNeighbourhood`. One row of overlap makes the union negative
+ * across the join, so the only surface is the roof's real top and the wall's real faces.
  */
 const buildShells = (): void => {
+  /**
+   * One horizontal run of wall between two voxel rows, grown to two samples thick.
+   *
+   * **Two voxels thick, not one, or the mesher loses the wall.** A plan wall is a single
+   * voxel — ten world units, exactly `VOXEL_SIZE` — and a feature one sample wide can fall
+   * between the chunk mesher's samples and never be drawn. Growing it half a voxel either side
+   * keeps the wall centred on the row the sibling put it on while making it two samples
+   * across. A doorway is a gap along the *long* axis, so the gaps are untouched.
+   */
+  const band = (
+    id: string,
+    block: Block,
+    minX: number,
+    minZ: number,
+    maxX: number,
+    maxZ: number,
+    minRow: number,
+    maxRow: number,
+  ): void => {
+    const half = 0.5;
+    const thinX = minX === maxX;
+    const thinZ = minZ === maxZ;
+    voxelBox(
+      id,
+      [thinX ? minX - half : minX, minRow, thinZ ? minZ - half : minZ],
+      [thinX ? maxX + half : maxX, maxRow, thinZ ? maxZ + half : maxZ],
+      block,
+    );
+  };
+
+  /**
+   * A full-height wall run, reaching one row into the ground and one into the roof.
+   *
+   * **Both ends are embedded rather than meeting a floor or a roof on a plane**, or the join is a
+   * plane where both boxes are exactly zero and the mesher renders it as a surface. The ground's
+   * own row is filled by the ground at the doorway, so the wall only *looks* like it starts at the
+   * floor.
+   */
   const wall = (
     id: string,
     block: Block,
@@ -233,22 +280,17 @@ const buildShells = (): void => {
     minZ: number,
     maxX: number,
     maxZ: number,
-  ): void => {
-    // **Two voxels thick, not one, or the mesher loses the wall.** A plan wall is a single
-    // voxel — ten world units, exactly `VOXEL_SIZE` — and a feature one sample wide can fall
-    // between the chunk mesher's samples and never be drawn. Growing it half a voxel either side
-    // keeps the wall centred on the row the sibling put it on while making it two samples
-    // across. A doorway is a gap along the *long* axis, so the gaps are untouched.
-    const half = 0.5;
-    const thinX = minX === maxX;
-    const thinZ = minZ === maxZ;
-    voxelBox(
-      id,
-      [thinX ? minX - half : minX, GROUND + 1, thinZ ? minZ - half : minZ],
-      [thinX ? maxX + half : maxX, GROUND + 3, thinZ ? maxZ + half : maxZ],
-      block,
-    );
-  };
+  ): void => band(id, block, minX, minZ, maxX, maxZ, GROUND, GROUND + 4);
+
+  /** The run's top, closing the gap above a doorway — the opening is then floor to below the ceiling. */
+  const lintel = (
+    id: string,
+    block: Block,
+    minX: number,
+    minZ: number,
+    maxX: number,
+    maxZ: number,
+  ): void => band(id, block, minX, minZ, maxX, maxZ, GROUND + 3, GROUND + 4);
 
   // The house shell, in red brick, with the front door on the east wall.
   wall("house-nw", BRICK, -14, -13, -14, 13);
@@ -256,6 +298,7 @@ const buildShells = (): void => {
   wall("house-s", BRICK, -14, 13, 14, 13);
   wall("house-e1", BRICK, 14, -13, 14, 2);
   wall("house-e2", BRICK, 14, 6, 14, 13);
+  lintel("house-door", BRICK, 14, 3, 14, 5);
 
   // The interior cross, in a lighter stone, with a two-voxel doorway on each arm.
   wall("cross-w1", GREYSTONE, 0, -13, 0, -11);
@@ -264,6 +307,10 @@ const buildShells = (): void => {
   wall("cross-n1", GREYSTONE, -14, 0, -11, 0);
   wall("cross-n2", GREYSTONE, -9, 0, 9, 0);
   wall("cross-n3", GREYSTONE, 11, 0, 14, 0);
+  lintel("cross-w-door-n", GREYSTONE, 0, -10, 0, -10);
+  lintel("cross-w-door-s", GREYSTONE, 0, 10, 0, 10);
+  lintel("cross-n-door-w", GREYSTONE, -10, 0, -10, 0);
+  lintel("cross-n-door-e", GREYSTONE, 10, 0, 10, 0);
 
   // The store shell, in grey stone, door on the west wall facing the drive.
   wall("store-w1", GREYSTONE, 24, -6, 24, 2);
@@ -271,6 +318,7 @@ const buildShells = (): void => {
   wall("store-e", GREYSTONE, 34, -6, 34, 6);
   wall("store-n", GREYSTONE, 24, -6, 34, -6);
   wall("store-s", GREYSTONE, 24, 6, 34, 6);
+  lintel("store-door", GREYSTONE, 24, 3, 24, 5);
 };
 
 /**
@@ -284,8 +332,14 @@ const buildShells = (): void => {
  */
 const buildNeighbourhood = (): void => {
   const ROW = GROUND;
-  // The ground, and the buildable column above it cut clear of whatever was there.
-  voxelBox("dirt", [-96, 0, -96], [96, ROW - 1, 96], DIRT);
+  // **The ground is one solid, not two boxes that meet.** Two boxes whose faces are coincident
+  // — a dirt box ending on the row a grass box begins — leave a plane where both are exactly zero,
+  // and the signed-distance mesher reads that zero as a surface. The result is a floor rendered a
+  // whole voxel below the one the script built: the door's bottom ends up floating above it and
+  // the opening reads as a window rather than a doorway. Overlapping the two by a voxel keeps the
+  // union negative across the join, so the only zero is the ground's real top. See `buildShells`
+  // for the same rule between a wall and the roof.
+  voxelBox("dirt", [-96, 0, -96], [96, ROW, 96], DIRT);
   voxelBox("grass", [-96, ROW, -96], [96, ROW, 96], GRASS);
   voxelBox("raze", [-96, ROW + 1, -96], [96, 176, 96], GRASS, "Subtract");
 
@@ -293,10 +347,12 @@ const buildNeighbourhood = (): void => {
   voxelBox("house-floor", [-14, ROW, -13], [14, ROW, 13], ICE);
   voxelBox("store-floor", [24, ROW, -6], [34, ROW, 6], GREYSTONE);
   // The road is a box in the sibling because a voxel world had a `road` primitive; here the
-  // drive between the two doors is the same box with the width folded in.
+  // drive between the two doors is the same box with the width folded in. **It starts below the
+  // floor** so its underside and the ground's top are not the same plane, which the mesher would
+  // read as a second surface and render the drive flush with the ground.
   worldBox(
     "drive",
-    [14, SIBLING_FLOOR, 2],
+    [14, SIBLING_FLOOR - 0.2, 2],
     [24, SIBLING_FLOOR + 0.4, 6],
     GREYSTONE,
   );

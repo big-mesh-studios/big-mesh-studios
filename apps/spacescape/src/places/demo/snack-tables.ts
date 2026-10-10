@@ -92,6 +92,17 @@ export const SIBLING_FLOOR = 66;
  */
 export const PLATFORM_LIFT = 60;
 
+/**
+ * Where the player wakes, in world units, as `[x, z]`.
+ *
+ * **Because the origin is the corner where the interior walls cross.** `demos.ts` spawns a demo
+ * on the ground over the origin, and here that is inside the cross — the player starts stuck in a
+ * wall. This is a clear patch of bedroom floor near the bed at `[-100, -100]`, and well inside the
+ * room's `[-140, 0] × [-130, 0]` bounds. The y is the app's to compute, from the ground plus
+ * `PLATFORM_LIFT`, so only the two plan coordinates are here. See `demos.spawnAt`.
+ */
+export const SPAWN: readonly [number, number] = [-70, -60];
+
 export const BEDROOM = "bedroom";
 export const BATHROOM = "bathroom";
 export const LIVING = "living";
