@@ -17,12 +17,14 @@
  * the angle in the model. Here the model holds the quaternion, the panel asks it what the
  * angles are, and the number on screen is always the number in the model.
  *
- * ## Why a slider commits on release rather than on every frame
+ * ## Why the field is local while typing and the buttons commit at once
  *
- * **Because a drag that sends a transform every frame fills the undo history.** The store
- * refuses an edit that changes nothing, but a slider that commits continuously would put
- * one history entry per frame and make ctrl-z useless. The value shown while dragging is
- * local; the store is written once when the drag ends.
+ * **Because an edit per keystroke fills the undo history and puts half-typed numbers in the
+ * model.** The store refuses an edit that changes nothing, but a field that committed on
+ * `input` would write a transform for every character of `-12.5` and store `-1` and `-12`
+ * along the way, so the value shown while somebody types is local and the store is written
+ * once when the field loses focus. A stepper button is the opposite case — a press is already
+ * a whole act — so it commits immediately, and the callers' own clamps still apply to it.
  */
 import { createSignal, For, Show } from "solid-js";
 
@@ -45,32 +47,74 @@ import { PaletteRow } from "./palette";
 import { ColourPicker } from "./colour-picker";
 import styles from "./transform-panel.module.css";
 
-/** One axis: a label, a number field, and a slider. */
+/** One axis: a label, a text field, and a pair of buttons that step the value. */
 const Axis = (props: {
   label: string;
   value: number;
   step: number;
   onCommit: (value: number) => void;
 }) => {
-  // **Local while dragging, committed on release.** See the header.
+  // **Local while typing, committed on release.** See the header.
   const [draft, setDraft] = createSignal<string | null>(null);
+
+  /**
+   * Steps the value by one `step` in `direction`.
+   *
+   * **A button commits at once, unlike the field**, because a press is already a complete act —
+   * there is no caret halfway through a number to protect, so waiting for a blur would only
+   * make the button feel late. Any draft the field was holding is dropped, so the number that
+   * appears is the one that was just committed.
+   *
+   * **The clamping the callers do still applies**, because this goes through the same
+   * `onCommit`: a dimension will not step below its minimum and softness will not step past its
+   * maximum, exactly as typing would not have.
+   */
+  const step = (direction: 1 | -1): void => {
+    setDraft(null);
+    props.onCommit(props.value + direction * props.step);
+  };
+
   return (
     <label class={styles.axis}>
       <span class={styles.axisLabel}>{props.label}</span>
-      <input
-        class={styles.number}
-        type="number"
-        step={props.step}
-        value={draft() ?? props.value.toFixed(2)}
-        onInput={(event) => {
-          setDraft(event.currentTarget.value);
-        }}
-        onChange={(event) => {
-          const value = Number(event.currentTarget.value);
-          setDraft(null);
-          if (Number.isFinite(value)) props.onCommit(value);
-        }}
-      />
+      <span class={styles.stepper}>
+        {/*
+          **Text and not `number`, because a `number` field will not take a minus on a phone.**
+          The numeric keypad a mobile browser raises for `type="number"` has no minus key, so a
+          coordinate could be moved into the positive and never back out of it. `text` gets the
+          ordinary keyboard, which has one — and the steppers are what make it need no keyboard
+          at all for the common case.
+        */}
+        <input
+          class={styles.number}
+          type="text"
+          value={draft() ?? props.value.toFixed(2)}
+          onInput={(event) => {
+            setDraft(event.currentTarget.value);
+          }}
+          onChange={(event) => {
+            const value = Number(event.currentTarget.value);
+            setDraft(null);
+            if (Number.isFinite(value)) props.onCommit(value);
+          }}
+        />
+        <button
+          type="button"
+          class={styles.stepButton}
+          aria-label={`Decrease ${props.label}`}
+          onClick={() => step(-1)}
+        >
+          −
+        </button>
+        <button
+          type="button"
+          class={styles.stepButton}
+          aria-label={`Increase ${props.label}`}
+          onClick={() => step(1)}
+        >
+          +
+        </button>
+      </span>
     </label>
   );
 };
