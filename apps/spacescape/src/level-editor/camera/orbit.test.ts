@@ -153,6 +153,7 @@ describe("the orbit camera", () => {
       button: number,
       x: number,
       pointerId = 1,
+      pointerType = "mouse",
     ): Event => {
       const event = new MouseEvent(type, {
         bubbles: true,
@@ -161,6 +162,7 @@ describe("the orbit camera", () => {
         clientY: 0,
       });
       Object.defineProperty(event, "pointerId", { value: pointerId });
+      Object.defineProperty(event, "pointerType", { value: pointerType });
       return event;
     };
 
@@ -170,10 +172,17 @@ describe("the orbit camera", () => {
       button: number,
       dx: number,
       pointerId = 1,
+      pointerType = "mouse",
     ): void => {
-      canvas.dispatchEvent(pointer("pointerdown", button, 0, pointerId));
-      canvas.dispatchEvent(pointer("pointermove", button, dx, pointerId));
-      canvas.dispatchEvent(pointer("pointerup", button, dx, pointerId));
+      canvas.dispatchEvent(
+        pointer("pointerdown", button, 0, pointerId, pointerType),
+      );
+      canvas.dispatchEvent(
+        pointer("pointermove", button, dx, pointerId, pointerType),
+      );
+      canvas.dispatchEvent(
+        pointer("pointerup", button, dx, pointerId, pointerType),
+      );
     };
 
     /** How far the camera is from what it is looking at — the orbit's radius. */
@@ -233,6 +242,26 @@ describe("the orbit camera", () => {
         y: expect.closeTo(before.at.y, 4),
         z: expect.closeTo(before.at.z, 4),
       });
+      control.dispose();
+      canvas.remove();
+    });
+
+    it("gives a finger the left drag, because a finger is what looks on a phone", () => {
+      // **The rule is about the mouse, not the button.** The editor places from a left press
+      // and only a mouse left press — on a phone the Apply button places and the drag is left
+      // to look (`LevelEditorTouchControls`). Reserving the drag for a finger would take away
+      // the only gesture a finger has, which is the dead view this flag caused in the first
+      // place.
+      const control = createOrbitCameraControl(aCamera());
+      control.frame({ x: 0, y: 0, z: 0 }, 200);
+      const before = control.pose();
+
+      const canvas = surface();
+      control.attach(canvas);
+      drag(canvas, 0, 120, 1, "touch");
+      control.update(0);
+
+      expect(control.pose().at.x).not.toBeCloseTo(before.at.x, 3);
       control.dispose();
       canvas.remove();
     });

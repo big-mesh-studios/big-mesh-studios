@@ -74,6 +74,59 @@ const fakeElement = () => {
       this.fire("pointermove", pointer(1, 0, 0));
       this.fire("pointermove", pointer(2, to, 0));
     },
+    /**
+     * **Both** fingers apart about their middle, so the spread changes and nothing else does.
+     *
+     * A pinch with one finger anchored is a different gesture and answers differently: the
+     * middle moves as well as the spread, so it zooms *and* slides. That is the composition
+     * the two-finger branch is for, and it has its own test below.
+     */
+    symmetricPinch(from: number, to: number): void {
+      const pointer = (id: number, x: number, y: number) => ({
+        pointerId: id,
+        clientX: 300 + x,
+        clientY: 300 + y,
+        button: 0,
+        shiftKey: false,
+      });
+      this.fire("pointerdown", pointer(1, -from / 2, 0));
+      this.fire("pointerdown", pointer(2, from / 2, 0));
+      for (let step = 1; step <= 4; step++) {
+        const at = from / 2 + ((to - from) * step) / 4 / 2;
+        this.fire("pointermove", pointer(1, -at, 0));
+        this.fire("pointermove", pointer(2, at, 0));
+      }
+    },
+    /**
+     * Two fingers travelling together by `dx` and `dy`, staying `apart` apart.
+     *
+     * **The pan half of a two-finger gesture, and the half that had no gesture at all** —
+     * a phone has neither a shift key nor a middle button, so a two-finger drag that only
+     * zoomed left nothing on a touch screen that could move the camera sideways.
+     */
+    twoFingerDrag(dx: number, dy: number, apart = 200): void {
+      const pointer = (id: number, x: number, y: number) => ({
+        pointerId: id,
+        clientX: 300 + x,
+        clientY: 300 + y,
+        button: 0,
+        shiftKey: false,
+      });
+      this.fire("pointerdown", pointer(1, -apart, 0));
+      this.fire("pointerdown", pointer(2, apart, 0));
+      for (let step = 1; step <= 4; step++) {
+        this.fire(
+          "pointermove",
+          pointer(1, -apart + (dx * step) / 4, (dy * step) / 4),
+        );
+        this.fire(
+          "pointermove",
+          pointer(2, apart + (dx * step) / 4, (dy * step) / 4),
+        );
+      }
+      this.fire("pointerup", pointer(1, -apart + dx, dy));
+      this.fire("pointerup", pointer(2, apart + dx, dy));
+    },
     wheel(deltaY: number, ctrlKey = false): void {
       this.fire("wheel", { deltaY, ctrlKey, preventDefault: () => {} });
     },
@@ -330,6 +383,124 @@ describe("a tool that has the left button", () => {
     }
     // And the one gesture that is supposed to get through.
     expect(movesCamera((harness) => harness.pinch(100, 200))).toBe(true);
+  });
+});
+
+describe("two fingers", () => {
+  /**
+   * The gesture a phone has and a mouse does not.
+   *
+   * **Pinch and slide are the same drag read two ways**, so both are asserted together: a
+   * hand that spreads and drifts at once is the normal case, and two halves that cancel is
+   * the failure neither half notices on its own.
+   */
+  const twoFinger = (
+    gesture: (harness: ReturnType<typeof fakeElement>) => void,
+  ) => {
+    const { orbit, harness } = controller();
+    const before = {
+      theta: orbit.state.theta,
+      phi: orbit.state.phi,
+      radius: orbit.state.radius,
+      target: { ...orbit.state.target },
+    };
+
+    gesture(harness);
+
+    return {
+      // **A tolerance, not equality.** The two fingers are reported one at a time, so
+      // mid-gesture each finger looks like it moved alone: the radius swings and comes back,
+      // and the middle swings and comes back. Asserting on exact equality would be asserting
+      // on floating point rather than on the gesture.
+      zoomed: Math.abs(orbit.state.radius - before.radius) > 1,
+      // **How far the world ended up sliding, not whether it moved at all.** A symmetric
+      // pinch nudges the middle once per finger and takes it back, and only the net says
+      // whether a gesture slid the camera or did not.
+      panned: Math.hypot(
+        orbit.state.target.x - before.target.x,
+        orbit.state.target.y - before.target.y,
+        orbit.state.target.z - before.target.z,
+      ),
+      orbited:
+        orbit.state.theta !== before.theta || orbit.state.phi !== before.phi,
+    };
+  };
+
+  it("zooms from the fingers separating, and leaves the world where it was", () => {
+    const { zoomed, panned } = twoFinger((h) => h.symmetricPinch(100, 200));
+
+    expect(zoomed).toBe(true);
+    // **Under a unit, at a radius of 900.** Anything more is a pinch that also slid the
+    // camera, which is what a person loses a level to and cannot get back.
+    expect(panned).toBeLessThan(1);
+  });
+
+  it("slides the world from the fingers travelling together", () => {
+    const { zoomed, panned } = twoFinger((h) => h.twoFingerDrag(120, 0));
+
+    expect(zoomed).toBe(false);
+    expect(panned).toBeGreaterThan(10);
+  });
+
+  it("does both when the hand spreads and drifts at once", () => {
+    // **The case that decides whether they compose.** A zoom that ate the drift, or a pan
+    // that ate the spread, would each still pass the two tests above on their own.
+    const { zoomed, panned } = twoFinger((h) => {
+      h.twoFingerDrag(160, 90);
+      h.symmetricPinch(100, 200);
+    });
+
+    expect(zoomed).toBe(true);
+    expect(panned).toBeGreaterThan(10);
+  });
+
+  it("leaves the angles alone, because a pan and a dolly are not an orbit", () => {
+    // **Checked for every two-finger gesture**, not one: the two-pointer branch is shared,
+    // and a turn leaking out of it would put the world under the camera somewhere the
+    // person did not ask for.
+    for (const gesture of [
+      (h: ReturnType<typeof fakeElement>) => h.symmetricPinch(100, 200),
+      (h: ReturnType<typeof fakeElement>) => h.twoFingerDrag(120, 0),
+      (h: ReturnType<typeof fakeElement>) => h.twoFingerDrag(0, 90),
+    ]) {
+      expect(twoFinger(gesture).orbited).toBe(false);
+    }
+  });
+
+  it("ignores two fingers that never separated, rather than sliding the world", () => {
+    // Below `pinchThreshold` this is two fingers landing together by accident. Acting on
+    // the zoom was already the rule; the slide has to obey it too, or a grip change pans the
+    // camera by however far the hand happened to travel.
+    const { orbit, harness } = controller();
+    const before = { ...orbit.state.target };
+
+    harness.fire("pointerdown", {
+      pointerId: 1,
+      clientX: 300,
+      clientY: 300,
+      button: 0,
+    });
+    harness.fire("pointerdown", {
+      pointerId: 2,
+      clientX: 304,
+      clientY: 300,
+      button: 0,
+    });
+    harness.fire("pointermove", {
+      pointerId: 1,
+      clientX: 400,
+      clientY: 300,
+      button: -1,
+    });
+    harness.fire("pointermove", {
+      pointerId: 2,
+      clientX: 404,
+      clientY: 300,
+      button: -1,
+    });
+
+    expect(orbit.state.target).toEqual(before);
+    expect(orbit.state.radius).toBe(900);
   });
 });
 

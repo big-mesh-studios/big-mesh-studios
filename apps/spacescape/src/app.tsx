@@ -1761,6 +1761,28 @@ export default function App() {
     };
 
     /**
+     * Whether the input controller's listeners act while the editor is open.
+     *
+     * **It depends on which style is live, because the two want opposite things.**
+     *
+     * `no-clip` *is* the input controller — its flight, its look and its touch drag all come
+     * from `createInput`, and there is nothing else — so silencing it silenced the whole
+     * editor: a finger dragged across the canvas and nothing happened.
+     *
+     * `orbit` reads none of it and must not have it. With the listeners live, a mouse press on
+     * the canvas re-takes the pointer lock, and **a locked pointer freezes `clientX`**, so
+     * every drag after that arrives as a drag of zero pixels — an editor whose camera cannot
+     * be moved, which is the symptom this rule exists to prevent.
+     *
+     * **The flag rather than a read**, because an effect arm has no tracking scope: asking
+     * `levelEditorOpen()` here would warn `STRICT_READ_UNTRACKED` and would then be a value
+     * that cannot change under the caller.
+     */
+    const applyEditorInput = (open: boolean): void => {
+      input.setEnabled(open && levelCameraKind() === "no-clip");
+    };
+
+    /**
      * A frame of the editor, in place of the game's.
      *
      * **`game.tick` does not run, and that is the whole design.** It is what calls
@@ -1870,23 +1892,31 @@ export default function App() {
       // the view does not jump — and it hands the *listener* across with it, because the
       // style that is no longer live must stop answering gestures meant for the one that is.
       //
-      // **Not while the editor is shut.** Neither style is attached then, so there is no
-      // listener to move; and the next open frames from the player, which is a better answer
-      // than one carried over from a camera that has not run since the last close.
-      createEffect(levelCameraKind, (kind) => {
-        if (lastCameraKind === undefined) {
+      // **Both signals in the compute, not only the kind.** Reading `levelEditorOpen()` inside
+      // the arm would be a reactive read outside a tracking scope: it would warn
+      // `STRICT_READ_UNTRACKED`, and a person closing the editor would expect this effect to
+      // notice. The kind guard makes the extra run a no-op, which is what it has always been.
+      createEffect(
+        () => ({ kind: levelCameraKind(), open: levelEditorOpen() }),
+        ({ kind, open }) => {
+          if (lastCameraKind === undefined) {
+            lastCameraKind = kind;
+            return;
+          }
+          if (lastCameraKind === kind) return;
+          const from = lastCameraKind === "orbit" ? orbitLevel : noClipLevel;
+          const to = kind === "orbit" ? orbitLevel : noClipLevel;
           lastCameraKind = kind;
-          return;
-        }
-        if (lastCameraKind === kind) return;
-        const from = lastCameraKind === "orbit" ? orbitLevel : noClipLevel;
-        const to = kind === "orbit" ? orbitLevel : noClipLevel;
-        lastCameraKind = kind;
-        if (!levelEditorOpen()) return;
-        to.adopt(from.pose());
-        to.update(0);
-        takeLevelCamera(kind);
-      });
+          // **Not while the editor is shut.** Neither style is attached then, so there is no
+          // listener to move; and the next open frames from the player, which is a better
+          // answer than one carried over from a camera that has not run since the last close.
+          if (!open) return;
+          to.adopt(from.pose());
+          to.update(0);
+          takeLevelCamera(kind);
+          applyEditorInput(open);
+        },
+      );
 
       // The box follows the selection, from a subscription rather than from the click: a
       // selection can also change by undo, by an import and by the list, and each of those
@@ -1931,6 +1961,7 @@ export default function App() {
         camera.adopt(poseFromPlayer());
         camera.update(0);
         takeLevelCamera(levelCameraKind());
+        applyEditorInput(true);
 
         // The canvas, once the editor owns it. Detached on close, because a listener that
         // outlives the editor is a click handler that places a wall with the editor shut.
@@ -1940,14 +1971,8 @@ export default function App() {
         };
         canvas.addEventListener("pointerup", onPointerUp);
 
-        // Opening takes the player out of the world.
-        //
-        // `setEnabled(false)` rather than only suspending the pointer lock, because the
-        // keyboard listeners are on `window` and skip only editable targets — so `w` would
-        // still walk the player while somebody was typing a shape's position. The lock is
-        // suspended too, because a locked pointer delivers every click to the canvas and the
-        // editor is trying to read them.
-        input.setEnabled(false);
+        // The pointer lock goes, because a locked pointer delivers every click to the canvas
+        // as a click on the crosshair and the editor is trying to read where it landed.
         const releaseLock = input.suspendPointerLock();
 
         return () => {

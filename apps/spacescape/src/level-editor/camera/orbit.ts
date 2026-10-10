@@ -22,10 +22,10 @@
  * ## Left button
  *
  * `OrbitController` leaves the left button alone, and `setToolOwnsLeft` exists to say so
- * explicitly. **The editor's left button places things**, so this wrapper raises the flag for
- * the press that is placing and drops it when that press ends — which is what keeps a
- * left-drag from also swinging the camera, and keeps two-finger pinch working while a finger
- * is down on the world.
+ * explicitly. **The editor's left button places things** — for a mouse, which is the only
+ * pointer that places — so this wrapper raises the flag for that press and drops it when the
+ * press ends, which keeps a left-drag from also swinging the camera and keeps two-finger
+ * pinch working while a finger is down on the world.
  *
  * **Per press, and not for as long as it is attached.** `setToolOwnsLeft` is a blanket
  * "a tool has this gesture" switch: `OrbitController` declines *every* single-pointer drag
@@ -33,6 +33,9 @@
  * for the whole attachment therefore took the right-drag orbit, the shift pan and the wheel
  * with it — which is the whole of the editor's navigation, and leaves a view that cannot be
  * moved at all.
+ *
+ * **A mouse's left button only.** On a phone the Apply button places and the drag is left to
+ * look, so reserving the drag there would take away the only gesture a finger has.
  */
 
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
@@ -59,10 +62,19 @@ export const createOrbitCameraControl = (
   /** The pointer whose press is placing, and so owns the left button. See the header. */
   let placing: number | undefined;
 
+  /**
+   * **A mouse's left button, and only a mouse's.** The editor places a shape on the canvas
+   * from a left press — and only from a *mouse* press, because on a phone the Apply button
+   * is what places (`LevelEditorTouchControls`) and the one gesture that is left has to be
+   * the one that looks. Reserving the button for a finger would leave a touch editor with no
+   * way to move the view at all, which is the same dead screen the flag was causing in the
+   * first place.
+   */
   const takeLeftButton = (event: PointerEvent): void => {
     // **Only the first contact, and only the left button.** A second finger is a pinch,
     // which is navigation, and letting it take the flag would hand the gesture back when it
     // lifted while the first finger was still placing.
+    if (event.pointerType !== "mouse") return;
     if (event.button !== 0 || placing !== undefined) return;
     placing = event.pointerId;
     orbit.setToolOwnsLeft(true);

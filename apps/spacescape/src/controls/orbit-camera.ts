@@ -125,17 +125,24 @@ export const orbitOffset = (
  * it is at.
  *
  * Scaling by the radius is what makes a pan feel the same at every distance. The
- * alternative — a pan of so many pixels moving so many world units — is a
+ * alternative — a pan of `dx` pixels moving so many world units — is a
  * constant-speed pan, which is unusable across the range of scales an
  * inspector-style view covers: far too slow pulled back, far too fast up close.
+ *
+ * **`radius` defaults to the state's own, and a two-finger gesture passes the radius it
+ * began at rather than the live one.** A pan is scaled by the distance it happens at, so a
+ * gesture that both slides and zooms would scale its first half at one radius and its second
+ * at another — and the two halves would no longer cancel, leaving a pinch that quietly walks
+ * the world sideways.
  */
 export const panBy = (
   state: OrbitState,
   dx: number,
   dy: number,
   limits: OrbitLimits,
+  radius: number = state.radius,
 ): Vec3 => {
-  const offset = orbitOffset(state.theta, state.phi, state.radius);
+  const offset = orbitOffset(state.theta, state.phi, radius);
   const distance = Math.hypot(offset.x, offset.y, offset.z) || 1;
   // The camera's forward direction, and the world up it is level against.
   const forward: Vec3 = {
@@ -161,7 +168,7 @@ export const panBy = (
   const upY = rz * forward.x - rx * forward.z;
   const upZ = rx * forward.y - ry * forward.x;
 
-  const scale = state.radius * limits.panSpeed;
+  const scale = radius * limits.panSpeed;
   const moveX = -(rx * dx - upX * dy) * scale;
   const moveY = -(ry * dx - upY * dy) * scale;
   const moveZ = -(rz * dx - upZ * dy) * scale;
@@ -181,6 +188,33 @@ export class OrbitController {
   private readonly pointers = new Map<number, { x: number; y: number }>();
   /** The distance the two nearest pointers were last seen at, for the pinch. */
   private pinchDistance = 0;
+  /**
+   * The middle of every pointer down, as of the last move.
+   *
+   * **What a two-finger pan is measured against,** and it is the other half of the same
+   * gesture: the spread answers *how far away*, the middle answers *where*. Reading both out
+   * of one gesture is what lets a hand drift sideways while it spreads, instead of the drift
+   * cancelling the zoom or being thrown away.
+   */
+  private pinchCentre: { x: number; y: number } = { x: 0, y: 0 };
+  /**
+   * Whether this two-finger gesture is a pinch and a slide, decided when it began.
+   *
+   * **Sticky for the length of the gesture**, because a hand that lands two fingers by
+   * accident is not asking for anything — and re-measuring the threshold on every move would
+   * let the first finger drifting away promote it into one, which then zoomed and slid the
+   * camera by however far the hand travelled.
+   */
+  private pinching = false;
+  /**
+   * The radius this two-finger gesture began at, and the one its slide is scaled by.
+   *
+   * **Held for the length of the gesture.** A pan is scaled by the distance it happens at,
+   * so letting it follow a live radius means the halves of a symmetric pinch are scaled by
+   * two different numbers and no longer cancel — a zoom that quietly walks the world
+   * sideways every time somebody pinches.
+   */
+  private pinchRadius = 0;
   /** Set while a pointer is down, to keep a release from ending a drag early. */
   private button = -1;
   /**
@@ -242,6 +276,15 @@ export class OrbitController {
       // arrived with, and clears the drag the first finger had begun.
       this.button = this.pointers.size === 1 ? event.button : -1;
       this.pinchDistance = this.spread();
+      this.pinchCentre = this.centre();
+      // **Decided once, when the second finger lands, and not again until one lifts.**
+      // Re-deciding on every move let a gesture that *began* as an accidental touch become
+      // real one event later — the first finger drifting away is enough — and a grip change
+      // then zoomed and slid the camera by however far the hand happened to travel.
+      this.pinching =
+        this.pointers.size >= 2 &&
+        this.pinchDistance > this.limits.pinchThreshold;
+      this.pinchRadius = this.state.radius;
     });
 
     on("pointermove", (event) => {
@@ -252,9 +295,8 @@ export class OrbitController {
 
       if (this.pointers.size >= 2) {
         const spread = this.spread();
-        // Below the threshold a pinch is two fingers touching by accident, and
-        // acting on it would move the model by an amount nobody asked for.
-        if (this.pinchDistance > this.limits.pinchThreshold) {
+        const centre = this.centre();
+        if (this.pinching) {
           // Fingers separating by a factor of `s` moves the camera by `s^-pinchSpeed`, so
           // spreading them twice as far halves the radius at a speed of one.
           const ratio = this.pinchDistance / Math.max(spread, 1);
@@ -262,8 +304,21 @@ export class OrbitController {
             this.state.radius * Math.pow(ratio, this.limits.pinchSpeed),
             this.limits,
           );
+          // **And the middle of the gesture slides the world.** A phone has no shift key
+          // and no middle button, so without this a two-finger drag zooms and nothing on a
+          // touch screen ever pans — which is how somebody gets a close-up they cannot back
+          // out of. Read from the *middle* rather than from either finger so that spreading
+          // and sliding compose instead of one cancelling the other.
+          this.state.target = panBy(
+            this.state,
+            centre.x - this.pinchCentre.x,
+            centre.y - this.pinchCentre.y,
+            this.limits,
+            this.pinchRadius,
+          );
         }
         this.pinchDistance = spread;
+        this.pinchCentre = centre;
         return;
       }
 
@@ -352,6 +407,24 @@ export class OrbitController {
       }
     }
     return Number.isFinite(best) ? best : 0;
+  }
+
+  /**
+   * The middle of every pointer down, which is where a two-finger gesture is going.
+   *
+   * **The mean rather than either finger,** so that one finger dragging across the other
+   * changes the spread and not the pan — which is what makes a pinch and a slide the same
+   * gesture read two ways instead of two gestures fighting over one drag.
+   */
+  private centre(): { x: number; y: number } {
+    let x = 0;
+    let y = 0;
+    for (const point of this.pointers.values()) {
+      x += point.x;
+      y += point.y;
+    }
+    const count = this.pointers.size || 1;
+    return { x: x / count, y: y / count };
   }
 
   /** Writes the current state onto the camera. */
