@@ -20,7 +20,6 @@ import {
   createMemo,
   createSignal,
   getOwner,
-  onCleanup,
   onSettled,
   runWithOwner,
   Show,
@@ -49,9 +48,11 @@ import {
 } from "./level-editor/level-editor-store";
 import { createOrbitCameraControl } from "./level-editor/camera/orbit";
 import { createNoClipCameraControl } from "./level-editor/camera/noclip";
-import type {
-  CameraControlsKind,
-  CameraControl,
+import {
+  DEFAULT_FRAME_DISTANCE,
+  type CameraControlsKind,
+  type CameraControl,
+  type CameraPose,
 } from "./level-editor/camera/CameraControl";
 import { DEFAULT_SHAPE_SIZES } from "./level-editor/panels/vocabulary";
 import {
@@ -1716,6 +1717,50 @@ export default function App() {
       levelCameraKind() === "orbit" ? orbitLevel : noClipLevel;
 
     /**
+     * Where the editor opens: the player's own view, written as a pose.
+     *
+     * **Neither style's default is a place anybody asked to look at.** `OrbitController`
+     * starts aimed at the origin, and on this world the origin is a hundred and thirty-five
+     * thousand units *inside* the planet — so an editor left there draws the backfaces of
+     * terrain nothing can see, which reads as a blue screen with no ground under the
+     * pointer and nothing anybody can place. Opening adopts this instead.
+     *
+     * The same shape `no-clip`'s own `pose` hands back — the eye, and a point a
+     * `DEFAULT_FRAME_DISTANCE` along the line it was looking along — so a handover from the
+     * game and a handover between the styles are one idea rather than two.
+     */
+    const poseFromPlayer = (): CameraPose => {
+      const at = playerEye(game.player);
+      const forward = viewport.camera.getWorldDirection(TMP_FORWARD);
+      return {
+        at,
+        target: {
+          x: at.x + forward.x * DEFAULT_FRAME_DISTANCE,
+          y: at.y + forward.y * DEFAULT_FRAME_DISTANCE,
+          z: at.z + forward.z * DEFAULT_FRAME_DISTANCE,
+        },
+      };
+    };
+
+    /**
+     * The style that is currently listening on the canvas, and the one call that swaps it.
+     *
+     * **A holder rather than `levelCamera()` at each site, because the two styles are not
+     * interchangeable once attached.** A switch has to take the old one down before starting
+     * the new one, and a close has to take down whichever was live — which the kind alone
+     * cannot say, because the kind can change while the editor is shut.
+     */
+    let attachedLevelCamera: CameraControl | undefined;
+
+    const takeLevelCamera = (kind: CameraControlsKind): void => {
+      if (attachedLevelCamera?.kind === kind) return;
+      attachedLevelCamera?.dispose();
+      const next = kind === "orbit" ? orbitLevel : noClipLevel;
+      next.attach(canvas);
+      attachedLevelCamera = next;
+    };
+
+    /**
      * A frame of the editor, in place of the game's.
      *
      * **`game.tick` does not run, and that is the whole design.** It is what calls
@@ -1822,7 +1867,12 @@ export default function App() {
       let lastCameraKind: CameraControlsKind | undefined;
 
       // A switch of style hands the pose across rather than re-seeding from defaults, so
-      // the view does not jump.
+      // the view does not jump — and it hands the *listener* across with it, because the
+      // style that is no longer live must stop answering gestures meant for the one that is.
+      //
+      // **Not while the editor is shut.** Neither style is attached then, so there is no
+      // listener to move; and the next open frames from the player, which is a better answer
+      // than one carried over from a camera that has not run since the last close.
       createEffect(levelCameraKind, (kind) => {
         if (lastCameraKind === undefined) {
           lastCameraKind = kind;
@@ -1832,8 +1882,10 @@ export default function App() {
         const from = lastCameraKind === "orbit" ? orbitLevel : noClipLevel;
         const to = kind === "orbit" ? orbitLevel : noClipLevel;
         lastCameraKind = kind;
+        if (!levelEditorOpen()) return;
         to.adopt(from.pose());
         to.update(0);
+        takeLevelCamera(kind);
       });
 
       // The box follows the selection, from a subscription rather than from the click: a
@@ -1850,35 +1902,61 @@ export default function App() {
         levelHighlight.show(highlightBounds(item, half));
       });
 
-      // The canvas, once the editor owns it.
-      //
-      // **Only while it is open**, and detached on close, because a listener that outlives
-      // the editor is a click handler that places a wall with the editor shut.
+      /**
+       * Everything the editor takes from the game while it is open, and hands back on close.
+       *
+       * **One effect rather than three, because they share a lifetime.** Three effects over
+       * the same signal are three teardowns to keep in step, and the one that matters most —
+       * the canvas click that places — is a listener that must not outlive the editor by one
+       * frame, let alone by one dropped cleanup.
+       *
+       * **The teardown is returned, not handed to `onCleanup`.** The second argument to
+       * `createEffect` is the effect's *arm*, and Solid 2 runs that arm with no owner: an
+       * `onCleanup` in it is a no-op that warns `NO_OWNER_CLEANUP` and registers nothing.
+       * Every teardown below was therefore lost on close — the input stayed disabled, the
+       * pointer lock stayed suspended (so the "click to play" prompt never came back and the
+       * canvas refused to re-lock), and the click handler stayed bound, placing walls in a
+       * world whose editor was shut. What the arm does support is returning the teardown,
+       * which runs before the next run and at dispose. `level-editor/scope.test.tsx` holds
+       * the measurement this rests on.
+       */
       createEffect(levelEditorOpen, (open) => {
         if (!open) return;
+
+        /**
+         * **Framed before anything listens**, because a camera at the planet's core draws a
+         * blue screen and picks nothing — see `poseFromPlayer`.
+         */
+        const camera = levelCamera();
+        camera.adopt(poseFromPlayer());
+        camera.update(0);
+        takeLevelCamera(levelCameraKind());
+
+        // The canvas, once the editor owns it. Detached on close, because a listener that
+        // outlives the editor is a click handler that places a wall with the editor shut.
         const onPointerUp = (event: PointerEvent): void => {
           if (event.pointerType !== "mouse" || event.button !== 0) return;
           clickLevelWorld?.(event.clientX, event.clientY);
         };
         canvas.addEventListener("pointerup", onPointerUp);
-        onCleanup(() => canvas.removeEventListener("pointerup", onPointerUp));
-      });
 
-      // Opening takes the player out of the world.
-      //
-      // `setEnabled(false)` rather than only suspending the pointer lock, because the
-      // keyboard listeners are on `window` and skip only editable targets — so `w` would
-      // still walk the player while somebody was typing a shape's position. The lock is
-      // suspended too, because a locked pointer delivers every click to the canvas and the
-      // editor is trying to read them.
-      createEffect(levelEditorOpen, (open) => {
-        if (!open) return;
+        // Opening takes the player out of the world.
+        //
+        // `setEnabled(false)` rather than only suspending the pointer lock, because the
+        // keyboard listeners are on `window` and skip only editable targets — so `w` would
+        // still walk the player while somebody was typing a shape's position. The lock is
+        // suspended too, because a locked pointer delivers every click to the canvas and the
+        // editor is trying to read them.
         input.setEnabled(false);
-        const suspend = input.suspendPointerLock();
-        onCleanup(() => {
+        const releaseLock = input.suspendPointerLock();
+
+        return () => {
+          canvas.removeEventListener("pointerup", onPointerUp);
           input.setEnabled(true);
-          suspend();
-        });
+          releaseLock();
+          attachedLevelCamera?.dispose();
+          attachedLevelCamera = undefined;
+        };
       });
     });
 

@@ -39,6 +39,7 @@ import type {
   Combine,
   LevelFigure,
   LevelShape,
+  ShapeKind,
 } from "../../places/level/types";
 import { isLevelShape } from "../../places/level/types";
 import { MATERIAL_NAMES } from "../../render/material-names";
@@ -95,9 +96,25 @@ export const PropertiesPanel = (props: {
         when={selected()}
         fallback={<Empty>Select something in the world or the list.</Empty>}
       >
-        <Show when={shape()}>{(current) => shapeFields(current, change)}</Show>
+        {/*
+          **Components rather than a narrowed `<Show>` child.**
+
+          Solid 2 calls a `<Show>` child's function with tracking switched off, so a child
+          that reads the accessor it was handed warns `STRICT_READ_UNTRACKED` — and then the
+          fields would never update again, because an item is *replaced* on every edit and
+          only a tracked read can notice. Handed the accessor itself and read inside the
+          component, every field below is an ordinary tracked read. The same rule
+          `precisionText` in `app.tsx` is written for.
+        */}
+        <Show when={shape()}>
+          <ShapeFields current={narrowed(shape, "shape")} change={change} />
+        </Show>
         <Show when={figure()}>
-          {(current) => figureFields(current, props.models, change)}
+          <FigureFields
+            current={narrowed(figure, "figure")}
+            models={props.models}
+            change={change}
+          />
         </Show>
       </Show>
     </div>
@@ -105,26 +122,45 @@ export const PropertiesPanel = (props: {
 };
 
 /**
+ * An accessor that cannot answer `undefined`, for a panel mounted only while it has one.
+ *
+ * **A throw rather than an optional, and it is the trade `<Show>`'s own narrowed child
+ * makes**: the fields exist only while the condition holds, so a read that finds nothing is a
+ * read from after its own teardown, and there is no value to hand back that would not be a
+ * lie about what is selected.
+ */
+const narrowed =
+  <T,>(read: () => T | undefined, what: string) =>
+  (): T => {
+    const next = read();
+    if (next === undefined)
+      throw new Error(`the ${what} fields outlived their selection`);
+    return next;
+  };
+
+/**
  * The fields for a shape.
  *
- * **Reading the shape fresh through `current()` on every render** rather than closing over
- * one: the item is replaced on every edit, so a closure over the value at mount would show
- * the shape as it was when the panel opened.
+ * **Reading the shape fresh through `item()` on every render** rather than closing over one
+ * value: the item is replaced on every edit, so a closure over what was selected at mount
+ * would show the shape as it was when the panel opened.
  */
-const shapeFields = (
-  current: () => LevelShape,
-  change: (next: LevelShape) => void,
-) => {
-  const item = current();
-  const kind = item.shape.type;
-  const minimum = MIN_SHAPE_SIZES[kind];
+const ShapeFields = (props: {
+  current: () => LevelShape;
+  change: (next: LevelShape) => void;
+}) => {
+  const item = props.current;
+  const kind = (): ShapeKind => item().shape.type;
+  const minimum = (): number => MIN_SHAPE_SIZES[kind()];
+
   const setParameter = (
     name: string,
     value: number | { x: number; y: number; z: number },
   ): void => {
-    change({
-      ...item,
-      shape: { ...item.shape, [name]: value } as LevelShape["shape"],
+    const edited = item();
+    props.change({
+      ...edited,
+      shape: { ...edited.shape, [name]: value } as LevelShape["shape"],
     });
   };
 
@@ -132,15 +168,15 @@ const shapeFields = (
   const vectorParameter = (
     name: string,
   ): { x: number; y: number; z: number } => {
-    const value = (item.shape as unknown as Record<string, unknown>)[name];
+    const value = (item().shape as unknown as Record<string, unknown>)[name];
     const vector = value as { x: number; y: number; z: number } | undefined;
-    return vector ?? { x: minimum, y: minimum, z: minimum };
+    return vector ?? { x: minimum(), y: minimum(), z: minimum() };
   };
 
   /** A single parameter's current value. */
   const scalarParameter = (name: string): number => {
-    const value = (item.shape as unknown as Record<string, unknown>)[name];
-    return typeof value === "number" ? value : minimum;
+    const value = (item().shape as unknown as Record<string, unknown>)[name];
+    return typeof value === "number" ? value : minimum();
   };
 
   return (
@@ -148,14 +184,14 @@ const shapeFields = (
       <Bar label="name">
         <input
           class={styles.text}
-          value={item.id}
+          value={item().id}
           aria-label="Item name"
           onChange={(event) => {
             const next = event.currentTarget.value;
             // An empty or renamed name is refused by the level reader as a duplicate, so
             // it is not offered here — the name is how the file addresses the shape.
             if (next.trim() === "") return;
-            change({ ...item, id: next.trim() });
+            props.change({ ...item(), id: next.trim() });
           }}
         />
       </Bar>
@@ -163,30 +199,30 @@ const shapeFields = (
       <Bar label="joins the world as">
         <Choice
           label="Combine"
-          value={item.combine}
+          value={item().combine}
           choices={Object.entries(COMBINE_LABELS).map(([value, label]) => ({
             value: value as Combine,
             label,
           }))}
-          onChange={(combine) => change({ ...item, combine })}
+          onChange={(combine) => props.change({ ...item(), combine })}
         />
         <NumberField
           label="Softness"
-          value={item.softness ?? 0}
+          value={item().softness ?? 0}
           min={0}
           max={0.25}
           step={0.01}
-          onChange={(softness) => change({ ...item, softness })}
+          onChange={(softness) => props.change({ ...item(), softness })}
         />
       </Bar>
 
       <Bar label="position">
         <Vec3Field
           label="Where"
-          value={item.at}
+          value={item().at}
           min={-MAX_POSITION}
           max={MAX_POSITION}
-          onChange={(at) => change({ ...item, at })}
+          onChange={(at) => props.change({ ...item(), at })}
         />
       </Bar>
 
@@ -196,14 +232,14 @@ const shapeFields = (
         axes to edit and one field, and whichever axis it showed would be the only one
         reachable.
       */}
-      <Bar label={kind.toLowerCase()}>
-        <For each={PARAMETERS_OF(kind)}>
+      <Bar label={kind().toLowerCase()}>
+        <For each={PARAMETERS_OF(kind())}>
           {(parameter) =>
             parameter.arity === 3 ? (
               <Vec3Field
                 label={PARAMETER_LABELS[parameter.name] ?? parameter.name}
                 value={asTriple(vectorParameter(parameter.name))}
-                min={Math.max(parameter.min ?? 0, minimum)}
+                min={Math.max(parameter.min ?? 0, minimum())}
                 max={MAX_SHAPE_SIZE}
                 step={parameter.step ?? 1}
                 onChange={(value) =>
@@ -214,7 +250,7 @@ const shapeFields = (
               <NumberField
                 label={PARAMETER_LABELS[parameter.name] ?? parameter.name}
                 value={scalarParameter(parameter.name)}
-                min={Math.max(parameter.min ?? 0, minimum)}
+                min={Math.max(parameter.min ?? 0, minimum())}
                 max={MAX_SHAPE_SIZE}
                 step={parameter.step ?? 1}
                 bigStep={
@@ -230,29 +266,29 @@ const shapeFields = (
       <Bar label="how it looks">
         <Choice
           label="Material"
-          value={item.material ?? ""}
+          value={item().material ?? ""}
           choices={[
             { value: "", label: "None" },
             ...MATERIAL_NAMES.map((name) => ({ value: name, label: name })),
           ]}
           onChange={(material) =>
-            change(
+            props.change(
               material === ""
-                ? { ...item, material: undefined }
-                : { ...item, material },
+                ? { ...item(), material: undefined }
+                : { ...item(), material },
             )
           }
         />
         <ColourField
           label="Colour"
-          value={item.colour}
-          onChange={(colour) => change({ ...item, colour })}
+          value={item().colour}
+          onChange={(colour) => props.change({ ...item(), colour })}
         />
-        <Show when={item.combine !== "Paint"}>
+        <Show when={item().combine !== "Paint"}>
           <p class={styles.warn}>
             Colour is only read on a <strong>Paint</strong>. This shape is a{" "}
-            {item.combine === "Add" ? "n add" : "subtract"}, so the colour will
-            not show.
+            {item().combine === "Add" ? "n add" : "subtract"}, so the colour
+            will not show.
           </p>
         </Show>
       </Bar>
@@ -260,87 +296,87 @@ const shapeFields = (
   );
 };
 
-/** The fields for a figure. */
-const figureFields = (
-  current: () => LevelFigure,
-  models: readonly string[],
-  change: (next: LevelFigure) => void,
-) => {
-  const item = current();
+/** The fields for a figure. Same shape as the ones above, over a different item. */
+const FigureFields = (props: {
+  current: () => LevelFigure;
+  models: readonly string[];
+  change: (next: LevelFigure) => void;
+}) => {
+  const item = props.current;
   return (
     <>
       <Bar label="name">
         <input
           class={styles.text}
-          value={item.id}
+          value={item().id}
           aria-label="Item name"
           onChange={(event) => {
             const next = event.currentTarget.value;
             if (next.trim() === "") return;
-            change({ ...item, id: next.trim() });
+            props.change({ ...item(), id: next.trim() });
           }}
         />
         <Choice
           label="Kind"
-          value={item.figure}
+          value={item().figure}
           choices={[
             { value: "prop", label: "Prop" },
             { value: "npc", label: "NPC" },
           ]}
-          onChange={(figure) => change({ ...item, figure })}
+          onChange={(figure) => props.change({ ...item(), figure })}
         />
       </Bar>
 
       <Bar label="model">
         <Choice
           label="Model"
-          value={item.model}
-          choices={ModelChoices({ names: models })}
-          onChange={(model) => change({ ...item, model })}
+          value={item().model}
+          choices={ModelChoices({ names: props.models })}
+          onChange={(model) => props.change({ ...item(), model })}
         />
       </Bar>
 
       <Bar label="position">
         <Vec3Field
           label="Where"
-          value={item.at}
+          value={item().at}
           min={-MAX_POSITION}
           max={MAX_POSITION}
-          onChange={(at) => change({ ...item, at })}
+          onChange={(at) => props.change({ ...item(), at })}
         />
         <NumberField
           label="Yaw"
-          value={round(item.yaw ?? 0)}
+          value={round(item().yaw ?? 0)}
           step={0.1}
-          onChange={(yaw) => change({ ...item, yaw })}
+          onChange={(yaw) => props.change({ ...item(), yaw })}
         />
         <NumberField
           label="Scale"
-          value={item.scale ?? 1}
+          value={item().scale ?? 1}
           min={0.1}
           max={100}
           step={0.05}
-          onChange={(scale) => change({ ...item, scale })}
+          onChange={(scale) => props.change({ ...item(), scale })}
         />
       </Bar>
 
       <Bar label="behaviour">
         <Checkbox
           label="Solid — the player walks into it"
-          value={item.solid ?? true}
-          onChange={(solid) => change({ ...item, solid })}
+          value={item().solid ?? true}
+          onChange={(solid) => props.change({ ...item(), solid })}
         />
-        <Show when={item.figure === "npc"}>
+        <Show when={item().figure === "npc"}>
           <input
             class={styles.text}
-            value={item.name ?? ""}
+            value={item().name ?? ""}
             placeholder="What to call it"
             aria-label="Name"
             onChange={(event) =>
-              change({ ...item, name: event.currentTarget.value })
+              props.change({ ...item(), name: event.currentTarget.value })
             }
           />
-          <Show when={(item.name ?? "") === ""}>
+          <Show when={(item().name ?? "") === ""}>
             <p class={styles.warn}>
               An npc needs a name — it is what somebody talks to. The level
               reader refuses a file with an unnamed one.

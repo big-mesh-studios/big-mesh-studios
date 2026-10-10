@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PerspectiveCamera } from "@random-mesh/rmsl/scene";
 
 import { createOrbitCameraControl, defaultOrbitRadius } from "./orbit";
-import { DEFAULT_FRAME_DISTANCE } from "./CameraControl";
+import { DEFAULT_FRAME_DISTANCE, type CameraPose } from "./CameraControl";
 
 /**
  * The camera's job in the editor is to show a level and to get out of the way.
@@ -116,5 +116,165 @@ describe("the orbit camera", () => {
 
   it("has a starting radius worth opening with", () => {
     expect(defaultOrbitRadius()).toBeGreaterThan(0);
+  });
+
+  /**
+   * The editor's left button places; everything else navigates.
+   *
+   * **This is the whole of the wrapper's job over `OrbitController`'s gestures**, and the
+   * reason it is not `OrbitController`'s to get right: `setToolOwnsLeft` declines *every*
+   * single-pointer drag and the wheel, not only the ones that began on the left button. Held
+   * for as long as the editor is attached — which is what this did — it takes the right-drag
+   * orbit and the wheel with it, and the view cannot be moved at all.
+   */
+  describe("the gestures it takes from the tool", () => {
+    /**
+     * **jsdom has neither pointer capture nor layout**, so both are stubbed rather than
+     * shimmed: neither is what is under test, and every box being zero is what makes the
+     * two answers comparable.
+     */
+    const surface = (): HTMLElement => {
+      const canvas = document.createElement("canvas");
+      canvas.setPointerCapture = () => {};
+      canvas.hasPointerCapture = () => false;
+      canvas.releasePointerCapture = () => {};
+      canvas.getBoundingClientRect = () => ({ left: 0, top: 0 }) as DOMRect;
+      document.body.append(canvas);
+      return canvas;
+    };
+
+    /**
+     * jsdom has no `PointerEvent`, and `OrbitController` keys its bookkeeping on
+     * `pointerId` — so the identifier is grafted onto a `MouseEvent` rather than the whole
+     * press sequence being faked as plain objects, which `dispatchEvent` will not deliver.
+     */
+    const pointer = (
+      type: string,
+      button: number,
+      x: number,
+      pointerId = 1,
+    ): Event => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        button,
+        clientX: x,
+        clientY: 0,
+      });
+      Object.defineProperty(event, "pointerId", { value: pointerId });
+      return event;
+    };
+
+    /** A press of `button` and a drag of `dx` pixels, as a browser would deliver them. */
+    const drag = (
+      canvas: HTMLElement,
+      button: number,
+      dx: number,
+      pointerId = 1,
+    ): void => {
+      canvas.dispatchEvent(pointer("pointerdown", button, 0, pointerId));
+      canvas.dispatchEvent(pointer("pointermove", button, dx, pointerId));
+      canvas.dispatchEvent(pointer("pointerup", button, dx, pointerId));
+    };
+
+    /** How far the camera is from what it is looking at — the orbit's radius. */
+    const reach = (pose: CameraPose): number =>
+      Math.hypot(
+        pose.at.x - pose.target.x,
+        pose.at.y - pose.target.y,
+        pose.at.z - pose.target.z,
+      );
+
+    it("lets a right-drag orbit, while the editor is attached", () => {
+      const control = createOrbitCameraControl(aCamera());
+      control.frame({ x: 0, y: 0, z: 0 }, 200);
+      const before = control.pose();
+
+      const canvas = surface();
+      control.attach(canvas);
+      drag(canvas, 2, 120);
+      control.update(0);
+
+      const after = control.pose();
+      expect(after.at.x).not.toBeCloseTo(before.at.x, 3);
+      expect(after.at.z).not.toBeCloseTo(before.at.z, 3);
+      control.dispose();
+      canvas.remove();
+    });
+
+    it("lets the wheel zoom, while the editor is attached", () => {
+      const control = createOrbitCameraControl(aCamera());
+      control.frame({ x: 0, y: 0, z: 0 }, 200);
+      const before = control.pose();
+
+      const canvas = surface();
+      control.attach(canvas);
+      canvas.dispatchEvent(
+        new WheelEvent("wheel", { deltaY: 200, cancelable: true }),
+      );
+      control.update(0);
+
+      expect(reach(control.pose())).toBeGreaterThan(reach(before));
+      control.dispose();
+      canvas.remove();
+    });
+
+    it("leaves the left drag to the tool, so a click does not swing the view", () => {
+      const control = createOrbitCameraControl(aCamera());
+      control.frame({ x: 0, y: 0, z: 0 }, 200);
+      const before = control.pose();
+
+      const canvas = surface();
+      control.attach(canvas);
+      drag(canvas, 0, 120);
+      control.update(0);
+
+      expect(control.pose().at).toMatchObject({
+        x: expect.closeTo(before.at.x, 4),
+        y: expect.closeTo(before.at.y, 4),
+        z: expect.closeTo(before.at.z, 4),
+      });
+      control.dispose();
+      canvas.remove();
+    });
+
+    it("gives the gesture back after the press, so a right-drag works next", () => {
+      const control = createOrbitCameraControl(aCamera());
+      control.frame({ x: 0, y: 0, z: 0 }, 200);
+
+      const canvas = surface();
+      control.attach(canvas);
+      drag(canvas, 0, 40);
+      const afterLeft = control.pose();
+      drag(canvas, 2, 120);
+      control.update(0);
+
+      expect(control.pose().at.x).not.toBeCloseTo(afterLeft.at.x, 3);
+      control.dispose();
+      canvas.remove();
+    });
+
+    it("leaves a second finger to the pinch, even mid-press", () => {
+      const control = createOrbitCameraControl(aCamera());
+      control.frame({ x: 0, y: 0, z: 0 }, 200);
+      const before = control.pose();
+
+      const canvas = surface();
+      control.attach(canvas);
+      // **A real pinch: the two fingers start apart**, past `pinchThreshold`, because a
+      // gesture that begins with them touching is two fingers by accident and `OrbitController`
+      // deliberately does not act on it.
+      canvas.dispatchEvent(pointer("pointerdown", 0, 0, 1));
+      canvas.dispatchEvent(pointer("pointerdown", 0, 100, 2));
+      canvas.dispatchEvent(pointer("pointermove", 0, 220, 2));
+      canvas.dispatchEvent(pointer("pointerup", 0, 220, 2));
+      canvas.dispatchEvent(pointer("pointerup", 0, 0, 1));
+      control.update(0);
+
+      // **The pinch, not the flag.** Spreading has to reach the radius whatever the flag says,
+      // or a zoom begun while one finger was placing would be swallowed.
+      expect(reach(control.pose())).not.toBeCloseTo(reach(before), 3);
+      control.dispose();
+      canvas.remove();
+    });
   });
 });

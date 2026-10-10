@@ -103,6 +103,59 @@ describe("an effect created inside a tracked effect", () => {
     expect(log).toEqual(["component"]);
   });
 
+  /**
+   * **What an effect arm *can* do about it: return the teardown.** That is the other half of
+   * the measurement above and the one an application actually writes.
+   *
+   * The application used `onCleanup` inside three arms that take the world away from the
+   * player when the level editor opens — the input disabled, the pointer lock suspended, a
+   * canvas listener that places shapes. None of them ever ran, so closing the editor left a
+   * person who could not look around and could not walk, with no error beyond a dev warning
+   * naming a rule they had to go and read. Returning the teardown runs it on the next run and
+   * at dispose, and **the arm needs no owner at all** — which is why it works where
+   * `onCleanup` silently does not.
+   */
+  it("runs a returned teardown on the next run and at dispose, and needs no owner", () => {
+    const log: string[] = [];
+    const host = document.createElement("div");
+    document.body.append(host);
+    const original = console.warn;
+    const warnings: unknown[][] = [];
+    console.warn = (...args: unknown[]) => warnings.push(args);
+
+    let open!: (value: boolean) => void;
+    const dispose = render(() => {
+      const [isOpen, setOpen] = createSignal(false, { ownedWrite: true });
+      open = setOpen;
+      createEffect(isOpen, (value) => {
+        log.push(`open:${value}`);
+        return () => log.push(`closed:${value}`);
+      });
+      return <span />;
+    }, host);
+    flush();
+
+    open(true);
+    flush();
+    open(false);
+    flush();
+    dispose();
+    flush();
+
+    console.warn = original;
+
+    expect(log).toEqual([
+      "open:false",
+      "closed:false",
+      "open:true",
+      "closed:true",
+      "open:false",
+      "closed:false",
+    ]);
+    // **Not one warning**, which is the difference between this shape and the one above.
+    expect(warnings).toEqual([]);
+  });
+
   it("is refused without one, because the tracked effect's owner cannot hold children", () => {
     let threw: string | undefined;
     createRoot(() => {

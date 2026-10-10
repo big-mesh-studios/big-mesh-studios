@@ -22,9 +22,17 @@
  * ## Left button
  *
  * `OrbitController` leaves the left button alone, and `setToolOwnsLeft` exists to say so
- * explicitly. **The editor's left button places things**, so the wrapper turns that on for
- * as long as it is attached — which also keeps two-finger pinch working while a finger is
- * down on the world, which is the reason `OrbitController` has that method at all.
+ * explicitly. **The editor's left button places things**, so this wrapper raises the flag for
+ * the press that is placing and drops it when that press ends — which is what keeps a
+ * left-drag from also swinging the camera, and keeps two-finger pinch working while a finger
+ * is down on the world.
+ *
+ * **Per press, and not for as long as it is attached.** `setToolOwnsLeft` is a blanket
+ * "a tool has this gesture" switch: `OrbitController` declines *every* single-pointer drag
+ * and the wheel while it is set, not only the ones that began on the left button. Holding it
+ * for the whole attachment therefore took the right-drag orbit, the shift pan and the wheel
+ * with it — which is the whole of the editor's navigation, and leaves a view that cannot be
+ * moved at all.
  */
 
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
@@ -45,9 +53,26 @@ export const createOrbitCameraControl = (
   options: { radius?: number } = {},
 ): CameraControl => {
   const orbit = new OrbitController(camera, options);
-  // What the camera looks at before anybody says. The frame loop sets a real one on open;
-  // this is only here so a `pose` before the first `frame` is still an answer.
+  // What the editor takes down, and what puts it back.
   let detached: (() => void) | undefined;
+  let attachedTo: HTMLElement | undefined;
+  /** The pointer whose press is placing, and so owns the left button. See the header. */
+  let placing: number | undefined;
+
+  const takeLeftButton = (event: PointerEvent): void => {
+    // **Only the first contact, and only the left button.** A second finger is a pinch,
+    // which is navigation, and letting it take the flag would hand the gesture back when it
+    // lifted while the first finger was still placing.
+    if (event.button !== 0 || placing !== undefined) return;
+    placing = event.pointerId;
+    orbit.setToolOwnsLeft(true);
+  };
+
+  const releaseLeftButton = (event: PointerEvent): void => {
+    if (placing !== event.pointerId) return;
+    placing = undefined;
+    orbit.setToolOwnsLeft(false);
+  };
 
   const pose = (): CameraPose => ({
     at: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
@@ -60,14 +85,23 @@ export const createOrbitCameraControl = (
     attach(element: HTMLElement): void {
       detached?.();
       detached = orbit.attach(element);
-      // The left button places things. Saying so also leaves two-finger pinch working,
-      // which is what `setToolOwnsLeft` is careful to preserve.
-      orbit.setToolOwnsLeft(true);
+      attachedTo = element;
+      // **Read on the next `pointermove`, not on this press** — `OrbitController` consults the
+      // flag while it is deciding what a drag means, so listening later than its own
+      // `pointerdown` is exactly what this needs.
+      element.addEventListener("pointerdown", takeLeftButton);
+      element.addEventListener("pointerup", releaseLeftButton);
+      element.addEventListener("pointercancel", releaseLeftButton);
     },
 
     dispose(): void {
       detached?.();
       detached = undefined;
+      attachedTo?.removeEventListener("pointerdown", takeLeftButton);
+      attachedTo?.removeEventListener("pointerup", releaseLeftButton);
+      attachedTo?.removeEventListener("pointercancel", releaseLeftButton);
+      attachedTo = undefined;
+      placing = undefined;
       orbit.setToolOwnsLeft(false);
       orbit.dispose();
     },
