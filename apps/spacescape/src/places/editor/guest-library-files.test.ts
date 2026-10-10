@@ -93,16 +93,18 @@ describe("the guest library the editor serves", () => {
     // **37 was the count before the four figure functions.** A literal here is a tripwire: it
     // fails when a function is added and someone has to look at the number rather than let it
     // drift, which is what it is for.
-    // **48 after the four things a place says**: `narrate`, `openDialog`, `closeDialog` and
-    // `endGame`. The count is a tripwire — it fails when a function is added and someone has to
-    // look at the number rather than let it drift, which is what it is for.
-    expect(declared).toHaveLength(49);
+    // **50 after `level`**, which is the one function the level editor added: a place that
+    // carries a level can read it, and that is the only way a script can find out what its own
+    // place is made of. The count is a tripwire — it fails when a function is added and someone
+    // has to look at the number rather than let it drift, which is what it is for.
+    expect(declared).toHaveLength(50);
     expect(new Set(declared).size).toBe(declared.length);
     // **And the names a place is most likely to reach for first**, so the count above cannot pass
     // on a file that has the right number of exports and none of them callable from a place.
     for (const name of [
       "createShape",
       "removeShape",
+      "level",
       "createZone",
       "createLight",
       "createMedium",

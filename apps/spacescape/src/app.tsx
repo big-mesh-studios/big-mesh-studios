@@ -15,7 +15,16 @@
  * nothing. What they share is one renderer and one render call.
  */
 
-import { createMemo, createSignal, onSettled, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  getOwner,
+  onCleanup,
+  onSettled,
+  runWithOwner,
+  Show,
+} from "solid-js";
 import {
   Color,
   Mesh,
@@ -26,6 +35,36 @@ import {
 
 import { Console, createConsole, type ConsoleState } from "./console/console";
 import { createCommands, type Commander } from "./console/commands";
+
+import {
+  LevelEditorHint,
+  LevelEditorOverlay,
+  LevelEditorTouchControls,
+} from "./level-editor/LevelEditorOverlay";
+import { createLevelApplier } from "./places/level/apply-level";
+import {
+  createLevelEditor,
+  type LevelEditor,
+  type ToolKind,
+} from "./level-editor/level-editor-store";
+import { createOrbitCameraControl } from "./level-editor/camera/orbit";
+import { createNoClipCameraControl } from "./level-editor/camera/noclip";
+import type {
+  CameraControlsKind,
+  CameraControl,
+} from "./level-editor/camera/CameraControl";
+import { DEFAULT_SHAPE_SIZES } from "./level-editor/panels/vocabulary";
+import {
+  createHighlight,
+  highlightBounds,
+} from "./level-editor/view/highlight";
+import { pickItem } from "./level-editor/view/picking";
+import {
+  isLevelFigure,
+  LEVEL_FILE,
+  type LevelPlan,
+} from "./places/level/types";
+import { pickAlong, rayThroughScreen, toNdc } from "@big-mesh-studios/picking";
 import { OrbitController } from "./controls/orbit-camera";
 import {
   describePrecision,
@@ -439,6 +478,7 @@ export default function App() {
         name: string;
         spawn?: PlaceSpawn;
         models?: Readonly<Record<string, Uint8Array>>;
+        levels?: Readonly<Record<string, string>>;
       }
     | undefined;
   /**
@@ -519,6 +559,7 @@ export default function App() {
         name: string,
         spawn?: PlaceSpawn,
         models?: Readonly<Record<string, Uint8Array>>,
+        levels?: Readonly<Record<string, string>>,
       ) => Promise<string>)
     | undefined;
 
@@ -558,6 +599,74 @@ export default function App() {
   /** Whether the place API reference is showing. */
   const [docsOpen, setDocsOpen] = createSignal(false);
   const placeEditor: PlaceEditorState = createPlaceEditor(DEFAULT_TERRAIN.seed);
+
+  /**
+   * This component's own owner, captured before `onSettled` runs.
+   *
+   * **`onSettled` executes inside a *tracked effect*, and a tracked effect's owner is marked
+   * children-forbidden** (`@solidjs/signals` `dev.js:4075`). Anything reactive created in
+   * there is refused with `PRIMITIVE_IN_FORBIDDEN_SCOPE` — and the refusal arrives during
+   * the *next flush*, so it is reported against whatever happened to run at that moment
+   * rather than against the line that caused it. The level editor's effects are the first
+   * reactive primitives this file has created after `onSettled` starts.
+   *
+   * This owner is not forbidden, and it is also the right one to use: the effects belong to
+   * the component, so they are disposed when it unmounts. The alternative is to hoist the
+   * effects to component level and pass the scene in through holders — the same fix with
+   * more plumbing. `level-editor/scope.test.tsx` holds the failing case and the fix together
+   * so neither can drift from the other.
+   */
+  const appOwner = getOwner();
+
+  /**
+   * The level editor's own state, above the game branch for the same reason the place
+   * editor's is.
+   *
+   * **A level is somebody's work**, in the way a project is: it has to survive the scene
+   * being torn down and rebuilt by a resize, and it has to outlive the editor's own
+   * component so that closing it to look at the world does not cost the level.
+   *
+   * The two holders exist because the scene is built inside `onSettled` and this state is
+   * created before it — the same shape `openPublished` has. Both are filled during `onSettled`
+   * and read by the effects below, which is why they are `let` and not optional arguments.
+   */
+  let applyLevel: ((plan: LevelPlan) => void) | undefined;
+  let clickLevelWorld: ((clientX: number, clientY: number) => void) | undefined;
+
+  /** The models a place has carried, for the editor's picker. */
+  const [levelModels, setLevelModels] = createSignal<readonly string[]>([]);
+  const [levelCameraKind, setLevelCameraKind] =
+    createSignal<CameraControlsKind>("orbit");
+  const [levelEditorOpen, setLevelEditorOpen] = createSignal(false);
+  /**
+   * Whether a place is loaded, which is what there would be for a level to attach to.
+   *
+   * **A signal at component level, set from the place's own lifecycle** inside `onSettled`,
+   * because that is where a place is loaded and unloaded. The alternative — reading the host
+   * during render — cannot work: the host is built inside `onSettled` and the render is not,
+   * so the overlay's props would be handed a variable that does not exist out here. The same
+   * reason the app already has `setCommander` written from in there.
+   */
+  const [placeOpen, setPlaceOpen] = createSignal(false);
+  /** The tool a touch `Apply` returns to, so `Select` can be toggled back off it. */
+  let lastPlacement: ToolKind = "shape";
+
+  const levelEditor: LevelEditor = createLevelEditor({
+    level: () => ({ version: 1, items: [] }),
+    setLevel: (plan) => applyLevel?.(plan),
+    cameraKind: levelCameraKind,
+    setCameraKind: setLevelCameraKind,
+  });
+
+  /** Toggles the touch cluster between placing and selecting. */
+  const toggleSelect = (): void => {
+    if (levelEditor.tool() === "select") {
+      levelEditor.setTool(lastPlacement);
+      return;
+    }
+    lastPlacement = levelEditor.tool();
+    levelEditor.setTool("select");
+  };
 
   /**
    * The atproto account this browser is holding.
@@ -1143,6 +1252,9 @@ export default function App() {
         // the loader read them, and the one thing it did not do was hand them to anything —
         // which made a whole field of the format decorative. This is where it stops being that.
         place.models,
+        // **And the levels the loader already carried**, for the same reason: the field was in
+        // the format and nothing read it, which is what made it decorative.
+        place.levels,
       );
       return report.startsWith("could not load")
         ? report
@@ -1153,6 +1265,7 @@ export default function App() {
       host?.dispose();
       host = undefined;
       placeHost = undefined;
+      setPlaceOpen(false);
       figures.clear();
       figures.aim(undefined);
       // **The overlay with everything else**, for the same reason: a question left on screen with
@@ -1209,6 +1322,15 @@ export default function App() {
       spawn?: PlaceSpawn,
       /** Models this place stands its props and NPCs out of. See `model-library.ts`. */
       models?: Readonly<Record<string, Uint8Array>>,
+      /**
+       * Levels this place carries, which the host puts in the world before the script runs.
+       *
+       * **A seventh positional parameter, and the pattern is `models`'s.** The alternative
+       * would be an options object on a six-argument function, which is a bigger change to every
+       * call site than adding one more parameter is — and this chain is deliberately one path
+       * for every source, so every source has to learn about it either way.
+       */
+      levels?: Readonly<Record<string, string>>,
     ): Promise<string> => {
       // **Dropped before the new one is built, not after.** Two places at once would both
       // write into one registry, and the operation indices from the first would be spent under
@@ -1220,7 +1342,7 @@ export default function App() {
       // function again with the values it was called with, and there is no second code path for
       // it to disagree with the first. Set before anything can fail, so a place that fails to
       // load is still restartable into the same failure rather than into nothing.
-      loadedForRestart = { files, entry, seed, name, spawn, models };
+      loadedForRestart = { files, entry, seed, name, spawn, models, levels };
 
       // **The models, read and meshed before the host exists**, so a place that names a model
       // it does not attach finds out at load rather than at the moment it stands the first
@@ -1303,6 +1425,7 @@ export default function App() {
       }
 
       host = next;
+      setPlaceOpen(true);
       placeHost = next;
       loadedName = name;
       // **The physics can now feel this place.** One assignment, and every frame's collision run
@@ -1395,6 +1518,12 @@ export default function App() {
         return editorOpen()
           ? "editor closed"
           : "editor open — write a place, then run it";
+      },
+      toggleLevel: () => {
+        setLevelEditorOpen((open) => !open);
+        return levelEditorOpen()
+          ? "level editor closed"
+          : "level editor open — click the world to place things, ctrl-Z to undo";
       },
 
       /**
@@ -1539,10 +1668,233 @@ export default function App() {
 
     let lastTime = 0;
     let lastReadout = 0;
+    // ---- The level editor ----
+    //
+    // **Here rather than beside the scene assembly above**, because it needs the model
+    // library, which is declared below and filled in when a place loads — and still *last*
+    // in the scene, which is the point of it: rmsl draws in insertion order (ADR 0014) and
+    // a selection box behind the thing it is highlighting is worse than no box at all.
+    //
+    // It has no scene, no renderer and no camera of its own. It pins this canvas into a
+    // pane, drives this camera, and asks this world to change.
+    const levelHighlight = createHighlight(viewport.scene);
+    const levelApplier = createLevelApplier({
+      places: sculpt.places,
+      figures,
+      /**
+       * **A reader, not the library.** `modelLibrary` is assigned when a place loads and
+       * cleared when it unloads, so a reference taken now would be `undefined` for the rest
+       * of the session. Asking on each call means a figure placed after a place loads finds
+       * its model, and one placed before it says so rather than crashing.
+       */
+      models: { get: (name) => modelLibrary?.get(name) },
+      /**
+       * **Deferred, and this is the reason the seam is worth having.** `sculpt.invalidate`
+       * records what changed and waits for the mesher to be free; `sculpt.refreshPlaces` —
+       * what the place host uses — sends the model now. The host runs once per step and a
+       * step is already the unit the world moves in. An editor's pointer is not, and sending
+       * per pointer event cancels the very mesh that would show the edit, which is why a
+       * level editor built on the host's path appears to do nothing until you let go.
+       */
+      geometryChanged: (bounds) => sculpt.invalidate(bounds),
+    });
+    /** Both holders the editor's own state writes through. See where they are declared. */
+    applyLevel = (plan) => levelApplier.apply(plan);
+    setLevelModels(modelLibrary?.names() ?? []);
+
+    /**
+     * Both styles are built; only one is stepped.
+     *
+     * Building on demand would mean a style that has never been live has never held the
+     * pose it would have to adopt, so switching into it would jump. Here both start at the
+     * origin and neither has a pose worth keeping until somebody switches, at which point
+     * the handover below carries it across.
+     */
+    const orbitLevel = createOrbitCameraControl(viewport.camera);
+    const noClipLevel = createNoClipCameraControl(viewport.camera, input);
+    const levelCamera = (): CameraControl =>
+      levelCameraKind() === "orbit" ? orbitLevel : noClipLevel;
+
+    /**
+     * A frame of the editor, in place of the game's.
+     *
+     * **`game.tick` does not run, and that is the whole design.** It is what calls
+     * `placeCamera` every frame, so the player would fight the editor for the camera — and
+     * it is also what moves the player, steps the place and runs its `onTick`. A level
+     * should not change under the person editing it, so all of it stops; the game picks up
+     * again from its own state on the first frame after the editor closes.
+     *
+     * The sky and the clouds are not updated either, and that is deliberate rather than an
+     * omission: both are placed from the player's position, which is frozen, and a cloud
+     * layer drifting past while somebody places a wall makes the wall harder to see.
+     */
+    const editorFrame = (dt: number): void => {
+      levelCamera().update(dt);
+      /** Whatever the level asked for, now that the mesher may be free to take it. */
+      sculpt.flushInvalidated();
+      viewport.render();
+    };
+
+    /**
+     * A click in the world, meaning whatever the active tool says it means.
+     *
+     * **The screen point is in the canvas's own coordinates**, not the page's, because the
+     * canvas is absolutely positioned into the editor's pane and so no longer sits where the
+     * page says it does. `toNdc` divides by the canvas's own size, which is what makes this
+     * correct in both the overlay and the game.
+     */
+    clickLevelWorld = (clientX: number, clientY: number): void => {
+      viewport.camera.updateMatrixWorld();
+      const ndc = toNdc(
+        clientX,
+        clientY,
+        canvas.clientWidth,
+        canvas.clientHeight,
+      );
+      const ray = rayThroughScreen(viewport.camera, ndc.x, ndc.y);
+
+      if (levelEditor.tool() === "select") {
+        const hit = pickItem(
+          levelEditor.items(),
+          ray,
+          (origin, direction, reach) => {
+            const found = figures.pick(origin, direction, reach);
+            // `FigureHit` reports a distance; the editor needs the id to find the item in
+            // the level, which namespaces its own. See `view/picking.ts`.
+            return found === undefined
+              ? undefined
+              : { id: found.figure.id, distance: found.distance };
+          },
+        );
+        levelEditor.select(hit?.index);
+        return;
+      }
+
+      // **Where it goes is the terrain under the pointer**, not the pointer's direction —
+      // a shape placed by eye would end up wherever the view happened to be pointing.
+      const ground = pickAlong(sculpt.collisionField, ray);
+      if (ground === undefined) {
+        levelEditor.setNotice("nothing under the pointer to build on");
+        return;
+      }
+      // Pushed out along the normal by half a shape, so a wall placed on a slope sits *in*
+      // the slope rather than half-buried in it.
+      const half = DEFAULT_SHAPE_SIZES[levelEditor.shapeKind()] / 2;
+      const at: [number, number, number] = [
+        ground.point.x + ground.normal.x * half,
+        ground.point.y + ground.normal.y * half,
+        ground.point.z + ground.normal.z * half,
+      ];
+      if (levelEditor.tool() === "shape") {
+        levelEditor.addShapeAt(
+          at,
+          levelEditor.shapeKind(),
+          levelEditor.combine(),
+        );
+      } else {
+        levelEditor.addFigureAt({
+          kind: "figure",
+          id: "",
+          // Narrowed by the branch above: `shape` returned already, so what is left is
+          // `prop` or `npc`, which is exactly what `figure` takes.
+          figure: levelEditor.tool() as "prop" | "npc",
+          model: modelLibrary?.names()[0] ?? "",
+          at,
+          // A prop is solid and an npc is not standing in a wall; both default the same way
+          // and the inspector changes it.
+          ...(levelEditor.tool() === "npc" ? { name: "New character" } : {}),
+        });
+      }
+    };
+
+    /**
+     * The four things that watch, created under the component's own owner rather than under
+     * `onSettled`'s tracked effect — see where `appOwner` is declared for why, and
+     * `level-editor/scope.test.tsx` for the case this works around.
+     *
+     * **Everything they need is already defined by this point.** The two plain declarations
+     * above are deliberately not inside this call: they are values, not subscriptions, and
+     * making them local to the callback would hide the fact that the frame loop uses one of
+     * them.
+     */
+    runWithOwner(appOwner, () => {
+      /** Which style was live last, so a change is a change rather than an initial read. */
+      let lastCameraKind: CameraControlsKind | undefined;
+
+      // A switch of style hands the pose across rather than re-seeding from defaults, so
+      // the view does not jump.
+      createEffect(levelCameraKind, (kind) => {
+        if (lastCameraKind === undefined) {
+          lastCameraKind = kind;
+          return;
+        }
+        if (lastCameraKind === kind) return;
+        const from = lastCameraKind === "orbit" ? orbitLevel : noClipLevel;
+        const to = kind === "orbit" ? orbitLevel : noClipLevel;
+        lastCameraKind = kind;
+        to.adopt(from.pose());
+        to.update(0);
+      });
+
+      // The box follows the selection, from a subscription rather than from the click: a
+      // selection can also change by undo, by an import and by the list, and each of those
+      // would otherwise need its own "move the box" call.
+      createEffect(levelEditor.selectedItem, (item) => {
+        if (item === undefined) {
+          levelHighlight.hide();
+          return;
+        }
+        const half = isLevelFigure(item)
+          ? modelLibrary?.get(item.model)?.half
+          : undefined;
+        levelHighlight.show(highlightBounds(item, half));
+      });
+
+      // The canvas, once the editor owns it.
+      //
+      // **Only while it is open**, and detached on close, because a listener that outlives
+      // the editor is a click handler that places a wall with the editor shut.
+      createEffect(levelEditorOpen, (open) => {
+        if (!open) return;
+        const onPointerUp = (event: PointerEvent): void => {
+          if (event.pointerType !== "mouse" || event.button !== 0) return;
+          clickLevelWorld?.(event.clientX, event.clientY);
+        };
+        canvas.addEventListener("pointerup", onPointerUp);
+        onCleanup(() => canvas.removeEventListener("pointerup", onPointerUp));
+      });
+
+      // Opening takes the player out of the world.
+      //
+      // `setEnabled(false)` rather than only suspending the pointer lock, because the
+      // keyboard listeners are on `window` and skip only editable targets — so `w` would
+      // still walk the player while somebody was typing a shape's position. The lock is
+      // suspended too, because a locked pointer delivers every click to the canvas and the
+      // editor is trying to read them.
+      createEffect(levelEditorOpen, (open) => {
+        if (!open) return;
+        input.setEnabled(false);
+        const suspend = input.suspendPointerLock();
+        onCleanup(() => {
+          input.setEnabled(true);
+          suspend();
+        });
+      });
+    });
+
     viewport.renderer.setAnimationLoop((time: number) => {
       const dt =
         lastTime === 0 ? 1 / 60 : Math.min((time - lastTime) / 1000, MAX_STEP);
       lastTime = time;
+
+      // **The editor owns the frame while it is open.** Everything below this is the game's,
+      // and running it would put `placeCamera` and the place's own `onTick` back in charge of
+      // a world somebody is in the middle of editing.
+      if (levelEditorOpen()) {
+        editorFrame(dt);
+        return;
+      }
+
       game.tick(dt);
 
       // ---- The place, on the same frame ----
@@ -1855,6 +2207,7 @@ export default function App() {
               again.name,
               again.spawn,
               again.models,
+              again.levels,
             );
           }}
           suspendPointerLock={() => input.suspendPointerLock()}
@@ -1978,6 +2331,60 @@ export default function App() {
           onClose={() => setDocsOpen(false)}
           input={input}
         />
+        {/*
+          The level editor, over the running world.
+
+          **Inside the app rather than inside the console**, because it is not a panel: it
+          pins the canvas into a pane of its own and the panels hang off that. Mounted only
+          while it is open, so its listeners and its input suspension exist exactly as long
+          as it is on screen.
+        */}
+        <Show when={levelEditorOpen()}>
+          <LevelEditorOverlay
+            editor={levelEditor}
+            canvas={canvas}
+            models={levelModels()}
+            /**
+             * **Only with a place open**, because that is the only thing there is to attach it
+             * to. With no place the button is not disabled — it is absent, since a greyed-out
+             * button next to a question nobody asked is worse than no button.
+             */
+            canAttach={placeOpen()}
+            onAttach={() => {
+              // **Written into the project, not the world.** The level is already standing in
+              // the world — the editor put it there when it was drawn — so what this has to do
+              // is make it something the place *carries*, which is the difference between it
+              // surviving `/place:open` and it surviving a reload.
+              const text = levelEditor.exportJson();
+              placeEditor.writeLevel(LEVEL_FILE, text);
+              terminal.print(
+                `attached ${LEVEL_FILE} to ${placeEditor.project().manifest.name} — save or publish the place to keep it`,
+              );
+            }}
+            onClose={() => setLevelEditorOpen(false)}
+          />
+          <Show when={levelEditor.coarsePointer()}>
+            <LevelEditorTouchControls
+              selecting={() => levelEditor.tool() === "select"}
+              onToggleSelect={toggleSelect}
+              onApply={() => {
+                // **The centre of the canvas**, because there is no pointer: under a
+                // first-person camera the crosshair is the aim, and that is where the
+                // player would have clicked.
+                const box = canvas.getBoundingClientRect();
+                clickLevelWorld?.(
+                  box.left + box.width / 2,
+                  box.top + box.height / 2,
+                );
+              }}
+            />
+          </Show>
+          <LevelEditorHint
+            cameraKind={levelCameraKind}
+            coarsePointer={levelEditor.coarsePointer}
+            tool={levelEditor.tool}
+          />
+        </Show>
         <PlacesBrowser
           open={browserOpen()}
           onClose={() => setBrowserOpen(false)}

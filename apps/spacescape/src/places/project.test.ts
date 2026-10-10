@@ -57,6 +57,7 @@ const project = (over: Partial<PlaceProject> = {}): PlaceProject => ({
   },
   scripts: { "main.ts": 'import { log } from "voxelscape";' },
   models: {},
+  levels: {},
   ...over,
 });
 

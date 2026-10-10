@@ -137,6 +137,32 @@ export interface PlaceHandle {
   /** Whether that id is already taken in this place. */
   has(id: string): boolean;
   /**
+   * The shape under that id, as a copy, or undefined if there is none.
+   *
+   * **A copy rather than the stored operation**, because `Operation`'s fields are mutable
+   * and a caller handed the stored one could write to it in place — moving a shape in the
+   * fold without going through `set`, which is the one thing `set` exists to prevent. Copy
+   * on read and the only way to change a shape is to say so.
+   */
+  get(id: string): Operation | undefined;
+  /**
+   * Replaces a shape's parameters **and leaves it where it was in the fold**.
+   *
+   * `add` assigns the index (`:380`) because it is the only thing that may, and `remove`
+   * never reuses one, so remove-then-add would put the shape at the *end* of the fold. For
+   * `Add` that is invisible. For `Subtract` and `Paint` it is not: the fold combines with
+   * a smooth minimum, which is symmetric but not associative, so the order operations are
+   * folded in *is* the surface (`fold-order.ts:3-12`). A wall nudged one voxel would take
+   * its neighbours' terrain with it.
+   *
+   * So this keeps the index the shape already has and takes everything else from the
+   * caller. The id is not a parameter and cannot change, because an id is what the shape
+   * is called on every peer.
+   *
+   * Returns whether there was a shape to change, so a caller can tell a no-op from an edit.
+   */
+  set(id: string, operation: Operation): boolean;
+  /**
    * Takes one shape out by id.
    *
    * **The operation's index is not reused and its neighbours do not move**, which is what
@@ -150,6 +176,16 @@ export interface PlaceHandle {
   remove(id: string): boolean;
   /** The ids held, in the order they were added. */
   ids(): readonly string[];
+  /**
+   * Copies of the operations, in the order they were added.
+   *
+   * **Insertion order, not fold order.** `flatten` is what decides the fold, and it
+   * re-sorts by index, so for a place that has had something removed these two disagree —
+   * and only `flatten` is right about the surface. What this answers instead is "what did
+   * this place get told to build, and in what order", which is what a list of named
+   * things wants.
+   */
+  operations(): readonly Operation[];
   /** Whether this place is over `MAX_OPERATIONS_PER_PLACE`. */
   readonly full: boolean;
 }
@@ -366,8 +402,21 @@ export class PlaceRegistry {
       has(id: string): boolean {
         return byId.has(id);
       },
+      get(id: string): Operation | undefined {
+        const operation = byId.get(id);
+        return operation === undefined ? undefined : { ...operation };
+      },
+      set(id: string, operation: Operation): boolean {
+        const existing = byId.get(id);
+        if (existing === undefined) return false;
+        byId.set(id, { ...operation, index: existing.index });
+        return true;
+      },
       ids(): readonly string[] {
         return [...byId.keys()];
+      },
+      operations(): readonly Operation[] {
+        return [...byId.values()].map((operation) => ({ ...operation }));
       },
       add(id: string, operation: Operation): Operation | undefined {
         if (byId.size >= MAX_OPERATIONS_PER_PLACE || byId.has(id))

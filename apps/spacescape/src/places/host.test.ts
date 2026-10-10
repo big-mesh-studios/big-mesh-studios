@@ -154,6 +154,7 @@ interface Running {
 const start = async (
   files: Record<string, string>,
   entry = "main.ts",
+  levels?: Readonly<Record<string, string>>,
 ): Promise<Running> => {
   clockMs = 1_700_000_000_000;
   const asked: Asked = [];
@@ -164,6 +165,7 @@ const start = async (
     entry,
     seed: 20260901,
     now: clock,
+    levels,
     world,
     effects: stubEffects(asked),
     clock: stubClock(asked),
@@ -2124,5 +2126,120 @@ describe("fields", () => {
       `world may hold ${MAX_MEDIUMS} fields`,
     );
     host.dispose();
+  });
+});
+
+describe("a place that carries a level", () => {
+  /**
+   * The level editor's output, arriving the way a zip would deliver it.
+   *
+   * **The host applies it, not the script.** A level is content and a script is behaviour, and
+   * the host owns the fold (ADR 0019) — so this is where it goes, and putting it somewhere else
+   * would mean the one place that owns the geometry was not the one that put it there.
+   *
+   * The property worth checking is the **order**: the level is in the world before the script's
+   * own top-level code runs, which is what lets a script subtract from a level its author built
+   * by pointing at the world. Reverse it and the level would carve into the script instead.
+   */
+  const A_LEVEL = JSON.stringify({
+    version: 1,
+    items: [
+      {
+        kind: "shape",
+        id: "floor",
+        at: [0, 0, 0],
+        shape: { type: "Box", len: { x: 40, y: 4, z: 40 } },
+        combine: "Add",
+      },
+    ],
+  });
+
+  it("is in the fold before the script runs", async () => {
+    const { world } = await start(
+      {
+        "main.ts": `
+          import { createShape, log } from "voxelscape";
+          // Asked during top-level code: if the level were applied after this, the world
+          // would already be missing it and the fold indices would not be what they are.
+          createShape({
+            place: "after", id: "marker",
+            at: [100, 0, 0],
+            shape: { type: "Sphere", radius: 5 },
+            combine: "Add",
+          });
+          log("ran");
+        `,
+      },
+      "main.ts",
+      { "level.json": A_LEVEL },
+    );
+
+    const level = world.places.get("level");
+    expect(level?.ids()).toEqual(["floor"]);
+    // **The level's shape folded before the script's**, which is the order and not a detail of
+    // it: a `Subtract` in the script has to land on top of the level, or a doorway cut through a
+    // level wall would fill the wall back in.
+    const indexes = world.places.flatten([]).map((op) => op.index);
+    expect(indexes).toEqual([...indexes].sort((a, b) => a - b));
+  });
+
+  it("tells the script what it carried, so the two cannot disagree", async () => {
+    const asked: Asked = [];
+    const world = stubWorld();
+    const host = new PlaceHost({
+      files: {
+        "main.ts": `
+          import { level, log } from "voxelscape";
+          log(level("level.json"));
+        `,
+      },
+      entry: "main.ts",
+      seed: 20260901,
+      now: clock,
+      levels: { "level.json": A_LEVEL },
+      world,
+      effects: stubEffects(asked),
+      clock: stubClock(asked),
+      onNotice: () => {},
+    });
+    await host.load();
+
+    // The same bytes the host applied and the script can read — one file, two readers, and a
+    // difference between them would mean a script could act on a level the world did not get.
+    const logged = asked.find((entry) => entry.startsWith("log:"));
+    expect(logged).toBe(`log:${A_LEVEL}`);
+    expect(world.places.get("level")?.ids()).toEqual(["floor"]);
+    host.dispose();
+  });
+
+  it("refuses a level it cannot read, and says which one", async () => {
+    // **Whole-or-refused, and reported rather than thrown**: a broken level is a broken place,
+    // not a broken host, and the same distinction the rest of `load` is built on.
+    const { world, notices } = await start(
+      { "main.ts": 'import { log } from "voxelscape"; log("ran");' },
+      "main.ts",
+      { "level.json": '{ "version": 1, "items": [{ "kind": "ufo" }] }' },
+    );
+
+    expect(world.places.get("level")?.count ?? 0).toBe(0);
+    expect(notices.join(" ")).toMatch(/level\.json.*items\[0\]/);
+  });
+
+  it("applies nothing at all when one of two levels is bad", async () => {
+    // **One bad level does not take the good one with it.** A place with a hub and an attic
+    // where the attic is corrupt should still open its hub — and the good one must not be
+    // half-applied on the way to finding out.
+    const { world, notices } = await start(
+      { "main.ts": 'import { log } from "voxelscape"; log("ran");' },
+      "main.ts",
+      {
+        "good.json": A_LEVEL,
+        "bad.json": "not json at all",
+      },
+    );
+
+    expect(notices.join(" ")).toMatch(/bad\.json/);
+    // Both were attempted, and the good one stands.
+    expect(world.places.get("level")?.ids()).toEqual(["floor"]);
   });
 });

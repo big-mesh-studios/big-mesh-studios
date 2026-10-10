@@ -45,6 +45,7 @@ import { MAX_PLACE_SOURCE } from "./limits";
 import {
   isPlaceManifest,
   isSafePathName,
+  MAX_PLACE_LEVEL_CHARS,
   MAX_PLACE_MODEL_BYTES,
   PLACE_MANIFEST_FILE,
   type PlaceManifest,
@@ -62,6 +63,15 @@ export interface LoadedPlace {
    * why they exist in a project at all.
    */
   readonly models: Readonly<Record<string, Uint8Array>>;
+  /**
+   * The level documents, as JSON text, by the names the manifest gave them.
+   *
+   * **Read, not parsed.** Deciding whether a level is a level this engine can open is
+   * `level-plan.ts`'s job and it answers whole-or-refused; a caller that wants to know may ask
+   * and get a reason. What is here is the file, faithfully, because the editor writes it and the
+   * script reads it and neither should have to go through a third representation first.
+   */
+  readonly levels: Readonly<Record<string, string>>;
   /** The file that runs. Copied out of the manifest so a caller need not re-validate it. */
   readonly entry: string;
 }
@@ -103,7 +113,16 @@ export const readPlaceZip = async (blob: Blob): Promise<LoadedPlace> => {
   // by a tool that records folders carries them for every file), and anything else undeclared is
   // refused too — there is no file in a place that is neither the manifest nor a declared script,
   // and a `.md` somebody left in the folder is not a reason to refuse the place.
-  const declared = new Set([...manifest.scripts, ...(manifest.models ?? [])]);
+  // **Every list, and this is the line that decides whether a declared level is read at
+  // all.** A level left out of `declared` is not refused here — it is not a `.ts`, so the
+  // sweep reaches it, finds nothing to complain about, and moves on — and the manifest has
+  // promised a file that the loader then drops. That is the exact "a field this accepts is a
+  // promise" failure ADR 0021 was written against, and it would be silent.
+  const declared = new Set([
+    ...manifest.scripts,
+    ...(manifest.models ?? []),
+    ...(manifest.levels ?? []),
+  ]);
   for (const name of Object.keys(zip.files)) {
     if (name === PLACE_MANIFEST_FILE) continue;
     const entry = zip.files[name];
@@ -125,6 +144,14 @@ export const readPlaceZip = async (blob: Blob): Promise<LoadedPlace> => {
 
   const files: Record<string, string> = {};
   const models: Record<string, Uint8Array> = {};
+  /**
+   * Levels, **read as text and not as bytes.**
+   *
+   * A model is a binary the engine decodes; a level is JSON the engine parses and hands to the
+   * same reader the editor uses. Reading it as text is what lets the size limit be in
+   * characters, which is the number that means anything for a document.
+   */
+  const levels: Record<string, string> = {};
   let characters = 0;
 
   for (const name of manifest.scripts) {
@@ -174,7 +201,30 @@ export const readPlaceZip = async (blob: Blob): Promise<LoadedPlace> => {
     models[name] = bytes;
   }
 
-  return { manifest, files, models, entry: manifest.entry };
+  for (const name of manifest.levels ?? []) {
+    if (!isSafePathName(name)) {
+      throw new Error(
+        `the manifest names "${name}", which is not a path this can read`,
+      );
+    }
+
+    const entry = zip.file(name);
+    if (entry === null) {
+      throw new Error(
+        `the manifest names "${name}", which the zip does not hold`,
+      );
+    }
+
+    const text = await entry.async("text");
+    if (text.length > MAX_PLACE_LEVEL_CHARS) {
+      throw new Error(
+        `"${name}" is over the ${MAX_PLACE_LEVEL_CHARS} character limit on one level`,
+      );
+    }
+    levels[name] = text;
+  }
+
+  return { manifest, files, models, levels, entry: manifest.entry };
 };
 
 /** Opens the archive, or says what the bytes were not. */

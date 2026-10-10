@@ -80,6 +80,8 @@ import type { Quat, Vec3 } from "@big-mesh-studios/core";
 import type { ClockCommands } from "../console/commands";
 import type { Medium } from "../player/player";
 import { MAX_ENTITIES } from "./limits";
+import { createLevelApplier } from "./level/apply-level";
+import { parseLevelPlan } from "./level/level-plan";
 import type { FigureSet } from "../figures/figure-set";
 import type { FigureModel } from "./model-library";
 import { ScriptInventory, type InventoryRefusal } from "./script-inventory";
@@ -321,6 +323,19 @@ export interface HostOptions {
   readonly files: PlaceFiles;
   /** Which file runs. */
   readonly entry: string;
+  /**
+   * The level documents this place carries, by the name the manifest gave them.
+   *
+   * **Read here rather than asked for by a script**, because a level is content and a script is
+   * behaviour. The host owns the fold (ADR 0019), so it is the host that puts the level's shapes
+   * in it — and putting them in before the script runs is what lets a script *subtract* from a
+   * level it did not build, which is the whole reason the two are separate.
+   *
+   * The same texts are compiled into the guest module so a script can read one; see
+   * `bundle.ts`. A level a script reads and a level the host applied are the same bytes, which
+   * is why neither is a copy.
+   */
+  readonly levels?: Readonly<Record<string, string>>;
   /** Seed for the script's `Math.random`. Peers pass the same one. */
   readonly seed: number;
   /** The shared clock, in milliseconds. Every event's `at` comes from here. */
@@ -551,7 +566,8 @@ export class PlaceHost {
    * throw from the constructor would be indistinguishable from the host failing to build.
    */
   async load(): Promise<void> {
-    const bundle = bundlePlace(this.options.files, this.options.entry);
+    const levels = this.options.levels ?? {};
+    const bundle = bundlePlace(this.options.files, this.options.entry, levels);
     const interpreter = await createInterpreter({
       seed: this.options.seed,
       now: this.options.now,
@@ -571,6 +587,15 @@ export class PlaceHost {
     //
     // The interpreter is kept either way, so a place that failed to build can be stepped and
     // will simply do nothing — which is the same outcome as a place that built half of itself.
+    // **Before the script runs, and before the interpreter is even loaded.**
+    //
+    // The order is the whole design: a place's own `createShape` calls then fold *over* a level
+    // its author built by pointing at the world, so a script that wants to cut a doorway through
+    // a level wall subtracts from it rather than having to rebuild it. Reverse this and the
+    // level would carve into the script's geometry instead, which is the opposite of what
+    // "the script has the last word" should mean.
+    this.applyLevels(levels);
+
     try {
       interpreter.load(bundle);
     } catch (error) {
@@ -587,6 +612,49 @@ export class PlaceHost {
       // geometry does — happens here, so the coalescing has to be flushed here too or the
       // world would not be in the mesh until the first frame after load.
       this.flushGeometry();
+    }
+  }
+
+  /**
+   * Puts every level this place carries into the world, or says why one did not.
+   *
+   * **Whole-or-refused, per level**, by `parseLevelPlan`, which is the same rule an effect gets
+   * (ADR 0017) and the same rule the editor's import applies. It is the *parsing* entry point
+   * rather than the validating one, because what arrives here is text: a level is a file, and a
+   * file is not yet a document. A level with 500 good rows and one
+   * malformed row is not a level with 500 shapes in it — so nothing of it is applied, and the
+   * refusal is reported rather than thrown, because a broken level is a broken place and not a
+   * broken host.
+   *
+   * One applier for the lot rather than one per level: they share the level's own place name and
+   * one id space, so applying them separately would have the second overwrite the first.
+   */
+  private applyLevels(levels: Readonly<Record<string, string>>): void {
+    const names = Object.keys(levels);
+    if (names.length === 0) return;
+
+    const applier = createLevelApplier({
+      places: this.options.world.places,
+      ...(this.options.world.figures !== undefined
+        ? { figures: this.options.world.figures }
+        : {}),
+      ...(this.options.world.models !== undefined
+        ? { models: this.options.world.models }
+        : {}),
+      // **Straight to the host's own seam**, not the editor's deferred one: this is load-time,
+      // once, before anything is on screen, and `flushGeometry` in the `finally` below is what
+      // puts it there.
+      geometryChanged: (bounds) => this.geometryChanged(bounds),
+    });
+
+    for (const name of names) {
+      const read = parseLevelPlan(levels[name]);
+      if ("refusal" in read) {
+        const { where, why } = read.refusal;
+        this.report(`"${name}" ${where || "the level"} ${why}`);
+        continue;
+      }
+      applier.apply(read.plan);
     }
   }
 

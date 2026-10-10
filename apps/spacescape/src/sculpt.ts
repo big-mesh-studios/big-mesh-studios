@@ -122,6 +122,17 @@ export class SculptSession {
   private streamedBounds: Bounds | undefined;
 
   /**
+   * What `invalidate` has asked for and `flushInvalidated` has not yet sent.
+   *
+   * **Two fields rather than one nullable box, because `undefined` already means
+   * something here.** A `bounds` of `undefined` is the contract for "everything changed",
+   * and widening a specific box with it would silently narrow it back down. So `everything`
+   * is its own flag and never clears except by the flush that serves it.
+   */
+  private pendingEverything = false;
+  private pendingBounds: Bounds | undefined;
+
+  /**
    * The target behind both the pointer tool and the aim tool.
    *
    * One instance rather than two, so a gameplay dig and an editor sculpt share
@@ -519,6 +530,84 @@ export class SculptSession {
   refreshPlaces(bounds?: Bounds): void {
     this.forgetStroke();
     this.applyChange({ kind: "add", bounds, count: 0 });
+  }
+
+  /**
+   * Asks for the model to be re-read, but not before the mesher is free.
+   *
+   * **For a caller that edits faster than the world can be rebuilt.** `refreshPlaces` is
+   * the right answer for a place: `PlaceHost` calls it once per step, and a step is already
+   * the unit the world moves in. A level editor's is not — a pointer can ask for a dozen
+   * edits between two frames, and each one of those is a full `OperationBVH` rebuild, a full
+   * re-serialise of the operation list, and a cancellation of every mesh in flight
+   * (`session.ts:305-322`). The result is not a stutter. It is an edit that appears to do
+   * nothing until the pointer stops moving, and chunks whose geometry goes missing and comes
+   * back.
+   *
+   * So this only records what changed, and `flushInvalidated` decides when. Cheapest
+   * possible call, safe to make on every pointer event.
+   *
+   * **Bounds accumulate rather than replace**, because the flush that finally happens sends
+   * one model against the union of everything asked for since the last one. Replacing them
+   * would re-mesh less and leave the middle of a drag stale, which is the same bug wearing
+   * a different hat.
+   *
+   * **A stroke in progress is abandoned, for the same reason `refreshPlaces` abandons it:**
+   * a stroke's operations are not in the document, so a flush built from `model()` would
+   * drop them off the mesh.
+   */
+  invalidate(bounds?: Bounds): void {
+    this.forgetStroke();
+    if (bounds === undefined) {
+      this.pendingEverything = true;
+      return;
+    }
+    if (!this.pendingEverything) {
+      this.pendingBounds = unionOf(this.pendingBounds, bounds);
+    }
+  }
+
+  /** Whether anything `invalidate` has been asked for is still waiting to go out. */
+  get invalidated(): boolean {
+    return this.pendingEverything || this.pendingBounds !== undefined;
+  }
+
+  /**
+   * Sends whatever `invalidate` has gathered, once the mesher is free.
+   *
+   * **Called from the frame loop rather than from the pointer**, for the reason
+   * `flushPreview` is: the cost becomes bounded by the frame instead of by how fast the
+   * pointer moves, and the edit rate becomes the mesher's real throughput.
+   *
+   * **Waits rather than interrupting.** Sending a model cancels every mesh in flight, so
+   * sending on a timer would cancel the very mesh that would show the edit. Nothing is lost
+   * by waiting: the request stays pending and goes out whole on the next frame the mesher is
+   * free. Returns whether anything went out, so a caller can tell a served frame from a
+   * waiting one — and can leave a "saving…" indicator honest.
+   *
+   * **The field is rebuilt here too, not at `invalidate`.** Until this runs, the picker
+   * keeps tracing the model the edit was made against, which is what stops a sequence of
+   * edits from feeding itself: a pick that followed its own output would walk up whatever
+   * the last edit built, and dragging a wall would throw it across the room rather than
+   * slide it along the floor.
+   */
+  flushInvalidated(): boolean {
+    if (!this.invalidated) return false;
+    if (!this.options.session.idle) return false;
+
+    // Cleared before the work rather than after, so a change made *during* the rebuild is
+    // still pending afterwards instead of being served by a model that predates it.
+    const everything = this.pendingEverything;
+    const bounds = this.pendingBounds;
+    this.pendingEverything = false;
+    this.pendingBounds = undefined;
+
+    this.applyChange({
+      kind: "add",
+      bounds: everything ? undefined : bounds,
+      count: 0,
+    });
+    return true;
   }
 }
 

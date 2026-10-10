@@ -268,7 +268,20 @@ const idOf = (ids: ReadonlyMap<string, string>, name: string): string => {
  * fails here, with a message naming the file and the import, and never reaches the
  * interpreter — where the alternative is an error about a line number in a scope nobody wrote.
  */
-export const bundlePlace = (files: PlaceFiles, entry: string): string => {
+export const bundlePlace = (
+  files: PlaceFiles,
+  entry: string,
+  /**
+   * The levels this place carries, by the name `level` takes.
+   *
+   * **Compiled into the guest module rather than passed through the bridge**, because that is
+   * the only channel a value can travel without becoming a string somebody has to parse on both
+   * sides. The bridge carries strings and numbers (ADR 0015), and a level is already the text of
+   * a document — so it is injected where the library can hold it, and every peer compiles the
+   * same bytes into the same module.
+   */
+  levels: Readonly<Record<string, string>> = {},
+): string => {
   if (!(entry in files)) {
     throw new BundleError(entry, "is not one of this place's files");
   }
@@ -285,15 +298,7 @@ export const bundlePlace = (files: PlaceFiles, entry: string): string => {
   /** Compiled output, keyed by file name (and by `GUEST_ID` for the library). */
   const compiled = new Map<string, string>();
 
-  compiled.set(
-    GUEST_ID,
-    transpile(GUEST_ID, GUEST_SOURCE).replace(
-      // The library has no imports — `bundle.test.ts` asserts it — but a stray one would
-      // otherwise become a `require` of an id nothing has.
-      LITERAL_REQUIRE,
-      `require(${JSON.stringify(GUEST_ID)})`,
-    ),
-  );
+  compiled.set(GUEST_ID, guestModuleSource(levels));
 
   /**
    * Compiles one file, and everything it reaches.
@@ -399,8 +404,37 @@ export const asPlaceSource = (bundle: string): string =>
   `(function (engine) {\n${bundle}\n});`;
 
 /**
+ * The guest library, compiled, with this place's levels in it.
+ *
+ * **The preamble is appended after the compiled library rather than being part of it**, because
+ * `GUEST_SOURCE` is a build-time string shared by every place — the levels are not. Appending
+ * means the library itself stays one file that `guestLibrarySource()` can hand over on its own,
+ * and a place with no levels compiles to exactly what it compiled to before this existed.
+ *
+ * `JSON.stringify` is the whole encoding: a level is text already, and the table is a plain
+ * object of strings, so `level("hub")` is a lookup rather than a parse. The script parses the
+ * one it asked for, and only that one.
+ */
+const guestModuleSource = (
+  levels: Readonly<Record<string, string>>,
+): string => {
+  const library = transpile(GUEST_ID, GUEST_SOURCE).replace(
+    // The library has no imports — `bundle.test.ts` asserts it — but a stray one would
+    // otherwise become a `require` of an id nothing has.
+    LITERAL_REQUIRE,
+    `require(${JSON.stringify(GUEST_ID)})`,
+  );
+  if (Object.keys(levels).length === 0) return library;
+  return `${library}\nconst __levels = ${JSON.stringify(levels)};\n`;
+};
+
+/**
  * The guest library's compiled source, for a host that wants to offer it without bundling a
  * place. Exported so the interpreter can be tested against the library alone.
+ *
+ * **No levels, deliberately** — there is nobody to carry them. A host that has levels calls
+ * `bundlePlace`; this is for the interpreter's own tests, which want the library and nothing
+ * else.
  */
 export const guestLibrarySource = (): string =>
   transpile(GUEST_ID, GUEST_SOURCE);

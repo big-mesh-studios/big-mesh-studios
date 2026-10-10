@@ -378,6 +378,20 @@
       "returns": "number"
     },
     {
+      "name": "level",
+      "signature": "(name: string): string",
+      "doc": "The level document this place carries under `name`, as the JSON text it was written as. **A string, and not a parsed object.** The bridge carries strings (ADR 0015), so anything structured has to cross as text and be parsed on the far side; returning a parsed object here would mean the boundary rules for exactly one call. A script that wants the level's items parses this once, and one place is not going to parse the same level in a loop. **Compiled in rather than asked for.** The levels are baked into this module by `bundle.ts` when the place is bundled, so this is a lookup in a table that is already there — not a query, and not a new member on the bridge. A place carrying no level under this name throws, naming the level, the way `createProp` throws on a model the place does not hold.",
+      "params": [
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "returns": "string"
+    },
+    {
       "name": "loadData",
       "signature": "(key: string): string | undefined",
       "doc": "Reads a stored value, or undefined when there is none.",

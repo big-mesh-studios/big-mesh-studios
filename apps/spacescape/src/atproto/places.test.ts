@@ -443,6 +443,7 @@ describe("publishing a place", () => {
     },
     scripts: { "main.ts": "export {};" },
     models: {},
+    levels: {},
   });
 
   it("writes the record under the key the name derives, and hands back the address", async () => {

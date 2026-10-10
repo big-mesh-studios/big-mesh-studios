@@ -1,0 +1,133 @@
+/*
+ * The overlay.
+ *
+ * `pointer-events: none` on the root, and `auto` on the two things that need clicks. The
+ * canvas underneath keeps its own camera drag and wheel, which is the point of the overlay
+ * being an overlay: the editor's panels must not swallow a gesture meant for the world, and
+ * a full-screen transparent div would swallow every one of them.
+ */
+
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  pointer-events: none;
+}
+
+.viewport {
+  flex: 1;
+  pointer-events: none;
+}
+
+.panel {
+  width: 340px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  pointer-events: auto;
+  background: rgba(10, 12, 16, 0.94);
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  color: inherit;
+}
+
+/* The sheet. Below the viewport rather than beside it, because a side panel takes the
+ * width a person needs to see what they are pointing at. */
+.root[data-mobile] {
+  flex-direction: column;
+}
+
+.root[data-mobile] .panel {
+  width: 100%;
+  max-height: min(50dvh, 320px);
+  border-left: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px 12px 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  overflow-x: auto;
+}
+
+.chevron {
+  min-width: var(--ui-touch-size, 44px);
+  min-height: var(--ui-touch-size, 44px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.panelBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.paneBody[hidden] {
+  display: none;
+}
+
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* The mobile cluster. A finger never places on its own, so Apply is its own big target and
+ * Select is a toggle rather than a mode — the last placement tool is what Apply returns to. */
+.touch {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+.touchApply {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 224, 102, 0.24);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.touchToggle {
+  min-width: 72px;
+  height: 56px;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.5);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}

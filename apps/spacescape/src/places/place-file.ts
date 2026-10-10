@@ -26,8 +26,11 @@
  *   switch it on would be a switch wired to nothing.
  *
  * They are **omitted rather than accepted and ignored**, which is the difference that matters:
- * a field this accepts is a promise, and a promise about a level plan is one nothing here keeps.
- * Each is one line to add when the thing it names exists.
+ * a field this accepts is a promise, and a promise about a mode is one nothing here keeps. Each
+ * is one line to add when the thing it names exists.
+ *
+ * `levels` was the odd one: it is now here, and the promise is kept — see `load-place.ts` for
+ * the one line that decides whether a declared level is actually read or silently dropped.
  *
  * ## And the one field this has that the reference does not, and the one it has differently
  *
@@ -101,6 +104,29 @@ export const MAX_PLACE_MODELS = 64;
 export const MAX_PLACE_MODEL_BYTES = 4 * 1024 * 1024;
 
 /**
+ * The most levels one place may carry.
+ *
+ * **Small, and deliberately.** A place's levels are the content somebody built by pointing at
+ * the world, and one level is the whole of what this editor produces. Four is enough for a place
+ * to have a hub and three rooms; a number in the dozens would mean a format that nobody has
+ * thought about what two levels overlapping means.
+ */
+export const MAX_PLACE_LEVELS = 4;
+
+/**
+ * How many characters one level may be.
+ *
+ * **Characters, not bytes, unlike `MAX_PLACE_MODEL_BYTES`,** because a level is text: it is read
+ * as a string, `JSON.parse`d in a peer, and every row of it becomes an operation. So the number
+ * that matters is roughly the number of shapes a level may hold, which is `MAX_LEVEL_ITEMS` on
+ * the editor's side and `MAX_OPERATIONS_PER_PLACE` on the engine's — and a megabyte of level is
+ * about twelve thousand shapes, which is not a level but an attempt to make the loader work.
+ *
+ * One megabyte is generous for a building.
+ */
+export const MAX_PLACE_LEVEL_CHARS = 1 * 1024 * 1024;
+
+/**
  * How far a place's spawn may lie from the origin, in world units.
  *
  * The same number the reference uses, and for the same reason: a spawn is a `vec3` a person
@@ -153,6 +179,18 @@ export interface PlaceManifest {
    * contents cannot be stated.
    */
   readonly models?: readonly string[];
+  /**
+   * The level files in the zip, relative to its root. Absent when there are none.
+   *
+   * **A third list in the same flat namespace as the other two.** A level is JSON text rather
+   * than bytes and is read as text rather than decoded, but it is still a file the place names,
+   * so it gets the same rules as `models`: absent is fine, empty is fine, and a name in more
+   * than one list is refused because a zip holds one file per path.
+   *
+   * What a place *does* with it is in `load-place.ts`, and it is not a script's business —
+   * see `bundle.ts` for the one function a script can call.
+   */
+  readonly levels?: readonly string[];
 }
 
 /**
@@ -184,20 +222,40 @@ export const isPlaceManifest = (value: unknown): value is PlaceManifest => {
   if (record.spawn !== undefined && !isSpawn(record.spawn)) return false;
 
   if (!isFileList(record.scripts)) return false;
-  if (!isAttachmentList(record.models)) return false;
+  if (!isAttachmentList(record.models, MAX_PLACE_MODELS)) return false;
+  if (!isAttachmentList(record.levels, MAX_PLACE_LEVELS)) return false;
 
-  // **One flat namespace, checked across both lists rather than within each.** Two lists that are
-  // each internally distinct can still name the same path, and a zip has one file per path.
-  if (!isDisjoint(record.scripts, record.models)) return false;
+  // **One flat namespace, checked across every list rather than within each.** Two lists that
+  // are each internally distinct can still name the same path, and a zip has one file per path.
+  // Variadic because there are three of them now and a two-argument check is the kind that
+  // quietly stops covering the list that was added last.
+  if (!isDisjoint(record.scripts, record.models, record.levels)) return false;
 
   return isEntryOf(record.entry, record.scripts);
 };
 
-/** Whether the two lists share a name, which a zip cannot represent. */
-const isDisjoint = (scripts: unknown, models: unknown): boolean =>
-  !Array.isArray(models) ||
-  !Array.isArray(scripts) ||
-  !models.some((name) => scripts.includes(name as string));
+/**
+ * Whether no two of the lists share a name, which a zip cannot represent.
+ *
+ * **Variadic, and every list is compared against every other.** The first version took two, and
+ * a third list arriving is exactly the moment a two-argument check stops covering everything:
+ * the new list is validated on its own, passes, and is then allowed to collide with the others
+ * without anybody noticing.
+ *
+ * A list that is not an array cannot collide with anything, so an absent or malformed one is
+ * not a collision — its own check has already refused it, or it is simply absent.
+ */
+const isDisjoint = (...lists: unknown[]): boolean => {
+  const present = lists.filter((list): list is unknown[] =>
+    Array.isArray(list),
+  );
+  for (let a = 0; a < present.length; a++) {
+    for (let b = a + 1; b < present.length; b++) {
+      if (present[a].some((name) => present[b].includes(name))) return false;
+    }
+  }
+  return true;
+};
 
 /**
  * Whether `models` is a list of attachment names this engine can carry.
@@ -211,10 +269,11 @@ const isDisjoint = (scripts: unknown, models: unknown): boolean =>
  */
 const isAttachmentList = (
   value: unknown,
+  cap: number,
 ): value is readonly string[] | undefined => {
   if (value === undefined) return true;
   if (!Array.isArray(value)) return false;
-  if (value.length > MAX_PLACE_MODELS) return false;
+  if (value.length > cap) return false;
 
   const seen = new Set<string>();
   for (const name of value) {

@@ -57,6 +57,7 @@ const table = (
     describe: () => "bridge\nshapes   7 of 2000",
     notices: () => [],
     toggleEditor: () => "",
+    toggleLevel: () => "",
     loadAddress: (uri) => {
       recorder.addresses.push(uri);
       return Promise.resolve(`opened ${uri}`);
@@ -95,6 +96,7 @@ describe("the place commands exist under the prefix", () => {
       "/place:open",
       "/place:docs",
       "/place:editor",
+      "/place:level",
       "/place:unload",
       "/place:state",
       "/place:notices",
@@ -380,6 +382,7 @@ describe("what this table does not know", () => {
       describe: () => "nothing",
       notices: () => [],
       toggleEditor: () => "",
+      toggleLevel: () => "",
       loadAddress: () => Promise.resolve("opened"),
       toggleBrowser: () => "catalog",
       publish: () => Promise.resolve("published"),
@@ -395,6 +398,7 @@ describe("what this table does not know", () => {
       "toggleBrowser",
       "toggleDocs",
       "toggleEditor",
+      "toggleLevel",
       "unload",
     ]);
   });

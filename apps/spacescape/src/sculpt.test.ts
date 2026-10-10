@@ -28,18 +28,21 @@ const CENTRE = { clientX: WIDTH / 2, clientY: HEIGHT / 2 };
  */
 const sink = () => {
   const folds: Array<readonly Operation[]> = [];
+  const touched: Array<unknown> = [];
   let busy = false;
   const model: SculptModelSink = {
     get idle() {
       return !busy;
     },
-    setOperations: (operations) => {
+    setOperations: (operations, bounds) => {
       folds.push([...operations]);
+      touched.push(bounds);
     },
   };
   return {
     model,
     folds,
+    touched,
     latest: () => folds[folds.length - 1],
     /** Makes the mesher look busy, as a real one is between a send and its answer. */
     occupy: () => {
@@ -648,5 +651,132 @@ describe("re-reading the model after a place changed it", () => {
     session.refreshPlaces();
     session.refreshPlaces();
     expect(latest().length).toBe(2);
+  });
+});
+
+describe("deferring a re-read until the mesher is free", () => {
+  // A level editor's edits arrive at pointer rate, and every one of them is a full BVH
+  // rebuild plus a model re-serialise plus a cancellation of every mesh in flight. The
+  // symptom of doing that eagerly is not a stutter — it is an edit that appears to do
+  // nothing until the pointer stops moving. These are the properties that stop it.
+
+  const addBox = (session: SculptSession, id: string, y = 20): void => {
+    session.places
+      .create("p")
+      .add(
+        id,
+        makeOperation(
+          0,
+          { x: 0, y, z: 0 },
+          { type: "Box", len: { x: 30, y: 3, z: 30 } },
+          "Add",
+        ),
+      );
+  };
+
+  it("sends nothing until the flush is called", () => {
+    const { session, folds } = sessionOver([]);
+    addBox(session, "deck");
+    session.invalidate();
+    expect(folds).toHaveLength(0);
+    expect(session.invalidated).toBe(true);
+  });
+
+  it("sends on the flush, and the model has the edit in it", () => {
+    const { session, folds, latest } = sessionOver([]);
+    addBox(session, "deck");
+    session.invalidate();
+    expect(session.flushInvalidated()).toBe(true);
+    expect(folds).toHaveLength(1);
+    expect(latest()).toHaveLength(1);
+    expect(latest()[0].origin).toEqual({ x: 0, y: 20, z: 0 });
+  });
+
+  it("waits for a busy mesher rather than interrupting it, and keeps the request", () => {
+    // Sending cancels every mesh in flight, so sending on a timer would cancel the very
+    // mesh that would show the edit. The request has to survive the wait.
+    const { session, folds, occupy, release } = sessionOver([]);
+    occupy();
+    addBox(session, "deck");
+    session.invalidate();
+
+    expect(session.flushInvalidated()).toBe(false);
+    expect(folds).toHaveLength(0);
+    expect(session.invalidated).toBe(true);
+
+    release();
+    expect(session.flushInvalidated()).toBe(true);
+    expect(folds).toHaveLength(1);
+    expect(session.invalidated).toBe(false);
+  });
+
+  it("coalesces a burst into one send, with the whole burst in it", () => {
+    const { session, folds, latest } = sessionOver([]);
+    addBox(session, "deck");
+    addBox(session, "rail");
+    addBox(session, "post");
+    session.invalidate();
+    session.invalidate();
+    session.invalidate();
+
+    expect(session.flushInvalidated()).toBe(true);
+    expect(folds).toHaveLength(1);
+    expect(latest()).toHaveLength(3);
+  });
+
+  it("gathers the boxes so a drag in between does not leave the middle stale", () => {
+    const { session, touched } = sessionOver([]);
+    addBox(session, "deck");
+    session.invalidate({
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 10, y: 10, z: 10 },
+    });
+    session.invalidate({
+      min: { x: 90, y: 90, z: 90 },
+      max: { x: 99, y: 99, z: 99 },
+    });
+    session.flushInvalidated();
+
+    // One send, carrying the union of both asks — not the first one, and not the last.
+    // Replacing rather than widening would re-mesh less and leave the middle of a drag
+    // showing geometry from before it started.
+    expect(touched).toHaveLength(1);
+    expect(touched[0]).toEqual({
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 99, y: 99, z: 99 },
+    });
+  });
+
+  it("keeps 'everything changed' absorbing, because a box would narrow it back down", () => {
+    // `undefined` is this codebase's word for "everything changed". Widening that with a
+    // specific box would silently mean "only here", and the chunks in between would keep
+    // the geometry they had before.
+    const { session } = sessionOver([]);
+    session.invalidate();
+    session.invalidate({
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 1, y: 1, z: 1 },
+    });
+    session.invalidate({
+      min: { x: 5, y: 5, z: 5 },
+      max: { x: 6, y: 6, z: 6 },
+    });
+    expect(session.invalidated).toBe(true);
+    expect(session.flushInvalidated()).toBe(true);
+  });
+
+  it("has nothing to do when nothing was asked for", () => {
+    const { session, folds } = sessionOver([]);
+    expect(session.invalidated).toBe(false);
+    expect(session.flushInvalidated()).toBe(false);
+    expect(folds).toHaveLength(0);
+  });
+
+  it("does not report a flush it skipped as a flush it made", () => {
+    // A caller drawing a "saving…" indicator has to be able to tell these apart.
+    const { session, occupy } = sessionOver([]);
+    session.invalidate();
+    occupy();
+    expect(session.flushInvalidated()).toBe(false);
   });
 });

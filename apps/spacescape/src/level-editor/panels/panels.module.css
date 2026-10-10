@@ -1,0 +1,110 @@
+/*
+ * The panels' own layout: the list and the fields, as opposed to the controls
+ * (`components/controls.module.css`) which every panel shares.
+ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The list is the one thing in the editor that can be long, so it is the one thing that
+ * scrolls on its own. Everything else is a fixed set of fields. */
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.itemSelected {
+  background: rgba(255, 224, 102, 0.14);
+  box-shadow: inset 2px 0 0 #ffe066;
+}
+
+.itemName {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--ui-touch-size, 44px);
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* A level can hold two hundred items and an id like `shape-Box-120-40-88`; truncating
+   * the middle keeps the name's start, which is the part that identifies it. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemControls {
+  display: flex;
+  gap: 2px;
+  padding-right: 6px;
+}
+
+.itemButton {
+  min-width: 32px;
+  min-height: var(--ui-touch-size, 44px);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.itemButton:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.itemButton:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.text {
+  min-height: var(--ui-touch-size, 44px);
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  color: inherit;
+  font: inherit;
+}
+
+/* Said where somebody is choosing, not after. A field that silently does nothing is worse
+ * than one that is refused. */
+.warn {
+  width: 100%;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #ffd7a0;
+  opacity: 0.9;
+}
+.json {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  color: inherit;
+  /* A level is a file somebody reads, so it is not 16px. */
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+}

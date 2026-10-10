@@ -57,6 +57,14 @@ export interface PlaceCommands {
    */
   toggleEditor(): string;
   /**
+   * Opens or closes the level editor, which is an overlay on the running world rather than a
+   * panel in the console.
+   *
+   * **Here rather than in the world's own commands** because a level is a place's content:
+   * it becomes a file the place carries, and a place with no level has nothing for it to be.
+   */
+  toggleLevel(): string;
+  /**
    * Loads a place somebody published, by its `at://` address.
    *
    * **The other way a place arrives**, and the only one that needs no file and no account: a
@@ -152,6 +160,11 @@ export const placeCommands = (
   "/place:editor": {
     description: "open (or close) the place script editor",
     run: () => places.toggleEditor(),
+  },
+
+  "/place:level": {
+    description: "open (or close) the level editor — place things by clicking",
+    run: () => places.toggleLevel(),
   },
 
   "/place:unload": {

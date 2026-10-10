@@ -689,3 +689,192 @@ describe("what a place costs to sample", () => {
     expect(aFullPlaceIsWorth / aSessionIsWorth).toBeLessThan(20);
   }, 60_000);
 });
+
+describe("a shape in a place can be read back and changed in place", () => {
+  /**
+   * Everything below is about one number: the index `add` assigns and nothing else may
+   * set. A level editor has to be able to say "this wall is one voxel to the left", and
+   * remove-then-add — the only thing the registry could do before — answers that by
+   * moving the wall to the end of the fold. For `Add` that is invisible; for `Subtract`
+   * and `Paint` it is a different landscape.
+   */
+
+  const registry = (): {
+    place: ReturnType<PlaceRegistry["create"]>;
+    registry: PlaceRegistry;
+  } => {
+    const registry = registryOver(new SculptDocument());
+    return { place: registry.create("level"), registry };
+  };
+
+  it("reports a shape's parameters under the id its creator gave it", () => {
+    const { place } = registry();
+    place.add(
+      "wall",
+      placeOperation(
+        boxAt(10, 20, 30),
+        { type: "Sphere", radius: 7 },
+        "Subtract",
+      ),
+    );
+
+    const found = place.get("wall");
+    expect(found?.origin).toEqual(boxAt(10, 20, 30));
+    expect(found?.shape).toEqual({ type: "Sphere", radius: 7 });
+    expect(found?.combine).toBe("Subtract");
+  });
+
+  it("has no shape to give for an id it never held", () => {
+    const { place } = registry();
+    expect(place.get("nothing")).toBeUndefined();
+  });
+
+  it("hands out a copy, so a caller cannot move a shape by writing to what it read", () => {
+    const { place } = registry();
+    place.add(
+      "wall",
+      placeOperation(
+        boxAt(10, 20, 30),
+        { type: "Sphere", radius: 7 },
+        "Subtract",
+      ),
+    );
+    const before = place.get("wall")!.index;
+
+    const read = place.get("wall")!;
+    read.origin = boxAt(999, 999, 999);
+    read.index = 9999;
+
+    const after = place.get("wall")!;
+    expect(after.origin).toEqual(boxAt(10, 20, 30));
+    expect(after.index).toBe(before);
+  });
+
+  it("leaves a changed shape where it was in the fold", () => {
+    const { place, registry: reg } = registry();
+    place.add(
+      "floor",
+      placeOperation(
+        boxAt(0, 0, 0),
+        { type: "Box", len: { x: 40, y: 4, z: 40 } },
+        "Add",
+      ),
+    );
+    place.add(
+      "carve",
+      placeOperation(
+        boxAt(5, 0, 5),
+        { type: "Box", len: { x: 8, y: 8, z: 8 } },
+        "Subtract",
+      ),
+    );
+    place.add(
+      "ceiling",
+      placeOperation(
+        boxAt(0, 30, 0),
+        { type: "Box", len: { x: 40, y: 4, z: 40 } },
+        "Add",
+      ),
+    );
+
+    const before = reg.flatten([]).map((op) => op.index);
+    expect(
+      place.set(
+        "carve",
+        placeOperation(
+          boxAt(9, 0, 9),
+          { type: "Box", len: { x: 8, y: 8, z: 8 } },
+          "Subtract",
+        ),
+      ),
+    ).toBe(true);
+
+    const after = reg.flatten([]);
+    // Same shape in the same slot of the fold, moved in the world.
+    expect(after.map((op) => op.index)).toEqual(before);
+    expect(after[1].origin).toEqual(boxAt(9, 0, 9));
+  });
+
+  it("says the shape did not change when the id is not there", () => {
+    const { place } = registry();
+    expect(
+      place.set(
+        "nothing",
+        placeOperation(boxAt(0, 0, 0), { type: "Sphere", radius: 1 }, "Add"),
+      ),
+    ).toBe(false);
+  });
+
+  it("cannot be used to hand a shape a new fold position", () => {
+    // `add` is the only thing that may set an index, and `set` is a different method so
+    // that saying otherwise is a type error rather than a bug. This is the runtime half
+    // of that: an index in the argument is ignored in favour of the one already held.
+    const { place } = registry();
+    place.add(
+      "a",
+      placeOperation(boxAt(0, 0, 0), { type: "Sphere", radius: 1 }, "Add"),
+    );
+    place.add(
+      "b",
+      placeOperation(boxAt(0, 0, 0), { type: "Sphere", radius: 1 }, "Add"),
+    );
+
+    place.set("a", {
+      ...placeOperation(boxAt(5, 0, 0), { type: "Sphere", radius: 2 }, "Add"),
+      index: 9999,
+    });
+
+    expect(place.get("a")!.index).toBeLessThan(place.get("b")!.index);
+  });
+
+  it("lists its shapes in the order they were made, copies", () => {
+    const { place } = registry();
+    place.add(
+      "first",
+      placeOperation(boxAt(0, 0, 0), { type: "Sphere", radius: 1 }, "Add"),
+    );
+    place.add(
+      "second",
+      placeOperation(boxAt(0, 0, 0), { type: "Sphere", radius: 1 }, "Add"),
+    );
+
+    expect(place.operations().map((op) => op.origin.x)).toEqual([0, 0]);
+    place.operations()[0].origin = boxAt(7, 7, 7);
+    expect(place.get("first")!.origin).toEqual(boxAt(0, 0, 0));
+  });
+
+  it("changes what flatten folds, so an edit is not a scene the player never sees", () => {
+    // The failure this whole section exists to prevent: the edit succeeds, the fold moves
+    // the shape to the end, and for a subtract that is a terrain change nobody asked for.
+    const before = (): string[] => {
+      const { place, registry: reg } = registry();
+      place.add(
+        "floor",
+        placeOperation(
+          boxAt(0, 0, 0),
+          { type: "Box", len: { x: 40, y: 4, z: 40 } },
+          "Add",
+        ),
+      );
+      place.add(
+        "pit",
+        placeOperation(
+          boxAt(20, 0, 20),
+          { type: "Box", len: { x: 8, y: 8, z: 8 } },
+          "Subtract",
+        ),
+      );
+      place.set(
+        "pit",
+        placeOperation(
+          boxAt(30, 0, 30),
+          { type: "Box", len: { x: 8, y: 8, z: 8 } },
+          "Subtract",
+        ),
+      );
+      return reg.flatten([]).map((op) => op.combine);
+    };
+    // Still add-then-subtract. Had `set` re-appended, this would be subtract-then-add.
+    expect(before()).toEqual(["Add", "Subtract"]);
+  });
+});

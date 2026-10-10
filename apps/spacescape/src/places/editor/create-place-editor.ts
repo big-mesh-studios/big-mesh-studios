@@ -55,6 +55,14 @@ export interface PlaceEditorState {
   setActive(name: string): void;
   /** Replaces one script's source, and nothing else. */
   write(name: string, source: string): void;
+  /**
+   * Puts a level into the place, or replaces the one already there under that name.
+   *
+   * **Refused when the name is already a script or a model** — one flat namespace per place,
+   * and a collision would leave a project whose manifest and files disagree, which
+   * `isPlaceProject` refuses, so the draft would quietly stop saving.
+   */
+  writeLevel(name: string, text: string): void;
   /** Renames the place. Refused when the new name is empty or over the limit. */
   setName(name: string): void;
   setSeed(seed: number): void;
@@ -111,7 +119,20 @@ export const createPlaceEditor = (
       if (next === null) return current;
       return {
         ...next,
-        manifest: { ...next.manifest, scripts: Object.keys(next.scripts) },
+        // **Both attachment lists re-derived, not just `scripts`.** Re-deriving the scripts and
+        // carrying the rest was fine while nothing else could be edited from here; a level
+        // written through `writeLevel` is, and a manifest that names a level the project does
+        // not hold is exactly the disagreement `isPlaceProject` refuses.
+        manifest: {
+          ...next.manifest,
+          scripts: Object.keys(next.scripts),
+          ...(Object.keys(next.models).length > 0
+            ? { models: Object.keys(next.models) }
+            : {}),
+          ...(Object.keys(next.levels).length > 0
+            ? { levels: Object.keys(next.levels) }
+            : {}),
+        },
       };
     });
     if (!keepActive) return;
@@ -159,6 +180,25 @@ export const createPlaceEditor = (
           ? { ...current, scripts: { ...current.scripts, [name]: source } }
           : null,
       ),
+
+    /**
+     * Puts a level into the place, or takes the one that is there away.
+     *
+     * **One name and one slot**, because a level is a level: the editor's output is one
+     * document, and `writeLevel(LEVEL_NAME, text)` replacing whatever was there is the behaviour
+     * somebody expects from a Save. A place that grew a second, differently-shaped level is a
+     * format nobody has designed yet.
+     *
+     * **Writing is refused when the name is already a script or a model.** One flat namespace
+     * per place (`place-file.ts`), and a collision would be a project whose manifest and files
+     * disagree — which `isPlaceProject` refuses, so the draft would stop saving and say nothing
+     * about why.
+     */
+    writeLevel: (name, text) =>
+      edit((current) => {
+        if (name in current.scripts || name in current.models) return null;
+        return { ...current, levels: { ...current.levels, [name]: text } };
+      }),
 
     setName: (name) =>
       edit((current) =>

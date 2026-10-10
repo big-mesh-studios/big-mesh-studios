@@ -45,8 +45,20 @@ import {
 export interface PlaceProject {
   readonly manifest: PlaceManifest;
   readonly scripts: PlaceFiles;
-  /** Attachment files by the name the manifest gives them. Nothing decodes these yet. */
+  /** Attachment files by the name the manifest gives them. */
   readonly models: Readonly<Record<string, Uint8Array>>;
+  /**
+   * Level documents by the name the manifest gives them, as the JSON text they are.
+   *
+   * **Text, so this is `isStringMap`'s half of the story rather than `isByteMap`'s.** A model
+   * is binary the engine decodes; a level is a document, and reading it back as anything other
+   * than the text it was written as would mean a conversion in the middle of a pipeline whose
+   * whole value is that the file is the artefact.
+   *
+   * Where `models` is "carried, not read" (see `place-file.ts`), a level **is** read: the
+   * engine puts it in the world before the script runs, and a script can ask for it by name.
+   */
+  readonly levels: Readonly<Record<string, string>>;
 }
 
 /**
@@ -68,10 +80,12 @@ export const isPlaceProject = (value: unknown): value is PlaceProject => {
   if (!isPlaceManifest(project.manifest)) return false;
   if (!isStringMap(project.scripts)) return false;
   if (!isByteMap(project.models)) return false;
+  if (!isStringMap(project.levels)) return false;
 
   const manifest = project.manifest;
   const scripts = project.scripts as Record<string, string>;
   const models = project.models as Record<string, Uint8Array>;
+  const levels = project.levels as Record<string, string>;
 
   // **Both directions.** A manifest naming a file the project does not hold is a place that will
   // not open; a file the manifest does not name is a file the loader will refuse the zip for, and
@@ -82,11 +96,17 @@ export const isPlaceProject = (value: unknown): value is PlaceProject => {
   for (const name of manifest.models ?? []) {
     if (!Object.hasOwn(models, name)) return false;
   }
+  for (const name of manifest.levels ?? []) {
+    if (!Object.hasOwn(levels, name)) return false;
+  }
   for (const name of Object.keys(scripts)) {
     if (!manifest.scripts.includes(name)) return false;
   }
   for (const name of Object.keys(models)) {
     if (!(manifest.models ?? []).includes(name)) return false;
+  }
+  for (const name of Object.keys(levels)) {
+    if (!(manifest.levels ?? []).includes(name)) return false;
   }
 
   return true;
@@ -120,6 +140,7 @@ export const emptyPlaceProject = (seed: number): PlaceProject => ({
   },
   scripts: { [STARTER_SCRIPT_FILE]: STARTER_SCRIPT },
   models: {},
+  levels: {},
 });
 
 /** The file a new place's starter program is written to. */
@@ -206,6 +227,7 @@ export const writePlaceZip = async (project: PlaceProject): Promise<Blob> => {
   for (const name of [
     ...project.manifest.scripts,
     ...(project.manifest.models ?? []),
+    ...(project.manifest.levels ?? []),
   ]) {
     if (!isSafePathName(name)) {
       throw new Error(
@@ -220,11 +242,17 @@ export const writePlaceZip = async (project: PlaceProject): Promise<Blob> => {
     );
   }
 
+  // **Re-derived, and absent when empty** for each of the two lists — the rule `models` already
+  // followed, and the reason a place with no attachments carries no key at all: an older reader
+  // then sees the manifest it always saw rather than one with two empty lists in it.
   const manifest: PlaceManifest = {
     ...project.manifest,
     scripts: Object.keys(project.scripts),
     ...(Object.keys(project.models).length > 0
       ? { models: Object.keys(project.models) }
+      : {}),
+    ...(Object.keys(project.levels).length > 0
+      ? { levels: Object.keys(project.levels) }
       : {}),
   };
 
@@ -236,6 +264,9 @@ export const writePlaceZip = async (project: PlaceProject): Promise<Blob> => {
   for (const [name, bytes] of Object.entries(project.models)) {
     zip.file(name, bytes);
   }
+  for (const [name, text] of Object.entries(project.levels)) {
+    zip.file(name, text);
+  }
 
   return zip.generateAsync({ type: "blob", compression: "DEFLATE" });
 };
@@ -243,17 +274,28 @@ export const writePlaceZip = async (project: PlaceProject): Promise<Blob> => {
 /**
  * The record a project becomes when its owner publishes it.
  *
- * **`models` is not carried, and nothing here drops it silently** — `writePlaceZip` is how a
- * place with attachments travels until a publisher exists to upload them as blobs, and a project
- * carrying one refuses to publish rather than publishing a place with a file missing from it.
+ * **`models` and `levels` are not carried, and nothing here drops either silently.**
+ *
+ * A model is the harder half: a record is JSON, an attachment is bytes, and carrying one means
+ * a blob upload, a URI and a CID, which needs a publisher this repository does not have. A level
+ * is *text* and could go into a record as-is — but a record is a published artefact with a
+ * committed NSID and a version field (ADR 0044), and changing its shape is a decision about the
+ * published format rather than about this function. So a place carrying either refuses, and
+ * `writePlaceZip` is how it travels until somebody decides otherwise.
+ *
+ * **Refused rather than dropped**, which is the whole of it: a place published without its level
+ * would be a place that opens fine and is missing the room somebody built.
  */
 export const makePlaceRecord = (
   project: PlaceProject,
   createdAt: string,
 ): PlaceRecord => {
-  if (Object.keys(project.models).length > 0) {
+  if (
+    Object.keys(project.models).length > 0 ||
+    Object.keys(project.levels).length > 0
+  ) {
     throw new Error(
-      "this place carries a file nothing can publish yet — save it as a zip instead",
+      "this place carries an attachment or a level nothing can publish yet — save it as a zip instead",
     );
   }
 
@@ -285,6 +327,7 @@ export const projectFromZip = (loaded: LoadedPlace): PlaceProject => ({
   manifest: loaded.manifest,
   scripts: loaded.files,
   models: loaded.models,
+  levels: loaded.levels,
 });
 
 /**
@@ -316,6 +359,10 @@ export const projectFromRecord = (value: unknown): PlaceProject | null => {
     },
     scripts,
     models: {},
+    // **A record carries neither, and says so rather than inventing them.** `makePlaceRecord`
+    // refuses a project that has either, so a record read back here is a project that never had
+    // one; writing `levels: {}` is the honest reading rather than a default that hides a change.
+    levels: {},
   };
 
   return isPlaceProject(project) ? project : null;

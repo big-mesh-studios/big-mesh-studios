@@ -1105,3 +1105,39 @@ export class Vector3 {
     return this.x === other.x && this.y === other.y && this.z === other.z;
   }
 }
+
+/* ------------------------------------------------------------------------ level */
+
+/**
+ * The levels this place carries, injected into this module by `bundle.ts`.
+ *
+ * **A bare module-scope binding rather than a property of `globalThis`.** The interpreter
+ * deliberately does not put anything on the context global (`interpreter.ts`), and it should
+ * not: this file is compiled to a CommonJS module body, so a `const __levels` appended after
+ * it is a local that `level()` closes over. A declaration, so `ts.transpileModule` erases it and
+ * nothing about it reaches the sandbox.
+ */
+declare const __levels: Record<string, string> | undefined;
+
+/**
+ * The level document this place carries under `name`, as the JSON text it was written as.
+ *
+ * **A string, and not a parsed object.** The bridge carries strings (ADR 0015), so anything
+ * structured has to cross as text and be parsed on the far side; returning a parsed object here
+ * would mean the boundary rules for exactly one call. A script that wants the level's items
+ * parses this once, and one place is not going to parse the same level in a loop.
+ *
+ * **Compiled in rather than asked for.** The levels are baked into this module by
+ * `bundle.ts` when the place is bundled, so this is a lookup in a table that is already there —
+ * not a query, and not a new member on the bridge. A place carrying no level under this name
+ * throws, naming the level, the way `createProp` throws on a model the place does not hold.
+ */
+export const level = (name: string): string => {
+  // `?.` on an undeclared-at-runtime binding would throw a ReferenceError rather than answer
+  // "none", and a place carrying no levels is the ordinary case rather than an error.
+  const found = typeof __levels === "undefined" ? undefined : __levels[name];
+  if (found === undefined) {
+    throw new PlaceError(`this place carries no level called "${name}"`);
+  }
+  return found;
+};
