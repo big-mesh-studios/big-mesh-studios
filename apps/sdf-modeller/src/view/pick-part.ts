@@ -1,50 +1,73 @@
 /**
  * Choosing which part a tap on the canvas meant.
  *
- * ## Why a part is picked by its own box and not by tracing its field
+ * ## Why this marches the model's own field rather than testing boxes
  *
- * **Because a tap asks which part a person meant, and a trace through the folded field
- * answers where the surface is.** Every part already knows its own box: the primitive table
- * gives its half-extents and `shapePadding` gives the reach its softness adds. Testing a ray
- * against a few of those is arithmetic, and it selects the part a person aimed at even where
- * that part is behind a blend it is joined to — which a single surface could not distinguish.
+ * **Because a part's box is not its shape, and the gap between them is where a wrong part
+ * gets picked.** The padding that keeps a shape's surface inside its box is a whole world
+ * unit (`shapePadding`), so a sphere of radius a half has a box of radius one and a half —
+ * three times its size. A tap that lands well clear of the sphere but inside that box selects
+ * it, which is exactly the "I did not touch that" a person notices and cannot explain.
  *
- * ## Why the ray is moved into the part's own frame
+ * So the tap is traced through the *folded* field — `pickAlong` over `operationsField`, the
+ * same field the mesher samples — to the surface the person can actually see. The trace
+ * answers where the surface is, and the part is then chosen as the one whose own surface is
+ * nearest that point. Neither step knows about a box.
  *
- * **Because a part may be turned and its box may not.** `@big-mesh-studios/csg` already has
- * `rotate` and `conjugate` for exactly this — the fold uses them to evaluate a primitive in
- * its own frame — so a tap is tested by turning the ray by the inverse of the part's
- * orientation and moving it to the part's origin. That reduces an oriented-box test to the
- * same axis-aligned one a part with no turn gets, with no second rotation convention and no
- * rotated corners to rebound. The length of the ray is unchanged by the rotation, so the
- * distance the test reports is the world one.
+ * ## Why the part is found by its own signed distance at the surface
  *
- * ## The one case where a part is skipped
+ * **Because the surface under the tap belongs to whichever part is nearest it there.** At a
+ * point on the folded surface, the part that put the surface there has a signed distance of
+ * about zero and every other part is further away, so the smallest absolute distance names
+ * it. This is the same arithmetic the fold itself does to blend the parts — `sdShape` in the
+ * part's own frame is one term of it — so a tap cannot disagree with the picture about where
+ * a part's surface is.
  *
- * **A box the camera is inside is not selected.** A ray starting inside a box enters it at
- * distance zero, so the nearest crossing is always that one — and a person who has carved a
- * room out of a subtracted box could never select anything they built inside it. Only `Box`
- * is skipped, because every other primitive is one box too and the case this exists for is
- * specifically the subtracted box standing in for a room.
+ * ## Why the surface point is moved into the part's own frame
+ *
+ * **Because a part may be turned and its own distance function does not know that.**
+ * `@big-mesh-studios/csg` already has `rotate` and `conjugate` for exactly this — the fold
+ * uses them to evaluate a primitive in its own frame — so the point the trace found is turned
+ * by the inverse of the part's orientation and moved to its origin before `sdShape` is asked.
+ * The rotation preserves lengths, so the distance that comes back is a world distance.
  */
 import type { Vec3 } from "@big-mesh-studios/core";
 import { conjugate, rotate } from "@big-mesh-studios/csg";
-import { primitiveHalfExtents, shapePadding } from "@big-mesh-studios/sdf";
-import { rayThroughScreen, toNdc, type Ray } from "@big-mesh-studios/picking";
+import {
+  pickAlong,
+  rayThroughScreen,
+  toNdc,
+  type Ray,
+} from "@big-mesh-studios/picking";
+import { primitiveHalfExtents, sdShape } from "@big-mesh-studios/sdf";
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
 
 import type { Part } from "../model/part";
+import {
+  DEFAULT_BUDGET,
+  operationsField,
+  partsToOperations,
+} from "../model/mesh-model";
 import type { ScreenPoint, ScreenSize } from "./move-handle";
 
 /**
  * How far a tap reaches, in world units.
  *
  * **A thousand, which is most of the camera's own far plane.** A part is selected if the ray
- * meets its box anywhere the camera can see it, and the framing keeps a model well inside
- * this — so the number is only here to keep a tap on empty space from reporting a part that
- * is somewhere off the far side of the scene.
+ * meets its surface anywhere the camera can see it, and the framing keeps a model well inside
+ * this — so the number is only here to keep a tap on empty space from tracing to something on
+ * the far side of the scene.
  */
 export const SELECT_REACH = 1000;
+
+/**
+ * How close to the surface a trace stops, in world units.
+ *
+ * **Half of the finest sample the mesher takes**, because that is the finest the surface is
+ * drawn to and a trace that stopped sooner would report a point the picture does not show. A
+ * tighter one costs steps and buys precision nothing on screen can use.
+ */
+const SURFACE_EPSILON = DEFAULT_BUDGET.voxelSize / 2;
 
 /** A box, in whichever frame the caller is working in. */
 export interface Bounds {
@@ -53,21 +76,16 @@ export interface Bounds {
 }
 
 /**
- * The half-size of a part's box, in the part's own frame.
+ * The half-size of a part's own box, in the part's own frame.
  *
- * **The primitive's half-extents padded by `shapePadding`,** which is the same number the
- * mesher uses: a soft part reaches beyond its own box by exactly that much, and a box that
- * did not admit it would make a blended limb unpickable where it is softest.
+ * **The primitive's half-extents and nothing else.** This is deliberately *not* the padded
+ * box the mesher stores a shape's surface in — that box carries a whole world unit of slack
+ * so the BVH cannot miss an operation, and around a part a couple of units across it would
+ * draw an outline at twice the part. Since the tap is traced to the true surface now (see the
+ * header), the outline is free to be the primitive's own extent, which is what a person reads
+ * as "this part". A soft part's blend reaches a little past this; the box marks the primitive.
  */
-export const partBoxHalf = (part: Part): Vec3 => {
-  const half = primitiveHalfExtents(part.shape);
-  const padding = shapePadding(part.shape, part.softness);
-  return {
-    x: half.x + padding,
-    y: half.y + padding,
-    z: half.z + padding,
-  };
-};
+export const partBoxHalf = (part: Part): Vec3 => primitiveHalfExtents(part.shape);
 
 /** The box a part occupies in its own frame, centred on its origin. */
 export const partLocalBox = (part: Part): Bounds => {
@@ -79,98 +97,75 @@ export const partLocalBox = (part: Part): Bounds => {
 };
 
 /**
- * Where a ray crosses a box, or `undefined` if it misses.
+ * A world point in the part's own frame.
  *
- * **The slab method**, with a negative near side clamped to zero so a box the ray starts
- * inside comes back as distance zero rather than being skipped — which is what makes the
- * camera-inside case in {@link pickPart} need its own check rather than falling out of the
- * arithmetic.
+ * **Moved to the part's origin and then turned by the inverse of its orientation.**
+ * `conjugate` of a unit quaternion is its inverse, so this is the same frame `sdShape`
+ * measures in and the same transform the fold applies.
  */
-export const rayBoxDistance = (ray: Ray, box: Bounds): number | undefined => {
-  let near = -Infinity;
-  let far = Infinity;
-
-  for (const axis of ["x", "y", "z"] as const) {
-    const origin = ray.origin[axis];
-    const direction = ray.direction[axis];
-    if (direction === 0) {
-      // Parallel to this slab: a hit only if the origin is already between the planes.
-      if (origin < box.min[axis] || origin > box.max[axis]) return undefined;
-      continue;
-    }
-    const enter = (box.min[axis] - origin) / direction;
-    const leave = (box.max[axis] - origin) / direction;
-    near = Math.max(near, Math.min(enter, leave));
-    far = Math.min(far, Math.max(enter, leave));
-    if (near > far) return undefined;
-  }
-
-  if (far < 0) return undefined;
-  return near < 0 ? 0 : near;
-};
-
-/** Whether a point is inside a box, on every face included. */
-export const boxContains = (point: Vec3, box: Bounds): boolean =>
-  point.x >= box.min.x &&
-  point.x <= box.max.x &&
-  point.y >= box.min.y &&
-  point.y <= box.max.y &&
-  point.z >= box.min.z &&
-  point.z <= box.max.z;
-
-/**
- * The ray as the part's own frame sees it.
- *
- * **The world point moved to the part's origin and then turned by the inverse of its
- * orientation.** `conjugate` of a unit quaternion is its inverse, and the direction is only
- * turned — a ray has no position of its own to move.
- */
-export const rayInPartFrame = (part: Part, ray: Ray): Ray => {
+export const pointInPartFrame = (part: Part, point: Vec3): Vec3 => {
   const inverse = conjugate(part.orientation);
-  return {
-    origin: rotate(
-      {
-        x: ray.origin.x - part.origin.x,
-        y: ray.origin.y - part.origin.y,
-        z: ray.origin.z - part.origin.z,
-      },
-      inverse,
-    ),
-    direction: rotate(ray.direction, inverse),
-  };
+  return rotate(
+    {
+      x: point.x - part.origin.x,
+      y: point.y - part.origin.y,
+      z: point.z - part.origin.z,
+    },
+    inverse,
+  );
+};
+
+/** How far a world point is from a part's own surface, whatever its boolean. */
+export const distanceToPart = (part: Part, point: Vec3): number =>
+  sdShape(part.shape, pointInPartFrame(part, point));
+
+/**
+ * The part whose own surface passes nearest `point`.
+ *
+ * **The smallest absolute signed distance.** A point on the folded surface is on the surface
+ * of whichever part put it there — that part's distance is about zero and the others are not —
+ * so the nearest surface names it. A point equidistant from two parts is genuinely ambiguous
+ * and the earlier part wins, which at least makes the answer stable.
+ */
+export const closestPart = (
+  parts: readonly Part[],
+  point: Vec3,
+): Part | undefined => {
+  let best: Part | undefined;
+  let bestAway = Infinity;
+  for (const part of parts) {
+    const away = Math.abs(distanceToPart(part, point));
+    if (away < bestAway) {
+      bestAway = away;
+      best = part;
+    }
+  }
+  return best;
 };
 
 /**
- * The nearest part a ray crosses within `reach`, or `undefined` for none.
+ * The part under a ray, or `undefined` for empty space.
  *
- * **Every part, and the nearest wins.** They are not tested in fold order, because a person
- * tapping a shape wants the shape they can see rather than the first one that happens to
- * contain the point — and the part in front may be a subtraction they made to cut a hole.
+ * **The ray is traced to the visible surface and the part chosen there**, so a tap selects
+ * what is drawn under it rather than what happens to be boxed around it. A ray that meets no
+ * surface — a tap on the sky, or a model made only of subtractions, which has no surface to
+ * meet — answers nothing, and the caller clears the selection.
  */
 export const pickPart = (
   parts: readonly Part[],
   ray: Ray,
   reach: number = SELECT_REACH,
 ): Part | undefined => {
-  let best: Part | undefined;
-  let bestDistance = Infinity;
+  if (parts.length === 0) return undefined;
 
-  for (const part of parts) {
-    const local = rayInPartFrame(part, ray);
-    const box = partLocalBox(part);
-    // The one skip. A camera inside a subtracted box would otherwise select that box for
-    // every tap, forever. See the header.
-    if (part.shape.type === "Box" && boxContains(local.origin, box)) continue;
+  // The folded field the mesher samples, so the surface the tap is tested against is the
+  // surface on screen. Built per tap rather than held, because a tap is rare and a held field
+  // would be a second thing to keep in step with the model.
+  const field = operationsField(partsToOperations(parts), DEFAULT_BUDGET);
+  const hit = pickAlong(field, ray, { reach, epsilon: SURFACE_EPSILON });
+  if (hit === undefined) return undefined;
 
-    const distance = rayBoxDistance(local, box);
-    if (distance === undefined || distance > reach) continue;
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = part;
-    }
-  }
-
-  return best;
+  return closestPart(parts, hit.point);
 };
 
 /**

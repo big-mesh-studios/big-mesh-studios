@@ -26,8 +26,8 @@ describe("the selection box", () => {
   it("stands on the part and is as big as its box", () => {
     const scene = new Scene();
     const box = createSelectionBox(scene);
-    // A hard box of `len` 1 has half-extents 1 padded by `shapePadding`'s 1, so a full size
-    // of 4 on every axis.
+    // A hard box of `len` 1 has half-extents 1, so a full size of 2 on every axis — the
+    // primitive's own extent, not the mesher's padded box.
     box.show(
       placedPart(
         "part",
@@ -41,7 +41,7 @@ describe("the selection box", () => {
     );
     const mesh = theMesh(scene);
     expect(mesh.position).toEqual({ x: 3, y: 4, z: 5 });
-    expect(mesh.scale).toEqual({ x: 4, y: 4, z: 4 });
+    expect(mesh.scale).toEqual({ x: 2, y: 2, z: 2 });
     expect(mesh.visible).toBe(true);
   });
 

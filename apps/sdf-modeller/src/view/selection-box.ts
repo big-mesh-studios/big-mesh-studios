@@ -11,10 +11,11 @@
  *
  * ## Why it is a box and not the shape
  *
- * **Because the tap that selected the part was made against its box too** (see `pick-part`),
- * so the thing that lights up is exactly the thing that was hit — a highlight that followed
- * the surface would light up a smaller region than the one a fingertip can select. The box is
- * also cheaper and needs no per-primitive branch.
+ * **Because a box is what tells a person where and how big a part is**, and it needs no
+ * per-primitive branch to draw. It is the primitive's own extent — not the padded box the
+ * mesher stores a shape in, which carries a whole world unit of slack and would outline a
+ * small part at twice its size — so the outline the tap now lands inside matches the part
+ * rather than the mesher's working box.
  *
  * **The box is turned with the part**, which is the one place this departs from the level
  * editor's highlight: a shape there cannot be rotated, and a part here can. An upright box
