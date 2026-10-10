@@ -420,17 +420,33 @@
     overscroll-behavior: contain;
   }
 
+  /*
+   * **The row is the tab list plus the chevron, and the list takes what is left.**
+   *
+   * `min-width: 0` on the list is load-bearing the way it is on the canvas: without it a flex
+   * item refuses to shrink below its content, so two tabs with part counts in them would push
+   * the chevron off the edge of a narrow phone rather than the tabs scrolling under it.
+   */
   .tabs {
     order: 3;
     display: flex;
-    flex-flow: row wrap;
-    gap: var(--ui-margin);
     align-items: center;
+    gap: var(--ui-margin);
     padding: var(--ui-margin);
     padding-left: max(var(--ui-margin), var(--ui-safe-left, 0px));
     padding-right: max(var(--ui-margin), var(--ui-safe-right, 0px));
     background: rgba(17, 17, 20, 0.95);
     pointer-events: all;
+  }
+
+  .tablist {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-flow: row wrap;
+    align-items: center;
+    gap: var(--ui-margin);
+    overflow-x: auto;
   }
 
   /*
@@ -595,4 +611,36 @@
 .tab:disabled {
   color: #343434;
   cursor: default;
+}
+
+/*
+ * **The chevron that folds the sheet to its tab row**, so the canvas gets the height back on a
+ * short phone. Square and `--ui-size` like every other control, so a thumb can find it — and it
+ * is only ever in the layout inside the narrow-screen query, because `.tabs` is `display: none`
+ * on a wide screen where the panels are overlays instead.
+ */
+.chevron {
+  flex: none;
+  min-width: var(--ui-size);
+  min-height: var(--ui-size);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: calc(var(--ui-size) / 4);
+  background: transparent;
+  color: #a9a9a9;
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.chevron:hover {
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.chevron:focus-visible {
+  outline: 2px solid #a9a9a9;
+  outline-offset: -2px;
 }

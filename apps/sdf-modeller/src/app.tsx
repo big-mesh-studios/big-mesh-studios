@@ -229,6 +229,21 @@ export function App() {
   const [sheet, setSheet] = createSignal<"parts" | "shape">("parts");
 
   /**
+   * Whether the sheet's content is showing, on a narrow screen.
+   *
+   * **A chevron folds the sheet down to its tab row**, so the canvas — which is the flex child
+   * above it — gets the height back on a short phone. This is the arrangement `voxelscape`'s
+   * level editor uses for its own sheet, and the reason to have one at all is that the canvas
+   * is the thing being worked on: on a 640px-tall phone the sheet's share plus four rows of
+   * `--ui-size` chrome is most of the screen.
+   *
+   * **Open by default, because the tabs are how a first-time visitor finds the parts list.**
+   * Collapsing is a thing to do once the model is what matters, not a state to open the
+   * application in.
+   */
+  const [sheetOpen, setSheetOpen] = createSignal(true);
+
+  /**
    * Where the document came from, and therefore where Save writes.
    *
    * **`nowhere` until something has been opened or saved**, which is the whole of what "unsaved"
@@ -1186,36 +1201,59 @@ export function App() {
 
         `aria-selected` rather than a class, because it is the same attribute a screen
         reader asks about and the styling hangs off it rather than duplicating the state.
+
+        **The chevron is a sibling of the `tablist` and not inside it.** A `role="tablist"` may
+        contain only tabs, so a collapse button in it would be a button announced as a tab — the
+        arrangement `voxelscape`'s sheet uses, and the reason the row is a container rather than
+        the list itself.
       */}
-      <div class={styles.tabs} role="tablist" aria-label="Panels">
-        {(
-          [
+      <div class={styles.tabs}>
+        <div class={styles.tablist} role="tablist" aria-label="Panels">
+          {(
             [
-              "parts",
-              `Parts${store.parts().length > 0 ? ` (${store.parts().length})` : ""}`,
-            ],
-            ["shape", "Shape"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            type="button"
-            role="tab"
-            class={styles.tab}
-            aria-selected={sheet() === id ? "true" : undefined}
-            onClick={() => {
-              setSheet(id);
-            }}
-          >
-            {label}
-          </button>
-        ))}
+              [
+                "parts",
+                `Parts${store.parts().length > 0 ? ` (${store.parts().length})` : ""}`,
+              ],
+              ["shape", "Shape"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              type="button"
+              role="tab"
+              class={styles.tab}
+              aria-selected={sheet() === id ? "true" : undefined}
+              onClick={() => {
+                // **Picking a tab opens a collapsed sheet**, so the tap that chooses a panel
+                // is the tap that shows it rather than one that appears to do nothing.
+                setSheet(id);
+                setSheetOpen(true);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          class={styles.chevron}
+          aria-expanded={sheetOpen() ? "true" : "false"}
+          aria-label={sheetOpen() ? "Collapse the panel" : "Expand the panel"}
+          title={sheetOpen() ? "Collapse the panel" : "Expand the panel"}
+          onClick={() => {
+            setSheetOpen((open) => !open);
+          }}
+        >
+          {sheetOpen() ? "▾" : "▴"}
+        </button>
       </div>
 
       <Show when={selected()}>
         {(part) => (
           <div
             class={styles.sheet}
-            data-hidden={sheet() === "parts" ? "" : undefined}
+            data-hidden={sheet() === "parts" || !sheetOpen() ? "" : undefined}
           >
             <TransformPanel part={part()} store={store} palette={palette} />
           </div>
@@ -1224,7 +1262,7 @@ export function App() {
 
       <div
         class={styles.sheet}
-        data-hidden={sheet() === "shape" ? "" : undefined}
+        data-hidden={sheet() === "shape" || !sheetOpen() ? "" : undefined}
       >
         <PartsPanel
           store={store}
