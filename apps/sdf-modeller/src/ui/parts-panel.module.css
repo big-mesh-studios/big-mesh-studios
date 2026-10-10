@@ -110,6 +110,50 @@
   cursor: default;
 }
 
+/*
+ * The row of panel-wide actions, of which there is one.
+ *
+ * **Its own element rather than a margin on the list**, because the panel is a flex column
+ * whose gap is `calc(var(--ui-margin) * 2)` — so a row of buttons with no wrapper would have
+ * to reproduce that gap by hand, and would stop reproducing it the day the gap changed.
+ */
+.actions {
+  display: flex;
+  gap: var(--ui-margin);
+}
+
+/*
+ * The duplicate button, drawn as the primitive buttons are.
+ *
+ * **A button and not a glyph**, because this is the only action the panel offers on a part
+ * rather than on a primitive, and a lone icon beside nine named buttons and a list of `×` is
+ * a control somebody has to read the title of to know what it does. `icons.tsx` has no copy
+ * glyph either, which is the same answer reached from the other direction.
+ */
+.duplicate {
+  flex: 1;
+  min-height: var(--ui-size);
+  padding: 0 var(--ui-margin);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: calc(var(--ui-size) / 4);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.duplicate:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.duplicate:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .list {
   margin: 0;
   padding: 0;

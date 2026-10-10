@@ -115,6 +115,19 @@ export interface ModelStore {
 
   /** Adds a part and selects it. Refused above `MAX_PARTS`. */
   readonly add: (part: Part) => boolean;
+  /**
+   * Copies a part under a fresh id, in the same place, and selects the copy.
+   *
+   * **The new part's id, or `undefined` if there was nothing to copy or no room for it.** A
+   * return value rather than a boolean because the caller cannot work out the copy's id
+   * itself — see `nextId`, which is the only thing allowed to hand one out — and a caller
+   * that needed the id was expected to guess at `part-N + 1`.
+   *
+   * **One part or the whole selection.** A caller wanting more than one of anything calls it
+   * more than once, and each call is its own undo step, which is what makes the button
+   * pressable five times rather than holding a key down.
+   */
+  readonly duplicate: (id: string) => string | undefined;
   /** Removes a part. Refused for an id that is not there. */
   readonly remove: (id: string) => boolean;
   /**
@@ -226,6 +239,39 @@ export const createModelStore = (initial: readonly Part[] = []): ModelStore => {
     );
   };
 
+  /**
+   * Puts a part into the model, selects it, and records the edit as one undo step.
+   *
+   * **Extracted from `add` so that `duplicate` records the same shape of entry under its own
+   * label.** Two nearly identical `record` calls would have been shorter, and the one that
+   * drifted later — a copy that undid as a removal, or restored at the wrong position —
+   * would have been a bug in one of them rather than in the one that was wrong.
+   *
+   * The refusals are here rather than at the callers because they are the same two: an id
+   * already in use, and a model at `MAX_PARTS`. `add` checks them and so does `duplicate`,
+   * and a caller that checked them would have to check them again the day a third arrives.
+   */
+  const insert = (part: Part, label: string): boolean => {
+    if (parts().some((existing) => existing.id === part.id)) return false;
+    if (parts().length >= MAX_PARTS) return false;
+    setParts((current) => [...current, part]);
+    setSelected(part.id);
+    record({
+      label,
+      apply: () => {
+        setParts((current) => [...current, part]);
+        setSelected(part.id);
+      },
+      invert: () => {
+        setParts((current) =>
+          current.filter((existing) => existing.id !== part.id),
+        );
+        setSelected(undefined);
+      },
+    });
+    return true;
+  };
+
   const store: ModelStore = {
     parts,
     selected,
@@ -273,25 +319,35 @@ export const createModelStore = (initial: readonly Part[] = []): ModelStore => {
       return candidate;
     },
 
-    add: (part) => {
-      if (parts().some((existing) => existing.id === part.id)) return false;
-      if (parts().length >= MAX_PARTS) return false;
-      setParts((current) => [...current, part]);
-      setSelected(part.id);
-      record({
-        label: `add ${part.id}`,
-        apply: () => {
-          setParts((current) => [...current, part]);
-          setSelected(part.id);
-        },
-        invert: () => {
-          setParts((current) =>
-            current.filter((existing) => existing.id !== part.id),
-          );
-          setSelected(undefined);
-        },
-      });
-      return true;
+    add: (part) => insert(part, `add ${part.id}`),
+
+    duplicate: (id) => {
+      // **Read before the write, because Solid 2 defers signal writes to the flush.** The
+      // `parts()` below is the model as it stands, and it is only the model as it stands
+      // because `insert` has not run yet.
+      const existing = parts().find((part) => part.id === id);
+      if (existing === undefined) return undefined;
+
+      /**
+       * The copy, as a spread rather than as a `placedPart`.
+       *
+       * **`placedPart` takes no `material`,** and a copy rebuilt through it would come back
+       * a plain surface where the original was something else — a difference the person who
+       * duplicated it would see on screen and could not account for, and one that the file
+       * format faithfully carries (ADR 0048).
+       *
+       * **The nested objects are shared with the original, deliberately.** `shape`,
+       * `origin`, `orientation` and `colour` are all the same references, which is safe
+       * because nothing in this store writes through a part: `replace` above builds a new
+       * object for whatever it changes, and `Part` is readonly everywhere else. Cloning them
+       * would cost four objects per press to protect against a mutation that cannot happen.
+       */
+      const copy: Part = { ...existing, id: store.nextId() };
+
+      // **`undefined` rather than the id, when there was no room.** The refusal is the
+      // caller's to act on — a button that has to know whether it worked before it hands the
+      // pointer to the move tool — so it is not swallowed here.
+      return insert(copy, `duplicate ${id}`) ? copy.id : undefined;
     },
 
     remove: (id) => {

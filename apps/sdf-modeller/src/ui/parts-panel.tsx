@@ -55,8 +55,20 @@ const defaultShape = (type: ShapeType): Part["shape"] => {
 export function PartsPanel(props: {
   store: ModelStore;
   primitives: readonly ShapeType[];
+  /**
+   * Told when a copy landed, and what its id is.
+   *
+   * **A callback rather than the panel reaching for the tool itself**, because the tool is
+   * the shell's: `tool` lives in `App` next to the canvas and the handles, and a panel that
+   * changed it from under here would be a second place that decides what a press on the model
+   * means. So the panel does the copying — it is the list — and reports that it happened.
+   */
+  onDuplicate?: (id: string) => void;
 }) {
   const full = (): boolean => props.store.parts().length >= MAX_PARTS;
+
+  /** The id a duplicate would copy, or nothing because there is nothing to copy. */
+  const duplicable = (): string | undefined => props.store.selected();
 
   return (
     <section class={styles.panel} aria-label="Parts">
@@ -91,6 +103,38 @@ export function PartsPanel(props: {
         Parts
         <span class={styles.count}>{props.store.parts().length}</span>
       </h2>
+
+      {/*
+        **One button for the selection, rather than a button on every row.**
+        *
+        A row's two targets are already the widest thing in a 16rem panel on a phone, and a
+        copy is almost always wanted for the part somebody is working on rather than for the
+        ninth one down the list — and the ninth one is two taps away, the same as the eighth.
+        Adding a third target to all of them would cost every row to serve the few that need
+        it.
+       */}
+      <div class={styles.actions}>
+        <button
+          type="button"
+          class={styles.duplicate}
+          // **Disabled with nothing selected, for the reason the move tool is**: there is no
+          // part to copy, and a button that would refuse every press is a button that teaches
+          // a person it is broken.
+          disabled={full() || duplicable() === undefined}
+          title="A copy of the selected part, in the same place — then drag it where it goes"
+          onClick={() => {
+            const source = duplicable();
+            if (source === undefined) return;
+            const copied = props.store.duplicate(source);
+            // **Reported only once it has worked.** A refused copy leaves the selection and
+            // the list exactly as they were, and handing the pointer to the move tool for a
+            // duplicate that did not happen would move the part somebody was looking at.
+            if (copied !== undefined) props.onDuplicate?.(copied);
+          }}
+        >
+          Duplicate
+        </button>
+      </div>
 
       <ul class={styles.list}>
         <For each={props.store.parts()}>

@@ -1226,7 +1226,27 @@ export function App() {
         class={styles.sheet}
         data-hidden={sheet() === "shape" ? "" : undefined}
       >
-        <PartsPanel store={store} primitives={PRIMITIVE_NAMES} />
+        <PartsPanel
+          store={store}
+          primitives={PRIMITIVE_NAMES}
+          onDuplicate={() => {
+            /**
+             * **Straight into move mode, because the copy is on top of the original.**
+             *
+             * A duplicate lands at the same origin, so nothing on screen has moved and the
+             * only thing that has happened is that there are now two rows in the list reading
+             * the same three numbers. The move tool is what turns that into a second part
+             * somebody can place: the arrows are already on the copy, and dragging one is the
+             * next gesture the way drawing it was the last one.
+             *
+             * **Nothing else is needed for the copy to be selected** — `duplicate` selects it,
+             * so the `selected` memo above is already pointing at it and the transform panel is
+             * already showing it. See `standHandles`, which reads the tool every frame, which
+             * is why the arrows appear on the next one rather than needing to be told.
+             */
+            setTool("move");
+          }}
+        />
       </div>
 
       {/*

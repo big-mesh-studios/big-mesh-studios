@@ -377,6 +377,134 @@ describe("nextId", () => {
   });
 });
 
+describe("duplicate", () => {
+  it("copies a part in the same place, under a fresh id", () => {
+    const store = createModelStore([sphereAt("a", 1)]);
+    const copied = store.duplicate("a");
+    settle();
+    expect(copied).toBeDefined();
+    expect(shape(store)).toEqual(["a@1", `${copied}@1`]);
+    // The original keeps the id it always had — a copy that took over its source's id would
+    // make a selection, an undo entry and a save file each ambiguous about which part they
+    // name.
+    expect(store.part("a")!.origin).toEqual({ x: 1, y: 0, z: 0 });
+  });
+
+  it("selects the copy rather than leaving the original selected", () => {
+    const store = createModelStore([sphereAt("a", 1), sphereAt("b", 5)]);
+    store.select("b");
+    settle();
+    const copied = store.duplicate("b");
+    settle();
+    expect(store.selected()).toBe(copied);
+  });
+
+  it("copies every field, including the ones `placedPart` cannot state", () => {
+    // **`material` is the field this exists for.** `placedPart` takes no override for it, so a
+    // copy rebuilt through `placedPart` would come back a plain surface — which the file
+    // format carries faithfully (ADR 0048), so the mistake would survive a save and a reopen.
+    const painted: Part = {
+      ...placedPart(
+        "a",
+        { type: "Capsule", len: 2, radius: 0.7 },
+        { x: 1, y: 2, z: 3 },
+      ),
+      orientation: fromEuler(0.3, 0.4, 0.5),
+      combine: "Subtract",
+      softness: 0.2,
+      colour: { r: 10, g: 20, b: 30 },
+      opacity: 0.5,
+      material: 4,
+    };
+    const store = createModelStore([painted]);
+    const copied = store.duplicate("a");
+    settle();
+
+    expect(store.part(copied!)).toEqual({
+      ...painted,
+      id: copied,
+    });
+  });
+
+  it("hands the copy an id the model is not already using", () => {
+    // **The copy is built from `nextId`, so a file that arrived holding `part-7` cannot be
+    // collided with.** `nextId` skips ids the model holds; see its own note.
+    const store = createModelStore([
+      placedPart("part-7", { type: "Sphere", radius: 1 }, { x: 0, y: 0, z: 0 }),
+    ]);
+    const copied = store.duplicate("part-7");
+    settle();
+    expect(copied).not.toBe("part-7");
+    expect(store.parts().filter((part) => part.id === copied)).toHaveLength(1);
+  });
+
+  it("refuses a part that is not there, and records nothing", () => {
+    const store = createModelStore([sphereAt("a", 1)]);
+    expect(store.duplicate("nope")).toBeUndefined();
+    settle();
+    expect(shape(store)).toEqual(["a@1"]);
+    expect(store.canUndo()).toBe(false);
+  });
+
+  it("refuses above the ceiling, and leaves the model as it was", () => {
+    const store = createModelStore();
+    for (let i = 0; i < MAX_PARTS; i++) store.add(sphereAt(`p${i}`, i));
+    settle();
+    store.select("p0");
+    settle();
+
+    expect(store.duplicate("p0")).toBeUndefined();
+    settle();
+    expect(store.parts().length).toBe(MAX_PARTS);
+  });
+
+  it("is one undo step that takes the copy away, and a redo that puts it back", () => {
+    const store = createModelStore([sphereAt("a", 1)]);
+    const copied = store.duplicate("a");
+    settle();
+    expect(store.undoLabel()).toBe("duplicate a");
+
+    store.undo();
+    settle();
+    expect(shape(store)).toEqual(["a@1"]);
+
+    store.redo();
+    settle();
+    expect(shape(store)).toEqual(["a@1", `${copied}@1`]);
+  });
+
+  it("copies the part as it stands rather than as it was added", () => {
+    // The copy takes the shape the person is looking at — a duplicate of a moved, recoloured,
+    // softened part is a duplicate of *that* part.
+    const store = createModelStore([sphereAt("a", 1)]);
+    store.transform("a", {
+      origin: { x: 4, y: 5, z: 6 },
+      colour: { r: 1, g: 2, b: 3 },
+      softness: 0.5,
+    });
+    settle();
+    const copied = store.duplicate("a");
+    settle();
+
+    expect(store.part(copied!)!.origin).toEqual({ x: 4, y: 5, z: 6 });
+    expect(store.part(copied!)!.colour).toEqual({ r: 1, g: 2, b: 3 });
+    expect(store.part(copied!)!.softness).toBe(0.5);
+  });
+
+  it("does not leave the copy sharing a part object the original can be moved through", () => {
+    // **The copy shares `origin` by reference, and that is only safe because nothing writes
+    // through a part.** This is the assertion that would catch a change that started
+    // mutating one in place: moving the copy would drag the original with it.
+    const store = createModelStore([sphereAt("a", 1)]);
+    const copied = store.duplicate("a");
+    settle();
+
+    store.transform(copied!, { origin: { x: 9, y: 0, z: 0 } });
+    settle();
+    expect(shape(store)).toEqual(["a@1", `${copied}@9`]);
+  });
+});
+
 describe("load", () => {
   const three = [sphereAt("a", 0), sphereAt("b", 2), sphereAt("c", 4)];
 
