@@ -276,12 +276,19 @@
     order: 3;
     width: auto;
     max-width: none;
-    max-height: 42dvh;
 
-    /* **`min-height: 0` so the panel can actually shrink.** A flex item defaults to
-       `min-height: auto`, which refuses to go below its content — so with a long parts
-       list this would push itself past the bottom of the window instead of scrolling. */
-    min-height: 0;
+    /* **The panel does not bound or scroll itself; the sheet it sits in does.**
+       It used to carry `max-height: 42dvh` and its own `overflow-y: auto`, from when it was
+       an overlay pinned to the window. Inside the narrow layout's sheet those are two nested
+       scroll boxes, and the panel's `42dvh` can come out *taller* than the sheet's `45%` —
+       the sheet's percentage resolves against the root's height while `dvh` is the dynamic
+       viewport, and the two disagree on a phone whose browser chrome is showing. When it did,
+       the sheet clipped the panel and the panel's own `overscroll-behavior: contain` stopped
+       the gesture chaining out to it: a finger scrolled the panel's content to its end and no
+       further, leaving the last rows of the list below the sheet and unreachable. The panel
+       grows to its content now and the sheet is the one place that scrolls. */
+    max-height: none;
+    overflow: visible;
     padding: var(--ui-margin);
     padding-top: var(--ui-margin);
     border-top: 1px solid rgba(255, 255, 255, 0.1);

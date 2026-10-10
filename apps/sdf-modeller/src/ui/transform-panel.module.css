@@ -431,14 +431,20 @@
     /* **Static, for the same reason as the parts panel** — the two are siblings in the
        narrow layout's flex column and cannot overlap. Full width rather than `44vw`,
        because this panel is a form and a form at 44% of a phone is a form whose fields
-       are 40px wide. */
+       are 40px wide.
+
+       **Unbounded and unscrolled, because the sheet above it owns the scroll.** Its own
+       `max-height: 52dvh` and `overflow-y: auto` were left over from the overlay layout and
+       made a second scroll box inside the sheet; where `52dvh` exceeded the sheet's `45%`
+       the sheet clipped the panel and `overscroll-behavior: contain` on the panel stopped
+       the gesture chaining out, so the colour picker and the boolean pair at the bottom could
+       not be reached. See the parts panel for the same fix at length. */
     position: static;
     order: 3;
     width: auto;
     max-width: none;
-    max-height: 52dvh;
-    min-height: 0;
-    overflow-y: auto;
+    max-height: none;
+    overflow: visible;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
   }
 
