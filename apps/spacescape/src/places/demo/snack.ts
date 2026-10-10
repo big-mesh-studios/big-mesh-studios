@@ -55,6 +55,7 @@ import {
   openDialog,
   onTick,
   removeEntity,
+  removeLight,
   setTime,
   setTimeSpeed,
   takeItem,
@@ -1084,10 +1085,23 @@ const timer = (id: string): void => {
  * unison — a room of synchronous flickering reads as a broken renderer. Driven from the tick
  * rather than from a timer because it is sixty small writes a second and a timer per light would
  * be sixty events a second through the interpreter.
+ *
+ * **Removed before it is replaced, for the same reason `cookEgg` does that to the egg.** There is
+ * no `light-set`: the vocabulary has `light-add` and `light-remove`, and `light-add` refuses an id
+ * that already exists. So re-issuing a light under its own id is not a write, it is a refusal —
+ * and this loop ran on every tick from the first one the fire was lit, which meant it was refused
+ * from the first tick onwards. The fire kept the brightness `ignite` gave it and stood perfectly,
+ * still and dead, while the host reported `a light called "fire-0" exists` sixty times a second.
+ *
+ * **Invisible for as long as it was unreachable, which is the uncomfortable part.** `fires` was
+ * empty until a timer fired, and no timer fired, so this loop had never run in anger. Fixing the
+ * clock is what brought it out: the fire ignited for the first time since it was written, and
+ * immediately began complaining sixty times a second about its own id.
  */
 const flicker = (now: number): void => {
   for (const fire of fires) {
     const wobble = Math.sin(now / 90 + fire.phase * 1.7) * 0.5 + 0.5;
+    removeLight(fire.id);
     createLight({
       id: fire.id,
       at: [

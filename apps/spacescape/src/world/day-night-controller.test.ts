@@ -187,10 +187,16 @@ describe("what the controller must not hold", () => {
     // that consume it, because the second kind has to be enumerated in the first.
     // `app.tsx` owns the clock and the five materials and writes the state into them;
     // if the clock ever grows a `material` field, this is the test that says no.
+    //
+    // The allowlist is the four numbers it is allowed to be made of — `realMs` being
+    // the frame's reading rather than the sky's, and just as much a number.
     const clock = new DayNightController();
     const fields = Object.getOwnPropertyNames(clock).filter(
       (name) =>
-        name !== "elapsed" && name !== "timeOverride" && name !== "timeSpeed",
+        name !== "elapsed" &&
+        name !== "realMs" &&
+        name !== "timeOverride" &&
+        name !== "timeSpeed",
     );
     expect(fields).toEqual([]);
   });
@@ -212,10 +218,13 @@ describe("what the controller must not hold", () => {
 });
 
 /**
- * `nowMs`, which is what a place's events are timestamped with.
+ * `nowMs`, which is what a place's timers are timed against.
  *
- * The property that matters is not the arithmetic — it is that this reads **the shared clock**
- * rather than the wall, and that it agrees with the light on screen.
+ * The property that matters is not the arithmetic — it is that this is a clock the host
+ * owns and hands to everybody, rather than one each place reads off the wall, and that
+ * **moving the sky does not move it.** The second half is the newer rule and the one that
+ * was wrong: this used to report the hour being shown, so a place that pinned or paused
+ * the sky to stage a scene also stopped its own timers, silently and without error.
  */
 describe("the clock as a place's event time", () => {
   it("starts at zero", () => {
@@ -228,33 +237,36 @@ describe("the clock as a place's event time", () => {
     expect(clock.nowMs()).toBe(2500);
   });
 
-  it("advances at the clock's own speed, not at real time", () => {
-    // **A paused sky is a paused world.** At 0x the clock is held still, and a
-    // place's timers measured against real time would fire anyway — which is how
-    // a place ends up building something while the player is looking at a frozen
-    // afternoon.
+  it("keeps advancing while the sky is held still", () => {
+    // **A frozen sky is not a frozen world.** Zero speed is how a place holds an hour
+    // for a scene, and it must not also stop the script — otherwise every place that
+    // wanted a fixed hour had to give up its timers, which is the `snack` demo's whole
+    // state machine.
     const clock = new DayNightController();
     clock.setSpeed(0);
     clock.tick(5);
-    expect(clock.nowMs()).toBe(0);
+    expect(clock.nowMs()).toBe(5000);
   });
 
-  it("runs at the clock's speed when it is not one", () => {
+  it("is not scaled by the clock's speed", () => {
+    // **The speed is a knob for looking at a sky, not for running a place.** Ten times
+    // real time fast-forwards the day; it does not make an egg take six tenths of a
+    // second to fry.
     const clock = new DayNightController();
     clock.setSpeed(4);
     clock.tick(2);
-    expect(clock.nowMs()).toBe(8000);
+    expect(clock.nowMs()).toBe(2000);
   });
 
-  it("reports the second that is shown, so a pinned clock pins the events too", () => {
-    // **The same rule `tick` states for the light.** A pinned sky with events
-    // running on would be a world where the sun is frozen and the lanterns are
-    // not, and a place that times something to the day would be wrong by exactly
-    // the amount the clock is pinned.
+  it("keeps advancing while the sky is pinned", () => {
+    // **The same separation, for the pin.** A pinned sky with the world's time inside it
+    // is what a place stages a scene with, and the timers are how the scene then
+    // develops.
     const clock = new DayNightController();
     clock.tick(30);
     clock.jumpTo(NOON_SECONDS);
-    expect(clock.nowMs()).toBe(NOON_SECONDS * 1000);
+    clock.tick(10);
+    expect(clock.nowMs()).toBe(40_000);
   });
 
   it("keeps running under a pin, so releasing it returns to where the world would be", () => {
@@ -262,19 +274,23 @@ describe("the clock as a place's event time", () => {
     clock.jumpTo(NOON_SECONDS);
     clock.tick(40);
     clock.clearOverride();
-    // **Pinning the *light* is not pausing the world** — the distinction the
-    // controller's own doc comment is about, and the reason `state.elapsed` and
-    // `nowMs()` disagree while a pin is held.
+    // **The two readings, told apart.** `state.elapsed` is where the sky is and what
+    // releasing the pin returns to; `nowMs()` is the frame's, and a pin never moved it.
+    expect(clock.state.elapsed).toBe(40);
     expect(clock.nowMs()).toBe(40_000);
   });
 
-  it("agrees with the light it just produced", () => {
-    // **One answer to "what hour is it".** Read the same frame twice — once as
-    // the material would, once as a place's event would — and they must be the
-    // same number, or a place reacting to the hour and a player seeing the hour
-    // are looking at two different afternoons.
+  it("comes due for a place that pinned *and* held the hour, which is what broke", () => {
+    // **The regression, in the shape the demo actually asks for.** `snack` opens with
+    // `setTime(900)` and `setTimeSpeed(0)` — a pinned 4 AM that does not move — and then
+    // arms four timers. Under the old rule the host computed `dueAt` from a number that
+    // never changed, so all four sat pending forever: no fire, no fried egg, and a
+    // cashier who never went on break. Nothing reported it.
     const clock = new DayNightController();
-    const light = clock.tick(137);
-    expect(clock.nowMs()).toBe(light.elapsed * 1000);
+    clock.jumpTo(900);
+    clock.setSpeed(0);
+    const armedAt = clock.nowMs();
+    clock.tick(60); // a full minute of real frames, on a sky that has not moved
+    expect(clock.nowMs() - armedAt).toBe(60_000);
   });
 });

@@ -15,6 +15,7 @@ import {
 } from "../host";
 import { PlaceRegistry } from "../place-registry";
 import type { ClockCommands } from "../../console/commands";
+import { DayNightController } from "../../world/day-night-controller";
 import type { FigureModel } from "../model-library";
 import { demoPlace } from "../demos";
 import { PLATFORM_LIFT } from "./snack-tables";
@@ -75,7 +76,19 @@ interface Running {
   choose(entityId: string, option: number): void;
 }
 
-const start = async (): Promise<Running> => {
+/**
+ * Starts the demo, optionally against the world's real clock.
+ *
+ * **`live` wires the actual `DayNightController` the way `app.tsx` does**, and without it
+ * these tests cannot see the clock at all: the default `now` is a hand-advanced counter
+ * and the default `clock` is a stub whose `jumpTo` and `setSpeed` do nothing. That is the
+ * right default for nineteen tests about the state machine, and the wrong one for any test
+ * about time — the demo opens by pinning the sky to 4 AM and holding it there, and against
+ * the stub that pair of calls is invisible.
+ */
+const start = async (
+  options: { readonly live?: boolean } = {},
+): Promise<Running> => {
   const demo = demoPlace("snack");
   if (demo === undefined) throw new Error("the snack demo is not shipped");
 
@@ -124,7 +137,10 @@ const start = async (): Promise<Running> => {
     clearCamera: () => {},
   };
 
-  const clock: ClockCommands = {
+  const sky: DayNightController | undefined =
+    options.live === true ? new DayNightController() : undefined;
+
+  const clock: ClockCommands = sky ?? {
     jumpTo: () => {},
     setSpeed: () => {},
     clearOverride: () => {},
@@ -135,7 +151,7 @@ const start = async (): Promise<Running> => {
     files: demo.files,
     entry: demo.entry,
     seed: 20260901,
-    now: () => NOW + elapsed,
+    now: sky === undefined ? () => NOW + elapsed : () => sky.nowMs(),
     world,
     effects,
     clock,
@@ -154,7 +170,11 @@ const start = async (): Promise<Running> => {
     dialog: () => dialog,
     step: () => host.step(),
     advance: (ms) => {
-      elapsed += ms;
+      // **Ticking the real clock rather than moving a counter**, so the demo's own
+      // `setTime(900)` and `setTimeSpeed(0)` have already been applied and the time it
+      // sees is the time the application would hand it.
+      if (sky === undefined) elapsed += ms;
+      else sky.tick(ms / 1000);
       host.step();
     },
     go: (x, y, z) => {
@@ -350,6 +370,63 @@ describe("the snack demo", () => {
     expect(r.figures.get("stove-item")?.model.name).toBe("egg");
     r.advance(6_000);
     expect(r.figures.get("stove-item")?.model.name).toBe("friedegg");
+    r.host.dispose();
+  });
+
+  /**
+   * The same four timers again, against the world's real clock.
+   *
+   * **Every test above reaches its timers through the hand-advanced counter, which cannot
+   * fail the way the demo failed in the application.** The demo opens with `setTime(900)`
+   * and `setTimeSpeed(0)` — a 4 AM that is pinned and held — and every one of these timers
+   * is armed after that. For as long as the place clock *was* the hour on the sky, the host
+   * computed each `dueAt` from a number that had stopped moving, so all four sat pending
+   * forever: the egg stayed raw, the kitchen never caught, and the cashier never left. There
+   * was no error and no notice, because from the host's side nothing had failed — the timers
+   * were simply waiting for a moment that never arrived.
+   *
+   * So these run `start({ live: true })`, where the demo's `setTime` and `setTimeSpeed` reach
+   * the actual controller and `nowMs()` answers what the application would answer.
+   */
+  it("cooks an egg even though the demo holds the clock at 4 AM", async () => {
+    const r = await start({ live: true });
+    r.use("buy-egg");
+    r.useHeld("stove");
+    expect(r.figures.get("stove-item")?.model.name).toBe("egg");
+    r.advance(6_000);
+    expect(r.figures.get("stove-item")?.model.name).toBe("friedegg");
+    r.host.dispose();
+  });
+
+  it("sets the kitchen on fire when the stove is left on something that burns", async () => {
+    // The one that was reported. Cola on the stove is `after("fire", 5000)` — anything
+    // that is not an egg or a brew catches, and cola is the first thing on the shelf.
+    const r = await start({ live: true });
+    r.use("buy-cola");
+    r.useHeld("stove");
+    r.advance(5_000);
+    // **The narration is the assertion, not the light.** The fires are six `createLight`
+    // calls, and how many of them the renderer can afford is a different system's budget;
+    // what this timer owes the player is the kitchen catching, and it says so.
+    expect(r.narrations.at(-1)).toBe("The kitchen catches fire!");
+    r.host.dispose();
+  });
+
+  it("lets the fire burn to an ending, and the cashier still goes on break", async () => {
+    const r = await start({ live: true });
+    r.use("buy-cola");
+    r.useHeld("stove");
+    r.advance(5_000);
+    r.go(...OUTSIDE); // nowhere it can catch you
+    r.advance(8_000); // `burn`, armed by the fire itself
+    expect(r.endings).toEqual(["Fire"]);
+
+    // **And the longest timer in the demo**, which was equally dead: 231 seconds on a
+    // clock that had been stopped since the first frame.
+    const broke = await start({ live: true });
+    broke.advance(231_000);
+    expect(broke.figures.get("cashier")?.transform.at.x).toBe(44 * 5);
+    broke.host.dispose();
     r.host.dispose();
   });
 

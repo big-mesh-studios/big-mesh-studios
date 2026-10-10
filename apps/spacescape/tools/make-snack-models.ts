@@ -105,8 +105,17 @@ type RGB = readonly [number, number, number];
  * It was found by the test that compares two builds of the same model and found them different
  * in four bytes. Those bytes are the DOS date and time in the local file header, and the two
  * builds had crossed a second boundary.
+ *
+ * **`Date.UTC`, not the bare constructor, and that is the second half of the same bug.** The
+ * four-argument form reads as *local* midnight, which is a different instant in every timezone —
+ * and `jszip` writes the DOS fields from the UTC getters, so in any zone east of Greenwich local
+ * midnight is the *previous* UTC day, `1979 - 1980 = -1` underflows the seven-bit year field, and
+ * every model comes out stamped `2107-12-31 14:00`. The committed files carried exactly that,
+ * which is how this was found a second time: the same assertion failed in CI and passed on the
+ * machine that wrote them. Building the instant in UTC makes the bytes identical from Auckland
+ * to Los Angeles, which is the property the first paragraph was after in the first place.
  */
-const ZIP_EPOCH = new Date(1980, 0, 1, 0, 0, 0);
+const ZIP_EPOCH = new Date(Date.UTC(1980, 0, 1, 0, 0, 0));
 
 /** The identity rotation: every part below is axis-aligned and says so by saying nothing. */
 const IDENTITY: Quat = { x: 0, y: 0, z: 0, w: 1 };

@@ -23,6 +23,11 @@
  * There is exactly one clock per scene, and everything that needs the time of day takes
  * its state from the same `tick` — a consumer that derived its own hour would be a
  * second answer to the same question.
+ *
+ * The one thing that is *not* shared is `nowMs`, and the split is deliberate rather than
+ * accidental. This object holds two readings of time: `elapsed` and the pin, which are
+ * the sky's and which a place may move, and `realMs`, which is the frame's and which it
+ * may not. They are counted together in `tick` and never derived from one another.
  */
 
 import {
@@ -62,6 +67,7 @@ export interface ClockState {
  */
 export class DayNightController {
   private elapsed = 0;
+  private realMs = 0;
   private timeOverride: number | undefined;
   private timeSpeed = 1;
 
@@ -73,6 +79,10 @@ export class DayNightController {
    * @returns Everything the frame's materials need, from one derivation.
    */
   tick(dt: number): DayNightState {
+    // **The two clocks are counted here and nowhere else.** `elapsed` is the world's,
+    // and a place is allowed to stop it or pin it; `realMs` is the frame's, and it is
+    // not. See `nowMs` for why that one is deliberately not derived from the sky.
+    this.realMs += dt * 1000;
     this.elapsed += dt * this.timeSpeed;
     return dayNightState(this.shownTime());
   }
@@ -87,19 +97,34 @@ export class DayNightController {
   }
 
   /**
-   * The second the clock is showing, in milliseconds.
+   * The frame clock, in milliseconds. What a place's timers and events are timed against.
    *
-   * **What a place's events are timestamped with.** Reading `Date.now()` here instead would
-   * be the obvious thing and would break convergence: two peers a few hundred milliseconds
-   * apart order the same facts differently and never re-converge (ADR 0016). So the shared
-   * clock *is* the clock that draws the sky, which means a place's events and a place's
-   * light cannot disagree about what time it is.
+   * **Injected rather than `Date.now()`, and that part has not changed.** Reading the wall
+   * would be the obvious thing and would break convergence: two peers a few hundred
+   * milliseconds apart order the same facts differently and never re-converge (ADR 0016).
+   * So the value is still one the host owns and hands to everybody, rather than one each
+   * peer goes and reads.
    *
-   * `shownTime()` rather than `elapsed`, because a pinned sky is pinned for its events too —
-   * the same rule the `tick` doc comment states for the light.
+   * **But it is deliberately *not* the hour the sky is showing, which is what it used to
+   * be, and the reason is a bug this file shipped.** It read `shownTime()`, so pinning or
+   * pausing the sky also stopped time for every place — and a place pins and pauses the sky
+   * to stage a scene, which is the one thing places legitimately do to a clock. The `snack`
+   * demo pins to 4 AM and holds the hour there, and its four `after` timers — the egg that
+   * fries, the kitchen that catches, the fire that burns, the cashier's break — therefore
+   * never came due. Nothing failed and nothing said so: the timers simply sat pending
+   * forever, because `dueAt` was computed from a number that never moved.
+   *
+   * **So the hour is presentation and the elapsed time is not.** A place may still freeze
+   * the sky, pin it, or run the day at ten times real speed, and its own timers keep their
+   * own time — which is also what the sibling did, where the two were different systems and
+   * a pinned hour never touched `getNow`.
+   *
+   * The cost is that `/clock:speed 10` fast-forwards the day without fast-forwarding the
+   * places in it. That is the right way round: the speed is a knob for looking at a sky,
+   * and a script that asked for an egg to take six seconds meant six seconds.
    */
   nowMs(): number {
-    return this.shownTime() * 1000;
+    return this.realMs;
   }
 
   /**
