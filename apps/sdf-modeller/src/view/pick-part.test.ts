@@ -39,11 +39,11 @@ const aBox = (
   over: Parameters<typeof placedPart>[1],
   origin: [number, number, number] = [0, 0, 0],
 ) =>
-  placedPart(
-    `part-${made++}`,
-    over,
-    { x: origin[0], y: origin[1], z: origin[2] },
-  );
+  placedPart(`part-${made++}`, over, {
+    x: origin[0],
+    y: origin[1],
+    z: origin[2],
+  });
 
 describe("the box a part occupies", () => {
   it("is the primitive's half-extents padded by its softness", () => {
@@ -78,7 +78,9 @@ describe("the box a part occupies", () => {
     // by the table rather than by a second list here (ADR 0025).
     const sphere = partBoxHalf(aBox({ type: "Sphere", radius: 7 }));
     expect(sphere.y).toBeGreaterThanOrEqual(7);
-    const cylinder = partBoxHalf(aBox({ type: "Cylinder", len: 20, radius: 5 }));
+    const cylinder = partBoxHalf(
+      aBox({ type: "Cylinder", len: 20, radius: 5 }),
+    );
     expect(cylinder.y).toBeGreaterThan(cylinder.x);
   });
 });
@@ -92,7 +94,9 @@ describe("a ray crossing a box", () => {
   });
 
   it("misses when it goes past the side", () => {
-    expect(rayBoxDistance(aRay([500, 500, 0], [-1, 0, 0]), box)).toBeUndefined();
+    expect(
+      rayBoxDistance(aRay([500, 500, 0], [-1, 0, 0]), box),
+    ).toBeUndefined();
   });
 
   it("reports zero for a box the ray starts inside", () => {
@@ -167,9 +171,14 @@ describe("a tap on a part", () => {
     // buys, and without it a part laid on its side cannot be selected where it is drawn.
     const shape = { type: "Box" as const, len: { x: 5, y: 0.5, z: 0.5 } };
     const upright = placedPart("upright", shape, { x: 0, y: 0, z: 0 });
-    const turned = placedPart("turned", shape, { x: 0, y: 0, z: 0 }, {
-      orientation: axisAngle(0, 0, 1, Math.PI / 2),
-    });
+    const turned = placedPart(
+      "turned",
+      shape,
+      { x: 0, y: 0, z: 0 },
+      {
+        orientation: axisAngle(0, 0, 1, Math.PI / 2),
+      },
+    );
     const ray = aRay([-10, 3, 0], [1, 0, 0]);
     expect(pickPart([upright], ray)).toBeUndefined();
     expect(pickPart([turned], ray)?.id).toBe("turned");
@@ -197,9 +206,9 @@ describe("a tap on a part", () => {
       { type: "Box", len: { x: 1, y: 1, z: 1 } },
       { x: 10, y: 0, z: 0 },
     );
-    expect(
-      pickPart([room, crate], aRay([0, 0, 0], [1, 0, 0]))?.id,
-    ).toBe("crate");
+    expect(pickPart([room, crate], aRay([0, 0, 0], [1, 0, 0]))?.id).toBe(
+      "crate",
+    );
   });
 
   it("does not skip a non-box primitive the camera is inside", () => {
@@ -234,7 +243,9 @@ describe("a tap on the canvas", () => {
       { type: "Sphere", radius: 1 },
       { x: 0, y: 0, z: 0 },
     );
-    expect(pickPartAt([ball], eyeAt([0, 0, 10]), size, middle)?.id).toBe("ball");
+    expect(pickPartAt([ball], eyeAt([0, 0, 10]), size, middle)?.id).toBe(
+      "ball",
+    );
   });
 
   it("finds nothing where a part is not on screen", () => {

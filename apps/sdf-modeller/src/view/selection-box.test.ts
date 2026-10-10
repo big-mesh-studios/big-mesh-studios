@@ -29,11 +29,15 @@ describe("the selection box", () => {
     // A hard box of `len` 1 has half-extents 1 padded by `shapePadding`'s 1, so a full size
     // of 4 on every axis.
     box.show(
-      placedPart("part", { type: "Box", len: { x: 1, y: 1, z: 1 } }, {
-        x: 3,
-        y: 4,
-        z: 5,
-      }),
+      placedPart(
+        "part",
+        { type: "Box", len: { x: 1, y: 1, z: 1 } },
+        {
+          x: 3,
+          y: 4,
+          z: 5,
+        },
+      ),
     );
     const mesh = theMesh(scene);
     expect(mesh.position).toEqual({ x: 3, y: 4, z: 5 });
@@ -60,7 +64,9 @@ describe("the selection box", () => {
   it("hides the box it showed, and takes it out of the scene on dispose", () => {
     const scene = new Scene();
     const box = createSelectionBox(scene);
-    box.show(placedPart("part", { type: "Sphere", radius: 1 }, { x: 0, y: 0, z: 0 }));
+    box.show(
+      placedPart("part", { type: "Sphere", radius: 1 }, { x: 0, y: 0, z: 0 }),
+    );
     box.hide();
     expect(theMesh(scene).visible).toBe(false);
     box.dispose();
