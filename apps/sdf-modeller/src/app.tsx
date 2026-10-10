@@ -25,7 +25,7 @@ import {
 } from "solid-js";
 import { PRIMITIVE_NAMES } from "@big-mesh-studios/sdf";
 import { describeReport } from "@big-mesh-studios/meshing";
-import { pointer } from "@big-mesh-studios/ui/pointer";
+import { getPointerSize, pointer } from "@big-mesh-studios/ui/pointer";
 
 import {
   budgetFor,
@@ -54,8 +54,10 @@ import {
   type ScreenPoint,
 } from "./view/move-handle";
 import { createMoveHandles, type MoveHandles } from "./view/move-handles";
+import { pickPartAt } from "./view/pick-part";
 import { radiansDragged, ringUnderPointer } from "./view/rotate-handle";
 import { createRotateHandles, type RotateHandles } from "./view/rotate-handles";
+import { createSelectionBox, type SelectionBox } from "./view/selection-box";
 import { createModelStore } from "./model/model-store";
 import {
   createOrbit,
@@ -104,6 +106,17 @@ import styles from "./app.module.css";
 
 /** How long the model has to be still before it is re-meshed, in milliseconds. */
 const REBUILD_MS = 90;
+
+/**
+ * How far a finger may travel and still count as a tap rather than a drag, in CSS pixels.
+ *
+ * **Because the select tool and the camera want the same press.** A press on the canvas
+ * either picks a part or turns the view, and the two are told apart the way every touch
+ * interface tells them apart: by whether the finger stayed put. Eight pixels is small enough
+ * that aiming at a part and holding still is a tap, and large enough that the settle of a
+ * finger landing is not read as an orbit.
+ */
+const TAP_SLOP = 8;
 
 /** What a project file is called when nothing has said otherwise. */
 const DEFAULT_PROJECT_NAME = `model${PROJECT_EXTENSION}`;
@@ -408,6 +421,7 @@ export function App() {
   let handles: MoveHandles | undefined;
   let turns: RotateHandles | undefined;
   let ghost: Ghost | undefined;
+  let selection: SelectionBox | undefined;
   let camera: PerspectiveCamera | undefined;
 
   let pending: ReturnType<typeof setTimeout> | undefined;
@@ -521,6 +535,23 @@ export function App() {
       arrows.place(part.origin, radius);
       rings.place(part.origin, radius);
     }
+  };
+
+  /**
+   * Marks the selected part, or clears the mark, this frame.
+   *
+   * **Read through `untrack`, like the handles**, because this runs inside the render loop
+   * where a tracked read is a warning rather than a dependency. Updating every frame rather
+   * than from an effect is the same choice as `standHandles`, and for a related reason: the
+   * selection can change from a tap, from the list, from an undo and from a file, and a
+   * per-frame read needs none of those to remember to tell it.
+   */
+  const standSelection = (): void => {
+    const box = selection;
+    if (box === undefined) return;
+    const part = untrack(selected);
+    if (part === undefined) box.hide();
+    else box.show(part);
   };
 
   /**
@@ -711,6 +742,47 @@ export function App() {
     // **One write, on the way out.** The store refuses the edit when nothing turned, so a tap
     // that did not sweep a ring records no history entry. See `ModelStore.transform`.
     store.transform(part.id, { orientation: turned });
+  };
+
+  /**
+   * Takes a tap on a part as a selection, or leaves a drag to the camera.
+   *
+   * **Follows the whole press and decides on the way out, because the camera is watching
+   * too.** The select tool's drag turns the view — that is what the tool's own hint says —
+   * and the camera and this want the same press, so the two are told apart by whether the
+   * finger stayed put. A press that never moved is a tap and picks; anything that moved
+   * further than `TAP_SLOP` was a person turning the model and picks nothing.
+   *
+   * **A tap on empty space clears the selection**, which is what deselecting is everywhere
+   * else and what lets a person put the transform panel away. `select` already refuses an id
+   * that is not there, so the only two outcomes are a part and nothing.
+   */
+  const tapSelect = async (
+    initial: PointerEvent & { currentTarget: HTMLElement },
+  ): Promise<void> => {
+    const eye = camera;
+    if (eye === undefined || untrack(tool) !== "select") return;
+
+    // **A second finger is a pinch, not a tap.** The camera zooms with two fingers, and
+    // without this a pinch that barely travelled would select whatever one fingertip landed
+    // on. The count is the pointer package's own, which is where the drags it is following
+    // are registered.
+    if (getPointerSize(canvas) > 0) return;
+
+    const ended = await pointer(initial);
+    // **A finger that lifted while another was still down was part of a gesture**, however
+    // little that finger itself moved.
+    if (ended.pointers.size > 0) return;
+    if (Math.hypot(ended.totalDelta.x, ended.totalDelta.y) > TAP_SLOP) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const part = pickPartAt(
+      store.parts(),
+      eye,
+      { width: rect.width, height: rect.height },
+      pointerOnCanvas(initial),
+    );
+    store.select(part?.id);
   };
 
   /**
@@ -1132,6 +1204,10 @@ export function App() {
     viewport.scene.add(content);
     const created = createModelView(content);
     const controller = createOrbit(viewport.camera);
+    // **Between the model and the handles.** The box draws over the surface it marks, and the
+    // handles — which switch the depth test off and must stay reachable — are added after it
+    // and so draw over the box. See `createSelectionBox`.
+    const madeSelection = createSelectionBox(viewport.scene);
     const madeHandles = createMoveHandles(viewport.scene);
     const madeRotate = createRotateHandles(viewport.scene);
     const madeGhost = createGhost(content);
@@ -1140,6 +1216,7 @@ export function App() {
     handles = madeHandles;
     turns = madeRotate;
     ghost = madeGhost;
+    selection = madeSelection;
     camera = viewport.camera;
 
     /**
@@ -1157,14 +1234,18 @@ export function App() {
         void grabHandle(event as PointerEvent & { currentTarget: HTMLElement });
       } else if (held === "rotate") {
         void grabRing(event as PointerEvent & { currentTarget: HTMLElement });
+      } else {
+        // The select tool. The camera still gets the press and may turn the view; a press
+        // that does not move is the tap that picks. See `tapSelect`.
+        void tapSelect(event as PointerEvent & { currentTarget: HTMLElement });
       }
-      // Otherwise the press is the camera's, which is attached below and sees it next.
     };
     canvas.addEventListener("pointerdown", onPointerDown);
 
     const detach = controller.attach(canvas);
     viewport.renderer.setAnimationLoop(() => {
       standHandles();
+      standSelection();
       viewport.render();
     });
 
@@ -1191,6 +1272,7 @@ export function App() {
       madeHandles.dispose();
       madeRotate.dispose();
       madeGhost.dispose();
+      madeSelection.dispose();
       created.dispose();
       viewport.dispose();
       // Cleared, so a rebuild arriving after teardown cannot reach a disposed renderer.
@@ -1199,6 +1281,7 @@ export function App() {
       handles = undefined;
       turns = undefined;
       ghost = undefined;
+      selection = undefined;
       camera = undefined;
     };
   });
