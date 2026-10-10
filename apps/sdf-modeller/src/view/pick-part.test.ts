@@ -55,7 +55,9 @@ describe("the box a part occupies", () => {
       aPart({ type: "Box", len: { x: 10, y: 20, z: 30 } }),
     );
     expect(half).toEqual({ x: 10, y: 20, z: 30 });
-    const box = partLocalBox(aPart({ type: "Box", len: { x: 10, y: 20, z: 30 } }));
+    const box = partLocalBox(
+      aPart({ type: "Box", len: { x: 10, y: 20, z: 30 } }),
+    );
     expect(box.min).toEqual({ x: -10, y: -20, z: -30 });
     expect(box.max).toEqual({ x: 10, y: 20, z: 30 });
   });
@@ -110,9 +112,9 @@ describe("a tap on a part", () => {
     // field buys, and the reason the tap is no longer shape-approximate.
     const ball = aPart({ type: "Sphere", radius: 0.5 });
     const mesherHalf = primitiveHalfExtents(ball.shape).y;
-    expect(mesherHalf + shapePadding(ball.shape, ball.softness)).toBeGreaterThan(
-      1,
-    );
+    expect(
+      mesherHalf + shapePadding(ball.shape, ball.softness),
+    ).toBeGreaterThan(1);
     expect(pickPart([ball], aRay([-10, 1, 0], [1, 0, 0]))).toBeUndefined();
   });
 

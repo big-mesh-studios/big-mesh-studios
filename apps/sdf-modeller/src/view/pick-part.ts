@@ -85,7 +85,8 @@ export interface Bounds {
  * header), the outline is free to be the primitive's own extent, which is what a person reads
  * as "this part". A soft part's blend reaches a little past this; the box marks the primitive.
  */
-export const partBoxHalf = (part: Part): Vec3 => primitiveHalfExtents(part.shape);
+export const partBoxHalf = (part: Part): Vec3 =>
+  primitiveHalfExtents(part.shape);
 
 /** The box a part occupies in its own frame, centred on its origin. */
 export const partLocalBox = (part: Part): Bounds => {
