@@ -52,7 +52,10 @@ const Field: Component<{ field: PlaceField }> = (props) => (
 /** One function: what it is called, what it takes, what it gives back. */
 const FunctionEntry: Component<{ fn: PlaceFunction }> = (props) => (
   <div class="place-docs-entry">
-    <code class="place-docs-signature">{props.fn.signature}</code>
+    <code class="place-docs-signature">
+      {props.fn.name}
+      {props.fn.signature}
+    </code>
     <p class="place-docs-doc">{props.fn.doc}</p>
     <Show when={props.fn.params.length > 0}>
       <ul>

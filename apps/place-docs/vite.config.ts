@@ -19,6 +19,10 @@ export default defineConfig({
       input: {
         guides: resolve(import.meta.dirname, "src/entry-guides.tsx"),
         reference: resolve(import.meta.dirname, "src/entry-reference.tsx"),
+        "spacescape-reference": resolve(
+          import.meta.dirname,
+          "src/entry-spacescape-reference.tsx",
+        ),
       },
     },
   },

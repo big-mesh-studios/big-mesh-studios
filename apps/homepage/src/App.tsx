@@ -160,7 +160,12 @@ export function App() {
         </p>
         <p>
           To put something of your own in the world, read the{" "}
-          <a href={`${base}docs/`}>place guides and API reference</a>.
+          <a href={`${base}docs/`}>place guides and API reference</a> for
+          voxelscape, or the{" "}
+          <a href={`${base}docs/spacescape-reference.html`}>
+            spacescape place reference
+          </a>
+          .
         </p>
       </footer>
     </>

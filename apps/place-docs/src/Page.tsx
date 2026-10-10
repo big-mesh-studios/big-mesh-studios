@@ -1,18 +1,22 @@
 import type { JSX } from "@solidjs/web/jsx-runtime";
 
 // The site root is one folder above these pages, which is what makes the link
-// back to the front page and the two applications resolve from either one.
+// back to the front page and the applications resolve from any of them.
 const base = import.meta.env.BASE_URL;
 
 interface PageProps {
   title: string;
+  /** The world this page's vocabulary belongs to, named in the masthead. */
+  app: string;
+  /** The folder that world is served from, beside this documentation. */
+  appHref: string;
   children: JSX.Element;
 }
 
 /**
- * The frame both pages sit in: a masthead naming the two, and the footer the
- * whole site carries. The masthead is on both pages because a reader arriving
- * from a search engine lands on one of them and needs the other.
+ * The frame all three pages sit in: a masthead naming them, and the footer the
+ * whole site carries. The masthead is on every page because a reader arriving
+ * from a search engine lands on one of them and needs the other two.
  */
 export function Page(props: PageProps) {
   return (
@@ -23,10 +27,12 @@ export function Page(props: PageProps) {
         </a>
         <nav>
           <a href="index.html">Guides</a>
-          <a href="reference.html">Reference</a>
+          <a href="reference.html">voxelscape</a>
+          <a href="spacescape-reference.html">spacescape</a>
         </nav>
         <p class="where">
-          Writing a place for <a href={`${base}voxelscape/`}>voxelscape</a>
+          Writing a place for{" "}
+          <a href={`${base}${props.appHref}`}>{props.app}</a>
         </p>
       </header>
 
@@ -34,9 +40,9 @@ export function Page(props: PageProps) {
 
       <footer>
         <p>
-          The reference is read out of the world's own sources by{" "}
+          Each reference is read out of its own world&rsquo;s sources by{" "}
           <code>pnpm place-reference</code>, so it cannot drift from the code it
-          describes. Both are open source, in one repository:{" "}
+          describes. Both worlds are open source, in one repository:{" "}
           <a href="https://github.com/big-mesh-studios/big-mesh-studios">
             github.com/big-mesh-studios/big-mesh-studios
           </a>

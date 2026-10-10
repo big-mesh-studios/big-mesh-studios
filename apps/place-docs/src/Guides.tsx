@@ -59,7 +59,7 @@ const GUIDES = [
  */
 export function Guides() {
   return (
-    <Page title="Guides">
+    <Page title="Guides" app="voxelscape" appHref="voxelscape/">
       <h1>Writing a place</h1>
       <div class="lede">
         <p>
