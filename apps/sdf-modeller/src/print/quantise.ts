@@ -89,7 +89,8 @@ const colourOf = (colours: Uint8Array, vertex: number): Packed => ({
  * export. **Three channels, so the low byte is always zero** — it was the alpha once and is
  * unused now, and leaving it zero keeps the key a plain `0xRRGGBB00`.
  */
-const keyOf = ({ r, g, b }: Packed): number => ((r << 24) | (g << 16) | (b << 8)) >>> 0;
+const keyOf = ({ r, g, b }: Packed): number =>
+  ((r << 24) | (g << 16) | (b << 8)) >>> 0;
 
 /** The colour a packed key stands for. Always opaque, because nothing else can be printed. */
 const fromKey = (key: number): RGBA => ({

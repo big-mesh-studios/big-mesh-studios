@@ -87,11 +87,7 @@ export interface PlanetMaps {
 /** Where the colour comes from, so the caller supplies the same source the chunks use. */
 export interface PlanetMapSource {
   /** The field's colour at a point on the surface. */
-  readonly colourAt: (
-    x: number,
-    y: number,
-    z: number,
-  ) => { colour: Rgb8 };
+  readonly colourAt: (x: number, y: number, z: number) => { colour: Rgb8 };
 }
 
 /**

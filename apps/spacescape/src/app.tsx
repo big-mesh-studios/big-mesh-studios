@@ -54,11 +54,7 @@ import { SculptSession } from "./sculpt";
 import { DEFAULT_BRUSH } from "./edit/brush";
 import { buildSpikeScene, type SpikeScene } from "./spike-scene";
 import { createInput } from "./player/input";
-import {
-  DEFAULT_PLAYER_CONFIG,
-  playerEye,
-  type Medium,
-} from "./player/player";
+import { DEFAULT_PLAYER_CONFIG, playerEye, type Medium } from "./player/player";
 import { TouchControls } from "./player/touch-controls";
 import { Game } from "./engine/game";
 import { createWaterMaterial, sphericalWater } from "./world/water";

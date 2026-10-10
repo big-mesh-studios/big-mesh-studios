@@ -307,11 +307,7 @@ const packed = (mesh: ChunkMesh, vertex: number): number =>
  * material in this byte rather than in a fourth attribute.
  */
 const keyOf = ({ colour, material }: BoundaryColour): number =>
-  ((colour.r << 24) |
-    (colour.g << 16) |
-    (colour.b << 8) |
-    material) >>>
-  0;
+  ((colour.r << 24) | (colour.g << 16) | (colour.b << 8) | material) >>> 0;
 
 /**
  * Every edge whose endpoints disagree, cut where the rule actually flips.

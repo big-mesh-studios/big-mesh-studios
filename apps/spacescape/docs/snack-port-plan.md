@@ -68,21 +68,22 @@ vertex attribute, which reopens ADR 0033's vertex-size decision for no gain.
 
 Keep this list current — the phases below are the plan, this is the state.
 
-| Phase                                                       | State       | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| ----------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1c — `Operation.material`, `FORMAT_VERSION` 4               | **done**    | One byte after the opacity. Zero on the wire is "no material" and reads back _absent_, so `0` and `undefined` cannot mean different things.                                                                                                                                                                                                                                                                                                                                                                   |
-| 1b — `.sdfmod` manifest into `@big-mesh-studios/csg`        | **done**    | `model-file.ts`. `ProjectView.mode` is now checked as a name, not against a mesher list — csg does not know what a mesher is. sdf-modeller's `project-file.ts` is now the app's half: `isSaveableProject`, `projectManifest`, and the tests that keep the shared bounds equal to `MAX_PARTS`/`PALETTE_LIMIT`.                                                                                                                                                                                                 |
-| 1a — model mesher into `@big-mesh-studios/meshing`          | **done**    | `model-mesh.ts`, reparameterised on `readonly Operation[]`. `meshing` now depends on `csg`, in one direction, confined to that one file. sdf-modeller's `mesh-model.ts` is the adapter owning `Part[]` → `Operation[]` (`partsToOperations`, `meshParts`, `primitivePartMesh`).                                                                                                                                                                                                                               |
-| 1d — `ModelLibrary`, `DemoPlace.models`, `MAX_PLACE_MODELS` | **done**    | `src/places/model-library.ts`. `MAX_PLACE_MODELS` 8 → 64. `DemoPlace.models` is name → **URL** (a `?url` import, fetched at load by `loadDemoModels`) rather than inline bytes. `startPlace` builds the library, reports each unreadable model as a notice, and `dropPlace` disposes it — it owns GPU buffers, so it cannot live inside `PlaceHost`.                                                                                                                                                          |
-| ADRs 0047 + 0048                                            | **done**    | `docs/adr/0047-a-figure-is-its-own-mesh.md`, `docs/adr/0048-a-material-in-the-free-byte.md`, both indexed in the ADR README.                                                                                                                                                                                                                                                                                                                                                                                  |
-| 2 — `src/figures/`                                          | **done**    | `figure.ts` (placement, and the two directions out of it), `figure-picker.ts` (traces each figure's _own field_, not its box), `figure-set.ts` (the `Mesh`es, the collision reader, and `aim`). `GameWorld` gains `figureDistanceAt` and takes one `min` over terrain and figures, which is what lets the player stand on a figure. Wired into `app.tsx`: the group is added after the terrain, the crosshair is traced after `game.tick` and after the place steps, and `dropPlace` clears it.               |
-| 3 — entities                                                | **done**    | Three effects, **one id space**: `entity-add` (with a `kind` of `prop`/`npc`), `entity-remove`, `entity-move`. Three events: `entity-used` (carrying the held item), `npc-talk`, `npc-choose` — all naming `entityId`, because there is one namespace. The guest library still offers `createProp` and `createNpc` separately, because that is where the difference _is_ expressible: `createNpc` requires a `name`. `MAX_ENTITIES` 256. Also in this phase: **geometry invalidation coalesces** — see below. |
-| 4 — the `use` action                                        | **done**    | `InputSnapshot.use`, edge-triggered and never held; `KeyE`/`KeyF` and a fourth touch button. `GameOptions.onUse(input)` fires **last in `tick`**, after the camera has settled. The routing is voxelscape's rule, in `PlaceHost`: empty hands on an `npc` → `npc-talk`, anything held on one → `entity-used {entityId, item}`, a figure with anything held or a prop always → `entity-used`, nothing aimed at and something held → `item-used`, nothing aimed at and nothing held → **no event at all**.      |
-| 5 — the inventory                                           | **done**    | `ScriptInventory`: a name and a count, nothing else. `item-define` / `item-give` / `item-take` effects, `defineItem` / `giveItem` / `takeItem` on the guest side. `MAX_ITEMS` 64, `MAX_ITEM_COUNT` 999.                                                                                                                                                                                                                                                                                                       |
-| 6 — narration, dialog, ending                                | **done**    | Four effects (`narrate`, `dialog`, `dialog-close`, `ending`) → `HostEffects` 8 → 12. Guest `narrate` / `openDialog` / `closeDialog` / `endGame`. New `src/places/ui/PlaceOverlay.tsx` + `place-overlay.css`, using ADR 0010's pointer-lock suspension. New `text-list` field kind for the narration line. "Play again" re-runs `startPlace` with the **retained loaded-place arguments** (`loadedForRestart`), so a demo with models re-fetches them rather than starting empty.                                                                                                                                                                                                     |
-| 7 — procedural materials                                     | **done**    | `SurfaceColour.material` everywhere (ADR 0048), `createShape({material})` as a closed enum, and `render/material-names.ts` + `material-patterns.ts` + `material-nodes.ts`. **A 3D lattice, not triplanar** — one pattern in the world, every plane a slice through it, so corners are continuous. Anti-aliased with `fwidth` and faded to nothing past a cell per pixel. `wantsPattern` off for figures and the sky. Measured: ~15% of the material's CPU cost (see `material-shader.test.ts`). |
-| 8 — the models                                             | **done**    | `tools/run.ts` + `tools/make-snack-models.ts` + `tools/snack-model-table.ts`, `npm run snack-models` → 39 `.sdfmod` in `public/models/`. Shapes and palettes copied entry-for-entry from the sibling's table; the format is signed distance operations rather than indexed pngs, and the units are world rather than voxels. Also in this phase: `Part.material` and the carrying of it, which Phase 7 left the modeller unable to save. |
-| 9 — the demo                                              | **done**    | `src/places/demo/snack.ts` + `snack-combos.ts` + `snack-tables.ts`, registered in `demos.ts` as `snack` with all 39 models. The house and store are explicit SDF boxes (`buildNeighbourhood()`); thirteen endings, the shop, the 33-pair breakfast table, the stove, the vending machine and the cashier's break are all script. 19 behaviour tests in `snack.test.ts` plus the generic run-clean checks in `demos.test.ts`. |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Phase                                                       | State    | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1c — `Operation.material`, `FORMAT_VERSION` 4               | **done** | One byte after the opacity. Zero on the wire is "no material" and reads back _absent_, so `0` and `undefined` cannot mean different things.                                                                                                                                                                                                                                                                                                                                                                   |
+| 1b — `.sdfmod` manifest into `@big-mesh-studios/csg`        | **done** | `model-file.ts`. `ProjectView.mode` is now checked as a name, not against a mesher list — csg does not know what a mesher is. sdf-modeller's `project-file.ts` is now the app's half: `isSaveableProject`, `projectManifest`, and the tests that keep the shared bounds equal to `MAX_PARTS`/`PALETTE_LIMIT`.                                                                                                                                                                                                 |
+| 1a — model mesher into `@big-mesh-studios/meshing`          | **done** | `model-mesh.ts`, reparameterised on `readonly Operation[]`. `meshing` now depends on `csg`, in one direction, confined to that one file. sdf-modeller's `mesh-model.ts` is the adapter owning `Part[]` → `Operation[]` (`partsToOperations`, `meshParts`, `primitivePartMesh`).                                                                                                                                                                                                                               |
+| 1d — `ModelLibrary`, `DemoPlace.models`, `MAX_PLACE_MODELS` | **done** | `src/places/model-library.ts`. `MAX_PLACE_MODELS` 8 → 64. `DemoPlace.models` is name → **URL** (a `?url` import, fetched at load by `loadDemoModels`) rather than inline bytes. `startPlace` builds the library, reports each unreadable model as a notice, and `dropPlace` disposes it — it owns GPU buffers, so it cannot live inside `PlaceHost`.                                                                                                                                                          |
+| ADRs 0047 + 0048                                            | **done** | `docs/adr/0047-a-figure-is-its-own-mesh.md`, `docs/adr/0048-a-material-in-the-free-byte.md`, both indexed in the ADR README.                                                                                                                                                                                                                                                                                                                                                                                  |
+| 2 — `src/figures/`                                          | **done** | `figure.ts` (placement, and the two directions out of it), `figure-picker.ts` (traces each figure's _own field_, not its box), `figure-set.ts` (the `Mesh`es, the collision reader, and `aim`). `GameWorld` gains `figureDistanceAt` and takes one `min` over terrain and figures, which is what lets the player stand on a figure. Wired into `app.tsx`: the group is added after the terrain, the crosshair is traced after `game.tick` and after the place steps, and `dropPlace` clears it.               |
+| 3 — entities                                                | **done** | Three effects, **one id space**: `entity-add` (with a `kind` of `prop`/`npc`), `entity-remove`, `entity-move`. Three events: `entity-used` (carrying the held item), `npc-talk`, `npc-choose` — all naming `entityId`, because there is one namespace. The guest library still offers `createProp` and `createNpc` separately, because that is where the difference _is_ expressible: `createNpc` requires a `name`. `MAX_ENTITIES` 256. Also in this phase: **geometry invalidation coalesces** — see below. |
+| 4 — the `use` action                                        | **done** | `InputSnapshot.use`, edge-triggered and never held; `KeyE`/`KeyF` and a fourth touch button. `GameOptions.onUse(input)` fires **last in `tick`**, after the camera has settled. The routing is voxelscape's rule, in `PlaceHost`: empty hands on an `npc` → `npc-talk`, anything held on one → `entity-used {entityId, item}`, a figure with anything held or a prop always → `entity-used`, nothing aimed at and something held → `item-used`, nothing aimed at and nothing held → **no event at all**.      |
+| 5 — the inventory                                           | **done** | `ScriptInventory`: a name and a count, nothing else. `item-define` / `item-give` / `item-take` effects, `defineItem` / `giveItem` / `takeItem` on the guest side. `MAX_ITEMS` 64, `MAX_ITEM_COUNT` 999.                                                                                                                                                                                                                                                                                                       |
+| 6 — narration, dialog, ending                               | **done** | Four effects (`narrate`, `dialog`, `dialog-close`, `ending`) → `HostEffects` 8 → 12. Guest `narrate` / `openDialog` / `closeDialog` / `endGame`. New `src/places/ui/PlaceOverlay.tsx` + `place-overlay.css`, using ADR 0010's pointer-lock suspension. New `text-list` field kind for the narration line. "Play again" re-runs `startPlace` with the **retained loaded-place arguments** (`loadedForRestart`), so a demo with models re-fetches them rather than starting empty.                              |
+| 7 — procedural materials                                    | **done** | `SurfaceColour.material` everywhere (ADR 0048), `createShape({material})` as a closed enum, and `render/material-names.ts` + `material-patterns.ts` + `material-nodes.ts`. **A 3D lattice, not triplanar** — one pattern in the world, every plane a slice through it, so corners are continuous. Anti-aliased with `fwidth` and faded to nothing past a cell per pixel. `wantsPattern` off for figures and the sky. Measured: ~15% of the material's CPU cost (see `material-shader.test.ts`).               |
+| 8 — the models                                              | **done** | `tools/run.ts` + `tools/make-snack-models.ts` + `tools/snack-model-table.ts`, `npm run snack-models` → 39 `.sdfmod` in `public/models/`. Shapes and palettes copied entry-for-entry from the sibling's table; the format is signed distance operations rather than indexed pngs, and the units are world rather than voxels. Also in this phase: `Part.material` and the carrying of it, which Phase 7 left the modeller unable to save.                                                                      |
+| 9 — the demo                                                | **done** | `src/places/demo/snack.ts` + `snack-combos.ts` + `snack-tables.ts`, registered in `demos.ts` as `snack` with all 39 models. The house and store are explicit SDF boxes (`buildNeighbourhood()`); thirteen endings, the shop, the 33-pair breakfast table, the stove, the vending machine and the cashier's break are all script. 19 behaviour tests in `snack.test.ts` plus the generic run-clean checks in `demos.test.ts`.                                                                                  |     |
+
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 **Three fixes came out of Phase 1 that are worth knowing about independently of this port:**
@@ -210,7 +211,7 @@ through `bvh.evalPaint`, `Field.colourAt`, `chunk-mesher`, `patch-mesher` and `m
 
 Three files, and the split between them is the design:
 
-- **`render/material-names.ts`** — `MATERIAL_NAMES`, the ordered list that *is* the ids. Shared
+- **`render/material-names.ts`** — `MATERIAL_NAMES`, the ordered list that _is_ the ids. Shared
   with `places/fields.ts`, which is why it does not import rmsl: the interpreter validates
   payloads against it and importing a renderer there would pull rmsl into every place test.
 - **`render/material-patterns.ts`** — the scalar reference, with the tests. Brick, plaster,
@@ -229,14 +230,14 @@ a detail worth knowing if you write a test for it: the horizontal joint is at `z
 courses and `z = BRICK.z / 2` in odd ones, so only a quarter-depth is mid-cell for both.
 
 **Anti-aliasing is `fwidth`, and the fade shape matters more than the fade.** `detailAt` is whole
-until half a cell per pixel and then linear to nothing at a full cell — *not* `1 - perCell`, which
+until half a cell per pixel and then linear to nothing at a full cell — _not_ `1 - perCell`, which
 would thin a wall's mortar by a quarter at an ordinary viewing distance and so get less brick-like
 the closer you got. Past a cell it is gone, not clamped: a mortar line is not visible two hundred
 units away whether or not anything draws it, and drawing it anyway is what shimmers.
 
 **`hash3` is Dave Hoskins' `hash13`, not `fract(sin(dot(p, k)) * c)`** — the `sin` version bands
 visibly on some drivers, and a brick wall is exactly where you would see it. A distribution test
-averages it into ten buckets, because the failure mode is *bunched*, not crashed.
+averages it into ten buckets, because the failure mode is _bunched_, not crashed.
 
 **Measured**, because this was the plan's one real performance risk: 400 single-pixel renders of
 the terrain material cost **61.1ms with the chain and 52.9ms without** — about 15%. That is the
@@ -272,7 +273,7 @@ demo's fridge is a bug in the port. What changed is the format and the units:
   primitive with a colour; four models subtract, and each subtract is a recess the sibling's
   bitmap expressed by not drawing a cell.
 - **World units, not voxels.** `unitsPerVoxel = height × LAYOUT_SCALE / the model's own height
-  in voxels`, with `LAYOUT_SCALE = 5` — the demo's own rescale. Every height in the table is a
+in voxels`, with `LAYOUT_SCALE = 5` — the demo's own rescale. Every height in the table is a
   gasa4 height, so a fridge is 15 units against a player six across.
 
 **The model owns its size and a placement does not scale it**, which is the one real departure
@@ -295,7 +296,7 @@ discovered by modelling them thinner than the spacing and watching them stop exi
 first response was to thicken them, which made the sword a club and the manhole fifteen
 centimetres thick.
 
-**The fix is one line in `samplesFor`:** enough samples across the *thinnest* axis for a thin
+**The fix is one line in `samplesFor`:** enough samples across the _thinnest_ axis for a thin
 part to be a solid, whatever its length asks for. `MIN_SAMPLES_ACROSS_THIN` is three, because
 two is the arithmetic minimum for a sign change and three is what marching cubes needs to put a
 face on it. The cost is bounded by `maxSamplesPerAxis`, and a model too thin to fit is meshed
@@ -307,17 +308,17 @@ all while looking as though it works.** It was written that way first.
 
 Then the sword's blade went back to one voxel of a fourteen, the coins went back to discs, and
 the manhole cover went back to ten centimetres. The one test that would notice the revert is in
-`make-snack-models.test.ts`: it asserts the table still *contains* something thinner than the
+`make-snack-models.test.ts`: it asserts the table still _contains_ something thinner than the
 spacing, because a table of thick boxes would pass everything else with the fix removed.
 
 ### Three things this phase got wrong first
 
-- **`size` was declared *and* derived, and they disagreed on a dozen models.** The scale came
+- **`size` was declared _and_ derived, and they disagreed on a dozen models.** The scale came
   from `size[1]` while the parts were the model, so a shelf written with a full extent where a
   half-extent belonged came out twice as deep, and a burger modelled with a spherical bun was
   40% tall and stretched every other part of itself to match. **`size` is gone**; the scale is
   derived from the parts' own height and every model now comes out at exactly the height it
-  asked for. The test that replaced it asks whether a model is *shaped like the thing it is*,
+  asked for. The test that replaced it asks whether a model is _shaped like the thing it is_,
   which is the only question left when there is no declared extent to disagree with.
 - **The files on disk and the table were not compared.** Dropping `plate` — in the sibling's
   table, never attached by the source demo — left its `.sdfmod` behind. The generator writes what
@@ -355,7 +356,7 @@ mechanism it needs landed in Phases 1–8.
   is five times the sibling's scale, so a voxel is ten. The `road` primitive becomes a box with
   its width folded in, and the glowstone panels become four real `createLight`s, which is the
   whole of what replaced voxel block-light.
-- **A placement is a model's *centre*.** Phase 8 puts a model's origin at the middle of its box,
+- **A placement is a model's _centre_.** Phase 8 puts a model's origin at the middle of its box,
   so standing a fridge on the floor means adding half its height. `HALF` in `snack-tables.ts` is
   that number, and it is the one thing the port could not derive from the sibling.
 - **Items have no display names.** An item is a name and a count, so `ITEM_NAMES` is a map the
@@ -396,7 +397,7 @@ the wrong thing.
 
 `src/places/demo/snack.test.ts` is the **behaviour**: 19 tests ported from the sibling's 27, one
 per ending and one per machine. All thirteen endings are exercised except the two that need a
-fire to reach the player. The sibling tests that are *not* ported are the ones about its own
+fire to reach the player. The sibling tests that are _not_ ported are the ones about its own
 machinery — the voxel plan, chunk block-light, the model manifest — and none of them has a
 counterpart here.
 
@@ -448,7 +449,7 @@ game.
 ### The second flat-world constant: a zone could not exist on the planet
 
 **Loading the demo in the running game reported `zone-add refused: has a part outside -100000 to
-100000`.** `MAX_ZONE_SIZE` is documented as *"the largest a zone's box may be on any axis"*, and
+100000`.** `MAX_ZONE_SIZE` is documented as _"the largest a zone's box may be on any axis"_, and
 the `box` field check used it as the bound on each **corner's magnitude** — which coincides with
 an extent bound only for a box near the origin. On the planet the surface is at `y ≈ 136000`, so
 a zone two hundred units across had corners a hundred and thirty-six thousand units out and was
@@ -467,7 +468,7 @@ neither this nor the floor offset was caught.
 ### Starting on the surface
 
 The demo's floor was `getHeightAt(0, 0) + 10` — one voxel above the ground — while the app puts
-the player at `ground - halfSize - 1`, which is *below* that floor: the player started four units
+the player at `ground - halfSize - 1`, which is _below_ that floor: the player started four units
 inside the floor slab. **The `+ 10` was double-counting.** The sibling's plan already places its
 floor at the top of the row-32 slab, so the house floor and the outdoor ground are the same
 height; the floor is the terrain's own surface. It is `FLOOR = GROUND_Y` now.
