@@ -18,13 +18,20 @@
  * canvas height instead, which is the only definition of "big enough to hit" that survives
  * a zoom.
  *
- * ## Why the depth test is off
+ * ## Why the depth test is off, and why the group is added last
  *
  * **Because an arrow that goes behind the limb it is moving is not grabbable where it looks
  * grabbable.** The arrows stand at the part's origin, which is inside the part, so the shafts
  * start out buried and only the tips clear the surface. With the depth test on, the part
  * wins and the arrows appear to grow out of it — or, worse, appear not to be there at all
  * until the camera swings round. rm-stacker reaches the same conclusion.
+ *
+ * The depth test is only half of it: **switching it off changes nothing unless the arrows are
+ * drawn last.** This renderer draws in scene-graph order and clears once, so an arrow drawn
+ * before the model is written over by it however the depth test is set — and the model is
+ * re-added on every rebuild, which would otherwise land it after this group. The caller
+ * therefore keeps the model in its own group added first, and this group added after it, so
+ * the arrows are always traversed last and cover everything.
  *
  * It costs correct occlusion, which for a control is the right thing to lose: an arrow drawn
  * over the front of a figure is still pointing at the right place.
@@ -45,6 +52,7 @@ import {
 
 import {
   AXES,
+  AXIS_COLOUR,
   type ArmOnScreen,
   type Axis,
   type ScreenSize,
@@ -54,19 +62,6 @@ import {
   SHAFT_RADIUS,
   VIEW_SHARE,
 } from "./move-handle";
-
-/**
- * The three axis colours, as rm paints them.
- *
- * **The same three rm-stacker uses, and the same as every other 3D application**, because a
- * red-green-blue axis convention is one a person has already learned; a modeller that
- * invented its own would be asking to be taught something for no gain.
- */
-const AXIS_COLOUR: Record<Axis, number> = {
-  x: 0xe0584c,
-  y: 0x6fbf4a,
-  z: 0x4a86e0,
-};
 
 /** How much bigger the arrow being dragged is drawn. */
 const HELD_SCALE = 1.15;

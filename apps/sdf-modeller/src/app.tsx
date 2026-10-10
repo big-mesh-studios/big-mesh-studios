@@ -13,7 +13,7 @@
  * of milliseconds behind is a picture that is briefly late rather than a state that
  * disagrees with itself.
  */
-import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
+import { Group, type PerspectiveCamera } from "@random-mesh/rmsl/scene";
 
 import {
   createEffect,
@@ -37,7 +37,15 @@ import {
   RESOLUTIONS,
   type MeshMode,
 } from "./model/mesh-model";
-import { modelBounds, placedPart, type Part } from "./model/part";
+import {
+  axisAngle,
+  IDENTITY,
+  isAxial,
+  modelBounds,
+  multiply,
+  placedPart,
+  type Part,
+} from "./model/part";
 import { createGhost, type Ghost } from "./view/ghost";
 import {
   armUnderPointer,
@@ -46,6 +54,8 @@ import {
   type ScreenPoint,
 } from "./view/move-handle";
 import { createMoveHandles, type MoveHandles } from "./view/move-handles";
+import { radiansDragged, ringUnderPointer } from "./view/rotate-handle";
+import { createRotateHandles, type RotateHandles } from "./view/rotate-handles";
 import { createModelStore } from "./model/model-store";
 import {
   createOrbit,
@@ -159,13 +169,13 @@ export function App() {
   /**
    * Which tool the pointer is holding.
    *
-   * **Two named tools rather than a "handles up" flag**, because the interesting case is
-   * coming back. A single toggle answers "are the handles showing" and leaves the question
-   * of what the canvas does instead to be inferred; naming the tools says that with the
-   * handles down the canvas is picking and with them up it is moving, which is the whole of
-   * what the toolbar is for.
+   * **Named tools rather than a "handles up" flag**, because the interesting case is coming
+   * back. A single toggle answers "are the handles showing" and leaves the question of what
+   * the canvas does instead to be inferred; naming the tools says that with the handles down
+   * the canvas is picking, with the arrows up it is moving and with the rings up it is
+   * turning, which is the whole of what the toolbar is for.
    */
-  const [tool, setTool] = createSignal<"select" | "move">("select");
+  const [tool, setTool] = createSignal<"select" | "move" | "rotate">("select");
 
   /**
    * Whether a handle drag is running.
@@ -396,6 +406,7 @@ export function App() {
   let view: ModelView | undefined;
   let orbit: OrbitController | undefined;
   let handles: MoveHandles | undefined;
+  let turns: RotateHandles | undefined;
   let ghost: Ghost | undefined;
   let camera: PerspectiveCamera | undefined;
 
@@ -494,13 +505,22 @@ export function App() {
   const standHandles = (): void => {
     const controller = orbit;
     const arrows = handles;
+    const rings = turns;
     const part = untrack(selected);
-    if (controller === undefined || arrows === undefined) return;
+    if (controller === undefined || arrows === undefined || rings === undefined)
+      return;
 
-    const standing = untrack(tool) === "move" && part !== undefined;
-    arrows.setVisible(standing);
-    if (part !== undefined)
-      arrows.place(part.origin, controller.state().radius);
+    const current = untrack(tool);
+    const radius = controller.state().radius;
+    // **One set stands at a time**, because they occupy the same place and a person is
+    // holding one tool. Both are placed even when hidden, so a tool switch shows handles
+    // already the right size rather than growing from wherever the camera last was.
+    arrows.setVisible(current === "move" && part !== undefined);
+    rings.setVisible(current === "rotate" && part !== undefined);
+    if (part !== undefined) {
+      arrows.place(part.origin, radius);
+      rings.place(part.origin, radius);
+    }
   };
 
   /**
@@ -557,10 +577,17 @@ export function App() {
     controller.setInteractive(false);
     arrows.setHeld(axis);
 
-    // **The primitive on its own, built once.** See `primitivePartMesh`: a drag changes where a
-    // part is and never what it is shaped like, so every frame after the first would
-    // produce identical vertices.
-    copy.show(primitivePartMesh(part, DEFAULT_BUDGET)?.mesh, part.origin);
+    // **The primitive on its own, in its own frame, built once.** See `primitivePartMesh`: a
+    // move changes where a part is and never what it is shaped like, so every frame after the
+    // first would produce identical vertices. The part's own turn is carried on the ghost
+    // object rather than meshed in, which is what lets the rotate tool turn the same ghost by
+    // writing a quaternion instead of meshing again. See `createGhost`.
+    copy.show(
+      primitivePartMesh({ ...part, orientation: IDENTITY }, DEFAULT_BUDGET)
+        ?.mesh,
+      part.origin,
+      part.orientation,
+    );
 
     const start = part.origin;
     const arm = arms.find((candidate) => candidate.axis === axis);
@@ -596,6 +623,94 @@ export function App() {
     if (moved.x !== start.x || moved.y !== start.y || moved.z !== start.z) {
       store.transform(part.id, { origin: moved });
     }
+  };
+
+  /**
+   * Takes hold of a ring, or leaves the press to the camera.
+   *
+   * **The same shape as `grabHandle`, and deliberately so**: the model is left alone until the
+   * finger lifts, a copy follows the pointer, and the store is written once on pointer-up. The
+   * one difference is that a turn is read from the pointer's bearing about the ring's middle
+   * every frame rather than from its travel along a line, which is why this watches the
+   * event's position rather than its `totalDelta`.
+   */
+  const grabRing = async (
+    initial: PointerEvent & { currentTarget: HTMLElement },
+  ): Promise<void> => {
+    const controller = orbit;
+    const rings = turns;
+    const copy = ghost;
+    const eye = camera;
+    const part = untrack(selected);
+    if (
+      controller === undefined ||
+      rings === undefined ||
+      copy === undefined ||
+      eye === undefined ||
+      untrack(tool) !== "rotate" ||
+      part === undefined ||
+      dragging
+    ) {
+      return;
+    }
+
+    // Placed and measured now rather than read off the last frame, so a grab reads the same
+    // picture the finger is looking at even if the camera has moved since the last frame.
+    rings.place(part.origin, controller.state().radius);
+    const rect = canvas.getBoundingClientRect();
+    const onScreen = rings.ringsOnScreen(eye, {
+      width: rect.width,
+      height: rect.height,
+    });
+    const axis = ringUnderPointer(pointerOnCanvas(initial), onScreen);
+    if (axis === undefined) return;
+    const ring = onScreen.find((candidate) => candidate.axis === axis);
+    if (ring === undefined) return;
+
+    dragging = true;
+    controller.setInteractive(false);
+    rings.setHeld(axis);
+
+    // **The primitive in its own frame**, so the turn is a quaternion on the ghost rather than
+    // a re-mesh. See `createGhost` and the note in `grabHandle`.
+    copy.show(
+      primitivePartMesh({ ...part, orientation: IDENTITY }, DEFAULT_BUDGET)
+        ?.mesh,
+      part.origin,
+      part.orientation,
+    );
+
+    const start = part.orientation;
+    const from = pointerOnCanvas(initial);
+    // **The ring lies along one of the model's axes**, so the turn is about that world axis —
+    // which is `swept` applied before whatever the part already had. See `multiply`.
+    const direction = unitAlong(axis);
+    let turned = start;
+
+    try {
+      await pointer(initial, ({ event }) => {
+        const now = pointerOnCanvas(event);
+        // **Absolute rather than accumulated**: the angle is read from where the finger took
+        // hold every time, so a drag that returns to its start returns the part to its turn.
+        const swept = axisAngle(
+          direction.x,
+          direction.y,
+          direction.z,
+          radiansDragged(from, now, ring),
+        );
+        turned = multiply(swept, start);
+        copy.turnTo(turned);
+      });
+    } finally {
+      rings.setHeld(undefined);
+      copy.hide();
+      controller.setInteractive(true);
+      dragging = false;
+    }
+
+    // **One write, on the way out.** The store refuses the edit when nothing turned, so a tap
+    // that did not sweep a ring records no history entry. See `ModelStore.transform`.
+    store.transform(part.id, { orientation: turned });
   };
 
   /**
@@ -1009,13 +1124,21 @@ export function App() {
 
   onSettled(() => {
     const viewport = createViewport(canvas);
-    const created = createModelView(viewport.scene);
+    // **The model and the handles are siblings, and the handles come second.** The renderer
+    // draws in scene-graph order, so the handles have to be the last thing added or the model
+    // — which is re-added on every rebuild — would be drawn over them. The model's own group
+    // is added first, so a rebuild can only reorder children inside it.
+    const content = new Group();
+    viewport.scene.add(content);
+    const created = createModelView(content);
     const controller = createOrbit(viewport.camera);
     const madeHandles = createMoveHandles(viewport.scene);
-    const madeGhost = createGhost(viewport.scene);
+    const madeRotate = createRotateHandles(viewport.scene);
+    const madeGhost = createGhost(content);
     view = created;
     orbit = controller;
     handles = madeHandles;
+    turns = madeRotate;
     ghost = madeGhost;
     camera = viewport.camera;
 
@@ -1029,7 +1152,13 @@ export function App() {
      * way to settle it is to be first.
      */
     const onPointerDown = (event: PointerEvent): void => {
-      void grabHandle(event as PointerEvent & { currentTarget: HTMLElement });
+      const held = untrack(tool);
+      if (held === "move") {
+        void grabHandle(event as PointerEvent & { currentTarget: HTMLElement });
+      } else if (held === "rotate") {
+        void grabRing(event as PointerEvent & { currentTarget: HTMLElement });
+      }
+      // Otherwise the press is the camera's, which is attached below and sees it next.
     };
     canvas.addEventListener("pointerdown", onPointerDown);
 
@@ -1060,6 +1189,7 @@ export function App() {
       canvas.removeEventListener("pointerdown", onPointerDown);
       detach();
       madeHandles.dispose();
+      madeRotate.dispose();
       madeGhost.dispose();
       created.dispose();
       viewport.dispose();
@@ -1067,6 +1197,7 @@ export function App() {
       view = undefined;
       orbit = undefined;
       handles = undefined;
+      turns = undefined;
       ghost = undefined;
       camera = undefined;
     };
@@ -1075,6 +1206,19 @@ export function App() {
   const selected = createMemo(() => {
     const id = store.selected();
     return id === undefined ? undefined : store.part(id);
+  });
+
+  /**
+   * Whether the selected part's own axes mean anything to rotate.
+   *
+   * **So the Rotate tool is disabled for a round shape**, which is the same claim the
+   * transform panel makes by hiding its rotation fields for one: turning a sphere is not an
+   * error, but it is a tool that does nothing, and a tool that does nothing teaches a person
+   * it is broken. Both read the one `isAxial`, so the two cannot come to disagree.
+   */
+  const rotatable = createMemo(() => {
+    const part = selected();
+    return part !== undefined && isAxial(part.shape.type);
   });
 
   return (
@@ -1096,17 +1240,18 @@ export function App() {
       </header>
 
       {/*
-       **Two named tools, as a radio group, because they are one choice with two answers.**
+       **Named tools, as a radio group, because they are one choice with several answers.**
        *
-       * A pair of buttons that each toggled something would leave the question of which
-       * tool is current to be answered by which button looks pressed — and "looks pressed"
-       * is not an answer a screen reader gives you either. `radiogroup` says out loud that
-       * exactly one of these is in effect, which is the truth, and `aria-checked` carries
-       * it to assistive technology the same way the appearance does.
+       * Buttons that each toggled something would leave the question of which tool is
+       * current to be answered by which button looks pressed — and "looks pressed" is not an
+       * answer a screen reader gives you either. `radiogroup` says out loud that exactly one
+       * of these is in effect, which is the truth, and `aria-checked` carries it to assistive
+       * technology the same way the appearance does.
        *
-       * **The move tool is disabled with nothing selected**, because there is nothing for
-       * it to move. Rather than arming a tool that would refuse every press, which teaches
-       * the button is broken, it says so.
+       * **Move and Rotate are disabled when there is nothing for them to act on** — move with
+       * no selection, rotate with no selection or with a round shape whose turn would change
+       * nothing. Rather than arming a tool that would refuse every press, which teaches the
+       * button is broken, it says so.
        */}
       <div class={styles.tools} role="radiogroup" aria-label="Tool">
         {(
@@ -1121,6 +1266,11 @@ export function App() {
               "Move",
               "Arrow handles on the selected part. Drag one to move it.",
             ],
+            [
+              "rotate",
+              "Rotate",
+              "Rings around the selected part. Drag one to turn it.",
+            ],
           ] as const
         ).map(([value, label, hint]) => (
           <button
@@ -1129,7 +1279,10 @@ export function App() {
             class={styles.tool}
             aria-checked={tool() === value ? "true" : "false"}
             title={hint}
-            disabled={value === "move" && selected() === undefined}
+            disabled={
+              (value === "move" && selected() === undefined) ||
+              (value === "rotate" && !rotatable())
+            }
             onClick={() => {
               setTool(value);
             }}

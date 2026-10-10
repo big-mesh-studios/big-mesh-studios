@@ -13,6 +13,11 @@
  * So the geometry, the projection, the hit test and the drag are here, with no renderer in
  * sight, and tested against numbers.
  *
+ * It also holds the three axis colours, which is the one thing here that is not arithmetic.
+ * They live with `Axis` rather than with either widget because the colour belongs to the
+ * axis and not to the tool, and the move arms and the rotate rings paint theirs the same
+ * red-green-blue — a second copy of the three numbers would be a second place to change them.
+ *
  * ## Why the hit test is in screen space rather than a raycast
  *
  * **Because the arrows are not solid as far as picking is concerned, and pretending
@@ -65,6 +70,20 @@ export interface ScreenSize {
 export type Axis = "x" | "y" | "z";
 
 export const AXES: readonly Axis[] = ["x", "y", "z"];
+
+/**
+ * The three axis colours, as rm paints them.
+ *
+ * **The same three rm-stacker uses, and the same as every other 3D application**, because a
+ * red-green-blue axis convention is one a person has already learned; a modeller that
+ * invented its own would be asking to be taught something for no gain. Shared by the move
+ * arms and the rotate rings, which is why it lives here rather than with either widget.
+ */
+export const AXIS_COLOUR: Record<Axis, number> = {
+  x: 0xe0584c,
+  y: 0x6fbf4a,
+  z: 0x4a86e0,
+};
 
 /**
  * How much of the view's height an arrow spans.

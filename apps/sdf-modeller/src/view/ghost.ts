@@ -15,12 +15,18 @@
  * touched until the drag ends, at which point there is exactly one rebuild and exactly one
  * history entry.
  *
- * ## Why the copy is built once and then moved
+ * ## Why the copy is built once and then moved or turned
  *
- * **Because only its position changes.** The ghost is the same primitive as the part, and a
- * drag along one axis cannot change its size — so the mesh is right the moment it is built
- * and stays right for every frame of the drag. Rebuilding it would be paying the whole cost
- * again to produce identical vertices. What the drag costs per frame is a position write.
+ * **Because neither a move nor a turn changes its shape.** The ghost is the same primitive
+ * as the part, and a drag along one axis cannot change its size, nor can a drag round one
+ * ring — so the mesh is right the moment it is built and stays right for every frame of
+ * either drag. Rebuilding it would be paying the whole cost again to produce identical
+ * vertices. What a drag costs per frame is a position write or a quaternion write.
+ *
+ * **The mesh is built in the primitive's own frame**, with the part's `orientation` carried
+ * on this object rather than baked into the vertices. A move drag sets the position and
+ * leaves the turn; a rotate drag turns the quaternion. Baking the orientation into the mesh
+ * would make a rotate drag re-mesh on every frame, which is the whole cost this avoids.
  *
  * ## Why it is drawn unlit, translucent, and without depth writes
  *
@@ -35,36 +41,54 @@ import {
   Mesh,
   MeshBasicMaterial,
   BufferGeometry,
-  type Scene,
+  type Object3D,
 } from "@random-mesh/rmsl/scene";
 
 import type { ChunkMesh } from "@big-mesh-studios/meshing";
+import type { Quat } from "@big-mesh-studios/core";
 
 import { toGeometry } from "./model-view";
 
 export interface Ghost {
   readonly mesh: () => Mesh | undefined;
-  /** Shows a copy of `mesh` at `origin`. Passing undefined removes it. */
+  /**
+   * Shows a copy of `mesh`, standing at `origin` and turned by `orientation`.
+   *
+   * **The mesh is expected in the primitive's own frame**, with `orientation` applied to
+   * this object rather than baked into the vertices — which is what lets a rotate drag turn
+   * it by writing one quaternion instead of re-meshing. Passing `undefined` removes it.
+   */
   readonly show: (
     mesh: ChunkMesh | undefined,
     origin: { readonly x: number; readonly y: number; readonly z: number },
+    orientation: Quat,
   ) => void;
-  /** Moves the ghost. Separate from `show` because this is what a drag does per frame. */
+  /** Moves the ghost. Separate from `show` because this is what a move drag does per frame. */
   readonly moveTo: (origin: {
     readonly x: number;
     readonly y: number;
     readonly z: number;
   }) => void;
+  /** Turns the ghost. Separate from `show` because this is what a rotate drag does per frame. */
+  readonly turnTo: (orientation: Quat) => void;
   readonly hide: () => void;
   readonly dispose: () => void;
 }
 
-export const createGhost = (scene: Scene): Ghost => {
+/**
+ * `parent` is the same group the model goes into, as on `createModelView`.
+ *
+ * **So the ghost follows the model and stays under the handles.** It is a proposal drawn over
+ * the model, so it belongs after the model in the traversal; and it must not be added straight
+ * to the scene, where a drag starting after a rebuild would put it after the handles and draw
+ * the ghost over the arrows being dragged.
+ */
+export const createGhost = (parent: Object3D): Ghost => {
   let geometry: BufferGeometry | undefined;
   let drawn: Mesh | undefined;
 
   const release = (): void => {
-    if (drawn !== undefined) scene.remove(drawn);
+    if (drawn !== undefined) parent.remove(drawn);
     geometry?.dispose();
     geometry = undefined;
     drawn = undefined;
@@ -84,7 +108,7 @@ export const createGhost = (scene: Scene): Ghost => {
   return {
     mesh: () => drawn,
 
-    show: (mesh, origin) => {
+    show: (mesh, origin, orientation) => {
       release();
       if (mesh === undefined) return;
       const built = toGeometry(mesh);
@@ -92,11 +116,26 @@ export const createGhost = (scene: Scene): Ghost => {
       geometry = built;
       drawn = new Mesh(built, material);
       drawn.position.set(origin.x, origin.y, origin.z);
-      scene.add(drawn);
+      drawn.quaternion.set(
+        orientation.x,
+        orientation.y,
+        orientation.z,
+        orientation.w,
+      );
+      parent.add(drawn);
     },
 
     moveTo: (origin) => {
       drawn?.position.set(origin.x, origin.y, origin.z);
+    },
+
+    turnTo: (orientation) => {
+      drawn?.quaternion.set(
+        orientation.x,
+        orientation.y,
+        orientation.z,
+        orientation.w,
+      );
     },
 
     hide: release,

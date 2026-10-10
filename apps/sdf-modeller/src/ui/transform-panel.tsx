@@ -38,7 +38,7 @@ import {
   type DimensionField,
 } from "@big-mesh-studios/sdf";
 
-import { fromEuler, toEuler, type Part } from "../model/part";
+import { fromEuler, isAxial, toEuler, type Part } from "../model/part";
 import type { ModelStore } from "../model/model-store";
 import type { Palette } from "./palette";
 import { PaletteRow } from "./palette";
@@ -340,14 +340,3 @@ export function TransformPanel(props: {
     </section>
   );
 }
-
-/**
- * Whether a primitive's own axes mean anything to rotate.
- *
- * **A sphere, an ellipsoid and a round box do not.** Rotating them is not an error — the
- * model accepts it and the field is unchanged — but it is a control that does nothing,
- * and a panel full of controls that do nothing is a panel nobody trusts. A torus is in the
- * list because rolling it is visible, and so is laying it flat.
- */
-const isAxial = (type: Part["shape"]["type"]): boolean =>
-  type !== "Sphere" && type !== "Ellipsoid" && type !== "RoundBox";

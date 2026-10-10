@@ -147,6 +147,23 @@ export const axisAngle = (
   return { x: x * s, y: y * s, z: z * s, w: Math.cos(half) };
 };
 
+/**
+ * `a` after `b`: the rotation that applies `b` first and `a` second.
+ *
+ * **The order is the whole of what this function is for**, and it is the reason the rotate
+ * tool can turn a part about a world axis without a matrix anywhere. A part's `orientation`
+ * carries its own frame into the world, so a turn about a world axis is that turn *before*
+ * whatever the part already had: `multiply(turn, orientation)`. Writing it the other way
+ * round composes in the part's own frame, which for a part already laid on its side sends
+ * it round an axis that is not the one under the finger.
+ */
+export const multiply = (a: Quat, b: Quat): Quat => ({
+  x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+  y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+  z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+  w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+});
+
 /** Euler angles in radians, as Y-then-X-then-Z, which is what a transform gizmo shows. */
 export const fromEuler = (yaw: number, pitch: number, roll: number): Quat => {
   const cy = Math.cos(yaw / 2);
@@ -271,6 +288,18 @@ export const partSize = (shape: OperationShape): Vec3 => {
   const half = primitiveHalfExtents(shape);
   return { x: half.x * 2, y: half.y * 2, z: half.z * 2 };
 };
+
+/**
+ * Whether a primitive's own axes mean anything to rotate.
+ *
+ * **A sphere, an ellipsoid and a round box do not.** Rotating them is not an error — the
+ * model accepts it and the field is unchanged — but it is a control that does nothing, and a
+ * control that does nothing is one nobody trusts. A torus is in the list because rolling it
+ * is visible, and so is laying it flat. Shared by the transform panel, which hides its
+ * rotation fields for these, and by the toolbar, which disables the rotate tool for them.
+ */
+export const isAxial = (type: Part["shape"]["type"]): boolean =>
+  type !== "Sphere" && type !== "Ellipsoid" && type !== "RoundBox";
 
 /**
  * A part that unions, with a hard edge and no rotation.

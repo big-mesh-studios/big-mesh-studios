@@ -21,7 +21,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Mesh,
-  type Scene,
+  type Object3D,
 } from "@random-mesh/rmsl/scene";
 import type { ChunkMesh } from "@big-mesh-studios/meshing";
 
@@ -74,15 +74,24 @@ export interface ModelView {
   readonly dispose: () => void;
 }
 
-export const createModelView = (scene: Scene): ModelView => {
+/**
+ * `parent` is where the mesh is put, rather than the scene itself.
+ *
+ * **Because the move handles have to be drawn after it and the renderer draws in scene-graph
+ * order.** Both live under the scene, but the caller adds the mesh's own group first and the
+ * handles group second. A rebuild re-adds the mesh, and adding it straight to the scene would
+ * put it after the handles and paint the model over the arrows; giving it this group means a
+ * rebuild can only reorder children inside the group, never overtake the handles.
+ */
+export const createModelView = (parent: Object3D): ModelView => {
   let geometry: BufferGeometry | undefined;
   let drawn: Mesh | undefined;
   let triangles = 0;
 
   const release = (): void => {
-    // Guarded rather than passed through, because `scene.remove` takes a non-optional
+    // Guarded rather than passed through, because `parent.remove` takes a non-optional
     // `Object3D` and there is nothing to remove before the first install.
-    if (drawn !== undefined) scene.remove(drawn);
+    if (drawn !== undefined) parent.remove(drawn);
     geometry?.dispose();
     geometry = undefined;
     drawn = undefined;
@@ -102,7 +111,7 @@ export const createModelView = (scene: Scene): ModelView => {
       if (built === undefined) return;
       geometry = built;
       drawn = new Mesh(built, modelMaterial(translucent));
-      scene.add(drawn);
+      parent.add(drawn);
       triangles = result.triangles;
     },
 
