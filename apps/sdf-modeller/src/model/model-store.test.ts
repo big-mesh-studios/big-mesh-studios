@@ -505,6 +505,77 @@ describe("duplicate", () => {
   });
 });
 
+describe("reordering", () => {
+  const three = [sphereAt("a", 0), sphereAt("b", 2), sphereAt("c", 4)];
+
+  it("moves a part one place towards the front, leaving the rest in order", () => {
+    const store = createModelStore(three);
+    expect(store.moveUp("b")).toBe(true);
+    settle();
+    expect(shape(store)).toEqual(["b@2", "a@0", "c@4"]);
+  });
+
+  it("moves a part one place towards the back", () => {
+    const store = createModelStore(three);
+    expect(store.moveDown("b")).toBe(true);
+    settle();
+    expect(shape(store)).toEqual(["a@0", "c@4", "b@2"]);
+  });
+
+  it("refuses to move the first part up or the last part down", () => {
+    // **Both would record an undo step that changes nothing**, which is the mistake
+    // `transform` refuses for the same reason.
+    const store = createModelStore(three);
+    expect(store.moveUp("a")).toBe(false);
+    expect(store.moveDown("c")).toBe(false);
+    settle();
+    expect(shape(store)).toEqual(["a@0", "b@2", "c@4"]);
+    expect(store.canUndo()).toBe(false);
+  });
+
+  it("refuses an id that is not there, and records nothing", () => {
+    const store = createModelStore(three);
+    expect(store.moveUp("nope")).toBe(false);
+    expect(store.moveDown("nope")).toBe(false);
+    settle();
+    expect(store.canUndo()).toBe(false);
+  });
+
+  it("is one undo step that puts the part back where it was", () => {
+    const store = createModelStore(three);
+    store.moveDown("a");
+    settle();
+    expect(shape(store)).toEqual(["b@2", "a@0", "c@4"]);
+
+    store.undo();
+    settle();
+    expect(shape(store)).toEqual(["a@0", "b@2", "c@4"]);
+
+    store.redo();
+    settle();
+    expect(shape(store)).toEqual(["b@2", "a@0", "c@4"]);
+  });
+
+  it("names the edit for the undo button", () => {
+    const store = createModelStore(three);
+    store.moveUp("c");
+    settle();
+    expect(store.undoLabel()).toBe("move c");
+  });
+
+  it("changes the order the parts fold in", () => {
+    // **Order is the model, not a view of it** — the operations are built in list order, so a
+    // reorder is a different solid and not a different rendering of the same one.
+    const store = createModelStore(three);
+    const positions = (): number[] =>
+      store.operations().map((operation) => operation.origin.x);
+    const before = positions();
+    store.moveDown("a");
+    settle();
+    expect(positions()).toEqual([before[1], before[0], before[2]]);
+  });
+});
+
 describe("load", () => {
   const three = [sphereAt("a", 0), sphereAt("b", 2), sphereAt("c", 4)];
 

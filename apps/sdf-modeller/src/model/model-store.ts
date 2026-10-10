@@ -131,6 +131,20 @@ export interface ModelStore {
   /** Removes a part. Refused for an id that is not there. */
   readonly remove: (id: string) => boolean;
   /**
+   * Moves a part one place towards the front of the list, and returns whether it moved.
+   *
+   * **The list's order is the model, not a view of it.** Parts fold into one solid in list
+   * order — see `partsToOperations` — so which of two overlapping parts is added and which is
+   * subtracted is decided by where they sit here. Reordering is therefore an edit like any
+   * other, and it is undoable for the same reason a move of a part in space is.
+   *
+   * **Refused for an already-first part and for an id that is not there.** Both would record
+   * an undo step that changes nothing, which is the mistake `transform` refuses on purpose.
+   */
+  readonly moveUp: (id: string) => boolean;
+  /** Moves a part one place towards the back of the list. See `moveUp`. */
+  readonly moveDown: (id: string) => boolean;
+  /**
    * Changes a part's transform or shape.
    *
    * **Refused when nothing would change**, because an edit that changes nothing is an
@@ -272,6 +286,39 @@ export const createModelStore = (initial: readonly Part[] = []): ModelStore => {
     return true;
   };
 
+  /**
+   * Lifts the part with `id` out of the list and drops it at `to`, as one undo step.
+   *
+   * **Splice out and back in, rather than swapping with the neighbour.** A swap is shorter and
+   * is right for exactly the moves the arrows make, where the part and its destination are
+   * adjacent — and it stops being right the moment anything moves a part further than one
+   * place, which a drag on the list will. The remove-then-insert is correct for both.
+   *
+   * The recorded entry replays the move at `to` and undoes it at the part's old index, which
+   * is sound because undo and redo run in stack order — nothing else can have changed the list
+   * in between for the old index to have drifted.
+   */
+  const reorder = (id: string, to: number): boolean => {
+    const from = parts().findIndex((part) => part.id === id);
+    if (from === -1 || to < 0 || to >= parts().length || to === from) {
+      return false;
+    }
+    const move = (source: number, destination: number): void => {
+      setParts((current) => {
+        const next = [...current];
+        next.splice(destination, 0, next.splice(source, 1)[0]!);
+        return next;
+      });
+    };
+    move(from, to);
+    record({
+      label: `move ${id}`,
+      apply: () => move(from, to),
+      invert: () => move(to, from),
+    });
+    return true;
+  };
+
   const store: ModelStore = {
     parts,
     selected,
@@ -389,6 +436,11 @@ export const createModelStore = (initial: readonly Part[] = []): ModelStore => {
       });
       return true;
     },
+
+    moveUp: (id) =>
+      reorder(id, parts().findIndex((part) => part.id === id) - 1),
+    moveDown: (id) =>
+      reorder(id, parts().findIndex((part) => part.id === id) + 1),
 
     transform: (id, change) => {
       const existing = parts().find((part) => part.id === id);

@@ -45,14 +45,24 @@ const mount = (initial: readonly Part[] = []) => {
 
   const button = (): HTMLButtonElement | undefined =>
     root.querySelector<HTMLButtonElement>(`.${styles.duplicate}`) ?? undefined;
+  /** A part row's arrow, named the way the row's `aria-label` names it. */
+  const arrow = (id: string, direction: "up" | "down") =>
+    root.querySelector<HTMLButtonElement>(
+      `[aria-label="move ${id} ${direction}"]`,
+    );
   return {
     store,
     button,
+    arrow,
     /** The ids the panel said had been copied, in order. */
     copied: () => [...copied],
     parts: () => store.parts().map((part) => `${part.id}@${part.origin.x}`),
     press: () => {
       button()?.click();
+      flush();
+    },
+    pressMove: (id: string, direction: "up" | "down") => {
+      arrow(id, direction)?.click();
       flush();
     },
   };
@@ -135,5 +145,41 @@ describe("the duplicate button", () => {
     panel.press();
     expect(panel.parts()).toEqual([]);
     expect(panel.copied()).toEqual([]);
+  });
+});
+
+describe("the reorder arrows", () => {
+  it("dim the up arrow on the first part and the down arrow on the last", () => {
+    // **Dimmed rather than hidden**, so the selection button does not shift under a finger as
+    // a part reaches the top or bottom of the list.
+    const panel = mount([sphereAt("a", 0), sphereAt("b", 2), sphereAt("c", 4)]);
+    expect(panel.arrow("a", "up")?.disabled).toBe(true);
+    expect(panel.arrow("a", "down")?.disabled).toBe(false);
+    expect(panel.arrow("b", "up")?.disabled).toBe(false);
+    expect(panel.arrow("c", "down")?.disabled).toBe(true);
+  });
+
+  it("move a part one place in the list", () => {
+    const panel = mount([sphereAt("a", 0), sphereAt("b", 2), sphereAt("c", 4)]);
+    panel.pressMove("b", "up");
+    expect(panel.parts()).toEqual(["b@2", "a@0", "c@4"]);
+  });
+
+  it("are one undo step, like any other edit", () => {
+    const panel = mount([sphereAt("a", 0), sphereAt("b", 2)]);
+    panel.pressMove("b", "up");
+    expect(panel.parts()).toEqual(["b@2", "a@0"]);
+
+    panel.store.undo();
+    flush();
+    expect(panel.parts()).toEqual(["a@0", "b@2"]);
+  });
+
+  it("do not change the selection", () => {
+    // **The reorder is of the model, not of the selection.** Moving a part to drag the
+    // selection along would make the arrows a way to select as a side effect.
+    const panel = mount([sphereAt("a", 0), sphereAt("b", 2)]);
+    panel.pressMove("b", "up");
+    expect(panel.store.selected()).toBe("a");
   });
 });

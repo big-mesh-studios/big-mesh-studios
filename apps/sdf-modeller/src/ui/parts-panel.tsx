@@ -107,11 +107,10 @@ export function PartsPanel(props: {
       {/*
         **One button for the selection, rather than a button on every row.**
         *
-        A row's two targets are already the widest thing in a 16rem panel on a phone, and a
-        copy is almost always wanted for the part somebody is working on rather than for the
-        ninth one down the list — and the ninth one is two taps away, the same as the eighth.
-        Adding a third target to all of them would cost every row to serve the few that need
-        it.
+        A row's targets already fill a 16rem panel on a phone, and a copy is almost always
+        wanted for the part somebody is working on rather than for the ninth one down the
+        list — and the ninth one is two taps away, the same as the eighth. Adding another
+        target to all of them would cost every row to serve the few that need it.
        */}
       <div class={styles.actions}>
         <button
@@ -138,7 +137,7 @@ export function PartsPanel(props: {
 
       <ul class={styles.list}>
         <For each={props.store.parts()}>
-          {(part) => (
+          {(part, index) => (
             <li class={styles.item}>
               <button
                 type="button"
@@ -156,6 +155,39 @@ export function PartsPanel(props: {
                   {round(part.origin.x)}, {round(part.origin.y)},{" "}
                   {round(part.origin.z)}
                 </span>
+              </button>
+              {/*
+                **Two arrows rather than a drag handle.** The order is the model — the parts
+                fold in list order — so it has to be editable, and a pair of buttons is the
+                control that works with a finger and a keyboard alike without a pointer
+                gesture the panel would then have to implement and explain.
+
+                **Dimmed at the ends rather than hidden**, so the pair does not shift the
+                row it sits in as a part moves to the top or bottom.
+              */}
+              <button
+                type="button"
+                class={styles.move}
+                aria-label={`move ${part.id} up`}
+                title="Earlier in the fold"
+                disabled={index() === 0}
+                onClick={() => {
+                  props.store.moveUp(part.id);
+                }}
+              >
+                ▲
+              </button>
+              <button
+                type="button"
+                class={styles.move}
+                aria-label={`move ${part.id} down`}
+                title="Later in the fold"
+                disabled={index() === props.store.parts().length - 1}
+                onClick={() => {
+                  props.store.moveDown(part.id);
+                }}
+              >
+                ▼
               </button>
               <button
                 type="button"

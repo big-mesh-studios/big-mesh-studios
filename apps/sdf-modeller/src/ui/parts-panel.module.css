@@ -226,6 +226,41 @@
 }
 
 /*
+ * The reorder arrows.
+ *
+ * **The same square as the remove button**, because three actions on one part drawn at three
+ * sizes reads as misaligned, and these all target the same row. The glyph is smaller than the
+ * `×` because a solid triangle is visually heavier than a cross at the same point size.
+ *
+ * **Dimmed rather than hidden at the ends**, which `:disabled` does — a pair that vanished on
+ * the first and last row would move the selection button under the finger as a part reached
+ * the top or bottom.
+ */
+.move {
+  min-height: var(--ui-size);
+  width: var(--ui-size);
+  border: 1px solid transparent;
+  border-radius: calc(var(--ui-size) / 4);
+  background: transparent;
+  color: #707070;
+  font-size: 0.6rem;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.move:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e6e6ea;
+}
+
+.move:disabled {
+  color: #3a3a3e;
+  cursor: default;
+}
+
+/*
  * **On a narrow screen the list moves out of the way**, because a panel over the left
  * half of a phone hides the model a person is trying to look at while they tap a
  * primitive. It becomes a bar along the bottom, above the undo row.
