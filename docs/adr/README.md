@@ -49,7 +49,7 @@ recorded cost is a decision nobody thought about.
 | [0029](0029-the-site-root-is-a-front-page.md)                            | The site root is a front page, and the applications sit beside it                      | accepted                     |
 | [0030](0030-two-meshers-and-a-report.md)                                 | The modeller offers two meshers, and reports what came back                            | accepted                     |
 | [0031](0031-the-nearest-surface-carries-a-points-colour.md)              | The nearest surface carries a point's colour, not the last one in the list             | accepted                     |
-| [0032](0032-a-model-leaves-as-a-3mf.md)                                  | A model leaves as a 3MF, stood on a bed at a height in millimetres                     | accepted                     |
+| [0032](0032-a-model-leaves-as-a-3mf.md)                                  | A model leaves as a 3MF, stood on a bed at a height in millimetres                     | superseded in part by `0049` |
 | [0033](0033-a-project-file-is-a-manifest-and-the-model.md)               | A project file is a manifest and the model, and Save writes back to where it came from | accepted                     |
 | [0034](0034-a-draft-survives-a-reload.md)                                | A draft survives a reload, and the files you opened are remembered                     | accepted                     |
 | [0035](0035-the-coarser-chunk-overlaps-the-finer-one.md)                 | The coarser chunk overlaps the finer one, and there is no skirt                        | accepted                     |
@@ -66,6 +66,7 @@ recorded cost is a decision nobody thought about.
 | [0046](0046-a-triangle-carries-one-colour.md)                            | A triangle carries one colour, and the mesh is cut to put it there                     | accepted                     |
 | [0047](0047-a-figure-is-its-own-mesh.md)                                 | A figure is its own mesh, and it is not in the fold                                    | accepted                     |
 | [0048](0048-a-material-in-the-free-byte.md)                              | The colour's free byte carries a material, and materials are procedural                | accepted                     |
+| [0049](0049-a-print-meshes-at-the-resolution-you-type.md)                | A print meshes at the resolution you type, on a thread of its own                      | accepted                     |
 
 ## What is decided so far
 
@@ -504,3 +505,11 @@ What that buys is procedural materials with no UVs and no textures: brick is twe
 `fract` and `smoothstep` over world position and world normal. And because the id is a fourth
 byte of the colour, **a material boundary is a colour boundary**, so ADR 0046's mesh-cutting pass
 already handles it — for free, and on marching cubes, which is the mesher figures are built with.
+
+**0049 supersedes part of 0032.** ADR 0032 fixed the export's resolution at `0.125` by
+comparing it to the viewport's defaults rather than by looking at the result, and `0.125` is
+fifty-five samples across a figure. It also left the export on `DEFAULT_BUDGET`'s ceiling of
+ninety-six samples a side, which silently refuses the setting for any model over `voxelSize · 96`
+— so the resolution a person chose was, for a large model, never the resolution they got. The
+export now carries a ceiling of 256 of its own, defaults to the viewport's own finest, reaches
+twice as fine, and says what it will cost before anybody commits to it.

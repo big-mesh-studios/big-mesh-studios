@@ -69,7 +69,7 @@ describe("remembersFiles", () => {
 
 describe("pickFile", () => {
   it("settles with nothing when the picker is not there", async () => {
-    await expect(pickFile(undefined, CHOICE)).resolves.toBeUndefined();
+    await expect(pickFile(undefined)).resolves.toBeUndefined();
   });
 
   it("settles with nothing when the person dismisses it", async () => {
@@ -77,7 +77,7 @@ describe("pickFile", () => {
     // else when a dialog is closed, so a promise waiting on `change` never settles and whatever
     // was waiting on it stays waiting for the rest of the session.
     const picker = document.createElement("input");
-    const waiting = pickFile(picker, CHOICE);
+    const waiting = pickFile(picker);
     picker.dispatchEvent(new Event("cancel"));
 
     await expect(waiting).resolves.toBeUndefined();
@@ -85,7 +85,7 @@ describe("pickFile", () => {
 
   it("resolves with the file that was chosen", async () => {
     const picker = document.createElement("input");
-    const waiting = pickFile(picker, CHOICE);
+    const waiting = pickFile(picker);
     const file = new File(["bytes"], "duck.sdfmod");
     Object.defineProperty(picker, "files", { value: [file] });
     picker.dispatchEvent(new Event("change"));
@@ -98,7 +98,7 @@ describe("pickFile", () => {
 
   it("takes only the first file when a picker offered several", async () => {
     const picker = document.createElement("input");
-    const waiting = pickFile(picker, CHOICE);
+    const waiting = pickFile(picker);
     Object.defineProperty(picker, "files", {
       value: [
         new File(["a"], "first.sdfmod"),
@@ -115,16 +115,27 @@ describe("pickFile", () => {
     // does not report the same file again.
     const picker = document.createElement("input");
     picker.value = "C:/fake/duck.sdfmod";
-    void pickFile(picker, CHOICE);
+    void pickFile(picker);
 
     expect(picker.value).toBe("");
   });
 
-  it("says what it will accept, from the call that opens it", async () => {
+  it("accepts anything, because a phone cannot offer a file it has no type for", async () => {
+    // **This is the fix, and it is the opposite of what the control used to say.**
+    //
+    // `.sdfmod` is not a media type. A model is a zip declared `application/zip` under a
+    // `.sdfmod` name, and filtered to `application/zip` Android's document picker lists the
+    // zips it recognises and greys everything else out — and nothing on the device has ever
+    // claimed a `.sdfmod` is a zip, so the model this application wrote is not on the list. The
+    // Open button opens a dialog with nothing selectable in it.
+    //
+    // An empty `accept` is the only value that means "anything", and it is set from the call
+    // rather than the markup so there is one place that decides what a person may open.
     const picker = document.createElement("input");
-    void pickFile(picker, CHOICE);
+    picker.accept = "application/zip";
+    void pickFile(picker);
 
-    expect(picker.accept).toBe("application/zip");
+    expect(picker.accept).toBe("");
   });
 });
 
@@ -199,13 +210,27 @@ describe("writing through a handle", () => {
     expect(await written[0]?.text()).toBe("the model");
   });
 
+  it("asks the platform for no types at all, which is how you ask for everything", async () => {
+    // **The `showOpenFilePicker` half of the same fix**, and it matters more than the input's:
+    // `types` there is a real filter rather than a hint. The platform is told what to show and
+    // does not show the rest, so passing the model's own MIME type is what produced a phone
+    // that could not open a model. Omitting the option entirely is the documented way to say
+    // "everything", and `readProject` is the validation that replaces it.
+    const open = vi.fn(async () => [handleWritingTo([], "duck.sdfmod")]);
+    withApi(open);
+
+    await chooseFileToRead(undefined);
+
+    expect(open).toHaveBeenCalledWith({ multiple: false });
+  });
+
   it("opens a file through the API and hands back something writable", async () => {
     // **Writable as well as readable**, because that is what makes Save a Save rather than a
     // Save as: a document opened once should be saved back to where it came from.
     const written: Blob[] = [];
     withApi(async () => [handleWritingTo(written, "duck.sdfmod")]);
 
-    const opened = await chooseFileToRead(undefined, CHOICE);
+    const opened = await chooseFileToRead(undefined);
 
     expect(opened?.name).toBe("duck.sdfmod");
     expect(opened?.write).toBeTypeOf("function");
@@ -218,7 +243,7 @@ describe("writing through a handle", () => {
       throw Object.assign(new Error("aborted"), { name: "AbortError" });
     });
 
-    await expect(chooseFileToRead(undefined, CHOICE)).resolves.toBeUndefined();
+    await expect(chooseFileToRead(undefined)).resolves.toBeUndefined();
   });
 
   it("falls back to the input where there is no API", async () => {
@@ -226,7 +251,7 @@ describe("writing through a handle", () => {
     // is. The input is created here rather than passed in, which is what a caller without a
     // ref in its markup would do.
     const picker = document.createElement("input");
-    const waiting = chooseFileToRead(picker, CHOICE);
+    const waiting = chooseFileToRead(picker);
     Object.defineProperty(picker, "files", {
       value: [new File(["bytes"], "duck.sdfmod")],
     });

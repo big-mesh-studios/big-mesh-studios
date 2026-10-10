@@ -55,6 +55,7 @@ import {
 import { ChunkMeshBuilder } from "./chunk-mesh";
 import { marchingCubes, marchingCubesScratchFor } from "./marching-cubes";
 import type { MarchingCubesScratch } from "./marching-cubes";
+import type { MeshProgress } from "./surface-nets";
 import { reportMesh, type MeshReport } from "./mesh-report";
 import {
   colourBoundaryScratchFor,
@@ -601,6 +602,7 @@ export const meshModel = (
   operations: readonly Operation[],
   budget: MeshBudget = DEFAULT_BUDGET,
   mode: MeshMode = DEFAULT_MESH_MODE,
+  onProgress?: MeshProgress,
 ): MeshResult | undefined => {
   const region = meshRegion(operations, budget);
   if (region === undefined) return undefined;
@@ -649,9 +651,14 @@ export const meshModel = (
     marchingCubes({
       ...params,
       scratch: scratch as MarchingCubesScratch,
+      onProgress,
     });
   } else {
-    surfaceNets({ ...params, scratch: scratch as SurfaceNetsScratch });
+    surfaceNets({
+      ...params,
+      scratch: scratch as SurfaceNetsScratch,
+      onProgress,
+    });
   }
 
   const built = builder.finish();

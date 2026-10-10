@@ -48,6 +48,7 @@ import {
 import type {
   MeshBudget,
   MeshMode,
+  MeshProgress,
   MeshResult,
 } from "@big-mesh-studios/meshing";
 
@@ -66,7 +67,7 @@ export {
   releaseScratch,
   samplesFor,
 };
-export type { MeshBudget, MeshMode, MeshResult };
+export type { MeshBudget, MeshMode, MeshProgress, MeshResult };
 
 /**
  * A document's parts as CSG operations, one per part, in list order.
@@ -117,4 +118,6 @@ export const meshParts = (
   parts: readonly Part[],
   budget: MeshBudget = DEFAULT_BUDGET,
   mode: MeshMode = DEFAULT_MESH_MODE,
-): MeshResult | undefined => meshModel(partsToOperations(parts), budget, mode);
+  onProgress?: MeshProgress,
+): MeshResult | undefined =>
+  meshModel(partsToOperations(parts), budget, mode, onProgress);

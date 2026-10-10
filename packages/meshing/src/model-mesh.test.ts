@@ -1029,7 +1029,6 @@ describe("the resolution control", () => {
     expect(fine.maxSamplesPerAxis).toBe(DEFAULT_BUDGET.maxSamplesPerAxis);
     expect(fine.minSamplesPerAxis).toBe(DEFAULT_BUDGET.minSamplesPerAxis);
   });
-
   it("meshes finer the smaller the voxel, and says so in the region", () => {
     const coarse = meshModel(
       [placedPart("a", { type: "Sphere", radius: 1 }, { x: 0, y: 0, z: 0 })],
@@ -1428,5 +1427,74 @@ describe("vertex normals", () => {
     expect(at.size, "distinct positions among the vertices").toBeLessThan(
       mesh.mesh.vertexCount,
     );
+  });
+});
+
+describe("reporting progress", () => {
+  const a = placedPart(
+    "a",
+    { type: "Sphere", radius: 1 },
+    { x: 0, y: 0, z: 0 },
+  );
+
+  for (const mode of ["marching-cubes", "surface-nets"] as const) {
+    it(`counts to exactly one on ${mode}, and never goes backwards`, () => {
+      // **The contract `MeshProgress` makes**, which a caller draws a bar against. `done`
+      // reaching `total` is what lets a worker send a final fraction rather than a bar that
+      // stalls at 99% and waits; monotonicity is what keeps the bar from jumping backwards,
+      // which reads as a fault rather than as work.
+      //
+      // **Both meshers**, because the hook is added to each one's loops separately and a test
+      // on one of them says nothing about the other.
+      const seen: number[] = [];
+      meshModel([a], budgetFor(0.25), mode, (done, total) => {
+        expect(total).toBeGreaterThan(0);
+        seen.push(done / total);
+      });
+
+      expect(seen.length, "it reported more than once").toBeGreaterThan(1);
+      expect(seen.at(-1), "it finished").toBe(1);
+      expect(
+        seen.every((at, i) => i === 0 || at >= (seen[i - 1] as number)),
+        "it went backwards",
+      ).toBe(true);
+      // **Distinct values rather than merely several of them**, which is what catches a mesher
+      // that counts only its first pass and then holds still: a bar frozen across two thirds of
+      // the work and then snapping to full is the failure this assertion is here for.
+      expect(
+        new Set(seen).size,
+        "it reported distinct fractions, so it moved while each pass ran",
+      ).toBeGreaterThan(4);
+    });
+  }
+
+  it("counts surface nets' edge pass, which is a third of the work and not a tail", () => {
+    // **The pass that is easy to leave out.** Surface nets samples the field, walks the cells,
+    // and then walks the owned edges testing four samples each — `owned³` iterations, which at
+    // the export's fine end is twelve million and the same order as either of the others. A
+    // denominator counting only the first two would reach 100% and then keep working.
+    const seen: number[] = [];
+    meshModel([a], budgetFor(0.125), "surface-nets", (done) => {
+      seen.push(done);
+    });
+
+    const last = seen.at(-1) as number;
+    expect(
+      seen.filter((done) => done > last * 0.8 && done < last).length,
+      "it reported work in its last fifth, which is where the edge pass is",
+    ).toBeGreaterThan(0);
+  });
+
+  it("reports nothing when no one is watching, and meshes the same mesh", () => {
+    // **The branch is the whole of the cost**, so what it must not cost is the mesh. Without
+    // this, a caller adding a bar would be unable to tell whether the counting changed the
+    // answer or only the time.
+    const watched = meshModel([a], budgetFor(0.25), "marching-cubes", () => {});
+    const plain = meshModel([a], budgetFor(0.25), "marching-cubes");
+
+    expect([...(watched?.mesh.indices ?? [])]).toEqual([
+      ...(plain?.mesh.indices ?? []),
+    ]);
+    expect(watched?.triangles).toBe(plain?.triangles);
   });
 });

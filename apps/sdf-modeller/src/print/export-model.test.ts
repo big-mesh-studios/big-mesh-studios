@@ -4,7 +4,9 @@ import type { MeshReport } from "@big-mesh-studios/meshing";
 
 import { placedPart } from "../model/part";
 import { DEFAULT_HEIGHT_MM, exportThreeMf } from "./export-model";
-import { printProblem, printedMesh } from "./print-problem";
+import { printProblem } from "./print-problem";
+import { meshForPrint } from "./print-mesh";
+import { DEFAULT_PRINT_VOXEL_SIZE } from "./print-budget";
 import type { MeshResult } from "../model/mesh-model";
 import { quantiseColours } from "./quantise";
 import { MODEL_PART } from "./three-mf";
@@ -21,11 +23,11 @@ const body = () =>
  * A mesh of these parts, or a thrown error.
  *
  * **So a test can state a fact about the model rather than about a nullable result.** Every
- * assertion here is about a model that exists; `printedMesh` returning `undefined` is tested
+ * assertion here is about a model that exists; `meshForPrint` returning `undefined` is tested
  * once, on its own, in `print-problem.test.ts`.
  */
 const meshOf = (parts: ReturnType<typeof placedPart>[]): MeshResult => {
-  const result = printedMesh(parts);
+  const result = meshForPrint(parts, DEFAULT_PRINT_VOXEL_SIZE);
   if (result === undefined) throw new Error("this model meshed to nothing");
   return result;
 };
@@ -69,6 +71,16 @@ const heightsOf = (model: string): number[] =>
   [...model.matchAll(/<vertex [^>]*?z="([^"]*)"/g)].map((match) =>
     Number.parseFloat(match[1] as string),
   );
+
+/**
+ * How many triangles the exported markup declares.
+ *
+ * **Counted from the file rather than from the mesh that went into it**, because the mesh is
+ * not the deliverable — what a slicer reads is the `<triangle>` elements, and a resolution that
+ * changed the mesh without changing the file would satisfy every other assertion here.
+ */
+const countTriangles = (model: string): number =>
+  (model.match(/<triangle /g) ?? []).length;
 
 describe("exportThreeMf", () => {
   it("writes a file a slicer can open, in millimetres", async () => {
@@ -186,7 +198,7 @@ describe("exportThreeMf", () => {
   it("refuses a model with nothing in it, in the same words the control says", async () => {
     // **One sentence, two places.** The button's `title` and the thrown error are the same
     // string, so a person is never told a different reason from the one the code refused for.
-    const problem = printProblem(printedMesh([]));
+    const problem = printProblem(meshForPrint([], DEFAULT_PRINT_VOXEL_SIZE));
 
     await expect(exportThreeMf([])).rejects.toThrow(problem);
   });
@@ -198,6 +210,55 @@ describe("exportThreeMf", () => {
       printProblem(reporting(meshOf([body()]), { boundaryEdges: 1 })),
     ).toMatch(/not print/);
     expect(printProblem(meshOf([body()]))).toBeUndefined();
+  });
+
+  it("meshes at the resolution it was asked for rather than at the default", async () => {
+    // **The point of the whole resolution control**, and it is measured on the file rather than
+    // on the mesh that went into it: a triangle count in the exported markup is the only thing
+    // that proves the number reached the triangles a slicer will read.
+    //
+    // **One step either side of the default rather than two exports at the fine end** — at
+    // `0.03125` the export is 177,056 triangles and takes about eight seconds on a phone, and a
+    // suite that measures the fine end twice is a suite nobody runs. `print-mesh.test.ts`
+    // measures the fine end against the default on the mesh, which is the same assertion one
+    // step earlier in the pipeline and much cheaper.
+    //
+    // Measured on this model: 42,112 triangles at the default `0.0625` and 9,264 at `0.125`,
+    // which is where the export used to sit.
+    const at = async (voxelSize: number): Promise<number> =>
+      countTriangles(
+        await modelOf(await exportThreeMf([body()], { voxelSize })),
+      );
+
+    const finer = await at(DEFAULT_PRINT_VOXEL_SIZE);
+    const coarser = await at(DEFAULT_PRINT_VOXEL_SIZE * 2);
+
+    expect(finer).toBeGreaterThan(coarser * 3);
+  }, 60_000);
+
+  it("defaults to the finest resolution the viewport offers", async () => {
+    // **So that a file is the mesh somebody approved at the end of the resolution slider**,
+    // rather than a coarser one that merely resembles it. This used to be `0.125`, which is
+    // nine thousand triangles where this is forty-two thousand.
+    const triangles = countTriangles(
+      await modelOf(await exportThreeMf([body()])),
+    );
+
+    expect(DEFAULT_PRINT_VOXEL_SIZE).toBe(0.0625);
+    expect(triangles).toBeGreaterThan(30_000);
+  });
+
+  it("says how far it got, so the caller can draw a bar rather than freeze", async () => {
+    // **The worker's whole reason for existing.** At the fine end this is seven and a half
+    // seconds of arithmetic on a thread the page is trying to answer on, so the progress is not
+    // a nicety — it is what tells somebody the export has not stopped.
+    const fractions: number[] = [];
+    await exportThreeMf([body()], {
+      onProgress: (fraction) => fractions.push(fraction),
+    });
+
+    expect(fractions.length).toBeGreaterThan(1);
+    expect(fractions.at(-1)).toBe(1);
   });
 
   it("carries a thumbnail when it is given one", async () => {
@@ -231,7 +292,7 @@ describe("exportThreeMf", () => {
  * the corners carry the parts' own colours and nothing in between, which is a different claim:
  * the palette is the model's colours rather than an approximation of them.
  *
- * `printedMesh` is always marching cubes (`print-problem.ts`), so this needs no arrangement of
+ * `meshForPrint` is always marching cubes (`print-mesh.ts`), so this needs no arrangement of
  * modes to reach the export path — it is what the export already does.
  */
 describe("a printed model's colours", () => {

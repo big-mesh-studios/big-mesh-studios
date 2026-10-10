@@ -29,8 +29,17 @@ import type { RGBA } from "@big-mesh-studios/core";
 import { homeName, type Home } from "../file/home";
 import { REMEMBERED, type RecentFile } from "../file/recent-files";
 import { DEFAULT_HEIGHT_MM, printReadout } from "../print/print-problem";
+import {
+  DEFAULT_PRINT_VOXEL_SIZE,
+  MIN_PRINT_VOXEL_SIZE,
+  PRINT_RESOLUTIONS,
+  describePrintEstimate,
+  printEstimate,
+  printVoxelSizeIn,
+} from "../print/print-budget";
 import { DEFAULT_MAX_COLOURS } from "../print/quantise";
 import type { MeshResult } from "../model/mesh-model";
+import type { Part } from "../model/part";
 import { createPopover } from "./popover";
 import {
   CrossIcon,
@@ -44,11 +53,23 @@ import {
 import controls from "./controls.module.css";
 import styles from "./files-panel.module.css";
 
+/**
+ * The `id` of the `datalist` the resolution field draws its arrows from.
+ *
+ * **A literal rather than a counter**, because there is one of these panels in the application
+ * and the id has to be written twice — once on the input's `list`, once on the list itself.
+ * `createPopover` has a counter for the same job, but its names are generated inside the
+ * factory and are not reachable from here.
+ */
+const PRINT_RESOLUTION_LIST = "sdf-modeller-print-resolutions";
+
 export function FilesPanel(props: {
   /** Where the document lives, which is what the card under the bar is about. */
   home: () => Home;
   /** How many parts the document has, and whether that is worth showing. */
   parts: () => number;
+  /** The document itself, which is what the export's cost is worked out from. */
+  model: () => readonly Part[];
   palette: () => readonly RGBA[];
   recent: () => readonly RecentFile[];
   /** The browser can hold on to files at all, and so whether the list is worth drawing. */
@@ -59,14 +80,24 @@ export function FilesPanel(props: {
   mesh: () => MeshResult | undefined;
   height: () => string;
   filaments: () => string;
+  /** The export's resolution as typed, which is text because a number is a number per keystroke. */
+  resolution: () => string;
+  /** How far the export's meshing has got, or `undefined` when none is running. */
+  printing: () => number | undefined;
+  /** The name and size of a built file waiting to be saved, or `undefined` when none is. */
+  builtFile: () => string | undefined;
   notice: () => string | undefined;
   busy: () => boolean;
   onNew: () => void;
   onOpen: () => void;
   onSave: () => void;
+  /** Meshes and encodes the model; needs no user gesture and may take as long as it takes. */
   onExport: () => void;
+  /** Writes the built file; has to be a fresh click, because a file dialog needs the gesture. */
+  onSavePrint: () => void;
   onHeight: (value: string) => void;
   onFilaments: (value: string) => void;
+  onResolution: (value: string) => void;
   onOpenRecent: (file: RecentFile) => void;
   onForgetRecent: (id: string) => void;
   onClose: () => void;
@@ -193,22 +224,124 @@ export function FilesPanel(props: {
         </label>
 
         {/*
+          **The export's resolution, as a number a person types rather than a slider.**
+
+          **Because the cost is cubic in the reciprocal and this is the one control where that
+          is worth spending.** Height and filaments are a printer's two facts and neither is
+          expensive to get wrong. This one decides whether the export takes a second or ten of
+          them, so it says what it will cost underneath itself and lets somebody who knows their
+          machine type the value.
+
+          **`step="any"` and a `datalist`, because the three settings that were measured are
+          halvings of each other and `step` can only be linear.** Stepping by the halving
+          between the two ends gives `0.046875`, which is not a resolution anybody measured;
+          stepping by one, which is what a free field does, gives `1.0625`. A `datalist` is the
+          control that means what is wanted: any value is accepted, the arrows walk the three
+          that were, and the list is the same list `PRINT_RESOLUTIONS` is written from.
+
+          **The bounds are the range the export will mesh at**, which is what makes typing
+          something out of it an error at Export rather than a silently coarser file.
+        */}
+        <label class={controls.field}>
+          <span>Resolution</span>
+          <input
+            type="number"
+            min={MIN_PRINT_VOXEL_SIZE}
+            max={DEFAULT_PRINT_VOXEL_SIZE}
+            step="any"
+            list={PRINT_RESOLUTION_LIST}
+            value={props.resolution()}
+            onInput={(event: Event & { currentTarget: HTMLInputElement }) => {
+              props.onResolution(event.currentTarget.value);
+            }}
+          />
+          <span>u</span>
+        </label>
+
+        <datalist id={PRINT_RESOLUTION_LIST}>
+          {/*
+            **Finest first, because that is the order `PRINT_RESOLUTIONS` is in and the order a
+            list of resolutions is read in.**
+          */}
+          <For each={PRINT_RESOLUTIONS}>
+            {(size) => <option value={String(size)} />}
+          </For>
+        </datalist>
+
+        {/*
+          **What the resolution above will cost, worked out without meshing anything.**
+
+          **Because the model decides the cost as much as the number does**, which is the one
+          thing a resolution control cannot show on its own: a model twenty units long and a
+          model two units long differ by a hundredfold in the samples between them, so the same
+          typed number is a one-second print of one and a ten-second print of the other. This
+          is why the field is a number at all — the person who wants a fine print of a small
+          model can have one, and they can see what it will be.
+
+          **Empty rather than a placeholder when the model has nothing in it**, because there is
+          no estimate to give and a dash would read as an error.
+        */}
+        <p class={styles.cost}>{describeEstimate(props)}</p>
+
+        {/*
           **The mesh report, verbatim, because it is the same sentence the export refuses with.**
           Nothing here decides anything; it is there so that a person finds out a model is a
           lidless shell while they are looking at the control that would send it to a printer.
         */}
         <p class={styles.report}>{printReadout(props.mesh())}</p>
 
+        {/*
+          **The bar, and only while there is something to bar.**
+
+          **A `<progress>` because it is the element that means this**, which is worth more than
+          the styling it gives up: it carries `aria-valuenow` for a screen reader without a
+          line of code. At the fine end this export is seven and a half seconds of arithmetic,
+          and the page stays live throughout because the meshing is in a worker — so the bar is
+          the difference between waiting and not knowing whether it has stopped.
+
+          **`max` is one and `value` is the fraction**, which is what the mesher's work count
+          becomes once its passes have been counted against each other. The element is drawn only
+          while a mesh is being built, so it is never a bar sitting at nothing between exports —
+          the `Show` removes it rather than zeroing it.
+        */}
+        <Show when={props.printing()}>
+          {(fraction) => (
+            <progress class={styles.progress} max={1} value={fraction()} />
+          )}
+        </Show>
+
+        {/*
+          **One button that is two steps, because a file dialog needs a gesture and meshing
+          spends the one there was.**
+
+          **`showSaveFilePicker` refuses without recent user activation** — Chrome throws
+          _"Must be handling a user gesture to show a file picker"_ — and its activation lasts
+          five seconds, where the fine end of this export takes eleven. So the first press
+          meshes and encodes, which needs no gesture and draws the bar above; the second press
+          writes, and is a fresh gesture from a button that names the file and its size.
+
+          **One button rather than two**, because two would invite pressing the wrong one and
+          the state that says which is right is exactly what the label carries. What it says is
+          the last chance to say something wrong, so the name and the megabytes go on it.
+        */}
         <button
           type="button"
           class={controls.button}
           disabled={props.busy()}
-          onClick={() => props.onExport()}
+          onClick={() =>
+            props.builtFile() === undefined
+              ? props.onExport()
+              : props.onSavePrint()
+          }
         >
           <span class={controls.icon}>
             <CubeIcon />
           </span>
-          <span class={controls.label}>Export .3mf</span>
+          <span class={controls.label}>
+            <Show when={props.builtFile()} fallback="Export .3mf">
+              {(name) => `Save ${name()}`}
+            </Show>
+          </span>
         </button>
       </ExportPopover.Panel>
 
@@ -308,6 +441,31 @@ export function FilesPanel(props: {
     </div>
   );
 }
+
+/**
+ * What the export's resolution control says it will cost, or nothing to say.
+ *
+ * **Three reasons it can be empty, and none of them is worth a sentence.** A field somebody has
+ * cleared, a field holding something that is not a number yet, and a model with nothing in it
+ * all produce no line; the export button refuses the second of those in its own words when it
+ * is pressed. A line reading "enter a resolution" under a field halfway through being typed is
+ * noise, and this runs on every keystroke.
+ *
+ * **Read through the props rather than memoised,** because Solid compiles a call in JSX into an
+ * effect and so tracks the `resolution()` and `model()` reads inside it for free — which is
+ * what makes the line follow the field without anything watching it.
+ */
+const describeEstimate = (props: {
+  readonly model: () => readonly Part[];
+  readonly resolution: () => string;
+}): string => {
+  const typed = props.resolution();
+  if (typed === "") return "";
+  const voxelSize = printVoxelSizeIn(typed);
+  if (voxelSize === undefined) return "";
+  const estimate = printEstimate(props.model(), voxelSize);
+  return estimate === undefined ? "" : describePrintEstimate(estimate);
+};
 
 /**
  * How long ago something happened, in the fewest words that are still true.

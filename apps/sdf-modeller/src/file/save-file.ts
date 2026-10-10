@@ -74,6 +74,11 @@ declare global {
       suggestedName?: string;
       types?: PickerType[];
     }) => Promise<FileSystemHandleLike>;
+    /**
+     * **`types` is declared and never passed.** It is here so the declaration matches the
+     * specification — `chooseFileToRead` reads it as an omission that is deliberate, and a type
+     * that lacked the member would not let a reader see that.
+     */
     showOpenFilePicker?: (options?: {
       multiple?: boolean;
       types?: PickerType[];
@@ -86,7 +91,9 @@ export const remembersFiles = (): boolean =>
   typeof window !== "undefined" &&
   typeof window.showOpenFilePicker === "function";
 
-/** What a picker is told it may open. */
+/**
+ * What a *write* dialog is told it may write, which is the one file this was opened as.
+ */
 export interface FilePickerOptions {
   readonly description: string;
   readonly extension: string;
@@ -132,10 +139,22 @@ export interface WriteTarget {
  *
  * `picker` is a ref to the hidden input, because the element has to exist in the document for
  * `.click()` to open a dialog — a detached input does nothing, silently.
+ *
+ * ## Why there is no `choice` and so no `accept`
+ *
+ * **Because `.sdfmod` is not a media type and a phone cannot offer you a file it has no type
+ * for.** A model is a zip declared `application/zip` under a `.sdfmod` name, and that is
+ * exactly the combination Android's document picker mishandles: filtered to `application/zip`
+ * it shows the zips it recognises and greys everything else out, so Open opens nothing. No MIME
+ * type means "a zip called `.sdfmod`", and inventing one is worse — a type nothing else uses is
+ * a type nothing else recognises.
+ *
+ * So the read path carries no filter at all, and the caller cannot get one back by accident.
+ * That is not a loss of validation: `readProject` reads the manifest and says a sentence when
+ * the file is not a model, which is a better answer than a list the file was missing from.
  */
 export const pickFile = (
   picker: HTMLInputElement | undefined,
-  choice: FilePickerOptions,
 ): Promise<OpenedFile | undefined> =>
   new Promise<OpenedFile | undefined>((resolve) => {
     if (picker === undefined) {
@@ -143,10 +162,12 @@ export const pickFile = (
       return;
     }
 
-    // **Set here rather than in the markup**, so the one thing that decides what a person may
-    // open is the call that opens it — a picker wired up from a JSX attribute is a picker whose
-    // accepted types have to be found by reading the component that renders it.
-    picker.accept = choice.mimeType;
+    // **`accept` cleared rather than left alone**, and set here rather than in the markup for
+    // the reason below: an empty `accept` is the only value that means "anything", and an input
+    // carrying one from a previous call would keep filtering for it. Setting it in the markup
+    // would also mean the one thing that decides what a person may open has to be found by
+    // reading the component that renders it.
+    picker.accept = "";
     picker.value = "";
     picker.addEventListener(
       "change",
@@ -206,24 +227,29 @@ export const choosePlaceToWrite = async (
  *
  * **`undefined` in both cases means nothing was chosen** — dismissed either way — because the
  * caller has nothing to do about a file that was not picked either.
+ *
+ * ## Why there is no `types` option
+ *
+ * **The same reason `pickFile` clears `accept`, and it is worse on this path rather than
+ * better.** `showOpenFilePicker`'s `types` is a real filter rather than a hint: the platform
+ * is told what to show and does not show the rest. Given `application/zip → .sdfmod`, Android's
+ * document provider lists the zips it knows and a model saved by this application is not one
+ * of them, because nothing on the device has ever claimed that a `.sdfmod` is a zip. The Open
+ * button opens a dialog with nothing selectable in it, which is the one failure a file picker
+ * must not have.
+ *
+ * **Omitting `types` entirely is the documented way to ask for everything**, and it is what
+ * this does. `readProject` is the validation, and a person who picked a photograph is told so
+ * in a sentence rather than being unable to pick their model at all.
  */
 export const chooseFileToRead = async (
   picker: HTMLInputElement | undefined,
-  choice: FilePickerOptions,
 ): Promise<OpenedFile | undefined> => {
   const show = window.showOpenFilePicker;
-  if (show === undefined) return pickFile(picker, choice);
+  if (show === undefined) return pickFile(picker);
 
   try {
-    const [handle] = await show({
-      multiple: false,
-      types: [
-        {
-          description: choice.description,
-          accept: { [choice.mimeType]: [choice.extension] },
-        },
-      ],
-    });
+    const [handle] = await show({ multiple: false });
     if (handle === undefined) return undefined;
     return {
       name: handle.name,

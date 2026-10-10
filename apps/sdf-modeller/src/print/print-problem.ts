@@ -17,15 +17,11 @@
  * second wording to keep in step. A boolean would leave the message to be written twice and
  * would guarantee the two drifted.
  */
-import { describeReport, type MeshReport } from "@big-mesh-studios/meshing";
-
 import {
-  budgetFor,
-  meshParts,
-  type MeshBudget,
+  describeReport,
+  type MeshReport,
   type MeshResult,
-} from "../model/mesh-model";
-import type { Part } from "../model/part";
+} from "@big-mesh-studios/meshing";
 
 /**
  * How tall a model stands when nobody says otherwise.
@@ -38,29 +34,6 @@ import type { Part } from "../model/part";
 export const DEFAULT_HEIGHT_MM = 100;
 
 /**
- * How finely the export meshes, in world units a sample.
- *
- * **Finer than the viewport's default and coarser than its finest, and deliberately not the
- * viewport's.** The default `0.25` is a preview resolution; `0.0625` is where sampling stops
- * being what limits the surface and costs about seven million samples for a model that fills the
- * budget. `0.125` is half the error of the preview at a sixteenth of the finest setting's cost.
- */
-export const PRINT_VOXEL_SIZE = 0.125;
-
-/**
- * The mesh a model would be printed from, or `undefined` when it has nothing to mesh.
- *
- * **Always marching cubes, whichever mesher the viewport is on**, because ADR 0030's reason is a
- * guarantee rather than an observation and this is the one place where "closed where it happens
- * to be resolved" is not good enough. There is no mode argument to get wrong.
- */
-export const printedMesh = (
-  parts: readonly Part[],
-  budget?: MeshBudget,
-): MeshResult | undefined =>
-  meshParts(parts, budget ?? budgetFor(PRINT_VOXEL_SIZE), "marching-cubes");
-
-/**
  * Why this model cannot be printed, or `undefined` when it can.
  *
  * **Open edges refuse; nothing else does.** A mesh with an edge in one triangle rather than two
@@ -71,7 +44,7 @@ export const printedMesh = (
  * more often than they cause a visible fault, and refusing every mesh with one of them would
  * refuse meshes that come out fine.
  *
- * @param result What `printedMesh` returned.
+ * @param result What `meshForPrint` returned.
  */
 export const printProblem = (
   result: MeshResult | undefined,

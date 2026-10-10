@@ -59,8 +59,14 @@ import { TransformPanel } from "./ui/transform-panel";
 // **From `./print/print-problem` and not from `./print/export-model`, and that is the whole
 // reason the module is split.** The export control's default height is a number about the
 // printer; importing it through the writer would put `jszip` on the first frame, and the build
-// says `INEFFECTIVE_DYNAMIC_IMPORT` out loud when it happens.
+// says `INEFFECTIVE_DYNAMIC_IMPORT` out loud when it happens. `print-budget` is beside it for
+// the same reason and reaches no further than the meshing package does.
 import { DEFAULT_HEIGHT_MM } from "./print/print-problem";
+import {
+  DEFAULT_PRINT_VOXEL_SIZE,
+  MIN_PRINT_VOXEL_SIZE,
+  printVoxelSizeIn,
+} from "./print/print-budget";
 import { PROJECT_EXTENSION, PROJECT_MIME_TYPE } from "./file/project-file";
 import {
   chooseFileToRead,
@@ -284,6 +290,80 @@ export function App() {
    * number in a file that a slicer will act on is not a number to leave to chance.
    */
   const [filaments, setFilaments] = createSignal(String(DEFAULT_MAX_COLOURS));
+
+  /**
+   * How finely the export meshes, as text, for the same reason as the two above.
+   *
+   * **Held separately from `resolution`, and this is the one that is not a preview.** The
+   * viewport's resolution is about how fast a picture arrives and is saved with the project;
+   * this one is about how good a file is and changes nothing until somebody presses Export.
+   * One signal for both would mean opening the files dialogue moved the preview.
+   */
+  const [printResolution, setPrintResolution] = createSignal(
+    String(DEFAULT_PRINT_VOXEL_SIZE),
+  );
+
+  /**
+   * How far the export's meshing has got, or `undefined` when none is running.
+   *
+   * **`undefined` rather than zero while idle**, so the export popover's `<Show>` takes the bar
+   * out of the panel rather than leaving a full-width element sitting at nothing between
+   * exports — and so that a failure, which clears it in a `finally`, leaves no bar behind at
+   * all rather than a frozen one that says the export is still going.
+   */
+  const [printProgress, setPrintProgress] = createSignal<number | undefined>();
+
+  /**
+   * The `.3mf` that has been built and is waiting for somebody to say where it goes.
+   *
+   * **Held rather than written immediately, because a file dialog needs a user gesture and the
+   * meshing spends the one there was.** `showSaveFilePicker` throws
+   * _"Must be handling a user gesture to show a file picker"_ when it is called without recent
+   * user activation, and Chrome's activation lasts five seconds — where the finest export is
+   * seven and a half and the coarsest is one. So the export is two clicks: one to mesh and
+   * encode, which needs no gesture and may take as long as it takes, and one to write, which
+   * is a fresh gesture on a button that says what it will write.
+   *
+   * **The bytes are held, not re-encoded.** Nothing between the two clicks can change them, so
+   * saving is a `Blob` going to a handle and the eight seconds are not paid twice.
+   */
+  const [printFile, setPrintFile] = createSignal<
+    { readonly blob: Blob; readonly name: string } | undefined
+  >();
+
+  /**
+   * The name and size of the file waiting to be saved, or `undefined` when none is.
+   *
+   * **On the button rather than in a line of its own**, because the button is what a person
+   * presses next and what it says is the last chance to say something wrong. The size is here
+   * because a `.3mf` of a finely-meshed model is tens of megabytes and somebody about to write
+   * one to a phone's storage would rather know before than after.
+   */
+  const printFileLabel = (): string | undefined => {
+    const built = printFile();
+    if (built === undefined) return undefined;
+    return `${built.name} · ${Math.max(1, Math.round(built.blob.size / 1e6))} MB`;
+  };
+
+  /**
+   * Setting one of the export's numbers throws away a file built with the old ones.
+   *
+   * **Three wrappers rather than an effect watching the three signals**, because an effect would
+   * fire once on mount and take the file with it — and because this way the connection between
+   * "the settings changed" and "the thing it produced is stale" is written down at the setter
+   * rather than inferred from a dependency list somewhere else.
+   *
+   * **Height and filaments included, not only the resolution**, because all three go into the
+   * bytes: a file meshed at 100 mm offered after the field says 150 is a wrong file, and a
+   * person who cannot see that from a filename deserves to be told by the button disappearing.
+   */
+  const forgetPrintFile = (set: (value: string) => void) => (value: string) => {
+    setPrintFile(undefined);
+    set(value);
+  };
+  const setHeightForPrint = forgetPrintFile(setHeight);
+  const setFilamentsForPrint = forgetPrintFile(setFilaments);
+  const setPrintResolutionForPrint = forgetPrintFile(setPrintResolution);
 
   // **Assigned inside `onSettled` and read outside it, which is the shape this needs.**
   //
@@ -595,10 +675,12 @@ export function App() {
     picker: HTMLInputElement | undefined,
   ): Promise<void> =>
     attempt(setFileNotice, "opened", async () => {
-      const opened: OpenedFile | undefined = await chooseFileToRead(
-        picker,
-        PROJECT_CHOICE,
-      );
+      // **No filter on this one, and that is the fix rather than an omission.** `.sdfmod` is
+      // not a media type, so a dialog told to show `application/zip → .sdfmod` shows the zips
+      // the device knows about and greys the model out — on a phone, Open opens a dialog with
+      // nothing in it. `readProject` is the validation and says a sentence when the file is
+      // wrong; see `chooseFileToRead` for the rest of it.
+      const opened: OpenedFile | undefined = await chooseFileToRead(picker);
       // **A dismissed picker is not a failure and says nothing.** An input's promise only
       // resolves on `change`, so without the `cancel` listener a person who backs out would
       // leave this waiting for the rest of the session.
@@ -741,10 +823,19 @@ export function App() {
     setHome(here);
   };
 
-  /** Writes the model as a `.3mf` for a slicer. */
-  const exportPrint = async (): Promise<void> =>
+  /**
+   * Meshes and encodes the model as a `.3mf`, and holds it until somebody says where it goes.
+   *
+   * **Nothing is written from here, and that is the whole reason this is a separate click from
+   * `savePrintFile`.** The meshing runs in a worker for up to eleven seconds and
+   * `showSaveFilePicker` refuses to open without a user gesture, which Chrome's five-second
+   * activation window will have expired by the time a fine export is finished. Writing from
+   * here is what produced _"Must be handling a user gesture to show a file picker"_; the file is
+   * built instead and the second button offers it under the name it will be written as.
+   */
+  const buildPrint = async (): Promise<void> =>
     // **Nothing in the status line**, because the status line is the mesh readout and a print
-    // that worked says something the mesh did not: the file exists somewhere.
+    // that worked says something the mesh did not: a file is sitting here waiting to be saved.
     attempt(setFileNotice, undefined, async () => {
       const heightMm = numberIn(height(), 0.1);
       if (heightMm === undefined) {
@@ -754,23 +845,62 @@ export function App() {
       if (maxColours === undefined || !Number.isInteger(maxColours)) {
         throw new Error("a printed model needs room for at least one colour");
       }
+      // **Refused here rather than clamped, and the sentence carries both ends of the range.**
+      // Somebody who has typed `0.01` wants a mesh four times finer than this export will go
+      // to, and quietly writing a coarser file than they asked for is the failure this whole
+      // path was arranged to avoid — so the number is taken or the export does not happen.
+      const voxelSize = printVoxelSizeIn(printResolution());
+      if (voxelSize === undefined) {
+        throw new Error(
+          `a print meshes between ${MIN_PRINT_VOXEL_SIZE} and ${DEFAULT_PRINT_VOXEL_SIZE} world units a voxel`,
+        );
+      }
 
       const { exportThreeMf } = await import("./print/export-model");
-      const blob = await exportThreeMf(store.parts(), { heightMm, maxColours });
+      // **Cleared in a `finally`, so a worker that dies leaves no bar behind.** The bar is the
+      // only thing standing between an eleven-second wait and a page that looks finished, and a
+      // bar left up after a failed export is worse than no bar.
+      let blob: Blob;
+      try {
+        blob = await exportThreeMf(store.parts(), {
+          heightMm,
+          maxColours,
+          voxelSize,
+          onProgress: setPrintProgress,
+        });
+      } finally {
+        setPrintProgress(undefined);
+      }
 
-      const target = await choosePlaceToWrite(
-        THREE_MF_CHOICE,
-        `${stemOf()}.3mf`,
-      );
+      setPrintFile({ blob, name: `${stemOf()}.3mf` });
+    });
+
+  /**
+   * Writes the built `.3mf` where the second click says.
+   *
+   * **A fresh gesture, and the only thing in the export path that is.** `attempt` calls its
+   * action synchronously, so `choosePlaceToWrite` is reached in the same task as the click and
+   * the activation that pressed this button is the one that opens the dialog. `buildPrint` has
+   * no such luck, which is the whole reason the two are apart.
+   */
+  const savePrintFile = async (): Promise<void> =>
+    attempt(setFileNotice, undefined, async () => {
+      const built = printFile();
+      if (built === undefined) return;
+
+      const target = await choosePlaceToWrite(THREE_MF_CHOICE, built.name);
       // **A download only where the browser has no dialog at all.** A dismissed dialog is
       // silence, not consent — and treating the two alike is how a print ends up on a disk
       // somebody did not ask for it to reach.
       if (target === undefined) {
         if (remembersFiles()) return;
-        downloadBlob(blob, `${stemOf()}.3mf`);
+        downloadBlob(built.blob, built.name);
         return;
       }
-      await target.write(blob);
+      await target.write(built.blob);
+      // **Only once the bytes are down**, so a refusal — a full disk, a cancelled dialog —
+      // leaves the file here to try again rather than throwing away eleven seconds of meshing.
+      setPrintFile(undefined);
     });
 
   /**
@@ -1118,6 +1248,7 @@ export function App() {
         <FilesPanel
           home={home}
           parts={() => store.parts().length}
+          model={store.parts}
           palette={palette.colours}
           recent={recent}
           canRemember={canRemember}
@@ -1125,6 +1256,9 @@ export function App() {
           mesh={mesh}
           height={height}
           filaments={filaments}
+          resolution={printResolution}
+          printing={printProgress}
+          builtFile={printFileLabel}
           notice={fileNotice}
           busy={busy}
           onNew={() => {
@@ -1137,10 +1271,14 @@ export function App() {
             void saveToDisk();
           }}
           onExport={() => {
-            void exportPrint();
+            void buildPrint();
           }}
-          onHeight={setHeight}
-          onFilaments={setFilaments}
+          onSavePrint={() => {
+            void savePrintFile();
+          }}
+          onHeight={setHeightForPrint}
+          onFilaments={setFilamentsForPrint}
+          onResolution={setPrintResolutionForPrint}
           onOpenRecent={(file) => {
             void openRecent(file);
           }}
@@ -1148,6 +1286,10 @@ export function App() {
             void forgetFile(id).then(refreshRecent);
           }}
           onClose={() => {
+            // **A file built and not saved goes with the dialogue.** It is a `Blob` of up to a
+            // few tens of megabytes that nothing else refers to, and holding it for a panel
+            // that is no longer on screen is a leak with no way to notice it.
+            setPrintFile(undefined);
             Files.close();
           }}
         />

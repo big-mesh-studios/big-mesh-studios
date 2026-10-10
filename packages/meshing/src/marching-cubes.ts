@@ -78,6 +78,7 @@
 
 import {
   emitTriangle,
+  type MeshProgress,
   type SurfaceOutput,
   type SurfaceSampler,
 } from "./surface-nets";
@@ -584,6 +585,11 @@ export interface MarchingCubesParams {
    * filling a normal per cell would write the same vertex several times.
    */
   onVertex?: (index: number, x: number, y: number, z: number) => void;
+  /**
+   * Told how far through the two passes this mesh is. See `MeshProgress` in `surface-nets`,
+   * which is where the type and its reasoning live.
+   */
+  onProgress?: MeshProgress;
 }
 
 /**
@@ -601,6 +607,11 @@ export const marchingCubes = (params: MarchingCubesParams): void => {
 
   out.clear();
 
+  // **The progress denominator, once, before either loop.** See `surfaceNets`, which does the
+  // same thing for the same reason: resolved to a no-op so the loops carry one comparison each.
+  const progress = params.onProgress ?? noProgress;
+  const totalWork = grid * grid * grid + cells * cells * cells;
+
   for (let z = 0; z < grid; z++) {
     const wz = origin[2] + (z - 1) * sampleSize;
     for (let y = 0; y < grid; y++) {
@@ -615,6 +626,7 @@ export const marchingCubes = (params: MarchingCubesParams): void => {
           Math.abs(value) < SAMPLE_ZERO ? 0 : value;
       }
     }
+    progress((z + 1) * grid * grid, totalWork);
   }
 
   scratch.edgeX.fill(-1);
@@ -668,8 +680,12 @@ export const marchingCubes = (params: MarchingCubesParams): void => {
         }
       }
     }
+    progress(grid * grid * grid + (cz + 1) * cells * cells, totalWork);
   }
 };
+
+/** The `onProgress` a mesher runs with when nobody is watching. */
+const noProgress: MeshProgress = () => {};
 
 /**
  * Emits the vertices on the edges this cell's pattern cuts, reusing any a cell already meshed put

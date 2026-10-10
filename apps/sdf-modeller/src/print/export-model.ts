@@ -14,15 +14,25 @@
  * is the coarsest thing the application ever does on purpose. Printing at that resolution would
  * print the coarse one, and would print it silently.
  *
- * So the export meshes again, through `printedMesh`, which is marching cubes at
- * `PRINT_VOXEL_SIZE` whichever mesher the viewport is on. The scratch is the held one
- * `meshModel` already keeps, so this costs no allocation the viewport has not already paid for.
+ * So the export meshes again, through `meshForPrintOffThread`, which is marching cubes at
+ * whatever resolution this export was asked for. The scratch is the held one `meshModel`
+ * already keeps, so this costs no allocation the viewport has not already paid for.
+ *
+ * ## Why the meshing is asked for and not waited on here
+ *
+ * **Because it is up to seven and a half seconds and this function is on the main thread.**
+ * `meshForPrintOffThread` hands the work to a worker and calls back with progress, so the
+ * interface keeps answering while the finest resolution is being meshed. See
+ * `./print-mesh-client` for what does and does not go across.
  */
 import type { RGBA } from "@big-mesh-studios/core";
 
 import type { Part } from "../model/part";
 import { DEFAULT_MAX_COLOURS, quantiseColours } from "./quantise";
-import { printedMesh, printProblem } from "./print-problem";
+import { printProblem } from "./print-problem";
+import { meshForPrintOffThread } from "./print-mesh-client";
+import { DEFAULT_PRINT_VOXEL_SIZE } from "./print-budget";
+import type { PrintMeshProgress } from "./print-worker";
 import { standOnBed } from "./stand";
 import {
   encodeThreeMf,
@@ -36,10 +46,20 @@ export interface PrintOptions {
   readonly heightMm?: number;
   /** The most colours the destination printer can hold. */
   readonly maxColours?: number;
+  /**
+   * How finely to mesh it, in world units a sample.
+   *
+   * **A number and not a `MeshBudget`,** because the export's own ceiling on samples is part of
+   * what "a print" means — see `./print-budget`. A caller who could pass a budget could drop
+   * the cap and mesh a model at a cost that kills the tab.
+   */
+  readonly voxelSize?: number;
   /** The name a slicer shows the file under. */
   readonly title?: string;
   /** A picture of the model as a PNG. */
   readonly thumbnail?: Uint8Array;
+  /** Told how far the meshing has got, where somebody is waiting to see it. */
+  readonly onProgress?: PrintMeshProgress;
 }
 
 /** The name a model with no name of its own is written under. */
@@ -54,7 +74,7 @@ const DEFAULT_TITLE = "sdf-modeller model";
  * means.
  */
 export const printedSolidOf = (
-  result: NonNullable<ReturnType<typeof printedMesh>>,
+  result: NonNullable<Awaited<ReturnType<typeof meshForPrintOffThread>>>,
   heightMm: number,
   maxColours: number,
   name: string = DEFAULT_TITLE,
@@ -86,7 +106,11 @@ export const exportThreeMf = async (
   const maxColours = options.maxColours ?? DEFAULT_MAX_COLOURS;
   const title = options.title;
 
-  const result = printedMesh(parts);
+  const result = await meshForPrintOffThread(
+    parts,
+    options.voxelSize ?? DEFAULT_PRINT_VOXEL_SIZE,
+    options.onProgress,
+  );
   const problem = printProblem(result);
   if (problem !== undefined) {
     throw new Error(problem);
@@ -111,4 +135,5 @@ export const exportThreeMf = async (
   return encodeThreeMf([solid], palette, written);
 };
 
-export { DEFAULT_HEIGHT_MM, PRINT_VOXEL_SIZE } from "./print-problem";
+export { DEFAULT_HEIGHT_MM } from "./print-problem";
+export { DEFAULT_PRINT_VOXEL_SIZE } from "./print-budget";

@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { MeshReport } from "@big-mesh-studios/meshing";
 
-import { budgetFor, meshParts, type MeshResult } from "../model/mesh-model";
+import type { MeshResult } from "../model/mesh-model";
 import { placedPart } from "../model/part";
-import {
-  PRINT_VOXEL_SIZE,
-  printProblem,
-  printedMesh,
-  printReadout,
-} from "./print-problem";
+import { DEFAULT_PRINT_VOXEL_SIZE } from "./print-budget";
+import { meshForPrint } from "./print-mesh";
+import { printProblem, printReadout } from "./print-problem";
 
 /** A capsule standing on the origin, which is the smallest thing that reads as a figure. */
 const body = () =>
@@ -22,11 +19,11 @@ const body = () =>
  * A mesh of these parts, or a thrown error.
  *
  * **So a test can state a fact about the model rather than about a nullable result.** Every
- * assertion here is about a model that exists; `printedMesh` returning `undefined` is tested
- * once, on its own.
+ * assertion here is about a model that exists; `meshForPrint` returning `undefined` is tested
+ * once, on its own, in `print-mesh.test.ts`.
  */
 const meshOf = (parts: ReturnType<typeof placedPart>[]): MeshResult => {
-  const result = printedMesh(parts);
+  const result = meshForPrint(parts, DEFAULT_PRINT_VOXEL_SIZE);
   if (result === undefined) throw new Error("this model meshed to nothing");
   return result;
 };
@@ -60,61 +57,6 @@ const reporting = (
     },
   };
 };
-
-describe("printedMesh", () => {
-  it("comes back closed, which is the whole reason the export re-meshes", () => {
-    // **The gate depends on this and nothing else does.** `printProblem` looks at
-    // `report.boundaryEdges`, so a mesh that is not watertight here is a model the export will
-    // refuse — and ADR 0030's reason for preferring marching cubes is that it is closed at
-    // every resolution rather than closed-where-resolved.
-    //
-    // **Measured, and worth saying plainly: at print resolution surface nets closed every
-    // model tried here too**, so this is a guarantee rather than an observed rescue. The
-    // choice does not rest on the preview failing today; it rests on not having to know whether
-    // it will.
-    const printed = meshOf([body()]);
-
-    expect(printed.report.boundaryEdges).toBe(0);
-    expect(printed.report.watertight).toBe(true);
-    expect(printProblem(printed)).toBeUndefined();
-  });
-
-  it("holds a subtraction closed, which is where a boolean makes a hole", () => {
-    // **A difference is the case that matters and it is not the same as a union.** A `Subtract`
-    // introduces a surface with nothing behind it, so a mesher that leaves an edge in one
-    // triangle leaves the rim of the cut open.
-    const carved = [
-      placedPart(
-        "block",
-        { type: "Box", len: { x: 1, y: 1, z: 1 } },
-        { x: 0, y: 1, z: 0 },
-      ),
-      placedPart(
-        "bore",
-        { type: "Cylinder", len: 2, radius: 0.35 },
-        { x: 0, y: 1, z: 0 },
-        { combine: "Subtract" },
-      ),
-    ];
-
-    expect(meshOf(carved).report.watertight).toBe(true);
-  });
-
-  it("meshes finer than the viewport's default, because a print is not a preview", () => {
-    // **A resolution chosen for the destination.** `0.25` is what the screen rebuilds at so a
-    // rebuild lands while a finger is down; a file going to a printer is not that, and this is
-    // the measurable consequence.
-    expect(PRINT_VOXEL_SIZE).toBeLessThan(budgetFor(0.25).voxelSize);
-
-    const coarse = meshParts([body()], budgetFor(0.25), "marching-cubes");
-
-    expect(meshOf([body()]).triangles).toBeGreaterThan(coarse?.triangles ?? 0);
-  });
-
-  it("has nothing to say about a model with no parts", () => {
-    expect(printedMesh([])).toBeUndefined();
-  });
-});
 
 describe("printProblem", () => {
   it("says nothing about a model that is ready to print", () => {
@@ -173,7 +115,9 @@ describe("printProblem", () => {
 
 describe("printReadout", () => {
   it("says the report, so the control beside the button has something to show", () => {
-    expect(printReadout(printedMesh([body()]))).toMatch(/watertight|triangle/);
+    expect(
+      printReadout(meshForPrint([body()], DEFAULT_PRINT_VOXEL_SIZE)),
+    ).toMatch(/watertight|triangle/);
     expect(printReadout(undefined)).toBe("nothing to print");
   });
 });

@@ -56,6 +56,7 @@ export {
   SURFACE_NETS_CELLS,
   SURFACE_NETS_GRID,
   SurfaceNetsScratch,
+  type MeshProgress,
   type SurfaceNetsParams,
   type SurfaceOutput,
   type SurfaceSampler,

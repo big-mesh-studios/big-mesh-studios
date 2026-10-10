@@ -154,6 +154,58 @@
   line-height: 1.35;
 }
 
+/*
+  The export's resolution cost.
+
+  Above the report rather than below it, because it is the answer to the question the field
+  above it raises, and the report is the answer to a question about the model rather than about
+  the settings. Dimmer than the report for the same reason the report is dim: it is a readout,
+  not a control, and nobody acts on it.
+*/
+.cost {
+  margin: 0;
+  color: var(--ui-grey);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+/*
+  The export's progress.
+
+  `appearance: none` because the user agent's own progress element cannot be sized to a
+  popover's width — it lays out at 160px in most engines whatever the box says — and the
+  accent colours below are the reason it is worth taking over: a bar in the browser's default
+  blue is a bar that does not belong to this interface on any platform.
+
+  `overflow: hidden` on the track and the fill as a block child rather than a gradient on the
+  track itself, so the rounded corner clips the fill rather than the fill painting over it.
+*/
+.progress {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: calc(var(--ui-size) / 4);
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--ui-back);
+}
+
+.progress::-webkit-progress-bar {
+  background: var(--ui-back);
+  border-radius: 999px;
+}
+
+.progress::-webkit-progress-value {
+  background: var(--ui-grey);
+  border-radius: 999px;
+}
+
+.progress::-moz-progress-bar {
+  background: var(--ui-grey);
+  border-radius: 999px;
+}
+
 /* A refusal, and the draft's age. Both are sentences, so both wrap rather than clip. */
 .notice,
 .draft {

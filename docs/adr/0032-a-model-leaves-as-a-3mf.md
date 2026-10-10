@@ -55,6 +55,12 @@ rotating anything"_ — a bound, and for this model a bad one, because a `Subtra
 material and so makes the solid smaller than the union of the boxes that made it. Scaling by the
 bound would print a model smaller than the height that was typed, by however much was cut away.
 
+> **Superseded in part by [0049](0049-a-print-meshes-at-the-resolution-you-type.md)**, which
+> replaced `PRINT_VOXEL_SIZE` with a resolution the caller chooses and gave the export its own
+> ceiling on samples per axis. What holds here is that the export re-meshes at a resolution of
+> its own rather than using the viewport's; what does not is which resolution, and the reasoning
+> below for `0.125`.
+
 ### The export re-meshes, with marching cubes, at a print resolution
 
 **The mesh on screen is not the mesh being printed.** The viewport's resolution exists so a
@@ -124,8 +130,8 @@ export's own resolution rather than at a convenient one is what confirms it rath
 it.
 
 **A model thinner than a sample comes back with no surface, and the export refuses it.** The
-budget caps samples per axis at 96, so a model's own size sets its sample spacing and a torus
-with a minor radius well under one sample falls between them. `printProblem` says _"no surface
+budget caps samples per axis — at 96 here, and at 256 since ADR 0049 — so a model's own size
+sets its sample spacing and a torus with a minor radius well under one sample falls between them. `printProblem` says _"no surface
 in it"_ rather than writing a file with an empty mesh in it. The boundary is a sampling
 coincidence rather than a clean threshold, which is why no test pins a specific thin model to it.
 

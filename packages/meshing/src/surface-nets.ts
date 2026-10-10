@@ -78,6 +78,32 @@ export interface SurfaceSampler {
   distance(x: number, y: number, z: number): number;
 }
 
+/**
+ * Told how far through a mesher is, as a count of work units against the whole.
+ *
+ * **Counts rather than a fraction because the passes are not the same size.** `surfaceNets`
+ * samples `grid³` values, walks `cells³` cells and then walks `owned³` edges; `marchingCubes`
+ * samples `grid³` values and walks `cells³` cells. A caller drawing a bar cannot divide one by
+ * the other without knowing all of them, which is exactly the arithmetic the mesher already
+ * has in hand.
+ *
+ * **`done` reaches `total` exactly once, on the last slice of the mesher's last pass.** That is
+ * what lets a caller treat the last message as "finished" rather than watching for a fraction
+ * that rounds to one — which is the difference between a bar that completes and a bar that sits
+ * at 99% waiting for something that never arrives.
+ *
+ * **Optional everywhere, and absent means the mesher counts nothing.** A call on the outer `z`
+ * loop of each pass rather than the inner `x` one, so a mesh that wants no progress pays one
+ * comparison and one empty call per slice — which is why there is no "call it every N slices"
+ * mode to tune.
+ *
+ * **A `marker` pass is not counted.** It is a second field sampled between the first and the
+ * cell loop, it exists only for `cellGate`, and only the sea in `apps/spacescape` uses one; a
+ * caller watching a bar would see it run slightly fast rather than stall, and that is the
+ * better of the two failures.
+ */
+export type MeshProgress = (done: number, total: number) => void;
+
 /** A mesh being accumulated into. Passed in so a thread reuses one for every chunk. */
 export interface SurfaceOutput {
   clear(): void;
@@ -381,6 +407,8 @@ export interface SurfaceNetsParams {
    * uniformly non-negative, which is the answer "nothing here is inside anything".
    */
   marker?: SurfaceSampler;
+  /** Told how far through the three passes this mesh is. See `MeshProgress`. */
+  onProgress?: MeshProgress;
 }
 
 /** World position of every sample index along one axis, `0 .. samples + 1`. */
@@ -468,6 +496,21 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
   // on a cubic lattice, and a branch there would sit in the innermost loop of the densest routine
   // in the project. The warped case is rare enough that duplicating four lines is the cheaper trade.
   const positionAt = params.positionAt;
+  // **The work denominator, once, before any loop.** `onProgress` is resolved to a no-op rather
+  // than left possibly-undefined so the three loops below carry one call each rather than a
+  // check and a call.
+  //
+  // **Three terms because this mesher has three passes and the third is not a small one.** The
+  // sample pass reads the field `grid³` times, the cell pass walks `cells³` cells, and the edge
+  // pass walks `owned³` edges testing four samples each — at a 228-sample region that is twelve
+  // million iterations, which is the same order as either of the others and not a tail to be
+  // left out of the arithmetic. `marchingCubes` has no such pass and so has two terms, which is
+  // why this is not shared between the two files.
+  const progress = params.onProgress ?? noProgress;
+  const sampleCount = gridX * gridY * gridZ;
+  const cellCount = cellsX * cellsY * cellsZ;
+  const edgeCount = ownedX * ownedY * ownedZ;
+  const totalWork = sampleCount + cellCount + edgeCount;
   if (positionAt) {
     for (let z = 0; z < gridZ; z++) {
       for (let y = 0; y < gridY; y++) {
@@ -480,6 +523,7 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
           );
         }
       }
+      progress((z + 1) * gridX * gridY, totalWork);
     }
   } else {
     for (let z = 0; z < gridZ; z++) {
@@ -494,6 +538,7 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
           );
         }
       }
+      progress((z + 1) * gridX * gridY, totalWork);
     }
   }
 
@@ -672,6 +717,7 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
         );
       }
     }
+    progress(sampleCount + (cz + 1) * cellsX * cellsY, totalWork);
   }
 
   // ---- One quad per owned edge whose sign changes.
@@ -717,8 +763,12 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
         }
       }
     }
+    progress(sampleCount + cellCount + pz * ownedX * ownedY, totalWork);
   }
 };
+
+/** The `onProgress` a mesher runs with when nobody is watching. */
+const noProgress: MeshProgress = () => {};
 
 /** The linear stride of one cell step along each axis, of a rectangular cell grid. */
 const cellStrides = (cellsX: number, cellsY: number): readonly number[] => [
