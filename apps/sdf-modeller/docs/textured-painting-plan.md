@@ -441,6 +441,36 @@ before the decode, so those tests are real, and the writer is tested end to end 
 but the decode itself is a thin wrapper over the platform and is the one thing here that has only
 been reasoned about rather than run.
 
+## The autosave did not know about the picture
+
+The draft was armed from `rebuild`, on the reasoning that the rebuild is the one place that runs
+when the document has changed. **That was true until the texture arrived.** A stroke writes atlas
+texels and nothing else: no part moves, so no rebuild, so the draft was never armed, so a painting
+was written out only when some _later_ model edit happened to come along.
+
+The symptom is the worst kind, because it is intermittent rather than absent: a stroke followed
+by a slider drag survives, the last stroke before a reload does not. **Which strokes are lost
+depends on what the user did afterwards**, so it looks like the save is flaky rather than broken.
+
+**Everything that changes a texel now announces itself**, through one function, because the two
+things it has to do — invalidate the encoded copy and arm the draft — are the same event and
+splitting them across call sites is how the two drifted apart in the first place:
+
+- a finished stroke
+- a clear
+- **undo and redo of both**, which write exactly as many texels as the stroke did and had been
+  announcing nothing — so an undo left the encoded copy still holding the painting that had just
+  been taken back off, and the next save wrote a picture the document no longer had
+- a restored file, so the first reload after opening a textured file cannot lose it
+
+### The clear's undo and redo were the wrong way round
+
+Found on the way through the above. **The clear has already happened by the time its history entry
+is recorded**, so the thing that gets it back is the inverse — exactly as for a removal, where
+`model-store.ts:428` already spells the rule out. Written the intuitive way round (`apply`
+restores, `invert` clears) it reads correctly and does nothing: undo would clear an atlas that is
+already clear.
+
 ## M7 — Verify
 
 ```bash

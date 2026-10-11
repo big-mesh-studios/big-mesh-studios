@@ -642,9 +642,9 @@ export function App() {
           : await rebakeTexture(bake, parts, onProgress);
       if (made === undefined) return;
       bake = made;
-      // **A rebake is a third way the picture changes**, and it happens off the back of a part
-      // edit rather than a stroke, so it would otherwise sail past a cache that only the brush
-      // invalidated.
+      // **A rebake is a third way the picture changes.** It is not needed to invalidate the
+      // encoded copy — this is the stroke path's job now — but a rebake with no painting in it is
+      // still a document change, and `rebuild` below will arm the draft anyway.
       textureRevision++;
       setTextured(true);
       setStale(0);
@@ -686,6 +686,11 @@ export function App() {
 
     bake = loaded.bake;
     textureRevision++;
+    // **And the draft is armed**, because a file that arrived with a texture in it is a document
+    // that differs from the empty one — and on the *next* reload this draft is what comes back.
+    // Without this the restored painting would be shown, never saved, and lost on the next
+    // reload, which would look exactly like the bug that was just fixed.
+    draft.changed();
     setTextured(true);
     setStale(0);
     rebuild(parts);
@@ -717,6 +722,28 @@ export function App() {
    * clear, and a rebake — which are the three ways the picture can change.
    */
   let textureRevision = 0;
+
+  /**
+   * The picture changed, so say so to both things that care.
+   *
+   * **The autosave has to be armed here, and that is the whole of this function.** The draft was
+   * armed from the rebuild, on the reasoning that the rebuild is the one place that runs when the
+   * document has actually changed — which was true until the texture arrived. A stroke writes
+   * atlas texels and nothing else: no part moves, so no rebuild, so the draft was never armed,
+   * so the painting was written out only when some *later* model edit happened to come along.
+   * That is a failure that looks intermittent — strokes followed by a slider drag survive, the
+   * last stroke before a reload does not — and it loses exactly the thing a person would be
+   * angriest to lose.
+   *
+   * **Bumping the revision and arming the draft are the same event** and are called together for
+   * that reason. One is "the encoded copy is out of date", the other is "there is something worth
+   * writing down", and a stroke that misses either one is a stroke that is either invisible or
+   * unsaved.
+   */
+  const pictureChanged = (): void => {
+    textureRevision++;
+    draft.changed();
+  };
 
   /**
    * The atlas as a PNG, encoded once per revision.
@@ -961,7 +988,7 @@ export function App() {
       texelsPerUnit: held.atlas.texelsPerUnit,
       colour: brush.colour,
     };
-    textureRevision++;
+    pictureChanged();
     store.record({
       label: "Paint",
       // **Undo restores the bytes; redo replays the dabs.** Restoring is the only exact inverse,
@@ -969,9 +996,16 @@ export function App() {
       // the thing the person did, and lands in the same place for the same reason.
       apply: () => {
         StrokeRecorder.replay(surface, settings, segments);
+        // **Both halves announce the change, not just the stroke that made it.** An undo writes
+        // texels exactly as much as a stroke does, and an undo that did not say so would leave
+        // the encoded copy holding the painting that was just taken back off — so the next save
+        // would write a picture the document no longer has, and the reload would bring the stroke
+        // back from the dead.
+        pictureChanged();
       },
       invert: () => {
         surface.restore(touched, before);
+        pictureChanged();
       },
     });
     surface.markChanged();
@@ -2128,17 +2162,28 @@ export function App() {
             // by the atlas anyway.
             const before = surface.pixels.slice();
             surface.clear();
-            textureRevision++;
+            pictureChanged();
             store.record({
               label: "Clear texture",
-              // **Redo puts the whole atlas back**, because the bytes are the only record of it
-              // and there are no dabs to replay.
+              /**
+               * **Undo and redo the other way round from the obvious reading, and that is the
+               * whole of `apply`/`invert`.** The clear has *already happened* by the time this
+               * entry is recorded, so the thing that gets it back is the inverse. Writing it the
+               * other way round — `apply` restoring, `invert` clearing — reads as the sensible
+               * pair and is exactly backwards: undo would clear an atlas that is already clear,
+               * so nothing would appear to happen, and redo would put the picture back.
+               *
+               * **Undo restores the bytes rather than replaying anything**, because a clear has
+               * no dabs to replay and the bytes are the only record that there was a picture.
+               */
               apply: () => {
-                surface.pixels.set(before);
-                surface.markChanged();
+                surface.clear();
+                pictureChanged();
               },
               invert: () => {
-                surface.clear();
+                surface.pixels.set(before);
+                surface.markChanged();
+                pictureChanged();
               },
             });
           }}
