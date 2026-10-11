@@ -260,6 +260,59 @@
 }
 
 /*
+ * ## The right-hand column: the selected part above, the brush below
+ *
+ * **A flex column rather than two boxes given the same corner.** The transform panel and the
+ * brush panel are both right-hand panels, and an absolute box has no relationship with another
+ * absolute box — so pinning both to the top right put the brush's size and softness sliders
+ * exactly on the shape's dimensions, with the brush painting over them. A column relates them:
+ * each panel takes a share of the height and scrolls inside the share it was given, and no
+ * window size puts one on top of the other.
+ *
+ * **`align-items: flex-end` and not `stretch`**, so each panel is as wide as its own content and
+ * sits against the window's right edge, which is where both of them were and is what they are
+ * pinned by.
+ *
+ * **`pointer-events: none`, like every other overlay here**, with each panel taking them back —
+ * the column is a strip of the window and only the panels in it are targets.
+ *
+ * **Bounded at the top of the window and let run to the bottom of it,** because the panels it
+ * holds were already free to use the whole height, and the footer row is along the bottom
+ * *left* edge, where this column does not reach.
+ */
+.column {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--ui-margin);
+
+  pointer-events: none;
+}
+
+/*
+ * **The sheet is the flex item, not the panel inside it.**
+ *
+ * The sheet is the element the tab bar hides and the chevron folds, so it is the thing that has
+ * to carry a place in the column; the panel is what is inside that place, and it is a flex item
+ * of the sheet so that it fills the share the sheet was given and scrolls inside it.
+ *
+ * **`min-height: 0` is load-bearing here for the same reason it is on the canvas**: a flex item
+ * whose `min-height` is `auto` refuses to shrink below its content, so two panels taller
+ * together than the window would push past the bottom of it rather than sharing the height and
+ * each scrolling. There is no `max-height` on this rule for the same reason — a flex item that
+ * is too tall shrinks to fit the column on its own.
+ */
+.column > .sheet {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/*
  * ## The "Your files" dialogue
  *
  * **All of its positioning lives here rather than in `ui/files-panel.module.css`**, and that is
@@ -421,6 +474,27 @@
   }
 
   /*
+   * **The right-hand column is not a column on a narrow screen, and `display: contents` is
+   * what says so.** Its two sheets are two panels of one column on a wide screen and two
+   * ordinary sheets here, taking a share of the flex column and hiding one at a time by the
+   * tab bar; giving the column a box of its own would put a second scroll box between the root
+   * and the sheet that already is one.
+   */
+  .column {
+    display: contents;
+  }
+
+  /*
+   * **The sheet is its own scroll box again rather than a box for a panel,** because in this
+   * layout the sheet is what the tab bar gives a share of the window to, and a panel inside it
+   * that scrolled would be a second scroll box — the one the parts panel is at length about
+   * having been caught by.
+   */
+  .column > .sheet {
+    display: block;
+  }
+
+  /*
    * **The row is the tab list plus the chevron, and the list takes what is left.**
    *
    * `min-width: 0` on the list is load-bearing the way it is on the canvas: without it a flex
@@ -453,8 +527,14 @@
    * **The inactive panel leaves the layout entirely** rather than hiding behind the other.
    * `display: none` and not `visibility: hidden`, because a visibility-hidden panel still
    * takes its height and the point of the tab bar is that the canvas gets that height back.
+   *
+   * **Qualified by the sheet's class, because `[data-hidden]` alone is no longer the strongest
+   * rule a sheet can match.** The two sheets inside the column carry a `display` of their own
+   * that overrides the base rule, and that selector has two classes in it where this has one —
+   * so written as a bare attribute selector this rule would lose to it and every hidden sheet
+   * would keep the panel the tab bar meant to put away.
    */
-  [data-hidden] {
+  .sheet[data-hidden] {
     display: none;
   }
 

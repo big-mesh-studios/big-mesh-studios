@@ -671,7 +671,10 @@ export function App() {
    * looks like a bug when it is missed: opening an untextured model while a textured one was
    * open would otherwise carry the first model's picture onto the second.
    */
-  const installTexture = async (parts: readonly Part[], loaded: LoadedTexture | undefined): Promise<void> => {
+  const installTexture = async (
+    parts: readonly Part[],
+    loaded: LoadedTexture | undefined,
+  ): Promise<void> => {
     if (loaded === undefined) {
       bake = undefined;
       textureRevision++;
@@ -2095,20 +2098,98 @@ export function App() {
         </button>
       </div>
 
-      <Show when={selected()}>
-        {(part) => (
-          <div
-            class={styles.sheet}
-            data-hidden={sheet() === "parts" || !sheetOpen() ? "" : undefined}
-          >
-            <TransformPanel part={part()} store={store} palette={palette} />
-          </div>
-        )}
-      </Show>
+      {/*
+        **The right-hand column: the selected part above, the brush below.**
+        *
+        **A column rather than a third absolutely-positioned box, because the transform panel and
+        the brush panel are both right-hand panels and two boxes given the same corner draw over
+        each other** — nothing in CSS relates one absolute box to another, so the brush panel's
+        size and softness sliders sat exactly on the shape's dimensions. The column relates them:
+        each panel is given a share of the height and scrolls inside the share it was given, and
+        no window size can put one on top of the other.
+        *
+        **The parts list is not in it,** because it is a different edge: it runs down the left of
+        the window against the footer row, and it is the one panel worth having on screen while
+        either of these two is being worked on.
+        */}
+      <div class={styles.column}>
+        <Show when={selected()}>
+          {(part) => (
+            <div
+              class={styles.sheet}
+              data-hidden={sheet() !== "shape" || !sheetOpen() ? "" : undefined}
+            >
+              <TransformPanel part={part()} store={store} palette={palette} />
+            </div>
+          )}
+        </Show>
+
+        <div
+          class={styles.sheet}
+          data-hidden={sheet() !== "paint" || !sheetOpen() ? "" : undefined}
+        >
+          <BrushPanel
+            brush={brush}
+            atlas={bake?.atlas}
+            palette={palette}
+            busy={untrack(baking) !== undefined}
+            onWidth={(width) => {
+              brush = { ...brush, width };
+            }}
+            onHardness={(hardness) => {
+              brush = { ...brush, hardness };
+            }}
+            onColour={(colour) => {
+              brush = { ...brush, colour };
+              // **Remembered, because a colour somebody reached for twice is one they will reach
+              // for again** — and the palette is already the place a part's colours live.
+              palette.remember(colour);
+            }}
+            onClear={() => {
+              if (bake === undefined) return;
+              const surface = bake.surface;
+              // **A whole-atlas undo entry**, which is the one place a full snapshot is right:
+              // a clear touches every texel, so bounding it by a stroke's rectangle would bound it
+              // by the atlas anyway.
+              const before = surface.pixels.slice();
+              surface.clear();
+              pictureChanged();
+              store.record({
+                label: "Clear texture",
+                /**
+                 * **Undo and redo the other way round from the obvious reading, and that is the
+                 * whole of `apply`/`invert`.** The clear has *already happened* by the time this
+                 * entry is recorded, so the thing that gets it back is the inverse. Writing it the
+                 * other way round — `apply` restoring, `invert` clearing — reads as the sensible
+                 * pair and is exactly backwards: undo would clear an atlas that is already clear,
+                 * so nothing would appear to happen, and redo would put the picture back.
+                 *
+                 * **Undo restores the bytes rather than replaying anything**, because a clear has
+                 * no dabs to replay and the bytes are the only record that there was a picture.
+                 */
+                apply: () => {
+                  surface.clear();
+                  pictureChanged();
+                },
+                invert: () => {
+                  surface.pixels.set(before);
+                  surface.markChanged();
+                  pictureChanged();
+                },
+              });
+            }}
+            blend={blend()}
+            onBlend={setBlend}
+            onRebake={() => {
+              void startBake();
+            }}
+          />
+        </div>
+      </div>
 
       <div
         class={styles.sheet}
-        data-hidden={sheet() === "shape" || !sheetOpen() ? "" : undefined}
+        data-hidden={sheet() !== "parts" || !sheetOpen() ? "" : undefined}
       >
         <PartsPanel
           store={store}
@@ -2129,68 +2210,6 @@ export function App() {
              * is why the arrows appear on the next one rather than needing to be told.
              */
             setTool("move");
-          }}
-        />
-      </div>
-
-      <div
-        class={styles.sheet}
-        data-hidden={sheet() === "paint" || !sheetOpen() ? "" : undefined}
-      >
-        <BrushPanel
-          brush={brush}
-          atlas={bake?.atlas}
-          palette={palette}
-          busy={untrack(baking) !== undefined}
-          onWidth={(width) => {
-            brush = { ...brush, width };
-          }}
-          onHardness={(hardness) => {
-            brush = { ...brush, hardness };
-          }}
-          onColour={(colour) => {
-            brush = { ...brush, colour };
-            // **Remembered, because a colour somebody reached for twice is one they will reach
-            // for again** — and the palette is already the place a part's colours live.
-            palette.remember(colour);
-          }}
-          onClear={() => {
-            if (bake === undefined) return;
-            const surface = bake.surface;
-            // **A whole-atlas undo entry**, which is the one place a full snapshot is right:
-            // a clear touches every texel, so bounding it by a stroke's rectangle would bound it
-            // by the atlas anyway.
-            const before = surface.pixels.slice();
-            surface.clear();
-            pictureChanged();
-            store.record({
-              label: "Clear texture",
-              /**
-               * **Undo and redo the other way round from the obvious reading, and that is the
-               * whole of `apply`/`invert`.** The clear has *already happened* by the time this
-               * entry is recorded, so the thing that gets it back is the inverse. Writing it the
-               * other way round — `apply` restoring, `invert` clearing — reads as the sensible
-               * pair and is exactly backwards: undo would clear an atlas that is already clear,
-               * so nothing would appear to happen, and redo would put the picture back.
-               *
-               * **Undo restores the bytes rather than replaying anything**, because a clear has
-               * no dabs to replay and the bytes are the only record that there was a picture.
-               */
-              apply: () => {
-                surface.clear();
-                pictureChanged();
-              },
-              invert: () => {
-                surface.pixels.set(before);
-                surface.markChanged();
-                pictureChanged();
-              },
-            });
-          }}
-          blend={blend()}
-          onBlend={setBlend}
-          onRebake={() => {
-            void startBake();
           }}
         />
       </div>

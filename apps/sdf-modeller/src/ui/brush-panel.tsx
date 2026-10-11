@@ -180,11 +180,23 @@ export function BrushPanel(props: BrushPanelProps) {
         **Disabled without a texture**, because the question is not meaningful until there is
         something on the other side of it.
       */}
-      <div class={styles.booleans} role="radiogroup" aria-label="Texture over colour">
+      <div
+        class={styles.booleans}
+        role="radiogroup"
+        aria-label="Texture over colour"
+      >
         {(
           [
-            [0, "Tint", "Keeps each part's own colour, with the texture over it"],
-            [1, "Replace", "The texture wins, and the part colour only shows through where the texture is clear"],
+            [
+              0,
+              "Tint",
+              "Keeps each part's own colour, with the texture over it",
+            ],
+            [
+              1,
+              "Replace",
+              "The texture wins, and the part colour only shows through where the texture is clear",
+            ],
           ] as const
         ).map(([value, label, why]) => (
           <label class={styles.boolean}>

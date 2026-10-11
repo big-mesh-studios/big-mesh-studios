@@ -1,5 +1,11 @@
 /*
- * The selected part's transform, in the top right.
+ * The panel a part's transform is edited in: the top of the right-hand column.
+ *
+ * **The brush panel's styles come from this file too**, because the two are the same vocabulary
+ * of groups, rows and numbers, and the second one was written as a reuse of the first. That is
+ * also why `.panel` says nothing about a corner: it is the same rule for a panel about a shape
+ * and a panel about a brush, so a corner written here would put both in it. Where they sit is
+ * the column in `app.module.css`, and it puts them at different places in it.
  *
  * **Every control is at least `--ui-size`.** A number field is the one control where a
  * fingertip and a caret fight each other, so every one of them carries a pair of stepper
@@ -10,9 +16,6 @@
  */
 
 .panel {
-  position: absolute;
-  top: 0;
-  right: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -31,23 +34,24 @@
   pointer-events: all;
 
   /*
-   * **Bounded by the window and its own scroll, because it is a form and a form is taller
+   * **Bounded by the column and its own scroll, because it is a form and a form is taller
    * than a short window.**
    *
-   * The root is `overflow: hidden` and this box is absolutely positioned, so a panel with
-   * no bound simply runs off the bottom of the screen: on a 720px-tall laptop the rotation
-   * fields, the colour picker and the boolean pair were all unreachable, and the only way
-   * to reach them was to make the window taller. `max-height: 100%` resolves against the
-   * root's height — the root is `position: relative` with a definite height, so the
-   * percentage is definite too — and `overflow-y: auto` turns the overflow into a scroll.
+   * The column is pinned between a `top` and a `bottom`, so its height is definite and
+   * `max-height: 100%` against it is too. Without a bound a panel with a long form simply runs
+   * off the bottom of the screen: on a 720px-tall laptop the rotation fields, the colour
+   * picker and the boolean pair were all unreachable, and the only way to reach them was to
+   * make the window taller. `overflow-y: auto` turns what is left over into a scroll.
    *
-   * **`max-height` and not `bottom: 0`**, because a sphere has no rotation and this panel
-   * would then be a full-height column of dark panel with one field in it. The bound only
-   * has to bite when the content is genuinely taller.
+   * **`min-height: 0` beside it, because this is a flex item of the sheet now.** The default
+   * `auto` refuses to shrink below the content, so two panels taller together than the window
+   * would each keep their whole height and run past the bottom of it together rather than
+   * sharing what is there.
    *
    * `overscroll-behavior: contain` so a flick that reaches the end scrolls the panel and
    * not the page behind it — which, on a canvas application, reads as the model jumping.
    */
+  min-height: 0;
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -428,19 +432,15 @@
 
 @media (max-width: 640px) {
   .panel {
-    /* **Static, for the same reason as the parts panel** — the two are siblings in the
-       narrow layout's flex column and cannot overlap. Full width rather than `44vw`,
-       because this panel is a form and a form at 44% of a phone is a form whose fields
-       are 40px wide.
+    /* **Full width rather than `44vw`**, because this panel is a form and a form at 44% of a
+       phone is a form whose fields are 40px wide.
 
        **Unbounded and unscrolled, because the sheet above it owns the scroll.** Its own
-       `max-height: 52dvh` and `overflow-y: auto` were left over from the overlay layout and
-       made a second scroll box inside the sheet; where `52dvh` exceeded the sheet's `45%`
-       the sheet clipped the panel and `overscroll-behavior: contain` on the panel stopped
-       the gesture chaining out, so the colour picker and the boolean pair at the bottom could
-       not be reached. See the parts panel for the same fix at length. */
-    position: static;
-    order: 3;
+       `max-height` and `overflow-y: auto` are there for the column on a wide screen, and here
+       they made a second scroll box inside the sheet; where that bound exceeded the sheet's
+       `45%` the sheet clipped the panel and `overscroll-behavior: contain` on the panel
+       stopped the gesture chaining out, so the colour picker and the boolean pair at the
+       bottom could not be reached. See the parts panel for the same fix at length. */
     width: auto;
     max-width: none;
     max-height: none;
