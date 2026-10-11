@@ -43,10 +43,20 @@ import type { RGBA } from "@big-mesh-studios/core";
 
 import { MAX_PARTS } from "../model/model-store";
 import type { Part } from "../model/part";
+import { PaintSurface } from "../unwrapping/paint-surface";
+import type { UnwrappedMesh } from "../unwrapping/unwrap";
 import {
-  isSaveableProject,
+  readReference,
+  writeReference,
+  type ReferenceFile,
+} from "../unwrapping/reference-file";
+import type { AtlasInfo } from "../unwrapping/bake";
+import {
   PROJECT_MANIFEST_FILE,
   PROJECT_MODEL_FILE,
+  PROJECT_REFERENCE_FILE,
+  PROJECT_TEXTURE_FILE,
+  isSaveableProject,
   projectManifest,
   type ProjectView,
   type SaveableProjectManifest,
@@ -57,6 +67,53 @@ export interface Project {
   readonly parts: readonly Part[];
   readonly palette: readonly RGBA[];
   readonly view: ProjectView;
+
+  /**
+   * The painted texture, when the file had one.
+   *
+   * **`undefined` for every file written before texturing, which is the whole compatibility
+   * case** — see `@big-mesh-studios/csg`'s `model-file` for why the manifest field is optional.
+   * Absent is not a degraded texture; it is an untextured model, which is what every model was
+   * until somebody painted one.
+   */
+  readonly texture?: SavedTexture;
+}
+
+/**
+ * A texture as it came out of a file: the picture, the coordinates, and one setting.
+ *
+ * **Decoded on load and nothing more.** Turning this back into something paintable needs a
+ * model to compare the coordinates against, which is `unwrapping/bake`'s `loadTexture` and not
+ * this file's business — the file reader's job ends at "these are the numbers".
+ */
+export interface SavedTexture {
+  readonly picture: PaintSurface;
+  readonly reference: ReferenceFile;
+  /** How much of the texture replaces a part's colour, `0..1`. A document setting, so saved. */
+  readonly blend: number;
+}
+
+/**
+ * What a caller offers the writer when the model has been painted on.
+ *
+ * **The picture arrives as bytes, not as a surface to encode.** The caller is the one who knows
+ * whether the atlas has changed since the last time it was encoded, and the writer runs on a
+ * debounced autosave — so making the cache live here would mean either encoding on every save
+ * or passing the cache in as an option, and this is the smaller of the two.
+ */
+export interface TextureToSave {
+  readonly png: Blob;
+  readonly atlas: AtlasInfo;
+  /** Two numbers a reference vertex, naming a place in that atlas. */
+  readonly uvs: Float32Array;
+  /** The unwelded surface the brush raycasts, charts included. */
+  readonly painted: UnwrappedMesh;
+  /** The welded vertex list the unwrap was taken over; saved so a reloaded file can be checked. */
+  readonly source: {
+    readonly positions: Float32Array;
+    readonly vertexCount: number;
+  };
+  readonly blend: number;
 }
 
 /**
@@ -71,6 +128,7 @@ export const writeProject = async (
   parts: readonly Part[],
   palette: readonly RGBA[],
   view: ProjectView,
+  texture?: TextureToSave,
 ): Promise<Blob> => {
   const operations = parts.map((part, index) => ({
     index,
@@ -106,16 +164,51 @@ export const writeProject = async (
       part.colour === undefined ? [] : [index],
     ),
     palette: palette.map(({ r, g, b, a }) => ({ r, g, b, a })),
+    // **Conditional, and the condition is the texture's existence rather than anything about
+    // it.** An untextured model gets no field at all, which is what makes its file byte-for-byte
+    // what it was before texturing existed.
+    ...(texture === undefined
+      ? {}
+      : {
+          texture: {
+            width: texture.atlas.width,
+            height: texture.atlas.height,
+            vertices: texture.painted.vertexCount,
+            blend: texture.blend,
+          },
+        }),
   });
 
   const zip = new JSZip();
-  const add = (path: string, data: string | ArrayBuffer) =>
+  const add = (path: string, data: string | ArrayBuffer | Blob) =>
     zip.file(path, data, { createFolders: false });
 
   // **The manifest first, for the same reason the 3MF writer puts its content types first.**
   // An archive that buries the file describing it is one some tools will not find.
   add(PROJECT_MANIFEST_FILE, `${JSON.stringify(manifest, null, 2)}\n`);
   add(PROJECT_MODEL_FILE, serialiseOperations(operations));
+
+  // **The two texture entries only when there is a texture**, and the manifest has already said
+  // so by the time these are added — so a reader that finds a manifest naming a texture knows
+  // to look for exactly these two names, and a reader with an old manifest never looks.
+  if (texture !== undefined) {
+    add(PROJECT_TEXTURE_FILE, texture.png);
+    add(
+      PROJECT_REFERENCE_FILE,
+      writeReference(
+        {
+          width: texture.atlas.width,
+          height: texture.atlas.height,
+          texelsPerUnit: texture.atlas.texelsPerUnit,
+          utilization: texture.atlas.utilization,
+          chartCount: texture.atlas.chartCount,
+        },
+        texture.uvs,
+        texture.painted,
+        texture.source,
+      ),
+    );
+  }
 
   return zip.generateAsync({ type: "blob", compression: "DEFLATE" });
 };
@@ -163,6 +256,7 @@ export const readProject = async (blob: Blob): Promise<Project> => {
   }
 
   const coloured = new Set(manifest.coloured);
+  const texture = await readTexture(zip, manifest);
 
   return {
     parts: operations.map((operation, index) => {
@@ -199,7 +293,73 @@ export const readProject = async (blob: Blob): Promise<Project> => {
     }),
     palette: manifest.palette.map(({ r, g, b, a }) => ({ r, g, b, a })),
     view: manifest.view,
+    ...(texture === undefined ? {} : { texture }),
   };
+};
+
+/**
+ * The texture in a file, or `undefined` for a file that never had one.
+ *
+ * **The manifest decides whether there is one, never the other way round.** A zip holding a
+ * `texture.png` that its manifest does not mention is a file something put there, and reading it
+ * would mean believing the archive over the description — which is how a file ends up with a
+ * picture belonging to a model that does not exist. The reverse is refused rather than tolerated,
+ * because a manifest naming an atlas that is not there is a promise the file does not keep.
+ */
+const readTexture = async (
+  zip: JSZip,
+  manifest: SaveableProjectManifest,
+): Promise<SavedTexture | undefined> => {
+  const described = manifest.texture;
+  if (described === undefined) return undefined;
+
+  const image = zip.file(PROJECT_TEXTURE_FILE);
+  if (image === null) {
+    throw new Error(
+      `the manifest describes a ${described.width} by ${described.height} texture and the file has no ${PROJECT_TEXTURE_FILE}`,
+    );
+  }
+  const coordinates = zip.file(PROJECT_REFERENCE_FILE);
+  if (coordinates === null) {
+    throw new Error(
+      `the manifest describes ${described.vertices} reference vertices and the file has no ${PROJECT_REFERENCE_FILE}`,
+    );
+  }
+
+  const reference = readReference(await coordinates.async("arraybuffer"));
+
+  // **The manifest's count against the file's own, after the file has spoken.** Either side
+  // could be the liar, so both are reported in the sentence: a mismatch means a file whose two
+  // halves describe different models, and knowing which is wrong is the difference between a
+  // message somebody can act on and one they have to guess at.
+  if (reference.painted.vertexCount !== described.vertices) {
+    throw new Error(
+      `the manifest names ${described.vertices} reference vertices and ${PROJECT_REFERENCE_FILE} holds ${reference.painted.vertexCount}`,
+    );
+  }
+  if (
+    reference.width !== described.width ||
+    reference.height !== described.height
+  ) {
+    throw new Error(
+      `${PROJECT_REFERENCE_FILE} describes a ${reference.width} by ${reference.height} atlas and the manifest says ${described.width} by ${described.height}`,
+    );
+  }
+
+  const picture = await PaintSurface.fromPng(await image.async("blob"));
+  if (picture === undefined) {
+    throw new Error(`${PROJECT_TEXTURE_FILE} could not be read as an image`);
+  }
+  if (
+    picture.width !== described.width ||
+    picture.height !== described.height
+  ) {
+    throw new Error(
+      `${PROJECT_TEXTURE_FILE} is ${picture.width} by ${picture.height} and the manifest says ${described.width} by ${described.height}`,
+    );
+  }
+
+  return { picture, reference, blend: described.blend };
 };
 
 /** Opens the archive, or says what the bytes were not. */

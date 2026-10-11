@@ -168,6 +168,21 @@ export interface ModelStore {
 
   readonly undo: () => void;
   readonly redo: () => void;
+
+  /**
+   * Puts an edit this store does not own onto the same undo stack as the ones it does.
+   *
+   * **Because the stack is the history and a history split in two is not one.** The paint tool
+   * writes texels rather than parts, and has no business inventing a second stack beside this
+   * one — undo has to walk back through both in the order the person made them, or undoing a
+   * stroke after moving the part it was painted on would take the two in the wrong order.
+   *
+   * **The entry is applied by the caller, not here.** `record` is the single funnel every other
+   * mutation goes through, and each of those does its own work first; taking an already-applied
+   * edit keeps that true rather than making this one method of the store responsible for knowing
+   * what "applying" a paint stroke means.
+   */
+  readonly record: (entry: HistoryEntry) => void;
 }
 
 /**
@@ -533,6 +548,13 @@ export const createModelStore = (initial: readonly Part[] = []): ModelStore => {
     // **The entry moves between the stacks untouched.** Undo calls `invert` and redo
     // calls `apply`, so an undo followed by a redo is the original edit run twice and
     // nothing has to be reconstructed on the way.
+    /**
+     * **The same funnel, exposed.** See the interface's note: this is `record` with no wrapper,
+     * so an edit owned by another part of the application lands on the same stack and in the same
+     * order as everything the store itself does.
+     */
+    record,
+
     undo: () => {
       const entry = undoStack.pop();
       if (entry === undefined) return;

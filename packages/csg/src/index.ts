@@ -171,15 +171,23 @@ export {
  * in step. What is *not* here is the mesher vocabulary: `ProjectView.mode` is checked as a
  * name and not against a list, because this package does not know what a mesher is.
  */
-export type { ProjectManifest, ProjectView } from "./model-file";
+export type {
+  ProjectManifest,
+  ProjectTexture,
+  ProjectView,
+} from "./model-file";
 export {
   MAX_MANIFEST_COLOURS,
   MAX_MANIFEST_PARTS,
+  MAX_REFERENCE_VERTICES,
   MAX_PART_ID,
+  MAX_TEXTURE_EDGE,
   PROJECT_EXTENSION,
   PROJECT_MANIFEST_FILE,
   PROJECT_MIME_TYPE,
   PROJECT_MODEL_FILE,
+  PROJECT_REFERENCE_FILE,
+  PROJECT_TEXTURE_FILE,
   PROJECT_VERSION,
   isProjectManifest,
   projectName,

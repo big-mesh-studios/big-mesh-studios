@@ -27,7 +27,8 @@
     "@solidjs/signals": "catalog:",
     "@solidjs/web": "catalog:",
     "jszip": "catalog:",
-    "solid-js": "catalog:"
+    "solid-js": "catalog:",
+    "xatlas-wasm": "catalog:"
   },
   "devDependencies": {
     "jsdom": "catalog:",

@@ -25,7 +25,11 @@ import {
 } from "solid-js";
 import { PRIMITIVE_NAMES } from "@big-mesh-studios/sdf";
 import { describeReport } from "@big-mesh-studios/meshing";
-import { getPointerSize, pointer } from "@big-mesh-studios/ui/pointer";
+import {
+  getPointerSize,
+  pointer,
+  type PointerDrag,
+} from "@big-mesh-studios/ui/pointer";
 
 import {
   budgetFor,
@@ -59,6 +63,10 @@ import { radiansDragged, ringUnderPointer } from "./view/rotate-handle";
 import { createRotateHandles, type RotateHandles } from "./view/rotate-handles";
 import { createSelectionBox, type SelectionBox } from "./view/selection-box";
 import { createModelStore } from "./model/model-store";
+import { brushHit } from "./view/brush-hit";
+import { createPaintCursor, type PaintCursor } from "./view/paint-cursor";
+import { BrushPanel, defaultBrush, type BrushState } from "./ui/brush-panel";
+import { StrokeRecorder } from "./unwrapping/stroke-recorder";
 import {
   createOrbit,
   createViewport,
@@ -101,6 +109,16 @@ import {
 import { createDialog } from "./ui/dialog";
 import { FilesPanel } from "./ui/files-panel";
 import { DEFAULT_MAX_COLOURS } from "./print/quantise";
+import {
+  bakeTexture,
+  loadTexture,
+  DRIFT_LIMIT,
+  rebakeTexture,
+  type LoadedTexture,
+  type TextureBake,
+} from "./unwrapping/bake";
+import type { PaintSurface } from "./unwrapping/paint-surface";
+import type { ReferenceFile } from "./unwrapping/reference-file";
 import type { MeshResult } from "./model/mesh-model";
 import styles from "./app.module.css";
 
@@ -187,8 +205,14 @@ export function App() {
    * the canvas does instead to be inferred; naming the tools says that with the handles down
    * the canvas is picking, with the arrows up it is moving and with the rings up it is
    * turning, which is the whole of what the toolbar is for.
+   *
+   * **`paint` is the one tool that costs something to pick, and that is deliberate.** Choosing
+   * it is the only thing in the application that starts an unwrap, so a model nobody paints on
+   * never pays for texture coordinates at all. See `startBake`.
    */
-  const [tool, setTool] = createSignal<"select" | "move" | "rotate">("select");
+  const [tool, setTool] = createSignal<"select" | "move" | "rotate" | "paint">(
+    "select",
+  );
 
   /**
    * Whether a handle drag is running.
@@ -249,7 +273,7 @@ export function App() {
    * on a narrow screen the canvas and the sheet are siblings in one flex column, so the
    * sheet takes height from the canvas rather than being laid over it.
    */
-  const [sheet, setSheet] = createSignal<"parts" | "shape">("parts");
+  const [sheet, setSheet] = createSignal<"parts" | "shape" | "paint">("parts");
 
   /**
    * Whether the sheet's content is showing, on a narrow screen.
@@ -301,6 +325,24 @@ export function App() {
    * what is on screen rather than a prediction about the file.
    */
   const [mesh, setMesh] = createSignal<MeshResult | undefined>();
+
+  /**
+   * The model's painted texture, once somebody has baked one.
+   *
+   * **Held as a plain value rather than a signal, for the same reason `mesh` is one and not two.**
+   * Nothing renders from it directly: the rebuild reads it, and what the viewport draws comes
+   * from the geometry the rebuild installed. A signal here would mean a write per rebuild to
+   * render nothing, and a second source of truth for "is this model textured" beside the one the
+   * material already carries.
+   *
+   * **The atlas outlives the mesh it was baked against.** That is the whole point — an unwrap is
+   * global and a rebuild is not, so the coordinates are pinned here and carried onto whatever
+   * the viewport is showing rather than derived again on every edit. See `./unwrapping/bake`.
+   */
+  let bake: TextureBake | undefined;
+
+  /** Whether the last carry drifted far enough to be worth rebaking, which M5 will surface. */
+  let drift = 0;
 
   /**
    * What the last file operation had to say, or nothing.
@@ -465,10 +507,23 @@ export function App() {
       setMesh(result);
       // **Translucent only if something in the model is.** A mesh cannot say so itself, and
       // an always-transparent material with depth writes off makes a solid self-overlap.
-      target.install(
-        result,
-        parts.some((part) => (part.opacity ?? 1) < 1),
-      );
+      //
+      // **The bake rides along rather than being read from a signal.** It is carried onto the
+      // mesh being installed inside `install`, which is the only place that knows the mesh's
+      // vertex order, and reading it here would mean knowing it twice.
+      const carried =
+        result !== undefined && bake !== undefined
+          ? bake.carry(result.mesh)
+          : undefined;
+      if (carried !== undefined) {
+        drift = carried.drift;
+        setStale(drift);
+      }
+      target.install(result, {
+        translucent: parts.some((part) => (part.opacity ?? 1) < 1),
+        ...(bake === undefined ? {} : { bake }),
+        blend: untrack(blend),
+      });
       elapsed = performance.now() - started;
 
       const bounds = modelBounds(parts);
@@ -505,6 +560,245 @@ export function App() {
           : `${count} part${count === 1 ? "" : "s"} · ${result.triangles} triangles · ${Math.round(result.samples / 1000)}k samples · ${Math.round(elapsed)} ms · ${describeReport(result.report)}`,
       );
     }, REBUILD_MS);
+  };
+
+  /**
+   * How far through a bake is, or `undefined` when none is running.
+   *
+   * **A signal, because this one is rendered.** The bake itself lives in a plain value — nothing
+   * draws from it — but a control that says nothing for a second and a half while the page is
+   * blocked needs to say something, and it can only say it if something re-renders.
+   */
+  const [baking, setBaking] = createSignal<number | undefined>();
+
+  /** Whether the model carries a baked atlas, which is what the tool's label turns on. */
+  const [textured, setTextured] = createSignal(false);
+
+  /**
+   * How far the model has moved from the surface its coordinates were baked on.
+   *
+   * **A signal for the same reason `baking` is**, and set from the rebuild's carry. A vertex that
+   * has drifted past the reference mesh's own voxel is borrowing coordinates from a surface it is
+   * no longer on, and that is where a painted stroke starts to smear — so it is worth saying so
+   * rather than waiting for somebody to notice.
+   */
+  const [stale, setStale] = createSignal(0);
+
+  /**
+   * What the paint tool says about itself: what it will do, how far along it is, or that the
+   * texture has drifted.
+   *
+   * **A function rather than a constant, because all three change.** The other three tools have a
+   * hint that is true for the life of the session; this one starts with nothing baked, spends a
+   * second being baked, and afterwards may have gone out of date as the model was edited. The
+   * drift number goes in the hint because a person's only way of acting on it is to reach for this
+   * tool again.
+   */
+  const paintHint = (): string => {
+    if (baking() !== undefined) {
+      return `Baking texture coordinates, ${Math.round(baking()! * 100)}% done`;
+    }
+    if (!textured()) {
+      return "Draw on the model with a brush. Choosing this bakes the texture coordinates.";
+    }
+    if (stale() > DRIFT_LIMIT) {
+      return `Paint on the model. The texture is ${stale().toFixed(2)} world units out of date; choosing this again rebakes it.`;
+    }
+    return "Draw on the model with a brush.";
+  };
+
+  /**
+   * Bakes texture coordinates onto the model, or leaves them alone.
+   *
+   * **The only thing in the application that starts an unwrap, and it is reached only by
+   * choosing the paint tool.** That is the whole of the cost story: a model nobody paints on
+   * carries no atlas, no coordinate array and no unwrap, and costs exactly what it cost before any
+   * of this existed. A button beside the mesher would have been the wrong shape — it invites the
+   * bake from somebody tidying up a model rather than somebody about to draw on it.
+   *
+   * **It does nothing when there is already a fresh bake.** Coming back to the paint tool is a
+   * thing a person does constantly — to check a stroke, to carry on, to look from another angle —
+   * and none of those want a second of unwrap behind them. A rebake happens only when the model
+   * has moved far enough that the coordinates are no longer describing it, which is a question
+   * about the model rather than about how often the tool was picked.
+   *
+   * **The rebuild is asked for afterwards rather than the model being re-installed here.** The
+   * coordinates have to land on the mesh that is on screen, and the rebuild is what builds that
+   * mesh — going around it would leave the viewport a rebuild out of date by one edit.
+   */
+  const startBake = async (): Promise<void> => {
+    const parts = untrack(store.parts);
+    if (untrack(baking) !== undefined) return;
+    if (bake !== undefined && untrack(stale) <= DRIFT_LIMIT) return;
+
+    setBaking(0);
+    try {
+      const onProgress = (fraction: number): void => {
+        setBaking(fraction);
+      };
+      const made =
+        bake === undefined
+          ? await bakeTexture(parts, onProgress)
+          : await rebakeTexture(bake, parts, onProgress);
+      if (made === undefined) return;
+      bake = made;
+      // **A rebake is a third way the picture changes**, and it happens off the back of a part
+      // edit rather than a stroke, so it would otherwise sail past a cache that only the brush
+      // invalidated.
+      textureRevision++;
+      setTextured(true);
+      setStale(0);
+      rebuild(parts);
+    } catch (reason) {
+      setFileNotice(
+        reason instanceof Error
+          ? reason.message
+          : "the texture could not be baked",
+      );
+    } finally {
+      setBaking(undefined);
+    }
+  };
+
+  /**
+   * Puts a texture that came out of a file back into the document.
+   *
+   * **Kicked off after the parts are loaded rather than awaited inside them**, because
+   * `loadTexture` meshes the parts itself and has no reason to wait for the store to be told
+   * about them — and an open that blocked on a re-project would look like a hang.
+   *
+   * **A file with no texture clears the last one's**, which is the case that is easy to miss and
+   * looks like a bug when it is missed: opening an untextured model while a textured one was
+   * open would otherwise carry the first model's picture onto the second.
+   */
+  const installTexture = async (parts: readonly Part[], loaded: LoadedTexture | undefined): Promise<void> => {
+    if (loaded === undefined) {
+      bake = undefined;
+      textureRevision++;
+      setBlend(0);
+      setTextured(false);
+      setStale(0);
+      return;
+    }
+
+    setBlend(untrack(blend));
+    if (loaded.bake === undefined) return;
+
+    bake = loaded.bake;
+    textureRevision++;
+    setTextured(true);
+    setStale(0);
+    rebuild(parts);
+
+    // **Said out loud, because "reopened" and "reopened, re-projected" are different promises.**
+    // The coordinates in that file belonged to a surface this build does not produce any more,
+    // and the picture has been resampled onto a fresh layout — recognisable, and not identical.
+    if (!loaded.exact) {
+      setFileNotice(
+        "this file's texture was painted against a differently-shaped mesh, so the picture has been fitted to the current one",
+      );
+    }
+  };
+
+  /**
+   * The brush, as the panel set it.
+   *
+   * **A plain object rather than four signals,** because nothing outside the panel and the paint
+   * drag reads it and the drag reads it dozens of times a second. Four signals would mean a write
+   * per panel tap that a drag then reads through the graph sixty times a frame.
+   */
+  let brush: BrushState = defaultBrush({ r: 255, g: 255, b: 255, a: 255 });
+
+  /**
+   * How many times the atlas's *pixels* have changed since the file was last opened.
+   *
+   * **A counter rather than the surface's own `dirty` flag**, because that is a flag and this
+   * needs a number to compare. It is bumped in exactly three places — a finished stroke, a
+   * clear, and a rebake — which are the three ways the picture can change.
+   */
+  let textureRevision = 0;
+
+  /**
+   * The atlas as a PNG, encoded once per revision.
+   *
+   * **Cached because autosave writes the document once a second while somebody is dragging a
+   * slider, and encoding a 1225 by 847 PNG takes long enough to be felt.** Without this, every
+   * debounced autosave during an ordinary editing session would re-encode a picture that has not
+   * changed, which is the single most expensive thing in the file writer for nothing.
+   *
+   * **Keyed on the revision and not on the bake**, so that a rebake — which replaces the surface
+   * but happens once per drift warning — and a stroke invalidate it through the same door.
+   */
+  let cachedRevision = -1;
+  let cachedPng: Promise<Blob | undefined> | undefined;
+  const atlasPng = (): Promise<Blob | undefined> => {
+    if (cachedPng === undefined || cachedRevision !== textureRevision) {
+      cachedRevision = textureRevision;
+      // **`Promise.resolve` rather than a nullish check**, so a caller gets one shape back
+      // whether or not there is a bake — an untextured document resolves to undefined instead
+      // of not resolving, which would be a promise-shaped difference nobody would notice.
+      cachedPng = Promise.resolve(bake?.surface.toPng());
+    }
+    return cachedPng;
+  };
+
+  /**
+   * How much of the texture replaces a part's colour rather than tinting it.
+   *
+   * **A signal rather than part of `brush`,** because it is read on every rebuild and written
+   * from a radio button, and those are the two ends of a control rather than two ends of a
+   * brush setting. It is handed to each install because every rebuild builds a new material and
+   * a value left on the old one would spring back on the first edit.
+   */
+  const [blend, setBlend] = createSignal(0);
+
+  /** The cursor, which only exists once the scene does. */
+  let cursor: PaintCursor | undefined;
+
+  /**
+   * Where the pointer last was on the canvas, in CSS pixels.
+   *
+   * **Held rather than taken from an event, because the cursor follows the pointer between
+   * pointer moves** — a finger held still on a model is still over a place on it, and a cursor
+   * that vanished the moment a drag stopped moving would be a cursor nobody could aim with. It is
+   * updated by a listener rather than read from an event object, which does not exist outside a
+   * drag.
+   */
+  let lastPointer: ScreenPoint | undefined;
+
+  /**
+   * Puts the cursor where the pointer is, or takes it off the screen.
+   *
+   * **Run from the render loop and not from the panel**, because the camera moves under a
+   * stationary pointer too: orbit, a pinch, a rebuild. Following only pointer moves would leave
+   * the ring behind whenever the view moved, which is exactly when it is most out of date.
+   */
+  const standCursor = (): void => {
+    const ring = cursor;
+    const eye = camera;
+    const pointer = lastPointer;
+    if (ring === undefined || eye === undefined || pointer === undefined)
+      return;
+    if (untrack(tool) !== "paint" || bake === undefined || dragging) {
+      ring.hide();
+      return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    const hit = brushHit(
+      bake.bvh,
+      bake.uvs,
+      eye,
+      {
+        width: rect.width,
+        height: rect.height,
+      },
+      pointer,
+    );
+    if (hit === undefined) {
+      ring.hide();
+      return;
+    }
+    ring.place(hit.point, hit.normal, brush.width / 2);
   };
 
   /**
@@ -564,6 +858,123 @@ export function App() {
   const pointerOnCanvas = (event: PointerEvent): ScreenPoint => {
     const rect = canvas.getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+
+  /**
+   * Paints a stroke, or leaves the press to the camera.
+   *
+   * **The atlas is written per move and the model is not touched at all until the finger
+   * lifts.** A stroke is dozens of pointer events and is one undo entry; the rebuild it would
+   * otherwise cause is forty times too often, and re-meshing a figure mid-stroke to show paint
+   * that is already in a texture would be an argument for painting in a 2D view instead.
+   *
+   * **The ray goes at the reference mesh, not the one on screen** — see `brushHit`. The texture
+   * coordinates belong to the reference, and a stroke placed from a hit on the display mesh
+   * would be reading coordinates off a triangle that has none.
+   */
+  const grabPaint = async (
+    initial: PointerEvent & { currentTarget: HTMLElement },
+  ): Promise<void> => {
+    const controller = orbit;
+    const eye = camera;
+    const ring = cursor;
+    if (
+      controller === undefined ||
+      eye === undefined ||
+      ring === undefined ||
+      untrack(tool) !== "paint" ||
+      bake === undefined ||
+      dragging
+    ) {
+      return;
+    }
+
+    const held = bake;
+    const surface = held.surface;
+    const recorder = new StrokeRecorder(surface, {
+      width: brush.width,
+      hardness: brush.hardness,
+      texelsPerUnit: held.atlas.texelsPerUnit,
+      colour: brush.colour,
+    });
+
+    dragging = true;
+    controller.setInteractive(false);
+
+    const rect = canvas.getBoundingClientRect();
+    const size = { width: rect.width, height: rect.height };
+
+    let ended: PointerDrag<HTMLElement> | undefined;
+    try {
+      ended = await pointer(initial, ({ event }) => {
+        const at = pointerOnCanvas(event);
+        lastPointer = at;
+        const hit = brushHit(
+          held.bvh,
+          held.uvs,
+          eye,
+          size,
+          at,
+          held.reference.charts,
+        );
+        if (hit === undefined) return;
+        recorder.moveTo(hit.uv[0], hit.uv[1], hit.chart);
+      });
+    } finally {
+      ring?.hide();
+      controller.setInteractive(true);
+      dragging = false;
+    }
+
+    /**
+     * **A press that painted nothing was a tap, and a tap means "select this".**
+     *
+     * Without this the paint tool swallows every press: a click on a part selects nothing and
+     * draws no box, because `onPointerDown` gave the press to the brush and the brush does not
+     * select. A tool that makes it impossible to choose a part is not a tool, it is a wall —
+     * and the fix is not to make people switch tools to select, it is to let one press mean
+     * both things according to what it turned out to be.
+     *
+     * **The same tap test the select tool uses**, because both are competing with the camera
+     * for the same press and must agree on what counts as aiming rather than turning. A drag
+     * across empty space turned the camera and must not select whatever it passed over.
+     */
+    const painted = recorder.finish();
+    if (painted === undefined) {
+      if (ended !== undefined && tapOnly(ended)) pickAt(initial);
+      return;
+    }
+
+    /**
+     * **One history entry, on the way out.**
+     *
+     * **The entry restores the rectangle rather than replaying the stroke backwards.** Replaying
+     * would mean keeping every stamp, and the stamps overlap in ways that do not invert — a
+     * second, translucent stamp over a first does not undo by removing itself. The rectangle of
+     * bytes that were there before is the only inverse that is exactly right, and it is bounded
+     * by the stroke.
+     */
+    const { rect: touched, before, segments } = painted;
+    const settings = {
+      width: brush.width,
+      hardness: brush.hardness,
+      texelsPerUnit: held.atlas.texelsPerUnit,
+      colour: brush.colour,
+    };
+    textureRevision++;
+    store.record({
+      label: "Paint",
+      // **Undo restores the bytes; redo replays the dabs.** Restoring is the only exact inverse,
+      // because translucent dabs overlap and removing one does not undo the other. Replaying is
+      // the thing the person did, and lands in the same place for the same reason.
+      apply: () => {
+        StrokeRecorder.replay(surface, settings, segments);
+      },
+      invert: () => {
+        surface.restore(touched, before);
+      },
+    });
+    surface.markChanged();
   };
 
   /**
@@ -760,8 +1171,7 @@ export function App() {
   const tapSelect = async (
     initial: PointerEvent & { currentTarget: HTMLElement },
   ): Promise<void> => {
-    const eye = camera;
-    if (eye === undefined || untrack(tool) !== "select") return;
+    if (untrack(tool) !== "select") return;
 
     // **A second finger is a pinch, not a tap.** The camera zooms with two fingers, and
     // without this a pinch that barely travelled would select whatever one fingertip landed
@@ -770,17 +1180,42 @@ export function App() {
     if (getPointerSize(canvas) > 0) return;
 
     const ended = await pointer(initial);
+    if (tapOnly(ended)) pickAt(initial);
+  };
+
+  /**
+   * Whether a press ended was a tap rather than a drag.
+   *
+   * **The same test for the select tool and the paint tool**, and it has to be: both are
+   * competing with the camera for the same press, so both need the same answer to "was that
+   * somebody aiming, or somebody turning the model", and two thresholds that happened to be
+   * equal today would drift apart by accident.
+   */
+  const tapOnly = (ended: PointerDrag<HTMLElement>): boolean => {
     // **A finger that lifted while another was still down was part of a gesture**, however
     // little that finger itself moved.
-    if (ended.pointers.size > 0) return;
-    if (Math.hypot(ended.totalDelta.x, ended.totalDelta.y) > TAP_SLOP) return;
+    if (ended.pointers.size > 0) return false;
+    return Math.hypot(ended.totalDelta.x, ended.totalDelta.y) <= TAP_SLOP;
+  };
+
+  /**
+   * Selects whatever is under a press, or nothing.
+   *
+   * **Separate from the press-following, because the press has already been followed by then.**
+   * The select tool follows it and decides; the paint tool follows it too and decides, and
+   * arrives here having painted nothing. Sharing this is what stops the two tools disagreeing
+   * about what is under the pointer.
+   */
+  const pickAt = (event: PointerEvent): void => {
+    const eye = camera;
+    if (eye === undefined) return;
 
     const rect = canvas.getBoundingClientRect();
     const part = pickPartAt(
       store.parts(),
       eye,
       { width: rect.width, height: rect.height },
-      pointerOnCanvas(initial),
+      pointerOnCanvas(event),
     );
     store.select(part?.id);
   };
@@ -834,6 +1269,14 @@ export function App() {
       parts: readonly Part[];
       palette: readonly { r: number; g: number; b: number; a: number }[];
       view: { mode: MeshMode; resolution: number };
+      // **Declared structurally, like the three above**, so this module keeps naming no type
+      // from `./file/project` — which is behind a dynamic import on purpose, because it pulls in
+      // a zip library that nothing on the first frame needs.
+      texture?: {
+        picture: PaintSurface;
+        reference: ReferenceFile;
+        blend: number;
+      };
     },
     label: string,
   ): boolean => {
@@ -846,7 +1289,34 @@ export function App() {
     // the model's geometry, so rewinding it alongside would take a colour away from a model
     // that is still using it. See `createPalette`.
     palette.set(project.palette);
-    return store.load(project.parts, label);
+    const loaded = store.load(project.parts, label);
+
+    // **Not awaited, and the reasons are on `installTexture`.** The texture is restored after
+    // the document rather than before it: the picture is attached to a model, and the model is
+    // what has just changed.
+    void (async (): Promise<void> => {
+      const parts = untrack(store.parts);
+      try {
+        installTexture(
+          parts,
+          project.texture === undefined
+            ? undefined
+            : await loadTexture(
+                parts,
+                project.texture.reference,
+                project.texture.picture,
+              ),
+        );
+      } catch (reason) {
+        setFileNotice(
+          reason instanceof Error
+            ? reason.message
+            : "this file's texture could not be read",
+        );
+      }
+    })();
+
+    return loaded;
   };
 
   /**
@@ -860,6 +1330,7 @@ export function App() {
     void clearDraft();
     setDraftAt(undefined);
     palette.set([]);
+    void installTexture(untrack(store.parts), undefined);
     setHome(NOWHERE);
     store.load(newModel(), "new model");
     setStatus("new model");
@@ -1003,14 +1474,38 @@ export function App() {
       setFileNotice(undefined);
     });
 
-  /** The document as a project file. */
-  const writeBlob = (): Promise<Blob> =>
-    import("./file/project").then(({ writeProject }) =>
-      writeProject(store.parts(), palette.colours(), {
-        mode: mode(),
-        resolution: resolution(),
-      }),
+  /**
+   * The document as a project file.
+   *
+   * **The texture is offered only when there is one to offer, and when there is not the file is
+   * exactly what it was before texturing existed** — same two entries, same manifest, no field.
+   * That is the whole backwards compatibility promise, kept in one place where it is easy to
+   * check.
+   */
+  const writeBlob = async (): Promise<Blob> => {
+    const { writeProject } = await import("./file/project");
+    const held = bake;
+    const png = await atlasPng();
+
+    return await writeProject(
+      store.parts(),
+      palette.colours(),
+      { mode: mode(), resolution: resolution() },
+      // **All three or none.** A picture without coordinates is a picture of nothing, and
+      // coordinates without a picture are numbers nobody can see, so the condition is one
+      // expression over both rather than two that could disagree.
+      held === undefined || png === undefined
+        ? undefined
+        : {
+            png,
+            atlas: held.atlas,
+            uvs: held.uvs,
+            painted: held.reference,
+            source: held.source,
+            blend: untrack(blend),
+          },
     );
+  };
 
   /** Offers the document as a download, which is all a browser without the API can do. */
   const writeDownload = async (): Promise<void> => {
@@ -1185,12 +1680,30 @@ export function App() {
       if (!loadInto(project, "restore")) return;
       setDraftAt(held.at === 0 ? Date.now() : held.at);
       setStatus("restored from this browser");
-    } catch {
-      // **A draft this build cannot read is thrown away rather than kept.**
-      // Leaving it means every reload from now on spends the same work failing the same way, and
-      // a person cannot act on a message about bytes they never asked to save.
-      await clearDraft();
-      setDraftAt(undefined);
+    } catch (reason) {
+      /**
+       * **Said out loud, and the draft kept.**
+       *
+       * This used to clear the draft and say nothing, on the reasoning that a draft this
+       * build cannot read will fail the same way every reload and a person cannot act on a
+       * message about bytes they never asked to save. Both halves are wrong in the same
+       * direction: **a draft is the only copy of somebody's unsaved work, and deleting it on a
+       * failure — silent or loud — destroys that work to tidy up an error.**
+       *
+       * Worse, it is the kind of failure that looks like success. Without a message, a draft
+       * that stopped opening looks exactly like a draft that was never there: the modeller
+       * comes up with its default model, framed around the default model, and there is nothing
+       * on screen to say that anything was lost. That is the worst shape a failure can have —
+       * the user is looking at a document and is not looking at the one they had.
+       *
+       * **So the reason is reported and the bytes stay.** A repeated failure is the cheaper
+       * problem, and it is visible, which a deleted draft never is.
+       */
+      setFileNotice(
+        reason instanceof Error
+          ? `this browser's draft could not be reopened — ${reason.message}. It has been kept.`
+          : "this browser's draft could not be reopened. It has been kept.",
+      );
     }
   };
 
@@ -1211,6 +1724,11 @@ export function App() {
     const madeHandles = createMoveHandles(viewport.scene);
     const madeRotate = createRotateHandles(viewport.scene);
     const madeGhost = createGhost(content);
+    // **After the handles**, because the cursor switches the depth test off and has to be seen
+    // through the model; the renderer draws in scene-graph order, so anything after it would
+    // paint over the ring.
+    const madeCursor = createPaintCursor(viewport.scene);
+    cursor = madeCursor;
     view = created;
     orbit = controller;
     handles = madeHandles;
@@ -1234,7 +1752,26 @@ export function App() {
         void grabHandle(event as PointerEvent & { currentTarget: HTMLElement });
       } else if (held === "rotate") {
         void grabRing(event as PointerEvent & { currentTarget: HTMLElement });
+      } else if (held === "paint" && bake !== undefined) {
+        // The paint tool, and there is something to paint with. The camera still gets the
+        // press, so a drag on empty space turns the view and a drag on the model paints; see
+        // `grabPaint`. A press that paints nothing falls through to a pick — see there.
+        void grabPaint(event as PointerEvent & { currentTarget: HTMLElement });
       } else {
+        /**
+         * **The select tool — and also the paint tool with nothing to paint with.**
+         *
+         * A press has exactly one owner, so whichever tool claims it decides what a click means
+         * everywhere: whether it selects, and therefore whether the selection box appears at
+         * all. Handing every press to the paint tool therefore took selection away with it, and
+         * picking something else to drag a slider is a small price for not being able to select
+         * anything.
+         *
+         * **The bake is the condition rather than the tool**, because "there is no atlas yet"
+         * is the case where the paint tool cannot do its job — the model has no surface yet, or
+         * the unwrap is still running — and a press during it is a person who has changed their
+         * mind and wants to select something instead.
+         */
         // The select tool. The camera still gets the press and may turn the view; a press
         // that does not move is the tap that picks. See `tapSelect`.
         void tapSelect(event as PointerEvent & { currentTarget: HTMLElement });
@@ -1242,10 +1779,31 @@ export function App() {
     };
     canvas.addEventListener("pointerdown", onPointerDown);
 
+    // **Every move, not only during a drag,** so the ring follows a pointer that is merely
+    // hovering over the model. `passive` because nothing here prevents a default.
+    const onPointerMove = (event: PointerEvent): void => {
+      lastPointer = pointerOnCanvas(event);
+    };
+    canvas.addEventListener("pointermove", onPointerMove);
+
     const detach = controller.attach(canvas);
     viewport.renderer.setAnimationLoop(() => {
       standHandles();
       standSelection();
+      standCursor();
+      // **The atlas is pushed to the GPU here, before the render, and not after a stamp.**
+      //
+      // A stroke writes texels; the texture the shader samples is a GPU copy of those texels,
+      // and nothing in this application updates that copy on its own. So without this line the
+      // paint accumulates correctly on the CPU and becomes visible only at the next install —
+      // which reads as "the brush does not work" and is the single most confusing failure this
+      // feature could have.
+      //
+      // **Once per frame, here, and nowhere else**, because rmsl re-uploads the whole atlas on
+      // `needsUpdate` and a drag is dozens of stamps. `PaintSurface.dirty` clears itself when
+      // read, so this is also what keeps a quiet model from re-uploading forever.
+      const painted = bake;
+      if (painted !== undefined) created.sync(painted.surface);
       viewport.render();
     });
 
@@ -1268,6 +1826,8 @@ export function App() {
       if (pending !== undefined) clearTimeout(pending);
       draft.dispose();
       canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      madeCursor.dispose();
       detach();
       madeHandles.dispose();
       madeRotate.dispose();
@@ -1354,6 +1914,7 @@ export function App() {
               "Rotate",
               "Rings around the selected part. Drag one to turn it.",
             ],
+            ["paint", "Paint", paintHint()],
           ] as const
         ).map(([value, label, hint]) => (
           <button
@@ -1361,16 +1922,27 @@ export function App() {
             role="radio"
             class={styles.tool}
             aria-checked={tool() === value ? "true" : "false"}
+            aria-busy={
+              value === "paint" && baking() !== undefined ? "true" : undefined
+            }
             title={hint}
             disabled={
               (value === "move" && selected() === undefined) ||
-              (value === "rotate" && !rotatable())
+              (value === "rotate" && !rotatable()) ||
+              // **Disabled only for a model with nothing in it**, and never while a bake is
+              // running: the tool is where the progress is reported, so locking it would take the
+              // place a person is looking away from.
+              (value === "paint" && store.parts().length === 0)
             }
             onClick={() => {
               setTool(value);
+              // **Choosing the tool is what starts the unwrap, and it is the only thing that
+              // does.** A model nobody paints on never pays for texture coordinates: no array is
+              // allocated, nothing is meshed, and nothing blocks. See `startBake`.
+              if (value === "paint") void startBake();
             }}
           >
-            {label}
+            {value === "paint" && baking() !== undefined ? "Painting" : label}
           </button>
         ))}
       </div>
@@ -1452,6 +2024,10 @@ export function App() {
                 `Parts${store.parts().length > 0 ? ` (${store.parts().length})` : ""}`,
               ],
               ["shape", "Shape"],
+              // **Its own tab rather than a section of Shape**, because a brush is not a part's
+              // property: it belongs to the model's texture, and it stays meaningful with no
+              // part selected, which is the only state Shape ever shows anything in.
+              ["paint", "Paint"],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -1519,6 +2095,57 @@ export function App() {
              * is why the arrows appear on the next one rather than needing to be told.
              */
             setTool("move");
+          }}
+        />
+      </div>
+
+      <div
+        class={styles.sheet}
+        data-hidden={sheet() === "paint" || !sheetOpen() ? "" : undefined}
+      >
+        <BrushPanel
+          brush={brush}
+          atlas={bake?.atlas}
+          palette={palette}
+          busy={untrack(baking) !== undefined}
+          onWidth={(width) => {
+            brush = { ...brush, width };
+          }}
+          onHardness={(hardness) => {
+            brush = { ...brush, hardness };
+          }}
+          onColour={(colour) => {
+            brush = { ...brush, colour };
+            // **Remembered, because a colour somebody reached for twice is one they will reach
+            // for again** — and the palette is already the place a part's colours live.
+            palette.remember(colour);
+          }}
+          onClear={() => {
+            if (bake === undefined) return;
+            const surface = bake.surface;
+            // **A whole-atlas undo entry**, which is the one place a full snapshot is right:
+            // a clear touches every texel, so bounding it by a stroke's rectangle would bound it
+            // by the atlas anyway.
+            const before = surface.pixels.slice();
+            surface.clear();
+            textureRevision++;
+            store.record({
+              label: "Clear texture",
+              // **Redo puts the whole atlas back**, because the bytes are the only record of it
+              // and there are no dabs to replay.
+              apply: () => {
+                surface.pixels.set(before);
+                surface.markChanged();
+              },
+              invert: () => {
+                surface.clear();
+              },
+            });
+          }}
+          blend={blend()}
+          onBlend={setBlend}
+          onRebake={() => {
+            void startBake();
           }}
         />
       </div>

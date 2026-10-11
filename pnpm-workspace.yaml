@@ -52,6 +52,13 @@ catalog:
   "three": "^0.183.2"
   "three-stdlib": "^2.36.0"
   "typescript": "^5.7.2"
+  # **Pinned exactly, and the catalog is not the reason.** xatlas has changed its entry point
+  # between patch releases — 0.1.2 shipped `lib/xatlas.mjs`, 0.1.3 ships `dist/index.mjs` — so a
+  # caret range is a range over entry points rather than over bug fixes. 0.1.3 is also the only
+  # release with the WebAssembly inlined in the JavaScript, which is what lets it load with no
+  # `?url`, no `locateFile` and no asset plumbing at all. See `apps/sdf-modeller/docs/
+  # textured-painting-plan.md`.
+  "xatlas-wasm": "0.1.3"
   "vite": "^8.3.1"
   "vite-plugin-solid": "3.0.0-next.5"
   "vitest": "^4.1.3"

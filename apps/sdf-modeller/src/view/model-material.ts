@@ -34,11 +34,18 @@
 import { float, select, vec3, vec4, type Node } from "@random-mesh/rmsl";
 import {
   Blending,
+  ClampToEdgeWrapping,
+  DataTexture,
+  LinearFilter,
   NodeMaterial,
+  RGBAFormat,
   Side,
+  UnsignedByteType,
   type Builder,
   type Scene,
 } from "@random-mesh/rmsl/scene";
+
+import type { PaintSurface } from "../unwrapping/paint-surface";
 
 /**
  * Octahedral decode, in the shader.
@@ -63,6 +70,16 @@ const octahedralNode = (f: Node<"vec2">): Node<"vec3"> => {
   return n.normalize();
 };
 
+/**
+ * sRGB to linear, by the usual power.
+ *
+ * **Because rmsl builds no mip chain and its `sampler2D` reads raw bytes.** A PNG is sRGB, and
+ * the other codebase — which bakes its texture this way and never sets `colorSpace` — draws
+ * every stroke too dark as a result. Doing it here rather than storing linear is what lets the
+ * atlas be a PNG on disk and a brush colour on screen without either of them knowing.
+ */
+const SRGB_GAMMA = 2.2;
+
 /** Direction, colour and strength of one light. All three are fixed in world space. */
 const KEY = {
   direction: [0.51, 0.79, 0.56] as const,
@@ -83,10 +100,48 @@ const AMBIENT = [0.28, 0.3, 0.36] as const;
  * a specular highlight on a matte clay surface mostly reads as a rendering artefact.
  */
 export class ModelMaterial extends NodeMaterial {
+  /**
+   * The painted atlas, or nothing.
+   *
+   * **A field rather than a constructor argument, and set after construction**, because the
+   * sampler is only created if a texture exists when the material is compiled — and the
+   * attachment happens after every rebuild, which is the only time anybody learns whether the
+   * model has one.
+   */
+  texture: DataTexture | undefined;
+
+  /**
+   * How much of the texture replaces the part's colour rather than tinting it.
+   *
+   * **A uniform rather than a second code path**, so the toggle — which a person will drag
+   * while looking at the model — costs nothing but four bytes to the GPU rather than a
+   * recompile of the whole program.
+   */
+  blend = 0;
+
+  private paintSampler: Node<"sampler2D"> | undefined;
+  private blendUniform: Node<"float"> | undefined;
+
   protected override setup(b: Builder, _scene: Scene): void {
     // Declared here rather than where it is written, because a varying the builder never
     // sees is one the compiler will not emit.
     void b.varying("vColour", "vec4");
+
+    // **Only with a texture.** A material compiled without a sampler has no `uv` varying at
+    // all, so an untextured model reads no texture and binds no attribute — which is what keeps
+    // a model nobody is painting exactly as cheap as it was.
+    if (this.texture !== undefined) {
+      this.paintSampler = b.sampler(
+        "paint",
+        "sampler2D",
+        () => this.texture ?? null,
+      );
+      this.blendUniform = b.materialUniform(
+        "paintBlend",
+        "float",
+        () => this.blend,
+      );
+    }
 
     // **Double-sided, because a subtracted shape is mostly its own inside.** With a
     // one-sided material the interior of a difference is back-facing and invisible, so
@@ -104,6 +159,11 @@ export class ModelMaterial extends NodeMaterial {
     // triangle than interpolating two shorts and decoding per fragment.
     b.normalWorld.assign(octahedralNode(oct));
     b.varying("vColour", "vec4").assign(colour);
+    if (this.paintSampler !== undefined) {
+      // **Only when there is a texture**, for the same reason the sampler is conditional: the
+      // varying is declared in `setup` and would be emitted whether or not anything wrote it.
+      b.varying("uv", "vec2").assign(b.uv);
+    }
 
     const world = b.modelMatrix.mul(vec4(b.position, float(1)));
     b.positionWorld.assign(world.xyz);
@@ -123,6 +183,24 @@ export class ModelMaterial extends NodeMaterial {
       b.cameraPosition.sub(b.positionWorld).normalize(),
     );
     normal.mulAssign(select(facing.lessThan(float(0)), float(-1), float(1)));
+
+    // **The texture goes in before the lighting, not after**, so a painted surface is lit like
+    // any other surface. Applying it to the lit result would mean a bright stroke in shadow
+    // glows, which is the single most obvious way a texture can look pasted on.
+    if (this.paintSampler !== undefined && this.blendUniform !== undefined) {
+      const sampled = this.paintSampler
+        .texture(b.varying("uv", "vec2"))
+        .toVar();
+      // **The alpha is the texture's own, and the colour is linearised once.** The part colour
+      // is already linear — it is a vertex attribute of bytes that were written from a colour
+      // picker — so the texture has to be brought to the same space before they are mixed, or
+      // every stroke reads a shade dark for no reason anybody can see.
+      const painted = sampled.xyz.pow(float(SRGB_GAMMA)).mul(sampled.w);
+      const mixed = colour.xyz.mul(colour.w.sub(sampled.w)).add(painted);
+      colour.xyz.assign(
+        mixed.div(this.blendUniform.mul(colour.w.sub(sampled.w)).add(float(1))),
+      );
+    }
 
     const lambert = (
       direction: readonly number[],
@@ -147,6 +225,63 @@ export class ModelMaterial extends NodeMaterial {
 
     return vec4(colour.xyz.mul(lit), colour.w);
   }
+
+  /**
+   * Puts the painted atlas on this material.
+   *
+   * **Attaching and detaching recompiles, and that is correct.** The sampler only exists when a
+   * texture does, so a material that gains one has to be rebuilt to declare it — the same
+   * contract `TriangleMaterial.setTiles` works to in voxelscape.
+   */
+  attach = (surface: PaintSurface): void => {
+    const texture = new DataTexture(
+      surface.pixels,
+      surface.width,
+      surface.height,
+      1,
+      RGBAFormat,
+      UnsignedByteType,
+    );
+    // **Clamped and linear, and both are rmsl's defaults** — stated rather than assumed, because
+    // the atlas is exactly the case where the default is right: there is no tiling to do and no
+    // mip chain for the renderer to build anyway.
+    texture.wrapS = ClampToEdgeWrapping;
+    texture.wrapT = ClampToEdgeWrapping;
+    texture.magFilter = LinearFilter;
+    texture.minFilter = LinearFilter;
+    texture.needsUpdate = true;
+    this.texture = texture;
+    this.needsUpdate = true;
+  };
+
+  /** Whether a texture is on this material, so a caller need not keep its own flag. */
+  get textured(): boolean {
+    return this.texture !== undefined;
+  }
+
+  /**
+   * Pushes the atlas to the GPU if it has changed since this was last called.
+   *
+   * **Called once per frame rather than once per stamp, and that is not an optimisation.** rmsl
+   * has no partial texture upload — `needsUpdate` re-sends the whole image — and a stroke is a
+   * stamp per pointer move, so a naive upload per stamp would re-send a four-megabyte atlas
+   * sixty times a second for a change covering a few hundred texels. Once a frame is the finest
+   * the renderer can act on anyway, so the flag is the coalescing.
+   *
+   * **Reading `dirty` is what clears it**, which is why this is the only thing that should ask.
+   * A second reader elsewhere would find it already clean and skip an upload that the first
+   * reader has not made yet.
+   *
+   * **A material with no texture does nothing and says nothing.** A stroke is not possible
+   * without one, so a dirty surface here would mean the two had come apart — and silently
+   * re-attaching would paper over that rather than report it.
+   */
+  sync = (surface: PaintSurface): void => {
+    const texture = this.texture;
+    if (texture === undefined) return;
+    if (!surface.dirty) return;
+    texture.needsUpdate = true;
+  };
 }
 
 /**
@@ -157,9 +292,17 @@ export class ModelMaterial extends NodeMaterial {
  * transparency in it still has an opaque fourth byte. An always-transparent material would
  * put a fully opaque model into the transparent queue with depth writes off, which is the
  * arrangement that makes a solid self-overlap wrongly.
+ *
+ * **`blend` is the texture's claim on the part colour**, and it is a constructor argument rather
+ * than something set afterwards because `install` builds a new material on every rebuild — a
+ * value set on the previous one would be gone, and the toggle would spring back on every edit.
  */
-export const modelMaterial = (translucent: boolean): ModelMaterial => {
+export const modelMaterial = (
+  translucent: boolean,
+  blend = 0,
+): ModelMaterial => {
   const material = new ModelMaterial();
+  material.blend = blend;
 
   if (translucent) {
     material.transparent = true;

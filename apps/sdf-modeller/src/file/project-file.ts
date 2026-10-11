@@ -39,15 +39,21 @@ import { MESH_MODES, RESOLUTIONS } from "../model/mesh-model";
 export {
   MAX_MANIFEST_COLOURS,
   MAX_MANIFEST_PARTS,
+  MAX_REFERENCE_VERTICES,
   MAX_PART_ID,
+  MAX_TEXTURE_EDGE,
   PROJECT_EXTENSION,
   PROJECT_MANIFEST_FILE,
   PROJECT_MIME_TYPE,
   PROJECT_MODEL_FILE,
+  PROJECT_REFERENCE_FILE,
+  PROJECT_TEXTURE_FILE,
   PROJECT_VERSION,
   isProjectManifest,
   projectName,
 } from "@big-mesh-studios/csg";
+
+export type { ProjectTexture } from "@big-mesh-studios/csg";
 
 /** The mesher modes this application offers, and therefore the only ones it will open. */
 const MODES: readonly string[] = MESH_MODES.map((mode) => mode.value);

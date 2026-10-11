@@ -90,6 +90,9 @@ catalogs:
     vitest:
       specifier: ^4.1.3
       version: 4.1.11
+    xatlas-wasm:
+      specifier: 0.1.3
+      version: 0.1.3
 
 overrides:
   babel-preset-solid: 2.0.0-beta.29
@@ -266,6 +269,9 @@ importers:
       solid-js:
         specifier: 'catalog:'
         version: 2.0.0-beta.29
+      xatlas-wasm:
+        specifier: 'catalog:'
+        version: 0.1.3
     devDependencies:
       jsdom:
         specifier: 'catalog:'
@@ -2130,6 +2136,10 @@ packages:
     engines: {node: '>=8'}
     hasBin: true
 
+  xatlas-wasm@0.1.3:
+    resolution: {integrity: sha512-LGWvSyHryDda9+a3+le2bd+QWPTDMFjfu3CPlVauTm8Liqd+S9wIjQScBzlOChFTyL8OpzZ4AI0tE0zoF3kc6g==}
+    engines: {node: '>=16.0.0'}
+
   xml-name-validator@5.0.0:
     resolution: {integrity: sha512-EvGK8EJ3DhaHfbRlETOWAS5pO9MZITeauHKJyb8wyajUfQUenkIg2MvLDTZ4T/TgIcm3HU0TFBgWWboAZ30UHg==}
     engines: {node: '>=18'}
@@ -3359,6 +3369,8 @@ snapshots:
     dependencies:
       siginfo: 2.0.0
       stackback: 0.0.2
+
+  xatlas-wasm@0.1.3: {}
 
   xml-name-validator@5.0.0: {}
 

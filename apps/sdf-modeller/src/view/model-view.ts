@@ -16,6 +16,15 @@
  * match its parts. The second half is the one that matters: a mesh on screen that does not
  * correspond to the model is a lie a person cannot see through, and it is exactly what a
  * half-finished rebuild would leave behind.
+ *
+ * ## Why the texture coordinates are an argument and not part of the mesh
+ *
+ * **Because `ChunkMesh` is twenty bytes a vertex and stays that way.** Texture coordinates
+ * are two more numbers a vertex, which for a model nobody is painting is a megabyte of
+ * nothing; they are a parallel array the caller owns and hands over, and `toGeometry`
+ * binds a `uv` attribute only when one is given. A model with no texture therefore costs
+ * exactly what it cost before, which is the whole of ADR 0048's argument for leaving the
+ * vertex at twenty bytes.
  */
 import {
   BufferAttribute,
@@ -26,6 +35,8 @@ import {
 import type { ChunkMesh } from "@big-mesh-studios/meshing";
 
 import type { MeshResult } from "../model/mesh-model";
+import type { TextureBake } from "../unwrapping/bake";
+import type { PaintSurface } from "../unwrapping/paint-surface";
 import { modelMaterial } from "./model-material";
 
 /**
@@ -34,8 +45,15 @@ import { modelMaterial } from "./model-material";
  * **`undefined` for a mesh with no vertices**, which is different from a mesh that failed:
  * the caller draws nothing rather than installing an empty geometry that will still cost
  * a draw call and still be wrong if the model changes.
+ *
+ * **The `uv` attribute is bound only when `uvs` is given**, and that conditional is the point of
+ * the parameter: no texture means no array allocated, no attribute bound and no shader reading
+ * one, so an untextured model is byte-for-byte what it was.
  */
-export const toGeometry = (mesh: ChunkMesh): BufferGeometry | undefined => {
+export const toGeometry = (
+  mesh: ChunkMesh,
+  uvs?: Float32Array,
+): BufferGeometry | undefined => {
   if (mesh.vertexCount === 0) return undefined;
   const geometry = new BufferGeometry();
   geometry.setAttribute(
@@ -50,6 +68,9 @@ export const toGeometry = (mesh: ChunkMesh): BufferGeometry | undefined => {
     "colour",
     new BufferAttribute(mesh.colours, 4, true, "vertex"),
   );
+  if (uvs !== undefined) {
+    geometry.setAttribute("uv", new BufferAttribute(uvs, 2, false, "vertex"));
+  }
   geometry.setIndex(new BufferAttribute(mesh.indices, 1));
   return geometry;
 };
@@ -59,19 +80,61 @@ export interface ModelView {
   readonly mesh: () => Mesh | undefined;
   readonly triangles: () => number;
   /**
-   * Swaps in a new mesh. Passing undefined removes what is there.
+   * Swaps in a new mesh. Passing `undefined` for the result removes what is there.
    *
-   * `translucent` is passed rather than derived from the mesh because **a mesh cannot say
-   * whether it wants blending** — every vertex carries an alpha either way, and the packed
-   * format's fourth byte is opaque for a model with no transparency in it. So an always-
-   * transparent material would put a fully opaque model into the transparent queue with
-   * depth writes off, which is the arrangement that makes a solid self-overlap wrongly.
+   * **Rebuilding the material is the price of carrying the texture.** A material compiles its
+   * sampler only if a texture exists when it is built, so a bake arriving has to rebuild one —
+   * and a rebuild therefore hands back the blend rather than expecting it to have survived.
    */
   readonly install: (
     result: MeshResult | undefined,
-    translucent: boolean,
+    options: InstallOptions,
   ) => void;
+
+  /**
+   * Pushes a freshly painted atlas to the GPU, if it has changed.
+   *
+   * **On the view rather than reached through `mesh()?.material`,** because the material is
+   * replaced on every install and the caller that owns the atlas is the one that should not have
+   * to know a mesh exists to find it. It is also a per-frame call, and doing a field walk and an
+   * optional chain sixty times a second to reach a method that mostly does nothing is the kind of
+   * thing that reads as a bug later.
+   */
+  readonly sync: (surface: PaintSurface) => void;
   readonly dispose: () => void;
+}
+
+/** What an install is told beyond the mesh itself. */
+export interface InstallOptions {
+  /**
+   * Whether anything in the model is translucent.
+   *
+   * **Passed rather than derived from the mesh, because a mesh cannot say.** Every vertex
+   * carries an alpha either way, and the packed format's fourth byte is opaque for a model with
+   * no transparency in it. An always-transparent material would put a fully opaque model into
+   * the transparent queue with depth writes off, which is the arrangement that makes a solid
+   * self-overlap wrongly.
+   */
+  readonly translucent: boolean;
+
+  /**
+   * The model's baked texture, when it has one.
+   *
+   * **Passed rather than held**, because it arrives with the rebuild that produced the mesh it
+   * belongs to, and holding it would be holding coordinates that no longer match what is on
+   * screen the moment the next rebuild lands.
+   */
+  readonly bake?: TextureBake;
+
+  /**
+   * How much of the texture replaces the part colour rather than tinting it, `0..1`.
+   *
+   * **Passed rather than held for the same reason the material is rebuilt at all.** An install
+   * makes a new material, and a blend left on the old one would silently reset to modulate on
+   * every rebuild — which is to say, on every edit, which is the first time somebody would notice
+   * and the worst time to notice.
+   */
+  readonly blend?: number;
 }
 
 /**
@@ -87,14 +150,20 @@ export const createModelView = (parent: Object3D): ModelView => {
   let geometry: BufferGeometry | undefined;
   let drawn: Mesh | undefined;
   let triangles = 0;
+  /** The material on screen, so a bake can be attached to it without rebuilding the mesh. */
+  let material: ReturnType<typeof modelMaterial> | undefined;
 
   const release = (): void => {
     // Guarded rather than passed through, because `parent.remove` takes a non-optional
     // `Object3D` and there is nothing to remove before the first install.
     if (drawn !== undefined) parent.remove(drawn);
     geometry?.dispose();
+    // **The material is dropped rather than disposed**, because rmsl's `Material` has no
+    // `dispose` — only textures and geometries do. The texture it may hold is disposed with
+    // the bake that owns it, so nothing here leaks GPU memory.
     geometry = undefined;
     drawn = undefined;
+    material = undefined;
     triangles = 0;
   };
 
@@ -103,16 +172,32 @@ export const createModelView = (parent: Object3D): ModelView => {
 
     triangles: () => triangles,
 
-    install: (result, translucent) => {
+    install: (result, options) => {
       // **Disposed first, before the new geometry is even built.** See the header.
       release();
+      const { translucent, bake, blend } = options;
       if (result === undefined) return;
-      const built = toGeometry(result.mesh);
+      // **The coordinates are carried onto the mesh being installed, not read off the bake.**
+      // The bake's own coordinates belong to the reference mesh and there is one coordinate a
+      // vertex of this mesh for every one of that mesh's vertices, not for its own — this is the
+      // whole of `./mesh/uv-transfer`, and doing it here rather than in the caller is what keeps
+      // the two meshes' vertex orders from being confused anywhere.
+      const carried = bake?.carry(result.mesh);
+      const built = toGeometry(result.mesh, carried?.uvs);
       if (built === undefined) return;
       geometry = built;
-      drawn = new Mesh(built, modelMaterial(translucent));
+      material = modelMaterial(translucent, blend);
+      drawn = new Mesh(built, material);
+      if (bake !== undefined) material.attach(bake.surface);
       parent.add(drawn);
       triangles = result.triangles;
+    },
+
+    sync: (surface) => {
+      // **Through the current material, which may be none.** Before the first install there is
+      // nothing to upload to, and no stroke can have happened without one, so this is a no-op
+      // rather than an error.
+      material?.sync(surface);
     },
 
     dispose: release,

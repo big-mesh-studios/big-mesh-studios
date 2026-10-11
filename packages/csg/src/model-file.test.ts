@@ -5,6 +5,8 @@ import {
   MAX_MANIFEST_COLOURS,
   MAX_MANIFEST_PARTS,
   MAX_PART_ID,
+  MAX_REFERENCE_VERTICES,
+  MAX_TEXTURE_EDGE,
   PROJECT_VERSION,
   projectName,
 } from "./model-file";
@@ -231,6 +233,95 @@ describe("isProjectManifest", () => {
       // so a file that did not say would be opening a model at somebody else's resolution and
       // calling it the one that was saved.
       expect(isProjectManifest(manifest({ view: undefined }))).toBe(false);
+    });
+  });
+
+  describe("texture", () => {
+    const texture = (overrides: Record<string, unknown> = {}) => ({
+      width: 64,
+      height: 48,
+      vertices: 12,
+      blend: 0,
+      ...overrides,
+    });
+
+    it("accepts a manifest written before textures existed", () => {
+      // **The test this whole field is shaped around.** Every file written before this feature
+      // has no `texture`, and one that refused them would make adding a texture a reason
+      // nobody could open their own work. `PROJECT_VERSION` did not move for the same reason.
+      expect(isProjectManifest(manifest())).toBe(true);
+      expect(isProjectManifest(manifest({ texture: undefined }))).toBe(true);
+    });
+
+    it("accepts one that describes a real atlas", () => {
+      expect(isProjectManifest(manifest({ texture: texture() }))).toBe(true);
+      expect(
+        isProjectManifest(manifest({ texture: texture({ blend: 1 }) })),
+      ).toBe(true);
+    });
+
+    it("refuses an edge that is not a texel count", () => {
+      // **Refused at the manifest rather than at the allocation**, because the manifest is where
+      // this is still a number and the allocation is where it is too late to ask.
+      for (const width of [0, -1, 2.5, "64", Number.NaN, Infinity]) {
+        expect(
+          isProjectManifest(manifest({ texture: texture({ width }) })),
+        ).toBe(false);
+      }
+    });
+
+    it("refuses an edge past the cap", () => {
+      // **The cap is what stops a manifest handing a reader an array to allocate.** A width that
+      // passes every shape check is still not a width anybody should allocate a row of.
+      expect(
+        isProjectManifest(
+          manifest({ texture: texture({ width: MAX_TEXTURE_EDGE + 1 }) }),
+        ),
+      ).toBe(false);
+      expect(
+        isProjectManifest(
+          manifest({ texture: texture({ height: MAX_TEXTURE_EDGE }) }),
+        ),
+      ).toBe(true);
+    });
+
+    it("refuses a vertex count that is not one", () => {
+      for (const vertices of [0, -3, 2.5, "12"]) {
+        expect(
+          isProjectManifest(manifest({ texture: texture({ vertices }) })),
+        ).toBe(false);
+      }
+      expect(
+        isProjectManifest(
+          manifest({ texture: texture({ vertices: MAX_REFERENCE_VERTICES }) }),
+        ),
+      ).toBe(true);
+      expect(
+        isProjectManifest(
+          manifest({
+            texture: texture({ vertices: MAX_REFERENCE_VERTICES + 1 }),
+          }),
+        ),
+      ).toBe(false);
+    });
+
+    it("refuses a blend outside the range the shader reads it in", () => {
+      // **A blend of four does not fail at load.** It fails later as a model that renders as
+      // nothing, which is much harder to trace back to a file.
+      for (const blend of [-0.001, 1.001, Infinity, "tint"]) {
+        expect(
+          isProjectManifest(manifest({ texture: texture({ blend }) })),
+        ).toBe(false);
+      }
+    });
+
+    it("refuses a half-written one rather than reading it as untextured", () => {
+      // **The asymmetry that is the whole design.** An absent field means untextured and is
+      // fine; a present one that is wrong is a file disagreeing with itself, and reading it as
+      // "untextured" would open a painted model as a blank one with nothing said to anybody.
+      for (const partial of [{}, { width: 64 }, null, "texture.png", 12]) {
+        expect(isProjectManifest(manifest({ texture: partial }))).toBe(false);
+      }
     });
   });
 
