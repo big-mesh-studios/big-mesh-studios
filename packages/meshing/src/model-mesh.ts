@@ -353,6 +353,30 @@ export const samplesFor = (
 const MIN_SAMPLES_ACROSS_THIN = 3;
 
 /**
+ * The widest blend any operation in a model carries, which is how far that field's values may
+ * over-report a distance.
+ *
+ * **A maximum over the whole list rather than a property the field can answer for itself**,
+ * because the field does not know what it is made of: it is handed a fold and answers
+ * distances, and the list behind that fold is the caller's to describe. A mesher that trusted a
+ * value would therefore need this number, and the number is only here.
+ *
+ * **Zero for a model of hard-edged operations, and that is the common case** — so the broad
+ * pass's margin is zero and it runs at its widest reach. Both applications clamp softness to
+ * `MAX_SOFTNESS` before a model reaches this file, so the value this returns is within the
+ * bound the mesher is willing to act on and the pass runs; a model that went around that clamp
+ * comes back here as a number above the bound and the mesher declines it, which is the
+ * outcome that loses a little time rather than the one that loses geometry.
+ */
+export const widestBlend = (operations: readonly Operation[]): number => {
+  let widest = 0;
+  for (const operation of operations) {
+    if (operation.softness > widest) widest = operation.softness;
+  }
+  return widest;
+};
+
+/**
  * A model as a field to sample, ready for `SurfaceSampler`.
  *
  * **`Field.distance` already *is* a `SurfaceSampler`** — one method, negative inside — so
@@ -704,6 +728,13 @@ export const meshModel = (
       marchingCubes({
         ...params,
         scratch: scratch as MarchingCubesScratch,
+        /**
+         * **The broadest blend in the model, so the broad pass knows how far it may not trust a
+         * value.** Only marching cubes reads it; `surfaceNets` is given the same `params` and
+         * ignores it, because it walks cells and samples every point rather than deciding that a
+         * block of them holds nothing.
+         */
+        softness: widestBlend(operations),
         onProgress,
       });
     } else {

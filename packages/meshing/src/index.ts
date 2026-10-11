@@ -65,6 +65,9 @@ export {
 export {
   marchingCubes,
   marchingCubesScratchFor,
+  BROAD_PASS_MAX_SOFTNESS,
+  BROAD_PASS_UNIT,
+  broadPassReach,
   MARCHING_CUBES_CELLS,
   MARCHING_CUBES_GRID,
   MarchingCubesScratch,
@@ -147,6 +150,7 @@ export {
   releaseScratch,
   sampleExtent,
   samplesFor,
+  widestBlend,
 } from "./model-mesh";
 export type { MeshBudget, MeshMode, MeshResult } from "./model-mesh";
 

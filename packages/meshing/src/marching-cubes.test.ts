@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { ChunkMeshBuilder } from "./chunk-mesh";
 import {
+  broadPassReach,
+  BROAD_PASS_MAX_SOFTNESS,
+  BROAD_PASS_UNIT,
   CORNER_OFFSETS,
   EDGE_CORNERS,
   EDGE_MASK,
@@ -492,5 +495,273 @@ describe("reusing a scratch buffer", () => {
     const after = mesh(() => 1000, [0, 0, 0], N, STEP, scratch).finish();
     expect(after.vertexCount).toBe(0);
     expect(after.indices.length).toBe(0);
+  });
+});
+
+describe("the broad pass", () => {
+  /**
+   * **The one thing this file's other tests cannot check, and why they do not accidentally check
+   * it either.**
+   *
+   * Every other suite here calls `marchingCubes` without a `softness`, which is the declined
+   * case: the pass never runs and the sampling loop is the one it always was. So the whole of the
+   * broad pass would otherwise be untested by 171 passing assertions, and this file is the place
+   * that says so rather than the place it happens.
+   */
+  const bothWays = (
+    field: Field,
+    softness: number | undefined,
+    origin: readonly [number, number, number] = [0, 0, 0],
+    samples = N,
+    sampleSize = STEP,
+  ): [ChunkMeshBuilder, ChunkMeshBuilder] => {
+    const run = (): ChunkMeshBuilder => {
+      const out = new ChunkMeshBuilder();
+      marchingCubes({
+        origin,
+        samples,
+        sampleSize,
+        sampler: { distance: field },
+        out,
+        scratch: marchingCubesScratchFor(samples),
+        softness,
+      });
+      return out;
+    };
+    return [run(), run()];
+  };
+
+  it("produces the same mesh, in the same order, as not running it", () => {
+    /**
+     * **Identical indices rather than an equal triangle count.**
+     *
+     * A pass that skipped a block outright would leave the same triangles in a different order —
+     * the same set, and a different mesh to anything diffing two rebuilds. The order is the
+     * claim; the count alone would pass on a pass that is merely correct.
+     */
+    for (const field of [
+      sphere(CENTRE, CENTRE, CENTRE, 40),
+      torus(CENTRE, CENTRE, CENTRE, 30, 10),
+      // Two spheres, so there is air on every side of both and blocks to drop around each.
+      (x: number, y: number, z: number): number =>
+        Math.min(
+          Math.hypot(x - 40, y - CENTRE, z - CENTRE) - 30,
+          Math.hypot(x - 110, y - CENTRE, z - CENTRE) - 20,
+        ),
+    ]) {
+      const [declined, broad] = bothWays(field, 0);
+      expect(broad.finish().triangleCount).toBeGreaterThan(0);
+      expect([...broad.finish().indices]).toEqual([
+        ...declined.finish().indices,
+      ]);
+      expect([...broad.finish().positions]).toEqual([
+        ...declined.finish().positions,
+      ]);
+    }
+  });
+
+  it("actually drops blocks, rather than running and culling nothing", () => {
+    /**
+     * **The pass that always says no is not a pass.** If this fails the one above is vacuous: it
+     * would be asserting that two identical computations agree.
+     */
+    const field = sphere(CENTRE, CENTRE, CENTRE, 40);
+    const scratch = marchingCubesScratchFor(N);
+    const out = new ChunkMeshBuilder();
+    marchingCubes({
+      origin: [0, 0, 0],
+      samples: N,
+      sampleSize: STEP,
+      sampler: { distance: field },
+      out,
+      scratch,
+      softness: 0,
+    });
+    const blocks = Math.ceil(MARCHING_CUBES_GRID(N) / BROAD_PASS_UNIT);
+    const dropped = scratch.blockEmpty.reduce((a, b) => a + b, 0);
+    expect(
+      dropped,
+      "blocks the pass should drop around a lone sphere",
+    ).toBeGreaterThan(0);
+    expect(dropped).toBeLessThan(blocks ** 3);
+    expect(out.triangleCount).toBeGreaterThan(0);
+  });
+
+  it("declines a field it cannot vouch for, and agrees with itself anyway", () => {
+    /**
+     * **Above `BROAD_PASS_MAX_SOFTNESS` the answer is the dense one**, and the test is that the
+     * mesh is unchanged rather than that it is slow. A caller that has gone around the clamp both
+     * applications put on `softness` lands here, and what it gets is the mesh it had before the
+     * pass existed.
+     */
+    const field = sphere(CENTRE, CENTRE, CENTRE, 40);
+    const [declined, tooWide] = bothWays(field, BROAD_PASS_MAX_SOFTNESS + 0.01);
+    const [, negative] = bothWays(field, -1);
+    expect([...tooWide.finish().indices]).toEqual([
+      ...declined.finish().indices,
+    ]);
+    expect([...negative.finish().indices]).toEqual([
+      ...declined.finish().indices,
+    ]);
+  });
+
+  it("keeps a surface that runs through a block's middle and near no corner", () => {
+    /**
+     * **The shape the reach's proof is about.** A thin slab crossing the grid on the diagonal is
+     * far from every lattice point a four-sample block reads, and is still a surface. If the
+     * reach were short by a factor — a quarter diagonal, a half of one computed as if it were the
+     * whole — this is the mesh that loses it, and it loses it at its extremities rather than in
+     * the middle, which is the part of it that is easy to miss.
+     *
+     * **A slab and not a sheet, and a sheet would mesh nothing.** `Math.abs` alone is never
+     * negative, so marching cubes' `value < 0` finds no inside anywhere and the assertion would
+     * pass on two empty meshes. The sphere is a clip rather than decoration: without it the slab
+     * runs off the region and the mesh is open at every face, which is true of the dense pass as
+     * well and would make a watertightness check here meaningless.
+     *
+     * The clip is centred **on** the plane, because a sphere whose centre is off it does not meet
+     * it at all: `x + y + z = 96` passes nearest a centre of `(72, 72, 72)` at `(32, 32, 32)`,
+     * which is sixty-nine units away, and a sphere of radius fifty around there clips the slab
+     * away entirely. Both meshes then come back empty and the assertion passes on nothing.
+     */
+    const field = (x: number, y: number, z: number): number =>
+      Math.max(
+        Math.abs(x + y + z - 96) - 2,
+        Math.hypot(x - 32, y - 32, z - 32) - 50,
+      );
+    const [declined, broad] = bothWays(field, 0);
+    expect(declined.finish().triangleCount).toBeGreaterThan(0);
+    expect([...broad.finish().indices]).toEqual([...declined.finish().indices]);
+  });
+
+  it("agrees on every grid a block can land badly on", () => {
+    /**
+     * **Every residue of the grid against `BROAD_PASS_UNIT`, which is the ragged edge.**
+     *
+     * A region is `samples + 2` per axis, so the last block along each axis is short by a
+     * different amount on each, and its far corner has to be pulled in to the grid rather than
+     * read off the end of it. Sweeping `samples` is the only way to hit all of those shapes, and
+     * one residue out of four is enough to hide it.
+     */
+    for (let samples = 6; samples <= 26; samples++) {
+      const field = sphere(CENTRE, CENTRE, CENTRE, 40);
+      const [declined, broad] = bothWays(field, 0, [0, 0, 0], samples, STEP);
+      expect(
+        [...broad.finish().indices],
+        `samples ${samples}, grid ${samples + 2} (${(samples + 2) % BROAD_PASS_UNIT} into a block)`,
+      ).toEqual([...declined.finish().indices]);
+    }
+  });
+
+  it("holds a surface on a block boundary, which is where welding has to agree", () => {
+    /**
+     * **A surface landing exactly on a coarse plane**, so the block either side of it is dropped
+     * or kept on the strength of the very samples their cells read. Marching cubes welds a vertex
+     * to the grid edge it lies on, and that edge is shared by cells in two blocks; if one of them
+     * is dropped on the other's account the two patches do not join, and the report says so.
+     */
+    const onAPlane = 8 * STEP;
+    const field = (x: number, y: number, z: number): number =>
+      Math.max(
+        Math.abs(x - onAPlane) - 2,
+        Math.hypot(x - onAPlane, y - CENTRE, z - CENTRE) - 40,
+      );
+    const [declined, broad] = bothWays(field, 0);
+    expect(declined.finish().triangleCount).toBeGreaterThan(0);
+    expect([...broad.finish().indices]).toEqual([...declined.finish().indices]);
+    const report = reportMesh(broad.finish());
+    expect(report.watertight, "a slab through a block boundary").toBe(true);
+    expect(report.boundaryEdges).toBe(0);
+    expect(report.nonManifoldEdges).toBe(0);
+  });
+
+  it("reports progress that ends on the total and never goes backwards", () => {
+    /**
+     * **Counted over the blocks rather than the samples written**, so a rebuild that dropped most
+     * of its grid still finishes rather than stopping short and being jumped over by the second
+     * pass. `MeshProgress` in `surface-nets` is where the contract is written down.
+     */
+    for (const softness of [undefined, 0]) {
+      const seen: number[] = [];
+      const out = new ChunkMeshBuilder();
+      marchingCubes({
+        origin: [0, 0, 0],
+        samples: N,
+        sampleSize: STEP,
+        sampler: { distance: sphere(CENTRE, CENTRE, CENTRE, 40) },
+        out,
+        scratch: marchingCubesScratchFor(N),
+        softness,
+        onProgress: (done, total) => seen.push(done / total),
+      });
+      expect(seen.length, "distinct fractions, so it moved").toBeGreaterThan(4);
+      /**
+       * **The last is one, and the rest are not.** `MeshProgress` promises `done` reaches `total`
+       * exactly once so a caller can treat the last message as finished rather than watching for a
+       * fraction that rounds to one. **Nothing here says the first is zero**, because it never
+       * was: the first report comes after the first row of work, which is already something.
+       */
+      expect(seen[seen.length - 1]).toBe(1);
+      expect(seen.filter((f) => f === 1).length, "reaches one once").toBe(1);
+      for (let i = 1; i < seen.length; i++)
+        expect(seen[i], "never backwards").toBeGreaterThanOrEqual(
+          seen[i - 1] as number,
+        );
+    }
+  });
+});
+
+describe("the reach the broad pass relies on", () => {
+  it("is half a block's diagonal, which is the most it can be", () => {
+    /**
+     * **The bound, checked against the thing it is a bound on.** Every point of a cube is within
+     * half its diagonal of the nearest corner, and the centre is exactly there — so this is the
+     * tightest reach a block can use, and a pass using more of it is leaving blocks on the table.
+     */
+    const side = 7;
+    expect(broadPassReach(side, side, side, 1, 0)).toBeCloseTo(
+      (side * Math.sqrt(3)) / 2,
+      12,
+    );
+
+    // Swept rather than spot-checked, because "every point is within half a diagonal of a corner"
+    // is a statement about a cube and not about any one of its points.
+    const grid = 24;
+    let worst = 0;
+    for (let i = 0; i <= grid; i++)
+      for (let j = 0; j <= grid; j++)
+        for (let k = 0; k <= grid; k++) {
+          const p = [i / grid, j / grid, k / grid];
+          let nearest = Infinity;
+          for (let c = 0; c < 8; c++) {
+            const corner = [c & 1, (c >> 1) & 1, (c >> 2) & 1];
+            nearest = Math.min(
+              nearest,
+              Math.hypot(
+                (p[0] as number) - (corner[0] as number),
+                (p[1] as number) - (corner[1] as number),
+                (p[2] as number) - (corner[2] as number),
+              ),
+            );
+          }
+          worst = Math.max(worst, nearest);
+        }
+    expect(worst, "the worst point is the centre").toBeCloseTo(
+      Math.sqrt(3) / 2,
+      2,
+    );
+  });
+
+  it("is widened by the blend, because that is the direction a dent moves", () => {
+    // A smooth minimum takes a dent *out* of the field, so the value under-reads and the surface
+    // is closer than the number says. The only sound response is a stricter test.
+    expect(broadPassReach(4, 4, 4, 1, 0.25)).toBeGreaterThan(
+      broadPassReach(4, 4, 4, 1, 0),
+    );
+    // And a block short on one axis is a smaller block, not a differently-shaped one.
+    expect(broadPassReach(4, 4, 2, 1, 0)).toBeLessThan(
+      broadPassReach(4, 4, 4, 1, 0),
+    );
+    expect(BROAD_PASS_MAX_SOFTNESS).toBe(0.25);
   });
 });
