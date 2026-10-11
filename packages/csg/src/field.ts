@@ -170,6 +170,26 @@ export class Field {
   /** Where `gradient` gets a direction when the field has none. See `FieldOptions`. */
   private readonly fallbackNormal: (x: number, y: number, z: number) => Vec3;
 
+  /**
+   * The point `distance` evaluates at, reused across calls.
+   *
+   * **Because a field is asked the same question tens of thousands of times and the
+   * answer does not need the question kept.** A mesher filling a sample buffer makes
+   * `grid³` calls, and each was allocating two three-number objects for arguments that
+   * are read and discarded. The second allocation is for the same value as the first, so
+   * one object serves both calls.
+   *
+   * **Safe because nothing downstream retains the point.** `OperationBVH.candidatesAt`
+   * copies it into its anchor rather than keeping it, `foldOperations` only reads it
+   * within its loop, and neither escapes it to anything that outlives the call. The copy
+   * in `candidatesAt` is load-bearing rather than incidental — see there.
+   *
+   * **Not reentrant, deliberately.** A single mutable point means two calls in flight at
+   * once would see each other's coordinates. Nothing in this repository does that, and
+   * making it safe would mean allocating, which is the thing being removed.
+   */
+  private readonly at: Vec3 = { x: 0, y: 0, z: 0 };
+
   constructor(bvh: OperationBVH, options: FieldOptions = {}) {
     this.bvh = bvh;
     this.base = options.base;
@@ -193,13 +213,13 @@ export class Field {
 
   /** The signed distance at a point, in world units. Negative inside. */
   distance(x: number, y: number, z: number): number {
+    const at = this.at;
+    at.x = x;
+    at.y = y;
+    at.z = z;
     const initial = this.base !== undefined ? this.base(x, y, z) : emptyField();
     if (this.bvh.empty) return initial;
-    return foldOperations(
-      this.bvh.candidatesAt({ x, y, z }),
-      { x, y, z },
-      initial,
-    );
+    return foldOperations(this.bvh.candidatesAt(at), at, initial);
   }
 
   /**

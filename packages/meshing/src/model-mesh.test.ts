@@ -4,8 +4,10 @@ import { decodeOctahedral, SNORM16_MAX } from "@big-mesh-studios/core";
 import type { Quat, Rgb8, Vec3 } from "@big-mesh-studios/core";
 import {
   DEFAULT_COLOUR,
+  boundsContain,
   makeOperation,
   type Combine,
+  type Field,
   type Operation,
 } from "@big-mesh-studios/csg";
 import type { OperationShape } from "@big-mesh-studios/sdf";
@@ -21,8 +23,10 @@ import {
   primitiveMesh,
   operationsField,
   RESOLUTIONS,
+  sampleExtent,
   samplesFor,
 } from "./model-mesh";
+import type { MeshBudget } from "./model-mesh";
 
 /**
  * The minimum a part needs to become an operation, which is what this file meshes.
@@ -1497,4 +1501,185 @@ describe("reporting progress", () => {
     ]);
     expect(watched?.triangles).toBe(plain?.triangles);
   });
+});
+
+/**
+ * The candidate cache is gathered once for the whole sample sweep.
+ *
+ * **None of this is observable in the mesh, which is why it is a test at all.** The BVH gathers
+ * the operations that can change the field near a point and answers later points from that list
+ * while they stay close enough to it. Declaring the region changes how the answers are found and
+ * not what they are — the blocks are documented as a partition of the same candidates in the same
+ * order (`bvh.ts:396-410`) — so a rebuild that stopped declaring its region would keep producing
+ * a correct mesh, and the only symptom would be that it got slower.
+ *
+ * **So the regression is measured in rebuilds.** `OperationBVH.rebuilds` counts tree traversals,
+ * and the count is the whole of the cost: each rebuild is a query and a sort of the candidate
+ * list. Before the region was declared this was one per sample; it is now one per rebuild.
+ */
+describe("declaring the sample region", () => {
+  const parts = [
+    placedPart("a", { type: "Sphere", radius: 2 }, { x: 0, y: 0, z: 0 }),
+    placedPart(
+      "b",
+      { type: "Box", len: { x: 6, y: 2, z: 2 } },
+      { x: 3, y: 0, z: 0 },
+    ),
+    placedPart("c", { type: "Sphere", radius: 1 }, { x: -3, y: 1, z: 0 }),
+  ];
+
+  /**
+   * The sample sweep `meshModel` performs, over a field this test owns.
+   *
+   * **`meshModel` builds its own field, so a field constructed here is not the one it samples.**
+   * Counting rebuilds on it would read zero, and the assertion would pass for the wrong reason —
+   * which is the failure a test about an invisible cost is most prone to. So the sweep is
+   * reproduced over a field whose counter can be read.
+   */
+  const sweep = (
+    budget: MeshBudget,
+    declare: boolean,
+  ): { field: Field; rebuilds: number; values: Float64Array } => {
+    const region = meshRegion(parts, budget);
+    if (region === undefined) throw new Error("the parts have no bounds");
+    const field = operationsField(parts, budget);
+    const grid = region.samples + 2;
+
+    const end = declare ? field.beginRegion(sampleExtent(region)) : undefined;
+    const values = new Float64Array(grid * grid * grid);
+    field.bvh.rebuilds = 0;
+    let i = 0;
+    for (let z = 0; z < grid; z++)
+      for (let y = 0; y < grid; y++)
+        for (let x = 0; x < grid; x++) {
+          values[i++] = field.distance(
+            region.origin.x + (x - 1) * region.sampleSize,
+            region.origin.y + (y - 1) * region.sampleSize,
+            region.origin.z + (z - 1) * region.sampleSize,
+          );
+        }
+    end?.();
+    return { field, rebuilds: field.bvh.rebuilds, values };
+  };
+
+  it("gathers candidates once for a whole sweep, not once per sample", () => {
+    // **Exactly one, and asserted as exactly one rather than as a small number.** A bound would
+    // pass just as happily when the region is declared a little too small and the cache is
+    // rebuilt once at each end of the sweep — which is the failure a `toBeLessThan(samples)`
+    // check would wave through.
+    expect(sweep(budgetFor(0.25), true).rebuilds).toBe(1);
+  });
+
+  it("rebuilt once per sample before the region was declared", () => {
+    // **The control, and the reason the test above means anything.** This is the cost the change
+    // removed and the size of the win: a count proportional to the samples rather than constant.
+    // If it ever came back to one, the assertion above would be vacuous.
+    //
+    // **The whole grid, and not the model's `samples`.** The sweep runs over `samples + 2`
+    // positions on each axis — the two extra are the mesher's margin, and they are sampled like
+    // any other. The old cache missed on all of them, which is what makes this a whole-number
+    // comparison rather than an approximate one.
+    const budget = budgetFor(0.25);
+    const undeclared = sweep(budget, false);
+    const region = meshRegion(parts, budget);
+
+    expect(undeclared.rebuilds).toBeGreaterThan(1);
+    expect(undeclared.rebuilds).toBe(((region?.samples ?? 0) + 2) ** 3);
+  });
+
+  it("answers every sample the same whether or not the region was declared", () => {
+    /**
+     * **The equality the rebuild counts cannot see.** Declaring a region routes samples through
+     * the BVH's block subdivision instead of its single gathered list, and the blocks are
+     * documented as a partition of the same candidates — but the smooth booleans are not
+     * associative (`bvh.ts:347-357`), so fold order is part of the field's definition. A block
+     * that dropped or reordered a candidate would not break the mesh, it would quietly change
+     * the surface.
+     *
+     * **Bit-for-bit rather than with a tolerance,** because that is what the claim is: the same
+     * candidates in the same order give the same arithmetic, so any difference at all is a
+     * difference and not an accumulation of rounding.
+     */
+    const budget = budgetFor(0.25);
+
+    expect([...sweep(budget, true).values]).toEqual([
+      ...sweep(budget, false).values,
+    ]);
+  });
+
+  it("leaves the tree with no region declared afterwards", () => {
+    // **The region's scope is the mesher and not the caller.** A field that kept the region
+    // would answer a later query with candidates gathered for a box it is not inside — correct
+    // for the sweep, and wrong for anything asked of it afterwards. `endRegion` drops the cache
+    // rather than keeping it, and this is the test for that: the point below is far outside the
+    // declared region, so a cache that survived would answer it from the wrong box.
+    const { field } = sweep(budgetFor(0.25), true);
+
+    expect(
+      field.distance(10_000, 10_000, 10_000),
+      "a point far outside every operation is not solid",
+    ).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The declared box covers the sweep, with the last sample on its far face.
+ *
+ * **The claim is containment, and it is checked by sampling rather than by arithmetic.** A
+ * `sampleExtent` that fell a fraction of a sample short would not fail any test about the mesh —
+ * it would leave the cache rebuilding once at each end of the sweep, which is merely slow. So
+ * this walks the same grid the mesher walks and asks the box about every point the walk produces,
+ * which is the only statement that actually has to hold.
+ */
+describe("sampleExtent", () => {
+  const parts = [
+    placedPart("a", { type: "Sphere", radius: 2 }, { x: 0, y: 0, z: 0 }),
+    placedPart(
+      "b",
+      { type: "Box", len: { x: 6, y: 2, z: 2 } },
+      { x: 3, y: 0, z: 0 },
+    ),
+  ];
+
+  for (const voxelSize of [0.5, 0.25, 0.125, 0.0625]) {
+    it(`contains every sample at voxel ${voxelSize}`, () => {
+      const budget = budgetFor(voxelSize);
+      const region = meshRegion(parts, budget);
+      if (region === undefined) throw new Error("the parts have no bounds");
+      const extent = sampleExtent(region);
+      const grid = region.samples + 2;
+
+      /**
+       * Counted rather than asserted per sample.
+       *
+       * **`expect` costs enough per call that asserting on every sample of the finest budget is
+       * millions of assertion calls** — this timed out at two resolutions before the failure was
+       * counted and checked once. The property is "no sample is outside", which is one number.
+       */
+      let outside = 0;
+      let first: string | undefined;
+      for (let z = 0; z < grid; z++)
+        for (let y = 0; y < grid; y++)
+          for (let x = 0; x < grid; x++) {
+            const p = {
+              x: region.origin.x + (x - 1) * region.sampleSize,
+              y: region.origin.y + (y - 1) * region.sampleSize,
+              z: region.origin.z + (z - 1) * region.sampleSize,
+            };
+            if (!boundsContain(extent, p)) {
+              outside++;
+              first ??= `sample ${x}, ${y}, ${z} at ${p.x}, ${p.y}, ${p.z}`;
+            }
+          }
+      expect(outside, first).toBe(0);
+
+      // **And the last sample sits exactly on the far face**, which is what makes the box exact
+      // rather than padded. `boundsContain` is inclusive at both ends, so a box that reached
+      // past the last sample would also pass every assertion above.
+      expect(
+        region.origin.x + (grid - 2) * region.sampleSize,
+        "the far sample is the far face, so the box is not padded",
+      ).toBe(extent.max.x);
+    });
+  }
 });

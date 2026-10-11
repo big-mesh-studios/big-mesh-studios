@@ -450,6 +450,43 @@ export const meshRegion = (
   };
 };
 
+/**
+ * The world box every one of a region's samples falls inside.
+ *
+ * **Both meshers sample identically, which is what lets one box serve either.** Each walks
+ * `s` from `0` to `grid - 1` with `grid = samples + 2` and reads
+ * `origin + (s - 1) · sampleSize` — `marching-cubes.ts:616` and `surface-nets.ts:431`
+ * say the same thing twice. So `s = 0` is a whole sample *below* the origin and
+ * `s = grid - 1` is a whole sample above `origin + samples · sampleSize`.
+ *
+ * **Declared rather than left to the field's own point-anchored cache, and that is the
+ * whole of what this is for.** With no region declared, `OperationBVH` reuses its gathered
+ * candidates only within `candidateCell / 2` of the point that built them — and
+ * `operationsField` sizes that cell at the region's own `sampleSize`, so the reach is half
+ * a sample while consecutive samples are a whole sample apart. Every sample therefore
+ * missed, and a rebuild did one tree traversal and one sort *per sample* rather than one
+ * for the region. A declared region replaces that with a containment test, and brings the
+ * BVH's block subdivision (`bvh.ts:418`) into play as well.
+ *
+ * **Exact rather than padded.** `boundsContain` is inclusive at both ends, so this box
+ * contains every sample with the last one exactly on its far face. Padding would gather a
+ * larger box for the same guarantee.
+ */
+export const sampleExtent = (
+  region: NonNullable<ReturnType<typeof meshRegion>>,
+): Bounds => ({
+  min: {
+    x: region.origin.x - region.sampleSize,
+    y: region.origin.y - region.sampleSize,
+    z: region.origin.z - region.sampleSize,
+  },
+  max: {
+    x: region.origin.x + region.samples * region.sampleSize,
+    y: region.origin.y + region.samples * region.sampleSize,
+    z: region.origin.z + region.samples * region.sampleSize,
+  },
+});
+
 /** What one rebuild produced, and what it cost. */
 export interface MeshResult {
   readonly mesh: ChunkMesh;
@@ -646,19 +683,38 @@ export const meshModel = (
     },
   };
 
+  /**
+   * **The one candidate cache for the whole sample sweep, and the reason this is a
+   * two-line change rather than a tuning exercise.** Declared before the mesher runs and
+   * ended after it, so that every one of the `grid³` samples — and the `colourAt` behind
+   * every vertex — is answered from one gathered list instead of gathering its own.
+   *
+   * **Scoped to the mesher and not to the whole function, because the passes after it do
+   * not need it.** `fillNormals` reads faces and asks the field for a gradient only for
+   * vertices no triangle names, and `splitColourBoundaries` returns the mesh untouched when
+   * no triangle would blend — which is most models and every drag ghost. Ending the region
+   * first means those fall back to the point-anchored cache, which is slower per query but
+   * is asked very few questions, and it leaves the tree in the state the next caller
+   * expects rather than holding a region it is not inside.
+   */
+  const endRegion = field.beginRegion(sampleExtent(region));
   const scratch = heldScratch(mode, region.samples);
-  if (mode === "marching-cubes") {
-    marchingCubes({
-      ...params,
-      scratch: scratch as MarchingCubesScratch,
-      onProgress,
-    });
-  } else {
-    surfaceNets({
-      ...params,
-      scratch: scratch as SurfaceNetsScratch,
-      onProgress,
-    });
+  try {
+    if (mode === "marching-cubes") {
+      marchingCubes({
+        ...params,
+        scratch: scratch as MarchingCubesScratch,
+        onProgress,
+      });
+    } else {
+      surfaceNets({
+        ...params,
+        scratch: scratch as SurfaceNetsScratch,
+        onProgress,
+      });
+    }
+  } finally {
+    endRegion?.();
   }
 
   const built = builder.finish();

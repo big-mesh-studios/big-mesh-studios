@@ -342,7 +342,19 @@ export class OperationBVH {
         this.region !== null
           ? grown(this.region, CANDIDATE_MARGIN)
           : around(p, this.cellRadius);
-      this.anchor = this.region !== null ? middleOf(this.region) : p;
+      // **Copied, and not kept by reference.** The anchor is read back by
+      // `canReuseFor` on every later query, so holding the caller's point here
+      // would work only for as long as the caller does not write to it. A caller
+      // that reuses one point across a sweep — which is exactly what a mesher
+      // filling a sample buffer does — would mutate the anchor under the cache,
+      // every point would compare equal to it, and the candidate list would never
+      // be rebuilt. The field would then be folded against candidates gathered for
+      // wherever the sweep started: a wrong answer, drawn perfectly, with nothing
+      // to distinguish it from the right one.
+      this.anchor =
+        this.region !== null
+          ? middleOf(this.region)
+          : { x: p.x, y: p.y, z: p.z };
       this.cached = this.query(this.cachedBounds);
       // **Sorted by list order, and this is not cosmetic.** The smooth booleans are
       // symmetric but not associative: `smin(smin(a,b),c)` and `smin(a,smin(b,c))`

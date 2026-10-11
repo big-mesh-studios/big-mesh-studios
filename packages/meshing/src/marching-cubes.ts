@@ -633,18 +633,56 @@ export const marchingCubes = (params: MarchingCubesParams): void => {
   scratch.edgeY.fill(-1);
   scratch.edgeZ.fill(-1);
 
+  /**
+   * **The eight corners read through constant strides rather than through
+   * `CORNER_OFFSETS`.** The offsets are `(dx, dy, dz)` and the sample index is
+   * `base + dz·sliceStride + dy·rowStride + dx`, which for the eight rows of
+   * `CORNER_OFFSETS` above is a constant added to a single `base` — so the whole corner
+   * walk is eight loads off one address instead of eight calls each recomputing a
+   * three-term index.
+   *
+   * **The table stays the definition and this stays a copy of it, checked by
+   * `corner-strides.test.ts`.** Writing the eight rows out here is the one thing this file
+   * says not to do — the numbering is Lorensen–Bourke's and is load-bearing for the 256-row
+   * table below — so the copy is verified against the table rather than trusted, and the
+   * test fails loudly if the two ever disagree. Duplicating it in the hottest loop and
+   * asserting the duplication is the trade; the alternative is the call this removes.
+   */
+  const rowStride = grid;
+  const sliceStride = grid * grid;
+
   for (let cz = 0; cz < cells; cz++) {
     for (let cy = 0; cy < cells; cy++) {
+      const slice = (cz * grid + cy) * grid;
       for (let cx = 0; cx < cells; cx++) {
+        const base = slice + cx;
+        const s = scratch.samples;
+        const corners = scratch.corners;
+        const v0 = s[base] as number;
+        const v1 = s[base + 1] as number;
+        const v2 = s[base + rowStride + 1] as number;
+        const v3 = s[base + rowStride] as number;
+        const v4 = s[base + sliceStride] as number;
+        const v5 = s[base + sliceStride + 1] as number;
+        const v6 = s[base + sliceStride + rowStride + 1] as number;
+        const v7 = s[base + sliceStride + rowStride] as number;
+        corners[0] = v0;
+        corners[1] = v1;
+        corners[2] = v2;
+        corners[3] = v3;
+        corners[4] = v4;
+        corners[5] = v5;
+        corners[6] = v6;
+        corners[7] = v7;
         let pattern = 0;
-        for (let corner = 0; corner < 8; corner++) {
-          const at = cellCornerOffset(corner);
-          const value = scratch.samples[
-            ((cz + at[2]) * grid + (cy + at[1])) * grid + (cx + at[0])
-          ] as number;
-          scratch.corners[corner] = value;
-          if (value < 0) pattern |= 1 << corner;
-        }
+        if (v0 < 0) pattern |= 1;
+        if (v1 < 0) pattern |= 2;
+        if (v2 < 0) pattern |= 4;
+        if (v3 < 0) pattern |= 8;
+        if (v4 < 0) pattern |= 16;
+        if (v5 < 0) pattern |= 32;
+        if (v6 < 0) pattern |= 64;
+        if (v7 < 0) pattern |= 128;
         if (pattern === 0 || pattern === 255) continue;
 
         const vertices = cellVertices(

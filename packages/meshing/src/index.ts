@@ -145,6 +145,7 @@ export {
   operationsField,
   primitiveMesh,
   releaseScratch,
+  sampleExtent,
   samplesFor,
 } from "./model-mesh";
 export type { MeshBudget, MeshMode, MeshResult } from "./model-mesh";
