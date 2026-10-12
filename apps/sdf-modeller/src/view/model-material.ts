@@ -80,6 +80,17 @@ const octahedralNode = (f: Node<"vec2">): Node<"vec3"> => {
  */
 const SRGB_GAMMA = 2.2;
 
+/**
+ * The smallest base the sRGB curve is taken over.
+ *
+ * **Because a driver that spells `pow` as `exp2(y * log2(x))` has to get `log2(0)` right, and
+ * the ones that do not answer NaN.** GLSL specifies zero, so this is insurance rather than a
+ * correction — but a NaN multiplied by a coverage of zero is still a NaN, and it then decides
+ * what an unpainted model looks like on that machine. One in a hundred thousand raised to 2.2
+ * is about `1.6e-11`, far below a byte of output, so the floor costs nothing.
+ */
+const MIN_LINEAR = 1e-5;
+
 /** Direction, colour and strength of one light. All three are fixed in world space. */
 const KEY = {
   direction: [0.51, 0.79, 0.56] as const,
@@ -191,15 +202,47 @@ export class ModelMaterial extends NodeMaterial {
       const sampled = this.paintSampler
         .texture(b.varying("uv", "vec2"))
         .toVar();
-      // **The alpha is the texture's own, and the colour is linearised once.** The part colour
-      // is already linear — it is a vertex attribute of bytes that were written from a colour
-      // picker — so the texture has to be brought to the same space before they are mixed, or
-      // every stroke reads a shade dark for no reason anybody can see.
-      const painted = sampled.xyz.pow(float(SRGB_GAMMA)).mul(sampled.w);
-      const mixed = colour.xyz.mul(colour.w.sub(sampled.w)).add(painted);
-      colour.xyz.assign(
-        mixed.div(this.blendUniform.mul(colour.w.sub(sampled.w)).add(float(1))),
+      // **The floor under the linearisation is belt and braces, not the argument for the
+      // rewrite below.** GLSL does define `pow(0.0, 2.2)` as zero, but a driver that spells
+      // `pow` the way D3D does — `exp2(y * log2(x))` — has to get `log2(0)` right first, and
+      // the ones that do not answer NaN instead. A NaN survives being multiplied by a
+      // coverage of zero, so it reaches the framebuffer and whatever the driver does with a
+      // NaN there decides what a model with no paint on it looks like on that machine.
+      const stroke = sampled.xyz.max(float(MIN_LINEAR)).pow(float(SRGB_GAMMA));
+      // **The coverage is the texture's own alpha**, and the part colour is already linear — it
+      // is a vertex attribute of bytes written from a colour picker — so the texture is brought
+      // to the same space before the two are mixed, or every stroke reads a shade dark for no
+      // reason anybody can see.
+      const coverage = sampled.w;
+
+      // **The two things `blend` chooses between, each weighted by the coverage, so that a
+      // texel with nothing on it is a no-op rather than a darkening or a blackout.**
+      //
+      // Replacing is `mix(part, stroke, coverage)`. Tinting is `part * mix(vec3(1.0), stroke,
+      // coverage)`, which keeps the part's own colour underneath a stroke instead of throwing
+      // it away.
+      //
+      // **Why the old line could not be kept: it treated an opaque texel as "the part colour,
+      // scaled by zero".** It wrote
+      //
+      //     (colour.rgb * (colour.a - coverage) + stroke * coverage) / (blend * (colour.a - coverage) + 1)
+      //
+      // so a texel that read back with `coverage` of one multiplied the part colour by
+      // `colour.a - 1.0`, which for an opaque part is zero — and it read back as exactly
+      // `(0, 0, 0, 1)` in two ordinary ways: a sampler bound to a texture that never got a
+      // level zero, which WebGL defines as sampling to `(0, 0, 0, 1)` and which rmsl's own
+      // sampler notes call out as sampling as black, and any texel with an opaque black stroke
+      // on it. Either way the whole figure went to black, on whichever machine's sampler did
+      // it and not on the others. The denominator was wrong for the far more common case as
+      // well: with nothing painted at all it divided by `1 + blend`, so an unpainted model came
+      // out at half brightness at `blend = 1`.
+      const replacing = colour.xyz
+        .mul(coverage.oneMinus())
+        .add(stroke.mul(coverage));
+      const tinting = colour.xyz.mul(
+        coverage.oneMinus().add(coverage.mul(stroke)),
       );
+      colour.xyz.assign(replacing.mix(tinting, this.blendUniform));
     }
 
     const lambert = (
