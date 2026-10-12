@@ -2321,7 +2321,7 @@ export function App() {
         >
           Files
         </button>
-        <span class={styles.hint}>drag to orbit · pinch to zoom</span>
+        <span class={styles.hint}>drag to orbit · scroll or pinch to zoom</span>
       </footer>
     </div>
   );

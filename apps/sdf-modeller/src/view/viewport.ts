@@ -119,6 +119,10 @@ export interface OrbitLimits {
   readonly maxRadius: number;
   /** Radians of turn per pixel of drag. */
   readonly rotateSpeed: number;
+  /** Log-radius change per pixel of wheel delta. */
+  readonly zoomSpeed: number;
+  /** Log-radius change per pixel of ctrl+wheel delta, for a trackpad pinch. */
+  readonly trackpadZoomSpeed: number;
   /** How much of a radius change a doubling of the finger span makes. */
   readonly pinchSpeed: number;
   /** Below this many units between two fingers, the gesture is two fingers touching. */
@@ -133,6 +137,16 @@ export const DEFAULT_ORBIT: OrbitLimits = {
   // which is the difference between a control that feels precise and one that feels
   // broken.
   rotateSpeed: 0.008,
+  // **A wheel's delta is in pixels of travel, so the speed is a log-radius per pixel**,
+  // and one mouse notch of around a hundred gives a sixth more or less. `rm-stacker`
+  // scales by the *sign* of the delta instead, which is the same step for a wheel's
+  // hundred pixels as it is for a trackpad's three, so one flick of a trackpad arrives
+  // as twenty events and zooms about seven times over.
+  zoomSpeed: 0.0015,
+  // **A trackpad reports a pinch as a wheel with the control key held, and its deltas
+  // are a fraction of a notch's — a couple of units where a wheel gives a hundred.** At
+  // the wheel's own speed that reads about twenty times too slow.
+  trackpadZoomSpeed: 0.02,
   pinchSpeed: 1,
   pinchThreshold: 0.2,
 };
@@ -159,7 +173,21 @@ export interface OrbitController {
   readonly dispose: () => void;
 }
 
-const PITCH_LIMIT = Math.PI / 2 - 0.01;
+/**
+ * How far short of straight above, or straight below, the view may be taken, in radians.
+ *
+ * **The limit belongs at both poles rather than either side of the horizon.** `rm-stacker`
+ * clamps an *elevation* to `±(π/2 - 0.01)`, which puts its camera below the figure and
+ * looks back up at it; clamping a *polar* angle the same way instead stops it at the
+ * horizon, which is the half of the sphere this file could already reach and the half it
+ * could not. A modeller needs the underside — the part somebody is holding is turned over
+ * to be worked on far more often than a landscape is.
+ *
+ * The epsilon is what keeps `lookAt` off the degenerate pole, where the view direction and
+ * the up vector are the same line and there is no frame left to describe.
+ */
+export const MIN_PHI = 0.02;
+export const MAX_PHI = Math.PI - 0.02;
 
 export const createOrbit = (
   camera: PerspectiveCamera,
@@ -269,8 +297,37 @@ export const createOrbit = (
           ...state,
           theta: state.theta - dx * limits.rotateSpeed,
           phi: Math.max(
-            -PITCH_LIMIT,
-            Math.min(PITCH_LIMIT, state.phi - dy * limits.rotateSpeed),
+            MIN_PHI,
+            Math.min(MAX_PHI, state.phi - dy * limits.rotateSpeed),
+          ),
+        };
+        apply();
+      };
+
+      const onWheel = (event: WheelEvent): void => {
+        // **Under the same flag that silences the drag**, because dollying out from under
+        // a part mid-move would leave the handle the finger is holding somewhere else.
+        if (!interactive) return;
+        // **Not passive, so the gesture can be claimed.** `touch-action: none` on the
+        // canvas settles touch but says nothing about a wheel, which stays the page's.
+        event.preventDefault();
+        // A trackpad pinch arrives here as a wheel with the control key held, at a small
+        // fraction of a notch's delta, so it needs a speed of its own to land as fast as
+        // the mouse gesture it is standing in for.
+        const speed = event.ctrlKey
+          ? limits.trackpadZoomSpeed
+          : limits.zoomSpeed;
+        state = {
+          ...state,
+          // **Exponential in the delta rather than stepped by its sign**, which is what
+          // makes a wheel feel the same at any speed and a trackpad feel the same as a
+          // wheel. A positive deltaY is a scroll downwards and carries the camera away.
+          radius: Math.min(
+            limits.maxRadius,
+            Math.max(
+              limits.minRadius,
+              state.radius * Math.exp(event.deltaY * speed),
+            ),
           ),
         };
         apply();
@@ -287,6 +344,7 @@ export const createOrbit = (
       element.addEventListener("pointermove", onMove);
       element.addEventListener("pointerup", release);
       element.addEventListener("pointercancel", release);
+      element.addEventListener("wheel", onWheel, { passive: false });
 
       return () => {
         if (detached) return;
@@ -295,6 +353,7 @@ export const createOrbit = (
         element.removeEventListener("pointermove", onMove);
         element.removeEventListener("pointerup", release);
         element.removeEventListener("pointercancel", release);
+        element.removeEventListener("wheel", onWheel);
       };
     },
 
