@@ -40,6 +40,8 @@ import {
   primitivePartMesh,
   RESOLUTIONS,
   type MeshMode,
+  operationsField,
+  partsToOperations,
 } from "./model/mesh-model";
 import {
   axisAngle,
@@ -58,15 +60,23 @@ import {
   type ScreenPoint,
 } from "./view/move-handle";
 import { createMoveHandles, type MoveHandles } from "./view/move-handles";
-import { pickPartAt } from "./view/pick-part";
+import { distanceToPart, pickPartAt, pointInPartFrame } from "./view/pick-part";
+import { fieldHit, type BrushSurface } from "./view/field-hit";
+import { report } from "./view/paint-report";
+import { rayThroughScreen, toNdc } from "@big-mesh-studios/picking";
 import { radiansDragged, ringUnderPointer } from "./view/rotate-handle";
 import { createRotateHandles, type RotateHandles } from "./view/rotate-handles";
 import { createSelectionBox, type SelectionBox } from "./view/selection-box";
 import { createModelStore } from "./model/model-store";
-import { brushHit } from "./view/brush-hit";
 import { createPaintCursor, type PaintCursor } from "./view/paint-cursor";
 import { BrushPanel, defaultBrush, type BrushState } from "./ui/brush-panel";
-import { StrokeRecorder } from "./unwrapping/stroke-recorder";
+import { PaintJournal } from "./unwrapping/paint-journal";
+import { BRICK, GRID_RES, PaintField } from "./unwrapping/paint-field";
+import { PaintBrush, type Localiser } from "./unwrapping/paint-brush";
+import type { RemovedDabs } from "./unwrapping/paint-journal";
+import { rasterise, type Placed } from "./unwrapping/paint-rasterise";
+import type { Field } from "@big-mesh-studios/csg";
+import { conjugate, rotate } from "@big-mesh-studios/csg";
 import {
   createOrbit,
   createViewport,
@@ -110,10 +120,8 @@ import { createDialog } from "./ui/dialog";
 import { FilesPanel } from "./ui/files-panel";
 import { DEFAULT_MAX_COLOURS } from "./print/quantise";
 import {
-  bakeTexture,
   loadTexture,
   DRIFT_LIMIT,
-  rebakeTexture,
   type LoadedTexture,
   type TextureBake,
 } from "./unwrapping/bake";
@@ -135,6 +143,59 @@ const REBUILD_MS = 90;
  * finger landing is not read as an orbit.
  */
 const TAP_SLOP = 8;
+
+/**
+ * The paint field's voxel, in world units.
+ *
+ * **An absolute number, and that is the whole point.** The atlas's resolution came out of
+ * whatever xatlas packed into a 1024 atlas, so it varied with the model and with how many
+ * charts it made. Here the same figure gets the same number of voxels per unit at any model
+ * size, and the resolution is a quality setting rather than a consequence of an unwrap.
+ *
+ * **A twentieth of a unit, which is a 2 MB pool.** Twenty voxels a unit gives the smallest
+ * brush on the panel — a tenth of a unit across, so two voxels — something to be, and puts the
+ * whole upload below the 4.15 MB atlas it replaces. The plan's table has the rest: 0.08 is
+ * 0.6 MB, 0.05 is 2 MB, and 0.02 is 12 MB and wants M1's partial upload first.
+ */
+const PAINT_VOXEL = 0.05;
+
+/**
+ * How wide a model's paint field can be, in world units.
+ *
+ * **The indirection grid's reach: 64 bricks a side of 8 voxels at `PAINT_VOXEL`**, which at a
+ * fiftieth of a unit is twenty-five and a half units across. A figure that big is far beyond
+ * anything this app is for, and the number is here so the brush says so rather than throwing.
+ */
+const PAINT_REACH = GRID_RES * BRICK * PAINT_VOXEL;
+
+/**
+ * How many bricks the field can hold along each edge — twelve, which is 1728 bricks and 7 MB.
+ *
+ * **Sized to what a figure needs, with room over.** The plan's table puts a 5-unit sphere at
+ * 491 bricks at this resolution; a real figure with limbs runs to perhaps three times that, so
+ * twelve a side is generous rather than tight. It is a fixed number because **the pool is
+ * allocated whole and never grows** — rmsl's texture is created once, and growing storage under
+ * a live `DataTexture` is a repack.
+ *
+ * **Which is why nineteen was too many.** The first cut took 19 a side for margin, which is
+ * 6859 bricks and 27 MB allocated before a single mark was made — and the test suite, which
+ * builds a few fields, ran the worker out of memory. Twelve costs less than half and still has
+ * 3× the headroom a figure needs.
+ *
+ * Running out is not fatal: `PaintField.set` returns false and the stroke loses its outermost
+ * millimetre. M6 turns this into a real setting once the width ladder knows the voxel size.
+ */
+const PAINT_TILES = 12;
+
+/**
+ * What the panel says about the field.
+ *
+ * **One line, and no chart count.** The atlas reported its size, its chart count and its
+ * utilisation because those were things a person could act on — a nearly-full atlas was about
+ * to run out. A field has none of them: its resolution is the constant above and its capacity
+ * is the tile count, neither of which anything in the panel can change.
+ */
+const PAINT_DETAIL = `${1 / PAINT_VOXEL} paint texels a world unit`;
 
 /** What a project file is called when nothing has said otherwise. */
 const DEFAULT_PROJECT_NAME = `model${PROJECT_EXTENSION}`;
@@ -341,6 +402,129 @@ export function App() {
    */
   let bake: TextureBake | undefined;
 
+  /**
+   * The model's paint journal — every dab, in order, and the only durable paint state.
+   *
+   * **Held for the life of the document rather than rebuilt on demand**, because the field
+   * below is derived from it and a derived thing that is thrown away and remade on every edit
+   * would be a repaint nobody asked for. It is not a signal: nothing renders from it, the
+   * render loop reads the field.
+   */
+  const paintJournal = new PaintJournal();
+
+  /**
+   * How many dabs the journal holds, as a signal.
+   *
+   * **Only so the panel can say so.** A paint tool that records nothing and shows nothing is
+   * indistinguishable from one that records nothing and cannot show what it recorded, and that
+   * ambiguity cost two rounds of debugging: the number moving or not moving separates "the
+   * brush is not finding the surface" from "the brush is painting and the picture is not
+   * updating" in one glance. It is also the one thing about a painting worth reporting, since
+   * a field has no atlas size to quote.
+   */
+  const [dabCount, setDabCount] = createSignal(0);
+
+  /**
+   * The paint field, or nothing until a first stroke needs one.
+   *
+   * **Made on first use rather than on load**, because a field is sized to the painted area
+   * and an untouched document has none. The box comes from the model's bounds, which is what
+   * makes the field's resolution an absolute world size rather than a fraction of the model.
+   */
+  const [paintField, setPaintField] = createSignal<PaintField | undefined>();
+
+  /**
+   * The folded SDF, held across rebuilds so the brush can hit it without building one a frame.
+   *
+   * **The one thing the old brush did not need and this one does.** The atlas's brush read
+   * coordinates off a triangle, so it wanted a mesh. This one resolves the surface against the
+   * field itself — three Newton steps from the mesh hit — and `pickPart` already builds a
+   * field of exactly this kind for a tap. Building one per pointer move would be a field walk
+   * and a sort sixty times a second.
+   */
+  let surfaceField: Field | undefined;
+
+  /**
+   * The brush surface the field hit works against, rebuilt with the mesh.
+   *
+   * **Assembled here rather than inside `field-hit.ts`**, because it needs the BVH from the
+   * last rebuild and the parts list, and those are the app's business.
+   */
+  const brushSurface = (): BrushSurface | undefined => {
+    const parts = untrack(store.parts);
+    if (surfaceField === undefined || parts.length === 0) {
+      report({
+        what: "no-surface",
+        hasField: surfaceField !== undefined,
+        parts: parts.length,
+      });
+      return undefined;
+    }
+    return {
+      field: surfaceField,
+      partCount: parts.length,
+      partDistance: (part, point) => distanceToPart(parts[part]!, point),
+    };
+  };
+
+  /**
+   * Puts a world point and normal into a part's own frame, and back out again.
+   *
+   * **Two functions, one transform, and they are inverses.** Dabs are stored part-local so paint
+   * follows its part, and rasterising has to put them back where the part currently is. Both
+   * ends use `pick-part.ts`'s `pointInPartFrame`, which is the frame `sdShape` measures in and
+   * therefore the frame the surface the brush found is actually on.
+   */
+  const partTransforms = (
+    parts: readonly Part[],
+  ): {
+    localise: Localiser;
+    place: (
+      part: number,
+      centre: { x: number; y: number; z: number },
+      normal: { x: number; y: number; z: number },
+    ) => Placed | undefined;
+  } => {
+    const localise: Localiser = (part, point, normal) => {
+      const own = pointInPartFrame(parts[part]!, point);
+      // **The normal turns with the point and is not translated.** A rotation preserves lengths,
+      // so the unit vector the brush found is still a unit vector once it is in the part's
+      // frame — and forgetting the distinction would give a dab a normal that leans as the part
+      // moved.
+      const turned = rotate(normal, conjugate(parts[part]!.orientation));
+      return {
+        centre: [own.x, own.y, own.z],
+        normal: [turned.x, turned.y, turned.z],
+      };
+    };
+    const place = (
+      part: number,
+      centre: { x: number; y: number; z: number },
+      normal: { x: number; y: number; z: number },
+    ): Placed | undefined => {
+      const own = parts[part];
+      if (own === undefined) return undefined;
+      const turned = rotate(centre, own.orientation);
+      return {
+        centre: {
+          x: turned.x + own.origin.x,
+          y: turned.y + own.origin.y,
+          z: turned.z + own.origin.z,
+        },
+        // **The normal is the same rotation with no origin added**, and normalising it because a
+        // frame that has drifted off unit length would tilt every stroke as the part turns.
+        normal: (() => {
+          const n = rotate(normal, own.orientation);
+          const length = Math.hypot(n.x, n.y, n.z);
+          return length === 0
+            ? { x: 0, y: 1, z: 0 }
+            : { x: n.x / length, y: n.y / length, z: n.z / length };
+        })(),
+      };
+    };
+    return { localise, place };
+  };
+
   /** Whether the last carry drifted far enough to be worth rebaking, which M5 will surface. */
   let drift = 0;
 
@@ -519,9 +703,25 @@ export function App() {
         drift = carried.drift;
         setStale(drift);
       }
+      // **The field the brush traces is replaced with the model it describes**, together.
+      // A field over one model paired with a part list from another would trace a shape that is
+      // not on screen and name parts that do not exist.
+      surfaceField =
+        result === undefined
+          ? undefined
+          : operationsField(partsToOperations(parts), DEFAULT_BUDGET);
+      hoverReported = 0;
+      strokeMisses = 0;
+      report({
+        what: "rebuild",
+        triangles: result?.triangles ?? 0,
+        parts: parts.length,
+        hasSurfaceField: surfaceField !== undefined,
+      });
       target.install(result, {
         translucent: parts.some((part) => (part.opacity ?? 1) < 1),
         ...(bake === undefined ? {} : { bake }),
+        ...(paintField() === undefined ? {} : { field: paintField() }),
         blend: untrack(blend),
       });
       elapsed = performance.now() - started;
@@ -569,7 +769,7 @@ export function App() {
    * draws from it — but a control that says nothing for a second and a half while the page is
    * blocked needs to say something, and it can only say it if something re-renders.
    */
-  const [baking, setBaking] = createSignal<number | undefined>();
+  const [baking] = createSignal<number | undefined>();
 
   /** Whether the model carries a baked atlas, which is what the tool's label turns on. */
   const [textured, setTextured] = createSignal(false);
@@ -605,59 +805,6 @@ export function App() {
       return `Paint on the model. The texture is ${stale().toFixed(2)} world units out of date; choosing this again rebakes it.`;
     }
     return "Draw on the model with a brush.";
-  };
-
-  /**
-   * Bakes texture coordinates onto the model, or leaves them alone.
-   *
-   * **The only thing in the application that starts an unwrap, and it is reached only by
-   * choosing the paint tool.** That is the whole of the cost story: a model nobody paints on
-   * carries no atlas, no coordinate array and no unwrap, and costs exactly what it cost before any
-   * of this existed. A button beside the mesher would have been the wrong shape — it invites the
-   * bake from somebody tidying up a model rather than somebody about to draw on it.
-   *
-   * **It does nothing when there is already a fresh bake.** Coming back to the paint tool is a
-   * thing a person does constantly — to check a stroke, to carry on, to look from another angle —
-   * and none of those want a second of unwrap behind them. A rebake happens only when the model
-   * has moved far enough that the coordinates are no longer describing it, which is a question
-   * about the model rather than about how often the tool was picked.
-   *
-   * **The rebuild is asked for afterwards rather than the model being re-installed here.** The
-   * coordinates have to land on the mesh that is on screen, and the rebuild is what builds that
-   * mesh — going around it would leave the viewport a rebuild out of date by one edit.
-   */
-  const startBake = async (): Promise<void> => {
-    const parts = untrack(store.parts);
-    if (untrack(baking) !== undefined) return;
-    if (bake !== undefined && untrack(stale) <= DRIFT_LIMIT) return;
-
-    setBaking(0);
-    try {
-      const onProgress = (fraction: number): void => {
-        setBaking(fraction);
-      };
-      const made =
-        bake === undefined
-          ? await bakeTexture(parts, onProgress)
-          : await rebakeTexture(bake, parts, onProgress);
-      if (made === undefined) return;
-      bake = made;
-      // **A rebake is a third way the picture changes.** It is not needed to invalidate the
-      // encoded copy — this is the stroke path's job now — but a rebake with no painting in it is
-      // still a document change, and `rebuild` below will arm the draft anyway.
-      textureRevision++;
-      setTextured(true);
-      setStale(0);
-      rebuild(parts);
-    } catch (reason) {
-      setFileNotice(
-        reason instanceof Error
-          ? reason.message
-          : "the texture could not be baked",
-      );
-    } finally {
-      setBaking(undefined);
-    }
   };
 
   /**
@@ -711,11 +858,24 @@ export function App() {
   /**
    * The brush, as the panel set it.
    *
-   * **A plain object rather than four signals,** because nothing outside the panel and the paint
-   * drag reads it and the drag reads it dozens of times a second. Four signals would mean a write
-   * per panel tap that a drag then reads through the graph sixty times a frame.
+   * **A signal, and this was a plain object for most of the paint tool's life — which meant the
+   * panel never saw a colour change.** The reasoning was that nothing outside the panel and the
+   * paint drag reads it, and the drag reads it dozens of times a second, so four signals were
+   * thought to be the wrong shape. But a plain object is not reactive at all: reading it in the
+   * panel's JSX creates no dependency, so assigning `brush = { ...brush, colour }` changed the
+   * value and drew nothing. The brush colour swatch showed whatever was there on first render,
+   * and the picker appeared to do nothing — which is exactly what it looks like when a control
+   * is broken rather than when it is subtle.
+   *
+   * **One signal rather than four**, so a width change and a colour change are the same shape of
+   * update, and a drag's reads are a getter rather than a graph walk. The drag takes one
+   * `untrack` snapshot when it starts rather than reading per move, which is the part of the
+   * original worry that was actually worth acting on: a drag's brush settings cannot change
+   * under it, so there is nothing to be reactive about.
    */
-  let brush: BrushState = defaultBrush({ r: 255, g: 255, b: 255, a: 255 });
+  const [brush, setBrush] = createSignal<BrushState>(
+    defaultBrush({ r: 255, g: 255, b: 255, a: 255 }),
+  );
 
   /**
    * How many times the atlas's *pixels* have changed since the file was last opened.
@@ -803,32 +963,159 @@ export function App() {
    * stationary pointer too: orbit, a pinch, a rebuild. Following only pointer moves would leave
    * the ring behind whenever the view moved, which is exactly when it is most out of date.
    */
+  /**
+   * The paint field for a model, made once and then kept.
+   *
+   * **Sized from the model's bounds and a fixed world resolution**, which is the point of the
+   * whole exercise: `voxelSize` is an absolute number of world units, so a figure twice as big
+   * gets twice the voxels and the brush is the same physical size on both. The atlas could not
+   * say that — its texels-per-unit came out of whatever xatlas packed.
+   *
+   * **The box is padded**, because a brush at the silhouette of a figure writes outside the
+   * mesh's bounds by its own radius, and a field that stopped at the bounds would drop the edge
+   * of every stroke that ran off it.
+   */
+  const ensureField = (parts: readonly Part[]): PaintField | undefined => {
+    const existing = paintField();
+    if (existing !== undefined) return existing;
+    const bounds = modelBounds(parts);
+    if (bounds === undefined) return undefined;
+    const pad = 4;
+    const origin: [number, number, number] = [
+      bounds.min.x - pad,
+      bounds.min.y - pad,
+      bounds.min.z - pad,
+    ];
+    const span = (lo: number, hi: number): number => hi - lo + pad * 2;
+    // **A cube, not the model's own box.** The indirection grid is cubic, so a model that is
+    // long and thin would pay for a cubic grid and get nothing for it — but a cube also means
+    // one number to reason about, and the figures this app makes are roughly round.
+    const side = Math.max(
+      span(bounds.min.x, bounds.max.x),
+      span(bounds.min.y, bounds.max.y),
+      span(bounds.min.z, bounds.max.z),
+    );
+    // **The indirection grid is the ceiling, and it is checked rather than assumed.**
+    // `PaintField.over` throws on a box the grid cannot address, because a brick past the grid's
+    // edge would alias onto the ones at the start — paint on the wrong side of the model. A
+    // figure far larger than this is not something to crash over, so it gets no field and says
+    // so; M1's coarser-voxel setting is what will lift the ceiling.
+    report({
+      what: "field-sizing",
+      side: Number(side.toFixed(2)),
+      reach: PAINT_REACH,
+      origin: origin.map((v) => Number(v.toFixed(2))),
+      voxel: PAINT_VOXEL,
+      tiles: PAINT_TILES,
+    });
+    if (side > PAINT_REACH) {
+      setFileNotice(
+        "this model is too large for the paint field at its current resolution; move the parts closer together or use a smaller model",
+      );
+      return undefined;
+    }
+    const made = PaintField.over(
+      PAINT_VOXEL,
+      origin,
+      [side, side, side],
+      PAINT_TILES,
+    );
+    setPaintField(made);
+    made.ensureTextures();
+    // **Attached now, because a material compiles what it samples.** The field is made on the
+    // first stroke rather than on load — there is nothing to size a field by until something
+    // has been painted — so without this the material on screen was built with no field sampler
+    // and the stroke would accumulate invisibly until the next edit remade the model.
+    view?.attachField(made);
+    return made;
+  };
+
+  /**
+   * Rasterises the journal into the field, if there is one.
+   *
+   * **A pure function of the journal and the parts**, which is what makes undo, redo and
+   * "the model moved" all the same operation. Nothing here is incremental: the field is
+   * derived, and a derived thing that was built by mutation could not be rebuilt.
+   */
+  const rasteriseJournal = (): void => {
+    const field = paintField();
+    if (field === undefined) return;
+    const parts = untrack(store.parts);
+    const { place } = partTransforms(parts);
+    rasterise(paintJournal, field, place);
+    field.markChanged();
+  };
+
+  let hoverReported = 0;
+
+  /** Rounded for a log line, because a full double is unreadable and the digits are noise. */
+  const round3 = (value: number): number => Number(value.toFixed(3));
+
   const standCursor = (): void => {
     const ring = cursor;
     const eye = camera;
     const pointer = lastPointer;
+    const surface = brushSurface();
     if (ring === undefined || eye === undefined || pointer === undefined)
       return;
-    if (untrack(tool) !== "paint" || bake === undefined || dragging) {
+    // **`dragging` is not a reason to hide the ring.** It was, and it made a stroke look
+    // broken: the ring stayed where it was before the press and vanished for the whole drag,
+    // so the one thing a person uses to aim was unavailable exactly when they were aiming.
+    // A miss still hides it — that is what a miss means.
+    if (untrack(tool) !== "paint" || surface === undefined) {
       ring.hide();
       return;
     }
     const rect = canvas.getBoundingClientRect();
-    const hit = brushHit(
-      bake.bvh,
-      bake.uvs,
-      eye,
-      {
-        width: rect.width,
-        height: rect.height,
-      },
-      pointer,
-    );
+    const size = { width: rect.width, height: rect.height };
+    // **The SDF rather than the mesh.** The ring stands where the surface actually is, to a
+    // hundredth of a unit, rather than on a facet of a mesh that may be a quarter of a unit
+    // across — which is the whole reason the atlas needed a pinned reference mesh to be honest
+    // about where anything was.
+    const hit = fieldHit(surface, eye, size, pointer);
     if (hit === undefined) {
+      // **A few of these, and no more.** The cursor asks the same question sixty times a second
+      // and "no" sixty times a second is not news; what is news is the ray that could not find
+      // the surface, and eight of those is enough to see what it looked like.
+      if (hoverReported < 8) {
+        hoverReported += 1;
+        const ndc = toNdc(pointer.x, pointer.y, size.width, size.height);
+        const ray = rayThroughScreen(eye, ndc.x, ndc.y);
+        report({
+          what: "hover-miss",
+          pointer,
+          size,
+          eye: { x: eye.position.x, y: eye.position.y, z: eye.position.z },
+          origin: { x: ray.origin.x, y: ray.origin.y, z: ray.origin.z },
+          direction: {
+            x: round3(ray.direction.x),
+            y: round3(ray.direction.y),
+            z: round3(ray.direction.z),
+          },
+        });
+      }
       ring.hide();
       return;
     }
-    ring.place(hit.point, hit.normal, brush.width / 2);
+    if (hoverReported < 8) {
+      hoverReported += 1;
+      report({
+        what: "hover-hit",
+        pointer,
+        part: hit.part,
+        point: {
+          x: round3(hit.point.x),
+          y: round3(hit.point.y),
+          z: round3(hit.point.z),
+        },
+        normal: {
+          x: round3(hit.normal.x),
+          y: round3(hit.normal.y),
+          z: round3(hit.normal.z),
+        },
+      });
+    }
+    ring.place(hit.point, hit.normal, untrack(brush).width / 2);
   };
 
   /**
@@ -905,28 +1192,70 @@ export function App() {
   const grabPaint = async (
     initial: PointerEvent & { currentTarget: HTMLElement },
   ): Promise<void> => {
+    try {
+      await paintStroke(initial);
+    } catch (reason) {
+      // **Said out loud rather than swallowed.** `grabPaint` is called with `void`, so an
+      // exception here is an unhandled rejection and the app looks inert: no stroke, no ring,
+      // no error. A paint tool that fails silently is the worst failure a paint tool has.
+      setFileNotice(
+        reason instanceof Error
+          ? `painting failed: ${reason.message}`
+          : "painting failed",
+      );
+    }
+  };
+
+  let strokeMisses = 0;
+
+  const paintStroke = async (
+    initial: PointerEvent & { currentTarget: HTMLElement },
+  ): Promise<void> => {
     const controller = orbit;
     const eye = camera;
     const ring = cursor;
+    const parts = untrack(store.parts);
+    const surface = brushSurface();
     if (
       controller === undefined ||
       eye === undefined ||
       ring === undefined ||
       untrack(tool) !== "paint" ||
-      bake === undefined ||
+      surface === undefined ||
+      parts.length === 0 ||
       dragging
     ) {
       return;
     }
 
-    const held = bake;
-    const surface = held.surface;
-    const recorder = new StrokeRecorder(surface, {
-      width: brush.width,
-      hardness: brush.hardness,
-      texelsPerUnit: held.atlas.texelsPerUnit,
-      colour: brush.colour,
+    const field = ensureField(parts);
+    if (field === undefined) {
+      report({ what: "no-field" });
+      return;
+    }
+    // **Taken once, at the start of the drag, and not read again.** A drag's brush settings
+    // cannot change under it — the panel is not reachable while a finger is down — so reading a
+    // signal per pointer move would be sixty graph reads a second for a value that cannot differ.
+    const held = untrack(brush);
+    report({
+      what: "stroke-start",
+      radius: held.width / 2,
+      parts: parts.length,
     });
+    const { localise, place } = partTransforms(parts);
+    const recorder = new PaintBrush(
+      paintJournal,
+      field,
+      // **Half the panel's width, because the panel says "across" and a radius is what a disc
+      // is.** The atlas recorder did the same division, in `StrokeRecorder`.
+      {
+        radius: held.width / 2,
+        hardness: held.hardness,
+        colour: held.colour,
+      },
+      localise,
+      place,
+    );
 
     dragging = true;
     controller.setInteractive(false);
@@ -939,16 +1268,32 @@ export function App() {
       ended = await pointer(initial, ({ event }) => {
         const at = pointerOnCanvas(event);
         lastPointer = at;
-        const hit = brushHit(
-          held.bvh,
-          held.uvs,
-          eye,
-          size,
-          at,
-          held.reference.charts,
-        );
-        if (hit === undefined) return;
-        recorder.moveTo(hit.uv[0], hit.uv[1], hit.chart);
+        const hit = fieldHit(surface, eye, size, at);
+        if (hit === undefined || hit.part < 0) {
+          if (strokeMisses < 3) {
+            strokeMisses += 1;
+            const ndc = toNdc(at.x, at.y, size.width, size.height);
+            const ray = rayThroughScreen(eye, ndc.x, ndc.y);
+            report({
+              what: "hit-miss",
+              part: hit?.part ?? -1,
+              pointer: at,
+              size,
+              eye: { x: eye.position.x, y: eye.position.y, z: eye.position.z },
+              origin: { x: ray.origin.x, y: ray.origin.y, z: ray.origin.z },
+              direction: {
+                x: ray.direction.x,
+                y: ray.direction.y,
+                z: ray.direction.z,
+              },
+              eyeAtHit: hit === undefined ? undefined : round3(hit.point.y),
+            });
+          }
+          return;
+        }
+        if (strokeMisses === -1)
+          report({ what: "hit", point: hit.point, part: hit.part });
+        recorder.moveTo(hit);
       });
     } finally {
       ring?.hide();
@@ -959,59 +1304,62 @@ export function App() {
     /**
      * **A press that painted nothing was a tap, and a tap means "select this".**
      *
-     * Without this the paint tool swallows every press: a click on a part selects nothing and
-     * draws no box, because `onPointerDown` gave the press to the brush and the brush does not
-     * select. A tool that makes it impossible to choose a part is not a tool, it is a wall —
-     * and the fix is not to make people switch tools to select, it is to let one press mean
-     * both things according to what it turned out to be.
-     *
-     * **The same tap test the select tool uses**, because both are competing with the camera
-     * for the same press and must agree on what counts as aiming rather than turning. A drag
-     * across empty space turned the camera and must not select whatever it passed over.
+     * The same argument as the atlas path had: the paint tool takes every press, so without
+     * this a click on a part would select nothing and draw nothing, and a tool that makes it
+     * impossible to choose a part is a wall rather than a tool.
      */
+    // **No rasterise here, and none is needed.** `moveTo` has been writing each dab into the
+    // field as it was made, so by the time the finger lifts the picture on screen is already the
+    // painting. All that is left is to close the stroke so the drag is one undo step.
     const painted = recorder.finish();
-    if (painted === undefined) {
+    setDabCount(paintJournal.count);
+    report({
+      what: "stroke-end",
+      dabs: painted.dabs,
+      live: painted.live,
+      total: paintJournal.count,
+      bricks: field.brickCount,
+      dirtySinceSync: field.dirtySinceSync,
+    });
+    if (painted.dabs === 0) {
       if (ended !== undefined && tapOnly(ended)) pickAt(initial);
       return;
     }
 
     /**
-     * **One history entry, on the way out.**
+     * **One history entry, and its inverse is a re-rasterise rather than a restore.**
      *
-     * **The entry restores the rectangle rather than replaying the stroke backwards.** Replaying
-     * would mean keeping every stamp, and the stamps overlap in ways that do not invert — a
-     * second, translucent stamp over a first does not undo by removing itself. The rectangle of
-     * bytes that were there before is the only inverse that is exactly right, and it is bounded
-     * by the stroke.
+     * There are no bytes underneath a dab to put back — a dab is a parameter, not a delta — so
+     * the atlas's rectangle-of-before-bytes has nothing to snapshot. Truncating the journal and
+     * rasterising what is left is the exact inverse, and it is bounded by the journal rather
+     * than by the size of the picture, which for a stroke on a small model is a few hundred
+     * bytes rather than a few hundred kilobytes.
      */
-    const { rect: touched, before, segments } = painted;
-    const settings = {
-      width: brush.width,
-      hardness: brush.hardness,
-      texelsPerUnit: held.atlas.texelsPerUnit,
-      colour: brush.colour,
-    };
+    let taken: RemovedDabs | undefined;
     pictureChanged();
     store.record({
       label: "Paint",
-      // **Undo restores the bytes; redo replays the dabs.** Restoring is the only exact inverse,
-      // because translucent dabs overlap and removing one does not undo the other. Replaying is
-      // the thing the person did, and lands in the same place for the same reason.
+      // **Redo replays the dabs the undo took back**, which is the thing the person did.
+      // `taken` is written by `invert` and read here, which is the store's own command/inverse
+      // contract (`model-store.ts:32-42`): undo calls `invert`, redo calls `apply`, and undo
+      // always comes first.
       apply: () => {
-        StrokeRecorder.replay(surface, settings, segments);
-        // **Both halves announce the change, not just the stroke that made it.** An undo writes
-        // texels exactly as much as a stroke does, and an undo that did not say so would leave
-        // the encoded copy holding the painting that was just taken back off — so the next save
-        // would write a picture the document no longer has, and the reload would bring the stroke
-        // back from the dead.
+        if (taken !== undefined) paintJournal.redoStroke(taken);
+        rasteriseJournal();
+        setDabCount(paintJournal.count);
         pictureChanged();
       },
       invert: () => {
-        surface.restore(touched, before);
+        taken = paintJournal.undoStroke();
+        rasteriseJournal();
+        setDabCount(paintJournal.count);
         pictureChanged();
       },
     });
-    surface.markChanged();
+    // **No rasterise here, because `finish` already did it.** An earlier version called
+    // `rasteriseJournal` as well, which meant every stroke rasterised the whole journal twice —
+    // and since a rasterise is O(journal), that made a session quadratic in its own history for
+    // no benefit at all. `finish` writes the field and the writes mark it dirty.
   };
 
   /**
@@ -1789,14 +2137,20 @@ export function App() {
         void grabHandle(event as PointerEvent & { currentTarget: HTMLElement });
       } else if (held === "rotate") {
         void grabRing(event as PointerEvent & { currentTarget: HTMLElement });
-      } else if (held === "paint" && bake !== undefined) {
-        // The paint tool, and there is something to paint with. The camera still gets the
+      } else if (held === "paint" && store.parts().length > 0) {
+        // The paint tool, and there is a model to paint on. The camera still gets the
         // press, so a drag on empty space turns the view and a drag on the model paints; see
         // `grabPaint`. A press that paints nothing falls through to a pick — see there.
+        //
+        // **The condition is a model, not a bake.** It used to ask whether an atlas existed,
+        // which was right when painting onto one and is wrong now: the field is made on the
+        // first stroke, so there is never an atlas to wait for and the test was always false on
+        // a fresh document — which sent every press to the select tool, and the select tool's
+        // press orbits the camera. The symptom was "the brush turns the view".
         void grabPaint(event as PointerEvent & { currentTarget: HTMLElement });
       } else {
         /**
-         * **The select tool — and also the paint tool with nothing to paint with.**
+         * **The select tool — and also the paint tool on an empty document.**
          *
          * A press has exactly one owner, so whichever tool claims it decides what a click means
          * everywhere: whether it selects, and therefore whether the selection box appears at
@@ -1804,10 +2158,9 @@ export function App() {
          * picking something else to drag a slider is a small price for not being able to select
          * anything.
          *
-         * **The bake is the condition rather than the tool**, because "there is no atlas yet"
-         * is the case where the paint tool cannot do its job — the model has no surface yet, or
-         * the unwrap is still running — and a press during it is a person who has changed their
-         * mind and wants to select something instead.
+         * **An empty model is the condition rather than the tool**, because "there is nothing to
+         * paint on" is the case where the paint tool cannot do its job, and a press during it is
+         * a person who has changed their mind and wants to select something instead.
          */
         // The select tool. The camera still gets the press and may turn the view; a press
         // that does not move is the tap that picks. See `tapSelect`.
@@ -1839,8 +2192,11 @@ export function App() {
       // **Once per frame, here, and nowhere else**, because rmsl re-uploads the whole atlas on
       // `needsUpdate` and a drag is dozens of stamps. `PaintSurface.dirty` clears itself when
       // read, so this is also what keeps a quiet model from re-uploading forever.
-      const painted = bake;
-      if (painted !== undefined) created.sync(painted.surface);
+      // **Both sources, every frame, and neither gated on the other.** A field exists before
+      // any atlas does — in fact the field *is* the paint now and the atlas is the thing being
+      // retired — so a `sync` that skipped when `bake` was undefined would mean paint that
+      // accumulates on the CPU and never reaches the screen.
+      created.sync(bake?.surface, paintField());
       viewport.render();
     });
 
@@ -1973,10 +2329,11 @@ export function App() {
             }
             onClick={() => {
               setTool(value);
-              // **Choosing the tool is what starts the unwrap, and it is the only thing that
-              // does.** A model nobody paints on never pays for texture coordinates: no array is
-              // allocated, nothing is meshed, and nothing blocks. See `startBake`.
-              if (value === "paint") void startBake();
+              // **Choosing the tool no longer starts anything.** A field has no unwrap to run:
+              // it is a fixed world-space grid with no per-vertex coordinates, so picking up the
+              // brush costs nothing and the first stroke makes the field. The old path unwrapped
+              // here, which took between a second and a minute depending on the model, and every
+              // one of those seconds was paid before a single mark was made.
             }}
           >
             {value === "paint" && baking() !== undefined ? "Painting" : label}
@@ -2129,60 +2486,62 @@ export function App() {
           data-hidden={sheet() !== "paint" || !sheetOpen() ? "" : undefined}
         >
           <BrushPanel
-            brush={brush}
+            brush={brush()}
             atlas={bake?.atlas}
             palette={palette}
             busy={untrack(baking) !== undefined}
             onWidth={(width) => {
-              brush = { ...brush, width };
+              const held = brush();
+              setBrush({ ...held, width });
             }}
             onHardness={(hardness) => {
-              brush = { ...brush, hardness };
+              const held = brush();
+              setBrush({ ...held, hardness });
             }}
             onColour={(colour) => {
-              brush = { ...brush, colour };
-              // **Remembered, because a colour somebody reached for twice is one they will reach
-              // for again** — and the palette is already the place a part's colours live.
-              palette.remember(colour);
+              const held = brush();
+              // **Deliberately does not `palette.remember`**, for the reason
+              // `ui/palette.tsx:18-27` gives at length: the picker's `onColour` fires on every
+              // pointer move, so one drag across the chart arrives as dozens of distinct
+              // colours. Remembering them would fill the palette to its cap and push out the
+              // colours the person had actually chosen. Keeping a colour is the add box's one
+              // deliberate tap, which is what `PaletteRow`'s `onAdd` is for.
+              setBrush({ ...held, colour });
             }}
             onClear={() => {
-              if (bake === undefined) return;
-              const surface = bake.surface;
-              // **A whole-atlas undo entry**, which is the one place a full snapshot is right:
-              // a clear touches every texel, so bounding it by a stroke's rectangle would bound it
-              // by the atlas anyway.
-              const before = surface.pixels.slice();
-              surface.clear();
+              // **Clear empties the journal and re-rasterises**, which is the same operation
+              // undo and redo use. There is nothing else it could be: a field has no
+              // independent picture to wipe, only dabs that produced it.
+              if (paintJournal.count === 0 || paintField() === undefined)
+                return;
+              let taken: RemovedDabs | undefined;
               pictureChanged();
               store.record({
-                label: "Clear texture",
-                /**
-                 * **Undo and redo the other way round from the obvious reading, and that is the
-                 * whole of `apply`/`invert`.** The clear has *already happened* by the time this
-                 * entry is recorded, so the thing that gets it back is the inverse. Writing it the
-                 * other way round — `apply` restoring, `invert` clearing — reads as the sensible
-                 * pair and is exactly backwards: undo would clear an atlas that is already clear,
-                 * so nothing would appear to happen, and redo would put the picture back.
-                 *
-                 * **Undo restores the bytes rather than replaying anything**, because a clear has
-                 * no dabs to replay and the bytes are the only record that there was a picture.
-                 */
+                label: "Clear paint",
+                // **The other way round from the obvious reading, and this is why.** The clear has
+                // *already happened* by the time this entry is recorded, so undo is `apply` and
+                // redo is `invert`. The same inversion `StrokeRecorder`'s clear made, for the
+                // same reason.
                 apply: () => {
-                  surface.clear();
+                  if (taken !== undefined) paintJournal.redoStroke(taken);
+                  rasteriseJournal();
                   pictureChanged();
                 },
                 invert: () => {
-                  surface.pixels.set(before);
-                  surface.markChanged();
+                  taken = paintJournal.clearWithUndo();
+                  rasteriseJournal();
                   pictureChanged();
                 },
               });
+              taken = paintJournal.clearWithUndo();
+              rasteriseJournal();
+              setDabCount(paintJournal.count);
             }}
             blend={blend()}
             onBlend={setBlend}
-            onRebake={() => {
-              void startBake();
-            }}
+            fieldDetail={paintField() === undefined ? undefined : PAINT_DETAIL}
+            dabs={dabCount()}
+            hasPaint={paintJournal.count > 0}
           />
         </div>
       </div>

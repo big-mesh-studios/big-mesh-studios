@@ -132,10 +132,41 @@ export const closestPart = (
   parts: readonly Part[],
   point: Vec3,
 ): Part | undefined => {
-  let best: Part | undefined;
+  const index = partIndexAt(
+    parts.length,
+    (at) => distanceToPart(parts[at]!, point),
+    point,
+  );
+  return parts[index];
+};
+
+/**
+ * Which part put the surface at `point`, as an index.
+ *
+ * **The same walk as {@link closestPart}, returning the position rather than the part.**
+ *
+ * `closestPart` answers "which part", which is what a selection wants. The brush wants the
+ * index, because a dab in the journal is stored against a part's *position in the list* rather
+ * than against its identity: parts are immutable values with fresh ids on every edit
+ * (`model-store.ts:111`), so an id would dangle the moment the list was rebuilt and a
+ * position would not.
+ *
+ * Doing this by delegating to `closestPart` would have been the obvious way to write it, and it
+ * is why `distanceToPart` is passed in as a closure rather than the parts themselves — the
+ * brush's caller already has the field and would rather not build a second one.
+ *
+ * `-1` when there are no parts, which is the answer for a model that has been emptied and is
+ * the one case where "no part" and "part zero" must not be confused.
+ */
+export const partIndexAt = (
+  count: number,
+  distanceAt: (part: number) => number,
+  _point: Vec3,
+): number => {
+  let best = -1;
   let bestAway = Infinity;
-  for (const part of parts) {
-    const away = Math.abs(distanceToPart(part, point));
+  for (let part = 0; part < count; part++) {
+    const away = Math.abs(distanceAt(part));
     if (away < bestAway) {
       bestAway = away;
       best = part;

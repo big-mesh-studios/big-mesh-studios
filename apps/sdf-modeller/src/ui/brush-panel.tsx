@@ -21,14 +21,17 @@
  * the edge got harder would be a lie twice over.** The panel's own value runs soft-to-hard the
  * other way from the label, so `1 -` goes in on the way to the control and on the way back.
  */
-import { For, Show } from "solid-js";
+import { Show } from "solid-js";
 
 import controls from "./controls.module.css";
 
 import { rgbaToCss, type RGBA } from "@big-mesh-studios/core";
 
 import type { AtlasInfo } from "../unwrapping/bake";
+import { PaletteRow } from "./palette";
 import type { Palette } from "./palette";
+import { ColourPicker } from "./colour-picker";
+import { createPopover } from "./popover";
 import styles from "./transform-panel.module.css";
 
 /** How wide the brush is, in world units. */
@@ -58,6 +61,25 @@ export interface BrushPanelProps {
   readonly palette: Palette;
   /** What the atlas looks like, or undefined before the first bake. */
   readonly atlas: AtlasInfo | undefined;
+  /**
+   * What the paint field is, or nothing when nothing has been painted.
+   *
+   * **A readout rather than a control**, because the field's resolution is a constant rather
+   * than a packer's choice: there is nothing to offer a choice between.
+   */
+  readonly fieldDetail: string | undefined;
+  /** Whether there is any painting to undo, clear, or blend over. */
+  readonly hasPaint: boolean;
+  /**
+   * How many dabs the journal holds.
+   *
+   * **A readout, and it is there because the alternative is an inert tool.** A brush that
+   * records nothing and shows nothing is indistinguishable from one that records nothing and
+   * cannot show what it recorded, and that ambiguity cost two rounds of debugging. Whether this
+   * number moves while somebody paints separates "the brush is not finding the surface" from
+   * "the brush is painting and the picture is not updating" at a glance.
+   */
+  readonly dabs: number;
   /** Wipes the atlas. One history entry, like a stroke. */
   readonly onClear: () => void;
   /**
@@ -69,12 +91,17 @@ export interface BrushPanelProps {
   readonly blend: number;
   readonly onBlend: (blend: number) => void;
   /** Lays the coordinates out again, keeping the painting. */
-  readonly onRebake: () => void;
   /** Whether a bake is running, which disables everything that would start another. */
   readonly busy: boolean;
 }
 
 export function BrushPanel(props: BrushPanelProps) {
+  // **The picker in a popover, for the reason `transform-panel.tsx:260-263` gives:** it is a
+  // 200px chart plus two sliders plus four fields, and on a phone that is most of the screen.
+  // A panel covering the model while somebody chose a colour would hide the thing the colour
+  // applies to.
+  const ColourPopover = createPopover();
+
   return (
     <div class={styles.panel}>
       <div class={styles.group}>
@@ -128,41 +155,63 @@ export function BrushPanel(props: BrushPanelProps) {
 
       <div class={styles.group}>
         <span class={styles.groupLegend}>Colour</span>
-        <div class={styles.colourRow}>
-          {/*
-            **The palette's own colours, as buttons rather than as swatches to look at.** A brush
-            colour is not a part's colour — it does not go in the parts list and it does not undo
-            with a part — but it is the same vocabulary, and a second palette for it would be two
-            places to add a colour to.
-          */}
-          <For each={props.palette.colours()}>
-            {(colour) => (
-              <button
-                type="button"
-                class={styles.stepButton}
-                aria-label={`Paint with rgb(${colour.r}, ${colour.g}, ${colour.b})`}
-                aria-pressed={
-                  colour.r === props.brush.colour.r &&
-                  colour.g === props.brush.colour.g &&
-                  colour.b === props.brush.colour.b
-                    ? "true"
-                    : "false"
-                }
-                style={{ "--swatch": rgbaToCss(colour) }}
-                onClick={() => {
-                  props.onColour(colour);
-                }}
-              />
-            )}
-          </For>
-        </div>
+
+        {/*
+          **The current colour, as the trigger — which shows the colour rather than saying
+          "choose colour".**
+
+          **Because a brush's colour is the one setting whose current value matters at every
+          moment, unlike a width or a softness where the slider position is itself the
+          readout.** A person painting picks a colour, paints with it for a while, and needs to
+          know what they are holding without opening anything; a button that reads "Choose
+          colour…" makes them open it to find out.
+        */}
+        <ColourPopover.Trigger
+          class={`${styles.pickerButton} ${styles.pickerButtonLeading}`}
+          title="Pick the colour the brush paints with"
+        >
+          <span
+            class={styles.swatchPreview}
+            style={{ "--swatch": rgbaToCss(props.brush.colour) }}
+            aria-hidden="true"
+          />
+          {rgbaToCss(props.brush.colour)}
+        </ColourPopover.Trigger>
+
+        <ColourPopover.Panel class={styles.pickerPopover}>
+          <ColourPicker
+            colour={props.brush.colour}
+            onColour={(colour) => {
+              props.onColour(colour);
+            }}
+          />
+        </ColourPopover.Panel>
+
+        {/*
+          **The palette inline as well as in the picker, because it is the fast path.**
+
+          A palette is one tap and no drag, and repainting a figure means cycling through a
+          handful of colours repeatedly. Requiring the popover for that would put two taps and
+          a dismissal between a person and the thing they do most while painting. The picker
+          is for colours the palette has not got yet; `PaletteRow` carries its own add box, so
+          a colour picked in the popover is one tap from being remembered.
+        */}
+        <PaletteRow
+          palette={props.palette}
+          colour={props.brush.colour}
+          onPick={(colour) => {
+            props.onColour(colour);
+          }}
+          onAdd={(colour) => {
+            props.palette.remember(colour);
+          }}
+        />
       </div>
 
-      <Show when={props.atlas}>
-        {(atlas) => (
+      <Show when={props.fieldDetail} fallback={undefined}>
+        {(detail) => (
           <p class={styles.note}>
-            {atlas().width}×{atlas().height} atlas · {atlas().chartCount} charts
-            · {Math.round(atlas().utilization * 100)}% used
+            {detail()} · {props.dabs} dab{props.dabs === 1 ? "" : "s"}
           </p>
         )}
       </Show>
@@ -218,23 +267,12 @@ export function BrushPanel(props: BrushPanelProps) {
         <button
           type="button"
           class={controls.button}
-          disabled={props.busy || props.atlas === undefined}
+          disabled={props.busy || !props.hasPaint}
           onClick={() => {
             props.onClear();
           }}
         >
-          Clear texture
-        </button>
-        <button
-          type="button"
-          class={controls.button}
-          disabled={props.busy || props.atlas === undefined}
-          title="Lay the coordinates out again, keeping what has been painted"
-          onClick={() => {
-            props.onRebake();
-          }}
-        >
-          Rebake
+          Clear paint
         </button>
       </div>
     </div>

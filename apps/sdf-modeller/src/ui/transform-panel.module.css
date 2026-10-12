@@ -286,6 +286,49 @@
 }
 
 /*
+ * The current colour inside a picker trigger.
+ *
+ * **A swatch beside the text rather than the button tinted with it, for two reasons.** The
+ * text is the readable part — `rgba()` is legible on any background, the button's own colour is
+ * not, so a translucent brush colour would render the label nearly invisible against its own
+ * fill. And a checkerboard behind it, for the same reason `palette.module.css:86` gives: a
+ * colour with alpha is otherwise indistinguishable from the same colour fully transparent,
+ * which is exactly the case where the preview has to show something the picker does not.
+ *
+ * **`flex: none` so it cannot be squeezed** by a long label on a narrow panel — a colour chip
+ * that collapses to a sliver is worse than no chip at all.
+ */
+.pickerButtonLeading {
+  justify-content: flex-start;
+}
+
+.swatchPreview {
+  flex: none;
+  width: var(--ui-size);
+  height: var(--ui-size);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: calc(var(--ui-size) / 6);
+  background-image:
+    linear-gradient(var(--swatch), var(--swatch)),
+    linear-gradient(45deg, #808080 25%, transparent 25%),
+    linear-gradient(-45deg, #808080 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #808080 75%),
+    linear-gradient(-45deg, transparent 75%, #808080 75%);
+  background-size:
+    auto,
+    10px 10px,
+    10px 10px,
+    10px 10px,
+    10px 10px;
+  background-position:
+    0 0,
+    0 0,
+    0 5px,
+    5px -5px,
+    -5px 0px;
+}
+
+/*
  * ## The picker's own popover
  *
  * **`inset: unset` and `position: absolute` first, for the reason `controls.popover` gives:

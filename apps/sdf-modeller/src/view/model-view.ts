@@ -37,6 +37,7 @@ import type { ChunkMesh } from "@big-mesh-studios/meshing";
 import type { MeshResult } from "../model/mesh-model";
 import type { TextureBake } from "../unwrapping/bake";
 import type { PaintSurface } from "../unwrapping/paint-surface";
+import type { PaintField } from "../unwrapping/paint-field";
 import { modelMaterial } from "./model-material";
 
 /**
@@ -100,7 +101,24 @@ export interface ModelView {
    * optional chain sixty times a second to reach a method that mostly does nothing is the kind of
    * thing that reads as a bug later.
    */
-  readonly sync: (surface: PaintSurface) => void;
+  readonly sync: (
+    surface: PaintSurface | undefined,
+    field?: PaintField,
+  ) => void;
+
+  /**
+   * Puts a field on the material already on screen.
+   *
+   * **Separate from `install` because a field is made on the first stroke, not on load.** A
+   * field is sized to the painted area, so an untouched document has none — and rebuilding the
+   * whole model to attach one would remesh and reinstall a figure in order to add a sampler to
+   * a material that is already compiled and correct.
+   *
+   * Attaching changes what the material samples, so **this costs a recompile**; that is the
+   * same price `attach` pays and for the same reason — the samplers are decided when the
+   * material is built, and a field appearing is a change of what is true.
+   */
+  readonly attachField: (field: PaintField | undefined) => void;
   readonly dispose: () => void;
 }
 
@@ -135,6 +153,16 @@ export interface InstallOptions {
    * and the worst time to notice.
    */
   readonly blend?: number;
+
+  /**
+   * The paint field, when the model has one.
+   *
+   * **Passed rather than held, like `bake`** — but for a stronger reason: the field is the
+   * thing being written to *while* the model is drawn, and holding it here would mean holding a
+   * reference to the object the brush is mutating, which is how a material ends up pointing at
+   * a field from two models ago.
+   */
+  readonly field?: PaintField;
 }
 
 /**
@@ -175,7 +203,7 @@ export const createModelView = (parent: Object3D): ModelView => {
     install: (result, options) => {
       // **Disposed first, before the new geometry is even built.** See the header.
       release();
-      const { translucent, bake, blend } = options;
+      const { translucent, bake, blend, field } = options;
       if (result === undefined) return;
       // **The coordinates are carried onto the mesh being installed, not read off the bake.**
       // The bake's own coordinates belong to the reference mesh and there is one coordinate a
@@ -189,15 +217,26 @@ export const createModelView = (parent: Object3D): ModelView => {
       material = modelMaterial(translucent, blend);
       drawn = new Mesh(built, material);
       if (bake !== undefined) material.attach(bake.surface);
+      // **After the atlas, so a field wins if both are somehow present.** The two cannot both
+      // be right: the atlas carries coordinates pinned to a mesh and the field carries none, and
+      // a material sampling both would draw the atlas's paint in the field's places.
+      if (field !== undefined) material.attachField(field);
       parent.add(drawn);
       triangles = result.triangles;
     },
 
-    sync: (surface) => {
+    attachField: (field) => {
+      // **Guarded rather than passed through**, for the reason `sync` is: before the first
+      // install there is no material, and a stroke cannot have happened without one.
+      if (material === undefined) return;
+      material.attachField(field);
+    },
+
+    sync: (surface, field) => {
       // **Through the current material, which may be none.** Before the first install there is
       // nothing to upload to, and no stroke can have happened without one, so this is a no-op
       // rather than an error.
-      material?.sync(surface);
+      material?.sync(surface, field);
     },
 
     dispose: release,
