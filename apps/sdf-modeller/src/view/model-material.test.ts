@@ -133,7 +133,8 @@ describe("a material with a paint field", () => {
 
 describe("the maths the shader is expressing", () => {
   /** A field with one brick's worth of voxels per side, so addresses are small and legible. */
-  const small = (): PaintField => PaintField.over(0.1, [0, 0, 0], [0.8, 0.8, 0.8], 2);
+  const small = (): PaintField =>
+    PaintField.over(0.1, [0, 0, 0], [0.8, 0.8, 0.8], 2);
 
   it("puts a voxel's world centre inside the brick that holds it", () => {
     // **The first of the five conversions.** If `voxelAt(worldAt(x))` is not `x`, everything
