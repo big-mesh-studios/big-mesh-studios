@@ -5,6 +5,7 @@ import {
   MAX_MANIFEST_COLOURS,
   MAX_MANIFEST_PARTS,
   MAX_PART_ID,
+  MAX_PAINT_DABS,
   MAX_REFERENCE_VERTICES,
   MAX_TEXTURE_EDGE,
   PROJECT_VERSION,
@@ -322,6 +323,88 @@ describe("isProjectManifest", () => {
       for (const partial of [{}, { width: 64 }, null, "texture.png", 12]) {
         expect(isProjectManifest(manifest({ texture: partial }))).toBe(false);
       }
+    });
+  });
+
+  describe("paint", () => {
+    const paint = (overrides: Record<string, unknown> = {}) => ({
+      dabs: 40,
+      strokes: 8,
+      ...overrides,
+    });
+
+    it("accepts a manifest written before the journal existed", () => {
+      // **The same argument as `texture`, and it is not a formality.** Every model that has not
+      // been painted — which is every model in every file, and every model somebody is about to
+      // open — has no `paint` field, and a validator that refused those would make the feature
+      // a reason nobody could open their own work. `PROJECT_VERSION` did not move for this
+      // reason twice over now.
+      expect(isProjectManifest(manifest())).toBe(true);
+      expect(isProjectManifest(manifest({ paint: undefined }))).toBe(true);
+    });
+
+    it("accepts one that describes a real journal", () => {
+      expect(isProjectManifest(manifest({ paint: paint() }))).toBe(true);
+      expect(
+        isProjectManifest(manifest({ paint: paint({ dabs: 1, strokes: 1 }) })),
+      ).toBe(true);
+    });
+
+    it("refuses counts that are not counts", () => {
+      // **Refused at the manifest rather than at the allocation**, for the reason the texture's
+      // edges are: this is the last place these are still numbers a reader has not acted on.
+      for (const dabs of [0, -1, 2.5, "40", Number.NaN, Infinity]) {
+        expect(isProjectManifest(manifest({ paint: paint({ dabs }) }))).toBe(
+          false,
+        );
+      }
+      for (const strokes of [0, -1, 1.5, "8"]) {
+        expect(isProjectManifest(manifest({ paint: paint({ strokes }) }))).toBe(
+          false,
+        );
+      }
+    });
+
+    it("refuses a count past the cap", () => {
+      // **A dab is forty bytes on disk**, so this is the difference between a session's painting
+      // and eighty megabytes somebody's file asks a reader to allocate before its own length
+      // check can speak.
+      expect(
+        isProjectManifest(
+          manifest({ paint: paint({ dabs: MAX_PAINT_DABS + 1 }) }),
+        ),
+      ).toBe(false);
+    });
+
+    it("refuses more strokes than dabs", () => {
+      // **Not merely strange — impossible**, and a file that says so was written by something
+      // that got the two counts out of step. Checking it here lets the reader index strokes
+      // without a bound check of its own.
+      expect(
+        isProjectManifest(manifest({ paint: paint({ strokes: 41 }) })),
+      ).toBe(false);
+    });
+
+    it("refuses a half-written one rather than reading it as unpainted", () => {
+      // **The same asymmetry as the texture, and the same reason.** Reading a malformed journal
+      // as "no paint" would open somebody's painted model as a blank one with nothing said.
+      for (const partial of [{}, { dabs: 40 }, null, "paint.bin", 12]) {
+        expect(isProjectManifest(manifest({ paint: partial }))).toBe(false);
+      }
+    });
+
+    it("lets a file carry paint, a texture, both or neither", () => {
+      // **Two independent optional fields is not a version bump.** A build that predates the
+      // journal ignores a field it does not know and a build that has it ignores `texture` just
+      // as happily, so every combination has to be openable rather than only the newest.
+      expect(
+        isProjectManifest(
+          manifest({
+            paint: paint(),
+            texture: { width: 64, height: 48, vertices: 12, blend: 0 },
+          }),
+        ),
+      ).toBe(true);
     });
   });
 

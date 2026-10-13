@@ -183,3 +183,85 @@ describe("a paint journal", () => {
     expect(Array.from(journal.part.slice(0, journal.count))).toEqual([0, 7]);
   });
 });
+
+describe("clearing a journal", () => {
+  /** Three strokes of two dabs each, so the stroke boundaries are three distinct numbers. */
+  const threeStrokes = (): PaintJournal => {
+    const journal = new PaintJournal();
+    for (let stroke = 0; stroke < 3; stroke++) {
+      for (let i = 0; i < 2; i++) {
+        journal.append({
+          centre: [stroke + i * 0.1, 0, 0],
+          normal: [0, 1, 0],
+          radius: 0.2,
+          hardness: 0.5,
+          colour: { r: stroke * 80, g: 255, b: 239, a: 255 },
+          part: 0,
+        });
+      }
+      journal.endStroke();
+    }
+    return journal;
+  };
+
+  it("hands back everything that was in it", () => {
+    const journal = threeStrokes();
+    const removed = journal.clearWithUndo()!;
+    expect(removed.count).toBe(6);
+    expect(journal.count).toBe(0);
+    expect(journal.strokeCount).toBe(0);
+  });
+
+  it("hands back the stroke boundaries, not one run", () => {
+    // **Because a stroke is an undo step and a clear removes several.** Without this,
+    // `redoStroke` closed them all as one and the ctrl-z after undoing a clear took a whole
+    // session's painting back off in a single step — which is the one thing undo must never do.
+    const journal = threeStrokes();
+    expect(journal.clearWithUndo()!.strokes).toEqual([2, 4, 6]);
+  });
+
+  it("comes back as three strokes rather than one", () => {
+    const journal = threeStrokes();
+    const removed = journal.clearWithUndo()!;
+    journal.redoStroke(removed);
+    expect(journal.count).toBe(6);
+    expect(journal.strokeCount).toBe(3);
+    expect(journal.strokeEnds).toEqual([2, 4, 6]);
+  });
+
+  it("undoes one stroke at a time after a clear has been undone", () => {
+    // **The end-to-end version of the same thing**, and the assertion a person would make:
+    // three ctrl-z presses, not one.
+    const journal = threeStrokes();
+    const removed = journal.clearWithUndo()!;
+    journal.redoStroke(removed);
+    const first = journal.undoStroke()!;
+    expect(first.count).toBe(2);
+    const second = journal.undoStroke()!;
+    expect(second.count).toBe(2);
+    const third = journal.undoStroke()!;
+    expect(third.count).toBe(2);
+    expect(journal.undoStroke()).toBeUndefined();
+  });
+
+  it("keeps a half-drawn stroke out of it", () => {
+    // **A drag that never finished was never part of the painting**, and putting it back would
+    // make a cancelled drag reappear after an undo of the clear.
+    const journal = threeStrokes();
+    journal.append({
+      centre: [9, 9, 9],
+      normal: [0, 1, 0],
+      radius: 0.2,
+      hardness: 0.5,
+      colour: { r: 0, g: 0, b: 0, a: 255 },
+      part: 0,
+    });
+    const removed = journal.clearWithUndo()!;
+    expect(removed.count).toBe(6);
+    expect(journal.count).toBe(0);
+  });
+
+  it("reports nothing to undo when there was nothing to clear", () => {
+    expect(new PaintJournal().clearWithUndo()).toBeUndefined();
+  });
+});

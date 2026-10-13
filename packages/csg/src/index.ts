@@ -173,16 +173,19 @@ export {
  */
 export type {
   ProjectManifest,
+  ProjectPaint,
   ProjectTexture,
   ProjectView,
 } from "./model-file";
 export {
   MAX_MANIFEST_COLOURS,
   MAX_MANIFEST_PARTS,
+  MAX_PAINT_DABS,
   MAX_REFERENCE_VERTICES,
   MAX_PART_ID,
   MAX_TEXTURE_EDGE,
   PROJECT_EXTENSION,
+  PROJECT_PAINT_FILE,
   PROJECT_MANIFEST_FILE,
   PROJECT_MIME_TYPE,
   PROJECT_MODEL_FILE,

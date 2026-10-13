@@ -480,23 +480,30 @@ says so in the file notice instead of throwing in the middle of a drag.
 #### Still not done
 
 - **The width ladder is still in absolute world units.** The smallest brush is 0.05 across, which
-  at a 0.05 voxel is **one voxel** and will alias. This is the one known-visible defect.
+  at a 0.05 voxel is **one voxel**. See "Appearance, 2026-10-13" below for what the antialiasing
+  now does to it and why the floor still wants moving.
 - **Part occlusion.** `place` applies the part transform and nothing else, so two parts whose
   shells share voxels can show each other's paint. M5 owns this.
 - **The cull is not called.** Tier 1 is tested and ready but unwired; every dab is rasterised.
 - **Partial upload is still the bandwidth story.** A stroke now uploads the whole pool every
-  frame it changes, which is why `PAINT_TILES` went from twelve to ten — 4 MB, the same as the
-  atlas it replaces. M1 removes the term; until then the pool size is what decides whether
-  painting feels immediate.
+  frame it changes. M1 removes the term; until then the pool size is what decides whether
+  painting feels immediate. Note that the thinner shell below roughly halved the bricks a stroke
+  touches, so the same figure now needs about half the pool it did.
 
 ### M5 — Parts, persistence, delete
 
+- **The journal codec — DONE.** `src/unwrapping/paint-file.ts`, `paint.bin`, 16 tests plus six
+  end-to-end ones in `project.test.ts`. See "Persistence, 2026-10-13" below.
 - Part-local dabs + **part occlusion** (spike first).
-- Replace `texture.bin` with the journal codec. Decide the v1 migration: read the old atlas via
-  the existing self-contained codec, re-rasterise once on open, write v2.
 - **Tier 2 culling** — save-time compaction.
 - **Delete everything in "What gets deleted"** — but **keep `xatlas-wasm` and
   `unwrap-client.ts`**, demoted to the export path.
+- **The v1 atlas migration is now the only part of this left.** A file written by an older build
+  carries a `texture` field and a `texture.bin` and no `paint.bin`; it still opens, and the
+  atlas still renders, because both readers are untouched. What has not been decided is whether
+  that is the end of it or whether such a file should offer to convert itself into a journal on
+  open — which needs an unwrap to project the atlas back through, and M7's bake is the thing
+  that can do it.
 
 ### M6 — Sharpness
 
@@ -517,6 +524,75 @@ today; do not build one speculatively.
 - This is also the answer to "paint a figure and send it somewhere" — a modeller that can paint
   but not share its painting is half a tool, so this is a real capability, not a nicety. It is
   last only because nothing needs it yet.
+
+- **2026-10-13** — **Paint survives a save.** `paint.bin` and the manifest's optional `paint`
+  field; `PaintJournal.adopt`; `readProject` returns the journal; `app.tsx` builds a field from
+  the loaded model and rasterises into it. Until this, `writeProject` had **no parameter through
+  which a journal could travel** and `bakeTexture` was no longer called from anywhere, so a
+  painted model saved with no paint in it at all — and a model opened from an old `.sdfmod`
+  re-wrote the stale atlas it arrived with, because nothing writes to `bake.surface` any more.
+  Also: `resetPaint` on new-document and on open, because a field is sized to a model's bounds
+  and opening a file into a session that had paint left the old field on the new model.
+
+  Two things found while wiring it, both in the same place:
+
+  1. **`rasteriseJournal` never cleared the field**, which is the plan's own rule 2 — "rasterise
+     always starts from a cleared region" — and the one rule in the file that had not been
+     applied where it said. Compositing only ever adds, so "take the last stroke off the journal
+     and draw the rest" drew the rest _on top of_ the stroke that was supposed to be gone. The
+     dab count fell and nothing on the model changed, which is undo appearing to do nothing.
+  2. **"Clear paint" was undoable only in the crudest sense.** `clearWithUndo` handed back every
+     stroke as one flat run and `redoStroke` closed it with a single `endStroke`, so undoing a
+     clear made the next ctrl-z take a whole session's painting in one step. `RemovedDabs` now
+     carries `strokes`, and the ends are pushed back one per removed stroke.
+
+- **2026-10-13** — **Appearance: four defects, three of them arithmetic.** All four were found by
+  measuring the field rather than by looking at it, and the measurements are in the commit.
+
+  1. **The shader read premultiplied bytes as straight colour.** Both writers store
+     `red * a + previous * (1 - a)`, which is premultiplied; `sampleField`'s consumer did
+     `pow(rgb, 2.2)` and mixed by alpha, which is straight. **Correct only where a texel is
+     fully opaque**, so the error scaled with how soft the brush was: a texel at a quarter
+     coverage stored a quarter of the colour and came back as a quarter of the brightness
+     raised to 2.2, and a texel at one coverage in 255 stored one byte and came back as
+     effectively black. That is the dark halo round every stroke, and it was worst exactly where
+     the brush was softest. One `div` in `model-material.ts` fixes it, for the atlas path too.
+  2. **A soft brush was not soft.** Every dab composited its own falloff over the last one's, and
+     compositing is multiplicative in coverage: dabs at a third of a radius apart turn a falloff
+     from the hardness to the rim into a cliff. Measured across a hardness-0.5 brush of 0.25
+     radius at a 0.05 voxel, the profile read `9 9 9 9 9 9 9 9 6 2 0` where `9 9 9 9 5 3 2 1 0`
+     was asked for. **`rasterise` now groups a stroke and composites it once**: coverage is a
+     **maximum** across the stroke's dabs, opacity is still a **product** so an airbrush held
+     still still builds, and colour is a weighted average. GPU Gems 2 §37.2's accumulator with
+     the coverage taken as a maximum rather than a sum.
+  3. **A hard edge was a staircase.** The falloff is a step at the voxel scale, so trilinear
+     filtering had one voxel to round it over and the rest was steps. The ramp is now widened to
+     **a voxel and a half, capped at the brush's own radius** — a voxel and a half because voxel
+     centres are a voxel apart and a one-voxel ramp can fall entirely between two of them, and
+     capped because an uncapped one gives a brush narrower than the grid a ramp three times its
+     own size, which is worse than the staircase.
+  4. **The shell was half a world unit**, which is ten voxels at `PAINT_VOXEL` and cost three
+     things at once: a dab's search box is `radius + SHELL + voxel`, so every dab scanned a 33³
+     box and discarded nineteen twentieths of it; the trilinear sample averaged across the whole
+     shell, mixing paint from up to half a unit away; and it was paid per unit of _painted_
+     area. It is **a voxel and a half** now, which is the thinnest that cannot miss the surface
+     — the brush resolves that to a fifth of a voxel. Measured on the same 200-dab journal, on
+     the same machine: **~530 ms → ~55 ms, and 64 bricks → 32.** It was never modelling
+     thickness; it never could, and that is why it could shrink.
+
+  The live path needed a way to make a stroke idempotent under re-rasterisation, because a
+  group written twice lands on different bytes. **`PaintTarget` is now an interface rather than a
+  `PaintField`, and `PaintBrush` passes an `UnderStroke`** — the field with the stroke in progress
+  rolled back out of it, remembered per voxel on first touch. `rasterise` never learns a stroke is
+  open: it asks the target what is at a voxel, gets what was there before, and writes over it. A
+  field built by painting is byte-identical to one built by replaying the journal once, which is
+  the property the derived-field design rests on and is now a test.
+
+- **2026-10-13** — **The width ladder's floor still wants moving, and now for a different
+  reason.** The smallest brush is 0.05 across — one voxel at `PAINT_VOXEL` — and the capped
+  antialiasing ramp makes that honest rather than worse: a brush narrower than the ramp degrades
+  into a faint mark instead of a stepped one, which is the right failure, but it is still a brush
+  nobody can aim with. M6's ladder-against-voxel-size is the fix and it is untouched.
 
 ## Risks
 

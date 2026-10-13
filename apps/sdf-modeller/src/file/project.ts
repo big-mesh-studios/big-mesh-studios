@@ -52,6 +52,13 @@ import {
 } from "../unwrapping/reference-file";
 import type { AtlasInfo } from "../unwrapping/bake";
 import {
+  readPaint,
+  writePaint,
+  type PaintFile,
+} from "../unwrapping/paint-file";
+import type { PaintJournal } from "../unwrapping/paint-journal";
+import {
+  PROJECT_PAINT_FILE,
   PROJECT_MANIFEST_FILE,
   PROJECT_MODEL_FILE,
   PROJECT_REFERENCE_FILE,
@@ -77,6 +84,16 @@ export interface Project {
    * until somebody painted one.
    */
   readonly texture?: SavedTexture;
+
+  /**
+   * The paint journal, when the file had one.
+   *
+   * **The same optionality as `texture` and for the same reason**, and it is the field that
+   * made paint survive a reload: without it a painted model saved with nothing in it, because
+   * the field the shader samples is derived and nothing in the save path had a parameter
+   * through which the journal could travel.
+   */
+  readonly paint?: PaintFile;
 }
 
 /**
@@ -129,6 +146,17 @@ export const writeProject = async (
   palette: readonly RGBA[],
   view: ProjectView,
   texture?: TextureToSave,
+  /**
+   * The paint journal, or nothing for an unpainted model.
+   *
+   * **A journal rather than a field, and the last argument rather than folded into the
+   * texture.** The field is derived — `rasterise` rebuilds it from the journal in milliseconds
+   * and at whatever resolution the field is configured for — so saving it would write megabytes
+   * that a resolution change would discard, and would still throw away the stroke boundaries
+   * undo is made of. Forty-four bytes a dab is also the difference between a file that saves
+   * and one that does not.
+   */
+  paint?: PaintJournal,
 ): Promise<Blob> => {
   const operations = parts.map((part, index) => ({
     index,
@@ -156,6 +184,11 @@ export const writeProject = async (
   // against the same `isSaveableProject` the reader uses, so the writer cannot produce a file
   // this application would then refuse to open — and it means the empty-model defaults and
   // the version live in one place rather than at every call site that builds a manifest.
+  // **Written before the manifest is built, because the manifest describes it.** The counts
+  // have to come from the same journal the bytes come from, and a manifest that named a
+  // different number than the entry holds would be a file that refuses to open.
+  const painted = writePaint(paint);
+
   const manifest = projectManifest(view, {
     ids: parts.map((part) => part.id),
     // **Positions, not colours.** The colour is in the binary; this is only the fact that a
@@ -175,6 +208,17 @@ export const writeProject = async (
             height: texture.atlas.height,
             vertices: texture.painted.vertexCount,
             blend: texture.blend,
+          },
+        }),
+    // **The same conditional shape, and the same reason.** An unpainted model gets no journal
+    // field, which is what makes its file carry exactly the entries it carried before paint had
+    // a file format at all.
+    ...(painted === undefined
+      ? {}
+      : {
+          paint: {
+            dabs: paint?.count ?? 0,
+            strokes: paint?.strokeCount ?? 0,
           },
         }),
   });
@@ -209,6 +253,11 @@ export const writeProject = async (
       ),
     );
   }
+
+  // **The journal is its own entry**, beside the texture rather than inside it: a journal is
+  // not a picture and does not belong in a zip with a PNG in it, and a file may legitimately
+  // have one, the other, both or neither.
+  if (painted !== undefined) add(PROJECT_PAINT_FILE, painted);
 
   return zip.generateAsync({ type: "blob", compression: "DEFLATE" });
 };
@@ -257,6 +306,12 @@ export const readProject = async (blob: Blob): Promise<Project> => {
 
   const coloured = new Set(manifest.coloured);
   const texture = await readTexture(zip, manifest);
+  // **Read after the model, and separately from it.** The journal is in its own entry and is
+  // checked against the manifest's counts rather than folded into the model check, because a
+  // file can legitimately carry a model without paint and paint without an atlas — which is
+  // every file this build has written, and every file it will ever write, since the atlas path
+  // no longer runs at all.
+  const paint = await readPaintSection(zip, manifest);
 
   return {
     parts: operations.map((operation, index) => {
@@ -294,6 +349,7 @@ export const readProject = async (blob: Blob): Promise<Project> => {
     palette: manifest.palette.map(({ r, g, b, a }) => ({ r, g, b, a })),
     view: manifest.view,
     ...(texture === undefined ? {} : { texture }),
+    ...(paint === undefined ? {} : { paint }),
   };
 };
 
@@ -306,6 +362,50 @@ export const readProject = async (blob: Blob): Promise<Project> => {
  * picture belonging to a model that does not exist. The reverse is refused rather than tolerated,
  * because a manifest naming an atlas that is not there is a promise the file does not keep.
  */
+/**
+ * The journal in a file, or nothing for a file written before paint had one.
+ *
+ * **Cross-checked against the manifest the way the texture is**, and for the same reason: a
+ * count is cheap to write and cheap to lie about, and the length of forty bytes a dab is
+ * not. The manifest says how many dabs and how many strokes to expect, `readPaint` says how
+ * many the bytes actually hold, and a file where the two disagree is refused rather than opened
+ * as a model with some of somebody's painting missing.
+ *
+ * **Not thrown when the entry is merely absent and the manifest is silent about it**, because
+ * that is every file written before this existed and refusing them would make the feature a
+ * reason nobody could open their old work.
+ */
+const readPaintSection = async (
+  zip: JSZip,
+  manifest: SaveableProjectManifest,
+): Promise<PaintFile | undefined> => {
+  const described = manifest.paint;
+  if (described === undefined) return undefined;
+
+  const entry = zip.file(PROJECT_PAINT_FILE);
+  if (entry === null) {
+    throw new Error(
+      `the manifest describes ${described.dabs} dabs of paint and the file has no ${PROJECT_PAINT_FILE}`,
+    );
+  }
+
+  // **The codec's own refusal is carried through unwrapped**, for the reason the model's is:
+  // `readPaint` names the version it found and the version it reads, which is the only sentence
+  // about this anybody can act on.
+  const paint = readPaint(await entry.async("arraybuffer"));
+  if (paint.dabs !== described.dabs) {
+    throw new Error(
+      `the manifest names ${described.dabs} dabs and ${PROJECT_PAINT_FILE} holds ${paint.dabs}`,
+    );
+  }
+  if (paint.strokes.length !== described.strokes) {
+    throw new Error(
+      `the manifest names ${described.strokes} strokes and ${PROJECT_PAINT_FILE} holds ${paint.strokes.length}`,
+    );
+  }
+  return paint;
+};
+
 const readTexture = async (
   zip: JSZip,
   manifest: SaveableProjectManifest,

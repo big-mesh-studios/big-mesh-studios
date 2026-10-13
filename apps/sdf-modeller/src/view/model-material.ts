@@ -275,18 +275,32 @@ export class ModelMaterial extends NodeMaterial {
         : fieldSampled;
 
     if (sampled !== undefined && this.blendUniform !== undefined) {
-      // **The floor under the linearisation is belt and braces, not the argument for the
-      // rewrite below.** GLSL does define `pow(0.0, 2.2)` as zero, but a driver that spells
-      // `pow` the way D3D does — `exp2(y * log2(x))` — has to get `log2(0)` right first, and
-      // the ones that do not answer NaN instead. A NaN survives being multiplied by a
-      // coverage of zero, so it reaches the framebuffer and whatever the driver does with a
-      // NaN there decides what a model with no paint on it looks like on that machine.
-      const stroke = sampled.xyz.max(float(MIN_LINEAR)).pow(float(SRGB_GAMMA));
       // **The coverage is the texture's own alpha**, and the part colour is already linear — it
       // is a vertex attribute of bytes written from a colour picker — so the texture is brought
       // to the same space before the two are mixed, or every stroke reads a shade dark for no
       // reason anybody can see.
+      //
+      // **Divided by the coverage first, because both writers store premultiplied bytes.**
+      // `paint-rasterise.ts` writes `red * a + previous * (1 - a)` and `paint-surface.ts:197`
+      // writes `edgeX * (alpha / 255) + previous * keep`, which is the same thing: the colour
+      // channel is already scaled by how opaque the texel is. Reading it as straight colour is
+      // correct only where a texel is fully opaque, so it was **wrong in proportion to how soft
+      // the brush was** — a texel at a quarter coverage stores a quarter of the colour and came
+      // back as a quarter of the brightness raised to 2.2, and a texel at one coverage out of
+      // 255 stored one byte and came back as essentially black.
+      //
+      // **That is the dark halo round every stroke in the screenshot**, and it was worst exactly
+      // where the brush was softest, which is the one place softness is meant to be judged.
+      //
+      // **Floored rather than divided by the plain alpha**, because dividing by zero is a NaN
+      // and a NaN multiplied by a coverage of zero is still a NaN — the same argument as
+      // `MIN_LINEAR` below. One over 255 rather than something larger, because it is the
+      // smallest coverage a byte can hold, and the unpremultiplied value must not be allowed to
+      // run past the byte it came from: `red * a <= 255 * a` holds for every write, so the
+      // quotient is in range by construction.
       const coverage = sampled.w;
+      const straight = sampled.xyz.div(coverage.max(float(1 / 255)));
+      const stroke = straight.max(float(MIN_LINEAR)).pow(float(SRGB_GAMMA));
 
       // **The two things `blend` chooses between, each weighted by the coverage, so that a
       // texel with nothing on it is a no-op rather than a darkening or a blackout.**
@@ -464,9 +478,13 @@ export class ModelMaterial extends NodeMaterial {
    * is idempotent, so a rebuild re-attaching the same field costs one branch.
    */
   attachField = (field: PaintField | undefined): void => {
-    if (field === undefined) return;
-    field.ensureTextures();
+    // **Detaching is allowed, and is what `undefined` means.** Opening a file that has no paint
+    // into a session that had some has to take the sampler away, or the new model samples a
+    // field sized to the old one's bounds — which reads as somebody's painting appearing on a
+    // figure that was never painted on. The early return that used to be here made that
+    // impossible, which is to say it made it inevitable.
     this.field = field;
+    if (field !== undefined) field.ensureTextures();
     this.needsUpdate = true;
   };
 

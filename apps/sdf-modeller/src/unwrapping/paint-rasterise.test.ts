@@ -33,10 +33,13 @@ const journalWith = (
     radius: number;
     hardness?: number;
     colour?: { r: number; g: number; b: number; a: number };
+    /** Close the previous stroke first, which is what separates one dab from the next. */
+    newStroke?: boolean;
   }[],
 ): PaintJournal => {
   const journal = new PaintJournal();
   for (const dab of dabs) {
+    if (dab.newStroke) journal.endStroke();
     journal.append({
       centre: dab.at,
       normal: dab.normal ?? [0, 1, 0],
@@ -82,8 +85,9 @@ describe("rasterising a journal into a field", () => {
     rasterise(journalWith([{ at: [10, 10, 10], radius: 0.5 }]), f, asWritten);
     expect(f.get(100, 100, 100)).toMatchObject({ r: 255, a: 255 });
     // **And nowhere near it.** A dab that leaked across the model would be invisible in a
-    // single-voxel assertion and obvious here.
-    expect(f.get(105, 100, 100).a).toBe(0);
+    // single-voxel assertion and obvious here. Six voxels is well past the brush's half-voxel
+    // antialiasing ramp, which is the furthest a dab is allowed to reach.
+    expect(f.get(106, 100, 100).a).toBe(0);
   });
 
   it("counts a dab that changed something as live", () => {
@@ -114,8 +118,16 @@ describe("rasterising a journal into a field", () => {
     const f = field();
     const journal = journalWith([
       { at: [10, 10, 10], radius: 0.5, colour: { r: 0, g: 255, b: 0, a: 255 } },
-      { at: [10, 10, 10], radius: 0.5, colour: { r: 255, g: 0, b: 0, a: 255 } },
+      {
+        at: [10, 10, 10],
+        radius: 0.5,
+        colour: { r: 255, g: 0, b: 0, a: 255 },
+        newStroke: true,
+      },
     ]);
+    // **Two strokes, so two composites** — the stroke is the unit of compositing now, which is
+    // the whole of what `live` counts. One stroke of two dabs is one write, and one write is
+    // what it has to be.
     expect(rasterise(journal, f, asWritten).live).toBe(2);
   });
 
@@ -124,10 +136,141 @@ describe("rasterising a journal into a field", () => {
     const f = field();
     const journal = journalWith([
       { at: [10, 10, 10], radius: 0.5, colour: { r: 0, g: 255, b: 0, a: 255 } },
-      { at: [10, 10, 10], radius: 0.5, colour: { r: 255, g: 0, b: 0, a: 255 } },
+      {
+        at: [10, 10, 10],
+        radius: 0.5,
+        colour: { r: 255, g: 0, b: 0, a: 255 },
+        newStroke: true,
+      },
     ]);
     rasterise(journal, f, asWritten);
     expect(f.get(100, 100, 100)).toMatchObject({ r: 255, g: 0 });
+  });
+
+  it("averages the colours within one stroke and orders strokes over each other", () => {
+    // **The two halves of stroke grouping, and they are different rules.** Within a stroke the
+    // dabs are one gesture and land on one colour — a brush takes its colour once, when the
+    // stroke starts, so a stroke that changed colour part-way is not a thing a person can draw.
+    // Between strokes it is order, and the later one wins.
+    const f = field();
+    const journal = new PaintJournal();
+    journal.append({
+      centre: [10, 10, 10],
+      normal: [0, 1, 0],
+      radius: 0.5,
+      hardness: 1,
+      colour: { r: 255, g: 0, b: 0, a: 255 },
+      part: 0,
+    });
+    journal.append({
+      centre: [10, 10, 10],
+      normal: [0, 1, 0],
+      radius: 0.5,
+      hardness: 1,
+      colour: { r: 0, g: 0, b: 255, a: 255 },
+      part: 0,
+    });
+    journal.endStroke();
+    journal.append({
+      centre: [10, 10, 10],
+      normal: [0, 1, 0],
+      radius: 0.5,
+      hardness: 1,
+      colour: { r: 0, g: 255, b: 0, a: 255 },
+      part: 0,
+    });
+    journal.endStroke();
+    rasterise(journal, f, asWritten);
+    // The second stroke is opaque, so the blend underneath does not show through at all.
+    expect(f.get(100, 100, 100)).toMatchObject({ r: 0, g: 255, b: 0 });
+
+    const mixed = field();
+    const one = new PaintJournal();
+    one.append({
+      centre: [10, 10, 10],
+      normal: [0, 1, 0],
+      radius: 0.5,
+      hardness: 1,
+      colour: { r: 255, g: 0, b: 0, a: 255 },
+      part: 0,
+    });
+    one.append({
+      centre: [10, 10, 10],
+      normal: [0, 1, 0],
+      radius: 0.5,
+      hardness: 1,
+      colour: { r: 0, g: 0, b: 255, a: 255 },
+      part: 0,
+    });
+    one.endStroke();
+    rasterise(one, mixed, asWritten);
+    expect(mixed.get(100, 100, 100)).toMatchObject({ r: 128, g: 0, b: 128 });
+  });
+
+  it("keeps a soft brush soft, however many dabs the stroke is made of", () => {
+    // **The defect this whole rule exists for.** Every dab used to composite its own falloff
+    // over the last one's, and compositing is multiplicative in the coverage: three dabs at a
+    // third of a radius apart turned a falloff from the hardness to the rim into a cliff at
+    // ninety-six per cent of the radius. The cross-section of this stroke read
+    // `9 9 9 9 9 9 9 9 6 2 0`; it reads `9 9 9 9 5 3 2 1 0` now, which is the ramp the brush
+    // was asked for.
+    const f = field();
+    const journal = new PaintJournal();
+    for (let i = 0; i <= 12; i++) {
+      journal.append({
+        centre: [10 + (i * 0.5) / 3, 10, 10],
+        normal: [0, 1, 0],
+        radius: 0.5,
+        hardness: 0,
+        colour: { r: 255, g: 255, b: 255, a: 255 },
+        part: 0,
+      });
+    }
+    journal.endStroke();
+    rasterise(journal, f, asWritten);
+    // **Outwards from the middle of the stroke, one voxel at a time, across the disc.** The
+    // normal is y, so the disc lies in x and z and z is the radius; probing along the normal
+    // would read the shell, not the brush.
+    const alphas = [0, 1, 2, 3, 4].map((out) => f.get(100, 100, 100 + out).a);
+    for (let i = 1; i < alphas.length; i++) {
+      expect(alphas[i]!).toBeLessThan(alphas[i - 1]!);
+    }
+    expect(alphas[0]!).toBeGreaterThan(200);
+  });
+
+  it("still builds up where a translucent brush is held still", () => {
+    // **The other half of the rule, and the reason coverage is a maximum but opacity is not.**
+    // Six dabs of a quarter-opaque brush in one place have to get darker together, or an
+    // airbrush is a highlighter.
+    const f = field();
+    const one = field();
+    const journal = new PaintJournal();
+    const single = new PaintJournal();
+    const translucent = { r: 255, g: 255, b: 255, a: 64 };
+    for (let i = 0; i < 6; i++) {
+      journal.append({
+        centre: [10, 10, 10],
+        normal: [0, 1, 0],
+        radius: 0.5,
+        hardness: 1,
+        colour: translucent,
+        part: 0,
+      });
+    }
+    journal.endStroke();
+    single.append({
+      centre: [10, 10, 10],
+      normal: [0, 1, 0],
+      radius: 0.5,
+      hardness: 1,
+      colour: translucent,
+      part: 0,
+    });
+    single.endStroke();
+    rasterise(journal, f, asWritten);
+    rasterise(single, one, asWritten);
+    expect(f.get(100, 100, 100).a).toBeGreaterThan(one.get(100, 100, 100).a);
+    expect(f.get(100, 100, 100).a).toBeGreaterThan(64);
   });
 
   it("keeps a voxel round rather than stretching along the surface normal", () => {
@@ -140,12 +283,64 @@ describe("rasterising a journal into a field", () => {
       f,
       asWritten,
     );
-    // **Four voxels, not five.** A voxel centre sits half a voxel past its index, so voxel 104
-    // is 0.45 away and inside a 0.5 radius while voxel 105 is 0.55 away and outside it. Both
-    // axes have to be probed at the same offset or this asserts two different things.
+    // **In the plane, the disc is opaque well inside its radius and fades from there.** Voxel
+    // 104 is 0.45 from the centre, which is inside the 0.5 radius and inside the antialiasing
+    // ramp, so it is solid; the antialiasing is what "not five" means now, and the separate
+    // test below is what asserts it.
     expect(f.get(104, 100, 100).a).toBe(255);
-    expect(f.get(100, 104, 100).a).toBe(255);
-    expect(f.get(105, 100, 100).a).toBe(0);
+    // **Across the normal, the shell and nothing more.** This is the assertion's other half and
+    // it moved when the shell did: the shell is a voxel and a half, so at this test's 0.1 voxel
+    // it reaches half of that across. It used to reach half a world unit, which was ten voxels
+    // of tolerance at a fiftieth and meant a dab scanned a 33³ box to fill a 3³ one.
+    expect(f.get(100, 100, 100).a).toBe(255);
+    expect(f.get(100, 103, 100).a).toBe(0);
+  });
+
+  it("antialiases a hard edge rather than stepping it", () => {
+    // **A coverage that goes from solid to nothing between two adjacent voxel centres is a
+    // staircase**, and trilinear filtering can only round it over the one voxel it spans. The
+    // ramp is widened to half a voxel either side of the rim for exactly that reason, and this
+    // is the test that says so: a hard brush still has a partial voxel at its edge.
+    const f = field();
+    rasterise(
+      journalWith([{ at: [10, 10, 10], normal: [0, 1, 0], radius: 0.5 }]),
+      f,
+      asWritten,
+    );
+    // **Scanned out to the rim rather than probed at a fixed index**, because the voxel holding
+    // the partial coverage is wherever the widened ramp lands it and asking for a particular one
+    // would be asserting the arithmetic twice instead of the behaviour.
+    const rim: number[] = [];
+    for (let z = 100; z < 112; z++) rim.push(f.get(100, 100, z).a);
+    const partial = rim.filter((a) => a > 0 && a < 255);
+    expect(partial.length).toBeGreaterThan(0);
+    // **The outermost painted voxel is partial and the one past it is clear.** That is what a
+    // ramp is, as opposed to a step, and it is what gives the trilinear sampler something to
+    // interpolate: 255, then this, then nothing, is a gradient across three samples where a
+    // step would leave it with two identical ones.
+    const last = rim.reduce((at, a, i) => (a > 0 ? i : at), -1);
+    expect(last).toBeGreaterThan(0);
+    expect(rim[last]!).toBeGreaterThan(0);
+    expect(rim[last]!).toBeLessThan(255);
+    expect(rim[last + 1]).toBe(0);
+  });
+
+  it("does not widen a brush narrower than the grid", () => {
+    // **The antialiasing ramp is capped at the brush's own radius**, and this is what that cap
+    // is for. A brush a tenth of a world unit across, at a 0.1 voxel, is one voxel wide; an
+    // uncapped ramp would be a voxel and a half *of normalised distance*, which is three times
+    // the brush, and the smallest brush on the panel would paint a soft blob three times the
+    // size it says it has.
+    const f = field();
+    rasterise(
+      journalWith([{ at: [10, 10, 10], normal: [0, 1, 0], radius: 0.1 }]),
+      f,
+      asWritten,
+    );
+    // **Two voxels across, not five.** The disc's own radius is one voxel and the ramp is
+    // capped at that, so the painted run stops at two.
+    expect(f.get(99, 100, 100).a).toBeGreaterThan(0);
+    expect(f.get(102, 100, 100).a).toBe(0);
   });
 
   it("does not paint far off the surface, however wide the brush", () => {

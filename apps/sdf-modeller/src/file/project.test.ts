@@ -9,10 +9,12 @@ import { IDENTITY, placedPart, type Part } from "../model/part";
 import {
   PROJECT_MANIFEST_FILE,
   PROJECT_MODEL_FILE,
+  PROJECT_PAINT_FILE,
   PROJECT_VERSION,
   projectManifest,
   type ProjectView,
 } from "./project-file";
+import { PaintJournal } from "../unwrapping/paint-journal";
 import { readProject, writeProject } from "./project";
 
 /** A capsule, which is the smallest thing that reads as a figure. */
@@ -523,5 +525,137 @@ describe("readProject refusals", () => {
     await expect(
       readProject(await rebuilt.generateAsync({ type: "blob" })),
     ).rejects.toThrow(/is a Paint, which this application has no part for/);
+  });
+});
+
+/**
+ * Paint in a project file.
+ *
+ * **Separate from the tests above because it is the same argument again.** `writeProject` took
+ * no parameter through which a journal could travel, so a model painted in one session and
+ * saved wrote two zip entries and a manifest with no mention of paint — and reopening it came
+ * back unpainted, which read as losing the work rather than as never having saved it.
+ */
+describe("writeProject with paint", () => {
+  /** Two strokes, because a stroke is an undo step and one stroke would not show the difference. */
+  const paintedJournal = (): PaintJournal => {
+    const journal = new PaintJournal();
+    for (let i = 0; i < 4; i++) {
+      journal.append({
+        centre: [i * 0.2, 1.1, 0],
+        normal: [0, 1, 0],
+        radius: 0.25,
+        hardness: 0.5,
+        colour: { r: 24, g: 255, b: 239, a: 255 },
+        part: 0,
+      });
+    }
+    journal.endStroke();
+    for (let i = 0; i < 3; i++) {
+      journal.append({
+        centre: [0, 2 + i * 0.2, 0],
+        normal: [1, 0, 0],
+        radius: 0.1,
+        hardness: 1,
+        colour: { r: 255, g: 255, b: 255, a: 255 },
+        part: 0,
+      });
+    }
+    journal.endStroke();
+    return journal;
+  };
+
+  it("writes nothing extra for an unpainted model", async () => {
+    // **The backwards-compatibility promise, kept.** An unpainted model's file is the two
+    // entries and the manifest it was before paint had a file format, and a test that stopped
+    // saying so would let a later change quietly break every old file's reader.
+    const zip = await JSZip.loadAsync(
+      await writeProject([body()], PALETTE, view),
+    );
+    expect(Object.keys(zip.files).sort()).toEqual(
+      [PROJECT_MANIFEST_FILE, PROJECT_MODEL_FILE].sort(),
+    );
+  });
+
+  it("writes nothing extra for a journal that is empty", async () => {
+    // **Which is a different case from "no journal"** and the same answer, because a stroke that
+    // landed off the model produces no dabs and should leave no trace in the file either.
+    const zip = await JSZip.loadAsync(
+      await writeProject(
+        [body()],
+        PALETTE,
+        view,
+        undefined,
+        new PaintJournal(),
+      ),
+    );
+    expect(Object.keys(zip.files).sort()).toEqual(
+      [PROJECT_MANIFEST_FILE, PROJECT_MODEL_FILE].sort(),
+    );
+  });
+
+  it("writes the journal as its own entry and describes it in the manifest", async () => {
+    const journal = paintedJournal();
+    const blob = await writeProject(
+      [body()],
+      PALETTE,
+      view,
+      undefined,
+      journal,
+    );
+    const zip = await JSZip.loadAsync(blob);
+    expect(Object.keys(zip.files).sort()).toEqual(
+      [PROJECT_MANIFEST_FILE, PROJECT_MODEL_FILE, PROJECT_PAINT_FILE].sort(),
+    );
+    expect((await manifestIn(blob)).paint).toEqual({ dabs: 7, strokes: 2 });
+  });
+
+  it("brings the painting back", async () => {
+    const journal = paintedJournal();
+    const project = await readProject(
+      await writeProject([body()], PALETTE, view, undefined, journal),
+    );
+    expect(project.paint?.dabs).toBe(7);
+    expect(Array.from(project.paint?.strokes ?? [])).toEqual([4, 7]);
+    expect(Array.from(project.paint?.radius ?? [])).toEqual(
+      Array.from(journal.radius.subarray(0, 7)),
+    );
+    expect(Array.from(project.paint?.centre ?? [])).toEqual(
+      Array.from(journal.centre.subarray(0, 21)),
+    );
+  });
+
+  it("refuses a manifest that names a journal the file does not have", async () => {
+    const blob = await writeProject(
+      [body()],
+      PALETTE,
+      view,
+      undefined,
+      paintedJournal(),
+    );
+    const stripped = await withManifest(blob, (manifest) => {
+      const zipless = { ...manifest } as Record<string, unknown>;
+      delete zipless.paint;
+      return zipless;
+    });
+    expect((await readProject(stripped)).paint).toBeUndefined();
+  });
+
+  it("refuses a manifest whose counts disagree with the entry", async () => {
+    // **A count is cheap to lie about and the length of forty bytes a dab is not**, so the two
+    // are checked against each other and a file where they disagree is refused rather than
+    // opened as a model with some of somebody's painting missing.
+    const blob = await writeProject(
+      [body()],
+      PALETTE,
+      view,
+      undefined,
+      paintedJournal(),
+    );
+    const lying = await withManifest(blob, (manifest) => ({
+      ...manifest,
+      paint: { dabs: 3, strokes: 2 },
+    }));
+    await expect(readProject(lying)).rejects.toThrow(/names 3 dabs/);
   });
 });

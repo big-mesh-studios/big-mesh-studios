@@ -386,4 +386,118 @@ describe("painting a real model", () => {
     rasterise(journal, after, place);
     expect(Array.from(after.pool)).toEqual(wanted);
   });
+
+  it("takes the paint off when a stroke is undone", () => {
+    // **The operation `app.tsx`'s `rasteriseJournal` performs**, which is a truncate *and a
+    // clear* and then a replay. It is here rather than in `app.tsx` because the thing worth
+    // asserting is the pair — the journal and the field — and that is what this file builds.
+    //
+    // **The clear is the half that was missing.** Compositing only ever adds, so replaying the
+    // remaining dabs over a field that still holds the removed ones draws the rest on top of the
+    // stroke that was supposed to be gone: the dab count falls and nothing on the model changes.
+    // That is undo appearing to do nothing, which is the worst failure mode undo has.
+    const journal = new PaintJournal();
+    // **Part-local, and on the capsule's side.** `place` adds the part's origin, so `[0.7, 0, z]`
+    // is the point on the surface at world `(0.7, 1.1, z)` — two strokes along it that overlap
+    // at the ends, because a stroke next to a stroke is the case where a leak would show.
+    for (const at of [0, 0.3]) {
+      for (let i = 0; i < 4; i++) {
+        journal.append({
+          centre: [0.7, 0, at + i * 0.1],
+          normal: [1, 0, 0],
+          radius: 0.3,
+          hardness: 1,
+          colour: { r: 255, g: 0, b: 0, a: 255 },
+          part: 0,
+        });
+      }
+      journal.endStroke();
+    }
+    const place = transforms(capsule()).place;
+    const field = PaintField.over(0.05, [-2, -2, -2], [4, 4, 4], 4);
+
+    // **Both strokes down.**
+    rasterise(journal, field, place);
+    const painted = field.brickCount;
+    expect(painted).toBeGreaterThan(0);
+
+    // **The second one undone, and the field derived again from what is left.**
+    const removed = journal.undoStroke()!;
+    expect(removed.count).toBe(4);
+    field.clearAll();
+    rasterise(journal, field, place);
+
+    // **Half the bricks and none of the removed stroke's colour anywhere.** The far end of the
+    // stroke is four tenths of a unit from anything the first stroke touched, so a voxel that is
+    // still red out there is a voxel nothing in the journal accounts for.
+    expect(field.brickCount).toBeLessThan(painted);
+    expect(field.brickCount).toBeGreaterThan(0);
+    const [vx, vy, vz] = field.voxelAt(0.7, 1.1, 0.15);
+    expect(field.get(vx, vy, vz).a).toBe(255);
+    const [wx, wy, wz] = field.voxelAt(0.7, 1.1, 0.75);
+    expect(field.get(wx, wy, wz).a).toBe(0);
+  });
+
+  it("leaves the paint on when the field is not cleared first", () => {
+    // **The same thing with the clear left out, so the test above cannot pass by accident.**
+    // If this ever starts failing the clear has become unnecessary, which would be worth
+    // knowing; if the one above ever starts failing the clear has stopped happening.
+    const journal = new PaintJournal();
+    // **Part-local, and on the capsule's side.** `place` adds the part's origin, so `[0.7, 0, z]`
+    // is the point on the surface at world `(0.7, 1.1, z)` — two strokes along it that overlap
+    // at the ends, because a stroke next to a stroke is the case where a leak would show.
+    for (const at of [0, 0.3]) {
+      for (let i = 0; i < 4; i++) {
+        journal.append({
+          centre: [0.7, 0, at + i * 0.1],
+          normal: [1, 0, 0],
+          radius: 0.3,
+          hardness: 1,
+          colour: { r: 255, g: 0, b: 0, a: 255 },
+          part: 0,
+        });
+      }
+      journal.endStroke();
+    }
+    const place = transforms(capsule()).place;
+    const field = PaintField.over(0.05, [-2, -2, -2], [4, 4, 4], 4);
+    rasterise(journal, field, place);
+
+    journal.undoStroke();
+    rasterise(journal, field, place);
+    const [wx, wy, wz] = field.voxelAt(0.7, 1.1, 0.75);
+    // **Still red, and it should not be.** This is the bug the other test is a regression guard
+    // for, written down so that the shape of it is not lost.
+    expect(field.get(wx, wy, wz).a).toBe(255);
+  });
+
+  it("puts a cleared-and-replayed field back exactly as it was", () => {
+    // **The property every one of these depends on**: clear, replay, and the bytes are the same
+    // bytes. A field that is a pure function of the journal is what makes undo, "clear paint",
+    // "the model moved" and reopening a file one operation rather than four.
+    const journal = new PaintJournal();
+    for (let s = 0; s < 3; s++) {
+      for (let i = 0; i < 4; i++) {
+        journal.append({
+          centre: [0.7, 0, s * 0.4 + i * 0.1],
+          normal: [1, 0, 0],
+          radius: 0.25,
+          hardness: s * 0.3,
+          colour: { r: 24 * s, g: 255, b: 239, a: 255 },
+          part: 0,
+        });
+      }
+      journal.endStroke();
+    }
+    const place = transforms(capsule()).place;
+    const field = PaintField.over(0.05, [-2, -2, -2], [4, 4, 4], 4);
+    rasterise(journal, field, place);
+    const wanted = Array.from(field.pool);
+
+    for (let round = 0; round < 3; round++) {
+      field.clearAll();
+      rasterise(journal, field, place);
+    }
+    expect(Array.from(field.pool)).toEqual(wanted);
+  });
 });

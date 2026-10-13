@@ -1036,14 +1036,50 @@ export function App() {
    * **A pure function of the journal and the parts**, which is what makes undo, redo and
    * "the model moved" all the same operation. Nothing here is incremental: the field is
    * derived, and a derived thing that was built by mutation could not be rebuilt.
+   *
+   * **Cleared first, and that word is the whole of the fix.** Replaying the remaining dabs over
+   * a field that still holds the removed ones leaves the removed ones exactly where they were —
+   * compositing only ever adds. So "take the last stroke off the journal and draw the rest"
+   * drew the rest *on top of* the stroke that was supposed to be gone, and undo appeared to do
+   * nothing while the dab count fell. This is the plan's rule 2, "rasterise always starts from
+   * a cleared region", and it was the one rule in the file that had not been applied where it
+   * said.
+   *
+   * **Clearing releases every brick**, so the field's memory and its upload both go back to
+   * what an unpainted model costs rather than being held by a stroke nobody can reach any more.
    */
   const rasteriseJournal = (): void => {
     const field = paintField();
     if (field === undefined) return;
     const parts = untrack(store.parts);
     const { place } = partTransforms(parts);
+    field.clearAll();
     rasterise(paintJournal, field, place);
     field.markChanged();
+  };
+
+  /**
+   * Throws away the paint on the document, for a new one or another file.
+   *
+   * **Three things, and the field is the one that is easy to forget.** The journal is the truth
+   * and the field is derived from it, so clearing the journal and leaving the field in place
+   * would show a painting no dabs account for; clearing the field and leaving the journal would
+   * show nothing and then quietly re-appear on the next undo, redo or "the model moved".
+   *
+   * **The field is dropped rather than emptied.** It was sized to the bounds of the model it
+   * was made for, and a file's model may be a different size in every direction; holding the
+   * old one would paint a new figure into a grid that does not cover it. An empty field costs
+   * its pool until the first stroke makes a new one, and the pool is seven megabytes, so the
+   * next document starts unpainted and allocates when there is something to allocate it for.
+   *
+   * **The journal is emptied rather than replaced**, because it is a document-lifetime object
+   * and the field is signalled into every material that might hold it.
+   */
+  const resetPaint = (): void => {
+    paintJournal.clear();
+    setDabCount(0);
+    setPaintField(undefined);
+    view?.attachField(undefined);
   };
 
   let hoverReported = 0;
@@ -1662,6 +1698,20 @@ export function App() {
         reference: ReferenceFile;
         blend: number;
       };
+      // **The journal, declared structurally like the three above**, for the same reason: this
+      // module keeps naming no type from `./file/project`. Six arrays and two counts rather than
+      // a `PaintJournal`, because what a file holds is decoded bytes and not a journal — the
+      // journal is made from them on the other side.
+      paint?: {
+        dabs: number;
+        strokes: readonly number[];
+        centre: Float32Array;
+        normal: Float32Array;
+        radius: Float32Array;
+        hardness: Float32Array;
+        colour: Uint8Array;
+        part: Uint32Array;
+      };
     },
     label: string,
   ): boolean => {
@@ -1675,6 +1725,20 @@ export function App() {
     // that is still using it. See `createPalette`.
     palette.set(project.palette);
     const loaded = store.load(project.parts, label);
+
+    // **The paint is reset before anything else happens to it.** A field is sized to a model's
+    // bounds and a journal belongs to the document that made it, so opening a file into a
+    // session that had paint on screen would otherwise leave the old painting on the new model
+    // and the new painting drawn on the old field.
+    resetPaint();
+
+    // **Adopted synchronously, before the model is drawn, so the panel's dab count is right from
+    // the first frame.** A journal is forty bytes a dab and adopting it is a copy; the
+    // expensive half is the field, and that waits for the model like the texture does.
+    if (project.paint !== undefined) {
+      paintJournal.adopt(project.paint);
+      setDabCount(paintJournal.count);
+    }
 
     // **Not awaited, and the reasons are on `installTexture`.** The texture is restored after
     // the document rather than before it: the picture is attached to a model, and the model is
@@ -1699,6 +1763,19 @@ export function App() {
             : "this file's texture could not be read",
         );
       }
+
+      // **The field is built here, from the model that has just loaded, and not before** — a
+      // field is sized to a model's bounds, so building it earlier would mean sizing it to the
+      // model that was open before. And `ensureField` is the same call the first stroke makes,
+      // because a loaded journal and a drawn one are in exactly the same position: truth in the
+      // journal, nothing in the field.
+      if (paintJournal.count === 0) return;
+      const field = ensureField(parts);
+      if (field === undefined) return;
+      const { place } = partTransforms(parts);
+      rasterise(paintJournal, field, place);
+      field.markChanged();
+      report({ what: "paint-restored", dabs: paintJournal.count });
     })();
 
     return loaded;
@@ -1715,6 +1792,11 @@ export function App() {
     void clearDraft();
     setDraftAt(undefined);
     palette.set([]);
+    // **Before the model is replaced, because `resetPaint` detaches the field from the material
+    // that is currently on screen.** Doing it afterwards would leave the old field sampled by a
+    // material that survives until the next rebuild, which is long enough for somebody to open a
+    // file and see the previous document's paint on it.
+    resetPaint();
     void installTexture(untrack(store.parts), undefined);
     setHome(NOWHERE);
     store.load(newModel(), "new model");
@@ -1889,6 +1971,11 @@ export function App() {
             source: held.source,
             blend: untrack(blend),
           },
+      // **The journal, last and separately.** Without it a painted model saved with no paint in
+      // it at all: the field the shader samples is derived, nothing else in the file carried
+      // the dabs, and `writeProject` had no parameter through which they could travel. It is
+      // the whole of what was missing, and it is the first argument that is not about geometry.
+      paintJournal,
     );
   };
 

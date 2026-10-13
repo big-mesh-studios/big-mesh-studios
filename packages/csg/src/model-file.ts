@@ -100,6 +100,17 @@ export const PROJECT_TEXTURE_FILE = "texture.png";
  */
 export const PROJECT_REFERENCE_FILE = "texture.bin";
 
+/**
+ * The file inside the zip that carries the paint journal, when there is one.
+ *
+ * **A separate entry from `texture.bin` for the same reason the atlas is two entries: a
+ * picture and the coordinates that put it back are different questions.** A journal is not a
+ * picture at all — it is the list of dabs, which is forty bytes a dab against a
+ * painted atlas's four megabytes — and it is the only durable form of paint there is, because
+ * the field the shader samples is derived from it on demand and is never written out.
+ */
+export const PROJECT_PAINT_FILE = "paint.bin";
+
 /** The extension a model file is written under, and what a picker should accept. */
 export const PROJECT_EXTENSION = ".sdfmod";
 
@@ -164,6 +175,16 @@ export const MAX_TEXTURE_EDGE = 8192;
 export const MAX_REFERENCE_VERTICES = 1 << 20;
 
 /**
+ * The most dabs a manifest may name.
+ *
+ * **A bound on the file size it implies, not on how much painting is sensible.** A dab is
+ * forty bytes, so this is roughly eighty megabytes of journal — a session's worth of
+ * painting rather than a life's — and the point of the number is that a reader can refuse a
+ * file claiming millions of dabs before it has allocated anything, not that anybody reaches it.
+ */
+export const MAX_PAINT_DABS = 1 << 21;
+
+/**
  * The longest one part id may be.
  *
  * **An id is a label, not a path.** Ids are shown in lists and written as metadata, and a
@@ -223,6 +244,27 @@ export interface ProjectTexture {
 }
 
 /**
+ * What a manifest says about a paint journal, if it has one.
+ *
+ * **Counts and nothing else, for the same reason `ProjectTexture` is counts and nothing else.**
+ * The dabs themselves are in `paint.bin`; this says how many to expect and how many strokes
+ * they fall into, so a reader can refuse a file whose header disagrees with its body before it
+ * allocates an array out of a number it has not checked.
+ */
+export interface ProjectPaint {
+  /** How many dabs `paint.bin` holds. */
+  readonly dabs: number;
+  /**
+   * How many finished strokes those dabs fall into.
+   *
+   * **A separate count rather than something derived on load**, because a stroke is what the
+   * undo history is made of and losing the boundaries would turn one drag into a hundred
+   * ctrl-z steps.
+   */
+  readonly strokes: number;
+}
+
+/**
  * Whether a value read out of `manifest.json` is a manifest this can open.
  *
  * **The ids and the `coloured` positions are checked against each other**, which is the one
@@ -244,7 +286,34 @@ export const isProjectManifest = (value: unknown): value is ProjectManifest => {
   // present and malformed — a half-written one would otherwise be read as a model with no
   // texture, which is a silently different model rather than an error.
   if (record.texture !== undefined && !isTexture(record.texture)) return false;
+  // **The journal is checked only when it is there, for the reason `texture` is.** Two
+  // independent optional fields is not a version bump: a build that predates the journal
+  // ignores a field it does not know, and a build that has it ignores `texture` just as
+  // happily, so a file can carry either, both, or neither.
+  if (record.paint !== undefined && !isPaint(record.paint)) return false;
   return isView(record.view);
+};
+
+const isPaint = (value: unknown): value is ProjectPaint => {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  // **Both counts bounded and non-negative**, because these are what a reader allocates from.
+  // Zero dabs is refused rather than tolerated: a journal section that exists and holds nothing
+  // is a file written by something that got the two counts out of step, and reading it as "this
+  // model is unpainted" would throw away the discrepancy instead of reporting it.
+  for (const count of [record.dabs, record.strokes]) {
+    if (
+      typeof count !== "number" ||
+      !Number.isInteger(count) ||
+      count <= 0 ||
+      count > MAX_PAINT_DABS
+    ) {
+      return false;
+    }
+  }
+  // **More strokes than dabs is impossible**, and a file that says so is malformed rather than
+  // merely strange. Checking it here means the reader can index strokes without a bound check.
+  return (record.strokes as number) <= (record.dabs as number);
 };
 
 /** Whether these are the dimensions and counts an atlas may be described by. */
@@ -393,6 +462,17 @@ export interface ProjectManifest {
    * mode: it is what every model in the application was until somebody painted one.
    */
   readonly texture?: ProjectTexture;
+  /**
+   * This model's paint journal, if it has painted anything.
+   *
+   * **Optional for exactly the reason `texture` is**, and it is the same argument twice: every
+   * file written before the journal existed, and every model nobody has painted, has no such
+   * field, and refusing those would make the feature a reason nobody could open their old work.
+   * A journal that is present and malformed is a different matter and is refused — a
+   * half-written one would otherwise read as a model with no paint on it, which is silently a
+   * different model rather than an error.
+   */
+  readonly paint?: ProjectPaint;
 }
 
 /** The mesher modes a manifest may name. Narrowed by the application, which knows its own. */

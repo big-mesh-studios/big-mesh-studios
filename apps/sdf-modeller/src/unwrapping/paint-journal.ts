@@ -26,7 +26,7 @@
  * them corrupts the boundary between them.** The first version kept them in one array whose
  * last entry doubled as "the journal's length", and appending to an open stroke overwrote the
  * marker that said where the *previous* stroke had ended — so the stroke before the one being
- * drawn became un-undoable. `ends`, `openStart` and `length` each say one thing and cannot
+ * drawn became un-undoable. `ends`, `openStartIndex` and `length` each say one thing and cannot
  * disagree with another.
  *
  * ## Why a dab carries a normal and not a frame
@@ -46,10 +46,15 @@ const VEC = 3;
 /**
  * The bytes one dab costs.
  *
- * **Six floats, two more, and three words.** Centre and normal are positions in the owning
+ * **Six floats, two more, and two words.** Centre and normal are positions in the owning
  * part's frame; radius is in world units; hardness and the four colour bytes carry the brush's
  * own shape. `part` is an index rather than a value so the journal does not have to resolve an
  * object to answer a question about it.
+ *
+ * **Forty, and it is the number `paint-file.ts` writes.** `plan.md` says "about forty-four" in
+ * three places; that was an estimate made before the layout was fixed, and the round-trip test
+ * at `paint-file.test.ts` holds the two ends of the codec to each other rather than to either
+ * of these sentences.
  */
 export const DAB_BYTES = VEC * 4 * 2 + 4 * 2 + 4 + 4;
 
@@ -77,6 +82,16 @@ export interface Dab {
 /** The dabs taken by an undo, handed back so the matching redo can put them back. */
 export interface RemovedDabs {
   readonly count: number;
+  /**
+   * Where each of the removed strokes ended, as dab counts within the removed run.
+   *
+   * **Carried because a stroke is an undo step and a clear removes several.** `clearWithUndo`
+   * hands back every stroke in the document at once; without this, `redoStroke` closed them as
+   * one and the next ctrl-z took all of a session's painting back off in a single step, which is
+   * the one thing undo must never do. `undoStroke` writes a single-entry list for the same
+   * reason — it removed exactly one stroke and says so.
+   */
+  readonly strokes: readonly number[];
   readonly centre: Float32Array;
   readonly normal: Float32Array;
   readonly radius: Float32Array;
@@ -106,10 +121,33 @@ export class PaintJournal {
   private ends: number[] = [];
 
   /** The dab count when the stroke now being drawn began. */
-  private openStart = 0;
+  private openStartIndex = 0;
 
   get count(): number {
     return this.length;
+  }
+
+  /**
+   * The dab count at the end of every finished stroke, in order.
+   *
+   * **Live rather than a copy, and read-only by type.** `rasterise` walks it once per call to
+   * find where one stroke stops and the next begins, which is what lets a stroke composite once
+   * rather than once a dab; copying a few hundred numbers on every pointer move to save a caller
+   * a mutation it has no reason to attempt is the wrong trade.
+   */
+  get strokeEnds(): readonly number[] {
+    return this.ends;
+  }
+
+  /**
+   * Where the stroke in progress began, which is where a live re-rasterise has to start.
+   *
+   * **The brush's counterpart to {@link strokeEnds}.** It re-rasterises the open stroke whole on
+   * every move, because writing only the dabs added since the last move composites the same
+   * stroke's rim over itself and hardens the edge it was asked to soften.
+   */
+  get openStart(): number {
+    return this.openStartIndex;
   }
 
   /** How many strokes have been finished. A stroke in progress is not one of them. */
@@ -119,7 +157,7 @@ export class PaintJournal {
 
   /** How many dabs the stroke in progress holds, or 0 if there is none. */
   get openStrokeCount(): number {
-    return this.length - this.openStart;
+    return this.length - this.openStartIndex;
   }
 
   private grow(): void {
@@ -171,9 +209,9 @@ export class PaintJournal {
     // **A stroke with no dabs is not recorded.** A tap that landed off the model produced no
     // paint and should leave no trace; without this, every stray tap pastes an empty entry onto
     // the history and ctrl-z steps through them doing nothing.
-    if (this.length === this.openStart) return;
+    if (this.length === this.openStartIndex) return;
     this.ends.push(this.length);
-    this.openStart = this.length;
+    this.openStartIndex = this.length;
   }
 
   /**
@@ -189,18 +227,19 @@ export class PaintJournal {
     // painting as far as undo is concerned. Truncating them here is what stops a half-drawn
     // stroke surviving into a state nothing else could remove. In normal use this never fires,
     // because a pointer is lifted before an undo can be pressed.
-    if (this.length !== this.openStart) {
-      this.length = this.openStart;
+    if (this.length !== this.openStartIndex) {
+      this.length = this.openStartIndex;
     }
     if (this.ends.length === 0) return undefined;
     const to = this.ends.pop()!;
     const from = this.ends.length === 0 ? 0 : this.ends[this.ends.length - 1]!;
     this.length = from;
-    this.openStart = from;
+    this.openStartIndex = from;
     const count = to - from;
     if (count === 0) return undefined;
     return {
       count,
+      strokes: [count],
       centre: this.centre.slice(from * VEC, (from + count) * VEC),
       normal: this.normal.slice(from * VEC, (from + count) * VEC),
       radius: this.radius.slice(from, from + count),
@@ -210,8 +249,18 @@ export class PaintJournal {
     };
   }
 
-  /** Puts dabs taken by {@link undoStroke} back on the end, as one finished stroke. */
+  /**
+   * Puts dabs taken by {@link undoStroke} or {@link clearWithUndo} back on the end.
+   *
+   * **Restoring the stroke boundaries rather than closing one stroke**, for the reason
+   * `RemovedDabs.strokes` exists: a clear hands back a whole document's painting, and putting it
+   * back as one stroke would make the next undo a single step over everything.
+   */
   redoStroke(removed: RemovedDabs): void {
+    // **Where the run is going back to**, which is not zero when something else is already on
+    // the journal. `RemovedDabs.strokes` counts within the removed run, so every end is relative
+    // to this and has to be made absolute before it is pushed.
+    const from = this.length;
     for (let i = 0; i < removed.count; i++) {
       this.append({
         centre: [
@@ -235,7 +284,14 @@ export class PaintJournal {
         part: removed.part[i]!,
       });
     }
-    this.endStroke();
+    // **One end per removed stroke, not one end for the run**, and made absolute rather than
+    // left relative. `endStroke` would record a single stroke however many went on, which is
+    // the bug this replaced: after a clear and an undo, the next ctrl-z would take the whole
+    // painting back off in one step.
+    for (let i = 0; i < removed.strokes.length; i++) {
+      this.ends.push(from + removed.strokes[i]!);
+    }
+    this.openStartIndex = this.length;
   }
 
   /**
@@ -258,6 +314,7 @@ export class PaintJournal {
     }
     const removed: RemovedDabs = {
       count,
+      strokes: this.ends.slice(),
       centre: this.centre.slice(0, count * VEC),
       normal: this.normal.slice(0, count * VEC),
       radius: this.radius.slice(0, count),
@@ -269,10 +326,52 @@ export class PaintJournal {
     return removed;
   };
 
-  /** Drops everything, as "Clear texture" does. */
+  /** Drops everything, as "Clear paint" does. */
   clear(): void {
     this.length = 0;
     this.ends = [];
-    this.openStart = 0;
+    this.openStartIndex = 0;
   }
+
+  /**
+   * Takes on a journal read back from a file, replacing whatever was here.
+   *
+   * **Six `set` calls rather than a constructor.** `PaintJournal` grows from sixty-four dabs
+   * and is a class field on the document, not something the loader can swap out; and appending
+   * through the public path would be wrong twice over — `append` does not know about stroke
+   * boundaries, and the loaded dabs have to arrive with the stroke list the file carried, not
+   * with the boundaries this session happened to have.
+   *
+   * **Only ever called when the journal is empty.** Replacing a live one would silently
+   * invalidate a field that was rasterised from it, and the only caller is the load path, which
+   * has just made a new document.
+   *
+   * **The arrays are taken whole, not subarrayed.** The journal's own `grow` doubles and
+   * replaces them, so a view onto a decoded file's buffer would be silently detached the first
+   * time anything was appended; `set` copies into storage this object owns.
+   */
+  adopt = (loaded: {
+    readonly dabs: number;
+    readonly strokes: readonly number[];
+    readonly centre: Float32Array;
+    readonly normal: Float32Array;
+    readonly radius: Float32Array;
+    readonly hardness: Float32Array;
+    readonly colour: Uint8Array;
+    readonly part: Uint32Array;
+  }): void => {
+    this.clear();
+    while (this.radius.length < loaded.dabs) this.grow();
+    this.centre.set(loaded.centre);
+    this.normal.set(loaded.normal);
+    this.radius.set(loaded.radius);
+    this.hardness.set(loaded.hardness);
+    this.colour.set(loaded.colour);
+    this.part.set(loaded.part);
+    this.length = loaded.dabs;
+    this.ends = [...loaded.strokes];
+    // **A file cannot hold a half-drawn stroke**, so what it loads as is a complete document:
+    // there is nothing open, and the next dab starts a new one.
+    this.openStartIndex = loaded.dabs;
+  };
 }

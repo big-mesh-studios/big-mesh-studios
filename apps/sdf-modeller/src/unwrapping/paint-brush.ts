@@ -26,9 +26,9 @@
 
 import type { RGBA } from "@big-mesh-studios/core";
 
-import type { PaintField } from "./paint-field";
+import type { PaintField, Texel } from "./paint-field";
 import type { PaintJournal } from "./paint-journal";
-import { rasterise, type Placed } from "./paint-rasterise";
+import { rasterise, type PaintTarget, type Placed } from "./paint-rasterise";
 
 /** How the brush is set, from the panel. */
 export interface BrushSettings {
@@ -80,8 +80,73 @@ export type Localiser = (
 export interface StrokeResult {
   /** How many dabs the stroke added. */
   readonly dabs: number;
-  /** How many of them changed a voxel; the rest were culled as dead. */
+  /** How many strokes' worth of it changed a voxel; the rest were culled as dead. */
   readonly live: number;
+}
+
+/**
+ * The field with the stroke in progress rolled back out of it.
+ *
+ * **This is what makes painting under the finger agree with painting the whole journal at the
+ * end, and it is why `rasterise` takes a `PaintTarget` rather than a `PaintField`.** A stroke is
+ * composited as one group — see `rasterise`'s `Accum` — and a group written twice lands on
+ * different bytes, because compositing is not idempotent. So every pointer move has to *replace*
+ * the open stroke's contribution rather than add to it, and the only way to replace something is
+ * to know what was underneath it.
+ *
+ * **The underneath is remembered per voxel, on first touch, for this stroke only.** That is the
+ * atlas's `StrokeRecorder` idea — it snapshotted a rectangle of the atlas before a stroke and
+ * put it back on undo, four megabytes a time — narrowed to the footprint of one stroke and
+ * dropped at `finish`. A stroke touches a brush-width ribbon of voxels however long it gets, so
+ * this grows with what was painted rather than with the document, and a stroke that wanders
+ * across a whole figure is still one figure's worth rather than one per pointer move.
+ *
+ * **Reads as well as writes are redirected**, and that is the whole trick: `rasterise` never
+ * learns that a stroke is in progress. It asks the target what is at a voxel, gets what was
+ * there before the stroke began, and writes over it. Everything the rasteriser does is
+ * unchanged, and a field built this way is byte-identical to one built by replaying the journal
+ * once — which is the property the derived-field design rests on.
+ */
+class UnderStroke implements PaintTarget {
+  constructor(
+    private readonly inner: PaintField,
+    private readonly under = new Map<number, Texel>(),
+  ) {}
+
+  get voxelSize(): number {
+    return this.inner.voxelSize;
+  }
+
+  get voxels(): readonly [number, number, number] {
+    return this.inner.voxels;
+  }
+
+  worldAt = (x: number, y: number, z: number) => this.inner.worldAt(x, y, z);
+
+  voxelAt = (wx: number, wy: number, wz: number) =>
+    this.inner.voxelAt(wx, wy, wz);
+
+  get = (x: number, y: number, z: number): Texel => {
+    const key =
+      x +
+      y * this.inner.voxels[0] +
+      z * this.inner.voxels[0] * this.inner.voxels[1];
+    return this.under.get(key) ?? this.inner.get(x, y, z);
+  };
+
+  set = (x: number, y: number, z: number, colour: Texel): boolean => {
+    const key =
+      x +
+      y * this.inner.voxels[0] +
+      z * this.inner.voxels[0] * this.inner.voxels[1];
+    if (!this.under.has(key)) this.under.set(key, this.inner.get(x, y, z));
+    return this.inner.set(x, y, z, colour);
+  };
+
+  /** Forgets the stroke, because it is in the field now. */
+  release = (): void => {
+    this.under.clear();
+  };
 }
 
 /**
@@ -100,10 +165,10 @@ export class PaintBrush {
    * How many of this stroke's dabs are already in the field.
    *
    * **Which is what keeps the field current under the finger.** Every `moveTo` rasterises the
-   * dabs it has just added and nothing else, so the painting on screen is the painting so far
-   * rather than the painting as it will be when the finger lifts. The first version rasterised
-   * only in `finish`, and a stroke that shows nothing until the finger comes up is
-   * indistinguishable from a broken brush.
+   * stroke in progress, so the painting on screen is the painting so far rather than the
+   * painting as it will be when the finger lifts. The first version rasterised only in `finish`,
+   * and a stroke that shows nothing until the finger comes up is indistinguishable from a
+   * broken brush.
    */
   private written = 0;
 
@@ -128,7 +193,15 @@ export class PaintBrush {
       centre: { x: number; y: number; z: number },
       normal: { x: number; y: number; z: number },
     ) => Placed | undefined,
-  ) {}
+  ) {
+    // **Built here rather than in a field initialiser**, because it reads `this.field`, and a
+    // class field is initialised before a parameter property is assigned on some of the
+    // emit targets this package builds for. A constructor body has no such ambiguity.
+    this.stroke = new UnderStroke(this.field);
+  }
+
+  /** The field as it was before this stroke started. See {@link UnderStroke}. */
+  private readonly stroke: UnderStroke;
 
   /** How many dabs this stroke has added so far. */
   get count(): number {
@@ -189,21 +262,26 @@ export class PaintBrush {
   /**
    * Writes everything added since the last time, so the field is never behind the finger.
    *
-   * **Only the new dabs, because a field is composited rather than assigned** — see
-   * `rasterise`'s `from`. Re-rasterising the whole journal per pointer move would be quadratic
-   * in the stroke and would rewrite thousands of voxels to add one disc.
+   * **The whole open stroke, from where it began, and through {@link UnderStroke}.** Writing
+   * only the new dabs would composite this stroke's rim over itself on every move, which is the
+   * same saturation that made a soft brush hard — the brush would look softer and softer-edged
+   * the longer a stroke got, and the field would not match a replay of the journal.
    */
   private paint = (): void => {
     if (this.written === this.journal.count) return;
     const result = rasterise(
       this.journal,
-      this.field,
+      this.stroke,
       this.place,
-      this.written,
+      this.journal.openStart,
       this.journal.count,
     );
     this.written = this.journal.count;
-    this.live += result.live;
+    // **Any one changed is one live stroke**, not one per flush. `result.live` counts strokes
+    // changed by that one call, and every call but the first rewrites the same single open
+    // stroke, so adding them up would report a stroke's liveness as a function of how fast the
+    // pointer was moving.
+    if (result.live > 0) this.live = 1;
   };
 
   private add(hit: {
@@ -231,10 +309,17 @@ export class PaintBrush {
    * that one undo step is one drag.
    */
   finish = (): StrokeResult => {
-    if (this.added === 0) return { dabs: 0, live: 0 };
+    if (this.added === 0) {
+      this.stroke.release();
+      return { dabs: 0, live: 0 };
+    }
     this.journal.endStroke();
     this.previous = undefined;
     this.written = this.journal.count;
+    // **The under-voxels are dropped here and nowhere else.** Past this point the stroke is in
+    // the field, so remembering what was underneath it would only make the *next* stroke's first
+    // write read a value that is already too old.
+    this.stroke.release();
     return { dabs: this.added, live: this.live };
   };
 }
