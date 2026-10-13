@@ -1,12 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { ChunkMeshBuilder, meshBytes, VERTEX_BYTES } from "./chunk-mesh";
+import {
+  broadPassBlocks,
+  broadPassReachAcross,
+  BROAD_PASS_MAX_SOFTNESS,
+  BROAD_PASS_UNIT,
+} from "./broad-pass";
+import {
+  ChunkMeshBuilder,
+  meshBytes,
+  VERTEX_BYTES,
+  type ChunkMesh,
+} from "./chunk-mesh";
 import {
   scratchFor,
   surfaceNets,
   SURFACE_NETS_CELLS,
   SURFACE_NETS_GRID,
   uniformLane,
+  type SampleLanes,
+  type SurfaceNetsScratch,
 } from "./surface-nets";
 import { sdBox, sdCapsule, sdEllipsoid } from "@big-mesh-studios/sdf";
 
@@ -1182,5 +1195,565 @@ describe("sample lanes", () => {
       expect(moved.positions[i * 3 + 1]).toBe(even.positions[i * 3 + 1]);
       expect(moved.positions[i * 3 + 2]).toBe(even.positions[i * 3 + 2]);
     }
+  });
+});
+
+describe("the broad pass", () => {
+  const BROAD_N = 16;
+  const CENTRE = 90;
+  /**
+   * A field with air around it and rock nowhere: a lone sphere well inside its chunk, so
+   * most of the grid is empty and the pass has something to drop. `mixed` would test the
+   * same code with less of it dropped, which is a weaker test rather than a different one.
+   */
+  const ball = (x: number, y: number, z: number): number =>
+    sphere(x - CENTRE, y - CENTRE, z - CENTRE, 35);
+
+  const run = (
+    field: (x: number, y: number, z: number) => number,
+    options: {
+      softness?: number;
+      samples?: number;
+      extra?: readonly [number, number, number];
+      maxExtra?: number;
+      lanes?: SampleLanes;
+      positionAt?: (
+        x: number,
+        y: number,
+        z: number,
+      ) => readonly [number, number, number];
+    } = {},
+    scratch?: SurfaceNetsScratch,
+  ): { out: ChunkMeshBuilder; scratch: SurfaceNetsScratch } => {
+    const samples = options.samples ?? BROAD_N;
+    const out = new ChunkMeshBuilder();
+    const held =
+      scratch ??
+      scratchFor(
+        samples,
+        Math.max(options.maxExtra ?? 0, ...(options.extra ?? [0, 0, 0])),
+      );
+    surfaceNets({
+      origin: [0, 0, 0],
+      samples,
+      extra: options.extra,
+      sampleSize: STEP,
+      lanes: options.lanes,
+      positionAt: options.positionAt,
+      sampler: { distance: field },
+      out,
+      scratch: held,
+      softness: options.softness,
+    });
+    return { out, scratch: held };
+  };
+
+  /** The same mesh twice over: once with the pass declined and once with it running. */
+  const bothWays = (
+    field: (x: number, y: number, z: number) => number,
+    softness: number,
+    options: Parameters<typeof run>[1] = {},
+  ): [ChunkMesh, ChunkMesh] => [
+    run(field, options).out.finish(),
+    run(field, { ...options, softness }).out.finish(),
+  ];
+
+  it("produces the same mesh, in the same order, as not running it", () => {
+    /**
+     * **Identical indices rather than an equal vertex count, and identical positions rather
+     * than an equal shape.**
+     *
+     * A pass that skipped a block outright would leave the same triangles in a different
+     * order, and one that filled a dropped block with the wrong sign would leave the same
+     * count and a surface that was not there. Both claims are the reason a dropped block is
+     * *filled* rather than skipped, and both are invisible to a count comparison.
+     */
+    const [declined, broad] = bothWays(ball, 0);
+    expect(declined.triangleCount).toBeGreaterThan(0);
+    expect([...broad.indices]).toEqual([...declined.indices]);
+    expect([...broad.positions]).toEqual([...declined.positions]);
+  });
+
+  it("actually drops blocks, rather than running and culling nothing", () => {
+    /**
+     * **The pass that always says no is not a pass.** If this fails the one above is
+     * vacuous: it would be asserting that two identical computations agree.
+     */
+    const { scratch } = run(ball, { softness: 0 });
+    const dropped = scratch.blockEmpty.reduce((a, b) => a + b, 0);
+    expect(dropped, "blocks around a lone sphere").toBeGreaterThan(0);
+    const grid = SURFACE_NETS_GRID(BROAD_N);
+    const blocks = Math.ceil(grid / BROAD_PASS_UNIT) ** 3;
+    expect(dropped).toBeLessThan(blocks);
+  });
+
+  it("fills a dropped block on the side of the surface it is on, not on the other", () => {
+    /**
+     * **The failure that would show rather than be counted.**
+     *
+     * A block buried inside a solid is dropped exactly as often as one out in the open air,
+     * and filling it with air — the wrong sign for one of the two — puts a surface along
+     * every one of its faces. The mesh comes out bigger, not obviously wrong at a distance,
+     * so this checks the sample buffer itself as well as the mesh: a point deep inside the
+     * rock must still read negative after the pass has run.
+     *
+     * **A hollow shell rather than a filled ball**, because a ball's interior blocks are
+     * dropped and a shell's are too, but only the shell has blocks that are *entirely*
+     * inside solid rock with the surface nowhere near them. Centred on the grid's own middle
+     * so the sample indices below are arithmetic rather than a search: sample \`s\` is at
+     * world \`(s - 1) · 10\`, and the grid's middle is index 9 at world 80.
+     */
+    const GRID = SURFACE_NETS_GRID(BROAD_N);
+    const at = (x: number, y: number, z: number): number => {
+      const d = Math.hypot(x - 80, y - 80, z - 80);
+      // Solid between radius 32 and 58, hollow within 20.
+      return Math.max(Math.abs(d - 45) - 13, 20 - d);
+    };
+    const indexOf = (x: number, y: number, z: number): number =>
+      (z * GRID + y) * GRID + x;
+
+    const [declined, broad] = bothWays(at, 0);
+    expect(declined.triangleCount).toBeGreaterThan(0);
+    expect([...broad.indices]).toEqual([...declined.indices]);
+
+    const { scratch } = run(at, { softness: 0 });
+    expect(
+      scratch.samples[indexOf(9, 9, 9)],
+      "the hollow at the middle, which was air before the pass and must stay it",
+    ).toBeGreaterThan(0);
+    expect(
+      scratch.samples[indexOf(5, 9, 9)],
+      "world (40, 80, 80), radius 40 — inside the rock",
+    ).toBeLessThan(0);
+    expect(
+      scratch.samples[indexOf(13, 9, 9)],
+      "world (120, 80, 80), radius 40 on the far side — inside the rock",
+    ).toBeLessThan(0);
+  });
+
+  it("reads the last plane of the grid, which is where the last block is decided", () => {
+    /**
+     * **A pass that forgets the final plane is correct and useless.**
+     *
+     * The lattice steps by four and \`grid - 1\` is rarely a multiple of four, so the block at the
+     * high edge has corners the lattice never sampled. An unwritten sample reads as zero —
+     * a fresh buffer, or the previous chunk's value — and zero reads as *on* the surface,
+     * which keeps that block. Every mesh stays correct; the block at the far corner of every
+     * chunk simply stops being dropped.
+     *
+     * **Asserted on the last block rather than on a total**, because a total would be a weaker
+     * statement about a smaller failure: one block out of two hundred is a rounding error
+     * in a drop count and the whole difference in a chunk's corner.
+     */
+    const bead = (x: number, y: number, z: number): number =>
+      sphere(x - 50, y - 50, z - 50, 8);
+    for (const samples of [BROAD_N, BROAD_N + 1, BROAD_N + 3]) {
+      const blocks = broadPassBlocks(SURFACE_NETS_GRID(samples));
+      const { scratch } = run(bead, { softness: 0, samples });
+      expect(
+        scratch.blockEmpty[blocks * blocks * blocks - 1],
+        `samples ${samples}, grid ${SURFACE_NETS_GRID(samples)} (${SURFACE_NETS_GRID(samples) % BROAD_PASS_UNIT} into a block)`,
+      ).toBe(1);
+    }
+  });
+
+  it("keeps a bead sitting in a block's middle, far from all eight of its corners", () => {
+    /**
+     * **The shape the reach's proof is about, and the sharpest version of it.**
+     *
+     * Every point of a block is within half its diagonal of the nearest corner, and the
+     * centre is exactly there — so a bead sitting on a block's centre is \`halfDiagonal − r\`
+     * from all eight of them. A reach computed as a *quarter* diagonal, or a half of one
+     * taken as the whole, is shorter than that and drops the block, and the bead vanishes.
+     * Nothing else in this file would notice: every other shape is near some corner, so a
+     * reach that was merely short would still keep it.
+     *
+     * **Placed on a block centre rather than anywhere else, because that is the worst case
+     * and the worst case is the one worth a test.** Block corners fall at multiples of four
+     * samples from the grid's low corner, so with \`STEP\` of 10 the centres are at world 10,
+     * 50, 90 and 130, and 50 is one of them.
+     *
+     * **A bead of one, so its corners read 34.6 − 1 = 33.6 out** against a reach of 34.6.
+     * That is within three per cent of the bound, and it is the tightness that matters: a bead
+     * of twelve would also pass a reach a quarter the right size, and would leave the whole
+     * interval between a quarter and a half untested.
+     */
+    const bead = (x: number, y: number, z: number): number =>
+      sphere(x - 50, y - 50, z - 50, 1);
+
+    const dense = run(bead).out.finish();
+    expect(
+      dense.triangleCount,
+      "the bead meshes without the pass",
+    ).toBeGreaterThan(0);
+    const broad = run(bead, { softness: 0 }).out.finish();
+    expect([...broad.indices]).toEqual([...dense.indices]);
+
+    // And the block really was kept rather than the pass having quietly declined: the bead's
+    // own block holds the surface, so its corners are inside the reach.
+    const halfDiagonal =
+      0.5 * STEP * Math.sqrt(3 * BROAD_PASS_UNIT * BROAD_PASS_UNIT);
+    expect(
+      broadPassReachAcross(
+        BROAD_PASS_UNIT * STEP,
+        BROAD_PASS_UNIT * STEP,
+        BROAD_PASS_UNIT * STEP,
+        0,
+      ),
+      "a full block's reach",
+    ).toBeCloseTo(halfDiagonal, 6);
+    expect(
+      halfDiagonal - 1,
+      "corners just inside the reach, not merely outside a quarter of it",
+    ).toBeGreaterThan(0.9 * halfDiagonal);
+  });
+
+  it("keeps a slab crossing the grid on the diagonal", () => {
+    /**
+     * **A surface no lattice point is anywhere near, which is the case the block corners
+     * cannot speak for.** The bead above is tested because the reach is exactly half a
+     * diagonal; this one is tested because a surface can lie between every pair of corners
+     * a block reads and still be there.
+     *
+     * **Thick enough to cross a cell.** A four-unit sheet on a ten-unit lattice can fall
+     * entirely between two planes of samples and mesh nothing at all — which is true of the
+     * dense pass as well, and would make the assertion pass on two empty meshes.
+     */
+    const slab = (x: number, y: number, z: number): number =>
+      Math.max(
+        Math.abs(x + y + z - 255) - 8,
+        Math.hypot(x - 85, y - 85, z - 85) - 55,
+      );
+    const [declined, broad] = bothWays(slab, 0);
+    expect(declined.triangleCount).toBeGreaterThan(0);
+    expect([...broad.indices]).toEqual([...declined.indices]);
+  });
+
+  it("agrees on every grid a block can land badly on", () => {
+    /**
+     * **Every residue of the grid against `BROAD_PASS_UNIT`, which is the ragged edge.**
+     *
+     * A region is `samples + 2` per axis, so the last block along each axis is short by a
+     * different amount on each, and its far corner has to be pulled in to the grid rather
+     * than read off the end of it. Sweeping `samples` is the only way to hit all of those
+     * shapes, and one residue out of four is enough to hide it.
+     */
+    for (let samples = 6; samples <= 26; samples++) {
+      const [declined, broad] = bothWays(ball, 0, { samples });
+      expect(
+        [...broad.indices],
+        `samples ${samples}, grid ${SURFACE_NETS_GRID(samples)} (${SURFACE_NETS_GRID(samples) % BROAD_PASS_UNIT} into a block)`,
+      ).toEqual([...declined.indices]);
+    }
+  });
+
+  it("agrees when the chunk owns cells beyond its own extent", () => {
+    /**
+     * **The overlap makes the grid rectangular, which is a different ragged edge.** A chunk
+     * reaching into a finer neighbour (ADR 0035) owns a different number of cells on each
+     * axis, so its blocks are short along some axes and not others — and the reach has to be
+     * computed per axis rather than from one side read off another.
+     */
+    for (const extra of [
+      [1, 0, 0],
+      [0, 1, 1],
+      [1, 1, 1],
+    ] as const) {
+      const [declined, broad] = bothWays(ball, 0, { extra, maxExtra: 1 });
+      expect([...broad.indices], `extra ${extra.join(",")}`).toEqual([
+        ...declined.indices,
+      ]);
+    }
+  });
+
+  it("declines a field it cannot vouch for, and agrees with itself anyway", () => {
+    /**
+     * **Above `BROAD_PASS_MAX_SOFTNESS` the answer is the dense one**, and the test is that
+     * the mesh is unchanged rather than that it is slow. A caller that has gone around the
+     * clamp both applications put on `softness` lands here, and what it gets is the mesh it
+     * had before the pass existed.
+     */
+    const dense = run(ball).out.finish();
+    for (const softness of [BROAD_PASS_MAX_SOFTNESS + 0.01, -1]) {
+      const mesh = run(ball, { softness }).out.finish();
+      expect([...mesh.indices], `softness ${softness}`).toEqual([
+        ...dense.indices,
+      ]);
+    }
+  });
+
+  it("declines a warped region, where there is no reach to compute", () => {
+    /**
+     * **A patch of a cube face is not separable**, so a block's extent in world units is a
+     * function of all three of its indices at once and there is no per-axis span to take a
+     * half-diagonal from. The pass is declined rather than guessed at, so a planet's chunks
+     * (ADR 0038) are sampled in full and are exactly as they were.
+     *
+     * **The warped grid is built from even lanes so that the mesh here is comparable to the
+     * separable one** — the same field, the same sample positions, the only difference being
+     * that `positionAt` says where they are. A field that would mesh differently under the
+     * two would make the comparison vacuous, so it must not.
+     */
+    const grid = SURFACE_NETS_GRID(BROAD_N);
+    const lanes = {
+      x: uniformLane(0, STEP, grid),
+      y: uniformLane(0, STEP, grid),
+      z: uniformLane(0, STEP, grid),
+    };
+    const at = (
+      x: number,
+      y: number,
+      z: number,
+    ): readonly [number, number, number] => [
+      lanes.x[x] as number,
+      lanes.y[y] as number,
+      lanes.z[z] as number,
+    ];
+    const separable = run(ball, { lanes }).out.finish();
+    const warped = run(ball, {
+      lanes,
+      positionAt: at,
+      softness: 0,
+    }).out.finish();
+    const broad = run(ball, { lanes, softness: 0 }).out.finish();
+
+    expect(separable.triangleCount).toBeGreaterThan(0);
+    expect([...warped.indices], "a warped grid declines the pass").toEqual([
+      ...separable.indices,
+    ]);
+    expect([...broad.indices], "and takes it when it is separable").toEqual([
+      ...separable.indices,
+    ]);
+  });
+
+  it("takes the reach from the lanes, and keeps a bead the reach has to clear", () => {
+    /**
+     * **Per-axis spans, which is why the reach is not one number times a step.**
+     *
+     * **The lane is `wider` than `sampleSize`, deliberately.** A region whose axes disagree is
+     * the only thing that can express the distinction at all, and which way the disagreement
+     * points decides what the test can claim. A reach derived from `sampleSize` on a wider lane
+     * is too *short* — and a reach that is too short keeps more blocks than it needs to, which
+     * costs saving and cannot cost correctness. So this test is not about catching that; it is
+     * about the two things a short reach would hide behind: that the mesh is unchanged, and
+     * that the reach is the block's own diagonal and not a number derived from somewhere else.
+     *
+     * **The unsafe direction is a reach too `wide`, and that one is covered where it can
+     * happen** — in the blocks short at the grid's high edge, which is what the residue sweep
+     * above is for, since those are the only blocks whose three extents differ for a reason
+     * other than the lanes'.
+     *
+     * **The bead is on a block centre of the wide lane** — x at 15 a sample, so a block centre
+     * is 30, and the half-diagonal of such a block is `½√(60² + 40² + 40²) = 41.2`. A bead of 36
+     * puts every corner 5.2 out, inside the reach, which is the closest a bead can sit to the
+     * bound without being on it.
+     */
+    const grid = SURFACE_NETS_GRID(BROAD_N);
+    const wide = 15;
+    const lanes: SampleLanes = {
+      x: uniformLane(0, wide, grid),
+      y: uniformLane(0, STEP, grid),
+      z: uniformLane(0, STEP, grid),
+    };
+    const bead = (x: number, y: number, z: number): number =>
+      sphere(x - 30, y - 30, z - 30, 36);
+
+    const [declined, broad] = bothWays(bead, 0, { lanes });
+    expect(
+      declined.triangleCount,
+      "the bead meshes without the pass",
+    ).toBeGreaterThan(0);
+    expect([...broad.indices]).toEqual([...declined.indices]);
+
+    // The arithmetic it rests on, spelled out, so the assertion above is about the code and
+    // not about a pair of numbers that happened to agree.
+    expect(broadPassReachAcross(4 * wide, 4 * STEP, 4 * STEP, 0)).toBeCloseTo(
+      41.23,
+      2,
+    );
+    expect(
+      broadPassReachAcross(4 * STEP, 4 * STEP, 4 * STEP, 0),
+      "the reach `ex · sampleSize` would have used, which is shorter",
+    ).toBeCloseTo(34.64, 2);
+    expect(
+      broadPassReachAcross(4 * wide, 4 * wide, 4 * wide, 0),
+      "the widest axis for all three, which is longer",
+    ).toBeCloseTo(51.96, 2);
+  });
+
+  it("culls the marker on the same blocks, and the gate answers the same", () => {
+    /**
+     * **The sea's second field, dropped on the sea's own evidence.**
+     *
+     * A block the *sea* culls cannot hold a water surface, and every cell in it is all one
+     * sign, so the cell loop declines those cells before the gate is ever asked — which is
+     * what makes it safe to leave their markers unwalked. The gate's answer is therefore the
+     * same whether or not the marker was sampled there, and this is the test of that.
+     *
+     * **A shoreline and not a nest, because a gate that refuses nothing tests nothing.** The
+     * ground is a sphere of forty centred twenty-five below the sea's, so the sea's lower cap
+     * is inside the rock and is refused — which is the arrangement \`water-mesher.ts\` builds,
+     * where the sea is buried in the landscape and only the part in open air is water.
+     */
+    const sea = (x: number, y: number, z: number): number =>
+      sphere(x - 80, y - 80, z - 80, 45);
+    const ground = (x: number, y: number, z: number): number =>
+      sphere(x - 80, y - 55, z - 80, 40);
+    const gate = (_corners: Float32Array, marks: Float32Array): boolean => {
+      for (let corner = 0; corner < 8; corner++)
+        if ((marks[corner] as number) < -10) return false;
+      return true;
+    };
+    const run1 = (softness: number | undefined, gated: boolean): ChunkMesh => {
+      const out = new ChunkMeshBuilder();
+      surfaceNets({
+        origin: [0, 0, 0],
+        samples: BROAD_N,
+        sampleSize: STEP,
+        sampler: { distance: sea },
+        marker: { distance: ground },
+        cellGate: gated ? gate : undefined,
+        out,
+        scratch: scratchFor(BROAD_N),
+        softness,
+      });
+      return out.finish();
+    };
+
+    const ungated = run1(undefined, false);
+    const dense = run1(undefined, true);
+    const broad = run1(0, true);
+
+    expect(ungated.triangleCount).toBeGreaterThan(0);
+    // The gate has to be refusing something, or the whole test is about nothing.
+    expect(
+      dense.triangleCount,
+      "the gate cut the sea's lower cap off",
+    ).toBeLessThan(ungated.triangleCount);
+    expect(dense.triangleCount).toBeGreaterThan(0);
+    expect([...broad.indices]).toEqual([...dense.indices]);
+  });
+
+  it("reports progress that ends on the total and never goes backwards", () => {
+    /**
+     * **With the pass running as well as declined.** The denominator grows by the lattice
+     * when the pass runs, so a caller watching a bar is getting a different `total` for the
+     * same chunk depending on a field's blend — which `MeshProgress` already says is the
+     * lesser of the two failures, and which is only true if both paths still land on it.
+     */
+    for (const softness of [undefined, 0]) {
+      const seen: number[] = [];
+      const out = new ChunkMeshBuilder();
+      surfaceNets({
+        origin: [0, 0, 0],
+        samples: BROAD_N,
+        sampleSize: STEP,
+        sampler: { distance: ball },
+        out,
+        scratch: scratchFor(BROAD_N),
+        softness,
+        onProgress: (done, total) => seen.push(done / total),
+      });
+      expect(
+        seen.length,
+        `softness ${softness}: distinct fractions`,
+      ).toBeGreaterThan(4);
+      // `MeshProgress` promises `done` reaches `total` exactly once so a caller can treat the
+      // last message as finished rather than watching for a fraction that rounds to one.
+      expect(seen[seen.length - 1]).toBe(1);
+      expect(seen.filter((f) => f === 1).length, "reaches one once").toBe(1);
+      for (let i = 1; i < seen.length; i++)
+        expect(seen[i], "never backwards").toBeGreaterThanOrEqual(
+          seen[i - 1] as number,
+        );
+    }
+  });
+
+  it("refuses a scratch too small for this grid's blocks", () => {
+    /**
+     * **The one failure mode here that would not announce itself.**
+     *
+     * A `Uint8Array` read past its end is `undefined`, and `undefined === 1` is false, so a
+     * scratch too small for the blocks would drop nothing and produce the dense mesh —
+     * correct, slower, and with nothing anywhere saying so. The other two buffers are
+     * checked for the same reason; this is the third of them.
+     */
+    const short = scratchFor(BROAD_N);
+    const full = short.blockEmpty.length;
+    // `readonly` is compile-time, so this compiles with a cast and is the honest way to
+    // describe a scratch somebody else built wrong.
+    (short as { blockEmpty: Uint8Array }).blockEmpty = new Uint8Array(0);
+    expect(() =>
+      surfaceNets({
+        origin: [0, 0, 0],
+        samples: BROAD_N,
+        sampleSize: STEP,
+        sampler: { distance: ball },
+        out: new ChunkMeshBuilder(),
+        scratch: short,
+        softness: 0,
+      }),
+    ).toThrow(/broad-pass blocks/);
+    (short as { blockEmpty: Uint8Array }).blockEmpty = new Uint8Array(full);
+  });
+
+  it("reuses a scratch built for a wider grid without keeping a stale drop", () => {
+    /**
+     * **A dropped flag left behind by a previous chunk would be read by this one.** The
+     * guarantee is that the pass rewrites every flag before either sampling loop reads any,
+     * and that a rebuild which declines it writes zeros rather than leaving them — so the
+     * cheap way to test both halves is one scratch, two chunks, two fields, and the second
+     * mesh compared against a fresh scratch's.
+     */
+    const held = scratchFor(BROAD_N + 6);
+    const runOn = (
+      scratch: SurfaceNetsScratch,
+      softness?: number,
+    ): ChunkMesh => {
+      const out = new ChunkMeshBuilder();
+      surfaceNets({
+        origin: [0, 0, 0],
+        samples: BROAD_N,
+        sampleSize: STEP,
+        sampler: { distance: ball },
+        out,
+        scratch,
+        softness,
+      });
+      return out.finish();
+    };
+    // A small sphere, which drops nearly every block, then a large one on the same scratch.
+    runOn(held, 0);
+    const reused = runOn(held, 0);
+    expect([...reused.indices]).toEqual([
+      ...runOn(scratchFor(BROAD_N + 6), 0).indices,
+    ]);
+
+    // And the other order: a dense rebuild, then the same dense rebuild.
+    runOn(held, undefined);
+    const afterDense = runOn(held, undefined);
+    expect([...afterDense.indices]).toEqual([
+      ...runOn(held, undefined).indices,
+    ]);
+  });
+
+  it("reads the reach as half a block's own diagonal", () => {
+    /**
+     * **The bound, against the thing it is a bound on.** Every point of a block is within
+     * half its diagonal of the nearest corner, and the centre is exactly there — so this is
+     * the tightest reach a block can use, and a pass using more of it is leaving blocks on
+     * the table.
+     */
+    const side = 6;
+    expect(broadPassReachAcross(side, side, side, 0)).toBeCloseTo(
+      (side * Math.sqrt(3)) / 2,
+      12,
+    );
+    // And it widens with the blend, because a dent taken *out* of the field makes the value
+    // under-read and the surface closer than the number says. The only sound response is a
+    // stricter test.
+    expect(broadPassReachAcross(4, 4, 4, 0.25)).toBeGreaterThan(
+      broadPassReachAcross(4, 4, 4, 0),
+    );
   });
 });

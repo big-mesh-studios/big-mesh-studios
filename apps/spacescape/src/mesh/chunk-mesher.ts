@@ -258,6 +258,21 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
   constructor(
     private readonly field: MeshField,
     samples: number = lodSamples(0),
+    /**
+     * How far this field's value may over-report the distance to the surface — the widest
+     * blend any operation in the model carries.
+     *
+     * **Given to the mesher rather than read off the field, because the field does not know
+     * what it is made of.** It is handed a fold and answers distances; the list behind that
+     * fold is the caller's to describe. See `broad-pass.ts` for what the number buys.
+     *
+     * **Absent means the broad pass is declined and every sample is taken**, which is the old
+     * behaviour and is what a caller with no operation list — a world of nothing but
+     * landscape — gets. That is a deliberate miss: a base field on its own is a landscape,
+     * which is the emptiest thing there is to sample, and the pass would drop most of it. So
+     * `meshersFor` passes `0` rather than nothing, and says why there.
+     */
+    private readonly softness?: number,
   ) {
     // Sized for the widest run this mesher will ever be asked for rather than for the
     // widest chunk: a chunk that reaches one cell into a finer neighbour owns one more per
@@ -322,6 +337,7 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
         },
         out: this.builder,
         scratch: this.scratch,
+        softness: this.softness,
         onVertex: (index, x, y, z, cell) => {
           // **Marked, not written.** The gradient is spent in the pass below rather than
           // here, and the reason is that the second pass writes a normal for every vertex

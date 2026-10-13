@@ -26,17 +26,16 @@
  *
  * ## The broad pass, and the one thing a field's value may be asked to prove
  *
+ * **The pass itself, its proof and its measurements are in `broad-pass.ts`, and that is where they
+ * belong rather than here:** the argument is about a distance function and a cube, and it is
+ * worth the same to `surfaceNets`, which samples the same `grid³` the same way and now takes it
+ * too. What is left to say here is what this file's use of it looks like.
+ *
  * A cell with eight corners of one sign holds no triangle, and the existing cull already knows
  * that. It cannot know anything wider, because by the time a cell is being read its own eight
- * samples are already in hand — the whole of `grid³` was sampled first.
- *
- * **The value can say more than that.** A signed distance function never *over*-reports: a
- * sample reading `v` is at least `|v|` from the surface. Every point of a block is within half
- * that block's diagonal of its nearest corner, so a block whose corners all read further out than
- * half a diagonal holds no surface anywhere inside it and needs no field evaluation at all. That
- * is the whole of the broad pass, and it is worth having because **the sampling pass is 89 to 99
- * per cent of a rebuild** and the cell loop is the rest: measured at 1/8 and 1/16 of a unit over
- * four models, blocks dropped in 69 to 97 per cent of cases and the rebuild came down as here.
+ * samples are already in hand — the whole of `grid³` was sampled first. **The value can say more
+ * than that**, and a block whose corners all read further out than half its own diagonal needs no
+ * field evaluation at all: on the models below, blocks dropped in 69 to 97 per cent of cases.
  *
  *                     grid   declined     broad
  *     figure           51     165 ms      45 ms   3.6x
@@ -122,8 +121,16 @@
  * across rebuilds is what makes that affordable.
  */
 
-import { FAR_DISTANCE, MAX_SOFTNESS } from "@big-mesh-studios/core";
+import { FAR_DISTANCE } from "@big-mesh-studios/core";
 
+import {
+  broadPassBlockExtent,
+  broadPassBlocks,
+  broadPassReach,
+  broadPassRuns,
+  BROAD_PASS_UNIT,
+  nextBroadPlane,
+} from "./broad-pass";
 import {
   emitTriangle,
   type MeshProgress,
@@ -186,80 +193,20 @@ export const MARCHING_CUBES_CELLS = (samplesPerAxis: number): number =>
   samplesPerAxis + 1;
 
 /**
- * How many samples a block of the broad pass spans, on each axis.
+ * How many samples a block of the broad pass spans, on each axis, and how far its corners have
+ * to read before it is dropped.
  *
- * **Four is where two costs cross, and both are real.** A smaller block is a *better* test — it
- * rules out less ground, so it drops more — but a dearer one, because the lattice the test reads
- * has one point in `step³`, which is an eighth of the grid at two and a sixty-fourth at four. The
- * measurement below is the whole of the argument for the number rather than taste: rebuilds of a
- * figure, a diorama, a slab with a sphere carved out of it and a soft-blended pair of primitives,
- * at two voxel sizes each, timed with the pass on and off.
- *
- *     block size   2      3      4      6      8
- *     figure     3.97x  3.61x  3.82x  2.87x  2.24x
- *     sparse     4.72x  9.22x 10.71x 10.21x  7.50x
- *     carved     2.77x  3.08x  2.55x  2.32x  1.86x
- *     soft       3.31x  5.41x  4.67x  3.48x  2.65x
- *
- * Four is the best or within noise of the best in six of the eight cases and is never beaten by
- * much. **Two loses hardest on the sparse model, which is the case the pass exists for**: small
- * blocks cannot find it, because each one demands the whole lattice for the little it rules out.
- * Eight is the shape of a model that has stopped filling its own bounding box.
- *
- * **Not a power of two, and not required to be.** A region is `samples + 2` per axis and that is
- * rarely a multiple of anything, so the blocks along the high edge are short. `ex` and its
- * siblings below are where that arithmetic lives, and `nextPlane` is where the lattice handles it.
+ * **These live in `broad-pass.ts` and are re-exported here rather than defined here, because
+ * they are not marching cubes' properties** — the proof is about a distance function and a cube,
+ * and `surfaceNets` consumes the same grid the same way. They stay exported from this file
+ * because everything that has always reached for them did so through it, and because a mesher's
+ * name for its own cull is the one a reader is looking for.
  */
-export const BROAD_PASS_UNIT = 4;
-
-/**
- * How far every corner of a block must read beyond it for the block to be provably empty: half
- * the block's own diagonal, plus whatever blend the field may have taken out of it.
- *
- * **The half, and the proof is one line.** A point anywhere in a block is within half its
- * diagonal of the nearest corner — the worst case is the block's centre, exactly halfway along
- * all three edges. So if the surface passes through any point `p` of the block, then for the
- * corner `c` nearest to it:
- *
- *     |f(c)|  ≤  dist(c, surface)  ≤  dist(c, p)  ≤  half the diagonal
- *
- * — the first step because a distance function never over-reports, the second because `p` is on
- * the surface, the third by the geometry above. A block whose every corner clears half a diagonal
- * therefore cannot contain the surface, and the reach is that exact bound rather than the full
- * diagonal, which is safe and culls half as much again.
- *
- * **Three extents rather than one side, because a block at the high edge is short on every axis
- * at once and differently on each.** A region is `samples + 2` per axis, which is rarely a
- * multiple of four, so the last block along each axis is pulled in to the grid and those three
- * remainders are generally three different numbers. Reading one side off one axis and using it
- * for all three charges a block that is full on two and short on the third for a reach covering
- * only the third; `marching-cubes.test.ts` catches that as a sphere whose surface is shaven off
- * where its region ends.
- *
- * **`blend` added, because that is the direction it has to move.** A smooth minimum takes a dent
- * of up to `softness` out of the field, so the value under-reads and the surface may be `blend`
- * closer than the number says. Adding it makes the test stricter.
- */
-export const broadPassReach = (
-  sideX: number,
-  sideY: number,
-  sideZ: number,
-  sampleSize: number,
-  blend: number,
-): number =>
-  0.5 * sampleSize * Math.sqrt(sideX * sideX + sideY * sideY + sideZ * sideZ) +
-  blend;
-
-/**
- * The widest a blend may be for the broad pass to run at all, and the de-op above it.
- *
- * **`MAX_SOFTNESS` rather than a number chosen here**, because it is the same bound the
- * candidate cache and the operation padding are already sized by (`CANDIDATE_MARGIN`,
- * `shapePadding`). A model carrying a blend wider than that is one both applications have
- * already refused to produce, and this mesher declining to trust it is the third place saying
- * the same thing rather than the first place to find out.
- */
-export const BROAD_PASS_MAX_SOFTNESS = MAX_SOFTNESS;
+export {
+  broadPassReach,
+  BROAD_PASS_MAX_SOFTNESS,
+  BROAD_PASS_UNIT,
+} from "./broad-pass";
 
 /**
  * A sample closer to the surface than this counts as **on** it, and is stored as exactly zero.
@@ -794,16 +741,9 @@ export const marchingCubes = (params: MarchingCubesParams): void => {
    * the flag, which is the only way a "slow path" stays the same code as the fast one.
    */
   const blend = params.softness;
-  const broad =
-    blend !== undefined &&
-    blend >= 0 &&
-    blend <= BROAD_PASS_MAX_SOFTNESS &&
-    // A grid no larger than one block has nothing to divide, and a single block spanning it is
-    // dropped only when the whole region is further from the surface than its own reach — which
-    // is a true answer, and not worth a special case to go and find out.
-    grid > BROAD_PASS_UNIT;
+  const broad = broadPassRuns(blend, grid, grid, grid);
   const step = BROAD_PASS_UNIT;
-  const blocks = Math.ceil(grid / step);
+  const blocks = broadPassBlocks(grid);
   const empty = scratch.blockEmpty;
 
   /**
@@ -821,11 +761,11 @@ export const marchingCubes = (params: MarchingCubesParams): void => {
    * from `Math.abs(undefined)` fails a `<=` comparison, which would drop that block on the
    * strength of a comparison that never happened.
    */
-  for (let z = 0; z < grid; z = nextPlane(z, step, grid)) {
+  for (let z = 0; z < grid; z = nextBroadPlane(z, grid)) {
     const wz = origin[2] + (z - 1) * sampleSize;
-    for (let y = 0; y < grid; y = nextPlane(y, step, grid)) {
+    for (let y = 0; y < grid; y = nextBroadPlane(y, grid)) {
       const wy = origin[1] + (y - 1) * sampleSize;
-      for (let x = 0; x < grid; x = nextPlane(x, step, grid)) {
+      for (let x = 0; x < grid; x = nextBroadPlane(x, grid)) {
         const value = sampler.distance(
           origin[0] + (x - 1) * sampleSize,
           wy,
@@ -859,9 +799,9 @@ export const marchingCubes = (params: MarchingCubesParams): void => {
          * from the grid's edge is the unsound pair; measuring it from where the corner was pulled
          * to is the sound one, and is `grid - 1 - x0`, not `grid - x0`.
          */
-        const ex = Math.min(step, grid - 1 - x0);
-        const ey = Math.min(step, grid - 1 - y0);
-        const ez = Math.min(step, grid - 1 - z0);
+        const ex = broadPassBlockExtent(x0, grid);
+        const ey = broadPassBlockExtent(y0, grid);
+        const ez = broadPassBlockExtent(z0, grid);
         const reach = broadPassReach(ex, ey, ez, sampleSize, blend as number);
 
         let clear = true;
@@ -1040,23 +980,6 @@ export const marchingCubes = (params: MarchingCubesParams): void => {
   }
 };
 
-/**
- * The next coordinate the broad pass's lattice visits, given where it is now.
- *
- * **Steps by `step` until one more step would leave the grid, and then visits the last index.**
- * A region is `samples + 2` per axis and is rarely a multiple of four, so without that last
- * index the block at the high edge would read a corner the lattice never sampled.
- *
- * **And steps past the end once it is there, which is the whole of what this function is.**
- * `grid - 1` is its own fixed point — one more step from the last-but-one index lands on it, and
- * from `grid - 1` the "one more step would leave the grid" branch says so again — so a caller
- * that only ever asked for the next coordinate would spin on it forever. Returning `grid` from
- * `grid - 1` is what lets the loop's own `at < grid` condition end it, and it is the second half
- * of the sentence rather than a detail of it: **a function whose result is used as a loop
- * increment has to know where the loop stops**, and this one is the loop.
- */
-const nextPlane = (at: number, step: number, grid: number): number =>
-  at >= grid - 1 ? grid : at + step < grid ? at + step : grid - 1;
 /** The `onProgress` a mesher runs with when nobody is watching. */
 const noProgress: MeshProgress = () => {};
 

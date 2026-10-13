@@ -257,6 +257,18 @@ export class WaterChunkMesher implements ChunkMesher {
       cellGate: this.gate,
       out: this.builder,
       scratch: this.scratch,
+      /**
+       * **Zero, and not because the sea is simple.** The broad pass wants to know how far a
+       * field's value may over-report, and the sea's is a sphere of radius `seaLevel` — an
+       * exact distance, which never under-reads and so never needs a margin. It is also the
+       * emptiest field this application has: a chunk that holds any water holds it as a sheet
+       * across the middle, so most of the grid is a long way from the water either above it
+       * or below it, and the pass drops most of it. **The `marker` is culled on the same
+       * blocks**, which is safe for the reason in `surface-nets` — a dropped block's cells are
+       * all one sign and are declined before the gate is asked — and is worth as much again
+       * as the sea's own sampling.
+       */
+      softness: 0,
       onVertex: (index, x, y, z) => {
         // The outward radial, which is the material computes per fragment
         // anyway — written because the layout is shared and the builder will not take a

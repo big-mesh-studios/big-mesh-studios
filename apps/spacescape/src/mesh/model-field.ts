@@ -25,6 +25,7 @@ import {
 } from "@big-mesh-studios/csg";
 import type { PaintSource } from "@big-mesh-studios/csg";
 import type { BaseFieldSpec, BuiltBaseField } from "@big-mesh-studios/csg";
+import { widestBlend } from "@big-mesh-studios/meshing";
 import { cellCentre, chunkCellOf, sampleIndexIn, tileIndex } from "../world";
 
 import type { ChunkMeshers } from "./chunk-mesher";
@@ -121,7 +122,18 @@ export const meshersFor = (model: ModelMessage): ChunkMeshers => {
     paint: new TilePaint(paintTilesOf(model.paint)),
   });
   return {
-    ground: new SurfaceNetsChunkMesher(field),
+    ground: new SurfaceNetsChunkMesher(
+      field,
+      undefined,
+      /**
+       * **The broadest blend any operation carries, so the broad pass knows how far it may not
+       * trust a value.** This is the one number about a model that the mesher cannot work out
+       * for itself and the one thing worth getting wrong in the cautious direction: too wide and
+       * the pass drops fewer blocks than it could, and too narrow and it drops blocks holding
+       * geometry.
+       */
+      widestBlend(operations),
+    ),
     // A world of operations over no landscape has no sea, because a sea is a property of a
     // landscape. `undefined` is that statement, and the worker's gate reads it as "no
     // second surface" rather than as a mesher with nothing to mesh.

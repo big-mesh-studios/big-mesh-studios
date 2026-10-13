@@ -314,6 +314,16 @@ export class PatchMesher {
         },
         out: this.builder,
         scratch: this.scratch,
+        // **No `softness`, and that is the whole of what the broad pass costs a planet.**
+        //
+        // The pass drops blocks whose corners are all further from the surface than half the
+        // block's own diagonal, and a warped grid has no per-axis spacing to take a diagonal
+        // from — a patch of a cube face is square in its own two parameters and sampled across a
+        // radial depth, so its extent is a function of all three indices at once. `surfaceNets`
+        // declines the pass rather than guessing, and these chunks are sampled in full. They are
+        // a minority of the world (a planet's surface, against a landscape's cubic chunks) and the
+        // ground they are patches of is a *sphere*, which is smooth and mostly empty: the pass
+        // would have found very little there even if the arithmetic worked.
         onVertex: (index, x, y, z) => {
           // Normals from the field's gradient — six extra field evaluations a vertex — computed
           // here where the position is already in hand, rather than by the mesher, which would

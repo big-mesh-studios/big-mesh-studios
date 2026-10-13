@@ -723,24 +723,26 @@ export const meshModel = (
    */
   const endRegion = field.beginRegion(sampleExtent(region));
   const scratch = heldScratch(mode, region.samples);
+  /**
+   * **The broadest blend in the model, so the broad pass knows how far it may not trust a
+   * value.** Given to both meshers because both now take it: it is the same number and it is
+   * the same property of the field, and a caller switching between them should not silently
+   * switch between two sampling costs.
+   */
+  const softness = widestBlend(operations);
   try {
     if (mode === "marching-cubes") {
       marchingCubes({
         ...params,
         scratch: scratch as MarchingCubesScratch,
-        /**
-         * **The broadest blend in the model, so the broad pass knows how far it may not trust a
-         * value.** Only marching cubes reads it; `surfaceNets` is given the same `params` and
-         * ignores it, because it walks cells and samples every point rather than deciding that a
-         * block of them holds nothing.
-         */
-        softness: widestBlend(operations),
+        softness,
         onProgress,
       });
     } else {
       surfaceNets({
         ...params,
         scratch: scratch as SurfaceNetsScratch,
+        softness,
         onProgress,
       });
     }

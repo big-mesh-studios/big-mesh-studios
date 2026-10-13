@@ -70,7 +70,45 @@
  * sampled in the same pass as the water, so the cell loop never has to touch a field.
  * `SurfaceNetsParams.cellGate` says why a CSG difference is not the same thing done
  * more cheaply.
+ *
+ * ## The broad pass, and what it is worth on a landscape
+ *
+ * Sampling the field is most of a mesh — on this repository's own terrain, measured, 76 per cent
+ * of a 32-sample chunk — and most of what it samples is nothing at all. A streamed chunk is a
+ * window onto a world rather than a model in a box, so most of the volume in it is open air above
+ * the landscape or deep rock below it, and a block of the grid sitting wholly in either holds no
+ * surface and can say so without asking.
+ *
+ * `softness` is the caller saying what its field is made of, and giving it turns that on.
+ * Measured against this package's own terrain at the game's chunk size, through the real chunk
+ * mesher rather than the mesher alone, the pass removes **85 per cent of the field evaluations**
+ * at level of detail 0 and 72 at level 1, and takes a chunk from **76.9 ms to 41.6** — 1.85
+ * times, which is less than the share of samples suggests because colour and normals do not get
+ * cheaper with them. At level 2 it removes 26 per cent and is not worth much.
+ *
+ * **The proof, the reach and the block arithmetic are in `broad-pass.ts`**, because they are not
+ * this algorithm's: both meshers sample the same grid the same way, and the saving is in the
+ * sampling. **The mesh is byte-identical either way** — a dropped block is *filled* with a
+ * constant on the side of the surface its own corners say it is on, rather than skipped, so the
+ * cell loop is left exactly as it was and declines the block's cells itself.
+ *
+ * **And it declines where it cannot be shown to be right.** A warped region — one carrying
+ * `positionAt`, which is a patch of a cube face on a planet — has no per-axis spacing for a
+ * half-diagonal to be computed from, so the pass is declined there and those chunks are sampled in
+ * full. That is the shape `apps/spacescape` uses for a planet's surface, and the reason the win is
+ * not unbounded.
  */
+
+import { FAR_DISTANCE } from "@big-mesh-studios/core";
+
+import {
+  broadPassBlockExtent,
+  broadPassBlocks,
+  broadPassReachAcross,
+  broadPassRuns,
+  BROAD_PASS_UNIT,
+  nextBroadPlane,
+} from "./broad-pass";
 
 /** What the mesher needs from whatever it is meshing. */
 export interface SurfaceSampler {
@@ -209,6 +247,19 @@ export class SurfaceNetsScratch {
   readonly marks: Float32Array;
   /** Cell index to emitted vertex index, or -1. Fixed size: a lookup, not a log. */
   readonly cellVertex: Int32Array;
+  /**
+   * One flag per broad-pass block: `1` where the block provably holds no surface.
+   *
+   * **Written every rebuild and never cleared**, which is safe only because the broad pass writes
+   * all of them before either sampling pass reads any. A rebuild that *declines* the pass writes
+   * zeros over all of them rather than leaving them, and a rebuild that does run rewrites them
+   * all, so neither can read a stale flag from a chunk with a different blend in it.
+   *
+   * **A byte per block rather than a bit, because there are few enough of them to be free.** At a
+   * 32-sample chunk this is 729 bytes, and a bitset would be four passes of shifting to save
+   * nothing.
+   */
+  readonly blockEmpty: Uint8Array;
   /** The eight corner samples of the cell being considered. */
   readonly corners = new Float32Array(8);
   /** The eight corner marker values of that same cell. */
@@ -237,6 +288,10 @@ export class SurfaceNetsScratch {
     this.samples = new Float32Array(gx * gy * gz);
     this.marks = new Float32Array(gx * gy * gz);
     this.cellVertex = new Int32Array(cx * cy * cz);
+    const bx = broadPassBlocks(gx);
+    const by = broadPassBlocks(gy);
+    const bz = broadPassBlocks(gz);
+    this.blockEmpty = new Uint8Array(bx * by * bz);
   }
 }
 
@@ -407,6 +462,30 @@ export interface SurfaceNetsParams {
    * uniformly non-negative, which is the answer "nothing here is inside anything".
    */
   marker?: SurfaceSampler;
+  /**
+   * How far this field's value may over-report the true distance to the surface, in world units.
+   *
+   * **Zero for a field made of exact distances** — primitives composed with `min` and `max` and
+   * nothing else — and the widest blend carried by any operation in the model otherwise. A caller
+   * that knows what its field is made of says so here; see `broad-pass.ts` for why the mesher
+   * cannot work it out for itself.
+   *
+   * **Giving it turns on the broad pass**, which drops blocks of the grid that provably hold no
+   * surface and fills them with a constant instead of walking the field. On a streamed landscape
+   * that is most of the work: a 32-sample chunk is mostly air above the ground and rock below it,
+   * and measured on this repository's own terrain the pass removes 85 per cent of the samples at
+   * level of detail 0 and 72 at level 1.
+   *
+   * **Above `BROAD_PASS_MAX_SOFTNESS`, or absent, it is declined** and every sample is taken as
+   * before. Absent means "I do not know what this field is made of", and the answer to a question
+   * a mesher cannot answer safely is the slow one: a broad pass that believed a value it should
+   * not have would drop blocks holding real geometry.
+   *
+   * **Given, the mesh is byte-identical to the mesh without it** — the same vertices at the same
+   * positions in the same order. A dropped block is filled rather than skipped, so the cell loop
+   * reads the sign it would have read anyway and declines the block's cells itself.
+   */
+  softness?: number;
   /** Told how far through the three passes this mesh is. See `MeshProgress`. */
   onProgress?: MeshProgress;
 }
@@ -475,6 +554,21 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
     );
   }
 
+  /** Blocks along each axis, of the broad pass. Needed by the guard and the sampling loop alike. */
+  const blocksX = broadPassBlocks(gridX);
+  const blocksY = broadPassBlocks(gridY);
+  const blocksZ = broadPassBlocks(gridZ);
+  // **Checked with the other two rather than trusted, because a short one fails quietly.** A
+  // `Uint8Array` read past its end is `undefined`, and `undefined === 1` is false, so a scratch
+  // too small for this grid's blocks would drop nothing and produce the dense mesh — correct,
+  // slower, and with nothing anywhere saying so. That is the one failure mode in this routine that
+  // does not announce itself, which is the argument for asking here.
+  if (scratch.blockEmpty.length < blocksX * blocksY * blocksZ) {
+    throw new Error(
+      `surface nets: scratch holds ${scratch.blockEmpty.length} broad-pass blocks, this grid needs ${blocksX * blocksY * blocksZ}`,
+    );
+  }
+
   // Where each sample sits on each axis, resolved once. An even grid is built rather than
   // special-cased in the loops below, so there is a single version of the hot code and it
   // is the version that supports uneven spacing.
@@ -510,7 +604,38 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
   const sampleCount = gridX * gridY * gridZ;
   const cellCount = cellsX * cellsY * cellsZ;
   const edgeCount = ownedX * ownedY * ownedZ;
-  const totalWork = sampleCount + cellCount + edgeCount;
+
+  /**
+   * **Whether the broad pass runs, resolved once, before any loop.**
+   *
+   * **And why it is a flag and not a branch around the pass.** `empty` is then all zeros, so the
+   * lattice runs and every block is evaluated — for the cost of the lattice, which is one point in
+   * `step³` and a sixty-fourth of the grid at four. Declining this way rather than skipping the
+   * work keeps the two paths identical in every respect except the flag, which is the only way a
+   * "slow path" stays the same code as the fast one.
+   *
+   * **And a warped region declines it, because there is no reach to compute for one.** The proof
+   * is about half a block's *diagonal*, which needs the block's extent in world units, and a grid
+   * given `positionAt` has no per-axis spacing to take it from — a patch of a cube face is square
+   * in its own two parameters and sampled across a radial depth, and its diagonal is a function of
+   * all three indices at once. Computing one would mean evaluating `positionAt` at eight corners
+   * a block, which is a reach derived from where the corners landed rather than from the geometry
+   * the proof is about, so those chunks are sampled in full instead. `apps/spacescape` meshes a
+   * planet's surface exactly this way (ADR 0038) and keeps its speed.
+   */
+  const blend = positionAt ? undefined : params.softness;
+  const broad = broadPassRuns(blend, gridX, gridY, gridZ);
+  const step = BROAD_PASS_UNIT;
+  const empty = scratch.blockEmpty;
+  const marker = params.marker;
+
+  // **The lattice's cost, counted only when it is paid for.** The denominator has to describe the
+  // work this mesh actually does, and a mesh that declined the pass never evaluates a lattice
+  // point. The bar therefore runs slightly fast when the pass declines and exactly when it does
+  // not — the better of the two failures `MeshProgress` already names.
+  const latticeCount = broad ? blocksX * blocksY * blocksZ : 0;
+  const totalWork = latticeCount + sampleCount + cellCount + edgeCount;
+
   if (positionAt) {
     for (let z = 0; z < gridZ; z++) {
       for (let y = 0; y < gridY; y++) {
@@ -525,31 +650,12 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
       }
       progress((z + 1) * gridX * gridY, totalWork);
     }
-  } else {
-    for (let z = 0; z < gridZ; z++) {
-      const wz = pz[z] as number;
-      for (let y = 0; y < gridY; y++) {
-        const wy = py[y] as number;
-        for (let x = 0; x < gridX; x++) {
-          scratch.samples[(z * gridY + y) * gridX + x] = sampler.distance(
-            px[x] as number,
-            wy,
-            wz,
-          );
-        }
-      }
-      progress((z + 1) * gridX * gridY, totalWork);
-    }
-  }
-
-  // The marker, in a pass of its own rather than a branch inside the two loops above.
-  //
-  // **Same position, same call shape, and skipped entirely when there is no marker** — which is
-  // every caller but the sea's. A branch in the innermost loop of the densest routine in the
-  // project would cost every chunk that has no use for one to save a loop only the sea pays.
-  if (params.marker !== undefined) {
-    const marker = params.marker;
-    if (positionAt) {
+    // The marker, in a pass of its own rather than a branch inside the loop above.
+    //
+    // **Same position, same call shape, and skipped entirely when there is no marker** — which is
+    // every caller but the sea's. A branch in the innermost loop of the densest routine in the
+    // project would cost every chunk that has no use for one to save a loop only the sea pays.
+    if (marker !== undefined) {
       for (let z = 0; z < gridZ; z++) {
         for (let y = 0; y < gridY; y++) {
           for (let x = 0; x < gridX; x++) {
@@ -562,22 +668,187 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
           }
         }
       }
-    } else {
-      for (let z = 0; z < gridZ; z++) {
-        const wz = pz[z] as number;
-        for (let y = 0; y < gridY; y++) {
-          const wy = py[y] as number;
-          for (let x = 0; x < gridX; x++) {
-            scratch.marks[(z * gridY + y) * gridX + x] = marker.distance(
-              px[x] as number,
-              wy,
-              wz,
-            );
-          }
+    }
+  } else {
+    /**
+     * **The lattice the cull reads, at one point in `step³`.**
+     *
+     * **Evaluated on its own and written where every other value goes**, because a corner belongs
+     * to eight blocks and evaluating it eight times is eight times the cost of evaluating it once.
+     * At four samples a side that is a sixty-fourth of the grid against the eight-in-sixty-four a
+     * per-block test would spend.
+     *
+     * **The last coordinate is always sampled, and `grid - 1` is not a multiple of four.** The
+     * block at the high edge is short, its corners are pulled in to the grid, and the pull-in can
+     * land anywhere — so each axis steps by `step` until one more step would leave the grid, and
+     * then visits `grid - 1`. Without it the last block would read `undefined`, and a `NaN` from
+     * `Math.abs(undefined)` fails a `<=` comparison, which would drop that block on the strength
+     * of a comparison that never happened.
+     */
+    for (let z = 0; z < gridZ; z = nextBroadPlane(z, gridZ)) {
+      const wz = pz[z] as number;
+      for (let y = 0; y < gridY; y = nextBroadPlane(y, gridY)) {
+        const wy = py[y] as number;
+        for (let x = 0; x < gridX; x = nextBroadPlane(x, gridX)) {
+          scratch.samples[(z * gridY + y) * gridX + x] = sampler.distance(
+            px[x] as number,
+            wy,
+            wz,
+          );
         }
       }
     }
-  } else if (gate !== undefined) {
+
+    for (let cz = 0; cz < blocksZ; cz++) {
+      for (let cy = 0; cy < blocksY; cy++) {
+        for (let cx = 0; cx < blocksX; cx++) {
+          const slot = (cz * blocksY + cy) * blocksX + cx;
+          // **Written rather than left, because a rebuild that ran the pass leaves `1`s behind and
+          // one that did not must not read them.** That is the whole of the guarantee
+          // `blockEmpty`'s own comment claims, and it costs one store per block.
+          if (!broad) {
+            empty[slot] = 0;
+            continue;
+          }
+          const x0 = cx * step;
+          const y0 = cy * step;
+          const z0 = cz * step;
+          const ex = broadPassBlockExtent(x0, gridX);
+          const ey = broadPassBlockExtent(y0, gridY);
+          const ez = broadPassBlockExtent(z0, gridZ);
+
+          /**
+           * **The reach is the half-diagonal of the block's own spans, read off the lanes.**
+           *
+           * `px[x0 + ex] − px[x0]` rather than `ex · sampleSize`, because a region may give per-axis
+           * lanes and then the two are not the same number. For the even lane `uniformLane` builds,
+           * they are — which is why this is not two code paths.
+           */
+          const reach = broadPassReachAcross(
+            Math.abs((px[x0 + ex] as number) - (px[x0] as number)),
+            Math.abs((py[y0 + ey] as number) - (py[y0] as number)),
+            Math.abs((pz[z0 + ez] as number) - (pz[z0] as number)),
+            blend,
+          );
+
+          let clear = true;
+          outer: for (let dz = 0; dz <= 1; dz++) {
+            const z = z0 + dz * ez;
+            for (let dy = 0; dy <= 1; dy++) {
+              const y = y0 + dy * ey;
+              for (let dx = 0; dx <= 1; dx++) {
+                const x = x0 + dx * ex;
+                if (
+                  Math.abs(
+                    scratch.samples[(z * gridY + y) * gridX + x] as number,
+                  ) <= reach
+                ) {
+                  clear = false;
+                  break outer;
+                }
+              }
+            }
+          }
+          empty[slot] = clear ? 1 : 0;
+        }
+      }
+    }
+
+    /**
+     * **Every block's samples, filled one block at a time.**
+     *
+     * **Interiors partition the grid exactly.** Block `b` owns `[b·step, min(b·step + step, grid))`,
+     * so every point is written once and once only — the cell loop needs every sample to have a
+     * value, and it reads the planes between blocks as readily as anything else.
+     *
+     * **And it never fills past what the cull ruled out.** Where a block is short at the grid's
+     * high edge, `broadPassBlockExtent` pulled its far corner in to `grid - 1` and the fill's
+     * `Math.min` lands on the same index, so the two agree by construction rather than by two
+     * pieces of arithmetic happening to match.
+     */
+    let sampled = 0;
+    for (let bz = 0; bz < blocksZ; bz++) {
+      const z0 = bz * step;
+      const zEnd = Math.min(z0 + step, gridZ);
+      for (let by = 0; by < blocksY; by++) {
+        const y0 = by * step;
+        const yEnd = Math.min(y0 + step, gridY);
+        for (let bx = 0; bx < blocksX; bx++) {
+          const x0 = bx * step;
+          const xEnd = Math.min(x0 + step, gridX);
+          sampled += (zEnd - z0) * (yEnd - y0) * (xEnd - x0);
+
+          if (empty[(bz * blocksY + by) * blocksX + bx] === 1) {
+            /**
+             * **A constant, and the constant's sign is the block's own.** Every sample in a
+             * dropped block is on the same side of the surface — a block holding both would hold a
+             * crossing, and a crossing is what the cull rules out — so any of its corners says
+             * which side, and `FAR_DISTANCE` out on that side is a value the field itself would
+             * have given a point that far from everything. **A positive constant here would be
+             * wrong in a way that shows**: a block buried inside a solid is dropped just as often
+             * as one out in the open air, and filling it with air puts a surface along every one
+             * of its faces that was not there.
+             */
+            const corner = scratch.samples[
+              (z0 * gridY + y0) * gridX + x0
+            ] as number;
+            const away = corner < 0 ? -FAR_DISTANCE : FAR_DISTANCE;
+            for (let z = z0; z < zEnd; z++) {
+              for (let y = y0; y < yEnd; y++) {
+                const row = (z * gridY + y) * gridX;
+                scratch.samples.fill(away, row + x0, row + xEnd);
+                /**
+                 * **The marker is filled beside it, and the value does not matter.**
+                 *
+                 * The gate is asked about *cells*, and a cell in a dropped block is all one sign
+                 * and is declined before the gate is reached — so these values decide nothing, and
+                 * filling them with a constant, filling them with the previous chunk's depths, or
+                 * not writing them at all all produce the same mesh. They are written because
+                 * `marks` is documented as holding a value at every sample and a caller that
+                 * reads it somewhere this file has not thought of is owed one; zero is what
+                 * `cellGate` already promises a caller with no marker at all.
+                 */
+                if (marker !== undefined)
+                  scratch.marks.fill(0, row + x0, row + xEnd);
+              }
+            }
+            continue;
+          }
+
+          for (let z = z0; z < zEnd; z++) {
+            const wz = pz[z] as number;
+            for (let y = y0; y < yEnd; y++) {
+              const row = (z * gridY + y) * gridX;
+              const wy = py[y] as number;
+              for (let x = x0; x < xEnd; x++) {
+                scratch.samples[row + x] = sampler.distance(
+                  px[x] as number,
+                  wy,
+                  wz,
+                );
+              }
+              // **The marker rides in the same row, so a kept block costs one loop for both fields
+              // and a dropped one costs none for either.** It is not a branch in the innermost loop:
+              // it is outside it, once per row of the grid, which is `grid²` decisions against
+              // `grid³` field calls.
+              if (marker !== undefined) {
+                for (let x = x0; x < xEnd; x++) {
+                  scratch.marks[row + x] = marker.distance(
+                    px[x] as number,
+                    wy,
+                    wz,
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+      progress(sampled, totalWork);
+    }
+  }
+
+  if (marker === undefined && gate !== undefined) {
     // Zeroed for a gate that was given no marker, once per chunk rather than per sample: the
     // buffer is only read where a gate reads it, and a caller with no marker wants the same
     // answer every time rather than the last chunk's.
@@ -610,7 +881,7 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
         // pairs — see `SurfaceNetsParams.cellGate`, which is why this is here and not in
         // the gate itself.
         if (gate !== undefined) {
-          if (params.marker !== undefined) {
+          if (marker !== undefined) {
             for (let corner = 0; corner < 8; corner++) {
               const [dx, dy, dz] = CORNER_OFFSETS[corner];
               scratch.cornerMarks[corner] = mark(cx + dx, cy + dy, cz + dz);
@@ -717,7 +988,10 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
         );
       }
     }
-    progress(sampleCount + (cz + 1) * cellsX * cellsY, totalWork);
+    progress(
+      latticeCount + sampleCount + (cz + 1) * cellsX * cellsY,
+      totalWork,
+    );
   }
 
   // ---- One quad per owned edge whose sign changes.
@@ -763,7 +1037,10 @@ export const surfaceNets = (params: SurfaceNetsParams): void => {
         }
       }
     }
-    progress(sampleCount + cellCount + pz * ownedX * ownedY, totalWork);
+    progress(
+      latticeCount + sampleCount + cellCount + pz * ownedX * ownedY,
+      totalWork,
+    );
   }
 };
 

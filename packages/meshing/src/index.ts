@@ -65,15 +65,34 @@ export {
 export {
   marchingCubes,
   marchingCubesScratchFor,
-  BROAD_PASS_MAX_SOFTNESS,
-  BROAD_PASS_UNIT,
-  broadPassReach,
   MARCHING_CUBES_CELLS,
   MARCHING_CUBES_GRID,
   MarchingCubesScratch,
   SAMPLE_ZERO,
   type MarchingCubesParams,
 } from "./marching-cubes";
+
+/**
+ * **`broad-pass` is beside the meshers rather than inside either of them, because the cull it
+ * describes is not either one's.** It drops blocks of a sample grid that provably hold no surface,
+ * which is a property of a distance function and a cube — and both meshers sample the same `grid³`
+ * the same way, so both take it and both are worth the same for having taken it. `marchingCubes`
+ * re-exports what it always exported, so nothing that reached for the pass through it has moved.
+ *
+ * It is exported at all because the reach is the one thing here a caller can check for itself,
+ * and a mesh bound for a slicer is exactly the place where "this region is empty" is worth
+ * verifying rather than trusting.
+ */
+export {
+  broadPassBlockExtent,
+  broadPassBlocks,
+  broadPassReach,
+  broadPassReachAcross,
+  broadPassRuns,
+  BROAD_PASS_MAX_SOFTNESS,
+  BROAD_PASS_UNIT,
+  nextBroadPlane,
+} from "./broad-pass";
 
 export {
   describeReport,
