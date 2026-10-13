@@ -12,6 +12,7 @@ import {
   If,
   int,
   ivec3,
+  texture,
   uint,
   vec2,
   vec3,
@@ -37,13 +38,13 @@ const BLOCK_BOUNCE = 0.3;
 
 // The voxel texture is an integer (usampler3D) so the lookup compiles to
 // texelFetch, which takes integer texel coordinates — one texel per voxel.
-// .texture() takes those integer texel coordinates directly, not a normalized
+// The fetch takes those integer texel coordinates directly, not a normalized
 // [0,1] position, so a caller that already works in whole voxel indices
 // fetches by them.
 const sampleCell = (
   voxels: Node<"usampler3D">,
   cell: Node<"ivec3">,
-): Node<"uvec4"> => voxels.texture(cell.toUVec3());
+): Node<"uvec4"> => texture(voxels, cell.toUVec3());
 
 // The volume fills the whole grid (one texel per voxel), so a cell is inside
 // the volume exactly when every index lies in [0, uVoxelCount).
@@ -111,7 +112,8 @@ const colourIndexToColour = (
 ): Node<"vec4"> => {
   // Sample the texel's centre: the palette is one row of 32 texels, so the
   // centre of texel i sits at (i + 0.5)/32.
-  return palette.texture(
+  return texture(
+    palette,
     vec2(
       colourIndex
         .toFloat()

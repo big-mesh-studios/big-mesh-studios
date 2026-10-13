@@ -20,6 +20,7 @@ import {
   mod,
   sin,
   smoothstep,
+  texture,
   vec2,
   vec3,
   vec4,
@@ -359,7 +360,8 @@ export class StormMaterial extends NodeMaterial {
     const first =
       noise === undefined
         ? float(0.5)
-        : noise.texture(
+        : texture(
+            noise,
             uv
               .mul(float(NOISE_SCALE))
               .add(jitter)
@@ -368,7 +370,8 @@ export class StormMaterial extends NodeMaterial {
     const second =
       noise === undefined
         ? float(0.5)
-        : noise.texture(
+        : texture(
+            noise,
             uv
               .mul(float(NOISE_SCALE * 2.7))
               .add(jitter)

@@ -132,7 +132,7 @@ export function pickFigure(view: FigurePickView): FigurePick | undefined {
         [shaders.uWorldToModel]: Array.from(intoPart),
         [shaders.uUnlit]: view.unlit,
       },
-      varying: { vUv: [view.uv.x, view.uv.y] },
+      uv: [view.uv.x, view.uv.y],
       textures: {
         [shaders.uVoxels]: {
           data: voxels,

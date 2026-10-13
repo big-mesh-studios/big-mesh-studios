@@ -18,6 +18,12 @@ import { float, vec3, type Node } from "@random-mesh/rmsl";
 export const VERTEX_BYTES = 20;
 
 /**
+ * The three vertex formats this layout's attributes are in, named the way the
+ * graphics APIs name them.
+ */
+export type VertexFormat = "float32x3" | "float16x2" | "unorm8x4";
+
+/**
  * The largest tile index the sheet lane can hold. A sheet with more cells than
  * this cannot be addressed by a byte, which `TriangleRenderer.setTiles` checks
  * when an atlas arrives rather than letting the index wrap silently.

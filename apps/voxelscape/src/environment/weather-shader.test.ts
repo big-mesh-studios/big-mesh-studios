@@ -50,7 +50,7 @@ const worldPosition = (
   });
   const value = transform({ attributes: { ...PARTICLE, ...attributes } }).value;
   if (value === null) throw new Error("the vertex stage produced nothing");
-  return value;
+  return Array.from(value);
 };
 
 /** The lifetime fade the vertex stage passes to the fragment stage. */
@@ -83,9 +83,11 @@ describe("particle fragment shape", () => {
     const material = rain();
     const shade = fromProgram(material.build(new Scene()));
     expect(shade.unbound).toEqual([]);
-    expect(shade({ varyings: { vUv: [0.5, 0.5], vFade: 1 } }).value).toEqual([
-      0.75, 0.8, 0.9, 1,
-    ]);
+    expect(
+      Array.from(
+        shade({ varyings: { vUv: [0.5, 0.5], vFade: 1 } }).value ?? [],
+      ),
+    ).toEqual([0.75, 0.8, 0.9, 1]);
   });
 
   it("leaves the corners of the quad transparent", () => {

@@ -37,6 +37,7 @@ import {
   float,
   normalize,
   sqrt,
+  texture,
   vec2,
   vec3,
   vec4,
@@ -292,14 +293,14 @@ export class GlobeMaterial extends NodeMaterial {
 
   /** One bilinear read of the height map's red channel. */
   private sampleHeight(_b: Builder, uv: Node<"vec2">): Node<"float"> {
-    return this.heightSampler!.texture(uv).x;
+    return texture(this.heightSampler!, uv).x;
   }
 
   protected override buildFragmentBody(b: Builder): Node<"vec4"> {
     const direction = normalize(b.positionWorld);
     const uv = equirectUV(direction);
 
-    const albedo = this.albedoSampler!.texture(uv).xyz;
+    const albedo = texture(this.albedoSampler!, uv).xyz;
     const relief = this.reliefUniform!;
     const seaRadius = this.seaRadiusUniform!;
 

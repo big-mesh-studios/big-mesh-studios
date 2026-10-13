@@ -70,7 +70,7 @@ const worldPosition = (
     attributes: { ...BILLBOARD, ...attributes },
   }).value;
   if (value === null) throw new Error("the vertex stage produced nothing");
-  return value;
+  return Array.from(value);
 };
 
 describe("the dust noise texture", () => {

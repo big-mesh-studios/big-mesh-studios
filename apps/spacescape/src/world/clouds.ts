@@ -86,6 +86,7 @@ import {
   saturate,
   select,
   sqrt,
+  texture,
   vec2,
   vec3,
   vec4,
@@ -433,7 +434,7 @@ const spun = (turn: Turn, v: Node<"vec3">): Node<"vec3"> =>
 const weatherAt = (
   f: { readonly weather: UniformNode<"sampler2D"> },
   direction: Node<"vec3">,
-): Node<"vec4"> => f.weather.texture(equirectUV(direction));
+): Node<"vec4"> => texture(f.weather, equirectUV(direction));
 
 /**
  * Where a sample falls in the shape volume, before the warp: **direction, plus altitude.**
@@ -583,7 +584,7 @@ const warpOffset = (warp: Node<"vec2">): Node<"vec3"> =>
 
 /** The base shape: the cheap test, and what the march toward the light samples. */
 const baseAt = (f: Field, coords: Node<"vec3">): Node<"float"> =>
-  f.shape.texture(coords).r;
+  texture(f.shape, coords).r;
 
 /**
  * The layer's height gradient: nothing at the very bottom, a body in the middle,
@@ -641,7 +642,7 @@ const sampleVolume = (
   base: Var<"float">,
   detail: Var<"float">,
 ): void => {
-  const sampled = f.shape.texture(coords).toVar();
+  const sampled = texture(f.shape, coords).toVar();
   base.assign(sampled.r);
   // Weighted toward the coarsest channel so the finest contributes an edge without
   // becoming the edge.
@@ -1255,7 +1256,7 @@ export class CheapCloudMaterial extends NodeMaterial {
     const world = eye.add(ray.mul(distance)).toVar();
     const here = spun(turn, world.normalize()).toVar();
     const uv = equirectUV(here).toVar();
-    const weather = f.weather.texture(uv).toVar();
+    const weather = texture(f.weather, uv).toVar();
     const height = heightAt(f, world).toVar();
 
     // **One fetch, and it is the expensive layer's own shape.** The slice was cut at the
@@ -1264,7 +1265,7 @@ export class CheapCloudMaterial extends NodeMaterial {
     // no volume, no warp and no scale to recompute. The weather is still read live for the
     // coverage threshold, because coverage and density are knobs the player can move after the
     // bake.
-    const sampled = f.slice.texture(uv).toVar();
+    const sampled = texture(f.slice, uv).toVar();
     const shape = sampled.r;
     const detail = sampled.g
       .mul(0.55)

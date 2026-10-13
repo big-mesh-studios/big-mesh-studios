@@ -12,6 +12,7 @@ import {
   min,
   mix,
   step,
+  texture,
   vec2,
   vec4,
   type Node,
@@ -88,7 +89,7 @@ export class PanelMaterial extends NodeMaterial {
   }
 
   protected buildFragmentBody(b: Builder): Node<"vec4"> {
-    const texel = this.pictureUniform!.texture(b.uvVarying);
+    const texel = texture(this.pictureUniform!, b.uvVarying);
     const half = vec2(float(0.5), float(0.5));
     // Where the fragment lands on the plane, counted in the cells of the
     // picture rather than across the whole of it.

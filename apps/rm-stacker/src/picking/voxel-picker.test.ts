@@ -31,7 +31,7 @@ const palette = () => {
 describe("voxel picker to outline", () => {
   it("returns the front-layer voxel for a tap on the front and traces it there", () => {
     // 10x10x10 volume, one solid voxel at the front (+z) layer, one at the back.
-    // A vUv of (0.52, 0.52) points the ray at the front face of cell (5, 5, 9).
+    // A UV of (0.52, 0.52) points the ray at the front face of cell (5, 5, 9).
     const dims = { width: 10, height: 10, depth: 10 };
     const voxels = makeSolidTexture(10, 10, 10, [
       [5, 5, 0],
@@ -50,7 +50,7 @@ describe("voxel picker to outline", () => {
         [shaders.uWorldToModel]: [1, 0, 0, 0, 1, 0, 0, 0, 1],
         [shaders.uUnlit]: false,
       },
-      varying: { vUv: [0.52, 0.52] },
+      uv: [0.52, 0.52],
       textures: {
         [shaders.uVoxels]: voxels,
         [shaders.uPalette]: { data: palette(), width: 32, height: 1 },

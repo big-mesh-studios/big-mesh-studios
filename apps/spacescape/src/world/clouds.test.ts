@@ -347,10 +347,17 @@ describe("the cloud material compiles", () => {
     // The property that buys the long empty steps. Approximating transmittance as
     // constant over a step makes a cloud's brightness depend on how finely it was
     // sampled, which is what forces small steps. The analytic form is the fraction of
-    // the step's remaining opacity, `T - T·exp(-σd)` — so look for the numerator
-    // subtracting `T * exp(...)` from `T`.
+    // the step's remaining opacity, `T - T·exp(-σd)` — so look for a transmittance
+    // term subtracting an `exp` from the transmittance it started the step with.
+    //
+    // rmsl writes that term in whichever of two spellings suits the emitter: it folds
+    // the first step, where the ray enters with a transmittance of one, into
+    // `1.0 - exp(…)`, and hoists an `exp` several terms share into a temporary the
+    // subtraction then multiplies. Both are the same integral.
     const { fragment } = compile(make());
-    expect(fragment).toMatch(/(\w+)\s*-\s*\1\s*\*\s*exp\(/);
+    expect(fragment).toMatch(
+      /1\.0\s*-\s*exp\(|(\w+)\s*-\s*\1\s*\*\s*(?:exp\(|\w+\s*\*)/,
+    );
   });
 
   it("does not divide the step's opacity by its optical depth", () => {
@@ -379,7 +386,7 @@ describe("the cloud material compiles", () => {
     // already premultiplied and has to be divided by its own alpha, or every cloud
     // comes out twice as dark as it should be.
     const { fragment } = compile(make());
-    const output = /_rmsl_o\d+ = vec4\(([^;]+)\);/.exec(fragment);
+    const output = /_rmsl_fragColor = vec4\(([^;]+)\);/.exec(fragment);
     expect(output).not.toBeNull();
     const expression = output![1]!;
     // The colour divided by a complement of the alpha, and the alpha is that same
@@ -387,16 +394,23 @@ describe("the cloud material compiles", () => {
     // dark as it should be in the channels and correct in the alpha, which reads as a
     // cloud in the wrong weather rather than as a bug.
     //
+    // rmsl hoists the `1.0 - alpha` the divisor shares with the alpha into a temporary
+    // and names it in both places, so the two halves are checked for being one name
+    // rather than for spelling out the same subtraction twice.
+    //
     // The expression was captured from inside `vec4(...)`, so it carries no trailing
     // parenthesis of its own.
     const composite =
-      /^\s*(\w+)\s*\/\s*max\(\s*1\.0\s*-\s*(\w+)\s*,[^)]*\),\s*1\.0\s*-\s*(\w+)\s*$/.exec(
-        expression,
-      );
+      /^\s*(\w+)\s*\/\s*max\(\s*(\w+)\s*,[^)]*\),\s*(\w+)\s*$/.exec(expression);
     expect(composite, expression).not.toBeNull();
     const [, scatter, inTheDivisor, asAlpha] = composite!;
     expect(inTheDivisor).toBe(asAlpha);
     expect(scatter).not.toBe(inTheDivisor);
+    // And the temporary both of them name really is the alpha's complement, rather
+    // than the alpha itself — dividing by the alpha premultiplies a second time.
+    expect(fragment).toMatch(
+      new RegExp(`float\\s+${inTheDivisor}\\s*=\\s*1\\.0\\s*-\\s*\\w+`),
+    );
   });
 
   it("marches toward whichever light is up, once", () => {

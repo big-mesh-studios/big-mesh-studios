@@ -18,11 +18,7 @@
 // to the translucent water pass; lava, which is opaque and textured, is
 // emitted into the terrain pass so it shares the terrain material and the
 // opaque draw order.
-import {
-  BufferAttribute,
-  BufferGeometry,
-  type VertexFormat,
-} from "@random-mesh/rmsl/scene";
+import { BufferAttribute, BufferGeometry } from "@random-mesh/rmsl/scene";
 import type { VoxelTileConfig } from "./atlas";
 import { Growable } from "./growable";
 import {
@@ -36,7 +32,11 @@ import {
 import { surfaceFractionOfLevel } from "../world/fluid";
 import { LIGHT_TO_UNIT, type LightStore } from "../world/light-store";
 import { SlicePlane, type FaceLight } from "./plane-merge";
-import { faceIndexOf, halfOfWholeNumber } from "./vertex-format";
+import {
+  faceIndexOf,
+  halfOfWholeNumber,
+  type VertexFormat,
+} from "./vertex-format";
 
 /**
  * Vertex arrays for one mesh, at exactly the length the build wrote. Typed all
@@ -724,7 +724,7 @@ export const buildWaterMesh = (
 };
 
 /**
- * Wraps a typed array as a `BufferAttribute` whose `updateRange` says which
+ * Wraps a typed array as a `BufferAttribute` whose update ranges say which
  * slice the GPU still needs, then marks it for upload. A caller that keeps a
  * merged geometry's arrays and only appends to them passes how many vertices
  * (or indices, for the index attribute) the GPU already holds, so the next
@@ -742,10 +742,7 @@ const attrWithRange = (
   attribute.format = format;
   if (span !== undefined) {
     // Counted in numbers here, where the span counts vertices or indices.
-    attribute.updateRange = {
-      offset: span.first * itemSize,
-      count: span.count * itemSize,
-    };
+    attribute.addUpdateRange(span.first * itemSize, span.count * itemSize);
   }
   attribute.needsUpdate = true;
   return attribute;

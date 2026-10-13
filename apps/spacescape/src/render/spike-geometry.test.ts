@@ -1,111 +1,36 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  BufferAttribute,
-  VERTEX_FORMATS,
-  vertexFormatOf,
-  type VertexFormat,
-} from "@random-mesh/rmsl/scene";
-
-import {
   buildBox,
   buildSphere,
   toGeometry,
   VERTEX_BYTES,
+  VERTEX_FORMAT_SPECS,
 } from "./spike-geometry";
 
-describe("the vertex layout RMSL infers", () => {
-  it("reads a signed 16-bit pair of components as snorm16x2", () => {
-    // This is the load-bearing assertion of the whole layout. RMSL decides an
-    // attribute's format from its array type, its component count and its
-    // `normalized` flag, and a wrong reading is silent: a `snorm16x2` read as
-    // whole numbers puts every normal in the scene a thousand degrees off, and
-    // the shader still compiles, the draw still happens, and the result is a
-    // black or white screen rather than an error.
-    const attribute = new BufferAttribute(new Int16Array(8), 2, true, "vertex");
-    expect(vertexFormatOf(attribute)).toBe("snorm16x2");
-    expect(VERTEX_FORMATS.snorm16x2.count).toBe(2);
-    expect(VERTEX_FORMATS.snorm16x2.bytes).toBe(2);
+describe("the vertex layout the spikes draw", () => {
+  it("declares each attribute in the format its bytes are in", () => {
+    // The load-bearing assertion of the whole layout, and a silent one to get
+    // wrong: RMSL reads an attribute's bytes as whatever format it is told, and
+    // a wrong reading is a shader that still compiles and a draw that still
+    // happens. A `snorm16x2` read as whole numbers puts every normal in the
+    // scene a thousand degrees off and the result is a black or white screen
+    // rather than an error.
+    const geometry = toGeometry(buildSphere(1, 8, 6, { r: 1, g: 1, b: 1 }));
+
+    // Each pair below differs from its neighbour in exactly one of the two
+    // things the array type cannot settle on its own: how wide a component is,
+    // and whether the stored integer is scaled into 0..1 or -1..1 on the way in.
+    expect(geometry.getAttribute("position")!.format).toBe("float32x3");
+    expect(geometry.getAttribute("normalOct")!.format).toBe("snorm16x2");
+    expect(geometry.getAttribute("colour")!.format).toBe("unorm8x4");
   });
 
-  it("reads an unsigned 8-bit quad of components as unorm8x4", () => {
-    const attribute = new BufferAttribute(
-      new Uint8Array(16),
-      4,
-      true,
-      "vertex",
-    );
-    expect(vertexFormatOf(attribute)).toBe("unorm8x4");
-    expect(VERTEX_FORMATS.unorm8x4.count).toBe(4);
-    expect(VERTEX_FORMATS.unorm8x4.bytes).toBe(1);
-  });
-
-  it("reads an unnormalized float triple as float32x3", () => {
-    const attribute = new BufferAttribute(
-      new Float32Array(12),
-      3,
-      false,
-      "vertex",
-    );
-    expect(vertexFormatOf(attribute)).toBe("float32x3");
-  });
-
-  it("distinguishes signed from unsigned and normalized from whole numbers", () => {
-    // The three flags are the only things telling these apart, so a regression
-    // that dropped one of them would silently merge formats. Each pair below
-    // differs by exactly one.
-    const cases: Array<[string, VertexFormat]> = [
-      [
-        "snorm16x2",
-        vertexFormatOf(new BufferAttribute(new Int16Array(4), 2, true)),
-      ],
-      [
-        "unorm16x2",
-        vertexFormatOf(new BufferAttribute(new Uint16Array(4), 2, true)),
-      ],
-      [
-        "snorm16x4",
-        vertexFormatOf(new BufferAttribute(new Int16Array(8), 4, true)),
-      ],
-      [
-        "unorm16x4",
-        vertexFormatOf(new BufferAttribute(new Uint16Array(8), 4, true)),
-      ],
-      [
-        "snorm8x4",
-        vertexFormatOf(new BufferAttribute(new Int8Array(8), 4, true)),
-      ],
-      [
-        "unorm8x4",
-        vertexFormatOf(new BufferAttribute(new Uint8Array(8), 4, true)),
-      ],
-    ];
-    expect(new Set(cases.map(([name]) => name)).size).toBe(cases.length);
-  });
-
-  it("honours an attribute that declares its own format", () => {
-    // The case the array type cannot settle: a `Uint16Array` reads identically
-    // whether it holds half floats or normalized integers, and only the author
-    // knows which. RMSL refuses to guess — left undeclared it throws, with a
-    // message naming both ways out — rather than reading the bytes as something
-    // they are not.
-    const undeclared = new BufferAttribute(new Uint16Array(4), 2, false);
-    expect(() => vertexFormatOf(undeclared)).toThrow(/no vertex format/);
-
-    const halves = new BufferAttribute(new Uint16Array(4), 2, false);
-    halves.format = "float16x2";
-    expect(vertexFormatOf(halves)).toBe("float16x2");
-
-    const normalized = new BufferAttribute(new Uint16Array(4), 2, true);
-    expect(vertexFormatOf(normalized)).toBe("unorm16x2");
-  });
-
-  it("gives every format in the table a stride that is a multiple of four", () => {
+  it("gives every format it uses a stride that is a multiple of four", () => {
     // The rule that shapes the format list at all: WebGPU requires a vertex
     // buffer's stride to be a multiple of four, and RMSL gives each format its
     // own buffer. A format that fails this cannot be used without widening it.
-    for (const [name, spec] of Object.entries(VERTEX_FORMATS)) {
-      expect(`${name}:${spec.count * spec.bytes}`).toMatch(/:\d+$/);
+    for (const [name, spec] of Object.entries(VERTEX_FORMAT_SPECS)) {
       expect((spec.count * spec.bytes) % 4, `${name} stride`).toBe(0);
     }
   });
@@ -118,9 +43,11 @@ describe("the geometry the spikes draw", () => {
     for (const name of ["position", "normalOct", "colour"]) {
       const attribute = geometry.getAttribute(name);
       expect(attribute, name).toBeDefined();
-      stride +=
-        VERTEX_FORMATS[vertexFormatOf(attribute!)].count *
-        VERTEX_FORMATS[vertexFormatOf(attribute!)].bytes;
+      const spec =
+        VERTEX_FORMAT_SPECS[
+          attribute!.format as keyof typeof VERTEX_FORMAT_SPECS
+        ];
+      stride += spec.count * spec.bytes;
     }
     // The number the upload budget will be denominated in has to be the number
     // the GPU is actually handed, or a budget derived from it is wrong by a

@@ -9,7 +9,7 @@
 // normal the fragment is lit by. Both the palette and the light are the marcher's
 // own, so a model looks the same drawn either way.
 import type { Node, UniformNode } from "@random-mesh/rmsl";
-import { float, If, vec2, vec3, vec4 } from "@random-mesh/rmsl";
+import { float, If, texture, vec2, vec3, vec4 } from "@random-mesh/rmsl";
 import type { Builder } from "@random-mesh/rmsl/scene";
 import {
   DataTexture,
@@ -152,7 +152,7 @@ export class VoxelMeshMaterial extends NodeMaterial {
       .round()
       .div(PALETTE_WIDTH)
       .add(float(0.5 / PALETTE_WIDTH));
-    const colour = this.paletteUniform!.texture(vec2(texel, float(0.5)));
+    const colour = texture(this.paletteUniform!, vec2(texel, float(0.5)));
 
     const diffuse = normal.dot(this.lightDirUniform!).max(float(0));
     const lit = this.ambientColourUniform!.add(

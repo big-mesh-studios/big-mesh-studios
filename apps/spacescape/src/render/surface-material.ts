@@ -31,7 +31,7 @@
 
 import type { Rgb8 } from "@big-mesh-studios/core";
 import type { Node, UniformNode } from "@random-mesh/rmsl";
-import { float, select, vec3, vec4 } from "@random-mesh/rmsl";
+import { float, select, texture, vec3, vec4 } from "@random-mesh/rmsl";
 import type { Builder } from "@random-mesh/rmsl/scene";
 import {
   DataTexture,
@@ -279,7 +279,7 @@ export class SurfaceMaterial extends NodeMaterial {
         .mul(this.volumeScaleUniform!)
         .add(vec3(0.5, 0.5, 0.5))
         .clamp(vec3(0, 0, 0), vec3(1, 1, 1));
-      const sampled = this.volumeSampler.texture(uvw);
+      const sampled = texture(this.volumeSampler, uvw);
 
       const covered = sampled.r;
       const darken = float(1).sub(

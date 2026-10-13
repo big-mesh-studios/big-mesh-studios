@@ -51,7 +51,7 @@ const surface = (
     uniforms: { cameraPosition: [0, 0, 0] },
   }).value;
   if (value === null) throw new Error("the fragment discarded");
-  return value;
+  return Array.from(value);
 };
 
 /**
@@ -68,7 +68,7 @@ const water = (
     uniforms: { cameraPosition: [0, 0, 0] },
   }).value;
   if (value === null) throw new Error("the fragment discarded");
-  return value;
+  return Array.from(value);
 };
 
 describe("terrain lighting", () => {

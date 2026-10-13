@@ -16,6 +16,7 @@ import {
   mix,
   sin,
   smoothstep,
+  texture,
   vec2,
   vec3,
   vec4,
@@ -108,7 +109,7 @@ export class RiftMaterial extends NodeMaterial {
       .toVar();
 
     const tap = (coords: Node<"vec2">): Node<"float"> =>
-      noise === undefined ? float(0.5) : noise.texture(coords).r;
+      noise === undefined ? float(0.5) : texture(noise, coords).r;
     const coarse = tap(
       swirl
         .mul(vec2(CHURN_SCALE[0], CHURN_SCALE[1]))

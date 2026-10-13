@@ -458,8 +458,8 @@ describe("setGeometryData", () => {
     expect(geometry.drawCount).toBe(grown.indices.length);
     expect(geometry.drawCount).toBeGreaterThan(firstCount);
     expect(geometry.position?.count).toBe(grown.positions.length / 3);
-    expect(geometry.position?.needsUpdate).toBe(true);
-    expect(geometry.attributes.packed?.needsUpdate).toBe(true);
+    expect(geometry.position?.version).toBeGreaterThan(0);
+    expect(geometry.attributes.packed?.version).toBeGreaterThan(0);
     expect(geometry.index?.count).toBe(grown.indices.length);
   });
 

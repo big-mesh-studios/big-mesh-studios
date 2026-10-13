@@ -41,9 +41,28 @@ export interface VertexData {
  * Bytes one vertex occupies across the three attributes, which is what a
  * generated upload budget is denominated in. Kept next to the layout rather than
  * in a constant elsewhere so the two cannot drift; `spike-geometry.test.ts`
- * checks it against what RMSL actually infers.
+ * checks it against the formats the geometry's attributes declare.
  */
 export const VERTEX_BYTES = 12 + 4 + 4;
+
+/**
+ * The three vertex formats this layout's attributes are in, named the way the
+ * graphics APIs name them.
+ */
+export type VertexFormat = "float32x3" | "snorm16x2" | "unorm8x4";
+
+/**
+ * What each of those formats is made of: components one vertex holds, and the
+ * bytes each of them occupies.
+ */
+export const VERTEX_FORMAT_SPECS: Record<
+  VertexFormat,
+  { count: number; bytes: number }
+> = {
+  float32x3: { count: 3, bytes: 4 },
+  snorm16x2: { count: 2, bytes: 2 },
+  unorm8x4: { count: 4, bytes: 1 },
+};
 
 /** A colour as the `unorm8x4` lane group carries it: bytes, 0 to 255. */
 export interface Rgb8 {
@@ -144,21 +163,44 @@ export const toGeometry = (data: VertexData): BufferGeometry => {
   const geometry = new BufferGeometry();
   geometry.setAttribute(
     "position",
-    new BufferAttribute(data.positions, 3, false, "vertex"),
+    declareFormat(
+      "float32x3",
+      new BufferAttribute(data.positions, 3, false, "vertex"),
+    ),
   );
   // `normalized` is what turns these bytes into signed fractions on the way in;
   // without it a `Int16Array` reads as whole numbers and every normal in the
   // scene points a thousand degrees off.
   geometry.setAttribute(
     "normalOct",
-    new BufferAttribute(data.normalOct, 2, true, "vertex"),
+    declareFormat(
+      "snorm16x2",
+      new BufferAttribute(data.normalOct, 2, true, "vertex"),
+    ),
   );
   geometry.setAttribute(
     "colour",
-    new BufferAttribute(data.colours, 4, true, "vertex"),
+    declareFormat(
+      "unorm8x4",
+      new BufferAttribute(data.colours, 4, true, "vertex"),
+    ),
   );
   geometry.setIndex(new BufferAttribute(data.indices, 1));
   return geometry;
+};
+
+/**
+ * Names the format `attribute`'s bytes are in. An array type, a component
+ * count and a `normalized` flag already imply the same answer for each of this
+ * layout's three; declaring it is what makes those formats readable back, and
+ * so testable without a graphics device.
+ */
+const declareFormat = (
+  format: VertexFormat,
+  attribute: BufferAttribute,
+): BufferAttribute => {
+  attribute.format = format;
+  return attribute;
 };
 
 /**

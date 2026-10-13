@@ -15,4 +15,4 @@ export const __RMSL_JS_CODE = {
 export const voxelPicker = compileJSRoutine(() => cpuVoxelPicker(), {
   name: "voxelPicker",
   params: [],
-}).run;
+});

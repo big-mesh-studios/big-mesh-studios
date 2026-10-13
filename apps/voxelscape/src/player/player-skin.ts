@@ -4,6 +4,7 @@
 // rather than replacing the material, so a player keeps taking the world's
 // light — darkening at dusk, lit by lightning — instead of glowing flat at
 // midnight.
+import { texture } from "@random-mesh/rmsl";
 import { MeshStandardMaterial, Texture } from "@random-mesh/rmsl/scene";
 
 /**
@@ -44,12 +45,15 @@ export const createPlayerSkin = (color: number): PlayerSkin => {
   canvas.height = FACE_SIZE;
   fillFace(canvas, color);
 
-  const texture = new Texture(canvas);
-  texture.needsUpdate = true;
+  const skinTexture = new Texture(canvas);
+  skinTexture.needsUpdate = true;
 
   const material = new MeshStandardMaterial({ roughness: 0.8 });
   material.colorNode = (b) =>
-    b.sampler("playerSkin", () => texture).texture(b.uv).rgb;
+    texture(
+      b.sampler("playerSkin", () => skinTexture),
+      b.uv,
+    ).rgb;
 
   return {
     material,
@@ -74,7 +78,7 @@ export const createPlayerSkin = (color: number): PlayerSkin => {
         canvas.width,
         canvas.height,
       );
-      texture.needsUpdate = true;
+      skinTexture.needsUpdate = true;
     },
   };
 };

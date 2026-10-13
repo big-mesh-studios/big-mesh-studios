@@ -102,7 +102,7 @@ describe("Superchunk", () => {
     // The tail is what the attribute is told to re-send: twelve vertices of the
     // second member's three quads, from where the first member's ended.
     const positions = superchunk.terrain.getAttribute("position")!;
-    expect(positions.updateRange).toEqual({ offset: 8 * 3, count: 12 * 3 });
+    expect(positions.updateRanges).toEqual([{ start: 8 * 3, count: 12 * 3 }]);
   });
 
   it("uploads nothing when nothing was joined since the last one", () => {
@@ -111,10 +111,9 @@ describe("Superchunk", () => {
     superchunk.upload();
 
     expect(superchunk.upload()).toBe(0);
-    expect(superchunk.terrain.getAttribute("position")!.updateRange).toEqual({
-      offset: 0,
-      count: 0,
-    });
+    expect(superchunk.terrain.getAttribute("position")!.updateRanges).toEqual([
+      { start: 0, count: 0 },
+    ]);
   });
 
   it("stops drawing a retired member at once, and keeps its room", () => {
@@ -204,10 +203,9 @@ describe("Superchunk", () => {
 
     // A slice of the arrays rather than a tail: the eight vertices of the two
     // quads that were written, where they were written.
-    expect(superchunk.terrain.getAttribute("position")!.updateRange).toEqual({
-      offset: 0,
-      count: 8 * 3,
-    });
+    expect(superchunk.terrain.getAttribute("position")!.updateRanges).toEqual([
+      { start: 0, count: 8 * 3 },
+    ]);
   });
 
   it("draws a refilled member from the vertices it wrote", () => {

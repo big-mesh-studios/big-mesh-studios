@@ -12,18 +12,15 @@ type VoxelTexture = {
 };
 
 /**
- * The precompiled picker reads the UV varying from `ctx.varyings[shaders.vUv]`,
- * so a caller hands the friendly `ctx.varying.vUv` and this wrapper moves it
- * into the compiled slot. `shaders.vUv` is the same slot name the GPU shader
- * uses, which keeps the two in agreement.
+ * The precompiled picker reads the click's UV from
+ * `ctx.uniforms[shaders.uClickUv]`, so this wrapper moves it there from the
+ * friendly `ctx.uv` beside the other uniforms.
  */
 export function voxelPicker(ctx: {
   uniforms: Record<string, number | boolean | ArrayLike<number>>;
-  varying: { vUv: Vec2 };
-  varyings?: Record<string, Vec2>;
+  uv: Vec2;
   textures: Record<string, VoxelTexture>;
 }): Vec3 {
-  const varyings = ctx.varyings ?? {};
-  varyings[shaders.vUv] = ctx.varying.vUv;
-  return cpuVoxelPicker({ ...ctx, varyings }) as Vec3;
+  const uniforms = { ...ctx.uniforms, [shaders.uClickUv]: ctx.uv };
+  return Array.from(cpuVoxelPicker({ ...ctx, uniforms })) as Vec3;
 }

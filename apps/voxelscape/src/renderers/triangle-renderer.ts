@@ -18,7 +18,7 @@
 // frustum, and by the hardware occlusion pass, which readbacks the window of
 // terrain a sampling of the view actually shows and skips the rest.
 import type { Node, UniformNode } from "@random-mesh/rmsl";
-import { float, mat3, pow, vec2, vec3, vec4 } from "@random-mesh/rmsl";
+import { float, mat3, pow, texture, vec2, vec3, vec4 } from "@random-mesh/rmsl";
 import {
   BoxGeometry,
   Builder,
@@ -259,7 +259,7 @@ export class TriangleMaterial extends NodeMaterial {
         column.mul(tile.x).add(inset.x).add(within.x.mul(span.x)),
         row.mul(tile.y).add(inset.y).add(within.y.mul(span.y)),
       );
-      albedo = this.tilesSampler.texture(inAtlas).rgb;
+      albedo = texture(this.tilesSampler, inAtlas).rgb;
     }
     // baked per-vertex light + ambient occlusion, floored so unlit niches are
     // still a whisper of shape rather than pure black

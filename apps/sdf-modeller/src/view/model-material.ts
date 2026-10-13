@@ -31,7 +31,14 @@
  * cool fill from the opposite side so the shadowed half is shaped rather than hollow, and an
  * ambient at under a fifth of the key so nothing is ever fully black.
  */
-import { float, select, vec3, vec4, type Node } from "@random-mesh/rmsl";
+import {
+  float,
+  select,
+  texture,
+  vec3,
+  vec4,
+  type Node,
+} from "@random-mesh/rmsl";
 import {
   Blending,
   ClampToEdgeWrapping,
@@ -270,7 +277,7 @@ export class ModelMaterial extends NodeMaterial {
     // two copies of that arithmetic is two copies of the `pow(0.0, 2.2)` bug it is guarding.
     const sampled =
       this.paintSampler !== undefined && this.blendUniform !== undefined
-        ? this.paintSampler.texture(b.varying("uv", "vec2"))
+        ? texture(this.paintSampler, b.varying("uv", "vec2"))
         : fieldSampled;
 
     if (sampled !== undefined && this.blendUniform !== undefined) {
@@ -404,8 +411,7 @@ export class ModelMaterial extends NodeMaterial {
     // neighbours — which is what makes a filtered sampler usable where an unfiltered fetch
     // would be the obvious choice, and keeps the shader portable across the integer sampler
     // formats rmsl would otherwise need.
-    const info = grid
-      .texture(brick.add(float(0.5)).div(float(GRID_RES)))
+    const info = texture(grid, brick.add(float(0.5)).div(float(GRID_RES)))
       // **Also `.toVar()`, for the same reason as the result.** The indirection is read for
       // its `w` to test allocation and its `xyz` to find the slot, and without a temporary
       // that is two dependent 3D reads where one would do.
@@ -415,7 +421,8 @@ export class ModelMaterial extends NodeMaterial {
       .mul(float(SLOT))
       .add(float(1.5))
       .add(cellLocal.mul(float(BRICK)));
-    const sampled = pool.texture(
+    const sampled = texture(
+      pool,
       slotPosition.div(float(this.field?.poolDim ?? 1)),
     );
 
