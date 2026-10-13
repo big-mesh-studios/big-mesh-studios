@@ -154,7 +154,10 @@ describe("the alpha the material draws with", () => {
     const { fragment } = compile(new ModelMaterial());
 
     const written = /_rmsl_fragColor = vec4\((.*)\);/.exec(fragment)?.[1];
-    expect(written, "the line the fragment writes its colour with").toBeDefined();
+    expect(
+      written,
+      "the line the fragment writes its colour with",
+    ).toBeDefined();
     // The pattern eats the closing paren, so the captured arguments end at the literal.
     expect(written!.trimEnd().endsWith(", 1.0")).toBe(true);
 
