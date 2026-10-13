@@ -1,6 +1,6 @@
 # What voxelscape is made of
 
-Drawn from the imports under `src` at 32fa7ee by `pnpm architecture`.
+Drawn from the imports under `src` at 4879bc6 by `pnpm architecture`.
 Nothing here is written by hand: change the code and run it again.
 
 ```mermaid
@@ -8,9 +8,9 @@ graph TD
   shell["shell<br/>6 files · 2064 lines"]
   voxelscape["voxelscape<br/>3 files · 3849 lines"]
   world["world<br/>37 files · 8679 lines"]
-  renderers["renderers<br/>25 files · 7460 lines"]
+  renderers["renderers<br/>25 files · 7467 lines"]
   render["render<br/>4 files · 1145 lines"]
-  player["player<br/>20 files · 5012 lines"]
+  player["player<br/>20 files · 5016 lines"]
   multiplayer["multiplayer<br/>14 files · 3703 lines"]
   places["places<br/>52 files · 26897 lines"]
   environment["environment<br/>6 files · 1952 lines"]
@@ -74,9 +74,9 @@ graph TD
 | `shell`        | the page, the console, and what wires a world into them                | 6     | 2064  |
 | `voxelscape`   | one world: its frame, and every part below it                          | 3     | 3849  |
 | `world`        | voxels, light, the streaming window, and the workers that fill it      | 37    | 8679  |
-| `renderers`    | turning voxels into geometry, and drawing it                           | 25    | 7460  |
+| `renderers`    | turning voxels into geometry, and drawing it                           | 25    | 7467  |
 | `render`       | the frame loop, the resolution scaler, and the probe that times them   | 4     | 1145  |
-| `player`       | the body, its input, its tools and what they do to the world           | 20    | 5012  |
+| `player`       | the body, its input, its tools and what they do to the world           | 20    | 5016  |
 | `multiplayer`  | other players, over a peer connection                                  | 14    | 3703  |
 | `places`       | a published place: its script, its people, and the sandbox they run in | 52    | 26897 |
 | `environment`  | the sky, the clock, the weather and the sound                          | 6     | 1952  |
