@@ -6,17 +6,27 @@ import type { Vec3 } from "@big-mesh-studios/core";
 import {
   CLOUD_BOTTOM,
   CLOUD_FEATURE,
+  CLOUD_FEATURE_FLAT,
   CLOUD_THICKNESS,
   CLOUD_TOP,
   LIGHT_STEPS,
   MAX_STEPS,
   CheapCloudMaterial,
   CloudMaterial,
+  cloudDeck,
   cloudSliceOptions,
   cloudSpan,
   driftAngleAt,
+  driftOffsetAt,
+  type CloudDeck,
 } from "./clouds";
-import { DEFAULT_PLANET, planetField, reachOf } from "@big-mesh-studios/csg";
+import {
+  DEFAULT_PLANET,
+  DEFAULT_TERRAIN,
+  planetField,
+  reachOf,
+  surfaceReachOf,
+} from "@big-mesh-studios/csg";
 import { DEFAULT_PLANET_RADIUS } from "../render/atmosphere";
 import {
   SHAPE_DETAIL_PERIODS,
@@ -48,8 +58,17 @@ import { shapeTexture, sliceTexture, weatherTexture } from "./cloud-textures";
 
 const field = bakeCloudField(20260901, 20, 60);
 
-const make = (): CloudMaterial =>
-  new CloudMaterial(shapeTexture(field.shape), weatherTexture(field.weather));
+const make = (deck?: CloudDeck): CloudMaterial =>
+  new CloudMaterial(
+    shapeTexture(field.shape),
+    weatherTexture(field.weather),
+    DEFAULT_PLANET_RADIUS,
+    deck,
+  );
+
+/** The deck a default-constructed material carries, which is this build's default world's. */
+const deckOfThisMaterial = (): CloudDeck =>
+  cloudDeck({ kind: "planet", params: DEFAULT_PLANET });
 
 const compile = (material: CloudMaterial) => {
   const program = material.build(new Scene());
@@ -788,24 +807,35 @@ describe("the shell's address", () => {
   });
 
   it("reads the altitude as the layer's own normalised height", () => {
-    // `(length(world) − seaRadius − CLOUD_BOTTOM) / CLOUD_THICKNESS`, read off the source.
+    // `(height(world) − seaRadius − uCloudBottom) / uCloudThickness`, read off the source.
     // Zero at the underside, one at the top — and the *same* expression the profile is
     // given, which is why it appears twice rather than being spelled two ways.
     //
-    // **The two numbers are the constants**, rather than `700` written down. The layer's floor is
-    // now the planet's reach plus a clearance — it has to clear the highest mountain, or a summit
-    // stands inside the cloud deck — so the literal is whatever that arithmetic produced and a
-    // hardcoded `700` in the pattern would be a second place to be wrong. Reading it off the
-    // constants is also the assertion that the two agree.
+    // **The two numbers are uniforms rather than the constants they default to.** The deck's
+    // base is now the *world's* reach plus a clearance — it has to clear that world's highest
+    // mountain, and a height field's reach is not a planet's — so folding the value into the
+    // shader would bake one world into a layer meant to serve two. A character class for the
+    // closing paren, not a backslash: `\)` inside a template literal is one escape away from a
+    // bare `)`, which compiles and matches nothing, so the test would have gone quiet rather
+    // than red.
     const { fragment } = compile(make());
-    // **A character class for the closing paren, not a backslash.** `\)` inside a template
-    // literal is one escape away from being a bare `)`, which is a pattern that compiles and
-    // matches nothing — so the test would have gone quiet rather than red.
     const expression = new RegExp(
-      `- uSeaRadius[)] - ${CLOUD_BOTTOM.toFixed(1)}[)] / ${CLOUD_THICKNESS.toFixed(1)}`,
+      `- uSeaRadius[)] - uCloudBottom[)] / uCloudThickness`,
       "g",
     );
     expect(fragment.match(expression)).toHaveLength(2);
+    // **And they are declared as uniforms rather than folded in**, which is the other half of
+    // the claim: reading the expression off the source proves the shader asks for them, and
+    // reading the declarations proves it asks rather than assumes. rmsl emits the name with no
+    // value — the value goes to a uniform block, not to the declaration — so the assertion is
+    // that the three names are declared side by side and not that a number is spelled out.
+    for (const name of ["uSeaRadius", "uCloudBottom", "uCloudThickness"]) {
+      expect(fragment, name).toContain(`uniform float ${name};`);
+    }
+    // **And the deck they carry is this world's**, which is the thing a constant would have
+    // got wrong: a height field's reach is larger than a planet's, so the same shader has to be
+    // told a different number rather than carrying one.
+    expect(deckOfThisMaterial().bottom).toBe(CLOUD_BOTTOM);
   });
 
   it("keeps the layer's floor above the tallest terrain", () => {
@@ -1047,6 +1077,133 @@ describe("the shell's span", () => {
   it("is empty when a ground eye looks down into the planet", () => {
     const span = cloudSpan(at(2), down, sea);
     expect(span.exit).toBeLessThanOrEqual(span.enter);
+  });
+});
+
+/**
+ * A flat world's deck, asked the same questions the sphere's is.
+ *
+ * **The sea is at zero rather than 136,000, because on a plane it is an altitude** — a test
+ * that measured it against a radius would be asking the sphere's questions again and getting
+ * the sphere's answers.
+ */
+describe("a flat world's deck", () => {
+  const sea = 0;
+  const up = { x: 0, y: 1, z: 0 };
+  const down = { x: 0, y: -1, z: 0 };
+  const away = { x: 1, y: 0, z: 0 };
+  const at = (altitude: number): Vec3 => ({ x: 0, y: sea + altitude, z: 0 });
+  const deck = cloudDeck({ kind: "terrain", params: DEFAULT_TERRAIN });
+
+  it("sits clear of this world's own mountains, and higher than a planet's does", () => {
+    // **The whole point of taking the reach from the spec, and the direction is the opposite of
+    // what a reader would guess.** A height field's noise reaches *further* per unit of scale
+    // than a sphere's — its amplitude bound is two where the 3D one's is one — so its deck sits
+    // higher above the sea rather than lower. Reusing the planet's deck would have put a flat
+    // world's clouds inside its own mountains, which reads as a permanently clear sky.
+    expect(deck.bottom).toBeGreaterThan(CLOUD_BOTTOM);
+    // **And the difference between the two is exactly the difference between the two reaches** —
+    // the same clearance above each, which is what makes it one rule rather than two numbers.
+    expect(deck.bottom - CLOUD_BOTTOM).toBeCloseTo(
+      surfaceReachOf({ kind: "terrain", params: DEFAULT_TERRAIN }) -
+        reachOf(DEFAULT_PLANET),
+      6,
+    );
+    expect(deck.thickness).toBe(CLOUD_THICKNESS);
+  });
+
+  it("has features a distance on the ground rather than a fraction of a radius", () => {
+    // **A different number, and not a consequence of the reach.** The argument behind
+    // `CLOUD_FEATURE` is about an angle subtended from the ground and there is no radius to
+    // divide by here, so the value is chosen from the same argument and not derived.
+    expect(deck.feature).toBe(CLOUD_FEATURE_FLAT);
+    expect(deck.feature).toBeLessThan(CLOUD_FEATURE);
+  });
+
+  it("starts at the deck's underside when looking up from the ground", () => {
+    const span = cloudSpan(at(2), up, sea, deck);
+    expect(span.enter).toBeCloseTo(deck.bottom - 2, 3);
+    expect(span.exit).toBeCloseTo(deck.top - 2, 3);
+  });
+
+  it("starts at the eye when the eye is inside the deck", () => {
+    const span = cloudSpan(at(1000), down, sea, deck);
+    expect(span.enter).toBe(0);
+    expect(span.exit).toBeCloseTo(1000 - deck.bottom, 3);
+  });
+
+  it("stops at the sea when looking down from above the deck", () => {
+    const span = cloudSpan(at(8000), down, sea, deck);
+    expect(span.enter).toBeCloseTo(8000 - deck.top, 3);
+    expect(span.exit).toBeCloseTo(8000 - deck.bottom, 3);
+  });
+
+  it("is empty when a ground eye looks down, because there is nothing under it", () => {
+    // **The case the sphere needed a fourth rule for and this does not.** On a sphere the far
+    // side of the planet is on a downward ray and has to be ruled out explicitly; on a plane
+    // there is nothing down there at all, so the span is empty because the arithmetic says so.
+    const span = cloudSpan(at(2), down, sea, deck);
+    expect(span.exit).toBeLessThanOrEqual(span.enter);
+  });
+
+  it("is empty for the ray along the horizon, which never leaves its altitude", () => {
+    // **A case no sphere ever produced**: every ray meets a sphere, so `ray.y == 0` never came
+    // up. On a plane it is the single most common ray a player casts, and there is no deck in it.
+    const span = cloudSpan(at(2), away, sea, deck);
+    expect(span.exit).toBeLessThanOrEqual(span.enter);
+  });
+
+  it("marches as far as the horizon reaches, not as far as a sphere's chord", () => {
+    // **The slab has no far side, so `MAX_DISTANCE` is the only thing that terminates it.**
+    // On a sphere the shell's own far root stopped the march well before that; on a plane a
+    // grazing ray runs until this does, which is why the constant is load-bearing rather than
+    // a belt-and-braces cap.
+    const grazing = cloudSpan(at(2), { x: 1, y: 0.02, z: 0 }, sea, deck);
+    // **The deck starts 44,000 units along this ray and the march gives up at 17,000**, so the
+    // span is empty — which is the property: on a sphere the shell's far root stopped this ray
+    // long before that and the march still had something to do, and on a plane there is nothing
+    // between the eye and the deck to march through.
+    expect(grazing.exit).toBeLessThanOrEqual(grazing.enter);
+    // **And a steeper ray from the same place does reach it**, which is what makes the empty
+    // span above about the distance rather than about the ray.
+    const steeper = cloudSpan(at(2), { x: 1, y: 0.5, z: 0 }, sea, deck);
+    expect(steeper.enter).toBeCloseTo((deck.bottom - 2) / 0.5, 3);
+    expect(steeper.exit).toBeLessThanOrEqual(17000);
+  });
+
+  it("drifts at the same rate in world units as the sphere's", () => {
+    // **Two different numbers for the same wind.** A sphere turns a direction at
+    // `DRIFT / radius` radians and a plane slides a position at `DRIFT / feature` tiles; the
+    // property a player reads is that the clouds move, and it is the same speed either way.
+    expect(driftAngleAt(10, DEFAULT_PLANET_RADIUS)).toBeGreaterThan(0);
+    expect(driftOffsetAt(10)).toBeGreaterThan(0);
+    // Ten seconds of the linear drift is ten times six units on either world — so the sphere's
+    // angle times its radius, and the plane's tiles times its feature, both land there.
+    expect(
+      driftAngleAt(10, DEFAULT_PLANET_RADIUS) * DEFAULT_PLANET_RADIUS,
+    ).toBeCloseTo(60, 6);
+    expect(driftOffsetAt(10) * CLOUD_FEATURE_FLAT).toBeCloseTo(60, 6);
+  });
+
+  it("cuts its cheap slice on the grid rather than around the equator", () => {
+    // **The slice has to agree with the shader about where a sample is**, and on a plane that
+    // is a position rather than a direction — so the scale is a reciprocal distance and the
+    // map is told so.
+    const spherical = cloudSliceOptions(
+      DEFAULT_PLANET_RADIUS,
+      cloudDeck({ kind: "planet", params: DEFAULT_PLANET }),
+    );
+    const flat = cloudSliceOptions(0, deck);
+    expect(flat.spherical).toBe(false);
+    expect(flat.shapeScale).toBeCloseTo(1 / CLOUD_FEATURE_FLAT, 9);
+    expect(spherical.shapeScale).toBeCloseTo(
+      DEFAULT_PLANET_RADIUS / CLOUD_FEATURE,
+      6,
+    );
+    // **And every other number is the same**, because the altitude and the warp are properties
+    // of the volume and not of the world it is addressed from.
+    expect(flat.sliceHeight).toBe(spherical.sliceHeight);
+    expect(flat.warpStrength).toBe(spherical.warpStrength);
   });
 });
 

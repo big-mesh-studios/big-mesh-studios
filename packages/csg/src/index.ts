@@ -153,7 +153,12 @@ export type {
   BaseFieldSpec,
   BuiltBaseField,
 } from "./base-field";
-export { baseFieldFor, isPlanetField, seaLevelOf } from "./base-field";
+export {
+  baseFieldFor,
+  isPlanetField,
+  seaLevelOf,
+  surfaceReachOf,
+} from "./base-field";
 
 export {
   FormatError,

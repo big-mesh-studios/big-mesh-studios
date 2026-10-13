@@ -17,6 +17,16 @@
 
 import { CYCLE_SECONDS, phasePreset, type Phase } from "../world/day-night";
 import type { CloudQuality } from "../world/cloud-layer";
+import type { WorldShape } from "../world/world-geometry";
+
+/**
+ * A world shape as it is typed, as `/planet:shape` takes it.
+ *
+ * **The union rather than `string`, so a caller that passes this table a shape has proved at the
+ * call site that it is one of the two** — and so the usage line below and `world-geometry.ts`'s
+ * own vocabulary cannot drift apart without the compiler noticing.
+ */
+export type WorldShapeName = WorldShape;
 
 /**
  * Declares a command, keyed by the name that runs it. Every entry's `run`
@@ -158,6 +168,30 @@ export interface CommandsParams {
   clock: ClockCommands;
   /** The cloud layer, for `/cloud:`. See `CloudCommands`. */
   cloud: CloudCommands;
+  /** The shape of the world, for `/planet:`. See `WorldCommands`. */
+  world: WorldCommands;
+}
+
+/**
+ * The world's shape and a line about it, as `/planet:` uses them.
+ *
+ * **Strings in and strings out, for the reason `CloudCommands` is.** The alternative would be
+ * for this table to know what a `WorldShape` is, which is a decision `world/world-geometry.ts`
+ * owns; a command that names the two words and lets the caller decide what they mean keeps the
+ * console a place things are reached by name rather than a place types live.
+ */
+export interface WorldCommands {
+  /**
+   * Reports or sets the shape, and says what happened.
+   *
+   * **Not a toggle, and not a boolean, for the reason `CloudCommands.quality` takes a word.**
+   * There are two shapes and each is the other's absence, so a bare argument reporting and an
+   * explicit word setting leaves the caller able to ask for the world they want rather than the
+   * one they did not.
+   */
+  shape(value?: WorldShapeName): string;
+  /** One line saying which world this is and where its water sits. */
+  describe(): string;
 }
 
 /** The clock's surface, as `/clock:` uses it. See `CommandsParams.clock`. */
@@ -290,6 +324,7 @@ export const createCommands = ({
   toSpace,
   clock,
   cloud,
+  world,
 }: CommandsParams): Commander => {
   return new Commander({
     "/clock:day": {
@@ -390,6 +425,28 @@ export const createCommands = ({
     "/cloud:state": {
       description: "say whether the layer is built and what it is set to",
       run: () => cloud.state(),
+    },
+    "/planet:shape": {
+      description:
+        "report or set the world's shape (sphere = a sea at a radius, flat = y is up)",
+      args: "[sphere|flat]",
+      run: (rest) => {
+        // **A bare argument reports; it does not flip.** Each shape is the other's absence,
+        // so flipping would be guessing at which one was meant — and unlike a toggle there
+        // is a wrong answer here that is silent rather than obvious: a place built in flat
+        // coordinates is somewhere a player cannot see anything of. `readToggle` is for the
+        // two-state setters that are genuinely a flip; this is a choice.
+        const argument = rest[0];
+        if (argument === undefined) return world.shape();
+        if (argument !== "sphere" && argument !== "flat") {
+          return "usage: /planet:shape [sphere|flat]";
+        }
+        return world.shape(argument);
+      },
+    },
+    "/planet:state": {
+      description: "say which world this is and where its water sits",
+      run: () => world.describe(),
     },
     "/player:fly": {
       description: "turn flight on or off (no gravity; W follows the look)",

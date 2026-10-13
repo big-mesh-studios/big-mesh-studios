@@ -67,6 +67,7 @@ recorded cost is a decision nobody thought about.
 | [0047](0047-a-figure-is-its-own-mesh.md)                                 | A figure is its own mesh, and it is not in the fold                                    | accepted                     |
 | [0048](0048-a-material-in-the-free-byte.md)                              | The colour's free byte carries a material, and materials are procedural                | accepted                     |
 | [0049](0049-a-print-meshes-at-the-resolution-you-type.md)                | A print meshes at the resolution you type, on a thread of its own                      | accepted                     |
+| [0050](0050-a-world-is-a-sphere-or-a-plane.md)                           | A world is a sphere or a plane, and the plane is a whole one                           | accepted                     |
 
 ## What is decided so far
 

@@ -148,7 +148,12 @@ describe("the globe's shader", () => {
       "uAmbient",
       "uFogColour",
       "uFogScale",
-      "uFogRadius",
+      // **The globe's own sea level, under the shared fog's name.** The globe exists only on
+      // a spherical world, so this uniform is always the radius — but it arrives through
+      // `Fog`'s world-agnostic field rather than a radius of its own, which is what lets one
+      // fog serve both worlds.
+      "uFogSeaLevel",
+      "uFogSpherical",
     ]) {
       expect(fragment, uniform).toContain(uniform);
     }

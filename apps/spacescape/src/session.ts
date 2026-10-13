@@ -181,8 +181,12 @@ export class Session {
    * The landscape, if the world has one. Held as the four numbers the workers build from,
    * for the same reason the operations are held as a list: the picker builds its own field
    * and the two must not be able to drift.
+   *
+   * **Assigned rather than readonly**, because a world's shape is a thing a person can change
+   * while it is running — see {@link setBaseField}. It was readonly for as long as there was
+   * one world, which is the ordinary reason a field ends up immutable and the wrong one here.
    */
-  private readonly baseFieldSpec: BaseFieldSpec | undefined;
+  private baseFieldSpec: BaseFieldSpec | undefined;
   private failures = 0;
   private disposed = false;
 
@@ -275,6 +279,71 @@ export class Session {
    */
   get baseField(): BaseFieldSpec | undefined {
     return this.baseFieldSpec;
+  }
+
+  /**
+   * Puts a different landscape under this world, and re-asks for everything.
+   *
+   * **The two halves are in this order and both are required.** {@link invalidateAll} runs
+   * first, because it is what makes every resident chunk *wrong*: a shape change does not move
+   * the player or change the cell, so `markOutOfDate` — which keeps the buffers on the grounds
+   * that the cell has not changed — is exactly the wrong call, and the old sphere's geometry
+   * would keep drawing a planet at a place a player can stand on it. Then the model is re-sent,
+   * which is what cancels everything in flight, and `requestAll` asks for the window again.
+   *
+   * **The operations are not touched**, deliberately. A place's geometry is in world
+   * coordinates and means the same thing on either surface, so switching shape moves the ground
+   * out from under a bridge rather than moving the bridge — which is the visible, explicable
+   * result, rather than a place silently losing everything it built.
+   */
+  setBaseField(spec: BaseFieldSpec): void {
+    this.baseFieldSpec = spec;
+    this.invalidateAll();
+    this.setOperations(this.currentOperations);
+  }
+
+  /**
+   * Marks every chunk this session is holding as needing to be meshed again.
+   *
+   * **`markStale` and not `markOutOfDate`, and the difference is the whole method.** ADR 0007's
+   * rule is that `markOutOfDate` is sound while the cell has not moved, because everything on
+   * the GPU for that slot is a surface of the cell the slot still stands for — how wrong it is
+   * does not matter. A shape change breaks that: the geometry in the slot was built from a field
+   * that no longer exists, so it is not a wrong *version* of the right surface, it is another
+   * surface entirely, and it has to leave rather than linger until its replacement lands.
+   *
+   * **It only marks; it does not request.** Re-asking is `requestAll`'s job, and
+   * `requestAll` asks for every *unfilled* slot — so after this runs, the whole window is
+   * unfilled and one call to it covers everything. Calling `requestSlot` from here as well would
+   * ask for every chunk twice.
+   *
+   * @returns how many chunks were holding geometry.
+   */
+  invalidateAll(): number {
+    let invalidated = 0;
+    for (let slot = 0; slot < this.window.slots.length; slot++) {
+      const entry = this.window.slots[slot];
+      if (entry === undefined || !entry.filled) continue;
+      // The store first, because the window's own `markStale` fires `onSlotStale`, which is the
+      // store's `markOutOfDate`, and a freed buffer has to be freed before anything that could
+      // still read it.
+      this.store.markStale(slot);
+      this.window.markStale(slot);
+      this.forgetSlot(slot);
+      invalidated++;
+    }
+    return invalidated;
+  }
+
+  /**
+   * Points the sea at a different material, for a world whose shape has changed.
+   *
+   * **Not enough on its own.** A material's shape is read while its shader graph is built, so
+   * the new material only affects chunks meshed *after* this — which is every chunk, because a
+   * caller changing the shape has invalidated them all.
+   */
+  setSeaMaterial(material: Material): void {
+    this.store.setSeaMaterial(material);
   }
 
   /** The model, as the workers need it. */

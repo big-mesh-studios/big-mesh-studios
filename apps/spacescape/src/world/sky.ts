@@ -447,14 +447,27 @@ export class SkyMaterial extends NodeMaterial {
    */
   pixelScale = 1.5;
 
-  /** The planet's sea radius, so the shell the sky reads is this world's and not a constant's. */
-  readonly planetRadius: number;
+  /**
+   * The world's sea level, so the shell the sky reads is this world's and not a constant's.
+   *
+   * **A radius on a sphere and an altitude on a plane**, which is the same number read two ways
+   * rather than two numbers: `seaLevelOf(spec)` is one value and the frame says what it means.
+   * The name says radius because that was the only world there was; `seaLevel` is what it is.
+   *
+   * **Assigned rather than readonly, because a world can change shape while it runs.** Every one
+   * of the three is read through a uniform thunk on each draw, so moving it costs nothing and
+   * needs no `needsUpdate` — the same arrangement `starBrightness` and `pixelScale` use.
+   */
+  seaLevel: number;
+
+  /** Whether this world has a silhouette to put air against. See the limb below. */
+  spherical: boolean;
 
   /** How far the shell reaches above the sea. */
-  readonly atmosphereHeight: number;
+  atmosphereHeight: number;
 
   /** How fast the air thins with height. */
-  readonly scaleHeight: number;
+  scaleHeight: number;
 
   private zenith?: UniformNode<"vec3">;
   private twilight?: UniformNode<"float">;
@@ -463,25 +476,46 @@ export class SkyMaterial extends NodeMaterial {
   private starTurn?: UniformNode<"float">;
   private starBrightnessUniform?: UniformNode<"float">;
   private pixelScaleUniform?: UniformNode<"float">;
-  private planetRadiusUniform?: UniformNode<"float">;
+  private seaLevelUniform?: UniformNode<"float">;
   private atmosphereUniform?: UniformNode<"float">;
   private scaleUniform?: UniformNode<"float">;
 
   constructor(
-    planetRadius = DEFAULT_PLANET_RADIUS,
+    seaLevel = DEFAULT_PLANET_RADIUS,
     atmosphereHeight = ATMOSPHERE_HEIGHT,
     scaleHeight = ATMOSPHERE_SCALE_HEIGHT,
+    spherical = true,
   ) {
     super();
-    this.planetRadius = planetRadius;
+    this.seaLevel = seaLevel;
     this.atmosphereHeight = atmosphereHeight;
     this.scaleHeight = scaleHeight;
+    this.spherical = spherical;
     // No depth at all. The dome is drawn first and fills the frame, and everything
     // after it lands on top; a dome that tested depth would have to be sorted against
     // forty thousand units of cloud and a terrain window, for no gain.
     this.depthTest = false;
     this.depthWrite = false;
     this.side = Side.BackSide;
+  }
+
+  /**
+   * Points the sky at a different world.
+   *
+   * **Three numbers and a flag, and none of them is a shader rebuild.** Every one is read through
+   * a uniform thunk on each draw, so this is an assignment rather than the material being replaced
+   * — which matters because replacing it would throw away the compiled program and every uniform
+   * on it, including the six the day writes into it every frame.
+   *
+   * **The flag is the whole of the flat branch below the altitude.** A height field has no
+   * silhouette, so there is no rim to draw and nothing to rim it against; see `buildFragmentBody`.
+   */
+  setWorld(world: {
+    readonly seaLevel: number;
+    readonly spherical: boolean;
+  }): void {
+    this.seaLevel = world.seaLevel;
+    this.spherical = world.spherical;
   }
 
   protected override setup(b: Builder): void {
@@ -524,11 +558,11 @@ export class SkyMaterial extends NodeMaterial {
         : ((this.sky.lighting.elapsed / CYCLE_SECONDS) % 1) * Math.PI * 2,
     );
     // The shell, so the sky can tell air from space: the eye's own altitude sets how much
-    // atmosphere is above it, and the same geometry draws the planet's rim.
-    this.planetRadiusUniform = b.materialUniform(
-      "uSkyRadius",
+    // atmosphere is above it, and on a sphere the same geometry draws the planet's rim.
+    this.seaLevelUniform = b.materialUniform(
+      "uSkySeaLevel",
       "float",
-      () => this.planetRadius,
+      () => this.seaLevel,
     );
     this.atmosphereUniform = b.materialUniform(
       "uSkyAtmosphere",
@@ -540,6 +574,24 @@ export class SkyMaterial extends NodeMaterial {
       "float",
       () => this.scaleHeight,
     );
+  }
+
+  /**
+   * How high the eye is above this world's sea, clamped at zero.
+   *
+   * **The one place the sky asks what kind of world it is on.** A sphere's sea is a surface of
+   * constant distance from the centre and a plane's is a level, so the answer is `|p|` and `p.y`
+   * respectively — everything above this line is written in terms of the altitude it returns and
+   * is the same code on both worlds.
+   *
+   * **Clamped at the sea rather than below it,** because an eye under the sea level is inside the
+   * shell, not in space, and the only question asked of the result is how much air is overhead.
+   */
+  private eyeAltitude(b: Builder): Node<"float"> {
+    const seaLevel = this.seaLevelUniform!;
+    return (this.spherical ? b.cameraPosition.length() : b.cameraPosition.y)
+      .sub(seaLevel)
+      .max(float(0));
   }
 
   protected override buildFragmentBody(b: Builder): Node<"vec4"> {
@@ -566,8 +618,13 @@ export class SkyMaterial extends NodeMaterial {
     // nothing left to scatter the daylight and the sky goes black, which is the whole reason
     // a player who leaves the atmosphere sees stars at noon. `atmosphere` is the fraction of
     // the ground's own column still overhead: one at sea level, nothing at the top.
-    const eyeRadius = b.cameraPosition.length();
-    const altitude = eyeRadius.sub(this.planetRadiusUniform!).max(float(0));
+    //
+    // **The altitude is measured from the sea level the world has, in whichever direction the
+    // world's sea is.** A sphere's sea is a sphere, so the altitude is the distance from the
+    // centre less the radius; a plane's sea is a level, so the altitude is `y` less the level.
+    // The two are the same subtraction against the same `seaLevel` number — which is the point
+    // of reading that number off the spec — and only the distance-to-get-there differs.
+    const altitude = this.eyeAltitude(b);
     const atmosphere = exp(altitude.div(this.scaleUniform!).negate()).toVar();
 
     // ---- how much of the view is *outside* the shell ----
@@ -577,9 +634,8 @@ export class SkyMaterial extends NodeMaterial {
     // gradient's own horizon glow while the player climbed out, reading as a second fog band in the
     // sky. The eye is genuinely in space only past the shell's top, so this is gated there and
     // faded across one shell thickness so crossing it is not a pop.
-    const shellTop = this.planetRadiusUniform!.add(this.atmosphereUniform!);
     const fromSpace = saturate(
-      eyeRadius.sub(shellTop).div(this.atmosphereUniform!),
+      altitude.sub(this.atmosphereUniform!).div(this.atmosphereUniform!),
     ).toVar();
 
     // ---- the gradient ----
@@ -623,57 +679,67 @@ export class SkyMaterial extends NodeMaterial {
     // the planet blocks, weighted by the density at its closest approach. It is zero until the
     // eye is above the ground and grows as the ray grazes, so in space it draws the band around
     // the silhouette and nothing else.
-    const eyeSquared = b.cameraPosition.dot(b.cameraPosition);
-    const along = b.cameraPosition.dot(raw);
-    const closestSq = eyeSquared.sub(along.mul(along)).max(float(0));
-    const closest = sqrt(closestSq);
-    const planetRadius = this.planetRadiusUniform!;
-    const outerRadius = planetRadius.add(this.atmosphereUniform!);
+    //
+    // **A sphere only, and the test is `spherical` rather than a branch that would draw
+    // something.** The limb is the air seen against a silhouette; a height field has no
+    // silhouette — the horizon is a line where the ground ends, not an edge in the air — so
+    // there is nothing here to draw it against and the band would appear as a bright arc
+    // somewhere arbitrary in the sky. Drawing nothing is the honest answer, and the atmosphere
+    // still fades to black overhead through `atmosphere` above, so a flat world still goes to
+    // stars when a player climbs out of it.
+    if (this.spherical) {
+      const eyeSquared = b.cameraPosition.dot(b.cameraPosition);
+      const along = b.cameraPosition.dot(raw);
+      const closestSq = eyeSquared.sub(along.mul(along)).max(float(0));
+      const closest = sqrt(closestSq);
+      const planetRadius = this.seaLevelUniform!;
+      const outerRadius = planetRadius.add(this.atmosphereUniform!);
 
-    // **The roots are clamped to `t ≥ 0`, and that is the whole correction.** The chord's midpoint
-    // is at `t = -along`; when `along > 0` the ray points away from the planet and that midpoint is
-    // *behind the eye*. A player looking up makes exactly this ray, its perpendicular distance to
-    // the centre is zero, and the old code counted a full atmosphere column that was behind the
-    // camera — a fog band across the black of space. Each sphere's near and far roots are
-    // `-along ∓ half`, so clamping both to zero gives the length actually in front of the eye.
-    const tc = along.negate();
-    const outerHalf = sqrt(
-      outerRadius.mul(outerRadius).sub(closestSq).max(float(0)),
-    );
-    const innerHalf = sqrt(
-      planetRadius.mul(planetRadius).sub(closestSq).max(float(0)),
-    );
-    const outerFront = tc
-      .add(outerHalf)
-      .max(float(0))
-      .sub(tc.sub(outerHalf).max(float(0)));
-    const innerFront = tc
-      .add(innerHalf)
-      .max(float(0))
-      .sub(tc.sub(innerHalf).max(float(0)));
-    // Inside the silhouette the planet blocks the middle of the chord, so only the caps of air in
-    // front of it count. Where the line does not cross the planet (`closest >= R`) nothing blocks.
-    const blocked = select(
-      closest.lessThan(planetRadius),
-      innerFront,
-      float(0),
-    );
-    const air = outerFront
-      .sub(blocked)
-      .mul(
-        exp(
-          closest
-            .sub(planetRadius)
-            .max(float(0))
-            .div(this.scaleUniform!)
-            .negate(),
-        ),
+      // **The roots are clamped to `t ≥ 0`, and that is the whole correction.** The chord's midpoint
+      // is at `t = -along`; when `along > 0` the ray points away from the planet and that midpoint is
+      // *behind the eye*. A player looking up makes exactly this ray, its perpendicular distance to
+      // the centre is zero, and the old code counted a full atmosphere column that was behind the
+      // camera — a fog band across the black of space. Each sphere's near and far roots are
+      // `-along ∓ half`, so clamping both to zero gives the length actually in front of the eye.
+      const tc = along.negate();
+      const outerHalf = sqrt(
+        outerRadius.mul(outerRadius).sub(closestSq).max(float(0)),
       );
-    const limb = float(1).sub(exp(air.mul(float(-ATMOSPHERE_EXTINCTION))));
-    // Only from outside: on the ground the horizon is the gradient's and the fog's job, and a
-    // limb term there would white out the whole lower sky. `fromSpace`, defined above, is zero
-    // until the eye clears the shell's top.
-    sky.addAssign(this.sky.skyColour!.mul(limb).mul(fromSpace));
+      const innerHalf = sqrt(
+        planetRadius.mul(planetRadius).sub(closestSq).max(float(0)),
+      );
+      const outerFront = tc
+        .add(outerHalf)
+        .max(float(0))
+        .sub(tc.sub(outerHalf).max(float(0)));
+      const innerFront = tc
+        .add(innerHalf)
+        .max(float(0))
+        .sub(tc.sub(innerHalf).max(float(0)));
+      // Inside the silhouette the planet blocks the middle of the chord, so only the caps of air in
+      // front of it count. Where the line does not cross the planet (`closest >= R`) nothing blocks.
+      const blocked = select(
+        closest.lessThan(planetRadius),
+        innerFront,
+        float(0),
+      );
+      const air = outerFront
+        .sub(blocked)
+        .mul(
+          exp(
+            closest
+              .sub(planetRadius)
+              .max(float(0))
+              .div(this.scaleUniform!)
+              .negate(),
+          ),
+        );
+      const limb = float(1).sub(exp(air.mul(float(-ATMOSPHERE_EXTINCTION))));
+      // Only from outside: on the ground the horizon is the gradient's and the fog's job, and a
+      // limb term there would white out the whole lower sky. `fromSpace`, defined above, is zero
+      // until the eye clears the shell's top.
+      sky.addAssign(this.sky.skyColour!.mul(limb).mul(fromSpace));
+    }
 
     // ---- the stars ----
     // Above the horizon, once the twilight parameter has climbed — **or once the eye is out
@@ -726,6 +792,11 @@ export interface Sky {
   update(camera: Vec3, state: DayNightState): void;
   /** The material, so a caller can reach `starBrightness`. */
   readonly material: SkyMaterial;
+  /** Points the sky at a different world. See `SkyMaterial.setWorld`. */
+  setWorld(world: {
+    readonly seaLevel: number;
+    readonly spherical: boolean;
+  }): void;
   dispose(): void;
 }
 
@@ -735,15 +806,31 @@ export interface Sky {
  * Add it first. rmsl has no render-order key — draw order is scene traversal order —
  * so this has to happen before anything that should appear in front of the sky, which
  * means before the session that owns the terrain's meshes.
+ *
+ * **The world is an argument rather than read from a constant**, because the sky used to take
+ * no world at all and defaulted to `DEFAULT_PLANET_RADIUS` — so a flat world built a dome
+ * measuring its altitude against a sphere of 136,000 units, and the one number that decides
+ * whether there is air overhead was the one number nothing passed in.
  */
-export const createSky = (scene: Scene): Sky => {
+export const createSky = (
+  scene: Scene,
+  world: { readonly seaLevel: number; readonly spherical: boolean },
+): Sky => {
   const geometry = new SphereGeometry(SKY_EXTENT, 48, 24);
-  const material = new SkyMaterial();
+  const material = new SkyMaterial(
+    world.seaLevel,
+    ATMOSPHERE_HEIGHT,
+    ATMOSPHERE_SCALE_HEIGHT,
+    world.spherical,
+  );
   const mesh = new Mesh(geometry, material);
   scene.add(mesh);
 
   return {
     material,
+    setWorld(next) {
+      material.setWorld(next);
+    },
     update(camera, state) {
       material.sky.lighting = state;
       // Dead-centre on the eye and deliberately unsnapped; see the note at the top.

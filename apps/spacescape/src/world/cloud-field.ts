@@ -1002,8 +1002,23 @@ export interface CloudSlice {
 export interface CloudSliceOptions {
   readonly width: number;
   readonly height: number;
-  /** World radius of the shape volume's sphere: `seaRadius / featureSize`. */
+  /**
+   * How far a world unit reaches in the shape volume: `seaRadius / featureSize` on a sphere,
+   * `1 / featureSize` on a plane.
+   *
+   * **The same field as `shapeAt`'s, and a different quantity.** On a sphere it scales a
+   * *direction* and on a plane a *position*, and the bake below takes one or the other to
+   * match — which is why it cannot be a radius on both.
+   */
   readonly shapeScale: number;
+  /**
+   * Whether the slice is cut across a sphere's surface or across a plane's ground.
+   *
+   * **The default is a sphere, and a caller that omits it gets an equirectangular map.** The
+   * only reason this is not a required field is that every existing caller is building weather
+   * for a planet; a flat world has to say so.
+   */
+  readonly spherical?: boolean;
   /** The volume's vertical address the slice is cut at, 0 at the layer's base. */
   readonly sliceHeight: number;
   /** How far the weather's curl displaces the lookup, in tiles of the shape volume. */
@@ -1121,6 +1136,7 @@ export const bakeCloudSlice = (
   options: CloudSliceOptions,
 ): CloudSlice => {
   const { width, height, shapeScale, sliceHeight, warpStrength } = options;
+  const spherical = options.spherical ?? true;
   const data = new Uint8Array(width * height * 4);
   const weather = new Float32Array(4);
   const shape = new Float32Array(4);
@@ -1129,13 +1145,19 @@ export const bakeCloudSlice = (
     const v = (y + 0.5) / height;
     for (let x = 0; x < width; x++) {
       const u = (x + 0.5) / width;
-      const direction = directionAtEquirect(u, v);
       sampleMap(field.weather, u, v, weather);
+      // **The two addresses, and the only line that differs between them.** A sphere's slice
+      // is an equirectangular sweep of *directions*, scaled by how big the planet is; a
+      // plane's is a grid of *positions*, scaled by how big a cloud feature is. Everything
+      // after this — the warp, the sample, the packing — is the same work on either.
+      const horizontal = spherical
+        ? directionAtEquirect(u, v)
+        : { x: (u - 0.5) * 2, y: 0, z: (v - 0.5) * 2 };
       sampleVolume(
         field.shape,
-        direction.x * shapeScale + (weather[1]! - 0.5) * warpStrength,
-        direction.y * shapeScale + sliceHeight,
-        direction.z * shapeScale + (weather[2]! - 0.5) * warpStrength,
+        horizontal.x * shapeScale + (weather[1]! - 0.5) * warpStrength,
+        sliceHeight,
+        horizontal.z * shapeScale + (weather[2]! - 0.5) * warpStrength,
         shape,
       );
       data[at++] = toByte(shape[0]!);

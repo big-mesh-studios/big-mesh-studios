@@ -214,6 +214,28 @@ describe("a project published as a record", () => {
     ]);
   });
 
+  it("carries the world's shape across, and omits it when the place has not chosen", () => {
+    // **The round trip is the whole of this test.** A record read back into a project and
+    // republished without the field would quietly turn a flat place into a spherical one — which
+    // moves the ground out from under everything it built rather than refusing to open it, so
+    // the failure is a place that loads and is wrong.
+    const flat = project({
+      manifest: { ...project().manifest, world: "flat" as const },
+    });
+    const published = makePlaceRecord(flat, "2026-10-08T09:00:00.000Z");
+    expect(published.world).toBe("flat");
+    expect(projectFromRecord(published)?.manifest.world).toBe("flat");
+
+    // **And omitted rather than defaulted**, on the same rule as `spawn`: a place that never
+    // chose must not publish a statement about its world that it did not make.
+    expect(
+      makePlaceRecord(project(), "2026-10-08T09:00:00.000Z"),
+    ).not.toHaveProperty("world");
+    expect(
+      projectFromRecord(makePlaceRecord(project(), "x"))?.manifest,
+    ).not.toHaveProperty("world");
+  });
+
   it("refuses to publish an attachment nothing can publish yet", () => {
     // **Not dropped silently.** A record is JSON and an attachment is bytes, so carrying one means
     // uploading it as a blob and naming the blob — which needs a publisher and a model with an

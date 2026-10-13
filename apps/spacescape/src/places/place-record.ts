@@ -46,6 +46,7 @@ import {
   isSafePathName,
   MAX_PLACE_FILES,
   type PlaceSpawn,
+  type WorldShape,
 } from "./place-file";
 import { MAX_PLACE_SOURCE, MAX_SCRIPT_SOURCE } from "./limits";
 
@@ -84,6 +85,16 @@ export type PlaceRecord = {
   name: string;
   seed: number;
   spawn?: PlaceSpawn;
+  /**
+   * What kind of world this place is built on. See `PlaceManifest.world`.
+   *
+   * **Optional and omitted rather than written as null, for the reason `spawn` is**, and it
+   * needs no field on `PLACE_RECORD_VERSION` either: an absent `world` means the sphere, which
+   * is the only world a record written before the field existed could have been about. Adding
+   * an optional field is not the breaking change a second version would be — the collection is
+   * public and a wrong `version` orphans every record already in it (ADR 0044).
+   */
+  world?: WorldShape;
   entry: string;
   createdAt: string;
   scripts: readonly PlaceScriptRecord[];

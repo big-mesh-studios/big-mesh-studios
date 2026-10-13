@@ -22,14 +22,19 @@ import { Mesh, Scene, SphereGeometry } from "@random-mesh/rmsl/scene";
 
 import type { Vec3 } from "@big-mesh-studios/core";
 import { DEFAULT_PLANET_RADIUS } from "../render/atmosphere";
+import { DEFAULT_PLANET } from "@big-mesh-studios/csg";
+
 import { bakeCloudField, bakeCloudSlice, type CloudField } from "./cloud-field";
 import { shapeTexture, sliceTexture, weatherTexture } from "./cloud-textures";
 import {
   CLOUD_EXTENT,
   CheapCloudMaterial,
   CloudMaterial,
+  cloudDeck,
   cloudSliceOptions,
   driftAngleAt,
+  driftOffsetAt,
+  type CloudDeck,
 } from "./clouds";
 import type { DayNightState } from "./day-night";
 
@@ -66,13 +71,15 @@ export interface CloudLayer {
  * Builds both layers over one baked field.
  *
  * The signature mirrors `createClouds` deliberately, so the one caller can change nothing but
- * the function name. `seaRadius` places both shells and scales both fields.
+ * the function name. `seaRadius` places both shells and scales both fields, and `deck` says
+ * which world they are on — its altitudes, its thickness and its feature size.
  */
 export const createCloudLayer = (
   scene: Scene,
   seed = 20260901,
   field: CloudField = bakeCloudField(seed),
   seaRadius = DEFAULT_PLANET_RADIUS,
+  deck: CloudDeck = cloudDeck({ kind: "planet", params: DEFAULT_PLANET }),
 ): CloudLayer => {
   // **One texture upload and one geometry for both layers.** A `DataTexture` is bound per
   // material but is the same immutable bytes either way, and the carrier is a carrier in
@@ -84,7 +91,7 @@ export const createCloudLayer = (
   const weather = weatherTexture(field.weather);
   const geometry = new SphereGeometry(CLOUD_EXTENT, 44, Math.floor(44 / 2));
 
-  const highMaterial = new CloudMaterial(shape, weather, seaRadius);
+  const highMaterial = new CloudMaterial(shape, weather, seaRadius, deck);
   const highMesh = new Mesh(geometry, highMaterial);
   highMesh.visible = true;
   // Added after the terrain, as `createClouds` was: draw order is the occlusion scheme, and
@@ -108,11 +115,15 @@ export const createCloudLayer = (
     if (lowMaterial !== null || disposed) return;
     // Cut from the same field the raymarch reads, at the raymarch's own scale and a fixed
     // altitude, so the two techniques place their clouds in the same places.
-    const slice = bakeCloudSlice(field, cloudSliceOptions(seaRadius));
+    // **The slice at the cheap layer's own scale on this world**, which for a plane is a
+    // different tiling and a different feature size rather than a different size of map —
+    // see `cloudSliceOptions`.
+    const slice = bakeCloudSlice(field, cloudSliceOptions(seaRadius, deck));
     lowMaterial = new CheapCloudMaterial(
       sliceTexture(slice),
       weather,
       seaRadius,
+      deck,
     );
     lowMesh = new Mesh(geometry, lowMaterial);
     lowMesh.visible = quality === "low";
@@ -135,12 +146,19 @@ export const createCloudLayer = (
       if (lowMesh !== null) lowMesh.visible = next === "low";
     },
     update(camera, state) {
+      // **Both drifts on both layers.** A sphere turns a direction and a plane slides a
+      // position, so one of the two is doing nothing on either world — which is cheaper than
+      // a branch inside a per-sample address.
+      const drift = driftAngleAt(state.elapsed, seaRadius);
+      const offset = driftOffsetAt(state.elapsed);
       highMaterial.time = state.elapsed;
-      highMaterial.driftAngle = driftAngleAt(state.elapsed, seaRadius);
+      highMaterial.driftAngle = drift;
+      highMaterial.driftOffset = offset;
       highMaterial.sky.lighting = state;
       if (lowMaterial !== null) {
         lowMaterial.time = state.elapsed;
-        lowMaterial.driftAngle = driftAngleAt(state.elapsed, seaRadius);
+        lowMaterial.driftAngle = drift;
+        lowMaterial.driftOffset = offset;
         lowMaterial.sky.lighting = state;
       }
       // Dead-centre on the eye and unsnapped, every carrier. See `clouds.ts`; the reason is

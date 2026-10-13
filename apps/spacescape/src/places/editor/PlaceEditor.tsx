@@ -159,6 +159,29 @@ export const PlaceEditor: Component<PlaceEditorProps> = (props) => {
             }
           />
         </label>
+        {/*
+          **A `<select>` and not another text box, because there are two answers and one of them
+          is the absence.** The empty option is the world this place has not chosen — a sphere —
+          and it is the option a manifest with no `world` is read back as, so the control shows
+          what the file says rather than what the engine would assume.
+        */}
+        <label class="place-field">
+          <span>world</span>
+          <select
+            value={props.state.project().manifest.world ?? ""}
+            onInput={(event) =>
+              props.state.setWorld(
+                event.currentTarget.value === ""
+                  ? undefined
+                  : (event.currentTarget
+                      .value as PlaceProject["manifest"]["world"]),
+              )
+            }
+          >
+            <option value="">sphere (the default)</option>
+            <option value="flat">flat (y is always up)</option>
+          </select>
+        </label>
         <span class="place-draft">
           {/* **Said rather than not shown.** A person who is relying on a draft surviving a reload
               needs to know it is being kept, and needs to know when it is not. */}

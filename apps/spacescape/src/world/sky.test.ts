@@ -104,7 +104,11 @@ describe("the sky dome compiles", () => {
       "uZenith",
       "uTwilight",
       "uStarTurn",
-      "uSkyRadius",
+      // **The sea level, and not a radius.** It is the same number on both worlds — a
+      // distance from the centre on a sphere and an altitude on a plane — and the frame
+      // says which. Naming it a radius is how a flat world ends up measuring its altitude
+      // against a sphere of 136,000 units.
+      "uSkySeaLevel",
       "uSkyAtmosphere",
       "uSkyScale",
     ]) {
@@ -234,6 +238,19 @@ describe("the sky dome compiles", () => {
 });
 
 const scene = (): Scene => new Scene();
+
+/**
+ * The world these tests are about.
+ *
+ * **Stated rather than left to a default, because there is no default.** `createSky` takes the
+ * world it is drawing because the altitude it computes decides whether there is air overhead at
+ * all, and a default would be the one number nothing chose — which is how a flat world ends up
+ * measuring itself against a sphere of 136,000 units.
+ */
+const PLANET_WORLD = {
+  seaLevel: DEFAULT_PLANET_RADIUS,
+  spherical: true,
+} as const;
 
 /**
  * How many pixels the starfield actually lights.
@@ -686,7 +703,7 @@ describe("the dome's state", () => {
     const scene = new Scene();
     expect(scene.children).toHaveLength(0);
 
-    const sky = createSky(scene);
+    const sky = createSky(scene, PLANET_WORLD);
     expect(scene.children).toHaveLength(1);
     const dome = scene.children[0]!;
     expect(dome.isMesh).toBe(true);
@@ -708,7 +725,7 @@ describe("the dome's state", () => {
     );
     scene.add(existing);
 
-    const sky = createSky(scene);
+    const sky = createSky(scene, PLANET_WORLD);
     expect(scene.children).toHaveLength(2);
     expect(scene.children[0]).toBe(existing);
     expect((scene.children[1]! as Mesh).material).toBeInstanceOf(SkyMaterial);
@@ -719,7 +736,7 @@ describe("the dome's state", () => {
   });
 
   it("holds no reference to a state until it is given one", () => {
-    const sky = createSky(scene());
+    const sky = createSky(scene(), PLANET_WORLD);
     expect(sky.material.sky.lighting).toBeNull();
     sky.material.sky.lighting = dayNightState(0);
     expect(sky.material.sky.lighting).not.toBeNull();

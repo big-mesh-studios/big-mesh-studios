@@ -74,6 +74,7 @@
 
 import type { Node, UniformNode, Var } from "@random-mesh/rmsl";
 import {
+  abs,
   Break,
   If,
   Loop,
@@ -102,7 +103,11 @@ import {
 } from "@random-mesh/rmsl/scene";
 
 import type { Vec3 } from "@big-mesh-studios/core";
-import { DEFAULT_PLANET, reachOf } from "@big-mesh-studios/csg";
+import {
+  DEFAULT_PLANET,
+  surfaceReachOf,
+  type BaseFieldSpec,
+} from "@big-mesh-studios/csg";
 import { DEFAULT_PLANET_RADIUS } from "../render/atmosphere";
 import { equirectUV } from "../render/globe";
 import { SkyLight } from "../render/sky-light";
@@ -113,35 +118,6 @@ import {
 } from "./cloud-field";
 import { shapeTexture, weatherTexture } from "./cloud-textures";
 import type { DayNightState } from "./day-night";
-
-/**
- * How far above the tallest terrain the cloud layer's floor sits.
- *
- * **Derived, not written down**, for the same reason the globe's crossfade is: a hardcoded
- * altitude is a number that means something only until the mountains change. These were 700 and
- * 1400 against a reach of 288, which put the floor two thousand units above the peaks — and
- * tripling the ranges put the peaks *through* the cloud base, so every summit came out of a
- * cloud deck. `reachOf` is the landscape's own reach and it moves when the landscape does.
- */
-const CLOUD_CLEARANCE = 120;
-
-/** The bottom of the cloud layer, as an altitude above the sea. */
-export const CLOUD_BOTTOM = reachOf(DEFAULT_PLANET) + CLOUD_CLEARANCE;
-
-/** The top of the cloud layer, as an altitude above the sea. Seven hundred above its floor. */
-export const CLOUD_TOP = CLOUD_BOTTOM + 700;
-
-/** The layer's thickness, which the volume's vertical axis is stretched across. */
-export const CLOUD_THICKNESS = CLOUD_TOP - CLOUD_BOTTOM;
-
-/**
- * How far the carrier sphere reaches, in world units.
- *
- * Forty thousand, so the whole sphere sits inside the camera's four-hundred-thousand far
- * plane. Nothing about the number matters beyond that: it is a carrier for a ray
- * direction, not a place clouds are.
- */
-export const CLOUD_EXTENT = 40000;
 
 /**
  * World units of the planet's surface one repeat of the shape volume covers.
@@ -182,6 +158,123 @@ export const CLOUD_EXTENT = 40000;
 export const CLOUD_FEATURE = DEFAULT_PLANET_RADIUS * 0.12;
 
 /**
+ * The same distance on a height field, where nothing about it scales with a radius.
+ *
+ * **The argument above does not apply here, and neither does its number.** It is about the
+ * *angular* size a feature subtends, and it reaches that through `CLOUD_FEATURE / seaRadius` —
+ * a ratio with nothing to divide by on a plane. What survives is the part about the ground:
+ * a cloud's feature is a distance at which weather is recognisable, and a person standing under
+ * it is the instrument that measures it.
+ *
+ * Four thousand units, which at a player's eye height of about six is a feature subtending
+ * roughly a degree and a half — a little under three degrees across. On this planet a feature
+ * is 6.9° of arc and about 20,000 units of ground, so this is a smaller sky on a surface that
+ * does not curve away, which is the trade for having no horizon to run out of: on a plane the
+ * eye can see much further, so features have to be smaller to stay countable.
+ */
+export const CLOUD_FEATURE_FLAT = 4000;
+
+/**
+ * How far above the tallest terrain the cloud layer's floor sits.
+ *
+ * **Derived, not written down**, for the same reason the globe's crossfade is: a hardcoded
+ * altitude is a number that means something only until the mountains change. These were 700 and
+ * 1400 against a reach of 288, which put the floor two thousand units above the peaks — and
+ * tripling the ranges put the peaks *through* the cloud base, so every summit came out of a
+ * cloud deck. The reach is the landscape's own and it moves when the landscape does.
+ */
+const CLOUD_CLEARANCE = 120;
+
+/** How thick the deck is, on either world. Seven hundred units. */
+const CLOUD_DEPTH = 700;
+
+/**
+ * The two altitudes a world's deck is between, its thickness, and the distance one of its
+ * features spans.
+ *
+ * **One function, because the deck's base, its top and its feature size are all the same
+ * question asked of three different numbers.** The shape volume's `y` axis is normalised
+ * across the layer rather than across a world coordinate, so everything that reads the deck —
+ * the span solve on both sides of the worker boundary, the volume's address, the cheap slice's
+ * altitude, the drift — has to agree about where the base is and how thick the layer is.
+ * Deriving them from one call makes that structural rather than a matter of four constants
+ * happening to line up.
+ *
+ * **`bottom` and `top` are altitudes above the sea, not world coordinates**, because that is
+ * what every reader of them already does: the span solve adds the sea level, the address
+ * subtracts it, and `cloudSpan`'s signature takes it. Returning absolute levels instead would
+ * put the sea level in twice on one side and subtract it once too many on the other, and both
+ * are silent.
+ *
+ * **`clearance` is the world's own `surfaceReachOf`, not the planet's.** A plane's mountains and
+ * a sphere's are the same arithmetic over different numbers, and taking the planet's would put a
+ * flat world's deck eight hundred units above peaks that are not there.
+ *
+ * **`feature` is `CLOUD_FEATURE` on a sphere and `CLOUD_FEATURE_FLAT` on a plane**, because the
+ * argument behind the first is about an angular size and there is no angle to divide by on a
+ * height field. See `CLOUD_FEATURE_FLAT`.
+ */
+export const cloudDeck = (spec: BaseFieldSpec): CloudDeck => {
+  const spherical = spec.kind === "planet";
+  const bottom = surfaceReachOf(spec) + CLOUD_CLEARANCE;
+  return {
+    bottom,
+    top: bottom + CLOUD_DEPTH,
+    thickness: CLOUD_DEPTH,
+    feature: spherical ? CLOUD_FEATURE : CLOUD_FEATURE_FLAT,
+  };
+};
+
+/** A world's two altitudes a cloud deck is between, and the distance its features span. */
+export interface CloudDeck {
+  /**
+   * The underside, as an altitude above the sea.
+   *
+   * **Relative rather than absolute, and that is load-bearing**: `deckSpanNodes` adds the sea
+   * level to it and `heightAt` subtracts the sea level from the altitude before subtracting it
+   * again. An absolute level here would put the sea in twice on one side and take it out twice
+   * on the other.
+   */
+  readonly bottom: number;
+  /** The top, as an altitude above the sea. */
+  readonly top: number;
+  /** `top − bottom`. The volume's vertical axis is stretched across exactly this. */
+  readonly thickness: number;
+  /** World units one repeat of the shape volume covers. */
+  readonly feature: number;
+}
+
+/** The planet the constants below are this build's default world's. See {@link cloudDeck}. */
+const PLANET_SPEC: BaseFieldSpec = { kind: "planet", params: DEFAULT_PLANET };
+
+/** That world's deck, which is what every default argument in this file means. */
+const PLANET_DECK = cloudDeck(PLANET_SPEC);
+
+/** The deck on this build's default world, which is the sphere the constants below describe. */
+export const CLOUD_BOTTOM = PLANET_DECK.bottom;
+
+/** The top of the cloud layer on this build's default world, seven hundred above its floor. */
+export const CLOUD_TOP = PLANET_DECK.top;
+
+/** The layer's thickness, which the volume's vertical axis is stretched across. */
+export const CLOUD_THICKNESS = CLOUD_TOP - CLOUD_BOTTOM;
+
+/**
+ * How far the carrier sphere reaches, in world units.
+ *
+ * Forty thousand, so the whole sphere sits inside the camera's four-hundred-thousand far
+ * plane. Nothing about the number matters beyond that: it is a carrier for a ray
+ * direction, not a place clouds are.
+ *
+ * **A sphere on a flat world too, and not a box.** The carrier is dead-centre on the eye and
+ * the shader reads `normalize(positionWorld - cameraPosition)`, so on either shape the only
+ * thing it carries is a direction and the difference between a sphere and a box is invisible.
+ * A box would also need the camera *inside* it to keep `Side.BackSide` correct, which a carrier
+ * that follows the player cannot promise.
+ */
+export const CLOUD_EXTENT = 40000;
+
+/**
  * Where along the shell's span the cheap layer takes its one sample, 0 at the base, 1 at the top.
  *
  * The layer's height profile is thickest low and tapers upward, so the distance-midpoint of a
@@ -211,13 +304,28 @@ export const CHEAP_SLICE_HEIGHT = 256;
  *
  * Here rather than at the call site because the scale, the altitude and the warp are the
  * shader's own numbers and the slice's whole job is to agree with them.
+ *
+ * **`spherical` reaches the slice as well as the shader**, because agreeing means agreeing on
+ * the *address*: a slice cut across directions is not the same map as one cut across a grid of
+ * positions, and a flat world's cheap layer reading a sphere's slice would place its clouds
+ * nowhere near where the raymarch put them.
  */
-export const cloudSliceOptions = (seaRadius: number): CloudSliceOptions => ({
+export const cloudSliceOptions = (
+  seaRadius: number,
+  deck: CloudDeck = PLANET_DECK,
+): CloudSliceOptions => ({
   width: CHEAP_SLICE_WIDTH,
   height: CHEAP_SLICE_HEIGHT,
-  shapeScale: seaRadius / CLOUD_FEATURE,
+  // **A reciprocal distance on a plane and a scale on a direction on a sphere** — the same
+  // split `shapeAt` makes, and the reason `seaRadius` appears in only one of them. Multiplying
+  // a plane's position by `seaRadius / feature` would be zero for a sea at the origin.
+  shapeScale:
+    deck.feature === CLOUD_FEATURE_FLAT
+      ? 1 / deck.feature
+      : seaRadius / deck.feature,
   sliceHeight: CHEAP_SAMPLE_FRACTION,
   warpStrength: WARP_STRENGTH,
+  spherical: deck.feature !== CLOUD_FEATURE_FLAT,
 });
 
 /** How far the march goes at most, and therefore where the layer fades out. */
@@ -233,6 +341,139 @@ const MAX_DISTANCE = 17000;
  * be taken on the host.
  */
 export const MAX_STEPS = 128;
+
+/**
+ * Where a ray enters and leaves the cloud deck, as distances from the eye.
+ *
+ * **One function, two solves, called from both materials** — which is the whole of this
+ * extraction. The two were written out in full in `CloudMaterial` and `CheapCloudMaterial` and
+ * were term-for-term identical apart from a comment saying so; a flat world's slab was about to
+ * be written a fourth and fifth time, and four copies of a span solve is four places for a
+ * grazing ray to go wrong.
+ *
+ * ## The sphere
+ *
+ * Solved against the two concentric shells, not two planes. The density lives only between them,
+ * so the near span is what is worth marching; the far span behind the planet is dropped rather
+ * than marched and hidden by the globe, which writes no depth for it to hide behind. The
+ * quadratic is the half-`b` form: for a unit `ray`, the roots of `|eye + t·ray| = R` are
+ * `-b ± √(b² − c)` with `b = eye·ray` and `c = eye·eye − R²`, and the discriminant is clamped so
+ * a miss yields a zero root rather than a `NaN` that would survive every comparison downstream.
+ *
+ * ## The plane
+ *
+ * The deck is a slab, so `p(t).y` is linear and the crossings are two divisions — no quadratic,
+ * no `sqrt`. What survives from the sphere's version is the near-side rule and the empty case,
+ * and what does not is the fourth case: **from below the layer, looking down**, the sphere had a
+ * far side of the planet on the ray to rule out and a plane has nothing there at all, so the
+ * span is empty because the arithmetic says so rather than because a rule was added for it.
+ *
+ * **A level ray is empty on a plane**, and cannot be empty on a sphere: every ray meets a
+ * sphere, so `ray.y == 0` never came up before. It is the ray along the horizon, and it has no
+ * deck in it because it never leaves its own altitude.
+ *
+ * ## Why a build-time branch
+ *
+ * `spherical` is a plain boolean here, not a uniform, because this runs once per fragment and
+ * the alternative is both solves in every pixel of a shader whose cost is already budget-pinned
+ * by `clouds.test.ts`. See `Field.spherical`.
+ */
+const deckSpanNodes = (
+  f: {
+    readonly seaRadius: UniformNode<"float">;
+    readonly spherical: boolean;
+    readonly bottom: UniformNode<"float">;
+    readonly top: UniformNode<"float">;
+  },
+  eye: Node<"vec3">,
+  ray: Node<"vec3">,
+): { enter: Node<"float">; exit: Node<"float"> } => {
+  const inner = f.seaRadius.add(f.bottom);
+  const outer = f.seaRadius.add(f.top);
+
+  if (!f.spherical) {
+    // **The guarded division, and not a branch on it.** `max(|ray.y|, 1e-6)` means a level ray
+    // produces enormous finite crossings rather than a `NaN`, and the `level` term below
+    // replaces the whole span with zero in that case — so the guard is there to keep the
+    // arithmetic finite, not to be the answer.
+    const step = max(abs(ray.y), float(1e-6)).toVar();
+    const atInner = inner.sub(eye.y).div(step).toVar();
+    const atOuter = outer.sub(eye.y).div(step).toVar();
+    const level = abs(ray.y).lessThan(float(1e-6)).toVar();
+    const rising = ray.y.greaterThan(float(0)).toVar();
+    const lo = select(rising, atInner, atOuter).toVar();
+    const hi = select(rising, atOuter, atInner).toVar();
+    const enter = max(lo, float(0)).toVar();
+    const exit = min(hi, float(MAX_DISTANCE)).toVar();
+    // **Empty on three counts, and none of them is "the ray goes down".** A level ray never leaves
+    // its own altitude so it cannot cross a deck; a ray that misses both levels has an inverted
+    // pair, which is what a ground eye looking down has since both crossings are behind it; and a
+    // deck that starts past `MAX_DISTANCE` is one this march does not reach — the case a flat
+    // world's grazing ray runs into, since there is no shell's far root to stop it first.
+    // **A descending ray from inside the deck is none of them.**
+    const empty = level
+      .or(exit.lessThanEqual(enter))
+      .or(enter.greaterThanEqual(float(MAX_DISTANCE)));
+    return { enter, exit: select(empty, enter, exit) };
+  }
+
+  const bq = eye.dot(ray).toVar();
+  const eyeSquared = eye.dot(eye).toVar();
+
+  const outerDisc = max(
+    bq.mul(bq).sub(eyeSquared.sub(outer.mul(outer))),
+    float(0),
+  ).toVar();
+  const outerRoot = sqrt(outerDisc).toVar();
+  const outerNear = bq.negate().sub(outerRoot).toVar();
+  const outerFar = bq.negate().add(outerRoot).toVar();
+
+  const innerDisc = max(
+    bq.mul(bq).sub(eyeSquared.sub(inner.mul(inner))),
+    float(0),
+  ).toVar();
+  const innerRoot = sqrt(innerDisc).toVar();
+  const innerNear = bq.negate().sub(innerRoot).toVar();
+  const innerFar = bq.negate().add(innerRoot).toVar();
+  const crossesInner = innerDisc.greaterThan(float(0)).toVar();
+
+  // The near span. It starts at the outer shell's near root, or at the eye when the eye is
+  // already inside it. If that point is *under* the cloud layer the span begins where the
+  // ray leaves the inner sphere; otherwise it ends where the ray meets the inner sphere —
+  // the near side of the planet — which is what keeps the far-side clouds from being
+  // marched through the globe.
+  const enter = max(outerNear, float(0)).toVar();
+  enter.assign(
+    select(
+      crossesInner
+        .and(enter.greaterThanEqual(innerNear))
+        .and(enter.lessThanEqual(innerFar)),
+      innerFar,
+      enter,
+    ),
+  );
+  const exit = min(outerFar, float(MAX_DISTANCE)).toVar();
+  exit.assign(
+    select(
+      crossesInner
+        .and(innerNear.greaterThan(enter))
+        .and(innerNear.lessThan(exit)),
+      innerNear,
+      exit,
+    ),
+  );
+  // From under the layer, looking down: the only shell on the ray is the far side of the
+  // planet, under the ground, so the span is emptied rather than marched. `b < 0` is the
+  // ray turning inward; the ground player's upward and grazing rays are untouched.
+  exit.assign(
+    select(
+      eyeSquared.lessThan(inner.mul(inner)).and(bq.lessThan(float(0))),
+      enter,
+      exit,
+    ),
+  );
+  return { enter, exit };
+};
 
 /** How far a step through cloud is. */
 const DENSE_STEP = 70;
@@ -376,11 +617,60 @@ interface Field {
   readonly sky: SkyLight;
   readonly coverage: UniformNode<"float">;
   readonly density: UniformNode<"float">;
-  /** The sea radius, so a point's height above the ground and its direction can be told apart. */
+  /**
+   * This world's sea level, so a point's height above the ground and its direction can be
+   * told apart.
+   *
+   * **A radius on a sphere and an altitude on a plane**, which is the same number read two
+   * ways — the frame says which, and `spherical` below is that frame's answer.
+   */
   readonly seaRadius: UniformNode<"float">;
-  /** How far the whole field has turned about the planet's axis, in radians. */
+  /**
+   * Whether this world has a direction to address the fields by.
+   *
+   * **A build-time flag and not a uniform, which is deliberate here and is the opposite of the
+   * choice in `atmosphere.ts`.** Every use of it is inside the march — the volume's address, the
+   * weather map, the drift and the entry solve are all per-sample — so making it a uniform would
+   * evaluate the sphere's and the plane's address at every one of `MAX_STEPS × LIGHT_STEPS`
+   * samples rather than at one point per fragment. A cloud layer is torn down and rebuilt when
+   * the world changes shape (there is no way to stop a bake that is already running and keep
+   * the work), so there is nothing to save by making it dynamic.
+   */
+  readonly spherical: boolean;
+  /** How far the whole field has turned about the world's axis, in radians. */
   readonly driftAngle: UniformNode<"float">;
-  /** World radius of the shape volume's sphere: `seaRadius / CLOUD_FEATURE`. */
+  /**
+   * How far the whole field has slid, in the volume's own tiles.
+   *
+   * **The plane's drift, and the sphere's is left at zero.** See `spun`, which picks between
+   * them: a direction is turned and a position is moved, so a flat world has no angle to
+   * carry and this is not a second way of computing the same rotation.
+   */
+  readonly driftOffset: UniformNode<"float">;
+  /**
+   * The deck's underside, as an altitude above the sea.
+   *
+   * **A uniform rather than the module constant, because the constant is the sphere's.** A
+   * height field's noise reaches further per unit of scale than a sphere's does — its bound is
+   * two units of amplitude against one — so the same `CLOUD_BOTTOM` on a flat world would put
+   * the deck at a different height above that world's own mountains than above the planet's,
+   * with nothing to say so.
+   */
+  readonly bottom: UniformNode<"float">;
+  /** The deck's top, as an altitude above the sea. */
+  readonly top: UniformNode<"float">;
+  /** `top − bottom`. The volume's vertical axis is stretched across exactly this. */
+  readonly thickness: UniformNode<"float">;
+  /**
+   * How far a world unit reaches in the shape volume: `seaRadius / CLOUD_FEATURE` on a sphere
+   * and `1 / CLOUD_FEATURE_FLAT` on a plane.
+   *
+   * **The two are not the same quantity**, which is why this is one field and not two branches:
+   * on a sphere it is a scale on a *direction* (a unit vector measured in units of the feature),
+   * and on a plane it is a scale on a *position* (world units measured in units of the feature).
+   * Multiplying either by it puts the sample at the same place in the volume, which is the only
+   * thing the address has to do.
+   */
   readonly shapeScale: Node<"float">;
 }
 
@@ -399,50 +689,91 @@ interface SliceField {
   readonly coverage: UniformNode<"float">;
   readonly density: UniformNode<"float">;
   readonly seaRadius: UniformNode<"float">;
+  /** See `Field.spherical`. Same flag, same reason, and the cheap layer answers both the same way. */
+  readonly spherical: boolean;
+  /** See `Field.bottom`. */
+  readonly bottom: UniformNode<"float">;
+  /** See `Field.top`. */
+  readonly top: UniformNode<"float">;
+  /** See `Field.thickness`. */
+  readonly thickness: UniformNode<"float">;
   readonly driftAngle: UniformNode<"float">;
+  /** See `Field.driftOffset`. */
+  readonly driftOffset: UniformNode<"float">;
 }
 
-/** The drift rotation's cosine and sine, computed once a frame and carried about as a pair. */
+/** The drift's own numbers, computed once a frame and carried about rather than recomputed. */
 interface Turn {
   readonly cos: Node<"float">;
   readonly sin: Node<"float">;
+  /** How far the field has slid, in the volume's tiles. The plane's whole drift. */
+  readonly drift: Node<"float">;
 }
 
 /**
- * Turns a direction about the planet's axis by the drift.
+ * The drift, as a change of address rather than a rotation.
  *
- * The field is fixed and the *lookup* turns, exactly as the starfield does, so the clouds
- * circle the planet rather than sliding across a map. Rotating the direction rather than
- * offsetting a texture coordinate is what keeps the motion continuous across the
- * antimeridian: an equirectangular `u` offset would jump a whole tile there, and no amount
- * of wrapping hides a discontinuity in the address of a field that does not wrap with it.
+ * **A rotation about the world axis on a sphere, and a translation on a plane** — because a
+ * direction is scale-invariant and a position is not. `normalize(world)` is the same for every
+ * point along a ray from the origin, so a drift applied to it moves the whole ray at once; a
+ * position's address moves with the point, which is what makes a flat world's weather *slide*
+ * rather than turn.
+ *
+ * The field is fixed and the *lookup* moves in both cases, exactly as the starfield does. On a
+ * sphere that means rotating the direction rather than offsetting a texture coordinate, which is
+ * what keeps the motion continuous across the antimeridian: an equirectangular `u` offset would
+ * jump a whole tile there, and no amount of wrapping hides a discontinuity in the address of a
+ * field that does not wrap with it.
+ *
+ * **`drift` arrives already divided by the feature size**, so both branches are in the volume's
+ * own tiles and the two worlds drift at the same rate in world units.
  */
-const spun = (turn: Turn, v: Node<"vec3">): Node<"vec3"> =>
-  vec3(
-    v.x.mul(turn.cos).sub(v.z.mul(turn.sin)),
-    v.y,
-    v.x.mul(turn.sin).add(v.z.mul(turn.cos)),
-  );
+const spun = (
+  f: { spherical: boolean },
+  turn: Turn,
+  v: Node<"vec3">,
+): Node<"vec3"> =>
+  f.spherical
+    ? vec3(
+        v.x.mul(turn.cos).sub(v.z.mul(turn.sin)),
+        v.y,
+        v.x.mul(turn.sin).add(v.z.mul(turn.cos)),
+      )
+    : vec3(v.x.add(turn.drift), v.y, v.z.add(turn.drift));
 
 /**
- * The weather map at a direction, wrapped once around the planet.
+ * The weather map, at whatever address this world's is.
  *
- * The map is equirectangular and the sphere is not, so the poles pinch — the same pinch
- * the globe's own albedo has, and acceptable for a coverage field this low-frequency. The
- * direction arrives already spun, so the drift is the caller's business.
+ * **Equirectangular on a sphere, planar on a plane.** The sphere's map is wrapped exactly once
+ * around the planet, so a direction is the address; a plane has no such wrap, so the address is
+ * the sample's own horizontal position scaled to the map's period — which means a flat world's
+ * weather repeats every `2 · feature` units rather than tiling the ground once.
+ *
+ * The pole pinch is the sphere's own and is acceptable for a coverage field this low-frequency;
+ * the plane has no poles and so has nothing to pinch.
  */
 const weatherAt = (
-  f: { readonly weather: UniformNode<"sampler2D"> },
-  direction: Node<"vec3">,
-): Node<"vec4"> => texture(f.weather, equirectUV(direction));
+  f: {
+    readonly weather: UniformNode<"sampler2D">;
+    readonly spherical: boolean;
+  },
+  address: Node<"vec3">,
+): Node<"vec4"> =>
+  texture(f.weather, f.spherical ? equirectUV(address) : planarUV(address));
+
+/** The plane's weather address: horizontal position, tiled, with the drift folded in. */
+const planarUV = (world: Node<"vec3">): Node<"vec2"> =>
+  vec2(world.x, world.z).mul(float(1 / (2 * CLOUD_FEATURE_FLAT)));
 
 /**
- * Where a sample falls in the shape volume, before the warp: **direction, plus altitude.**
+ * Where a sample falls in the shape volume, before the warp: **horizontal place, plus altitude.**
  *
- * The direction half is `normalize(world) · seaRadius / CLOUD_FEATURE`, which is what makes
- * the layer a sphere rather than a plane: its features are a fixed size on the surface however
+ * On a sphere the horizontal half is `normalize(world) · seaRadius / CLOUD_FEATURE`, which is what
+ * makes the layer a sphere rather than a plane: its features are a fixed size on the surface however
  * far the sample is from the centre, and because it is a three-dimensional field sampled on
- * a direction it has no seam and no pole.
+ * a direction it has no seam and no pole. On a plane it is `world.xz / CLOUD_FEATURE_FLAT`, which
+ * has features a fixed size on the ground and no pole because it has no pole — and no seam either,
+ * since a 3D field tiled on a plane has neither.
  *
  * **The altitude half is not optional, and leaving it out is the whole of one bug.** A
  * direction is scale-invariant, so two samples 700 units apart *vertically* — the exact
@@ -453,8 +784,7 @@ const weatherAt = (
  * left came from the one-dimensional `heightGradient` alone. The sky was a silhouette
  * extruded through seven hundred units, softly capped and softly floored: smooth, and with no
  * billow in it. Adding `height` to the volume's `y` puts the layer's own normalised altitude
- * back in the address, which is what the flat world's `(worldY − CLOUD_BOTTOM) /
- * CLOUD_THICKNESS` was, and the ray sweeps **sixty texels** again — the whole volume, once,
+ * back in the address, and the ray sweeps **sixty texels** again — the whole volume, once,
  * going up through the layer.
  *
  * Both halves are read at every sample of the march *and* of the march toward the light. The
@@ -463,40 +793,59 @@ const weatherAt = (
  */
 const shapeAt = (
   f: Field,
-  direction: Node<"vec3">,
+  here: Node<"vec3">,
   height: Node<"float">,
 ): Node<"vec3"> =>
-  direction.mul(f.shapeScale).add(vec3(float(0), height, float(0)));
+  f.spherical
+    ? here
+        .normalize()
+        .mul(f.shapeScale)
+        .add(vec3(float(0), height, float(0)))
+    : vec3(here.x.mul(f.shapeScale), height, here.z.mul(f.shapeScale));
 
 /**
  * A sample's altitude as the volume's vertical address: zero at the underside, one at the top.
  *
- * The same expression as the profile's `height`, and deliberately the *same expression* — one
+ * **The same expression as the profile's `height`, and deliberately the *same expression* — one
  * line of arithmetic, read out of the shader by the test that holds the address, rather than two
- * spellings of a number that have to agree. It goes negative below the layer and past one above
+ * spellings of a number that have to agree.** It goes negative below the layer and past one above
  * it, which is fine: the volume wraps on every axis.
+ *
+ * **`|world|` on a sphere and `world.y` on a plane**, which is the same subtraction against the
+ * same sea level — and the reason it can be one expression with the span solve's is that both
+ * read `seaRadius` and let the world say what it means.
  */
 const heightAt = (
-  f: { readonly seaRadius: UniformNode<"float"> },
+  f: {
+    readonly seaRadius: UniformNode<"float">;
+    readonly spherical: boolean;
+    readonly bottom: UniformNode<"float">;
+    readonly thickness: UniformNode<"float">;
+  },
   world: Node<"vec3">,
 ): Node<"float"> =>
-  world
-    .length()
+  (f.spherical ? world.length() : world.y)
     .sub(f.seaRadius)
-    .sub(float(CLOUD_BOTTOM))
-    .div(float(CLOUD_THICKNESS));
+    .sub(f.bottom)
+    .div(f.thickness);
 
 /**
- * The drift angle, recomputed by the caller each frame.
+ * The drift, recomputed by the caller each frame.
  *
- * Its own uniform rather than arithmetic on `uTime`, because the rotation has to be the
- * same number at every place it appears and rmsl emits an expression once per use. The
- * angular speed is the linear `DRIFT` over the planet's radius, so the surface clouds move
- * at `DRIFT` world units a second whatever the planet's size — which is the property a
- * player reads as wind.
+ * Its own uniform rather than arithmetic on `uTime`, because it has to be the same number at
+ * every place it appears and rmsl emits an expression once per use.
+ *
+ * **The sphere's is an angle and the plane's is a distance in tiles**, and both move the
+ * surface clouds at `DRIFT` world units a second — which is the property a player reads as
+ * wind. The sphere divides the linear speed by the radius because the lookup is a *direction*;
+ * the plane divides by the feature size because the lookup is a *position*.
  */
 export const driftAngleAt = (time: number, seaRadius: number): number =>
   (time * DRIFT) / Math.max(seaRadius, 1);
+
+/** The plane's drift, in the volume's own tiles. See {@link driftAngleAt}. */
+export const driftOffsetAt = (time: number): number =>
+  (time * DRIFT) / CLOUD_FEATURE_FLAT;
 
 /** The near span of a ray through the cloud shell, as distances from the eye. */
 export interface CloudSpan {
@@ -529,10 +878,16 @@ export const cloudSpan = (
   eye: Vec3,
   ray: Vec3,
   seaRadius: number,
+  deck: CloudDeck = PLANET_DECK,
   maxDistance: number = MAX_DISTANCE,
 ): CloudSpan => {
-  const inner = seaRadius + CLOUD_BOTTOM;
-  const outer = seaRadius + CLOUD_TOP;
+  const inner = seaRadius + deck.bottom;
+  const outer = seaRadius + deck.top;
+
+  if (deck.feature === CLOUD_FEATURE_FLAT) {
+    return slabSpan(eye, ray, inner, outer, maxDistance);
+  }
+
   const b = eye.x * ray.x + eye.y * ray.y + eye.z * ray.z;
   const eyeSquared = eye.x ** 2 + eye.y ** 2 + eye.z ** 2;
 
@@ -553,6 +908,49 @@ export const cloudSpan = (
   if (crossesInner && innerNear > enter && innerNear < exit) exit = innerNear;
   // Looking down from under the layer: everything on this ray is the planet, not cloud.
   if (eyeInsideInner && b < 0) exit = enter;
+  return { enter, exit };
+};
+
+/**
+ * The near span of a ray through a flat world's cloud deck.
+ *
+ * **The shell solve's cases, minus the one only a sphere has.** The deck is a slab between two
+ * levels, so `p(t).y` is linear in `t` and the crossings are two divisions rather than a
+ * quadratic — and there is no far side to stop at, because a plane has no underside.
+ *
+ * What survives from the shell version is the near-side rule and the empty case:
+ *
+ * - **From below the deck**, looking up: from the sea to the top.
+ * - **From inside the deck**: from the eye to the top.
+ * - **From above**, looking down: from the eye to the sea, and no further — the ray's
+ *   remaining length is underground.
+ * - **From below, looking down**: nothing. The sphere needed a fourth rule for this because
+ *   the far side of the planet was on the ray; a plane has nothing down there at all, so the
+ *   span is empty because the arithmetic says so rather than because a case was added for it.
+ * - **Level** (`ray.y == 0`): nothing. A ray that never leaves its own altitude cannot cross
+ *   a deck, and this is the case the sphere's solve could not produce — every ray it handles
+ *   meets a sphere.
+ */
+const slabSpan = (
+  eye: Vec3,
+  ray: Vec3,
+  inner: number,
+  outer: number,
+  maxDistance: number,
+): CloudSpan => {
+  if (ray.y === 0) return { enter: 0, exit: 0 };
+  const atInner = (inner - eye.y) / ray.y;
+  const atOuter = (outer - eye.y) / ray.y;
+  const enter = Math.max(0, Math.min(atInner, atOuter));
+  const exit = Math.min(Math.max(atInner, atOuter), maxDistance);
+  // **Empty on three counts, and none of them is "the ray goes down".** A level ray never leaves
+  // its own altitude so it cannot cross a deck; a ray that misses both levels has an inverted
+  // pair, which is what a ground eye looking down has since both crossings are behind it; and a
+  // deck that starts past `maxDistance` is a deck this march does not reach, which is the case a
+  // flat world's grazing ray runs into — there is no shell's far root to stop it first. **A
+  // descending ray from inside the deck is none of them:** it leaves at the underside, which is a
+  // real crossing and what a player standing under weather sees.
+  if (enter >= maxDistance || exit <= enter) return { enter: 0, exit: 0 };
   return { enter, exit };
 };
 
@@ -682,7 +1080,7 @@ const lightDepthAt = (
   // near field only, where the march is already the expensive half of the shader.
   Loop(LIGHT_STEPS, () => {
     const along = origin.add(direction.mul(stepTo)).toVar();
-    const here = spun(turn, along.normalize()).toVar();
+    const here = spun(f, turn, along.normalize()).toVar();
     accumulator.addAssign(
       baseAt(f, shapeAt(f, here, heightAt(f, along)).add(offset)).mul(stepTo),
     );
@@ -731,6 +1129,31 @@ export class CloudMaterial extends NodeMaterial {
    * fixed world speed whatever the planet's size.
    */
   driftAngle = 0;
+  /**
+   * How far the field has slid, in the volume's own tiles. The plane's drift; the sphere's
+   * `driftAngle` is the only one it has. See {@link driftOffsetAt}.
+   */
+  driftOffset = 0;
+
+  /**
+   * This world's deck — the altitudes it is between and the distance its features span.
+   *
+   * **A field rather than three constructor arguments**, because the four numbers travel
+   * together into a shader that uses them together, and a constructor taking
+   * `(bottom, top, thickness, feature)` is four ways to pass a deck that does not add up.
+   */
+  readonly deck: CloudDeck;
+
+  /**
+   * Whether this world's fields are addressed by direction.
+   *
+   * **A getter over the deck rather than its own field**, because the deck already says which
+   * world this is — its `feature` is the sphere's or the plane's — and a second value to keep
+   * in step with it is a second thing that can be wrong.
+   */
+  get spherical(): boolean {
+    return this.deck.feature !== CLOUD_FEATURE_FLAT;
+  }
 
   /** How much of the sky is cloud, 0 to 1. The one knob worth having. */
   coverage = 0.52;
@@ -743,10 +1166,22 @@ export class CloudMaterial extends NodeMaterial {
   constructor(
     private readonly shapeSource: DataTexture,
     private readonly weatherSource: DataTexture,
-    /** The planet's sea radius, which fixes the two shells and the field's scale on them. */
+    /**
+     * This world's sea level, which fixes the two shells and the field's scale on them — a
+     * distance from the centre on a sphere and an altitude on a plane.
+     */
     readonly seaRadius: number = DEFAULT_PLANET_RADIUS,
+    /**
+     * This world's deck, which fixes the two levels and the field's scale on them.
+     *
+     * **Whole rather than its four numbers**, and defaulted to the sphere's because that is the
+     * world this build opens on — see `cloudDeck` for what the alternatives are. Everything
+     * downstream reads `this.deck`, so there is one place to look for where the layer is.
+     */
+    deck: CloudDeck = PLANET_DECK,
   ) {
     super();
+    this.deck = deck;
     this.transparent = true;
     // Back faces only: the camera is inside the carrier, so what it sees of every wall is
     // that wall's far side, and drawing both sides would rasterise every pixel twice for an
@@ -775,16 +1210,33 @@ export class CloudMaterial extends NodeMaterial {
       coverage: b.materialUniform("uCoverage", "float", () => this.coverage),
       density: b.materialUniform("uDensity", "float", () => this.density),
       seaRadius,
+      spherical: this.spherical,
+      bottom: b.materialUniform(
+        "uCloudBottom",
+        "float",
+        () => this.deck.bottom,
+      ),
+      top: b.materialUniform("uCloudTop", "float", () => this.deck.top),
+      thickness: b.materialUniform(
+        "uCloudThickness",
+        "float",
+        () => this.deck.thickness,
+      ),
       driftAngle: b.materialUniform(
         "uDriftAngle",
         "float",
         () => this.driftAngle,
       ),
-      // **The shell's two radii and the shape's scale all come from the sea radius**, so a
-      // world with another planet moves its clouds with it. `shapeScale` is the radius of the
-      // direction sphere inside the shape volume: one tile of the volume per `CLOUD_FEATURE`
-      // of surface.
-      shapeScale: seaRadius.mul(float(1 / CLOUD_FEATURE)),
+      driftOffset: b.materialUniform(
+        "uDriftOffset",
+        "float",
+        () => this.driftOffset,
+      ),
+      // **The deck's two levels and the shape's scale all come from the sea level**, so a world
+      // with another surface moves its clouds with it. And `shapeScale` is the one field that is
+      // a scale on a *direction* on a sphere and a scale on a *position* on a plane — see
+      // `shapeAt`, which is where that difference is spent.
+      shapeScale: seaRadius.mul(float(1 / this.deck.feature)),
     };
   }
 
@@ -802,6 +1254,7 @@ export class CloudMaterial extends NodeMaterial {
     const turn: Turn = {
       cos: f.driftAngle.cos().toVar(),
       sin: f.driftAngle.sin().toVar(),
+      drift: f.driftOffset.toVar(),
     };
 
     // ---- where the ray enters and leaves the shell ----
@@ -812,65 +1265,7 @@ export class CloudMaterial extends NodeMaterial {
     // of `|eye + t·ray| = R` are `-b ± √(b² − c)` with `b = eye·ray` and `c = eye·eye − R²`,
     // and the discriminant is clamped so a miss yields a zero root rather than a `NaN` that
     // would survive every comparison downstream.
-    const innerRadius = f.seaRadius.add(float(CLOUD_BOTTOM));
-    const outerRadius = f.seaRadius.add(float(CLOUD_TOP));
-    const bq = eye.dot(ray);
-    const eyeSquared = eye.dot(eye);
-
-    const outerDisc = max(
-      bq.mul(bq).sub(eyeSquared.sub(outerRadius.mul(outerRadius))),
-      float(0),
-    );
-    const outerRoot = sqrt(outerDisc);
-    const outerNear = bq.negate().sub(outerRoot).toVar();
-    const outerFar = bq.negate().add(outerRoot).toVar();
-
-    const innerDisc = max(
-      bq.mul(bq).sub(eyeSquared.sub(innerRadius.mul(innerRadius))),
-      float(0),
-    );
-    const innerRoot = sqrt(innerDisc);
-    const innerNear = bq.negate().sub(innerRoot).toVar();
-    const innerFar = bq.negate().add(innerRoot).toVar();
-    const crossesInner = innerDisc.greaterThan(float(0)).toVar();
-
-    // The near span. It starts at the outer shell's near root, or at the eye when the eye is
-    // already inside it. If that point is *under* the cloud layer the span begins where the
-    // ray leaves the inner sphere; otherwise it ends where the ray meets the inner sphere —
-    // the near side of the planet — which is what keeps the far-side clouds from being
-    // marched through the globe.
-    const enter = outerNear.max(float(0)).toVar();
-    enter.assign(
-      select(
-        crossesInner
-          .and(enter.greaterThanEqual(innerNear))
-          .and(enter.lessThanEqual(innerFar)),
-        innerFar,
-        enter,
-      ),
-    );
-    const exit = min(outerFar, float(MAX_DISTANCE)).toVar();
-    exit.assign(
-      select(
-        crossesInner
-          .and(innerNear.greaterThan(enter))
-          .and(innerNear.lessThan(exit)),
-        innerNear,
-        exit,
-      ),
-    );
-    // From under the layer, looking down: the only shell on the ray is the far side of the
-    // planet, under the ground, so the span is emptied rather than marched. `b < 0` is the
-    // ray turning inward; the ground player's upward and grazing rays are untouched.
-    exit.assign(
-      select(
-        eyeSquared
-          .lessThan(innerRadius.mul(innerRadius))
-          .and(bq.lessThan(float(0))),
-        enter,
-        exit,
-      ),
-    );
+    const { enter, exit } = deckSpanNodes(f, eye, ray);
 
     // ---- every mutable value, declared before any loop ----
     // rmsl hoists a `toVar` out of a loop body, so a value introduced inside one
@@ -956,7 +1351,7 @@ export class CloudMaterial extends NodeMaterial {
       // reading the var before assigning it is the same read as reading it after — but the
       // assignment being written first is what makes that true by inspection.
       world.assign(eye.add(ray.mul(distance)));
-      const here = spun(turn, world.normalize()).toVar();
+      const here = spun(f, turn, world.normalize()).toVar();
       weather.assign(weatherAt(f, here));
       warp.assign(warpOf(weather));
       height.assign(heightAt(f, world));
@@ -1140,6 +1535,25 @@ export class CheapCloudMaterial extends NodeMaterial {
 
   /** How far the whole field has turned about the planet's axis, in radians. */
   driftAngle = 0;
+  /**
+   * How far the field has slid, in the volume's own tiles. The plane's drift; the sphere's
+   * `driftAngle` is the only one it has. See {@link driftOffsetAt}.
+   */
+  driftOffset = 0;
+
+  /**
+   * This world's deck — the altitudes it is between and the distance its features span.
+   *
+   * **A field rather than three constructor arguments**, because the four numbers travel
+   * together into a shader that uses them together, and a constructor taking
+   * `(bottom, top, thickness, feature)` is four ways to pass a deck that does not add up.
+   */
+  readonly deck: CloudDeck;
+
+  /** See `CloudMaterial.spherical` — the same question about the same deck. */
+  get spherical(): boolean {
+    return this.deck.feature !== CLOUD_FEATURE_FLAT;
+  }
 
   /** How much of the sky is cloud, 0 to 1. The one knob worth having. */
   coverage = 0.52;
@@ -1152,10 +1566,22 @@ export class CheapCloudMaterial extends NodeMaterial {
   constructor(
     private readonly sliceSource: DataTexture,
     private readonly weatherSource: DataTexture,
-    /** The planet's sea radius, which fixes the two shells and the field's scale on them. */
+    /**
+     * This world's sea level, which fixes the two shells and the field's scale on them — a
+     * distance from the centre on a sphere and an altitude on a plane.
+     */
     readonly seaRadius: number = DEFAULT_PLANET_RADIUS,
+    /**
+     * This world's deck, which fixes the two levels and the field's scale on them.
+     *
+     * **Whole rather than its four numbers**, and defaulted to the sphere's because that is the
+     * world this build opens on — see `cloudDeck` for what the alternatives are. Everything
+     * downstream reads `this.deck`, so there is one place to look for where the layer is.
+     */
+    deck: CloudDeck = PLANET_DECK,
   ) {
     super();
+    this.deck = deck;
     this.transparent = true;
     this.side = Side.BackSide;
     this.depthWrite = false;
@@ -1171,10 +1597,27 @@ export class CheapCloudMaterial extends NodeMaterial {
       coverage: b.materialUniform("uCoverage", "float", () => this.coverage),
       density: b.materialUniform("uDensity", "float", () => this.density),
       seaRadius: b.materialUniform("uSeaRadius", "float", () => this.seaRadius),
+      spherical: this.spherical,
+      bottom: b.materialUniform(
+        "uCloudBottom",
+        "float",
+        () => this.deck.bottom,
+      ),
+      top: b.materialUniform("uCloudTop", "float", () => this.deck.top),
+      thickness: b.materialUniform(
+        "uCloudThickness",
+        "float",
+        () => this.deck.thickness,
+      ),
       driftAngle: b.materialUniform(
         "uDriftAngle",
         "float",
         () => this.driftAngle,
+      ),
+      driftOffset: b.materialUniform(
+        "uDriftOffset",
+        "float",
+        () => this.driftOffset,
       ),
     };
   }
@@ -1187,63 +1630,16 @@ export class CheapCloudMaterial extends NodeMaterial {
     const turn: Turn = {
       cos: f.driftAngle.cos().toVar(),
       sin: f.driftAngle.sin().toVar(),
+      drift: f.driftOffset.toVar(),
     };
 
-    // ---- where the ray enters and leaves the shell ----
-    // The same near-span solve as the raymarch, term for term, so the cheap shell sits on
-    // the planet in the same place and the terrain's depth rejects it identically. See
-    // `CloudMaterial.buildFragmentBody` for what each case is; none of it changes here.
-    const innerRadius = f.seaRadius.add(float(CLOUD_BOTTOM));
-    const outerRadius = f.seaRadius.add(float(CLOUD_TOP));
-    const bq = eye.dot(ray);
-    const eyeSquared = eye.dot(eye);
-
-    const outerDisc = max(
-      bq.mul(bq).sub(eyeSquared.sub(outerRadius.mul(outerRadius))),
-      float(0),
-    );
-    const outerRoot = sqrt(outerDisc);
-    const outerNear = bq.negate().sub(outerRoot).toVar();
-    const outerFar = bq.negate().add(outerRoot).toVar();
-
-    const innerDisc = max(
-      bq.mul(bq).sub(eyeSquared.sub(innerRadius.mul(innerRadius))),
-      float(0),
-    );
-    const innerRoot = sqrt(innerDisc);
-    const innerNear = bq.negate().sub(innerRoot).toVar();
-    const innerFar = bq.negate().add(innerRoot).toVar();
-    const crossesInner = innerDisc.greaterThan(float(0)).toVar();
-
-    const enter = outerNear.max(float(0)).toVar();
-    enter.assign(
-      select(
-        crossesInner
-          .and(enter.greaterThanEqual(innerNear))
-          .and(enter.lessThanEqual(innerFar)),
-        innerFar,
-        enter,
-      ),
-    );
-    const exit = min(outerFar, float(MAX_DISTANCE)).toVar();
-    exit.assign(
-      select(
-        crossesInner
-          .and(innerNear.greaterThan(enter))
-          .and(innerNear.lessThan(exit)),
-        innerNear,
-        exit,
-      ),
-    );
-    exit.assign(
-      select(
-        eyeSquared
-          .lessThan(innerRadius.mul(innerRadius))
-          .and(bq.lessThan(float(0))),
-        enter,
-        exit,
-      ),
-    );
+    // ---- where the ray enters and leaves the deck ----
+    // **The same function the raymarch calls, rather than a copy of its arithmetic**, so the
+    // cheap layer sits on the deck in the same place and the terrain's depth rejects it
+    // identically. This was written out in full here with a comment saying it was identical;
+    // a flat world's slab would have been a fifth copy, and the cheap layer drifting half a
+    // unit away from the raymarch's would be invisible until somebody compared the two.
+    const { enter, exit } = deckSpanNodes(f, eye, ray);
 
     // ---- the one sample ----
     // One point along the span, read once. There is no cheap test off the base shape here
@@ -1254,7 +1650,7 @@ export class CheapCloudMaterial extends NodeMaterial {
       .add(exit.sub(enter).mul(float(CHEAP_SAMPLE_FRACTION)))
       .toVar();
     const world = eye.add(ray.mul(distance)).toVar();
-    const here = spun(turn, world.normalize()).toVar();
+    const here = spun(f, turn, world.normalize()).toVar();
     const uv = equirectUV(here).toVar();
     const weather = texture(f.weather, uv).toVar();
     const height = heightAt(f, world).toVar();
@@ -1337,20 +1733,26 @@ export interface Clouds {
  * `bakeCloudField` is already free of the DOM and of the renderer — only a caller
  * that can wait for a promise.
  *
- * `seaRadius` places the two shells and the field's scale on them, so the caller has to
- * know which planet it is building weather for.
+ * `seaRadius` places the two shells and the field's scale on them, and `deck` says which world
+ * they are on — its altitudes, its thickness and its feature size — so the caller has to know
+ * what it is building weather *over*, and not merely how big it is.
+ *
+ * **The carrier stays a sphere on either world**, and see `CLOUD_EXTENT` for why: it is
+ * dead-centre on the eye and carries a direction, so its own shape is invisible.
  */
 export const createClouds = (
   scene: Scene,
   seed = 20260901,
   field: CloudField = bakeCloudField(seed),
   seaRadius = DEFAULT_PLANET_RADIUS,
+  deck: CloudDeck = PLANET_DECK,
 ): Clouds => {
   const geometry = new SphereGeometry(CLOUD_EXTENT, 44, Math.floor(44 / 2));
   const material = new CloudMaterial(
     shapeTexture(field.shape),
     weatherTexture(field.weather),
     seaRadius,
+    deck,
   );
   const mesh = new Mesh(geometry, material);
   scene.add(mesh);
@@ -1360,6 +1762,11 @@ export const createClouds = (
     update(camera, state) {
       material.time = state.elapsed;
       material.driftAngle = driftAngleAt(state.elapsed, seaRadius);
+      // **Both drifts, every frame.** The sphere turns a direction and the plane slides a
+      // position, so a layer on one world has one of these that does nothing — which is
+      // cheaper than a branch in a per-sample address, and is what lets one material serve
+      // both worlds without a second field to keep in step.
+      material.driftOffset = driftOffsetAt(state.elapsed);
       material.sky.lighting = state;
       // Dead-centre on the eye and deliberately unsnapped: the ray direction is read
       // off the difference between this and `cameraPosition`, so snapping here

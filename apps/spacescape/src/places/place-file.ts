@@ -51,6 +51,19 @@
  * promised a renderer would be the thing this file's rules exist to prevent.
  */
 
+/**
+ * `world` is a re-export rather than a second vocabulary.
+ *
+ * **A place's manifest and the console's command name the same two worlds**, and they are
+ * decided in `world/world-geometry.ts`. A copy of the pair here would be a place format that
+ * could drift from the engine's — and it would drift silently, because a manifest naming a
+ * third shape would be refused here and there would be no test connecting the two lists.
+ */
+export { WORLD_SHAPES, isWorldShape } from "../world/world-geometry";
+export type { WorldShape } from "../world/world-geometry";
+
+import { isWorldShape, type WorldShape } from "../world/world-geometry";
+
 /** The file inside a zip that carries a place's manifest. */
 export const PLACE_MANIFEST_FILE = "manifest.json";
 
@@ -159,6 +172,25 @@ export interface PlaceManifest {
   readonly seed: number;
   /** Where the player starts. Absent means "the world's own surface at the origin". */
   readonly spawn?: PlaceSpawn;
+  /**
+   * What kind of world this place is built on, as `"sphere"` or `"flat"`.
+   *
+   * **The reason this is a manifest field and not something a script says.** The world has to
+   * exist before the script's first line runs — the interpreter's top-level code asks the
+   * session what is in it — so a `setWorld("flat")` call would be asking for a world that must
+   * already be flat. And `seed` and `spawn` are the same class of fact: what the ground is,
+   * declared once, before anything is drawn on it.
+   *
+   * **It is the layout that this buys.** On a sphere there is no constant `y` for ground
+   * level and the working `y` for a point depends on its `x` and `z`; on a plane `y` is always
+   * up and one value of it is the ground. It is also what makes `getHeightAt` answer at all:
+   * the question is about a height field, and on a sphere it has no honest answer.
+   *
+   * **Absent means the world's default**, which is a sphere — every place written before this
+   * field existed is a place on a planet, and reading it as anything else would move the
+   * ground out from under published bridges without a word in the zip saying so.
+   */
+  readonly world?: WorldShape;
   /** The file that runs, relative to the zip's root. Must be one of `scripts`. */
   readonly entry: string;
   /**
@@ -220,6 +252,7 @@ export const isPlaceManifest = (value: unknown): value is PlaceManifest => {
   }
 
   if (record.spawn !== undefined && !isSpawn(record.spawn)) return false;
+  if (record.world !== undefined && !isWorldShape(record.world)) return false;
 
   if (!isFileList(record.scripts)) return false;
   if (!isAttachmentList(record.models, MAX_PLACE_MODELS)) return false;

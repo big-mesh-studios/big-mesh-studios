@@ -36,7 +36,7 @@
  */
 
 import type { Node } from "@random-mesh/rmsl";
-import { exp, float, max, min, select, sqrt } from "@random-mesh/rmsl";
+import { abs, exp, float, max, min, select, sqrt } from "@random-mesh/rmsl";
 
 import type { Vec3 } from "@big-mesh-studios/core";
 import { DEFAULT_PLANET } from "@big-mesh-studios/csg";
@@ -83,34 +83,76 @@ export const ATMOSPHERE_RADIUS = DEFAULT_PLANET_RADIUS + ATMOSPHERE_HEIGHT;
  */
 export const ATMOSPHERE_EXTINCTION = 0.0003;
 
-/** The span of a segment inside the sphere of `outerRadius`, as fractions of the segment. */
+/** The span of a segment inside a world's air, as fractions of the segment. */
 export interface ShellSpan {
-  /** Where the segment enters the shell, in `0..1` along it. */
+  /** Where the segment enters the air, in `0..1` along it. */
   readonly lo: number;
-  /** Where it leaves, in `0..1`. `lo < hi` whenever this is returned. */
+  /** Where it leaves the air, in `0..1`. `lo < hi` whenever this is returned. */
   readonly hi: number;
 }
 
 /**
- * Where a segment spends its time inside a sphere, or `null` for a segment that misses it.
+ * Where a segment spends its time in a world's air, or `null` for a segment that misses it.
+ *
+ * **One function and two solves, because the question is the same on both worlds.** A sphere's air
+ * is a shell and a plane's is a slab, so what differs is the surface the segment is clipped to —
+ * and the height the density is read at. Both of those differences are one line apiece, and
+ * writing them once here rather than at each of the three places that need them is what keeps the
+ * host and the shader mirrors agreeing about something that has two answers.
+ *
+ * ## The shell solve
  *
  * The half-`b` quadratic: for `p(t) = eye + t·d`, `|p|² = a·t² + 2b·t + c`, so the roots are
  * `(-b ± √(b² - ac)) / a`. Clamping the discriminant before the root keeps a miss from producing a
  * `NaN` that would survive the `null` check and poison arithmetic upstream — the same reason the
  * shader clamps before its `sqrt`.
+ *
+ * ## The slab solve
+ *
+ * `p(t).y` is linear in `t`, so the two crossings are `(level - eye.y) / d.y` and there is no
+ * quadratic at all. Three cases the sphere's solve never has to state, because a plane can be
+ * entered from a direction a sphere cannot be:
+ *
+ * - **`d.y == 0`** — a level ray. It is in the air for all of it or none of it, and which is a
+ *   question about the eye alone.
+ * - **`d.y < 0` from above** — the segment starts in the air and ends below the sea, so the span
+ *   is the crossing and no more.
+ * - **`d.y > 0` from below** — it starts below the sea and climbs; it enters at the sea and leaves
+ *   at the shell's top, and never touches the ground.
  */
-export const shellSpan = (
+export const airSpan = (
   eye: Vec3,
   point: Vec3,
-  outerRadius: number,
+  radius: number,
+  atmosphereHeight: number,
+  spherical: boolean,
 ): ShellSpan | null => {
   const dx = point.x - eye.x;
   const dy = point.y - eye.y;
   const dz = point.z - eye.z;
   const a = dx * dx + dy * dy + dz * dz;
   if (a <= 0) return null;
+
+  if (!spherical) {
+    const top = radius + atmosphereHeight;
+    if (dy === 0) {
+      // **A level ray, and the answer depends only on the eye.** Standing on the ground and
+      // looking at the horizon is the ray this case exists for: it must gather the whole
+      // distance it travels, or the horizon on a flat world has no air in front of it at all.
+      if (eye.y < radius || eye.y > top) return null;
+      return { lo: 0, hi: 1 };
+    }
+    const atSea = (radius - eye.y) / dy;
+    const atTop = (top - eye.y) / dy;
+    const lo = Math.max(0, Math.min(atSea, atTop));
+    const hi = Math.min(1, Math.max(atSea, atTop));
+    if (hi <= lo) return null;
+    return { lo, hi };
+  }
+
   const b = eye.x * dx + eye.y * dy + eye.z * dz;
-  const c = eye.x * eye.x + eye.y * eye.y + eye.z * eye.z - outerRadius ** 2;
+  const outer = radius + atmosphereHeight;
+  const c = eye.x * eye.x + eye.y * eye.y + eye.z * eye.z - outer * outer;
   const disc = b * b - a * c;
   if (disc <= 0) return null;
   const root = Math.sqrt(disc);
@@ -120,9 +162,16 @@ export const shellSpan = (
   return { lo, hi };
 };
 
-/** The height of a point above the sea, clamped to zero inside the planet. */
-const heightOf = (p: Vec3, radius: number): number =>
-  Math.max(Math.hypot(p.x, p.y, p.z) - radius, 0);
+/**
+ * The height of a point above the sea, clamped to zero inside the body.
+ *
+ * **`|p| - radius` on a sphere and `p.y - radius` on a plane**, and the second is not an
+ * approximation of the first — they are the same question ("how far is this from the sea") asked
+ * of the two shapes the sea has. Clamped at the sea for the same reason in both: an eye under the
+ * water line is inside the air, not below it.
+ */
+const heightOf = (p: Vec3, radius: number, spherical: boolean): number =>
+  Math.max((spherical ? Math.hypot(p.x, p.y, p.z) : p.y) - radius, 0);
 
 /** Gauss-Legendre's two nodes on `[-1, 1]`, `±1/√3`, shared by the host and the shader. */
 export const GAUSS_NODE = 1 / Math.sqrt(3);
@@ -148,8 +197,9 @@ export const airMassShell = (
   radius: number,
   atmosphereHeight: number = ATMOSPHERE_HEIGHT,
   scaleHeight: number = ATMOSPHERE_SCALE_HEIGHT,
+  spherical = true,
 ): number => {
-  const span = shellSpan(eye, point, radius + atmosphereHeight);
+  const span = airSpan(eye, point, radius, atmosphereHeight, spherical);
   if (span === null) return 0;
   const mid = (span.lo + span.hi) * 0.5;
   const half = (span.hi - span.lo) * 0.5;
@@ -157,8 +207,8 @@ export const airMassShell = (
   const far = lerpAt(eye, point, mid + half * GAUSS_NODE);
   const density =
     0.5 *
-    (Math.exp(-heightOf(near, radius) / scaleHeight) +
-      Math.exp(-heightOf(far, radius) / scaleHeight));
+    (Math.exp(-heightOf(near, radius, spherical) / scaleHeight) +
+      Math.exp(-heightOf(far, radius, spherical) / scaleHeight));
   const segment = Math.hypot(point.x - eye.x, point.y - eye.y, point.z - eye.z);
   return (span.hi - span.lo) * segment * density;
 };
@@ -177,8 +227,9 @@ export const airMassReference = (
   atmosphereHeight: number = ATMOSPHERE_HEIGHT,
   scaleHeight: number = ATMOSPHERE_SCALE_HEIGHT,
   samples = 256,
+  spherical = true,
 ): number => {
-  const span = shellSpan(eye, point, radius + atmosphereHeight);
+  const span = airSpan(eye, point, radius, atmosphereHeight, spherical);
   if (span === null) return 0;
   const segment = Math.hypot(point.x - eye.x, point.y - eye.y, point.z - eye.z);
   const step = (span.hi - span.lo) / samples;
@@ -190,7 +241,7 @@ export const airMassReference = (
       y: eye.y + (point.y - eye.y) * t,
       z: eye.z + (point.z - eye.z) * t,
     };
-    total += Math.exp(-heightOf(at, radius) / scaleHeight);
+    total += Math.exp(-heightOf(at, radius, spherical) / scaleHeight);
   }
   return total * step * segment;
 };
@@ -199,15 +250,25 @@ export const airMassReference = (
  * `airMassShell`, as nodes.
  *
  * The same arithmetic, term for term, so the host version is a real mirror rather than a description.
- * The discriminant is clamped before the root for the same `NaN` reason `shellSpan` gives, and the
- * `select` at the end is what turns a segment that misses the shell into zero rather than into
+ * The discriminant is clamped before the root for the same `NaN` reason `airSpan` gives, and the
+ * `select` at the end is what turns a segment that misses the air into zero rather than into
  * whatever the clamped root happened to produce.
  *
  * **Every intermediate is bound with `toVar`, and that is not tidiness.** rmsl builds an expression
- * graph and emits each node once per use; the shell quadratic feeds the near and far samples, which
+ * graph and emits each node once per use; the quadratic feeds the near and far samples, which
  * feed the density, which the `select` names twice — written plainly, the emitted source repeated the
  * whole `a`/`b`/`c`/`sqrt` block about twenty times and the fragment ran to thousands of characters.
  * A variable is the only thing in this DSL that is computed once.
+ *
+ * **`spherical` may be a node rather than a constant, and it costs both solves.** The host twin
+ * takes a plain boolean because nothing on the host changes shape mid-frame; `Fog` passes a
+ * uniform, because a fog is shared by every surface in the scene and rebuilding four materials to
+ * change one flag would be the larger cost. Both graphs are therefore emitted and evaluated, and
+ * a `select` is a blend rather than a branch — about a dozen extra arithmetic operations per
+ * fragment against a shader doing four point lights and a procedural material, which is the
+ * cheaper of the two trades. The alternative is one compiled program per world shape and a
+ * material rebuild on every switch, and a material rebuild throws away the day's lighting, the
+ * place's lights and every other uniform written into it.
  */
 export const airMassNode = (
   eye: Node<"vec3">,
@@ -215,30 +276,82 @@ export const airMassNode = (
   radius: Node<"float">,
   atmosphereHeight: Node<"float">,
   scaleHeight: Node<"float">,
+  spherical: boolean | Node<"bool"> = true,
 ): Node<"float"> => {
   const d = point.sub(eye).toVar();
+  const segment = d.length().toVar();
+
+  // ---- where the segment is in the air, as fractions of it ----
+  const outer = radius.add(atmosphereHeight);
   const a = max(d.dot(d), float(1e-6)).toVar();
   const b = eye.dot(d).toVar();
-  const outer = radius.add(atmosphereHeight);
   const c = eye.dot(eye).sub(outer.mul(outer)).toVar();
   const disc = max(b.mul(b).sub(a.mul(c)), float(0)).toVar();
   const root = sqrt(disc).toVar();
-  const lo = max(b.negate().sub(root).div(a), float(0)).toVar();
-  const hi = min(b.negate().add(root).div(a), float(1)).toVar();
-  const span = hi.sub(lo).toVar();
-  const mid = lo.add(hi).mul(0.5).toVar();
+  const sphereLo = max(b.negate().sub(root).div(a), float(0)).toVar();
+  const sphereHi = min(b.negate().add(root).div(a), float(1)).toVar();
+
+  // **The slab, and its three cases.** `d.y` is the only part of a segment's direction that
+  // decides where it meets a level, and a division by it is guarded rather than branched on:
+  // `step` is rmsl's own "pick one of two on a condition", so `d.y == 0` takes the whole-segment
+  // answer without the shader having to know what a zero divisor does.
+  const step = abs(d.y).max(float(1e-6)).toVar();
+  const atSea = radius.sub(eye.y).div(step).toVar();
+  const atTop = outer.sub(eye.y).div(step).toVar();
+  // A ray climbing enters at the sea and leaves at the top; a ray falling is the same pair the
+  // other way round, and one crossing rather than two is what makes a descending ray from above
+  // the air stop at the ground instead of continuing through it.
+  const up = d.y.greaterThan(float(0)).toVar();
+  const slabLo = select(up, max(atSea, float(0)), max(atTop, float(0))).toVar();
+  const slabHi = select(up, atTop, atSea).toVar();
+  const level =
+    // **A level ray is in the air for all of it or none of it**, and which is a question about
+    // the eye alone — the ray a player looks along at the horizon.
+    select(
+      eye.y.greaterThanEqual(radius).and(eye.y.lessThanEqual(outer)),
+      float(1),
+      float(0),
+    ).toVar();
+  const isLevel = abs(d.y).lessThan(float(1e-6)).toVar();
+
+  const span = select(isLevel, level, max(slabHi.sub(slabLo), float(0)))
+    .toVar()
+    .toVar();
+  const lo = select(isLevel, float(0), slabLo).toVar();
+
+  // ---- the density across the span, at two Gauss nodes ----
+  const mid = lo
+    .add(select(isLevel, float(1), slabHi))
+    .mul(0.5)
+    .toVar();
   const half = span.mul(0.5).toVar();
   const near = eye.add(d.mul(mid.sub(half.mul(float(GAUSS_NODE))))).toVar();
   const far = eye.add(d.mul(mid.add(half.mul(float(GAUSS_NODE))))).toVar();
+  // **The altitude is `|p|` or `p.y`, and only this line and the two above know which.** Every
+  // other term in this function — the span, the quadrature, the segment length — is identical on
+  // both worlds.
+  const nearHeight = select(spherical, near.length(), near.y).toVar();
+  const farHeight = select(spherical, far.length(), far.y).toVar();
   const density = exp(
-    near.length().sub(radius).max(float(0)).div(scaleHeight).negate(),
+    nearHeight.sub(radius).max(float(0)).div(scaleHeight).negate(),
   )
-    .add(exp(far.length().sub(radius).max(float(0)).div(scaleHeight).negate()))
+    .add(exp(farHeight.sub(radius).max(float(0)).div(scaleHeight).negate()))
     .mul(0.5)
     .toVar();
-  return select(
-    span.greaterThan(float(0)),
-    span.mul(d.length()).mul(density),
+
+  // **Both answers kept beside each other rather than discarded.** With `spherical` a node, both
+  // halves of this function are live arithmetic every fragment and the `select` at the end picks
+  // between two numbers rather than skipping a computation.
+  const shellSpanLength = sphereHi.sub(sphereLo).toVar();
+  const shellMass = select(
+    shellSpanLength.greaterThan(float(0)),
+    shellSpanLength.mul(segment).mul(density),
     float(0),
   );
+  const slabMass = select(
+    span.greaterThan(float(0)),
+    span.mul(segment).mul(density),
+    float(0),
+  );
+  return select(spherical, shellMass, slabMass);
 };

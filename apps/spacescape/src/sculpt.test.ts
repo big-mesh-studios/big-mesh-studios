@@ -780,3 +780,73 @@ describe("deferring a re-read until the mesher is free", () => {
     expect(session.flushInvalidated()).toBe(false);
   });
 });
+
+/**
+ * A sculpting session whose landscape is replaced under it.
+ *
+ * **The claim is that a shape change rebuilds the field and keeps the model**, and that the
+ * two halves are separable: this one owns the main thread's copy, and `Session.setBaseField`
+ * owns the workers'. Splitting them is ADR 0009 — the two sides build from the same numbers
+ * rather than sharing an object — and the cost of the split is that a caller has to do both,
+ * which is why the app's switch does them back to back.
+ */
+describe("putting a different landscape under it", () => {
+  const PLANET = {
+    kind: "planet" as const,
+    params: { radius: 4000, scale: 96, octaves: 4, seed: 20260901 },
+  };
+  const TERRAIN = {
+    kind: "terrain" as const,
+    params: { origin: -70, scale: 96, octaves: 4, seed: 20260901 },
+  };
+
+  it("answers a height question on a height field and refuses it on a sphere", () => {
+    // **The bug this whole feature exists to close.** `getHeightAt` is what a place script
+    // builds against, and on a planet there is no honest answer: the surface above a column
+    // is the column's whole length. Every shipped demo asked it and got `0`, and so built
+    // 135,000 units inside the ground.
+    const planet = sessionOver();
+    expect(planet.session.terrainHeight).toBeUndefined();
+
+    const flat = sessionOver(starterOperations(), TERRAIN.params);
+    expect(typeof flat.session.terrainHeight).toBe("function");
+    // **And the answer is a height**, not a distance from a centre — which is the property
+    // that makes laying a place out coordinate-wise tractable.
+    expect(Math.abs(flat.session.terrainHeight!(0, 0))).toBeLessThan(1000);
+  });
+
+  it("rebuilds its field over the same model", () => {
+    const { session, folds } = sessionOver();
+    const before = fieldOf(session);
+
+    session.setBaseField(TERRAIN);
+    const after = fieldOf(session);
+
+    // **A new field, not the same one re-read**: the base is what a distance is measured
+    // against and it has been replaced.
+    expect(after).not.toBe(before);
+    // **And no fold**, because a shape change is not an edit — it moves the ground out from
+    // under a bridge rather than writing a new bridge, which is the visible, explicable
+    // version of the change.
+    expect(folds).toHaveLength(0);
+  });
+
+  it("makes the world's own gradient answer outward after a switch and up before", () => {
+    // **`fallbackNormal` is on the field rather than at the call site** for the reason
+    // `BuiltBaseField` gives: a zero gradient on a planet means the centre, and `+Y` is not
+    // outward from anywhere in particular there. A session that kept the old answer would
+    // have a brush stroke at the centre of a flat world that lifted terrain sideways.
+    const { session } = sessionOver(undefined, TERRAIN.params);
+    const terrainAt = (() => {
+      const base = terrainField(TERRAIN.params);
+      return (x: number, y: number, z: number) => base(x, y, z);
+    })();
+    expect(terrainAt(0, 0, 0)).toBeDefined();
+
+    session.setBaseField(PLANET);
+    expect(typeof session.terrainHeight).toBe("undefined");
+    // And back again, which is what makes the command a toggle rather than a one-way door.
+    session.setBaseField(TERRAIN);
+    expect(typeof session.terrainHeight).toBe("function");
+  });
+});

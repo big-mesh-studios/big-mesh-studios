@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Scene, type Material } from "@random-mesh/rmsl/scene";
 
 import { Operation } from "@big-mesh-studios/csg";
+import type { BaseFieldSpec } from "@big-mesh-studios/csg";
 import type { ChunkMesh } from "@big-mesh-studios/meshing";
 import type { FromWorker, ModelMessage, PoolWorker, ToWorker } from "./mesh";
 import { Session, starterOperations, type SessionStats } from "./session";
@@ -795,6 +796,114 @@ describe("invalidating what an edit touched", () => {
 
     expect(second).toBe(first);
     expect(stats().pending).toBe(after);
+    session.dispose();
+  });
+});
+
+/**
+ * A world changing shape under a running session.
+ *
+ * **The claim these hold is that a shape change is a model change**, and that everything which
+ * follows from "a chunk's geometry is now for another world" is handled by the machinery a
+ * sculpt already used rather than by a second path. A second path would be a second thing to
+ * keep in step, and the way it fails is silent: the window still has the right number of slots
+ * and the header still reports the right counts.
+ */
+describe("changing the world's shape", () => {
+  const PLANET: BaseFieldSpec = {
+    kind: "planet",
+    params: { radius: 4000, scale: 96, octaves: 4, seed: 20260901 },
+  };
+  const TERRAIN: BaseFieldSpec = {
+    kind: "terrain",
+    params: { origin: -70, scale: 96, octaves: 4, seed: 20260901 },
+  };
+  const newWorldSession = (
+    base: BaseFieldSpec,
+  ): ReturnType<typeof newSession> => {
+    const fakes: ReturnType<typeof fakeWorker>[] = [];
+    const session = new Session({
+      scene: new Scene(),
+      material: {} as Material,
+      operations: model(),
+      baseField: base,
+      workers: 1,
+      radius: 1,
+      createWorker: () => {
+        const fake = fakeWorker();
+        fakes.push(fake);
+        return fake.worker;
+      },
+    });
+    return { session, fakes, stats: () => session.stats() };
+  };
+
+  it("tells every worker the new landscape, and not the old one", () => {
+    const { session, fakes } = newWorldSession(PLANET);
+    session.setBaseField(TERRAIN);
+
+    const last = fakes[0]!.models().at(-1)!;
+    expect(last.base?.kind).toBe("terrain");
+    expect(session.baseField?.kind).toBe("terrain");
+    session.dispose();
+  });
+
+  it("empties every chunk it is holding, because none of them is for the new world", () => {
+    // **The whole of `markStale` rather than `markOutOfDate`.** ADR 0007's rule is that
+    // `markOutOfDate` is sound while the cell has not moved — whatever is on the GPU for a
+    // slot is a surface of the cell that slot still stands for. A shape change breaks that:
+    // the geometry was built from a field that no longer exists, so it is not a wrong
+    // *version* of the right surface, it is another surface entirely, and it has to leave
+    // rather than linger until its replacement lands.
+    const { session, fakes, stats } = newWorldSession(PLANET);
+    drain(fakes);
+    expect(stats().drawn).toBe(stats().chunks);
+
+    session.setBaseField(TERRAIN);
+    expect(stats().drawn).toBe(0);
+    // And it is asking for all of them again, because a world nobody has meshed is empty.
+    expect(stats().pending).toBe(stats().chunks);
+    session.dispose();
+  });
+
+  it("asks for each chunk once, not once per path that invalidated it", () => {
+    // **`invalidateAll` marks and `requestAll` asks**, and calling `requestSlot` from both
+    // would put every cell on the queue twice — which is not visible as a wrong count but as
+    // a world that streams at half speed forever after.
+    const { session, fakes } = newWorldSession(PLANET);
+    drain(fakes);
+    const before = fakes[0]!.requests().length;
+
+    session.setBaseField(TERRAIN);
+    const after = fakes[0]!.requests().length - before;
+    expect(after).toBe(
+      new Set(
+        fakes[0]!
+          .requests()
+          .slice(before)
+          .map((r) => r.cell),
+      ).size,
+    );
+    session.dispose();
+  });
+
+  it("keeps the operations, so a place's bridge is over different ground rather than gone", () => {
+    // **A shape change is not a reload.** The operations are in world coordinates and mean
+    // the same thing on either surface, and dropping them would be the visible, unexplainable
+    // version of this change.
+    const { session } = newWorldSession(PLANET);
+    const before = session.operations.length;
+    session.setBaseField(TERRAIN);
+    expect(session.operations).toHaveLength(before);
+    session.dispose();
+  });
+
+  it("reports how many chunks it emptied, for a console that has to say what happened", () => {
+    const { session, fakes } = newWorldSession(PLANET);
+    drain(fakes);
+    expect(session.invalidateAll()).toBe(session.stats().chunks);
+    // **And nothing on a second call**, because nothing is holding anything any more.
+    expect(session.invalidateAll()).toBe(0);
     session.dispose();
   });
 });

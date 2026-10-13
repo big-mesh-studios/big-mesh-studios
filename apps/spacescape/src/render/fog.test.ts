@@ -205,7 +205,11 @@ describe("the fog, as a material uses it", () => {
     expect(fragment.split("exp(").length - 1).toBe(3);
     expect(fragment).toContain("uFogNearField");
     expect(fragment).toContain("uFogAtmosphere");
-    expect(fragment).toContain("uFogRadius");
+    // **The sea level and the world's shape, rather than a radius and no shape.** Both are
+    // uniforms rather than constants because a world can change shape while it runs and this
+    // is the one material every surface in the scene shares — see `Fog.setWorld`.
+    expect(fragment).toContain("uFogSeaLevel");
+    expect(fragment).toContain("uFogSpherical");
     expect(fragment).toContain("uFogScale");
   });
 

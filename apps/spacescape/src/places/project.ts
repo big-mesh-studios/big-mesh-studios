@@ -306,6 +306,10 @@ export const makePlaceRecord = (
     name: manifest.name,
     seed: manifest.seed,
     ...(manifest.spawn !== undefined ? { spawn: manifest.spawn } : {}),
+    // **And the world, on the same rule.** An absent `world` is a sphere and is omitted rather
+    // than written as a default, so a record written from a place that never chose looks
+    // exactly like one written before the field existed.
+    ...(manifest.world !== undefined ? { world: manifest.world } : {}),
     entry: manifest.entry,
     createdAt,
     scripts: Object.keys(project.scripts)
@@ -354,6 +358,11 @@ export const projectFromRecord = (value: unknown): PlaceProject | null => {
       name: value.name,
       seed: value.seed,
       ...(value.spawn !== undefined ? { spawn: value.spawn } : {}),
+      // **The world rides back in, and dropping it here would be silent.** A record read back
+      // into a project and re-published without this line would quietly turn a flat place into
+      // a spherical one — which moves the ground out from under everything it built rather than
+      // refusing to open it.
+      ...(value.world !== undefined ? { world: value.world } : {}),
       entry: value.entry,
       scripts: Object.keys(scripts).sort(),
     },

@@ -13,6 +13,7 @@ import {
   phaseAt,
   phasePreset,
 } from "../world/day-night";
+import type { WorldShape } from "../world/world-geometry";
 import { createCommands, type CommandOutput, type Commander } from "./commands";
 
 /** Every call the fake clock was asked to make, in order. */
@@ -40,6 +41,8 @@ interface Table {
   cloud: CloudCalls[];
   /** What the fake layer reports, so a test can pretend it does not exist yet. */
   built: { value: boolean };
+  /** Reads back the shape the fake world was last set to, so a test can see it changed. */
+  world: { shape: WorldShape };
 }
 
 const table = (): Table => {
@@ -54,6 +57,7 @@ const table = (): Table => {
   let coverage = 0.52;
   let density = 1;
   let quality: "high" | "low" = "high";
+  let shape: WorldShape = "sphere";
   const absent = "no cloud layer yet — the field is still baking";
   const commander = createCommands({
     setFlying: (value) => {
@@ -106,8 +110,29 @@ const table = (): Table => {
           : absent;
       },
     },
+    world: {
+      shape: (value) => {
+        if (value === undefined) return `shape ${shape}`;
+        shape = value;
+        return `the world is now ${value}`;
+      },
+      describe: () => `shape ${shape}`,
+    },
   });
-  return { commander, flying, noclip, space, clock, cloud, built };
+  return {
+    commander,
+    flying,
+    noclip,
+    space,
+    clock,
+    cloud,
+    built,
+    world: {
+      get shape() {
+        return shape;
+      },
+    },
+  };
 };
 
 /** Runs a line and insists the answer is text rather than `/help`'s table. */
@@ -140,6 +165,8 @@ describe("the command table", () => {
       "/cloud:density",
       "/cloud:quality",
       "/cloud:state",
+      "/planet:shape",
+      "/planet:state",
       "/player:fly",
       "/player:no-clip",
       "/player:space",
@@ -148,6 +175,8 @@ describe("the command table", () => {
     ]);
     const fly = help.find((command) => command.name === "/player:fly");
     expect(fly?.args).toBe("[on|off]");
+    const shape = help.find((command) => command.name === "/planet:shape");
+    expect(shape?.args).toBe("[sphere|flat]");
   });
 
   it("answers an unknown command with the line itself and a nudge to /help", () => {
@@ -550,6 +579,66 @@ describe("the clock commands", () => {
       .filter((command) => command.args !== undefined)
       .map((command) => command.name);
     expect(withArgs).toEqual(["/clock:time", "/clock:speed"]);
+  });
+});
+
+describe("the planet commands", () => {
+  it("are reachable by scope boundary, which is what completion offers", () => {
+    // **Two commands, which is what earns the scope.** ADR 0014 says a subsystem earns a
+    // prefix once two of its commands share it, so the test is that there are two — a lone
+    // `/planet:shape` would have been a flat `/shape` by the same rule.
+    const names = table()
+      .commander.help()
+      .map((command) => command.name);
+    expect(names.filter((name) => name.startsWith("/planet:"))).toEqual([
+      "/planet:shape",
+      "/planet:state",
+    ]);
+  });
+
+  it("reports the shape when given nothing rather than flipping it", () => {
+    // **A bare word must not guess.** Each shape is the other's absence, so flipping on a
+    // bare argument would be a coin toss — and unlike `/player:fly`, where being wrong is
+    // visible in the next second, being wrong here means a place built in flat coordinates
+    // is somewhere a player cannot see anything of.
+    const recorder = table();
+    expect(text(recorder, "/planet:shape")).toBe("shape sphere");
+    expect(recorder.world.shape).toBe("sphere");
+    expect(text(recorder, "/planet:shape")).toBe("shape sphere");
+    expect(recorder.world.shape).toBe("sphere");
+  });
+
+  it("sets each of the two shapes and says which one is live afterwards", () => {
+    const recorder = table();
+    expect(text(recorder, "/planet:shape flat")).toBe("the world is now flat");
+    expect(recorder.world.shape).toBe("flat");
+    expect(text(recorder, "/planet:shape")).toBe("shape flat");
+    expect(text(recorder, "/planet:shape sphere")).toBe(
+      "the world is now sphere",
+    );
+    expect(recorder.world.shape).toBe("sphere");
+  });
+
+  it("refuses anything that is not one of the two names", () => {
+    const recorder = table();
+    for (const line of [
+      "/planet:shape terrain",
+      "/planet:shape planet",
+      "/planet:shape on",
+      "/planet:shape 1",
+      "/planet:shape curved",
+    ]) {
+      expect(text(recorder, line), line).toBe(
+        "usage: /planet:shape [sphere|flat]",
+      );
+    }
+    // **Nothing reached the world.** A guess here would have re-streamed every chunk in
+    // the window, so the refusal has to be a refusal rather than a default.
+    expect(recorder.world.shape).toBe("sphere");
+  });
+
+  it("says what the world is and where its water sits", () => {
+    expect(text(table(), "/planet:state")).toBe("shape sphere");
   });
 });
 

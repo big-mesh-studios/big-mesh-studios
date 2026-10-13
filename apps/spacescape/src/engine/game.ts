@@ -47,8 +47,8 @@ import {
 import type { Viewport } from "../render/viewport";
 import type { Session } from "../session";
 import type { SculptSession } from "../sculpt";
-import { GameWorld } from "../world/game-world";
-import type { Frame } from "../world/up";
+import { GameWorld, type GameSurface } from "../world/game-world";
+import { basisAt, type Frame } from "../world/up";
 import { pickAlong } from "@big-mesh-studios/picking";
 
 export interface GameOptions {
@@ -161,9 +161,9 @@ export class Game {
   private readonly input: InputController;
   private readonly playerConfig: Partial<PlayerConfig>;
   /** Where a spherical world is probed for its surface. See `GameOptions.spawnRadius`. */
-  private readonly spawnRadius: number | undefined;
+  private spawnRadius: number | undefined;
   /** The sea's radius for this world, so `/player:space` can measure an altitude from it. */
-  private readonly seaRadius: number | undefined;
+  private seaRadius: number | undefined;
   /** The aim action currently held, so a stroke is begun and ended once. */
   private aim: "dig" | "place" | undefined;
   /**
@@ -199,8 +199,12 @@ export class Game {
    * makes the two order-independent: setting a multiplier twice replaces rather than compounds,
    * and clearing twice is the same as clearing once. Compounding would mean a place that ran its
    * setup twice left the player at four times their speed with no way back.
+   *
+   * **Re-taken by {@link setWorld},** because the body it describes has been rebuilt from the
+   * new surface's own configuration and a base that no longer matches it would scale every
+   * multiplier from a body that is not standing there.
    */
-  private readonly baseConfig: PlayerConfig;
+  private baseConfig: PlayerConfig;
   /** See `GameOptions.onUse`. Held so it can be optional-callable every frame. */
   private readonly onUse: ((input: InputSnapshot) => void) | undefined;
 
@@ -338,6 +342,59 @@ export class Game {
       player.forward = rotateAboutAxis(player.forward, up, angle);
     }
     clearVelocity(player);
+  }
+
+  /**
+   * Puts a different surface under this world, and the player on it.
+   *
+   * **The player is re-based rather than moved, and that is the only part that is not a
+   * field assignment.** `createPlayer` builds a body's orientation from the frame it is given
+   * (`player.ts:259`), and a body carried across from a sphere would keep the up it had: lying
+   * on its side at the equator, upside down at the pole, and — because the first thing the
+   * physics does is add gravity along `up` — walking into the wall beside it. So the basis is
+   * derived again from the new frame at the new spawn.
+   *
+   * **The spawn is asked of the new surface rather than carried over**, and the same question is
+   * asked the same way: a distance along the local up from a point inside the body. On a plane
+   * that is the origin and on a sphere it is `spawnRadius` out from the centre, which is why
+   * `spawnRadius` travels with the frame.
+   *
+   * **Flight, no-clip and every movement multiplier are dropped.** They are settings for
+   * standing about on a particular piece of ground, and carrying them across is the kind of state
+   * nobody chose: a person who switched shape and found themselves still flying, over a world
+   * that has not been streamed yet, would be looking at a hole and calling it a bug. The base the
+   * multipliers scale from is re-taken for the same reason.
+   *
+   * **The camera claim is released.** A place that pointed the camera at something on the
+   * surface that has just been replaced has aimed at nothing, and holding the claim would leave
+   * the player looking into empty sky with no way back to their own eyes.
+   */
+  setWorld(surface: GameSurface, spawnRadius?: number): void {
+    this.world.setWorld(surface);
+    this.seaRadius = surface.seaRadius;
+    this.spawnRadius = spawnRadius;
+
+    const at = this.spawnOnTheSurface();
+    const basis = basisAt(this.world.frame, at);
+    const player = this.player;
+    player.position = at;
+    player.up = basis.up;
+    player.forward = basis.forward;
+    player.right = basis.right;
+    clearVelocity(player);
+    player.onGround = false;
+    player.flying = false;
+    player.noclip = false;
+    player.config = { ...DEFAULT_PLAYER_CONFIG, ...this.playerConfig };
+    this.baseConfig = { ...player.config };
+    // **`clearCameraLook` rather than two assignments.** A place that pointed the camera at
+    // something on the surface that has just been replaced has aimed at nothing, and holding
+    // the claim would leave the player looking into empty sky with no way back to their own
+    // eyes. Releasing it through the method that already owns the release is also what puts
+    // the lens back: clearing the target and the zoom by hand leaves the player at 0.2
+    // radians with nothing holding the claim, which is ADR 0020's bug rather than a smaller
+    // version of it.
+    this.clearCameraLook();
   }
 
   /**

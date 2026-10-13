@@ -17,9 +17,10 @@
 import { vec3, type Vec3 } from "@big-mesh-studios/core";
 
 import type { BaseField, SurfaceExtent } from "./field";
-import { planetField } from "./planet";
-import type { PlanetField, PlanetParams } from "./planet";
-import { terrainField } from "./terrain";
+import { FBM_AMPLITUDE_BOUND_3D } from "./perlin3";
+import { planetField, type PlanetParams } from "./planet";
+import type { PlanetField } from "./planet";
+import { FBM_AMPLITUDE_BOUND, RIDGE_STRENGTH, terrainField } from "./terrain";
 import type { TerrainParams } from "./terrain";
 
 /** The base field a world is built on, or `undefined` for a world of operations alone. */
@@ -120,6 +121,24 @@ const outward = (x: number, y: number, z: number): Vec3 => {
  */
 export const seaLevelOf = (spec: BaseFieldSpec): number =>
   spec.kind === "terrain" ? spec.params.origin : spec.params.radius;
+
+/**
+ * How far either side of its sea level a spec's surface reaches, in world units.
+ *
+ * **The sibling of {@link seaLevelOf}, and for the same reason.** The sea level is where the
+ * water settles; the reach is how much landscape there is either side of it, and everything that
+ * has to sit clear of the surface — a cloud deck's base, a far field's crossfade — has to know it
+ * or it ends up inside a mountain when the mountains change.
+ *
+ * **Both worlds' arithmetic is the same expression**, `(fbm bound + ridge) · |scale|`, with the
+ * 2D noise's bound on one side and the 3D one's on the other (`terrain.ts:517`, `planet.ts:91`).
+ * Naming it once here rather than letting each caller reach for `reachOf(planet.params)` and hope
+ * a terrain never asks is what makes the union usable: a caller with a spec gets one number.
+ */
+export const surfaceReachOf = (spec: BaseFieldSpec): number =>
+  ((spec.kind === "terrain" ? FBM_AMPLITUDE_BOUND : FBM_AMPLITUDE_BOUND_3D) +
+    RIDGE_STRENGTH) *
+  Math.abs(spec.params.scale);
 
 /**
  * Adds a fallback direction to a field **in place**, because the obvious way to do it is wrong.

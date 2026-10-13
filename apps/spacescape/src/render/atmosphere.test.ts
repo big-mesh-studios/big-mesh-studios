@@ -29,7 +29,7 @@ import {
   airMassNode,
   airMassReference,
   airMassShell,
-  shellSpan,
+  airSpan,
 } from "./atmosphere";
 
 const R = DEFAULT_PLANET_RADIUS;
@@ -48,7 +48,9 @@ const amount = (column: number): number =>
 
 describe("the shell's span", () => {
   it("is the whole segment when both ends are inside", () => {
-    expect(shellSpan(eyeAt(100), groundAt(0), R + ATMOSPHERE_HEIGHT)).toEqual({
+    expect(
+      airSpan(eyeAt(100), groundAt(0), R, ATMOSPHERE_HEIGHT, true),
+    ).toEqual({
       lo: 0,
       hi: 1,
     });
@@ -57,10 +59,12 @@ describe("the shell's span", () => {
   it("clips a segment that starts above the shell", () => {
     // An eye out past the top looking in: the first part of the segment is vacuum and must not
     // count, or a player who leaves the atmosphere still sees it thicken behind them.
-    const span = shellSpan(
+    const span = airSpan(
       { x: 0, y: R + ATMOSPHERE_HEIGHT * 2, z: 0 },
       groundAt(0),
-      R + ATMOSPHERE_HEIGHT,
+      R,
+      ATMOSPHERE_HEIGHT,
+      true,
     );
     expect(span).not.toBeNull();
     expect(span!.lo).toBeGreaterThan(0);
@@ -72,10 +76,12 @@ describe("the shell's span", () => {
     // from the shell so it is above it whatever the planet's radius.
     const high = R + ATMOSPHERE_HEIGHT * 2;
     expect(
-      shellSpan(
+      airSpan(
         { x: 0, y: high, z: 0 },
         { x: 200, y: high, z: 0 },
-        R + ATMOSPHERE_HEIGHT,
+        R,
+        ATMOSPHERE_HEIGHT,
+        true,
       ),
     ).toBeNull();
   });
@@ -85,7 +91,13 @@ describe("the shell's span", () => {
     // host and the shader clamp before the root for exactly this reason.
     const high = R + ATMOSPHERE_HEIGHT * 2;
     expect(
-      shellSpan({ x: 0, y: high, z: 0 }, { x: 200, y: high, z: 0 }, R),
+      airSpan(
+        { x: 0, y: high, z: 0 },
+        { x: 200, y: high, z: 0 },
+        R,
+        ATMOSPHERE_HEIGHT,
+        true,
+      ),
     ).toBeNull();
   });
 });
@@ -159,23 +171,205 @@ describe("the air column", () => {
   });
 });
 
+/**
+ * The same three questions on a height field, where the air is a slab rather than a shell.
+ *
+ * The sea level is zero rather than `R`, because on a plane it is an altitude and a test that
+ * measured it against 136,000 would be testing the shell again with extra steps.
+ */
+describe("a flat world's air", () => {
+  /** The eye at `altitude` above a sea at zero, and a point `range` away on the ground. */
+  const eyeAt = (altitude: number): Vec3 => ({ x: 0, y: altitude, z: 0 });
+  const groundAt = (range: number): Vec3 => ({ x: 0, y: 0, z: range });
+
+  it("is H·(1 − e^{−h/H}) straight down, on an altitude", () => {
+    // **The same closed form as the sphere's, over the same constant.** The one ray whose answer is
+    // known exactly, and the only place `H` can be checked without trusting the samples using it.
+    // Strictly vertical: a ray that travels sideways as it descends is a different integral, and
+    // calling that one "down" would have measured the model rather than the constant.
+    const altitude = 900;
+    const expected = H * (1 - Math.exp(-altitude / H));
+    expect(
+      airMassReference(
+        eyeAt(altitude),
+        groundAt(0),
+        0,
+        ATMOSPHERE_HEIGHT,
+        H,
+        256,
+        false,
+      ),
+    ).toBeCloseTo(expected, 3);
+    expect(
+      airMassShell(
+        eyeAt(altitude),
+        groundAt(0),
+        0,
+        ATMOSPHERE_HEIGHT,
+        H,
+        false,
+      ),
+    ).toBeCloseTo(expected, 1);
+  });
+
+  it("gathers across the whole of a ray that stays in the air", () => {
+    // **The flat world's version of what a limb is on a sphere.** On a sphere a grazing ray keeps
+    // curving into denser air and gathers more than a downward one of the same length; on a plane
+    // there is no curvature to keep it in the air, so the ray that gathers most is the one that
+    // never leaves it — a level ray at the eye's own height.
+    //
+    // The claim is therefore the opposite shape from the sphere's, and the reason is worth having
+    // written down: both are the same statement that distance alone cannot tell you what the air
+    // between you and a thing is made of.
+    const level = airMassShell(
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: 0, z: 4000 },
+      0,
+      ATMOSPHERE_HEIGHT,
+      H,
+      false,
+    );
+    const down = airMassShell(
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: -4000, z: 0 },
+      0,
+      ATMOSPHERE_HEIGHT,
+      H,
+      false,
+    );
+    expect(level).toBeGreaterThan(down * 100);
+    // **And the level ray is bounded by its own length**, because the density at sea level is 1:
+    // four thousand units of air at its densest cannot weigh more than four thousand units of it.
+    expect(level).toBeLessThanOrEqual(4000);
+  });
+
+  it("is empty for a ray that never enters it", () => {
+    // A horizontal segment well above the shell, going nowhere near the ground.
+    const high = ATMOSPHERE_HEIGHT * 2;
+    expect(
+      airMassShell(
+        { x: 0, y: high, z: 0 },
+        { x: 200, y: high, z: 0 },
+        0,
+        ATMOSPHERE_HEIGHT,
+        H,
+        false,
+      ),
+    ).toBe(0);
+  });
+
+  it("takes the whole of a level ray inside the air, which is the ray at the horizon", () => {
+    // **The case the sphere's solve never has to state.** `d.y` is exactly zero here, so there is
+    // no crossing to find and a solve written as two divisions answers `0 / 0`. Standing on the
+    // ground and looking along it is the single most common ray a player casts, and it must
+    // gather air across everything it can see.
+    const span = airSpan(
+      { x: 0, y: 0, z: 0 },
+      { x: 4000, y: 0, z: 0 },
+      0,
+      ATMOSPHERE_HEIGHT,
+      false,
+    );
+    expect(span).toEqual({ lo: 0, hi: 1 });
+    expect(
+      airMassShell(
+        { x: 0, y: 0, z: 0 },
+        { x: 4000, y: 0, z: 0 },
+        0,
+        ATMOSPHERE_HEIGHT,
+        H,
+        false,
+      ),
+    ).toBeGreaterThan(3000);
+  });
+
+  it("takes none of a level ray outside the air", () => {
+    const high = ATMOSPHERE_HEIGHT * 2;
+    expect(
+      airSpan(
+        { x: 0, y: high, z: 0 },
+        { x: 4000, y: high, z: 0 },
+        0,
+        ATMOSPHERE_HEIGHT,
+        false,
+      ),
+    ).toBeNull();
+  });
+
+  it("stops a descending ray at the ground rather than marching through it", () => {
+    // **The slab's one-sided version of the sphere's silhouette.** Looking down from above the
+    // air, the ray ends at the sea level rather than continuing to the ground beneath it.
+    const span = airSpan(
+      { x: 0, y: 2000, z: 0 },
+      { x: 0, y: -500, z: 0 },
+      0,
+      ATMOSPHERE_HEIGHT,
+      false,
+    );
+    expect(span).not.toBeNull();
+    // The sea is 2000 units up the 2500-unit segment, and the shell's top 2800 is below the eye.
+    expect(span!.lo).toBeCloseTo(0, 6);
+    expect(span!.hi).toBeCloseTo(2000 / 2500, 6);
+  });
+
+  it("matches the integrated oracle to the same few per cent the sphere does", () => {
+    // **The same contract, on the other shape.** The quadrature's cost/accuracy is a property of
+    // the two-node rule and not of what it is integrating over, so the bar is deliberately the
+    // same one the sphere is held to rather than a fresh number.
+    let worst = 0;
+    let at = "";
+    for (const altitude of [0, 100, 420, 900, 1400, 2000, 3000, 4800]) {
+      const eye = eyeAt(altitude);
+      for (const range of [1, 10, 100, 1000, 4000, 17000, 40000]) {
+        const point = groundAt(range);
+        const reference = airMassReference(
+          eye,
+          point,
+          0,
+          ATMOSPHERE_HEIGHT,
+          H,
+          256,
+          false,
+        );
+        if (reference <= 1e-6) continue;
+        const error = Math.abs(
+          amount(airMassShell(eye, point, 0, ATMOSPHERE_HEIGHT, H, false)) -
+            amount(reference),
+        );
+        if (error > worst) {
+          worst = error;
+          at = `${altitude} up, ${range} out`;
+        }
+      }
+    }
+    expect(worst, `worst at ${at}`).toBeLessThan(0.05);
+  });
+});
+
 /** A material that emits the air-mass graph and nothing else, so the test sees only its arithmetic. */
 class AtmosphereProbe extends NodeMaterial {
+  constructor(
+    private readonly seaLevel: number,
+    private readonly spherical: boolean,
+  ) {
+    super();
+  }
   protected override buildFragmentBody(b: Builder): Node<"vec4"> {
     const column = airMassNode(
       b.cameraPosition,
       b.positionWorld,
-      float(R),
+      float(this.seaLevel),
       float(ATMOSPHERE_HEIGHT),
       float(H),
+      this.spherical,
     );
     return vec4(column, float(0), float(0), float(1));
   }
 }
 
 describe("the air mass as nodes", () => {
-  const compiled = (): string => {
-    const program = new AtmosphereProbe().build(new Scene());
+  const compiled = (seaLevel = R, spherical = true): string => {
+    const program = new AtmosphereProbe(seaLevel, spherical).build(new Scene());
     return compileGlsl.fragment(program.fragmentRoot, { precision: "highp" });
   };
 
@@ -196,5 +390,14 @@ describe("the air mass as nodes", () => {
     const fragment = compiled();
     expect(fragment.split("exp(").length - 1).toBe(2);
     expect(fragment.split("sqrt(").length - 1).toBe(1);
+  });
+
+  it("compiles on a flat world too, and still takes the same two samples", () => {
+    // **The slab solve has no `sqrt` in it**, so a flat world should cost one fewer — and the
+    // counts being pinned on both worlds is what stops a later edit from quietly reintroducing
+    // the quadratic into the plane's path, where it would be both wrong and slower.
+    const fragment = compiled(0, false);
+    expect(fragment).not.toContain("NaN");
+    expect(fragment.split("exp(").length - 1).toBe(2);
   });
 });

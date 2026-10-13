@@ -67,6 +67,15 @@ export interface PlaceEditorState {
   setName(name: string): void;
   setSeed(seed: number): void;
   setSpawn(spawn: PlaceProject["manifest"]["spawn"]): void;
+  /**
+   * Sets what kind of world this place is built on, or takes it back to the default.
+   *
+   * **Deleting rather than writing a default when passed `undefined`**, the same rule
+   * `setSpawn` follows and for the same reason: an absent `world` means a sphere, and a
+   * manifest that spells out `"sphere"` is a place that has made a statement about its world
+   * when it has not.
+   */
+  setWorld(world: PlaceProject["manifest"]["world"]): void;
 
   /** Adds a script. Refused when it would pass `MAX_PLACE_FILES` or the name is taken. */
   addScript(name?: string): string | null;
@@ -222,6 +231,14 @@ export const createPlaceEditor = (
         const manifest = { ...current.manifest };
         if (spawn === undefined) delete manifest.spawn;
         else manifest.spawn = spawn;
+        return { ...current, manifest };
+      }),
+
+    setWorld: (world) =>
+      edit((current) => {
+        const manifest = { ...current.manifest };
+        if (world === undefined) delete manifest.world;
+        else manifest.world = world;
         return { ...current, manifest };
       }),
 

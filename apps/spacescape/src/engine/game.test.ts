@@ -16,6 +16,7 @@ import {
   Field,
   OperationBVH,
   makeOperation,
+  planetField,
   terrainField,
 } from "@big-mesh-studios/csg";
 
@@ -25,7 +26,8 @@ import type { SculptSession } from "../sculpt";
 import type { Viewport } from "../render/viewport";
 import { DEFAULT_SPACE_ALTITUDE, Game, type GameOptions } from "./game";
 import type { Player } from "../player/player";
-import { dot } from "@big-mesh-studios/core";
+import { dot, vec3 } from "@big-mesh-studios/core";
+import { flatFrame, sphericalFrame } from "../world/up";
 
 /**
  * A player's fall, as the one number the flight and no-clip tests care about.
@@ -563,5 +565,199 @@ describe("placing the player in space", () => {
     const subject = game();
     expect(subject.placeInSpace()).toContain(String(DEFAULT_SPACE_ALTITUDE));
     expect(subject.player.position.y).toBeCloseTo(DEFAULT_SPACE_ALTITUDE, 6);
+  });
+});
+
+/**
+ * A game whose world changes shape under a player who is already standing in it.
+ *
+ * **The claim is that the body is re-based rather than moved**, and it is the only claim in
+ * this file that is about anything other than the two console switches. `createPlayer` builds
+ * a body's orientation from the frame it is handed, so a body carried across from a sphere
+ * keeps the up it had — and because the first thing the physics does is add gravity along
+ * `up`, "keeps the up it had" means walking into the wall beside it.
+ */
+describe("a world changing shape", () => {
+  const PLANET = {
+    kind: "planet" as const,
+    params: { radius: 4000, scale: 96, octaves: 4, seed: 20260901 },
+  };
+  const TERRAIN = {
+    kind: "terrain" as const,
+    params: { origin: -70, scale: 96, octaves: 4, seed: 20260901 },
+  };
+  const FRAME = sphericalFrame(vec3(0, 0, 0));
+  /** Where inside the body the spawn probe starts. See `GameOptions.spawnRadius`. */
+  const PROBE = 3900;
+
+  /**
+   * A camera the frame loop can place, because the camera claim below is observed on it
+   * rather than through a getter.
+   */
+  const aCamera = (): PerspectiveCamera => {
+    const real = new PerspectiveCamera(50, 1.5, 0.1, 10000);
+    real.position.set(0, 50, 0);
+    real.updateMatrixWorld(true);
+    return real;
+  };
+
+  /**
+   * A game whose landscape can be replaced, which is what `app.tsx` does.
+   *
+   * **A mutable holder rather than a fixed field, and that is the point.** `Game` does not own
+   * the field — `SculptSession` does, and the app swaps it with `SculptSession.setBaseField`
+   * before it calls `setWorld`, because ADR 0009 has the two threads build from the same
+   * numbers rather than share one object. A stub fixed to the planet would have made this test
+   * assert that a player respawns on the ground of a world `Game` had been told it had left.
+   */
+  const onAPlanet = (
+    camera: PerspectiveCamera,
+  ): { game: Game; goFlat: () => void } => {
+    let field: SculptSession["collisionField"] = new Field(
+      new OperationBVH([]),
+      { base: planetField(PLANET.params), extent: planetField(PLANET.params) },
+    );
+    const subject = new Game({
+      /** `follow` and `stats` because the camera test below ticks the frame loop. */
+      session: {
+        follow: () => {},
+        stats: () => ({}) as never,
+      } as unknown as Session,
+      sculpt: {
+        get collisionField() {
+          return field;
+        },
+        // **`flushPreview` because the frame loop streams a stroke every frame**, and this
+        // stub exists so a test can watch where the camera ended up.
+        flushPreview: () => {},
+        updateAim: () => {},
+        beginAim: () => undefined,
+      } as unknown as SculptSession,
+      viewport: { camera } as unknown as Viewport,
+      input: { consume: () => ({}) } as unknown as InputController,
+      frame: FRAME,
+      seaRadius: PLANET.params.radius,
+      spawn: vec3(0, PLANET.params.radius, 0),
+      spawnRadius: PROBE,
+    });
+    return {
+      game: subject,
+      goFlat: () => {
+        field = new Field(new OperationBVH([]), {
+          base: terrainField(TERRAIN.params),
+          extent: terrainField(TERRAIN.params),
+        });
+      },
+    };
+  };
+
+  /** The two halves the app does back to back: the field first, then the frame. */
+  const toFlat = (subject: Game): void =>
+    subject.setWorld(
+      { frame: flatFrame, seaRadius: TERRAIN.params.origin },
+      undefined,
+    );
+
+  it("stands the player up on the surface of the world it is now on", () => {
+    const { game: subject, goFlat } = onAPlanet(aCamera());
+    // **Outward from the centre, not world `+Y`.** A body that kept the flat frame's up here
+    // would be lying on its side at the equator and upside down at the pole, and the first
+    // frame of physics would add gravity sideways.
+    expect(dot(subject.player.up, vec3(0, 1, 0))).toBeCloseTo(1, 6);
+    // **On the planet's own radius**, which is four thousand units from the origin rather than
+    // a y a person could read off a screen.
+    expect(subject.player.position.y).toBeCloseTo(PLANET.params.radius, 6);
+
+    goFlat();
+    toFlat(subject);
+    expect(subject.player.up).toEqual(vec3(0, 1, 0));
+    // And on the *flat* world's ground, near its own origin rather than four thousand units
+    // up where the planet's surface was.
+    expect(Math.abs(subject.player.position.y)).toBeLessThan(1000);
+  });
+
+  it("re-derives the whole basis rather than only the up", () => {
+    const { game: subject } = onAPlanet(aCamera());
+    toFlat(subject);
+    // **`right` is derived as `forward × up`, so a stale one would be a rotation nobody can
+    // see**: the player would strafe at ninety degrees to where they are looking.
+    const { forward, right, up } = subject.player;
+    const cross = {
+      x: forward.y * up.z - forward.z * up.y,
+      y: forward.z * up.x - forward.x * up.z,
+      z: forward.x * up.y - forward.y * up.x,
+    };
+    expect(dot(cross, right)).toBeCloseTo(1, 6);
+  });
+
+  it("drops the fall, so they do not arrive at the new ground moving", () => {
+    const { game: subject } = onAPlanet(aCamera());
+    setFall(subject.player, -500);
+    toFlat(subject);
+    expect(subject.player.velocity).toEqual(vec3(0, 0, 0));
+    expect(subject.player.onGround).toBe(false);
+  });
+
+  it("drops flight and no-clip, which are settings for standing about on particular ground", () => {
+    // **Carrying them across would be the kind of state nobody chose**: a person who switched
+    // shape and found themselves still flying, over a world that has not been streamed yet,
+    // would be looking at a hole and calling it a bug.
+    const { game: subject } = onAPlanet(aCamera());
+    subject.setFlying(true);
+    subject.setNoClip(true);
+    toFlat(subject);
+    expect(subject.player.flying).toBe(false);
+    expect(subject.player.noclip).toBe(false);
+  });
+
+  it("releases a camera claim aimed at something the world no longer has", () => {
+    // **Observed through the camera rather than through a getter**, because there is no public
+    // accessor and adding one for a test would be a second answer to "is a place holding the
+    // camera". A claim puts the lens on something three thousand units away and narrows the
+    // field of view; the narrowing is the part that is visible on the camera.
+    const camera = aCamera();
+    const { game: subject } = onAPlanet(camera);
+    subject.lookAt(vec3(3000, 0, 3000), 0.2);
+    subject.tick(1 / 60);
+    expect(camera.fov).toBeCloseTo(0.2, 6);
+
+    toFlat(subject);
+    subject.tick(1 / 60);
+    // **The zoom goes with the aim**, which is the same rule ADR 0020 states for
+    // `clearCameraLook`: releasing a claim has to put back what was there before, not merely
+    // stop setting it — a lens at 0.2 radians that outlives the place that set it is a state
+    // nobody chose.
+    expect(camera.fov).not.toBeCloseTo(0.2, 6);
+  });
+
+  it("re-bases the movement numbers, so a cleared multiplier means this world's own", () => {
+    const { game: subject } = onAPlanet(aCamera());
+    const base = subject.player.config.speed;
+    subject.setPlayerSpeed(2);
+    expect(subject.player.config.speed).toBeCloseTo(base * 2, 6);
+
+    toFlat(subject);
+    expect(subject.player.config.speed).toBeCloseTo(base, 6);
+    // And the new base is this world's, so a second multiplier scales from what is there.
+    subject.setPlayerSpeed(2);
+    expect(subject.player.config.speed).toBeCloseTo(base * 2, 6);
+  });
+
+  it("takes the world's centre with it, which is what the world bound reads", () => {
+    const { game: subject } = onAPlanet(aCamera());
+    expect(subject.world.centre).toEqual(vec3(0, 0, 0));
+    // **A frame that changed without this would leave a player walking off the far side of a
+    // planet into a void with no wall** — the `halfExtent` trap `planet-world.test.ts` is for.
+    toFlat(subject);
+    expect(subject.world.centre).toBeUndefined();
+  });
+
+  it("works both ways, because the command is a toggle", () => {
+    const { game: subject, goFlat } = onAPlanet(aCamera());
+    goFlat();
+    toFlat(subject);
+    expect(subject.world.frame.spherical).toBe(false);
+    subject.setWorld({ frame: FRAME, seaRadius: PLANET.params.radius }, PROBE);
+    expect(subject.world.frame.spherical).toBe(true);
   });
 });

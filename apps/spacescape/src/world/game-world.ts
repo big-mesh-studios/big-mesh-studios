@@ -128,12 +128,28 @@ const SURFACE_EPSILON = VOXEL_SIZE * 1e-3;
  */
 const SURFACE_MAX_STEPS = 256;
 
-export class GameWorld implements PlayerWorld {
+/**
+ * A different surface under this world, and nothing else.
+ *
+ * **Narrower than {@link GameWorldOptions} on purpose.** The field, the fields and the figures
+ * are read through readers this class already holds, so a shape change has nothing to say about
+ * them — asking the caller for them again would be asking for objects they cannot hold, and a
+ * caller that passed something else would get a world colliding against a model that is not the
+ * one being drawn.
+ */
+export interface GameSurface {
+  /** Which way is up, and where the body's centre is. */
   readonly frame: Frame;
-  readonly centre: Vec3 | undefined;
+  /** Where water begins: an altitude for a flat frame, a distance from the centre for a spherical one. */
+  readonly seaRadius?: number;
+}
+
+export class GameWorld implements PlayerWorld {
+  frame: Frame;
+  centre: Vec3 | undefined;
   readonly halfExtent: number;
   private readonly field: () => GameField;
-  private readonly seaRadius: number | undefined;
+  private seaRadius: number | undefined;
   private readonly waterAt: ((p: Vec3) => boolean) | undefined;
   /** See `GameWorldOptions.figureDistanceAt`. Held the same way `waterAt` is. */
   private readonly figureDistanceAt:
@@ -156,6 +172,27 @@ export class GameWorld implements PlayerWorld {
       options.mediumAt === undefined
         ? undefined
         : (p) => options.mediumAt!(p) ?? null;
+  }
+
+  /**
+   * Puts a different surface under this world.
+   *
+   * **`centre` re-derived rather than taken, because it is a fact about the frame rather than a
+   * second thing to say.** `clampToWorld` reads it to decide between a cube and a sphere
+   * (`player.ts:556`), so a frame that changed without it would leave a player walking off the
+   * far side of a planet into a void with no wall — which is the `halfExtent` trap
+   * `planet-world.test.ts:233-243` exists for.
+   *
+   * **`waterAt` is deliberately not among the things this changes.** A caller whose water is a
+   * meshed surface supplies a predicate rather than a level, and the usual one reads the world's
+   * own geometry through a closure, so it follows the shape by itself. A caller that supplied
+   * only `seaRadius` gets the looser rule recomputed from the new level, which is what makes the
+   * two cases above this line the two cases there is.
+   */
+  setWorld(surface: GameSurface): void {
+    this.frame = surface.frame;
+    this.centre = surface.frame.centre;
+    this.seaRadius = surface.seaRadius;
   }
 
   /**

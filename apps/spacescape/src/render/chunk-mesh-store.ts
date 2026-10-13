@@ -114,8 +114,13 @@ export class ChunkMeshStore {
      * the ground uses and for the same reason: the day's light, the fog and the place's
      * lights are written into a material once a frame, and a second instance would be a
      * second thing to remember to write to.
+     *
+     * **Not readonly, because which way the sea faces is a property of the landscape** — see
+     * {@link setSeaMaterial} — and `WaterMaterial` reads its shape once when the shader graph
+     * is built rather than per frame, so a shape change is a different material object rather
+     * than a different value in this one.
      */
-    private readonly seaMaterial?: Material,
+    private seaMaterial?: Material,
   ) {
     // **Ground first, then sea, and the sea's group only if there is a sea.** The order these
     // two lines run in is the draw order — it is the only ordering this renderer has, so it
@@ -220,6 +225,34 @@ export class ChunkMeshStore {
   markOutOfDate(slot: number): void {
     if (this.ground.slots[slot] === undefined) return;
     this.ground.revisions[slot] = this.revisionOf(slot) + 1;
+  }
+
+  /**
+   * Points the sea at a different material, for a world whose shape has changed.
+   *
+   * **Which way the sea faces is a property of the landscape, not of the drawing** — a sphere's
+   * sea points away from its centre everywhere and a plane's is world up at every point, and
+   * taking the radial one on a flat world points sideways at one end of the sea and backwards at
+   * the other (`water.ts:44-52`). `WaterMaterial` carries that as a constructor argument rather
+   * than a uniform, because `normalAt` closes over the builder and is called once while the
+   * shader graph is built — so the swap is a different material object and not a different value
+   * in this one.
+   *
+   * **No `undefined`, and the asymmetry with the constructor is deliberate.** The only world
+   * without a sea is the editor's, which is constructed without one and never changes shape; a
+   * world that gains or loses its sea would have to add or remove a `Surface`, and a group added
+   * to the scene after the ground's is a group drawn after it — which under ADR 0014, where draw
+   * order is scene traversal order, is a way of drawing water behind the terrain.
+   *
+   * **The meshes already on the GPU are left alone**, and the caller is expected to have
+   * invalidated them: they are the right cell at the wrong sea's normal, which is the case
+   * `markOutOfDate` is for.
+   */
+  setSeaMaterial(material: Material): void {
+    if (this.sea === undefined) {
+      throw new Error("this store has no sea to point at a different material");
+    }
+    this.seaMaterial = material;
   }
 
   /** Whether a slot currently has something to draw, on either surface. */

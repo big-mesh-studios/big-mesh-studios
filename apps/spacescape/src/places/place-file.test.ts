@@ -22,6 +22,7 @@ import {
   MAX_PLACE_SPAWN,
   PLACE_MANIFEST_FILE,
   PLACE_MIME_TYPE,
+  WORLD_SHAPES,
 } from "./place-file";
 
 /** A manifest that passes, for a test to spoil one field of. */
@@ -120,6 +121,11 @@ const refuses: readonly (readonly [string, unknown])[] = [
     "an attachment name with a backslash",
     { ...good(), models: ["..\\evil.zip"] },
   ],
+  // The world's shape, which is the one field on a manifest that names a value out of a
+  // closed list rather than a number or a path.
+  ["a world that is not one of the two", { ...good(), world: "terrain" }],
+  ["a world that is a boolean", { ...good(), world: true }],
+  ["a world that is a number", { ...good(), world: 1 }],
   [
     "a name claimed by both the scripts and the attachments",
     // **A zip holds one file per path**, so two claims to it is a place whose contents cannot be
@@ -211,6 +217,16 @@ describe("a manifest this can open", () => {
     expect(
       isPlaceManifest({ ...good(), mode: "multi", levels: ["hub.json"] }),
     ).toBe(true);
+  });
+
+  it("takes either of the two worlds, and none of them is required", () => {
+    // **Absent is the sphere**, which is what every place written before the field existed is
+    // — so reading it as anything else would move the ground out from under published bridges
+    // without a word in the zip saying so.
+    expect(isPlaceManifest({ ...good() })).toBe(true);
+    for (const world of WORLD_SHAPES) {
+      expect(isPlaceManifest({ ...good(), world }), world).toBe(true);
+    }
   });
 
   it("names the file and the type it agrees with the reference on", () => {

@@ -81,15 +81,8 @@ import {
   starterOperations,
   type SessionStats,
 } from "./session";
-import {
-  baseFieldFor,
-  DEFAULT_CAVES,
-  DEFAULT_PLANET,
-  DEFAULT_TERRAIN,
-  seaLevelOf,
-} from "@big-mesh-studios/csg";
-import type { BaseFieldSpec } from "@big-mesh-studios/csg";
-import { LOD_OFF, lodIsOff, type LodBands } from "./world";
+import { DEFAULT_PLANET, DEFAULT_TERRAIN } from "@big-mesh-studios/csg";
+import { DEFAULT_LOD_BANDS, LOD_OFF, lodIsOff, type LodBands } from "./world";
 import { SculptSession } from "./sculpt";
 import { DEFAULT_BRUSH } from "./edit/brush";
 import { buildSpikeScene, type SpikeScene } from "./spike-scene";
@@ -97,8 +90,15 @@ import { createInput } from "./player/input";
 import { DEFAULT_PLAYER_CONFIG, playerEye, type Medium } from "./player/player";
 import { TouchControls } from "./player/touch-controls";
 import { Game } from "./engine/game";
-import { createWaterMaterial, sphericalWater } from "./world/water";
-import { sphericalFrame } from "./world/up";
+import { createWaterMaterial, type WaterMaterial } from "./world/water";
+import {
+  describeWorldShape,
+  waterShapeOf,
+  worldGeometry,
+  worldShapeFromSearch,
+  type WorldGeometry,
+  type WorldShape,
+} from "./world/world-geometry";
 import { createCloudLayer, type CloudLayer } from "./world/cloud-layer";
 import { createZoneLines, type ZoneLines } from "./places/zones";
 import { PlaceHost, type Dialog, type Ending } from "./places/host";
@@ -157,76 +157,119 @@ import styles from "./app.module.css";
 /** How often the header is refreshed. A frame's worth of churn is unreadable. */
 const READOUT_INTERVAL_MS = 250;
 
+/**
+ * Everything a place is, as the one runner takes it.
+ *
+ * **An object because a place has grown past what positions can carry.** Seven positions, four
+ * of them optional and all adjacent, is a signature where `startPlace(files, entry, seed, name,
+ * spawn, models)` and `startPlace(files, entry, seed, name, spawn, levels)` are both valid and
+ * neither is wrong — and a caller that swapped the last two would compile perfectly and load a
+ * place with no models and no levels. The seventh parameter's own note said an options object
+ * was a bigger change than adding one more; that was true while the parameters were being added
+ * and stops being true the moment one of them is a choice.
+ *
+ * **`world` is the last one and the reason for the change**, and it is the field that says what
+ * the ground is rather than what a script did to it.
+ */
+interface StartPlace {
+  readonly files: PlaceFiles;
+  readonly entry: string;
+  /** Seeds the place's own `engine.random`, not the terrain. See `PlaceHost`. */
+  readonly seed: number;
+  readonly name: string;
+  /** Where the player starts. See `PlaceManifest.spawn`. */
+  readonly spawn?: PlaceSpawn;
+  /** Models this place stands its props and NPCs out of. See `model-library.ts`. */
+  readonly models?: Readonly<Record<string, Uint8Array>>;
+  /** Levels this place carries, which the host puts in the world before the script runs. */
+  readonly levels?: Readonly<Record<string, string>>;
+  /**
+   * What kind of world to build this place on.
+   *
+   * **Absent means "keep the one this session is already on"**, which is not the same as the
+   * manifest's absent-means-sphere. A place is opened into a running session, and rebuilding
+   * the world under a player who did not ask for it would move the ground out from under them
+   * every time they loaded anything; so this is a *request*, and one that says nothing is a
+   * request for what is already there.
+   */
+  readonly world?: WorldShape;
+}
+
 /** The largest step a frame is allowed to advance the world, in seconds. */
 const MAX_STEP = 0.05;
+
+/**
+ * How far below a spherical world's sea the spawn probe starts, in world units.
+ *
+ * **A named number rather than a literal at each of two call sites**, because it is the only
+ * number standing between a spawn and the inside of a planet: the probe has to begin in solid
+ * rock and trace outward, and a value that drifted between the initial spawn and a shape change
+ * would put one of them somewhere else.
+ */
+const SPAWN_PROBE_DEPTH = 200;
 
 const searchHas = (flag: string): boolean =>
   typeof location !== "undefined" &&
   new URLSearchParams(location.search).has(flag);
+
+/** The URL's own parameters, or nothing where there is no URL to read them from. */
+const searchParams = (): URLSearchParams | undefined =>
+  typeof location === "undefined"
+    ? undefined
+    : new URLSearchParams(location.search);
 
 const isSpike = (): boolean => searchHas("spike");
 const isEdit = (): boolean => searchHas("edit");
 const isGame = (): boolean => !isSpike() && !isEdit();
 
 /**
- * The world's base field, physics frame and sea — one planet, and no switch.
+ * The world this page runs, and every number the rest of the file derives from it.
  *
- * **There was a `?flat` mode here and it is gone**, along with the two things that existed only to
- * serve it: the sea's `level` variant and the water plane. The flag had a real cost that was easy to
- * forget — a spherical frame with a sea at an altitude is an ocean at an infinite radius, and a flat
- * frame with a sea radius is no ocean at all, because a flat frame's `radiusAt` is `Infinity`. Both
- * are silent, and both would have been found by a player rather than by a test. With one world there
- * is no pair to get wrong.
+ * **`world/world-geometry.ts` collects what used to be six constants here** — a base field, a
+ * frame, a sea level, a landscape and the two functions off it — because they are all
+ * consequences of one fact, which is whether the surface is a sphere or a plane. `?world=flat`
+ * is what changes it; a place's manifest will be the other thing that does.
  *
- * `flatFrame` itself stays, and `Frame` stays an abstraction: a flat frame is its infinite-radius
- * case, and `player.test.ts` runs the player against it as the control the spherical frames are
- * compared to. Dropping the simplest case of an abstraction would weaken the suite, not shrink it.
+ * **The lattice is not the spherical part, and nothing here has to change for a flat world.**
+ * `chunkCellOf` is a per-axis floor around the world origin and ADR 0036 put the planet's
+ * centre there precisely so it could stay that way, so both worlds stream on the identical
+ * cubic lattice. What differs is a field and a frame.
+ *
+ * **One sea level rather than two conventions, which is what `?flat` got wrong before.**
+ * `WORLD.seaLevel` is `seaLevelOf(spec)` — a distance from the centre on a sphere, an altitude
+ * on a plane — so a flat frame can never be handed a sea radius and end up with no ocean at
+ * all. See `world-geometry.ts` and the note it replaces.
+ *
+ * **`let` rather than `const` because the console is going to replace it**, in one assignment,
+ * once the switch that does it is written. Every reader below keeps reading the name it reads
+ * today.
  */
-const GAME_BASE_FIELD: BaseFieldSpec = {
-  kind: "planet",
-  // **`DEFAULT_PLANET` spread rather than used whole**, and the caves are the reason. A default
-  // planet with caves in it cannot state any property of its *surface* — `∂f/∂r` is exactly 1 and
-  // a normal's radial component is exactly 1, and both stop being true within a few units of a
-  // cave — so `planet.test.ts` would lose three of its own correctness checks. The library's
-  // default stays the plain planet; the game's world says what it wants.
-  //
-  // **Why this world has caves at all.** A planet here is 272,000 units across with a 1,280-unit
-  // horizon, so a player sees nothing but the ground under a sky with no depth to it. The caves
-  // are the only thing underfoot that is not sky, and they are what gives a shaft somewhere to
-  // go. A height field's caves can be optional because a landscape is already three-dimensional;
-  // a sphere's surface is not.
-  params: { ...DEFAULT_PLANET, caves: DEFAULT_CAVES },
-};
-const GAME_FRAME = sphericalFrame({ x: 0, y: 0, z: 0 });
-
-/**
- * The landscape, built once here for the questions only the main thread asks.
- *
- * **A second copy of the field the workers build, and the reason that is acceptable is
- * ADR 0009's**: both sides build it from the same numbers, so they cannot disagree. This
- * one exists because the player's collision and the water predicate both ask per frame, and
- * a field they cannot reach without building it would mean a message per query.
- */
-const GAME_LANDSCAPE = baseFieldFor(GAME_BASE_FIELD)!;
+let WORLD: WorldGeometry = worldGeometry(worldShapeFromSearch(searchParams()));
 
 /**
  * The landscape without its caves, which is what "is this water" has to ask.
  *
- * **A second field over the same spec, not a rebuilt one.** `baseFieldFor` is called once and the
- * result carries both answers on it, so there is no second construction to keep in step and
- * nothing for ADR 0009's two-threads-must-agree rule to catch: the mesher's gate and this
- * predicate are handed *the same function object*.
+ * **The landscape is a second copy of the field the workers build, and the reason that is
+ * acceptable is ADR 0009's**: both sides build it from the same numbers, so they cannot disagree.
+ * It exists because the player's collision and the water predicate both ask per frame, and a
+ * field they cannot reach without building it would mean a message per query.
  *
- * **Why two answers are needed at all.** `GAME_LANDSCAPE(p) > 0` means "outside material", and a
- * cave is material with a hole in it — so its air reads as outside material and a cave below sea
- * level reported the player as swimming, in a place the sea's mesh never reaches. The sea exists
- * only in a shell at its own level; everything below that and outside material is rock the sea has
- * not reached, and a deep cave is exactly that. `GAME_GROUND(p) > 0` means "not underground",
- * which a cave never satisfies, and it is the same question the water mesher's gate now asks.
+ * **One field and two answers rather than two fields, and the second is `ground`.** `baseFieldFor`
+ * is called once by `worldGeometry` and the result carries both answers on it, so there is no
+ * second construction to keep in step and nothing for ADR 0009's two-threads-must-agree rule to
+ * catch: the mesher's gate and this predicate are handed *the same function object*.
+ *
+ * **Why two answers are needed at all.** `landscape(p) > 0` means "outside material", and a cave
+ * is material with a hole in it — so its air reads as outside material and a cave below sea level
+ * reported the player as swimming, in a place the sea's mesh never reaches. The sea exists only
+ * in a shell at its own level; everything below that and outside material is rock the sea has not
+ * reached, and a deep cave is exactly that. `ground(p) > 0` means "not underground", which a cave
+ * never satisfies, and it is the same question the water mesher's gate now asks.
+ *
+ * **`let` rather than `const` because a shape change replaces the world underneath it**, and
+ * `inSea` below reads this name per query rather than holding the function it was built from.
  */
-const GAME_GROUND: (x: number, y: number, z: number) => number =
-  GAME_LANDSCAPE.ground ?? ((x, y, z) => GAME_LANDSCAPE(x, y, z));
-
+let GAME_GROUND = WORLD.ground;
 /**
  * The game's water.
  *
@@ -238,11 +281,28 @@ const GAME_GROUND: (x: number, y: number, z: number) => number =
  * globe and the atmosphere — everything that asks how deep something is rather than
  * anything that draws it.
  *
- * `sphericalWater` because the base field is a planet, and a height field's sea would face
- * `+Y` instead. That is a property of the landscape, which is why it is passed rather than
- * read out of the radius.
+ * `WORLD.water` rather than a constant here, because which way the sea faces is a property
+ * of the landscape: a sphere's points away from its centre everywhere, a plane's is world up
+ * at every point, and taking the radial one on a flat world points sideways at one end of the
+ * sea and backwards at the other. See `world/water.ts:44-52`.
+ *
+ * **One material per shape, built once each and kept, rather than one per switch.** A material
+ * is a GL object and its shape is a constructor argument read once while the shader graph is
+ * built (`water.ts:119`, `:142`), so a change of shape is a change of material rather than a
+ * change of uniform — and a cache is what keeps `/planet:shape` from compiling a shader every
+ * time somebody toggles it back.
  */
-const GAME_WATER = { material: createWaterMaterial(sphericalWater) };
+const waterMaterials = new Map<WorldShape, WaterMaterial>();
+
+const waterMaterialFor = (shape: WorldShape): WaterMaterial => {
+  const built = waterMaterials.get(shape);
+  if (built !== undefined) return built;
+  const material = createWaterMaterial(waterShapeOf(shape));
+  waterMaterials.set(shape, material);
+  return material;
+};
+
+let GAME_WATER = { material: waterMaterialFor(WORLD.shape) };
 
 /**
  * The material the figure under the crosshair is drawn with.
@@ -280,16 +340,6 @@ const FIGURE_TINT = {
 };
 
 /**
- * The altitude or radius water settles at, read from the landscape rather than repeated.
- *
- * **`seaLevelOf` and not `DEFAULT_PLANET.radius`, because this is the one place a caller
- * used to restate a number the world already carried** — and a number restated is a number
- * that can disagree. Every worker builds the same sea from the same spec (ADR 0009), so
- * reading it here is reading the same value they do.
- */
-const GAME_SEA = seaLevelOf(GAME_BASE_FIELD);
-
-/**
  * Whether a point is in water, as the sea is actually meshed.
  *
  * **Two terms, and the second one is `GAME_GROUND` rather than `GAME_LANDSCAPE`.** Below the sea,
@@ -303,13 +353,22 @@ const GAME_SEA = seaLevelOf(GAME_BASE_FIELD);
  * geometry is only a shell at sea level and nothing meshes the rest of it. `GAME_GROUND` calls the
  * same air "underground", which is what it is.
  *
+ * **"Below the sea" is a different question on each world, and the frame is what says which.**
+ * A sphere's sea is a distance from the centre and a plane's is an altitude, so the test asks
+ * `radiusAt` on one and reads `y` on the other — which is the branch `?flat` needed then could not
+ * have had, because a flat frame's `radiusAt` is `Infinity` and a spherical frame handed an
+ * altitude is an ocean at an infinite radius. Both failures are silent. Reading the sea off the
+ * same spec as the frame is what removes the pair: `WORLD.seaLevel` and `WORLD.frame` are one
+ * decision, so there is nothing left to get wrong.
+ *
  * The physics asked the same question before with `radiusAt < seaRadius && !getSolidAt`,
  * and the difference is `getSolidAt`, which asks the *edited* model. That mismatch is what
  * would otherwise let a player swim down a dry shaft.
  */
 const inSea = (p: { x: number; y: number; z: number }): boolean => {
-  if (GAME_FRAME.spherical && GAME_FRAME.radiusAt(p) >= GAME_SEA) return false;
-  if (!GAME_FRAME.spherical && p.y >= GAME_SEA) return false;
+  if (WORLD.frame.spherical && WORLD.frame.radiusAt(p) >= WORLD.seaLevel)
+    return false;
+  if (!WORLD.frame.spherical && p.y >= WORLD.seaLevel) return false;
   return GAME_GROUND(p.x, p.y, p.z) > 0;
 };
 
@@ -360,7 +419,16 @@ type PlanetBakeStatus =
       readonly maps: Extract<PlanetBakeSource, "worker" | "main thread">;
       readonly width: number;
     }
-  | { readonly state: "failed"; readonly reason: string };
+  | { readonly state: "failed"; readonly reason: string }
+  /**
+   * There is no planet to bake.
+   *
+   * **Its own state rather than a `failed` with a reason**, because "failed" means something went
+   * wrong and a person reading the header would go looking for it. A flat world has no globe by
+   * construction — the bake is never started, rather than started and refused — and a header that
+   * cannot distinguish the two states would be reporting a fault that did not happen.
+   */
+  | { readonly state: "not on this world" };
 
 type CloudStatus =
   | { readonly state: "baking" }
@@ -408,6 +476,8 @@ const describePlace = (id: string, host: PlaceHost): string => {
 const describePlanetBakeStatus = (status: PlanetBakeStatus): string => {
   if (status.state === "baking") return "maps still baking";
   if (status.state === "failed") return `failed — ${status.reason}`;
+  if (status.state === "not on this world")
+    return "none — a flat world has no globe";
   return `${status.maps} | ${status.width}px`;
 };
 
@@ -471,17 +541,7 @@ export default function App() {
    * that function again with the values it was called with, and there is no second code path for
    * it to disagree with the first.
    */
-  let loadedForRestart:
-    | {
-        files: PlaceFiles;
-        entry: string;
-        seed: number;
-        name: string;
-        spawn?: PlaceSpawn;
-        models?: Readonly<Record<string, Uint8Array>>;
-        levels?: Readonly<Record<string, string>>;
-      }
-    | undefined;
+  let loadedForRestart: StartPlace | undefined;
   /**
    * The hidden file input `/place:open` clicks.
    *
@@ -552,17 +612,7 @@ export default function App() {
    * defining it; the button reads this holder.
    */
   let placeHost: PlaceHost | undefined;
-  let restartPlace:
-    | ((
-        files: PlaceFiles,
-        entry: string,
-        seed: number,
-        name: string,
-        spawn?: PlaceSpawn,
-        models?: Readonly<Record<string, Uint8Array>>,
-        levels?: Readonly<Record<string, string>>,
-      ) => Promise<string>)
-    | undefined;
+  let restartPlace: ((place: StartPlace) => Promise<string>) | undefined;
 
   /**
    * Whether the place editor is open, and the place it is editing.
@@ -813,7 +863,15 @@ export default function App() {
     // writes depth, so it has to be first for the terrain, water and clouds to land on
     // top of it. Only the game gets one: the editor's near-black is deliberate, for
     // reading a model's silhouette against.
-    const sky = isGame() ? createSky(viewport.scene) : null;
+    //
+    // **Handed this world's sea level and shape rather than left to find them**, because the
+    // altitude the sky computes from them decides whether there is air overhead at all.
+    const sky = isGame()
+      ? createSky(viewport.scene, {
+          seaLevel: WORLD.seaLevel,
+          spherical: WORLD.frame.spherical,
+        })
+      : null;
 
     const material = new SurfaceMaterial();
 
@@ -843,7 +901,7 @@ export default function App() {
       scene: viewport.scene,
       material,
       operations: initialOperations,
-      baseField: GAME_BASE_FIELD,
+      baseField: WORLD.baseField,
       // **Only the game draws a sea.** The editor shares this session and orbits a model
       // with no water in it, and meshing water for it would be a second sampling pass over
       // every chunk to produce geometry nothing draws.
@@ -992,13 +1050,13 @@ export default function App() {
       sculpt,
       viewport,
       input,
-      seaRadius: GAME_SEA,
+      seaRadius: WORLD.seaLevel,
       // Where the sea is, as it is meshed rather than as the sea level alone would say.
       waterAt: inSea,
-      frame: GAME_FRAME,
+      frame: WORLD.frame,
       // The spawn probe has to start inside the planet. The sea radius is within a few units of
       // the surface everywhere, so it is a good enough probe and needs no number of its own.
-      spawnRadius: GAME_SEA - 200,
+      spawnRadius: WORLD.seaLevel - SPAWN_PROBE_DEPTH,
       // **Reaches into the place host, which does not exist yet.** Declared above this line and
       // assigned inside the settled effect, so at this moment it is `undefined` and the physics
       // reads that as "this world has no fields" — the honest answer, and cheaper than a reader
@@ -1051,81 +1109,230 @@ export default function App() {
     // The client falls back to the main thread if a worker cannot be had, because a hitch is a much
     // smaller problem than a planet that never arrives, and it says which of the two happened so the
     // HUD can report it.
-    const planetMaps = bakePlanetMapsOffThread(
-      DEFAULT_PLANET,
-      GLOBE_MAP_WIDTH,
-      GLOBE_MAP_HEIGHT,
-    );
     let globe: Globe | null = null;
-    let globeDisposed = false;
-
-    void planetMaps.maps.then(
-      (maps) => {
-        if (globeDisposed) return;
-        try {
-          globe = createGlobe(viewport.scene, maps);
-          setPlanetBake({
-            state: "ready",
-            maps:
-              planetMaps.source() === "main thread" ? "main thread" : "worker",
-            width: maps.width,
-          });
-        } catch (reason) {
-          console.warn("the globe could not be built:", reason);
-          setPlanetBake({
-            state: "failed",
-            reason: reason instanceof Error ? reason.message : String(reason),
-          });
-        }
-      },
-      (reason: unknown) => {
-        setPlanetBake({
-          state: "failed",
-          reason: reason instanceof Error ? reason.message : String(reason),
-        });
-      },
-    );
-
-    const cloudBake = bakeCloudFieldOffThread(DEFAULT_TERRAIN.seed);
     let layer: CloudLayer | null = null;
-    let cloudsDisposed = false;
+    /**
+     * The bakes currently in flight, so teardown can terminate their workers.
+     *
+     * **Held beside the meshes rather than captured in each callback**, because a worker that is
+     * never joined is a thread that lives for the life of the tab (`cloud-bake-client.ts:16`) and
+     * because a shape switch starts a second one — a list is what lets the teardown stop all of
+     * them without knowing how many there have been.
+     */
+    const cloudBakes: { dispose(): void }[] = [];
 
-    void cloudBake.field.then(
-      (field) => {
-        // Between the field being baked and this running, the scene can have been torn
-        // down — and a mesh added to a disposed scene is a leak with no owner.
-        if (cloudsDisposed) return;
-        try {
-          layer = createCloudLayer(
-            viewport.scene,
-            DEFAULT_TERRAIN.seed,
-            field,
-            GAME_SEA,
-          );
-          const source = cloudBake.source();
-          setCloudStatus({
-            state: "ready",
-            field: source === "main thread" ? "main thread" : "worker",
+    /**
+     * Bumped whenever the far field is replaced, so a bake that was started for a world that has
+     * gone does not install itself into the next one.
+     *
+     * **A generation rather than a boolean, because the far field is now built more than once.**
+     * A `disposed` flag can say "do not install" but cannot say "install again", so a world that
+     * switched to flat and back would have a sky with no clouds and a header that could not
+     * explain it. Two flags that can only be set — which is what the old code had, because the
+     * far field was built exactly once — become one number that means "which attempt is current".
+     */
+    let farField = 0;
+
+    /**
+     * Starts the globe's and the clouds' bakes, for a spherical world.
+     *
+     * **Neither exists on a flat one, and neither is started.** The globe is a displaced sphere
+     * at a radius, and a height field has no silhouette to displace; the clouds' shell is solved
+     * against two concentric spheres, which a plane does not have. Skipping the bake is not an
+     * optimisation — on a flat world it is roughly five seconds of noise for a map of a planet
+     * that is not there, which is the single largest piece of work this file would otherwise ask
+     * a phone to do for nothing.
+     */
+    const startGlobe = (): void => {
+      const attempt = ++farField;
+
+      const planetMaps = bakePlanetMapsOffThread(
+        DEFAULT_PLANET,
+        GLOBE_MAP_WIDTH,
+        GLOBE_MAP_HEIGHT,
+      );
+      void planetMaps.maps.then(
+        (maps) => {
+          // Between the bake starting and this running, the world can have been torn down or
+          // changed shape — and a mesh added to a scene it no longer belongs to is a leak with
+          // no owner.
+          if (attempt !== farField) return;
+          try {
+            globe = createGlobe(viewport.scene, maps);
+            setPlanetBake({
+              state: "ready",
+              maps:
+                planetMaps.source() === "main thread"
+                  ? "main thread"
+                  : "worker",
+              width: maps.width,
+            });
+          } catch (reason) {
+            console.warn("the globe could not be built:", reason);
+            setPlanetBake({
+              state: "failed",
+              reason: reason instanceof Error ? reason.message : String(reason),
+            });
+          }
+        },
+        (reason: unknown) => {
+          if (attempt !== farField) return;
+          setPlanetBake({
+            state: "failed",
+            reason: reason instanceof Error ? reason.message : String(reason),
           });
-        } catch (reason) {
-          // A material that throws on its first draw is the same fault as no layer at
-          // all, and it used to be invisible: the promise's callback threw, the
-          // rejection went to a handler nobody had, and the sky was empty with nothing
-          // in the header to say why.
-          console.warn("cloud layer could not be built:", reason);
+        },
+      );
+    };
+
+    /**
+     * Starts the cloud layer's bake, on either world.
+     *
+     * **Separate from the globe because the two do not belong to the same world.** A flat
+     * world has no silhouette and so has no globe, but it has weather: the deck's span solve
+     * and its volume address are two more solves and two more addresses rather than anything
+     * harder, and a sky with no clouds in it is a worse flat world than a planet with clouds.
+     * Putting them together would have made "a flat world has no far field" true, and it is
+     * not.
+     */
+    const startClouds = (): void => {
+      const attempt = ++farField;
+
+      const cloudBake = bakeCloudFieldOffThread(DEFAULT_TERRAIN.seed);
+      cloudBakes.push(cloudBake);
+      void cloudBake.field.then(
+        (field) => {
+          if (attempt !== farField) return;
+          try {
+            layer = createCloudLayer(
+              viewport.scene,
+              DEFAULT_TERRAIN.seed,
+              field,
+              WORLD.seaLevel,
+              WORLD.deck,
+            );
+            setCloudStatus({
+              state: "ready",
+              field:
+                cloudBake.source() === "main thread" ? "main thread" : "worker",
+            });
+          } catch (reason) {
+            // A material that throws on its first draw is the same fault as no layer at
+            // all, and it used to be invisible: the promise's callback threw, the
+            // rejection went to a handler nobody had, and the sky was empty with nothing
+            // in the header to say why.
+            console.warn("cloud layer could not be built:", reason);
+            setCloudStatus({
+              state: "failed",
+              reason: reason instanceof Error ? reason.message : String(reason),
+            });
+          }
+        },
+        (reason: unknown) => {
+          if (attempt !== farField) return;
           setCloudStatus({
             state: "failed",
             reason: reason instanceof Error ? reason.message : String(reason),
           });
-        }
-      },
-      (reason: unknown) => {
-        setCloudStatus({
-          state: "failed",
-          reason: reason instanceof Error ? reason.message : String(reason),
-        });
-      },
-    );
+        },
+      );
+    };
+
+    /**
+     * Takes the far field away: the globe's meshes and the cloud layer's.
+     *
+     * **The generation moves first, so a bake already in flight cannot install itself after
+     * this.** Doing it the other way round leaves a window in which the promise's callback runs
+     * against a world that has just declared itself flat and adds a sphere back to it.
+     */
+    const dropFarField = (): void => {
+      farField++;
+      globe?.dispose();
+      globe = null;
+      layer?.dispose();
+      layer = null;
+    };
+
+    // **The globe only where there is a silhouette to displace**, and the clouds everywhere.
+    if (WORLD.frame.spherical) startGlobe();
+    startClouds();
+
+    /**
+     * Puts a different world under this session, without reloading the page.
+     *
+     * **One function, in a fixed order, because a shape change touches every layer and the order
+     * is what makes it safe.** The module-scope readers go first so that anything reached from
+     * them — `inSea`, the frame loop's material writes — answers about the new world rather than
+     * the old one; then the streaming side, which invalidates every chunk it is holding; then the
+     * physics, which re-bases the player; then the far field, which exists on one of the two
+     * worlds and not the other.
+     *
+     * **A refusal rather than a no-op when asked for the world it is already running.** "Nothing
+     * happened" is the least useful thing a console can print, and a caller who asked for a
+     * shape deserves to be told the state is already what they asked for rather than being left
+     * to infer it from the silence.
+     *
+     * **The far field is rebuilt rather than merely hidden**, because a bake is not reversible:
+     * there is no way to stop one five seconds of noise into the future and keep the work. So a
+     * switch to flat drops the globe and the clouds outright and reports them as absent, and a
+     * switch back starts them again — which is why `farField` is a generation rather than the
+     * pair of flags this used to need, and why a switch is visibly slow the first time each way.
+     */
+    const setWorldShape = (shape: WorldShape): string => {
+      if (shape === WORLD.shape) {
+        return `the world is already ${describeWorldShape(shape)}`;
+      }
+      const next = worldGeometry(shape);
+
+      // **The readers first.** `inSea` and the frame loop's per-frame writes both read these
+      // names, and a chunk that landed between the switch and the first re-mesh would otherwise
+      // be shaded by one world's rules and gated by the other's.
+      WORLD = next;
+      GAME_GROUND = next.ground;
+      GAME_WATER = { material: waterMaterialFor(shape) };
+
+      // **Then the streaming side.** The sea's material is pointed first, because
+      // `setBaseField` re-asks for every chunk and a chunk meshed before the material moved
+      // would be a chunk shaded by the world's it has just left.
+      session.setSeaMaterial(GAME_WATER.material);
+      // **The main thread's field before the workers'**, so the player's collision and the
+      // mesher are never reading two different landscapes — which is ADR 0009's rule, and the
+      // gap between the two lines is a frame.
+      sculpt.setBaseField(next.baseField);
+      session.setBaseField(next.baseField);
+
+      // **Then the physics.** `setWorld` re-derives the player's basis from the new frame, which
+      // a body carried across could not do.
+      game.setWorld(
+        { frame: next.frame, seaRadius: next.seaLevel },
+        next.seaLevel - SPAWN_PROBE_DEPTH,
+      );
+
+      dropFarField();
+      if (next.frame.spherical) {
+        startGlobe();
+      } else {
+        setPlanetBake({ state: "not on this world" });
+      }
+      startClouds();
+
+      // **The sky and the fogs last**, because they are the only things that read the sea
+      // level rather than asking for it, and they should not report an altitude for a world
+      // that has not finished becoming one. The fog goes with the sky because it is one
+      // material per surface and the same two numbers — a world whose air is a slab while its
+      // sky measures it against a shell is worse than either being wrong on its own.
+      const shell = {
+        seaLevel: next.seaLevel,
+        spherical: next.frame.spherical,
+      };
+      sky?.setWorld(shell);
+      material.fog.setWorld(shell);
+      GAME_WATER.material.fog.setWorld(shell);
+      FIGURE_TINT.material.fog.setWorld(shell);
+
+      return `the world is now ${describeWorldShape(shape)}; ${session.stats().chunks} chunks re-meshing`;
+    };
+
     const detachInput = input.attach(canvas);
     const stopLock = input.onPointerLockChange(setLocked);
     const stopSuspension = input.onPointerLockSuspensionChange(setSuspended);
@@ -1243,20 +1450,22 @@ export default function App() {
       const refused = placeEditor.adopt(projectFromZip(place));
       if (refused !== null) return refused;
 
-      const report = await startPlace(
-        place.files,
-        place.entry,
-        place.manifest.seed,
-        place.manifest.name,
-        place.manifest.spawn,
+      const report = await startPlace({
+        files: place.files,
+        entry: place.entry,
+        seed: place.manifest.seed,
+        name: place.manifest.name,
+        spawn: place.manifest.spawn,
         // **The bytes the loader already carried.** Phase 1 put `models` in the manifest and
         // the loader read them, and the one thing it did not do was hand them to anything —
         // which made a whole field of the format decorative. This is where it stops being that.
-        place.models,
+        models: place.models,
         // **And the levels the loader already carried**, for the same reason: the field was in
         // the format and nothing read it, which is what made it decorative.
-        place.levels,
-      );
+        levels: place.levels,
+        // **And the world, which is the manifest's own statement about what the ground is.**
+        world: place.manifest.world,
+      });
       return report.startsWith("could not load")
         ? report
         : `opened ${place.manifest.name}\n${report}`;
@@ -1301,7 +1510,7 @@ export default function App() {
      */
     const groundHeightAt = (x: number, z: number): number =>
       surfaceHeightAt(x, z, {
-        seaRadius: GAME_SEA,
+        seaRadius: WORLD.seaLevel,
         heightAt: sculpt.terrainHeight,
         solidAt: (sx, sy, sz) => game.world.getSolidAt({ x: sx, y: sy, z: sz }),
       });
@@ -1314,25 +1523,18 @@ export default function App() {
      * they are — so `/place:load bridge` and `/place:open` differ only in where the files came
      * from and which seed the world is built under. Two code paths would mean two places where a
      * geometry change stops reaching the mesh.
+     *
+     * **An options object, and this is the case its own note predicted.** The note under the
+     * seventh positional parameter said an options object would be "a bigger change to every
+     * call site than adding one more parameter" — which was true while the parameters were
+     * being added and is false the moment one of them is a *choice*. Seven positions of which
+     * the fifth, sixth, seventh and eighth are all optional is a function where two arguments
+     * apart mean the same thing, and a call site that gets them in the wrong order compiles
+     * perfectly.
      */
-    const startPlace = async (
-      files: PlaceFiles,
-      entry: string,
-      seed: number,
-      name: string,
-      spawn?: PlaceSpawn,
-      /** Models this place stands its props and NPCs out of. See `model-library.ts`. */
-      models?: Readonly<Record<string, Uint8Array>>,
-      /**
-       * Levels this place carries, which the host puts in the world before the script runs.
-       *
-       * **A seventh positional parameter, and the pattern is `models`'s.** The alternative
-       * would be an options object on a six-argument function, which is a bigger change to every
-       * call site than adding one more parameter is — and this chain is deliberately one path
-       * for every source, so every source has to learn about it either way.
-       */
-      levels?: Readonly<Record<string, string>>,
-    ): Promise<string> => {
+    const startPlace = async (place: StartPlace): Promise<string> => {
+      const { files, entry, seed, name } = place;
+      const { spawn, models, levels, world } = place;
       // **Dropped before the new one is built, not after.** Two places at once would both
       // write into one registry, and the operation indices from the first would be spent under
       // the second's fold order.
@@ -1343,7 +1545,27 @@ export default function App() {
       // function again with the values it was called with, and there is no second code path for
       // it to disagree with the first. Set before anything can fail, so a place that fails to
       // load is still restartable into the same failure rather than into nothing.
-      loadedForRestart = { files, entry, seed, name, spawn, models, levels };
+      loadedForRestart = {
+        files,
+        entry,
+        seed,
+        name,
+        spawn,
+        models,
+        levels,
+        world,
+      };
+
+      // **The world is put in place before anything is built on it**, and before the models are
+      // read rather than after, because everything below this line reads the ground: the
+      // host's `terrainHeight`, the physics's collision field, the mesher's water gate. A place
+      // that arrives naming a world and is run on the other one would build against a surface
+      // that is not there, and `getHeightAt(0, 0)` would hand it the wrong answer — which on a
+      // sphere means the origin rather than a height.
+      //
+      // **Before the drop rather than after**, so a place that fails to switch cannot leave the
+      // previous one half standing.
+      if (world !== undefined) setWorldShape(world);
 
       // **The models, read and meshed before the host exists**, so a place that names a model
       // it does not attach finds out at load rather than at the moment it stands the first
@@ -1478,23 +1700,29 @@ export default function App() {
       // there, or a person who had walked to the far side of the planet would load a place and
       // never see it. The height is the same one the script asks for, from the same function.
       const half = DEFAULT_PLAYER_CONFIG.halfSize ?? 5;
-      return startPlace(
-        demo.files,
-        demo.entry,
-        DEFAULT_TERRAIN.seed,
-        demo.id,
-        demo.spawn ?? [
-          demo.spawnAt?.[0] ?? 0,
-          groundHeightAt(0, 0) + (demo.spawnLift ?? 0) + half + 1,
-          demo.spawnAt?.[1] ?? 0,
-        ],
+      return startPlace({
+        files: demo.files,
+        entry: demo.entry,
+        seed: DEFAULT_TERRAIN.seed,
+        name: demo.id,
+        spawn:
+          demo.spawn ??
+          ([
+            demo.spawnAt?.[0] ?? 0,
+            groundHeightAt(0, 0) + (demo.spawnLift ?? 0) + half + 1,
+            demo.spawnAt?.[1] ?? 0,
+          ] as const),
         // **A demo's models are URLs and are fetched here rather than at module scope**, so a
         // demo with none costs nothing to open and a model that is not there costs a notice
         // rather than a thrown 404.
-        demo.models === undefined
-          ? undefined
-          : await loadDemoModels(demo.models),
-      );
+        models:
+          demo.models === undefined
+            ? undefined
+            : await loadDemoModels(demo.models),
+        // **And the world the demo is about, if it says.** Every shipped demo is a sphere,
+        // and this is here because the day one is not is the day the field earns its place.
+        world: demo.world,
+      });
     };
 
     // The place commands, as the same interface the table in `place-commands.ts` takes — so
@@ -1573,13 +1801,14 @@ export default function App() {
       const project = await placeLibrary.project(place);
       const refused = placeEditor.adopt(project);
       if (refused !== null) return refused;
-      return startPlace(
-        project.scripts,
-        project.manifest.entry,
-        project.manifest.seed,
-        project.manifest.name,
-        project.manifest.spawn,
-      );
+      return startPlace({
+        files: project.scripts,
+        entry: project.manifest.entry,
+        seed: project.manifest.seed,
+        name: project.manifest.name,
+        spawn: project.manifest.spawn,
+        world: project.manifest.world,
+      });
     };
 
     /**
@@ -1603,13 +1832,14 @@ export default function App() {
      * Run is the last gate before the interpreter.
      */
     runPlace = async (project: PlaceProject) =>
-      startPlace(
-        project.scripts,
-        project.manifest.entry,
-        project.manifest.seed,
-        project.manifest.name,
-        project.manifest.spawn,
-      );
+      startPlace({
+        files: project.scripts,
+        entry: project.manifest.entry,
+        seed: project.manifest.seed,
+        name: project.manifest.name,
+        spawn: project.manifest.spawn,
+        world: project.manifest.world,
+      });
 
     // The console's commands are the game's own methods by another name, so the
     // game is what they are built over. It exists here, and nowhere earlier,
@@ -1649,6 +1879,24 @@ export default function App() {
             layer === null
               ? `no cloud layer yet — ${describeCloudStatus(cloudStatus())}`
               : `built | quality ${layer.quality} | coverage ${layer.material.coverage.toFixed(3)} | density ${layer.material.density.toFixed(3)} | ${describeCloudStatus(cloudStatus())}`,
+        },
+        // The world's shape, adapted the same way the clouds are: `setWorldShape` lives with
+        // the scene it rebuilds and the module-scope readers it replaces, and this is the
+        // only scope that knows both exist. `describe` reads the same module binding rather
+        // than holding a value, because a line of state that can be out of date is worse
+        // than one that cannot.
+        world: {
+          shape: (value) =>
+            value === undefined
+              ? setWorldShape(WORLD.shape)
+              : setWorldShape(value),
+          describe: () =>
+            [
+              `shape   ${describeWorldShape(WORLD.shape)}`,
+              `sea     ${WORLD.seaLevel.toFixed(0)} ${WORLD.frame.spherical ? "units from the centre" : "world y"}`,
+              `window  ${describeBands(chosen ?? DEFAULT_LOD_BANDS)}`,
+              `far     ${describePlanetBakeStatus(planetBake())}`,
+            ].join("\n"),
         },
       })
         .with(placeCommands(places))
@@ -2110,7 +2358,7 @@ export default function App() {
         // get the complement, so at the bottom of the band the terrain is opaque and the globe is
         // gone and at the top it is the other way round. A hard switch would pop and a seam where
         // both are half-present, which is why it is a band at all.
-        const shown = globeOpacityAt(radius - GAME_SEA);
+        const shown = globeOpacityAt(radius - WORLD.seaLevel);
         globe.update(radius);
         material.opacity = 1 - shown;
         material.transparent = shown > 0;
@@ -2155,14 +2403,12 @@ export default function App() {
       // that reads them — so the order is the one that lets both finish.
       dropPlace();
       zoneLines.dispose();
-      cloudsDisposed = true;
-      cloudBake.dispose();
-      layer?.dispose();
-      // **The globe before the scene it is in.** `session.dispose` clears the scene, so a globe
-      // disposed after it has no geometry left to remove — and the flag stops a bake that lands
-      // after teardown from adding a mesh nobody owns.
-      globeDisposed = true;
-      globe?.dispose();
+      // **The bakes before their meshes.** A bake disposed of after the mesh it was going to
+      // build is a worker left running for the life of the tab, and one that answers after
+      // teardown adds a mesh to a scene nobody owns.
+      for (const bake of cloudBakes) bake.dispose();
+      cloudBakes.length = 0;
+      dropFarField();
       session.dispose();
       viewport.dispose();
     };
@@ -2303,15 +2549,10 @@ export default function App() {
             // and the ending panel is already gone by the time this resolves because
             // `startPlace` drops the place first. A failure here lands in `/place:notices`
             // rather than on a screen nobody is looking at any more.
-            void start(
-              again.files,
-              again.entry,
-              again.seed,
-              again.name,
-              again.spawn,
-              again.models,
-              again.levels,
-            );
+            // **Passed straight back**, including the world — so a place restarted on a flat
+            // world is restarted on a flat world, and there is no second code path for the
+            // button to disagree with the load that preceded it.
+            void start(again);
           }}
           suspendPointerLock={() => input.suspendPointerLock()}
         />

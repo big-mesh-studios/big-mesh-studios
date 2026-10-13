@@ -56,6 +56,19 @@ import { shapeTexture, weatherTexture } from "./world/cloud-textures";
 import { SurfaceMaterial } from "./render/surface-material";
 import { detectFragmentPrecision } from "./render/precision";
 import { createViewport, type Viewport } from "./render/viewport";
+import { DEFAULT_PLANET_RADIUS } from "./render/atmosphere";
+
+/**
+ * The world this probe draws.
+ *
+ * **A planet, and said so** — the probe exists to look at the sky from orbit, so that is the only
+ * world it is about. `createSky` takes the world it is drawing rather than defaulting one,
+ * because a default would be the one number in the shader that nothing chose.
+ */
+const PLANET_WORLD = {
+  seaLevel: DEFAULT_PLANET_RADIUS,
+  spherical: true,
+} as const;
 
 const number = (name: string, fallback: number): number => {
   const raw = new URLSearchParams(location.search).get(name);
@@ -276,7 +289,7 @@ const run = (): void => {
 
   const state = dayNightState(options.t);
   const eye = new Vector3(0, 0, 0);
-  const sky = createSky(viewport.scene);
+  const sky = createSky(viewport.scene, PLANET_WORLD);
   sky.update(eye, state);
   sky.material.pixelScale = viewport.pixelRatio;
 

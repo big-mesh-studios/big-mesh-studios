@@ -49,6 +49,17 @@ import LANTERN_SOURCE from "./demo/lanterns.ts?raw";
 import LOOKOUT_SOURCE from "./demo/lookout.ts?raw";
 import CONVEYOR_SOURCE from "./demo/conveyor.ts?raw";
 
+/**
+ * A world's shape, re-exported so a demo declares it the way a manifest does.
+ *
+ * **One vocabulary at both ends.** A demo and a zip are the same place by the time they reach
+ * the runner, and a demo naming its world with a word of its own would be a second list to
+ * drift from the engine's.
+ */
+export type { WorldShape } from "../world/world-geometry";
+
+import type { WorldShape } from "../world/world-geometry";
+
 /** One of the places this build ships. */
 export interface DemoPlace {
   readonly id: string;
@@ -110,6 +121,16 @@ export interface DemoPlace {
    * together. Absent is zero, which is every other demo.
    */
   readonly spawnLift?: number;
+
+  /**
+   * What kind of world this demo is about, as `"sphere"` or `"flat"`.
+   *
+   * **The same field a manifest carries, for the same reason**, and absent on every shipped
+   * demo because every shipped demo is on the world this build opens on. It is here so that the
+   * first flat demo is one line rather than a new path through `app.tsx`, and so that `/place:load`
+   * and `/place:open` cannot come to disagree about what a demo runs on.
+   */
+  readonly world?: WorldShape;
 }
 
 /**

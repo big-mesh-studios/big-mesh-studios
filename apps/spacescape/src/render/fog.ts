@@ -91,8 +91,31 @@ export class Fog {
   /** What everything fades towards: the sky at the horizon. */
   colour: [number, number, number] = [0.53, 0.81, 0.92];
 
-  /** The planet's radius, so the column can tell a height above the ground from a distance. */
-  readonly planetRadius: number;
+  /**
+   * This world's sea level, so the column can tell a height above the ground from a distance
+   * from the eye.
+   *
+   * **A distance from the centre on a sphere and an altitude on a plane**, and the field is
+   * named `seaLevel` rather than `planetRadius` because that is the only name both shapes fit
+   * under. It defaults to the library's planet radius — which every caller in this repository
+   * used to get without saying so, and which is the right answer for exactly one of the two
+   * worlds this application can build.
+   *
+   * **Assigned rather than readonly, and read per draw through a uniform thunk.** A world can
+   * change shape while it runs, and moving this costs nothing for the reason `Fog.nearField`
+   * does not need a `needsUpdate` either.
+   */
+  seaLevel: number;
+
+  /**
+   * Whether this world has a silhouette for the air to sit against.
+   *
+   * **Read per draw and not compiled in**, because the near-field term is world-independent and
+   * only the atmosphere column branches on it — a uniform costs one select per fragment against a
+   * material that has to be rebuilt, and a fog is the one material here that every surface in the
+   * scene shares.
+   */
+  spherical: boolean;
 
   /** How far the shell reaches above the sea. */
   readonly atmosphereHeight: number;
@@ -107,31 +130,56 @@ export class Fog {
    * chunks are the surface and their window's edge has to be hidden; zero above the 420→900 band,
    * where the globe has taken over and there is no window edge left. The frame loop writes it
    * alongside the materials' own opacity, from the same `globeOpacityAt`, so the two cannot drift.
+   *
+   * **And one on a flat world, deliberately.** There is no globe to fade in, so nothing ever
+   * writes it below 1 — and that is the right value rather than the absence of one: a height
+   * field has a window edge at `FOG_FAR` and nothing beyond it, so the window fog is the whole of
+   * what hides the edge.
    */
   nearField = 1;
 
   private uniform?: UniformNode<"vec3">;
-  private radiusUniform?: UniformNode<"float">;
+  private seaLevelUniform?: UniformNode<"float">;
+  private sphericalUniform?: UniformNode<"float">;
   private atmosphereUniform?: UniformNode<"float">;
   private scaleUniform?: UniformNode<"float">;
   private nearFieldUniform?: UniformNode<"float">;
 
   constructor(
-    planetRadius = DEFAULT_PLANET_RADIUS,
+    seaLevel = DEFAULT_PLANET_RADIUS,
     scaleHeight = FOG_SCALE_HEIGHT,
     atmosphereHeight = ATMOSPHERE_HEIGHT,
+    spherical = true,
   ) {
-    this.planetRadius = planetRadius;
+    this.seaLevel = seaLevel;
     this.scaleHeight = scaleHeight;
     this.atmosphereHeight = atmosphereHeight;
+    this.spherical = spherical;
+  }
+
+  /**
+   * Points the fog at a different world.
+   *
+   * **Two assignments, and no `needsUpdate`** — both numbers are read through uniform thunks on
+   * each draw, which is the same arrangement `nearField` has had since it was written.
+   */
+  setWorld(world: {
+    readonly seaLevel: number;
+    readonly spherical: boolean;
+  }): void {
+    this.seaLevel = world.seaLevel;
+    this.spherical = world.spherical;
   }
 
   declare(b: Builder): void {
     this.uniform = b.materialUniform("uFogColour", "vec3", () => this.colour);
-    this.radiusUniform = b.materialUniform(
-      "uFogRadius",
+    this.seaLevelUniform = b.materialUniform(
+      "uFogSeaLevel",
       "float",
-      () => this.planetRadius,
+      () => this.seaLevel,
+    );
+    this.sphericalUniform = b.materialUniform("uFogSpherical", "float", () =>
+      this.spherical ? 1 : 0,
     );
     this.atmosphereUniform = b.materialUniform(
       "uFogAtmosphere",
@@ -159,7 +207,9 @@ export class Fog {
    * extrapolating *past* the surface colour near the eye; with the sum that case cannot arise.
    */
   apply(b: Builder, colour: Node<"vec3">): Node<"vec3"> {
-    // The near field: the window closure, switched off as the globe takes over.
+    // The near field: the window closure, switched off as the globe takes over. **World
+    // independent** — it is a distance from the eye and nothing else — which is why one fog
+    // serves a planet and a height field without this term knowing.
     const nearTau = b.positionWorld
       .sub(b.cameraPosition)
       .length()
@@ -168,13 +218,17 @@ export class Fog {
       .mul(float(FOG_FALLOFF / (FOG_FAR - FOG_NEAR)))
       .mul(this.nearFieldUniform!);
 
-    // The atmosphere: the column through the shell, which is what is left from orbit.
+    // The atmosphere: the column through the shell, which is what is left from orbit. **The only
+    // term here that asks what shape the world is**, and it asks through `airMassNode` rather than
+    // at this call site — the sphere's quadratic and the plane's two divisions are both behind
+    // that one flag.
     const airTau = airMassNode(
       b.cameraPosition,
       b.positionWorld,
-      this.radiusUniform!,
+      this.seaLevelUniform!,
       this.atmosphereUniform!,
       this.scaleUniform!,
+      this.sphericalUniform!.greaterThan(0.5),
     ).mul(float(ATMOSPHERE_EXTINCTION));
 
     const amount = float(1).sub(exp(nearTau.add(airTau).negate()));

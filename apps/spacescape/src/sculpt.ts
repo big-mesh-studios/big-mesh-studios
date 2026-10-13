@@ -102,8 +102,12 @@ export class SculptSession {
    * The landscape, held so every rebuild of the field uses the same one. Not rebuilt per
    * edit: a base field is four numbers and a permutation table, and rebuilding it per dab would
    * put a 256-entry shuffle on the pointer path for no benefit.
+   *
+   * **Assigned rather than readonly**, because a world's shape is a thing a person can change
+   * while it is running — see {@link setBaseField} — and the "not per dab" rule above is about
+   * the cost of a rebuild, not about there only ever being one.
    */
-  private readonly base: BuiltBaseField | undefined;
+  private base: BuiltBaseField | undefined;
   private brush: BrushSettings = DEFAULT_BRUSH;
   private readonly previewState: Preview = {
     visible: false,
@@ -191,6 +195,25 @@ export class SculptSession {
    */
   get collisionField(): Field {
     return this.field;
+  }
+
+  /**
+   * Puts a different landscape under this world, and rebuilds the field over the same model.
+   *
+   * **The operations are not rebuilt, which is the point of a shape change rather than a
+   * reload.** They are in world coordinates and mean the same thing on either surface, so the
+   * same list over a new base field is the same bridge over different ground — which is what a
+   * person who switched shape wants to see, rather than a place silently losing everything it
+   * built.
+   *
+   * **The caller streams.** This rebuilds the main thread's field and nothing else: the workers
+   * hold their own and are told separately, by `Session.setBaseField`. Splitting it that way is
+   * ADR 0009 — the two sides build from the same numbers rather than sharing one object — and
+   * it means neither side can be left holding a field the other has replaced.
+   */
+  setBaseField(spec: BaseFieldSpec): void {
+    this.base = baseFieldFor(spec);
+    this.field = this.buildField();
   }
 
   /**
