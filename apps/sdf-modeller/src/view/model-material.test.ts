@@ -131,6 +131,52 @@ describe("a material with a paint field", () => {
   });
 });
 
+describe("the alpha the material draws with", () => {
+  it("is opaque, and never the vertex's fourth byte", () => {
+    // **The bug this is here for, and it is the reason a Windows machine drew a whole figure
+    // in the colour of the page.**
+    //
+    // The fourth byte of a packed vertex colour is **a material id, not an opacity** (ADR
+    // 0048). `setColour` defaults it to `0`, this editor never sets a material, and ADR 0048
+    // records this application as material zero throughout — so reading it as alpha put
+    // `0.0` in every fragment of every model.
+    //
+    // Nothing threw and nothing warned. The context keeps an alpha channel, because rmsl's
+    // `WebGLRenderer` accepts only `antialias`, `depth`, `precision` and `preserveState`, and
+    // a fragment at alpha zero is composited away to the page background behind it. **Whether
+    // that reads as a flat dark grey or as nothing at all depends on how the browser
+    // composites the canvas**, which is why it showed up on some machines and not others.
+    //
+    // **Asserted on the emitted text because there is nothing else to assert on.** A vertex
+    // layout cannot fail a type check here — `unorm8x4` is `unorm8x4` whichever way the shader
+    // reads it — and the value is correct on a machine that happens to composite the canvas
+    // the way this one does, which is precisely the machine that cannot see the bug.
+    const { fragment } = compile(new ModelMaterial());
+
+    const written = /_rmsl_fragColor = vec4\((.*)\);/.exec(fragment)?.[1];
+    expect(written, "the line the fragment writes its colour with").toBeDefined();
+    // The pattern eats the closing paren, so the captured arguments end at the literal.
+    expect(written!.trimEnd().endsWith(", 1.0")).toBe(true);
+
+    // And the assertion the constant is standing in for: the fourth channel of the colour
+    // varying is not read anywhere at all. The varying is found from its declaration rather
+    // than by the name rmsl happened to number it this time.
+    const varying = /in vec4 (_rmsl_v\d+);/.exec(fragment)?.[1];
+    expect(varying, "the colour varying").toBeDefined();
+    expect(fragment, "a fourth channel read as alpha").not.toContain(
+      `${varying}.w`,
+    );
+  });
+
+  it("keeps an unpainted model off every fourth channel", () => {
+    // **The same bug from the other side.** The field's `.w` is a genuine fourth channel and
+    // the field path has every reason to read one; an untextured, unpainted model has none,
+    // so any `.w` in it at all is one that should not be there.
+    const { fragment } = compile(new ModelMaterial());
+    expect(fragment).not.toMatch(/\.w\b/);
+  });
+});
+
 describe("the maths the shader is expressing", () => {
   /** A field with one brick's worth of voxels per side, so addresses are small and legible. */
   const small = (): PaintField =>

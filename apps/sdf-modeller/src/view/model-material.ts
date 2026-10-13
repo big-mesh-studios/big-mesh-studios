@@ -359,7 +359,31 @@ export class ModelMaterial extends NodeMaterial {
       .add(lambert(FILL.direction, FILL.colour, FILL.power))
       .add(vec3(AMBIENT[0], AMBIENT[1], AMBIENT[2]));
 
-    return vec4(colour.xyz.mul(lit), colour.w);
+    // **An opaque alpha, written as a constant rather than taken from the vertex.**
+    //
+    // **The fourth byte is a material id, not an opacity** (ADR 0048). It *was* opacity, and
+    // for every model this app has ever drawn it has been **zero** — `setColour` defaults
+    // `material` to `0`, ADR 0048 records this application as material zero throughout ("its
+    // models are props and NPCs, which are material zero"), and nothing in this editor sets
+    // one. So `colour.w` was putting `0.0` in the fragment's alpha on every pixel of every
+    // model.
+    //
+    // **Which is invisible rather than dark, and only shows up as dark.** The context is
+    // created with `alpha` and `premultipliedAlpha` at their WebGL defaults, both true, and
+    // rmsl's `WebGLRenderer` accepts only `antialias`, `depth`, `precision` and
+    // `preserveState` — so the canvas keeps an alpha channel whatever this material writes. A
+    // fragment at alpha zero is composited away and the page background shows through it, which
+    // is why the model read as the flat dark grey of the page rather than as a black figure.
+    // **How much of that a person sees depends on whether the browser composites the canvas as
+    // an alpha layer**, which is a per-driver and per-profile question — hence a model that
+    // drew correctly on a Mac, on Linux, on Android and on one Windows machine, and came out
+    // the colour of the background on another.
+    //
+    // **The landscape's own material is the reference for what this byte means.** `SurfaceMaterial`
+    // un-normalises it back to `0..255` (`colour.w.mul(255)`) and reads it as a material id
+    // for a procedural pattern; it never offers it to the alpha. Reading the same byte as two
+    // different things in two applications is the whole of what this was.
+    return vec4(colour.xyz.mul(lit), float(1));
   }
 
   /**
