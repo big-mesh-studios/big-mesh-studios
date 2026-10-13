@@ -1,5 +1,5 @@
 /*
- * The colour picker: a chart, two sliders, four fields and a swatch.
+ * The colour picker: a chart, two sliders, four fields, a swatch and an eyedropper.
  *
  * **Ported from rm-stacker's `ColorPicker.module.css`**, with the tokens renamed for this
  * repository's baseline and the two text colours defined here rather than added to the
@@ -9,6 +9,10 @@
  * and the right one: the chart and the two sliders are all "put a finger somewhere", and
  * the four fields and the swatch are all "read a value". Grouping them that way means a
  * thumb reaching for a slider never lands on a number.
+ *
+ * **The eyedropper is the one control here that is not always drawn** — it needs the `EyeDropper`
+ * API, and `colour-picker.tsx` emits nothing at all where that is missing. See `.outputRow` for
+ * why it lives in the swatch's grid area rather than in a column of its own.
  */
 
 .colourPicker {
@@ -97,13 +101,66 @@
   --overlay: linear-gradient(to top, transparent, var(--opaque-colour));
 }
 
+/* **The swatch and the eyedropper that feeds it, in one grid area.**
+ *
+ * **A flex row rather than a fourth column, and that is the whole reason.** A flex `gap` is
+ * counted only between children that were rendered, so where the browser has no `EyeDropper` the
+ * two sit flush with nothing between them. A grid track collects a gap on either side of itself
+ * whatever is placed in it, so an empty track would leave a visible hole in the picker beside the
+ * swatch — a gap leading to nothing, on exactly the browsers least able to say why.
+ *
+ * `align-items: flex-end` is what the swatch's own `align-self: end` was doing, carried up here
+ * so the button and the swatch share a bottom edge however the button is sized.
+ */
+.outputRow {
+  grid-area: output;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--ui-margin);
+}
+
 .output {
   composes: checkered;
-  grid-area: output;
+  flex: 1;
+  min-width: 0;
   aspect-ratio: 1;
-  align-self: end;
   border-radius: 2px;
   --overlay: linear-gradient(var(--colour), var(--colour));
+}
+
+/*
+ * A square button beside the swatch, drawn like a `.channel` field rather than like a `.button`.
+ *
+ * **The field's border and fill, because it sits in the same row as the fields and is the same
+ * kind of thing** — a control the same size as the rest of the picker's targets, rather than a
+ * floating glyph that would read as part of the swatch.
+ *
+ * **`place-items: center` and no size on the `<svg>`.** The glyph carries its own `width` and
+ * `height` of 24 (`icons.tsx:34-44`), which is what stops a `<svg>` with only a `viewBox` from
+ * falling back to the replaced-element default of 300×150 inside an auto-width box.
+ */
+.eyeDropper {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--ui-size);
+  height: var(--ui-size);
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: calc(var(--ui-size) / 4);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.eyeDropper:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.eyeDropper:focus-visible {
+  outline: 2px solid #a9a9a9;
+  outline-offset: -2px;
 }
 
 .fields {

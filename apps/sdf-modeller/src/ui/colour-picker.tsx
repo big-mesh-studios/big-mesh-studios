@@ -32,8 +32,18 @@
  * alpha.** It was never written — `setColour` took three channels — so this picker would
  * have shipped a control that visibly did nothing. `setColour` now takes an alpha and
  * `Operation.opacity` reaches it, which is what makes the slider honest.
+ *
+ * ## Why the eyedropper is drawn and not always offered
+ *
+ * **Because it can only exist where the browser can answer the question.** The `EyeDropper` API
+ * hands back a colour under the cursor from anywhere on screen, which is a shortcut no chart
+ * and no pair of fields can match: a figure painted from a reference image, a colour somebody
+ * else chose, a colour already on the page. Where it is missing there is no second-best
+ * version of that shortcut worth a button, so rather than a disabled control that always
+ * explains itself wrongly, the tool is not drawn at all — `Show` emits nothing, so there is no
+ * hole in the layout and nothing in the tab order to find.
  */
-import { createEffect, createMemo, createSignal, For } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import {
   hsvaToRgba,
   rgbaEquals,
@@ -44,9 +54,63 @@ import {
 } from "@big-mesh-studios/core";
 import { pointer } from "@big-mesh-studios/ui/pointer";
 
+import { EyeDropperIcon } from "./icons";
 import styles from "./colour-picker.module.css";
 
 const DEFAULT_HSVA: HSVA = { h: 0, s: 1, v: 1, a: 1 };
+
+/** All the eyedropper resolves with: an opaque sRGB colour written `#rrggbb`. */
+interface EyeDropperResult {
+  readonly sRGBHex: string;
+}
+
+interface EyeDropperLike {
+  open: (options?: { signal?: AbortSignal }) => Promise<EyeDropperResult>;
+}
+
+/**
+ * **Declared here because TypeScript's DOM library has no `EyeDropper` at all** — not a partial
+ * one, none — so this is a missing declaration rather than an override, and it is the same
+ * reason `file/save-file.ts` declares the file system picker beside the code that calls it.
+ * `options` and the `signal` on `open` are declared for the same reason: `remembersFiles`
+ * spells its own type out fully, so a reader can see what the API takes.
+ */
+declare global {
+  interface Window {
+    EyeDropper?: new (options?: { signal?: AbortSignal }) => EyeDropperLike;
+  }
+}
+
+/**
+ * Whether the browser can hand this picker a colour from the screen.
+ *
+ * **A `typeof` check rather than `'EyeDropper' in window`,** matching `remembersFiles`, because
+ * a member that exists but is not a constructor cannot be called and `in` would claim it can.
+ */
+export const picksFromScreen = (): boolean =>
+  typeof window !== "undefined" && typeof window.EyeDropper === "function";
+
+/**
+ * `#rrggbb` as four bytes.
+ *
+ * **The alpha is forced to opaque rather than carried over from the picker.** A pixel off the
+ * screen has no transparency to report — the format has no channel for it — so a colour taken
+ * from a screenshot or another application is a colour that *is* fully opaque, and carrying the
+ * slider's alpha across would show a colour the source never had. Somebody who wants it
+ * translucent moves the alpha slider afterwards, which is visible; the other reading is a
+ * silent lie about what was picked.
+ *
+ * **Sliced and parsed rather than validated,** because the specification promises that shape
+ * and every implementation returns it. A `NaN` channel would only mean the browser broke its
+ * own promise, and a picker that refused to show a colour over that would be worse than one
+ * showing an odd one.
+ */
+const fromHex = (hex: string): RGBA => ({
+  r: Number.parseInt(hex.slice(1, 3), 16),
+  g: Number.parseInt(hex.slice(3, 5), 16),
+  b: Number.parseInt(hex.slice(5, 7), 16),
+  a: 255,
+});
 
 const CHANNELS = ["r", "g", "b", "a"] as const satisfies ReadonlyArray<
   keyof RGBA
@@ -122,6 +186,33 @@ export function ColourPicker(props: {
     setHsva((previous) =>
       rgbaToHsva({ ...colour(), [channel]: clamped }, previous),
     );
+  };
+
+  /**
+   * Take a colour off the screen.
+   *
+   * **The rejection is swallowed rather than reported.** Escape is how this interaction ends —
+   * the browser rejects the promise when the overlay is dismissed — so a rejection is an
+   * ordinary outcome and not a fault, and a message about it would name a mistake somebody did
+   * not make. Nothing has been written when it comes, so there is nothing to recover.
+   *
+   * **`setDraft(undefined)` for the reason `drag` clears it:** a gesture that changes the colour
+   * abandons the half-typed channel, because the field and the swatch would otherwise disagree
+   * and the next keystroke would overwrite one of them.
+   *
+   * **Written through `setHsva` and not to `props.onColour` directly**, so the `rgbaEquals` guard
+   * above still decides whether the outside world hears about it.
+   */
+  const pickFromScreen = async (): Promise<void> => {
+    const EyeDropper = window.EyeDropper;
+    if (EyeDropper === undefined) return;
+    setDraft(undefined);
+    try {
+      const { sRGBHex } = await new EyeDropper().open();
+      setHsva((previous) => rgbaToHsva(fromHex(sRGBHex), previous));
+    } catch {
+      // Escape, or the browser refused. Nothing was picked and nothing changed.
+    }
   };
 
   /**
@@ -229,7 +320,33 @@ export function ColourPicker(props: {
         </For>
       </div>
 
-      <div class={styles.output} style={{ "--colour": rgbaToCss(colour()) }} />
+      {/*
+        **The eyedropper beside the swatch it feeds, in one grid area rather than a fourth
+        column.** A flex `gap` is only counted between children that were rendered, so on a
+        browser without the API the two sit flush with nothing between them; a grid track would
+        collect a gap on either side of itself whatever was in it, and leave a hole in the
+        picker where the button had been.
+      */}
+      <div class={styles.outputRow}>
+        <div
+          class={styles.output}
+          style={{ "--colour": rgbaToCss(colour()) }}
+        />
+
+        <Show when={picksFromScreen()}>
+          <button
+            type="button"
+            class={styles.eyeDropper}
+            aria-label="pick a colour off the screen"
+            title="Pick a colour off the screen"
+            onClick={() => {
+              void pickFromScreen();
+            }}
+          >
+            <EyeDropperIcon />
+          </button>
+        </Show>
+      </div>
     </div>
   );
 }

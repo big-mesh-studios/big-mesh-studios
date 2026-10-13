@@ -46,7 +46,6 @@ import {
 } from "@random-mesh/rmsl/scene";
 
 import type { PaintSurface } from "../unwrapping/paint-surface";
-import { report } from "./paint-report";
 import { BRICK, GRID_RES, SLOT } from "../unwrapping/paint-field";
 import type { PaintField } from "../unwrapping/paint-field";
 
@@ -533,11 +532,6 @@ export class ModelMaterial extends NodeMaterial {
       this.field.poolTexture!.needsUpdate = true;
       this.field.gridTexture!.needsUpdate = true;
       field.markSynced();
-      report({
-        what: "upload",
-        bricks: field.brickCount,
-        voxelSize: field.voxelSize,
-      });
     }
   };
 }

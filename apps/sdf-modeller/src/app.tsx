@@ -62,8 +62,6 @@ import {
 import { createMoveHandles, type MoveHandles } from "./view/move-handles";
 import { distanceToPart, pickPartAt, pointInPartFrame } from "./view/pick-part";
 import { fieldHit, type BrushSurface } from "./view/field-hit";
-import { report } from "./view/paint-report";
-import { rayThroughScreen, toNdc } from "@big-mesh-studios/picking";
 import { radiansDragged, ringUnderPointer } from "./view/rotate-handle";
 import { createRotateHandles, type RotateHandles } from "./view/rotate-handles";
 import { createSelectionBox, type SelectionBox } from "./view/selection-box";
@@ -453,11 +451,6 @@ export function App() {
   const brushSurface = (): BrushSurface | undefined => {
     const parts = untrack(store.parts);
     if (surfaceField === undefined || parts.length === 0) {
-      report({
-        what: "no-surface",
-        hasField: surfaceField !== undefined,
-        parts: parts.length,
-      });
       return undefined;
     }
     return {
@@ -710,14 +703,6 @@ export function App() {
         result === undefined
           ? undefined
           : operationsField(partsToOperations(parts), DEFAULT_BUDGET);
-      hoverReported = 0;
-      strokeMisses = 0;
-      report({
-        what: "rebuild",
-        triangles: result?.triangles ?? 0,
-        parts: parts.length,
-        hasSurfaceField: surfaceField !== undefined,
-      });
       target.install(result, {
         translucent: parts.some((part) => (part.opacity ?? 1) < 1),
         ...(bake === undefined ? {} : { bake }),
@@ -1000,14 +985,6 @@ export function App() {
     // edge would alias onto the ones at the start — paint on the wrong side of the model. A
     // figure far larger than this is not something to crash over, so it gets no field and says
     // so; M1's coarser-voxel setting is what will lift the ceiling.
-    report({
-      what: "field-sizing",
-      side: Number(side.toFixed(2)),
-      reach: PAINT_REACH,
-      origin: origin.map((v) => Number(v.toFixed(2))),
-      voxel: PAINT_VOXEL,
-      tiles: PAINT_TILES,
-    });
     if (side > PAINT_REACH) {
       setFileNotice(
         "this model is too large for the paint field at its current resolution; move the parts closer together or use a smaller model",
@@ -1082,11 +1059,6 @@ export function App() {
     view?.attachField(undefined);
   };
 
-  let hoverReported = 0;
-
-  /** Rounded for a log line, because a full double is unreadable and the digits are noise. */
-  const round3 = (value: number): number => Number(value.toFixed(3));
-
   const standCursor = (): void => {
     const ring = cursor;
     const eye = camera;
@@ -1110,46 +1082,8 @@ export function App() {
     // about where anything was.
     const hit = fieldHit(surface, eye, size, pointer);
     if (hit === undefined) {
-      // **A few of these, and no more.** The cursor asks the same question sixty times a second
-      // and "no" sixty times a second is not news; what is news is the ray that could not find
-      // the surface, and eight of those is enough to see what it looked like.
-      if (hoverReported < 8) {
-        hoverReported += 1;
-        const ndc = toNdc(pointer.x, pointer.y, size.width, size.height);
-        const ray = rayThroughScreen(eye, ndc.x, ndc.y);
-        report({
-          what: "hover-miss",
-          pointer,
-          size,
-          eye: { x: eye.position.x, y: eye.position.y, z: eye.position.z },
-          origin: { x: ray.origin.x, y: ray.origin.y, z: ray.origin.z },
-          direction: {
-            x: round3(ray.direction.x),
-            y: round3(ray.direction.y),
-            z: round3(ray.direction.z),
-          },
-        });
-      }
       ring.hide();
       return;
-    }
-    if (hoverReported < 8) {
-      hoverReported += 1;
-      report({
-        what: "hover-hit",
-        pointer,
-        part: hit.part,
-        point: {
-          x: round3(hit.point.x),
-          y: round3(hit.point.y),
-          z: round3(hit.point.z),
-        },
-        normal: {
-          x: round3(hit.normal.x),
-          y: round3(hit.normal.y),
-          z: round3(hit.normal.z),
-        },
-      });
     }
     ring.place(hit.point, hit.normal, untrack(brush).width / 2);
   };
@@ -1242,8 +1176,6 @@ export function App() {
     }
   };
 
-  let strokeMisses = 0;
-
   const paintStroke = async (
     initial: PointerEvent & { currentTarget: HTMLElement },
   ): Promise<void> => {
@@ -1266,18 +1198,12 @@ export function App() {
 
     const field = ensureField(parts);
     if (field === undefined) {
-      report({ what: "no-field" });
       return;
     }
     // **Taken once, at the start of the drag, and not read again.** A drag's brush settings
     // cannot change under it — the panel is not reachable while a finger is down — so reading a
     // signal per pointer move would be sixty graph reads a second for a value that cannot differ.
     const held = untrack(brush);
-    report({
-      what: "stroke-start",
-      radius: held.width / 2,
-      parts: parts.length,
-    });
     const { localise, place } = partTransforms(parts);
     const recorder = new PaintBrush(
       paintJournal,
@@ -1306,29 +1232,8 @@ export function App() {
         lastPointer = at;
         const hit = fieldHit(surface, eye, size, at);
         if (hit === undefined || hit.part < 0) {
-          if (strokeMisses < 3) {
-            strokeMisses += 1;
-            const ndc = toNdc(at.x, at.y, size.width, size.height);
-            const ray = rayThroughScreen(eye, ndc.x, ndc.y);
-            report({
-              what: "hit-miss",
-              part: hit?.part ?? -1,
-              pointer: at,
-              size,
-              eye: { x: eye.position.x, y: eye.position.y, z: eye.position.z },
-              origin: { x: ray.origin.x, y: ray.origin.y, z: ray.origin.z },
-              direction: {
-                x: ray.direction.x,
-                y: ray.direction.y,
-                z: ray.direction.z,
-              },
-              eyeAtHit: hit === undefined ? undefined : round3(hit.point.y),
-            });
-          }
           return;
         }
-        if (strokeMisses === -1)
-          report({ what: "hit", point: hit.point, part: hit.part });
         recorder.moveTo(hit);
       });
     } finally {
@@ -1349,14 +1254,6 @@ export function App() {
     // painting. All that is left is to close the stroke so the drag is one undo step.
     const painted = recorder.finish();
     setDabCount(paintJournal.count);
-    report({
-      what: "stroke-end",
-      dabs: painted.dabs,
-      live: painted.live,
-      total: paintJournal.count,
-      bricks: field.brickCount,
-      dirtySinceSync: field.dirtySinceSync,
-    });
     if (painted.dabs === 0) {
       if (ended !== undefined && tapOnly(ended)) pickAt(initial);
       return;
@@ -1775,7 +1672,6 @@ export function App() {
       const { place } = partTransforms(parts);
       rasterise(paintJournal, field, place);
       field.markChanged();
-      report({ what: "paint-restored", dabs: paintJournal.count });
     })();
 
     return loaded;

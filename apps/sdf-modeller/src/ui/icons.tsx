@@ -100,6 +100,20 @@ export const GridIcon = () => (
   </svg>
 );
 
+/**
+ * A pipette, for taking a colour off the screen.
+ *
+ * **The bulb and the barrel rather than a magnifier over a square.** A magnifier is what a
+ * "pick a pixel from an image" tool looks like, and this one reads a pixel from whatever is on
+ * screen, including other applications — where there is no image to put a magnifier over.
+ */
+export const EyeDropperIcon = () => (
+  <svg {...stroke}>
+    <path d="M14.5 3a4.5 4.5 0 0 1 6.4 6.4l-2 2-4.4-4.4z" />
+    <path d="M12.6 9.4 4 18v3h3l8.6-8.6" />
+  </svg>
+);
+
 /** Every glyph this application has, so a caller can name one rather than import it. */
 export const ICONS = {
   plus: PlusIcon,
@@ -109,6 +123,7 @@ export const ICONS = {
   cross: CrossIcon,
   trash: TrashIcon,
   grid: GridIcon,
+  eyeDropper: EyeDropperIcon,
 } as const;
 
 export type IconKind = keyof typeof ICONS;
