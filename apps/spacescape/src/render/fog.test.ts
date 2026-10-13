@@ -1,17 +1,23 @@
 import { compileGlsl } from "@random-mesh/rmsl/glsl";
 import { Scene } from "@random-mesh/rmsl/scene";
+import { fromProgram, render } from "@random-mesh/rmsl/test";
 import { describe, expect, it } from "vitest";
 
 import type { Vec3 } from "@big-mesh-studios/core";
 import { BLOCK_WORLD } from "../constants";
 import { DEFAULT_WINDOW_RADIUS, GAME_WINDOW } from "../session";
-import { dayNightState } from "../world/day-night";
-import { ATMOSPHERE_EXTINCTION, airMassShell } from "./atmosphere";
+import { dayNightState, NOON_SECONDS } from "../world/day-night";
+import {
+  ATMOSPHERE_EXTINCTION,
+  ATMOSPHERE_HEIGHT,
+  airMassShell,
+} from "./atmosphere";
 import {
   DEFAULT_PLANET_RADIUS,
   FOG_FALLOFF,
   FOG_FAR,
   FOG_NEAR,
+  FOG_SCALE_HEIGHT,
   Fog,
   fogColourOf,
 } from "./fog";
@@ -388,3 +394,134 @@ const compile = (material: SurfaceMaterial) => {
     }),
   };
 };
+
+/**
+ * The fog's atmosphere term, **rendered**.
+ *
+ * ## Why this file needs a second kind of test
+ *
+ * Everything above in this file asks `fullAmount`, which is a *transcription* of the shader's
+ * law into JavaScript. The header says why that is necessary and it is — but it also means
+ * every test here passes when the shader is wrong, because the transcription is right.
+ *
+ * That is not hypothetical. The sphere's optical depth was once computed from the shell's own
+ * span multiplied by a density sampled at the **plane's** Gauss nodes, which on a planet are tens
+ * of thousands of units out along a two-hundred-unit segment. The density there is the density at
+ * the ground, the shell's span is the thousands of units a grazing ray really does cross, and the
+ * product is an optical depth in the hundreds — a sky-coloured wall over near mountains. Every
+ * test in this file passed, because every test in this file called the implementation.
+ *
+ * ## What this one does instead
+ *
+ * It renders **one pixel of the real fog**, with the eye and the fragment placed by hand, and
+ * compares the fog weight it comes back with against `airMassShell` — the host mirror, which is
+ * the same arithmetic written out twice and is therefore an independent answer to the same
+ * question. The sphere's and the plane's cases are both here, because the bug was a *mixing* of
+ * the two and either alone would have been correct.
+ */
+describe("the atmosphere term, on rendered pixels", () => {
+  /**
+   * One pixel of `Fog.apply`, as a fog weight in `0..1`.
+   *
+   * **White in and a known colour out**, so the weight is the only thing the pixel can be a
+   * function of: black means fully fogged, white means none, and the red channel carries the
+   * answer without the sky, the lighting or the material having a vote.
+   */
+  const fogged = (
+    eye: Vec3,
+    point: Vec3,
+    world: { seaLevel: number; spherical: boolean },
+  ): number => {
+    const material = new SurfaceMaterial();
+    // **The material's own fog, told which world it is on**, rather than a fog built here and
+    // handed in: `Fog.setWorld` is the real seam, and a test that went round it would not be
+    // testing the code the application runs.
+    material.fog.setWorld(world);
+    // **Black rather than a colour**, so `mix` cannot be mistaken for a tint and `fogColour`
+    // cannot be the thing under test. And `nearField` at zero, which leaves the atmosphere
+    // term alone — it is the half of the sum this file is about.
+    material.fog.colour = [0, 0, 0];
+    material.fog.nearField = 0;
+    // **The day's light pinned at noon**, so the pixel is a constant this test does not have to
+    // reason about and the fog weight is the only thing left in it.
+    material.sky.lighting = dayNightState(NOON_SECONDS);
+
+    const runner = fromProgram(material.build(new Scene()));
+    const image = render(runner, {
+      width: 1,
+      height: 1,
+      inputs: () => ({
+        uniforms: { cameraPosition: [eye.x, eye.y, eye.z] },
+        varyings: {
+          positionWorld: [point.x, point.y, point.z],
+          normalWorld: [0, 1, 0],
+          // **White, and no material**, so the surface's own colour does not enter the pixel.
+          vColour: [1, 1, 1, 0],
+        },
+      }),
+    });
+    // **The red channel**, and the fragment is white to begin with, so what comes back is
+    // `1 - amount` over whatever the lighting did to it.
+    return 1 - image.at(0, 0)[0];
+  };
+
+  it("agrees with the host mirror on a sphere, over the rays a player looks along", () => {
+    const sea = DEFAULT_PLANET_RADIUS;
+    // **Swept, and the sweep is the point.** The bug was worst exactly where a plane's span
+    // and a sphere's differ most — a shallow ray, where the two crossings are far apart — so
+    // one convenient straight-down case would have sailed past it.
+    for (const altitude of [6, 200, 900]) {
+      for (const degrees of [0, 20, 45, 70, 85, 89]) {
+        const eye: Vec3 = { x: 0, y: sea + altitude, z: 0 };
+        const point = groundAt(degrees);
+        const column = airMassShell(eye, point, sea);
+        const expected = 1 - Math.exp(-ATMOSPHERE_EXTINCTION * column);
+        const label = `${altitude} up, ${degrees}°`;
+        expect(
+          fogged(eye, point, { seaLevel: sea, spherical: true }),
+          label,
+        ).toBeCloseTo(expected, 2);
+      }
+    }
+  });
+
+  it("agrees with the host mirror on a plane, over the same rays", () => {
+    for (const altitude of [6, 200, 900]) {
+      for (const degrees of [20, 60, 100, 170]) {
+        const eye: Vec3 = { x: 0, y: altitude, z: 0 };
+        const angle = (degrees * Math.PI) / 180;
+        const point: Vec3 = {
+          x: 800 * Math.sin(angle),
+          y: 0,
+          z: 800 * Math.cos(angle),
+        };
+        const column = airMassShell(
+          eye,
+          point,
+          0,
+          ATMOSPHERE_HEIGHT,
+          FOG_SCALE_HEIGHT,
+          false,
+        );
+        const expected = 1 - Math.exp(-ATMOSPHERE_EXTINCTION * column);
+        const label = `${altitude} up, ${degrees}°`;
+        expect(
+          fogged(eye, point, { seaLevel: 0, spherical: false }),
+          label,
+        ).toBeCloseTo(expected, 2);
+      }
+    }
+  });
+
+  it("leaves a fragment on the ground under the eye almost entirely unfogged", () => {
+    // **The symptom, stated as a number rather than as a picture.** Standing on the ground and
+    // looking at the rock ten units in front of you, the fog weight is near zero; when the two
+    // spans were mixed it was one, and the ground under your own feet was the colour of the sky.
+    const sea = DEFAULT_PLANET_RADIUS;
+    const eye: Vec3 = { x: 0, y: sea + 6, z: 0 };
+    const point: Vec3 = { x: 0, y: sea - 6, z: 0 };
+    expect(fogged(eye, point, { seaLevel: sea, spherical: true })).toBeLessThan(
+      0.2,
+    );
+  });
+});

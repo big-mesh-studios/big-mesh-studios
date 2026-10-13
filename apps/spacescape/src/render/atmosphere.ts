@@ -291,19 +291,29 @@ export const airMassNode = (
   const sphereLo = max(b.negate().sub(root).div(a), float(0)).toVar();
   const sphereHi = min(b.negate().add(root).div(a), float(1)).toVar();
 
-  // **The slab, and its three cases.** `d.y` is the only part of a segment's direction that
-  // decides where it meets a level, and a division by it is guarded rather than branched on:
-  // `step` is rmsl's own "pick one of two on a condition", so `d.y == 0` takes the whole-segment
-  // answer without the shader having to know what a zero divisor does.
-  const step = abs(d.y).max(float(1e-6)).toVar();
-  const atSea = radius.sub(eye.y).div(step).toVar();
-  const atTop = outer.sub(eye.y).div(step).toVar();
-  // A ray climbing enters at the sea and leaves at the top; a ray falling is the same pair the
-  // other way round, and one crossing rather than two is what makes a descending ray from above
-  // the air stop at the ground instead of continuing through it.
-  const up = d.y.greaterThan(float(0)).toVar();
-  const slabLo = select(up, max(atSea, float(0)), max(atTop, float(0))).toVar();
-  const slabHi = select(up, atTop, atSea).toVar();
+  // **The slab, and its cases.** `d.y` is the only part of a segment's direction that decides
+  // where it meets a level.
+  //
+  // **The divisor keeps its sign, and that is load-bearing.** A descending ray meets the sea
+  // at a *positive* `t` because the crossing is `Δy / d.y` with both negative; divide by
+  // `abs(d.y)` instead and every crossing comes out behind the eye, the span inverts, and a
+  // ray at the ground gathers no air at all. The guard floors the magnitude rather than taking
+  // it away, so a level ray cannot divide by zero and the level case below replaces the answer
+  // wholesale — the guard is there to keep the arithmetic finite, not to be the answer.
+  const safeStep = select(
+    d.y.greaterThanEqual(float(0)),
+    max(d.y, float(1e-6)),
+    min(d.y, float(-1e-6)),
+  ).toVar();
+  const atSea = radius.sub(eye.y).div(safeStep).toVar();
+  const atTop = outer.sub(eye.y).div(safeStep).toVar();
+  // **Clamped into the same `0..1` the sphere's roots are in**, because they are the same
+  // quantity: a parameter along the segment. Unclamped, a ray two hundred units long at a
+  // shallow angle crosses a level tens of thousands of units out, and a `mid` built from that
+  // number puts the quadrature somewhere the fragment is not.
+  const rising = d.y.greaterThan(float(0)).toVar();
+  const crossingLo = select(rising, atSea, atTop).toVar();
+  const crossingHi = select(rising, atTop, atSea).toVar();
   const level =
     // **A level ray is in the air for all of it or none of it**, and which is a question about
     // the eye alone — the ray a player looks along at the horizon.
@@ -313,17 +323,31 @@ export const airMassNode = (
       float(0),
     ).toVar();
   const isLevel = abs(d.y).lessThan(float(1e-6)).toVar();
+  const slabLo = max(crossingLo, float(0)).toVar();
+  const slabHi = min(crossingHi, float(1)).toVar();
+  const slabSpan = select(
+    isLevel,
+    level,
+    max(slabHi.sub(slabLo), float(0)),
+  ).toVar();
+  const slabFrom = select(isLevel, float(0), slabLo).toVar();
 
-  const span = select(isLevel, level, max(slabHi.sub(slabLo), float(0)))
-    .toVar()
-    .toVar();
-  const lo = select(isLevel, float(0), slabLo).toVar();
+  // ---- one span, whichever world this is, and the quadrature over *that* ----
+  //
+  // **The two halves are chosen before `mid`, and that ordering is the whole of this
+  // function.** The Gauss nodes are points *along the span being integrated*; taking them from
+  // one world's span and multiplying the result by the other's reads the density at the wrong
+  // place entirely. It is not a small error: on a sphere, a shallow ray's slab crossings are
+  // tens of thousands of units out along a two-hundred-unit segment, so `mid` lands far beyond
+  // the fragment, the density there is the density at the ground, and the shell's own span — the
+  // thousands of units a grazing ray really does cross — is multiplied by it. The result is an
+  // optical depth of hundreds and a sky-coloured wall over near mountains.
+  const lo = select(spherical, sphereLo, slabFrom).toVar();
+  const span = select(spherical, sphereHi.sub(sphereLo), slabSpan).toVar();
+  const hi = lo.add(span).toVar();
 
   // ---- the density across the span, at two Gauss nodes ----
-  const mid = lo
-    .add(select(isLevel, float(1), slabHi))
-    .mul(0.5)
-    .toVar();
+  const mid = lo.add(hi).mul(0.5).toVar();
   const half = span.mul(0.5).toVar();
   const near = eye.add(d.mul(mid.sub(half.mul(float(GAUSS_NODE))))).toVar();
   const far = eye.add(d.mul(mid.add(half.mul(float(GAUSS_NODE))))).toVar();
@@ -339,19 +363,9 @@ export const airMassNode = (
     .mul(0.5)
     .toVar();
 
-  // **Both answers kept beside each other rather than discarded.** With `spherical` a node, both
-  // halves of this function are live arithmetic every fragment and the `select` at the end picks
-  // between two numbers rather than skipping a computation.
-  const shellSpanLength = sphereHi.sub(sphereLo).toVar();
-  const shellMass = select(
-    shellSpanLength.greaterThan(float(0)),
-    shellSpanLength.mul(segment).mul(density),
-    float(0),
-  );
-  const slabMass = select(
+  return select(
     span.greaterThan(float(0)),
     span.mul(segment).mul(density),
     float(0),
   );
-  return select(spherical, shellMass, slabMass);
 };
