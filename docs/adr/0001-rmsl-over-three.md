@@ -37,7 +37,7 @@ Use rmsl for the scene graph and the shader DSL. Keep no three.js dependency.
 | `Box3`, `Sphere`                     | Plain `{min,max}` objects, as the existing code already uses for edit bounds.                                               |
 | `Data3DTexture`                      | `new DataTexture(data, w, h, depth, …)` bound through `b.sampler(name, "sampler3D", …)`.                                    |
 | `OrbitControls`                      | `src/controls/orbit-camera.ts`.                                                                                             |
-| `TransformControls`                  | **Not yet built.** The highest-risk item in the project; see below.                                                         |
+| `TransformControls`                  | Bespoke move and rotate handles in `level-editor/view/`; see below and ADR 0051.                                            |
 | `setPixelRatio`                      | Write `canvas.width` and `canvas.height` from a `ResizeObserver`.                                                           |
 | `Fog`                                | A renderer-scoped uniform and a hand-written falloff, as `TriangleMaterial` does.                                           |
 
@@ -59,6 +59,17 @@ branchlessness has to be measured rather than assumed.
 for primitive placement, and there is no `TransformControls` to port. Two
 minimal bespoke widgets exist in `big-mesh-studios` to work from, and a numeric
 transform panel is the fallback if it slips.
+
+**Move and rotate are now built, from the two widgets this record pointed at.**
+`apps/sdf-modeller/src/view/move-handles.ts` and `rotate-handles.ts` are the
+bespoke widgets, ported into the level editor's `level-editor/view/`; the screen-space
+hit tests beside them are why they are portable at all, since they measure the pointer
+against a handle's drawn line rather than raycasting it. Scale is the one that did
+not come, and the reason is not the missing `TransformControls` — it is that a
+shape's size is its primitive's parameters, which the inspector already edits per
+primitive from the table (ADR 0025), so a gizmo for it would be a worse control
+rather than a missing one. ADR 0051 is what turned a shape's own turn from a
+refused field into one the editor can set.
 
 ## Alternatives
 

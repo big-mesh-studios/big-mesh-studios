@@ -57,6 +57,33 @@ export const ItemListPanel = (props: { editor: LevelEditor }) => (
                 {itemLabel(item)}
               </button>
               <span class={styles.itemControls}>
+                {/*
+                  **Duplicate sits with ▲▼ and ✕, on the row, and only on the selected
+                  one.** These three are the list's own controls — the things you do to an
+                  item *as an entry in the fold* — and a copy is one of them: it is an
+                  insert, so it changes the fold, so it belongs beside the two controls that
+                  also change the fold and nowhere near the inspector.
+
+                  **It hands straight back to the move gizmo**, because a copy lands on top
+                  of the original and the one thing somebody wants to do next is put it
+                  somewhere else. Switching is the panel's business rather than the store's:
+                  `duplicateItem` selects the copy and records one undo step, and a store
+                  that changed the editor's gizmo as a side effect of an add would be a
+                  store reaching into the UI.
+                */}
+                <button
+                  type="button"
+                  class={styles.itemButton}
+                  aria-label={`Duplicate ${item.id}`}
+                  title="A copy of this item, in the same place — then drag it where it goes"
+                  disabled={props.editor.selectedIndex() !== index()}
+                  onClick={() => {
+                    props.editor.duplicateItem(index());
+                    props.editor.setGizmo("move");
+                  }}
+                >
+                  ⧉
+                </button>
                 <button
                   type="button"
                   class={styles.itemButton}

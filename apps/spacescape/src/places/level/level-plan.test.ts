@@ -124,6 +124,47 @@ describe("a level file that is right", () => {
     expect(first).toEqual({ plan: { version: 1, items } });
   });
 
+  it("round-trips a turned shape, which it used to drop on the way in", () => {
+    // **The reason ADR 0051 exists.** The table has declared `orientation` a `quat` since the
+    // vocabulary was written, so a payload carrying one always passed the check — and this
+    // reader used to build the item without it, which meant a rotated shape loaded un-rotated
+    // with nothing saying so. This is the test that would have caught it.
+    const turned: readonly [number, number, number, number] = [
+      0,
+      Math.SQRT1_2,
+      0,
+      Math.SQRT1_2,
+    ];
+    const plan = ok([aBox({ orientation: turned })]);
+    expect(plan.items[0]).toMatchObject({ orientation: turned });
+
+    const written = writeLevelPlan(plan);
+    expect(readLevelPlan(JSON.parse(written))).toEqual({ plan });
+  });
+
+  it("refuses a turn that is not four numbers, rather than reading one anyway", () => {
+    // The table's own check, reached through the level reader rather than restated — which is
+    // the whole point of mapping an item onto the effect it stands for.
+    expect(bad([aBox({ orientation: [0, 0, 1] })]).why).toMatch(/four numbers/);
+    expect(bad([aBox({ orientation: "sideways" })]).why).toMatch(
+      /four numbers/,
+    );
+  });
+
+  it("refuses a turn with a part outside the unit ball", () => {
+    // A quaternion of magnitude 2 is not a rotation, and reading it as one is how a shape ends
+    // up somewhere nobody put it.
+    expect(bad([aBox({ orientation: [0, 0, 0, 2] })]).why).toMatch(
+      /outside -1 to 1/,
+    );
+  });
+
+  it("invents no turn for a shape that names none", () => {
+    // Absent means the identity, and identity is what `makeOperation` would have used, so an
+    // un-turned shape must not grow a key.
+    expect("orientation" in (ok([aBox()]).items[0] as object)).toBe(false);
+  });
+
   it("writes it for a person to read, not for a machine to load", () => {
     const text = writeLevelPlan({ version: 1, items: [] });
     expect(text).toContain("\n  ");

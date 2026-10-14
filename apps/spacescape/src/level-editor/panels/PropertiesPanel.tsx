@@ -1,17 +1,25 @@
 /**
  * The fields for whatever is selected.
  *
- * ## Why there is no drag and no gizmo
+ * ## Why the numbers and the handles are both here
  *
- * **Because rmsl has no `TransformControls`**, and [ADR 0001](../../../../docs/adr/0001-rmsl-over-three.md)
- * names a transform gizmo as the highest-risk item in the project. voxelscape's editor has
- * none either, and it works: a level is edited by clicking a thing and typing its numbers.
+ * **Because they are two ways of asking the same question and neither wins.** A drag is
+ * quick and imprecise; a typed number is exact and slow, and on a phone the fields are
+ * *also* the only way to reach a value a drag cannot — a wall two kilometres away needs
+ * digits, not a finger. sdf-modeller offers both and the two stay in step because both
+ * write the same item.
  *
- * That choice has a consequence worth naming. **Moving a shape changes its parameters and
- * not its place in the fold** (`apply-level.ts`), which is why the fields below are safe to
- * drag around — a wall moved a voxel does not take its neighbours' terrain with it. It is
- * also why changing a shape's *position* cannot be confused with changing its *order*:
- * order is only editable in the list.
+ * The handles are `view/move-handles.ts` and `view/rotate-handles.ts`; ADR 0001 named the
+ * transform gizmo the highest-risk item in this renderer and recorded a numeric panel as the
+ * fallback if it slipped. It did not slip — it arrived, and these fields are what it landed
+ * on rather than what it replaced.
+ *
+ * **Position and size are unchanged by that.** A shape's position is `at` and its size is
+ * its primitive's own parameters, which is how they have always been edited, and a drag
+ * writes to those same two places. Changing a shape's parameters keeps its fold index
+ * (`apply-level.ts`), which is what makes both of them safe to use freely: a wall moved a
+ * voxel does not take its neighbours' terrain with it, and it cannot be confused with
+ * changing its order, because order is only editable in the list.
  *
  * ## Why the fields are generated from the primitive table
  *
@@ -20,6 +28,10 @@
  * field it does not have and a `Torus` none. `PRIMITIVES[kind].parameters` is already the
  * list, with a label, a minimum and a step for each ([ADR 0025](../../../../docs/adr/0025-a-primitive-is-one-table-entry.md)),
  * so this reads it.
+ *
+ * **Rotation is the one set that is not generated**, because it is not a property of the
+ * primitive — it is a property of where this particular shape has been put. It is derived
+ * from the stored quaternion for the same reason.
  */
 
 import { For, Show } from "solid-js";
@@ -43,8 +55,11 @@ import type {
 } from "../../places/level/types";
 import { isLevelShape } from "../../places/level/types";
 import { MATERIAL_NAMES } from "../../render/material-names";
+import type { Quat } from "@big-mesh-studios/core";
+import { fromEuler, toEuler } from "../view/quaternion";
 import {
   COMBINE_LABELS,
+  isAxial,
   MAX_SHAPE_SIZE,
   MIN_SHAPE_SIZES,
   PARAMETERS_OF,
@@ -227,6 +242,37 @@ const ShapeFields = (props: {
       </Bar>
 
       {/*
+        **Composed from the three degrees on screen, not from the stored quaternion.**
+
+        This is the one field in the panel whose edit is not "take the item and change one
+        thing". Composing from the quaternion instead would mean every keystroke in the
+        pitch field stacked a turn onto the *last committed* value rather than onto the one
+        somebody is looking at — so typing 30 into yaw and then touching pitch would produce
+        something that is neither of the two things the panel displayed.
+
+        So: read the three angles out, replace one of them, build the quaternion back.
+      */}
+      <Show when={isAxial(kind())}>
+        <Bar label="rotation">
+          <RotationField
+            label="Yaw"
+            value={toEuler(orientationOf(item())).yaw}
+            onChange={(yaw) => props.change(turned(item(), { yaw }))}
+          />
+          <RotationField
+            label="Pitch"
+            value={toEuler(orientationOf(item())).pitch}
+            onChange={(pitch) => props.change(turned(item(), { pitch }))}
+          />
+          <RotationField
+            label="Roll"
+            value={toEuler(orientationOf(item())).roll}
+            onChange={(roll) => props.change(turned(item(), { roll }))}
+          />
+        </Bar>
+      </Show>
+
+      {/*
         **A triple gets three fields and a number gets one**, straight from the table's
         `arity`. Showing a triple as a single field would mean an ellipsoid with three
         axes to edit and one field, and whichever axis it showed would be the only one
@@ -388,13 +434,7 @@ const FigureFields = (props: {
   );
 };
 
-/**
- * A vector parameter as the tuple `Vec3Field` edits, and back again.
- *
- * **The tuple because that is what the field takes**, not because a level's vectors are
- * tuples — `Vec3Field` is shared with position, which *is* `Vec3Like`. These two
- * conversions are the whole of the difference between the two shapes of number in a level.
- */
+/** A vector parameter as the tuple `Vec3Field` edits, and back again. */
 const asTriple = (v: {
   x: number;
   y: number;
@@ -405,6 +445,73 @@ const fromTriple = (v: readonly [number, number, number]) => ({
   y: v[1],
   z: v[2],
 });
+
+/**
+ * One rotation angle, in degrees.
+ *
+ * **Degrees rather than radians, because the yaw field already is** — the figure's has said
+ * degrees on this panel since before shapes could turn, and two rotation fields on one
+ * screen using different conventions would be a small, permanent trap.
+ *
+ * **A step of 1 and a big step of 15.** A turn about a wall's own axis is usually a quarter
+ * at most, and 15° is the increment somebody reaches for without counting; the single-degree
+ * step is for the rest.
+ */
+const RotationField = (props: {
+  label: string;
+  value: number;
+  onChange: (degrees: number) => void;
+}) => (
+  <NumberField
+    label={props.label}
+    value={round(props.value)}
+    step={1}
+    bigStep={15}
+    onChange={props.onChange}
+  />
+);
+
+/**
+ * The turn a shape carries, as the quaternion the maths speaks.
+ *
+ * **The identity for a shape that names none**, which is every shape in every level written
+ * before [ADR
+ * 0051](../../../../docs/adr/0051-a-level-shape-carries-its-turn.md) and every shape added
+ * since that was never turned. Reading it as anything else would open a level's first
+ * un-turned shape's inspector showing a quarter turn.
+ */
+const orientationOf = (item: LevelShape): Quat =>
+  item.orientation === undefined
+    ? { x: 0, y: 0, z: 0, w: 1 }
+    : {
+        x: item.orientation[0],
+        y: item.orientation[1],
+        z: item.orientation[2],
+        w: item.orientation[3],
+      };
+
+/**
+ * The shape with one of its three angles replaced.
+ *
+ * **The three angles come out of what is on screen**, which is what makes editing one of them
+ * not stack a turn onto a value nobody can see — see the note on the rotation bar.
+ */
+const turned = (
+  item: LevelShape,
+  changed: { yaw?: number; pitch?: number; roll?: number },
+): LevelShape => {
+  const shown = toEuler(orientationOf(item));
+  const toRadians = (degrees: number): number => (degrees * Math.PI) / 180;
+  const quaternion = fromEuler(
+    toRadians(changed.yaw ?? shown.yaw),
+    toRadians(changed.pitch ?? shown.pitch),
+    toRadians(changed.roll ?? shown.roll),
+  );
+  return {
+    ...item,
+    orientation: [quaternion.x, quaternion.y, quaternion.z, quaternion.w],
+  };
+};
 
 const round = (n: number): number => Math.round(n * 1000) / 1000;
 

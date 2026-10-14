@@ -189,5 +189,22 @@ export const createNoClipCameraControl = (
       updatePlayer(player, dt, input.consume(), nowhere);
       placeCamera(camera, player, true);
     },
+
+    /**
+     * Nothing, and deliberately.
+     *
+     * **This style has no single-pointer gesture for a tool to take.** Its flight, its look
+     * and its touch drag all come from the one `InputController`, and the editor enables that
+     * controller whenever this style is live — so the canvas re-takes the pointer lock on
+     * the next click, and a locked pointer freezes `clientX` and `clientY`. The gizmo finds
+     * its handles by measuring the pointer against where they project to, so under a locked
+     * pointer it has nothing to measure and is not offered. See `CameraControl`'s note.
+     *
+     * Ignoring the claim is also what keeps this file from being a second writer of
+     * `input.setEnabled`. A release that re-enabled input here would hand the flight controls
+     * back to a camera that was not meant to have them, and would fight the editor's own
+     * open/close transition — two callers writing one flag, in an order neither controls.
+     */
+    claimGesture(): void {},
   };
 };

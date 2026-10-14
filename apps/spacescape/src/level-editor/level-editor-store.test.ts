@@ -400,6 +400,173 @@ describe("undo", () => {
   });
 });
 
+describe("duplicating an item", () => {
+  it("puts the copy straight after the original, and selects it", async () => {
+    // **Next to it and not at the end**, because the list order is the fold order (ADR 0016)
+    // and a copy appended behind everything else would fold differently — which for a
+    // `Subtract` is a different surface, not the same shape twice.
+    const { editor } = editorOver();
+    place(editor, [0, 10, 0]);
+    place(editor, [5, 10, 0]);
+    await settle();
+
+    editor.duplicateItem(0);
+    await settle();
+    flush();
+
+    expect(editor.items()).toHaveLength(3);
+    // The copy is at index 1 — immediately after the original at 0.
+    expect(editor.items()[1]).toMatchObject({ at: [0, 10, 0] });
+    expect(editor.items()[2]).toMatchObject({ at: [5, 10, 0] });
+    // **Selected, because a copy somebody cannot see is a copy they cannot move.**
+    expect(editor.selectedIndex()).toBe(1);
+  });
+
+  it("gives the copy a name of its own, because a level reader refuses two", async () => {
+    // **The whole reason there is a suffix.** The id says what a shape is and where it
+    // stands, and a copy standing where the original stands says exactly the same thing —
+    // and `readLevelPlan` refuses two items sharing a name rather than letting the second
+    // quietly replace the first.
+    const { editor } = editorOver();
+    place(editor, [0, 10, 0]);
+    await settle();
+    const original = editor.items()[0].id;
+
+    editor.duplicateItem(0);
+    await settle();
+    flush();
+
+    expect(editor.items()[1].id).not.toBe(original);
+    // **Readable rather than opaque** — the original's name plus a number, so a file full
+    // of copies still says what each one is.
+    expect(editor.items()[1].id).toBe(`${original}-2`);
+  });
+
+  it("keeps a flat, readable series however many times the same item is copied", async () => {
+    const { editor } = editorOver();
+    place(editor, [0, 10, 0]);
+    await settle();
+    const original = editor.items()[0].id;
+
+    editor.duplicateItem(0);
+    await settle();
+    flush();
+    editor.duplicateItem(0);
+    await settle();
+    flush();
+
+    /**
+     * **`-2` and `-3`, not `-2` and `-2-2`.** Duplicating the same item twice walks the
+     * suffixes rather than nesting names, so a level with eight copies of a wall reads as
+     * eight copies rather than as a tree — which is the difference between a file a person
+     * can edit and one they have to decode. `-3` is first because each copy is inserted
+     * straight after the original, and the later one is the more recent.
+     */
+    expect(editor.items().map((item) => item.id)).toEqual([
+      original,
+      `${original}-3`,
+      `${original}-2`,
+    ]);
+  });
+
+  it("copies the copy, and gives that a name too", async () => {
+    // **The other direction, which is what pressing Duplicate twice on a selected copy
+    // does.** The suffix nests here, and that is right: the name says what it is a copy
+    // *of*, which a flat `-3` would not.
+    const { editor } = editorOver();
+    place(editor, [0, 10, 0]);
+    await settle();
+    const original = editor.items()[0].id;
+
+    editor.duplicateItem(0);
+    await settle();
+    flush();
+    // The copy is selected, so this is the copy's own index.
+    editor.duplicateItem(editor.selectedIndex()!);
+    await settle();
+    flush();
+
+    expect(editor.items().map((item) => item.id)).toEqual([
+      original,
+      `${original}-2`,
+      `${original}-2-2`,
+    ]);
+  });
+
+  it("carries every field across, including the ones only some items have", async () => {
+    // **By spread, not field by field.** A copy built field by field is a copy that
+    // silently loses whatever somebody adds to `LevelShape` next — and what comes back is
+    // not the thing that was duplicated.
+    const { editor } = editorOver({
+      version: 1,
+      items: [
+        {
+          kind: "shape",
+          id: "painted",
+          at: [1, 2, 3],
+          shape: { type: "Sphere", radius: 4 },
+          combine: "Paint",
+          softness: 0.1,
+          colour: { r: 1, g: 2, b: 3 },
+          material: "brick",
+          orientation: [0, 0.7071067811865476, 0, 0.7071067811865476],
+        },
+      ],
+    });
+    await settle();
+
+    editor.duplicateItem(0);
+    await settle();
+    flush();
+
+    const copy = editor.items()[1] as LevelItem;
+    expect(copy).toMatchObject({
+      at: [1, 2, 3],
+      shape: { type: "Sphere", radius: 4 },
+      combine: "Paint",
+      softness: 0.1,
+      colour: { r: 1, g: 2, b: 3 },
+      material: "brick",
+      orientation: [0, 0.7071067811865476, 0, 0.7071067811865476],
+    });
+  });
+
+  it("is one undo step, and takes the copy with it", async () => {
+    const { editor } = editorOver();
+    place(editor, [0, 10, 0]);
+    await settle();
+
+    editor.duplicateItem(0);
+    await settle();
+    flush();
+    expect(editor.items()).toHaveLength(2);
+    expect(editor.undoDescription()).toBe(`Duplicate shape-Box-0-10-0`);
+
+    editor.undo();
+    flush();
+    await settle();
+    flush();
+    expect(editor.items()).toHaveLength(1);
+  });
+
+  it("does nothing to an item that is not there, and records no undo step", async () => {
+    // The same rule every other edit follows: a step that never happened must not leave
+    // something on the undo stack, or the button would undo something invisible. Read off
+    // the stack rather than by pressing undo — the placement itself is a step, so pressing
+    // undo here would take *that* back and prove nothing about the duplicate.
+    const { editor } = editorOver();
+    place(editor, [0, 10, 0]);
+    await settle();
+    expect(editor.undoDescription()).toBe("Add shape");
+
+    editor.duplicateItem(7);
+    await settle();
+
+    expect(editor.items()).toHaveLength(1);
+    expect(editor.undoDescription()).toBe("Add shape");
+  });
+});
+
 describe("a level coming in from a file", () => {
   it("replaces the level, as one undoable step", async () => {
     const { editor } = editorOver();

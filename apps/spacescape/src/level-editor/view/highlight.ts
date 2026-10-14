@@ -13,12 +13,22 @@
  * `scene-order.test.ts` pins the ordering, because the failure is not a crash: the
  * highlight still draws, just behind the thing it is highlighting, and nothing says so.
  *
+ * **After the world and before the gizmo handles.** The handles set `depthTest` to false and
+ * rely on being traversed last to be visible at all (ADR 0051), so a highlight added after
+ * them would be drawn under them whichever way round the scene list went.
+ *
  * ## Why it is a box and not the shape
  *
- * The level editor has no rotation and no scale control, so a shape's own bounds are its
- * box — and a box is cheaper, needs no per-primitive branch, and stays legible when the
- * shape inside it is a sphere. A rotated shape would want an oriented box, which is the
- * same change this file would take.
+ * The box is cheaper, needs no per-primitive branch, and stays legible when the shape inside
+ * it is a sphere. It is the primitive's own half-extents read straight out of the primitive
+ * table (`picking.ts`), which is what keeps an editor offering nine shapes from having nine
+ * box shapes to keep in step.
+ *
+ * **It is turned with the thing it surrounds.** An un-turned box around a wall lying at 45°
+ * is a box much larger than the wall, and a selection that grows as its subject is turned
+ * reads as a bug rather than as a box. rmsl applies scale, then rotation, then translation,
+ * so a unit cube scaled to twice `half` and turned about its own middle stays centred on the
+ * shape's origin.
  *
  * The colour is voxelscape's, and its opacity is deliberate: translucent enough to see the
  * surface through, solid enough to find from across a room.
@@ -27,9 +37,9 @@
 import { BoxGeometry, Mesh, MeshBasicMaterial } from "@random-mesh/rmsl/scene";
 import { Color } from "@random-mesh/rmsl/scene";
 import type { Scene } from "@random-mesh/rmsl/scene";
-import type { Bounds, Vec3 } from "@big-mesh-studios/core";
+import type { Vec3 } from "@big-mesh-studios/core";
 
-import { shapeBox } from "./picking";
+import { figureBox, shapeBox, type OrientedBox } from "./picking";
 import type { LevelFigure, LevelShape } from "../../places/level/types";
 
 /** The amber voxelscape uses, kept so the two editors read as the same tool. */
@@ -54,29 +64,24 @@ export interface Highlightable {
   readonly yaw?: number;
 }
 
-/** The box to draw around whatever is selected. */
+/**
+ * The box to draw around whatever is selected.
+ *
+ * **A shape's from its primitive and a figure's from its model, which are the two things
+ * that actually know how big each is.** Neither is something the level file carries — a level
+ * says where a figure stands and which model it is — so this asks rather than assumes, and
+ * a shape's answer comes from the primitive table rather than from a second list of
+ * primitives here.
+ *
+ * **A figure's yaw is applied**, which it was not before ADR 0051. An upright box around a
+ * turned prop was documented as "a forgiving direction"; now that a turned thing can be drawn
+ * turned, an upright box round it is just a box round the wrong shape.
+ */
 export const highlightBounds = (
   item: LevelShape | LevelFigure,
   half?: Vec3,
-): Bounds => {
-  if (item.kind === "shape") return shapeBox(item);
-  // A figure's box is the model's own half-extents, moved to where it stands. The yaw is
-  // not applied: an upright box around a turned prop is a slightly larger hit than the
-  // prop, which is the forgiving direction, and the alternative is a rotated box for a
-  // control the editor does not have.
-  const at = pointOf(item);
-  const extent = half ?? { x: 1, y: 2, z: 1 };
-  return {
-    min: { x: at.x - extent.x, y: at.y - extent.y, z: at.z - extent.z },
-    max: { x: at.x + extent.x, y: at.y + extent.y, z: at.z + extent.z },
-  };
-};
-
-const pointOf = (item: Highlightable): Vec3 => ({
-  x: item.at[0],
-  y: item.at[1],
-  z: item.at[2],
-});
+): OrientedBox =>
+  item.kind === "shape" ? shapeBox(item) : figureBox(item, half);
 
 /**
  * A box that draws around the selection, or nothing when there is no selection.
@@ -90,7 +95,7 @@ export interface Highlight {
   /** The mesh, so a caller can position it by hand if it needs to. */
   readonly mesh: Mesh;
   /** Puts the box around `bounds`, or hides it. */
-  show(bounds: Bounds): void;
+  show(bounds: OrientedBox): void;
   /** Hides it. Called on cleanup, so a closed editor does not leave a box in the world. */
   hide(): void;
   dispose(): void;
@@ -116,17 +121,24 @@ export const createHighlight = (scene: Scene): Highlight => {
 
   return {
     mesh,
-    show(bounds: Bounds): void {
-      // Centred, and scaled to the full extent — the geometry is a unit cube.
-      mesh.position.set(
-        (bounds.min.x + bounds.max.x) / 2,
-        (bounds.min.y + bounds.max.y) / 2,
-        (bounds.min.z + bounds.max.z) / 2,
-      );
+    show(bounds: OrientedBox): void {
+      mesh.position.set(bounds.centre.x, bounds.centre.y, bounds.centre.z);
+      // **The geometry is a unit cube, so the scale is the box's own reach**, doubled.
+      // The floor stops a figure whose model has no extent on one axis becoming invisible,
+      // which would read as a selection that stopped taking rather than as a bad model.
       mesh.scale.set(
-        Math.max(bounds.max.x - bounds.min.x, 0.001),
-        Math.max(bounds.max.y - bounds.min.y, 0.001),
-        Math.max(bounds.max.z - bounds.min.z, 0.001),
+        Math.max(bounds.half.x * 2, 0.001),
+        Math.max(bounds.half.y * 2, 0.001),
+        Math.max(bounds.half.z * 2, 0.001),
+      );
+      // **After the scale and before the translation, by rmsl's own order**, so the box turns
+      // about its own middle and stays centred on the shape's origin rather than swinging
+      // away from it.
+      mesh.quaternion.set(
+        bounds.orientation.x,
+        bounds.orientation.y,
+        bounds.orientation.z,
+        bounds.orientation.w,
       );
       mesh.visible = true;
     },

@@ -87,6 +87,31 @@ export const SHAPE_KINDS = Object.keys(PRIMITIVES) as ShapeType[];
 export const PARAMETERS_OF = (kind: ShapeType) => PRIMITIVES[kind].parameters;
 
 /**
+ * Whether a turn about an axis can be seen on this primitive.
+ *
+ * **Only a sphere says no**, and it says no for a stronger reason than it looks. This asks
+ * about a *kind*, not about a particular shape, so it has to be true of every instance of
+ * that kind — and a sphere is the same object from every direction whatever you do to it.
+ *
+ * The other eight are all `true`, including the two that look like they should not be:
+ *
+ * - **An `Ellipsoid` with three different radii turns visibly.** It is only symmetric when
+ *   its radii happen to be equal, and that is a property of the numbers somebody typed, not
+ *   of the kind. A panel is free to be edited into a ball and then a turn of it will not
+ *   show — which is the same situation as resizing a box into a cube and being surprised
+ *   that dragging it sideways moves nothing.
+ * - **A `RoundBox` turns visibly.** Rounding the corners is not making it symmetric; the
+ *   thing that decides is whether its `len` is the same on each axis, and a rounded box of
+ *   `40 × 6 × 20` lying on its side is plainly a different object from the one standing up.
+ *
+ * **So the rule is one exclusion rather than three**, and the question it answers is "could
+ * this ever be symmetric", not "is this symmetric right now". The fold applies the
+ * quaternion either way; what this stops is offering rotation on the one primitive where it
+ * is never going to do anything.
+ */
+export const isAxial = (kind: ShapeType): boolean => kind !== "Sphere";
+
+/**
  * How wide a value may be before the field stops accepting it.
  *
  * **`MAX_SHAPE_SIZE` rather than nothing**, because a level file is untrusted input and the

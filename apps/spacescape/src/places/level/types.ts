@@ -59,6 +59,21 @@ export interface LevelShape {
   /** 0 to 0.25. Above that the stored box is smaller than the shape's reach. */
   readonly softness?: number;
   /**
+   * Which way it is turned, as `x, y, z, w`.
+   *
+   * **`createShape`'s field with `createShape`'s spelling** ([ADR
+   * 0051](../../../../docs/adr/0051-a-level-shape-carries-its-turn.md)), because a level file
+   * is meant to be readable as the `createShape` call it stands for — and that call has carried
+   * a turn since the vocabulary was written. This field was added to a format that already
+   * declared one on the effect side and dropped it on the way in, which meant a level file
+   * carrying a rotation was accepted and silently ignored.
+   *
+   * **Absent means the identity**, as it does on `CreateShapeOptions` and on `Operation`. The
+   * pivot is the shape's own `at`, which is also the centre of its box at every orientation —
+   * see the ADR for why that is arithmetic rather than a decision.
+   */
+  readonly orientation?: readonly [number, number, number, number];
+  /**
    * 0 to 255 per channel, and **only read on a `Paint`.**
    *
    * Carried here because a person picking a colour should not have to know that the host

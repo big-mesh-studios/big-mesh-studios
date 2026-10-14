@@ -56,12 +56,15 @@ import { boundsOf } from "@big-mesh-studios/csg";
 import type { Operation } from "@big-mesh-studios/csg";
 import { placeOperation } from "../place-registry";
 import type { PlaceRegistry } from "../place-registry";
-import type { Bounds, Vec3 } from "@big-mesh-studios/core";
+import type { Bounds, Quat, Vec3 } from "@big-mesh-studios/core";
 import type { FigureSet } from "../../figures/figure-set";
 import type { FigureModel } from "../model-library";
 
 import type { LevelFigure, LevelItem, LevelPlan, LevelShape } from "./types";
 import { isLevelFigure, levelFigureId, LEVEL_PLACE } from "./types";
+
+/** The turn a shape that names none has. `makeOperation` would have used it too. */
+const IDENTITY: Quat = { x: 0, y: 0, z: 0, w: 1 };
 
 /**
  * What a level needs from the world to be applied.
@@ -114,9 +117,43 @@ export const createLevelApplier = (target: LevelTarget) => {
     z: at[2],
   });
 
+  /**
+   * A level's turn as the CSG operation's.
+   *
+   * **A conversion, not a pass-through, and it is the only conversion a level shape needs.**
+   * `LevelShape.at` and `LevelShape.orientation` are arrays because that is what JSON makes of
+   * them and what the guest takes; `Operation` holds `{x, y, z, w}` because it crosses into
+   * every meshing worker and is what `@big-mesh-studios/csg` rotates by. `host.ts` makes the
+   * same conversion for a `shape-add` arriving over the wire — see the note above its
+   * `quat()` reader — and two conversions of one thing that must agree is worse than one.
+   *
+   * Absent means the identity, which is what `makeOperation` would have used anyway.
+   */
+  const quatOf = (
+    orientation: readonly [number, number, number, number] | undefined,
+  ): Quat | undefined =>
+    orientation === undefined
+      ? undefined
+      : {
+          x: orientation[0],
+          y: orientation[1],
+          z: orientation[2],
+          w: orientation[3],
+        };
+
+  /**
+   * What a level shape is, as the operation it folds into the world as.
+   *
+   * **The turn goes across here and nowhere else.** `boundsOf` above takes eight corners and
+   * rotates each by the operation's `orientation`, so forwarding it is all that is needed for
+   * chunk invalidation to follow the shape when it turns — see ADR 0051.
+   */
   const operationOf = (item: LevelShape): Operation =>
     placeOperation(pointOf(item.at), item.shape, item.combine, {
       ...(item.softness === undefined ? {} : { softness: item.softness }),
+      ...(item.orientation === undefined
+        ? {}
+        : { orientation: quatOf(item.orientation) ?? IDENTITY }),
       ...(item.colour === undefined ? {} : { colour: item.colour }),
     });
 

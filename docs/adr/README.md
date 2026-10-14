@@ -68,6 +68,7 @@ recorded cost is a decision nobody thought about.
 | [0048](0048-a-material-in-the-free-byte.md)                              | The colour's free byte carries a material, and materials are procedural                | accepted                     |
 | [0049](0049-a-print-meshes-at-the-resolution-you-type.md)                | A print meshes at the resolution you type, on a thread of its own                      | accepted                     |
 | [0050](0050-a-world-is-a-sphere-or-a-plane.md)                           | A world is a sphere or a plane, and the plane is a whole one                           | accepted                     |
+| [0051](0051-a-level-shape-carries-its-turn.md)                           | A level shape carries its turn, and its box is oriented                                | accepted                     |
 
 ## What is decided so far
 
@@ -514,3 +515,35 @@ ninety-six samples a side, which silently refuses the setting for any model over
 — so the resolution a person chose was, for a large model, never the resolution they got. The
 export now carries a ceiling of 256 of its own, defaults to the viewport's own finest, reaches
 twice as fine, and says what it will cost before anybody commits to it.
+
+**0051 is the level editor catching up with `createShape`, and it is smaller than it sounds.**
+A level file is validated by mapping each item onto the `shape-add` payload it stands for and
+handing that to `inspectEffect`, so a level is checked against the same table a place script
+is. The table has declared `orientation` as a `quat` since the vocabulary was written, and
+`createShape` has carried one since the first version — so the level format was not missing a
+field the engine could not hold. It was holding one and dropping it, which meant a level file
+carrying a rotation was **accepted and silently ignored**. That is the exact failure the
+whole-or-refused rule exists to prevent, arriving through a door the rule did not know was
+open, and it is the reason this is a decision and not a bug fix.
+
+The part that looked hard is the pivot, and it is arithmetic that was already done. Every
+primitive's half-extents are a symmetric box about the primitive's own origin — ADR 0025 makes
+capsules, cones and cylinders point up about Y — so a box centred on the origin and rotated
+about its own centre stays centred there. The centre of the box **is** the shape's `at`, at
+every orientation, for all nine primitives. "Rotate about the centre of the box" and "rotate
+about the origin" are the same point, which is why the gizmo needed no pivot concept it did
+not already have from the sibling app.
+
+What rotation does make wrong is the two derived boxes, and both had left a note saying so. The
+axis-aligned box still grows — a capsule at 45° is much bigger than the capsule — while the
+pivot stays put, which is why the highlight had to become an oriented box rather than a better
+pivot: a selection that balloons as it turns reads as a bug. The AABB survives as the
+broad-phase reject, because `pickShape` asks the cheap question of every shape in the level.
+Chunk invalidation needed nothing at all: `operationBoundsOf` has rotated eight corners by the
+operation's turn since before any of this, and the file records that spacescape's own
+`SculptDocument` once got it wrong — which is why the answer was read rather than re-derived.
+
+The forward-compatibility cost is real and is recorded rather than fixed: `orientation` is a
+declared field, so a build older than this one still accepts a file carrying one and reads the
+shape as un-turned. Bumping `LEVEL_VERSION` would close that and would also refuse every level
+file written before it, which is a worse trade for a field whose absence means "not turned".

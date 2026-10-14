@@ -36,6 +36,14 @@
  *
  * **A mouse's left button only.** On a phone the Apply button places and the drag is left to
  * look, so reserving the drag there would take away the only gesture a finger has.
+ *
+ * ## Why the claims are counted
+ *
+ * **Because two things can want the button at once.** Placing raises the flag on a mouse
+ * press, and so does `claimGesture` when the gizmo decides a press was on one of its
+ * handles — and for a mouse those are the same press. A boolean released by whichever
+ * finished first would hand the camera back while the other gesture was still running, which
+ * is a camera that orbits halfway through a drag. See `setClaims`.
  */
 
 import type { PerspectiveCamera } from "@random-mesh/rmsl/scene";
@@ -61,6 +69,27 @@ export const createOrbitCameraControl = (
   let attachedTo: HTMLElement | undefined;
   /** The pointer whose press is placing, and so owns the left button. See the header. */
   let placing: number | undefined;
+  /**
+   * How many things want the left button.
+   *
+   * **A counter, and not a boolean, because two things can want it at once.** The placement
+   * path claims on a mouse press and the gizmo claims on a press it has decided is its own —
+   * and on a mouse those are the same press, so a boolean would be released by whichever
+   * finished first and the other would get the button back while its gesture was still
+   * running. Counting is the only version of this that survives both releasing.
+   */
+  let claims = 0;
+
+  /**
+   * **Below zero is clamped rather than trusted.** Two calls claiming with no matching
+   * release is a bug in a caller, and a negative count would make `claims > 0` false — which
+   * would look exactly like "nobody wants the button" and leave a camera that quietly stops
+   * responding rather than one that says it was misused.
+   */
+  const setClaims = (delta: number): void => {
+    claims = Math.max(0, claims + delta);
+    orbit.setToolOwnsLeft(claims > 0);
+  };
 
   /**
    * **A mouse's left button, and only a mouse's.** The editor places a shape on the canvas
@@ -77,13 +106,13 @@ export const createOrbitCameraControl = (
     if (event.pointerType !== "mouse") return;
     if (event.button !== 0 || placing !== undefined) return;
     placing = event.pointerId;
-    orbit.setToolOwnsLeft(true);
+    setClaims(1);
   };
 
   const releaseLeftButton = (event: PointerEvent): void => {
     if (placing !== event.pointerId) return;
     placing = undefined;
-    orbit.setToolOwnsLeft(false);
+    setClaims(-1);
   };
 
   const pose = (): CameraPose => ({
@@ -114,8 +143,21 @@ export const createOrbitCameraControl = (
       attachedTo?.removeEventListener("pointercancel", releaseLeftButton);
       attachedTo = undefined;
       placing = undefined;
+      claims = 0;
       orbit.setToolOwnsLeft(false);
       orbit.dispose();
+    },
+
+    /**
+     * A tool taking the pointer — the gizmo, on a press that turned out to be on a handle.
+     *
+     * **Counted, not set.** See the note on `claims`. The case that makes this necessary is
+     * a mouse: `takeLeftButton` has already claimed by the time the gizmo sees the press,
+     * so the gizmo claiming with a plain boolean would clear the flag on its way out and the
+     * camera would start orbiting halfway through the drag.
+     */
+    claimGesture(claimed: boolean): void {
+      setClaims(claimed ? 1 : -1);
     },
 
     /**

@@ -62,6 +62,28 @@ export interface CameraControl {
   adopt(pose: CameraPose): void;
 
   /**
+   * Says a tool is taking the pointer, so the camera leaves single-pointer gestures to it.
+   *
+   * **The inverse of nothing, and paired rather than one-way.** A tool that claims and never
+   * releases leaves an editor whose camera cannot be moved, so every call site has to release
+   * in a `finally` — including one released by a drag that threw.
+   *
+   * **Only `orbit` acts on it, and that is not an oversight.** The tool that calls this is
+   * the gizmo, which finds its handles by measuring the pointer against their projected
+   * positions. Under no-clip the input controller is enabled and the canvas re-takes the
+   * pointer lock on the next click — and a locked pointer freezes `clientX` and `clientY`,
+   * which `app.tsx` already records as the reason the editor suspends the lock on open. So
+   * under no-clip the gizmo has no pointer position to measure and is not offered at all;
+   * this is the seam saying so rather than each caller re-deriving it.
+   *
+   * So `no-clip` ignores the claim, which also means there is never a second writer of
+   * `input.setEnabled` racing the editor's own open/close transition — the alternative would
+   * have been for a release to hand the flight controls back to a camera that was not
+   * supposed to have them.
+   */
+  claimGesture(claimed: boolean): void;
+
+  /**
    * Advances the camera by a frame.
    *
    * **Only the caller that owns the frame loop should call this**, and only while the

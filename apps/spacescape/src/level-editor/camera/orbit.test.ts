@@ -307,3 +307,163 @@ describe("the orbit camera", () => {
     });
   });
 });
+
+/**
+ * Who owns the left button, when more than one thing wants it.
+ *
+ * **The claim counter is the whole of this, and a boolean would get the overlap wrong.**
+ * Placing claims on a mouse press and so does the gizmo, and for a mouse those are the same
+ * press — so whichever released first would hand the button back while the other gesture was
+ * still running. A camera that starts orbiting halfway through a drag is the symptom, and it
+ * only shows up on a machine fast enough to get through a frame mid-gesture.
+ *
+ * **Measured by where the camera *is*, not by how far it is.** Orbiting swings the view round
+ * the target and leaves the radius alone, so a test watching the radius would see nothing
+ * happen and pass against a camera that had moved.
+ */
+describe("a tool claiming the left button", () => {
+  const surface = (): HTMLElement => {
+    const canvas = document.createElement("canvas");
+    canvas.setPointerCapture = () => {};
+    canvas.hasPointerCapture = () => false;
+    canvas.releasePointerCapture = () => {};
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0 }) as DOMRect;
+    document.body.append(canvas);
+    return canvas;
+  };
+
+  /**
+   * jsdom has no `PointerEvent`, and the bookkeeping keys on `pointerId` — so the identifier
+   * and the type are grafted onto a `MouseEvent` rather than the whole press sequence being
+   * faked as plain objects, which `dispatchEvent` will not deliver.
+   */
+  const pointer = (
+    type: string,
+    button: number,
+    x: number,
+    pointerId = 1,
+    pointerType = "mouse",
+  ): Event => {
+    const event = new MouseEvent(type, {
+      bubbles: true,
+      button,
+      clientX: x,
+      clientY: 0,
+    });
+    Object.defineProperty(event, "pointerId", { value: pointerId });
+    Object.defineProperty(event, "pointerType", { value: pointerType });
+    return event;
+  };
+
+  /** Whether the view swung between two poses — which is what orbiting does. */
+  const swung = (a: CameraPose, b: CameraPose): boolean =>
+    Math.hypot(a.at.x - b.at.x, a.at.y - b.at.y, a.at.z - b.at.z) > 1;
+
+  it("keeps the button when one claim releases and another still holds it", () => {
+    const control = createOrbitCameraControl(aCamera());
+    const canvas = surface();
+    control.attach(canvas);
+
+    // **The overlap, exactly as it happens**: a mouse press places and is also the press
+    // that grabs a gizmo handle.
+    canvas.dispatchEvent(pointer("pointerdown", 0, 0));
+    control.claimGesture(true);
+
+    // The placement's own release goes first, which is what really happens — the gizmo claims
+    // synchronously on `pointerdown`, and the browser delivers `pointerup` to every listener
+    // before the drag's own promise settles.
+    canvas.dispatchEvent(pointer("pointerup", 0, 0));
+
+    control.frame({ x: 0, y: 0, z: 0 }, 200);
+    control.update(0);
+    const held = control.pose();
+    canvas.dispatchEvent(pointer("pointerdown", 2, 0));
+    canvas.dispatchEvent(pointer("pointermove", 2, 400));
+    control.update(0);
+
+    // Still standing down, because the gizmo's claim has not been released. A boolean here
+    // would have handed the camera back and the view would have swung mid-drag.
+    expect(swung(control.pose(), held)).toBe(false);
+
+    control.claimGesture(false);
+    control.dispose();
+    canvas.remove();
+  });
+
+  it("gives the button back once every claim has released", () => {
+    // The other half of the same claim, and the one whose absence is worse: a claim that is
+    // never released leaves an editor whose view cannot be moved at all.
+    const control = createOrbitCameraControl(aCamera());
+    const canvas = surface();
+    control.attach(canvas);
+
+    canvas.dispatchEvent(pointer("pointerdown", 0, 0));
+    control.claimGesture(true);
+    canvas.dispatchEvent(pointer("pointerup", 0, 0));
+    control.claimGesture(false);
+
+    control.frame({ x: 0, y: 0, z: 0 }, 200);
+    control.update(0);
+    const before = control.pose();
+    canvas.dispatchEvent(pointer("pointerdown", 2, 0));
+    canvas.dispatchEvent(pointer("pointermove", 2, 400));
+    control.update(0);
+
+    expect(swung(control.pose(), before)).toBe(true);
+    control.dispose();
+    canvas.remove();
+  });
+
+  it("ignores a release nobody asked for, rather than going to negative", () => {
+    // A negative count would make `claims > 0` false, which looks exactly like "nobody wants
+    // the button" — so a caller bug would present as a camera that has quietly stopped
+    // responding rather than as a caller that misused the seam.
+    const control = createOrbitCameraControl(aCamera());
+    control.claimGesture(false);
+    control.claimGesture(false);
+
+    const canvas = surface();
+    control.attach(canvas);
+    control.frame({ x: 0, y: 0, z: 0 }, 200);
+    control.update(0);
+    const before = control.pose();
+
+    canvas.dispatchEvent(pointer("pointerdown", 2, 0));
+    canvas.dispatchEvent(pointer("pointermove", 2, 400));
+    control.update(0);
+
+    // The over-released claims left the counter at zero, so the camera orbits normally.
+    expect(swung(control.pose(), before)).toBe(true);
+    control.dispose();
+    canvas.remove();
+  });
+
+  it("stands the camera down for a finger as well as a cursor", () => {
+    // `takeLeftButton` deliberately ignores touch — on a phone the drag is how you look —
+    // which is exactly why the gizmo has to claim for itself rather than lean on the
+    // placement path having already done it.
+    const control = createOrbitCameraControl(aCamera());
+    const canvas = surface();
+    control.attach(canvas);
+
+    control.frame({ x: 0, y: 0, z: 0 }, 200);
+    control.update(0);
+    const before = control.pose();
+
+    canvas.dispatchEvent(pointer("pointerdown", 0, 0, 7, "touch"));
+    canvas.dispatchEvent(pointer("pointermove", 0, 400, 7, "touch"));
+    control.update(0);
+    // Unclaimed, so the camera swung — which is the whole reason the gizmo claims.
+    expect(swung(control.pose(), before)).toBe(true);
+
+    control.claimGesture(true);
+    const held = control.pose();
+    canvas.dispatchEvent(pointer("pointermove", 0, 500, 7, "touch"));
+    control.update(0);
+    expect(swung(control.pose(), held)).toBe(false);
+
+    control.claimGesture(false);
+    control.dispose();
+    canvas.remove();
+  });
+});

@@ -174,6 +174,50 @@ describe("a level applied to a world", () => {
     expect(painted.origin).toEqual({ x: 1, y: 2, z: 3 });
   });
 
+  it("carries a turn across as a quaternion, and the identity for a shape that has none", () => {
+    // ADR 0051. The conversion is the whole of what Phase 2 adds here, so it is worth saying
+    // what it converts: a level's arrays are arrays because that is what JSON makes of them,
+    // and an `Operation` holds `{x, y, z, w}` because that is what `@big-mesh-studios/csg`
+    // rotates by. `host.ts` makes the same conversion for a `shape-add` off the wire.
+    const { target, registry } = world();
+    const turned: readonly [number, number, number, number] = [
+      0,
+      Math.SQRT1_2,
+      0,
+      Math.SQRT1_2,
+    ];
+    createLevelApplier(target).apply(
+      aPlan([
+        {
+          kind: "shape",
+          id: "leaning",
+          at: [0, 0, 0],
+          shape: { type: "Box", len: { x: 4, y: 4, z: 4 } },
+          combine: "Add",
+          orientation: turned,
+        },
+        aShape("upright"),
+      ]),
+    );
+
+    const place = registry.get(LEVEL_PLACE)!;
+    expect(place.get("leaning")?.orientation).toEqual({
+      x: turned[0],
+      y: turned[1],
+      z: turned[2],
+      w: turned[3],
+    });
+    // **Absent means the identity, not a zero quaternion.** A zero quaternion is not a
+    // rotation — rotating by it collapses every point to the origin — so getting this wrong
+    // would fold a shape into a point rather than fail visibly.
+    expect(place.get("upright")?.orientation).toEqual({
+      x: 0,
+      y: 0,
+      z: 0,
+      w: 1,
+    });
+  });
+
   it("tells the host once, with the box the shapes reach", () => {
     // One call, not one per shape: a level of two hundred walls applied one at a time
     // would ask the mesher for two hundred model sends, each cancelling the last.

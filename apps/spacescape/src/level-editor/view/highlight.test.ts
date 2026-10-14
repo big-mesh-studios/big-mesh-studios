@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Group, Scene } from "@random-mesh/rmsl/scene";
 
 import { createHighlight, highlightBounds } from "./highlight";
+import type { OrientedBox } from "./picking";
 import type { LevelFigure, LevelShape } from "../../places/level/types";
 
 /**
@@ -72,32 +73,78 @@ describe("the box drawn around a selection", () => {
     at: [4, 8, -6],
   };
 
+  /** A box standing at the origin with nothing to say about which way it faces. */
+  const upright = (
+    half: { x: number; y: number; z: number },
+    centre = { x: 0, y: 0, z: 0 },
+  ): OrientedBox => ({
+    centre,
+    half,
+    orientation: { x: 0, y: 0, z: 0, w: 1 },
+  });
+
   it("is the shape's own box", () => {
     const box = highlightBounds(aShape);
-    expect(box.min.x).toBe(10 - 40 - 1);
-    expect(box.max.z).toBe(30 + 40 + 1);
+    expect(box.centre).toEqual({ x: 10, y: 20, z: 30 });
+    expect(box.half.x).toBe(41);
+    expect(box.half.z).toBe(41);
   });
 
   it("is the model's own box around a figure, which is measured not guessed", () => {
     // A hard-coded size would highlight a fridge as a lamp. `FigureModel.half` is the
     // model's own measured bounds, so the box is right for whatever was attached.
-    const box = highlightBounds(aFigure, { x: 3, y: 5, z: 3 });
-    expect(box).toEqual({
-      min: { x: 1, y: 3, z: -9 },
-      max: { x: 7, y: 13, z: -3 },
+    expect(highlightBounds(aFigure, { x: 3, y: 5, z: 3 })).toEqual({
+      centre: { x: 4, y: 8, z: -6 },
+      half: { x: 3, y: 5, z: 3 },
+      orientation: { x: 0, y: 0, z: 0, w: 1 },
     });
+  });
+
+  it("turns with the shape it is around", () => {
+    // The reason `show` takes an `OrientedBox` and not a `{min, max}` pair (ADR 0051). A
+    // selection that stayed upright while its subject lay at 45° would be a box round the
+    // wrong shape — and it would read as a selection that stopped taking.
+    const box = highlightBounds({
+      ...aShape,
+      orientation: [0, Math.SQRT1_2, 0, Math.SQRT1_2],
+    });
+    expect(box.orientation).toEqual({
+      x: 0,
+      y: Math.SQRT1_2,
+      z: 0,
+      w: Math.SQRT1_2,
+    });
+    // **And the reach is unchanged**, because `half` is measured along the shape's own axes
+    // and the axes are what the turn moves.
+    expect(box.half).toEqual(highlightBounds(aShape).half);
   });
 
   it("puts a mesh over that box, centred and scaled to it", () => {
     const scene = new Scene();
     const highlight = createHighlight(scene);
 
-    highlight.show({ min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 20, z: 30 } });
+    highlight.show(upright({ x: 5, y: 10, z: 15 }, { x: 5, y: 10, z: 15 }));
 
-    // Centred, because the geometry is a unit cube and the mesh carries the extent.
+    // On the centre, because the geometry is a unit cube and the mesh carries the extent —
+    // and doubled, because a unit cube's reach is half its scale.
     expect(highlight.mesh.position).toMatchObject({ x: 5, y: 10, z: 15 });
     expect(highlight.mesh.scale).toMatchObject({ x: 10, y: 20, z: 30 });
     expect(highlight.mesh.visible).toBe(true);
+
+    highlight.dispose();
+  });
+
+  it("carries the box's turn onto the mesh, not just its size", () => {
+    const scene = new Scene();
+    const highlight = createHighlight(scene);
+    const turn = { x: 0, y: Math.SQRT1_2, z: 0, w: Math.SQRT1_2 };
+
+    highlight.show({ ...upright({ x: 4, y: 1, z: 4 }), orientation: turn });
+
+    expect(highlight.mesh.quaternion).toMatchObject(turn);
+    // **The middle does not move.** rmsl scales, then turns, then translates, so the box
+    // turns about its own centre rather than swinging away from the shape.
+    expect(highlight.mesh.position).toMatchObject({ x: 0, y: 0, z: 0 });
 
     highlight.dispose();
   });
@@ -107,7 +154,7 @@ describe("the box drawn around a selection", () => {
     const highlight = createHighlight(scene);
     expect(highlight.mesh.visible).toBe(false);
 
-    highlight.show({ min: { x: 0, y: 0, z: 0 }, max: { x: 2, y: 2, z: 2 } });
+    highlight.show(upright({ x: 1, y: 1, z: 1 }));
     expect(highlight.mesh.visible).toBe(true);
 
     highlight.hide();
@@ -122,7 +169,7 @@ describe("the box drawn around a selection", () => {
     // reads. The floor is small enough to be invisible and large enough to be finite.
     const scene = new Scene();
     const highlight = createHighlight(scene);
-    highlight.show({ min: { x: 5, y: 5, z: 5 }, max: { x: 5, y: 5, z: 5 } });
+    highlight.show(upright({ x: 0, y: 0, z: 0 }, { x: 5, y: 5, z: 5 }));
     expect(highlight.mesh.scale.x).toBeGreaterThan(0);
     highlight.dispose();
   });

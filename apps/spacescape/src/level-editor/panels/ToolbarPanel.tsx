@@ -20,7 +20,12 @@
 import { For } from "solid-js";
 
 import { Bar, Button } from "../components/controls";
-import { TOOL_KINDS, type LevelEditor } from "../level-editor-store";
+import {
+  GIZMO_KINDS,
+  TOOL_KINDS,
+  type GizmoKind,
+  type LevelEditor,
+} from "../level-editor-store";
 import { COMBINE_LABELS, SHAPE_KINDS, SHAPE_KIND_LABELS } from "./vocabulary";
 import type { Combine } from "../../places/level/types";
 
@@ -39,6 +44,26 @@ const TOOL_TITLES: Record<string, string> = {
   npc: "Stand a named character where you click",
 };
 
+/**
+ * What each gizmo is called, and what it says about itself.
+ *
+ * **Every title says where it works**, because the handles are not available everywhere and
+ * a button that does nothing is worse than one that is greyed out. Orbit only: under no-clip
+ * the pointer lock is on, `clientX` does not move, and there is nothing for a screen-space
+ * hit test to measure (`CameraControl.claimGesture`).
+ */
+const GIZMO_LABELS: Record<GizmoKind, string> = {
+  move: "Move",
+  rotate: "Rotate",
+  off: "None",
+};
+
+const GIZMO_TITLES: Record<GizmoKind, string> = {
+  move: "Arrows on the selected item — drag one to move it. Orbit camera only",
+  rotate: "Rings on the selected item — drag one to turn it. Orbit camera only",
+  off: "No handles on the selected item; the fields are the only way to change it",
+};
+
 const COMBINES = Object.keys(COMBINE_LABELS) as Combine[];
 
 export const ToolbarPanel = (props: { editor: LevelEditor }) => (
@@ -51,6 +76,31 @@ export const ToolbarPanel = (props: { editor: LevelEditor }) => (
             title={TOOL_TITLES[kind]}
             selected={props.editor.tool() === kind}
             onClick={() => props.editor.setTool(kind)}
+          />
+        )}
+      </For>
+    </Bar>
+
+    {/*
+      **Its own row rather than a fifth tool**, because it answers a different question.
+      `tool` decides what a click on the world *does*; this decides what a press on a handle
+      does, and a press on a handle is never a click. Folding them into one list would mean
+      every place branching on the tool also had to answer this one — see `GizmoKind`.
+
+      **Disabled without a selection**, which is what "there is nothing to put handles on"
+      looks like, rather than a row of buttons that quietly do nothing.
+    */}
+    <Bar label="handles">
+      <For each={GIZMO_KINDS}>
+        {(kind) => (
+          <Button
+            label={GIZMO_LABELS[kind]}
+            title={GIZMO_TITLES[kind]}
+            selected={props.editor.gizmo() === kind}
+            disabled={
+              kind !== "off" && props.editor.selectedItem() === undefined
+            }
+            onClick={() => props.editor.setGizmo(kind)}
           />
         )}
       </For>

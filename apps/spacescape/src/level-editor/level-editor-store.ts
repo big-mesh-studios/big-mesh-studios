@@ -31,6 +31,7 @@ import { Command } from "./command/Command";
 import { UndoRedoManager } from "./undo-redo";
 import {
   itemLabel,
+  MAX_LEVEL_ITEMS,
   readLevelPlan,
   writeLevelPlan,
 } from "../places/level/level-plan";
@@ -135,6 +136,13 @@ export function createLevelEditor(host: LevelEditorHost) {
     undefined,
   );
   const [tool, setTool] = createSignal<ToolKind>("shape");
+  /**
+   * Which gizmo the world shows. See the note on the returned `gizmo`.
+   *
+   * **A plain signal rather than a piece of `tool`,** because the two answer different
+   * questions — what a click does, against what a press on a handle does.
+   */
+  const [gizmo, setGizmo] = createSignal<GizmoKind>("move");
   const [shapeKind, setShapeKind] = createSignal<ShapeKind>("Box");
   const [combine, setCombine] = createSignal<Combine>("Add");
   const [notice, setNotice] = createSignal<string | undefined>(undefined);
@@ -275,6 +283,23 @@ export function createLevelEditor(host: LevelEditorHost) {
     cameraKind: host.cameraKind,
     setCameraKind: host.setCameraKind,
 
+    /**
+     * Which gizmo the world shows, or none.
+     *
+     * **Not part of `tool`, and deliberately so.** `ToolKind` decides what a click on the
+     * world *does* — place a shape, stand a prop, pick something. This decides what a press
+     * on a handle does, and a press on a handle is never a click. Putting them in one list
+     * would mean every place that branches on the tool also had to answer the gizmo
+     * question, and would let a mode exist where a click placed a shape and a handle moved
+     * the same thing at once.
+     *
+     * **Defaults to `move`, not to `off`.** A selected item with nothing on it is an item
+     * somebody has chosen and cannot do anything with; the move handles are the cheapest
+     * useful thing to offer them.
+     */
+    gizmo,
+    setGizmo,
+
     narrow,
     coarsePointer,
     mobile,
@@ -365,6 +390,49 @@ export function createLevelEditor(host: LevelEditorHost) {
     },
 
     /**
+     * A copy of an item, immediately after it, selected.
+     *
+     * **Immediately after rather than at the end, and this is about the fold.** The list
+     * order *is* the fold order (ADR 0016) and the fold combines with a smooth minimum —
+     * symmetric but not associative — so appending a copy of a `Subtract` would put it
+     * behind everything else and change what the terrain looks like. Putting it next to its
+     * original keeps the copy cutting where the original cuts.
+     *
+     * **One `apply`, so one undo step**, and the whole edit is the add: the copy arrives
+     * already selected, so there is no second command to record for the selection.
+     *
+     * **The copy lands on top of the original**, which is the point — it is a copy and
+     * somebody is going to want to move it. The caller switches to the move gizmo; this does
+     * not, because a store that changed the editor's tool as a side effect of an add would be
+     * a store reaching into the UI.
+     *
+     * **Every field comes across by spread**, including `material`, `colour`, `softness` and
+     * `orientation`. A copy built field by field is a copy that silently loses whatever
+     * somebody adds to `LevelShape` next, and the shape that comes back is not the one that
+     * was duplicated.
+     */
+    duplicateItem(index: number): void {
+      const source = working.items[index];
+      if (source === undefined) return;
+      /**
+       * **The id is made here rather than inside the queue.** It has to be unique against
+       * what is already in the level, and `working` is the settled truth the panels are
+       * reading — asking inside `build` would be asking a frame behind, and a duplicate id
+       * is refused outright by the level reader rather than repaired.
+       */
+      const id = freeId(working, source.id);
+      apply(
+        (level) => {
+          if (level.items[index] === undefined) return undefined;
+          if (level.items.length >= MAX_LEVEL_ITEMS) return undefined;
+          return Command.addItem({ ...level.items[index], id }, index + 1);
+        },
+        describe(source, "Duplicate"),
+        () => select(id),
+      );
+    },
+
+    /**
      * Moves an item to another position in the list.
      *
      * **This is fold order, not depth order**, and it is the ▲▼ buttons in the list rather
@@ -448,6 +516,18 @@ export const TOOL_KINDS: readonly ToolKind[] = [
 ];
 
 /**
+ * What the world shows on a selected item, if anything.
+ *
+ * **`"off"` is part of it rather than a boolean beside it**, because "no gizmo" and "which
+ * gizmo" are the same question and a pair of them is two ways to be wrong at once — most
+ * obviously the combination of "not off" and "showing none", which is what a selection
+ * cannot turn produces.
+ */
+export type GizmoKind = "off" | "move" | "rotate";
+
+export const GIZMO_KINDS: readonly GizmoKind[] = ["move", "rotate", "off"];
+
+/**
  * A name a person can read in a file.
  *
  * **Built from what the item is and where it is, not from a counter**, so `wall-4-20-0`
@@ -460,3 +540,27 @@ const idFor = (
   detail: string,
   at: readonly [number, number, number],
 ): string => `${what}-${detail}-${at[0]}-${at[1]}-${at[2]}`;
+
+/**
+ * An id nobody in the level is already using, built from one that is taken.
+ *
+ * **A suffix rather than a new name.** The id says what the item is and where it stands, and
+ * a copy standing where the original stands says exactly the same thing — so the useful part
+ * of the name is kept and a number is added, which is what makes a level file full of copies
+ * still readable (`wall-Box-0-20-0`, `wall-Box-0-20-0-2`, `wall-Box-0-20-0-3`).
+ *
+ * **Starting at 2, because the plain id is the original's.** Somebody who duplicated the same
+ * wall four times gets `-2` through `-5`, which reads as a count of copies rather than as a
+ * count of items.
+ *
+ * **Walking the numbers rather than counting what is already there**, because the suffixes
+ * need not be contiguous — a `-2` somebody deleted and a `-2` a later duplicate would both
+ * be free the same way, and a level reader is right to refuse either.
+ */
+const freeId = (level: LevelPlan, taken: string): string => {
+  if (!level.items.some((item) => item.id === taken)) return taken;
+  for (let copy = 2; ; copy++) {
+    const candidate = `${taken}-${copy}`;
+    if (!level.items.some((item) => item.id === candidate)) return candidate;
+  }
+};

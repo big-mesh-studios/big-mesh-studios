@@ -54,15 +54,36 @@ import {
   type CameraControl,
   type CameraPose,
 } from "./level-editor/camera/CameraControl";
-import { DEFAULT_SHAPE_SIZES } from "./level-editor/panels/vocabulary";
+import { DEFAULT_SHAPE_SIZES, isAxial } from "./level-editor/panels/vocabulary";
 import {
   createHighlight,
   highlightBounds,
 } from "./level-editor/view/highlight";
 import { pickItem } from "./level-editor/view/picking";
+import { createMoveHandles } from "./level-editor/view/move-handles";
+import {
+  armUnderPointer,
+  distanceDragged,
+  type Axis,
+} from "./level-editor/view/move-handle";
+import { createRotateHandles } from "./level-editor/view/rotate-handles";
+import {
+  radiansDragged,
+  ringUnderPointer,
+} from "./level-editor/view/rotate-handle";
+import { createGhost, shapeGhostMesh } from "./level-editor/view/ghost";
+import {
+  axisAngle,
+  IDENTITY as IDENTITY_QUAT,
+  multiply,
+  toEuler,
+} from "./level-editor/view/quaternion";
+import { pointer } from "@big-mesh-studios/ui/pointer";
+import type { Quat, Vec3 } from "@big-mesh-studios/core";
 import {
   isLevelFigure,
   LEVEL_FILE,
+  type LevelItem,
   type LevelPlan,
 } from "./places/level/types";
 import { pickAlong, rayThroughScreen, toNdc } from "@big-mesh-studios/picking";
@@ -1927,6 +1948,21 @@ export default function App() {
     // It has no scene, no renderer and no camera of its own. It pins this canvas into a
     // pane, drives this camera, and asks this world to change.
     const levelHighlight = createHighlight(viewport.scene);
+    /**
+     * The gizmo, and where it goes in the scene.
+     *
+     * **Three objects in one order, and the order is the whole of it.** rmsl draws in
+     * insertion order ([ADR 0014](../../docs/adr/0014-the-sky-dome-is-drawn-first.md)), so
+     * the only way to make a control draw over the world is to add it after the world — and
+     * the handles set `depthTest` to false, which changes nothing unless they are traversed
+     * *last*. So: the ghost over the terrain, the arrows over the ghost, the rings over the
+     * arrows. The ghost is in a group of its own for the same reason (see `ghost.ts`): a mesh
+     * re-added to the scene on every drag would otherwise land after the handles on the
+     * second drag and draw over the arrows being dragged.
+     */
+    const levelGhost = createGhost(viewport.scene);
+    const levelMoveHandles = createMoveHandles(viewport.scene);
+    const levelRotateHandles = createRotateHandles(viewport.scene);
     const levelApplier = createLevelApplier({
       places: sculpt.places,
       figures,
@@ -2031,6 +2067,107 @@ export default function App() {
     };
 
     /**
+     * Whether a gizmo drag is running, and whether one just finished.
+     *
+     * **`justDragged` is the important one, and it exists because a drag ends in a
+     * `pointerup`.** The editor's own click handler is on `pointerup` too — that is where a
+     * place is put — so a gizmo drag would be followed one event later by a click that
+     * places a shape, or, with the select tool, by a re-pick that clears the selection of the
+     * very thing that was just dragged. Set on `pointerdown`, read and cleared by the click,
+     * so a press that turned out to be a drag does not also place.
+     *
+     * **`dragging` is a plain variable and not a signal.** Every read here is inside a
+     * pointer handler or the frame loop, neither of which is a tracked scope, and a signal
+     * would be read outside one.
+     */
+    let dragging = false;
+    let justDragged = false;
+
+    /**
+     * Where the pointer is on the canvas, in the canvas's own pixels.
+     *
+     * **The canvas's rectangle, not the page's** — it is absolutely positioned into the
+     * editor's pane, so `clientX` is measured from the page and the handles are measured
+     * from the canvas. This is the same correction `clickLevelWorld` makes for `toNdc`.
+     */
+    const pointerOnCanvas = (event: { clientX: number; clientY: number }) => {
+      const rect = canvas.getBoundingClientRect();
+      return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    };
+
+    /**
+     * How far the camera is from a point, for the handles' size.
+     *
+     * **Camera to the item, and not camera to whatever the camera orbits** — see
+     * `VIEW_SHARE`. The orbit style could answer with its radius, but no-clip's is a fiction
+     * a `pose` call invents, and the item is what the handles are drawn over.
+     */
+    const distanceTo = (at: Vec3): number => {
+      const eye = viewport.camera.position;
+      return Math.hypot(eye.x - at.x, eye.y - at.y, eye.z - at.z);
+    };
+
+    /** The world-space point a level item's array position stands for. */
+    const itemAt = (item: LevelItem): Vec3 => ({
+      x: item.at[0],
+      y: item.at[1],
+      z: item.at[2],
+    });
+
+    /** The turn a level item carries, as the quaternion the maths here speaks. */
+    const itemOrientation = (item: LevelItem): Quat =>
+      isLevelFigure(item) || item.orientation === undefined
+        ? IDENTITY_QUAT
+        : {
+            x: item.orientation[0],
+            y: item.orientation[1],
+            z: item.orientation[2],
+            w: item.orientation[3],
+          };
+
+    /**
+     * Where the handles stand, and whether they are showing at all.
+     *
+     * **Called from the frame loop and not from an effect**, because the camera is not a
+     * signal: an effect would place the handles once per selection change and leave them
+     * where they were after every zoom and every orbit — arrows of a fixed size on screen,
+     * which is the one thing the whole scaling in `move-handles.ts` exists to prevent.
+     *
+     * **Orbit only.** Under no-clip the pointer lock is on and `clientX` does not move, so
+     * there is nothing to hit-test against and the gizmo is not offered — see
+     * `CameraControl.claimGesture`.
+     */
+    const standHandles = (): void => {
+      const item = levelEditor.selectedItem();
+      const wanted =
+        levelEditor.gizmo() !== "off" && levelCameraKind() === "orbit";
+      const showing = wanted && item !== undefined;
+      levelMoveHandles.setVisible(
+        showing && levelEditor.gizmo() === "move" && turnable(item),
+      );
+      levelRotateHandles.setVisible(
+        showing && levelEditor.gizmo() === "rotate" && turnable(item),
+      );
+      if (item === undefined || !showing) return;
+      const at = itemAt(item);
+      const distance = distanceTo(at);
+      levelMoveHandles.place(at, distance);
+      levelRotateHandles.place(at, distance);
+    };
+
+    /**
+     * Whether this item can be turned.
+     *
+     * **A sphere cannot, and a figure can only about up.** A figure's model already carries a
+     * yaw and the host refuses anything else, so offering three rings for one would be
+     * offering two that silently do nothing.
+     */
+    const turnable = (item: LevelItem | undefined): boolean => {
+      if (item === undefined) return false;
+      return isLevelFigure(item) || isAxial(item.shape.type);
+    };
+
+    /**
      * A frame of the editor, in place of the game's.
      *
      * **`game.tick` does not run, and that is the whole design.** It is what calls
@@ -2045,6 +2182,8 @@ export default function App() {
      */
     const editorFrame = (dt: number): void => {
       levelCamera().update(dt);
+      /** Before the render, because the handles are part of what is about to be drawn. */
+      standHandles();
       /** Whatever the level asked for, now that the mesher may be free to take it. */
       sculpt.flushInvalidated();
       viewport.render();
@@ -2121,6 +2260,217 @@ export default function App() {
         });
       }
     };
+
+    /**
+     * Puts the dragged item's own mesh under the pointer, or nothing if it has none.
+     *
+     * **A shape is meshed; a figure is not.** A shape has no mesh anywhere — it lives in the
+     * fold — so one is built for the drag, which `ghost.ts` explains is once per drag and not
+     * once per frame. A figure is already a `Mesh` over its model's geometry
+     * ([ADR 0047](../../docs/adr/0047-a-figure-is-its-own-mesh.md)), and `ownGeometry` is
+     * false because that geometry belongs to every other placement of the model too.
+     */
+    const showDragged = (item: LevelItem): void => {
+      if (!isLevelFigure(item)) {
+        levelGhost.show(shapeGhostMesh(item, levelGhost.material), true);
+        return;
+      }
+      const model = modelLibrary?.get(item.model);
+      levelGhost.show(model?.draw(levelGhost.material), false);
+    };
+
+    /**
+     * A drag along one of the arrows, from the press to the release.
+     *
+     * **The screen-space test runs before anything is claimed**, so a press that was not on a
+     * handle falls through to the camera and to `clickLevelWorld` untouched. The handles are
+     * measured against their own drawn lines rather than by raycasting (`move-handle.ts`),
+     * which is what makes them big enough for a finger.
+     *
+     * **One write, on the way out.** Everything inside the loop is a proposal: the ghost
+     * follows the pointer and the arrows follow the ghost, and the level is not touched
+     * until the drag ends — so a drag is one apply and one undo step rather than one per
+     * pointer move.
+     */
+    const grabHandle = async (
+      initial: PointerEvent & { currentTarget: HTMLElement },
+    ): Promise<void> => {
+      const item = levelEditor.selectedItem();
+      if (levelEditor.gizmo() !== "move" || item === undefined || dragging) {
+        return;
+      }
+      // Placed first, so the screen-space test measures the arrows as the last frame drew
+      // them rather than where they were when the selection changed.
+      standHandles();
+      const rect = canvas.getBoundingClientRect();
+      const arms = levelMoveHandles.armsOnScreen(viewport.camera, {
+        width: rect.width,
+        height: rect.height,
+      });
+      const axis = armUnderPointer(pointerOnCanvas(initial), arms);
+      if (axis === undefined) return;
+
+      dragging = true;
+      justDragged = true;
+      /** The camera stands down for the length of the drag, and no longer. */
+      levelCamera().claimGesture(true);
+      levelMoveHandles.setHeld(axis);
+      showDragged(item);
+
+      const start = itemAt(item);
+      const arm = arms.find((candidate) => candidate.axis === axis);
+      let moved = start;
+
+      try {
+        await pointer(initial, ({ totalDelta }) => {
+          if (arm === undefined) return;
+          const along = distanceDragged(
+            totalDelta,
+            arm,
+            levelMoveHandles.armLength(),
+          );
+          const direction = unitAlong(axis);
+          moved = {
+            x: start.x + direction.x * along,
+            y: start.y + direction.y * along,
+            z: start.z + direction.z * along,
+          };
+          levelGhost.moveTo(moved);
+          // **The arrows follow the ghost**, or the handle would slide out from under the
+          // finger while the drag continued.
+          levelMoveHandles.place(moved, distanceTo(moved));
+        });
+      } finally {
+        levelMoveHandles.setHeld(undefined);
+        levelGhost.hide();
+        levelCamera().claimGesture(false);
+        dragging = false;
+      }
+
+      const index = levelEditor.selectedIndex();
+      if (
+        index === undefined ||
+        (moved.x === start.x && moved.y === start.y && moved.z === start.z)
+      ) {
+        return;
+      }
+      const current = levelEditor.items()[index];
+      if (current === undefined) return;
+      levelEditor.updateItem(index, {
+        ...current,
+        at: [moved.x, moved.y, moved.z],
+      });
+    };
+
+    /**
+     * A drag round one of the rings, from the press to the release.
+     *
+     * **The same shape as `grabHandle` on purpose** — one grabs an arrow and one grabs a
+     * ring, and the difference between them is four lines. Two implementations would drift.
+     *
+     * **`multiply(turn, orientation)`, and the order is load-bearing**: the ring is a world
+     * axis, so the turn goes *before* the item's own. Composed the other way round the item
+     * turns about an axis that is not the one under the finger, which looks entirely healthy
+     * — see `quaternion.ts`.
+     */
+    const grabRing = async (
+      initial: PointerEvent & { currentTarget: HTMLElement },
+    ): Promise<void> => {
+      const item = levelEditor.selectedItem();
+      if (levelEditor.gizmo() !== "rotate" || item === undefined || dragging) {
+        return;
+      }
+      standHandles();
+      const rect = canvas.getBoundingClientRect();
+      const rings = levelRotateHandles.ringsOnScreen(viewport.camera, {
+        width: rect.width,
+        height: rect.height,
+      });
+      const axis = ringUnderPointer(pointerOnCanvas(initial), rings);
+      if (axis === undefined) return;
+      /**
+       * **A figure offers one ring, and it is the one about up.** `FigureSpec` carries a
+       * `yaw` and the host refuses a turn on any other axis, so a figure's rings would be
+       * two shapes that take a drag and then do nothing with it. Refusing here is the same
+       * answer as `turnable`, and it is a refusal the finger can see: the ring is not there
+       * to be grabbed.
+       */
+      if (isLevelFigure(item) && axis !== "y") return;
+
+      dragging = true;
+      justDragged = true;
+      levelCamera().claimGesture(true);
+      levelRotateHandles.setHeld(axis);
+      showDragged(item);
+
+      const start = itemOrientation(item);
+      const from = pointerOnCanvas(initial);
+      const direction = unitAlong(axis);
+      const ring = rings.find((candidate) => candidate.axis === axis);
+      let turned = start;
+
+      try {
+        await pointer(initial, ({ event }) => {
+          if (ring === undefined) return;
+          // **The pointer's place, not its travel.** The angle is a bearing from the ring's
+          // middle, so it needs where the pointer is now rather than how far it has come.
+          const swept = axisAngle(
+            direction.x,
+            direction.y,
+            direction.z,
+            radiansDragged(from, pointerOnCanvas(event), ring),
+          );
+          turned = multiply(swept, start);
+          levelGhost.turnTo(turned);
+        });
+      } finally {
+        levelRotateHandles.setHeld(undefined);
+        levelGhost.hide();
+        levelCamera().claimGesture(false);
+        dragging = false;
+      }
+
+      const index = levelEditor.selectedIndex();
+      if (index === undefined) return;
+      const current = levelEditor.items()[index];
+      if (current === undefined) return;
+
+      if (isLevelFigure(current)) {
+        /**
+         * **A figure has a yaw and nothing else**, and the host refuses anything more, so
+         * the turn is written back as the one angle it has rather than as a quaternion the
+         * file has no field for. Read out of the turned quaternion rather than accumulated,
+         * for the same reason the drag is: a yaw that drifts over a long drag is a shape
+         * that does not go back where it was put down.
+         */
+        const yaw = (toEuler(turned).yaw * Math.PI) / 180;
+        if (yaw !== (current.yaw ?? 0)) {
+          levelEditor.updateItem(index, { ...current, yaw });
+        }
+        return;
+      }
+
+      if (
+        turned.x === start.x &&
+        turned.y === start.y &&
+        turned.z === start.z &&
+        turned.w === start.w
+      ) {
+        return;
+      }
+      levelEditor.updateItem(index, {
+        ...current,
+        orientation: [turned.x, turned.y, turned.z, turned.w],
+      });
+    };
+
+    /** One of the three unit vectors an axis names, for a drag to travel along or about. */
+    const unitAlong = (axis: Axis): Vec3 =>
+      axis === "x"
+        ? { x: 1, y: 0, z: 0 }
+        : axis === "y"
+          ? { x: 0, y: 1, z: 0 }
+          : { x: 0, y: 0, z: 1 };
 
     /**
      * The four things that watch, created under the component's own owner rather than under
@@ -2208,6 +2558,28 @@ export default function App() {
         const camera = levelCamera();
         camera.adopt(poseFromPlayer());
         camera.update(0);
+
+        /**
+         * The gizmo's press, registered **before** the camera attaches.
+         *
+         * **The order is the point.** `OrbitController` reads its tool flag while deciding
+         * what a drag means, and it listens on the same element, so a listener registered
+         * after it would be told about the press second — by which time the camera has
+         * already started a gesture with it. Registering first means the claim is in place
+         * before anything else hears about the press.
+         */
+        const onPointerDown = (event: PointerEvent): void => {
+          justDragged = false;
+          // **Cast to the listener type `pointer()` takes, and not the other way round.**
+          // The cast is safe because this listener is on `canvas` and `pointer()` reads
+          // `currentTarget` only to take the capture — which is the element that raised the
+          // press, because `currentTarget` during a listener *is* the element it is bound to.
+          const press = event as PointerEvent & { currentTarget: HTMLElement };
+          if (levelEditor.gizmo() === "move") void grabHandle(press);
+          else if (levelEditor.gizmo() === "rotate") void grabRing(press);
+        };
+        canvas.addEventListener("pointerdown", onPointerDown);
+
         takeLevelCamera(levelCameraKind());
         applyEditorInput(true);
 
@@ -2215,6 +2587,17 @@ export default function App() {
         // outlives the editor is a click handler that places a wall with the editor shut.
         const onPointerUp = (event: PointerEvent): void => {
           if (event.pointerType !== "mouse" || event.button !== 0) return;
+          /**
+           * **A drag that just ended is not a click.** The gizmo's own drag ends in this
+           * same event, so without this the click would place a shape on top of whatever
+           * was just moved — or, with the select tool, re-pick and clear the selection of the
+           * thing that was moved. Read-and-cleared rather than left set, so the *next*
+           * press is a click again.
+           */
+          if (justDragged) {
+            justDragged = false;
+            return;
+          }
           clickLevelWorld?.(event.clientX, event.clientY);
         };
         canvas.addEventListener("pointerup", onPointerUp);
@@ -2224,11 +2607,19 @@ export default function App() {
         const releaseLock = input.suspendPointerLock();
 
         return () => {
+          canvas.removeEventListener("pointerdown", onPointerDown);
           canvas.removeEventListener("pointerup", onPointerUp);
           input.setEnabled(true);
           releaseLock();
           attachedLevelCamera?.dispose();
           attachedLevelCamera = undefined;
+          // **A claim that outlived its drag would leave a camera that cannot be moved**,
+          // so closing the editor with one held — which a press during the frame between
+          // the drag starting and the editor closing can arrange — gives it back.
+          levelCamera().claimGesture(false);
+          dragging = false;
+          justDragged = false;
+          levelGhost.hide();
         };
       });
     });

@@ -2,17 +2,21 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  boxContains,
+  figureBox,
   idWithoutLevel,
+  orientedBoxContains,
   pickItem,
   pickShape,
   rayBoxDistance,
+  rayOrientedBoxDistance,
   shapeBox,
+  yawOrientation,
   type Ray,
 } from "./picking";
 import {
   LEVEL_FIGURE_PREFIX,
   levelFigureId,
+  type LevelFigure,
   type LevelItem,
   type LevelShape,
 } from "../../places/level/types";
@@ -54,6 +58,29 @@ const aFigure = (id = "lamp"): LevelItem => ({
 /** Looking down `-x` from far off in `+x`, which is down the face of a wall at the origin. */
 const AT_THE_WALL = aRay([500, 20, 0], [-1, 0, 0]);
 
+/** A quarter turn about up, as a level writes it. */
+const QUARTER_TURN: readonly [number, number, number, number] = [
+  0,
+  Math.SQRT1_2,
+  0,
+  Math.SQRT1_2,
+];
+
+/**
+ * A quarter turn about the world's x, which lays a panel on its side.
+ *
+ * **Not the turn about up.** A quarter turn about Y swaps x and z, and a panel that is 40
+ * wide and 40 deep is the same panel either way — which is a trap worth naming, because
+ * "I turned it and nothing changed" reads as a bug in the turn rather than as a symmetric
+ * shape under a turn that happened not to touch its one distinguishing axis.
+ */
+const ON_ITS_SIDE: readonly [number, number, number, number] = [
+  Math.SQRT1_2,
+  0,
+  0,
+  Math.SQRT1_2,
+];
+
 describe("the box a shape occupies", () => {
   it("is centred on its origin and as big as the primitive is", () => {
     // `len` is a **half**-size — `sdBox` is zero at `|p| = len`, and the BVH's own box for
@@ -62,14 +89,14 @@ describe("the box a shape occupies", () => {
     const box = shapeBox(
       aBox({ shape: { type: "Box", len: { x: 10, y: 20, z: 30 } } }),
     );
-    expect(box.min).toEqual({ x: -11, y: -1, z: -31 });
-    expect(box.max).toEqual({ x: 11, y: 41, z: 31 });
+    expect(box.centre).toEqual({ x: 0, y: 20, z: 0 });
+    expect(box.half).toEqual({ x: 11, y: 21, z: 31 });
   });
 
   it("moves with the shape", () => {
     const box = shapeBox(aBox({ at: [100, 0, -50] }));
-    expect(box.min.x).toBe(59);
-    expect(box.max.z).toBe(-9);
+    expect(box.centre.x).toBe(100);
+    expect(box.centre.z).toBe(-50);
   });
 
   it("admits the reach a soft shape has beyond its own box", () => {
@@ -77,8 +104,7 @@ describe("the box a shape occupies", () => {
     // unpickable exactly where it is softest.
     const hard = shapeBox(aBox());
     const soft = shapeBox(aBox({ softness: 0.25 }));
-    expect(soft.min.x).toBeLessThan(hard.min.x);
-    expect(soft.max.x).toBeGreaterThan(hard.max.x);
+    expect(soft.half.x).toBeGreaterThan(hard.half.x);
   });
 
   it("is as big for every primitive, without a switch here", () => {
@@ -86,48 +112,152 @@ describe("the box a shape occupies", () => {
     // somebody added a primitive and it were not handled — which is the point of reading
     // the table rather than writing a second one.
     const sphere = shapeBox(aBox({ shape: { type: "Sphere", radius: 7 } }));
-    expect(sphere.max.y - sphere.min.y).toBeGreaterThanOrEqual(14);
+    expect(sphere.half.y).toBeGreaterThanOrEqual(7);
     const cylinder = shapeBox(
       aBox({ shape: { type: "Cylinder", len: 20, radius: 5 } }),
     );
-    expect(cylinder.max.y).toBeGreaterThan(cylinder.min.y);
+    expect(cylinder.half.y).toBeGreaterThan(0);
+  });
+
+  it("carries the shape's turn, and the identity for a shape with none", () => {
+    // The half-size is *not* changed by the turn — it is the reach along the shape's own
+    // axes, and the axes are what the turn moves. Growing it here is what would make a
+    // capsule's box balloon as somebody turned it.
+    expect(shapeBox(aBox()).orientation).toEqual({ x: 0, y: 0, z: 0, w: 1 });
+    expect(shapeBox(aBox({ orientation: QUARTER_TURN })).orientation).toEqual({
+      x: 0,
+      y: Math.SQRT1_2,
+      z: 0,
+      w: Math.SQRT1_2,
+    });
+  });
+
+  it("keeps its middle on the shape's origin whatever the turn", () => {
+    // **The pivot, and the reason the gizmo needed no pivot arithmetic (ADR 0051).** A
+    // half-box is symmetric about its own origin, so turning it cannot move its middle —
+    // which means "turn about the centre of the box" and "turn about where it stands" are
+    // the same point, for every primitive, at every angle.
+    for (const angle of [0, 0.4, Math.PI / 4, Math.PI / 2, Math.PI - 0.1]) {
+      const turned = shapeBox(
+        aBox({
+          orientation: [0, Math.sin(angle / 2), 0, Math.cos(angle / 2)],
+          shape: { type: "Capsule", len: 30, radius: 4 },
+        }),
+      );
+      expect(turned.centre).toEqual({ x: 0, y: 20, z: 0 });
+    }
+  });
+});
+
+describe("a figure's box", () => {
+  it("is the model's own size at the point it stands", () => {
+    const figure = aFigure("lamp") as LevelFigure;
+    const box = figureBox({ ...figure, at: [4, 0, 4] }, { x: 1, y: 3, z: 2 });
+    expect(box.centre).toEqual({ x: 4, y: 0, z: 4 });
+    expect(box.half).toEqual({ x: 1, y: 3, z: 2 });
+  });
+
+  it("turns with its yaw, which it did not before ADR 0051", () => {
+    // Documented for a while as "a slightly larger hit than the prop, which is the forgiving
+    // direction". Now that a turned thing can be drawn turned, an upright box round it is
+    // just a box round the wrong shape.
+    const figure = { ...(aFigure("lamp") as LevelFigure), yaw: Math.PI / 2 };
+    expect(figureBox(figure, { x: 1, y: 3, z: 2 }).orientation).toEqual(
+      yawOrientation(Math.PI / 2),
+    );
+    expect(yawOrientation(0)).toEqual({ x: 0, y: 0, z: 0, w: 1 });
+  });
+
+  it("falls back to a stand-in size when the model is not attached", () => {
+    // A level naming a model its place has not carried yet is a real state
+    // (`apply-level.ts` skips rather than refuses), so the box still has to be drawable.
+    expect(figureBox(aFigure("lamp") as LevelFigure, undefined).half).toEqual({
+      x: 1,
+      y: 2,
+      z: 1,
+    });
   });
 });
 
 describe("a ray crossing a box", () => {
   it("reports how far along it the crossing is", () => {
     // The wall's near face is at x = 41 and the ray starts at 500, so 459.
-    expect(rayBoxDistance(AT_THE_WALL, shapeBox(aBox()))).toBe(459);
+    expect(rayOrientedBoxDistance(AT_THE_WALL, shapeBox(aBox()))).toBe(459);
   });
 
   it("misses when it goes past the side", () => {
     expect(
-      rayBoxDistance(aRay([500, 500, 0], [-1, 0, 0]), shapeBox(aBox())),
+      rayOrientedBoxDistance(aRay([500, 500, 0], [-1, 0, 0]), shapeBox(aBox())),
     ).toBeUndefined();
   });
 
   it("misses when it points away from the box", () => {
     expect(
-      rayBoxDistance(aRay([500, 20, 0], [1, 0, 0]), shapeBox(aBox())),
+      rayOrientedBoxDistance(aRay([500, 20, 0], [1, 0, 0]), shapeBox(aBox())),
     ).toBeUndefined();
   });
 
   it("reports zero for a box the ray starts inside", () => {
-    expect(rayBoxDistance(aRay([0, 20, 0], [1, 0, 0]), shapeBox(aBox()))).toBe(
-      0,
-    );
+    expect(
+      rayOrientedBoxDistance(aRay([0, 20, 0], [1, 0, 0]), shapeBox(aBox())),
+    ).toBe(0);
   });
 
   it("misses when it is parallel to a slab the origin is outside of", () => {
     // Straight down past the wall: no x crossing, and the origin is outside the y slab.
     expect(
-      rayBoxDistance(aRay([500, 20, 0], [0, -1, 0]), shapeBox(aBox())),
+      rayOrientedBoxDistance(aRay([500, 20, 0], [0, -1, 0]), shapeBox(aBox())),
     ).toBeUndefined();
   });
 
   it("counts a face as a hit", () => {
-    expect(boxContains({ x: 41, y: 20, z: 0 }, shapeBox(aBox()))).toBe(true);
-    expect(boxContains({ x: 42, y: 20, z: 0 }, shapeBox(aBox()))).toBe(false);
+    expect(orientedBoxContains({ x: 41, y: 20, z: 0 }, shapeBox(aBox()))).toBe(
+      true,
+    );
+    expect(orientedBoxContains({ x: 42, y: 20, z: 0 }, shapeBox(aBox()))).toBe(
+      false,
+    );
+  });
+
+  it("gives the same answer as the axis-aligned test for an un-turned shape", () => {
+    // **The oriented test is two rotations and the slab test, not a second slab test.** If
+    // the identity turn changed the answer, the change of coordinates is wrong — and this
+    // is the case where there is nothing to be wrong about, so it should be exact.
+    const box = shapeBox(aBox());
+    const aligned = {
+      min: { x: -box.half.x, y: 20 - box.half.y, z: -box.half.z },
+      max: { x: box.half.x, y: 20 + box.half.y, z: box.half.z },
+    };
+    for (const ray of [AT_THE_WALL, aRay([0, 20, 0], [1, 0, 0])]) {
+      expect(rayOrientedBoxDistance(ray, box)).toBe(
+        rayBoxDistance(ray, aligned),
+      );
+    }
+  });
+
+  it("is turned by the shape's turn rather than by the world", () => {
+    // A wall of 40 × 3 × 40 laid on its side has its long axis along the world's y, so the
+    // panel that a ray at y = 33 sailed over now catches it. This is the whole difference
+    // between picking a turned shape by its turned box and by an un-turned one: the second
+    // reports a panel lying on its edge as though it were still standing up, and a person
+    // clicking the part of it that is actually there selects nothing.
+    const thin = aBox({
+      id: "panel",
+      shape: { type: "Box", len: { x: 40, y: 3, z: 40 } },
+    });
+    // y = 33 is clear of the upright panel, whose top is at 20 + 3 + 1 = 24.
+    const offTheTop = aRay([500, 33, 0], [-1, 0, 0]);
+
+    expect(rayOrientedBoxDistance(offTheTop, shapeBox(thin))).toBeUndefined();
+    // Laid on its side it reaches 40 up and down as well, so the same ray crosses it — and
+    // its near face is still at x = 41, so still 459. That the ray is caught and the number
+    // is unchanged is the shape of the claim: an axis-aligned answer would have missed it.
+    expect(
+      rayOrientedBoxDistance(
+        offTheTop,
+        shapeBox({ ...thin, orientation: ON_ITS_SIDE }),
+      ),
+    ).toBe(459);
   });
 });
 
@@ -180,7 +310,9 @@ describe("a camera inside a box", () => {
     // subtracted box could never select anything they built inside it.
     const items = [aBox({ id: "room" })];
     const inside = aRay([0, 20, 0], [1, 0, 0]);
-    expect(rayBoxDistance(inside, shapeBox(items[0] as LevelShape))).toBe(0);
+    expect(
+      rayOrientedBoxDistance(inside, shapeBox(items[0] as LevelShape)),
+    ).toBe(0);
     expect(pickShape(items, inside)).toBeUndefined();
   });
 

@@ -212,6 +212,17 @@ const readShape = (value: Record<string, unknown>, where: string): ReadItem => {
       shape: payload.shape,
       combine: payload.combine,
       ...(payload.softness === undefined ? {} : { softness: payload.softness }),
+      /**
+       * **Carried across, which is the whole of ADR 0051.** The table has declared this a
+       * `quat` since the vocabulary was written and `host.ts` has read it off a `shape-add`
+       * since too, so a payload carrying one always passed the check — and this reader used to
+       * drop it, which meant a rotated level shape loaded as an un-rotated one with nothing
+       * saying so. The spread is the same conditional every other optional here uses, so an
+       * item with no turn gains no `orientation` key rather than an identity one.
+       */
+      ...(payload.orientation === undefined
+        ? {}
+        : { orientation: payload.orientation }),
       ...(payload.colour === undefined ? {} : { colour: payload.colour }),
       ...(payload.material === undefined ? {} : { material: payload.material }),
     },
@@ -286,6 +297,8 @@ interface ShapePayload {
   readonly shape: LevelShape["shape"];
   readonly combine: LevelShape["combine"];
   readonly softness?: number;
+  /** Already a validated four-number tuple: the table checks it is four parts in −1…1. */
+  readonly orientation?: readonly [number, number, number, number];
   readonly colour?: { r: number; g: number; b: number };
   readonly material?: string;
 }
