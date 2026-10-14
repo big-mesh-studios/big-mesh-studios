@@ -476,9 +476,21 @@ describe("a payload arrives as JSON text, and text can be wrong", () => {
     expect(
       parseEffectJson(
         "place-remove",
-        JSON.stringify({ place: "x".repeat(200) }),
+        // **Off the limit, not a round number.** This was `200`, which was over the old
+        // sixty-four by a comfortable margin and quietly stopped being over anything when
+        // the limit moved — so the test kept passing a name the reader had started to
+        // accept. Written against the constant, it cannot drift again.
+        JSON.stringify({ place: "x".repeat(MAX_NAME_LENGTH + 1) }),
       ),
     ).toBeNull();
+    // **And on the limit is still accepted**, which is the other half: a bound that refuses
+    // the right thing too is not a bound that works.
+    expect(
+      parseEffectJson(
+        "place-remove",
+        JSON.stringify({ place: "x".repeat(MAX_NAME_LENGTH) }),
+      ),
+    ).not.toBeNull();
   });
 });
 

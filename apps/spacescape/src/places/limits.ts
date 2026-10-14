@@ -32,10 +32,19 @@
  *
  * Names are map keys, appear in every log line, and travel over the wire in every event
  * that mentions them, so an unbounded name is memory and bandwidth a peer can ask for.
- * Sixty-four is the same bound the sibling project uses and is longer than anything a
- * person types.
+ *
+ * **It was sixty-four until a level file could not be read back.** The bound is about names a
+ * *person* chooses, and was far longer than anything typed — but an id in a level file is not
+ * chosen by hand. The level editor builds one from what the item is and where it stands, so it
+ * carries the item's world coordinates in full floating-point form; this planet's coordinates
+ * are large, and one ordinary wall placed by one click came to sixty-five characters. A file
+ * its own reader refused is a different failure from a name being too long, and the second
+ * fix is at `idFor` rather than here — see the note there.
+ *
+ * **256 rather than a rounder number:** a power of two, and an order of magnitude over the
+ * longest id anything here generates.
  */
-export const MAX_NAME_LENGTH = 64;
+export const MAX_NAME_LENGTH = 256;
 
 /**
  * How far from the origin a place's geometry may reach, in world units.

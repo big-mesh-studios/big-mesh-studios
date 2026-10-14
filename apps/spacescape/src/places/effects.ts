@@ -829,6 +829,12 @@ export const EFFECTS: Readonly<Record<EffectTag, EffectSpec>> = {
         name: "key",
         kind: "name",
         required: true,
+        // **Stated, not inherited.** The `name` kind defaults to `MAX_NAME_LENGTH`, and this
+        // field is not that: a stored key is not a shape's id, it is a map key on data a
+        // place holds, and it is bounded by `MAX_DATA_KEY`. Reading the default would make
+        // the two numbers drift the moment either one moved, and this field's own `about`
+        // would go on saying one thing while it did another.
+        max: DATA_LIMITS.key,
         about: `what to call it, at most ${DATA_LIMITS.key} characters`,
       },
       {
@@ -856,6 +862,12 @@ export const EFFECTS: Readonly<Record<EffectTag, EffectSpec>> = {
         name: "key",
         kind: "name",
         required: true,
+        // **Stated, not inherited.** The `name` kind defaults to `MAX_NAME_LENGTH`, and this
+        // field is not that: a stored key is not a shape's id, it is a map key on data a
+        // place holds, and it is bounded by `MAX_DATA_KEY`. Reading the default would make
+        // the two numbers drift the moment either one moved, and this field's own `about`
+        // would go on saying one thing while it did another.
+        max: DATA_LIMITS.key,
         about: `what to call it, at most ${DATA_LIMITS.key} characters`,
       },
     ],

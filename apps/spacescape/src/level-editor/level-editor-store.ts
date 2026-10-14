@@ -531,15 +531,30 @@ export const GIZMO_KINDS: readonly GizmoKind[] = ["move", "rotate", "off"];
  * A name a person can read in a file.
  *
  * **Built from what the item is and where it is, not from a counter**, so `wall-4-20-0`
- * says something in six months. It is not guaranteed unique — two shapes stamped on the
- * same spot collide — and the level reader refuses a duplicate by name rather than
- * letting the second one quietly replace the first.
+ * says something in six months.
+ *
+ * **The coordinates are rounded to whole units, and that is what the name is for.** It was
+ * `shape-Box--135000.123456789--1234.5678901234567--89.0123456789012` before — sixty-five
+ * characters, which is longer than a name may be, so a level file the editor had just
+ * written was a file its own reader refused. Two things were wrong with it and only one of
+ * them was the length: a name nobody can read is not a name, and the seventeen digits after
+ * the point are not information anybody acting on the file will use or can act on. At this
+ * world's scale — a voxel is ten units, so the finest thing anybody can see is a tenth of
+ * that — a whole unit is the finest an id needs to distinguish two placements, and
+ * `shape-Box--135000--1235--89` says the same thing and fits on a line.
+ *
+ * **The cost is that two placements within a unit of each other now collide**, where before
+ * they did not. That is a collision the level reader already refuses by name
+ * (`level-plan.ts`), and it is the honest trade: a name that says where something is, to the
+ * precision the world has, over one that is unique and unreadable. Somebody who needs two
+ * shapes a few centimetres apart names them.
  */
 const idFor = (
   what: string,
   detail: string,
   at: readonly [number, number, number],
-): string => `${what}-${detail}-${at[0]}-${at[1]}-${at[2]}`;
+): string =>
+  `${what}-${detail}-${Math.round(at[0])}-${Math.round(at[1])}-${Math.round(at[2])}`;
 
 /**
  * An id nobody in the level is already using, built from one that is taken.

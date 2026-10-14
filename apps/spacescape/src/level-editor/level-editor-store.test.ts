@@ -13,6 +13,8 @@ import {
   type LevelItem,
   type LevelPlan,
 } from "../places/level/types";
+import { readLevelPlan } from "../places/level/level-plan";
+import { MAX_NAME_LENGTH } from "../places/limits";
 
 /**
  * The store is what the panels talk to, so what is checked here is what a person would
@@ -272,6 +274,77 @@ describe("choosing and changing", () => {
     editor.reorderItem(0, -1);
     await settle();
     expect(editor.items().map((item) => item.id)).toEqual(before);
+  });
+});
+
+/**
+ * The names the editor hands out.
+ *
+ * **A level file is read back by the reader that wrote it**, so an id the editor can produce
+ * and the reader cannot accept is not a cosmetic problem: the level becomes a file that
+ * cannot be loaded. This is the whole of `MAX_NAME_LENGTH`'s history in one place — a level
+ * id is not a name a *person* chose, it is three world coordinates rendered as text, and it
+ * was carrying all seventeen digits after the point.
+ */
+describe("the names the editor makes", () => {
+  /** What one placement actually costs to name, on this planet. */
+  const placedId = async (editor: ReturnType<typeof editorOver>["editor"]) => {
+    // **A real placement's coordinates**, not a tidy one: 130,000-odd units inside the
+    // planet and a point pushed out along a terrain normal, so it has decimals.
+    await settle();
+    return editor.items()[0]?.id ?? "";
+  };
+
+  it("fits inside the limit its own reader enforces, on this planet's coordinates", async () => {
+    const { editor } = editorOver();
+    place(editor, [-135000.123456789, -1234.5678901234567, -89.0123456789012]);
+    const id = await placedId(editor);
+
+    // **The claim, stated as the bug it was.** Before the coordinates were rounded this was
+    // sixty-five characters and the level reader refused the file, so a single wall placed by
+    // a single click produced something that could not be opened again.
+    expect(id.length).toBeLessThanOrEqual(MAX_NAME_LENGTH);
+    expect(editor.hasUndo()).toBe(true);
+  });
+
+  it("stays readable rather than merely short", async () => {
+    const { editor } = editorOver();
+    place(editor, [-135000.123456789, -1234.5678901234567, -89.0123456789012]);
+    const id = await placedId(editor);
+
+    // **Rounded to whole units**, which is finer than a voxel (ten units) and is what a
+    // person reads off it. `-135000.123456789` is not information anybody acting on the file
+    // can use.
+    expect(id).toBe("shape-Box--135000--1235--89");
+  });
+
+  it("still says what the item is and where it stands", async () => {
+    // **The job of the name**, and the reason it is not a counter. Somebody opening a file
+    // in six months reads this and knows a box, on a wall, at those coordinates.
+    const { editor } = editorOver();
+    place(editor, [12, 30, -7], "Sphere", "Subtract");
+    expect(await placedId(editor)).toBe("shape-Sphere-12-30--7");
+  });
+
+  it("refuses a shape whose name the reader would not take", () => {
+    // **The other end of the same limit**, so the reader's rule is the one under test rather
+    // than the editor's arithmetic about it: a name over the limit is a refusal with a
+    // reason, not a truncated name that collides with something else.
+    const read = readLevelPlan({
+      version: 1,
+      items: [
+        {
+          kind: "shape",
+          id: "x".repeat(MAX_NAME_LENGTH + 1),
+          at: [0, 20, 0],
+          shape: { type: "Sphere", radius: 1 },
+          combine: "Add",
+        },
+      ],
+    });
+    expect("refusal" in read && read.refusal.why).toMatch(
+      new RegExp(`longer than ${MAX_NAME_LENGTH}`),
+    );
   });
 });
 

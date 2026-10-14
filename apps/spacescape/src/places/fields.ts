@@ -174,8 +174,19 @@ export const checkField = (
     case "name":
       if (typeof value !== "string") return bad("is not a string");
       if (value.length === 0) return bad("is empty");
-      if (value.length > MAX_NAME_LENGTH) {
-        return bad(`is longer than ${MAX_NAME_LENGTH} characters`);
+      /**
+       * `rule.max` or the kind's default, **and the override is load-bearing.**
+       *
+       * Two name-ish fields want different bounds — `MAX_NAME_LENGTH` for a shape's id,
+       * `MAX_DATA_KEY` for a stored value's key — and the two numbers being equal until
+       * somebody raised one is exactly why a field that said "at most 64" in its own
+       * description went on accepting 65 after the id limit moved. **A bound the field does
+       * not read is a bound the field does not have.**
+       *
+       * Same shape as the `text` case below, which reads its own `max` for the same reason.
+       */
+      if (value.length > (rule.max ?? MAX_NAME_LENGTH)) {
+        return bad(`is longer than ${rule.max ?? MAX_NAME_LENGTH} characters`);
       }
       return null;
 
