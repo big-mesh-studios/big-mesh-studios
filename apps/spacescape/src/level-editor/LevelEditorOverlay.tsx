@@ -114,6 +114,8 @@ export const LevelEditorOverlay = (props: {
   canAttach: boolean;
   onAttach: () => void;
   onClose: () => void;
+  /** Seeds the draw controller from a wall so its lines can be edited. See `app.tsx`. */
+  onEditWalls?: (id: string) => void;
 }) => {
   const [pane, setPane] = createSignal<HTMLDivElement>();
   const [tab, setTab] = createSignal<PanelId>("tools");
@@ -163,7 +165,11 @@ export const LevelEditorOverlay = (props: {
         <ItemListPanel editor={props.editor} />
       </div>
       <div hidden={tab() !== "properties" && mobile()} class={styles.paneBody}>
-        <PropertiesPanel editor={props.editor} models={props.models} />
+        <PropertiesPanel
+          editor={props.editor}
+          models={props.models}
+          onEditWalls={props.onEditWalls}
+        />
       </div>
       <div hidden={tab() !== "level" && mobile()} class={styles.paneBody}>
         <LevelIoPanel

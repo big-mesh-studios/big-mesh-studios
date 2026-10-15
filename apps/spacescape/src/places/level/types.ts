@@ -129,7 +129,70 @@ export interface LevelFigure {
  * **`kind` rather than a shape/prop/npc trio**, because the flat list is what a selection
  * indexes into and what a command names a position in.
  */
-export type LevelItem = LevelShape | LevelFigure;
+export type LevelItem = LevelShape | LevelFigure | LevelWalls;
+
+/**
+ * A set of walls: polylines drawn by hand and extruded upward.
+ *
+ * ## Why this is a third kind and not a `LevelShape`
+ *
+ * **Because the primitive table cannot carry a polyline, and this records the fork the plan
+ * took.** A shape is one `PRIMITIVES` entry, and every entry's parameters are a fixed handful
+ * of named numbers — that is what the operation format's fixed-width records, `fields.ts`'s
+ * `checkShape`, and the guest library's mapped `PlaceShape` all assume. A wall is a list of
+ * points and a height, which fits none of them. The narrow path is a level-only item that
+ * `apply-level.ts` expands into one operation per segment: no `@big-mesh-studios/sdf` change,
+ * no `@big-mesh-studios/csg` change, no binary-format bump, no `.sdfmod` fallout and no
+ * guest-API change. Promoting it later to a real `Walls` primitive is a separate decision with
+ * its own cost, recorded in `docs/draw-walls-plan.md`.
+ *
+ * ## What it costs to be a third kind
+ *
+ * **Every place that asked "shape or figure" now asks "shape, figure or walls".** Picking, the
+ * highlight, the inspector and the level reader each gain a branch. That is the honest price
+ * of the narrow path and it is paid once, here, rather than hidden behind a shape that is not
+ * one.
+ *
+ * ## Why the points are in world space
+ *
+ * **Because the walls were drawn in a plane whose up is the frame's up at the first point, and
+ * that plane is a fact about where they were drawn rather than a thing to re-derive.** Storing
+ * the plane's basis would be a second way to say the same positions, and the two would have to
+ * be kept equal. The points are absolute; `up` is the one direction the extrusion needs, and
+ * it is remembered so a wall drawn on a planet still stands along its own local vertical.
+ */
+export interface LevelWalls {
+  readonly kind: "walls";
+  readonly id: string;
+  /**
+   * The centre of the walls' own box, in world space.
+   *
+   * **Derived from the points rather than a second truth**, and stored so that every item in a
+   * level answers "where are you" the same way — the highlight, the selection and the list all
+   * read `at` of whatever is selected. `apply-level.ts` recomputes it from the points when the
+   * item is built, so it cannot drift from them.
+   */
+  readonly at: Vec3Like;
+  /** Which way the walls stand, unit. The frame's up at the point they were drawn from. */
+  readonly up: Vec3Like;
+  /** Every polyline, in world space, in the order it was drawn. Each has two points or more. */
+  readonly lines: readonly (readonly Vec3Like[])[];
+  /** How tall the walls stand along `up`, from the plane they were drawn in. */
+  readonly height: number;
+  /** How thick a wall is, across its own line. */
+  readonly thickness: number;
+  readonly combine: Combine;
+  /** 0 to 0.25. Above that the stored box is smaller than the shape's reach. */
+  readonly softness?: number;
+  /** One of `MATERIAL_NAMES`. */
+  readonly material?: string;
+  /** 0 to 255 per channel, and **only read on a `Paint`**, as it is for a shape. */
+  readonly colour?: {
+    readonly r: number;
+    readonly g: number;
+    readonly b: number;
+  };
+}
 
 /** The name of one primitive, which is what a shape's own parameters hang off. */
 export type ShapeKind = LevelShape["shape"]["type"];
@@ -147,6 +210,10 @@ export const isLevelShape = (item: LevelItem): item is LevelShape =>
 
 export const isLevelFigure = (item: LevelItem): item is LevelFigure =>
   item.kind === "figure";
+
+/** Whether an item is the drawn-wall kind. See `LevelWalls` for why it is its own kind. */
+export const isLevelWalls = (item: LevelItem): item is LevelWalls =>
+  item.kind === "walls";
 
 /**
  * A level, as it is held and as it is written.

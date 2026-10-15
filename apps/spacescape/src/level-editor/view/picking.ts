@@ -54,7 +54,9 @@ import type {
   LevelFigure,
   LevelItem,
   LevelShape,
+  LevelWalls,
 } from "../../places/level/types";
+import { wallsBounds } from "../../places/level/walls";
 
 /** How far a click reaches, in world units. A level is built from across a room. */
 export const SELECT_REACH = 2000;
@@ -182,6 +184,31 @@ export const figureBox = (
 });
 
 /**
+ * The box a walls item occupies, in its own frame.
+ *
+ * **The world box of every point and every point lifted by the height**, which `walls.ts`
+ * computes once so picking and the highlight cannot disagree. The turn is the identity: the
+ * box is world-axis-aligned, and a wall drawn at an angle occupies a slightly larger box than
+ * it fills — which is the forgiving direction a click wants.
+ */
+export const wallsBox = (item: LevelWalls): OrientedBox => {
+  const bounds = wallsBounds(item);
+  return {
+    centre: {
+      x: (bounds.min.x + bounds.max.x) / 2,
+      y: (bounds.min.y + bounds.max.y) / 2,
+      z: (bounds.min.z + bounds.max.z) / 2,
+    },
+    half: {
+      x: (bounds.max.x - bounds.min.x) / 2,
+      y: (bounds.max.y - bounds.min.y) / 2,
+      z: (bounds.max.z - bounds.min.z) / 2,
+    },
+    orientation: IDENTITY,
+  };
+};
+
+/**
  * Where a ray crosses a box, or `undefined` if it misses.
  *
  * **The slab method**, with the near side taken when the ray runs backwards through it, so
@@ -303,11 +330,16 @@ export const pickShape = (
   for (let index = 0; index < items.length; index++) {
     const item = items[index];
     if (item.kind === "figure") continue;
-    const box = shapeBox(item);
+    const box = item.kind === "walls" ? wallsBox(item) : shapeBox(item);
     // The one skip. A camera inside a subtracted box would otherwise select that box for
     // every click, forever — and a box that has been turned is still the room.
-    if (item.shape.type === "Box" && orientedBoxContains(ray.origin, box))
+    if (
+      item.kind === "shape" &&
+      item.shape.type === "Box" &&
+      orientedBoxContains(ray.origin, box)
+    ) {
       continue;
+    }
 
     const distance = rayOrientedBoxDistance(ray, box);
     if (distance === undefined || distance > reach) continue;

@@ -39,8 +39,8 @@ import { Color } from "@random-mesh/rmsl/scene";
 import type { Scene } from "@random-mesh/rmsl/scene";
 import type { Vec3 } from "@big-mesh-studios/core";
 
-import { figureBox, shapeBox, type OrientedBox } from "./picking";
-import type { LevelFigure, LevelShape } from "../../places/level/types";
+import { figureBox, shapeBox, wallsBox, type OrientedBox } from "./picking";
+import type { LevelItem } from "../../places/level/types";
 
 /** The amber voxelscape uses, kept so the two editors read as the same tool. */
 const HIGHLIGHT_COLOUR = 0xffe066;
@@ -77,11 +77,11 @@ export interface Highlightable {
  * turned prop was documented as "a forgiving direction"; now that a turned thing can be drawn
  * turned, an upright box round it is just a box round the wrong shape.
  */
-export const highlightBounds = (
-  item: LevelShape | LevelFigure,
-  half?: Vec3,
-): OrientedBox =>
-  item.kind === "shape" ? shapeBox(item) : figureBox(item, half);
+export const highlightBounds = (item: LevelItem, half?: Vec3): OrientedBox => {
+  if (item.kind === "shape") return shapeBox(item);
+  if (item.kind === "walls") return wallsBox(item);
+  return figureBox(item, half);
+};
 
 /**
  * A box that draws around the selection, or nothing when there is no selection.

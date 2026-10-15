@@ -41,9 +41,15 @@ import type {
   LevelItem,
   LevelPlan,
   LevelShape,
+  LevelWalls,
   ShapeKind,
 } from "../places/level/types";
-import { isLevelFigure, isLevelShape } from "../places/level/types";
+import {
+  isLevelFigure,
+  isLevelShape,
+  isLevelWalls,
+} from "../places/level/types";
+import { wallsCentre } from "../places/level/walls";
 import { createEnqueue, tryCatch } from "./utils";
 import { DEFAULT_SHAPE_SIZES, MIN_SHAPE_SIZES } from "./panels/vocabulary";
 
@@ -184,6 +190,10 @@ export function createLevelEditor(host: LevelEditorHost) {
     const item = selectedItem();
     return item !== undefined && isLevelFigure(item) ? item : undefined;
   });
+  const selectedWalls = createMemo<LevelWalls | undefined>(() => {
+    const item = selectedItem();
+    return item !== undefined && isLevelWalls(item) ? item : undefined;
+  });
 
   const { doCommand } = createCommander(document);
 
@@ -271,6 +281,7 @@ export function createLevelEditor(host: LevelEditorHost) {
     selectedItem,
     selectedShape,
     selectedFigure,
+    selectedWalls,
     setSelectedIndex,
 
     tool,
@@ -358,6 +369,49 @@ export function createLevelEditor(host: LevelEditorHost) {
       apply(
         (level) => Command.addItem({ ...figure, id }, level.items.length),
         `Add ${figure.figure}`,
+        () => select(id),
+      );
+    },
+
+    /**
+     * Adds a drawn set of walls as one item.
+     *
+     * **The id comes from the point count and the middle**, the same way a shape's comes from
+     * its kind and position: `walls-24--135000-40-0` says what it is and roughly where. The
+     * middle is derived from the points here rather than trusted from the caller, so the two
+     * cannot drift — `wallsCentre` is the same function `apply-level.ts` uses to place the
+     * operations, and one answer for "where is this" is what keeps a selection on the walls it
+     * selected.
+     */
+    addWalls(drawn: {
+      readonly up: readonly [number, number, number];
+      readonly lines: readonly (readonly [number, number, number][])[];
+      readonly height: number;
+      readonly thickness: number;
+      readonly combine: Combine;
+    }): void {
+      const at = wallsCentre(drawn);
+      const points = drawn.lines.reduce(
+        (total, line) => total + line.length,
+        0,
+      );
+      const id = idFor("walls", `${points}`, [at.x, at.y, at.z]);
+      const item: LevelWalls = {
+        kind: "walls",
+        id,
+        at: [at.x, at.y, at.z],
+        up: drawn.up,
+        lines: drawn.lines,
+        height: drawn.height,
+        thickness: drawn.thickness,
+        combine: drawn.combine,
+        ...(drawn.combine === "Paint"
+          ? { colour: { r: 210, g: 200, b: 180 } }
+          : {}),
+      };
+      apply(
+        (level) => Command.addItem(item, level.items.length),
+        "Add walls",
         () => select(id),
       );
     },
@@ -506,13 +560,14 @@ export function createLevelEditor(host: LevelEditorHost) {
 export type LevelEditor = ReturnType<typeof createLevelEditor>;
 
 /** What the editor can do with a click. */
-export type ToolKind = "select" | "shape" | "prop" | "npc";
+export type ToolKind = "select" | "shape" | "prop" | "npc" | "walls";
 
 export const TOOL_KINDS: readonly ToolKind[] = [
   "select",
   "shape",
   "prop",
   "npc",
+  "walls",
 ];
 
 /**

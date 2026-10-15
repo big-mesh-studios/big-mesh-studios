@@ -35,6 +35,7 @@ const TOOL_LABELS: Record<string, string> = {
   shape: "Shape",
   prop: "Prop",
   npc: "NPC",
+  walls: "Walls",
 };
 
 const TOOL_TITLES: Record<string, string> = {
@@ -42,6 +43,7 @@ const TOOL_TITLES: Record<string, string> = {
   shape: "Place a shape where you click",
   prop: "Stand a prop where you click",
   npc: "Stand a named character where you click",
+  walls: "Draw lines in a plane, then Finish to raise them into walls",
 };
 
 /**

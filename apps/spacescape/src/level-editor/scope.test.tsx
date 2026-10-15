@@ -11,6 +11,8 @@ import {
 } from "solid-js";
 import { render } from "@solidjs/web";
 
+import { createDrawLinesController } from "./draw/draw-lines-controller";
+
 /**
  * Why the level editor's effects are created the way they are.
  *
@@ -154,6 +156,43 @@ describe("an effect created inside a tracked effect", () => {
     ]);
     // **Not one warning**, which is the difference between this shape and the one above.
     expect(warnings).toEqual([]);
+  });
+
+  /**
+   * The other rule of the same family, and the one that made a **black screen**: a write to a
+   * signal from inside an owned scope is refused, and the refusal halts the whole reactive
+   * system rather than failing where it was written.
+   *
+   * The level editor's setup needs both halves at once. The draw controller makes a signal, so
+   * it has to be *created* under the component's owner (the tracked effect's owner cannot hold
+   * children — the rule above); but the signal that publishes it is written from `runWithOwner`'s
+   * callback, which is an owned scope, so the write has to be *outside* it. This test is the
+   * app's exact shape: make under the owner, publish from outside. Move the publish inside and
+   * the page goes black with no error at the line that did it — which is why it is pinned here
+   * rather than left to the next person to rediscover.
+   */
+  it("publishes a controller built under the component's owner, from outside it", () => {
+    createRoot(() => {
+      const component = getOwner();
+      const [controller, setController] = createSignal<
+        ReturnType<typeof createDrawLinesController> | undefined
+      >(undefined, { ownedWrite: true });
+
+      setController(
+        runWithOwner(component, () =>
+          createDrawLinesController({
+            groundAt: () => undefined,
+            upAt: () => ({ x: 0, y: 1, z: 0 }),
+            projectToScreen: () => undefined,
+            snapRadius: 10,
+          }),
+        ),
+      );
+      flush();
+
+      expect(controller()).toBeDefined();
+      expect(controller()?.state().active).toBe(false);
+    });
   });
 
   it("is refused without one, because the tracked effect's owner cannot hold children", () => {

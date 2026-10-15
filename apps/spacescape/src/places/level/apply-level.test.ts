@@ -10,6 +10,7 @@ import {
   levelFigureId,
   type LevelItem,
   type LevelPlan,
+  type LevelWalls,
 } from "./types";
 import { PlaceRegistry } from "../place-registry";
 import { SculptDocument } from "../../edit/document";
@@ -48,6 +49,24 @@ const aFigure = (
   figure: "prop",
   model: "lantern.sdfmod",
   at: [4, 0, 4],
+  ...over,
+});
+
+/** A walls item: one straight run from the origin along +X, forty long, thirty tall. */
+const aWalls = (id: string, over: Partial<LevelWalls> = {}): LevelItem => ({
+  kind: "walls",
+  id,
+  at: [0, 0, 0],
+  up: [0, 1, 0],
+  lines: [
+    [
+      [0, 0, 0],
+      [40, 0, 0],
+    ],
+  ],
+  height: 30,
+  thickness: 6,
+  combine: "Add",
   ...over,
 });
 
@@ -417,5 +436,137 @@ describe("a level's figures", () => {
       createLevelApplier(target).apply(aPlan([aFigure("lamp")])),
     ).not.toThrow();
     expect(told).toEqual([]);
+  });
+});
+
+describe("a level's walls", () => {
+  it("expands one polyline into one operation per segment, under derived ids", () => {
+    // **The whole of the narrow path.** A walls item is one file entry and N fold entries;
+    // the derived ids are what makes an edit a `set` and a re-draw a rebuild, so they are
+    // worth pinning rather than trusting.
+    const { target, registry } = world();
+    createLevelApplier(target).apply(
+      aPlan([
+        aWalls("room", {
+          lines: [
+            [
+              [0, 0, 0],
+              [40, 0, 0],
+              [40, 0, 40],
+            ],
+          ],
+        }),
+      ]),
+    );
+    expect(registry.get(LEVEL_PLACE)!.ids()).toEqual(["room#0", "room#1"]);
+  });
+
+  it("stands each segment as a box of its own length, the wall's height and thickness", () => {
+    const { target, registry } = world();
+    createLevelApplier(target).apply(aPlan([aWalls("wall")]));
+    // Forty long, thirty tall, six thick, as half-extents.
+    expect(registry.get(LEVEL_PLACE)!.get("wall#0")?.shape).toEqual({
+      type: "Box",
+      len: { x: 20, y: 15, z: 3 },
+    });
+  });
+
+  it("turns a segment that runs along a different axis", () => {
+    const { target, registry } = world();
+    createLevelApplier(target).apply(
+      aPlan([
+        aWalls("across", {
+          lines: [
+            [
+              [0, 0, 0],
+              [0, 0, 40],
+            ],
+          ],
+        }),
+      ]),
+    );
+    const orientation = registry.get(LEVEL_PLACE)!.get("across#0")!.orientation;
+    // A quarter turn about up, so its length axis lies along Z rather than X. The sign is
+    // whichever way the basis came out; that it is a quarter turn is the claim.
+    expect(Math.abs(orientation.y)).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(Math.abs(orientation.w)).toBeCloseTo(Math.SQRT1_2, 6);
+  });
+
+  it("keeps a segment where it was in the fold when only its height changes", () => {
+    const { target, registry } = world();
+    const apply = createLevelApplier(target);
+    apply.apply(aPlan([aWalls("wall"), aShape("floor")]));
+    const before = registry
+      .get(LEVEL_PLACE)!
+      .operations()
+      .map((op) => op.index);
+
+    // Same segment count, different numbers: a `set`, keeping the fold index.
+    apply.apply(aPlan([aWalls("wall", { height: 60 }), aShape("floor")]));
+    const place = registry.get(LEVEL_PLACE)!;
+    expect(place.operations().map((op) => op.index)).toEqual(before);
+    expect(place.get("wall#0")?.shape).toEqual({
+      type: "Box",
+      len: { x: 20, y: 30, z: 3 },
+    });
+  });
+
+  it("rebuilds when a point is added, because the segment count changed", () => {
+    const { target, registry } = world();
+    const apply = createLevelApplier(target);
+    apply.apply(aPlan([aShape("floor"), aWalls("wall")]));
+    apply.apply(
+      aPlan([
+        aShape("floor"),
+        aWalls("wall", {
+          lines: [
+            [
+              [0, 0, 0],
+              [40, 0, 0],
+              [40, 0, 40],
+            ],
+          ],
+        }),
+      ]),
+    );
+    expect(registry.get(LEVEL_PLACE)!.ids()).toEqual([
+      "floor",
+      "wall#0",
+      "wall#1",
+    ]);
+  });
+
+  it("folds its segments where the file put the item", () => {
+    const { target, registry } = world();
+    createLevelApplier(target).apply(
+      aPlan([aShape("floor"), aWalls("wall"), aShape("roof", 80)]),
+    );
+    expect(registry.get(LEVEL_PLACE)!.ids()).toEqual([
+      "floor",
+      "wall#0",
+      "roof",
+    ]);
+  });
+
+  it("tells the host a box that covers the whole run and its height", () => {
+    // **The chunk-invalidation trap.** `operationBoundsOf` is the union of every part, but a
+    // wall whose far end is unaccounted for would leave the chunks there stale.
+    const { target, told } = world();
+    createLevelApplier(target).apply(
+      aPlan([
+        aWalls("long", {
+          lines: [
+            [
+              [0, 0, 0],
+              [200, 0, -300],
+            ],
+          ],
+        }),
+      ]),
+    );
+    expect(told).toHaveLength(1);
+    expect(told[0]!.max.x).toBeGreaterThanOrEqual(200);
+    expect(told[0]!.min.z).toBeLessThanOrEqual(-300);
+    expect(told[0]!.max.y).toBeGreaterThanOrEqual(30);
   });
 });

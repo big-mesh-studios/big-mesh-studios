@@ -194,6 +194,33 @@ describe("placing something", () => {
       "shape-Box-0-50-0",
     ]);
   });
+
+  it("adds a drawn wall as one item, selected, with a name from its points", async () => {
+    // **One item, however many segments it makes.** A person finished a drawing, not a list
+    // of boxes; the item is what the inspector edits and what the list shows.
+    const { editor } = editorOver();
+    editor.addWalls({
+      up: [0, 1, 0],
+      lines: [
+        [
+          [0, 0, 0],
+          [40, 0, 0],
+        ],
+      ],
+      height: 30,
+      thickness: 6,
+      combine: "Add",
+    });
+    await settle();
+    flush();
+    expect(editor.selectedWalls()).toMatchObject({
+      kind: "walls",
+      height: 30,
+      thickness: 6,
+    });
+    // `walls-<points>-<centre>`, the centre being the box's middle at (20, 15, 0).
+    expect(editor.items()[0].id).toBe("walls-2-20-15-0");
+  });
 });
 
 describe("choosing and changing", () => {

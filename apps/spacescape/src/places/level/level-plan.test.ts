@@ -40,6 +40,26 @@ const aFigure = (
   ...over,
 });
 
+/** A walls item: one run along +X, thirty tall, six thick. */
+const aWalls = (
+  over: Record<string, unknown> = {},
+): Record<string, unknown> => ({
+  kind: "walls",
+  id: "drawn",
+  at: [20, 15, 0],
+  up: [0, 1, 0],
+  lines: [
+    [
+      [0, 0, 0],
+      [40, 0, 0],
+    ],
+  ],
+  height: 30,
+  thickness: 6,
+  combine: "Add",
+  ...over,
+});
+
 const level = (items: unknown[]): unknown => ({ version: 1, items });
 
 /** Reads a file that is meant to be good, so a test says only what it cares about. */
@@ -244,9 +264,9 @@ describe("a level file that is wrong", () => {
     expect(() => ok([aFigure({ figure: "npc", name: "Ada" })])).not.toThrow();
   });
 
-  it("refuses an item that is neither a shape nor a figure", () => {
+  it("refuses an item that is none of the kinds a level holds", () => {
     expect(bad([aBox({ kind: "vehicle" })]).why).toMatch(
-      /a "shape" or a "figure"/,
+      /a "shape", a "figure" or "walls"/,
     );
   });
 
@@ -326,5 +346,52 @@ describe("a level that is too big", () => {
         ),
       ),
     ).not.toThrow();
+  });
+});
+
+describe("a level's walls", () => {
+  it("reads a walls item back with its lines, height and thickness", () => {
+    const plan = ok([aWalls()]);
+    expect(plan.items[0]).toMatchObject({
+      kind: "walls",
+      id: "drawn",
+      up: [0, 1, 0],
+      height: 30,
+      thickness: 6,
+      combine: "Add",
+    });
+    const walls = plan.items[0];
+    expect(walls.kind === "walls" && walls.lines).toEqual([
+      [
+        [0, 0, 0],
+        [40, 0, 0],
+      ],
+    ]);
+  });
+
+  it("round-trips through a file, unchanged", () => {
+    const written = writeLevelPlan(ok([aWalls()]));
+    const read = parseLevelPlan(written);
+    expect("plan" in read && read.plan.items).toEqual(ok([aWalls()]).items);
+  });
+
+  it("refuses a line with fewer than two points, because that is not a wall", () => {
+    expect(bad([aWalls({ lines: [[[0, 0, 0]]] })]).why).toMatch(
+      /fewer than two points/,
+    );
+  });
+
+  it("refuses an upward direction of no length", () => {
+    expect(bad([aWalls({ up: [0, 0, 0] })]).why).toMatch(/zero vector/);
+  });
+
+  it("refuses a field it does not know, rather than half-reading it", () => {
+    expect(bad([aWalls({ thickness2: 3 })]).where).toMatch(/\.thickness2$/);
+  });
+
+  it("labels a walls item by its id, its lines and its points", () => {
+    const walls = ok([aWalls()]).items[0];
+    if (walls.kind !== "walls") throw new Error("expected walls");
+    expect(itemLabel(walls)).toBe("drawn · walls (1, 2 points)");
   });
 });

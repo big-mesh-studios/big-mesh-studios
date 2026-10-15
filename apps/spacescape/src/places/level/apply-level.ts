@@ -60,8 +60,20 @@ import type { Bounds, Quat, Vec3 } from "@big-mesh-studios/core";
 import type { FigureSet } from "../../figures/figure-set";
 import type { FigureModel } from "../model-library";
 
-import type { LevelFigure, LevelItem, LevelPlan, LevelShape } from "./types";
-import { isLevelFigure, levelFigureId, LEVEL_PLACE } from "./types";
+import type {
+  LevelFigure,
+  LevelItem,
+  LevelPlan,
+  LevelShape,
+  LevelWalls,
+} from "./types";
+import {
+  isLevelFigure,
+  isLevelWalls,
+  levelFigureId,
+  LEVEL_PLACE,
+} from "./types";
+import { wallParts, type WallPart } from "./walls";
 
 /** The turn a shape that names none has. `makeOperation` would have used it too. */
 const IDENTITY: Quat = { x: 0, y: 0, z: 0, w: 1 };
@@ -91,10 +103,60 @@ export interface LevelTarget {
  * take a published place's furniture with it. The applier keeps the ids it added last time
  * and removes exactly those.
  */
+/**
+ * The options a walls item's part carries into the fold.
+ *
+ * **Colour and softness come off the item; the turn is the part's own.** Every segment of one
+ * walls item shares its combine, its softness and its colour, but each stands along its own
+ * line — so the item is the thing with a colour and the part is the thing with a direction,
+ * and mixing the two would give every segment the first segment's turn.
+ *
+ * **`material` is not carried, matching `operationOf` for shapes.** A level shape's material
+ * name is dropped on the way to the fold today (`operationOf` passes softness, orientation and
+ * colour and nothing else), so a walls item that carried one would be the only level geometry
+ * whose material applied — a difference nobody asked for. When level materials are wired, both
+ * go through one conversion at once.
+ */
+const wallOptions = (
+  item: LevelWalls,
+  part: WallPart,
+): {
+  softness?: number;
+  orientation: Quat;
+  colour?: { r: number; g: number; b: number };
+} => ({
+  ...(item.softness === undefined ? {} : { softness: item.softness }),
+  orientation: part.orientation,
+  ...(item.colour === undefined ? {} : { colour: item.colour }),
+});
+
 export const createLevelApplier = (target: LevelTarget) => {
   let placedFigureIds: string[] = [];
   /** The operations as they were last applied, by id — so an edit can be a `set` not a rebuild. */
   let applied = new Map<string, Operation>();
+
+  /**
+   * The operations a plan makes, by id, in fold order.
+   *
+   * **A walls item is many operations, so the id list is expanded rather than read off the
+   * items.** The comparison below is about *the fold's* order, and a walls item is one entry in
+   * the file and N entries in the fold — so expanding here is what keeps "the order changed"
+   * a question about the fold rather than about the file. The derived ids are `id#n`, which are
+   * stable while a wall's segment count is, so moving a point re-uses them and adding one does
+   * not.
+   */
+  const operationIds = (plan: LevelPlan): string[] => {
+    const ids: string[] = [];
+    for (const item of plan.items) {
+      if (isLevelFigure(item)) continue;
+      if (isLevelWalls(item)) {
+        for (const part of wallParts(item)) ids.push(part.id);
+      } else {
+        ids.push(item.id);
+      }
+    }
+    return ids;
+  };
 
   /**
    * Whether the shape *list* changed, which is the only thing that forces a rebuild.
@@ -103,11 +165,10 @@ export const createLevelApplier = (target: LevelTarget) => {
    * differently, so the order is part of the question and a set would answer it wrong.
    */
   const orderChanged = (plan: LevelPlan): boolean => {
-    const now = plan.items
-      .filter((item) => !isLevelFigure(item))
-      .map((item) => item.id);
+    const now = operationIds(plan);
     if (now.length !== applied.size) return true;
-    return now.some((id, at) => [...applied.keys()][at] !== id);
+    const ids = [...applied.keys()];
+    return now.some((id, at) => ids[at] !== id);
   };
 
   /** The world-space point an item's array position stands for. */
@@ -200,9 +261,6 @@ export const createLevelApplier = (target: LevelTarget) => {
       const hadFigures = placedFigureIds.length > 0;
 
       const place = target.places.create(LEVEL_PLACE);
-      const shapes = plan.items.filter(
-        (item): item is LevelShape => !isLevelFigure(item),
-      );
 
       const touched: Operation[] = [];
       /** What the last apply put in the place, because clearing it loses the box it reached. */
@@ -216,23 +274,60 @@ export const createLevelApplier = (target: LevelTarget) => {
         removed = place.operations();
         place.ids().forEach((id) => place.remove(id));
         applied = new Map();
-        for (const item of shapes) {
-          const operation = place.add(item.id, operationOf(item));
-          if (operation === undefined) {
-            // The place is full. `PlaceHandle.add` refuses at
-            // `MAX_OPERATIONS_PER_PLACE` and this is the place limit; the level reader
-            // caps at the same number, so reaching here means the world gained shapes
-            // from somewhere else, and the rest of the level is better standing than
-            // stopping half way.
-            break;
+        // **Labelled, because a walls item is a loop of adds inside a loop of items.** A
+        // `break` on the inner loop would fill the place with the rest of one wall and then
+        // carry on with the next item, which is the opposite of "stop when it is full".
+        rebuild: for (const item of plan.items) {
+          if (isLevelFigure(item)) continue;
+          if (isLevelWalls(item)) {
+            for (const part of wallParts(item)) {
+              const operation = place.add(
+                part.id,
+                placeOperation(
+                  part.at,
+                  part.shape,
+                  item.combine,
+                  wallOptions(item, part),
+                ),
+              );
+              // The place is full. `PlaceHandle.add` refuses at `MAX_OPERATIONS_PER_PLACE`
+              // and this is the place limit; the rest of the level is better standing than
+              // stopping half way.
+              if (operation === undefined) break rebuild;
+              applied.set(part.id, operation);
+              touched.push(operation);
+            }
+            continue;
           }
+          const operation = place.add(item.id, operationOf(item));
+          if (operation === undefined) break rebuild;
           applied.set(item.id, operation);
           touched.push(operation);
         }
       } else {
         // Not a rebuild: the shapes are all still here, so each one that changed is a
         // `set`, which keeps the index it already had and therefore its place in the fold.
-        for (const item of shapes) {
+        // A walls item's parts keep their derived ids while its segment count does, so a
+        // moved point or a changed height is a `set` here too.
+        for (const item of plan.items) {
+          if (isLevelFigure(item)) continue;
+          if (isLevelWalls(item)) {
+            for (const part of wallParts(item)) {
+              const previous = applied.get(part.id);
+              if (previous === undefined) continue;
+              const operation = placeOperation(
+                part.at,
+                part.shape,
+                item.combine,
+                wallOptions(item, part),
+              );
+              if (place.set(part.id, operation)) {
+                touched.push(previous);
+                applied.set(part.id, { ...operation, index: previous.index });
+              }
+            }
+            continue;
+          }
           const previous = applied.get(item.id);
           if (previous === undefined) continue;
           const operation = operationOf(item);

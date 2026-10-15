@@ -20,7 +20,19 @@ export default defineConfig({
     // dependency to start a test run that touches no JSX, and on a platform with
     // neither a binary nor a working WebAssembly host it fails the whole suite
     // rather than one file.
-    solid({ ssr: false, include: /\.[jt]sx$/ }),
+    solid({
+      ssr: false,
+      include: /\.[jt]sx$/,
+      /*
+       * **No HMR refresh under vitest.** `solid-refresh` is a virtual module the plugin
+       * injects in dev; a test run does not want hot reloading, and on a Windows machine the
+       * virtual id resolves to `file:///@solid-refresh`, which has no drive letter and which
+       * `fileURLToPath` refuses — so the suite fails to load with "must be a file URL ...
+       * Received 'file:///@solid-refresh'" before a single test runs. Off under `VITEST`,
+       * which vitest sets, and on everywhere else.
+       */
+      refresh: { disabled: process.env.VITEST === "true" },
+    }),
   ],
 
   server: {

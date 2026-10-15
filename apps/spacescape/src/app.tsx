@@ -26,6 +26,7 @@ import {
 } from "solid-js";
 import {
   Color,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   SphereGeometry,
@@ -56,6 +57,26 @@ import {
 } from "./level-editor/camera/CameraControl";
 import { DEFAULT_SHAPE_SIZES, isAxial } from "./level-editor/panels/vocabulary";
 import {
+  DEFAULT_WALL_HEIGHT,
+  DEFAULT_WALL_THICKNESS,
+} from "./level-editor/panels/vocabulary";
+import { DrawLinesUi } from "./level-editor/draw/DrawLinesUi";
+import {
+  createDrawLinesController,
+  type DrawLinesController,
+} from "./level-editor/draw/draw-lines-controller";
+import {
+  createDrawLinesOverlay,
+  type DrawLinesOverlay,
+} from "./level-editor/draw/draw-lines-overlay";
+import { planeThrough } from "./level-editor/draw/plane";
+import { wallsCentre } from "./places/level/walls";
+import {
+  projectToScreen as projectPointToScreen,
+  type ScreenPoint,
+  type ScreenSize,
+} from "./level-editor/view/move-handle";
+import {
   createHighlight,
   highlightBounds,
 } from "./level-editor/view/highlight";
@@ -85,8 +106,14 @@ import {
   LEVEL_FILE,
   type LevelItem,
   type LevelPlan,
+  type LevelWalls,
 } from "./places/level/types";
-import { pickAlong, rayThroughScreen, toNdc } from "@big-mesh-studios/picking";
+import {
+  pickAlong,
+  rayThroughScreen,
+  toNdc,
+  type Ray,
+} from "@big-mesh-studios/picking";
 import { OrbitController } from "./controls/orbit-camera";
 import {
   describePrecision,
@@ -705,6 +732,40 @@ export default function App() {
   let applyLevel: ((plan: LevelPlan) => void) | undefined;
   let clickLevelWorld: ((clientX: number, clientY: number) => void) | undefined;
 
+  /**
+   * The draw-lines controller, and the overlay that draws its draft into the scene.
+   *
+   * **A signal and a plain holder, because they have different audiences.** The overlay is a
+   * scene object the frame loop updates and nothing reactive reads, so it is a `let`. The
+   * controller's snapshot is read by `DrawLinesUi`, which is a component, so it is a signal —
+   * filled inside `onSettled` (which is where the camera, the field and the frame exist) and
+   * read by the render the same way `clickLevelWorld` is.
+   */
+  const [drawLines, setDrawLines] = createSignal<
+    DrawLinesController | undefined
+  >();
+  let drawLinesOverlay: DrawLinesOverlay | undefined;
+  /**
+   * The walls item being re-drawn, if any.
+   *
+   * **So Finish updates a wall rather than adding a second one.** The draft is seeded from the
+   * item the person asked to edit, and this is the name it is written back under — the item's
+   * id, not its index, because an edit elsewhere in the list would move an index out from under
+   * a queue that has not run yet.
+   */
+  const [editingWallsId, setEditingWallsId] = createSignal<
+    string | undefined
+  >();
+  /**
+   * How near, in CSS pixels, the aim snaps onto a placed point.
+   *
+   * **Finger-sized, like `GRAB_RADIUS`.** A mouse snaps comfortably at a third of this; a
+   * fingertip is fifty pixels across and cannot report its centre, so a radius sized for a
+   * cursor would make a point that a finger can see and cannot land on. The same number draws
+   * the rings, so what a person can hit is what they can see.
+   */
+  const SNAP_RADIUS_PX = 28;
+
   /** The models a place has carried, for the editor's picker. */
   const [levelModels, setLevelModels] = createSignal<readonly string[]>([]);
   const [levelCameraKind, setLevelCameraKind] =
@@ -738,6 +799,101 @@ export default function App() {
     }
     lastPlacement = levelEditor.tool();
     levelEditor.setTool("select");
+  };
+
+  /**
+   * Turns whatever has been drawn into walls, or writes it back over the wall being edited.
+   *
+   * **One level item either way, and the item is what the inspector edits.** A fresh draw
+   * hands its polylines over in world space with the plane's own `up`, and `apply-level.ts`
+   * turns each segment into a box; the height and thickness come from the vocabulary's
+   * defaults until the inspector changes them. An edit reuses the item it was seeded from, so
+   * the height, thickness, combine, material and colour a person already chose survive the
+   * change of shape. Either way the controller is reset, because the next thing a person does
+   * is draw another set of walls.
+   */
+  const finishWalls = (): void => {
+    const controller = drawLines();
+    if (controller === undefined) return;
+    const drawn = controller.finish();
+    if (drawn === undefined) return;
+
+    const up: [number, number, number] = [
+      drawn.plane.up.x,
+      drawn.plane.up.y,
+      drawn.plane.up.z,
+    ];
+    const lines = drawn.chains.map((chain) =>
+      chain.map((point): [number, number, number] => [
+        point.x,
+        point.y,
+        point.z,
+      ]),
+    );
+
+    const editingId = editingWallsId();
+    const index =
+      editingId === undefined
+        ? -1
+        : levelEditor.items().findIndex((item) => item.id === editingId);
+    const editing = index === -1 ? undefined : levelEditor.items()[index];
+
+    if (editing !== undefined && editing.kind === "walls") {
+      // **The centre is recomputed from the new lines**, because the item's `at` is a function
+      // of its points and an edit can move them. Everything else is carried over: the person
+      // is changing the layout, not re-deciding what the wall is made of.
+      const at = wallsCentre({ up, height: editing.height, lines });
+      levelEditor.updateItem(index, {
+        ...editing,
+        up,
+        lines,
+        at: [at.x, at.y, at.z],
+      });
+      setEditingWallsId(undefined);
+    } else {
+      levelEditor.addWalls({
+        up,
+        lines,
+        height: DEFAULT_WALL_HEIGHT,
+        thickness: DEFAULT_WALL_THICKNESS,
+        combine: levelEditor.combine(),
+      });
+    }
+    controller.reset();
+  };
+
+  /**
+   * Seeds the draw controller from a wall so its lines can be edited, and switches to the tool.
+   *
+   * **The plane comes back from the first point and the stored `up`**, which is the whole
+   * reason a walls item keeps its own vertical: a wall drawn on a planet has no world `up` to
+   * re-derive from, and re-drawing it on a plane at the wrong angle would tilt every segment.
+   * The lines are handed to the controller as world points, so what the person sees on the
+   * canvas is the wall they picked.
+   */
+  const beginEditWalls = (id: string): void => {
+    const controller = drawLines();
+    if (controller === undefined) return;
+    const item = levelEditor
+      .items()
+      .find(
+        (candidate): candidate is LevelWalls =>
+          candidate.kind === "walls" && candidate.id === id,
+      );
+    if (item === undefined) return;
+    const first = item.lines[0]?.[0];
+    if (first === undefined) return;
+    controller.seed(
+      planeThrough(
+        { x: first[0], y: first[1], z: first[2] },
+        { x: item.up[0], y: item.up[1], z: item.up[2] },
+      ),
+      item.lines.map((line) =>
+        line.map((point) => ({ x: point[0], y: point[1], z: point[2] })),
+      ),
+    );
+    setEditingWallsId(id);
+    levelEditor.setTool("walls");
   };
 
   /**
@@ -1948,6 +2104,10 @@ export default function App() {
     // It has no scene, no renderer and no camera of its own. It pins this canvas into a
     // pane, drives this camera, and asks this world to change.
     const levelHighlight = createHighlight(viewport.scene);
+    // The draft's own lines, added after the world so a wall being drawn shows over terrain
+    // (its material does not depth-test — see `draw-lines-overlay.ts`) and before the ghost
+    // and the handles, so those still draw on top of it.
+    drawLinesOverlay = createDrawLinesOverlay(viewport.scene);
     /**
      * The gizmo, and where it goes in the scene.
      *
@@ -2096,6 +2256,64 @@ export default function App() {
     };
 
     /**
+     * The ray through a point given in page coordinates, in the canvas's own pixels.
+     *
+     * **Rect-relative, not page-relative.** The canvas is positioned into the editor's pane,
+     * so a page coordinate would aim at the wrong place by exactly the pane's offset — the
+     * same correction `pointerOnCanvas` makes, and the reason `clickLevelWorld` below shares
+     * this rather than dividing page pixels by the canvas's size.
+     */
+    const rayAtClient = (clientX: number, clientY: number): Ray | undefined => {
+      const rect = canvas.getBoundingClientRect();
+      viewport.camera.updateMatrixWorld();
+      const ndc = toNdc(
+        clientX - rect.left,
+        clientY - rect.top,
+        rect.width,
+        rect.height,
+      );
+      return rayThroughScreen(viewport.camera, ndc.x, ndc.y);
+    };
+
+    /** Moves the draw's aim to wherever a pointer or a crosshair is. */
+    const wallAim = (clientX: number, clientY: number): void => {
+      const controller = drawLines();
+      if (controller === undefined) return;
+      const ray = rayAtClient(clientX, clientY);
+      if (ray === undefined) return;
+      controller.aim(pointerOnCanvas({ clientX, clientY }), ray);
+    };
+
+    /**
+     * What a press — or the touch **Apply** button — does for the walls tool.
+     *
+     * **`commit` is the whole device difference.** A mouse press commits (the left-click
+     * shortcut for Next); a finger press begins aiming and latches on release. Apply places a
+     * point at the crosshair, which is the same commit, so a phone can draw either by dragging
+     * or by aiming the camera and tapping.
+     */
+    const wallsPress = (
+      clientX: number,
+      clientY: number,
+      commit: boolean,
+    ): void => {
+      const controller = drawLines();
+      if (controller === undefined) return;
+      const ray = rayAtClient(clientX, clientY);
+      if (ray === undefined) return;
+      const pointer = pointerOnCanvas({ clientX, clientY });
+      if (!controller.state().active) {
+        if (!controller.begin(pointer, ray)) {
+          levelEditor.setNotice("nothing under the pointer to draw on");
+        }
+        return;
+      }
+      // `begin` while a plane exists is a press that wants to aim; see the controller.
+      if (commit) controller.commit();
+      else controller.begin(pointer, ray);
+    };
+
+    /**
      * How far the camera is from a point, for the handles' size.
      *
      * **Camera to the item, and not camera to whatever the camera orbits** — see
@@ -2115,15 +2333,17 @@ export default function App() {
     });
 
     /** The turn a level item carries, as the quaternion the maths here speaks. */
-    const itemOrientation = (item: LevelItem): Quat =>
-      isLevelFigure(item) || item.orientation === undefined
-        ? IDENTITY_QUAT
-        : {
-            x: item.orientation[0],
-            y: item.orientation[1],
-            z: item.orientation[2],
-            w: item.orientation[3],
-          };
+    const itemOrientation = (item: LevelItem): Quat => {
+      if (item.kind !== "shape" || item.orientation === undefined) {
+        return IDENTITY_QUAT;
+      }
+      return {
+        x: item.orientation[0],
+        y: item.orientation[1],
+        z: item.orientation[2],
+        w: item.orientation[3],
+      };
+    };
 
     /**
      * Where the handles stand, and whether they are showing at all.
@@ -2164,7 +2384,13 @@ export default function App() {
      */
     const turnable = (item: LevelItem | undefined): boolean => {
       if (item === undefined) return false;
-      return isLevelFigure(item) || isAxial(item.shape.type);
+      if (item.kind === "figure") return true;
+      // **A drawn wall has no single turn to grab.** Its height is edited in the inspector and
+      // its direction is a property of the line, not of the item, so a rotate gizmo would have
+      // nothing to turn. It is also why `standHandles` shows no move arrows for one: the gate
+      // is this same answer.
+      if (item.kind === "walls") return false;
+      return isAxial(item.shape.type);
     };
 
     /**
@@ -2180,10 +2406,34 @@ export default function App() {
      * omission: both are placed from the player's position, which is frozen, and a cloud
      * layer drifting past while somebody places a wall makes the wall harder to see.
      */
+    /**
+     * Draws the draft, or hides it when the walls tool is not what is active.
+     *
+     * **Called from the frame loop, not from an effect**, for the reason the handles are: a
+     * ring's size is a function of the camera's distance, which is not a signal, so an effect
+     * would leave the rings a zoom behind. Reading `drawLines()` and `levelEditor.tool()` here
+     * is an untracked read in a non-reactive scope, exactly as `standHandles` reads the
+     * selection.
+     */
+    const renderDrawLines = (): void => {
+      const overlay = drawLinesOverlay;
+      if (overlay === undefined) return;
+      const controller = drawLines();
+      const drawing =
+        levelEditor.tool() === "walls" && controller !== undefined;
+      overlay.setVisible(drawing);
+      if (!drawing || controller === undefined) return;
+      const rect = canvas.getBoundingClientRect();
+      const size: ScreenSize = { width: rect.width, height: rect.height };
+      overlay.render(controller.state(), viewport.camera, size, SNAP_RADIUS_PX);
+    };
+
     const editorFrame = (dt: number): void => {
       levelCamera().update(dt);
       /** Before the render, because the handles are part of what is about to be drawn. */
       standHandles();
+      /** The draft, if there is one, on the same frame the world is drawn. */
+      renderDrawLines();
       /** Whatever the level asked for, now that the mesher may be free to take it. */
       sculpt.flushInvalidated();
       viewport.render();
@@ -2198,6 +2448,14 @@ export default function App() {
      * correct in both the overlay and the game.
      */
     clickLevelWorld = (clientX: number, clientY: number): void => {
+      // **The walls tool places a point, not a shape.** On a phone this is the Apply button at
+      // the crosshair and it commits, exactly as Next does; on a desktop the pointer handlers
+      // own the press, so this path is the touch one.
+      if (levelEditor.tool() === "walls") {
+        wallsPress(clientX, clientY, true);
+        return;
+      }
+
       viewport.camera.updateMatrixWorld();
       const ndc = toNdc(
         clientX,
@@ -2271,6 +2529,14 @@ export default function App() {
      * false because that geometry belongs to every other placement of the model too.
      */
     const showDragged = (item: LevelItem): void => {
+      if (item.kind === "walls") {
+        // **Not reachable today, and stated rather than assumed.** A walls item is not
+        // `turnable`, so `standHandles` shows neither the move arrows nor the rotate rings, so
+        // no drag can begin on one. If a move handle is ever offered for walls, this is the
+        // line that has to build their preview — a mesh from `wallParts`, which is what
+        // `ghost.ts` would need.
+        return;
+      }
       if (!isLevelFigure(item)) {
         levelGhost.show(shapeGhostMesh(item, levelGhost.material), true);
         return;
@@ -2450,6 +2716,11 @@ export default function App() {
         return;
       }
 
+      // **A drawn wall has no turn to write.** Its rings are never shown (`turnable`), so a
+      // rotate drag cannot start on one; this is the branch that keeps the type honest if one
+      // ever is.
+      if (current.kind === "walls") return;
+
       if (
         turned.x === start.x &&
         turned.y === start.y &&
@@ -2473,6 +2744,53 @@ export default function App() {
           : { x: 0, y: 0, z: 1 };
 
     /**
+     * Scratch for the draw projection, allocated once.
+     *
+     * **A `Matrix4` and a `Vector3` reused rather than built per call**, because this is asked
+     * once per pointer move and once per frame for the rings — the same reason
+     * `view/move-handles.ts` keeps its own. The view-projection is read fresh each call,
+     * because the camera moves between them.
+     */
+    const drawViewProjection = new Matrix4();
+    const drawVector = new Vector3();
+    const projectForDrawing = (point: Vec3): ScreenPoint | undefined => {
+      viewport.camera.updateMatrixWorld();
+      drawViewProjection
+        .copy(viewport.camera.projectionMatrix)
+        .multiply(viewport.camera.matrixWorldInverse);
+      drawVector.set(point.x, point.y, point.z);
+      const rect = canvas.getBoundingClientRect();
+      return projectPointToScreen(drawVector, drawViewProjection, {
+        width: rect.width,
+        height: rect.height,
+      });
+    };
+
+    /**
+     * The draw controller: the state machine `DrawLinesUi` reads and the pointer handlers
+     * drive.
+     *
+     * **Made under `appOwner`, and the signal written outside it, and both halves are
+     * load-bearing.** The controller makes a signal, and `onSettled`'s own owner forbids that
+     * (`PRIMITIVE_IN_FORBIDDEN_SCOPE`), so the *making* runs under the component's owner. But
+     * writing to a signal from inside an owned scope is itself refused
+     * (`REACTIVE_WRITE_IN_OWNED_SCOPE`) and halts the whole reactive system — a black screen —
+     * so the *write* stays out here in `onSettled`'s body, where the other setup writes
+     * (`setPrecision`, `setLevelModels`) already are. `runWithOwner` returns the controller, so
+     * the two are one expression rather than a holder that exists for three lines.
+     */
+    setDrawLines(
+      runWithOwner(appOwner, () =>
+        createDrawLinesController({
+          groundAt: (ray) => pickAlong(sculpt.collisionField, ray)?.point,
+          upAt: (point) => WORLD.frame.upAt(point),
+          projectToScreen: projectForDrawing,
+          snapRadius: SNAP_RADIUS_PX,
+        }),
+      ),
+    );
+
+    /**
      * The four things that watch, created under the component's own owner rather than under
      * `onSettled`'s tracked effect — see where `appOwner` is declared for why, and
      * `level-editor/scope.test.tsx` for the case this works around.
@@ -2485,6 +2803,24 @@ export default function App() {
     runWithOwner(appOwner, () => {
       /** Which style was live last, so a change is a change rather than an initial read. */
       let lastCameraKind: CameraControlsKind | undefined;
+
+      /**
+       * The draft is left behind when the walls tool is not what is active, or the editor
+       * closes.
+       *
+       * **Both, in one effect, because they are the same thing to the draft** — "you are no
+       * longer drawing a wall" — and two effects would be two teardowns to keep in step. The
+       * edit target goes with it, so a finish after switching away adds a new wall rather than
+       * overwriting one nobody is looking at any more.
+       */
+      createEffect(
+        () => levelEditorOpen() && levelEditor.tool() === "walls",
+        (drawing) => {
+          if (drawing) return;
+          drawLines()?.reset();
+          setEditingWallsId(undefined);
+        },
+      );
 
       // A switch of style hands the pose across rather than re-seeding from defaults, so
       // the view does not jump — and it hands the *listener* across with it, because the
@@ -2560,6 +2896,26 @@ export default function App() {
         camera.update(0);
 
         /**
+         * Whether the current walls press has taken the pointer from the camera, and the one
+         * call that keeps it balanced.
+         *
+         * **Claimed per press, not for the whole session.** `setToolOwnsLeft` declines *every*
+         * single-pointer drag and the wheel, so holding it for as long as the walls tool is on
+         * would take away right-drag orbit and zoom on a desktop — the whole of navigation.
+         * Claiming on the press and releasing on the lift blocks one-finger orbit exactly while
+         * a finger is aiming; a mouse's right button and the wheel are left alone, and a mouse's
+         * left press is already claimed by `takeLeftButton`. Two fingers still navigate, because
+         * `OrbitController` runs its multi-pointer branch before it consults the flag
+         * (`camera/orbit.ts:325-329`).
+         */
+        let wallClaim = false;
+        const claimWalls = (claimed: boolean): void => {
+          if (claimed === wallClaim) return;
+          wallClaim = claimed;
+          levelCamera().claimGesture(claimed);
+        };
+
+        /**
          * The gizmo's press, registered **before** the camera attaches.
          *
          * **The order is the point.** `OrbitController` reads its tool flag while deciding
@@ -2570,6 +2926,18 @@ export default function App() {
          */
         const onPointerDown = (event: PointerEvent): void => {
           justDragged = false;
+          // **The walls tool owns the press entirely**, so it is branched on first: its press
+          // is not a gizmo grab, and on a mouse it is the shortcut for `Next`.
+          if (levelEditor.tool() === "walls") {
+            // A finger or pen aims with the drag, so the camera stands down for the press.
+            if (event.pointerType !== "mouse") claimWalls(true);
+            wallsPress(
+              event.clientX,
+              event.clientY,
+              event.pointerType === "mouse" && event.button === 0,
+            );
+            return;
+          }
           // **Cast to the listener type `pointer()` takes, and not the other way round.**
           // The cast is safe because this listener is on `canvas` and `pointer()` reads
           // `currentTarget` only to take the capture — which is the element that raised the
@@ -2580,12 +2948,37 @@ export default function App() {
         };
         canvas.addEventListener("pointerdown", onPointerDown);
 
+        /**
+         * The aim, on every move: hover for a mouse, drag for a finger.
+         *
+         * **One handler for both, because the browser already tells them apart.** A mouse
+         * fires `pointermove` while its button is up, so a hover aims; a finger fires it only
+         * while touching, so a drag aims. There is nothing here to branch on — branching would
+         * be re-deciding something the device has already decided.
+         */
+        const onPointerMove = (event: PointerEvent): void => {
+          if (levelEditor.tool() !== "walls") return;
+          wallAim(event.clientX, event.clientY);
+        };
+        canvas.addEventListener("pointermove", onPointerMove);
+
         takeLevelCamera(levelCameraKind());
         applyEditorInput(true);
 
         // The canvas, once the editor owns it. Detached on close, because a listener that
         // outlives the editor is a click handler that places a wall with the editor shut.
         const onPointerUp = (event: PointerEvent): void => {
+          /**
+           * **A release commits nothing, on either device.** On a mouse the commit already
+           * happened on the press; on a finger the aim latches and waits for Next, so the
+           * readout can be typed into after the finger lifts. This is the one line that makes
+           * the touch flow work, and it is deliberately before every other branch. A finger's
+           * claim on the camera ends here with it.
+           */
+          if (levelEditor.tool() === "walls") {
+            claimWalls(false);
+            return;
+          }
           if (event.pointerType !== "mouse" || event.button !== 0) return;
           /**
            * **A drag that just ended is not a click.** The gizmo's own drag ends in this
@@ -2601,6 +2994,11 @@ export default function App() {
           clickLevelWorld?.(event.clientX, event.clientY);
         };
         canvas.addEventListener("pointerup", onPointerUp);
+        // **A taken-back pointer must give the camera back too.** The browser cancels a
+        // gesture it decides is its own, and a claim that outlived it would leave a camera that
+        // cannot be moved with one finger until the next press.
+        const onPointerCancel = (): void => claimWalls(false);
+        canvas.addEventListener("pointercancel", onPointerCancel);
 
         // The pointer lock goes, because a locked pointer delivers every click to the canvas
         // as a click on the crosshair and the editor is trying to read where it landed.
@@ -2608,14 +3006,18 @@ export default function App() {
 
         return () => {
           canvas.removeEventListener("pointerdown", onPointerDown);
+          canvas.removeEventListener("pointermove", onPointerMove);
           canvas.removeEventListener("pointerup", onPointerUp);
+          canvas.removeEventListener("pointercancel", onPointerCancel);
           input.setEnabled(true);
           releaseLock();
           attachedLevelCamera?.dispose();
           attachedLevelCamera = undefined;
           // **A claim that outlived its drag would leave a camera that cannot be moved**,
           // so closing the editor with one held — which a press during the frame between
-          // the drag starting and the editor closing can arrange — gives it back.
+          // the drag starting and the editor closing can arrange — gives it back. The walls
+          // claim is its own and is given back separately.
+          claimWalls(false);
           levelCamera().claimGesture(false);
           dragging = false;
           justDragged = false;
@@ -3097,6 +3499,7 @@ export default function App() {
               );
             }}
             onClose={() => setLevelEditorOpen(false)}
+            onEditWalls={beginEditWalls}
           />
           <Show when={levelEditor.coarsePointer()}>
             <LevelEditorTouchControls
@@ -3112,6 +3515,18 @@ export default function App() {
                   box.top + box.height / 2,
                 );
               }}
+            />
+          </Show>
+          {/*
+            **The draw controls, only while the walls tool is on.** They carry the flow's own
+            acts — Next, Undo point, New line, Finish, and the direction locks — so a person
+            drawing a wall has them under the thumb whether they are on a phone or a laptop.
+          */}
+          <Show when={levelEditor.tool() === "walls"}>
+            <DrawLinesUi
+              controller={drawLines}
+              onFinish={finishWalls}
+              editing={editingWallsId() !== undefined}
             />
           </Show>
           <LevelEditorHint

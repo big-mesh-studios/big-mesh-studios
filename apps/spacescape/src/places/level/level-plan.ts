@@ -35,7 +35,15 @@
 
 import { inspectEffect } from "../effects";
 import { MAX_OPERATIONS_PER_PLACE } from "../place-registry";
-import type { LevelItem, LevelPlan, LevelShape } from "./types";
+import {
+  MAX_CHANNEL,
+  MAX_COORDINATE,
+  MAX_NAME_LENGTH,
+  MAX_SHAPE_SIZE,
+  MAX_SOFTNESS,
+} from "../limits";
+import { MATERIAL_NAMES } from "../../render/material-names";
+import type { Combine, LevelItem, LevelPlan, LevelShape } from "./types";
 import { isLevelFigure, LEVEL_PLACE } from "./types";
 
 /**
@@ -60,6 +68,22 @@ export const MAX_LEVEL_ITEMS = MAX_OPERATIONS_PER_PLACE;
 
 /** The format version this build reads. */
 export const LEVEL_VERSION = 1;
+
+/**
+ * The most polylines one walls item may hold.
+ *
+ * **Not in `places/limits.ts`, and deliberately.** That file is bounded payload fields a
+ * script can send, and its test fails on a bound nothing enforces. A walls item is a level
+ * document's own vocabulary and no effect carries it, so its bounds live beside the reader
+ * that enforces them — the same reasoning `MAX_LEVEL_ITEMS` above is here rather than there.
+ *
+ * The number is a drawing of a building: sixty-four polylines is a floor plan with rooms,
+ * doorways and a boundary, and far more than one session's hand-drawing produces.
+ */
+export const MAX_WALL_LINES = 64;
+
+/** The most points one polyline may hold, so a drag cannot build an unbounded shape. */
+export const MAX_WALL_POINTS = 512;
 
 /** A level that could not be read, and the one thing that was wrong with it. */
 export interface LevelRefusal {
@@ -181,10 +205,11 @@ const readItem = (value: unknown, where: string): ReadItem => {
 
   if (value.kind === "shape") return readShape(value, where);
   if (value.kind === "figure") return readFigure(value, where);
+  if (value.kind === "walls") return readWalls(value, where);
 
   return refuse(
     `${where}.kind`,
-    `is ${JSON.stringify(value.kind)}, and an item is a "shape" or a "figure"`,
+    `is ${JSON.stringify(value.kind)}, and an item is a "shape", a "figure" or "walls"`,
   );
 };
 
@@ -263,6 +288,226 @@ const readFigure = (
 };
 
 /**
+ * Reads a walls item.
+ *
+ * **Its own validation rather than `inspectEffect`, and that is the one place this file has
+ * two paths.** Every other item stands for an effect and is checked against the effect table
+ * ([ADR 0017](../../../../docs/adr/0017-the-vocabulary-is-a-table.md)) — that is the whole
+ * trust boundary. A walls item stands for no effect: the plan's narrow path keeps it a level
+ * document's own kind, expanded into per-segment operations by `apply-level.ts` rather than
+ * sent as one. So the rules the table would have enforced are written here, and the caps in
+ * particular are here because a hand-drawn polyline is the one payload whose *size* is the
+ * person's rather than a primitive's.
+ */
+const readWalls = (value: Record<string, unknown>, where: string): ReadItem => {
+  const id = value.id;
+  if (typeof id !== "string" || id === "") {
+    return refuse(`${where}.id`, "is not a name");
+  }
+  if (id.length > MAX_NAME_LENGTH) {
+    return refuse(
+      `${where}.id`,
+      `is longer than ${MAX_NAME_LENGTH} characters`,
+    );
+  }
+
+  const at = readPoint(value.at, `${where}.at`);
+  if ("refusal" in at) return at;
+  const up = readPoint(value.up, `${where}.up`);
+  if ("refusal" in up) return up;
+  if (up.point[0] === 0 && up.point[1] === 0 && up.point[2] === 0) {
+    return refuse(
+      `${where}.up`,
+      "is the zero vector, which is not a direction",
+    );
+  }
+
+  if (!Array.isArray(value.lines)) {
+    return refuse(`${where}.lines`, "is not an array");
+  }
+  if (value.lines.length === 0) {
+    return refuse(`${where}.lines`, "holds no lines");
+  }
+  if (value.lines.length > MAX_WALL_LINES) {
+    return refuse(
+      `${where}.lines`,
+      `holds ${value.lines.length}, and a walls item may hold ${MAX_WALL_LINES}`,
+    );
+  }
+
+  const lines: [number, number, number][][] = [];
+  for (let i = 0; i < value.lines.length; i++) {
+    const line = value.lines[i];
+    const lineWhere = `${where}.lines[${i}]`;
+    if (!Array.isArray(line)) return refuse(lineWhere, "is not an array");
+    if (line.length < 2) {
+      return refuse(
+        lineWhere,
+        "has fewer than two points, so it is not a wall",
+      );
+    }
+    if (line.length > MAX_WALL_POINTS) {
+      return refuse(
+        lineWhere,
+        `holds ${line.length} points, and a line may hold ${MAX_WALL_POINTS}`,
+      );
+    }
+    const points: [number, number, number][] = [];
+    for (let j = 0; j < line.length; j++) {
+      const point = readPoint(line[j], `${lineWhere}[${j}]`);
+      if ("refusal" in point) return point;
+      points.push(point.point);
+    }
+    lines.push(points);
+  }
+
+  const height = readSize(value.height, `${where}.height`);
+  if ("refusal" in height) return height;
+  const thickness = readSize(value.thickness, `${where}.thickness`);
+  if ("refusal" in thickness) return thickness;
+
+  const combine = value.combine;
+  if (combine !== "Add" && combine !== "Subtract" && combine !== "Paint") {
+    return refuse(
+      `${where}.combine`,
+      `is ${JSON.stringify(combine)}, and a combine is Add, Subtract or Paint`,
+    );
+  }
+
+  const softness = value.softness;
+  if (softness !== undefined) {
+    if (
+      typeof softness !== "number" ||
+      softness < 0 ||
+      softness > MAX_SOFTNESS
+    ) {
+      return refuse(`${where}.softness`, `is outside 0 to ${MAX_SOFTNESS}`);
+    }
+  }
+
+  const material = value.material;
+  if (material !== undefined) {
+    if (
+      typeof material !== "string" ||
+      !(MATERIAL_NAMES as readonly string[]).includes(material)
+    ) {
+      return refuse(`${where}.material`, "is not a material this build knows");
+    }
+  }
+
+  const colour = readColour(value.colour, `${where}.colour`);
+  if (colour !== null && "refusal" in colour) return colour;
+
+  // **And nothing but its own keys**, the same rule a shape's own parameters are held to: a
+  // field this build does not know is a file written by something else, and there is no safe
+  // reading of a field nobody validated.
+  const known = new Set([
+    "kind",
+    "id",
+    "at",
+    "up",
+    "lines",
+    "height",
+    "thickness",
+    "combine",
+    "softness",
+    "material",
+    "colour",
+  ]);
+  for (const key of Object.keys(value)) {
+    if (!known.has(key)) {
+      return refuse(`${where}.${key}`, "is not a field this build knows");
+    }
+  }
+
+  return {
+    item: {
+      kind: "walls",
+      id,
+      at: at.point,
+      up: up.point,
+      lines,
+      height: height.size,
+      thickness: thickness.size,
+      combine: combine as Combine,
+      ...(softness === undefined ? {} : { softness }),
+      ...(material === undefined ? {} : { material }),
+      ...(colour === null ? {} : { colour: colour.colour }),
+    },
+  };
+};
+
+/** A three-number point within the coordinate bound, or why it is not one. */
+const readPoint = (
+  value: unknown,
+  where: string,
+):
+  | { readonly point: [number, number, number] }
+  | { readonly refusal: LevelRefusal } => {
+  if (!Array.isArray(value) || value.length !== 3) {
+    return refuse(where, "is not three numbers");
+  }
+  for (const part of value) {
+    if (typeof part !== "number" || !Number.isFinite(part)) {
+      return refuse(where, "has a part that is not a finite number");
+    }
+    if (part < -MAX_COORDINATE || part > MAX_COORDINATE) {
+      return refuse(
+        where,
+        `has a part outside -${MAX_COORDINATE} to ${MAX_COORDINATE}`,
+      );
+    }
+  }
+  return { point: [value[0], value[1], value[2]] };
+};
+
+/** A size, bounded as a shape's own dimension is, or why it is not one. */
+const readSize = (
+  value: unknown,
+  where: string,
+): { readonly size: number } | { readonly refusal: LevelRefusal } => {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    value > MAX_SHAPE_SIZE
+  ) {
+    return refuse(where, `is outside 0 to ${MAX_SHAPE_SIZE}`);
+  }
+  return { size: value };
+};
+
+/** A colour, or `null` when there is none, or why it is not one. */
+const readColour = (
+  value: unknown,
+  where: string,
+):
+  | { readonly colour: { r: number; g: number; b: number } }
+  | null
+  | { readonly refusal: LevelRefusal } => {
+  if (value === undefined) return null;
+  if (!isPlainObject(value)) return refuse(where, "is not an object");
+  for (const channel of ["r", "g", "b"] as const) {
+    const part = value[channel];
+    if (
+      typeof part !== "number" ||
+      !Number.isInteger(part) ||
+      part < 0 ||
+      part > MAX_CHANNEL
+    ) {
+      return refuse(`${where}.${channel}`, `is outside 0 to ${MAX_CHANNEL}`);
+    }
+  }
+  return {
+    colour: {
+      r: value.r as number,
+      g: value.g as number,
+      b: value.b as number,
+    },
+  };
+};
+
+/**
  * The `shape-add` payload a level shape stands for.
  *
  * **`place` is written after the spread on purpose.** Spreading first would let an item
@@ -331,7 +576,11 @@ export const writeLevelPlan = (plan: LevelPlan): string =>
  * **`id` and what it is, not the numbers.** A list of `Box(12, 4, 30)` rows is a list
  * nobody can scan; a list of `wall-4 · box` is a list somebody can find a thing in.
  */
-export const itemLabel = (item: LevelItem): string =>
-  isLevelFigure(item)
-    ? `${item.id} · ${item.figure}`
-    : `${item.id} · ${item.shape.type.toLowerCase()}`;
+export const itemLabel = (item: LevelItem): string => {
+  if (isLevelFigure(item)) return `${item.id} · ${item.figure}`;
+  if (item.kind === "walls") {
+    const points = item.lines.reduce((total, line) => total + line.length, 0);
+    return `${item.id} · walls (${item.lines.length}, ${points} points)`;
+  }
+  return `${item.id} · ${item.shape.type.toLowerCase()}`;
+};

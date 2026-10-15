@@ -38,6 +38,7 @@ import { For, Show } from "solid-js";
 
 import {
   Bar,
+  Button,
   Checkbox,
   Choice,
   ColourField,
@@ -50,7 +51,9 @@ import { MAX_LEVEL_ITEMS } from "../../places/level/level-plan";
 import type {
   Combine,
   LevelFigure,
+  LevelItem,
   LevelShape,
+  LevelWalls,
   ShapeKind,
 } from "../../places/level/types";
 import { isLevelShape } from "../../places/level/types";
@@ -85,11 +88,13 @@ export const PropertiesPanel = (props: {
   editor: LevelEditor;
   /** The models the place carries, for the figure's model field. */
   models: readonly string[];
+  /** Seeds the draw controller from a wall, for the "Edit lines" button. */
+  onEditWalls?: (id: string) => void;
 }) => {
   const selected = () => props.editor.selectedItem();
 
   /** Replaces the selected item with an edited copy. */
-  const change = (next: LevelShape | LevelFigure): void => {
+  const change = (next: LevelItem): void => {
     const index = props.editor.selectedIndex();
     if (index === undefined) return;
     props.editor.updateItem(index, next);
@@ -102,8 +107,10 @@ export const PropertiesPanel = (props: {
 
   const figure = (): LevelFigure | undefined => {
     const item = selected();
-    return item !== undefined && !isLevelShape(item) ? item : undefined;
+    return item !== undefined && item.kind === "figure" ? item : undefined;
   };
+
+  const walls = (): LevelWalls | undefined => props.editor.selectedWalls();
 
   return (
     <div class={styles.panel}>
@@ -129,6 +136,13 @@ export const PropertiesPanel = (props: {
             current={narrowed(figure, "figure")}
             models={props.models}
             change={change}
+          />
+        </Show>
+        <Show when={walls()}>
+          <WallsFields
+            current={narrowed(walls, "walls")}
+            change={change}
+            onEditWalls={props.onEditWalls}
           />
         </Show>
       </Show>
@@ -428,6 +442,128 @@ const FigureFields = (props: {
               reader refuses a file with an unnamed one.
             </p>
           </Show>
+        </Show>
+      </Bar>
+    </>
+  );
+};
+
+/**
+ * The fields for a drawn set of walls.
+ *
+ * **Height and thickness are the two numbers a wall has, and the points are not a text field.**
+ * A polyline edited by typing coordinates is a polyline nobody edits by typing; the way to
+ * change it is to draw it again, which the Walls tool offers by reseeding itself from the
+ * item. So the panel shows the height and the thickness — the properties a person adjusts
+ * after drawing — and says how many points the drawing holds rather than inviting a hand-edit.
+ */
+const WallsFields = (props: {
+  current: () => LevelWalls;
+  change: (next: LevelWalls) => void;
+  /** Seeds the drawing from this wall; absent only if the editor was built without it. */
+  onEditWalls?: (id: string) => void;
+}) => {
+  const item = props.current;
+  const points = (): number =>
+    item().lines.reduce((total, line) => total + line.length, 0);
+
+  return (
+    <>
+      <Bar label="name">
+        <input
+          class={styles.text}
+          value={item().id}
+          aria-label="Item name"
+          onChange={(event) => {
+            const next = event.currentTarget.value;
+            if (next.trim() === "") return;
+            props.change({ ...item(), id: next.trim() });
+          }}
+        />
+      </Bar>
+
+      <Bar label="joins the world as">
+        <Choice
+          label="Combine"
+          value={item().combine}
+          choices={Object.entries(COMBINE_LABELS).map(([value, label]) => ({
+            value: value as Combine,
+            label,
+          }))}
+          onChange={(combine) => props.change({ ...item(), combine })}
+        />
+        <NumberField
+          label="Softness"
+          value={item().softness ?? 0}
+          min={0}
+          max={0.25}
+          step={0.01}
+          onChange={(softness) => props.change({ ...item(), softness })}
+        />
+      </Bar>
+
+      <Bar label="walls">
+        <NumberField
+          label="Height"
+          value={item().height}
+          min={1}
+          max={MAX_SHAPE_SIZE}
+          step={1}
+          bigStep={10}
+          onChange={(height) => props.change({ ...item(), height })}
+        />
+        <NumberField
+          label="Thickness"
+          value={item().thickness}
+          min={1}
+          max={MAX_SHAPE_SIZE}
+          step={1}
+          bigStep={5}
+          onChange={(thickness) => props.change({ ...item(), thickness })}
+        />
+      </Bar>
+
+      <Bar label="drawing">
+        <p class={styles.warn}>
+          {item().lines.length} {item().lines.length === 1 ? "line" : "lines"},{" "}
+          {points()} points.
+        </p>
+        <Show when={props.onEditWalls !== undefined}>
+          <Button
+            label="Edit lines"
+            title="Redraw these walls, starting from the lines they have now"
+            onClick={() => props.onEditWalls?.(item().id)}
+          />
+        </Show>
+      </Bar>
+
+      <Bar label="how it looks">
+        <Choice
+          label="Material"
+          value={item().material ?? ""}
+          choices={[
+            { value: "", label: "None" },
+            ...MATERIAL_NAMES.map((name) => ({ value: name, label: name })),
+          ]}
+          onChange={(material) =>
+            props.change(
+              material === ""
+                ? { ...item(), material: undefined }
+                : { ...item(), material },
+            )
+          }
+        />
+        <ColourField
+          label="Colour"
+          value={item().colour}
+          onChange={(colour) => props.change({ ...item(), colour })}
+        />
+        <Show when={item().combine !== "Paint"}>
+          <p class={styles.warn}>
+            Colour is only read on a <strong>Paint</strong>. These walls are a{" "}
+            {item().combine === "Add" ? "n addition" : " subtraction"}, so the
+            colour will not show.
+          </p>
         </Show>
       </Bar>
     </>

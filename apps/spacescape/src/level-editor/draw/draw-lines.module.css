@@ -1,0 +1,75 @@
+/*
+ * The draft's own floating controls: the length/angle readout that follows the aim, and the
+ * row of buttons that commit, undo, fork and finish.
+ *
+ * `pointer-events: none` on the root and `auto` on the two clusters, exactly as the editor
+ * overlay is built: a finger dragging the canvas to aim must not be caught by a full-screen
+ * transparent layer, and the readout and buttons are the only parts that take a touch.
+ *
+ * The cluster sits above the bottom of the viewport and clear of the editor's own hint, and
+ * the readout is offset up and to the side of the aim so a finger dragging it does not cover
+ * the point it is placing.
+ */
+
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.readout {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(10, 12, 16, 0.92);
+  color: #e6edf3;
+  font-size: 12px;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.field input {
+  width: 68px;
+  min-height: 32px;
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  color: inherit;
+  font: inherit;
+}
+
+.locks {
+  position: fixed;
+  left: 50%;
+  bottom: calc(146px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.cluster {
+  position: fixed;
+  left: 50%;
+  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(10, 12, 16, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  pointer-events: auto;
+}

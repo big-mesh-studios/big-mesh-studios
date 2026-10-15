@@ -83,6 +83,25 @@ export const MIN_SHAPE_SIZES: Record<ShapeType, number> = {
 /** Every primitive, in the order the table lists them, for a toolbar's row. */
 export const SHAPE_KINDS = Object.keys(PRIMITIVES) as ShapeType[];
 
+/**
+ * How tall a drawn wall stands, in world units, when it is first made.
+ *
+ * **Four voxels at this world's `VOXEL_SIZE` of ten**, which is a storey's worth of wall and
+ * the height a person drawing a room means by "a wall" — tall enough to stop a player, short
+ * enough to see over from a step back. The inspector edits it; this is only what the first one
+ * is, so that a wall drawn and not yet adjusted is a wall rather than a line.
+ */
+export const DEFAULT_WALL_HEIGHT = 40;
+
+/**
+ * How thick a drawn wall is, across its own line, when it is first made.
+ *
+ * **A little under a voxel.** Thinner than that and the mesher can miss it at a distance —
+ * a wall the mesh cannot resolve is a wall with a hole in it — and much thicker stops being a
+ * wall and becomes a block. The inspector edits it.
+ */
+export const DEFAULT_WALL_THICKNESS = 8;
+
 /** The parameters each primitive takes, for an inspector's fields. */
 export const PARAMETERS_OF = (kind: ShapeType) => PRIMITIVES[kind].parameters;
 
