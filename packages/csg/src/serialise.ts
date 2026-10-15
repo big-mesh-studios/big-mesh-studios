@@ -116,6 +116,42 @@ import {
 export const FORMAT_VERSION = 5;
 
 /**
+ * The older versions this build still reads, and the one difference in each.
+ *
+ * **A version is readable when its differences from this one are known and enumerable, not
+ * when its bytes happen to parse.** There are exactly two shapes of difference this format has
+ * ever had, and each is one line here:
+ *
+ * - **A shape that writes its own width** — version 5's `Polygon`. No earlier version could
+ *   contain one, so an earlier file needs nothing special done to it; a buffer that *claims*
+ *   one anyway is refused by name.
+ * - **A field appended to every operation** — version 4's material byte (ADR 0048). A version 3
+ *   record ends one byte earlier than this reader expects, and that is the whole of it.
+ *
+ * **Version 2 and below are not here, and the reason is not that they are old.** Version 2
+ * changed what the bytes *mean*: the capsule's `len` moved from X to Y, and a colour came to
+ * count on any operation rather than only a `Paint`. A version 2 file's fields are all present
+ * and all readable, and every one of them means something else — so reading one would produce a
+ * model that looks fine and is wrong. That is the failure the version byte exists to prevent, and
+ * it is why an entry here is a claim about what the numbers say rather than about how wide the
+ * record is.
+ */
+export const READABLE_VERSIONS: ReadonlySet<number> = new Set([4, 3]);
+
+/**
+ * Bytes at the end of every operation that a version did not write, by version.
+ *
+ * **Absent, not shorter, and the distinction matters.** A version 3 record does not have a
+ * trailing zero byte for a material it never chose; it ends. So this is how many bytes to
+ * *not* read rather than how many to pad with, and reading them would put the operation count
+ * and every operation after it at an offset one byte late.
+ */
+const ABSENT_TRAILING_BYTES: ReadonlyMap<number, number> = new Map([
+  // Version 4 appended the material index; see ADR 0048.
+  [3, 1],
+]);
+
+/**
  * Bytes one operation takes, apart from its shape's parameters: the combine mode,
  * the shape type, an origin, an orientation, a softness, a colour, an opacity and
  * a material.
@@ -183,6 +219,7 @@ const readShape = (
   offset: number,
   type: number,
   limit: number,
+  version: number,
 ): { shape: OperationShape; next: number } => {
   const name = primitiveFromCode(type);
   if (name === null) {
@@ -190,6 +227,17 @@ const readShape = (
   }
   const spec: PrimitiveSpec = PRIMITIVES[name] as PrimitiveSpec;
   const variable = spec.parameters.find((p) => p.arity === "variable");
+  // **A shape that writes its own width cannot be in a file that predates it.** Every other
+  // shape's parameters are the fixed handful its type byte gives away, which is why reading an
+  // older file needs nothing else done to it — but a buffer claiming type 9 has a point count
+  // where a width would be, and the reader would resume after whatever followed and read every
+  // operation after it at a plausible offset. Refused by name, and by the version it claimed,
+  // so the message says which file is wrong rather than only what is.
+  if (variable !== undefined && version !== FORMAT_VERSION) {
+    throw new FormatError(
+      `this file is version ${version} and ${name} carries its own width, which version ${version} could not write`,
+    );
+  }
   // **A shape whose width is not a function of its type writes that width first, so the
   // width has to be read before the parameters can be.** The count is an `f32` rather
   // than a `u8` so that the block stays 4-byte aligned and `floats * 4` remains the only
@@ -273,6 +321,39 @@ export const serialisedSize = (operations: readonly Operation[]): number => {
 };
 
 /** Writes a list into a buffer sized by `serialisedSize`. */
+/**
+ * The version to stamp on a file holding these operations: the lowest that can describe them.
+ *
+ * **So that this change costs nobody anything who is not drawing a floor.** Reading the older
+ * versions is half of backwards compatibility; if the writer still stamped 5 unconditionally,
+ * then opening a project and saving it — with no polygon anywhere in it — would produce a file
+ * the previous build cannot open, and the compatibility would have a very short life. So a model
+ * made entirely of shapes that version 4 could write is written at version 4, whose bytes are
+ * identical for those shapes, and only a model that actually contains something new is stamped 5.
+ *
+ * **It is a two-byte decision and nothing else moves.** The layout below is the same file for
+ * every shape both versions can express, which is the claim `ABSENT_TRAILING_BYTES` is read
+ * against; a version 4 record and a version 5 record of the same operations differ only in the
+ * header. So the buffer, its size, and everything downstream of it are unaffected.
+ *
+ * **An empty list is written at the older version too.** It has nothing that needs the newer
+ * one, and an empty file that only the newest build can open is the purest form of the problem.
+ */
+const versionToWrite = (operations: readonly Operation[]): number => {
+  for (const operation of operations) {
+    const spec: PrimitiveSpec = PRIMITIVES[
+      operation.shape.type
+    ] as PrimitiveSpec;
+    if (spec.parameters.some((parameter) => parameter.arity === "variable")) {
+      return FORMAT_VERSION;
+    }
+  }
+  for (const version of READABLE_VERSIONS) {
+    if (!ABSENT_TRAILING_BYTES.has(version)) return version;
+  }
+  return FORMAT_VERSION;
+};
+
 export const serialiseOperations = (
   operations: readonly Operation[],
   target?: ArrayBuffer,
@@ -283,7 +364,7 @@ export const serialiseOperations = (
       ? target
       : new ArrayBuffer(size);
   const view = new DataView(buffer);
-  view.setUint16(0, FORMAT_VERSION, true);
+  view.setUint16(0, versionToWrite(operations), true);
   view.setUint32(2, operations.length, true);
 
   let at = 6;
@@ -322,6 +403,14 @@ export const serialiseOperations = (
  * is a fixed-width record and reading a later one at this version's field widths
  * produces a list of plausible-looking primitives at plausible-looking positions,
  * which is worse than refusing.
+ *
+ * **Versions 4 and 3 are read, and the differences between them and this one are known.**
+ * Version 5 added a shape that writes its own width; version 4 added a trailing byte to every
+ * operation. So the walk below is this walk with two adjustments, both named where they happen:
+ * a legacy file cannot claim a `Polygon`, and a version 3 record ends one byte earlier.
+ * `READABLE_VERSIONS` says which versions those are and `ABSENT_TRAILING_BYTES` says by how
+ * much; anything not in the first list is refused here, which is what keeps the second list
+ * from being a place where a version with *different* bytes could be added by accident.
  */
 export const deserialiseOperations = (buffer: ArrayBuffer): Operation[] => {
   if (buffer.byteLength < 6) {
@@ -331,18 +420,25 @@ export const deserialiseOperations = (buffer: ArrayBuffer): Operation[] => {
   }
   const view = new DataView(buffer);
   const version = view.getUint16(0, true);
-  if (version !== FORMAT_VERSION) {
+  if (version !== FORMAT_VERSION && !READABLE_VERSIONS.has(version)) {
     throw new FormatError(
       `this file is version ${version} and this build reads version ${FORMAT_VERSION}`,
     );
   }
+  // **And the record is this many bytes shorter than a current one**, which the bounds check
+  // and the walk below both need. Read from the table rather than from the version number, so
+  // a version added to `READABLE_VERSIONS` without a difference stated here fails to
+  // compile rather than silently reading one byte off.
+  const absentTrailing =
+    version === FORMAT_VERSION ? 0 : (ABSENT_TRAILING_BYTES.get(version) ?? 0);
+  const fixedBytes = FIXED_BYTES - absentTrailing;
 
   const count = view.getUint32(2, true);
   const operations: Operation[] = [];
   let at = 6;
 
   for (let i = 0; i < count; i++) {
-    if (at + FIXED_BYTES > buffer.byteLength) {
+    if (at + fixedBytes > buffer.byteLength) {
       throw new FormatError(
         `operation ${i} of ${count} runs past the end of a ${buffer.byteLength} byte file`,
       );
@@ -370,7 +466,7 @@ export const deserialiseOperations = (buffer: ArrayBuffer): Operation[] => {
     // **The limit is the whole buffer rather than the end of this operation**, because a
     // polygon's width is in the file: the reader has to be able to read a count and then
     // find out that it has run out, rather than trusting the count and reading past.
-    const read = readShape(view, at, shapeType, buffer.byteLength);
+    const read = readShape(view, at, shapeType, buffer.byteLength, version);
     at = read.next;
     const colour: { r: number; g: number; b: number } = {
       r: view.getUint8(at),
@@ -378,8 +474,16 @@ export const deserialiseOperations = (buffer: ArrayBuffer): Operation[] => {
       b: view.getUint8(at + 2),
     };
     const opacity = view.getFloat32(at + 3, true);
-    const material = view.getUint8(at + 7);
-    at += 8;
+    at += 7;
+    // **The material byte is read only when this version wrote one.** A version 3 record ends
+    // after the opacity, so reading a byte here would consume the first byte of the *next*
+    // operation and every operation from the second onwards would be one byte out — which the
+    // bounds check above would not catch, because the arithmetic stays in range.
+    let material: number | undefined;
+    if (absentTrailing === 0) {
+      material = view.getUint8(at);
+      at += 1;
+    }
 
     operations.push({
       // Indexed by position in the file rather than stored, so that a list loaded
@@ -395,11 +499,14 @@ export const deserialiseOperations = (buffer: ArrayBuffer): Operation[] => {
       combine,
       colour,
       opacity,
-      // **Zero becomes absent rather than a material named "none".** The field is optional
-      // and zero already means no material, so writing the zero into every operation would
-      // make an operation that never asked look as though it had chosen something — the
-      // same reason `makeOperation` leaves `colour` off rather than defaulting it white.
-      ...(material === 0 ? {} : { material }),
+      // **Zero becomes absent rather than a material named "none", and so does absent.**
+      // The field is optional and zero already means no material, so writing the zero into
+      // every operation would make an operation that never asked look as though it had chosen
+      // something — the same reason `makeOperation` leaves `colour` off rather than
+      // defaulting it white. A version 3 operation has no material field at all, and spreading
+      // `{ material: undefined }` would put the key in the object with nothing under it, which
+      // is a different thing from not having it and would not survive a JSON round trip.
+      ...(material === undefined || material === 0 ? {} : { material }),
     });
   }
 

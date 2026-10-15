@@ -98,12 +98,28 @@ the workspace not compiling without them:
 field filter and its outline bar, `draw/floor.ts`, `finishFloor`, the Floor tool, and `app.tsx`
 wiring all through `drawsInAPlane`.
 
-### Phase 2 — what it cost, and one thing it needed that was not planned
+### Phase 2 — the cost arrived, and then it was paid back
 
 Regenerating the snack models was the recorded cost arriving on schedule:
 `make-snack-models.test.ts` failed on the first run after the version byte moved, and
 `pnpm run snack-models` fixed it. That test is the format's own canary for exactly this, and it
 is worth knowing it exists.
+
+**Then it was paid back.** Version 5 changed one thing — a shape that writes its own width — and
+left every other shape's bytes where they were, so a version 4 file is walked by the same code
+with no special case at all. Versions 4 and 3 are read, a model with nothing new in it is written
+at version 4, and **all 39 snack models now regenerate byte-identical to `ce90c7f`**, the commit
+before this feature. The only files that genuinely need a newer build are files containing a
+polygon.
+
+The real file that prompted this was `melty.sdfmod`, a version 3 model — **version 3, not 4**,
+which the first attempt at the fix would not have loaded. Version 3 differs from 4 by one trailing
+byte per operation (ADR 0048's material byte), so its operations carry no material field at all,
+and reading a byte that is not there would consume the first byte of the _next_ operation and
+leave every operation from the second onwards one byte out — without tripping the bounds check,
+because the arithmetic stays in range. That is why `ABSENT_TRAILING_BYTES` is a table rather than
+a boolean, and why the version 3 test builds its buffer the way version 3 wrote it rather than
+stamping a 3 onto today's bytes.
 
 `serialise.test.ts` also had a `sampleShape` that built _every_ parameter from the table as a
 number — including a polygon's outline. It now builds a real outline, because a file-format test
@@ -408,6 +424,10 @@ pnpm --filter @big-mesh-studios/spacescape place-reference:check
 
 - **The SDF is O(vertices) per field sample**, and `Field.distance` runs per BVH candidate per
   mesh sample. The BVH bounds a polygon to its box, but every sample inside that box pays for
-  every edge. Sixty-four is the proposed cap; a room is four to six.
-- **Version 5 orphans baked places**, described in Phase 2. If that turns out to be a real cost
-  rather than a theoretical one, option A in Phase 2 is roughly fifteen lines and keeps version 4.
+  every edge. Sixty-four is the cap that shipped; a room is four to six.
+- **Version 2 and below are still refused**, and should stay refused: their fields are all
+  present and all readable and all mean something else. Nothing here changes that.
+- **The version byte is now a function of the model's contents** rather than a constant, which is
+  the price of writing the lowest version that fits. It is checkable — the test writes the same
+  operations both ways and asserts that one byte differs — but two builds could disagree about
+  the stamp for the same model, across the version 4/5 boundary only.

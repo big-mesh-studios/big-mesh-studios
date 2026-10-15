@@ -115,14 +115,21 @@ describe("readModelFile", () => {
     ).rejects.toThrow(/no manifest\.json/);
   });
 
-  it("refuses a model.bin that is not one, by version", async () => {
+  it("refuses a model.bin whose bytes mean something else", async () => {
     const bytes = await sdfmod([capsule(0, { x: 0, y: 0, z: 0 })]);
     // **A stamped version rather than a hand-built buffer**, which is how the format's own test
     // does it: the bytes are otherwise perfectly well formed, so a reader that refused only
     // malformed input would not be exercised at all.
+    //
+    // **Version 2, and the reason is not that it is old.** Versions 3 and 4 are read: neither
+    // has a field this build cannot account for, so the walk is this walk with one byte fewer
+    // per operation at most. Version 2 is where the capsule's length moved from X to Y and a
+    // colour came to count on any operation rather than only a `Paint` — every field is present
+    // and readable and every one of them means something else, which is the one case a lenient
+    // reader cannot be trusted with and the whole reason the version byte is checked at all.
     const zip = await JSZip.loadAsync(bytes);
     const model = await zip.file("model.bin")!.async("uint8array");
-    new DataView(model.buffer, model.byteOffset).setUint16(0, 3, true);
+    new DataView(model.buffer, model.byteOffset).setUint16(0, 2, true);
     const rebuilt = new JSZip();
     rebuilt.file(
       "manifest.json",

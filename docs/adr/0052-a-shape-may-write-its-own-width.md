@@ -39,6 +39,11 @@ remains the only width arithmetic in the file. `parameterFloats` keeps answering
 _fixed_ count — one per variable parameter — and `serialisedSize` now measures the shape rather
 than the type.
 
+**Versions 4 and 3 are read, and a model with nothing new in it is written at version 4.** Both
+halves are the same decision: a version bump that orphans every existing model is not a version
+bump, it is a migration nobody asked for, and the only files that genuinely need the newer build
+are files containing something the older one could not have drawn.
+
 **`PrimitiveParameter` became a union rather than gaining optional fields**, and that is the part
 with teeth. A point list is not one number or three, has no `min` and no `step`, and has no
 input; giving it `min: 3` and calling that a minimum size would make the one number on a polygon
@@ -49,12 +54,31 @@ argument applied to the one gap the table had.
 
 ## Consequences
 
-**Every place already baked at version 4 stops loading.** `deserialiseOperations` refuses any
-version that is not the current one, so the snack models in this repository and any figure or
-prop model inside a published `.sdfmod` has to be re-exported.
-`apps/spacescape/tools/make-snack-models.ts` regenerates this repository's own, and
-`make-snack-models.test.ts` is the canary that says so — it failed on the first run after the
-byte moved, which is what a canary is for.
+**Reading an older version is a claim about what its bytes mean, not about how wide they are.**
+`READABLE_VERSIONS` holds the versions and `ABSENT_TRAILING_BYTES` says what each lacks — for
+version 3, the trailing material byte ADR 0048 added, so its record is one byte shorter per
+operation and its operations carry **no material field at all**: absent rather than zero, and
+rather than a key with nothing under it. A buffer claiming a `Polygon` is refused by name, because
+its count would be read as a width and every operation after it would land at a plausible offset.
+Everything older than 3 is still refused, and the reason is not age: version 2 moved the capsule's
+length from X to Y and made a colour count on any operation, so every field in such a file is
+present, readable, and means something else.
+
+**Writing the lowest version that can describe the model is what makes reading them worth
+anything.** With an unconditional stamp, opening a project and saving it — with no polygon
+anywhere in it — would produce a file the previous build cannot open, and the compatibility would
+have a very short life. The cost is that the version byte is a function of the model's contents
+rather than a constant, and the claim that it is safe is checkable: **for any model with no
+variable-width shape, the version 4 and version 5 files are the same bytes with one differing**,
+and `serialise.test.ts` asserts that by writing the same operations both ways and comparing.
+
+The evidence that this worked is the repository's own models. All 39 files in
+`apps/spacescape/public/models/` regenerate **byte-identical to `ce90c7f`**, the commit before
+this feature: the same bytes the pre-floor build wrote, which every build since can read.
+
+**A polygon anywhere in a model is enough to require version 5**, since the version describes the
+file rather than the operation. That is the one case that genuinely needs a newer build, and it is
+a case where the older one could not have rendered the contents anyway.
 
 **A level reader now refuses an outline it cannot draw.** `checkOutline`
 (`apps/spacescape/src/places/fields.ts`) refuses a point count outside the table's bounds, a
@@ -75,10 +99,15 @@ level editor's toolbar reads the full list anyway — a floor is placed by drawi
 
 **A fixed capacity: `Polygon` always occupies `1 + 2N` floats, zero-padded.** This was
 recommended and declined. It needs **no change to `serialise.ts` at all** — `parameterFloats`
-stays constant, the version stays at 4, and no baked place is orphaned. The price is a hard cap
-on corners and bytes wasted on every triangle, and it is recorded here rather than in a comment
-because **it will look attractive again the next time somebody wants to add one**, and the
-reason to decline it was a preference for honesty over economy rather than a measurement.
+stays constant, the version stays at 4, and no baked place is orphaned, because there is no bump.
+The price is a hard cap on corners and bytes wasted on every triangle.
+
+**It is recorded here rather than in a comment because it will look attractive again**, and after
+the compatibility work it is a better option than it was: the dual-read and the lowest-version
+writer now cost about thirty lines, and a fixed capacity would have bought the same
+backwards compatibility for free while keeping the format's central invariant intact. The reason
+to decline it was a preference for a variable-length shape being encoded as a variable-length
+thing rather than a measurement, and that is still the whole of it.
 
 **A separate section after the operations, with each operation holding an index.** Old readers
 ignore trailing bytes, so no bump would be needed and there would be no padding. It needs a byte
