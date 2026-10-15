@@ -1,5 +1,5 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./index-C9LYgaKn.js","./rolldown-runtime-Dd_uD5pT.js","./index-z8R0Daid.css"])))=>i.map(i=>d[i]);
-import{i as e}from"./rolldown-runtime-Dd_uD5pT.js";import{A as t,C as n,D as r,E as i,F as a,I as o,M as s,N as c,O as l,P as u,S as d,T as f,_ as p,b as m,d as h,f as g,g as _,h as v,j as y,k as b,m as x,v as S,w as ee,x as te,y as C}from"./index-C9LYgaKn.js";var ne=f(`<div>`);function re(e){var t=ne();return C(t,()=>e.children),S(()=>e.when?`contents`:`none`,e=>{ee(t,`display`,e)}),t}var ie=[],ae=[];(()=>{let e=`lc,34,7n,7,7b,19,,,,2,,2,,,20,b,1c,l,g,,2t,7,2,6,2,2,,4,z,,u,r,2j,b,1m,9,9,,o,4,,9,,3,,5,17,3,1n,9,16,o,,x,1i,3,,i,,7,a,2,t,3,1k,,,7,2,2,2,3,9,,a,2,q,,2,3,1k,,,5,4,2,2,3,3,,u,2,3,,b,3,1k,,,8,,3,,3,k,2,m,6,,3,1k,,,7,2,2,2,3,7,3,a,2,u,,1n,5,3,3,,4,9,,14,5,1j,,,7,,3,,4,7,2,b,2,t,3,1k,,,7,,3,,4,7,2,b,2,f,,c,4,1j,2,,7,,3,,4,9,,a,2,t,3,1y,,4,6,,,,8,i,2,1p,,,8,c,8,2q,,,a,b,7,21,2,r,,,,,,4,2,1d,k,,2,5,b,,10,9,,2u,b,,6,n,4,4,3,g,4,d,,,3,6,,f,,jj,3,qa,4,s,3,t,2,u,2,1s,w,9,,19,3,,,39,2,y,,3a,c,4,c,63,5,1l,a,,,,,2,o,2,,1c,1a,2,c,k,5,1b,h,12,9,c,3,u,d,1k,e,1c,k,48,3,,l,4,,6,,2,3,5i,1s,ek,,5f,x,2da,3,3x,,2o,w,fe,6,2x,2,n9w,4,,a,w,2,28,2,7k,,3,,4,,n,5,4,,2b,2,1e,i,q,i,d,,12,8,p,d,18,4,1b,e,10,,1v,e,c,,8,2,1a,,1f,,,3,2,2,5,2,,,15,5,5,2,6k,8,,2,fn4,,kh,g,g,g,a6,2,gt,,6a,,45,5,1ae,3,,2,5,4,14,3,4,,4l,2,fx,4,1t,5,8t,2,25,6,1y,b,1d,4,3e,3,1h,f,15,,2,2,a,4,19,b,7,,1p,3,10,e,g,2,18,,c,3,1c,e,8,4,,2,2k,c,6,,2,,4d,c,l,4,1j,2,,7,2,2,2,3,9,,a,2,2,7,3,5,1v,9,,,2,,,4,,5,,,e,2,2a,i,n,,29,k,6j,7,2,9,r,2,2a,h,2y,d,2t,3,2,a,74,f,6t,6,,2,2,4,,,,2,3x,7,2,7,3,,s,a,14,7,,4,8,,9,b,1a,g,5i,8,5j,8,,8,2a,m,,e,3e,6,3,,,2,,7,,,1u,5,,2,,5,9n,4,9,2,,,1c,7,3,5,n,,44l,,6,f,8ug,i,1xc,5,1n,7,t4,,,1j,7,4,29,,b,2,f57,2,3mp,1a,2,n,f2,5,3,6,8,8,2,7,u,4,44,3,1iz,1j,4,1e,8,,e,,m,5,,f,11s,7,,h,2,7,,2,,5,2s,,4g,7,af,,1p,4,e4,4,72,2,6r,,2,,7,2,5,,d6,7,31,7,240,5`.split(`,`).map(e=>e?parseInt(e,36):1);for(let t=0,n=0;t<e.length;t++)(t%2?ae:ie).push(n+=e[t])})();function oe(e){if(e<768)return!1;for(let t=0,n=ie.length;;){let r=t+n>>1;if(e<ie[r])n=r;else if(e>=ae[r])t=r+1;else return!0;if(t==n)return!1}}function se(e){return e>=127462&&e<=127487}var ce=8205;function le(e,t,n=!0,r=!0){return(n?ue:de)(e,t,r)}function ue(e,t,n){if(t==e.length)return t;t&&pe(e.charCodeAt(t))&&me(e.charCodeAt(t-1))&&t--;let r=fe(e,t);for(t+=he(r);t<e.length;){let i=fe(e,t);if(r==ce||i==ce||n&&oe(i))t+=he(i),r=i;else if(se(i)){let n=0,r=t-2;for(;r>=0&&se(fe(e,r));)n++,r-=2;if(n%2==0)break;t+=2}else break}return t}function de(e,t,n){for(;t>1;){let r=ue(e,t-2,n);if(r<t)return r;t--}return 0}function fe(e,t){let n=e.charCodeAt(t);if(!me(n)||t+1==e.length)return n;let r=e.charCodeAt(t+1);return pe(r)?(n-55296<<10)+(r-56320)+65536:n}function pe(e){return e>=56320&&e<57344}function me(e){return e>=55296&&e<56320}function he(e){return e<65536?1:2}var w=class e{lineAt(e){if(e<0||e>this.length)throw RangeError(`Invalid position ${e} in document of length ${this.length}`);return this.lineInner(e,!1,1,0)}line(e){if(e<1||e>this.lines)throw RangeError(`Invalid line number ${e} in ${this.lines}-line document`);return this.lineInner(e,!0,1,0)}replace(e,t,n){[e,t]=Te(this,e,t);let r=[];return this.decompose(0,e,r,2),n.length&&n.decompose(0,n.length,r,3),this.decompose(t,this.length,r,1),_e.from(r,this.length-(t-e)+n.length)}append(e){return this.replace(this.length,this.length,e)}slice(e,t=this.length){[e,t]=Te(this,e,t);let n=[];return this.decompose(e,t,n,0),_e.from(n,t-e)}eq(e){if(e==this)return!0;if(e.length!=this.length||e.lines!=this.lines)return!1;let t=this.scanIdentical(e,1),n=this.length-this.scanIdentical(e,-1),r=new xe(this),i=new xe(e);for(let e=t,a=t;;){if(r.next(e),i.next(e),e=0,r.lineBreak!=i.lineBreak||r.done!=i.done||r.value!=i.value)return!1;if(a+=r.value.length,r.done||a>=n)return!0}}iter(e=1){return new xe(this,e)}iterRange(e,t=this.length){return new Se(this,e,t)}iterLines(e,t){let n;if(e==null)n=this.iter();else{t??=this.lines+1;let r=this.line(e).from;n=this.iterRange(r,Math.max(r,t==this.lines+1?this.length:t<=1?0:this.line(t-1).to))}return new Ce(n)}toString(){return this.sliceString(0)}toJSON(){let e=[];return this.flatten(e),e}constructor(){}static of(t){if(t.length==0)throw RangeError(`A document must have at least one line`);return t.length==1&&!t[0]?e.empty:t.length<=32?new ge(t):_e.from(ge.split(t,[]))}},ge=class e extends w{constructor(e,t=ve(e)){super(),this.text=e,this.length=t}get lines(){return this.text.length}get children(){return null}lineInner(e,t,n,r){for(let i=0;;i++){let a=this.text[i],o=r+a.length;if((t?n:o)>=e)return new we(r,o,n,a);r=o+1,n++}}decompose(t,n,r,i){let a=t<=0&&n>=this.length?this:new e(be(this.text,t,n),Math.min(n,this.length)-Math.max(0,t));if(i&1){let t=r.pop(),n=ye(a.text,t.text.slice(),0,a.length);if(n.length<=32)r.push(new e(n,t.length+a.length));else{let t=n.length>>1;r.push(new e(n.slice(0,t)),new e(n.slice(t)))}}else r.push(a)}replace(t,n,r){if(!(r instanceof e))return super.replace(t,n,r);[t,n]=Te(this,t,n);let i=ye(this.text,ye(r.text,be(this.text,0,t)),n),a=this.length+r.length-(n-t);return i.length<=32?new e(i,a):_e.from(e.split(i,[]),a)}sliceString(e,t=this.length,n=`
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./index-CrXJU6iy.js","./rolldown-runtime-Dd_uD5pT.js","./index-CPoClCeN.css"])))=>i.map(i=>d[i]);
+import{i as e}from"./rolldown-runtime-Dd_uD5pT.js";import{A as t,C as n,D as r,E as i,F as a,I as o,M as s,N as c,O as l,P as u,S as d,T as f,_ as p,b as m,d as h,f as g,g as _,h as v,j as y,k as b,m as x,v as S,w as ee,x as te,y as C}from"./index-CrXJU6iy.js";var ne=f(`<div>`);function re(e){var t=ne();return C(t,()=>e.children),S(()=>e.when?`contents`:`none`,e=>{ee(t,`display`,e)}),t}var ie=[],ae=[];(()=>{let e=`lc,34,7n,7,7b,19,,,,2,,2,,,20,b,1c,l,g,,2t,7,2,6,2,2,,4,z,,u,r,2j,b,1m,9,9,,o,4,,9,,3,,5,17,3,1n,9,16,o,,x,1i,3,,i,,7,a,2,t,3,1k,,,7,2,2,2,3,9,,a,2,q,,2,3,1k,,,5,4,2,2,3,3,,u,2,3,,b,3,1k,,,8,,3,,3,k,2,m,6,,3,1k,,,7,2,2,2,3,7,3,a,2,u,,1n,5,3,3,,4,9,,14,5,1j,,,7,,3,,4,7,2,b,2,t,3,1k,,,7,,3,,4,7,2,b,2,f,,c,4,1j,2,,7,,3,,4,9,,a,2,t,3,1y,,4,6,,,,8,i,2,1p,,,8,c,8,2q,,,a,b,7,21,2,r,,,,,,4,2,1d,k,,2,5,b,,10,9,,2u,b,,6,n,4,4,3,g,4,d,,,3,6,,f,,jj,3,qa,4,s,3,t,2,u,2,1s,w,9,,19,3,,,39,2,y,,3a,c,4,c,63,5,1l,a,,,,,2,o,2,,1c,1a,2,c,k,5,1b,h,12,9,c,3,u,d,1k,e,1c,k,48,3,,l,4,,6,,2,3,5i,1s,ek,,5f,x,2da,3,3x,,2o,w,fe,6,2x,2,n9w,4,,a,w,2,28,2,7k,,3,,4,,n,5,4,,2b,2,1e,i,q,i,d,,12,8,p,d,18,4,1b,e,10,,1v,e,c,,8,2,1a,,1f,,,3,2,2,5,2,,,15,5,5,2,6k,8,,2,fn4,,kh,g,g,g,a6,2,gt,,6a,,45,5,1ae,3,,2,5,4,14,3,4,,4l,2,fx,4,1t,5,8t,2,25,6,1y,b,1d,4,3e,3,1h,f,15,,2,2,a,4,19,b,7,,1p,3,10,e,g,2,18,,c,3,1c,e,8,4,,2,2k,c,6,,2,,4d,c,l,4,1j,2,,7,2,2,2,3,9,,a,2,2,7,3,5,1v,9,,,2,,,4,,5,,,e,2,2a,i,n,,29,k,6j,7,2,9,r,2,2a,h,2y,d,2t,3,2,a,74,f,6t,6,,2,2,4,,,,2,3x,7,2,7,3,,s,a,14,7,,4,8,,9,b,1a,g,5i,8,5j,8,,8,2a,m,,e,3e,6,3,,,2,,7,,,1u,5,,2,,5,9n,4,9,2,,,1c,7,3,5,n,,44l,,6,f,8ug,i,1xc,5,1n,7,t4,,,1j,7,4,29,,b,2,f57,2,3mp,1a,2,n,f2,5,3,6,8,8,2,7,u,4,44,3,1iz,1j,4,1e,8,,e,,m,5,,f,11s,7,,h,2,7,,2,,5,2s,,4g,7,af,,1p,4,e4,4,72,2,6r,,2,,7,2,5,,d6,7,31,7,240,5`.split(`,`).map(e=>e?parseInt(e,36):1);for(let t=0,n=0;t<e.length;t++)(t%2?ae:ie).push(n+=e[t])})();function oe(e){if(e<768)return!1;for(let t=0,n=ie.length;;){let r=t+n>>1;if(e<ie[r])n=r;else if(e>=ae[r])t=r+1;else return!0;if(t==n)return!1}}function se(e){return e>=127462&&e<=127487}var ce=8205;function le(e,t,n=!0,r=!0){return(n?ue:de)(e,t,r)}function ue(e,t,n){if(t==e.length)return t;t&&pe(e.charCodeAt(t))&&me(e.charCodeAt(t-1))&&t--;let r=fe(e,t);for(t+=he(r);t<e.length;){let i=fe(e,t);if(r==ce||i==ce||n&&oe(i))t+=he(i),r=i;else if(se(i)){let n=0,r=t-2;for(;r>=0&&se(fe(e,r));)n++,r-=2;if(n%2==0)break;t+=2}else break}return t}function de(e,t,n){for(;t>1;){let r=ue(e,t-2,n);if(r<t)return r;t--}return 0}function fe(e,t){let n=e.charCodeAt(t);if(!me(n)||t+1==e.length)return n;let r=e.charCodeAt(t+1);return pe(r)?(n-55296<<10)+(r-56320)+65536:n}function pe(e){return e>=56320&&e<57344}function me(e){return e>=55296&&e<56320}function he(e){return e<65536?1:2}var w=class e{lineAt(e){if(e<0||e>this.length)throw RangeError(`Invalid position ${e} in document of length ${this.length}`);return this.lineInner(e,!1,1,0)}line(e){if(e<1||e>this.lines)throw RangeError(`Invalid line number ${e} in ${this.lines}-line document`);return this.lineInner(e,!0,1,0)}replace(e,t,n){[e,t]=Te(this,e,t);let r=[];return this.decompose(0,e,r,2),n.length&&n.decompose(0,n.length,r,3),this.decompose(t,this.length,r,1),_e.from(r,this.length-(t-e)+n.length)}append(e){return this.replace(this.length,this.length,e)}slice(e,t=this.length){[e,t]=Te(this,e,t);let n=[];return this.decompose(e,t,n,0),_e.from(n,t-e)}eq(e){if(e==this)return!0;if(e.length!=this.length||e.lines!=this.lines)return!1;let t=this.scanIdentical(e,1),n=this.length-this.scanIdentical(e,-1),r=new xe(this),i=new xe(e);for(let e=t,a=t;;){if(r.next(e),i.next(e),e=0,r.lineBreak!=i.lineBreak||r.done!=i.done||r.value!=i.value)return!1;if(a+=r.value.length,r.done||a>=n)return!0}}iter(e=1){return new xe(this,e)}iterRange(e,t=this.length){return new Se(this,e,t)}iterLines(e,t){let n;if(e==null)n=this.iter();else{t??=this.lines+1;let r=this.line(e).from;n=this.iterRange(r,Math.max(r,t==this.lines+1?this.length:t<=1?0:this.line(t-1).to))}return new Ce(n)}toString(){return this.sliceString(0)}toJSON(){let e=[];return this.flatten(e),e}constructor(){}static of(t){if(t.length==0)throw RangeError(`A document must have at least one line`);return t.length==1&&!t[0]?e.empty:t.length<=32?new ge(t):_e.from(ge.split(t,[]))}},ge=class e extends w{constructor(e,t=ve(e)){super(),this.text=e,this.length=t}get lines(){return this.text.length}get children(){return null}lineInner(e,t,n,r){for(let i=0;;i++){let a=this.text[i],o=r+a.length;if((t?n:o)>=e)return new we(r,o,n,a);r=o+1,n++}}decompose(t,n,r,i){let a=t<=0&&n>=this.length?this:new e(be(this.text,t,n),Math.min(n,this.length)-Math.max(0,t));if(i&1){let t=r.pop(),n=ye(a.text,t.text.slice(),0,a.length);if(n.length<=32)r.push(new e(n,t.length+a.length));else{let t=n.length>>1;r.push(new e(n.slice(0,t)),new e(n.slice(t)))}}else r.push(a)}replace(t,n,r){if(!(r instanceof e))return super.replace(t,n,r);[t,n]=Te(this,t,n);let i=ye(this.text,ye(r.text,be(this.text,0,t)),n),a=this.length+r.length-(n-t);return i.length<=32?new e(i,a):_e.from(e.split(i,[]),a)}sliceString(e,t=this.length,n=`
 `){[e,t]=Te(this,e,t);let r=``;for(let i=0,a=0;i<=t&&a<this.text.length;a++){let o=this.text[a],s=i+o.length;i>e&&a&&(r+=n),e<s&&t>i&&(r+=o.slice(Math.max(0,e-i),t-i)),i=s+1}return r}flatten(e){for(let t of this.text)e.push(t)}scanIdentical(){return 0}static split(t,n){let r=[],i=-1;for(let a of t)r.push(a),i+=a.length+1,r.length==32&&(n.push(new e(r,i)),r=[],i=-1);return i>-1&&n.push(new e(r,i)),n}},_e=class e extends w{constructor(e,t){super(),this.children=e,this.length=t,this.lines=0;for(let t of e)this.lines+=t.lines}lineInner(e,t,n,r){for(let i=0;;i++){let a=this.children[i],o=r+a.length,s=n+a.lines-1;if((t?s:o)>=e)return a.lineInner(e,t,n,r);r=o+1,n=s+1}}decompose(e,t,n,r){for(let i=0,a=0;a<=t&&i<this.children.length;i++){let o=this.children[i],s=a+o.length;if(e<=s&&t>=a){let i=r&(a<=e|(s>=t?2:0));a>=e&&s<=t&&!i?n.push(o):o.decompose(e-a,t-a,n,i)}a=s+1}}replace(t,n,r){if([t,n]=Te(this,t,n),r.lines<this.lines)for(let i=0,a=0;i<this.children.length;i++){let o=this.children[i],s=a+o.length;if(t>=a&&n<=s){let c=o.replace(t-a,n-a,r),l=this.lines-o.lines+c.lines;if(c.lines<l>>4&&c.lines>l>>6){let a=this.children.slice();return a[i]=c,new e(a,this.length-(n-t)+r.length)}return super.replace(a,s,c)}a=s+1}return super.replace(t,n,r)}sliceString(e,t=this.length,n=`
 `){[e,t]=Te(this,e,t);let r=``;for(let i=0,a=0;i<this.children.length&&a<=t;i++){let o=this.children[i],s=a+o.length;a>e&&i&&(r+=n),e<s&&t>a&&(r+=o.sliceString(e-a,t-a,n)),a=s+1}return r}flatten(e){for(let t of this.children)t.flatten(e)}scanIdentical(t,n){if(!(t instanceof e))return 0;let r=0,[i,a,o,s]=n>0?[0,0,this.children.length,t.children.length]:[this.children.length-1,t.children.length-1,-1,-1];for(;;i+=n,a+=n){if(i==o||a==s)return r;let e=this.children[i],c=t.children[a];if(e!=c)return r+e.scanIdentical(c,n);r+=e.length+1}}static from(t,n=t.reduce((e,t)=>e+t.length+1,-1)){let r=0;for(let e of t)r+=e.lines;if(r<32){let e=[];for(let n of t)n.flatten(e);return new ge(e,n)}let i=Math.max(32,r>>5),a=i<<1,o=i>>1,s=[],c=0,l=-1,u=[];function d(t){let n;if(t.lines>a&&t instanceof e)for(let e of t.children)d(e);else t.lines>o&&(c>o||!c)?(f(),s.push(t)):t instanceof ge&&c&&(n=u[u.length-1])instanceof ge&&t.lines+n.lines<=32?(c+=t.lines,l+=t.length+1,u[u.length-1]=new ge(n.text.concat(t.text),n.length+1+t.length)):(c+t.lines>i&&f(),c+=t.lines,l+=t.length+1,u.push(t))}function f(){c!=0&&(s.push(u.length==1?u[0]:e.from(u,l)),l=-1,c=u.length=0)}for(let e of t)d(e);return f(),s.length==1?s[0]:new e(s,n)}};w.empty=new ge([``],0);function ve(e){let t=-1;for(let n of e)t+=n.length+1;return t}function ye(e,t,n=0,r=1e9){for(let i=0,a=0,o=!0;a<e.length&&i<=r;a++){let s=e[a],c=i+s.length;c>=n&&(c>r&&(s=s.slice(0,r-i)),i<n&&(s=s.slice(n-i)),o?(t[t.length-1]+=s,o=!1):t.push(s)),i=c+1}return t}function be(e,t,n){return ye(e,[``],t,n)}var xe=class{constructor(e,t=1){this.dir=t,this.done=!1,this.lineBreak=!1,this.value=``,this.nodes=[e],this.offsets=[t>0?1:(e instanceof ge?e.text.length:e.children.length)<<1]}nextInner(e,t){for(this.done=this.lineBreak=!1;;){let n=this.nodes.length-1,r=this.nodes[n],i=this.offsets[n],a=i>>1,o=r instanceof ge?r.text.length:r.children.length;if(a==(t>0?o:0)){if(n==0)return this.done=!0,this.value=``,this;t>0&&this.offsets[n-1]++,this.nodes.pop(),this.offsets.pop()}else if((i&1)==(t>0?0:1)){if(this.offsets[n]+=t,e==0)return this.lineBreak=!0,this.value=`
 `,this;e--}else if(r instanceof ge){let i=r.text[a+(t<0?-1:0)];if(this.offsets[n]+=t,i.length>Math.max(0,e))return this.value=e==0?i:t>0?i.slice(e):i.slice(0,i.length-e),this;e-=i.length}else{let i=r.children[a+(t<0?-1:0)];e>i.length?(e-=i.length,this.offsets[n]+=t):(t<0&&this.offsets[n]--,this.nodes.push(i),this.offsets.push(t>0?1:(i instanceof ge?i.text.length:i.children.length)<<1))}}}next(e=0){return e<0&&(this.nextInner(-e,-this.dir),e=this.value.length),this.nextInner(e,this.dir)}},Se=class{constructor(e,t,n){this.value=``,this.done=!1,this.cursor=new xe(e,t>n?-1:1),this.pos=t>n?e.length:0,this.from=Math.min(t,n),this.to=Math.max(t,n)}nextInner(e,t){if(t<0?this.pos<=this.from:this.pos>=this.to)return this.value=``,this.done=!0,this;e+=Math.max(0,t<0?this.pos-this.to:this.from-this.pos);let n=t<0?this.pos-this.from:this.to-this.pos;e>n&&(e=n),n-=e;let{value:r}=this.cursor.next(e);return this.pos+=(r.length+e)*t,this.value=r.length<=n?r:t<0?r.slice(r.length-n):r.slice(0,n),this.done=!this.value,this}next(e=0){return e<0?e=Math.max(e,this.from-this.pos):e>0&&(e=Math.min(e,this.to-this.pos)),this.nextInner(e,this.cursor.dir)}get lineBreak(){return this.cursor.lineBreak&&this.value!=``}},Ce=class{constructor(e){this.inner=e,this.afterBreak=!0,this.value=``,this.done=!1}next(e=0){let{done:t,lineBreak:n,value:r}=this.inner.next(e);return t&&this.afterBreak?(this.value=``,this.afterBreak=!1):t?(this.done=!0,this.value=``):n?this.afterBreak?this.value=``:(this.afterBreak=!0,this.next()):(this.value=r,this.afterBreak=!1),this}get lineBreak(){return!1}};typeof Symbol<`u`&&(w.prototype[Symbol.iterator]=function(){return this.iter()},xe.prototype[Symbol.iterator]=Se.prototype[Symbol.iterator]=Ce.prototype[Symbol.iterator]=function(){return this});var we=class{constructor(e,t,n,r){this.from=e,this.to=t,this.number=n,this.text=r}get length(){return this.to-this.from}};function Te(e,t,n){return t=Math.max(0,Math.min(e.length,t)),[t,Math.max(t,Math.min(e.length,n))]}function T(e,t,n=!0,r=!0){return le(e,t,n,r)}function Ee(e){return e>=56320&&e<57344}function De(e){return e>=55296&&e<56320}function Oe(e,t){let n=e.charCodeAt(t);if(!De(n)||t+1==e.length)return n;let r=e.charCodeAt(t+1);return Ee(r)?(n-55296<<10)+(r-56320)+65536:n}function ke(e){return e<=65535?String.fromCharCode(e):(e-=65536,String.fromCharCode((e>>10)+55296,(e&1023)+56320))}function Ae(e){return e<65536?1:2}var je=/\r\n?|\n/,Me=(function(e){return e[e.Simple=0]=`Simple`,e[e.TrackDel=1]=`TrackDel`,e[e.TrackBefore=2]=`TrackBefore`,e[e.TrackAfter=3]=`TrackAfter`,e})(Me||={}),Ne=class e{constructor(e){this.sections=e}get length(){let e=0;for(let t=0;t<this.sections.length;t+=2)e+=this.sections[t];return e}get newLength(){let e=0;for(let t=0;t<this.sections.length;t+=2){let n=this.sections[t+1];e+=n<0?this.sections[t]:n}return e}get empty(){return this.sections.length==0||this.sections.length==2&&this.sections[1]<0}iterGaps(e){for(let t=0,n=0,r=0;t<this.sections.length;){let i=this.sections[t++],a=this.sections[t++];a<0?(e(n,r,i),r+=i):r+=a,n+=i}}iterChangedRanges(e,t=!1){Le(this,e,t)}get invertedDesc(){let t=[];for(let e=0;e<this.sections.length;){let n=this.sections[e++],r=this.sections[e++];r<0?t.push(n,r):t.push(r,n)}return new e(t)}composeDesc(e){return this.empty?e:e.empty?this:ze(this,e)}mapDesc(e,t=!1){return e.empty?this:Re(this,e,t)}mapPos(e,t=-1,n=Me.Simple){let r=0,i=0;for(let a=0;a<this.sections.length;){let o=this.sections[a++],s=this.sections[a++],c=r+o;if(s<0){if(c>e)return i+(e-r);i+=o}else{if(n!=Me.Simple&&c>=e&&(n==Me.TrackDel&&r<e&&c>e||n==Me.TrackBefore&&r<e||n==Me.TrackAfter&&c>e))return null;if(c>e||c==e&&t<0&&!o)return e==r||t<0?i:i+s;i+=s}r=c}if(e>r)throw RangeError(`Position ${e} is out of range for changeset of length ${r}`);return i}touchesRange(e,t=e){for(let n=0,r=0;n<this.sections.length&&r<=t;){let i=this.sections[n++],a=this.sections[n++],o=r+i;if(a>=0&&r<=t&&o>=e)return r<e&&o>t?`cover`:!0;r=o}return!1}toString(){let e=``;for(let t=0;t<this.sections.length;){let n=this.sections[t++],r=this.sections[t++];e+=(e?` `:``)+n+(r>=0?`:`+r:``)}return e}toJSON(){return this.sections}static fromJSON(t){if(!Array.isArray(t)||t.length%2||t.some(e=>typeof e!=`number`))throw RangeError(`Invalid JSON representation of ChangeDesc`);return new e(t)}static create(t){return new e(t)}},Pe=class e extends Ne{constructor(e,t){super(e),this.inserted=t}apply(e){if(this.length!=e.length)throw RangeError(`Applying change set to a document with the wrong length`);return Le(this,(t,n,r,i,a)=>e=e.replace(r,r+(n-t),a),!1),e}mapDesc(e,t=!1){return Re(this,e,t,!0)}invert(t){let n=this.sections.slice(),r=[];for(let e=0,i=0;e<n.length;e+=2){let a=n[e],o=n[e+1];if(o>=0){n[e]=o,n[e+1]=a;let s=e>>1;for(;r.length<s;)r.push(w.empty);r.push(a?t.slice(i,i+a):w.empty)}i+=a}return new e(n,r)}compose(e){return this.empty?e:e.empty?this:ze(this,e,!0)}map(e,t=!1){return e.empty?this:Re(this,e,t,!0)}iterChanges(e,t=!1){Le(this,e,t)}get desc(){return Ne.create(this.sections)}filter(t){let n=[],r=[],i=[],a=new Be(this);done:for(let e=0,o=0;;){let s=e==t.length?1e9:t[e++];for(;o<s||o==s&&a.len==0;){if(a.done)break done;let e=Math.min(a.len,s-o);Fe(i,e,-1);let t=a.ins==-1?-1:a.off==0?a.ins:0;Fe(n,e,t),t>0&&Ie(r,n,a.text),a.forward(e),o+=e}let c=t[e++];for(;o<c;){if(a.done)break done;let e=Math.min(a.len,c-o);Fe(n,e,-1),Fe(i,e,a.ins==-1?-1:a.off==0?a.ins:0),a.forward(e),o+=e}}return{changes:new e(n,r),filtered:Ne.create(i)}}toJSON(){let e=[];for(let t=0;t<this.sections.length;t+=2){let n=this.sections[t],r=this.sections[t+1];r<0?e.push(n):r==0?e.push([n]):e.push([n].concat(this.inserted[t>>1].toJSON()))}return e}static of(t,n,r){let i=[],a=[],o=0,s=null;function c(t=!1){if(!t&&!i.length)return;o<n&&Fe(i,n-o,-1);let r=new e(i,a);s=s?s.compose(r.map(s)):r,i=[],a=[],o=0}function l(t){if(Array.isArray(t))for(let e of t)l(e);else if(t instanceof e){if(t.length!=n)throw RangeError(`Mismatched change set length (got ${t.length}, expected ${n})`);c(),s=s?s.compose(t.map(s)):t}else{let{from:e,to:s=e,insert:l}=t;if(e>s||e<0||s>n)throw RangeError(`Invalid change range ${e} to ${s} (in doc of length ${n})`);let u=l?typeof l==`string`?w.of(l.split(r||je)):l:w.empty,d=u.length;if(e==s&&d==0)return;e<o&&c(),e>o&&Fe(i,e-o,-1),Fe(i,s-e,d),Ie(a,i,u),o=s}}return l(t),c(!s),s}static empty(t){return new e(t?[t,-1]:[],[])}static fromJSON(t){if(!Array.isArray(t))throw RangeError(`Invalid JSON representation of ChangeSet`);let n=[],r=[];for(let e=0;e<t.length;e++){let i=t[e];if(typeof i==`number`)n.push(i,-1);else if(!Array.isArray(i)||typeof i[0]!=`number`||i.some((e,t)=>t&&typeof e!=`string`))throw RangeError(`Invalid JSON representation of ChangeSet`);else if(i.length==1)n.push(i[0],0);else{for(;r.length<e;)r.push(w.empty);r[e]=w.of(i.slice(1)),n.push(i[0],r[e].length)}}return new e(n,r)}static createSet(t,n){return new e(t,n)}};function Fe(e,t,n,r=!1){if(t==0&&n<=0)return;let i=e.length-2;i>=0&&n<=0&&n==e[i+1]?e[i]+=t:i>=0&&t==0&&e[i]==0?e[i+1]+=n:r?(e[i]+=t,e[i+1]+=n):e.push(t,n)}function Ie(e,t,n){if(n.length==0)return;let r=t.length-2>>1;if(r<e.length)e[e.length-1]=e[e.length-1].append(n);else{for(;e.length<r;)e.push(w.empty);e.push(n)}}function Le(e,t,n){let r=e.inserted;for(let i=0,a=0,o=0;o<e.sections.length;){let s=e.sections[o++],c=e.sections[o++];if(c<0)i+=s,a+=s;else{let l=i,u=a,d=w.empty;for(;l+=s,u+=c,c&&r&&(d=d.append(r[o-2>>1])),!(n||o==e.sections.length||e.sections[o+1]<0);)s=e.sections[o++],c=e.sections[o++];t(i,l,a,u,d),i=l,a=u}}}function Re(e,t,n,r=!1){let i=[],a=r?[]:null,o=new Be(e),s=new Be(t);for(let e=-1;;)if(o.done&&s.len||s.done&&o.len)throw Error(`Mismatched change set lengths`);else if(o.ins==-1&&s.ins==-1){let e=Math.min(o.len,s.len);Fe(i,e,-1),o.forward(e),s.forward(e)}else if(s.ins>=0&&(o.ins<0||e==o.i||o.off==0&&(s.len<o.len||s.len==o.len&&!n))){let t=s.len;for(Fe(i,s.ins,-1);t;){let n=Math.min(o.len,t);o.ins>=0&&e<o.i&&o.len<=n&&(Fe(i,0,o.ins),a&&Ie(a,i,o.text),e=o.i),o.forward(n),t-=n}s.next()}else if(o.ins>=0){let t=0,n=o.len;for(;n;)if(s.ins==-1){let e=Math.min(n,s.len);t+=e,n-=e,s.forward(e)}else if(s.ins==0&&s.len<n)n-=s.len,s.next();else break;Fe(i,t,e<o.i?o.ins:0),a&&e<o.i&&Ie(a,i,o.text),e=o.i,o.forward(o.len-n)}else if(o.done&&s.done)return a?Pe.createSet(i,a):Ne.create(i);else throw Error(`Mismatched change set lengths`)}function ze(e,t,n=!1){let r=[],i=n?[]:null,a=new Be(e),o=new Be(t);for(let e=!1;;)if(a.done&&o.done)return i?Pe.createSet(r,i):Ne.create(r);else if(a.ins==0)Fe(r,a.len,0,e),a.next();else if(o.len==0&&!o.done)Fe(r,0,o.ins,e),i&&Ie(i,r,o.text),o.next();else if(a.done||o.done)throw Error(`Mismatched change set lengths`);else{let t=Math.min(a.len2,o.len),n=r.length;if(a.ins==-1){let n=o.ins==-1?-1:o.off?0:o.ins;Fe(r,t,n,e),i&&n&&Ie(i,r,o.text)}else o.ins==-1?(Fe(r,a.off?0:a.len,t,e),i&&Ie(i,r,a.textBit(t))):(Fe(r,a.off?0:a.len,o.off?0:o.ins,e),i&&!o.off&&Ie(i,r,o.text));e=(a.ins>t||o.ins>=0&&o.len>t)&&(e||r.length>n),a.forward2(t),o.forward(t)}}var Be=class{constructor(e){this.set=e,this.i=0,this.next()}next(){let{sections:e}=this.set;this.i<e.length?(this.len=e[this.i++],this.ins=e[this.i++]):(this.len=0,this.ins=-2),this.off=0}get done(){return this.ins==-2}get len2(){return this.ins<0?this.len:this.ins}get text(){let{inserted:e}=this.set,t=this.i-2>>1;return t>=e.length?w.empty:e[t]}textBit(e){let{inserted:t}=this.set,n=this.i-2>>1;return n>=t.length&&!e?w.empty:t[n].slice(this.off,e==null?void 0:this.off+e)}forward(e){e==this.len?this.next():(this.len-=e,this.off+=e)}forward2(e){this.ins==-1?this.forward(e):e==this.ins?this.next():(this.ins-=e,this.off+=e)}},Ve=class e{constructor(e,t,n,r){this.from=e,this.to=t,this.flags=n,this.goalColumn=r}get anchor(){return this.flags&32?this.to:this.from}get head(){return this.flags&32?this.from:this.to}get empty(){return this.from==this.to}get assoc(){return this.flags&8?-1:this.flags&16?1:0}get undirectional(){return(this.flags&64)>0}get bidiLevel(){let e=this.flags&7;return e==7?null:e}map(t,n=-1){let r,i;return this.empty?r=i=t.mapPos(this.from,n):(r=t.mapPos(this.from,1),i=t.mapPos(this.to,-1)),r==this.from&&i==this.to?this:new e(r,i,this.flags,this.goalColumn)}extend(e,t=e,n=0){if(e<=this.anchor&&t>=this.anchor)return E.range(e,t,void 0,void 0,n);let r=Math.abs(e-this.anchor)>Math.abs(t-this.anchor)?e:t;return E.range(this.anchor,r,void 0,void 0,n)}eq(e,t=!1){return this.anchor==e.anchor&&this.head==e.head&&this.goalColumn==e.goalColumn&&(!t||!this.empty||this.assoc==e.assoc)}toJSON(){return{anchor:this.anchor,head:this.head}}static fromJSON(e){if(!e||typeof e.anchor!=`number`||typeof e.head!=`number`)throw RangeError(`Invalid JSON representation for SelectionRange`);return E.range(e.anchor,e.head)}static create(t,n,r,i){return new e(t,n,r,i)}},E=class e{constructor(e,t){this.ranges=e,this.mainIndex=t}map(t,n=-1){return t.empty?this:e.create(this.ranges.map(e=>e.map(t,n)),this.mainIndex)}eq(e,t=!1){if(this.ranges.length!=e.ranges.length||this.mainIndex!=e.mainIndex)return!1;for(let n=0;n<this.ranges.length;n++)if(!this.ranges[n].eq(e.ranges[n],t))return!1;return!0}get main(){return this.ranges[this.mainIndex]}asSingle(){return this.ranges.length==1?this:new e([this.main],0)}addRange(t,n=!0){return e.create([t].concat(this.ranges),n?0:this.mainIndex+1)}replaceRange(t,n=this.mainIndex){let r=this.ranges.slice();return r[n]=t,e.create(r,this.mainIndex)}toJSON(){return{ranges:this.ranges.map(e=>e.toJSON()),main:this.mainIndex}}static fromJSON(t){if(!t||!Array.isArray(t.ranges)||typeof t.main!=`number`||t.main>=t.ranges.length)throw RangeError(`Invalid JSON representation for EditorSelection`);return new e(t.ranges.map(e=>Ve.fromJSON(e)),t.main)}static single(t,n=t){return new e([e.range(t,n)],0)}static create(t,n=0){if(t.length==0)throw RangeError(`A selection needs at least one range`);for(let r=0,i=0;i<t.length;i++){let a=t[i];if(a.empty?a.from<=r:a.from<r)return e.normalized(t.slice(),n);r=a.to}return new e(t,n)}static cursor(e,t=0,n,r){return Ve.create(e,e,(t==0?0:t<0?8:16)|(n==null?7:Math.min(6,n)),r)}static range(e,t,n,r,i){let a=r==null?7:Math.min(6,r);return!i&&e!=t&&(i=t<e?1:-1),i&&(a|=i<0?8:16),t<e?Ve.create(t,e,a|32,n):Ve.create(e,t,a,n)}static undirectionalRange(e,t){return Ve.create(e,t,64,void 0)}static normalized(t,n=0){let r=t[n];t.sort((e,t)=>e.from-t.from),n=t.indexOf(r);for(let r=1;r<t.length;r++){let i=t[r],a=t[r-1];if(i.empty?i.from<=a.to:i.from<a.to){let o=a.from,s=Math.max(i.to,a.to);r<=n&&n--,t.splice(--r,2,i.anchor>i.head?e.range(s,o):e.range(o,s))}}return new e(t,n)}};function He(e,t){for(let n of e.ranges)if(n.to>t)throw RangeError(`Selection points outside of document`)}var Ue=0,D=class e{constructor(e,t,n,r,i){this.combine=e,this.compareInput=t,this.compare=n,this.isStatic=r,this.id=Ue++,this.default=e([]),this.extensions=typeof i==`function`?i(this):i}get reader(){return this}static define(t={}){return new e(t.combine||(e=>e),t.compareInput||((e,t)=>e===t),t.compare||(t.combine?(e,t)=>e===t:We),!!t.static,t.enables)}of(e){return new Ge([],this,0,e)}compute(e,t){if(this.isStatic)throw Error(`Can't compute a static facet`);return new Ge(e,this,1,t)}computeN(e,t){if(this.isStatic)throw Error(`Can't compute a static facet`);return new Ge(e,this,2,t)}from(e,t){return t||=e=>e,this.compute([e],n=>t(n.field(e)))}};function We(e,t){return e==t||e.length==t.length&&e.every((e,n)=>e===t[n])}var Ge=class{constructor(e,t,n,r){this.dependencies=e,this.facet=t,this.type=n,this.value=r,this.id=Ue++}dynamicSlot(e){let t=this.value,n=this.facet.compareInput,r=this.id,i=e[r]>>1,a=this.type==2,o=!1,s=!1,c=[];for(let t of this.dependencies)t==`doc`?o=!0:t==`selection`?s=!0:(e[t.id]??1)&1||c.push(e[t.id]);return{create(e){return e.values[i]=t(e),1},update(e,r){if(o&&r.docChanged||s&&(r.docChanged||r.selection)||qe(e,c)){let r=t(e);if(a?!Ke(r,e.values[i],n):!n(r,e.values[i]))return e.values[i]=r,1}return 0},reconfigure:(e,o)=>{let s,c=o.config.address[r];if(c!=null){let r=ot(o,c);if(this.dependencies.every(t=>t instanceof D?o.facet(t)===e.facet(t):t instanceof Xe?o.field(t,!1)==e.field(t,!1):!0)||(a?Ke(s=t(e),r,n):n(s=t(e),r)))return e.values[i]=r,0}else s=t(e);return e.values[i]=s,1}}}get extension(){return this}};function Ke(e,t,n){if(e.length!=t.length)return!1;for(let r=0;r<e.length;r++)if(!n(e[r],t[r]))return!1;return!0}function qe(e,t){let n=!1;for(let r of t)at(e,r)&1&&(n=!0);return n}function Je(e,t,n){let r=n.map(t=>e[t.id]),i=n.map(e=>e.type),a=r.filter(e=>!(e&1)),o=e[t.id]>>1;function s(e){let n=[];for(let t=0;t<r.length;t++){let a=ot(e,r[t]);if(i[t]==2)for(let e of a)n.push(e);else n.push(a)}return t.combine(n)}return{create(e){for(let t of r)at(e,t);return e.values[o]=s(e),1},update(e,n){if(!qe(e,a))return 0;let r=s(e);return t.compare(r,e.values[o])?0:(e.values[o]=r,1)},reconfigure(e,i){let a=qe(e,r),c=i.config.facets[t.id],l=i.facet(t);if(c&&!a&&We(n,c))return e.values[o]=l,0;let u=s(e);return t.compare(u,l)?(e.values[o]=l,0):(e.values[o]=u,1)}}}var Ye=D.define({static:!0}),Xe=class e{constructor(e,t,n,r,i){this.id=e,this.createF=t,this.updateF=n,this.compareF=r,this.spec=i,this.provides=void 0}static define(t){let n=new e(Ue++,t.create,t.update,t.compare||((e,t)=>e===t),t);return t.provide&&(n.provides=t.provide(n)),n}create(e){return(e.facet(Ye).find(e=>e.field==this)?.create||this.createF)(e)}slot(e){let t=e[this.id]>>1;return{create:e=>(e.values[t]=this.create(e),1),update:(e,n)=>{let r=e.values[t],i=this.updateF(r,n);return this.compareF(r,i)?0:(e.values[t]=i,1)},reconfigure:(e,n)=>{let r=e.facet(Ye),i=n.facet(Ye),a;return(a=r.find(e=>e.field==this))&&a!=i.find(e=>e.field==this)?(e.values[t]=a.create(e),1):n.config.address[this.id]==null?(e.values[t]=this.create(e),1):(e.values[t]=n.field(this),0)}}}init(e){return[this,Ye.of({field:this,create:e})]}get extension(){return this}},Ze={lowest:4,low:3,default:2,high:1,highest:0};function Qe(e){return t=>new et(t,e)}var $e={highest:Qe(Ze.highest),high:Qe(Ze.high),default:Qe(Ze.default),low:Qe(Ze.low),lowest:Qe(Ze.lowest)},et=class{constructor(e,t){this.inner=e,this.prec=t}get extension(){return this}},tt=class e{of(e){return new nt(this,e)}reconfigure(t){return e.reconfigure.of({compartment:this,extension:t})}get(e){return e.config.compartments.get(this)}},nt=class{constructor(e,t){this.compartment=e,this.inner=t}get extension(){return this}},rt=class e{constructor(e,t,n,r,i,a){for(this.base=e,this.compartments=t,this.dynamicSlots=n,this.address=r,this.staticValues=i,this.facets=a,this.statusTemplate=[];this.statusTemplate.length<n.length;)this.statusTemplate.push(0)}staticFacet(e){let t=this.address[e.id];return t==null?e.default:this.staticValues[t>>1]}static resolve(t,n,r){let i=[],a=Object.create(null),o=new Map;for(let e of it(t,n,o))e instanceof Xe?i.push(e):(a[e.facet.id]||(a[e.facet.id]=[])).push(e);let s=Object.create(null),c=[],l=[];for(let e of i)s[e.id]=l.length<<1,l.push(t=>e.slot(t));let u=r?.config.facets;for(let e in a){let t=a[e],n=t[0].facet,i=u&&u[e]||[];if(t.every(e=>e.type==0)){if(s[n.id]=c.length<<1|1,We(i,t))c.push(r.facet(n));else{let e=n.combine(t.map(e=>e.value));c.push(r&&n.compare(e,r.facet(n))?r.facet(n):e)}}else{for(let e of t)e.type==0?(s[e.id]=c.length<<1|1,c.push(e.value)):(s[e.id]=l.length<<1,l.push(t=>e.dynamicSlot(t)));s[n.id]=l.length<<1,l.push(e=>Je(e,n,t))}}let d=l.map(e=>e(s));return new e(t,o,d,s,c,a)}};function it(e,t,n){let r=[[],[],[],[],[]],i=new Map;function a(e,o){let s=i.get(e);if(s!=null){if(s<=o)return;let t=r[s].indexOf(e);t>-1&&r[s].splice(t,1),e instanceof nt&&n.delete(e.compartment)}if(i.set(e,o),Array.isArray(e))for(let t of e)a(t,o);else if(e instanceof nt){if(n.has(e.compartment))throw RangeError(`Duplicate use of compartment in extensions`);let r=t.get(e.compartment)||e.inner;n.set(e.compartment,r),a(r,o)}else if(e instanceof et)a(e.inner,e.prec);else if(e instanceof Xe)r[o].push(e),e.provides&&a(e.provides,o);else if(e instanceof Ge)r[o].push(e),e.facet.extensions&&a(e.facet.extensions,Ze.default);else{let t=e.extension;if(!t)throw Error(`Unrecognized extension value in extension set (${e}).`);if(t==e)throw Error(`Unrecognized extension value in extension set (${e}). This sometimes happens because multiple instances of @codemirror/state are loaded, breaking instanceof checks.`);a(t,o)}}return a(e,Ze.default),r.reduce((e,t)=>e.concat(t))}function at(e,t){if(t&1)return 2;let n=t>>1,r=e.status[n];if(r==4)throw Error(`Cyclic dependency between fields and/or facets`);if(r&2)return r;e.status[n]=4;let i=e.computeSlot(e,e.config.dynamicSlots[n]);return e.status[n]=2|i}function ot(e,t){return t&1?e.config.staticValues[t>>1]:e.values[t>>1]}var st=D.define(),ct=D.define({combine:e=>e.some(e=>e),static:!0}),lt=D.define({combine:e=>e.length?e[0]:void 0,static:!0}),ut=D.define(),dt=D.define(),ft=D.define(),pt=D.define({combine:e=>e.length?e[0]:!1}),mt=class{constructor(e,t){this.type=e,this.value=t}static define(){return new ht}},ht=class{of(e){return new mt(this,e)}},gt=class{constructor(e){this.map=e}of(e){return new O(this,e)}},O=class e{constructor(e,t){this.type=e,this.value=t}map(t){let n=this.type.map(this.value,t);return n===void 0?void 0:n==this.value?this:new e(this.type,n)}is(e){return this.type==e}static define(e={}){return new gt(e.map||(e=>e))}static mapEffects(e,t){if(!e.length)return e;let n=[];for(let r of e){let e=r.map(t);e&&n.push(e)}return n}};O.reconfigure=O.define(),O.appendConfig=O.define();var _t=class e{constructor(t,n,r,i,a,o){this.startState=t,this.changes=n,this.selection=r,this.effects=i,this.annotations=a,this.scrollIntoView=o,this._doc=null,this._state=null,r&&He(r,n.newLength),a.some(t=>t.type==e.time)||(this.annotations=a.concat(e.time.of(Date.now())))}static create(t,n,r,i,a,o){return new e(t,n,r,i,a,o)}get newDoc(){return this._doc||=this.changes.apply(this.startState.doc)}get newSelection(){return this.selection||this.startState.selection.map(this.changes)}get state(){return this._state||this.startState.applyTransaction(this),this._state}annotation(e){for(let t of this.annotations)if(t.type==e)return t.value}get docChanged(){return!this.changes.empty}get reconfigured(){return this.startState.config!=this.state.config}isUserEvent(t){let n=this.annotation(e.userEvent);return!!(n&&(n==t||n.length>t.length&&n.slice(0,t.length)==t&&n[t.length]==`.`))}};_t.time=mt.define(),_t.userEvent=mt.define(),_t.addToHistory=mt.define(),_t.remote=mt.define();function vt(e,t){let n=[];for(let r=0,i=0;;){let a,o;if(r<e.length&&(i==t.length||t[i]>=e[r]))a=e[r++],o=e[r++];else if(i<t.length)a=t[i++],o=t[i++];else return n;!n.length||n[n.length-1]<a?n.push(a,o):n[n.length-1]<o&&(n[n.length-1]=o)}}function yt(e,t,n){let r,i,a;return n?(r=t.changes,i=Pe.empty(t.changes.length),a=e.changes.compose(t.changes)):(r=t.changes.map(e.changes),i=e.changes.mapDesc(t.changes,!0),a=e.changes.compose(r)),{changes:a,selection:t.selection?t.selection.map(i):e.selection?.map(r),effects:O.mapEffects(e.effects,r).concat(O.mapEffects(t.effects,i)),annotations:e.annotations.length?e.annotations.concat(t.annotations):t.annotations,scrollIntoView:e.scrollIntoView||t.scrollIntoView}}function bt(e,t,n){let r=t.selection,i=Tt(t.annotations);return t.userEvent&&(i=i.concat(_t.userEvent.of(t.userEvent))),{changes:t.changes instanceof Pe?t.changes:Pe.of(t.changes||[],n,e.facet(lt)),selection:r&&(r instanceof E?r:E.single(r.anchor,r.head)),effects:Tt(t.effects),annotations:i,scrollIntoView:!!t.scrollIntoView}}function xt(e,t,n){let r=bt(e,t.length?t[0]:{},e.doc.length);t.length&&t[0].filter===!1&&(n=!1);for(let i=1;i<t.length;i++){t[i].filter===!1&&(n=!1);let a=!!t[i].sequential;r=yt(r,bt(e,t[i],a?r.changes.newLength:e.doc.length),a)}let i=_t.create(e,r.changes,r.selection,r.effects,r.annotations,r.scrollIntoView);return Ct(n?St(i):i)}function St(e){let t=e.startState,n=!0;for(let r of t.facet(ut)){let t=r(e);if(t===!1){n=!1;break}Array.isArray(t)&&(n=n===!0?t:vt(n,t))}if(n!==!0){let r,i;if(n===!1)i=e.changes.invertedDesc,r=Pe.empty(t.doc.length);else{let t=e.changes.filter(n);r=t.changes,i=t.filtered.mapDesc(t.changes).invertedDesc}e=_t.create(t,r,e.selection&&e.selection.map(i),O.mapEffects(e.effects,i),e.annotations,e.scrollIntoView)}let r=t.facet(dt);for(let n=r.length-1;n>=0;n--){let i=r[n](e);e=i instanceof _t?i:Array.isArray(i)&&i.length==1&&i[0]instanceof _t?i[0]:xt(t,Tt(i),!1)}return e}function Ct(e){let t=e.startState,n=t.facet(ft),r=e;for(let i=n.length-1;i>=0;i--){let a=n[i](e);a&&Object.keys(a).length&&(r=yt(r,bt(t,a,e.changes.newLength),!0))}return r==e?e:_t.create(t,e.changes,e.selection,r.effects,r.annotations,r.scrollIntoView)}var wt=[];function Tt(e){return e==null?wt:Array.isArray(e)?e:[e]}var k=(function(e){return e[e.Word=0]=`Word`,e[e.Space=1]=`Space`,e[e.Other=2]=`Other`,e})(k||={}),Et=/[\u00df\u0587\u0590-\u05f4\u0600-\u06ff\u3040-\u309f\u30a0-\u30ff\u3400-\u4db5\u4e00-\u9fcc\uac00-\ud7af]/,Dt;try{Dt=RegExp(`[\\p{Alphabetic}\\p{Number}_]`,`u`)}catch{}function Ot(e){if(Dt)return Dt.test(e);for(let t=0;t<e.length;t++){let n=e[t];if(/\w/.test(n)||n>``&&(n.toUpperCase()!=n.toLowerCase()||Et.test(n)))return!0}return!1}function kt(e){return t=>{if(!/\S/.test(t))return k.Space;if(Ot(t))return k.Word;for(let n=0;n<e.length;n++)if(t.indexOf(e[n])>-1)return k.Word;return k.Other}}var A=class e{constructor(e,t,n,r,i,a){this.config=e,this.doc=t,this.selection=n,this.values=r,this.status=e.statusTemplate.slice(),this.computeSlot=i,a&&(a._state=this);for(let e=0;e<this.config.dynamicSlots.length;e++)at(this,e<<1);this.computeSlot=null}field(e,t=!0){let n=this.config.address[e.id];if(n==null){if(t)throw RangeError(`Field is not present in this state`);return}return at(this,n),ot(this,n)}update(...e){return xt(this,e,!0)}applyTransaction(t){let n=this.config,{base:r,compartments:i}=n;for(let e of t.effects)e.is(tt.reconfigure)?(n&&=(i=new Map,n.compartments.forEach((e,t)=>i.set(t,e)),null),i.set(e.value.compartment,e.value.extension)):e.is(O.reconfigure)?(n=null,r=e.value):e.is(O.appendConfig)&&(n=null,r=Tt(r).concat(e.value));let a;n?a=t.startState.values.slice():(n=rt.resolve(r,i,this),a=new e(n,this.doc,this.selection,n.dynamicSlots.map(()=>null),(e,t)=>t.reconfigure(e,this),null).values);let o=t.startState.facet(ct)?t.newSelection:t.newSelection.asSingle();new e(n,t.newDoc,o,a,(e,n)=>n.update(e,t),t)}replaceSelection(e){return typeof e==`string`&&(e=this.toText(e)),this.changeByRange(t=>({changes:{from:t.from,to:t.to,insert:e},range:E.cursor(t.from+e.length)}))}changeByRange(e){let t=this.selection,n=e(t.ranges[0]),r=this.changes(n.changes),i=[n.range],a=Tt(n.effects);for(let n=1;n<t.ranges.length;n++){let o=e(t.ranges[n]),s=this.changes(o.changes),c=s.map(r);for(let e=0;e<n;e++)i[e]=i[e].map(c);let l=r.mapDesc(s,!0);i.push(o.range.map(l)),r=r.compose(c),a=O.mapEffects(a,c).concat(O.mapEffects(Tt(o.effects),l))}return{changes:r,selection:E.create(i,t.mainIndex),effects:a}}changes(t=[]){return t instanceof Pe?t:Pe.of(t,this.doc.length,this.facet(e.lineSeparator))}toText(t){return w.of(t.split(this.facet(e.lineSeparator)||je))}sliceDoc(e=0,t=this.doc.length){return this.doc.sliceString(e,t,this.lineBreak)}facet(e){let t=this.config.address[e.id];return t==null?e.default:(at(this,t),ot(this,t))}toJSON(e){let t={doc:this.sliceDoc(),selection:this.selection.toJSON()};if(e)for(let n in e){let r=e[n];r instanceof Xe&&this.config.address[r.id]!=null&&(t[n]=r.spec.toJSON(this.field(e[n]),this))}return t}static fromJSON(t,n={},r){if(!t||typeof t.doc!=`string`)throw RangeError(`Invalid JSON representation for EditorState`);let i=[];if(r){for(let e in r)if(Object.prototype.hasOwnProperty.call(t,e)){let n=r[e],a=t[e];i.push(n.init(e=>n.spec.fromJSON(a,e)))}}return e.create({doc:t.doc,selection:E.fromJSON(t.selection),extensions:n.extensions?i.concat([n.extensions]):i})}static create(t={}){let n=rt.resolve(t.extensions||[],new Map),r=t.doc instanceof w?t.doc:w.of((t.doc||``).split(n.staticFacet(e.lineSeparator)||je)),i=t.selection?t.selection instanceof E?t.selection:E.single(t.selection.anchor,t.selection.head):E.single(0);return He(i,r.length),n.staticFacet(ct)||(i=i.asSingle()),new e(n,r,i,n.dynamicSlots.map(()=>null),(e,t)=>t.create(e),null)}get tabSize(){return this.facet(e.tabSize)}get lineBreak(){return this.facet(e.lineSeparator)||`
@@ -208,8 +208,8 @@ export const RESERVED_HOST_MODULE = "engine-host";
  * which is in \`apps/spacescape\` and validated three literal shape names of its own.
  *
  * Now it is \`PRIMITIVES\`, one entry per primitive, and every one of those six reads it. There are
- * nine primitives rather than three: Sphere, RoundBox, Cone, Cylinder, Torus and HexPrism are new.
- * All of them are closed form, and adding a tenth is adding one entry.
+ * ten primitives rather than three: Sphere, RoundBox, Cone, Cylinder, Torus, HexPrism and Polygon
+ * are new. All of them are closed form, and adding an eleventh is adding one entry.
  *
  * ## Two things in here are approximate, and say so
  *
@@ -222,6 +222,15 @@ export const RESERVED_HOST_MODULE = "engine-host";
  * is unbounded in relative terms**, so nothing may use it to bound a step by more than the local
  * feature size — which is the constraint a second application that raymarches inherits.
  *
+ * **\`sdPolygonPrism\` is exact except outside both the outline and its thickness**, and
+ * \`PRIMITIVES.Polygon.exact\` is \`false\` for that reason. Where a point is outside the
+ * outline *and* above or below the slab, the true distance to the solid is the
+ * hypotenuse from the corner, and combining the outline's distance with the slab's by
+ * \`max\` reports the longer leg instead — short by up to a factor of √2, and not short at
+ * all anywhere else. So it errs toward under-reporting, which is the direction a sphere
+ * tracer can survive and a minimum cannot be fooled by. Its zero set is the outline
+ * extruded, which is what a mesher sees.
+ *
  * **\`sdShape\` was a switch, and is now a table lookup.** There is no registry for the old one to
  * have: there were three shapes and a switch is the thing this repository writes when a type is a
  * union — the thing it has been careful to *replace* with a table everywhere else.
@@ -229,16 +238,21 @@ export const RESERVED_HOST_MODULE = "engine-host";
 export type {
   DimensionField,
   DimensionGroup,
+  EditableParameter,
   OperationShape,
+  OutlinePoint,
   PrimitiveParameter,
   PrimitiveSpec,
   ShapeType,
 } from "./primitives";
 export {
   dimensionGroups,
+  isEditableParameter,
   MIN_RADIUS,
+  PALETTE_NAMES,
   parameterFloats,
   parametersToFloats,
+  polygonHalfExtents,
   primitiveFromCode,
   primitiveHalfExtents,
   primitiveParameters,
@@ -250,6 +264,8 @@ export {
   sdCylinder,
   sdEllipsoid,
   sdHexPrism,
+  sdPolygon2D,
+  sdPolygonPrism,
   sdRoundBox,
   sdShape,
   sdSphere,
@@ -305,7 +321,7 @@ export {
  * test checks that claim rather than asserting it.
  */
 
-import type { Vec3 } from "@big-mesh-studios/core";
+import { FAR_DISTANCE, type Vec3 } from "@big-mesh-studios/core";
 
 /**
  * The shapes, as the discriminated union every layer passes around.
@@ -331,7 +347,23 @@ export type OperationShape =
   | { type: "Cone"; len: number; radius: number }
   | { type: "Cylinder"; len: number; radius: number }
   | { type: "Torus"; majorRadius: number; minorRadius: number }
-  | { type: "HexPrism"; len: number; radius: number };
+  | { type: "HexPrism"; len: number; radius: number }
+  | { type: "Polygon"; points: readonly OutlinePoint[]; len: number };
+
+/**
+ * One vertex of a polygon's outline: a point on the shape's own XZ plane.
+ *
+ * **Two numbers named \`x\` and \`z\`, and not \`x\` and \`y\`.** Every other vector in this
+ * repository is three numbers about a world with a down, and a \`Vec2\` written \`x, y\`
+ * would be read by everyone who has seen one as "the first two of the three" — which
+ * puts a floor's outline on its side, in the one frame where nothing looks wrong and
+ * nothing is. The third number is not missing by accident: it is the extrusion, and
+ * the extrusion is \`len\`.
+ */
+export interface OutlinePoint {
+  readonly x: number;
+  readonly z: number;
+}
 
 /** The names of the primitives, for a switch that has to be exhaustive. */
 export type ShapeType = OperationShape["type"];
@@ -355,8 +387,20 @@ export type ShapeType = OperationShape["type"];
  */
 export const MIN_RADIUS = 1e-3;
 
+/**
+ * Clamps a size to something a distance function can divide by.
+ *
+ * **Total, and that is the point of it.** Before this took a \`Number.isFinite\` a
+ * malformed shape — a polygon's thickness read past the end of a truncated file, say —
+ * handed \`undefined\` straight through, \`undefined < MIN_RADIUS\` is false, and the
+ * clamp returned it unchanged. Every primitive that has an axial size goes through
+ * here, so one missing clamp was one NaN spread through a chunk from any of them.
+ * Clamping at this one place rather than at every call site is the same argument as
+ * the one above it, taken further: there is one function that every size passes
+ * through, so there is one thing to get right.
+ */
 const radius = (value: number): number =>
-  value < MIN_RADIUS ? MIN_RADIUS : value;
+  !Number.isFinite(value) || value < MIN_RADIUS ? MIN_RADIUS : value;
 
 /** The two-component length helper, inlined because this is the hot path. */
 const length2 = (x: number, y: number): number => Math.sqrt(x * x + y * y);
@@ -592,6 +636,141 @@ export const sdHexPrism = (len: number, r: number, p: Vec3): number => {
   );
 };
 
+/**
+ * Signed distance to a closed outline in the XZ plane, negative inside.
+ *
+ * **Two loops wearing one loop's clothes.** The magnitude is a running minimum over
+ * each edge's clamped projection — for any edge, the closest point on it to \`p\` is
+ * the projection of \`p\` clamped to the edge's endpoints, which is one dot product
+ * and a clamp — and the sign is a crossing count against a ray from \`p\`. Both loops
+ * read the outline once, together, because an outline is walked twice as often as
+ * anything else in a mesh sample.
+ *
+ * **The magnitude is the true distance to the outline on both sides of it, including
+ * inside a concavity.** That is worth being precise about, because the usual claim
+ * about polygon distance functions is that they degrade inside a non-convex region —
+ * and they do not, here. The boundary of the interior *is* the outline, so the closest
+ * boundary point to an interior point is the closest point on the outline to it, which
+ * is what the running minimum finds. \`Polygon\`'s \`exact: false\` is about the prism
+ * above this, not about this.
+ *
+ * **Winding does not matter, and that is the crossing count's doing rather than an
+ * accident.** The number of times a ray leaves \`p\` through the boundary is odd
+ * exactly when \`p\` is inside, and it is odd whichever way round the outline was
+ * drawn. A hand-drawn floor plan closes in whichever direction the hand went, and a
+ * level file that has been through a text editor can hold either, so this is the one
+ * property that could not be assumed here.
+ *
+ * **What it does assume is that the outline is simple — that it does not cross
+ * itself.** A figure of eight has two lobes, the parity rule reports one inside and
+ * the other outside, and the result is a shape nobody asked for and no error
+ * anywhere. Detecting that is an O(n²) segment-intersection test that a level reader
+ * runs once and a mesh sample runs a million times, so it belongs at the door: the
+ * draw tool refuses to close a self-intersecting loop, and a hand-edited file that
+ * gets one has a floor with a puzzling bite out of it rather than a NaN.
+ */
+export const sdPolygon2D = (
+  points: readonly OutlinePoint[],
+  px: number,
+  pz: number,
+): number => {
+  // **A degenerate outline contributes nothing rather than a NaN.** A NaN in a field
+  // is unrecoverable — it propagates through every comparison as false and is a hole
+  // nothing downstream can explain. \`checkShape\` and the file's reader both refuse an
+  // outline under three points; this is the third thing to notice, and the only one
+  // reached from inside a mesh sample.
+  if (points.length < 3) return FAR_DISTANCE;
+
+  let best = Infinity;
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i, i++) {
+    const vi = points[i];
+    const vj = points[j];
+    const vx = vi.x - vj.x;
+    const vz = vi.z - vj.z;
+    const wx = px - vj.x;
+    const wz = pz - vj.z;
+
+    // **A zero-length edge is a division by zero, and this is the guard.** Two
+    // consecutive identical vertices are refused by the level reader, but a level file
+    // that has been through a merge conflict can hold one, and \`clamp(NaN, 0, 1)\` is
+    // still NaN.
+    const length = vx * vx + vz * vz;
+    const along = length > 0 ? (wx * vx + wz * vz) / length : 0;
+    const t = along < 0 ? 0 : along > 1 ? 1 : along;
+    const bx = wx - vx * t;
+    const bz = wz - vz * t;
+    const squared = bx * bx + bz * bz;
+    if (squared < best) best = squared;
+
+    // **The crossing test, and the half-open span is the whole of it.** A vertex
+    // exactly at the point's height is counted on one edge and not the other, so a ray
+    // grazing a corner crosses once rather than twice. The first condition can only be
+    // true when \`vi.z !== vj.z\`, which is why the division below needs no guard.
+    if (
+      pz >= vj.z !== pz >= vi.z &&
+      px < ((vi.x - vj.x) * (pz - vj.z)) / vz + vj.x
+    ) {
+      inside = !inside;
+    }
+  }
+  return (inside ? -1 : 1) * Math.sqrt(best);
+};
+
+/**
+ * Signed distance to an outline extruded along Y by \`len\`, centred on the origin.
+ *
+ * **The intersection of a prism and a slab, which is \`max\`.** A point is inside the
+ * solid exactly when it is inside the outline *and* within half the thickness, so the
+ * two conditions are combined with the larger of the two distances rather than the
+ * smaller — the same boolean the fold applies, and the one that keeps this a distance
+ * function rather than a test.
+ *
+ * **Which makes it exact in three of the four regions a point can be in, and short in
+ * the fourth.** That fourth region is outside the outline *and* above or below the
+ * slab's height, where the true distance to the corner where a wall meets a face is the
+ * hypotenuse \`√(planar² + axial²)\` and this reports the longer leg, \`max\`. The error
+ * is bounded by a factor of √2 and grows with the distance, which is why \`Polygon\`
+ * declares \`exact: false\` — and why the flag's cost is a sphere tracer taking a few
+ * more steps than it needs outside a floor, never fewer. Every other region is exact,
+ * which is the part worth stating too: the top and bottom faces are \`len / 2\` away and
+ * the walls are the outline's own distance, and a soft edge on a floor blends across
+ * the softness that was asked for.
+ */
+export const sdPolygonPrism = (
+  points: readonly OutlinePoint[],
+  len: number,
+  p: Vec3,
+): number =>
+  Math.max(sdPolygon2D(points, p.x, p.z), Math.abs(p.y) - radius(len) / 2);
+
+/**
+ * The half-extents of an outline extruded by \`len\`, over the points it actually has.
+ *
+ * **Not over the points it could have.** The box an operation is indexed by has to
+ * cover everywhere the operation can change the field, and a polygon's own extent is
+ * its points' bounding box — a box over a fixed capacity's worth of padding would be a
+ * box covering empty space the operation never reaches.
+ */
+export const polygonHalfExtents = (
+  points: readonly OutlinePoint[],
+  len: number,
+): Vec3 => {
+  const half = radius(len) / 2;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const point of points) {
+    if (point.x < minX) minX = point.x;
+    if (point.x > maxX) maxX = point.x;
+    if (point.z < minZ) minZ = point.z;
+    if (point.z > maxZ) maxZ = point.z;
+  }
+  if (points.length === 0) return { x: half, y: half, z: half };
+  return { x: (maxX - minX) / 2, y: half, z: (maxZ - minZ) / 2 };
+};
+
 // ---------------------------------------------------------------------------
 // The table
 // ---------------------------------------------------------------------------
@@ -618,26 +797,112 @@ export const sdHexPrism = (len: number, r: number, p: Vec3): number => {
  * geometry rather than of a user interface, so it belongs in the table. A maximum is not: how
  * big a person is willing to make a limb is a question about the application and about the
  * mesh budget, not about what a capsule is, so a panel may impose one and this does not.
+ *
+ * ## Why this is a union and not one shape with an optional field
+ *
+ * **Because a list of points is none of the three things the single shape could say, and a
+ * parameter type that lies about one of its members is worse than a parameter type that says
+ * it is a union.** An outline has a length rather than a \`min\` and a \`step\`, it occupies a
+ * count of floats rather than one or three, and no panel has an input for it. Giving it
+ * \`min: 3\` and calling that a minimum size would make the one number on a polygon that
+ * reads correctly the one number that means something else — and it would let every reader
+ * below go on treating "one float or three" as the whole story, which is exactly the drift
+ * ADR 0025 exists to prevent.
+ *
+ * **Which is why this costs a branch in each of the five readers.** Every one of them
+ * switching on \`arity\` now has to say what it does about a third case, and the compiler says
+ * so rather than leaving a panel to render a list of points as a number field.
  */
-export interface PrimitiveParameter {
-  readonly name: string;
-  /** Three for a \`Vec3\`, one for a number. Also the number of floats it occupies. */
-  readonly arity: 1 | 3;
-  /** What a panel calls it. */
-  readonly label: string;
-  /**
-   * What the three components of a \`Vec3\` parameter are called, in x, y, z order.
-   *
-   * **\`Width\`, \`Height\` and \`Depth\` rather than \`x\`, \`y\` and \`z\` for the box family**,
-   * because a person's box has a width and a depth whichever way up it is on screen, and an
-   * axis letter only means something once you know which way the part is rotated.
-   */
-  readonly axes?: readonly [string, string, string];
-  /** Smallest value that still describes a shape. */
-  readonly min: number;
-  /** A sensible increment for a number field or a drag. */
-  readonly step: number;
-}
+export type PrimitiveParameter =
+  | {
+      readonly name: string;
+      /** A number. Also the number of floats it occupies. */
+      readonly arity: 1;
+      /** What a panel calls it. */
+      readonly label: string;
+      /** Smallest value that still describes a shape. */
+      readonly min: number;
+      /** A sensible increment for a number field or a drag. */
+      readonly step: number;
+    }
+  | {
+      readonly name: string;
+      /** Three for a \`Vec3\`. Also the number of floats it occupies. */
+      readonly arity: 3;
+      /** What a panel calls it. */
+      readonly label: string;
+      /**
+       * What the three components of a \`Vec3\` parameter are called, in x, y, z order.
+       *
+       * **\`Width\`, \`Height\` and \`Depth\` rather than \`x\`, \`y\` and \`z\` for the box family**,
+       * because a person's box has a width and a depth whichever way up it is on screen, and an
+       * axis letter only means something once you know which way the part is rotated.
+       */
+      readonly axes?: readonly [string, string, string];
+      /** Smallest value that still describes a shape. */
+      readonly min: number;
+      /** A sensible increment for a number field or a drag. */
+      readonly step: number;
+    }
+  | {
+      readonly name: string;
+      /**
+       * A list whose length is not known from the shape's type.
+       *
+       * **The only parameter in the table that a panel has no input for**, and the only one
+       * whose width is not a constant — which is why it writes its own width as its first
+       * float. See ADR 0052.
+       */
+      readonly arity: "variable";
+      /** What a panel calls it, for the read-only summary a panel shows instead. */
+      readonly label: string;
+      /** Fewest points that still enclose an area. Three: fewer is not a polygon. */
+      readonly minPoints: number;
+      /** Most points this build will carry. A bound on work, not on imagination. */
+      readonly maxPoints: number;
+    };
+
+/**
+ * The narrowings the readers below share.
+ *
+ * **Two predicates rather than one \`isVariable\`, and both are type guards.** A reader
+ * that wants to *skip* a parameter asks whether it has an input, which is false for the
+ * variable arity and for a name the shape does not have. A reader that wants to *count*
+ * floats asks whether the width is fixed, which is true for the other two arities together
+ * and false for the variable one. The partition is the same, but the two questions are
+ * asked from opposite sides of it, and writing the second as the negation of the first is
+ * how the second ends up wrong at the one case where they differ.
+ */
+const isVariable = (
+  parameter: PrimitiveParameter,
+): parameter is Extract<PrimitiveParameter, { readonly arity: "variable" }> =>
+  parameter.arity === "variable";
+
+/** A parameter a panel can put an input next to, narrowed from the union above. */
+export type EditableParameter = Extract<
+  PrimitiveParameter,
+  { readonly arity: 1 | 3 }
+>;
+
+export const isEditableParameter = (
+  parameter: PrimitiveParameter,
+): parameter is EditableParameter => !isVariable(parameter);
+
+/** A variable parameter's point-count bounds. */
+const pointBounds = (
+  parameter: Extract<PrimitiveParameter, { readonly arity: "variable" }>,
+): readonly [number, number] => [parameter.minPoints, parameter.maxPoints];
+
+/**
+ * A float that is a number, or zero.
+ *
+ * **The last line against a NaN, and it is here rather than in \`readShape\` because
+ * that function is not the only caller.** \`deserialiseOperations\` refuses a file whose
+ * operations run past its own end, so a truncated buffer is caught before this — but a
+ * NaN in a field is unrecoverable, and it costs one comparison to be certain of one.
+ */
+const finiteOr = (value: number | undefined): number =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
 
 /**
  * Everything one primitive is, in one entry, as a reader sees it.
@@ -668,12 +933,22 @@ export interface PrimitiveSpec {
   /**
    * Whether \`sdf\` is the true Euclidean distance, or an approximation of it.
    *
-   * **True for every entry except the ellipsoid.** It is here because a second
-   * application that sphere-traces rather than meshes needs to know which is which,
-   * and because "closed form" and "exact" are not the same claim: this table is
-   * entirely closed form, and one entry of nine is not exact.
+   * **True for every entry except the ellipsoid and the polygon.** It is here because a
+   * second application that sphere-traces rather than meshes needs to know which is which,
+   * and because "closed form" and "exact" are not the same claim: this table is entirely
+   * closed form, and two entries of ten are not exact.
    */
   readonly exact: boolean;
+  /**
+   * Whether a palette should offer this primitive. Omitted means yes.
+   *
+   * **\`PRIMITIVE_NAMES\` is every primitive and a palette is not**, because the two answer
+   * different questions: one is "which shapes can this build read", which is all of them
+   * because a type byte this build does not know is a file it refuses, and the other is
+   * "which shapes can somebody build by typing numbers", which a polygon's outline cannot.
+   * So \`PALETTE_NAMES\` filters on this and \`primitiveFromCode\` does not.
+   */
+  readonly inPalette?: boolean;
   /** The primitive's own extent along its own axes, centred on the origin. */
   readonly halfExtents: (shape: never) => Vec3;
   /** Negative inside, zero on the surface, positive outside. */
@@ -868,10 +1143,80 @@ export const PRIMITIVES = {
     sdf: (shape: { type: "HexPrism"; len: number; radius: number }, p: Vec3) =>
       sdHexPrism(shape.len, shape.radius, p),
   },
+  Polygon: {
+    type: "Polygon",
+    // **The second entry that is not exact, and the error is measurable.** A point
+    // outside both the outline and the slab's height should be a hypotenuse away from
+    // the corner of the solid; \`max\` reports the longer leg, so it under-reports by up
+    // to a factor of √2, and by nothing at all everywhere else. Under-reporting is the
+    // direction a sphere tracer survives — more steps than it needs, never one through
+    // a surface — and the direction a minimum cannot be fooled by. \`polygon.test.ts\`
+    // measures the error rather than asserting the flag.
+    exact: false,
+    code: 9,
+    /** A floor and a roof are the same shape, and only the item's position says which. */
+    inPalette: false,
+    parameters: [
+      {
+        name: "points",
+        arity: "variable",
+        label: "Outline",
+        minPoints: 3,
+        // **A bound on work, not on imagination.** Every sample inside a polygon's
+        // bounding box walks every edge, and a floor is rarely a hundred-sided shape.
+        // Sixty-four is three orders of magnitude above a hand-drawn room and two above
+        // a building with a courtyard.
+        maxPoints: 64,
+      },
+      { name: "len", arity: 1, label: "Thickness", min: 0, step: 0.05 },
+    ],
+    halfExtents: (shape: {
+      type: "Polygon";
+      points: readonly OutlinePoint[];
+      len: number;
+    }) => polygonHalfExtents(shape.points, shape.len),
+    sdf: (
+      shape: {
+        type: "Polygon";
+        points: readonly OutlinePoint[];
+        len: number;
+      },
+      p: Vec3,
+    ) => sdPolygonPrism(shape.points, shape.len, p),
+  },
 } as const;
 
 /** The names of every primitive, in table order. */
 export const PRIMITIVE_NAMES = Object.keys(PRIMITIVES) as ShapeType[];
+
+/**
+ * Whether a primitive is one a palette should offer, which is every one of them unless
+ * it says otherwise.
+ *
+ * **A cast, and a second one in this file.** \`PRIMITIVES\` is left unannotated so that
+ * each entry keeps its own parameter types — see \`PrimitiveSpec\` — which means the
+ * compiler cannot see that nine of the ten entries have no \`inPalette\` key at all.
+ * Writing \`inPalette: true\` into each of them would satisfy it, at the price of nine
+ * lines that say the same thing and would drift from nine entries the moment a tenth
+ * arrived and someone forgot this one.
+ */
+const isInPalette = (name: ShapeType): boolean => {
+  const spec: unknown = PRIMITIVES[name];
+  return (spec as PrimitiveSpec).inPalette !== false;
+};
+
+/**
+ * The names a palette offers: every primitive except the ones that cannot be built by
+ * typing numbers.
+ *
+ * **A polygon is not offered, and is still reachable.** A modeller's parts panel reads
+ * this; the level editor's toolbar and a place script read \`PRIMITIVE_NAMES\`, so a floor
+ * is drawn in the editor and written by a guest either way. A palette is a list of things
+ * to click, and an outline is not a thing to click — it is a thing to draw, and the level
+ * editor's draw tool is where that happens.
+ */
+export const PALETTE_NAMES: readonly ShapeType[] =
+  PRIMITIVE_NAMES.filter(isInPalette);
 
 /**
  * The one place a shape's variant meets a generic accessor.
@@ -914,10 +1259,25 @@ export const primitiveParameters = (
   shape: OperationShape,
 ): readonly PrimitiveParameter[] => specOf(shape).parameters;
 
-/** The float count a primitive's parameters occupy in the file format. */
+/**
+ * The fixed float count a primitive's parameters occupy in the file format.
+ *
+ * **One for a \`variable\` parameter, and that one is the parameter's own width.** It is
+ * what makes this a *fixed* count: a shape whose parameters are a handful of numbers has
+ * a width that is a function of its type, which is what lets the reader find the next
+ * operation by arithmetic. A polygon does not have one, so it writes its point count as
+ * its first float and this returns the width of that prefix. The count is clamped to the
+ * table's bounds on the way back in, so a file claiming four billion points reads as the
+ * largest outline the table allows rather than as four billion reads past the end of the
+ * buffer.
+ *
+ * See ADR 0052.
+ */
 export const parameterFloats = (shape: OperationShape): number => {
   let count = 0;
-  for (const parameter of specOf(shape).parameters) count += parameter.arity;
+  for (const parameter of specOf(shape).parameters) {
+    count += isVariable(parameter) ? 1 : parameter.arity;
+  }
   return count;
 };
 
@@ -929,6 +1289,13 @@ export const parameterFloats = (shape: OperationShape): number => {
  * every new shape, and the two halves drift by one float and parse into plausible
  * numbers. Flattening through a table means the bytes and the names cannot drift,
  * because there is only one list of names.
+ *
+ * **And why \`writeShape\` sizes its buffer from this rather than from \`parameterFloats\`
+ * is the reason the two cannot be confused.** They are different questions — "how wide
+ * is the fixed part" and "how many floats are there" — and they disagree for exactly
+ * one primitive. A file format that sized its buffer with the first and filled it with
+ * the second would overwrite the beginning of the next operation every time a polygon
+ * appeared in a level.
  */
 export const parametersToFloats = (shape: OperationShape): number[] => {
   const floats: number[] = [];
@@ -937,6 +1304,20 @@ export const parametersToFloats = (shape: OperationShape): number[] => {
     if (parameter.arity === 3) {
       const v = value as Vec3;
       floats.push(v.x, v.y, v.z);
+    } else if (parameter.arity === "variable") {
+      const points = value as readonly OutlinePoint[] | undefined;
+      const [, maxPoints] = pointBounds(parameter);
+      // **\`Array.isArray\` rather than a check for \`undefined\`, and that is the whole
+      // difference between an empty outline and a NaN.** A shape that arrived with a
+      // number where its outline belongs would otherwise write \`NaN\` as the count, and
+      // a \`NaN\` in a file is worse than an empty outline: it comes back as a shape with
+      // three points at the origin, which is a floor in the wrong place rather than an
+      // error.
+      const outline = Array.isArray(points) ? points.slice(0, maxPoints) : [];
+      floats.push(outline.length);
+      for (const point of outline) {
+        floats.push(finiteOr(point?.x), finiteOr(point?.z));
+      }
     } else {
       floats.push(value as number);
     }
@@ -960,6 +1341,34 @@ export const shapeFromFloats = (
         z: floats[at + 2],
       };
       at += 3;
+    } else if (parameter.arity === "variable") {
+      const [minPoints, maxPoints] = pointBounds(parameter);
+      // **Clamped on the way in as well as on the way out, and for the same reason.**
+      // This is the read side of a length the file carries, and a length is the one
+      // number in a file that can be hostile: unclamped, a count larger than the rest
+      // of the buffer walks this loop off the end and every point after the first bad
+      // one is \`undefined\`, which reaches the field as a NaN. Clamped to what the list
+      // can actually supply as well as to the table, because a count is a claim about
+      // the file and the file is the thing that has to be believed.
+      const written = floats[at];
+      const claimed = Number.isFinite(written)
+        ? Math.floor(written)
+        : minPoints;
+      const available = Math.floor((floats.length - at - 1) / 2);
+      const count = Math.min(
+        Math.max(claimed, minPoints),
+        maxPoints,
+        Math.max(available, minPoints),
+      );
+      const points: OutlinePoint[] = [];
+      for (let i = 0; i < count; i++) {
+        points.push({
+          x: finiteOr(floats[at + 1 + i * 2]),
+          z: finiteOr(floats[at + 2 + i * 2]),
+        });
+      }
+      shape[parameter.name] = points;
+      at += 1 + count * 2;
     } else {
       shape[parameter.name] = floats[at];
       at += 1;
@@ -1012,35 +1421,43 @@ const AXES = ["x", "y", "z"] as const;
  * Grouping by parameter rather than returning one flat list of numbers is what lets a panel
  * put a border around the three of a \`Vec3\`; the shape really does treat them as one value,
  * and a border is the cheapest way to say so.
+ *
+ * **A \`variable\` parameter is not here at all, rather than being here with no fields.**
+ * The alternative was an empty group, and an empty group is a heading over nothing: a
+ * panel would render a bordered box labelled "Outline" containing no inputs, and a
+ * reader would have to learn that "present but empty" meant "you cannot edit this in a
+ * panel". A shape's outline is drawn rather than typed, so the shape that draws it says so.
  */
 export const dimensionGroups = (
   shape: OperationShape,
 ): readonly DimensionGroup[] => {
   const values = shape as unknown as Record<string, unknown>;
-  return specOf(shape).parameters.map((parameter) => ({
-    name: parameter.name,
-    label: parameter.label,
-    fields:
-      parameter.arity === 3
-        ? AXES.map((axis, index) => ({
-            name: parameter.name,
-            axis,
-            label: (parameter.axes ?? ["x", "y", "z"])[index],
-            value: (values[parameter.name] as Vec3)[axis],
-            min: parameter.min,
-            step: parameter.step,
-          }))
-        : [
-            {
+  return specOf(shape)
+    .parameters.filter(isEditableParameter)
+    .map((parameter) => ({
+      name: parameter.name,
+      label: parameter.label,
+      fields:
+        parameter.arity === 3
+          ? AXES.map((axis, index) => ({
               name: parameter.name,
-              axis: undefined,
-              label: parameter.label,
-              value: values[parameter.name] as number,
+              axis,
+              label: (parameter.axes ?? ["x", "y", "z"])[index],
+              value: (values[parameter.name] as Vec3)[axis],
               min: parameter.min,
               step: parameter.step,
-            },
-          ],
-  }));
+            }))
+          : [
+              {
+                name: parameter.name,
+                axis: undefined,
+                label: parameter.label,
+                value: values[parameter.name] as number,
+                min: parameter.min,
+                step: parameter.step,
+              },
+            ],
+    }));
 };
 
 /**
@@ -1055,6 +1472,14 @@ export const dimensionGroups = (
  * Returns \`shape\` unchanged when the named parameter is not one of its own — which is what a
  * caller gets if it asks for a field the table does not have, and is why the read side and
  * the write side cannot disagree about what a shape contains.
+ *
+ * **And when it is a \`variable\` parameter, which is the other way to ask the same question.**
+ * \`values[name] === undefined\` would let a caller write the number five over a polygon's
+ * outline, because the outline is present and so the guard passes. The read side of this
+ * pair is \`dimensionGroups\`, which does not list a variable parameter, so no panel can
+ * produce the call — but the function is exported, and an exported function that can be
+ * handed a value it cannot represent is a bug waiting for a caller that is more
+ * adventurous than the one that shipped with it.
  */
 export const withParameter = (
   shape: OperationShape,
@@ -1064,6 +1489,10 @@ export const withParameter = (
 ): OperationShape => {
   const values = shape as unknown as Record<string, unknown>;
   if (values[name] === undefined) return shape;
+  const parameter = specOf(shape).parameters.find(
+    (candidate) => candidate.name === name,
+  );
+  if (parameter === undefined || isVariable(parameter)) return shape;
   if (axis === undefined) {
     return { ...values, [name]: value } as OperationShape;
   }
@@ -1114,4 +1543,4 @@ export const shapePadding = (
   void shape;
   return softness * 4 + 1;
 };
-`,DC=e(g(),1),OC=`places/guest/voxelscape.ts`,kC=`places/bridge.ts`,AC=`packages/sdf/src/index.ts`,jC=`packages/sdf/src/primitives.ts`,MC={[OC]:h,[kC]:wC,[AC]:TC,[jC]:EC},NC={voxelscape:[`./${OC}`],"@big-mesh-studios/sdf":[`./${AC}`]},PC={target:DC.default.ScriptTarget.ES2019,module:DC.default.ModuleKind.ESNext,moduleResolution:DC.default.ModuleResolutionKind.Bundler,strict:!0,noEmit:!0,skipLibCheck:!0,baseUrl:`.`,paths:NC},FC=f(`<div class=cm-pane role=tabpanel>`),IC=e=>{let t=s(()=>({...MC,...e.files}));return b(SC,{get files(){return t()},tsconfig:PC,get children(){return b(r,{get each(){return Object.keys(e.files)},children:t=>b(re,{get when(){return e.active===t},get children(){var r=FC();return n(r,`id`,`place-tabpanel-${t}`),C(r,b(CC,{path:t,theme:bC,onInput:({source:n})=>e.onInput(t,n)})),r}})})}})},LC=f(`<button type=button class=place-tab-remove>×`),RC=f(`<div><button type=button class=place-tab-name role=tab>`),zC=f(`<div class=place-models><h3>attached</h3><ul>`),BC=f(`<div class=place-editor><div class=place-header><label class=place-field><span>name</span><input type=text></label><label class=place-field><span>seed</span><input type=number></label><label class=place-field><span>world</span><select><option value>sphere (the default)</option><option value=flat>flat (y is always up)</option></select></label><span class=place-draft></span></div><div class=place-tabs role=tablist aria-label="a place's files"><button type=button class=place-tab-add aria-label="add a file">+</button></div><!><div class=place-actions><button type=button>new</button><button type=button>save</button><button type=button class=place-publish>publish</button><button type=button class=place-run>`),VC=f(`<li> <span class=place-model-note>carried, not read`);function HC(e){var t=RC(),r=t.firstChild;return x(r,`click`,e.onSelect,!0),C(r,()=>e.name),C(t,b(l,{get when(){return e.removable},get children(){var t=LC();return x(t,`click`,e.onRemove,!0),S(()=>`close ${e.name}`,e=>{n(t,`aria-label`,e)}),t}}),null),S(()=>({e:`place-tab${e.active?` place-tab-active`:``}${e.entry?` place-tab-entry`:``}`,t:e.active?`true`:`false`,a:`place-tabpanel-${e.name}`,o:`place-tab-${e.name}`}),({e,t:i,a,o},s)=>{_(t,e,s?.e),i!==s?.t&&n(r,`aria-selected`,i),a!==s?.a&&n(r,`aria-controls`,a),o!==s?.o&&n(r,`id`,o)}),t}var UC=e=>{let[t,r]=c(!1),o=async()=>{r(!0);try{e.onStatus(await e.onRun(e.state.project()))}finally{r(!1)}},s=async()=>{r(!0);try{e.onStatus(await e.onPublish())}finally{r(!1)}},u=()=>{i(async()=>{let{writePlaceZip:e}=await import(`./index-C9LYgaKn.js`).then(e=>e.t);return{writePlaceZip:e}},__vite__mapDeps([0,1,2]),import.meta.url).then(async({writePlaceZip:t})=>{let n=await t(e.state.project()),r=URL.createObjectURL(n),i=document.createElement(`a`);i.href=r,i.download=`${WC(e.state.project().manifest.name)}.zip`,i.click(),URL.revokeObjectURL(r),e.onStatus(`saved ${i.download}`)})};a(()=>{e.state.flush()});var d=BC(),f=d.firstChild,p=f.firstChild,h=p.firstChild.nextSibling,g=p.nextSibling,_=g.firstChild.nextSibling,v=g.nextSibling,y=v.firstChild.nextSibling,x=v.nextSibling,ee=f.nextSibling,te=ee.firstChild,ne=ee.nextSibling,re=ne.nextSibling,ie=re.firstChild,ae=ie.nextSibling,oe=ae.nextSibling,se=oe.nextSibling;return h.$$input=t=>e.state.setName(t.currentTarget.value),_.$$input=t=>e.state.setSeed(t.currentTarget.valueAsNumber),y.$$input=t=>e.state.setWorld(t.currentTarget.value===``?void 0:t.currentTarget.value),C(x,(()=>{var t=m(()=>!!e.state.canSave());return()=>t()?e.state.saved()?`draft saved`:`saving…`:`not saving — this browser has no storage`})()),C(ee,()=>e.state.project().manifest.scripts.map(t=>b(HC,{name:t,get active(){return e.state.active()===t},get entry(){return e.state.project().manifest.entry===t},get removable(){return e.state.project().manifest.scripts.length>1},onSelect:()=>e.state.setActive(t),onRemove:()=>{e.state.removeScript(t)===null&&e.onStatus(`a place keeps at least one file`)}})),te),te.$$click=()=>{e.state.addScript()===null&&e.onStatus(`cannot add another file`)},C(d,b(IC,{get files(){return e.state.project().scripts},get active(){return e.state.active()},onActive:t=>e.state.setActive(t),onInput:(t,n)=>e.state.write(t,n)}),ne),C(d,b(l,{get when(){return Object.keys(e.state.project().models).length>0},get children(){var t=zC(),n=t.firstChild.nextSibling;return C(n,()=>Object.keys(e.state.project().models).map(e=>(()=>{var t=VC(),n=t.firstChild;return C(t,e,n),t})())),t}}),re),ie.$$click=()=>e.state.newProject(),ae.$$click=u,oe.$$click=()=>void s(),se.$$click=()=>void o(),C(se,()=>t()?`working…`:`run`),S(()=>({e:e.state.project().manifest.name,t:e.state.project().manifest.seed,a:e.state.project().manifest.world??``,o:e.state.project().manifest.scripts.length>=64,i:t(),n:t()}),({e,t,a:r,o:i,i:a,n:o},s)=>{h.value=e??``,_.value=t??``,queueMicrotask(()=>y.value=r)||(y.value=r),i!==s?.o&&n(te,`disabled`,i),a!==s?.i&&n(oe,`disabled`,a),o!==s?.n&&n(se,`disabled`,o)}),d},WC=e=>{let t=e.toLowerCase().replace(/[^a-z0-9.\-_~]+/g,`-`).replace(/-+/g,`-`).replace(/^[-.]+|[-.]+$/g,``).slice(0,64);return t===``?`place`:t};p([`click`,`input`]);export{UC as PlaceEditor};
+`,DC=e(g(),1),OC=`places/guest/voxelscape.ts`,kC=`places/bridge.ts`,AC=`packages/sdf/src/index.ts`,jC=`packages/sdf/src/primitives.ts`,MC={[OC]:h,[kC]:wC,[AC]:TC,[jC]:EC},NC={voxelscape:[`./${OC}`],"@big-mesh-studios/sdf":[`./${AC}`]},PC={target:DC.default.ScriptTarget.ES2019,module:DC.default.ModuleKind.ESNext,moduleResolution:DC.default.ModuleResolutionKind.Bundler,strict:!0,noEmit:!0,skipLibCheck:!0,baseUrl:`.`,paths:NC},FC=f(`<div class=cm-pane role=tabpanel>`),IC=e=>{let t=s(()=>({...MC,...e.files}));return b(SC,{get files(){return t()},tsconfig:PC,get children(){return b(r,{get each(){return Object.keys(e.files)},children:t=>b(re,{get when(){return e.active===t},get children(){var r=FC();return n(r,`id`,`place-tabpanel-${t}`),C(r,b(CC,{path:t,theme:bC,onInput:({source:n})=>e.onInput(t,n)})),r}})})}})},LC=f(`<button type=button class=place-tab-remove>×`),RC=f(`<div><button type=button class=place-tab-name role=tab>`),zC=f(`<div class=place-models><h3>attached</h3><ul>`),BC=f(`<div class=place-editor><div class=place-header><label class=place-field><span>name</span><input type=text></label><label class=place-field><span>seed</span><input type=number></label><label class=place-field><span>world</span><select><option value>sphere (the default)</option><option value=flat>flat (y is always up)</option></select></label><span class=place-draft></span></div><div class=place-tabs role=tablist aria-label="a place's files"><button type=button class=place-tab-add aria-label="add a file">+</button></div><!><div class=place-actions><button type=button>new</button><button type=button>save</button><button type=button class=place-publish>publish</button><button type=button class=place-run>`),VC=f(`<li> <span class=place-model-note>carried, not read`);function HC(e){var t=RC(),r=t.firstChild;return x(r,`click`,e.onSelect,!0),C(r,()=>e.name),C(t,b(l,{get when(){return e.removable},get children(){var t=LC();return x(t,`click`,e.onRemove,!0),S(()=>`close ${e.name}`,e=>{n(t,`aria-label`,e)}),t}}),null),S(()=>({e:`place-tab${e.active?` place-tab-active`:``}${e.entry?` place-tab-entry`:``}`,t:e.active?`true`:`false`,a:`place-tabpanel-${e.name}`,o:`place-tab-${e.name}`}),({e,t:i,a,o},s)=>{_(t,e,s?.e),i!==s?.t&&n(r,`aria-selected`,i),a!==s?.a&&n(r,`aria-controls`,a),o!==s?.o&&n(r,`id`,o)}),t}var UC=e=>{let[t,r]=c(!1),o=async()=>{r(!0);try{e.onStatus(await e.onRun(e.state.project()))}finally{r(!1)}},s=async()=>{r(!0);try{e.onStatus(await e.onPublish())}finally{r(!1)}},u=()=>{i(async()=>{let{writePlaceZip:e}=await import(`./index-CrXJU6iy.js`).then(e=>e.t);return{writePlaceZip:e}},__vite__mapDeps([0,1,2]),import.meta.url).then(async({writePlaceZip:t})=>{let n=await t(e.state.project()),r=URL.createObjectURL(n),i=document.createElement(`a`);i.href=r,i.download=`${WC(e.state.project().manifest.name)}.zip`,i.click(),URL.revokeObjectURL(r),e.onStatus(`saved ${i.download}`)})};a(()=>{e.state.flush()});var d=BC(),f=d.firstChild,p=f.firstChild,h=p.firstChild.nextSibling,g=p.nextSibling,_=g.firstChild.nextSibling,v=g.nextSibling,y=v.firstChild.nextSibling,x=v.nextSibling,ee=f.nextSibling,te=ee.firstChild,ne=ee.nextSibling,re=ne.nextSibling,ie=re.firstChild,ae=ie.nextSibling,oe=ae.nextSibling,se=oe.nextSibling;return h.$$input=t=>e.state.setName(t.currentTarget.value),_.$$input=t=>e.state.setSeed(t.currentTarget.valueAsNumber),y.$$input=t=>e.state.setWorld(t.currentTarget.value===``?void 0:t.currentTarget.value),C(x,(()=>{var t=m(()=>!!e.state.canSave());return()=>t()?e.state.saved()?`draft saved`:`saving…`:`not saving — this browser has no storage`})()),C(ee,()=>e.state.project().manifest.scripts.map(t=>b(HC,{name:t,get active(){return e.state.active()===t},get entry(){return e.state.project().manifest.entry===t},get removable(){return e.state.project().manifest.scripts.length>1},onSelect:()=>e.state.setActive(t),onRemove:()=>{e.state.removeScript(t)===null&&e.onStatus(`a place keeps at least one file`)}})),te),te.$$click=()=>{e.state.addScript()===null&&e.onStatus(`cannot add another file`)},C(d,b(IC,{get files(){return e.state.project().scripts},get active(){return e.state.active()},onActive:t=>e.state.setActive(t),onInput:(t,n)=>e.state.write(t,n)}),ne),C(d,b(l,{get when(){return Object.keys(e.state.project().models).length>0},get children(){var t=zC(),n=t.firstChild.nextSibling;return C(n,()=>Object.keys(e.state.project().models).map(e=>(()=>{var t=VC(),n=t.firstChild;return C(t,e,n),t})())),t}}),re),ie.$$click=()=>e.state.newProject(),ae.$$click=u,oe.$$click=()=>void s(),se.$$click=()=>void o(),C(se,()=>t()?`working…`:`run`),S(()=>({e:e.state.project().manifest.name,t:e.state.project().manifest.seed,a:e.state.project().manifest.world??``,o:e.state.project().manifest.scripts.length>=64,i:t(),n:t()}),({e,t,a:r,o:i,i:a,n:o},s)=>{h.value=e??``,_.value=t??``,queueMicrotask(()=>y.value=r)||(y.value=r),i!==s?.o&&n(te,`disabled`,i),a!==s?.i&&n(oe,`disabled`,a),o!==s?.n&&n(se,`disabled`,o)}),d},WC=e=>{let t=e.toLowerCase().replace(/[^a-z0-9.\-_~]+/g,`-`).replace(/-+/g,`-`).replace(/^[-.]+|[-.]+$/g,``).slice(0,64);return t===``?`place`:t};p([`click`,`input`]);export{UC as PlaceEditor};
