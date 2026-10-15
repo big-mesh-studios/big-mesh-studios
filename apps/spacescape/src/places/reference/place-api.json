@@ -1171,7 +1171,28 @@
       "members": [],
       "union": [],
       "alternatives": [],
-      "type": "{ readonly [K in ShapeType]: { readonly type: K; } & { readonly [P in ParametersOf<K> as P[\"name\"]]: P[\"arity\"] extends 3 ? PlaceVec3 : number; }; }[ShapeType]"
+      "type": "{ readonly [K in ShapeType]: { readonly type: K; } & { readonly [P in ParametersOf<K> as P[\"name\"]]: P[\"arity\"] extends 3 ? PlaceVec3 : P[\"arity\"] extends \"variable\" ? readonly PlaceVec2[] : number; }; }[ShapeType]"
+    },
+    {
+      "name": "PlaceVec2",
+      "doc": "One vertex of a polygon's outline, as a script writes it: two numbers on the XZ plane. **The same shape as `packages/sdf`'s `OutlinePoint`, spelled twice on purpose.** The guest library is types a script sees, and it is checked by the demos against exactly that; re-exporting the engine's own type would make a change to an internal file a change to a published API, which is the opposite of what `/packages` is supposed to be for (ADR 0024). The duplication is three lines and it is what keeps the boundary a boundary.",
+      "members": [
+        {
+          "name": "x",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        },
+        {
+          "name": "z",
+          "type": "number",
+          "optional": false,
+          "doc": ""
+        }
+      ],
+      "union": [],
+      "alternatives": [],
+      "type": ""
     },
     {
       "name": "PlaceVec3",
