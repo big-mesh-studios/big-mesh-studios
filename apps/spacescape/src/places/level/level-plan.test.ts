@@ -40,6 +40,41 @@ const aFigure = (
   ...over,
 });
 
+/**
+ * A floor: a `Polygon` shape, twenty-four across and four thick, centred where it is put.
+ *
+ * **A shape rather than a kind**, which is the decision ADR 0053 records — so this has no
+ * `up`, no `lines` and no reader of its own, and the reader that accepts it is the same
+ * one that accepts a box.
+ */
+const aFloor = (
+  over: Record<string, unknown> = {},
+): Record<string, unknown> => ({
+  kind: "shape",
+  id: "floor",
+  at: [20, 0, 0],
+  shape: {
+    type: "Polygon",
+    len: 4,
+    points: [
+      { x: -12, z: -12 },
+      { x: 12, z: -12 },
+      { x: 12, z: 12 },
+      { x: -12, z: 12 },
+    ],
+  },
+  combine: "Add",
+  ...over,
+});
+
+/** A unit square with one vertex exactly on the local origin. */
+const squareAtOrigin = (): Record<string, unknown>[] => [
+  { x: 0, z: 0 },
+  { x: 4, z: 0 },
+  { x: 4, z: 4 },
+  { x: 0, z: 4 },
+];
+
 /** A walls item: one run along +X, thirty tall, six thick. */
 const aWalls = (
   over: Record<string, unknown> = {},
@@ -393,5 +428,186 @@ describe("a level's walls", () => {
     const walls = ok([aWalls()]).items[0];
     if (walls.kind !== "walls") throw new Error("expected walls");
     expect(itemLabel(walls)).toBe("drawn · walls (1, 2 points)");
+  });
+});
+
+/**
+ * A floor is a `LevelShape` whose `shape` is a `Polygon`, not a fourth kind.
+ *
+ * **Which means it goes through `checkShape` and the shape path rather than a narrow one of
+ * its own** — the whole of what `draw-walls-plan.md` recorded as the price of a third item
+ * kind is absent here, and these are the tests that would notice if it crept back in.
+ */
+describe("a level's floor", () => {
+  it("reads a polygon shape back with its outline and thickness", () => {
+    const plan = ok([aFloor()]);
+    const item = plan.items[0];
+    if (item.kind !== "shape" || item.shape.type !== "Polygon") {
+      throw new Error("expected a polygon shape");
+    }
+    expect(item.shape.points).toEqual([
+      { x: -12, z: -12 },
+      { x: 12, z: -12 },
+      { x: 12, z: 12 },
+      { x: -12, z: 12 },
+    ]);
+    expect(item.shape.len).toBe(4);
+  });
+
+  it("round-trips through a file, unchanged", () => {
+    const written = writeLevelPlan(ok([aFloor()]));
+    const read = parseLevelPlan(written);
+    expect("plan" in read && read.plan.items).toEqual(ok([aFloor()]).items);
+  });
+
+  it("accepts a vertex at the origin, because that is a position and not a size", () => {
+    // **The one that would have been refused by accident.** Every other size in a shape is
+    // checked against `MIN_SHAPE_SIZE`, a floor of 1e-3, because a size of nothing is not
+    // a shape. An outline's coordinates are positions, and a symmetrically drawn floor has
+    // one vertex exactly at the local origin — so routing these through the same check
+    // would turn away every square anybody drew without saying why.
+    expect(
+      ok([
+        aFloor({
+          shape: { type: "Polygon", len: 4, points: squareAtOrigin() },
+        }),
+      ]).items,
+    ).toHaveLength(1);
+  });
+
+  it("refuses an outline with fewer than three points", () => {
+    expect(
+      bad([
+        aFloor({
+          shape: {
+            type: "Polygon",
+            len: 4,
+            points: [
+              { x: 0, z: 0 },
+              { x: 1, z: 0 },
+            ],
+          },
+        }),
+      ]).why,
+    ).toMatch(/takes 3 to 64/);
+  });
+
+  it("refuses an outline with more points than the table allows", () => {
+    const many = Array.from({ length: 65 }, (_, i) => ({ x: i, z: i * 2 }));
+    expect(
+      bad([aFloor({ shape: { type: "Polygon", len: 4, points: many } })]).why,
+    ).toMatch(/takes 3 to 64/);
+  });
+
+  it("refuses the same point twice, because that edge divides by zero", () => {
+    // **Not a formatting complaint.** The distance to an edge is found by projecting onto
+    // it and dividing by its squared length, so a zero-length edge is a NaN and a NaN in
+    // a field is a hole nothing downstream can explain. A person closing a drawn loop on
+    // the point they started from produces exactly this, which is why it is refused here
+    // rather than guarded against at every sample.
+    expect(
+      bad([
+        aFloor({
+          shape: {
+            type: "Polygon",
+            len: 4,
+            points: [
+              { x: 0, z: 0 },
+              { x: 4, z: 0 },
+              { x: 4, z: 4 },
+              { x: 0, z: 0 },
+            ],
+          },
+        }),
+      ]).why,
+    ).toMatch(/same point twice/);
+  });
+
+  it("refuses the closing point repeated, which is what a closed loop looks like", () => {
+    // The same two vertices as above, but at the seam rather than in the middle — the
+    // shape a drawing tool hands over when it keeps the point the hand came back to.
+    expect(
+      bad([
+        aFloor({
+          shape: {
+            type: "Polygon",
+            len: 4,
+            points: [
+              { x: 0, z: 0 },
+              { x: 4, z: 0 },
+              { x: 4, z: 4 },
+              { x: 0, z: 4 },
+              { x: 0, z: 0 },
+            ],
+          },
+        }),
+      ]).why,
+    ).toMatch(/same point twice/);
+  });
+
+  it("refuses a point that is not a pair of numbers", () => {
+    for (const bad0 of [
+      [
+        { x: 0, z: 0 },
+        { x: 1, z: 0 },
+        { x: 0, y: 1 },
+      ],
+      [{ x: 0, z: 0 }, { x: 1, z: 0 }, [2, 2]],
+      [
+        { x: 0, z: 0 },
+        { x: 1, z: 0 },
+        { x: "4", z: 4 },
+      ],
+      [
+        { x: 0, z: 0 },
+        { x: 1, z: 0 },
+        { x: null, z: 4 },
+      ],
+    ]) {
+      expect(
+        bad([aFloor({ shape: { type: "Polygon", len: 4, points: bad0 } })]).why,
+        JSON.stringify(bad0),
+      ).toMatch(/points|finite number|object/);
+    }
+  });
+
+  it("refuses a coordinate outside the field's own ceiling", () => {
+    expect(
+      bad([
+        aFloor({
+          shape: {
+            type: "Polygon",
+            len: 4,
+            points: [
+              { x: 0, z: 0 },
+              { x: 1e9, z: 0 },
+              { x: 0, z: 1 },
+            ],
+          },
+        }),
+      ]).why,
+    ).toMatch(/outside -1000000 to 1000000/);
+  });
+
+  it("refuses a thickness that is not a size", () => {
+    expect(
+      bad([
+        aFloor({
+          shape: {
+            type: "Polygon",
+            len: 0,
+            points: [
+              { x: 0, z: 0 },
+              { x: 1, z: 0 },
+              { x: 0, z: 1 },
+            ],
+          },
+        }),
+      ]).why,
+    ).toMatch(/outside 0.001 to 1000000/);
+  });
+
+  it("labels a floor by its type, like any other shape", () => {
+    expect(itemLabel(ok([aFloor()]).items[0])).toBe("floor · polygon");
   });
 });

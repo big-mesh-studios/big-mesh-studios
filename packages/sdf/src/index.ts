@@ -18,8 +18,8 @@
  * which is in `apps/spacescape` and validated three literal shape names of its own.
  *
  * Now it is `PRIMITIVES`, one entry per primitive, and every one of those six reads it. There are
- * nine primitives rather than three: Sphere, RoundBox, Cone, Cylinder, Torus and HexPrism are new.
- * All of them are closed form, and adding a tenth is adding one entry.
+ * ten primitives rather than three: Sphere, RoundBox, Cone, Cylinder, Torus, HexPrism and Polygon
+ * are new. All of them are closed form, and adding an eleventh is adding one entry.
  *
  * ## Two things in here are approximate, and say so
  *
@@ -32,6 +32,15 @@
  * is unbounded in relative terms**, so nothing may use it to bound a step by more than the local
  * feature size — which is the constraint a second application that raymarches inherits.
  *
+ * **`sdPolygonPrism` is exact except outside both the outline and its thickness**, and
+ * `PRIMITIVES.Polygon.exact` is `false` for that reason. Where a point is outside the
+ * outline *and* above or below the slab, the true distance to the solid is the
+ * hypotenuse from the corner, and combining the outline's distance with the slab's by
+ * `max` reports the longer leg instead — short by up to a factor of √2, and not short at
+ * all anywhere else. So it errs toward under-reporting, which is the direction a sphere
+ * tracer can survive and a minimum cannot be fooled by. Its zero set is the outline
+ * extruded, which is what a mesher sees.
+ *
  * **`sdShape` was a switch, and is now a table lookup.** There is no registry for the old one to
  * have: there were three shapes and a switch is the thing this repository writes when a type is a
  * union — the thing it has been careful to *replace* with a table everywhere else.
@@ -39,16 +48,21 @@
 export type {
   DimensionField,
   DimensionGroup,
+  EditableParameter,
   OperationShape,
+  OutlinePoint,
   PrimitiveParameter,
   PrimitiveSpec,
   ShapeType,
 } from "./primitives";
 export {
   dimensionGroups,
+  isEditableParameter,
   MIN_RADIUS,
+  PALETTE_NAMES,
   parameterFloats,
   parametersToFloats,
+  polygonHalfExtents,
   primitiveFromCode,
   primitiveHalfExtents,
   primitiveParameters,
@@ -60,6 +74,8 @@ export {
   sdCylinder,
   sdEllipsoid,
   sdHexPrism,
+  sdPolygon2D,
+  sdPolygonPrism,
   sdRoundBox,
   sdShape,
   sdSphere,

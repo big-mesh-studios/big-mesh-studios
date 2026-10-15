@@ -23,7 +23,7 @@ import {
   Show,
   untrack,
 } from "solid-js";
-import { PRIMITIVE_NAMES } from "@big-mesh-studios/sdf";
+import { PALETTE_NAMES } from "@big-mesh-studios/sdf";
 import { describeReport } from "@big-mesh-studios/meshing";
 import {
   getPointerSize,
@@ -2535,7 +2535,7 @@ export function App() {
       >
         <PartsPanel
           store={store}
-          primitives={PRIMITIVE_NAMES}
+          primitives={PALETTE_NAMES}
           onDuplicate={() => {
             /**
              * **Straight into move mode, because the copy is on top of the original.**

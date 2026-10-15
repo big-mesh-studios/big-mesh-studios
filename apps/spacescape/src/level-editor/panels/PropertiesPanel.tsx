@@ -48,6 +48,7 @@ import {
 } from "../components/controls";
 import type { LevelEditor } from "../level-editor-store";
 import { MAX_LEVEL_ITEMS } from "../../places/level/level-plan";
+import type { PrimitiveParameter, ShapeType } from "@big-mesh-studios/sdf";
 import type {
   Combine,
   LevelFigure,
@@ -65,17 +66,32 @@ import {
   isAxial,
   MAX_SHAPE_SIZE,
   MIN_SHAPE_SIZES,
-  PARAMETERS_OF,
+  EDITABLE_PARAMETERS_OF,
 } from "./vocabulary";
 import styles from "./panels.module.css";
 
-/** How a shape's own parameters are written, keyed by the primitive's field name. */
+/**
+ * How a shape's own parameters are written, keyed by the primitive's field name.
+ *
+ * **`len` reads "Size" here whatever the shape, and that has been right for all nine of
+ * them.** A polygon's `len` is not a size — it is the floor panel's thickness — so the
+ * lookup below prefers a key that names the kind, which is what `Polygon.len` is. The
+ * bare-name table stays because eight primitives still share it, and a per-kind table
+ * with nine rows would repeat "Radius" nine times to say one thing.
+ */
 const PARAMETER_LABELS: Record<string, string> = {
   radius: "Radius",
   len: "Size",
   majorRadius: "Major",
   minorRadius: "Minor",
+  "Polygon.len": "Thickness",
 };
+
+/** What a panel calls one parameter of one shape, preferring the shape's own spelling. */
+const labelFor = (kind: ShapeType, parameter: PrimitiveParameter): string =>
+  PARAMETER_LABELS[`${kind}.${parameter.name}`] ??
+  PARAMETER_LABELS[parameter.name] ??
+  parameter.name;
 
 /** The furthest anything may be from the origin, which is the field's own ceiling. */
 const MAX_POSITION = 100_000;
@@ -90,6 +106,8 @@ export const PropertiesPanel = (props: {
   models: readonly string[];
   /** Seeds the draw controller from a wall, for the "Edit lines" button. */
   onEditWalls?: (id: string) => void;
+  /** Seeds the drawing from a floor's outline; absent only if built without it. */
+  onEditOutline?: (id: string) => void;
 }) => {
   const selected = () => props.editor.selectedItem();
 
@@ -143,6 +161,7 @@ export const PropertiesPanel = (props: {
             current={narrowed(walls, "walls")}
             change={change}
             onEditWalls={props.onEditWalls}
+            onEditOutline={props.onEditOutline}
           />
         </Show>
       </Show>
@@ -177,10 +196,25 @@ const narrowed =
 const ShapeFields = (props: {
   current: () => LevelShape;
   change: (next: LevelShape) => void;
+  onEditWalls?: (id: string) => void;
+  /** Seeds the drawing from a floor's outline; absent only if built without it. */
+  onEditOutline?: (id: string) => void;
 }) => {
   const item = props.current;
   const kind = (): ShapeKind => item().shape.type;
   const minimum = (): number => MIN_SHAPE_SIZES[kind()];
+
+  /**
+   * This shape's outline, or nothing when it has none.
+   *
+   * **A narrowing rather than a cast**, because the whole of this bar's condition is "is
+   * this a floor" and a cast would let a sphere grow an outline bar the moment the panel
+   * stopped reading the discriminant.
+   */
+  const outline = (): readonly { x: number; z: number }[] | undefined => {
+    const shape = item().shape;
+    return shape.type === "Polygon" ? shape.points : undefined;
+  };
 
   const setParameter = (
     name: string,
@@ -293,35 +327,65 @@ const ShapeFields = (props: {
         reachable.
       */}
       <Bar label={kind().toLowerCase()}>
-        <For each={PARAMETERS_OF(kind())}>
+        {/*
+         * **Filtered, and the filter is the whole of how an outline is not a field.**
+         * A `variable` parameter has no `min`, no `step` and no input — it is a list of
+         * points, and the one that edits it is the draw tool. Rendering it as a number
+         * field would put a stepper on a value that is a length, and rendering it as an
+         * empty group would put a border round nothing. So the table's own reader,
+         * `dimensionGroups`, already leaves it out, and this loop leaves it out too.
+         */}
+        <For each={EDITABLE_PARAMETERS_OF(kind())}>
           {(parameter) =>
             parameter.arity === 3 ? (
               <Vec3Field
-                label={PARAMETER_LABELS[parameter.name] ?? parameter.name}
+                label={labelFor(kind(), parameter)}
                 value={asTriple(vectorParameter(parameter.name))}
-                min={Math.max(parameter.min ?? 0, minimum())}
+                min={Math.max(parameter.min, minimum())}
                 max={MAX_SHAPE_SIZE}
-                step={parameter.step ?? 1}
+                step={parameter.step}
                 onChange={(value) =>
                   setParameter(parameter.name, fromTriple(value))
                 }
               />
             ) : (
               <NumberField
-                label={PARAMETER_LABELS[parameter.name] ?? parameter.name}
+                label={labelFor(kind(), parameter)}
                 value={scalarParameter(parameter.name)}
-                min={Math.max(parameter.min ?? 0, minimum())}
+                min={Math.max(parameter.min, minimum())}
                 max={MAX_SHAPE_SIZE}
-                step={parameter.step ?? 1}
-                bigStep={
-                  parameter.step === undefined ? undefined : parameter.step * 10
-                }
+                step={parameter.step}
+                bigStep={parameter.step * 10}
                 onChange={(value) => setParameter(parameter.name, value)}
               />
             )
           }
         </For>
       </Bar>
+
+      {/*
+       **The outline's own bar, beside the fields rather than among them.**
+       *
+       * The loop above has already left the outline out, which is right — it has no `min`
+       * and no `step` and is not a number. But that leaves a person looking at a floor with
+       * nothing at all that says the outline exists or how many corners it has, and the
+       * only thing that can change it is a tool on the toolbar. So it is named here, counted
+       * here, and reachable from here.
+       */}
+      <Show when={outline() !== undefined}>
+        <Bar label="outline">
+          <p class={styles.warn}>
+            {outline()?.length ?? 0} points, drawn as a loop.
+          </p>
+          <Show when={props.onEditOutline !== undefined}>
+            <Button
+              label="Edit outline"
+              title="Redraw this floor's outline, starting from the corners it has now"
+              onClick={() => props.onEditOutline?.(item().id)}
+            />
+          </Show>
+        </Bar>
+      </Show>
 
       <Bar label="how it looks">
         <Choice
@@ -462,6 +526,8 @@ const WallsFields = (props: {
   change: (next: LevelWalls) => void;
   /** Seeds the drawing from this wall; absent only if the editor was built without it. */
   onEditWalls?: (id: string) => void;
+  /** Seeds the drawing from a floor's outline; absent only if built without it. */
+  onEditOutline?: (id: string) => void;
 }) => {
   const item = props.current;
   const points = (): number =>

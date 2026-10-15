@@ -53,6 +53,7 @@ import {
   type DrawingPlane,
   type ScreenPoint,
 } from "./plane";
+import { floorRefusal as floorRefusalOf, openOutline } from "./floor";
 
 /** Below this, two points are the same point and a segment between them is not drawn. */
 const EPSILON = 1e-6;
@@ -105,6 +106,8 @@ export interface DrawLinesSnapshot {
   readonly canCommit: boolean;
   /** Whether `finish` would make anything — a chain with two points or more. */
   readonly canFinish: boolean;
+  /** Why `finishFloor` would refuse, or nothing when it would not. */
+  readonly floorRefusal: string | undefined;
   /** Whether `newLine` would begin a chain. */
   readonly canNewLine: boolean;
   /** Whether `undoPoint` would take something back. */
@@ -122,6 +125,23 @@ export interface DrawnWalls {
   readonly plane: DrawingPlane;
   /** Every chain that reached a segment, in the order they were drawn. */
   readonly chains: readonly (readonly Vec3[])[];
+}
+
+/**
+ * A finished draw that is one closed outline, which is what a floor or a roof is.
+ *
+ * **One chain and not several, which is the whole difference from a wall.** A wall may be a
+ * dozen disjoint runs; a floor is one boundary, and two of them in one draw is a person who
+ * has changed their mind about where the room is rather than a floor with a courtyard.
+ *
+ * **The outline is open — the repeated closing point is already gone.** A person closes a
+ * loop by snapping back onto the first vertex, so the chain arrives with that vertex twice, and
+ * a polygon needs three *distinct* ones. `openOutline` drops it, and the level reader refuses a
+ * duplicate anyway, so keeping it would only produce a shape that could not be saved.
+ */
+export interface DrawnFloor {
+  readonly plane: DrawingPlane;
+  readonly outline: readonly Vec3[];
 }
 
 /** The gesture's state machine, over the plane arithmetic in `plane.ts`. */
@@ -147,6 +167,15 @@ export interface DrawLinesController {
   undoPoint(): void;
   /** The walls this draw makes, or nothing when no chain reached a segment. */
   finish(): DrawnWalls | undefined;
+  /**
+   * The floor this draw makes, or nothing when the chains are not one closed outline.
+   *
+   * **A second answer from the same drawing rather than a separate tool.** The gesture is
+   * identical — aim, commit, finish — and a person who has drawn a closed loop has drawn a
+   * floor whether or not they pressed the right button first. What differs is only what
+   * counts as finished, and `state().floorRefusal` says which of four reasons it is not.
+   */
+  finishFloor(): DrawnFloor | undefined;
   /** Throws the whole draw away, leaving no plane. */
   reset(): void;
 
@@ -230,6 +259,9 @@ export const createDrawLinesController = (
       lock,
       canCommit: aim !== undefined,
       canFinish: chains.some((chain) => chain.length >= 2),
+      // **A string rather than a flag**, because the four refusals call for four different
+      // next presses and a person told only "no" will try the same thing again.
+      floorRefusal: floorRefusalOf(chains),
       // **A chain to fork from, not just one to leave.** A single point has no direction yet,
       // so beginning a new line from it would abandon a start the person never drew from.
       canNewLine: (current()?.length ?? 0) >= 2,
@@ -349,6 +381,19 @@ export const createDrawLinesController = (
       const kept = chains.filter((chain) => chain.length >= 2);
       if (plane === undefined || kept.length === 0) return undefined;
       return { plane, chains: kept.map((chain) => [...chain]) };
+    },
+
+    finishFloor() {
+      if (plane === undefined || floorRefusalOf(chains) !== undefined) {
+        return undefined;
+      }
+      const outline = openOutline(
+        chains.filter((chain) => chain.length > 0)[0]!,
+      );
+      // **Unreachable while `floorRefusal` is clear**, and the check is here because the two
+      // are separate answers to the same question and a caller should not have to know that.
+      if (outline === undefined) return undefined;
+      return { plane, outline: outline.map((point) => ({ ...point })) };
     },
 
     reset() {

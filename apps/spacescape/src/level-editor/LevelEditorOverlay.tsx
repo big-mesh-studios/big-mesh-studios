@@ -116,6 +116,8 @@ export const LevelEditorOverlay = (props: {
   onClose: () => void;
   /** Seeds the draw controller from a wall so its lines can be edited. See `app.tsx`. */
   onEditWalls?: (id: string) => void;
+  /** Seeds the drawing from a floor's outline; absent only if built without it. */
+  onEditOutline?: (id: string) => void;
 }) => {
   const [pane, setPane] = createSignal<HTMLDivElement>();
   const [tab, setTab] = createSignal<PanelId>("tools");
@@ -169,6 +171,7 @@ export const LevelEditorOverlay = (props: {
           editor={props.editor}
           models={props.models}
           onEditWalls={props.onEditWalls}
+          onEditOutline={props.onEditOutline}
         />
       </div>
       <div hidden={tab() !== "level" && mobile()} class={styles.paneBody}>

@@ -49,8 +49,24 @@ const defaultShape = (type: ShapeType): Part["shape"] => {
       return { type, majorRadius: 0.6, minorRadius: 0.2 };
     case "HexPrism":
       return { type, len: 1, radius: 0.5 };
+    // **The palette does not offer this one, so this case is never reached — and it is
+    // here anyway so the switch stays exhaustive.** A polygon's outline is drawn in the
+    // level editor, not typed into a transform panel, and `PALETTE_NAMES` is what the
+    // panel is handed. The unit square is a sensible first part for a script or a test
+    // that reaches `defaultShape` directly, and the alternative — letting the function
+    // return `undefined` — is how a "add polygon" button ends up adding nothing.
+    case "Polygon":
+      return { type, points: squareOutline(0.5), len: 0.2 };
   }
 };
+
+/** A unit-ish square, wound counter-clockwise, for a polygon's first shape. */
+const squareOutline = (half: number) => [
+  { x: -half, z: -half },
+  { x: half, z: -half },
+  { x: half, z: half },
+  { x: -half, z: half },
+];
 
 export function PartsPanel(props: {
   store: ModelStore;

@@ -105,10 +105,27 @@ const Readout = (props: {
 export const DrawLinesUi = (props: {
   controller: Accessor<DrawLinesController | undefined>;
   onFinish: () => void;
-  /** Whether a wall is being edited rather than a new one drawn, for the Finish label. */
+  /** Whether a floor is being drawn rather than walls, for what Finish is waiting for. */
+  floor?: boolean;
+  /** Whether a shape is being edited rather than a new one drawn, for the Finish label. */
   editing?: boolean;
 }) => {
   const state = () => props.controller()?.state();
+  const floor = () => props.floor === true;
+
+  /**
+   * Whether Finish would make anything, which is a different question for each tool.
+   *
+   * **`canFinish` is the walls answer and the floor answer is `floorRefusal`.** A floor with
+   * two points in one open chain satisfies "some chain has two points or more", so reading
+   * `canFinish` for a floor would leave Finish enabled on a chain that is not a floor — a
+   * button that does nothing when pressed, which is worse than a button that is visibly
+   * unavailable. The refusal string is therefore both the message and the enablement.
+   */
+  const canFinish = (): boolean =>
+    floor()
+      ? state()?.floorRefusal === undefined && state()?.canFinish === true
+      : state()?.canFinish === true;
 
   return (
     <div class={styles.root}>
@@ -140,23 +157,56 @@ export const DrawLinesUi = (props: {
           disabled={state()?.canUndo !== true}
           onClick={() => props.controller()?.undoPoint()}
         />
+        {/*
+          **No `New line` for a floor**, and hiding it is better than disabling it. A second
+          chain is how a floor's Finish is refused, so the button would be an offer the tool
+          cannot honour — and a button that leads to "A floor is one outline" after being
+          pressed is worse than one that was never there.
+        */}
+        <Show when={!floor()}>
+          <Button
+            label="New line"
+            title="Start the next line somewhere else, not from this line's end"
+            disabled={state()?.canNewLine !== true}
+            onClick={() => props.controller()?.newLine()}
+          />
+        </Show>
         <Button
-          label="New line"
-          title="Start the next line somewhere else, not from this line's end"
-          disabled={state()?.canNewLine !== true}
-          onClick={() => props.controller()?.newLine()}
-        />
-        <Button
-          label={props.editing === true ? "Update walls" : "Finish"}
+          label={
+            props.editing === true
+              ? floor()
+                ? "Update floor"
+                : "Update walls"
+              : floor()
+                ? "Finish"
+                : "Finish"
+          }
           title={
             props.editing === true
-              ? "Write the redrawn lines back over the wall you are editing"
-              : "Make the walls from what you have drawn"
+              ? floor()
+                ? "Write the redrawn outline back over the floor you are editing"
+                : "Write the redrawn lines back over the wall you are editing"
+              : floor()
+                ? "Lay a floor over the outline you have drawn"
+                : "Make the walls from what you have drawn"
           }
-          disabled={state()?.canFinish !== true}
+          disabled={!canFinish()}
           onClick={props.onFinish}
         />
       </div>
+
+      {/*
+        **The refusal, in words, and only when there is one.**
+         *
+         * There are four reasons a floor's Finish is disabled — nothing drawn, two chains,
+         * too short, self-crossing — and each calls for a different next press. A button that
+         is greyed out with no explanation is a button a person presses twice and then stops
+         using, so the reason is said here rather than left to be worked out from the shape
+         of the drawing.
+         */}
+      <Show when={floor() && state()?.floorRefusal !== undefined}>
+        <p class={styles.warn}>{state()?.floorRefusal}</p>
+      </Show>
     </div>
   );
 };

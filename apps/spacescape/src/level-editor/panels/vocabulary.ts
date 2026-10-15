@@ -17,8 +17,12 @@
  * its own reader has to translate back.
  */
 
-import { PRIMITIVES } from "@big-mesh-studios/sdf";
-import type { ShapeType } from "@big-mesh-studios/sdf";
+import { isEditableParameter, PRIMITIVES } from "@big-mesh-studios/sdf";
+import type {
+  EditableParameter,
+  PrimitiveParameter,
+  ShapeType,
+} from "@big-mesh-studios/sdf";
 
 /** How each primitive is written in the toolbar, keyed by its own name. */
 export const SHAPE_KIND_LABELS: Record<ShapeType, string> = {
@@ -31,6 +35,7 @@ export const SHAPE_KIND_LABELS: Record<ShapeType, string> = {
   Cone: "Cone",
   Torus: "Torus",
   HexPrism: "Hex prism",
+  Polygon: "Floor",
 };
 
 /** How each combine is written in the toolbar. */
@@ -58,6 +63,11 @@ export const DEFAULT_SHAPE_SIZES: Record<ShapeType, number> = {
   Cone: 16,
   Torus: 10,
   HexPrism: 16,
+  // **The span across the floor, not its thickness.** A floor's first number a person
+  // means by "size" is how big the room is, and the thickness is a property of the build
+  // rather than of the plan — so the outline is this wide and `len` starts at the same
+  // place the walls' thickness does.
+  Polygon: 24,
 };
 
 /**
@@ -78,6 +88,7 @@ export const MIN_SHAPE_SIZES: Record<ShapeType, number> = {
   Cone: 0.5,
   Torus: 0.5,
   HexPrism: 0.5,
+  Polygon: 0.5,
 };
 
 /** Every primitive, in the order the table lists them, for a toolbar's row. */
@@ -102,8 +113,31 @@ export const DEFAULT_WALL_HEIGHT = 40;
  */
 export const DEFAULT_WALL_THICKNESS = 8;
 
-/** The parameters each primitive takes, for an inspector's fields. */
-export const PARAMETERS_OF = (kind: ShapeType) => PRIMITIVES[kind].parameters;
+/**
+ * The parameters each primitive takes, for an inspector's fields.
+ *
+ * **Annotated as the table's declared `PrimitiveParameter` rather than left as the
+ * literal type `as const` gives it.** The literal union is narrower and reads better,
+ * but it is per-primitive and cannot be narrowed by the shared `isEditableParameter`
+ * guard — `Extract` picks the *declared* variant, which is not a subtype of the literal
+ * one. A reader wants the whole vocabulary; the one reader that derives a shape's keys
+ * from the literal types is `PlaceShape`, and it reads the table itself.
+ */
+export const PARAMETERS_OF = (kind: ShapeType): readonly PrimitiveParameter[] =>
+  PRIMITIVES[kind].parameters;
+
+/**
+ * The parameters of a primitive that a panel can put a field next to.
+ *
+ * **Everything except a `variable` one**, which is a list of points rather than a size and
+ * has no input: a floor's outline is drawn with the draw tool and shown as a count, not
+ * typed into a stepper. The narrowing is what lets the inspector read `min` and `step`
+ * without a guard on every access.
+ */
+export const EDITABLE_PARAMETERS_OF = (
+  kind: ShapeType,
+): readonly EditableParameter[] =>
+  PARAMETERS_OF(kind).filter(isEditableParameter);
 
 /**
  * Whether a turn about an axis can be seen on this primitive.

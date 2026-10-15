@@ -35,6 +35,7 @@ const snapshotOf = (
   lock: "none",
   canCommit: false,
   canFinish: false,
+  floorRefusal: undefined,
   canNewLine: false,
   canUndo: false,
   ...overrides,

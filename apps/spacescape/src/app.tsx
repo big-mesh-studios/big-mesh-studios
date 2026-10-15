@@ -45,6 +45,7 @@ import { createLevelApplier } from "./places/level/apply-level";
 import {
   createLevelEditor,
   type LevelEditor,
+  drawsInAPlane,
   type ToolKind,
 } from "./level-editor/level-editor-store";
 import { createOrbitCameraControl } from "./level-editor/camera/orbit";
@@ -69,6 +70,8 @@ import {
   createDrawLinesOverlay,
   type DrawLinesOverlay,
 } from "./level-editor/draw/draw-lines-overlay";
+import { floorDrawing, floorPlacement } from "./level-editor/draw/floor";
+import { IDENTITY } from "./level-editor/view/quaternion";
 import { planeThrough } from "./level-editor/draw/plane";
 import { wallsCentre } from "./places/level/walls";
 import {
@@ -753,9 +756,16 @@ export default function App() {
    * id, not its index, because an edit elsewhere in the list would move an index out from under
    * a queue that has not run yet.
    */
-  const [editingWallsId, setEditingWallsId] = createSignal<
-    string | undefined
-  >();
+  /**
+   * The item a draw is writing back over, rather than adding beside.
+   *
+   * **One signal for both drawing tools, not one each.** An edit is an edit: the person has
+   * an item open, pressed Edit lines or Edit outline, and redrawing writes over that same
+   * item. Two signals would be two teardowns in the tool-switching effect below and two
+   * half-remembered states, and the only thing that tells them apart is which tool is live —
+   * which that effect already knows.
+   */
+  const [editingDrawId, setEditingDrawId] = createSignal<string | undefined>();
   /**
    * How near, in CSS pixels, the aim snaps onto a placed point.
    *
@@ -802,19 +812,72 @@ export default function App() {
   };
 
   /**
-   * Turns whatever has been drawn into walls, or writes it back over the wall being edited.
+   * Turns whatever has been drawn into what the tool was for, or writes it back.
    *
-   * **One level item either way, and the item is what the inspector edits.** A fresh draw
-   * hands its polylines over in world space with the plane's own `up`, and `apply-level.ts`
-   * turns each segment into a box; the height and thickness come from the vocabulary's
-   * defaults until the inspector changes them. An edit reuses the item it was seeded from, so
-   * the height, thickness, combine, material and colour a person already chose survive the
+   * **One branch, and it is the only one this gesture needs.** Walls and floors are the same
+   * gesture — aim, commit, finish, in a plane the first press established — and they differ
+   * only in what counts as finished: a wall wants chains, a floor wants one closed loop. So
+   * everything before this point in `app.tsx` that asks "is a drawing happening" asks
+   * `drawsInAPlane` and nothing about which; only the finish knows, because only the finish
+   * knows what a finished thing is.
+   *
+   * **Either way one level item, and the item is what the inspector edits.** A fresh draw
+   * hands its geometry over in world space; `apply-level.ts` turns each wall segment into a
+   * box and a floor into one `Polygon` operation. An edit reuses the item it was seeded from,
+   * so the height, thickness, combine, material and colour a person already chose survive the
    * change of shape. Either way the controller is reset, because the next thing a person does
-   * is draw another set of walls.
+   * is draw another one.
    */
-  const finishWalls = (): void => {
+  const finishDrawing = (): void => {
     const controller = drawLines();
     if (controller === undefined) return;
+    if (levelEditor.tool() === "floor") {
+      const drawn = controller.finishFloor();
+      // **Nothing here re-checks the refusal.** `finishFloor` is the only thing that knows
+      // what a floor is, and `DrawLinesUi` has already disabled its Finish button with the
+      // reason — so a second rule in a second place is a second place to forget one.
+      if (drawn === undefined) return;
+      const placement = floorPlacement(drawn.outline, drawn.plane);
+      const editingId = editingDrawId();
+      const index =
+        editingId === undefined
+          ? -1
+          : levelEditor.items().findIndex((item) => item.id === editingId);
+      const editing = index === -1 ? undefined : levelEditor.items()[index];
+      // **Narrowed to a polygon as well as to a shape**, so the outline can be written
+      // without a cast: a person who pressed Edit outline on a box would otherwise have a
+      // box quietly gain a `points` key, which is a payload the level reader refuses.
+      if (
+        editing !== undefined &&
+        editing.kind === "shape" &&
+        editing.shape.type === "Polygon"
+      ) {
+        // **The outline is replaced and everything else carried over**, for the same reason
+        // the walls edit is: the person is changing the layout, not re-deciding what the
+        // floor is made of. `at` and the turn move with the points, because both are
+        // functions of them.
+        levelEditor.updateItem(index, {
+          ...editing,
+          at: [placement.at.x, placement.at.y, placement.at.z],
+          orientation: [
+            placement.orientation.x,
+            placement.orientation.y,
+            placement.orientation.z,
+            placement.orientation.w,
+          ],
+          shape: { ...editing.shape, points: placement.points },
+        });
+        setEditingDrawId(undefined);
+      } else {
+        levelEditor.addFloor({
+          ...placement,
+          thickness: DEFAULT_WALL_THICKNESS,
+        });
+      }
+      controller.reset();
+      return;
+    }
+
     const drawn = controller.finish();
     if (drawn === undefined) return;
 
@@ -831,7 +894,7 @@ export default function App() {
       ]),
     );
 
-    const editingId = editingWallsId();
+    const editingId = editingDrawId();
     const index =
       editingId === undefined
         ? -1
@@ -849,7 +912,7 @@ export default function App() {
         lines,
         at: [at.x, at.y, at.z],
       });
-      setEditingWallsId(undefined);
+      setEditingDrawId(undefined);
     } else {
       levelEditor.addWalls({
         up,
@@ -892,8 +955,60 @@ export default function App() {
         line.map((point) => ({ x: point[0], y: point[1], z: point[2] })),
       ),
     );
-    setEditingWallsId(id);
+    setEditingDrawId(id);
     levelEditor.setTool("walls");
+  };
+
+  /**
+   * Seeds the draw controller from a floor so its outline can be edited, and switches to the tool.
+   *
+   * **The plane comes back out of the item's own turn, and not from `planeThrough`.** That is
+   * the whole reason `floorDrawing` exists: a fresh basis in the same plane is a different set
+   * of coordinates for the same points, and `floorCentre` takes the centre from the bounding
+   * box *in that basis* — so a redraw with nothing moved would slide the floor across the room
+   * by however far two enclosing boxes differ. Recovering the frame from the orientation makes
+   * a no-op redraw a no-op on the file, which is what a person pressing Edit and then Finish
+   * without touching anything is testing for.
+   */
+  const beginEditOutline = (id: string): void => {
+    const controller = drawLines();
+    if (controller === undefined) return;
+    const item = levelEditor
+      .items()
+      .find((candidate) => candidate.kind === "shape" && candidate.id === id);
+    if (
+      item === undefined ||
+      item.kind !== "shape" ||
+      item.shape.type !== "Polygon"
+    ) {
+      return;
+    }
+    // **A floor with no turn stored has no turn to recover**, and the identity is what the
+    // rest of the editor means by an absent one (`apply-level.ts` substitutes it too), so
+    // this reads the same as the fold will.
+    const turn = item.orientation;
+    const drawn = floorDrawing(
+      item.shape.points,
+      {
+        x: item.at[0],
+        y: item.at[1],
+        z: item.at[2],
+      },
+      turn === undefined
+        ? IDENTITY
+        : {
+            x: turn[0],
+            y: turn[1],
+            z: turn[2],
+            w: turn[3],
+          },
+    );
+    // **One chain, because a floor is one outline.** Seeding it as a chain rather than as a
+    // finished floor means the closing point is absent, which is what the person sees: a
+    // loop they can add a corner to rather than one that is already shut.
+    controller.seed(drawn.plane, [drawn.outline]);
+    setEditingDrawId(id);
+    levelEditor.setTool("floor");
   };
 
   /**
@@ -2276,7 +2391,7 @@ export default function App() {
     };
 
     /** Moves the draw's aim to wherever a pointer or a crosshair is. */
-    const wallAim = (clientX: number, clientY: number): void => {
+    const drawAim = (clientX: number, clientY: number): void => {
       const controller = drawLines();
       if (controller === undefined) return;
       const ray = rayAtClient(clientX, clientY);
@@ -2292,7 +2407,7 @@ export default function App() {
      * point at the crosshair, which is the same commit, so a phone can draw either by dragging
      * or by aiming the camera and tapping.
      */
-    const wallsPress = (
+    const drawPress = (
       clientX: number,
       clientY: number,
       commit: boolean,
@@ -2420,7 +2535,7 @@ export default function App() {
       if (overlay === undefined) return;
       const controller = drawLines();
       const drawing =
-        levelEditor.tool() === "walls" && controller !== undefined;
+        drawsInAPlane(levelEditor.tool()) && controller !== undefined;
       overlay.setVisible(drawing);
       if (!drawing || controller === undefined) return;
       const rect = canvas.getBoundingClientRect();
@@ -2451,8 +2566,8 @@ export default function App() {
       // **The walls tool places a point, not a shape.** On a phone this is the Apply button at
       // the crosshair and it commits, exactly as Next does; on a desktop the pointer handlers
       // own the press, so this path is the touch one.
-      if (levelEditor.tool() === "walls") {
-        wallsPress(clientX, clientY, true);
+      if (drawsInAPlane(levelEditor.tool())) {
+        drawPress(clientX, clientY, true);
         return;
       }
 
@@ -2805,20 +2920,24 @@ export default function App() {
       let lastCameraKind: CameraControlsKind | undefined;
 
       /**
-       * The draft is left behind when the walls tool is not what is active, or the editor
-       * closes.
+       * The draft is left behind when no drawing tool is active, or the editor closes.
        *
        * **Both, in one effect, because they are the same thing to the draft** — "you are no
-       * longer drawing a wall" — and two effects would be two teardowns to keep in step. The
-       * edit target goes with it, so a finish after switching away adds a new wall rather than
+       * longer drawing" — and two effects would be two teardowns to keep in step. The edit
+       * target goes with it, so a finish after switching tools adds a new item rather than
        * overwriting one nobody is looking at any more.
+       *
+       * **`drawsInAPlane` rather than `tool() === "walls"`, so the two drawing tools share
+       * one teardown.** Leaving the draft behind is the whole of what a floor does not want
+       * either, and a floor's half-cleared loop showing up under the walls tool would be a
+       * chain a walls Finish then picks up.
        */
       createEffect(
-        () => levelEditorOpen() && levelEditor.tool() === "walls",
+        () => levelEditorOpen() && drawsInAPlane(levelEditor.tool()),
         (drawing) => {
           if (drawing) return;
           drawLines()?.reset();
-          setEditingWallsId(undefined);
+          setEditingDrawId(undefined);
         },
       );
 
@@ -2908,10 +3027,10 @@ export default function App() {
          * `OrbitController` runs its multi-pointer branch before it consults the flag
          * (`camera/orbit.ts:325-329`).
          */
-        let wallClaim = false;
-        const claimWalls = (claimed: boolean): void => {
-          if (claimed === wallClaim) return;
-          wallClaim = claimed;
+        let drawClaim = false;
+        const claimDraw = (claimed: boolean): void => {
+          if (claimed === drawClaim) return;
+          drawClaim = claimed;
           levelCamera().claimGesture(claimed);
         };
 
@@ -2928,10 +3047,10 @@ export default function App() {
           justDragged = false;
           // **The walls tool owns the press entirely**, so it is branched on first: its press
           // is not a gizmo grab, and on a mouse it is the shortcut for `Next`.
-          if (levelEditor.tool() === "walls") {
+          if (drawsInAPlane(levelEditor.tool())) {
             // A finger or pen aims with the drag, so the camera stands down for the press.
-            if (event.pointerType !== "mouse") claimWalls(true);
-            wallsPress(
+            if (event.pointerType !== "mouse") claimDraw(true);
+            drawPress(
               event.clientX,
               event.clientY,
               event.pointerType === "mouse" && event.button === 0,
@@ -2957,8 +3076,8 @@ export default function App() {
          * be re-deciding something the device has already decided.
          */
         const onPointerMove = (event: PointerEvent): void => {
-          if (levelEditor.tool() !== "walls") return;
-          wallAim(event.clientX, event.clientY);
+          if (!drawsInAPlane(levelEditor.tool())) return;
+          drawAim(event.clientX, event.clientY);
         };
         canvas.addEventListener("pointermove", onPointerMove);
 
@@ -2975,8 +3094,8 @@ export default function App() {
            * the touch flow work, and it is deliberately before every other branch. A finger's
            * claim on the camera ends here with it.
            */
-          if (levelEditor.tool() === "walls") {
-            claimWalls(false);
+          if (drawsInAPlane(levelEditor.tool())) {
+            claimDraw(false);
             return;
           }
           if (event.pointerType !== "mouse" || event.button !== 0) return;
@@ -2997,7 +3116,7 @@ export default function App() {
         // **A taken-back pointer must give the camera back too.** The browser cancels a
         // gesture it decides is its own, and a claim that outlived it would leave a camera that
         // cannot be moved with one finger until the next press.
-        const onPointerCancel = (): void => claimWalls(false);
+        const onPointerCancel = (): void => claimDraw(false);
         canvas.addEventListener("pointercancel", onPointerCancel);
 
         // The pointer lock goes, because a locked pointer delivers every click to the canvas
@@ -3015,9 +3134,9 @@ export default function App() {
           attachedLevelCamera = undefined;
           // **A claim that outlived its drag would leave a camera that cannot be moved**,
           // so closing the editor with one held — which a press during the frame between
-          // the drag starting and the editor closing can arrange — gives it back. The walls
-          // claim is its own and is given back separately.
-          claimWalls(false);
+          // the drag starting and the editor closing can arrange — gives it back. The
+          // drawing claim is its own and is given back separately.
+          claimDraw(false);
           levelCamera().claimGesture(false);
           dragging = false;
           justDragged = false;
@@ -3500,6 +3619,7 @@ export default function App() {
             }}
             onClose={() => setLevelEditorOpen(false)}
             onEditWalls={beginEditWalls}
+            onEditOutline={beginEditOutline}
           />
           <Show when={levelEditor.coarsePointer()}>
             <LevelEditorTouchControls
@@ -3522,11 +3642,12 @@ export default function App() {
             acts — Next, Undo point, New line, Finish, and the direction locks — so a person
             drawing a wall has them under the thumb whether they are on a phone or a laptop.
           */}
-          <Show when={levelEditor.tool() === "walls"}>
+          <Show when={drawsInAPlane(levelEditor.tool())}>
             <DrawLinesUi
               controller={drawLines}
-              onFinish={finishWalls}
-              editing={editingWallsId() !== undefined}
+              onFinish={finishDrawing}
+              floor={levelEditor.tool() === "floor"}
+              editing={editingDrawId() !== undefined}
             />
           </Show>
           <LevelEditorHint

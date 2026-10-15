@@ -49,9 +49,14 @@ import {
   isLevelShape,
   isLevelWalls,
 } from "../places/level/types";
+import type { Quat, Vec3 } from "@big-mesh-studios/core";
 import { wallsCentre } from "../places/level/walls";
 import { createEnqueue, tryCatch } from "./utils";
-import { DEFAULT_SHAPE_SIZES, MIN_SHAPE_SIZES } from "./panels/vocabulary";
+import {
+  DEFAULT_SHAPE_SIZES,
+  DEFAULT_WALL_THICKNESS,
+  MIN_SHAPE_SIZES,
+} from "./panels/vocabulary";
 
 /** How the editor's camera is driven. Both are implementations of one shape. */
 export type CameraControlsKind = "orbit" | "no-clip";
@@ -103,6 +108,22 @@ export const defaultShape = (
       minorRadius: round,
     },
     HexPrism: { type: "HexPrism", len: size, radius: round },
+    // **A square, because a floor's outline is drawn rather than typed and this is the
+    // shape somebody gets before they have drawn one.** A rectangle rather than a square,
+    // so it reads as a floor slab rather than a table top; counter-clockwise, which the
+    // SDF does not need but which makes a level file diffable against the one a draw
+    // tool would write. The thickness is the walls' default, for the same reason the
+    // height is: it is a floor panel rather than a slab of concrete.
+    Polygon: {
+      type: "Polygon",
+      points: [
+        { x: -size, z: -size / 2 },
+        { x: size, z: -size / 2 },
+        { x: size, z: size / 2 },
+        { x: -size, z: size / 2 },
+      ],
+      len: DEFAULT_WALL_THICKNESS,
+    },
   };
   const shape = shapes[kind];
   return {
@@ -416,6 +437,62 @@ export function createLevelEditor(host: LevelEditorHost) {
       );
     },
 
+    /**
+     * Adds a drawn outline as one floor, as a shape rather than as a kind of its own.
+     *
+     * **The id comes from the point count and the middle**, the same shape as `addWalls`'s,
+     * so a level has names a person can read: `floor-6-200-0-0` says how many corners and
+     * roughly where. Two floors stamped on the same spot get the same name, and the reader
+     * refuses that as a duplicate — a real answer for an ambiguous gesture rather than two
+     * items sharing one identity.
+     *
+     * **`Add` rather than the editor's current combine, and that is the one thing here worth
+     * arguing for.** A floor's outline is a shape's parameters, so this is `addShapeAt` with
+     * an outline instead of a default rectangle, and the toolbar's combine button says what
+     * the *next shape placed by a click* will do. Nobody clicked to place this one — they
+     * drew it, and a draw that came out as a `Subtract` because a button was left on
+     * `Subtract` last time would be a hole in the ground.
+     */
+    addFloor(placement: {
+      readonly at: Vec3;
+      readonly orientation: Quat;
+      readonly points: readonly { readonly x: number; readonly z: number }[];
+      /** The walls' default panel thickness, which is a floor panel too. */
+      readonly thickness: number;
+    }): void {
+      const at: readonly [number, number, number] = [
+        placement.at.x,
+        placement.at.y,
+        placement.at.z,
+      ];
+      const id = idFor("floor", `${placement.points.length}`, at);
+      const item: LevelShape = {
+        kind: "shape",
+        id,
+        at,
+        shape: {
+          type: "Polygon",
+          points: placement.points.map((point) => ({
+            x: point.x,
+            z: point.z,
+          })),
+          len: placement.thickness,
+        },
+        orientation: [
+          placement.orientation.x,
+          placement.orientation.y,
+          placement.orientation.z,
+          placement.orientation.w,
+        ],
+        combine: "Add",
+      };
+      apply(
+        (level) => Command.addItem(item, level.items.length),
+        "Add floor",
+        () => select(id),
+      );
+    },
+
     /** Changes one item, which is every edit the inspector makes. */
     updateItem(index: number, next: LevelItem): void {
       apply(
@@ -560,7 +637,7 @@ export function createLevelEditor(host: LevelEditorHost) {
 export type LevelEditor = ReturnType<typeof createLevelEditor>;
 
 /** What the editor can do with a click. */
-export type ToolKind = "select" | "shape" | "prop" | "npc" | "walls";
+export type ToolKind = "select" | "shape" | "prop" | "npc" | "walls" | "floor";
 
 export const TOOL_KINDS: readonly ToolKind[] = [
   "select",
@@ -568,7 +645,24 @@ export const TOOL_KINDS: readonly ToolKind[] = [
   "prop",
   "npc",
   "walls",
+  "floor",
 ];
+
+/**
+ * The two tools that draw in a plane, as one predicate.
+ *
+ * **`walls` and `floor` are the same gesture** — aim, commit, finish, in a plane the first
+ * press established — and they differ only in what counts as finished: a wall wants chains,
+ * a floor wants one closed loop. Every place that has to behave the same for both was
+ * otherwise a pair of `tool() === "walls" || tool() === "floor"` tests, and a pair of those is
+ * two places to forget one of. There are about ten such places in `app.tsx`.
+ *
+ * **Named as a predicate over the kind rather than read from the signal at each site**, so
+ * that the question is asked in one place and the answer is the same everywhere. A tool added
+ * to `TOOL_KINDS` and not here is a tool that silently stops claiming the pointer.
+ */
+export const drawsInAPlane = (kind: ToolKind): boolean =>
+  kind === "walls" || kind === "floor";
 
 /**
  * What the world shows on a selected item, if anything.

@@ -45,7 +45,7 @@
  * test checks that claim rather than asserting it.
  */
 
-import type { Vec3 } from "@big-mesh-studios/core";
+import { FAR_DISTANCE, type Vec3 } from "@big-mesh-studios/core";
 
 /**
  * The shapes, as the discriminated union every layer passes around.
@@ -71,7 +71,23 @@ export type OperationShape =
   | { type: "Cone"; len: number; radius: number }
   | { type: "Cylinder"; len: number; radius: number }
   | { type: "Torus"; majorRadius: number; minorRadius: number }
-  | { type: "HexPrism"; len: number; radius: number };
+  | { type: "HexPrism"; len: number; radius: number }
+  | { type: "Polygon"; points: readonly OutlinePoint[]; len: number };
+
+/**
+ * One vertex of a polygon's outline: a point on the shape's own XZ plane.
+ *
+ * **Two numbers named `x` and `z`, and not `x` and `y`.** Every other vector in this
+ * repository is three numbers about a world with a down, and a `Vec2` written `x, y`
+ * would be read by everyone who has seen one as "the first two of the three" — which
+ * puts a floor's outline on its side, in the one frame where nothing looks wrong and
+ * nothing is. The third number is not missing by accident: it is the extrusion, and
+ * the extrusion is `len`.
+ */
+export interface OutlinePoint {
+  readonly x: number;
+  readonly z: number;
+}
 
 /** The names of the primitives, for a switch that has to be exhaustive. */
 export type ShapeType = OperationShape["type"];
@@ -95,8 +111,20 @@ export type ShapeType = OperationShape["type"];
  */
 export const MIN_RADIUS = 1e-3;
 
+/**
+ * Clamps a size to something a distance function can divide by.
+ *
+ * **Total, and that is the point of it.** Before this took a `Number.isFinite` a
+ * malformed shape — a polygon's thickness read past the end of a truncated file, say —
+ * handed `undefined` straight through, `undefined < MIN_RADIUS` is false, and the
+ * clamp returned it unchanged. Every primitive that has an axial size goes through
+ * here, so one missing clamp was one NaN spread through a chunk from any of them.
+ * Clamping at this one place rather than at every call site is the same argument as
+ * the one above it, taken further: there is one function that every size passes
+ * through, so there is one thing to get right.
+ */
 const radius = (value: number): number =>
-  value < MIN_RADIUS ? MIN_RADIUS : value;
+  !Number.isFinite(value) || value < MIN_RADIUS ? MIN_RADIUS : value;
 
 /** The two-component length helper, inlined because this is the hot path. */
 const length2 = (x: number, y: number): number => Math.sqrt(x * x + y * y);
@@ -332,6 +360,141 @@ export const sdHexPrism = (len: number, r: number, p: Vec3): number => {
   );
 };
 
+/**
+ * Signed distance to a closed outline in the XZ plane, negative inside.
+ *
+ * **Two loops wearing one loop's clothes.** The magnitude is a running minimum over
+ * each edge's clamped projection — for any edge, the closest point on it to `p` is
+ * the projection of `p` clamped to the edge's endpoints, which is one dot product
+ * and a clamp — and the sign is a crossing count against a ray from `p`. Both loops
+ * read the outline once, together, because an outline is walked twice as often as
+ * anything else in a mesh sample.
+ *
+ * **The magnitude is the true distance to the outline on both sides of it, including
+ * inside a concavity.** That is worth being precise about, because the usual claim
+ * about polygon distance functions is that they degrade inside a non-convex region —
+ * and they do not, here. The boundary of the interior *is* the outline, so the closest
+ * boundary point to an interior point is the closest point on the outline to it, which
+ * is what the running minimum finds. `Polygon`'s `exact: false` is about the prism
+ * above this, not about this.
+ *
+ * **Winding does not matter, and that is the crossing count's doing rather than an
+ * accident.** The number of times a ray leaves `p` through the boundary is odd
+ * exactly when `p` is inside, and it is odd whichever way round the outline was
+ * drawn. A hand-drawn floor plan closes in whichever direction the hand went, and a
+ * level file that has been through a text editor can hold either, so this is the one
+ * property that could not be assumed here.
+ *
+ * **What it does assume is that the outline is simple — that it does not cross
+ * itself.** A figure of eight has two lobes, the parity rule reports one inside and
+ * the other outside, and the result is a shape nobody asked for and no error
+ * anywhere. Detecting that is an O(n²) segment-intersection test that a level reader
+ * runs once and a mesh sample runs a million times, so it belongs at the door: the
+ * draw tool refuses to close a self-intersecting loop, and a hand-edited file that
+ * gets one has a floor with a puzzling bite out of it rather than a NaN.
+ */
+export const sdPolygon2D = (
+  points: readonly OutlinePoint[],
+  px: number,
+  pz: number,
+): number => {
+  // **A degenerate outline contributes nothing rather than a NaN.** A NaN in a field
+  // is unrecoverable — it propagates through every comparison as false and is a hole
+  // nothing downstream can explain. `checkShape` and the file's reader both refuse an
+  // outline under three points; this is the third thing to notice, and the only one
+  // reached from inside a mesh sample.
+  if (points.length < 3) return FAR_DISTANCE;
+
+  let best = Infinity;
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i, i++) {
+    const vi = points[i];
+    const vj = points[j];
+    const vx = vi.x - vj.x;
+    const vz = vi.z - vj.z;
+    const wx = px - vj.x;
+    const wz = pz - vj.z;
+
+    // **A zero-length edge is a division by zero, and this is the guard.** Two
+    // consecutive identical vertices are refused by the level reader, but a level file
+    // that has been through a merge conflict can hold one, and `clamp(NaN, 0, 1)` is
+    // still NaN.
+    const length = vx * vx + vz * vz;
+    const along = length > 0 ? (wx * vx + wz * vz) / length : 0;
+    const t = along < 0 ? 0 : along > 1 ? 1 : along;
+    const bx = wx - vx * t;
+    const bz = wz - vz * t;
+    const squared = bx * bx + bz * bz;
+    if (squared < best) best = squared;
+
+    // **The crossing test, and the half-open span is the whole of it.** A vertex
+    // exactly at the point's height is counted on one edge and not the other, so a ray
+    // grazing a corner crosses once rather than twice. The first condition can only be
+    // true when `vi.z !== vj.z`, which is why the division below needs no guard.
+    if (
+      pz >= vj.z !== pz >= vi.z &&
+      px < ((vi.x - vj.x) * (pz - vj.z)) / vz + vj.x
+    ) {
+      inside = !inside;
+    }
+  }
+  return (inside ? -1 : 1) * Math.sqrt(best);
+};
+
+/**
+ * Signed distance to an outline extruded along Y by `len`, centred on the origin.
+ *
+ * **The intersection of a prism and a slab, which is `max`.** A point is inside the
+ * solid exactly when it is inside the outline *and* within half the thickness, so the
+ * two conditions are combined with the larger of the two distances rather than the
+ * smaller — the same boolean the fold applies, and the one that keeps this a distance
+ * function rather than a test.
+ *
+ * **Which makes it exact in three of the four regions a point can be in, and short in
+ * the fourth.** That fourth region is outside the outline *and* above or below the
+ * slab's height, where the true distance to the corner where a wall meets a face is the
+ * hypotenuse `√(planar² + axial²)` and this reports the longer leg, `max`. The error
+ * is bounded by a factor of √2 and grows with the distance, which is why `Polygon`
+ * declares `exact: false` — and why the flag's cost is a sphere tracer taking a few
+ * more steps than it needs outside a floor, never fewer. Every other region is exact,
+ * which is the part worth stating too: the top and bottom faces are `len / 2` away and
+ * the walls are the outline's own distance, and a soft edge on a floor blends across
+ * the softness that was asked for.
+ */
+export const sdPolygonPrism = (
+  points: readonly OutlinePoint[],
+  len: number,
+  p: Vec3,
+): number =>
+  Math.max(sdPolygon2D(points, p.x, p.z), Math.abs(p.y) - radius(len) / 2);
+
+/**
+ * The half-extents of an outline extruded by `len`, over the points it actually has.
+ *
+ * **Not over the points it could have.** The box an operation is indexed by has to
+ * cover everywhere the operation can change the field, and a polygon's own extent is
+ * its points' bounding box — a box over a fixed capacity's worth of padding would be a
+ * box covering empty space the operation never reaches.
+ */
+export const polygonHalfExtents = (
+  points: readonly OutlinePoint[],
+  len: number,
+): Vec3 => {
+  const half = radius(len) / 2;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const point of points) {
+    if (point.x < minX) minX = point.x;
+    if (point.x > maxX) maxX = point.x;
+    if (point.z < minZ) minZ = point.z;
+    if (point.z > maxZ) maxZ = point.z;
+  }
+  if (points.length === 0) return { x: half, y: half, z: half };
+  return { x: (maxX - minX) / 2, y: half, z: (maxZ - minZ) / 2 };
+};
+
 // ---------------------------------------------------------------------------
 // The table
 // ---------------------------------------------------------------------------
@@ -358,26 +521,112 @@ export const sdHexPrism = (len: number, r: number, p: Vec3): number => {
  * geometry rather than of a user interface, so it belongs in the table. A maximum is not: how
  * big a person is willing to make a limb is a question about the application and about the
  * mesh budget, not about what a capsule is, so a panel may impose one and this does not.
+ *
+ * ## Why this is a union and not one shape with an optional field
+ *
+ * **Because a list of points is none of the three things the single shape could say, and a
+ * parameter type that lies about one of its members is worse than a parameter type that says
+ * it is a union.** An outline has a length rather than a `min` and a `step`, it occupies a
+ * count of floats rather than one or three, and no panel has an input for it. Giving it
+ * `min: 3` and calling that a minimum size would make the one number on a polygon that
+ * reads correctly the one number that means something else — and it would let every reader
+ * below go on treating "one float or three" as the whole story, which is exactly the drift
+ * ADR 0025 exists to prevent.
+ *
+ * **Which is why this costs a branch in each of the five readers.** Every one of them
+ * switching on `arity` now has to say what it does about a third case, and the compiler says
+ * so rather than leaving a panel to render a list of points as a number field.
  */
-export interface PrimitiveParameter {
-  readonly name: string;
-  /** Three for a `Vec3`, one for a number. Also the number of floats it occupies. */
-  readonly arity: 1 | 3;
-  /** What a panel calls it. */
-  readonly label: string;
-  /**
-   * What the three components of a `Vec3` parameter are called, in x, y, z order.
-   *
-   * **`Width`, `Height` and `Depth` rather than `x`, `y` and `z` for the box family**,
-   * because a person's box has a width and a depth whichever way up it is on screen, and an
-   * axis letter only means something once you know which way the part is rotated.
-   */
-  readonly axes?: readonly [string, string, string];
-  /** Smallest value that still describes a shape. */
-  readonly min: number;
-  /** A sensible increment for a number field or a drag. */
-  readonly step: number;
-}
+export type PrimitiveParameter =
+  | {
+      readonly name: string;
+      /** A number. Also the number of floats it occupies. */
+      readonly arity: 1;
+      /** What a panel calls it. */
+      readonly label: string;
+      /** Smallest value that still describes a shape. */
+      readonly min: number;
+      /** A sensible increment for a number field or a drag. */
+      readonly step: number;
+    }
+  | {
+      readonly name: string;
+      /** Three for a `Vec3`. Also the number of floats it occupies. */
+      readonly arity: 3;
+      /** What a panel calls it. */
+      readonly label: string;
+      /**
+       * What the three components of a `Vec3` parameter are called, in x, y, z order.
+       *
+       * **`Width`, `Height` and `Depth` rather than `x`, `y` and `z` for the box family**,
+       * because a person's box has a width and a depth whichever way up it is on screen, and an
+       * axis letter only means something once you know which way the part is rotated.
+       */
+      readonly axes?: readonly [string, string, string];
+      /** Smallest value that still describes a shape. */
+      readonly min: number;
+      /** A sensible increment for a number field or a drag. */
+      readonly step: number;
+    }
+  | {
+      readonly name: string;
+      /**
+       * A list whose length is not known from the shape's type.
+       *
+       * **The only parameter in the table that a panel has no input for**, and the only one
+       * whose width is not a constant — which is why it writes its own width as its first
+       * float. See ADR 0052.
+       */
+      readonly arity: "variable";
+      /** What a panel calls it, for the read-only summary a panel shows instead. */
+      readonly label: string;
+      /** Fewest points that still enclose an area. Three: fewer is not a polygon. */
+      readonly minPoints: number;
+      /** Most points this build will carry. A bound on work, not on imagination. */
+      readonly maxPoints: number;
+    };
+
+/**
+ * The narrowings the readers below share.
+ *
+ * **Two predicates rather than one `isVariable`, and both are type guards.** A reader
+ * that wants to *skip* a parameter asks whether it has an input, which is false for the
+ * variable arity and for a name the shape does not have. A reader that wants to *count*
+ * floats asks whether the width is fixed, which is true for the other two arities together
+ * and false for the variable one. The partition is the same, but the two questions are
+ * asked from opposite sides of it, and writing the second as the negation of the first is
+ * how the second ends up wrong at the one case where they differ.
+ */
+const isVariable = (
+  parameter: PrimitiveParameter,
+): parameter is Extract<PrimitiveParameter, { readonly arity: "variable" }> =>
+  parameter.arity === "variable";
+
+/** A parameter a panel can put an input next to, narrowed from the union above. */
+export type EditableParameter = Extract<
+  PrimitiveParameter,
+  { readonly arity: 1 | 3 }
+>;
+
+export const isEditableParameter = (
+  parameter: PrimitiveParameter,
+): parameter is EditableParameter => !isVariable(parameter);
+
+/** A variable parameter's point-count bounds. */
+const pointBounds = (
+  parameter: Extract<PrimitiveParameter, { readonly arity: "variable" }>,
+): readonly [number, number] => [parameter.minPoints, parameter.maxPoints];
+
+/**
+ * A float that is a number, or zero.
+ *
+ * **The last line against a NaN, and it is here rather than in `readShape` because
+ * that function is not the only caller.** `deserialiseOperations` refuses a file whose
+ * operations run past its own end, so a truncated buffer is caught before this — but a
+ * NaN in a field is unrecoverable, and it costs one comparison to be certain of one.
+ */
+const finiteOr = (value: number | undefined): number =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
 
 /**
  * Everything one primitive is, in one entry, as a reader sees it.
@@ -408,12 +657,22 @@ export interface PrimitiveSpec {
   /**
    * Whether `sdf` is the true Euclidean distance, or an approximation of it.
    *
-   * **True for every entry except the ellipsoid.** It is here because a second
-   * application that sphere-traces rather than meshes needs to know which is which,
-   * and because "closed form" and "exact" are not the same claim: this table is
-   * entirely closed form, and one entry of nine is not exact.
+   * **True for every entry except the ellipsoid and the polygon.** It is here because a
+   * second application that sphere-traces rather than meshes needs to know which is which,
+   * and because "closed form" and "exact" are not the same claim: this table is entirely
+   * closed form, and two entries of ten are not exact.
    */
   readonly exact: boolean;
+  /**
+   * Whether a palette should offer this primitive. Omitted means yes.
+   *
+   * **`PRIMITIVE_NAMES` is every primitive and a palette is not**, because the two answer
+   * different questions: one is "which shapes can this build read", which is all of them
+   * because a type byte this build does not know is a file it refuses, and the other is
+   * "which shapes can somebody build by typing numbers", which a polygon's outline cannot.
+   * So `PALETTE_NAMES` filters on this and `primitiveFromCode` does not.
+   */
+  readonly inPalette?: boolean;
   /** The primitive's own extent along its own axes, centred on the origin. */
   readonly halfExtents: (shape: never) => Vec3;
   /** Negative inside, zero on the surface, positive outside. */
@@ -608,10 +867,80 @@ export const PRIMITIVES = {
     sdf: (shape: { type: "HexPrism"; len: number; radius: number }, p: Vec3) =>
       sdHexPrism(shape.len, shape.radius, p),
   },
+  Polygon: {
+    type: "Polygon",
+    // **The second entry that is not exact, and the error is measurable.** A point
+    // outside both the outline and the slab's height should be a hypotenuse away from
+    // the corner of the solid; `max` reports the longer leg, so it under-reports by up
+    // to a factor of √2, and by nothing at all everywhere else. Under-reporting is the
+    // direction a sphere tracer survives — more steps than it needs, never one through
+    // a surface — and the direction a minimum cannot be fooled by. `polygon.test.ts`
+    // measures the error rather than asserting the flag.
+    exact: false,
+    code: 9,
+    /** A floor and a roof are the same shape, and only the item's position says which. */
+    inPalette: false,
+    parameters: [
+      {
+        name: "points",
+        arity: "variable",
+        label: "Outline",
+        minPoints: 3,
+        // **A bound on work, not on imagination.** Every sample inside a polygon's
+        // bounding box walks every edge, and a floor is rarely a hundred-sided shape.
+        // Sixty-four is three orders of magnitude above a hand-drawn room and two above
+        // a building with a courtyard.
+        maxPoints: 64,
+      },
+      { name: "len", arity: 1, label: "Thickness", min: 0, step: 0.05 },
+    ],
+    halfExtents: (shape: {
+      type: "Polygon";
+      points: readonly OutlinePoint[];
+      len: number;
+    }) => polygonHalfExtents(shape.points, shape.len),
+    sdf: (
+      shape: {
+        type: "Polygon";
+        points: readonly OutlinePoint[];
+        len: number;
+      },
+      p: Vec3,
+    ) => sdPolygonPrism(shape.points, shape.len, p),
+  },
 } as const;
 
 /** The names of every primitive, in table order. */
 export const PRIMITIVE_NAMES = Object.keys(PRIMITIVES) as ShapeType[];
+
+/**
+ * Whether a primitive is one a palette should offer, which is every one of them unless
+ * it says otherwise.
+ *
+ * **A cast, and a second one in this file.** `PRIMITIVES` is left unannotated so that
+ * each entry keeps its own parameter types — see `PrimitiveSpec` — which means the
+ * compiler cannot see that nine of the ten entries have no `inPalette` key at all.
+ * Writing `inPalette: true` into each of them would satisfy it, at the price of nine
+ * lines that say the same thing and would drift from nine entries the moment a tenth
+ * arrived and someone forgot this one.
+ */
+const isInPalette = (name: ShapeType): boolean => {
+  const spec: unknown = PRIMITIVES[name];
+  return (spec as PrimitiveSpec).inPalette !== false;
+};
+
+/**
+ * The names a palette offers: every primitive except the ones that cannot be built by
+ * typing numbers.
+ *
+ * **A polygon is not offered, and is still reachable.** A modeller's parts panel reads
+ * this; the level editor's toolbar and a place script read `PRIMITIVE_NAMES`, so a floor
+ * is drawn in the editor and written by a guest either way. A palette is a list of things
+ * to click, and an outline is not a thing to click — it is a thing to draw, and the level
+ * editor's draw tool is where that happens.
+ */
+export const PALETTE_NAMES: readonly ShapeType[] =
+  PRIMITIVE_NAMES.filter(isInPalette);
 
 /**
  * The one place a shape's variant meets a generic accessor.
@@ -654,10 +983,25 @@ export const primitiveParameters = (
   shape: OperationShape,
 ): readonly PrimitiveParameter[] => specOf(shape).parameters;
 
-/** The float count a primitive's parameters occupy in the file format. */
+/**
+ * The fixed float count a primitive's parameters occupy in the file format.
+ *
+ * **One for a `variable` parameter, and that one is the parameter's own width.** It is
+ * what makes this a *fixed* count: a shape whose parameters are a handful of numbers has
+ * a width that is a function of its type, which is what lets the reader find the next
+ * operation by arithmetic. A polygon does not have one, so it writes its point count as
+ * its first float and this returns the width of that prefix. The count is clamped to the
+ * table's bounds on the way back in, so a file claiming four billion points reads as the
+ * largest outline the table allows rather than as four billion reads past the end of the
+ * buffer.
+ *
+ * See ADR 0052.
+ */
 export const parameterFloats = (shape: OperationShape): number => {
   let count = 0;
-  for (const parameter of specOf(shape).parameters) count += parameter.arity;
+  for (const parameter of specOf(shape).parameters) {
+    count += isVariable(parameter) ? 1 : parameter.arity;
+  }
   return count;
 };
 
@@ -669,6 +1013,13 @@ export const parameterFloats = (shape: OperationShape): number => {
  * every new shape, and the two halves drift by one float and parse into plausible
  * numbers. Flattening through a table means the bytes and the names cannot drift,
  * because there is only one list of names.
+ *
+ * **And why `writeShape` sizes its buffer from this rather than from `parameterFloats`
+ * is the reason the two cannot be confused.** They are different questions — "how wide
+ * is the fixed part" and "how many floats are there" — and they disagree for exactly
+ * one primitive. A file format that sized its buffer with the first and filled it with
+ * the second would overwrite the beginning of the next operation every time a polygon
+ * appeared in a level.
  */
 export const parametersToFloats = (shape: OperationShape): number[] => {
   const floats: number[] = [];
@@ -677,6 +1028,20 @@ export const parametersToFloats = (shape: OperationShape): number[] => {
     if (parameter.arity === 3) {
       const v = value as Vec3;
       floats.push(v.x, v.y, v.z);
+    } else if (parameter.arity === "variable") {
+      const points = value as readonly OutlinePoint[] | undefined;
+      const [, maxPoints] = pointBounds(parameter);
+      // **`Array.isArray` rather than a check for `undefined`, and that is the whole
+      // difference between an empty outline and a NaN.** A shape that arrived with a
+      // number where its outline belongs would otherwise write `NaN` as the count, and
+      // a `NaN` in a file is worse than an empty outline: it comes back as a shape with
+      // three points at the origin, which is a floor in the wrong place rather than an
+      // error.
+      const outline = Array.isArray(points) ? points.slice(0, maxPoints) : [];
+      floats.push(outline.length);
+      for (const point of outline) {
+        floats.push(finiteOr(point?.x), finiteOr(point?.z));
+      }
     } else {
       floats.push(value as number);
     }
@@ -700,6 +1065,34 @@ export const shapeFromFloats = (
         z: floats[at + 2],
       };
       at += 3;
+    } else if (parameter.arity === "variable") {
+      const [minPoints, maxPoints] = pointBounds(parameter);
+      // **Clamped on the way in as well as on the way out, and for the same reason.**
+      // This is the read side of a length the file carries, and a length is the one
+      // number in a file that can be hostile: unclamped, a count larger than the rest
+      // of the buffer walks this loop off the end and every point after the first bad
+      // one is `undefined`, which reaches the field as a NaN. Clamped to what the list
+      // can actually supply as well as to the table, because a count is a claim about
+      // the file and the file is the thing that has to be believed.
+      const written = floats[at];
+      const claimed = Number.isFinite(written)
+        ? Math.floor(written)
+        : minPoints;
+      const available = Math.floor((floats.length - at - 1) / 2);
+      const count = Math.min(
+        Math.max(claimed, minPoints),
+        maxPoints,
+        Math.max(available, minPoints),
+      );
+      const points: OutlinePoint[] = [];
+      for (let i = 0; i < count; i++) {
+        points.push({
+          x: finiteOr(floats[at + 1 + i * 2]),
+          z: finiteOr(floats[at + 2 + i * 2]),
+        });
+      }
+      shape[parameter.name] = points;
+      at += 1 + count * 2;
     } else {
       shape[parameter.name] = floats[at];
       at += 1;
@@ -752,35 +1145,43 @@ const AXES = ["x", "y", "z"] as const;
  * Grouping by parameter rather than returning one flat list of numbers is what lets a panel
  * put a border around the three of a `Vec3`; the shape really does treat them as one value,
  * and a border is the cheapest way to say so.
+ *
+ * **A `variable` parameter is not here at all, rather than being here with no fields.**
+ * The alternative was an empty group, and an empty group is a heading over nothing: a
+ * panel would render a bordered box labelled "Outline" containing no inputs, and a
+ * reader would have to learn that "present but empty" meant "you cannot edit this in a
+ * panel". A shape's outline is drawn rather than typed, so the shape that draws it says so.
  */
 export const dimensionGroups = (
   shape: OperationShape,
 ): readonly DimensionGroup[] => {
   const values = shape as unknown as Record<string, unknown>;
-  return specOf(shape).parameters.map((parameter) => ({
-    name: parameter.name,
-    label: parameter.label,
-    fields:
-      parameter.arity === 3
-        ? AXES.map((axis, index) => ({
-            name: parameter.name,
-            axis,
-            label: (parameter.axes ?? ["x", "y", "z"])[index],
-            value: (values[parameter.name] as Vec3)[axis],
-            min: parameter.min,
-            step: parameter.step,
-          }))
-        : [
-            {
+  return specOf(shape)
+    .parameters.filter(isEditableParameter)
+    .map((parameter) => ({
+      name: parameter.name,
+      label: parameter.label,
+      fields:
+        parameter.arity === 3
+          ? AXES.map((axis, index) => ({
               name: parameter.name,
-              axis: undefined,
-              label: parameter.label,
-              value: values[parameter.name] as number,
+              axis,
+              label: (parameter.axes ?? ["x", "y", "z"])[index],
+              value: (values[parameter.name] as Vec3)[axis],
               min: parameter.min,
               step: parameter.step,
-            },
-          ],
-  }));
+            }))
+          : [
+              {
+                name: parameter.name,
+                axis: undefined,
+                label: parameter.label,
+                value: values[parameter.name] as number,
+                min: parameter.min,
+                step: parameter.step,
+              },
+            ],
+    }));
 };
 
 /**
@@ -795,6 +1196,14 @@ export const dimensionGroups = (
  * Returns `shape` unchanged when the named parameter is not one of its own — which is what a
  * caller gets if it asks for a field the table does not have, and is why the read side and
  * the write side cannot disagree about what a shape contains.
+ *
+ * **And when it is a `variable` parameter, which is the other way to ask the same question.**
+ * `values[name] === undefined` would let a caller write the number five over a polygon's
+ * outline, because the outline is present and so the guard passes. The read side of this
+ * pair is `dimensionGroups`, which does not list a variable parameter, so no panel can
+ * produce the call — but the function is exported, and an exported function that can be
+ * handed a value it cannot represent is a bug waiting for a caller that is more
+ * adventurous than the one that shipped with it.
  */
 export const withParameter = (
   shape: OperationShape,
@@ -804,6 +1213,10 @@ export const withParameter = (
 ): OperationShape => {
   const values = shape as unknown as Record<string, unknown>;
   if (values[name] === undefined) return shape;
+  const parameter = specOf(shape).parameters.find(
+    (candidate) => candidate.name === name,
+  );
+  if (parameter === undefined || isVariable(parameter)) return shape;
   if (axis === undefined) {
     return { ...values, [name]: value } as OperationShape;
   }

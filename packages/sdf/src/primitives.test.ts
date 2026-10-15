@@ -20,8 +20,16 @@ import {
   shapePadding,
   withParameter,
   type OperationShape,
+  type OutlinePoint,
   type ShapeType,
 } from "./primitives";
+
+/** A shape's outline, read back off the flat parameter list. */
+const polygonOf = (floats: number[]): readonly OutlinePoint[] => {
+  const shape = shapeFromFloats("Polygon", floats);
+  if (shape.type !== "Polygon") throw new Error("expected a polygon");
+  return shape.points;
+};
 
 describe("signed distance to a box", () => {
   const half = { x: 3, y: 1, z: 2 };
@@ -332,6 +340,47 @@ const SAMPLES: Record<ShapeType, OperationShape> = {
   Cylinder: { type: "Cylinder", len: 4, radius: 1.5 },
   Torus: { type: "Torus", majorRadius: 2.4, minorRadius: 0.7 },
   HexPrism: { type: "HexPrism", len: 4, radius: 1.6 },
+  // **A convex outline that contains the origin, because the star-shaped sweep below
+  // marches a ray from the origin and expects one crossing.** A real floor plan is
+  // concave and this is not — that shape is checked in `polygon.test.ts`, where the
+  // point is its own boundary rather than an accident of the sample. What the sample
+  // needs is distinct extents, and `{2.7, 0.8, 0.9}` is unlike every other row here.
+  Polygon: {
+    type: "Polygon",
+    points: [
+      { x: -2.7, z: -0.9 },
+      { x: 2.7, z: -0.9 },
+      { x: 2.7, z: 0.9 },
+      { x: -2.7, z: 0.9 },
+    ],
+    len: 1.6,
+  },
+};
+
+/**
+ * Whether a primitive has a parameter whose width is not a function of its type, which
+ * is the one question that separates a polygon from the other nine.
+ */
+const hasVariableParameter = (type: ShapeType): boolean =>
+  PRIMITIVES[type].parameters.some(
+    (parameter) => parameter.arity === "variable",
+  );
+
+/** A variable parameter's point-count bounds, which only a polygon has one of. */
+const polygonPointBounds = (): readonly [number, number] => {
+  const parameter = PRIMITIVES.Polygon.parameters.find(
+    (candidate) => candidate.arity === "variable",
+  );
+  if (parameter === undefined || parameter.arity !== "variable") {
+    throw new Error("Polygon declares no outline parameter");
+  }
+  return [parameter.minPoints, parameter.maxPoints];
+};
+
+/** How many points a sample's outline has, for the width arithmetic above. */
+const pointCountOf = (type: ShapeType): number => {
+  const value = (SAMPLES[type] as unknown as Record<string, unknown>).points;
+  return Array.isArray(value) ? value.length : 0;
 };
 
 /**
@@ -385,18 +434,24 @@ describe("the primitive table", () => {
     for (const name of PRIMITIVE_NAMES) {
       expect(primitiveFromCode(PRIMITIVES[name].code), name).toBe(name);
     }
-    // 9 is the first unused byte. A forward lookup must report the gap rather than
+    // 10 is the first unused byte. A forward lookup must report the gap rather than
     // read a neighbouring entry.
-    expect(primitiveFromCode(9)).toBeNull();
+    expect(primitiveFromCode(10)).toBeNull();
     expect(primitiveFromCode(255)).toBeNull();
   });
 
-  it("claims to be exact everywhere except the ellipsoid", () => {
+  it("claims to be exact everywhere except the ellipsoid and the polygon", () => {
     // The flag exists for a second application that sphere-traces. If a primitive
     // were ever added that is not a true distance, this is where it gets declared —
-    // and the assertion below is what stops the flag being decorative.
+    // and the assertions below are what stops the flag being decorative.
+    //
+    // **Two entries now, and they are wrong for opposite reasons.** The ellipsoid
+    // has no closed form and so over-reports nothing and under-reports near its
+    // surface. The polygon under-reports inside a concave outline, where the distance
+    // to the nearest edge is shorter than the distance to the region's boundary. Both
+    // err the way a sphere tracer survives.
     const inexact = PRIMITIVE_NAMES.filter((name) => !PRIMITIVES[name].exact);
-    expect(inexact).toEqual(["Ellipsoid"]);
+    expect(inexact).toEqual(["Ellipsoid", "Polygon"]);
   });
 
   /**
@@ -617,7 +672,16 @@ describe("the primitive table", () => {
       const degenerate: Record<string, unknown> = { type: name };
       for (const parameter of spec.parameters) {
         degenerate[parameter.name] =
-          parameter.arity === 3 ? { x: 0, y: 0, z: 0 } : 0;
+          parameter.arity === 3
+            ? { x: 0, y: 0, z: 0 }
+            : parameter.arity === "variable"
+              ? // **No outline at all, rather than a collapsed one.** An empty array is
+                // the degenerate a level reader could actually be handed — the points
+                // were refused, or a build that writes them differently read a count of
+                // zero — and it is the case the guard exists for. A collapsed outline is
+                // covered in `polygon.test.ts`.
+                []
+              : 0;
       }
       const shape = degenerate as OperationShape;
       expect(Number.isFinite(sdShape(shape, { x: 5, y: 0, z: 0 })), name).toBe(
@@ -635,12 +699,55 @@ describe("the primitive table", () => {
     // place a parameter name can be wrong in a way that parses into plausible
     // numbers: a length where a radius was written, read back as a length, and every
     // operation silently the wrong size.
+    //
+    // **The float count is checked only for the shapes whose width is a function of
+    // their type, and that is the whole difference between the two kinds.** A polygon
+    // writes its point count as one of its floats, so its list is longer than
+    // `parameterFloats` and always will be — the count that matters for a polygon is
+    // whether `writeShape` sized the buffer and `readShape` consumed the same number,
+    // and that is checked in `packages/csg/src/serialise.test.ts`, where the two
+    // halves can actually be run against each other. Checking it here would only be
+    // checking that the table agrees with itself.
     for (const name of PRIMITIVE_NAMES) {
       const shape = SAMPLES[name];
       const floats = parametersToFloats(shape);
-      expect(floats.length, name).toBe(parameterFloats(shape));
+      if (!hasVariableParameter(name)) {
+        expect(floats.length, name).toBe(parameterFloats(shape));
+      } else {
+        // The prefix's own float and the thickness are both fixed; each point the
+        // outline has adds two more on top of them.
+        expect(floats.length, name).toBe(
+          parameterFloats({ type: "Polygon" } as OperationShape) +
+            2 * pointCountOf(name),
+        );
+      }
       expect(shapeFromFloats(name, floats), name).toEqual(shape);
     }
+  });
+
+  it("clamps a polygon's point count to what the table allows", () => {
+    // **The one number in the file that can be hostile.** A count is read before
+    // anything else in a polygon's parameters, and an unclamped one walks the reader
+    // off the end of the buffer, so every point after the first bad one is `undefined`
+    // and reaches the field as a NaN. Both ends are clamped, because the low end is a
+    // count of one or two that would index a vertex before the array and the high end
+    // is the attack.
+    const [minimum, maximum] = polygonPointBounds();
+    expect(polygonOf([0, 1, 2])).toHaveLength(minimum);
+    expect(polygonOf([maximum + 1, ...new Array(600).fill(0)])).toHaveLength(
+      maximum,
+    );
+    // And a count that is not a number at all, which arrives as NaN from a truncated
+    // file rather than as a large integer.
+    expect(
+      Number.isFinite(
+        sdShape(shapeFromFloats("Polygon", [NaN]), {
+          x: 0,
+          y: 0,
+          z: 0,
+        }),
+      ),
+    ).toBe(true);
   });
 
   it("has no parameter a primitive does not declare, and declares all it has", () => {
@@ -732,7 +839,7 @@ describe("parameter metadata", () => {
     }
   });
 
-  it("names three axes for a vec3 and none for a number", () => {
+  it("names three axes for a vec3 and none for a number or an outline", () => {
     for (const { type, parameter } of everyParameter()) {
       if (parameter.arity === 3) {
         expect(
@@ -746,8 +853,8 @@ describe("parameter metadata", () => {
           ).not.toBe("");
       } else {
         expect(
-          parameter.axes,
-          `${type}.${parameter.name} is a number and should not name axes`,
+          "axes" in parameter ? parameter.axes : undefined,
+          `${type}.${parameter.name} is not a vec3 and should not name axes`,
         ).toBeUndefined();
       }
     }
@@ -755,6 +862,21 @@ describe("parameter metadata", () => {
 
   it("keeps every size non-negative and every step positive", () => {
     for (const { type, parameter } of everyParameter()) {
+      if (parameter.arity === "variable") {
+        // **A point count rather than a size, which is why the union has no `min`
+        // here.** A count of fewer than three does not enclose an area, so the floor
+        // is where it belongs; and an upper bound is a bound on work, not on geometry,
+        // so it is a property of this build rather than of a polygon.
+        expect(
+          parameter.minPoints,
+          `${type}.${parameter.name} allows fewer points than a polygon has`,
+        ).toBeGreaterThanOrEqual(3);
+        expect(
+          parameter.maxPoints,
+          `${type}.${parameter.name} caps at fewer points than it allows`,
+        ).toBeGreaterThan(parameter.minPoints);
+        continue;
+      }
       expect(
         parameter.min,
         `${type}.${parameter.name} allows a negative size`,
@@ -781,10 +903,16 @@ describe("parameter metadata", () => {
   });
 
   it("agrees with the file format about how many floats a shape has", () => {
+    // Only the shapes whose width is a function of their type can be checked this
+    // way at all: for a polygon `parameterFloats` is the width of the prefix, and the
+    // count that matters is the one `serialisedSize` allocates against, which is in
+    // the package that can run the two halves against each other.
     for (const type of PRIMITIVE_NAMES) {
+      if (hasVariableParameter(type)) continue;
       const shape = { type } as OperationShape;
       const fromMetadata = primitiveParameters(shape).reduce(
-        (total, parameter) => total + parameter.arity,
+        (total, parameter) =>
+          total + (parameter.arity === "variable" ? 0 : parameter.arity),
         0,
       );
       expect(
@@ -851,10 +979,9 @@ describe("dimension groups", () => {
     for (const type of PRIMITIVE_NAMES) {
       const shape = SAMPLES[type];
       const arity = new Map(
-        primitiveParameters(shape).map((parameter) => [
-          parameter.name,
-          parameter.arity,
-        ]),
+        primitiveParameters(shape)
+          .filter((parameter) => parameter.arity !== "variable")
+          .map((parameter) => [parameter.name, parameter.arity]),
       );
       for (const group of groupsOf(shape)) {
         expect(

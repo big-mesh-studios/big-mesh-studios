@@ -65,6 +65,7 @@ import { Combine } from "@big-mesh-studios/csg";
 import {
   PRIMITIVES,
   PRIMITIVE_NAMES,
+  type PrimitiveParameter,
   type ShapeType,
 } from "@big-mesh-studios/sdf";
 
@@ -373,6 +374,59 @@ const checkVec3 = (
 };
 
 /**
+ * Checks a polygon's outline: a list of points, in the shape's own plane.
+ *
+ * **Three things are refused, and only one of them is about size.** A count outside the
+ * table's bounds, a point whose coordinate is not a finite number in range, and **two
+ * consecutive vertices at the same place** — which is not a formatting problem but a division by zero:
+ * the distance to an edge is found by projecting onto it and dividing by its squared length,
+ * so a zero-length edge divides by zero and the whole field becomes NaN. The level reader
+ * is the only place that sees this once rather than a million times, so it is where it is
+ * caught. (`sdPolygon2D` guards it anyway, because a NaN in a field is unrecoverable and
+ * a guard here is not a promise about the other callers.)
+ *
+ * **The coordinates are bounded by a symmetric signed range and not by `within`,** because
+ * `MIN_SHAPE_SIZE` is a floor on a *size* and these are positions: a vertex at the local
+ * origin is the centre vertex of a perfectly ordinary square, and refusing it would turn
+ * every symmetrically drawn floor away with no error anywhere near the cause.
+ */
+const checkOutline = (
+  given: unknown,
+  parameter: Extract<PrimitiveParameter, { readonly arity: "variable" }>,
+): string | null => {
+  if (!Array.isArray(given)) return `has no ${parameter.name} list`;
+  if (
+    given.length < parameter.minPoints ||
+    given.length > parameter.maxPoints
+  ) {
+    return `has ${given.length} points, and ${parameter.name} takes ${parameter.minPoints} to ${parameter.maxPoints}`;
+  }
+  for (let i = 0; i < given.length; i++) {
+    const point = given[i];
+    if (!isPlainObject(point)) {
+      return `has a point at ${i} that is not an object`;
+    }
+    for (const axis of ["x", "z"] as const) {
+      const value = point[axis];
+      if (!isNumber(value)) {
+        return `has a point at ${i} whose ${axis} is not a finite number`;
+      }
+      if (value < -MAX_SHAPE_SIZE || value > MAX_SHAPE_SIZE) {
+        return `has a point at ${i} whose ${axis} is outside -${MAX_SHAPE_SIZE} to ${MAX_SHAPE_SIZE}`;
+      }
+    }
+    // **The closing edge too, not just the interior ones**: an outline whose first and last
+    // points coincide has one, and it is the edge a hand-drawn loop is most likely to
+    // produce — the person closed it on the same point on purpose.
+    const next = given[(i + 1) % given.length] as Record<string, unknown>;
+    if (next["x"] === point["x"] && next["z"] === point["z"]) {
+      return `has the same point twice, at ${i} and ${(i + 1) % given.length}`;
+    }
+  }
+  return null;
+};
+
+/**
  * Checks a primitive shape, and the fields that belong to that primitive.
  *
  * **The per-shape fields are the part worth reading.** Every primitive carries different
@@ -423,6 +477,9 @@ const checkShape = (
           );
         }
       }
+    } else if (parameter.arity === "variable") {
+      const why = checkOutline(given, parameter);
+      if (why !== null) return bad(why);
     } else if (!within(given)) {
       return bad(
         `has a ${parameter.name} outside ${MIN_SHAPE_SIZE} to ${MAX_SHAPE_SIZE}`,

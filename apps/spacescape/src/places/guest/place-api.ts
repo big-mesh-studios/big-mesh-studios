@@ -119,7 +119,9 @@ export type PlaceShape = {
   } & {
     readonly [P in ParametersOf<K> as P["name"]]: P["arity"] extends 3
       ? PlaceVec3
-      : number;
+      : P["arity"] extends "variable"
+        ? readonly PlaceVec2[]
+        : number;
   };
 }[ShapeType];
 
@@ -142,6 +144,21 @@ export type Vec3Like = readonly [number, number, number];
 export type PlaceVec3 = {
   readonly x: number;
   readonly y: number;
+  readonly z: number;
+};
+
+/**
+ * One vertex of a polygon's outline, as a script writes it: two numbers on the XZ plane.
+ *
+ * **The same shape as `packages/sdf`'s `OutlinePoint`, spelled twice on purpose.** The
+ * guest library is types a script sees, and it is checked by the demos against exactly
+ * that; re-exporting the engine's own type would make a change to an internal file a
+ * change to a published API, which is the opposite of what `/packages` is supposed to be
+ * for (ADR 0024). The duplication is three lines and it is what keeps the boundary a
+ * boundary.
+ */
+export type PlaceVec2 = {
+  readonly x: number;
   readonly z: number;
 };
 

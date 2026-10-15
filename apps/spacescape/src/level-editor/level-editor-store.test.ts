@@ -4,6 +4,8 @@ import { createRoot, flush } from "solid-js";
 
 import {
   createLevelEditor,
+  drawsInAPlane,
+  TOOL_KINDS,
   type CameraControlsKind,
   type LevelEditorHost,
 } from "./level-editor-store";
@@ -220,6 +222,81 @@ describe("placing something", () => {
     });
     // `walls-<points>-<centre>`, the centre being the box's middle at (20, 15, 0).
     expect(editor.items()[0].id).toBe("walls-2-20-15-0");
+  });
+
+  it("adds a drawn outline as one floor shape, selected and named after its corners", async () => {
+    // **A shape, not a fourth kind** — ADR 0053. The whole of what that buys is visible here:
+    // the store's own test does not need to know a floor is anything special, and the item
+    // it produces is selected by the same code that selects a box.
+    const { editor } = editorOver();
+    editor.addFloor({
+      at: { x: 20, y: 0, z: 0 },
+      orientation: { x: 0, y: 0, z: 0, w: 1 },
+      points: [
+        { x: -10, z: -10 },
+        { x: 10, z: -10 },
+        { x: 10, z: 10 },
+        { x: -10, z: 10 },
+      ],
+      thickness: 4,
+    });
+    await settle();
+    flush();
+    const item = editor.items()[0];
+    expect(item.kind).toBe("shape");
+    expect(item.id).toBe("floor-4-20-0-0");
+    if (item.kind !== "shape") throw new Error("expected a shape");
+    expect(item.shape.type).toBe("Polygon");
+    expect(item.shape.type === "Polygon" && item.shape.points).toHaveLength(4);
+    expect(item.shape.type === "Polygon" && item.shape.len).toBe(4);
+    // Selected, so the inspector opens on it and the outline bar is there.
+    expect(editor.selectedIndex()).toBe(0);
+  });
+
+  it("keeps a floor's turn, which is the drawn plane's own basis", async () => {
+    // **The one thing a level shape has to carry for a floor to lie where it was drawn.**
+    // Dropping it would leave the outline in the same numbers on a level that is a
+    // different plane — still a floor, still the right size, lying on its side.
+    const { editor } = editorOver();
+    const orientation = { x: 0.3826834, y: 0, z: 0, w: 0.9238795 };
+    editor.addFloor({
+      at: { x: 0, y: 0, z: 0 },
+      orientation,
+      points: [
+        { x: -4, z: -4 },
+        { x: 4, z: -4 },
+        { x: 4, z: 4 },
+        { x: -4, z: 4 },
+      ],
+      thickness: 2,
+    });
+    await settle();
+    flush();
+    const item = editor.items()[0];
+    if (item.kind !== "shape") throw new Error("expected a shape");
+    expect(item.orientation?.[0]).toBeCloseTo(orientation.x, 6);
+    expect(item.orientation?.[1]).toBeCloseTo(orientation.y, 6);
+    expect(item.orientation?.[2]).toBeCloseTo(orientation.z, 6);
+    expect(item.orientation?.[3]).toBeCloseTo(orientation.w, 6);
+  });
+});
+
+describe("which tools draw in a plane", () => {
+  it("are the two that share the aim, commit, finish gesture", () => {
+    // **And nothing else.** This is what every pointer handler in `app.tsx` asks instead of
+    // naming a tool, so a tool added to the list that does not draw — and so must not claim
+    // the pointer — is caught by the second assertion rather than by a person pressing and
+    // wondering why the camera stopped moving.
+    expect(drawsInAPlane("walls")).toBe(true);
+    expect(drawsInAPlane("floor")).toBe(true);
+    for (const kind of ["select", "shape", "prop", "npc"] as const) {
+      expect(drawsInAPlane(kind), kind).toBe(false);
+    }
+    // **And the predicate is the only list of them**, spelled out so that adding a third
+    // drawing tool has to change this too. `TOOL_KINDS` is what the toolbar offers and
+    // `drawsInAPlane` is what claims the pointer; the two drifting apart is a tool that is
+    // either unreachable or takes the camera hostage on press.
+    expect(TOOL_KINDS.filter(drawsInAPlane)).toEqual(["walls", "floor"]);
   });
 });
 

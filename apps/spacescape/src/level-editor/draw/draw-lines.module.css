@@ -73,3 +73,29 @@
   border: 1px solid rgba(255, 255, 255, 0.18);
   pointer-events: auto;
 }
+
+/*
+ * Why a floor's Finish is disabled.
+ *
+ * **Above the buttons rather than below them, because it is an answer and not a caption.**
+ * The cluster is the thing a person is reaching for; a line of text under it is the last
+ * thing read. Wraps to the viewport rather than clipping, because the longest of the four
+ * refusals is a full sentence and this is the only place it is ever said.
+ */
+.warn {
+  position: fixed;
+  left: 50%;
+  bottom: calc(132px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  max-width: min(28rem, calc(100vw - 2rem));
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(10, 12, 16, 0.86);
+  border: 1px solid rgba(255, 215, 160, 0.35);
+  color: #ffd7a0;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+}

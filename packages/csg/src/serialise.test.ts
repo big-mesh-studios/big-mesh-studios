@@ -55,7 +55,23 @@ const sampleShape = (type: ShapeType): OperationShape => {
   const shape: Record<string, unknown> = { type };
   for (const parameter of PRIMITIVES[type].parameters) {
     shape[parameter.name] =
-      parameter.arity === 3 ? randomVector(80) : 1 + next() * 60;
+      parameter.arity === 3
+        ? randomVector(80)
+        : parameter.arity === "variable"
+          ? /**
+             * A real outline, because this is below the layer that refuses a malformed
+             * one. `checkShape` is what turns a number-where-an-outline-belongs into a
+             * refusal, and a file-format test that generated one would be testing the
+             * wrong thing: it would write a `NaN` count and read back a shape that was
+             * never written. **A random convex outline around the origin**, so the
+             * half-extents a reader derives are non-zero and a truncation is visible.
+             */
+            Array.from({ length: 3 + Math.floor(next() * 9) }, (_, i) => {
+              const angle = (2 * Math.PI * i) / 8;
+              const reach = 4 + next() * 40;
+              return { x: Math.cos(angle) * reach, z: Math.sin(angle) * reach };
+            })
+          : 1 + next() * 60;
   }
   return shape as OperationShape;
 };
@@ -334,6 +350,72 @@ describe("the file format's size", () => {
     // capsule, plus six for the header.
     expect(serialisedSize(thousand)).toBe(1000 * 54 + 6);
   });
+
+  it("sizes a polygon from the points it has rather than from its type", () => {
+    // **The invariant version 5 rests on, and the one that fails silently.** A buffer
+    // sized from the *type* and filled from the *shape* is right for the nine primitives
+    // whose two agree and wrong for a polygon by two floats per point it has. Writing
+    // then overruns into the next operation; the reader resumes at a plausible offset and
+    // every operation after it is a plausible shape in the wrong place.
+    //
+    // Both halves are checked against each other here because this is the only place
+    // they can be: `sdf` has the count and the sizer has the bytes, and neither knows
+    // what the other did.
+    const fixed = 1 + 1 + 3 * 4 + 4 * 4 + 4 + 3 + 4 + 1;
+    for (const points of [3, 4, 9, 64]) {
+      const outline = Array.from({ length: points }, (_, i) => ({
+        x: i * 1.5,
+        z: -i * 0.5,
+      }));
+      const shape: OperationShape = {
+        type: "Polygon",
+        points: outline,
+        len: 0.5,
+      };
+      const operation = makeOperation(0, { x: 0, y: 0, z: 0 }, shape, "Add");
+      expect(parametersToFloats(shape).length, `${points} points`).toBe(
+        2 + points * 2,
+      );
+      expect(serialisedSize([operation]), `${points} points`).toBe(
+        6 + fixed + (2 + points * 2) * 4,
+      );
+      // And the buffer really is that long, which is what makes the size an allocation
+      // rather than an intention.
+      expect(
+        serialiseOperations([operation]).byteLength,
+        `${points} points`,
+      ).toBe(serialisedSize([operation]));
+    }
+  });
+
+  it("round-trips a polygon next to nine fixed shapes without shifting one", () => {
+    // **A polygon between two operations is the case that catches an off-by-one in the
+    // width**, because the damage lands on whatever follows it rather than on the
+    // polygon. The shape types are in a fixed order so a failure names which neighbour
+    // it was.
+    const neighbours: readonly ShapeType[] = [
+      "Sphere",
+      "Polygon",
+      "Box",
+      "Polygon",
+      "Torus",
+    ];
+    const operations = neighbours.map((type, index) =>
+      makeOperation(
+        index,
+        { x: index, y: 1, z: 2 },
+        sampleShape(type),
+        index % 2 === 0 ? "Add" : "Subtract",
+        // A colour, because an operation without one is written white and read back
+        // white — the one field a round trip does not preserve, and not what this test
+        // is about.
+        { colour: { r: 10 + index, g: 20, b: 30 } },
+      ),
+    );
+    const back = deserialiseOperations(serialiseOperations(operations));
+    expect(back.map((operation) => operation.shape.type)).toEqual(neighbours);
+    expectSameOperations(back, operations);
+  });
 });
 
 describe("refusing a malformed file", () => {
@@ -407,25 +489,28 @@ describe("refusing a malformed file", () => {
   });
 
   it("writes the version it reads, and refuses an earlier file", () => {
-    // **The version is now 4, because an operation says which procedural material its
-    // surface wears** — one byte after the opacity, and the difference between a brick
-    // wall and a flat-coloured one. It went to 3 before that because a colour counts on
-    // any operation now, so a version 2 file — whose `Add` operations carry the brush's
-    // colour, whether or not it was meant to — would paint a whole model on load. It
-    // went to 2 before that because the capsule's axis changed, and a version 1 file read
-    // as a version 2 one would have put a capsule's length where its radius was.
+    // **The version is now 5, because a shape's width is no longer a function of its
+    // type** — a polygon writes its own point count, so a reader that derived the width
+    // from the type byte would resume in the middle of an outline and read every
+    // operation after it at a plausible offset. It went to 4 before that because an
+    // operation says which procedural material its surface wears, one byte after the
+    // opacity. It went to 3 before that because a colour counts on any operation now,
+    // so a version 2 file — whose `Add` operations carry the brush's colour, whether or
+    // not it was meant to — would paint a whole model on load. It went to 2 before that
+    // because the capsule's axis changed.
     //
     // The refusal is the whole mechanism every time; this is the test that it is still
-    // in place. Version 4 is in that list because a byte appended to a fixed-width
-    // record is exactly the case where a lenient reader does the most damage: every
-    // operation's parameters would slide by one and arrive as plausible numbers.
-    expect(FORMAT_VERSION).toBe(4);
+    // in place. Version 5 is in that list precisely because a width the file carries is
+    // the case where a lenient reader does the most damage: nothing about the bytes looks
+    // wrong, and the model that comes out is a list of plausible shapes at plausible
+    // positions.
+    expect(FORMAT_VERSION).toBe(5);
     const buffer = serialiseOperations([randomOperation(0)]);
-    expect(new DataView(buffer).getUint16(0, true)).toBe(4);
+    expect(new DataView(buffer).getUint16(0, true)).toBe(5);
 
     // A file stamped with each earlier version, whose bytes are otherwise perfectly
     // well formed. All have to be refused.
-    for (const earlier of [1, 2, 3]) {
+    for (const earlier of [1, 2, 3, 4]) {
       const stamped = serialiseOperations([randomOperation(0)]);
       new DataView(stamped).setUint16(0, earlier, true);
       expect(
