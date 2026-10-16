@@ -74,6 +74,18 @@ import {
   createSelectionOverlay,
   type SelectionOverlay,
 } from "./level-editor/view/selection-overlay";
+import {
+  createImagePlaneOverlay,
+  type ImagePlaneOverlay,
+} from "./level-editor/view/image-plane";
+import {
+  createImagePlaneState,
+  type ImagePlaneState,
+} from "./level-editor/image/image-plane-state";
+import {
+  readReferenceImage,
+  textureFromReference,
+} from "./level-editor/image/image-loader";
 import { floorDrawing, floorPlacement } from "./level-editor/draw/floor";
 import { IDENTITY } from "./level-editor/view/quaternion";
 import { planeThrough, rayPlanePoint } from "./level-editor/draw/plane";
@@ -767,6 +779,11 @@ export default function App() {
    */
   let applyLevel: ((plan: LevelPlan) => void) | undefined;
   let clickLevelWorld: ((clientX: number, clientY: number) => void) | undefined;
+  /**
+   * Reads a chosen image file and lays it down. Filled in `onSettled`, where the collision field
+   * and camera that place it live, and called from the Image tool's panel.
+   */
+  let chooseReferenceImage: ((file: File) => void) | undefined;
 
   /**
    * The draw-lines controller, and the overlay that draws its draft into the scene.
@@ -783,6 +800,13 @@ export default function App() {
   let drawLinesOverlay: DrawLinesOverlay | undefined;
   /** The picked wall edge, drawn over the world so a delete can see what it will remove. */
   let selectionOverlay: SelectionOverlay | undefined;
+  /**
+   * The reference image laid on the ground, for tracing against. Editor chrome, not geometry:
+   * it never becomes a level item and never folds into the world. Hidden until Phase 2 gives it
+   * an image; here so its scene position (after the world, before the draft) is fixed in one
+   * place. See `docs/image-plane-plan.md`.
+   */
+  let imagePlaneOverlay: ImagePlaneOverlay | undefined;
   /**
    * The walls item being re-drawn, if any.
    *
@@ -882,12 +906,37 @@ export default function App() {
   /** The tool a touch `Apply` returns to, so `Select` can be toggled back off it. */
   let lastPlacement: ToolKind = "shape";
 
-  const levelEditor: LevelEditor = createLevelEditor({
-    level: () => ({ version: 1, items: [] }),
-    setLevel: (plan) => applyLevel?.(plan),
-    cameraKind: levelCameraKind,
-    setCameraKind: setLevelCameraKind,
+  /**
+   * The reference image an editor session traces against.
+   *
+   * **At component scope, not inside `onSettled`**, because the level store is created here and
+   * serializes through it (`LevelReferenceSeam`): the order is "make the state, then the store
+   * that writes it". It makes signals and memos, which is exactly what component scope is for —
+   * `onSettled`'s own owner forbids that, which is why the draw controller is made under
+   * `runWithOwner` instead. Its `upAt` is the world's own, so a picture on the ground follows the
+   * local vertical wherever it is moved (ADR 0037).
+   */
+  const imagePlane: ImagePlaneState = createImagePlaneState({
+    upAt: (point) => WORLD.frame.upAt(point),
   });
+
+  const levelEditor: LevelEditor = createLevelEditor(
+    {
+      level: () => ({ version: 1, items: [] }),
+      setLevel: (plan) => applyLevel?.(plan),
+      cameraKind: levelCameraKind,
+      setCameraKind: setLevelCameraKind,
+    },
+    {
+      // The level file carries the picture and its placement; an imported one is handed back
+      // here. `undefined` means the file carried none, so the current one is cleared.
+      get: () => imagePlane.reference(),
+      set: (reference) => {
+        if (reference === undefined) imagePlane.clear();
+        else imagePlane.load(reference);
+      },
+    },
+  );
 
   /** Toggles the touch cluster between placing and selecting. */
   const toggleSelect = (): void => {
@@ -2417,6 +2466,11 @@ export default function App() {
     // It has no scene, no renderer and no camera of its own. It pins this canvas into a
     // pane, drives this camera, and asks this world to change.
     const levelHighlight = createHighlight(viewport.scene);
+    // **The reference image first of the editor overlays**, so the draft, the selection and the
+    // handles all paint over it — a tracing aid is underneath the thing being traced against it.
+    // It ignores depth (`image-plane.ts`), so it must still be added after the world to show
+    // through the terrain at all (ADR 0014). Hidden until Phase 2 gives it an image.
+    imagePlaneOverlay = createImagePlaneOverlay(viewport.scene);
     // The draft's own lines, added after the world so a wall being drawn shows over terrain
     // (its material does not depth-test — see `draw-lines-overlay.ts`) and before the ghost
     // and the handles, so those still draw on top of it.
@@ -2675,17 +2729,31 @@ export default function App() {
      */
     const standHandles = (): void => {
       const item = levelEditor.selectedItem();
+      /**
+       * **The reference image gets the move handles while the Image tool is on**, so it is
+       * moved the way an item is — along a world axis by the arrows — rather than by the
+       * grazing-angle drag its own plane made unstable. It offers no rings: a picture is turned
+       * about up by the field in its panel, and three world-axis rings would be three ways to do
+       * a thing the panel already does exactly.
+       */
+      const imagePose =
+        levelEditor.tool() === "image" ? imagePlane.pose() : undefined;
       const wanted =
         levelEditor.gizmo() !== "off" && levelCameraKind() === "orbit";
-      const showing = wanted && item !== undefined;
+      const moveTarget =
+        imagePose !== undefined || (item !== undefined && turnable(item));
       levelMoveHandles.setVisible(
-        showing && levelEditor.gizmo() === "move" && turnable(item),
+        wanted && moveTarget && levelEditor.gizmo() === "move",
       );
       levelRotateHandles.setVisible(
-        showing && levelEditor.gizmo() === "rotate" && turnable(item),
+        wanted &&
+          item !== undefined &&
+          turnable(item) &&
+          levelEditor.gizmo() === "rotate",
       );
-      if (item === undefined || !showing) return;
-      const at = itemAt(item);
+      const at =
+        imagePose?.at ?? (item === undefined ? undefined : itemAt(item));
+      if (at === undefined || !wanted) return;
       const distance = distanceTo(at);
       levelMoveHandles.place(at, distance);
       levelRotateHandles.place(at, distance);
@@ -2801,6 +2869,33 @@ export default function App() {
     };
 
     /**
+     * Reads a chosen image file and lays the picture down in front of the camera.
+     *
+     * **Read here rather than in the panel** because the bytes are the editor's and placing the
+     * picture needs the collision field and the camera, which live in this scope. The panel is
+     * handed the one thing it cannot do — a `File` to hand to a picker callback.
+     *
+     * **Placed where the camera is looking, but only the first time.** A picture being *replaced*
+     * keeps the placement somebody has already lined up with the terrain; a first one lands under
+     * the view rather than at the world's origin, which is wherever the camera happens to be.
+     */
+    chooseReferenceImage = (file: File): void => {
+      void (async () => {
+        const image = await readReferenceImage(file);
+        if (imagePlane.image() === undefined) {
+          viewport.camera.updateMatrixWorld();
+          const ground = pickAlong(
+            sculpt.collisionField,
+            rayThroughScreen(viewport.camera, 0, 0),
+          );
+          if (ground !== undefined) imagePlane.setAt(ground.point);
+        }
+        imagePlane.setImage(image);
+        imagePlane.setVisible(true);
+      })();
+    };
+
+    /**
      * A click in the world, meaning whatever the active tool says it means.
      *
      * **The screen point is in the canvas's own coordinates**, not the page's, because the
@@ -2848,6 +2943,11 @@ export default function App() {
         levelEditor.select(hit?.index);
         return;
       }
+
+      // **The Image tool places nothing on a click.** Its picture is chosen from the panel and
+      // moved by a drag; a tap is a no-op. Without this the tool would fall through to the
+      // prop/npc cast below and stand a figure wherever somebody tapped.
+      if (levelEditor.tool() === "image") return;
 
       // **Where it goes is the terrain under the pointer**, not the pointer's direction —
       // a shape placed by eye would end up wherever the view happened to be pointing.
@@ -2924,14 +3024,21 @@ export default function App() {
      * follows the pointer and the arrows follow the ghost, and the level is not touched
      * until the drag ends — so a drag is one apply and one undo step rather than one per
      * pointer move.
+     *
+     * **The reference image is the one exception, and it is deliberate.** A picture is editor
+     * chrome rather than a level item, so there is nothing to undo and no reason to hold the
+     * move back — it follows the pointer live, with no ghost, because the picture itself is the
+     * thing being moved. It is still moved along a world axis, which is what makes it steady at
+     * every camera angle where the plane drag it replaces was not.
      */
     const grabHandle = async (
       initial: PointerEvent & { currentTarget: HTMLElement },
     ): Promise<void> => {
       const item = levelEditor.selectedItem();
-      if (levelEditor.gizmo() !== "move" || item === undefined || dragging) {
-        return;
-      }
+      const imagePose =
+        levelEditor.tool() === "image" ? imagePlane.pose() : undefined;
+      if (levelEditor.gizmo() !== "move" || dragging) return;
+      if (item === undefined && imagePose === undefined) return;
       // Placed first, so the screen-space test measures the arrows as the last frame drew
       // them rather than where they were when the selection changed.
       standHandles();
@@ -2943,14 +3050,19 @@ export default function App() {
       const axis = armUnderPointer(pointerOnCanvas(initial), arms);
       if (axis === undefined) return;
 
+      const start =
+        imagePose?.at ?? (item === undefined ? undefined : itemAt(item));
+      if (start === undefined) return;
+
       dragging = true;
       justDragged = true;
       /** The camera stands down for the length of the drag, and no longer. */
       levelCamera().claimGesture(true);
       levelMoveHandles.setHeld(axis);
-      showDragged(item);
+      // A picture is drawn by this overlay and shows the move itself; only an item, whose mesh
+      // is not a scene object the editor can move, needs a ghost built for it.
+      if (imagePose === undefined && item !== undefined) showDragged(item);
 
-      const start = itemAt(item);
       const arm = arms.find((candidate) => candidate.axis === axis);
       let moved = start;
 
@@ -2968,8 +3080,9 @@ export default function App() {
             y: start.y + direction.y * along,
             z: start.z + direction.z * along,
           };
-          levelGhost.moveTo(moved);
-          // **The arrows follow the ghost**, or the handle would slide out from under the
+          if (imagePose !== undefined) imagePlane.setAt(moved);
+          else levelGhost.moveTo(moved);
+          // **The arrows follow the move**, or the handle would slide out from under the
           // finger while the drag continued.
           levelMoveHandles.place(moved, distanceTo(moved));
         });
@@ -2979,6 +3092,9 @@ export default function App() {
         levelCamera().claimGesture(false);
         dragging = false;
       }
+
+      // The picture was written live; an item is written once, here, as one undo step.
+      if (imagePose !== undefined) return;
 
       const index = levelEditor.selectedIndex();
       if (
@@ -3316,6 +3432,57 @@ export default function App() {
       });
 
       /**
+       * The reference image's texture follows its bytes.
+       *
+       * **Rebuilt whenever the bytes change, and the decode is async**, so a late answer for an
+       * image that has since been replaced is discarded rather than overwriting the new one —
+       * the token is why two quick picks cannot leave the first picture on screen. Only the
+       * bytes are watched here; where it lies and how it shows are the effect below.
+       */
+      createEffect(
+        () => imagePlane.image(),
+        (image) => {
+          const overlay = imagePlaneOverlay;
+          if (overlay === undefined || image === undefined) return;
+          let live = true;
+          void textureFromReference(image).then(({ texture, aspect }) => {
+            if (!live) {
+              texture.dispose();
+              return;
+            }
+            overlay.setImage(texture, aspect);
+          });
+          return () => {
+            live = false;
+          };
+        },
+      );
+
+      /**
+       * The reference image's pose, opacity and visibility follow its state and the editor.
+       *
+       * **Hidden whenever the editor is closed**, so a reference cannot be left lying on the
+       * terrain of the running game — the same rule the highlight and the selection overlay
+       * follow. A pose that is `undefined` (no image) also hides it, so "no image" and "image,
+       * not shown" are one state to the renderer.
+       */
+      createEffect(
+        () => ({
+          open: levelEditorOpen(),
+          pose: imagePlane.pose(),
+          opacity: imagePlane.opacity(),
+          visible: imagePlane.visible(),
+        }),
+        ({ open, pose, opacity, visible }) => {
+          const overlay = imagePlaneOverlay;
+          if (overlay === undefined) return;
+          if (pose !== undefined) overlay.setPose(pose);
+          if (opacity !== undefined) overlay.setOpacity(opacity);
+          overlay.setVisible(open && visible === true && pose !== undefined);
+        },
+      );
+
+      /**
        * Everything the editor takes from the game while it is open, and hands back on close.
        *
        * **One effect rather than three, because they share a lifetime.** Three effects over
@@ -3575,6 +3742,8 @@ export default function App() {
           levelGhost.hide();
           /** A highlight that outlived the editor would sit on a wall in the running game. */
           selectionOverlay?.hide();
+          /** A reference image outlived the editor would sit on the terrain in the running game. */
+          imagePlaneOverlay?.setVisible(false);
           /** The air comes back with the game, so the world is hazed as it was. */
           setFogEnabled(true);
           /** And the game's own flat window comes back with its camera. */
@@ -4058,6 +4227,8 @@ export default function App() {
               );
             }}
             onClose={() => setLevelEditorOpen(false)}
+            imagePlane={imagePlane}
+            onChooseImage={(file) => chooseReferenceImage?.(file)}
             onEditWalls={beginEditWalls}
             onEditOutline={beginEditOutline}
           />

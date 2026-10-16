@@ -45,6 +45,7 @@ import {
 import { MATERIAL_NAMES } from "../../render/material-names";
 import type { Combine, LevelItem, LevelPlan, LevelShape } from "./types";
 import { isLevelFigure, LEVEL_PLACE } from "./types";
+import { encodeImagePlane, type LevelImagePlane } from "./image-plane";
 
 /**
  * How many items one level may hold.
@@ -567,8 +568,24 @@ interface FigurePayload {
  * minified JSON would make a level a thing that can only be changed by the tool that made
  * it — which is the scripting-alone problem the editor exists to solve.
  */
-export const writeLevelPlan = (plan: LevelPlan): string =>
-  `${JSON.stringify({ version: LEVEL_VERSION, items: plan.items }, null, 2)}\n`;
+export const writeLevelPlan = (
+  plan: LevelPlan,
+  imagePlane?: LevelImagePlane,
+): string =>
+  `${JSON.stringify(
+    {
+      version: LEVEL_VERSION,
+      items: plan.items,
+      // **Only when there is one**, so a level without a reference is byte-for-byte the file it
+      // always was and its diffs stay clean. See `image-plane.ts` for why this key may sit at
+      // the top level while every other field is an item.
+      ...(imagePlane === undefined
+        ? {}
+        : { imagePlane: encodeImagePlane(imagePlane) }),
+    },
+    null,
+    2,
+  )}\n`;
 
 /**
  * What an item is called in the editor's list.

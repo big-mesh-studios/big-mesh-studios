@@ -16,6 +16,7 @@ import {
   type LevelPlan,
 } from "../places/level/types";
 import { readLevelPlan } from "../places/level/level-plan";
+import type { LevelImagePlane } from "../places/level/image-plane";
 import { MAX_NAME_LENGTH } from "../places/limits";
 
 /**
@@ -853,6 +854,100 @@ describe("a level coming in from a file", () => {
     expect(editor.items()).toHaveLength(0);
     expect(editor.hasUndo()).toBe(false);
     expect(editor.selectedIndex()).toBeUndefined();
+  });
+});
+
+describe("the reference image a level may carry", () => {
+  const aReference: LevelImagePlane = {
+    at: [5, 0, -5],
+    yaw: 0.25,
+    width: 90,
+    opacity: 0.5,
+    mime: "image/png",
+    bytes: new Uint8Array([1, 2, 3, 4]),
+  };
+
+  /** A store with a reference seam, remembering what was last handed to it. */
+  const editorWithReference = () => {
+    let stored: LevelImagePlane | undefined;
+    const seam = {
+      get: () => stored,
+      set: (next: LevelImagePlane | undefined) => {
+        stored = next;
+      },
+    };
+    return createRoot(() => {
+      const host: LevelEditorHost = {
+        level: () => EMPTY,
+        setLevel: () => {},
+        cameraKind: () => "orbit",
+        setCameraKind: () => {},
+      };
+      const editor = createLevelEditor(host, seam);
+      return { editor, reference: () => stored, setReference: seam.set };
+    });
+  };
+
+  it("writes the reference with the level when there is one", async () => {
+    const { editor, setReference } = editorWithReference();
+    setReference(aReference);
+    await settle();
+    expect(JSON.parse(editor.exportJson()).imagePlane).toMatchObject({
+      mime: "image/png",
+      width: 90,
+    });
+  });
+
+  it("writes no key when there is no reference", async () => {
+    const { editor } = editorWithReference();
+    await settle();
+    expect(JSON.parse(editor.exportJson())).not.toHaveProperty("imagePlane");
+  });
+
+  it("adopts a reference read from a file", async () => {
+    const { editor, setReference } = editorWithReference();
+    setReference(aReference);
+    const text = editor.exportJson();
+
+    const { editor: other, reference: otherReference } = editorWithReference();
+    other.importJson(text);
+    await settle();
+    flush();
+    expect(otherReference()?.mime).toBe("image/png");
+    expect([...(otherReference()?.bytes ?? [])]).toEqual([1, 2, 3, 4]);
+    expect(otherReference()?.at).toEqual([5, 0, -5]);
+  });
+
+  it("refuses the whole file when the reference is malformed", async () => {
+    const { editor, reference } = editorWithReference();
+    const taken = editor.importJson(
+      JSON.stringify({
+        version: 1,
+        items: [],
+        imagePlane: {
+          at: [0, 0, 0],
+          yaw: 0,
+          width: 1,
+          opacity: 5,
+          mime: "image/png",
+          bytes: "AAAA",
+        },
+      }),
+    );
+    await settle();
+    flush();
+    expect(taken).toBe(false);
+    expect(reference()).toBeUndefined();
+    expect(editor.notice()).toMatch(/imagePlane/);
+  });
+
+  it("clears the reference when the level is reseeded", async () => {
+    const { editor, setReference, reference } = editorWithReference();
+    setReference(aReference);
+    editor.reseed();
+    await settle();
+    flush();
+    expect(reference()).toBeUndefined();
   });
 });
 

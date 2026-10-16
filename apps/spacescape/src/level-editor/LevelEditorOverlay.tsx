@@ -40,8 +40,10 @@ import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { ToolbarPanel } from "./panels/ToolbarPanel";
 import { ItemListPanel } from "./panels/ItemListPanel";
 import { PropertiesPanel } from "./panels/PropertiesPanel";
+import { ReferencePanel } from "./panels/ReferencePanel";
 import { LevelIoPanel } from "./panels/LevelIoPanel";
 import type { LevelEditor } from "./level-editor-store";
+import type { ImagePlaneState } from "./image/image-plane-state";
 import { Button, Tab } from "./components/controls";
 import styles from "./LevelEditorOverlay.module.css";
 
@@ -50,6 +52,7 @@ const PANELS = [
   { id: "tools", label: "Tools" },
   { id: "items", label: "Level" },
   { id: "properties", label: "Properties" },
+  { id: "reference", label: "Reference" },
   { id: "level", label: "File" },
 ] as const;
 
@@ -114,6 +117,10 @@ export const LevelEditorOverlay = (props: {
   canAttach: boolean;
   onAttach: () => void;
   onClose: () => void;
+  /** The reference image, so the Reference panel can edit it. See `app.tsx`. */
+  imagePlane: ImagePlaneState;
+  /** Lays a chosen picture down; the panel opens the picker and hands the file up. */
+  onChooseImage: (file: File) => void;
   /** Seeds the draw controller from a wall so its lines can be edited. See `app.tsx`. */
   onEditWalls?: (id: string) => void;
   /** Seeds the drawing from a floor's outline; absent only if built without it. */
@@ -172,6 +179,12 @@ export const LevelEditorOverlay = (props: {
           models={props.models}
           onEditWalls={props.onEditWalls}
           onEditOutline={props.onEditOutline}
+        />
+      </div>
+      <div hidden={tab() !== "reference" && mobile()} class={styles.paneBody}>
+        <ReferencePanel
+          state={props.imagePlane}
+          onChoose={props.onChooseImage}
         />
       </div>
       <div hidden={tab() !== "level" && mobile()} class={styles.paneBody}>

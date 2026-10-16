@@ -5,6 +5,7 @@ import { render } from "@solidjs/web";
 
 import { LevelEditorOverlay } from "./LevelEditorOverlay";
 import { createLevelEditor, type LevelEditor } from "./level-editor-store";
+import { createImagePlaneState } from "./image/image-plane-state";
 
 /**
  * The overlay, mounted for real.
@@ -79,6 +80,11 @@ const editorOver = (): LevelEditor =>
 const mount = (container: HTMLElement, editor: LevelEditor) => {
   const canvas = document.createElement("canvas");
   container.append(canvas);
+  // A real reference store, in its own root, for the same reason the editor is: it makes
+  // signals and memos, and Solid refuses those outside an owner.
+  const imagePlane = createRoot(() =>
+    createImagePlaneState({ upAt: () => ({ x: 0, y: 1, z: 0 }) }),
+  );
   const dispose = render(
     () => (
       <LevelEditorOverlay
@@ -88,6 +94,8 @@ const mount = (container: HTMLElement, editor: LevelEditor) => {
         canAttach={false}
         onAttach={() => {}}
         onClose={() => {}}
+        imagePlane={imagePlane}
+        onChooseImage={() => {}}
       />
     ),
     container,

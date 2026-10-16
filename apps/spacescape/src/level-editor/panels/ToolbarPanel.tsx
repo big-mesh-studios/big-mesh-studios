@@ -37,6 +37,7 @@ const TOOL_LABELS: Record<string, string> = {
   npc: "NPC",
   walls: "Walls",
   floor: "Floor",
+  image: "Image",
 };
 
 const TOOL_TITLES: Record<string, string> = {
@@ -46,6 +47,8 @@ const TOOL_TITLES: Record<string, string> = {
   npc: "Stand a named character where you click",
   walls: "Draw lines in a plane, then Finish to raise them into walls",
   floor: "Draw one closed loop in a plane, then Finish to lay a floor",
+  image:
+    "Lay a reference picture on the ground to trace against, then drag to move it",
 };
 
 /**

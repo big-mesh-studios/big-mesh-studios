@@ -35,6 +35,10 @@ import {
   readLevelPlan,
   writeLevelPlan,
 } from "../places/level/level-plan";
+import {
+  decodeImagePlane,
+  type LevelImagePlane,
+} from "../places/level/image-plane";
 import type {
   Combine,
   LevelFigure,
@@ -71,6 +75,24 @@ export interface LevelEditorHost {
   cameraKind: Accessor<CameraControlsKind>;
   /** Switches the editor between the orbit and no-clip cameras. */
   setCameraKind(kind: CameraControlsKind): void;
+}
+
+/**
+ * The seam onto the reference image a level may carry.
+ *
+ * **Its own argument rather than part of `LevelEditorHost`,** because the host is the seam onto
+ * the *world* (`LevelEditorHost`) and a tracing picture is not world state — it is a level
+ * document's own top-level annotation (`places/level/image-plane.ts`). Passing it separately
+ * keeps "what the editor edits" and "what the editor writes with it" from being one thing.
+ *
+ * **Optional**, so a host with no image plane — a test, or an editor that never offered one —
+ * simply serializes a level without the key, exactly as before this existed.
+ */
+export interface LevelReferenceSeam {
+  /** The reference to write with the level, or `undefined` for none. */
+  get(): LevelImagePlane | undefined;
+  /** Takes a reference read from a file, or `undefined` when one carried none. */
+  set(reference: LevelImagePlane | undefined): void;
 }
 
 /**
@@ -138,7 +160,10 @@ export const defaultShape = (
   };
 };
 
-export function createLevelEditor(host: LevelEditorHost) {
+export function createLevelEditor(
+  host: LevelEditorHost,
+  reference?: LevelReferenceSeam,
+) {
   /**
    * The level the commands work on: a plain value, and the thing they are always right
    * about.
@@ -584,8 +609,14 @@ export function createLevelEditor(host: LevelEditorHost) {
       );
     },
 
-    /** The level as text, for a download. */
-    exportJson: (): string => writeLevelPlan(plan()),
+    /**
+     * The level as text, for a download.
+     *
+     * **The reference rides along when there is one**, which is what makes "resume tracing
+     * later" true — the picture is part of the file the Export button produces and the file
+     * `Add to place` writes into a project.
+     */
+    exportJson: (): string => writeLevelPlan(plan(), reference?.get()),
 
     /**
      * Replaces the level with one from text, as one undoable step.
@@ -601,19 +632,34 @@ export function createLevelEditor(host: LevelEditorHost) {
         return false;
       }
       const read = readLevelPlan(parsed.value);
-      if ("plan" in read) {
-        apply(
-          () => Command.loadPlan(read.plan),
-          "Load level",
-          () => setSelectedIndex(undefined),
-        );
-        setNotice(
-          `loaded ${read.plan.items.length} item${read.plan.items.length === 1 ? "" : "s"}`,
-        );
-        return true;
+      if (!("plan" in read)) {
+        setNotice(`${read.refusal.where || "the level"} ${read.refusal.why}`);
+        return false;
       }
-      setNotice(`${read.refusal.where || "the level"} ${read.refusal.why}`);
-      return false;
+      /**
+       * **The reference is read separately, and still whole-or-refused.** `readLevelPlan`
+       * deliberately ignores the top-level key so an older build can read the level; this build
+       * reads it, and a malformed one refuses the file rather than loading the geometry and
+       * quietly dropping the picture. `parsed.value` is an object here because `readLevelPlan`
+       * refused everything else.
+       */
+      const decoded = decodeImagePlane(
+        (parsed.value as Record<string, unknown>).imagePlane,
+      );
+      if ("refusal" in decoded) {
+        setNotice(`imagePlane ${decoded.refusal.why}`);
+        return false;
+      }
+      apply(
+        () => Command.loadPlan(read.plan),
+        "Load level",
+        () => setSelectedIndex(undefined),
+      );
+      reference?.set(decoded.imagePlane);
+      setNotice(
+        `loaded ${read.plan.items.length} item${read.plan.items.length === 1 ? "" : "s"}`,
+      );
+      return true;
     },
 
     /** Starts again from the world's level, throwing away the history. */
@@ -621,6 +667,9 @@ export function createLevelEditor(host: LevelEditorHost) {
       document.write(host.level());
       undoRedo.clear();
       setSelectedIndex(undefined);
+      // A reference belongs to the document that was open; reseeding from the world's own level
+      // (which carries none) drops it, so a stale picture is not left over a fresh level.
+      reference?.set(undefined);
     },
 
     itemLabel,
@@ -637,7 +686,8 @@ export function createLevelEditor(host: LevelEditorHost) {
 export type LevelEditor = ReturnType<typeof createLevelEditor>;
 
 /** What the editor can do with a click. */
-export type ToolKind = "select" | "shape" | "prop" | "npc" | "walls" | "floor";
+export type ToolKind =
+  "select" | "shape" | "prop" | "npc" | "walls" | "floor" | "image";
 
 export const TOOL_KINDS: readonly ToolKind[] = [
   "select",
@@ -646,6 +696,7 @@ export const TOOL_KINDS: readonly ToolKind[] = [
   "npc",
   "walls",
   "floor",
+  "image",
 ];
 
 /**
