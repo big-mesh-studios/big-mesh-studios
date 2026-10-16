@@ -28,18 +28,19 @@
 }
 
 /*
- * **Both axes from the baseline's own token, so a finger gets a circle rather
- * than an oval.** The baseline raises `min-height` on every button under a
- * coarse pointer. A fixed `width: 30px` beside a fixed `height: 30px` therefore
- * survived as a 30-by-44 ellipse on a phone, and the `>_` glyph stretched out of
- * shape with it. `--ui-size` is 32px on a pointer and 44px on a finger, so
- * sizing both dimensions from it keeps the target square — and so the circle
- * round — while giving a finger the size the baseline intends.
+ * **30px, the sibling console's size, with the baseline's touch height reset.**
+ *
+ * The shared baseline raises `min-height` on every button under a coarse pointer, so a plain
+ * `width: 30px; height: 30px` survived as a 30-by-44 ellipse — and a 44px circle is most of the
+ * corner of a phone's screen. `min-height: 0` outranks the baseline's bare `button` rule, so both
+ * axes stay equal, the circle stays round, and this matches voxelscape's console buttons instead
+ * of towering over them.
  */
 .anchor,
 .fullscreen {
-  width: var(--ui-size, 30px);
-  height: var(--ui-size, 30px);
+  width: 30px;
+  height: 30px;
+  min-height: 0;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.5);
   color: #fff;
@@ -59,9 +60,9 @@
 }
 
 .fullscreen svg {
-  /* Half the button, so the glyph keeps its proportion when the button grows. */
-  width: calc(var(--ui-size, 30px) / 2);
-  height: calc(var(--ui-size, 30px) / 2);
+  /* Half the button, so the glyph keeps its proportion. */
+  width: 15px;
+  height: 15px;
 }
 
 /* The floating terminal. CSS-anchored to the trigger button rather than given
@@ -177,41 +178,37 @@
   outline: none;
   color: #fff;
 
-  /* `12px` on a pointer, `16px` on a finger.
+  /* **12px, matching the sibling console this was ported from.**
    *
-   * **Not a preference.** iOS Safari zooms the *page* in when an input is focused and
-   * its text is under 16px, and it does not reliably zoom back out on blur — so a
-   * 12px command line leaves the user staring at a magnified document they cannot
-   * get rid of. This application is deliberately zoomable (its viewport meta tag is
-   * `initial-scale=1` with no `maximum-scale`), so it cannot rule the zoom out the
-   * way an application with `user-scalable=no` does; it has to make the font large
-   * enough that the browser has no reason to zoom.
-   *
-   * The baseline carries the general form of this for every input; this is the same
-   * rule written out because a `font` shorthand and a `font-size` longhand on the same
-   * element is a specificity fight nobody can read.
+   * The shared baseline raises an input's font to 16px under a coarse pointer to stop iOS
+   * zooming the *page* in when a field is focused. This console deliberately does not: it was
+   * ported from voxelscape to look the same, and voxelscape's command line is 12px, so the two
+   * agree. The size is taken back in `.field .input` below, which outranks the baseline's
+   * `input:not([type="range"])`.
    */
   font-family: ui-monospace, monospace;
-  font-size: 16px;
+  font-size: 12px;
 
   padding: 6px 8px 6px 0;
   min-width: 0;
+  /* See `.field .input` below: the baseline's touch height is taken back there. */
+  letter-spacing: normal;
+  font-variant-ligatures: none;
 }
 
-@media (any-pointer: fine) {
-  .input {
-    font-size: 12px;
-  }
+/* **The baseline raises every input to a 44px touch target and a 16px font; the command row
+   wants neither, and the sibling console's has neither.** Two classes so this outranks the
+   baseline's `input:not([type="range"])`, which `.input` alone (one class) does not. */
+.field .input {
+  min-height: 0;
+  font-size: 12px;
 }
 
 /* the rest of the command being typed, laid over the input on the same grid as
    the text in it, so it reads as unwritten characters after the caret.
    **The overlay has to take the input's own font and vertical alignment, or it
-   stops sitting on the caret.** The baseline raises the input to a 44px minimum
-   under a coarse pointer and the browser centres a single line in it, so a
-   top-aligned, fixed-12px overlay drifted both down and out of step with the
-   characters it is meant to continue. Both are stated again here rather than
-   inherited, because the input carries them at a higher specificity. */
+   stops sitting on the caret.** Stated here rather than inherited because this is
+   the input's sibling, not its child. */
 .completion {
   position: absolute;
   inset: 0;
@@ -219,17 +216,17 @@
   display: flex;
   align-items: center;
   font-family: ui-monospace, monospace;
-  font-size: 16px;
+  font-size: 12px;
+  /* **The ghost is a hidden span's width ahead of the caret, so the input and this must measure
+     text identically.** A form control and a `div` can take different defaults for these; pinning
+     them on both is what keeps the ghost sitting on the characters it continues rather than
+     drifting onto them. */
+  letter-spacing: normal;
+  font-variant-ligatures: none;
   color: #6b7c8c;
   white-space: pre;
   overflow: hidden;
   pointer-events: none;
-}
-
-@media (any-pointer: fine) {
-  .completion {
-    font-size: 12px;
-  }
 }
 
 /* holds the completion's place behind the characters that are really there */
@@ -321,15 +318,94 @@
 /*
  * The terminal under the editor, sharing the panel rather than replacing it.
  *
- * **Capped and scrollable, and the cap is a flex-basis rather than a height** so it gives way
- * before the editor does: a person typing should never lose the code to read a log line.
+ * **Sized to its own content rather than to a share of the panel**, so the editor above it keeps
+ * the rest of the room by default: a person types far more than they read. The scrollback is
+ * capped (see `.terminalSplit .output`), and the whole thing can be folded away with the header's
+ * chevron when even that is too much.
  */
 .terminalSplit {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  flex: 0 1 34%;
+  flex: 0 0 auto;
   border-top: 1px solid rgba(255, 255, 255, 0.18);
   font: 12px monospace;
   color: #c8d6e5;
+}
+
+/* **The scrollback is capped rather than left to fill the panel.** Four or five lines are enough
+   to see that Run said something; the cap is a `dvh` as well as a `px` so a short phone in
+   landscape does not hand the log most of the screen. */
+.terminalSplit .output {
+  flex: 0 1 auto;
+  max-height: min(220px, 38dvh);
+  overflow-y: auto;
+}
+
+/* The editor's own slot, taking whatever the terminal does not. Wrapped rather than rendered
+   directly so `Console` has an element to test focus against — Escape closes the editor unless
+   the caret is in here. */
+.editorSlot {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/*
+ * The terminal's header and its collapse chevron.
+ *
+ * **Docked with the editor it is the control that gives the editor the scrollback's room**; solo
+ * it is inert chrome naming the terminal, which is why it is always drawn and only the editor's
+ * case makes it minimizable.
+ */
+.dockHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  flex: 0 0 auto;
+}
+
+.dockHeader:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dockHeader:disabled {
+  cursor: default;
+}
+
+.dockLabel {
+  flex: 1;
+  color: #7f8fa3;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+}
+
+.dockChevron {
+  color: #7f8fa3;
+}
+
+/*
+ * **On a phone (or a short window) the editor takes the whole viewport.** There is no room to
+ * spare around a floating panel there, and anchoring to the toggle buttons left the code a
+ * fraction of the screen. `inset: 0` overrides the anchor-computed edges above without switching
+ * `position`, so the panel's own transition still applies. The editor's own Close button is what
+ * gets a person back out, because the panel now covers the scrim completely.
+ */
+@media (max-width: 900px), (max-height: 600px) {
+  .panelEditor {
+    inset: 0;
+    margin: 0;
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+  }
 }

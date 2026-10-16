@@ -5,110 +5,204 @@
  * panel, and a module's hashed names would have to be threaded through two files for one visual
  * panel; the prefix is what keeps these findable.
  *
- * Sized to leave the world visible above it, because the panel is docked *beside* a running place
- * and a panel that took the whole screen would hide the thing Run is for.
+ * **The look is the sibling editor's** (`apps/voxelscape/src/ui/PlaceEditor.module.css`): a header
+ * of labelled fields and the place's actions, a strip of tab-shaped file tabs with the attachment
+ * toggles at its end, and panes below. What differs is only the palette — this engine's own
+ * (`#c8d6e5` text, `#7f8fa3` muted, `#6fb3ff` focus/primary, `#ffd68c` the entry file) rather
+ * than voxelscape's — and that the panel is docked, so it takes the height the console gives it
+ * rather than the whole viewport.
  */
 
 .place-editor {
   display: flex;
   flex-direction: column;
-  min-height: 0;
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
   font: 12px monospace;
   color: #c8d6e5;
 }
 
-/* The manifest's own fields, in one row above the tabs. `name` takes the room
-   and `seed` is the width a number needs, because the seed is a number and a
-   text field wide enough for one invites a typo that reads as a different
-   place. */
+/* The manifest's own fields on the left, the place's actions on the right, wrapping to a column
+   on a narrow panel. */
 .place-header {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: end;
+  justify-content: space-between;
+  padding: 8px 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.place-field {
+.place-fields {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
 }
 
-.place-field > span {
+/* A label above its control, the way the sibling lays a manifest out — the label is the thing
+   being read and the box is the thing being typed in, so they do not share a line. */
+.place-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: #7f8fa3;
 }
 
-.place-field > input {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 4px;
-  color: inherit;
-  font: inherit;
+.place-field > input,
+.place-field > select {
+  min-width: 12ch;
   padding: 3px 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: #d6d6d6;
+  font: 13px monospace;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
+.place-field > input:focus,
+.place-field > select:focus {
+  outline: none;
+  border-color: #6fb3ff;
+}
+
+/* The name and the spawn are the two a person reads a sentence out of, so they get the room; a
+   seed is a number and a field wider than one invites a typo that reads as a different place. */
 .place-field > input[type="text"] {
-  min-width: 12ch;
-  flex: 1;
+  min-width: 16ch;
 }
 
 .place-field > input[type="number"] {
-  width: 9ch;
+  width: 10ch;
 }
 
-/* The draft's own state, at the end of the row. Stated rather than implied:
-   a person relying on a draft surviving a reload needs to know it is being
-   kept, and needs to know when it is not. */
+/* The draft's own state, said rather than implied: a person relying on a draft surviving a reload
+   needs to know it is being kept, and needs to know when it is not. */
 .place-draft {
-  margin-left: auto;
+  align-self: center;
   color: #7f8fa3;
   white-space: nowrap;
 }
+
+.place-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.place-actions > button {
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  color: #d6d6e6;
+  font: 12px monospace;
+  cursor: pointer;
+}
+
+.place-actions > button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.place-actions > button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Run is the button a person presses twenty times, so it is the one that reads as the primary
+   action. Written with `.place-actions >` so it outranks the base button rule above. */
+.place-actions > .place-run {
+  background: rgba(111, 179, 255, 0.16);
+  border-color: #6fb3ff;
+  color: #6fb3ff;
+}
+
+.place-actions > .place-run:hover:not(:disabled) {
+  background: rgba(111, 179, 255, 0.28);
+}
+
+/* --- the file tabs, and the attachment toggles at their end ----------------------------------- */
 
 .place-tabs {
   display: flex;
   align-items: stretch;
   gap: 2px;
-  padding: 4px 6px 0;
+  padding: 6px 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   overflow-x: auto;
 }
 
 .place-tab {
   display: flex;
   align-items: center;
+  gap: 2px;
+  padding: 5px 4px 5px 10px;
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid transparent;
   border-bottom: none;
   border-radius: 5px 5px 0 0;
+  color: #7f8fa3;
+  white-space: nowrap;
 }
 
 .place-tab-active {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #d6d6d6;
 }
 
-/* The file that runs is marked on its tab rather than in a dropdown, because
-   "which of these five files does the world load" is a question a person asks
-   constantly and should not have to ask the manifest to answer. */
+/* The file that runs is marked on its tab rather than in a dropdown, because "which of these five
+   files does the world load" is a question a person asks constantly and should not have to ask
+   the manifest to answer. */
 .place-tab-entry > .place-tab-name {
   color: #ffd68c;
 }
 
 .place-tab-name,
 .place-tab-remove,
-.place-tab-add {
-  background: none;
+.place-tab-add,
+.place-tab-mode {
+  background: transparent;
   border: none;
   color: inherit;
   font: inherit;
   cursor: pointer;
-  padding: 4px 8px;
 }
 
 .place-tab-remove {
   color: #7f8fa3;
-  padding: 4px 6px 4px 0;
+  font-size: 11px;
+  padding: 0 2px;
+}
+
+.place-tab-remove:hover {
+  color: #e06c75;
+}
+
+/* `+ script`, drawn as a dashed add affordance rather than a tab, so it does not read as a file
+   that already exists. */
+.place-tab-add {
+  align-self: center;
+  margin-left: 4px;
+  padding: 3px 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  background: transparent;
+  color: #7f8fa3;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.place-tab-add:hover:not(:disabled) {
+  border-color: #6fb3ff;
+  color: #6fb3ff;
 }
 
 .place-tab-add:disabled {
@@ -116,10 +210,38 @@
   cursor: default;
 }
 
+/* A tab-shaped toggle, pushed to the end of the strip: a model is not a script, so it cannot be a
+   tab of the same list — it has no entry and no close button, only the manifest. */
+.place-tab-mode {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 5px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+  color: #7f8fa3;
+  white-space: nowrap;
+}
+
+.place-tab-mode.place-tab-active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #d6d6d6;
+}
+
 .place-tab-name:focus-visible,
 .place-tab-add:focus-visible,
+.place-tab-mode:focus-visible,
+.place-model-add:focus-visible,
+.place-model-remove:focus-visible,
+.place-level-add:focus-visible,
+.place-level-remove:focus-visible,
 .place-actions > button:focus-visible,
-.place-field > input:focus-visible {
+.place-field > input:focus-visible,
+.place-field > select:focus-visible {
   outline: 2px solid #6fb3ff;
   outline-offset: 1px;
 }
@@ -128,56 +250,207 @@
 .cm-pane {
   flex: 1;
   min-height: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
 }
 
-.place-models {
-  padding: 6px 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-}
+/* --- the attachment panes: models and levels --------------------------------------------------- */
 
-.place-models h3 {
-  margin: 0 0 4px;
-  font: inherit;
-  font-weight: normal;
-  color: #7f8fa3;
-}
-
-.place-models ul {
-  margin: 0;
-  padding-left: 16px;
-}
-
-.place-model-note {
-  color: #7f8fa3;
-}
-
-.place-actions {
+.place-models,
+.place-levels {
   display: flex;
-  gap: 6px;
-  padding: 6px 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 12px;
 }
 
-.place-actions > button {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 5px;
-  color: inherit;
-  font: inherit;
-  padding: 4px 12px;
+.place-models-header,
+.place-levels-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+/* The heading takes the free space, so the add buttons sit at the end without each having to know
+   how many others there are. */
+.place-models-header h3,
+.place-levels-header h3 {
+  margin: 0 auto 0 0;
+  font-size: 11px;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #7f8fa3;
+}
+
+.place-model-add,
+.place-level-add {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  background: transparent;
+  color: #7f8fa3;
+  font: 11px monospace;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.place-model-add:hover,
+.place-level-add:hover {
+  border-color: #6fb3ff;
+  color: #6fb3ff;
+}
+
+.place-models-empty,
+.place-levels-empty {
+  margin: 0;
+  color: #7f8fa3;
+}
+
+.place-models-list,
+.place-levels-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.place-model,
+.place-level {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.place-model-name,
+.place-level-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.place-level-counts {
+  color: #7f8fa3;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.place-model-remove,
+.place-level-remove {
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  color: #d6d6d6;
+  font: 11px monospace;
   cursor: pointer;
 }
 
-/* Run is the button a person presses twenty times, so it is the one that reads
-   as the primary action. */
-.place-run {
-  margin-left: auto;
-  background: rgba(111, 179, 255, 0.2);
-  border-color: rgba(111, 179, 255, 0.5);
+.place-model-remove:hover,
+.place-level-remove:hover {
+  background: rgba(224, 108, 117, 0.2);
+  border-color: #e06c75;
+  color: #e06c75;
 }
 
-.place-run:disabled {
-  opacity: 0.5;
-  cursor: default;
+.place-model-note,
+.place-level-note {
+  margin: 12px 0 0;
+  color: #7f8fa3;
+}
+
+.place-model-note code,
+.place-level-note code {
+  color: #d6d6d6;
+}
+
+/*
+ * A phone is the one screen where the header's height is the code's height, so it is laid out
+ * to be two rows rather than four.
+ *
+ * **The controls are not made smaller** — the baseline's 44px touch target is left alone — they
+ * are made to share rows: the fields sit in one row, the buttons in one row, shrinking rather
+ * than wrapping. Voxelscape's header is two rows for the same reason; the difference was that
+ * four fields and a draft readout were each taking a row of their own.
+ */
+@media (max-width: 640px) {
+  .place-header {
+    flex-direction: column;
+    align-items: stretch;
+    /* **No `space-between` here.** The base rule spreads the two groups apart, and on a short
+       screen that spread reads as a dead band between the fields and the buttons. */
+    align-content: flex-start;
+    justify-content: flex-start;
+    padding: 6px;
+    gap: 5px;
+  }
+
+  /* One row, five shares: the name takes two so it is not clipped beside the others, and seed,
+     spawn and world take one each. The controls are not shrunk below the touch target — they just
+     stop each taking a column of their own. */
+  .place-fields {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px 6px;
+  }
+
+  .place-field:nth-child(1) {
+    grid-column: span 2;
+  }
+
+  /* Five buttons, one row. The draft readout is hidden rather than given a row: it is the one
+     thing here nobody acts on, and the autosave it reports is unaffected by the label. */
+  .place-actions {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-content: start;
+    gap: 4px;
+  }
+
+  .place-draft {
+    display: none;
+  }
+
+  .place-field > input,
+  .place-field > select,
+  .place-actions > button {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+}
+
+/*
+ * **The editor's controls are pinned to the sibling editor's 28px, not the baseline's 44px.**
+ *
+ * The shared baseline (`@big-mesh-studios/ui/baseline.css`) raises every control to a 44px touch
+ * target under a coarse pointer. That floor is right for the world's own HUD and wrong here: this
+ * panel's header height is the code's height, and voxelscape's controls — the ones this is meant
+ * to match — measure 28px on a phone. The selectors are given one class of specificity more than
+ * the baseline's `input:not([type="range"])` so they win regardless of which stylesheet lands
+ * last, since the two agree on specificity for the input case.
+ *
+ * **The input font is deliberately left alone.** The baseline's 16px is not cosmetic — it is what
+ * stops iOS zooming the whole page in when a field is focused and not zooming back out — and it
+ * fits in a 28px box. Only the height is taken back.
+ */
+@media (any-pointer: coarse) {
+  .place-editor button,
+  .place-editor .place-field > input,
+  .place-editor .place-field > select {
+    min-height: 28px;
+  }
 }

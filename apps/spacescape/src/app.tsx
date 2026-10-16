@@ -938,6 +938,27 @@ export default function App() {
     },
   );
 
+  /**
+   * Writes the level standing in the level editor into the place being edited.
+   *
+   * **One function for two doors** — the level editor's own "Add to place" button and the place
+   * editor's `+ from the level editor` — because they do the same thing and a second copy is a
+   * second place for them to disagree. The level is already standing in the world (the level
+   * editor put it there); this makes it something the place *carries*, which is the difference
+   * between it surviving a reload and being lost with the scene.
+   *
+   * **A refusal is printed rather than swallowed**, and publishing is not offered as a way to
+   * keep it: a place carrying a level or model cannot be published (`makePlaceRecord`), so the
+   * zip is the only way it travels.
+   */
+  const attachLevelFromEditor = (): void => {
+    const refused = placeEditor.writeLevel(LEVEL_FILE, levelEditor.exportJson());
+    terminal.print(
+      refused ??
+        `attached ${LEVEL_FILE} to ${placeEditor.project().manifest.name} — save the place as a zip to keep it`,
+    );
+  };
+
   /** Toggles the touch cluster between placing and selecting. */
   const toggleSelect = (): void => {
     if (levelEditor.tool() === "select") {
@@ -2083,6 +2104,13 @@ export default function App() {
         }
       }
 
+      // **The level editor's model picker follows whatever place just loaded**, so a model
+      // attached in the place editor is choosable for a prop or an NPC without a reload. Empty
+      // when the place carries none, so the previous place's models do not linger in the list.
+      // The library itself is read lazily by the level applier (`models.get` below), so this is
+      // only the names the picker draws from.
+      setLevelModels(modelLibrary?.names() ?? []);
+
       // **Annotated, because the initializer now mentions `next`.** `mediumAt` below closes over
       // `next.mediumAt` so that a script's top-level code can ask what field it is standing in,
       // and without the annotation TypeScript cannot infer a value from an initializer that
@@ -2091,6 +2119,11 @@ export default function App() {
       const next: PlaceHost = new PlaceHost({
         files,
         entry,
+        // **The levels the place carries, read into the world and compiled into the guest library
+        // before the script runs.** Without this the host bundles with no levels, and a script
+        // that asks for one with `level(name)` throws "this place carries no level" — which is
+        // what attaching a level in the editor and then dropping it here looked like.
+        levels,
         seed,
         now: () => clock.nowMs(),
         world: {
@@ -2343,6 +2376,12 @@ export default function App() {
         seed: project.manifest.seed,
         name: project.manifest.name,
         spawn: project.manifest.spawn,
+        // **The attachments the editor holds, or Run is a button that quietly loses them.** A
+        // project carrying a `.sdfmod` or a level is exactly what `writePlaceZip` and the zip
+        // loader already move; Run has to hand the same bytes to `startPlace`, which reads the
+        // models and puts the level in the world before the script runs.
+        models: project.models,
+        levels: project.levels,
         world: project.manifest.world,
       });
 
@@ -4215,17 +4254,7 @@ export default function App() {
              * button next to a question nobody asked is worse than no button.
              */
             canAttach={placeOpen()}
-            onAttach={() => {
-              // **Written into the project, not the world.** The level is already standing in
-              // the world — the editor put it there when it was drawn — so what this has to do
-              // is make it something the place *carries*, which is the difference between it
-              // surviving `/place:open` and it surviving a reload.
-              const text = levelEditor.exportJson();
-              placeEditor.writeLevel(LEVEL_FILE, text);
-              terminal.print(
-                `attached ${LEVEL_FILE} to ${placeEditor.project().manifest.name} — save or publish the place to keep it`,
-              );
-            }}
+            onAttach={attachLevelFromEditor}
             onClose={() => setLevelEditorOpen(false)}
             imagePlane={imagePlane}
             onChooseImage={(file) => chooseReferenceImage?.(file)}
@@ -4301,6 +4330,8 @@ export default function App() {
                   onRun={runEditedPlace}
                   onPublish={publishEditedPlace}
                   onStatus={terminal.print}
+                  onAttachLevelFromEditor={attachLevelFromEditor}
+                  onClose={() => setEditorOpen(false)}
                 />
               );
             },

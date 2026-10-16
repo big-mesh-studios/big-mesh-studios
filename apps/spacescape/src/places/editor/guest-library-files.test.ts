@@ -210,4 +210,28 @@ describe("the compiler options", () => {
     // interpreter's compiler did not is an author who finds out at Run.
     expect(EDITOR_COMPILER_OPTIONS.target).toBe(ts.ScriptTarget.ES2019);
   });
+
+  it("resolve a place's `voxelscape` import, which a relative baseUrl would not", () => {
+    // **The regression this guards.** The worker's files are stored at absolute paths, so the
+    // `paths` table has to be resolved against an absolute `baseUrl`; with a relative one the
+    // resolved target is itself relative, matches no file, and every guest binding silently
+    // degrades to `any` — an editor that offers no completions and lies about the API. The host
+    // below answers only for the absolute path, so a relative resolution comes back undefined.
+    const guestPath = `/${GUEST_FILE}`;
+    const host: ts.ModuleResolutionHost = {
+      fileExists: (file) => file === guestPath,
+      readFile: (file) => (file === guestPath ? "" : undefined),
+      directoryExists: () => true,
+      getDirectories: () => [],
+      getCurrentDirectory: () => "/",
+      realpath: (file) => file,
+    };
+    const resolved = ts.resolveModuleName(
+      GUEST_MODULE,
+      "/main.ts",
+      EDITOR_COMPILER_OPTIONS,
+      host,
+    );
+    expect(resolved.resolvedModule?.resolvedFileName).toBe(guestPath);
+  });
 });

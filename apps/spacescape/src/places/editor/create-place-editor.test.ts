@@ -30,7 +30,13 @@ import {
   isPlaceProject,
   STARTER_SCRIPT_FILE,
 } from "../project";
-import { MAX_PLACE_FILES } from "../place-file";
+import {
+  MAX_PLACE_FILES,
+  MAX_PLACE_LEVEL_CHARS,
+  MAX_PLACE_LEVELS,
+  MAX_PLACE_MODEL_BYTES,
+  MAX_PLACE_MODELS,
+} from "../place-file";
 
 /** An editor over a project with a second file, for the tests that need one. */
 const twoFiles = (): ReturnType<typeof createPlaceEditor> => {
@@ -253,6 +259,177 @@ describe("removing a file", () => {
   });
 });
 
+describe("attaching a model", () => {
+  it("carries the bytes and names them in the manifest", () => {
+    const editor = createPlaceEditor();
+    const bytes = new Uint8Array([1, 2, 3]);
+
+    expect(editor.attachModel("fridge.sdfmod", bytes)).toBeNull();
+    flush();
+
+    expect(editor.project().models["fridge.sdfmod"]).toBe(bytes);
+    expect(editor.project().manifest.models).toEqual(["fridge.sdfmod"]);
+    expect(isPlaceProject(editor.project())).toBe(true);
+  });
+
+  it("replaces a model already attached under the same name", () => {
+    // **A re-saved `.sdfmod` updates in place**, rather than becoming a second attachment whose
+    // name — the only handle a model has (ADR 0033) — would be the same for two files.
+    const editor = createPlaceEditor();
+    editor.attachModel("fridge.sdfmod", new Uint8Array([1]));
+    flush();
+    const next = new Uint8Array([9, 9]);
+
+    expect(editor.attachModel("fridge.sdfmod", next)).toBeNull();
+    flush();
+
+    expect(editor.project().models["fridge.sdfmod"]).toBe(next);
+    expect(editor.project().manifest.models).toEqual(["fridge.sdfmod"]);
+  });
+
+  it("refuses an unsafe or colliding name, and says why", () => {
+    // **One flat namespace across scripts, models and levels** (`place-file.ts`). A name used by
+    // a script is refused rather than overwriting it, and the refusal names the reason.
+    const editor = twoFiles();
+    expect(editor.attachModel("../evil.sdfmod", new Uint8Array())).toMatch(
+      /name/,
+    );
+    expect(editor.attachModel("span.ts", new Uint8Array())).toMatch(
+      /already used/,
+    );
+    flush();
+    expect(editor.project().manifest.models).toBeUndefined();
+  });
+
+  it("refuses one model too many", () => {
+    const editor = createPlaceEditor();
+    for (let index = 0; index < MAX_PLACE_MODELS; index++) {
+      expect(
+        editor.attachModel(`m${index}.sdfmod`, new Uint8Array([1])),
+      ).toBeNull();
+    }
+    flush();
+    expect(
+      editor.attachModel("one-too-many.sdfmod", new Uint8Array([1])),
+    ).toMatch(/at most/);
+    expect(editor.project().manifest.models).toHaveLength(MAX_PLACE_MODELS);
+  });
+
+  it("refuses bytes over the limit", () => {
+    const editor = createPlaceEditor();
+    const big = new Uint8Array(MAX_PLACE_MODEL_BYTES + 1);
+    expect(editor.attachModel("big.sdfmod", big)).toMatch(/limit/);
+    flush();
+    expect(editor.project().manifest.models).toBeUndefined();
+  });
+});
+
+describe("removing a model", () => {
+  it("drops it and its manifest entry", () => {
+    const editor = createPlaceEditor();
+    editor.attachModel("fridge.sdfmod", new Uint8Array([1]));
+    flush();
+
+    expect(editor.removeModel("fridge.sdfmod")).toBeNull();
+    flush();
+
+    expect(editor.project().models["fridge.sdfmod"]).toBeUndefined();
+    expect(editor.project().manifest.models).toBeUndefined();
+    expect(isPlaceProject(editor.project())).toBe(true);
+  });
+
+  it("says so when there is nothing under that name", () => {
+    const editor = createPlaceEditor();
+    expect(editor.removeModel("absent.sdfmod")).toMatch(/no model/);
+  });
+});
+
+describe("a level", () => {
+  it("is written, listed, and removed", () => {
+    const editor = createPlaceEditor();
+
+    expect(editor.writeLevel("level.json", '{"version":1}')).toBeNull();
+    flush();
+    expect(editor.project().levels["level.json"]).toBe('{"version":1}');
+    expect(editor.project().manifest.levels).toEqual(["level.json"]);
+
+    expect(editor.removeLevel("level.json")).toBeNull();
+    flush();
+    expect(editor.project().levels["level.json"]).toBeUndefined();
+    expect(editor.project().manifest.levels).toBeUndefined();
+    expect(isPlaceProject(editor.project())).toBe(true);
+  });
+
+  it("is refused when the name collides or the text is too long", () => {
+    const editor = twoFiles();
+    expect(editor.writeLevel("span.ts", "{}")).toMatch(/already used/);
+    expect(
+      editor.writeLevel("big.json", "x".repeat(MAX_PLACE_LEVEL_CHARS + 1)),
+    ).toMatch(/limit/);
+    flush();
+    expect(editor.project().manifest.levels).toBeUndefined();
+  });
+
+  it("is refused once the place carries the most it may", () => {
+    const editor = createPlaceEditor();
+    for (let index = 0; index < MAX_PLACE_LEVELS; index++) {
+      expect(editor.writeLevel(`l${index}.json`, "{}")).toBeNull();
+    }
+    flush();
+    expect(editor.writeLevel("one-too-many.json", "{}")).toMatch(/at most/);
+    expect(editor.project().manifest.levels).toHaveLength(MAX_PLACE_LEVELS);
+  });
+});
+
+describe("renaming a file", () => {
+  it("keeps its position and follows it with the entry and the open tab", () => {
+    const editor = twoFiles();
+    editor.setEntry("span.ts");
+    editor.setActive("span.ts");
+    editor.write("span.ts", "// a bridge");
+    flush();
+
+    expect(editor.renameScript("span.ts", "bridge.ts")).toBeNull();
+    flush();
+
+    expect(editor.project().scripts["bridge.ts"]).toBe("// a bridge");
+    expect(editor.project().scripts["span.ts"]).toBeUndefined();
+    // **Its position is the second tab's**, so a rename does not shuffle the tab bar.
+    expect(editor.project().manifest.scripts).toEqual([
+      STARTER_SCRIPT_FILE,
+      "bridge.ts",
+    ]);
+    expect(editor.project().manifest.entry).toBe("bridge.ts");
+    expect(editor.active()).toBe("bridge.ts");
+    expect(isPlaceProject(editor.project())).toBe(true);
+  });
+
+  it("refuses a name that is taken, unsafe or not a script", () => {
+    const editor = twoFiles();
+    expect(editor.renameScript("span.ts", STARTER_SCRIPT_FILE)).toMatch(
+      /already used/,
+    );
+    expect(editor.renameScript("span.ts", "../evil.ts")).toMatch(/name/);
+    expect(editor.renameScript("span.ts", "notes.md")).toMatch(/name/);
+    flush();
+    expect(editor.project().scripts["span.ts"]).toBe("");
+  });
+
+  it("ignores a rename of a file that is not there", () => {
+    const editor = twoFiles();
+    expect(editor.renameScript("absent.ts", "other.ts")).toMatch(/no file/);
+    flush();
+    expect(editor.project().manifest.scripts).toHaveLength(2);
+  });
+
+  it("is a no-op when the name does not change", () => {
+    const editor = twoFiles();
+    expect(editor.renameScript("span.ts", "span.ts")).toBeNull();
+    flush();
+    expect(editor.project().scripts["span.ts"]).toBe("");
+  });
+});
+
 describe("choosing the entry", () => {
   it("makes another file the one that runs", () => {
     const editor = twoFiles();
@@ -330,6 +507,14 @@ describe("no sequence of edits can leave a project incoherent", () => {
       () => editor.setSeed(7),
       () => editor.removeScript("roof.ts"),
       () => editor.setSpawn(undefined),
+      // **The attachments and a rename, woven in with the rest.** A model and a level are two
+      // more lists the manifest has to agree with, and a rename re-keys a script — each of which
+      // `edit` has to keep coherent alongside everything a plain edit does.
+      () => editor.attachModel("fridge.sdfmod", new Uint8Array([1])),
+      () => editor.writeLevel("level.json", '{"version":1}'),
+      () => editor.renameScript(STARTER_SCRIPT_FILE, "entry.ts"),
+      () => editor.removeModel("fridge.sdfmod"),
+      () => editor.removeLevel("level.json"),
     ];
 
     for (const [index, step] of order.entries()) {

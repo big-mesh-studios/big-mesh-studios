@@ -33,7 +33,14 @@ import {
   STARTER_SCRIPT_FILE,
   type PlaceProject,
 } from "../project";
-import { isSafePathName, MAX_PLACE_FILES } from "../place-file";
+import {
+  isSafePathName,
+  MAX_PLACE_FILES,
+  MAX_PLACE_LEVEL_CHARS,
+  MAX_PLACE_LEVELS,
+  MAX_PLACE_MODEL_BYTES,
+  MAX_PLACE_MODELS,
+} from "../place-file";
 import { available as draftStorageAvailable, saveDraft } from "./drafts";
 
 /** How long editing stops before the draft is written, in milliseconds. */
@@ -60,9 +67,38 @@ export interface PlaceEditorState {
    *
    * **Refused when the name is already a script or a model** — one flat namespace per place,
    * and a collision would leave a project whose manifest and files disagree, which
-   * `isPlaceProject` refuses, so the draft would quietly stop saving.
+   * `isPlaceProject` refuses, so the draft would quietly stop saving. Refused too when the name
+   * is not a safe path, when the place already carries `MAX_PLACE_LEVELS` (and this name is a
+   * new one rather than a replacement), or when the text is over `MAX_PLACE_LEVEL_CHARS`.
+   *
+   * @returns `null` when it was written, otherwise a sentence saying why it was not.
    */
-  writeLevel(name: string, text: string): void;
+  writeLevel(name: string, text: string): string | null;
+  /**
+   * Attaches a model's bytes under `name`, or replaces the model already there under it.
+   *
+   * **Refused when the name is already a script or a level** — one flat namespace per place
+   * (`place-file.ts`), and the same incoherent-project failure `writeLevel` names. Refused too
+   * for an unsafe name, for a place already carrying `MAX_PLACE_MODELS` (unless this replaces
+   * one), and for bytes over `MAX_PLACE_MODEL_BYTES`.
+   *
+   * @returns `null` when it was attached, otherwise a sentence saying why it was not.
+   */
+  attachModel(name: string, bytes: Uint8Array): string | null;
+  /** Removes a model. `null` when it went, otherwise a sentence saying why it did not. */
+  removeModel(name: string): string | null;
+  /** Removes a level. `null` when it went, otherwise a sentence saying why it did not. */
+  removeLevel(name: string): string | null;
+  /**
+   * Renames a script, keeping its position in the tab order and the entry pointer.
+   *
+   * **Refused when `to` is unsafe, is not a `.ts` file, or is already used by any script,
+   * model or level** — the same flat namespace again. The entry follows the file, and the open
+   * file follows it too, so the caret is never left on a name that is gone.
+   *
+   * @returns `null` when it was renamed, otherwise a sentence saying why it was not.
+   */
+  renameScript(from: string, to: string): string | null;
   /** Renames the place. Refused when the new name is empty or over the limit. */
   setName(name: string): void;
   setSeed(seed: number): void;
@@ -126,14 +162,21 @@ export const createPlaceEditor = (
     setProject((current) => {
       const next = change(current);
       if (next === null) return current;
+      // **Both attachment lists re-derived, not just `scripts`.** Re-deriving the scripts and
+      // carrying the rest was fine while nothing else could be edited from here; a model or a
+      // level written through this editor is, and a manifest that names one the project does not
+      // hold is exactly the disagreement `isPlaceProject` refuses.
+      //
+      // **The old keys are dropped before the new ones are added**, and that is not the same as
+      // spreading `next.manifest` and conditionally overriding: removing the last model leaves
+      // `next.manifest.models` untouched, so a spread would carry a stale list naming a file that
+      // is gone. Destructuring them out first is what makes "no models" mean "no `models` key",
+      // which is what the zip writer and `isPlaceProject` both read.
+      const { models: _models, levels: _levels, ...manifest } = next.manifest;
       return {
         ...next,
-        // **Both attachment lists re-derived, not just `scripts`.** Re-deriving the scripts and
-        // carrying the rest was fine while nothing else could be edited from here; a level
-        // written through `writeLevel` is, and a manifest that names a level the project does
-        // not hold is exactly the disagreement `isPlaceProject` refuses.
         manifest: {
-          ...next.manifest,
+          ...manifest,
           scripts: Object.keys(next.scripts),
           ...(Object.keys(next.models).length > 0
             ? { models: Object.keys(next.models) }
@@ -191,23 +234,144 @@ export const createPlaceEditor = (
       ),
 
     /**
-     * Puts a level into the place, or takes the one that is there away.
+     * Puts a level into the place, or replaces the one already there under that name.
      *
-     * **One name and one slot**, because a level is a level: the editor's output is one
-     * document, and `writeLevel(LEVEL_NAME, text)` replacing whatever was there is the behaviour
-     * somebody expects from a Save. A place that grew a second, differently-shaped level is a
-     * format nobody has designed yet.
-     *
-     * **Writing is refused when the name is already a script or a model.** One flat namespace
-     * per place (`place-file.ts`), and a collision would be a project whose manifest and files
-     * disagree — which `isPlaceProject` refuses, so the draft would stop saving and say nothing
-     * about why.
+     * **A level is a file with a name, and a place may carry several** — up to
+     * `MAX_PLACE_LEVELS`. The name is checked like any other file's: a safe path, distinct from
+     * every script and model (one flat namespace, `place-file.ts`), and bounded by the character
+     * limit. All of that is enforced here rather than left to `isPlaceProject`, so a refusal says
+     * why instead of making the draft quietly stop saving.
      */
-    writeLevel: (name, text) =>
+    writeLevel: (name, text) => {
+      let refused: string | null = null;
+      let written = false;
       edit((current) => {
-        if (name in current.scripts || name in current.models) return null;
-        return { ...current, levels: { ...current.levels, [name]: text } };
-      }),
+        if (!isSafePathName(name)) {
+          refused = `"${name}" is not a name this can use`;
+        } else if (name in current.scripts || name in current.models) {
+          refused = `"${name}" is already used by another file`;
+        } else if (text.length > MAX_PLACE_LEVEL_CHARS) {
+          refused = `"${name}" is over the ${MAX_PLACE_LEVEL_CHARS} character limit`;
+        } else if (
+          !(name in current.levels) &&
+          Object.keys(current.levels).length >= MAX_PLACE_LEVELS
+        ) {
+          refused = `a place carries at most ${MAX_PLACE_LEVELS} levels`;
+        } else {
+          written = true;
+          return { ...current, levels: { ...current.levels, [name]: text } };
+        }
+        return null;
+      });
+      return written ? null : (refused ?? `could not write "${name}"`);
+    },
+
+    /**
+     * Attaches a model's bytes under `name`, or replaces the model already there under it.
+     *
+     * **The same three gates a level goes through**, plus the byte ceiling a level does not
+     * have: models are binary and a place should not be able to fill a tab with one. Attaching
+     * under an existing model name replaces it, which is how a re-saved `.sdfmod` updates in
+     * place rather than becoming a second attachment.
+     */
+    attachModel: (name, bytes) => {
+      let refused: string | null = null;
+      let attached = false;
+      edit((current) => {
+        if (!isSafePathName(name)) {
+          refused = `"${name}" is not a name this can use`;
+        } else if (name in current.scripts || name in current.levels) {
+          refused = `"${name}" is already used by another file`;
+        } else if (bytes.byteLength > MAX_PLACE_MODEL_BYTES) {
+          refused = `"${name}" is over the ${MAX_PLACE_MODEL_BYTES} byte limit`;
+        } else if (
+          !(name in current.models) &&
+          Object.keys(current.models).length >= MAX_PLACE_MODELS
+        ) {
+          refused = `a place carries at most ${MAX_PLACE_MODELS} models`;
+        } else {
+          attached = true;
+          return { ...current, models: { ...current.models, [name]: bytes } };
+        }
+        return null;
+      });
+      return attached ? null : (refused ?? `could not attach "${name}"`);
+    },
+
+    /** Drops a model and its manifest entry. Says so when there was nothing under that name. */
+    removeModel: (name) => {
+      let removed = false;
+      edit((current) => {
+        if (!(name in current.models)) return null;
+        removed = true;
+        const models = { ...current.models };
+        delete models[name];
+        return { ...current, models };
+      });
+      return removed ? null : `there is no model called "${name}"`;
+    },
+
+    /** Drops a level and its manifest entry. Says so when there was nothing under that name. */
+    removeLevel: (name) => {
+      let removed = false;
+      edit((current) => {
+        if (!(name in current.levels)) return null;
+        removed = true;
+        const levels = { ...current.levels };
+        delete levels[name];
+        return { ...current, levels };
+      });
+      return removed ? null : `there is no level called "${name}"`;
+    },
+
+    /**
+     * Renames a script, keeping its position in the tab order and following it with the entry.
+     *
+     * **Refused when `to` is unsafe, is not a `.ts` file, or is already used by any script,
+     * model or level** — the same flat namespace again. `keepActive` is off so `edit` does not
+     * decide the open file for us; this sets it only when the file in front of the person is
+     * the one that moved, so a rename of some other tab leaves the caret where it was.
+     */
+    renameScript: (from, to) => {
+      if (from === to) return null;
+      let refused: string | null = null;
+      let renamed = false;
+      edit((current) => {
+        if (!(from in current.scripts)) {
+          refused = `there is no file called "${from}"`;
+        } else if (!isSafePathName(to) || !to.endsWith(".ts")) {
+          refused = `"${to}" is not a name this can use`;
+        } else if (
+          to in current.scripts ||
+          to in current.models ||
+          to in current.levels
+        ) {
+          refused = `"${to}" is already used by another file`;
+        } else {
+          renamed = true;
+          const scripts = Object.fromEntries(
+            Object.entries(current.scripts).map(([name, source]) => [
+              name === from ? to : name,
+              source,
+            ]),
+          );
+          return {
+            ...current,
+            scripts,
+            manifest: {
+              ...current.manifest,
+              entry:
+                current.manifest.entry === from ? to : current.manifest.entry,
+            },
+          };
+        }
+        return null;
+      }, false);
+
+      if (!renamed) return refused ?? `could not rename "${from}"`;
+      if (active() === from) setActive(to);
+      return null;
+    },
 
     setName: (name) =>
       edit((current) =>

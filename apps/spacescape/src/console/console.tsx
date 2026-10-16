@@ -505,21 +505,48 @@ export interface ConsoleProps {
 }
 
 /**
- * The terminal's visible body: its scrollback and an always-present input row.
+ * The terminal's visible body: a header, the scrollback behind its chevron,
+ * and an always-present input row.
  *
- * The scrollback has no header and no chevron to collapse it. The sibling
- * project's terminal had both, so that opening the place editor could take the
- * room back — docked in a panel, hiding the output is how the editor's own
- * fields got more of it. Nothing here needs the room, so the input row is the
- * whole of what is always visible.
+ * **The header's chevron collapses the scrollback, and that matters only when
+ * the editor is open.** A docked editor and a terminal are sharing one panel,
+ * and hiding the output is how the editor's own fields get the room back — so
+ * the header is always drawn but only minimizable while the editor is up.
+ * Solo, the terminal is the only thing on screen and collapsing it would hide
+ * it for nothing.
+ *
+ * **The input row is never collapsed**, because a refusal Run prints lands in
+ * the scrollback and a person may want to type a command about it without
+ * un-hiding the output first.
  */
 function TerminalBody(props: {
   terminal: ConsoleState;
+  /** Whether the scrollback is showing. Owned by `Console`, so the editor opening can take it. */
+  expanded: boolean;
+  onToggle(): void;
+  /** Whether the chevron may collapse the scrollback — false for the solo terminal. */
+  minimizable: boolean;
   ref(handle: ConsoleInputHandle): void;
 }) {
   return (
     <>
-      <ConsoleOutput entries={props.terminal.entries()} />
+      <button
+        type="button"
+        class={styles.dockHeader}
+        disabled={!props.minimizable}
+        onClick={() => props.onToggle()}
+        aria-expanded={props.expanded ? "true" : "false"}
+        aria-label={props.expanded ? "collapse terminal" : "expand terminal"}
+      >
+        <span class={styles.prompt}>{">_"}</span>
+        <span class={styles.dockLabel}>terminal</span>
+        <Show when={props.minimizable}>
+          <span class={styles.dockChevron}>{props.expanded ? "▾" : "▸"}</span>
+        </Show>
+      </button>
+      <Show when={props.expanded}>
+        <ConsoleOutput entries={props.terminal.entries()} />
+      </Show>
       <div class={styles["input-container"]}>
         <span class={styles.prefix}>{">"}</span>
         <ConsoleInput
@@ -539,8 +566,18 @@ function TerminalBody(props: {
  */
 export function Console(props: ConsoleProps) {
   const [terminalOpen, setTerminalOpen] = createSignal(false);
+  /**
+   * Whether the terminal's scrollback is showing while the editor is open.
+   *
+   * **Its own signal rather than derived**, because the editor opening is a one-time nudge in one
+   * direction — see the effect below — and the chevron is the person's own way back.
+   */
+  const [terminalExpanded, setTerminalExpanded] = createSignal(true);
 
   let panel!: HTMLDivElement;
+  // The editor's own content root, so Escape can tell "reading a script and dismissing a
+  // suggestion" apart from "done, take me back". The terminal's input sits outside it.
+  let editorContent: HTMLDivElement | undefined;
   // The button row is outside `panel`, so a click on it would otherwise also
   // count as the "outside" click that closes the terminal — undone a moment
   // later by the same click's own toggle, which would leave it looking like
@@ -583,6 +620,20 @@ export function Console(props: ConsoleProps) {
         // microtask flush otherwise, too late for the prefill below.
         flush();
         input.prefill("/");
+        return;
+      }
+      if (event.key === "Escape" && (props.editor?.open() ?? false)) {
+        // **The editor first.** With it open, Escape asks to leave it — unless focus is inside its
+        // own content, where it is more likely dismissing an autocomplete suggestion than asking to
+        // go. The terminal's input sits outside that content, so a command run and Escape pressed
+        // right after still closes the editor.
+        const insideEditor =
+          editorContent !== undefined &&
+          event.target instanceof Node &&
+          editorContent.contains(event.target);
+        if (!insideEditor) {
+          props.editor?.setOpen(false);
+        }
         return;
       }
       if (event.key === "Escape" && terminalOpen()) {
@@ -664,10 +715,20 @@ export function Console(props: ConsoleProps) {
           <Show when={props.editor?.open() && props.editor}>
             {props.editor && (
               <>
-                {props.editor.content()}
+                <div
+                  ref={(element) => {
+                    editorContent = element;
+                  }}
+                  class={styles.editorSlot}
+                >
+                  {props.editor.content()}
+                </div>
                 <div class={styles.terminalSplit}>
                   <TerminalBody
                     terminal={props.terminal}
+                    expanded={terminalExpanded()}
+                    onToggle={() => setTerminalExpanded((value) => !value)}
+                    minimizable={true}
                     ref={(handle) => {
                       input = handle;
                     }}
@@ -680,6 +741,9 @@ export function Console(props: ConsoleProps) {
             <div class={styles.terminal}>
               <TerminalBody
                 terminal={props.terminal}
+                expanded={true}
+                onToggle={() => {}}
+                minimizable={false}
                 ref={(handle) => {
                   input = handle;
                 }}

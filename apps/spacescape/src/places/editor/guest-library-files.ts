@@ -83,6 +83,13 @@ export const notServedByTheEditor: Readonly<Record<string, string>> = {
  * environment is assembled file by file with no `node_modules` in it, so a bare specifier has to be
  * resolved by the `paths` table rather than by walking directories that are not there.
  *
+ * **`baseUrl` is absolute, and that is not cosmetic.** A `paths` entry is resolved relative to
+ * `baseUrl`, and the worker's filesystem stores every file at an absolute path
+ * (`/places/guest/voxelscape.ts`). A relative `baseUrl` — `"."` — is resolved against the worker's
+ * cwd and yields a *relative* target (`places/guest/voxelscape.ts`) that matches no file, so
+ * `import "voxelscape"` fails with "Cannot find module 'voxelscape'" and every guest-API
+ * completion disappears. `"/"` lands on the files the worker was actually handed.
+ *
  * `noEmit` because nothing is emitted: the editor type-checks, and `bundle.ts` is what transpiles.
  * `strict` because a place's source is compiled under it by `tsconfig.json`, so an editor that
  * disagreed would be the more forgiving of the two.
@@ -114,6 +121,8 @@ export const EDITOR_COMPILER_OPTIONS: TS.CompilerOptions = {
   strict: true,
   noEmit: true,
   skipLibCheck: true,
-  baseUrl: ".",
+  // **Absolute, because the worker's files are** — see the note above. A relative baseUrl
+  // resolves `paths` to a location that does not exist and silently disables completions.
+  baseUrl: "/",
   paths: EDITOR_PATHS,
 };

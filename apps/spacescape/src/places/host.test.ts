@@ -687,6 +687,53 @@ describe("a place can stand things in the world", () => {
     expect(host.lastProblem).toMatch(/nowhere to stand figures/);
     host.dispose();
   });
+
+  it("carries a model and a level in one load, which is what Run hands the host", async () => {
+    // **The shape `app.tsx`'s Run path depends on.** A place edited in the place editor can hold
+    // a `.sdfmod` and a level at once; `runPlace` passes both to `startPlace`, which reads the
+    // models and applies the level before the script runs. This is that shape at the host: one
+    // load, both attachments, each usable by the script — the level read back by name and the
+    // model stood as a prop.
+    const set = figures();
+    const world = worldWith(set, { fridge: fixtureModel("fridge") });
+    const host = new PlaceHost({
+      files: {
+        "main.ts": `
+          import { createProp, level, log } from "voxelscape";
+          log(level("level.json"));
+          createProp({ id: "fridge", model: "fridge", at: [3, 0, 0] });
+        `,
+      },
+      entry: "main.ts",
+      seed: 1,
+      now: clock,
+      levels: {
+        "level.json": JSON.stringify({
+          version: 1,
+          items: [
+            {
+              kind: "shape",
+              id: "floor",
+              at: [0, 0, 0],
+              shape: { type: "Box", len: { x: 40, y: 4, z: 40 } },
+              combine: "Add",
+            },
+          ],
+        }),
+      },
+      world,
+      effects: stubEffects([]),
+      clock: stubClock([]),
+      onNotice: () => {},
+    });
+    await host.load();
+
+    // The level landed in the world...
+    expect(world.places.get("level")?.ids()).toEqual(["floor"]);
+    // ...and the model stood, both from the one load.
+    expect(set.size).toBe(1);
+    host.dispose();
+  });
 });
 
 describe("what pressing use means", () => {

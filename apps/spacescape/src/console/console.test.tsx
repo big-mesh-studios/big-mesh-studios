@@ -12,12 +12,17 @@
  * claim, and the only honest way to check it is to open the page.
  */
 
-import { flush } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { render } from "@solidjs/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createInput, type InputController } from "../player/input";
-import { Console, createConsole, type ConsoleState } from "./console";
+import {
+  Console,
+  createConsole,
+  type ConsoleProps,
+  type ConsoleState,
+} from "./console";
 import type { CommandHelp, CommandOutput } from "./commands";
 
 /** The vocabulary these tests complete against. */
@@ -80,7 +85,10 @@ interface Mounted {
  * for the command table, and defaults to the one thing worth having a real one
  * for: `/help` answering with the table itself.
  */
-const mount = (answer: (line: string) => CommandOutput = defaultAnswer) => {
+const mount = (
+  answer: (line: string) => CommandOutput = defaultAnswer,
+  editor?: ConsoleProps["editor"],
+) => {
   const ran: string[] = [];
   const terminal: ConsoleState = createConsole({
     onCommand: (line) => {
@@ -92,7 +100,10 @@ const mount = (answer: (line: string) => CommandOutput = defaultAnswer) => {
   input = createInput();
   root = document.createElement("div");
   document.body.append(root);
-  unmount = render(() => <Console terminal={terminal} input={input!} />, root);
+  unmount = render(
+    () => <Console terminal={terminal} input={input!} editor={editor} />,
+    root,
+  );
 
   const mounted: Mounted = {
     ran,
@@ -652,5 +663,62 @@ describe("printing a line that was not typed", () => {
     terminal.print("");
     flush();
     expect(terminal.entries()).toEqual([]);
+  });
+});
+
+/**
+ * The terminal docked under the place editor, and the room the editor is given.
+ *
+ * **The claim is that the scrollback can be folded away and brought back**, which is the whole
+ * of what answers "there is too little room to type" — the panel takes the whole viewport on a
+ * phone and this is the rest of it.
+ */
+describe("the terminal sharing the panel with the editor", () => {
+  const editorOpen = (): ConsoleProps["editor"] => {
+    const [open, setOpen] = createSignal(true);
+    return { open, setOpen, content: () => <div class="stub-editor" />, run: async () => "" };
+  };
+
+  it("folds the scrollback on the chevron, and unfolds it again", () => {
+    const console_ = mount(defaultAnswer, editorOpen());
+    flush();
+
+    // The editor is open, so the dock header is minimizable and the scrollback is showing.
+    expect(root!.querySelector("output")).not.toBeNull();
+
+    root!
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label="collapse terminal"]',
+      )!
+      .click();
+    flush();
+    expect(root!.querySelector("output")).toBeNull();
+    // **And says so**, so the chevron flip is announced rather than only seen.
+    expect(
+      root!.querySelector('button[aria-label="expand terminal"]'),
+    ).not.toBeNull();
+
+    root!
+      .querySelector<HTMLButtonElement>('button[aria-label="expand terminal"]')!
+      .click();
+    flush();
+    expect(root!.querySelector("output")).not.toBeNull();
+
+    expect(console_.output()).toBe("");
+  });
+
+  it("closes the editor on Escape, unless the caret is in the editor's own content", () => {
+    const editor = editorOpen();
+    mount(defaultAnswer, editor);
+    flush();
+    expect(editor?.open()).toBe(true);
+
+    // A keystroke aimed at the terminal's own input is outside the editor's content, so Escape
+    // means "leave the editor".
+    root!.querySelector("input")!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    flush();
+    expect(editor?.open()).toBe(false);
   });
 });
