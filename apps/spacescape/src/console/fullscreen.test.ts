@@ -59,12 +59,18 @@ const commands = () =>
       shape: () => "sphere",
       describe: () => "sphere",
     },
+    windowSize: {
+      radius: () => "window radius 5 chunks in x and z",
+      yRadius: () => "window radius 2 chunks in y",
+      state: () => "window 5 chunks in x and z, 2 in y",
+    },
     cloud: {
       coverage: () => "coverage 0.520",
       density: () => "density 1.000",
       quality: () => "quality high",
       state: () => "built",
     },
+    setStatus: () => "status shown",
   });
 
 const run = (line: string): string => {

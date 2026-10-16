@@ -188,7 +188,7 @@ export const pointFromSegment = (
  * can only point along the two tangents, so a third axis would be a lock that always does
  * nothing — which reads as a broken button rather than as an absent one.
  */
-export type AngleLock = "none" | "a" | "b" | "continue";
+export type AngleLock = "none" | "a" | "b" | "nearest" | "continue";
 
 /** The point on the line through `start` along `axis` nearest to `to`. */
 const projectOntoAxis = (start: Vec3, to: Vec3, axis: Vec3): Vec3 =>
@@ -216,6 +216,25 @@ export const applyAngleLock = (
       return projectOntoAxis(start, to, plane.axisA);
     case "b":
       return projectOntoAxis(start, to, plane.axisB);
+    case "nearest": {
+      /**
+       * **Whichever of 0° and 90° the free aim is nearer to**, then exactly what that single-axis
+       * lock would do — so the one button is the two buttons, chosen by the hand rather than by a
+       * decision the person has to make twice.
+       *
+       * **The projection, not a turn at the same distance.** This is what keeps it identical to
+       * `a` and `b`: a point dragged along the axis keeps its distance from the corner rather than
+       * jumping to the radius of the free aim. `segmentOf` measures from `axisA` toward `axisB`,
+       * so rounding its angle to the nearest quarter turn says which of the two axes the aim is
+       * nearer: an even number of quarter turns is `0°` (or its back, `180°`), an odd number is
+       * `90°` (or `-90°`). A tie on the diagonal rounds away from zero, which is as good a way to
+       * break it as any and the same one the two explicit buttons never had to choose.
+       */
+      const { angle } = segmentOf(start, to, plane);
+      const nearer =
+        Math.round(angle / 90) % 2 === 0 ? plane.axisA : plane.axisB;
+      return projectOntoAxis(start, to, nearer);
+    }
     case "continue": {
       if (previous === undefined) return to;
       const direction = normalize(sub(previous, start));

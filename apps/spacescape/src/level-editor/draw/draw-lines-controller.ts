@@ -53,7 +53,12 @@ import {
   type DrawingPlane,
   type ScreenPoint,
 } from "./plane";
-import { floorRefusal as floorRefusalOf, openOutline } from "./floor";
+import {
+  floorPointBounds,
+  floorRefusal as floorRefusalOf,
+  openOutline,
+} from "./floor";
+import { deleteWallSegment } from "../../places/level/walls";
 
 /** Below this, two points are the same point and a segment between them is not drawn. */
 const EPSILON = 1e-6;
@@ -97,6 +102,15 @@ export interface DrawLinesSnapshot {
   readonly aim: Vec3 | undefined;
   /** The aim on the canvas, for an overlay that follows it. */
   readonly aimScreen: ScreenPoint | undefined;
+  /**
+   * Bumped on every pointer move, and on nothing else.
+   *
+   * **A readout field re-selects its text on a pointer move and not on a typed edit**, and the
+   * snapshot alone cannot tell the two apart: `setLength` and `aim` both publish. This counter is
+   * the difference, so `DrawLinesUi` can react to a move without reacting to its own keystrokes —
+   * which, if it did, would select the whole field on every character and make it untypeable.
+   */
+  readonly aimTick: number;
   /** The current segment's length in world units, or zero when there is no segment yet. */
   readonly length: number;
   /** The current segment's turn in degrees, or zero. */
@@ -112,6 +126,15 @@ export interface DrawLinesSnapshot {
   readonly canNewLine: boolean;
   /** Whether `undoPoint` would take something back. */
   readonly canUndo: boolean;
+  /**
+   * The vertex the node editor has picked, as a chain index and a point within it.
+   *
+   * **Only the floor's node editing ever sets this**, and it is what the "Add before" and "Add
+   * after" buttons act on. `undefined` when nothing is picked, which is also the state the
+   * overlay draws nothing special for.
+   */
+  readonly picked:
+    { readonly chain: number; readonly point: number } | undefined;
 }
 
 /**
@@ -165,6 +188,15 @@ export interface DrawLinesController {
   newLine(): void;
   /** Takes back the last placed point, or the last empty chain. */
   undoPoint(): void;
+  /**
+   * Removes the segment at a global index from the draft, shortening or splitting a chain.
+   *
+   * **The draft's own delete**, used by the Walls tool's segment sub-mode while a wall is being
+   * edited: the draft is what is on screen and what "Update walls" writes, so the change has to
+   * land here or the update would put the segment back. `segmentIndex` is the index across every
+   * chain in order, exactly as `wallSegments` numbers a stored item's runs.
+   */
+  deleteSegment(segmentIndex: number): void;
   /** The walls this draw makes, or nothing when no chain reached a segment. */
   finish(): DrawnWalls | undefined;
   /**
@@ -178,6 +210,28 @@ export interface DrawLinesController {
   finishFloor(): DrawnFloor | undefined;
   /** Throws the whole draw away, leaving no plane. */
   reset(): void;
+
+  /**
+   * Picks the placed vertex nearest a pointer, or clears the pick on a miss.
+   *
+   * **The node editor's grab**, and it answers whether it picked one so the caller knows to start
+   * a drag rather than place a point. Measured on screen within `snapRadius`, exactly as the aim
+   * snaps, so what a finger can pick is what it can see.
+   */
+  pickPoint(pointer: ScreenPoint): boolean;
+  /** Moves the picked vertex to a world point, which the caller has met with the plane. */
+  movePicked(point: Vec3): void;
+  /**
+   * Inserts a new vertex next to the picked one, at the midpoint between it and its neighbour.
+   *
+   * **A midpoint rather than a copy**, so the new corner is visible and draggable the moment it
+   * appears. The outline is a loop, so the neighbour before the first point is the last and the
+   * neighbour after the last is the first — which is what makes "before" and "after" mean the
+   * same thing at a seam. Refused at the primitive's maximum point count.
+   */
+  insertPicked(where: "before" | "after"): void;
+  /** Drops the pick, so nothing is selected. */
+  clearPicked(): void;
 
   /** Which direction the next segment is held against. */
   setLock(lock: AngleLock): void;
@@ -204,6 +258,10 @@ export const createDrawLinesController = (
   let chains: Vec3[][] = [];
   let aim: Vec3 | undefined;
   let lock: AngleLock = "none";
+  /** See `DrawLinesSnapshot.picked`. The node editor's selection. */
+  let picked: { chain: number; point: number } | undefined;
+  /** See `DrawLinesSnapshot.aimTick`. Incremented only where the pointer moves the aim. */
+  let aimTick = 0;
 
   /** The current chain — the one the aim extends. */
   const current = (): Vec3[] | undefined => chains[chains.length - 1];
@@ -254,6 +312,7 @@ export const createDrawLinesController = (
       chains: chains.map((chain) => [...chain]),
       aim,
       aimScreen: aim === undefined ? undefined : deps.projectToScreen(aim),
+      aimTick,
       length: segment.length,
       angle: segment.angle,
       lock,
@@ -268,6 +327,7 @@ export const createDrawLinesController = (
       canUndo:
         chains.some((chain) => chain.length > 0) ||
         (chains.length > 1 && (current()?.length ?? 0) === 0),
+      picked,
     };
   };
 
@@ -298,6 +358,7 @@ export const createDrawLinesController = (
     );
     if (snapped !== undefined) {
       aim = snapped.point;
+      aimTick += 1;
       publish();
       return;
     }
@@ -306,6 +367,7 @@ export const createDrawLinesController = (
     if (from === undefined) {
       // No start yet: this is a chain's first point, and there is no direction to snap.
       aim = hit;
+      aimTick += 1;
       publish();
       return;
     }
@@ -314,6 +376,7 @@ export const createDrawLinesController = (
       lock === "none"
         ? snapAngleTo(from, hit, plane, deps.angleStepDegrees ?? 0)
         : applyAngleLock(from, hit, lock, plane, previous());
+    aimTick += 1;
     publish();
   };
 
@@ -348,6 +411,7 @@ export const createDrawLinesController = (
       }
       chain.push(aim);
       aim = undefined;
+      picked = undefined;
       publish();
     },
 
@@ -355,6 +419,18 @@ export const createDrawLinesController = (
       if ((current()?.length ?? 0) < 2) return;
       chains.push([]);
       aim = undefined;
+      picked = undefined;
+      publish();
+    },
+
+    deleteSegment(segmentIndex) {
+      const next = deleteWallSegment(chains, segmentIndex);
+      if (next === undefined) return;
+      // **Copied back into mutable chains**, because the helper returns read-only lines and the
+      // methods here write into `chains` in place.
+      chains = next.map((chain) => [...chain]);
+      aim = undefined;
+      picked = undefined;
       publish();
     },
 
@@ -364,6 +440,7 @@ export const createDrawLinesController = (
       if (chain.length > 0) {
         chain.pop();
         aim = undefined;
+        picked = undefined;
         // A chain that was only its start and is now empty, and is not the first, is a chain
         // that `newLine` made: undo takes the whole empty chain away rather than leaving it.
         if (chain.length === 0 && chains.length > 1) chains.pop();
@@ -401,6 +478,7 @@ export const createDrawLinesController = (
       chains = [];
       aim = undefined;
       lock = "none";
+      picked = undefined;
       publish();
     },
 
@@ -429,11 +507,79 @@ export const createDrawLinesController = (
       publish();
     },
 
+    pickPoint(pointer) {
+      let closest:
+        { chain: number; point: number; distance: number } | undefined;
+      for (let chainIndex = 0; chainIndex < chains.length; chainIndex++) {
+        const chain = chains[chainIndex]!;
+        for (let pointIndex = 0; pointIndex < chain.length; pointIndex++) {
+          const onScreen = deps.projectToScreen(chain[pointIndex]!);
+          if (onScreen === undefined) continue;
+          const distance = Math.hypot(
+            onScreen.x - pointer.x,
+            onScreen.y - pointer.y,
+          );
+          if (distance > deps.snapRadius) continue;
+          if (closest === undefined || distance < closest.distance) {
+            closest = { chain: chainIndex, point: pointIndex, distance };
+          }
+        }
+      }
+      picked =
+        closest === undefined
+          ? undefined
+          : { chain: closest.chain, point: closest.point };
+      publish();
+      return picked !== undefined;
+    },
+
+    movePicked(point) {
+      if (picked === undefined) return;
+      const chain = chains[picked.chain];
+      if (chain === undefined || chain[picked.point] === undefined) return;
+      chain[picked.point] = { ...point };
+      publish();
+    },
+
+    insertPicked(where) {
+      if (picked === undefined) return;
+      const chain = chains[picked.chain];
+      if (chain === undefined || chain.length < 3) return;
+      // **Bounded by the primitive's own maximum**, read from the table rather than guessed, so
+      // a person cannot grow a floor into a shape the level reader would refuse.
+      const [, maximum] = floorPointBounds();
+      if (chain.length >= maximum) return;
+      const at = picked.point;
+      const neighbour =
+        where === "before"
+          ? (at - 1 + chain.length) % chain.length
+          : (at + 1) % chain.length;
+      const from = chain[at]!;
+      const to = chain[neighbour]!;
+      const insertAt = where === "before" ? at : at + 1;
+      chain.splice(insertAt, 0, {
+        x: (from.x + to.x) / 2,
+        y: (from.y + to.y) / 2,
+        z: (from.z + to.z) / 2,
+      });
+      // **The new vertex becomes the pick**, so "Add before" twice adds two corners in a row
+      // rather than adding the same one twice.
+      picked = { chain: picked.chain, point: insertAt };
+      publish();
+    },
+
+    clearPicked() {
+      if (picked === undefined) return;
+      picked = undefined;
+      publish();
+    },
+
     seed(nextPlane, nextChains) {
       plane = nextPlane;
       chains = nextChains.map((chain) => [...chain]);
       aim = undefined;
       lock = "none";
+      picked = undefined;
       publish();
     },
   };

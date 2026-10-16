@@ -70,10 +70,18 @@ import {
   createDrawLinesOverlay,
   type DrawLinesOverlay,
 } from "./level-editor/draw/draw-lines-overlay";
+import {
+  createSelectionOverlay,
+  type SelectionOverlay,
+} from "./level-editor/view/selection-overlay";
 import { floorDrawing, floorPlacement } from "./level-editor/draw/floor";
 import { IDENTITY } from "./level-editor/view/quaternion";
-import { planeThrough } from "./level-editor/draw/plane";
-import { wallsCentre } from "./places/level/walls";
+import { planeThrough, rayPlanePoint } from "./level-editor/draw/plane";
+import {
+  deleteWallSegment,
+  wallsCentre,
+  wallSegments,
+} from "./places/level/walls";
 import {
   projectToScreen as projectPointToScreen,
   type ScreenPoint,
@@ -85,6 +93,11 @@ import {
 } from "./level-editor/view/highlight";
 import { pickItem } from "./level-editor/view/picking";
 import { createMoveHandles } from "./level-editor/view/move-handles";
+import {
+  segmentUnderPointer,
+  type PickableSegment,
+  type SegmentPick,
+} from "./level-editor/view/pick-segment";
 import {
   armUnderPointer,
   distanceDragged,
@@ -179,6 +192,7 @@ import {
 } from "./places/editor/create-place-editor";
 import type { PlaceEditorProps } from "./places/editor/PlaceEditor";
 import { readDraft } from "./places/editor/drafts";
+import { readSetting, writeSetting } from "./persistence/settings";
 import { projectFromZip, type PlaceProject } from "./places/project";
 import type { PublishedPlace } from "./places/place-record";
 import { PlacesBrowser } from "./places/browser/PlacesBrowser";
@@ -354,6 +368,16 @@ const waterMaterialFor = (shape: WorldShape): WaterMaterial => {
 };
 
 let GAME_WATER = { material: waterMaterialFor(WORLD.shape) };
+
+/**
+ * Where the remembered cloud quality is kept.
+ *
+ * **Namespaced, because the settings store shares one object store with the place draft.**
+ * `drafts.ts` uses `place-draft`; a prefix keeps the two sets of keys from ever colliding as
+ * more preferences are added. Read once when the cloud layer is built and written whenever
+ * `/cloud:quality` sets it, so the quality a machine ended up on is the quality it starts on next.
+ */
+const CLOUD_QUALITY_KEY = "setting:cloud-quality";
 
 /**
  * The material the figure under the crosshair is drawn with.
@@ -558,6 +582,15 @@ export default function App() {
   const [underwater, setUnderwater] = createSignal(false);
   const [coarse] = createSignal(isCoarsePointer());
   const [suspended, setSuspended] = createSignal(false);
+  /**
+   * Whether the top-left status readout is on screen.
+   *
+   * **Hidden by default**, because the readout is debug chrome — chunk counts and triangle
+   * counts are what a developer watches, not what a player needs — and it is shown again with
+   * `/status show`. Component-scope rather than in the level editor's store because it is the
+   * whole game's readout and not the editor's.
+   */
+  const [statusVisible, setStatusVisible] = createSignal(false);
   /** What the loaded place most recently complained about, for a line over the game. */
   const [placeBanner, setPlaceBanner] = createSignal<string | undefined>();
   /** A toast a place asked for, since there is no HUD to show it in. */
@@ -748,6 +781,8 @@ export default function App() {
     DrawLinesController | undefined
   >();
   let drawLinesOverlay: DrawLinesOverlay | undefined;
+  /** The picked wall edge, drawn over the world so a delete can see what it will remove. */
+  let selectionOverlay: SelectionOverlay | undefined;
   /**
    * The walls item being re-drawn, if any.
    *
@@ -767,20 +802,73 @@ export default function App() {
    */
   const [editingDrawId, setEditingDrawId] = createSignal<string | undefined>();
   /**
+   * Whether the Walls tool is picking a segment to delete rather than drawing.
+   *
+   * **A sub-mode of the one tool, not a tool of its own**, because deleting a wall is drawing's
+   * eraser and a person reaches for it while their hand is still on the Walls tool. While it is
+   * on, a press picks the nearest segment instead of placing a point, and the drawing cluster is
+   * replaced by a Delete button. It is cleared whenever the drawing tools are left.
+   */
+  const [segmentSelect, setSegmentSelect] = createSignal(false);
+  /**
+   * The wall segment the last pick landed on, or `undefined` when nothing is picked.
+   *
+   * **The item and the edge, not the two points**, so a delete can re-derive the edge from the
+   * item as it is now — an edit to the file, an undo or a reorder between the pick and the press
+   * would leave stale coordinates naming a different segment.
+   */
+  const [pickedSegment, setPickedSegment] = createSignal<
+    SegmentPick | undefined
+  >();
+  /**
+   * The pick id for the draft's own edges, while the Walls tool is drawing a wall that is not
+   * yet an item.
+   *
+   * **Because a first insert has lines on screen and no item to name them by.** Before Finish the
+   * run being drawn lives only in the controller, so a segment pick has to be able to say "the
+   * draft, edge 3" — a name no level item can collide with because ids are generated from the
+   * kind and position, and this is not one of them.
+   */
+  const DRAFT_SEGMENT_ID = "__wall-draft__";
+  /**
    * How near, in CSS pixels, the aim snaps onto a placed point.
    *
    * **Finger-sized, like `GRAB_RADIUS`.** A mouse snaps comfortably at a third of this; a
    * fingertip is fifty pixels across and cannot report its centre, so a radius sized for a
-   * cursor would make a point that a finger can see and cannot land on. The same number draws
-   * the rings, so what a person can hit is what they can see.
+   * cursor would make a point that a finger can see and cannot land on.
    */
   const SNAP_RADIUS_PX = 28;
+  /**
+   * How large the drawn end-point rings are, in CSS pixels.
+   *
+   * **Half the snap tolerance, so a ring marks a point rather than the whole catch area.** The
+   * two were the same number for a while — "what a person can hit is what they can see" — but a
+   * ring the size of a fingertip reads as a target on top of every vertex, and the snap is
+   * generous on purpose. The tolerance is unchanged; only the marker shrinks.
+   */
+  const MARKER_RADIUS_PX = SNAP_RADIUS_PX / 2;
 
   /** The models a place has carried, for the editor's picker. */
   const [levelModels, setLevelModels] = createSignal<readonly string[]>([]);
   const [levelCameraKind, setLevelCameraKind] =
     createSignal<CameraControlsKind>("orbit");
   const [levelEditorOpen, setLevelEditorOpen] = createSignal(false);
+  /**
+   * The game's own streaming window shape, which the level editor widens while it is open.
+   *
+   * **A signal, because `/window:` changes it while the game runs.** The editor needs a taller
+   * window — its camera orbits a model rather than standing on the ground, and a flat window cuts
+   * a tall building off two chunks up — but the game's walking player wants the flat one it was
+   * tuned for. Keeping the game's shape here lets the editor borrow a taller one and hand this
+   * back on close, and lets the console change the game's own window for a performance test.
+   */
+  const [gameWindow, setGameWindow] = createSignal<{
+    radius: number;
+    yRadius: number;
+  }>({
+    radius: GAME_WINDOW.radius,
+    yRadius: GAME_WINDOW.yRadius,
+  });
   /**
    * Whether a place is loaded, which is what there would be for a level to attach to.
    *
@@ -875,6 +963,10 @@ export default function App() {
         });
       }
       controller.reset();
+      // **Select once a floor is finished or updated**, so the next click edits what was just
+      // made rather than starting a second draw. The teardown effect that watches
+      // `drawsInAPlane` clears the draft on the way out.
+      levelEditor.setTool("select");
       return;
     }
 
@@ -923,6 +1015,9 @@ export default function App() {
       });
     }
     controller.reset();
+    // **Select once the walls are finished or updated**, so the next click picks what was just
+    // built rather than beginning another draw.
+    levelEditor.setTool("select");
   };
 
   /**
@@ -1009,6 +1104,46 @@ export default function App() {
     controller.seed(drawn.plane, [drawn.outline]);
     setEditingDrawId(id);
     levelEditor.setTool("floor");
+  };
+
+  /**
+   * Deletes the picked wall segment, shortening its line or splitting it in two.
+   *
+   * **Re-derived from the item as it is now**, not from the coordinates the pick was made at, so
+   * an undo or a reorder between the pick and the press cannot delete a different segment. One
+   * `updateItem` or `removeItem`, therefore one undo step; a two-point line whose only edge went
+   * takes the line with it, and an item with no lines left is removed outright.
+   *
+   * **Component scope, not the game branch**, because the Delete button in `DrawLinesUi` is
+   * rendered from the application root and has to reach it.
+   */
+  const deletePickedSegment = (): void => {
+    const pick = pickedSegment();
+    if (pick === undefined) return;
+    // **A draft edge — a first insert or an edit — is changed in the draft.** Finish or Update
+    // walls writes it out, so deleting the stored item here is what let the segment come back:
+    // the draft still held it. `DRAFT_SEGMENT_ID` is the no-item-yet case, `editingDrawId` the
+    // edit case.
+    if (pick.itemId === DRAFT_SEGMENT_ID || editingDrawId() === pick.itemId) {
+      drawLines()?.deleteSegment(pick.index);
+      setPickedSegment(undefined);
+      return;
+    }
+    const index = levelEditor
+      .items()
+      .findIndex((item) => item.id === pick.itemId);
+    if (index === -1) return;
+    const item = levelEditor.items()[index];
+    if (item === undefined || item.kind !== "walls") return;
+    const lines = deleteWallSegment(item.lines, pick.index);
+    if (lines === undefined) return;
+    setPickedSegment(undefined);
+    if (lines.length === 0) {
+      levelEditor.removeItem(index);
+      return;
+    }
+    const at = wallsCentre({ up: item.up, height: item.height, lines });
+    levelEditor.updateItem(index, { ...item, lines, at: [at.x, at.y, at.z] });
   };
 
   /**
@@ -1210,6 +1345,23 @@ export default function App() {
       operations: session.operations,
       baseField: session.baseField,
     });
+
+    /**
+     * Reshapes the streaming window to what the current mode wants.
+     *
+     * **The editor gets a spherical window and the game keeps its flat one.** The walking player
+     * wants ground ahead and a little above, which is what `GAME_WINDOW` is tuned for; the editor
+     * orbits a model and wants to see the top of a tower, so its Y reaches as far as its X and Z.
+     * Called on every open and every close, and by `/window:` while the game runs — a rebuild of
+     * the window, which is a visible re-mesh but only when somebody asks for one.
+     */
+    const applyWindow = (): void => {
+      const base = gameWindow();
+      session.reshapeWindow(
+        base.radius,
+        levelEditorOpen() ? base.radius : base.yRadius,
+      );
+    };
 
     // ---- The editor: orbit and sculpt by pointer ----
     if (edit()) {
@@ -1507,6 +1659,18 @@ export default function App() {
               state: "ready",
               field:
                 cloudBake.source() === "main thread" ? "main thread" : "worker",
+            });
+            /**
+             * **The remembered technique, applied once the layer exists.** Reading it before the
+             * bake would race the layer's own construction, so it is read here where `layer` is
+             * guaranteed, and checked against the two names before it is trusted — a value from a
+             * build whose vocabulary has since changed must not reach `setQuality`.
+             */
+            void readSetting<string>(CLOUD_QUALITY_KEY).then((remembered) => {
+              if (attempt !== farField) return;
+              if (remembered === "high" || remembered === "low") {
+                layer?.setQuality(remembered);
+              }
             });
           } catch (reason) {
             // A material that throws on its first draw is the same fault as no layer at
@@ -2142,6 +2306,11 @@ export default function App() {
         setNoClip: (noclip) => game.setNoClip(noclip),
         toSpace: (altitude) => game.placeInSpace(altitude),
         clock,
+        setStatus: (visible) => {
+          const next = visible ?? !statusVisible();
+          setStatusVisible(next);
+          return next ? "status shown" : "status hidden";
+        },
         // The two cloud knobs, adapted rather than passed as an object, because the
         // layer does not exist yet and only this scope knows that. `state()` says so
         // rather than reporting zeroes, which is what a null layer would otherwise look
@@ -2164,13 +2333,42 @@ export default function App() {
           quality: (value) => {
             if (layer === null)
               return "no cloud layer yet — the field is still baking";
-            if (value !== undefined) layer.setQuality(value);
+            if (value !== undefined) {
+              layer.setQuality(value);
+              // **Remembered for the next visit**, so a machine that chose the cheap technique
+              // does not pay for the expensive one again on reload. Never awaited: the console
+              // prints the line now and the write settles whenever it settles.
+              void writeSetting(CLOUD_QUALITY_KEY, value);
+            }
             return `quality ${layer.quality}`;
           },
           state: () =>
             layer === null
               ? `no cloud layer yet — ${describeCloudStatus(cloudStatus())}`
               : `built | quality ${layer.quality} | coverage ${layer.material.coverage.toFixed(3)} | density ${layer.material.density.toFixed(3)} | ${describeCloudStatus(cloudStatus())}`,
+        },
+        // The window's reach, adapted the same way the world's shape is. `applyWindow` is what
+        // turns the stored shape into a reshape, so the command and the editor widen the same
+        // one and neither can drift from the other.
+        windowSize: {
+          radius: (value) => {
+            if (value !== undefined) {
+              setGameWindow((current) => ({ ...current, radius: value }));
+              // **Reshaped at once only when the editor is shut**, because the editor's own
+              // window is a function of this one and rewrites it on open and close anyway.
+              if (!levelEditorOpen()) applyWindow();
+            }
+            return `window radius ${gameWindow().radius} chunks in x and z`;
+          },
+          yRadius: (value) => {
+            if (value !== undefined) {
+              setGameWindow((current) => ({ ...current, yRadius: value }));
+              if (!levelEditorOpen()) applyWindow();
+            }
+            return `window radius ${gameWindow().yRadius} chunks in y`;
+          },
+          state: () =>
+            `window ${gameWindow().radius} chunks in x and z, ${gameWindow().yRadius} in y${levelEditorOpen() ? " (widened to match while the editor is open)" : ""}`,
         },
         // The world's shape, adapted the same way the clouds are: `setWorldShape` lives with
         // the scene it rebuilds and the module-scope readers it replaces, and this is the
@@ -2223,6 +2421,9 @@ export default function App() {
     // (its material does not depth-test — see `draw-lines-overlay.ts`) and before the ghost
     // and the handles, so those still draw on top of it.
     drawLinesOverlay = createDrawLinesOverlay(viewport.scene);
+    // **After the draft**, so the picked edge's highlight paints over the yellow line it is
+    // selecting rather than the other way round (ADR 0014).
+    selectionOverlay = createSelectionOverlay(viewport.scene);
     /**
      * The gizmo, and where it goes in the scene.
      *
@@ -2540,7 +2741,50 @@ export default function App() {
       if (!drawing || controller === undefined) return;
       const rect = canvas.getBoundingClientRect();
       const size: ScreenSize = { width: rect.width, height: rect.height };
-      overlay.render(controller.state(), viewport.camera, size, SNAP_RADIUS_PX);
+      overlay.render(
+        controller.state(),
+        viewport.camera,
+        size,
+        MARKER_RADIUS_PX,
+      );
+    };
+
+    /**
+     * The picked segment's two ends, wherever it is drawn from.
+     *
+     * **Found through `pickableSegments` rather than reading the item or the draft directly**, so
+     * the highlight and the pick agree by construction: the same list that decided what a tap hit
+     * decides what to draw, and the "editing the draft" versus "stored item" branch stays in one
+     * place.
+     */
+    const pickedSegmentEndpoints = (
+      pick: SegmentPick,
+    ): [Vec3, Vec3] | undefined => {
+      const found = pickableSegments().find(
+        (segment) =>
+          segment.itemId === pick.itemId && segment.index === pick.index,
+      );
+      return found === undefined ? undefined : [found.a, found.b];
+    };
+
+    /**
+     * Shows the picked segment's highlight, or puts it away when nothing is picked.
+     *
+     * **Every frame, like the draft**, because a segment dragged by the draft's own node editing
+     * or an item deleted by an undo moves under the highlight, and a highlight that only updated
+     * on the pick would point at where the edge used to be.
+     */
+    const renderSelection = (): void => {
+      const overlay = selectionOverlay;
+      if (overlay === undefined) return;
+      const pick = pickedSegment();
+      const ends =
+        pick === undefined ? undefined : pickedSegmentEndpoints(pick);
+      if (ends === undefined) {
+        overlay.hide();
+        return;
+      }
+      overlay.show(ends[0], ends[1]);
     };
 
     const editorFrame = (dt: number): void => {
@@ -2549,6 +2793,8 @@ export default function App() {
       standHandles();
       /** The draft, if there is one, on the same frame the world is drawn. */
       renderDrawLines();
+      /** The picked wall edge, over the draft it may have come from. */
+      renderSelection();
       /** Whatever the level asked for, now that the mesher may be free to take it. */
       sculpt.flushInvalidated();
       viewport.render();
@@ -2567,6 +2813,12 @@ export default function App() {
       // the crosshair and it commits, exactly as Next does; on a desktop the pointer handlers
       // own the press, so this path is the touch one.
       if (drawsInAPlane(levelEditor.tool())) {
+        // **The touch Apply button picks in the segment sub-mode**, exactly as a tap does on a
+        // mouse: a phone has no hover, so the button is how it says where it is pointing.
+        if (segmentSelect()) {
+          pickWallSegmentAt(clientX, clientY);
+          return;
+        }
         drawPress(clientX, clientY, true);
         return;
       }
@@ -2882,6 +3134,80 @@ export default function App() {
     };
 
     /**
+     * Every wall edge a segment pick can land on, in the shape `pick-segment.ts` tests.
+     *
+     * **While a wall is being edited the draft is what those edges are.** "Update walls" writes
+     * the draft back over the item, so a delete that changed the committed item instead would be
+     * undone by the very button that is meant to keep it — which is exactly what happened when
+     * this always read the stored items. So an edit session offers its own chains, numbered as the
+     * draft sees them, and only a draw that is not editing offers the level's stored walls.
+     */
+    const pickableSegments = (): PickableSegment[] => {
+      const editingId = editingDrawId();
+      const controller = drawLines();
+      const segments: PickableSegment[] = [];
+
+      // **The draft's own edges, on a first insert as much as an edit.** Before Finish the run
+      // being drawn is only in the controller — there is no item to name it by — so it is offered
+      // under `DRAFT_SEGMENT_ID`, numbered as the controller itself orders the runs. An edit names
+      // them by the item it is editing instead, so a delete lands in the draft either way.
+      if (levelEditor.tool() === "walls" && controller !== undefined) {
+        let index = 0;
+        for (const chain of controller.state().chains) {
+          for (let point = 0; point + 1 < chain.length; point++) {
+            segments.push({
+              itemId: editingId ?? DRAFT_SEGMENT_ID,
+              index,
+              a: chain[point]!,
+              b: chain[point + 1]!,
+            });
+            index += 1;
+          }
+        }
+      }
+
+      // **The level's already-drawn walls, except one being edited** — the draft already stands
+      // for that one, and offering both would be two edges a pixel apart that mean different
+      // things when deleted.
+      for (const item of levelEditor.items()) {
+        if (item.kind !== "walls" || item.id === editingId) continue;
+        for (const segment of wallSegments(item)) {
+          segments.push({
+            itemId: item.id,
+            index: segment.index,
+            a: segment.a,
+            b: segment.b,
+          });
+        }
+      }
+      return segments;
+    };
+
+    /**
+     * Picks the nearest wall segment under a pointer, for the Walls tool's segment sub-mode.
+     *
+     * **Selects the item too**, so the highlight box shows which wall the edge belongs to while
+     * the Delete button names what pressing it will do. A pick that finds nothing clears the
+     * previous selection, so a tap on empty sky is a way to put the segment down again.
+     */
+    const pickWallSegmentAt = (clientX: number, clientY: number): void => {
+      const rect = canvas.getBoundingClientRect();
+      const pointer = { x: clientX - rect.left, y: clientY - rect.top };
+      const pick = segmentUnderPointer(
+        pickableSegments(),
+        projectForDrawing,
+        pointer,
+        SNAP_RADIUS_PX,
+      );
+      setPickedSegment(pick);
+      if (pick === undefined) return;
+      const index = levelEditor
+        .items()
+        .findIndex((item) => item.id === pick.itemId);
+      if (index !== -1) levelEditor.select(index);
+    };
+
+    /**
      * The draw controller: the state machine `DrawLinesUi` reads and the pointer handlers
      * drive.
      *
@@ -2938,6 +3264,10 @@ export default function App() {
           if (drawing) return;
           drawLines()?.reset();
           setEditingDrawId(undefined);
+          // **The segment sub-mode belongs to the Walls tool**, so leaving the drawing tools
+          // leaves it too — otherwise a later visit to the Walls tool would open ready to pick.
+          setSegmentSelect(false);
+          setPickedSegment(undefined);
         },
       );
 
@@ -3006,6 +3336,9 @@ export default function App() {
       createEffect(levelEditorOpen, (open) => {
         if (!open) return;
 
+        // **A taller window while editing**, so a tall build is not cut off two chunks up.
+        applyWindow();
+
         /**
          * **Framed before anything listens**, because a camera at the planet's core draws a
          * blue screen and picks nothing — see `poseFromPlayer`.
@@ -3013,6 +3346,24 @@ export default function App() {
         const camera = levelCamera();
         camera.adopt(poseFromPlayer());
         camera.update(0);
+
+        /**
+         * **Fog off while editing.** The air hides the very edges a person is placing against —
+         * a wall's far end fades into the haze before it is finished, and a floor's outline is
+         * hard to read against a blue wash. It is turned back on in the teardown, so the game the
+         * editor returns to looks like the game it left.
+         *
+         * **All four fogs, because the scene shares one air.** The terrain, the sea, the figure
+         * tint and the globe each own a `Fog`; disabling only the terrain's would leave the sea
+         * still hazed and the editor's clear view half a picture.
+         */
+        const setFogEnabled = (enabled: boolean): void => {
+          material.fog.enabled = enabled;
+          GAME_WATER.material.fog.enabled = enabled;
+          FIGURE_TINT.material.fog.enabled = enabled;
+          if (globe !== null) globe.material.fog.enabled = enabled;
+        };
+        setFogEnabled(false);
 
         /**
          * Whether the current walls press has taken the pointer from the camera, and the one
@@ -3035,6 +3386,25 @@ export default function App() {
         };
 
         /**
+         * Where the segment sub-mode's press began, so a drag can be told from a tap.
+         *
+         * **A pick is a tap, and an orbit is a drag.** The camera still gets the press in the
+         * sub-mode — a person who wants to look at the wall from elsewhere has to be able to —
+         * so the pick waits for the release and only happens if the pointer came back to roughly
+         * where it went down. Six pixels is the same slack a browser calls a click.
+         */
+        let segmentPress: { x: number; y: number } | undefined;
+
+        /**
+         * Whether the current floor-edit press is dragging a picked corner.
+         *
+         * **A drag on a corner, not on the world.** The floor's node editor picks a corner on the
+         * press and moves it on every move until the release; a press that lands on no corner
+         * falls through to the ordinary draw gesture, so drawing and node editing share the tool.
+         */
+        let nodeDrag = false;
+
+        /**
          * The gizmo's press, registered **before** the camera attaches.
          *
          * **The order is the point.** `OrbitController` reads its tool flag while deciding
@@ -3048,6 +3418,26 @@ export default function App() {
           // **The walls tool owns the press entirely**, so it is branched on first: its press
           // is not a gizmo grab, and on a mouse it is the shortcut for `Next`.
           if (drawsInAPlane(levelEditor.tool())) {
+            // **The floor's node editor grabs a corner before anything else.** A press on a
+            // corner starts a drag; a press that misses falls through to the draw gesture.
+            if (
+              levelEditor.tool() === "floor" &&
+              editingDrawId() !== undefined &&
+              (event.pointerType !== "mouse" || event.button === 0)
+            ) {
+              const controller = drawLines();
+              if (controller?.pickPoint(pointerOnCanvas(event)) === true) {
+                nodeDrag = true;
+                if (event.pointerType !== "mouse") claimDraw(true);
+                return;
+              }
+            }
+            // **Picking listens for the release, not the press**, so a drag in the sub-mode is
+            // still an orbit. The pick happens on `pointerup` if the pointer stayed put.
+            if (segmentSelect()) {
+              segmentPress = { x: event.clientX, y: event.clientY };
+              return;
+            }
             // A finger or pen aims with the drag, so the camera stands down for the press.
             if (event.pointerType !== "mouse") claimDraw(true);
             drawPress(
@@ -3077,6 +3467,24 @@ export default function App() {
          */
         const onPointerMove = (event: PointerEvent): void => {
           if (!drawsInAPlane(levelEditor.tool())) return;
+          // **A corner drag moves that corner and nothing else.** The aim is left alone, so the
+          // preview segment does not jump to the pointer while a node is being placed.
+          if (nodeDrag) {
+            const controller = drawLines();
+            const plane = controller?.state().plane;
+            const ray = rayAtClient(event.clientX, event.clientY);
+            const point =
+              plane === undefined || ray === undefined
+                ? undefined
+                : rayPlanePoint(ray, plane);
+            if (controller !== undefined && point !== undefined) {
+              controller.movePicked(point);
+            }
+            return;
+          }
+          // **Picking does not aim**, so a half-drawn draft is left where it was rather than
+          // stretching toward a pointer that is choosing a segment to remove.
+          if (segmentSelect()) return;
           drawAim(event.clientX, event.clientY);
         };
         canvas.addEventListener("pointermove", onPointerMove);
@@ -3095,6 +3503,25 @@ export default function App() {
            * claim on the camera ends here with it.
            */
           if (drawsInAPlane(levelEditor.tool())) {
+            if (nodeDrag) {
+              nodeDrag = false;
+              claimDraw(false);
+              return;
+            }
+            if (segmentSelect()) {
+              const start = segmentPress;
+              segmentPress = undefined;
+              // A mouse's right button and middle button are navigation, never a pick.
+              if (event.pointerType === "mouse" && event.button !== 0) return;
+              if (
+                start !== undefined &&
+                Math.hypot(event.clientX - start.x, event.clientY - start.y) <=
+                  6
+              ) {
+                pickWallSegmentAt(event.clientX, event.clientY);
+              }
+              return;
+            }
             claimDraw(false);
             return;
           }
@@ -3116,7 +3543,10 @@ export default function App() {
         // **A taken-back pointer must give the camera back too.** The browser cancels a
         // gesture it decides is its own, and a claim that outlived it would leave a camera that
         // cannot be moved with one finger until the next press.
-        const onPointerCancel = (): void => claimDraw(false);
+        const onPointerCancel = (): void => {
+          claimDraw(false);
+          segmentPress = undefined;
+        };
         canvas.addEventListener("pointercancel", onPointerCancel);
 
         // The pointer lock goes, because a locked pointer delivers every click to the canvas
@@ -3140,7 +3570,15 @@ export default function App() {
           levelCamera().claimGesture(false);
           dragging = false;
           justDragged = false;
+          segmentPress = undefined;
+          nodeDrag = false;
           levelGhost.hide();
+          /** A highlight that outlived the editor would sit on a wall in the running game. */
+          selectionOverlay?.hide();
+          /** The air comes back with the game, so the world is hazed as it was. */
+          setFogEnabled(true);
+          /** And the game's own flat window comes back with its camera. */
+          applyWindow();
         };
       });
     });
@@ -3489,68 +3927,70 @@ export default function App() {
             Phase 0 spike — renderer, packed vertices, sampler3D
           </Show>
         </p>
-        <dl class={styles.readout}>
-          <div class={styles.row}>fragment precision: {precisionText()}</div>
-          <div class={styles.row}>
-            vertex layout: float32x3 + snorm16x2 + unorm8x4 = {VERTEX_BYTES} B
-          </div>
-          <div class={styles.row}>
-            level of detail:{" "}
-            {bands() === undefined
-              ? "default (full within 1 chunk, coarse within 2)"
-              : describeBands(bands() as LodBands)}
-          </div>
-          <Show when={isGame()}>
+        <Show when={statusVisible()}>
+          <dl class={styles.readout}>
+            <div class={styles.row}>fragment precision: {precisionText()}</div>
             <div class={styles.row}>
-              clouds: {describeCloudStatus(cloudStatus())}
+              vertex layout: float32x3 + snorm16x2 + unorm8x4 = {VERTEX_BYTES} B
             </div>
-            {/* The globe is only visible from a long way up, so its state is reported whether or
+            <div class={styles.row}>
+              level of detail:{" "}
+              {bands() === undefined
+                ? "default (full within 1 chunk, coarse within 2)"
+                : describeBands(bands() as LodBands)}
+            </div>
+            <Show when={isGame()}>
+              <div class={styles.row}>
+                clouds: {describeCloudStatus(cloudStatus())}
+              </div>
+              {/* The globe is only visible from a long way up, so its state is reported whether or
                 not anybody is looking at it: a planet that never arrives and a planet that arrives
                 wrong are otherwise the same picture — sky. */}
-            <div class={styles.row}>
-              globe: {describePlanetBakeStatus(planetBake())}
-            </div>
-          </Show>
-
-          <Show when={spikeCounts()}>
-            {(counts) => (
               <div class={styles.row}>
-                vertices: {counts().sphere} sphere, {counts().box} box
+                globe: {describePlanetBakeStatus(planetBake())}
               </div>
-            )}
-          </Show>
+            </Show>
 
-          <Show when={stats()}>
-            {(value) => (
-              <>
+            <Show when={spikeCounts()}>
+              {(counts) => (
                 <div class={styles.row}>
-                  chunks: {value().filled}/{value().chunks} filled,{" "}
-                  {value().drawn} drawn
+                  vertices: {counts().sphere} sphere, {counts().box} box
                 </div>
-                <div class={styles.row}>
-                  triangles: {value().triangles.toLocaleString()} · workers:{" "}
-                  {value().busy} busy, {value().pending} pending,{" "}
-                  {value().queued} queued
-                </div>
-                {/* **The sea's own count, and only where there is a sea.** The total above adds
+              )}
+            </Show>
+
+            <Show when={stats()}>
+              {(value) => (
+                <>
+                  <div class={styles.row}>
+                    chunks: {value().filled}/{value().chunks} filled,{" "}
+                    {value().drawn} drawn
+                  </div>
+                  <div class={styles.row}>
+                    triangles: {value().triangles.toLocaleString()} · workers:{" "}
+                    {value().busy} busy, {value().pending} pending,{" "}
+                    {value().queued} queued
+                  </div>
+                  {/* **The sea's own count, and only where there is a sea.** The total above adds
                     the two surfaces together, which cannot tell a coast from a mountain range —
                     and the sea is the one new enough to be worth watching while it streams. */}
-                <Show when={isGame()}>
-                  <div class={styles.row}>
-                    water: {value().waterFilled} chunks,{" "}
-                    {value().waterTriangles.toLocaleString()} triangles
-                  </div>
-                </Show>
-                <Show when={history().undo > 0 || history().redo > 0}>
-                  <div class={styles.row}>
-                    history: {history().undo} undoable, {history().redo}{" "}
-                    redoable
-                  </div>
-                </Show>
-              </>
-            )}
-          </Show>
-        </dl>
+                  <Show when={isGame()}>
+                    <div class={styles.row}>
+                      water: {value().waterFilled} chunks,{" "}
+                      {value().waterTriangles.toLocaleString()} triangles
+                    </div>
+                  </Show>
+                  <Show when={history().undo > 0 || history().redo > 0}>
+                    <div class={styles.row}>
+                      history: {history().undo} undoable, {history().redo}{" "}
+                      redoable
+                    </div>
+                  </Show>
+                </>
+              )}
+            </Show>
+          </dl>
+        </Show>
         <p class={styles.hints}>
           <Show
             when={!spike()}
@@ -3648,6 +4088,13 @@ export default function App() {
               onFinish={finishDrawing}
               floor={levelEditor.tool() === "floor"}
               editing={editingDrawId() !== undefined}
+              segmentSelect={segmentSelect}
+              onToggleSegmentSelect={() => {
+                setPickedSegment(undefined);
+                setSegmentSelect((on) => !on);
+              }}
+              segmentPicked={pickedSegment() !== undefined}
+              onDeleteSegment={deletePickedSegment}
             />
           </Show>
           <LevelEditorHint

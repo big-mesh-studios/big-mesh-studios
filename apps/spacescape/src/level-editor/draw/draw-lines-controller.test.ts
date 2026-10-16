@@ -54,6 +54,20 @@ const press = (controller: DrawLinesController, x: number, z: number): void => {
   controller.begin({ x, y: z }, rayTo(x, z));
 };
 
+/** A controller seeded with a square outline, which is what the floor node editor opens on. */
+const seeded = (): DrawLinesController => {
+  const controller = controllerOver();
+  controller.seed(planeThrough(ORIGIN, FLAT_UP), [
+    [
+      { x: 0, y: 0, z: 0 },
+      { x: 10, y: 0, z: 0 },
+      { x: 10, y: 0, z: 10 },
+      { x: 0, y: 0, z: 10 },
+    ],
+  ]);
+  return controller;
+};
+
 /** Aims at the ground point `(x, z)`; the pointer shares the point, so nothing snaps. */
 const aimAt = (controller: DrawLinesController, x: number, z: number): void => {
   controller.aim({ x, y: z }, rayTo(x, z));
@@ -261,5 +275,97 @@ describe("seed and reset", () => {
     expect(state.active).toBe(false);
     expect(state.chains).toHaveLength(0);
     expect(state.canFinish).toBe(false);
+  });
+});
+
+describe("the floor node editor", () => {
+  it("picks the nearest vertex within the snap radius", () => {
+    const controller = seeded();
+    // Screen points are (x, z), so a pointer just off (10, 0) picks point 1.
+    expect(controller.pickPoint({ x: 10.5, y: 0.5 })).toBe(true);
+    expect(view(controller).picked).toEqual({ chain: 0, point: 1 });
+  });
+
+  it("clears the pick on a miss", () => {
+    const controller = seeded();
+    expect(controller.pickPoint({ x: 10, y: 0 })).toBe(true);
+    expect(controller.pickPoint({ x: 100, y: 100 })).toBe(false);
+    expect(view(controller).picked).toBeUndefined();
+  });
+
+  it("moves the picked vertex to a world point", () => {
+    const controller = seeded();
+    controller.pickPoint({ x: 10, y: 0 });
+    controller.movePicked({ x: 12, y: 5, z: 1 });
+    expect(view(controller).chains[0]![1]).toEqual({ x: 12, y: 5, z: 1 });
+  });
+
+  it("inserts a corner at the midpoint beside the picked one", () => {
+    const controller = seeded();
+    controller.pickPoint({ x: 0, y: 0 });
+    controller.insertPicked("after");
+    const state = view(controller);
+    expect(state.chains[0]).toHaveLength(5);
+    // The midpoint of (0, 0) and (10, 0).
+    expect(state.chains[0]![1]).toEqual({ x: 5, y: 0, z: 0 });
+    // **The new corner is picked**, so a second insert acts beside it rather than on the original.
+    expect(state.picked).toEqual({ chain: 0, point: 1 });
+  });
+
+  it("wraps 'before' at the seam, so the first corner's neighbour is the last", () => {
+    const controller = seeded();
+    controller.pickPoint({ x: 0, y: 0 });
+    controller.insertPicked("before");
+    const state = view(controller);
+    expect(state.chains[0]).toHaveLength(5);
+    // The midpoint of the last point (0, 10) and the first (0, 0), inserted at the front.
+    expect(state.chains[0]![0]).toEqual({ x: 0, y: 0, z: 5 });
+    expect(state.picked).toEqual({ chain: 0, point: 0 });
+  });
+
+  it("does nothing without a pick", () => {
+    const controller = seeded();
+    controller.movePicked({ x: 1, y: 1, z: 1 });
+    controller.insertPicked("after");
+    const state = view(controller);
+    expect(state.chains[0]).toEqual([
+      { x: 0, y: 0, z: 0 },
+      { x: 10, y: 0, z: 0 },
+      { x: 10, y: 0, z: 10 },
+      { x: 0, y: 0, z: 10 },
+    ]);
+  });
+});
+
+describe("deleteSegment", () => {
+  it("splits the chain when a middle segment goes", () => {
+    const controller = seeded();
+    controller.deleteSegment(1);
+    const chains = view(controller).chains;
+    expect(chains).toHaveLength(2);
+    expect(chains[0]).toEqual([
+      { x: 0, y: 0, z: 0 },
+      { x: 10, y: 0, z: 0 },
+    ]);
+    expect(chains[1]).toEqual([
+      { x: 10, y: 0, z: 10 },
+      { x: 0, y: 0, z: 10 },
+    ]);
+  });
+
+  it("trims the chain when an end segment goes", () => {
+    const controller = seeded();
+    controller.deleteSegment(0);
+    expect(view(controller).chains[0]).toEqual([
+      { x: 10, y: 0, z: 0 },
+      { x: 10, y: 0, z: 10 },
+      { x: 0, y: 0, z: 10 },
+    ]);
+  });
+
+  it("does nothing for an index that names no segment", () => {
+    const controller = seeded();
+    controller.deleteSegment(99);
+    expect(view(controller).chains[0]).toHaveLength(4);
   });
 });

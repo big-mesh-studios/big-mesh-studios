@@ -12,6 +12,7 @@ import { rotate } from "@big-mesh-studios/csg";
 import type { Vec3 } from "@big-mesh-studios/core";
 
 import {
+  deleteWallSegment,
   quatFromBasis,
   wallParts,
   wallSegments,
@@ -65,6 +66,49 @@ describe("wallSegments", () => {
     expect(segments[0].a).toEqual({ x: 0, y: 0, z: 0 });
     expect(segments[0].b).toEqual({ x: 10, y: 0, z: 0 });
     expect(segments[2].b).toEqual({ x: 10, y: 0, z: 50 });
+  });
+});
+
+describe("deleteWallSegment", () => {
+  /** A horizontal line at height `z`, through the given x positions. */
+  const line = (z: number, xs: readonly number[]): [number, number, number][] =>
+    xs.map((x) => [x, 0, z]);
+
+  it("shortens the line when an end segment goes", () => {
+    const lines = [line(0, [0, 10, 20])];
+    expect(deleteWallSegment(lines, 0)).toEqual([line(0, [10, 20])]);
+    expect(deleteWallSegment(lines, 1)).toEqual([line(0, [0, 10])]);
+  });
+
+  it("splits the line in two when a middle segment goes", () => {
+    const lines = [line(0, [0, 10, 20, 30])];
+    // Segment 1 joins the middle two points, so removing it severs the run in half — and the
+    // halves do not reconnect, which is the whole point of a split over a stitched line.
+    expect(deleteWallSegment(lines, 1)).toEqual([
+      line(0, [0, 10]),
+      line(0, [20, 30]),
+    ]);
+  });
+
+  it("removes a two-point line when its only segment goes", () => {
+    expect(deleteWallSegment([line(0, [0, 10])], 0)).toEqual([]);
+  });
+
+  it("counts the index across every line, in order", () => {
+    const lines = [line(0, [0, 10, 20]), line(50, [0, 10])];
+    // The first line has segments 0 and 1; the second line's only segment is 2.
+    expect(deleteWallSegment(lines, 2)).toEqual([line(0, [0, 10, 20])]);
+    // Index 1 is the first line's last segment, leaving the second line alone.
+    expect(deleteWallSegment(lines, 1)).toEqual([
+      line(0, [0, 10]),
+      line(50, [0, 10]),
+    ]);
+  });
+
+  it("answers undefined for an index that names no segment", () => {
+    expect(deleteWallSegment([line(0, [0, 10])], 1)).toBeUndefined();
+    expect(deleteWallSegment([line(0, [0, 10])], -1)).toBeUndefined();
+    expect(deleteWallSegment([], 0)).toBeUndefined();
   });
 });
 

@@ -219,6 +219,17 @@ describe("the fog, as a material uses it", () => {
     expect(fragment).toContain("uFogScale");
   });
 
+  it("can be switched off entirely, which nearField = 0 cannot do", () => {
+    // The level editor turns the air off while it is open, because fog hides the very edges
+    // being placed against. Zeroing the near field is not enough — the atmosphere term is
+    // world-independent and still tints everything — so a separate flag multiplies the whole
+    // amount, and the shader has to read it for that to mean anything. The flag defaults on,
+    // so a scene that never touches it is fogged as it always was.
+    const { fragment } = compile(new SurfaceMaterial());
+    expect(fragment).toContain("uFogEnabled");
+    expect(new Fog().enabled).toBe(true);
+  });
+
   it("reveals the planet from the altitude the globe takes over at", () => {
     // **The bug this whole arrangement exists to fix.** At 900 units the globe has fully
     // taken over, so the near-field window term is off and the fog is the aerial

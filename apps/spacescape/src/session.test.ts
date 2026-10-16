@@ -907,3 +907,27 @@ describe("changing the world's shape", () => {
     session.dispose();
   });
 });
+
+describe("reshapeWindow", () => {
+  it("rebuilds the window at the new shape and asks for the new chunks", () => {
+    const { session, fakes } = newSession({ radius: 2 });
+    const before = session.window.capacity;
+    const wanted = session.reshapeWindow(3, 3);
+    expect(session.window.radius).toBe(3);
+    expect(session.window.yRadius).toBe(3);
+    // The count it reports is the window's own capacity, and growing the window grows it.
+    expect(wanted).toBe(session.window.capacity);
+    expect(wanted).toBeGreaterThan(before);
+    // **A flatter window is a different shape**, and fewer chunks: the y radius is not ignored.
+    expect(session.reshapeWindow(3, 1)).toBeLessThan(wanted);
+    // Placing the new cells asked the workers for them.
+    expect(fakes.flatMap((fake) => fake.requests()).length).toBeGreaterThan(0);
+    session.dispose();
+  });
+
+  it("does nothing once disposed", () => {
+    const { session } = newSession();
+    session.dispose();
+    expect(session.reshapeWindow(5, 5)).toBe(0);
+  });
+});

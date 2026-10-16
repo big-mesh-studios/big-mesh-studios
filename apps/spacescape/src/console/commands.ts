@@ -170,6 +170,16 @@ export interface CommandsParams {
   cloud: CloudCommands;
   /** The shape of the world, for `/planet:`. See `WorldCommands`. */
   world: WorldCommands;
+  /** The streaming window's reach, for `/window:`. See `WindowCommands`. */
+  windowSize: WindowCommands;
+  /**
+   * Shows or hides the on-screen status readout, toggling when `visible` is omitted.
+   *
+   * **A toggle rather than a report-and-set pair**, because the readout is debug chrome a person
+   * flips while watching the frame, and the interesting question is always "what is it now" —
+   * which the returned line answers either way.
+   */
+  setStatus(visible?: boolean): string;
 }
 
 /**
@@ -192,6 +202,23 @@ export interface WorldCommands {
   shape(value?: WorldShapeName): string;
   /** One line saying which world this is and where its water sits. */
   describe(): string;
+}
+
+/**
+ * The streaming window's reach, as `/window:` uses it.
+ *
+ * **Numbers in and strings out, for the reason `WorldCommands` is** — the console names a chunk
+ * radius and the caller owns what a window is. `yRadius` is separate from `radius` because the
+ * two are genuinely different questions: the game's window is deliberately flat, and the whole
+ * point of the command is to try it taller and watch the frame rate.
+ */
+export interface WindowCommands {
+  /** Reports or sets the chunk radius in x and z. */
+  radius(value?: number): string;
+  /** Reports or sets the chunk radius in y. */
+  yRadius(value?: number): string;
+  /** One line saying how far the window reaches. */
+  state(): string;
 }
 
 /** The clock's surface, as `/clock:` uses it. See `CommandsParams.clock`. */
@@ -256,6 +283,27 @@ const readToggle = (
   if (argument === "on") return true;
   if (argument === "off") return false;
   return `usage: ${name} [on|off]  (no argument flips it)`;
+};
+
+/**
+ * Reads a `[show|hide]` argument.
+ *
+ * **The same shape as `readToggle`, with the words the readout's own vocabulary uses.** The
+ * status text is shown or hidden, not switched on or off, and a `[show|hide]` command that
+ * answered `usage: [on|off]` would be asking the player to translate between two words for one
+ * act. A bare argument flips, as it does for the genuine toggles.
+ *
+ * @returns What to do with the setting — `undefined` meaning "flip it" — or the line to print
+ *   instead.
+ */
+const readShowHide = (
+  argument: string | undefined,
+  name: string,
+): boolean | undefined | string => {
+  if (argument === undefined) return undefined;
+  if (argument === "show") return true;
+  if (argument === "hide") return false;
+  return `usage: ${name} [show|hide]  (no argument flips it)`;
 };
 
 /**
@@ -325,6 +373,8 @@ export const createCommands = ({
   clock,
   cloud,
   world,
+  windowSize,
+  setStatus,
 }: CommandsParams): Commander => {
   return new Commander({
     "/clock:day": {
@@ -447,6 +497,50 @@ export const createCommands = ({
     "/planet:state": {
       description: "say which world this is and where its water sits",
       run: () => world.describe(),
+    },
+    "/window:radius": {
+      description:
+        "report or set how many chunks the streaming window reaches in x and z",
+      args: "[chunks]",
+      run: (rest) => {
+        const argument = rest[0];
+        if (argument === undefined) return windowSize.radius();
+        const value = readNumber(
+          argument,
+          "usage: /window:radius [chunks]  (1 or more)",
+          1,
+        );
+        if (typeof value === "string") return value;
+        return windowSize.radius(Math.round(value));
+      },
+    },
+    "/window:yradius": {
+      description:
+        "report or set how many chunks the window reaches in y (try 5 for full height)",
+      args: "[chunks]",
+      run: (rest) => {
+        const argument = rest[0];
+        if (argument === undefined) return windowSize.yRadius();
+        const value = readNumber(
+          argument,
+          "usage: /window:yradius [chunks]  (1 or more)",
+          1,
+        );
+        if (typeof value === "string") return value;
+        return windowSize.yRadius(Math.round(value));
+      },
+    },
+    "/window:state": {
+      description: "say how far the streaming window reaches",
+      run: () => windowSize.state(),
+    },
+    "/status": {
+      description: "show or hide the on-screen status readout",
+      args: "[show|hide]",
+      run: (rest) => {
+        const argument = readShowHide(rest[0], "/status");
+        return typeof argument === "string" ? argument : setStatus(argument);
+      },
     },
     "/player:fly": {
       description: "turn flight on or off (no gravity; W follows the look)",

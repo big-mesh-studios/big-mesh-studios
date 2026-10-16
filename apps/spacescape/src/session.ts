@@ -303,6 +303,25 @@ export class Session {
   }
 
   /**
+   * Rebuilds the streaming window at a different shape, around the cell it is already on.
+   *
+   * **The window owns the rebuild and this only asks for it.** `ChunkWindow.reshape` releases
+   * every slot, tells the store its new size and places the new cells, and placing them asks for
+   * their work — so there is no second `requestAll` here, which would ask for every chunk twice.
+   * The level editor uses this to widen the window vertically while it is open and to put the
+   * game's own shape back on close; `/window:` uses it to try a different shape at runtime.
+   *
+   * The bands are carried over, because this changes how *far* the window reaches and not how
+   * coarsely it draws what it holds — a caller that wanted both would say so.
+   *
+   * @returns how many chunks the window now holds; zero once disposed.
+   */
+  reshapeWindow(radius: number, yRadius: number): number {
+    if (this.disposed) return 0;
+    return this.window.reshape(radius, yRadius, this.window.bands);
+  }
+
+  /**
    * Marks every chunk this session is holding as needing to be meshed again.
    *
    * **`markStale` and not `markOutOfDate`, and the difference is the whole method.** ADR 0007's

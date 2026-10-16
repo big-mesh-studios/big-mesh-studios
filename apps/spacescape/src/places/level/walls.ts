@@ -75,6 +75,63 @@ export const wallSegments = (item: WallsGeometry): readonly WallSegment[] => {
 };
 
 /**
+ * The lines a walls item has left after deleting the one segment `segmentIndex` names.
+ *
+ * **One way to remove an edge from a polyline: drop the edge and keep every point.** An edge in
+ * the middle severs the run into two, and an edge at either end shortens it by one point — the
+ * drawing stays where it was and only the segment asked for goes. Deleting the only edge of a
+ * two-point line removes the line, and a caller that finds no lines left removes the item; a
+ * walls item with no segments is not a wall and the reader refuses it.
+ *
+ * `segmentIndex` is the global index `wallSegments` hands out, across every line in order, so a
+ * picker that tested those segments can pass its answer straight back here.
+ *
+ * **Generic over the point type**, because the live draft's chains are `Vec3` objects while a
+ * stored item's lines are the file's `[x, y, z]` tuples — and the same slicing applies to both,
+ * so the draft delete and the item delete cannot disagree about what removing an edge means.
+ *
+ * @returns The new lines, or `undefined` when the index names no segment.
+ */
+export const deleteWallSegment = <T>(
+  lines: readonly (readonly T[])[],
+  segmentIndex: number,
+): (readonly T[])[] | undefined => {
+  if (!Number.isInteger(segmentIndex) || segmentIndex < 0) return undefined;
+
+  let seen = 0;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex]!;
+    const segmentsInLine = line.length - 1;
+    if (segmentIndex >= seen + segmentsInLine) {
+      seen += segmentsInLine;
+      continue;
+    }
+
+    const position = segmentIndex - seen;
+    const next = [...lines];
+    // **The line's only edge takes the whole line with it.**
+    if (line.length <= 2) {
+      next.splice(lineIndex, 1);
+    } else if (position === 0) {
+      next[lineIndex] = line.slice(1);
+    } else if (position === line.length - 2) {
+      next[lineIndex] = line.slice(0, -1);
+    } else {
+      // **An interior edge severs the run in two.** Both halves keep at least two points,
+      // because an interior position is never the first or last edge.
+      next.splice(
+        lineIndex,
+        1,
+        line.slice(0, position + 1),
+        line.slice(position + 1),
+      );
+    }
+    return next;
+  }
+  return undefined;
+};
+
+/**
  * The turn that carries a box's own axes onto the wall's.
  *
  * **Built from the basis rather than from angles**, because a wall on a planet has no world

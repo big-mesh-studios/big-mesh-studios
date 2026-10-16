@@ -37,18 +37,24 @@ interface Table {
   noclip: (boolean | undefined)[];
   /** Every altitude `/player:space` was called with, in order; `undefined` is the default. */
   space: (number | undefined)[];
+  /** Every visibility `/status` was called with, in order; `undefined` is a flip. */
+  status: (boolean | undefined)[];
   clock: ClockCalls[];
   cloud: CloudCalls[];
   /** What the fake layer reports, so a test can pretend it does not exist yet. */
   built: { value: boolean };
   /** Reads back the shape the fake world was last set to, so a test can see it changed. */
   world: { shape: WorldShape };
+  /** Reads back the window's shape, so a test can see a command changed it. */
+  window: { radius: number; yRadius: number };
 }
 
 const table = (): Table => {
   const flying: (boolean | undefined)[] = [];
   const noclip: (boolean | undefined)[] = [];
   const space: (number | undefined)[] = [];
+  const status: (boolean | undefined)[] = [];
+  let statusVisible = false;
   const clock: ClockCalls[] = [];
   const cloud: CloudCalls[] = [];
   const built = { value: true };
@@ -58,6 +64,7 @@ const table = (): Table => {
   let density = 1;
   let quality: "high" | "low" = "high";
   let shape: WorldShape = "sphere";
+  const view = { radius: 5, yRadius: 2 };
   const absent = "no cloud layer yet — the field is still baking";
   const commander = createCommands({
     setFlying: (value) => {
@@ -118,15 +125,34 @@ const table = (): Table => {
       },
       describe: () => `shape ${shape}`,
     },
+    windowSize: {
+      radius: (value) => {
+        if (value !== undefined) view.radius = value;
+        return `window radius ${view.radius} chunks in x and z`;
+      },
+      yRadius: (value) => {
+        if (value !== undefined) view.yRadius = value;
+        return `window radius ${view.yRadius} chunks in y`;
+      },
+      state: () =>
+        `window ${view.radius} chunks in x and z, ${view.yRadius} in y`,
+    },
+    setStatus: (value) => {
+      status.push(value);
+      statusVisible = value ?? !statusVisible;
+      return statusVisible ? "status shown" : "status hidden";
+    },
   });
   return {
     commander,
     flying,
     noclip,
     space,
+    status,
     clock,
     cloud,
     built,
+    window: view,
     world: {
       get shape() {
         return shape;
@@ -167,6 +193,10 @@ describe("the command table", () => {
       "/cloud:state",
       "/planet:shape",
       "/planet:state",
+      "/window:radius",
+      "/window:yradius",
+      "/window:state",
+      "/status",
       "/player:fly",
       "/player:no-clip",
       "/player:space",
@@ -194,6 +224,51 @@ describe("the command table", () => {
   it("answers /help with the table rather than with text", () => {
     const recorder = table();
     expect(recorder.commander.run("/help")).toEqual(recorder.commander.help());
+  });
+});
+
+describe("/status", () => {
+  it("flips when given no argument, and sets on show or hide", () => {
+    const recorder = table();
+    expect(text(recorder, "/status")).toBe("status shown");
+    expect(text(recorder, "/status")).toBe("status hidden");
+    expect(text(recorder, "/status show")).toBe("status shown");
+    expect(text(recorder, "/status hide")).toBe("status hidden");
+    expect(recorder.status).toEqual([undefined, undefined, true, false]);
+  });
+
+  it("refuses a word that is neither show nor hide", () => {
+    expect(text(table(), "/status maybe")).toBe(
+      "usage: /status [show|hide]  (no argument flips it)",
+    );
+  });
+});
+
+describe("/window", () => {
+  it("reports and sets the window's two radii", () => {
+    const recorder = table();
+    expect(text(recorder, "/window:radius")).toBe(
+      "window radius 5 chunks in x and z",
+    );
+    expect(text(recorder, "/window:radius 7")).toBe(
+      "window radius 7 chunks in x and z",
+    );
+    expect(text(recorder, "/window:yradius 5")).toBe(
+      "window radius 5 chunks in y",
+    );
+    expect(text(recorder, "/window:state")).toBe(
+      "window 7 chunks in x and z, 5 in y",
+    );
+    expect(recorder.window).toEqual({ radius: 7, yRadius: 5 });
+  });
+
+  it("refuses a radius that is not a positive number", () => {
+    expect(text(table(), "/window:yradius 0")).toBe(
+      "usage: /window:yradius [chunks]  (1 or more)",
+    );
+    expect(text(table(), "/window:radius soon")).toBe(
+      "usage: /window:radius [chunks]  (1 or more)",
+    );
   });
 });
 

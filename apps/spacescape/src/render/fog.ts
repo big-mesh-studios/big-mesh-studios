@@ -138,7 +138,23 @@ export class Fog {
    */
   nearField = 1;
 
+  /**
+   * Whether any fog is mixed in at all.
+   *
+   * **A real off switch, where `nearField = 0` is not one.** Zeroing the near field only removes
+   * the window term; the atmosphere column is world-independent and still tints everything toward
+   * the fog colour, so a level editor wanting bare geometry cannot get there by turning one of
+   * the two knobs down. The level editor sets this false while it is open — fog hides the exact
+   * edges a person is placing against — and restores it on close.
+   *
+   * **A flag rather than a zeroed colour or distance**, because those are meaningful values and a
+   * fog that disabled itself by being set to one of them would be indistinguishable from a
+   * world that had asked for it.
+   */
+  enabled = true;
+
   private uniform?: UniformNode<"vec3">;
+  private enabledUniform?: UniformNode<"float">;
   private seaLevelUniform?: UniformNode<"float">;
   private sphericalUniform?: UniformNode<"float">;
   private atmosphereUniform?: UniformNode<"float">;
@@ -196,6 +212,9 @@ export class Fog {
       "float",
       () => this.nearField,
     );
+    this.enabledUniform = b.materialUniform("uFogEnabled", "float", () =>
+      this.enabled ? 1 : 0,
+    );
   }
 
   /**
@@ -231,7 +250,12 @@ export class Fog {
       this.sphericalUniform!.greaterThan(0.5),
     ).mul(float(ATMOSPHERE_EXTINCTION));
 
-    const amount = float(1).sub(exp(nearTau.add(airTau).negate()));
+    // **The enabled flag is a multiplier on the amount, not an early return**, because the node
+    // graph is compiled once and there is no branch to take: zero is the identity for the mix,
+    // so a disabled fog costs one multiply and leaves `colour` untouched.
+    const amount = float(1)
+      .sub(exp(nearTau.add(airTau).negate()))
+      .mul(this.enabledUniform!);
     return colour.mix(this.uniform!, amount);
   }
 }

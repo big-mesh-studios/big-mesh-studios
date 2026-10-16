@@ -30,6 +30,7 @@ const snapshotOf = (
   chains: [],
   aim: undefined,
   aimScreen: undefined,
+  aimTick: 0,
   length: 0,
   angle: 0,
   lock: "none",
@@ -38,6 +39,7 @@ const snapshotOf = (
   floorRefusal: undefined,
   canNewLine: false,
   canUndo: false,
+  picked: undefined,
   ...overrides,
 });
 

@@ -174,6 +174,31 @@ describe("applyAngleLock", () => {
     expect(close(planeCoords(locked, plane).b, 4)).toBe(true);
   });
 
+  it("picks the nearer axis for lock `nearest`", () => {
+    const plane = flat();
+    // Aimed mostly along the first axis: the button should do what `a` does.
+    const alongA = applyAngleLock(
+      plane.origin,
+      planePoint(plane, 4, 1),
+      "nearest",
+      plane,
+      undefined,
+    );
+    expect(close(planeCoords(alongA, plane).b, 0)).toBe(true);
+    expect(close(planeCoords(alongA, plane).a, 4)).toBe(true);
+
+    // Aimed mostly along the second: what `b` does.
+    const alongB = applyAngleLock(
+      plane.origin,
+      planePoint(plane, 1, 4),
+      "nearest",
+      plane,
+      undefined,
+    );
+    expect(close(planeCoords(alongB, plane).a, 0)).toBe(true);
+    expect(close(planeCoords(alongB, plane).b, 4)).toBe(true);
+  });
+
   it("continues the previous segment's direction for lock `continue`", () => {
     const plane = flat();
     // A previous segment turned 60°, and a later point off that line. Locked to continue, the

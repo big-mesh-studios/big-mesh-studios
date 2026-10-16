@@ -147,7 +147,11 @@ export const PropertiesPanel = (props: {
           `precisionText` in `app.tsx` is written for.
         */}
         <Show when={shape()}>
-          <ShapeFields current={narrowed(shape, "shape")} change={change} />
+          <ShapeFields
+            current={narrowed(shape, "shape")}
+            change={change}
+            onEditOutline={props.onEditOutline}
+          />
         </Show>
         <Show when={figure()}>
           <FigureFields
@@ -196,8 +200,7 @@ const narrowed =
 const ShapeFields = (props: {
   current: () => LevelShape;
   change: (next: LevelShape) => void;
-  onEditWalls?: (id: string) => void;
-  /** Seeds the drawing from a floor's outline; absent only if built without it. */
+  /** Opens the node editor on a floor's outline; absent only if built without it. */
   onEditOutline?: (id: string) => void;
 }) => {
   const item = props.current;
@@ -379,8 +382,8 @@ const ShapeFields = (props: {
           </p>
           <Show when={props.onEditOutline !== undefined}>
             <Button
-              label="Edit outline"
-              title="Redraw this floor's outline, starting from the corners it has now"
+              label="Edit points"
+              title="Pick a corner to drag it, or add one before or after it"
               onClick={() => props.onEditOutline?.(item().id)}
             />
           </Show>
