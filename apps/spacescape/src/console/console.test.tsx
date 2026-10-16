@@ -676,7 +676,12 @@ describe("printing a line that was not typed", () => {
 describe("the terminal sharing the panel with the editor", () => {
   const editorOpen = (): ConsoleProps["editor"] => {
     const [open, setOpen] = createSignal(true);
-    return { open, setOpen, content: () => <div class="stub-editor" />, run: async () => "" };
+    return {
+      open,
+      setOpen,
+      content: () => <div class="stub-editor" />,
+      run: async () => "",
+    };
   };
 
   it("folds the scrollback on the chevron, and unfolds it again", () => {
@@ -715,9 +720,11 @@ describe("the terminal sharing the panel with the editor", () => {
 
     // A keystroke aimed at the terminal's own input is outside the editor's content, so Escape
     // means "leave the editor".
-    root!.querySelector("input")!.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
-    );
+    root!
+      .querySelector("input")!
+      .dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
     flush();
     expect(editor?.open()).toBe(false);
   });

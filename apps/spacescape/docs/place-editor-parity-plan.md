@@ -33,7 +33,7 @@ File references are to `apps/spacescape/src/` unless stated otherwise.
   and passes `models` / `levels` to `startPlace` (`app.tsx:1955-1973`).
 
 So the zip round-trip for code + level + props + NPCs already works. What is missing is the
-editor UI that puts attachments *into* the project, and the Run path that carries them in the
+editor UI that puts attachments _into_ the project, and the Run path that carries them in the
 author's own session.
 
 ## Phase 0 — Fix autocomplete
@@ -41,7 +41,7 @@ author's own session.
 `EDITOR_COMPILER_OPTIONS.baseUrl` is `"."` (`places/editor/guest-library-files.ts:117`). The
 language worker's virtual filesystem stores every file at an absolute path
 (`/places/guest/voxelscape.ts`), but a relative `baseUrl` resolves against the worker's cwd and
-produces a *relative* resolved path that never matches, so `import { createShape } from
+produces a _relative_ resolved path that never matches, so `import { createShape } from
 "voxelscape"` fails with "Cannot find module 'voxelscape'" and the guest-API completions
 vanish. Reproduced with the real `@typescript/vfs`: `"."` fails, `"/"` resolves.
 
@@ -97,7 +97,7 @@ A new pane in `places/editor/PlaceEditor.tsx`, modelled on voxelscape
 - Reads files into `Uint8Array` and calls `attachModel`; reports over-limit/duplicate names
   through `onStatus`.
 - Update the existing "carried, not read" note — with the level editor picker and
-  `createNpc`/`createProp` the models *are* read now.
+  `createNpc`/`createProp` the models _are_ read now.
 - The pane should say that attachments travel by zip, not by publish, so the Publish refusal
   is not a surprise.
 

@@ -952,7 +952,10 @@ export default function App() {
    * zip is the only way it travels.
    */
   const attachLevelFromEditor = (): void => {
-    const refused = placeEditor.writeLevel(LEVEL_FILE, levelEditor.exportJson());
+    const refused = placeEditor.writeLevel(
+      LEVEL_FILE,
+      levelEditor.exportJson(),
+    );
     terminal.print(
       refused ??
         `attached ${LEVEL_FILE} to ${placeEditor.project().manifest.name} — save the place as a zip to keep it`,

@@ -128,9 +128,9 @@ describe("the models pane", () => {
 
     toggle(container).click();
     flush();
-    expect(container.querySelector("#place-tabpanel-models")!.textContent).toContain(
-      "fridge.sdfmod",
-    );
+    expect(
+      container.querySelector("#place-tabpanel-models")!.textContent,
+    ).toContain("fridge.sdfmod");
 
     container.querySelector<HTMLButtonElement>(".place-model-remove")!.click();
     flush();
@@ -346,8 +346,9 @@ describe("the manifest fields and the file tabs", () => {
   it("sets, holds a half-typed, and clears the spawn from its field", () => {
     const editor = editorOver();
     const { container, dispose } = mount(editor);
-    const spawn =
-      container.querySelector<HTMLInputElement>('input[placeholder="x, y, z"]')!;
+    const spawn = container.querySelector<HTMLInputElement>(
+      'input[placeholder="x, y, z"]',
+    )!;
     const type = (text: string): void => {
       spawn.value = text;
       spawn.dispatchEvent(new Event("input", { bubbles: true }));

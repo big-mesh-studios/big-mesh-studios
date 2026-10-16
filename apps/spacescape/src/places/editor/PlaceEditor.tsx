@@ -282,7 +282,9 @@ export const PlaceEditor: Component<PlaceEditorProps> = (props) => {
             <input
               type="text"
               value={props.state.project().manifest.name}
-              onInput={(event) => props.state.setName(event.currentTarget.value)}
+              onInput={(event) =>
+                props.state.setName(event.currentTarget.value)
+              }
             />
           </label>
           <label class="place-field">
@@ -529,9 +531,10 @@ export const PlaceEditor: Component<PlaceEditorProps> = (props) => {
             difference between a limitation and a mystery.
           */}
           <p class="place-model-note">
-            A model is a <code>.sdfmod</code> from sdf-modeller, placed by a script or a level
-            using the name it is attached under. Saving writes it into the place's zip; publishing
-            refuses a place that carries one.
+            A model is a <code>.sdfmod</code> from sdf-modeller, placed by a
+            script or a level using the name it is attached under. Saving writes
+            it into the place's zip; publishing refuses a place that carries
+            one.
           </p>
         </div>
       </Activity>
@@ -619,13 +622,13 @@ export const PlaceEditor: Component<PlaceEditorProps> = (props) => {
             the same reason a model does.
           */}
           <p class="place-level-note">
-            A level is the plan the level editor draws. The place applies it to the world before
-            the script runs, and a script can read it back by name with <code>level()</code>.
-            Saving writes it into the place's zip; publishing refuses a place that carries one.
+            A level is the plan the level editor draws. The place applies it to
+            the world before the script runs, and a script can read it back by
+            name with <code>level()</code>. Saving writes it into the place's
+            zip; publishing refuses a place that carries one.
           </p>
         </div>
       </Activity>
-
     </div>
   );
 };
