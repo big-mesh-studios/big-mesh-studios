@@ -115,6 +115,14 @@ export const LevelEditorOverlay = (props: {
   canvas: HTMLCanvasElement;
   models: readonly string[];
   canAttach: boolean;
+  /**
+   * The place level "Add to place" would write over, when there is one.
+   *
+   * **Absent means the button adds a new level**, which is what the fixed name is for. A
+   * name here is the level this editor was opened from, still carried by the place, so the
+   * button says "Update" rather than adding a second file.
+   */
+  attachName?: string;
   onAttach: () => void;
   onClose: () => void;
   /** The reference image, so the Reference panel can edit it. See `app.tsx`. */
@@ -191,6 +199,7 @@ export const LevelEditorOverlay = (props: {
         <LevelIoPanel
           editor={props.editor}
           canAttach={props.canAttach}
+          attachName={props.attachName}
           onAttach={props.onAttach}
         />
       </div>

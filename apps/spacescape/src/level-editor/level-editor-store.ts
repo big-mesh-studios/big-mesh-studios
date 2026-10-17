@@ -198,6 +198,16 @@ export function createLevelEditor(
   const [shapeKind, setShapeKind] = createSignal<ShapeKind>("Box");
   const [combine, setCombine] = createSignal<Combine>("Add");
   const [notice, setNotice] = createSignal<string | undefined>(undefined);
+  /**
+   * The name of the place's level this editor was opened from, if it was.
+   *
+   * **The level editor does not own a place**, so this is only a name it hands back — the
+   * app decides whether that name still exists before writing to it. Cleared by an import
+   * from a file, because that level did not come from the place.
+   */
+  const [sourceName, setSourceName] = createSignal<string | undefined>(
+    undefined,
+  );
 
   const narrow = createMediaQuery("(max-width: 720px)");
   const coarsePointer = createMediaQuery("(any-pointer: coarse)");
@@ -362,6 +372,7 @@ export function createLevelEditor(
     mobile,
     notice,
     setNotice,
+    sourceName,
 
     /** The editor's undo state, for a toolbar. */
     hasUndo: undoRedo.hasUndo,
@@ -624,8 +635,11 @@ export function createLevelEditor(
      * **A bad file leaves the level alone and says why.** Returning `false` rather than
      * throwing keeps a half-read file from becoming half a world, and the notice line is
      * where the refusal is written.
+     *
+     * `source` names the place level this text came from, when it came from one. It is what
+     * lets "Add to place" write back over that level rather than adding a second one.
      */
-    importJson(text: string): boolean {
+    importJson(text: string, source?: string): boolean {
       const parsed = tryCatch(() => JSON.parse(text) as unknown)();
       if (!parsed.ok) {
         setNotice(`that is not JSON: ${parsed.error}`);
@@ -656,6 +670,7 @@ export function createLevelEditor(
         () => setSelectedIndex(undefined),
       );
       reference?.set(decoded.imagePlane);
+      setSourceName(source);
       setNotice(
         `loaded ${read.plan.items.length} item${read.plan.items.length === 1 ? "" : "s"}`,
       );
@@ -667,6 +682,7 @@ export function createLevelEditor(
       document.write(host.level());
       undoRedo.clear();
       setSelectedIndex(undefined);
+      setSourceName(undefined);
       // A reference belongs to the document that was open; reseeding from the world's own level
       // (which carries none) drops it, so a stale picture is not left over a fresh level.
       reference?.set(undefined);

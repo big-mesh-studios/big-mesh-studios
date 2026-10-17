@@ -947,6 +947,24 @@ export default function App() {
   );
 
   /**
+   * The place level "Add to place" writes over, when there is one.
+   *
+   * **The level editor's source when that level still exists**, so opening `hub.json` and
+   * pressing the button updates `hub.json` rather than adding `level.json` beside it. An
+   * import from a file has no source, and an empty place has no level to update, so both fall
+   * back to the editor's one fixed name.
+   *
+   * **Checked against the project on every read**, because a place can be opened, replaced or
+   * had its level removed while a level is open in the editor.
+   */
+  const levelAttachName = createMemo<string | undefined>(() => {
+    const levels = placeEditor.project().levels;
+    const source = levelEditor.sourceName();
+    if (source !== undefined && levels[source] !== undefined) return source;
+    return Object.hasOwn(levels, LEVEL_FILE) ? LEVEL_FILE : undefined;
+  });
+
+  /**
    * Writes the level standing in the level editor into the place being edited.
    *
    * **One function for two doors** — the level editor's own "Add to place" button and the place
@@ -955,18 +973,21 @@ export default function App() {
    * editor put it there); this makes it something the place *carries*, which is the difference
    * between it surviving a reload and being lost with the scene.
    *
+   * **Always under the name it came from, or the editor's own name when it came from
+   * nowhere.** Writing every level to `LEVEL_FILE` made a level opened from a place and saved
+   * back into a second level, which is the one thing "Add to place" must not do.
+   *
    * **A refusal is printed rather than swallowed**, and publishing is not offered as a way to
    * keep it: a place carrying a level or model cannot be published (`makePlaceRecord`), so the
    * zip is the only way it travels.
    */
   const attachLevelFromEditor = (): void => {
-    const refused = placeEditor.writeLevel(
-      LEVEL_FILE,
-      levelEditor.exportJson(),
-    );
+    const name = levelAttachName() ?? LEVEL_FILE;
+    const updating = placeEditor.project().levels[name] !== undefined;
+    const refused = placeEditor.writeLevel(name, levelEditor.exportJson());
     terminal.print(
       refused ??
-        `attached ${LEVEL_FILE} to ${placeEditor.project().manifest.name} — save the place as a zip to keep it`,
+        `${updating ? "updated" : "attached"} ${name} in ${placeEditor.project().manifest.name} — save the place as a zip to keep it`,
     );
   };
 
@@ -979,7 +1000,7 @@ export default function App() {
    * editor over the level that would not read.
    */
   const openLevelInEditor = (name: string, text: string): void => {
-    if (!levelEditor.importJson(text)) {
+    if (!levelEditor.importJson(text, name)) {
       terminal.print(`${name}: ${levelEditor.notice() ?? "could not be read"}`);
       return;
     }
@@ -4293,6 +4314,7 @@ export default function App() {
              * button next to a question nobody asked is worse than no button.
              */
             canAttach={placeOpen()}
+            attachName={levelAttachName()}
             onAttach={attachLevelFromEditor}
             onClose={() => setLevelEditorOpen(false)}
             imagePlane={imagePlane}

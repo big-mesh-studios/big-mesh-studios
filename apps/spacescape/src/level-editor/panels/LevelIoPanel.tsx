@@ -55,6 +55,13 @@ export const LevelIoPanel = (props: {
   /** Puts the level into the place's project, once a place can carry one. */
   onAttach?: () => void;
   canAttach: boolean;
+  /**
+   * The place level this one came from, when it came from the place.
+   *
+   * **A name rather than a boolean**, because the button says which file it will write over:
+   * "Update hub.json" is the whole reassurance that pressing it will not add a second level.
+   */
+  attachName?: string;
 }) => {
   const [showJson, setShowJson] = createSignal(false);
   /**
@@ -106,8 +113,16 @@ export const LevelIoPanel = (props: {
         />
         <Show when={props.canAttach}>
           <Button
-            label="Add to place"
-            title="Keep the level in the place's project"
+            label={
+              props.attachName === undefined
+                ? "Add to place"
+                : `Update ${props.attachName}`
+            }
+            title={
+              props.attachName === undefined
+                ? "Keep the level in the place's project"
+                : `Write this level back to ${props.attachName} in the place's project`
+            }
             onClick={() => props.onAttach?.()}
           />
         </Show>

@@ -822,6 +822,30 @@ describe("a level coming in from a file", () => {
     expect(editor.items()).toHaveLength(0);
   });
 
+  it("remembers the place level it came from, and forgets it on a file import", async () => {
+    const { editor } = editorOver();
+    const level = JSON.stringify({ version: 1, items: [] });
+
+    editor.importJson(level, "hub.json");
+    await settle();
+    expect(editor.sourceName()).toBe("hub.json");
+
+    editor.importJson(level);
+    await settle();
+    expect(editor.sourceName()).toBeUndefined();
+  });
+
+  it("forgets the place level when it starts again from the world", async () => {
+    const { editor } = editorOver();
+    editor.importJson(JSON.stringify({ version: 1, items: [] }), "hub.json");
+    await settle();
+
+    editor.reseed();
+    await settle();
+
+    expect(editor.sourceName()).toBeUndefined();
+  });
+
   it("exports what it read back, so a round trip is a round trip", async () => {
     const { editor } = editorOver();
     const text = JSON.stringify({

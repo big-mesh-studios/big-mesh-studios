@@ -47,11 +47,19 @@ const editorOver = (): LevelEditor =>
 /** The panel mounted, and its container, for a test to press things in. */
 const mount = (
   editor: LevelEditor = editorOver(),
+  attachName?: string,
 ): { container: HTMLElement; editor: LevelEditor; dispose: () => void } => {
   const container = document.createElement("div");
   document.body.append(container);
   const dispose = render(
-    () => <LevelIoPanel editor={editor} canAttach={false} />,
+    () => (
+      <LevelIoPanel
+        editor={editor}
+        canAttach={attachName !== undefined}
+        attachName={attachName}
+        onAttach={() => {}}
+      />
+    ),
     container,
   );
   flush();
@@ -90,6 +98,18 @@ const pressed = (
   };
   return { input, opened: () => opened };
 };
+
+describe("the attach button", () => {
+  it("says update rather than add when the level came from the place", () => {
+    matchMedia();
+    const { container, dispose } = mount(undefined, "hub.json");
+
+    expect(button(container, "Update hub.json").title).toContain("hub.json");
+
+    dispose();
+    container.remove();
+  });
+});
 
 describe("the Import button", () => {
   it("opens the picker when it is pressed", () => {
