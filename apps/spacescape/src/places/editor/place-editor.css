@@ -417,11 +417,13 @@
     grid-column: span 2;
   }
 
-  /* Five buttons, one row. The draft readout is hidden rather than given a row: it is the one
-     thing here nobody acts on, and the autosave it reports is unaffected by the label. */
+  /* Four columns rather than one per button. The file actions now include both a zip and a
+     folder, so the row can hold eight controls without shrinking any below its touch target;
+     the draft readout is hidden rather than given a row, because it is the one thing here
+     nobody acts on and the autosave it reports is unaffected by the label. */
   .place-actions {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     align-content: start;
     gap: 4px;
   }

@@ -95,6 +95,21 @@ export interface PlaceCommands {
    * than in a scrollback.
    */
   toggleDocs(): string;
+  /**
+   * Runs the folder-picker diagnostic: pick a folder, write and read a probe, or resume the
+   * folder picked before a reload.
+   *
+   * **A diagnostic rather than a save path**, because whether the directory picker works on a
+   * given browser is the question that decides whether a save-to-folder feature can exist at all.
+   * It reports what it saw instead of throwing, like every other command here.
+   */
+  probeFolder(mode: "pick" | "resume"): Promise<string>;
+  /** Saves the editor's place into the remembered folder, or a folder the person chooses. */
+  saveToFolder(): Promise<string>;
+  /** Opens a place from a folder the person chooses. Resolves to the line to print. */
+  openFromFolder(): Promise<string>;
+  /** Chooses the folder future saves go to, without saving anything yet. */
+  chooseFolder(): Promise<string>;
 }
 
 /** How many notices `/place:state` shows. A console is a scrollback, not a log file. */
@@ -150,6 +165,33 @@ export const placeCommands = (
   "/place:open": {
     description: "open a place from a .zip file",
     run: () => places.openFromDisk(),
+  },
+
+  "/folder:probe": {
+    description:
+      "test the folder picker: choose a folder, then write and read a probe file",
+    run: () => places.probeFolder("pick"),
+  },
+
+  "/folder:probe:resume": {
+    description:
+      "re-test the folder chosen before a reload, to check stored permission",
+    run: () => places.probeFolder("resume"),
+  },
+
+  "/folder:save": {
+    description: "save the editor's place into a folder you choose",
+    run: () => places.saveToFolder(),
+  },
+
+  "/folder:open": {
+    description: "open a place from a folder you choose",
+    run: () => places.openFromFolder(),
+  },
+
+  "/folder:choose": {
+    description: "choose the folder future saves go to",
+    run: () => places.chooseFolder(),
   },
 
   "/place:docs": {

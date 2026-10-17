@@ -38,6 +38,8 @@ const mount = (
   onClose?: () => void,
   onOpen?: () => Promise<string>,
   onOpenLevelInEditor?: (name: string, text: string) => void,
+  onSaveToFolder?: () => Promise<string>,
+  onOpenFromFolder?: () => Promise<string>,
 ): {
   container: HTMLElement;
   said: string[];
@@ -54,6 +56,8 @@ const mount = (
         onPublish={async () => "published"}
         onStatus={(line) => said.push(line)}
         onOpen={onOpen}
+        onSaveToFolder={onSaveToFolder}
+        onOpenFromFolder={onOpenFromFolder}
         onAttachLevelFromEditor={onAttachLevelFromEditor}
         onOpenLevelInEditor={onOpenLevelInEditor}
         onClose={onClose}
@@ -528,6 +532,76 @@ describe("opening a place zip", () => {
         (candidate) => candidate.textContent?.trim() === "open",
       ),
     ).toBe(false);
+
+    dispose();
+    editor.dispose();
+    container.remove();
+  });
+});
+
+describe("saving to and opening from a folder", () => {
+  it("saves to the remembered folder and reports the line", async () => {
+    const editor = editorOver();
+    let saved = 0;
+    const { container, said, dispose } = mount(
+      editor,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      async () => {
+        saved += 1;
+        return "saved 4 files to harbour — commit and push";
+      },
+    );
+
+    press(container, "save folder");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(saved).toBe(1);
+    expect(said).toContain("saved 4 files to harbour — commit and push");
+
+    dispose();
+    editor.dispose();
+    container.remove();
+  });
+
+  it("opens from a folder the person chooses", async () => {
+    const editor = editorOver();
+    let opened = 0;
+    const { container, said, dispose } = mount(
+      editor,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      async () => {
+        opened += 1;
+        return "opened harbour from randoms-3d-paint";
+      },
+    );
+
+    press(container, "open folder");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(opened).toBe(1);
+    expect(said).toContain("opened harbour from randoms-3d-paint");
+
+    dispose();
+    editor.dispose();
+    container.remove();
+  });
+
+  it("leaves both buttons out when the caller has no folder action", () => {
+    const editor = editorOver();
+    const { container, dispose } = mount(editor);
+    const labels = [...container.querySelectorAll("button")].map((candidate) =>
+      candidate.textContent?.trim(),
+    );
+
+    expect(labels).not.toContain("save folder");
+    expect(labels).not.toContain("open folder");
 
     dispose();
     editor.dispose();

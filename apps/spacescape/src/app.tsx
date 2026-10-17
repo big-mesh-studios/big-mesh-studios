@@ -204,6 +204,19 @@ import {
 } from "./places/editor/create-place-editor";
 import type { PlaceEditorProps } from "./places/editor/PlaceEditor";
 import { readDraft } from "./places/editor/drafts";
+import { runFolderProbe } from "./places/folder-probe";
+import {
+  cachedFolder,
+  ensureFolderPermission,
+  folderLooksLikeGit,
+  forgetFolder,
+  hasFolderPicker,
+  loadPlaceFromFolder,
+  pickFolder,
+  rememberFolder,
+  restoredFolder,
+  savePlaceToFolder,
+} from "./places/folder";
 import { readSetting, writeSetting } from "./persistence/settings";
 import { projectFromZip, type PlaceProject } from "./places/project";
 import type { PublishedPlace } from "./places/place-record";
@@ -744,6 +757,15 @@ export default function App() {
    * root. Undefined only before the world exists, and the editor cannot be opened before then.
    */
   let openPlaceOnDisk: (() => Promise<string>) | undefined;
+  /**
+   * How the editor's folder actions reach the game branch.
+   *
+   * **The same holders as `openPlaceOnDisk`**, because the picker and the project live there and
+   * the header is rendered out here. They stay undefined in a browser with no directory picker,
+   * which is also what makes the buttons absent rather than dead.
+   */
+  let saveEditedToFolder: (() => Promise<string>) | undefined;
+  let openEditedFromFolder: (() => Promise<string>) | undefined;
   const runEditedPlace = (project: PlaceProject): Promise<string> =>
     runPlace?.(project) ??
     Promise.resolve("the world is still loading — try again shortly");
@@ -1357,6 +1379,11 @@ export default function App() {
   void readDraft().then((draft) => {
     if (draft !== null) placeEditor.adopt(draft);
   });
+
+  // **Warmed before the first click, so a save can decide between using the remembered folder
+  // and opening the picker synchronously.** The read is an IndexedDB round trip; doing it here
+  // rather than inside the click is what keeps the picker inside the click's user activation.
+  void restoredFolder();
 
   // A memo rather than a `<Show>` with a narrowed child, because `<Show>` calls its children
   // function with tracking switched off. Reading the narrowed accessor *in the return
@@ -2270,6 +2297,34 @@ export default function App() {
         : `${summary}\n— with ${notices.length} problem(s):\n${notices.map((line) => `  ${line}`).join("\n")}`;
     };
 
+    /**
+     * Starts a project the editor, a folder or a published record produced.
+     *
+     * **One wrapper rather than four copies of the same seven fields.** `startPlace` takes the
+     * files and the manifest's world fields separately; every caller that already holds a
+     * `PlaceProject` should hand the same parts over, and Run, a folder open and a published
+     * place were otherwise three places for the attachments or the world to be dropped from.
+     *
+     * **`manifest.scripts` is derived by `isPlaceProject` before any of these callers gets here**;
+     * a manifest edited independently of its files is exactly what that predicate refuses, and
+     * Run is the last gate before the interpreter.
+     */
+    const startProject = (project: PlaceProject): Promise<string> =>
+      startPlace({
+        files: project.scripts,
+        entry: project.manifest.entry,
+        seed: project.manifest.seed,
+        name: project.manifest.name,
+        spawn: project.manifest.spawn,
+        // **The attachments the project holds, or Run is a button that quietly loses them.** A
+        // project carrying a `.sdfmod` or a level is exactly what `writePlaceZip` and the zip
+        // loader already move; `startPlace` reads the models and puts the level in the world
+        // before the script runs.
+        models: project.models,
+        levels: project.levels,
+        world: project.manifest.world,
+      });
+
     // **Published for the overlay's "play again".** The button is rendered from the application
     // root, outside this branch, and reads the holder declared beside `placeHost`. Assigning
     // here closes the loop; without it the holder stays `undefined` and the button no-ops.
@@ -2322,6 +2377,92 @@ export default function App() {
     const places: PlaceCommands = {
       loadDemo,
       openFromDisk,
+      /**
+       * **A direct call rather than a dynamic import.** `showDirectoryPicker` needs the
+       * transient activation from the console's Enter key, and a module load before the call
+       * would spend it. The probe module is a few kilobytes and statically imported for the same
+       * reason.
+       */
+      probeFolder: (mode) => runFolderProbe(mode),
+      saveToFolder: async () => {
+        // **The remembered handle is read synchronously**, so the picker is only opened when
+        // there is no remembered folder — and then it is opened inside the click's activation.
+        let folder = cachedFolder();
+
+        if (folder !== null) {
+          try {
+            await ensureFolderPermission(folder, "readwrite");
+          } catch (error) {
+            const name = folder.name;
+            // **A folder whose permission was revoked is forgotten**, so the next press opens
+            // the picker rather than failing the same way again.
+            await forgetFolder();
+            return `could not use "${name}": ${error instanceof Error ? error.message : String(error)} — press save folder again to choose one`;
+          }
+        } else {
+          try {
+            folder = await pickFolder("readwrite");
+          } catch (error) {
+            return `could not open a folder: ${error instanceof Error ? error.message : String(error)}`;
+          }
+          if (folder === null) return "no folder chosen";
+        }
+
+        try {
+          const saved = await savePlaceToFolder(folder, placeEditor.project());
+          await rememberFolder(folder);
+          const files = `${saved.written} file${saved.written === 1 ? "" : "s"}`;
+          const removed =
+            saved.deleted === 0
+              ? ""
+              : `, removed ${saved.deleted} stale file${saved.deleted === 1 ? "" : "s"}`;
+          const next = (await folderLooksLikeGit(folder))
+            ? "commit and push with your git client"
+            : "this folder is not a git repository — save a zip or run git init";
+          return `saved ${files} to ${folder.name}${removed} — ${next}`;
+        } catch (error) {
+          return `could not save to "${folder.name}": ${error instanceof Error ? error.message : String(error)}`;
+        }
+      },
+      openFromFolder: async () => {
+        let folder;
+        try {
+          folder = await pickFolder("readwrite");
+        } catch (error) {
+          return `could not open a folder: ${error instanceof Error ? error.message : String(error)}`;
+        }
+        if (folder === null) return "no folder chosen";
+
+        let project: PlaceProject;
+        try {
+          project = await loadPlaceFromFolder(folder);
+        } catch (error) {
+          return `could not open "${folder.name}": ${error instanceof Error ? error.message : String(error)}`;
+        }
+
+        // **Opening a folder also chooses it for saving.** A person who opened a place from a
+        // repo is the person most likely to save back into it, and the read/write picker has
+        // already granted what the save needs.
+        await rememberFolder(folder);
+
+        const refused = placeEditor.adopt(project);
+        if (refused !== null) return refused;
+        const report = await startProject(project);
+        return report.startsWith("could not load")
+          ? report
+          : `opened ${project.manifest.name} from ${folder.name}\n${report}`;
+      },
+      chooseFolder: async () => {
+        let folder;
+        try {
+          folder = await pickFolder("readwrite");
+        } catch (error) {
+          return `could not open a folder: ${error instanceof Error ? error.message : String(error)}`;
+        }
+        if (folder === null) return "no folder chosen";
+        await rememberFolder(folder);
+        return `folder set to ${folder.name}`;
+      },
       unload: () => {
         if (host === undefined) return NO_PLACE_LOADED;
         const name = loadedName ?? "place";
@@ -2380,6 +2521,12 @@ export default function App() {
       publish: publishEditedPlace,
     };
 
+    // **Published to the editor's header**, for the same reason `openPlaceOnDisk` is: the
+    // panel is rendered outside this branch, and these are the same functions `/folder:save`
+    // and `/folder:open` call.
+    saveEditedToFolder = places.saveToFolder;
+    openEditedFromFolder = places.openFromFolder;
+
     /**
      * Loads a place already read from a repository, and adopts it into the editor.
      *
@@ -2392,14 +2539,7 @@ export default function App() {
       const project = await placeLibrary.project(place);
       const refused = placeEditor.adopt(project);
       if (refused !== null) return refused;
-      return startPlace({
-        files: project.scripts,
-        entry: project.manifest.entry,
-        seed: project.manifest.seed,
-        name: project.manifest.name,
-        spawn: project.manifest.spawn,
-        world: project.manifest.world,
-      });
+      return startProject(project);
     };
 
     /**
@@ -2417,26 +2557,11 @@ export default function App() {
     /**
      * Hands the editor's Run button the real runner.
      *
-     * **The one place `startPlace` is wrapped as a project**, and it wraps rather than calling
-     * directly so that `manifest.scripts` is derived from the files rather than trusted — a
-     * manifest edited independently of its files is exactly what `isPlaceProject` refuses, and
-     * Run is the last gate before the interpreter.
+     * **The project wrapper is `startProject`**, which is also what a folder and a published
+     * place use. Run is still the last gate before the interpreter because the editor's state
+     * has already kept the manifest and its files in agreement.
      */
-    runPlace = async (project: PlaceProject) =>
-      startPlace({
-        files: project.scripts,
-        entry: project.manifest.entry,
-        seed: project.manifest.seed,
-        name: project.manifest.name,
-        spawn: project.manifest.spawn,
-        // **The attachments the editor holds, or Run is a button that quietly loses them.** A
-        // project carrying a `.sdfmod` or a level is exactly what `writePlaceZip` and the zip
-        // loader already move; Run has to hand the same bytes to `startPlace`, which reads the
-        // models and puts the level in the world before the script runs.
-        models: project.models,
-        levels: project.levels,
-        world: project.manifest.world,
-      });
+    runPlace = async (project: PlaceProject) => startProject(project);
 
     // The console's commands are the game's own methods by another name, so the
     // game is what they are built over. It exists here, and nowhere earlier,
@@ -4399,6 +4524,12 @@ export default function App() {
                     Promise.resolve(
                       "the world is still loading — try again shortly",
                     )
+                  }
+                  onSaveToFolder={
+                    hasFolderPicker() ? saveEditedToFolder : undefined
+                  }
+                  onOpenFromFolder={
+                    hasFolderPicker() ? openEditedFromFolder : undefined
                   }
                   onAttachLevelFromEditor={attachLevelFromEditor}
                   onOpenLevelInEditor={openLevelInEditor}

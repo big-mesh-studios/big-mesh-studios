@@ -28,6 +28,14 @@ interface Recorder extends PlaceCommands {
   published: number;
   /** Whether the reference was asked to open. */
   docs: number;
+  /** Every folder-probe mode asked for, in order. */
+  probes: ("pick" | "resume")[];
+  /** How many times the editor's place was saved to a folder. */
+  folderSaves: number;
+  /** How many times a place was opened from a folder. */
+  folderOpens: number;
+  /** How many times the save folder was chosen. */
+  folderChooses: number;
 }
 
 const table = (
@@ -42,6 +50,10 @@ const table = (
     browsed: 0,
     published: 0,
     docs: 0,
+    probes: [],
+    folderSaves: 0,
+    folderOpens: 0,
+    folderChooses: 0,
     loadDemo: (id) => {
       loaded.push(id);
       return Promise.resolve(`loaded ${id}`);
@@ -73,6 +85,22 @@ const table = (
     toggleDocs: () => {
       recorder.docs++;
       return "reference open";
+    },
+    probeFolder: (mode) => {
+      recorder.probes.push(mode);
+      return Promise.resolve(`probe ${mode}`);
+    },
+    saveToFolder: () => {
+      recorder.folderSaves++;
+      return Promise.resolve("saved to folder");
+    },
+    openFromFolder: () => {
+      recorder.folderOpens++;
+      return Promise.resolve("opened from folder");
+    },
+    chooseFolder: () => {
+      recorder.folderChooses++;
+      return Promise.resolve("folder set");
     },
     ...answers,
   };
@@ -250,6 +278,66 @@ describe("/place:publish", () => {
   });
 });
 
+describe("the folder-picker probe", () => {
+  it("declares every folder command under its own prefix", () => {
+    const names = table()
+      .commander.help()
+      .map((command) => command.name);
+
+    expect(names).toContain("/folder:probe");
+    expect(names).toContain("/folder:probe:resume");
+    expect(names).toContain("/folder:save");
+    expect(names).toContain("/folder:open");
+    expect(names).toContain("/folder:choose");
+  });
+
+  it("picks a folder and reports what the probe saw", async () => {
+    const { commander, recorder } = table();
+
+    await expect(commander.run("/folder:probe")).resolves.toBe("probe pick");
+
+    expect(recorder.probes).toEqual(["pick"]);
+  });
+
+  it("resumes the handle kept before a reload", async () => {
+    const { commander, recorder } = table();
+
+    await expect(commander.run("/folder:probe:resume")).resolves.toBe(
+      "probe resume",
+    );
+
+    expect(recorder.probes).toEqual(["resume"]);
+  });
+
+  it("saves the editor's place into a chosen folder", async () => {
+    const { commander, recorder } = table();
+
+    await expect(commander.run("/folder:save")).resolves.toBe(
+      "saved to folder",
+    );
+
+    expect(recorder.folderSaves).toBe(1);
+  });
+
+  it("opens a place from a chosen folder", async () => {
+    const { commander, recorder } = table();
+
+    await expect(commander.run("/folder:open")).resolves.toBe(
+      "opened from folder",
+    );
+
+    expect(recorder.folderOpens).toBe(1);
+  });
+
+  it("chooses the folder future saves go to", async () => {
+    const { commander, recorder } = table();
+
+    await expect(commander.run("/folder:choose")).resolves.toBe("folder set");
+
+    expect(recorder.folderChooses).toBe(1);
+  });
+});
+
 describe("/place:open", () => {
   it("asks for a file and reports what happened", async () => {
     const { commander, recorder } = table();
@@ -387,14 +475,22 @@ describe("what this table does not know", () => {
       toggleBrowser: () => "catalog",
       publish: () => Promise.resolve("published"),
       toggleDocs: () => "reference",
+      probeFolder: () => Promise.resolve("probed"),
+      saveToFolder: () => Promise.resolve("saved"),
+      openFromFolder: () => Promise.resolve("opened"),
+      chooseFolder: () => Promise.resolve("chosen"),
     };
     expect(Object.keys(answers).sort()).toEqual([
+      "chooseFolder",
       "describe",
       "loadAddress",
       "loadDemo",
       "notices",
       "openFromDisk",
+      "openFromFolder",
+      "probeFolder",
       "publish",
+      "saveToFolder",
       "toggleBrowser",
       "toggleDocs",
       "toggleEditor",

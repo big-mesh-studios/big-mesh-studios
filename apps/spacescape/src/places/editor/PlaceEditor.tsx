@@ -66,6 +66,16 @@ export interface PlaceEditorProps {
    */
   onOpen?(): Promise<string>;
   /**
+   * Saves the place into the remembered folder, choosing one when there is none.
+   *
+   * **Separate from the zip `save`**, because a folder is where a repository lives and a zip is
+   * how a place travels. Optional so a browser without a directory picker gets no button rather
+   * than a dead one.
+   */
+  onSaveToFolder?(): Promise<string>;
+  /** Opens a place from a folder the person chooses. Optional for the same reason. */
+  onOpenFromFolder?(): Promise<string>;
+  /**
    * Attaches the level currently standing in the level editor, if there is one.
    *
    * **A callback rather than a `levelEditor` prop**, because the panel owns no world and the
@@ -286,6 +296,26 @@ export const PlaceEditor: Component<PlaceEditorProps> = (props) => {
     }
   };
 
+  const saveFolder = async (): Promise<void> => {
+    if (props.onSaveToFolder === undefined) return;
+    setBusy(true);
+    try {
+      props.onStatus(await props.onSaveToFolder());
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openFolder = async (): Promise<void> => {
+    if (props.onOpenFromFolder === undefined) return;
+    setBusy(true);
+    try {
+      props.onStatus(await props.onOpenFromFolder());
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const save = (): void => {
     // **A download rather than a file handle**, because the save path has to work in a browser
     // that refuses one — and `writePlaceZip` is the only exporter, which is why it is imported
@@ -398,12 +428,32 @@ export const PlaceEditor: Component<PlaceEditorProps> = (props) => {
               open
             </button>
           </Show>
+          <Show when={props.onOpenFromFolder}>
+            <button
+              type="button"
+              title="open a place from a folder, and choose it for saving"
+              disabled={busy()}
+              onClick={() => void openFolder()}
+            >
+              open folder
+            </button>
+          </Show>
           <button type="button" onClick={() => props.state.newProject()}>
             new
           </button>
           <button type="button" onClick={save}>
             save
           </button>
+          <Show when={props.onSaveToFolder}>
+            <button
+              type="button"
+              title="save the place into its folder, or choose one"
+              disabled={busy()}
+              onClick={() => void saveFolder()}
+            >
+              save folder
+            </button>
+          </Show>
           {/* **Publish and not "share"**, because the address it hands back is a real one a
               person can paste to somebody — and the line the console prints carries it. */}
           <button

@@ -108,6 +108,11 @@
   /* long words wrap where they must rather than everywhere they can, so a
      description reads as prose and only an unbroken token is cut */
   overflow-wrap: anywhere;
+  /* The scrollback is text somebody may need to send on — a probe report, an
+     error, an address. The panel's controls opt out of selection; the output
+     opts back in. */
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .help {
