@@ -17,7 +17,7 @@
  * offline gets a working text editor, which is the degraded case rather than a broken one.
  */
 
-import { For, createMemo, type Component } from "solid-js";
+import { For, Show, createMemo, type Component } from "solid-js";
 import { Activity } from "@big-mesh-studios/ui/activity";
 import {
   CodeMirror,
@@ -35,6 +35,16 @@ export interface PlaceEditorPanesProps {
   readonly files: Readonly<Record<string, string>>;
   /** Which file is in front of the person, as a key into `files`. */
   readonly active: string;
+  /**
+   * Changes when the whole project is replaced from outside the editor.
+   *
+   * **A keyed `Show` around the panes, not a source prop on each `CodeMirror`.** CodeMirror is
+   * deliberately told to ignore changes to a file's source while it is open — that is the echo of
+   * the person's own typing coming back — so replacing the document needs a different signal. A
+   * keyed `Show` disposes the old editors and builds new ones from the new project, which is
+   * exactly what closing and reopening the panel used to do.
+   */
+  readonly revision: number;
   onActive(name: string): void;
   onInput(name: string, source: string): void;
 }
@@ -66,19 +76,31 @@ export const PlaceEditorPanes: Component<PlaceEditorPanesProps> = (props) => {
 
   return (
     <LSPProvider files={files()} tsconfig={EDITOR_COMPILER_OPTIONS}>
-      <For each={Object.keys(props.files)}>
-        {(name) => (
-          <Activity when={props.active === name}>
-            <div class="cm-pane" role="tabpanel" id={`place-tabpanel-${name}`}>
-              <CodeMirror
-                path={name}
-                theme={darkTheme}
-                onInput={({ source }) => props.onInput(name, source)}
-              />
-            </div>
-          </Activity>
+      {/* **Keyed by `revision`**, so an adopted project replaces every open document rather
+          than leaving the active tab showing the previous place's source. A keystroke does not
+          change the revision, so the echo of a person's typing still does not rebuild an
+          editor under their caret. */}
+      <Show when={props.revision} keyed>
+        {(_revision) => (
+          <For each={Object.keys(props.files)}>
+            {(name) => (
+              <Activity when={props.active === name}>
+                <div
+                  class="cm-pane"
+                  role="tabpanel"
+                  id={`place-tabpanel-${name}`}
+                >
+                  <CodeMirror
+                    path={name}
+                    theme={darkTheme}
+                    onInput={({ source }) => props.onInput(name, source)}
+                  />
+                </div>
+              </Activity>
+            )}
+          </For>
         )}
-      </For>
+      </Show>
     </LSPProvider>
   );
 };

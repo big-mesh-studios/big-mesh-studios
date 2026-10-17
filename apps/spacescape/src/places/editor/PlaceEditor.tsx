@@ -557,6 +557,7 @@ export const PlaceEditor: Component<PlaceEditorProps> = (props) => {
         <PlaceEditorPanes
           files={props.state.project().scripts}
           active={props.state.active()}
+          revision={props.state.revision()}
           onActive={(name) => props.state.setActive(name)}
           onInput={(name, source) => props.state.write(name, source)}
         />

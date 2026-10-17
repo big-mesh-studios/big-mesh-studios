@@ -56,6 +56,14 @@ export interface PlaceEditorState {
   readonly active: Accessor<string>;
   /** Whether a draft has been written since the last change. */
   readonly saved: Accessor<boolean>;
+  /**
+   * A number that changes when the whole project is replaced from outside the editor.
+   *
+   * **Not a document version, and deliberately not bumped by `write`.** The code panes only
+   * rebuild when this changes, which is what lets an `adopt` replace the open CodeMirror
+   * document without a keystroke's echo rebuilding the editor and fighting the caret.
+   */
+  readonly revision: Accessor<number>;
   /** Whether there is anywhere to keep a draft. False means the header says so. */
   readonly canSave: Accessor<boolean>;
 
@@ -143,6 +151,11 @@ export const createPlaceEditor = (
   );
   const [active, setActive] = createSignal(STARTER_SCRIPT_FILE);
   const [saved, setSaved] = createSignal(false);
+  /**
+   * Starts at one, because the value is handed to a keyed `Show`: zero is falsy and would render
+   * no panes at all.
+   */
+  const [revision, setRevision] = createSignal(1);
 
   /**
    * Every change, in one place.
@@ -222,6 +235,7 @@ export const createPlaceEditor = (
     project,
     active,
     saved,
+    revision,
     canSave: draftStorageAvailable,
 
     setActive: (name) => setActive(name),
@@ -488,6 +502,7 @@ export const createPlaceEditor = (
       setProject(emptyPlaceProject(next));
       setActive(STARTER_SCRIPT_FILE);
       setSaved(false);
+      setRevision((value) => value + 1);
     },
 
     adopt: (candidate) => {
@@ -501,6 +516,7 @@ export const createPlaceEditor = (
       setProject(candidate);
       setActive(candidate.manifest.entry);
       setSaved(false);
+      setRevision((value) => value + 1);
       return null;
     },
 

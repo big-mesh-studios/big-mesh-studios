@@ -488,6 +488,42 @@ describe("adopting a place from somewhere else", () => {
   });
 });
 
+describe("the revision that replaces open code panes", () => {
+  it("changes when a project is adopted from outside", () => {
+    // **The one signal the code panes use to replace their documents.** A folder, zip or
+    // published place arrives through `adopt`, and the active tab can keep the same file name
+    // while its source changes — which CodeMirror deliberately treats as an echo of typing.
+    const editor = createPlaceEditor();
+    const before = editor.revision();
+
+    expect(editor.adopt(twoFiles().project())).toBeNull();
+    flush();
+
+    expect(editor.revision()).toBeGreaterThan(before);
+  });
+
+  it("changes when the editor starts over", () => {
+    const editor = twoFiles();
+    const before = editor.revision();
+
+    editor.newProject(42);
+    flush();
+
+    expect(editor.revision()).toBeGreaterThan(before);
+  });
+
+  it("does not change for a keystroke or a refused adoption", () => {
+    const editor = twoFiles();
+    const before = editor.revision();
+
+    editor.write(STARTER_SCRIPT_FILE, "// a keystroke");
+    expect(editor.adopt({ manifest: {}, scripts: {} })).toMatch(/not a place/);
+    flush();
+
+    expect(editor.revision()).toBe(before);
+  });
+});
+
 describe("no sequence of edits can leave a project incoherent", () => {
   it("stays coherent through an interleaving of every edit there is", () => {
     // **The claim, as a property rather than as one example.** Each edit alone is covered above;
