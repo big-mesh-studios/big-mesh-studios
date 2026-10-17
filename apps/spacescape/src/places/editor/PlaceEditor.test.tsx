@@ -37,6 +37,7 @@ const mount = (
   onAttachLevelFromEditor?: () => void,
   onClose?: () => void,
   onOpen?: () => Promise<string>,
+  onOpenLevelInEditor?: (name: string, text: string) => void,
 ): {
   container: HTMLElement;
   said: string[];
@@ -54,6 +55,7 @@ const mount = (
         onStatus={(line) => said.push(line)}
         onOpen={onOpen}
         onAttachLevelFromEditor={onAttachLevelFromEditor}
+        onOpenLevelInEditor={onOpenLevelInEditor}
         onClose={onClose}
       />
     ),
@@ -314,6 +316,49 @@ describe("the levels pane", () => {
 
     expect(said.join(" ")).toMatch(/is not a level/);
     expect(editor.project().manifest.levels).toBeUndefined();
+
+    dispose();
+    editor.dispose();
+    container.remove();
+  });
+
+  it("loads a carried level into the level editor through the callback", () => {
+    const editor = editorOver();
+    expect(editor.writeLevel("level.json", A_LEVEL)).toBeNull();
+    flush();
+    const opened: [string, string][] = [];
+    const { container, dispose } = mount(
+      editor,
+      undefined,
+      undefined,
+      undefined,
+      (name, text) => opened.push([name, text]),
+    );
+    levelToggle(container).click();
+    flush();
+
+    panelButton(container, "#place-tabpanel-levels", "edit").click();
+    flush();
+
+    expect(opened).toEqual([["level.json", A_LEVEL]]);
+
+    dispose();
+    editor.dispose();
+    container.remove();
+  });
+
+  it("leaves the edit button out when there is no level editor", () => {
+    const editor = editorOver();
+    expect(editor.writeLevel("level.json", A_LEVEL)).toBeNull();
+    flush();
+    const { container, dispose } = mount(editor);
+    levelToggle(container).click();
+    flush();
+
+    const buttons = [
+      ...container.querySelectorAll("#place-tabpanel-levels button"),
+    ].map((candidate) => candidate.textContent?.trim());
+    expect(buttons).not.toContain("edit");
 
     dispose();
     editor.dispose();

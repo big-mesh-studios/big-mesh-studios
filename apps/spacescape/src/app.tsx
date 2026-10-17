@@ -970,6 +970,23 @@ export default function App() {
     );
   };
 
+  /**
+   * Opens a level the place carries in the level editor.
+   *
+   * **The other direction from `attachLevelFromEditor`.** The level is already in the world, so
+   * this is what lets somebody take a level a script uses and change it without leaving the
+   * place editor and finding the file again. A refusal is printed rather than opening an empty
+   * editor over the level that would not read.
+   */
+  const openLevelInEditor = (name: string, text: string): void => {
+    if (!levelEditor.importJson(text)) {
+      terminal.print(`${name}: ${levelEditor.notice() ?? "could not be read"}`);
+      return;
+    }
+    setEditorOpen(false);
+    setLevelEditorOpen(true);
+  };
+
   /** Toggles the touch cluster between placing and selecting. */
   const toggleSelect = (): void => {
     if (levelEditor.tool() === "select") {
@@ -4362,6 +4379,7 @@ export default function App() {
                     )
                   }
                   onAttachLevelFromEditor={attachLevelFromEditor}
+                  onOpenLevelInEditor={openLevelInEditor}
                   onClose={() => setEditorOpen(false)}
                 />
               );

@@ -75,6 +75,13 @@ export interface PlaceEditorProps {
    */
   onAttachLevelFromEditor?(): void;
   /**
+   * Loads one of the place's carried levels into the level editor.
+   *
+   * **The other direction from `onAttachLevelFromEditor`**, and optional for the same reason:
+   * a caller with no level editor gets no button rather than a dead one.
+   */
+  onOpenLevelInEditor?(name: string, text: string): void;
+  /**
    * Closes the editor.
    *
    * **A button, because on a phone there is nothing else.** The panel takes the whole viewport
@@ -645,6 +652,21 @@ export const PlaceEditor: Component<PlaceEditorProps> = (props) => {
                     <span class="place-level-counts">
                       {describeLevel(props.state.project().levels[name] ?? "")}
                     </span>
+                    <Show when={props.onOpenLevelInEditor}>
+                      <button
+                        type="button"
+                        class="place-level-edit"
+                        aria-label={`edit ${name} in the level editor`}
+                        onClick={() =>
+                          props.onOpenLevelInEditor?.(
+                            name,
+                            props.state.project().levels[name] ?? "",
+                          )
+                        }
+                      >
+                        edit
+                      </button>
+                    </Show>
                     <button
                       type="button"
                       class="place-level-remove"

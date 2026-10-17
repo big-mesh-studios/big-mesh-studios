@@ -238,6 +238,7 @@
 .place-model-add:focus-visible,
 .place-model-remove:focus-visible,
 .place-level-add:focus-visible,
+.place-level-edit:focus-visible,
 .place-level-remove:focus-visible,
 .place-actions > button:focus-visible,
 .place-field > input:focus-visible,
@@ -347,6 +348,7 @@
 }
 
 .place-model-remove,
+.place-level-edit,
 .place-level-remove {
   padding: 3px 8px;
   background: rgba(255, 255, 255, 0.12);
@@ -355,6 +357,12 @@
   color: #d6d6d6;
   font: 11px monospace;
   cursor: pointer;
+}
+
+.place-level-edit:hover {
+  background: rgba(111, 179, 255, 0.2);
+  border-color: #6fb3ff;
+  color: #6fb3ff;
 }
 
 .place-model-remove:hover,
