@@ -48,6 +48,10 @@ import {
 } from "../components/controls";
 import type { LevelEditor } from "../level-editor-store";
 import { MAX_LEVEL_ITEMS } from "../../places/level/level-plan";
+import {
+  MAX_ENTITY_MESH_RESOLUTION,
+  MIN_ENTITY_MESH_RESOLUTION,
+} from "../../places/effects";
 import type { PrimitiveParameter, ShapeType } from "@big-mesh-studios/sdf";
 import type {
   Combine,
@@ -95,6 +99,16 @@ const labelFor = (kind: ShapeType, parameter: PrimitiveParameter): string =>
 
 /** The furthest anything may be from the origin, which is the field's own ceiling. */
 const MAX_POSITION = 100_000;
+
+/**
+ * What ticking "custom mesh" starts the voxel at.
+ *
+ * **A fifth of a world unit, close to what `sdf-modeller` offers and fine enough for most
+ * small props.** The model's own default (derived from its size) is used when this is off;
+ * this is only the first value a person lands on when they turn the override on, and stepping
+ * from there is the point of the control.
+ */
+const DEFAULT_CUSTOM_MESH_RESOLUTION = 0.2;
 
 /** What the model picker offers: whatever the place has attached. */
 export const ModelChoices = (props: { names: readonly string[] }) =>
@@ -485,6 +499,44 @@ const FigureFields = (props: {
           step={0.05}
           onChange={(scale) => props.change({ ...item(), scale })}
         />
+      </Bar>
+
+      <Bar label="mesh">
+        {/*
+          **An override, not a size.** The model is meshed once at its own resolution,
+          derived from its dimensions (`FigureModel.resolution`); a model made in
+          `sdf-modeller` is small in this world's units, and this is how one prop gets a
+          finer grid without re-exporting the file. Leaving it off is the model's choice,
+          which is the right default and the only one that knows how big the model is.
+        */}
+        <Checkbox
+          label="Custom mesh resolution"
+          value={item().meshResolution !== undefined}
+          onChange={(custom) =>
+            props.change(
+              custom
+                ? {
+                    ...item(),
+                    meshResolution:
+                      item().meshResolution ?? DEFAULT_CUSTOM_MESH_RESOLUTION,
+                  }
+                : { ...item(), meshResolution: undefined },
+            )
+          }
+        />
+        <Show when={item().meshResolution !== undefined}>
+          <NumberField
+            label="Voxel"
+            value={item().meshResolution ?? DEFAULT_CUSTOM_MESH_RESOLUTION}
+            min={MIN_ENTITY_MESH_RESOLUTION}
+            max={MAX_ENTITY_MESH_RESOLUTION}
+            step={0.01}
+            bigStep={0.1}
+            onChange={(meshResolution) =>
+              props.change({ ...item(), meshResolution })
+            }
+          />
+        </Show>
       </Bar>
 
       <Bar label="behaviour">

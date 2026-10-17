@@ -95,6 +95,14 @@ export interface FigureSpec {
   readonly at: Vec3;
   readonly yaw?: number;
   readonly scale?: number;
+  /**
+   * The voxel size to mesh the model at, when this instance wants a different one.
+   *
+   * **Not a size.** The model is meshed once per requested resolution and every instance at
+   * that resolution shares the geometry, so this is a quality control rather than a per-figure
+   * mesh. Absent means the model's own default (`FigureModel.resolution`).
+   */
+  readonly meshResolution?: number;
   /** Solid by default, because the common case is furniture and a coin is the exception. */
   readonly solid?: boolean;
   readonly name?: string;
@@ -166,7 +174,7 @@ export class FigureSet {
     // **`draw` and not the geometry**, so that every placement of a model shares one set of
     // buffers. See ADR 0047 — a readable `BufferGeometry` is a `BufferGeometry` somebody will
     // clone, and a clone copies every buffer and undoes the entire mechanism quietly.
-    const mesh = spec.model.draw(this.material);
+    const mesh = spec.model.draw(this.material, spec.meshResolution);
     if (mesh !== undefined) {
       this.applyTransform(mesh, transform);
       this.group.add(mesh);

@@ -10,7 +10,7 @@
  * its *name is its path in the place's manifest*, and that is the only handle there is. ADR 0033
  * is about a project file not being able to say what it is; this is where that bites.
  *
- * ## Meshing is once per model, not once per instance
+ * ## Meshing is once per model and resolution, not once per instance
  *
  * **The whole reason this is a library rather than a call.** A place that stands thirty-nine
  * props and two NPCs has forty-one models and possibly several hundred instances, and a fridge
@@ -18,6 +18,11 @@
  * GPU buffers are therefore all built once, here, and every instance is a transform on the same
  * geometry. That is also what makes a figure movable: an NPC's position is a matrix, so walking
  * one costs a write rather than an operation-list rewrite and a re-mesh. ADR 0047.
+ *
+ * **A prop may ask for a different mesh resolution from the model's own** (`draw`'s second
+ * argument, set from `LevelFigure.meshResolution`). That is one more geometry per *resolution
+ * asked for*, cached here and shared by every instance at it — not a mesh per instance, which is
+ * the property the paragraph above is about.
  *
  * ## Two different shapes, for two different questions
  *
@@ -40,6 +45,7 @@
  */
 
 import type { Material } from "@random-mesh/rmsl/scene";
+import type { BufferGeometry } from "@random-mesh/rmsl/scene";
 import { Mesh } from "@random-mesh/rmsl/scene";
 
 import type { Bounds, Vec3 } from "@big-mesh-studios/core";
@@ -91,6 +97,51 @@ export const FIGURE_MESH_BUDGET: MeshBudget = budgetFor(FIGURE_VOXEL_SIZE, {
 });
 
 /**
+ * The fewest samples a model's own longest axis should get.
+ *
+ * **A floor on resolution rather than a fixed voxel size, because a model made in
+ * `sdf-modeller` is a couple of units across while a demo prop here is a dozen.** The
+ * budget's `voxelSize` is a *world* unit, and a model smaller than a handful of them used
+ * to be meshed with fewer samples across its real geometry than the thin-model guard in
+ * `samplesFor` assumes — the padding the region adds dominates the bounds it measures. A
+ * chair 2.8 units tall at a one-unit voxel came back with **zero triangles**: the file read
+ * perfectly, the prop was added, and it was an invisible collision box.
+ *
+ * **Sixteen, because that is where a small prop stops being a silhouette and starts having
+ * its parts**, measured on the chair above: eight samples gave the seat 344 triangles with
+ * the thin legs dropped, sixteen gave 2278 with them, and beyond that the count climbs
+ * without changing what a person standing next to it sees.
+ *
+ * **It only ever refines.** The effective voxel is `min(voxelSize, longest / this)`, so a
+ * model already at or above the base voxel (a car, a fridge, a building) is meshed exactly
+ * as before, and only things smaller than the figure budget resolve finer.
+ */
+export const FIGURE_MIN_SAMPLES_LONGEST = 16;
+
+/**
+ * The voxel size a model should be meshed at when no instance asks for one.
+ *
+ * **Derived from the model's *tight* bounds, not the padded box.** `readModelFile` pads its
+ * collision box by `voxelSize · 4` for picking, and that padding is a world-unit constant; at
+ * a coarse voxel it can be most of the box. Measuring the model's own extent is what keeps
+ * the ratio meaning "samples across the thing" rather than "samples across the margin".
+ */
+const defaultVoxelSize = (
+  operations: readonly Operation[],
+  budget: MeshBudget,
+): number => {
+  const tight = boundsOf(operations, 0);
+  if (tight === undefined) return budget.voxelSize;
+  const longest = Math.max(
+    tight.max.x - tight.min.x,
+    tight.max.y - tight.min.y,
+    tight.max.z - tight.min.z,
+  );
+  if (!(longest > 0)) return budget.voxelSize;
+  return Math.min(budget.voxelSize, longest / FIGURE_MIN_SAMPLES_LONGEST);
+};
+
+/**
  * One model, ready to be placed any number of times.
  *
  * **Everything here is in the model's own frame**, origin at the model's origin and no rotation
@@ -118,10 +169,25 @@ export interface FigureModel {
    * conservative direction and matches what the player sees standing in front of it.
    */
   readonly half: Vec3;
-  /** How many triangles it is, for a readout and for the budget test. */
+  /** How many triangles it is at its default resolution, for a readout and for the budget test. */
   readonly triangles: number;
   /**
+   * The voxel size the model is meshed at when an instance does not name one.
+   *
+   * **Derived from the model's own size** — see `FIGURE_MIN_SAMPLES_LONGEST` — so a prop made
+   * in `sdf-modeller` is not invisible for being a couple of units across. A level figure may
+   * override it per instance (`LevelFigure.meshResolution`), which is what a person reaches
+   * for when the default is too coarse or too expensive for one prop.
+   */
+  readonly resolution: number;
+  /**
    * A new `Mesh` over this model's own geometry, or `undefined` when the model has no surface.
+   *
+   * **`resolution` asks for a geometry meshed at that voxel size instead of the model's
+   * default**, cached per model so every instance at the same size shares one geometry just as
+   * every instance at the default does. A requested size that meshes to nothing falls back to
+   * the default rather than placing an invisible figure; the default is known to have triangles
+   * because `readModelFile` refuses a model without them.
    *
    * **This is the only way to get a `Mesh` out of a model, and that is the point.** Every
    * instance shares one `BufferGeometry` — the buffers, the typed arrays and the vertex count
@@ -137,7 +203,7 @@ export interface FigureModel {
    * The geometry is shared and the transforms are not, and this function is where that is said
    * rather than repeated at every call site that might get it wrong.
    */
-  draw(material: Material): Mesh | undefined;
+  draw(material: Material, resolution?: number): Mesh | undefined;
 
   /**
    * Frees the model's GPU buffers.
@@ -224,13 +290,53 @@ export const readModelFile = async (
     throw new Error("the model has no surface in its own box");
   }
 
-  const result = meshModel(operations, budget, mode);
+  // **The model's own voxel size, not the figure budget's.** A model smaller than the
+  // budget's world-unit voxel would otherwise land fewer samples across the thing than the
+  // thin-model guard in `samplesFor` assumes, and mesh to nothing at all. See
+  // `FIGURE_MIN_SAMPLES_LONGEST`.
+  const resolution = defaultVoxelSize(operations, budget);
+  const result = meshModel(operations, budgetFor(resolution, budget), mode);
   const mesh = result?.mesh;
   // **Held in a closure rather than exposed as a field.** A `geometry` property is something a
   // caller can read, and a readable `BufferGeometry` is a `BufferGeometry` somebody will
   // `clone()` — which copies the buffers and quietly undoes the only reason this is a library.
   // `draw` is the whole of the interface: it hands out a `Mesh` and keeps the geometry itself.
-  const geometry = mesh === undefined ? undefined : toChunkGeometry(mesh);
+  const defaultGeometry =
+    mesh === undefined ? undefined : toChunkGeometry(mesh);
+
+  // **A model with a box and no triangles is refused, not carried.** It would otherwise be
+  // added to the world as a `Figure` with `mesh: undefined` — an invisible solid box the player
+  // walks into — and nothing would say why. `ModelLibrary` reports this by name, which is the
+  // same channel a malformed archive uses.
+  if (defaultGeometry === undefined) {
+    throw new Error(
+      "the model meshes to no triangles, so it would stand in the world invisibly",
+    );
+  }
+
+  /**
+   * One geometry per voxel size, built the first time an instance asks for it.
+   *
+   * **The per-resolution equivalent of the one-geometry-per-model rule.** A level may give one
+   * prop a finer mesh without giving every other instance of that model its own buffers, and an
+   * instance that asks for the default is answered from the geometry already built above.
+   */
+  const geometries = new Map<number, BufferGeometry | undefined>([
+    [resolution, defaultGeometry],
+  ]);
+  const geometryAt = (voxelSize: number): BufferGeometry => {
+    if (geometries.has(voxelSize)) {
+      return geometries.get(voxelSize) ?? defaultGeometry;
+    }
+    const built = meshModel(operations, budgetFor(voxelSize, budget), mode);
+    const geometry =
+      built?.mesh === undefined ? undefined : toChunkGeometry(built.mesh);
+    geometries.set(voxelSize, geometry);
+    // **A requested size that resolves nothing falls back to the model's own.** The override is
+    // a quality control, not a way to make a prop disappear; the default is known to have a
+    // surface because this function refuses a model without one.
+    return geometry ?? defaultGeometry;
+  };
 
   return {
     name,
@@ -242,7 +348,7 @@ export const readModelFile = async (
       // and points at none of them; only a handful of vertices fall back to the field, but
       // those are the ones on a surface thinner than a cell and they are exactly the ones
       // that would be visibly wrong.
-      step: result?.region.sampleSize ?? budget.voxelSize,
+      step: result?.region.sampleSize ?? resolution,
     }),
     bounds,
     half: {
@@ -250,10 +356,19 @@ export const readModelFile = async (
       y: (bounds.max.y - bounds.min.y) / 2,
       z: (bounds.max.z - bounds.min.z) / 2,
     },
-    triangles: mesh?.triangleCount ?? 0,
-    draw: (material: Material): Mesh | undefined =>
-      geometry === undefined ? undefined : new Mesh(geometry, material),
-    dispose: (): void => geometry?.dispose(),
+    triangles: result?.triangles ?? 0,
+    resolution,
+    draw: (material: Material, requested?: number): Mesh | undefined => {
+      const geometry =
+        requested === undefined || requested === resolution
+          ? defaultGeometry
+          : geometryAt(requested);
+      return new Mesh(geometry, material);
+    },
+    dispose: (): void => {
+      for (const geometry of geometries.values()) geometry?.dispose();
+      geometries.clear();
+    },
   };
 };
 

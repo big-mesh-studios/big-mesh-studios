@@ -81,7 +81,8 @@ import type { ClockCommands } from "../console/commands";
 import type { Medium } from "../player/player";
 import { MAX_ENTITIES } from "./limits";
 import { createLevelApplier } from "./level/apply-level";
-import { parseLevelPlan } from "./level/level-plan";
+import { LEVEL_VERSION, parseLevelPlan } from "./level/level-plan";
+import type { LevelItem } from "./level/types";
 import type { FigureSet } from "../figures/figure-set";
 import type { FigureModel } from "./model-library";
 import { ScriptInventory, type InventoryRefusal } from "./script-inventory";
@@ -626,12 +627,44 @@ export class PlaceHost {
    * refusal is reported rather than thrown, because a broken level is a broken place and not a
    * broken host.
    *
-   * One applier for the lot rather than one per level: they share the level's own place name and
-   * one id space, so applying them separately would have the second overwrite the first.
+   * **One plan, assembled from every level, and applied once.** They share the level's own
+   * place name and one id space, so applying them separately made the last one a *rebuild*:
+   * `createLevelApplier` keys its operations by the ids the plan it is handed names, so a second
+   * plan with different ids removed every operation the first had added. A place carrying a
+   * built level and an editor-added prop therefore loaded with the prop and *without* the level.
+   *
+   * Colliding ids are a refusal per level, for the same reason a malformed file is: the reader
+   * has no way to say which of two items called `chair` the file meant, and the first one
+   * winning silently is exactly the half-read the whole-or-refused rule exists to prevent.
    */
   private applyLevels(levels: Readonly<Record<string, string>>): void {
     const names = Object.keys(levels);
     if (names.length === 0) return;
+
+    const items: LevelItem[] = [];
+    const seen = new Set<string>();
+    for (const name of names) {
+      const read = parseLevelPlan(levels[name]);
+      if ("refusal" in read) {
+        const { where, why } = read.refusal;
+        this.report(`"${name}" ${where || "the level"} ${why}`);
+        continue;
+      }
+
+      const conflict = read.plan.items.find((item) => seen.has(item.id));
+      if (conflict !== undefined) {
+        this.report(
+          `"${name}" names "${conflict.id}", which another level already uses`,
+        );
+        continue;
+      }
+      for (const item of read.plan.items) {
+        seen.add(item.id);
+        items.push(item);
+      }
+    }
+
+    if (items.length === 0) return;
 
     const applier = createLevelApplier({
       places: this.options.world.places,
@@ -647,15 +680,7 @@ export class PlaceHost {
       geometryChanged: (bounds) => this.geometryChanged(bounds),
     });
 
-    for (const name of names) {
-      const read = parseLevelPlan(levels[name]);
-      if ("refusal" in read) {
-        const { where, why } = read.refusal;
-        this.report(`"${name}" ${where || "the level"} ${why}`);
-        continue;
-      }
-      applier.apply(read.plan);
-    }
+    applier.apply({ version: LEVEL_VERSION, items });
   }
 
   /**
@@ -1058,6 +1083,9 @@ export class PlaceHost {
           at,
           yaw: optionalNumber("yaw") ?? 0,
           scale: optionalNumber("scale") ?? 1,
+          // **Absent means the model's own resolution**, which `FigureModel` derives from its
+          // size. A script that wants a finer or coarser mesh for one instance says so here.
+          meshResolution: optionalNumber("meshResolution"),
           // **Solid by default**, because the common case is furniture and a pickup is the
           // exception a script has to ask for.
           solid:

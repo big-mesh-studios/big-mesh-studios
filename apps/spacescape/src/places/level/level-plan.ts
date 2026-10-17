@@ -282,6 +282,9 @@ const readFigure = (
       at: payload.at,
       ...(payload.yaw === undefined ? {} : { yaw: payload.yaw }),
       ...(payload.scale === undefined ? {} : { scale: payload.scale }),
+      ...(payload.meshResolution === undefined
+        ? {}
+        : { meshResolution: payload.meshResolution }),
       ...(payload.solid === undefined ? {} : { solid: payload.solid }),
       ...(payload.name === undefined ? {} : { name: payload.name }),
     },
@@ -556,6 +559,7 @@ interface FigurePayload {
   readonly at: readonly [number, number, number];
   readonly yaw?: number;
   readonly scale?: number;
+  readonly meshResolution?: number;
   readonly solid?: boolean;
   readonly name?: string;
 }

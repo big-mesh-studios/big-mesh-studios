@@ -36,6 +36,7 @@ const mount = (
   editor: Editor,
   onAttachLevelFromEditor?: () => void,
   onClose?: () => void,
+  onOpen?: () => Promise<string>,
 ): {
   container: HTMLElement;
   said: string[];
@@ -51,6 +52,7 @@ const mount = (
         onRun={async () => "ran"}
         onPublish={async () => "published"}
         onStatus={(line) => said.push(line)}
+        onOpen={onOpen}
         onAttachLevelFromEditor={onAttachLevelFromEditor}
         onClose={onClose}
       />
@@ -436,6 +438,52 @@ describe("the manifest fields and the file tabs", () => {
     expect(editor.project().scripts["span.ts"]).toBe("");
 
     window.prompt = real;
+    dispose();
+    editor.dispose();
+    container.remove();
+  });
+});
+
+describe("opening a place zip", () => {
+  it("has an open button that reports what the picker handed back", async () => {
+    // **The editor's own entry point for a place somebody was sent.** `/place:open` exists in the
+    // console, but a person already in the editor should not have to leave it to open the file
+    // they were asked to fix.
+    const editor = editorOver();
+    let opened = 0;
+    const { container, said, dispose } = mount(
+      editor,
+      undefined,
+      undefined,
+      async () => {
+        opened += 1;
+        return "opened harbour";
+      },
+    );
+
+    press(container, "open");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(opened).toBe(1);
+    expect(said).toContain("opened harbour");
+
+    dispose();
+    editor.dispose();
+    container.remove();
+  });
+
+  it("leaves the button out when the caller owns no picker", () => {
+    // **Absent rather than dead**, the same rule the level editor's attach button follows: a
+    // greyed-out control next to a question nobody asked is worse than no control.
+    const editor = editorOver();
+    const { container, dispose } = mount(editor);
+
+    expect(
+      [...container.querySelectorAll("button")].some(
+        (candidate) => candidate.textContent?.trim() === "open",
+      ),
+    ).toBe(false);
+
     dispose();
     editor.dispose();
     container.remove();

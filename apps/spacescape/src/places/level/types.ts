@@ -117,6 +117,17 @@ export interface LevelFigure {
   readonly yaw?: number;
   /** Uniform, about its own origin. Non-uniform is refused by the host. */
   readonly scale?: number;
+  /**
+   * The voxel size to mesh this model at, in world units, when the model's own default is
+   * wrong for this prop.
+   *
+   * **Absent means the model decides** — `FigureModel.resolution`, derived from the model's
+   * own size. A model made in `sdf-modeller` is small in this world's units and lands on a
+   * coarser grid than its parts; this is the per-prop control that fixes one without asking
+   * the place author to re-export the file. See ADR 0047 for why meshing is a model concern
+   * rather than a per-instance one.
+   */
+  readonly meshResolution?: number;
   /** Whether the player walks into it. A pickup says false. */
   readonly solid?: boolean;
   /** What to call it, and what a prop is asked at. Required for an npc. */

@@ -406,6 +406,31 @@ describe("a level's figures", () => {
     expect(figures.ids()).toContain(levelFigureId("chair"));
   });
 
+  it("gives a figure's mesh resolution to the model", () => {
+    // **The level file's field reaches the one place that can act on it.** Meshing is once per
+    // model *per resolution*, so the applier only carries the number; the model library caches
+    // (and shares) the geometry it produces.
+    const registry = new PlaceRegistry(new SculptDocument().order);
+    const figures = new FigureSet(new NodeMaterial() as never);
+    const asked: (number | undefined)[] = [];
+    const spy = {
+      ...model("lantern.sdfmod", 3),
+      draw: (material: NodeMaterial, resolution?: number) => {
+        asked.push(resolution);
+        return new Mesh(new BufferGeometry(), material);
+      },
+    } as FigureModel;
+
+    createLevelApplier({
+      places: registry,
+      figures,
+      models: { get: (name) => (name === "lantern.sdfmod" ? spy : undefined) },
+      geometryChanged: () => {},
+    }).apply(aPlan([aFigure("lamp", { meshResolution: 0.25 })]));
+
+    expect(asked).toEqual([0.25]);
+  });
+
   it("stands up everything else when one model is not attached yet", () => {
     // Skipped, not fatal: a level is being edited, not loaded from a stranger's file. A
     // person who has not attached the model yet should still see their house.

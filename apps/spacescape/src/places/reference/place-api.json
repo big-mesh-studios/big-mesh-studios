@@ -894,6 +894,12 @@
           "type": "number",
           "optional": true,
           "doc": "Uniform, about its own origin. **Not a resize.** A figure's shape is baked into its model, so this is for a place that wants a small copy of a thing rather than for one redrawing its own art."
+        },
+        {
+          "name": "meshResolution",
+          "type": "number",
+          "optional": true,
+          "doc": "The voxel size to mesh this model at, in world units. **A quality override rather than a size.** The model has its own default derived from its own dimensions; a model authored in `sdf-modeller` is small in this world's units and can need a finer grid than that default to keep its thin parts. Omitted means the model decides."
         }
       ],
       "union": [],

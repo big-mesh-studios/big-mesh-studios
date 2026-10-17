@@ -412,6 +412,15 @@ export interface CreateEntityOptions {
    * wants a small copy of a thing rather than for one redrawing its own art.
    */
   readonly scale?: number;
+  /**
+   * The voxel size to mesh this model at, in world units.
+   *
+   * **A quality override rather than a size.** The model has its own default derived from its
+   * own dimensions; a model authored in `sdf-modeller` is small in this world's units and can
+   * need a finer grid than that default to keep its thin parts. Omitted means the model
+   * decides.
+   */
+  readonly meshResolution?: number;
 }
 
 /** A prop, which is anything the player uses rather than talks to. */
@@ -447,6 +456,9 @@ export const createProp = (options: CreatePropOptions): void => {
     at: options.at,
     ...(options.yaw === undefined ? {} : { yaw: options.yaw }),
     ...(options.scale === undefined ? {} : { scale: options.scale }),
+    ...(options.meshResolution === undefined
+      ? {}
+      : { meshResolution: options.meshResolution }),
     ...(options.solid === undefined ? {} : { solid: options.solid }),
   });
 };
@@ -461,6 +473,9 @@ export const createNpc = (options: CreateNpcOptions): void => {
     name: options.name,
     ...(options.yaw === undefined ? {} : { yaw: options.yaw }),
     ...(options.scale === undefined ? {} : { scale: options.scale }),
+    ...(options.meshResolution === undefined
+      ? {}
+      : { meshResolution: options.meshResolution }),
   });
 };
 

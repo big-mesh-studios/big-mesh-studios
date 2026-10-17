@@ -54,6 +54,18 @@ export interface PlaceEditorProps {
   /** Prints a line that did not come from a command — a refusal, or the editor's own news. */
   onStatus(line: string): void;
   /**
+   * Opens a place zip from disk and adopts it into this editor.
+   *
+   * **The same path `/place:open` takes**, so a place somebody was sent can be edited and
+   * saved back — which is the reason the editor exists. Returns the line to print, like
+   * `onRun`, because a refusal from the manifest or the loader is the sentence a person can
+   * act on.
+   *
+   * Optional so a caller with no file picker (a test, a full-screen page) gets no button
+   * rather than a dead one.
+   */
+  onOpen?(): Promise<string>;
+  /**
    * Attaches the level currently standing in the level editor, if there is one.
    *
    * **A callback rather than a `levelEditor` prop**, because the panel owns no world and the
@@ -249,6 +261,24 @@ export const PlaceEditor: Component<PlaceEditorProps> = (props) => {
     }
   };
 
+  /**
+   * Opens the file picker and loads what it hands back.
+   *
+   * **Busy while it runs, because opening a zip adopts a project and starts a place.** The
+   * picker itself is fast; what follows is a bundle, a mesh and a world, so the button reports
+   * that work and cannot start the same load twice. The line the callback returns is the
+   * loader's own — a refusal names the file and the reason.
+   */
+  const open = async (): Promise<void> => {
+    if (props.onOpen === undefined) return;
+    setBusy(true);
+    try {
+      props.onStatus(await props.onOpen());
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const save = (): void => {
     // **A download rather than a file handle**, because the save path has to work in a browser
     // that refuses one — and `writePlaceZip` is the only exporter, which is why it is imported
@@ -346,6 +376,21 @@ export const PlaceEditor: Component<PlaceEditorProps> = (props) => {
                 : "saving…"
               : "not saving — this browser has no storage"}
           </span>
+          {/*
+            **Open before new**, because adopting a zip is the other way to start work and the
+            two sit together: one begins from nothing, one from a place somebody sent. Absent
+            when the caller owns no picker, rather than present and dead.
+          */}
+          <Show when={props.onOpen}>
+            <button
+              type="button"
+              title="open a place .zip from disk"
+              disabled={busy()}
+              onClick={() => void open()}
+            >
+              open
+            </button>
+          </Show>
           <button type="button" onClick={() => props.state.newProject()}>
             new
           </button>

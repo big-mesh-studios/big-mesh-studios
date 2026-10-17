@@ -91,6 +91,19 @@ const MIN_ENTITY_SCALE = 0.1;
 const MAX_ENTITY_SCALE = 100;
 
 /**
+ * How coarse or fine a figure's own mesh may be asked to be, in world units per sample.
+ *
+ * **A quality override, not a size.** A model is meshed at its own default resolution unless an
+ * instance names one (`FigureModel.resolution`), and the two bounds are here for the same reason
+ * every other payload field has them: a number that becomes a sampling grid is peer-supplied, and
+ * zero or `Infinity` is not a voxel size. The floor is below the finest resolution `sdf-modeller`
+ * offers; the ceiling is coarser than anything a person would choose and is a bound rather than a
+ * recommendation.
+ */
+export const MIN_ENTITY_MESH_RESOLUTION = 0.01;
+export const MAX_ENTITY_MESH_RESOLUTION = 10;
+
+/**
  * Every tag. The union of these words is what `EffectTag` is, derived from the table
  * rather than written beside it, so a tag added to the table and a tag offered to a script
  * are the same set by construction.
@@ -328,6 +341,13 @@ export const EFFECTS: Readonly<Record<EffectTag, EffectSpec>> = {
         min: MIN_ENTITY_SCALE,
         max: MAX_ENTITY_SCALE,
         about: `uniform, about its own origin; between ${MIN_ENTITY_SCALE} and ${MAX_ENTITY_SCALE}`,
+      },
+      {
+        name: "meshResolution",
+        kind: "number",
+        min: MIN_ENTITY_MESH_RESOLUTION,
+        max: MAX_ENTITY_MESH_RESOLUTION,
+        about: `voxel size to mesh this instance at, in world units; between ${MIN_ENTITY_MESH_RESOLUTION} and ${MAX_ENTITY_MESH_RESOLUTION}, omitted for the model's own`,
       },
       {
         name: "solid",

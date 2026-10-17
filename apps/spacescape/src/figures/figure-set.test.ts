@@ -47,6 +47,7 @@ const model = (radius: number) => {
     },
     half: { x: radius, y: radius, z: radius },
     triangles: 0,
+    resolution: 1,
     draw: drawOver(geometry),
     dispose: () => geometry.dispose(),
   };
@@ -121,6 +122,38 @@ describe("FigureSet", () => {
     figures.move("a", { x: 6, y: 0, z: 0 }, 1);
     expect(figures.get("a")!.transform.yaw).toBe(1);
     expect(figures.move("nothing", { x: 0, y: 0, z: 0 })).toBe(false);
+  });
+
+  it("asks the model for the instance's own mesh resolution", () => {
+    // **The model decides the default; the instance may override it.** A prop made in
+    // `sdf-modeller` is small in this world's units, and this is the one control that gives
+    // that prop a finer grid without re-exporting the file.
+    const figures = new FigureSet(material());
+    const ball = model(1);
+    const asked: (number | undefined)[] = [];
+    const recording = {
+      ...ball,
+      draw: (m: NodeMaterial, resolution?: number) => {
+        asked.push(resolution);
+        return ball.draw(m);
+      },
+    };
+
+    figures.add({
+      id: "a",
+      kind: "prop",
+      model: recording,
+      at: { x: 0, y: 0, z: 0 },
+      meshResolution: 0.25,
+    });
+    figures.add({
+      id: "b",
+      kind: "prop",
+      model: recording,
+      at: { x: 1, y: 0, z: 0 },
+    });
+
+    expect(asked).toEqual([0.25, undefined]);
   });
 
   it("keeps a figure with no surface, rather than refusing to place it", () => {

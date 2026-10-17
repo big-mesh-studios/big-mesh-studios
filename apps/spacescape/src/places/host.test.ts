@@ -2289,4 +2289,55 @@ describe("a place that carries a level", () => {
     // Both were attempted, and the good one stands.
     expect(world.places.get("level")?.ids()).toEqual(["floor"]);
   });
+
+  it("keeps every good level when a place carries more than one", async () => {
+    // **The second apply used to be a rebuild, not an append.** The applier keys the
+    // operations it wrote by the ids of the plan it was handed, so applying `b.json` after
+    // `a.json` removed every operation the first had added — which is what happened to a place
+    // with a built level and an editor-made prop in a second file.
+    const second = JSON.stringify({
+      version: 1,
+      items: [
+        {
+          kind: "shape",
+          id: "attic",
+          at: [0, 20, 0],
+          shape: { type: "Box", len: { x: 10, y: 4, z: 10 } },
+          combine: "Add",
+        },
+      ],
+    });
+    const { world } = await start(
+      { "main.ts": 'import { log } from "voxelscape"; log("ran");' },
+      "main.ts",
+      { "a.json": A_LEVEL, "b.json": second },
+    );
+
+    expect(world.places.get("level")?.ids()).toEqual(["floor", "attic"]);
+  });
+
+  it("refuses a level whose id another level already uses", async () => {
+    // The two files share one `level` place and one id space, so a duplicate cannot be
+    // resolved by "the second one wins" without silently dropping the first.
+    const duplicate = JSON.stringify({
+      version: 1,
+      items: [
+        {
+          kind: "shape",
+          id: "floor",
+          at: [0, 20, 0],
+          shape: { type: "Box", len: { x: 10, y: 4, z: 10 } },
+          combine: "Add",
+        },
+      ],
+    });
+    const { world, notices } = await start(
+      { "main.ts": 'import { log } from "voxelscape"; log("ran");' },
+      "main.ts",
+      { "a.json": A_LEVEL, "b.json": duplicate },
+    );
+
+    expect(world.places.get("level")?.ids()).toEqual(["floor"]);
+    expect(notices.join(" ")).toMatch(/floor/);
+  });
 });

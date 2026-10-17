@@ -411,6 +411,9 @@ const figureSpecOf = (
   at,
   ...(item.yaw === undefined ? {} : { yaw: item.yaw }),
   ...(item.scale === undefined ? {} : { scale: item.scale }),
+  ...(item.meshResolution === undefined
+    ? {}
+    : { meshResolution: item.meshResolution }),
   ...(item.solid === undefined ? {} : { solid: item.solid }),
   ...(item.name === undefined ? {} : { name: item.name }),
 });

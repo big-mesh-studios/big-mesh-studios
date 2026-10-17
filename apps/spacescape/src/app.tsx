@@ -646,7 +646,7 @@ export default function App() {
    * `display: none` — not visually hidden — because a file input that is laid out and empty is a
    * box on the screen saying nothing about what it is for.
    */
-  const [placePicker] = createSignal<HTMLInputElement>();
+  const [placePicker, setPlacePicker] = createSignal<HTMLInputElement>();
   /**
    * The loaded place's field lookup, for the player's physics.
    *
@@ -736,6 +736,14 @@ export default function App() {
   let runPlace: ((project: PlaceProject) => Promise<string>) | undefined;
   /** How the catalog loads a place, set by the game branch for the same reason `runPlace` is. */
   let openPublished: ((place: PublishedPlace) => Promise<void>) | undefined;
+  /**
+   * How the editor opens a place zip, set by the game branch for the same reason `runPlace` is.
+   *
+   * **The same function `/place:open` calls**, reached as a holder because the picker and the
+   * loader live in the game branch while the editor's header is rendered from the application
+   * root. Undefined only before the world exists, and the editor cannot be opened before then.
+   */
+  let openPlaceOnDisk: (() => Promise<string>) | undefined;
   const runEditedPlace = (project: PlaceProject): Promise<string> =>
     runPlace?.(project) ??
     Promise.resolve("the world is still loading — try again shortly");
@@ -2000,6 +2008,10 @@ export default function App() {
         : `opened ${place.manifest.name}\n${report}`;
     };
 
+    // **Published to the editor's header.** One implementation for the console's `/place:open`
+    // and the editor's "open" button, so a place opened either way is adopted and run the same.
+    openPlaceOnDisk = openFromDisk;
+
     const dropPlace = (): void => {
       host?.dispose();
       host = undefined;
@@ -3051,7 +3063,10 @@ export default function App() {
         return;
       }
       const model = modelLibrary?.get(item.model);
-      levelGhost.show(model?.draw(levelGhost.material), false);
+      levelGhost.show(
+        model?.draw(levelGhost.material, item.meshResolution),
+        false,
+      );
     };
 
     /**
@@ -3982,7 +3997,11 @@ export default function App() {
           and it is here rather than inside the console because a file dialog is not a
           text field and giving the terminal two of its own would be worse. */}
       <input
-        ref={placePicker}
+        // **The setter, not the getter.** A ref hands its element to the function it is given,
+        // and `placePicker` is an accessor that takes no arguments — so `ref={placePicker}` was
+        // called with the element and ignored it, the signal stayed `undefined` forever, and
+        // every open (the console's and the editor's) reported that this build had no picker.
+        ref={setPlacePicker}
         type="file"
         accept={PLACE_MIME_TYPE}
         style={{ display: "none" }}
@@ -4333,6 +4352,15 @@ export default function App() {
                   onRun={runEditedPlace}
                   onPublish={publishEditedPlace}
                   onStatus={terminal.print}
+                  // **Read through the holder rather than closed over directly.** The header is
+                  // rendered from the application root and the loader belongs to the game
+                  // branch, so this is the seam that lets both use one implementation.
+                  onOpen={() =>
+                    openPlaceOnDisk?.() ??
+                    Promise.resolve(
+                      "the world is still loading — try again shortly",
+                    )
+                  }
                   onAttachLevelFromEditor={attachLevelFromEditor}
                   onClose={() => setEditorOpen(false)}
                 />

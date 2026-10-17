@@ -220,6 +220,21 @@ describe("a level file that is right", () => {
     expect("orientation" in (ok([aBox()]).items[0] as object)).toBe(false);
   });
 
+  it("carries a figure's mesh resolution, and refuses one outside its bounds", () => {
+    // **The override a level editor writes for a prop too small for the model's own default.**
+    // Absent means the model decides, so the reader must not invent the key either.
+    const plan = ok([aFigure({ meshResolution: 0.2 })]);
+    expect(plan.items[0]).toMatchObject({ meshResolution: 0.2 });
+    expect("meshResolution" in (ok([aFigure()]).items[0] as object)).toBe(
+      false,
+    );
+
+    expect(bad([aFigure({ meshResolution: 0 })]).why).toMatch(/meshResolution/);
+    expect(bad([aFigure({ meshResolution: 1000 })]).why).toMatch(
+      /meshResolution/,
+    );
+  });
+
   it("writes it for a person to read, not for a machine to load", () => {
     const text = writeLevelPlan({ version: 1, items: [] });
     expect(text).toContain("\n  ");

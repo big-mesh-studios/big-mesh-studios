@@ -104,6 +104,51 @@ describe("readModelFile", () => {
     expect(model.bounds.min.y + model.half.y).toBeCloseTo(0, 9);
   });
 
+  it("meshes a model smaller than the figure voxel at its own resolution", async () => {
+    // **The bug this exists for.** A prop made in `sdf-modeller` is a couple of units across,
+    // while this world's figure budget samples every *world* unit. At that spacing the seat of
+    // a small chair is thinner than one sample, the mesher finds no crossing, and the prop is
+    // added as an invisible collision box. The model's own longest axis now sets a floor on
+    // the resolution, so a solid box cannot fall through it.
+    const small = makeOperation(
+      0,
+      { x: 0, y: 0, z: 0 },
+      { type: "Box", len: { x: 2, y: 0.1, z: 2 } },
+      "Add",
+    );
+    const model = await readModelFile("chair", await sdfmod([small]));
+
+    expect(model.triangles).toBeGreaterThan(0);
+    expect(model.resolution).toBeLessThan(FIGURE_MESH_BUDGET.voxelSize);
+    expect(model.draw(MATERIAL)).toBeDefined();
+  });
+
+  it("draws a requested resolution and shares it between instances", async () => {
+    const model = await readModelFile(
+      "can",
+      await sdfmod([capsule(0, { x: 0, y: 0, z: 0 })]),
+    );
+    const fine = model.draw(MATERIAL, 0.5)!;
+    const fineAgain = model.draw(MATERIAL, 0.5)!;
+    const byDefault = model.draw(MATERIAL)!;
+
+    expect(fine.geometry).toBe(fineAgain.geometry);
+    expect(fine.geometry).not.toBe(byDefault.geometry);
+  });
+
+  it("falls back to the model's own mesh when a requested resolution has no surface", async () => {
+    // **An override is a quality control, not a way to make a prop disappear.** The coarse
+    // request meshes to nothing; the model's known-good geometry is what stands in the world.
+    const model = await readModelFile(
+      "can",
+      await sdfmod([capsule(0, { x: 0, y: 0, z: 0 })]),
+    );
+    const coarse = model.draw(MATERIAL, 100)!;
+    const byDefault = model.draw(MATERIAL)!;
+
+    expect(coarse.geometry).toBe(byDefault.geometry);
+  });
+
   it("refuses a zip with no manifest, and says which file is missing", async () => {
     const zip = new JSZip();
     zip.file(
