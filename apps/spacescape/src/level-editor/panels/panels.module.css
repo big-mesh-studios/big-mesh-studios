@@ -9,14 +9,25 @@
   min-height: 0;
 }
 
-/* The list is the one thing in the editor that can be long, so it is the one thing that
- * scrolls on its own. Everything else is a fixed set of fields. */
+/*
+ * **The panel body is the only scroll container, and the list must not be one too.**
+ *
+ * A level can hold two hundred items, which made an `overflow-y: auto` here look like the
+ * obvious way to let the list scroll on its own. But the list is never height-constrained
+ * — it sits in an auto-height panel inside the panel body — so that rule never actually
+ * scrolled anything. What it did do is make the list a touch-scroll target whose content
+ * exactly fits: a finger flick starting on a row stopped there and never reached the
+ * panel body, so the Level tab could not be scrolled on a phone at all. Measured in
+ * mobile-emulated Chromium: `body.scrollTop` stayed 0 with the rule and moved with it
+ * removed.
+ *
+ * The panel body already scrolls (`LevelEditorOverlay.module.css`), for this list and for
+ * the tall Properties panel alike, so there is nothing for the list to own here.
+ */
 .list {
   margin: 0;
   padding: 0;
   list-style: none;
-  overflow-y: auto;
-  min-height: 0;
 }
 
 .item {
@@ -43,8 +54,15 @@
   text-align: left;
   cursor: pointer;
   /* A level can hold two hundred items and an id like `shape-Box-120-40-88`; truncating
-   * the middle keeps the name's start, which is the part that identifies it. */
-  overflow: hidden;
+   * the middle keeps the name's start, which is the part that identifies it.
+   *
+   * **`clip` rather than `hidden`.** Both clip the text and let the ellipsis paint, but
+   * `hidden` also makes the button a scroll container, and a scroll container that cannot
+   * scroll swallows a touch gesture instead of letting it reach the panel body. A swipe
+   * started on the name — the widest and safest part of the row to drag on — did nothing,
+   * while one started on the narrow controls beside it scrolled. `clip` is not a scroll
+   * container, so the gesture chains to the panel body and the row still truncates. */
+  overflow: clip;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
