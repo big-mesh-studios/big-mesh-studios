@@ -211,24 +211,26 @@ describe("the compiler options", () => {
     expect(EDITOR_COMPILER_OPTIONS.target).toBe(ts.ScriptTarget.ES2019);
   });
 
-  it("resolve a place's `voxelscape` import, which a relative baseUrl would not", () => {
-    // **The regression this guards.** The worker's files are stored at absolute paths, so the
-    // `paths` table has to be resolved against an absolute `baseUrl`; with a relative one the
-    // resolved target is itself relative, matches no file, and every guest binding silently
-    // degrades to `any` — an editor that offers no completions and lies about the API. The host
-    // below answers only for the absolute path, so a relative resolution comes back undefined.
-    const guestPath = `/${GUEST_FILE}`;
+  it("resolve a place's `voxelscape` import at the worker's file URL", () => {
+    // **The regression this guards.** The worker is handed every file at a `file:///…` URL —
+    // `LSPProvider` writes `file:///${path}` — so `paths` has to be resolved against a `baseUrl`
+    // with that same scheme. A plain `"/"` resolves to `/places/…`, which is a different path
+    // from `file:///places/…`, matches no file, and every guest binding silently degrades to
+    // `any`: an editor that offers no guest completions and lies about the API. The host below
+    // answers only for the file URL, so a resolution missing the scheme comes back undefined.
+    expect(EDITOR_COMPILER_OPTIONS.baseUrl).toBe("file:///");
+    const guestPath = `file:///${GUEST_FILE}`;
     const host: ts.ModuleResolutionHost = {
       fileExists: (file) => file === guestPath,
       readFile: (file) => (file === guestPath ? "" : undefined),
       directoryExists: () => true,
       getDirectories: () => [],
-      getCurrentDirectory: () => "/",
+      getCurrentDirectory: () => "file:///",
       realpath: (file) => file,
     };
     const resolved = ts.resolveModuleName(
       GUEST_MODULE,
-      "/main.ts",
+      "file:///main.ts",
       EDITOR_COMPILER_OPTIONS,
       host,
     );

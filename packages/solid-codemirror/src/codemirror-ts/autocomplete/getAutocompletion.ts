@@ -9,6 +9,28 @@ import { matchBefore } from "./matchBefore";
 // TypeScript module is needed here; the enum value has never changed.
 const TS_COMPLETE_BLOCKLIST = ["warning"] as readonly string[];
 
+/**
+ * How many candidates may have their details resolved in one request.
+ *
+ * **Because `getCompletionsAtPosition` returns every symbol in scope** — over a
+ * thousand in a place script — and leaves the prefix filtering to the editor.
+ * Asking for details for all of them costs several seconds, while CodeMirror is
+ * waiting to show a popup that will only contain the few that match. The limit
+ * bounds that wait; entries past it still arrive as completions, just without
+ * the documentation panel.
+ */
+const DETAIL_LIMIT = 100;
+
+/** Whether a name is close enough to the typed word to be worth detailing. */
+function matchesTypedWord(name: string, word: string): boolean {
+  if (word === "") {
+    return true;
+  }
+  const lowerName = name.toLowerCase();
+  const lowerWord = word.toLowerCase();
+  return lowerName.startsWith(lowerWord) || lowerName.includes(lowerWord);
+}
+
 export interface AutocompletionInfo {
   start: number;
   end: number;
@@ -57,6 +79,11 @@ export async function getAutocompletion({
   // while types are being fetched
   if (!completionInfo) return null;
 
+  // A bare `.` has no word to compare against, but a member list is short
+  // enough that all of its entries are worth detailing anyway.
+  const typed = word?.text === "." ? "" : (word?.text ?? "");
+  let detailed = 0;
+
   const options = completionInfo.entries
     .filter((entry) => !TS_COMPLETE_BLOCKLIST.includes(entry.kind))
     .map((entry): RawCompletionItem => {
@@ -68,15 +95,24 @@ export async function getAutocompletion({
         type = undefined;
       }
 
-      const details = env.languageService.getCompletionEntryDetails(
-        path,
-        pos,
-        entry.name,
-        {},
-        entry.source,
-        {},
-        entry.data,
-      );
+      // **Details only for candidates the popup may actually show.** They are
+      // the expensive part — each can trigger type checking — and resolving
+      // every symbol in scope is what made a bare-word request take seconds.
+      let details:
+        | ReturnType<typeof env.languageService.getCompletionEntryDetails>
+        | undefined;
+      if (detailed < DETAIL_LIMIT && matchesTypedWord(entry.name, typed)) {
+        detailed += 1;
+        details = env.languageService.getCompletionEntryDetails(
+          path,
+          pos,
+          entry.name,
+          {},
+          entry.source,
+          {},
+          entry.data,
+        );
+      }
 
       return {
         label: entry.name,

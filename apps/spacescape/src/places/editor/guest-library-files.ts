@@ -83,12 +83,13 @@ export const notServedByTheEditor: Readonly<Record<string, string>> = {
  * environment is assembled file by file with no `node_modules` in it, so a bare specifier has to be
  * resolved by the `paths` table rather than by walking directories that are not there.
  *
- * **`baseUrl` is absolute, and that is not cosmetic.** A `paths` entry is resolved relative to
- * `baseUrl`, and the worker's filesystem stores every file at an absolute path
- * (`/places/guest/voxelscape.ts`). A relative `baseUrl` — `"."` — is resolved against the worker's
- * cwd and yields a *relative* target (`places/guest/voxelscape.ts`) that matches no file, so
- * `import "voxelscape"` fails with "Cannot find module 'voxelscape'" and every guest-API
- * completion disappears. `"/"` lands on the files the worker was actually handed.
+ * **`baseUrl` is the worker's file URL root, and that is not cosmetic.** A `paths` entry is
+ * resolved relative to `baseUrl`, and the worker is handed every file at a `file:///…` URL
+ * (`file:///places/guest/voxelscape.ts`) — see `LSPProvider` in the code-mirror package. A
+ * relative `baseUrl` — `"."` — is resolved against the worker's cwd, and the old `"/"` produced
+ * `/places/guest/voxelscape.ts`, a path that matches no file because it is missing the scheme. In
+ * both cases `import "voxelscape"` fails with "Cannot find module 'voxelscape'" and every guest-API
+ * completion disappears. `"file:///"` is what makes the target resolve to the file actually there.
  *
  * `noEmit` because nothing is emitted: the editor type-checks, and `bundle.ts` is what transpiles.
  * `strict` because a place's source is compiled under it by `tsconfig.json`, so an editor that
@@ -121,8 +122,9 @@ export const EDITOR_COMPILER_OPTIONS: TS.CompilerOptions = {
   strict: true,
   noEmit: true,
   skipLibCheck: true,
-  // **Absolute, because the worker's files are** — see the note above. A relative baseUrl
-  // resolves `paths` to a location that does not exist and silently disables completions.
-  baseUrl: "/",
+  // **The scheme matches the worker's files** — see the note above. A `"/"` baseUrl
+  // resolves `paths` to `/places/...`, which is not `file:///places/...`, and silently
+  // disables every completion that comes through the guest library.
+  baseUrl: "file:///",
   paths: EDITOR_PATHS,
 };
