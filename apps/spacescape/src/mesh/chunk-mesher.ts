@@ -16,8 +16,13 @@
 import type { Bounds, Vec3 } from "@big-mesh-studios/core";
 import type { SurfaceColour } from "@big-mesh-studios/csg";
 import { BLOCK_WORLD, VOXEL_SIZE } from "../constants";
-import type { CellCoord, Lod, OverlapMask } from "../world";
-import { lodSampleSize, lodSamples } from "../world";
+import type { CellCoord, Lod, MeshResolution, OverlapMask } from "../world";
+import {
+  DEFAULT_MESH_RESOLUTION,
+  lodSamples,
+  meshSampleSize,
+  meshSamples,
+} from "../world";
 
 import {
   CHUNK_VERTEX_CAPACITY,
@@ -129,9 +134,10 @@ export const chunkRegion = (
   cell: CellCoord,
   lod: Lod,
   overlap: OverlapCells = NO_OVERLAP,
+  mesh: MeshResolution = DEFAULT_MESH_RESOLUTION,
 ): ChunkRegion => {
-  const samples = lodSamples(lod);
-  const sampleSize = lodSampleSize(lod);
+  const samples = meshSamples(lod, mesh);
+  const sampleSize = meshSampleSize(lod, mesh);
   const pad = paddingOf(overlap);
 
   // A chunk's world centre is the middle of its samples. Its own low edge — the first
@@ -249,11 +255,18 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
    * One flag a vertex: it is on a chunk face and its normal comes from the field.
    *
    * A byte a vertex rather than a `Set`, because it is written once per surface vertex in
-   * the middle of the mesher's hottest callback and read once per vertex afterwards — 4 KiB
-   * held for the life of the mesher, against a hash set that would be the same information
+   * the middle of the mesher's hottest callback and read once per vertex afterwards — a few
+   * KiB held for the life of the mesher, against a hash set that would be the same information
    * with a hash in the way.
+   *
+   * **Sized from the finest level this mesher will be asked for**, because a place may ask
+   * for a grid many times finer than the landscape's default. A vertex past this capacity
+   * falls back to the field's gradient rather than corrupting the buffer, so the number is
+   * a performance bound and not a correctness one.
    */
-  private readonly boundary = new Uint8Array(CHUNK_VERTEX_CAPACITY);
+  private readonly boundary: Uint8Array;
+  /** The sample grid this mesher builds, which is the place's if it named one. */
+  private readonly resolution: MeshResolution;
 
   constructor(
     private readonly field: MeshField,
@@ -273,13 +286,28 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
      * `meshersFor` passes `0` rather than nothing, and says why there.
      */
     private readonly softness?: number,
+    resolution: MeshResolution = DEFAULT_MESH_RESOLUTION,
   ) {
-    // Sized for the widest run this mesher will ever be asked for rather than for the
-    // widest chunk: a chunk that reaches one cell into a finer neighbour owns one more per
-    // axis, and a scratch one cell short of the grid it is given does not fail — it reads
-    // air where the field said solid, and the mesher invents a surface inside rock.
-    this.scratch = scratchFor(samples, OVERLAP_CELLS);
-    this.normals = new FaceNormalWriter(CHUNK_VERTEX_CAPACITY);
+    this.resolution = resolution;
+    // **The widest run this mesher will ever be asked for**, which is the finest LOD — and
+    // the caller's own `samples` when it passed one, so the old constructor contract still
+    // sizes scratch for what it was told. A chunk that reaches one cell into a finer
+    // neighbour owns one more per axis, and a scratch one cell short of the grid it is given
+    // does not fail — it reads air where the field said solid, and the mesher invents a
+    // surface inside rock.
+    const widest = Math.max(
+      samples,
+      meshSamples(0, resolution),
+      meshSamples(1, resolution),
+      meshSamples(2, resolution),
+    );
+    this.scratch = scratchFor(widest, OVERLAP_CELLS);
+    const vertexCapacity = Math.max(
+      CHUNK_VERTEX_CAPACITY,
+      4 * (widest + 2) * (widest + 2),
+    );
+    this.boundary = new Uint8Array(vertexCapacity);
+    this.normals = new FaceNormalWriter(vertexCapacity);
   }
 
   /**
@@ -291,7 +319,12 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
    * this never produces a wrong answer — only a missed saving.
    */
   couldHaveMesh(cell: CellCoord, lod: Lod, overlap?: OverlapMask): boolean {
-    const region = chunkRegion(cell, lod, overlapCells(overlap));
+    const region = chunkRegion(
+      cell,
+      lod,
+      overlapCells(overlap),
+      this.resolution,
+    );
     // The region that decides whether anything is in the chunk is the chunk's own extent
     // plus its padding: a surface just outside the padding still puts vertices inside the
     // chunk, so testing the bare bounds would skip chunks that have visible geometry.
@@ -303,6 +336,7 @@ export class SurfaceNetsChunkMesher implements ChunkMesher {
       request.cell,
       request.lod,
       overlapCells(request.overlap),
+      this.resolution,
     );
 
     // The candidate cache is told the whole sample region for the duration. Without this
@@ -469,23 +503,32 @@ export const boundaryCells = (
   };
 };
 /** How many samples a chunk at a level takes, for budgeting. */
-export const sampleCount = (lod: Lod): number => {
-  const samples = lodSamples(lod);
+export const sampleCount = (
+  lod: Lod,
+  mesh: MeshResolution = DEFAULT_MESH_RESOLUTION,
+): number => {
+  const samples = meshSamples(lod, mesh);
   return (samples + 2) ** 3;
 };
 
 /** How many world units a chunk at a level spans on one axis. */
-export const chunkSpan = (lod: Lod): number =>
-  lodSamples(lod) * lodSampleSize(lod);
+export const chunkSpan = (
+  lod: Lod,
+  mesh: MeshResolution = DEFAULT_MESH_RESOLUTION,
+): number => meshSamples(lod, mesh) * meshSampleSize(lod, mesh);
 
 /** The world position of a chunk's own first sample's voxel, on one axis. */
 export const chunkOriginOn = (
   cell: CellCoord,
   axis: "x" | "y" | "z",
   lod: Lod,
+  mesh: MeshResolution = DEFAULT_MESH_RESOLUTION,
 ): number =>
-  cell[axis] * BLOCK_WORLD - (lodSamples(lod) / 2) * lodSampleSize(lod);
+  cell[axis] * BLOCK_WORLD -
+  (meshSamples(lod, mesh) / 2) * meshSampleSize(lod, mesh);
 
 /** The size of one sample at a level, for anyone who needs it named. */
-export const sampleSizeAt = (lod: Lod): number =>
-  lodSampleSize(lod) || VOXEL_SIZE;
+export const sampleSizeAt = (
+  lod: Lod,
+  mesh: MeshResolution = DEFAULT_MESH_RESOLUTION,
+): number => meshSampleSize(lod, mesh) || VOXEL_SIZE;

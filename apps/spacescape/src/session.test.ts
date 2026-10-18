@@ -908,6 +908,34 @@ describe("changing the world's shape", () => {
   });
 });
 
+describe("setMeshSettings", () => {
+  it("tells every worker the new grid and empties what was built at the old one", () => {
+    const { session, fakes, stats } = newSession();
+    drain(fakes);
+    expect(stats().drawn).toBe(stats().chunks);
+
+    const fine = { lodSampleSizes: [3.2, 6.4, 12.8] } as const;
+    session.setMeshSettings(fine);
+
+    expect(session.mesh).toEqual(fine);
+    expect(fakes[0]!.models().at(-1)!.mesh).toEqual(fine);
+    // **Dropped rather than left drawn**, because the old mesh is a surface of a different
+    // grid and two tessellations of one wall would be visible at once while the new one
+    // streams.
+    expect(stats().drawn).toBe(0);
+    expect(stats().pending).toBe(stats().chunks);
+    session.dispose();
+  });
+
+  it("does nothing when the grid has not moved", () => {
+    const { session, fakes } = newSession();
+    const before = fakes[0]!.models().length;
+    session.setMeshSettings({ lodSampleSizes: [10, 20, 40] });
+    expect(fakes[0]!.models()).toHaveLength(before);
+    session.dispose();
+  });
+});
+
 describe("reshapeWindow", () => {
   it("rebuilds the window at the new shape and asks for the new chunks", () => {
     const { session, fakes } = newSession({ radius: 2 });

@@ -158,7 +158,14 @@ import {
   type SessionStats,
 } from "./session";
 import { DEFAULT_PLANET, DEFAULT_TERRAIN } from "@big-mesh-studios/csg";
-import { DEFAULT_LOD_BANDS, LOD_OFF, lodIsOff, type LodBands } from "./world";
+import {
+  DEFAULT_LOD_BANDS,
+  DEFAULT_MESH_RESOLUTION,
+  LOD_OFF,
+  lodIsOff,
+  type LodBands,
+  type MeshResolution,
+} from "./world";
 import { SculptSession } from "./sculpt";
 import { DEFAULT_BRUSH } from "./edit/brush";
 import { buildSpikeScene, type SpikeScene } from "./spike-scene";
@@ -284,6 +291,7 @@ interface StartPlace {
    */
   readonly world?: WorldShape;
   /**
+  /**
    * Whether the player may dig and place while this place runs.
    *
    * **Absent means yes**, which is every place written before the field existed. `false` is the
@@ -291,6 +299,14 @@ interface StartPlace {
    * aim off for as long as it is loaded. See `PlaceManifest.editable`.
    */
   readonly editable?: boolean;
+  /**
+   * The sample grid the place's chunks should be meshed at.
+   *
+   * **Absent means the engine's default**, unlike `world`'s absent-means-keep: a place that
+   * never chose a grid is a place that expects the landscape's, and carrying the previous
+   * place's finer grid into it would leave the session meshing a world nobody asked for.
+   */
+  readonly mesh?: MeshResolution;
 }
 
 /** The largest step a frame is allowed to advance the world, in seconds. */
@@ -2076,6 +2092,9 @@ export default function App() {
         // **And the world, which is the manifest's own statement about what the ground is.**
         world: place.manifest.world,
         editable: place.manifest.editable,
+        // **And the grid its walls need**, which is the manifest's statement about how finely
+        // to sample them.
+        mesh: place.manifest.mesh,
       });
       return report.startsWith("could not load")
         ? report
@@ -2153,7 +2172,7 @@ export default function App() {
      */
     const startPlace = async (place: StartPlace): Promise<string> => {
       const { files, entry, seed, name } = place;
-      const { spawn, models, levels, world, editable } = place;
+      const { spawn, models, levels, world, editable, mesh } = place;
       // **Dropped before the new one is built, not after.** Two places at once would both
       // write into one registry, and the operation indices from the first would be spent under
       // the second's fold order.
@@ -2173,7 +2192,8 @@ export default function App() {
         models,
         levels,
         world,
-        editable,
+        ...(editable !== undefined ? { editable } : {}),
+        ...(mesh !== undefined ? { mesh } : {}),
       };
 
       // **The world is put in place before anything is built on it**, and before the models are
@@ -2186,6 +2206,12 @@ export default function App() {
       // **Before the drop rather than after**, so a place that fails to switch cannot leave the
       // previous one half standing.
       if (world !== undefined) setWorldShape(world);
+
+      // **The mesh grid is put in place before any level is applied**, because the level is
+      // meshed by the first request the apply makes and a grid that arrived after it would
+      // build thin walls once at the old spacing. Absent means the engine's default, not the
+      // previous place's choice — see `StartPlace.mesh`.
+      session.setMeshSettings(mesh ?? DEFAULT_MESH_RESOLUTION);
 
       // **The models, read and meshed before the host exists**, so a place that names a model
       // it does not attach finds out at load rather than at the moment it stands the first
@@ -2351,6 +2377,7 @@ export default function App() {
         levels: project.levels,
         world: project.manifest.world,
         editable: project.manifest.editable,
+        mesh: project.manifest.mesh,
       });
 
     // **Published for the overlay's "play again".** The button is rendered from the application

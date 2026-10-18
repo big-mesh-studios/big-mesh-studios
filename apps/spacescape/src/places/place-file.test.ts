@@ -49,6 +49,15 @@ const refuses: readonly (readonly [string, unknown])[] = [
   ["a seed that is a string", { ...good(), seed: "20260901" }],
   ["a seed that is NaN", { ...good(), seed: Number.NaN }],
   ["a seed that is infinite", { ...good(), seed: Infinity }],
+  ["a mesh that is not an object", { ...good(), mesh: "fine" }],
+  [
+    "a mesh whose spacing does not tile a chunk",
+    { ...good(), mesh: { lodSampleSizes: [3, 6, 12] } },
+  ],
+  [
+    "a mesh that is finer than the scratch limit",
+    { ...good(), mesh: { lodSampleSizes: [1, 2, 4] } },
+  ],
   ["no entry", { ...good(), entry: undefined }],
   ["an entry that is not a string", { ...good(), entry: 1 }],
   [
@@ -241,6 +250,18 @@ describe("a manifest this can open", () => {
     expect(isPlaceManifest({ ...good() })).toBe(true);
     expect(isPlaceManifest({ ...good(), editable: true })).toBe(true);
     expect(isPlaceManifest({ ...good(), editable: false })).toBe(true);
+  });
+
+  it("takes a sample grid a place chose, and none is required", () => {
+    // Absent means the landscape's own grid, so every manifest written before this field
+    // existed still opens. A place that names one gets the finer grid its walls need.
+    expect(isPlaceManifest({ ...good() })).toBe(true);
+    expect(
+      isPlaceManifest({
+        ...good(),
+        mesh: { lodSampleSizes: [3.2, 6.4, 12.8] },
+      }),
+    ).toBe(true);
   });
 
   it("names the file and the type it agrees with the reference on", () => {

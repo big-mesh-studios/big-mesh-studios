@@ -9,6 +9,7 @@ import {
   chunkCellOf,
   lodSampleSize,
   lodSamples,
+  meshSamples,
   OVERLAP_X_NEG,
   OVERLAP_X_POS,
   OVERLAP_Z_NEG,
@@ -863,5 +864,58 @@ describe("where chunks are", () => {
         world.x >= region.bounds.min.x && world.x < region.bounds.max.x;
       expect(inside, `(${world.x}, ${world.y}, ${world.z})`).toBe(true);
     }
+  });
+});
+
+/**
+ * A place may ask for a grid finer than the landscape's. The point of the setting is that a
+ * wall thinner than the default sample spacing is still a surface, and the point of keeping
+ * the chunk extent is that nothing else in the world has to move.
+ */
+describe("a place's own sample grid", () => {
+  const fine = { lodSampleSizes: [3.2, 6.4, 12.8] } as const;
+
+  it("changes the samples inside a chunk without changing the chunk", () => {
+    const cell = { x: 1, y: -1, z: 2 };
+    const coarse = chunkRegion(cell, LOD0);
+    const finer = chunkRegion(cell, LOD0, undefined, fine);
+
+    expect(coarse.samples).toBe(32);
+    expect(coarse.sampleSize).toBe(10);
+    expect(finer.samples).toBe(100);
+    expect(finer.sampleSize).toBe(3.2);
+    expect(finer.bounds).toEqual(coarse.bounds);
+    expect(finer.sampleBounds.min.x).toBeCloseTo(coarse.bounds.min.x - 3.2, 9);
+    expect(sampleCount(0, fine)).toBe(102 ** 3);
+    expect(chunkSpan(0, fine)).toBeCloseTo(BLOCK_WORLD, 9);
+    expect(sampleSizeAt(2, fine)).toBe(12.8);
+  });
+
+  it("captures a wall that falls between the default samples", () => {
+    // A four-unit slab centred at x = 5, so its faces are at 3 and 7. The default grid has
+    // samples at 0 and 10 on that axis and no sign change between them; the 3.2-unit grid
+    // has samples at 3.2 and 6.4, both inside the wall.
+    const wall: MeshField = {
+      distance: (x) => Math.abs(x - 5) - 2,
+      distanceForStepping: (x) => Math.abs(x - 5) - 2,
+      gradient: () => ({ x: 1, y: 0, z: 0 }),
+      colourAt: () => ({ colour: { r: 200, g: 200, b: 200 }, material: 0 }),
+      couldHoldSurface: () => true,
+    };
+
+    const coarse = new SurfaceNetsChunkMesher(wall);
+    expect(
+      coarse.mesh({ cell: { x: 0, y: 0, z: 0 }, lod: LOD0 }).vertexCount,
+    ).toBe(0);
+
+    const finer = new SurfaceNetsChunkMesher(
+      wall,
+      meshSamples(0, fine),
+      0,
+      fine,
+    );
+    expect(
+      finer.mesh({ cell: { x: 0, y: 0, z: 0 }, lod: LOD0 }).vertexCount,
+    ).toBeGreaterThan(0);
   });
 });

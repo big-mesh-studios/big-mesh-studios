@@ -77,8 +77,8 @@ import {
   type SurfaceNetsScratch,
 } from "@big-mesh-studios/meshing";
 
-import { lodSamples } from "../world";
-import type { CellCoord, Lod, OverlapMask } from "../world";
+import { DEFAULT_MESH_RESOLUTION, lodSamples, meshSamples } from "../world";
+import type { CellCoord, Lod, MeshResolution, OverlapMask } from "../world";
 import { VOXEL_SIZE } from "../constants";
 import {
   chunkRegion,
@@ -208,11 +208,21 @@ export class WaterChunkMesher implements ChunkMesher {
   constructor(
     private readonly base: BuiltBaseField,
     samples: number = lodSamples(0),
+    private readonly resolution: MeshResolution = DEFAULT_MESH_RESOLUTION,
   ) {
     // Sized for the widest run rather than the widest chunk, for the reason
     // `SurfaceNetsChunkMesher` is: a scratch one cell short reads air where the field said
     // solid. The sea's own grid is the same size, so this is two grids rather than one.
-    this.scratch = scratchFor(samples, OVERLAP_CELLS);
+    //
+    // **That "same size" is now the place's grid**, which is why the widest of the three
+    // levels is what sizes the scratch rather than LOD 0 alone.
+    const widest = Math.max(
+      samples,
+      meshSamples(0, resolution),
+      meshSamples(1, resolution),
+      meshSamples(2, resolution),
+    );
+    this.scratch = scratchFor(widest, OVERLAP_CELLS);
     this.sea = seaDistanceOf(base);
     // Bound once, because it is called once per crossing cell and a closure built per chunk is
     // a small cost for a predicate that never changes shape.
@@ -233,7 +243,8 @@ export class WaterChunkMesher implements ChunkMesher {
   couldHaveMesh(cell: CellCoord, lod: Lod, overlap?: OverlapMask): boolean {
     return couldHoldWater(
       this.base,
-      chunkRegion(cell, lod, overlapCells(overlap)).sampleBounds,
+      chunkRegion(cell, lod, overlapCells(overlap), this.resolution)
+        .sampleBounds,
     );
   }
 
@@ -242,6 +253,7 @@ export class WaterChunkMesher implements ChunkMesher {
       request.cell,
       request.lod,
       overlapCells(request.overlap),
+      this.resolution,
     );
     surfaceNets({
       origin: [region.origin.x, region.origin.y, region.origin.z],

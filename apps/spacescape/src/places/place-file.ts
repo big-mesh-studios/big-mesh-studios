@@ -62,6 +62,7 @@
 export { WORLD_SHAPES, isWorldShape } from "../world/world-geometry";
 export type { WorldShape } from "../world/world-geometry";
 
+import { isMeshResolution, type MeshResolution } from "../mesh/mesh-resolution";
 import { isWorldShape, type WorldShape } from "../world/world-geometry";
 
 /** The file inside a zip that carries a place's manifest. */
@@ -192,6 +193,7 @@ export interface PlaceManifest {
    */
   readonly world?: WorldShape;
   /**
+  /**
    * Whether the player may dig and place while this place runs.
    *
    * **Absent means editable**, which is every place written before this field existed, so the
@@ -205,6 +207,20 @@ export interface PlaceManifest {
    * values wired to nothing. This is the one bit of it that is true today.
    */
   readonly editable?: boolean;
+  /**
+   * The sample spacing this place's chunks are meshed at, finest first.
+   *
+   * **A place's own fact rather than a script's**, for the same reason `world` is: it has to
+   * be known before the first chunk is meshed, and a script that called a setter would be
+   * asking for a grid the walls it is about to build were already sampled on. The chunk's
+   * world extent does not change; only the number of samples inside it, which is what lets a
+   * building with thin walls ask for a grid that can see them without moving the chunk
+   * lattice under everything else.
+   *
+   * **Absent means the engine's default grid**, so a place written before this field existed
+   * opens exactly as it did.
+   */
+  readonly mesh?: MeshResolution;
   /** The file that runs, relative to the zip's root. Must be one of `scripts`. */
   readonly entry: string;
   /**
@@ -272,6 +288,7 @@ export const isPlaceManifest = (value: unknown): value is PlaceManifest => {
   // third — whatever else that tool writes next — means something nobody chose.
   if (record.editable !== undefined && typeof record.editable !== "boolean")
     return false;
+  if (record.mesh !== undefined && !isMeshResolution(record.mesh)) return false;
 
   if (!isFileList(record.scripts)) return false;
   if (!isAttachmentList(record.models, MAX_PLACE_MODELS)) return false;

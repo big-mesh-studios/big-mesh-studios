@@ -24,7 +24,7 @@
  * cannot repeat.
  */
 
-import type { CellCoord, Lod, OverlapMask } from "../world";
+import type { CellCoord, Lod, MeshResolution, OverlapMask } from "../world";
 
 import type { ChunkMesh } from "@big-mesh-studios/meshing";
 import type { BaseFieldSpec } from "@big-mesh-studios/csg";
@@ -85,6 +85,14 @@ export interface ModelMessage {
    * no such message to write. See `BaseFieldSpec`.
    */
   readonly base: BaseFieldSpec | undefined;
+  /**
+   * The sample grid a place asked for, or absent for the engine's default.
+   *
+   * **Optional so a message from before this field existed is still a valid message**, and
+   * absent means the default grid rather than "ask the main thread". The worker builds its
+   * meshers from this, because it is the one side that cannot reach the place's manifest.
+   */
+  readonly mesh?: MeshResolution;
 }
 
 /** Cancels work the main thread no longer wants. */

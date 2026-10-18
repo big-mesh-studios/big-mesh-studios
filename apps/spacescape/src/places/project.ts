@@ -314,6 +314,9 @@ export const makePlaceRecord = (
     // `true` would make a record say a thing it has not been asked to say — the same rule `spawn`
     // and `world` follow for their defaults.
     ...(manifest.editable === false ? { editable: false } : {}),
+    // **The mesh grid, for the same reason as the world.** Dropping it would republish a
+    // place whose thin walls were visible as one whose walls disappear.
+    ...(manifest.mesh !== undefined ? { mesh: manifest.mesh } : {}),
     entry: manifest.entry,
     createdAt,
     scripts: Object.keys(project.scripts)
@@ -371,6 +374,10 @@ export const projectFromRecord = (value: unknown): PlaceProject | null => {
       // read into a project and written out again is the path a fork takes, and a fork that
       // lost `editable: false` would be a place whose author's choice disappeared in transit.
       ...(value.editable !== undefined ? { editable: value.editable } : {}),
+      // **The grid rides back in on the same rule.** A record that named a finer grid and came
+      // back at the default would open with its walls missing, which is exactly the defect the
+      // field exists to prevent.
+      ...(value.mesh !== undefined ? { mesh: value.mesh } : {}),
       entry: value.entry,
       scripts: Object.keys(scripts).sort(),
     },

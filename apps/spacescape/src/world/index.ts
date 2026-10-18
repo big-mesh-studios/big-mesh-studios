@@ -30,7 +30,10 @@ export {
 export type { CellCoord, Lod, LodBands, OverlapMask } from "./level-data";
 export {
   DEFAULT_LOD_BANDS,
+  DEFAULT_MESH_RESOLUTION,
   LOD_OFF,
+  MAX_MESH_SAMPLES,
+  MIN_MESH_SAMPLES,
   OVERLAP_DIRECTIONS,
   OVERLAP_X_NEG,
   OVERLAP_X_POS,
@@ -43,18 +46,23 @@ export {
   cellInSphere,
   cellsInSphere,
   chunkCellOf,
+  isMeshResolution,
   lodAt,
   lodExtent,
   lodIsOff,
   lodSampleSize,
   lodSamples,
   lodStride,
+  meshSampleSize,
+  meshSamples,
   overlapMaskAt,
   sameCell,
+  sameMeshResolution,
   sampleIndexIn,
   sampleWorld,
   sphereCells,
 } from "./level-data";
+export type { MeshResolution } from "./level-data";
 
 export { CoordinateMap } from "./coordinate-map";
 

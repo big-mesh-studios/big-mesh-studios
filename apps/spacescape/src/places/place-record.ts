@@ -54,6 +54,7 @@ import {
   type PlaceSpawn,
   type WorldShape,
 } from "./place-file";
+import type { MeshResolution } from "../mesh/mesh-resolution";
 import { MAX_PLACE_SOURCE, MAX_SCRIPT_SOURCE } from "./limits";
 
 /** The collection published places are written to. */
@@ -102,6 +103,7 @@ export type PlaceRecord = {
    */
   world?: WorldShape;
   /**
+  /**
    * Whether players may dig and place in this place. See `PlaceManifest.editable`.
    *
    * **Optional and omitted rather than written as `true`**, for the reason `spawn` and `world`
@@ -109,6 +111,14 @@ export type PlaceRecord = {
    * field existed. A record carrying `false` is a place whose address says it is read-only.
    */
   editable?: boolean;
+  /**
+   * The sample grid the place asks for. See `PlaceManifest.mesh`.
+   *
+   * **Optional and omitted rather than written as null, for the reason `spawn` and `world`
+   * are.** An absent field means the default grid, which is what every record written before
+   * this existed meant.
+   */
+  mesh?: MeshResolution;
   entry: string;
   createdAt: string;
   scripts: readonly PlaceScriptRecord[];
@@ -181,6 +191,7 @@ export const isPlaceRecord = (value: unknown): value is PlaceRecord => {
     // what a manifest may say in exactly zero ways.
     editable: record.editable,
     entry: record.entry,
+    ...(record.mesh !== undefined ? { mesh: record.mesh } : {}),
     scripts: scripts.map((script) => script.name),
   });
 };

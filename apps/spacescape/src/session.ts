@@ -33,10 +33,13 @@ import type { Material, Scene } from "@random-mesh/rmsl/scene";
 import {
   type CellCoord,
   type LodBands,
+  type MeshResolution,
   ChunkWindow,
+  DEFAULT_MESH_RESOLUTION,
   cellDistance,
   chunkCellOf,
   sameCell,
+  sameMeshResolution,
 } from "./world";
 import {
   type MeshedChunk,
@@ -95,6 +98,14 @@ export interface SessionOptions {
   /** Chunk radius in y, normally smaller — see `sphereCells`. */
   readonly yRadius?: number;
   readonly bands?: LodBands;
+  /**
+   * The sample grid the place asked for, or absent for the engine's default.
+   *
+   * **Per session rather than per chunk**, because a place is the thing that knows how thin
+   * its walls are and the whole window should agree about the grid it is measuring them on.
+   * A place opened later can change it with {@link setMeshSettings}.
+   */
+  readonly mesh?: MeshResolution;
   /** How many meshing workers to run. Defaults to one per hardware thread, capped. */
   readonly workers?: number;
   /**
@@ -187,6 +198,14 @@ export class Session {
    * one world, which is the ordinary reason a field ends up immutable and the wrong one here.
    */
   private baseFieldSpec: BaseFieldSpec | undefined;
+  /**
+   * The sample grid this session's meshers build.
+   *
+   * **Assigned rather than readonly**, for the same reason `baseFieldSpec` is: a place can
+   * arrive while the session is running and name a grid its walls need. The default is the
+   * landscape's own, so a session with no place behaves exactly as it did.
+   */
+  private meshSettings: MeshResolution;
   private failures = 0;
   private disposed = false;
 
@@ -204,6 +223,7 @@ export class Session {
 
   constructor(options: SessionOptions) {
     this.baseFieldSpec = options.baseField;
+    this.meshSettings = options.mesh ?? DEFAULT_MESH_RESOLUTION;
     this.store = new ChunkMeshStore(
       options.scene,
       options.material,
@@ -279,6 +299,33 @@ export class Session {
    */
   get baseField(): BaseFieldSpec | undefined {
     return this.baseFieldSpec;
+  }
+
+  /** The sample grid this session's meshers are building. */
+  get mesh(): MeshResolution {
+    return this.meshSettings;
+  }
+
+  /**
+   * Rewrites every chunk at a different sample grid.
+   *
+   * **The geometry is dropped rather than marked out of date.** `markOutOfDate` is sound while
+   * the cell has not moved because the old mesh is still a surface of that cell; at a new
+   * sample spacing it is a surface of a different grid, so keeping it drawn until its
+   * replacement lands would show two different tessellations of one wall at once. So this is
+   * `invalidateAll` and then a model send, which cancels anything in flight and asks for the
+   * whole window at the new resolution.
+   *
+   * **A no-op when the grid is unchanged**, because callers load a place on every restart and
+   * re-meshing a window for a setting that did not move would be a visible stall on a
+   * "play again".
+   */
+  setMeshSettings(mesh: MeshResolution): void {
+    if (sameMeshResolution(this.meshSettings, mesh)) return;
+    this.meshSettings = mesh;
+    if (this.disposed) return;
+    this.invalidateAll();
+    this.setOperations(this.currentOperations);
   }
 
   /**
@@ -375,6 +422,7 @@ export class Session {
       // **One value, not a kind beside parameters.** The union carries its own parameters, so a
       // message cannot name a planet and arrive holding a landscape's four numbers.
       base: this.baseFieldSpec,
+      mesh: this.meshSettings,
     };
   }
 

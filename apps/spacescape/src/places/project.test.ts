@@ -255,6 +255,23 @@ describe("a project published as a record", () => {
     ).not.toHaveProperty("editable");
   });
 
+  it("carries a place's sample grid across, and omits it when the place has not chosen", () => {
+    // **The same round trip as the world, for the same kind of failure.** A record that named a
+    // fine grid and came back at the default would open with thin walls missing — a place that
+    // loads and is wrong, rather than one that refuses.
+    const fine = { lodSampleSizes: [3.2, 6.4, 12.8] } as const;
+    const detailed = project({
+      manifest: { ...project().manifest, mesh: fine },
+    });
+    const published = makePlaceRecord(detailed, "2026-10-08T09:00:00.000Z");
+    expect(published.mesh).toEqual(fine);
+    expect(projectFromRecord(published)?.manifest.mesh).toEqual(fine);
+
+    expect(
+      makePlaceRecord(project(), "2026-10-08T09:00:00.000Z"),
+    ).not.toHaveProperty("mesh");
+  });
+
   it("refuses to publish an attachment nothing can publish yet", () => {
     // **Not dropped silently.** A record is JSON and an attachment is bytes, so carrying one means
     // uploading it as a blob and naming the blob — which needs a publisher and a model with an

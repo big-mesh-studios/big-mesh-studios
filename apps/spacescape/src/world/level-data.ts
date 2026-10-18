@@ -20,6 +20,11 @@ import {
   LOD_STRIDE,
   VOXEL_SIZE,
 } from "../constants";
+import {
+  DEFAULT_MESH_RESOLUTION,
+  meshSampleSize,
+  meshSamples,
+} from "../mesh/mesh-resolution";
 import type { Vec3 } from "@big-mesh-studios/core";
 
 /** Three whole numbers: a chunk cell, or a voxel, or a world corner. */
@@ -83,18 +88,36 @@ export const lodStride = (lod: Lod): number =>
   LOD_STRIDE[Math.max(0, Math.min(lod, LOD_COUNT - 1)) as 0 | 1 | 2] as number;
 
 /**
- * How many voxel samples fit across a chunk at a level of detail.
+ * How many voxel samples fit across a chunk at a level of detail, for the default grid.
  *
  * The coarsest level divides thirty-two by four, giving eight — which is one sample
  * per eighty world units. A brush is twenty units across at its smallest, so a
  * sculpt at that level of detail is not visible. That is not a defect: it is the
  * point of having a coarsest level, and it is why the bands default to keeping the
  * coarsest level at the far edge of the window where nothing is being sculpted.
+ *
+ * **The default, not the only answer.** A place may name its own spacing through
+ * `MeshResolution`; the paint tiles and every world-coordinate conversion are on this
+ * default grid, and the chunk mesher is the thing that takes the place's setting. See
+ * `mesh-resolution.ts` for why the two can differ without the chunk lattice changing.
  */
-export const lodSamples = (lod: Lod): number => CHUNK_VOXELS / lodStride(lod);
+export const lodSamples = (lod: Lod): number =>
+  meshSamples(lod, DEFAULT_MESH_RESOLUTION);
 
-/** World units per sample at a level of detail. */
-export const lodSampleSize = (lod: Lod): number => VOXEL_SIZE * lodStride(lod);
+/** World units per sample at a level of detail, for the default grid. */
+export const lodSampleSize = (lod: Lod): number =>
+  meshSampleSize(lod, DEFAULT_MESH_RESOLUTION);
+
+export {
+  DEFAULT_MESH_RESOLUTION,
+  isMeshResolution,
+  MAX_MESH_SAMPLES,
+  MIN_MESH_SAMPLES,
+  meshSampleSize,
+  meshSamples,
+  sameMeshResolution,
+} from "../mesh/mesh-resolution";
+export type { MeshResolution } from "../mesh/mesh-resolution";
 
 /** The world units a chunk spans, which is the same at every level of detail. */
 export const lodExtent = (_lod: Lod): number => BLOCK_WORLD;

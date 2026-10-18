@@ -84,6 +84,22 @@ describe("building the meshers from a model message", () => {
     expect(mesh.vertexCount).toBeGreaterThan(0);
   });
 
+  it("meshes at the grid the place asked for, and not the default", () => {
+    // **The setting crosses the thread boundary in the model message**, because the worker
+    // never sees the manifest. A sphere is enough to show the difference: a finer grid puts
+    // more vertices on the same surface.
+    const operations = [aSphere(45)];
+    const coarse = meshersFor(model(operations)).ground.mesh({
+      cell: cell(0),
+      lod: 0,
+    });
+    const finer = meshersFor({
+      ...model(operations),
+      mesh: { lodSampleSizes: [3.2, 6.4, 12.8] },
+    }).ground.mesh({ cell: cell(0), lod: 0 });
+    expect(finer.vertexCount).toBeGreaterThan(coarse.vertexCount);
+  });
+
   it("gives the same mesh as the operations it was sent", () => {
     // The worker and the main thread must agree about the model, or two chunks meshed on
     // different sides of the thread boundary would not fit together.

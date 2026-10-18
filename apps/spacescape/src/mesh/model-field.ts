@@ -27,6 +27,7 @@ import type { PaintSource } from "@big-mesh-studios/csg";
 import type { BaseFieldSpec, BuiltBaseField } from "@big-mesh-studios/csg";
 import { widestBlend } from "@big-mesh-studios/meshing";
 import { cellCentre, chunkCellOf, sampleIndexIn, tileIndex } from "../world";
+import { DEFAULT_MESH_RESOLUTION, meshSamples } from "../world";
 
 import type { ChunkMeshers } from "./chunk-mesher";
 import { SurfaceNetsChunkMesher } from "./chunk-mesher";
@@ -104,6 +105,10 @@ export class TilePaint implements PaintSource {
 export const meshersFor = (model: ModelMessage): ChunkMeshers => {
   const operations = deserialiseOperations(model.operations);
   const base = baseFieldOf(model.base);
+  // **The place's grid, or the landscape's.** The worker cannot read a manifest, so the
+  // setting travels in the model message; an older message without one means the default.
+  const mesh = model.mesh ?? DEFAULT_MESH_RESOLUTION;
+  const finest = meshSamples(0, mesh);
   const field = new Field(new OperationBVH(operations), {
     // One value in three slots, because a base field is all three at once: the distance
     // function, the region it can answer for, and the Lipschitz bound that makes its
@@ -124,7 +129,7 @@ export const meshersFor = (model: ModelMessage): ChunkMeshers => {
   return {
     ground: new SurfaceNetsChunkMesher(
       field,
-      undefined,
+      finest,
       /**
        * **The broadest blend any operation carries, so the broad pass knows how far it may not
        * trust a value.** This is the one number about a model that the mesher cannot work out
@@ -133,11 +138,14 @@ export const meshersFor = (model: ModelMessage): ChunkMeshers => {
        * geometry.
        */
       widestBlend(operations),
+      mesh,
     ),
     // A world of operations over no landscape has no sea, because a sea is a property of a
     // landscape. `undefined` is that statement, and the worker's gate reads it as "no
     // second surface" rather than as a mesher with nothing to mesh.
-    ...(base !== undefined ? { sea: new WaterChunkMesher(base) } : {}),
+    ...(base !== undefined
+      ? { sea: new WaterChunkMesher(base, finest, mesh) }
+      : {}),
   };
 };
 
